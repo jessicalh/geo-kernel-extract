@@ -8,6 +8,15 @@ refactor (eventFilter primary input, render coalesce, lock taxonomy,
 shutdown reorder) targets the no-lock numbers — without breaking the
 with-lock numbers.
 
+> **Supersession**: a second pass added the upstream
+> `TransformedConformation` layer (identity / center_com /
+> fit_reference / fit_subset), the `POST /docks/visible` endpoint, and
+> the single-focus-atom marker mode. See
+> [`HARNESS_BASELINE_TRANSFORM_2026-05-30.md`](HARNESS_BASELINE_TRANSFORM_2026-05-30.md)
+> for the four-experiment matrix on the same fixture + atoms. That
+> doc updates the acceptance gate for the lock-taxonomy + camera
+> refactor session.
+
 Provenance for these numbers: `notes/VIEWPORT_OBSERVATIONS_2026-05-30.md`
 §5b (instrumentation-first reframe), §4 (paint-some-frames probe), §1
 (why it bounces).

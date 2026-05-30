@@ -81,7 +81,15 @@ public slots:
     // colours + the default opacity/radius. No Render — the caller (REST
     // handler today) issues scene_->requestRender() after, matching the
     // setVisible() flow at ReaderMainWindow.cpp:591.
-    void setInstrumentMode(bool on);
+    //
+    // `focusOnly` (default false): when true AND `on` is true, all four
+    // sphere actors get the slot-0 magenta colour and ONLY the focus-slot
+    // sphere is rendered (the others are SetVisibility(0)). Eliminates the
+    // slot-1-eclipses-slot-0 problem documented in
+    // VIEWPORT_OBSERVATIONS_2026-05-30.md (occluding spheres make the
+    // blob detector miss the magenta marker). Disabling instrument mode
+    // (on=false) restores the multi-slot view regardless of focusOnly.
+    void setInstrumentMode(bool on, bool focusOnly = false);
 
 private:
     void applyFrame(int t);
@@ -107,6 +115,7 @@ private:
     bool visible_        = true;
     int  lastFrame_      = 0;
     bool instrumentMode_ = false;
+    bool focusOnly_      = false;
 };
 
 }  // namespace h5reader::app

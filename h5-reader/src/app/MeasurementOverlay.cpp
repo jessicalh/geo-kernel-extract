@@ -147,18 +147,24 @@ void MeasurementOverlay::setVisible(bool on) {
     applyFrame(lastFrame_);
 }
 
-void MeasurementOverlay::setInstrumentMode(bool on) {
+void MeasurementOverlay::setInstrumentMode(bool on, bool focusOnly) {
     ASSERT_THREAD(this);
-    if (instrumentMode_ == on)
+    if (instrumentMode_ == on && focusOnly_ == focusOnly)
         return;
     instrumentMode_ = on;
+    // focusOnly is only meaningful while instrument mode is on; clear it
+    // when turning instrument mode off so a future on-without-focusOnly
+    // call doesn't inherit a stale flag.
+    focusOnly_ = on ? focusOnly : false;
     applyInstrumentModeToActors();
     // Reposition the visible spheres so the new radius/colour shows at the
-    // current frame without waiting for the next setFrame. The caller (REST
+    // current frame without waiting for the next setFrame. applyFrame()
+    // also honours focusOnly_ in its visibility branch. The caller (REST
     // handler) follows with scene_->requestRender() to flush, matching the
     // setVisible() flow at ReaderMainWindow.cpp:591.
     applyFrame(lastFrame_);
-    qCInfo(cMeas).noquote() << "instrument mode" << (on ? "ON" : "OFF");
+    qCInfo(cMeas).noquote() << "instrument mode" << (on ? "ON" : "OFF")
+                            << "focus_only=" << focusOnly_;
 }
 
 void MeasurementOverlay::applyInstrumentModeToActors() {
@@ -167,12 +173,22 @@ void MeasurementOverlay::applyInstrumentModeToActors() {
     // build-time Okabe-Ito palette + kSphereRadiusA + kOpacity (hard-coded
     // here rather than refactoring the anonymous-namespace constants — the
     // refactor is later viewport-overlay-layer work).
+    //
+    // focus-only variant: when both instrument and focusOnly are on, every
+    // sphere gets the slot-0 magenta colour so the focus marker reads as a
+    // single magenta blob regardless of which slot the focus lives in.
+    // Visibility (only the focus slot rendered) is decided in applyFrame().
     for (std::size_t s = 0; s < kMaxSpheres; ++s) {
         if (!spheres_[s] || !actors_[s])
             continue;
         if (instrumentMode_) {
-            actors_[s]->GetProperty()->SetColor(
-                kInstrumentRgb[s][0], kInstrumentRgb[s][1], kInstrumentRgb[s][2]);
+            if (focusOnly_) {
+                actors_[s]->GetProperty()->SetColor(
+                    kInstrumentRgb[0][0], kInstrumentRgb[0][1], kInstrumentRgb[0][2]);
+            } else {
+                actors_[s]->GetProperty()->SetColor(
+                    kInstrumentRgb[s][0], kInstrumentRgb[s][1], kInstrumentRgb[s][2]);
+            }
             actors_[s]->GetProperty()->SetOpacity(kInstrumentOpacity);
             spheres_[s]->SetRadius(kInstrumentRadiusA);
         } else {
@@ -192,6 +208,15 @@ void MeasurementOverlay::applyFrame(int t) {
 
     const std::size_t n = selection_ ? selection_->count() : 0;
 
+    // Focus-only suppression: when the harness preset is active, only the
+    // sphere at the focus slot is rendered. The slot of the focus atom is
+    // selection_->slotOf(focusAtom); slots without focus do not render
+    // regardless of how many atoms the selection holds.
+    int focusSlot = -1;
+    if (focusOnly_ && instrumentMode_ && selection_ && selection_->hasFocus()) {
+        focusSlot = selection_->slotOf(selection_->focus());
+    }
+
     std::array<model::Vec3, kMaxSpheres> pos;
     bool                                 allInRange = true;
 
@@ -209,13 +234,22 @@ void MeasurementOverlay::applyFrame(int t) {
                 pos[s] = p;
             }
         }
+        // Focus-only override: only render the focus slot's sphere when
+        // the harness preset is active. If there is no focus slot
+        // (selection empty / no focus), nothing renders.
+        if (focusOnly_ && instrumentMode_) {
+            show = show && (static_cast<int>(s) == focusSlot);
+        }
         actors_[s]->SetVisibility(show ? 1 : 0);
     }
 
     // Connecting polyline: shown when the selection defines at least a distance
     // (>= 2 atoms), every atom is in range, and the overlay is visible. Rebuilt
     // from the slot-ordered positions each frame so it holds through rotation.
-    const bool showLine = visible_ && allInRange && n >= 2;
+    // Suppressed in focus-only instrument mode so the harness sees only one
+    // magenta blob with no spurious connecting geometry near it.
+    const bool showLine = visible_ && allInRange && n >= 2
+                          && !(focusOnly_ && instrumentMode_);
     if (showLine) {
         linePoints_->Reset();
         for (std::size_t i = 0; i < n; ++i)

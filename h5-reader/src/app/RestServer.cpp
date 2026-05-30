@@ -3,6 +3,7 @@
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
 #include "QtPlaybackController.h"
+#include "ReaderMainWindow.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
@@ -15,6 +16,7 @@
 #include "../model/DashboardSignalModel.h"
 #include "../model/QtProtein.h"
 #include "../model/TrajectorySignalCatalog.h"
+#include "../model/TransformedConformation.h"
 
 #include <QBuffer>
 #include <QByteArray>
@@ -197,7 +199,9 @@ void RestServer::setContext(MoleculeScene* scene,
                             const model::TrajectorySignalCatalog* catalog,
                             QtPlaybackController* playback,
                             io::QtLoadResult* loaded,
-                            QWidget* mainWindow) {
+                            QWidget* mainWindow,
+                            ReaderMainWindow* readerWindow,
+                            model::TransformedConformation* transformed) {
     ASSERT_THREAD(this);
     scene_ = scene;
     selection_ = selection;
@@ -207,6 +211,8 @@ void RestServer::setContext(MoleculeScene* scene,
     playback_ = playback;
     loaded_ = loaded;
     mainWindow_ = mainWindow;
+    readerWindow_ = readerWindow;
+    transformed_ = transformed;
     contextSet_ = true;
 }
 
@@ -387,6 +393,11 @@ void RestServer::registerRoutes() {
     // colours are outside every CPK element colour so a hue threshold isolates
     // the marker against any rendered scene. Reversible: {"enabled": false}
     // restores the Okabe-Ito palette + default opacity/radius.
+    //
+    // `focus_only` (default false, back-compat): when true AND enabled is
+    // true, all four sphere actors get the magenta colour and only the
+    // focus-slot sphere renders — eliminates the slot-1-eclipses-slot-0
+    // problem the no-lock baseline run hit (VIEWPORT_OBSERVATIONS §5b).
     server_->route(QStringLiteral("/selection/instrument"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
@@ -396,14 +407,156 @@ void RestServer::registerRoutes() {
         bool ok = false;
         const QJsonObject body = parseJsonBody(req, &ok);
         if (!ok || !body.contains("enabled") || !body.value("enabled").isBool())
-            return errorResponse(QStringLiteral("body must be {\"enabled\": bool}"),
+            return errorResponse(QStringLiteral("body must be {\"enabled\": bool, \"focus_only\": bool}"),
                                  SC::BadRequest);
         const bool on = body.value("enabled").toBool();
-        scene_->measurementOverlay()->setInstrumentMode(on);
+        const bool focusOnly = (body.contains("focus_only") && body.value("focus_only").isBool())
+                                   ? body.value("focus_only").toBool()
+                                   : false;
+        scene_->measurementOverlay()->setInstrumentMode(on, focusOnly);
         // The overlay does not Render itself (overlay contract,
         // MoleculeScene.h §1-5); we flush via the scene the same way the
         // ribbon/rings visibility toggles do at ReaderMainWindow.cpp:591.
         scene_->requestRender();
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- docks visibility (harness viewport-maximise) ------------------
+    //
+    // POST /docks/visible {"visible": bool} — hides or restores the three
+    // ReaderMainWindow dock widgets (inspector, selection, dashboard strip)
+    // wholesale. Hide stashes each dock's pre-hide visibility so restore
+    // returns each dock to its prior state. Used by the harness to expand
+    // the central VTK viewport so the marker blob fits in more pixels.
+    server_->route(QStringLiteral("/docks/visible"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("visible") || !body.value("visible").isBool())
+            return errorResponse(QStringLiteral("body must be {\"visible\": bool}"),
+                                 SC::BadRequest);
+        const bool visible = body.value("visible").toBool();
+        readerWindow_->setDocksVisible(visible);
+        // The viewport widget's geometry doesn't change without a paint
+        // refresh; ask the scene to render so the new frame fills the
+        // expanded central widget on the same tick the docks vanish.
+        if (scene_) scene_->requestRender();
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- transform (upstream data-layer transform — TransformedConformation) -
+    //
+    // POST /transform {"kind": "identity"|"center_com"|"fit_reference"|"fit_subset",
+    //                   "reference_frame": int (default 0),
+    //                   "subset_atoms": [int, ...] (FitSubset only),
+    //                   "backbone_only": bool (FitSubset shorthand) }
+    // Switches the wrapped Conformation's transform mode. Fire-and-forget;
+    // the wrapper emits transformChanged() which is connected (in
+    // ReaderMainWindow) to scene_->refreshCurrentFrame so the molecule
+    // re-renders in the new frame without further client involvement.
+    //
+    // GET /transform → returns the current mode + parameters for the
+    // harness's reproducibility manifest.
+    server_->route(QStringLiteral("/transform"), Method::Get,
+                   [this](const QHttpServerRequest&) {
+        ASSERT_THREAD(this);
+        if (!transformed_)
+            return errorResponse(QStringLiteral("transformed conformation not wired"),
+                                 SC::ServiceUnavailable);
+        QString kind;
+        switch (transformed_->mode()) {
+            case model::TransformedConformation::Mode::Identity:     kind = QStringLiteral("identity"); break;
+            case model::TransformedConformation::Mode::CenterCom:    kind = QStringLiteral("center_com"); break;
+            case model::TransformedConformation::Mode::FitReference: kind = QStringLiteral("fit_reference"); break;
+            case model::TransformedConformation::Mode::FitSubset:    kind = QStringLiteral("fit_subset"); break;
+        }
+        QJsonArray subsetArr;
+        for (std::size_t a : transformed_->subsetAtoms())
+            subsetArr.append(static_cast<qint64>(a));
+        return jsonResponse(QJsonObject{
+            {"kind", kind},
+            {"reference_frame", static_cast<qint64>(transformed_->referenceFrame())},
+            {"subset_atoms", subsetArr},
+            {"subset_size", subsetArr.size()},
+        });
+    });
+
+    server_->route(QStringLiteral("/transform"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!transformed_)
+            return errorResponse(QStringLiteral("transformed conformation not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("kind"))
+            return errorResponse(QStringLiteral("body must be {\"kind\": ..., ...}"),
+                                 SC::BadRequest);
+        const QString kindStr = body.value("kind").toString();
+        const std::size_t referenceFrame = body.contains("reference_frame")
+            ? static_cast<std::size_t>(body.value("reference_frame").toInteger(0))
+            : 0;
+
+        using Mode = model::TransformedConformation::Mode;
+        Mode mode = Mode::Identity;
+        std::vector<std::size_t> subset;
+
+        if (kindStr == QStringLiteral("identity")) {
+            mode = Mode::Identity;
+        } else if (kindStr == QStringLiteral("center_com")) {
+            mode = Mode::CenterCom;
+        } else if (kindStr == QStringLiteral("fit_reference")) {
+            mode = Mode::FitReference;
+        } else if (kindStr == QStringLiteral("fit_subset")) {
+            mode = Mode::FitSubset;
+            // backbone_only shorthand: compute the subset from the typed
+            // QtAtom::IsBackbone() flag (no string parsing of atom names;
+            // chemistry identity comes from the typed substrate).
+            const bool backboneOnly = body.contains("backbone_only") && body.value("backbone_only").toBool();
+            if (backboneOnly) {
+                const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+                if (!protein)
+                    return errorResponse(QStringLiteral("no protein loaded for backbone_only"),
+                                         SC::ServiceUnavailable);
+                subset = model::TransformedConformation::BackboneSubset(*protein);
+                if (subset.size() < 3)
+                    return errorResponse(QStringLiteral("backbone subset has <3 atoms — "
+                                                        "fit underdetermined"),
+                                         SC::Conflict);
+            } else if (body.value("subset_atoms").isArray()) {
+                const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+                if (!protein)
+                    return errorResponse(QStringLiteral("no protein loaded"),
+                                         SC::ServiceUnavailable);
+                const QJsonArray arr = body.value("subset_atoms").toArray();
+                subset.reserve(static_cast<std::size_t>(arr.size()));
+                for (const QJsonValue& v : arr) {
+                    const qint64 raw = v.toInteger(-1);
+                    if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
+                        return errorResponse(QStringLiteral("subset_atoms index out of range: %1").arg(raw),
+                                             SC::BadRequest);
+                    subset.push_back(static_cast<std::size_t>(raw));
+                }
+                if (subset.size() < 3)
+                    return errorResponse(QStringLiteral("subset must have >= 3 atoms (Kabsch underdetermined)"),
+                                         SC::BadRequest);
+            } else {
+                return errorResponse(QStringLiteral("fit_subset needs subset_atoms or backbone_only"),
+                                     SC::BadRequest);
+            }
+        } else {
+            return errorResponse(QStringLiteral("unknown transform kind: %1").arg(kindStr),
+                                 SC::BadRequest);
+        }
+
+        transformed_->setMode(mode, referenceFrame, std::move(subset));
+        // setMode emits transformChanged → ReaderMainWindow connects this
+        // to scene_->refreshCurrentFrame. No explicit render here; the
+        // connected slot handles it.
         return QHttpServerResponse(SC::NoContent);
     });
 
@@ -454,12 +607,18 @@ void RestServer::registerRoutes() {
     });
 
     // ---- atom positions (per-frame, for tests that need plane math) -----
-
+    //
+    // Reads through the TransformedConformation wrapper so the positions
+    // returned are in the active display frame (matches what the renderer
+    // shows). Tests that need raw H5 positions would need a different
+    // endpoint (none today; add when a use case appears).
     server_->route(QStringLiteral("/positions"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
         const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
-        const auto* conf = loaded_ ? loaded_->conformation.get() : nullptr;
+        const model::Conformation* conf = transformed_
+            ? static_cast<const model::Conformation*>(transformed_.data())
+            : (loaded_ ? loaded_->conformation.get() : nullptr);
         if (!protein || !conf)
             return errorResponse(QStringLiteral("protein/conformation not wired"), SC::ServiceUnavailable);
         bool ok = false;

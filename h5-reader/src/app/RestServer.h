@@ -22,7 +22,11 @@
 //   POST   /selection/pick               → 204 (body: {"atom": int, "modifiers": "none"|"shift"})
 //   POST   /selection/atoms              → 204 (body: {"atoms": [int, ...]})  bulk replace
 //   POST   /selection/clear              → 204
-//   POST   /selection/instrument         → 204 (body: {"enabled": bool})       marker preset
+//   POST   /selection/instrument         → 204 (body: {"enabled": bool, "focus_only": bool})  marker preset
+//   POST   /docks/visible                → 204 (body: {"visible": bool})  hide/restore docks
+//   GET    /transform                    → {"kind": "...", "reference_frame": int, "subset_atoms": [...], "subset_size": int}
+//   POST   /transform                    → 204 (body: {"kind": "identity"|"center_com"|"fit_reference"|"fit_subset",
+//                                                       "reference_frame": int, "subset_atoms": [int, ...], "backbone_only": bool})
 //   GET    /plane-lock                   → {"active": bool, "atoms": [...]|null}
 //   POST   /plane-lock/enable            → 204 or 409 (body: {"atoms": [a,b,c]})
 //   POST   /plane-lock/disable           → 204
@@ -51,6 +55,7 @@ class AtomSelection;
 class DashboardPanelModel;
 class DashboardSignalModel;
 class TrajectorySignalCatalog;
+class TransformedConformation;
 }
 }
 
@@ -58,6 +63,7 @@ namespace h5reader::app {
 
 class MoleculeScene;
 class QtPlaybackController;
+class ReaderMainWindow;
 
 class RestServer final : public QObject {
     Q_OBJECT
@@ -69,6 +75,15 @@ public:
     // Wire the dependencies this server reads / mutates. Must be called
     // before listen(); all pointers are stored as QPointer / raw and the
     // server never outlives them (it is owned by ReaderMainWindow).
+    //
+    // `readerWindow` is the typed ReaderMainWindow* (also stored as
+    // `mainWindow` as a QWidget* for the screenshot path). It's separate
+    // because the dock-visible endpoint needs the typed ReaderMainWindow
+    // surface; the screenshot path only needs QWidget::grab().
+    //
+    // `transformed` is the TransformedConformation wrapping the loader's
+    // Conformation — handed to POST /transform so the harness can flip
+    // the rigid-body transform mode at runtime.
     void setContext(MoleculeScene* scene,
                     model::AtomSelection* selection,
                     model::DashboardSignalModel* signalModel,
@@ -76,7 +91,9 @@ public:
                     const model::TrajectorySignalCatalog* catalog,
                     QtPlaybackController* playback,
                     io::QtLoadResult* loaded,
-                    QWidget* mainWindow);
+                    QWidget* mainWindow,
+                    ReaderMainWindow* readerWindow = nullptr,
+                    model::TransformedConformation* transformed = nullptr);
 
     // Bind to QHostAddress::LocalHost on the requested port. Port 0 asks
     // the kernel to pick. Returns the actually-bound port, or 0 on failure.
@@ -96,6 +113,8 @@ private:
     QPointer<QtPlaybackController>              playback_;
     io::QtLoadResult*                           loaded_ = nullptr;
     QPointer<QWidget>                           mainWindow_;
+    QPointer<ReaderMainWindow>                  readerWindow_;
+    QPointer<model::TransformedConformation>    transformed_;
     bool                                        contextSet_ = false;
 };
 

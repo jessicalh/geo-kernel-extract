@@ -92,6 +92,8 @@ qt_add_executable(h5reader
     src/model/TrajectoryConformation.cpp
     src/model/SingleConformation.h
     src/model/SingleConformation.cpp
+    src/model/TransformedConformation.h
+    src/model/TransformedConformation.cpp
     src/model/ConformationGeometry.h
     src/model/ConformationGeometry.cpp
     src/model/SpectralAnalysis.h

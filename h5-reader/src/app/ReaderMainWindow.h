@@ -20,6 +20,9 @@
 #include <vtkSmartPointer.h>
 
 #include <memory>
+#include <vector>
+
+class QDockWidget;
 
 class QLabel;
 class QSlider;
@@ -37,6 +40,7 @@ class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
 class TrajectorySignalCatalog;
+class TransformedConformation;
 }
 
 namespace h5reader::app {
@@ -62,6 +66,25 @@ public:
     // port, or 0 on failure. The bound port is also written to stderr as
     // `H5READER_REST_PORT=NNNNN\n` for the pytest fixture to scrape.
     quint16 startRestServer(quint16 port);
+
+    // Hide or restore the docks (inspector, selection, dashboard strip)
+    // wholesale. Hide preserves each dock's prior visibility so restore
+    // returns each one to whatever it was — a dock that was already hidden
+    // before hide() stays hidden after restore. Used by the viewport
+    // harness (POST /docks/visible) to expand the central viewport so the
+    // marker blob fits in more pixels and the drift detector finds it
+    // reliably. No-op if the requested state matches the current state.
+    void setDocksVisible(bool visible);
+
+    // Read-only accessor for REST GET /docks/visible (if added) — true if
+    // the docks are in the "visible" mode (some / all might be individually
+    // hidden by the user, but we have not stashed and hidden them all).
+    bool docksVisible() const { return docksHidden_ == false; }
+
+    // Access to the wrapped TransformedConformation so REST handlers can
+    // call setMode without re-walking the loader result. Non-null after
+    // construction.
+    h5reader::model::TransformedConformation* transformedConformation() const { return transformed_; }
 
 public slots:
     // Called from aboutToQuit. Stops timers, cancels any workers, and
@@ -151,6 +174,21 @@ private:
 
     bool shutdownDone_ = false;
     bool glInfoLogged_ = false;
+
+    // Wraps loaded_->conformation so consumers (scene, picker, overlays)
+    // read positions through a runtime-switchable rigid-body transform.
+    // Owned by the window. Built in the ctor immediately after the
+    // loader returns; default mode is Identity so behaviour at startup
+    // is identical to today.
+    h5reader::model::TransformedConformation* transformed_ = nullptr;
+
+    // Dock-hide state for setDocksVisible(). We stash each dock's
+    // pre-hide visibility so restore puts a dock that was user-hidden
+    // BEFORE setDocksVisible(false) back into the hidden state, not
+    // a brittle "all visible" default. Empty when no hide is active.
+    bool docksHidden_ = false;
+    struct DockVis { QPointer<QDockWidget> dock; bool wasVisible; };
+    std::vector<DockVis> stashedDockVisibility_;
 };
 
 }  // namespace h5reader::app

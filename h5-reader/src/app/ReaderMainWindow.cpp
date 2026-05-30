@@ -29,6 +29,9 @@
 #include "../model/QtProtein.h"
 #include "../model/TrajectoryConformation.h"
 #include "../model/TrajectorySignalCatalog.h"
+#include "../model/TransformedConformation.h"
+
+#include <QDockWidget>
 
 #include <QDir>
 #include <QFileInfo>
@@ -172,9 +175,24 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     buildToolbar();
     buildStatusBar();
 
-    // Scene binds to the VTK widget's render window.
+    // Upstream data-transform layer (feedback_viewer_two_layers_transform_and_camera).
+    // Wraps the loader's Conformation so consumers (scene, picker, overlays,
+    // REST /positions) read positions through a runtime-switchable rigid-body
+    // transform (identity / center_com / fit_reference / fit_subset). Default
+    // mode is Identity, so behaviour at startup is identical to today; flipping
+    // the mode via POST /transform produces stabilised display positions
+    // without re-extracting the trajectory.
+    transformed_ = new h5reader::model::TransformedConformation(loaded_->conformation.get(), this);
+    ACONNECT(transformed_, &h5reader::model::TransformedConformation::transformChanged,
+             this, [this]() {
+                 if (scene_) scene_->refreshCurrentFrame();
+             });
+
+    // Scene binds to the VTK widget's render window. The scene reads
+    // positions through the wrapped conformation so transform mode
+    // changes are visible immediately.
     scene_ = new MoleculeScene(renderWindow_, this);
-    scene_->Build(*loaded_->protein, *loaded_->conformation);
+    scene_->Build(*loaded_->protein, *transformed_);
     scene_->ResetCamera();
     ACONNECT(scene_, &MoleculeScene::cameraPlaneLockChanged,
              this, [this](bool active) {
@@ -231,7 +249,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     auto* firstRenderer = renderWindow_->GetRenderers()->GetFirstRenderer();
     picker_ = new QtAtomPicker(vtkWidget_, firstRenderer,
                                 loaded_->protein.get(),
-                                loaded_->conformation.get(),
+                                transformed_,
                                 playback_, this);
 
     // Atom Info dock — tabified on the right. Tracks the selection's
@@ -239,7 +257,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // the first pick.
     inspectorDock_ = new QtAtomInspectorDock(this);
     inspectorDock_->setContext(loaded_->protein.get(),
-                                loaded_->conformation.get());
+                                transformed_);
     addDockWidget(Qt::RightDockWidgetArea, inspectorDock_);
 
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
@@ -264,7 +282,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     signalDisplayDialog_->setTrajectorySignalCatalog(signalCatalog_);
     signalDisplayDialog_->setDashboardSignalModel(dashboardSignals_);
     signalDisplayDialog_->setDashboardPanelModel(dashboardPanels_);
-    signalDisplayDialog_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+    signalDisplayDialog_->setContext(loaded_->protein.get(), transformed_);
     signalDisplayDialog_->setSelection(selection_);
     ACONNECT(playback_, &QtPlaybackController::frameChanged,
              signalDisplayDialog_, &SignalDisplayDialog::setFrame);
@@ -322,7 +340,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // Dashboard strips — active signals from SignalDisplayDialog rendered
     // through one shared strip surface and the shared TimeViewportController.
     dashboardStripDock_ = new DashboardStripDock(this);
-    dashboardStripDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+    dashboardStripDock_->setContext(loaded_->protein.get(), transformed_);
     dashboardStripDock_->setSignalModels(signalCatalog_, dashboardSignals_);
     dashboardStripDock_->setPanelModel(dashboardPanels_);
     dashboardStripDock_->setSelection(selection_);
@@ -436,7 +454,9 @@ quint16 ReaderMainWindow::startRestServer(quint16 port) {
                             signalCatalog_,
                             playback_,
                             loaded_.get(),
-                            this);
+                            this,
+                            this,
+                            transformed_);
     const quint16 bound = restServer_->listen(port);
     if (bound == 0) {
         qCCritical(cWindow).noquote() << "REST server failed to bind port" << port;
@@ -444,6 +464,46 @@ quint16 ReaderMainWindow::startRestServer(quint16 port) {
         restServer_ = nullptr;
     }
     return bound;
+}
+
+void ReaderMainWindow::setDocksVisible(bool visible) {
+    ASSERT_THREAD(this);
+
+    // Hide path: stash each dock's pre-hide visibility so a later restore
+    // can return individually-user-hidden docks to their hidden state.
+    // No-op if already hidden (don't double-stash).
+    if (!visible) {
+        if (docksHidden_)
+            return;
+        stashedDockVisibility_.clear();
+        const std::vector<QDockWidget*> docks = {
+            inspectorDock_, selectionDock_, dashboardStripDock_
+        };
+        for (QDockWidget* d : docks) {
+            if (!d) continue;
+            stashedDockVisibility_.push_back({QPointer<QDockWidget>(d), d->isVisible()});
+            d->setVisible(false);
+        }
+        docksHidden_ = true;
+        qCInfo(cWindow).noquote()
+            << "docks hidden | count=" << stashedDockVisibility_.size();
+        return;
+    }
+
+    // Restore path: walk the stash; QPointer-safe iteration in case any
+    // dock was destroyed since the hide. Each dock returns to its stashed
+    // visibility, so a dock that was already hidden before the harness
+    // requested hide stays hidden.
+    if (!docksHidden_)
+        return;
+    for (const DockVis& dv : stashedDockVisibility_) {
+        if (dv.dock)
+            dv.dock->setVisible(dv.wasVisible);
+    }
+    qCInfo(cWindow).noquote()
+        << "docks restored | count=" << stashedDockVisibility_.size();
+    stashedDockVisibility_.clear();
+    docksHidden_ = false;
 }
 
 void ReaderMainWindow::shutdown() {

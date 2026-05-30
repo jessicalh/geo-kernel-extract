@@ -142,8 +142,9 @@ def clear_selection(base: str) -> None:
     _post(base, "/selection/clear")
 
 
-def set_instrument(base: str, enabled: bool) -> None:
-    _post(base, "/selection/instrument", {"enabled": enabled})
+def set_instrument(base: str, enabled: bool, focus_only: bool = False) -> None:
+    _post(base, "/selection/instrument",
+          {"enabled": enabled, "focus_only": focus_only})
 
 
 def enable_plane_lock(base: str, atoms: Iterable[int]) -> None:
@@ -152,6 +153,33 @@ def enable_plane_lock(base: str, atoms: Iterable[int]) -> None:
 
 def disable_plane_lock(base: str) -> None:
     _post(base, "/plane-lock/disable")
+
+
+def set_docks_visible(base: str, visible: bool) -> None:
+    """POST /docks/visible — hides or restores the dock widgets to give the
+    central VTK viewport more pixels. The reader stashes pre-hide
+    visibility so restore is safe even if a dock was already hidden."""
+    _post(base, "/docks/visible", {"visible": bool(visible)})
+
+
+def set_transform(base: str, kind: str, **kwargs) -> None:
+    """POST /transform — sets the wrapped Conformation's transform mode.
+
+    kind: "identity" | "center_com" | "fit_reference" | "fit_subset"
+
+    kwargs are forwarded as JSON fields:
+      reference_frame: int (default 0; used by fit_reference / fit_subset)
+      subset_atoms:    [int, ...] (fit_subset only)
+      backbone_only:   bool (fit_subset shorthand — selects backbone via
+                       QtAtom::IsBackbone, no atom-name string parsing)
+    """
+    body: dict = {"kind": kind}
+    body.update(kwargs)
+    _post(base, "/transform", body)
+
+
+def get_transform(base: str) -> dict:
+    return _get(base, "/transform").json()
 
 
 def set_frame(base: str, frame: int) -> None:
@@ -260,25 +288,33 @@ def run_drift_experiment(
     atoms: list[int],
     *,
     plane_lock: bool,
+    transform_kind: str = "identity",
+    transform_kwargs: dict | None = None,
     frames: list[int],
     hue: MarkerHue,
     out_dir: Path,
     keep_pngs: bool = True,
+    focus_only: bool = True,
 ) -> list[FrameRecord]:
     """Configure the reader for the experiment, sweep frames, return
     per-frame records.
 
     Setup order (matters):
       1. clear selection
-      2. bulk-set the 3 atoms
-      3. instrument mode ON (so the marker IS magenta, not Okabe-Ito orange)
-      4. plane-lock ON or OFF per the experiment
-      5. for each frame: set_frame → screenshot → blob → record
+      2. bulk-set the atoms
+      3. set transform mode (identity / center_com / fit_reference / fit_subset)
+      4. instrument mode ON with focus_only=True by default — only the
+         focus-slot magenta sphere renders, eliminating the slot-1
+         eclipses-slot-0 problem the prior no-lock baseline run hit
+      5. plane-lock ON or OFF per the experiment
+      6. for each frame: set_frame → screenshot → blob → record
 
     The instrument-mode toggle is applied after bulkSet because the
     overlay applies CPK-distinct colours to whichever spheres are visible
     at that moment; doing it in this order matches the manual workflow a
-    user would follow (pick atoms, then enable instrument mode).
+    user would follow (pick atoms, then enable instrument mode). The
+    transform is applied before instrument mode so the first marker render
+    is in the transformed coordinate frame.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -286,7 +322,12 @@ def run_drift_experiment(
     clear_selection(base)
     disable_plane_lock(base)  # known-clean start
     set_atoms(base, atoms)
-    set_instrument(base, True)
+    # Transform applies upstream of instrument-mode marker placement; the
+    # wrapped Conformation re-emits position queries through the rigid-body
+    # transform so MeasurementOverlay's per-frame SetCenter call lands at
+    # the stabilised atom position. Default kind="identity" → no-op.
+    set_transform(base, transform_kind, **(transform_kwargs or {}))
+    set_instrument(base, True, focus_only=focus_only)
     if plane_lock:
         enable_plane_lock(base, atoms)
     else:
@@ -422,29 +463,73 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    t0 = time.monotonic()
-    floor = run_drift_experiment(
-        args.base, args.atoms,
-        plane_lock=True, frames=sampled, hue=hue,
-        out_dir=args.out_dir / "with_lock",
-        keep_pngs=not args.no_pngs,
-    )
-    write_csv(floor, args.out_dir / "with_lock.csv")
-    t1 = time.monotonic()
+    # Hide the docks to expand the central viewport: the marker is more
+    # findable in a larger pixel area, AND the drift floor measurement is
+    # less affected by dock-induced viewport compression that varies
+    # slightly between reader sessions. Restored in a try/finally below.
+    set_docks_visible(args.base, False)
 
-    no_lock = run_drift_experiment(
-        args.base, args.atoms,
-        plane_lock=False, frames=sampled, hue=hue,
-        out_dir=args.out_dir / "no_lock",
-        keep_pngs=not args.no_pngs,
-    )
-    write_csv(no_lock, args.out_dir / "no_lock.csv")
-    t2 = time.monotonic()
+    try:
+        t0 = time.monotonic()
+        floor = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=True, transform_kind="identity",
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "with_lock",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(floor, args.out_dir / "with_lock.csv")
+        t1 = time.monotonic()
 
-    # Restore the reader to a clean state for any follow-up runs.
-    set_instrument(args.base, False)
-    disable_plane_lock(args.base)
-    clear_selection(args.base)
+        no_lock = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=False, transform_kind="identity",
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "no_lock",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(no_lock, args.out_dir / "no_lock.csv")
+        t2 = time.monotonic()
+
+        # Experiment 3: transform-only (fit_subset on backbone) — no
+        # plane lock. Tests the upstream layer in isolation. Hypothesis:
+        # if rigid-body motion was driving the no-lock drift, this should
+        # bring the marker well within the with-lock floor.
+        transform_only = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=False,
+            transform_kind="fit_subset",
+            transform_kwargs={"backbone_only": True, "reference_frame": 0},
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "transform_only",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(transform_only, args.out_dir / "transform_only.csv")
+        t3 = time.monotonic()
+
+        # Experiment 4: transform + plane lock. Belt+suspenders — if the
+        # transform fully stabilises rigid-body motion, this should
+        # roughly match transform_only (the lock then has nothing extra
+        # to do; in fact the lock could add a small bias if the lock
+        # atoms vibrate inside the now-stabilised molecule).
+        transform_plus_lock = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=True,
+            transform_kind="fit_subset",
+            transform_kwargs={"backbone_only": True, "reference_frame": 0},
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "transform_plus_lock",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(transform_plus_lock, args.out_dir / "transform_plus_lock.csv")
+        t4 = time.monotonic()
+    finally:
+        # Restore the reader to a clean state for any follow-up runs.
+        set_instrument(args.base, False)
+        disable_plane_lock(args.base)
+        set_transform(args.base, "identity")
+        clear_selection(args.base)
+        set_docks_visible(args.base, True)
 
     summary = {
         "atoms": list(args.atoms),
@@ -456,9 +541,13 @@ def main() -> int:
         "atoms_total": n_atoms,
         "with_plane_lock": summarize(floor),
         "without_plane_lock": summarize(no_lock),
+        "transform_only": summarize(transform_only),
+        "transform_plus_lock": summarize(transform_plus_lock),
         "timing_s": {
-            "with_lock": round(t1 - t0, 3),
-            "no_lock":   round(t2 - t1, 3),
+            "with_lock":           round(t1 - t0, 3),
+            "no_lock":             round(t2 - t1, 3),
+            "transform_only":      round(t3 - t2, 3),
+            "transform_plus_lock": round(t4 - t3, 3),
         },
     }
     print(json.dumps(summary, indent=2))
