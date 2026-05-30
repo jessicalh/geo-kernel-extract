@@ -127,6 +127,8 @@ qt_add_executable(h5reader
     src/io/QtNpyReader.cpp
     src/io/QtManifest.h
     src/io/QtManifest.cpp
+    src/io/ReaderInputManifest.h
+    src/io/ReaderInputManifest.cpp
     src/io/QtEnumVocab.h
     src/io/QtEnumVocab.cpp
     src/io/QtTopologySidecar.h
@@ -230,6 +232,7 @@ qt_add_executable(h5reader
 target_include_directories(h5reader PRIVATE
     src
     ${HIGHFIVE_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/extern/tomlplusplus/include
 )
 
 target_link_libraries(h5reader PRIVATE
@@ -306,6 +309,26 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         Eigen3::Eigen
     )
     add_test(NAME h5reader_scene_math_tests COMMAND h5reader_scene_math_tests)
+
+    # ReaderInputManifest tests — TOML parser + path validation via the
+    # vendored toml++ single header. Pure Qt / Qt::Test; no VTK.
+    qt_add_executable(h5reader_reader_input_manifest_tests
+        tests/reader_input_manifest_tests.cpp
+        src/io/ReaderInputManifest.h
+        src/io/ReaderInputManifest.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_reader_input_manifest_tests PRIVATE
+        src
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern/tomlplusplus/include
+    )
+    target_link_libraries(h5reader_reader_input_manifest_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME h5reader_reader_input_manifest_tests
+             COMMAND h5reader_reader_input_manifest_tests)
 
     qt_add_executable(h5reader_io_tests
         tests/qttrajectoryh5_tests.cpp

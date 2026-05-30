@@ -1,7 +1,10 @@
 #include "ReaderMainWindow.h"
 
+#include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
 #include "CameraInputFilter.h"
+#include "CameraMode.h"
+#include "OrientationPolicy.h"
 #include "MoleculeScene.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
@@ -21,6 +24,7 @@
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
+#include "../diagnostics/StructuredLogger.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../io/QtProteinLoader.h"
 #include "../model/AtomSelection.h"
@@ -39,15 +43,19 @@
 #include <QFileInfo>
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
+#include <QCloseEvent>
 #include <QFileDialog>
 #include <QFont>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLoggingCategory>
+#include <QMenu>
 #include <QMenuBar>
 #include <QProcess>
 #include <QSet>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -56,7 +64,9 @@
 #include <QStyle>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QUuid>
+#include <QVariant>
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -74,12 +84,19 @@ namespace h5reader::app {
 namespace {
 Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
 
-// Locate the DFT campaign's jobs dir relative to the opened run path, by a
-// BOUNDED documented-convention check (not file discovery): the dataset root
-// holds extract/ and dft/ as siblings, so dft/jobs is either <runDir>/dft/jobs
-// or <runDir>/../dft/jobs (when the run path points inside extract/). Empty if
-// neither exists — then the run has no DFT and the shielding panel stays hidden.
-// A head-of-directory TOML descriptor (#25) will state this path explicitly.
+// QSettings — versioned state blob policy. Bump on dock-object
+// additions or any layout-invalidating change so old blobs are
+// silently discarded by QMainWindow::restoreState. Schema-evolution
+// safe per ROBUSTNESS_BACKLOG_2026-05-30.md item 7.
+constexpr int kSettingsVersion = 1;
+constexpr int kMaxRecentFiles  = 10;
+
+// Legacy DFT-campaign locator — used only when no h5reader_manifest.toml is
+// present at the run root. The bounded convention: the dataset root holds
+// extract/ and dft/ as siblings, so dft/jobs is either <runDir>/dft/jobs or
+// <runDir>/../dft/jobs (when the run path points inside extract/). Empty if
+// neither exists. Manifest-driven loads pass the [dft] jobs_dir explicitly
+// and bypass this function entirely.
 QString locateDftJobsDir(const QString& runPath) {
     if (runPath.isEmpty()) return {};
     const QFileInfo fi(runPath);
@@ -199,33 +216,15 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     scene_ = new MoleculeScene(vtkWidget_, renderWindow_, this);
     scene_->Build(*loaded_->protein, *transformed_);
     scene_->ResetCamera();
+    // The plane-lock-specific signal is now a strict subset of the
+    // composer's modeChanged below; updateCameraModeActions sources the
+    // checked state from composer->mode() and gates the actions on the
+    // current selection in one pass.
     ACONNECT(scene_, &MoleculeScene::cameraPlaneLockChanged,
-             this, [this](bool active) {
-                 if (planeLockAction_ && planeLockAction_->isChecked() != active) {
-                     const QSignalBlocker blocker(planeLockAction_);
-                     planeLockAction_->setChecked(active);
-                 }
-                 updatePlaneLockAction();
-             });
-    // Composer modeChanged covers REST-driven mode flips that bypass the
-    // cameraPlaneLockChanged path (POST /camera/mode that lands a Plane
-    // lock, POST /camera/focus_atom that derives one from a focus atom,
-    // POST /camera/clear that drops the Plane lock). Sync the toolbar
-    // action's checked state so the UI reflects the composer's truth.
+             this, [this](bool) { updateCameraModeActions(); });
     if (scene_ && scene_->cameraComposer()) {
         ACONNECT(scene_->cameraComposer(), &CameraComposer::modeChanged,
-                 this, [this]() {
-                     if (!scene_ || !scene_->cameraComposer()) return;
-                     const bool planeActive =
-                         scene_->cameraComposer()->mode().kind
-                         == CameraMode::Kind::Plane;
-                     if (planeLockAction_
-                         && planeLockAction_->isChecked() != planeActive) {
-                         const QSignalBlocker blocker(planeLockAction_);
-                         planeLockAction_->setChecked(planeActive);
-                     }
-                     updatePlaneLockAction();
-                 });
+                 this, [this]() { updateCameraModeActions(); });
     }
 
     // Playback controller — frameChanged drives the scene, which drives
@@ -283,13 +282,13 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     cameraInputFilter_ = new CameraInputFilter(vtkWidget_, scene_,
                                                  scene_->cameraComposer(), this);
 
-    // Atom Info dock — tabified on the right. Tracks the selection's
-    // FOCUS atom (one atom's full per-frame pile). Starts empty; fills in on
-    // the first pick.
+    // Atom Info dock — tabified on the LEFT alongside Selection + Strip.
+    // Tracks the selection's FOCUS atom (one atom's full per-frame pile).
+    // Starts empty; fills in on the first pick.
     inspectorDock_ = new QtAtomInspectorDock(this);
     inspectorDock_->setContext(loaded_->protein.get(),
                                 transformed_);
-    addDockWidget(Qt::RightDockWidgetArea, inspectorDock_);
+    addDockWidget(Qt::LeftDockWidgetArea, inspectorDock_);
 
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
              inspectorDock_, &QtAtomInspectorDock::setFrame);
@@ -350,12 +349,16 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
         if (signalDisplaysAction_)
             signalDisplaysAction_->setEnabled(selection_ && selection_->hasFocus());
     };
-    ACONNECT(selection_, &model::AtomSelection::focusChanged, this, [updateMetricAction](std::size_t) {
+    ACONNECT(selection_, &model::AtomSelection::focusChanged, this, [this, updateMetricAction](std::size_t) {
         updateMetricAction();
+        updateCameraModeActions();
     });
-    ACONNECT(selection_, &model::AtomSelection::cleared, this, updateMetricAction);
+    ACONNECT(selection_, &model::AtomSelection::cleared, this, [this, updateMetricAction]() {
+        updateMetricAction();
+        updateCameraModeActions();
+    });
     updateMetricAction();
-    updatePlaneLockAction();
+    updateCameraModeActions();
 
     if (auto* meas = scene_->measurementOverlay()) {
         meas->setSelection(selection_);
@@ -364,23 +367,35 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     }
     ACONNECT(selection_, &model::AtomSelection::changed,
              this, [this]() {
-                 if (planeLockAction_ && planeLockAction_->isChecked())
-                     planeLockAction_->setChecked(false);
-                 updatePlaneLockAction();
+                 // Plane-lock release-on-selection-change is the documented
+                 // behaviour (see CameraMode.h "lock release semantics" —
+                 // Plane releases, Atom/Bond/Dihedral/Subset stay). The
+                 // composer owns mode state, so explicitly drop the plane
+                 // lock here only if it's currently active.
+                 if (scene_ && scene_->cameraComposer()
+                     && scene_->cameraComposer()->mode().kind
+                            == CameraMode::Kind::Plane) {
+                     const std::size_t t = playback_
+                         ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
+                     scene_->cameraComposer()->setMode(FreeMode(), FreePolicy(), t);
+                 }
+                 updateCameraModeActions();
                  if (scene_) scene_->refreshCurrentFrame();
              });
 
     // Selected-atoms panel — the QListView bound to the AtomSelection model
-    // (slot colour swatch + residue:atom label + geometry kind). The model's
-    // first view; tabified with Atom Info.
+    // (slot colour swatch + residue:atom label + geometry kind). Tabified
+    // with Atom Info in the left dock area.
     selectionDock_ = new SelectionDock(this);
     selectionDock_->setModel(selection_);
-    addDockWidget(Qt::RightDockWidgetArea, selectionDock_);
+    addDockWidget(Qt::LeftDockWidgetArea, selectionDock_);
     tabifyDockWidget(inspectorDock_, selectionDock_);
-    inspectorDock_->raise();
 
     // Dashboard strips — active signals from SignalDisplayDialog rendered
     // through one shared strip surface and the shared TimeViewportController.
+    // Tabified with Inspector + Selection on the left so the central
+    // viewport gets the widest stable real estate; the user toggles each
+    // panel via the toolbar buttons added below.
     dashboardStripDock_ = new DashboardStripDock(this);
     dashboardStripDock_->setContext(loaded_->protein.get(), transformed_);
     dashboardStripDock_->setSignalModels(signalCatalog_, dashboardSignals_);
@@ -388,9 +403,34 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
     dashboardController_ = dashboardStripDock_->displayController();
-    addDockWidget(Qt::BottomDockWidgetArea, dashboardStripDock_);
-    resizeDocks({dashboardStripDock_}, {300}, Qt::Vertical);
-    resizeDocks({inspectorDock_}, {320}, Qt::Horizontal);
+    addDockWidget(Qt::LeftDockWidgetArea, dashboardStripDock_);
+    tabifyDockWidget(inspectorDock_, dashboardStripDock_);
+    inspectorDock_->raise();
+    resizeDocks({inspectorDock_}, {360}, Qt::Horizontal);
+
+    // Panel-toggle buttons — appended to the toolbar now that all three
+    // docks exist. QDockWidget::toggleViewAction() is the standard Qt
+    // primitive for two-way visibility binding; relabel the actions with
+    // short text (the dock's title is verbose) and add them as a group
+    // at the right end of the toolbar.
+    if (playbackToolbar_) {
+        playbackToolbar_->addSeparator();
+        const struct { QDockWidget* dock; const char* label; const char* tip; } kPanels[] = {
+            { inspectorDock_,      "Inspector",
+              "Show / hide the Atom Info panel (focus atom's per-frame state)." },
+            { selectionDock_,      "Selection",
+              "Show / hide the Selected Atoms panel (≤4 ordered atoms with slot colours)." },
+            { dashboardStripDock_, "Strip",
+              "Show / hide the time-series strip dock." },
+        };
+        for (const auto& p : kPanels) {
+            if (!p.dock) continue;
+            QAction* a = p.dock->toggleViewAction();
+            a->setText(QString::fromUtf8(p.label));
+            a->setToolTip(QString::fromUtf8(p.tip));
+            playbackToolbar_->addAction(a);
+        }
+    }
 
     ACONNECT(dashboardStripDock_, &DashboardStripDock::revealRequested,
              scene_,              &MoleculeScene::revealBinding);
@@ -418,19 +458,62 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     }
 
     // DFT shielding campaign (optional): make the frame-local source available
-    // to descriptor-family samplers. Its presence does not auto-pin a DFT strip.
-    if (const QString dftJobs = locateDftJobsDir(loaded_->runPath); !dftJobs.isEmpty()) {
+    // to descriptor-family samplers. Manifest's [dft] table wins; legacy
+    // bounded-convention check at the runPath is the fallback.
+    QString dftJobs;
+    if (loaded_->manifest.ok && !loaded_->manifest.dftJobsDir.isEmpty()) {
+        dftJobs = loaded_->manifest.dftJobsDir;
+    } else {
+        dftJobs = locateDftJobsDir(loaded_->runPath);
+    }
+    if (!dftJobs.isEmpty()) {
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dftJobs, this);
         dashboardStripDock_->setDftStore(dftStore_);
         qCInfo(cWindow).noquote() << "DFT shielding store wired |" << dftJobs
                                   << "| jobs=" << dftStore_->jobCount();
     }
 
+    // Mutant-pair alternate-pose action — when the manifest says we
+    // auto-opened WT, expose a File menu action that launches a fresh
+    // process on the ALA dir. Spawned the same way as Recent files.
+    if (loaded_->manifest.ok
+        && loaded_->manifest.runKind == h5reader::io::ReaderInputManifest::RunKind::MutantPair
+        && !loaded_->manifest.alaPoseDir.isEmpty()) {
+        const QString alt = loaded_->manifest.alaPoseDir;
+        if (QMenuBar* mb = menuBar()) {
+            for (QAction* a : mb->actions()) {
+                if (a->menu() && a->text() == QStringLiteral("&File")) {
+                    QAction* switchAct = a->menu()->addAction(
+                        QStringLiteral("Open mutant alternate (ALA)…"));
+                    switchAct->setToolTip(QStringLiteral(
+                        "This run is a mutant pair; WT is opened in this window. "
+                        "Click to launch a separate reader on the ALA pose: %1").arg(alt));
+                    ACONNECT(switchAct, &QAction::triggered, this, [this, alt]() {
+                        openRecentPath(alt);
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
     // Initial status bar population.
     onFrameChanged(0);
 
-    resize(1200, 800);
+    // Default size — wide enough for the playback + camera + transform +
+    // instrument + metrics + overlays + panel-toggle row to fit in one
+    // toolbar without Qt's overflow chevron. QSettings restore overrides
+    // this on later launches.
+    resize(1600, 900);
     setWindowTitle(QStringLiteral("h5-reader — %1").arg(loaded_->proteinId));
+
+    // QSettings restore — geometry, dock state, log mask, recent menu.
+    // Tolerant: missing or version-mismatched blobs leave the ctor's
+    // explicit defaults intact. Runs AFTER all docks/toolbars exist so
+    // restoreState has named docks to bind to.
+    restoreAllSettings();
+    if (!loaded_->runPath.isEmpty())
+        addToRecentFiles(QDir(loaded_->runPath).absolutePath());
 
     qCInfo(cWindow).noquote() << "ctor done";
 }
@@ -606,12 +689,18 @@ void ReaderMainWindow::buildUi() {
     auto* openDirAct = fileMenu->addAction(QStringLiteral("Open Directory…"));
     openDirAct->setShortcut(QKeySequence::Open);
     ACONNECT(openDirAct, &QAction::triggered, this, &ReaderMainWindow::onOpenDirectory);
+
+    // File ▸ Recent — populated from QSettings during restoreAllSettings.
+    // Empty until then; each entry launches a fresh reader on click.
+    recentMenu_ = fileMenu->addMenu(QStringLiteral("&Recent"));
+    recentMenu_->setObjectName(QStringLiteral("RecentMenu"));
 }
 
 void ReaderMainWindow::buildToolbar() {
     auto* tb = addToolBar(QStringLiteral("Playback"));
     tb->setObjectName(QStringLiteral("PlaybackToolbar"));
     tb->setMovable(false);
+    playbackToolbar_ = tb;
     QFont toolbarFont = tb->font();
     if (toolbarFont.pointSize() > 8)
         toolbarFont.setPointSize(toolbarFont.pointSize() - 1);
@@ -646,19 +735,113 @@ void ReaderMainWindow::buildToolbar() {
 
     tb->addSeparator();
 
-    signalDisplaysAction_ = tb->addAction(QStringLiteral("Metrics..."));
-    signalDisplaysAction_->setEnabled(false);
-    signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
-    ACONNECT(signalDisplaysAction_.data(), &QAction::triggered,
-             this, &ReaderMainWindow::onOpenSignalDisplays);
+    // Camera-mode action group — Focus / Newman / Plane lock / Free as
+    // mutually-exclusive radio actions. QActionGroup with exclusive=true is
+    // the standard Qt idiom; the visual checked state is the union of
+    // user clicks and the composer's modeChanged signal (updateCameraModeActions
+    // syncs to composer->mode().kind). Each action uses QAction::triggered
+    // (user-only) not QAction::toggled (also fires on programmatic setChecked)
+    // so the sync loop is closed.
+    cameraModeGroup_ = new QActionGroup(this);
+    cameraModeGroup_->setExclusive(true);
+
+    focusAction_ = tb->addAction(QStringLiteral("Focus"));
+    focusAction_->setCheckable(true);
+    focusAction_->setEnabled(false);
+    focusAction_->setToolTip(QStringLiteral(
+        "Focus the camera on the selected atom's residue backbone plane (N, CA, C). "
+        "Requires a focused atom."));
+    cameraModeGroup_->addAction(focusAction_);
+    ACONNECT(focusAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onFocusCameraTriggered);
+
+    newmanAction_ = tb->addAction(QStringLiteral("Newman"));
+    newmanAction_->setCheckable(true);
+    newmanAction_->setEnabled(false);
+    newmanAction_->setToolTip(QStringLiteral(
+        "Newman projection — sight down the central bond of a 4-atom dihedral. "
+        "Requires exactly 4 selected atoms."));
+    cameraModeGroup_->addAction(newmanAction_);
+    ACONNECT(newmanAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onNewmanProjectionTriggered);
 
     planeLockAction_ = tb->addAction(QStringLiteral("Plane lock"));
     planeLockAction_->setCheckable(true);
     planeLockAction_->setEnabled(false);
     planeLockAction_->setToolTip(QStringLiteral(
         "Keep the view centred and oriented to the plane defined by exactly three selected atoms."));
-    ACONNECT(planeLockAction_.data(), &QAction::toggled,
-             this, &ReaderMainWindow::onPlaneLockToggled);
+    cameraModeGroup_->addAction(planeLockAction_);
+    ACONNECT(planeLockAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onPlaneLockTriggered);
+
+    freeAction_ = tb->addAction(QStringLiteral("Free"));
+    freeAction_->setCheckable(true);
+    freeAction_->setChecked(true);   // composer's default mode is Free
+    freeAction_->setToolTip(QStringLiteral(
+        "Release any camera lock; mouse drag controls the view directly."));
+    cameraModeGroup_->addAction(freeAction_);
+    ACONNECT(freeAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onFreeCameraTriggered);
+
+    tb->addSeparator();
+
+    // Transform popup-menu button. Drives TransformedConformation::setMode
+    // directly. Radio items inside the menu via a second exclusive group;
+    // each action's data() carries the underlying Mode enum value.
+    transformMenu_ = new QMenu(QStringLiteral("Transform"), this);
+    transformGroup_ = new QActionGroup(this);
+    transformGroup_->setExclusive(true);
+
+    using TMode = h5reader::model::TransformedConformation::Mode;
+    const struct { TMode mode; const char* label; const char* tip; } kTransforms[] = {
+        { TMode::Identity,     "Identity",
+          "No transform applied; positions come straight from the trajectory." },
+        { TMode::CenterCom,    "Center COM",
+          "Translate every frame so the centre of mass sits at the origin." },
+        { TMode::FitReference, "Fit reference",
+          "Kabsch-fit every frame against the reference frame on all atoms." },
+        { TMode::FitSubset,    "Fit backbone",
+          "Kabsch-fit every frame against the reference frame on backbone atoms only — "
+          "removes rigid-body drift while keeping sidechain motion." },
+    };
+    for (const auto& entry : kTransforms) {
+        QAction* act = transformMenu_->addAction(QString::fromUtf8(entry.label));
+        act->setCheckable(true);
+        act->setData(static_cast<int>(entry.mode));
+        act->setToolTip(QString::fromUtf8(entry.tip));
+        transformGroup_->addAction(act);
+        if (entry.mode == TMode::Identity)
+            act->setChecked(true);   // matches TransformedConformation default
+        ACONNECT(act, &QAction::triggered, this, [this, act]() {
+            applyTransformModeFromAction(act);
+        });
+    }
+
+    transformButton_ = new QToolButton(tb);
+    transformButton_->setText(QStringLiteral("Transform"));
+    transformButton_->setToolTip(QStringLiteral(
+        "Choose a rigid-body transform applied to positions before display."));
+    transformButton_->setPopupMode(QToolButton::InstantPopup);
+    transformButton_->setMenu(transformMenu_);
+    tb->addWidget(transformButton_);
+
+    // Instrument-mode toggle — toggles MeasurementOverlay focus-only marker.
+    // Same code path as POST /selection/instrument; useful for live demos.
+    instrumentAction_ = tb->addAction(QStringLiteral("Instrument"));
+    instrumentAction_->setCheckable(true);
+    instrumentAction_->setToolTip(QStringLiteral(
+        "Enable the marker preset on the focus atom: magenta, high opacity, "
+        "fixed radius. Used by the harness; useful for live demos."));
+    ACONNECT(instrumentAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onInstrumentToggled);
+
+    tb->addSeparator();
+
+    signalDisplaysAction_ = tb->addAction(QStringLiteral("Metrics..."));
+    signalDisplaysAction_->setEnabled(false);
+    signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
+    ACONNECT(signalDisplaysAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onOpenSignalDisplays);
 
     tb->addSeparator();
 
@@ -775,31 +958,210 @@ void ReaderMainWindow::onFrameChanged(int t) {
     }
 }
 
-void ReaderMainWindow::updatePlaneLockAction() {
-    if (!planeLockAction_)
+void ReaderMainWindow::updateCameraModeActions() {
+    // Gating — what each action requires from the current selection.
+    const bool hasFocus  = selection_ && selection_->hasFocus();
+    const std::size_t n  = selection_ ? selection_->count() : 0;
+    if (focusAction_)     focusAction_->setEnabled(scene_ && hasFocus);
+    if (newmanAction_)    newmanAction_->setEnabled(scene_ && n == 4);
+    if (planeLockAction_) planeLockAction_->setEnabled(scene_ && n == 3);
+    if (freeAction_)      freeAction_->setEnabled(scene_ != nullptr);
+
+    // Visual checked state — sourced from the composer. Programmatic
+    // setChecked here would fire QAction::toggled but we connected via
+    // QAction::triggered (user-only), so no loop. Use a signal blocker
+    // anyway since QActionGroup itself emits triggered on exclusive change.
+    if (!scene_ || !scene_->cameraComposer())
         return;
-    const bool canLock = scene_ && selection_ && selection_->count() == 3;
-    planeLockAction_->setEnabled(canLock);
+    const auto kind = scene_->cameraComposer()->mode().kind;
+    const auto setOne = [](QAction* a, bool on) {
+        if (!a) return;
+        const QSignalBlocker block(a);
+        a->setChecked(on);
+    };
+    setOne(focusAction_,     false);
+    setOne(newmanAction_,    false);
+    setOne(planeLockAction_, false);
+    setOne(freeAction_,      false);
+    switch (kind) {
+        case CameraMode::Kind::Plane:
+            setOne(planeLockAction_, true); break;
+        case CameraMode::Kind::Dihedral:
+            // Newman is the only dihedral path we expose in the toolbar; a
+            // dihedral mode that came in via REST also shows here.
+            setOne(newmanAction_, true); break;
+        case CameraMode::Kind::Free:
+            setOne(freeAction_, true); break;
+        case CameraMode::Kind::Atom:
+        case CameraMode::Kind::Bond:
+        case CameraMode::Kind::Subset:
+            // No dedicated toolbar action; leave the group with nothing
+            // checked. Atom/Bond/Subset arrive only via REST or reveal
+            // bindings today.
+            break;
+    }
 }
 
-void ReaderMainWindow::onPlaneLockToggled(bool checked) {
+void ReaderMainWindow::onPlaneLockTriggered() {
     ASSERT_THREAD(this);
-    if (!scene_)
-        return;
-
-    if (!checked) {
-        scene_->clearCameraPlaneLock();
-        updatePlaneLockAction();
-        return;
-    }
-
-    if (!selection_ || selection_->count() != 3
+    if (!scene_ || !selection_ || selection_->count() != 3
         || !scene_->lockCameraToSelectionPlane(selection_->atoms())) {
-        const QSignalBlocker blocker(planeLockAction_);
-        planeLockAction_->setChecked(false);
-        scene_->clearCameraPlaneLock();
+        // setMode failed (degenerate); make sure the toolbar reflects
+        // composer truth — likely Free or whatever was active before.
+        updateCameraModeActions();
+        return;
     }
-    updatePlaneLockAction();
+    // The composer's modeChanged signal will fire updateCameraModeActions
+    // for us; nothing else to do.
+}
+
+void ReaderMainWindow::onFocusCameraTriggered() {
+    ASSERT_THREAD(this);
+    if (!scene_ || !scene_->cameraComposer() || !selection_ || !selection_->hasFocus()) {
+        updateCameraModeActions();
+        return;
+    }
+    auto result = h5reader::app::DeriveFocusAnchor(*loaded_->protein,
+                                                    selection_->focus(),
+                                                    FocusAnchorKind::Plane);
+    if (result.outcome != FocusAnchorOutcome::Ok) {
+        qCWarning(cWindow).noquote()
+            << "Focus camera: derive failed | atom=" << selection_->focus()
+            << "| outcome=" << static_cast<int>(result.outcome);
+        updateCameraModeActions();
+        return;
+    }
+    const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
+    scene_->cameraComposer()->setMode(result.mode, result.policy, t);
+}
+
+void ReaderMainWindow::onNewmanProjectionTriggered() {
+    ASSERT_THREAD(this);
+    if (!scene_ || !scene_->cameraComposer() || !selection_ || selection_->count() != 4) {
+        updateCameraModeActions();
+        return;
+    }
+    const auto& a = selection_->atoms();
+    CameraMode m = DihedralMode(a[0], a[1], a[2], a[3]);
+    OrientationPolicy p = DownAxisPolicy(a[1], a[2]);
+    const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
+    scene_->cameraComposer()->setMode(m, p, t);
+}
+
+void ReaderMainWindow::onFreeCameraTriggered() {
+    ASSERT_THREAD(this);
+    if (!scene_ || !scene_->cameraComposer()) {
+        updateCameraModeActions();
+        return;
+    }
+    const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
+    scene_->cameraComposer()->setMode(FreeMode(), FreePolicy(), t);
+}
+
+void ReaderMainWindow::applyTransformModeFromAction(QAction* action) {
+    ASSERT_THREAD(this);
+    if (!action || !transformed_) return;
+    bool ok = false;
+    const int raw = action->data().toInt(&ok);
+    if (!ok) return;
+    using TMode = h5reader::model::TransformedConformation::Mode;
+    const TMode mode = static_cast<TMode>(raw);
+    if (mode == TMode::FitSubset) {
+        transformed_->setMode(mode, 0,
+            h5reader::model::TransformedConformation::BackboneSubset(*loaded_->protein));
+    } else {
+        transformed_->setMode(mode);
+    }
+}
+
+void ReaderMainWindow::onInstrumentToggled(bool checked) {
+    ASSERT_THREAD(this);
+    if (!scene_ || !scene_->measurementOverlay()) return;
+    scene_->measurementOverlay()->setInstrumentMode(checked, /*focusOnly=*/true);
+    scene_->requestRender(MoleculeScene::RenderSource::External);
+}
+
+void ReaderMainWindow::closeEvent(QCloseEvent* event) {
+    ASSERT_THREAD(this);
+    saveAllSettings();
+    // Accept unconditionally — a failed save is logged but not allowed
+    // to trap the user inside the application. aboutToQuit fires the
+    // existing shutdown() chain after this returns.
+    event->accept();
+}
+
+void ReaderMainWindow::saveAllSettings() {
+    ASSERT_THREAD(this);
+    QSettings s;   // org/app names set in main_reader.cpp
+    s.setValue(QStringLiteral("viewer/window/geometry"), saveGeometry());
+    s.setValue(QStringLiteral("viewer/window/state"),
+               saveState(kSettingsVersion));
+    s.setValue(QStringLiteral("viewer/log/mask"),
+               static_cast<uint>(h5reader::diagnostics::StructuredLogger::CategoryMask()));
+    // Recent files list is write-through (addToRecentFiles writes
+    // immediately) so no batch write here.
+    qCInfo(cWindow).noquote() << "settings saved | mask="
+                              << h5reader::diagnostics::StructuredLogger::CategoryMask();
+}
+
+void ReaderMainWindow::restoreAllSettings() {
+    ASSERT_THREAD(this);
+    QSettings s;
+    const QByteArray geom = s.value(QStringLiteral("viewer/window/geometry")).toByteArray();
+    if (!geom.isEmpty())
+        restoreGeometry(geom);
+    const QByteArray state = s.value(QStringLiteral("viewer/window/state")).toByteArray();
+    if (!state.isEmpty())
+        restoreState(state, kSettingsVersion);
+    const QVariant maskVar = s.value(QStringLiteral("viewer/log/mask"));
+    if (maskVar.isValid()) {
+        bool ok = false;
+        const uint mask = maskVar.toUInt(&ok);
+        if (ok)
+            h5reader::diagnostics::StructuredLogger::SetCategoryMask(mask);
+    }
+    const QStringList recent = s.value(QStringLiteral("viewer/recent/files")).toStringList();
+    rebuildRecentFilesMenu(recent);
+}
+
+void ReaderMainWindow::addToRecentFiles(const QString& path) {
+    ASSERT_THREAD(this);
+    if (path.isEmpty()) return;
+    QSettings s;
+    QStringList recent = s.value(QStringLiteral("viewer/recent/files")).toStringList();
+    recent.removeAll(path);
+    recent.prepend(path);
+    while (recent.size() > kMaxRecentFiles)
+        recent.removeLast();
+    s.setValue(QStringLiteral("viewer/recent/files"), recent);
+    rebuildRecentFilesMenu(recent);
+}
+
+void ReaderMainWindow::rebuildRecentFilesMenu(const QStringList& paths) {
+    ASSERT_THREAD(this);
+    if (!recentMenu_) return;
+    recentMenu_->clear();
+    if (paths.isEmpty()) {
+        QAction* empty = recentMenu_->addAction(QStringLiteral("(none)"));
+        empty->setEnabled(false);
+        return;
+    }
+    for (const QString& path : paths) {
+        QAction* a = recentMenu_->addAction(path);
+        ACONNECT(a, &QAction::triggered, this, [this, path]() {
+            openRecentPath(path);
+        });
+    }
+}
+
+void ReaderMainWindow::openRecentPath(const QString& path) {
+    ASSERT_THREAD(this);
+    // Same launch pattern as onOpenDirectory — multiple-instance safe.
+    const bool ok = QProcess::startDetached(QCoreApplication::applicationFilePath(),
+                                             QStringList{path});
+    if (!ok)
+        qCWarning(cWindow).noquote()
+            << "failed to launch a reader for recent path" << path;
 }
 
 void ReaderMainWindow::onPlayPauseClicked() {

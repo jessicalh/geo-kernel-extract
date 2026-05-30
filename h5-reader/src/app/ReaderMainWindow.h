@@ -28,12 +28,15 @@
 #include <memory>
 #include <vector>
 
+class QActionGroup;
 class QDockWidget;
+class QMenu;
 
 class QLabel;
 class QSlider;
 class QSpinBox;
 class QToolBar;
+class QToolButton;
 class QVTKOpenGLNativeWidget;
 
 namespace h5reader::io {
@@ -108,18 +111,51 @@ protected:
     // ANGLE / software OpenGL, this is where it shows up.
     void showEvent(QShowEvent* event) override;
 
+    // QSettings save runs here before the existing aboutToQuit → shutdown
+    // chain. Tolerant: if save fails for any reason the user still gets
+    // their window closed. event->accept() is unconditional.
+    void closeEvent(QCloseEvent* event) override;
+
 private slots:
     void onFrameChanged(int t);
     void onPlayPauseClicked();
     void onOpenDirectory();
     void onOpenSignalDisplays();
-    void onPlaneLockToggled(bool checked);
+    void onPlaneLockTriggered();
+    void onFocusCameraTriggered();
+    void onNewmanProjectionTriggered();
+    void onFreeCameraTriggered();
+    void onInstrumentToggled(bool checked);
 
 private:
     void buildUi();
     void buildToolbar();
     void buildStatusBar();
-    void updatePlaneLockAction();
+    // Update enabled state + checked state of the exclusive camera-mode
+    // action group (Focus / Newman / Plane lock / Free). Gating: Focus
+    // needs selection focus; Newman needs exactly 4 selected atoms; Plane
+    // needs exactly 3; Free is always enabled. Checked state is sourced
+    // from the composer's mode().kind so REST or programmatic changes
+    // reflect in the toolbar too.
+    void updateCameraModeActions();
+    // Apply a TransformedConformation mode chosen from the Transform
+    // popup menu. The mode int is the underlying enum value carried on
+    // the QAction via setData().
+    void applyTransformModeFromAction(QAction* action);
+
+    // QSettings persistence — see kSettingsVersion in the .cpp for the
+    // versioned QMainWindow state blob policy. Tolerant on restore (any
+    // missing / mismatched key is silently skipped) so a fresh install
+    // boots clean and an old install upgrades without losing usability.
+    void saveAllSettings();
+    void restoreAllSettings();
+
+    // File ▸ Recent — prepend a path, dedupe, cap at 10, rebuild menu,
+    // write to QSettings immediately. Called from the ctor with the
+    // current runPath so the next session sees it at the top.
+    void addToRecentFiles(const QString& path);
+    void rebuildRecentFilesMenu(const QStringList& paths);
+    void openRecentPath(const QString& path);
 
     // The loaded model. Owned by the window for its lifetime.
     std::unique_ptr<h5reader::io::QtLoadResult> loaded_;
@@ -181,7 +217,33 @@ private:
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> signalDisplaysAction_;
+
+    // Exclusive camera-mode action group. QActionGroup is the standard Qt
+    // idiom for radio-style mutual exclusion across actions. Source of
+    // truth is the composer's mode_; updateCameraModeActions() syncs the
+    // checked state from composer->mode().kind whenever modeChanged fires.
+    QActionGroup* cameraModeGroup_ = nullptr;
+    QPointer<QAction> focusAction_;
+    QPointer<QAction> newmanAction_;
     QPointer<QAction> planeLockAction_;
+    QPointer<QAction> freeAction_;
+
+    // Transform popup-menu button (Identity / Center COM / Fit backbone /
+    // Fit selection). Drives TransformedConformation::setMode directly.
+    QPointer<QToolButton> transformButton_;
+    QPointer<QMenu> transformMenu_;
+    QPointer<QActionGroup> transformGroup_;
+
+    // Marker preset toggle for live demos. Same code path as
+    // /selection/instrument REST endpoint.
+    QPointer<QAction> instrumentAction_;
+
+    // File ▸ Recent submenu — populated from QSettings on ctor restore.
+    QPointer<QMenu> recentMenu_;
+
+    // Playback toolbar — built by buildToolbar(); referenced from the
+    // ctor after the docks exist to append their toggleViewAction()s.
+    QPointer<QToolBar> playbackToolbar_;
 
     // Status bar labels.
     QPointer<QLabel> proteinLabel_;

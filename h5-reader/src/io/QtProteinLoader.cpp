@@ -29,8 +29,38 @@ Q_LOGGING_CATEGORY(cLoader, "h5reader.loader")
 namespace h5reader::io {
 
 QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
+    // Legacy convention-based entry — derive sidecar and per_frame_npys
+    // dirs by name from the H5's parent, then call the explicit-path
+    // form. Manifest-driven loads bypass this entirely.
+    QFileInfo fi(h5_path);
+    if (!fi.exists()) {
+        QtLoadResult result;
+        result.runPath = h5_path;
+        result.error = QStringLiteral("QtProteinLoader: H5 path does not exist: %1").arg(h5_path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtProteinLoader"),
+                                                result.error,
+                                                h5_path);
+        return result;
+    }
+    const QString sidecar_dir = fi.absolutePath();
+    QString perFrameNpysDir;
+    for (const QString& name : {QStringLiteral("per_frame_npys"), QStringLiteral("npys")}) {
+        const QString candidate = QStringLiteral("%1/%2").arg(sidecar_dir, name);
+        if (QFileInfo::exists(candidate)) {
+            perFrameNpysDir = candidate;
+            break;
+        }
+    }
+    return LoadTrajectory(h5_path, sidecar_dir, perFrameNpysDir);
+}
+
+QtLoadResult QtProteinLoader::LoadTrajectory(const QString& h5_path,
+                                              const QString& topologySidecarDir,
+                                              const QString& perFrameNpysDir) {
     QtLoadResult result;
     result.runPath = h5_path;
+
     QFileInfo fi(h5_path);
     if (!fi.exists()) {
         result.error = QStringLiteral("QtProteinLoader: H5 path does not exist: %1").arg(h5_path);
@@ -40,26 +70,29 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
                                                 h5_path);
         return result;
     }
+    if (!QFileInfo(topologySidecarDir).isDir()) {
+        result.error = QStringLiteral("QtProteinLoader: sidecar dir does not exist: %1").arg(topologySidecarDir);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtProteinLoader"),
+                                                result.error,
+                                                topologySidecarDir);
+        return result;
+    }
 
-    // Derive a display ID from the H5 file's parent dir basename — the
-    // sidecar manifest also carries protein_id, but the dir name is
-    // typically the canonical run identifier (e.g.
-    // "run_01_baseline_2026-05-21_sha7d8dbe9").
-    const QString sidecar_dir = fi.absolutePath();
-    result.proteinId = QFileInfo(sidecar_dir).fileName();
+    // Display ID — the sidecar dir's basename (typically a canonical run id).
+    result.proteinId = QFileInfo(topologySidecarDir).fileName();
 
-    qCInfo(cLoader).noquote() << "Loading" << result.proteinId << "from" << h5_path;
+    qCInfo(cLoader).noquote() << "Loading" << result.proteinId << "| h5=" << h5_path
+                              << "| sidecar=" << topologySidecarDir
+                              << "| frame_npys=" << (perFrameNpysDir.isEmpty() ? "absent" : perFrameNpysDir);
 
-    // Step 1+2: sidecar
-    auto sidecar = QtTopologySidecar::Load(sidecar_dir);
+    auto sidecar = QtTopologySidecar::Load(topologySidecarDir);
     if (!sidecar.ok) {
         result.error = sidecar.error;
         return result;
     }
     result.decodeWarnings += sidecar.warningCount;
 
-    // Step 3: trajectory.h5 (eager-load all TR groups; throws on
-    // structural failure).
     std::unique_ptr<QtTrajectoryH5> traj;
     try {
         traj = std::make_unique<QtTrajectoryH5>(h5_path);
@@ -72,7 +105,6 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
         return result;
     }
 
-    // Step 4: cross-check atom count.
     if (sidecar.atoms.size() != traj->atomCount()) {
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Warning,
                                                 QStringLiteral("QtProteinLoader"),
@@ -84,9 +116,6 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
         ++result.decodeWarnings;
     }
 
-    // Optional cross-check: manifest.protein_id vs H5 root attr
-    // protein_id. They typically agree; log Warn on mismatch but do
-    // not fail.
     if (!sidecar.manifest.proteinId.isEmpty() && !traj->proteinId().isEmpty()
         && sidecar.manifest.proteinId != traj->proteinId()) {
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Warning,
@@ -98,7 +127,6 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
         ++result.decodeWarnings;
     }
 
-    // Step 5: build QtProtein.
     auto protein = std::make_unique<h5reader::model::QtProtein>();
     protein->proteinId_ = result.proteinId;
     protein->atoms_ = std::move(sidecar.atoms);
@@ -112,31 +140,75 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
                                                                        sidecar.aromaticRingCount,
                                                                        sidecar.saturatedRingCount);
 
-    // Step 6: build the trajectory conformation. The per-frame snapshot detail
-    // is lazily loaded from a sibling of trajectory.h5. Prefer the canonical
-    // per_frame_npys/ name, but accept the older/current extract/npys/ layout
-    // used by calibration runs. Absent -> no detail; dense H5 still drives
-    // playback.
-    QString perFrameNpysDir;
-    for (const QString& name : {QStringLiteral("per_frame_npys"), QStringLiteral("npys")}) {
-        const QString candidate = QStringLiteral("%1/%2").arg(sidecar_dir, name);
-        if (QFileInfo::exists(candidate)) {
-            perFrameNpysDir = candidate;
-            break;
-        }
+    // Per-frame snapshot dir is whatever the caller passed — empty means
+    // no per-frame detail (dense H5 still drives playback).
+    QString resolvedPerFrame = perFrameNpysDir;
+    if (!resolvedPerFrame.isEmpty() && !QFileInfo(resolvedPerFrame).isDir()) {
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Warning,
+                                                QStringLiteral("QtProteinLoader"),
+                                                QStringLiteral("per_frame_npys_dir does not exist: %1")
+                                                    .arg(resolvedPerFrame),
+                                                resolvedPerFrame);
+        resolvedPerFrame.clear();
+        ++result.decodeWarnings;
     }
     auto conformation = std::make_unique<h5reader::model::TrajectoryConformation>(protein.get(), std::move(traj),
-                                                                                  perFrameNpysDir);
+                                                                                  resolvedPerFrame);
 
     qCInfo(cLoader).noquote() << "Loaded" << result.proteinId << "| atoms=" << protein->atomCount()
                               << "| residues=" << protein->residueCount() << "| bonds=" << protein->bondCount()
                               << "| rings=" << protein->ringCount() << "| frames=" << conformation->frameCount()
-                              << "| frame_npys=" << (perFrameNpysDir.isEmpty() ? "absent" : perFrameNpysDir)
                               << "| warnings=" << result.decodeWarnings;
 
     result.protein = std::move(protein);
     result.conformation = std::move(conformation);
     result.ok = true;
+    return result;
+}
+
+QtLoadResult QtProteinLoader::LoadFromManifest(const ReaderInputManifest& manifest) {
+    QtLoadResult result;
+    result.runPath = manifest.rootDir;
+    result.manifest = manifest;
+
+    if (!manifest.ok) {
+        result.error = QStringLiteral("QtProteinLoader::LoadFromManifest: manifest not valid: %1")
+                          .arg(manifest.error);
+        return result;
+    }
+
+    qCInfo(cLoader).noquote() << "Loading via manifest |" << manifest.manifestPath
+                              << "| run_kind=" << ReaderInputManifest::NameForRunKind(manifest.runKind)
+                              << "| protein_id=" << manifest.proteinId;
+
+    switch (manifest.runKind) {
+        case ReaderInputManifest::RunKind::Trajectory: {
+            QtLoadResult inner = LoadTrajectory(manifest.trajectoryH5,
+                                                 manifest.topologySidecarDir,
+                                                 manifest.perFrameNpysDir);
+            inner.manifest = manifest;
+            inner.runPath = manifest.rootDir;
+            return inner;
+        }
+        case ReaderInputManifest::RunKind::SinglePose: {
+            QtLoadResult inner = LoadPose(manifest.poseDir);
+            inner.manifest = manifest;
+            inner.runPath = manifest.rootDir;
+            return inner;
+        }
+        case ReaderInputManifest::RunKind::MutantPair: {
+            // Auto-open WT — per project decision (the ALA pose is exposed
+            // through ReaderInputManifest::alternatePoseDir() for the
+            // toolbar/menu switch action).
+            QtLoadResult inner = LoadPose(manifest.wtPoseDir);
+            inner.manifest = manifest;
+            inner.runPath = manifest.rootDir;
+            qCInfo(cLoader).noquote() << "Mutant pair: opened WT |" << manifest.wtPoseDir
+                                      << "| alternate ALA available |" << manifest.alaPoseDir;
+            return inner;
+        }
+    }
+    result.error = QStringLiteral("QtProteinLoader::LoadFromManifest: unhandled run_kind");
     return result;
 }
 
@@ -205,10 +277,30 @@ QtLoadResult QtProteinLoader::LoadPose(const QString& run_dir) {
 
 QtLoadResult QtProteinLoader::LoadRunPath(const QString& path) {
     QFileInfo fi(path);
+
+    // Manifest-driven entry — preferred. The directory the user opens is
+    // the "run root"; the manifest lives at the conventional file name
+    // at that root.
+    const QString manifestDir = fi.isDir() ? path : fi.absolutePath();
+    if (ReaderInputManifest::ExistsAt(manifestDir)) {
+        const auto manifest = ReaderInputManifest::Load(manifestDir);
+        if (!manifest.ok) {
+            QtLoadResult result;
+            result.runPath = path;
+            result.error = manifest.error;
+            return result;
+        }
+        return LoadFromManifest(manifest);
+    }
+
+    // Legacy bounded-convention fallback. Log CRITICAL so the user knows
+    // the manifest is missing and that this path will become a hard
+    // error in a future release. See spec/INPUT_DIRECTORY.md.
+    qCCritical(cLoader).noquote()
+        << "no h5reader_manifest.toml at" << manifestDir
+        << "— falling back to legacy convention; generate one via tools/generate_manifest.py";
+
     if (fi.isDir()) {
-        // A directory: a trajectory run has trajectory.h5 beside its sidecar,
-        // or uses the dataset-root/extract/trajectory.h5 layout. This is a
-        // bounded convention check, not file discovery / globbing.
         const QDir dir(path);
         const QString directH5 = QStringLiteral("%1/trajectory.h5").arg(dir.absolutePath());
         if (QFileInfo::exists(directH5))
@@ -218,7 +310,6 @@ QtLoadResult QtProteinLoader::LoadRunPath(const QString& path) {
             return Load(extractH5);
         return LoadPose(path);
     }
-    // A file path: treat it as the trajectory.h5 to load.
     return Load(path);
 }
 

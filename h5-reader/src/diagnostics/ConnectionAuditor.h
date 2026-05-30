@@ -68,16 +68,21 @@ inline const char* ClassName(const QObject* o) {
 
 }  // namespace h5reader::diagnostics
 
-// ACONNECT(sender, signal, receiver, slot [, type])
+// ACONNECT(sender, signal, receiver, slot)
 // Logs the connection to the structured logger. Returns the
 // QMetaObject::Connection so callers may disconnect if needed.
-#define ACONNECT(sender, signal, receiver, slot) \
+//
+// `slot` is captured as a single variadic argument so that lambdas
+// with multi-element capture lists (e.g. `[this, foo, bar]() { ... }`)
+// don't get torn apart by the preprocessor's argument separator. The
+// stringification still surfaces the slot's textual form for the log.
+#define ACONNECT(sender, signal, receiver, ...) \
     ::h5reader::diagnostics::ConnectionAuditorImpl::LogAndConnect( \
         (sender), \
         ::h5reader::diagnostics::ConnectionAuditorImpl::ClassName(sender), \
         #signal, \
         (receiver), \
         ::h5reader::diagnostics::ConnectionAuditorImpl::ClassName(receiver), \
-        #slot, \
+        #__VA_ARGS__, \
         __FILE__, __LINE__, \
-        [&]() { return QObject::connect((sender), (signal), (receiver), (slot)); })
+        [&]() { return QObject::connect((sender), (signal), (receiver), __VA_ARGS__); })
