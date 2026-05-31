@@ -61,7 +61,8 @@ class ArraySpec:
       indexed along: ``atom`` / ``residue`` / ``aromatic_ring`` /
       ``saturated_ring`` / ``ring`` / ``ring_contribution_pair`` /
       ``bond`` / ``ring_membership`` / ``mutation_match_pair`` /
-      ``protein``. R / Python analysis must read this metadata
+      ``protein`` / ``rediscover_source_row`` /
+      ``rediscover_aggregated_row``. R / Python analysis must read this metadata
       column rather than infer axis from filename.
 
     * ``irreps`` carries the e3nn-style irrep decomposition for
@@ -191,6 +192,34 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_scalars",       "mcconnell", McConnellScalars,   6,    True,  "McConnell scalar sums + distances",
               mechanism="bond_anisotropy"),
+
+    # ── Rediscover substrate sidecars (h5-reader/src/rediscover) ─────────
+    # CSV rows carry identity/scalars; these NPYs carry 5-component T2 payloads
+    # keyed by the corresponding source or aggregated CSV row order.
+    ArraySpec("rediscover_ring_current_sources_target_T2",          "rediscover", np.ndarray, 5, False, "Rediscover ring-current source-row DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_ring_current_sources_target_local_T2",    "rediscover", np.ndarray, 5, False, "Rediscover ring-current source-row local-frame DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_ring_current_sources_bare_kernel_T2",     "rediscover", np.ndarray, 5, False, "Rediscover ring-current source-row producer bare-kernel T2 payload",
+              is_feature=False, native_axis="rediscover_source_row", irreps="2e", units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+    ArraySpec("rediscover_ring_current_aggregated_target_T2",       "rediscover", np.ndarray, 5, False, "Rediscover ring-current aggregated-row DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_ring_current_aggregated_target_local_T2", "rediscover", np.ndarray, 5, False, "Rediscover ring-current aggregated-row local-frame DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_ring_current_aggregated_bare_kernel_T2",  "rediscover", np.ndarray, 5, False, "Rediscover ring-current aggregated-row producer bare-kernel T2 payload",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+    ArraySpec("rediscover_mcconnell_sources_target_T2",             "rediscover", np.ndarray, 5, False, "Rediscover McConnell source-row DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_mcconnell_sources_target_local_T2",       "rediscover", np.ndarray, 5, False, "Rediscover McConnell source-row local-frame DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_mcconnell_sources_bare_kernel_T2",        "rediscover", np.ndarray, 5, False, "Rediscover McConnell source-row producer bare-kernel T2 payload",
+              is_feature=False, native_axis="rediscover_source_row", irreps="2e", units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("rediscover_mcconnell_aggregated_target_T2",          "rediscover", np.ndarray, 5, False, "Rediscover McConnell aggregated-row DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_mcconnell_aggregated_target_local_T2",    "rediscover", np.ndarray, 5, False, "Rediscover McConnell aggregated-row local-frame DFT target T2 payload",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("rediscover_mcconnell_aggregated_bare_kernel_T2",     "rediscover", np.ndarray, 5, False, "Rediscover McConnell aggregated-row producer bare-kernel T2 payload",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
 
     # ── Coulomb (CoulombResult.cpp) — optional; retired from production
     # (APBS is canonical), so present only in the FullFatFrameExtraction

@@ -57,6 +57,10 @@ public:
     std::size_t atomCount() const { return atoms_.size(); }
     const QtAtom& atom(std::size_t i) const { return atoms_[i]; }
     const std::vector<QtAtom>& atoms() const { return atoms_; }
+    void setAtomPartialCharge(std::size_t i, double charge) {
+        atoms_[i].partialCharge = charge;
+        atoms_[i].hasPartialCharge = true;
+    }
 
     // ----- Atom names (projection layer; explicit accessor) -----
     const QtAtomNames& atomNames(std::size_t i) const { return atomNames_[i]; }

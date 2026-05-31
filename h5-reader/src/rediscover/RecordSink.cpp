@@ -1,10 +1,18 @@
 #include "RecordSink.h"
 
+#include "SphericalBasis.h"
+
 #include "../diagnostics/ErrorBus.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QLoggingCategory>
+#include <QSaveFile>
+
+#include <array>
+#include <limits>
+#include <numeric>
 
 namespace h5reader::rediscover {
 
@@ -27,6 +35,65 @@ void writeHeader(QTextStream& out, const std::vector<FeatureColumn>& cols) {
         out << cols[i].name;
     }
     out << '\n';
+}
+
+void appendT2(std::vector<double>& dst, const std::array<double, 5>& t2) {
+    for (double v : t2) dst.push_back(v);
+}
+
+void appendLocalTargetT2(std::vector<double>& dst, const NeighborhoodRecord& rec) {
+    if (!rec.target.present || !rec.target.local_frame_valid) {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        for (int i = 0; i < 5; ++i) dst.push_back(nan);
+        return;
+    }
+    appendT2(dst, DecomposeLibrary(rec.target.total_local).T2);
+}
+
+bool writeNpyF64(const QString& path, const std::vector<std::size_t>& shape,
+                 const std::vector<double>& data) {
+    std::size_t n = 1;
+    for (const std::size_t dim : shape) n *= dim;
+    if (n != data.size()) return false;
+
+    QByteArray header;
+    header += "{'descr': '<f8', 'fortran_order': False, 'shape': (";
+    for (std::size_t i = 0; i < shape.size(); ++i) {
+        if (i) header += ", ";
+        header += QByteArray::number(static_cast<qulonglong>(shape[i]));
+    }
+    if (shape.size() == 1) header += ",";
+    header += "), }";
+
+    constexpr int kPreambleBytes = 10;
+    const int newlineBytes = 1;
+    int pad = 16 - ((kPreambleBytes + header.size() + newlineBytes) % 16);
+    if (pad == 16) pad = 0;
+    header += QByteArray(pad, ' ');
+    header += '\n';
+    if (header.size() > 65535) return false;
+
+    QByteArray prefix;
+    prefix.append("\x93NUMPY", 6);
+    prefix.append(char(1));
+    prefix.append(char(0));
+    const quint16 headerLen = static_cast<quint16>(header.size());
+    prefix.append(char(headerLen & 0xff));
+    prefix.append(char((headerLen >> 8) & 0xff));
+
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) return false;
+    if (f.write(prefix) != prefix.size()) return false;
+    if (f.write(header) != header.size()) return false;
+    const qsizetype payloadBytes = static_cast<qsizetype>(data.size() * sizeof(double));
+    if (payloadBytes > 0
+        && f.write(reinterpret_cast<const char*>(data.data()), payloadBytes) != payloadBytes)
+        return false;
+    return f.commit();
+}
+
+QString sidecarName(const FeatureSchema& schema, const QString& rowKind, const QString& payload) {
+    return QStringLiteral("rediscover_%1_%2_%3.npy").arg(schema.caseName, rowKind, payload);
 }
 
 // The identity + frame + local-frame columns shared by BOTH row kinds.
@@ -67,12 +134,44 @@ void writeBareKernel(QTextStream& out, const NeighborhoodRecord& r) {
     for (double v : r.bare_kernel.T2) out << ',' << num(v);
 }
 
+void writeRingSource(QTextStream& out, const SourceSlot& s) {
+    out << ',' << static_cast<int>(s.kind) << ','
+        << num(s.disp_local.x()) << ',' << num(s.disp_local.y()) << ',' << num(s.disp_local.z()) << ','
+        << num(s.r) << ',' << num(s.cos_theta) << ',' << num(s.dipolar) << ','
+        << num(s.ring_z) << ',' << num(s.ring_rho) << ',' << num(s.ring_in_plane_angle) << ','
+        << s.ring_index << ',' << (s.is_self_or_bonded ? 1 : 0) << ','
+        << s.ring_type_index << ',' << num(s.ring_intensity) << ',' << s.ring_nitrogen << ','
+        << num(s.ring_jb_offset) << ',' << s.ring_aromaticity << ',' << s.ring_size << ','
+        << (s.ring_fused ? 1 : 0) << ','
+        << num(s.source_normal_local.x()) << ',' << num(s.source_normal_local.y()) << ','
+        << num(s.source_normal_local.z());
+}
+
+void writeBondSource(QTextStream& out, const SourceSlot& s) {
+    out << ',' << static_cast<int>(s.kind) << ','
+        << num(s.disp_local.x()) << ',' << num(s.disp_local.y()) << ',' << num(s.disp_local.z()) << ','
+        << num(s.r) << ',' << num(s.cos_theta) << ',' << num(s.dipolar) << ','
+        << s.bond_category << ',' << s.bond_order << ','
+        << s.bond_elem_a << ',' << s.bond_elem_b << ',' << s.bond_index << ','
+        << s.bond_atom_a << ',' << s.bond_atom_b << ','
+        << num(s.bond_axis_local.x()) << ',' << num(s.bond_axis_local.y()) << ','
+        << num(s.bond_axis_local.z());
+}
+
 }  // namespace
 
 RecordSink::RecordSink(const QString& outDir, const FeatureSchema& schema) : schema_(schema) {
     QDir().mkpath(outDir);
     sourcesPath_ = QStringLiteral("%1/%2_sources.csv").arg(outDir, schema.caseName);
     aggregatedPath_ = QStringLiteral("%1/%2_aggregated.csv").arg(outDir, schema.caseName);
+    sidecarFiles_ = {
+        sidecarName(schema, QStringLiteral("sources"), QStringLiteral("target_T2")),
+        sidecarName(schema, QStringLiteral("sources"), QStringLiteral("target_local_T2")),
+        sidecarName(schema, QStringLiteral("sources"), QStringLiteral("bare_kernel_T2")),
+        sidecarName(schema, QStringLiteral("aggregated"), QStringLiteral("target_T2")),
+        sidecarName(schema, QStringLiteral("aggregated"), QStringLiteral("target_local_T2")),
+        sidecarName(schema, QStringLiteral("aggregated"), QStringLiteral("bare_kernel_T2")),
+    };
 
     sourcesFile_ = std::make_unique<QSaveFile>(sourcesPath_);
     aggregatedFile_ = std::make_unique<QSaveFile>(aggregatedPath_);
@@ -98,25 +197,16 @@ void RecordSink::WriteSourceRows(const NeighborhoodRecord& rec) {
     QTextStream& out = *sourcesOut_;
     for (const SourceSlot& s : rec.sources) {
         writeIdentity(out, rec);
-        // Per-source geometry + identity.
-        out << ',' << static_cast<int>(s.kind) << ','
-            << num(s.disp_local.x()) << ',' << num(s.disp_local.y()) << ',' << num(s.disp_local.z()) << ','
-            << num(s.r) << ',' << num(s.cos_theta) << ',' << num(s.dipolar) << ','
-            << num(s.ring_z) << ',' << num(s.ring_rho) << ',' << num(s.ring_in_plane_angle) << ','
-            << s.ring_index << ',' << (s.is_self_or_bonded ? 1 : 0) << ','
-            << s.ring_type_index << ',' << num(s.ring_intensity) << ',' << s.ring_nitrogen << ','
-            << num(s.ring_jb_offset) << ',' << s.ring_aromaticity << ',' << s.ring_size << ','
-            << (s.ring_fused ? 1 : 0) << ','
-            << s.bond_category << ',' << s.bond_order << ','
-            << s.bond_elem_a << ',' << s.bond_elem_b << ',' << s.bond_index << ','
-            << s.bond_atom_a << ',' << s.bond_atom_b << ','
-            << num(s.bond_axis_local.x()) << ',' << num(s.bond_axis_local.y()) << ','
-            << num(s.bond_axis_local.z()) << ','
-            << num(s.source_normal_local.x()) << ',' << num(s.source_normal_local.y()) << ','
-            << num(s.source_normal_local.z());
+        if (schema_.sourceSchemaKind == SourceSchemaKind::Ring)
+            writeRingSource(out, s);
+        else if (schema_.sourceSchemaKind == SourceSchemaKind::Bond)
+            writeBondSource(out, s);
         writeBareKernel(out, rec);
         writeTarget(out, rec.target);
         out << '\n';
+        appendT2(sourceTargetT2_, rec.target.total_decomp.T2);
+        appendLocalTargetT2(sourceTargetLocalT2_, rec);
+        appendT2(sourceBareKernelT2_, rec.bare_kernel.T2);
         ++sourceRows_;
     }
 }
@@ -138,6 +228,9 @@ void RecordSink::WriteAggregatedRow(const NeighborhoodRecord& rec, double sumAll
     writeBareKernel(out, rec);
     writeTarget(out, rec.target);
     out << '\n';
+    appendT2(aggregatedTargetT2_, rec.target.total_decomp.T2);
+    appendLocalTargetT2(aggregatedTargetLocalT2_, rec);
+    appendT2(aggregatedBareKernelT2_, rec.bare_kernel.T2);
     ++aggRows_;
 }
 
@@ -147,11 +240,26 @@ bool RecordSink::Commit() {
     if (aggregatedOut_) aggregatedOut_->flush();
     const bool a = sourcesFile_ && sourcesFile_->commit();
     const bool b = aggregatedFile_ && aggregatedFile_->commit();
+    const QString outDir = QFileInfo(sourcesPath_).dir().absolutePath();
+    const bool c = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[0]),
+                               {sourceRows_, 5}, sourceTargetT2_);
+    const bool d = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[1]),
+                               {sourceRows_, 5}, sourceTargetLocalT2_);
+    const bool e = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[2]),
+                               {sourceRows_, 5}, sourceBareKernelT2_);
+    const bool f = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[3]),
+                               {aggRows_, 5}, aggregatedTargetT2_);
+    const bool g = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[4]),
+                               {aggRows_, 5}, aggregatedTargetLocalT2_);
+    const bool h = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[5]),
+                               {aggRows_, 5}, aggregatedBareKernelT2_);
     if (!a) report(Severity::Error, QStringLiteral("commit failed"), sourcesPath_);
     if (!b) report(Severity::Error, QStringLiteral("commit failed"), aggregatedPath_);
+    if (!c || !d || !e || !f || !g || !h)
+        report(Severity::Error, QStringLiteral("sidecar NPY commit failed"), schema_.caseName);
     qCInfo(cSink).noquote() << "committed" << schema_.caseName << "| source_rows=" << sourceRows_
                             << "| agg_rows=" << aggRows_;
-    return a && b;
+    return a && b && c && d && e && f && g && h;
 }
 
 }  // namespace h5reader::rediscover

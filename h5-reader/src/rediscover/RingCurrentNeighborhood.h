@@ -22,7 +22,7 @@ class RingCurrentNeighborhood final : public RediscoveryExtraction {
 public:
     QString name() const override { return QStringLiteral("ring_current"); }
     FeatureSchema schema() const override;
-    std::size_t extract(const RunData& run, RecordSink& sink) const override;
+    std::size_t extract(const Body& body, RecordSink& sink) const override;
 };
 
 }  // namespace h5reader::rediscover

@@ -22,6 +22,7 @@
 #include "RediscoverTypes.h"
 
 #include <QSaveFile>
+#include <QStringList>
 #include <QString>
 #include <QTextStream>
 
@@ -38,8 +39,13 @@ struct FeatureColumn {
     QString unit;  // "" for dimensionless / identity columns
 };
 
+enum class RelationshipKind { SourceSum, PerAtomFeature };
+enum class SourceSchemaKind { None, Ring, Bond };
+
 struct FeatureSchema {
     QString caseName;                    // "ring_current" | "mcconnell"
+    RelationshipKind relationshipKind = RelationshipKind::SourceSum;
+    SourceSchemaKind sourceSchemaKind = SourceSchemaKind::None;
     std::vector<FeatureColumn> sourceColumns;      // per-source row schema
     std::vector<FeatureColumn> aggregatedColumns;  // aggregated row schema
     std::size_t maxSourceSlots = 0;      // padding width for the aggregated row
@@ -75,11 +81,13 @@ public:
 
     std::size_t sourceRowsWritten() const { return sourceRows_; }
     std::size_t aggregatedRowsWritten() const { return aggRows_; }
+    const QStringList& sidecarFiles() const { return sidecarFiles_; }
 
 private:
     FeatureSchema schema_;
     QString sourcesPath_;
     QString aggregatedPath_;
+    QStringList sidecarFiles_;
     std::unique_ptr<QSaveFile> sourcesFile_;
     std::unique_ptr<QSaveFile> aggregatedFile_;
     std::unique_ptr<QTextStream> sourcesOut_;
@@ -87,6 +95,12 @@ private:
     bool ok_ = false;
     std::size_t sourceRows_ = 0;
     std::size_t aggRows_ = 0;
+    std::vector<double> sourceTargetT2_;
+    std::vector<double> sourceTargetLocalT2_;
+    std::vector<double> sourceBareKernelT2_;
+    std::vector<double> aggregatedTargetT2_;
+    std::vector<double> aggregatedTargetLocalT2_;
+    std::vector<double> aggregatedBareKernelT2_;
 };
 
 }  // namespace h5reader::rediscover

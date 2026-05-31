@@ -21,7 +21,7 @@ class McConnellNeighborhood final : public RediscoveryExtraction {
 public:
     QString name() const override { return QStringLiteral("mcconnell"); }
     FeatureSchema schema() const override;
-    std::size_t extract(const RunData& run, RecordSink& sink) const override;
+    std::size_t extract(const Body& body, RecordSink& sink) const override;
 
     // Source-discovery cutoff (Å). Required, no default — surfaced as a public
     // member so main can record it / a caller can override it. 8.0 Å is the

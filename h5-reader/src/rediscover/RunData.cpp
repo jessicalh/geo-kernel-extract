@@ -1,16 +1,46 @@
 #include "RunData.h"
 
+#include "ChargeStore.h"
+
 #include "../io/DftShieldingLoader.h"
 #include "../io/QtProteinLoader.h"
+#include "../model/QtBond.h"
 
 #include <QLoggingCategory>
 
 #include <algorithm>
+#include <cmath>
 
 namespace h5reader::rediscover {
 
 namespace {
 Q_LOGGING_CATEGORY(cRun, "h5reader.rediscover.run")
+
+bool proteinLooksWhole(const RunData& run, QString* err_out) {
+    if (!run.protein || !run.conformation) return true;
+    const model::QtTopology& topo = run.protein->topology();
+    constexpr double kWrappedBondThresholdA = 5.0;
+    for (std::size_t frame = 0; frame < run.conformation->frameCount(); ++frame) {
+        for (std::size_t bi = 0; bi < topo.bondCount(); ++bi) {
+            const model::QtBond& b = topo.bondAt(bi);
+            if (b.atomIndexA < 0 || b.atomIndexB < 0) continue;
+            const model::Vec3 a = run.conformation->atomPosition(frame, static_cast<std::size_t>(b.atomIndexA));
+            const model::Vec3 c = run.conformation->atomPosition(frame, static_cast<std::size_t>(b.atomIndexB));
+            const double d = (c - a).norm();
+            if (d > kWrappedBondThresholdA) {
+                if (err_out) {
+                    *err_out = QStringLiteral("protein appears wrapped: frame %1 bond %2 length %3 A "
+                                              "(PBC mode is None; pbc_whole must run upstream)")
+                                   .arg(frame)
+                                   .arg(b.bondIndex)
+                                   .arg(d);
+                }
+                return false;
+            }
+        }
+    }
+    return true;
+}
 }
 
 std::optional<FrameMap> FrameMap::Build(const model::TrajectoryConformation& traj,
@@ -66,6 +96,23 @@ std::optional<RunData> RunLoader::Load(const QString& calcset_path, QString* err
     run.protein = std::move(loaded.protein);
     run.conformation = std::move(loaded.conformation);
     run.manifest = loaded.manifest;
+
+    if (run.manifest.trajectory) {
+        QString chargeErr;
+        if (!LoadFf14sbChargesFromTopol(run.manifest.trajectory->topology_top_abspath,
+                                        *run.protein, &chargeErr)) {
+            if (err_out) *err_out = chargeErr;
+            return std::nullopt;
+        }
+        qCInfo(cRun).noquote() << "FF14SB charges loaded from"
+                               << run.manifest.trajectory->topology_top_abspath;
+    }
+
+    QString pbcErr;
+    if (!proteinLooksWhole(run, &pbcErr)) {
+        if (err_out) *err_out = pbcErr;
+        return std::nullopt;
+    }
 
     // 2. DFT frames via DftShieldingLoader, keyed by manifest frame_index.
     //    A partial campaign is fine — gaps are honest, not failures.

@@ -18,13 +18,16 @@ the near-constant local C-H baseline; the modulation is what ring current claims
 Honesty: frame split + leave-atoms-out; report |T2| too.
 """
 import numpy as np
+import os
 import pandas as pd
+import sys
 import torch
 import torch.nn as nn
 
 torch.manual_seed(0); np.random.seed(0)
 dev = "cuda" if torch.cuda.is_available() else "cpu"
-SRC = "/tmp/rediscover-out-v2/ring_current_sources.csv"
+out_dir = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REDISCOVER_OUT", "/tmp/rediscover-out-v2")
+SRC = f"{out_dir}/ring_current_sources.csv"
 
 S2, S32, S12 = np.sqrt(2.0), np.sqrt(1.5), 1.0/np.sqrt(2.0)
 def lib_T2(M):  # (...,3,3) -> (...,5) in the library basis (matches DecomposeLibrary)

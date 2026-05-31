@@ -6,8 +6,8 @@
 
 #pragma once
 
+#include "AnalysisBody.h"
 #include "RecordSink.h"
-#include "RunData.h"
 
 #include <QString>
 
@@ -26,7 +26,7 @@ public:
     // Walk (target atom in this stratum, DFT frame row) over the run, building
     // one NeighborhoodRecord per case and handing it to the sink (both row
     // kinds). Returns the number of cases (records) emitted.
-    virtual std::size_t extract(const RunData& run, RecordSink& sink) const = 0;
+    virtual std::size_t extract(const Body& body, RecordSink& sink) const = 0;
 };
 
 }  // namespace h5reader::rediscover

@@ -306,6 +306,23 @@ qt_add_executable(h5reader_extract
     src/rediscover/LocalFrameBasis.h
     src/rediscover/LocalFrameBasis.cpp
     src/rediscover/RediscoverTypes.h
+    src/rediscover/TemporalIndex.h
+    src/rediscover/TemporalIndex.cpp
+    src/rediscover/TypedAtomIndex.h
+    src/rediscover/TypedAtomIndex.cpp
+    src/rediscover/SpatialIndexSet.h
+    src/rediscover/SpatialIndexSet.cpp
+    src/rediscover/RingGeometryCache.h
+    src/rediscover/RingGeometryCache.cpp
+    src/rediscover/ResidentIndexes.h
+    src/rediscover/ResidentIndexes.cpp
+    src/rediscover/Catalog.h
+    src/rediscover/Catalog.cpp
+    src/rediscover/AnalysisBody.h
+    src/rediscover/ChargeStore.h
+    src/rediscover/ChargeStore.cpp
+    src/rediscover/OutputManifest.h
+    src/rediscover/OutputManifest.cpp
     src/rediscover/RunData.h
     src/rediscover/RunData.cpp
     src/rediscover/RecordSink.h

@@ -62,6 +62,8 @@ struct QtAtom {
     int8_t formalCharge = 0;
     bool isExchangeable = false;
     int8_t equivalenceClass = 0;
+    bool hasPartialCharge = false;
+    double partialCharge = 0.0;  // FF14SB/topol.top charge, elementary-charge units.
 
     // ----- Force-field surface (typed enum, NOT string) -----
     QtFfAtomType ffAtomType = QtFfAtomType::Unknown;

@@ -1,7 +1,9 @@
 #include "RingCurrentNeighborhood.h"
 
+#include "AnalysisBody.h"
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
+#include "TypedAtomIndex.h"
 
 #include "../model/ConformationGeometry.h"
 #include "../model/QtProtein.h"
@@ -11,6 +13,7 @@
 
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -18,24 +21,6 @@ namespace h5reader::rediscover {
 
 namespace {
 Q_LOGGING_CATEGORY(cRing, "h5reader.rediscover.ring")
-
-// The chemistry-typed ring-frame anchor (substrate_conventions_2026-05-30):
-// CG for PHE / TYR / HIS / TRP-pyrrole, CD2 for the TRP-benzene ring. Found by
-// typed Locant among the ring's member atoms — NOT by name string and NOT by
-// positional first-atom (that was the identity-from-position time bomb). The
-// gamma carbon is unique in each aromatic ring; in the TRP benzene ring the
-// only delta carbon is the CD2 bridgehead. Returns -1 if absent.
-int typedRingAnchor(const model::QtProtein& p, const model::QtRing& ring) {
-    const model::Locant want = (ring.TypeIndex() == model::RingTypeIndex::TrpBenzene)
-                                   ? model::Locant::Delta
-                                   : model::Locant::Gamma;
-    for (int32_t ai : ring.atomIndices) {
-        if (ai < 0) continue;
-        const model::QtAtom& at = p.atom(static_cast<std::size_t>(ai));
-        if (at.element == model::Element::C && at.locant == want) return ai;
-    }
-    return -1;
-}
 
 // Per-aromatic-ring-type summed dipolar feature columns (the aggregated row's
 // per-ring-type sums). 8 aromatic types (RingTypeIndex 0..7); the saturated
@@ -63,6 +48,8 @@ int ownAromaticRing(const model::QtProtein& p, std::size_t atomIdx) {
 FeatureSchema RingCurrentNeighborhood::schema() const {
     FeatureSchema s;
     s.caseName = name();
+    s.relationshipKind = RelationshipKind::SourceSum;
+    s.sourceSchemaKind = SourceSchemaKind::Ring;
 
     // ── per-source columns ──
     s.sourceColumns = IdentityColumns();
@@ -86,16 +73,6 @@ FeatureSchema RingCurrentNeighborhood::schema() const {
         {QStringLiteral("ring_aromaticity_ord"), {}},
         {QStringLiteral("ring_size"), {}},
         {QStringLiteral("ring_fused"), {}},
-        {QStringLiteral("bond_category"), {}},
-        {QStringLiteral("bond_order"), {}},
-        {QStringLiteral("bond_elem_a"), {}},
-        {QStringLiteral("bond_elem_b"), {}},
-        {QStringLiteral("bond_index"), {}},
-        {QStringLiteral("bond_atom_a"), {}},
-        {QStringLiteral("bond_atom_b"), {}},
-        {QStringLiteral("bond_axis_local_x"), {}},
-        {QStringLiteral("bond_axis_local_y"), {}},
-        {QStringLiteral("bond_axis_local_z"), {}},
         {QStringLiteral("source_normal_local_x"), {}},
         {QStringLiteral("source_normal_local_y"), {}},
         {QStringLiteral("source_normal_local_z"), {}},
@@ -123,7 +100,8 @@ FeatureSchema RingCurrentNeighborhood::schema() const {
     return s;
 }
 
-std::size_t RingCurrentNeighborhood::extract(const RunData& run, RecordSink& sink) const {
+std::size_t RingCurrentNeighborhood::extract(const Body& body, RecordSink& sink) const {
+    const RunData& run = body.run;
     const model::QtProtein& p = *run.protein;
     const model::Conformation& conf = *run.conformation;
     const io::QtTrajectoryH5* h5 = run.h5();
@@ -180,24 +158,27 @@ std::size_t RingCurrentNeighborhood::extract(const RunData& run, RecordSink& sin
             int anchorIdx = -1;
             const int ownRing = ownAromaticRing(p, atomIdx);
             if (ownRing >= 0) {
-                model::RingGeometry g =
-                    model::RingGeometryAt(conf, static_cast<std::size_t>(ownRing), row);
-                // Flip the SVD normal (arbitrary sign) to the canonical traversal
-                // (v1−v0)×(v2−v0) over the ring vertices in registration order.
-                const std::vector<Vec3> verts =
-                    model::RingVertices(conf, static_cast<std::size_t>(ownRing), row);
-                if (verts.size() >= 3) {
-                    const Vec3 canon = (verts[1] - verts[0]).cross(verts[2] - verts[0]);
-                    if (g.normal.dot(canon) < 0.0) g.normal = -g.normal;
-                }
+                model::RingGeometry g = body.idx.ringGeometry.at(static_cast<std::size_t>(ownRing), row);
                 const model::QtRing& ring = topo.ringAt(static_cast<std::size_t>(ownRing));
-                anchorIdx = typedRingAnchor(p, ring);
-                Vec3 anchor = g.center;
-                if (anchorIdx >= 0)
-                    anchor = conf.atomPosition(row, static_cast<std::size_t>(anchorIdx));
-                else if (!ring.atomIndices.empty())  // typed anchor absent: log + fall back
-                    anchor = conf.atomPosition(row, static_cast<std::size_t>(ring.atomIndices.front()));
-                frame = BuildAromaticHFrame(g.center, g.normal, anchor);
+                TypedAtomSelector sel;
+                sel.element = model::Element::C;
+                sel.locant = (ring.TypeIndex() == model::RingTypeIndex::TrpBenzene)
+                                 ? model::Locant::Delta
+                                 : model::Locant::Gamma;
+                QString anchorErr;
+                const std::optional<int32_t> anchor = body.idx.typedAtoms.selectUnique(
+                    ring.atomIndices, sel, &anchorErr);
+                if (!anchor) {
+                    throw std::runtime_error(
+                        QStringLiteral("ring_current typed frame anchor failed for atom %1 ring %2: %3")
+                            .arg(atomIdx)
+                            .arg(ownRing)
+                            .arg(anchorErr)
+                            .toStdString());
+                }
+                anchorIdx = *anchor;
+                const Vec3 anchorPos = conf.atomPosition(row, static_cast<std::size_t>(anchorIdx));
+                frame = BuildAromaticHFrame(g.center, g.normal, anchorPos);
             }
 
             NeighborhoodRecord rec;
@@ -254,8 +235,7 @@ std::size_t RingCurrentNeighborhood::extract(const RunData& run, RecordSink& sin
                 s.is_self_or_bonded = selfOrBonded;
 
                 // Lab displacement target→source-ring-center, in the atom's frame.
-                const model::RingGeometry sg =
-                    model::RingGeometryAt(conf, static_cast<std::size_t>(srcRingId), row);
+                const model::RingGeometry sg = body.idx.ringGeometry.at(static_cast<std::size_t>(srcRingId), row);
                 const Vec3 dispLab = sg.center - atomPos;
                 s.disp_local = frame.is_valid ? frame.ToLocal(dispLab) : dispLab;
                 // The source ring's unit normal in the target's local frame — the

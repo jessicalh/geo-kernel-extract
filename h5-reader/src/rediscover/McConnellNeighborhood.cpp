@@ -1,9 +1,11 @@
 #include "McConnellNeighborhood.h"
 
+#include "AnalysisBody.h"
 #include "ExtractionSupport.h"
-#include "FrameSpatialIndex.h"
 #include "LocalFrameBasis.h"
+#include "SpatialIndexSet.h"
 
+#include "../model/QtBond.h"
 #include "../model/QtProtein.h"
 #include "../io/QtTrajectoryH5.h"
 
@@ -61,6 +63,8 @@ LocalFrame buildHN(const model::QtProtein& p, const model::Conformation& conf,
 FeatureSchema McConnellNeighborhood::schema() const {
     FeatureSchema s;
     s.caseName = name();
+    s.relationshipKind = RelationshipKind::SourceSum;
+    s.sourceSchemaKind = SourceSchemaKind::Bond;
 
     s.sourceColumns = IdentityColumns();
     const std::vector<FeatureColumn> srcGeom = {
@@ -71,18 +75,6 @@ FeatureSchema McConnellNeighborhood::schema() const {
         {QStringLiteral("r"), QStringLiteral("Angstrom")},
         {QStringLiteral("cos_theta_bond_axis"), {}},
         {QStringLiteral("dipolar_3cos2m1_over_r3"), QStringLiteral("Angstrom^-3")},
-        {QStringLiteral("ring_z"), QStringLiteral("Angstrom")},
-        {QStringLiteral("ring_rho"), QStringLiteral("Angstrom")},
-        {QStringLiteral("ring_in_plane_angle"), QStringLiteral("radians")},
-        {QStringLiteral("ring_index"), {}},
-        {QStringLiteral("is_self_or_bonded"), {}},
-        {QStringLiteral("ring_type_index"), {}},
-        {QStringLiteral("ring_intensity"), QStringLiteral("nA/T")},
-        {QStringLiteral("ring_nitrogen_count"), {}},
-        {QStringLiteral("ring_jb_offset"), QStringLiteral("Angstrom")},
-        {QStringLiteral("ring_aromaticity_ord"), {}},
-        {QStringLiteral("ring_size"), {}},
-        {QStringLiteral("ring_fused"), {}},
         {QStringLiteral("bond_category"), {}},
         {QStringLiteral("bond_order"), {}},
         {QStringLiteral("bond_elem_a"), {}},
@@ -93,9 +85,6 @@ FeatureSchema McConnellNeighborhood::schema() const {
         {QStringLiteral("bond_axis_local_x"), {}},
         {QStringLiteral("bond_axis_local_y"), {}},
         {QStringLiteral("bond_axis_local_z"), {}},
-        {QStringLiteral("source_normal_local_x"), {}},
-        {QStringLiteral("source_normal_local_y"), {}},
-        {QStringLiteral("source_normal_local_z"), {}},
     };
     for (const auto& c : srcGeom) s.sourceColumns.push_back(c);
     for (const auto& c : BareKernelColumns()) s.sourceColumns.push_back(c);
@@ -120,7 +109,8 @@ FeatureSchema McConnellNeighborhood::schema() const {
     return s;
 }
 
-std::size_t McConnellNeighborhood::extract(const RunData& run, RecordSink& sink) const {
+std::size_t McConnellNeighborhood::extract(const Body& body, RecordSink& sink) const {
+    const RunData& run = body.run;
     const model::QtProtein& p = *run.protein;
     const model::Conformation& conf = *run.conformation;
     const io::QtTrajectoryH5* h5 = run.h5();
@@ -135,8 +125,6 @@ std::size_t McConnellNeighborhood::extract(const RunData& run, RecordSink& sink)
     std::size_t cases = 0;
     for (std::size_t row : run.frameMap.dftRows()) {
         const std::size_t orig = run.frameMap.originalIndex(row);
-        // One KD-tree per frame (lazy, per DESIGN.md).
-        const FrameSpatialIndex index(p, conf, row);
 
         for (std::size_t atomIdx : stratum) {
             const model::QtAtom& a = p.atom(atomIdx);
@@ -158,15 +146,20 @@ std::size_t McConnellNeighborhood::extract(const RunData& run, RecordSink& sink)
             double sumDipolar = 0.0;
             int nFinite = 0;
 
-            for (std::size_t cloudIdx : index.Within(atomPos, cutoff_A)) {
-                const AnisoBond& b = index.bond(cloudIdx);
-                const Vec3 axis = (b.posB - b.posA);
+            for (const SourceRef& ref : body.idx.spatial.near(CloudKind::BondMidpoints, row, atomPos, cutoff_A)) {
+                if (ref.entity_index < 0) continue;
+                const model::QtBond& b = p.topology().bondAt(static_cast<std::size_t>(ref.entity_index));
+                if (b.atomIndexA < 0 || b.atomIndexB < 0) continue;
+                const Vec3 posA = conf.atomPosition(row, static_cast<std::size_t>(b.atomIndexA));
+                const Vec3 posB = conf.atomPosition(row, static_cast<std::size_t>(b.atomIndexB));
+                const Vec3 midpoint = 0.5 * (posA + posB);
+                const Vec3 axis = (posB - posA);
                 const double axisNorm = axis.norm();
                 if (!(axisNorm > 1e-9)) continue;
                 const Vec3 axisU = axis / axisNorm;
 
                 // r and θ are about the BOND MIDPOINT and the BOND AXIS.
-                const Vec3 disp = b.midpoint - atomPos;  // target ← midpoint (lab)
+                const Vec3 disp = midpoint - atomPos;  // target ← midpoint (lab)
                 const double r = disp.norm();
                 if (!(r > 1e-6)) continue;  // exclude a bond whose own H is the atom
                 const double cosT = disp.dot(axisU) / r;
@@ -178,10 +171,10 @@ std::size_t McConnellNeighborhood::extract(const RunData& run, RecordSink& sink)
                 s.r = r;
                 s.cos_theta = cosT;
                 s.dipolar = dipolar;
-                s.bond_category = b.category;
-                s.bond_order = b.order;
-                s.bond_elem_a = b.elemA;
-                s.bond_elem_b = b.elemB;
+                s.bond_category = static_cast<int>(b.category);
+                s.bond_order = static_cast<int>(b.order);
+                s.bond_elem_a = static_cast<int>(p.atom(static_cast<std::size_t>(b.atomIndexA)).element);
+                s.bond_elem_b = static_cast<int>(p.atom(static_cast<std::size_t>(b.atomIndexB)).element);
                 s.bond_index = b.bondIndex;
                 s.bond_atom_a = b.atomIndexA;
                 s.bond_atom_b = b.atomIndexB;
@@ -194,7 +187,7 @@ std::size_t McConnellNeighborhood::extract(const RunData& run, RecordSink& sink)
                 if (std::isfinite(dipolar)) {
                     sumDipolar += dipolar;
                     ++nFinite;
-                    const int cc = catColumn(b.category);
+                    const int cc = catColumn(static_cast<int>(b.category));
                     if (cc >= 0) perCat[static_cast<std::size_t>(cc)] += dipolar;
                 }
             }

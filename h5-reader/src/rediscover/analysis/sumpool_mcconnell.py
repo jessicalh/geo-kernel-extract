@@ -15,13 +15,16 @@ bond source, the contribution is modelled as
 Target is the producer's pure McConnell kernel B = bare_T0 (clean, analytic).
 """
 import numpy as np
+import os
 import pandas as pd
+import sys
 import torch
 import torch.nn as nn
 
 torch.manual_seed(0); np.random.seed(0)
 dev = "cuda" if torch.cuda.is_available() else "cpu"
-SRC = "/tmp/rediscover-out/mcconnell_sources.csv"
+out_dir = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REDISCOVER_OUT", "/tmp/rediscover-out")
+SRC = f"{out_dir}/mcconnell_sources.csv"
 
 df = pd.read_csv(SRC).rename(columns={"dipolar_3cos2m1_over_r3": "dipolar",
                                       "cos_theta_bond_axis": "ct"})

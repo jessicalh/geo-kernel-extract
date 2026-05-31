@@ -13,10 +13,14 @@ OWN mean (no leakage of k). The transferable claim is the single shared k.
 """
 import numpy as np
 import pandas as pd
+import os
+import sys
 
-df = pd.read_csv("/tmp/rediscover-out/ring_current_aggregated.csv")
+out_dir = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("REDISCOVER_OUT", "/tmp/rediscover-out")
+df = pd.read_csv(f"{out_dir}/ring_current_aggregated.csv")
 df = df[(df.dft_present == 1)].copy()
-PRED, TGT = "sum_dipolar", "dft_sigma_iso"
+PRED = "sum_dipolar_producer_valid" if "sum_dipolar_producer_valid" in df.columns else "sum_dipolar"
+TGT = "dft_sigma_iso"
 
 # per-atom de-mean (baseline removal, per atom, uses only that atom's own data)
 df["xw"] = df[PRED] - df.groupby("atom_index")[PRED].transform("mean")
