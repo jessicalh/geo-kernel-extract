@@ -94,6 +94,22 @@ struct QtAtom {
         return element == Element::O && planarGroup == PlanarGroupKind::SidechainAmide;
     }
     constexpr bool IsPolarH() const { return polarH != PolarHKind::NotPolar; }
+
+    // Aromatic ring-facing hydrogen — the rediscover ring-current stratum.
+    // Typed (no string dispatch): an H atom whose AMBER ff14SB atom type is
+    // one of the aromatic-ring CH types — HA (H on sp2 aromatic ring), H4
+    // (aromatic ring with one EWG, e.g. HIS), or H5 (aromatic ring with two
+    // EWGs). These are exactly the protons that sit in the ring-current
+    // shielding cone (PHE/TYR/TRP HD/HE/HZ/HH, HIS HD2/HE1). Backbone amide
+    // HN (ff type H, NotPolar=false) and aliphatic H (HC/H1/H2/H3) are
+    // excluded by construction. Mirrors the HN stratum's existing
+    // IsBackboneAmideHydrogen() predicate in spirit. See DESIGN.md.
+    constexpr bool IsAromaticRingHydrogen() const {
+        return element == Element::H
+               && (ffAtomType == QtFfAtomType::HA || ffAtomType == QtFfAtomType::H4
+                   || ffAtomType == QtFfAtomType::H5);
+    }
+
     constexpr bool IsInAnyRing() const {
         return ringPositionPrimary != RingPositionLabel::NotInRing || ringPositionSecondary != RingPositionLabel::NotInRing;
     }

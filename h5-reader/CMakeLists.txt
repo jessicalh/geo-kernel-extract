@@ -291,8 +291,66 @@ if(COMMAND h5reader_apply_build_type_settings)
 endif()
 
 
+# ============================================================================
+# Rediscover — headless feature extractor (experimental branch
+# h5-reader-pysr-spike). QCoreApplication only: NO widgets, NO VTK. Links
+# h5reader_core + Eigen + the vendored nanoflann header. Loads one 1P9J
+# calcset into an all-frames-resident RunData and writes the ring-current
+# and McConnell feature/target CSVs. Not wired into the GUI; one-shot study
+# substrate. See src/rediscover/{GUIDANCE,DESIGN}.md.
+# ============================================================================
+
+qt_add_executable(h5reader_extract
+    src/rediscover/SphericalBasis.h
+    src/rediscover/SphericalBasis.cpp
+    src/rediscover/LocalFrameBasis.h
+    src/rediscover/LocalFrameBasis.cpp
+    src/rediscover/RediscoverTypes.h
+    src/rediscover/RunData.h
+    src/rediscover/RunData.cpp
+    src/rediscover/RecordSink.h
+    src/rediscover/RecordSink.cpp
+    src/rediscover/ExtractionSupport.h
+    src/rediscover/ExtractionSupport.cpp
+    src/rediscover/RediscoveryExtraction.h
+    src/rediscover/FrameSpatialIndex.h
+    src/rediscover/FrameSpatialIndex.cpp
+    src/rediscover/RingCurrentNeighborhood.h
+    src/rediscover/RingCurrentNeighborhood.cpp
+    src/rediscover/McConnellNeighborhood.h
+    src/rediscover/McConnellNeighborhood.cpp
+    src/rediscover/main_extract.cpp
+)
+target_include_directories(h5reader_extract PRIVATE
+    src
+    ${CMAKE_CURRENT_SOURCE_DIR}/extern
+    ${HIGHFIVE_INCLUDE_DIR}
+)
+target_link_libraries(h5reader_extract PRIVATE
+    h5reader_core
+    Eigen3::Eigen
+)
+h5reader_apply_platform_target_settings(h5reader_extract)
+if(COMMAND h5reader_apply_build_type_settings)
+    h5reader_apply_build_type_settings(h5reader_extract)
+endif()
+
 include(CTest)
 if(BUILD_TESTING AND Qt6Test_FOUND)
+    # SphericalBasis library-order decomposition fixture (the foundation).
+    qt_add_executable(h5reader_rediscover_tests
+        tests/rediscover_basis_tests.cpp
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
+    )
+    target_include_directories(h5reader_rediscover_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_tests COMMAND h5reader_rediscover_tests)
+
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp
         src/model/DashboardSignal.h
