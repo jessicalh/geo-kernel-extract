@@ -11,6 +11,7 @@
 
 #include "ExtractionSupport.h"
 #include "Catalog.h"
+#include "ChargeDipoleNeighborhood.h"
 #include "McConnellNeighborhood.h"
 #include "OutputManifest.h"
 #include "RecordSink.h"
@@ -45,7 +46,6 @@ QString relationshipKindName(h5reader::rediscover::RelationshipKind kind) {
 bool isFailLoudStub(const QString& which) {
     return which == QStringLiteral("buckingham_efield")
            || which == QStringLiteral("efg")
-           || which == QStringLiteral("charge_dipole")
            || which == QStringLiteral("charge_quadrupole")
            || which == QStringLiteral("larsen_hbond")
            || which == QStringLiteral("charge_response_gradient")
@@ -55,7 +55,7 @@ bool isFailLoudStub(const QString& which) {
 
 QString stubMessage(const QString& which, const QString& chargeSource,
                     const h5reader::rediscover::Catalog& catalog) {
-    if (which == QStringLiteral("charge_dipole") || which == QStringLiteral("charge_quadrupole")) {
+    if (which == QStringLiteral("charge_quadrupole")) {
         if (chargeSource == QStringLiteral("mopac")
             && !catalog.has(h5reader::rediscover::ArrayId::MopacCharge)) {
             return QStringLiteral("%1 requires charge_source=mopac, but per-frame MOPAC charges are absent")
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 8.0 Å is the conventions'
@@ -122,11 +122,15 @@ int main(int argc, char** argv) {
     QCommandLineOption chargeSourceOpt(QStringLiteral("charge-source"),
                                        QStringLiteral("Charge source for charge cases: ff14sb | aimnet2 | mopac."),
                                        QStringLiteral("source"), QStringLiteral("ff14sb"));
+    QCommandLineOption chargeCutoffOpt(QStringLiteral("charge-cutoff"),
+                                       QStringLiteral("Charge-site source cutoff in Angstrom for charge_dipole (fixed default 6.0 for this relationship)."),
+                                       QStringLiteral("angstrom"), QStringLiteral("6.0"));
     parser.addOption(runOpt);
     parser.addOption(outOpt);
     parser.addOption(caseOpt);
     parser.addOption(mcCutoffOpt);
     parser.addOption(chargeSourceOpt);
+    parser.addOption(chargeCutoffOpt);
     parser.process(app);
 
     if (!parser.isSet(runOpt) || !parser.isSet(outOpt)) {
@@ -147,6 +151,12 @@ int main(int argc, char** argv) {
     const double mcCutoff = parser.value(mcCutoffOpt).toDouble(&cutoffOk);
     if (!cutoffOk || !(mcCutoff > 0.0)) {
         qCCritical(cMain).noquote() << "invalid --mc-cutoff" << parser.value(mcCutoffOpt);
+        return 2;
+    }
+    bool chargeCutoffOk = false;
+    const double chargeCutoff = parser.value(chargeCutoffOpt).toDouble(&chargeCutoffOk);
+    if (!chargeCutoffOk || !(chargeCutoff > 0.0)) {
+        qCCritical(cMain).noquote() << "invalid --charge-cutoff" << parser.value(chargeCutoffOpt);
         return 2;
     }
 
@@ -178,6 +188,20 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    if (which == QStringLiteral("charge_dipole")) {
+        if (chargeSource != QStringLiteral("ff14sb")) {
+            qCCritical(cMain).noquote()
+                << "ValidateScenario failed: charge_dipole currently implements charge_source=ff14sb, got"
+                << chargeSource;
+            return 2;
+        }
+        if (!catalog.has(h5reader::rediscover::ArrayId::Ff14sbCharge)) {
+            qCCritical(cMain).noquote()
+                << "ValidateScenario failed: charge_dipole requires FF14SB charges, but topol.top charges were not loaded";
+            return 2;
+        }
+    }
+
     std::vector<std::unique_ptr<h5reader::rediscover::RediscoveryExtraction>> extractions;
     if (which == QStringLiteral("ring") || which == QStringLiteral("ring_current") || which == QStringLiteral("all"))
         extractions.push_back(std::make_unique<h5reader::rediscover::RingCurrentNeighborhood>());
@@ -186,8 +210,15 @@ int main(int argc, char** argv) {
         mc->cutoff_A = mcCutoff;
         extractions.push_back(std::move(mc));
     }
+    if (which == QStringLiteral("charge_dipole")) {
+        auto charge = std::make_unique<h5reader::rediscover::ChargeDipoleNeighborhood>();
+        charge->charge_source = chargeSource;
+        charge->cutoff_A = chargeCutoff;
+        extractions.push_back(std::move(charge));
+    }
     if (extractions.empty()) {
-        qCCritical(cMain).noquote() << "unknown --case" << which << "(expected ring|mc|all)";
+        qCCritical(cMain).noquote() << "unknown --case" << which
+                                    << "(expected ring|mc|charge_dipole|all)";
         return 2;
     }
 

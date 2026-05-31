@@ -113,6 +113,7 @@ SpatialIndexSet::SpatialIndexSet(const RunData& run) {
         std::vector<CloudPoint> charges;
         charges.reserve(p.atomCount());
         for (std::size_t ai = 0; ai < p.atomCount(); ++ai) {
+            if (!p.atom(ai).hasPartialCharge) continue;
             charges.push_back({conf.atomPosition(frame, ai),
                                {CloudKind::ChargeSites, static_cast<int32_t>(charges.size()),
                                 static_cast<int32_t>(ai)}});

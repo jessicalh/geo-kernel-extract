@@ -158,6 +158,16 @@ void writeBondSource(QTextStream& out, const SourceSlot& s) {
         << num(s.bond_axis_local.z());
 }
 
+void writeChargeSource(QTextStream& out, const SourceSlot& s) {
+    out << ',' << static_cast<int>(s.kind) << ',' << s.source_charge_source << ','
+        << s.source_atom_index << ',' << s.source_residue_index << ','
+        << s.source_residue_number << ',' << s.source_amino_acid << ','
+        << s.source_element << ',' << s.source_atom_name << ','
+        << num(s.source_q_e) << ','
+        << num(s.disp_local.x()) << ',' << num(s.disp_local.y()) << ','
+        << num(s.disp_local.z()) << ',' << num(s.r);
+}
+
 }  // namespace
 
 RecordSink::RecordSink(const QString& outDir, const FeatureSchema& schema) : schema_(schema) {
@@ -167,11 +177,15 @@ RecordSink::RecordSink(const QString& outDir, const FeatureSchema& schema) : sch
     sidecarFiles_ = {
         sidecarName(schema, QStringLiteral("sources"), QStringLiteral("target_T2")),
         sidecarName(schema, QStringLiteral("sources"), QStringLiteral("target_local_T2")),
-        sidecarName(schema, QStringLiteral("sources"), QStringLiteral("bare_kernel_T2")),
         sidecarName(schema, QStringLiteral("aggregated"), QStringLiteral("target_T2")),
         sidecarName(schema, QStringLiteral("aggregated"), QStringLiteral("target_local_T2")),
-        sidecarName(schema, QStringLiteral("aggregated"), QStringLiteral("bare_kernel_T2")),
     };
+    if (schema_.includeBareKernel) {
+        sidecarFiles_.insert(2, sidecarName(schema, QStringLiteral("sources"),
+                                           QStringLiteral("bare_kernel_T2")));
+        sidecarFiles_.append(sidecarName(schema, QStringLiteral("aggregated"),
+                                        QStringLiteral("bare_kernel_T2")));
+    }
 
     sourcesFile_ = std::make_unique<QSaveFile>(sourcesPath_);
     aggregatedFile_ = std::make_unique<QSaveFile>(aggregatedPath_);
@@ -201,12 +215,14 @@ void RecordSink::WriteSourceRows(const NeighborhoodRecord& rec) {
             writeRingSource(out, s);
         else if (schema_.sourceSchemaKind == SourceSchemaKind::Bond)
             writeBondSource(out, s);
-        writeBareKernel(out, rec);
+        else if (schema_.sourceSchemaKind == SourceSchemaKind::Charge)
+            writeChargeSource(out, s);
+        if (schema_.includeBareKernel) writeBareKernel(out, rec);
         writeTarget(out, rec.target);
         out << '\n';
         appendT2(sourceTargetT2_, rec.target.total_decomp.T2);
         appendLocalTargetT2(sourceTargetLocalT2_, rec);
-        appendT2(sourceBareKernelT2_, rec.bare_kernel.T2);
+        if (schema_.includeBareKernel) appendT2(sourceBareKernelT2_, rec.bare_kernel.T2);
         ++sourceRows_;
     }
 }
@@ -225,12 +241,31 @@ void RecordSink::WriteAggregatedRow(const NeighborhoodRecord& rec, double sumAll
         << ',' << num(sumAll) << ',' << num(sumValid);
     for (double v : perTypeSums) out << ',' << num(v);
     out << ',' << num(cutoff_A);
-    writeBareKernel(out, rec);
+    if (schema_.includeBareKernel) writeBareKernel(out, rec);
     writeTarget(out, rec.target);
     out << '\n';
     appendT2(aggregatedTargetT2_, rec.target.total_decomp.T2);
     appendLocalTargetT2(aggregatedTargetLocalT2_, rec);
-    appendT2(aggregatedBareKernelT2_, rec.bare_kernel.T2);
+    if (schema_.includeBareKernel) appendT2(aggregatedBareKernelT2_, rec.bare_kernel.T2);
+    ++aggRows_;
+}
+
+void RecordSink::WriteChargeDipoleAggregatedRow(const NeighborhoodRecord& rec, const Vec3& mu,
+                                                double cutoff_A, const QString& chargeSource,
+                                                bool excludeResidue) {
+    if (!ok_) return;
+    QTextStream& out = *aggregatedOut_;
+    writeIdentity(out, rec);
+    out << ',' << static_cast<int>(rec.sources.size()) << ',' << chargeSource << ','
+        << (excludeResidue ? 1 : 0) << ',' << num(cutoff_A) << ','
+        << num(mu.x()) << ',' << num(mu.y()) << ',' << num(mu.z()) << ','
+        << num(mu.norm());
+    if (schema_.includeBareKernel) writeBareKernel(out, rec);
+    writeTarget(out, rec.target);
+    out << '\n';
+    appendT2(aggregatedTargetT2_, rec.target.total_decomp.T2);
+    appendLocalTargetT2(aggregatedTargetLocalT2_, rec);
+    if (schema_.includeBareKernel) appendT2(aggregatedBareKernelT2_, rec.bare_kernel.T2);
     ++aggRows_;
 }
 
@@ -241,25 +276,38 @@ bool RecordSink::Commit() {
     const bool a = sourcesFile_ && sourcesFile_->commit();
     const bool b = aggregatedFile_ && aggregatedFile_->commit();
     const QString outDir = QFileInfo(sourcesPath_).dir().absolutePath();
-    const bool c = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[0]),
-                               {sourceRows_, 5}, sourceTargetT2_);
-    const bool d = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[1]),
-                               {sourceRows_, 5}, sourceTargetLocalT2_);
-    const bool e = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[2]),
-                               {sourceRows_, 5}, sourceBareKernelT2_);
-    const bool f = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[3]),
-                               {aggRows_, 5}, aggregatedTargetT2_);
-    const bool g = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[4]),
-                               {aggRows_, 5}, aggregatedTargetLocalT2_);
-    const bool h = writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[5]),
-                               {aggRows_, 5}, aggregatedBareKernelT2_);
+    bool sidecarsOk = true;
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[0]),
+                                {sourceRows_, 5}, sourceTargetT2_);
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[1]),
+                                {sourceRows_, 5}, sourceTargetLocalT2_);
+    std::size_t aggOffset = 2;
+    if (schema_.includeBareKernel) {
+        sidecarsOk = sidecarsOk
+                     && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[2]),
+                                    {sourceRows_, 5}, sourceBareKernelT2_);
+        aggOffset = 3;
+    }
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[aggOffset]),
+                                {aggRows_, 5}, aggregatedTargetT2_);
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[aggOffset + 1]),
+                                {aggRows_, 5}, aggregatedTargetLocalT2_);
+    if (schema_.includeBareKernel) {
+        sidecarsOk = sidecarsOk
+                     && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[aggOffset + 2]),
+                                    {aggRows_, 5}, aggregatedBareKernelT2_);
+    }
     if (!a) report(Severity::Error, QStringLiteral("commit failed"), sourcesPath_);
     if (!b) report(Severity::Error, QStringLiteral("commit failed"), aggregatedPath_);
-    if (!c || !d || !e || !f || !g || !h)
+    if (!sidecarsOk)
         report(Severity::Error, QStringLiteral("sidecar NPY commit failed"), schema_.caseName);
     qCInfo(cSink).noquote() << "committed" << schema_.caseName << "| source_rows=" << sourceRows_
                             << "| agg_rows=" << aggRows_;
-    return a && b && c && d && e && f && g && h;
+    return a && b && sidecarsOk;
 }
 
 }  // namespace h5reader::rediscover

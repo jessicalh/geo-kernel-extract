@@ -4,6 +4,39 @@ Freshest current state, for the next session/agent. Read `GUIDANCE.md`
 (orientation) + `DESIGN.md` (class model) first; this supersedes the
 "Status" section in GUIDANCE.md, which a build agent left mid-build/stale.
 
+## UPDATE 2026-05-31 (late) — multi-scenario surface BUILT, faithful-rebuild gate PASSED
+
+The general surface is implemented and validated (built by **codex** — codex has
+full unsandboxed agency via `codex exec --dangerously-bypass-approvals-and-sandbox`
+from the lead; Claude Agent-tool subagents are sandbox-blocked from compile, a
+wrong-knob misconfig, not a hard limit — see `reference_subagent_build_agency`).
+Committed `1bd61aa` on `h5-reader-pysr-spike` (NEVER MERGED).
+
+- **Spine built** (`src/rediscover/`): `Catalog`, `TemporalIndex`, `TypedAtomIndex`
+  (scoped `select`/`selectUnique`, IUPAC-trap-safe — the positional `front()` anchor
+  fallback is REMOVED), `SpatialIndexSet` (per-cloud KD trees, near + range/annulus),
+  `RingGeometryCache`, `ChargeStore` + FF14SB read from `topol.top` inline `[atoms]`
+  (typed resnr/order cross-check, no glob), `ResidentIndexes`, `OutputManifest`,
+  `AnalysisBody`. Per-relationship schema + `relationship_kind` + T2 sidecar NPYs
+  documented in `python/nmr_extract/_catalog.py`. No `PbcCellSeries` (PBC=None).
+- **ring_current + mcconnell ported** to the Body/catalog/index surface and
+  **reproduce the ORACLE from a fresh rebuild** (not the one-off output):
+  ring k=21.1, coupled within-atom R²=0.616, equivariant T2 R²=0.468, |T2| r=0.757,
+  basis 4.88e-8, frame rot ~1e-4°; mcconnell scalar R²=0.55, kernel readout
+  r=0.918/R²=0.843. `ctest h5reader_rediscover_tests` passes; GUI untouched.
+- **The 7 others fail loud** (exit 2, ValidateScenario): buckingham_efield, efg,
+  charge_dipole, charge_quadrupole, larsen_hbond, charge_response_gradient,
+  aimnet2_embedding. MOPAC charge source = absent→loud (per-frame data lands AM);
+  AIMNet2 recognized but multipole reducers intentionally unrunnable.
+
+**Next (build, when data/decisions land):** wire the 7 fail-loud stubs — charge
+multipoles once charges flow (FF14SB done, MOPAC AM, AIMNet2 charge), the
+per-atom-feature items (efg/efield/CRG/embedding) against the carrier, larsen
+once its detection/classifier decisions are made. Equivariant-T2 path is proven on
+ring; extend to the new items per the frame resolution. The one emergent issue
+codex hit + handled: topol↔model atom-name aliasing during charge load (typed
+residue/order cross-checks, not positional).
+
 ## UPDATE 2026-05-31 (evening) — canonical re-run done + scalar fit landed
 
 The value-affecting Codex fixes are IN, built clean (lead session), re-run on

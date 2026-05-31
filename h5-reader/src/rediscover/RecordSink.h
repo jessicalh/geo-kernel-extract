@@ -40,7 +40,7 @@ struct FeatureColumn {
 };
 
 enum class RelationshipKind { SourceSum, PerAtomFeature };
-enum class SourceSchemaKind { None, Ring, Bond };
+enum class SourceSchemaKind { None, Ring, Bond, Charge };
 
 struct FeatureSchema {
     QString caseName;                    // "ring_current" | "mcconnell"
@@ -49,6 +49,7 @@ struct FeatureSchema {
     std::vector<FeatureColumn> sourceColumns;      // per-source row schema
     std::vector<FeatureColumn> aggregatedColumns;  // aggregated row schema
     std::size_t maxSourceSlots = 0;      // padding width for the aggregated row
+    bool includeBareKernel = true;       // false when no producer cross-check exists
 };
 
 // CSV sink: opens the two files, writes the header row, then accepts rows.
@@ -75,6 +76,12 @@ public:
     void WriteAggregatedRow(const NeighborhoodRecord& rec, double sumAll, double sumValid,
                             int nSourcesValid, const std::vector<double>& perTypeSums,
                             double cutoff_A);
+
+    // Charge-dipole aggregated row: one row per (atom, frame), with
+    // mu = Σ q_i (r_i - r_atom) in the target local frame.
+    void WriteChargeDipoleAggregatedRow(const NeighborhoodRecord& rec, const Vec3& mu,
+                                        double cutoff_A, const QString& chargeSource,
+                                        bool excludeResidue);
 
     // Flush + atomic-commit both files. After Commit(), the sink is spent.
     bool Commit();

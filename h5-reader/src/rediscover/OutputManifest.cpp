@@ -36,6 +36,16 @@ bool WriteOutputManifest(const QString& outDir, const std::vector<OutputEntry>& 
     conventions.insert(QStringLiteral("output_carrier"), QStringLiteral("per_relationship_schema"));
     conventions.insert(QStringLiteral("wide_array_payloads"),
                        QStringLiteral("sidecar_npy_entries_documented_in_python/nmr_extract/_catalog.py"));
+    QJsonObject target;
+    target.insert(QStringLiteral("T0"), QStringLiteral("dft_sigma_iso"));
+    target.insert(QStringLiteral("T1_status"), QStringLiteral("unverified_emitted_not_discarded"));
+    target.insert(QStringLiteral("T2_status"), QStringLiteral("emitted_with_frame_alignment_diagnostic"));
+    conventions.insert(QStringLiteral("dft_target"), target);
+    QJsonObject multipoles;
+    multipoles.insert(QStringLiteral("origin"), QStringLiteral("target_atom"));
+    multipoles.insert(QStringLiteral("charge_source_required"), true);
+    multipoles.insert(QStringLiteral("exclude_residue_supported"), true);
+    conventions.insert(QStringLiteral("charge_multipoles"), multipoles);
     root.insert(QStringLiteral("conventions"), conventions);
 
     QJsonArray arr;

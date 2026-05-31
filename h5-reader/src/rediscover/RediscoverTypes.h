@@ -50,10 +50,9 @@ struct DftTarget {
 };
 
 // ── One source in the neighbourhood ───────────────────────────────────────
-// A source is either an aromatic ring (ring-current stratum) or an anisotropic
-// bond (McConnell stratum). The fields are a superset; the per-extraction
-// schema names which columns it actually fills.
-enum class SourceKind : int { Ring = 0, Bond = 1 };
+// A source is an aromatic ring, anisotropic bond, or charge site. The fields
+// are a superset; the per-extraction schema names which columns it fills.
+enum class SourceKind : int { Ring = 0, Bond = 1, Charge = 2 };
 
 struct SourceSlot {
     SourceKind kind = SourceKind::Ring;
@@ -99,6 +98,18 @@ struct SourceSlot {
     int32_t bond_atom_a    = -1;       // endpoint A atom index (provenance)
     int32_t bond_atom_b    = -1;       // endpoint B atom index (provenance)
     Vec3   bond_axis_local = Vec3::Zero();  // unit (B−A) in the local frame
+
+    // Charge-site identity + weight (charge_dipole / charge_quadrupole). The
+    // displacement fields above are still the target→source vector in the
+    // target's local frame; source_q_e is the selected charge source's value.
+    QString source_charge_source;
+    double  source_q_e = 0.0;
+    int32_t source_atom_index = -1;
+    int32_t source_residue_index = -1;
+    int32_t source_residue_number = 0;
+    int     source_amino_acid = -1;
+    int     source_element = -1;
+    QString source_atom_name;
 };
 
 // ── The per-(atom, frame) neighbourhood record ────────────────────────────
