@@ -1,3 +1,12 @@
+// DftShieldingLoader — implementation. One DFT job's meta.json +
+// the .out file it names => one parsed+validated DftShieldingFrame.
+//
+// Post-2026-05-31 SIMPLIFY: the meta.json path is supplied directly
+// by the caller (from `.LGS` `dft.frames[].meta_json`), so this file
+// no longer parses `_fNNNNNN_t<ps>` from job-dir names. The .out path
+// inside the meta.json (`files.out_primary`) is honoured strictly —
+// no globbing for *_nmr.out files.
+
 #include "DftShieldingLoader.h"
 
 #include "OrcaShieldingParser.h"
@@ -6,13 +15,11 @@
 #include "../model/QtProtein.h"
 
 #include <QByteArray>
-#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
-#include <QStringList>
 
 #include <cmath>
 #include <sstream>
@@ -29,60 +36,33 @@ void report(Severity sev, const QString& msg, const QString& ctx) {
     h5reader::diagnostics::ErrorBus::Report(sev, QStringLiteral("DftShieldingLoader"), msg, ctx);
 }
 
-QString resolveJobDir(std::size_t originalIndex, const QString& jobsDir) {
-    QDir dir(jobsDir);
-    if (!dir.exists())
-        return {};
-
-    const QStringList entries = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QString& name : entries) {
-        const int t = name.lastIndexOf(QStringLiteral("_t"));
-        if (t < 0)
-            continue;
-        const int f = name.lastIndexOf(QStringLiteral("_f"), t);
-        if (f < 0 || t <= f + 2)
-            continue;
-        bool ok = false;
-        const qulonglong orig = name.mid(f + 2, t - (f + 2)).toULongLong(&ok);
-        if (!ok || static_cast<std::size_t>(orig) != originalIndex)
-            continue;
-        return dir.absoluteFilePath(name);
-    }
-    return {};
-}
-
 // ppm tolerance for the ORCA identity total == dia + para. ORCA prints the
 // tensors to ~3-4 decimals, so the reconstructed sum agrees to well under this.
 constexpr double kIdentityTolPpm = 0.1;
+
 }  // namespace
 
 std::shared_ptr<const h5reader::model::DftShieldingFrame>
-DftShieldingLoader::LoadAndValidate(std::size_t originalIndex,
-                                    const QString& jobsDir,
+DftShieldingLoader::LoadAndValidate(const QString& meta_json_abspath,
                                     const h5reader::model::QtProtein* protein) {
-    const QString jobDir = resolveJobDir(originalIndex, jobsDir);
-    if (jobDir.isEmpty())
-        return nullptr;  // no job for this frame -- an honest gap, not an error
-    const QString jobId = QFileInfo(jobDir).fileName();
-
-    // meta.json -> files.out_primary names the SUCCESSFUL run (a frame may have
-    // retry .out files; never glob *_nmr.out).
-    const QString metaPath = QStringLiteral("%1/%2_meta.json").arg(jobDir, jobId);
-    QFile metaFile(metaPath);
+    if (meta_json_abspath.isEmpty()) return nullptr;
+    QFile metaFile(meta_json_abspath);
     if (!metaFile.open(QIODevice::ReadOnly)) {
-        report(Severity::Warning, QStringLiteral("cannot open meta.json"), metaPath);
+        report(Severity::Warning, QStringLiteral("cannot open meta.json"), meta_json_abspath);
         return nullptr;
     }
-    const QJsonObject filesObj = QJsonDocument::fromJson(metaFile.readAll())
-                                     .object()
-                                     .value(QStringLiteral("files"))
-                                     .toObject();
+    const QJsonObject root = QJsonDocument::fromJson(metaFile.readAll()).object();
+    const QJsonObject filesObj = root.value(QStringLiteral("files")).toObject();
     const QString outRel = filesObj.value(QStringLiteral("out_primary")).toString();
     if (outRel.isEmpty()) {
-        report(Severity::Warning, QStringLiteral("meta.json has no files.out_primary"), metaPath);
+        report(Severity::Warning, QStringLiteral("meta.json has no files.out_primary"),
+               meta_json_abspath);
         return nullptr;
     }
 
+    // out_primary is the basename inside the job dir; resolve relative
+    // to the meta.json's directory.
+    const QString jobDir = QFileInfo(meta_json_abspath).absolutePath();
     const QString outPath = QStringLiteral("%1/%2").arg(jobDir, outRel);
     QFile outFile(outPath);
     if (!outFile.open(QIODevice::ReadOnly)) {
@@ -124,8 +104,9 @@ DftShieldingLoader::LoadAndValidate(std::size_t originalIndex,
         }
     }
 
-    qCDebug(cDft).noquote() << "loaded DFT frame |" << originalIndex << "| atoms=" << fr.atoms.size()
-                            << "| from" << outRel;
+    qCDebug(cDft).noquote() << "loaded DFT frame |" << "atoms=" << fr.atoms.size()
+                            << "| meta=" << meta_json_abspath
+                            << "| out=" << outRel;
     return std::make_shared<const h5reader::model::DftShieldingFrame>(std::move(fr));
 }
 

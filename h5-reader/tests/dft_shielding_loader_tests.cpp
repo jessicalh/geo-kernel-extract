@@ -1,5 +1,7 @@
-// h5reader_dft_shielding_loader_tests — direct tests for the static DFT
-// job loader extracted from DftShieldingStore.
+// h5reader_dft_shielding_loader_tests — direct tests for the static
+// DFT job loader. Post-2026-05-31 SIMPLIFY: the loader takes an
+// explicit meta.json path (from `.LGS`'s `dft.frames[].meta_json`),
+// not a jobs-dir + frame index pair.
 
 #include "io/DftShieldingLoader.h"
 
@@ -72,23 +74,19 @@ QString orcaOut(const QString& atomBlocks) {
         .arg(atomBlocks);
 }
 
-QString createJobDir(const QString& jobsDir, std::size_t originalIndex) {
+// Builds a single DFT job dir + meta.json + primary .out, returning
+// the absolute meta.json path that LoadAndValidate consumes.
+QString writeJob(const QString& root, std::size_t originalIndex, const QString& outText) {
     const QString jobId = QStringLiteral("orca_f%1_t0").arg(originalIndex, 6, 10, QLatin1Char('0'));
-    QDir jobs(jobsDir);
-    if (!jobs.mkpath(jobId))
-        return {};
-    return jobs.absoluteFilePath(jobId);
-}
-
-bool writeJob(const QString& jobsDir, std::size_t originalIndex, const QString& outText) {
-    const QString jobDir = createJobDir(jobsDir, originalIndex);
-    if (jobDir.isEmpty())
-        return false;
-    const QString jobId = QFileInfo(jobDir).fileName();
+    QDir parent(root);
+    if (!parent.mkpath(jobId)) return {};
+    const QString jobDir = parent.absoluteFilePath(jobId);
     const QString metaPath = QStringLiteral("%1/%2_meta.json").arg(jobDir, jobId);
     if (!writeFile(metaPath, QByteArrayLiteral("{\"files\":{\"out_primary\":\"primary.out\"}}\n")))
-        return false;
-    return writeFile(QStringLiteral("%1/primary.out").arg(jobDir), outText.toUtf8());
+        return {};
+    if (!writeFile(QStringLiteral("%1/primary.out").arg(jobDir), outText.toUtf8()))
+        return {};
+    return metaPath;
 }
 
 }  // namespace
@@ -108,9 +106,10 @@ void DftShieldingLoaderTests::loadAndValidateHappyPath() {
     const auto protein = makeProtein(2);
     const QString out = orcaOut(atomBlock(0, QStringLiteral("H"), 10.0, 1.0)
                                 + atomBlock(1, QStringLiteral("C"), 20.0, 2.0));
-    QVERIFY(writeJob(dir.path(), 7, out));
+    const QString metaPath = writeJob(dir.path(), 7, out);
+    QVERIFY(!metaPath.isEmpty());
 
-    const auto frame = DftShieldingLoader::LoadAndValidate(7, dir.path(), protein.get());
+    const auto frame = DftShieldingLoader::LoadAndValidate(metaPath, protein.get());
 
     QVERIFY(frame != nullptr);
     QCOMPARE(frame->atoms.size(), std::size_t{2});
@@ -121,13 +120,10 @@ void DftShieldingLoaderTests::loadAndValidateHappyPath() {
 }
 
 void DftShieldingLoaderTests::missingMetaReturnsNull() {
-    QTemporaryDir dir;
-    QVERIFY(dir.isValid());
+    // No file at the supplied path → null.
     const auto protein = makeProtein(1);
-    QVERIFY(!createJobDir(dir.path(), 11).isEmpty());
-
-    const auto frame = DftShieldingLoader::LoadAndValidate(11, dir.path(), protein.get());
-
+    const auto frame = DftShieldingLoader::LoadAndValidate(
+        QStringLiteral("/tmp/this-meta-does-not-exist.json"), protein.get());
     QVERIFY(frame == nullptr);
 }
 
@@ -137,9 +133,10 @@ void DftShieldingLoaderTests::parserHoleReturnsNull() {
     const auto protein = makeProtein(3);
     const QString out = orcaOut(atomBlock(0, QStringLiteral("H"), 10.0, 1.0)
                                 + atomBlock(2, QStringLiteral("C"), 20.0, 2.0));
-    QVERIFY(writeJob(dir.path(), 13, out));
+    const QString metaPath = writeJob(dir.path(), 13, out);
+    QVERIFY(!metaPath.isEmpty());
 
-    const auto frame = DftShieldingLoader::LoadAndValidate(13, dir.path(), protein.get());
+    const auto frame = DftShieldingLoader::LoadAndValidate(metaPath, protein.get());
 
     QVERIFY(frame == nullptr);
 }

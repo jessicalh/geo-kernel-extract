@@ -1,5 +1,10 @@
 # Run descriptor — `h5reader_run.toml` (format spec)
 
+> **SUPERSEDED by `spec/CALCSET_MANIFEST.md` (2026-05-31).** The
+> calcset wrapper landed as `.LGS` (JSON) not TOML; the toml++
+> dependency was removed in the same change. Kept as historical
+> record of the design conversation that motivated the `.LGS`.
+
 A small TOML file that sits at the head of a run directory and tells the reader
 **where to get things from** — so the loader reads a documented map instead of
 sniffing. This is the "no file discovery" rule made explicit (CLAUDE.md):

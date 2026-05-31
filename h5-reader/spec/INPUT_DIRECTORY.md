@@ -1,5 +1,12 @@
 # Input directory contract — `h5reader_manifest.toml`
 
+> **SUPERSEDED by `spec/CALCSET_MANIFEST.md` (2026-05-31).** The
+> reader now reads `<calcset_root>/<dataset_id>.LGS` (JSON) via
+> `src/io/CalcsetManifest.{h,cpp}`; the TOML loader and the
+> `tools/generate_manifest.py` bridge tool were deleted together in
+> the same change. Kept here as historical record of the predecessor
+> spec — nothing in this document is current law.
+
 **Status**: settled 2026-05-30. Schema version 1. Implementation:
 `src/io/ReaderInputManifest.{h,cpp}`, wired into
 `src/io/QtProteinLoader.cpp::LoadRunPath`.

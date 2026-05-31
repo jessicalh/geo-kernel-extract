@@ -1,21 +1,23 @@
-// QtProteinLoader — top-level orchestrator: a run directory into a typed
+// QtProteinLoader — top-level orchestrator: a calcset directory into a typed
 // QtProtein + a Conformation (the base; concrete subclass depends on run shape).
 //
-// Two entry points, one per run shape (decided 2026-05-26):
-//   Load(h5_path)     — a --trajectory run: sidecar + trajectory.h5 ->
-//                       QtProtein + TrajectoryConformation (N frames, dense H5,
-//                       lazy per-frame snapshots from per_frame_npys/ or npys/).
-//   LoadPose(run_dir) — a single-pose run (--orca / --mutant / --pdb): sidecar +
-//                       the flat run-root per-atom NPYs -> QtProtein +
-//                       SingleConformation (one frame, no H5).
+// Reads the calcset's `.LGS` (CalcsetManifest, spec/CALCSET_MANIFEST.md),
+// then dispatches by `kind`:
+//   * Trajectory  -> sidecar + trajectory.h5 -> QtProtein + TrajectoryConformation
+//   * SinglePose  -> sidecar -> QtProtein + SingleConformation
+//   * MutantPair  -> opens the WT side (the ALA `.LGS` is exposed for a
+//                    separate-process "Open mutant alternate" action).
+//
+// There is exactly ONE entry point — LoadRunPath. The pre-`.LGS` legacy
+// convention-based fallback (Load(h5_path), bounded-convention sniffing)
+// was deleted along with ReaderInputManifest in the 2026-05-31 SIMPLIFY
+// pass. Missing/malformed `.LGS` is a hard error.
 //
 // Failure modes log via ErrorBus and return ok=false with error populated.
-// Per-TR-group reads inside QtTrajectoryH5 log Warn and skip; they don't fail
-// the whole load.
 
 #pragma once
 
-#include "ReaderInputManifest.h"
+#include "CalcsetManifest.h"
 #include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
@@ -33,56 +35,54 @@ struct QtLoadResult {
     QString error;
     int decodeWarnings = 0;
 
-    // The path that was opened (the trajectory.h5 file or the run dir). Used by
-    // the window to locate sibling artifacts when no manifest is present (the
-    // legacy bounded convention path).
+    // The path that was opened (the calcset directory). Used by the window
+    // for status bar / recent-files / window title display.
     QString runPath;
 
-    // The input-directory manifest that drove this load. manifest.ok is true
-    // when the run was opened via a h5reader_manifest.toml; consumers should
-    // prefer manifest paths over runPath-derived heuristics when ok.
-    ReaderInputManifest manifest;
+    // The .LGS that drove this load. ok-set sub-blocks expose the typed
+    // pointers downstream consumers need (dft frames for the strip chart,
+    // alternate-LGS for mutant pair switch). When ok=false on the result,
+    // manifest will be a default-constructed `nullopt`-everywhere instance.
+    CalcsetManifest manifest;
 };
 
 class QtProteinLoader {
 public:
-    // h5_path is the absolute path to trajectory.h5. The sidecar (5 NPYs +
-    // extraction_manifest.json) and frame snapshot directory are found in the
-    // same directory by bounded convention: per_frame_npys/ first, then npys/.
-    static QtLoadResult Load(const QString& h5_path);
-
-    // Trajectory load with explicit sidecar + per-frame snapshot dirs — the
-    // path the manifest-driven flow uses (the manifest declares each
-    // explicitly rather than letting the loader guess). `perFrameNpysDir`
-    // may be empty (no per-frame snapshots; dense H5 still drives playback).
+    // Trajectory load — used by LoadFromManifest for the Trajectory kind.
+    //   h5_path: the trajectory.h5 file
+    //   extraction_dir: the directory holding the 5-NPY topology sidecar
+    //                   AND the per-frame `npys/frame_NNNNNN/` snapshots
+    //                   (producer convention; not enumerated by globbing
+    //                   in this function, only at scan time)
+    //   extraction_manifest_path: explicit path to extraction_manifest.json
+    //                   (the `.LGS` carries it as
+    //                   trajectory.extraction_manifest)
     static QtLoadResult LoadTrajectory(const QString& h5_path,
-                                       const QString& topologySidecarDir,
-                                       const QString& perFrameNpysDir);
+                                       const QString& extraction_dir,
+                                       const QString& extraction_manifest_path);
 
-    // run_dir is a single-pose run root holding the 5 sidecar NPYs +
-    // extraction_manifest.json + the flat per-atom calculator NPYs (no
-    // trajectory.h5). Builds the QtProtein spine and one snapshot.
-    static QtLoadResult LoadPose(const QString& run_dir);
+    // Single-pose load — used by LoadFromManifest for SinglePose / the WT
+    // half of MutantPair.
+    //   pose_dir: directory holding the 5-NPY topology sidecar AND the
+    //             flat per-atom calculator NPYs (no trajectory.h5)
+    //   extraction_manifest_path: explicit path to extraction_manifest.json
+    static QtLoadResult LoadPose(const QString& pose_dir,
+                                 const QString& extraction_manifest_path);
 
-    // Manifest-driven entry. Dispatches by manifest.runKind:
-    //   * Trajectory  -> LoadTrajectory(manifest.trajectoryH5, ...)
-    //   * SinglePose  -> LoadPose(manifest.poseDir)
-    //   * MutantPair  -> LoadPose(manifest.wtPoseDir)  [auto-open WT]
+    // Dispatch by `manifest.kind`:
+    //   * Trajectory  -> LoadTrajectory(manifest.trajectory)
+    //   * SinglePose  -> LoadPose(manifest.single_pose)
+    //   * MutantPair  -> recursively Load() the WT `.LGS`; the parent
+    //                    manifest is preserved on the result so the
+    //                    window can offer "Open mutant alternate (ALA)…".
     // Returns ok=false with error set on any failure. The manifest is
-    // copied into the result for downstream consumers (DFT path lookup,
-    // ALA-switch action for mutant pairs).
-    static QtLoadResult LoadFromManifest(const ReaderInputManifest& manifest);
+    // copied into the result for downstream consumers.
+    static QtLoadResult LoadFromManifest(const CalcsetManifest& manifest);
 
-    // Sniff a run path and dispatch:
-    //   1. If a h5reader_manifest.toml is at the path's directory, parse it
-    //      and call LoadFromManifest. Manifest is the documented contract.
-    //   2. Otherwise fall back to the legacy bounded-convention check:
-    //         - a dir containing trajectory.h5             -> Load(that h5)
-    //         - a dataset root containing extract/trajectory.h5 -> Load(that h5)
-    //         - the trajectory.h5 file itself              -> Load(path)
-    //         - a single-pose run-root directory           -> LoadPose(path)
-    //      The fallback emits a CRITICAL log naming the missing manifest so
-    //      the user knows to generate one (see tools/generate_manifest.py).
+    // The single user-facing entry point.
+    // Argument is either a calcset directory holding the single `.LGS`,
+    // or a `.LGS` file directly. CalcsetManifest::Load resolves and
+    // dispatches; any failure stops the load with a clear error.
     static QtLoadResult LoadRunPath(const QString& path);
 };
 

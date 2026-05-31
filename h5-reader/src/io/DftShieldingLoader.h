@@ -15,16 +15,15 @@ namespace h5reader::io {
 
 class DftShieldingLoader {
 public:
-    // Parse + validate one DFT job. Reads meta.json -> files.out_primary,
-    // parses the .out, validates against the protein topology. Returns null
-    // and logs at the seam on any failure (missing meta.json, parser hole,
+    // Parse + validate one DFT job. meta_json_abspath is the path to the
+    // job's `<job_id>_meta.json` — the calcset's `.LGS` carries it as
+    // `dft.frames[].meta_json`, so there is no dir-name parsing.
+    // Reads files.out_primary, parses the .out, validates against the
+    // protein topology. Returns null and logs at the seam on any failure
+    // (cannot open meta.json, no files.out_primary, parser hole,
     // atom-count mismatch, dia+para != total).
-    //
-    // jobsDir is the dft/jobs root; originalIndex is the original XTC frame
-    // index used in the job-dir naming (_fNNNNNN_t<ps>).
     static std::shared_ptr<const h5reader::model::DftShieldingFrame>
-    LoadAndValidate(std::size_t originalIndex,
-                    const QString& jobsDir,
+    LoadAndValidate(const QString& meta_json_abspath,
                     const h5reader::model::QtProtein* protein);
 };
 

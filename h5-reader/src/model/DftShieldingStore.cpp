@@ -3,56 +3,38 @@
 #include "../diagnostics/ErrorBus.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
+#include "../io/CalcsetManifest.h"
 #include "../io/DftShieldingLoader.h"
 #include "QtProtein.h"
 
-#include <QDir>
 #include <QLoggingCategory>
-#include <QStringList>
 
 namespace h5reader::model {
 
 namespace {
 Q_LOGGING_CATEGORY(cDft, "h5reader.dft")
-
-using Severity = h5reader::diagnostics::Severity;
-void report(Severity sev, const QString& msg, const QString& ctx) {
-    h5reader::diagnostics::ErrorBus::Report(sev, QStringLiteral("DftShieldingStore"), msg, ctx);
-}
-
 }  // namespace
 
-DftShieldingStore::DftShieldingStore(const QtProtein* protein, const QString& jobsDir, QObject* parent)
-    : QObject(parent), protein_(protein), jobsDir_(jobsDir) {
+DftShieldingStore::DftShieldingStore(const QtProtein* protein,
+                                     const std::vector<h5reader::io::DftFrame>& frames,
+                                     QObject* parent)
+    : QObject(parent), protein_(protein) {
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("DftShieldingStore"));
 
-    QDir dir(jobsDir_);
-    if (!dir.exists()) {
-        report(Severity::Warning, QStringLiteral("dft jobs dir does not exist"), jobsDir_);
-        return;
+    metaByOriginal_.reserve(frames.size());
+    for (const auto& fr : frames) {
+        if (fr.frame_index < 0 || fr.meta_json_abspath.isEmpty()) continue;
+        metaByOriginal_.emplace(static_cast<std::size_t>(fr.frame_index),
+                                fr.meta_json_abspath);
     }
-
-    // Build originalIndex -> dir from the documented job-dir naming convention
-    // (..._fNNNNNN_t<ps>): pull the digits between the last "_f" and the last
-    // "_t". This is reading a documented layout (like TrajectoryConformation
-    // scanning frame_NNNNNN), not glob-guessing.
-    const QStringList entries = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QString& name : entries) {
-        const int t = name.lastIndexOf(QStringLiteral("_t"));
-        if (t < 0) continue;
-        const int f = name.lastIndexOf(QStringLiteral("_f"), t);
-        if (f < 0 || t <= f + 2) continue;
-        bool ok = false;
-        const qulonglong orig = name.mid(f + 2, t - (f + 2)).toULongLong(&ok);
-        if (!ok) continue;
-        dirByOriginal_.emplace(static_cast<std::size_t>(orig), dir.absoluteFilePath(name));
-    }
-    qCInfo(cDft).noquote() << "scanned dft jobs |" << jobsDir_ << "| jobs=" << dirByOriginal_.size();
+    qCInfo(cDft).noquote()
+        << "DFT store initialised from .LGS frames |"
+        << "frames=" << metaByOriginal_.size();
 }
 
 bool DftShieldingStore::hasJob(std::size_t originalIndex) const {
-    return dirByOriginal_.find(originalIndex) != dirByOriginal_.end();
+    return metaByOriginal_.find(originalIndex) != metaByOriginal_.end();
 }
 
 const DftShieldingFrame* DftShieldingStore::frame(std::size_t originalIndex) const {
@@ -103,8 +85,11 @@ std::optional<double> DftShieldingStore::sample(std::size_t originalIndex, std::
     return (scalar == DftScalar::IsotropicT0) ? tens.T0 : tens.T2Magnitude();
 }
 
-std::shared_ptr<const DftShieldingFrame> DftShieldingStore::loadAndValidate(std::size_t originalIndex) const {
-    return h5reader::io::DftShieldingLoader::LoadAndValidate(originalIndex, jobsDir_, protein_);
+std::shared_ptr<const DftShieldingFrame>
+DftShieldingStore::loadAndValidate(std::size_t originalIndex) const {
+    const auto it = metaByOriginal_.find(originalIndex);
+    if (it == metaByOriginal_.end()) return nullptr;
+    return h5reader::io::DftShieldingLoader::LoadAndValidate(it->second, protein_);
 }
 
 }  // namespace h5reader::model

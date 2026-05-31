@@ -358,7 +358,8 @@ void PopulateBackboneCache(QtResidue& res, const std::vector<QtAtom>& atoms) {
 }  // namespace
 
 
-QtTopologySidecar::LoadResult QtTopologySidecar::Load(const QString& sidecar_dir) {
+QtTopologySidecar::LoadResult QtTopologySidecar::Load(const QString& sidecar_dir,
+                                                       const QString& manifest_path) {
     LoadResult r;
     QDir d(sidecar_dir);
     if (!d.exists()) {
@@ -370,7 +371,12 @@ QtTopologySidecar::LoadResult QtTopologySidecar::Load(const QString& sidecar_dir
         return r;
     }
 
-    const QString manifestPath = d.filePath(QStringLiteral("extraction_manifest.json"));
+    // The `.LGS` (CalcsetManifest) supplies the extraction_manifest.json
+    // path explicitly; the legacy sidecar/extraction_manifest.json
+    // convention is used when no override is passed.
+    const QString manifestPath = manifest_path.isEmpty()
+        ? d.filePath(QStringLiteral("extraction_manifest.json"))
+        : manifest_path;
     const QString atomsPath = d.filePath(QStringLiteral("atoms_category_info.npy"));
     const QString residuesPath = d.filePath(QStringLiteral("residues.npy"));
     const QString bondsPath = d.filePath(QStringLiteral("bonds.npy"));

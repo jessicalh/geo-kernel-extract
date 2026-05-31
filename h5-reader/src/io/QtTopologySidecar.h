@@ -62,11 +62,15 @@ public:
         std::size_t saturatedRingCount = 0;
     };
 
-    // sidecar_dir is the directory containing the 5 NPYs + manifest;
-    // typically dirname(trajectory.h5). Files are looked up by their
-    // canonical names (no globbing, no discovery — per
-    // feedback_no_file_discovery).
-    static LoadResult Load(const QString& sidecar_dir);
+    // sidecar_dir is the directory containing the 5 NPYs; typically
+    // dirname(trajectory.h5). manifest_path is the explicit path to
+    // extraction_manifest.json (the `.LGS` carries it as
+    // trajectory.extraction_manifest; the legacy
+    // sidecar_dir/extraction_manifest.json convention is implied when
+    // omitted). Files are looked up by their canonical names (no
+    // globbing, no discovery — per feedback_no_file_discovery).
+    static LoadResult Load(const QString& sidecar_dir,
+                           const QString& manifest_path = QString());
 };
 
 }  // namespace h5reader::io

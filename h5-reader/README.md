@@ -193,27 +193,41 @@ set them as defaults in `cmake/Platform-<OS>.cmake`.
 
 ## Running the reader
 
-Point the reader at a **run directory** (a `--trajectory` run root or a
-single-pose `--orca`/`--mutant`/`--pdb` run root) or directly at a
-`trajectory.h5`; it sniffs the run shape (`QtProteinLoader::LoadRunPath`).
+Point the reader at a **calcset directory** containing the calcset's
+`<dataset_id>.LGS` (Lowly Graduate Student) file, or directly at the
+`.LGS` file. The reader reads `<dir>/*.LGS`; if no `.LGS` exists, the
+load fails with a clear error — use `tools/lgs_write.py` to generate
+one for an existing fixture. The `.LGS` is the typed wrapper that
+points at the trajectory.h5, the sidecar NPYs, and any DFT campaign;
+see `spec/CALCSET_MANIFEST.md` for the schema and
+`QtProteinLoader::LoadRunPath` for the dispatch.
+
 The **File ▸ Open Directory…** menu does the same from inside the GUI
 (it launches a fresh reader process — multiple-instance safe).
 
 Linux / macOS:
 
 ```sh
-./build/<preset>/h5reader path/to/run-dir        # trajectory or single pose
-./build/<preset>/h5reader path/to/trajectory.h5  # also accepted
+./build/<preset>/h5reader path/to/calcset-dir       # any kind of calcset
+./build/<preset>/h5reader path/to/dataset.LGS       # also accepted
 # or:
-H5READER_PRESET=mac-rwdi ./launch_reader.sh path/to/run-dir
+H5READER_PRESET=mac-rwdi ./launch_reader.sh path/to/calcset-dir
 ```
 
 Windows:
 
 ```powershell
-.\build\win-rwdi\h5reader.exe path\to\trajectory.h5
+.\build\win-rwdi\h5reader.exe path\to\calcset-dir
 # or:
-.\launch_reader.ps1 path\to\trajectory.h5
+.\launch_reader.ps1 path\to\calcset-dir
+```
+
+To generate a `.LGS` for an existing calcset:
+
+```sh
+python3 tools/lgs_write.py path/to/calcset-dir
+# Override the human-readable name:
+python3 tools/lgs_write.py --human-name "My calibration trajectory" path/to/calcset-dir
 ```
 
 Log stream: messages flow to stderr and to UDP port 9997 (unicast,

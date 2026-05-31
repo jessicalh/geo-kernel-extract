@@ -91,22 +91,9 @@ Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
 constexpr int kSettingsVersion = 1;
 constexpr int kMaxRecentFiles  = 10;
 
-// Legacy DFT-campaign locator — used only when no h5reader_manifest.toml is
-// present at the run root. The bounded convention: the dataset root holds
-// extract/ and dft/ as siblings, so dft/jobs is either <runDir>/dft/jobs or
-// <runDir>/../dft/jobs (when the run path points inside extract/). Empty if
-// neither exists. Manifest-driven loads pass the [dft] jobs_dir explicitly
-// and bypass this function entirely.
-QString locateDftJobsDir(const QString& runPath) {
-    if (runPath.isEmpty()) return {};
-    const QFileInfo fi(runPath);
-    const QDir runDir = fi.isDir() ? QDir(runPath) : fi.absoluteDir();
-    for (const QString& rel : {QStringLiteral("dft/jobs"), QStringLiteral("../dft/jobs")}) {
-        const QString cand = runDir.absoluteFilePath(rel);
-        if (QFileInfo(cand).isDir()) return QDir(cand).absolutePath();
-    }
-    return {};
-}
+// Note: locateDftJobsDir was deleted as part of the 2026-05-31 SIMPLIFY
+// pass; the DFT campaign now comes from the `.LGS` `dft.frames[]` array
+// (see CalcsetManifest + DftShieldingStore).
 
 QUuid addInitialGenericDashboardSignal(model::TrajectorySignalCatalog* catalog,
                                        model::DashboardSignalModel* activeModel,
@@ -471,29 +458,27 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                  });
     }
 
-    // DFT shielding campaign (optional): make the frame-local source available
-    // to descriptor-family samplers. Manifest's [dft] table wins; legacy
-    // bounded-convention check at the runPath is the fallback.
-    QString dftJobs;
-    if (loaded_->manifest.ok && !loaded_->manifest.dftJobsDir.isEmpty()) {
-        dftJobs = loaded_->manifest.dftJobsDir;
-    } else {
-        dftJobs = locateDftJobsDir(loaded_->runPath);
-    }
-    if (!dftJobs.isEmpty()) {
-        dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dftJobs, this);
+    // DFT shielding campaign (optional): make the frame-local source
+    // available to descriptor-family samplers. The `.LGS` carries the
+    // typed `dft.frames[]` map — frame_index → meta.json — so the
+    // store builds straight from it (no dir scanning, no name parsing).
+    if (loaded_->manifest.dft.has_value()) {
+        const auto& dft = *loaded_->manifest.dft;
+        dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dft.frames, this);
         dashboardStripDock_->setDftStore(dftStore_);
-        qCInfo(cWindow).noquote() << "DFT shielding store wired |" << dftJobs
-                                  << "| jobs=" << dftStore_->jobCount();
+        qCInfo(cWindow).noquote() << "DFT shielding store wired from .LGS |"
+                                  << "method=" << dft.method
+                                  << "| frames=" << dftStore_->jobCount()
+                                  << "| campaign_target=" << dft.campaign_target_frames;
     }
 
     // Mutant-pair alternate-pose action — when the manifest says we
     // auto-opened WT, expose a File menu action that launches a fresh
-    // process on the ALA dir. Spawned the same way as Recent files.
-    if (loaded_->manifest.ok
-        && loaded_->manifest.runKind == h5reader::io::ReaderInputManifest::RunKind::MutantPair
-        && !loaded_->manifest.alaPoseDir.isEmpty()) {
-        const QString alt = loaded_->manifest.alaPoseDir;
+    // process on the ALA `.LGS`. Spawned the same way as Recent files.
+    if (loaded_->manifest.kind == h5reader::io::CalcsetManifest::Kind::MutantPair
+        && loaded_->manifest.mutant_pair.has_value()
+        && !loaded_->manifest.mutant_pair->ala_lgs_abspath.isEmpty()) {
+        const QString alt = loaded_->manifest.mutant_pair->ala_lgs_abspath;
         if (QMenuBar* mb = menuBar()) {
             for (QAction* a : mb->actions()) {
                 if (a->menu() && a->text() == QStringLiteral("&File")) {

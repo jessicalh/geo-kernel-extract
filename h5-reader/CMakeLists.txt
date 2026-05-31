@@ -127,8 +127,8 @@ qt_add_executable(h5reader
     src/io/QtNpyReader.cpp
     src/io/QtManifest.h
     src/io/QtManifest.cpp
-    src/io/ReaderInputManifest.h
-    src/io/ReaderInputManifest.cpp
+    src/io/CalcsetManifest.h
+    src/io/CalcsetManifest.cpp
     src/io/QtEnumVocab.h
     src/io/QtEnumVocab.cpp
     src/io/QtTopologySidecar.h
@@ -232,7 +232,6 @@ qt_add_executable(h5reader
 target_include_directories(h5reader PRIVATE
     src
     ${HIGHFIVE_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/extern/tomlplusplus/include
 )
 
 target_link_libraries(h5reader PRIVATE
@@ -310,25 +309,25 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_scene_math_tests COMMAND h5reader_scene_math_tests)
 
-    # ReaderInputManifest tests — TOML parser + path validation via the
-    # vendored toml++ single header. Pure Qt / Qt::Test; no VTK.
-    qt_add_executable(h5reader_reader_input_manifest_tests
-        tests/reader_input_manifest_tests.cpp
-        src/io/ReaderInputManifest.h
-        src/io/ReaderInputManifest.cpp
+    # CalcsetManifest tests — `.LGS` JSON loader + path validation
+    # (replaces the retired ReaderInputManifest TOML loader). Pure Qt /
+    # Qt::Test; no VTK.
+    qt_add_executable(h5reader_calcset_manifest_tests
+        tests/calcset_manifest_tests.cpp
+        src/io/CalcsetManifest.h
+        src/io/CalcsetManifest.cpp
         src/diagnostics/ErrorBus.h
         src/diagnostics/ErrorBus.cpp
     )
-    target_include_directories(h5reader_reader_input_manifest_tests PRIVATE
+    target_include_directories(h5reader_calcset_manifest_tests PRIVATE
         src
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern/tomlplusplus/include
     )
-    target_link_libraries(h5reader_reader_input_manifest_tests PRIVATE
+    target_link_libraries(h5reader_calcset_manifest_tests PRIVATE
         Qt6::Core
         Qt6::Test
     )
-    add_test(NAME h5reader_reader_input_manifest_tests
-             COMMAND h5reader_reader_input_manifest_tests)
+    add_test(NAME h5reader_calcset_manifest_tests
+             COMMAND h5reader_calcset_manifest_tests)
 
     qt_add_executable(h5reader_io_tests
         tests/qttrajectoryh5_tests.cpp
@@ -393,6 +392,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/SphericalDecomposition.cpp
         src/io/DftShieldingLoader.h
         src/io/DftShieldingLoader.cpp
+        src/io/CalcsetManifest.h
+        src/io/CalcsetManifest.cpp
         src/model/QtProtein.h
         src/model/QtProtein.cpp
         src/model/QtRing.h
