@@ -112,16 +112,11 @@ QtLoadResult QtProteinLoader::LoadTrajectory(const QString& h5_path,
         ++result.decodeWarnings;
     }
 
-    if (!sidecar.manifest.proteinId.isEmpty() && !traj->proteinId().isEmpty()
-        && sidecar.manifest.proteinId != traj->proteinId()) {
-        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Warning,
-                                                QStringLiteral("QtProteinLoader"),
-                                                QStringLiteral("manifest.protein_id (%1) disagrees with "
-                                                               "H5 root protein_id (%2)")
-                                                    .arg(sidecar.manifest.proteinId, traj->proteinId()),
-                                                h5_path);
-        ++result.decodeWarnings;
-    }
+    // No producer-side protein_id consistency check here: the .LGS
+    // protein_id is authoritative (spec/CALCSET_MANIFEST.md) and is
+    // stamped onto the result in LoadFromManifest. Comparing the two
+    // producer-written values (extraction_manifest.json vs H5 root)
+    // against each other says nothing about which (if either) is right.
 
     auto protein = std::make_unique<h5reader::model::QtProtein>();
     protein->proteinId_ = result.proteinId;
@@ -227,6 +222,13 @@ QtLoadResult QtProteinLoader::LoadFromManifest(const CalcsetManifest& manifest) 
             QtLoadResult inner = LoadTrajectory(t.trajectory_h5_abspath,
                                                  t.extraction_dir_abspath,
                                                  t.extraction_manifest_abspath);
+            // .LGS protein_id is authoritative; overrides producer-side
+            // values stamped in LoadTrajectory from the extraction dir
+            // basename and from the H5 root attribute.
+            if (!manifest.protein_id.isEmpty() && inner.protein) {
+                inner.proteinId = manifest.protein_id;
+                inner.protein->proteinId_ = manifest.protein_id;
+            }
             inner.manifest = manifest;
             inner.runPath = manifest.calcset_root_abspath;
             return inner;
@@ -234,6 +236,10 @@ QtLoadResult QtProteinLoader::LoadFromManifest(const CalcsetManifest& manifest) 
         case CalcsetManifest::Kind::SinglePose: {
             const auto& s = *manifest.single_pose;
             QtLoadResult inner = LoadPose(s.pose_dir_abspath, s.extraction_manifest_abspath);
+            if (!manifest.protein_id.isEmpty() && inner.protein) {
+                inner.proteinId = manifest.protein_id;
+                inner.protein->proteinId_ = manifest.protein_id;
+            }
             inner.manifest = manifest;
             inner.runPath = manifest.calcset_root_abspath;
             return inner;
