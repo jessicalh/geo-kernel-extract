@@ -40,7 +40,7 @@ include(BuildType-${CMAKE_BUILD_TYPE} OPTIONAL)
 # Target
 # ============================================================================
 
-qt_add_executable(h5reader
+qt_add_library(h5reader_core STATIC
     # Diagnostics — installed in main() before any Qt construction.
     src/diagnostics/StructuredLogger.h
     src/diagnostics/StructuredLogger.cpp
@@ -225,16 +225,14 @@ qt_add_executable(h5reader
     src/calculators/QtHaighMallionCalc.h
     src/calculators/QtHaighMallionCalc.cpp
 
-    # Entry point
-    src/main_reader.cpp
 )
 
-target_include_directories(h5reader PRIVATE
+target_include_directories(h5reader_core PUBLIC
     src
     ${HIGHFIVE_INCLUDE_DIR}
 )
 
-target_link_libraries(h5reader PRIVATE
+target_link_libraries(h5reader_core PUBLIC
     Qt6::Widgets
     Qt6::OpenGLWidgets
     Qt6::Network
@@ -245,26 +243,52 @@ target_link_libraries(h5reader PRIVATE
     ${HDF5_C_LIBRARIES}
 )
 
-# Without this, VTK object factories are not registered at runtime and
-# rendering silently fails. qt6-cpp skill: "#1 cause of VTK compiles but
-# renders nothing." DO NOT REMOVE.
-vtk_module_autoinit(TARGETS h5reader MODULES ${VTK_LIBRARIES})
-
 # Platform-specific tweaks: warning flags, crash-handler libs, HDF5
 # include-order fix on Linux, etc. Defined in
 # cmake/Platform-${CMAKE_SYSTEM_NAME}.cmake.
-h5reader_apply_platform_target_settings(h5reader)
+h5reader_apply_platform_target_settings(h5reader_core)
 
 # Build-type tweaks: sanitizers in Debug, LTO in Release, nothing
 # in RelWithDebInfo / MinSizeRel. Function only exists when the
 # matching BuildType-*.cmake module was found.
 if(COMMAND h5reader_apply_build_type_settings)
-    h5reader_apply_build_type_settings(h5reader)
+    h5reader_apply_build_type_settings(h5reader_core)
 endif()
 
-target_compile_definitions(h5reader PRIVATE
+# Version macro is consumed by RestServer.cpp and main_reader.cpp; needs
+# to be visible to every TU in the core lib. PUBLIC so executables that
+# link the lib (and tests, eventually) also see it.
+target_compile_definitions(h5reader_core PUBLIC
     H5READER_VERSION="0.5.0-rewrite"
 )
+
+# ============================================================================
+# GUI reader executable — links h5reader_core; entry is main_reader.cpp.
+# A second executable (or a dispatcher main.cpp picking between
+# main_reader / main_batch) lands when the chewer's batch entry point
+# arrives; both will link the same static core.
+# ============================================================================
+
+qt_add_executable(h5reader
+    src/main_reader.cpp
+)
+
+target_link_libraries(h5reader PRIVATE h5reader_core)
+
+# vtk_module_autoinit applies to the EXECUTABLE that links the static
+# lib, not to the lib itself — the autoinit translation unit would be
+# stripped from the static archive otherwise. qt6-cpp skill: "#1 cause
+# of VTK compiles but renders nothing." DO NOT REMOVE.
+vtk_module_autoinit(TARGETS h5reader MODULES ${VTK_LIBRARIES})
+
+h5reader_apply_platform_target_settings(h5reader)
+
+# Build-type tweaks (sanitizer flags etc.) must also apply to the
+# executable so its link command picks up the sanitizer runtime that
+# the lib's compiled .o files reference.
+if(COMMAND h5reader_apply_build_type_settings)
+    h5reader_apply_build_type_settings(h5reader)
+endif()
 
 
 include(CTest)
