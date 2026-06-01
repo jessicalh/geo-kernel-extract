@@ -26,6 +26,20 @@ void report(Severity sev, const QString& msg, const QString& ctx) {
 
 QString num(double v) { return QString::number(v, 'g', 9); }
 
+double kernelComponent(const BroadKernelT2& k, int i) {
+    if (!k.present) return std::numeric_limits<double>::quiet_NaN();
+    return k.T2[static_cast<std::size_t>(i)];
+}
+
+void writeKernelT2(QTextStream& out, const BroadKernelT2& k) {
+    out << ',' << (k.present ? 1 : 0);
+    for (int i = 0; i < 5; ++i) out << ',' << num(kernelComponent(k, i));
+}
+
+void appendKernelT2(std::vector<double>& dst, const BroadKernelT2& k) {
+    for (int i = 0; i < 5; ++i) dst.push_back(kernelComponent(k, i));
+}
+
 // Same little-endian f64 NPY writer as RecordSink (kept local — additive, no
 // coupling). Returns false on any shape/IO mismatch.
 bool writeNpyF64(const QString& path, const std::vector<std::size_t>& shape,
@@ -92,6 +106,21 @@ const char* kAggregatedHeader =
     "charge_n,charge_source,charge_cutoff_A,"
     "field_local_x,field_local_y,field_local_z,field_z,field_mag,"
     "mu_local_x,mu_local_y,mu_local_z,"
+    "literature_kernel_present,"
+    "literature_kernel_T2_0,literature_kernel_T2_1,literature_kernel_T2_2,"
+    "literature_kernel_T2_3,literature_kernel_T2_4,"
+    "ring_literature_kernel_present,"
+    "ring_literature_kernel_T2_0,ring_literature_kernel_T2_1,"
+    "ring_literature_kernel_T2_2,ring_literature_kernel_T2_3,"
+    "ring_literature_kernel_T2_4,"
+    "bond_literature_kernel_present,"
+    "bond_literature_kernel_T2_0,bond_literature_kernel_T2_1,"
+    "bond_literature_kernel_T2_2,bond_literature_kernel_T2_3,"
+    "bond_literature_kernel_T2_4,"
+    "charge_literature_kernel_present,"
+    "charge_literature_kernel_T2_0,charge_literature_kernel_T2_1,"
+    "charge_literature_kernel_T2_2,charge_literature_kernel_T2_3,"
+    "charge_literature_kernel_T2_4,"
     "dft_present,dft_sigma_iso,"
     "dft_total_raw_00,dft_total_raw_01,dft_total_raw_02,"
     "dft_total_raw_10,dft_total_raw_11,dft_total_raw_12,"
@@ -111,6 +140,10 @@ BroadBackboneSink::BroadBackboneSink(const QString& outDir, const QString& caseN
         QStringLiteral("%1_aggregated_target_T2.npy").arg(caseName),
         QStringLiteral("%1_aggregated_target_local_T2.npy").arg(caseName),
         QStringLiteral("%1_aggregated_field_local.npy").arg(caseName),
+        QStringLiteral("%1_aggregated_literature_kernel_T2.npy").arg(caseName),
+        QStringLiteral("%1_aggregated_ring_literature_kernel_T2.npy").arg(caseName),
+        QStringLiteral("%1_aggregated_bond_literature_kernel_T2.npy").arg(caseName),
+        QStringLiteral("%1_aggregated_charge_literature_kernel_T2.npy").arg(caseName),
     };
 
     sourcesFile_ = std::make_unique<QSaveFile>(sourcesPath_);
@@ -182,7 +215,12 @@ void BroadBackboneSink::writeAggregatedRow(const NeighborhoodRecord& rec,
         << num(agg.charge_field_local.z()) << ',' << num(agg.charge_field_z) << ','
         << num(agg.charge_field_mag) << ','
         << num(agg.charge_mu_local.x()) << ',' << num(agg.charge_mu_local.y()) << ','
-        << num(agg.charge_mu_local.z()) << ','
+        << num(agg.charge_mu_local.z());
+    writeKernelT2(out, agg.literature_kernel);
+    writeKernelT2(out, agg.ring_literature_kernel);
+    writeKernelT2(out, agg.bond_literature_kernel);
+    writeKernelT2(out, agg.charge_literature_kernel);
+    out << ','
         << (rec.target.present ? 1 : 0) << ',' << num(rec.target.total_decomp.T0);
     auto m9 = [&](const Mat3& m) {
         for (int i = 0; i < 3; ++i)
@@ -205,6 +243,10 @@ void BroadBackboneSink::writeAggregatedRow(const NeighborhoodRecord& rec,
     aggFieldLocal_.push_back(agg.charge_field_local.x());
     aggFieldLocal_.push_back(agg.charge_field_local.y());
     aggFieldLocal_.push_back(agg.charge_field_local.z());
+    appendKernelT2(aggLiteratureKernelT2_, agg.literature_kernel);
+    appendKernelT2(aggRingLiteratureKernelT2_, agg.ring_literature_kernel);
+    appendKernelT2(aggBondLiteratureKernelT2_, agg.bond_literature_kernel);
+    appendKernelT2(aggChargeLiteratureKernelT2_, agg.charge_literature_kernel);
     ++aggRows_;
 }
 
@@ -234,6 +276,18 @@ bool BroadBackboneSink::Commit() {
     sidecarsOk = sidecarsOk
                  && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[2]),
                                 {aggRows_, 3}, aggFieldLocal_);
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[3]),
+                                {aggRows_, 5}, aggLiteratureKernelT2_);
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[4]),
+                                {aggRows_, 5}, aggRingLiteratureKernelT2_);
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[5]),
+                                {aggRows_, 5}, aggBondLiteratureKernelT2_);
+    sidecarsOk = sidecarsOk
+                 && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[6]),
+                                {aggRows_, 5}, aggChargeLiteratureKernelT2_);
     if (!a) report(Severity::Error, QStringLiteral("broad sources commit failed"), sourcesPath_);
     if (!b) report(Severity::Error, QStringLiteral("broad aggregated commit failed"), aggregatedPath_);
     if (!sidecarsOk)

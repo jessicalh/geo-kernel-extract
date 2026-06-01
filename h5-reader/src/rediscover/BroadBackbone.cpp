@@ -4,6 +4,7 @@
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
 #include "RingGeometryCache.h"
+#include "SphericalBasis.h"
 #include "SpatialIndexSet.h"
 #include "Verbs.h"
 
@@ -17,6 +18,7 @@
 
 #include <QLoggingCategory>
 
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -26,6 +28,114 @@ namespace {
 Q_LOGGING_CATEGORY(cBroad, "h5reader.rediscover.broad_backbone")
 
 const double kNaN = std::numeric_limits<double>::quiet_NaN();
+constexpr double kCoulombKe = 14.3996;
+
+bool finiteT2(const std::array<double, 5>& t2) {
+    for (const double v : t2)
+        if (!std::isfinite(v)) return false;
+    return true;
+}
+
+Mat3 reconstructLibraryTensor(const SphericalTensor& st) {
+    const double kSqrt2 = std::sqrt(2.0);
+    const double kSqrtThreeHalves = std::sqrt(3.0 / 2.0);
+
+    const double Sxy = st.T2[0] / kSqrt2;
+    const double Syz = st.T2[1] / kSqrt2;
+    const double Szz = st.T2[2] / kSqrtThreeHalves;
+    const double Sxz = st.T2[3] / kSqrt2;
+    const double SxxMinusSyy = kSqrt2 * st.T2[4];
+    const double Sxx = 0.5 * (-Szz + SxxMinusSyy);
+    const double Syy = 0.5 * (-Szz - SxxMinusSyy);
+
+    Mat3 m = Mat3::Zero();
+    m(0, 0) = st.T0 + Sxx;
+    m(1, 1) = st.T0 + Syy;
+    m(2, 2) = st.T0 + Szz;
+
+    m(0, 1) = Sxy + st.T1[2];
+    m(1, 0) = Sxy - st.T1[2];
+    m(0, 2) = Sxz - st.T1[1];
+    m(2, 0) = Sxz + st.T1[1];
+    m(1, 2) = Syz + st.T1[0];
+    m(2, 1) = Syz - st.T1[0];
+    return m;
+}
+
+BroadKernelT2 h5KernelT2Local(const Body& body, ArrayId id, std::size_t atom,
+                              std::size_t frame, const FrameResult& fr) {
+    BroadKernelT2 out;
+    if (!fr.frame.is_valid || !body.catalog.has(id) || !body.catalog.present(body, id, atom, frame))
+        return out;
+    const SphericalTensor st = body.catalog.valueTensor(body, id, atom, frame);
+    const Mat3 local = fr.frame.TensorToLocal(reconstructLibraryTensor(st));
+    const SphericalTensor localSt = DecomposeLibrary(local);
+    if (!finiteT2(localSt.T2)) return out;
+    out.present = true;
+    out.T2 = localSt.T2;
+    return out;
+}
+
+BroadKernelT2 bondKernelT2FromSources(const FrameResult& fr,
+                                      const std::vector<SourceSlot>& sources) {
+    BroadKernelT2 out;
+    if (!fr.frame.is_valid) return out;
+    Mat3 total = Mat3::Zero();
+    bool any = false;
+    for (const SourceSlot& s : sources) {
+        if (s.kind != SourceKind::Bond || !(s.r > 1e-9)) continue;
+        const double axisNorm = s.bond_axis_local.norm();
+        if (!(axisNorm > 1e-9)) continue;
+        const Vec3 dHat = -s.disp_local / s.r;  // bond midpoint -> target atom
+        const Vec3 bHat = s.bond_axis_local / axisNorm;
+        const double cosTheta = dHat.dot(bHat);
+        const double r3 = s.r * s.r * s.r;
+        total += (9.0 * cosTheta * dHat * bHat.transpose()
+                  - 3.0 * bHat * bHat.transpose()
+                  - (3.0 * dHat * dHat.transpose() - Mat3::Identity()))
+                 / r3;
+        any = true;
+    }
+    if (!any) return out;
+    const SphericalTensor st = DecomposeLibrary(total);
+    if (!finiteT2(st.T2)) return out;
+    out.present = true;
+    out.T2 = st.T2;
+    return out;
+}
+
+BroadKernelT2 chargeKernelT2FromSources(const FrameResult& fr,
+                                        const std::vector<SourceSlot>& sources) {
+    BroadKernelT2 out;
+    if (!fr.frame.is_valid) return out;
+    Mat3 efg = Mat3::Zero();
+    for (const SourceSlot& s : sources) {
+        if (s.kind != SourceKind::Charge || !(s.r > 1e-9) || !std::isfinite(s.source_q_e))
+            continue;
+        const double r3 = s.r * s.r * s.r;
+        const double r5 = r3 * s.r * s.r;
+        const Vec3 d = s.disp_local;  // sign-invariant for EFG outer product
+        efg += s.source_q_e * (3.0 * d * d.transpose() / r5 - Mat3::Identity() / r3);
+    }
+    efg *= kCoulombKe;
+    efg -= (efg.trace() / 3.0) * Mat3::Identity();
+    const SphericalTensor st = DecomposeLibrary(efg);
+    if (!finiteT2(st.T2)) return out;
+    out.present = true;
+    out.T2 = st.T2;
+    return out;
+}
+
+BroadKernelT2 sumKernelT2(const BroadKernelT2& ring, const BroadKernelT2& bond,
+                          const BroadKernelT2& charge) {
+    BroadKernelT2 out;
+    for (const BroadKernelT2* k : {&ring, &bond, &charge}) {
+        if (!k->present) continue;
+        out.present = true;
+        for (int i = 0; i < 5; ++i) out.T2[static_cast<std::size_t>(i)] += k->T2[static_cast<std::size_t>(i)];
+    }
+    return out;
+}
 
 bool validResidue(const model::QtProtein& p, int32_t r) {
     return r >= 0 && static_cast<std::size_t>(r) < p.residueCount();
@@ -342,10 +452,22 @@ BroadRelationship MakeBroadBackboneRelationship(double ring_cutoff_A, double bon
 
     // The broad reducer: per-mechanism dipolar sums + the local Coulomb FIELD.
     brel.broad_reducer = [ring_cutoff_A, bond_cutoff_A, charge_cutoff_A, charge_source](
-                             const Body& /*body*/, std::size_t /*atom*/, const FrameResult& /*fr*/,
+                             const Body& body, std::size_t atom, const FrameResult& fr,
+                             std::size_t h5_row,
                              const std::vector<SourceSlot>& sources) {
-        return ReduceBroadBackboneSources(sources, ring_cutoff_A, bond_cutoff_A,
-                                          charge_cutoff_A, charge_source);
+        BroadAggregate agg = ReduceBroadBackboneSources(sources, ring_cutoff_A, bond_cutoff_A,
+                                                        charge_cutoff_A, charge_source);
+        agg.ring_literature_kernel =
+            h5KernelT2Local(body, ArrayId::KernelBs, atom, h5_row, fr);
+        agg.bond_literature_kernel =
+            h5KernelT2Local(body, ArrayId::KernelMc, atom, h5_row, fr);
+        if (!agg.bond_literature_kernel.present)
+            agg.bond_literature_kernel = bondKernelT2FromSources(fr, sources);
+        agg.charge_literature_kernel = chargeKernelT2FromSources(fr, sources);
+        agg.literature_kernel = sumKernelT2(agg.ring_literature_kernel,
+                                            agg.bond_literature_kernel,
+                                            agg.charge_literature_kernel);
+        return agg;
     };
 
     return brel;
@@ -402,7 +524,7 @@ std::size_t RunBroadBackbone(const BroadRelationship& brel, const Body& body,
             }
 
             // rec = broad_reducer(SourceSet): per-mechanism sums + the local field.
-            const BroadAggregate agg = brel.broad_reducer(body, atom, fr, rec.sources);
+            const BroadAggregate agg = brel.broad_reducer(body, atom, fr, row, rec.sources);
             sink.Write(rec, agg);
             ++cases;
         }

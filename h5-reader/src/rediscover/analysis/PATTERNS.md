@@ -31,10 +31,16 @@ The `#30` tripwire test is the backstop that catches a drift — not the lead.
    `test_change_of_basis.py`) — a one-shot equivalence assert on fixed inputs,
    justified by a separate source, never reusable recompute code.
    (`feedback_no_python_physics_except_labeled_integrity_test`.)
-6. **Flag, don't hand-roll.** If a fit needs a quantity the substrate doesn't emit,
-   FLAG it — the C++ emit extends (a codex task); you do NOT recompute it in Python.
-   (The orientation-vector gap → an additive `BroadBackboneSink` emit, not a Python
-   normal.)
+6. **Flag, don't hand-roll — the per-cell emit-extension is expected, recurring, proper
+   work.** If a fit OR a distillation needs a quantity the substrate doesn't emit, the
+   C++ spine extends its emit; you do NOT recompute it in Python. This happens PER CELL —
+   each calculator likely needs the spine to emit more (its source orientation vectors;
+   its fixed-literature kernel T2 for the de-circularising test). Done properly: the
+   spine computes the physics + emits it (read the H5 / typed objects + canonical basis;
+   additive; broad-specific so the ring/mc oracle stays intact), then Python reads it.
+   Exemplars: orientation vectors (#32), literature-kernel T2 (#34). And the GOAL is
+   getting back to the PHYSICS — the law (Depth A) + the de-circularising test — not
+   stopping at captured signal (Depth B). See `REDISCOVERY_MAP.md` "per-cell workflow."
 7. **Report effective N; don't oversell.** Per-stratum, correlate-not-match; flag thin
    strata rather than force-fitting a number. (`feedback_seti`, `feedback_correlate_not_match`.)
 8. **The exemplar is the template — debt in it propagates.** Catch technical debt

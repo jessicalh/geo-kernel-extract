@@ -35,11 +35,17 @@
 #include <QTextStream>
 
 #include <cmath>
+#include <array>
 #include <cstddef>
 #include <memory>
 #include <vector>
 
 namespace h5reader::rediscover {
+
+struct BroadKernelT2 {
+    bool present = false;
+    std::array<double, 5> T2 = {};
+};
 
 // The per-mechanism aggregated scalar features broad-backbone emits, plus the
 // field vector. One BroadAggregate per (atom, frame); the reducer builds it.
@@ -66,6 +72,14 @@ struct BroadAggregate {
     int    charge_n = 0;
     double charge_cutoff_A = 0.0;
     QString charge_source;
+
+    // Fixed-coefficient T2 kernels for the de-circularising gate. Ring and bond
+    // are read from the producer H5 kernels; charge is the broad FF14SB Coulomb
+    // EFG built in this C++ reducer from the already-attached charge sources.
+    BroadKernelT2 literature_kernel;
+    BroadKernelT2 ring_literature_kernel;
+    BroadKernelT2 bond_literature_kernel;
+    BroadKernelT2 charge_literature_kernel;
 };
 
 inline BroadAggregate ReduceBroadBackboneSources(const std::vector<SourceSlot>& sources,
@@ -153,6 +167,10 @@ private:
     std::vector<double> aggTargetT2_;       // (aggRows, 5)
     std::vector<double> aggTargetLocalT2_;  // (aggRows, 5)
     std::vector<double> aggFieldLocal_;     // (aggRows, 3)
+    std::vector<double> aggLiteratureKernelT2_;       // (aggRows, 5)
+    std::vector<double> aggRingLiteratureKernelT2_;   // (aggRows, 5)
+    std::vector<double> aggBondLiteratureKernelT2_;   // (aggRows, 5)
+    std::vector<double> aggChargeLiteratureKernelT2_; // (aggRows, 5)
 };
 
 }  // namespace h5reader::rediscover

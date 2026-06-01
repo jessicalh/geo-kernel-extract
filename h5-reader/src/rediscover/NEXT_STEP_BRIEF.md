@@ -1,3 +1,7 @@
+> **SUPERSEDED (2026-06-01) — historical.** This described building the
+> multi-scenario surface, which is DONE (commit `99cdc85`). Current handoff:
+> `NEXT_SESSION_PROMPT.md` + `REDISCOVERY_MAP.md` + `STATE.md`. Ignore the below.
+
 # Next-step brief — build the multi-scenario rediscover surface
 
 Branch `h5-reader-pysr-spike` (experimental, one-shot, no integration target).

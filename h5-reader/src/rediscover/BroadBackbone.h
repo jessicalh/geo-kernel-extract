@@ -39,7 +39,7 @@ namespace h5reader::rediscover {
 // output shape (per-mechanism + field, not scalar-sum) needs its own type.
 using BroadReducer =
     std::function<BroadAggregate(const Body&, std::size_t atom, const FrameResult& frame,
-                                 const std::vector<SourceSlot>&)>;
+                                 std::size_t h5_row, const std::vector<SourceSlot>&)>;
 
 // A composed broad relationship: the shared `Relationship` bundle (stratum /
 // frame_fn / selectors / attachers / source_filter / target_fn — the SAME

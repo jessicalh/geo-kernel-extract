@@ -19,6 +19,20 @@ output (a trajectory H5 + per-frame data + ORCA DFT shielding); we do not
 modify the extractor. This lives in the h5-reader tree on the experimental
 branch `h5-reader-pysr-spike`.
 
+## The emit boundary — a note for readers
+
+**The emit work lives on the C++ model side.** The typed C++ model is the spine: it
+computes the physics — geometry, the kernels, the spherical (T0/T1/T2) decomposition,
+the fixed-literature kernel tensors, the DFT target — and EMITS it into the
+per-(atom, frame) substrate. The Python side (the fitters, the symbolic distillation)
+only CONSUMES that substrate and fits; it never recomputes the physics. So when a new
+analysis or relationship needs a quantity the substrate does not yet carry, the fix is
+to **extend the C++ emit** (the spine), not to compute it in Python. This is recurring,
+expected, per-cell work — e.g. the per-source orientation vectors (ring normal / bond
+axis) and the fixed-literature kernel T2 were emit-extensions on the C++ side, not
+Python kernels. The discipline is in `analysis/PATTERNS.md`; the full per-cell workflow
+is in `REDISCOVERY_MAP.md`.
+
 ## What this is, and is not
 
 **Is:** a headless C++ extractor that turns the resident 1P9J data into a
