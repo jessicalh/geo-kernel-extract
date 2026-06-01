@@ -33,6 +33,39 @@ FV_HA = {9}
 STRATA_ORDER = ["N", "CA", "C", "O", "HN", "HA"]
 TEST_FRAME_FRACTION = 0.20
 
+PHYSICS_SCALAR_COLS = [
+    "ring_sum_dipolar",
+    "bond_sum_dipolar",
+    "field_local_x",
+    "field_local_y",
+    "field_local_z",
+    "field_z",
+    "field_mag_sq",
+    "buckingham_E_local_x",
+    "buckingham_E_local_y",
+    "buckingham_E_local_z",
+    "buckingham_E_proj",
+    "buckingham_E_mag_sq",
+]
+
+FEATURE_SET_COMPONENTS = {
+    "ensemble_physics_only": (),
+    "ensemble_plus_crg": ("crg",),
+    "ensemble_plus_embedding": ("embedding",),
+    "ensemble_plus_aimnet2_charge": ("charge",),
+    "ensemble_plus_crg_embedding": ("crg", "embedding"),
+    "ensemble_plus_aimnet2": ("charge", "crg", "embedding"),
+}
+
+FEATURE_SET_ORDER = list(FEATURE_SET_COMPONENTS)
+REQUIRED_FEATURE_SETS = {
+    "ensemble_physics_only",
+    "ensemble_plus_crg",
+    "ensemble_plus_embedding",
+    "ensemble_plus_aimnet2_charge",
+    "ensemble_plus_aimnet2",
+}
+
 
 def parse_args():
     ap = argparse.ArgumentParser()
@@ -104,8 +137,59 @@ def manual_r2(pred, target):
     return 1.0 - float(((y - p) ** 2).sum()) / float(((y - y.mean(axis=0, keepdims=True)) ** 2).sum())
 
 
-def jackknife_metric_se(pred, target, groups):
+def manual_between_loao_r2_from_features(x, y, atoms, alpha):
+    labels, xbar, _ = atom_means(x, atoms)
+    _, ybar, _ = atom_means(y, atoms)
+    pred = np.full_like(ybar, np.nan, dtype=float)
+    for i in range(len(labels)):
+        train = np.ones(len(labels), dtype=bool)
+        train[i] = False
+        pred[i] = fit_ridge_predict(xbar[train], ybar[train], xbar[i:i + 1], alpha)[0]
+    return manual_r2(pred, ybar)
+
+
+def jackknife_metric_values(pred, target, groups):
     groups = np.asarray(groups)
+    labels = np.unique(groups)
+    if len(labels) < 3:
+        return np.asarray([], dtype=float)
+    vals = []
+    for label in labels:
+        keep = groups != label
+        if keep.sum() < 3:
+            continue
+        vals.append(r2_score(np.asarray(pred)[keep], np.asarray(target)[keep]))
+    vals = np.asarray(vals, dtype=float)
+    return vals[np.isfinite(vals)]
+
+
+def jackknife_se_from_values(vals):
+    vals = np.asarray(vals, dtype=float)
+    if len(vals) < 3:
+        return math.nan
+    mean = float(vals.mean())
+    return float(math.sqrt((len(vals) - 1) / len(vals) * np.sum((vals - mean) ** 2)))
+
+
+def jackknife_metric_se(pred, target, groups):
+    return jackknife_se_from_values(jackknife_metric_values(pred, target, groups))
+
+
+def jackknife_difference_se(pred, target, groups, base_pred, base_target, base_groups):
+    pred = np.asarray(pred, dtype=float)
+    target = np.asarray(target, dtype=float)
+    groups = np.asarray(groups)
+    base_pred = np.asarray(base_pred, dtype=float)
+    base_target = np.asarray(base_target, dtype=float)
+    base_groups = np.asarray(base_groups)
+    if (
+        len(pred) != len(base_pred)
+        or target.shape != base_target.shape
+        or len(groups) != len(base_groups)
+        or not np.array_equal(groups, base_groups)
+        or not np.allclose(target, base_target, equal_nan=True)
+    ):
+        return math.nan
     labels = np.unique(groups)
     if len(labels) < 3:
         return math.nan
@@ -114,13 +198,12 @@ def jackknife_metric_se(pred, target, groups):
         keep = groups != label
         if keep.sum() < 3:
             continue
-        vals.append(r2_score(np.asarray(pred)[keep], np.asarray(target)[keep]))
+        vals.append(
+            r2_score(pred[keep], target[keep])
+            - r2_score(base_pred[keep], base_target[keep])
+        )
     vals = np.asarray(vals, dtype=float)
-    vals = vals[np.isfinite(vals)]
-    if len(vals) < 3:
-        return math.nan
-    mean = float(vals.mean())
-    return float(math.sqrt((len(vals) - 1) / len(vals) * np.sum((vals - mean) ** 2)))
+    return jackknife_se_from_values(vals[np.isfinite(vals)])
 
 
 def atom_means(values, atoms):
@@ -379,31 +462,34 @@ def load_joined(broad_dir, buckingham_dir, aimnet_dir, C):
     return df, arrays
 
 
-def feature_blocks(df, arrays, include_aimnet):
-    scalar_cols = [
-        "ring_sum_dipolar",
-        "bond_sum_dipolar",
-        "field_local_x",
-        "field_local_y",
-        "field_local_z",
-        "field_z",
-        "field_mag_sq",
-        "buckingham_E_local_x",
-        "buckingham_E_local_y",
-        "buckingham_E_local_z",
-        "buckingham_E_proj",
-        "buckingham_E_mag_sq",
+def physics_blocks(df, arrays):
+    parts = [
+        df[PHYSICS_SCALAR_COLS].to_numpy(float),
+        arrays["ring_T2"],
+        arrays["bond_T2"],
+        arrays["charge_T2"],
     ]
-    parts = [df[scalar_cols].to_numpy(float), arrays["ring_T2"], arrays["bond_T2"], arrays["charge_T2"]]
-    labels = [f"physics:{c}" for c in scalar_cols]
+    labels = [f"physics:{c}" for c in PHYSICS_SCALAR_COLS]
     labels += [f"physics:ring_T2_{i}" for i in range(5)]
     labels += [f"physics:mcconnell_T2_{i}" for i in range(5)]
     labels += [f"physics:charge_field_gradient_T2_{i}" for i in range(5)]
-    if include_aimnet:
-        aim_scalar = df[["aimnet2_charge"]].to_numpy(float)
-        parts.extend([aim_scalar, arrays["crg_scalar"], arrays["crg_local"], arrays["embedding"].astype(float)])
-        labels += ["aimnet2:hirshfeld_charge", "aimnet2:crg_scalar"]
+    return parts, labels
+
+
+def feature_blocks(df, arrays, feature_set):
+    if feature_set not in FEATURE_SET_COMPONENTS:
+        raise ValueError(f"unknown feature_set {feature_set}")
+    parts, labels = physics_blocks(df, arrays)
+    components = FEATURE_SET_COMPONENTS[feature_set]
+    if "charge" in components:
+        parts.append(df[["aimnet2_charge"]].to_numpy(float))
+        labels.append("aimnet2:hirshfeld_charge")
+    if "crg" in components:
+        parts.extend([arrays["crg_local"], arrays["crg_scalar"]])
         labels += [f"aimnet2:charge_response_gradient_local_{c}" for c in "xyz"]
+        labels.append("aimnet2:charge_response_gradient_scalar")
+    if "embedding" in components:
+        parts.append(arrays["embedding"].astype(float))
         labels += [f"aimnet2:embedding_pc_{i:03d}" for i in range(arrays["embedding"].shape[1])]
     return np.column_stack(parts), labels
 
@@ -417,6 +503,7 @@ def result_row(target_name, stratum, feature_set, x, y, atoms, frames, alpha,
         "target": target_name,
         "stratum": stratum,
         "feature_set": feature_set,
+        "feature_components": "+".join(FEATURE_SET_COMPONENTS[feature_set]) or "physics",
         "rows": int(len(y)),
         "n_atoms_between": int(len(np.unique(atoms))),
         "n_features": int(feature_count),
@@ -433,6 +520,10 @@ def result_row(target_name, stratum, feature_set, x, y, atoms, frames, alpha,
         "feature_labels": labels,
         "_between_pred": between["pred"],
         "_between_target": between["target"],
+        "_between_groups": between["groups"],
+        "_within_pred": within["pred"],
+        "_within_target": within["target"],
+        "_within_groups": within["groups"],
     }
 
 
@@ -440,19 +531,171 @@ def strip_private(row):
     return {k: v for k, v in row.items() if not k.startswith("_") and k != "feature_labels"}
 
 
+def add_physics_lifts(rows):
+    base_rows = {
+        (row["target"], row["stratum"]): row
+        for row in rows
+        if row["feature_set"] == "ensemble_physics_only"
+    }
+    for row in rows:
+        base = base_rows.get((row["target"], row["stratum"]))
+        if base is None:
+            row["gap_between_R2_vs_physics"] = math.nan
+            row["gap_within_R2_vs_physics"] = math.nan
+            row["gap_between_R2_jackknife_se"] = math.nan
+            row["gap_within_R2_jackknife_se"] = math.nan
+            continue
+        row["gap_between_R2_vs_physics"] = row["between_LOAO_R2"] - base["between_LOAO_R2"]
+        row["gap_within_R2_vs_physics"] = row["within_frame_R2"] - base["within_frame_R2"]
+        if row["feature_set"] == "ensemble_physics_only":
+            row["gap_between_R2_jackknife_se"] = 0.0
+            row["gap_within_R2_jackknife_se"] = 0.0
+        else:
+            row["gap_between_R2_jackknife_se"] = jackknife_difference_se(
+                row["_between_pred"], row["_between_target"], row["_between_groups"],
+                base["_between_pred"], base["_between_target"], base["_between_groups"],
+            )
+            row["gap_within_R2_jackknife_se"] = jackknife_difference_se(
+                row["_within_pred"], row["_within_target"], row["_within_groups"],
+                base["_within_pred"], base["_within_target"], base["_within_groups"],
+            )
+
+
+def safe_div(num, den):
+    if den is None or not np.isfinite(den) or abs(den) <= 1.0e-12:
+        return math.nan
+    return num / den
+
+
+def dominant_lift(row, prefix):
+    lifts = {
+        "CRG": row[f"{prefix}_crg_lift"],
+        "embedding": row[f"{prefix}_embedding_lift"],
+        "charge": row[f"{prefix}_charge_lift"],
+    }
+    finite = {k: v for k, v in lifts.items() if np.isfinite(v)}
+    if not finite:
+        return "nan"
+    name, value = max(finite.items(), key=lambda kv: kv[1])
+    if value <= 0.0:
+        return "none_positive"
+    return name
+
+
+def build_decomposition(out):
+    rows = []
+    by_set = {name: name for name in FEATURE_SET_COMPONENTS}
+    for (target, stratum), group in out.groupby(["target", "stratum"], sort=False):
+        keyed = {row["feature_set"]: row for _, row in group.iterrows()}
+        if not all(name in keyed for name in by_set):
+            continue
+        base = keyed["ensemble_physics_only"]
+        row = {
+            "target": target,
+            "stratum": stratum,
+            "n_atoms_between": int(base["n_atoms_between"]),
+            "rows": int(base["rows"]),
+            "variance_share_between": float(base["variance_share_between"]),
+            "variance_share_within": float(base["variance_share_within"]),
+        }
+        for prefix, metric in [("between", "between_LOAO_R2"), ("within", "within_frame_R2")]:
+            physics = float(keyed["ensemble_physics_only"][metric])
+            crg = float(keyed["ensemble_plus_crg"][metric]) - physics
+            embedding = float(keyed["ensemble_plus_embedding"][metric]) - physics
+            charge = float(keyed["ensemble_plus_aimnet2_charge"][metric]) - physics
+            crg_embedding = float(keyed["ensemble_plus_crg_embedding"][metric]) - physics
+            combined = float(keyed["ensemble_plus_aimnet2"][metric]) - physics
+            isolated_sum = crg + embedding + charge
+            crg_embedding_separate_sum = crg + embedding
+            crg_embedding_overlap = crg_embedding_separate_sum - crg_embedding
+            isolated_overlap = isolated_sum - combined
+            row.update({
+                f"{prefix}_physics_R2": physics,
+                f"{prefix}_crg_lift": crg,
+                f"{prefix}_embedding_lift": embedding,
+                f"{prefix}_charge_lift": charge,
+                f"{prefix}_crg_embedding_lift": crg_embedding,
+                f"{prefix}_combined_lift": combined,
+                f"{prefix}_isolated_sum_lift": isolated_sum,
+                f"{prefix}_crg_embedding_overlap": crg_embedding_overlap,
+                f"{prefix}_crg_embedding_overlap_fraction_of_separate_sum": safe_div(
+                    crg_embedding_overlap, crg_embedding_separate_sum
+                ),
+                f"{prefix}_isolated_overlap_vs_combined": isolated_overlap,
+                f"{prefix}_crg_share_of_combined_lift": safe_div(crg, combined),
+                f"{prefix}_embedding_share_of_combined_lift": safe_div(embedding, combined),
+                f"{prefix}_charge_share_of_combined_lift": safe_div(charge, combined),
+            })
+        row["dominant_between_lift"] = dominant_lift(row, "between")
+        row["dominant_within_lift"] = dominant_lift(row, "within")
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def add_full_lift_fractions(out):
+    full = out[out["feature_set"] == "ensemble_plus_aimnet2"][
+        ["target", "stratum", "gap_between_R2_vs_physics", "gap_within_R2_vs_physics"]
+    ].rename(columns={
+        "gap_between_R2_vs_physics": "aimnet2_full_between_lift",
+        "gap_within_R2_vs_physics": "aimnet2_full_within_lift",
+    })
+    out = out.merge(full, on=["target", "stratum"], how="left")
+    out["between_lift_fraction_of_aimnet2_full"] = [
+        safe_div(num, den)
+        for num, den in zip(out["gap_between_R2_vs_physics"], out["aimnet2_full_between_lift"])
+    ]
+    out["within_lift_fraction_of_aimnet2_full"] = [
+        safe_div(num, den)
+        for num, den in zip(out["gap_within_R2_vs_physics"], out["aimnet2_full_within_lift"])
+    ]
+    return out
+
+
 def write_markdown(df, path):
     cols = [
-        "target", "stratum", "feature_set", "n_atoms_between", "n_features",
+        "target", "stratum", "feature_set", "feature_components", "n_atoms_between", "n_features",
         "variance_share_between", "variance_share_within",
         "between_LOAO_R2", "between_LOAO_R2_jackknife_se",
         "within_frame_R2", "within_frame_R2_jackknife_se",
-        "gap_between_R2_vs_physics", "gap_within_R2_vs_physics",
+        "gap_between_R2_vs_physics", "gap_between_R2_jackknife_se",
+        "gap_within_R2_vs_physics", "gap_within_R2_jackknife_se",
+        "between_lift_fraction_of_aimnet2_full", "within_lift_fraction_of_aimnet2_full",
     ]
     lines = [
         "# AIMNet2 ceiling and ensemble",
         "",
         "AIMNet2 embedding columns are interpreted as a learnable ceiling diagnostic, not a recovered law.",
         "AIMNet2 CRG means charge-response-gradient, not polarizability.",
+        "",
+        "| " + " | ".join(cols) + " |",
+        "| " + " | ".join(["---"] * len(cols)) + " |",
+    ]
+    for _, row in df[cols].iterrows():
+        vals = []
+        for col in cols:
+            v = row[col]
+            if isinstance(v, float):
+                vals.append("nan" if not np.isfinite(v) else f"{v:.4g}")
+            else:
+                vals.append(str(v))
+        lines.append("| " + " | ".join(vals) + " |")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_decomposition_markdown(df, path):
+    cols = [
+        "target", "stratum", "n_atoms_between",
+        "between_crg_lift", "between_embedding_lift", "between_charge_lift",
+        "between_combined_lift", "between_crg_embedding_overlap",
+        "within_crg_lift", "within_embedding_lift", "within_charge_lift",
+        "within_combined_lift", "within_crg_embedding_overlap",
+        "dominant_between_lift", "dominant_within_lift",
+    ]
+    lines = [
+        "# AIMNet2 isolated lift decomposition",
+        "",
+        "Lifts are delta R2 against ensemble_physics_only, per stratum and target.",
+        "Positive CRG+embedding overlap means the isolated CRG and embedding lifts double-count shared signal; negative overlap means the joint CRG+embedding fit exceeds their isolated sum.",
         "",
         "| " + " | ".join(cols) + " |",
         "| " + " | ".join(["---"] * len(cols)) + " |",
@@ -498,60 +741,73 @@ def main():
         atoms = d["atom_index"].to_numpy(int)
         frames = d["h5_row"].to_numpy(int)
 
-        x_phys, labels_phys = feature_blocks(d, {k: v[idx] for k, v in arrays.items()}, False)
-        x_aim, labels_aim = feature_blocks(d, {k: v[idx] for k, v in arrays.items()}, True)
-        feature_labels["physics_only"] = labels_phys
-        feature_labels["physics_plus_aimnet2"] = labels_aim
+        local_arrays = {k: v[idx] for k, v in arrays.items()}
+        feature_matrices = {}
+        for feature_set in FEATURE_SET_ORDER:
+            x, labels = feature_blocks(d, local_arrays, feature_set)
+            feature_matrices[feature_set] = (x, labels)
+            feature_labels[feature_set] = labels
 
         targets = {
             "sigma_iso": d["dft_sigma_iso"].to_numpy(float).reshape(-1, 1),
             "T2": arrays["target_T2"][idx],
         }
         for target_name, y in targets.items():
-            for feature_set, x, alpha, labels in [
-                ("ensemble_physics_only", x_phys, args.physics_alpha, labels_phys),
-                ("ensemble_plus_aimnet2", x_aim, args.aimnet_alpha, labels_aim),
-            ]:
+            for feature_set in FEATURE_SET_ORDER:
+                x, labels = feature_matrices[feature_set]
+                alpha = args.physics_alpha if feature_set == "ensemble_physics_only" else args.aimnet_alpha
                 row = result_row(
                     target_name, stratum, feature_set, x, y, atoms, frames, alpha,
                     args.within_split, args.seed, args.test_frame_fraction,
                     x.shape[1], labels,
                 )
-                if audit is None and target_name == "sigma_iso" and stratum == "CA":
+                if audit is None and target_name == "sigma_iso" and stratum == "CA" and feature_set == "ensemble_plus_crg":
                     direct = manual_r2(row["_between_pred"], row["_between_target"])
+                    emitted_direct = manual_between_loao_r2_from_features(x, y, atoms, alpha)
                     audit = {
                         "row": {
                             "target": target_name,
                             "stratum": stratum,
                             "feature_set": feature_set,
                         },
+                        "source": "manual_R2_from_CA_sigma_iso_LOAO_predictions_fitted_from_emitted_physics_plus_charge_response_gradient_features",
+                        "crg_feature_labels": [
+                            label for label in labels if "charge_response_gradient" in label
+                        ],
                         "reported_between_LOAO_R2": row["between_LOAO_R2"],
-                        "manual_between_LOAO_R2": direct,
-                        "abs_diff": abs(direct - row["between_LOAO_R2"]),
+                        "manual_between_LOAO_R2_from_predictions": direct,
+                        "manual_between_LOAO_R2_from_emitted_features": emitted_direct,
+                        "abs_diff_predictions": abs(direct - row["between_LOAO_R2"]),
+                        "abs_diff_emitted_features": abs(emitted_direct - row["between_LOAO_R2"]),
                     }
                 rows.append(row)
 
+    missing = REQUIRED_FEATURE_SETS - {row["feature_set"] for row in rows}
+    if missing:
+        raise SystemExit(f"FATAL: required feature sets missing: {sorted(missing)}")
+    add_physics_lifts(rows)
     out = pd.DataFrame([strip_private(r) for r in rows])
     if out.empty:
         raise SystemExit("FATAL: no fitted rows produced")
-    base = out[out["feature_set"] == "ensemble_physics_only"][
-        ["target", "stratum", "between_LOAO_R2", "within_frame_R2"]
-    ].rename(columns={
-        "between_LOAO_R2": "physics_between_R2",
-        "within_frame_R2": "physics_within_R2",
-    })
-    out = out.merge(base, on=["target", "stratum"], how="left")
-    out["gap_between_R2_vs_physics"] = out["between_LOAO_R2"] - out["physics_between_R2"]
-    out["gap_within_R2_vs_physics"] = out["within_frame_R2"] - out["physics_within_R2"]
-    out = out.sort_values(["target", "stratum", "feature_set"]).reset_index(drop=True)
+    out["feature_set_order"] = out["feature_set"].map({name: i for i, name in enumerate(FEATURE_SET_ORDER)})
+    out["stratum_order"] = out["stratum"].map({name: i for i, name in enumerate(STRATA_ORDER)})
+    out = add_full_lift_fractions(out)
+    out = out.sort_values(["target", "stratum_order", "feature_set_order"]).reset_index(drop=True)
+    decomposition = build_decomposition(out)
+    decomposition["stratum_order"] = decomposition["stratum"].map({name: i for i, name in enumerate(STRATA_ORDER)})
+    decomposition = decomposition.sort_values(["target", "stratum_order"]).reset_index(drop=True)
 
     csv_path = out_dir / "aimnet2_ceiling_ensemble.csv"
     md_path = out_dir / "aimnet2_ceiling_ensemble.md"
+    decomp_csv_path = out_dir / "aimnet2_lift_decomposition.csv"
+    decomp_md_path = out_dir / "aimnet2_lift_decomposition.md"
     json_path = out_dir / "aimnet2_ceiling_ensemble_run.json"
     audit_path = out_dir / "self_audit.json"
     labels_path = out_dir / "feature_labels.json"
-    out.to_csv(csv_path, index=False)
+    out.drop(columns=["feature_set_order", "stratum_order"]).to_csv(csv_path, index=False)
+    decomposition.drop(columns=["stratum_order"]).to_csv(decomp_csv_path, index=False)
     write_markdown(out, md_path)
+    write_decomposition_markdown(decomposition, decomp_md_path)
     audit_path.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     labels_path.write_text(json.dumps(feature_labels, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     json_path.write_text(
@@ -569,8 +825,12 @@ def main():
                 "embedding_transform": embedding_transform,
                 "crg_label": "aimnet2_charge_response_gradient_not_polarizability",
                 "embedding_interpretation": "learnable_ceiling_not_physical_law",
+                "feature_set_components": FEATURE_SET_COMPONENTS,
+                "required_feature_sets": sorted(REQUIRED_FEATURE_SETS),
+                "crg_embedding_overlap_definition": "crg_lift + embedding_lift - crg_embedding_lift",
                 "change_of_basis_orthogonality_max": orth,
                 "rows": int(len(out)),
+                "decomposition_rows": int(len(decomposition)),
             },
             indent=2,
             sort_keys=True,
@@ -581,6 +841,8 @@ def main():
 
     print(f"wrote {csv_path}")
     print(f"wrote {md_path}")
+    print(f"wrote {decomp_csv_path}")
+    print(f"wrote {decomp_md_path}")
     print(f"wrote {json_path}")
     print(f"wrote {audit_path}")
     print("\ntarget,stratum,feature_set,between_R2,within_R2,gap_between,gap_within")
@@ -590,6 +852,17 @@ def main():
             f"{finite_fmt(row['between_LOAO_R2'])},{finite_fmt(row['within_frame_R2'])},"
             f"{finite_fmt(row['gap_between_R2_vs_physics'])},"
             f"{finite_fmt(row['gap_within_R2_vs_physics'])}"
+        )
+    print("\ntarget,stratum,between_crg,between_embedding,between_charge,between_combined,between_crg_embedding_overlap,within_crg,within_embedding,within_charge,within_combined,within_crg_embedding_overlap")
+    for _, row in decomposition.iterrows():
+        print(
+            f"{row['target']},{row['stratum']},"
+            f"{finite_fmt(row['between_crg_lift'])},{finite_fmt(row['between_embedding_lift'])},"
+            f"{finite_fmt(row['between_charge_lift'])},{finite_fmt(row['between_combined_lift'])},"
+            f"{finite_fmt(row['between_crg_embedding_overlap'])},"
+            f"{finite_fmt(row['within_crg_lift'])},{finite_fmt(row['within_embedding_lift'])},"
+            f"{finite_fmt(row['within_charge_lift'])},{finite_fmt(row['within_combined_lift'])},"
+            f"{finite_fmt(row['within_crg_embedding_overlap'])}"
         )
 
 
