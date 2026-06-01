@@ -77,7 +77,9 @@ const char* kSourceHeader =
     "disp_local_x,disp_local_y,disp_local_z,r,cos_theta,dipolar,"
     "ring_index,ring_type_index,ring_intensity,ring_nitrogen,is_self_or_bonded,"
     "bond_index,bond_category,bond_atom_a,bond_atom_b,"
-    "source_atom_index,source_residue_number,source_element_ord,source_q_e";
+    "source_atom_index,source_residue_number,source_element_ord,source_q_e,"
+    "source_normal_local_x,source_normal_local_y,source_normal_local_z,"
+    "bond_axis_local_x,bond_axis_local_y,bond_axis_local_z";
 
 // ── Aggregated-row schema header (per (atom,frame); the target lives ONCE) ──
 const char* kAggregatedHeader =
@@ -137,6 +139,10 @@ void BroadBackboneSink::writeSourceRow(const NeighborhoodRecord& rec, const Sour
     const char* mechanism = s.kind == SourceKind::Ring    ? "ring"
                             : s.kind == SourceKind::Bond  ? "bond"
                                                           : "charge";
+    const Vec3 sourceNormalLocal = s.kind == SourceKind::Ring ? s.source_normal_local
+                                                              : Vec3::Zero();
+    const Vec3 bondAxisLocal = s.kind == SourceKind::Bond ? s.bond_axis_local
+                                                          : Vec3::Zero();
     // Identity columns are the TARGET atom's, minimal (full identity + target
     // live ONCE on the aggregated row; this row joins back on row_id).
     // frame_variant encodes the backbone atom class (N/CA/C/O/HA frame).
@@ -149,7 +155,11 @@ void BroadBackboneSink::writeSourceRow(const NeighborhoodRecord& rec, const Sour
         << s.ring_nitrogen << ',' << (s.is_self_or_bonded ? 1 : 0) << ','
         << s.bond_index << ',' << s.bond_category << ',' << s.bond_atom_a << ','
         << s.bond_atom_b << ',' << s.source_atom_index << ',' << s.source_residue_number << ','
-        << s.source_element << ',' << num(s.source_q_e) << '\n';
+        << s.source_element << ',' << num(s.source_q_e) << ','
+        << num(sourceNormalLocal.x()) << ',' << num(sourceNormalLocal.y()) << ','
+        << num(sourceNormalLocal.z()) << ','
+        << num(bondAxisLocal.x()) << ',' << num(bondAxisLocal.y()) << ','
+        << num(bondAxisLocal.z()) << '\n';
     ++sourceRows_;
 }
 

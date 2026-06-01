@@ -4,6 +4,34 @@ Freshest current state, for the next session/agent. Read `GUIDANCE.md`
 (orientation) + `DESIGN.md` (class model) first; this supersedes the
 "Status" section in GUIDANCE.md, which a build agent left mid-build/stale.
 
+## UPDATE 2026-06-01 (latest) — BACKBONE equivariant-T2 EXEMPLAR landed (2 runs, 8 strata)
+
+The exemplar for the rest of the backbone work. `analysis/equiv_t2_backbone_e3nn.py`
+(Opus-authored, codex-built/run/debt-caught, lead-verified): heterogeneous-source
+equivariant model — `o3.spherical_harmonics("2e")` of each source's direction,
+per-source-TYPE radial MLP (ring/bond/charge), scatter-pooled per atom, target via the
+frozen `get_C()`. Predicts per-atom DFT **T2** across the 8 strata (N/CA/C/O/HN/HA/HA2/HA3).
+
+Emit-fix: `BroadBackboneSink.cpp` ONLY — appended `source_normal_local_*` (rings) +
+`bond_axis_local_*` (bonds) per source (data was already in `SourceSlot`; mirrors
+RecordSink; charge → zero sentinel). Ring/mc oracle intact by construction (no other
+C++ touched). The fitter's `--with-axes` lights up the orientation-aware model on the
+re-extracted axes substrate (`/tmp/rdc-broad-backbone-axes`, 33 cols / 6 axis cols).
+
+Two runs (frame-split T2 R² gate per stratum; |T2| r; LOAO opt-in via `--loao`):
+  disp-only → axes:  N .574→.650  CA .328→.428  C .561→.585  O .587→.716
+                     HN .687→.759  HA .598→.672  HA2 .794→.842(thin,4at)  HA3 .873→.916(thin,4at)
+Orientation vectors improved EVERY stratum (ΔR² +0.02..+0.13). Solid on the
+54/52/50-atom strata; HA2/HA3 thin (4 coupled atoms — correlate-not-match, flagged).
+CA tensor R²=0.43 vs scalar 0.055 — the T2 structure carries where σ_iso didn't.
+
+Discipline: no recompute (lead re-grep clean), frozen-C reused, e3nn (no hand-roll),
+C++ untouched except the broad sink. `--cross exact` IS the model (default); `learnable`
+is an opt-in COMPARISON confirming the fixed angular form (~0.001). Debt caught (cached
+Y2 features, LOAO opt-in, dead-code removed). The Python-consumer discipline is now a
+controlling doc: `analysis/PATTERNS.md` (front-load in every fitter brief). NEXT backbone
+work copies this exemplar.
+
 ## UPDATE 2026-06-01 — Python physics RETIRED; equiv-T2 rebuilt on e3nn (authored)
 
 Per `MODEL_PLACEMENT_PROPOSAL.md` + the lead's decisions. The Python end-runs are
