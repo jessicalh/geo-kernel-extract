@@ -221,6 +221,19 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("rediscover_mcconnell_aggregated_bare_kernel_T2",     "rediscover", np.ndarray, 5, False, "Rediscover McConnell aggregated-row producer bare-kernel T2 payload",
               is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
 
+    # ── broad_backbone (h5-reader/src/rediscover/BroadBackbone) — the composed
+    # heterogeneous relationship: EVERY backbone atom × {rings, aniso bonds,
+    # charge FIELD}. Two-kind carrier with the target-repeat FIX: the DFT target
+    # lives ONCE per (atom,frame) on the aggregated row + these NPYs (keyed by
+    # the broad_backbone_aggregated.csv row order); per-source rows carry only
+    # source fields + a row_id join key, NOT the target. ───
+    ArraySpec("broad_backbone_aggregated_target_T2",       "rediscover", np.ndarray, 5, False, "Broad-backbone aggregated-row DFT target T2 payload (lab frame), once per (atom,frame)",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("broad_backbone_aggregated_target_local_T2", "rediscover", np.ndarray, 5, False, "Broad-backbone aggregated-row local-frame DFT target T2 payload, once per (atom,frame)",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("broad_backbone_aggregated_field_local",     "rediscover", np.ndarray, 3, True,  "Broad-backbone local-frame Coulomb E-field (FF14SB, the field-not-mu feature), once per (atom,frame)",
+              is_feature=True, native_axis="rediscover_aggregated_row", irreps="1e", units="e/Angstrom^2", tensor_rank=1, parity="odd", mechanism="charges"),
+
     # ── Coulomb (CoulombResult.cpp) — optional; retired from production
     # (APBS is canonical), so present only in the FullFatFrameExtraction
     # trajectory (--mopac), where it feeds the MOPAC-vs-FF14SB probe. ──

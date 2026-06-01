@@ -16,6 +16,8 @@
 // StructuredLogger (UDP 9997 + stderr).
 
 #include "ExtractionSupport.h"
+#include "BroadBackbone.h"
+#include "BroadBackboneSink.h"
 #include "Catalog.h"
 #include "ChargeDipoleNeighborhood.h"
 #include "ComposedRelationships.h"
@@ -121,7 +123,7 @@ int main(int argc, char** argv) {
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 8.0 Å is the conventions'
@@ -133,8 +135,17 @@ int main(int argc, char** argv) {
                                        QStringLiteral("Charge source for charge cases: ff14sb | aimnet2 | mopac."),
                                        QStringLiteral("source"), QStringLiteral("ff14sb"));
     QCommandLineOption chargeCutoffOpt(QStringLiteral("charge-cutoff"),
-                                       QStringLiteral("Charge-site source cutoff in Angstrom for charge_dipole (fixed default 6.0 for this relationship)."),
+                                       QStringLiteral("Charge-site source cutoff in Angstrom for charge_dipole / broad_backbone charge field. Sweep 6/10/12 (6 truncates the long-range 1/r^2 field). Default 6.0."),
                                        QStringLiteral("angstrom"), QStringLiteral("6.0"));
+    // broad_backbone ring/bond source-discovery cutoffs (Å), recorded per the
+    // no-hidden-cutoffs rule. Ring 8.0 = conventions' aromatic-neighbourhood
+    // recommendation; bond reuses the McConnell reach.
+    QCommandLineOption ringCutoffOpt(QStringLiteral("ring-cutoff"),
+                                     QStringLiteral("broad_backbone ring-centre cutoff in Angstrom (default 8.0)."),
+                                     QStringLiteral("angstrom"), QStringLiteral("8.0"));
+    QCommandLineOption bondCutoffOpt(QStringLiteral("bond-cutoff"),
+                                     QStringLiteral("broad_backbone anisotropic-bond cutoff in Angstrom (default 8.0)."),
+                                     QStringLiteral("angstrom"), QStringLiteral("8.0"));
     // Which traversal stands ring_current / mcconnell up: the composed
     // functional API (Layer 1 verbs + Layer 2 curried closures + the Layer 3
     // engine — the default, what we validate) or the original procedural cells
@@ -148,6 +159,8 @@ int main(int argc, char** argv) {
     parser.addOption(mcCutoffOpt);
     parser.addOption(chargeSourceOpt);
     parser.addOption(chargeCutoffOpt);
+    parser.addOption(ringCutoffOpt);
+    parser.addOption(bondCutoffOpt);
     parser.addOption(engineOpt);
     parser.process(app);
 
@@ -181,6 +194,18 @@ int main(int argc, char** argv) {
     const double chargeCutoff = parser.value(chargeCutoffOpt).toDouble(&chargeCutoffOk);
     if (!chargeCutoffOk || !(chargeCutoff > 0.0)) {
         qCCritical(cMain).noquote() << "invalid --charge-cutoff" << parser.value(chargeCutoffOpt);
+        return 2;
+    }
+    bool ringCutoffOk = false;
+    const double ringCutoff = parser.value(ringCutoffOpt).toDouble(&ringCutoffOk);
+    if (!ringCutoffOk || !(ringCutoff > 0.0)) {
+        qCCritical(cMain).noquote() << "invalid --ring-cutoff" << parser.value(ringCutoffOpt);
+        return 2;
+    }
+    bool bondCutoffOk = false;
+    const double bondCutoff = parser.value(bondCutoffOpt).toDouble(&bondCutoffOk);
+    if (!bondCutoffOk || !(bondCutoff > 0.0)) {
+        qCCritical(cMain).noquote() << "invalid --bond-cutoff" << parser.value(bondCutoffOpt);
         return 2;
     }
 
@@ -224,6 +249,55 @@ int main(int argc, char** argv) {
                 << "ValidateScenario failed: charge_dipole requires FF14SB charges, but topol.top charges were not loaded";
             return 2;
         }
+    }
+
+    // ── broad_backbone — the composed heterogeneous relationship (its own
+    // two-kind carrier; not a RunnableCase/RecordSink). ValidateScenario, run,
+    // commit, manifest, return. ────────────────────────────────────────────
+    if (which == QStringLiteral("broad_backbone")) {
+        if (chargeSource != QStringLiteral("ff14sb")) {
+            qCCritical(cMain).noquote()
+                << "ValidateScenario failed: broad_backbone charge field implements charge_source=ff14sb, got"
+                << chargeSource;
+            return 2;
+        }
+        if (!catalog.has(h5reader::rediscover::ArrayId::Ff14sbCharge)) {
+            qCCritical(cMain).noquote()
+                << "ValidateScenario failed: broad_backbone charge field requires FF14SB charges, but topol.top charges were not loaded";
+            return 2;
+        }
+        const h5reader::rediscover::BroadRelationship brel =
+            h5reader::rediscover::MakeBroadBackboneRelationship(ringCutoff, bondCutoff, chargeCutoff,
+                                                                chargeSource, /*exclude_residue=*/true);
+        h5reader::rediscover::BroadBackboneSink sink(outDir, QStringLiteral("broad_backbone"));
+        if (!sink.Ok()) {
+            qCCritical(cMain).noquote() << "broad_backbone sink open failed";
+            return 3;
+        }
+        std::size_t cases = 0;
+        try {
+            cases = h5reader::rediscover::RunBroadBackbone(brel, body, sink);
+        } catch (const std::exception& e) {
+            qCCritical(cMain).noquote() << "broad_backbone failed:" << e.what();
+            return 1;
+        }
+        const bool committed = sink.Commit();
+        qCInfo(cMain).noquote() << "broad_backbone | cases=" << cases
+                                << "| source_rows=" << sink.sourceRowsWritten()
+                                << "| agg_rows=" << sink.aggregatedRowsWritten()
+                                << "| committed=" << committed;
+        if (!committed) return 4;
+        std::vector<h5reader::rediscover::OutputEntry> outputs = {
+            {QStringLiteral("broad_backbone"), QStringLiteral("source_sum"),
+             QStringLiteral("broad_backbone_sources.csv"),
+             QStringLiteral("broad_backbone_aggregated.csv"), sink.sidecarFiles(), cases,
+             sink.sourceRowsWritten(), sink.aggregatedRowsWritten()}};
+        QString manifestErr;
+        if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
+            qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
+            return 4;
+        }
+        return 0;
     }
 
     // A runnable case: its name, its declared schema, and a runner that walks

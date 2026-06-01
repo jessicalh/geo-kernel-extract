@@ -349,6 +349,14 @@ qt_add_executable(h5reader_extract
     src/rediscover/RelationshipEngine.cpp
     src/rediscover/ComposedRelationships.h
     src/rediscover/ComposedRelationships.cpp
+    # broad_backbone — the first composed relationship over EVERY backbone atom
+    # × all mechanisms (rings + aniso bonds + charge field), with its own
+    # heterogeneous two-kind carrier (the target-repeat fix). Backbone frames
+    # added in LocalFrameBasis.{h,cpp} above.
+    src/rediscover/BroadBackboneSink.h
+    src/rediscover/BroadBackboneSink.cpp
+    src/rediscover/BroadBackbone.h
+    src/rediscover/BroadBackbone.cpp
     src/rediscover/main_extract.cpp
 )
 target_include_directories(h5reader_extract PRIVATE
@@ -380,6 +388,27 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         Eigen3::Eigen
     )
     add_test(NAME h5reader_rediscover_tests COMMAND h5reader_rediscover_tests)
+
+    # Broad-backbone local-frame fixtures (broad-backbone spike, 2026-06-01).
+    # Pure synthetic Vec3 geometry over LocalFrameBasis — no calcset / H5 /
+    # model. Pins the N / Cα / C=O / HA frame conventions + handedness +
+    # degenerate-fail-loud by assertion (the aromatic-H positional-anchor bug
+    # class). Links only LocalFrameBasis + Eigen + Qt::Test, like the basis test.
+    qt_add_executable(h5reader_rediscover_backbone_frame_tests
+        tests/rediscover_backbone_frame_tests.cpp
+        src/rediscover/LocalFrameBasis.h
+        src/rediscover/LocalFrameBasis.cpp
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
+    )
+    target_include_directories(h5reader_rediscover_backbone_frame_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_backbone_frame_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_backbone_frame_tests
+             COMMAND h5reader_rediscover_backbone_frame_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp
