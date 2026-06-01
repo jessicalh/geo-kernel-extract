@@ -28,8 +28,8 @@ import change_of_basis as cob
 from equiv_t2_efg_e3nn import (
     STRATA_ORDER,
     build_pack,
+    centred_by_train_atom,
     corrcoef,
-    demean_per_atom,
     load,
     r2,
     stratum_of,
@@ -47,6 +47,8 @@ def parse_args():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--grid-size", type=int, default=101)
     ap.add_argument("--strata", nargs="*", default=STRATA_ORDER)
+    ap.add_argument("--split", choices=["blocked", "random"], default="blocked")
+    ap.add_argument("--purge-frames", type=int, default=1)
     return ap.parse_args()
 
 
@@ -76,7 +78,7 @@ def constant_gate_prediction(pack):
     target = pack["target"].detach().cpu().numpy()
     group_atom = pack["group_atom_idx"]
     train = pack["g_tr"].detach().cpu().numpy().astype(bool)
-    feature_dm = demean_per_atom(feature, group_atom)
+    feature_dm = centred_by_train_atom(feature, group_atom, train)
     denom = float((feature_dm[train] ** 2).sum())
     if denom <= 0.0:
         gate = math.nan
@@ -89,7 +91,8 @@ def constant_gate_prediction(pack):
 
 def model_prediction(model, pack):
     with torch.no_grad():
-        return model(pack["feature"], pack["mag_norm"], pack["group_atom"]).detach().cpu().numpy()
+        return model(pack["feature"], pack["mag_norm"], pack["group_atom"],
+                     center_mask=pack["g_tr"]).detach().cpu().numpy()
 
 
 def gate_samples(model, pack, stratum, grid_size):
@@ -209,7 +212,8 @@ def main():
 
     print(
         f"device={dev} out_dir={args.out_dir} evidence_dir={evidence_dir} "
-        f"epochs={args.epochs} hidden={args.hidden}"
+        f"epochs={args.epochs} hidden={args.hidden} split={args.split} "
+        f"purge_frames={args.purge_frames}"
     )
     print(f"change_of_basis.get_C() |C^T C - I|max={np.abs(C.T @ C - np.eye(5)).max():.3e}")
     print(f"emitted rows={len(agg)} feature_shape={feature_lib.shape} target_shape={target_lib.shape}")
@@ -226,6 +230,9 @@ def main():
             target_lib[idx],
             C,
             dev,
+            split_strategy=args.split,
+            split_seed=args.seed,
+            purge_frames=args.purge_frames,
         )
         if pack is None or pack["n_atoms"] < 2:
             continue
@@ -254,6 +261,10 @@ def main():
             "rows": int(pack["n_groups"]),
             "frames": int(pack["n_frames"]),
             "test_rows": int(test.sum()),
+            "train_rows": int(train.sum()),
+            "split_strategy": pack["split_strategy"],
+            "purged_train_frames": pack["purged_train_frames"],
+            "cross_split_lag1_pairs": pack["cross_split_lag1_pairs"],
             "atoms": int(pack["n_atoms"]),
             "effective_n_lag1": neff["effective_n_lag1"],
             "median_lag1_rho": neff["median_lag1_rho"],
@@ -299,6 +310,8 @@ def main():
                 "hidden": args.hidden,
                 "lr": args.lr,
                 "seed": args.seed,
+                "split": args.split,
+                "purge_frames": args.purge_frames,
                 "change_of_basis_orthogonality_max": float(np.abs(C.T @ C - np.eye(5)).max()),
                 "summary_csv": str(summary_path),
                 "gate_samples_csv": str(samples_path),

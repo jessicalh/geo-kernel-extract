@@ -40,6 +40,8 @@ TEST_FRAME_FRACTION = 0.20
 FRAME_SPLIT_SEED = 0
 MIN_FRAME_SPLIT_FRAMES = 5
 THIN_ATOM_WARN = 10
+DEFAULT_SPLIT = "blocked"
+PURGE_NEIGHBOUR_FRAMES = 1
 
 
 def parse_args():
@@ -53,6 +55,12 @@ def parse_args():
     ap.add_argument("--loao", action="store_true",
                     help="also run leave-atoms-out retraining. The frame split "
                          "remains the reported gate.")
+    ap.add_argument("--split", choices=["blocked", "random"], default=DEFAULT_SPLIT,
+                    help="frame split for the lab-frame EFG within gate. Default "
+                         "is a contiguous temporal block with purged neighbours.")
+    ap.add_argument("--purge-frames", type=int, default=PURGE_NEIGHBOUR_FRAMES,
+                    help="for --split blocked, drop this many neighbouring frame "
+                         "indices from train around the held-out block.")
     return ap.parse_args()
 
 
@@ -151,33 +159,81 @@ class EfgLaw(nn.Module):
         self.n_atoms = n_atoms
         self.gate = ScalarGate(hidden, init_gate)
 
-    def forward(self, feature, mag_norm, group_atom):
+    def forward(self, feature, mag_norm, group_atom, center_mask=None):
         pred = self.gate(mag_norm) * feature
+        if center_mask is None:
+            center_mask = torch.ones(group_atom.shape, dtype=torch.bool, device=group_atom.device)
         mean = torch.zeros(self.n_atoms, 5, dtype=pred.dtype, device=pred.device)
         cnt = torch.zeros(self.n_atoms, 1, dtype=pred.dtype, device=pred.device)
-        mean.index_add_(0, group_atom, pred)
-        cnt.index_add_(0, group_atom, torch.ones_like(cnt[group_atom]))
+        center_atom = group_atom[center_mask]
+        center_pred = pred[center_mask]
+        mean.index_add_(0, center_atom, center_pred)
+        cnt.index_add_(0, center_atom, torch.ones_like(cnt[center_atom]))
         return pred - (mean / cnt.clamp_min(1.0))[group_atom]
 
 
-def demean_per_atom(x, group_atom_idx):
-    out = np.asarray(x, dtype=float).copy()
+def centred_by_train_atom(x, group_atom_idx, train_mask):
+    out = np.full_like(np.asarray(x, dtype=float), np.nan, dtype=float)
     for atom in np.unique(group_atom_idx):
         m = group_atom_idx == atom
-        out[m] -= out[m].mean(axis=0, keepdims=True)
+        train_atom = m & train_mask
+        if train_atom.sum() == 0:
+            continue
+        out[m] = x[m] - x[train_atom].mean(axis=0, keepdims=True)
     return out
 
 
-def make_frame_split(frames):
-    frames = np.sort(np.unique(frames))
+def make_split_masks(row_frames, strategy=DEFAULT_SPLIT, seed=FRAME_SPLIT_SEED,
+                     purge_frames=PURGE_NEIGHBOUR_FRAMES):
+    frames = np.sort(np.unique(row_frames))
+    empty = np.zeros(len(row_frames), dtype=bool)
     if len(frames) < MIN_FRAME_SPLIT_FRAMES:
-        return set()
+        return empty.copy(), empty.copy(), {
+            "split_strategy": strategy,
+            "test_frames": 0,
+            "purged_train_frames": 0,
+            "cross_split_lag1_pairs": 0,
+        }
     n_test = max(1, int(TEST_FRAME_FRACTION * len(frames)))
-    return set(np.random.default_rng(FRAME_SPLIT_SEED).choice(
-        frames, n_test, replace=False))
+    rng = np.random.default_rng(seed)
+
+    if strategy == "random":
+        test_frames = set(rng.choice(frames, n_test, replace=False))
+        train_frames = set(frames) - test_frames
+        purged = set()
+    elif strategy == "blocked":
+        start = int(rng.integers(0, len(frames) - n_test + 1))
+        stop = start + n_test
+        test_frames = set(frames[start:stop])
+        purge_lo = max(0, start - max(0, purge_frames))
+        purge_hi = min(len(frames), stop + max(0, purge_frames))
+        purged = set(frames[purge_lo:start]) | set(frames[stop:purge_hi])
+        train_frames = set(frames) - test_frames - purged
+    else:
+        raise ValueError(f"unknown split strategy {strategy!r}")
+
+    train = np.array([f in train_frames for f in row_frames], dtype=bool)
+    test = np.array([f in test_frames for f in row_frames], dtype=bool)
+
+    frame_to_split = {f: ("test" if f in test_frames else "train" if f in train_frames else "purged")
+                      for f in frames}
+    cross = 0
+    for a, b in zip(frames[:-1], frames[1:]):
+        sa = frame_to_split[a]
+        sb = frame_to_split[b]
+        if {sa, sb} == {"train", "test"}:
+            cross += 1
+    return train, test, {
+        "split_strategy": strategy,
+        "test_frames": int(len(test_frames)),
+        "purged_train_frames": int(len(purged)),
+        "cross_split_lag1_pairs": int(cross),
+    }
 
 
-def build_pack(agg_s, feature_lib_s, target_lib_s, C, dev):
+def build_pack(agg_s, feature_lib_s, target_lib_s, C, dev,
+               split_strategy=DEFAULT_SPLIT, split_seed=FRAME_SPLIT_SEED,
+               purge_frames=PURGE_NEIGHBOUR_FRAMES):
     present = (
         (agg_s["dft_present"].to_numpy() == 1)
         & (agg_s["apbs_efg_present"].to_numpy() == 1)
@@ -196,12 +252,12 @@ def build_pack(agg_s, feature_lib_s, target_lib_s, C, dev):
 
     group_atom_idx, atom_labels = pd.factorize(a["atom_index"].to_numpy())
     n_atoms = int(group_atom_idx.max()) + 1
-    target_dm = demean_per_atom(target, group_atom_idx)
-    feature_dm_constant_gate = demean_per_atom(feature, group_atom_idx)
-
-    test_frames = make_frame_split(a["h5_row"].to_numpy())
-    g_te = a["h5_row"].isin(test_frames).to_numpy()
-    g_tr = ~g_te
+    g_tr, g_te, split_info = make_split_masks(a["h5_row"].to_numpy(),
+                                              strategy=split_strategy,
+                                              seed=split_seed,
+                                              purge_frames=purge_frames)
+    target_dm = centred_by_train_atom(target, group_atom_idx, g_tr)
+    feature_dm_constant_gate = centred_by_train_atom(feature, group_atom_idx, g_tr)
 
     mag = a["efg_T2_magnitude"].to_numpy(float).reshape(-1, 1)
     norm_source = mag[g_tr] if g_tr.any() else mag
@@ -233,6 +289,8 @@ def build_pack(agg_s, feature_lib_s, target_lib_s, C, dev):
         "n_atoms": n_atoms,
         "n_frames": int(a["h5_row"].nunique()),
         "test_groups": int(g_te.sum()),
+        "train_groups": int(g_tr.sum()),
+        **split_info,
         "init_gate": init_gate,
         "feature_scale_median": float(np.median(a["efg_T2_magnitude"].to_numpy(float))),
     }
@@ -257,7 +315,8 @@ def train_model(pack, args, dev, train_mask=None, epochs=None):
     for _ in range(epochs):
         model.train()
         opt.zero_grad()
-        pred = model(pack["feature"], pack["mag_norm"], pack["group_atom"])
+        pred = model(pack["feature"], pack["mag_norm"], pack["group_atom"],
+                     center_mask=train_mask)
         loss = (((pred[train_mask] - target[train_mask]) / scale) ** 2).mean()
         loss.backward()
         opt.step()
@@ -268,7 +327,8 @@ def score_model(model, pack):
     if model is None:
         return float("nan"), float("nan")
     with torch.no_grad():
-        pred = model(pack["feature"], pack["mag_norm"], pack["group_atom"]).cpu().numpy()
+        pred = model(pack["feature"], pack["mag_norm"], pack["group_atom"],
+                     center_mask=pack["g_tr"]).cpu().numpy()
     target = pack["target"].cpu().numpy()
     te = pack["g_te"].cpu().numpy()
     if te.sum() < 2:
@@ -293,7 +353,8 @@ def leave_atoms_out(pack, args, dev):
         if model is None:
             continue
         with torch.no_grad():
-            p = model(pack["feature"], pack["mag_norm"], pack["group_atom"]).cpu().numpy()
+            p = model(pack["feature"], pack["mag_norm"], pack["group_atom"],
+                      center_mask=train_mask).cpu().numpy()
         pred[ga == atom] = p[ga == atom]
 
     target = pack["target"].cpu().numpy()
@@ -312,7 +373,9 @@ def report_stratum(name, pack, args, dev):
     thin_txt = " THIN" if thin else ""
     print(f"\n-- stratum {name}: rows={pack['n_groups']}  "
           f"effective_N={pack['n_atoms']}  frames={pack['n_frames']}  "
-          f"test_rows={pack['test_groups']}{thin_txt}  "
+          f"train_rows={pack['train_groups']}  test_rows={pack['test_groups']}  "
+          f"split={pack['split_strategy']}  cross_lag1_pairs={pack['cross_split_lag1_pairs']}"
+          f"{thin_txt}  "
           f"median_|EFG|={pack['feature_scale_median']:.3g}",
           flush=True)
     if pack["n_atoms"] < 2 or pack["n_groups"] < 4:
@@ -343,7 +406,8 @@ def main():
 
     C = cob.get_C()
     print(f"device={dev}  out_dir={args.out_dir}  epochs={args.epochs}  "
-          f"lr={args.lr}  hidden={args.hidden}  loao={args.loao}",
+          f"lr={args.lr}  hidden={args.hidden}  loao={args.loao}  "
+          f"split={args.split}  purge_frames={args.purge_frames}",
           flush=True)
     print(f"change_of_basis.get_C() |C^T C - I|max="
           f"{np.abs(C.T @ C - np.eye(5)).max():.2e}", flush=True)
@@ -367,7 +431,9 @@ def main():
             summary[name] = None
             continue
         pack = build_pack(agg.iloc[idx].reset_index(drop=True),
-                          feature_lib[idx], target_lib[idx], C, dev)
+                          feature_lib[idx], target_lib[idx], C, dev,
+                          split_strategy=args.split, split_seed=args.seed,
+                          purge_frames=args.purge_frames)
         if pack is None:
             print(f"\n-- stratum {name}: no rows with both DFT and APBS EFG present",
                   flush=True)

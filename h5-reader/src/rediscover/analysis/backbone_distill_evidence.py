@@ -326,7 +326,7 @@ def add_radial_fit(records, df):
                     "note": "chosen learned gate; radial-only log fit",
                 }
             )
-        x = q * np.power(r, -2.0)
+        x = np.multiply(q, np.power(r, -3.0))
         X = np.column_stack([np.ones(len(x)), x])
         fit = ols_fit(X, y)
         if fit:
@@ -335,11 +335,11 @@ def add_radial_fit(records, df):
                 {
                     "stratum": stratum,
                     "kind": kind,
-                    "fit": "gate_vs_q_r^-2",
-                    "power": -2.0,
+                    "fit": "gate_vs_q_r^-3",
+                    "power": -3.0,
                     "r2": r2_lin,
                     "n": n,
-                    "note": "requested radial-only analytic comparator",
+                    "note": "T2/EFG radial-only analytic comparator",
                 }
             )
 
