@@ -495,7 +495,7 @@ def load_efg(efg_dir, C, seed, purge_frames):
         if d["atom_index"].nunique() < 2:
             continue
         rows.append(tensor_result(d, feature[idx], target[idx],
-                                  "apbs_efg_T2_old_random", stratum, treatment,
+                                  "apbs_efg_T2_random", stratum, treatment,
                                   "random", seed))
         rows.append(tensor_result(d, feature[idx], target[idx],
                                   "apbs_efg_T2", stratum, treatment,

@@ -113,6 +113,8 @@ EfgFeatureSink::EfgFeatureSink(const QString& outDir, const QString& caseName)
     sidecarFiles_ = {
         QStringLiteral("%1_feature_T2.npy").arg(caseName),
         QStringLiteral("%1_target_T2.npy").arg(caseName),
+        QStringLiteral("%1_feature_lab_T2.npy").arg(caseName),
+        QStringLiteral("%1_target_lab_T2.npy").arg(caseName),
     };
 
     aggregatedFile_ = std::make_unique<QSaveFile>(aggregatedPath_);
@@ -123,8 +125,11 @@ EfgFeatureSink::EfgFeatureSink(const QString& outDir, const QString& caseName)
     aggregatedOut_ = std::make_unique<QTextStream>(aggregatedFile_.get());
     *aggregatedOut_
         << "row_id,atom_index,residue_index,residue_number,amino_acid_ord,"
-           "element_ord,atom_name,frame_variant,h5_row,original_index,time_ps,"
-           "dft_present,apbs_efg_present,efg_T2_magnitude,efg_units\n";
+           "element_ord,atom_name,backbone_frame_class,h5_row,original_index,time_ps,"
+           "frame_z_x,frame_z_y,frame_z_z,frame_x_x,frame_x_y,frame_x_z,"
+           "frame_y_x,frame_y_y,frame_y_z,frame_variant,frame_valid,"
+           "frame_anchor_atom_index,dft_present,apbs_efg_present,"
+           "efg_T2_magnitude,efg_T2_lab_magnitude,efg_units\n";
     ok_ = true;
 }
 
@@ -133,17 +138,30 @@ EfgFeatureSink::~EfgFeatureSink() = default;
 void EfgFeatureSink::Write(const EfgFeatureRow& row) {
     if (!ok_) return;
     const int64_t rowId = nextRowId_++;
-    const double mag = row.apbs_efg_present ? T2Magnitude(row.efg_feature_T2) : kNaN;
+    const bool localFeaturePresent =
+        row.apbs_efg_present && row.frame_valid && FiniteT2(row.efg_feature_T2);
+    const bool localTargetPresent =
+        row.dft_present && row.frame_valid && FiniteT2(row.dft_target_T2);
+    const double mag = localFeaturePresent ? T2Magnitude(row.efg_feature_T2) : kNaN;
+    const double labMag = row.apbs_efg_present ? T2Magnitude(row.efg_feature_lab_T2) : kNaN;
     QTextStream& out = *aggregatedOut_;
     out << rowId << ',' << row.atom_index << ',' << row.residue_index << ','
         << row.residue_number << ',' << row.amino_acid << ',' << row.element << ','
         << row.atom_name << ',' << row.frame_variant << ',' << row.h5_row << ','
         << row.original_index << ',' << num(row.time_ps) << ','
+        << num(row.frame_z.x()) << ',' << num(row.frame_z.y()) << ',' << num(row.frame_z.z())
+        << ',' << num(row.frame_x.x()) << ',' << num(row.frame_x.y()) << ','
+        << num(row.frame_x.z()) << ',' << num(row.frame_y.x()) << ','
+        << num(row.frame_y.y()) << ',' << num(row.frame_y.z()) << ','
+        << row.frame_variant << ',' << (row.frame_valid ? 1 : 0) << ','
+        << row.frame_anchor_atom_index << ','
         << (row.dft_present ? 1 : 0) << ',' << (row.apbs_efg_present ? 1 : 0) << ','
-        << num(mag) << ',' << row.efg_units << '\n';
+        << num(mag) << ',' << num(labMag) << ',' << row.efg_units << '\n';
 
-    appendT2(featureT2_, row.efg_feature_T2, row.apbs_efg_present);
-    appendT2(targetT2_, row.dft_target_T2, row.dft_present);
+    appendT2(featureT2_, row.efg_feature_T2, localFeaturePresent);
+    appendT2(targetT2_, row.dft_target_T2, localTargetPresent);
+    appendT2(featureLabT2_, row.efg_feature_lab_T2, row.apbs_efg_present);
+    appendT2(targetLabT2_, row.dft_target_lab_T2, row.dft_present);
     ++rows_;
 }
 
@@ -159,6 +177,12 @@ bool EfgFeatureSink::Commit() {
     npyOk = npyOk
             && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[1]),
                            {rows_, 5}, targetT2_);
+    npyOk = npyOk
+            && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[2]),
+                           {rows_, 5}, featureLabT2_);
+    npyOk = npyOk
+            && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[3]),
+                           {rows_, 5}, targetLabT2_);
     if (!csvOk) qCWarning(cEfgSink).noquote() << "efg aggregated commit failed" << aggregatedPath_;
     if (!npyOk) qCWarning(cEfgSink).noquote() << "efg sidecar NPY commit failed" << caseName_;
     qCInfo(cEfgSink).noquote() << "committed" << caseName_ << "| rows=" << rows_;

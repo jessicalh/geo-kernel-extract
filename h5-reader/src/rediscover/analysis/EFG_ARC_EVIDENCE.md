@@ -2,22 +2,52 @@
 
 Run date: 2026-06-01. Branch: `h5-reader-pysr-spike`.
 
-This is evidence only. The "law fell out" verdict is reserved for the lead +
-Jessica.
+This is corrected capstone evidence after removing the EFG lab-frame rotation
+confound. It is evidence only; it does not claim that a closed-form law has
+fallen out.
 
-## Inputs and discipline
+## Corrected Inputs And Discipline
 
-- Substrate: `/tmp/rdc-efg`
-- Evidence dir: `/tmp/rdc-efg-arc-evidence`
-- Main scripts: `equiv_t2_efg_e3nn.py`, `efg_distill_evidence.py`
-- Tables: `efg_distill_summary.csv`, `efg_gate_samples.csv`
+- Corrected substrate: `/tmp/rdc-efg-localframe-capstone`
+- Local-frame audit: `/tmp/rdc-efg-localframe-audit-capstone`
+- Evidence dir: `/tmp/rdc-efg-arc-evidence-localframe-capstone`
+- Main scripts: `efg_localframe_audit.py`, `equiv_t2_efg_e3nn.py`,
+  `efg_distill_evidence.py`
+- Tables: `efg_localframe_audit.csv`, `efg_distill_summary.csv`,
+  `efg_gate_samples.csv`, `efg_distill_run.json`
 - Read only emitted sidecars: `efg_aggregated.csv`, `efg_feature_T2.npy`,
-  `efg_target_T2.npy`
-- Reused frozen `change_of_basis.get_C()`; printed
-  `max |C.T C - I| = 1.110e-16`
-- No H5 read, no EFG/projection recompute, no C++ edit in this pass.
+  `efg_target_T2.npy`, `efg_feature_lab_T2.npy`, `efg_target_lab_T2.npy`
+- Reused frozen `change_of_basis.get_C()`.
 
-## Depth A readout
+The corrected C++ emitter writes local-frame EFG feature/target sidecars for the
+main model and lab-frame sidecars only for audit. Python does not read H5, does
+not recompute APBS/DFT EFG tensors, and does not define a second physical model.
+
+The corrected extraction emitted 423000 total EFG rows, 163000 finite
+local-frame backbone rows, and 163000 valid local frames. Frame validity is
+100% for the six backbone strata used below.
+
+## Rotation-Confound Audit
+
+The high frame-to-frame autocorrelation in the DFT EFG target was a lab-frame
+orientation signature. After rotating feature and target tensors into the
+backbone local frame before decomposition, the target lag-1 correlation drops
+from roughly 0.75-0.86 to roughly 0.05-0.23.
+
+| stratum | lab target lag1 | local target lag1 | lab gamma R2 | local gamma R2 |
+|---|---:|---:|---:|---:|
+| C | 0.863 | 0.055 | 0.115 | 0.0146 |
+| CA | 0.752 | 0.090 | 0.0007 | 0.0031 |
+| HA | 0.789 | 0.233 | 0.0325 | 0.0001 |
+| HN | 0.772 | 0.158 | 0.0725 | 0.0144 |
+| N | 0.861 | 0.077 | 0.0108 | 0.0234 |
+| O | 0.803 | 0.054 | 0.315 | 0.0004 |
+
+This is the gating check for the corrected rerun: the old O and C EFG signals
+were lab-frame rotation artifacts. The local-frame substrate removes that
+confound before the model/evidence pass.
+
+## Corrected Depth-A Readout
 
 Model form:
 
@@ -25,111 +55,74 @@ Model form:
 DFT_T2 ~= g(|EFG|) * EFG_T2
 ```
 
-The trained MLP gate is not numerically flat when sampled over the emitted
-`|EFG|` range. However, the |EFG|-dependent part adds little held-out predictive
-power: the fitted constant-g predictor accounts for essentially all of the
-nonlinear scalar-gate R2 in the signal-bearing strata. I therefore treat the
-supported form as the linear Buckingham-like form, with a fitted coefficient:
+The corrected local-frame substrate leaves only weak/null held-out predictive
+signal. The fitted constant-g linear form is reported as a diagnostic, not as an
+independently fixed literature coefficient.
 
-```text
-sigma_T2 ~= gamma_stratum * EFG_T2
-```
+Blocked frame split, purge=1. `cross_split_lag1_pairs` is zero in the corrected
+blocked run.
 
-The coefficient is not independently fixed by literature in this run.
+| stratum | atoms | N_eff_lag1 | constant R2 | nonlinear R2 | nonlinear gain | constant `|T2| r` | nonlinear `|T2| r` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| N | 54 | 25219 | 0.0209 | 0.0229 | 0.0020 | 0.082 | 0.059 |
+| CA | 54 | 23495 | 0.0031 | 0.0045 | 0.0014 | 0.033 | 0.042 |
+| C | 54 | 26025 | 0.0146 | 0.0165 | 0.0019 | 0.042 | 0.064 |
+| O | 54 | 25708 | -0.0006 | -0.0004 | 0.0001 | 0.008 | 0.004 |
+| HN | 52 | 21504 | 0.0122 | 0.0243 | 0.0121 | 0.202 | 0.180 |
+| HA | 58 | 21121 | -0.0043 | -0.0047 | -0.0004 | 0.144 | 0.080 |
 
-Frame split is the same deterministic frame split as the capture fitter.
-`N_eff_lag1` is a lag-1 frame-equivalent count from per-atom target-|T2|
-autocorrelation; `atoms` is the cross-environment unit count.
+Random-split diagnostics are not used as the headline. In the variance
+decomposition rerun, random EFG produced 170 cross-split lag-1 pairs, while the
+blocked corrected run produced zero.
 
-| stratum | gate form readout | atoms | N_eff_lag1 | fitted constant g | constant R2 | nonlinear R2 | nonlinear gain | absT2 r constant | absT2 r nonlinear |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| O | learned gate drifts, constant form predictive | 54 | 5179.97 | +152.415 | +0.316 | +0.327 | +0.0109 | +0.204 | +0.311 |
-| C | learned gate drifts, constant form predictive | 54 | 3679.80 | -20.038 | +0.115 | +0.120 | +0.0057 | +0.044 | +0.134 |
-| HN | learned gate drifts, constant form predictive | 52 | 9033.43 | +1.9467 | +0.073 | +0.077 | +0.0036 | +0.199 | +0.198 |
-| HA | weak signal; constant form predictive | 58 | 10488.27 | +2.0402 | +0.030 | +0.031 | +0.0010 | +0.003 | +0.005 |
-| N | weak/null signal; gate drift not interpretable | 54 | 5645.30 | -9.6606 | +0.010 | +0.014 | +0.0040 | +0.205 | +0.133 |
-| CA | null signal; gate drift not interpretable | 54 | 10342.75 | -0.7064 | +0.000 | +0.002 | +0.0021 | +0.006 | -0.051 |
+## Local-Frame Vs Lab-Frame Fit Comparison
 
-Gate sample diagnostics over the central emitted `|EFG|` range:
+The same fitter on the old lab-frame substrate reproduces why the fix matters:
+the apparent lab-frame C/O performance disappears in the corrected local-frame
+rerun.
 
-| stratum | EFG p05-p95 | gate p05-p95 | gate-vs-EFG r | constant share of nonlinear R2 |
+| stratum | lab R2 | lab `|T2| r` | local R2 | local `|T2| r` |
 |---|---:|---:|---:|---:|
-| O | 1.120-2.246 | +122.4 to +197.6 | -0.99 | 96.7% |
-| C | 0.974-2.351 | -27.37 to -17.00 | +0.75 | 95.3% |
-| HN | 0.784-1.746 | +1.444 to +2.604 | +0.82 | 95.3% |
-| HA | 0.324-0.834 | +1.633 to +2.906 | +0.31 | 96.7% |
-| N | 0.711-1.819 | -27.27 to -4.79 | +0.58 | 72.0% of tiny R2 |
-| CA | 0.827-1.582 | -2.17 to -0.067 | +0.61 | 9.4% of null R2 |
+| N | -0.012 | 0.130 | 0.023 | 0.059 |
+| CA | -0.013 | -0.050 | 0.005 | 0.042 |
+| C | 0.112 | -0.105 | 0.016 | 0.064 |
+| O | 0.342 | 0.136 | -0.000 | 0.002 |
+| HN | 0.063 | 0.072 | 0.024 | 0.180 |
+| HA | 0.003 | 0.050 | -0.005 | 0.076 |
 
-Interpretation by stratum:
+## De-Circularisation
 
-- O: strongest signal. Nonlinear gate improves R2 by only +0.011 over the
-  fitted constant-g law, so the defensible form is linear despite a visibly
-  drifting learned gate.
-- C: same pattern at lower signal; constant-g captures 95% of nonlinear R2.
-- HN: signal is weaker but the constant and nonlinear models are effectively
-  tied.
-- HA: weak but positive; nonlinear dependence is not useful.
-- N and CA: weak/null. The learned gate drift is not a reliable law readout
-  because the target signal is near zero.
+No defensible fixed literature coefficient was identified for a universal
+`sigma_T2 = gamma * APBS_EFG_T2` predictor across these backbone strata.
+Buckingham-style shielding response coefficients are nucleus- and
+environment-dependent, and the explicit EFG-shielding literature does not
+provide a transferable scalar coefficient for this emitted APBS rank-2 tensor
+test.
 
-PySR was not run: the readout is one-dimensional and the constant-g comparator
-already answers the Depth-A question more directly than symbolic regression.
+Therefore the de-circularised result is form/evidence only. The corrected local
+frame shows that APBS-EFG is not the current explanatory axis for the DFT T2
+target once the orientation confound is removed.
 
-## De-circularisation
+## Caveats
 
-I did not find a defensible fixed literature coefficient that can be plugged in
-as an unfitted `sigma_T2 = gamma * EFG_T2` predictor for these backbone strata
-and this APBS-EFG T2 substrate.
-
-What the literature supports:
-
-- Buckingham's 1960 paper gives the classical electrostatic-shielding framework
-  and a proton X-H electric-field coefficient, but not a universal rank-2
-  APBS-EFG-to-shielding-tensor coefficient for backbone O/C/N/H/CA/HA
-  environments.
-- Protein CSP work uses Buckingham's equation with electric-field and
-  field-gradient response terms. Those terms are nucleus-dependent response
-  properties, and in practice values are drawn from separate prior work or
-  fitted/approximated for specific reporter nuclei such as backbone HN and N.
-- The explicit EFG-shielding theory literature describes shielding
-  polarizability tensors for uniform electric-field gradients, but also flags
-  origin/gauge dependence of the tensor components. That is not a clean scalar
-  `gamma_stratum` for the emitted APBS EFG T2 vectors.
-- Finite-field shielding-polarizability papers compute molecule/nucleus-specific
-  tensors for small molecules. They do not supply a transferable protein
-  backbone coefficient for this APBS-EFG tensor test.
-
-Sources checked: the local references corpus
-`/shared/2026Thesis/nmr-shielding/references/` and primary literature/web
-records for Buckingham 1960 (`doi:10.1139/v60-040`), Batchelor 1975
-(`doi:10.1021/ja00845a022`), McDowell & Buckingham 1992
-(`doi:10.1039/FT9928803281`), Lazzeretti 2003
-(`doi:10.1016/S0166-1280(03)00264-1`), Kukic et al. 2013
-(`doi:10.1021/ja406995j`), Facelli 2011, and Sahakyan & Vendruscolo 2013
-(`doi:10.1021/jp3057306`).
-
-Therefore the de-circularised result is not a fixed-coefficient DFT prediction.
-It is form recovery only: the fitted constant-g linear form carries the EFG
-signal, but the coefficient remains fitted, not fixed.
+- T2 headline metrics use `|T2| r`; scalar gamma R2 is only a diagnostic for a
+  fitted one-coefficient projection.
+- T2 variance shares in the companion variance table are pooled-Frobenius shares
+  over emitted rank-2 components.
+- The DFT substrate is r2SCAN/def2-SVP with CPCM(Water). Fixed-charge/APBS EFG
+  comparisons carry a solvation-treatment and basis-set mismatch.
+- F1 is resolved elsewhere: McConnell/ring current use the canonical `K * chi`
+  traceless-chi PCS convention and were not edited.
 
 ## Verification
 
-Commands run:
+Commands represented by this doc:
 
 ```text
-python3 -m py_compile src/rediscover/analysis/equiv_t2_efg_e3nn.py src/rediscover/analysis/efg_distill_evidence.py
-python3 src/rediscover/analysis/efg_distill_evidence.py /tmp/rdc-efg --evidence-dir /tmp/rdc-efg-arc-evidence --epochs 4000 --hidden 32 --lr 3e-3
-python3 src/rediscover/analysis/equiv_t2_efg_e3nn.py /tmp/rdc-efg --epochs 4000 --hidden 32 --lr 3e-3
+build/linux-gcc/h5reader_extract --case efg --out /tmp/rdc-efg-localframe-capstone
+python3 src/rediscover/analysis/efg_localframe_audit.py /tmp/rdc-efg-localframe-capstone --out-dir /tmp/rdc-efg-localframe-audit-capstone
+python3 src/rediscover/analysis/equiv_t2_efg_e3nn.py /tmp/rdc-efg-localframe-capstone --epochs 4000 --hidden 32 --lr 3e-3 --split blocked --purge-frames 1
+python3 src/rediscover/analysis/efg_distill_evidence.py /tmp/rdc-efg-localframe-capstone --evidence-dir /tmp/rdc-efg-arc-evidence-localframe-capstone --epochs 4000 --hidden 32 --lr 3e-3 --split blocked --purge-frames 1
 ```
 
-The original fitter reproduced the capture metrics:
-
-```text
-N  R2=+0.014  |T2| r=+0.133
-CA R2=+0.002  |T2| r=-0.051
-C  R2=+0.120  |T2| r=+0.134
-O  R2=+0.327  |T2| r=+0.311
-HN R2=+0.077  |T2| r=+0.198
-HA R2=+0.031  |T2| r=+0.005
-```
+No merge was performed.

@@ -66,6 +66,10 @@ EfgFeatureRow rowWithT2(int idx, const std::array<double, 5>& feature,
     row.element = 1;
     row.atom_name = QStringLiteral("H");
     row.frame_variant = 1;
+    row.frame_valid = true;
+    row.frame_z = h5reader::model::Vec3::UnitZ();
+    row.frame_x = h5reader::model::Vec3::UnitX();
+    row.frame_y = h5reader::model::Vec3::UnitY();
     row.h5_row = idx;
     row.original_index = idx * 2;
     row.time_ps = static_cast<double>(idx);
@@ -73,6 +77,8 @@ EfgFeatureRow rowWithT2(int idx, const std::array<double, 5>& feature,
     row.apbs_efg_present = true;
     row.efg_feature_T2 = feature;
     row.dft_target_T2 = target;
+    row.efg_feature_lab_T2 = feature;
+    row.dft_target_lab_T2 = target;
     row.efg_units = QStringLiteral("V/Angstrom^2");
     return row;
 }
@@ -139,6 +145,20 @@ void RediscoverEfgTests::sinkWritesFiniteRowAlignedSidecars() {
     QCOMPARE(targetNpy.rows, static_cast<std::size_t>(dftPresentAtoms));
     QCOMPARE(targetNpy.cols, static_cast<std::size_t>(5));
     for (double v : targetNpy.data) QVERIFY(std::isfinite(v));
+
+    const QtNpyReader::WidenedArray featureLabNpy =
+        QtNpyReader::ReadArrayWidened(dir.filePath(QStringLiteral("efg_feature_lab_T2.npy")));
+    QVERIFY2(featureLabNpy.ok, qPrintable(featureLabNpy.error));
+    QCOMPARE(featureLabNpy.rows, static_cast<std::size_t>(dftPresentAtoms));
+    QCOMPARE(featureLabNpy.cols, static_cast<std::size_t>(5));
+    for (double v : featureLabNpy.data) QVERIFY(std::isfinite(v));
+
+    const QtNpyReader::WidenedArray targetLabNpy =
+        QtNpyReader::ReadArrayWidened(dir.filePath(QStringLiteral("efg_target_lab_T2.npy")));
+    QVERIFY2(targetLabNpy.ok, qPrintable(targetLabNpy.error));
+    QCOMPARE(targetLabNpy.rows, static_cast<std::size_t>(dftPresentAtoms));
+    QCOMPARE(targetLabNpy.cols, static_cast<std::size_t>(5));
+    for (double v : targetLabNpy.data) QVERIFY(std::isfinite(v));
 
     QFile csv(dir.filePath(QStringLiteral("efg_aggregated.csv")));
     QVERIFY(csv.open(QIODevice::ReadOnly | QIODevice::Text));

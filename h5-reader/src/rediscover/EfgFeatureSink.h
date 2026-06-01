@@ -1,9 +1,10 @@
 // EfgFeatureSink — per_atom_feature carrier for the APBS EFG -> DFT T2 cell.
 //
 // This is intentionally small and direct: one aggregated row per DFT-present
-// (atom, frame), plus two row-aligned T2 sidecars. It is the second
-// non-source_sum output shape after broad_backbone; #29 should unify these
-// sibling carriers, but this spike keeps the ring/mc oracle path untouched.
+// (atom, frame), plus corrected local-frame T2 sidecars and lab-frame audit
+// sidecars. It is the second non-source_sum output shape after broad_backbone;
+// #29 should unify these sibling carriers, but this spike keeps the ring/mc
+// oracle path untouched.
 
 #pragma once
 
@@ -23,6 +24,7 @@
 namespace h5reader::rediscover {
 
 using model::Mat3;
+using model::Vec3;
 
 struct EfgFeatureRow {
     int32_t atom_index = -1;
@@ -32,20 +34,28 @@ struct EfgFeatureRow {
     int element = -1;
     QString atom_name;
     int frame_variant = 0;
+    bool frame_valid = false;
+    int32_t frame_anchor_atom_index = -1;
+    Vec3 frame_z = Vec3::Zero();
+    Vec3 frame_x = Vec3::Zero();
+    Vec3 frame_y = Vec3::Zero();
     int32_t h5_row = -1;
     int32_t original_index = -1;
     double time_ps = 0.0;
 
     bool dft_present = false;
     bool apbs_efg_present = false;
-    std::array<double, 5> efg_feature_T2 = {};
-    std::array<double, 5> dft_target_T2 = {};
+    std::array<double, 5> efg_feature_T2 = {};      // local frame
+    std::array<double, 5> dft_target_T2 = {};       // local frame
+    std::array<double, 5> efg_feature_lab_T2 = {};  // lab-frame audit payload
+    std::array<double, 5> dft_target_lab_T2 = {};   // lab-frame audit payload
     QString efg_units;
 };
 
 struct EfgFeatureStats {
     std::size_t rows = 0;
     std::size_t dft_present = 0;
+    std::size_t frame_valid = 0;
     std::size_t apbs_efg_present = 0;
     std::size_t finite_efg = 0;
     double min_efg_magnitude = 0.0;
@@ -80,8 +90,10 @@ private:
     std::size_t rows_ = 0;
     int64_t nextRowId_ = 0;
 
-    std::vector<double> featureT2_;  // (rows, 5), APBS EFG T2 in library basis
-    std::vector<double> targetT2_;   // (rows, 5), DFT target T2 in library basis
+    std::vector<double> featureT2_;     // (rows, 5), APBS EFG local-frame T2
+    std::vector<double> targetT2_;      // (rows, 5), DFT target local-frame T2
+    std::vector<double> featureLabT2_;  // (rows, 5), APBS EFG lab-frame T2
+    std::vector<double> targetLabT2_;   // (rows, 5), DFT target lab-frame T2
 };
 
 }  // namespace h5reader::rediscover

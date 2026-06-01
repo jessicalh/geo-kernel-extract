@@ -56,7 +56,7 @@ def parse_args():
                     help="also run leave-atoms-out retraining. The frame split "
                          "remains the reported gate.")
     ap.add_argument("--split", choices=["blocked", "random"], default=DEFAULT_SPLIT,
-                    help="frame split for the lab-frame EFG within gate. Default "
+                    help="frame split for the emitted EFG within gate. Default "
                          "is a contiguous temporal block with purged neighbours.")
     ap.add_argument("--purge-frames", type=int, default=PURGE_NEIGHBOUR_FRAMES,
                     help="for --split blocked, drop this many neighbouring frame "
