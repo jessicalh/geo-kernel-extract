@@ -336,6 +336,19 @@ qt_add_executable(h5reader_extract
     src/rediscover/RingCurrentNeighborhood.cpp
     src/rediscover/McConnellNeighborhood.h
     src/rediscover/McConnellNeighborhood.cpp
+    src/rediscover/ChargeDipoleNeighborhood.h
+    src/rediscover/ChargeDipoleNeighborhood.cpp
+    # Functional API (SURFACE_DESIGN Layers 1-3): primitive verbs, curried
+    # relationship combinators, the pure iterated-closure engine, and the two
+    # composed relationships (ring_current / mcconnell) the driver runs.
+    src/rediscover/Verbs.h
+    src/rediscover/Verbs.cpp
+    src/rediscover/Relationship.h
+    src/rediscover/Relationship.cpp
+    src/rediscover/RelationshipEngine.h
+    src/rediscover/RelationshipEngine.cpp
+    src/rediscover/ComposedRelationships.h
+    src/rediscover/ComposedRelationships.cpp
     src/rediscover/main_extract.cpp
 )
 target_include_directories(h5reader_extract PRIVATE

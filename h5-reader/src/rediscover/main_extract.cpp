@@ -1,21 +1,30 @@
 // main_extract — headless `h5reader-rediscover` CLI. QCoreApplication only
 // (no widgets, no VTK). Loads one 1P9J calcset into the all-frames-resident
-// RunData and runs the two extractions, each writing its two CSV row kinds.
+// RunData and runs the requested relationships, each writing its two CSV row
+// kinds + sidecar NPYs.
 //
 // Usage:
 //   h5reader_extract --run <calcset_dir_or_LGS> --out <dir> [--case ring|mc|all]
+//                    [--engine composed|procedural]
 //
-// The driver runs a plain vector<unique_ptr<RediscoveryExtraction>> loop — no
-// scheduler, no dependency graph (DESIGN.md). Progress flows through the
+// ring_current / mcconnell run through the COMPOSED functional engine by
+// default (Layer-1 verbs + Layer-2 curried closures + the Layer-3
+// RunRelationship loop; SURFACE_DESIGN.md), or the PROCEDURAL reference cells
+// under `--engine procedural` (the oracle the composed path is diffed against).
+// The driver builds a plain vector of RunnableCases and runs them in a loop —
+// no scheduler, no dependency graph (DESIGN.md). Progress flows through the
 // StructuredLogger (UDP 9997 + stderr).
 
 #include "ExtractionSupport.h"
 #include "Catalog.h"
 #include "ChargeDipoleNeighborhood.h"
+#include "ComposedRelationships.h"
 #include "McConnellNeighborhood.h"
 #include "OutputManifest.h"
 #include "RecordSink.h"
 #include "RediscoveryExtraction.h"
+#include "Relationship.h"
+#include "RelationshipEngine.h"
 #include "ResidentIndexes.h"
 #include "RingCurrentNeighborhood.h"
 #include "RunData.h"
@@ -26,6 +35,7 @@
 #include <QCoreApplication>
 #include <QLoggingCategory>
 
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -125,12 +135,20 @@ int main(int argc, char** argv) {
     QCommandLineOption chargeCutoffOpt(QStringLiteral("charge-cutoff"),
                                        QStringLiteral("Charge-site source cutoff in Angstrom for charge_dipole (fixed default 6.0 for this relationship)."),
                                        QStringLiteral("angstrom"), QStringLiteral("6.0"));
+    // Which traversal stands ring_current / mcconnell up: the composed
+    // functional API (Layer 1 verbs + Layer 2 curried closures + the Layer 3
+    // engine — the default, what we validate) or the original procedural cells
+    // (the reference oracle the composed path is checked against). SURFACE_DESIGN.
+    QCommandLineOption engineOpt(QStringLiteral("engine"),
+                                 QStringLiteral("ring/mc traversal: composed (functional API, default) | procedural (reference oracle cells)."),
+                                 QStringLiteral("engine"), QStringLiteral("composed"));
     parser.addOption(runOpt);
     parser.addOption(outOpt);
     parser.addOption(caseOpt);
     parser.addOption(mcCutoffOpt);
     parser.addOption(chargeSourceOpt);
     parser.addOption(chargeCutoffOpt);
+    parser.addOption(engineOpt);
     parser.process(app);
 
     if (!parser.isSet(runOpt) || !parser.isSet(outOpt)) {
@@ -141,6 +159,12 @@ int main(int argc, char** argv) {
     const QString outDir = parser.value(outOpt);
     const QString which = parser.value(caseOpt);
     const QString chargeSource = parser.value(chargeSourceOpt);
+    const QString engine = parser.value(engineOpt);
+    if (engine != QStringLiteral("composed") && engine != QStringLiteral("procedural")) {
+        qCCritical(cMain).noquote() << "invalid --engine" << engine
+                                    << "(expected composed|procedural)";
+        return 2;
+    }
     if (chargeSource != QStringLiteral("ff14sb") && chargeSource != QStringLiteral("aimnet2")
         && chargeSource != QStringLiteral("mopac")) {
         qCCritical(cMain).noquote() << "invalid --charge-source" << chargeSource
@@ -202,54 +226,109 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::vector<std::unique_ptr<h5reader::rediscover::RediscoveryExtraction>> extractions;
-    if (which == QStringLiteral("ring") || which == QStringLiteral("ring_current") || which == QStringLiteral("all"))
-        extractions.push_back(std::make_unique<h5reader::rediscover::RingCurrentNeighborhood>());
-    if (which == QStringLiteral("mc") || which == QStringLiteral("mcconnell") || which == QStringLiteral("all")) {
-        auto mc = std::make_unique<h5reader::rediscover::McConnellNeighborhood>();
-        mc->cutoff_A = mcCutoff;
-        extractions.push_back(std::move(mc));
+    // A runnable case: its name, its declared schema, and a runner that walks
+    // the body into the sink. ring_current / mcconnell run either through the
+    // COMPOSED functional engine (default — RunRelationship over a Relationship
+    // built from curried closures) or the PROCEDURAL reference cells
+    // (--engine procedural), so the two can be diffed for the oracle gate.
+    // charge_dipole stays on its procedural cell (out of scope for the API).
+    struct RunnableCase {
+        QString name;
+        h5reader::rediscover::FeatureSchema schema;
+        std::function<std::size_t(const h5reader::rediscover::Body&,
+                                  h5reader::rediscover::RecordSink&)>
+            run;
+    };
+    const bool composed = (engine == QStringLiteral("composed"));
+    std::vector<RunnableCase> cases_to_run;
+
+    const bool wantRing = which == QStringLiteral("ring")
+                          || which == QStringLiteral("ring_current") || which == QStringLiteral("all");
+    const bool wantMc = which == QStringLiteral("mc") || which == QStringLiteral("mcconnell")
+                        || which == QStringLiteral("all");
+
+    if (wantRing) {
+        if (composed) {
+            auto rel = std::make_shared<h5reader::rediscover::Relationship>(
+                h5reader::rediscover::MakeRingCurrentRelationship());
+            cases_to_run.push_back(
+                {rel->name, rel->schema,
+                 [rel](const h5reader::rediscover::Body& b, h5reader::rediscover::RecordSink& s) {
+                     return h5reader::rediscover::RunRelationship(*rel, b, s);
+                 }});
+        } else {
+            auto cell = std::make_shared<h5reader::rediscover::RingCurrentNeighborhood>();
+            cases_to_run.push_back(
+                {cell->name(), cell->schema(),
+                 [cell](const h5reader::rediscover::Body& b, h5reader::rediscover::RecordSink& s) {
+                     return cell->extract(b, s);
+                 }});
+        }
+    }
+    if (wantMc) {
+        if (composed) {
+            auto rel = std::make_shared<h5reader::rediscover::Relationship>(
+                h5reader::rediscover::MakeMcConnellRelationship(mcCutoff));
+            cases_to_run.push_back(
+                {rel->name, rel->schema,
+                 [rel](const h5reader::rediscover::Body& b, h5reader::rediscover::RecordSink& s) {
+                     return h5reader::rediscover::RunRelationship(*rel, b, s);
+                 }});
+        } else {
+            auto cell = std::make_shared<h5reader::rediscover::McConnellNeighborhood>();
+            cell->cutoff_A = mcCutoff;
+            cases_to_run.push_back(
+                {cell->name(), cell->schema(),
+                 [cell](const h5reader::rediscover::Body& b, h5reader::rediscover::RecordSink& s) {
+                     return cell->extract(b, s);
+                 }});
+        }
     }
     if (which == QStringLiteral("charge_dipole")) {
-        auto charge = std::make_unique<h5reader::rediscover::ChargeDipoleNeighborhood>();
-        charge->charge_source = chargeSource;
-        charge->cutoff_A = chargeCutoff;
-        extractions.push_back(std::move(charge));
+        auto cell = std::make_shared<h5reader::rediscover::ChargeDipoleNeighborhood>();
+        cell->charge_source = chargeSource;
+        cell->cutoff_A = chargeCutoff;
+        cases_to_run.push_back(
+            {cell->name(), cell->schema(),
+             [cell](const h5reader::rediscover::Body& b, h5reader::rediscover::RecordSink& s) {
+                 return cell->extract(b, s);
+             }});
     }
-    if (extractions.empty()) {
+    if (cases_to_run.empty()) {
         qCCritical(cMain).noquote() << "unknown --case" << which
                                     << "(expected ring|mc|charge_dipole|all)";
         return 2;
     }
+    qCInfo(cMain).noquote() << "engine =" << engine << "| cases =" << cases_to_run.size();
 
     int rc = 0;
     std::vector<h5reader::rediscover::OutputEntry> outputs;
-    for (const auto& ex : extractions) {
-        const h5reader::rediscover::FeatureSchema schema = ex->schema();
+    for (const auto& rcase : cases_to_run) {
+        const h5reader::rediscover::FeatureSchema schema = rcase.schema;
         h5reader::rediscover::RecordSink sink(outDir, schema);
         if (!sink.Ok()) {
-            qCCritical(cMain).noquote() << "sink open failed for" << ex->name();
+            qCCritical(cMain).noquote() << "sink open failed for" << rcase.name;
             rc = 3;
             continue;
         }
         std::size_t cases = 0;
         try {
-            cases = ex->extract(body, sink);
+            cases = rcase.run(body, sink);
         } catch (const std::exception& e) {
-            qCCritical(cMain).noquote() << ex->name() << "failed:" << e.what();
+            qCCritical(cMain).noquote() << rcase.name << "failed:" << e.what();
             return 1;
         }
         const bool committed = sink.Commit();
-        qCInfo(cMain).noquote() << ex->name() << "| cases=" << cases
+        qCInfo(cMain).noquote() << rcase.name << "| cases=" << cases
                                 << "| source_rows=" << sink.sourceRowsWritten()
                                 << "| agg_rows=" << sink.aggregatedRowsWritten()
                                 << "| committed=" << committed;
         if (!committed) rc = 4;
         if (committed) {
-            outputs.push_back({ex->name(),
+            outputs.push_back({rcase.name,
                                relationshipKindName(schema.relationshipKind),
-                               QStringLiteral("%1_sources.csv").arg(ex->name()),
-                               QStringLiteral("%1_aggregated.csv").arg(ex->name()),
+                               QStringLiteral("%1_sources.csv").arg(rcase.name),
+                               QStringLiteral("%1_aggregated.csv").arg(rcase.name),
                                sink.sidecarFiles(),
                                cases,
                                sink.sourceRowsWritten(),
