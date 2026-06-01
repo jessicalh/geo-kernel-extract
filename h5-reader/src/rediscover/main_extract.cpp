@@ -18,6 +18,8 @@
 #include "ExtractionSupport.h"
 #include "BroadBackbone.h"
 #include "BroadBackboneSink.h"
+#include "BuckinghamEfield.h"
+#include "BuckinghamEfieldSink.h"
 #include "Catalog.h"
 #include "ChargeDipoleNeighborhood.h"
 #include "ComposedRelationships.h"
@@ -58,8 +60,7 @@ QString relationshipKindName(h5reader::rediscover::RelationshipKind kind) {
 }
 
 bool isFailLoudStub(const QString& which) {
-    return which == QStringLiteral("buckingham_efield")
-           || which == QStringLiteral("charge_quadrupole")
+    return which == QStringLiteral("charge_quadrupole")
            || which == QStringLiteral("larsen_hbond")
            || which == QStringLiteral("charge_response_gradient")
            || which == QStringLiteral("crg")
@@ -124,7 +125,7 @@ int main(int argc, char** argv) {
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | efg | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | efg | buckingham_efield | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 8.0 Å is the conventions'
@@ -283,6 +284,47 @@ int main(int argc, char** argv) {
         std::vector<h5reader::rediscover::OutputEntry> outputs = {
             {QStringLiteral("efg"), QStringLiteral("per_atom_feature"), QString(),
              QStringLiteral("efg_aggregated.csv"), sink.sidecarFiles(), stats.rows,
+             0, sink.rowsWritten()}};
+        QString manifestErr;
+        if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
+            qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
+            return 4;
+        }
+        return 0;
+    }
+
+    // ── buckingham_efield — APBS solvated-PB E-field projected in the local
+    // backbone frame, T0-only fit target. T1/T2 target payloads are emitted for
+    // audit completeness; T1 remains convention-unverified and is not fitted. ─
+    if (which == QStringLiteral("buckingham_efield")) {
+        if (!catalog.has(h5reader::rediscover::ArrayId::ApbsEfield)) {
+            qCCritical(cMain).noquote()
+                << "ValidateScenario failed: buckingham_efield requires APBS E-field, but apbs_efield is absent";
+            return 2;
+        }
+        h5reader::rediscover::BuckinghamEfieldSink sink(outDir, QStringLiteral("buckingham_efield"));
+        if (!sink.Ok()) {
+            qCCritical(cMain).noquote() << "buckingham_efield sink open failed";
+            return 3;
+        }
+        h5reader::rediscover::BuckinghamEfieldStats stats;
+        try {
+            stats = h5reader::rediscover::RunBuckinghamEfieldPerAtomFeature(body, sink);
+        } catch (const std::exception& e) {
+            qCCritical(cMain).noquote() << "buckingham_efield failed:" << e.what();
+            return 1;
+        }
+        const bool committed = sink.Commit();
+        qCInfo(cMain).noquote() << "buckingham_efield | rows=" << sink.rowsWritten()
+                                << "| dft_present=" << stats.dft_present
+                                << "| frame_valid=" << stats.frame_valid
+                                << "| apbs_efield_present=" << stats.apbs_efield_present
+                                << "| finite_efield=" << stats.finite_efield
+                                << "| committed=" << committed;
+        if (!committed) return 4;
+        std::vector<h5reader::rediscover::OutputEntry> outputs = {
+            {QStringLiteral("buckingham_efield"), QStringLiteral("per_atom_feature"), QString(),
+             QStringLiteral("buckingham_efield_aggregated.csv"), sink.sidecarFiles(), stats.rows,
              0, sink.rowsWritten()}};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {

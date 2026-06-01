@@ -333,6 +333,10 @@ qt_add_executable(h5reader_extract
     src/rediscover/EfgFeatureSink.cpp
     src/rediscover/EfgFeature.h
     src/rediscover/EfgFeature.cpp
+    src/rediscover/BuckinghamEfieldSink.h
+    src/rediscover/BuckinghamEfieldSink.cpp
+    src/rediscover/BuckinghamEfield.h
+    src/rediscover/BuckinghamEfield.cpp
     src/rediscover/RediscoveryExtraction.h
     src/rediscover/FrameSpatialIndex.h
     src/rediscover/FrameSpatialIndex.cpp
@@ -436,6 +440,31 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_efg_tests
              COMMAND h5reader_rediscover_efg_tests)
+
+    # APBS E-field per_atom_feature fixtures: the spine-side local-frame
+    # projection is E_local.z, |E| is invariant, target T2 keeps the √6
+    # library fixture, and T1 is emitted as an unverified audit payload only.
+    qt_add_executable(h5reader_rediscover_buckingham_tests
+        tests/rediscover_buckingham_tests.cpp
+        src/rediscover/BuckinghamEfieldSink.h
+        src/rediscover/BuckinghamEfieldSink.cpp
+        src/rediscover/LocalFrameBasis.h
+        src/rediscover/LocalFrameBasis.cpp
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
+        src/io/QtNpyReader.h
+        src/io/QtNpyReader.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_rediscover_buckingham_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_buckingham_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_buckingham_tests
+             COMMAND h5reader_rediscover_buckingham_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp

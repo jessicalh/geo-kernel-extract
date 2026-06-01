@@ -244,6 +244,19 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("efg_target_T2",  "rediscover", np.ndarray, 5, False, "EFG per_atom_feature DFT target T2 payload, row-aligned with efg_feature_T2",
               is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
 
+    # ── buckingham_efield per_atom_feature (h5-reader/src/rediscover/
+    # BuckinghamEfield) — APBS solvated-PB E-field projected by the C++ spine
+    # into the local backbone frame. The T0 fit reads scalar CSV columns
+    # E_proj and E_mag only; this vector payload is emitted for audit and
+    # parity with the broad_backbone local Coulomb field. Target T1 is emitted
+    # but convention-unverified and must not be fitted.
+    ArraySpec("buckingham_efield_feature_field_local", "rediscover", np.ndarray, 3, False, "Buckingham APBS E-field in the local backbone frame, once per DFT-present backbone (atom,frame)",
+              is_feature=True, native_axis="rediscover_aggregated_row", irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("buckingham_efield_target_T1_unverified", "rediscover", np.ndarray, 3, False, "Buckingham DFT target T1 payload emitted for audit only; convention unverified, do not fit",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="1?", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=1, parity="unverified", mechanism="quantum_reference"),
+    ArraySpec("buckingham_efield_target_T2", "rediscover", np.ndarray, 5, False, "Buckingham DFT target T2 payload emitted for completeness; T0 fit ignores it",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+
     # ── Coulomb (CoulombResult.cpp) — optional; retired from production
     # (APBS is canonical), so present only in the FullFatFrameExtraction
     # trajectory (--mopac), where it feeds the MOPAC-vs-FF14SB probe. ──
