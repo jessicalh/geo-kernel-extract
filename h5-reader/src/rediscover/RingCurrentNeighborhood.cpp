@@ -3,6 +3,7 @@
 #include "AnalysisBody.h"
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
+#include "RingCurrentKernel.h"
 #include "TypedAtomIndex.h"
 
 #include "../model/ConformationGeometry.h"
@@ -76,6 +77,19 @@ FeatureSchema RingCurrentNeighborhood::schema() const {
         {QStringLiteral("source_normal_local_x"), {}},
         {QStringLiteral("source_normal_local_y"), {}},
         {QStringLiteral("source_normal_local_z"), {}},
+        {QStringLiteral("jb_kernel_present"), {}},
+        {QStringLiteral("jb_unit_T0"), QStringLiteral("ppm_T_per_nA")},
+        {QStringLiteral("jb_unit_T2_local_0"), QStringLiteral("ppm_T_per_nA")},
+        {QStringLiteral("jb_unit_T2_local_1"), QStringLiteral("ppm_T_per_nA")},
+        {QStringLiteral("jb_unit_T2_local_2"), QStringLiteral("ppm_T_per_nA")},
+        {QStringLiteral("jb_unit_T2_local_3"), QStringLiteral("ppm_T_per_nA")},
+        {QStringLiteral("jb_unit_T2_local_4"), QStringLiteral("ppm_T_per_nA")},
+        {QStringLiteral("jb_T0"), QStringLiteral("ppm")},
+        {QStringLiteral("jb_T2_local_0"), QStringLiteral("ppm")},
+        {QStringLiteral("jb_T2_local_1"), QStringLiteral("ppm")},
+        {QStringLiteral("jb_T2_local_2"), QStringLiteral("ppm")},
+        {QStringLiteral("jb_T2_local_3"), QStringLiteral("ppm")},
+        {QStringLiteral("jb_T2_local_4"), QStringLiteral("ppm")},
     };
     for (const auto& c : srcGeom) s.sourceColumns.push_back(c);
     for (const auto& c : BareKernelColumns()) s.sourceColumns.push_back(c);
@@ -251,6 +265,12 @@ std::size_t RingCurrentNeighborhood::extract(const Body& body, RecordSink& sink)
                 s.ring_aromaticity = static_cast<int>(sring.Aromaticity());
                 s.ring_size = sring.RingSizeValue();
                 s.ring_fused = sring.IsFused();
+                s.ring_jb_unit_kernel =
+                    JohnsonBoveySourceUnitKernelLocal(body, frame, atomPos,
+                                                      static_cast<std::size_t>(srcRingId), sring, row);
+                s.ring_jb_kernel = ScaleSphericalTensor(s.ring_jb_unit_kernel,
+                                                        sring.LiteratureIntensity());
+                s.ring_jb_kernel_present = true;
 
                 rec.sources.push_back(s);
                 if (std::isfinite(dipolar)) {

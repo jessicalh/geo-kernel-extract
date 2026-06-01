@@ -86,6 +86,9 @@ struct SourceSlot {
     int    ring_aromaticity  = -1;     // RingAromaticity ordinal
     int    ring_size         = 0;      // RingSizeValue
     bool   ring_fused        = false;  // IsFused
+    bool   ring_jb_kernel_present = false;  // source-level Johnson-Bovey kernel emitted by C++
+    SphericalTensor ring_jb_unit_kernel;  // unit-current source kernel in target local frame (ppm_T_per_nA)
+    SphericalTensor ring_jb_kernel;    // fixed-literature source kernel in target local frame (ppm)
 
     // Bond-only identity + orientation (McConnell). bond_axis_local is the UNIT
     // bond axis (B−A) expressed in the target atom's local frame — an

@@ -144,7 +144,11 @@ void writeRingSource(QTextStream& out, const SourceSlot& s) {
         << num(s.ring_jb_offset) << ',' << s.ring_aromaticity << ',' << s.ring_size << ','
         << (s.ring_fused ? 1 : 0) << ','
         << num(s.source_normal_local.x()) << ',' << num(s.source_normal_local.y()) << ','
-        << num(s.source_normal_local.z());
+        << num(s.source_normal_local.z()) << ','
+        << (s.ring_jb_kernel_present ? 1 : 0) << ',' << num(s.ring_jb_unit_kernel.T0);
+    for (double v : s.ring_jb_unit_kernel.T2) out << ',' << num(v);
+    out << ',' << num(s.ring_jb_kernel.T0);
+    for (double v : s.ring_jb_kernel.T2) out << ',' << num(v);
 }
 
 void writeBondSource(QTextStream& out, const SourceSlot& s) {

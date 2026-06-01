@@ -3,6 +3,7 @@
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
 #include "McConnellNeighborhood.h"
+#include "RingCurrentKernel.h"
 #include "RingCurrentNeighborhood.h"
 #include "Verbs.h"
 
@@ -111,6 +112,12 @@ void ringAttacher(const Body& body, const AtomState& st, const FrameResult& fr,
     s.ring_aromaticity = static_cast<int>(sring.Aromaticity());
     s.ring_size = sring.RingSizeValue();
     s.ring_fused = sring.IsFused();
+    s.ring_jb_unit_kernel =
+        JohnsonBoveySourceUnitKernelLocal(body, fr.frame, st.pos,
+                                          static_cast<std::size_t>(rs.ring_index), sring, st.frame);
+    s.ring_jb_kernel = ScaleSphericalTensor(s.ring_jb_unit_kernel,
+                                            sring.LiteratureIntensity());
+    s.ring_jb_kernel_present = true;
 
     // is_self_or_bonded is set by the per-source classifier (it needs the atom's
     // own-ring / own-atom sets, prepped once per atom); the attacher leaves it
