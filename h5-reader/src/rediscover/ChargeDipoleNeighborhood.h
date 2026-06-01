@@ -1,9 +1,9 @@
-// ChargeDipoleNeighborhood — FF14SB charge-site dipole extraction.
+// ChargeDipoleNeighborhood -- charge-site dipole extraction.
 //
 // Stratum: backbone amide HN (same predicate as McConnell). Sources: charged
 // protein atoms in the charge-sites KD cloud within cutoff_A, excluding the
-// target atom's own residue for a through-space sum. Per source: FF14SB charge
-// q_i and displacement (r_i - r_atom) in the target HN amide-plane frame.
+// target atom's own residue for a through-space sum. Per source: selected charge
+// q_i (FF14SB or AIMNet2) and displacement (r_i - r_atom) in the target HN frame.
 // Reducer: mu = Σ q_i (r_i - r_atom), emitted as a local-frame Vec3.
 
 #pragma once

@@ -333,6 +333,10 @@ qt_add_executable(h5reader_extract
     src/rediscover/EfgFeatureSink.cpp
     src/rediscover/EfgFeature.h
     src/rediscover/EfgFeature.cpp
+    src/rediscover/Aimnet2FeatureSink.h
+    src/rediscover/Aimnet2FeatureSink.cpp
+    src/rediscover/Aimnet2Feature.h
+    src/rediscover/Aimnet2Feature.cpp
     src/rediscover/BuckinghamEfieldSink.h
     src/rediscover/BuckinghamEfieldSink.cpp
     src/rediscover/BuckinghamEfield.h

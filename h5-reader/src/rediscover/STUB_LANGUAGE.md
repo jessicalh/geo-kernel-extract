@@ -396,7 +396,7 @@ namespace bundles {
     Relationship charge_dipole(ChargeSource);       // charge_source is a PARAMETER
     Relationship charge_quadrupole(ChargeSource);   // same parameter
     Relationship larsen_hbond();
-    Relationship charge_response_polarizability();
+    Relationship charge_response_gradient();
     Relationship aimnet2_embedding();
 }
 
@@ -746,19 +746,20 @@ Relationship bundles::larsen_hbond() {
 }
 ```
 
-### 8. charge_response_polarizability — atoms; source = AIMNet2 CRG (scalar+vector); T0+T2
+### 8. charge_response_gradient — atoms; source = AIMNet2 CRG (scalar+vector); T0+T2
 
 The AIMNet2 charge-response gradient is **per-atom** scalar + vector
 (`aimnet2ChargeResponseGradient()`, verified
 `QtAimnet2ChargeResponseGradientTimeSeries`: `.scalar` (N,T), `.vec` (N,T,3)).
-A self-selector reading both per-atom channels. The polarizability response is
-an l=0 (scalar) + l=1 (vector) feature; against the DFT T2 it is the
-modulating feature, not a source sum.
+A self-selector reading both per-atom channels. This is CRG,
+`d(sum(q^2))/dr`, not a polarizability or true alpha. It is an l=0
+(scalar) + l=1 (vector) feature; against the DFT T2 it is the modulating
+feature, not a source sum.
 
 ```cpp
-Relationship bundles::charge_response_polarizability() {
+Relationship bundles::charge_response_gradient() {
     return Relationship{
-      .name      = "charge_response_polarizability",
+      .name      = "charge_response_gradient",
       .stratum   = atomsWhere([](const model::QtAtom&){ return true; }),
       .frame_fn  = labFrame(),
       .selectors = { self() },
@@ -954,7 +955,7 @@ Each is a finding. None is "out of scope" or "later"; each names what to do.
   H5 inventory: there are bare-kernel time-series for ring (`bs`), McConnell
   (`mc`), and the EFG (`apbs_efg`) — items 1, 2, 4 have a real cross-check. But
   Buckingham E-field (3), charge dipole (5), charge quadrupole (6),
-  charge-response polarizability (8), and the embedding (9) have NO producer
+  charge-response-gradient (8), and the embedding (9) have NO producer
   bare-kernel TS to cross-check against. The stub sets `cross_check_kernel =
   KernelBs` as a placeholder, which is wrong (it would compare an E-field
   relationship to the ring-current kernel). FIX: make `cross_check_kernel`

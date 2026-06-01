@@ -16,6 +16,8 @@
 // StructuredLogger (UDP 9997 + stderr).
 
 #include "ExtractionSupport.h"
+#include "Aimnet2Feature.h"
+#include "Aimnet2FeatureSink.h"
 #include "BroadBackbone.h"
 #include "BroadBackboneSink.h"
 #include "BuckinghamEfield.h"
@@ -40,6 +42,7 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QLoggingCategory>
+#include <QStringList>
 
 #include <functional>
 #include <memory>
@@ -61,10 +64,7 @@ QString relationshipKindName(h5reader::rediscover::RelationshipKind kind) {
 
 bool isFailLoudStub(const QString& which) {
     return which == QStringLiteral("charge_quadrupole")
-           || which == QStringLiteral("larsen_hbond")
-           || which == QStringLiteral("charge_response_gradient")
-           || which == QStringLiteral("crg")
-           || which == QStringLiteral("aimnet2_embedding");
+           || which == QStringLiteral("larsen_hbond");
 }
 
 QString stubMessage(const QString& which, const QString& chargeSource,
@@ -92,15 +92,50 @@ QString stubMessage(const QString& which, const QString& chargeSource,
         return QStringLiteral("efg requires APBS EFG, but apbs_efg is absent");
     if (which == QStringLiteral("buckingham_efield") && !catalog.has(h5reader::rediscover::ArrayId::ApbsEfield))
         return QStringLiteral("buckingham_efield requires APBS E-field, but apbs_efield is absent");
-    if ((which == QStringLiteral("charge_response_gradient") || which == QStringLiteral("crg"))
-        && (!catalog.has(h5reader::rediscover::ArrayId::Aimnet2ChargeRespScalar)
-            || !catalog.has(h5reader::rediscover::ArrayId::Aimnet2ChargeRespVector)))
-        return QStringLiteral("charge_response_gradient requires AIMNet2 CRG scalar/vector arrays, but they are absent");
-    if (which == QStringLiteral("aimnet2_embedding")
-        && !catalog.has(h5reader::rediscover::ArrayId::Aimnet2Embedding))
-        return QStringLiteral("aimnet2_embedding requires AIMNet2 embedding, but aimnet2_embedding is absent");
     return QStringLiteral("%1 is registered as a fail-loud stub; data/decision is not ready, no zeros emitted")
         .arg(which);
+}
+
+h5reader::rediscover::ArrayId chargeArrayForSource(const QString& chargeSource) {
+    if (chargeSource == QStringLiteral("ff14sb")) return h5reader::rediscover::ArrayId::Ff14sbCharge;
+    if (chargeSource == QStringLiteral("aimnet2")) return h5reader::rediscover::ArrayId::Aimnet2Charge;
+    if (chargeSource == QStringLiteral("mopac")) return h5reader::rediscover::ArrayId::MopacCharge;
+    return h5reader::rediscover::ArrayId::MopacCharge;
+}
+
+QString chargeSourceMissingMessage(const QString& relationship, const QString& chargeSource) {
+    if (chargeSource == QStringLiteral("ff14sb"))
+        return QStringLiteral("%1 requires FF14SB charges, but topol.top charges were not loaded")
+            .arg(relationship);
+    if (chargeSource == QStringLiteral("aimnet2"))
+        return QStringLiteral("%1 requires AIMNet2 Hirshfeld charges, but aimnet2_charge is absent")
+            .arg(relationship);
+    if (chargeSource == QStringLiteral("mopac"))
+        return QStringLiteral("%1 requires charge_source=mopac, but per-frame MOPAC charges are absent")
+            .arg(relationship);
+    return QStringLiteral("%1 received unknown charge_source=%2").arg(relationship, chargeSource);
+}
+
+bool isAimnet2FeatureCase(const QString& which) {
+    return which == QStringLiteral("aimnet2_features")
+           || which == QStringLiteral("aimnet2_embedding")
+           || which == QStringLiteral("charge_response_gradient")
+           || which == QStringLiteral("crg");
+}
+
+QString aimnet2FeatureMissingMessage(const h5reader::rediscover::Catalog& catalog) {
+    QStringList missing;
+    if (!catalog.has(h5reader::rediscover::ArrayId::Aimnet2Charge))
+        missing << QStringLiteral("aimnet2_charge");
+    if (!catalog.has(h5reader::rediscover::ArrayId::Aimnet2ChargeRespScalar))
+        missing << QStringLiteral("aimnet2_charge_response_gradient_scalar");
+    if (!catalog.has(h5reader::rediscover::ArrayId::Aimnet2ChargeRespVector))
+        missing << QStringLiteral("aimnet2_charge_response_gradient_vector");
+    if (!catalog.has(h5reader::rediscover::ArrayId::Aimnet2Embedding))
+        missing << QStringLiteral("aimnet2_embedding");
+    if (missing.isEmpty()) return {};
+    return QStringLiteral("aimnet2_features requires AIMNet2 charge, CRG scalar/vector, and 256-d embedding; missing: %1")
+        .arg(missing.join(QStringLiteral(", ")));
 }
 }
 
@@ -125,7 +160,7 @@ int main(int argc, char** argv) {
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | efg | buckingham_efield | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 8.0 Å is the conventions'
@@ -240,15 +275,10 @@ int main(int argc, char** argv) {
     }
 
     if (which == QStringLiteral("charge_dipole")) {
-        if (chargeSource != QStringLiteral("ff14sb")) {
+        const h5reader::rediscover::ArrayId chargeArray = chargeArrayForSource(chargeSource);
+        if (!catalog.has(chargeArray)) {
             qCCritical(cMain).noquote()
-                << "ValidateScenario failed: charge_dipole currently implements charge_source=ff14sb, got"
-                << chargeSource;
-            return 2;
-        }
-        if (!catalog.has(h5reader::rediscover::ArrayId::Ff14sbCharge)) {
-            qCCritical(cMain).noquote()
-                << "ValidateScenario failed: charge_dipole requires FF14SB charges, but topol.top charges were not loaded";
+                << "ValidateScenario failed:" << chargeSourceMissingMessage(QStringLiteral("charge_dipole"), chargeSource);
             return 2;
         }
     }
@@ -334,19 +364,55 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // -- AIMNet2 features: charge source, charge-response-gradient (CRG, not
+    // polarizability), and 256-d embedding. One row-aligned per-atom substrate.
+    if (isAimnet2FeatureCase(which)) {
+        const QString missing = aimnet2FeatureMissingMessage(catalog);
+        if (!missing.isEmpty()) {
+            qCCritical(cMain).noquote() << "ValidateScenario failed:" << missing;
+            return 2;
+        }
+        h5reader::rediscover::Aimnet2FeatureSink sink(outDir, QStringLiteral("aimnet2_features"), 256);
+        if (!sink.Ok()) {
+            qCCritical(cMain).noquote() << "aimnet2_features sink open failed";
+            return 3;
+        }
+        h5reader::rediscover::Aimnet2FeatureStats stats;
+        try {
+            stats = h5reader::rediscover::RunAimnet2PerAtomFeature(body, sink);
+        } catch (const std::exception& e) {
+            qCCritical(cMain).noquote() << "aimnet2_features failed:" << e.what();
+            return 1;
+        }
+        const bool committed = sink.Commit();
+        qCInfo(cMain).noquote() << "aimnet2_features | rows=" << sink.rowsWritten()
+                                << "| dft_present=" << stats.dft_present
+                                << "| charge_present=" << stats.charge_present
+                                << "| crg_present=" << stats.crg_present
+                                << "| embedding_present=" << stats.embedding_present
+                                << "| embedding_dims=" << stats.embedding_dims
+                                << "| committed=" << committed;
+        if (!committed) return 4;
+        std::vector<h5reader::rediscover::OutputEntry> outputs = {
+            {QStringLiteral("aimnet2_features"), QStringLiteral("per_atom_feature"), QString(),
+             QStringLiteral("aimnet2_features_aggregated.csv"), sink.sidecarFiles(), stats.rows,
+             0, sink.rowsWritten()}};
+        QString manifestErr;
+        if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
+            qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
+            return 4;
+        }
+        return 0;
+    }
+
     // ── broad_backbone — the composed heterogeneous relationship (its own
     // two-kind carrier; not a RunnableCase/RecordSink). ValidateScenario, run,
     // commit, manifest, return. ────────────────────────────────────────────
     if (which == QStringLiteral("broad_backbone")) {
-        if (chargeSource != QStringLiteral("ff14sb")) {
+        const h5reader::rediscover::ArrayId chargeArray = chargeArrayForSource(chargeSource);
+        if (!catalog.has(chargeArray)) {
             qCCritical(cMain).noquote()
-                << "ValidateScenario failed: broad_backbone charge field implements charge_source=ff14sb, got"
-                << chargeSource;
-            return 2;
-        }
-        if (!catalog.has(h5reader::rediscover::ArrayId::Ff14sbCharge)) {
-            qCCritical(cMain).noquote()
-                << "ValidateScenario failed: broad_backbone charge field requires FF14SB charges, but topol.top charges were not loaded";
+                << "ValidateScenario failed:" << chargeSourceMissingMessage(QStringLiteral("broad_backbone"), chargeSource);
             return 2;
         }
         const h5reader::rediscover::BroadRelationship brel =
@@ -453,7 +519,7 @@ int main(int argc, char** argv) {
     }
     if (cases_to_run.empty()) {
         qCCritical(cMain).noquote() << "unknown --case" << which
-                                    << "(expected ring|mc|charge_dipole|broad_backbone|efg|all)";
+                                    << "(expected ring|mc|charge_dipole|broad_backbone|efg|buckingham_efield|aimnet2_features|all)";
         return 2;
     }
     qCInfo(cMain).noquote() << "engine =" << engine << "| cases =" << cases_to_run.size();

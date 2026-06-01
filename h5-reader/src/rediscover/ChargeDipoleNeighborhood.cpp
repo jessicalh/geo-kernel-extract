@@ -75,6 +75,23 @@ bool validResidueIndex(const model::QtProtein& p, int32_t resIdx) {
     return resIdx >= 0 && static_cast<std::size_t>(resIdx) < p.residueCount();
 }
 
+ArrayId chargeArrayForSource(const QString& charge_source) {
+    if (charge_source == QStringLiteral("ff14sb")) return ArrayId::Ff14sbCharge;
+    if (charge_source == QStringLiteral("aimnet2")) return ArrayId::Aimnet2Charge;
+    if (charge_source == QStringLiteral("mopac")) return ArrayId::MopacCharge;
+    return ArrayId::MopacCharge;
+}
+
+QString chargeSourceMissingMessage(const QString& charge_source) {
+    if (charge_source == QStringLiteral("ff14sb"))
+        return QStringLiteral("charge_dipole requires FF14SB charges, but topol.top charges were not loaded");
+    if (charge_source == QStringLiteral("aimnet2"))
+        return QStringLiteral("charge_dipole requires AIMNet2 Hirshfeld charges, but aimnet2_charge is absent");
+    if (charge_source == QStringLiteral("mopac"))
+        return QStringLiteral("charge_dipole requires charge_source=mopac, but per-frame MOPAC charges are absent");
+    return QStringLiteral("charge_dipole received unknown charge_source=%1").arg(charge_source);
+}
+
 }  // namespace
 
 FeatureSchema ChargeDipoleNeighborhood::schema() const {
@@ -118,13 +135,9 @@ FeatureSchema ChargeDipoleNeighborhood::schema() const {
 }
 
 std::size_t ChargeDipoleNeighborhood::extract(const Body& body, RecordSink& sink) const {
-    if (charge_source != QStringLiteral("ff14sb")) {
-        throw std::runtime_error(QStringLiteral("charge_dipole currently implements charge_source=ff14sb, got %1")
-                                     .arg(charge_source)
-                                     .toStdString());
-    }
-    if (!body.catalog.has(ArrayId::Ff14sbCharge)) {
-        throw std::runtime_error("charge_dipole requires FF14SB charges, but topol.top charges were not loaded");
+    const ArrayId chargeArray = chargeArrayForSource(charge_source);
+    if (!body.catalog.has(chargeArray)) {
+        throw std::runtime_error(chargeSourceMissingMessage(charge_source).toStdString());
     }
 
     const RunData& run = body.run;
@@ -154,14 +167,14 @@ std::size_t ChargeDipoleNeighborhood::extract(const Body& body, RecordSink& sink
         if (ref.entity_index < 0) return false;
         const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
         if (srcAtom >= p.atomCount()) return false;
-        if (!body.catalog.present(body, ArrayId::Ff14sbCharge, srcAtom, frameRow)) return false;
+        if (!body.catalog.present(body, chargeArray, srcAtom, frameRow)) return false;
 
         const model::QtAtom& target = p.atom(targetAtom);
         const model::QtAtom& src = p.atom(srcAtom);
         if (exclude_residue && target.residueIndex >= 0 && src.residueIndex == target.residueIndex)
             return false;
 
-        const double q = body.catalog.value(body, ArrayId::Ff14sbCharge, srcAtom, frameRow);
+        const double q = body.catalog.value(body, chargeArray, srcAtom, frameRow);
         if (!std::isfinite(q)) return false;
 
         const Vec3 dispLab = conf.atomPosition(frameRow, srcAtom) - atomPos;

@@ -57,7 +57,7 @@ Picks (settled):
 - **embeddings IN** (#9): the equivariant machinery is built anyway, so a
   needle-moving learned-rep result is a welcome couple-paragraphs. (Structurally
   a per-atom feature, not a source sum — surfaced as an issue, not deferred.)
-- **polarizability KEEP** (#8).
+- **CRG KEEP** (#8): AIMNet2 charge-response-gradient, not polarizability.
 - **NO DEFERRAL — "there is only today"**: the design is complete now; every item
   fully stubbed + a worked example; stubs are skeletons, not punts; issues found
   are findings-to-fix, never deferrals.
@@ -75,7 +75,7 @@ equivariant fit is what unlocks them, mostly **in the lab (MD/H5) frame, today**
 (Resolves the STUB_LANGUAGE.md L1/F2 issue and supersedes the earlier
 "T2 lands lab-frame / T0 is safe" shrug.)
 
-- **Field items (efg, efield, polarizability)** — the APBS EFG is already a T2
+- **Field/per-atom items (efg, efield, CRG)** — the APBS EFG is already a T2
   computed in the MD frame, and the DFT T2 is in that same frame (verified:
   ORCA-vs-H5 rotation ~1e-4°, `CheckDftFrameAlignment`). So it is a DIRECT
   tensor-vs-tensor relationship: fit DFT-T2 from the field-T2 **equivariantly**,

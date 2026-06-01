@@ -27,7 +27,7 @@ untouched.
   indexes; L1/F2 frames; X3/4 schema+convention; D1 scenario-spec).
 - The **supported set (9 items)** and the **picks** are settled in
   `SURFACE_DESIGN.md` ("The supported set"): charge_source is a parameter (not
-  separate items); embeddings IN; polarizability KEEP; **no deferral — there is
+  separate items); embeddings IN; CRG KEEP; **no deferral — there is
   only today** (full stub + worked example per item; issues are findings, not
   punts).
 - The **T2-frame question for the new items is RESOLVED** (`SURFACE_DESIGN.md`

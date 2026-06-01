@@ -141,6 +141,13 @@ bool validResidue(const model::QtProtein& p, int32_t r) {
     return r >= 0 && static_cast<std::size_t>(r) < p.residueCount();
 }
 
+ArrayId chargeArrayForSource(const QString& charge_source) {
+    if (charge_source == QStringLiteral("ff14sb")) return ArrayId::Ff14sbCharge;
+    if (charge_source == QStringLiteral("aimnet2")) return ArrayId::Aimnet2Charge;
+    if (charge_source == QStringLiteral("mopac")) return ArrayId::MopacCharge;
+    return ArrayId::MopacCharge;
+}
+
 // ── Backbone-class-dispatching LocalFrameFn (the new conceptual piece) ───────
 // Dispatches on the atom's typed BackboneRole (plus the GLY-HA Locant case) and
 // builds the matching backbone frame from TYPED anchor atoms — the QtResidue
@@ -361,17 +368,18 @@ Attacher makeChargeAttacher(const QString& charge_source, bool exclude_residue) 
         if (raw.kind != SourceKind::Charge) return;  // not ours; leave the slot
         s.kind = SourceKind::Charge;
         s.source_atom_index = -1;  // rejected until proven valid (the filter sentinel)
-        if (!body.catalog.has(ArrayId::Ff14sbCharge) || raw.ref.entity_index < 0) return;
+        const ArrayId chargeArray = chargeArrayForSource(charge_source);
+        if (!body.catalog.has(chargeArray) || raw.ref.entity_index < 0) return;
         const model::QtProtein& p = *body.run.protein;
         const std::size_t srcAtom = static_cast<std::size_t>(raw.ref.entity_index);
         if (srcAtom >= p.atomCount() || srcAtom == st.atom) return;  // never self
-        if (!body.catalog.present(body, ArrayId::Ff14sbCharge, srcAtom, st.frame)) return;
+        if (!body.catalog.present(body, chargeArray, srcAtom, st.frame)) return;
         const model::QtAtom& target = p.atom(st.atom);
         const model::QtAtom& src = p.atom(srcAtom);
         if (exclude_residue && target.residueIndex >= 0
             && src.residueIndex == target.residueIndex)
             return;  // through-space: drop the target's own residue
-        const double q = body.catalog.value(body, ArrayId::Ff14sbCharge, srcAtom, st.frame);
+        const double q = body.catalog.value(body, chargeArray, srcAtom, st.frame);
         if (!std::isfinite(q)) return;
         const Vec3 dispLab =
             body.run.conformation->atomPosition(st.frame, srcAtom) - st.pos;

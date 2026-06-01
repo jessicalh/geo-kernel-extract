@@ -124,6 +124,22 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
     case ArrayId::Ff14sbCharge:
         return body.run.protein && atom < body.run.protein->atomCount()
                && body.run.protein->atom(atom).hasPartialCharge;
+    case ArrayId::Aimnet2Charge:
+        return body.run.h5() && body.run.h5()->aimnet2Charge()
+               && atom < body.run.h5()->aimnet2Charge()->n_atoms
+               && frame < body.run.h5()->aimnet2Charge()->n_frames
+               && body.run.h5()->aimnet2Charge()->sourceAttachedAt(frame);
+    case ArrayId::Aimnet2ChargeRespScalar:
+    case ArrayId::Aimnet2ChargeRespVector:
+        return body.run.h5() && body.run.h5()->aimnet2ChargeResponseGradient()
+               && atom < body.run.h5()->aimnet2ChargeResponseGradient()->n_atoms
+               && frame < body.run.h5()->aimnet2ChargeResponseGradient()->n_frames
+               && body.run.h5()->aimnet2ChargeResponseGradient()->meta.sourceAttachedAt(frame);
+    case ArrayId::Aimnet2Embedding:
+        return body.run.h5() && body.run.h5()->aimnet2Embedding()
+               && atom < body.run.h5()->aimnet2Embedding()->n_atoms
+               && frame < body.run.h5()->aimnet2Embedding()->n_frames
+               && body.run.h5()->aimnet2Embedding()->meta.sourceAttachedAt(frame);
     case ArrayId::MopacCharge:
         return false;
     default:
