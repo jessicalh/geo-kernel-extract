@@ -234,6 +234,16 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("broad_backbone_aggregated_field_local",     "rediscover", np.ndarray, 3, True,  "Broad-backbone local-frame Coulomb E-field (FF14SB, the field-not-mu feature), once per (atom,frame)",
               is_feature=True, native_axis="rediscover_aggregated_row", irreps="1e", units="e/Angstrom^2", tensor_rank=1, parity="odd", mechanism="charges"),
 
+    # ── efg per_atom_feature (h5-reader/src/rediscover/EfgFeature) — APBS
+    # solvated-PB EFG T2 -> DFT target T2. Both sidecars are in the same
+    # library isometric T2 basis as DecomposeLibrary / SphericalTensor::Decompose:
+    # [xy, yz, zz, xz, xx-yy]. Python applies only the frozen library->e3nn
+    # change_of_basis to both arrays; it does not re-project the EFG.
+    ArraySpec("efg_feature_T2", "rediscover", np.ndarray, 5, False, "EFG per_atom_feature APBS EFG T2 payload, once per DFT-present (atom,frame)",
+              is_feature=True, native_axis="rediscover_aggregated_row", irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+    ArraySpec("efg_target_T2",  "rediscover", np.ndarray, 5, False, "EFG per_atom_feature DFT target T2 payload, row-aligned with efg_feature_T2",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+
     # ── Coulomb (CoulombResult.cpp) — optional; retired from production
     # (APBS is canonical), so present only in the FullFatFrameExtraction
     # trajectory (--mopac), where it feeds the MOPAC-vs-FF14SB probe. ──

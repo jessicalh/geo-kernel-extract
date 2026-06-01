@@ -21,6 +21,8 @@
 #include "Catalog.h"
 #include "ChargeDipoleNeighborhood.h"
 #include "ComposedRelationships.h"
+#include "EfgFeature.h"
+#include "EfgFeatureSink.h"
 #include "McConnellNeighborhood.h"
 #include "OutputManifest.h"
 #include "RecordSink.h"
@@ -57,7 +59,6 @@ QString relationshipKindName(h5reader::rediscover::RelationshipKind kind) {
 
 bool isFailLoudStub(const QString& which) {
     return which == QStringLiteral("buckingham_efield")
-           || which == QStringLiteral("efg")
            || which == QStringLiteral("charge_quadrupole")
            || which == QStringLiteral("larsen_hbond")
            || which == QStringLiteral("charge_response_gradient")
@@ -123,7 +124,7 @@ int main(int argc, char** argv) {
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | efg | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 8.0 Å is the conventions'
@@ -251,6 +252,46 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ── efg — focused per_atom_feature sibling carrier. This is #29's second
+    // non-source_sum data point after broad_backbone; keep it direct here and
+    // do not widen RunRelationship / RecordSink in this spike. ──────────────
+    if (which == QStringLiteral("efg")) {
+        if (!catalog.has(h5reader::rediscover::ArrayId::ApbsEfg)) {
+            qCCritical(cMain).noquote()
+                << "ValidateScenario failed: efg requires APBS EFG, but apbs_efg is absent";
+            return 2;
+        }
+        h5reader::rediscover::EfgFeatureSink sink(outDir, QStringLiteral("efg"));
+        if (!sink.Ok()) {
+            qCCritical(cMain).noquote() << "efg sink open failed";
+            return 3;
+        }
+        h5reader::rediscover::EfgFeatureStats stats;
+        try {
+            stats = h5reader::rediscover::RunEfgPerAtomFeature(body, sink);
+        } catch (const std::exception& e) {
+            qCCritical(cMain).noquote() << "efg failed:" << e.what();
+            return 1;
+        }
+        const bool committed = sink.Commit();
+        qCInfo(cMain).noquote() << "efg | rows=" << sink.rowsWritten()
+                                << "| dft_present=" << stats.dft_present
+                                << "| apbs_efg_present=" << stats.apbs_efg_present
+                                << "| finite_efg=" << stats.finite_efg
+                                << "| committed=" << committed;
+        if (!committed) return 4;
+        std::vector<h5reader::rediscover::OutputEntry> outputs = {
+            {QStringLiteral("efg"), QStringLiteral("per_atom_feature"), QString(),
+             QStringLiteral("efg_aggregated.csv"), sink.sidecarFiles(), stats.rows,
+             0, sink.rowsWritten()}};
+        QString manifestErr;
+        if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
+            qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
+            return 4;
+        }
+        return 0;
+    }
+
     // ── broad_backbone — the composed heterogeneous relationship (its own
     // two-kind carrier; not a RunnableCase/RecordSink). ValidateScenario, run,
     // commit, manifest, return. ────────────────────────────────────────────
@@ -370,7 +411,7 @@ int main(int argc, char** argv) {
     }
     if (cases_to_run.empty()) {
         qCCritical(cMain).noquote() << "unknown --case" << which
-                                    << "(expected ring|mc|charge_dipole|all)";
+                                    << "(expected ring|mc|charge_dipole|broad_backbone|efg|all)";
         return 2;
     }
     qCInfo(cMain).noquote() << "engine =" << engine << "| cases =" << cases_to_run.size();

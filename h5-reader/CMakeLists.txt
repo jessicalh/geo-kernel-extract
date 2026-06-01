@@ -329,6 +329,10 @@ qt_add_executable(h5reader_extract
     src/rediscover/RecordSink.cpp
     src/rediscover/ExtractionSupport.h
     src/rediscover/ExtractionSupport.cpp
+    src/rediscover/EfgFeatureSink.h
+    src/rediscover/EfgFeatureSink.cpp
+    src/rediscover/EfgFeature.h
+    src/rediscover/EfgFeature.cpp
     src/rediscover/RediscoveryExtraction.h
     src/rediscover/FrameSpatialIndex.h
     src/rediscover/FrameSpatialIndex.cpp
@@ -409,6 +413,29 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_backbone_frame_tests
              COMMAND h5reader_rediscover_backbone_frame_tests)
+
+    # APBS EFG per_atom_feature fixtures: the EFG T2 basis equals the DFT
+    # target basis (DecomposeLibrary), rotation preserves |T2|, and the sink
+    # writes finite row-aligned (rows,5) feature/target sidecars.
+    qt_add_executable(h5reader_rediscover_efg_tests
+        tests/rediscover_efg_tests.cpp
+        src/rediscover/EfgFeatureSink.h
+        src/rediscover/EfgFeatureSink.cpp
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
+        src/io/QtNpyReader.h
+        src/io/QtNpyReader.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_rediscover_efg_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_efg_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_efg_tests
+             COMMAND h5reader_rediscover_efg_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp
