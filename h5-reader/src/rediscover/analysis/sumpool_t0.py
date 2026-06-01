@@ -16,8 +16,13 @@ Honesty guards:
   - frame-wise train/test split: g must predict the shielding modulation on
     HELD-OUT frames, not memorise.
   - report WITHIN-ATOM R^2 (the modulation), not the easy between-atom R^2.
-  - read out g and regress it on the analytic Pople kernel: that R^2 + slope is
-    the literal "did the equation fall out" number.
+
+This is a FIT (DeepSets pooling on C++-emitted raw geometry against C++-emitted
+DFT sigma_iso) — no Python physics recompute. The previous "read out g and
+regress on (3cos^2-1)/r^3" block is DELETED per
+feedback_no_python_physics_except_labeled_integrity_test (2026-06-01) + the
+lead's decision: whether g is the Pople form is decided by pysr_distill.py
+(symbolic), and any kernel comparison reads the C++-emitted `dipolar` column.
 """
 import numpy as np
 import pandas as pd
@@ -111,38 +116,17 @@ for ep in range(4000):
         print(f"  ep {ep:4d}  train MSE={loss.item():.4f}  "
               f"within-atom R2 train={r2_tr:+.3f}  test={r2_te:+.3f}")
 
-# ---- read out g and compare to the analytic Pople kernel ----
-print("\n== read out g(r, cos_theta, intensity) vs the Pople kernel ==")
+# ---- read out the learned g and correlate with the EMITTED kernel column ----
+# (no recompute: `dipolar` is the C++-emitted (3cos^2-1)/r^3 per source; the
+# symbolic form check is pysr_distill.py's job.)
+print("\n== learned g(r, cos_theta, intensity) vs the EMITTED dipolar column ==")
 model.eval()
 with torch.no_grad():
     g_on_src = model.g(feat).squeeze(-1).cpu().numpy()
-r = df.r.to_numpy(); ct = df.cos_theta.to_numpy(); inten = df.ring_intensity.to_numpy()
-pople_geo = (3 * ct**2 - 1) / r**3            # pure geometry
-pople_int = inten * pople_geo                 # intensity-weighted (physical form)
-
-def fit_r2(x, y):
-    ok = np.isfinite(x) & np.isfinite(y)
-    b = np.polyfit(x[ok], y[ok], 1)
-    yhat = np.polyval(b, x[ok])
-    r2 = 1 - ((y[ok]-yhat)**2).sum()/((y[ok]-y[ok].mean())**2).sum()
-    return b[0], r2, np.corrcoef(x[ok], y[ok])[0, 1]
-
-for name, kern in [("(3cos^2-1)/r^3", pople_geo), ("intensity*(3cos^2-1)/r^3", pople_int)]:
-    slope, r2, rr = fit_r2(kern, g_on_src)
-    print(f"  g  vs  {name:26s}  r={rr:+.4f}  R2={r2:+.4f}  slope={slope:+.4g}")
-
-# cos_theta shape at fixed r, median intensity: is it (3cos^2-1)?
-print("\n== angular shape of g at r=4.0 A, median intensity ==")
-med_i = (np.median(inten) - fmean[2]) / fstd[2]
-r_fix = (4.0 - fmean[0]) / fstd[0]
-cts = np.linspace(-1, 1, 41)
-grid = np.stack([np.full_like(cts, r_fix), (cts - fmean[1]) / fstd[1],
-                 np.full_like(cts, med_i)], 1).astype(np.float32)
-with torch.no_grad():
-    gv = model.g(torch.tensor(grid, device=dev)).squeeze(-1).cpu().numpy()
-slope, r2, rr = fit_r2(3 * cts**2 - 1, gv)
-print(f"  g(cos) vs (3cos^2-1):  R2={r2:+.4f}  slope={slope:+.4g}  "
-      f"(R2~1 => the angular law is the Pople (3cos^2-1))")
-np.savez("/tmp/rediscover-out/sumpool_readout.npz", cts=cts, gv=gv,
-         g_on_src=g_on_src, pople_geo=pople_geo, pople_int=pople_int)
-print("  saved readout -> /tmp/rediscover-out/sumpool_readout.npz")
+dipolar = df.dipolar.to_numpy()              # C++-emitted (3cos^2-1)/r^3
+inten = df.ring_intensity.to_numpy()
+ok = np.isfinite(g_on_src) & np.isfinite(dipolar)
+print(f"  corr(g, emitted dipolar)            r={np.corrcoef(g_on_src[ok], dipolar[ok])[0,1]:+.4f}")
+ok2 = ok & np.isfinite(inten)
+print(f"  corr(g, emitted intensity*dipolar)  r={np.corrcoef(g_on_src[ok2], (inten*dipolar)[ok2])[0,1]:+.4f}")
+print("  (symbolic 'is it the Pople form' is decided by pysr_distill.py, not here)")

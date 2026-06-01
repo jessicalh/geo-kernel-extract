@@ -7,12 +7,17 @@ bond source, the contribution is modelled as
     chi[category] * h(r, cos_theta_bond_axis)
 
   - h(r, cos): a shared geometric MLP fed RAW geometry (never the precomputed
-    dipolar). If it recovers (3cos^2-1)/r^3, the McConnell form fell out.
+    dipolar). Whether it recovers the bond-anisotropy form is read against the
+    C++-emitted `dipolar` column / PySR, not by recomputing (3cos^2-1)/r^3.
   - chi[category]: a learned per-bond-category scalar (peptide C=O, C-N,
     sidechain C=O, aromatic) standing in for the anisotropy Delta-chi -- the
     parameter the McConnell form puts the chemistry in.
 
-Target is the producer's pure McConnell kernel B = bare_T0 (clean, analytic).
+Target is the producer's pure McConnell kernel B = bare_T0 (clean, analytic,
+EMITTED). This is a FIT on emitted columns. Per
+feedback_no_python_physics_except_labeled_integrity_test (2026-06-01) + the
+lead's decision, the (3cos^2-1)/r^3 readout-comparison arrays are DELETED; the
+learned h is correlated with the C++-emitted `dipolar` column instead.
 """
 import numpy as np
 import os
@@ -87,20 +92,15 @@ with torch.no_grad():
 for c, name in zip(chi, cats):
     print(f"  category {name}: chi={c:+.4g}")
 
-print("\n== read out h(r, cos) vs (3cos^2-1)/r^3 ==")
+print("\n== read out learned h vs the EMITTED dipolar column ==")
 with torch.no_grad():
     hsrc = model.h(feat).squeeze(-1).cpu().numpy()
-r = df.r.to_numpy(); ct = df.ct.to_numpy()
-def fit(x, y):
-    ok = np.isfinite(x)&np.isfinite(y); s,b = np.polyfit(x[ok], y[ok], 1)
-    return s, np.corrcoef(x[ok],y[ok])[0,1], 1-((y[ok]-(s*x[ok]+b))**2).sum()/((y[ok]-y[ok].mean())**2).sum()
+r = df.r.to_numpy()
+dipolar = df.dipolar.to_numpy()          # C++-emitted (3cos^2-1)/r^3 per source
 far = r >= 3.0
-s, rr, R2 = fit(((3*ct**2-1)/r**3)[far], hsrc[far])
-print(f"  h vs (3cos^2-1)/r^3 (r>=3): r={rr:+.4f}  R2={R2:+.4f}  slope={s:+.4g}")
-# angular law at r=3.5
-cts = np.linspace(-1, 1, 41)
-grid = np.stack([np.full_like(cts,(3.5-fmean[0])/fstd[0]), (cts-fmean[1])/fstd[1]],1).astype(np.float32)
-with torch.no_grad():
-    hv = model.h(torch.tensor(grid, device=dev)).squeeze(-1).cpu().numpy()
-s, rr, R2 = fit(3*cts**2-1, hv)
-print(f"  angular: h(cos) vs (3cos^2-1) at r=3.5:  R2={R2:+.4f}  slope={s:+.4g}")
+ok = far & np.isfinite(hsrc) & np.isfinite(dipolar)
+s, b = np.polyfit(dipolar[ok], hsrc[ok], 1)
+rr = np.corrcoef(dipolar[ok], hsrc[ok])[0, 1]
+R2 = 1 - ((hsrc[ok]-(s*dipolar[ok]+b))**2).sum()/((hsrc[ok]-hsrc[ok].mean())**2).sum()
+print(f"  h vs emitted dipolar (r>=3): r={rr:+.4f}  R2={R2:+.4f}  slope={s:+.4g}")
+print("  (symbolic form recovery is pysr_distill.py's job; no kernel recompute here)")

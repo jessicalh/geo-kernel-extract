@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
-"""sumpool_kernel — recover the ring-current kernel as a function, two honest layers.
+"""sumpool_kernel — recover the ring-current kernel as a FIT (no Python physics).
 
-LAYER 1 (well-posed): reconstruct the producer's PURE ring-current shielding
-B = bare_T0 (a clean, noise-free analytic sum over rings) with a sum-pooling
-model fed RAW per-source geometry:
+Reconstruct the producer's PURE ring-current shielding B = bare_T0 (a clean,
+noise-free analytic per-atom kernel, EMITTED by the C++ producer) with a
+sum-pooling model fed RAW per-source geometry:
 
     B(atom, frame) = SUM_sources g(r, cos_theta, intensity)        (no baseline)
 
-If g, fed only raw geometry, reconstructs B and its read-out matches the Pople
-kernel (3cos^2-1)/r^3, the FORM has fallen out of the data. All sources are
-included (no self-ring guess) -- the read-out shows what g does at the self
-geometry, which answers the producer-convention question empirically.
-
-LAYER 2 (physics): how much of the DFT shielding does that kernel actually
-explain? Reported by look01 (within-atom B vs DFT). Here we just print the
-ceiling for context.
+This is a FIT, not a recompute: the inputs (r, cos_theta, ring_intensity) and the
+target (bare_T0) are all C++-emitted columns. The learned per-source function g
+is written out for symbolic distillation by pysr_distill.py; whether g matches
+the Pople form is decided THERE (PySR), not by recomputing (3cos^2-1)/r^3 in
+numpy. Per feedback_no_python_physics_except_labeled_integrity_test (2026-06-01
+tightening) and the lead's decision: the (3cos^2-1)/r^3 recompute arrays are
+DELETED; any kernel comparison reads the C++-emitted `dipolar` column or relies
+on PySR. The only surviving recompute in this workspace is the pinned
+change-of-basis fixture test.
 """
 import numpy as np
 import pandas as pd
@@ -75,44 +76,25 @@ for ep in range(5000):
         print(f"  ep {ep:4d}  train MSE={loss.item():.5f}  "
               f"R2 train={r2(pr[tr],target[tr]):+.4f}  test={r2(pr[te],target[te]):+.4f}")
 
-# ---- read out g vs the analytic Pople kernel (the equation check) ----
-print("\n== g (from raw geometry) vs Pople kernel, on the real source distribution ==")
+# ---- read out the learned per-source g and SAVE it for PySR distillation ----
+# No Python kernel recompute: we emit the learned g together with the C++-emitted
+# geometry columns (r, cos_theta, ring_intensity) and the emitted `dipolar`
+# column. pysr_distill.py decides symbolically whether g is the Pople form;
+# refine_kernel.py draws g against the emitted `dipolar`. We do NOT build
+# (3cos^2-1)/r^3 here.
+print("\n== reading out learned g(r, cos_theta, intensity) for PySR distillation ==")
 model.eval()
 with torch.no_grad():
     gsrc = model.g(feat).squeeze(-1).cpu().numpy()
 r = df.r.to_numpy(); ct = df.cos_theta.to_numpy(); inten = df.ring_intensity.to_numpy()
-kern = {"(3cos^2-1)/r^3": (3*ct**2-1)/r**3,
-        "intensity*(3cos^2-1)/r^3": inten*(3*ct**2-1)/r**3}
+dipolar = df.dipolar.to_numpy()  # C++-emitted (3cos^2-1)/r^3 per source
 
-def fit(x, y):
-    ok = np.isfinite(x)&np.isfinite(y)
-    s, b = np.polyfit(x[ok], y[ok], 1)
-    yh = s*x[ok]+b
-    return s, np.corrcoef(x[ok], y[ok])[0,1], 1-((y[ok]-yh)**2).sum()/((y[ok]-y[ok].mean())**2).sum()
-
-for name, k in kern.items():
-    s, rr, R2 = fit(k, gsrc)
-    print(f"  g vs {name:26s}  r={rr:+.4f}  R2={R2:+.4f}  slope={s:+.5g}")
-
-# angular law at fixed r, median intensity
-print("\n== angular law of g (r=4 A, median intensity): is it (3cos^2-1)? ==")
-cts = np.linspace(-1, 1, 41)
-grid = np.stack([np.full_like(cts,(4.0-fmean[0])/fstd[0]), (cts-fmean[1])/fstd[1],
-                 np.full_like(cts,(np.median(inten)-fmean[2])/fstd[2])], 1).astype(np.float32)
-with torch.no_grad():
-    gv = model.g(torch.tensor(grid, device=dev)).squeeze(-1).cpu().numpy()
-s, rr, R2 = fit(3*cts**2-1, gv)
-print(f"  g(cos) vs (3cos^2-1):  R2={R2:+.4f}  slope={s:+.4g}")
-
-# radial law at fixed cos (theta~0, in-plane) and fixed cos~1 (axial)
-print("\n== radial law of g vs 1/r^3 (median intensity) ==")
-for label, cval in [("in-plane cos=0", 0.0), ("axial cos=0.9", 0.9)]:
-    rs = np.linspace(3.0, 12.0, 40)
-    grid = np.stack([(rs-fmean[0])/fstd[0], np.full_like(rs,(cval-fmean[1])/fstd[1]),
-                     np.full_like(rs,(np.median(inten)-fmean[2])/fstd[2])], 1).astype(np.float32)
-    with torch.no_grad():
-        gv = model.g(torch.tensor(grid, device=dev)).squeeze(-1).cpu().numpy()
-    s, rr, R2 = fit(1.0/rs**3, gv)
-    print(f"  {label:16s}  g vs 1/r^3:  R2={R2:+.4f}  slope={s:+.4g}")
-np.savez("/tmp/rediscover-out/sumpool_kernel_readout.npz", cts=cts, gv=gv, gsrc=gsrc,
-         r=r, ct=ct, inten=inten)
+# correlation of the learned g with the EMITTED kernel column (read, not recompute)
+ok = np.isfinite(gsrc) & np.isfinite(dipolar)
+r_emit = np.corrcoef(gsrc[ok], dipolar[ok])[0, 1]
+r_emit_int = np.corrcoef(gsrc[ok], (inten * dipolar)[ok])[0, 1]
+print(f"  corr(learned g, emitted dipolar)            r={r_emit:+.4f}")
+print(f"  corr(learned g, emitted intensity*dipolar)  r={r_emit_int:+.4f}")
+print("  (symbolic form recovery is done by pysr_distill.py, not by recomputing the kernel)")
+np.savez("/tmp/rediscover-out/sumpool_kernel_readout.npz", gsrc=gsrc,
+         r=r, ct=ct, inten=inten, dipolar=dipolar)

@@ -1,0 +1,29 @@
+# Pinned environment for the equivariant T2 fitter (equiv_t2_e3nn.py) and the
+# change-of-basis fixture test (test_change_of_basis.py).
+#
+# These are the EXACT versions present and validated in the system/user Python
+# this branch ran under (Python 3.12, /usr/bin/python3 with ~/.local user-site).
+# torch is the CUDA-13 wheel; it SEGFAULTS at import unless the nvidia cu13
+# shared libs are on LD_LIBRARY_PATH (see ENV.md). e3nn 0.6.0 is the declared
+# equivariant dependency (MODEL_PLACEMENT_PROPOSAL.md section 2.4).
+#
+# This is a never-merge spike. The pins document reproducibility; they are NOT a
+# release-surface requirement and the rediscover NPYs are deliberately NOT in the
+# producer SDK catalog (python/nmr_extract/_catalog.py).
+#
+# Install (a fresh venv, optional — system already satisfies this):
+#   python3 -m venv .venv-e3nn && . .venv-e3nn/bin/activate
+#   pip install --index-url https://download.pytorch.org/whl/cu130 torch==2.11.0
+#   pip install -r requirements-e3nn.txt
+# Then run with LD_LIBRARY_PATH set per ENV.md.
+
+torch==2.11.0          # +cu130 wheel; needs nvidia cu13 libs on LD_LIBRARY_PATH
+e3nn==0.6.0            # o3 irreps, spherical_harmonics, tensor products, Wigner-D
+opt-einsum==3.4.0      # e3nn dependency
+opt-einsum-fx==0.1.4   # e3nn dependency
+sympy==1.14.0          # e3nn dependency
+
+numpy==1.26.4
+pandas==2.1.4
+scipy==1.11.4
+matplotlib==3.6.3      # refine_kernel.py figure only

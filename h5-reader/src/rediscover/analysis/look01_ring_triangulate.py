@@ -7,8 +7,9 @@ offset: the aromatic H sits at a roughly fixed spot in its own ring, so that
 term de-means away. This is a FIRST read to see whether there is any structure
 worth the re-run, not the final analysis.
 
-Three scalars per (atom, frame):
-  S = sum_dipolar       our recomputed Pople sum  Sigma (3cos^2-1)/r^3
+Three scalars per (atom, frame), all C++-EMITTED reducer/target columns:
+  S = sum_dipolar_producer_valid   emitted through-space dipolar sum (self/bonded
+                                   excluded by identity) = Sigma (3cos^2-1)/r^3
   B = bare_T0           the producer's own BS ring-current kernel (ppm)
   D = dft_sigma_iso     the DFT truth, T0 = trace/3 (ppm), rotation-safe
 
@@ -35,7 +36,8 @@ m = (df.dft_present == 1) & (df.bare_kernel_present == 1)
 d = df[m].copy()
 print(f"  rows with dft & bare present: {len(d)}  ({d.atom_index.nunique()} atoms)")
 
-S = d["sum_dipolar"].to_numpy()
+SCOL = "sum_dipolar_producer_valid" if "sum_dipolar_producer_valid" in d.columns else "sum_dipolar"
+S = d[SCOL].to_numpy()
 B = d["bare_T0"].to_numpy()
 D = d["dft_sigma_iso"].to_numpy()
 
@@ -65,7 +67,7 @@ for label, a, b in [("S vs B (extraction)", S, B),
 # Subtract each atom's own across-frame mean from S, B, D, then pool. This is
 # the part the ring-current kernel actually claims: geometric modulation.
 print("\n== within-atom de-meaned (the ring-current modulation claim) ==")
-d["S_w"] = S - d.groupby("atom_index")["sum_dipolar"].transform("mean")
+d["S_w"] = S - d.groupby("atom_index")[SCOL].transform("mean")
 d["B_w"] = B - d.groupby("atom_index")["bare_T0"].transform("mean")
 d["D_w"] = D - d.groupby("atom_index")["dft_sigma_iso"].transform("mean")
 for label, a, b in [("S vs B", d.S_w.to_numpy(), d.B_w.to_numpy()),
@@ -85,7 +87,7 @@ rows = []
 for aidx, g in d.groupby("atom_index"):
     if len(g) < 10:
         continue
-    s, dd = g["sum_dipolar"].to_numpy(), g["dft_sigma_iso"].to_numpy()
+    s, dd = g[SCOL].to_numpy(), g["dft_sigma_iso"].to_numpy()
     r, n = corr(s, dd)
     rows.append((aidx, g["atom_name"].iloc[0], int(g["residue_number"].iloc[0]),
                  len(g), np.std(s), np.std(dd), r))

@@ -16,6 +16,7 @@ from pysr import PySRRegressor
 
 d = np.load("/tmp/rediscover-out/sumpool_kernel_readout.npz")
 gsrc, r, ct, inten = d["gsrc"], d["r"], d["ct"], d["inten"]
+dipolar = d["dipolar"]            # C++-emitted (3cos^2-1)/r^3 per source
 far = (r >= 4.0) & np.isfinite(gsrc)
 X = np.column_stack([r[far], ct[far], inten[far]])
 y = gsrc[far]
@@ -57,8 +58,10 @@ pred = model.predict(X)
 r2 = 1 - ((y-pred)**2).sum()/((y-y.mean())**2).sum()
 print(f"best R2 on far-field samples: {r2:+.4f}")
 
-# explicit comparison: how well does the textbook form alone fit?
-pople = X[:, 2]*(3*X[:, 1]**2 - 1)/X[:, 0]**3
+# explicit comparison: how well does the producer's EMITTED kernel fit the
+# learned g? (read the emitted `dipolar` column, do NOT recompute (3ct^2-1)/r^3)
+pople = (inten * dipolar)[far]          # intensity * C++-emitted dipolar
 s, b = np.polyfit(pople, y, 1)
 r2p = 1 - ((y-(s*pople+b))**2).sum()/((y-y.mean())**2).sum()
-print(f"textbook inten*(3ct^2-1)/r^3: R2={r2p:+.4f}  coeff={s:+.4g}")
+print(f"emitted intensity*dipolar: R2={r2p:+.4f}  coeff={s:+.4g}  "
+      f"(comparator is the C++-emitted kernel column, not a numpy recompute)")

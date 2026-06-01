@@ -4,6 +4,145 @@ Freshest current state, for the next session/agent. Read `GUIDANCE.md`
 (orientation) + `DESIGN.md` (class model) first; this supersedes the
 "Status" section in GUIDANCE.md, which a build agent left mid-build/stale.
 
+## UPDATE 2026-06-01 — Python physics RETIRED; equiv-T2 rebuilt on e3nn (authored)
+
+Per `MODEL_PLACEMENT_PROPOSAL.md` + the lead's decisions. The Python end-runs are
+gone; the equivariant fitter is e3nn on the C++ export. The C++ substrate was NOT
+touched (no recompile; the carrier `compact_npy` change is a separate codex task).
+
+- **Deleted** `analysis/equiv_t2.py` (its numpy `lib_T2` was a byte-for-byte
+  clone of `DecomposeLibrary` — the projection end-run).
+- **Rebuilt** as `analysis/equiv_t2_e3nn.py`: `o3.spherical_harmonics("2e")` for
+  Y2(r̂)/Y2(n̂) + a `1o⊗1o→2e` cross term (BOTH `--cross exact` fixed-path and
+  `--cross learnable` FullyConnectedTensorProduct; `--cross both` reports both and
+  picks the better by frame-split R² — decision 4) + invariant radial MLP +
+  scatter-pool. Consumes the C++-emitted per-source `disp_local`/
+  `source_normal_local` + the REQUIRED emitted target NPY
+  `rediscover_ring_current_sources_target_local_T2.npy` (fail-loud if absent; NO
+  numpy projection fallback). Target mapped library-basis→e3nn-2e by a PINNED
+  constant.
+- **`analysis/change_of_basis.py` + `analysis/test_change_of_basis.py`**: the 5×5
+  library-T2↔e3nn-2e change-of-basis is the ONLY surviving "recompute," written as
+  a fixture-pinned TEST — orthogonality/round-trip + a Wigner-D equivariance
+  round-trip vs the C++ library tensor (handles e3nn's y-z-x convention). The
+  derivation uses e3nn's own `ReducedTensorProducts("ij=ji", i="1o")` so features
+  and target share the e3nn-2e basis (verified: e3nn 1o is the plain 3-vector,
+  no hidden permutation — `_reduce.py:126-129`).
+- **Pople-comparison recompute arrays DELETED** (lead decision 3, no kept "labeled
+  integrity test"): `sumpool_kernel.py`, `refine_kernel.py`, `pysr_distill.py`,
+  `sumpool_t0.py`, `sumpool_mcconnell.py` keep their pooling FITS but no longer
+  build `(3cos²−1)/r³`; comparisons read the C++-emitted `dipolar`/`bare_T0`, and
+  PySR carries the symbolic "form fell out" claim. `look03_coefficient.py` reads
+  the emitted `sum_dipolar_producer_valid` aggregate (no `Σ intensity·dipolar`
+  re-sum; intensity-weighted aggregate is a future C++ reducer).
+  `look_charge_dipole.py` lost the `Σ q·d/r³` field recompute — fits only the
+  emitted `mu_*` (the field is the C++ `buckingham_efield`/APBS relationship, a
+  fail-loud stub on this branch). `look01` repointed to the emitted aggregate col.
+- **GREP PROOF**: no `(3cos²−1)/r³`, `/r**3`, `q·d/r³`, or `lib_T2` projection
+  arithmetic remains in any analysis `.py` outside the pinned change-of-basis
+  test. (Run from `analysis/`: see the grep block in the handoff report.)
+- **Env** (decision 1): system `/usr/bin/python3` has torch 2.11.0+cu130 + e3nn
+  0.6.0. PINNED in `analysis/requirements-e3nn.txt`; `LD_LIBRARY_PATH` gotcha +
+  run commands in `analysis/ENV.md`. rediscover NPYs NOT added to the SDK catalog
+  (decision 2 — never-merge spike).
+- **RUN + GATE: PASSED (lead, 2026-06-01).** Ran in system python (torch
+  2.11+cu130 / e3nn 0.6.0, `LD_LIBRARY_PATH` per `ENV.md`) on `/tmp/rdc-composed`.
+  Change-of-basis: all 3 checks pass — fixed the derivation to float64 (e3nn
+  defaults float32, which under-precised C to ~1e-7 and tripped the test's strict
+  thresholds; the matrix was always exactly orthogonal). `_C_FROZEN` frozen as the
+  exact 5×5 (0,±1,±0.5,±√3/2); `get_C()` loads it with NO e3nn (orthogonal to
+  1.1e-16). e3nn fit `--cross both`: **frame-split T2 R²=0.466** (baseline 0.467),
+  **|T2| r=0.757** (baseline 0.756) — reproduces the retired hand-rolled result to
+  noise, confirming the equivariant signal is REAL, not a hand-rolling artifact.
+  `exact` cross-term beat `learnable` (angular structure fixed, not fitted);
+  leave-atoms-out 0.370 reported, not gated (thin ~7 coupled aromatic H). Offense
+  grep-clean (no physics recompute outside the labeled change-of-basis test).
+  Committed on `h5-reader-pysr-spike` (never merged).
+
+## UPDATE 2026-06-01 (later) — broad-backbone BUILT + GATED (commit 35f3768)
+
+Big-one #1 done: `broad_backbone` composed THROUGH the engine (Claude-authored,
+codex-built+gated, lead-verified). All 6 backbone frame classes resolve **0%
+invalid** (N/CA/C/O=54, HN=52, HA=58); new N-frame convention z=unit(CA−N), x in
+the peptide plane. Heterogeneous selectors [rings/bonds/charge-field via the
+GENERAL KD backends] — breadth from the selector list, not a procedural walk.
+Carrier target-repeat fix held (27-col source rows, no `dft_*` columns). Tests
+12/12 (√6 + frames + rotation-equivariance + reducer-sum). Ring/mc byte-parity
+oracle STILL exit-0 (lead independently re-ran — NO regression); commit touched
+only the new broad files + additive `LocalFrameBasis` (existing builders
+untouched) + `main_extract` + tests + `_catalog.py`.
+
+Per-atom-type σ_iso R² (correlate-not-match, first-pass, features
+[ring_sum_dipolar, bond_sum_dipolar, field_z, field_mag]): HN 0.45, N 0.45, C
+0.31, O 0.20, HA 0.24, **CA 0.055** (weakest — CA is local-bonding-dominated, so
+through-space mechanisms barely touch it; diagnostic about kernel completeness,
+NOT a physical conclusion). Cutoff sweep 6/10/12 Å **flat** (field
+short-range-saturated, not truncation-starved — revises the charge_dipole
+"sweep it" hypothesis).
+
+SCALE FINDING (→ #29 input): per-source CSV is 1.7–5.5 GB across the sweep (charge
+= 8.1M rows at 6 Å). The target-repeat fix prevented worse, but per-source CSV
+doesn't scale for the charge mechanism → NPY-for-source-rows (or don't emit
+per-source charge rows) belongs in the totality design.
+
+ENGINE FINDING (→ #29): broad needed a SIBLING runner (`RunBroadBackbone`) because
+`RunRelationship` hardcodes the ring/mc scalar-sum sink. DECIDED (Jessica): fix
+the engine, but as a REVIEWED TOTALITY design — the fold/sink/carrier across ALL
+9 relationship shapes, minimal+clarifying abstraction, NOT whack-a-mole. #29,
+blocked until the design + review eyes land. Sibling runner kept meanwhile;
+oracle untouched.
+
+## UPDATE 2026-06-01 — functional API BUILT + byte-parity-VERIFIED (commit 99cdc85)
+
+BUILT + GATED (codex build, lead independent re-verify). Compiles + ctest pass —
+one real fix: Qt's `slots` macro collided with `verbs::slots` → renamed
+`verbs::ringSlots` in the NEW files only. The composed engine reproduces the
+procedural oracle **byte-for-byte** — all 4 CSVs (141000/20500/812205/26000 rows)
++ 12 sidecar NPYs identical (independently re-run by the lead into a fresh dir,
+GATE: PASS). Physics held by identity: ring k=21.1 / coupled R²=0.616, equiv-T2
+basis 4.88e-8 / R²=0.467 / |T2| 0.756, mc R²=0.549 / readout 0.919; DFT frame rot
+~9e-5°. Commit 99cdc85 touched ONLY the new API files + `main_extract` +
+`CMakeLists` (cells/spine/RecordSink/library untouched — frozen-oracle rule held).
+The functional API is **now the proven default path**; broad-backbone (#26) is
+unblocked. Compile-knob answer: a Claude Agent-tool subagent STILL can't reach the
+compiler here (even `which cmake` denied) — author-with-Claude / build-with-codex
+is the working split.
+
+The original authoring note follows (now superseded by the BUILT status above):
+
+### (superseded) functional API authored, UNBUILT
+
+Authored the composable functional API that SURFACE_DESIGN specifies, replacing
+the three monolithic procedural walks as the DEFAULT path (cells kept as the
+reference oracle). New files: `Verbs.{h,cpp}` (Layer-1 primitive verbs, thin
+over the spine), `Relationship.{h,cpp}` (Layer-2 curried-closure combinators +
+the named `Relationship` bundle + `atomsWhere`/`slotsBackend`/`nearBackend`
+builders), `RelationshipEngine.{h,cpp}` (Layer-3 one pure iterated-closure
+loop), `ComposedRelationships.{h,cpp}` (ring_current + mcconnell rebuilt as
+composed `Relationship`s). `main_extract.cpp` gained `--engine
+{composed|procedural}` (default composed; procedural runs the oracle cells for
+the parity diff). `analysis/oracle_parity.py` is the gate runner (diffs
+composed vs procedural CSVs+NPYs byte-for-byte).
+
+**The compiler was NOT reachable** from the authoring agent's sandbox (Bash
+denied `cmake --build`, even `which cmake`) — answers the open knob question:
+agent Bash here cannot compile. So the API is authored + rigorously
+self-reviewed, NOT built. **codex takes the compile + the oracle gate** — full
+inventory, self-review, and the exact build/test/gate commands are in
+`HANDOFF_TO_CODEX.md`. Topology reused not regenerated; reader owns H5; GUI
+untouched; library not linked; never merged.
+
+## NEXT (read `BROAD_BACKBONE_NEXT.md`) — do the BROAD case, not more narrow cells
+
+Decided 2026-05-31: STOP building narrow single-stratum × single-mechanism cells
+("single-bond-thingies"). The next move is **every backbone atom, all mechanisms
+in one heterogeneous bundle** — which (a) is the thesis target (backbone shifts),
+(b) stress-tests whether the architecture composes the GENERAL analysis or has
+baked narrowness, (c) forces the unbuilt backbone frames (Cα/CO/HA/N). Full plan +
+the charge_dipole carry-overs (field-not-μ, cutoff sweep, AIMNet2/APBS, carrier
+target-repeat fix) are in `BROAD_BACKBONE_NEXT.md`. charge_dipole cell committed
+`3103e73` (μ null, field carries: Buckingham field_z r=0.46, LOAO R²=0.21).
+
 ## UPDATE 2026-05-31 (late) — multi-scenario surface BUILT, faithful-rebuild gate PASSED
 
 The general surface is implemented and validated (built by **codex** — codex has

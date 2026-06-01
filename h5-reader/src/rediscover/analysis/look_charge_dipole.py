@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """look_charge_dipole — within-atom signal check for FF14SB charge dipoles.
 
-Consumes the rediscover output only. The reader owns trajectory/H5 access; this
-script reads charge_dipole_sources.csv and charge_dipole_aggregated.csv.
+Consumes the C++-EMITTED charge_dipole_aggregated.csv only: the producer ships
+the charge dipole mu = (mu_x, mu_y, mu_z, mu_norm) as a reducer output. Python
+fits on those emitted columns; it does NOT recompute any field.
+
+REMOVED (feedback_no_python_physics_except_labeled_integrity_test, 2026-06-01 +
+lead decision): the `E = Sigma q*disp/r^3` field recompute that previously built
+field_{x,y,z} from the per-source source_q_e / disp_local / r columns. The charge
+ELECTRIC FIELD / EFG is not a Python quantity to rebuild: it is the C++
+`buckingham_efield` relationship (APBS-derived), a fail-loud stub on this branch
+until its data flows. When that relationship emits, read its field columns here;
+never recompute q*d/r^3. The emitted charge MULTIPOLE on this branch is mu, so
+this script fits mu only.
 """
 import os
 import sys
@@ -15,7 +25,6 @@ out_dir = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
     "REDISCOVER_OUT", "/tmp/rediscover-chargedipole"
 )
 agg_path = f"{out_dir}/charge_dipole_aggregated.csv"
-src_path = f"{out_dir}/charge_dipole_sources.csv"
 
 
 def finite_mask(*cols):
@@ -107,50 +116,15 @@ def ar1_effective_rows(df, feature):
     return total, used
 
 
-agg = pd.read_csv(agg_path)
-agg = agg[agg.dft_present == 1].copy()
-src = pd.read_csv(
-    src_path,
-    usecols=[
-        "atom_index",
-        "h5_row",
-        "source_q_e",
-        "disp_local_x",
-        "disp_local_y",
-        "disp_local_z",
-        "r",
-    ],
-)
+df = pd.read_csv(agg_path)
+df = df[df.dft_present == 1].copy()
 
-if len(src):
-    r = src.r.to_numpy(float)
-    q = src.source_q_e.to_numpy(float)
-    ok = np.isfinite(r) & (r > 1e-12) & np.isfinite(q)
-    for ax in "xyz":
-        d = src[f"disp_local_{ax}"].to_numpy(float)
-        term = np.zeros(len(src), dtype=float)
-        term[ok & np.isfinite(d)] = q[ok & np.isfinite(d)] * d[ok & np.isfinite(d)] / (r[ok & np.isfinite(d)] ** 3)
-        src[f"E_{ax}"] = term
-    fields = (
-        src.groupby(["atom_index", "h5_row"], as_index=False)[["E_x", "E_y", "E_z"]]
-        .sum()
-        .rename(columns={"E_x": "field_x", "E_y": "field_y", "E_z": "field_z"})
-    )
-else:
-    fields = pd.DataFrame(columns=["atom_index", "h5_row", "field_x", "field_y", "field_z"])
-
-df = agg.merge(fields, on=["atom_index", "h5_row"], how="left")
-for c in ["field_x", "field_y", "field_z"]:
-    df[c] = df[c].fillna(0.0)
-df["field_norm"] = np.sqrt(df.field_x**2 + df.field_y**2 + df.field_z**2)
-
+# Fit only on the C++-EMITTED charge dipole mu. (No field recompute — see header.)
 feature_sets = {
     "mu_norm": ["mu_norm"],
     "mu_xyz": ["mu_x", "mu_y", "mu_z"],
-    "field_norm": ["field_norm"],
-    "field_xyz": ["field_x", "field_y", "field_z"],
 }
-scalar_features = ["mu_norm", "mu_x", "mu_y", "mu_z", "field_norm", "field_x", "field_y", "field_z"]
+scalar_features = ["mu_norm", "mu_x", "mu_y", "mu_z"]
 
 df["sigma_w"] = df.dft_sigma_iso - df.groupby("atom_index").dft_sigma_iso.transform("mean")
 for c in scalar_features:
@@ -159,14 +133,14 @@ for c in scalar_features:
 atoms = np.sort(df.atom_index.unique())
 frames_per_atom = df.groupby("atom_index").size()
 print(
-    f"rows={len(df)}  HN atoms={len(atoms)}  source_rows={len(src)}  "
+    f"rows={len(df)}  HN atoms={len(atoms)}  "
     f"median_frames_per_atom={frames_per_atom.median():.0f}"
 )
 print(
     "effective_N: leave-atoms-out unit is atom; "
     f"raw rows={len(df)} should not be read as independent samples"
 )
-for feat in ["mu_norm", "field_norm"]:
+for feat in ["mu_norm"]:
     ne, used = ar1_effective_rows(df, feat)
     print(f"  AR1-adjusted row N for pooled corr {feat}: {ne:.1f} across {used} atoms")
 
@@ -205,7 +179,6 @@ for atom, g in df.groupby("atom_index"):
             "best_feature": best_name,
             "best_r": best_r,
             "r_mu_norm": vals["mu_norm"],
-            "r_field_norm": vals["field_norm"],
         }
     )
 
@@ -214,7 +187,7 @@ for row in per.itertuples(index=False):
     print(
         f"  atom={row.atom_index:4d} {row.atom_name:>5s} n={row.n:3d} "
         f"sigma_sd={row.sigma_sd:8.4f} best={row.best_feature:>10s} r={row.best_r:+.4f} "
-        f"r(|mu|)={row.r_mu_norm:+.4f} r(|E|)={row.r_field_norm:+.4f}"
+        f"r(|mu|)={row.r_mu_norm:+.4f}"
     )
 
 best_set = max(feature_sets, key=lambda k: leave_atom_out(df, feature_sets[k])[0])
