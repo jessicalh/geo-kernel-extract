@@ -7,6 +7,7 @@ This supersedes the stale `NEXT_STEP_BRIEF.md` and `BROAD_BACKBONE_NEXT.md` (bot
 DONE / historical — ignore them).
 
 ## Read first
+- **`WORK_CATALOG.md`** — the work breakdown (what to make + the order; feature-by-feature codex cells).
 - **`REDISCOVERY_MAP.md`** — the science roadmap (WHERE WE'RE GOING): two depths (a
   law falls out / signal captured), the status grid, item 1 (complete the template) →
   item 2 (the other calculators), the constraints.

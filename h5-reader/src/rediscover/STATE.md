@@ -4,6 +4,26 @@ Freshest current state, for the next session/agent. Read `GUIDANCE.md`
 (orientation) + `DESIGN.md` (class model) first; this supersedes the
 "Status" section in GUIDANCE.md, which a build agent left mid-build/stale.
 
+## UPDATE 2026-06-01 (EOD) — full arc closed; differencing PARKED; WORK CATALOG defined
+
+The backbone exemplar demonstrates the full **B→A→de-circularised** arc (commits through
+184a1ee). De-circularised: the UN-FITTED literature-coefficient kernel T2 predicts DFT for
+N (component r 0.69), O (0.53), C (0.51); CA/HN/HA need the fit; ring null. Honest
+multi-mechanism mixture.
+
+**#35 differencing system-ID: PARKED.** Implemented + run (`analysis/differencing_system_id.py`;
+scope `DIFFERENCING_EMIT_SCOPE.md` — NO C++ emit needed, catalog complete). The smoothness gate
+FAILS at the current every-other-frame DFT sampling (Δσ ~90% noise, lag-1 ρ≈0.05); a faint
+bond-led CA T2 response (r≈0.36) is consistent with the static story but sub-gate. Needs a DENSE
+consecutive-frame DFT burst (NOT more every-other frames) + more contributors. NOTE: the 1P9J
+750-DFT set lands in FULL in ~3 days (every-other; 5×4-core×64GB×~month) — that enriches the
+STATIC analyses (re-run the exemplar on the full 750), NOT differencing's spacing. The script is
+reusable when a dense consecutive-frame campaign lands.
+
+**WORK CATALOG defined: `WORK_CATALOG.md`** — the overall work breakdown (Done / #29 engine /
+item-2 calculators / #30 guard / parked #35 / the data dependency / future axes), structured for
+feature-by-feature codex delegation against the complete emit-catalog + the exemplar template.
+
 ## UPDATE 2026-06-01 (latest) — BACKBONE equivariant-T2 EXEMPLAR landed (2 runs, 8 strata)
 
 The exemplar for the rest of the backbone work. `analysis/equiv_t2_backbone_e3nn.py`
