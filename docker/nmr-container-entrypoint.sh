@@ -114,6 +114,39 @@ run_as_postgres() {
     fi
 }
 
+restore_tensorcs15_dump() {
+    local pg_bin=$1
+    local restore_log
+    restore_log=$(mktemp /tmp/nmr_tensorcs15_restore.XXXXXX.log)
+
+    set +e
+    run_as_postgres "'${pg_bin}/pg_restore' --no-owner --role='${PGUSER}' -d '${PGDATABASE}' '${NMR_TENSORCS15_DUMP}'" \
+        2> >(tee "$restore_log" >&2)
+    local restore_status=$?
+    set -e
+
+    if [ "$restore_status" -eq 0 ]; then
+        rm -f "$restore_log"
+        return 0
+    fi
+
+    if grep -q 'setval: value 0 is out of bounds for sequence "raw_dft_calculations_calc_id_seq"' "$restore_log" \
+        && grep -q 'pg_restore: warning: errors ignored on restore: 1' "$restore_log"; then
+        log "warning: accepting tensorcs15 restore despite raw_dft_calculations_calc_id_seq setval(0) error"
+        rm -f "$restore_log"
+        return 0
+    fi
+
+    if grep -q 'input file appears to be a text format dump' "$restore_log"; then
+        rm -f "$restore_log"
+        run_as_postgres "'${pg_bin}/psql' -v ON_ERROR_STOP=1 -d '${PGDATABASE}' -f '${NMR_TENSORCS15_DUMP}'"
+        return 0
+    fi
+
+    rm -f "$restore_log"
+    return "$restore_status"
+}
+
 stop_postgres() {
     if [ "$postgres_started" -eq 1 ]; then
         local pg_bin
@@ -190,11 +223,7 @@ ensure_postgres() {
 
     if [ -f "$NMR_TENSORCS15_DUMP" ] && [ ! -f "$NMR_TENSORCS15_RESTORE_MARKER" ]; then
         log "restoring tensorcs15 from ${NMR_TENSORCS15_DUMP}"
-        if run_as_postgres "'${pg_bin}/pg_restore' --no-owner --role='${PGUSER}' -d '${PGDATABASE}' '${NMR_TENSORCS15_DUMP}'"; then
-            :
-        else
-            run_as_postgres "'${pg_bin}/psql' -v ON_ERROR_STOP=1 -d '${PGDATABASE}' -f '${NMR_TENSORCS15_DUMP}'"
-        fi
+        restore_tensorcs15_dump "$pg_bin"
         touch "$NMR_TENSORCS15_RESTORE_MARKER"
         if [ "$(id -u)" -eq 0 ]; then
             chown postgres:postgres "$NMR_TENSORCS15_RESTORE_MARKER"
