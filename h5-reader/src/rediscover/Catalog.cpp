@@ -12,6 +12,7 @@
 #include "../model/QtSpecialBuffers.h"
 #include "../model/QtTimeSeriesBuffers.h"
 
+#include <cmath>
 #include <stdexcept>
 
 namespace h5reader::rediscover {
@@ -165,10 +166,15 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
                && body.run.h5()->aimnet2Embedding()->meta.sourceAttachedAt(frame);
     case ArrayId::MopacCharge:
         return false;
-    case ArrayId::MopacChargeWelfordMean:
-        return body.run.h5() && body.run.h5()->mopacChargeWelford()
-               && atom < body.run.h5()->mopacChargeWelford()->n_atoms
-               && atom < body.run.h5()->mopacChargeWelford()->value.size();
+    case ArrayId::MopacChargeWelfordMean: {
+        const auto* welford = body.run.h5() ? body.run.h5()->mopacChargeWelford() : nullptr;
+        return welford
+               && atom < welford->n_atoms
+               && atom < welford->value.size()
+               && atom < welford->n_frames_per_atom.size()
+               && welford->n_frames_per_atom[atom] > 0
+               && std::isfinite(welford->value[atom].mean);
+    }
     case ArrayId::MopacCoulombShielding:
         return body.run.h5() && body.run.h5()->mopacCoulombShielding()
                && atom < body.run.h5()->mopacCoulombShielding()->n_atoms
@@ -223,7 +229,7 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
                    ? body.run.protein->atom(atom).partialCharge
                    : 0.0;
     case ArrayId::MopacChargeWelfordMean:
-        return h5 && h5->mopacChargeWelford() && atom < h5->mopacChargeWelford()->value.size()
+        return present(body, id, atom, frame) && h5 && h5->mopacChargeWelford()
                    ? h5->mopacChargeWelford()->value[atom].mean
                    : 0.0;
     case ArrayId::MopacVsFf14sbReconciliation:
