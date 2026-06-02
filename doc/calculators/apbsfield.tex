@@ -1,0 +1,315 @@
+\documentclass[11pt]{article}
+
+\usepackage{nmrdoc}
+\usepackage{siunitx}
+\usepackage{bm}
+
+\sisetup{per-mode=symbol}
+\DeclareSIUnit{\angstrom}{\text{\AA}}
+\DeclareSIUnit{\molar}{M}
+\setlength{\parindent}{1.2em}
+\emergencystretch=2em
+
+\begin{document}
+\NmrTitle{The APBS Electric-Field Calculator}
+
+\section{What the calculator computes}
+
+The ApbsField calculator provides the electrostatic quantities used for the
+Buckingham electric-field contribution to nuclear shielding. Buckingham's idea
+is that an electric field at a nucleus can perturb the local electronic
+response, and the perturbed electrons then change the magnetic shielding felt by
+that nucleus. This implementation stops at the field-derived descriptor. It
+does not multiply by Buckingham response constants and it does not emit a
+shielding in ppm.
+
+For each atom \(i\), the code stores a field vector and a field-gradient
+matrix. The first is the solvated electric field
+\begin{equation}
+  \bm E_i = (E_x,E_y,E_z)
+\end{equation}
+in \(\si{\volt\per\angstrom}\). The second is a rank-2 electric-field-gradient
+matrix
+\begin{equation}
+  G_{ab,i} = \frac{\partial E_a}{\partial r_b}(\bm r_i),
+  \qquad a,b\in\{x,y,z\},
+  \label{eq:g-def}
+\end{equation}
+in \(\si{\volt\per\angstrom\squared}\). The row index \(a\) names the electric
+field component and the column index \(b\) names the coordinate direction in
+which the field is differentiated. The code symmetrizes this matrix and removes
+its trace before the spherical-tensor split, so the feature exported for
+\(\bm G_i\) is the five-component traceless symmetric part. In this document,
+``kernel'' means this uncalibrated field-derived tensor quantity: it is the
+geometric and electrostatic input that can correlate with a DFT shielding
+contribution after calibration.
+
+\section{Where shielding enters}
+
+For a nucleus in an applied magnetic field \(\bm B_0\), the local magnetic field
+is written
+\begin{equation}
+  \bm B_{\mathrm{nuc}} = (\bm I-\bm\sigma)\bm B_0 .
+  \label{eq:shielding}
+\end{equation}
+\(\bm I\) is the \(3\times3\) identity matrix. \(\bm\sigma\) is the nuclear
+shielding tensor, a dimensionless linear-response coefficient: it tells how the
+electrons reduce or redirect the applied field at the nucleus. A matrix is
+needed because a molecule has orientation. A field applied along one laboratory
+axis can induce an electronic response whose field at the nucleus has
+components along several axes.
+
+The electronic response in Eq.~\eqref{eq:shielding} is quantum mechanical. The
+calculator does not solve that response. Instead it supplies a classical
+electrostatic descriptor for one route by which the response changes. In an
+inhomogeneous protein environment, nearby charges, dielectric screening, and
+ions create an electric field at the nucleus. Buckingham-type expansions model
+the shielding perturbation as depending on that field and on how the field
+varies across the electronic cloud. A common schematic form is
+\begin{equation}
+  \Delta\sigma_{\mathrm{iso}}
+    \approx A_X E_\parallel + B_X E_\parallel^2,
+  \qquad
+  \Delta\bm\sigma_{2}
+    \approx \gamma_X\,\bm G_{2}.
+  \label{eq:buckingham-sketch}
+\end{equation}
+\(X\) labels the nucleus or atom type; \(A_X\), \(B_X\), and \(\gamma_X\) are
+calibrated response coefficients carrying the units needed to convert
+field units into shielding units; \(E_\parallel\), in
+\(\si{\volt\per\angstrom}\), is a chosen projection of the electric field, for
+example along a local bond axis; and \(\bm G_2\), in
+\(\si{\volt\per\angstrom\squared}\), is the traceless symmetric rank-2 part of
+the field gradient. Equation
+\eqref{eq:buckingham-sketch} explains why ApbsField keeps both a vector field
+and a rank-2 tensor. It is not the formula evaluated by this C++ calculator.
+
+The APBS part matters because the electrostatic field is not the vacuum Coulomb
+sum over protein partial charges. The APBS solve includes a dielectric boundary
+and mobile-ion screening. ApbsField reads the resulting potential grid through
+the C bridge in \texttt{src/apbs\_bridge.h}; the internal numerical method used
+by APBS is outside this calculator's model.
+
+\section{The tensor split used by the code}
+
+The shielding tensor in Eq.~\eqref{eq:shielding} and the field-gradient tensor
+in Eq.~\eqref{eq:g-def} are both rank-2 objects: each maps one direction index
+to another. The project stores such a \(3\times3\) tensor \(\bm X\) by a
+closed-form split into scalar, antisymmetric, and symmetric-traceless parts. The
+C++ owner of this convention is \texttt{SphericalTensor::Decompose} in
+\texttt{src/Types.cpp}.
+
+The scalar part is
+\begin{equation}
+  T_0 = \frac{1}{3}\operatorname{tr}\bm X .
+  \label{eq:t0}
+\end{equation}
+It is the isotropic part: the average of the three diagonal entries. For a
+shielding tensor this is the part that survives rapid molecular tumbling and
+sets the isotropic shielding used in ordinary solution shifts after reference
+subtraction.
+
+The antisymmetric part is stored as a three-component pseudovector,
+\begin{equation}
+  \bm T_1 =
+  \frac{1}{2}
+  \begin{pmatrix}
+    X_{yz}-X_{zy}\\
+    X_{zx}-X_{xz}\\
+    X_{xy}-X_{yx}
+  \end{pmatrix}.
+  \label{eq:t1}
+\end{equation}
+This is the transpose-odd part of the matrix written in vector form. It is
+usually not observed directly in standard isotropic NMR, but the representation
+keeps it when a calculator produces it.
+
+The symmetric traceless matrix is
+\begin{equation}
+  \bm S =
+  \frac{\bm X+\bm X^{\mathsf T}}{2}
+  - T_0\bm I ,
+  \qquad \operatorname{tr}\bm S=0 .
+  \label{eq:sym-traceless}
+\end{equation}
+It has five independent components. The code packs those components into the
+real spherical \(T_2\) basis
+\begin{equation}
+  \bm T_2 =
+  \begin{pmatrix}
+    \sqrt{2}\,S_{xy}\\
+    \sqrt{2}\,S_{yz}\\
+    \sqrt{3/2}\,S_{zz}\\
+    \sqrt{2}\,S_{xz}\\
+    (S_{xx}-S_{yy})/\sqrt{2}
+  \end{pmatrix}.
+  \label{eq:t2}
+\end{equation}
+The numerical factors in Eq.~\eqref{eq:t2} are the code's normalization. They
+make the squared length of the five-vector equal to the Frobenius norm
+\(\sum_{ab}S_{ab}^2\) of the underlying matrix. The full nine-double layout is
+\begin{equation}
+  [T_0,T_{1x},T_{1y},T_{1z},
+    T_{2,-2},T_{2,-1},T_{2,0},T_{2,+1},T_{2,+2}] .
+\end{equation}
+ApbsField stores the Cartesian field-gradient matrix on the atom, decomposes it
+with this routine, and writes the \(T_2\) five-vector. Because the matrix has
+already been symmetrized and de-traced, \(T_0\) and \(T_1\) are structural
+zeros in the exported APBS field-gradient feature.
+
+\section{The method implemented}
+
+ApbsField depends on \texttt{ChargeAssignmentResult}. That upstream result
+places a partial charge \(q_j\), in elementary charges, and a Poisson--Boltzmann
+radius \(a_j\), in \(\si{\angstrom}\), on each atom from the active charge
+source. In the ff14SB flat-table path those values come from
+\texttt{data/ff14sb\_params.dat}; AMBER topology and preloaded-charge paths
+can also provide the same fields. If a radius is missing, the APBS calculation
+returns failure. If the charge table reports placeholder PB radii, the code
+still fills the APBS fields but logs that the dielectric boundary is not
+physically validated.
+
+The calculator forms separate coordinate, charge, and radius arrays and passes
+them to \texttt{apbs\_solve}. The configured values in
+\texttt{data/calculator\_params.toml} are
+\begin{equation}
+\begin{aligned}
+  N_{\mathrm{grid}} &= 161 \quad \text{points per axis},\\
+  F_d &= \max(L_d+\SI{40.0}{\angstrom},\,\SI{40.0}{\angstrom}),\\
+  C_d &= F_d+\SI{30.0}{\angstrom},\\
+  \epsilon_{\mathrm{protein}} &= 4.0,\qquad
+  \epsilon_{\mathrm{solvent}} = 78.54,\\
+  T &= \SI{298.15}{\kelvin},\qquad
+  I = \SI{0.15}{\molar}.
+\end{aligned}
+\label{eq:apbs-params}
+\end{equation}
+\(L_d\) is the protein bounding-box extent along Cartesian direction \(d\).
+The C++ layer computes both fine-grid lengths \(F_d\) and coarse-grid lengths
+\(C_d\). The APBS bridge used here performs a single linearized
+Poisson--Boltzmann solve on the coarse box \(C_d\), with single-Debye--Huckel
+boundary conditions, and returns a scalar potential grid \(\phi\) in units of
+\(kT/e\). The bridge also fixes the mobile ions as a \(+1/-1\) pair at
+concentration \(I\), with radii \(\SI{0.95}{\angstrom}\) and
+\(\SI{1.81}{\angstrom}\), and passes a solvent probe radius of
+\(\SI{1.4}{\angstrom}\) to APBS. It does not return an electric field or a
+field gradient.
+
+At an atom position \(\bm r_i\), ApbsField first interpolates \(\phi\) from the
+grid by trilinear interpolation, the eight-corner weighted average inside the
+cell containing the requested point. If the requested cell falls outside the
+returned grid, the interpolation helper returns \(0.0\); the padding values are
+intended to keep atom stencils inside the grid. Let \(h_a\) be the APBS grid
+spacing along axis \(a\), and let \(\hat{\bm e}_a\) be the unit vector in that
+direction. The electric field is then computed by a centered difference,
+\begin{equation}
+  E_a(\bm r_i)
+  =
+  -\,\frac{
+    \phi(\bm r_i+h_a\hat{\bm e}_a)
+    -
+    \phi(\bm r_i-h_a\hat{\bm e}_a)}
+  {2h_a}.
+  \label{eq:central-e}
+\end{equation}
+The minus sign is the electrostatic convention \(\bm E=-\nabla\phi\). Before
+unit conversion, Eq.~\eqref{eq:central-e} has units \(kT/(e\,\si{\angstrom})\).
+
+The field-gradient matrix is another centered difference:
+\begin{equation}
+  G_{ab}(\bm r_i)
+  =
+  \frac{
+    E_a(\bm r_i+h_b\hat{\bm e}_b)
+    -
+    E_a(\bm r_i-h_b\hat{\bm e}_b)}
+  {2h_b}.
+  \label{eq:central-g}
+\end{equation}
+This quantity has units \(kT/(e\,\si{\angstrom\squared})\) before conversion.
+Since \(\bm E=-\nabla\phi\), \(\bm G\) is the negative Hessian of the APBS
+potential. Some electrostatics texts use the opposite-sign Hessian as the
+electric field gradient; this document follows the code's
+\(\partial E_a/\partial r_b\) convention.
+Equations \eqref{eq:central-e} and \eqref{eq:central-g} define the local
+finite-difference model the calculator keeps from the APBS potential. Near atom
+\(i\), after symmetrization, the potential has the Taylor expansion
+\begin{equation}
+  \phi(\bm r_i+\bm s)
+  =
+  \phi(\bm r_i)
+  - \bm E_i\cdot\bm s
+  - \frac{1}{2}\bm s^{\mathsf T}\bm G_i\bm s
+  + O(|\bm s|^3).
+  \label{eq:taylor}
+\end{equation}
+The field vector is the local slope of the potential with the electrostatic
+minus sign; the matrix \(\bm G_i\) records how that slope changes for small
+displacements. This quadratic patch summarizes the computation:
+ApbsField discards the absolute potential value and keeps the first- and
+second-derivative information that Buckingham-type models can use.
+
+The raw finite-difference matrix is then projected in two steps,
+\begin{equation}
+  \bm G^{\mathrm{sym}} =
+  \frac{\bm G+\bm G^{\mathsf T}}{2},
+  \qquad
+  \widetilde{\bm G} =
+  \bm G^{\mathrm{sym}}
+  - \frac{\operatorname{tr}\bm G^{\mathrm{sym}}}{3}\bm I .
+  \label{eq:project}
+\end{equation}
+Symmetrization removes antisymmetric residue from interpolation and differencing;
+without it, the spherical decomposition would report a numerical \(T_1\)
+pseudovector. The trace is the divergence of the electric field. For external
+sources in a charge-free neighborhood, Laplace's equation gives zero trace. The
+APBS grid also contains each atom's own Coulomb potential, whose point-source
+Laplacian is represented on the grid as a large finite trace near the atom.
+Subtracting \(\operatorname{tr}\bm G/3\) from the diagonal removes that
+self-potential trace artifact and leaves the traceless tensor exported by the
+calculator.
+
+Several guards are applied before storage. If the electric field contains a
+NaN or infinity, both \(\bm E\) and \(\widetilde{\bm G}\) are set to zero. If
+the APBS-native field magnitude exceeds \(100.0\,kT/(e\,\si{\angstrom})\), the
+field vector is rescaled to that magnitude; the field-gradient matrix is not
+rescaled by that guard. Non-finite entries of the field-gradient matrix are set
+to zero individually. Finally, both quantities are multiplied by the fixed
+thermal voltage
+\begin{equation}
+  \frac{kT}{e} = \SI{0.025693}{\volt}
+\end{equation}
+from \texttt{src/PhysicalConstants.h}, matching the configured
+\(\SI{298.15}{\kelvin}\), so the stored units become
+\(\si{\volt\per\angstrom}\) for \(\bm E\) and
+\(\si{\volt\per\angstrom\squared}\) for \(\widetilde{\bm G}\).
+
+The feature export follows the stored quantities. For \(N\) atoms,
+\texttt{apbs\_E.npy} has shape \((N,3)\) and stores the Cartesian electric
+field. \texttt{apbs\_efg.npy} has shape \((N,5)\) and stores the five
+\(T_2\) components of \(\widetilde{\bm G}\). If the APBS solve fails,
+\texttt{Compute} returns
+\texttt{nullptr}; the code does not substitute a vacuum Coulomb field.
+
+\section{External inputs and output}
+
+Two external ingredients feed this calculator. \texttt{ChargeAssignmentResult}
+provides per-atom partial charges and PB radii from the active force-field
+charge source, such as the ff14SB table or an AMBER topology; that source is
+outside the ApbsField calculation. APBS takes those arrays and solves the
+linearized Poisson--Boltzmann problem for the solvated potential; its solver
+internals are behind \texttt{src/apbs\_bridge.h}. ApbsField consumes the
+returned potential grid, not APBS-internal fields or gradients, and derives
+\(\bm E\) and \(\widetilde{\bm G}\) itself. MOPAC charges, AIMNet2 charges or
+embeddings, and DSSP secondary-structure annotations do not enter this
+calculator.
+
+The output is therefore an external-field descriptor: a solvated electric field
+and a traceless symmetric field-gradient kernel at each atom. It bears on
+shielding because Buckingham-type response terms can use the field vector and
+the \(T_2\) field gradient as calibrated inputs. Before that calibration step,
+the numbers are in \(\si{\volt\per\angstrom}\) and
+\(\si{\volt\per\angstrom\squared}\), not ppm, and they should be read as
+field-derived geometry rather than as predicted chemical shifts.
+
+\end{document}

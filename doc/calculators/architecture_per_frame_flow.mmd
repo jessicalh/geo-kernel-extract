@@ -1,0 +1,45 @@
+sequenceDiagram
+autonumber
+participant T as Trajectory::Run
+participant H as GromacsFrameHandler
+participant TP as TrajectoryProtein
+participant P as Protein
+participant C as ProteinConformation
+participant OR as OperationRunner
+participant TR as TrajectoryResult list
+participant E as Emitters and records
+
+T->>H: Open trajectory files
+T->>H: Read frame 0
+T->>TP: Seed(frame0 positions, time)
+TP->>P: FinalizeConstruction
+TP->>P: AddMDFrame
+TP->>TP: InitTrajectoryAtoms
+T->>TP: Attach RunConfiguration results
+T->>T: Validate dependencies and Session resources
+T->>T: Build base RunOptions
+T->>E: Emit invariant sidecars if output_dir is set
+T->>T: Update TrajectoryEnv and frame RunOptions
+T->>TP: MutableCanonicalConformation_()
+TP-->>T: frame0 conformation
+T->>OR: Run(frame0 conformation, options)
+OR->>C: Attach ConformationResult singletons
+T->>TP: DispatchCompute(frame0, trajectory, 0, time)
+TP->>TR: Compute(frame0, trajectory state)
+T->>E: Emit PDB and NPY, record frame metadata
+
+loop later dispatched frames
+  T->>H: Skip stride minus one frames
+  T->>H: Read next frame
+  T->>T: Update TrajectoryEnv and frame RunOptions
+  T->>TP: TickConformation(positions)
+  TP-->>T: unique_ptr to base ProteinConformation
+  T->>OR: Run(current conformation, options)
+  OR->>C: Attach ConformationResult singletons
+  T->>TP: DispatchCompute(current conformation, trajectory, index, time)
+  TP->>TR: Compute(current conformation, trajectory state)
+  T->>E: Emit PDB and NPY, record frame metadata
+end
+
+T->>TP: FinalizeAllResults(trajectory)
+TP->>TR: Finalize and adopt DenseBuffers

@@ -1,0 +1,281 @@
+\documentclass[11pt]{article}
+
+\usepackage{nmrdoc}
+\usepackage{siunitx}
+\usepackage{bm}
+
+\sisetup{per-mode=symbol}
+\DeclareSIUnit{\angstrom}{\text{\AA}}
+
+\begin{document}
+\NmrTitle{The RingSusceptibility Calculator}
+
+\section{What the calculator computes}
+
+The RingSusceptibility calculator describes the through-space magnetic effect
+of an aromatic ring treated as a small anisotropic magnetic object at the ring
+centre. In a Pople-style ring-current susceptibility model, the applied NMR
+field polarizes the delocalized \(\pi\) electrons of the ring. Their response
+produces a secondary magnetic field at a nearby nucleus, and that secondary
+field changes the magnetic shielding felt by the nucleus.
+
+The implementation keeps the geometric part of this idea. For each target atom
+and each accepted aromatic ring, it builds a \(3\times 3\) tensor from the
+ring-centre position, the ring normal, and the vector from the ring centre to
+the atom. The tensor has units \(\si{\angstrom^{-3}}\). A later calibration can
+learn how this descriptor correlates with a DFT shielding contribution. Before
+that calibration, the stored number is not a chemical shift and not a shielding
+in ppm. The observable to keep in view is the nuclear shielding tensor; in
+solution NMR its isotropic part is what enters the reported chemical shift after
+reference subtraction and the usual sign convention.
+
+\section{Where shielding enters}
+
+For a nucleus in an applied magnetic field \(\bm B_0\), the local field is
+written
+\begin{equation}
+  \bm B_{\mathrm{nuc}} = (\bm I-\bm\sigma)\bm B_0 .
+  \label{eq:shielding}
+\end{equation}
+Here \(\bm I\) is the identity matrix and \(\bm\sigma\) is the nuclear shielding
+tensor. In physical NMR \(\bm\sigma\) is dimensionless: it is the linear
+coefficient that tells how the electron cloud changes the field at the nucleus
+when \(\bm B_0\) is applied. It is a matrix rather than a scalar because the
+molecule has orientation. A field applied along one molecular direction can
+induce a secondary field with a different size, or even a different direction,
+from a field applied along another direction.
+
+The quantum-mechanical origin is the electronic response to the magnetic field.
+The applied field perturbs the electronic state; the perturbed electronic
+current and magnetization create a secondary field at the nucleus; the linear
+part of that mapping is \(\bm\sigma\). The RingSusceptibility calculator does
+not solve that response. It uses the classical far-field shape expected from an
+anisotropic ring susceptibility: the ring is represented by its centre and by a
+unit normal \(\hat{\bm n}\), the axis perpendicular to the ring plane.
+
+This is the same rank-2 setting as Eq.~\eqref{eq:shielding}. The tensor entry
+\(X_{ab}\) says how a field component associated with direction \(b\) contributes
+to the induced field component along direction \(a\). The code's tensor is not
+yet the physical shielding tensor \(\bm\sigma\), but it has the same
+transformation law under rotations. If the molecule is rotated, the \(3\times3\)
+array must rotate with it; a scalar distance-to-ring feature would lose that
+orientation information.
+
+For an aromatic ring, the direction \(\hat{\bm n}\) is the natural anisotropy
+axis. Above and below the ring plane the geometric scalar contribution has one
+sign; in the ring plane it has the opposite sign. The angular function behind
+that statement is the dipolar factor \(3\cos^2\theta-1\), where \(\theta\) is
+the angle between the ring normal and the ring-centre-to-atom direction. This is
+the same second-Legendre-polynomial pattern as a magnetic dipole field: two
+lobes along the axis, a belt of the opposite sign in the equatorial plane, and a
+zero on the cone with \(\cos^2\theta=1/3\), the magic angle near
+\(54.7^\circ\). In this calculator that picture is not decoration; it is the
+scalar \(T_0\) part of the tensor derived below.
+
+\section{The tensor split used by the code}
+
+The project stores each \(3\times3\) tensor through the split implemented by
+\texttt{SphericalTensor::Decompose}. For a real tensor \(\bm X\), the scalar
+piece is
+\begin{equation}
+  T_0 = \frac{1}{3}\operatorname{tr}\bm X .
+  \label{eq:t0}
+\end{equation}
+This is the isotropic component. It multiplies the identity matrix, survives
+molecular tumbling, and is the part that contributes to an isotropic shielding
+after the geometric descriptor has been calibrated to a physical scale.
+
+The antisymmetric part is stored as the three-component vector
+\begin{equation}
+  \bm T_1 =
+  \frac{1}{2}
+  \begin{pmatrix}
+    X_{yz}-X_{zy}\\
+    X_{zx}-X_{xz}\\
+    X_{xy}-X_{yx}
+  \end{pmatrix}.
+  \label{eq:t1}
+\end{equation}
+This vector is the dual representation of the antisymmetric matrix part. It is
+usually not observed directly in standard isotropic solution NMR, but the ring
+susceptibility tensor can be asymmetric, so the code keeps it.
+
+The rest is the symmetric traceless matrix
+\begin{equation}
+  \bm S =
+  \frac{\bm X+\bm X^{\mathsf T}}{2} - T_0\bm I,
+  \qquad \operatorname{tr}\bm S=0 .
+  \label{eq:symtr}
+\end{equation}
+Symmetric means \(S_{ab}=S_{ba}\). Traceless means the three diagonal entries
+sum to zero. Those two conditions leave five independent numbers, the
+orientation-dependent anisotropy. The code packs them as
+\begin{equation}
+  \bm T_2 =
+  \begin{pmatrix}
+    \sqrt{2}\,S_{xy}\\
+    \sqrt{2}\,S_{yz}\\
+    \sqrt{3/2}\,S_{zz}\\
+    \sqrt{2}\,S_{xz}\\
+    (S_{xx}-S_{yy})/\sqrt{2}
+  \end{pmatrix}.
+  \label{eq:t2}
+\end{equation}
+The factors in Eq.~\eqref{eq:t2} are the implementation's real spherical basis.
+They make the five-vector length match the Frobenius length of
+\(\bm S\): \(\sum_m T_{2m}^2=\sum_{ab}S_{ab}^2\). The stored nine-number order is
+\[
+  [T_0,T_{1x},T_{1y},T_{1z},
+    T_{2,-2},T_{2,-1},T_{2,0},T_{2,+1},T_{2,+2}] .
+\]
+RingSusceptibility populates all three parts. Its \(T_0\) is not discarded, its
+\(T_1\) can be nonzero, and its \(T_2\) carries the angular anisotropy that a
+scalar ring-current descriptor would hide.
+
+\section{The method implemented}
+
+The geometry result first assigns each aromatic ring a centre, a normal, and an
+average radius. For a ring with vertex positions \(\bm q_k\), the centre is
+\begin{equation}
+  \bm c = \frac{1}{N}\sum_{k=1}^{N}\bm q_k ,
+  \label{eq:center}
+\end{equation}
+with positions in \(\si{\angstrom}\). The normal \(\hat{\bm n}\) is the unit
+vector perpendicular to the best-fit plane of the centred vertex coordinates,
+found by an SVD. The sign is chosen from the stored cyclic order of the ring
+vertices, although the tensor below is unchanged if \(\hat{\bm n}\) is replaced
+by \(-\hat{\bm n}\). The radius \(R\) is the average distance of the vertices
+from \(\bm c\).
+
+For a target atom at position \(\bm r_i\), define
+\begin{equation}
+  \bm x = \bm r_i-\bm c,\qquad
+  r = |\bm x|,\qquad
+  \hat{\bm d} = \frac{\bm x}{r},\qquad
+  u = \hat{\bm d}\cdot\hat{\bm n}.
+  \label{eq:ring-geometry}
+\end{equation}
+The distance \(r\) is in \(\si{\angstrom}\). The vectors \(\hat{\bm d}\) and
+\(\hat{\bm n}\) are unitless unit vectors. The scalar \(u\) is the cosine of the
+angle between the atom direction and the ring normal.
+
+The per-ring scalar recorded by the code is
+\begin{equation}
+  f = \frac{3u^2-1}{r^3},
+  \label{eq:f}
+\end{equation}
+with units \(\si{\angstrom^{-3}}\). Equation~\eqref{eq:f} is positive on the
+ring normal, negative in the ring plane, and zero at the magic angle. The helper
+also forms the symmetric traceless dipolar tensor
+\begin{equation}
+  K_{ab} =
+  \frac{3\hat d_a\hat d_b-\delta_{ab}}{r^3},
+  \label{eq:dipolar}
+\end{equation}
+where \(a,b\in\{x,y,z\}\) and \(\delta_{ab}\) is one when \(a=b\) and zero
+otherwise. \(K_{ab}\) is retained inside the helper result, but the per-ring
+record and the per-atom feature output use the full tensor
+\begin{equation}
+  M_{ab} =
+  \frac{
+    9u\,\hat d_a\hat n_b
+    -3\hat n_a\hat n_b
+    -\left(3\hat d_a\hat d_b-\delta_{ab}\right)}
+  {r^3}.
+  \label{eq:full}
+\end{equation}
+Every numerator term in Eq.~\eqref{eq:full} is unitless, so \(M_{ab}\) has
+units \(\si{\angstrom^{-3}}\). The first term, \(\hat{\bm d}\otimes\hat{\bm n}\),
+is generally asymmetric and can contribute to \(T_1\). The second term projects
+onto the ring-normal axis. The last term is the negative of the dipolar tensor
+in Eq.~\eqref{eq:dipolar}.
+
+The trace of Eq.~\eqref{eq:full} gives the code's scalar identity:
+\begin{equation}
+  \frac{1}{3}\operatorname{tr}\bm M
+  = \frac{3u^2-1}{r^3}
+  = f .
+  \label{eq:t0-is-f}
+\end{equation}
+The ring scalar is therefore the \(T_0\) component of the full tensor, not a
+separate scalar model replacing the tensor.
+
+A textbook susceptibility form would next attach a ring scale factor, for
+example
+\begin{equation}
+  \sigma^{(R)}_{ab} =
+  \frac{\Delta\chi_R}{3} M_{ab},
+  \label{eq:textbook}
+\end{equation}
+where \(\Delta\chi_R\) is the anisotropic magnetic susceptibility assigned to
+ring \(R\), carrying whatever physical units are needed to turn the
+\(\si{\angstrom^{-3}}\) geometry into a dimensionless shielding coefficient.
+Equation~\eqref{eq:textbook} is not evaluated by this calculator. The source
+code does not read a \(\Delta\chi_R\) value, does not call the ring-current
+intensity accessors, and does not use the Johnson--Bovey lobe offsets. The TOML
+file contains ring-current intensities in \(\si{\nano\ampere\per\tesla}\)
+(PHE \(-12.0\), TYR \(-11.28\), TRP benzene \(-12.48\), TRP pyrrole \(-6.72\),
+HIS/HID/HIE \(-5.16\), and TRP indole perimeter \(-19.2\)) and lobe offsets in
+\(\si{\angstrom}\), but they belong to other ring-current calculations and ring
+metadata. In this class, all accepted aromatic ring types use Eq.~\eqref{eq:full}
+with unit geometric weight.
+
+The candidate rings are the aromatic rings exposed by the protein topology:
+PHE benzene, TYR phenol, TRP benzene, TRP pyrrole, TRP indole perimeter, and the
+HIS/HID/HIE imidazole variants. The saturated proline pyrrolidine ring is stored
+elsewhere in the topology and is not returned by the aromatic-ring accessor used
+here. A spatial index finds ring centres within \(\SI{15.0}{\angstrom}\) of the
+target atom. That cutoff comes from the ring-current spatial cutoff parameter.
+
+Before a candidate ring contributes, three filters must accept it. The
+singularity guard rejects distances below \(\SI{0.1}{\angstrom}\), where the
+\(r^{-3}\) expression would diverge numerically. The near-field filter uses
+the ring diameter \(2R\) as the source extent and the dimensionless ratio
+\(0.5\), so it accepts when \(r>R\). This keeps the point-source
+susceptibility expression outside the finite ring source. The bonded-ring
+filter rejects a target atom if it is a ring vertex or is covalently bonded to
+a ring vertex, because those atoms are in a through-bond regime rather than the
+through-space regime represented by Eq.~\eqref{eq:full}.
+
+For atom \(i\), the accepted ring tensors are accumulated as
+\begin{equation}
+  \bm M_i = \sum_{R\in\mathcal A_i} \bm M^{(iR)} ,
+  \label{eq:sum}
+\end{equation}
+where \(\mathcal A_i\) is the set of accepted nearby aromatic rings. The total
+\(\bm M_i\) is then decomposed by Eqs.~\eqref{eq:t0}--\eqref{eq:t2}. The
+per-ring record also stores \(M_{ab}\), its spherical-tensor split, the scalar
+\(f\), the centre-to-atom distance, and ring-frame coordinates
+\(z=\bm x\cdot\hat{\bm n}\), \(\rho=|\bm x-z\hat{\bm n}|\), and
+\(\theta=\operatorname{atan2}(\rho,|z|)\) in radians.
+
+The same formula can be sampled at an arbitrary point in space. That path sums
+over aromatic rings, skips points closer than \(\SI{0.1}{\angstrom}\), skips
+points with \(r<R\), and skips points farther than \(\SI{15.0}{\angstrom}\).
+It does not run the bonded-ring filter, since a grid point has no atom index or
+covalent topology.
+
+\section{Inputs and output}
+
+RingSusceptibility consumes coordinates in \(\si{\angstrom}\), typed aromatic
+ring topology, ring geometry, and a spatial index over ring centres. It has no
+role for MOPAC charges or bond orders, AIMNet2 charges or embeddings, ff14SB
+charges, APBS electrostatic fields, or DSSP secondary-structure assignments;
+those data feed other calculators or downstream comparisons. ORCA or other DFT
+shielding tensors are also outside this calculation and enter later as the
+reference for calibration and evaluation.
+
+The calculator's direct feature output is \texttt{ringchi\_shielding.npy}. It
+has one row per atom and nine columns packed as
+\([T_0,T_{1x},T_{1y},T_{1z},T_{2,-2},T_{2,-1},T_{2,0},T_{2,+1},T_{2,+2}]\).
+The values are the decomposition of the summed geometric tensor in
+Eq.~\eqref{eq:sum}, with units inherited from \(\bm M_i\):
+\(\si{\angstrom^{-3}}\). When the common feature writer emits the shared sparse
+ring table, \texttt{ring\_contributions.npy} stores this calculator's per-ring
+chi decomposition in zero-based columns 45--53, in the same packed order.
+Calibration against a DFT shielding reference is the step that can attach a
+physical scale and test correlation with the shielding contribution. The
+calculator by itself produces a geometry-derived tensor descriptor, not a
+pointwise DFT shielding prediction.
+
+\end{document}

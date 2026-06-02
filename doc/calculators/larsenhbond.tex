@@ -1,0 +1,306 @@
+\documentclass[11pt]{article}
+
+\usepackage{nmrdoc}
+\usepackage{siunitx}
+\usepackage{bm}
+
+\sisetup{per-mode=symbol}
+\DeclareSIUnit{\angstrom}{\text{\AA}}
+\DeclareSIUnit{\ppm}{ppm}
+
+\begin{document}
+\NmrTitle{The Larsen Empirical Hydrogen-Bond Shielding Calculator}
+
+\section{What the calculator computes}
+
+The Larsen hydrogen-bond calculator evaluates the empirical ProCS15
+hydrogen-bond term for each atom in a protein conformation. It does not run an
+electronic-structure calculation. It finds geometrically plausible
+hydrogen-bond pairs, looks up precomputed DFT response grids indexed by that
+geometry, rotates the returned \(3\times 3\) tensors into the protein frame,
+and accumulates the atom-specific terms that Larsen's table assigns to each
+backbone atom type.
+
+The physical effect being represented is the change in nuclear shielding caused
+when a donor hydrogen approaches an acceptor oxygen. A hydrogen bond polarizes
+the local electronic structure of the donor and acceptor groups; those
+electrons then change the secondary magnetic field at nearby nuclei. The
+observable connected to this calculation is the shielding tensor
+\(\bm\sigma\), usually reported experimentally after conversion to chemical
+shift. In this implementation the grid tensors and the water offset are in
+\(\si{\ppm}\), because the grid values are DFT shielding differences supplied
+by the Larsen parameterization. The calculator maps structure to tabulated
+tensors; it does not run the electronic response calculation or convert those
+tensors into a complete chemical shift.
+
+\section{Where shielding comes from}
+
+For a nucleus placed in an applied magnetic field \(\bm B_0\), the local field
+is written
+\begin{equation}
+  \bm B_{\mathrm{nuc}} = (\bm I-\bm\sigma)\bm B_0 .
+  \label{eq:shielding}
+\end{equation}
+\(\bm I\) is the \(3\times 3\) identity matrix. The shielding tensor
+\(\bm\sigma\) is dimensionless in physical NMR and is normally quoted in
+parts per million. It is a linear-response coefficient: if the applied field is
+changed a little, \(\bm\sigma\) tells how much of the induced electronic field
+opposes or redirects that change at the nucleus.
+
+The tensor form is needed because molecules are oriented objects. A field
+applied along the peptide plane, for example, can induce a different secondary
+field than a field applied normal to that plane. A matrix records this
+directional response: the entry \(\sigma_{ab}\) says how an applied-field
+component along Cartesian direction \(b\) contributes to the screened field
+component along direction \(a\).
+
+At the quantum-mechanical level, Eq.~\eqref{eq:shielding} comes from the
+electrons responding to \(\bm B_0\). The perturbation changes their current and
+spin response, and those electrons produce an induced magnetic field at the
+nucleus. The Larsen calculator keeps a local empirical piece of that response:
+the portion associated with hydrogen-bond geometry. Its input coordinates are
+not electronic wave functions, but the hydrogen-bond distance and angles that
+select a precomputed DFT difference tensor.
+
+Solution NMR often reports an isotropic chemical shift, related to the average
+shielding after reference subtraction and sign convention. The isotropic
+number is not the whole tensor. Hydrogen bonding also changes the
+orientation-dependent part of the shielding, and the code preserves that
+rank-2 information rather than reducing the grid lookup to a scalar shift.
+
+\section{The tensor split used by the code}
+
+Every accumulated Larsen tensor is decomposed by the C++ type
+\texttt{SphericalTensor}. For a real \(3\times 3\) tensor \(\bm X\), the scalar
+part is
+\begin{equation}
+  T_0 = \frac{1}{3}\operatorname{tr}\bm X ,
+  \label{eq:t0}
+\end{equation}
+the average of the three diagonal entries. This is the isotropic part; it is
+the component that survives rotational tumbling.
+
+The antisymmetric part is stored as a three-component pseudovector,
+\begin{equation}
+  \bm T_1 =
+  \frac{1}{2}
+  \begin{pmatrix}
+    X_{yz}-X_{zy}\\
+    X_{zx}-X_{xz}\\
+    X_{xy}-X_{yx}
+  \end{pmatrix}.
+  \label{eq:t1}
+\end{equation}
+It stores the part of the matrix that changes sign under transpose. In routine
+isotropic solution NMR this term is not usually observed directly, but the
+code carries it because the grid returns full matrices.
+
+The remaining symmetric traceless matrix is
+\begin{equation}
+  \bm S =
+  \frac{\bm X+\bm X^{\mathsf T}}{2}-T_0\bm I,
+  \qquad \operatorname{tr}\bm S=0 .
+  \label{eq:s}
+\end{equation}
+It has five independent entries. The code stores those five entries in the
+real spherical basis
+\begin{equation}
+  \bm T_2 =
+  \begin{pmatrix}
+    \sqrt{2}\,S_{xy}\\
+    \sqrt{2}\,S_{yz}\\
+    \sqrt{3/2}\,S_{zz}\\
+    \sqrt{2}\,S_{xz}\\
+    (S_{xx}-S_{yy})/\sqrt{2}
+  \end{pmatrix}.
+  \label{eq:t2}
+\end{equation}
+The factors in Eq.~\eqref{eq:t2} are the implementation's normalization. In
+this basis, the squared length of the five-vector equals the Frobenius norm of
+the matrix \(\bm S\):
+\begin{equation}
+  \sum_m T_{2m}^2=\sum_{ab}S_{ab}^2 .
+  \label{eq:t2norm}
+\end{equation}
+The nine written doubles are ordered as \(T_0\), the three \(T_1\) components,
+and the five \(T_2\) components. LarsenHBond populates all three pieces
+whenever the grid tensor contains them. The separate water term is scalar in
+\(\si{\ppm}\) and is written outside this tensor total.
+
+\section{The method implemented}
+
+The runtime first enumerates donor hydrogens. A backbone amide hydrogen
+\(\mathrm{HN}(i)\) is an amide donor when the bond graph supplies the
+preceding residue's carbonyl carbon; its donor-frame anchors are
+\(\mathrm{N}(i)\) and \(\mathrm{C}'(i-1)\). An alpha hydrogen
+\(\mathrm{H\alpha}(i)\), including both \(\mathrm{HA2}\) and
+\(\mathrm{HA3}\) on glycine, is an alpha donor; its anchors are
+\(\mathrm{C\alpha}(i)\) and \(\mathrm{N}(i)\). Candidate acceptor oxygen atoms
+are found within \(\SI{4.2}{\angstrom}\) of the donor hydrogen, excluding
+atoms in the donor's own residue.
+
+An acceptor oxygen is then classified by its chemistry. Backbone carbonyl
+acceptors use the NMA acceptor grid. Asn/Gln side-chain amide oxygens are
+approximated by that same backbone-carbonyl grid, because the Larsen archive
+has no separate side-chain-amide acceptor scan. Hydroxyl acceptors from Ser,
+Thr, and Tyr use the methanol grid. Asp/Glu and terminal carboxylate oxygens
+use the acetate grid, with the closer of the two carboxylate oxygens selected
+as the accepting oxygen. These choices select one of six archives:
+NMANMA, NMACOH, NMACOO, ALANMA, ALACOH, and ALACOO.
+
+For a donor hydrogen position \(\bm h\), acceptor oxygen \(\bm o\), acceptor
+heavy atom \(\bm c\), and acceptor-side third atom \(\bm t\), the lookup
+coordinates are
+\begin{equation}
+  r = \|\bm o-\bm h\|,
+  \qquad
+  \theta =
+  \cos^{-1}\!\left(
+  \frac{(\bm h-\bm o)\cdot(\bm c-\bm o)}
+       {\|\bm h-\bm o\|\,\|\bm c-\bm o\|}
+  \right),
+  \label{eq:rtheta}
+\end{equation}
+and
+\begin{equation}
+  \rho =
+  \operatorname{atan2}\!\left(
+    [\bm n_1\times\widehat{(\bm c-\bm o)}]\cdot\bm n_2,\,
+    \bm n_1\cdot\bm n_2
+  \right),
+  \quad
+  \bm n_1=(\bm o-\bm h)\times(\bm c-\bm o),\quad
+  \bm n_2=(\bm c-\bm o)\times(\bm t-\bm c).
+  \label{eq:rho}
+\end{equation}
+Here \(r\) is in \(\si{\angstrom}\), while \(\theta\) and \(\rho\) are in
+degrees in the code. \(\theta\) is the angle H--O--C at the acceptor oxygen.
+\(\rho\) is the signed H--O--C--third dihedral, using the IUPAC
+\(\operatorname{atan2}\) convention. The Larsen archive filenames use the
+opposite \(\rho\) sign, but the parser keyed the dense grids on the IUPAC sign;
+the runtime therefore does not negate \(\rho\). The code accepts a geometric
+hydrogen bond when \(\theta\in[\ang{90},\ang{180}]\). If \(\theta\) passes but
+the lookup is outside the selected grid's stored \(r\) or \(\theta\) range, the
+pair is counted as a grid miss; it still suppresses the water term for that
+amide hydrogen because the geometry was hydrogen-bond-like.
+
+The grid lookup is tensor-valued trilinear interpolation. For the selected
+donor and acceptor classes, the archive stores tensors
+\(\bm G_{ijk}^{(q)}\) on a regular grid in \(r,\theta,\rho\), where \(q\)
+names the readout atom such as donor HN, donor C, or acceptor CA. The runtime
+locates the enclosing cell and returns
+\begin{equation}
+  \bm G^{(q)}(r,\theta,\rho)
+  =
+  \sum_{\alpha,\beta,\gamma\in\{0,1\}}
+  w_{\alpha\beta\gamma}\,
+  \bm G^{(q)}_{i+\alpha,\,j+\beta,\,k+\gamma}.
+  \label{eq:interp}
+\end{equation}
+The weights \(w_{\alpha\beta\gamma}\) are the usual products of the fractional
+distances along the three axes and sum to one. The \(\rho\) axis wraps
+periodically at \(\pm\ang{180}\); \(r\) and \(\theta\) must lie inside their
+stored ranges, with a small floating-point tolerance at the bounds. The actual
+metadata place the NMA-donor \(r\) axes near
+\(\SIrange{1.5}{4.0}{\angstrom}\), the ALA-donor axes near
+\(\SIrange{1.6}{4.0}{\angstrom}\) or
+\(\SIrange{1.8}{4.0}{\angstrom}\) depending on acceptor class, and the
+\(\theta\) axes near \(\ang{90}\) to \(\ang{180}\). Some dense-grid cells were
+filled upstream for continuity; the calculator propagates a flag when any of
+the eight interpolation corners was imputed.
+
+The returned tensors are stored in a donor-centered frame. The frame rotation
+is built from the donor atoms:
+\begin{equation}
+  \hat{\bm z}=\frac{\bm h-\bm a}{\|\bm h-\bm a\|},\qquad
+  \hat{\bm x}=
+  \frac{(\bm h-\bm u)-[(\bm h-\bm u)\cdot\hat{\bm z}]\hat{\bm z}}
+       {\|(\bm h-\bm u)-[(\bm h-\bm u)\cdot\hat{\bm z}]\hat{\bm z}\|},
+  \qquad
+  \hat{\bm y}=\hat{\bm z}\times\hat{\bm x}.
+  \label{eq:frame}
+\end{equation}
+\(\bm a\) is the donor anchor and \(\bm u\) is the donor-side third atom
+listed above. Eq.~\eqref{eq:frame} is a Gram--Schmidt projection: it makes an
+orthonormal basis by keeping the H--anchor direction as the \(z\)-axis and
+removing that \(z\)-component from the H--third direction before making the
+\(x\)-axis. With \(R\) storing \(\hat{\bm x},\hat{\bm y},\hat{\bm z}\) as its
+rows, the protein-frame tensor is
+\begin{equation}
+  \bm\sigma_{\mathrm{lab}} = R^{\mathsf T}\bm\sigma_{\mathrm{canon}}R .
+  \label{eq:rotate}
+\end{equation}
+This is the standard rank-2 change of basis: both matrix indices rotate.
+
+The per-atom dispatch then follows the Larsen contribution table encoded in
+\texttt{LarsenContribDispatch}. Amide-H donors contribute primary
+\(\mathrm{HB}\) terms to their own residue and secondary \(\mathrm{HB}\) terms
+to the NMA acceptor side; alpha-H donors contribute the corresponding
+\(\mathrm{H\alpha B}\) terms. The implemented mask is: N receives
+\(1^\circ\mathrm{HB}\), \(2^\circ\mathrm{HB}\), and
+\(2^\circ\mathrm{H\alpha B}\); \(\mathrm{C\alpha}\) and \(\mathrm{C}'\) receive
+\(2^\circ\mathrm{HB}\); \(\mathrm{C\beta}\) is excluded from the physical sum;
+\(\mathrm{H\alpha}\) and HN receive all four pair terms. Backbone NMA acceptor
+readouts route N, HN, CA, and HA to residue \(j+1\), while the acceptor C
+readout routes to the accepting residue \(j\). Hydroxyl and carboxylate grids
+do not carry acceptor-side readouts. Side-chain carbonyls reuse the NMA grid,
+but the code has no backbone \(j+1\) residue to route to, so it does not apply
+secondary terms for those acceptors either.
+
+For atom \(a\), the tensor total written by the calculator is
+\begin{equation}
+  \bm\sigma_a^{\mathrm{pairs}} =
+  \bm\sigma_a^{1^\circ\mathrm{HB}}+
+  \bm\sigma_a^{2^\circ\mathrm{HB}}+
+  \bm\sigma_a^{1^\circ\mathrm{H\alpha B}}+
+  \bm\sigma_a^{2^\circ\mathrm{H\alpha B}} .
+  \label{eq:sum}
+\end{equation}
+Each term is a sum of rotated grid tensors assigned to that atom. The
+\(\mathrm{C\beta}\) readout is rotated and written as a diagnostic tensor,
+but it is not included in Eq.~\eqref{eq:sum} and does not increment the
+per-atom pair count. Amide hydrogens with no successful grid hit and no
+post-\(\theta\)-gate grid miss receive a separate water offset
+\begin{equation}
+  \Delta\sigma_w = \SI{2.07}{\ppm}.
+  \label{eq:water}
+\end{equation}
+The code stores this as a scalar field on HN atoms, not as an addition to
+\(\bm\sigma_a^{\mathrm{pairs}}\).
+
+There are no Larsen-specific numeric keys in
+\texttt{data/calculator\_params.toml}. The TOML H-bond entries there
+(\(\SI{50.0}{\angstrom}\) dipolar maximum distance,
+\(\SI{3.5}{\angstrom}\) counting radius, and a two-residue sequence
+exclusion) belong to other hydrogen-bond calculators. LarsenHBond instead
+uses the compiled constants \(\SI{4.2}{\angstrom}\), \(\ang{90}\),
+\(\ang{180}\), and \(\SI{2.07}{\ppm}\), plus the supplied grid axes.
+
+\section{Inputs and output}
+
+The runtime inputs are atom positions in \(\si{\angstrom}\), residue atom
+slots, the bond graph, typed atom semantics, and the spatial atom index. It
+does not consume MOPAC charges, AIMNet2 charges or embeddings, ff14SB charges,
+APBS fields, or DSSP hydrogen-bond assignments. Those are separate external
+data streams in the wider pipeline. LarsenResidue perception is also not in
+this calculator's runtime path.
+
+The external data used here are the six dense HDF5 grids under
+\texttt{data/larsen\_hbond\_grids}, or the directory supplied through the
+runtime \texttt{larsen\_hbond\_grids} path. They are externally supplied
+tabulated Larsen parameterization data. This document treats them as lookup
+tables and does not rederive how they were fit.
+
+\texttt{WriteFeatures} emits eight files: total pair tensor, the four
+per-class pair tensors, the \(\mathrm{C\beta}\) diagnostic tensor, the water
+term, and the per-atom pair count. The six tensor files are \(N\times 9\)
+tables in the \(T_0,T_1,T_2\) order of Eqs.~\eqref{eq:t0}--\eqref{eq:t2};
+the water file is \(N\times 1\) in \(\si{\ppm}\); the count file is a
+one-dimensional integer array.
+The tensors are empirical, geometry-indexed shielding-difference tensors from
+the Larsen grids, not a fresh prediction of the chemical shift. There is no
+separate fitted scalar applied after lookup inside this calculator; later
+comparison with DFT reference shieldings belongs to the analysis that uses
+these tensor features.
+
+\end{document}

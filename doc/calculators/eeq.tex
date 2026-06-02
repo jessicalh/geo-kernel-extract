@@ -1,0 +1,338 @@
+\documentclass[11pt]{article}
+
+\usepackage{nmrdoc}
+\usepackage{siunitx}
+\usepackage{bm}
+
+\sisetup{per-mode=symbol}
+\DeclareSIUnit{\angstrom}{\text{\AA}}
+\DeclareSIUnit{\bohr}{a_0}
+\DeclareSIUnit{\hartree}{Ha}
+\DeclareSIUnit{\elementarycharge}{e}
+
+\begin{document}
+\NmrTitle{The EEQ Charge-Equilibration Calculator}
+
+\section{What the calculator computes}
+
+The EEQ calculator assigns a geometry-dependent partial charge \(q_i\) to each
+atom \(i\) in a protein conformation. It uses the extended electronegativity
+equalization model: atoms exchange continuous charge until the marginal energy
+cost of putting a little more charge on any atom is the same, while the total
+charge of the conformation is held fixed. In this implementation the default
+total charge is \(Q=\SI{0}{\elementarycharge}\), so the stored charge vector is
+neutral unless the later per-atom clamp is triggered.
+
+These charges bear on shielding through electric-field effects. A distribution
+of charge produces an electric field \(\bm E\) and an electric-field gradient
+\(\bm V\) at a nucleus. In Buckingham's expansion, the electronic shielding can
+change with the local electric field, and the anisotropic part can couple to the
+rank-2 field-gradient tensor. That is the physical route from a charge model to
+an NMR shielding descriptor.
+
+The code for \texttt{EeqResult} stops before the field calculation. It writes
+\texttt{eeq\_charges.npy}, an \(N\)-component vector of charges in elementary
+charge units, and \texttt{eeq\_cn.npy}, the coordination numbers used while
+building those charges. It does not emit a shielding tensor, an electric field,
+an electric-field gradient, or a polarizability. The output is therefore a
+geometry-derived charge descriptor, not a chemical shift and not a shielding in
+ppm.
+
+\section{Where shielding enters}
+
+For a nucleus in an applied magnetic field \(\bm B_0\), the local field is
+usually written
+\begin{equation}
+  \bm B_{\mathrm{nuc}} = (\bm I-\bm\sigma)\bm B_0 .
+  \label{eq:shielding}
+\end{equation}
+\(\bm I\) is the \(3\times3\) identity matrix, and \(\bm\sigma\) is the nuclear
+shielding tensor. In physical NMR \(\bm\sigma\) is dimensionless: its entry
+\(\sigma_{ab}\) says how a field applied along Cartesian direction \(b\) changes
+the field component felt by the nucleus along direction \(a\). The tensor form
+is needed because a molecule has orientation. Rotating the same local structure
+can change both the magnitude and the direction of the secondary magnetic field
+created by the electrons.
+
+The quantum-mechanical origin is electronic response. The magnetic field
+perturbs the electronic state; the perturbed electrons create their own field at
+the nucleus; Eq.~\eqref{eq:shielding} records the linear coefficient between
+the applied field and the field that reaches the nucleus. Electric fields enter
+because the electron cloud is also shaped by the electrostatic environment. A
+nearby charge distribution can pull electron density toward one side of a bond
+or lone pair, changing the magnetic response of that electronic state.
+
+For point charges \(q_j\), the vacuum field and field gradient at a target atom
+\(i\) would have the Coulomb forms
+\begin{align}
+  E_a(i) &=
+    k_e \sum_{j\ne i} q_j
+    \frac{(r_i-r_j)_a}{|\bm r_i-\bm r_j|^3},
+    \label{eq:field}\\
+  V_{ab}(i) &=
+    k_e \sum_{j\ne i} q_j
+    \left[
+      \frac{3(r_i-r_j)_a(r_i-r_j)_b}{|\bm r_i-\bm r_j|^5}
+      - \frac{\delta_{ab}}{|\bm r_i-\bm r_j|^3}
+    \right].
+    \label{eq:efg}
+\end{align}
+Here \(\bm r_i\) is the target position, \(\bm r_j\) is a source-charge
+position, \(a,b\in\{x,y,z\}\), \(\delta_{ab}\) is one when \(a=b\) and zero
+otherwise, and \(k_e=\SI{14.3996}{\volt\angstrom}\) converts the raw
+\(\si{\elementarycharge\per\angstrom\squared}\) and
+\(\si{\elementarycharge\per\angstrom\cubed}\) sums to
+\(\si{\volt\per\angstrom}\) and
+\(\si{\volt\per\angstrom\squared}\). Equations~\eqref{eq:field} and
+\eqref{eq:efg} explain why a charge model matters for shielding, but they are
+not executed by \texttt{EeqResult.cpp}.
+
+\section{The tensor split used by the pipeline}
+
+When a calculator does produce a \(3\times3\) tensor \(\bm X\), the shared
+\texttt{SphericalTensor} code decomposes it into scalar, antisymmetric, and
+symmetric-traceless pieces. The scalar part is
+\begin{equation}
+  T_0 = \frac{1}{3}\operatorname{tr}\bm X .
+  \label{eq:t0}
+\end{equation}
+This is the isotropic value: it multiplies the identity matrix and is the part
+that survives orientational tumbling in solution.
+
+The antisymmetric part is stored as a three-component pseudovector,
+\begin{equation}
+  \bm T_1 =
+  \frac{1}{2}
+  \begin{pmatrix}
+    X_{yz}-X_{zy}\\
+    X_{zx}-X_{xz}\\
+    X_{xy}-X_{yx}
+  \end{pmatrix}.
+  \label{eq:t1}
+\end{equation}
+This is a compact representation of the part of \(\bm X\) that changes sign
+under transpose. It is usually not observed directly in standard isotropic
+solution NMR.
+
+The remaining part is the symmetric traceless matrix
+\begin{equation}
+  \bm S =
+  \frac{\bm X+\bm X^{\mathsf T}}{2}
+  - T_0\bm I,\qquad \operatorname{tr}\bm S=0 .
+  \label{eq:s}
+\end{equation}
+\(\bm S\) has five independent entries. The code packs them as
+\begin{equation}
+  \bm T_2 =
+  \begin{pmatrix}
+    \sqrt{2}\,S_{xy}\\
+    \sqrt{2}\,S_{yz}\\
+    \sqrt{3/2}\,S_{zz}\\
+    \sqrt{2}\,S_{xz}\\
+    (S_{xx}-S_{yy})/\sqrt{2}
+  \end{pmatrix},
+  \label{eq:t2}
+\end{equation}
+in the order \(m=-2,-1,0,+1,+2\). These factors are the normalization in
+\texttt{Types.cpp}; they preserve the Frobenius norm, so
+\(\sum_m T_{2m}^2=\sum_{ab}S_{ab}^2\). The packed nine-value layout is
+\[
+  [T_0,\;T_1[0],T_1[1],T_1[2],\;T_2[0],T_2[1],T_2[2],T_2[3],T_2[4]] .
+\]
+
+EEQ does not populate this tensor layout. A partial charge is a scalar attached
+to an atom. It can be treated as a rotational rank-0 feature in a later model,
+but it is not the \(T_0\) part of a shielding tensor. The anisotropic rank-2
+argument enters when charges are turned into a field-gradient tensor such as
+Eq.~\eqref{eq:efg}; the present EEQ source file does not do that step.
+
+\section{The method implemented}
+
+The implementation first reads atom elements and coordinates from the
+conformation. Coordinates are converted from \(\si{\angstrom}\) to \(\si{\bohr}\)
+using
+\[
+  \SI{1}{\bohr}=\SI{0.52917721067}{\angstrom}.
+\]
+For each element it reads a project-local D4 parameter row from
+\texttt{PhysicalConstants.h}: electronegativity \(\chi\), hardness
+\(\eta\) (named \texttt{gam} in the code), a coordination-number
+electronegativity shift \(\kappa\), covalent radius \(r_{\mathrm{cov}}\), and
+Gaussian charge width \(r_{\mathrm{g}}\). The values used for protein elements
+are:
+\begin{center}
+\small
+\begin{tabular}{crrrrr}
+\hline
+Elem. & \(\chi\) / \si{\hartree} & \(\eta\) / \si{\hartree}
+& \(\kappa\) / \si{\hartree} & \(r_{\mathrm{cov}}\) / \si{\bohr}
+& \(r_{\mathrm{g}}\) / \si{\bohr} \\
+\hline
+H & -0.35015861 & 0.47259288 & -0.19793756 & 0.80628 & 1.61478\\
+C & -0.04726052 & 0.25364654 &  0.14216971 & 1.51718 & 2.49988\\
+N &  0.11527249 & 0.28022740 &  0.15169154 & 1.42165 & 2.23456\\
+O &  0.25136810 & 0.36515829 &  0.14510449 & 1.24854 & 1.89247\\
+S &  0.10789083 & 0.25140725 &  0.15916035 & 2.00000 & 3.29733\\
+\hline
+\end{tabular}
+\end{center}
+An unrecognized element uses the fallback row
+\((0,\;0.30000000,\;0,\;1.50000,\;2.50000)\) in the same units.
+
+The first computed quantity is a smooth coordination number. For each atom pair
+within the configured cutoff \(R_{\mathrm{cut}}=\SI{25.0}{\angstrom}\), the code
+adds
+\begin{equation}
+  c_{ij} =
+  \frac{1}{2}\operatorname{erfc}
+  \left[
+    k_{\mathrm{CN}}
+    \left(
+      \frac{R_{ij}}{r_{\mathrm{cov},i}+r_{\mathrm{cov},j}} - 1
+    \right)
+  \right],
+  \qquad k_{\mathrm{CN}}=7.5 .
+  \label{eq:cnpair}
+\end{equation}
+\(R_{ij}\) is the interatomic distance in \(\si{\bohr}\). The complementary
+error function \(\operatorname{erfc}\) makes the count change smoothly from near
+one for close bonded neighbours to near zero for separated atoms. The total
+coordination number is
+\begin{equation}
+  \mathrm{CN}_i = \sum_{j\ne i} c_{ij}.
+  \label{eq:cn}
+\end{equation}
+Pairs beyond \(R_{\mathrm{cut}}\) are skipped.
+
+The coordination number shifts the electronegativity:
+\begin{equation}
+  \chi^{\mathrm{eff}}_i =
+  \chi_i + \kappa_i\sqrt{\mathrm{CN}_i+10^{-14}} .
+  \label{eq:chieff}
+\end{equation}
+The small \(10^{-14}\) term is a guard against evaluating the square root at
+zero. \(\chi^{\mathrm{eff}}_i\) has units of \(\si{\hartree}\) per elementary
+charge in atomic-unit bookkeeping.
+
+The charge vector is then obtained by minimizing a quadratic energy subject to
+a total-charge constraint:
+\begin{equation}
+  E(\bm q)=
+  \sum_i \chi^{\mathrm{eff}}_i q_i
+  + \frac{1}{2}\sum_i A_{ii}q_i^2
+  + \sum_{i<j}A_{ij}q_iq_j ,
+  \qquad \sum_i q_i = Q .
+  \label{eq:energy}
+\end{equation}
+\(q_i\) is measured in elementary charges, and \(Q\) is the configured total
+charge, defaulting to \(\SI{0}{\elementarycharge}\). The matrix diagonal is
+\begin{equation}
+  A_{ii}=\eta_i+\frac{\sqrt{2/\pi}}{r_{\mathrm{g},i}},
+  \label{eq:adiag}
+\end{equation}
+where the second term is the self-Coulomb energy of the Gaussian charge
+distribution used by the model. For \(i\ne j\), the implementation uses the
+Ohno--Klopman form
+\begin{equation}
+  A_{ij}=\gamma_{ij}(R_{ij})
+  =
+  \frac{1}{\sqrt{R_{ij}^2+1/(\eta_i\eta_j)}} .
+  \label{eq:ohno}
+\end{equation}
+This is the code's off-diagonal Coulomb kernel. It differs from the dftd4
+reference implementation, which uses a Gaussian-charge
+\(\operatorname{erf}(\alpha R)/R\) form. At long range
+Eq.~\eqref{eq:ohno} approaches the atomic-unit Coulomb factor \(1/R_{ij}\). At
+short range it remains finite, approaching \(\sqrt{\eta_i\eta_j}\) as
+\(R_{ij}\to0\).
+
+The equalization condition follows by differentiating Eq.~\eqref{eq:energy}.
+Define the marginal charge energy
+\begin{equation}
+  \mu_i(\bm q)=\frac{\partial E}{\partial q_i}
+  =
+  \chi^{\mathrm{eff}}_i+\sum_j A_{ij}q_j .
+  \label{eq:mu}
+\end{equation}
+Moving a small amount of charge from atom \(j\) to atom \(i\) changes the energy
+to first order by \((\mu_i-\mu_j)\,dq\). At the constrained minimum those
+exchange costs must match, so the code solves
+\begin{equation}
+  \begin{bmatrix}
+    \bm A & \bm 1\\
+    \bm 1^{\mathsf T} & 0
+  \end{bmatrix}
+  \begin{bmatrix}
+    \bm q\\ \lambda
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    -\bm\chi^{\mathrm{eff}}\\ Q
+  \end{bmatrix}.
+  \label{eq:kkt}
+\end{equation}
+\(\bm 1\) is the vector of ones, and the Lagrange multiplier \(\lambda\) is the
+common offset that enforces the total charge. The augmented system is the
+algebraic form of equal marginal energy plus charge conservation.
+
+Rather than factor the bordered matrix in Eq.~\eqref{eq:kkt}, the code factors
+\(\bm A\) with Eigen's Cholesky routine \texttt{LLT}. Cholesky writes a
+symmetric positive-definite matrix as \(\bm L\bm L^{\mathsf T}\), turning later
+linear solves into triangular substitutions. It then solves
+\begin{equation}
+  \bm A\bm u=\bm\chi^{\mathrm{eff}},
+  \qquad
+  \bm A\bm v=\bm 1,
+  \label{eq:uv}
+\end{equation}
+and computes
+\begin{equation}
+  \lambda =
+  -\frac{Q+\bm 1^{\mathsf T}\bm u}{\bm 1^{\mathsf T}\bm v},
+  \qquad
+  \bm q=-(\bm u+\lambda\bm v).
+  \label{eq:solve}
+\end{equation}
+If the factorization fails, or if the denominator in Eq.~\eqref{eq:solve} is
+smaller than \(10^{-30}\), the result is not attached.
+
+After the solve, the code removes the floating-point charge residual by a
+uniform shift:
+\begin{equation}
+  q_i \leftarrow q_i -
+  \frac{\sum_j q_j-Q}{N}.
+  \label{eq:residual}
+\end{equation}
+This preserves charge differences while making the pre-clamp sum equal to
+\(Q\) to roundoff. A guard then clamps any stored atom charge with
+\(|q_i|>\SI{2.0}{\elementarycharge}\) to
+\(\pm\SI{2.0}{\elementarycharge}\). If that guard fires, the stored charge sum
+can move away from \(Q\). The code records clamp events and charge statistics
+for audit output.
+
+\section{Inputs and output}
+
+EEQ consumes atom elements, atom positions in \(\si{\angstrom}\), and four TOML
+configuration values: \(Q=\SI{0}{\elementarycharge}\),
+\(k_{\mathrm{CN}}=7.5\), \(R_{\mathrm{cut}}=\SI{25.0}{\angstrom}\), and the
+\(\SI{2.0}{\elementarycharge}\) charge clamp. It has no declared
+\texttt{ConformationResult} dependency and no external binary.
+
+It does not consume MOPAC charges, AIMNet2 charges or embeddings, ff14SB
+charges, APBS electrostatic fields, or DSSP secondary-structure labels. Those
+data sources feed other parts of the pipeline: MOPAC and AIMNet2 provide
+separate charge models, ff14SB charges feed the force-field Coulomb field, APBS
+provides a solvated field and field gradient, and DSSP supplies secondary
+structure labels. In the current code, no field calculator reads
+\texttt{eeq\_charge}.
+
+The feature output is scalar. \texttt{eeq\_charges.npy} has shape \((N,)\) and
+stores \(q_i\) in elementary charges. \texttt{eeq\_cn.npy} has shape \((N,)\)
+and stores \(\mathrm{CN}_i\). Across a trajectory,
+\texttt{EeqWelfordTrajectoryResult} accumulates means, standard deviations,
+minima, maxima, frame-to-frame changes, and charge-change rates for \(q_i\).
+None of these values is a shielding. Calibration or later modelling is the step
+that can test whether this geometry-responsive charge signal correlates with
+DFT shielding changes.
+
+\end{document}

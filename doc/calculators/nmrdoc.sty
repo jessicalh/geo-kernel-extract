@@ -1,0 +1,51 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{nmrdoc}[2026/06/01 NMR shielding documentation style]
+
+% --- Thin margins ---
+\RequirePackage[margin=0.7in]{geometry}
+
+% --- Helvetica / Arial-like sans-serif for the whole document (body 11pt from \documentclass) ---
+\RequirePackage[T1]{fontenc}
+\RequirePackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+
+% --- Common packages (do not re-load these in the documents) ---
+\RequirePackage{graphicx}
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+\RequirePackage{xcolor}
+\RequirePackage{titlesec}
+\RequirePackage[hidelinks]{hyperref}
+
+% --- Pastel, page-breakable code boxes: the `codebox` environment ---
+\RequirePackage{listings}
+\RequirePackage{tcolorbox}
+\tcbuselibrary{listings,breakable,skins}
+\definecolor{codebg}{HTML}{FFFDE7}   % super-pastel yellow
+\newtcblisting{codebox}{
+  breakable, enhanced, listing only,
+  colback=codebg, colframe=black!18, boxrule=0.4pt, arc=1.5pt,
+  left=0.8em, right=0.6em, top=2pt, bottom=2pt,
+  listing options={
+    language=C++, basicstyle=\ttfamily\scriptsize,
+    columns=fullflexible, keepspaces=true, breaklines=false
+  }
+}
+
+% --- Bold sans-serif section headers (same font as the body) ---
+\titleformat{\section}{\sffamily\bfseries\Large}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\sffamily\bfseries\large}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\sffamily\bfseries\normalsize}{\thesubsubsection}{0.6em}{}
+
+% --- Document version: single source of truth ---
+\newcommand{\docversion}{v0.0.1}
+
+% --- Top-left bold title, left-justified, with the credit subtitle under it ---
+\newcommand{\NmrTitle}[1]{%
+  \begin{flushleft}
+    {\sffamily\bfseries\LARGE #1}\par
+    \vspace{0.30em}
+    {\sffamily\normalsize Generated/Reviewed Documentation (Codex/Opus/Human) for \docversion}
+  \end{flushleft}
+  \vspace{0.6em}\par
+}

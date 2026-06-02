@@ -1,0 +1,268 @@
+\documentclass[11pt]{article}
+
+\usepackage{nmrdoc}
+\usepackage{siunitx}
+\usepackage{bm}
+
+\sisetup{per-mode=symbol}
+\DeclareSIUnit{\angstrom}{\text{\AA}}
+
+\begin{document}
+\NmrTitle{The Haigh--Mallion Ring-Current Surface Calculator}
+
+\section{What the calculator computes}
+
+The Haigh--Mallion calculator represents the magnetic shielding pattern caused
+by an aromatic ring current. When an external field is applied to an aromatic
+ring, the delocalized \(\pi\) electrons can circulate around the ring. That
+circulation produces a secondary magnetic field at a nearby nucleus. The
+secondary field changes the nuclear shielding tensor \(\bm\sigma\), and the
+isotropic part of \(\bm\sigma\) contributes to the chemical shift reported in
+solution NMR.
+
+This implementation does not solve the electronic response of the ring. It
+takes the ring geometry from the protein structure, integrates a magnetic
+dipole kernel over the polygonal ring surface, and stores the resulting
+geometric tensor. The output has units \(\si{\angstrom^{-1}}\). It is not a
+reported shielding value in ppm and does not stand on its own as a chemical
+shift. After calibration against DFT shielding tensors, it can contribute a
+ring-current shielding term; before calibration, it is a geometry-derived
+descriptor whose tensor shape is the object of interest.
+
+\section{Where shielding enters}
+
+For a nucleus in an applied magnetic field \(\bm B_0\), the field experienced
+by the nucleus is written
+\begin{equation}
+  \bm B_{\mathrm{nuc}}=(\bm I-\bm\sigma)\bm B_0 .
+  \label{eq:shielding}
+\end{equation}
+Here \(\bm I\) is the \(3\times3\) identity matrix. The shielding tensor
+\(\bm\sigma\) is dimensionless in physical NMR: it is the linear-response
+coefficient connecting the applied field to the electronic secondary field at
+the nucleus. It is a matrix because the molecule has orientation. A field
+applied along direction \(b\) can induce a secondary-field component along
+direction \(a\), so \(\sigma_{ab}\) records how those two directions are
+coupled.
+
+The quantum-mechanical content behind Eq.~\eqref{eq:shielding} is that the
+external magnetic field perturbs the electronic state. The perturbed electrons
+generate a magnetic field of their own, and the nucleus responds to the sum.
+The Haigh--Mallion calculator keeps one classical, geometry-based piece of that
+response. For an aromatic ring, the component of \(\bm B_0\) normal to the ring
+threads magnetic flux through the \(\pi\)-electron system. The model represents
+the induced current response by a thin magnetic surface lying inside the ring.
+
+The sign convention in the code is
+\begin{equation}
+  \sigma_{ab}=-\frac{\partial B^{\mathrm{sec}}_a}{\partial B_{0,b}} .
+  \label{eq:sign}
+\end{equation}
+The minus sign says that shielding is the reduction of the applied field at the
+nucleus. In the source, this sign appears when the full kernel \(G_{ab}\) is
+formed from the surface integral. A diamagnetic literature ring-current
+intensity is negative, but that intensity is not multiplied into this
+calculator's stored result.
+
+\section{The tensor split used by the code}
+
+Any \(3\times3\) tensor \(\bm X\) is decomposed by
+\texttt{SphericalTensor::Decompose} before it is emitted. The scalar part is
+\begin{equation}
+  T_0=\frac{1}{3}\operatorname{tr}\bm X .
+  \label{eq:t0}
+\end{equation}
+This is the isotropic component: it multiplies \(\bm I\), survives molecular
+tumbling, and sets the isotropic shielding value before reference subtraction.
+
+The antisymmetric part is packed as the three-component vector
+\begin{equation}
+  \bm T_1=\frac{1}{2}
+  \begin{pmatrix}
+    X_{yz}-X_{zy}\\
+    X_{zx}-X_{xz}\\
+    X_{xy}-X_{yx}
+  \end{pmatrix}.
+  \label{eq:t1}
+\end{equation}
+This vector is the dual form of the part of \(\bm X\) that changes sign under
+transpose. It is usually not observed directly in standard isotropic solution
+NMR, but it is retained because the Haigh--Mallion shielding kernel need not be
+symmetric.
+
+The remaining symmetric traceless matrix is
+\begin{equation}
+  \bm S=\frac{\bm X+\bm X^{\mathsf T}}{2}-T_0\bm I,
+  \qquad \operatorname{tr}\bm S=0 .
+  \label{eq:symmetric-traceless}
+\end{equation}
+It has five independent entries. The code stores those entries in the
+real-spherical \(T_2\) basis
+\begin{equation}
+  \bm T_2=
+  \begin{pmatrix}
+    \sqrt{2}\,S_{xy}\\
+    \sqrt{2}\,S_{yz}\\
+    \sqrt{3/2}\,S_{zz}\\
+    \sqrt{2}\,S_{xz}\\
+    (S_{xx}-S_{yy})/\sqrt{2}
+  \end{pmatrix}.
+  \label{eq:t2}
+\end{equation}
+These factors are the normalization used by the implementation. They preserve
+the Frobenius norm, so the squared length of the five-vector equals
+\(\sum_{ab}S_{ab}^2\). The nine stored values are ordered as
+\[
+  [T_0,T_{1x},T_{1y},T_{1z},
+    T_{2,-2},T_{2,-1},T_{2,0},T_{2,+1},T_{2,+2}] .
+\]
+
+The Haigh--Mallion path creates two tensors. The raw surface integral
+\(\bm H\) is symmetric and traceless up to floating-point quadrature error, so
+its decomposition is carried by \(T_2\). The stored shielding kernel
+\(\bm G\), formed after contraction with the ring normal, is a rank-one matrix
+and can have nonzero \(T_0\), \(T_1\), and \(T_2\). The per-atom output uses the
+decomposition of the accumulated \(\bm G\), not the raw \(\bm H\).
+
+\section{The method implemented}
+
+For each protein conformation, the calculator depends on the precomputed ring
+geometry and a spatial index. The ring list is the aromatic part of the protein
+topology: PHE benzene, TYR phenol, TRP benzene, TRP pyrrole, TRP indole
+perimeter, HIS imidazole, HID imidazole, and HIE imidazole. A saturated PRO
+pyrrolidine type exists elsewhere in the topology, but the aromatic ring-count
+API used here does not present it to this loop.
+
+For a ring with vertices \(\bm q_i\), the geometry routine sets the center to
+the average vertex position,
+\begin{equation}
+  \bm c=\frac{1}{N}\sum_{i=1}^{N}\bm q_i ,
+  \label{eq:center}
+\end{equation}
+with positions measured in \(\si{\angstrom}\). The ring normal
+\(\hat{\bm n}\) is the normal to the best-fit plane from an SVD of the centered
+vertex coordinates. Its sign is chosen to agree with
+\((\bm q_1-\bm q_0)\times(\bm q_2-\bm q_0)\). The radius used by filters is
+the average distance of the vertices from \(\bm c\).
+
+For a target atom at position \(\bm r\), the raw tensor is
+\begin{equation}
+  H_{ab}(\bm r)
+  =\int_{S}
+  \left(
+    \frac{3\rho_a\rho_b}{\rho^5}
+    -\frac{\delta_{ab}}{\rho^3}
+  \right)\,dS,
+  \qquad
+  \bm\rho=\bm r-\bm s,\quad \rho=|\bm\rho| .
+  \label{eq:h-integral}
+\end{equation}
+The integration point \(\bm s\) runs over the ring surface \(S\);
+\(dS\) is an area element in \(\si{\angstrom^2}\);
+\(\delta_{ab}\) is one when \(a=b\) and zero otherwise. The integrand has units
+\(\si{\angstrom^{-3}}\), so \(\bm H\) has units \(\si{\angstrom^{-1}}\).
+The matrix inside the integral is the Cartesian magnetic-dipole field kernel:
+if a unit point dipole at \(\bm s\) points along direction \(b\), the expression
+gives the field component along direction \(a\) at \(\bm r\), apart from
+physical constants not stored here. The Haigh--Mallion surface is therefore a
+sheet of infinitesimal dipoles. Integrating Eq.~\eqref{eq:h-integral} asks what
+field that sheet would produce at the nucleus for each possible dipole
+direction.
+
+The ring current is tied to the ring normal. The implementation contracts
+\(\bm H\) with \(\hat{\bm n}\),
+\begin{equation}
+  \bm V(\bm r)=\bm H(\bm r)\hat{\bm n},
+  \label{eq:v-field}
+\end{equation}
+so \(V_a\) is the effective secondary-field component from a unit surface
+response normal to the ring. The applied field enters through its normal
+component, \(\hat{\bm n}\cdot\bm B_0=n_bB_{0,b}\). Combining that flux factor
+with the shielding sign convention gives the stored tensor
+\begin{equation}
+  G_{ab}(\bm r)=-V_a(\bm r)n_b
+  =-\left[\bm H(\bm r)\hat{\bm n}\right]_a n_b .
+  \label{eq:g-kernel}
+\end{equation}
+This is an outer product, so the Cartesian matrix has rank one unless
+\(\bm V=\bm 0\). Its units remain \(\si{\angstrom^{-1}}\), because
+\(\hat{\bm n}\) is dimensionless.
+
+The surface \(S\) is not meshed by an external library. The code creates a fan
+triangulation from the ring center to each adjacent vertex pair. On each
+triangle \(T=(\bm v_0,\bm v_1,\bm v_2)\), it evaluates
+\begin{equation}
+  \int_T F(\bm s)\,dS
+  \approx
+  A_T\sum_{q=1}^{7}w_q
+  F(\lambda_{q0}\bm v_0+\lambda_{q1}\bm v_1+\lambda_{q2}\bm v_2),
+  \label{eq:quadrature}
+\end{equation}
+where \(A_T\) is the triangle area. The \(\lambda\)'s are barycentric
+coordinates: nonnegative weights that sum to one and locate a point inside the
+triangle. The seven quadrature weights also sum to one. The rule is the
+degree-five Stroud T2:5-1, also listed as Dunavant's seven-point triangle rule;
+the code computes its two barycentric orbit parameters
+\((6\pm\sqrt{15})/21\) and weights \(9/40\) and
+\((155\pm\sqrt{15})/1200\).
+
+Near the ring plane, the \(\rho^{-3}\) kernel changes rapidly. The
+implementation refines a fan triangle by splitting it at edge midpoints when
+the target atom is close to a triangle vertex. The first split is triggered
+below \(\SI{2.0}{\angstrom}\), the second below \(\SI{1.0}{\angstrom}\), and
+the depth stops at two. That leaves 7 quadrature points without subdivision,
+28 after the first split, and at most 112 if all level-1 subtriangles split. A
+triangle whose area is below \(10^{-20}\,\si{\angstrom^2}\) is skipped, and a
+quadrature point closer than \(\SI{0.1}{\angstrom}\) to the target atom is
+skipped.
+
+Candidate ring centers are first found within \(\SI{15.0}{\angstrom}\) of the
+target atom. Three filters then decide whether the atom--ring pair is
+evaluated. The \(\SI{0.1}{\angstrom}\) singularity guard rejects a target
+closer than that distance to the expansion center. A near-field filter rejects
+points whose center distance is not larger than half the source extent; for
+rings the source extent is the diameter, so the threshold is the ring radius. A
+topology filter rejects ring vertices and atoms covalently bonded to ring
+vertices, because those atoms lie in a through-bond regime rather than the
+through-space surface model.
+
+The TOML file also contains ring-current intensities in \(\si{\nano\ampere\per
+\tesla}\): PHE \(-12.0\), TYR \(-11.28\), TRP6 \(-12.48\), TRP5 \(-6.72\),
+HIS/HID/HIE \(-5.16\), and TRP9 \(-19.2\). It contains Johnson--Bovey lobe
+offsets in \(\si{\angstrom}\): \(0.64\) for PHE, TYR, and TRP6; \(0.52\) for
+TRP5; \(0.50\) for HIS/HID/HIE; and \(0.60\) for TRP9. This calculator reads
+neither set. The source computes \(\bm G\) from geometry, records the ring type
+for per-type sums, and lets calibration or a later model decide how strongly
+each ring type should contribute.
+
+\section{Inputs and output}
+
+The direct inputs are atomic coordinates, typed aromatic-ring topology, the
+ring geometry derived from those coordinates, and the spatial index used to
+find nearby rings. The calculator does not consume MOPAC charges or bond
+orders, AIMNet2 charges or embeddings, ff14SB charges, APBS electrostatic
+fields, or DSSP secondary-structure assignments. Those data sources feed other
+calculators or provide structural context; their internal methods are outside
+the scope of this document.
+
+For each atom, the calculator stores per-ring attribution: \(\bm H\), its
+decomposition, \(\bm V=\bm H\hat{\bm n}\), \(\bm G\), and the decomposition of
+\(\bm G\). It accumulates the accepted \(\bm G\) tensors over nearby rings and
+writes \texttt{hm\_shielding.npy} with shape \(N\times9\), using the
+\([T_0,T_1,T_2]\) order given after Eq.~\eqref{eq:t2}. It also writes
+\texttt{hm\_per\_type\_T0.npy} with shape \(N\times8\) and
+\texttt{hm\_per\_type\_T2.npy} with shape \(N\times40\), one \(T_0\) scalar
+and five \(T_2\) components for each aromatic ring type.
+
+The grid-sampling method evaluates the same \(\bm G\) construction at an
+arbitrary point. It does not use the bonded topology filter, and it skips rings
+closer than the singularity guard, points inside the ring radius, and rings
+beyond \(\SI{15.0}{\angstrom}\).
+
+Despite the output filename, the values are geometric kernels. Their role in
+the thesis is to test whether the Haigh--Mallion geometry carries the tensor
+signal seen in DFT shielding differences. Agreement is therefore assessed as
+correlation after calibration, especially in the \(T_2\) anisotropic
+components, not as pointwise reproduction of a chemical shift.
+
+\end{document}
