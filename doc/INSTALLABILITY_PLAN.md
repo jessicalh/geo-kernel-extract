@@ -38,7 +38,7 @@ documented locations:
 | --- | --- |
 | GROMACS | `libgromacs_mpi` or the chosen GROMACS library, matching MPI stack, and the internal headers currently needed at build time. |
 | MOPAC | `libmopac`, the `mopac` executable, and matching Fortran/OpenMP runtime libraries. |
-| AIMNet2/Torch | Torch C++ libraries, CUDA/cu13 user-space libraries, `libnvrtc-builtins.so.13.0`, a CUDA-capable runtime, and the `.jpt` AIMNet2 model. |
+| AIMNet2/Torch | Torch C++ libraries pinned to the producer Torch ABI (`2.11.0+cu130` / CUDA 13.0), CUDA/cu13 user-space libraries, `libnvrtc-builtins.so.13.0`, a CUDA-capable NVIDIA container runtime/host driver, and the `.jpt` AIMNet2 model. |
 | PostgreSQL/tensorcs15 | `libpq`, a reachable tensorcs15 database containing the frozen tripeptide DFT fragment corpus, a restore procedure, expected row counts/checksums, and a DSN supplied without leaking secrets to logs. |
 | AmberTools | `tleap` and `AMBERHOME` or an explicit configured `tleap` path. |
 | APBS | APBS/MALOC/FETK libraries used by the bridge. |
@@ -99,9 +99,10 @@ as `nmr-tensorcs15-check`. The current manifest records 1,870,631
    the actual snapshot location, restore mechanics, and dump provenance are not
    tracked yet. This is about faithfully serving the frozen DFT fragment
    corpus, not recomputing it.
-5. Large model/grid assets are not copied by default. Copying or vendoring
-   them should be an explicit producer-full decision because they affect disk
-   use and image size.
+5. The default AIMNet2 `.jpt` model is now installed with
+   `calculator_params.toml`, so the committed relative model path survives an
+   install. Larger optional assets such as Larsen grids still need an explicit
+   producer-full decision because they affect disk use and image size.
 6. A root `make configure` / `make install` wrapper is still future work. The
    repo currently ignores root `Makefile` to avoid accidental in-source CMake
    output, so adding that entry point requires an explicit tracked exception.
@@ -138,6 +139,13 @@ It currently fails the new CMake portability gate because GROMACS, reduce,
 MOPAC, Torch/cu13, and CUDA resolve through local paths. This is the expected
 state until those dependencies are supplied from a deliberate producer prefix.
 After the failure check, the build cache was restored to the local profile.
+
+As of 2026-05-30, the repo has a root `.dockerignore`, a vendored dependency
+base scaffold (`docker/deps-vendor.Dockerfile`), a producer image scaffold
+(`docker/producer-full.Dockerfile`), and a container entrypoint for local
+PostgreSQL/tensorcs15 startup and verification. The image path is intentionally
+limited to `nmr_extract`; `h5-reader` and desktop UI dependencies are outside
+this container boundary.
 
 ## Doctor Contract
 

@@ -1,0 +1,35 @@
+# Example manifest for a curated nmr_extract producer dependency payload.
+# A concrete docker/vendor/manifest.toml should be generated or filled in when
+# the payload is assembled.
+
+producer_torch = "2.11.0+cu130"
+producer_torch_cuda = "13.0"
+nvrtc_builtins = "docker/vendor/deps/nvidia/cu13/lib/libnvrtc-builtins.so.13.0"
+base_image = "nvidia/cuda:13.0.2-cudnn-devel-ubuntu24.04"
+
+[gromacs]
+runtime_prefix = "docker/vendor/deps/gromacs"
+gmx = "docker/vendor/deps/gromacs/bin/gmx_mpi"
+topology_data = "docker/vendor/deps/gromacs/share/gromacs/top"
+lib = "docker/vendor/deps/gromacs/lib/libgromacs_mpi.so"
+muparser = "docker/vendor/deps/gromacs/lib/libmuparser.so.2"
+source_root = "docker/vendor/deps/gromacs-src"
+source_headers = "docker/vendor/deps/gromacs-src/src/gromacs"
+legacy_api_headers = "docker/vendor/deps/gromacs-src/api/legacy/include/gromacs"
+generated_headers = "docker/vendor/deps/gromacs-build/api/legacy/include/gromacs"
+
+[reduce]
+source_tree = "docker/vendor/deps/reduce-src"
+
+[orca]
+prefix = "docker/vendor/deps/orca"
+executable = "docker/vendor/deps/orca/orca"
+lib_dir = "docker/vendor/deps/orca/lib"
+
+[chem_env]
+prefix = "docker/vendor/deps/chem-env"
+contains = ["mopac", "tleap"]
+
+[tensorcs15]
+dump = "docker/vendor/tensorcs15/tensorcs15.dump"
+required = true

@@ -6,6 +6,8 @@ Small directory. Contains:
   general cleanup, runtime/config cleanup, and CMake/install cleanup pass.
 - `proper-program-phase-2026-05-25.md` — working tracker for the
   pre-Doxygen "proper program" doc/comment cleanup phase.
+- `docker-producer-handoff-2026-05-30.md` - operational handoff for the
+  PG18 single-container `nmr_extract` producer appliance.
 - `bones/` — retired design records, working notes, session handoffs.
   **Archaeology only — do not consult to drive new work.** Decisions
   themselves are in `master`; bones is prose history.

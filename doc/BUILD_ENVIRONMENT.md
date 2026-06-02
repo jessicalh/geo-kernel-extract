@@ -18,7 +18,9 @@ for development. `NMR_PROFILE=producer-full` is the release/container gate: it
 enables `NMR_REQUIRE_PORTABLE_DEPS`, uses the installed data directory, disables
 `-march=native`, and fails configure if producer dependencies resolve through
 personal or host-local paths such as `/home`, `/shared`, `/mnt`, `/opt/orca`,
-or `/usr/local/cuda`.
+or `/usr/local/cuda`. The producer Dockerfile may explicitly allow
+`/usr/local/cuda` when it comes from the selected NVIDIA CUDA base image; all
+project-specific vendored dependencies still belong under the producer prefix.
 
 The intended release configure shape is:
 
@@ -27,7 +29,7 @@ cmake -S . -B build-producer \
   -DNMR_PROFILE=producer-full \
   -DCMAKE_INSTALL_PREFIX=/opt/nmr-shielding \
   -DNMR_GROMACS_ROOT=/opt/nmr-shielding/deps/gromacs \
-  -DNMR_MOPAC_ROOT=/opt/nmr-shielding/deps/mopac \
+  -DNMR_MOPAC_ROOT=/opt/nmr-shielding/deps/chem-env \
   -DNMR_TORCH_CMAKE_PREFIX_PATH=/opt/nmr-shielding/deps/torch/share/cmake
 ```
 
@@ -46,7 +48,7 @@ cmake -S . -B build-producer \
 | HDF5 transitives | `NMR_CURL_LIBRARY`, `NMR_Z_LIBRARY` | same names | Direct link dependencies for the HDF5 C library. |
 | APBS/MALOC | `NMR_APBS_INCLUDE_DIR`, `NMR_MALOC_INCLUDE_DIR`, `NMR_APBS_*_LIBRARY`, `NMR_MALOC_LIBRARY` | same names | APBS bridge libraries. FETK `mc`/`punc` remain optional when bundled into APBS. |
 | Torch | `NMR_TORCH_CMAKE_PREFIX_PATH` or `Torch_DIR` | `NMR_TORCH_CMAKE_PREFIX_PATH` | If unset, CMake asks the configured Python interpreter where pip-installed torch lives. |
-| cu13 runtime | `NMR_NVRTC_LIB_DIR` or `NMR_NVIDIA_CU13_DIR` | same names | Used by tests and `scripts/run_with_cuda_env.sh` for `libnvrtc-builtins.so.13.0`. |
+| cu13 runtime | `NMR_NVRTC_LIB_DIR` or `NMR_NVIDIA_CU13_DIR` | same names | Used by tests and `scripts/run_with_cuda_env.sh` for `libnvrtc-builtins.so.13.0`; this must match the producer Torch CUDA ABI (`2.11.0+cu130`, CUDA 13.0). |
 | GTest fetch | `NMR_FETCH_GTEST` | none | `ON` preserves current behavior; `OFF` requires system GTest. |
 
 Compiler behavior that can vary by target machine is also explicit:

@@ -2,8 +2,10 @@
 # Copy to a machine-local path and point NMR_TOOLS_TOML at it.
 # Do not commit secrets.
 
-mopac = "/opt/nmr-shielding/bin/mopac"
-tleap = "/opt/ambertools/bin/tleap"
+mopac = "/opt/nmr-shielding/deps/chem-env/bin/mopac"
+tleap = "/opt/nmr-shielding/deps/chem-env/bin/tleap"
+gmx = "/opt/nmr-shielding/deps/gromacs/bin/gmx_mpi"
+orca = "/opt/nmr-shielding/deps/orca/orca"
 ff14sb_params = "/opt/nmr-shielding/share/nmr-shielding/data/ff14sb_params.dat"
 tmpdir = "/tmp/nmr_shielding"
 

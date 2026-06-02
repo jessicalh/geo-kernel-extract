@@ -24,6 +24,9 @@ durable architectural record; this index is just a map to the rest.
 ## Active planning (small)
 
 - `spec/plan/README.md` — guide to what's live in `spec/plan/`.
+- `spec/plan/docker-producer-handoff-2026-05-30.md` - Docker producer
+  appliance handoff: PG18 build recipe, disk policy, runtime checks, and
+  future maintainer notes.
 
 The project is code-complete: the planned-calculator docs described work
 now built and are retired history, not implementation authority.

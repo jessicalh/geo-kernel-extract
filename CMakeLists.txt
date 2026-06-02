@@ -336,7 +336,7 @@ nmr_cache_from_env(GROMACS_LIB NMR_GROMACS_LIB FILEPATH
 nmr_cache_from_env(GROMACS_SRC NMR_GROMACS_SRC PATH
     "GROMACS source tree (for internal headers)")
 nmr_cache_from_env(GROMACS_BUILD NMR_GROMACS_BUILD PATH
-    "GROMACS build tree (for generated headers)")
+    "GROMACS generated header root")
 find_library(GROMACS_LIB
     NAMES gromacs_mpi gromacs
     HINTS "${NMR_GROMACS_ROOT}"
@@ -349,7 +349,7 @@ nmr_cache_first_existing(GROMACS_LIB FILEPATH "GROMACS library"
 nmr_cache_first_existing(GROMACS_SRC PATH "GROMACS source tree (for internal headers)"
     "$ENV{HOME}/gromacs/src/gromacs-2026.0/src"
     "$ENV{HOME}/build/gmx2026/gromacs-2026.0/src")
-nmr_cache_first_existing(GROMACS_BUILD PATH "GROMACS build tree (for generated headers)"
+nmr_cache_first_existing(GROMACS_BUILD PATH "GROMACS generated header root"
     "$ENV{HOME}/gromacs/build/gromacs-2026"
     "$ENV{HOME}/build/gmx2026/gromacs-2026-build")
 if(NOT GROMACS_LIB OR NOT EXISTS "${GROMACS_LIB}")
@@ -361,8 +361,8 @@ if(NOT GROMACS_SRC OR NOT EXISTS "${GROMACS_SRC}/gromacs")
     message(FATAL_ERROR "GROMACS source headers not found at ${GROMACS_SRC}. "
                         "Set GROMACS_SRC or NMR_GROMACS_SRC.")
 endif()
-if(NOT GROMACS_BUILD OR NOT EXISTS "${GROMACS_BUILD}")
-    message(FATAL_ERROR "GROMACS build tree not found at ${GROMACS_BUILD}. "
+if(NOT GROMACS_BUILD OR NOT EXISTS "${GROMACS_BUILD}/api/legacy/include/gromacs/libgromacs_export.h")
+    message(FATAL_ERROR "GROMACS generated headers not found at ${GROMACS_BUILD}. "
                         "Set GROMACS_BUILD or NMR_GROMACS_BUILD.")
 endif()
 message(STATUS "GROMACS: ${GROMACS_LIB}")
@@ -904,6 +904,12 @@ install(FILES
         data/bmrb_atom_nom.tbl
         data/calculator_params.toml
         data/ff14sb_params.dat
+    DESTINATION "${NMR_INSTALL_DATA_DIR}")
+install(FILES
+        data/models/aimnet2_wb97m_0.jpt
+    DESTINATION "${NMR_INSTALL_DATA_DIR}/models")
+install(DIRECTORY
+        data/larsen_hbond_grids
     DESTINATION "${NMR_INSTALL_DATA_DIR}")
 install(FILES
         config/nmr_tools.toml.example

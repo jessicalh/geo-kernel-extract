@@ -55,6 +55,13 @@ leak() {
 }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
+is_enabled() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 
 check_file() {
     local label=$1 path=$2
@@ -62,6 +69,15 @@ check_file() {
         ok "$label: $path"
     else
         fail "$label missing${path:+: $path}"
+    fi
+}
+
+check_exec_file() {
+    local label=$1 path=$2
+    if [ -n "$path" ] && [ -x "$path" ]; then
+        ok "$label: $path"
+    else
+        fail "$label missing/not executable${path:+: $path}"
     fi
 }
 
@@ -104,6 +120,48 @@ check_temp_dir() {
         else
             fail "$label cannot be created: $path"
         fi
+    fi
+}
+
+swap_total_kib() {
+    if [ -r /proc/swaps ]; then
+        awk 'NR > 1 { total += $3 } END { printf "%d\n", total + 0 }' /proc/swaps
+    else
+        printf '0\n'
+    fi
+}
+
+check_orca_swap() {
+    local orca_path=$1
+    [ -n "$orca_path" ] && [ -x "$orca_path" ] || return 0
+
+    local min_gib total_kib min_kib total_gib
+    min_gib=${NMR_ORCA_SWAP_MIN_GIB:-${NMR_CONTAINER_ORCA_SWAP_MIN_GIB:-0}}
+    case "$min_gib" in
+        ""|*[!0-9]*)
+            fail "invalid ORCA swap floor: $min_gib"
+            return 0
+            ;;
+    esac
+
+    total_kib=$(swap_total_kib)
+    min_kib=$((min_gib * 1024 * 1024))
+    total_gib=$((total_kib / 1024 / 1024))
+
+    if [ "$total_kib" -le 0 ]; then
+        if is_enabled "${NMR_CONTAINER_REQUIRE_SWAP:-${NMR_DOCTOR_REQUIRE_SWAP:-0}}"; then
+            fail "ORCA swap required but no swap is visible in /proc/swaps"
+        else
+            warn "ORCA executable is present but no swap is visible in /proc/swaps"
+        fi
+    elif [ "$min_kib" -gt 0 ] && [ "$total_kib" -lt "$min_kib" ]; then
+        if is_enabled "${NMR_CONTAINER_REQUIRE_SWAP:-${NMR_DOCTOR_REQUIRE_SWAP:-0}}"; then
+            fail "ORCA swap below requested floor: ${total_gib} GiB visible, ${min_gib} GiB requested"
+        else
+            warn "ORCA swap below requested floor: ${total_gib} GiB visible, ${min_gib} GiB requested"
+        fi
+    else
+        ok "ORCA swap visible: ${total_gib} GiB"
     fi
 }
 
@@ -232,6 +290,8 @@ fi
 
 toml_mopac=$(toml_get "$tools_toml" mopac 2>/dev/null || true)
 toml_tleap=$(toml_get "$tools_toml" tleap 2>/dev/null || true)
+toml_gmx=$(toml_get "$tools_toml" gmx 2>/dev/null || true)
+toml_orca=$(toml_get "$tools_toml" orca 2>/dev/null || true)
 toml_ff14sb=$(toml_get "$tools_toml" ff14sb_params 2>/dev/null || true)
 toml_tmpdir=$(toml_get "$tools_toml" tmpdir 2>/dev/null || true)
 toml_bmrb=$(toml_get "$tools_toml" bmrb_atom_nom 2>/dev/null || true)
@@ -244,9 +304,14 @@ if [ -z "$tleap_configured" ] && [ -n "${AMBERHOME:-}" ]; then
     tleap_configured="${AMBERHOME%/}/bin/tleap"
 fi
 tleap_path=$(resolve_cmd_path "$tleap_configured" tleap)
+gmx_path=$(resolve_cmd_path "$(first_nonempty "${NMR_GMX:-}" "${NMR_GROMACS:-}" "$toml_gmx" || true)" gmx_mpi)
+orca_path=$(resolve_cmd_path "$(first_nonempty "${NMR_ORCA:-}" "$toml_orca" || true)" orca)
 
 check_optional_file "MOPAC binary" "$mopac_path"
 check_optional_file "AmberTools tleap" "$tleap_path"
+check_exec_file "GROMACS gmx_mpi" "$gmx_path"
+check_exec_file "ORCA executable" "$orca_path"
+check_orca_swap "$orca_path"
 
 data_dir="${NMR_DATA_DIR:-}"
 if [ -z "$data_dir" ]; then

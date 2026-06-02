@@ -1,0 +1,6 @@
+# Keep large local producer payloads out of source control by default.
+manifest.toml
+deps/*
+!deps/.gitkeep
+tensorcs15/*
+!tensorcs15/.gitkeep

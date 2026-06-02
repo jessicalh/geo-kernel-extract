@@ -95,6 +95,7 @@ Do not include local build trees, generated smoke output, `tests/bones/`,
 large local fixture trees in a Docker build context unless a specific image
 needs them.
 
-For Docker and other new machines, start from `doc/BUILD_ENVIRONMENT.md`,
+The root `.dockerignore` encodes this producer-context policy. For Docker and
+other new machines, start from `doc/BUILD_ENVIRONMENT.md`,
 `CMakeUserPresets.example.json`, `tests/testpaths.toml`, and the runtime
 `NMR_*` variables rather than copying local absolute paths.
