@@ -58,19 +58,14 @@ public:
     bool RequiresAimnet2() const { return requires_aimnet2_; }
     void SetRequiresAimnet2(bool b) { requires_aimnet2_ = b; }
 
-    // Process every N-th frame; Skip() the (N-1) in between. Default 1.
+    // The one frame-selection knob. Process every N-th frame; Skip() the
+    // (N-1) in between. Default 1 = every frame. This is the SINGLE source
+    // of truth for trajectory cadence: MOPAC (when enabled), per-frame NPY
+    // and per-frame PDB emission all run on exactly the dispatched frames.
+    // There is no separate mopac/npy/pdb stride — that granularity was
+    // removed 2026-05-31 (it let dispatch=2 hide behind emit=1).
     void SetStride(std::size_t s) { stride_ = (s == 0) ? 1 : s; }
     std::size_t Stride() const { return stride_; }
-
-    // Stride at which MOPAC runs (in original-TRR-frame-index units).
-    // Trajectory::Run overrides per-frame skip_mopac so MOPAC fires only
-    // when frame_idx % mopac_stride == 0. Default 1 = MOPAC on every
-    // dispatched frame (FullFatFrameExtraction historical behaviour);
-    // higher values match the NPY/PDB emit stride so heavy work
-    // coincides with disk-emitted frames. Ignored when per_frame_opts_
-    // skip_mopac is already true (PerFrameExtractionSet default).
-    void SetMopacStride(std::size_t s) { mopac_stride_ = (s == 0) ? 1 : s; }
-    std::size_t MopacStride() const { return mopac_stride_; }
 
     // Mutable access for the shapes themselves to populate.
     RunOptions& MutablePerFrameRunOptions() { return per_frame_opts_; }
@@ -89,7 +84,6 @@ private:
     std::unordered_set<std::type_index> required_conf_result_types_;
     bool requires_aimnet2_ = false;
     std::size_t stride_ = 1;
-    std::size_t mopac_stride_ = 1;
 };
 
 }  // namespace nmr

@@ -75,6 +75,26 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     OperationLog::Info(LogCalcOther, "Trajectory::Run",
         "starting " + config.Name() + " on " + xtc_path_.string());
 
+    // One authoritative statement of effective extraction policy. The
+    // dispatch stride and the always-on/skip toggles used to be decided in
+    // RunConfiguration factories and never surfaced; a dispatch-stride=2
+    // hiding behind an emit-stride=1 silently halved two production runs.
+    // This line makes the real cadence and the per-frame policy visible up
+    // front. (APBS and AIMNet2 are always-on by constitution, reported here
+    // for completeness, not because they are switchable.)
+    {
+        const RunOptions& o = config.PerFrameRunOptions();
+        OperationLog::Info(LogCalcOther, "Trajectory::Run",
+            "effective policy: stride=" + std::to_string(config.Stride()) +
+            " (process every " + std::to_string(config.Stride()) +
+            " TRR frame(s); emit NPY+PDB on each)"
+            " mopac="   + (o.skip_mopac   ? "off" : "on") +
+            " coulomb=" + (o.skip_coulomb ? "off" : "on") +
+            " apbs="    + (o.skip_apbs    ? "off" : "on") +
+            " dssp="    + (o.skip_dssp    ? "off" : "on") +
+            " aimnet2=" + (config.RequiresAimnet2() ? "on" : "off"));
+    }
+
     // =========================================================
     // Phase 1: open handler
     // =========================================================
@@ -218,14 +238,10 @@ Status Trajectory::Run(TrajectoryProtein& tp,
 
     {
         auto& conf0 = tp.MutableCanonicalConformation_();
-        // Per-frame MOPAC stride override. config.MopacStride() == 1 (default)
-        // keeps the existing FullFatFrameExtraction "MOPAC every frame"
-        // behaviour. Higher values gate MOPAC by frame_idx % stride; the
-        // Mopac* TR family handles HasResult<MopacResult>() per-frame
-        // (conditional-attach TR discipline, OBJECT_MODEL.md).
-        if (config.MopacStride() > 1) {
-            frame_opts.skip_mopac = (/*frame_idx=*/0 % config.MopacStride() != 0);
-        }
+        // MOPAC runs on every dispatched frame when enabled; skip_mopac is
+        // set by the RunConfiguration shape (FullFat=on, PerFrame=off). No
+        // per-frame stride gate — the single dispatch stride governs which
+        // frames are dispatched at all.
         RunResult rr = OperationRunner::Run(conf0, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
@@ -273,10 +289,6 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         frame_opts.velocities   = &env_.velocities;
         frame_opts.box_matrix   = &env_.box_matrix;
 
-        // Per-frame MOPAC stride override; see Phase 6 block above.
-        if (config.MopacStride() > 1) {
-            frame_opts.skip_mopac = (handler_->Index() % config.MopacStride() != 0);
-        }
         auto conf = tp.TickConformation(handler_->ProteinPositions());
         RunResult rr = OperationRunner::Run(*conf, frame_opts);
         if (!rr.Ok()) {

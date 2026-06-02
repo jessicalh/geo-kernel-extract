@@ -160,37 +160,6 @@ ParseResult ParseMutant(int argc, char* argv[]) {
     return r;
 }
 
-std::optional<FramePdbEmission> ParseFramePdbEmission(int argc, char* argv[]) {
-    const std::string dir = GetArg(argc, argv, "--emit-frame-pdbs");
-    if (dir.empty()) return std::nullopt;
-    FramePdbEmission e;
-    e.output_dir = dir;
-    e.decorator  = GetArg(argc, argv, "--pdb-decorator");
-    const std::string s_stride  = GetArg(argc, argv, "--pdb-stride");
-    const std::string s_from_ps = GetArg(argc, argv, "--pdb-from-ps");
-    const std::string s_to_ps   = GetArg(argc, argv, "--pdb-to-ps");
-    if (!s_stride.empty())  e.stride  = std::strtoull(s_stride.c_str(), nullptr, 10);
-    if (!s_from_ps.empty()) e.from_ps = std::strtod(s_from_ps.c_str(), nullptr);
-    if (!s_to_ps.empty())   e.to_ps   = std::strtod(s_to_ps.c_str(), nullptr);
-    if (e.stride == 0) e.stride = 1;
-    return e;
-}
-
-std::optional<FrameNpyEmission> ParseFrameNpyEmission(int argc, char* argv[]) {
-    const std::string dir = GetArg(argc, argv, "--emit-frame-npys");
-    if (dir.empty()) return std::nullopt;
-    FrameNpyEmission e;
-    e.output_dir = dir;
-    const std::string s_stride  = GetArg(argc, argv, "--npy-stride");
-    const std::string s_from_ps = GetArg(argc, argv, "--npy-from-ps");
-    const std::string s_to_ps   = GetArg(argc, argv, "--npy-to-ps");
-    if (!s_stride.empty())  e.stride  = std::strtoull(s_stride.c_str(), nullptr, 10);
-    if (!s_from_ps.empty()) e.from_ps = std::strtod(s_from_ps.c_str(), nullptr);
-    if (!s_to_ps.empty())   e.to_ps   = std::strtod(s_to_ps.c_str(), nullptr);
-    if (e.stride == 0) e.stride = 1;
-    return e;
-}
-
 ParseResult ParseTrajectory(int argc, char* argv[]) {
     ParseResult r;
     TrajectoryMode m;
@@ -202,16 +171,15 @@ ParseResult ParseTrajectory(int argc, char* argv[]) {
             "  DIR must contain production.tpr, production.trr, production.edr";
         return r;
     }
-    m.mopac     = HasFlag(argc, argv, "--mopac");
-    const std::string s_mopac_stride = GetArg(argc, argv, "--mopac-stride");
-    if (!s_mopac_stride.empty()) {
-        m.mopac_stride = std::strtoull(s_mopac_stride.c_str(), nullptr, 10);
-        if (m.mopac_stride == 0) {
-            m.mopac_stride = 1;
-        }
+    m.mopac = HasFlag(argc, argv, "--mopac");
+    // The one cadence knob. --stride N processes every N-th TRR frame and
+    // emits NPY+PDB on each; default 1 = every frame. No separate
+    // mopac/npy/pdb stride exists any more.
+    const std::string s_stride = GetArg(argc, argv, "--stride");
+    if (!s_stride.empty()) {
+        m.stride = std::strtoull(s_stride.c_str(), nullptr, 10);
+        if (m.stride == 0) m.stride = 1;
     }
-    m.emit_pdbs = ParseFramePdbEmission(argc, argv);
-    m.emit_npys = ParseFrameNpyEmission(argc, argv);
     r.spec   = ModeSpec{std::move(m)};
     r.common = ParseCommon(argc, argv);
     return r;

@@ -102,16 +102,9 @@ bool BoxToCellParameters(const Eigen::Matrix3d& box,
 std::string MakeFilename(const FramePdbEmitter::Config& cfg,
                          std::size_t frame_idx, double time_ps) {
     char buf[512];
-    if (cfg.decorator.empty()) {
-        std::snprintf(buf, sizeof(buf), "%s_f%06zu_t%.1f.pdb",
-                      cfg.stem.c_str(),
-                      frame_idx, time_ps);
-    } else {
-        std::snprintf(buf, sizeof(buf), "%s_%s_f%06zu_t%.1f.pdb",
-                      cfg.stem.c_str(),
-                      cfg.decorator.c_str(),
-                      frame_idx, time_ps);
-    }
+    std::snprintf(buf, sizeof(buf), "%s_f%06zu_t%.1f.pdb",
+                  cfg.stem.c_str(),
+                  frame_idx, time_ps);
     return std::string(buf);
 }
 
@@ -221,11 +214,6 @@ void EmitOnePdb(const Protein& protein,
         std::snprintf(buf, sizeof(buf),
             "REMARK   1 stem=%s\n", cfg.stem.c_str());
         out << buf;
-        if (!cfg.decorator.empty()) {
-            std::snprintf(buf, sizeof(buf),
-                "REMARK   1 decorator=%s\n", cfg.decorator.c_str());
-            out << buf;
-        }
     }
 
     // ── CRYST1 if box matrix present ───────────────────────────────
@@ -299,13 +287,9 @@ void FramePdbEmitter::Configure(const Protein& protein, Config config) {
     s.active  = !s.config.output_dir.empty();
 
     if (s.active) {
-        std::string msg = "configured: dir=" + s.config.output_dir.string() +
-            " stem=" + s.config.stem +
-            " stride=" + std::to_string(s.config.stride);
-        if (!s.config.decorator.empty()) {
-            msg += " decorator=" + s.config.decorator;
-        }
-        OperationLog::Info(LogCalcOther, "FramePdbEmitter", msg);
+        OperationLog::Info(LogCalcOther, "FramePdbEmitter",
+            "configured: dir=" + s.config.output_dir.string() +
+            " stem=" + s.config.stem);
     } else {
         OperationLog::Warn("FramePdbEmitter",
             "Configure called with empty output_dir; emitter remains inactive");
@@ -320,8 +304,8 @@ void FramePdbEmitter::OnFrame(const ProteinConformation& conf,
     auto& s = State();
     if (!s.active) return;
     if (!s.protein) return;
-    if (time_ps < s.config.from_ps || time_ps >= s.config.to_ps) return;
-    if (s.config.stride > 1 && (frame_idx % s.config.stride) != 0) return;
+    // No stride/window gate here: Trajectory::Run only calls OnFrame for
+    // dispatched frames, and the single --stride already selected them.
     EmitOnePdb(*s.protein, conf, frame_idx, time_ps, box_matrix);
 }
 

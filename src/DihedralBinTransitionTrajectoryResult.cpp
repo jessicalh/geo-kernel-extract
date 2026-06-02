@@ -342,8 +342,9 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
         "Transition counts are stride-sensitive. At <= 100 ps cadence, "
         "surface-exposed sidechain rotamer transitions are captured; "
         "buried-residue transitions (dwell ~ns-us) require finer cadence "
-        "to resolve. Production stride=2 (20 ps/frame) captures surface; "
-        "test stride=300 (3 ns/frame) misses most rotamer transitions."));
+        "to resolve. Cadence is set by --stride (default 1 = every TRR "
+        "frame); coarser strides miss progressively faster transitions "
+        "(e.g. stride=300 / 3 ns/frame misses most rotamer transitions)."));
     grp.createAttribute("transition_gate", std::string(
         "Both prev and curr frame must have an observed bin (non-"
         "unassigned) for a transition to count. Wrap-tolerant via bin "

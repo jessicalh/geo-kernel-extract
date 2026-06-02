@@ -7,11 +7,9 @@
 /// the @ref ModeSpec dispatch type. The runner uses @c std::visit
 /// rather than a JobMode-enum switch.
 
-#include "FrameEmission.h"
 #include "OrcaRunLoader.h"
 
 #include <filesystem>
-#include <optional>
 #include <variant>
 
 namespace nmr::cli {
@@ -60,27 +58,24 @@ struct MutantMode {
 ///
 /// @c dir contains @c production.tpr, @c production.trr, @c production.edr.
 /// The parent of @c dir is searched for @c topol.top by convention
-/// (GROMACS readback). Emits the trajectory H5 unconditionally; per-frame
-/// PDBs (@c emit_pdbs) and per-frame NPYs (@c emit_npys) are independent
-/// opt-ins.
+/// (GROMACS readback). Into @c --output the run always writes the
+/// trajectory H5, the per-protein topology sidecars, and per-frame NPYs
+/// (@c output/npys/) + per-frame PDBs (@c output/pdbs/) — one set per
+/// dispatched frame.
+///
+/// Frame cadence is governed by exactly one knob, @c stride (CLI
+/// @c --stride): MOPAC (when enabled), NPY emission and PDB emission all
+/// act on the dispatched frames, never on independent sub-strides. The
+/// former @c --mopac-stride / @c --npy-stride / @c --pdb-stride and the
+/// emit time-windows were removed 2026-05-31 (one of them silently
+/// halved production runs).
 ///
 /// MOPAC default is off here because PM7+MOZYME is too expensive for
 /// fleet-scale trajectory runs.
 struct TrajectoryMode {
-    std::filesystem::path           dir;
-    bool                            mopac = false;
-    /// @brief Stride at which MOPAC runs (in TRR-frame-index units).
-    ///
-    /// When @c mopac is true, MOPAC is invoked only on frames where
-    /// @c frame_idx % mopac_stride == 0. Other dispatched frames run
-    /// the rest of the pipeline without MopacResult attached (per the
-    /// conditional-attach TR discipline). Should match the NPY-emit
-    /// stride so MOPAC-touched frames coincide with the disk-emitted
-    /// frames. Default 1 = MOPAC on every dispatched frame (the
-    /// original FullFatFrameExtraction behaviour).
-    std::size_t mopac_stride = 1;
-    std::optional<FramePdbEmission> emit_pdbs;
-    std::optional<FrameNpyEmission> emit_npys;
+    std::filesystem::path dir;
+    bool                  mopac  = false;  ///< @c --mopac: FullFat (MOPAC on every dispatched frame).
+    std::size_t           stride = 1;      ///< @c --stride N: process every N-th TRR frame. The one cadence knob.
 };
 
 /// @brief The three GROMACS production files a @c --trajectory DIR holds.

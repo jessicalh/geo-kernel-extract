@@ -52,8 +52,6 @@ void FrameNpyEmitter::Configure(const Protein& protein, Config config) {
     s.protein = &protein;
     s.config = std::move(config);
     s.sidecars_written = false;
-    if (s.config.stride == 0)
-        s.config.stride = 1;
     s.active = !s.config.output_dir.empty();
 
     if (!s.active) {
@@ -63,7 +61,7 @@ void FrameNpyEmitter::Configure(const Protein& protein, Config config) {
 
     OperationLog::Info(LogCalcOther,
                        "FrameNpyEmitter",
-                       "configured: dir=" + s.config.output_dir.string() + " stride=" + std::to_string(s.config.stride));
+                       "configured: dir=" + s.config.output_dir.string());
 }
 
 
@@ -91,11 +89,8 @@ void FrameNpyEmitter::OnFrame(const ProteinConformation& conf, std::size_t frame
         s.sidecars_written = true;
     }
 
-    if (time_ps < s.config.from_ps || time_ps >= s.config.to_ps)
-        return;
-    if (s.config.stride > 1 && (frame_idx % s.config.stride) != 0)
-        return;
-
+    // No stride/window gate: Trajectory::Run only calls OnFrame for the
+    // frames the single --stride dispatched.
     const fs::path frame_dir = s.config.output_dir / FrameDirName(frame_idx);
     fs::create_directories(frame_dir);
     const int arrays = ConformationResult::WriteAllFeatures(conf, frame_dir.string());

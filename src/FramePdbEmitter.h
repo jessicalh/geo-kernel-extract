@@ -6,16 +6,15 @@
 // file-local in the .cpp; the public surface is three static methods.
 //
 //   Configure(protein, config) -- assemble: stash a const-Protein handle
-//                                  + the Config (output dir, stem,
-//                                  decorator, stride, time window).
+//                                  + the Config (output dir, stem).
 //                                  Called once at startup from nmr_extract
-//                                  when --emit-frame-pdbs is present.
+//                                  in trajectory mode.
 //   OnFrame(conf, frame_idx, time_ps, box_matrix?)
 //                                  -- called per-frame from
-//                                  Trajectory::Run. If not configured,
-//                                  early-returns; else gates on window
-//                                  + stride and emits a single PDB
-//                                  file when all gates pass.
+//                                  Trajectory::Run for each dispatched
+//                                  frame. If not configured, early-returns;
+//                                  else emits a single PDB file. Cadence is
+//                                  the single --stride; no local gate.
 //   Reset()                       -- clear configuration; OnFrame
 //                                  becomes inert again. For tests.
 //
@@ -28,8 +27,8 @@
 //     does not -- CRYST1 omitted when null or zero)
 //
 // Writes:
-//   - one PDB file per accepted frame, named
-//     {stem}{_decorator?}_f{NNNNNN}_t{ps:.1f}.pdb in output_dir
+//   - one PDB file per dispatched frame, named
+//     {stem}_f{NNNNNN}_t{ps:.1f}.pdb in output_dir
 //   - HEADER + REMARK provenance, optional CRYST1, ATOM with hydrogens,
 //     TER between biological chains, CONECT for disulfides only, END
 //
@@ -41,7 +40,6 @@
 #include <Eigen/Dense>
 #include <cstddef>
 #include <filesystem>
-#include <limits>
 #include <string>
 
 namespace nmr {
@@ -52,14 +50,8 @@ class ProteinConformation;
 class FramePdbEmitter {
 public:
     struct Config {
-        std::filesystem::path output_dir;        // empty = inert
-        std::string           stem;              // from trajectory dir basename
-        std::string           decorator;         // optional run tag; empty = none
-        std::size_t           stride = 1;        // frames-as-read
-        double                from_ps =
-            -std::numeric_limits<double>::infinity();
-        double                to_ps =
-             std::numeric_limits<double>::infinity();
+        std::filesystem::path output_dir;  // empty = inert
+        std::string           stem;        // from trajectory dir basename
     };
 
     static void Configure(const Protein& protein, Config config);

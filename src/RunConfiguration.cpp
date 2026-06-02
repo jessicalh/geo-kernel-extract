@@ -128,7 +128,11 @@ void Produces(RunConfiguration& c) {
 // Production canonical trajectory shape. Full classical stack + APBS +
 // AIMNet2 every dispatched frame. MOPAC skipped (FullFat only);
 // vacuum Coulomb skipped because APBS is the active electrostatic field.
-// Default stride 2: process every other trajectory frame.
+//
+// Stride is intentionally NOT set here: it defaults to 1 (every frame)
+// and is the caller's single knob (CLI --stride → SetStride). A buried
+// SetStride(2) here used to silently halve every production run while the
+// CLI advertised "stride 1" at the emit layer — removed 2026-05-31.
 
 RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     RunConfiguration c;
@@ -138,9 +142,6 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.per_frame_opts_.skip_apbs    = false;
     c.per_frame_opts_.skip_coulomb = true;   // APBS supersedes
     c.per_frame_opts_.skip_dssp    = false;
-
-    // Production stride: process every other trajectory frame.
-    c.SetStride(2);
 
     // Mandatory per frame; Phase 4 returns kConfigRequiresAimnet2
     // if the Session has no model loaded.
@@ -292,10 +293,9 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
 
 // ── FullFatFrameExtraction ───────────────────────────────────────
 //
-// PerFrameExtractionSet with MOPAC and vacuum Coulomb enabled. Intended
-// for selected or strided frame use; CLI --mopac-stride gates MOPAC by
-// original TRR frame index while the rest of the pipeline still runs on
-// each dispatched frame.
+// PerFrameExtractionSet with MOPAC and vacuum Coulomb enabled. MOPAC runs
+// on every dispatched frame (the single --stride governs the cadence);
+// there is no separate MOPAC stride.
 //
 // MOPAC-family ConformationResult sources attach conditionally inside
 // OperationRunner when MOPAC runs and succeeds; the MOPAC-family

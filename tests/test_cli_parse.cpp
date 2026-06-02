@@ -130,48 +130,27 @@ TEST(CliParse, TrajectoryMopacFlagOptsIn) {
 }
 
 
-// ---- Trajectory sidecar emission ----
+// ---- Trajectory stride (the single cadence knob) ----
 
-TEST(CliParse, TrajectoryPdbEmission) {
-    Argv a{"nmr_extract", "--trajectory", "/data/run",
-           "--emit-frame-pdbs", "/tmp/pdbs",
-           "--pdb-stride", "100",
-           "--pdb-from-ps", "1000",
-           "--pdb-to-ps", "5000",
-           "--pdb-decorator", "run1"};
+TEST(CliParse, TrajectoryStrideDefaultsToOne) {
+    Argv a{"nmr_extract", "--trajectory", "/data/run"};
     const auto r = nmr::cli::Parse(a.argc(), a.argv());
     ASSERT_TRUE(r.spec.has_value());
-    const auto& m = std::get<nmr::cli::TrajectoryMode>(*r.spec);
-    ASSERT_TRUE(m.emit_pdbs.has_value());
-    EXPECT_EQ(m.emit_pdbs->output_dir.string(), "/tmp/pdbs");
-    EXPECT_EQ(m.emit_pdbs->stride,              100u);
-    EXPECT_DOUBLE_EQ(m.emit_pdbs->from_ps,      1000.0);
-    EXPECT_DOUBLE_EQ(m.emit_pdbs->to_ps,        5000.0);
-    EXPECT_EQ(m.emit_pdbs->decorator,           "run1");
-    EXPECT_FALSE(m.emit_npys.has_value());
+    EXPECT_EQ(std::get<nmr::cli::TrajectoryMode>(*r.spec).stride, 1u);
 }
 
-TEST(CliParse, TrajectoryNpyEmission) {
-    Argv a{"nmr_extract", "--trajectory", "/data/run",
-           "--emit-frame-npys", "/tmp/npys",
-           "--npy-stride", "500"};
+TEST(CliParse, TrajectoryStrideFlag) {
+    Argv a{"nmr_extract", "--trajectory", "/data/run", "--stride", "5"};
     const auto r = nmr::cli::Parse(a.argc(), a.argv());
     ASSERT_TRUE(r.spec.has_value());
-    const auto& m = std::get<nmr::cli::TrajectoryMode>(*r.spec);
-    ASSERT_TRUE(m.emit_npys.has_value());
-    EXPECT_EQ(m.emit_npys->output_dir.string(), "/tmp/npys");
-    EXPECT_EQ(m.emit_npys->stride,              500u);
+    EXPECT_EQ(std::get<nmr::cli::TrajectoryMode>(*r.spec).stride, 5u);
 }
 
-TEST(CliParse, TrajectoryBothEmissions) {
-    Argv a{"nmr_extract", "--trajectory", "/data/run",
-           "--emit-frame-pdbs", "/tmp/pdbs", "--pdb-stride", "100",
-           "--emit-frame-npys", "/tmp/npys", "--npy-stride", "500"};
+TEST(CliParse, TrajectoryStrideZeroNormalisedToOne) {
+    Argv a{"nmr_extract", "--trajectory", "/data/run", "--stride", "0"};
     const auto r = nmr::cli::Parse(a.argc(), a.argv());
     ASSERT_TRUE(r.spec.has_value());
-    const auto& m = std::get<nmr::cli::TrajectoryMode>(*r.spec);
-    EXPECT_TRUE(m.emit_pdbs.has_value());
-    EXPECT_TRUE(m.emit_npys.has_value());
+    EXPECT_EQ(std::get<nmr::cli::TrajectoryMode>(*r.spec).stride, 1u);
 }
 
 

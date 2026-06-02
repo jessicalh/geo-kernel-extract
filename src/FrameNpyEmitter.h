@@ -6,10 +6,9 @@
 // file-local in the .cpp; the public surface is three static methods.
 //
 //   Configure(protein, config) -- stash a const-Protein handle + the
-//                                  Config (output dir, stride, time
-//                                  window). Called once at startup
-//                                  from nmr_extract when
-//                                  --emit-frame-npys is present.
+//                                  Config (output dir). Called once at
+//                                  startup from nmr_extract in
+//                                  trajectory mode.
 //                                  Does NOT touch the protein: at this
 //                                  point in trajectory mode the protein
 //                                  is not yet finalized (no rings,
@@ -22,12 +21,13 @@
 //                                  tp.Seed) emits the per-protein
 //                                  CategoryInfoProjection and
 //                                  TopologySidecar into output_dir.
-//                                  Per-frame: gates on window + stride
-//                                  and on hit creates
+//                                  Per dispatched frame: creates
 //                                  output_dir/frame_NNNNNN/ and calls
 //                                  ConformationResult::WriteAllFeatures,
 //                                  mirroring the single-conformation
-//                                  output of modes 1-4.
+//                                  output of modes 1-4. No local gate;
+//                                  the single --stride already selected
+//                                  the frame.
 //   Reset()                       -- clear configuration. For tests.
 //
 // Cost reality. WriteAllFeatures emits many NPY files per accepted
@@ -44,7 +44,6 @@
 
 #include <cstddef>
 #include <filesystem>
-#include <limits>
 
 namespace nmr {
 
@@ -55,9 +54,6 @@ class FrameNpyEmitter {
 public:
     struct Config {
         std::filesystem::path output_dir;  // empty = inert
-        std::size_t stride = 1;            // frames-as-read; 0 normalised to 1
-        double from_ps = -std::numeric_limits<double>::infinity();
-        double to_ps = std::numeric_limits<double>::infinity();
     };
 
     static void Configure(const Protein& protein, Config config);

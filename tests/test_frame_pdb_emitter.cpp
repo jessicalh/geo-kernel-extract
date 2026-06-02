@@ -1,9 +1,11 @@
 //
-// test_frame_pdb_emitter -- discipline tests for the opt-in trajectory
-// frame-PDB writer. Mirrors the per-TR test pattern in
-// test_amber_streaming.cpp (fleet_amber/1P9J_5801 fixture) but tests
-// the emitter directly: not-configured-no-op, stride/window gating,
-// decorator filename, content sanity.
+// test_frame_pdb_emitter -- discipline tests for the trajectory frame-PDB
+// writer. Mirrors the per-TR test pattern in test_amber_streaming.cpp
+// (fleet_amber/1P9J_5801 fixture) but tests the emitter directly:
+// not-configured-no-op, one-PDB-per-dispatched-frame, dispatch-stride
+// gating, content sanity. The emitter has no stride/window of its own —
+// it emits on every frame Trajectory::Run dispatches, and the single
+// RunConfiguration stride selects those frames.
 //
 // Singleton state is shared across test cases; the fixture calls
 // FramePdbEmitter::Reset() in SetUp + TearDown to keep cases isolated.
@@ -160,7 +162,6 @@ TEST_F(FramePdbEmitterTest, ConfiguredEmitsOnePerFrame) {
     nmr::FramePdbEmitter::Config cfg;
     cfg.output_dir = outdir;
     cfg.stem       = "p1p9j";
-    cfg.stride     = 1;
     nmr::FramePdbEmitter::Configure(tp.ProteinRef(), cfg);
     EXPECT_TRUE(nmr::FramePdbEmitter::IsActive());
 
@@ -178,7 +179,8 @@ TEST_F(FramePdbEmitterTest, ConfiguredEmitsOnePerFrame) {
 
 
 // ============================================================================
-// Stride larger than fixture length leaves only frame 0 emitted.
+// Dispatch stride larger than the fixture length leaves only frame 0
+// emitted — the single --stride end to end (RunConfiguration::SetStride).
 // ============================================================================
 
 TEST_F(FramePdbEmitterTest, StrideGatesToFrameZero) {
@@ -194,11 +196,11 @@ TEST_F(FramePdbEmitterTest, StrideGatesToFrameZero) {
     nmr::FramePdbEmitter::Config cfg;
     cfg.output_dir = outdir;
     cfg.stem       = "p1p9j";
-    cfg.stride     = 99999;   // > fixture length: only frame 0 hits
     nmr::FramePdbEmitter::Configure(tp.ProteinRef(), cfg);
 
     nmr::RunConfiguration config;
     ConfigureMinimalRun(config, "FramePdbEmitterStrideGate");
+    config.SetStride(99999);  // > fixture length: only frame 0 dispatched
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
     nmr::Session session;
@@ -206,79 +208,6 @@ TEST_F(FramePdbEmitterTest, StrideGatesToFrameZero) {
 
     EXPECT_EQ(CountPdbsIn(outdir), 1u)
         << "stride beyond fixture length must leave only frame 0";
-}
-
-
-// ============================================================================
-// Time window: from_ps so high that no frame's time clears it.
-// ============================================================================
-
-TEST_F(FramePdbEmitterTest, WindowGatesNothing) {
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
-
-    fs::path outdir = FreshTempDir("window_gates");
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
-
-    nmr::FramePdbEmitter::Config cfg;
-    cfg.output_dir = outdir;
-    cfg.stem       = "p1p9j";
-    cfg.stride     = 1;
-    cfg.from_ps    = 1.0e12;  // far in the future
-    nmr::FramePdbEmitter::Configure(tp.ProteinRef(), cfg);
-
-    nmr::RunConfiguration config;
-    ConfigureMinimalRun(config, "FramePdbEmitterWindowGate");
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
-                         fix.tpr_path, fix.edr_path);
-    nmr::Session session;
-    ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
-
-    EXPECT_EQ(CountPdbsIn(outdir), 0u)
-        << "from_ps beyond every frame's time must gate them all out";
-}
-
-
-// ============================================================================
-// Decorator appears in the emitted filenames.
-// ============================================================================
-
-TEST_F(FramePdbEmitterTest, DecoratorInFilename) {
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
-
-    fs::path outdir = FreshTempDir("decorator");
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
-
-    nmr::FramePdbEmitter::Config cfg;
-    cfg.output_dir = outdir;
-    cfg.stem       = "p1p9j";
-    cfg.decorator  = "chain-test";
-    cfg.stride     = 99999;   // emit only frame 0 to keep test cheap
-    nmr::FramePdbEmitter::Configure(tp.ProteinRef(), cfg);
-
-    nmr::RunConfiguration config;
-    ConfigureMinimalRun(config, "FramePdbEmitterDecorator");
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
-                         fix.tpr_path, fix.edr_path);
-    nmr::Session session;
-    ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
-
-    ASSERT_EQ(CountPdbsIn(outdir), 1u);
-    bool saw_decorator = false;
-    for (const auto& e : fs::directory_iterator(outdir)) {
-        if (e.path().filename().string().find("chain-test") != std::string::npos) {
-            saw_decorator = true;
-        }
-    }
-    EXPECT_TRUE(saw_decorator)
-        << "expected decorator 'chain-test' in emitted PDB filename";
 }
 
 
@@ -301,11 +230,11 @@ TEST_F(FramePdbEmitterTest, ContentSanity) {
     nmr::FramePdbEmitter::Config cfg;
     cfg.output_dir = outdir;
     cfg.stem       = "p1p9j";
-    cfg.stride     = 99999;   // only frame 0
     nmr::FramePdbEmitter::Configure(tp.ProteinRef(), cfg);
 
     nmr::RunConfiguration config;
     ConfigureMinimalRun(config, "FramePdbEmitterContentSanity");
+    config.SetStride(99999);  // dispatch only frame 0 to keep the test cheap
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
     nmr::Session session;

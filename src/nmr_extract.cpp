@@ -234,35 +234,34 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
     const std::string traj_dir = mode.dir.string();
     OperationLog::Info(LogFileIO, "nmr_extract", "trajectory mode: dir=" + traj_dir);
 
+    const std::string output_dir = common.output_dir.string();
+    if (output_dir.empty()) {
+        std::fprintf(stderr, "ERROR: --trajectory requires --output DIR\n");
+        return 1;
+    }
+
     TrajectoryProtein tp;
     if (!tp.BuildFromTrajectory(traj_dir)) {
         std::fprintf(stderr, "ERROR: %s\n", tp.Error().c_str());
         return 1;
     }
 
-    if (mode.emit_pdbs.has_value()) {
-        const auto& e = *mode.emit_pdbs;
-        FramePdbEmitter::Config cfg;
-        cfg.output_dir = e.output_dir;
-        cfg.stem       = fs::path(traj_dir).filename().string();
-        if (cfg.stem.empty()) {
-            cfg.stem = fs::path(traj_dir).parent_path().filename().string();
+    // Per-frame sidecars always emit in trajectory mode — one set per
+    // dispatched frame, cadence governed solely by --stride. PDBs to
+    // output/pdbs, the full per-conformation NPY set to output/npys.
+    {
+        std::string stem = fs::path(traj_dir).filename().string();
+        if (stem.empty()) {
+            stem = fs::path(traj_dir).parent_path().filename().string();
         }
-        cfg.decorator = e.decorator;
-        cfg.stride    = e.stride;
-        cfg.from_ps   = e.from_ps;
-        cfg.to_ps     = e.to_ps;
-        FramePdbEmitter::Configure(tp.ProteinRef(), std::move(cfg));
-    }
+        FramePdbEmitter::Config pcfg;
+        pcfg.output_dir = fs::path(output_dir) / "pdbs";
+        pcfg.stem       = stem;
+        FramePdbEmitter::Configure(tp.ProteinRef(), std::move(pcfg));
 
-    if (mode.emit_npys.has_value()) {
-        const auto& e = *mode.emit_npys;
-        FrameNpyEmitter::Config cfg;
-        cfg.output_dir = e.output_dir;
-        cfg.stride     = e.stride;
-        cfg.from_ps    = e.from_ps;
-        cfg.to_ps      = e.to_ps;
-        FrameNpyEmitter::Configure(tp.ProteinRef(), std::move(cfg));
+        FrameNpyEmitter::Config ncfg;
+        ncfg.output_dir = fs::path(output_dir) / "npys";
+        FrameNpyEmitter::Configure(tp.ProteinRef(), std::move(ncfg));
     }
 
     const auto files = cli::TrajectoryInputFiles::FromProductionDir(mode.dir);
@@ -271,17 +270,12 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
     RunConfiguration config = mode.mopac
         ? RunConfiguration::FullFatFrameExtraction()
         : RunConfiguration::PerFrameExtractionSet();
+    // The single cadence knob: process every mode.stride-th TRR frame.
+    config.SetStride(mode.stride);
     if (mode.mopac) {
         config.MutablePerFrameRunOptions().net_charge = tp.NetCharge();
-        // Per-frame MOPAC stride: trajectory loop overrides skip_mopac
-        // each frame based on (frame_idx % mopac_stride). Default 1 keeps
-        // the historical FullFatFrameExtraction "MOPAC every frame".
-        // Larger values can be matched with NPY/PDB emit stride so heavy
-        // work coincides with disk-emitted frames.
-        config.SetMopacStride(mode.mopac_stride);
     }
 
-    const std::string output_dir = common.output_dir.string();
     const Status s = traj.Run(tp, config, session, /*extras=*/{}, /*output_dir=*/output_dir);
     if (s != kOk) {
         std::fprintf(stderr, "ERROR: Trajectory::Run returned status 0x%x\n", s);

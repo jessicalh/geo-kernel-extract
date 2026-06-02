@@ -130,9 +130,12 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         charge_result.ChargeTable().NonAuthoritativePbRadiusCount();
     if (non_authoritative_radii > 0) {
         OperationLog::Warn("ApbsFieldResult::Compute",
-            "APBS running with " + std::to_string(non_authoritative_radii) +
-            " non-authoritative PB radii; GROMACS/CHARMM radius conversion "
-            "is quarantined pending explicit CHARMM/APBS support");
+            "APBS ran with " + std::to_string(non_authoritative_radii) +
+            " atoms on the flat 1.5 A placeholder PB radius "
+            "(kCompatibilityPlaceholderPbRadiusAngstrom; real per-element "
+            "ff14SB->PB radii are not yet wired). The PB dielectric boundary "
+            "is therefore placeholder-quality: this frame's apbs_E / apbs_efg "
+            "are fully populated and finite but NOT physically validated.");
     }
 
     // No atoms: the bbox below seeds from x_coords[0], and there is nothing to
