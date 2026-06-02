@@ -1,6 +1,6 @@
-# Producer Docker context hygiene. Keep generated state, local archives, and
-# large fixtures out of image builds; the Dockerfile consumes the installability
-# contract rather than accidentally copying machine-local dependency trees.
+# Producer source-image context hygiene. The dependency base image already
+# contains docker/vendor; copying it again into the source build stage would
+# add tens of gigabytes of unused context and layers.
 
 .git/
 .git-old/
@@ -69,6 +69,6 @@ tests/golden/smoke/
 data/topology/
 data/ccd/*
 !data/ccd/README.md
+data/larsen_hbond_grids/
 
-# The producer image consumes the dependency base image; do not copy vendored binary payloads into /src.
-docker/vendor/**
+docker/vendor/
