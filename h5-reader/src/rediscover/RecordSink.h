@@ -50,6 +50,7 @@ struct FeatureSchema {
     std::vector<FeatureColumn> aggregatedColumns;  // aggregated row schema
     std::size_t maxSourceSlots = 0;      // padding width for the aggregated row
     bool includeBareKernel = true;       // false when no producer cross-check exists
+    bool includeMcLitKernel = false;     // McConnell Δχ-scaled local PCS tensor
 };
 
 // CSV sink: opens the two files, writes the header row, then accepts rows.

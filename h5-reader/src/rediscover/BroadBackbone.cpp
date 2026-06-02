@@ -3,6 +3,7 @@
 #include "Catalog.h"
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
+#include "McConnellLiteratureKernel.h"
 #include "RingGeometryCache.h"
 #include "SphericalBasis.h"
 #include "SpatialIndexSet.h"
@@ -351,6 +352,10 @@ void bondAttacher(const Body& body, const AtomState& st, const FrameResult& fr,
     s.bond_atom_a = b.atomIndexA;
     s.bond_atom_b = b.atomIndexB;
     s.bond_axis_local = fr.frame.is_valid ? fr.frame.ToLocal(axisU) : axisU;
+    if (fr.frame.is_valid) {
+        s.bond_mc_lit_kernel =
+            McConnellSourceLiteratureKernelLocal(s, &s.bond_mc_lit_kernel_present);
+    }
 }
 
 // ── Charge attacher (FF14SB charge-sites KD; mirrors ChargeDipoleNeighborhood) ─

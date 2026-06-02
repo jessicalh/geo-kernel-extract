@@ -3,6 +3,7 @@
 #include "AnalysisBody.h"
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
+#include "McConnellLiteratureKernel.h"
 #include "SpatialIndexSet.h"
 
 #include "../model/QtBond.h"
@@ -65,6 +66,7 @@ FeatureSchema McConnellNeighborhood::schema() const {
     s.caseName = name();
     s.relationshipKind = RelationshipKind::SourceSum;
     s.sourceSchemaKind = SourceSchemaKind::Bond;
+    s.includeMcLitKernel = true;
 
     s.sourceColumns = IdentityColumns();
     const std::vector<FeatureColumn> srcGeom = {
@@ -85,6 +87,13 @@ FeatureSchema McConnellNeighborhood::schema() const {
         {QStringLiteral("bond_axis_local_x"), {}},
         {QStringLiteral("bond_axis_local_y"), {}},
         {QStringLiteral("bond_axis_local_z"), {}},
+        {QStringLiteral("mc_lit_kernel_present"), {}},
+        {QStringLiteral("mc_lit_T0"), QStringLiteral("ppm")},
+        {QStringLiteral("mc_lit_T2_local_0"), QStringLiteral("ppm")},
+        {QStringLiteral("mc_lit_T2_local_1"), QStringLiteral("ppm")},
+        {QStringLiteral("mc_lit_T2_local_2"), QStringLiteral("ppm")},
+        {QStringLiteral("mc_lit_T2_local_3"), QStringLiteral("ppm")},
+        {QStringLiteral("mc_lit_T2_local_4"), QStringLiteral("ppm")},
     };
     for (const auto& c : srcGeom) s.sourceColumns.push_back(c);
     for (const auto& c : BareKernelColumns()) s.sourceColumns.push_back(c);
@@ -103,6 +112,11 @@ FeatureSchema McConnellNeighborhood::schema() const {
             {QStringLiteral("sum_dipolar_%1").arg(QString::fromLatin1(cc.tag)),
              QStringLiteral("Angstrom^-3")});
     s.aggregatedColumns.push_back({QStringLiteral("cutoff_A"), QStringLiteral("Angstrom")});
+    s.aggregatedColumns.push_back({QStringLiteral("mc_lit_kernel_present"), {}});
+    s.aggregatedColumns.push_back({QStringLiteral("mc_lit_T0"), QStringLiteral("ppm")});
+    for (int i = 0; i < 5; ++i)
+        s.aggregatedColumns.push_back(
+            {QStringLiteral("mc_lit_T2_local_%1").arg(i), QStringLiteral("ppm")});
     for (const auto& c : BareKernelColumns()) s.aggregatedColumns.push_back(c);
     for (const auto& c : TargetColumns()) s.aggregatedColumns.push_back(c);
 
@@ -182,6 +196,10 @@ std::size_t McConnellNeighborhood::extract(const Body& body, RecordSink& sink) c
                 // needs to reconstruct the McConnell tensor (the scalar cosθ alone
                 // throws the axis orientation away).
                 s.bond_axis_local = frame.is_valid ? frame.ToLocal(axisU) : axisU;
+                if (frame.is_valid) {
+                    s.bond_mc_lit_kernel =
+                        McConnellSourceLiteratureKernelLocal(s, &s.bond_mc_lit_kernel_present);
+                }
 
                 rec.sources.push_back(s);
                 if (std::isfinite(dipolar)) {

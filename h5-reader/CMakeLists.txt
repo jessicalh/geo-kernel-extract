@@ -346,6 +346,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/FrameSpatialIndex.cpp
     src/rediscover/RingCurrentKernel.h
     src/rediscover/RingCurrentKernel.cpp
+    src/rediscover/McConnellLiteratureKernel.h
+    src/rediscover/McConnellLiteratureKernel.cpp
     src/rediscover/RingCurrentNeighborhood.h
     src/rediscover/RingCurrentNeighborhood.cpp
     src/rediscover/McConnellNeighborhood.h

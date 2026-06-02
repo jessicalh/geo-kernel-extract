@@ -101,6 +101,8 @@ struct SourceSlot {
     int32_t bond_atom_a    = -1;       // endpoint A atom index (provenance)
     int32_t bond_atom_b    = -1;       // endpoint B atom index (provenance)
     Vec3   bond_axis_local = Vec3::Zero();  // unit (B−A) in the local frame
+    bool   bond_mc_lit_kernel_present = false;
+    SphericalTensor bond_mc_lit_kernel;  // Δχ-scaled McConnell PCS kernel, local frame (ppm)
 
     // Charge-site identity + weight (charge_dipole / charge_quadrupole). The
     // displacement fields above are still the target→source vector in the

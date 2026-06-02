@@ -40,6 +40,33 @@ void appendKernelT2(std::vector<double>& dst, const BroadKernelT2& k) {
     for (int i = 0; i < 5; ++i) dst.push_back(kernelComponent(k, i));
 }
 
+double presentValue(bool present, double value) {
+    return present ? value : std::numeric_limits<double>::quiet_NaN();
+}
+
+void writeMcLitKernel(QTextStream& out, const SphericalTensor& k, bool present) {
+    out << ',' << (present ? 1 : 0) << ',' << num(presentValue(present, k.T0));
+    for (double v : k.T2) out << ',' << num(presentValue(present, v));
+}
+
+SphericalTensor sumMcLitKernel(const NeighborhoodRecord& rec, bool* present) {
+    SphericalTensor out;
+    bool any = false;
+    for (const SourceSlot& s : rec.sources) {
+        if (s.kind != SourceKind::Bond || !s.bond_mc_lit_kernel_present) continue;
+        any = true;
+        out.T0 += s.bond_mc_lit_kernel.T0;
+        for (int i = 0; i < 3; ++i)
+            out.T1[static_cast<std::size_t>(i)] +=
+                s.bond_mc_lit_kernel.T1[static_cast<std::size_t>(i)];
+        for (int i = 0; i < 5; ++i)
+            out.T2[static_cast<std::size_t>(i)] +=
+                s.bond_mc_lit_kernel.T2[static_cast<std::size_t>(i)];
+    }
+    if (present) *present = any;
+    return out;
+}
+
 // Same little-endian f64 NPY writer as RecordSink (kept local — additive, no
 // coupling). Returns false on any shape/IO mismatch.
 bool writeNpyF64(const QString& path, const std::vector<std::size_t>& shape,
@@ -93,7 +120,10 @@ const char* kSourceHeader =
     "bond_index,bond_category,bond_atom_a,bond_atom_b,"
     "source_atom_index,source_residue_number,source_element_ord,source_q_e,"
     "source_normal_local_x,source_normal_local_y,source_normal_local_z,"
-    "bond_axis_local_x,bond_axis_local_y,bond_axis_local_z";
+    "bond_axis_local_x,bond_axis_local_y,bond_axis_local_z,"
+    "mc_lit_kernel_present,mc_lit_T0,"
+    "mc_lit_T2_local_0,mc_lit_T2_local_1,mc_lit_T2_local_2,"
+    "mc_lit_T2_local_3,mc_lit_T2_local_4";
 
 // ── Aggregated-row schema header (per (atom,frame); the target lives ONCE) ──
 const char* kAggregatedHeader =
@@ -103,6 +133,9 @@ const char* kAggregatedHeader =
     "frame_y_x,frame_y_y,frame_y_z,frame_variant,frame_valid,frame_anchor_atom_index,"
     "ring_n,ring_sum_dipolar,ring_cutoff_A,"
     "bond_n,bond_sum_dipolar,bond_cutoff_A,"
+    "mc_lit_kernel_present,mc_lit_T0,"
+    "mc_lit_T2_local_0,mc_lit_T2_local_1,mc_lit_T2_local_2,"
+    "mc_lit_T2_local_3,mc_lit_T2_local_4,"
     "charge_n,charge_source,charge_cutoff_A,"
     "field_local_x,field_local_y,field_local_z,field_z,field_mag,"
     "mu_local_x,mu_local_y,mu_local_z,"
@@ -192,7 +225,10 @@ void BroadBackboneSink::writeSourceRow(const NeighborhoodRecord& rec, const Sour
         << num(sourceNormalLocal.x()) << ',' << num(sourceNormalLocal.y()) << ','
         << num(sourceNormalLocal.z()) << ','
         << num(bondAxisLocal.x()) << ',' << num(bondAxisLocal.y()) << ','
-        << num(bondAxisLocal.z()) << '\n';
+        << num(bondAxisLocal.z());
+    writeMcLitKernel(out, s.bond_mc_lit_kernel,
+                     s.kind == SourceKind::Bond && s.bond_mc_lit_kernel_present);
+    out << '\n';
     ++sourceRows_;
 }
 
@@ -209,7 +245,11 @@ void BroadBackboneSink::writeAggregatedRow(const NeighborhoodRecord& rec,
         << rec.frame_variant << ',' << (rec.frame_valid ? 1 : 0) << ','
         << rec.frame_anchor_atom_index << ','
         << agg.ring_n << ',' << num(agg.ring_sum_dipolar) << ',' << num(agg.ring_cutoff_A) << ','
-        << agg.bond_n << ',' << num(agg.bond_sum_dipolar) << ',' << num(agg.bond_cutoff_A) << ','
+        << agg.bond_n << ',' << num(agg.bond_sum_dipolar) << ',' << num(agg.bond_cutoff_A);
+    bool mcLitPresent = false;
+    const SphericalTensor mcLit = sumMcLitKernel(rec, &mcLitPresent);
+    writeMcLitKernel(out, mcLit, mcLitPresent);
+    out << ','
         << agg.charge_n << ',' << agg.charge_source << ',' << num(agg.charge_cutoff_A) << ','
         << num(agg.charge_field_local.x()) << ',' << num(agg.charge_field_local.y()) << ','
         << num(agg.charge_field_local.z()) << ',' << num(agg.charge_field_z) << ','

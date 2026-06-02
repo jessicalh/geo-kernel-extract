@@ -2,6 +2,7 @@
 
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
+#include "McConnellLiteratureKernel.h"
 #include "McConnellNeighborhood.h"
 #include "RingCurrentKernel.h"
 #include "RingCurrentNeighborhood.h"
@@ -266,6 +267,10 @@ void mcAttacher(const Body& body, const AtomState& st, const FrameResult& fr,
     s.bond_atom_a = b.atomIndexA;
     s.bond_atom_b = b.atomIndexB;
     s.bond_axis_local = fr.frame.is_valid ? fr.frame.ToLocal(axisU) : axisU;
+    if (fr.frame.is_valid) {
+        s.bond_mc_lit_kernel =
+            McConnellSourceLiteratureKernelLocal(s, &s.bond_mc_lit_kernel_present);
+    }
 }
 
 // Reducer: the plain per-category sum, no self/bonded concept (valid == all).

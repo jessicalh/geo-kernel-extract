@@ -134,6 +134,33 @@ void writeBareKernel(QTextStream& out, const NeighborhoodRecord& r) {
     for (double v : r.bare_kernel.T2) out << ',' << num(v);
 }
 
+double presentValue(bool present, double value) {
+    return present ? value : std::numeric_limits<double>::quiet_NaN();
+}
+
+void writeMcLitKernel(QTextStream& out, const SphericalTensor& k, bool present) {
+    out << ',' << (present ? 1 : 0) << ',' << num(presentValue(present, k.T0));
+    for (double v : k.T2) out << ',' << num(presentValue(present, v));
+}
+
+SphericalTensor sumMcLitKernel(const NeighborhoodRecord& r, bool* present) {
+    SphericalTensor out;
+    bool any = false;
+    for (const SourceSlot& s : r.sources) {
+        if (s.kind != SourceKind::Bond || !s.bond_mc_lit_kernel_present) continue;
+        any = true;
+        out.T0 += s.bond_mc_lit_kernel.T0;
+        for (int i = 0; i < 3; ++i)
+            out.T1[static_cast<std::size_t>(i)] +=
+                s.bond_mc_lit_kernel.T1[static_cast<std::size_t>(i)];
+        for (int i = 0; i < 5; ++i)
+            out.T2[static_cast<std::size_t>(i)] +=
+                s.bond_mc_lit_kernel.T2[static_cast<std::size_t>(i)];
+    }
+    if (present) *present = any;
+    return out;
+}
+
 void writeRingSource(QTextStream& out, const SourceSlot& s) {
     out << ',' << static_cast<int>(s.kind) << ','
         << num(s.disp_local.x()) << ',' << num(s.disp_local.y()) << ',' << num(s.disp_local.z()) << ','
@@ -151,7 +178,7 @@ void writeRingSource(QTextStream& out, const SourceSlot& s) {
     for (double v : s.ring_jb_kernel.T2) out << ',' << num(v);
 }
 
-void writeBondSource(QTextStream& out, const SourceSlot& s) {
+void writeBondSource(QTextStream& out, const SourceSlot& s, bool includeMcLitKernel) {
     out << ',' << static_cast<int>(s.kind) << ','
         << num(s.disp_local.x()) << ',' << num(s.disp_local.y()) << ',' << num(s.disp_local.z()) << ','
         << num(s.r) << ',' << num(s.cos_theta) << ',' << num(s.dipolar) << ','
@@ -160,6 +187,8 @@ void writeBondSource(QTextStream& out, const SourceSlot& s) {
         << s.bond_atom_a << ',' << s.bond_atom_b << ','
         << num(s.bond_axis_local.x()) << ',' << num(s.bond_axis_local.y()) << ','
         << num(s.bond_axis_local.z());
+    if (includeMcLitKernel)
+        writeMcLitKernel(out, s.bond_mc_lit_kernel, s.bond_mc_lit_kernel_present);
 }
 
 void writeChargeSource(QTextStream& out, const SourceSlot& s) {
@@ -218,7 +247,7 @@ void RecordSink::WriteSourceRows(const NeighborhoodRecord& rec) {
         if (schema_.sourceSchemaKind == SourceSchemaKind::Ring)
             writeRingSource(out, s);
         else if (schema_.sourceSchemaKind == SourceSchemaKind::Bond)
-            writeBondSource(out, s);
+            writeBondSource(out, s, schema_.includeMcLitKernel);
         else if (schema_.sourceSchemaKind == SourceSchemaKind::Charge)
             writeChargeSource(out, s);
         if (schema_.includeBareKernel) writeBareKernel(out, rec);
@@ -245,6 +274,11 @@ void RecordSink::WriteAggregatedRow(const NeighborhoodRecord& rec, double sumAll
         << ',' << num(sumAll) << ',' << num(sumValid);
     for (double v : perTypeSums) out << ',' << num(v);
     out << ',' << num(cutoff_A);
+    if (schema_.includeMcLitKernel) {
+        bool mcLitPresent = false;
+        const SphericalTensor mcLit = sumMcLitKernel(rec, &mcLitPresent);
+        writeMcLitKernel(out, mcLit, mcLitPresent);
+    }
     if (schema_.includeBareKernel) writeBareKernel(out, rec);
     writeTarget(out, rec.target);
     out << '\n';
