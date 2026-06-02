@@ -25,7 +25,8 @@ import numpy as np
 import pandas as pd
 
 
-T2_COLS = [f"mc_lit_T2_local_{i}" for i in range(5)]
+ALL_T2_COLS = [f"mc_lit_T2_local_{i}" for i in range(5)]
+VALID_T2_COLS = [f"mc_lit_T2_local_valid_{i}" for i in range(5)]
 STRATA = ("HN", "N", "CA", "C", "O", "HA")
 GAMMA_DEN_EPS = 1.0e-18
 
@@ -52,6 +53,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=5.0,
         help="flag strata with atom signal participation below this value",
+    )
+    ap.add_argument(
+        "--mc-source-mode",
+        choices=("valid", "all"),
+        default="valid",
+        help="use producer-valid McConnell source sum columns, or legacy all-source columns",
     )
     return ap.parse_args()
 
@@ -515,17 +522,22 @@ def write_report(
     csv_path: Path,
     audit_path: Path,
     out_dir: Path,
+    source_mode: str,
+    t2_cols: list[str],
+    t0_col: str,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
         f.write("# McConnell literature-scaled de-circularisation\n\n")
         f.write(
-            "Read-only analysis of emitted `mc_lit_T0` and "
-            "`mc_lit_T2_local_*` columns from `broad_backbone_aggregated.csv`. "
+            f"Read-only analysis of emitted `{t0_col}` and "
+            f"`{t2_cols[0]}`..`{t2_cols[-1]}` columns from "
+            "`broad_backbone_aggregated.csv`. "
             "Python only correlates emitted columns against emitted DFT targets; "
             "it does not open `trajectory.h5`, apply Delta-chi, rebuild tensors, "
             "or call the frozen change-of-basis helper.\n\n"
         )
+        f.write(f"McConnell source mode: `{source_mode}`\n\n")
         f.write(
             "Delta-chi values are provisional single-family Williamson-Asakura "
             "values from `src/rediscover/MCCONNELL_DCHI_LITERATURE.md`: peptide "
@@ -594,6 +606,13 @@ def main() -> None:
     if not target_path.exists():
         raise RuntimeError(f"missing local T2 target sidecar: {target_path}")
 
+    if args.mc_source_mode == "valid":
+        t2_cols = VALID_T2_COLS
+        t0_col = "mc_lit_T0_valid"
+    else:
+        t2_cols = ALL_T2_COLS
+        t0_col = "mc_lit_T0"
+
     df = pd.read_csv(agg_path)
     target_t2 = np.load(target_path)
     if target_t2.shape != (len(df), 5):
@@ -606,8 +625,8 @@ def main() -> None:
         "dft_present",
         "dft_local_frame_valid",
         "dft_sigma_iso",
-        "mc_lit_T0",
-        *T2_COLS,
+        t0_col,
+        *t2_cols,
     ]
     require_columns(df, required, "broad_backbone_aggregated.csv")
     df = df.copy()
@@ -620,9 +639,9 @@ def main() -> None:
         df["dft_present"].to_numpy(int).astype(bool)
         & df["dft_local_frame_valid"].to_numpy(int).astype(bool)
     )
-    x0_all = df["mc_lit_T0"].to_numpy(float).reshape(-1, 1)
+    x0_all = df[t0_col].to_numpy(float).reshape(-1, 1)
     y0_all = df["dft_sigma_iso"].to_numpy(float).reshape(-1, 1)
-    x2_all = df[T2_COLS].to_numpy(float)
+    x2_all = df[t2_cols].to_numpy(float)
     y2_all = target_t2.astype(float)
 
     max_t0_by_stratum: dict[str, float] = {}
@@ -668,13 +687,15 @@ def main() -> None:
         "inputs": {
             "aggregate_csv": str(agg_path),
             "target_local_T2": str(target_path),
-            "prediction_columns": ["mc_lit_T0", *T2_COLS],
+            "source_mode": args.mc_source_mode,
+            "prediction_columns": [t0_col, *t2_cols],
         },
         "no_physics_recompute": True,
     }
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n")
-    write_report(rows, audit, Path(args.report_md), csv_path, audit_path, out_dir)
+    write_report(rows, audit, Path(args.report_md), csv_path, audit_path, out_dir,
+                 args.mc_source_mode, t2_cols, t0_col)
     print(f"wrote {csv_path}")
     print(f"wrote {audit_path}")
     print(f"wrote {args.report_md}")

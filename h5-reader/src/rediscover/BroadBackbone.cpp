@@ -308,54 +308,61 @@ void ringAttacher(const Body& body, const AtomState& st, const FrameResult& fr,
 }
 
 // ── Bond attacher (anisotropic bond-midpoints KD; mirrors mcAttacher) ────────
-void bondAttacher(const Body& body, const AtomState& st, const FrameResult& fr,
-                  const RawSource& raw, SourceSlot& s) {
-    if (raw.kind != SourceKind::Bond) return;
-    if (raw.ref.entity_index < 0) {
-        s.dipolar = kNaN;
-        return;
-    }
-    const model::QtProtein& p = *body.run.protein;
-    const model::QtBond& b = p.topology().bondAt(static_cast<std::size_t>(raw.ref.entity_index));
-    if (b.atomIndexA < 0 || b.atomIndexB < 0) {
-        s.dipolar = kNaN;
-        return;
-    }
-    const Vec3 posA = verbs::pos(body, static_cast<std::size_t>(b.atomIndexA), st.frame);
-    const Vec3 posB = verbs::pos(body, static_cast<std::size_t>(b.atomIndexB), st.frame);
-    const Vec3 axis = posB - posA;
-    const double axisNorm = axis.norm();
-    if (!(axisNorm > 1e-9)) {
-        s.dipolar = kNaN;
-        return;
-    }
-    const Vec3 axisU = axis / axisNorm;
-    const Vec3 disp = 0.5 * (posA + posB) - st.pos;
-    const double r = disp.norm();
-    if (!(r > 1e-6)) {  // a bond whose own atom is the target
-        s.dipolar = kNaN;
-        return;
-    }
-    const double cosT = disp.dot(axisU) / r;
-    const double dipolar = (3.0 * cosT * cosT - 1.0) / (r * r * r);
+Attacher makeBondAttacher(double mc_near_field_ratio) {
+    return [mc_near_field_ratio](const Body& body, const AtomState& st,
+                                 const FrameResult& fr, const RawSource& raw,
+                                 SourceSlot& s) {
+        if (raw.kind != SourceKind::Bond) return;
+        if (raw.ref.entity_index < 0) {
+            s.dipolar = kNaN;
+            return;
+        }
+        const model::QtProtein& p = *body.run.protein;
+        const model::QtBond& b = p.topology().bondAt(static_cast<std::size_t>(raw.ref.entity_index));
+        if (b.atomIndexA < 0 || b.atomIndexB < 0) {
+            s.dipolar = kNaN;
+            return;
+        }
+        const Vec3 posA = verbs::pos(body, static_cast<std::size_t>(b.atomIndexA), st.frame);
+        const Vec3 posB = verbs::pos(body, static_cast<std::size_t>(b.atomIndexB), st.frame);
+        const Vec3 axis = posB - posA;
+        const double axisNorm = axis.norm();
+        if (!(axisNorm > 1e-9)) {
+            s.dipolar = kNaN;
+            return;
+        }
+        const Vec3 axisU = axis / axisNorm;
+        const Vec3 disp = 0.5 * (posA + posB) - st.pos;
+        const double r = disp.norm();
+        if (!(r > 1e-6)) {  // degenerate midpoint/source geometry
+            s.dipolar = kNaN;
+            return;
+        }
+        const double cosT = disp.dot(axisU) / r;
+        const double dipolar = (3.0 * cosT * cosT - 1.0) / (r * r * r);
 
-    s.kind = SourceKind::Bond;
-    s.disp_local = fr.frame.is_valid ? fr.frame.ToLocal(disp) : disp;
-    s.r = r;
-    s.cos_theta = cosT;
-    s.dipolar = dipolar;
-    s.bond_category = static_cast<int>(b.category);
-    s.bond_order = static_cast<int>(b.order);
-    s.bond_elem_a = static_cast<int>(p.atom(static_cast<std::size_t>(b.atomIndexA)).element);
-    s.bond_elem_b = static_cast<int>(p.atom(static_cast<std::size_t>(b.atomIndexB)).element);
-    s.bond_index = b.bondIndex;
-    s.bond_atom_a = b.atomIndexA;
-    s.bond_atom_b = b.atomIndexB;
-    s.bond_axis_local = fr.frame.is_valid ? fr.frame.ToLocal(axisU) : axisU;
-    if (fr.frame.is_valid) {
-        s.bond_mc_lit_kernel =
-            McConnellSourceLiteratureKernelLocal(s, &s.bond_mc_lit_kernel_present);
-    }
+        s.kind = SourceKind::Bond;
+        s.disp_local = fr.frame.is_valid ? fr.frame.ToLocal(disp) : disp;
+        s.r = r;
+        s.cos_theta = cosT;
+        s.dipolar = dipolar;
+        s.bond_category = static_cast<int>(b.category);
+        s.bond_order = static_cast<int>(b.order);
+        s.bond_elem_a = static_cast<int>(p.atom(static_cast<std::size_t>(b.atomIndexA)).element);
+        s.bond_elem_b = static_cast<int>(p.atom(static_cast<std::size_t>(b.atomIndexB)).element);
+        s.bond_index = b.bondIndex;
+        s.bond_atom_a = b.atomIndexA;
+        s.bond_atom_b = b.atomIndexB;
+        s.bond_axis_local = fr.frame.is_valid ? fr.frame.ToLocal(axisU) : axisU;
+        const bool endpointSelf = (static_cast<int32_t>(st.atom) == b.atomIndexA
+                                   || static_cast<int32_t>(st.atom) == b.atomIndexB);
+        const bool nearField = r <= axisNorm * mc_near_field_ratio;
+        s.mc_source_is_self_or_bonded = endpointSelf || nearField;
+        if (fr.frame.is_valid) {
+            s.bond_mc_lit_kernel =
+                McConnellSourceLiteratureKernelLocal(s, &s.bond_mc_lit_kernel_present);
+        }
+    };
 }
 
 // ── Charge attacher (FF14SB charge-sites KD; mirrors ChargeDipoleNeighborhood) ─
@@ -411,11 +418,13 @@ Attacher makeChargeAttacher(const QString& charge_source, bool exclude_residue) 
 BroadRelationship MakeBroadBackboneRelationship(double ring_cutoff_A, double bond_cutoff_A,
                                                 double charge_cutoff_A,
                                                 const QString& charge_source,
-                                                bool exclude_residue) {
+                                                bool exclude_residue,
+                                                double mc_near_field_ratio) {
     BroadRelationship brel;
     brel.ring_cutoff_A = ring_cutoff_A;
     brel.bond_cutoff_A = bond_cutoff_A;
     brel.charge_cutoff_A = charge_cutoff_A;
+    brel.mc_near_field_ratio = mc_near_field_ratio;
     brel.charge_source = charge_source;
 
     Relationship& rel = brel.rel;
@@ -445,7 +454,7 @@ BroadRelationship MakeBroadBackboneRelationship(double ring_cutoff_A, double bon
     // FIELD inputs, curried over charge_source + exclude_residue. This is the
     // heterogeneous-attacher composition SURFACE_DESIGN's "more lambdas, no
     // special case" calls for.
-    rel.attachers = {&ringAttacher, &bondAttacher,
+    rel.attachers = {&ringAttacher, makeBondAttacher(mc_near_field_ratio),
                      makeChargeAttacher(charge_source, exclude_residue)};
 
     // Drop geometrically/chemically rejected sources before they become rows
@@ -464,12 +473,14 @@ BroadRelationship MakeBroadBackboneRelationship(double ring_cutoff_A, double bon
     rel.bare_kernel_fn = {};
 
     // The broad reducer: per-mechanism dipolar sums + the local Coulomb FIELD.
-    brel.broad_reducer = [ring_cutoff_A, bond_cutoff_A, charge_cutoff_A, charge_source](
+    brel.broad_reducer = [ring_cutoff_A, bond_cutoff_A, charge_cutoff_A, charge_source,
+                          mc_near_field_ratio](
                              const Body& body, std::size_t atom, const FrameResult& fr,
                              std::size_t h5_row,
                              const std::vector<SourceSlot>& sources) {
         BroadAggregate agg = ReduceBroadBackboneSources(sources, ring_cutoff_A, bond_cutoff_A,
-                                                        charge_cutoff_A, charge_source);
+                                                        charge_cutoff_A, charge_source,
+                                                        mc_near_field_ratio);
         agg.ring_literature_kernel =
             h5KernelT2Local(body, ArrayId::KernelBs, atom, h5_row, fr);
         agg.bond_literature_kernel =
@@ -496,6 +507,7 @@ std::size_t RunBroadBackbone(const BroadRelationship& brel, const Body& body,
     qCInfo(cBroad).noquote() << "broad_backbone stratum atoms=" << stratum.size()
                              << "| ring_cut=" << brel.ring_cutoff_A
                              << "| bond_cut=" << brel.bond_cutoff_A
+                             << "| mc_near_field_ratio=" << brel.mc_near_field_ratio
                              << "| charge_cut=" << brel.charge_cutoff_A
                              << "| charge_source=" << brel.charge_source
                              << "| dft rows=" << run.frameMap.dftRows().size();

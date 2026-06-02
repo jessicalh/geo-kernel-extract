@@ -51,6 +51,7 @@ struct BroadRelationship {
     double ring_cutoff_A = 0.0;
     double bond_cutoff_A = 0.0;
     double charge_cutoff_A = 0.0;
+    double mc_near_field_ratio = 0.0;
     QString charge_source;
 };
 
@@ -61,7 +62,8 @@ struct BroadRelationship {
 BroadRelationship MakeBroadBackboneRelationship(double ring_cutoff_A, double bond_cutoff_A,
                                                 double charge_cutoff_A,
                                                 const QString& charge_source,
-                                                bool exclude_residue);
+                                                bool exclude_residue,
+                                                double mc_near_field_ratio);
 
 // Run the composed broad relationship over the body, streaming the two-kind
 // carrier to the sink. Drives the SAME `Relationship` closures as the engine's

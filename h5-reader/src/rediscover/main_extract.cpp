@@ -183,6 +183,10 @@ int main(int argc, char** argv) {
     QCommandLineOption bondCutoffOpt(QStringLiteral("bond-cutoff"),
                                      QStringLiteral("broad_backbone anisotropic-bond cutoff in Angstrom (default 8.0)."),
                                      QStringLiteral("angstrom"), QStringLiteral("8.0"));
+    QCommandLineOption mcNearFieldRatioOpt(
+        QStringLiteral("mc-near-field-ratio"),
+        QStringLiteral("broad_backbone McConnell near-field exclusion ratio (default 0.5)."),
+        QStringLiteral("ratio"), QStringLiteral("0.5"));
     // Which traversal stands ring_current / mcconnell up: the composed
     // functional API (Layer 1 verbs + Layer 2 curried closures + the Layer 3
     // engine — the default, what we validate) or the original procedural cells
@@ -198,6 +202,7 @@ int main(int argc, char** argv) {
     parser.addOption(chargeCutoffOpt);
     parser.addOption(ringCutoffOpt);
     parser.addOption(bondCutoffOpt);
+    parser.addOption(mcNearFieldRatioOpt);
     parser.addOption(engineOpt);
     parser.process(app);
 
@@ -243,6 +248,13 @@ int main(int argc, char** argv) {
     const double bondCutoff = parser.value(bondCutoffOpt).toDouble(&bondCutoffOk);
     if (!bondCutoffOk || !(bondCutoff > 0.0)) {
         qCCritical(cMain).noquote() << "invalid --bond-cutoff" << parser.value(bondCutoffOpt);
+        return 2;
+    }
+    bool mcNearFieldRatioOk = false;
+    const double mcNearFieldRatio = parser.value(mcNearFieldRatioOpt).toDouble(&mcNearFieldRatioOk);
+    if (!mcNearFieldRatioOk || !(mcNearFieldRatio >= 0.0)) {
+        qCCritical(cMain).noquote()
+            << "invalid --mc-near-field-ratio" << parser.value(mcNearFieldRatioOpt);
         return 2;
     }
 
@@ -417,7 +429,8 @@ int main(int argc, char** argv) {
         }
         const h5reader::rediscover::BroadRelationship brel =
             h5reader::rediscover::MakeBroadBackboneRelationship(ringCutoff, bondCutoff, chargeCutoff,
-                                                                chargeSource, /*exclude_residue=*/true);
+                                                                chargeSource, /*exclude_residue=*/true,
+                                                                mcNearFieldRatio);
         h5reader::rediscover::BroadBackboneSink sink(outDir, QStringLiteral("broad_backbone"));
         if (!sink.Ok()) {
             qCCritical(cMain).noquote() << "broad_backbone sink open failed";

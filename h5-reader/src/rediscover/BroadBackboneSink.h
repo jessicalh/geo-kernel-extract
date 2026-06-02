@@ -58,7 +58,10 @@ struct BroadAggregate {
     // Bond mechanism (KD bond-midpoints): Σ (3cos²θ−1)/r³ over aniso bonds.
     double bond_sum_dipolar = 0.0;
     int    bond_n = 0;
+    double bond_sum_dipolar_valid = 0.0;
+    int    bond_n_valid = 0;
     double bond_cutoff_A = 0.0;
+    double mc_near_field_ratio = 0.0;
 
     // Charge mechanism (KD charge-sites, FF14SB): the local Coulomb FIELD, not μ.
     // E = Σ q_i (r_atom − r_i) / |r|³  (V·e/Å² style; units cancel in a corr fit,
@@ -86,12 +89,14 @@ inline BroadAggregate ReduceBroadBackboneSources(const std::vector<SourceSlot>& 
                                                  double ring_cutoff_A,
                                                  double bond_cutoff_A,
                                                  double charge_cutoff_A,
-                                                 const QString& charge_source) {
+                                                 const QString& charge_source,
+                                                 double mc_near_field_ratio) {
     BroadAggregate agg;
     agg.ring_cutoff_A = ring_cutoff_A;
     agg.bond_cutoff_A = bond_cutoff_A;
     agg.charge_cutoff_A = charge_cutoff_A;
     agg.charge_source = charge_source;
+    agg.mc_near_field_ratio = mc_near_field_ratio;
 
     Vec3 field = Vec3::Zero();  // Σ q_i (r_atom − r_i)/r³, in the LOCAL frame
     Vec3 mu = Vec3::Zero();     // Σ q_i (r_i − r_atom), in the LOCAL frame
@@ -107,6 +112,10 @@ inline BroadAggregate ReduceBroadBackboneSources(const std::vector<SourceSlot>& 
             if (std::isfinite(s.dipolar)) {
                 agg.bond_sum_dipolar += s.dipolar;
                 ++agg.bond_n;
+                if (!s.mc_source_is_self_or_bonded) {
+                    agg.bond_sum_dipolar_valid += s.dipolar;
+                    ++agg.bond_n_valid;
+                }
             }
             break;
         case SourceKind::Charge:

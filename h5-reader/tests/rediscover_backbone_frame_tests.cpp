@@ -294,21 +294,25 @@ void RediscoverBackboneFrameTests::broadReducerSumsSources() {
     sources.push_back(source(SourceKind::Ring, nan));  // filtered before run; ignored if present
     sources.push_back(source(SourceKind::Bond, 4.0));
     sources.push_back(source(SourceKind::Bond, -1.25));
+    sources.back().mc_source_is_self_or_bonded = true;
     sources.push_back(charge(2.0, Vec3(1.0, 2.0, 2.0)));
     sources.push_back(charge(-0.5, Vec3(-2.0, 0.0, 1.0)));
 
     const BroadAggregate agg =
-        ReduceBroadBackboneSources(sources, 8.0, 9.0, 10.0, QStringLiteral("ff14sb"));
+        ReduceBroadBackboneSources(sources, 8.0, 9.0, 10.0, QStringLiteral("ff14sb"), 0.5);
 
     QCOMPARE(agg.ring_n, 2);
     QVERIFY(std::abs(agg.ring_sum_dipolar - 2.25) < kTol);
     QCOMPARE(agg.bond_n, 2);
     QVERIFY(std::abs(agg.bond_sum_dipolar - 2.75) < kTol);
+    QCOMPARE(agg.bond_n_valid, 1);
+    QVERIFY(std::abs(agg.bond_sum_dipolar_valid - 4.0) < kTol);
     QCOMPARE(agg.charge_n, 2);
     QCOMPARE(agg.charge_source, QStringLiteral("ff14sb"));
     QVERIFY(std::abs(agg.ring_cutoff_A - 8.0) < kTol);
     QVERIFY(std::abs(agg.bond_cutoff_A - 9.0) < kTol);
     QVERIFY(std::abs(agg.charge_cutoff_A - 10.0) < kTol);
+    QVERIFY(std::abs(agg.mc_near_field_ratio - 0.5) < kTol);
 
     Vec3 expectedField = Vec3::Zero();
     Vec3 expectedMu = Vec3::Zero();

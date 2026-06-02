@@ -67,6 +67,25 @@ SphericalTensor sumMcLitKernel(const NeighborhoodRecord& rec, bool* present) {
     return out;
 }
 
+SphericalTensor sumValidMcLitKernel(const NeighborhoodRecord& rec, bool* present) {
+    SphericalTensor out;
+    bool any = false;
+    for (const SourceSlot& s : rec.sources) {
+        if (s.kind != SourceKind::Bond || !s.bond_mc_lit_kernel_present) continue;
+        if (s.mc_source_is_self_or_bonded) continue;
+        any = true;
+        out.T0 += s.bond_mc_lit_kernel.T0;
+        for (int i = 0; i < 3; ++i)
+            out.T1[static_cast<std::size_t>(i)] +=
+                s.bond_mc_lit_kernel.T1[static_cast<std::size_t>(i)];
+        for (int i = 0; i < 5; ++i)
+            out.T2[static_cast<std::size_t>(i)] +=
+                s.bond_mc_lit_kernel.T2[static_cast<std::size_t>(i)];
+    }
+    if (present) *present = any;
+    return out;
+}
+
 // Same little-endian f64 NPY writer as RecordSink (kept local — additive, no
 // coupling). Returns false on any shape/IO mismatch.
 bool writeNpyF64(const QString& path, const std::vector<std::size_t>& shape,
@@ -123,7 +142,8 @@ const char* kSourceHeader =
     "bond_axis_local_x,bond_axis_local_y,bond_axis_local_z,"
     "mc_lit_kernel_present,mc_lit_T0,"
     "mc_lit_T2_local_0,mc_lit_T2_local_1,mc_lit_T2_local_2,"
-    "mc_lit_T2_local_3,mc_lit_T2_local_4";
+    "mc_lit_T2_local_3,mc_lit_T2_local_4,"
+    "mc_source_is_self_or_bonded";
 
 // ── Aggregated-row schema header (per (atom,frame); the target lives ONCE) ──
 const char* kAggregatedHeader =
@@ -160,7 +180,11 @@ const char* kAggregatedHeader =
     "dft_total_raw_20,dft_total_raw_21,dft_total_raw_22,"
     "dft_total_T1_0,dft_total_T1_1,dft_total_T1_2,"
     "dft_total_T2_0,dft_total_T2_1,dft_total_T2_2,dft_total_T2_3,dft_total_T2_4,"
-    "dft_local_frame_valid";
+    "dft_local_frame_valid,"
+    "bond_n_valid,bond_sum_dipolar_valid,mc_source_near_field_ratio,"
+    "mc_lit_valid_kernel_present,mc_lit_T0_valid,"
+    "mc_lit_T2_local_valid_0,mc_lit_T2_local_valid_1,mc_lit_T2_local_valid_2,"
+    "mc_lit_T2_local_valid_3,mc_lit_T2_local_valid_4";
 
 }  // namespace
 
@@ -228,7 +252,8 @@ void BroadBackboneSink::writeSourceRow(const NeighborhoodRecord& rec, const Sour
         << num(bondAxisLocal.z());
     writeMcLitKernel(out, s.bond_mc_lit_kernel,
                      s.kind == SourceKind::Bond && s.bond_mc_lit_kernel_present);
-    out << '\n';
+    out << ',' << (s.kind == SourceKind::Bond && s.mc_source_is_self_or_bonded ? 1 : 0)
+        << '\n';
     ++sourceRows_;
 }
 
@@ -269,7 +294,13 @@ void BroadBackboneSink::writeAggregatedRow(const NeighborhoodRecord& rec,
     m9(rec.target.total_raw);
     for (double v : rec.target.total_decomp.T1) out << ',' << num(v);
     for (double v : rec.target.total_decomp.T2) out << ',' << num(v);
-    out << ',' << (rec.target.local_frame_valid ? 1 : 0) << '\n';
+    out << ',' << (rec.target.local_frame_valid ? 1 : 0) << ','
+        << agg.bond_n_valid << ',' << num(agg.bond_sum_dipolar_valid) << ','
+        << num(agg.mc_near_field_ratio);
+    bool mcLitValidPresent = false;
+    const SphericalTensor mcLitValid = sumValidMcLitKernel(rec, &mcLitValidPresent);
+    writeMcLitKernel(out, mcLitValid, mcLitValidPresent);
+    out << '\n';
 
     // NPY payloads, in aggregated-row order (target ONCE; field once).
     for (double v : rec.target.total_decomp.T2) aggTargetT2_.push_back(v);

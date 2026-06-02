@@ -27,7 +27,8 @@ import pandas as pd
 
 STRATA = ("HN", "N", "CA", "C", "O", "HA")
 T2_COLS = [f"mc_lit_T2_local_{i}" for i in range(5)]
-AGG_T2_COLS = [f"mc_lit_T2_local_{i}" for i in range(5)]
+AGG_ALL_T2_COLS = [f"mc_lit_T2_local_{i}" for i in range(5)]
+AGG_VALID_T2_COLS = [f"mc_lit_T2_local_valid_{i}" for i in range(5)]
 
 AVOGADRO = 6.02214076e23
 TENSOR_PREF = 1.0e24 / AVOGADRO
@@ -97,6 +98,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=5.0,
         help="flag strata with atom signal participation below this value",
+    )
+    ap.add_argument(
+        "--mc-source-mode",
+        choices=("valid", "all"),
+        default="valid",
+        help="calibrate against producer-valid McConnell source rows, or legacy all-source rows",
     )
     return ap.parse_args()
 
@@ -201,21 +208,31 @@ def source_sum_weighted_tensors(
     source_path: Path,
     n_rows: int,
     chunksize: int,
+    source_mode: str,
 ) -> tuple[np.ndarray, dict[str, object]]:
     usecols = ["row_id", "bond_category", "mc_lit_kernel_present", *T2_COLS]
+    if source_mode == "valid":
+        usecols.append("mc_source_is_self_or_bonded")
     weighted = np.zeros((n_rows, len(CATEGORY_IDS), 5), dtype=float)
     category_to_col = {cat: i for i, cat in enumerate(CATEGORY_IDS)}
     counts = {str(cat): 0 for cat in CATEGORY_IDS}
+    filtered_counts = {str(cat): 0 for cat in CATEGORY_IDS}
     aromatic_rows = 0
     aromatic_abs_sum = 0.0
     total_rows = 0
     present_rows = 0
+    filtered_present_rows = 0
 
     for chunk in pd.read_csv(source_path, usecols=usecols, chunksize=chunksize):
         require_columns(chunk, usecols, "broad_backbone_sources.csv")
         total_rows += len(chunk)
         present = chunk["mc_lit_kernel_present"].to_numpy(int) == 1
         present_rows += int(present.sum())
+        if source_mode == "valid":
+            producer_valid = chunk["mc_source_is_self_or_bonded"].to_numpy(int) == 0
+        else:
+            producer_valid = np.ones(len(chunk), dtype=bool)
+        filtered_present_rows += int((present & ~producer_valid).sum())
 
         aromatic = present & (chunk["bond_category"].to_numpy(int) == AROMATIC_CATEGORY)
         aromatic_rows += int(aromatic.sum())
@@ -224,7 +241,10 @@ def source_sum_weighted_tensors(
             aromatic_abs_sum += float(np.abs(vals).sum())
 
         for cat, col in category_to_col.items():
-            mask = present & (chunk["bond_category"].to_numpy(int) == cat)
+            cat_mask = present & (chunk["bond_category"].to_numpy(int) == cat)
+            if source_mode == "valid":
+                filtered_counts[str(cat)] += int((cat_mask & ~producer_valid).sum())
+            mask = cat_mask & producer_valid
             if not mask.any():
                 continue
             rows = chunk.loc[mask, "row_id"].to_numpy(int)
@@ -238,7 +258,10 @@ def source_sum_weighted_tensors(
     audit = {
         "source_rows": total_rows,
         "present_source_rows": present_rows,
+        "source_mode": source_mode,
+        "filtered_present_source_rows": filtered_present_rows,
         "category_source_rows": counts,
+        "category_filtered_source_rows": filtered_counts,
         "aromatic_present_rows_excluded": aromatic_rows,
         "aromatic_abs_mc_lit_T2_sum": aromatic_abs_sum,
     }
@@ -697,6 +720,7 @@ def write_report(
     implied: list[dict[str, object]],
     fit_rows: list[dict[str, object]],
     audit: dict[str, object],
+    source_mode: str,
 ) -> None:
     wa_ratio = 2.41 / -5.42
     lines = [
@@ -707,10 +731,11 @@ def write_report(
         f"Input out-dir: `{out_dir}`",
         f"Single-gamma CSV: `{decirc_csv}`",
         f"Artifacts: `{artifact_dir}`",
+        f"McConnell source mode: `{source_mode}`",
         "",
         "Relation used: the C++ McConnell source scales the local geometric tensor as `T2_ppm = -(1e24/N_A) * q / 3 * T2_geom`. With `q = Delta-chi/(10^-6 cm^3 mol^-1)`, `1e24/N_A = 1.660539067`, so `beta_geom = -0.553513022 * q` and `q_cal = -beta_geom / 0.553513022`.",
         "",
-        "The broad source CSV does not carry aggregate per-category unweighted columns. It does carry emitted source tensor rows with `bond_category`; this report source-sums those emitted tensor components by `row_id` and category, then removes the exact C++ WA scalar. It does not evaluate a distance, angle, tensor projection, H5 read, ORCA job, or emitter.",
+        "The broad source CSV does not carry aggregate per-category unweighted columns. It does carry emitted source tensor rows with `bond_category`; this report source-sums those emitted tensor components by `row_id` and category, optionally filters with the emitted C++ producer-valid flag, then removes the exact C++ WA scalar. It does not evaluate a distance, angle, tensor projection, H5 read, ORCA job, or emitter.",
         "",
         "## Calibrated Delta-Chi Lead",
         "",
@@ -810,9 +835,15 @@ def write_report(
             "",
             "## Self Audit",
             "",
-            "- Aggregated source-sum vs emitted aggregate `mc_lit_T2_local_*`: RMS={rms}, max_abs={mx}. This checks the category source-sum is the emitted McConnell tensor, not a rebuilt one.".format(
+            "- Aggregated source-sum vs emitted aggregate `{cols}`: RMS={rms}, max_abs={mx}. This checks the category source-sum is the emitted McConnell tensor, not a rebuilt one.".format(
+                cols=audit["aggregate_t2_columns"],
                 rms=fmt(audit["source_sum_vs_aggregate_rms"], 8),
                 mx=fmt(audit["source_sum_vs_aggregate_max_abs"], 8),
+            ),
+            "- Producer-valid filter: mode={mode}, filtered_present_source_rows={rows}, category_filtered_source_rows={cats}.".format(
+                mode=source_mode,
+                rows=audit["filtered_present_source_rows"],
+                cats=audit["category_filtered_source_rows"],
             ),
             "- Aromatic category excluded: rows={rows}, emitted abs T2 sum={abs_sum}. RING owns the pi current.".format(
                 rows=audit["aromatic_present_rows_excluded"],
@@ -827,7 +858,7 @@ def write_report(
                 reported=fmt(audit["manual_reported_q"], 8),
                 diff=fmt(audit["manual_abs_diff"], 8),
             ),
-            "- No ORCA, no C++ change, no re-emit, no `trajectory.h5`, and no coordinate/tensor physics recompute in Python.",
+            "- Python boundary: no ORCA, no `trajectory.h5`, and no coordinate/tensor physics recompute in Python.",
             "",
             "## Rerun",
             "",
@@ -857,6 +888,7 @@ def main() -> int:
     if not decirc_csv.exists():
         raise RuntimeError(f"missing Step-1 decirc CSV: {decirc_csv}")
 
+    agg_t2_cols = AGG_VALID_T2_COLS if args.mc_source_mode == "valid" else AGG_ALL_T2_COLS
     agg = pd.read_csv(
         agg_path,
         usecols=[
@@ -866,12 +898,12 @@ def main() -> int:
             "h5_row",
             "dft_present",
             "dft_local_frame_valid",
-            *AGG_T2_COLS,
+            *agg_t2_cols,
         ],
     )
     require_columns(
         agg,
-        ["row_id", "atom_index", "atom_name", "h5_row", "dft_present", "dft_local_frame_valid", *AGG_T2_COLS],
+        ["row_id", "atom_index", "atom_name", "h5_row", "dft_present", "dft_local_frame_valid", *agg_t2_cols],
         "broad_backbone_aggregated.csv",
     )
     if not np.array_equal(agg["row_id"].to_numpy(int), np.arange(len(agg))):
@@ -880,11 +912,13 @@ def main() -> int:
     if target.shape != (len(agg), 5):
         raise RuntimeError(f"{target_path} shape {target.shape} != ({len(agg)}, 5)")
 
-    weighted, source_audit = source_sum_weighted_tensors(source_path, len(agg), args.chunksize)
+    weighted, source_audit = source_sum_weighted_tensors(
+        source_path, len(agg), args.chunksize, args.mc_source_mode
+    )
     geom, scales = deweight_to_geometry(weighted)
 
     summed_weighted = weighted.sum(axis=1)
-    agg_weighted = agg[AGG_T2_COLS].to_numpy(float)
+    agg_weighted = agg[agg_t2_cols].to_numpy(float)
     ok = finite_rows(summed_weighted, agg_weighted)
     diff = summed_weighted[ok] - agg_weighted[ok]
 
@@ -931,6 +965,8 @@ def main() -> int:
         "decirc_csv": str(decirc_csv),
         "artifact_fit_csv": str(fit_csv),
         "artifact_implied_csv": str(implied_csv),
+        "source_mode": args.mc_source_mode,
+        "aggregate_t2_columns": agg_t2_cols,
         "category_ids": {str(k): v["name"] for k, v in CATEGORIES.items()},
         "wa_q": {v["name"]: v["q_wa"] for v in CATEGORIES.values()},
         "deweight_scales": scales,
@@ -953,7 +989,8 @@ def main() -> int:
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-    write_report(Path(args.report_md), out_dir, decirc_csv, artifact_dir, implied, fit_rows, audit)
+    write_report(Path(args.report_md), out_dir, decirc_csv, artifact_dir, implied, fit_rows,
+                 audit, args.mc_source_mode)
     print(f"wrote {fit_csv}")
     print(f"wrote {implied_csv}")
     print(f"wrote {audit_path}")
