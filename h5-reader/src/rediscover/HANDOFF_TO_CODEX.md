@@ -73,11 +73,15 @@ did NOT expand the test target's link surface without a compiler to verify it.
 ```
 python src/rediscover/analysis/oracle_parity.py \
   --bin  build/linux-gcc/h5reader_extract \
-  --run  /shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft \
+  --run  /shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft/1p9j-calibration-with-dft.LGS \
   --work /tmp/rediscover-parity --case all --mc-cutoff 8.0
 ```
-Expect: every CSV + NPY identical (exit 0). Divergence = a composition bug in
-ComposedRelationships.cpp (NOT a new result) — diff prints the column/row.
+The run directory now contains multiple `.LGS` files, so pass the intended single
+`.LGS` path explicitly. `--case all` in this oracle currently covers ring + mc
+parity only, not broad/all-atom/efg/buckingham/aimnet2. Expect: every emitted
+ring/mc CSV + NPY identical (exit 0). Divergence = a composition bug in
+ComposedRelationships.cpp / the shared traversal (NOT a new result) — diff
+prints the column/row.
 
 2. The physics oracle numbers (composed output, venv
 `src/rediscover/analysis/venv`):

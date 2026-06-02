@@ -4,6 +4,309 @@ Freshest current state, for the next session/agent. Read `GUIDANCE.md`
 (orientation) + `DESIGN.md` (class model) first; this supersedes the
 "Status" section in GUIDANCE.md, which a build agent left mid-build/stale.
 
+## SESSION HANDOFF (2026-06-02, EOD) — all-atom emit + three-tool stool
+
+DONE this session:
+- **Multi-stride `.LGS`** (`7ac1b24`): `1p9j-calibration-dense-mopac-live-orca.LGS` — dense MOPAC
+  all-frames extraction + LIVE 660 ORCA DFTs (incl 910/932; the holes were a CONSOLIDATION lag, the
+  jobs exist in `/shared/2026Thesis/1p9j-orcas/jobs`), original-index join formalized in the schema.
+- **All-atom equivariant emit** (`2ecbe59`): the law-discovery foundation. 846 atoms × 660 DFT rows,
+  all 9 ring types + all 8 BondCategory (`AllBondMidpoints`), RAW lab-frame equivariant geometry
+  (disp_*/orientation_* vectors, q_over_r3, APBS/AIMNet2 payloads) — **NO imposed per-atom local frame**
+  (e3nn is equivariant; frames from physics+KD-tree not the backbone test). Targets DFT raw/T2/σ_iso in
+  the ORCA-aligned molecular frame. ArraySpecs carry irreps/units/sign/tensor_rank/parity/mechanism.
+  Gates green (ctest 5/5, oracle PASS). The later large all-atom emit (~68 GB after MOPAC) was deleted;
+  do not treat any `/tmp/rdc-all-atom-*` path as current. The build target is
+  `NODE_STORE_CONTRACT_2026-06-02.md`, not a resident raw dump.
+- **APBS field/EFG: NOT the radii** (A/B: real-vs-placeholder modest, `APBS_RADII_AB_WORKAROUND.md`),
+  **NOT the vendor** (our wiring; Stage-1 used real prmtop radii) → back to mechanism / a MATHS-METHODS
+  question. Stage-1 mining: APBS-EFG tiny, **Coulomb/MOPAC EFG moderate → the field signal is the MOPAC
+  leg**, not APBS.
+- **Stage-1 mutant landscape** (`STAGE1_MUTANT_LANDSCAPE.md`): "visibility changes with the question
+  asked" — validates maths-vs-sample, geometric-not-IUPAC, preserve-provenance, AIMNet2-as-ceiling.
+  McConnell→joint confirmed; self/bonded fix validated.
+- **Run-framework** (`tools/rediscover_run.py`, `RUN_FRAMEWORK.md`): standard root + drop-old + dry-run;
+  nmr_extract-guard patch firing. Cleaned 33 GB of superseded rediscover substrate. **nmr_extract
+  outputs are SACRED (16h atomic) — never delete** (`feedback_static_workaround_not_producer_redo`).
+
+REVIEWER #52 DONE (`ALL_ATOM_EMIT_REVIEW.md`): model discipline CLEAN (typed spine, no string-dispatch,
+no-imposed-frame real). Current truth: #29 is **PARTIAL**, not done. `RunTraversal`/`PerRecordSink`
+now owns ring/mc/charge plus broad; still outside it are all-atom and the no-source feature runners
+(`efg`, `buckingham_efield`, `aimnet2_features`). MOPAC landed in `dca30b8` by extending the existing
+all-atom path, not by adding a fourth MOPAC runner. Keep that physics wiring, but fold it with the
+all-atom carrier when #29 is finished. Provenance gaps remain: atom-role/named-atom into NPY sidecars,
+support/N_eff/nonzero-rank to manifest, `normalization=raw` tag. Framework guard DONE (refuses
+/shared + extraction-signature; tested).
+
+NEXT: build to **`NODE_STORE_CONTRACT_2026-06-02.md`**. The real #29 is a typed relationship index
+over **all** record shapes: source-sum carriers (ring/mc/charge + broad), the richer all-atom raw-source
+carrier, and no-source per-target feature carriers (`efg`/`buckingham_efield`/`aimnet2_features`).
+No new sibling drivers. MOPAC is no longer pending; its selectors/attachers move with the all-atom fold.
+Then the named, described outputs feed the **law-discovery maths model** at the Python edge
+(e3nn/PySR/ridge/CV/plots/frozen `get_C()`), not a second Python protein model. larsen postponed
+(grounded, `LARSEN_GROUNDING.md`). Only drop rediscover substrate; /shared extractions remain sacred.
+
+## CORRECTED BACKBONE CAPSTONE (2026-06-02) — consolidated corrected snapshot
+
+Full per-stratum × per-mechanism run on the FULLY-CORRECTED substrate (10 Å cutoff recorded,
+valid-source McConnell, literature-scaled ring `jb_T*`, between-led statics; all corrections audited
+active; gates green). Doc: `CORRECTED_BACKBONE_SNAPSHOT.md`. Charts/CSVs under
+`/tmp/rediscover-corrected-backbone-snapshot-1p9j/` — **EPHEMERAL** (copy if keeping; the doc is
+committed). Verdict buckets only: recovered law / form-recovered-scale-fitted / can't-make-it-work-for-now
+(never "null"). Standing:
+- **Ring = recovered law** — γ_bare −11.3 nA/T = Pople six-membered intensity; γ_lit ~0.77–0.92
+  (compatible with 1). NOTE: the scalar aromatic-H LOAO 0.62 is NOT re-derived in this T2 snapshot
+  (and not claimed); per-backbone ring rows are weak because backbone atoms aren't ring-facing.
+- **Charge q/r³ = strongest backbone static T2** — N-between |T2| r 0.776 (γ 9.70±0.23), C-within 0.672
+  (γ 10.22±0.29); strongest symbolic fit (PySR R² 0.775; fixed r⁻³ comparator ≤0.98).
+  form-recovered-scale-fitted (per-stratum scales vary — O γ=158).
+- **McConnell valid-source = can't-make-it-work-for-now ALONE** (corrected substrate confirms; high
+  in-sample between-c, no out-of-sample convergent constant). Real test = the joint/ensemble fit (layer 3).
+- **HN field = the one clear field-like static read** — FF14SB between R² 0.48 (A −22.4±6.4),
+  Buckingham 0.40; other strata can't-work.
+- **AIMNet2 = strong learnable ceiling** (not a law) — C-within R² 0.72, N-within 0.59, lifts vs
+  physics N 7.7 / C 3.5; the embedding carries the local residual.
+- **EFG local-frame = can't-make-it-work-for-now** (~0; lab-frame confound stays killed).
+Equation fits: charge cleanest (r⁻³ recovered, PySR 0.775); bond moderate; ring weak on backbone (home
+is aromatic H). Cookies to stand on: ring (law) + charge (backbone static T2). McConnell → joint fit.
+
+## UPDATE 2026-06-02 (LATE) — ring de-circularisation CONFIRMED; emit-surface audit; McConnell Δχ next
+
+Three landed today (Python-only or research; NO producer/library change):
+
+**Ring de-circularisation CONFIRMED — the units "failure" was the recovered law** (`b79da2f`,
+`analysis/ring_literature_decirc.py` + `RING_LITERATURE_DECIRC.md`). The old bare-kernel γ=−11.3 is
+recovered as an INTENSITY: all-valid within-T0 γ_bare = −11.33 ± 3.67 nA/T, dead in the Pople
+six-membered range (−11…−12.5). Literature-scaled (`jb_T*`) γ_lit compatible with 1 on BOTH axes —
+within (modulation) and between (static across-atom, intercept ≈24 ppm = aromatic-H baseline):
+T0 within 0.77±0.47 (r=0.61), T0 between 0.64±0.52 (r=0.72), T2 within 1.05±1.13, T2 between
+0.92±0.53. CAVEATS (honest): n=1 protein; the ring signal CONCENTRATES (effective signal-N ~2.2
+atoms even in the 41-atom pool — all rows thin); per-type all thin (TYR + TRP-perimeter compatible
+with table; PHE modest scale-excess 1.38; HIS γ_lit 4.1 genuinely off — the protonation-dependent
+imidazole, where the Pople table is weakest). Ring moves "form-recovered, scale-fitted" →
+**de-circularised recovered law (six-membered), limited one-protein confidence**. The BIG QUESTION
+DISSOLVES for ring: the residual is THIN-N (candidate 4), not a physics failure. The 750-DFT set
+tightens effective-N directly (script reruns unchanged).
+
+**Emit-surface audit done** (`EMIT_SURFACE_AUDIT.md`, opus). Confirms the "too much stuff" smell:
+every SourceSum relationship emits the blessed kernel AND parallel geometric scalar sums for Python
+reassembly (`look03_coefficient.py:86` literally says the weighted aggregate "is a C++ reducer to
+add, not a Python re-sum"). Buckets A(keep blessed)/B(raw input)/C(cut reassembly-scratch: ring+mc
+`sum_dipolar_*`, `field_z`/`field_mag`)/D(consolidate dupes: DFT target 3×/row, 5× writeNpyF64).
+KEY: `bondKernelT2FromSources` ALREADY builds the McConnell tensor C++-side → the blessed Δχ emit is
+an EXTENSION, not new code. Smell is CONVERGING not spreading. Stage cuts after replacements (ring
+`sum_dipolar_*` consumed by ~10 scripts); DRY → #29.
+
+**McConnell Δχ literature done** (`MCCONNELL_DCHI_LITERATURE.md`, codex — web verified working; the
+earlier codex "failure" was over-broad-brief context overflow, NOT broken web). Unit chain (ties to
+ring's −n·B sign): `σ_ppm = −0.5535·q·f` (scalar; q=Δχ in 10⁻⁶ cm³/mol, f=(3cos²θ−1)/r³); tensor
+prefactor 1.6605 before the 1/3. Carbonyl Δχ DISPUTED ~×6 across sources. Recommended first set
+(lead to confirm): peptide C=O +2.41 / C-N −5.42 (Williamson-Asakura, the protein lineage); sidechain
+C=O +2.41 (single-family) or +6.34 (Abraham amide); **aromatic = 0 — RING already carries the π
+current, an aromatic McConnell term DOUBLE-COUNTS the ring**.
+
+**McConnell cell DONE (#36, `3d8086d`, `analysis/MCCONNELL_LITERATURE_DECIRC.md`).** Emitted the
+blessed `mc_lit_T2_local_*` (per-category WA Δχ on the rediscover bond model via
+`bondKernelT2FromSources`; aromatic=0 verified contributes exactly 0; T0≈0 traceless as designed;
+ring+mc oracle `--case all` exit 0, ctest pass, no Python recompute). McConnell is NOT the clean ring story:
+- **Form is real at backbone C** — |T2| r 0.75, comp_r −0.62, and it SURVIVES leave-atoms-out (LOAO
+  R² 0.38 within / 0.31 between — the ONLY stratum with real out-of-sample T2 signal). N/CA weaker;
+  HN (expected to lead — amide H sees peptide C=O/C–N) is WEAK (|T2| r 0.27, LOAO ~0).
+- **Provisional WA Δχ SCALE does NOT de-circularise** — γ_lit scatters −2.1…+38 across strata, lands
+  at 1 nowhere meaningful → **form-recovered, scale-fitted, NOT de-circularised** (expected: Δχ are
+  provisional/web-cited, carbonyl disputed ~×6; the scale question is MOOT until the primary-refs debt
+  is paid — `references/incoming/TECH_DEBT_mcconnell_dchi_primary_refs_2026-06-02.md`).
+- **C puzzle / OPEN THREAD:** C's coupling is robust but NEGATIVE and ~2× literature (γ −2.14 ± 0.022,
+  very tight). Likely the carbonyl C sits ON its own C=O bond → far-field bond-anisotropy formula
+  weakest exactly there (near-field, like ring's in-plane breakdown). CHECK whether the McConnell emit
+  excludes self/bonded contributions; if not, C's signal is probably its own carbonyl near-field, not
+  a recovery. A thread, not a win.
+- The table's "zero-circularity recovered law" labels (N/O between) are SE artifacts (γ 2.6 / 38±30,
+  trivially "compatible with 1") — ignore; nothing de-circularises cleanly.
+Ring stays the clean de-circularised law; McConnell = form present (esp C, pending the self-bond
+check), scale not yet. The emit-surface C3 fix landed (blessed `mc_lit_*` added; `sum_dipolar_*` kept).
+
+**McConnell Δχ calibration — DID NOT CONVERGE (2026-06-02, `b69134d`, `analysis/MCCONNELL_DCHI_CALIBRATION.md`).**
+ORCA-free layer-2 calibration (ORCA busy with the production 750; deferred the first-principles route).
+Per-category q scatters −40…+329 across strata, SEs ≈ the values, R²≈0 except C. NO coherent
+DFT-calibrated Δχ — **not a cookie** (`feedback_run_the_algorithm_get_a_cookie`). A couple of strata
+(N/O between) drift near Abraham-amide magnitude (q_CO≈6, q_CN≈−14) but that's a cloud, not
+convergence. C is the only robust fit (q_CO −5.73±0.15, R² 0.38, |T2| r 0.76) but **sign-flipped +
+wrong magnitude; cause UNKNOWN** — carbonyl-C-on-its-own-bond near-field is the leading SUSPICION
+(where a far-field point-dipole must fail), NOT established. McConnell PARKED: its transferable Δχ
+awaits the deferred first-principles project — three routes found 2026-06-02: ORCA magnetizability
+(real toggle, `%eprnmr` "General magnetic properties: Magnetizability NO" — just off, not absent),
+the NICS-fit (ghost grid + the proven dft-ex1 `! rSCAN def2-SVP NMR` format → `$SCF_Chemical_Shift`),
+or LeanSCF's own `cpscf_solve` B-field response (`/shared/dft-ex1`). Ring/BS/HM are the clear visible signal.
+
+**VET (2026-06-02, `brgjygpmm`, `MCCONNELL_PIPELINE_VET.md`) FOUND THE BUG — not the mechanism.**
+Rediscover's broad/standalone McConnell source sum INCLUDES the target atom's OWN amide + near-field
+bonds; the producer EXCLUDES them (`SelfSourceFilter` + `DipolarNearFieldFilter` ratio 0.5,
+`../src/KernelEvaluationFilter.h`). Rediscover rejects only `r≤1e-6` (`BroadBackbone.cpp:342-345`;
+comment "no self/bonded concept for bonds"). Backbone N/C/O ARE the amide atoms → dominated by their
+OWN bond at ~0.5 Å (far-field point-dipole invalid); the C sign-flip = its own C=O/C–N. Ring works
+precisely BECAUSE it excludes `is_self_or_bonded` (`ComposedRelationships.cpp:132-177`). CLEAN: frame,
+T2 basis, units/sign, categorization (aromatic q=0). Minor: cutoff mismatch (rediscover 8 Å vs
+producer 10 Å). Stage-1 confirms the mechanism is REAL but tests a DIFFERENT quantity (720-protein
+WT-ALA mutation-delta static ridge vs 1-protein per-frame local-T2) — so the fix gives a FAIR test,
+not a guaranteed cookie. The "not a cookie" was a BUG, Stage-1-prior vindicated again
+(`feedback_stage1_prior_is_real_signal`, F1 pattern). **McConnell UN-PARKED. FIX (pending lead go):**
+mirror producer source filters (self + near-field) + align cutoff + keep all-source columns for
+diagnostics → re-emit 1P9J → re-run decirc/calibration with before/after C-stratum audit. C++ +
+re-emit + re-run (oracle parity + ctest gated; no ORCA).
+
+**FIX DONE + FAIR TEST (2026-06-02, `1ceab65`): McConnell does NOT converge — and the C signal was the
+ARTIFACT.** Additive fix landed: per-source `mc_source_is_self_or_bonded` flag + `mc_lit_T2_local_valid_*`;
+all-source columns byte-identical (163K aggregate + 13.5M source rows) → ring+mc oracle `--case all` exit 0,
+ctest 4/4; standalone/oracle path untouched; consumers gained `--mc-source-mode valid|all` (default
+valid). Removing C's own bonds (53,500 self-sources = 27k own-C=O + 26.5k own-C–N) COLLAPSES the C
+stratum: |T2| r 0.755→0.092, R² 0.382→0.0008, q_CO −5.73±0.15 → +3.63±9.77 (noise). So the strong C
+result was ENTIRELY own-bond near-field, NOT a far-field McConnell law — a would-be false finding the
+bug was hiding. Fair-test per-stratum valid |T2| r is weak-modest (strongest O-between ~0.66; CA ~0.40);
+per-category Δχ still scatters with huge SEs — NO coherent convergent constant. **CAN'T MAKE IT WORK FOR NOW** (this test / this data — bug fixed,
+fair test given; provisional, NOT a definitive null — revisit with the 750, the MOPAC bond-order
+variant, target isolation, or a subtler mistake the deep audit #40 may surface). McConnell's
+Stage-1 reality stands (different quantity: 720-protein WT-ALA mutation-delta static ridge, untouched).
+The valid-source filter is now in place for future McConnell + the MOPAC bond-order variant. Cookie
+framing: ran it fair, no cookie. Bug-catch value: the self/bonded poison affected ALL McConnell-consuming
+analyses; the C artifact would have been a false finding.
+
+**DEEP AUDIT (2026-06-02, opus, `MCCONNELL_DEEP_AUDIT.md`, 11 candidates ranked; #40) — null NOT
+earned; it points to the JOINT/ENSEMBLE fit.** Deepest (C1, HIGH): the de-circ/calibration correlate
+a McConnell-ONLY predictor against the FULL DFT total T2 — McConnell is a MINORITY contributor drowned
+in non-McConnell variance. Ring de-circularised STANDALONE only because ring-facing H is ring-DOMINATED;
+the backbone T2 is multi-mechanism, so McConnell's fair test is the JOINT multi-mechanism design matrix
+= the ensemble (arc layer 3), NOT standalone. So: "can't make McConnell-ALONE work for now"; the right
+home is the joint fit. Loose ends — **RESOLVED** (recorded here + in memory so they stop resurfacing and burning tokens —
+`feedback_record_resolutions_durably`): **C2** fixed in #42 — McConnell/anisotropic-bond cutoff default
+is now 10 Å (= producer; `main_extract.cpp:186`, `AllAtomEquivariant.h:19`); the ring-centre 8 Å is the
+INTENTIONAL aromatic-neighbourhood convention, not a truncation bug. **C5** between-axis-led report
+landed in #42. **C6** the QtBond A/B sign worry is NOT a consumed-T2 sign bug — #41
+(`MCCONNELL_LOOSE_ENDS_VET.md`) proved the McConnell M tensor is EVEN under A/B swap: cosθ=d̂·b̂ co-flips
+with the bond axis, so term-1 cosθ·(d̂⊗b̂) is invariant and terms 2–3 are quadratic; the deep-audit's
+term-1-symmetric-part claim forgot cosθ co-flips. LIVE RESIDUAL (feeds the equivariant emit, NOT a
+McConnell bug): raw `bond_axis_local_*` is index-oriented (producer min/max), so as a POLAR 1o vector
+its per-bond sign is arbitrary — the all-atom equivariant emit must not ingest it as a meaningful odd
+vector without chemical orientation (memory `project_mcconnell_bsign_resolved`). **SDK** consumed
+`mc_lit_*`/MOPAC columns → close in the #51 provenance pass. CLEAN: T2 basis, trace order/sign, DFT
+target frame/basis, the self-source fix.
+**METHOD INSIGHT (general):** standalone de-circularisation is fair only for a DOMINATED stratum (ring);
+minority contributors must be tested in the JOINT/ensemble design matrix, not alone.
+
+## OPEN (2026-06-02): the weak DYNAMIC field σ-response — concrete, testable; do NOT read as a real null, and do NOT excuse with "treatment mismatch"
+
+Jessica's check: over 15 ns backbones *do* swing through varying fields (input varies: |EFG|
+per-atom frame-std ≈0.20). What's weak is the within-axis Buckingham σ_iso RESPONSE (R²≈0.10).
+**"Treatment mismatch" (CPCM) is NOT the explanation — it's too global/convenient, and wrong
+for the within axis** (the within field-fluctuation is the protein's own charge motion, which
+FF14SB/APBS capture; CPCM is a continuum reaction field ~set by geometry, not a separate
+within-fluctuating source — a between/absolute footnote at most). The real, specific fact:
+**the within σ IS learnable (AIMNet2 within HN 0.74) but the FIELD explains almost none of it
+(0.10).** Three falsifiable candidates: (1) **units/prefactor bug** — FF14SB field missing the
+Coulomb prefactor (audit); `A·E_proj + B·|E|²` mixes E and |E|² at different powers of the
+missing factor → mis-conditioned → test: fix + re-fit; (2) **projection axis** — test |E| vs
+E_proj; (3) **field is a genuinely weak within-driver** (within σ is local-geometry-driven,
+embedding-captured). **Decisive diagnostic: the raw frame-to-frame correlation of ΔField vs Δσ,
+per atom, before any fit** — present ⇒ fit/units bug (1,2), fixable; absent ⇒ field really is a
+weak within-driver (3). Run that, don't hand-wave.
+
+## OPEN — THE BIG QUESTION (2026-06-02): why doesn't a STRONG relationship de-circularise un-fitted?
+
+Ring current is strong (form |r|=0.65; fitted universal k≈21 → held-out R²=0.62) yet the
+**un-fitted literature kernel does NOT predict DFT** (literature-fixed de-circularisation:
+ring-T0 γ=−11.3, McConnell-T0 γ=−4.75 — sign-flipped, magnitude-off; both bucket
+"form-recovered, scale-fitted"). For a relationship this strong, "why doesn't it fit
+un-fitted?" is the real physics question — but **only answerable after the little stuff is
+mowed.** Candidate confounds to clear FIRST:
+1. ~~units/sign~~ **RESOLVED (2026-06-02, `UNITS_AND_ISSUES_AUDIT.md`, bl7pvjdhf): a units/
+   scaling + LABELING bug, NOT a physics failure.** The de-circularisation read producer BARE
+   kernels (geometric unit-current BS, unit-Δχ McConnell), not literature-ppm predictions —
+   so ring γ=−11.3 absorbs the omitted `LiteratureIntensity`, McConnell γ=−4.75 the Δχ×unit
+   prefactor. The negative SIGN is the CORRECT ring-current convention (`G=−n·B·PPM_FACTOR`,
+   negative diamagnetic intensity → shielding above ring), NOT a σ-vs-δ flip (target is ORCA σ).
+   **FIX → re-run:** ring uses `jb_T*` ppm cols or BS×LiteratureIntensity; McConnell emits/applies
+   a named Δχ+unit prefactor; then γ should → ≈1 = genuinely de-circularised. **So ring is LIKELY
+   a clean recovered law pending the corrected test.** Plus a SYSTEMIC units-mislabeling cascade
+   (BS H5 attr, `Catalog` KernelBs/Mc, `BareKernelColumns`, broad sidecar names all falsely "ppm")
+   — full map + 5-item next-fix-set in `UNITS_AND_ISSUES_AUDIT.md`.
+2. ~~in-plane point-dipole breakdown~~ **MOWED (2026-06-02, J-B cell `165ed08`): NOT the answer.**
+   In-plane, BOTH point-dipole (T0 R²=0.02) and J-B (T0 R²=0.01, T2 comp r=0.01) are ~0 — the
+   in-plane band has ~no DFT ring-modulation (self-ring near-constant CV 0.03, de-meaned away);
+   the FINDINGS R²=0.67 was form-reconstruction of the producer kernel, not DFT signal. The
+   misfit is NOT an in-plane-form gap. (Byproduct: the J-B/BS kernel is now emitted spine-side,
+   `jb_T0`/`jb_T2_local_*`, wired through both traversals, oracle-PASS — `JOHNSON_BOVEY_REGION_RECOVERY.md`.)
+3. **per-ring-type intensity** — one constant can't serve PHE/TYR/TRP/HIS if intensities differ.
+4. **thin N** (~3–7 coupled aromatic H; γ SE ±3.6) — maybe unresolved, not failed.
+Deepest residual once (1)–(4) are gone: **the classical kernel is a MODULATION (Δσ) model,
+not absolute-σ** — a literature constant predicts the frame-to-frame modulation, not absolute
+shielding, so an absolute un-fitted fit *should* miss. SEQUENCE: mow (1)–(4), THEN the residual
+is the answerable question. Do NOT chase the big question with confounds live (confound-chasing).
+
+## UPDATE 2026-06-01 (LATE) — applied-maths cleanup arc + static calibration; AIMNet2 NEXT
+
+A full applied-maths audit + cleanup of the rediscovery analysis, then the between-axis
+static calibration. Two independent audits (Opus agent + codex) on the original code →
+verified fixes → capstone re-run + reusable charts → the calibration table.
+
+**Methods error found + fixed (the big one) — the variance axis.** The uniform per-atom
+de-mean answered only the WITHIN-atom (dynamic) axis and *deleted* the BETWEEN-atom
+(static-environment) signal — exactly where the electrostatic mechanisms live (Jessica's
+Stage-1 mutant intuition). Built `analysis/variance_decomposition.py` (between = LOAO
+whole-atom, within = train-only-centred frame split, AR(1) N_eff, variance shares) —
+Opus-audit-verified. The between axis uncovered real static signal that was hidden:
+**charge→N T2 between |T2| r = 0.78**; Buckingham / charge-field HN σ_iso between R² ≈ 0.40–0.48.
+
+**Two real bugs fixed:**
+- **q/r² → q/r³** charge distillation (wrong radial power masked signal) → charge-N
+  R²=0.981. Commit `f299a01`.
+- **efg lab-frame rotation confound** — feature+target were lab-frame; de-meaning a
+  *tumbling* tensor left a co-movement confound. Fixed by **local-frame EFG emit**
+  (`fb90bbd`). Honest result: the efg "O 0.34" was almost entirely the confound — clean
+  local-frame efg ≈ 0 across the backbone. **EFG carries ~nothing for the backbone T2**;
+  the cleanup caught a would-be-false claim.
+
+**F1 false alarm cleared (Jessica's Stage-1 prior vindicated):** the bond-anisotropy T2 is
+the project's CANONICAL McConnell `K·χ` tensor (library-identical `McConnellResult.cpp:90`,
+derived in `GEOMETRIC_KERNEL_CATALOGUE.md`), NOT home-rolled. Disclose the traceless-χ (PCS)
+convention. Opus-1's "non-standard" finding was wrong; codex's decline was right.
+
+**Static calibration (`d7c63e0`; `analysis/static_environment_calibration.py` +
+`STATIC_ENVIRONMENT_CALIBRATION.md`):** recovered the calibration COEFFICIENT per stratum
+on the between axis + within-protein jackknife uncertainty + literature comparison.
+**VERDICT BUCKET (Jessica): "form-recovered, scale-fitted" for now** — kernel forms recover
+(charge-N |T2| r 0.78; McConnell form), but coefficients/scales are fitted, NOT yet
+de-circularised to first-principles literature values (γ≠1, e.g. McConnell-N γ≈26; the
+γ-vs-units interpretation is the open thread). The clean un-fitted de-circularised law
+remains ring-current Pople (k≈21, the aromatic-H result).
+
+**Confidence scope (Jessica):** n=1 PROTEIN but many structures within it (≈500 frames,
+≈50 atom-environments/stratum) → LIMITED within-protein confidence metrics apply
+(jackknife-over-atoms, block-bootstrap-over-frames, autocorr-aware), scoped "this protein
+across its structures"; NO population (across-proteins) inference. Jackknife SEs show which
+coefficients are resolved (Buckingham HN A=−15.6±2.8) vs not (N=−100±244).
+
+**THE THESIS REPORTING ARC (memory `project_thesis_reporting_arc` — the steering doc):**
+(1) signal [done — variance decomposition] → (2) equation calibrations [done —
+form-recovered, scale-fitted; all-with-something + within-protein uncertainty] →
+(3) ensemble model [the good calibrated mechanisms; AIMNet2 embedding plugs in HERE IF
+magic] → (4) equivariant transferability pilot [720 WT backbones, statics as comparison;
+data-gated]. The fitting IS instrument calibration — the coefficient is the deliverable,
+not the R².
+
+**Detailed record on disk:** `APPLIED_MATHS_AUDIT.md`, `APPLIED_MATHS_AUDIT_codex.md`,
+`FIXES_AUDIT_opus.md`, `VARIANCE_DECOMPOSITION_METHOD.md`, `STATIC_ENVIRONMENT_CALIBRATION.md`,
+refreshed `BACKBONE_LAW_EVIDENCE.md` / `EFG_ARC_EVIDENCE.md`, capstone charts
+(`analysis/rediscover_capstone_charts.py`, reusable on the 750). Commits `f299a01`,
+`fb90bbd`, `d7c63e0`.
+
+**NEXT (this session): AIMNet2 embedding-ceiling = thesis-arc layer 3.** Emit the 256-d
+embedding (`ArrayId::Aimnet2Embedding`; it's a fail-loud stub like efg/buckingham were →
+emit-then-fit) + the ceiling fit: physics-only R² vs physics+embedding gap, per atom-type —
+does a learned local rep capture what the kernels can't, esp. **Cα** (the atom no
+through-space/field kernel touches)? Black-box → report as the labeled **learnable
+ceiling**, not a recovered law; "if magic, we take it." 1P9J 750-DFT full set lands ~3 days
+→ re-fire the capstone charts + calibration + variance decomposition on it.
+
 ## UPDATE 2026-06-01 (EOD) — full arc closed; differencing PARKED; WORK CATALOG defined
 
 The backbone exemplar demonstrates the full **B→A→de-circularised** arc (commits through
@@ -35,20 +338,22 @@ frozen `get_C()`. Predicts per-atom DFT **T2** across the 8 strata (N/CA/C/O/HN/
 Emit-fix: `BroadBackboneSink.cpp` ONLY — appended `source_normal_local_*` (rings) +
 `bond_axis_local_*` (bonds) per source (data was already in `SourceSlot`; mirrors
 RecordSink; charge → zero sentinel). Ring/mc oracle intact by construction (no other
-C++ touched). The fitter's `--with-axes` lights up the orientation-aware model on the
-re-extracted axes substrate (`/tmp/rdc-broad-backbone-axes`, 33 cols / 6 axis cols).
+C++ touched). The first `--with-axes` run on `/tmp/rdc-broad-backbone-axes` is now
+marked TAINTED because it consumed ring normals and index-oriented bond axes through a
+polar `1o` cross path.
 
-Two runs (frame-split T2 R² gate per stratum; |T2| r; LOAO opt-in via `--loao`):
-  disp-only → axes:  N .574→.650  CA .328→.428  C .561→.585  O .587→.716
-                     HN .687→.759  HA .598→.672  HA2 .794→.842(thin,4at)  HA3 .873→.916(thin,4at)
-Orientation vectors improved EVERY stratum (ΔR² +0.02..+0.13). Solid on the
-54/52/50-atom strata; HA2/HA3 thin (4 coupled atoms — correlate-not-match, flagged).
-CA tensor R²=0.43 vs scalar 0.055 — the T2 structure carries where σ_iso didn't.
+Parity re-check (`eb2bf03`, same substrate, corrected consumer): `--with-axes` now uses
+only parity/sign-safe `l=2` axis terms (`Y2(axis)`, equivalent to traceless axis⊗axis);
+`disp_local_*` remains the only polar `1o` input. Corrected frame-split T2 R²:
+  disp-only → corrected axes:  N .573→.630  CA .330→.418  C .563→.574  O .587→.666
+                               HN .686→.712  HA .598→.648  HA2 .792→.823(thin,4at)  HA3 .884→.911(thin,4at)
+Verdict: the axes lift **SHRANK** versus the tainted cross-path run, but did not vanish;
+it remains positive in every stratum. Solid on the 54/52/50-atom strata; HA2/HA3 thin
+(4 coupled atoms — correlate-not-match, flagged).
 
 Discipline: no recompute (lead re-grep clean), frozen-C reused, e3nn (no hand-roll),
-C++ untouched except the broad sink. `--cross exact` IS the model (default); `learnable`
-is an opt-in COMPARISON confirming the fixed angular form (~0.001). Debt caught (cached
-Y2 features, LOAO opt-in, dead-code removed). The Python-consumer discipline is now a
+C++ untouched except the broad sink. Axis columns are not consumed as polar `1o`. Debt caught
+(cached Y2 features, LOAO opt-in, dead-code removed). The Python-consumer discipline is now a
 controlling doc: `analysis/PATTERNS.md` (front-load in every fitter brief). NEXT backbone
 work copies this exemplar.
 

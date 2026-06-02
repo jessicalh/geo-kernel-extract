@@ -11,14 +11,12 @@
 // the SAME curried-closure protocol the engine uses for ring/mc — NOT a
 // procedural BroadBackboneNeighborhood::extract() walk.
 //
-// The carrier differs from ring/mc (a heterogeneous two-kind bundle with the
-// target-repeat FIX), so it streams to BroadBackboneSink via RunBroadBackbone —
-// a sibling runner that drives the SAME `Relationship` closures + a BroadReducer.
-// RelationshipEngine::RunRelationship is UNTOUCHED, so the ring/mc oracle parity
-// holds. (This is the precise latent narrowness the broad case surfaced: the
-// engine's RunRelationship is coupled to the scalar-sum RecordSink carrier;
-// composing the heterogeneous broad carrier needs the same closures driven into
-// a different sink — documented in HANDOFF / the report, not papered over.)
+// The carrier differs from ring/mc (a heterogeneous source bundle with the
+// target-repeat FIX), so RunBroadBackbone is now a thin BroadReducer +
+// BroadBackboneSink carrier over RelationshipEngine::RunTraversal. #29 removed
+// the old scalar-sink coupling for ring/mc/charge+broad; remaining #29 debt is
+// the record-shape/no-source fold for all-atom plus efg/buckingham/aimnet2, not
+// another broad sibling loop.
 
 #pragma once
 
