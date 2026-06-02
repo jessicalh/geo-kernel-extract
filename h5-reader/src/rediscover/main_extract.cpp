@@ -325,10 +325,11 @@ int main(int argc, char** argv) {
                                 << "| finite_efg=" << stats.finite_efg
                                 << "| committed=" << committed;
         if (!committed) return 4;
+        // §4 provenance is scoped to analysis substrates (all-atom + broad); this small output is explicit-empty.
         std::vector<h5reader::rediscover::OutputEntry> outputs = {
             {QStringLiteral("efg"), QStringLiteral("per_atom_feature"), QString(),
              QStringLiteral("efg_aggregated.csv"), sink.sidecarFiles(), stats.rows,
-             0, sink.rowsWritten()}};
+             0, sink.rowsWritten(), QString(), QString(), QMap<QString, std::size_t>{}}};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
             qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
@@ -366,10 +367,11 @@ int main(int argc, char** argv) {
                                 << "| finite_efield=" << stats.finite_efield
                                 << "| committed=" << committed;
         if (!committed) return 4;
+        // §4 provenance is scoped to analysis substrates (all-atom + broad); this small output is explicit-empty.
         std::vector<h5reader::rediscover::OutputEntry> outputs = {
             {QStringLiteral("buckingham_efield"), QStringLiteral("per_atom_feature"), QString(),
              QStringLiteral("buckingham_efield_aggregated.csv"), sink.sidecarFiles(), stats.rows,
-             0, sink.rowsWritten()}};
+             0, sink.rowsWritten(), QString(), QString(), QMap<QString, std::size_t>{}}};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
             qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
@@ -407,10 +409,11 @@ int main(int argc, char** argv) {
                                 << "| embedding_dims=" << stats.embedding_dims
                                 << "| committed=" << committed;
         if (!committed) return 4;
+        // §4 provenance is scoped to analysis substrates (all-atom + broad); this small output is explicit-empty.
         std::vector<h5reader::rediscover::OutputEntry> outputs = {
             {QStringLiteral("aimnet2_features"), QStringLiteral("per_atom_feature"), QString(),
              QStringLiteral("aimnet2_features_aggregated.csv"), sink.sidecarFiles(), stats.rows,
-             0, sink.rowsWritten()}};
+             0, sink.rowsWritten(), QString(), QString(), QMap<QString, std::size_t>{}}};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
             qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
@@ -463,31 +466,28 @@ int main(int argc, char** argv) {
             << "| mopac_mc_shielding_rows=" << stats.mopac_mc_shielding_rows
             << "| committed=" << committed;
         if (!committed) return 4;
+        // Provenance (#51 §4): the row-alignment contract lets a consumer load a
+        // sidecar NPY without the CSV; per-feature support counts give effective-N
+        // without a Python recompute; normalization is RAW lab-frame.
         h5reader::rediscover::OutputEntry allAtom{
             QStringLiteral("all_atom_equivariant"), QStringLiteral("source_sum"),
             QStringLiteral("all_atom_equivariant_sources.csv"),
             QStringLiteral("all_atom_equivariant_targets.csv"), sink.sidecarFiles(),
-            stats.target_rows, sink.sourceRowsWritten(), sink.targetRowsWritten()};
-        // Provenance (#51 §4): the row-alignment contract lets a consumer load a
-        // sidecar NPY without the CSV; per-feature support counts give effective-N
-        // without a Python recompute; normalization is RAW lab-frame.
-        allAtom.rowAlignmentContract = QStringLiteral(
-            "sidecar NPY row i == all_atom_equivariant_targets.csv row_id i "
-            "(target-axis sidecars); sources.csv joins via row_id");
-        allAtom.normalization = QStringLiteral("raw_lab_frame");
-        allAtom.featureSupport = {
-            {QStringLiteral("ring_source_rows"), stats.ring_rows},
-            {QStringLiteral("bond_source_rows"), stats.bond_rows},
-            {QStringLiteral("charge_ff14sb_rows"), stats.charge_ff14sb_rows},
-            {QStringLiteral("charge_aimnet2_rows"), stats.charge_aimnet2_rows},
-            {QStringLiteral("charge_mopac_welford_mean_rows"), stats.charge_mopac_rows},
-            {QStringLiteral("apbs_efield_rows"), stats.apbs_efield_rows},
-            {QStringLiteral("apbs_efg_rows"), stats.apbs_efg_rows},
-            {QStringLiteral("aimnet2_atom_rows"), stats.aimnet2_atom_rows},
-            {QStringLiteral("aimnet2_embedding_present_rows"), stats.aimnet2_embedding_present},
-            {QStringLiteral("mopac_coulomb_shielding_rows"), stats.mopac_coulomb_shielding_rows},
-            {QStringLiteral("mopac_mc_shielding_rows"), stats.mopac_mc_shielding_rows},
-        };
+            stats.target_rows, sink.sourceRowsWritten(), sink.targetRowsWritten(),
+            QStringLiteral("sidecar NPY row i == all_atom_equivariant_targets.csv row_id i "
+                           "(target-axis sidecars); sources.csv joins via row_id"),
+            QStringLiteral("raw_lab_frame"),
+            {{QStringLiteral("ring_source_rows"), stats.ring_rows},
+             {QStringLiteral("bond_source_rows"), stats.bond_rows},
+             {QStringLiteral("charge_ff14sb_rows"), stats.charge_ff14sb_rows},
+             {QStringLiteral("charge_aimnet2_rows"), stats.charge_aimnet2_rows},
+             {QStringLiteral("charge_mopac_welford_mean_rows"), stats.charge_mopac_rows},
+             {QStringLiteral("apbs_efield_rows"), stats.apbs_efield_rows},
+             {QStringLiteral("apbs_efg_rows"), stats.apbs_efg_rows},
+             {QStringLiteral("aimnet2_atom_rows"), stats.aimnet2_atom_rows},
+             {QStringLiteral("aimnet2_embedding_present_rows"), stats.aimnet2_embedding_present},
+             {QStringLiteral("mopac_coulomb_shielding_rows"), stats.mopac_coulomb_shielding_rows},
+             {QStringLiteral("mopac_mc_shielding_rows"), stats.mopac_mc_shielding_rows}}};
         std::vector<h5reader::rediscover::OutputEntry> outputs = {allAtom};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
@@ -529,11 +529,20 @@ int main(int argc, char** argv) {
                                 << "| agg_rows=" << sink.aggregatedRowsWritten()
                                 << "| committed=" << committed;
         if (!committed) return 4;
+        // Provenance (#51 §4): broad feeds the same analysis layer as all-atom, with
+        // sidecars aligned to the aggregated CSV and source support split by mechanism.
         std::vector<h5reader::rediscover::OutputEntry> outputs = {
             {QStringLiteral("broad_backbone"), QStringLiteral("source_sum"),
              QStringLiteral("broad_backbone_sources.csv"),
              QStringLiteral("broad_backbone_aggregated.csv"), sink.sidecarFiles(), cases,
-             sink.sourceRowsWritten(), sink.aggregatedRowsWritten()}};
+             sink.sourceRowsWritten(), sink.aggregatedRowsWritten(),
+             QStringLiteral("sidecar NPY row i == broad_backbone_aggregated.csv row_id i "
+                            "(aggregated-row sidecars); sources.csv joins via row_id"),
+             QStringLiteral("raw_backbone_local_frame"),
+             {{QStringLiteral("ring_source_rows"), sink.ringSourceRowsWritten()},
+              {QStringLiteral("bond_source_rows"), sink.bondSourceRowsWritten()},
+              {QStringLiteral("bond_valid_source_rows"), sink.bondValidSourceRowsWritten()},
+              {QStringLiteral("charge_source_rows"), sink.chargeSourceRowsWritten()}}}};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
             qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
@@ -641,6 +650,7 @@ int main(int argc, char** argv) {
                                 << "| committed=" << committed;
         if (!committed) rc = 4;
         if (committed) {
+            // §4 provenance is scoped to analysis substrates (all-atom + broad); these small outputs are explicit-empty.
             outputs.push_back({rcase.name,
                                relationshipKindName(schema.relationshipKind),
                                QStringLiteral("%1_sources.csv").arg(rcase.name),
@@ -648,7 +658,10 @@ int main(int argc, char** argv) {
                                sink.sidecarFiles(),
                                cases,
                                sink.sourceRowsWritten(),
-                               sink.aggregatedRowsWritten()});
+                               sink.aggregatedRowsWritten(),
+                               QString(),
+                               QString(),
+                               QMap<QString, std::size_t>{}});
         }
     }
     if (rc == 0) {

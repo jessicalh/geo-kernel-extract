@@ -155,6 +155,10 @@ public:
 
     std::size_t aggregatedRowsWritten() const { return aggRows_; }
     std::size_t sourceRowsWritten() const { return sourceRows_; }
+    std::size_t ringSourceRowsWritten() const { return ringSourceRows_; }
+    std::size_t bondSourceRowsWritten() const { return bondSourceRows_; }
+    std::size_t bondValidSourceRowsWritten() const { return bondValidSourceRows_; }
+    std::size_t chargeSourceRowsWritten() const { return chargeSourceRows_; }
     const QStringList& sidecarFiles() const { return sidecarFiles_; }
 
 private:
@@ -173,6 +177,10 @@ private:
     bool ok_ = false;
     std::size_t aggRows_ = 0;
     std::size_t sourceRows_ = 0;
+    std::size_t ringSourceRows_ = 0;
+    std::size_t bondSourceRows_ = 0;
+    std::size_t bondValidSourceRows_ = 0;
+    std::size_t chargeSourceRows_ = 0;
     int64_t nextRowId_ = 0;
 
     std::vector<double> aggTargetT2_;       // (aggRows, 5)

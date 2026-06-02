@@ -255,6 +255,18 @@ void BroadBackboneSink::writeSourceRow(const NeighborhoodRecord& rec, const Sour
     out << ',' << (s.kind == SourceKind::Bond && s.mc_source_is_self_or_bonded ? 1 : 0)
         << '\n';
     ++sourceRows_;
+    switch (s.kind) {
+    case SourceKind::Ring:
+        ++ringSourceRows_;
+        break;
+    case SourceKind::Bond:
+        ++bondSourceRows_;
+        if (!s.mc_source_is_self_or_bonded) ++bondValidSourceRows_;
+        break;
+    case SourceKind::Charge:
+        ++chargeSourceRows_;
+        break;
+    }
 }
 
 void BroadBackboneSink::writeAggregatedRow(const NeighborhoodRecord& rec,
