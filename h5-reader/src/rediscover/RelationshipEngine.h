@@ -28,6 +28,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <vector>
 
 namespace h5reader::rediscover {
 
@@ -58,6 +59,36 @@ using PerRecordSink = std::function<void(std::size_t atom, std::size_t h5_row,
 // every SourceSlot carrier shares.
 std::size_t RunTraversal(const Relationship& rel, const Body& body,
                          const PerRecordSink& carrier);
+
+// Typed record-shape overload for the remaining rich carriers. The traversal
+// still owns the canonical row-outer x atom-inner schedule; the caller supplies
+// the carrier's record shape plus the source association closure that returns
+// that shape's source records. No virtual base, registry, or sibling driver.
+template <typename StratumFn, typename FrameFn, typename RecordFn,
+          typename SourceFn, typename CarrierFn>
+std::size_t RunTraversal(const Body& body,
+                         const StratumFn& stratum_fn,
+                         const FrameFn& frame_fn,
+                         const RecordFn& record_fn,
+                         const SourceFn& source_fn,
+                         const CarrierFn& carrier) {
+    const RunData& run = body.run;
+    const std::vector<std::size_t> stratum = stratum_fn(body);
+
+    std::size_t cases = 0;
+    for (std::size_t row : run.frameMap.dftRows()) {
+        const std::size_t orig = run.frameMap.originalIndex(row);
+        for (std::size_t atom : stratum) {
+            const FrameResult fr = frame_fn(body, atom, row);
+            auto record = record_fn(body, atom, row, orig, fr);
+            const AtomState st = verbs::at(body, atom, row);
+            auto sources = source_fn(body, st, fr, record);
+            carrier(atom, row, orig, fr, record, sources);
+            ++cases;
+        }
+    }
+    return cases;
+}
 
 // Run one composed relationship over the body, streaming both row kinds to the
 // sink. Returns the number of cases (per-(atom, frame) records) emitted —

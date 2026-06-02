@@ -2,7 +2,7 @@
 
 #include "Catalog.h"
 #include "ExtractionSupport.h"
-#include "Relationship.h"
+#include "RelationshipEngine.h"
 #include "SpatialIndexSet.h"
 #include "SphericalBasis.h"
 #include "Verbs.h"
@@ -23,6 +23,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace h5reader::rediscover {
 
@@ -191,6 +192,135 @@ bool finiteT2(const std::array<double, 5>& t2) {
         if (!std::isfinite(v))
             return false;
     return true;
+}
+
+enum class AllAtomRawKind {
+    Ring,
+    Bond,
+    Ff14sbCharge,
+    Aimnet2Charge,
+    ApbsEfield,
+    ApbsEfg,
+    Aimnet2AtomFeature,
+    MopacCoulombShielding,
+    MopacMcShielding,
+    MopacCharge,
+};
+
+struct AllAtomRawSource {
+    AllAtomRawKind kind = AllAtomRawKind::Ring;
+    SourceRef ref;
+};
+
+std::vector<std::size_t> allAtomStratum(const Body& body) {
+    std::vector<std::size_t> atoms;
+    if (!body.run.protein)
+        return atoms;
+    const model::QtProtein& p = *body.run.protein;
+    atoms.reserve(p.atomCount());
+    for (std::size_t atom = 0; atom < p.atomCount(); ++atom)
+        atoms.push_back(atom);
+    return atoms;
+}
+
+FrameResult molecularLabFrame(const Body&, std::size_t, std::size_t) {
+    return {};  // default LocalFrame: lab axes, invalid local-frame flag
+}
+
+AllAtomRawSource targetSource(AllAtomRawKind kind) {
+    AllAtomRawSource out;
+    out.kind = kind;
+    return out;
+}
+
+void appendNearSources(const Body& body,
+                       std::size_t atom,
+                       std::size_t row,
+                       CloudKind cloud,
+                       double cutoff,
+                       AllAtomRawKind kind,
+                       std::vector<AllAtomRawSource>& out) {
+    for (const SourceRef& ref : verbs::near(body, cloud, atom, row, cutoff))
+        out.push_back({kind, ref});
+}
+
+std::vector<AllAtomRawSource> selectAllAtomSources(const Body& body,
+                                                   std::size_t atom,
+                                                   std::size_t row,
+                                                   const AllAtomEquivariantConfig& config) {
+    std::vector<AllAtomRawSource> out;
+    appendNearSources(body, atom, row, CloudKind::RingCenters, config.ring_cutoff_A,
+                      AllAtomRawKind::Ring, out);
+    appendNearSources(body, atom, row, CloudKind::AllBondMidpoints, config.bond_cutoff_A,
+                      AllAtomRawKind::Bond, out);
+    if (body.catalog.has(ArrayId::Ff14sbCharge))
+        appendNearSources(body, atom, row, CloudKind::ChargeSites, config.charge_cutoff_A,
+                          AllAtomRawKind::Ff14sbCharge, out);
+    if (body.catalog.has(ArrayId::Aimnet2Charge))
+        appendNearSources(body, atom, row, CloudKind::Atoms, config.charge_cutoff_A,
+                          AllAtomRawKind::Aimnet2Charge, out);
+    out.push_back(targetSource(AllAtomRawKind::ApbsEfield));
+    out.push_back(targetSource(AllAtomRawKind::ApbsEfg));
+    out.push_back(targetSource(AllAtomRawKind::Aimnet2AtomFeature));
+    out.push_back(targetSource(AllAtomRawKind::MopacCoulombShielding));
+    out.push_back(targetSource(AllAtomRawKind::MopacMcShielding));
+    if (body.catalog.has(ArrayId::MopacChargeWelfordMean))
+        appendNearSources(body, atom, row, CloudKind::Atoms, config.charge_cutoff_A,
+                          AllAtomRawKind::MopacCharge, out);
+    return out;
+}
+
+AllAtomEquivariantTargetRecord makeAllAtomTarget(const Body& body,
+                                                 std::size_t atom,
+                                                 std::size_t row,
+                                                 std::size_t orig,
+                                                 const LocalFrame& frame) {
+    AllAtomEquivariantTargetRecord target;
+    fillTargetIdentity(body, atom, row, target);
+    target.target = BuildTarget(body.run, atom, orig, frame);
+
+    target.apbs_efield_present = apbsEfieldPresent(body, atom, row);
+    if (target.apbs_efield_present)
+        target.apbs_efield_lab = body.catalog.valueVec3(body, ArrayId::ApbsEfield, atom, row);
+    target.apbs_efg_present = apbsEfgPresent(body, atom, row);
+    if (target.apbs_efg_present)
+        target.apbs_efg_T2 = body.catalog.valueT2(body, ArrayId::ApbsEfg, atom, row);
+    target.aimnet2_charge_present = aimnetChargePresent(body, atom, row);
+    if (target.aimnet2_charge_present)
+        target.aimnet2_charge = body.catalog.value(body, ArrayId::Aimnet2Charge, atom, row);
+    target.aimnet2_crg_present = aimnetCrgPresent(body, atom, row);
+    if (target.aimnet2_crg_present) {
+        target.aimnet2_crg_scalar = body.catalog.value(body, ArrayId::Aimnet2ChargeRespScalar, atom, row);
+        target.aimnet2_crg_lab = body.catalog.valueVec3(body, ArrayId::Aimnet2ChargeRespVector, atom, row);
+    }
+    const float* embeddingPtr = nullptr;
+    std::size_t embeddingDims = 0;
+    target.aimnet2_embedding_present = aimnetEmbeddingPresent(body, atom, row, embeddingDims, embeddingPtr);
+    target.aimnet2_embedding = embeddingPtr;
+    target.aimnet2_embedding_dims = embeddingDims;
+
+    // MOPAC family (#51). The moderate Stage-1 field/EFG leg lives in the
+    // MOPAC-Coulomb-EFG-DERIVED shielding T2 (+ the MOPAC-McConnell T2).
+    // mopac charge is the Welford-mean STATIC (no per-frame MOPAC TR
+    // exists). reconciliation is the charge-source-divergence QC scalar.
+    target.mopac_coulomb_shielding_present =
+        body.catalog.present(body, ArrayId::MopacCoulombShielding, atom, row);
+    if (target.mopac_coulomb_shielding_present)
+        target.mopac_coulomb_shielding_T2 =
+            body.catalog.valueT2(body, ArrayId::MopacCoulombShielding, atom, row);
+    target.mopac_mc_shielding_present = body.catalog.present(body, ArrayId::MopacMcShielding, atom, row);
+    if (target.mopac_mc_shielding_present)
+        target.mopac_mc_shielding_T2 = body.catalog.valueT2(body, ArrayId::MopacMcShielding, atom, row);
+    target.mopac_charge_welford_mean_present =
+        body.catalog.present(body, ArrayId::MopacChargeWelfordMean, atom, row);
+    if (target.mopac_charge_welford_mean_present)
+        target.mopac_charge_welford_mean = body.catalog.value(body, ArrayId::MopacChargeWelfordMean, atom, row);
+    target.mopac_vs_ff14sb_present =
+        body.catalog.present(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
+    if (target.mopac_vs_ff14sb_present)
+        target.mopac_vs_ff14sb = body.catalog.value(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
+
+    return target;
 }
 
 AllAtomEquivariantSourceRecord makeRingSource(const Body& body,
@@ -372,6 +502,167 @@ AllAtomEquivariantSourceRecord makeTensorFeatureSource(const AllAtomEquivariantT
     return out;
 }
 
+void attachAllAtomSource(const Body& body,
+                         const AtomState& st,
+                         const AllAtomEquivariantTargetRecord& target,
+                         const AllAtomEquivariantConfig& config,
+                         const AllAtomRawSource& raw,
+                         std::vector<AllAtomEquivariantSourceRecord>& sources,
+                         AllAtomEquivariantStats& stats) {
+    const model::QtProtein& p = *body.run.protein;
+    switch (raw.kind) {
+    case AllAtomRawKind::Ring: {
+        if (raw.ref.entity_index < 0)
+            return;
+        const std::size_t ringIdx = static_cast<std::size_t>(raw.ref.entity_index);
+        if (ringIdx >= p.topology().ringCount())
+            return;
+        AllAtomEquivariantSourceRecord src = makeRingSource(body, target, st.atom, ringIdx, st.frame);
+        ++stats.source_rows;
+        ++stats.ring_rows;
+        if (src.ring_type_index >= 0 && src.ring_type_index < static_cast<int>(stats.ring_type_rows.size()))
+            ++stats.ring_type_rows[static_cast<std::size_t>(src.ring_type_index)];
+        sources.push_back(std::move(src));
+        return;
+    }
+    case AllAtomRawKind::Bond: {
+        if (raw.ref.entity_index < 0)
+            return;
+        const std::size_t bondIdx = static_cast<std::size_t>(raw.ref.entity_index);
+        if (bondIdx >= p.topology().bondCount())
+            return;
+        AllAtomEquivariantSourceRecord src =
+            makeBondSource(body, target, st.atom, bondIdx, st.frame, config.mc_near_field_ratio);
+        ++stats.source_rows;
+        ++stats.bond_rows;
+        if (src.bond_category >= 0 && src.bond_category < static_cast<int>(stats.bond_category_rows.size()))
+            ++stats.bond_category_rows[static_cast<std::size_t>(src.bond_category)];
+        sources.push_back(std::move(src));
+        return;
+    }
+    case AllAtomRawKind::Ff14sbCharge:
+    case AllAtomRawKind::Aimnet2Charge:
+    case AllAtomRawKind::MopacCharge: {
+        if (raw.ref.entity_index < 0)
+            return;
+        const std::size_t srcAtom = static_cast<std::size_t>(raw.ref.entity_index);
+        if (srcAtom >= p.atomCount() || srcAtom == st.atom)
+            return;
+        const ArrayId chargeArray =
+            raw.kind == AllAtomRawKind::Ff14sbCharge ? ArrayId::Ff14sbCharge
+            : raw.kind == AllAtomRawKind::MopacCharge ? ArrayId::MopacChargeWelfordMean
+                                                      : ArrayId::Aimnet2Charge;
+        const QString chargeName =
+            raw.kind == AllAtomRawKind::Ff14sbCharge ? QStringLiteral("ff14sb")
+            : raw.kind == AllAtomRawKind::MopacCharge ? QStringLiteral("mopac_welford_mean")
+                                                      : QStringLiteral("aimnet2");
+        if (!body.catalog.present(body, chargeArray, srcAtom, st.frame))
+            return;
+        AllAtomEquivariantSourceRecord src =
+            makeChargeSource(body, target, st.atom, srcAtom, st.frame, chargeArray, chargeName);
+        if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e))
+            return;
+        ++stats.source_rows;
+        if (raw.kind == AllAtomRawKind::Ff14sbCharge)
+            ++stats.charge_ff14sb_rows;
+        else if (raw.kind == AllAtomRawKind::MopacCharge)
+            ++stats.charge_mopac_rows;
+        else
+            ++stats.charge_aimnet2_rows;
+        sources.push_back(std::move(src));
+        return;
+    }
+    case AllAtomRawKind::ApbsEfield:
+        if (target.apbs_efield_present && finiteVec3(target.apbs_efield_lab)) {
+            AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(target,
+                                                                         QStringLiteral("field"),
+                                                                         QStringLiteral("apbs_efield"),
+                                                                         QStringLiteral("buckingham_efield"),
+                                                                         target.apbs_efield_lab,
+                                                                         QStringLiteral("V/Angstrom"));
+            ++stats.source_rows;
+            ++stats.apbs_efield_rows;
+            sources.push_back(std::move(src));
+        }
+        return;
+    case AllAtomRawKind::ApbsEfg:
+        if (target.apbs_efg_present) {
+            AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
+                                                                         QStringLiteral("efg"),
+                                                                         QStringLiteral("apbs_efg"),
+                                                                         QStringLiteral("apbs_efg"),
+                                                                         target.apbs_efg_T2,
+                                                                         QStringLiteral("V/Angstrom^2"));
+            ++stats.source_rows;
+            ++stats.apbs_efg_rows;
+            sources.push_back(std::move(src));
+        }
+        return;
+    case AllAtomRawKind::Aimnet2AtomFeature:
+        if ((target.aimnet2_charge_present && std::isfinite(target.aimnet2_charge))
+            || (target.aimnet2_crg_present && finiteVec3(target.aimnet2_crg_lab))
+            || target.aimnet2_embedding_present) {
+            AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(target,
+                                                                         QStringLiteral("aimnet2"),
+                                                                         QStringLiteral("aimnet2_atom_feature"),
+                                                                         QStringLiteral("aimnet2"),
+                                                                         target.aimnet2_crg_lab,
+                                                                         QStringLiteral("e2/Angstrom"));
+            src.source_value = target.aimnet2_charge_present ? target.aimnet2_charge : kNaN;
+            src.source_value_2 = target.aimnet2_crg_present ? target.aimnet2_crg_scalar : kNaN;
+            src.charge_source = QStringLiteral("aimnet2");
+            src.source_q_e = target.aimnet2_charge_present ? target.aimnet2_charge : kNaN;
+            src.aimnet2_embedding_present = target.aimnet2_embedding_present;
+            src.aimnet2_embedding_dims = target.aimnet2_embedding_dims;
+            ++stats.source_rows;
+            ++stats.aimnet2_atom_rows;
+            sources.push_back(std::move(src));
+        }
+        return;
+    case AllAtomRawKind::MopacCoulombShielding:
+        if (target.mopac_coulomb_shielding_present && finiteT2(target.mopac_coulomb_shielding_T2)) {
+            AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
+                                                                         QStringLiteral("mopac_field"),
+                                                                         QStringLiteral("mopac_coulomb_shielding"),
+                                                                         QStringLiteral("mopac_coulomb_shielding"),
+                                                                         target.mopac_coulomb_shielding_T2,
+                                                                         QStringLiteral("ppm"));
+            ++stats.source_rows;
+            ++stats.mopac_coulomb_shielding_rows;
+            sources.push_back(std::move(src));
+        }
+        return;
+    case AllAtomRawKind::MopacMcShielding:
+        if (target.mopac_mc_shielding_present && finiteT2(target.mopac_mc_shielding_T2)) {
+            AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
+                                                                         QStringLiteral("mopac_mc"),
+                                                                         QStringLiteral("mopac_mc_shielding"),
+                                                                         QStringLiteral("mopac_mc_shielding"),
+                                                                         target.mopac_mc_shielding_T2,
+                                                                         QStringLiteral("ppm"));
+            ++stats.source_rows;
+            ++stats.mopac_mc_shielding_rows;
+            sources.push_back(std::move(src));
+        }
+        return;
+    }
+}
+
+std::vector<AllAtomEquivariantSourceRecord>
+makeAllAtomSources(const Body& body,
+                   const AtomState& st,
+                   const AllAtomEquivariantTargetRecord& target,
+                   const AllAtomEquivariantConfig& config,
+                   AllAtomEquivariantStats& stats) {
+    const std::vector<AllAtomRawSource> rawSources =
+        selectAllAtomSources(body, st.atom, st.frame, config);
+    std::vector<AllAtomEquivariantSourceRecord> sources;
+    sources.reserve(rawSources.size());
+    for (const AllAtomRawSource& raw : rawSources)
+        attachAllAtomSource(body, st, target, config, raw, sources, stats);
+    return sources;
+}
+
 }  // namespace
 
 AllAtomEquivariantStats
@@ -403,230 +694,33 @@ RunAllAtomEquivariantEmit(const Body& body, AllAtomEquivariantSink& sink, const 
                                           << "| apbs_efg=" << body.catalog.has(ArrayId::ApbsEfg)
                                           << "| aimnet2_embedding_dims=" << (emb ? emb->n_dims : 0);
 
-    // #29 debt: the rich all-atom target/source carrier still owns this walk.
-    // Finish by letting RunTraversal hand carrier-owned record shapes.
-    LocalFrame noLocalFrame;
-    for (std::size_t row : body.run.frameMap.dftRows()) {
-        const std::size_t orig = body.run.frameMap.originalIndex(row);
-        for (std::size_t atom = 0; atom < p.atomCount(); ++atom) {
-            AllAtomEquivariantTargetRecord target;
-            fillTargetIdentity(body, atom, row, target);
-            target.target = BuildTarget(body.run, atom, orig, noLocalFrame);
-
-            target.apbs_efield_present = apbsEfieldPresent(body, atom, row);
-            if (target.apbs_efield_present)
-                target.apbs_efield_lab = body.catalog.valueVec3(body, ArrayId::ApbsEfield, atom, row);
-            target.apbs_efg_present = apbsEfgPresent(body, atom, row);
-            if (target.apbs_efg_present)
-                target.apbs_efg_T2 = body.catalog.valueT2(body, ArrayId::ApbsEfg, atom, row);
-            target.aimnet2_charge_present = aimnetChargePresent(body, atom, row);
-            if (target.aimnet2_charge_present)
-                target.aimnet2_charge = body.catalog.value(body, ArrayId::Aimnet2Charge, atom, row);
-            target.aimnet2_crg_present = aimnetCrgPresent(body, atom, row);
-            if (target.aimnet2_crg_present) {
-                target.aimnet2_crg_scalar = body.catalog.value(body, ArrayId::Aimnet2ChargeRespScalar, atom, row);
-                target.aimnet2_crg_lab = body.catalog.valueVec3(body, ArrayId::Aimnet2ChargeRespVector, atom, row);
-            }
-            const float* embeddingPtr = nullptr;
-            std::size_t embeddingDims = 0;
-            target.aimnet2_embedding_present = aimnetEmbeddingPresent(body, atom, row, embeddingDims, embeddingPtr);
-            target.aimnet2_embedding = embeddingPtr;
-            target.aimnet2_embedding_dims = embeddingDims;
-            if (target.aimnet2_embedding_present && embeddingDims == sink.embeddingDims())
+    RunTraversal(
+        body,
+        allAtomStratum,
+        molecularLabFrame,
+        [&](const Body& b, std::size_t atom, std::size_t row, std::size_t orig,
+            const FrameResult& fr) {
+            AllAtomEquivariantTargetRecord target =
+                makeAllAtomTarget(b, atom, row, orig, fr.frame);
+            if (target.aimnet2_embedding_present
+                && target.aimnet2_embedding_dims == sink.embeddingDims())
                 ++stats.aimnet2_embedding_present;
-
-            // MOPAC family (#51). The moderate Stage-1 field/EFG leg lives in the
-            // MOPAC-Coulomb-EFG-DERIVED shielding T2 (+ the MOPAC-McConnell T2).
-            // mopac charge is the Welford-mean STATIC (no per-frame MOPAC TR
-            // exists). reconciliation is the charge-source-divergence QC scalar.
-            target.mopac_coulomb_shielding_present = body.catalog.present(body, ArrayId::MopacCoulombShielding, atom, row);
-            if (target.mopac_coulomb_shielding_present)
-                target.mopac_coulomb_shielding_T2 = body.catalog.valueT2(body, ArrayId::MopacCoulombShielding, atom, row);
-            target.mopac_mc_shielding_present = body.catalog.present(body, ArrayId::MopacMcShielding, atom, row);
-            if (target.mopac_mc_shielding_present)
-                target.mopac_mc_shielding_T2 = body.catalog.valueT2(body, ArrayId::MopacMcShielding, atom, row);
-            target.mopac_charge_welford_mean_present = body.catalog.present(body, ArrayId::MopacChargeWelfordMean, atom, row);
-            if (target.mopac_charge_welford_mean_present)
-                target.mopac_charge_welford_mean = body.catalog.value(body, ArrayId::MopacChargeWelfordMean, atom, row);
-            target.mopac_vs_ff14sb_present = body.catalog.present(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
-            if (target.mopac_vs_ff14sb_present)
-                target.mopac_vs_ff14sb = body.catalog.value(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
-
+            return target;
+        },
+        [&](const Body& b, const AtomState& st, const FrameResult&,
+            const AllAtomEquivariantTargetRecord& target) {
+            return makeAllAtomSources(b, st, target, config, stats);
+        },
+        [&](std::size_t, std::size_t, std::size_t, const FrameResult&,
+            const AllAtomEquivariantTargetRecord& target,
+            const std::vector<AllAtomEquivariantSourceRecord>& sources) {
             const int64_t rowId = sink.WriteTarget(target);
             ++stats.target_rows;
             if (target.target.present)
                 ++stats.dft_present;
-
-            for (const SourceRef& ref : verbs::near(body, CloudKind::RingCenters, atom, row, config.ring_cutoff_A)) {
-                if (ref.entity_index < 0)
-                    continue;
-                const std::size_t ringIdx = static_cast<std::size_t>(ref.entity_index);
-                if (ringIdx >= p.topology().ringCount())
-                    continue;
-                AllAtomEquivariantSourceRecord src = makeRingSource(body, target, atom, ringIdx, row);
+            for (const AllAtomEquivariantSourceRecord& src : sources)
                 sink.WriteSource(rowId, src);
-                ++stats.source_rows;
-                ++stats.ring_rows;
-                if (src.ring_type_index >= 0 && src.ring_type_index < static_cast<int>(stats.ring_type_rows.size()))
-                    ++stats.ring_type_rows[static_cast<std::size_t>(src.ring_type_index)];
-            }
-
-            for (const SourceRef& ref : verbs::near(body, CloudKind::AllBondMidpoints, atom, row, config.bond_cutoff_A)) {
-                if (ref.entity_index < 0)
-                    continue;
-                const std::size_t bondIdx = static_cast<std::size_t>(ref.entity_index);
-                if (bondIdx >= p.topology().bondCount())
-                    continue;
-                AllAtomEquivariantSourceRecord src =
-                    makeBondSource(body, target, atom, bondIdx, row, config.mc_near_field_ratio);
-                sink.WriteSource(rowId, src);
-                ++stats.source_rows;
-                ++stats.bond_rows;
-                if (src.bond_category >= 0 && src.bond_category < static_cast<int>(stats.bond_category_rows.size()))
-                    ++stats.bond_category_rows[static_cast<std::size_t>(src.bond_category)];
-            }
-
-            if (body.catalog.has(ArrayId::Ff14sbCharge)) {
-                for (const SourceRef& ref : verbs::near(body, CloudKind::ChargeSites, atom, row, config.charge_cutoff_A)) {
-                    if (ref.entity_index < 0)
-                        continue;
-                    const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
-                    if (srcAtom >= p.atomCount() || srcAtom == atom)
-                        continue;
-                    if (!body.catalog.present(body, ArrayId::Ff14sbCharge, srcAtom, row))
-                        continue;
-                    AllAtomEquivariantSourceRecord src =
-                        makeChargeSource(body, target, atom, srcAtom, row, ArrayId::Ff14sbCharge, QStringLiteral("ff14sb"));
-                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e))
-                        continue;
-                    sink.WriteSource(rowId, src);
-                    ++stats.source_rows;
-                    ++stats.charge_ff14sb_rows;
-                }
-            }
-
-            if (body.catalog.has(ArrayId::Aimnet2Charge)) {
-                for (const SourceRef& ref : verbs::near(body, CloudKind::Atoms, atom, row, config.charge_cutoff_A)) {
-                    if (ref.entity_index < 0)
-                        continue;
-                    const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
-                    if (srcAtom >= p.atomCount() || srcAtom == atom)
-                        continue;
-                    if (!body.catalog.present(body, ArrayId::Aimnet2Charge, srcAtom, row))
-                        continue;
-                    AllAtomEquivariantSourceRecord src =
-                        makeChargeSource(body, target, atom, srcAtom, row, ArrayId::Aimnet2Charge, QStringLiteral("aimnet2"));
-                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e))
-                        continue;
-                    sink.WriteSource(rowId, src);
-                    ++stats.source_rows;
-                    ++stats.charge_aimnet2_rows;
-                }
-            }
-
-            if (target.apbs_efield_present && finiteVec3(target.apbs_efield_lab)) {
-                AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(target,
-                                                                             QStringLiteral("field"),
-                                                                             QStringLiteral("apbs_efield"),
-                                                                             QStringLiteral("buckingham_efield"),
-                                                                             target.apbs_efield_lab,
-                                                                             QStringLiteral("V/Angstrom"));
-                sink.WriteSource(rowId, src);
-                ++stats.source_rows;
-                ++stats.apbs_efield_rows;
-            }
-
-            if (target.apbs_efg_present) {
-                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
-                                                                             QStringLiteral("efg"),
-                                                                             QStringLiteral("apbs_efg"),
-                                                                             QStringLiteral("apbs_efg"),
-                                                                             target.apbs_efg_T2,
-                                                                             QStringLiteral("V/Angstrom^2"));
-                sink.WriteSource(rowId, src);
-                ++stats.source_rows;
-                ++stats.apbs_efg_rows;
-            }
-
-            if ((target.aimnet2_charge_present && std::isfinite(target.aimnet2_charge))
-                || (target.aimnet2_crg_present && finiteVec3(target.aimnet2_crg_lab)) || target.aimnet2_embedding_present) {
-                AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(target,
-                                                                             QStringLiteral("aimnet2"),
-                                                                             QStringLiteral("aimnet2_atom_feature"),
-                                                                             QStringLiteral("aimnet2"),
-                                                                             target.aimnet2_crg_lab,
-                                                                             QStringLiteral("e2/Angstrom"));
-                src.source_value = target.aimnet2_charge_present ? target.aimnet2_charge : kNaN;
-                src.source_value_2 = target.aimnet2_crg_present ? target.aimnet2_crg_scalar : kNaN;
-                src.charge_source = QStringLiteral("aimnet2");
-                src.source_q_e = target.aimnet2_charge_present ? target.aimnet2_charge : kNaN;
-                src.aimnet2_embedding_present = target.aimnet2_embedding_present;
-                src.aimnet2_embedding_dims = target.aimnet2_embedding_dims;
-                sink.WriteSource(rowId, src);
-                ++stats.source_rows;
-                ++stats.aimnet2_atom_rows;
-            }
-
-            // MOPAC-Coulomb-EFG-DERIVED shielding T2 — the moderate Stage-1
-            // field/EFG leg, as a per-target feature row (mirrors apbs_efg).
-            // Labelled "mopac_coulomb_shielding" (NOT "efg"): it is the contracted
-            // shielding T2, not the raw MOPAC Coulomb EFG tensor (that EFG tensor
-            // is a per-atom NPY only, not on this trajectory substrate).
-            if (target.mopac_coulomb_shielding_present && finiteT2(target.mopac_coulomb_shielding_T2)) {
-                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
-                                                                             QStringLiteral("mopac_field"),
-                                                                             QStringLiteral("mopac_coulomb_shielding"),
-                                                                             QStringLiteral("mopac_coulomb_shielding"),
-                                                                             target.mopac_coulomb_shielding_T2,
-                                                                             QStringLiteral("ppm"));
-                sink.WriteSource(rowId, src);
-                ++stats.source_rows;
-                ++stats.mopac_coulomb_shielding_rows;
-            }
-
-            // MOPAC-charge McConnell bond-anisotropy shielding T2 (per-target).
-            if (target.mopac_mc_shielding_present && finiteT2(target.mopac_mc_shielding_T2)) {
-                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
-                                                                             QStringLiteral("mopac_mc"),
-                                                                             QStringLiteral("mopac_mc_shielding"),
-                                                                             QStringLiteral("mopac_mc_shielding"),
-                                                                             target.mopac_mc_shielding_T2,
-                                                                             QStringLiteral("ppm"));
-                sink.WriteSource(rowId, src);
-                ++stats.source_rows;
-                ++stats.mopac_mc_shielding_rows;
-            }
-
-            // MOPAC charge sites — the third charge_source alongside ff14sb /
-            // aimnet2. There is NO per-frame MOPAC charge TR on this substrate, so
-            // the source charge is the per-atom MOPAC Welford MEAN (a STATIC charge
-            // source). The Welford mean is frame-independent, so each near atom's
-            // charge repeats across frames — recorded honestly via charge_source.
-            if (body.catalog.has(ArrayId::MopacChargeWelfordMean)) {
-                for (const SourceRef& ref : verbs::near(body, CloudKind::Atoms, atom, row, config.charge_cutoff_A)) {
-                    if (ref.entity_index < 0)
-                        continue;
-                    const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
-                    if (srcAtom >= p.atomCount() || srcAtom == atom)
-                        continue;
-                    if (!body.catalog.present(body, ArrayId::MopacChargeWelfordMean, srcAtom, row))
-                        continue;
-                    AllAtomEquivariantSourceRecord src = makeChargeSource(body,
-                                                                          target,
-                                                                          atom,
-                                                                          srcAtom,
-                                                                          row,
-                                                                          ArrayId::MopacChargeWelfordMean,
-                                                                          QStringLiteral("mopac_welford_mean"));
-                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e))
-                        continue;
-                    sink.WriteSource(rowId, src);
-                    ++stats.source_rows;
-                    ++stats.charge_mopac_rows;
-                }
-            }
-        }
-    }
+        });
 
     qCInfo(cAllAtomEquivariant).noquote() << "all_atom_equivariant rows | targets=" << stats.target_rows
                                           << "| dft_present=" << stats.dft_present << "| sources=" << stats.source_rows
