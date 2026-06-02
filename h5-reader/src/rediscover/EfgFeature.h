@@ -1,4 +1,5 @@
-// EfgFeature — focused per_atom_feature cell for APBS EFG -> DFT T2.
+// EfgFeature — focused per_atom_feature cell for APBS EFG and MOPAC field-like
+// shielding T2 legs -> DFT T2.
 //
 // Shape: one row per DFT-present (atom, frame), APBS EFG T2 sidecar, DFT
 // target T2 sidecar. No source set, no reducer, no registry. This is #29's

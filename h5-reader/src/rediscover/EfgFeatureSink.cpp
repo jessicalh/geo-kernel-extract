@@ -115,6 +115,10 @@ EfgFeatureSink::EfgFeatureSink(const QString& outDir, const QString& caseName)
         QStringLiteral("%1_target_T2.npy").arg(caseName),
         QStringLiteral("%1_feature_lab_T2.npy").arg(caseName),
         QStringLiteral("%1_target_lab_T2.npy").arg(caseName),
+        QStringLiteral("%1_mopac_coulomb_shielding_T2.npy").arg(caseName),
+        QStringLiteral("%1_mopac_coulomb_shielding_lab_T2.npy").arg(caseName),
+        QStringLiteral("%1_mopac_mc_shielding_T2.npy").arg(caseName),
+        QStringLiteral("%1_mopac_mc_shielding_lab_T2.npy").arg(caseName),
     };
 
     aggregatedFile_ = std::make_unique<QSaveFile>(aggregatedPath_);
@@ -129,7 +133,17 @@ EfgFeatureSink::EfgFeatureSink(const QString& outDir, const QString& caseName)
            "frame_z_x,frame_z_y,frame_z_z,frame_x_x,frame_x_y,frame_x_z,"
            "frame_y_x,frame_y_y,frame_y_z,frame_variant,frame_valid,"
            "frame_anchor_atom_index,dft_present,apbs_efg_present,"
-           "efg_T2_magnitude,efg_T2_lab_magnitude,efg_units\n";
+           "efg_T2_magnitude,efg_T2_lab_magnitude,efg_units,"
+           "mopac_coulomb_shielding_present,"
+           "mopac_coulomb_shielding_T2_magnitude,"
+           "mopac_coulomb_shielding_T2_lab_magnitude,"
+           "mopac_coulomb_shielding_units,"
+           "mopac_coulomb_shielding_label,"
+           "mopac_mc_shielding_present,"
+           "mopac_mc_shielding_T2_magnitude,"
+           "mopac_mc_shielding_T2_lab_magnitude,"
+           "mopac_mc_shielding_units,"
+           "mopac_mc_shielding_label\n";
     ok_ = true;
 }
 
@@ -142,8 +156,21 @@ void EfgFeatureSink::Write(const EfgFeatureRow& row) {
         row.apbs_efg_present && row.frame_valid && FiniteT2(row.efg_feature_T2);
     const bool localTargetPresent =
         row.dft_present && row.frame_valid && FiniteT2(row.dft_target_T2);
+    const bool mopacCoulombPresent =
+        row.mopac_coulomb_shielding_present && row.frame_valid
+        && FiniteT2(row.mopac_coulomb_shielding_T2);
+    const bool mopacMcPresent =
+        row.mopac_mc_shielding_present && row.frame_valid
+        && FiniteT2(row.mopac_mc_shielding_T2);
     const double mag = localFeaturePresent ? T2Magnitude(row.efg_feature_T2) : kNaN;
     const double labMag = row.apbs_efg_present ? T2Magnitude(row.efg_feature_lab_T2) : kNaN;
+    const double mopacCoulombMag =
+        mopacCoulombPresent ? T2Magnitude(row.mopac_coulomb_shielding_T2) : kNaN;
+    const double mopacCoulombLabMag =
+        row.mopac_coulomb_shielding_present ? T2Magnitude(row.mopac_coulomb_shielding_lab_T2) : kNaN;
+    const double mopacMcMag = mopacMcPresent ? T2Magnitude(row.mopac_mc_shielding_T2) : kNaN;
+    const double mopacMcLabMag =
+        row.mopac_mc_shielding_present ? T2Magnitude(row.mopac_mc_shielding_lab_T2) : kNaN;
     QTextStream& out = *aggregatedOut_;
     out << rowId << ',' << row.atom_index << ',' << row.residue_index << ','
         << row.residue_number << ',' << row.amino_acid << ',' << row.element << ','
@@ -156,12 +183,26 @@ void EfgFeatureSink::Write(const EfgFeatureRow& row) {
         << row.frame_variant << ',' << (row.frame_valid ? 1 : 0) << ','
         << row.frame_anchor_atom_index << ','
         << (row.dft_present ? 1 : 0) << ',' << (row.apbs_efg_present ? 1 : 0) << ','
-        << num(mag) << ',' << num(labMag) << ',' << row.efg_units << '\n';
+        << num(mag) << ',' << num(labMag) << ',' << row.efg_units << ','
+        << (row.mopac_coulomb_shielding_present ? 1 : 0) << ','
+        << num(mopacCoulombMag) << ',' << num(mopacCoulombLabMag) << ','
+        << row.mopac_coulomb_shielding_units << ','
+        << "mopac_coulomb_efg_derived_shielding_T2_not_raw_EFG,"
+        << (row.mopac_mc_shielding_present ? 1 : 0) << ','
+        << num(mopacMcMag) << ',' << num(mopacMcLabMag) << ','
+        << row.mopac_mc_shielding_units << ','
+        << "mopac_charge_mc_shielding_T2\n";
 
     appendT2(featureT2_, row.efg_feature_T2, localFeaturePresent);
     appendT2(targetT2_, row.dft_target_T2, localTargetPresent);
     appendT2(featureLabT2_, row.efg_feature_lab_T2, row.apbs_efg_present);
     appendT2(targetLabT2_, row.dft_target_lab_T2, row.dft_present);
+    appendT2(mopacCoulombShieldingT2_, row.mopac_coulomb_shielding_T2, mopacCoulombPresent);
+    appendT2(mopacCoulombShieldingLabT2_, row.mopac_coulomb_shielding_lab_T2,
+             row.mopac_coulomb_shielding_present);
+    appendT2(mopacMcShieldingT2_, row.mopac_mc_shielding_T2, mopacMcPresent);
+    appendT2(mopacMcShieldingLabT2_, row.mopac_mc_shielding_lab_T2,
+             row.mopac_mc_shielding_present);
     ++rows_;
 }
 
@@ -183,6 +224,18 @@ bool EfgFeatureSink::Commit() {
     npyOk = npyOk
             && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[3]),
                            {rows_, 5}, targetLabT2_);
+    npyOk = npyOk
+            && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[4]),
+                           {rows_, 5}, mopacCoulombShieldingT2_);
+    npyOk = npyOk
+            && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[5]),
+                           {rows_, 5}, mopacCoulombShieldingLabT2_);
+    npyOk = npyOk
+            && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[6]),
+                           {rows_, 5}, mopacMcShieldingT2_);
+    npyOk = npyOk
+            && writeNpyF64(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[7]),
+                           {rows_, 5}, mopacMcShieldingLabT2_);
     if (!csvOk) qCWarning(cEfgSink).noquote() << "efg aggregated commit failed" << aggregatedPath_;
     if (!npyOk) qCWarning(cEfgSink).noquote() << "efg sidecar NPY commit failed" << caseName_;
     qCInfo(cEfgSink).noquote() << "committed" << caseName_ << "| rows=" << rows_;

@@ -1,4 +1,5 @@
-// EfgFeatureSink — per_atom_feature carrier for the APBS EFG -> DFT T2 cell.
+// EfgFeatureSink — per_atom_feature carrier for APBS EFG and MOPAC
+// shielding-T2 field-like legs -> DFT T2.
 //
 // This is intentionally small and direct: one aggregated row per DFT-present
 // (atom, frame), plus corrected local-frame T2 sidecars and lab-frame audit
@@ -45,11 +46,19 @@ struct EfgFeatureRow {
 
     bool dft_present = false;
     bool apbs_efg_present = false;
+    bool mopac_coulomb_shielding_present = false;
+    bool mopac_mc_shielding_present = false;
     std::array<double, 5> efg_feature_T2 = {};      // local frame
     std::array<double, 5> dft_target_T2 = {};       // local frame
     std::array<double, 5> efg_feature_lab_T2 = {};  // lab-frame audit payload
     std::array<double, 5> dft_target_lab_T2 = {};   // lab-frame audit payload
+    std::array<double, 5> mopac_coulomb_shielding_T2 = {};      // local frame, shielding T2 (not raw EFG)
+    std::array<double, 5> mopac_coulomb_shielding_lab_T2 = {};  // lab-frame audit payload
+    std::array<double, 5> mopac_mc_shielding_T2 = {};           // local frame
+    std::array<double, 5> mopac_mc_shielding_lab_T2 = {};       // lab-frame audit payload
     QString efg_units;
+    QString mopac_coulomb_shielding_units;
+    QString mopac_mc_shielding_units;
 };
 
 struct EfgFeatureStats {
@@ -57,7 +66,11 @@ struct EfgFeatureStats {
     std::size_t dft_present = 0;
     std::size_t frame_valid = 0;
     std::size_t apbs_efg_present = 0;
+    std::size_t mopac_coulomb_shielding_present = 0;
+    std::size_t mopac_mc_shielding_present = 0;
     std::size_t finite_efg = 0;
+    std::size_t finite_mopac_coulomb_shielding = 0;
+    std::size_t finite_mopac_mc_shielding = 0;
     double min_efg_magnitude = 0.0;
     double max_efg_magnitude = 0.0;
 };
@@ -94,6 +107,10 @@ private:
     std::vector<double> targetT2_;      // (rows, 5), DFT target local-frame T2
     std::vector<double> featureLabT2_;  // (rows, 5), APBS EFG lab-frame T2
     std::vector<double> targetLabT2_;   // (rows, 5), DFT target lab-frame T2
+    std::vector<double> mopacCoulombShieldingT2_;     // (rows, 5), local-frame shielding T2
+    std::vector<double> mopacCoulombShieldingLabT2_;  // (rows, 5), lab-frame shielding T2
+    std::vector<double> mopacMcShieldingT2_;          // (rows, 5), local-frame shielding T2
+    std::vector<double> mopacMcShieldingLabT2_;       // (rows, 5), lab-frame shielding T2
 };
 
 }  // namespace h5reader::rediscover

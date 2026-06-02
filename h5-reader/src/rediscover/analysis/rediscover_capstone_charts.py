@@ -65,6 +65,10 @@ def mechanism_order(values):
         "ff14sb_charge_EFG_T2",
         "apbs_efg_T2",
         "apbs_efg_T2_random",
+        "mopac_coulomb_shielding_T2",
+        "mopac_coulomb_shielding_T2_random",
+        "mopac_mc_shielding_T2",
+        "mopac_mc_shielding_T2_random",
     ]
     seen = list(dict.fromkeys(values))
     return [m for m in preferred if m in seen] + [m for m in seen if m not in preferred]

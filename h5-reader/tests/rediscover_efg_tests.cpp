@@ -75,11 +75,19 @@ EfgFeatureRow rowWithT2(int idx, const std::array<double, 5>& feature,
     row.time_ps = static_cast<double>(idx);
     row.dft_present = true;
     row.apbs_efg_present = true;
+    row.mopac_coulomb_shielding_present = true;
+    row.mopac_mc_shielding_present = true;
     row.efg_feature_T2 = feature;
     row.dft_target_T2 = target;
     row.efg_feature_lab_T2 = feature;
     row.dft_target_lab_T2 = target;
+    row.mopac_coulomb_shielding_T2 = feature;
+    row.mopac_coulomb_shielding_lab_T2 = feature;
+    row.mopac_mc_shielding_T2 = target;
+    row.mopac_mc_shielding_lab_T2 = target;
     row.efg_units = QStringLiteral("V/Angstrom^2");
+    row.mopac_coulomb_shielding_units = QStringLiteral("ppm");
+    row.mopac_mc_shielding_units = QStringLiteral("ppm");
     return row;
 }
 
@@ -159,6 +167,20 @@ void RediscoverEfgTests::sinkWritesFiniteRowAlignedSidecars() {
     QCOMPARE(targetLabNpy.rows, static_cast<std::size_t>(dftPresentAtoms));
     QCOMPARE(targetLabNpy.cols, static_cast<std::size_t>(5));
     for (double v : targetLabNpy.data) QVERIFY(std::isfinite(v));
+
+    const QtNpyReader::WidenedArray mopacCoulombNpy =
+        QtNpyReader::ReadArrayWidened(dir.filePath(QStringLiteral("efg_mopac_coulomb_shielding_T2.npy")));
+    QVERIFY2(mopacCoulombNpy.ok, qPrintable(mopacCoulombNpy.error));
+    QCOMPARE(mopacCoulombNpy.rows, static_cast<std::size_t>(dftPresentAtoms));
+    QCOMPARE(mopacCoulombNpy.cols, static_cast<std::size_t>(5));
+    for (double v : mopacCoulombNpy.data) QVERIFY(std::isfinite(v));
+
+    const QtNpyReader::WidenedArray mopacMcNpy =
+        QtNpyReader::ReadArrayWidened(dir.filePath(QStringLiteral("efg_mopac_mc_shielding_T2.npy")));
+    QVERIFY2(mopacMcNpy.ok, qPrintable(mopacMcNpy.error));
+    QCOMPARE(mopacMcNpy.rows, static_cast<std::size_t>(dftPresentAtoms));
+    QCOMPARE(mopacMcNpy.cols, static_cast<std::size_t>(5));
+    for (double v : mopacMcNpy.data) QVERIFY(std::isfinite(v));
 
     QFile csv(dir.filePath(QStringLiteral("efg_aggregated.csv")));
     QVERIFY(csv.open(QIODevice::ReadOnly | QIODevice::Text));

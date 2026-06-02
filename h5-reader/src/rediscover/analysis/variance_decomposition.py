@@ -475,31 +475,64 @@ def load_efg(efg_dir, C, seed, purge_frames):
     efg_dir = Path(efg_dir)
     df = pd.read_csv(efg_dir / "efg_aggregated.csv")
     df["stratum"] = [stratum_of(v) for v in df["frame_variant"]]
-    feature = np.load(efg_dir / "efg_feature_T2.npy") @ C.T
     target = np.load(efg_dir / "efg_target_T2.npy") @ C.T
-    ok = (
+    ok_base = (
         (df["dft_present"].to_numpy(int) == 1)
-        & (df["apbs_efg_present"].to_numpy(int) == 1)
-        & np.isfinite(df["efg_T2_magnitude"].to_numpy(float))
-        & np.isfinite(feature).all(axis=1)
+        & (df["frame_valid"].to_numpy(int) == 1)
         & np.isfinite(target).all(axis=1)
         & df["stratum"].notna().to_numpy()
     )
     rows = []
-    treatment = "PB-continuum of FF charges (treatment-mismatched to CPCM)"
-    for stratum in STRATA_ORDER:
-        idx = np.flatnonzero(ok & (df["stratum"].to_numpy() == stratum))
-        if len(idx) < 4:
+    specs = [
+        (
+            "apbs_efg_T2",
+            "apbs_efg_T2_random",
+            "apbs_efg_present",
+            "efg_T2_magnitude",
+            "efg_feature_T2.npy",
+            "PB-continuum of FF charges (treatment-mismatched to CPCM)",
+        ),
+        (
+            "mopac_coulomb_shielding_T2",
+            "mopac_coulomb_shielding_T2_random",
+            "mopac_coulomb_shielding_present",
+            "mopac_coulomb_shielding_T2_magnitude",
+            "efg_mopac_coulomb_shielding_T2.npy",
+            "MOPAC-Coulomb-EFG-derived shielding T2 (not raw EFG)",
+        ),
+        (
+            "mopac_mc_shielding_T2",
+            "mopac_mc_shielding_T2_random",
+            "mopac_mc_shielding_present",
+            "mopac_mc_shielding_T2_magnitude",
+            "efg_mopac_mc_shielding_T2.npy",
+            "MOPAC-charge McConnell shielding T2",
+        ),
+    ]
+    for mechanism, random_mechanism, present_col, mag_col, npy_name, treatment in specs:
+        npy_path = efg_dir / npy_name
+        if present_col not in df.columns or mag_col not in df.columns or not npy_path.exists():
             continue
-        d = df.iloc[idx].reset_index(drop=True)
-        if d["atom_index"].nunique() < 2:
-            continue
-        rows.append(tensor_result(d, feature[idx], target[idx],
-                                  "apbs_efg_T2_random", stratum, treatment,
-                                  "random", seed))
-        rows.append(tensor_result(d, feature[idx], target[idx],
-                                  "apbs_efg_T2", stratum, treatment,
-                                  "blocked", seed, purge_frames))
+        feature = np.load(npy_path) @ C.T
+        ok = (
+            ok_base
+            & (df[present_col].to_numpy(int) == 1)
+            & np.isfinite(df[mag_col].to_numpy(float))
+            & np.isfinite(feature).all(axis=1)
+        )
+        for stratum in STRATA_ORDER:
+            idx = np.flatnonzero(ok & (df["stratum"].to_numpy() == stratum))
+            if len(idx) < 4:
+                continue
+            d = df.iloc[idx].reset_index(drop=True)
+            if d["atom_index"].nunique() < 2:
+                continue
+            rows.append(tensor_result(d, feature[idx], target[idx],
+                                      random_mechanism, stratum, treatment,
+                                      "random", seed))
+            rows.append(tensor_result(d, feature[idx], target[idx],
+                                      mechanism, stratum, treatment,
+                                      "blocked", seed, purge_frames))
     return rows
 
 

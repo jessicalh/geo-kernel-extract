@@ -322,14 +322,22 @@ int main(int argc, char** argv) {
         qCInfo(cMain).noquote() << "efg | rows=" << sink.rowsWritten()
                                 << "| dft_present=" << stats.dft_present
                                 << "| apbs_efg_present=" << stats.apbs_efg_present
+                                << "| mopac_coulomb_shielding_present=" << stats.mopac_coulomb_shielding_present
+                                << "| mopac_mc_shielding_present=" << stats.mopac_mc_shielding_present
                                 << "| finite_efg=" << stats.finite_efg
+                                << "| finite_mopac_coulomb_shielding=" << stats.finite_mopac_coulomb_shielding
+                                << "| finite_mopac_mc_shielding=" << stats.finite_mopac_mc_shielding
                                 << "| committed=" << committed;
         if (!committed) return 4;
         // §4 provenance is scoped to analysis substrates (all-atom + broad); this small output is explicit-empty.
         std::vector<h5reader::rediscover::OutputEntry> outputs = {
             {QStringLiteral("efg"), QStringLiteral("per_atom_feature"), QString(),
              QStringLiteral("efg_aggregated.csv"), sink.sidecarFiles(), stats.rows,
-             0, sink.rowsWritten(), QString(), QString(), QMap<QString, std::size_t>{}}};
+             0, sink.rowsWritten(), QString(), QString(),
+             {{QStringLiteral("apbs_efg_rows"), stats.apbs_efg_present},
+              {QStringLiteral("mopac_coulomb_efg_derived_shielding_rows"),
+               stats.mopac_coulomb_shielding_present},
+              {QStringLiteral("mopac_mc_shielding_rows"), stats.mopac_mc_shielding_present}}}};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
             qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;

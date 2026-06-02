@@ -563,44 +563,86 @@ def load_efg_tensors(efg_dir, C):
         df,
         [
             "atom_index", "frame_variant", "frame_valid", "dft_present",
-            "apbs_efg_present", "efg_T2_magnitude",
         ],
         "APBS EFG tensor",
     )
     df["stratum"] = [stratum_of(v) for v in df["frame_variant"]]
-    feature = np.load(efg_dir / "efg_feature_T2.npy") @ C.T
     target = np.load(efg_dir / "efg_target_T2.npy") @ C.T
-    ok = (
+    ok_base = (
         (df["dft_present"].to_numpy(int) == 1)
-        & (df["apbs_efg_present"].to_numpy(int) == 1)
         & (df["frame_valid"].to_numpy(int) == 1)
         & df["stratum"].notna().to_numpy()
-        & np.isfinite(df["efg_T2_magnitude"].to_numpy(float))
-        & np.isfinite(feature).all(axis=1)
         & np.isfinite(target).all(axis=1)
     )
-    lit = literature_entry(
-        reference="No clean stratum-independent fixed coefficient for this APBS EFG sidecar.",
-        flag="empirical/form-only",
-        substrate=str(efg_dir),
-    )
+    specs = [
+        (
+            "apbs_charge_EFG_T2",
+            "apbs_efg_present",
+            "efg_T2_magnitude",
+            "efg_feature_T2.npy",
+            "dimensionless fitted multiplier of emitted APBS EFG T2",
+            "Corrected local-frame APBS EFG substrate; form-only coefficient.",
+            literature_entry(
+                reference="No clean stratum-independent fixed coefficient for this APBS EFG sidecar.",
+                flag="empirical/form-only",
+                substrate=str(efg_dir),
+            ),
+        ),
+        (
+            "mopac_coulomb_shielding_T2",
+            "mopac_coulomb_shielding_present",
+            "mopac_coulomb_shielding_T2_magnitude",
+            "efg_mopac_coulomb_shielding_T2.npy",
+            "dimensionless fitted multiplier of emitted MOPAC-Coulomb-EFG-derived shielding T2",
+            "MOPAC-Coulomb-EFG-derived shielding T2; this is not the raw MOPAC EFG.",
+            literature_entry(
+                reference="MOPAC-Coulomb shielding is already the emitted EFG-derived shielding response; no fixed stratum-independent multiplier is plugged here.",
+                flag="empirical/form-only",
+                substrate=str(efg_dir),
+            ),
+        ),
+        (
+            "mopac_mc_shielding_T2",
+            "mopac_mc_shielding_present",
+            "mopac_mc_shielding_T2_magnitude",
+            "efg_mopac_mc_shielding_T2.npy",
+            "dimensionless fitted multiplier of emitted MOPAC-charge McConnell shielding T2",
+            "MOPAC-charge McConnell shielding T2 sidecar; reported as a correlated feature leg, not a raw EFG.",
+            literature_entry(
+                reference="MOPAC-charge McConnell shielding sidecar; no clean fixed stratum-independent coefficient is plugged here.",
+                flag="empirical/form-only",
+                substrate=str(efg_dir),
+            ),
+        ),
+    ]
     rows = []
-    for stratum in STRATA_ORDER:
-        idx = np.flatnonzero(ok & (df["stratum"].to_numpy() == stratum))
-        if len(idx) == 0:
+    for mechanism, present_col, mag_col, npy_name, units, notes, lit in specs:
+        npy_path = efg_dir / npy_name
+        if present_col not in df.columns or mag_col not in df.columns or not npy_path.exists():
             continue
-        d = df.iloc[idx].reset_index(drop=True)
-        if d["atom_index"].nunique() >= 3:
-            rows.append(tensor_result(
-                d,
-                feature[idx],
-                target[idx],
-                "apbs_charge_EFG_T2",
-                stratum,
-                "dimensionless fitted multiplier of emitted APBS EFG T2",
-                "Corrected local-frame APBS EFG substrate; form-only coefficient.",
-                lit,
-            ))
+        feature = np.load(npy_path) @ C.T
+        ok = (
+            ok_base
+            & (df[present_col].to_numpy(int) == 1)
+            & np.isfinite(df[mag_col].to_numpy(float))
+            & np.isfinite(feature).all(axis=1)
+        )
+        for stratum in STRATA_ORDER:
+            idx = np.flatnonzero(ok & (df["stratum"].to_numpy() == stratum))
+            if len(idx) == 0:
+                continue
+            d = df.iloc[idx].reset_index(drop=True)
+            if d["atom_index"].nunique() >= 3:
+                rows.append(tensor_result(
+                    d,
+                    feature[idx],
+                    target[idx],
+                    mechanism,
+                    stratum,
+                    units,
+                    notes,
+                    lit,
+                ))
     return rows
 
 

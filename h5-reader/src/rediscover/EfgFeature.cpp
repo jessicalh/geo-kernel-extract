@@ -139,6 +139,15 @@ bool apbsEfgPresent(const Body& body, std::size_t atom, std::size_t row) {
     return efg && body.catalog.present(body, ArrayId::ApbsEfg, atom, row) && efg->sourceAttachedAt(row);
 }
 
+bool t2Present(const Body& body, ArrayId id, std::size_t atom, std::size_t row) {
+    return body.catalog.present(body, id, atom, row);
+}
+
+std::array<double, 5> toLocalT2(const LocalFrame& frame, const std::array<double, 5>& labT2) {
+    const Mat3 local = frame.TensorToLocal(ReconstructLibraryT2(labT2));
+    return DecomposeEfgLibraryT2(local);
+}
+
 void updateMagnitudeStats(EfgFeatureStats& stats, const std::array<double, 5>& t2) {
     if (!FiniteT2(t2))
         return;
@@ -185,10 +194,20 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
     const model::QtProtein& p = *body.run.protein;
     const QString units = body.catalog.has(ArrayId::ApbsEfg) ? body.catalog.spec(ArrayId::ApbsEfg).unit
                                                              : QStringLiteral("V/Angstrom^2");
+    const QString mopacCoulombUnits =
+        body.catalog.has(ArrayId::MopacCoulombShielding)
+            ? body.catalog.spec(ArrayId::MopacCoulombShielding).unit
+            : QStringLiteral("ppm");
+    const QString mopacMcUnits =
+        body.catalog.has(ArrayId::MopacMcShielding)
+            ? body.catalog.spec(ArrayId::MopacMcShielding).unit
+            : QStringLiteral("ppm");
 
     qCInfo(cEfg).noquote() << "efg per_atom_feature | atoms=" << p.atomCount()
                            << "| dft rows=" << body.run.frameMap.dftRows().size()
-                           << "| apbs_efg=" << body.catalog.has(ArrayId::ApbsEfg);
+                           << "| apbs_efg=" << body.catalog.has(ArrayId::ApbsEfg)
+                           << "| mopac_coulomb_shielding=" << body.catalog.has(ArrayId::MopacCoulombShielding)
+                           << "| mopac_mc_shielding=" << body.catalog.has(ArrayId::MopacMcShielding);
 
     const Relationship rel = makeEfgRelationship();
     RunTraversal(
@@ -225,6 +244,8 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
             if (target.local_frame_valid)
                 out.dft_target_T2 = DecomposeLibrary(target.total_local).T2;
             out.efg_units = units;
+            out.mopac_coulomb_shielding_units = mopacCoulombUnits;
+            out.mopac_mc_shielding_units = mopacMcUnits;
             if (out.frame_valid)
                 ++stats.frame_valid;
 
@@ -235,13 +256,39 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
                 // isometric normalization are exactly DecomposeLibrary's
                 // [xy, yz, zz, xz, xx-yy] basis. Do not re-project in Python.
                 out.efg_feature_lab_T2 = body.catalog.valueT2(body, ArrayId::ApbsEfg, atom, row);
-                if (out.frame_valid) {
-                    const Mat3 local = fr.frame.TensorToLocal(ReconstructLibraryT2(out.efg_feature_lab_T2));
-                    out.efg_feature_T2 = DecomposeEfgLibraryT2(local);
-                }
+                if (out.frame_valid) out.efg_feature_T2 = toLocalT2(fr.frame, out.efg_feature_lab_T2);
                 ++stats.apbs_efg_present;
                 if (out.frame_valid)
                     updateMagnitudeStats(stats, out.efg_feature_T2);
+            }
+
+            // MOPAC-Coulomb-EFG-derived shielding: this is already the shielding
+            // T2 response from the Coulomb EFG leg, not a raw electric-field
+            // gradient. Keep both lab-frame audit and backbone-local features.
+            out.mopac_coulomb_shielding_present =
+                t2Present(body, ArrayId::MopacCoulombShielding, atom, row);
+            if (out.mopac_coulomb_shielding_present) {
+                out.mopac_coulomb_shielding_lab_T2 =
+                    body.catalog.valueT2(body, ArrayId::MopacCoulombShielding, atom, row);
+                if (out.frame_valid)
+                    out.mopac_coulomb_shielding_T2 =
+                        toLocalT2(fr.frame, out.mopac_coulomb_shielding_lab_T2);
+                ++stats.mopac_coulomb_shielding_present;
+                if (out.frame_valid && FiniteT2(out.mopac_coulomb_shielding_T2))
+                    ++stats.finite_mopac_coulomb_shielding;
+            }
+
+            out.mopac_mc_shielding_present =
+                t2Present(body, ArrayId::MopacMcShielding, atom, row);
+            if (out.mopac_mc_shielding_present) {
+                out.mopac_mc_shielding_lab_T2 =
+                    body.catalog.valueT2(body, ArrayId::MopacMcShielding, atom, row);
+                if (out.frame_valid)
+                    out.mopac_mc_shielding_T2 =
+                        toLocalT2(fr.frame, out.mopac_mc_shielding_lab_T2);
+                ++stats.mopac_mc_shielding_present;
+                if (out.frame_valid && FiniteT2(out.mopac_mc_shielding_T2))
+                    ++stats.finite_mopac_mc_shielding;
             }
 
             sink.Write(out);
@@ -251,8 +298,12 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
 
     qCInfo(cEfg).noquote() << "efg per_atom_feature rows=" << stats.rows << "| dft_present=" << stats.dft_present
                            << "| frame_valid=" << stats.frame_valid << "| apbs_efg_present=" << stats.apbs_efg_present
+                           << "| mopac_coulomb_shielding_present=" << stats.mopac_coulomb_shielding_present
+                           << "| mopac_mc_shielding_present=" << stats.mopac_mc_shielding_present
                            << "| finite_efg=" << stats.finite_efg << "| |EFG| min=" << stats.min_efg_magnitude
-                           << "max=" << stats.max_efg_magnitude;
+                           << "max=" << stats.max_efg_magnitude
+                           << "| finite_mopac_coulomb_shielding=" << stats.finite_mopac_coulomb_shielding
+                           << "| finite_mopac_mc_shielding=" << stats.finite_mopac_mc_shielding;
     return stats;
 }
 
