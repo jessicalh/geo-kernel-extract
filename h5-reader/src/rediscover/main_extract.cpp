@@ -163,11 +163,11 @@ int main(int argc, char** argv) {
                                QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
-    // substrate conventions' no-hidden-cutoffs rule; 8.0 Å is the conventions'
-    // aromatic-neighbourhood recommendation, reused as the anisotropy reach.
+    // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
+    // producer McConnell bond-anisotropy default.
     QCommandLineOption mcCutoffOpt(QStringLiteral("mc-cutoff"),
-                                   QStringLiteral("McConnell bond-discovery cutoff in Angstrom (default 8.0)."),
-                                   QStringLiteral("angstrom"), QStringLiteral("8.0"));
+                                   QStringLiteral("McConnell bond-discovery cutoff in Angstrom (default 10.0)."),
+                                   QStringLiteral("angstrom"), QStringLiteral("10.0"));
     QCommandLineOption chargeSourceOpt(QStringLiteral("charge-source"),
                                        QStringLiteral("Charge source for charge cases: ff14sb | aimnet2 | mopac."),
                                        QStringLiteral("source"), QStringLiteral("ff14sb"));
@@ -176,13 +176,13 @@ int main(int argc, char** argv) {
                                        QStringLiteral("angstrom"), QStringLiteral("6.0"));
     // broad_backbone ring/bond source-discovery cutoffs (Å), recorded per the
     // no-hidden-cutoffs rule. Ring 8.0 = conventions' aromatic-neighbourhood
-    // recommendation; bond reuses the McConnell reach.
+    // recommendation; bond 10.0 matches the producer McConnell reach.
     QCommandLineOption ringCutoffOpt(QStringLiteral("ring-cutoff"),
                                      QStringLiteral("broad_backbone ring-centre cutoff in Angstrom (default 8.0)."),
                                      QStringLiteral("angstrom"), QStringLiteral("8.0"));
     QCommandLineOption bondCutoffOpt(QStringLiteral("bond-cutoff"),
-                                     QStringLiteral("broad_backbone anisotropic-bond cutoff in Angstrom (default 8.0)."),
-                                     QStringLiteral("angstrom"), QStringLiteral("8.0"));
+                                     QStringLiteral("broad_backbone anisotropic-bond cutoff in Angstrom (default 10.0)."),
+                                     QStringLiteral("angstrom"), QStringLiteral("10.0"));
     QCommandLineOption mcNearFieldRatioOpt(
         QStringLiteral("mc-near-field-ratio"),
         QStringLiteral("broad_backbone McConnell near-field exclusion ratio (default 0.5)."),

@@ -23,11 +23,9 @@ public:
     FeatureSchema schema() const override;
     std::size_t extract(const Body& body, RecordSink& sink) const override;
 
-    // Source-discovery cutoff (Å). Required, no default — surfaced as a public
-    // member so main can record it / a caller can override it. 8.0 Å is the
-    // ring-current / aromatic-neighbourhood recommendation in the conventions
-    // doc; reused here as the through-space anisotropy reach.
-    double cutoff_A = 8.0;
+    // Source-discovery cutoff (Å). Required at the CLI and recorded in the
+    // emit; the default matches the producer McConnell bond-anisotropy cutoff.
+    double cutoff_A = 10.0;
 };
 
 }  // namespace h5reader::rediscover

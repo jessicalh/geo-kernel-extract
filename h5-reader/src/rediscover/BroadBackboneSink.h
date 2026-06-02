@@ -22,6 +22,8 @@
 //     broad_backbone_aggregated_target_T2.npy        (agg_rows, 5)
 //     broad_backbone_aggregated_target_local_T2.npy  (agg_rows, 5)
 //     broad_backbone_aggregated_field_local.npy      (agg_rows, 3)  Coulomb E
+//   CSV-only mc_lit_* columns are documented locally in
+//     src/rediscover/MC_LIT_CSV_CONTRACT.json
 //
 // Plain data class, no QObject. Streams rows (QSaveFile atomic-on-commit).
 

@@ -1,0 +1,119 @@
+{
+  "schema_id": "rediscover.mc_lit_csv_columns.v1",
+  "scope": "rediscover-local",
+  "owner": "src/rediscover",
+  "parent_sdk_catalog": "not modified; python/nmr_extract/_catalog.py remains the producer-SDK home for NPY ArraySpec decisions",
+  "carrier": "CSV columns emitted by BroadBackboneSink",
+  "mechanism": "bond_anisotropy",
+  "frame": "target atom local backbone frame",
+  "spherical_basis": {
+    "basis": "library_isometric_real_sh",
+    "t2_component_order": "src/Types.cpp::SphericalTensor::Decompose T2[0..4]"
+  },
+  "source_sets": {
+    "all": "sum over all McConnell literature-present bond sources in the row",
+    "producer_valid": "sum over literature-present bond sources with mc_source_is_self_or_bonded == 0"
+  },
+  "columns": [
+    {
+      "csv": "broad_backbone_sources.csv",
+      "row_axis": "atom_frame_source",
+      "source_set": "per_source",
+      "present_column": {
+        "name": "mc_lit_kernel_present",
+        "dtype": "int_bool",
+        "unit": "",
+        "irreps": "",
+        "description": "1 when the per-source literature-scaled McConnell PCS tensor is emitted"
+      },
+      "t0_column": {
+        "name": "mc_lit_T0",
+        "dtype": "float64",
+        "unit": "ppm",
+        "irreps": "0e",
+        "description": "trace audit channel for the per-source literature-scaled PCS tensor"
+      },
+      "t2_columns": {
+        "names": [
+          "mc_lit_T2_local_0",
+          "mc_lit_T2_local_1",
+          "mc_lit_T2_local_2",
+          "mc_lit_T2_local_3",
+          "mc_lit_T2_local_4"
+        ],
+        "dtype": "float64",
+        "unit": "ppm",
+        "irreps": "2e",
+        "description": "per-source literature-scaled McConnell PCS T2 tensor in the target local frame"
+      }
+    },
+    {
+      "csv": "broad_backbone_aggregated.csv",
+      "row_axis": "atom_frame",
+      "source_set": "all",
+      "present_column": {
+        "name": "mc_lit_kernel_present",
+        "dtype": "int_bool",
+        "unit": "",
+        "irreps": "",
+        "description": "1 when at least one all-source literature-scaled McConnell tensor contributes"
+      },
+      "t0_column": {
+        "name": "mc_lit_T0",
+        "dtype": "float64",
+        "unit": "ppm",
+        "irreps": "0e",
+        "description": "all-source sum of source mc_lit_T0 values"
+      },
+      "t2_columns": {
+        "names": [
+          "mc_lit_T2_local_0",
+          "mc_lit_T2_local_1",
+          "mc_lit_T2_local_2",
+          "mc_lit_T2_local_3",
+          "mc_lit_T2_local_4"
+        ],
+        "dtype": "float64",
+        "unit": "ppm",
+        "irreps": "2e",
+        "description": "all-source sum of source mc_lit_T2_local_* values"
+      }
+    },
+    {
+      "csv": "broad_backbone_aggregated.csv",
+      "row_axis": "atom_frame",
+      "source_set": "producer_valid",
+      "present_column": {
+        "name": "mc_lit_valid_kernel_present",
+        "dtype": "int_bool",
+        "unit": "",
+        "irreps": "",
+        "description": "1 when at least one producer-valid literature-scaled McConnell tensor contributes"
+      },
+      "t0_column": {
+        "name": "mc_lit_T0_valid",
+        "dtype": "float64",
+        "unit": "ppm",
+        "irreps": "0e",
+        "description": "producer-valid sum of source mc_lit_T0 values"
+      },
+      "t2_columns": {
+        "names": [
+          "mc_lit_T2_local_valid_0",
+          "mc_lit_T2_local_valid_1",
+          "mc_lit_T2_local_valid_2",
+          "mc_lit_T2_local_valid_3",
+          "mc_lit_T2_local_valid_4"
+        ],
+        "dtype": "float64",
+        "unit": "ppm",
+        "irreps": "2e",
+        "description": "producer-valid sum of source mc_lit_T2_local_* values"
+      }
+    }
+  ],
+  "consumers": [
+    "src/rediscover/analysis/mcconnell_literature_decirc.py",
+    "src/rediscover/analysis/mcconnell_dchi_calibration.py"
+  ]
+}

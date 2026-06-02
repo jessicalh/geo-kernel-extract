@@ -91,8 +91,8 @@ struct SourceSlot {
     SphericalTensor ring_jb_kernel;    // fixed-literature source kernel in target local frame (ppm)
 
     // Bond-only identity + orientation (McConnell). bond_axis_local is the UNIT
-    // bond axis (B−A) expressed in the target atom's local frame — an
-    // equivariant fit needs the axis direction, not just the scalar cosθ.
+    // bond axis (B-A) expressed in the target atom's local frame. A/B is the
+    // index-oriented sidecar endpoint order, not a chemical C->O/C->N direction.
     int    bond_category   = -1;       // BondCategory ordinal
     int    bond_order      = -1;       // BondOrder ordinal
     int    bond_elem_a     = -1;       // Element ordinal of endpoint A

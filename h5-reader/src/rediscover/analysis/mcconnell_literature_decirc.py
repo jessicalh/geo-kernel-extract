@@ -346,6 +346,15 @@ def thin_label(neff: float, threshold: float) -> str:
     return "thin" if neff < threshold else "ok"
 
 
+def axis_neff(row: dict[str, object]) -> float:
+    if row["axis"] == "between":
+        neff = float(row["atom_mean_signal_neff"])
+        if np.isfinite(neff):
+            return neff
+        return float(row["rows_scored"])
+    return float(row["atom_signal_neff"])
+
+
 def row_stratum(name: object) -> str | None:
     atom = str(name).strip().upper()
     if atom == "N":
@@ -380,6 +389,46 @@ def summarize_axis(
     atom_neff, atom_top90, active_atoms = signal_effective_atoms(x, atoms, valid)
     ar1_neff, ar1_lag1 = ar1_effective_frames(x, atoms, frames, valid)
     atoms_total = int(np.unique(atoms[valid]).size)
+
+    labels, xm, ym = atom_means(x, y, atoms, valid)
+    atom_mean_neff = atom_mean_signal_neff(xm)
+    if target == "T0":
+        gamma_b = math.nan
+        intercept = np.full(ym.shape[1], math.nan)
+        gamma_se = math.nan
+        intercept_se = math.nan
+        loao = math.nan
+    else:
+        gamma_b, intercept = gamma_with_intercept(xm, ym)
+        gamma_se, intercept_se = jk_se_between(xm, ym, labels)
+        loao = loao_between_r2(xm, ym, labels)
+    metrics = metric_values(target, xm, ym, finite_rows(xm, ym))
+    rows.append(
+        {
+            "stratum": stratum,
+            "target": target,
+            "axis": "between",
+            "rows_scored": int(labels.size),
+            "atoms_total": atoms_total,
+            "atoms_active": int(labels.size),
+            "atom_signal_neff": atom_neff,
+            "atom_signal_top90_count": atom_top90,
+            "atom_mean_signal_neff": atom_mean_neff,
+            "ar1_frame_neff": ar1_neff,
+            "kernel_median_lag1": ar1_lag1,
+            "thin_flag": thin_label(atom_mean_neff if np.isfinite(atom_mean_neff) else float(labels.size), thin_threshold),
+            "gamma_lit": gamma_b,
+            "gamma_lit_se": gamma_se,
+            "intercept": float(intercept[0]) if intercept.size == 1 else math.nan,
+            "intercept_se": intercept_se if intercept.size == 1 else math.nan,
+            "intercept_norm": float(np.linalg.norm(intercept)) if intercept.size > 1 else math.nan,
+            "scalar_r": metrics["scalar_r"],
+            "component_r": metrics["component_r"],
+            "absT2_r": metrics["absT2_r"],
+            "loao_scaled_R2": loao,
+            "verdict_bucket": verdict(gamma_b, gamma_se),
+        }
+    )
 
     xw, yw = center_by_atom(x, y, atoms, valid)
     score = valid & finite_rows(xw, yw)
@@ -416,45 +465,6 @@ def summarize_axis(
             "absT2_r": metrics["absT2_r"],
             "loao_scaled_R2": loao,
             "verdict_bucket": verdict(gamma, se),
-        }
-    )
-
-    labels, xm, ym = atom_means(x, y, atoms, valid)
-    if target == "T0":
-        gamma_b = math.nan
-        intercept = np.full(ym.shape[1], math.nan)
-        gamma_se = math.nan
-        intercept_se = math.nan
-        loao = math.nan
-    else:
-        gamma_b, intercept = gamma_with_intercept(xm, ym)
-        gamma_se, intercept_se = jk_se_between(xm, ym, labels)
-        loao = loao_between_r2(xm, ym, labels)
-    metrics = metric_values(target, xm, ym, finite_rows(xm, ym))
-    rows.append(
-        {
-            "stratum": stratum,
-            "target": target,
-            "axis": "between",
-            "rows_scored": int(labels.size),
-            "atoms_total": atoms_total,
-            "atoms_active": active_atoms,
-            "atom_signal_neff": atom_neff,
-            "atom_signal_top90_count": atom_top90,
-            "atom_mean_signal_neff": atom_mean_signal_neff(xm),
-            "ar1_frame_neff": ar1_neff,
-            "kernel_median_lag1": ar1_lag1,
-            "thin_flag": thin_label(atom_neff, thin_threshold),
-            "gamma_lit": gamma_b,
-            "gamma_lit_se": gamma_se,
-            "intercept": float(intercept[0]) if intercept.size == 1 else math.nan,
-            "intercept_se": intercept_se if intercept.size == 1 else math.nan,
-            "intercept_norm": float(np.linalg.norm(intercept)) if intercept.size > 1 else math.nan,
-            "scalar_r": metrics["scalar_r"],
-            "component_r": metrics["component_r"],
-            "absT2_r": metrics["absT2_r"],
-            "loao_scaled_R2": loao,
-            "verdict_bucket": verdict(gamma_b, gamma_se),
         }
     )
 
@@ -548,11 +558,33 @@ def write_report(
         f.write(f"Input out-dir: `{out_dir}`\n\n")
         f.write(f"CSV artifact: `{csv_path}`\n\n")
         f.write(f"Audit artifact: `{audit_path}`\n\n")
-        f.write("## T2 lead\n\n")
-        f.write("| stratum | axis | rows | atoms | N_eff(atom) | N_eff(AR1 frames) | gamma_lit +/- SE | component_r | absT2_r | LOAO R2 | bucket |\n")
+        f.write("## T2 static lead\n\n")
+        f.write("Between-axis atom means are the default static read for this near-static McConnell mechanism.\n\n")
+        f.write("| stratum | axis | rows | atoms | N_eff(atom means) | gamma_lit +/- SE | component_r | absT2_r | LOAO R2 | bucket |\n")
+        f.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
+        for row in rows:
+            if row["target"] != "T2" or row["axis"] != "between":
+                continue
+            f.write(
+                "| {stratum} | {axis} | {rows} | {atoms} | {neff} | {gamma} | {comp} | {mag} | {loao} | {bucket} |\n".format(
+                    stratum=row["stratum"],
+                    axis=row["axis"],
+                    rows=row["rows_scored"],
+                    atoms=row["atoms_total"],
+                    neff=fmt(axis_neff(row)),
+                    gamma=gamma_pair(row),
+                    comp=fmt(row["component_r"]),
+                    mag=fmt(row["absT2_r"]),
+                    loao=fmt(row["loao_scaled_R2"]),
+                    bucket=row["verdict_bucket"],
+                )
+            )
+        f.write("\n## T2 dynamic diagnostics\n\n")
+        f.write("Within-axis rows are per-atom de-meaned frame-modulation diagnostics, not the static headline.\n\n")
+        f.write("| stratum | axis | rows | atoms | N_eff(atom modulation) | N_eff(AR1 frames) | gamma_lit +/- SE | component_r | absT2_r | LOAO R2 | bucket |\n")
         f.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
         for row in rows:
-            if row["target"] != "T2":
+            if row["target"] != "T2" or row["axis"] != "within":
                 continue
             f.write(
                 "| {stratum} | {axis} | {rows} | {atoms} | {neff} | {ar1} | {gamma} | {comp} | {mag} | {loao} | {bucket} |\n".format(
@@ -560,7 +592,7 @@ def write_report(
                     axis=row["axis"],
                     rows=row["rows_scored"],
                     atoms=row["atoms_total"],
-                    neff=fmt(row["atom_signal_neff"]),
+                    neff=fmt(axis_neff(row)),
                     ar1=fmt(row["ar1_frame_neff"]),
                     gamma=gamma_pair(row),
                     comp=fmt(row["component_r"]),
@@ -591,7 +623,7 @@ def write_report(
         f.write("\n## Notes\n\n")
         f.write("- `mc_lit_T0` is a trace audit channel; the emitted PCS tensor is traceless, so gamma is usually undefined.\n")
         f.write("- `gamma_lit` is a scale diagnostic only. Correlations are unfitted component and magnitude comparisons.\n")
-        f.write("- Confidence is within-protein only: leave-one-atom jackknife SE plus AR(1)-deflated frame N_eff. Thin strata are flagged, not forced.\n")
+        f.write("- Confidence is within-protein only: between rows use atom-count / atom-mean signal N_eff; within diagnostics additionally report AR(1)-deflated frame N_eff. Thin strata are flagged, not forced.\n")
         f.write("- Verdict buckets are mechanical diagnostics; interpretation is reserved for the lead.\n")
 
 

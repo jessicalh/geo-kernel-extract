@@ -523,6 +523,15 @@ def thin_label(neff: float, threshold: float) -> str:
     return "thin" if neff < threshold else "ok"
 
 
+def axis_neff(row: dict[str, object]) -> float:
+    if row["axis"] == "between":
+        neff = float(row["atom_mean_signal_neff"])
+        if np.isfinite(neff):
+            return neff
+        return float(row["rows_scored"])
+    return float(row["atom_signal_neff"])
+
+
 def beta_to_q(beta: np.ndarray) -> np.ndarray:
     return -np.asarray(beta, dtype=float) / SCALAR_PREF
 
@@ -541,6 +550,38 @@ def summarize_stratum(
     atom_neff, top90, active_atoms = signal_effective_atoms(x, atoms, valid)
     ar1_neff, ar1_lag1 = ar1_effective_frames(x, atoms, frames, valid)
     atoms_total = int(np.unique(atoms[valid]).size)
+
+    labels, xm, ym = atom_means(x, y, atoms, valid)
+    atom_mean_neff = atom_mean_signal_neff(xm)
+    beta_b, intercept, rank_b = fit_beta_with_intercept(xm, ym)
+    beta_b_se = jk_se_between(xm, ym, labels)
+    q_b = beta_to_q(beta_b)
+    q_b_se = np.abs(beta_to_q(beta_b_se))
+    pred_b = predict(beta_b, xm, intercept)
+    metrics_b = metric_values(pred_b, ym)
+    rows.append(
+        make_row(
+            stratum,
+            "between",
+            int(labels.size),
+            atoms_total,
+            int(labels.size),
+            atom_neff,
+            top90,
+            atom_mean_neff,
+            ar1_neff,
+            ar1_lag1,
+            thin_label(atom_mean_neff if np.isfinite(atom_mean_neff) else float(labels.size), thin_threshold),
+            beta_b,
+            beta_b_se,
+            q_b,
+            q_b_se,
+            rank_b,
+            metrics_b,
+            loao_between_r2(xm, ym, labels),
+            float(np.linalg.norm(intercept)) if np.isfinite(intercept).all() else math.nan,
+        )
+    )
 
     xw, yw = center_by_atom(x, y, atoms, valid)
     score = valid & finite_rows(xw, yw)
@@ -571,37 +612,6 @@ def summarize_stratum(
             metrics,
             loao_within_r2(xw, yw, atoms, score),
             math.nan,
-        )
-    )
-
-    labels, xm, ym = atom_means(x, y, atoms, valid)
-    beta_b, intercept, rank_b = fit_beta_with_intercept(xm, ym)
-    beta_b_se = jk_se_between(xm, ym, labels)
-    q_b = beta_to_q(beta_b)
-    q_b_se = np.abs(beta_to_q(beta_b_se))
-    pred_b = predict(beta_b, xm, intercept)
-    metrics_b = metric_values(pred_b, ym)
-    rows.append(
-        make_row(
-            stratum,
-            "between",
-            int(labels.size),
-            atoms_total,
-            active_atoms,
-            atom_neff,
-            top90,
-            atom_mean_signal_neff(xm),
-            ar1_neff,
-            ar1_lag1,
-            thin_label(atom_neff, thin_threshold),
-            beta_b,
-            beta_b_se,
-            q_b,
-            q_b_se,
-            rank_b,
-            metrics_b,
-            loao_between_r2(xm, ym, labels),
-            float(np.linalg.norm(intercept)) if np.isfinite(intercept).all() else math.nan,
         )
     )
 
@@ -737,12 +747,16 @@ def write_report(
         "",
         "The broad source CSV does not carry aggregate per-category unweighted columns. It does carry emitted source tensor rows with `bond_category`; this report source-sums those emitted tensor components by `row_id` and category, optionally filters with the emitted C++ producer-valid flag, then removes the exact C++ WA scalar. It does not evaluate a distance, angle, tensor projection, H5 read, ORCA job, or emitter.",
         "",
-        "## Calibrated Delta-Chi Lead",
+        "## Calibrated Delta-Chi Static Lead",
         "",
-        "| stratum | axis | q_CO | q_CN | q_sidechain_CO | CO/CN | absT2 r | R2 | LOAO R2 | N_eff atom | nearest CO / CN / SC |",
+        "Between-axis atom means are the default static read for this near-static McConnell mechanism.",
+        "",
+        "| stratum | axis | q_CO | q_CN | q_sidechain_CO | CO/CN | absT2 r | R2 | LOAO R2 | N_eff(atom means) | nearest CO / CN / SC |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for row in fit_rows:
+        if row["axis"] != "between":
+            continue
         nearest = (
             f"{row['nearest_PeptideCO']} / "
             f"{row['nearest_PeptideCN']} / "
@@ -759,7 +773,42 @@ def write_report(
                 mag=fmt(row["absT2_r"]),
                 r2=fmt(row["R2"]),
                 loao=fmt(row["LOAO_R2"]),
-                neff=fmt(row["atom_signal_neff"]),
+                neff=fmt(axis_neff(row)),
+                nearest=nearest,
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Dynamic Within-Axis Diagnostics",
+            "",
+            "Within-axis rows are per-atom de-meaned frame-modulation diagnostics, not the static headline.",
+            "",
+            "| stratum | axis | q_CO | q_CN | q_sidechain_CO | CO/CN | absT2 r | R2 | LOAO R2 | N_eff(atom modulation) | nearest CO / CN / SC |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        ]
+    )
+    for row in fit_rows:
+        if row["axis"] != "within":
+            continue
+        nearest = (
+            f"{row['nearest_PeptideCO']} / "
+            f"{row['nearest_PeptideCN']} / "
+            f"{row['nearest_SidechainCO']}"
+        )
+        lines.append(
+            "| {stratum} | {axis} | {co} | {cn} | {sc} | {ratio} | {mag} | {r2} | {loao} | {neff} | {nearest} |".format(
+                stratum=row["stratum"],
+                axis=row["axis"],
+                co=q_pair(row["q_PeptideCO"], row["q_PeptideCO_se"]),
+                cn=q_pair(row["q_PeptideCN"], row["q_PeptideCN_se"]),
+                sc=q_pair(row["q_SidechainCO"], row["q_SidechainCO_se"]),
+                ratio=fmt(row["CO_CN_ratio"]),
+                mag=fmt(row["absT2_r"]),
+                r2=fmt(row["R2"]),
+                loao=fmt(row["LOAO_R2"]),
+                neff=fmt(axis_neff(row)),
                 nearest=nearest,
             )
         )
@@ -771,13 +820,13 @@ def write_report(
             "",
             "## Fit Diagnostics",
             "",
-            "| stratum | axis | rows | atoms | active | rank | component r | absT2 r | R2 | LOAO R2 | AR1 N_eff | intercept norm | thin |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+            "| stratum | axis | rows | atoms | active | rank | component r | absT2 r | R2 | LOAO R2 | axis N_eff | AR1 N_eff | intercept norm | thin |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
         ]
     )
     for row in fit_rows:
         lines.append(
-            "| {stratum} | {axis} | {rows} | {atoms} | {active} | {rank} | {comp} | {mag} | {r2} | {loao} | {ar1} | {intercept} | {thin} |".format(
+            "| {stratum} | {axis} | {rows} | {atoms} | {active} | {rank} | {comp} | {mag} | {r2} | {loao} | {axis_neff} | {ar1} | {intercept} | {thin} |".format(
                 stratum=row["stratum"],
                 axis=row["axis"],
                 rows=row["rows_scored"],
@@ -788,6 +837,7 @@ def write_report(
                 mag=fmt(row["absT2_r"]),
                 r2=fmt(row["R2"]),
                 loao=fmt(row["LOAO_R2"]),
+                axis_neff=fmt(axis_neff(row)),
                 ar1=fmt(row["ar1_frame_neff"]),
                 intercept=fmt(row["intercept_norm"]),
                 thin=row["thin_flag"],
@@ -823,7 +873,7 @@ def write_report(
     lines.extend(
         [
             "",
-            "Step-1 disagreement flags: N between implies CO about +6.3 and CN about -14.1, closest to Abraham aliphatic amide. C within/between sign-flips both categories (CO about -5, CN about +10 to +12), consistent with the carbonyl-C near-field/self-bond warning rather than a transferable far-field Delta-chi. O between is far above the literature spread and weakly predictive out-of-sample. HN/HA within are low-scale diagnostics.",
+            "Step-1 implied rows are scale diagnostics from the single-gamma WA run. Between rows are the static read; within rows are dynamic diagnostics. Sign flips or outside-spread values are flags, not transferable constants.",
             "",
             "## Literature Spread Used",
             "",
