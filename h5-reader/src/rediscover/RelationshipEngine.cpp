@@ -7,7 +7,8 @@
 
 namespace h5reader::rediscover {
 
-std::size_t RunRelationship(const Relationship& rel, const Body& body, RecordSink& sink) {
+std::size_t RunTraversal(const Relationship& rel, const Body& body,
+                         const PerRecordSink& carrier) {
     const RunData& run = body.run;
 
     // The stratum closure: captured body arrives here (currying applied once).
@@ -68,19 +69,30 @@ std::size_t RunRelationship(const Relationship& rel, const Body& body, RecordSin
                 rec.sources.push_back(slot);
             }
 
-            // rec = reducer(SourceSet): the state-carrying fold over the attached
-            // sources → the aggregated-row parameters (sumAll / sumValid / nValid
-            // / per-type / cutoff). Identical to the procedural aggregation.
-            const AggregateResult agg = rel.reducer(body, atom, rec.sources);
-
-            // sink.fold(rec): stream both row kinds (untouched RecordSink).
-            sink.WriteSourceRows(rec);
-            sink.WriteAggregatedRow(rec, agg.sum_all, agg.sum_valid, agg.n_valid, agg.per_type,
-                                    agg.cutoff_A);
+            // The carrier owns the reduce + sink for this case (the engine does
+            // not). It gets the fully-attached record plus the frame + row keys a
+            // reducer / target-once carrier needs.
+            carrier(atom, row, orig, fr, rec);
             ++cases;
         }
     }
     return cases;
+}
+
+std::size_t RunRelationship(const Relationship& rel, const Body& body, RecordSink& sink) {
+    // The scalar-sum carrier: this case's reducer folds the attached sources to
+    // the aggregated-row parameters, then both row kinds stream to the untouched
+    // RecordSink. The byte-for-byte oracle holds because the walk and this fold
+    // are exactly what the old hand-written loop did.
+    return RunTraversal(rel, body,
+                        [&rel, &body, &sink](std::size_t atom, std::size_t /*row*/,
+                                             std::size_t /*orig*/, const FrameResult& /*fr*/,
+                                             const NeighborhoodRecord& rec) {
+                            const AggregateResult agg = rel.reducer(body, atom, rec.sources);
+                            sink.WriteSourceRows(rec);
+                            sink.WriteAggregatedRow(rec, agg.sum_all, agg.sum_valid, agg.n_valid,
+                                                    agg.per_type, agg.cutoff_A);
+                        });
 }
 
 }  // namespace h5reader::rediscover

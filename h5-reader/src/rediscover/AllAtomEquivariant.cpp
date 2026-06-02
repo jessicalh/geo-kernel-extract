@@ -49,12 +49,6 @@ double invR3(double r) {
     return r > 1e-12 ? 1.0 / (r * r * r) : kNaN;
 }
 
-double dipolarFrom(double cosTheta, double r) {
-    return r > 1e-12 && std::isfinite(cosTheta)
-               ? (3.0 * cosTheta * cosTheta - 1.0) / (r * r * r)
-               : kNaN;
-}
-
 double t2Magnitude(const std::array<double, 5>& t2) {
     double s = 0.0;
     for (double v : t2) s += v * v;
@@ -88,11 +82,6 @@ QString ringTypeName(model::RingTypeIndex t) {
     case model::RingTypeIndex::ProPyrrolidine: return QStringLiteral("ProPyrrolidine");
     }
     return QStringLiteral("UnknownRing");
-}
-
-std::size_t heavyParent(const model::QtProtein& p, std::size_t atomIdx) {
-    const model::QtAtom& a = p.atom(atomIdx);
-    return a.parentAtomIndex >= 0 ? static_cast<std::size_t>(a.parentAtomIndex) : atomIdx;
 }
 
 bool ringContainsAtom(const model::QtRing& ring, int32_t atomIdx) {
@@ -201,21 +190,23 @@ AllAtomEquivariantSourceRecord makeRingSource(const Body& body,
     const model::QtRing& ring = topo.ringAt(ringIdx);
     const model::RingGeometry& g = verbs::ringGeom(body, ringIdx, row);
     const Vec3 targetPos = verbs::pos(body, targetAtom, row);
-    const Vec3 disp = g.center - targetPos;
-    const double r = disp.norm();
     const Vec3 nrm = unitOrZero(g.normal);
-    const double cosT = r > 1e-12 ? disp.dot(nrm) / r : kNaN;
+    // The shared near-field geometry verb (disp/r/inv_r3/cosθ/dipolar) about the
+    // ring normal. Pass the RAW g.normal: the verb normalizes it internally to
+    // the SAME unit axis as unitOrZero(g.normal) (same 1e-12 floor, same
+    // divide), so cosθ = disp·n̂/r is byte-identical to the prior inline form.
+    const verbs::Displacement d = verbs::displacement(targetPos, g.center, g.normal);
 
     out.mechanism = QStringLiteral("ring");
     out.source_kind = QStringLiteral("ring_center");
     out.category = ringTypeName(ring.TypeIndex());
     out.category_ord = ring.TypeIndexAsInt();
     out.source_id = static_cast<int32_t>(ringIdx);
-    out.disp = disp;
-    out.r = r;
-    out.inv_r3 = invR3(r);
-    out.cos_theta = cosT;
-    out.dipolar = dipolarFrom(cosT, r);
+    out.disp = d.disp;
+    out.r = d.r;
+    out.inv_r3 = d.inv_r3;
+    out.cos_theta = d.cos_theta;
+    out.dipolar = d.dipolar;
     out.orientation_a = nrm;
     out.source_value = ring.LiteratureIntensity();
     out.source_units = QStringLiteral("nA/T");
@@ -227,7 +218,7 @@ AllAtomEquivariantSourceRecord makeRingSource(const Body& body,
     out.ring_fused = ring.IsFused();
     out.ring_intensity = ring.LiteratureIntensity();
     out.ring_jb_offset = ring.JohnsonBoveyLobeOffset();
-    const int32_t targetHeavy = static_cast<int32_t>(heavyParent(p, targetAtom));
+    const int32_t targetHeavy = static_cast<int32_t>(verbs::heavyParent(body, targetAtom));
     out.source_is_self_or_bonded = ringContainsAtom(ring, targetHeavy);
     return out;
 }
@@ -248,20 +239,22 @@ AllAtomEquivariantSourceRecord makeBondSource(const Body& body,
     const double axisNorm = axis.norm();
     const Vec3 axisU = unitOrZero(axis);
     const Vec3 targetPos = verbs::pos(body, targetAtom, row);
-    const Vec3 disp = 0.5 * (posA + posB) - targetPos;
-    const double r = disp.norm();
-    const double cosT = r > 1e-12 ? disp.dot(axisU) / r : kNaN;
+    const Vec3 midpoint = 0.5 * (posA + posB);
+    // The shared near-field geometry verb about the bond axis. Pass the RAW axis
+    // (posB−posA); the verb normalizes to the SAME unit axis as unitOrZero(axis),
+    // so disp/r/inv_r3/cosθ/dipolar are byte-identical to the prior inline form.
+    const verbs::Displacement d = verbs::displacement(targetPos, midpoint, axis);
 
     out.mechanism = QStringLiteral("bond");
     out.source_kind = QStringLiteral("bond_midpoint");
     out.category = bondCategoryName(b.category);
     out.category_ord = static_cast<int>(b.category);
     out.source_id = b.bondIndex;
-    out.disp = disp;
-    out.r = r;
-    out.inv_r3 = invR3(r);
-    out.cos_theta = cosT;
-    out.dipolar = dipolarFrom(cosT, r);
+    out.disp = d.disp;
+    out.r = d.r;
+    out.inv_r3 = d.inv_r3;
+    out.cos_theta = d.cos_theta;
+    out.dipolar = d.dipolar;
     out.orientation_a = axisU;
     out.source_value = axisNorm;
     out.source_units = QStringLiteral("Angstrom");
@@ -275,7 +268,7 @@ AllAtomEquivariantSourceRecord makeBondSource(const Body& body,
     out.bond_length = axisNorm;
     const bool endpointSelf = static_cast<int32_t>(targetAtom) == b.atomIndexA
                               || static_cast<int32_t>(targetAtom) == b.atomIndexB;
-    const bool nearField = r <= axisNorm * nearFieldRatio;
+    const bool nearField = d.r <= axisNorm * nearFieldRatio;
     out.source_is_self_or_bonded = endpointSelf || nearField;
     return out;
 }

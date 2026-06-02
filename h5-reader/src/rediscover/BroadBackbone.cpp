@@ -4,6 +4,7 @@
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
 #include "McConnellLiteratureKernel.h"
+#include "RelationshipEngine.h"
 #include "RingGeometryCache.h"
 #include "SphericalBasis.h"
 #include "SpatialIndexSet.h"
@@ -512,48 +513,21 @@ std::size_t RunBroadBackbone(const BroadRelationship& brel, const Body& body,
                              << "| charge_source=" << brel.charge_source
                              << "| dft rows=" << run.frameMap.dftRows().size();
 
-    std::size_t cases = 0;
-    // The SAME (atom, frame) traversal + curried-closure protocol as
-    // RelationshipEngine::RunRelationship (stratum → frame_fn → selectors →
-    // attachers → source_filter). It diverges ONLY in the reducer's output shape
-    // (BroadAggregate, not the scalar-sum AggregateResult) and the sink
-    // (BroadBackboneSink's two-kind target-once carrier, not RecordSink). That
-    // divergence is the precise latent narrowness the broad case surfaced.
-    for (std::size_t row : run.frameMap.dftRows()) {
-        const std::size_t orig = run.frameMap.originalIndex(row);
-        for (std::size_t atom : stratum) {
-            const FrameResult fr = rel.frame_fn(body, atom, row);
-
-            NeighborhoodRecord rec;
-            FillIdentity(rec, run, atom, row, rel.name, fr.frame);
-            rec.frame_anchor_atom_index = fr.anchor_atom_index;
-            rec.target = rel.target_fn(body, atom, orig, fr.frame);
-
-            const AtomState st = verbs::at(body, atom, row);
-
-            // src = flatten(sel(...) for sel in selectors) — heterogeneous list.
-            std::vector<RawSource> sources;
-            for (const SourceSelector& sel : rel.selectors) {
-                std::vector<RawSource> part = sel(body, atom, row);
-                sources.insert(sources.end(), part.begin(), part.end());
-            }
-
-            // Inner map: every attacher on every source (each branches on the
-            // typed source kind), then the source_filter. Identical to the engine.
-            rec.sources.reserve(sources.size());
-            for (const RawSource& raw : sources) {
-                SourceSlot slot;
-                for (const Attacher& attach : rel.attachers) attach(body, st, fr, raw, slot);
-                if (rel.source_filter && !rel.source_filter(slot)) continue;
-                rec.sources.push_back(slot);
-            }
-
-            // rec = broad_reducer(SourceSet): per-mechanism sums + the local field.
+    // The SAME (atom, frame) traversal as RelationshipEngine::RunTraversal — the
+    // ONE shared walk (#29 carrier-seam unification). Broad is just a different
+    // CARRIER: the reducer's output shape (BroadAggregate, not the scalar-sum
+    // AggregateResult) and the sink (BroadBackboneSink's two-kind target-once
+    // carrier, not RecordSink) live in this per-record closure, not in a sibling
+    // loop. The broad relationship sets no classifier/classifier_prep, so the
+    // shared walk's conditional classify steps are no-ops here — byte-identical
+    // to the old hand loop.
+    const std::size_t cases = RunTraversal(
+        rel, body,
+        [&brel, &body, &sink](std::size_t atom, std::size_t row, std::size_t /*orig*/,
+                              const FrameResult& fr, const NeighborhoodRecord& rec) {
             const BroadAggregate agg = brel.broad_reducer(body, atom, fr, row, rec.sources);
             sink.Write(rec, agg);
-            ++cases;
-        }
-    }
+        });
     qCInfo(cBroad).noquote() << "broad_backbone cases=" << cases;
     return cases;
 }

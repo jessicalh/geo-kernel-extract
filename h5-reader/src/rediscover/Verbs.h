@@ -123,6 +123,31 @@ std::optional<int32_t> atomOf(const Body& body, const std::vector<int32_t>& scop
 std::vector<int32_t> selectAll(const Body& body, const std::vector<int32_t>& scope,
                                const TypedAtomSelector& selector);
 
+// heavyParent(atom) -> the atom's heavy-parent index (parentAtomIndex when set,
+// else the atom itself). The ONE definition of "the heavy atom this H hangs
+// off" — the ring self/bonded membership rule (ring_current classifier + the
+// all-atom ringContainsAtom test) reads it, so it lives here, not copied into
+// each cell (PATTERNS rule 8: debt in the exemplar propagates). Walks the
+// resident typed QtAtom; never re-derives connectivity.
+std::size_t heavyParent(const Body& body, std::size_t atom);
+
+// displacement(target, sourcePoint, axis, frame) -> the shared near-field
+// geometry both the McConnell bond attacher and the all-atom bond/ring-center
+// source build: the lab displacement target→source, |disp|, 1/r³, and — about a
+// caller-supplied unit `axis` — cosθ and the (3cos²θ−1)/r³ dipolar term. This is
+// the ONE definition of the near-field form (the McConnell self/bonded cutoff +
+// near-field ratio close over `r` and the axis norm at the call site; this verb
+// owns only the rotation-invariant geometry). `axis` need not be normalized; a
+// zero/degenerate axis yields a NaN cosθ/dipolar (the caller's geometric reject).
+struct Displacement {
+    Vec3   disp    = Vec3::Zero();  // lab displacement target→sourcePoint (Å)
+    double r       = 0.0;           // |disp| (Å)
+    double inv_r3  = 0.0;           // 1/r³ (NaN when r ≈ 0)
+    double cos_theta = 0.0;         // disp·axis / (|disp||axis|) (NaN when degenerate)
+    double dipolar = 0.0;           // (3cos²θ − 1)/r³ (NaN when degenerate)
+};
+Displacement displacement(const Vec3& target, const Vec3& sourcePoint, const Vec3& axis);
+
 // ringsOf(atom) -> the AROMATIC rings the atom's heavy parent belongs to
 // (absolute ring ids). The "own ring" set the ring-current self/bonded
 // exclusion uses. ownRingAtoms returns the union of those rings' atom indices

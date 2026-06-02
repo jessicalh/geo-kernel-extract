@@ -9,6 +9,7 @@
 #include "../model/QtTopology.h"
 
 #include <cmath>
+#include <limits>
 
 namespace h5reader::rediscover {
 namespace verbs {
@@ -92,19 +93,39 @@ std::vector<int32_t> selectAll(const Body& body, const std::vector<int32_t>& sco
     return body.idx.typedAtoms.select(scope, selector);
 }
 
-namespace {
-std::size_t heavyParent(const model::QtProtein& p, std::size_t atomIdx) {
-    const model::QtAtom& a = p.atom(atomIdx);
-    return a.parentAtomIndex >= 0 ? static_cast<std::size_t>(a.parentAtomIndex) : atomIdx;
+std::size_t heavyParent(const Body& body, std::size_t atom) {
+    const model::QtProtein& p = *body.run.protein;
+    const model::QtAtom& a = p.atom(atom);
+    return a.parentAtomIndex >= 0 ? static_cast<std::size_t>(a.parentAtomIndex) : atom;
 }
-}  // namespace
+
+Displacement displacement(const Vec3& target, const Vec3& sourcePoint, const Vec3& axis) {
+    // Arithmetic matches the all-atom source builders bit-for-bit (the callers
+    // that adopt this verb): r = |disp|; inv_r3 = 1/(r·r·r) for r > 1e-12 else
+    // NaN; cosθ = disp·âxis / r with âxis the unit axis (zero when the axis is
+    // degenerate); dipolar = (3cos²θ − 1)/(r·r·r) using the SAME `/(r·r·r)`
+    // division form (not the inv_r3 product) so the bytes are identical.
+    const double kNaN = std::numeric_limits<double>::quiet_NaN();
+    Displacement d;
+    d.disp = sourcePoint - target;
+    d.r = d.disp.norm();
+    d.inv_r3 = d.r > 1e-12 ? 1.0 / (d.r * d.r * d.r) : kNaN;
+    const double axisNorm = axis.norm();
+    const Vec3 axisU =
+        (axisNorm > 1e-12 && std::isfinite(axisNorm)) ? Vec3(axis / axisNorm) : Vec3::Zero();
+    d.cos_theta = d.r > 1e-12 ? d.disp.dot(axisU) / d.r : kNaN;
+    d.dipolar = (d.r > 1e-12 && std::isfinite(d.cos_theta))
+                    ? (3.0 * d.cos_theta * d.cos_theta - 1.0) / (d.r * d.r * d.r)
+                    : kNaN;
+    return d;
+}
 
 std::vector<int32_t> ringsOf(const Body& body, std::size_t atom) {
     std::vector<int32_t> out;
     if (!body.run.protein) return out;
     const model::QtProtein& p = *body.run.protein;
     const model::QtTopology& topo = p.topology();
-    const std::size_t heavy = heavyParent(p, atom);
+    const std::size_t heavy = heavyParent(body, atom);
     for (int memb : topo.ringMembershipsForAtom(heavy)) {
         const model::QtRingMembership& m = topo.ringMembershipAt(static_cast<std::size_t>(memb));
         if (m.ringId < 0) continue;
