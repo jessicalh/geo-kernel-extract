@@ -55,7 +55,8 @@ FROM ${NMR_BASE_IMAGE} AS runtime
 ARG NMR_PREFIX
 ARG NMR_DEPS_PREFIX
 
-COPY --from=build ${NMR_PREFIX}/ ${NMR_PREFIX}/
+COPY --from=build ${NMR_PREFIX}/bin/ ${NMR_PREFIX}/bin/
+COPY --from=build ${NMR_PREFIX}/share/ ${NMR_PREFIX}/share/
 COPY --from=build /etc/nmr-shielding/ /etc/nmr-shielding/
 RUN if [ -f /etc/ld.so.conf.d/nmr-shielding-deps.conf ]; then \
         sed -i "\#^${NMR_DEPS_PREFIX}/orca/lib\$#d" /etc/ld.so.conf.d/nmr-shielding-deps.conf; \
