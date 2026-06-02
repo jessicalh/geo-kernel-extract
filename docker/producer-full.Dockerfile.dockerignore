@@ -69,6 +69,5 @@ tests/golden/smoke/
 data/topology/
 data/ccd/*
 !data/ccd/README.md
-data/larsen_hbond_grids/
 
 docker/vendor/
