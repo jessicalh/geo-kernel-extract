@@ -1,0 +1,8 @@
+# Dependency-image context hygiene. This image consumes only the curated vendor
+# payload; source code is copied by producer-full.Dockerfile in a separate stage.
+
+*
+
+!docker/
+!docker/vendor/
+!docker/vendor/**
