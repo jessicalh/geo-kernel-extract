@@ -100,6 +100,13 @@ Safety rules:
 - Only directories with `.rediscover-run.json` are managed cleanup candidates.
 - Only files recorded as substrate by the producer manifest or runner metadata
   are deleted.
+- Before deleting any path, the cleaner verifies that the resolved path is
+  under the managed run root, is not under `/shared`, and is not an
+  `nmr_extract` extraction or inside one.
+- `nmr_extract` extractions (16-hour atomic inputs: `trajectory.h5` plus
+  `extraction_manifest.json`, `npys/frame_*`, and `pdbs/`) are categorically
+  off the cleanup table; this framework manages only rediscover-engine
+  substrate.
 - Runs with status `running` are skipped.
 - Runs touched within `REDISCOVER_ACTIVE_MINUTES` are skipped.
 - Default active window: `720` minutes.

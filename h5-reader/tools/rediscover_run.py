@@ -32,6 +32,7 @@ RUN_META = ".rediscover-run.json"
 ROOT_MANIFEST = "manifest.json"
 ANALYSIS_DIR = "analysis"
 RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+SHARED_ROOT = Path("/shared").resolve()
 
 
 def utc_now() -> str:
@@ -211,6 +212,67 @@ def is_managed_run(path: Path) -> bool:
     return (path / RUN_META).is_file()
 
 
+def has_nmr_extract_signature(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    npys_dir = path / "npys"
+    if not (
+        (path / "trajectory.h5").is_file()
+        and (path / "extraction_manifest.json").is_file()
+        and npys_dir.is_dir()
+        and (path / "pdbs").is_dir()
+    ):
+        return False
+    try:
+        return any(child.name.startswith("frame_") for child in npys_dir.iterdir())
+    except OSError:
+        return False
+
+
+def nmr_extract_signature_ancestor(path: Path) -> Path | None:
+    current = path if path.is_dir() else path.parent
+    while True:
+        if has_nmr_extract_signature(current):
+            return current
+        parent = current.parent
+        if parent == current:
+            return None
+        current = parent
+
+
+def delete_refusal_reason(path: Path, managed_root: Path) -> str | None:
+    resolved_root = managed_root.resolve()
+    resolved_path = path.resolve()
+    if resolved_path.is_relative_to(SHARED_ROOT):
+        return f"resolved path {resolved_path} is under /shared"
+    if resolved_path == resolved_root or not resolved_path.is_relative_to(resolved_root):
+        return f"resolved path {resolved_path} is outside managed run root {resolved_root}"
+    signature_dir = nmr_extract_signature_ancestor(resolved_path)
+    if signature_dir is not None:
+        return (
+            "nmr_extract extraction signature at "
+            f"{signature_dir} (trajectory.h5 + extraction_manifest.json + "
+            "npys/frame_* + pdbs); categorically off the cleanup table"
+        )
+    return None
+
+
+def guarded_unlink(path: Path, managed_root: Path) -> tuple[bool, int]:
+    reason = delete_refusal_reason(path, managed_root)
+    if reason is not None:
+        print(f"REFUSE delete {path}: {reason}", file=sys.stderr)
+        return False, 0
+    try:
+        bytes_deleted = path.stat().st_size
+    except FileNotFoundError:
+        return False, 0
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False, 0
+    return True, bytes_deleted
+
+
 def scan_run(root: Path, path: Path, *, include_patterns: bool = False) -> dict[str, Any]:
     meta = load_meta(path)
     substrate = discover_substrate(path, include_patterns=include_patterns)
@@ -311,6 +373,7 @@ def clean_old_substrate(
     include_patterns: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     root.mkdir(parents=True, exist_ok=True)
+    managed_root = root.resolve()
     runs = scan_runs(root, include_patterns=include_patterns)
     with_substrate = [r for r in runs if r["substrate_present"]]
     protected_active = {
@@ -343,25 +406,30 @@ def clean_old_substrate(
             print(f"  {file_path}")
         if not force:
             continue
-        for file_path in files:
-            try:
-                file_path.unlink()
-            except FileNotFoundError:
-                pass
+        deleted_names: list[str] = []
+        deleted_bytes_for_run = 0
+        for name, file_path in zip(substrate, files):
+            was_deleted, bytes_deleted = guarded_unlink(file_path, managed_root)
+            if not was_deleted:
+                continue
+            deleted_names.append(name)
+            deleted_bytes_for_run += bytes_deleted
+        if not deleted_names:
+            continue
         meta = load_meta(path)
         drops = meta.setdefault("substrate_drops", [])
         if isinstance(drops, list):
             drops.append(
                 {
                     "dropped_at": utc_now(),
-                    "files": substrate,
-                    "bytes": bytes_for_run,
+                    "files": deleted_names,
+                    "bytes": deleted_bytes_for_run,
                     "reason": f"superseded keep_substrate={keep}",
                 }
             )
         meta["substrate_dropped_at"] = utc_now()
         save_meta(path, meta)
-        deleted_bytes += bytes_for_run
+        deleted_bytes += deleted_bytes_for_run
 
     if protected_active:
         for name in sorted(protected_active):
