@@ -49,6 +49,7 @@ RUN cmake -S . -B /tmp/nmr-shielding-build -G "${NMR_CMAKE_GENERATOR}" \
 
 RUN cmake --build /tmp/nmr-shielding-build --target nmr_extract -j"$(nproc)"
 RUN cmake --install /tmp/nmr-shielding-build
+RUN sed -i '1s@^#!.*python3$@#!/usr/bin/python3@' "${NMR_PREFIX}/bin/nmr-tensorcs15-check"
 
 FROM ${NMR_BASE_IMAGE} AS runtime
 ARG NMR_PREFIX
