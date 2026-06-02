@@ -4,6 +4,7 @@
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
 #include "Relationship.h"
+#include "RelationshipEngine.h"
 #include "RunData.h"
 #include "Verbs.h"
 
@@ -36,15 +37,15 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     FrameResult fr;
     const model::QtProtein& p = *body.run.protein;
     const model::QtAtom& a = p.atom(atom);
-    if (!validResidue(p, a.residueIndex)) return fr;
+    if (!validResidue(p, a.residueIndex))
+        return fr;
     const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
 
-    auto posOf = [&](int32_t ai) {
-        return verbs::pos(body, static_cast<std::size_t>(ai), frame);
-    };
+    auto posOf = [&](int32_t ai) { return verbs::pos(body, static_cast<std::size_t>(ai), frame); };
 
     if (a.IsBackboneNitrogen()) {
-        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE) return fr;
+        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
+            return fr;
         bool cPrevValid = false;
         Vec3 cRef = Vec3::Zero();
         if (validResidue(p, r.prevResidueIndex)) {
@@ -54,17 +55,16 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
                 cPrevValid = true;
             }
         }
-        if (!cPrevValid && r.C != model::QtResidue::NONE) cRef = posOf(r.C);
+        if (!cPrevValid && r.C != model::QtResidue::NONE)
+            cRef = posOf(r.C);
         fr.frame = BuildBackboneNFrame(posOf(r.N), posOf(r.CA), cRef, cPrevValid);
-        fr.anchor_atom_index = cPrevValid && validResidue(p, r.prevResidueIndex)
-                                   ? p.residue(static_cast<std::size_t>(r.prevResidueIndex)).C
-                                   : r.C;
+        fr.anchor_atom_index =
+            cPrevValid && validResidue(p, r.prevResidueIndex) ? p.residue(static_cast<std::size_t>(r.prevResidueIndex)).C : r.C;
         return fr;
     }
 
     if (a.IsBackboneAlphaCarbon()) {
-        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE
-            || r.C == model::QtResidue::NONE)
+        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE || r.C == model::QtResidue::NONE)
             return fr;
         fr.frame = BuildBackboneCaFrame(posOf(r.CA), posOf(r.N), posOf(r.C));
         fr.anchor_atom_index = r.N;
@@ -72,8 +72,7 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     }
 
     if (a.IsBackboneCarbonylCarbon()) {
-        if (r.C == model::QtResidue::NONE || r.O == model::QtResidue::NONE
-            || r.CA == model::QtResidue::NONE)
+        if (r.C == model::QtResidue::NONE || r.O == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
             return fr;
         fr.frame = BuildBackboneCarbonylCFrame(posOf(r.C), posOf(r.O), posOf(r.CA));
         fr.anchor_atom_index = r.CA;
@@ -81,8 +80,7 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     }
 
     if (a.IsBackboneCarbonylOxygen()) {
-        if (r.O == model::QtResidue::NONE || r.C == model::QtResidue::NONE
-            || r.CA == model::QtResidue::NONE)
+        if (r.O == model::QtResidue::NONE || r.C == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
             return fr;
         fr.frame = BuildBackboneCarbonylOFrame(posOf(r.O), posOf(r.C), posOf(r.CA));
         fr.anchor_atom_index = r.CA;
@@ -90,7 +88,8 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     }
 
     if (a.IsBackboneAmideHydrogen()) {
-        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE) return fr;
+        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
+            return fr;
         bool cPrevValid = false;
         Vec3 cPrev = Vec3::Zero();
         if (validResidue(p, r.prevResidueIndex)) {
@@ -100,14 +99,14 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
                 cPrevValid = true;
             }
         }
-        fr.frame = BuildHNFrame(posOf(r.N), verbs::pos(body, atom, frame), posOf(r.CA),
-                                cPrev, cPrevValid);
+        fr.frame = BuildHNFrame(posOf(r.N), verbs::pos(body, atom, frame), posOf(r.CA), cPrev, cPrevValid);
         fr.anchor_atom_index = -1;
         return fr;
     }
 
     if (a.IsAnyAlphaHydrogen()) {
-        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE) return fr;
+        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE)
+            return fr;
         fr.frame = BuildBackboneHaFrame(verbs::pos(body, atom, frame), posOf(r.CA), posOf(r.N));
         fr.anchor_atom_index = r.N;
         return fr;
@@ -119,12 +118,12 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
 bool apbsEfieldPresent(const Body& body, std::size_t atom, std::size_t row) {
     const io::QtTrajectoryH5* h5 = body.run.h5();
     const model::QtVec3TimeSeries* efield = h5 ? h5->apbsEfield() : nullptr;
-    return efield && body.catalog.present(body, ArrayId::ApbsEfield, atom, row)
-           && efield->sourceAttachedAt(row);
+    return efield && body.catalog.present(body, ArrayId::ApbsEfield, atom, row) && efield->sourceAttachedAt(row);
 }
 
 void updateMagnitudeStats(BuckinghamEfieldStats& stats, double mag) {
-    if (!std::isfinite(mag)) return;
+    if (!std::isfinite(mag))
+        return;
     if (stats.finite_efield == 0) {
         stats.min_efield_magnitude = mag;
         stats.max_efield_magnitude = mag;
@@ -135,34 +134,54 @@ void updateMagnitudeStats(BuckinghamEfieldStats& stats, double mag) {
     ++stats.finite_efield;
 }
 
+Relationship makeBuckinghamEfieldRelationship() {
+    Relationship rel;
+    rel.name = QStringLiteral("buckingham_efield");
+    rel.stratum = [](const Body& body) {
+        std::vector<std::size_t> atoms;
+        if (!body.run.protein)
+            return atoms;
+        const model::QtProtein& p = *body.run.protein;
+        atoms.reserve(p.atomCount());
+        for (std::size_t atom = 0; atom < p.atomCount(); ++atom) {
+            if (isBackboneFeatureAtom(p.atom(atom)))
+                atoms.push_back(atom);
+        }
+        return atoms;
+    };
+    rel.frame_fn = backboneFrame;
+    rel.target_fn = [](const Body& body, std::size_t atom, std::size_t originalIndex, const LocalFrame& frame) {
+        return BuildTarget(body.run, atom, originalIndex, frame);
+    };
+    return rel;
+}
+
 }  // namespace
 
-BuckinghamEfieldStats RunBuckinghamEfieldPerAtomFeature(const Body& body,
-                                                        BuckinghamEfieldSink& sink) {
+BuckinghamEfieldStats RunBuckinghamEfieldPerAtomFeature(const Body& body, BuckinghamEfieldSink& sink) {
     BuckinghamEfieldStats stats;
-    if (!body.run.protein || !body.run.trajectory()) return stats;
+    if (!body.run.protein || !body.run.trajectory())
+        return stats;
 
     const model::QtProtein& p = *body.run.protein;
-    const QString units = body.catalog.has(ArrayId::ApbsEfield)
-                              ? body.catalog.spec(ArrayId::ApbsEfield).unit
-                              : QStringLiteral("V/Angstrom");
+    const QString units = body.catalog.has(ArrayId::ApbsEfield) ? body.catalog.spec(ArrayId::ApbsEfield).unit
+                                                                : QStringLiteral("V/Angstrom");
 
-    qCInfo(cBuckingham).noquote()
-        << "buckingham_efield per_atom_feature | atoms=" << p.atomCount()
-        << "| dft rows=" << body.run.frameMap.dftRows().size()
-        << "| apbs_efield=" << body.catalog.has(ArrayId::ApbsEfield);
+    qCInfo(cBuckingham).noquote() << "buckingham_efield per_atom_feature | atoms=" << p.atomCount()
+                                  << "| dft rows=" << body.run.frameMap.dftRows().size()
+                                  << "| apbs_efield=" << body.catalog.has(ArrayId::ApbsEfield);
 
-    for (std::size_t row : body.run.frameMap.dftRows()) {
-        const std::size_t orig = body.run.frameMap.originalIndex(row);
-        for (std::size_t atom = 0; atom < p.atomCount(); ++atom) {
-            const model::QtAtom& a = p.atom(atom);
-            if (!isBackboneFeatureAtom(a)) continue;
-
-            const FrameResult fr = backboneFrame(body, atom, row);
-            const DftTarget target = BuildTarget(body.run, atom, orig, fr.frame);
-            if (!target.present) continue;
+    const Relationship rel = makeBuckinghamEfieldRelationship();
+    RunTraversal(
+        rel,
+        body,
+        [&](std::size_t atom, std::size_t row, std::size_t orig, const FrameResult& fr, const NeighborhoodRecord& rec) {
+            const DftTarget& target = rec.target;
+            if (!target.present)
+                return;
 
             BuckinghamEfieldRow out;
+            const model::QtAtom& a = p.atom(atom);
             out.atom_index = a.atomIndex;
             out.residue_index = a.residueIndex;
             out.element = static_cast<int>(a.element);
@@ -186,7 +205,8 @@ BuckinghamEfieldStats RunBuckinghamEfieldPerAtomFeature(const Body& body,
             out.dft_total_decomp = target.total_decomp;
             out.efield_units = units;
 
-            if (out.frame_valid) ++stats.frame_valid;
+            if (out.frame_valid)
+                ++stats.frame_valid;
             out.apbs_efield_present = apbsEfieldPresent(body, atom, row);
             if (out.apbs_efield_present) {
                 const Vec3 eLab = body.catalog.valueVec3(body, ArrayId::ApbsEfield, atom, row);
@@ -202,17 +222,13 @@ BuckinghamEfieldStats RunBuckinghamEfieldPerAtomFeature(const Body& body,
             sink.Write(out);
             ++stats.rows;
             ++stats.dft_present;
-        }
-    }
+        });
 
-    qCInfo(cBuckingham).noquote()
-        << "buckingham_efield per_atom_feature rows=" << stats.rows
-        << "| dft_present=" << stats.dft_present
-        << "| frame_valid=" << stats.frame_valid
-        << "| apbs_efield_present=" << stats.apbs_efield_present
-        << "| finite_efield=" << stats.finite_efield
-        << "| |E| min=" << stats.min_efield_magnitude
-        << "max=" << stats.max_efield_magnitude;
+    qCInfo(cBuckingham).noquote() << "buckingham_efield per_atom_feature rows=" << stats.rows
+                                  << "| dft_present=" << stats.dft_present << "| frame_valid=" << stats.frame_valid
+                                  << "| apbs_efield_present=" << stats.apbs_efield_present
+                                  << "| finite_efield=" << stats.finite_efield << "| |E| min=" << stats.min_efield_magnitude
+                                  << "max=" << stats.max_efield_magnitude;
     return stats;
 }
 

@@ -141,32 +141,30 @@ That is the floor holding. The drift is "**reducers, selections, and scalar-law
 assembly living in Python**, over a giant raw producer dump." Below, the specific
 drifts, with the irreducible-vs-drift line drawn explicitly per §A5.
 
-### B1. The engine was only HALF unified by #29 — FOUR runners still bypass the traversal
+### B1. The engine was only partly unified by #29 — one rich-record runner still bypasses traversal
 
 This is the biggest under-stated drift, and the brief's central #29 question.
-`ALL_ATOM_EMIT_REVIEW.md:79-83` named "three drivers"; the reality after #29 is
-worse. #29 (`2675565`) genuinely folded **two** carriers onto `RunTraversal`:
+`ALL_ATOM_EMIT_REVIEW.md:79-83` named "three drivers"; the reality after #29 was
+worse until the 2026-06-02 follow-up folded the no-source feature runners. #29
+(`2675565`) genuinely folded **two** carriers onto `RunTraversal`:
 `RunRelationship` (ring/mc/charge_dipole, RelationshipEngine.cpp:82-96) and
 `RunBroadBackbone` (BroadBackbone.cpp:524, "the SAME … traversal as …
-RunTraversal"). But it left **four** hand-written `for row : dftRows() × for atom
-: atomCount()` walks outside the engine:
+RunTraversal"). It originally left four hand-written walks outside the engine; the
+current remaining bypass is:
 
-- `RunAllAtomEquivariantEmit` — AllAtomEquivariant.cpp:399-401 (the 68 GB
+- `RunAllAtomEquivariantEmit` — AllAtomEquivariant.cpp:409 (the deleted 68 GB
   substrate's producer). The commit message admits this verbatim: *"the all-atom
   rich-record carrier keeps its own thin walk; its record type is genuinely
   different."*
-- `RunEfgPerAtomFeature` — EfgFeature.cpp:170-172.
-- `RunBuckinghamEfieldPerAtomFeature` — BuckinghamEfield.cpp:140 (+ its own walk).
-- `RunAimnet2PerAtomFeature` — Aimnet2Feature.cpp:188-190.
 
 So `analysis/PATTERNS.md:20-27`'s "don't … sprawl into … sibling runners" is
-violated by four siblings, not one, and #29 healed the two that were *already
-reducer-carriers* while leaving the four *raw / per-atom carriers* — which are
-exactly the ones that drove the fatness and the Python-reduction pressure.
-**#29 is partial** (`ALL_ATOM_EMIT_REVIEW.md` verdict; STATE.md:31-33 booked it).
-The all-atom bypass is not an accident of "different record type" — it is the
-symptom that the carrier seam was generalized for *reducer-shaped* carriers but
-not for the *raw-source* and *per-target-feature* shapes. See §C2.
+still violated by the rich all-atom sibling. The no-source per-atom carriers
+(`efg`, `buckingham_efield`, `aimnet2_features`) now use empty-selector
+relationships through `RunTraversal`. **#29 is partial** (`ALL_ATOM_EMIT_REVIEW.md`
+verdict; STATE.md booked it) because the all-atom bypass is not an accident of
+"different record type" — it is the symptom that the carrier seam was generalized
+for *reducer-shaped* and empty-source carriers but not for the *raw-source record
+shape*. See §C2.
 
 ### B2. Reducers living in Python — the C++ reducer done in numpy
 
@@ -221,11 +219,11 @@ the full one creeps in).
 
 From the EMIT CODE (the 68 GB was deleted; this is reasoned from emit, not `du`):
 
-- `AllAtomEquivariant.cpp:399-401` is `for row : dftRows() (660)` × `for atom :
+- `AllAtomEquivariant.cpp:409-411` is `for row : dftRows() (660)` × `for atom :
   atomCount() (846)` = 558,360 target rows, then per row a multiplicity of source
-  rows: rings (`:460-472`), every bond category (`:475-487`, the `AllBondMidpoints`
+  rows: rings (`:460-471`), every bond category (`:474-486`, the `AllBondMidpoints`
   cloud — *every* bond, not the McConnell subset), FF14SB + AIMNet2 charge sites
-  (`:490-521`), and the per-target APBS/EFG/AIMNet2/MOPAC + 256-d embedding feature
+  (`:489-523`), and the per-target APBS/EFG/AIMNet2/MOPAC + 256-d embedding feature
   payloads (`:524-610`). The commit `dca30b8` records `charge_mopac 30472756` rows
   and 558,360 MOPAC-shielding rows from one re-emit.
 - Sidecars: target T2 / σ_iso / raw, APBS, EFG, AIMNet2, MOPAC, 256-d embedding
@@ -281,7 +279,8 @@ rather than first finishing the engine — exactly the "hard floor" fallback the
 review offered (`ALL_ATOM_EMIT_REVIEW.md:143-149`), taken instead of the
 preferred unification. So the drift is not ancient; it is the breadth phase
 outrunning the engine, and the most recent commits chose breadth-on-the-sibling
-over finishing the seam.
+over finishing the seam. The 2026-06-02 no-source follow-up has since folded
+efg/buckingham/aimnet2; all-atom remains the live bypass.
 
 ---
 
@@ -331,14 +330,14 @@ deeper? **Yes — and #29 as landed proves the seam is not yet general enough.**
 #29's `RunTraversal` + `PerRecordSink` (RelationshipEngine.h:51-60) is the right
 abstraction *for reducer-carriers*: it hands the carrier the fully-attached
 `NeighborhoodRecord` and lets the carrier own the reduce+sink. `RunRelationship`
-and `RunBroadBackbone` fit it. But it did NOT absorb:
+and `RunBroadBackbone` fit it. The no-source feature carriers now fit it too, via
+empty selector lists. But it still has not absorbed:
 - the **raw-source carrier** (all-atom, reducer=none) — the commit excused it as
   "genuinely different record type" (`AllAtomEquivariantSourceRecord` vs
   `SourceSlot`). That excuse is the tell: the all-atom record is richer (APBS/EFG/
   AIMNet2/MOPAC/embedding payloads), so it could not ride `NeighborhoodRecord`.
-- the **per-target-feature carriers** (efg/buckingham/aimnet2) — these have *no
-  source set at all*; they are pure per-(atom,frame) feature reads, which the
-  source-centric traversal does not model.
+The **per-target-feature carriers** (efg/buckingham/aimnet2) are now modeled as
+relationships with no sources and still stream through their existing sinks.
 
 So the deeper issue: `RunTraversal` is built around `NeighborhoodRecord` (a fixed
 source-slot shape). The vision's "one traversal, carrier varies" needs the
@@ -351,19 +350,17 @@ carrier a *generic attached context* it interprets. The fix that *fully* heals i
   (or let the attachers write into a carrier-owned record) — `ALL_ATOM_EMIT_REVIEW
   .md:124-134` prescription 2 is correct in spirit but underestimates the record-
   type generalization it requires.
-- Model the per-target-feature cases as relationships with an **empty selector
-  list** (no sources) + target-feature attachers, so efg/buckingham/aimnet2
-  collapse into the one traversal too. This is what dissolves four siblings, not
-  one.
+- Keep the per-target-feature cases as relationships with an **empty selector
+  list** (no sources); this part is now folded.
 - Fold the remaining triplicated geometry onto verbs — #29 did the disp/heavyParent
   fold (Verbs.h:126-149, the commit's second half); that part is genuinely done
   and good.
 
 Net: the sibling runner is a symptom that the seam was generalized over the
-*reducer* axis but not the *record-shape* and *no-source* axes. Healing #29
+*reducer* and *no-source* axes but not yet the *record-shape* axis. Healing #29
 fully means one `RunTraversal` whose carrier owns (record type, reducer, sink),
-with all six cases as carriers. That is more than #29 did, and it should be
-designed across all six shapes at once (`feedback_functional_api_minimal_
+with all record shapes as carriers. That is more than #29 did, and it should be
+designed across the remaining shape (`feedback_functional_api_minimal_
 clarifying_abstraction`) — not whack-a-mole, and explicitly NOT a plugin/ABC
 framework (the carrier stays a `std::function` bound in code).
 
@@ -441,10 +438,10 @@ redo; nothing is preserved merely because it exists.
 
 The half that landed is correct and on-vision: `RunTraversal` + `PerRecordSink`,
 two carriers folded, disp/heavyParent onto verbs (Verbs.h:126-149). Byte-identical
-gated. KEEP that. But it is *partial* (§B1, §C2): four runners still bypass it, and
-the all-atom bypass is structural, not incidental. REDO-TO-VISION the rest:
-generalize the carrier to own (record-type, reducer, sink) and fold all-atom +
-the three per-atom-feature cases into the one traversal. Do NOT treat #29 as done.
+gated. KEEP that. But it is *partial* (§B1, §C2): the all-atom rich-record carrier
+still bypasses it, and that bypass is structural, not incidental. REDO-TO-VISION
+the rest: generalize the carrier to own (record-type, reducer, sink) and fold
+all-atom into the one traversal. Do NOT treat #29 as done.
 
 ### D2. MOPAC-add (`dca30b8`, #51) — KEEP the wiring, ACCEPT the debt it took on
 
@@ -527,10 +524,10 @@ diff, no re-emit); the cuts are CSV-only so no SDK-contract change
 (EMIT_SURFACE_AUDIT.md:405). Disk: this is where the substrate actually shrinks.
 
 **Phase 3 — finish #29 (the engine).** Generalize the carrier to own
-(record-type, reducer, sink); fold all-atom (reducer=none, rich record) and the
-three per-atom-feature cases (empty selector list + target attachers) onto
-`RunTraversal`; the MOPAC selectors/attachers move with the all-atom fold. Design
-across all six shapes at once. Gate: oracle parity byte-identical on every case +
+(record-type, reducer, sink); fold all-atom (reducer=none, rich record) onto
+`RunTraversal`; the no-source feature runners are already on the traversal, and
+the MOPAC selectors/attachers move with the all-atom fold. Design
+against the already-folded shapes plus all-atom. Gate: oracle parity byte-identical on every case +
 ctest. This is pure refactor (no physics change), so it can be gated to byte
 identity and needs only a verification re-emit (drop-old), not new data.
 
@@ -553,7 +550,7 @@ The vision is intact and recoverable: one typed spine, C++ emits literature-scal
 predictions, Python only fits, one canonical traversal, a lean method-agnostic
 substrate for an open (e3nn-included) fitter, with the law-vs-model arc and the
 reader-as-platform end-state behind it. The drift is real and more than cosmetic —
-**#29 is half-built (four runners still bypass the engine), the Python side carries
+**#29 is half-built (the all-atom rich-record runner still bypasses the engine), the Python side carries
 reducers/selections that belong on the spine, and the substrate became a double-
 duty raw dump that manufactured that Python drift** — but the cardinal sin is
 contained and the raw equivariant core is correct. Returning to vision is a

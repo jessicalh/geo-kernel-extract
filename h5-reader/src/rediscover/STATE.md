@@ -31,18 +31,19 @@ DONE this session:
 
 REVIEWER #52 DONE (`ALL_ATOM_EMIT_REVIEW.md`): model discipline CLEAN (typed spine, no string-dispatch,
 no-imposed-frame real). Current truth: #29 is **PARTIAL**, not done. `RunTraversal`/`PerRecordSink`
-now owns ring/mc/charge plus broad; still outside it are all-atom and the no-source feature runners
-(`efg`, `buckingham_efield`, `aimnet2_features`). MOPAC landed in `dca30b8` by extending the existing
-all-atom path, not by adding a fourth MOPAC runner. Keep that physics wiring, but fold it with the
-all-atom carrier when #29 is finished. Provenance gaps remain: atom-role/named-atom into NPY sidecars,
-support/N_eff/nonzero-rank to manifest, `normalization=raw` tag. Framework guard DONE (refuses
-/shared + extraction-signature; tested).
+now owns ring/mc/charge, broad, and the no-source feature runners (`efg`,
+`buckingham_efield`, `aimnet2_features`). Still outside it is the rich all-atom target/source
+carrier hand walk at `AllAtomEquivariant.cpp:409`. MOPAC landed in `dca30b8` by extending the
+existing all-atom path, not by adding a fourth MOPAC runner. Keep that physics wiring, but fold it
+with the all-atom carrier when #29 is finished. Provenance gaps remain: atom-role/named-atom into
+NPY sidecars, support/N_eff/nonzero-rank to manifest, `normalization=raw` tag. Framework guard DONE
+(refuses /shared + extraction-signature; tested).
 
 NEXT: build to **`NODE_STORE_CONTRACT_2026-06-02.md`**. The real #29 is a typed relationship index
-over **all** record shapes: source-sum carriers (ring/mc/charge + broad), the richer all-atom raw-source
-carrier, and no-source per-target feature carriers (`efg`/`buckingham_efield`/`aimnet2_features`).
-No new sibling drivers. MOPAC is no longer pending; its selectors/attachers move with the all-atom fold.
-Then the named, described outputs feed the **law-discovery maths model** at the Python edge
+over **all** record shapes: source-sum carriers (ring/mc/charge + broad), no-source per-target
+feature carriers, and the remaining richer all-atom raw-source carrier. No new sibling drivers.
+MOPAC is no longer pending; its selectors/attachers move with the all-atom fold. Then the named,
+described outputs feed the **law-discovery maths model** at the Python edge
 (e3nn/PySR/ridge/CV/plots/frozen `get_C()`), not a second Python protein model. larsen postponed
 (grounded, `LARSEN_GROUNDING.md`). Only drop rediscover substrate; /shared extractions remain sacred.
 

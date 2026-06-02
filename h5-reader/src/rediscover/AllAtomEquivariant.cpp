@@ -3,8 +3,8 @@
 #include "Catalog.h"
 #include "ExtractionSupport.h"
 #include "Relationship.h"
-#include "SphericalBasis.h"
 #include "SpatialIndexSet.h"
+#include "SphericalBasis.h"
 #include "Verbs.h"
 
 #include "../io/QtTrajectoryH5.h"
@@ -41,7 +41,8 @@ bool finiteVec3(const Vec3& v) {
 
 Vec3 unitOrZero(const Vec3& v) {
     const double n = v.norm();
-    if (n > 1e-12 && std::isfinite(n)) return v / n;
+    if (n > 1e-12 && std::isfinite(n))
+        return v / n;
     return Vec3::Zero();
 }
 
@@ -51,46 +52,62 @@ double invR3(double r) {
 
 double t2Magnitude(const std::array<double, 5>& t2) {
     double s = 0.0;
-    for (double v : t2) s += v * v;
+    for (double v : t2)
+        s += v * v;
     return std::sqrt(s);
 }
 
 QString bondCategoryName(model::BondCategory c) {
     switch (c) {
-    case model::BondCategory::PeptideCO: return QStringLiteral("PeptideCO");
-    case model::BondCategory::PeptideCN: return QStringLiteral("PeptideCN");
-    case model::BondCategory::BackboneOther: return QStringLiteral("BackboneOther");
-    case model::BondCategory::SidechainCO: return QStringLiteral("SidechainCO");
-    case model::BondCategory::Aromatic: return QStringLiteral("Aromatic");
-    case model::BondCategory::Disulfide: return QStringLiteral("Disulfide");
-    case model::BondCategory::SidechainOther: return QStringLiteral("SidechainOther");
-    case model::BondCategory::Unknown: return QStringLiteral("Unknown");
+    case model::BondCategory::PeptideCO:
+        return QStringLiteral("PeptideCO");
+    case model::BondCategory::PeptideCN:
+        return QStringLiteral("PeptideCN");
+    case model::BondCategory::BackboneOther:
+        return QStringLiteral("BackboneOther");
+    case model::BondCategory::SidechainCO:
+        return QStringLiteral("SidechainCO");
+    case model::BondCategory::Aromatic:
+        return QStringLiteral("Aromatic");
+    case model::BondCategory::Disulfide:
+        return QStringLiteral("Disulfide");
+    case model::BondCategory::SidechainOther:
+        return QStringLiteral("SidechainOther");
+    case model::BondCategory::Unknown:
+        return QStringLiteral("Unknown");
     }
     return QStringLiteral("Unknown");
 }
 
 QString ringTypeName(model::RingTypeIndex t) {
     switch (t) {
-    case model::RingTypeIndex::PheBenzene: return QStringLiteral("PheBenzene");
-    case model::RingTypeIndex::TyrPhenol: return QStringLiteral("TyrPhenol");
-    case model::RingTypeIndex::TrpBenzene: return QStringLiteral("TrpBenzene");
-    case model::RingTypeIndex::TrpPyrrole: return QStringLiteral("TrpPyrrole");
-    case model::RingTypeIndex::TrpPerimeter: return QStringLiteral("TrpPerimeter");
-    case model::RingTypeIndex::HisImidazole: return QStringLiteral("HisImidazole");
-    case model::RingTypeIndex::HidImidazole: return QStringLiteral("HidImidazole");
-    case model::RingTypeIndex::HieImidazole: return QStringLiteral("HieImidazole");
-    case model::RingTypeIndex::ProPyrrolidine: return QStringLiteral("ProPyrrolidine");
+    case model::RingTypeIndex::PheBenzene:
+        return QStringLiteral("PheBenzene");
+    case model::RingTypeIndex::TyrPhenol:
+        return QStringLiteral("TyrPhenol");
+    case model::RingTypeIndex::TrpBenzene:
+        return QStringLiteral("TrpBenzene");
+    case model::RingTypeIndex::TrpPyrrole:
+        return QStringLiteral("TrpPyrrole");
+    case model::RingTypeIndex::TrpPerimeter:
+        return QStringLiteral("TrpPerimeter");
+    case model::RingTypeIndex::HisImidazole:
+        return QStringLiteral("HisImidazole");
+    case model::RingTypeIndex::HidImidazole:
+        return QStringLiteral("HidImidazole");
+    case model::RingTypeIndex::HieImidazole:
+        return QStringLiteral("HieImidazole");
+    case model::RingTypeIndex::ProPyrrolidine:
+        return QStringLiteral("ProPyrrolidine");
     }
     return QStringLiteral("UnknownRing");
 }
 
 bool ringContainsAtom(const model::QtRing& ring, int32_t atomIdx) {
-    return std::find(ring.atomIndices.begin(), ring.atomIndices.end(), atomIdx)
-           != ring.atomIndices.end();
+    return std::find(ring.atomIndices.begin(), ring.atomIndices.end(), atomIdx) != ring.atomIndices.end();
 }
 
-void fillTargetIdentity(const Body& body, std::size_t atom, std::size_t row,
-                        AllAtomEquivariantTargetRecord& out) {
+void fillTargetIdentity(const Body& body, std::size_t atom, std::size_t row, AllAtomEquivariantTargetRecord& out) {
     const model::QtProtein& p = *body.run.protein;
     const model::QtAtom& a = p.atom(atom);
     out.atom_index = a.atomIndex;
@@ -107,8 +124,7 @@ void fillTargetIdentity(const Body& body, std::size_t atom, std::size_t row,
     out.time_ps = body.run.trajectory()->timePicoseconds(row);
 }
 
-void fillSourceTargetIdentity(const AllAtomEquivariantTargetRecord& target,
-                              AllAtomEquivariantSourceRecord& out) {
+void fillSourceTargetIdentity(const AllAtomEquivariantTargetRecord& target, AllAtomEquivariantSourceRecord& out) {
     out.target_atom_index = target.atom_index;
     out.target_residue_index = target.residue_index;
     out.h5_row = target.h5_row;
@@ -125,8 +141,7 @@ void fillSourceTargetIdentity(const AllAtomEquivariantTargetRecord& target,
     out.q_over_r3 = kNaN;
 }
 
-void fillSourceAtomIdentity(const model::QtProtein& p, std::size_t srcAtom,
-                            AllAtomEquivariantSourceRecord& out) {
+void fillSourceAtomIdentity(const model::QtProtein& p, std::size_t srcAtom, AllAtomEquivariantSourceRecord& out) {
     const model::QtAtom& a = p.atom(srcAtom);
     out.source_atom_index = a.atomIndex;
     out.source_residue_index = a.residueIndex;
@@ -141,46 +156,40 @@ void fillSourceAtomIdentity(const model::QtProtein& p, std::size_t srcAtom,
 bool apbsEfieldPresent(const Body& body, std::size_t atom, std::size_t row) {
     const io::QtTrajectoryH5* h5 = body.run.h5();
     const model::QtVec3TimeSeries* efield = h5 ? h5->apbsEfield() : nullptr;
-    return efield && body.catalog.present(body, ArrayId::ApbsEfield, atom, row)
-           && efield->sourceAttachedAt(row);
+    return efield && body.catalog.present(body, ArrayId::ApbsEfield, atom, row) && efield->sourceAttachedAt(row);
 }
 
 bool apbsEfgPresent(const Body& body, std::size_t atom, std::size_t row) {
     const io::QtTrajectoryH5* h5 = body.run.h5();
     const model::QtT2TimeSeries* efg = h5 ? h5->apbsEfg() : nullptr;
-    return efg && body.catalog.present(body, ArrayId::ApbsEfg, atom, row)
-           && efg->sourceAttachedAt(row);
+    return efg && body.catalog.present(body, ArrayId::ApbsEfg, atom, row) && efg->sourceAttachedAt(row);
 }
 
 bool aimnetChargePresent(const Body& body, std::size_t atom, std::size_t row) {
     const io::QtTrajectoryH5* h5 = body.run.h5();
     const model::QtScalarTimeSeries* charge = h5 ? h5->aimnet2Charge() : nullptr;
-    return charge && body.catalog.present(body, ArrayId::Aimnet2Charge, atom, row)
-           && charge->sourceAttachedAt(row);
+    return charge && body.catalog.present(body, ArrayId::Aimnet2Charge, atom, row) && charge->sourceAttachedAt(row);
 }
 
 bool aimnetCrgPresent(const Body& body, std::size_t atom, std::size_t row) {
     const io::QtTrajectoryH5* h5 = body.run.h5();
-    const model::QtAimnet2ChargeResponseGradientTimeSeries* crg =
-        h5 ? h5->aimnet2ChargeResponseGradient() : nullptr;
+    const model::QtAimnet2ChargeResponseGradientTimeSeries* crg = h5 ? h5->aimnet2ChargeResponseGradient() : nullptr;
     return crg && body.catalog.present(body, ArrayId::Aimnet2ChargeRespScalar, atom, row)
-           && body.catalog.present(body, ArrayId::Aimnet2ChargeRespVector, atom, row)
-           && crg->meta.sourceAttachedAt(row);
+           && body.catalog.present(body, ArrayId::Aimnet2ChargeRespVector, atom, row) && crg->meta.sourceAttachedAt(row);
 }
 
-bool aimnetEmbeddingPresent(const Body& body, std::size_t atom, std::size_t row,
-                            std::size_t& dims, const float*& ptr) {
+bool aimnetEmbeddingPresent(const Body& body, std::size_t atom, std::size_t row, std::size_t& dims, const float*& ptr) {
     dims = 0;
     ptr = body.catalog.valueEmbedding(body, ArrayId::Aimnet2Embedding, atom, row, dims);
     const io::QtTrajectoryH5* h5 = body.run.h5();
     const model::QtEmbeddingTimeSeries* emb = h5 ? h5->aimnet2Embedding() : nullptr;
-    return ptr && emb && body.catalog.present(body, ArrayId::Aimnet2Embedding, atom, row)
-           && emb->meta.sourceAttachedAt(row);
+    return ptr && emb && body.catalog.present(body, ArrayId::Aimnet2Embedding, atom, row) && emb->meta.sourceAttachedAt(row);
 }
 
 bool finiteT2(const std::array<double, 5>& t2) {
     for (double v : t2)
-        if (!std::isfinite(v)) return false;
+        if (!std::isfinite(v))
+            return false;
     return true;
 }
 
@@ -299,9 +308,7 @@ AllAtomEquivariantSourceRecord makeChargeSource(const Body& body,
     out.source_kind = QStringLiteral("%1_charge_site").arg(chargeName);
     out.category = chargeName;
     // ff14sb=0, aimnet2=1 (unchanged), mopac_welford_mean=2 (the new static leg).
-    out.category_ord = chargeName == QStringLiteral("ff14sb")              ? 0
-                       : chargeName == QStringLiteral("mopac_welford_mean") ? 2
-                                                                            : 1;
+    out.category_ord = chargeName == QStringLiteral("ff14sb") ? 0 : chargeName == QStringLiteral("mopac_welford_mean") ? 2 : 1;
     out.source_id = static_cast<int32_t>(sourceAtom);
     out.disp = disp;
     out.r = r;
@@ -316,9 +323,12 @@ AllAtomEquivariantSourceRecord makeChargeSource(const Body& body,
     return out;
 }
 
-AllAtomEquivariantSourceRecord makeVectorFeatureSource(
-    const AllAtomEquivariantTargetRecord& target, const QString& mechanism,
-    const QString& sourceKind, const QString& category, const Vec3& v, const QString& units) {
+AllAtomEquivariantSourceRecord makeVectorFeatureSource(const AllAtomEquivariantTargetRecord& target,
+                                                       const QString& mechanism,
+                                                       const QString& sourceKind,
+                                                       const QString& category,
+                                                       const Vec3& v,
+                                                       const QString& units) {
     AllAtomEquivariantSourceRecord out;
     fillSourceTargetIdentity(target, out);
     out.mechanism = mechanism;
@@ -338,10 +348,12 @@ AllAtomEquivariantSourceRecord makeVectorFeatureSource(
     return out;
 }
 
-AllAtomEquivariantSourceRecord makeTensorFeatureSource(
-    const AllAtomEquivariantTargetRecord& target, const QString& mechanism,
-    const QString& sourceKind, const QString& category, const std::array<double, 5>& t2,
-    const QString& units) {
+AllAtomEquivariantSourceRecord makeTensorFeatureSource(const AllAtomEquivariantTargetRecord& target,
+                                                       const QString& mechanism,
+                                                       const QString& sourceKind,
+                                                       const QString& category,
+                                                       const std::array<double, 5>& t2,
+                                                       const QString& units) {
     AllAtomEquivariantSourceRecord out;
     fillSourceTargetIdentity(target, out);
     out.mechanism = mechanism;
@@ -362,11 +374,11 @@ AllAtomEquivariantSourceRecord makeTensorFeatureSource(
 
 }  // namespace
 
-AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
-                                                  AllAtomEquivariantSink& sink,
-                                                  const AllAtomEquivariantConfig& config) {
+AllAtomEquivariantStats
+RunAllAtomEquivariantEmit(const Body& body, AllAtomEquivariantSink& sink, const AllAtomEquivariantConfig& config) {
     AllAtomEquivariantStats stats;
-    if (!body.run.protein || !body.run.trajectory()) return stats;
+    if (!body.run.protein || !body.run.trajectory())
+        return stats;
 
     const io::QtTrajectoryH5* h5 = body.run.h5();
     const model::QtEmbeddingTimeSeries* emb = h5 ? h5->aimnet2Embedding() : nullptr;
@@ -381,20 +393,18 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
     stats.atom_count = p.atomCount();
     stats.dft_rows = body.run.frameMap.dftRows().size();
 
-    qCInfo(cAllAtomEquivariant).noquote()
-        << "all_atom_equivariant | atoms=" << stats.atom_count
-        << "| dft rows=" << stats.dft_rows
-        << "| ring_cut=" << config.ring_cutoff_A
-        << "| bond_cut=" << config.bond_cutoff_A
-        << "| charge_cut=" << config.charge_cutoff_A
-        << "| frame=molecular_lab_h5_orca_aligned"
-        << "| local_frame=none"
-        << "| ff14sb_charge=" << body.catalog.has(ArrayId::Ff14sbCharge)
-        << "| aimnet2_charge=" << body.catalog.has(ArrayId::Aimnet2Charge)
-        << "| apbs_efield=" << body.catalog.has(ArrayId::ApbsEfield)
-        << "| apbs_efg=" << body.catalog.has(ArrayId::ApbsEfg)
-        << "| aimnet2_embedding_dims=" << (emb ? emb->n_dims : 0);
+    qCInfo(cAllAtomEquivariant).noquote() << "all_atom_equivariant | atoms=" << stats.atom_count
+                                          << "| dft rows=" << stats.dft_rows << "| ring_cut=" << config.ring_cutoff_A
+                                          << "| bond_cut=" << config.bond_cutoff_A << "| charge_cut=" << config.charge_cutoff_A
+                                          << "| frame=molecular_lab_h5_orca_aligned" << "| local_frame=none"
+                                          << "| ff14sb_charge=" << body.catalog.has(ArrayId::Ff14sbCharge)
+                                          << "| aimnet2_charge=" << body.catalog.has(ArrayId::Aimnet2Charge)
+                                          << "| apbs_efield=" << body.catalog.has(ArrayId::ApbsEfield)
+                                          << "| apbs_efg=" << body.catalog.has(ArrayId::ApbsEfg)
+                                          << "| aimnet2_embedding_dims=" << (emb ? emb->n_dims : 0);
 
+    // #29 debt: the rich all-atom target/source carrier still owns this walk.
+    // Finish by letting RunTraversal hand carrier-owned record shapes.
     LocalFrame noLocalFrame;
     for (std::size_t row : body.run.frameMap.dftRows()) {
         const std::size_t orig = body.run.frameMap.originalIndex(row);
@@ -414,15 +424,12 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
                 target.aimnet2_charge = body.catalog.value(body, ArrayId::Aimnet2Charge, atom, row);
             target.aimnet2_crg_present = aimnetCrgPresent(body, atom, row);
             if (target.aimnet2_crg_present) {
-                target.aimnet2_crg_scalar =
-                    body.catalog.value(body, ArrayId::Aimnet2ChargeRespScalar, atom, row);
-                target.aimnet2_crg_lab =
-                    body.catalog.valueVec3(body, ArrayId::Aimnet2ChargeRespVector, atom, row);
+                target.aimnet2_crg_scalar = body.catalog.value(body, ArrayId::Aimnet2ChargeRespScalar, atom, row);
+                target.aimnet2_crg_lab = body.catalog.valueVec3(body, ArrayId::Aimnet2ChargeRespVector, atom, row);
             }
             const float* embeddingPtr = nullptr;
             std::size_t embeddingDims = 0;
-            target.aimnet2_embedding_present =
-                aimnetEmbeddingPresent(body, atom, row, embeddingDims, embeddingPtr);
+            target.aimnet2_embedding_present = aimnetEmbeddingPresent(body, atom, row, embeddingDims, embeddingPtr);
             target.aimnet2_embedding = embeddingPtr;
             target.aimnet2_embedding_dims = embeddingDims;
             if (target.aimnet2_embedding_present && embeddingDims == sink.embeddingDims())
@@ -432,72 +439,66 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
             // MOPAC-Coulomb-EFG-DERIVED shielding T2 (+ the MOPAC-McConnell T2).
             // mopac charge is the Welford-mean STATIC (no per-frame MOPAC TR
             // exists). reconciliation is the charge-source-divergence QC scalar.
-            target.mopac_coulomb_shielding_present =
-                body.catalog.present(body, ArrayId::MopacCoulombShielding, atom, row);
+            target.mopac_coulomb_shielding_present = body.catalog.present(body, ArrayId::MopacCoulombShielding, atom, row);
             if (target.mopac_coulomb_shielding_present)
-                target.mopac_coulomb_shielding_T2 =
-                    body.catalog.valueT2(body, ArrayId::MopacCoulombShielding, atom, row);
-            target.mopac_mc_shielding_present =
-                body.catalog.present(body, ArrayId::MopacMcShielding, atom, row);
+                target.mopac_coulomb_shielding_T2 = body.catalog.valueT2(body, ArrayId::MopacCoulombShielding, atom, row);
+            target.mopac_mc_shielding_present = body.catalog.present(body, ArrayId::MopacMcShielding, atom, row);
             if (target.mopac_mc_shielding_present)
-                target.mopac_mc_shielding_T2 =
-                    body.catalog.valueT2(body, ArrayId::MopacMcShielding, atom, row);
-            target.mopac_charge_welford_mean_present =
-                body.catalog.present(body, ArrayId::MopacChargeWelfordMean, atom, row);
+                target.mopac_mc_shielding_T2 = body.catalog.valueT2(body, ArrayId::MopacMcShielding, atom, row);
+            target.mopac_charge_welford_mean_present = body.catalog.present(body, ArrayId::MopacChargeWelfordMean, atom, row);
             if (target.mopac_charge_welford_mean_present)
-                target.mopac_charge_welford_mean =
-                    body.catalog.value(body, ArrayId::MopacChargeWelfordMean, atom, row);
-            target.mopac_vs_ff14sb_present =
-                body.catalog.present(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
+                target.mopac_charge_welford_mean = body.catalog.value(body, ArrayId::MopacChargeWelfordMean, atom, row);
+            target.mopac_vs_ff14sb_present = body.catalog.present(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
             if (target.mopac_vs_ff14sb_present)
-                target.mopac_vs_ff14sb =
-                    body.catalog.value(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
+                target.mopac_vs_ff14sb = body.catalog.value(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
 
             const int64_t rowId = sink.WriteTarget(target);
             ++stats.target_rows;
-            if (target.target.present) ++stats.dft_present;
+            if (target.target.present)
+                ++stats.dft_present;
 
-            for (const SourceRef& ref : verbs::near(body, CloudKind::RingCenters, atom, row,
-                                                    config.ring_cutoff_A)) {
-                if (ref.entity_index < 0) continue;
+            for (const SourceRef& ref : verbs::near(body, CloudKind::RingCenters, atom, row, config.ring_cutoff_A)) {
+                if (ref.entity_index < 0)
+                    continue;
                 const std::size_t ringIdx = static_cast<std::size_t>(ref.entity_index);
-                if (ringIdx >= p.topology().ringCount()) continue;
-                AllAtomEquivariantSourceRecord src =
-                    makeRingSource(body, target, atom, ringIdx, row);
+                if (ringIdx >= p.topology().ringCount())
+                    continue;
+                AllAtomEquivariantSourceRecord src = makeRingSource(body, target, atom, ringIdx, row);
                 sink.WriteSource(rowId, src);
                 ++stats.source_rows;
                 ++stats.ring_rows;
-                if (src.ring_type_index >= 0
-                    && src.ring_type_index < static_cast<int>(stats.ring_type_rows.size()))
+                if (src.ring_type_index >= 0 && src.ring_type_index < static_cast<int>(stats.ring_type_rows.size()))
                     ++stats.ring_type_rows[static_cast<std::size_t>(src.ring_type_index)];
             }
 
-            for (const SourceRef& ref : verbs::near(body, CloudKind::AllBondMidpoints, atom, row,
-                                                    config.bond_cutoff_A)) {
-                if (ref.entity_index < 0) continue;
+            for (const SourceRef& ref : verbs::near(body, CloudKind::AllBondMidpoints, atom, row, config.bond_cutoff_A)) {
+                if (ref.entity_index < 0)
+                    continue;
                 const std::size_t bondIdx = static_cast<std::size_t>(ref.entity_index);
-                if (bondIdx >= p.topology().bondCount()) continue;
+                if (bondIdx >= p.topology().bondCount())
+                    continue;
                 AllAtomEquivariantSourceRecord src =
                     makeBondSource(body, target, atom, bondIdx, row, config.mc_near_field_ratio);
                 sink.WriteSource(rowId, src);
                 ++stats.source_rows;
                 ++stats.bond_rows;
-                if (src.bond_category >= 0
-                    && src.bond_category < static_cast<int>(stats.bond_category_rows.size()))
+                if (src.bond_category >= 0 && src.bond_category < static_cast<int>(stats.bond_category_rows.size()))
                     ++stats.bond_category_rows[static_cast<std::size_t>(src.bond_category)];
             }
 
             if (body.catalog.has(ArrayId::Ff14sbCharge)) {
-                for (const SourceRef& ref : verbs::near(body, CloudKind::ChargeSites, atom, row,
-                                                        config.charge_cutoff_A)) {
-                    if (ref.entity_index < 0) continue;
+                for (const SourceRef& ref : verbs::near(body, CloudKind::ChargeSites, atom, row, config.charge_cutoff_A)) {
+                    if (ref.entity_index < 0)
+                        continue;
                     const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
-                    if (srcAtom >= p.atomCount() || srcAtom == atom) continue;
-                    if (!body.catalog.present(body, ArrayId::Ff14sbCharge, srcAtom, row)) continue;
+                    if (srcAtom >= p.atomCount() || srcAtom == atom)
+                        continue;
+                    if (!body.catalog.present(body, ArrayId::Ff14sbCharge, srcAtom, row))
+                        continue;
                     AllAtomEquivariantSourceRecord src =
-                        makeChargeSource(body, target, atom, srcAtom, row, ArrayId::Ff14sbCharge,
-                                         QStringLiteral("ff14sb"));
-                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e)) continue;
+                        makeChargeSource(body, target, atom, srcAtom, row, ArrayId::Ff14sbCharge, QStringLiteral("ff14sb"));
+                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e))
+                        continue;
                     sink.WriteSource(rowId, src);
                     ++stats.source_rows;
                     ++stats.charge_ff14sb_rows;
@@ -505,16 +506,18 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
             }
 
             if (body.catalog.has(ArrayId::Aimnet2Charge)) {
-                for (const SourceRef& ref : verbs::near(body, CloudKind::Atoms, atom, row,
-                                                        config.charge_cutoff_A)) {
-                    if (ref.entity_index < 0) continue;
+                for (const SourceRef& ref : verbs::near(body, CloudKind::Atoms, atom, row, config.charge_cutoff_A)) {
+                    if (ref.entity_index < 0)
+                        continue;
                     const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
-                    if (srcAtom >= p.atomCount() || srcAtom == atom) continue;
-                    if (!body.catalog.present(body, ArrayId::Aimnet2Charge, srcAtom, row)) continue;
+                    if (srcAtom >= p.atomCount() || srcAtom == atom)
+                        continue;
+                    if (!body.catalog.present(body, ArrayId::Aimnet2Charge, srcAtom, row))
+                        continue;
                     AllAtomEquivariantSourceRecord src =
-                        makeChargeSource(body, target, atom, srcAtom, row, ArrayId::Aimnet2Charge,
-                                         QStringLiteral("aimnet2"));
-                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e)) continue;
+                        makeChargeSource(body, target, atom, srcAtom, row, ArrayId::Aimnet2Charge, QStringLiteral("aimnet2"));
+                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e))
+                        continue;
                     sink.WriteSource(rowId, src);
                     ++stats.source_rows;
                     ++stats.charge_aimnet2_rows;
@@ -522,34 +525,39 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
             }
 
             if (target.apbs_efield_present && finiteVec3(target.apbs_efield_lab)) {
-                AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(
-                    target, QStringLiteral("field"), QStringLiteral("apbs_efield"),
-                    QStringLiteral("buckingham_efield"), target.apbs_efield_lab,
-                    QStringLiteral("V/Angstrom"));
+                AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(target,
+                                                                             QStringLiteral("field"),
+                                                                             QStringLiteral("apbs_efield"),
+                                                                             QStringLiteral("buckingham_efield"),
+                                                                             target.apbs_efield_lab,
+                                                                             QStringLiteral("V/Angstrom"));
                 sink.WriteSource(rowId, src);
                 ++stats.source_rows;
                 ++stats.apbs_efield_rows;
             }
 
             if (target.apbs_efg_present) {
-                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(
-                    target, QStringLiteral("efg"), QStringLiteral("apbs_efg"),
-                    QStringLiteral("apbs_efg"), target.apbs_efg_T2,
-                    QStringLiteral("V/Angstrom^2"));
+                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
+                                                                             QStringLiteral("efg"),
+                                                                             QStringLiteral("apbs_efg"),
+                                                                             QStringLiteral("apbs_efg"),
+                                                                             target.apbs_efg_T2,
+                                                                             QStringLiteral("V/Angstrom^2"));
                 sink.WriteSource(rowId, src);
                 ++stats.source_rows;
                 ++stats.apbs_efg_rows;
             }
 
             if ((target.aimnet2_charge_present && std::isfinite(target.aimnet2_charge))
-                || (target.aimnet2_crg_present && finiteVec3(target.aimnet2_crg_lab))
-                || target.aimnet2_embedding_present) {
-                AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(
-                    target, QStringLiteral("aimnet2"), QStringLiteral("aimnet2_atom_feature"),
-                    QStringLiteral("aimnet2"), target.aimnet2_crg_lab, QStringLiteral("e2/Angstrom"));
+                || (target.aimnet2_crg_present && finiteVec3(target.aimnet2_crg_lab)) || target.aimnet2_embedding_present) {
+                AllAtomEquivariantSourceRecord src = makeVectorFeatureSource(target,
+                                                                             QStringLiteral("aimnet2"),
+                                                                             QStringLiteral("aimnet2_atom_feature"),
+                                                                             QStringLiteral("aimnet2"),
+                                                                             target.aimnet2_crg_lab,
+                                                                             QStringLiteral("e2/Angstrom"));
                 src.source_value = target.aimnet2_charge_present ? target.aimnet2_charge : kNaN;
-                src.source_value_2 =
-                    target.aimnet2_crg_present ? target.aimnet2_crg_scalar : kNaN;
+                src.source_value_2 = target.aimnet2_crg_present ? target.aimnet2_crg_scalar : kNaN;
                 src.charge_source = QStringLiteral("aimnet2");
                 src.source_q_e = target.aimnet2_charge_present ? target.aimnet2_charge : kNaN;
                 src.aimnet2_embedding_present = target.aimnet2_embedding_present;
@@ -564,13 +572,13 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
             // Labelled "mopac_coulomb_shielding" (NOT "efg"): it is the contracted
             // shielding T2, not the raw MOPAC Coulomb EFG tensor (that EFG tensor
             // is a per-atom NPY only, not on this trajectory substrate).
-            if (target.mopac_coulomb_shielding_present
-                && finiteT2(target.mopac_coulomb_shielding_T2)) {
-                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(
-                    target, QStringLiteral("mopac_field"),
-                    QStringLiteral("mopac_coulomb_shielding"),
-                    QStringLiteral("mopac_coulomb_shielding"), target.mopac_coulomb_shielding_T2,
-                    QStringLiteral("ppm"));
+            if (target.mopac_coulomb_shielding_present && finiteT2(target.mopac_coulomb_shielding_T2)) {
+                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
+                                                                             QStringLiteral("mopac_field"),
+                                                                             QStringLiteral("mopac_coulomb_shielding"),
+                                                                             QStringLiteral("mopac_coulomb_shielding"),
+                                                                             target.mopac_coulomb_shielding_T2,
+                                                                             QStringLiteral("ppm"));
                 sink.WriteSource(rowId, src);
                 ++stats.source_rows;
                 ++stats.mopac_coulomb_shielding_rows;
@@ -578,10 +586,12 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
 
             // MOPAC-charge McConnell bond-anisotropy shielding T2 (per-target).
             if (target.mopac_mc_shielding_present && finiteT2(target.mopac_mc_shielding_T2)) {
-                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(
-                    target, QStringLiteral("mopac_mc"), QStringLiteral("mopac_mc_shielding"),
-                    QStringLiteral("mopac_mc_shielding"), target.mopac_mc_shielding_T2,
-                    QStringLiteral("ppm"));
+                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(target,
+                                                                             QStringLiteral("mopac_mc"),
+                                                                             QStringLiteral("mopac_mc_shielding"),
+                                                                             QStringLiteral("mopac_mc_shielding"),
+                                                                             target.mopac_mc_shielding_T2,
+                                                                             QStringLiteral("ppm"));
                 sink.WriteSource(rowId, src);
                 ++stats.source_rows;
                 ++stats.mopac_mc_shielding_rows;
@@ -593,18 +603,23 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
             // source). The Welford mean is frame-independent, so each near atom's
             // charge repeats across frames — recorded honestly via charge_source.
             if (body.catalog.has(ArrayId::MopacChargeWelfordMean)) {
-                for (const SourceRef& ref : verbs::near(body, CloudKind::Atoms, atom, row,
-                                                        config.charge_cutoff_A)) {
-                    if (ref.entity_index < 0) continue;
+                for (const SourceRef& ref : verbs::near(body, CloudKind::Atoms, atom, row, config.charge_cutoff_A)) {
+                    if (ref.entity_index < 0)
+                        continue;
                     const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
-                    if (srcAtom >= p.atomCount() || srcAtom == atom) continue;
+                    if (srcAtom >= p.atomCount() || srcAtom == atom)
+                        continue;
                     if (!body.catalog.present(body, ArrayId::MopacChargeWelfordMean, srcAtom, row))
                         continue;
-                    AllAtomEquivariantSourceRecord src =
-                        makeChargeSource(body, target, atom, srcAtom, row,
-                                         ArrayId::MopacChargeWelfordMean,
-                                         QStringLiteral("mopac_welford_mean"));
-                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e)) continue;
+                    AllAtomEquivariantSourceRecord src = makeChargeSource(body,
+                                                                          target,
+                                                                          atom,
+                                                                          srcAtom,
+                                                                          row,
+                                                                          ArrayId::MopacChargeWelfordMean,
+                                                                          QStringLiteral("mopac_welford_mean"));
+                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e))
+                        continue;
                     sink.WriteSource(rowId, src);
                     ++stats.source_rows;
                     ++stats.charge_mopac_rows;
@@ -613,20 +628,16 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
         }
     }
 
-    qCInfo(cAllAtomEquivariant).noquote()
-        << "all_atom_equivariant rows | targets=" << stats.target_rows
-        << "| dft_present=" << stats.dft_present
-        << "| sources=" << stats.source_rows
-        << "| rings=" << stats.ring_rows
-        << "| bonds=" << stats.bond_rows
-        << "| charge_ff14sb=" << stats.charge_ff14sb_rows
-        << "| charge_aimnet2=" << stats.charge_aimnet2_rows
-        << "| charge_mopac=" << stats.charge_mopac_rows
-        << "| apbs_E=" << stats.apbs_efield_rows
-        << "| apbs_EFG=" << stats.apbs_efg_rows
-        << "| aimnet2_atom=" << stats.aimnet2_atom_rows
-        << "| mopac_coulomb_shielding=" << stats.mopac_coulomb_shielding_rows
-        << "| mopac_mc_shielding=" << stats.mopac_mc_shielding_rows;
+    qCInfo(cAllAtomEquivariant).noquote() << "all_atom_equivariant rows | targets=" << stats.target_rows
+                                          << "| dft_present=" << stats.dft_present << "| sources=" << stats.source_rows
+                                          << "| rings=" << stats.ring_rows << "| bonds=" << stats.bond_rows
+                                          << "| charge_ff14sb=" << stats.charge_ff14sb_rows
+                                          << "| charge_aimnet2=" << stats.charge_aimnet2_rows
+                                          << "| charge_mopac=" << stats.charge_mopac_rows
+                                          << "| apbs_E=" << stats.apbs_efield_rows << "| apbs_EFG=" << stats.apbs_efg_rows
+                                          << "| aimnet2_atom=" << stats.aimnet2_atom_rows
+                                          << "| mopac_coulomb_shielding=" << stats.mopac_coulomb_shielding_rows
+                                          << "| mopac_mc_shielding=" << stats.mopac_mc_shielding_rows;
     return stats;
 }
 

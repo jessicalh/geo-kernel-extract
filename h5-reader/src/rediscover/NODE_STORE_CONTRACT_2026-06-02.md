@@ -127,9 +127,12 @@ interface, or re-emitting it casually. Materialization is a verb, not a noun.
 1. Emit/expose the **node store** (one producer; positions + typed node features + T2
    labels), not the pair expansion.
 2. Promote `RunTraversal`'s pairs to a queryable **pair index** (pointer adjacency); this
-   also folds the remaining engine bypasses onto one traversal.
+   also folds the remaining rich-record engine bypass onto one traversal.
 3. Define the **typed relationship index over all record shapes**: source-sum carriers,
-   the richer all-atom raw-source carrier, and no-source per-target feature carriers.
+   no-source per-target feature carriers, and the richer all-atom raw-source carrier.
+   As of the Fix 3 follow-up, `efg`, `buckingham_efield`, and `aimnet2_features` use an
+   empty-selector `Relationship` through `RunTraversal`; the recorded #29 debt is the
+   all-atom hand walk at `AllAtomEquivariant.cpp:409`.
 4. **Vectorized query surface** over the API when delivery lands (pybind11/live chewer is
    deferred + agnostic; compact named materializations are allowed meanwhile).
 5. Migrate the analysis scripts to **query** (delete the `np.add.at` reassembly, the

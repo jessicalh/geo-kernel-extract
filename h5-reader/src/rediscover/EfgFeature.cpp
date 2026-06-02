@@ -4,6 +4,7 @@
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
 #include "Relationship.h"
+#include "RelationshipEngine.h"
 #include "RunData.h"
 #include "SphericalBasis.h"
 #include "Verbs.h"
@@ -33,15 +34,15 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     FrameResult fr;
     const model::QtProtein& p = *body.run.protein;
     const model::QtAtom& a = p.atom(atom);
-    if (!validResidue(p, a.residueIndex)) return fr;
+    if (!validResidue(p, a.residueIndex))
+        return fr;
     const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
 
-    auto posOf = [&](int32_t ai) {
-        return verbs::pos(body, static_cast<std::size_t>(ai), frame);
-    };
+    auto posOf = [&](int32_t ai) { return verbs::pos(body, static_cast<std::size_t>(ai), frame); };
 
     if (a.IsBackboneNitrogen()) {
-        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE) return fr;
+        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
+            return fr;
         bool cPrevValid = false;
         Vec3 cRef = Vec3::Zero();
         if (validResidue(p, r.prevResidueIndex)) {
@@ -51,17 +52,16 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
                 cPrevValid = true;
             }
         }
-        if (!cPrevValid && r.C != model::QtResidue::NONE) cRef = posOf(r.C);
+        if (!cPrevValid && r.C != model::QtResidue::NONE)
+            cRef = posOf(r.C);
         fr.frame = BuildBackboneNFrame(posOf(r.N), posOf(r.CA), cRef, cPrevValid);
-        fr.anchor_atom_index = cPrevValid && validResidue(p, r.prevResidueIndex)
-                                   ? p.residue(static_cast<std::size_t>(r.prevResidueIndex)).C
-                                   : r.C;
+        fr.anchor_atom_index =
+            cPrevValid && validResidue(p, r.prevResidueIndex) ? p.residue(static_cast<std::size_t>(r.prevResidueIndex)).C : r.C;
         return fr;
     }
 
     if (a.IsBackboneAlphaCarbon()) {
-        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE
-            || r.C == model::QtResidue::NONE)
+        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE || r.C == model::QtResidue::NONE)
             return fr;
         fr.frame = BuildBackboneCaFrame(posOf(r.CA), posOf(r.N), posOf(r.C));
         fr.anchor_atom_index = r.N;
@@ -69,8 +69,7 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     }
 
     if (a.IsBackboneCarbonylCarbon()) {
-        if (r.C == model::QtResidue::NONE || r.O == model::QtResidue::NONE
-            || r.CA == model::QtResidue::NONE)
+        if (r.C == model::QtResidue::NONE || r.O == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
             return fr;
         fr.frame = BuildBackboneCarbonylCFrame(posOf(r.C), posOf(r.O), posOf(r.CA));
         fr.anchor_atom_index = r.CA;
@@ -78,8 +77,7 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     }
 
     if (a.IsBackboneCarbonylOxygen()) {
-        if (r.O == model::QtResidue::NONE || r.C == model::QtResidue::NONE
-            || r.CA == model::QtResidue::NONE)
+        if (r.O == model::QtResidue::NONE || r.C == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
             return fr;
         fr.frame = BuildBackboneCarbonylOFrame(posOf(r.O), posOf(r.C), posOf(r.CA));
         fr.anchor_atom_index = r.CA;
@@ -87,7 +85,8 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
     }
 
     if (a.IsBackboneAmideHydrogen()) {
-        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE) return fr;
+        if (r.N == model::QtResidue::NONE || r.CA == model::QtResidue::NONE)
+            return fr;
         bool cPrevValid = false;
         Vec3 cPrev = Vec3::Zero();
         if (validResidue(p, r.prevResidueIndex)) {
@@ -97,14 +96,14 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
                 cPrevValid = true;
             }
         }
-        fr.frame = BuildHNFrame(posOf(r.N), verbs::pos(body, atom, frame), posOf(r.CA),
-                                cPrev, cPrevValid);
+        fr.frame = BuildHNFrame(posOf(r.N), verbs::pos(body, atom, frame), posOf(r.CA), cPrev, cPrevValid);
         fr.anchor_atom_index = -1;
         return fr;
     }
 
     if (a.IsAnyAlphaHydrogen()) {
-        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE) return fr;
+        if (r.CA == model::QtResidue::NONE || r.N == model::QtResidue::NONE)
+            return fr;
         fr.frame = BuildBackboneHaFrame(verbs::pos(body, atom, frame), posOf(r.CA), posOf(r.N));
         fr.anchor_atom_index = r.N;
         return fr;
@@ -116,32 +115,36 @@ FrameResult backboneFrame(const Body& body, std::size_t atom, std::size_t frame)
 FrameVariant classifyFrameVariant(const model::QtProtein& p, std::size_t atomIdx) {
     const model::QtAtom& a = p.atom(atomIdx);
     const bool hasResidue = validResidue(p, a.residueIndex);
-    const model::QtResidue* r =
-        hasResidue ? &p.residue(static_cast<std::size_t>(a.residueIndex)) : nullptr;
+    const model::QtResidue* r = hasResidue ? &p.residue(static_cast<std::size_t>(a.residueIndex)) : nullptr;
     const bool hasPrev = r && validResidue(p, r->prevResidueIndex);
 
     if (a.IsBackboneNitrogen())
         return hasPrev ? FrameVariant::BackboneN : FrameVariant::BackboneN_NTerminus;
-    if (a.IsBackboneAlphaCarbon()) return FrameVariant::BackboneCA;
-    if (a.IsBackboneCarbonylCarbon()) return FrameVariant::BackboneCarbonylC;
-    if (a.IsBackboneCarbonylOxygen()) return FrameVariant::BackboneCarbonylO;
+    if (a.IsBackboneAlphaCarbon())
+        return FrameVariant::BackboneCA;
+    if (a.IsBackboneCarbonylCarbon())
+        return FrameVariant::BackboneCarbonylC;
+    if (a.IsBackboneCarbonylOxygen())
+        return FrameVariant::BackboneCarbonylO;
     if (a.IsBackboneAmideHydrogen())
         return hasPrev ? FrameVariant::HN_Standard : FrameVariant::HN_NTerminus;
-    if (a.IsAnyAlphaHydrogen()) return FrameVariant::BackboneHA;
+    if (a.IsAnyAlphaHydrogen())
+        return FrameVariant::BackboneHA;
     return FrameVariant::Invalid;
 }
 
 bool apbsEfgPresent(const Body& body, std::size_t atom, std::size_t row) {
     const io::QtTrajectoryH5* h5 = body.run.h5();
     const model::QtT2TimeSeries* efg = h5 ? h5->apbsEfg() : nullptr;
-    return efg && body.catalog.present(body, ArrayId::ApbsEfg, atom, row)
-           && efg->sourceAttachedAt(row);
+    return efg && body.catalog.present(body, ArrayId::ApbsEfg, atom, row) && efg->sourceAttachedAt(row);
 }
 
 void updateMagnitudeStats(EfgFeatureStats& stats, const std::array<double, 5>& t2) {
-    if (!FiniteT2(t2)) return;
+    if (!FiniteT2(t2))
+        return;
     const double mag = T2Magnitude(t2);
-    if (!std::isfinite(mag)) return;
+    if (!std::isfinite(mag))
+        return;
     if (stats.finite_efg == 0) {
         stats.min_efg_magnitude = mag;
         stats.max_efg_magnitude = mag;
@@ -152,27 +155,49 @@ void updateMagnitudeStats(EfgFeatureStats& stats, const std::array<double, 5>& t
     ++stats.finite_efg;
 }
 
+Relationship makeEfgRelationship() {
+    Relationship rel;
+    rel.name = QStringLiteral("efg");
+    rel.stratum = [](const Body& body) {
+        std::vector<std::size_t> atoms;
+        if (!body.run.protein)
+            return atoms;
+        const model::QtProtein& p = *body.run.protein;
+        atoms.reserve(p.atomCount());
+        for (std::size_t atom = 0; atom < p.atomCount(); ++atom)
+            atoms.push_back(atom);
+        return atoms;
+    };
+    rel.frame_fn = backboneFrame;
+    rel.target_fn = [](const Body& body, std::size_t atom, std::size_t originalIndex, const LocalFrame& frame) {
+        return BuildTarget(body.run, atom, originalIndex, frame);
+    };
+    return rel;
+}
+
 }  // namespace
 
 EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
     EfgFeatureStats stats;
-    if (!body.run.protein || !body.run.trajectory()) return stats;
+    if (!body.run.protein || !body.run.trajectory())
+        return stats;
 
     const model::QtProtein& p = *body.run.protein;
-    const QString units = body.catalog.has(ArrayId::ApbsEfg)
-                              ? body.catalog.spec(ArrayId::ApbsEfg).unit
-                              : QStringLiteral("V/Angstrom^2");
+    const QString units = body.catalog.has(ArrayId::ApbsEfg) ? body.catalog.spec(ArrayId::ApbsEfg).unit
+                                                             : QStringLiteral("V/Angstrom^2");
 
     qCInfo(cEfg).noquote() << "efg per_atom_feature | atoms=" << p.atomCount()
                            << "| dft rows=" << body.run.frameMap.dftRows().size()
                            << "| apbs_efg=" << body.catalog.has(ArrayId::ApbsEfg);
 
-    for (std::size_t row : body.run.frameMap.dftRows()) {
-        const std::size_t orig = body.run.frameMap.originalIndex(row);
-        for (std::size_t atom = 0; atom < p.atomCount(); ++atom) {
-            const FrameResult fr = backboneFrame(body, atom, row);
-            const DftTarget target = BuildTarget(body.run, atom, orig, fr.frame);
-            if (!target.present) continue;
+    const Relationship rel = makeEfgRelationship();
+    RunTraversal(
+        rel,
+        body,
+        [&](std::size_t atom, std::size_t row, std::size_t orig, const FrameResult& fr, const NeighborhoodRecord& rec) {
+            const DftTarget& target = rec.target;
+            if (!target.present)
+                return;
 
             EfgFeatureRow out;
             const model::QtAtom& a = p.atom(atom);
@@ -185,9 +210,8 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
                 out.residue_number = r.address.residueNumber;
                 out.amino_acid = static_cast<int>(r.aminoAcid);
             }
-            out.frame_variant =
-                fr.frame.is_valid ? static_cast<int>(fr.frame.variant)
-                                  : static_cast<int>(classifyFrameVariant(p, atom));
+            out.frame_variant = fr.frame.is_valid ? static_cast<int>(fr.frame.variant)
+                                                  : static_cast<int>(classifyFrameVariant(p, atom));
             out.frame_valid = fr.frame.is_valid;
             out.frame_anchor_atom_index = fr.anchor_atom_index;
             out.frame_z = fr.frame.z;
@@ -201,7 +225,8 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
             if (target.local_frame_valid)
                 out.dft_target_T2 = DecomposeLibrary(target.total_local).T2;
             out.efg_units = units;
-            if (out.frame_valid) ++stats.frame_valid;
+            if (out.frame_valid)
+                ++stats.frame_valid;
 
             out.apbs_efg_present = apbsEfgPresent(body, atom, row);
             if (out.apbs_efg_present) {
@@ -211,26 +236,22 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
                 // [xy, yz, zz, xz, xx-yy] basis. Do not re-project in Python.
                 out.efg_feature_lab_T2 = body.catalog.valueT2(body, ArrayId::ApbsEfg, atom, row);
                 if (out.frame_valid) {
-                    const Mat3 local =
-                        fr.frame.TensorToLocal(ReconstructLibraryT2(out.efg_feature_lab_T2));
+                    const Mat3 local = fr.frame.TensorToLocal(ReconstructLibraryT2(out.efg_feature_lab_T2));
                     out.efg_feature_T2 = DecomposeEfgLibraryT2(local);
                 }
                 ++stats.apbs_efg_present;
-                if (out.frame_valid) updateMagnitudeStats(stats, out.efg_feature_T2);
+                if (out.frame_valid)
+                    updateMagnitudeStats(stats, out.efg_feature_T2);
             }
 
             sink.Write(out);
             ++stats.rows;
             ++stats.dft_present;
-        }
-    }
+        });
 
-    qCInfo(cEfg).noquote() << "efg per_atom_feature rows=" << stats.rows
-                           << "| dft_present=" << stats.dft_present
-                           << "| frame_valid=" << stats.frame_valid
-                           << "| apbs_efg_present=" << stats.apbs_efg_present
-                           << "| finite_efg=" << stats.finite_efg
-                           << "| |EFG| min=" << stats.min_efg_magnitude
+    qCInfo(cEfg).noquote() << "efg per_atom_feature rows=" << stats.rows << "| dft_present=" << stats.dft_present
+                           << "| frame_valid=" << stats.frame_valid << "| apbs_efg_present=" << stats.apbs_efg_present
+                           << "| finite_efg=" << stats.finite_efg << "| |EFG| min=" << stats.min_efg_magnitude
                            << "max=" << stats.max_efg_magnitude;
     return stats;
 }

@@ -14,9 +14,10 @@
 // The carrier differs from ring/mc (a heterogeneous source bundle with the
 // target-repeat FIX), so RunBroadBackbone is now a thin BroadReducer +
 // BroadBackboneSink carrier over RelationshipEngine::RunTraversal. #29 removed
-// the old scalar-sink coupling for ring/mc/charge+broad; remaining #29 debt is
-// the record-shape/no-source fold for all-atom plus efg/buckingham/aimnet2, not
-// another broad sibling loop.
+// the old scalar-sink coupling for ring/mc/charge+broad and the no-source
+// per-target feature runners. Remaining #29 debt is the rich all-atom
+// record-shape carrier at AllAtomEquivariant.cpp:409, not another broad sibling
+// loop.
 
 #pragma once
 
