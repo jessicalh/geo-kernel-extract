@@ -257,6 +257,18 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               is_feature=True, native_axis="rediscover_target_row", irreps="0e", units="e^2/A", tensor_rank=0, mechanism="aimnet2"),
     ArraySpec("all_atom_equivariant_aimnet2_embedding", "rediscover", np.ndarray, 256, True, "All-atom equivariant AIMNet2 256-d embedding, row-aligned with target rows",
               is_feature=True, native_axis="rediscover_target_row", irreps="256x0e", mechanism="aimnet2"),
+    # MOPAC family (#51) — RAW un-normalized lab-frame target features. The
+    # mopac_coulomb_shielding_T2 is the MOPAC-Coulomb-EFG-DERIVED shielding T2
+    # (the moderate Stage-1 field/EFG leg), NOT the raw MOPAC Coulomb EFG tensor
+    # (that EFG tensor is a per-atom NPY only, absent from this trajectory H5).
+    ArraySpec("all_atom_equivariant_mopac_coulomb_shielding_T2", "rediscover", np.ndarray, 5, True, "All-atom equivariant MOPAC-Coulomb-EFG-DERIVED shielding T2 (RAW lab frame; NOT the raw EFG tensor)",
+              is_feature=True, native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
+    ArraySpec("all_atom_equivariant_mopac_mc_shielding_T2", "rediscover", np.ndarray, 5, True, "All-atom equivariant MOPAC-charge McConnell bond-anisotropy shielding T2 (RAW lab frame)",
+              is_feature=True, native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("all_atom_equivariant_mopac_charge_welford_mean", "rediscover", np.ndarray, 1, True, "All-atom equivariant MOPAC charge Welford MEAN (STATIC per-atom; no per-frame MOPAC charge TR exists)",
+              is_feature=True, native_axis="rediscover_target_row", irreps="0e", units="e", tensor_rank=0, mechanism="charges"),
+    ArraySpec("all_atom_equivariant_mopac_vs_ff14sb_reconciliation", "rediscover", np.ndarray, 1, True, "All-atom equivariant MOPAC-vs-FF14SB EFG-T2 cosine similarity (charge-source-divergence QC; diagnostic, NOT training material)",
+              is_feature=False, native_axis="rediscover_target_row", irreps="0e", units="", tensor_rank=0, mechanism="provenance_qc"),
 
     # ── efg per_atom_feature (h5-reader/src/rediscover/EfgFeature) — APBS
     # solvated-PB EFG T2 -> DFT target T2. Both sidecars are in the same

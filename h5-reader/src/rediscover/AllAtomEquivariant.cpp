@@ -178,6 +178,12 @@ bool aimnetEmbeddingPresent(const Body& body, std::size_t atom, std::size_t row,
            && emb->meta.sourceAttachedAt(row);
 }
 
+bool finiteT2(const std::array<double, 5>& t2) {
+    for (double v : t2)
+        if (!std::isfinite(v)) return false;
+    return true;
+}
+
 AllAtomEquivariantSourceRecord makeRingSource(const Body& body,
                                               const AllAtomEquivariantTargetRecord& target,
                                               std::size_t targetAtom,
@@ -292,7 +298,10 @@ AllAtomEquivariantSourceRecord makeChargeSource(const Body& body,
     out.mechanism = QStringLiteral("charge");
     out.source_kind = QStringLiteral("%1_charge_site").arg(chargeName);
     out.category = chargeName;
-    out.category_ord = chargeName == QStringLiteral("ff14sb") ? 0 : 1;
+    // ff14sb=0, aimnet2=1 (unchanged), mopac_welford_mean=2 (the new static leg).
+    out.category_ord = chargeName == QStringLiteral("ff14sb")              ? 0
+                       : chargeName == QStringLiteral("mopac_welford_mean") ? 2
+                                                                            : 1;
     out.source_id = static_cast<int32_t>(sourceAtom);
     out.disp = disp;
     out.r = r;
@@ -419,6 +428,31 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
             if (target.aimnet2_embedding_present && embeddingDims == sink.embeddingDims())
                 ++stats.aimnet2_embedding_present;
 
+            // MOPAC family (#51). The moderate Stage-1 field/EFG leg lives in the
+            // MOPAC-Coulomb-EFG-DERIVED shielding T2 (+ the MOPAC-McConnell T2).
+            // mopac charge is the Welford-mean STATIC (no per-frame MOPAC TR
+            // exists). reconciliation is the charge-source-divergence QC scalar.
+            target.mopac_coulomb_shielding_present =
+                body.catalog.present(body, ArrayId::MopacCoulombShielding, atom, row);
+            if (target.mopac_coulomb_shielding_present)
+                target.mopac_coulomb_shielding_T2 =
+                    body.catalog.valueT2(body, ArrayId::MopacCoulombShielding, atom, row);
+            target.mopac_mc_shielding_present =
+                body.catalog.present(body, ArrayId::MopacMcShielding, atom, row);
+            if (target.mopac_mc_shielding_present)
+                target.mopac_mc_shielding_T2 =
+                    body.catalog.valueT2(body, ArrayId::MopacMcShielding, atom, row);
+            target.mopac_charge_welford_mean_present =
+                body.catalog.present(body, ArrayId::MopacChargeWelfordMean, atom, row);
+            if (target.mopac_charge_welford_mean_present)
+                target.mopac_charge_welford_mean =
+                    body.catalog.value(body, ArrayId::MopacChargeWelfordMean, atom, row);
+            target.mopac_vs_ff14sb_present =
+                body.catalog.present(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
+            if (target.mopac_vs_ff14sb_present)
+                target.mopac_vs_ff14sb =
+                    body.catalog.value(body, ArrayId::MopacVsFf14sbReconciliation, atom, row);
+
             const int64_t rowId = sink.WriteTarget(target);
             ++stats.target_rows;
             if (target.target.present) ++stats.dft_present;
@@ -524,6 +558,58 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
                 ++stats.source_rows;
                 ++stats.aimnet2_atom_rows;
             }
+
+            // MOPAC-Coulomb-EFG-DERIVED shielding T2 — the moderate Stage-1
+            // field/EFG leg, as a per-target feature row (mirrors apbs_efg).
+            // Labelled "mopac_coulomb_shielding" (NOT "efg"): it is the contracted
+            // shielding T2, not the raw MOPAC Coulomb EFG tensor (that EFG tensor
+            // is a per-atom NPY only, not on this trajectory substrate).
+            if (target.mopac_coulomb_shielding_present
+                && finiteT2(target.mopac_coulomb_shielding_T2)) {
+                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(
+                    target, QStringLiteral("mopac_field"),
+                    QStringLiteral("mopac_coulomb_shielding"),
+                    QStringLiteral("mopac_coulomb_shielding"), target.mopac_coulomb_shielding_T2,
+                    QStringLiteral("ppm"));
+                sink.WriteSource(rowId, src);
+                ++stats.source_rows;
+                ++stats.mopac_coulomb_shielding_rows;
+            }
+
+            // MOPAC-charge McConnell bond-anisotropy shielding T2 (per-target).
+            if (target.mopac_mc_shielding_present && finiteT2(target.mopac_mc_shielding_T2)) {
+                AllAtomEquivariantSourceRecord src = makeTensorFeatureSource(
+                    target, QStringLiteral("mopac_mc"), QStringLiteral("mopac_mc_shielding"),
+                    QStringLiteral("mopac_mc_shielding"), target.mopac_mc_shielding_T2,
+                    QStringLiteral("ppm"));
+                sink.WriteSource(rowId, src);
+                ++stats.source_rows;
+                ++stats.mopac_mc_shielding_rows;
+            }
+
+            // MOPAC charge sites — the third charge_source alongside ff14sb /
+            // aimnet2. There is NO per-frame MOPAC charge TR on this substrate, so
+            // the source charge is the per-atom MOPAC Welford MEAN (a STATIC charge
+            // source). The Welford mean is frame-independent, so each near atom's
+            // charge repeats across frames — recorded honestly via charge_source.
+            if (body.catalog.has(ArrayId::MopacChargeWelfordMean)) {
+                for (const SourceRef& ref : verbs::near(body, CloudKind::Atoms, atom, row,
+                                                        config.charge_cutoff_A)) {
+                    if (ref.entity_index < 0) continue;
+                    const std::size_t srcAtom = static_cast<std::size_t>(ref.entity_index);
+                    if (srcAtom >= p.atomCount() || srcAtom == atom) continue;
+                    if (!body.catalog.present(body, ArrayId::MopacChargeWelfordMean, srcAtom, row))
+                        continue;
+                    AllAtomEquivariantSourceRecord src =
+                        makeChargeSource(body, target, atom, srcAtom, row,
+                                         ArrayId::MopacChargeWelfordMean,
+                                         QStringLiteral("mopac_welford_mean"));
+                    if (!(src.r > 1e-12) || !std::isfinite(src.source_q_e)) continue;
+                    sink.WriteSource(rowId, src);
+                    ++stats.source_rows;
+                    ++stats.charge_mopac_rows;
+                }
+            }
         }
     }
 
@@ -535,9 +621,12 @@ AllAtomEquivariantStats RunAllAtomEquivariantEmit(const Body& body,
         << "| bonds=" << stats.bond_rows
         << "| charge_ff14sb=" << stats.charge_ff14sb_rows
         << "| charge_aimnet2=" << stats.charge_aimnet2_rows
+        << "| charge_mopac=" << stats.charge_mopac_rows
         << "| apbs_E=" << stats.apbs_efield_rows
         << "| apbs_EFG=" << stats.apbs_efg_rows
-        << "| aimnet2_atom=" << stats.aimnet2_atom_rows;
+        << "| aimnet2_atom=" << stats.aimnet2_atom_rows
+        << "| mopac_coulomb_shielding=" << stats.mopac_coulomb_shielding_rows
+        << "| mopac_mc_shielding=" << stats.mopac_mc_shielding_rows;
     return stats;
 }
 

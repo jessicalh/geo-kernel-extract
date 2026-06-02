@@ -40,6 +40,21 @@ struct AllAtomEquivariantTargetRecord {
     bool apbs_efg_present = false;
     std::array<double, 5> apbs_efg_T2 = {};
 
+    // MOPAC family (#51). The MOPAC-Coulomb-EFG-DERIVED shielding T2 is the
+    // moderate Stage-1 field/EFG leg (NOT the raw EFG tensor — that is a per-atom
+    // NPY only, not on this trajectory substrate). mc is the MOPAC-charge
+    // McConnell shielding T2. mopac_charge is the Welford-mean STATIC charge (no
+    // per-frame MOPAC charge TR exists on the H5). reconciliation is the
+    // charge-source-divergence QC scalar (diagnostic, not training material).
+    bool mopac_coulomb_shielding_present = false;
+    std::array<double, 5> mopac_coulomb_shielding_T2 = {};
+    bool mopac_mc_shielding_present = false;
+    std::array<double, 5> mopac_mc_shielding_T2 = {};
+    bool mopac_charge_welford_mean_present = false;
+    double mopac_charge_welford_mean = 0.0;
+    bool mopac_vs_ff14sb_present = false;
+    double mopac_vs_ff14sb = 0.0;
+
     bool aimnet2_charge_present = false;
     double aimnet2_charge = 0.0;
     bool aimnet2_crg_present = false;
@@ -153,6 +168,10 @@ private:
     std::vector<double> aimnet2Crg_;           // (targetRows, 3), lab frame
     std::vector<double> aimnet2CrgScalar_;     // (targetRows,)
     std::vector<float> aimnet2Embedding_;      // (targetRows, embeddingDims), f32
+    std::vector<double> mopacCoulombShieldingT2_;  // (targetRows, 5), EFG-derived shielding
+    std::vector<double> mopacMcShieldingT2_;       // (targetRows, 5)
+    std::vector<double> mopacChargeWelfordMean_;   // (targetRows,) static charge
+    std::vector<double> mopacVsFf14sb_;            // (targetRows,) QC cosine
 };
 
 }  // namespace h5reader::rediscover

@@ -455,16 +455,40 @@ int main(int argc, char** argv) {
             << "| bond_rows=" << stats.bond_rows
             << "| charge_ff14sb_rows=" << stats.charge_ff14sb_rows
             << "| charge_aimnet2_rows=" << stats.charge_aimnet2_rows
+            << "| charge_mopac_rows=" << stats.charge_mopac_rows
             << "| apbs_efield_rows=" << stats.apbs_efield_rows
             << "| apbs_efg_rows=" << stats.apbs_efg_rows
             << "| aimnet2_atom_rows=" << stats.aimnet2_atom_rows
+            << "| mopac_coulomb_shielding_rows=" << stats.mopac_coulomb_shielding_rows
+            << "| mopac_mc_shielding_rows=" << stats.mopac_mc_shielding_rows
             << "| committed=" << committed;
         if (!committed) return 4;
-        std::vector<h5reader::rediscover::OutputEntry> outputs = {
-            {QStringLiteral("all_atom_equivariant"), QStringLiteral("source_sum"),
-             QStringLiteral("all_atom_equivariant_sources.csv"),
-             QStringLiteral("all_atom_equivariant_targets.csv"), sink.sidecarFiles(),
-             stats.target_rows, sink.sourceRowsWritten(), sink.targetRowsWritten()}};
+        h5reader::rediscover::OutputEntry allAtom{
+            QStringLiteral("all_atom_equivariant"), QStringLiteral("source_sum"),
+            QStringLiteral("all_atom_equivariant_sources.csv"),
+            QStringLiteral("all_atom_equivariant_targets.csv"), sink.sidecarFiles(),
+            stats.target_rows, sink.sourceRowsWritten(), sink.targetRowsWritten()};
+        // Provenance (#51 §4): the row-alignment contract lets a consumer load a
+        // sidecar NPY without the CSV; per-feature support counts give effective-N
+        // without a Python recompute; normalization is RAW lab-frame.
+        allAtom.rowAlignmentContract = QStringLiteral(
+            "sidecar NPY row i == all_atom_equivariant_targets.csv row_id i "
+            "(target-axis sidecars); sources.csv joins via row_id");
+        allAtom.normalization = QStringLiteral("raw_lab_frame");
+        allAtom.featureSupport = {
+            {QStringLiteral("ring_source_rows"), stats.ring_rows},
+            {QStringLiteral("bond_source_rows"), stats.bond_rows},
+            {QStringLiteral("charge_ff14sb_rows"), stats.charge_ff14sb_rows},
+            {QStringLiteral("charge_aimnet2_rows"), stats.charge_aimnet2_rows},
+            {QStringLiteral("charge_mopac_welford_mean_rows"), stats.charge_mopac_rows},
+            {QStringLiteral("apbs_efield_rows"), stats.apbs_efield_rows},
+            {QStringLiteral("apbs_efg_rows"), stats.apbs_efg_rows},
+            {QStringLiteral("aimnet2_atom_rows"), stats.aimnet2_atom_rows},
+            {QStringLiteral("aimnet2_embedding_present_rows"), stats.aimnet2_embedding_present},
+            {QStringLiteral("mopac_coulomb_shielding_rows"), stats.mopac_coulomb_shielding_rows},
+            {QStringLiteral("mopac_mc_shielding_rows"), stats.mopac_mc_shielding_rows},
+        };
+        std::vector<h5reader::rediscover::OutputEntry> outputs = {allAtom};
         QString manifestErr;
         if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
             qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;

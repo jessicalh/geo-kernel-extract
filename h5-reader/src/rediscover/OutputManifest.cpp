@@ -65,6 +65,20 @@ bool WriteOutputManifest(const QString& outDir, const std::vector<OutputEntry>& 
         counts.insert(QStringLiteral("source_rows"), static_cast<qint64>(e.sourceRows));
         counts.insert(QStringLiteral("aggregated_rows"), static_cast<qint64>(e.aggregatedRows));
         o.insert(QStringLiteral("counts"), counts);
+
+        // Provenance (#51 §4): row-alignment + per-feature support + normalization.
+        QJsonObject provenance;
+        if (!e.rowAlignmentContract.isEmpty())
+            provenance.insert(QStringLiteral("row_alignment"), e.rowAlignmentContract);
+        if (!e.normalization.isEmpty())
+            provenance.insert(QStringLiteral("normalization"), e.normalization);
+        if (!e.featureSupport.isEmpty()) {
+            QJsonObject support;
+            for (auto it = e.featureSupport.constBegin(); it != e.featureSupport.constEnd(); ++it)
+                support.insert(it.key(), static_cast<qint64>(it.value()));
+            provenance.insert(QStringLiteral("feature_support_rows"), support);
+        }
+        if (!provenance.isEmpty()) o.insert(QStringLiteral("provenance"), provenance);
         arr.append(o);
     }
     root.insert(QStringLiteral("relationships"), arr);

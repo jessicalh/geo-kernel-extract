@@ -105,7 +105,17 @@ const char* kTargetsHeader =
     "aimnet2_charge_response_gradient_present,aimnet2_charge_response_gradient_scalar,"
     "aimnet2_charge_response_gradient_x,aimnet2_charge_response_gradient_y,"
     "aimnet2_charge_response_gradient_z,aimnet2_charge_response_gradient_mag,"
-    "aimnet2_embedding_present,aimnet2_embedding_dim";
+    "aimnet2_embedding_present,aimnet2_embedding_dim,"
+    // MOPAC family (#51). mopac_coulomb_shielding is the MOPAC-Coulomb-EFG-DERIVED
+    // shielding T2 (the moderate Stage-1 field/EFG leg), NOT the raw EFG tensor.
+    "mopac_coulomb_shielding_present,"
+    "mopac_coulomb_shielding_T2_0,mopac_coulomb_shielding_T2_1,mopac_coulomb_shielding_T2_2,"
+    "mopac_coulomb_shielding_T2_3,mopac_coulomb_shielding_T2_4,mopac_coulomb_shielding_T2_mag,"
+    "mopac_mc_shielding_present,"
+    "mopac_mc_shielding_T2_0,mopac_mc_shielding_T2_1,mopac_mc_shielding_T2_2,"
+    "mopac_mc_shielding_T2_3,mopac_mc_shielding_T2_4,mopac_mc_shielding_T2_mag,"
+    "mopac_charge_welford_mean_present,mopac_charge_welford_mean,"
+    "mopac_vs_ff14sb_reconciliation_present,mopac_vs_ff14sb_reconciliation";
 
 const char* kSourcesHeader =
     "row_id,target_atom_index,target_residue_index,h5_row,original_index,time_ps,"
@@ -143,6 +153,10 @@ AllAtomEquivariantSink::AllAtomEquivariantSink(const QString& outDir, const QStr
         QStringLiteral("%1_aimnet2_charge_response_gradient.npy").arg(caseName),
         QStringLiteral("%1_aimnet2_charge_response_gradient_scalar.npy").arg(caseName),
         QStringLiteral("%1_aimnet2_embedding.npy").arg(caseName),
+        QStringLiteral("%1_mopac_coulomb_shielding_T2.npy").arg(caseName),
+        QStringLiteral("%1_mopac_mc_shielding_T2.npy").arg(caseName),
+        QStringLiteral("%1_mopac_charge_welford_mean.npy").arg(caseName),
+        QStringLiteral("%1_mopac_vs_ff14sb_reconciliation.npy").arg(caseName),
     };
 
     sourcesFile_ = std::make_unique<QSaveFile>(sourcesPath_);
@@ -178,6 +192,14 @@ int64_t AllAtomEquivariantSink::WriteTarget(const AllAtomEquivariantTargetRecord
     const bool embeddingPresent =
         row.aimnet2_embedding_present && row.aimnet2_embedding
         && row.aimnet2_embedding_dims == embeddingDims_;
+    const bool mopacCoulombPresent =
+        row.mopac_coulomb_shielding_present && finiteT2(row.mopac_coulomb_shielding_T2);
+    const bool mopacMcPresent =
+        row.mopac_mc_shielding_present && finiteT2(row.mopac_mc_shielding_T2);
+    const bool mopacChargePresent =
+        row.mopac_charge_welford_mean_present && std::isfinite(row.mopac_charge_welford_mean);
+    const bool mopacVsFf14sbPresent =
+        row.mopac_vs_ff14sb_present && std::isfinite(row.mopac_vs_ff14sb);
 
     QTextStream& out = *targetsOut_;
     out << rowId << ',' << row.atom_index << ',' << row.residue_index << ','
@@ -209,6 +231,16 @@ int64_t AllAtomEquivariantSink::WriteTarget(const AllAtomEquivariantTargetRecord
         << num(crgPresent ? row.aimnet2_crg_lab.norm() : kNaN)
         << ',' << (embeddingPresent ? 1 : 0) << ','
         << static_cast<qulonglong>(embeddingPresent ? row.aimnet2_embedding_dims : 0)
+        << ',' << (mopacCoulombPresent ? 1 : 0);
+    for (double v : row.mopac_coulomb_shielding_T2) out << ',' << num(mopacCoulombPresent ? v : kNaN);
+    out << ',' << num(mopacCoulombPresent ? t2Magnitude(row.mopac_coulomb_shielding_T2) : kNaN)
+        << ',' << (mopacMcPresent ? 1 : 0);
+    for (double v : row.mopac_mc_shielding_T2) out << ',' << num(mopacMcPresent ? v : kNaN);
+    out << ',' << num(mopacMcPresent ? t2Magnitude(row.mopac_mc_shielding_T2) : kNaN)
+        << ',' << (mopacChargePresent ? 1 : 0) << ','
+        << num(mopacChargePresent ? row.mopac_charge_welford_mean : kNaN)
+        << ',' << (mopacVsFf14sbPresent ? 1 : 0) << ','
+        << num(mopacVsFf14sbPresent ? row.mopac_vs_ff14sb : kNaN)
         << '\n';
 
     appendT2(targetT2_, row.target.total_decomp.T2, dftPresent);
@@ -227,6 +259,10 @@ int64_t AllAtomEquivariantSink::WriteTarget(const AllAtomEquivariantTargetRecord
     } else {
         for (std::size_t i = 0; i < embeddingDims_; ++i) aimnet2Embedding_.push_back(kNaNF32);
     }
+    appendT2(mopacCoulombShieldingT2_, row.mopac_coulomb_shielding_T2, mopacCoulombPresent);
+    appendT2(mopacMcShieldingT2_, row.mopac_mc_shielding_T2, mopacMcPresent);
+    mopacChargeWelfordMean_.push_back(mopacChargePresent ? row.mopac_charge_welford_mean : kNaN);
+    mopacVsFf14sb_.push_back(mopacVsFf14sbPresent ? row.mopac_vs_ff14sb : kNaN);
     ++targetRows_;
     return rowId;
 }
@@ -306,6 +342,18 @@ bool AllAtomEquivariantSink::Commit() {
             && writeNpy<float>(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[8]),
                                {targetRows_, embeddingDims_}, aimnet2Embedding_,
                                QByteArray("<f4"));
+    npyOk = npyOk
+            && writeNpy<double>(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[9]),
+                                {targetRows_, 5}, mopacCoulombShieldingT2_, QByteArray("<f8"));
+    npyOk = npyOk
+            && writeNpy<double>(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[10]),
+                                {targetRows_, 5}, mopacMcShieldingT2_, QByteArray("<f8"));
+    npyOk = npyOk
+            && writeNpy<double>(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[11]),
+                                {targetRows_}, mopacChargeWelfordMean_, QByteArray("<f8"));
+    npyOk = npyOk
+            && writeNpy<double>(QStringLiteral("%1/%2").arg(outDir, sidecarFiles_[12]),
+                                {targetRows_}, mopacVsFf14sb_, QByteArray("<f8"));
 
     if (!sourcesOk)
         qCWarning(cAllAtomEquivariantSink).noquote() << "all-atom sources commit failed"

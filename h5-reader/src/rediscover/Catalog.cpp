@@ -95,6 +95,29 @@ Catalog::Catalog(const RunData& run) {
         axes(true, false, false, 0), ArrayResidence::StaticTopol, QStringLiteral("e"), ff14);
     add(specs_, ArrayId::MopacCharge, QStringLiteral("mopac_charge"), ArrayRank::Scalar,
         axes(true, true, false, 0), ArrayResidence::Absent, QStringLiteral("e"), false);
+    // MOPAC per-frame charge is NOT a trajectory TR (only the Welford rollup is
+    // on the dense H5). The Welford MEAN is the only MOPAC charge available here,
+    // so it is a STATIC (atom-axis, no T) charge source — say so honestly.
+    add(specs_, ArrayId::MopacChargeWelfordMean, QStringLiteral("mopac_charge_welford_mean"),
+        ArrayRank::Scalar, axes(true, false, false, 0), ArrayResidence::StaticTopol,
+        QStringLiteral("e"), h5 && h5->mopacChargeWelford());
+    // MOPAC-Coulomb-EFG-DERIVED shielding (the moderate Stage-1 field/EFG leg) —
+    // a contracted shielding T2, NOT the raw MOPAC Coulomb EFG tensor (that is a
+    // per-atom NPY only, not on this trajectory substrate).
+    add(specs_, ArrayId::MopacCoulombShielding, QStringLiteral("mopac_coulomb_shielding"),
+        ArrayRank::T2_5, axes(true, true, false, 5), ArrayResidence::DenseH5,
+        QStringLiteral("ppm"), h5 && h5->mopacCoulombShielding());
+    // MOPAC-charge McConnell bond-anisotropy shielding (full shielding tensor; we
+    // read its T2 leg, consistent with the e3nn T2 substrate).
+    add(specs_, ArrayId::MopacMcShielding, QStringLiteral("mopac_mc_shielding"),
+        ArrayRank::T2_5, axes(true, true, false, 5), ArrayResidence::DenseH5,
+        QStringLiteral("ppm"), h5 && h5->mopacMcShielding());
+    // The FullFat charge-source reconciliation probe output: cosine similarity of
+    // the MOPAC-EFG-T2 vs FF14SB-EFG-T2 vectors. Diagnostic/QC, not a feature.
+    add(specs_, ArrayId::MopacVsFf14sbReconciliation,
+        QStringLiteral("mopac_vs_ff14sb_reconciliation"), ArrayRank::Scalar,
+        axes(true, true, false, 0), ArrayResidence::DenseH5, QString(),
+        h5 && h5->mopacVsFf14sbReconciliation());
     add(specs_, ArrayId::DftTotalRaw, QStringLiteral("dft_total_raw"), ArrayRank::Tensor9,
         axes(true, true, false, 9), ArrayResidence::SparseDftByOriginal, QStringLiteral("ppm"),
         run.dft.frameCount() > 0);
@@ -142,6 +165,25 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
                && body.run.h5()->aimnet2Embedding()->meta.sourceAttachedAt(frame);
     case ArrayId::MopacCharge:
         return false;
+    case ArrayId::MopacChargeWelfordMean:
+        return body.run.h5() && body.run.h5()->mopacChargeWelford()
+               && atom < body.run.h5()->mopacChargeWelford()->n_atoms
+               && atom < body.run.h5()->mopacChargeWelford()->value.size();
+    case ArrayId::MopacCoulombShielding:
+        return body.run.h5() && body.run.h5()->mopacCoulombShielding()
+               && atom < body.run.h5()->mopacCoulombShielding()->n_atoms
+               && frame < body.run.h5()->mopacCoulombShielding()->n_frames
+               && body.run.h5()->mopacCoulombShielding()->sourceAttachedAt(frame);
+    case ArrayId::MopacMcShielding:
+        return body.run.h5() && body.run.h5()->mopacMcShielding()
+               && atom < body.run.h5()->mopacMcShielding()->n_atoms
+               && frame < body.run.h5()->mopacMcShielding()->n_frames
+               && body.run.h5()->mopacMcShielding()->sourceAttachedAt(frame);
+    case ArrayId::MopacVsFf14sbReconciliation:
+        return body.run.h5() && body.run.h5()->mopacVsFf14sbReconciliation()
+               && atom < body.run.h5()->mopacVsFf14sbReconciliation()->n_atoms
+               && frame < body.run.h5()->mopacVsFf14sbReconciliation()->n_frames
+               && body.run.h5()->mopacVsFf14sbReconciliation()->sourceAttachedAt(frame);
     default:
         return true;
     }
@@ -180,6 +222,18 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
         return body.run.protein && atom < body.run.protein->atomCount()
                    ? body.run.protein->atom(atom).partialCharge
                    : 0.0;
+    case ArrayId::MopacChargeWelfordMean:
+        return h5 && h5->mopacChargeWelford() && atom < h5->mopacChargeWelford()->value.size()
+                   ? h5->mopacChargeWelford()->value[atom].mean
+                   : 0.0;
+    case ArrayId::MopacVsFf14sbReconciliation:
+        return h5 && h5->mopacVsFf14sbReconciliation()
+                   ? h5->mopacVsFf14sbReconciliation()->at(atom, frame)
+                   : 0.0;
+    case ArrayId::MopacCoulombShielding:
+    case ArrayId::MopacMcShielding:
+        return comp >= 0 && comp < 5 ? valueT2(body, id, atom, frame)[static_cast<std::size_t>(comp)]
+                                     : 0.0;
     case ArrayId::DftTotalRaw:
         return dftAt(body, atom, frame) ? matComponent(dftAt(body, atom, frame)->total_raw, comp) : 0.0;
     case ArrayId::DftDiaRaw:
@@ -213,6 +267,12 @@ std::array<double, 5> Catalog::valueT2(const Body& body, ArrayId id, std::size_t
                                        std::size_t frame) const {
     const io::QtTrajectoryH5* h5 = body.run.h5();
     if (id == ArrayId::ApbsEfg && h5 && h5->apbsEfg()) return h5->apbsEfg()->at(atom, frame);
+    // MOPAC-Coulomb-EFG-DERIVED shielding is a T2-only TR (read directly).
+    if (id == ArrayId::MopacCoulombShielding && h5 && h5->mopacCoulombShielding())
+        return h5->mopacCoulombShielding()->at(atom, frame);
+    // MOPAC-McConnell shielding is a full shielding tensor; project its T2 leg.
+    if (id == ArrayId::MopacMcShielding && h5 && h5->mopacMcShielding())
+        return h5->mopacMcShielding()->at(atom, frame).T2;
     return {};
 }
 

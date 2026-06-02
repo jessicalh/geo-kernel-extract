@@ -32,7 +32,12 @@ enum class ArrayId : int {
     Aimnet2ChargeRespVector,
     Aimnet2Embedding,
     Ff14sbCharge,
-    MopacCharge,
+    MopacCharge,                 // per-frame MOPAC Mulliken charge — NOT on the
+                                 // trajectory H5 (no TR exists); see MopacChargeWelfordMean.
+    MopacChargeWelfordMean,      // per-atom MOPAC charge Welford MEAN (static, no T)
+    MopacCoulombShielding,       // T2: MOPAC-Coulomb-EFG-DERIVED shielding (NOT raw EFG)
+    MopacMcShielding,            // T2: MOPAC-charge McConnell bond-anisotropy shielding
+    MopacVsFf14sbReconciliation, // scalar QC: cos(MOPAC-EFG-T2, FF14SB-EFG-T2)
     DftTotalRaw,
     DftDiaRaw,
     DftParaRaw,
