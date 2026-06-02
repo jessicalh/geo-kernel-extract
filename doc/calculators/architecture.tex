@@ -59,6 +59,13 @@ The code enforces this with separate objects and separate ownership.
 
 \section{The system in one page}
 
+The architecture is shaped around one separation: a protein's identity and topology ---
+its atoms, residues, bonds, and rings --- are fixed once built, while everything that
+depends on coordinates is not. Identity is held in one invariant object; a conformation
+holds a coordinate set and the results computed from it; a trajectory holds the history
+across frames. Ownership, call order, and buffer placement follow from keeping these
+three apart.
+
 The extractor is a one-way accumulation system. A loader builds a
 \code{Protein}; a conformation supplies one coordinate set for that protein;
 \code{OperationRunner::Run} attaches named \code{ConformationResult}
@@ -420,10 +427,14 @@ and Larsen tensor+spherical pairs. Classical kernel totals such as
 
 \section{OperationRunner}
 
-\code{OperationRunner} is the single in-tree home for the ordered
-conformation-level sequence. It does not own state. It takes a mutable
-\code{ProteinConformation} and a \code{RunOptions} value, computes result
-objects, and attaches them.
+\code{OperationRunner} is the one place that runs the ordered conformation-level
+sequence, and it holds no state of its own. It takes a mutable \code{ProteinConformation}
+and a \code{RunOptions} value, computes the result objects in order, and attaches each to
+the conformation. A result is self-contained: a subclass declares its name and its
+type-index dependencies, holds the query surface and the typed output for its one
+computation, and is retrieved by its type, not by a string name. A calculator that
+depends on another result reads it from the conformation by type; there is no shared
+property store.
 
 The current \code{RunOptions} surface is larger than the early design notes:
 charge source and net charge; skip flags for DSSP, MOPAC, APBS, and vacuum
@@ -485,7 +496,7 @@ is an input to the computation, not the owner of the delta result.
 
 \section{Trajectory runtime}
 
-\code{Trajectory::Run} is the trajectory orchestrator. It is the only code path
+\code{Trajectory::Run} drives the trajectory run. It is the only code path
 with mutable access to frame-zero conformation through the private
 \code{TrajectoryProtein::MutableCanonicalConformation\_} friend hook. Public
 \code{TrajectoryProtein} exposes \code{ProteinRef} and
@@ -530,8 +541,14 @@ that need history copy what they need into their own state during
 
 \section{Buffer management}
 
-The system's buffer discipline is constructor allocation plus scoped ownership.
-Buffers are allocated at the object whose lifetime defines their validity.
+The system's buffer discipline is constructor allocation with scoped ownership: a buffer
+is allocated by the object whose lifetime defines its validity, when that object is
+built. The sizes are known at that point --- the atom count, the per-atom stride --- so
+nothing is grown or attached afterward. A conformation sizes its atom rows from the
+position vector it receives; a \code{TrajectoryProtein} sizes its per-atom records once
+the seed frame fixes the atom count; on creation, a \code{DenseBuffer} holds the atom
+count and the stride per atom. The lifetime defines the validity; there is no
+register/release step and no detach.
 
 \subsection{Conformation buffers}
 
