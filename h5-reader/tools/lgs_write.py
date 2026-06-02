@@ -29,17 +29,25 @@ producer's actual layouts (verified on the 1P9J calibration fixture
   Mutant pair:
     Two side-by-side single-pose calcsets, each with its own .LGS.
 
-DFT frame discovery: walk every `dft/jobs/*/` directory and read each
-`*_meta.json` (NOT parsing the dir name) for the typed `frame_index`.
-The frames[] array is sorted by frame_index. `frame_stride` is the
-human-readable cadence summary computed from min/max/median-diff;
-consumers iterate frames[] for coverage, not the stride.
+DFT frame discovery: walk every `dft/jobs/*/` directory, or an explicit
+`--dft-jobs-dir`, and read each `*_meta.json` (NOT parsing the dir
+name) for the typed `frame_index`. Only completed ORCA jobs
+(`orca_exit_code == 0`) are emitted. The frames[] array is sorted by
+frame_index. `frame_stride` is the human-readable cadence summary
+computed from min/max/median-diff; consumers iterate frames[] for
+coverage, not the stride.
+
+Join semantics: `dft.frames[].frame_index` is expressed in
+`trajectory.frame_index_basis` and joins to the trajectory H5 dataset
+`/trajectory/frames/original_index`. Do not infer coverage from stride
+or from the row number in `dft.frames[]`.
 
 Usage:
   python3 lgs_write.py <calcset_root>
   python3 lgs_write.py --dry-run <calcset_root>     # print, don't write
   python3 lgs_write.py --force <calcset_root>       # overwrite existing
   python3 lgs_write.py --root <calcset_root> --extraction-dir extract
+  python3 lgs_write.py --dft-jobs-dir /path/to/jobs <calcset_root>
 """
 
 from __future__ import annotations
@@ -52,7 +60,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-LGS_WRITER_VERSION = "lgs-tools 0.1.0"
+LGS_WRITER_VERSION = "lgs-tools 0.1.1"
 SCHEMA_VERSION = 1
 
 
@@ -139,7 +147,8 @@ def _collect_dft_frames(dft_jobs: Path) -> list[dict]:
 
     Reads `frame_index` from each meta.json — NOT from the directory
     name. The per-job meta is the authoritative source for the typed
-    frame_index integer.
+    frame_index integer. Only completed ORCA jobs (`orca_exit_code == 0`)
+    are included.
     """
     frames: list[dict] = []
     for job_dir in sorted(dft_jobs.iterdir()):
@@ -161,6 +170,8 @@ def _collect_dft_frames(dft_jobs: Path) -> list[dict]:
         frame_index = meta.get("frame_index")
         if not isinstance(frame_index, int):
             print(f"  warning: {meta_path} has no integer frame_index", file=sys.stderr)
+            continue
+        if meta.get("orca_exit_code") != 0:
             continue
         frames.append({
             "frame_index": int(frame_index),
@@ -223,6 +234,7 @@ def build_trajectory_manifest(
     protein_id: str,
     human_name: str,
     extraction_dir: Optional[Path] = None,
+    dft_jobs_dir: Optional[Path] = None,
     frame_dt_ps: float = 10.0,
     frame_index_basis: str = "trr_frame_index",
 ) -> dict:
@@ -268,7 +280,7 @@ def build_trajectory_manifest(
         out["trajectory"]["reference_pdb"] = _relpath(ref_pdb, root)
 
     # DFT block — optional
-    dft_jobs = _find_dft_jobs(root)
+    dft_jobs = dft_jobs_dir if dft_jobs_dir is not None else _find_dft_jobs(root)
     if dft_jobs is not None:
         frames = _collect_dft_frames(dft_jobs)
         method = _read_dft_method(dft_jobs, frames) or "unknown"
@@ -331,6 +343,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--extraction-dir", type=Path,
                    help="Explicit extraction directory (defaults to "
                         "<root>/extract or <root>).")
+    p.add_argument("--dft-jobs-dir", type=Path,
+                   help="Explicit ORCA DFT jobs directory. Use this when "
+                        "completed jobs live outside <root>/dft/jobs.")
     p.add_argument("--dataset-id",
                    help="dataset_id (defaults to calcset root basename).")
     p.add_argument("--protein-id",
@@ -362,6 +377,19 @@ def main(argv: list[str]) -> int:
     extraction_dir = (
         args.extraction_dir.resolve() if args.extraction_dir else None
     )
+    dft_jobs_dir = args.dft_jobs_dir.resolve() if args.dft_jobs_dir else None
+    if dft_jobs_dir is not None and not dft_jobs_dir.is_dir():
+        print(f"error: {dft_jobs_dir} is not a directory", file=sys.stderr)
+        return 2
+    if dft_jobs_dir is not None:
+        try:
+            dft_jobs_dir.relative_to(root)
+        except ValueError:
+            print(
+                "warning: --dft-jobs-dir is outside the calcset root; "
+                "meta_json paths will be absolute in the .LGS",
+                file=sys.stderr,
+            )
 
     # Resolve protein_id. Order of authority:
     #   1. --protein-id flag (explicit override)
@@ -377,7 +405,7 @@ def main(argv: list[str]) -> int:
         if em is not None:
             protein_id = _read_extraction_protein_id(em)
     if not protein_id:
-        dft_jobs = _find_dft_jobs(root)
+        dft_jobs = dft_jobs_dir if dft_jobs_dir is not None else _find_dft_jobs(root)
         if dft_jobs is not None:
             first_meta = next(
                 (j / f"{j.name}_meta.json"
@@ -404,6 +432,7 @@ def main(argv: list[str]) -> int:
             protein_id=protein_id,
             human_name=human_name,
             extraction_dir=extraction_dir,
+            dft_jobs_dir=dft_jobs_dir,
             frame_dt_ps=args.frame_dt_ps,
             frame_index_basis=args.frame_index_basis,
         )
