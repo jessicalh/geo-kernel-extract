@@ -16,6 +16,8 @@
 // StructuredLogger (UDP 9997 + stderr).
 
 #include "ExtractionSupport.h"
+#include "AllAtomEquivariant.h"
+#include "AllAtomEquivariantSink.h"
 #include "Aimnet2Feature.h"
 #include "Aimnet2FeatureSink.h"
 #include "BroadBackbone.h"
@@ -160,7 +162,7 @@ int main(int argc, char** argv) {
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -417,6 +419,60 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // -- all_atom_equivariant: corrected e3nn substrate. Every atom, all ring
+    // types, all producer bond categories, FF14SB/AIMNet2 charge-site rows when
+    // available, and per-target APBS/AIMNet2 source rows. Everything is emitted
+    // in the H5/ORCA-aligned molecular lab frame; no local frame is imposed.
+    if (which == QStringLiteral("all_atom_equivariant")
+        || which == QStringLiteral("all_atom_equiv")) {
+        h5reader::rediscover::AllAtomEquivariantConfig cfg;
+        cfg.ring_cutoff_A = ringCutoff;
+        cfg.bond_cutoff_A = bondCutoff;
+        cfg.charge_cutoff_A = chargeCutoff;
+        cfg.mc_near_field_ratio = mcNearFieldRatio;
+        h5reader::rediscover::AllAtomEquivariantSink sink(outDir,
+                                                          QStringLiteral("all_atom_equivariant"),
+                                                          256);
+        if (!sink.Ok()) {
+            qCCritical(cMain).noquote() << "all_atom_equivariant sink open failed";
+            return 3;
+        }
+        h5reader::rediscover::AllAtomEquivariantStats stats;
+        try {
+            stats = h5reader::rediscover::RunAllAtomEquivariantEmit(body, sink, cfg);
+        } catch (const std::exception& e) {
+            qCCritical(cMain).noquote() << "all_atom_equivariant failed:" << e.what();
+            return 1;
+        }
+        const bool committed = sink.Commit();
+        qCInfo(cMain).noquote()
+            << "all_atom_equivariant | atoms=" << stats.atom_count
+            << "| dft_rows=" << stats.dft_rows
+            << "| target_rows=" << sink.targetRowsWritten()
+            << "| dft_present=" << stats.dft_present
+            << "| source_rows=" << sink.sourceRowsWritten()
+            << "| ring_rows=" << stats.ring_rows
+            << "| bond_rows=" << stats.bond_rows
+            << "| charge_ff14sb_rows=" << stats.charge_ff14sb_rows
+            << "| charge_aimnet2_rows=" << stats.charge_aimnet2_rows
+            << "| apbs_efield_rows=" << stats.apbs_efield_rows
+            << "| apbs_efg_rows=" << stats.apbs_efg_rows
+            << "| aimnet2_atom_rows=" << stats.aimnet2_atom_rows
+            << "| committed=" << committed;
+        if (!committed) return 4;
+        std::vector<h5reader::rediscover::OutputEntry> outputs = {
+            {QStringLiteral("all_atom_equivariant"), QStringLiteral("source_sum"),
+             QStringLiteral("all_atom_equivariant_sources.csv"),
+             QStringLiteral("all_atom_equivariant_targets.csv"), sink.sidecarFiles(),
+             stats.target_rows, sink.sourceRowsWritten(), sink.targetRowsWritten()}};
+        QString manifestErr;
+        if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
+            qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
+            return 4;
+        }
+        return 0;
+    }
+
     // ── broad_backbone — the composed heterogeneous relationship (its own
     // two-kind carrier; not a RunnableCase/RecordSink). ValidateScenario, run,
     // commit, manifest, return. ────────────────────────────────────────────
@@ -532,7 +588,7 @@ int main(int argc, char** argv) {
     }
     if (cases_to_run.empty()) {
         qCCritical(cMain).noquote() << "unknown --case" << which
-                                    << "(expected ring|mc|charge_dipole|broad_backbone|efg|buckingham_efield|aimnet2_features|all)";
+                                    << "(expected ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|efg|buckingham_efield|aimnet2_features|all)";
         return 2;
     }
     qCInfo(cMain).noquote() << "engine =" << engine << "| cases =" << cases_to_run.size();

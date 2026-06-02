@@ -234,6 +234,30 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("broad_backbone_aggregated_field_local",     "rediscover", np.ndarray, 3, True,  "Broad-backbone local-frame Coulomb E-field (FF14SB, the field-not-mu feature), once per (atom,frame)",
               is_feature=True, native_axis="rediscover_aggregated_row", irreps="1e", units="e/Angstrom^2", tensor_rank=1, parity="odd", mechanism="charges"),
 
+    # -- all_atom_equivariant (h5-reader/src/rediscover/AllAtomEquivariant) --
+    # Corrected e3nn substrate: every atom, KD source geometry, and per-atom
+    # producer feature payloads are in the molecular/lab frame. No per-atom
+    # local frame is imposed; the ORCA/H5 frame alignment diagnostic in the
+    # manifest is the frame contract.
+    ArraySpec("all_atom_equivariant_target_T2", "rediscover", np.ndarray, 5, False, "All-atom equivariant DFT target T2 payload (molecular/lab frame)",
+              is_feature=False, native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("all_atom_equivariant_target_sigma_iso", "rediscover", np.ndarray, 1, False, "All-atom equivariant DFT sigma_iso target payload",
+              is_feature=False, native_axis="rediscover_target_row", irreps="0e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=0, mechanism="quantum_reference"),
+    ArraySpec("all_atom_equivariant_target_raw", "rediscover", np.ndarray, 9, False, "All-atom equivariant raw 3x3 DFT shielding tensor (molecular/lab frame)",
+              is_feature=False, native_axis="rediscover_target_row", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("all_atom_equivariant_apbs_efield", "rediscover", np.ndarray, 3, True, "All-atom equivariant APBS E-field vector (molecular/lab frame)",
+              is_feature=True, native_axis="rediscover_target_row", irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("all_atom_equivariant_apbs_efg_T2", "rediscover", np.ndarray, 5, True, "All-atom equivariant APBS EFG T2 payload (molecular/lab frame)",
+              is_feature=True, native_axis="rediscover_target_row", irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+    ArraySpec("all_atom_equivariant_aimnet2_charge", "rediscover", np.ndarray, 1, True, "All-atom equivariant AIMNet2 Hirshfeld charge",
+              is_feature=True, native_axis="rediscover_target_row", irreps="0e", units="e", tensor_rank=0, mechanism="aimnet2"),
+    ArraySpec("all_atom_equivariant_aimnet2_charge_response_gradient", "rediscover", np.ndarray, 3, True, "All-atom equivariant AIMNet2 charge-response-gradient vector (not polarizability), molecular/lab frame",
+              is_feature=True, native_axis="rediscover_target_row", irreps="1o", units="e^2/A", tensor_rank=1, parity="odd", mechanism="aimnet2"),
+    ArraySpec("all_atom_equivariant_aimnet2_charge_response_gradient_scalar", "rediscover", np.ndarray, 1, True, "All-atom equivariant AIMNet2 charge-response-gradient scalar",
+              is_feature=True, native_axis="rediscover_target_row", irreps="0e", units="e^2/A", tensor_rank=0, mechanism="aimnet2"),
+    ArraySpec("all_atom_equivariant_aimnet2_embedding", "rediscover", np.ndarray, 256, True, "All-atom equivariant AIMNet2 256-d embedding, row-aligned with target rows",
+              is_feature=True, native_axis="rediscover_target_row", irreps="256x0e", mechanism="aimnet2"),
+
     # ── efg per_atom_feature (h5-reader/src/rediscover/EfgFeature) — APBS
     # solvated-PB EFG T2 -> DFT target T2. Both sidecars are in the same
     # library isometric T2 basis as DecomposeLibrary / SphericalTensor::Decompose:

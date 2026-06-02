@@ -91,14 +91,24 @@ SpatialIndexSet::SpatialIndexSet(const RunData& run) {
 
         std::vector<CloudPoint> bonds;
         bonds.reserve(topo.bondCount());
+        std::vector<CloudPoint> allBonds;
+        allBonds.reserve(topo.bondCount());
         for (std::size_t bi = 0; bi < topo.bondCount(); ++bi) {
             const model::QtBond& b = topo.bondAt(bi);
-            if (!isAnisotropicCategory(b.category) || b.atomIndexA < 0 || b.atomIndexB < 0) continue;
+            if (b.atomIndexA < 0 || b.atomIndexB < 0) continue;
             const Vec3 a = conf.atomPosition(frame, static_cast<std::size_t>(b.atomIndexA));
             const Vec3 c = conf.atomPosition(frame, static_cast<std::size_t>(b.atomIndexB));
-            bonds.push_back({0.5 * (a + c),
-                             {CloudKind::BondMidpoints, static_cast<int32_t>(bonds.size()),
-                              static_cast<int32_t>(bi)}});
+            const Vec3 midpoint = 0.5 * (a + c);
+            allBonds.push_back({midpoint,
+                                {CloudKind::AllBondMidpoints,
+                                 static_cast<int32_t>(allBonds.size()),
+                                 static_cast<int32_t>(bi)}});
+            if (isAnisotropicCategory(b.category)) {
+                bonds.push_back({midpoint,
+                                 {CloudKind::BondMidpoints,
+                                  static_cast<int32_t>(bonds.size()),
+                                  static_cast<int32_t>(bi)}});
+            }
         }
 
         std::vector<CloudPoint> rings;
@@ -123,6 +133,8 @@ SpatialIndexSet::SpatialIndexSet(const RunData& run) {
         trees_[ord(CloudKind::BondMidpoints)].emplace_back(CloudKind::BondMidpoints, std::move(bonds));
         trees_[ord(CloudKind::RingCenters)].emplace_back(CloudKind::RingCenters, std::move(rings));
         trees_[ord(CloudKind::ChargeSites)].emplace_back(CloudKind::ChargeSites, std::move(charges));
+        trees_[ord(CloudKind::AllBondMidpoints)].emplace_back(CloudKind::AllBondMidpoints,
+                                                              std::move(allBonds));
     }
 }
 

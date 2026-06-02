@@ -373,6 +373,10 @@ qt_add_executable(h5reader_extract
     src/rediscover/BroadBackboneSink.cpp
     src/rediscover/BroadBackbone.h
     src/rediscover/BroadBackbone.cpp
+    src/rediscover/AllAtomEquivariantSink.h
+    src/rediscover/AllAtomEquivariantSink.cpp
+    src/rediscover/AllAtomEquivariant.h
+    src/rediscover/AllAtomEquivariant.cpp
     src/rediscover/main_extract.cpp
 )
 target_include_directories(h5reader_extract PRIVATE
@@ -473,6 +477,24 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_buckingham_tests
              COMMAND h5reader_rediscover_buckingham_tests)
+
+    qt_add_executable(h5reader_rediscover_all_atom_equivariant_tests
+        tests/rediscover_all_atom_equivariant_tests.cpp
+        src/rediscover/AllAtomEquivariantSink.h
+        src/rediscover/AllAtomEquivariantSink.cpp
+        src/io/QtNpyReader.h
+        src/io/QtNpyReader.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_rediscover_all_atom_equivariant_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_all_atom_equivariant_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_all_atom_equivariant_tests
+             COMMAND h5reader_rediscover_all_atom_equivariant_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp

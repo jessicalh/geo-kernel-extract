@@ -18,7 +18,13 @@ class RunData;
 
 using model::Vec3;
 
-enum class CloudKind : int { Atoms = 0, BondMidpoints = 1, RingCenters = 2, ChargeSites = 3 };
+enum class CloudKind : int {
+    Atoms = 0,
+    BondMidpoints = 1,     // anisotropic McConnell subset, legacy callers
+    RingCenters = 2,
+    ChargeSites = 3,
+    AllBondMidpoints = 4,  // full producer BondCategory enumeration
+};
 
 struct SourceRef {
     CloudKind kind = CloudKind::Atoms;
@@ -75,7 +81,7 @@ public:
 
 private:
     std::size_t frameCount_ = 0;
-    std::array<std::vector<CloudTree>, 4> trees_;
+    std::array<std::vector<CloudTree>, 5> trees_;
 };
 
 }  // namespace h5reader::rediscover
