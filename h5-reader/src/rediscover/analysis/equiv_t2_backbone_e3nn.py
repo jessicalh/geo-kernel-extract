@@ -10,7 +10,7 @@ with its OWN per-type radial channel. This is the heterogeneous-pooling exemplar
 the broad case forces; the ring fitter was one stratum × one mechanism.
 
   contribution_2e(source) = w_kind(invariants_kind) * Y2(disp_hat)      # o3.SH 2e
-  [+ w_kind * Y2(axis_hat) + cross(disp_hat, axis_hat)  IF axis emitted; see below]
+  [+ w_kind * Y2(axis_hat) IF a parity/sign-safe axis is emitted; see below]
   node_2e(atom,frame) = SUM_sources contribution_2e                     # scatter-add
   predict node_2e vs C @ (emitted local-frame DFT T2), de-meaned per atom.
 
@@ -42,27 +42,21 @@ NOTHING is recomputed in Python.
     emitted data, NOT a projection). |T2| is invariant under that orthogonal map.
   * e3nn's internal (y,z,x) axis convention is handled once, in change_of_basis.
 
-SCHEMA GAP (FLAGGED, not worked around — see HANDOFF_BACKBONE_FIT.md):
+AXIS PARITY CONTRACT (consumer-side, no physics recompute):
   The ring fitter oriented its l=2 contribution by the RING NORMAL n̂ (the dipole
   axis), via the emitted `source_normal_local_*` columns of ring_current_sources.csv.
-  The broad_backbone_sources.csv schema (BroadBackboneSink::kSourceHeader) does
-  NOT emit `source_normal_local_*` (rings) or `bond_axis_local_*` (bonds) — only
-  `disp_local_*` (the target->source displacement). Those axis vectors EXIST in
-  the C++ SourceSlot and are filled by the ring/bond attachers; they are simply
-  not written to the broad source CSV. So the angularly-complete design — Y2(n̂)
-  for rings, Y2(axis) for bonds, and the disp⊗axis cross term — cannot be built
-  from the substrate as currently emitted.
+  The broad_backbone_sources.csv schema now may emit `source_normal_local_*` (rings)
+  and `bond_axis_local_*` (bonds). These axes are NOT polar 1o vectors:
+    * ring normals are axial/even 1e; the sign convention is producer-canonical,
+      but the l=2 contribution is sign-even.
+    * bond axes are index-oriented directors; their sign is arbitrary.
 
-  This fitter therefore uses the ONE emitted local-frame direction, disp_hat, for
-  every source kind (the charge case is exact — the Coulomb field IS along disp;
-  the ring/bond cases carry the axis ANGLE invariantly through the emitted cosθ,
-  but not the axis VECTOR). The fuller model is wired but DORMANT: pass
-  --with-axes and it auto-activates the Y2(axis)/cross terms FOR ANY source kind
-  whose axis columns are present in the CSV. When codex extends BroadBackboneSink
-  to emit source_normal_local_*/bond_axis_local_* (the data is already in
-  SourceSlot), this fitter lights up the complete model with no code change. We do
-  NOT recompute the missing vectors in Python — that would be the projection
-  end-run the law forbids.
+  Therefore --with-axes activates ONLY the parity/sign-safe l=2 even form,
+  Y2(axis_hat) (equivalently the traceless part of axis⊗axis). It does not feed
+  ring normals or bond axes into a 1o tensor-product/cross path. The ONE emitted
+  genuine polar 1o direction is `disp_local_*`; charge remains disp-only. We do
+  NOT recompute missing vectors in Python — we read emitted columns and select
+  parity-valid e3nn features.
 
 Honesty (mirrors equiv_t2_e3nn.py): de-mean target AND prediction per atom (strip
 the near-constant per-atom baseline tensor — the local bonding the through-space
@@ -75,8 +69,8 @@ Run (system python; torch cu130 needs nvidia cu13 libs on LD_LIBRARY_PATH or it
 segfaults — see ENV.md / requirements-e3nn.txt):
     LD_LIBRARY_PATH=<cu13 libs>:<torch/lib> \
         /usr/bin/python3 equiv_t2_backbone_e3nn.py /tmp/rdc-broad-backbone-axes --with-axes
-    (--cross defaults to 'exact', the model; add --cross both only to run the
-     learnable cross-term as a comparison that confirms the fixed angular form.)
+    (--cross is retained for older command lines; current axis handling is the
+     parity-safe l=2 axis term only.)
 """
 import argparse
 import os
@@ -130,17 +124,15 @@ def parse_args():
     ap.add_argument("out_dir", nargs="?",
                     default=os.environ.get("REDISCOVER_OUT", "/tmp/rdc-broad-backbone"))
     ap.add_argument("--cross", choices=["exact", "learnable", "both"], default="exact",
-                    help="cross-term mode for the Y2(disp)⊗Y2(axis) path (active only "
-                         "with --with-axes). 'exact' IS THE MODEL (default, main path) "
-                         "— the angular cross-term is fixed by geometry. 'learnable' / "
-                         "'both' run the learnable cross-term as an opt-in COMPARISON "
-                         "that confirms the fixed form (it lands within ~0.001 R² of "
-                         "exact); it is NOT the model path.")
+                    help="retained for older command lines. Axis handling is now "
+                         "parity-safe: emitted ring normals and bond axes contribute "
+                         "only through their l=2 even form, never through a 1o cross "
+                         "term.")
     ap.add_argument("--with-axes", action="store_true",
-                    help="activate Y2(axis)/cross terms for source kinds whose "
+                    help="activate parity/sign-safe Y2(axis) terms for source kinds whose "
                          "axis columns (source_normal_local_*/bond_axis_local_*) "
-                         "are present in the CSV. Dormant by default because the "
-                         "broad source schema does not yet emit them (FLAGGED).")
+                         "are present in the CSV. Inactive by default so disp-only "
+                         "runs remain directly comparable.")
     ap.add_argument("--loao", action="store_true",
                     help="also run leave-atoms-out retraining. This is an O(atoms) "
                          "audit per stratum, so it is opt-in; the frame-split "
@@ -206,7 +198,7 @@ def load(out_dir):
 
 def detect_axis_columns(src):
     """Which source kinds have their axis vector emitted? Returns a dict kind->bool.
-    The fuller Y2(axis)/cross design activates per-kind only where the substrate
+    The parity-safe Y2(axis) term activates per-kind only where the substrate
     carries the vector — NEVER by recomputing it."""
     ring_axis = all(c in src.columns for c in
                     ["source_normal_local_x", "source_normal_local_y", "source_normal_local_z"])
@@ -217,25 +209,19 @@ def detect_axis_columns(src):
 
 class KindChannel(nn.Module):
     """One source kind's per-type radial channel: an invariant MLP producing gate
-    weights for Y2(disp_hat) [+ Y2(axis_hat) + cross]. The angular Y2/cross
-    machinery is SHARED across kinds (built once in the parent); only this radial
-    map and its input feature set are per-type."""
+    weights for Y2(disp_hat) [+ parity/sign-safe Y2(axis_hat)]. The angular Y2
+    machinery is SHARED across kinds; only this radial map and its input feature
+    set are per-type."""
 
     def __init__(self, n_feat, use_axis, cross):
         super().__init__()
         self.use_axis = use_axis
-        # gates: [disp] always; + [axis, cross] when this kind emits its axis.
-        n_gate = 3 if use_axis else 1
+        # gates: [disp] always; + [axis l=2] when this kind emits a safe axis.
+        n_gate = 2 if use_axis else 1
         self.R = nn.Sequential(
             nn.Linear(n_feat, 64), nn.SiLU(),
             nn.Linear(64, 64), nn.SiLU(),
             nn.Linear(64, n_gate))
-        self.cross = cross
-        if use_axis:
-            if cross != "exact":
-                irr_1o, irr_2e = o3.Irreps("1o"), o3.Irreps("2e")
-                self.tp = o3.FullyConnectedTensorProduct(
-                    irr_1o, irr_1o, irr_2e, irrep_normalization="component")
 
     def forward(self, pk):
         featn = pk["featn"]
@@ -244,11 +230,7 @@ class KindChannel(nn.Module):
         contrib = w[:, 0:1] * y2_d
         if self.use_axis:
             y2_a = pk["y2_axis"]                                   # (n_src, 5)
-            if self.cross == "exact":
-                cross = pk["cross_exact"]                          # (n_src, 5)
-            else:
-                cross = self.tp(pk["disp_hat"], pk["axis_hat"])    # (n_src, 5)
-            contrib = contrib + w[:, 1:2] * y2_a + w[:, 2:3] * cross
+            contrib = contrib + w[:, 1:2] * y2_a
         return contrib                                             # (n_src, 5) e3nn 2e
 
 
@@ -267,7 +249,7 @@ class BroadEquivPool(nn.Module):
             k: KindChannel(kind_nfeat[k], kind_axis[k], cross) for k in kind_nfeat})
 
     def forward(self, per_kind, group_atom):
-        """per_kind[k] = dict(featn, disp_hat, axis_hat, src_group) tensors for the
+        """per_kind[k] = dict(featn, y2_disp, y2_axis, src_group) tensors for the
         sources of kind k. group_atom maps each group index -> its atom index."""
         pooled = torch.zeros(self.n_groups, 5, device=group_atom.device)
         for k, ch in self.channels.items():
@@ -340,7 +322,6 @@ def build_pack(src, agg, target_lib_all, axis_present, with_axes, dev):
 
     per_kind = {}
     kind_nfeat, kind_axis = {}, {}
-    exact_cross_tp = None
     for k, cols in KIND_FEATURES.items():
         sk = s[s.mechanism == k]
         use_axis = with_axes and axis_present.get(k, False)
@@ -348,11 +329,8 @@ def build_pack(src, agg, target_lib_all, axis_present, with_axes, dev):
         kind_nfeat[k] = len(cols)
         if not len(sk):
             per_kind[k] = dict(featn=torch.zeros(0, len(cols), device=dev),
-                               disp_hat=torch.zeros(0, 3, device=dev),
-                               axis_hat=torch.zeros(0, 3, device=dev),
                                y2_disp=torch.zeros(0, 5, device=dev),
                                y2_axis=torch.zeros(0, 5, device=dev),
-                               cross_exact=torch.zeros(0, 5, device=dev),
                                src_group=torch.zeros(0, dtype=torch.long, device=dev))
             continue
         disp = sk[["disp_local_x", "disp_local_y", "disp_local_z"]].to_numpy(float)
@@ -376,29 +354,19 @@ def build_pack(src, agg, target_lib_all, axis_present, with_axes, dev):
         fmean, fstd = feat.mean(0), feat.std(0)
         featn = (feat - fmean) / np.where(fstd > 1e-8, fstd, 1.0)
         disp_hat_t = torch.tensor(disp_hat, dtype=torch.float32, device=dev)
-        axis_hat_t = torch.tensor(axis_hat, dtype=torch.float32, device=dev)
         with torch.no_grad():
             y2_disp = o3.spherical_harmonics(
                 2, disp_hat_t, normalize=True, normalization="component")
             if use_axis:
+                axis_hat_t = torch.tensor(axis_hat, dtype=torch.float32, device=dev)
                 y2_axis = o3.spherical_harmonics(
                     2, axis_hat_t, normalize=True, normalization="component")
-                if exact_cross_tp is None:
-                    exact_cross_tp = o3.TensorProduct(
-                        o3.Irreps("1o"), o3.Irreps("1o"), o3.Irreps("2e"),
-                        instructions=[(0, 0, 0, "uuu", False)],
-                        irrep_normalization="component").to(dev)
-                cross_exact = exact_cross_tp(disp_hat_t, axis_hat_t)
             else:
                 y2_axis = torch.zeros(len(sk), 5, device=dev)
-                cross_exact = torch.zeros(len(sk), 5, device=dev)
         per_kind[k] = dict(
             featn=torch.tensor(featn, dtype=torch.float32, device=dev),
-            disp_hat=disp_hat_t,
-            axis_hat=axis_hat_t,
             y2_disp=y2_disp,
             y2_axis=y2_axis,
-            cross_exact=cross_exact,
             src_group=torch.tensor(sk["__gid"].to_numpy(), dtype=torch.long, device=dev))
 
     # frame split (gate)
@@ -501,15 +469,13 @@ def report_stratum(name, pack, dev, args):
         print(f"   (effective N too small to fit honestly — reported, not fit)", flush=True)
         return None
     results = {}
-    modes = ["exact", "learnable"] if args.cross == "both" else [args.cross]
-    # cross modes only differ when an axis is active for some kind; otherwise the
-    # exact/learnable distinction is moot (no cross term), so collapse to one run.
+    # `--cross` is retained for older command lines, but the current broad axes
+    # are not valid polar 1o inputs. There is no parity-valid 1o cross path here.
     any_axis = any(pack["kind_axis"].values())
-    if not any_axis:
-        modes = modes[:1]
+    modes = ["axis-2e"] if any_axis else ["disp-only"]
     for m in modes:
         r2c, rmag, loo = train_one(pack, dev, m, args.epochs, args.lr, args.loao)
-        tag = f"[{m:9s}]" if any_axis else "[disp-only]"
+        tag = "[axis-2e ]" if any_axis else "[disp-only]"
         loo_txt = f"{loo:+.3f}" if args.loao else "skipped (--loao)"
         print(f"   {tag} frame-split T2 R²(test)={r2c:+.3f}  |T2| r(test)={rmag:+.3f}  "
               f"leave-atoms-out R²={loo_txt} (reported; coupled atoms={n_atoms})",
@@ -539,10 +505,14 @@ def main():
               "model runs disp-only. Extend BroadBackboneSink to emit "
               "source_normal_local_*/bond_axis_local_* (FLAGGED in HANDOFF).",
               flush=True)
+    elif args.with_axes:
+        print("  NOTE: --with-axes uses parity/sign-safe l=2 axis terms only: "
+              "ring_normal as axial/even, bond_axis as an unoriented director. "
+              "No emitted axis is consumed as a polar 1o cross input.",
+              flush=True)
     elif not args.with_axes:
         print("  NOTE: running disp-only (Y2(disp_hat) per source). The ring-normal/"
-              "bond-axis Y2(axis)+cross terms are DORMANT — the broad source schema "
-              "does not emit those vectors (FLAGGED in HANDOFF).", flush=True)
+              "bond-axis l=2 axis terms are DORMANT.", flush=True)
 
     # stratify the AGGREGATED rows by (frame_variant, atom_name).
     agg = agg.copy()
