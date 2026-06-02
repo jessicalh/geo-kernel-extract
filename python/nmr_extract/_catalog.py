@@ -62,8 +62,9 @@ class ArraySpec:
       ``saturated_ring`` / ``ring`` / ``ring_contribution_pair`` /
       ``bond`` / ``ring_membership`` / ``mutation_match_pair`` /
       ``protein`` / ``rediscover_source_row`` /
-      ``rediscover_aggregated_row``. R / Python analysis must read this metadata
-      column rather than infer axis from filename.
+      ``rediscover_aggregated_row`` / ``rediscover_target_row``.
+      R / Python analysis must read this metadata column rather than infer axis
+      from filename.
 
     * ``irreps`` carries the e3nn-style irrep decomposition for
       tensor-valued arrays: ``"0e + 1e + 2e"`` for a 9-component
@@ -233,6 +234,33 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
     ArraySpec("broad_backbone_aggregated_field_local",     "rediscover", np.ndarray, 3, True,  "Broad-backbone local-frame Coulomb E-field (FF14SB, the field-not-mu feature), once per (atom,frame)",
               is_feature=True, native_axis="rediscover_aggregated_row", irreps="1e", units="e/Angstrom^2", tensor_rank=1, parity="odd", mechanism="charges"),
+    ArraySpec("broad_backbone_aggregated_literature_kernel_T2", "rediscover", np.ndarray, 5, False, "Broad-backbone total fixed-kernel T2 payload: ring + bond + charge components, local frame",
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="mixed", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mixed"),
+    ArraySpec("broad_backbone_aggregated_ring_literature_kernel_T2", "rediscover", np.ndarray, 5, True, "Broad-backbone ring-current fixed-kernel T2 payload, local frame",
+              is_feature=True, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+    ArraySpec("broad_backbone_aggregated_bond_literature_kernel_T2", "rediscover", np.ndarray, 5, True, "Broad-backbone bond-anisotropy fixed-kernel T2 payload, local frame",
+              is_feature=True, native_axis="rediscover_aggregated_row", irreps="2e", units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("broad_backbone_aggregated_charge_literature_kernel_T2", "rediscover", np.ndarray, 5, True, "Broad-backbone FF14SB charge q/r3 EFG-like T2 payload, local frame",
+              is_feature=True, native_axis="rediscover_aggregated_row", irreps=_EFG_IRREPS, units="CoulombKe*e/Angstrom^3", tensor_rank=2, mechanism="electrostatic_efg"),
+
+    # -- per_atom_substrate (#58; h5-reader/src/rediscover/PerAtomSubstrate) --
+    # Every atom x DFT-present frame, lab/equivariant frame for target-axis
+    # tensors. CSV carries identity, support flags, and support counts; these
+    # sidecars carry dense row-aligned payloads.
+    ArraySpec("per_atom_substrate_target_T2", "rediscover", np.ndarray, 5, False, "Per-atom substrate DFT target T2 payload (molecular/lab frame)",
+              is_feature=False, native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("per_atom_substrate_target_T0", "rediscover", np.ndarray, 1, False, "Per-atom substrate DFT sigma_iso target payload",
+              is_feature=False, native_axis="rediscover_target_row", irreps="0e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=0, mechanism="quantum_reference"),
+    ArraySpec("per_atom_substrate_features_classical", "rediscover", np.ndarray, 45, False, "Per-atom substrate classical mechanism features; per-column metadata is in per_atom_substrate_column_specs.json",
+              is_feature=True, native_axis="rediscover_target_row", irreps="mixed", units="mixed", tensor_rank=2, mechanism="mixed"),
+    ArraySpec("per_atom_substrate_features_conditioning", "rediscover", np.ndarray, 26, False, "Per-atom substrate conditioning scalars from topology, geometry, support, and C++ feature reducers",
+              is_feature=True, native_axis="rediscover_target_row", irreps="26x0e", mechanism="conditioning"),
+    ArraySpec("per_atom_substrate_driver_modulation_by_atom", "rediscover", np.ndarray, 9, False, "Per-atom substrate Welford driver-modulation scalars by atom",
+              is_feature=True, native_axis="atom", irreps="9x0e", mechanism="conditioning"),
+    ArraySpec("per_atom_substrate_backbone_audit", "rediscover", np.ndarray, 14, False, "Per-atom substrate backbone compatibility audit payload for broad-backbone regression gates",
+              is_feature=False, native_axis="rediscover_target_row", irreps="mixed", units="mixed", tensor_rank=2, mechanism="provenance_qc"),
+    ArraySpec("per_atom_substrate_aimnet2_embedding", "rediscover", np.ndarray, 256, False, "Per-atom substrate AIMNet2 256-d embedding f32 sidecar, row-aligned with target rows",
+              is_feature=True, native_axis="rediscover_target_row", irreps="256x0e", mechanism="aimnet2"),
 
     # -- all_atom_equivariant (h5-reader/src/rediscover/AllAtomEquivariant) --
     # Corrected e3nn substrate: every atom, KD source geometry, and per-atom

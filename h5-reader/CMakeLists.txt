@@ -377,6 +377,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/AllAtomEquivariantSink.cpp
     src/rediscover/AllAtomEquivariant.h
     src/rediscover/AllAtomEquivariant.cpp
+    src/rediscover/PerAtomSubstrate.h
+    src/rediscover/PerAtomSubstrate.cpp
     src/rediscover/main_extract.cpp
 )
 target_include_directories(h5reader_extract PRIVATE

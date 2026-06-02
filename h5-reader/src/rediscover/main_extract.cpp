@@ -31,6 +31,7 @@
 #include "EfgFeatureSink.h"
 #include "McConnellNeighborhood.h"
 #include "OutputManifest.h"
+#include "PerAtomSubstrate.h"
 #include "RecordSink.h"
 #include "RediscoveryExtraction.h"
 #include "Relationship.h"
@@ -162,7 +163,7 @@ int main(int argc, char** argv) {
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -505,6 +506,50 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // -- per_atom_substrate: #58 lean all-atom aggregate carrier. This is a
+    // carrier on RelationshipEngine::RunTraversal's typed overload, not a
+    // RecordSink/WriteSource path, so the default output has no *_sources.csv.
+    if (which == QStringLiteral("per_atom_substrate")) {
+        h5reader::rediscover::PerAtomSubstrateConfig cfg;
+        cfg.ring_cutoff_A = ringCutoff;
+        cfg.bond_cutoff_A = bondCutoff;
+        cfg.charge_cutoff_A = chargeCutoff;
+        cfg.mc_near_field_ratio = mcNearFieldRatio;
+        h5reader::rediscover::PerAtomSubstrateStats stats;
+        try {
+            stats = h5reader::rediscover::RunPerAtomSubstrateEmit(body, outDir, cfg, align);
+        } catch (const std::exception& e) {
+            qCCritical(cMain).noquote() << "per_atom_substrate failed:" << e.what();
+            return 1;
+        }
+        qCInfo(cMain).noquote()
+            << "per_atom_substrate | atoms=" << stats.atom_count
+            << "| dft_rows=" << stats.dft_rows
+            << "| rows=" << stats.rows
+            << "| dft_present=" << stats.dft_present
+            << "| ring_present=" << stats.ring_present
+            << "| charge_present=" << stats.charge_present
+            << "| mc_lit_valid_present=" << stats.mc_lit_valid_present
+            << "| pair_query_rows=" << stats.pair_query_rows
+            << "| top_source_query_rows=" << stats.top_source_query_rows
+            << "| dominance_query_rows=" << stats.dominance_query_rows
+            << "| reader_pair_query_rows=" << stats.reader_pair_query_rows;
+        std::vector<h5reader::rediscover::OutputEntry> outputs = {
+            {QStringLiteral("per_atom_substrate"), QStringLiteral("per_atom_aggregate"),
+             QString(), QStringLiteral("per_atom_substrate_rows.csv"),
+             h5reader::rediscover::PerAtomSubstrateSidecars(cfg), stats.rows,
+             0, stats.rows,
+             QStringLiteral("row_id == frame_slot * n_atoms + atom_index; sidecar row i == rows.csv row_id i"),
+             QStringLiteral("raw_lab_frame"),
+             h5reader::rediscover::PerAtomSubstrateFeatureSupport(stats)}};
+        QString manifestErr;
+        if (!h5reader::rediscover::WriteOutputManifest(outDir, outputs, align, 0, &manifestErr)) {
+            qCCritical(cMain).noquote() << "manifest write failed:" << manifestErr;
+            return 4;
+        }
+        return 0;
+    }
+
     // ── broad_backbone — the composed heterogeneous relationship (its own
     // two-kind carrier; not a RunnableCase/RecordSink). ValidateScenario, run,
     // commit, manifest, return. ────────────────────────────────────────────
@@ -629,7 +674,7 @@ int main(int argc, char** argv) {
     }
     if (cases_to_run.empty()) {
         qCCritical(cMain).noquote() << "unknown --case" << which
-                                    << "(expected ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|efg|buckingham_efield|aimnet2_features|all)";
+                                    << "(expected ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|per_atom_substrate|efg|buckingham_efield|aimnet2_features|all)";
         return 2;
     }
     qCInfo(cMain).noquote() << "engine =" << engine << "| cases =" << cases_to_run.size();
