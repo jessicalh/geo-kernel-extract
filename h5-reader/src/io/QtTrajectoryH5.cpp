@@ -748,6 +748,8 @@ void ReadScalarWelford(HighFive::File& file,
         grp.getDataSet("rms_delta").read(buf->rms_delta);
     if (grp.exist("n_frames_per_atom"))
         grp.getDataSet("n_frames_per_atom").read(buf->n_frames_per_atom);
+    else if (grp.exist("n_per_atom"))
+        grp.getDataSet("n_per_atom").read(buf->n_frames_per_atom);
     if (grp.exist("delta_n_per_atom"))
         grp.getDataSet("delta_n_per_atom").read(buf->delta_n_per_atom);
     if (grp.exist("dxdt_n_per_atom"))

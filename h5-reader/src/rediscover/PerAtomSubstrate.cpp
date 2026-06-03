@@ -92,6 +92,31 @@ void fillNaN(std::array<double, kPerAtomClassicalCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomConditioningCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomBackboneAuditCols>& v) { v.fill(kNaN); }
 
+struct ChargeScalar {
+    double value = kNaN;
+    bool present = false;
+};
+
+struct RowChargeScalars {
+    ChargeScalar ff14sb;
+    ChargeScalar mopac_welford_mean;
+    bool charge_complete = false;
+};
+
+ChargeScalar catalogChargeScalar(const Body& body, ArrayId id, std::size_t atom, std::size_t row) {
+    ChargeScalar out;
+    if (!body.catalog.present(body, id, atom, row)) return out;
+    const double value = body.catalog.value(body, id, atom, row);
+    if (!std::isfinite(value)) return out;
+    out.value = value;
+    out.present = true;
+    return out;
+}
+
+QString csvScalar(const ChargeScalar& scalar) {
+    return scalar.present ? num(scalar.value) : QStringLiteral("NaN");
+}
+
 bool validResidue(const model::QtProtein& p, int32_t r) {
     return r >= 0 && static_cast<std::size_t>(r) < p.residueCount();
 }
@@ -843,6 +868,17 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
     return out;
 }
 
+RowChargeScalars rowChargeScalars(const Body& body, std::size_t atom, std::size_t row,
+                                  const DirectFeatures& direct) {
+    RowChargeScalars out;
+    out.ff14sb = catalogChargeScalar(body, ArrayId::Ff14sbCharge, atom, row);
+    out.mopac_welford_mean =
+        catalogChargeScalar(body, ArrayId::MopacChargeWelfordMean, atom, row);
+    out.charge_complete = out.ff14sb.present && out.mopac_welford_mean.present
+                          && direct.aimnet2_charge_present;
+    return out;
+}
+
 std::array<double, kPerAtomClassicalCols> classicalFeatures(const MechanismAggregate& agg,
                                                             const DirectFeatures& direct) {
     std::array<double, kPerAtomClassicalCols> f;
@@ -1062,6 +1098,7 @@ public:
     bool writeRow(const Body& body, std::size_t atom, std::size_t row, std::size_t frameSlot,
                   std::size_t orig, const DirectFeatures& direct,
                   const MechanismAggregate& agg,
+                  const RowChargeScalars& charges,
                   const std::array<double, kPerAtomClassicalCols>& classical,
                   const std::array<double, kPerAtomConditioningCols>& conditioning) {
         if (!ok_ || !body.run.protein) return false;
@@ -1112,6 +1149,10 @@ public:
                   << agg.ring_self_or_bonded_n << ',' << agg.bond_self_or_bonded_n << ','
                   << ((agg.ring_self_or_bonded_n + agg.bond_self_or_bonded_n
                        + agg.charge_excluded_same_residue_n) > 0 ? 1 : 0)
+                  << ',' << csvScalar(charges.ff14sb)
+                  << ',' << (charges.ff14sb.present ? 1 : 0)
+                  << ',' << csvScalar(charges.mopac_welford_mean)
+                  << ',' << (charges.mopac_welford_mean.present ? 1 : 0)
                   << '\n';
 
         const std::array<double, 5> targetT2 =
@@ -1170,7 +1211,9 @@ private:
             "bond_n,bond_n_valid,ff14sb_field_present,apbs_E_present,apbs_efg_present,"
             "mopac_coulomb_shielding_present,mopac_mc_shielding_present,aimnet2_charge_present,"
             "aimnet2_crg_present,aimnet2_embedding_present,ring_self_or_bonded_n,"
-            "bond_self_or_bonded_n,has_self_or_bonded_driver");
+            "bond_self_or_bonded_n,has_self_or_bonded_driver,"
+            "ff14sb_charge,ff14sb_charge_present,"
+            "mopac_welford_mean_charge,mopac_welford_mean_charge_present");
     }
 
     QString outDir_;
@@ -1275,6 +1318,18 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
                       QStringLiteral("embedding_000..255"), 0, QString(), QStringLiteral("256x0e"),
                       QStringLiteral("aimnet2"), true);
     }
+    addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
+                  QStringLiteral("ff14sb_charge"), 52, QStringLiteral("e"),
+                  QStringLiteral("0e"), QStringLiteral("charges"), true);
+    addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
+                  QStringLiteral("ff14sb_charge_present"), 53, QString(),
+                  QStringLiteral("0e"), QStringLiteral("provenance_qc"), false);
+    addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
+                  QStringLiteral("mopac_welford_mean_charge"), 54, QStringLiteral("e"),
+                  QStringLiteral("0e"), QStringLiteral("charges"), true);
+    addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
+                  QStringLiteral("mopac_welford_mean_charge_present"), 55, QString(),
+                  QStringLiteral("0e"), QStringLiteral("provenance_qc"), false);
     root.insert(QStringLiteral("columns"), cols);
     QSaveFile f(QStringLiteral("%1/per_atom_substrate_column_specs.json").arg(outDir));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -1331,6 +1386,14 @@ bool writePerAtomManifest(const QString& outDir, const PerAtomSubstrateStats& st
     queries.insert(QStringLiteral("dominance_fractions_rows"), static_cast<qint64>(stats.dominance_query_rows));
     queries.insert(QStringLiteral("reader_pairs_rows"), static_cast<qint64>(stats.reader_pair_query_rows));
     root.insert(QStringLiteral("pair_index_named_queries"), queries);
+    QJsonObject support;
+    support.insert(QStringLiteral("ff14sb_charge_present_rows"),
+                   static_cast<qint64>(stats.ff14sb_charge_present));
+    support.insert(QStringLiteral("mopac_welford_mean_charge_present_rows"),
+                   static_cast<qint64>(stats.mopac_welford_mean_charge_present));
+    support.insert(QStringLiteral("charge_complete_rows"),
+                   static_cast<qint64>(stats.charge_complete));
+    root.insert(QStringLiteral("feature_support_rows"), support);
     QSaveFile f(QStringLiteral("%1/per_atom_substrate_manifest.json").arg(outDir));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
@@ -1541,6 +1604,9 @@ QMap<QString, std::size_t> PerAtomSubstrateFeatureSupport(const PerAtomSubstrate
         {QStringLiteral("aimnet2_charge_present_rows"), stats.aimnet2_charge_present},
         {QStringLiteral("aimnet2_crg_present_rows"), stats.aimnet2_crg_present},
         {QStringLiteral("aimnet2_embedding_present_rows"), stats.aimnet2_embedding_present},
+        {QStringLiteral("ff14sb_charge_present_rows"), stats.ff14sb_charge_present},
+        {QStringLiteral("mopac_welford_mean_charge_present_rows"), stats.mopac_welford_mean_charge_present},
+        {QStringLiteral("charge_complete_rows"), stats.charge_complete},
         {QStringLiteral("mopac_coulomb_shielding_present_rows"), stats.mopac_coulomb_shielding_present},
         {QStringLiteral("mopac_mc_shielding_present_rows"), stats.mopac_mc_shielding_present},
     };
@@ -1602,12 +1668,13 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
                 classicalFeatures(agg, direct);
             const std::array<double, kPerAtomDriverMagnitudeCols> mag =
                 driverMagnitudes(agg, direct);
+            const RowChargeScalars charges = rowChargeScalars(body, atom, row, direct);
             for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c)
                 modulation[atom * kPerAtomDriverMagnitudeCols + c].push(mag[c]);
             const std::array<double, kPerAtomConditioningCols> conditioning =
                 conditioningFeatures(body, atom, row, agg, mag);
 
-            if (!writer.writeRow(body, atom, row, thisFrameSlot, orig, direct, agg,
+            if (!writer.writeRow(body, atom, row, thisFrameSlot, orig, direct, agg, charges,
                                  classical, conditioning)) {
                 throw std::runtime_error("per_atom_substrate row write failed");
             }
@@ -1622,6 +1689,9 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
             if (direct.aimnet2_charge_present) ++stats.aimnet2_charge_present;
             if (direct.aimnet2_crg_present) ++stats.aimnet2_crg_present;
             if (direct.aimnet2_embedding_present) ++stats.aimnet2_embedding_present;
+            if (charges.ff14sb.present) ++stats.ff14sb_charge_present;
+            if (charges.mopac_welford_mean.present) ++stats.mopac_welford_mean_charge_present;
+            if (charges.charge_complete) ++stats.charge_complete;
             if (direct.mopac_coulomb_present) ++stats.mopac_coulomb_shielding_present;
             if (direct.mopac_mc_present) ++stats.mopac_mc_shielding_present;
         });

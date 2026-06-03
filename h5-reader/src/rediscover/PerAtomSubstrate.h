@@ -49,6 +49,9 @@ struct PerAtomSubstrateStats {
     std::size_t aimnet2_charge_present = 0;
     std::size_t aimnet2_crg_present = 0;
     std::size_t aimnet2_embedding_present = 0;
+    std::size_t ff14sb_charge_present = 0;
+    std::size_t mopac_welford_mean_charge_present = 0;
+    std::size_t charge_complete = 0;
     std::size_t mopac_coulomb_shielding_present = 0;
     std::size_t mopac_mc_shielding_present = 0;
     std::size_t pair_query_rows = 0;
