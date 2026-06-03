@@ -10,12 +10,15 @@
 #include "ExtractionSupport.h"
 
 #include <QMap>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <vector>
 
 namespace h5reader::rediscover {
 
@@ -33,6 +36,40 @@ struct PerAtomSubstrateConfig {
     std::size_t reader_pair_atom = 0;
     std::size_t reader_pair_frame_slots = 3;
     int top_k = 3;
+};
+
+struct PerAtomIsolationScalars {
+    double gap_to_2nd_ring_r = std::numeric_limits<double>::quiet_NaN();
+    double gap_to_2nd_charge_r = std::numeric_limits<double>::quiet_NaN();
+    double gap_to_2nd_bond_r = std::numeric_limits<double>::quiet_NaN();
+    double dominant_fraction_ring = std::numeric_limits<double>::quiet_NaN();
+    double dominant_fraction_charge = std::numeric_limits<double>::quiet_NaN();
+    double dominant_fraction_mc = std::numeric_limits<double>::quiet_NaN();
+};
+
+struct PairContribution {
+    QString mechanism;
+    QString source_kind;
+    int32_t source_id = -1;
+    int32_t source_atom_index = -1;
+    int32_t source_cloud_index = -1;
+    int source_category_ord = -1;
+    int pointer_flags = 0;
+    Vec3 disp = Vec3::Zero();
+    double r = std::numeric_limits<double>::quiet_NaN();
+    double inv_r3 = std::numeric_limits<double>::quiet_NaN();
+    double cos_theta = std::numeric_limits<double>::quiet_NaN();
+    double dipolar = std::numeric_limits<double>::quiet_NaN();
+    double kernel_T0 = std::numeric_limits<double>::quiet_NaN();
+    std::array<double, 5> kernel_T2 = {};
+    double contribution = std::numeric_limits<double>::quiet_NaN();
+};
+
+enum PointerFlags : int {
+    PresentFlag = 1 << 0,
+    SelfOrBondedFlag = 1 << 1,
+    ProducerValidFlag = 1 << 2,
+    NearFieldFlag = 1 << 3,
 };
 
 struct PerAtomChannelAudit {
@@ -78,13 +115,17 @@ struct PerAtomSubstrateStats {
     std::size_t top_source_query_rows = 0;
     std::size_t dominance_query_rows = 0;
     std::size_t reader_pair_query_rows = 0;
+    QMap<QString, std::size_t> hunter_candidate_counts;
+    bool hunter_anti_circular_assertion = false;
+    QJsonObject partition_bin_manifest;
     QMap<QString, PerAtomChannelAudit> new_channel_audit;
     QStringList absent_new_channel_slabs;
 };
 
 constexpr std::size_t kPerAtomClassicalCols = 89;
-constexpr std::size_t kPerAtomConditioningCols = 26;
+constexpr std::size_t kPerAtomConditioningCols = 32;
 constexpr std::size_t kPerAtomDriverMagnitudeCols = 9;
+constexpr std::size_t kPerAtomPartitionBinCols = 25;
 constexpr std::size_t kPerAtomBackboneAuditCols = 14;
 constexpr std::size_t kPerAtomTargetDecompositionCols = 21;
 constexpr std::size_t kPerAtomRingPathCols = 226;
@@ -99,5 +140,16 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
 QStringList PerAtomSubstrateSidecars(const PerAtomSubstrateConfig& config);
 
 QMap<QString, std::size_t> PerAtomSubstrateFeatureSupport(const PerAtomSubstrateStats& stats);
+
+std::vector<PairContribution> PerAtomRowPairContributions(const Body& body,
+                                                          std::size_t atom,
+                                                          std::size_t row,
+                                                          const PerAtomSubstrateConfig& cfg,
+                                                          const LocalFrame& frame);
+
+PerAtomIsolationScalars PerAtomIsolationScalarsForRow(const Body& body,
+                                                      std::size_t atom,
+                                                      std::size_t row,
+                                                      const PerAtomSubstrateConfig& cfg);
 
 }  // namespace h5reader::rediscover

@@ -1,5 +1,6 @@
 #include "PerAtomSubstrate.h"
 
+#include "CaseHunter.h"
 #include "Catalog.h"
 #include "LocalFrameBasis.h"
 #include "McConnellLiteratureKernel.h"
@@ -111,6 +112,18 @@ void fillNaN(std::array<double, kPerAtomBackboneAuditCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomRingPathCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomMethodPathCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomHbondConditioningCols>& v) { v.fill(kNaN); }
+
+double dominanceFraction(const std::vector<double>& vals) {
+    double sum = 0.0;
+    double maxv = 0.0;
+    for (double v : vals) {
+        if (!std::isfinite(v)) continue;
+        const double a = std::abs(v);
+        sum += a;
+        maxv = std::max(maxv, a);
+    }
+    return sum > 0.0 ? maxv / sum : kNaN;
+}
 
 const model::NpyColumn* indexedColumn(const model::QtConformationSnapshot* snapshot,
                                       io::FieldKind kind,
@@ -539,32 +552,8 @@ struct MechanismAggregate {
     int bond_n_valid = 0;
     int bond_self_or_bonded_n = 0;
 
+    PerAtomIsolationScalars isolation;
     std::array<double, kPerAtomBackboneAuditCols> backbone_audit = {};
-};
-
-struct PairContribution {
-    QString mechanism;
-    QString source_kind;
-    int32_t source_id = -1;
-    int32_t source_atom_index = -1;
-    int32_t source_cloud_index = -1;
-    int source_category_ord = -1;
-    int pointer_flags = 0;
-    Vec3 disp = Vec3::Zero();
-    double r = kNaN;
-    double inv_r3 = kNaN;
-    double cos_theta = kNaN;
-    double dipolar = kNaN;
-    double kernel_T0 = kNaN;
-    std::array<double, 5> kernel_T2 = {};
-    double contribution = kNaN;
-};
-
-enum PointerFlags : int {
-    PresentFlag = 1 << 0,
-    SelfOrBondedFlag = 1 << 1,
-    ProducerValidFlag = 1 << 2,
-    NearFieldFlag = 1 << 3,
 };
 
 bool ringSourceIsSelfOrBonded(const Body& body, std::size_t targetAtom, const model::QtRing& sourceRing) {
@@ -724,10 +713,12 @@ PairContribution makeBondContribution(const Body& body, std::size_t targetAtom,
     return out;
 }
 
-std::vector<PairContribution> rowPairContributions(const Body& body, std::size_t atom,
-                                                   std::size_t row,
-                                                   const PerAtomSubstrateConfig& cfg,
-                                                   const LocalFrame& frame) {
+}  // namespace
+
+std::vector<PairContribution> PerAtomRowPairContributions(const Body& body, std::size_t atom,
+                                                          std::size_t row,
+                                                          const PerAtomSubstrateConfig& cfg,
+                                                          const LocalFrame& frame) {
     std::vector<PairContribution> out;
     for (const SourceRef& ref : verbs::near(body, CloudKind::RingCenters, atom, row, cfg.ring_cutoff_A))
         out.push_back(makeRingContribution(body, atom, row, ref, frame));
@@ -739,6 +730,8 @@ std::vector<PairContribution> rowPairContributions(const Body& body, std::size_t
         out.push_back(makeBondContribution(body, atom, row, ref, cfg.mc_near_field_ratio, frame));
     return out;
 }
+
+namespace {
 
 std::array<double, 5> chargeKernelT2Local(const Body& body, std::size_t atom, std::size_t row,
                                           const PerAtomSubstrateConfig& cfg,
@@ -772,12 +765,18 @@ std::array<double, 5> chargeKernelT2Local(const Body& body, std::size_t atom, st
     return finiteT2(st.T2) ? st.T2 : nanT2();
 }
 
+double gapToSecondDistance(const Body& body, CloudKind kind, std::size_t atom, std::size_t row,
+                           double cutoff, bool heavyOnly = false);
+
 MechanismAggregate reduceMechanisms(const Body& body, std::size_t atom, std::size_t row,
                                     const PerAtomSubstrateConfig& cfg) {
     MechanismAggregate agg;
     fillNaN(agg.backbone_audit);
     const LocalFrame lab;
-    const std::vector<PairContribution> labPairs = rowPairContributions(body, atom, row, cfg, lab);
+    const std::vector<PairContribution> labPairs = PerAtomRowPairContributions(body, atom, row, cfg, lab);
+    std::vector<double> ringVals;
+    std::vector<double> chargeVals;
+    std::vector<double> mcVals;
     for (const PairContribution& p : labPairs) {
         if (p.mechanism == QStringLiteral("ring_jb") && finiteT2(p.kernel_T2)) {
             agg.ring_present = true;
@@ -788,10 +787,12 @@ MechanismAggregate reduceMechanisms(const Body& body, std::size_t atom, std::siz
                 ++agg.ring_self_or_bonded_n;
             else
                 ++agg.ring_valid_n;
+            ringVals.push_back(p.contribution);
         } else if (p.mechanism == QStringLiteral("charge_q_over_r3") && finiteT2(p.kernel_T2)) {
             agg.charge_present = true;
             addT2(agg.charge_T2, p.kernel_T2);
             ++agg.charge_n;
+            chargeVals.push_back(p.contribution);
             if (p.r > 1e-9 && std::isfinite(p.inv_r3)) {
                 // FIELD E = sum q_i (r_atom - r_i) / r^3. The per-source q is
                 // reconstructed from q/r^3 only for the vector field by reading
@@ -801,6 +802,7 @@ MechanismAggregate reduceMechanisms(const Body& body, std::size_t atom, std::siz
             agg.mc_lit_valid_present = true;
             agg.mc_lit_valid.T0 += p.kernel_T0;
             for (std::size_t i = 0; i < 5; ++i) agg.mc_lit_valid.T2[i] += p.kernel_T2[i];
+            mcVals.push_back(p.contribution);
         }
         if (p.mechanism == QStringLiteral("mc_lit_valid")) {
             ++agg.bond_n;
@@ -810,6 +812,15 @@ MechanismAggregate reduceMechanisms(const Body& body, std::size_t atom, std::siz
                 ++agg.bond_n_valid;
         }
     }
+    agg.isolation.dominant_fraction_ring = dominanceFraction(ringVals);
+    agg.isolation.dominant_fraction_charge = dominanceFraction(chargeVals);
+    agg.isolation.dominant_fraction_mc = dominanceFraction(mcVals);
+    agg.isolation.gap_to_2nd_ring_r =
+        gapToSecondDistance(body, CloudKind::RingCenters, atom, row, 1000.0);
+    agg.isolation.gap_to_2nd_charge_r =
+        gapToSecondDistance(body, CloudKind::ChargeSites, atom, row, 1000.0);
+    agg.isolation.gap_to_2nd_bond_r =
+        gapToSecondDistance(body, CloudKind::BondMidpoints, atom, row, 1000.0);
 
     // The FF14SB field uses the same included charge source set as the q/r^3
     // T2 reducer. Count excluded same-residue charge sites separately.
@@ -841,7 +852,7 @@ MechanismAggregate reduceMechanisms(const Body& body, std::size_t atom, std::siz
         const FrameResult fr = backboneAuditFrame(body, atom, row);
         if (fr.frame.is_valid) {
             const std::vector<PairContribution> localPairs =
-                rowPairContributions(body, atom, row, cfg, fr.frame);
+                PerAtomRowPairContributions(body, atom, row, cfg, fr.frame);
             const std::array<double, 5> chargeLocal = chargeKernelT2Local(body, atom, row, cfg, fr.frame);
             Vec3 fieldLocal = Vec3::Zero();
             model::SphericalTensor mcLocal;
@@ -903,6 +914,62 @@ double nearestDistance(const Body& body, CloudKind kind, std::size_t atom, std::
     }
     return std::isfinite(best) ? best : kNaN;
 }
+
+double gapToSecondDistance(const Body& body, CloudKind kind, std::size_t atom, std::size_t row,
+                           double cutoff, bool heavyOnly) {
+    if (!body.run.protein) return kNaN;
+    const model::QtProtein& p = *body.run.protein;
+    const Vec3 query = verbs::pos(body, atom, row);
+    std::array<double, 2> best = {
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+    };
+    for (const SourceRef& ref : verbs::near(body, kind, atom, row, cutoff)) {
+        if (ref.cloud_index < 0) continue;
+        if (kind == CloudKind::Atoms) {
+            if (ref.entity_index < 0) continue;
+            const std::size_t sourceAtom = static_cast<std::size_t>(ref.entity_index);
+            if (sourceAtom == atom || sourceAtom >= p.atomCount()) continue;
+            if (heavyOnly && p.atom(sourceAtom).element == model::Element::H) continue;
+        }
+        const Vec3 point = body.idx.spatial.tree(kind, row).pointAt(static_cast<std::size_t>(ref.cloud_index));
+        const double d = (point - query).norm();
+        if (!std::isfinite(d)) continue;
+        if (d < best[0]) {
+            best[1] = best[0];
+            best[0] = d;
+        } else if (d < best[1]) {
+            best[1] = d;
+        }
+    }
+    return std::isfinite(best[0]) && std::isfinite(best[1]) ? best[1] - best[0] : kNaN;
+}
+
+}  // namespace
+
+PerAtomIsolationScalars PerAtomIsolationScalarsForRow(const Body& body,
+                                                      std::size_t atom,
+                                                      std::size_t row,
+                                                      const PerAtomSubstrateConfig& cfg) {
+    PerAtomIsolationScalars out;
+    out.gap_to_2nd_ring_r = gapToSecondDistance(body, CloudKind::RingCenters, atom, row, 1000.0);
+    out.gap_to_2nd_charge_r = gapToSecondDistance(body, CloudKind::ChargeSites, atom, row, 1000.0);
+    out.gap_to_2nd_bond_r = gapToSecondDistance(body, CloudKind::BondMidpoints, atom, row, 1000.0);
+    std::vector<double> ringVals;
+    std::vector<double> chargeVals;
+    std::vector<double> mcVals;
+    for (const PairContribution& p : PerAtomRowPairContributions(body, atom, row, cfg, LocalFrame{})) {
+        if (p.mechanism == QStringLiteral("ring_jb")) ringVals.push_back(p.contribution);
+        if (p.mechanism == QStringLiteral("charge_q_over_r3")) chargeVals.push_back(p.contribution);
+        if (p.mechanism == QStringLiteral("mc_lit_valid")) mcVals.push_back(p.contribution);
+    }
+    out.dominant_fraction_ring = dominanceFraction(ringVals);
+    out.dominant_fraction_charge = dominanceFraction(chargeVals);
+    out.dominant_fraction_mc = dominanceFraction(mcVals);
+    return out;
+}
+
+namespace {
 
 int countNear(const Body& body, CloudKind kind, std::size_t atom, std::size_t row, double cutoff) {
     return static_cast<int>(verbs::near(body, kind, atom, row, cutoff).size());
@@ -1539,6 +1606,21 @@ void auditHbondConditioningFeatures(PerAtomSubstrateStats& stats, const DirectFe
                       direct.hbond_conditioning, c, 10);
 }
 
+void auditIsolationFeatures(PerAtomSubstrateStats& stats, const PerAtomIsolationScalars& iso) {
+    auditScalar(stats, QStringLiteral("gap_to_2nd_ring_r"),
+                std::isfinite(iso.gap_to_2nd_ring_r), iso.gap_to_2nd_ring_r);
+    auditScalar(stats, QStringLiteral("gap_to_2nd_charge_r"),
+                std::isfinite(iso.gap_to_2nd_charge_r), iso.gap_to_2nd_charge_r);
+    auditScalar(stats, QStringLiteral("gap_to_2nd_bond_r"),
+                std::isfinite(iso.gap_to_2nd_bond_r), iso.gap_to_2nd_bond_r);
+    auditScalar(stats, QStringLiteral("dominant_fraction_ring"),
+                std::isfinite(iso.dominant_fraction_ring), iso.dominant_fraction_ring);
+    auditScalar(stats, QStringLiteral("dominant_fraction_charge"),
+                std::isfinite(iso.dominant_fraction_charge), iso.dominant_fraction_charge);
+    auditScalar(stats, QStringLiteral("dominant_fraction_mc"),
+                std::isfinite(iso.dominant_fraction_mc), iso.dominant_fraction_mc);
+}
+
 void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct,
                          const RowChargeScalars& charges) {
     const bool hbondGeometryPresent = direct.hbond_nearest_distance_present
@@ -1725,6 +1807,12 @@ std::array<double, kPerAtomConditioningCols> conditioningFeatures(
     c[i++] = (agg.ring_self_or_bonded_n + agg.bond_self_or_bonded_n
               + agg.charge_excluded_same_residue_n) > 0 ? 1.0 : 0.0;
     for (double v : mag) c[i++] = finiteOrZero(v);
+    c[i++] = agg.isolation.gap_to_2nd_ring_r;
+    c[i++] = agg.isolation.gap_to_2nd_charge_r;
+    c[i++] = agg.isolation.gap_to_2nd_bond_r;
+    c[i++] = agg.isolation.dominant_fraction_ring;
+    c[i++] = agg.isolation.dominant_fraction_charge;
+    c[i++] = agg.isolation.dominant_fraction_mc;
     return c;
 }
 
@@ -1881,6 +1969,9 @@ const QStringList kConditioningColumns = {
     QStringLiteral("abs_mopac_coulomb_T2"), QStringLiteral("abs_mopac_mc_T2"),
     QStringLiteral("abs_apbs_efg_T2"), QStringLiteral("abs_apbs_E"),
     QStringLiteral("abs_ff14sb_E"), QStringLiteral("abs_aimnet2_crg"),
+    QStringLiteral("gap_to_2nd_ring_r"), QStringLiteral("gap_to_2nd_charge_r"),
+    QStringLiteral("gap_to_2nd_bond_r"), QStringLiteral("dominant_fraction_ring"),
+    QStringLiteral("dominant_fraction_charge"), QStringLiteral("dominant_fraction_mc"),
 };
 
 const QStringList kMagnitudeColumns = {
@@ -1889,6 +1980,34 @@ const QStringList kMagnitudeColumns = {
     QStringLiteral("sd_mopac_mc_T2_by_atom"), QStringLiteral("sd_apbs_efg_T2_by_atom"),
     QStringLiteral("sd_apbs_E_by_atom"), QStringLiteral("sd_ff14sb_E_by_atom"),
     QStringLiteral("sd_aimnet2_crg_by_atom"),
+};
+
+const QStringList kPartitionBinColumns = {
+    QStringLiteral("bin_nearest_ring_r_4_6_8_10"),
+    QStringLiteral("bin_nearest_charge_r_4_6_8_10"),
+    QStringLiteral("bin_nearest_bond_midpoint_r_4_6_8_10"),
+    QStringLiteral("bin_nearest_heavy_atom_r_4_6_8_10"),
+    QStringLiteral("bin_gap_to_2nd_ring_r_4_6_8_10"),
+    QStringLiteral("bin_gap_to_2nd_charge_r_4_6_8_10"),
+    QStringLiteral("bin_gap_to_2nd_bond_r_4_6_8_10"),
+    QStringLiteral("bin_abs_ring_jb_T2_quintile"),
+    QStringLiteral("bin_abs_charge_T2_quintile"),
+    QStringLiteral("bin_abs_mc_lit_T2_quintile"),
+    QStringLiteral("bin_abs_mopac_coulomb_T2_quintile"),
+    QStringLiteral("bin_abs_mopac_mc_T2_quintile"),
+    QStringLiteral("bin_abs_apbs_efg_T2_quintile"),
+    QStringLiteral("bin_abs_apbs_E_quintile"),
+    QStringLiteral("bin_abs_ff14sb_E_quintile"),
+    QStringLiteral("bin_abs_aimnet2_crg_quintile"),
+    QStringLiteral("bin_sd_ring_jb_T2_by_atom_quintile"),
+    QStringLiteral("bin_sd_charge_T2_by_atom_quintile"),
+    QStringLiteral("bin_sd_mc_lit_T2_by_atom_quintile"),
+    QStringLiteral("bin_sd_mopac_coulomb_T2_by_atom_quintile"),
+    QStringLiteral("bin_sd_mopac_mc_T2_by_atom_quintile"),
+    QStringLiteral("bin_sd_apbs_efg_T2_by_atom_quintile"),
+    QStringLiteral("bin_sd_apbs_E_by_atom_quintile"),
+    QStringLiteral("bin_sd_ff14sb_E_by_atom_quintile"),
+    QStringLiteral("bin_sd_aimnet2_crg_by_atom_quintile"),
 };
 
 const QStringList kBackboneAuditColumns = {
@@ -1928,6 +2047,8 @@ void validateColumnCounts() {
           kConditioningColumns.size(), kPerAtomConditioningCols);
     check(QStringLiteral("per_atom_substrate_driver_modulation_by_atom"),
           kMagnitudeColumns.size(), kPerAtomDriverMagnitudeCols);
+    check(QStringLiteral("per_atom_substrate_partition_bins"),
+          kPartitionBinColumns.size(), kPerAtomPartitionBinCols);
     check(QStringLiteral("per_atom_substrate_backbone_audit"),
           kBackboneAuditColumns.size(), kPerAtomBackboneAuditCols);
     check(QStringLiteral("per_atom_substrate_features_ring_paths"),
@@ -1935,7 +2056,169 @@ void validateColumnCounts() {
     check(QStringLiteral("per_atom_substrate_features_method_paths"),
           kMethodPathColumns.size(), kPerAtomMethodPathCols);
     check(QStringLiteral("per_atom_substrate_features_hbond_conditioning"),
-          kHbondConditioningColumns.size(), kPerAtomHbondConditioningCols);
+	          kHbondConditioningColumns.size(), kPerAtomHbondConditioningCols);
+}
+
+struct RowPartitionScratch {
+    std::size_t atom = 0;
+    int stratum = 0;
+    std::array<double, 7> geometry = {};
+    std::array<double, kPerAtomDriverMagnitudeCols> magnitude = {};
+};
+
+struct QuintileEdges {
+    std::array<double, 4> edge = {kNaN, kNaN, kNaN, kNaN};
+    bool valid = false;
+};
+
+int distanceBandId(double v) {
+    if (!std::isfinite(v)) return -1;
+    if (v < 4.0) return 0;
+    if (v < 6.0) return 1;
+    if (v < 8.0) return 2;
+    if (v < 10.0) return 3;
+    return 4;
+}
+
+QuintileEdges computeQuintileEdges(std::vector<double> values) {
+    QuintileEdges out;
+    values.erase(std::remove_if(values.begin(), values.end(),
+                                [](double v) { return !std::isfinite(v); }),
+                 values.end());
+    if (values.empty()) return out;
+    std::sort(values.begin(), values.end());
+    const std::array<double, 4> probs = {0.2, 0.4, 0.6, 0.8};
+    for (std::size_t i = 0; i < probs.size(); ++i) {
+        const double pos = probs[i] * static_cast<double>(values.size() - 1);
+        out.edge[i] = values[static_cast<std::size_t>(std::llround(pos))];
+    }
+    out.valid = true;
+    return out;
+}
+
+int quintileBinId(double v, const QuintileEdges& edges) {
+    if (!edges.valid || !std::isfinite(v)) return -1;
+    for (std::size_t i = 0; i < edges.edge.size(); ++i) {
+        if (v <= edges.edge[i]) return static_cast<int>(i);
+    }
+    return 4;
+}
+
+QJsonArray jsonArrayDoubles(const std::array<double, 4>& values, bool valid) {
+    QJsonArray arr;
+    for (double v : values)
+        arr.append(valid && std::isfinite(v) ? QJsonValue(v) : QJsonValue(QJsonValue::Null));
+    return arr;
+}
+
+bool writePartitionBins(const QString& outDir,
+                        const std::vector<RowPartitionScratch>& rows,
+                        const std::vector<WelfordCell>& modulation,
+                        std::size_t atoms,
+                        PerAtomSubstrateStats& stats) {
+    constexpr int kStratumCount = static_cast<int>(StratumOrd::Other) + 1;
+    using FeatureBuckets = std::array<std::vector<double>, kPerAtomDriverMagnitudeCols>;
+    std::array<FeatureBuckets, kStratumCount> magnitudeBuckets;
+    std::array<FeatureBuckets, kStratumCount> modulationBuckets;
+    std::vector<int> atomStrata(atoms, -1);
+
+    for (const RowPartitionScratch& row : rows) {
+        const int s = std::clamp(row.stratum, 0, kStratumCount - 1);
+        if (row.atom < atomStrata.size() && atomStrata[row.atom] < 0) atomStrata[row.atom] = s;
+        for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c)
+            if (std::isfinite(row.magnitude[c])) magnitudeBuckets[s][c].push_back(row.magnitude[c]);
+    }
+    for (std::size_t atom = 0; atom < atoms; ++atom) {
+        const int s = atomStrata[atom] >= 0 ? atomStrata[atom] : kStratumCount - 1;
+        for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c) {
+            const double v = modulation[atom * kPerAtomDriverMagnitudeCols + c].sd();
+            if (std::isfinite(v)) modulationBuckets[s][c].push_back(v);
+        }
+    }
+
+    std::array<std::array<QuintileEdges, kPerAtomDriverMagnitudeCols>, kStratumCount> magnitudeEdges;
+    std::array<std::array<QuintileEdges, kPerAtomDriverMagnitudeCols>, kStratumCount> modulationEdges;
+    for (int s = 0; s < kStratumCount; ++s) {
+        for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c) {
+            magnitudeEdges[s][c] = computeQuintileEdges(std::move(magnitudeBuckets[s][c]));
+            modulationEdges[s][c] = computeQuintileEdges(std::move(modulationBuckets[s][c]));
+        }
+    }
+
+    std::vector<int32_t> out;
+    out.reserve(rows.size() * kPerAtomPartitionBinCols);
+    std::array<int32_t, kPerAtomPartitionBinCols> minBin;
+    std::array<int32_t, kPerAtomPartitionBinCols> maxBin;
+    std::array<std::size_t, kPerAtomPartitionBinCols> present;
+    minBin.fill(std::numeric_limits<int32_t>::max());
+    maxBin.fill(std::numeric_limits<int32_t>::min());
+    present.fill(0);
+    auto pushBin = [&](std::size_t col, int32_t bin) {
+        out.push_back(bin);
+        if (bin < 0) return;
+        ++present[col];
+        minBin[col] = std::min(minBin[col], bin);
+        maxBin[col] = std::max(maxBin[col], bin);
+    };
+
+    for (const RowPartitionScratch& row : rows) {
+        std::size_t col = 0;
+        const int s = std::clamp(row.stratum, 0, kStratumCount - 1);
+        for (double v : row.geometry) pushBin(col++, distanceBandId(v));
+        for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c)
+            pushBin(col++, quintileBinId(row.magnitude[c], magnitudeEdges[s][c]));
+        for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c) {
+            const double v = row.atom < atoms ? modulation[row.atom * kPerAtomDriverMagnitudeCols + c].sd()
+                                              : kNaN;
+            pushBin(col++, quintileBinId(v, modulationEdges[s][c]));
+        }
+    }
+    if (!writeNpy<int32_t>(QStringLiteral("%1/per_atom_substrate_partition_bins.npy").arg(outDir),
+                           {rows.size(), kPerAtomPartitionBinCols}, out, QByteArray("<i4"))) {
+        return false;
+    }
+
+    for (int i = 0; i < kPartitionBinColumns.size(); ++i) {
+        PerAtomChannelAudit& audit = stats.new_channel_audit[kPartitionBinColumns[i]];
+        audit.present = present[static_cast<std::size_t>(i)];
+        if (present[static_cast<std::size_t>(i)] > 0) {
+            audit.has_range = true;
+            audit.min = minBin[static_cast<std::size_t>(i)];
+            audit.max = maxBin[static_cast<std::size_t>(i)];
+        }
+    }
+
+    QJsonObject manifest;
+    manifest.insert(QStringLiteral("array"), QStringLiteral("per_atom_substrate_partition_bins"));
+    manifest.insert(QStringLiteral("dtype"), QStringLiteral("int32"));
+    manifest.insert(QStringLiteral("missing_bin_id"), -1);
+    manifest.insert(QStringLiteral("distance_band_edges_A"), QJsonArray{4.0, 6.0, 8.0, 10.0});
+    QJsonArray shape;
+    shape.append(static_cast<qint64>(rows.size()));
+    shape.append(static_cast<qint64>(kPerAtomPartitionBinCols));
+    manifest.insert(QStringLiteral("shape"), shape);
+    QJsonArray columns;
+    for (const QString& name : kPartitionBinColumns) columns.append(name);
+    manifest.insert(QStringLiteral("columns"), columns);
+
+    QJsonObject strata;
+    for (int s = 0; s < kStratumCount; ++s) {
+        QJsonObject stratum;
+        QJsonObject mag;
+        QJsonObject mod;
+        for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c) {
+            mag.insert(kConditioningColumns[17 + static_cast<int>(c)],
+                       jsonArrayDoubles(magnitudeEdges[s][c].edge, magnitudeEdges[s][c].valid));
+            mod.insert(kMagnitudeColumns[static_cast<int>(c)],
+                       jsonArrayDoubles(modulationEdges[s][c].edge, modulationEdges[s][c].valid));
+        }
+        stratum.insert(QStringLiteral("driver_magnitude_quintiles"), mag);
+        stratum.insert(QStringLiteral("driver_modulation_quintiles"), mod);
+        strata.insert(stratumName(static_cast<StratumOrd>(s)), stratum);
+    }
+    manifest.insert(QStringLiteral("quintile_edges_by_stratum"), strata);
+    stats.partition_bin_manifest = manifest;
+    return true;
 }
 
 class PerAtomWriter {
@@ -2480,15 +2763,33 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
                       name, i, units, irreps, mechanism, feature, sign);
     }
     for (int i = 0; i < kConditioningColumns.size(); ++i) {
+        const QString name = kConditioningColumns[i];
+        const QString units = name.contains(QStringLiteral("_r")) ? QStringLiteral("A") : QString();
+        const QString mechanism = name.contains(QStringLiteral("dominant_fraction"))
+                                      || name.contains(QStringLiteral("gap_to_2nd"))
+                                  ? QStringLiteral("isolation")
+                                  : QStringLiteral("conditioning");
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_conditioning"),
-                      kConditioningColumns[i], i, QString(), QStringLiteral("0e"),
-                      QStringLiteral("conditioning"), false);
+                      name, i, units, QStringLiteral("0e"),
+                      mechanism, false);
     }
     for (int i = 0; i < kMagnitudeColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_driver_modulation_by_atom"),
                       kMagnitudeColumns[i], i, QString(), QStringLiteral("0e"),
                       QStringLiteral("conditioning"), false, QString(),
                       QStringLiteral("atom"));
+    }
+    for (int i = 0; i < kPartitionBinColumns.size(); ++i) {
+        QString family = QStringLiteral("partition_bin");
+        if (kPartitionBinColumns[i].contains(QStringLiteral("_4_6_8_10")))
+            family = QStringLiteral("geometry_distance_band");
+        else if (kPartitionBinColumns[i].contains(QStringLiteral("_sd_")))
+            family = QStringLiteral("driver_modulation_quintile");
+        else
+            family = QStringLiteral("driver_magnitude_quintile");
+        addColumnSpec(cols, QStringLiteral("per_atom_substrate_partition_bins"),
+                      kPartitionBinColumns[i], i, QStringLiteral("bin_id"),
+                      QStringLiteral("0e"), family, false);
     }
     for (int i = 0; i < kBackboneAuditColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_backbone_audit"),
@@ -2618,6 +2919,17 @@ bool writePerAtomManifest(const QString& outDir, const PerAtomSubstrateStats& st
     queries.insert(QStringLiteral("dominance_fractions_rows"), static_cast<qint64>(stats.dominance_query_rows));
     queries.insert(QStringLiteral("reader_pairs_rows"), static_cast<qint64>(stats.reader_pair_query_rows));
     root.insert(QStringLiteral("pair_index_named_queries"), queries);
+    QJsonObject hunter;
+    hunter.insert(QStringLiteral("anti_circular_assertion"), stats.hunter_anti_circular_assertion);
+    QJsonObject hunterCounts;
+    for (auto it = stats.hunter_candidate_counts.constBegin();
+         it != stats.hunter_candidate_counts.constEnd(); ++it) {
+        hunterCounts.insert(it.key(), static_cast<qint64>(it.value()));
+    }
+    hunter.insert(QStringLiteral("candidate_counts"), hunterCounts);
+    hunter.insert(QStringLiteral("selection_predicate"),
+                  QStringLiteral("typed_habitat && isolation && motion && quiet; DFT measured after selection only"));
+    root.insert(QStringLiteral("case_hunter"), hunter);
     QJsonObject support;
     support.insert(QStringLiteral("ff14sb_charge_present_rows"),
                    static_cast<qint64>(stats.ff14sb_charge_present));
@@ -2666,6 +2978,7 @@ bool writePerAtomManifest(const QString& outDir, const PerAtomSubstrateStats& st
         audit.insert(it.key(), o);
     }
     root.insert(QStringLiteral("new_channel_audit"), audit);
+    root.insert(QStringLiteral("partition_bins"), stats.partition_bin_manifest);
     QJsonArray absent;
     for (const QString& s : stats.absent_new_channel_slabs) absent.append(s);
     root.insert(QStringLiteral("absent_new_channel_slabs"), absent);
@@ -2752,25 +3065,13 @@ bool emitPairQueries(const Body& body, const QString& outDir, const PerAtomSubst
         contrib.push_back(p.contribution);
     };
 
-    auto dominance = [](const std::vector<double>& vals) {
-        double sum = 0.0;
-        double maxv = 0.0;
-        for (double v : vals) {
-            if (!std::isfinite(v)) continue;
-            const double a = std::abs(v);
-            sum += a;
-            maxv = std::max(maxv, a);
-        }
-        return sum > 0.0 ? maxv / sum : kNaN;
-    };
-
     const std::size_t frameSlots = std::min(cfg.query_frame_slots, rows.size());
     for (std::size_t fs = 0; fs < frameSlots; ++fs) {
         const std::size_t h5Row = rows[fs];
         const std::size_t orig = body.run.frameMap.originalIndex(h5Row);
         for (std::size_t atom = 0; atom < nAtoms; ++atom) {
             const std::size_t targetRowId = fs * nAtoms + atom;
-            const std::vector<PairContribution> pairs = rowPairContributions(body, atom, h5Row, cfg, LocalFrame{});
+            const std::vector<PairContribution> pairs = PerAtomRowPairContributions(body, atom, h5Row, cfg, LocalFrame{});
             std::vector<double> ringVals, chargeVals, mcVals;
             std::vector<PairContribution> top = pairs;
             std::sort(top.begin(), top.end(), [](const PairContribution& a, const PairContribution& b) {
@@ -2799,8 +3100,8 @@ bool emitPairQueries(const Body& body, const QString& outDir, const PerAtomSubst
             }
             DirectFeatures direct = directFeatures(body, atom, h5Row, orig, LocalFrame{});
             *domOut << static_cast<qint64>(targetRowId) << ',' << static_cast<qint64>(atom)
-                    << ',' << static_cast<qint64>(fs) << ',' << num(dominance(ringVals))
-                    << ',' << num(dominance(chargeVals)) << ',' << num(dominance(mcVals))
+                    << ',' << static_cast<qint64>(fs) << ',' << num(dominanceFraction(ringVals))
+                    << ',' << num(dominanceFraction(chargeVals)) << ',' << num(dominanceFraction(mcVals))
                     << ',' << (direct.mopac_coulomb_present ? "1" : "nan")
                     << ',' << (direct.aimnet2_embedding_present ? "1" : "nan") << '\n';
             ++stats.dominance_query_rows;
@@ -2813,7 +3114,7 @@ bool emitPairQueries(const Body& body, const QString& outDir, const PerAtomSubst
         const std::size_t h5Row = rows[fs];
         const std::size_t orig = body.run.frameMap.originalIndex(h5Row);
         const std::size_t targetRowId = fs * nAtoms + readerAtom;
-        for (const PairContribution& p : rowPairContributions(body, readerAtom, h5Row, cfg, LocalFrame{})) {
+        for (const PairContribution& p : PerAtomRowPairContributions(body, readerAtom, h5Row, cfg, LocalFrame{})) {
             writePairRows(*readerOut, targetRowId, readerAtom, fs, h5Row, orig, p);
             ++stats.reader_pair_query_rows;
         }
@@ -2935,6 +3236,7 @@ QStringList PerAtomSubstrateSidecars(const PerAtomSubstrateConfig& config) {
         QStringLiteral("per_atom_substrate_features_method_paths.npy"),
         QStringLiteral("per_atom_substrate_features_hbond_conditioning.npy"),
         QStringLiteral("per_atom_substrate_features_conditioning.npy"),
+        QStringLiteral("per_atom_substrate_partition_bins.npy"),
         QStringLiteral("per_atom_substrate_driver_modulation_by_atom.npy"),
         QStringLiteral("per_atom_substrate_backbone_audit.npy"),
     };
@@ -3030,6 +3332,8 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
         throw std::runtime_error("per_atom_substrate writer open failed");
     writer.writeRingIdentity(body);
     std::vector<WelfordCell> modulation(stats.atom_count * kPerAtomDriverMagnitudeCols);
+    std::vector<RowPartitionScratch> partitionRows;
+    partitionRows.reserve(expectedRows);
     SnapshotCache snapshotCache(body);
 
     std::size_t frameSlot = 0;
@@ -3066,10 +3370,25 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
             const bool hydrationShellPresent = direct.hydration_half_shell_present
                                                && direct.hydration_dipole_cos_present;
             auditDirectFeatures(stats, direct, charges);
+            auditIsolationFeatures(stats, agg.isolation);
             for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c)
                 modulation[atom * kPerAtomDriverMagnitudeCols + c].push(mag[c]);
             const std::array<double, kPerAtomConditioningCols> conditioning =
                 conditioningFeatures(body, atom, row, agg, mag);
+            RowPartitionScratch scratch;
+            scratch.atom = atom;
+            scratch.stratum = static_cast<int>(stratumForAtom(body.run.protein->atom(atom)));
+            scratch.geometry = {
+                conditioning[0],
+                conditioning[1],
+                conditioning[2],
+                conditioning[3],
+                agg.isolation.gap_to_2nd_ring_r,
+                agg.isolation.gap_to_2nd_charge_r,
+                agg.isolation.gap_to_2nd_bond_r,
+            };
+            scratch.magnitude = mag;
+            partitionRows.push_back(scratch);
 
             if (!writer.writeRow(body, atom, row, thisFrameSlot, orig, direct, agg, charges,
                                  classical, conditioning)) {
@@ -3115,10 +3434,15 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
     }
     if (!writer.commit(modulation))
         throw std::runtime_error("per_atom_substrate commit failed");
+    if (!writePartitionBins(outDir, partitionRows, modulation, stats.atom_count, stats))
+        throw std::runtime_error("per_atom_substrate partition-bin write failed");
     if (!writeColumnSpecs(outDir, config))
         throw std::runtime_error("per_atom_substrate column spec write failed");
     if (!emitPairQueries(body, outDir, config, stats))
         throw std::runtime_error("per_atom_substrate pair query write failed");
+    const CaseHunterStats hunterStats = RunCaseHunter(body, config, outDir);
+    stats.hunter_candidate_counts = hunterStats.candidate_counts;
+    stats.hunter_anti_circular_assertion = hunterStats.anti_circular_assertion;
     if (!writePerAtomManifest(outDir, stats, config, alignment))
         throw std::runtime_error("per_atom_substrate manifest write failed");
 
