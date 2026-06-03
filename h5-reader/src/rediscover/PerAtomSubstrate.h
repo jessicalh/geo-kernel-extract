@@ -35,6 +35,13 @@ struct PerAtomSubstrateConfig {
     int top_k = 3;
 };
 
+struct PerAtomChannelAudit {
+    std::size_t present = 0;
+    double min = 0.0;
+    double max = 0.0;
+    bool has_range = false;
+};
+
 struct PerAtomSubstrateStats {
     std::size_t atom_count = 0;
     std::size_t dft_rows = 0;
@@ -54,13 +61,28 @@ struct PerAtomSubstrateStats {
     std::size_t charge_complete = 0;
     std::size_t mopac_coulomb_shielding_present = 0;
     std::size_t mopac_mc_shielding_present = 0;
+    std::size_t hbond_shielding_present = 0;
+    std::size_t hbond_count_present = 0;
+    std::size_t hbond_geometry_present = 0;
+    std::size_t pi_quadrupole_present = 0;
+    std::size_t dispersion_present = 0;
+    std::size_t hm_shielding_present = 0;
+    std::size_t ringchi_shielding_present = 0;
+    std::size_t water_field_present = 0;
+    std::size_t hydration_shell_present = 0;
+    std::size_t sasa_present = 0;
+    std::size_t sasa_normal_present = 0;
+    std::size_t eeq_charge_present = 0;
+    std::size_t eeq_coordination_number_present = 0;
     std::size_t pair_query_rows = 0;
     std::size_t top_source_query_rows = 0;
     std::size_t dominance_query_rows = 0;
     std::size_t reader_pair_query_rows = 0;
+    QMap<QString, PerAtomChannelAudit> new_channel_audit;
+    QStringList absent_new_channel_slabs;
 };
 
-constexpr std::size_t kPerAtomClassicalCols = 45;
+constexpr std::size_t kPerAtomClassicalCols = 89;
 constexpr std::size_t kPerAtomConditioningCols = 26;
 constexpr std::size_t kPerAtomDriverMagnitudeCols = 9;
 constexpr std::size_t kPerAtomBackboneAuditCols = 14;

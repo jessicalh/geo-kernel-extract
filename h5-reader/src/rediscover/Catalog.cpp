@@ -56,6 +56,21 @@ const model::DftAtomShielding* dftAt(const Body& body, std::size_t atom, std::si
     return body.run.dft.AtomShielding(atom, body.run.frameMap.originalIndex(frame));
 }
 
+bool shieldingPresent(const model::QtShieldingTimeSeries* ts, std::size_t atom, std::size_t frame) {
+    return ts && atom < ts->n_atoms && frame < ts->n_frames && ts->sourceAttachedAt(frame);
+}
+
+bool scalarPresent(const model::QtScalarTimeSeries* ts, std::size_t atom, std::size_t frame) {
+    return ts && atom < ts->n_atoms && frame < ts->n_frames && ts->sourceAttachedAt(frame);
+}
+
+bool scalarWelfordMeanPresent(const model::QtScalarWelford* w, std::size_t atom) {
+    return w && atom < w->n_atoms && atom < w->value.size()
+           && atom < w->n_frames_per_atom.size()
+           && w->n_frames_per_atom[atom] > 0
+           && std::isfinite(w->value[atom].mean);
+}
+
 }  // namespace
 
 Catalog::Catalog(const RunData& run) {
@@ -119,6 +134,71 @@ Catalog::Catalog(const RunData& run) {
         QStringLiteral("mopac_vs_ff14sb_reconciliation"), ArrayRank::Scalar,
         axes(true, true, false, 0), ArrayResidence::DenseH5, QString(),
         h5 && h5->mopacVsFf14sbReconciliation());
+    add(specs_, ArrayId::HbondShielding, QStringLiteral("hbond_shielding"),
+        ArrayRank::T2_5, axes(true, true, false, 5), ArrayResidence::DenseH5,
+        QStringLiteral("ppm"), h5 && h5->hbondShielding());
+    add(specs_, ArrayId::HbondNearestDistance, QStringLiteral("hbond_nearest_dist"),
+        ArrayRank::Scalar, axes(true, true, false, 0), ArrayResidence::Absent,
+        QStringLiteral("Angstrom"), false);
+    add(specs_, ArrayId::HbondNearestDirection, QStringLiteral("hbond_nearest_dir"),
+        ArrayRank::Vec3, axes(true, true, false, 3), ArrayResidence::Absent,
+        QString(), false);
+    add(specs_, ArrayId::HbondCount, QStringLiteral("larsen_hbond_count"),
+        ArrayRank::Scalar, axes(true, true, false, 0), ArrayResidence::DenseH5,
+        QStringLiteral("count"), h5 && h5->larsenHBondCount());
+    add(specs_, ArrayId::HbondDonorFlag, QStringLiteral("hbond_is_donor"),
+        ArrayRank::Scalar, axes(true, true, false, 0), ArrayResidence::Absent,
+        QString(), false);
+    add(specs_, ArrayId::HbondAcceptorFlag, QStringLiteral("hbond_is_acceptor"),
+        ArrayRank::Scalar, axes(true, true, false, 0), ArrayResidence::Absent,
+        QString(), false);
+    add(specs_, ArrayId::PiQuadShielding, QStringLiteral("piquad_shielding"),
+        ArrayRank::T2_5, axes(true, true, false, 5), ArrayResidence::DenseH5,
+        QStringLiteral("Angstrom^-5"), h5 && h5->piQuadShielding());
+    add(specs_, ArrayId::DispShielding, QStringLiteral("disp_shielding"),
+        ArrayRank::T2_5, axes(true, true, false, 5), ArrayResidence::DenseH5,
+        QStringLiteral("Angstrom^-6"), h5 && h5->dispShielding());
+    add(specs_, ArrayId::HmShielding, QStringLiteral("hm_shielding"),
+        ArrayRank::T2_5, axes(true, true, false, 5), ArrayResidence::DenseH5,
+        QStringLiteral("Angstrom^-1"), h5 && h5->hmShielding());
+    add(specs_, ArrayId::RingChiShielding, QStringLiteral("ringchi_shielding"),
+        ArrayRank::T2_5, axes(true, true, false, 5), ArrayResidence::DenseH5,
+        QStringLiteral("Angstrom^-3"), h5 && h5->ringChiShielding());
+    add(specs_, ArrayId::WaterEfield, QStringLiteral("water_efield"),
+        ArrayRank::Vec3, axes(true, true, false, 3), ArrayResidence::DenseH5,
+        QStringLiteral("V/Angstrom"),
+        h5 && h5->waterFieldTimeSeries() && h5->waterFieldTimeSeries()->hasEfield());
+    add(specs_, ArrayId::WaterNFirst, QStringLiteral("water_n_first"),
+        ArrayRank::Scalar, axes(true, true, false, 0), ArrayResidence::DenseH5,
+        QStringLiteral("count"),
+        h5 && h5->waterFieldTimeSeries() && h5->waterFieldTimeSeries()->hasNFirst());
+    add(specs_, ArrayId::WaterNSecond, QStringLiteral("water_n_second"),
+        ArrayRank::Scalar, axes(true, true, false, 0), ArrayResidence::DenseH5,
+        QStringLiteral("count"),
+        h5 && h5->waterFieldTimeSeries() && h5->waterFieldTimeSeries()->hasNSecond());
+    add(specs_, ArrayId::HydrationHalfShellAsymmetry,
+        QStringLiteral("hydration_half_shell_asymmetry"), ArrayRank::Scalar,
+        axes(true, true, false, 0), ArrayResidence::DenseH5, QStringLiteral("fraction"),
+        h5 && h5->hydrationShellTimeSeries()
+            && h5->hydrationShellTimeSeries()->hasHalfShellAsymmetry());
+    add(specs_, ArrayId::HydrationDipoleCos, QStringLiteral("hydration_dipole_cos"),
+        ArrayRank::Scalar, axes(true, true, false, 0), ArrayResidence::DenseH5,
+        QStringLiteral("cos_angle"),
+        h5 && h5->hydrationShellTimeSeries()
+            && h5->hydrationShellTimeSeries()->hasMeanWaterDipoleCos());
+    add(specs_, ArrayId::Sasa, QStringLiteral("atom_sasa"), ArrayRank::Scalar,
+        axes(true, true, false, 0), ArrayResidence::DenseH5, QStringLiteral("Angstrom^2"),
+        h5 && h5->sasa());
+    add(specs_, ArrayId::SasaNormal, QStringLiteral("sasa_normal"), ArrayRank::Vec3,
+        axes(true, true, false, 3), ArrayResidence::DenseH5, QString(),
+        h5 && h5->hydrationGeometryTimeSeries()
+            && h5->hydrationGeometryTimeSeries()->hasSurfaceNormal());
+    add(specs_, ArrayId::EeqChargeMean, QStringLiteral("eeq_charge_mean"),
+        ArrayRank::Scalar, axes(true, false, false, 0), ArrayResidence::StaticTopol,
+        QStringLiteral("e"), h5 && h5->eeqWelford());
+    add(specs_, ArrayId::EeqCoordinationNumber, QStringLiteral("eeq_coordination_number"),
+        ArrayRank::Scalar, axes(true, false, false, 0), ArrayResidence::Absent,
+        QString(), false);
     add(specs_, ArrayId::DftTotalRaw, QStringLiteral("dft_total_raw"), ArrayRank::Tensor9,
         axes(true, true, false, 9), ArrayResidence::SparseDftByOriginal, QStringLiteral("ppm"),
         run.dft.frameCount() > 0);
@@ -168,12 +248,7 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
         return false;
     case ArrayId::MopacChargeWelfordMean: {
         const auto* welford = body.run.h5() ? body.run.h5()->mopacChargeWelford() : nullptr;
-        return welford
-               && atom < welford->n_atoms
-               && atom < welford->value.size()
-               && atom < welford->n_frames_per_atom.size()
-               && welford->n_frames_per_atom[atom] > 0
-               && std::isfinite(welford->value[atom].mean);
+        return scalarWelfordMeanPresent(welford, atom);
     }
     case ArrayId::MopacCoulombShielding:
         return body.run.h5() && body.run.h5()->mopacCoulombShielding()
@@ -190,6 +265,52 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
                && atom < body.run.h5()->mopacVsFf14sbReconciliation()->n_atoms
                && frame < body.run.h5()->mopacVsFf14sbReconciliation()->n_frames
                && body.run.h5()->mopacVsFf14sbReconciliation()->sourceAttachedAt(frame);
+    case ArrayId::HbondShielding:
+        return body.run.h5() && shieldingPresent(body.run.h5()->hbondShielding(), atom, frame);
+    case ArrayId::HbondCount:
+        return body.run.h5() && scalarPresent(body.run.h5()->larsenHBondCount(), atom, frame);
+    case ArrayId::PiQuadShielding:
+        return body.run.h5() && shieldingPresent(body.run.h5()->piQuadShielding(), atom, frame);
+    case ArrayId::DispShielding:
+        return body.run.h5() && shieldingPresent(body.run.h5()->dispShielding(), atom, frame);
+    case ArrayId::HmShielding:
+        return body.run.h5() && shieldingPresent(body.run.h5()->hmShielding(), atom, frame);
+    case ArrayId::RingChiShielding:
+        return body.run.h5() && shieldingPresent(body.run.h5()->ringChiShielding(), atom, frame);
+    case ArrayId::WaterEfield:
+    case ArrayId::WaterNFirst:
+    case ArrayId::WaterNSecond: {
+        const auto* ts = body.run.h5() ? body.run.h5()->waterFieldTimeSeries() : nullptr;
+        if (!ts || atom >= ts->n_atoms || frame >= ts->n_frames || !ts->sourceAttachedAt(frame))
+            return false;
+        if (id == ArrayId::WaterEfield) return ts->hasEfield();
+        if (id == ArrayId::WaterNFirst) return ts->hasNFirst();
+        return ts->hasNSecond();
+    }
+    case ArrayId::HydrationHalfShellAsymmetry:
+    case ArrayId::HydrationDipoleCos: {
+        const auto* ts = body.run.h5() ? body.run.h5()->hydrationShellTimeSeries() : nullptr;
+        if (!ts || atom >= ts->n_atoms || frame >= ts->n_frames || !ts->sourceAttachedAt(frame))
+            return false;
+        return id == ArrayId::HydrationHalfShellAsymmetry
+                   ? ts->hasHalfShellAsymmetry()
+                   : ts->hasMeanWaterDipoleCos();
+    }
+    case ArrayId::Sasa:
+        return body.run.h5() && scalarPresent(body.run.h5()->sasa(), atom, frame);
+    case ArrayId::SasaNormal: {
+        const auto* ts = body.run.h5() ? body.run.h5()->hydrationGeometryTimeSeries() : nullptr;
+        return ts && atom < ts->n_atoms && frame < ts->n_frames && ts->sourceAttachedAt(frame)
+               && ts->hasSurfaceNormal();
+    }
+    case ArrayId::EeqChargeMean:
+        return scalarWelfordMeanPresent(body.run.h5() ? body.run.h5()->eeqWelford() : nullptr, atom);
+    case ArrayId::HbondNearestDistance:
+    case ArrayId::HbondNearestDirection:
+    case ArrayId::HbondDonorFlag:
+    case ArrayId::HbondAcceptorFlag:
+    case ArrayId::EeqCoordinationNumber:
+        return false;
     default:
         return true;
     }
@@ -214,7 +335,10 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
     case ArrayId::ApbsEfg:
         return comp >= 0 && comp < 5 ? valueT2(body, id, atom, frame)[static_cast<std::size_t>(comp)] : 0.0;
     case ArrayId::ApbsEfield:
-    case ArrayId::Aimnet2ChargeRespVector: {
+    case ArrayId::Aimnet2ChargeRespVector:
+    case ArrayId::HbondNearestDirection:
+    case ArrayId::WaterEfield:
+    case ArrayId::SasaNormal: {
         const Vec3 v = valueVec3(body, id, atom, frame);
         return comp >= 0 && comp < 3 ? v[comp] : 0.0;
     }
@@ -232,14 +356,43 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
         return present(body, id, atom, frame) && h5 && h5->mopacChargeWelford()
                    ? h5->mopacChargeWelford()->value[atom].mean
                    : 0.0;
+    case ArrayId::EeqChargeMean:
+        return present(body, id, atom, frame) && h5 && h5->eeqWelford()
+                   ? h5->eeqWelford()->value[atom].mean
+                   : 0.0;
     case ArrayId::MopacVsFf14sbReconciliation:
         return h5 && h5->mopacVsFf14sbReconciliation()
                    ? h5->mopacVsFf14sbReconciliation()->at(atom, frame)
                    : 0.0;
     case ArrayId::MopacCoulombShielding:
     case ArrayId::MopacMcShielding:
+    case ArrayId::HbondShielding:
+    case ArrayId::PiQuadShielding:
+    case ArrayId::DispShielding:
+    case ArrayId::HmShielding:
+    case ArrayId::RingChiShielding:
         return comp >= 0 && comp < 5 ? valueT2(body, id, atom, frame)[static_cast<std::size_t>(comp)]
                                      : 0.0;
+    case ArrayId::HbondCount:
+        return h5 && h5->larsenHBondCount() ? h5->larsenHBondCount()->at(atom, frame) : 0.0;
+    case ArrayId::WaterNFirst:
+        return h5 && h5->waterFieldTimeSeries()
+                   ? static_cast<double>(h5->waterFieldTimeSeries()->nFirstAt(atom, frame))
+                   : 0.0;
+    case ArrayId::WaterNSecond:
+        return h5 && h5->waterFieldTimeSeries()
+                   ? static_cast<double>(h5->waterFieldTimeSeries()->nSecondAt(atom, frame))
+                   : 0.0;
+    case ArrayId::HydrationHalfShellAsymmetry:
+        return h5 && h5->hydrationShellTimeSeries()
+                   ? h5->hydrationShellTimeSeries()->halfShellAsymmetryAt(atom, frame)
+                   : 0.0;
+    case ArrayId::HydrationDipoleCos:
+        return h5 && h5->hydrationShellTimeSeries()
+                   ? h5->hydrationShellTimeSeries()->meanWaterDipoleCosAt(atom, frame)
+                   : 0.0;
+    case ArrayId::Sasa:
+        return h5 && h5->sasa() ? h5->sasa()->at(atom, frame) : 0.0;
     case ArrayId::DftTotalRaw:
         return dftAt(body, atom, frame) ? matComponent(dftAt(body, atom, frame)->total_raw, comp) : 0.0;
     case ArrayId::DftDiaRaw:
@@ -248,6 +401,10 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
         return dftAt(body, atom, frame) ? matComponent(dftAt(body, atom, frame)->para_raw, comp) : 0.0;
     case ArrayId::Aimnet2Embedding:
     case ArrayId::MopacCharge:
+    case ArrayId::HbondNearestDistance:
+    case ArrayId::HbondDonorFlag:
+    case ArrayId::HbondAcceptorFlag:
+    case ArrayId::EeqCoordinationNumber:
         return 0.0;
     }
     return 0.0;
@@ -264,6 +421,16 @@ Vec3 Catalog::valueVec3(const Body& body, ArrayId id, std::size_t atom, std::siz
         return h5 && h5->aimnet2ChargeResponseGradient()
                    ? h5->aimnet2ChargeResponseGradient()->vecAt(atom, frame)
                    : Vec3::Zero();
+    case ArrayId::WaterEfield:
+        return h5 && h5->waterFieldTimeSeries()
+                   ? h5->waterFieldTimeSeries()->efieldAt(atom, frame)
+                   : Vec3::Zero();
+    case ArrayId::SasaNormal:
+        return h5 && h5->hydrationGeometryTimeSeries()
+                   ? h5->hydrationGeometryTimeSeries()->surfaceNormalAt(atom, frame)
+                   : Vec3::Zero();
+    case ArrayId::HbondNearestDirection:
+        return Vec3::Zero();
     default:
         return Vec3::Zero();
     }
@@ -279,6 +446,16 @@ std::array<double, 5> Catalog::valueT2(const Body& body, ArrayId id, std::size_t
     // MOPAC-McConnell shielding is a full shielding tensor; project its T2 leg.
     if (id == ArrayId::MopacMcShielding && h5 && h5->mopacMcShielding())
         return h5->mopacMcShielding()->at(atom, frame).T2;
+    if (id == ArrayId::HbondShielding && h5 && h5->hbondShielding())
+        return h5->hbondShielding()->at(atom, frame).T2;
+    if (id == ArrayId::PiQuadShielding && h5 && h5->piQuadShielding())
+        return h5->piQuadShielding()->at(atom, frame).T2;
+    if (id == ArrayId::DispShielding && h5 && h5->dispShielding())
+        return h5->dispShielding()->at(atom, frame).T2;
+    if (id == ArrayId::HmShielding && h5 && h5->hmShielding())
+        return h5->hmShielding()->at(atom, frame).T2;
+    if (id == ArrayId::RingChiShielding && h5 && h5->ringChiShielding())
+        return h5->ringChiShielding()->at(atom, frame).T2;
     return {};
 }
 
@@ -287,6 +464,11 @@ SphericalTensor Catalog::valueTensor(const Body& body, ArrayId id, std::size_t a
     const io::QtTrajectoryH5* h5 = body.run.h5();
     if (id == ArrayId::KernelBs && h5 && h5->bsShielding()) return h5->bsShielding()->at(atom, frame);
     if (id == ArrayId::KernelMc && h5 && h5->mcShielding()) return h5->mcShielding()->at(atom, frame);
+    if (id == ArrayId::HbondShielding && h5 && h5->hbondShielding()) return h5->hbondShielding()->at(atom, frame);
+    if (id == ArrayId::PiQuadShielding && h5 && h5->piQuadShielding()) return h5->piQuadShielding()->at(atom, frame);
+    if (id == ArrayId::DispShielding && h5 && h5->dispShielding()) return h5->dispShielding()->at(atom, frame);
+    if (id == ArrayId::HmShielding && h5 && h5->hmShielding()) return h5->hmShielding()->at(atom, frame);
+    if (id == ArrayId::RingChiShielding && h5 && h5->ringChiShielding()) return h5->ringChiShielding()->at(atom, frame);
     return {};
 }
 

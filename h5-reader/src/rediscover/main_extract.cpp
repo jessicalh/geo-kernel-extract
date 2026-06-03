@@ -530,6 +530,12 @@ int main(int argc, char** argv) {
             << "| ring_present=" << stats.ring_present
             << "| charge_present=" << stats.charge_present
             << "| mc_lit_valid_present=" << stats.mc_lit_valid_present
+            << "| hbond_shielding_present=" << stats.hbond_shielding_present
+            << "| pi_quadrupole_present=" << stats.pi_quadrupole_present
+            << "| dispersion_present=" << stats.dispersion_present
+            << "| water_field_present=" << stats.water_field_present
+            << "| sasa_present=" << stats.sasa_present
+            << "| eeq_charge_present=" << stats.eeq_charge_present
             << "| pair_query_rows=" << stats.pair_query_rows
             << "| top_source_query_rows=" << stats.top_source_query_rows
             << "| dominance_query_rows=" << stats.dominance_query_rows

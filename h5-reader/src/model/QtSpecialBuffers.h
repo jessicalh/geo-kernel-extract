@@ -250,9 +250,18 @@ struct QtWaterFieldTimeSeries {
 
     QString result_name;
 
+    bool sourceAttachedAt(std::size_t t) const {
+        return source_attached.empty() || (t < source_attached.size() && source_attached[t] != 0);
+    }
+    bool hasEfield() const { return efield.size() == n_atoms * n_frames * 3; }
+    bool hasNFirst() const { return n_first.size() == n_atoms * n_frames; }
+    bool hasNSecond() const { return n_second.size() == n_atoms * n_frames; }
+
     std::array<double, 5> efgAt(std::size_t atomIdx, std::size_t t) const {
         std::array<double, 5> out{};
         if (atomIdx >= n_atoms || t >= n_frames)
+            return out;
+        if (efg.size() != n_atoms * n_frames * 5)
             return out;
         const std::size_t base = (atomIdx * n_frames + t) * 5;
         for (std::size_t k = 0; k < 5; ++k)
@@ -262,13 +271,24 @@ struct QtWaterFieldTimeSeries {
     Vec3 efieldAt(std::size_t atomIdx, std::size_t t) const {
         if (atomIdx >= n_atoms || t >= n_frames)
             return Vec3::Zero();
+        if (!hasEfield())
+            return Vec3::Zero();
         const std::size_t base = (atomIdx * n_frames + t) * 3;
         return Vec3(efield[base + 0], efield[base + 1], efield[base + 2]);
     }
     uint32_t nFirstAt(std::size_t atomIdx, std::size_t t) const {
         if (atomIdx >= n_atoms || t >= n_frames)
             return 0;
+        if (!hasNFirst())
+            return 0;
         return n_first[atomIdx * n_frames + t];
+    }
+    uint32_t nSecondAt(std::size_t atomIdx, std::size_t t) const {
+        if (atomIdx >= n_atoms || t >= n_frames)
+            return 0;
+        if (!hasNSecond())
+            return 0;
+        return n_second[atomIdx * n_frames + t];
     }
 };
 
@@ -295,10 +315,25 @@ struct QtHydrationShellTimeSeries {
 
     QString result_name;
 
+    bool sourceAttachedAt(std::size_t t) const {
+        return source_attached.empty() || (t < source_attached.size() && source_attached[t] != 0);
+    }
+    bool hasHalfShellAsymmetry() const { return half_shell_asymmetry.size() == n_atoms * n_frames; }
+    bool hasMeanWaterDipoleCos() const { return mean_water_dipole_cos.size() == n_atoms * n_frames; }
+
     double halfShellAsymmetryAt(std::size_t atomIdx, std::size_t t) const {
         if (atomIdx >= n_atoms || t >= n_frames)
             return 0.0;
+        if (!hasHalfShellAsymmetry())
+            return 0.0;
         return half_shell_asymmetry[atomIdx * n_frames + t];
+    }
+    double meanWaterDipoleCosAt(std::size_t atomIdx, std::size_t t) const {
+        if (atomIdx >= n_atoms || t >= n_frames)
+            return 0.0;
+        if (!hasMeanWaterDipoleCos())
+            return 0.0;
+        return mean_water_dipole_cos[atomIdx * n_frames + t];
     }
 };
 
@@ -332,8 +367,16 @@ struct QtHydrationGeometryTimeSeries {
 
     QString result_name;
 
+    bool sourceAttachedAt(std::size_t t) const {
+        return source_attached.empty() || (t < source_attached.size() && source_attached[t] != 0);
+    }
+    bool hasSurfaceNormal() const { return surface_normal.size() == n_atoms * n_frames * 3; }
+    bool hasHalfShellAsymmetry() const { return half_shell_asymmetry.size() == n_atoms * n_frames; }
+
     Vec3 dipoleVectorAt(std::size_t atomIdx, std::size_t t) const {
         if (atomIdx >= n_atoms || t >= n_frames)
+            return Vec3::Zero();
+        if (dipole_vector.size() != n_atoms * n_frames * 3)
             return Vec3::Zero();
         const std::size_t base = (atomIdx * n_frames + t) * 3;
         return Vec3(dipole_vector[base + 0], dipole_vector[base + 1], dipole_vector[base + 2]);
@@ -341,11 +384,15 @@ struct QtHydrationGeometryTimeSeries {
     Vec3 surfaceNormalAt(std::size_t atomIdx, std::size_t t) const {
         if (atomIdx >= n_atoms || t >= n_frames)
             return Vec3::Zero();
+        if (!hasSurfaceNormal())
+            return Vec3::Zero();
         const std::size_t base = (atomIdx * n_frames + t) * 3;
         return Vec3(surface_normal[base + 0], surface_normal[base + 1], surface_normal[base + 2]);
     }
     uint32_t firstShellCountAt(std::size_t atomIdx, std::size_t t) const {
         if (atomIdx >= n_atoms || t >= n_frames)
+            return 0;
+        if (first_shell_count.size() != n_atoms * n_frames)
             return 0;
         return first_shell_count[atomIdx * n_frames + t];
     }
