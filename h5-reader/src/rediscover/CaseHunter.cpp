@@ -14,6 +14,7 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <vector>
 
 namespace h5reader::rediscover {
@@ -26,12 +27,17 @@ enum class HunterMechanism : int {
     Ring = 0,
     Charge = 1,
     Mc = 2,
+    Field = 3,
+    Hbond = 4,
+    ChargeWide = 5,
 };
 
 struct MechanismSums {
     double ring = 0.0;
     double charge = 0.0;
     double mc = 0.0;
+    double field = 0.0;
+    double hbond = 0.0;
 };
 
 struct InputCandidate {
@@ -57,6 +63,9 @@ QString mechanismName(HunterMechanism m) {
     case HunterMechanism::Ring: return QStringLiteral("ring");
     case HunterMechanism::Charge: return QStringLiteral("charge");
     case HunterMechanism::Mc: return QStringLiteral("mc");
+    case HunterMechanism::Field: return QStringLiteral("field");
+    case HunterMechanism::Hbond: return QStringLiteral("hbond");
+    case HunterMechanism::ChargeWide: return QStringLiteral("charge_wide");
     }
     return QStringLiteral("unknown");
 }
@@ -128,6 +137,8 @@ MechanismSums mechanismSums(const Body& body,
         if (p.mechanism == QStringLiteral("ring_jb")) sums.ring += v;
         else if (p.mechanism == QStringLiteral("charge_q_over_r3")) sums.charge += v;
         else if (p.mechanism == QStringLiteral("mc_lit_valid")) sums.mc += v;
+        else if (p.mechanism == QStringLiteral("field_mopac_coulomb")) sums.field += v;
+        else if (p.mechanism == QStringLiteral("hbond_larsen")) sums.hbond += v;
     }
     return sums;
 }
@@ -137,6 +148,9 @@ double driverValue(const MechanismSums& sums, HunterMechanism m) {
     case HunterMechanism::Ring: return sums.ring;
     case HunterMechanism::Charge: return sums.charge;
     case HunterMechanism::Mc: return sums.mc;
+    case HunterMechanism::Field: return sums.field;
+    case HunterMechanism::Hbond: return sums.hbond;
+    case HunterMechanism::ChargeWide: return sums.charge;
     }
     return kNaN;
 }
@@ -146,6 +160,9 @@ double otherValue(const MechanismSums& sums, HunterMechanism m) {
     case HunterMechanism::Ring: return sums.charge + sums.mc;
     case HunterMechanism::Charge: return sums.ring + sums.mc;
     case HunterMechanism::Mc: return sums.ring + sums.charge;
+    case HunterMechanism::Field: return sums.ring + sums.charge + sums.mc + sums.hbond;
+    case HunterMechanism::Hbond: return sums.ring + sums.charge + sums.mc + sums.field;
+    case HunterMechanism::ChargeWide: return sums.ring + sums.mc + sums.field + sums.hbond;
     }
     return kNaN;
 }
@@ -155,6 +172,9 @@ double dominantFor(const PerAtomIsolationScalars& iso, HunterMechanism m) {
     case HunterMechanism::Ring: return iso.dominant_fraction_ring;
     case HunterMechanism::Charge: return iso.dominant_fraction_charge;
     case HunterMechanism::Mc: return iso.dominant_fraction_mc;
+    case HunterMechanism::Field: return iso.dominant_fraction_field;
+    case HunterMechanism::Hbond: return iso.dominant_fraction_hbond;
+    case HunterMechanism::ChargeWide: return iso.dominant_fraction_charge;
     }
     return kNaN;
 }
@@ -164,6 +184,9 @@ double gapFor(const PerAtomIsolationScalars& iso, HunterMechanism m) {
     case HunterMechanism::Ring: return iso.gap_to_2nd_ring_r;
     case HunterMechanism::Charge: return iso.gap_to_2nd_charge_r;
     case HunterMechanism::Mc: return iso.gap_to_2nd_bond_r;
+    case HunterMechanism::Field: return iso.gap_to_2nd_field_r;
+    case HunterMechanism::Hbond: return iso.gap_to_2nd_hbond_r;
+    case HunterMechanism::ChargeWide: return iso.gap_to_2nd_charge_r;
     }
     return kNaN;
 }
@@ -213,6 +236,37 @@ std::vector<int32_t> habitat(const Body& body, HunterMechanism mechanism) {
                                          model::BackboneRole::AmideHydrogen}) {
             sel = {};
             sel.backboneRole = role;
+            appendUnique(out, body.idx.typedAtoms.select(scope, sel));
+        }
+        break;
+    case HunterMechanism::ChargeWide:
+        for (model::Element element : {model::Element::O, model::Element::N,
+                                       model::Element::S, model::Element::H,
+                                       model::Element::C}) {
+            sel = {};
+            sel.element = element;
+            appendUnique(out, body.idx.typedAtoms.select(scope, sel));
+        }
+        break;
+    case HunterMechanism::Field:
+        for (int32_t ai : scope) {
+            if (ai < 0 || static_cast<std::size_t>(ai) >= p.atomCount()) continue;
+            if (p.atom(static_cast<std::size_t>(ai)).element != model::Element::Unknown)
+                out.push_back(ai);
+        }
+        break;
+    case HunterMechanism::Hbond:
+        for (model::BackboneRole role : {model::BackboneRole::Nitrogen,
+                                         model::BackboneRole::CarbonylCarbon,
+                                         model::BackboneRole::CarbonylOxygen,
+                                         model::BackboneRole::AmideHydrogen}) {
+            sel = {};
+            sel.backboneRole = role;
+            appendUnique(out, body.idx.typedAtoms.select(scope, sel));
+        }
+        for (model::Element element : {model::Element::O, model::Element::N}) {
+            sel = {};
+            sel.element = element;
             appendUnique(out, body.idx.typedAtoms.select(scope, sel));
         }
         break;
@@ -351,10 +405,13 @@ CaseHunterStats RunCaseHunter(const Body& body,
                               const CaseHunterConfig& hunterConfig) {
     CaseHunterStats stats;
     if (!body.run.protein) return stats;
-    const std::array<HunterMechanism, 3> mechanisms = {
+    const std::array<HunterMechanism, 6> mechanisms = {
         HunterMechanism::Ring,
         HunterMechanism::Charge,
         HunterMechanism::Mc,
+        HunterMechanism::Field,
+        HunterMechanism::Hbond,
+        HunterMechanism::ChargeWide,
     };
     const std::vector<std::size_t>& dftRows = body.run.frameMap.dftRows();
     for (HunterMechanism mechanism : mechanisms) {
