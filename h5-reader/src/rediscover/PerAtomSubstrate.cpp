@@ -14,6 +14,7 @@
 #include "../model/QtAtom.h"
 #include "../model/QtBond.h"
 #include "../model/QtConformationSnapshot.h"
+#include "../model/QtPerResidueBuffers.h"
 #include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
 #include "../model/QtRing.h"
@@ -109,16 +110,24 @@ void fillNaN(std::array<double, kPerAtomConditioningCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomBackboneAuditCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomRingPathCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomMethodPathCols>& v) { v.fill(kNaN); }
+void fillNaN(std::array<double, kPerAtomHbondConditioningCols>& v) { v.fill(kNaN); }
+
+const model::NpyColumn* indexedColumn(const model::QtConformationSnapshot* snapshot,
+                                      io::FieldKind kind,
+                                      std::size_t rowIndex,
+                                      int minCols) {
+    if (!snapshot || !snapshot->has(kind)) return nullptr;
+    const model::NpyColumn& col = snapshot->column(kind);
+    if (rowIndex >= static_cast<std::size_t>(std::max(0, col.rows))) return nullptr;
+    if (col.cols < minCols) return nullptr;
+    return &col;
+}
 
 const model::NpyColumn* atomColumn(const model::QtConformationSnapshot* snapshot,
                                    io::FieldKind kind,
                                    std::size_t atom,
                                    int minCols) {
-    if (!snapshot || !snapshot->has(kind)) return nullptr;
-    const model::NpyColumn& col = snapshot->column(kind);
-    if (atom >= static_cast<std::size_t>(std::max(0, col.rows))) return nullptr;
-    if (col.cols < minCols) return nullptr;
-    return &col;
+    return indexedColumn(snapshot, kind, atom, minCols);
 }
 
 template <std::size_t N>
@@ -138,6 +147,45 @@ bool copyAtomField(std::array<double, N>& out,
         }
     }
     offset += static_cast<std::size_t>(count);
+    return present;
+}
+
+template <std::size_t N>
+bool copyIndexedField(std::array<double, N>& out,
+                      std::size_t& offset,
+                      const model::QtConformationSnapshot* snapshot,
+                      io::FieldKind kind,
+                      std::size_t rowIndex,
+                      int count) {
+    const model::NpyColumn* col = indexedColumn(snapshot, kind, rowIndex, count);
+    bool present = false;
+    if (col) {
+        const double* row = col->row(rowIndex);
+        present = finiteRaw(row, static_cast<std::size_t>(count));
+        if (present) {
+            for (int i = 0; i < count; ++i) out[offset + static_cast<std::size_t>(i)] = row[i];
+        }
+    }
+    offset += static_cast<std::size_t>(count);
+    return present;
+}
+
+template <std::size_t N>
+bool copyAtomTensorT2(std::array<double, N>& out,
+                      std::size_t& offset,
+                      const model::QtConformationSnapshot* snapshot,
+                      io::FieldKind kind,
+                      std::size_t atom) {
+    const model::NpyColumn* col = atomColumn(snapshot, kind, atom, 9);
+    bool present = false;
+    if (col) {
+        const double* row = col->row(atom);
+        present = finiteRaw(row + 4, 5);
+        if (present) {
+            for (int i = 0; i < 5; ++i) out[offset + static_cast<std::size_t>(i)] = row[4 + i];
+        }
+    }
+    offset += 5;
     return present;
 }
 
@@ -860,6 +908,100 @@ int countNear(const Body& body, CloudKind kind, std::size_t atom, std::size_t ro
     return static_cast<int>(verbs::near(body, kind, atom, row, cutoff).size());
 }
 
+bool isPeptidePlaneAtom(const model::QtAtom& a) {
+    return a.IsBackboneNitrogen() || a.IsBackboneAmideHydrogen()
+           || a.IsBackboneCarbonylOxygen() || a.IsBackboneCarbonylCarbon();
+}
+
+template <std::size_t N>
+bool copyDsspRawBackup(std::array<double, N>& out,
+                       std::size_t& offset,
+                       const Body& body,
+                       std::size_t atom,
+                       std::size_t h5Row) {
+    bool present = false;
+    std::array<double, 10> values;
+    values.fill(kNaN);
+    if (body.run.protein) {
+        const model::QtProtein& p = *body.run.protein;
+        const model::QtAtom& a = p.atom(atom);
+        const io::QtTrajectoryH5* h5 = body.run.h5();
+        const model::QtDssp8TimeSeries* dssp = h5 ? h5->dssp8() : nullptr;
+        if (dssp && validResidue(p, a.residueIndex) && isPeptidePlaneAtom(a)
+            && h5Row < dssp->n_frames && dssp->sourceAttachedAt(h5Row)) {
+            const std::size_t res = static_cast<std::size_t>(a.residueIndex);
+            const std::size_t base = (res * dssp->n_frames + h5Row) * 2;
+            if (base + 1 < dssp->hbond_acceptor_partner.size()
+                && base + 1 < dssp->hbond_acceptor_energy.size()
+                && base + 1 < dssp->hbond_donor_partner.size()
+                && base + 1 < dssp->hbond_donor_energy.size()) {
+                int accCount = 0;
+                int donCount = 0;
+                std::size_t c = 0;
+                for (int slot = 0; slot < 2; ++slot) {
+                    const std::size_t i = base + static_cast<std::size_t>(slot);
+                    const int32_t partner = dssp->hbond_acceptor_partner[i];
+                    const double energy = dssp->hbond_acceptor_energy[i];
+                    if (partner >= 0 && std::isfinite(energy)) ++accCount;
+                    values[c++] = static_cast<double>(partner);
+                    values[c++] = std::isfinite(energy) ? energy : 0.0;
+                }
+                values[c++] = static_cast<double>(accCount);
+                for (int slot = 0; slot < 2; ++slot) {
+                    const std::size_t i = base + static_cast<std::size_t>(slot);
+                    const int32_t partner = dssp->hbond_donor_partner[i];
+                    const double energy = dssp->hbond_donor_energy[i];
+                    if (partner >= 0 && std::isfinite(energy)) ++donCount;
+                    values[c++] = static_cast<double>(partner);
+                    values[c++] = std::isfinite(energy) ? energy : 0.0;
+                }
+                values[c++] = static_cast<double>(donCount);
+                present = finiteRaw(values.data(), values.size());
+            }
+        }
+    }
+    if (present) {
+        for (std::size_t i = 0; i < values.size(); ++i) out[offset + i] = values[i];
+    }
+    offset += values.size();
+    return present;
+}
+
+template <std::size_t N>
+bool copyPrimaryRingGeometry(std::array<double, N>& out,
+                             std::size_t& offset,
+                             const Body& body,
+                             const model::QtConformationSnapshot* snapshot,
+                             std::size_t atom) {
+    bool present = false;
+    if (body.run.protein && snapshot && snapshot->has(io::FieldKind::RingGeometry)) {
+        const model::QtTopology& topo = body.run.protein->topology();
+        const model::NpyColumn& col = snapshot->column(io::FieldKind::RingGeometry);
+        for (int32_t mi : topo.ringMembershipsForAtom(atom)) {
+            if (mi < 0) continue;
+            const model::QtRingMembership& membership =
+                topo.ringMembershipAt(static_cast<std::size_t>(mi));
+            if (membership.ringId < 0
+                || static_cast<std::size_t>(membership.ringId) >= topo.ringCount())
+                continue;
+            const model::QtRing& ring = topo.ringAt(static_cast<std::size_t>(membership.ringId));
+            if (!ring.IsAromatic()) continue;
+            const int32_t native = ring.nativeAxisIndex >= 0 ? ring.nativeAxisIndex : ring.ringId;
+            if (native < 0 || static_cast<std::size_t>(native) >= static_cast<std::size_t>(std::max(0, col.rows))
+                || col.cols < 10)
+                continue;
+            const double* row = col.row(static_cast<std::size_t>(native));
+            present = finiteRaw(row, 10);
+            if (present) {
+                for (int i = 0; i < 10; ++i) out[offset + static_cast<std::size_t>(i)] = row[i];
+            }
+            break;
+        }
+    }
+    offset += 10;
+    return present;
+}
+
 struct DirectFeatures {
     DftTarget target;
     bool dft_present = false;
@@ -944,6 +1086,21 @@ struct DirectFeatures {
     bool water_efield_first_present = false;
     bool eeq_cn_present = false;
     bool mopac_scalars_present = false;
+    std::array<double, kPerAtomHbondConditioningCols> hbond_conditioning = {};
+    bool larsen_1pHB_T2_present = false;
+    bool larsen_2pHB_T2_present = false;
+    bool larsen_1pHaB_T2_present = false;
+    bool larsen_2pHaB_T2_present = false;
+    bool larsen_water_term_present = false;
+    bool hbond_scalars_present = false;
+    bool dssp_chemical_flags_present = false;
+    bool dssp_hbond_energy_present = false;
+    bool dssp_raw_backup_present = false;
+    bool dssp_ss8_present = false;
+    bool dssp_chi_present = false;
+    bool omega_actual_present = false;
+    bool pyramidalization_present = false;
+    bool ring_geometry_present = false;
 };
 
 DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t row,
@@ -953,6 +1110,7 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
     DirectFeatures out;
     fillNaN(out.ring_paths);
     fillNaN(out.method_paths);
+    fillNaN(out.hbond_conditioning);
     out.target = BuildTarget(body.run, atom, orig, frame);
     out.dft_present = out.target.present && finiteT2(out.target.total_decomp.T2);
     out.apbs_E_present = body.catalog.present(body, ArrayId::ApbsEfield, atom, row);
@@ -1130,6 +1288,52 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
         copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::EEQCN, atom, 1);
     out.mopac_scalars_present =
         copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACScalars, atom, 4);
+
+    std::size_t hc = 0;
+    out.larsen_1pHB_T2_present =
+        copyAtomTensorT2(out.hbond_conditioning, hc, snapshot,
+                         io::FieldKind::LarsenHBond1pHBShielding, atom);
+    out.larsen_2pHB_T2_present =
+        copyAtomTensorT2(out.hbond_conditioning, hc, snapshot,
+                         io::FieldKind::LarsenHBond2pHBShielding, atom);
+    out.larsen_1pHaB_T2_present =
+        copyAtomTensorT2(out.hbond_conditioning, hc, snapshot,
+                         io::FieldKind::LarsenHBond1pHaBShielding, atom);
+    out.larsen_2pHaB_T2_present =
+        copyAtomTensorT2(out.hbond_conditioning, hc, snapshot,
+                         io::FieldKind::LarsenHBond2pHaBShielding, atom);
+    out.larsen_water_term_present =
+        copyAtomField(out.hbond_conditioning, hc, snapshot, io::FieldKind::LarsenHBondWaterTerm, atom, 1);
+    out.hbond_scalars_present =
+        copyAtomField(out.hbond_conditioning, hc, snapshot, io::FieldKind::HBondScalars, atom, 4);
+    if (body.run.protein) {
+        const model::QtAtom& a = body.run.protein->atom(atom);
+        out.hbond_conditioning[hc++] =
+            (a.IsBackboneNitrogen() || a.IsBackboneAmideHydrogen()) ? 1.0 : 0.0;
+        out.hbond_conditioning[hc++] =
+            (a.IsBackboneCarbonylOxygen() || a.IsBackboneCarbonylCarbon()) ? 1.0 : 0.0;
+        out.dssp_chemical_flags_present = true;
+    } else {
+        hc += 2;
+    }
+    out.dssp_hbond_energy_present =
+        copyAtomField(out.hbond_conditioning, hc, snapshot, io::FieldKind::DSSPHBondEnergy, atom, 4);
+    out.dssp_raw_backup_present = copyDsspRawBackup(out.hbond_conditioning, hc, body, atom, row);
+    out.dssp_ss8_present =
+        copyAtomField(out.hbond_conditioning, hc, snapshot, io::FieldKind::DSSPSs8, atom, 8);
+    out.dssp_chi_present =
+        copyAtomField(out.hbond_conditioning, hc, snapshot, io::FieldKind::DSSPChi, atom, 12);
+    if (body.run.protein && validResidue(*body.run.protein, body.run.protein->atom(atom).residueIndex)) {
+        const std::size_t res = static_cast<std::size_t>(body.run.protein->atom(atom).residueIndex);
+        out.omega_actual_present =
+            copyIndexedField(out.hbond_conditioning, hc, snapshot, io::FieldKind::OmegaActual, res, 1);
+    } else {
+        hc += 1;
+    }
+    out.pyramidalization_present =
+        copyAtomField(out.hbond_conditioning, hc, snapshot, io::FieldKind::Pyramidalization, atom, 1);
+    out.ring_geometry_present =
+        copyPrimaryRingGeometry(out.hbond_conditioning, hc, body, snapshot, atom);
     return out;
 }
 
@@ -1290,6 +1494,51 @@ void auditMethodPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures&
                       direct.method_paths, c, 4);
 }
 
+void auditHbondConditioningFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct) {
+    std::size_t c = 0;
+    auditArraySegment(stats, QStringLiteral("larsen_hbond_1pHB_T2"),
+                      direct.larsen_1pHB_T2_present, direct.hbond_conditioning, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("larsen_hbond_2pHB_T2"),
+                      direct.larsen_2pHB_T2_present, direct.hbond_conditioning, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("larsen_hbond_1pHaB_T2"),
+                      direct.larsen_1pHaB_T2_present, direct.hbond_conditioning, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("larsen_hbond_2pHaB_T2"),
+                      direct.larsen_2pHaB_T2_present, direct.hbond_conditioning, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("larsen_hbond_water_term"),
+                      direct.larsen_water_term_present, direct.hbond_conditioning, c, 1);
+    c += 1;
+    auditArraySegment(stats, QStringLiteral("hbond_scalars"), direct.hbond_scalars_present,
+                      direct.hbond_conditioning, c, 4);
+    c += 4;
+    auditArraySegment(stats, QStringLiteral("dssp_chemical_flags"),
+                      direct.dssp_chemical_flags_present, direct.hbond_conditioning, c, 2);
+    c += 2;
+    auditArraySegment(stats, QStringLiteral("dssp_hbond_energy"),
+                      direct.dssp_hbond_energy_present, direct.hbond_conditioning, c, 4);
+    c += 4;
+    auditArraySegment(stats, QStringLiteral("dssp_raw_hbond_backup"),
+                      direct.dssp_raw_backup_present, direct.hbond_conditioning, c, 10);
+    c += 10;
+    auditArraySegment(stats, QStringLiteral("dssp_ss8"), direct.dssp_ss8_present,
+                      direct.hbond_conditioning, c, 8);
+    c += 8;
+    auditArraySegment(stats, QStringLiteral("dssp_chi"), direct.dssp_chi_present,
+                      direct.hbond_conditioning, c, 12);
+    c += 12;
+    auditArraySegment(stats, QStringLiteral("omega_actual"), direct.omega_actual_present,
+                      direct.hbond_conditioning, c, 1);
+    c += 1;
+    auditArraySegment(stats, QStringLiteral("pyramidalization"),
+                      direct.pyramidalization_present, direct.hbond_conditioning, c, 1);
+    c += 1;
+    auditArraySegment(stats, QStringLiteral("ring_geometry"), direct.ring_geometry_present,
+                      direct.hbond_conditioning, c, 10);
+}
+
 void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct,
                          const RowChargeScalars& charges) {
     const bool hbondGeometryPresent = direct.hbond_nearest_distance_present
@@ -1350,6 +1599,7 @@ void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& dir
             direct.target.para_decomp.T2);
     auditRingPathFeatures(stats, direct);
     auditMethodPathFeatures(stats, direct);
+    auditHbondConditioningFeatures(stats, direct);
 }
 
 void recordAbsentNewChannelSlabs(const Body& body, PerAtomSubstrateStats& stats) {
@@ -1535,6 +1785,35 @@ QStringList makeMethodPathColumns() {
     return cols;
 }
 
+QStringList makeHbondConditioningColumns() {
+    QStringList cols;
+    appendIndexedNames(cols, QStringLiteral("larsen_hbond_1pHB_T2"), 5);
+    appendIndexedNames(cols, QStringLiteral("larsen_hbond_2pHB_T2"), 5);
+    appendIndexedNames(cols, QStringLiteral("larsen_hbond_1pHaB_T2"), 5);
+    appendIndexedNames(cols, QStringLiteral("larsen_hbond_2pHaB_T2"), 5);
+    cols << QStringLiteral("larsen_hbond_water_term");
+    appendIndexedNames(cols, QStringLiteral("hbond_scalars"), 4);
+    cols << QStringLiteral("dssp_chem_donor_flag")
+         << QStringLiteral("dssp_chem_acceptor_flag");
+    appendIndexedNames(cols, QStringLiteral("dssp_hbond_energy"), 4);
+    cols << QStringLiteral("dssp_acceptor_partner_0")
+         << QStringLiteral("dssp_acceptor_energy_0")
+         << QStringLiteral("dssp_acceptor_partner_1")
+         << QStringLiteral("dssp_acceptor_energy_1")
+         << QStringLiteral("dssp_acceptor_count")
+         << QStringLiteral("dssp_donor_partner_0")
+         << QStringLiteral("dssp_donor_energy_0")
+         << QStringLiteral("dssp_donor_partner_1")
+         << QStringLiteral("dssp_donor_energy_1")
+         << QStringLiteral("dssp_donor_count");
+    appendIndexedNames(cols, QStringLiteral("dssp_ss8"), 8);
+    appendIndexedNames(cols, QStringLiteral("dssp_chi"), 12);
+    cols << QStringLiteral("omega_actual");
+    cols << QStringLiteral("pyramidalization");
+    appendIndexedNames(cols, QStringLiteral("ring_geometry"), 10);
+    return cols;
+}
+
 const QStringList kClassicalColumns = {
     QStringLiteral("ring_jb_T0"),
     QStringLiteral("ring_jb_T2_0"), QStringLiteral("ring_jb_T2_1"),
@@ -1631,6 +1910,7 @@ const QStringList kBackboneAuditColumns = {
 
 const QStringList kRingPathColumns = makeRingPathColumns();
 const QStringList kMethodPathColumns = makeMethodPathColumns();
+const QStringList kHbondConditioningColumns = makeHbondConditioningColumns();
 
 void validateColumnCounts() {
     auto check = [](const QString& name, qsizetype actual, std::size_t expected) {
@@ -1654,6 +1934,8 @@ void validateColumnCounts() {
           kRingPathColumns.size(), kPerAtomRingPathCols);
     check(QStringLiteral("per_atom_substrate_features_method_paths"),
           kMethodPathColumns.size(), kPerAtomMethodPathCols);
+    check(QStringLiteral("per_atom_substrate_features_hbond_conditioning"),
+          kHbondConditioningColumns.size(), kPerAtomHbondConditioningCols);
 }
 
 class PerAtomWriter {
@@ -1697,6 +1979,8 @@ public:
                                  {rows_, kPerAtomRingPathCols}, QByteArray("<f8"))
               && methodPaths_.open(path(QStringLiteral("per_atom_substrate_features_method_paths.npy")),
                                    {rows_, kPerAtomMethodPathCols}, QByteArray("<f8"))
+              && hbondConditioning_.open(path(QStringLiteral("per_atom_substrate_features_hbond_conditioning.npy")),
+                                         {rows_, kPerAtomHbondConditioningCols}, QByteArray("<f8"))
               && conditioning_.open(path(QStringLiteral("per_atom_substrate_features_conditioning.npy")),
                                     {rows_, kPerAtomConditioningCols}, QByteArray("<f8"))
               && backboneAudit_.open(path(QStringLiteral("per_atom_substrate_backbone_audit.npy")),
@@ -1837,6 +2121,7 @@ public:
         if (!classical_.writeArray(classical)) return false;
         if (!ringPaths_.writeArray(direct.ring_paths)) return false;
         if (!methodPaths_.writeArray(direct.method_paths)) return false;
+        if (!hbondConditioning_.writeArray(direct.hbond_conditioning)) return false;
         if (!conditioning_.writeArray(conditioning)) return false;
         if (!backboneAudit_.writeArray(agg.backbone_audit)) return false;
         if (cfg_.emit_embedding) {
@@ -1869,6 +2154,7 @@ public:
                && targetDiaT0_.commit() && targetDiaT1_.commit() && targetDiaT2_.commit()
                && targetParaT0_.commit() && targetParaT1_.commit() && targetParaT2_.commit()
                && classical_.commit() && ringPaths_.commit() && methodPaths_.commit()
+               && hbondConditioning_.commit()
                && conditioning_.commit() && backboneAudit_.commit()
                && (!cfg_.emit_embedding || embedding_.commit()) && modOk;
     }
@@ -1922,6 +2208,7 @@ private:
     StreamingNpy classical_;
     StreamingNpy ringPaths_;
     StreamingNpy methodPaths_;
+    StreamingNpy hbondConditioning_;
     StreamingNpy conditioning_;
     StreamingNpy backboneAudit_;
     StreamingNpy embedding_;
@@ -2150,6 +2437,48 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_method_paths"),
                       name, i, units, irreps, mechanism, true, sign);
     }
+    for (int i = 0; i < kHbondConditioningColumns.size(); ++i) {
+        const QString name = kHbondConditioningColumns[i];
+        QString units;
+        QString irreps = QStringLiteral("0e");
+        QString mechanism = QStringLiteral("conditioning");
+        bool feature = false;
+        QString sign;
+        if (name.contains(QStringLiteral("larsen_hbond")) && name.contains(QStringLiteral("_T2_"))) {
+            units = QStringLiteral("ppm");
+            irreps = QStringLiteral("1x2e");
+            mechanism = QStringLiteral("larsen_hbond");
+            feature = true;
+            sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
+        } else if (name == QStringLiteral("larsen_hbond_water_term")) {
+            units = QStringLiteral("ppm");
+            mechanism = QStringLiteral("larsen_hbond");
+            feature = true;
+        } else if (name.contains(QStringLiteral("hbond_scalars"))) {
+            mechanism = QStringLiteral("hbond_geometry");
+            feature = true;
+        } else if (name.contains(QStringLiteral("dssp_hbond"))
+                   || name.contains(QStringLiteral("dssp_chem"))
+                   || name.contains(QStringLiteral("dssp_acceptor"))
+                   || name.contains(QStringLiteral("dssp_donor"))) {
+            mechanism = QStringLiteral("dssp_hbond_backup");
+            feature = true;
+            units = name.contains(QStringLiteral("energy")) ? QStringLiteral("kcal/mol") : QString();
+        } else if (name.contains(QStringLiteral("dssp_ss8")) || name.contains(QStringLiteral("dssp_chi"))) {
+            mechanism = QStringLiteral("secondary_structure");
+        } else if (name == QStringLiteral("omega_actual")) {
+            units = QStringLiteral("radians");
+            mechanism = QStringLiteral("planar_geometry");
+        } else if (name == QStringLiteral("pyramidalization")) {
+            units = QStringLiteral("radians");
+            mechanism = QStringLiteral("planar_geometry");
+        } else if (name.contains(QStringLiteral("ring_geometry"))) {
+            units = QStringLiteral("A");
+            mechanism = QStringLiteral("ring_geometry");
+        }
+        addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_hbond_conditioning"),
+                      name, i, units, irreps, mechanism, feature, sign);
+    }
     for (int i = 0; i < kConditioningColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_conditioning"),
                       kConditioningColumns[i], i, QString(), QStringLiteral("0e"),
@@ -2268,7 +2597,8 @@ bool writePerAtomManifest(const QString& outDir, const PerAtomSubstrateStats& st
     root.insert(QStringLiteral("dft_frame_alignment"), align);
     QJsonObject sizeGate;
     constexpr std::size_t kPiece3BAppendFloat64Cols =
-        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols + kPerAtomMethodPathCols;
+        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols + kPerAtomMethodPathCols
+        + kPerAtomHbondConditioningCols;
     const double appendGiB =
         static_cast<double>(stats.rows) * static_cast<double>(kPiece3BAppendFloat64Cols)
         * 8.0 / 1073741824.0;
@@ -2603,6 +2933,7 @@ QStringList PerAtomSubstrateSidecars(const PerAtomSubstrateConfig& config) {
         QStringLiteral("per_atom_substrate_features_classical.npy"),
         QStringLiteral("per_atom_substrate_features_ring_paths.npy"),
         QStringLiteral("per_atom_substrate_features_method_paths.npy"),
+        QStringLiteral("per_atom_substrate_features_hbond_conditioning.npy"),
         QStringLiteral("per_atom_substrate_features_conditioning.npy"),
         QStringLiteral("per_atom_substrate_driver_modulation_by_atom.npy"),
         QStringLiteral("per_atom_substrate_backbone_audit.npy"),
@@ -2657,7 +2988,8 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
     stats.dft_rows = body.run.frameMap.dftRows().size();
     const std::size_t expectedRows = stats.atom_count * stats.dft_rows;
     constexpr std::size_t kPiece3BAppendFloat64Cols =
-        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols + kPerAtomMethodPathCols;
+        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols + kPerAtomMethodPathCols
+        + kPerAtomHbondConditioningCols;
     const double appendGiB =
         static_cast<double>(expectedRows) * static_cast<double>(kPiece3BAppendFloat64Cols)
         * 8.0 / 1073741824.0;
