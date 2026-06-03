@@ -1,5 +1,5 @@
 Piece3B final run: /tmp/rediscover-runs/2026-06-03-per-atom-substrate-piece3b-final
-Commits: chunk1 9965c2b target split + ring paths; chunk2 1d0f56a method paths; chunk3 5a39288 hbond + conditioners.
+Commits: chunk1 `9965c2bd1f38f4c138e7dc3836206b45f3e91525` target split + ring paths; chunk2 `1d0f56aac4c8a53310b1214663bd65aa8f8fc0b3` method paths; chunk3 `5a39288b30b069bac31e25c38d1c6df5c981d91f` hbond + conditioners.
 Source location pass: read ../python/nmr_extract/_catalog.py/QtFieldCatalog stems; DSSP raw partners from /trajectory/dssp8_time_series; ORCA targets from BuildTarget raw total/dia/para.
 No producer, CMake, or ctest edits. C++ emitted all values; per-source bond/ring data folded in memory and discarded.
 Rows/axis gate: 846 atoms x 660 DFT frames = 558360 rows; dense row_id and unique (atom_index,original_frame_index): PASS.

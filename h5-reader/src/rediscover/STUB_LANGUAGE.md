@@ -1,6 +1,7 @@
 # Rediscover — STUB language (Phase 1 waterfall draft, 2026-05-31)
 
-Status: **stub draft.** Branch `h5-reader-pysr-spike`. This is the
+Status: **historical stub draft**; the current C++ surface is partly built in `RelationshipEngine`, `ComposedRelationships`, `ResidentIndexes`, `PerAtomSubstrate`, and `CaseHunter`.
+Branch `h5-reader-pysr-spike`. This is the
 complete-today skeleton of the multi-scenario surface specified in
 `SURFACE_DESIGN.md`: the catalog/ArraySpec, the primitive verbs, the
 combinator types, the `Relationship` bundle, the engine loop, the JSON
@@ -13,8 +14,7 @@ is "exploratory / TBD / later." Where an item does not fit the language, it
 is written up as an ISSUE in the final section — a finding to fix, not a
 punt.
 
-This is a **stub**: signatures, declarations, schemas. **No bodies.** It was
-not built (the toolchain is sandboxed in this session). It reads with
+This is a **stub**: signatures, declarations, schemas; the later built bodies live in the C++ files named above. It reads with
 `SURFACE_DESIGN.md` (the design), `DESIGN.md` / `STATE.md` / `FINDINGS.md` /
 `PLAN.md` (the one-off + the oracle numbers), and
 `spec/substrate_conventions_2026-05-30.md` (the conventions). It does NOT

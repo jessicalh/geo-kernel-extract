@@ -1,7 +1,8 @@
 # Codex brief — Loop 4: refit on the COMPLETE substrate + free ring-current validation + field divergence
 
-You own the grind; the owner vets. Loop 4 is the stats edge on the now-complete substrate
-(`/tmp/rediscover-runs/2026-06-03-per-atom-substrate-piece3b-final`, ~3 GB, 558,360 rows).
+Status: **superseded by `CODEX_BRIEF_BUILD3_2026-06-03.md` and `POSTMORTEM_BUILD3.md`**; retained as the pre-Build3 planning brief.
+This brief described a stats edge on the then-complete substrate
+(`/tmp/rediscover-runs/2026-06-03-per-atom-substrate-piece3b-final`, later drop-old replaced by Build1, 558,360 rows).
 Extend the committed fit script `src/rediscover/analysis/allatom_fit_piece2.py` (the
 alpha-selection + tier-switch version, `44e786c`). This is Python at the EDGE — the heavy
 reduction is already done in the C++ substrate; Python only fits / correlates / partitions.

@@ -1,9 +1,8 @@
 # Codex brief — doc truth-pass (grinder): make every rediscover doc TRUE, cut cruft, concise
 
 You own the grind. Walk every rediscover doc and make it **true** against reality, **cut the
-cruft**, and **correct tersely**. This is an EDIT pass (you fix + commit), not a list. Runs
-AFTER Build 3 has landed (so you fold its commit/result/postmortem); you are the only
-committer. Branch `h5-reader-pysr-spike` — NEVER merge/switch/rebase/PR.
+cruft**, and **correct tersely**. This is an EDIT+REPORT pass; the lead owns all git operations.
+Runs AFTER Build 3 has landed (so you fold its commit/result/postmortem). Branch `h5-reader-pysr-spike` — NEVER merge/switch/rebase/PR.
 
 ## NO GIT — the lead owns all of it
 

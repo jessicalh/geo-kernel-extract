@@ -1,5 +1,7 @@
 # Codex brief — Loop 3 (Piece 3): channel-completion emit (missing classical mechanisms)
 
+Status: **landed** at `b583d7c87af2291ef7c025c828be60f2de0ecff9`; retained as the execution brief.
+
 You own the grind; the owner vets. Goal: emit into `per_atom_substrate` the classical
 mechanism channels the H5 ALREADY carries but the rediscover `Catalog` does not read,
 so the joint fit and the between-calculator network see the full mechanism set. The

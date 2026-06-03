@@ -1,10 +1,11 @@
 # All-Atom Charge-Complete Fit Spec - 2026-06-03
 
-Status: **draft for review only**. This document specifies one small emit
+Status: **landed**: Piece 1 emitted charge scalars at `4bb9a0198594773c016160270b6a872b2f9b23fb`; Piece 2 fit/partition landed at `5b5525b45f363e7c4a05cfff6a02a19d2d8c15ab` and the alpha fix at `44e786c094c4f9cd1ae4ebe451454fc3e31406d6`.
+This document specifies one small emit
 extension plus the first charge-complete all-atoms joint fit and
 partition-by-condition analysis. It extends
 `PER_ATOM_SUBSTRATE_SPEC_2026-06-02.md` and targets the v1
-`per_atom_substrate` shape committed at `00ec168`.
+`per_atom_substrate` shape committed at `00ec16876d530bfa9ed5a58be83976559eef9dd8`.
 
 Reference v1 run:
 

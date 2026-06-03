@@ -27,6 +27,7 @@ statistical-position grading.
 - Build 3 `d35d7ec` — per-type fit alongside global + dia-T2 + dominance curves. **Per-type
   RESCUES H** (HN −54→+0.58 within; all H strata recover within 0.31–0.72) AND improves the
   heavy strata (O within 0.18→0.72, aromatic_heavy + N up). Per-type is the fit architecture.
+- Docs restore point `ad02f875` follows Build 3; lead owns the next commit.
 
 ## Current step
 **Build 3 landed.** Verdict: per-type is the right fit (rescues H, improves heavy);
@@ -53,5 +54,4 @@ network + equations table, built on the per-type-within foundation, dominance-ga
   physics-math; gates are the truth, commit only green; nmr_extract extractions SACRED.
 
 ## Pointers
-`STATE.md` (full detail/history), the partition-filter design (designer's plan — *not yet saved
-as a doc; gap*), the named memories (`feedback_*`/`project_*`).
+`STATE.md` (full detail/history), `PARTITION_FILTER_DESIGN.md` (durable filter architecture), the named memories (`feedback_*`/`project_*`).

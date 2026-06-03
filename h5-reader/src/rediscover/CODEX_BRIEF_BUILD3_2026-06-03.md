@@ -1,5 +1,7 @@
 # Codex brief — Build 3: fit-architecture loop (per-type fit alongside global + dia-T2 + dominance curve)
 
+Status: **landed** at `d35d7ec46e2c6b2064ab90228b6a997e4714e11a`; results are in `POSTMORTEM_BUILD3.md`.
+
 You own the grind; the owner vets. Build 2 fit ONE global ridge across all 846 atoms and
 SLICED it by stratum — which anti-predicts the H strata (HN between R² −54, robust CI, not
 no-data) because one coefficient set is mis-applied across atom types with incompatible T2

@@ -1,5 +1,7 @@
 # Codex brief — Build 2: the Python partition (the deliverable)
 
+Status: **landed** at `a2d69cbb829dcc4901486c1162567fc99ba38b95`; retained as the execution brief.
+
 You own the grind; the owner vets. Build 2 is the PARTITION — the product of the whole
 effort: fit all atoms (the engine), then partition held-out recovery by input-side
 conditions so the favourable cases EMERGE, per mechanism × stratum × target. Extend the

@@ -1,6 +1,6 @@
 Piece 3 postmortem, 2026-06-03
 Run dir: /tmp/rediscover-runs/2026-06-03-per-atom-substrate-piece3-loop3
-Commit: HEAD (this atomic commit; exact hash printed by Codex after commit)
+Commit: `b583d7c87af2291ef7c025c828be60f2de0ecff9`
 Drift: landed additive C++ Catalog/per_atom_substrate emit for missing classical mechanism channels.
 Loader added: none; reused existing QtTrajectoryH5 H5 buffers and added guarded buffer accessors only.
 Absent H5 slabs: hbond_nearest_dist, hbond_nearest_dir, hbond_is_donor, hbond_is_acceptor, eeq_coordination_number.

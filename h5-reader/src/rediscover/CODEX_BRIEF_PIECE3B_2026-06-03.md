@@ -1,5 +1,7 @@
 # Codex brief — Loop 3b: the full channel-completion + T1/dia/para targets + comparison-method paths
 
+Status: **landed** in chunks `9965c2bd1f38f4c138e7dc3836206b45f3e91525`, `1d0f56aac4c8a53310b1214663bd65aa8f8fc0b3`, and `5a39288b30b069bac31e25c38d1c6df5c981d91f`.
+
 You own the grind; the owner vets. This is the FAT, deliberate emit: wire every
 cheap-available channel + the full shielding-target decomposition into
 `per_atom_substrate`, additive on commit `b583d7c` (Loop 3). The point is to never have
@@ -70,7 +72,7 @@ agreement is evaluable with NO DFT, on all frames. Mirror the existing T2 block 
 - **Ring current — 4 paths:** `bs_shielding` (+ `bs_per_type_T0/T2`, `bs_total_B`,
   `bs_ring_counts`), `hm_shielding` (+ `hm_per_type_T0/T2`), `ringchi_shielding`, and the
   existing Johnson-Bovey fold (already emitted). Emit each as its own labeled mechanism so
-  bs vs hm vs ringχ vs jb can be correlated (expect slope≈1; divergence = physics).
+  bs/hm/jb can be correlated as the comparable shielding set; ringchi is opposite-convention and must not be naive-slope-scored.
 - **π-quadrupole / dispersion per-type:** `pq_per_type_T0/T2`, `disp_per_type_T0/T2`.
 - **McConnell paths + per-category:** `mc_category_T2`, `mc_scalars`,
   `mopac_mc_category_T2`, `mopac_mc_scalars`, `mopac_bond_orders` (mechanistic bond-order→Δχ).
@@ -78,7 +80,7 @@ agreement is evaluable with NO DFT, on all frames. Mirror the existing T2 block 
   `mopac_coulomb_E`, `mopac_coulomb_efg_backbone/aromatic`, `mopac_coulomb_scalars`,
   `aimnet2_efg` (+ `aimnet2_efg_aromatic/backbone`), `water_efg`, `water_efield_first`.
   (FF14SB field, APBS E/EFG, mopac_coulomb_shielding already emitted.) **Analysis framing
-  (record for Loop 4, do not treat field cross-method as slope≈1):** unlike ring current,
+  (record for the next analysis, do not treat field cross-method as slope≈1):** unlike ring current,
   these will NOT agree — FF14SB(vacuum) / APBS(solvated) / MOPAC / AIMNet2(gas-phase) /
   explicit-water diverge by construction (screening, polarization). The CLEAN field
   validation is WITHIN-method definitional — `EFG = ∇(field)`, `field = Coulomb-sum(charges)`

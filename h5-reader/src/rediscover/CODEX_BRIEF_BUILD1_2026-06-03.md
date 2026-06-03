@@ -1,5 +1,7 @@
 # Codex brief — Build 1: the C++ partition-filter tool (isolation primitives + bin-ids + CaseHunter)
 
+Status: **landed** at `a3531040655955a4d393e314c5a69de51b1c54bf`; fixed by Build1Fix.
+
 You own the grind; the owner vets. This is the C++ half of the PARTITION step — the
 **filters live in C++ over the resident indexes**, not in Python. Design reference:
 the partition-filter design just produced (the owner does NOT lean Python — keep selection/

@@ -1,5 +1,7 @@
 # Codex brief — Piece 2: all-atoms joint fit + partition-by-condition
 
+Status: **landed** at `5b5525b45f363e7c4a05cfff6a02a19d2d8c15ab`; retained as the execution brief.
+
 You own the grind; the lead and the project owner vet and judge. This is **layer 2
 of the thesis reporting arc** (equation calibrations) and the **engine of the
 reframed law-example hunter**: fit across ALL atoms so the between/static axis

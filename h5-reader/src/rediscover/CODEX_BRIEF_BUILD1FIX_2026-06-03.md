@@ -1,5 +1,7 @@
 # Codex brief — Build 1 fix loop (H1 + M1 + M2 from the adversarial review)
 
+Status: **landed** at `d9ba53dc0a7929eb4d4ce8185f6d9e6ff868c374`; retained as the fix-loop brief.
+
 You own the grind; the owner vets. Three targeted fixes to the just-landed partition-filter
 code (commit `a353104`), from the adversarial review, BEFORE the Build-2 fit/partition
 consumes it. C++ spine only — zero Python computes/derives any emitted value. This re-emits

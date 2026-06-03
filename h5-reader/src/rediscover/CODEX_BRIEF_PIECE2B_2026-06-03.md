@@ -1,5 +1,7 @@
 # Codex brief — Loop 2b: alpha-selection + analysis-side AIMNet2 switch
 
+Status: **landed** at `44e786c094c4f9cd1ae4ebe451454fc3e31406d6`; retained as the execution brief.
+
 You own the grind; the owner vets. Loop 2b settles a confound from Loop 2: the
 `+AIMNet2` and `all` tiers HURT the between-axis under fixed `alpha=10` (global
 between +0.104 → +0.058 → +0.053). On ~80 features over only 846 atom-means, a fixed

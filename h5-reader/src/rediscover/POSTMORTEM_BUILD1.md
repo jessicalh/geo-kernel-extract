@@ -2,7 +2,7 @@
 
 Branch: h5-reader-pysr-spike.
 Run dir: /tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1.
-Commit hash: this atomic commit; exact final SHA printed in Codex summary.
+Commit hash: `a3531040655955a4d393e314c5a69de51b1c54bf`.
 
 Disk guard: PASS. Free was >=160G after drop-old before primary emit; final free 156G.
 Rediscover output: 3.2G total, 3.1G Build1, under the 15G budget.

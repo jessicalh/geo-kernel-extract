@@ -188,7 +188,7 @@ sum* (`sum_dipolar_*`) but NOT the C++ literature-scaled aggregate the reducer-
 comment is waiting for: `look03_coefficient.py:86-87` literally says *"intensity-
 weighted aggregate intentionally omitted (it is a C++ reducer to add, not a
 Python re-sum of `ring_intensity*dipolar`)."* The codebase KNOWS the drift and
-named the fix; the fix was not built. `EMIT_SURFACE_AUDIT.md` bucket C (C1-C7)
+named the fix; at this audit point the fix was not built. `EMIT_SURFACE_AUDIT.md` bucket C (C1-C7)
 is this backlog enumerated column-by-column.
 
 ### B3. Selections / model-queries living in Python

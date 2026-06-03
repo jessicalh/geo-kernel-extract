@@ -1,6 +1,6 @@
 # Build 3 postmortem - fit architecture loop
 Run dir: `/tmp/rediscover-runs/2026-06-03-build3-fit-arch/`
-Script commit: `d35d7ec` on `h5-reader-pysr-spike`; script only committed, heavy results not committed.
+Script commit: `d35d7ec46e2c6b2064ab90228b6a997e4714e11a` on `h5-reader-pysr-spike`; script only committed, heavy results not committed.
 
 ## Total-T2, tier=all, per-type vs global-sliced
 | stratum | n_type | global_b | per_b | d_b | global_w | per_w | d_w | support |

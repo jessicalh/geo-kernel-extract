@@ -1,5 +1,7 @@
 # Codex brief — Piece 1: charge-scalars emit extension (`per_atom_substrate`)
 
+Status: **landed** at `4bb9a0198594773c016160270b6a872b2f9b23fb`; retained as the execution brief.
+
 You own the grind here; the lead vets and judges. This is the first build loop of
 the all-atoms charge-complete fit. The stakes: the all-atoms fit's charge-source
 positive control and its `all` feature tier both need two raw charge scalars on

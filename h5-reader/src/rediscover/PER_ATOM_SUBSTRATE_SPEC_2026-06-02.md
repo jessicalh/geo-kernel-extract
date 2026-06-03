@@ -1,8 +1,9 @@
 # Per-Atom Aggregate Substrate Spec - 2026-06-02
 
-Status: **draft for vetting only**. This document specifies the lean #58
+Status: **landed as v1 and extended**: v1 substrate landed at `00ec16876d530bfa9ed5a58be83976559eef9dd8`, later extended through the Build1 substrate at `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1`.
+This document specifies the lean #58
 node-store realization that an 846-atom joint fit plus partition-by-condition
-analysis will consume. It does not request a build, extraction, or code change.
+analysis consumes.
 
 ## Purpose And Scope
 
@@ -399,8 +400,8 @@ The vet/build phase should require these checks before analysis consumes #58:
 
 ## Pair-Index / Deep-Pairwise Query Surface
 
-Status: **draft for vetting only**. This section is the missing second half of
-#58. The per-atom aggregate substrate above is the reduced fit substrate. The
+Status: **design carried forward**: the resident pointer/index idea landed as in-memory indexes plus named query outputs, not as a resident pair dump.
+The per-atom aggregate substrate above is the reduced fit substrate. The
 pair-index is the unreduced, queryable pointer surface. Both halves are part of
 the same design and should be vetted together before either is built.
 
@@ -725,8 +726,9 @@ kept transient unless it graduates into the vetted aggregate schema.
 
 ## Deep Per-Residue Identity (from our own topology)
 
-Status: **draft for vetting only**. This extends the identity/stratum surface
-above and the pair-index surface below it. It does not request a build.
+Status: **partly landed**: perceived-topology identity is emitted in the substrate; deeper categorical-engine work is parked.
+This extends the identity/stratum surface
+above and the pair-index surface below it.
 
 Boundary: identity is surfaced from the topology the model already perceived:
 `atoms_category_info.npy`, `residues.npy`, `rings.npy`,

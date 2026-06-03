@@ -1,7 +1,7 @@
 Build1Fix Postmortem - 2026-06-03
 
 Branch: h5-reader-pysr-spike; no switch, merge, or rebase performed.
-Commit: one atomic Build1Fix commit; final SHA printed in Codex summary.
+Commit: `d9ba53dc0a7929eb4d4ce8185f6d9e6ff868c374`.
 Run path: /tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1
 
 H1 fixed: CloudKind::ChargeSites distance/gap now exclude target atom,

@@ -1,7 +1,7 @@
 # Rediscover — guidance
 
 Top-level orientation for the rediscover work. The detailed class model is
-`DESIGN.md`. Per-component docs for agents are not written yet.
+`DESIGN.md`; current state lives in `NOW.md` and `STATE.md`.
 
 This doc is meant to re-establish context for a session or agent coming in
 cold. It states what is built, what is only designed, and what is open or
@@ -104,10 +104,9 @@ fixture (`3ẑẑᵀ−I` ⇒ `T2[2]=√6`). The reader's display-side
 - A per-atom local frame expresses the neighbourhood vectors and the target
   tensor consistently, which is what an equivariant fitter needs.
 
-## Build order
+## Historical Build Order
 
-A rough dependency order, not a fixed schedule — expect it to shift as
-issues emerge.
+Historical dependency order for the first extractor; the all-atom substrate, partition filters, and Build 3 fit architecture have now landed.
 
 1. `SphericalBasis::DecomposeLibrary` + fixture — **written** (not yet
    compiled/tested in this tree).
@@ -135,45 +134,10 @@ The fitter is not part of this build.
 
 ## Status (truthful)
 
-- **Built (written, end-to-end, in this tree):** the whole substrate path —
-  `SphericalBasis`, `LocalFrameBasis` (HN + aromatic-H frames),
-  `RediscoverTypes` (DftTarget / SourceSlot / NeighborhoodRecord),
-  `RunData`/`RunLoader`/`FrameMap`/`DftFrameSet`, `RecordSink` (two-row-kind
-  CSV via `QSaveFile`), `ExtractionSupport`, `FrameSpatialIndex` (nanoflann
-  over bond midpoints), `RingCurrentNeighborhood`, `McConnellNeighborhood`,
-  `main_extract`, the `h5reader_extract` CMake target, and the
-  `h5reader_rediscover_tests` basis fixture. Additive reader edits landed:
-  `DftAtomShielding` raw 3×3 + `OrcaShieldingParser` keeping it; the typed
-  `QtAtom::IsAromaticRingHydrogen()` predicate (HA/H4/H5 ff14SB types).
-- **Compile status (2026-05-31):** the basis decomposition was verified
-  correct by a standalone math harness in an EARLIER environment; in the
-  CURRENT environment the sandbox denied all compiler / CMake invocations, so
-  the full tree was NOT compiled here and the end-to-end run was NOT executed.
-  The code is written against the real headers and reviewed line-by-line, but
-  "compiles cleanly" and "runs on 1P9J" are PENDING a build on a machine where
-  the toolchain is permitted. The 1P9J calcset IS locatable and runnable:
-  `/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft`
-  (the `.LGS` + `extract/trajectory.h5` + 5-NPY sidecar + `dft/jobs/*` all
-  present; this is the same dir the REST smoke fixture points at).
-  Run it with: `h5reader_extract --run <that dir> --out <outdir> --case all`.
-- **Known simplification (flagged for the lead):** the aromatic-H frame's
-  x-axis anchor uses the ring's first canonical-walk atom, not the typed
-  CG/CD2 anchor the conventions doc specifies. Stable per-ring + per-frame, so
-  the frame is well-defined, but HIS tautomer azimuth differs from the
-  conventions-doc choice. Refine if the equivariant T2 fit needs the exact
-  anchor.
-- **Open / undecided:**
-  - the fitter (ridge / scalar SR / equivariant SR / equivariant
-    sum-pooling) — deliberately not chosen;
-  - the T2 Cartesian-frame check above;
-  - the regression shape — **decided**: emit both the un-summed per-source
-    rows (for sum-pooling / equivariant fitters) and an aggregated
-    per-(atom,frame) summed-feature row (`Σ(3cos²θ−1)/r³` + per-type sums,
-    for scalar / ridge fitters); both carry the same DFT target;
-  - whether the classical forms actually account for the DFT — that is the
-    experiment, not a foregone result.
-- **Reviewed:** `DESIGN.md` was reviewed by Codex (doability/physics/
-  coherence); its corrections are folded in.
+- **Built and run:** `h5reader_extract`, the relationship engine, all-atom substrate emit, partition filters, `CaseHunter`, Build 2 partition fit, and Build 3 per-type fit architecture are landed on `h5-reader-pysr-spike`.
+- **Current substrate:** `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1` is the live emitted substrate; current analysis result dirs include Build 2 and Build 3 under `/tmp/rediscover-runs`.
+- **Current fit result:** Build 3 settled that total-T2 per-type-within is the trustworthy read; dia/para split is due diligence, not the primary target.
+- **Open / undecided:** between-calculator network, equations table, statistical-position grading, and the future hierarchical/type-interaction model.
 
 ## Where the detail is
 
@@ -181,4 +145,4 @@ The fitter is not part of this build.
   reader's `h5-reader/CLAUDE.md`, and the library `OBJECT_MODEL.md` for the
   kernel / H5 definitions.
 - Class model and every type: `DESIGN.md`.
-- Per-component agent docs: not written yet (deliberately deferred).
+- Per-component/history docs sit in this directory; `NOW.md` is the live pointer.

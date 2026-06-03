@@ -1,6 +1,6 @@
 # Rediscover — classical-shielding study substrate
 
-**Status:** design, for Codex review. Branch `h5-reader-pysr-spike`.
+**Status:** historical design now implemented and extended on `h5-reader-pysr-spike`; read `NOW.md`, `STATE.md`, and `PARTITION_FILTER_DESIGN.md` for current status.
 
 Experimental, one-shot branch — no integration target, the viewer is
 untouched, no fleet wiring. Judge on doability, physics, and coherence,

@@ -1,7 +1,7 @@
 # Multi-scenario surface — design sketch (2026-05-31)
 
-Status: **design sketch**, Step 1 of `PLAN.md` ("pseudocode the end-state").
-Not built. The next session starts here rather than re-deriving. Reads with
+Status: **historical design sketch, now partly built**: the C++ relationship engine, resident indexes, all-atom substrate, partition filters, and `CaseHunter` landed; Python remains the fit consumer.
+Reads with
 `PLAN.md` / `STATE.md` / `FINDINGS.md` and `DESIGN.md` (the one-off). Living —
 expect it to shift as the build and the codex IPC research land.
 

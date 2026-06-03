@@ -1,6 +1,6 @@
 # Rediscover — current state (2026-06-03)
 
-## SESSION HANDOFF (2026-06-03 LATE) — Loop 1 + Loop 2 of the all-atoms fit LANDED
+## SESSION HANDOFF (2026-06-03 LATE) — all-atoms fit through Build 3 LANDED
 
 ALLATOM_FIT_SPEC vetted + re-chunked to TWO human-in-loop loops (codex had set one
 chunk for convenience; split to build-then-analysis). Both ran clean.
@@ -49,14 +49,6 @@ RESULTS (held-out R², facts not verdicts):
   "switchable" = ANALYSIS-side feature-tier toggle ONLY; producer/substrate AIMNet2 stays
   always-on (no flag/build/label) — [[feedback_aimnet2_required_no_weasel]] holds, refined.
 
-MISSING EXTRACTIONS (the rediscover Catalog reads ~half the H5's calculator channels):
-present in the H5, NOT read by Catalog → a C++ emit extension (producer untouched):
-**Larsen H-bond** (the standout — dominant amide/carbonyl mechanism, targets HN/O),
-π-quadrupole, dispersion, water/hydration field, SASA, EEQ charge+coordination, and
-Haigh-Mallion + ring-susceptibility (ring agreement edge). NOT extracted at all (needs a
-new ORCA run — SACRED, deferred): DFT NICS/magnetizability (ring reference), DFT McConnell
-Δχ (#37), DFT EFG (EFG-leg gold standard).
-
 CADENCE (2026-06-03, to protect the lead's finite context across the remaining loops):
 codex writes a ≤40-line POSTMORTEM + prints only a short summary (NO diff dumps to
 stdout); batch related work into one gated loop; checkpoint STATE richly (the WHY, not
@@ -74,29 +66,19 @@ CHANNEL-COMPLETION EMIT DONE — substrate is now COMPLETE (2026-06-03):
   best+backup (Larsen per-class 1pHB/2pHB/1pHaB/2pHaB donor/acceptor-resolved + hbond_scalars
   + DSSP chemical-flag & raw backup); conditioners (ss8/chi/omega/pyramidalization/ring_geom).
   fail-loud-AND-LOCATE worked: "absent" hbond geometry located in hbond_scalars + DSSP.
-  Run: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-piece3b-final`.
+  Historical run: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-piece3b-final`, later drop-old replaced by the Build1 substrate.
 - FLAGS: stray commit `91db21c` (doc/calculators/CONTINUE_PROMPT.md) interleaved — NOT 3b
   (likely a concurrent docs-effort codex; two writers on the repo). `/tmp/rediscover-runs`
-  at the 15 GB ceiling — drop superseded substrate copies (keep piece3b-final).
+  was brought back under budget by keeping the Build1 substrate and analysis result dirs.
 - GATE for all this: emit keyed (atom,frame)-only, C++ derives/reduces in memory, lean DISK
   (<15 GB output) but generous RAM (swap OK — patient, not sloppy). [[feedback_all_statistics_minimize_python_15gb]]
-
-NEXT (human-in-loop): **Loop 4** = refit on the COMPLETE substrate — T2 AND T1, the new
-mechanisms, train-only PCA, three tiers — PLUS the **free ring-current cross-method
-validation** (bs vs hm vs ringχ vs jb, slope≈1) and the **field divergence study** (NOT an
-agreement edge — vacuum/solvated/polarizable diverge by construction; clean field check is
-within-method definitional EFG=∇field). Reductions C++-side, Python gets a lean handoff
-(minimize-Python). Then → between-calculator network (calibration + inclusion gate) →
-equations table (`equations/<mechanism>/`) → statistical-position grading. Optional: T0/σ_iso
-companion fit for the AIMNet2 isotropic-yes/tensor-no split. DFT-reference edges (NICS/
-magnetizability/EFG/Δχ) deferred to the one Trp-cage ORCA run [[project_orca_budget_one_more_run_trpcage]].
 
 ADVERSARIAL REVIEW of the 3b emit (opus, 2026-06-03) — **substrate SAFE TO FIT, no
 critical/high.** Verified: T0/T1/T2 round-trip; dia+para=total (1e-3 = ORCA print round);
 per-type sums → aggregates at machine precision; EFG set shares units/convention/frame
 (aimnet2_efg vs mopac_coulomb_efg +0.967); mopac_bond_orders 52% = clean topology split
 (zero partial); hbond_scalars order proven (s₀=nearest_dist, |s₁−1/s₀³|=5.5e-17); frame +
-offset integrity clean. HANDLE IN LOOP 4:
+offset integrity clean. HANDLE IN NEXT ANALYSIS:
 - **MEDIUM — ringχ is opposite-convention.** `ringchi_shielding` anti-correlates bs/hm
   (−0.72): producer decomposes bare susceptibility χ/r³ WITHOUT the shielding minus-sign,
   and it's in Å⁻³ not ppm·T/nA. bs/hm/jb are the clean comparable set (+0.994). Sign-flip +
@@ -155,12 +137,6 @@ FIX LOOP DONE (`d9ba53d`, 2026-06-03) — all three fixed, surgically, pure C++:
   changed; DFT targets + all other conditioners/mechanisms/bins/queries byte-identical. Disk-guard
   honored (full-path drop-old). Substrate (correct) = `…-build1`.
 
-NEXT: **Build 2** — the Python partition (the deliverable): fit total-T2/para-T2/T1 × tiers →
-response curves on the now-honest conditioners (incl. fixed charge isolation) → favourable-case
-ranking vs the hunter candidates, support-flagged per category (atom-count/N_eff; never over-claim
-thin fine-categories). Reductions C++-side / lean Python handoff. Then → between-calculator network
-(step 2, ring bs/hm/jb agreement + field divergence) → equations table → statistical-position grading.
-
 BUILD 2 DONE (`a2d69cb`) — the partition. Integrity clean (pure Python, lean 53M, all CV/
 partition checks). **N total-T2 between 0.63 / within 0.81** (the win) + favourable habitats
 (MC-magnitude monotone-rise on N; modulation thresholds) + 60 navigable hunter-intersected cases.
@@ -179,12 +155,6 @@ local-dominated). Stage-1's per-element fitting was dropped when the all-atoms f
 "condition on atom type" became SLICING not FITTING. **⇒ "H-bond doesn't lift HN" is CONFOUNDED —
 not judgeable until per-type.** Fix = do BOTH (all-atoms determinability + per-type coefficients).
 [[feedback_stage1_lessons]] [[feedback_no_simplification]]
-
-BUILD 3 FIRED (`CODEX_BRIEF_BUILD3`): PER-TYPE fit alongside global (the "both" — does per-type
-rescue HN from −54?) + dia-T2 target (channel due-diligence) + dominance response curve (Python
-quantile on the C++ `dom_*` scalar; C++ dom bin-id deferred to the next emit). On its result →
-between-calculator network → equations → grading, all on the per-type-aware foundation. (Eventual
-unification: one fit with type×feature interactions = determinability + per-type coefficients.)
 
 BUILD 3 DONE (`d35d7ec`, 2026-06-03) — fit-architecture loop. Integrity clean (pure Python,
 gates pass, anti-circular, disk-light). FINDINGS (total-T2, tier=all, per-type vs global-sliced,
@@ -209,55 +179,9 @@ NEXT: lead check-in (rediscover docs → restore point) → doc-truth-pass grind
 lead owns git, agent edits-only) → then between-calculator network (step 2) + equations table (step 3),
 on the per-type-within + dominance-gated + total-T2 foundation.
 
-Freshest current state, for the next session/agent. Read `GUIDANCE.md`
-(orientation) + `DESIGN.md` (class model) first; this supersedes the
-"Status" section in GUIDANCE.md, which a build agent left mid-build/stale.
+## SUPERSEDED SESSION SNAPSHOT (2026-06-03)
 
-## SESSION HANDOFF (2026-06-03) — v1 substrate landed; immediate stats, learning goals, the analysis loop + the remaining steps (READ FIRST)
-
-**FRESH-LOOK CAVEATS (validated 2026-06-03 — see `FRESH_LOOK_2026-06-03.md`): three to address.**
-(1) The MOPAC-field r-values stated below (N 0.505 / R² 0.33, C 0.579) have **no backing result file** the fresh-look could find, and the between-axis MOPAC rows it found are **negative** — **re-derive before citing**; this number underpins "the field signal is the MOPAC leg," so it matters.
-(2) `ALLATOM_FIT_SPEC_2026-06-03.md` has **LANDED** (the "IN FLIGHT" line below is now stale) — the real next action is the **human-in-loop spec review**, not waiting. The spec is well-formed: Piece 1 closes the charge-scalars gap, Piece 2 is the fit-all-then-partition on v1.
-(3) The combined-score-per-atom-type stats below are the **OLD 54-atom-strata multi-dir prior** (`/tmp/combined-mopac-layer3`); the all-atoms fit on the real 558,360-row substrate is the next step and **may move them** — keep within/between axes labeled.
-
-WHERE WE ARE:
-- **v1 per-atom substrate BUILT + gated + committed (`00ec168`).** 558,360 rows (846 atoms × 660 DFT frames). Four reducer-generalizations (ring **Johnson-Bovey** fold, charge q/r³, FF14SB field, valid-source McConnell) in **lab frame**; MOPAC/APBS/AIMNet2 reused; deep per-residue identity from **perceived topology** (ring topology incl.; canonical-projection labels not Python strings; `iupac_atom_name` display-only); conditioners all in **C++** (no piracy; modulation via Welford); pair-index as **lazy named queries**; embedding separable f32; ArraySpec fully cataloged. Gates green incl. the load-bearing **backbone-reproduces-broad regression** (machine precision). Lean (<1 GB). Emit at `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-v1-fixed`.
-- **Positive-control network ran: the stool HOLDS.** Substrate's internal physics sound to fit on. Flags: raw per-source charge scalars (FF14SB/MOPAC) not emitted (only aimnet2) → small emit extension; APBS-EFG↔MOPAC sign-flip to confirm-is-convention.
-- **IN FLIGHT:** codex drafting `ALLATOM_FIT_SPEC_2026-06-03.md` — ONE chunk = [small charge-scalars emit + all-atoms joint fit + partition]. When it lands: **review (human-in-loop) → execute.**
-
-IMMEDIATE STATS (current numerical standing — within-frame, block-CV held-out R² unless noted):
-- **Combined score per atom type (all-tier):** N 0.73, C 0.74, O 0.67, CA 0.54, HN 0.53, HA 0.49. Classical mechanisms carry most; AIMNet2 lift only +0.03–0.10 (biggest at CA). Between-axis was unstable at 54-atom strata → the 846-atom all-atoms fit (in flight) is the fix.
-- **MOPAC field (Stage-1 confirmed):** MOPAC-Coulomb-EFG carries the field signal — N r 0.505 (R² 0.33), C 0.579 (0.24) strongest; HN 0.36; CA/HA weak; O absent. APBS-EFG weak everywhere (≤0.21).
-- **Positive-control network:** APBS-EFG↔MOPAC-Coulomb-σ r 0.70 (after sign/scale); chain ff14sb_E→charge_T2 0.94, apbs_E→apbs_efg 0.76, apbs_efg→mopac-σ 0.55; FF14SB-vs-APBS field diverges as expected (screening).
-- **Per-mechanism standing (corrected-backbone capstone):** ring = recovered relationship (γ_bare −11.3 = Pople six-membered intensity, γ_lit 0.77–0.92; aromatic-H scalar LOAO 0.62); charge q/r³ = strongest backbone static T2 (form recovered, scale fitted, PySR R² 0.775); McConnell = can't-alone (joint fit is its home); HN field = the one clear field read (FF14SB between R² 0.48); AIMNet2 = learnable ceiling (C-within 0.72, N 0.59); EFG local-frame ~0.
-- **Stage 1 (settled):** per-element/per-atom-type ridge, 55 kernels, 720 proteins / 446K atoms, R² 0.818.
-
-LEARNING GOALS:
-- Physics **explanation**, not prediction — R² is a diagnostic that the kernels carry the signal, not the graded metric. Correlate-not-match.
-- Reporting arc: signal → equation calibrations (recovered relationships + confidence) → ensemble (the model, captures variance, AIMNet2-if-magic) → equivariant transferability pilot (720 WT backbones; the all-atoms substrate is e3nn-ready).
-- The only ACTUAL calibration is a recovered relationship with its coefficient (ring); the rest graded by **statistical position**, not binary "law".
-- IMMEDIATE goal (this work): the all-atoms fit + partition (do the combined score + per-condition response curves recover the per-mechanism relationships, between-axis now determinable at 846 atoms) + the between-calculator network (the calibration + the stool) + the equations table. Stage 2 = 1P9J trajectories; the 1P9J DFT campaign climbs (~660/751) — re-run on the fuller set as it lands.
-
-THE ANALYSIS ARC (remaining steps — the WHOLE shape; granular detail fine, do NOT add steps):
-1. **All-atoms joint fit + partition** (spec in flight): combined score per atom type (846 atoms → between-axis determinable), three tiers (classical / +AIMNet2 / all), block-CV held-out; then **partition-by-condition** on the emitted input-side conditioners → response curves → favourable partitions **emerge** (fit-all-then-partition, NOT hunt-first; curves can rise or fall). The hunter's case-selection IS this partitioning.
-2. **Between-calculator network** (= our calibration + the calculator-inclusion gate): edges (agreement / definitional / mechanistic / reference-mode / chain), many no-DFT/all-frames/high-N; validates the stool; a calculator that can't show *something* is a candidate to disable.
-3. **Equations table:** `equations/<mechanism>/` subdirs, each a doc with the **pre-registration** (expected shape + size + habitat + signature + falsifier + strip-set) and the after (grade + figures); plus between-calculator EDGES. Reader **strips** show navigable curated cases (`QtAtomTimeSeriesDock`).
-4. **Grade by statistical position:** where the expected form falls in the distribution of suggestable fits (PySR Pareto / Bayesian-IC / null). Proof (γ→1) for clean simple kernels; statistical-position for the hard; calibration for formal-method legs.
-
-THE WORKFLOW LOOP (run each step this way — granular detail fine, do NOT add steps):
-- **Each step (build OR analysis): ask spec → vet spec → execute → drift-assessment + postmortem.** Minimum. Execution drifts from the vetted spec, so the after-check is mandatory.
-- **Human-in-loop EACH loop:** every pass's result comes to the lead, she steers, the next fires on her call. No silent auto-chaining.
-- **codex grinds** (spec-draft, execute, drift-assessment); **the lead vets the spec + judges the postmortem**; the lead's accumulated **context is irreplaceable — never spend it on the build/gate/commit grind** (re-fire codex shorter if it's flaky). codex credits plentiful; the lead's context is scarce.
-- **Breakout granularity follows internal-check boundaries** — break a piece out when it has its own check (gate/oracle/regression/CV); grind the rest into a chunk; don't over-fragment. codex grinds reliably modulo a context-image **platform bug** (short runs + retry; it's codex's bug, not ours).
-- **Getting all the way out to physics in a few steps is itself a good check, when possible.**
-- **Vocabulary:** "expected relationship + probability + fit", NEVER "law" (MSc MD project — no law-gating, no "model not law" stamps); never call meaningful steps "ceremony".
-
-THE DISCIPLINE (the spine owns complexity):
-- Model is the spine (one typed C++ model; Python only fits + reads; **no maths-model-2, no piracy** — the spine emits every value, Python derives none). The functional interface is the contract + the complexity container.
-- Pairwise kept as a **pointer-index** (lazy queries), never the resident 68 GB pair-dump. Materialization is a transient drop-old tool, never resident, never 1 TB.
-- nmr_extract extractions are **SACRED** (16 h atomic, under /shared); only rediscover substrate is cleanup-eligible. The applied-maths **helper** (walled, cheating-OK estimator) is distinct from the pure science model.
-
-POINTERS: durable principles in the memory store; key docs — `NODE_STORE_CONTRACT_2026-06-02.md`, `PER_ATOM_SUBSTRATE_SPEC_2026-06-02.md`, pending `ALLATOM_FIT_SPEC_2026-06-03.md`; memories `project_law_example_hunter`, `project_between_calculator_network`, `project_applied_maths_helper`, `feedback_python_complexity_is_the_primary_issue`, `feedback_law_as_statistical_position`, `feedback_dont_ai_the_definition_of_a_law`, `feedback_token_economy_codex_codes`.
+The v1 handoff body was removed because Build 1/2/3 superseded it; durable discipline retained: spec -> vet -> execute -> drift/postmortem, human-in-loop, C++ spine owns physics, Python only fits emitted substrate, nmr_extract outputs sacred.
 
 ---
 
