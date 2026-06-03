@@ -25,8 +25,10 @@ import change_of_basis as cob
 
 
 SUBSTRATE_DIR = Path("/tmp/rediscover-runs/2026-06-03-per-atom-substrate-charge-scalars-piece1-final")
-OUT_DIR = Path("/tmp/rediscover-runs/2026-06-03-allatom-fit-piece2")
+OUT_DIR = Path("/tmp/rediscover-runs/2026-06-03-allatom-fit-piece2b-alpha")
 RIDGE_ALPHA = 10.0
+ALPHA_GRID = [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 1.0e4, 1.0e5]
+INNER_CV_FOLDS = 5
 EMBEDDING_COMPONENTS = 32
 WITHIN_TEST_FRACTION = 0.20
 PURGE_FRAMES_EACH_SIDE = 1
@@ -39,6 +41,13 @@ TIER_LABELS = {
     "classical_mechanisms_combined": "classical mechanisms combined",
     "plus_AIMNet2": "classical plus AIMNet2",
     "all": "classical plus AIMNet2 plus raw charge scalars",
+}
+TIER_ALIASES = {
+    "classical": "classical_mechanisms_combined",
+    "classical_mechanisms_combined": "classical_mechanisms_combined",
+    "plus_AIMNet2": "plus_AIMNet2",
+    "plus_aimnet2": "plus_AIMNet2",
+    "all": "all",
 }
 TIER_PREVIOUS = {
     "classical_mechanisms_combined": None,
@@ -84,6 +93,11 @@ SCORE_TABLE_COLUMNS = [
     "n_original_frames",
     "n_features",
     "ridge_alpha",
+    "alpha_mode",
+    "between_ridge_alpha",
+    "between_ridge_alpha_min",
+    "between_ridge_alpha_max",
+    "within_ridge_alpha",
     "variance_share_between",
     "variance_share_within",
     "within_N_eff_min",
@@ -131,11 +145,55 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--substrate-dir", type=Path, default=SUBSTRATE_DIR)
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR)
     ap.add_argument("--ridge-alpha", type=float, default=RIDGE_ALPHA)
+    ap.add_argument("--alpha-mode", choices=("select", "fixed"), default="select", help="select uses train-only inner CV; fixed is the alpha=10 continuity baseline")
+    ap.add_argument("--alpha-grid", default=",".join(f"{x:g}" for x in ALPHA_GRID), help="comma-separated ridge alpha grid for alpha-mode=select")
+    ap.add_argument("--inner-cv-folds", type=int, default=INNER_CV_FOLDS)
+    ap.add_argument("--tiers", default=",".join(TIER_ORDER), help="comma-separated fit feature tiers; accepts classical, plus_AIMNet2, all")
     ap.add_argument("--embedding-components", type=int, default=EMBEDDING_COMPONENTS)
     ap.add_argument("--within-test-fraction", type=float, default=WITHIN_TEST_FRACTION)
     ap.add_argument("--purge-frames-each-side", type=int, default=PURGE_FRAMES_EACH_SIDE)
     ap.add_argument("--keep-out-dir", action="store_true", help="do not delete an existing output directory before writing")
     return ap.parse_args()
+
+
+def parse_alpha_grid(text: str) -> list[float]:
+    vals = []
+    for part in str(text).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        vals.append(float(part))
+    if not vals:
+        raise SystemExit("FATAL: alpha grid is empty")
+    if any((not np.isfinite(x)) or x < 0.0 for x in vals):
+        raise SystemExit(f"FATAL: alpha grid contains invalid values: {vals}")
+    return vals
+
+
+def parse_tiers(text: str) -> list[str]:
+    tiers = []
+    for part in str(text).split(","):
+        key = part.strip()
+        if not key:
+            continue
+        tier = TIER_ALIASES.get(key)
+        if tier is None:
+            valid = ", ".join(["classical", "plus_AIMNet2", "all"])
+            raise SystemExit(f"FATAL: unknown tier {key!r}; valid tiers: {valid}")
+        if tier not in tiers:
+            tiers.append(tier)
+    if not tiers:
+        raise SystemExit("FATAL: no fit feature tiers selected")
+    return tiers
+
+
+def previous_tier_map(tier_order: list[str]) -> dict[str, str | None]:
+    prev: str | None = None
+    out: dict[str, str | None] = {}
+    for tier in tier_order:
+        out[tier] = prev
+        prev = tier
+    return out
 
 
 def require_file(path: Path) -> Path:
@@ -304,6 +362,133 @@ def fit_ridge_predict(x_train: np.ndarray, y_train: np.ndarray, x_test: np.ndarr
     penalty[0, 0] = 0.0
     beta = np.linalg.solve(design.T @ design + penalty, design.T @ y_train)
     return design_t @ beta
+
+
+def fit_ridge_predict_grid(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_test: np.ndarray,
+    alpha_grid: list[float],
+) -> dict[float, np.ndarray]:
+    x_train = np.asarray(x_train, dtype=float)
+    y_train = np.asarray(y_train, dtype=float)
+    x_test = np.asarray(x_test, dtype=float)
+    if x_train.ndim == 1:
+        x_train = x_train.reshape(-1, 1)
+    if x_test.ndim == 1:
+        x_test = x_test.reshape(-1, 1)
+    if y_train.ndim == 1:
+        y_train = y_train.reshape(-1, 1)
+    ok = np.isfinite(y_train).all(axis=1) & np.isfinite(x_train).any(axis=1)
+    x_train = x_train[ok]
+    y_train = y_train[ok]
+    out_dim = y_train.shape[1] if y_train.ndim == 2 else 1
+    if len(x_train) < 3:
+        return {float(alpha): np.full((len(x_test), out_dim), np.nan, dtype=float) for alpha in alpha_grid}
+
+    mean = np.nanmean(x_train, axis=0)
+    mean[~np.isfinite(mean)] = 0.0
+    x_fill = np.where(np.isfinite(x_train), x_train, mean)
+    std = x_fill.std(axis=0)
+    std[~np.isfinite(std) | (std <= 0.0)] = 1.0
+    xz = (x_fill - mean) / std
+    xt = np.where(np.isfinite(x_test), x_test, mean)
+    xtz = (xt - mean) / std
+    design = np.column_stack([np.ones(len(xz)), xz])
+    design_t = np.column_stack([np.ones(len(xtz)), xtz])
+    xtx = design.T @ design
+    xty = design.T @ y_train
+    penalty_base = np.eye(design.shape[1], dtype=float)
+    penalty_base[0, 0] = 0.0
+    out = {}
+    for alpha in alpha_grid:
+        penalty = penalty_base * max(0.0, float(alpha))
+        beta = np.linalg.solve(xtx + penalty, xty)
+        out[float(alpha)] = design_t @ beta
+    return out
+
+
+def deterministic_index_folds(indices: np.ndarray, n_folds: int) -> list[tuple[np.ndarray, np.ndarray]]:
+    idx = np.asarray(indices, dtype=int)
+    if len(idx) < 2:
+        raise ValueError("inner CV requires at least two units")
+    k = min(max(2, int(n_folds)), len(idx))
+    folds = []
+    for val in np.array_split(idx, k):
+        if len(val) == 0:
+            continue
+        val_set = set(int(x) for x in val)
+        fit = np.asarray([int(x) for x in idx if int(x) not in val_set], dtype=int)
+        folds.append((fit, np.asarray(val, dtype=int)))
+    return folds
+
+
+def blocked_frame_cv_splits(
+    frames: np.ndarray,
+    eligible_mask: np.ndarray,
+    n_folds: int,
+    purge: int,
+) -> list[dict[str, object]]:
+    frames = np.asarray(frames, dtype=int)
+    eligible_mask = np.asarray(eligible_mask, dtype=bool)
+    eligible_frames = np.sort(np.unique(frames[eligible_mask]))
+    if len(eligible_frames) < 2:
+        raise ValueError("inner frame CV requires at least two eligible frames")
+    k = min(max(2, int(n_folds)), len(eligible_frames))
+    eligible_set = set(int(x) for x in eligible_frames)
+    out = []
+    for fold_idx, val_frames in enumerate(np.array_split(eligible_frames, k)):
+        val_set = set(int(x) for x in val_frames)
+        purge_set: set[int] = set()
+        for frame in val_set:
+            for offset in range(1, int(purge) + 1):
+                for candidate in (frame - offset, frame + offset):
+                    if candidate in eligible_set and candidate not in val_set:
+                        purge_set.add(candidate)
+        fit_mask = eligible_mask & np.array([int(f) not in val_set and int(f) not in purge_set for f in frames], dtype=bool)
+        val_mask = eligible_mask & np.array([int(f) in val_set for f in frames], dtype=bool)
+        purge_mask = eligible_mask & np.array([int(f) in purge_set for f in frames], dtype=bool)
+        out.append({
+            "fold": int(fold_idx),
+            "fit_mask": fit_mask,
+            "val_mask": val_mask,
+            "purge_mask": purge_mask,
+            "validation_frames": sorted(int(x) for x in val_set),
+            "purged_frames": sorted(int(x) for x in purge_set),
+        })
+    return out
+
+
+def select_best_alpha(alpha_scores: dict[float, float], alpha_grid: list[float]) -> float:
+    finite = [(float(a), float(alpha_scores.get(float(a), math.nan))) for a in alpha_grid if np.isfinite(alpha_scores.get(float(a), math.nan))]
+    if not finite:
+        raise RuntimeError("alpha selection produced no finite inner-CV scores")
+    best_score = max(score for _alpha, score in finite)
+    for alpha, score in finite:
+        if score == best_score or abs(score - best_score) <= 1.0e-12:
+            return float(alpha)
+    return float(finite[0][0])
+
+
+def alpha_distribution(values: np.ndarray | list[float]) -> dict[str, object]:
+    arr = np.asarray(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if len(arr) == 0:
+        return {"selected_alpha": None, "min": None, "max": None, "counts": {}}
+    unique, counts = np.unique(arr, return_counts=True)
+    order = np.lexsort((unique, -counts))
+    mode = float(unique[order[0]])
+    return {
+        "selected_alpha": mode,
+        "min": float(np.min(arr)),
+        "max": float(np.max(arr)),
+        "counts": {f"{float(alpha):g}": int(count) for alpha, count in zip(unique, counts)},
+    }
+
+
+def mode_alpha(values: np.ndarray | list[float]) -> float:
+    selected = alpha_distribution(values)["selected_alpha"]
+    return math.nan if selected is None else float(selected)
 
 
 def centered_by_train_atom(values: np.ndarray, atoms: np.ndarray, train: np.ndarray) -> np.ndarray:
@@ -636,6 +821,59 @@ def build_non_embedding_blocks(
 
 def concat_blocks(blocks: dict[str, np.ndarray], block_names: list[str]) -> np.ndarray:
     return np.column_stack([blocks[name] for name in block_names])
+
+
+def tier_uses_embedding(tier: str) -> bool:
+    return "aimnet2_embedding_pca" in TIER_BLOCKS[tier]
+
+
+def build_between_tier_features(
+    tier: str,
+    base_atom_blocks: dict[str, np.ndarray],
+    embedding_atom_mean: np.ndarray,
+    fit_indices: np.ndarray,
+    eval_indices: np.ndarray,
+    n_pcs: int,
+    pca_cache: dict[object, PcaTransform] | None = None,
+    pca_cache_key: object | None = None,
+) -> tuple[np.ndarray, np.ndarray, PcaTransform | None]:
+    pieces_fit = []
+    pieces_eval = []
+    pca = None
+    for block in TIER_BLOCKS[tier]:
+        if block == "aimnet2_embedding_pca":
+            if pca_cache is not None and pca_cache_key in pca_cache:
+                pca = pca_cache[pca_cache_key]
+            else:
+                pca = fit_pca_array(embedding_atom_mean[fit_indices], n_pcs)
+                if pca_cache is not None and pca_cache_key is not None:
+                    pca_cache[pca_cache_key] = pca
+            pieces_fit.append(transform_pca_array(embedding_atom_mean[fit_indices], pca))
+            pieces_eval.append(transform_pca_array(embedding_atom_mean[eval_indices], pca))
+        else:
+            pieces_fit.append(base_atom_blocks[block][fit_indices])
+            pieces_eval.append(base_atom_blocks[block][eval_indices])
+    return np.column_stack(pieces_fit), np.column_stack(pieces_eval), pca
+
+
+def build_within_tier_features_for_positions(
+    tier: str,
+    base_blocks: dict[str, np.ndarray],
+    embedding: np.ndarray,
+    row_indices: np.ndarray,
+    positions: np.ndarray,
+    n_pcs: int,
+    pca: PcaTransform | None,
+) -> np.ndarray:
+    pieces = []
+    for block in TIER_BLOCKS[tier]:
+        if block == "aimnet2_embedding_pca":
+            if pca is None:
+                raise RuntimeError("tier requires embedding PCA but no transform was supplied")
+            pieces.append(transform_pca_memmap(embedding, pca, row_indices[positions]))
+        else:
+            pieces.append(base_blocks[block][positions])
+    return np.column_stack(pieces)
 
 
 def feature_count_for_tier(tier: str, embedding_components: int, base_blocks: dict[str, np.ndarray]) -> int:
@@ -1055,46 +1293,208 @@ def assign_bins(
     return labels, defs
 
 
+def select_between_alphas(
+    tier: str,
+    base_atom_blocks: dict[str, np.ndarray],
+    embedding_atom_mean: np.ndarray,
+    y_atom_mean: np.ndarray,
+    alpha_grid: list[float],
+    n_pcs: int,
+    inner_cv_folds: int,
+    pca_cache: dict[object, PcaTransform] | None = None,
+) -> tuple[np.ndarray, dict[str, object]]:
+    n_atoms = int(y_atom_mean.shape[0])
+    selected = np.full(n_atoms, np.nan, dtype=float)
+    inner_score_sum = {float(alpha): 0.0 for alpha in alpha_grid}
+    inner_score_count = {float(alpha): 0 for alpha in alpha_grid}
+    fold_count = 0
+    heldout_excluded = True
+    for heldout in range(n_atoms):
+        outer_train = np.asarray([i for i in range(n_atoms) if i != heldout], dtype=int)
+        preds_by_alpha: dict[float, list[np.ndarray]] = {float(alpha): [] for alpha in alpha_grid}
+        targets = []
+        fold_scores_by_alpha: dict[float, list[float]] = {float(alpha): [] for alpha in alpha_grid}
+        for fold_idx, (inner_fit, inner_val) in enumerate(deterministic_index_folds(outer_train, inner_cv_folds)):
+            if int(heldout) in set(int(x) for x in inner_fit) or int(heldout) in set(int(x) for x in inner_val):
+                heldout_excluded = False
+            cache_key = ("between_inner", int(heldout), int(fold_idx)) if tier_uses_embedding(tier) else None
+            x_fit, x_val, _pca = build_between_tier_features(
+                tier,
+                base_atom_blocks,
+                embedding_atom_mean,
+                inner_fit,
+                inner_val,
+                n_pcs,
+                pca_cache,
+                cache_key,
+            )
+            pred_grid = fit_ridge_predict_grid(x_fit, y_atom_mean[inner_fit], x_val, alpha_grid)
+            targets.append(y_atom_mean[inner_val])
+            for alpha in alpha_grid:
+                a = float(alpha)
+                pred = pred_grid[a]
+                preds_by_alpha[a].append(pred)
+                fold_score = r2_score(pred, y_atom_mean[inner_val])
+                fold_scores_by_alpha[a].append(fold_score)
+        scores = {}
+        y_val_all = np.vstack(targets)
+        for alpha in alpha_grid:
+            a = float(alpha)
+            pred_all = np.vstack(preds_by_alpha[a])
+            score = r2_score(pred_all, y_val_all)
+            scores[a] = score
+            if np.isfinite(score):
+                inner_score_sum[a] += float(score)
+                inner_score_count[a] += 1
+        selected[heldout] = select_best_alpha(scores, alpha_grid)
+        fold_count += len(targets)
+    summary = alpha_distribution(selected)
+    summary.update({
+        "axis": "between_LOAO",
+        "method": "nested deterministic atom-fold inner CV inside each outer held-out atom training set",
+        "outer_heldout_count": n_atoms,
+        "inner_cv_folds": int(inner_cv_folds),
+        "inner_fold_evaluations": int(fold_count),
+        "heldout_test_atom_excluded_from_alpha_selection": bool(heldout_excluded),
+        "alpha_grid": [float(x) for x in alpha_grid],
+        "mean_inner_cv_R2_by_alpha": {
+            f"{float(alpha):g}": (
+                float(inner_score_sum[float(alpha)] / inner_score_count[float(alpha)])
+                if inner_score_count[float(alpha)] > 0
+                else None
+            )
+            for alpha in alpha_grid
+        },
+        "selected_alpha_by_outer_heldout_atom": [float(x) for x in selected],
+    })
+    return selected, summary
+
+
+def select_within_alpha(
+    tier: str,
+    base_blocks: dict[str, np.ndarray],
+    embedding: np.ndarray,
+    row_indices: np.ndarray,
+    y: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    outer_split: dict[str, object],
+    alpha_grid: list[float],
+    n_pcs: int,
+    inner_cv_folds: int,
+    purge: int,
+    pca_cache: dict[object, PcaTransform] | None = None,
+) -> tuple[float, dict[str, object]]:
+    outer_train = np.asarray(outer_split["train_mask"], dtype=bool)
+    outer_test = np.asarray(outer_split["test_mask"], dtype=bool)
+    outer_purge = np.asarray(outer_split["purge_mask"], dtype=bool)
+    folds = blocked_frame_cv_splits(frames, outer_train, inner_cv_folds, purge)
+    preds_by_alpha: dict[float, list[np.ndarray]] = {float(alpha): [] for alpha in alpha_grid}
+    targets = []
+    fold_details = []
+    outer_test_rows_used = 0
+    outer_purge_rows_used = 0
+    for fold in folds:
+        fold_idx = int(fold["fold"])
+        fit_mask = np.asarray(fold["fit_mask"], dtype=bool)
+        val_mask = np.asarray(fold["val_mask"], dtype=bool)
+        inner_used = fit_mask | val_mask
+        outer_test_rows_used += int((inner_used & outer_test).sum())
+        outer_purge_rows_used += int((inner_used & outer_purge).sum())
+        fit_pos = np.flatnonzero(fit_mask)
+        val_pos = np.flatnonzero(val_mask)
+        combined = np.concatenate([fit_pos, val_pos])
+        train_combined = np.zeros(len(combined), dtype=bool)
+        train_combined[:len(fit_pos)] = True
+        pca = None
+        if tier_uses_embedding(tier):
+            cache_key = ("within_inner", int(fold_idx))
+            if pca_cache is not None and cache_key in pca_cache:
+                pca = pca_cache[cache_key]
+            else:
+                pca = fit_pca_memmap(embedding, row_indices[fit_pos], n_pcs)
+                if pca_cache is not None:
+                    pca_cache[cache_key] = pca
+        x_combined = build_within_tier_features_for_positions(tier, base_blocks, embedding, row_indices, combined, n_pcs, pca)
+        y_combined = y[combined]
+        atoms_combined = atoms[combined]
+        x_centered = centered_by_train_atom(x_combined, atoms_combined, train_combined)
+        y_centered = centered_by_train_atom(y_combined, atoms_combined, train_combined)
+        x_fit = x_centered[:len(fit_pos)]
+        y_fit = y_centered[:len(fit_pos)]
+        x_val = x_centered[len(fit_pos):]
+        y_val = y_centered[len(fit_pos):]
+        pred_grid = fit_ridge_predict_grid(x_fit, y_fit, x_val, alpha_grid)
+        targets.append(y_val)
+        for alpha in alpha_grid:
+            preds_by_alpha[float(alpha)].append(pred_grid[float(alpha)])
+        fold_details.append({
+            "fold": int(fold_idx),
+            "fit_rows": int(fit_mask.sum()),
+            "validation_rows": int(val_mask.sum()),
+            "purged_rows": int(np.asarray(fold["purge_mask"], dtype=bool).sum()),
+            "validation_frames": fold["validation_frames"],
+            "purged_frames": fold["purged_frames"],
+        })
+    y_val_all = np.vstack(targets)
+    scores = {}
+    for alpha in alpha_grid:
+        a = float(alpha)
+        scores[a] = r2_score(np.vstack(preds_by_alpha[a]), y_val_all)
+    selected = select_best_alpha(scores, alpha_grid)
+    audit = {
+        "axis": "within_frameblock",
+        "method": "deterministic blocked frame inner CV inside the outer training frames only",
+        "selected_alpha": float(selected),
+        "alpha_grid": [float(x) for x in alpha_grid],
+        "inner_cv_folds": int(len(folds)),
+        "inner_cv_R2_by_alpha": {f"{float(alpha):g}": (float(scores[float(alpha)]) if np.isfinite(scores[float(alpha)]) else None) for alpha in alpha_grid},
+        "outer_test_rows_used_for_alpha_selection": int(outer_test_rows_used),
+        "outer_purged_rows_used_for_alpha_selection": int(outer_purge_rows_used),
+        "folds": fold_details,
+    }
+    return selected, audit
+
+
 def evaluate_between_tier(
     tier: str,
     base_atom_blocks: dict[str, np.ndarray],
     embedding_atom_mean: np.ndarray,
     y_atom_mean: np.ndarray,
-    alpha: float,
+    alpha: float | np.ndarray,
     n_pcs: int,
     pca_cache: dict[int, PcaTransform] | None = None,
 ) -> dict[str, object]:
     n_atoms = y_atom_mean.shape[0]
     pred = np.full_like(y_atom_mean, np.nan, dtype=float)
+    if np.isscalar(alpha):
+        alpha_by_heldout = np.full(n_atoms, float(alpha), dtype=float)
+    else:
+        alpha_by_heldout = np.asarray(alpha, dtype=float)
+        if len(alpha_by_heldout) != n_atoms:
+            raise ValueError("between alpha array must have one value per held-out atom")
     pca_ratios = []
     pca_train_rows = []
     no_heldout_in_train = True
     for heldout in range(n_atoms):
-        train = np.ones(n_atoms, dtype=bool)
-        train[heldout] = False
-        pieces_train = []
-        pieces_test = []
-        pca = None
-        for block in TIER_BLOCKS[tier]:
-            if block == "aimnet2_embedding_pca":
-                if pca_cache is not None and heldout in pca_cache:
-                    pca = pca_cache[heldout]
-                else:
-                    pca = fit_pca_array(embedding_atom_mean[train], n_pcs)
-                    if pca_cache is not None:
-                        pca_cache[heldout] = pca
-                pieces_train.append(transform_pca_array(embedding_atom_mean[train], pca))
-                pieces_test.append(transform_pca_array(embedding_atom_mean[heldout:heldout + 1], pca))
-                pca_ratios.append(pca.explained_variance_ratio)
-                pca_train_rows.append(pca.n_train_rows)
-            else:
-                pieces_train.append(base_atom_blocks[block][train])
-                pieces_test.append(base_atom_blocks[block][heldout:heldout + 1])
-        if train[heldout]:
+        train = np.asarray([i for i in range(n_atoms) if i != heldout], dtype=int)
+        pca_key = int(heldout) if tier_uses_embedding(tier) else None
+        x_train, x_test, pca = build_between_tier_features(
+            tier,
+            base_atom_blocks,
+            embedding_atom_mean,
+            train,
+            np.asarray([heldout], dtype=int),
+            n_pcs,
+            pca_cache,
+            pca_key,
+        )
+        if pca is not None:
+            pca_ratios.append(pca.explained_variance_ratio)
+            pca_train_rows.append(pca.n_train_rows)
+        if int(heldout) in set(int(x) for x in train):
             no_heldout_in_train = False
-        x_train = np.column_stack(pieces_train)
-        x_test = np.column_stack(pieces_test)
-        pred[heldout] = fit_ridge_predict(x_train, y_atom_mean[train], x_test, alpha)[0]
+        pred[heldout] = fit_ridge_predict(x_train, y_atom_mean[train], x_test, float(alpha_by_heldout[heldout]))[0]
     pca_audit = None
     if pca_ratios:
         pca_audit = {
@@ -1112,6 +1512,7 @@ def evaluate_between_tier(
         "pred": pred,
         "target": y_atom_mean,
         "groups": np.arange(n_atoms, dtype=int),
+        "alpha_by_heldout": alpha_by_heldout,
         "pca_audit": pca_audit,
         "cv_check": {"heldout_atoms_never_in_train": bool(no_heldout_in_train), "folds": int(n_atoms)},
     }
@@ -1151,6 +1552,7 @@ def evaluate_within_tier(
         "groups": atoms[score],
         "score_mask": score,
         "score_row_positions": np.flatnonzero(score),
+        "alpha": float(alpha),
         "pca_audit": pca_audit,
         "cv_check": {
             "fit_rows": int(fit.sum()),
@@ -1159,13 +1561,14 @@ def evaluate_within_tier(
             "train_test_overlap": int((train & test).sum()),
             "purged_in_train_or_test": int(((split["purge_mask"]) & (train | test)).sum()),
             "heldout_block_excluded_from_preprocessing": True,
-            "alpha_selection": "fixed alpha; no held-out fold used for alpha selection",
+            "alpha_selection": "outer held-out frame block excluded from alpha selection",
         },
     }
 
 
 def build_score_rows(
     tier_results: dict[str, dict[str, object]],
+    tier_order: list[str],
     rows: pd.DataFrame,
     atom_rows: pd.DataFrame,
     y: np.ndarray,
@@ -1173,7 +1576,7 @@ def build_score_rows(
     atoms: np.ndarray,
     split: dict[str, object],
     base_blocks: dict[str, np.ndarray],
-    alpha: float,
+    alpha_mode: str,
     embedding_components: int,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     score_rows = []
@@ -1181,10 +1584,12 @@ def build_score_rows(
     n_atoms_global = int(len(atom_rows))
     y_atom = atom_means_dense(y, int(len(np.unique(frames))), n_atoms_global)
     atom_types = ["ALL"] + sorted(str(x) for x in atom_rows["stratum"].dropna().unique())
-    for tier in TIER_ORDER:
+    for tier in tier_order:
         n_features = feature_count_for_tier(tier, embedding_components, base_blocks)
         between = tier_results[tier]["between"]
         within = tier_results[tier]["within"]
+        between_alpha_all = np.asarray(between["alpha_by_heldout"], dtype=float)
+        within_alpha = float(within["alpha"])
         within_positions = within["score_row_positions"]
         within_frames = frames[within_positions]
         within_rows = rows.iloc[within_positions]
@@ -1203,6 +1608,10 @@ def build_score_rows(
             b_pred = between["pred"][atom_mask]
             b_target = between["target"][atom_mask]
             b_groups = between["groups"][atom_mask]
+            b_alpha_dist = alpha_distribution(between_alpha_all[atom_mask])
+            b_alpha_mode = math.nan if b_alpha_dist["selected_alpha"] is None else float(b_alpha_dist["selected_alpha"])
+            b_alpha_min = math.nan if b_alpha_dist["min"] is None else float(b_alpha_dist["min"])
+            b_alpha_max = math.nan if b_alpha_dist["max"] is None else float(b_alpha_dist["max"])
             w_pred = within["pred"][within_mask]
             w_target = within["target"][within_mask]
             w_groups = within["groups"][within_mask]
@@ -1231,7 +1640,12 @@ def build_score_rows(
                 "n_atoms_in_slice": n_atoms_slice,
                 "n_original_frames": frames_slice,
                 "n_features": n_features,
-                "ridge_alpha": float(alpha),
+                "ridge_alpha": b_alpha_mode,
+                "alpha_mode": alpha_mode,
+                "between_ridge_alpha": b_alpha_mode,
+                "between_ridge_alpha_min": b_alpha_min,
+                "between_ridge_alpha_max": b_alpha_max,
+                "within_ridge_alpha": within_alpha,
                 "variance_share_between": share_b,
                 "variance_share_within": share_w,
                 **neff,
@@ -1252,17 +1666,18 @@ def build_score_rows(
                 "feature_blocks": "|".join(TIER_BLOCKS[tier]),
             }
             score_rows.append(row)
-            long_rows += long_score_rows(row, "between", b_pred, b_target, b_groups)
-            long_rows += long_score_rows(row, "within", w_pred, w_target, w_groups)
+            long_rows += long_score_rows(row, "between", b_pred, b_target, b_groups, b_alpha_mode)
+            long_rows += long_score_rows(row, "within", w_pred, w_target, w_groups, within_alpha)
     return score_rows, long_rows
 
 
-def long_score_rows(row: dict[str, object], axis: str, pred: np.ndarray, target: np.ndarray, groups: np.ndarray) -> list[dict[str, object]]:
+def long_score_rows(row: dict[str, object], axis: str, pred: np.ndarray, target: np.ndarray, groups: np.ndarray, ridge_alpha: float) -> list[dict[str, object]]:
     out = []
     vector_r2 = r2_score(pred, target)
     vector_se = jackknife_metric_se(pred, target, groups)
     lo, hi = ci95(vector_r2, vector_se)
-    base = {k: row[k] for k in ["target", "atom_type_axis", "atom_type", "tier", "tier_label", "rows", "n_atoms_in_slice", "n_features", "ridge_alpha"]}
+    base = {k: row[k] for k in ["target", "atom_type_axis", "atom_type", "tier", "tier_label", "rows", "n_atoms_in_slice", "n_features", "alpha_mode"]}
+    base["ridge_alpha"] = float(ridge_alpha)
     out.append({**base, "axis": axis, "component": "vector_5d", "heldout_R2": vector_r2, "jackknife_se": vector_se, "ci95_low": lo, "ci95_high": hi})
     comp = component_r2(pred, target)
     comp_se = jackknife_component_se(np.asarray(pred), np.asarray(target), groups)
@@ -1274,6 +1689,7 @@ def long_score_rows(row: dict[str, object], axis: str, pred: np.ndarray, target:
 
 def partition_curves(
     tier_results: dict[str, dict[str, object]],
+    tier_order: list[str],
     atom_conditions: pd.DataFrame,
     row_conditions: pd.DataFrame,
     frames: np.ndarray,
@@ -1288,7 +1704,7 @@ def partition_curves(
             "frames": np.arange(len(atom_conditions), dtype=int),
         },
     }
-    for tier in TIER_ORDER:
+    for tier in tier_order:
         within = tier_results[tier]["within"]
         if "within" not in axes:
             axes["within"] = {
@@ -1301,7 +1717,7 @@ def partition_curves(
             tier_results[tier]["within"]["groups"],
             axes["within"]["frames"],
         )
-        for tier in TIER_ORDER
+        for tier in tier_order
     }
     for axis, axis_info in axes.items():
         cond_df: pd.DataFrame = axis_info["conditions"]
@@ -1335,7 +1751,7 @@ def partition_curves(
                         continue
                     n_atoms = int(cond_df.loc[unit_mask, "atom_index"].nunique())
                     rows_count = int(unit_mask.sum())
-                    for tier in TIER_ORDER:
+                    for tier in tier_order:
                         axis_pred = tier_results[tier][axis]
                         pred = axis_pred["pred"][unit_mask]
                         target = axis_pred["target"][unit_mask]
@@ -1377,7 +1793,8 @@ def partition_curves(
     curves = curves.merge(classical, on=key_cols, how="left")
     curves["delta_R2_vs_classical"] = curves["heldout_R2"] - curves["_classical_R2"]
     prev_parts = []
-    for tier, prev in TIER_PREVIOUS.items():
+    prev_map = previous_tier_map(tier_order)
+    for tier, prev in prev_map.items():
         part = curves[curves["tier"] == tier].copy()
         if prev is None:
             part["_previous_R2"] = np.nan
@@ -1520,9 +1937,14 @@ def join_coverage(rows: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(parts)
 
 
-def feature_blocks_used(labels: dict[str, list[str]], embedding_components: int, transform_audit: list[dict[str, object]]) -> dict[str, object]:
+def feature_blocks_used(
+    labels: dict[str, list[str]],
+    embedding_components: int,
+    transform_audit: list[dict[str, object]],
+    tier_order: list[str],
+) -> dict[str, object]:
     blocks = {}
-    for tier in TIER_ORDER:
+    for tier in tier_order:
         tier_blocks = {}
         for block in TIER_BLOCKS[tier]:
             if block == "aimnet2_embedding_pca":
@@ -1532,7 +1954,7 @@ def feature_blocks_used(labels: dict[str, list[str]], embedding_components: int,
         blocks[tier] = tier_blocks
     return {
         "tiers": blocks,
-        "tier_order": TIER_ORDER,
+        "tier_order": tier_order,
         "same_charge_complete_row_set_for_all_tiers": True,
         "t2_feature_transforms": transform_audit,
     }
@@ -1574,7 +1996,8 @@ def write_reports(
         "",
         f"Substrate: `{audit['substrate_dir']}`",
         f"Rows used: {audit['charge_complete_rows_used']:,}",
-        f"Ridge alpha: {finite_fmt(audit['ridge_alpha'])}",
+        f"Alpha mode: {audit['alpha_mode']}",
+        f"Fixed-alpha baseline value: {finite_fmt(audit['ridge_alpha_baseline'])}",
         f"Embedding PCA: {audit['embedding_pca']['n_components']} components, training-only per CV fold.",
         "",
         "## Fit-Stage Checks",
@@ -1589,6 +2012,10 @@ def write_reports(
             "atom_type",
             "n_atoms_in_slice",
             "n_features",
+            "between_ridge_alpha",
+            "between_ridge_alpha_min",
+            "between_ridge_alpha_max",
+            "within_ridge_alpha",
             "between_LOAO_test_R2",
             "between_LOAO_test_R2_ci95_low",
             "between_LOAO_test_R2_ci95_high",
@@ -1601,10 +2028,12 @@ def write_reports(
         "## Tier Deltas",
     ]
     delta = score_table[["tier", "atom_type", "between_LOAO_test_R2", "within_frameblock_test_R2"]].copy()
+    tier_order = list(audit["tier_order"])
+    prev_map = previous_tier_map(tier_order)
     for metric in ["between_LOAO_test_R2", "within_frameblock_test_R2"]:
         pivot = delta.pivot(index="atom_type", columns="tier", values=metric)
-        for tier in TIER_ORDER:
-            prev = TIER_PREVIOUS[tier]
+        for tier in tier_order:
+            prev = prev_map[tier]
             if prev and tier in pivot and prev in pivot:
                 pivot[f"{tier}_delta_vs_previous_{metric}"] = pivot[tier] - pivot[prev]
         lines.append(f"### {metric}")
@@ -1676,6 +2105,47 @@ def fit_stage_checks(audit: dict[str, object], score_table: pd.DataFrame, curves
         "N_eff_and_lag1_reported_per_score_row": bool(score_table["within_N_eff_median"].notna().all() and score_table["median_lag1_rho"].notna().all()),
         "cross_split_lag1_pairs": audit["within_split"]["cross_split_lag1_pairs"],
     }
+    alpha_info: dict[str, object] = audit["alpha_selection"]
+    alpha_mode = str(alpha_info["mode"])
+    by_tier_axis: dict[str, object] = alpha_info["by_tier_axis"]
+    grid = [float(x) for x in alpha_info.get("grid", [])]
+    grid_is_predeclared = grid == [float(x) for x in ALPHA_GRID]
+    selected_alphas_recorded = True
+    selected_alphas_in_grid = True
+    between_excludes_outer = True
+    within_excludes_outer = True
+    for tier in audit["tier_order"]:
+        tier_alpha: dict[str, object] = by_tier_axis.get(tier, {})  # type: ignore[assignment]
+        between_alpha: dict[str, object] = tier_alpha.get("between", {})  # type: ignore[assignment]
+        within_alpha: dict[str, object] = tier_alpha.get("within", {})  # type: ignore[assignment]
+        b_selected = between_alpha.get("selected_alpha")
+        w_selected = within_alpha.get("selected_alpha")
+        selected_alphas_recorded = selected_alphas_recorded and b_selected is not None and w_selected is not None
+        if b_selected is not None:
+            selected_alphas_in_grid = selected_alphas_in_grid and float(b_selected) in grid
+        if w_selected is not None:
+            selected_alphas_in_grid = selected_alphas_in_grid and float(w_selected) in grid
+        if alpha_mode == "select":
+            between_excludes_outer = between_excludes_outer and bool(between_alpha.get("heldout_test_atom_excluded_from_alpha_selection"))
+            within_excludes_outer = (
+                within_excludes_outer
+                and int(within_alpha.get("outer_test_rows_used_for_alpha_selection", -1)) == 0
+                and int(within_alpha.get("outer_purged_rows_used_for_alpha_selection", -1)) == 0
+            )
+    checks["alpha_selection_integrity"] = {
+        "pass": bool(
+            alpha_mode in {"select", "fixed"}
+            and selected_alphas_recorded
+            and selected_alphas_in_grid
+            and (alpha_mode == "fixed" or (grid_is_predeclared and between_excludes_outer and within_excludes_outer))
+        ),
+        "alpha_mode": alpha_mode,
+        "alpha_grid_predeclared": grid_is_predeclared,
+        "selected_alphas_recorded_per_tier_axis": selected_alphas_recorded,
+        "selected_alphas_in_grid": selected_alphas_in_grid,
+        "between_outer_test_atoms_excluded": between_excludes_outer,
+        "within_outer_test_and_purged_rows_excluded": within_excludes_outer,
+    }
     shortlist_thin = bool(fav["thin_flag"].eq("thin").any()) if "thin_flag" in fav.columns else False
     checks["partition_integrity"] = {
         "pass": bool(
@@ -1693,6 +2163,8 @@ def fit_stage_checks(audit: dict[str, object], score_table: pd.DataFrame, curves
 
 def main() -> None:
     args = parse_args()
+    tier_order = parse_tiers(args.tiers)
+    alpha_grid = parse_alpha_grid(args.alpha_grid)
     substrate_dir = args.substrate_dir.resolve()
     out_dir = args.out_dir
     data = load_inputs(substrate_dir)
@@ -1736,28 +2208,93 @@ def main() -> None:
 
     within_embedding_pcs = None
     within_embedding_pca_audit = None
-    within_train_indices = row_indices[split["train_mask"]]
-    within_pca = fit_pca_memmap(embedding, within_train_indices, args.embedding_components)
-    within_embedding_pcs = transform_pca_memmap(embedding, within_pca, row_indices)
-    within_embedding_pca_audit = {
-        "method": "unsupervised PCA fit once on within-CV training rows only; shared by plus_AIMNet2 and all tiers",
-        "n_components": int(within_pca.n_components),
-        "original_dims": int(within_pca.original_dims),
-        "training_rows": int(within_pca.n_train_rows),
-        "test_rows_excluded": int(split["test_mask"].sum()),
-        "purged_rows_excluded": int(split["purge_mask"].sum()),
-        "explained_variance_ratio": float(within_pca.explained_variance_ratio),
-    }
-    print("fit within-split training-only embedding PCA", flush=True)
+    embedding_tiers = [tier for tier in tier_order if tier_uses_embedding(tier)]
+    if embedding_tiers:
+        within_train_indices = row_indices[split["train_mask"]]
+        within_pca = fit_pca_memmap(embedding, within_train_indices, args.embedding_components)
+        within_embedding_pcs = transform_pca_memmap(embedding, within_pca, row_indices)
+        within_embedding_pca_audit = {
+            "method": "unsupervised PCA fit once on within-CV training rows only; shared by selected tiers that consume AIMNet2 embedding PCs",
+            "n_components": int(within_pca.n_components),
+            "original_dims": int(within_pca.original_dims),
+            "training_rows": int(within_pca.n_train_rows),
+            "test_rows_excluded": int(split["test_mask"].sum()),
+            "purged_rows_excluded": int(split["purge_mask"].sum()),
+            "explained_variance_ratio": float(within_pca.explained_variance_ratio),
+            "consumed_by_tiers": embedding_tiers,
+        }
+        print("fit within-split training-only embedding PCA", flush=True)
+    else:
+        within_embedding_pca_audit = {
+            "method": "embedding sidecar present in substrate but not consumed by the selected fit tiers",
+            "n_components": 0,
+            "original_dims": int(embedding.shape[1]),
+            "consumed_by_tiers": [],
+        }
 
     tier_results: dict[str, dict[str, object]] = {}
     pca_audit: dict[str, object] = {}
     cv_details: dict[str, object] = {}
-    between_pca_cache: dict[int, PcaTransform] = {}
-    for tier in TIER_ORDER:
+    alpha_selection_by_tier_axis: dict[str, dict[str, object]] = {}
+    between_pca_cache: dict[object, PcaTransform] = {}
+    between_alpha_pca_cache: dict[object, PcaTransform] = {}
+    within_alpha_pca_cache: dict[object, PcaTransform] = {}
+    for tier in tier_order:
+        if args.alpha_mode == "select":
+            print(f"selecting alpha for tier {tier}: between LOAO inner CV", flush=True)
+            between_alpha, between_alpha_audit = select_between_alphas(
+                tier,
+                base_atom_blocks,
+                embedding_atom_mean,
+                y_atom,
+                alpha_grid,
+                args.embedding_components,
+                args.inner_cv_folds,
+                between_alpha_pca_cache,
+            )
+            print(f"selecting alpha for tier {tier}: within frame-block inner CV", flush=True)
+            within_alpha, within_alpha_audit = select_within_alpha(
+                tier,
+                base_blocks,
+                embedding,
+                row_indices,
+                y,
+                atoms,
+                frames,
+                split,
+                alpha_grid,
+                args.embedding_components,
+                args.inner_cv_folds,
+                args.purge_frames_each_side,
+                within_alpha_pca_cache,
+            )
+        else:
+            fixed_alpha = float(args.ridge_alpha)
+            between_alpha = np.full(n_atoms, fixed_alpha, dtype=float)
+            between_alpha_audit = {
+                "axis": "between_LOAO",
+                "method": "fixed-alpha labelled baseline; no inner CV",
+                "selected_alpha": fixed_alpha,
+                "min": fixed_alpha,
+                "max": fixed_alpha,
+                "counts": {f"{fixed_alpha:g}": int(n_atoms)},
+                "heldout_test_atom_excluded_from_alpha_selection": True,
+                "alpha_grid": [float(x) for x in alpha_grid],
+            }
+            within_alpha = fixed_alpha
+            within_alpha_audit = {
+                "axis": "within_frameblock",
+                "method": "fixed-alpha labelled baseline; no inner CV",
+                "selected_alpha": fixed_alpha,
+                "outer_test_rows_used_for_alpha_selection": 0,
+                "outer_purged_rows_used_for_alpha_selection": 0,
+                "alpha_grid": [float(x) for x in alpha_grid],
+            }
+        alpha_selection_by_tier_axis[tier] = {"between": between_alpha_audit, "within": within_alpha_audit}
+
         print(f"fitting tier {tier}: between LOAO", flush=True)
-        cache = between_pca_cache if "aimnet2_embedding_pca" in TIER_BLOCKS[tier] else None
-        between = evaluate_between_tier(tier, base_atom_blocks, embedding_atom_mean, y_atom, args.ridge_alpha, args.embedding_components, cache)
+        cache = between_pca_cache if tier_uses_embedding(tier) else None
+        between = evaluate_between_tier(tier, base_atom_blocks, embedding_atom_mean, y_atom, between_alpha, args.embedding_components, cache)
         print(f"fitting tier {tier}: within frame block", flush=True)
         within = evaluate_within_tier(
             tier,
@@ -1767,7 +2304,7 @@ def main() -> None:
             y,
             atoms,
             split,
-            args.ridge_alpha,
+            within_alpha,
         )
         tier_results[tier] = {"between": between, "within": within}
         pca_audit[tier] = {"between": between["pca_audit"], "within": within["pca_audit"]}
@@ -1777,16 +2314,33 @@ def main() -> None:
         }
 
     print("building score tables", flush=True)
-    score_rows, long_rows = build_score_rows(tier_results, rows, atom_conditions, y, frames, atoms, split, base_blocks, args.ridge_alpha, args.embedding_components)
+    score_rows, long_rows = build_score_rows(
+        tier_results,
+        tier_order,
+        rows,
+        atom_conditions,
+        y,
+        frames,
+        atoms,
+        split,
+        base_blocks,
+        args.alpha_mode,
+        args.embedding_components,
+    )
     score_table = pd.DataFrame(score_rows)[SCORE_TABLE_COLUMNS]
     score_long = pd.DataFrame(long_rows)
     print("building partition curves", flush=True)
-    curves, curves_long, bin_defs = partition_curves(tier_results, atom_conditions, row_conditions, frames, cond_specs)
+    curves, curves_long, bin_defs = partition_curves(tier_results, tier_order, atom_conditions, row_conditions, frames, cond_specs)
     audit = {
         "script": str(Path(__file__).resolve()),
         "substrate_dir": str(substrate_dir),
         "output_dir": str(out_dir),
         "files_read": data["files_read"],
+        "tier_order": tier_order,
+        "feature_tier_selection": {
+            "selected_tiers": tier_order,
+            "scope": "analysis-side fit feature consumption only; emitted substrate keeps AIMNet2 columns present",
+        },
         "python_read_scope": "Only files inside the emitted per_atom_substrate directory listed in files_read; no trajectory.h5, ORCA, older broad-backbone, MOPAC, all-atom-equivariant, source, pair, or external merge directories were opened.",
         "manifest_relationship": manifest.get("relationship"),
         "manifest_relationship_kind": manifest.get("relationship_kind"),
@@ -1795,8 +2349,15 @@ def main() -> None:
         "manifest_n_dft_frames": int(manifest["n_dft_frames"]),
         "charge_complete_rows_used": int(charge_mask.sum()),
         "same_charge_complete_row_set_for_all_tiers": True,
-        "ridge_alpha": float(args.ridge_alpha),
-        "alpha_selection": "fixed alpha=10.0; no inner CV; held-out folds not used for alpha",
+        "alpha_mode": args.alpha_mode,
+        "ridge_alpha_baseline": float(args.ridge_alpha),
+        "alpha_selection": {
+            "mode": args.alpha_mode,
+            "grid": [float(x) for x in alpha_grid],
+            "fixed_alpha_baseline": float(args.ridge_alpha),
+            "inner_cv_folds_requested": int(args.inner_cv_folds),
+            "by_tier_axis": alpha_selection_by_tier_axis,
+        },
         "target": "DFT total T2, per_atom_substrate_target_T2.npy[:, 0:5] @ change_of_basis.get_C().T",
         "target_T2_original_shape": list(target_T2.shape),
         "change_of_basis_orthogonality_max_abs": orth,
@@ -1840,7 +2401,7 @@ def main() -> None:
     score_long.to_csv(out_dir / "allatom_fit_score_long.csv", index=False)
     join_coverage(rows).to_csv(out_dir / "join_coverage.csv", index=False)
     (out_dir / "feature_blocks_used.json").write_text(
-        json.dumps(json_sanitize(feature_blocks_used(block_labels, args.embedding_components, transform_audit)), indent=2, sort_keys=True),
+        json.dumps(json_sanitize(feature_blocks_used(block_labels, args.embedding_components, transform_audit, tier_order)), indent=2, sort_keys=True),
         encoding="utf-8",
     )
     curves.to_csv(out_dir / "partition_response_curves.csv", index=False)
