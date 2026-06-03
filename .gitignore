@@ -44,6 +44,13 @@ doc/calculators/*.fdb_latexmk
 doc/calculators/*.listing
 doc/calculators/.codex-*
 
+# Per-pass pristine snapshots kept locally for diffing across doc refinement
+# passes (author -> editor -> check -> glossary-refine). Scratch, not deliverable.
+doc/calculators/.pre-check/
+doc/calculators/.pre-glossrefine/
+doc/calculators/.pre-opus-edit/
+doc/calculators/.normal-effort-drafts/
+
 # Static-analysis output. Reports (clang-tidy / cppcheck / IWYU /
 # scan-build) regenerate on demand; per-sha snapshots can grow large.
 # baseline.json itself IS committed (it's the ratchet anchor); the
