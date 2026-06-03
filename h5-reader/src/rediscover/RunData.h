@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
@@ -37,29 +38,62 @@ namespace h5reader::rediscover {
 // is an honest gap (the campaign is partial), never a faked value.
 class DftFrameSet {
 public:
+    class SelectionReadGuard {
+    public:
+        explicit SelectionReadGuard(const DftFrameSet& dft) : dft_(dft) {
+            dft_.EnterSelectionReadGuard();
+        }
+        ~SelectionReadGuard() { dft_.LeaveSelectionReadGuard(); }
+
+        SelectionReadGuard(const SelectionReadGuard&) = delete;
+        SelectionReadGuard& operator=(const SelectionReadGuard&) = delete;
+
+    private:
+        const DftFrameSet& dft_;
+    };
+
     void Insert(std::size_t originalIndex,
                 std::shared_ptr<const model::DftShieldingFrame> frame) {
         byOriginal_[originalIndex] = std::move(frame);
     }
 
-    bool Has(std::size_t originalIndex) const { return byOriginal_.count(originalIndex) != 0; }
+    bool Has(std::size_t originalIndex) const {
+        AssertReadable();
+        return byOriginal_.count(originalIndex) != 0;
+    }
 
     const model::DftShieldingFrame* Frame(std::size_t originalIndex) const {
+        AssertReadable();
         auto it = byOriginal_.find(originalIndex);
         return it == byOriginal_.end() ? nullptr : it->second.get();
     }
 
     // The single atom's shielding for (atom, originalIndex), or nullptr.
     const model::DftAtomShielding* AtomShielding(std::size_t atom, std::size_t originalIndex) const {
-        const model::DftShieldingFrame* fr = Frame(originalIndex);
+        AssertReadable();
+        auto it = byOriginal_.find(originalIndex);
+        const model::DftShieldingFrame* fr = it == byOriginal_.end() ? nullptr : it->second.get();
         if (!fr || atom >= fr->atoms.size()) return nullptr;
         return &fr->atoms[atom];
     }
 
-    std::size_t frameCount() const { return byOriginal_.size(); }
+    std::size_t frameCount() const {
+        AssertReadable();
+        return byOriginal_.size();
+    }
 
 private:
+    void EnterSelectionReadGuard() const { ++selectionReadGuardDepth_; }
+    void LeaveSelectionReadGuard() const {
+        if (selectionReadGuardDepth_ > 0) --selectionReadGuardDepth_;
+    }
+    void AssertReadable() const {
+        if (selectionReadGuardDepth_ > 0)
+            throw std::runtime_error("DFT target read during CaseHunter selection");
+    }
+
     std::unordered_map<std::size_t, std::shared_ptr<const model::DftShieldingFrame>> byOriginal_;
+    mutable int selectionReadGuardDepth_ = 0;
 };
 
 // ── FrameMap ──────────────────────────────────────────────────────────────

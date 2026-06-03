@@ -292,6 +292,17 @@ MeasuredCandidate measureDftRecovery(const Body& body,
     return out;
 }
 
+template <typename Candidate>
+void rankCandidates(std::vector<Candidate>& candidates, std::size_t topN) {
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+        if (a.score != b.score) return a.score > b.score;
+        if (a.atom != b.atom) return a.atom < b.atom;
+        if (a.window.begin != b.window.begin) return a.window.begin < b.window.begin;
+        return a.window.end < b.window.end;
+    });
+    if (candidates.size() > topN) candidates.resize(topN);
+}
+
 QString num(double v) {
     return std::isfinite(v) ? QString::number(v, 'g', 12) : QStringLiteral("NaN");
 }
@@ -340,7 +351,6 @@ CaseHunterStats RunCaseHunter(const Body& body,
                               const CaseHunterConfig& hunterConfig) {
     CaseHunterStats stats;
     if (!body.run.protein) return stats;
-    bool dftTouchedDuringSelection = false;
     const std::array<HunterMechanism, 3> mechanisms = {
         HunterMechanism::Ring,
         HunterMechanism::Charge,
@@ -348,34 +358,36 @@ CaseHunterStats RunCaseHunter(const Body& body,
     };
     const std::vector<std::size_t>& dftRows = body.run.frameMap.dftRows();
     for (HunterMechanism mechanism : mechanisms) {
-        std::vector<MeasuredCandidate> measured;
-        for (int32_t ai : habitat(body, mechanism)) {
-            if (ai < 0) continue;
-            const std::size_t atom = static_cast<std::size_t>(ai);
-            for (std::size_t slot = 0; slot < dftRows.size(); slot += std::max<std::size_t>(1, hunterConfig.frame_stride)) {
-                const FrameWindow window =
-                    body.idx.temporal.range(atom, dftRows[slot], hunterConfig.window_before, hunterConfig.window_after);
-                if (window.size() < 3) continue;
-                std::optional<InputCandidate> input =
-                    evaluateInputCandidate(body, substrateConfig, hunterConfig, atom, window, mechanism);
-                if (!input) continue;
-                measured.push_back(measureDftRecovery(body, substrateConfig, *input));
+        std::vector<InputCandidate> selected;
+        {
+            const DftFrameSet::SelectionReadGuard selectionGuard(body.run.dft);
+            std::vector<InputCandidate> candidates;
+            for (int32_t ai : habitat(body, mechanism)) {
+                if (ai < 0) continue;
+                const std::size_t atom = static_cast<std::size_t>(ai);
+                for (std::size_t slot = 0; slot < dftRows.size(); slot += std::max<std::size_t>(1, hunterConfig.frame_stride)) {
+                    const FrameWindow window =
+                        body.idx.temporal.range(atom, dftRows[slot], hunterConfig.window_before, hunterConfig.window_after);
+                    if (window.size() < 3) continue;
+                    std::optional<InputCandidate> input =
+                        evaluateInputCandidate(body, substrateConfig, hunterConfig, atom, window, mechanism);
+                    if (!input) continue;
+                    candidates.push_back(*input);
+                }
             }
+            rankCandidates(candidates, hunterConfig.top_n);
+            selected = std::move(candidates);
         }
-        std::sort(measured.begin(), measured.end(), [](const MeasuredCandidate& a, const MeasuredCandidate& b) {
-            if (a.score != b.score) return a.score > b.score;
-            if (a.atom != b.atom) return a.atom < b.atom;
-            if (a.window.begin != b.window.begin) return a.window.begin < b.window.begin;
-            return a.window.end < b.window.end;
-        });
-        if (measured.size() > hunterConfig.top_n) measured.resize(hunterConfig.top_n);
+
+        std::vector<MeasuredCandidate> measured;
+        measured.reserve(selected.size());
+        for (const InputCandidate& input : selected)
+            measured.push_back(measureDftRecovery(body, substrateConfig, input));
         if (!writeCases(body, outDir, mechanism, measured))
             throw std::runtime_error("case hunter manifest write failed");
         stats.candidate_counts.insert(mechanismName(mechanism), measured.size());
     }
-    stats.anti_circular_assertion = !dftTouchedDuringSelection;
-    if (!stats.anti_circular_assertion)
-        throw std::runtime_error("CaseHunter anti-circularity assertion failed");
+    stats.anti_circular_assertion = true;
     return stats;
 }
 

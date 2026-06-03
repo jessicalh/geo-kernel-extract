@@ -8,13 +8,17 @@
 // all other T2 components 0; T1 = 0.
 
 #include "rediscover/SphericalBasis.h"
+#include "rediscover/RunData.h"
 
 #include <QtTest>
 
 #include <cmath>
+#include <memory>
+#include <stdexcept>
 
 using h5reader::model::Mat3;
 using h5reader::model::SphericalTensor;
+using h5reader::rediscover::DftFrameSet;
 using h5reader::rediscover::DecomposeLibrary;
 
 class RediscoverBasisTests : public QObject {
@@ -25,6 +29,7 @@ private slots:
     void offDiagonalComponents();
     void isometricNormPreserved();
     void traceIsotropic();
+    void caseHunterSelectionGuardRejectsDftRead();
 };
 
 void RediscoverBasisTests::dipolarZZ() {
@@ -90,6 +95,25 @@ void RediscoverBasisTests::traceIsotropic() {
     const SphericalTensor st = DecomposeLibrary(m);
     QVERIFY(std::abs(st.T0 - 30.0) < 1e-12);
     QVERIFY(st.T2Magnitude() < 1e-12);
+}
+
+void RediscoverBasisTests::caseHunterSelectionGuardRejectsDftRead() {
+    DftFrameSet dft;
+    auto frame = std::make_shared<h5reader::model::DftShieldingFrame>();
+    frame->atoms.resize(1);
+    dft.Insert(7, frame);
+    (void)dft.frameCount();
+
+    bool threw = false;
+    try {
+        const DftFrameSet::SelectionReadGuard guard(dft);
+        (void)dft.AtomShielding(0, 7);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    QVERIFY(threw);
+
+    QVERIFY(dft.AtomShielding(0, 7) != nullptr);
 }
 
 QTEST_GUILESS_MAIN(RediscoverBasisTests)

@@ -610,6 +610,17 @@ bool chargeRejectedSameResidue(const model::QtProtein& p, std::size_t targetAtom
     return t.residueIndex >= 0 && s.residueIndex == t.residueIndex;
 }
 
+bool chargeSourceAcceptedForContribution(const Body& body, const model::QtProtein& p,
+                                         std::size_t targetAtom, std::size_t sourceAtom,
+                                         std::size_t row, double distance) {
+    if (sourceAtom >= p.atomCount() || sourceAtom == targetAtom) return false;
+    if (!(distance > 1e-9)) return false;
+    if (chargeRejectedSameResidue(p, targetAtom, sourceAtom)) return false;
+    if (!body.catalog.has(ArrayId::Ff14sbCharge)) return false;
+    if (!body.catalog.present(body, ArrayId::Ff14sbCharge, sourceAtom, row)) return false;
+    return std::isfinite(body.catalog.value(body, ArrayId::Ff14sbCharge, sourceAtom, row));
+}
+
 PairContribution makeChargeContribution(const Body& body, std::size_t targetAtom,
                                         std::size_t row, const SourceRef& ref,
                                         bool excludeSameResidue) {
@@ -903,14 +914,20 @@ double nearestDistance(const Body& body, CloudKind kind, std::size_t atom, std::
     double best = std::numeric_limits<double>::infinity();
     for (const SourceRef& ref : verbs::near(body, kind, atom, row, cutoff)) {
         if (ref.cloud_index < 0) continue;
+        const Vec3 point = body.idx.spatial.tree(kind, row).pointAt(static_cast<std::size_t>(ref.cloud_index));
+        const double d = (point - query).norm();
+        if (!(d > 1e-9) || !std::isfinite(d)) continue;
         if (kind == CloudKind::Atoms) {
             if (ref.entity_index < 0) continue;
             const std::size_t sourceAtom = static_cast<std::size_t>(ref.entity_index);
             if (sourceAtom == atom || sourceAtom >= p.atomCount()) continue;
             if (heavyOnly && p.atom(sourceAtom).element == model::Element::H) continue;
+        } else if (kind == CloudKind::ChargeSites) {
+            if (ref.entity_index < 0) continue;
+            const std::size_t sourceAtom = static_cast<std::size_t>(ref.entity_index);
+            if (!chargeSourceAcceptedForContribution(body, p, atom, sourceAtom, row, d)) continue;
         }
-        const Vec3 point = body.idx.spatial.tree(kind, row).pointAt(static_cast<std::size_t>(ref.cloud_index));
-        best = std::min(best, (point - query).norm());
+        best = std::min(best, d);
     }
     return std::isfinite(best) ? best : kNaN;
 }
@@ -926,15 +943,19 @@ double gapToSecondDistance(const Body& body, CloudKind kind, std::size_t atom, s
     };
     for (const SourceRef& ref : verbs::near(body, kind, atom, row, cutoff)) {
         if (ref.cloud_index < 0) continue;
+        const Vec3 point = body.idx.spatial.tree(kind, row).pointAt(static_cast<std::size_t>(ref.cloud_index));
+        const double d = (point - query).norm();
+        if (!(d > 1e-9) || !std::isfinite(d)) continue;
         if (kind == CloudKind::Atoms) {
             if (ref.entity_index < 0) continue;
             const std::size_t sourceAtom = static_cast<std::size_t>(ref.entity_index);
             if (sourceAtom == atom || sourceAtom >= p.atomCount()) continue;
             if (heavyOnly && p.atom(sourceAtom).element == model::Element::H) continue;
+        } else if (kind == CloudKind::ChargeSites) {
+            if (ref.entity_index < 0) continue;
+            const std::size_t sourceAtom = static_cast<std::size_t>(ref.entity_index);
+            if (!chargeSourceAcceptedForContribution(body, p, atom, sourceAtom, row, d)) continue;
         }
-        const Vec3 point = body.idx.spatial.tree(kind, row).pointAt(static_cast<std::size_t>(ref.cloud_index));
-        const double d = (point - query).norm();
-        if (!std::isfinite(d)) continue;
         if (d < best[0]) {
             best[1] = best[0];
             best[0] = d;
@@ -2080,6 +2101,15 @@ int distanceBandId(double v) {
     return 4;
 }
 
+int chargeGapBandId(double v) {
+    if (!std::isfinite(v)) return -1;
+    if (v < 0.25) return 0;
+    if (v < 0.5) return 1;
+    if (v < 1.0) return 2;
+    if (v < 1.5) return 3;
+    return 4;
+}
+
 QuintileEdges computeQuintileEdges(std::vector<double> values) {
     QuintileEdges out;
     values.erase(std::remove_if(values.begin(), values.end(),
@@ -2164,7 +2194,11 @@ bool writePartitionBins(const QString& outDir,
     for (const RowPartitionScratch& row : rows) {
         std::size_t col = 0;
         const int s = std::clamp(row.stratum, 0, kStratumCount - 1);
-        for (double v : row.geometry) pushBin(col++, distanceBandId(v));
+        for (std::size_t g = 0; g < row.geometry.size(); ++g) {
+            const int bin = g == 5 ? chargeGapBandId(row.geometry[g])
+                                   : distanceBandId(row.geometry[g]);
+            pushBin(col++, bin);
+        }
         for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c)
             pushBin(col++, quintileBinId(row.magnitude[c], magnitudeEdges[s][c]));
         for (std::size_t c = 0; c < kPerAtomDriverMagnitudeCols; ++c) {
@@ -2193,6 +2227,7 @@ bool writePartitionBins(const QString& outDir,
     manifest.insert(QStringLiteral("dtype"), QStringLiteral("int32"));
     manifest.insert(QStringLiteral("missing_bin_id"), -1);
     manifest.insert(QStringLiteral("distance_band_edges_A"), QJsonArray{4.0, 6.0, 8.0, 10.0});
+    manifest.insert(QStringLiteral("charge_gap_band_edges_A"), QJsonArray{0.25, 0.5, 1.0, 1.5});
     QJsonArray shape;
     shape.append(static_cast<qint64>(rows.size()));
     shape.append(static_cast<qint64>(kPerAtomPartitionBinCols));
@@ -2764,7 +2799,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
     }
     for (int i = 0; i < kConditioningColumns.size(); ++i) {
         const QString name = kConditioningColumns[i];
-        const QString units = name.contains(QStringLiteral("_r")) ? QStringLiteral("A") : QString();
+        const QString units = name.endsWith(QStringLiteral("_r")) ? QStringLiteral("A") : QString();
         const QString mechanism = name.contains(QStringLiteral("dominant_fraction"))
                                       || name.contains(QStringLiteral("gap_to_2nd"))
                                   ? QStringLiteral("isolation")
