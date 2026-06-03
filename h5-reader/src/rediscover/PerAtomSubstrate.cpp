@@ -108,6 +108,7 @@ void fillNaN(std::array<double, kPerAtomClassicalCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomConditioningCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomBackboneAuditCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomRingPathCols>& v) { v.fill(kNaN); }
+void fillNaN(std::array<double, kPerAtomMethodPathCols>& v) { v.fill(kNaN); }
 
 const model::NpyColumn* atomColumn(const model::QtConformationSnapshot* snapshot,
                                    io::FieldKind kind,
@@ -926,13 +927,32 @@ struct DirectFeatures {
     bool pq_per_type_T2_present = false;
     bool disp_per_type_T0_present = false;
     bool disp_per_type_T2_present = false;
+    std::array<double, kPerAtomMethodPathCols> method_paths = {};
+    bool mc_category_T2_present = false;
+    bool mc_scalars_present = false;
+    bool mopac_mc_category_T2_present = false;
+    bool mopac_mc_scalars_present = false;
+    bool mopac_bond_orders_aggregate_present = false;
+    bool mopac_coulomb_E_present = false;
+    bool mopac_coulomb_efg_backbone_present = false;
+    bool mopac_coulomb_efg_aromatic_present = false;
+    bool mopac_coulomb_scalars_present = false;
+    bool aimnet2_efg_present = false;
+    bool aimnet2_efg_aromatic_present = false;
+    bool aimnet2_efg_backbone_present = false;
+    bool water_efg_present = false;
+    bool water_efield_first_present = false;
+    bool eeq_cn_present = false;
+    bool mopac_scalars_present = false;
 };
 
 DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t row,
                               std::size_t orig, const LocalFrame& frame,
-                              const model::QtConformationSnapshot* snapshot = nullptr) {
+                              const model::QtConformationSnapshot* snapshot = nullptr,
+                              const std::array<double, 4>* mopacBondAggregate = nullptr) {
     DirectFeatures out;
     fillNaN(out.ring_paths);
+    fillNaN(out.method_paths);
     out.target = BuildTarget(body.run, atom, orig, frame);
     out.dft_present = out.target.present && finiteT2(out.target.total_decomp.T2);
     out.apbs_E_present = body.catalog.present(body, ArrayId::ApbsEfield, atom, row);
@@ -1072,6 +1092,44 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT0, atom, 8);
     out.disp_per_type_T2_present =
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT2, atom, 40);
+
+    std::size_t mp = 0;
+    out.mc_category_T2_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::McCategoryT2, atom, 25);
+    out.mc_scalars_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::McScalars, atom, 6);
+    out.mopac_mc_category_T2_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACMcCategoryT2, atom, 25);
+    out.mopac_mc_scalars_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACMcScalars, atom, 6);
+    if (mopacBondAggregate && finiteRaw(mopacBondAggregate->data(), mopacBondAggregate->size())) {
+        for (std::size_t i = 0; i < mopacBondAggregate->size(); ++i)
+            out.method_paths[mp + i] = (*mopacBondAggregate)[i];
+        out.mopac_bond_orders_aggregate_present = true;
+    }
+    mp += 4;
+    out.mopac_coulomb_E_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACCoulombE, atom, 3);
+    out.mopac_coulomb_efg_backbone_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACCoulombEFGBackbone, atom, 5);
+    out.mopac_coulomb_efg_aromatic_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACCoulombEFGAromatic, atom, 5);
+    out.mopac_coulomb_scalars_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACCoulombScalars, atom, 4);
+    out.aimnet2_efg_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::AIMNet2EFG, atom, 5);
+    out.aimnet2_efg_aromatic_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::AIMNet2EFGAromatic, atom, 5);
+    out.aimnet2_efg_backbone_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::AIMNet2EFGBackbone, atom, 5);
+    out.water_efg_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::WaterEFG, atom, 5);
+    out.water_efield_first_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::WaterEfieldFirst, atom, 3);
+    out.eeq_cn_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::EEQCN, atom, 1);
+    out.mopac_scalars_present =
+        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACScalars, atom, 4);
     return out;
 }
 
@@ -1181,6 +1239,57 @@ void auditRingPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& d
                       direct.ring_paths, c, 40);
 }
 
+void auditMethodPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct) {
+    std::size_t c = 0;
+    auditArraySegment(stats, QStringLiteral("mc_category_T2"), direct.mc_category_T2_present,
+                      direct.method_paths, c, 25);
+    c += 25;
+    auditArraySegment(stats, QStringLiteral("mc_scalars"), direct.mc_scalars_present,
+                      direct.method_paths, c, 6);
+    c += 6;
+    auditArraySegment(stats, QStringLiteral("mopac_mc_category_T2"),
+                      direct.mopac_mc_category_T2_present, direct.method_paths, c, 25);
+    c += 25;
+    auditArraySegment(stats, QStringLiteral("mopac_mc_scalars"),
+                      direct.mopac_mc_scalars_present, direct.method_paths, c, 6);
+    c += 6;
+    auditArraySegment(stats, QStringLiteral("mopac_bond_orders_aggregate"),
+                      direct.mopac_bond_orders_aggregate_present, direct.method_paths, c, 4);
+    c += 4;
+    auditArraySegment(stats, QStringLiteral("mopac_coulomb_E"),
+                      direct.mopac_coulomb_E_present, direct.method_paths, c, 3);
+    c += 3;
+    auditArraySegment(stats, QStringLiteral("mopac_coulomb_efg_backbone"),
+                      direct.mopac_coulomb_efg_backbone_present, direct.method_paths, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("mopac_coulomb_efg_aromatic"),
+                      direct.mopac_coulomb_efg_aromatic_present, direct.method_paths, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("mopac_coulomb_scalars"),
+                      direct.mopac_coulomb_scalars_present, direct.method_paths, c, 4);
+    c += 4;
+    auditArraySegment(stats, QStringLiteral("aimnet2_efg"), direct.aimnet2_efg_present,
+                      direct.method_paths, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("aimnet2_efg_aromatic"),
+                      direct.aimnet2_efg_aromatic_present, direct.method_paths, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("aimnet2_efg_backbone"),
+                      direct.aimnet2_efg_backbone_present, direct.method_paths, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("water_efg"), direct.water_efg_present,
+                      direct.method_paths, c, 5);
+    c += 5;
+    auditArraySegment(stats, QStringLiteral("water_efield_first"),
+                      direct.water_efield_first_present, direct.method_paths, c, 3);
+    c += 3;
+    auditArraySegment(stats, QStringLiteral("eeq_cn"), direct.eeq_cn_present,
+                      direct.method_paths, c, 1);
+    c += 1;
+    auditArraySegment(stats, QStringLiteral("mopac_scalars"), direct.mopac_scalars_present,
+                      direct.method_paths, c, 4);
+}
+
 void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct,
                          const RowChargeScalars& charges) {
     const bool hbondGeometryPresent = direct.hbond_nearest_distance_present
@@ -1240,6 +1349,7 @@ void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& dir
     auditT2(stats, QStringLiteral("target_para_T2"), direct.dft_present,
             direct.target.para_decomp.T2);
     auditRingPathFeatures(stats, direct);
+    auditMethodPathFeatures(stats, direct);
 }
 
 void recordAbsentNewChannelSlabs(const Body& body, PerAtomSubstrateStats& stats) {
@@ -1264,7 +1374,6 @@ void recordAbsentNewChannelSlabs(const Body& body, PerAtomSubstrateStats& stats)
         {QStringLiteral("sasa_time_series/sasa"), ArrayId::Sasa},
         {QStringLiteral("hydration_geometry_time_series/surface_normal"), ArrayId::SasaNormal},
         {QStringLiteral("eeq_welford/charge_mean"), ArrayId::EeqChargeMean},
-        {QStringLiteral("eeq_coordination_number"), ArrayId::EeqCoordinationNumber},
     };
     stats.absent_new_channel_slabs.clear();
     for (const auto& slab : slabs) {
@@ -1398,6 +1507,34 @@ QStringList makeRingPathColumns() {
     return cols;
 }
 
+QStringList makeMethodPathColumns() {
+    QStringList cols;
+    appendIndexedNames(cols, QStringLiteral("mc_category_T2"), 25);
+    appendIndexedNames(cols, QStringLiteral("mc_scalars"), 6);
+    appendIndexedNames(cols, QStringLiteral("mopac_mc_category_T2"), 25);
+    appendIndexedNames(cols, QStringLiteral("mopac_mc_scalars"), 6);
+    cols << QStringLiteral("mopac_bond_orders_incident_count")
+         << QStringLiteral("mopac_bond_orders_incident_sum")
+         << QStringLiteral("mopac_bond_orders_incident_mean")
+         << QStringLiteral("mopac_bond_orders_incident_max");
+    cols << QStringLiteral("mopac_coulomb_E_x")
+         << QStringLiteral("mopac_coulomb_E_y")
+         << QStringLiteral("mopac_coulomb_E_z");
+    appendIndexedNames(cols, QStringLiteral("mopac_coulomb_efg_backbone"), 5);
+    appendIndexedNames(cols, QStringLiteral("mopac_coulomb_efg_aromatic"), 5);
+    appendIndexedNames(cols, QStringLiteral("mopac_coulomb_scalars"), 4);
+    appendIndexedNames(cols, QStringLiteral("aimnet2_efg"), 5);
+    appendIndexedNames(cols, QStringLiteral("aimnet2_efg_aromatic"), 5);
+    appendIndexedNames(cols, QStringLiteral("aimnet2_efg_backbone"), 5);
+    appendIndexedNames(cols, QStringLiteral("water_efg"), 5);
+    cols << QStringLiteral("water_efield_first_x")
+         << QStringLiteral("water_efield_first_y")
+         << QStringLiteral("water_efield_first_z");
+    cols << QStringLiteral("eeq_cn");
+    appendIndexedNames(cols, QStringLiteral("mopac_scalars"), 4);
+    return cols;
+}
+
 const QStringList kClassicalColumns = {
     QStringLiteral("ring_jb_T0"),
     QStringLiteral("ring_jb_T2_0"), QStringLiteral("ring_jb_T2_1"),
@@ -1493,6 +1630,7 @@ const QStringList kBackboneAuditColumns = {
 };
 
 const QStringList kRingPathColumns = makeRingPathColumns();
+const QStringList kMethodPathColumns = makeMethodPathColumns();
 
 void validateColumnCounts() {
     auto check = [](const QString& name, qsizetype actual, std::size_t expected) {
@@ -1514,6 +1652,8 @@ void validateColumnCounts() {
           kBackboneAuditColumns.size(), kPerAtomBackboneAuditCols);
     check(QStringLiteral("per_atom_substrate_features_ring_paths"),
           kRingPathColumns.size(), kPerAtomRingPathCols);
+    check(QStringLiteral("per_atom_substrate_features_method_paths"),
+          kMethodPathColumns.size(), kPerAtomMethodPathCols);
 }
 
 class PerAtomWriter {
@@ -1555,6 +1695,8 @@ public:
                                  {rows_, kPerAtomClassicalCols}, QByteArray("<f8"))
               && ringPaths_.open(path(QStringLiteral("per_atom_substrate_features_ring_paths.npy")),
                                  {rows_, kPerAtomRingPathCols}, QByteArray("<f8"))
+              && methodPaths_.open(path(QStringLiteral("per_atom_substrate_features_method_paths.npy")),
+                                   {rows_, kPerAtomMethodPathCols}, QByteArray("<f8"))
               && conditioning_.open(path(QStringLiteral("per_atom_substrate_features_conditioning.npy")),
                                     {rows_, kPerAtomConditioningCols}, QByteArray("<f8"))
               && backboneAudit_.open(path(QStringLiteral("per_atom_substrate_backbone_audit.npy")),
@@ -1694,6 +1836,7 @@ public:
         if (!targetParaT2_.writeArray(targetParaT2)) return false;
         if (!classical_.writeArray(classical)) return false;
         if (!ringPaths_.writeArray(direct.ring_paths)) return false;
+        if (!methodPaths_.writeArray(direct.method_paths)) return false;
         if (!conditioning_.writeArray(conditioning)) return false;
         if (!backboneAudit_.writeArray(agg.backbone_audit)) return false;
         if (cfg_.emit_embedding) {
@@ -1725,7 +1868,7 @@ public:
                && targetT2_.commit() && targetT0_.commit() && targetT1_.commit()
                && targetDiaT0_.commit() && targetDiaT1_.commit() && targetDiaT2_.commit()
                && targetParaT0_.commit() && targetParaT1_.commit() && targetParaT2_.commit()
-               && classical_.commit() && ringPaths_.commit()
+               && classical_.commit() && ringPaths_.commit() && methodPaths_.commit()
                && conditioning_.commit() && backboneAudit_.commit()
                && (!cfg_.emit_embedding || embedding_.commit()) && modOk;
     }
@@ -1778,6 +1921,7 @@ private:
     StreamingNpy targetParaT2_;
     StreamingNpy classical_;
     StreamingNpy ringPaths_;
+    StreamingNpy methodPaths_;
     StreamingNpy conditioning_;
     StreamingNpy backboneAudit_;
     StreamingNpy embedding_;
@@ -1967,6 +2111,45 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_ring_paths"),
                       name, i, units, irreps, mechanism, true, sign);
     }
+    for (int i = 0; i < kMethodPathColumns.size(); ++i) {
+        const QString name = kMethodPathColumns[i];
+        QString units;
+        QString irreps = QStringLiteral("0e");
+        QString mechanism = QStringLiteral("comparison_method");
+        QString sign;
+        if (name.contains(QStringLiteral("_T2_")) || name.contains(QStringLiteral("efg"))) {
+            irreps = QStringLiteral("1x2e");
+        } else if (name.endsWith(QStringLiteral("_x")) || name.endsWith(QStringLiteral("_y"))
+                   || name.endsWith(QStringLiteral("_z"))) {
+            irreps = QStringLiteral("1o");
+        }
+        if (name.contains(QStringLiteral("mc_"))) {
+            units = QStringLiteral("Angstrom^-3");
+            mechanism = QStringLiteral("bond_anisotropy");
+            sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
+        } else if (name.contains(QStringLiteral("bond_orders"))) {
+            mechanism = QStringLiteral("mopac_bond_order");
+        } else if (name.contains(QStringLiteral("mopac_coulomb_E"))) {
+            units = QStringLiteral("V/A");
+            mechanism = QStringLiteral("electrostatic_efg");
+        } else if (name.contains(QStringLiteral("mopac_coulomb_efg"))
+                   || name.contains(QStringLiteral("aimnet2_efg"))
+                   || name.contains(QStringLiteral("water_efg"))) {
+            units = QStringLiteral("V/A^2");
+            mechanism = name.contains(QStringLiteral("aimnet2")) ? QStringLiteral("aimnet2")
+                       : name.contains(QStringLiteral("water")) ? QStringLiteral("water_field")
+                                                                 : QStringLiteral("electrostatic_efg");
+        } else if (name.contains(QStringLiteral("water_efield_first"))) {
+            units = QStringLiteral("V/A");
+            mechanism = QStringLiteral("water_field");
+        } else if (name.contains(QStringLiteral("eeq_cn"))) {
+            mechanism = QStringLiteral("eeq");
+        } else if (name.contains(QStringLiteral("mopac_scalars"))) {
+            mechanism = QStringLiteral("charges");
+        }
+        addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_method_paths"),
+                      name, i, units, irreps, mechanism, true, sign);
+    }
     for (int i = 0; i < kConditioningColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_conditioning"),
                       kConditioningColumns[i], i, QString(), QStringLiteral("0e"),
@@ -2085,7 +2268,7 @@ bool writePerAtomManifest(const QString& outDir, const PerAtomSubstrateStats& st
     root.insert(QStringLiteral("dft_frame_alignment"), align);
     QJsonObject sizeGate;
     constexpr std::size_t kPiece3BAppendFloat64Cols =
-        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols;
+        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols + kPerAtomMethodPathCols;
     const double appendGiB =
         static_cast<double>(stats.rows) * static_cast<double>(kPiece3BAppendFloat64Cols)
         * 8.0 / 1073741824.0;
@@ -2340,24 +2523,68 @@ bool emitPairQueries(const Body& body, const QString& outDir, const PerAtomSubst
 
 class SnapshotCache {
 public:
-    explicit SnapshotCache(const Body& body) : body_(&body) {}
+    explicit SnapshotCache(const Body& body) : body_(&body) {
+        if (body.run.protein) atomCount_ = body.run.protein->atomCount();
+    }
 
     std::shared_ptr<const model::QtConformationSnapshot> get(std::size_t h5Row) {
         if (!body_ || !body_->run.conformation) return nullptr;
         if (!have_ || h5Row != h5Row_) {
             body_->run.conformation->requestSnapshot(h5Row);
             snapshot_ = body_->run.conformation->snapshot(h5Row);
+            rebuildMopacBondAggregates();
             h5Row_ = h5Row;
             have_ = true;
         }
         return snapshot_;
     }
 
+    const std::array<double, 4>* mopacBondAggregate(std::size_t atom) const {
+        if (atom >= mopacBondAggregates_.size()) return nullptr;
+        return &mopacBondAggregates_[atom];
+    }
+
 private:
+    void rebuildMopacBondAggregates() {
+        mopacBondAggregates_.assign(atomCount_, {kNaN, kNaN, kNaN, kNaN});
+        if (!snapshot_ || !snapshot_->has(io::FieldKind::MOPACBondOrders)) return;
+        const model::NpyColumn& col = snapshot_->column(io::FieldKind::MOPACBondOrders);
+        if (col.cols < 3) return;
+        std::vector<double> sums(atomCount_, 0.0);
+        std::vector<double> maxes(atomCount_, -std::numeric_limits<double>::infinity());
+        std::vector<int> counts(atomCount_, 0);
+        for (int r = 0; r < col.rows; ++r) {
+            const double* row = col.row(static_cast<std::size_t>(r));
+            if (!finiteRaw(row, 3)) continue;
+            const std::size_t a = static_cast<std::size_t>(row[0]);
+            const std::size_t b = static_cast<std::size_t>(row[1]);
+            const double order = row[2];
+            auto push = [&](std::size_t atom) {
+                if (atom >= atomCount_) return;
+                ++counts[atom];
+                sums[atom] += order;
+                maxes[atom] = std::max(maxes[atom], order);
+            };
+            push(a);
+            push(b);
+        }
+        for (std::size_t atom = 0; atom < atomCount_; ++atom) {
+            if (counts[atom] <= 0) continue;
+            mopacBondAggregates_[atom] = {
+                static_cast<double>(counts[atom]),
+                sums[atom],
+                sums[atom] / static_cast<double>(counts[atom]),
+                maxes[atom],
+            };
+        }
+    }
+
     const Body* body_ = nullptr;
     bool have_ = false;
     std::size_t h5Row_ = 0;
+    std::size_t atomCount_ = 0;
     std::shared_ptr<const model::QtConformationSnapshot> snapshot_;
+    std::vector<std::array<double, 4>> mopacBondAggregates_;
 };
 
 }  // namespace
@@ -2375,6 +2602,7 @@ QStringList PerAtomSubstrateSidecars(const PerAtomSubstrateConfig& config) {
         QStringLiteral("per_atom_substrate_target_para_T2.npy"),
         QStringLiteral("per_atom_substrate_features_classical.npy"),
         QStringLiteral("per_atom_substrate_features_ring_paths.npy"),
+        QStringLiteral("per_atom_substrate_features_method_paths.npy"),
         QStringLiteral("per_atom_substrate_features_conditioning.npy"),
         QStringLiteral("per_atom_substrate_driver_modulation_by_atom.npy"),
         QStringLiteral("per_atom_substrate_backbone_audit.npy"),
@@ -2429,7 +2657,7 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
     stats.dft_rows = body.run.frameMap.dftRows().size();
     const std::size_t expectedRows = stats.atom_count * stats.dft_rows;
     constexpr std::size_t kPiece3BAppendFloat64Cols =
-        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols;
+        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols + kPerAtomMethodPathCols;
     const double appendGiB =
         static_cast<double>(expectedRows) * static_cast<double>(kPiece3BAppendFloat64Cols)
         * 8.0 / 1073741824.0;
@@ -2481,7 +2709,8 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
             const FrameResult& fr) {
             const std::shared_ptr<const model::QtConformationSnapshot> snapshot =
                 snapshotCache.get(row);
-            return directFeatures(b, atom, row, orig, fr.frame, snapshot.get());
+            return directFeatures(b, atom, row, orig, fr.frame, snapshot.get(),
+                                  snapshotCache.mopacBondAggregate(atom));
         },
         [&](const Body& b, const AtomState& st, const FrameResult&,
             const DirectFeatures&) {

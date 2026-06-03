@@ -88,6 +88,7 @@ constexpr std::size_t kPerAtomDriverMagnitudeCols = 9;
 constexpr std::size_t kPerAtomBackboneAuditCols = 14;
 constexpr std::size_t kPerAtomTargetDecompositionCols = 21;
 constexpr std::size_t kPerAtomRingPathCols = 226;
+constexpr std::size_t kPerAtomMethodPathCols = 111;
 
 PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
                                               const QString& outDir,
