@@ -39,12 +39,17 @@ Every law-bearing kernel (ring/charge/mc/field/hbond) now has its "where can we 
 handle: dominant_fraction + gap + C++ quintile bins + a CaseHunter habitat (field = MOPAC-Coulomb,
 H-bond = DSSP donor/acceptor partners, charge widened to carbons). Standing fit verdict (Build 3):
 per-type-WITHIN trustworthy; channel = total-T2 (gauge-invariant); H-bond→HN judgeable per-type.
-NEXT (held for lead): **stage 2** = at the audible places, fit each kernel's law the multiple ways
-we have (equivariant-T2 + PySR + ridge) → coefficient + statistical position + cross-kernel
-comparison + path-agreement; decompose the ~4k-line fitter while in there.
-PENDING FIRST: unification review of `doc/calculators/physics-architecture.tex` (one kernel
-D_ab = ∇∇(1/ρ); calculators as shadows of one object) for what it recommends about our fitting
-maths — agent dispatched; hold stage 2 for those recs + lead steer.
+NEXT — **stage 2 (finish what we started; the payoff):** at the audible places, fit each kernel's
+law the multiple ways we have (equivariant-T2 + PySR + ridge) → coefficient + statistical position
++ cross-kernel comparison + path-agreement; pull the navigable real examples; decompose the
+~4k-line fitter while in there. Plan-vet then fire.
+SIDE-FRAME landed (`PHYSICS_ARCHITECTURE_UNIFICATION_2026-06-04.md`): the .tex is our own maths
+handed back — it VINDICATES the architecture (independently re-derives shared-angular/per-type-radial)
+and changes nothing structural. FOLD into stage 2: the fixed-eigenstructure `(3cos²−1)` magic-angle
+NULL for statistical position; path-agreement in PHYSICAL UNITS (coefficient, not R²); the convention
+ledger (ring / WaterField+ vs APBS− signs). DEFER the axis-angle dominance refinement unless stage-2
+fits show ring/mc/hbond contaminating each other. GUARD: no grand pointwise fit; Larsen-ppm vs
+geometric-shadow name collision.
 
 ## Live decisions / through-lines (the marker's real content)
 - **Laws come from dominance-isolated clean exemplars, fit per-mechanism, UN-SHRUNK.** The
