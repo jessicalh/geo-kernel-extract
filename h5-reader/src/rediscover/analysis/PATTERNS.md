@@ -8,10 +8,23 @@ The `#30` tripwire test is the backstop that catches a drift — not the lead.
 
 ## The boundary (load-bearing)
 
-1. **The model is the spine, and it lives in C++.** The C++ producer computes AND
-   EMITS the physics — kernels, fields, sums, the spherical (T0/T1/T2) decomposition,
-   local frames, the DFT target. Python never recomputes any of it.
-   (`feedback_model_is_spine`.)
+1. **The model is the spine — ONE typed model, no second model in Python.** There is
+   exactly one model of the protein in this system: the typed, resident object model
+   with fast lookups (`QtProtein` / topology / the `QtAtom` & `QtRing` virtuals + the
+   indexed trajectory + the catalog) — the model WE define and manage. The C++ producer
+   computes AND EMITS the physics off that one model — kernels, fields, sums, the
+   spherical (T0/T1/T2) decomposition, local frames, the DFT target. Python never
+   recomputes any of it: a recompute (a kernel, the projection, a field) is a SECOND,
+   shadow model of the protein living beside the one we define — the thing we refuse,
+   not a style preference. (`feedback_model_is_spine`.)
+   - **The C++ functional interface is the producer-side face of that same boundary.**
+     The engine / verbs / composed relationships (Layer 1–3) define what the model IS and
+     how it is touched and emitted — so we keep that interface functional and clean:
+     express each cell through it, extend it cleanly, don't bypass it or let it sprawl
+     into one-off walks or sibling runners (the broad case forced one — #29 unifies them).
+     A blurred functional interface is a blurred model boundary — that is how a second
+     model creeps in. (`feedback_functional_api_minimal_clarifying_abstraction`;
+     REDISCOVERY_MAP per-cell workflow step 1.)
 2. **Python only fits + reads emitted features.** The fitter (ridge / e3nn / PySR)
    consumes the emitted CSV/NPY substrate: it READS emitted columns and NPYs; it does
    not re-derive physics. (`feedback_no_parallel_h5_in_python` — and never open
@@ -41,8 +54,13 @@ The `#30` tripwire test is the backstop that catches a drift — not the lead.
    Exemplars: orientation vectors (#32), literature-kernel T2 (#34). And the GOAL is
    getting back to the PHYSICS — the law (Depth A) + the de-circularising test — not
    stopping at captured signal (Depth B). See `REDISCOVERY_MAP.md` "per-cell workflow."
-7. **Report effective N; don't oversell.** Per-stratum, correlate-not-match; flag thin
-   strata rather than force-fitting a number. (`feedback_seti`, `feedback_correlate_not_match`.)
+7. **EVERYTHING per backbone stratum — report effective N; don't oversell.** Every table,
+   chart, and result is broken out per atom-type stratum (N / CA / C / O / HN / HA) — NEVER
+   a pooled summary standing in for it. The per-atom-type structure (which mechanism carries
+   which stratum — charge→N, Buckingham→HN, Cα-the-gap / the-AIMNet2-lift) IS the story;
+   pooling hides exactly what matters. Per-stratum, correlate-not-match; report effective N
+   + within-protein uncertainty; flag thin strata rather than force-fit.
+   (`feedback_seti`, `feedback_correlate_not_match`, `feedback_no_simplification`.)
 8. **The exemplar is the template — debt in it propagates.** Catch technical debt
    where you are, in the moment; don't leave it for a cleanup that the velocity will
    outrun. (`feedback_catch_debt_in_the_moment`.)

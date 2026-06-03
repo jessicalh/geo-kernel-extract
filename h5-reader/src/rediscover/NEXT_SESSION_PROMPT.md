@@ -1,73 +1,69 @@
-# Next-session kickoff — rediscover (current as of 2026-06-01 EOD)
+# Next-session kickoff — rediscover (current 2026-06-01, post-cleanup + calibration)
 
-Continuing `rediscover` on branch `h5-reader-pysr-spike` — **NEVER MERGE**
-(experimental spike; no merge / switch-to-master / PR / rebase, ever).
-
-This supersedes the stale `NEXT_STEP_BRIEF.md` and `BROAD_BACKBONE_NEXT.md` (both
-DONE / historical — ignore them).
+Continuing `rediscover` on `h5-reader-pysr-spike` — **NEVER MERGE** (experimental spike;
+no merge / switch / PR / rebase, ever). Supersedes the older kickoff sections below.
 
 ## Read first
-- **`WORK_CATALOG.md`** — the work breakdown (what to make + the order; feature-by-feature codex cells).
-- **`REDISCOVERY_MAP.md`** — the science roadmap (WHERE WE'RE GOING): two depths (a
-  law falls out / signal captured), the status grid, item 1 (complete the template) →
-  item 2 (the other calculators), the constraints.
-- **`STATE.md`** — freshest state + numbers (most recent updates at the top).
-- **`analysis/PATTERNS.md`** — the controlling discipline for the Python-consumer
-  surface; FRONT-LOAD it in every analysis/fitter agent brief.
-- **`analysis/equiv_t2_backbone_e3nn.py`** — the EXEMPLAR (WHAT IT LOOKS LIKE), the
-  template every future cell copies.
-- Memory: `project_rediscover_state`, `feedback_no_python_physics_except_labeled_integrity_test`,
-  `feedback_controlling_patterns_docs_steer`, `feedback_catch_debt_in_the_moment`,
-  `feedback_motivated_agent_briefs`, `reference_subagent_build_agency`.
+- **`STATE.md`** (top) — the applied-maths cleanup arc + the static calibration + the
+  equation tally; freshest at top.
+- Memory: **`project_thesis_reporting_arc`** (THE steering doc — the 4-layer arc),
+  `feedback_applied_maths_over_methodology_caveats`, `feedback_token_economy_codex_codes`,
+  `project_rediscover_state`, `feedback_no_python_physics_except_labeled_integrity_test`,
+  `feedback_seti`, `feedback_model_is_spine`.
+- The session record on disk: `APPLIED_MATHS_AUDIT.md`, `APPLIED_MATHS_AUDIT_codex.md`,
+  `FIXES_AUDIT_opus.md`, `VARIANCE_DECOMPOSITION_METHOD.md`, `STATIC_ENVIRONMENT_CALIBRATION.md`,
+  refreshed `BACKBONE_LAW_EVIDENCE.md` / `EFG_ARC_EVIDENCE.md`, the capstone charts
+  (`analysis/rediscover_capstone_charts.py`). `analysis/PATTERNS.md`, `REDISCOVERY_MAP.md`.
 
-## FIRST ACTION — verify the sandbox fix (a restart took effect)
-`settings.local.json` now has `permissions.defaultMode: bypassPermissions` — the fix
-for subagent build/run agency (it's a permission-MODE issue, NOT sandbox; the per-call
-`dangerouslyDisableSandbox` override does NOT help subagents). On this fresh session,
-TEST it: spawn an Opus subagent that runs `import torch` / `cmake --build`. Works →
-Opus agents have build/run agency, the author-with-Claude/build-with-codex split
-collapses (route by best tool). Still denied → codex remains the build/run path.
+## Where we are — the honest tally (equations, Depth-A / calibration)
+- **Ring current (Pople)** σ ∝ k·Σintensity·(3cos²θ−1)/r³, k≈21 — **clean recovered law**,
+  de-circularised, LOAO R²=0.62 (non-circular). The headline.
+- **Charge field-gradient** σ_T2 ∝ Σq(3d̂d̂/r⁵−I/r³) — **form-recovered, scale-fitted**;
+  charge→N T2 between |T2|r=0.78 (q/r³ fix → 0.981 comparator). Strongest between-axis.
+- **McConnell** K·χ (canonical, library-identical — F1 was a false alarm) — form-recovered,
+  scale-fitted; scalar R²≈0.85.
+- **Buckingham** σ_iso≈A·E_proj+B·|E|² — form-recovered, scale-fitted; HN between R²≈0.40–0.48.
+- **EFG → T2** — **deflated, not a law** (the lab-frame "O 0.34" was a tumbling rotation
+  confound; clean local-frame ≈0).
+- Bucket for the static three: **"form-recovered, scale-fitted"** (Jessica) — not yet
+  de-circularised to literature coefficients (the γ-vs-units thread is open).
+- **Confidence scope: within-protein only** (n=1 protein, ≈500 frames, ≈50 atoms/stratum) —
+  jackknife/block-bootstrap, autocorr-aware; NO population (across-proteins) inference.
 
-## Where we are (the package, all on h5-reader-pysr-spike)
-- Functional API built + byte-parity-proven (`99cdc85`); broad-backbone built+gated
-  (`35f3768`); e3nn rebuild retiring the Python end-run (`dcc4a46`); the backbone
-  equivariant-T2 EXEMPLAR (`901d1df`) — 8 strata, orientation vectors help all.
-- **The science (`REDISCOVERY_MAP.md`):** ring current = a law fell out (Depth A —
-  PySR Pople form, k≈21 / R²=0.62 non-circular). Backbone tensor (T2) = signal captured
-  (Depth B — HN .76 / O .72 / HA .67 / N .65 / C .59 / CA .43; CA tensor 0.43 vs scalar 0.055).
+## The order (thesis-arc layers)
+1. Signal — done (between/within variance decomposition).
+2. Equation calibrations — done (the tally above; within-protein uncertainty).
+3. **Ensemble + AIMNet2 — IN FLIGHT (codex cell, ~2026-06-01 late).** Wire AIMNet2 features
+   (256-d embedding = the learnable CEILING; CRG = charge-response-gradient, NOT a
+   polarizability — AIMNet2 has no true α; aimnet2-charge source-sweep), the ceiling
+   diagnostic (esp. Cα), and the **ensemble honest-best-result** (good mechanisms ±
+   AIMNet2, between/within, within-protein). **CHECK that cell's result first** (was it
+   committed? what did the ensemble + the Cα ceiling show?).
+4. **Equivariant transferability pilot — later, DATA-GATED.** e3nn pilot vs the 720 WT
+   ("non-mutated mutant") backbones, statics as comparison. Needs per-backbone WT shielding
+   targets through the pipeline (Stage-1 had mutation *deltas*) — scope feasibility first.
 
-## Status: the backbone exemplar is COMPLETE — full B→A→de-circularised arc
-`#33` + `#34` DONE. Backbone verdict: **Depth B captured** (HN .76 / O .72 / HA .67 /
-N .65 / C .59 / CA .43); **Depth A partial** (bond McConnell r⁻³ recovers, atom-split
-0.48; ring null; charge partial); **de-circularised** — the UN-FITTED literature-
-coefficient kernel T2 predicts DFT for N (component r 0.69), O (0.53), C (0.51), while
-CA/HN/HA are weak (they need the fit). So the textbook physics, un-fitted, genuinely
-carries the heavy-atom + amide-N tensors. The exemplar now demonstrates the ENTIRE arc
-end-to-end (`analysis/BACKBONE_LAW_EVIDENCE.md` + the de-circularising CSV under
-`/tmp/rdc-broad-backbone-axes`). Proceed per the order below.
+## Discipline
+ONE typed model in C++; no second model in Python (read emitted substrate, no recompute,
+no `trajectory.h5`, reuse frozen `get_C()`). **codex does the coding grind (C++ AND Python)**;
+the lead reserves tokens for briefs / judgment / drift / cheap verification. **Applied-maths
+errors > methodology caveats** (solvation/basis are disclosable footnotes). correlate-not-
+match; within-protein confidence; report effective N + scatter, prototype-honest, no
+parametric CI. **Captive self-audit** in every fix/build cell. Oracle byte-parity exit-0 if
+C++ touched; ctest **scoped + headless** (`QT_QPA_PLATFORM=offscreen ctest -R
+h5reader_rediscover` — NOT the full suite, it flashes GUI windows). codex builds via
+`codex exec --dangerously-bypass-approvals-and-sandbox -C <h5-reader>`. NEVER MERGE.
 
-## Then, per REDISCOVERY_MAP.md (the order)
-1. **#33 completes the template** (item 1) — finish before going broad.
-2. **#29 — engine totality unification** gates item 2's breadth (each new relationship
-   rides ONE engine, not a sibling runner). Design DRAFTED (`ENGINE_TOTALITY_DESIGN.md`
-   + `MODEL_PLACEMENT_PROPOSAL.md`); process = review (talk + an independent Opus
-   critique) → implement. Do NOT go broad before this.
-3. **Item 2 — the other calculators** (`#25`/`#27`): efg #4 first (APBS EFG → T2; same
-   equivariant machinery; data present), then buckingham_efield / charge multipoles /
-   larsen / AIMNet2 CRG + embedding. Each copies the completed exemplar + rides the
-   unified engine *(any quantity a cell needs that the substrate lacks → a C++
-   emit-extension, spine-side, never Python)*.
-4. **#30 — the repo tripwire guard** (backstop to `analysis/PATTERNS.md`).
+## Data
+The 1P9J **750-DFT full set lands ~3 days** (every-other-frame) → re-fire the capstone
+charts (`analysis/rediscover_capstone_charts.py`, parameterized) + the variance
+decomposition + the static calibration on it. Differencing (#35) stays PARKED (needs a
+dense consecutive-frame DFT burst, not more every-other frames).
 
-## Discipline (`analysis/PATTERNS.md` + the memories)
-Model-is-spine (C++ emits; Python fits via e3nn on the emitted substrate); NO recompute
-(projection / kernel / field) outside a labeled pinned test; equivariant = e3nn (never
-hand-rolled); reuse the frozen `get_C()`; correlate-not-match (report effective N, don't
-oversell thin strata); catch debt in the moment; front-load `analysis/PATTERNS.md` in
-every fitter brief; **USE + SUPPORT the functional interface** (express each cell through
-the engine as a composed relationship; extend it cleanly + aesthetically; don't bypass it
-or proliferate sibling runners — unify #29); codex grinds / Opus + lead judge; NEVER MERGE.
+## Open threads
+- The calibration **γ-vs-units** question (does γ≈1 in matched units = literature-predicts,
+  or a units artifact) — bucket is "form-recovered, scale-fitted" until pinned.
+- The AIMNet2 ensemble/ceiling result (the in-flight cell) — fold into the reporting arc.
 
-## Open tasks
-#33 (distillation, in flight) · #29 (engine unification, design drafted) · #25/#27
-(item 2 calculators) · #30 (tripwire backstop).
+---
+(Older kickoff content below is historical — the four-layer arc + STATE.md supersede it.)

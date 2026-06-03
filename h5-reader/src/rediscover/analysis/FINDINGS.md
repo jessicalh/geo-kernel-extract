@@ -1,3 +1,5 @@
+> PARTIALLY SUPERSEDED (2026-06-02): see `../STATE.md` top + `JOHNSON_BOVEY_REGION_RECOVERY.md` + `../UNITS_AND_ISSUES_AUDIT.md`. Two stale spots: (1) the "in-plane radial R²=0.67 / point-dipole breaks down in the ring plane" claim (lines 36-37, 92-93) was form-reconstruction of the PRODUCER kernel, NOT DFT signal — the in-plane band has ~no DFT ring-modulation (J-B recovery cell `165ed08`: point-dipole T0 R²=0.02, J-B T2 r=0.01), so the misfit is NOT an in-plane-form gap. (2) The "literature-coefficient-FIXED test (the last de-circularising step), TODO" (lines 152-155, 164) was later run reading BARE kernels (γ=−11.3), a UNITS-labeling bug, not a physics failure; re-run in literature-scaled units before reading a verdict. The k≈21 / LOAO R²=0.62 leave-atoms-out result stands.
+
 # Rediscover — first findings (ring current + McConnell), 2026-05-31
 
 Living doc. The question was never a correlation table; it was: can the emitted

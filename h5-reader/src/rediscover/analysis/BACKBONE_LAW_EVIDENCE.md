@@ -1,3 +1,5 @@
+> SUPERSEDED / pre-units-audit (2026-06-02): see `../UNITS_AND_ISSUES_AUDIT.md` + `../STATE.md`. The "De-Circularising Correlations" / "fixed-kernel correlations against DFT T2" (lines 42-53) and the "Literature-coefficient-fixed prediction" caveat (line 116) read the broad-backbone `*_literature_kernel_T2` sidecars, which the reducer fills from H5 BARE kernels or geometric fallback — NOT fixed literature-ppm predictions (`../BroadBackbone.cpp:65-127,468-477`). Ring is unit-current `ppm_T_per_nA`, McConnell unit-Δχ `Angstrom^-3`; these are bare-kernel-scale correlations, so any "un-fitted literature kernel predicts N/O/C" reading is mislabeled. The `|T2| r` and component-r correlations are scale-invariant and unaffected; the "literature/de-circularised" framing is the stale part.
+
 # Broad-Backbone T2 Law-Distillation Evidence
 
 Run date: 2026-06-01. Branch: `h5-reader-pysr-spike`.

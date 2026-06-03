@@ -1,3 +1,5 @@
+> SUPERSEDED / pre-units-audit (2026-06-02): see `../UNITS_AND_ISSUES_AUDIT.md` + `../STATE.md`. The "fixed literature kernels ... matched ppm units" claim below (line 7) is FALSE for the columns actually read — `bare_T0`/bare-T2 are producer BARE kernels (ring = unit-current `ppm_T_per_nA`; McConnell = unit-Δχ `Angstrom^-3`), NOT literature-ppm predictions. So ring-T0 γ=−11.3 absorbs the omitted `LiteratureIntensity`, McConnell-T0 γ=−4.75 absorbs Δχ×unit-prefactor; γ≠1 is a UNITS bug, not a physics failure. The negative ring sign is the CORRECT diamagnetic ring-current convention (target is ORCA σ, not δ — no σ-vs-δ flip). Re-run with `jb_T*` ppm cols / BS×LiteratureIntensity (ring) and a named Δχ+unit prefactor (McConnell) before reading any verdict here.
+
 # Literature-Coefficient-Fixed De-Circularisation
 
 Read-only Python analysis of the already-emitted ring-current and McConnell substrate.
