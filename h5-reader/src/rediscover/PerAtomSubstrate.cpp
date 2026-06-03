@@ -9,9 +9,11 @@
 #include "Verbs.h"
 
 #include "../io/QtTrajectoryH5.h"
+#include "../io/QtFieldCatalog.gen.h"
 #include "../model/Conformation.h"
 #include "../model/QtAtom.h"
 #include "../model/QtBond.h"
+#include "../model/QtConformationSnapshot.h"
 #include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
 #include "../model/QtRing.h"
@@ -64,6 +66,13 @@ bool finiteT2(const std::array<double, 5>& t2) {
     return true;
 }
 
+bool finiteRaw(const double* values, std::size_t n) {
+    if (!values) return false;
+    for (std::size_t i = 0; i < n; ++i)
+        if (!std::isfinite(values[i])) return false;
+    return true;
+}
+
 double t2Magnitude(const std::array<double, 5>& t2) {
     if (!finiteT2(t2)) return kNaN;
     double s = 0.0;
@@ -85,6 +94,12 @@ std::array<double, 5> nanT2() {
     return out;
 }
 
+std::array<double, 3> nanT1() {
+    std::array<double, 3> out;
+    out.fill(kNaN);
+    return out;
+}
+
 void addT2(std::array<double, 5>& dst, const std::array<double, 5>& src) {
     for (std::size_t i = 0; i < dst.size(); ++i) dst[i] += src[i];
 }
@@ -92,6 +107,38 @@ void addT2(std::array<double, 5>& dst, const std::array<double, 5>& src) {
 void fillNaN(std::array<double, kPerAtomClassicalCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomConditioningCols>& v) { v.fill(kNaN); }
 void fillNaN(std::array<double, kPerAtomBackboneAuditCols>& v) { v.fill(kNaN); }
+void fillNaN(std::array<double, kPerAtomRingPathCols>& v) { v.fill(kNaN); }
+
+const model::NpyColumn* atomColumn(const model::QtConformationSnapshot* snapshot,
+                                   io::FieldKind kind,
+                                   std::size_t atom,
+                                   int minCols) {
+    if (!snapshot || !snapshot->has(kind)) return nullptr;
+    const model::NpyColumn& col = snapshot->column(kind);
+    if (atom >= static_cast<std::size_t>(std::max(0, col.rows))) return nullptr;
+    if (col.cols < minCols) return nullptr;
+    return &col;
+}
+
+template <std::size_t N>
+bool copyAtomField(std::array<double, N>& out,
+                   std::size_t& offset,
+                   const model::QtConformationSnapshot* snapshot,
+                   io::FieldKind kind,
+                   std::size_t atom,
+                   int count) {
+    const model::NpyColumn* col = atomColumn(snapshot, kind, atom, count);
+    bool present = false;
+    if (col) {
+        const double* row = col->row(atom);
+        present = finiteRaw(row, static_cast<std::size_t>(count));
+        if (present) {
+            for (int i = 0; i < count; ++i) out[offset + static_cast<std::size_t>(i)] = row[i];
+        }
+    }
+    offset += static_cast<std::size_t>(count);
+    return present;
+}
 
 struct ChargeScalar {
     double value = kNaN;
@@ -865,11 +912,27 @@ struct DirectFeatures {
     double sasa = kNaN;
     bool sasa_normal_present = false;
     Vec3 sasa_normal = Vec3::Zero();
+    std::array<double, kPerAtomRingPathCols> ring_paths = {};
+    bool bs_shielding_path_present = false;
+    bool bs_per_type_T0_present = false;
+    bool bs_per_type_T2_present = false;
+    bool bs_total_B_present = false;
+    bool bs_ring_counts_present = false;
+    bool hm_shielding_path_present = false;
+    bool hm_per_type_T0_present = false;
+    bool hm_per_type_T2_present = false;
+    bool ringchi_path_present = false;
+    bool pq_per_type_T0_present = false;
+    bool pq_per_type_T2_present = false;
+    bool disp_per_type_T0_present = false;
+    bool disp_per_type_T2_present = false;
 };
 
 DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t row,
-                              std::size_t orig, const LocalFrame& frame) {
+                              std::size_t orig, const LocalFrame& frame,
+                              const model::QtConformationSnapshot* snapshot = nullptr) {
     DirectFeatures out;
+    fillNaN(out.ring_paths);
     out.target = BuildTarget(body.run, atom, orig, frame);
     out.dft_present = out.target.present && finiteT2(out.target.total_decomp.T2);
     out.apbs_E_present = body.catalog.present(body, ArrayId::ApbsEfield, atom, row);
@@ -981,6 +1044,34 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
     if (out.sasa_normal_present)
         out.sasa_normal = body.catalog.valueVec3(body, ArrayId::SasaNormal, atom, row);
     out.sasa_normal_present = out.sasa_normal_present && finiteVec3(out.sasa_normal);
+
+    std::size_t rp = 0;
+    out.bs_shielding_path_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::BSShielding, atom, 9);
+    out.bs_per_type_T0_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::BSPerTypeT0, atom, 8);
+    out.bs_per_type_T2_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::BSPerTypeT2, atom, 40);
+    out.bs_total_B_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::BSTotalB, atom, 3);
+    out.bs_ring_counts_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::BSRingCounts, atom, 4);
+    out.hm_shielding_path_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::HMShielding, atom, 9);
+    out.hm_per_type_T0_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::HMPerTypeT0, atom, 8);
+    out.hm_per_type_T2_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::HMPerTypeT2, atom, 40);
+    out.ringchi_path_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::RingChiShielding, atom, 9);
+    out.pq_per_type_T0_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::PQPerTypeT0, atom, 8);
+    out.pq_per_type_T2_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::PQPerTypeT2, atom, 40);
+    out.disp_per_type_T0_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT0, atom, 8);
+    out.disp_per_type_T2_present =
+        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT2, atom, 40);
     return out;
 }
 
@@ -1030,6 +1121,66 @@ void auditT2(PerAtomSubstrateStats& stats, const QString& name, bool present,
                {value[0], value[1], value[2], value[3], value[4]});
 }
 
+void auditT1(PerAtomSubstrateStats& stats, const QString& name, bool present,
+             const std::array<double, 3>& value) {
+    auditRange(stats, name, present, {value[0], value[1], value[2]});
+}
+
+template <std::size_t N>
+void auditArraySegment(PerAtomSubstrateStats& stats,
+                       const QString& name,
+                       bool present,
+                       const std::array<double, N>& values,
+                       std::size_t offset,
+                       std::size_t count) {
+    std::vector<double> segment;
+    segment.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) segment.push_back(values[offset + i]);
+    auditRange(stats, name, present, segment);
+}
+
+void auditRingPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct) {
+    std::size_t c = 0;
+    auditArraySegment(stats, QStringLiteral("bs_shielding"), direct.bs_shielding_path_present,
+                      direct.ring_paths, c, 9);
+    c += 9;
+    auditArraySegment(stats, QStringLiteral("bs_per_type_T0"), direct.bs_per_type_T0_present,
+                      direct.ring_paths, c, 8);
+    c += 8;
+    auditArraySegment(stats, QStringLiteral("bs_per_type_T2"), direct.bs_per_type_T2_present,
+                      direct.ring_paths, c, 40);
+    c += 40;
+    auditArraySegment(stats, QStringLiteral("bs_total_B"), direct.bs_total_B_present,
+                      direct.ring_paths, c, 3);
+    c += 3;
+    auditArraySegment(stats, QStringLiteral("bs_ring_counts"), direct.bs_ring_counts_present,
+                      direct.ring_paths, c, 4);
+    c += 4;
+    auditArraySegment(stats, QStringLiteral("hm_shielding"), direct.hm_shielding_path_present,
+                      direct.ring_paths, c, 9);
+    c += 9;
+    auditArraySegment(stats, QStringLiteral("hm_per_type_T0"), direct.hm_per_type_T0_present,
+                      direct.ring_paths, c, 8);
+    c += 8;
+    auditArraySegment(stats, QStringLiteral("hm_per_type_T2"), direct.hm_per_type_T2_present,
+                      direct.ring_paths, c, 40);
+    c += 40;
+    auditArraySegment(stats, QStringLiteral("ringchi_shielding_full"),
+                      direct.ringchi_path_present, direct.ring_paths, c, 9);
+    c += 9;
+    auditArraySegment(stats, QStringLiteral("pq_per_type_T0"), direct.pq_per_type_T0_present,
+                      direct.ring_paths, c, 8);
+    c += 8;
+    auditArraySegment(stats, QStringLiteral("pq_per_type_T2"), direct.pq_per_type_T2_present,
+                      direct.ring_paths, c, 40);
+    c += 40;
+    auditArraySegment(stats, QStringLiteral("disp_per_type_T0"), direct.disp_per_type_T0_present,
+                      direct.ring_paths, c, 8);
+    c += 8;
+    auditArraySegment(stats, QStringLiteral("disp_per_type_T2"), direct.disp_per_type_T2_present,
+                      direct.ring_paths, c, 40);
+}
+
 void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct,
                          const RowChargeScalars& charges) {
     const bool hbondGeometryPresent = direct.hbond_nearest_distance_present
@@ -1074,6 +1225,21 @@ void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& dir
     auditScalar(stats, QStringLiteral("eeq_coordination_number"),
                 charges.eeq_coordination_number.present,
                 charges.eeq_coordination_number.value);
+    auditT1(stats, QStringLiteral("target_T1"), direct.dft_present,
+            direct.target.total_decomp.T1);
+    auditScalar(stats, QStringLiteral("target_dia_T0"), direct.dft_present,
+                direct.target.dia_decomp.T0);
+    auditT1(stats, QStringLiteral("target_dia_T1"), direct.dft_present,
+            direct.target.dia_decomp.T1);
+    auditT2(stats, QStringLiteral("target_dia_T2"), direct.dft_present,
+            direct.target.dia_decomp.T2);
+    auditScalar(stats, QStringLiteral("target_para_T0"), direct.dft_present,
+                direct.target.para_decomp.T0);
+    auditT1(stats, QStringLiteral("target_para_T1"), direct.dft_present,
+            direct.target.para_decomp.T1);
+    auditT2(stats, QStringLiteral("target_para_T2"), direct.dft_present,
+            direct.target.para_decomp.T2);
+    auditRingPathFeatures(stats, direct);
 }
 
 void recordAbsentNewChannelSlabs(const Body& body, PerAtomSubstrateStats& stats) {
@@ -1203,6 +1369,35 @@ std::array<double, kPerAtomConditioningCols> conditioningFeatures(
     return c;
 }
 
+void appendTensor9Names(QStringList& cols, const QString& prefix) {
+    cols << QStringLiteral("%1_T0").arg(prefix);
+    for (int i = 0; i < 3; ++i) cols << QStringLiteral("%1_T1_%2").arg(prefix).arg(i);
+    for (int i = 0; i < 5; ++i) cols << QStringLiteral("%1_T2_%2").arg(prefix).arg(i);
+}
+
+void appendIndexedNames(QStringList& cols, const QString& prefix, int count) {
+    for (int i = 0; i < count; ++i) cols << QStringLiteral("%1_%2").arg(prefix).arg(i);
+}
+
+QStringList makeRingPathColumns() {
+    QStringList cols;
+    appendTensor9Names(cols, QStringLiteral("bs_shielding"));
+    appendIndexedNames(cols, QStringLiteral("bs_per_type_T0"), 8);
+    appendIndexedNames(cols, QStringLiteral("bs_per_type_T2"), 40);
+    cols << QStringLiteral("bs_total_B_x") << QStringLiteral("bs_total_B_y")
+         << QStringLiteral("bs_total_B_z");
+    appendIndexedNames(cols, QStringLiteral("bs_ring_counts"), 4);
+    appendTensor9Names(cols, QStringLiteral("hm_shielding"));
+    appendIndexedNames(cols, QStringLiteral("hm_per_type_T0"), 8);
+    appendIndexedNames(cols, QStringLiteral("hm_per_type_T2"), 40);
+    appendTensor9Names(cols, QStringLiteral("ringchi_shielding"));
+    appendIndexedNames(cols, QStringLiteral("pq_per_type_T0"), 8);
+    appendIndexedNames(cols, QStringLiteral("pq_per_type_T2"), 40);
+    appendIndexedNames(cols, QStringLiteral("disp_per_type_T0"), 8);
+    appendIndexedNames(cols, QStringLiteral("disp_per_type_T2"), 40);
+    return cols;
+}
+
 const QStringList kClassicalColumns = {
     QStringLiteral("ring_jb_T0"),
     QStringLiteral("ring_jb_T2_0"), QStringLiteral("ring_jb_T2_1"),
@@ -1297,6 +1492,8 @@ const QStringList kBackboneAuditColumns = {
     QStringLiteral("broad_mc_lit_T2_valid_4"),
 };
 
+const QStringList kRingPathColumns = makeRingPathColumns();
+
 void validateColumnCounts() {
     auto check = [](const QString& name, qsizetype actual, std::size_t expected) {
         if (actual != static_cast<qsizetype>(expected)) {
@@ -1315,6 +1512,8 @@ void validateColumnCounts() {
           kMagnitudeColumns.size(), kPerAtomDriverMagnitudeCols);
     check(QStringLiteral("per_atom_substrate_backbone_audit"),
           kBackboneAuditColumns.size(), kPerAtomBackboneAuditCols);
+    check(QStringLiteral("per_atom_substrate_features_ring_paths"),
+          kRingPathColumns.size(), kPerAtomRingPathCols);
 }
 
 class PerAtomWriter {
@@ -1338,8 +1537,24 @@ public:
                              {rows_, 5}, QByteArray("<f8"))
               && targetT0_.open(path(QStringLiteral("per_atom_substrate_target_T0.npy")),
                                 {rows_}, QByteArray("<f8"))
+              && targetT1_.open(path(QStringLiteral("per_atom_substrate_target_T1.npy")),
+                                {rows_, 3}, QByteArray("<f8"))
+              && targetDiaT0_.open(path(QStringLiteral("per_atom_substrate_target_dia_T0.npy")),
+                                   {rows_}, QByteArray("<f8"))
+              && targetDiaT1_.open(path(QStringLiteral("per_atom_substrate_target_dia_T1.npy")),
+                                   {rows_, 3}, QByteArray("<f8"))
+              && targetDiaT2_.open(path(QStringLiteral("per_atom_substrate_target_dia_T2.npy")),
+                                   {rows_, 5}, QByteArray("<f8"))
+              && targetParaT0_.open(path(QStringLiteral("per_atom_substrate_target_para_T0.npy")),
+                                    {rows_}, QByteArray("<f8"))
+              && targetParaT1_.open(path(QStringLiteral("per_atom_substrate_target_para_T1.npy")),
+                                    {rows_, 3}, QByteArray("<f8"))
+              && targetParaT2_.open(path(QStringLiteral("per_atom_substrate_target_para_T2.npy")),
+                                    {rows_, 5}, QByteArray("<f8"))
               && classical_.open(path(QStringLiteral("per_atom_substrate_features_classical.npy")),
                                  {rows_, kPerAtomClassicalCols}, QByteArray("<f8"))
+              && ringPaths_.open(path(QStringLiteral("per_atom_substrate_features_ring_paths.npy")),
+                                 {rows_, kPerAtomRingPathCols}, QByteArray("<f8"))
               && conditioning_.open(path(QStringLiteral("per_atom_substrate_features_conditioning.npy")),
                                     {rows_, kPerAtomConditioningCols}, QByteArray("<f8"))
               && backboneAudit_.open(path(QStringLiteral("per_atom_substrate_backbone_audit.npy")),
@@ -1455,10 +1670,30 @@ public:
 
         const std::array<double, 5> targetT2 =
             direct.dft_present ? direct.target.total_decomp.T2 : nanT2();
+        const std::array<double, 3> targetT1 =
+            direct.dft_present ? direct.target.total_decomp.T1 : nanT1();
+        const std::array<double, 3> targetDiaT1 =
+            direct.dft_present ? direct.target.dia_decomp.T1 : nanT1();
+        const std::array<double, 5> targetDiaT2 =
+            direct.dft_present ? direct.target.dia_decomp.T2 : nanT2();
+        const std::array<double, 3> targetParaT1 =
+            direct.dft_present ? direct.target.para_decomp.T1 : nanT1();
+        const std::array<double, 5> targetParaT2 =
+            direct.dft_present ? direct.target.para_decomp.T2 : nanT2();
         if (!targetT2_.writeArray(targetT2)) return false;
         if (!targetT0_.writeScalar<double>(direct.dft_present ? direct.target.total_decomp.T0 : kNaN))
             return false;
+        if (!targetT1_.writeArray(targetT1)) return false;
+        if (!targetDiaT0_.writeScalar<double>(direct.dft_present ? direct.target.dia_decomp.T0 : kNaN))
+            return false;
+        if (!targetDiaT1_.writeArray(targetDiaT1)) return false;
+        if (!targetDiaT2_.writeArray(targetDiaT2)) return false;
+        if (!targetParaT0_.writeScalar<double>(direct.dft_present ? direct.target.para_decomp.T0 : kNaN))
+            return false;
+        if (!targetParaT1_.writeArray(targetParaT1)) return false;
+        if (!targetParaT2_.writeArray(targetParaT2)) return false;
         if (!classical_.writeArray(classical)) return false;
+        if (!ringPaths_.writeArray(direct.ring_paths)) return false;
         if (!conditioning_.writeArray(conditioning)) return false;
         if (!backboneAudit_.writeArray(agg.backbone_audit)) return false;
         if (cfg_.emit_embedding) {
@@ -1487,7 +1722,10 @@ public:
             writeNpy<double>(path(QStringLiteral("per_atom_substrate_driver_modulation_by_atom.npy")),
                              {atoms_, kPerAtomDriverMagnitudeCols}, mod, QByteArray("<f8"));
         return rowsFile_->commit() && ringIdentityFile_->commit()
-               && targetT2_.commit() && targetT0_.commit() && classical_.commit()
+               && targetT2_.commit() && targetT0_.commit() && targetT1_.commit()
+               && targetDiaT0_.commit() && targetDiaT1_.commit() && targetDiaT2_.commit()
+               && targetParaT0_.commit() && targetParaT1_.commit() && targetParaT2_.commit()
+               && classical_.commit() && ringPaths_.commit()
                && conditioning_.commit() && backboneAudit_.commit()
                && (!cfg_.emit_embedding || embedding_.commit()) && modOk;
     }
@@ -1531,7 +1769,15 @@ private:
     std::unique_ptr<QTextStream> ringIdentityOut_;
     StreamingNpy targetT2_;
     StreamingNpy targetT0_;
+    StreamingNpy targetT1_;
+    StreamingNpy targetDiaT0_;
+    StreamingNpy targetDiaT1_;
+    StreamingNpy targetDiaT2_;
+    StreamingNpy targetParaT0_;
+    StreamingNpy targetParaT1_;
+    StreamingNpy targetParaT2_;
     StreamingNpy classical_;
+    StreamingNpy ringPaths_;
     StreamingNpy conditioning_;
     StreamingNpy backboneAudit_;
     StreamingNpy embedding_;
@@ -1560,6 +1806,40 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
     root.insert(QStringLiteral("feature_dtype"), QStringLiteral("float64"));
     root.insert(QStringLiteral("t2_order"), QStringLiteral("[xy,yz,zz,xz,xx-yy]"));
     QJsonArray cols;
+    addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T0"),
+                  QStringLiteral("target_T0"), 0, QStringLiteral("ppm"), QStringLiteral("1x0e"),
+                  QStringLiteral("quantum_reference"), false);
+    for (int i = 0; i < 3; ++i) {
+        addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T1"),
+                      QStringLiteral("target_T1_%1").arg(i), i, QStringLiteral("ppm"),
+                      QStringLiteral("1o"), QStringLiteral("quantum_reference_diagnostic"), false);
+    }
+    for (int i = 0; i < 5; ++i) {
+        addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T2"),
+                      QStringLiteral("target_T2_%1").arg(i), i, QStringLiteral("ppm"),
+                      QStringLiteral("1x2e"), QStringLiteral("quantum_reference"), false);
+    }
+    const QStringList targetSplits = {
+        QStringLiteral("dia"),
+        QStringLiteral("para"),
+    };
+    for (const QString& split : targetSplits) {
+        addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_%1_T0").arg(split),
+                      QStringLiteral("target_%1_T0").arg(split), 0, QStringLiteral("ppm"),
+                      QStringLiteral("1x0e"), QStringLiteral("quantum_reference_split"), false);
+        for (int i = 0; i < 3; ++i) {
+            addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_%1_T1").arg(split),
+                          QStringLiteral("target_%1_T1_%2").arg(split).arg(i), i,
+                          QStringLiteral("ppm"), QStringLiteral("1o"),
+                          QStringLiteral("quantum_reference_split_diagnostic"), false);
+        }
+        for (int i = 0; i < 5; ++i) {
+            addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_%1_T2").arg(split),
+                          QStringLiteral("target_%1_T2_%2").arg(split).arg(i), i,
+                          QStringLiteral("ppm"), QStringLiteral("1x2e"),
+                          QStringLiteral("quantum_reference_split"), false);
+        }
+    }
     for (int i = 0; i < kClassicalColumns.size(); ++i) {
         const QString name = kClassicalColumns[i];
         QString units;
@@ -1655,6 +1935,37 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         }
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_classical"), name, i,
                       units, irreps, mechanism, feature, sign);
+    }
+    for (int i = 0; i < kRingPathColumns.size(); ++i) {
+        const QString name = kRingPathColumns[i];
+        QString units;
+        QString irreps = QStringLiteral("0e");
+        QString mechanism = QStringLiteral("ring_current");
+        QString sign;
+        if (name.contains(QStringLiteral("_T1_")) || name.contains(QStringLiteral("total_B"))) {
+            irreps = QStringLiteral("1o");
+        } else if (name.contains(QStringLiteral("_T2_"))) {
+            irreps = QStringLiteral("1x2e");
+        }
+        if (name.contains(QStringLiteral("bs_"))) {
+            units = name.contains(QStringLiteral("total_B")) ? QStringLiteral("T")
+                                                             : QStringLiteral("ppm_T_per_nA");
+        } else if (name.contains(QStringLiteral("hm_"))) {
+            units = QStringLiteral("Angstrom^-1");
+        } else if (name.contains(QStringLiteral("ringchi_"))) {
+            units = QStringLiteral("Angstrom^-3");
+        } else if (name.contains(QStringLiteral("pq_"))) {
+            units = name.contains(QStringLiteral("_T0_")) ? QStringLiteral("Angstrom^-4")
+                                                          : QStringLiteral("Angstrom^-5");
+            mechanism = QStringLiteral("ring_efg");
+        } else if (name.contains(QStringLiteral("disp_"))) {
+            units = QStringLiteral("Angstrom^-6");
+            mechanism = QStringLiteral("ring_dispersion");
+        }
+        if (name.contains(QStringLiteral("shielding")) || name.contains(QStringLiteral("per_type_T")))
+            sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
+        addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_ring_paths"),
+                      name, i, units, irreps, mechanism, true, sign);
     }
     for (int i = 0; i < kConditioningColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_conditioning"),
@@ -1762,10 +2073,29 @@ bool writePerAtomManifest(const QString& outDir, const PerAtomSubstrateStats& st
     QJsonObject align;
     align.insert(QStringLiteral("n_frames"), alignment.n_frames);
     align.insert(QStringLiteral("max_angle_deg"), alignment.max_angle_deg);
+    align.insert(QStringLiteral("mean_angle_deg"), alignment.mean_angle_deg);
+    align.insert(QStringLiteral("max_rmsd_A"), alignment.max_rmsd_A);
+    align.insert(QStringLiteral("mean_rmsd_A"), alignment.mean_rmsd_A);
     align.insert(QStringLiteral("t2_components"),
                  alignment.max_angle_deg < 1.0 ? QStringLiteral("FRAME-ALIGNED")
                                                 : QStringLiteral("ROTATED"));
+    align.insert(QStringLiteral("target_T1_frame"),
+                 alignment.max_angle_deg < 1.0 ? QStringLiteral("frame_verified")
+                                                : QStringLiteral("t1_frame_unverified"));
     root.insert(QStringLiteral("dft_frame_alignment"), align);
+    QJsonObject sizeGate;
+    constexpr std::size_t kPiece3BAppendFloat64Cols =
+        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols;
+    const double appendGiB =
+        static_cast<double>(stats.rows) * static_cast<double>(kPiece3BAppendFloat64Cols)
+        * 8.0 / 1073741824.0;
+    sizeGate.insert(QStringLiteral("status"), appendGiB <= 10.0 ? QStringLiteral("pass")
+                                                                : QStringLiteral("fail"));
+    sizeGate.insert(QStringLiteral("appended_float64_columns"),
+                    static_cast<qint64>(kPiece3BAppendFloat64Cols));
+    sizeGate.insert(QStringLiteral("appended_payload_GiB"), appendGiB);
+    sizeGate.insert(QStringLiteral("axis_contract"), QStringLiteral("(atom,frame) only"));
+    root.insert(QStringLiteral("piece3b_size_gate"), sizeGate);
     QJsonArray sidecars;
     for (const QString& s : PerAtomSubstrateSidecars(cfg)) sidecars.append(s);
     root.insert(QStringLiteral("sidecars"), sidecars);
@@ -2008,13 +2338,43 @@ bool emitPairQueries(const Body& body, const QString& outDir, const PerAtomSubst
     return filesOk && arraysOk && manifestsOk;
 }
 
+class SnapshotCache {
+public:
+    explicit SnapshotCache(const Body& body) : body_(&body) {}
+
+    std::shared_ptr<const model::QtConformationSnapshot> get(std::size_t h5Row) {
+        if (!body_ || !body_->run.conformation) return nullptr;
+        if (!have_ || h5Row != h5Row_) {
+            body_->run.conformation->requestSnapshot(h5Row);
+            snapshot_ = body_->run.conformation->snapshot(h5Row);
+            h5Row_ = h5Row;
+            have_ = true;
+        }
+        return snapshot_;
+    }
+
+private:
+    const Body* body_ = nullptr;
+    bool have_ = false;
+    std::size_t h5Row_ = 0;
+    std::shared_ptr<const model::QtConformationSnapshot> snapshot_;
+};
+
 }  // namespace
 
 QStringList PerAtomSubstrateSidecars(const PerAtomSubstrateConfig& config) {
     QStringList out = {
         QStringLiteral("per_atom_substrate_target_T2.npy"),
         QStringLiteral("per_atom_substrate_target_T0.npy"),
+        QStringLiteral("per_atom_substrate_target_T1.npy"),
+        QStringLiteral("per_atom_substrate_target_dia_T0.npy"),
+        QStringLiteral("per_atom_substrate_target_dia_T1.npy"),
+        QStringLiteral("per_atom_substrate_target_dia_T2.npy"),
+        QStringLiteral("per_atom_substrate_target_para_T0.npy"),
+        QStringLiteral("per_atom_substrate_target_para_T1.npy"),
+        QStringLiteral("per_atom_substrate_target_para_T2.npy"),
         QStringLiteral("per_atom_substrate_features_classical.npy"),
+        QStringLiteral("per_atom_substrate_features_ring_paths.npy"),
         QStringLiteral("per_atom_substrate_features_conditioning.npy"),
         QStringLiteral("per_atom_substrate_driver_modulation_by_atom.npy"),
         QStringLiteral("per_atom_substrate_backbone_audit.npy"),
@@ -2068,6 +2428,16 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
     stats.atom_count = p.atomCount();
     stats.dft_rows = body.run.frameMap.dftRows().size();
     const std::size_t expectedRows = stats.atom_count * stats.dft_rows;
+    constexpr std::size_t kPiece3BAppendFloat64Cols =
+        kPerAtomTargetDecompositionCols + kPerAtomRingPathCols;
+    const double appendGiB =
+        static_cast<double>(expectedRows) * static_cast<double>(kPiece3BAppendFloat64Cols)
+        * 8.0 / 1073741824.0;
+    if (appendGiB > 10.0) {
+        throw std::runtime_error(QStringLiteral("per_atom_substrate SIZE-GATE failed: appended flat payload %1 GiB")
+                                     .arg(appendGiB, 0, 'f', 3)
+                                     .toStdString());
+    }
     recordAbsentNewChannelSlabs(body, stats);
 
     const io::QtTrajectoryH5* h5 = body.run.h5();
@@ -2086,7 +2456,9 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
         << "| bond_cut=" << config.bond_cutoff_A
         << "| charge_cut=" << config.charge_cutoff_A
         << "| frame=raw_lab_frame"
-        << "| emit_embedding=" << config.emit_embedding;
+        << "| emit_embedding=" << config.emit_embedding
+        << "| piece3b_append_float64_cols=" << kPiece3BAppendFloat64Cols
+        << "| piece3b_append_GiB=" << appendGiB;
     if (!stats.absent_new_channel_slabs.isEmpty()) {
         qCWarning(cPerAtom).noquote()
             << "per_atom_substrate absent new-channel slabs |"
@@ -2098,6 +2470,7 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
         throw std::runtime_error("per_atom_substrate writer open failed");
     writer.writeRingIdentity(body);
     std::vector<WelfordCell> modulation(stats.atom_count * kPerAtomDriverMagnitudeCols);
+    SnapshotCache snapshotCache(body);
 
     std::size_t frameSlot = 0;
     RunTraversal(
@@ -2106,7 +2479,9 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
         labFrameFn,
         [&](const Body& b, std::size_t atom, std::size_t row, std::size_t orig,
             const FrameResult& fr) {
-            return directFeatures(b, atom, row, orig, fr.frame);
+            const std::shared_ptr<const model::QtConformationSnapshot> snapshot =
+                snapshotCache.get(row);
+            return directFeatures(b, atom, row, orig, fr.frame, snapshot.get());
         },
         [&](const Body& b, const AtomState& st, const FrameResult&,
             const DirectFeatures&) {
