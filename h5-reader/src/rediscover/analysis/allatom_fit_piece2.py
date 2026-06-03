@@ -26,7 +26,7 @@ import change_of_basis as cob
 
 
 SUBSTRATE_DIR = Path("/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1")
-OUT_DIR = Path("/tmp/rediscover-runs/2026-06-03-build2-partition")
+OUT_DIR = Path("/tmp/rediscover-runs/2026-06-03-build3-fit-arch")
 RIDGE_ALPHA = 10.0
 ALPHA_GRID = [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 1.0e4, 1.0e5]
 INNER_CV_FOLDS = 5
@@ -38,6 +38,11 @@ THIN_WITHIN_ROWS = 500
 MIN_FAVORABLE_N_EFF = 10.0
 MIN_DISK_FREE_BYTES = 20 * 1024**3
 MAX_REDISCOVER_BYTES = 15 * 1024**3
+DOMINANCE_FRACTION_COLUMNS = {
+    "ring": "dominant_fraction_ring",
+    "charge": "dominant_fraction_charge",
+    "mc": "dominant_fraction_mc",
+}
 
 TIER_ORDER = ["classical", "classical_plus_newmech", "plus_AIMNet2", "all"]
 TIER_LABELS = {
@@ -110,18 +115,21 @@ TIER_BLOCKS = {
 
 TARGET_SPECS = {
     "total-T2": {"array": "per_atom_substrate_target_T2", "file": "per_atom_substrate_target_T2.npy", "components": 5, "basis": "T2_local_2e"},
+    "dia-T2": {"array": "per_atom_substrate_target_dia_T2", "file": "per_atom_substrate_target_dia_T2.npy", "components": 5, "basis": "T2_local_2e"},
     "para-T2": {"array": "per_atom_substrate_target_para_T2", "file": "per_atom_substrate_target_para_T2.npy", "components": 5, "basis": "T2_local_2e"},
     "T1-field-linear-diagnostic": {"array": "per_atom_substrate_target_T1", "file": "per_atom_substrate_target_T1.npy", "components": 3, "basis": "T1_lab_vector"},
 }
 
 SCORE_TABLE_COLUMNS = [
     "target",
+    "fit_scope",
     "atom_type_axis",
     "atom_type",
     "tier",
     "tier_label",
     "rows",
     "n_atoms_between_global",
+    "n_atoms_between_fit_scope",
     "n_atoms_in_slice",
     "n_original_frames",
     "n_features",
@@ -137,7 +145,10 @@ SCORE_TABLE_COLUMNS = [
     "within_N_eff_median",
     "within_N_eff_max",
     "median_lag1_rho",
+    "between_N_eff",
     "thin_flag",
+    "between_support_flag",
+    "within_support_flag",
     "p_gt_atoms_flag",
     "between_LOAO_test_R2",
     "between_LOAO_test_R2_jackknife_se",
@@ -145,12 +156,14 @@ SCORE_TABLE_COLUMNS = [
     "between_LOAO_test_R2_ci95_high",
     "between_delta_R2_vs_classical",
     "between_delta_R2_vs_previous_tier",
+    "between_delta_R2_vs_global_sliced",
     "within_frameblock_test_R2",
     "within_frameblock_test_R2_jackknife_se",
     "within_frameblock_test_R2_ci95_low",
     "within_frameblock_test_R2_ci95_high",
     "within_delta_R2_vs_classical",
     "within_delta_R2_vs_previous_tier",
+    "within_delta_R2_vs_global_sliced",
     "within_split_strategy",
     "test_frames",
     "purged_train_frames",
@@ -1603,6 +1616,217 @@ def evaluate_within_tier(
     }
 
 
+def subset_frame_split(split: dict[str, object], positions: np.ndarray) -> dict[str, object]:
+    pos = np.asarray(positions, dtype=int)
+    return {
+        "train_mask": np.asarray(split["train_mask"], dtype=bool)[pos],
+        "test_mask": np.asarray(split["test_mask"], dtype=bool)[pos],
+        "purge_mask": np.asarray(split["purge_mask"], dtype=bool)[pos],
+        "test_frames": list(split["test_frames"]),
+        "purged_frames": list(split["purged_frames"]),
+        "cross_split_lag1_pairs": int(split["cross_split_lag1_pairs"]),
+    }
+
+
+def combine_per_stratum_cv(cv_items: list[dict[str, object]], axis: str) -> dict[str, object]:
+    if axis == "between":
+        return {
+            "heldout_atoms_never_in_train": bool(all(bool(item["heldout_atoms_never_in_train"]) for item in cv_items)),
+            "folds": int(sum(int(item["folds"]) for item in cv_items)),
+            "per_stratum": cv_items,
+        }
+    return {
+        "fit_rows": int(sum(int(item["fit_rows"]) for item in cv_items)),
+        "score_rows": int(sum(int(item["score_rows"]) for item in cv_items)),
+        "test_rows": int(sum(int(item["test_rows"]) for item in cv_items)),
+        "train_test_overlap": int(sum(int(item["train_test_overlap"]) for item in cv_items)),
+        "purged_in_train_or_test": int(sum(int(item["purged_in_train_or_test"]) for item in cv_items)),
+        "heldout_block_excluded_from_preprocessing": bool(all(bool(item["heldout_block_excluded_from_preprocessing"]) for item in cv_items)),
+        "alpha_selection": "outer held-out frame block excluded from each stratum alpha selection",
+        "per_stratum": cv_items,
+    }
+
+
+def per_type_alpha_summary(alpha_by_stratum: dict[str, object], axis: str, alpha_grid: list[float]) -> dict[str, object]:
+    selected = []
+    for audit in alpha_by_stratum.values():
+        if isinstance(audit, dict) and audit.get("selected_alpha") is not None:
+            selected.append(float(audit["selected_alpha"]))
+    summary = alpha_distribution(selected)
+    summary.update({
+        "axis": axis,
+        "method": "per-type alpha selection; one selected alpha per stratum model",
+        "alpha_grid": [float(x) for x in alpha_grid],
+        "by_stratum": alpha_by_stratum,
+    })
+    return summary
+
+
+def evaluate_per_type_tier(
+    tier: str,
+    rows: pd.DataFrame,
+    atom_rows: pd.DataFrame,
+    base_blocks: dict[str, np.ndarray],
+    base_atom_blocks: dict[str, np.ndarray],
+    embedding: np.ndarray,
+    embedding_atom_mean: np.ndarray,
+    row_indices: np.ndarray,
+    y: np.ndarray,
+    y_atom: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    split: dict[str, object],
+    alpha_mode: str,
+    fixed_alpha: float,
+    alpha_grid: list[float],
+    n_pcs: int,
+    inner_cv_folds: int,
+    purge: int,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
+    n_atoms = int(len(atom_rows))
+    out_dim = int(y.shape[1])
+    between_pred = np.full((n_atoms, out_dim), np.nan, dtype=float)
+    between_alpha_all = np.full(n_atoms, np.nan, dtype=float)
+    within_pred_parts: list[np.ndarray] = []
+    within_target_parts: list[np.ndarray] = []
+    within_group_parts: list[np.ndarray] = []
+    within_position_parts: list[np.ndarray] = []
+    within_alpha_parts: list[np.ndarray] = []
+    alpha_between_by_stratum: dict[str, object] = {}
+    alpha_within_by_stratum: dict[str, object] = {}
+    pca_between_by_stratum: dict[str, object] = {}
+    pca_within_by_stratum: dict[str, object] = {}
+    cv_between_items: list[dict[str, object]] = []
+    cv_within_items: list[dict[str, object]] = []
+    strata = sorted(str(x) for x in atom_rows["stratum"].dropna().unique())
+    for stratum in strata:
+        atom_mask = atom_rows["stratum"].to_numpy(str) == stratum
+        atom_pos = np.flatnonzero(atom_mask)
+        row_mask = rows["stratum"].to_numpy(str) == stratum
+        row_pos = np.flatnonzero(row_mask)
+        if len(atom_pos) < 2 or len(row_pos) < 3:
+            continue
+        base_atom_s = {name: block[atom_pos] for name, block in base_atom_blocks.items()}
+        embedding_atom_s = embedding_atom_mean[atom_pos]
+        y_atom_s = y_atom[atom_pos]
+        if alpha_mode == "select":
+            between_alpha, between_alpha_audit = select_between_alphas(
+                tier,
+                base_atom_s,
+                embedding_atom_s,
+                y_atom_s,
+                alpha_grid,
+                n_pcs,
+                inner_cv_folds,
+                {},
+            )
+        else:
+            between_alpha = np.full(len(atom_pos), fixed_alpha, dtype=float)
+            between_alpha_audit = {"axis": "between_LOAO", "method": "fixed-alpha per-type baseline; no inner CV", "selected_alpha": fixed_alpha, "min": fixed_alpha, "max": fixed_alpha, "counts": {f"{fixed_alpha:g}": int(len(atom_pos))}, "heldout_test_atom_excluded_from_alpha_selection": True, "alpha_grid": [float(x) for x in alpha_grid]}
+        between = evaluate_between_tier(tier, base_atom_s, embedding_atom_s, y_atom_s, between_alpha, n_pcs, {})
+        between_pred[atom_pos] = between["pred"]
+        between_alpha_all[atom_pos] = np.asarray(between["alpha_by_heldout"], dtype=float)
+        alpha_between_by_stratum[stratum] = between_alpha_audit
+        pca_between_by_stratum[stratum] = between["pca_audit"]
+        cv_b = dict(between["cv_check"])
+        cv_b["stratum"] = stratum
+        cv_b["n_atoms"] = int(len(atom_pos))
+        cv_between_items.append(cv_b)
+
+        base_blocks_s = {name: block[row_pos] for name, block in base_blocks.items()}
+        row_indices_s = row_indices[row_pos]
+        y_s = y[row_pos]
+        atoms_s = atoms[row_pos]
+        frames_s = frames[row_pos]
+        split_s = subset_frame_split(split, row_pos)
+        if alpha_mode == "select":
+            within_alpha, within_alpha_audit = select_within_alpha(
+                tier,
+                base_blocks_s,
+                embedding,
+                row_indices_s,
+                y_s,
+                atoms_s,
+                frames_s,
+                split_s,
+                alpha_grid,
+                n_pcs,
+                inner_cv_folds,
+                purge,
+                {},
+            )
+        else:
+            within_alpha = fixed_alpha
+            within_alpha_audit = {"axis": "within_frameblock", "method": "fixed-alpha per-type baseline; no inner CV", "selected_alpha": fixed_alpha, "outer_test_rows_used_for_alpha_selection": 0, "outer_purged_rows_used_for_alpha_selection": 0, "alpha_grid": [float(x) for x in alpha_grid]}
+        within_embedding_pcs = None
+        within_embedding_pca_audit = {"method": "embedding sidecar present but not consumed by this tier", "n_components": 0, "original_dims": int(embedding.shape[1]), "stratum": stratum}
+        if tier_uses_embedding(tier):
+            within_pca = fit_pca_memmap(embedding, row_indices_s[np.asarray(split_s["train_mask"], dtype=bool)], n_pcs)
+            within_embedding_pcs = transform_pca_memmap(embedding, within_pca, row_indices_s)
+            within_embedding_pca_audit = {
+                "method": "per-type unsupervised PCA fit on stratum training rows only",
+                "stratum": stratum,
+                "n_components": int(within_pca.n_components),
+                "original_dims": int(within_pca.original_dims),
+                "training_rows": int(within_pca.n_train_rows),
+                "test_rows_excluded": int(np.asarray(split_s["test_mask"], dtype=bool).sum()),
+                "purged_rows_excluded": int(np.asarray(split_s["purge_mask"], dtype=bool).sum()),
+                "explained_variance_ratio": float(within_pca.explained_variance_ratio),
+            }
+        within = evaluate_within_tier(tier, base_blocks_s, within_embedding_pcs, within_embedding_pca_audit, y_s, atoms_s, split_s, float(within_alpha))
+        score_positions = row_pos[np.asarray(within["score_row_positions"], dtype=int)]
+        within_pred_parts.append(within["pred"])
+        within_target_parts.append(within["target"])
+        within_group_parts.append(within["groups"])
+        within_position_parts.append(score_positions)
+        within_alpha_parts.append(np.full(len(within["target"]), float(within_alpha), dtype=float))
+        alpha_within_by_stratum[stratum] = within_alpha_audit
+        pca_within_by_stratum[stratum] = within["pca_audit"]
+        cv_w = dict(within["cv_check"])
+        cv_w["stratum"] = stratum
+        cv_w["n_atoms"] = int(len(atom_pos))
+        cv_within_items.append(cv_w)
+
+    if not within_position_parts:
+        raise RuntimeError(f"per-type evaluation produced no within predictions for tier {tier}")
+    within_positions = np.concatenate(within_position_parts).astype(int)
+    order = np.argsort(within_positions)
+    within_pred = np.vstack(within_pred_parts)[order]
+    within_target = np.vstack(within_target_parts)[order]
+    within_groups = np.concatenate(within_group_parts).astype(int)[order]
+    within_positions = within_positions[order]
+    within_alpha_by_score = np.concatenate(within_alpha_parts).astype(float)[order]
+    within_alpha_mode = mode_alpha(within_alpha_by_score)
+    tier_result = {
+        "between": {
+            "pred": between_pred,
+            "target": y_atom,
+            "groups": np.arange(n_atoms, dtype=int),
+            "alpha_by_heldout": between_alpha_all,
+            "pca_audit": pca_between_by_stratum,
+            "cv_check": combine_per_stratum_cv(cv_between_items, "between"),
+        },
+        "within": {
+            "pred": within_pred,
+            "target": within_target,
+            "groups": within_groups,
+            "score_mask": None,
+            "score_row_positions": within_positions,
+            "alpha": within_alpha_mode,
+            "alpha_by_score_row": within_alpha_by_score,
+            "pca_audit": pca_within_by_stratum,
+            "cv_check": combine_per_stratum_cv(cv_within_items, "within"),
+        },
+    }
+    alpha_audit = {
+        "between": per_type_alpha_summary(alpha_between_by_stratum, "between_LOAO", alpha_grid),
+        "within": per_type_alpha_summary(alpha_within_by_stratum, "within_frameblock", alpha_grid),
+    }
+    pca_audit = {"between": pca_between_by_stratum, "within": pca_within_by_stratum}
+    cv_details = {"between": {"cv_check": tier_result["between"]["cv_check"]}, "within": {"cv_check": tier_result["within"]["cv_check"]}}
+    return tier_result, alpha_audit, pca_audit, cv_details
+
+
 def build_score_rows(
     tier_results: dict[str, dict[str, object]],
     tier_order: list[str],
@@ -1627,6 +1851,8 @@ def build_score_rows(
         within = tier_results[tier]["within"]
         between_alpha_all = np.asarray(between["alpha_by_heldout"], dtype=float)
         within_alpha = float(within["alpha"])
+        within_alpha_by_score = within.get("alpha_by_score_row")
+        within_alpha_all = np.asarray(within_alpha_by_score, dtype=float) if within_alpha_by_score is not None else None
         within_positions = within["score_row_positions"]
         within_frames = frames[within_positions]
         within_rows = rows.iloc[within_positions]
@@ -1649,6 +1875,11 @@ def build_score_rows(
             b_alpha_mode = math.nan if b_alpha_dist["selected_alpha"] is None else float(b_alpha_dist["selected_alpha"])
             b_alpha_min = math.nan if b_alpha_dist["min"] is None else float(b_alpha_dist["min"])
             b_alpha_max = math.nan if b_alpha_dist["max"] is None else float(b_alpha_dist["max"])
+            if within_alpha_all is None:
+                w_alpha_mode = within_alpha
+            else:
+                w_alpha_dist = alpha_distribution(within_alpha_all[within_mask])
+                w_alpha_mode = math.nan if w_alpha_dist["selected_alpha"] is None else float(w_alpha_dist["selected_alpha"])
             w_pred = within["pred"][within_mask]
             w_target = within["target"][within_mask]
             w_groups = within["groups"][within_mask]
@@ -1713,7 +1944,7 @@ def long_score_rows(row: dict[str, object], axis: str, pred: np.ndarray, target:
     vector_r2 = r2_score(pred, target)
     vector_se = jackknife_metric_se(pred, target, groups)
     lo, hi = ci95(vector_r2, vector_se)
-    base = {k: row[k] for k in ["target", "atom_type_axis", "atom_type", "tier", "tier_label", "rows", "n_atoms_in_slice", "n_features", "alpha_mode"]}
+    base = {k: row[k] for k in ["target", "fit_scope", "atom_type_axis", "atom_type", "tier", "tier_label", "rows", "n_atoms_in_slice", "n_features", "alpha_mode"]}
     base["ridge_alpha"] = float(ridge_alpha)
     out.append({**base, "axis": axis, "component": "vector_5d", "heldout_R2": vector_r2, "jackknife_se": vector_se, "ci95_low": lo, "ci95_high": hi})
     comp = component_r2(pred, target)
@@ -2233,9 +2464,9 @@ def prepare_build2_output_dir(out_dir: Path, keep_out_dir: bool) -> tuple[Path, 
     runs_root = Path("/tmp/rediscover-runs").resolve()
     shared_root = Path("/shared").resolve()
     if not path_under(out_dir, runs_root):
-        raise SystemExit(f"FATAL: Build 2 output must be under {runs_root}, got {out_dir}")
+        raise SystemExit(f"FATAL: Build 3 output must be under {runs_root}, got {out_dir}")
     if path_under(out_dir, shared_root):
-        raise SystemExit(f"FATAL: refusing to write Build 2 result data under /shared: {out_dir}")
+        raise SystemExit(f"FATAL: refusing to write Build 3 result data under /shared: {out_dir}")
     usage = shutil.disk_usage(out_dir.parent if out_dir.parent.exists() else runs_root)
     rediscover_bytes = directory_size_bytes(runs_root)
     audit = {
@@ -2276,6 +2507,7 @@ def build2_load_inputs(substrate_dir: Path) -> dict[str, object]:
     rows = pd.read_csv(rows_path)
     arrays = {
         "per_atom_substrate_features_classical": np.load(require_file(substrate_dir / "per_atom_substrate_features_classical.npy"), mmap_mode="r"),
+        "per_atom_substrate_features_conditioning": np.load(require_file(substrate_dir / "per_atom_substrate_features_conditioning.npy"), mmap_mode="r"),
         "per_atom_substrate_features_hbond_conditioning": np.load(require_file(substrate_dir / "per_atom_substrate_features_hbond_conditioning.npy"), mmap_mode="r"),
         "per_atom_substrate_features_method_paths": np.load(require_file(substrate_dir / "per_atom_substrate_features_method_paths.npy"), mmap_mode="r"),
         "per_atom_substrate_partition_bins": np.load(require_file(substrate_dir / "per_atom_substrate_partition_bins.npy"), mmap_mode="r"),
@@ -2328,6 +2560,7 @@ def build2_input_acceptance_checks(data: dict[str, object], substrate_dir: Path)
     )
     shape_expected = {
         "per_atom_substrate_features_classical": (n_rows, 89),
+        "per_atom_substrate_features_conditioning": (n_rows, 32),
         "per_atom_substrate_features_hbond_conditioning": (n_rows, 73),
         "per_atom_substrate_features_method_paths": (n_rows, 111),
         "per_atom_substrate_partition_bins": (n_rows, 25),
@@ -2338,6 +2571,7 @@ def build2_input_acceptance_checks(data: dict[str, object], substrate_dir: Path)
         shapes_ok = shapes_ok and tuple(arrays[name].shape) == shape
     target_shapes_ok = (
         tuple(targets["total-T2"].shape) == (n_rows, 5)
+        and tuple(targets["dia-T2"].shape) == (n_rows, 5)
         and tuple(targets["para-T2"].shape) == (n_rows, 5)
         and tuple(targets["T1-field-linear-diagnostic"].shape) == (n_rows, 3)
     )
@@ -2480,7 +2714,7 @@ def build2_feature_blocks(
 def transform_build2_target(target_name: str, raw_target: np.ndarray, row_mask: np.ndarray, C: np.ndarray) -> np.ndarray:
     target = raw_target if bool(row_mask.all()) else raw_target[row_mask]
     arr = np.asarray(target, dtype=float)
-    if target_name in {"total-T2", "para-T2"}:
+    if target_name in {"total-T2", "dia-T2", "para-T2"}:
         return arr[:, :5] @ C.T
     return arr[:, :3]
 
@@ -2489,7 +2723,7 @@ def build2_component_label(target_name: str, component: int | None) -> str:
     if component is None:
         dims = int(TARGET_SPECS[target_name]["components"])
         return f"vector_{dims}d"
-    if target_name in {"total-T2", "para-T2"}:
+    if target_name in {"total-T2", "dia-T2", "para-T2"}:
         return f"2e_{component}"
     return f"T1_{component}"
 
@@ -2512,6 +2746,7 @@ def build2_long_score_rows(row: dict[str, object], axis: str, pred: np.ndarray, 
 
 def build2_score_rows(
     target_name: str,
+    fit_scope: str,
     tier_results: dict[str, dict[str, object]],
     tier_order: list[str],
     rows: pd.DataFrame,
@@ -2527,7 +2762,8 @@ def build2_score_rows(
     score_rows = []
     long_rows = []
     n_atoms_global = int(len(atom_rows))
-    atom_types = ["ALL"] + sorted(str(x) for x in atom_rows["stratum"].dropna().unique())
+    strata = sorted(str(x) for x in atom_rows["stratum"].dropna().unique())
+    atom_types = ["ALL"] + strata if fit_scope == "global_sliced" else strata
     prev_map = previous_tier_map(tier_order)
     r2_cache: dict[tuple[str, str, str], float] = {}
     for tier in tier_order:
@@ -2536,6 +2772,8 @@ def build2_score_rows(
         within = tier_results[tier]["within"]
         between_alpha_all = np.asarray(between["alpha_by_heldout"], dtype=float)
         within_alpha = float(within["alpha"])
+        within_alpha_by_score = within.get("alpha_by_score_row")
+        within_alpha_all = np.asarray(within_alpha_by_score, dtype=float) if within_alpha_by_score is not None else None
         within_positions = within["score_row_positions"]
         within_frames = frames[within_positions]
         within_rows = rows.iloc[within_positions]
@@ -2558,6 +2796,11 @@ def build2_score_rows(
             b_alpha_mode = math.nan if b_alpha_dist["selected_alpha"] is None else float(b_alpha_dist["selected_alpha"])
             b_alpha_min = math.nan if b_alpha_dist["min"] is None else float(b_alpha_dist["min"])
             b_alpha_max = math.nan if b_alpha_dist["max"] is None else float(b_alpha_dist["max"])
+            if within_alpha_all is None:
+                w_alpha_mode = within_alpha
+            else:
+                w_alpha_dist = alpha_distribution(within_alpha_all[within_mask])
+                w_alpha_mode = math.nan if w_alpha_dist["selected_alpha"] is None else float(w_alpha_dist["selected_alpha"])
             w_pred = within["pred"][within_mask]
             w_target = within["target"][within_mask]
             w_groups = within["groups"][within_mask]
@@ -2572,16 +2815,26 @@ def build2_score_rows(
             share_b, share_w = variance_shares(y[row_mask], atoms[row_mask])
             neff = effective_n_components(y[within_positions][within_mask], within["groups"][within_mask], within_frames[within_mask])
             thin = n_atoms_slice < THIN_ATOMS or len(np.unique(b_groups)) < 3 or len(np.unique(w_groups)) < 3
-            p_gt_atoms = n_features >= max(1, n_atoms_slice)
+            n_atoms_between_fit_scope = n_atoms_global if fit_scope == "global_sliced" else n_atoms_slice
+            between_n_eff = float(n_atoms_between_fit_scope)
+            between_support = ""
+            if fit_scope == "per_type" and n_atoms_between_fit_scope < 100:
+                between_support = f"thin_between_atoms={n_atoms_between_fit_scope}<100"
+            within_support = ""
+            if np.isfinite(neff["within_N_eff_median"]) and neff["within_N_eff_median"] < MIN_FAVORABLE_N_EFF:
+                within_support = f"thin_within_N_eff={finite_fmt(neff['within_N_eff_median'])}"
+            p_gt_atoms = n_features >= max(1, n_atoms_between_fit_scope)
             prev = prev_map[tier]
             row = {
                 "target": target_name,
+                "fit_scope": fit_scope,
                 "atom_type_axis": "stratum",
                 "atom_type": atom_type,
                 "tier": tier,
                 "tier_label": TIER_LABELS[tier],
                 "rows": rows_slice,
                 "n_atoms_between_global": n_atoms_global,
+                "n_atoms_between_fit_scope": n_atoms_between_fit_scope,
                 "n_atoms_in_slice": n_atoms_slice,
                 "n_original_frames": frames_slice,
                 "n_features": n_features,
@@ -2590,11 +2843,14 @@ def build2_score_rows(
                 "between_ridge_alpha": b_alpha_mode,
                 "between_ridge_alpha_min": b_alpha_min,
                 "between_ridge_alpha_max": b_alpha_max,
-                "within_ridge_alpha": within_alpha,
+                "within_ridge_alpha": w_alpha_mode,
                 "variance_share_between": share_b,
                 "variance_share_within": share_w,
                 **neff,
+                "between_N_eff": between_n_eff,
                 "thin_flag": "thin" if thin else "",
+                "between_support_flag": between_support,
+                "within_support_flag": within_support,
                 "p_gt_atoms_flag": "p>=atoms" if p_gt_atoms else "",
                 "between_LOAO_test_R2": b_r2,
                 "between_LOAO_test_R2_jackknife_se": b_se,
@@ -2602,12 +2858,14 @@ def build2_score_rows(
                 "between_LOAO_test_R2_ci95_high": b_high,
                 "between_delta_R2_vs_classical": b_r2 - r2_cache.get(("classical", atom_type, "between"), math.nan),
                 "between_delta_R2_vs_previous_tier": b_r2 - r2_cache.get((prev, atom_type, "between"), math.nan) if prev else math.nan,
+                "between_delta_R2_vs_global_sliced": math.nan,
                 "within_frameblock_test_R2": w_r2,
                 "within_frameblock_test_R2_jackknife_se": w_se,
                 "within_frameblock_test_R2_ci95_low": w_low,
                 "within_frameblock_test_R2_ci95_high": w_high,
                 "within_delta_R2_vs_classical": w_r2 - r2_cache.get(("classical", atom_type, "within"), math.nan),
                 "within_delta_R2_vs_previous_tier": w_r2 - r2_cache.get((prev, atom_type, "within"), math.nan) if prev else math.nan,
+                "within_delta_R2_vs_global_sliced": math.nan,
                 "within_split_strategy": "centered_by_atom_train_frames_only; contiguous_frame_block",
                 "test_frames": int(len(split["test_frames"])),
                 "purged_train_frames": int(len(split["purged_frames"])),
@@ -2616,8 +2874,28 @@ def build2_score_rows(
             }
             score_rows.append(row)
             long_rows += build2_long_score_rows(row, "between", b_pred, b_target, b_groups, b_alpha_mode)
-            long_rows += build2_long_score_rows(row, "within", w_pred, w_target, w_groups, within_alpha)
+            long_rows += build2_long_score_rows(row, "within", w_pred, w_target, w_groups, w_alpha_mode)
     return score_rows, long_rows
+
+
+def add_fit_scope_deltas(score_table: pd.DataFrame) -> pd.DataFrame:
+    if score_table.empty or "fit_scope" not in score_table.columns:
+        return score_table
+    out = score_table.copy()
+    key_cols = ["target", "atom_type_axis", "atom_type", "tier"]
+    global_rows = out[out["fit_scope"] == "global_sliced"][key_cols + ["between_LOAO_test_R2", "within_frameblock_test_R2"]].rename(
+        columns={
+            "between_LOAO_test_R2": "_global_between_R2",
+            "within_frameblock_test_R2": "_global_within_R2",
+        }
+    )
+    merged = out.merge(global_rows, on=key_cols, how="left")
+    per_type = merged["fit_scope"] == "per_type"
+    merged.loc[merged["fit_scope"] == "global_sliced", "between_delta_R2_vs_global_sliced"] = 0.0
+    merged.loc[merged["fit_scope"] == "global_sliced", "within_delta_R2_vs_global_sliced"] = 0.0
+    merged.loc[per_type, "between_delta_R2_vs_global_sliced"] = merged.loc[per_type, "between_LOAO_test_R2"] - merged.loc[per_type, "_global_between_R2"]
+    merged.loc[per_type, "within_delta_R2_vs_global_sliced"] = merged.loc[per_type, "within_frameblock_test_R2"] - merged.loc[per_type, "_global_within_R2"]
+    return merged.drop(columns=["_global_between_R2", "_global_within_R2"])
 
 
 def build2_mechanism_from_bin_column(column: str) -> str:
@@ -2653,6 +2931,9 @@ def build2_condition_specs(rows: pd.DataFrame, partition_columns: list[str]) -> 
     for idx, col in enumerate(partition_columns):
         mech = build2_mechanism_from_bin_column(col)
         specs.append(Build2ConditionSpec(build2_family_from_bin_column(col, mech), mech, col.removeprefix("bin_"), "cxx_bin", "per_atom_substrate_partition_bins", col, idx))
+    for mech, col in DOMINANCE_FRACTION_COLUMNS.items():
+        if col in rows.columns:
+            specs.append(Build2ConditionSpec("dominance response", mech, col, "python_quantile_cpp_scalar", "per_atom_substrate_features_conditioning", col, None))
     categorical = [
         ("atom identity", "identity", "stratum"),
         ("atom identity", "identity", "role"),
@@ -2699,8 +2980,13 @@ def build2_condition_specs(rows: pd.DataFrame, partition_columns: list[str]) -> 
 def add_build2_charge_agreement_columns(rows: pd.DataFrame, arrays: dict[str, np.ndarray], specs: dict[str, object]) -> pd.DataFrame:
     out = rows.copy()
     classical_specs = specs_for_array(specs, "per_atom_substrate_features_classical")
+    conditioning_specs = specs_for_array(specs, "per_atom_substrate_features_conditioning")
     aim_idx = int(classical_specs["aimnet2_charge"]["index"])
     out["aimnet2_charge"] = np.asarray(arrays["per_atom_substrate_features_classical"][:, aim_idx], dtype=float)
+    conditioning = arrays["per_atom_substrate_features_conditioning"]
+    for col in DOMINANCE_FRACTION_COLUMNS.values():
+        if col in conditioning_specs:
+            out[col] = np.asarray(conditioning[:, int(conditioning_specs[col]["index"])], dtype=float)
     out["sign_agree_ff14sb_mopac_welford"] = sign_agreement(out["ff14sb_charge"], out["mopac_welford_mean_charge"])
     out["sign_agree_ff14sb_aimnet2"] = sign_agreement(out["ff14sb_charge"], out["aimnet2_charge"])
     out["sign_agree_mopac_welford_aimnet2"] = sign_agreement(out["mopac_welford_mean_charge"], out["aimnet2_charge"])
@@ -2747,6 +3033,39 @@ def build2_bin_order(spec: Build2ConditionSpec, label: object, bin_id: int | Non
     return bin_order_key(label)
 
 
+def quantile_bin_arrays(values: np.ndarray | pd.Series) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    numeric = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(float)
+    finite = np.isfinite(numeric)
+    labels = np.full(len(numeric), "missing", dtype=object)
+    raw_bins = np.full(len(numeric), -1, dtype=int)
+    orders = np.full(len(numeric), -1.0, dtype=float)
+    if finite.sum() == 0:
+        return labels, raw_bins, orders
+    vals = numeric[finite]
+    qs = np.quantile(vals, [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    edges: list[float] = []
+    for q in qs:
+        qf = float(q)
+        if not edges or qf > edges[-1]:
+            edges.append(qf)
+    if len(edges) <= 2:
+        lo = float(np.nanmin(vals))
+        hi = float(np.nanmax(vals))
+        labels[finite] = f"Q1 [{finite_fmt(lo)}, {finite_fmt(hi)}]"
+        raw_bins[finite] = 0
+        orders[finite] = 0.0
+        return labels, raw_bins, orders
+    for bin_id, (lo, hi) in enumerate(zip(edges[:-1], edges[1:])):
+        if bin_id == 0:
+            mask = finite & (numeric >= lo) & (numeric <= hi)
+        else:
+            mask = finite & (numeric > lo) & (numeric <= hi)
+        labels[mask] = f"Q{bin_id + 1} [{finite_fmt(lo)}, {finite_fmt(hi)}]"
+        raw_bins[mask] = int(bin_id)
+        orders[mask] = float(bin_id)
+    return labels, raw_bins, orders
+
+
 def build2_axis_conditions(
     spec: Build2ConditionSpec,
     axis: str,
@@ -2764,6 +3083,8 @@ def build2_axis_conditions(
             labels = np.asarray([build2_bin_label(spec.column, int(x), manifest) for x in raw_bins], dtype=object)
             orders = raw_bins.astype(float)
             return labels, raw_bins, orders
+        if spec.kind == "python_quantile_cpp_scalar":
+            return quantile_bin_arrays(atom_rows[spec.column])
         labels = np.asarray([str(x) if pd.notna(x) else "missing" for x in atom_rows[spec.column].to_numpy()], dtype=object)
         return labels, np.full(len(labels), -999, dtype=int), np.arange(len(labels), dtype=float)
     atoms = rows.iloc[row_positions]["atom_index"].to_numpy(int)
@@ -2772,6 +3093,8 @@ def build2_axis_conditions(
         labels = np.asarray([build2_bin_label(spec.column, int(x), manifest) for x in raw_bins], dtype=object)
         orders = raw_bins.astype(float)
         return labels, raw_bins, orders
+    if spec.kind == "python_quantile_cpp_scalar":
+        return quantile_bin_arrays(rows.iloc[row_positions][spec.column])
     labels = np.asarray([str(x) if pd.notna(x) else "missing" for x in rows.iloc[row_positions][spec.column].to_numpy()], dtype=object)
     return labels, np.full(len(labels), -999, dtype=int), np.arange(len(labels), dtype=float)
 
@@ -2787,16 +3110,16 @@ def build2_support_flag(axis: str, rows_count: int, n_atoms: int, n_eff: float) 
     return ";".join(flags)
 
 
-def build2_response_shapes(curves: pd.DataFrame) -> dict[tuple[str, str, str, str, str, str, str], str]:
-    out: dict[tuple[str, str, str, str, str, str, str], str] = {}
-    group_cols = ["target", "mechanism", "condition_family", "condition_name", "stratum", "tier", "axis"]
+def build2_response_shapes(curves: pd.DataFrame) -> dict[tuple[str, str, str, str, str, str, str, str], str]:
+    out: dict[tuple[str, str, str, str, str, str, str, str], str] = {}
+    group_cols = ["target", "fit_scope", "mechanism", "condition_family", "condition_name", "stratum", "tier", "axis"]
     for key, group in curves.groupby(group_cols, dropna=False):
         usable = group[(group["support_flag"] == "") & np.isfinite(group["heldout_R2"])].sort_values("_bin_order")
         vals = usable["heldout_R2"].to_numpy(float)
         if len(vals) < 3:
             out[key] = "unstable-thin"
             continue
-        if str(usable["condition_kind"].iloc[0]) != "cxx_bin":
+        if str(usable["condition_kind"].iloc[0]) not in {"cxx_bin", "python_quantile_cpp_scalar"}:
             span = float(np.nanmax(vals) - np.nanmin(vals))
             out[key] = "categorical contrast" if span >= 0.02 else "flat response"
             continue
@@ -2820,6 +3143,7 @@ def build2_response_shapes(curves: pd.DataFrame) -> dict[tuple[str, str, str, st
 
 def build2_partition_curves(
     target_name: str,
+    fit_scope: str,
     tier_results: dict[str, dict[str, object]],
     tier_order: list[str],
     rows: pd.DataFrame,
@@ -2871,7 +3195,7 @@ def build2_partition_curves(
                     unit_local = labels_in == label
                     if not unit_local.any():
                         continue
-                    if spec.kind == "cxx_bin":
+                    if spec.kind in {"cxx_bin", "python_quantile_cpp_scalar"}:
                         bin_id = mode_int(raw_in[unit_local])
                         bin_order = build2_bin_order(spec, label, bin_id)
                     else:
@@ -2882,9 +3206,10 @@ def build2_partition_curves(
                     global_mask[idx[unit_local]] = True
                     n_atoms = int(len(np.unique(axis_atom_index[global_mask])))
                     rows_count = int(global_mask.sum())
-                    if spec.kind == "cxx_bin":
+                    if spec.kind in {"cxx_bin", "python_quantile_cpp_scalar"}:
                         bin_defs.append({
                             "target": target_name,
+                            "fit_scope": fit_scope,
                             "axis": axis,
                             "stratum": stratum,
                             "mechanism": spec.mechanism,
@@ -2910,6 +3235,7 @@ def build2_partition_curves(
                         support_flag = build2_support_flag(axis, rows_count, n_atoms, n_eff_median)
                         rows_out.append({
                             "target": target_name,
+                            "fit_scope": fit_scope,
                             "mechanism": spec.mechanism,
                             "condition_family": spec.family,
                             "condition_name": spec.name,
@@ -2934,7 +3260,7 @@ def build2_partition_curves(
     curves = pd.DataFrame(rows_out)
     if curves.empty:
         return curves, curves.copy(), bin_defs
-    key_cols = ["target", "mechanism", "condition_family", "condition_name", "condition_kind", "bin_label", "bin_id", "stratum", "axis"]
+    key_cols = ["target", "fit_scope", "mechanism", "condition_family", "condition_name", "condition_kind", "bin_label", "bin_id", "stratum", "axis"]
     classical = curves[curves["tier"] == "classical"][key_cols + ["heldout_R2"]].rename(columns={"heldout_R2": "_classical_R2"})
     curves = curves.merge(classical, on=key_cols, how="left")
     curves["delta_R2_vs_classical"] = curves["heldout_R2"] - curves["_classical_R2"]
@@ -2952,11 +3278,12 @@ def build2_partition_curves(
     curves["delta_R2_vs_previous_tier"] = curves["heldout_R2"] - curves["_previous_R2"]
     shape_map = build2_response_shapes(curves)
     curves["response_shape"] = [
-        shape_map.get((r.target, r.mechanism, r.condition_family, r.condition_name, r.stratum, r.tier, r.axis), "unstable-thin")
+        shape_map.get((r.target, r.fit_scope, r.mechanism, r.condition_family, r.condition_name, r.stratum, r.tier, r.axis), "unstable-thin")
         for r in curves.itertuples(index=False)
     ]
     public_cols = [
         "target",
+        "fit_scope",
         "mechanism",
         "condition_family",
         "condition_name",
@@ -2984,6 +3311,7 @@ def build2_partition_curves(
         for metric in ["heldout_R2", "delta_R2_vs_classical", "delta_R2_vs_previous_tier"]:
             long_rows.append({
                 "target": r.target,
+                "fit_scope": r.fit_scope,
                 "mechanism": r.mechanism,
                 "condition_family": r.condition_family,
                 "condition_name": r.condition_name,
@@ -3017,6 +3345,7 @@ def build2_favorable_partitions(curves: pd.DataFrame, shortlist_size: int = 120)
     eligible = eligible.sort_values(["_positive_ci", "heldout_R2", "delta_R2_vs_previous_tier"], ascending=[False, False, False], na_position="last")
     cols = [
         "target",
+        "fit_scope",
         "mechanism",
         "condition_family",
         "condition_name",
@@ -3111,6 +3440,7 @@ def build2_casehunter_intersection(
                 modal_bin = -999
             out.append({
                 "target": fav.target,
+                "fit_scope": fav.fit_scope,
                 "mechanism": fav.mechanism,
                 "stratum": fav.stratum,
                 "case_atom_index": int(case.atom_index),
@@ -3147,7 +3477,7 @@ def write_build2_reports(
 ) -> None:
     score_focus = score_table[score_table["atom_type"].isin(["ALL", "HN", "O", "N", "CA", "C", "HA"])].copy()
     lines = [
-        "# Build 2 Partition Report",
+        "# Build 3 Fit-Architecture Report",
         "",
         f"Substrate: `{audit['substrate_dir']}`",
         f"Run dir: `{audit['output_dir']}`",
@@ -3156,13 +3486,18 @@ def write_build2_reports(
         "## Fit Scores",
         markdown_table(score_focus[[
             "target",
+            "fit_scope",
             "atom_type",
             "tier",
             "n_atoms_in_slice",
+            "n_atoms_between_fit_scope",
             "between_LOAO_test_R2",
+            "between_delta_R2_vs_global_sliced",
             "between_delta_R2_vs_classical",
             "within_frameblock_test_R2",
+            "within_delta_R2_vs_global_sliced",
             "within_delta_R2_vs_classical",
+            "between_support_flag",
             "thin_flag",
         ]], max_rows=80),
         "",
@@ -3171,7 +3506,7 @@ def write_build2_reports(
     if curves.empty:
         lines.append("No curves emitted.")
     else:
-        shape_counts = curves.groupby(["target", "mechanism", "condition_family", "tier", "axis", "response_shape"], dropna=False).size().reset_index(name="curve_points")
+        shape_counts = curves.groupby(["target", "fit_scope", "mechanism", "condition_family", "tier", "axis", "response_shape"], dropna=False).size().reset_index(name="curve_points")
         lines.append(markdown_table(shape_counts, max_rows=120))
     lines += [
         "",
@@ -3192,7 +3527,7 @@ def write_build2_plots(out_dir: Path, score_table: pd.DataFrame, curves: pd.Data
     except Exception as exc:  # pragma: no cover - plot availability is environment-dependent
         return {"plots_written": False, "reason": str(exc)}
     written = []
-    focus = score_table[score_table["atom_type"].isin(["N", "CA", "C", "O", "HN", "HA"])].copy()
+    focus = score_table[(score_table["fit_scope"] == "global_sliced") & score_table["atom_type"].isin(["N", "CA", "C", "O", "HN", "HA"])].copy()
     for target_name, group in focus.groupby("target", dropna=False):
         pivot = group.pivot(index="atom_type", columns="tier", values="between_LOAO_test_R2").reindex(["N", "CA", "C", "O", "HN", "HA"])
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -3260,14 +3595,16 @@ def build2_fit_stage_checks(audit: dict[str, object], score_table: pd.DataFrame,
         "pass": bool(
             not curves.empty
             and audit["partition_conditions_input_side_only"]
-            and audit["partition_bins_from_cpp_lookup_only"]
+            and audit["partition_bins_from_cpp_lookup_or_python_quantile_cpp_scalar"]
             and audit["charge_partition_non_degenerate"]
         ),
-        "cpp_bin_lookup_only_for_numeric_partition_bins": audit["partition_bins_from_cpp_lookup_only"],
+        "cpp_bin_lookup_only_for_existing_numeric_partition_bins": audit["partition_bins_from_cpp_lookup_only"],
+        "python_quantile_bins_on_cpp_dominance_scalars": audit["dominance_quantile_bins_from_python_on_cpp_scalar"],
         "no_condition_uses_dft_target_residual_or_coefficients": True,
         "casehunter_intersection_rows": int(len(case_shortlist)),
         "charge_partition_non_degenerate": audit["charge_partition_non_degenerate"],
-        "dominant_charge_bin_available_in_substrate": audit["dominant_charge_bin_available_in_substrate"],
+        "dominance_scalar_columns_available_in_substrate": audit["dominance_scalar_columns_available_in_substrate"],
+        "dominance_cpp_bin_id_next_emit_flag": audit["dominance_cpp_bin_id_next_emit_flag"],
     }
 
 
@@ -3354,13 +3691,14 @@ def build2_main() -> None:
         build2_log(f"target {target_name}: transform target")
         y = transform_build2_target(target_name, raw_target, charge_mask, C)
         y_atom = atom_means_dense(y, n_frames, n_atoms)
-        tier_results: dict[str, dict[str, object]] = {}
-        pca_audit: dict[str, object] = {}
+        global_tier_results: dict[str, dict[str, object]] = {}
+        per_type_tier_results: dict[str, dict[str, object]] = {}
+        pca_audit: dict[str, object] = {"global_sliced": {}, "per_type": {}}
         cv_details: dict[str, object] = {}
-        alpha_selection_by_tier_axis: dict[str, dict[str, object]] = {}
+        alpha_selection_by_scope: dict[str, object] = {"global_sliced": {}, "per_type": {}}
         for tier in tier_order:
             if args.alpha_mode == "select":
-                build2_log(f"target {target_name}: tier {tier}: select between alpha")
+                build2_log(f"target {target_name}: global_sliced tier {tier}: select between alpha")
                 between_alpha, between_alpha_audit = select_between_alphas(
                     tier,
                     base_atom_blocks,
@@ -3371,7 +3709,7 @@ def build2_main() -> None:
                     args.inner_cv_folds,
                     between_alpha_pca_cache,
                 )
-                build2_log(f"target {target_name}: tier {tier}: select within alpha")
+                build2_log(f"target {target_name}: global_sliced tier {tier}: select within alpha")
                 within_alpha, within_alpha_audit = select_within_alpha(
                     tier,
                     base_blocks,
@@ -3393,29 +3731,64 @@ def build2_main() -> None:
                 between_alpha_audit = {"axis": "between_LOAO", "method": "fixed-alpha labelled baseline; no inner CV", "selected_alpha": fixed_alpha, "min": fixed_alpha, "max": fixed_alpha, "counts": {f"{fixed_alpha:g}": int(n_atoms)}, "heldout_test_atom_excluded_from_alpha_selection": True, "alpha_grid": [float(x) for x in alpha_grid]}
                 within_alpha = fixed_alpha
                 within_alpha_audit = {"axis": "within_frameblock", "method": "fixed-alpha labelled baseline; no inner CV", "selected_alpha": fixed_alpha, "outer_test_rows_used_for_alpha_selection": 0, "outer_purged_rows_used_for_alpha_selection": 0, "alpha_grid": [float(x) for x in alpha_grid]}
-            alpha_selection_by_tier_axis[tier] = {"between": between_alpha_audit, "within": within_alpha_audit}
-            build2_log(f"target {target_name}: tier {tier}: fit between")
+            alpha_selection_by_scope["global_sliced"][tier] = {"between": between_alpha_audit, "within": within_alpha_audit}
+            build2_log(f"target {target_name}: global_sliced tier {tier}: fit between")
             cache = between_pca_cache if tier_uses_embedding(tier) else None
             between = evaluate_between_tier(tier, base_atom_blocks, embedding_atom_mean, y_atom, between_alpha, args.embedding_components, cache)
-            build2_log(f"target {target_name}: tier {tier}: fit within")
+            build2_log(f"target {target_name}: global_sliced tier {tier}: fit within")
             within = evaluate_within_tier(tier, base_blocks, within_embedding_pcs, within_embedding_pca_audit, y, atoms, split, within_alpha)
-            tier_results[tier] = {"between": between, "within": within}
-            pca_audit[tier] = {"between": between["pca_audit"], "within": within["pca_audit"]}
-            cv_details[tier] = {"between": {"cv_check": between["cv_check"]}, "within": {"cv_check": within["cv_check"]}}
-        build2_log(f"target {target_name}: build score rows")
-        score_rows, long_rows = build2_score_rows(target_name, tier_results, tier_order, rows, atom_conditions, y, frames, atoms, split, base_blocks, args.alpha_mode, args.embedding_components)
-        build2_log(f"target {target_name}: build partition curves")
-        curves, curves_long, bin_defs = build2_partition_curves(target_name, tier_results, tier_order, rows_for_conditions, atom_conditions, partition_bins, atom_bins, frames, cond_specs, manifest)
+            global_tier_results[tier] = {"between": between, "within": within}
+            pca_audit["global_sliced"][tier] = {"between": between["pca_audit"], "within": within["pca_audit"]}
+            cv_details[f"global_sliced:{tier}"] = {"between": {"cv_check": between["cv_check"]}, "within": {"cv_check": within["cv_check"]}}
+
+            build2_log(f"target {target_name}: per_type tier {tier}: select alphas and fit strata")
+            per_type_result, per_type_alpha_audit, per_type_pca_audit, per_type_cv_details = evaluate_per_type_tier(
+                tier,
+                rows,
+                atom_conditions,
+                base_blocks,
+                base_atom_blocks,
+                embedding,
+                embedding_atom_mean,
+                row_indices,
+                y,
+                y_atom,
+                atoms,
+                frames,
+                split,
+                args.alpha_mode,
+                float(args.ridge_alpha),
+                alpha_grid,
+                args.embedding_components,
+                args.inner_cv_folds,
+                args.purge_frames_each_side,
+            )
+            per_type_tier_results[tier] = per_type_result
+            alpha_selection_by_scope["per_type"][tier] = per_type_alpha_audit
+            pca_audit["per_type"][tier] = per_type_pca_audit
+            cv_details[f"per_type:{tier}"] = per_type_cv_details
+        build2_log(f"target {target_name}: build global_sliced score rows")
+        score_rows, long_rows = build2_score_rows(target_name, "global_sliced", global_tier_results, tier_order, rows, atom_conditions, y, frames, atoms, split, base_blocks, args.alpha_mode, args.embedding_components)
+        build2_log(f"target {target_name}: build per_type score rows")
+        per_score_rows, per_long_rows = build2_score_rows(target_name, "per_type", per_type_tier_results, tier_order, rows, atom_conditions, y, frames, atoms, split, base_blocks, args.alpha_mode, args.embedding_components)
+        score_rows.extend(per_score_rows)
+        long_rows.extend(per_long_rows)
+        build2_log(f"target {target_name}: build global_sliced partition curves")
+        curves, curves_long, bin_defs = build2_partition_curves(target_name, "global_sliced", global_tier_results, tier_order, rows_for_conditions, atom_conditions, partition_bins, atom_bins, frames, cond_specs, manifest)
+        build2_log(f"target {target_name}: build per_type partition curves")
+        per_curves, per_curves_long, per_bin_defs = build2_partition_curves(target_name, "per_type", per_type_tier_results, tier_order, rows_for_conditions, atom_conditions, partition_bins, atom_bins, frames, cond_specs, manifest)
         all_score_rows.extend(score_rows)
         all_long_rows.extend(long_rows)
-        all_curves.append(curves)
-        all_curves_long.append(curves_long)
+        all_curves.extend([curves, per_curves])
+        all_curves_long.extend([curves_long, per_curves_long])
         all_bin_defs.extend(bin_defs)
-        alpha_selection_by_target[target_name] = {"mode": args.alpha_mode, "grid": [float(x) for x in alpha_grid], "by_tier_axis": alpha_selection_by_tier_axis}
+        all_bin_defs.extend(per_bin_defs)
+        alpha_selection_by_target[target_name] = {"mode": args.alpha_mode, "grid": [float(x) for x in alpha_grid], "by_scope_tier_axis": alpha_selection_by_scope}
         pca_audit_by_target[target_name] = pca_audit
         cv_details_by_target[target_name] = cv_details
 
     score_table = pd.DataFrame(all_score_rows).reindex(columns=SCORE_TABLE_COLUMNS)
+    score_table = add_fit_scope_deltas(score_table).reindex(columns=SCORE_TABLE_COLUMNS)
     score_long = pd.DataFrame(all_long_rows)
     curves = pd.concat(all_curves, ignore_index=True) if all_curves else pd.DataFrame()
     curves_long = pd.concat(all_curves_long, ignore_index=True) if all_curves_long else pd.DataFrame()
@@ -3430,9 +3803,10 @@ def build2_main() -> None:
         "disk_guard": disk_audit,
         "files_read": data["files_read"],
         "tier_order": tier_order,
+        "fit_scopes": ["global_sliced", "per_type"],
         "targets_fit": list(data["targets"].keys()),
-        "feature_tier_selection": {"selected_tiers": tier_order, "headline_delta": "classical_plus_newmech vs classical on HN/O"},
-        "python_read_scope": "Only emitted reduced per_atom_substrate sidecars, target sidecars, CaseHunter manifests, and per_atom_substrate_partition_bins.npy were opened; no trajectory.h5, per-source, older dirs, ring-path validation, or ORCA data.",
+        "feature_tier_selection": {"selected_tiers": tier_order, "headline_delta": "per_type vs global_sliced by stratum, alongside tier deltas"},
+        "python_read_scope": "Only emitted reduced per_atom_substrate sidecars, target sidecars, CaseHunter manifests, per_atom_substrate_partition_bins.npy, and C++ dominance scalar conditioners were opened; no trajectory.h5, per-source, older dirs, ring-path validation, or ORCA data.",
         "manifest_relationship": manifest.get("relationship"),
         "manifest_relationship_kind": manifest.get("relationship_kind"),
         "manifest_rows": int(manifest["rows"]),
@@ -3454,6 +3828,11 @@ def build2_main() -> None:
         "partition_bin_definitions_written_before_ranking": True,
         "partition_conditions_input_side_only": True,
         "partition_bins_from_cpp_lookup_only": True,
+        "partition_bins_from_cpp_lookup_or_python_quantile_cpp_scalar": True,
+        "dominance_quantile_bins_from_python_on_cpp_scalar": True,
+        "dominance_scalar_columns": list(DOMINANCE_FRACTION_COLUMNS.values()),
+        "dominance_scalar_columns_available_in_substrate": all(col in rows_for_conditions.columns for col in DOMINANCE_FRACTION_COLUMNS.values()),
+        "dominance_cpp_bin_id_next_emit_flag": "dominant_fraction_{ring,charge,mc} bin ids should be emitted by C++ in the next substrate; Build 3 bins the C++ scalars in Python to avoid re-emitting.",
         "charge_partition_unique_bins": charge_bin_unique,
         "charge_partition_non_degenerate": bool(len(charge_bin_unique["bin_nearest_charge_r_4_6_8_10"]) > 1 and len(charge_bin_unique["bin_gap_to_2nd_charge_r_4_6_8_10"]) > 1),
         "dominant_charge_bin_available_in_substrate": bool(checks["input_acceptance"]["dominant_charge_bin_column_present"]),
