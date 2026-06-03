@@ -27,16 +27,24 @@ statistical-position grading.
 - Build 3 `d35d7ec` — per-type fit alongside global + dia-T2 + dominance curves. **Per-type
   RESCUES H** (HN −54→+0.58 within; all H strata recover within 0.31–0.72) AND improves the
   heavy strata (O within 0.18→0.72, aromatic_heavy + N up). Per-type is the fit architecture.
-- Docs restore point `ad02f875` follows Build 3; lead owns the next commit.
+- Doc truth-pass `43aa5bf` — grinder trued the docs (lead-committed; restore point `ad02f875`).
+- Build 4 `fba5cd3` — dominance handle extended to the law-bearing FIVE: field (MOPAC-Coulomb) +
+  H-bond get dominant_fraction/gap + C++ quintile bin-ids + CaseHunter habitats; charge widened
+  (`charge_wide`); bins C++-side for all 5. Gated green (31/31 parity, 5e-13 two-path field/hbond,
+  7/7 tests), build4 substrate (build1 kept). **C++ dominance arc complete.**
 
 ## Current step
-**Build 3 landed.** Verdict: per-type is the right fit (rescues H, improves heavy);
-per-type-WITHIN is trustworthy + where the wins are; per-type-BETWEEN is thin (40–69 atoms,
-p≥atoms) → the static axis wants the hierarchical/interaction model (846 + per-type coeffs) or
-more proteins. **Channel = total-T2** (dia/para each recover worse — gauge-dependent dilution;
-total is gauge-invariant). **H-bond→HN reopened** (HN recoverable per-type). Dominance curves in.
-NEXT: lead check-in (docs restore point) → doc-truth-pass grinder → then between-calculator
-network + equations table, built on the per-type-within foundation, dominance-gated.
+**Build 4 landed (`fba5cd3`) — the C++ dominance arc is complete for the law-bearing five.**
+Every law-bearing kernel (ring/charge/mc/field/hbond) now has its "where can we hear it cleanly"
+handle: dominant_fraction + gap + C++ quintile bins + a CaseHunter habitat (field = MOPAC-Coulomb,
+H-bond = DSSP donor/acceptor partners, charge widened to carbons). Standing fit verdict (Build 3):
+per-type-WITHIN trustworthy; channel = total-T2 (gauge-invariant); H-bond→HN judgeable per-type.
+NEXT (held for lead): **stage 2** = at the audible places, fit each kernel's law the multiple ways
+we have (equivariant-T2 + PySR + ridge) → coefficient + statistical position + cross-kernel
+comparison + path-agreement; decompose the ~4k-line fitter while in there.
+PENDING FIRST: unification review of `doc/calculators/physics-architecture.tex` (one kernel
+D_ab = ∇∇(1/ρ); calculators as shadows of one object) for what it recommends about our fitting
+maths — agent dispatched; hold stage 2 for those recs + lead steer.
 
 ## Live decisions / through-lines (the marker's real content)
 - **Laws come from dominance-isolated clean exemplars, fit per-mechanism, UN-SHRUNK.** The
