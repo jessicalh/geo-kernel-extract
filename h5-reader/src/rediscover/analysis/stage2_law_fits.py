@@ -41,6 +41,7 @@ SUBSTRATE_DIR = Path("/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build4"
 OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2-fits")
 STAGE21_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_1-sweep")
 STAGE22_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_2-unified-vet")
+STAGE23_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_3-probability")
 MIN_DISK_FREE_BYTES = 20 * 1024**3
 MAX_REDISCOVER_BYTES = 15 * 1024**3
 T2 = 5
@@ -51,6 +52,9 @@ STAGE22_ALPHA_GRID = (0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 1.0e4, 1.0e5)
 STAGE22_INNER_CV_FOLDS = 5
 STAGE22_BOOTSTRAPS = 500
 STAGE22_BOOTSTRAP_FRAME_BLOCK = 10
+STAGE23_PERMUTATIONS = 1000
+STAGE23_DAB_CUTOFFS = (0.30, 0.40, 0.50, 0.55, 0.60)
+STAGE23_RING_CUTOFFS = (0.60, 0.65, 0.70, 0.80, 0.90)
 
 
 @dataclass(frozen=True)
@@ -151,6 +155,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR)
     ap.add_argument("--stage2-1", action="store_true", help="run the Stage 2.1 happy-spot sweep and frame-count ablation")
     ap.add_argument("--stage2-2", action="store_true", help="run the Stage 2.2 unified D_ab overfit/charge-coat vet")
+    ap.add_argument("--stage2-3", action="store_true", help="run the Stage 2.3 probability/null framing")
+    ap.add_argument("--stage2-3-permutations", type=int, default=STAGE23_PERMUTATIONS)
     ap.add_argument("--run-pysr", action="store_true")
     ap.add_argument("--pysr-timeout", type=int, default=45)
     ap.add_argument("--pysr-iterations", type=int, default=8)
@@ -1964,6 +1970,567 @@ def run_stage22(args: argparse.Namespace, data: dict[str, object], out_dir: Path
     return write_stage22_postmortem(out_dir, args.substrate_dir, orth, str(base["selection_rule"]), ols_summary, ablations, drop, disk)
 
 
+def stage23_stack_flat(features: list[np.ndarray]) -> np.ndarray:
+    if not features:
+        return np.empty((0, 0), dtype=float)
+    return np.column_stack([np.asarray(f, dtype=float).reshape(-1) for f in features])
+
+
+def stage23_prepare_within_design(
+    labels: list[str],
+    features: list[np.ndarray],
+    atoms: np.ndarray,
+    frames: np.ndarray,
+) -> dict[str, object]:
+    split = split_frame_block(frames, 0.20, 1)
+    train = np.asarray(split["train_mask"], dtype=bool)
+    test = np.asarray(split["test_mask"], dtype=bool)
+    centered_features = [centered_by_train_atom(f, atoms, train) for f in features]
+    x_train = stage23_stack_flat([f[train] for f in centered_features])
+    x_test = stage23_stack_flat([f[test] for f in centered_features])
+    valid_train = np.isfinite(x_train).all(axis=1) if x_train.size else np.asarray([], dtype=bool)
+    valid_test = np.isfinite(x_test).all(axis=1) if x_test.size else np.asarray([], dtype=bool)
+    pinv = np.linalg.pinv(x_train[valid_train]) if int(valid_train.sum()) >= len(labels) + 2 else np.empty((len(labels), 0))
+    return {
+        "axis": "within",
+        "labels": labels,
+        "atoms": atoms,
+        "frames": frames,
+        "train": train,
+        "test": test,
+        "x_train_valid_pinv": pinv,
+        "valid_train": valid_train,
+        "x_test": x_test,
+        "valid_test": valid_test,
+        "n_test_rows": int(test.sum()),
+    }
+
+
+def stage23_score_within(design: dict[str, object], y: np.ndarray) -> float:
+    train = np.asarray(design["train"], dtype=bool)
+    test = np.asarray(design["test"], dtype=bool)
+    atoms = np.asarray(design["atoms"], dtype=int)
+    y_c = centered_by_train_atom(y, atoms, train)
+    y_train = y_c[train].reshape(-1)
+    valid_train = np.asarray(design["valid_train"], dtype=bool)
+    pinv = np.asarray(design["x_train_valid_pinv"], dtype=float)
+    if pinv.size == 0 or valid_train.sum() < len(design["labels"]) + 2:
+        return math.nan
+    beta = pinv @ y_train[valid_train]
+    x_test = np.asarray(design["x_test"], dtype=float)
+    valid_test = np.asarray(design["valid_test"], dtype=bool)
+    pred_flat = np.full(x_test.shape[0], np.nan, dtype=float)
+    pred_flat[valid_test] = x_test[valid_test] @ beta
+    return r2_score(pred_flat.reshape((int(design["n_test_rows"]), T2)), y_c[test])
+
+
+def stage23_prepare_loao_design(
+    labels: list[str],
+    features: list[np.ndarray],
+    atoms: np.ndarray,
+) -> dict[str, object]:
+    held_designs = []
+    for held in np.unique(atoms):
+        train = atoms != held
+        test = atoms == held
+        if int(train.sum()) < len(labels) + 2 or int(test.sum()) < 2:
+            continue
+        train_features = [atom_center(f[train], atoms[train]) for f in features]
+        test_features = [f[test] - f[test].mean(axis=0, keepdims=True) for f in features]
+        x_train = stage23_stack_flat(train_features)
+        x_test = stage23_stack_flat(test_features)
+        valid_train = np.isfinite(x_train).all(axis=1) if x_train.size else np.asarray([], dtype=bool)
+        valid_test = np.isfinite(x_test).all(axis=1) if x_test.size else np.asarray([], dtype=bool)
+        if int(valid_train.sum()) < len(labels) + 2:
+            continue
+        held_designs.append({
+            "held": int(held),
+            "train": train,
+            "test": test,
+            "valid_train": valid_train,
+            "valid_test": valid_test,
+            "x_train_valid_pinv": np.linalg.pinv(x_train[valid_train]),
+            "x_test": x_test,
+            "n_test_rows": int(test.sum()),
+        })
+    return {"axis": "LOAO", "labels": labels, "atoms": atoms, "held_designs": held_designs}
+
+
+def stage23_score_loao(design: dict[str, object], y: np.ndarray) -> float:
+    atoms = np.asarray(design["atoms"], dtype=int)
+    pred = np.full_like(y, np.nan, dtype=float)
+    target = np.full_like(y, np.nan, dtype=float)
+    for held in design["held_designs"]:
+        train = np.asarray(held["train"], dtype=bool)
+        test = np.asarray(held["test"], dtype=bool)
+        y_train = atom_center(y[train], atoms[train]).reshape(-1)
+        y_test = y[test] - y[test].mean(axis=0, keepdims=True)
+        valid_train = np.asarray(held["valid_train"], dtype=bool)
+        pinv = np.asarray(held["x_train_valid_pinv"], dtype=float)
+        beta = pinv @ y_train[valid_train]
+        x_test = np.asarray(held["x_test"], dtype=float)
+        valid_test = np.asarray(held["valid_test"], dtype=bool)
+        pred_flat = np.full(x_test.shape[0], np.nan, dtype=float)
+        pred_flat[valid_test] = x_test[valid_test] @ beta
+        pred[test] = pred_flat.reshape((int(held["n_test_rows"]), T2))
+        target[test] = y_test
+    ok = np.isfinite(pred).all(axis=1) & np.isfinite(target).all(axis=1)
+    return r2_score(pred[ok], target[ok])
+
+
+def stage23_atom_groups(atoms: np.ndarray) -> list[np.ndarray]:
+    return [np.flatnonzero(atoms == atom) for atom in np.unique(atoms)]
+
+
+def stage23_permute_within_atom(y: np.ndarray, groups: list[np.ndarray], rng: np.random.Generator) -> np.ndarray:
+    out = np.empty_like(y, dtype=float)
+    for idx in groups:
+        out[idx] = y[idx[rng.permutation(len(idx))]]
+    return out
+
+
+def stage23_derangement(n: int, rng: np.random.Generator) -> np.ndarray:
+    if n <= 1:
+        return np.arange(n)
+    if n == 2:
+        return np.asarray([1, 0], dtype=int)
+    base = np.arange(n)
+    for _ in range(100):
+        perm = rng.permutation(n)
+        if np.all(perm != base):
+            return perm
+    return np.roll(base, 1)
+
+
+def stage23_atom_transfer_plan(atoms: np.ndarray, frames: np.ndarray) -> tuple[np.ndarray, list[np.ndarray], dict[tuple[int, int], np.ndarray]]:
+    unique = np.unique(atoms)
+    groups = [np.flatnonzero(atoms == atom) for atom in unique]
+    frame_maps = []
+    for idx in groups:
+        order = np.argsort(frames[idx], kind="mergesort")
+        sorted_idx = idx[order]
+        sorted_frames = frames[sorted_idx]
+        frame_maps.append((sorted_frames, sorted_idx, {int(frame): int(pos) for pos, frame in enumerate(sorted_frames)}))
+    transfers: dict[tuple[int, int], np.ndarray] = {}
+    for ri, recip_idx in enumerate(groups):
+        recip_frames = frames[recip_idx]
+        for di, (_donor_frames, donor_idx, fmap) in enumerate(frame_maps):
+            donor_take = np.empty(len(recip_idx), dtype=int)
+            donor_n = len(donor_idx)
+            for j, frame in enumerate(recip_frames):
+                pos = fmap.get(int(frame))
+                if pos is None:
+                    pos = int(round(j * max(0, donor_n - 1) / max(1, len(recip_idx) - 1)))
+                donor_take[j] = donor_idx[pos]
+            transfers[(ri, di)] = donor_take
+    return unique, groups, transfers
+
+
+def stage23_permute_across_atoms(
+    y: np.ndarray,
+    groups: list[np.ndarray],
+    transfers: dict[tuple[int, int], np.ndarray],
+    rng: np.random.Generator,
+) -> np.ndarray:
+    out = np.empty_like(y, dtype=float)
+    perm = stage23_derangement(len(groups), rng)
+    for ri, recip_idx in enumerate(groups):
+        out[recip_idx] = y[transfers[(ri, int(perm[ri]))]]
+    return out
+
+
+def stage23_null_position(observed: float, nulls: np.ndarray) -> dict[str, object]:
+    vals = np.asarray(nulls, dtype=float)
+    vals = vals[np.isfinite(vals)]
+    if len(vals) == 0 or not np.isfinite(observed):
+        return {
+            "observed_R2": float(observed) if np.isfinite(observed) else math.nan,
+            "null_replicates": int(len(vals)),
+            "null_mean": math.nan,
+            "null_sd": math.nan,
+            "null_percentile": math.nan,
+            "empirical_p_upper": math.nan,
+            "z_vs_null": math.nan,
+        }
+    mean = float(vals.mean())
+    sd = float(vals.std(ddof=1)) if len(vals) > 1 else math.nan
+    percentile = 100.0 * float((np.sum(vals < observed) + 0.5 * np.sum(vals == observed)) / len(vals))
+    p_upper = float((1 + np.sum(vals >= observed)) / (len(vals) + 1))
+    z = float((observed - mean) / sd) if np.isfinite(sd) and sd > 0.0 else math.nan
+    return {
+        "observed_R2": float(observed),
+        "null_replicates": int(len(vals)),
+        "null_mean": mean,
+        "null_sd": sd,
+        "null_percentile": percentile,
+        "empirical_p_upper": p_upper,
+        "z_vs_null": z,
+    }
+
+
+def stage23_null_scores(
+    axis: str,
+    score_fn,
+    y: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    n_perm: int,
+    seed: int,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    vals = np.full(int(n_perm), np.nan, dtype=float)
+    if axis == "within":
+        groups = stage23_atom_groups(atoms)
+        for i in range(int(n_perm)):
+            vals[i] = score_fn(stage23_permute_within_atom(y, groups, rng))
+        return vals
+    if axis == "LOAO":
+        _unique, groups, transfers = stage23_atom_transfer_plan(atoms, frames)
+        for i in range(int(n_perm)):
+            vals[i] = score_fn(stage23_permute_across_atoms(y, groups, transfers, rng))
+        return vals
+    raise ValueError(axis)
+
+
+def stage23_eval_probability(
+    model: str,
+    labels: list[str],
+    features: list[np.ndarray],
+    y: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    n_perm: int,
+    seed: int,
+) -> pd.DataFrame:
+    rows = []
+    within_design = stage23_prepare_within_design(labels, features, atoms, frames)
+    within_score = lambda yy: stage23_score_within(within_design, yy)
+    within_obs = within_score(y)
+    within_null = stage23_null_scores("within", within_score, y, atoms, frames, n_perm, seed)
+    rows.append({
+        "model": model,
+        "axis": "within",
+        "rows": int(len(y)),
+        "atoms": int(len(np.unique(atoms))),
+        "frames": int(len(np.unique(frames))),
+        "terms": int(len(labels)),
+        "term_labels": "|".join(labels),
+        "null_shuffle": "DFT target shuffled across frames within atom",
+        **stage23_null_position(within_obs, within_null),
+    })
+    loao_design = stage23_prepare_loao_design(labels, features, atoms)
+    loao_score = lambda yy: stage23_score_loao(loao_design, yy)
+    loao_obs = loao_score(y)
+    loao_null = stage23_null_scores("LOAO", loao_score, y, atoms, frames, n_perm, seed + 10_000)
+    rows.append({
+        "model": model,
+        "axis": "LOAO",
+        "rows": int(len(y)),
+        "atoms": int(len(np.unique(atoms))),
+        "frames": int(len(np.unique(frames))),
+        "terms": int(len(labels)),
+        "term_labels": "|".join(labels),
+        "null_shuffle": "DFT target shuffled across atoms with held-out atom blocks kept intact",
+        **stage23_null_position(loao_obs, loao_null),
+    })
+    return pd.DataFrame(rows)
+
+
+def stage23_kernel_dataset(data: dict[str, object], kernel: KernelSpec) -> dict[str, object]:
+    rows: pd.DataFrame = data["rows"]
+    mask, rule = kernel_clean_base_mask(data, kernel)
+    idx = np.flatnonzero(mask)
+    return {
+        "model": kernel.name,
+        "selection_rule": rule,
+        "labels": [kernel.primary.label],
+        "features": [stage21_primary_shadow(data, kernel)[idx]],
+        "target": stage21_target(data)[idx],
+        "atoms": rows["atom_index"].to_numpy(int)[idx],
+        "frames": rows["original_frame_index"].to_numpy(int)[idx],
+        "metrics": stage21_kernel_metrics(data, kernel, mask),
+    }
+
+
+def stage23_unified_dataset_for_cutoffs(data: dict[str, object], dab_cut: float, ring_cut: float) -> dict[str, object]:
+    rows: pd.DataFrame = data["rows"]
+    specs: dict[str, object] = data["specs"]
+    arrays: dict[str, np.ndarray] = data["arrays"]
+    atoms: set[int] = set()
+    for case_dir in ["charge_wide", "mc", "field", "hbond"]:
+        case_set, _cases = case_atoms(data["substrate_dir"], case_dir)
+        atoms |= case_set
+    dom = arrays["per_atom_substrate_features_dominance"]
+    dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
+    dab_max = np.maximum.reduce([
+        np.asarray(dom[:, dom_cols[f"dominant_fraction_{m}"]], dtype=float)
+        for m in ["charge", "mc", "field", "hbond"]
+    ])
+    ring_frac = np.asarray(dom[:, dom_cols["dominant_fraction_ring"]], dtype=float)
+    atoms_all = rows["atom_index"].to_numpy(int)
+    mask = (
+        (rows["dft_present"].to_numpy(int) == 1)
+        & np.isin(atoms_all, list(atoms))
+        & np.isfinite(dab_max)
+        & np.isfinite(ring_frac)
+        & (dab_max >= float(dab_cut))
+        & (ring_frac < float(ring_cut))
+    )
+    idx = np.flatnonzero(mask)
+    labels, features_all = build_unified_features(data)
+    return {
+        "model": "unified_Dab_sum",
+        "selection_rule": f"D_ab CaseHunter atoms + max D_ab dominance>={dab_cut:.2f} + ring dominance<{ring_cut:.2f}",
+        "labels": labels,
+        "features": [f[idx] for f in features_all],
+        "target": stage21_target(data)[idx],
+        "atoms": rows["atom_index"].to_numpy(int)[idx],
+        "frames": rows["original_frame_index"].to_numpy(int)[idx],
+        "dab_cutoff": float(dab_cut),
+        "ring_cutoff": float(ring_cut),
+    }
+
+
+def stage23_drop_one_unified(base: dict[str, object]) -> pd.DataFrame:
+    labels: list[str] = base["labels"]
+    features: list[np.ndarray] = base["features"]
+    y: np.ndarray = base["target"]
+    atoms: np.ndarray = base["atoms"]
+    frames: np.ndarray = base["frames"]
+    full = stage23_eval_probability("unified_Dab_sum", labels, features, y, atoms, frames, 1, 44)
+    full_within = float(full[full["axis"] == "within"]["observed_R2"].iloc[0])
+    full_loao = float(full[full["axis"] == "LOAO"]["observed_R2"].iloc[0])
+    rows = []
+    for i, label in enumerate(labels):
+        keep = [j for j in range(len(labels)) if j != i]
+        sub_labels = [labels[j] for j in keep]
+        sub_features = [features[j] for j in keep]
+        within_design = stage23_prepare_within_design(sub_labels, sub_features, atoms, frames)
+        loao_design = stage23_prepare_loao_design(sub_labels, sub_features, atoms)
+        within_r2 = stage23_score_within(within_design, y)
+        loao_r2 = stage23_score_loao(loao_design, y)
+        rows.append({
+            "dropped_term": label,
+            "dropped_group": stage22_term_group(label),
+            "within_R2_without_term": within_r2,
+            "LOAO_R2_without_term": loao_r2,
+            "within_loss_vs_all": float(full_within - within_r2) if np.isfinite(within_r2) else math.nan,
+            "LOAO_loss_vs_all": float(full_loao - loao_r2) if np.isfinite(loao_r2) else math.nan,
+        })
+    return pd.DataFrame(rows).sort_values("within_loss_vs_all", ascending=False).reset_index(drop=True)
+
+
+def stage23_fmt_p(x: object) -> str:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return "nan"
+    if not np.isfinite(v):
+        return "nan"
+    if v < 0.0015:
+        return "0.001"
+    return f"{v:.3f}"
+
+
+def stage23_position_text(row: pd.Series) -> str:
+    return (
+        f"R2 {float(row['observed_R2']):.3f}; pct {float(row['null_percentile']):.1f}; "
+        f"p {stage23_fmt_p(row['empirical_p_upper'])}; z {float(row['z_vs_null']):.1f}"
+    )
+
+
+def stage23_top_terms(drop: pd.DataFrame, axis: str, min_loss: float = 0.01, n: int = 4) -> str:
+    col = f"{axis}_loss_vs_all"
+    rows = drop[np.isfinite(drop[col].to_numpy(float)) & (drop[col].to_numpy(float) >= min_loss)].sort_values(col, ascending=False).head(n)
+    parts = [f"{r.dropped_term} {getattr(r, col):+.3f}" for r in rows.itertuples(index=False)]
+    return "; ".join(parts) if parts else "diffuse"
+
+
+def stage23_attach_interpretation(prob: pd.DataFrame, kernel_metrics: dict[str, dict[str, object]], drop: pd.DataFrame) -> pd.DataFrame:
+    out = prob.copy()
+    determ = []
+    placement = []
+    for row in out.itertuples(index=False):
+        model = str(row.model)
+        axis = str(row.axis)
+        pval = float(row.empirical_p_upper)
+        r2 = float(row.observed_R2)
+        above_null = bool(np.isfinite(pval) and pval <= 0.05 and np.isfinite(r2) and r2 > 0.05)
+        if model == "unified_Dab_sum":
+            top = stage23_top_terms(drop, axis)
+            if top == "diffuse" or axis == "LOAO":
+                d = f"{top}; atom-axis attribution not determined"
+                place = "potentially indicative but INDETERMINATE -> needs more atoms / second-protein atom-axis test" if above_null else "not indicative (~null)"
+            else:
+                d = f"attributable to {top}"
+                place = "indicative of field + McConnell category mixture, determinable" if above_null else "not indicative (~null)"
+        elif model == "charge":
+            d = "single q/r3 shadow; coefficient CI off zero"
+            place = "indicative of charge q/r3, determinable" if above_null else "not indicative (~null)"
+        elif model == "ring":
+            d = "single JB ring shadow; thin atom support"
+            place = "indicative of ring current, determinable" if above_null else "not indicative (~null)"
+        elif model == "field":
+            d = "single MOPAC-Coulomb shadow; recovery is 0.03-class"
+            place = "not indicative (~null)"
+        elif model == "mc":
+            d = "single McConnell shadow; CI spans zero"
+            place = "not indicative (~null)" if not above_null else "potentially indicative but INDETERMINATE -> needs joint fit"
+        elif model == "hbond":
+            d = "single geometric H-bond shadow; CI spans zero"
+            place = "not indicative (~null)" if not above_null else "potentially indicative but INDETERMINATE -> needs geometry/noise split"
+        else:
+            d = "indeterminate"
+            place = "potentially indicative but INDETERMINATE -> needs targeted test" if above_null else "not indicative (~null)"
+        determ.append(d)
+        placement.append(place)
+    out["determinability"] = determ
+    out["lead_scale_placement"] = placement
+    return out
+
+
+def stage23_curve_rows(data: dict[str, object], n_perm: int) -> pd.DataFrame:
+    rows = []
+    for sweep_axis, dab_cut, ring_cut in (
+        *[("dab_cutoff", cut, 0.70) for cut in STAGE23_DAB_CUTOFFS],
+        *[("ring_cutoff", 0.50, cut) for cut in STAGE23_RING_CUTOFFS],
+    ):
+        base = stage23_unified_dataset_for_cutoffs(data, dab_cut, ring_cut)
+        if len(base["target"]) < len(base["labels"]) + 3 or len(np.unique(base["atoms"])) < 2:
+            continue
+        prob = stage23_eval_probability(
+            "unified_Dab_sum",
+            base["labels"],
+            base["features"],
+            base["target"],
+            base["atoms"],
+            base["frames"],
+            n_perm,
+            int(90_000 + round(dab_cut * 1000) * 10 + round(ring_cut * 1000)),
+        )
+        for row in prob.itertuples(index=False):
+            rows.append({
+                "sweep_axis": sweep_axis,
+                "dab_cutoff": float(dab_cut),
+                "ring_cutoff": float(ring_cut),
+                "axis": str(row.axis),
+                "rows": int(row.rows),
+                "atoms": int(row.atoms),
+                "observed_R2": float(row.observed_R2),
+                "empirical_p_upper": float(row.empirical_p_upper),
+                "null_percentile": float(row.null_percentile),
+                "z_vs_null": float(row.z_vs_null),
+                "null_replicates": int(row.null_replicates),
+                "selection_rule": str(base["selection_rule"]),
+            })
+    return pd.DataFrame(rows)
+
+
+def stage23_curve_text(curve: pd.DataFrame, sweep_axis: str, axis: str) -> str:
+    fixed = "ring<0.70" if sweep_axis == "dab_cutoff" else "D_ab>=0.50"
+    label = "D_ab cut" if sweep_axis == "dab_cutoff" else "ring cap"
+    value_col = "dab_cutoff" if sweep_axis == "dab_cutoff" else "ring_cutoff"
+    g = curve[(curve["sweep_axis"] == sweep_axis) & (curve["axis"] == axis)].sort_values(value_col)
+    parts = [f"{float(r[value_col]):.2f} {stage23_fmt_p(r['empirical_p_upper'])}/{float(r['observed_R2']):.3f}" for _, r in g.iterrows()]
+    return f"{label} ({fixed}) {axis} p/R2: " + "; ".join(parts)
+
+
+def write_stage23_postmortem(
+    out_dir: Path,
+    substrate_dir: Path,
+    orth: float,
+    prob: pd.DataFrame,
+    curve: pd.DataFrame,
+    disk: dict[str, object],
+) -> Path:
+    order = ["unified_Dab_sum", "charge", "field", "ring", "mc", "hbond"]
+    lines = [
+        "# Stage 2.3 Postmortem - 2026-06-04",
+        f"Run dir: `{out_dir}`",
+        f"Substrate: `{substrate_dir}`; Build4 CSV/NPY only; frozen `get_C`, `|C.T C-I|max={orth:.2e}`; five-component total-T2.",
+        "Nulls: within shuffles the DFT target across frames within atom; LOAO shuffles the DFT target across atoms; 1000 shuffles each row.",
+        "| recovery | statistical position vs null | determinability | lead-scale placement |",
+        "| --- | --- | --- | --- |",
+    ]
+    for model in order:
+        for axis in ["within", "LOAO"]:
+            row = prob[(prob["model"] == model) & (prob["axis"] == axis)]
+            if row.empty:
+                continue
+            r = row.iloc[0]
+            lines.append(f"| {model} {axis} | {stage23_position_text(r)} | {r['determinability']} | {r['lead_scale_placement']} |")
+    lines += [
+        "Cutoff probability curve reports p/R2 at each input-side cut; lower p means farther above the shuffled-target null.",
+        stage23_curve_text(curve, "dab_cutoff", "within"),
+        stage23_curve_text(curve, "dab_cutoff", "LOAO"),
+        stage23_curve_text(curve, "ring_cutoff", "within"),
+        stage23_curve_text(curve, "ring_cutoff", "LOAO"),
+        "~0.03-class reads as ~null here; ~0.1-0.2-class entries are placed by determinability, not by size alone.",
+        "Artifacts: `stage2_3_recovery_probability.csv`, `stage2_3_unified_drop_one.csv`, `stage2_3_cutoff_probability_curve.csv`, `stage2_3_run_audit.json`.",
+        f"Disk: `/tmp/rediscover-runs` {float(disk['rediscover_runs_GiB_before_write']):.1f}G before write (<15G); output drop-old={disk.get('deleted_existing_output_dir')}; build4+build1 kept.",
+    ]
+    path = Path(__file__).resolve().parents[1] / "POSTMORTEM_STAGE2_3.md"
+    path.write_text("\n".join(lines[:45]) + "\n", encoding="utf-8")
+    return path
+
+
+def run_stage23(args: argparse.Namespace, data: dict[str, object], out_dir: Path, disk: dict[str, object], orth: float) -> Path:
+    n_perm = max(1000, int(args.stage2_3_permutations))
+    probability_frames = []
+    kernel_metrics: dict[str, dict[str, object]] = {}
+    base = stage23_unified_dataset_for_cutoffs(data, 0.50, 0.70)
+    drop = stage23_drop_one_unified(base)
+    probability_frames.append(stage23_eval_probability(
+        "unified_Dab_sum",
+        base["labels"],
+        base["features"],
+        base["target"],
+        base["atoms"],
+        base["frames"],
+        n_perm,
+        23_001,
+    ))
+    for i, kernel in enumerate(KERNELS):
+        ds = stage23_kernel_dataset(data, kernel)
+        kernel_metrics[kernel.name] = ds["metrics"]
+        probability_frames.append(stage23_eval_probability(
+            kernel.name,
+            ds["labels"],
+            ds["features"],
+            ds["target"],
+            ds["atoms"],
+            ds["frames"],
+            n_perm,
+            24_000 + i * 101,
+        ))
+    prob = pd.concat(probability_frames, ignore_index=True)
+    prob = stage23_attach_interpretation(prob, kernel_metrics, drop)
+    curve = stage23_curve_rows(data, n_perm)
+    prob.to_csv(out_dir / "stage2_3_recovery_probability.csv", index=False)
+    drop.to_csv(out_dir / "stage2_3_unified_drop_one.csv", index=False)
+    curve.to_csv(out_dir / "stage2_3_cutoff_probability_curve.csv", index=False)
+    audit = {
+        "substrate_dir": str(args.substrate_dir),
+        "out_dir": str(out_dir),
+        "disk_guard": disk,
+        "change_of_basis_orthogonality_max_abs": orth,
+        "python_read_scope": "Build-4 per_atom_substrate CSV/NPY sidecars and CaseHunter manifests only",
+        "forbidden_inputs_not_opened": ["trajectory.h5", "ORCA outputs", "per-source dumps"],
+        "permutations_per_probability_row": int(n_perm),
+        "nulls": {
+            "within": "DFT target shuffled across frames within atom",
+            "LOAO": "DFT target shuffled across atoms; feature rows and held-out atom grouping unchanged",
+        },
+        "cutoff_sweeps": {
+            "dab_cutoffs_ring_fixed_0.70": list(STAGE23_DAB_CUTOFFS),
+            "ring_cutoffs_dab_fixed_0.50": list(STAGE23_RING_CUTOFFS),
+        },
+        "anti_circularity": "selection cutoffs use emitted input-side dominance only; null shuffles only the DFT target",
+    }
+    (out_dir / "stage2_3_run_audit.json").write_text(json.dumps(json_sanitize(audit), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return write_stage23_postmortem(out_dir, args.substrate_dir, orth, prob, curve, disk)
+
+
 def main() -> None:
     args = parse_args()
     args.substrate_dir = args.substrate_dir.resolve()
@@ -1971,8 +2538,10 @@ def main() -> None:
         args.out_dir = STAGE21_OUT_DIR
     if args.stage2_2 and args.out_dir == OUT_DIR:
         args.out_dir = STAGE22_OUT_DIR
+    if args.stage2_3 and args.out_dir == OUT_DIR:
+        args.out_dir = STAGE23_OUT_DIR
     out_dir = args.out_dir.resolve()
-    disk = disk_guard(out_dir, drop_existing=bool(args.stage2_1 or args.stage2_2))
+    disk = disk_guard(out_dir, drop_existing=bool(args.stage2_1 or args.stage2_2 or args.stage2_3))
     data, orth = load_stage2_inputs(args.substrate_dir, include_stage21=bool(args.stage2_1))
     manifest: dict[str, object] = data["manifest"]
     if args.stage2_1:
@@ -1983,6 +2552,11 @@ def main() -> None:
     if args.stage2_2:
         postmortem = run_stage22(args, data, out_dir, disk, orth)
         print(f"stage2.2 wrote {out_dir}")
+        print(f"postmortem {postmortem}")
+        return
+    if args.stage2_3:
+        postmortem = run_stage23(args, data, out_dir, disk, orth)
+        print(f"stage2.3 wrote {out_dir}")
         print(f"postmortem {postmortem}")
         return
     kernel_summary, path_coeffs, case_outputs = run_kernel_fits(args, data, out_dir)

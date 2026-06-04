@@ -42,9 +42,17 @@ PER-KERNEL (clean strata; **statistical-position + bucket, NOT literature-match*
   necessary, WITH caveats + probability framing); (2) robust-in-context. Scale: ~0.03 ≈ nothing; ~0.2 =
   potentially something OR trash, decided by whether we can DETERMINE what drives it; higher = clearly
   something. [[feedback_law_as_statistical_position]] [[feedback_transparent_cutoffs]].
-- **2.3 probability close** (`bp5cixi7k`, RUNNING as of EOD 2026-06-04): permutation-null statistical position
-  + determinability + lead-scale placement for every recovery, + cutoff-sensitivity of the unified's p-vs-null
-  across the 0.5/0.7 cut (the owed cutoff-transparency). Verdict pending; lead-verify + commit on landing.
+- **2.3 probability close DONE** (`bp5cixi7k`; lead-verified, committed): permutation-null (1000×) +
+  determinability + lead-scale, every recovery. VERDICT (within = 1P9J's probability axis; between =
+  case-study → 720-WT): **charge within indicative+determinable** (R²0.28, z451); **charge LOAO indicative**
+  (0.38, z33); **ring within indicative+determinable** (0.28, z155 — ring's probability lives on WITHIN; its
+  LOAO 0.17/z3.2 is the thin case-study); **unified within indicative+determinable** (0.43, z263 —
+  field+McConnell mixture); **unified LOAO above-null but INDETERMINATE** (0.26, z2.0 — atom-axis attribution
+  undetermined → needs 720-WT). **field standalone = ~null (0.03-class)** — CORRECTS the Stage-2
+  "field=recovered-law": coefficient nonzero but recovery null-class; field's real value is the TOP
+  contributor to the COMBINE (drop-one +0.198), not a standalone law. **mc + hbond standalone = ~null**
+  (CI spans 0). Cutoff: within p<0.001 + robust across the 0.5/0.7 sweep; LOAO fragile (p→0.12 at one cut) =
+  the thin between axis. [[feedback_law_as_statistical_position]] [[feedback_transparent_cutoffs]].
 
 CAVEATS: ONE protein; thin clean strata (ring 5, unified 25) → "1P9J across its structures," no population
 inference; the two nulls are PROVISIONAL (this cut/data), not earned.

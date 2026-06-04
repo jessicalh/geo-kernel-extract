@@ -40,17 +40,20 @@ statistical-position grading.
   the signal** (cheap 2nd protein viable).
 - Stage 2.2 `943915f` — unified vet: **REAL combine, NOT charge-in-a-coat** (carried by MOPAC-field +
   McConnell, charge ≈0); within stable, LOAO modest+N-limited (report by PROBABILITY, not overfit-dismiss).
-- Stage 2.3 `bp5cixi7k` (RUNNING, EOD) — probability close: statistical-position-vs-null + determinability +
-  lead-scale + cutoff-sensitivity. Verdict pending; land+verify+commit while lead sleeps.
+- Stage 2.3 `bp5cixi7k` — probability close DONE (lead-verified): charge/ring/unified = indicative+determinable
+  on WITHIN; between indeterminate→720-WT; **field standalone ~null** (0.03-class, top combine contributor);
+  mc/hbond ~null. within cutoff-robust, between fragile.
 
 ## Current step
-**Stage 2 + follow-ups landed (`ecbddd1` → `f92109c` → `943915f`); probability close running (`bp5cixi7k`).**
-RESULTS: **charge q/r³ = recovered-law** (9.30, LOAO 0.38); **field/MOPAC-Coulomb = recovered-law** (−0.83,
-modest but nonzero, PySR agrees — MOPAC>Amber). **Unified D_ab-sum = a REAL combine** (vet): NOT
-charge-in-a-coat — carried by **MOPAC-field + McConnell** (charge≈0); within 0.43 stable, between-atom LOAO
-0.26 modest+N-limited. **ring = a CASE STUDY** (5 atoms — a found fit, NOT a probability);
-McConnell/H-bond standalone-null. Happy-spot: signal pops with **modulation, not isolation** ("loud not
-isolated"); nulls not rescued at clean. Frame: recovery survives at ~50 frames → ubiquitin-50fr viable.
+**Stage 2 + ALL follow-ups landed (`ecbddd1` → `f92109c` → `943915f` → 2.3 probability close).**
+RESULTS (probability + determinability; 1P9J = WITHIN axis): **charge q/r³ = indicative+determinable**
+(within 0.28 z451 / LOAO 0.38 z33); **ring current = indicative+determinable on WITHIN** (0.28, z155) / a thin
+CASE STUDY on between (5 atoms, z3.2); **unified D_ab-sum = a REAL combine** — NOT charge-in-a-coat, carried
+by **MOPAC-field + McConnell** (charge≈0): within 0.43 z263 indicative+determinable, between 0.26 z2.0
+above-null but INDETERMINATE → 720-WT. **field standalone = ~null (0.03-class)** — coeff nonzero but recovery
+null-class (CORRECTS the earlier "recovered-law"; field's value is the TOP combine contributor). **mc + hbond
+standalone = ~null.** Happy-spot: signal pops with **modulation, not isolation** ("loud not isolated"); nulls
+not rescued. Frame: recovery survives ~50 frames → ubiquitin-50fr viable. Cutoff: within robust, between fragile.
 
 **REPORTING STANDARD (now law):** statistical position + determinability, NEVER survives/overfit. Probability
 ONLY where N earns it (the within/frame axis, or many-atom sets); **CASE STUDY where N is tiny** (few-atom
