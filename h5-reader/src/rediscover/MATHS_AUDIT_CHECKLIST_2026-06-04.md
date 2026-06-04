@@ -9,6 +9,11 @@ the COMBINE NOTE (NOW.md / STATE.md), the `PHYSICS_ARCHITECTURE_UNIFICATION` fol
 1. **DFT dia+para validated on T0 only, not T1/T2** (`src/io/DftShieldingLoader.cpp:95`). Trace equality ≠
    component-level dia+para=total. Affects the dia/para SPLIT targets, NOT the total-T2 combine (which we
    fit). → add a full-tensor dia+para=total check; trust total, distrust the split until then.
+   **[RESOLVED-BENIGN 2026-06-04 — `POSTMORTEM_DIAPARA_CHECK`]:** full-tensor check on build4 targets shows
+   dia+para=total holds at ALL components (T0/T1/T2) to ORCA print-rounding (max 1.0e-3 ppm; T2 1.63e-3 = the
+   isometric-basis projection of 1e-3, not drift; inverse 3×3 max 1.0e-3). The split targets are SOUND; the
+   T0-only loader validation was sufficient in practice; total never implicated. (A full-tensor check in the
+   loader is belt-and-suspenders, not required.)
 2. **[CODE-CONFIRMED — the consequential one] the "LOAO" path centers the held-out atom by its OWN mean**
    (`analysis/stage2_law_fits.py:663-665, 1681-1682`; fresh-look verified) → it measures WITHIN-atom
    modulation, NOT between-atom recovery. **CONSEQUENCE: 1P9J has NO clean between axis; the 720-WT is the
