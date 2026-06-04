@@ -1240,6 +1240,7 @@ nmr_test(trajectory_scope_tests
         tests/test_tripeptide_neighbor_residual_vec_next_time_series.cpp
         tests/test_tripeptide_neighbor_residual_vec_prev_time_series.cpp
         tests/test_tripeptide_neighbor_shielding_time_series.cpp
+        tests/test_trajectory_window.cpp
         tests/test_water_field_time_series.cpp
         tests/test_water_field_welford.cpp
 )

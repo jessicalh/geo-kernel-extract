@@ -67,6 +67,24 @@ public:
     void SetStride(std::size_t s) { stride_ = (s == 0) ? 1 : s; }
     std::size_t Stride() const { return stride_; }
 
+    // Optional window over raw TRR frame indices: bound the SINGLE
+    // dispatch loop to [window_start, window_start + window_len). stride_
+    // still applies WITHIN the window. window_len_ == 0 means "no window"
+    // = the full trajectory, which is byte-for-byte the prior behaviour
+    // (zero skips before the seed, the per-frame break never fires). This
+    // is a bound on dispatch, NOT a second emit gate: every TrajectoryResult
+    // and both frame emitters ride DispatchCompute/OnFrame, so bounding
+    // dispatch makes all outputs (H5 time-series, Welford rollups,
+    // per-frame NPYs/PDBs) window-local at once. A separate emit gate is
+    // the footgun removed 2026-05-31 and must not return.
+    void SetWindow(std::size_t start, std::size_t len) {
+        window_start_ = start;
+        window_len_   = len;
+    }
+    std::size_t WindowStart() const { return window_start_; }
+    std::size_t WindowLen() const { return window_len_; }
+    bool HasWindow() const { return window_len_ > 0; }
+
     // Mutable access for the shapes themselves to populate.
     RunOptions& MutablePerFrameRunOptions() { return per_frame_opts_; }
     void AddTrajectoryResultFactory(DeferredResult f) {
@@ -84,6 +102,10 @@ private:
     std::unordered_set<std::type_index> required_conf_result_types_;
     bool requires_aimnet2_ = false;
     std::size_t stride_ = 1;
+    // Window over raw TRR frame indices on the single dispatch loop.
+    // window_len_ == 0 means no window (full trajectory). See SetWindow.
+    std::size_t window_start_ = 0;
+    std::size_t window_len_ = 0;
 };
 
 }  // namespace nmr

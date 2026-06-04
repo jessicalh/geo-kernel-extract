@@ -128,10 +128,15 @@ private:
     std::vector<std::size_t>   owning_atom_;   // H (NH), HA (CaHa), O (CO)
     std::vector<std::int32_t>  residue_index_;
 
-    // Backbone-heavy alignment set (N/CA/C/O) + frame-0 reference.
+    // Backbone-heavy alignment set (N/CA/C/O) + first-dispatched-frame
+    // reference. The reference is captured at the first Compute call; under
+    // a window that is the window start, not trajectory frame 0. This TR
+    // keeps no frame-index vector, so the first dispatched frame's true TRR
+    // index is stashed here for honest reference provenance in WriteH5Group.
     std::vector<std::size_t> align_atoms_;
     std::vector<Vec3>        reference_positions_;
     bool                     reference_captured_ = false;
+    std::size_t              reference_frame_trr_index_ = 0;
     std::size_t              n_lags_ = 120;  // CalculatorConfig dynamics_n_lags
 
     // Per-vector accumulators: body-frame and lab-frame Legendre TCF, and

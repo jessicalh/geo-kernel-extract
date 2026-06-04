@@ -196,14 +196,21 @@ void RmsdTrackingTrajectoryResult::WriteH5Group(
     grp.createAttribute("atom_selection",
         std::string("backbone_heavy_atoms_NCACO"));
     grp.createAttribute("reference_frame_origin",
-        std::string("trajectory_frame_0"));
+        std::string("first_dispatched_frame"));
+    // True TRR index of the reference frame. Under a window the first
+    // dispatched frame is the window start, not trajectory frame 0; the
+    // reference geometry is captured at the first Compute call (already
+    // correct), so this attribute makes the reference's identity honest.
+    grp.createAttribute("reference_frame_trr_index",
+        frame_indices_.empty() ? std::size_t{0} : frame_indices_[0]);
     grp.createAttribute("units", std::string("Angstrom"));
     grp.createAttribute("source_attached_policy",
         std::string("always_attached -- positions present at tp.Seed; "
                     "reference geometry captured at first Compute call "
-                    "(frame 0)"));
+                    "(first dispatched frame)"));
     grp.createAttribute("rmsd_frame_0_convention",
-        std::string("0.0 exactly -- frame 0 is its own reference"));
+        std::string("0.0 exactly -- first dispatched frame is its own "
+                    "reference"));
 
     grp.createDataSet("rmsd", rmsd_);
 

@@ -70,12 +70,30 @@ struct MutantMode {
 /// emit time-windows were removed 2026-05-31 (one of them silently
 /// halved production runs).
 ///
+/// The optional window (@c --window-start N @c --window-len M) bounds the
+/// SINGLE dispatch loop to TRR frames @c [N, N+M). It is restored as a
+/// loud bound on dispatch, NOT a second emit gate: because every output
+/// (H5 time-series, Welford rollups, per-frame NPYs/PDBs) rides the one
+/// dispatch cadence, bounding dispatch makes them all window-local at
+/// once. There is deliberately no separate emit window — reintroducing
+/// one is the removed-2026-05-31 footgun. The default @c window_len == 0
+/// means "no window" = the full trajectory (byte-for-byte today's
+/// behaviour).
+///
 /// MOPAC default is off here because PM7+MOZYME is too expensive for
 /// fleet-scale trajectory runs.
 struct TrajectoryMode {
     std::filesystem::path dir;
     bool                  mopac  = false;  ///< @c --mopac: FullFat (MOPAC on every dispatched frame).
     std::size_t           stride = 1;      ///< @c --stride N: process every N-th TRR frame. The one cadence knob.
+
+    // Window over raw TRR frame indices. Processes only the dispatch
+    // loop's frames in @c [window_start, window_start + window_len);
+    // @c stride still applies WITHIN the window. @c window_len == 0 means
+    // "no window" = the whole trajectory. Both-or-neither: the parser
+    // errors if exactly one of start/len is supplied.
+    std::size_t           window_start = 0;  ///< @c --window-start N: first TRR frame of the window.
+    std::size_t           window_len   = 0;  ///< @c --window-len M: window length in TRR frames (0 = no window).
 };
 
 /// @brief The three GROMACS production files a @c --trajectory DIR holds.

@@ -211,6 +211,14 @@ private:
     RecordBag<SelectionRecord> selections_;
     std::filesystem::path output_dir_;
 
+    // Window provenance, copied from RunConfiguration at the top of Run.
+    // window_len_ == 0 means the run was full-trajectory (no window).
+    // Surfaced as /trajectory/ attributes by WriteH5 so a window-local H5
+    // self-identifies and a downstream consumer can't mistake it for the
+    // full run — the anti-silence guard for the restored window.
+    size_t window_start_ = 0;
+    size_t window_len_ = 0;
+
     // Per-frame env stash (single-slot; overwritten each frame).
     TrajectoryEnv env_;
 

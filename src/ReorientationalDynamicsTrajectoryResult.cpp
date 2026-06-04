@@ -124,7 +124,7 @@ void ReorientationalDynamicsTrajectoryResult::Compute(
         Trajectory& traj,
         std::size_t frame_idx,
         double time_ps) {
-    (void)tp; (void)traj; (void)frame_idx;
+    (void)tp; (void)traj;
     const std::size_t M = align_atoms_.size();
 
     std::vector<Vec3> current;
@@ -133,7 +133,8 @@ void ReorientationalDynamicsTrajectoryResult::Compute(
 
     Mat3 R = Mat3::Identity();
     if (!reference_captured_) {
-        reference_positions_ = current;        // frame 0 is its own reference
+        reference_positions_ = current;        // first dispatched frame is its own reference
+        reference_frame_trr_index_ = frame_idx;  // true TRR index of the reference (window-aware)
         reference_captured_ = true;
     } else {
         R = KabschRotation(current, reference_positions_);
@@ -413,7 +414,12 @@ void ReorientationalDynamicsTrajectoryResult::WriteH5Group(
     grp.createAttribute("sample_interval_ps", sample_interval_ps_);
     grp.createAttribute("vector_kind_legend", std::string("1=NH, 2=CaHa, 3=CO"));
     grp.createAttribute("superposition",      std::string("kabsch_svd backbone_NCACO"));
-    grp.createAttribute("reference",          std::string("trajectory_frame_0"));
+    grp.createAttribute("reference",          std::string("first_dispatched_frame"));
+    // True TRR index of the superposition reference (the window start under
+    // a window; trajectory frame 0 otherwise). The Kabsch reference is
+    // captured at the first Compute call — already correct — so this just
+    // labels its identity honestly.
+    grp.createAttribute("reference_frame_trr_index", reference_frame_trr_index_);
     grp.createAttribute("tcf_estimator",      std::string("legendre_P2_unbiased"));
     grp.createAttribute("s2_estimator",       std::string("henry_szabo_order_tensor_body_frame"));
     grp.createAttribute("tau_e_method",       std::string("area_to_first_S2_crossing"));

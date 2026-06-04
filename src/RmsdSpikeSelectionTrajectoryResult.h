@@ -7,7 +7,8 @@
 // threshold RMSD spike criterion.
 //
 // Dual-threshold spike criterion (OR), with cooldown:
-//   - ABSOLUTE: current frame's backbone RMSD vs frame 0 > 1.5 Å.
+//   - ABSOLUTE: current frame's backbone RMSD vs the reference (the first
+//     dispatched frame — frame 0, or the window start under --window) > 1.5 Å.
 //     The 1.5 Å threshold is calibrated for small (<100-residue)
 //     globular domains at 300 K — SH3 / β-barrel folds typically
 //     equilibrate around 1.0-1.5 Å backbone-RMSD; values above 1.5

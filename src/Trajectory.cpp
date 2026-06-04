@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>   // SIZE_MAX (window upper bound sentinel)
 #include <map>
 #include <string>
 #include <typeindex>
@@ -72,6 +73,12 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     state_ = State::Running;
     output_dir_ = std::move(output_dir);
 
+    // Capture the window for provenance before any frame work. These feed
+    // the /trajectory/ window attributes in WriteH5 so a window-local H5
+    // self-identifies. window_len_ == 0 = full trajectory (no window).
+    window_start_ = config.WindowStart();
+    window_len_   = config.WindowLen();
+
     OperationLog::Info(LogCalcOther, "Trajectory::Run",
         "starting " + config.Name() + " on " + xtc_path_.string());
 
@@ -80,10 +87,19 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // RunConfiguration factories and never surfaced; a dispatch-stride=2
     // hiding behind an emit-stride=1 silently halved two production runs.
     // This line makes the real cadence and the per-frame policy visible up
-    // front. (APBS and AIMNet2 are always-on by constitution, reported here
-    // for completeness, not because they are switchable.)
+    // front. The window is reported here too and LOUDLY: it bounds the one
+    // dispatch loop, so it must never be able to silently contradict the
+    // cadence. (APBS and AIMNet2 are always-on by constitution, reported
+    // here for completeness, not because they are switchable.)
     {
         const RunOptions& o = config.PerFrameRunOptions();
+        const std::string window_desc =
+            config.HasWindow()
+                ? (" window=[" + std::to_string(config.WindowStart()) + "," +
+                   std::to_string(config.WindowStart() + config.WindowLen()) +
+                   ") (" + std::to_string(config.WindowLen()) +
+                   " frames, TRR-indexed; window-LOCAL)")
+                : std::string(" window=full");
         OperationLog::Info(LogCalcOther, "Trajectory::Run",
             "effective policy: stride=" + std::to_string(config.Stride()) +
             " (process every " + std::to_string(config.Stride()) +
@@ -92,7 +108,8 @@ Status Trajectory::Run(TrajectoryProtein& tp,
             " coulomb=" + (o.skip_coulomb ? "off" : "on") +
             " apbs="    + (o.skip_apbs    ? "off" : "on") +
             " dssp="    + (o.skip_dssp    ? "off" : "on") +
-            " aimnet2=" + (config.RequiresAimnet2() ? "on" : "off"));
+            " aimnet2=" + (config.RequiresAimnet2() ? "on" : "off") +
+            window_desc);
     }
 
     // =========================================================
@@ -114,6 +131,26 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // Seed the canonical conformation (conf0). After Seed, Protein is
     // finalized (bonds + rings detected) and TrajectoryAtoms are
     // allocated — factories in Phase 3 can rely on all of it.
+    //
+    // Window start: when a window is set, advance the cursor past the
+    // first window_start TRR frames BEFORE the seed read so conf0 is the
+    // window's first frame, not trajectory frame 0. Skip() and
+    // ReadNextFrame() advance current_index_ identically (both
+    // `has_read_ ? +1 : 0`), so after window_start skips the seed read
+    // lands Index() exactly on window_start. With no window this loop
+    // runs zero times → byte-for-byte the prior behaviour.
+    if (config.HasWindow()) {
+        for (std::size_t s = 0; s < config.WindowStart(); ++s) {
+            if (!handler_->Skip()) {
+                OperationLog::Error("Trajectory::Run",
+                    "Phase 2: window_start " +
+                    std::to_string(config.WindowStart()) +
+                    " beyond trajectory length (only " + std::to_string(s) +
+                    " frame(s) before EOF)");
+                return kFrameReadFailed;
+            }
+        }
+    }
 
     if (!handler_->ReadNextFrame()) {
         OperationLog::Error("Trajectory::Run",
@@ -220,12 +257,13 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     }
 
     // =========================================================
-    // Phase 6: frame 0 — env + calc + dispatch + record
+    // Phase 6: seed frame (frame 0, or window_start when windowed) —
+    //          env + calc + dispatch + record
     // =========================================================
 
     env_.solvent            = handler_->Solvent();
     env_.current_energy     = EnergyAtTime(handler_->Time());
-    env_.current_frame_idx  = 0;
+    env_.current_frame_idx  = handler_->Index();  // 0, or window_start when windowed
     env_.current_frame_time = handler_->Time();
     env_.velocities         = handler_->ProteinVelocities();
     env_.box_matrix         = handler_->BoxMatrix();
@@ -245,15 +283,22 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         RunResult rr = OperationRunner::Run(conf0, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
-                "frame 0 calculator pipeline failed: " + rr.error);
+                "seed frame " + std::to_string(handler_->Index()) +
+                " calculator pipeline failed: " + rr.error);
             return kCalculatorPipelineFailed;
         }
-        tp.DispatchCompute(conf0, *this, /*frame_idx=*/0, handler_->Time());
-        FramePdbEmitter::OnFrame(conf0, /*frame_idx=*/0, handler_->Time(),
+        // The seed frame's identity is its true TRR index: 0 without a
+        // window, window_start when windowed (Phase 2 skipped to it).
+        // handler_->Index() has not advanced since the seed read, so it is
+        // exactly that frame. A literal 0 here was the windowing bug — it
+        // delivered frame 0's identity for a window_start seed.
+        const std::size_t seed_idx = handler_->Index();
+        tp.DispatchCompute(conf0, *this, seed_idx, handler_->Time());
+        FramePdbEmitter::OnFrame(conf0, seed_idx, handler_->Time(),
                                  &env_.box_matrix);
-        FrameNpyEmitter::OnFrame(conf0, /*frame_idx=*/0, handler_->Time());
+        FrameNpyEmitter::OnFrame(conf0, seed_idx, handler_->Time());
         frame_times_.push_back(handler_->Time());
-        frame_indices_.push_back(0);
+        frame_indices_.push_back(seed_idx);
         frame_count_ = 1;
     }
 
@@ -263,8 +308,19 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // Stride N: dispatch every N-th frame, skip the intervening N-1.
     // Each iteration is uniform: read → tick → update env → run
     // calculators → dispatch TrajectoryResults → record.
+    //
+    // Window end: the dispatch loop stops once the cursor reaches the
+    // exclusive window upper bound [window_start, window_start+window_len).
+    // Because Skip() and ReadNextFrame() advance Index() identically, the
+    // freshly-read frame's Index() is the true TRR frame index — the break
+    // compares against window_end BEFORE any dispatch/emit/record so the
+    // out-of-window frame contributes nothing. With no window the bound is
+    // SIZE_MAX and the break never fires → byte-for-byte the prior loop.
 
     const std::size_t stride = config.Stride();
+    const std::size_t window_end = config.HasWindow()
+        ? config.WindowStart() + config.WindowLen()
+        : SIZE_MAX;
     bool eof = false;
     while (!eof) {
         for (std::size_t s = 0; s + 1 < stride; ++s) {
@@ -273,6 +329,19 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         if (eof) break;
 
         if (!handler_->ReadNextFrame()) break;
+
+        // Window bound: stop before dispatching the first frame at or past
+        // window_end. Loud, not silent — log the captured window-frame
+        // count so the window-local cut is visible in the run log.
+        if (handler_->Index() >= window_end) {
+            OperationLog::Info(LogCalcOther, "Trajectory::Run",
+                "window end reached: TRR frame " +
+                std::to_string(handler_->Index()) + " >= window_end " +
+                std::to_string(window_end) + "; captured " +
+                std::to_string(frame_count_) +
+                " dispatched frame(s) in window-LOCAL extraction");
+            break;
+        }
 
         // Update env for this frame.
         env_.solvent            = handler_->Solvent();
@@ -310,6 +379,28 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     if (!handler_->error().empty()) {
         OperationLog::Warn("Trajectory::Run",
             "frame loop ended with handler error: " + handler_->error());
+    }
+
+    // Window completeness — graceful hard error, never silent under-capture.
+    // A window must deliver every frame it asked for. If end-of-trajectory cut
+    // the run short of the requested span, the dispatched count falls below
+    // ceil(window_len / stride): fail loud with an actionable message and write
+    // nothing, rather than emit a short window the caller might mistake for the
+    // whole thing (silence is the sin that got this feature removed once).
+    // We compare COUNTS, not "did Index reach window_end" — a window whose end
+    // lands exactly at EOF captured all its frames and must NOT error.
+    if (config.HasWindow()) {
+        const std::size_t requested =
+            (config.WindowLen() + stride - 1) / stride;  // ceil(len / stride)
+        if (frame_count_ < requested) {
+            OperationLog::Error("Trajectory::Run",
+                "window [" + std::to_string(config.WindowStart()) + "," +
+                std::to_string(window_end) + ") not fully present in the "
+                "trajectory: captured " + std::to_string(frame_count_) + " of " +
+                std::to_string(requested) + " requested frame(s) before "
+                "end-of-trajectory. Move or shrink the window.");
+            return kFrameReadFailed;
+        }
     }
 
     // =========================================================
@@ -372,6 +463,17 @@ void Trajectory::WriteH5(HighFive::File& file) const {
     grp.createAttribute("edr_path", edr_path_.string());
     grp.createAttribute("configuration", std::string(
         state_ == State::Complete ? "complete" : "incomplete"));
+
+    // Window provenance: a window-local H5 self-identifies so a downstream
+    // consumer cannot mistake it for the full run. window_mode is "local"
+    // when a window bounded dispatch, "full" otherwise; window_start /
+    // window_len are the raw TRR frame bound [start, start+len). This is
+    // the required anti-silence guard for the restored window — the run was
+    // bounded, and the file says so.
+    grp.createAttribute("window_mode",
+        std::string(window_len_ > 0 ? "local" : "full"));
+    grp.createAttribute("window_start", window_start_);
+    grp.createAttribute("window_len", window_len_);
 
     // Frame metadata.
     auto frames = file.createGroup("/trajectory/frames");

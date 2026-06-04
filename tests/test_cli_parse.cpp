@@ -154,6 +154,55 @@ TEST(CliParse, TrajectoryStrideZeroNormalisedToOne) {
 }
 
 
+// ---- Trajectory window (--window-start N --window-len M; loud, never silent) ----
+
+TEST(CliParse, TrajectoryNoWindowByDefault) {
+    Argv a{"nmr_extract", "--trajectory", "/data/run"};
+    const auto r = nmr::cli::Parse(a.argc(), a.argv());
+    ASSERT_TRUE(r.spec.has_value());
+    const auto& m = std::get<nmr::cli::TrajectoryMode>(*r.spec);
+    EXPECT_EQ(m.window_start, 0u);
+    EXPECT_EQ(m.window_len, 0u);  // 0 = no window = full trajectory
+}
+
+TEST(CliParse, TrajectoryWindowBothFlags) {
+    Argv a{"nmr_extract", "--trajectory", "/data/run",
+           "--window-start", "100", "--window-len", "20"};
+    const auto r = nmr::cli::Parse(a.argc(), a.argv());
+    ASSERT_TRUE(r.spec.has_value());
+    const auto& m = std::get<nmr::cli::TrajectoryMode>(*r.spec);
+    EXPECT_EQ(m.window_start, 100u);
+    EXPECT_EQ(m.window_len, 20u);
+}
+
+TEST(CliParse, TrajectoryWindowStartAloneIsError) {
+    // Both-or-neither: a lone --window-start must not silently run full.
+    Argv a{"nmr_extract", "--trajectory", "/data/run", "--window-start", "100"};
+    const auto r = nmr::cli::Parse(a.argc(), a.argv());
+    EXPECT_FALSE(r.spec.has_value());
+    EXPECT_NE(r.error.find("both or neither"), std::string::npos);
+}
+
+TEST(CliParse, TrajectoryWindowLenMissingValueIsError) {
+    // --window-len as the final token has no value; GetArg reports empty and
+    // strtoull("")==0 would silently mean "no window". Must be a loud error.
+    Argv a{"nmr_extract", "--trajectory", "/data/run",
+           "--window-start", "100", "--window-len"};
+    const auto r = nmr::cli::Parse(a.argc(), a.argv());
+    EXPECT_FALSE(r.spec.has_value());
+    EXPECT_NE(r.error.find("require a non-negative integer"), std::string::npos);
+}
+
+TEST(CliParse, TrajectoryWindowLenZeroIsError) {
+    // An explicit zero-length window is empty, not "full run" — reject loudly.
+    Argv a{"nmr_extract", "--trajectory", "/data/run",
+           "--window-start", "100", "--window-len", "0"};
+    const auto r = nmr::cli::Parse(a.argc(), a.argv());
+    EXPECT_FALSE(r.spec.has_value());
+    EXPECT_NE(r.error.find(">= 1"), std::string::npos);
+}
+
+
 // ---- Common options ----
 
 TEST(CliParse, CommonOptionsCarryThrough) {

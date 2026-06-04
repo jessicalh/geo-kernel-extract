@@ -291,15 +291,21 @@ void RingNeighbourhoodTrajectoryStats::WriteH5Group(
     grp.createAttribute("source_attached_policy",
         std::string("always_attached -- positions present at "
                     "tp.Seed; (atom, ring) pair set frozen at first "
-                    "Compute call (frame 0); per-frame geometry "
-                    "computed fresh from conf.ring_geometries + "
+                    "Compute call (first dispatched frame); per-frame "
+                    "geometry computed fresh from conf.ring_geometries + "
                     "positions"));
     grp.createAttribute("static_snapshot_origin",
-        std::string("frame_0 -- (atom, ring) cutoff-set captured "
-                    "from frame-0 positions; subsequent frames "
-                    "track geometry of those same pairs and may "
-                    "drift past the 15A cutoff (consumer filters "
+        std::string("first_dispatched_frame -- (atom, ring) cutoff-set "
+                    "captured from the first dispatched frame's positions; "
+                    "subsequent frames track geometry of those same pairs "
+                    "and may drift past the 15A cutoff (consumer filters "
                     "via the distance channel)"));
+    // True TRR index of the snapshot frame. Under a window the first
+    // dispatched frame is the window start, not trajectory frame 0; the
+    // (atom, ring) set is captured at the first Compute call (already
+    // correct), so this attribute names the snapshot's identity honestly.
+    grp.createAttribute("static_snapshot_trr_index",
+        frame_indices_.empty() ? std::size_t{0} : frame_indices_[0]);
 
     // Dynamic: geometry (N, T, R, 4) double
     std::vector<double> flat(N * T * R * kChannelCount);

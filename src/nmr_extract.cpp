@@ -272,6 +272,10 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
         : RunConfiguration::PerFrameExtractionSet();
     // The single cadence knob: process every mode.stride-th TRR frame.
     config.SetStride(mode.stride);
+    // Optional window-local extraction: bound the dispatch loop to TRR
+    // frames [start, start+len). len==0 (the default) means no window =
+    // full trajectory, unchanged from prior behaviour.
+    config.SetWindow(mode.window_start, mode.window_len);
     if (mode.mopac) {
         config.MutablePerFrameRunOptions().net_charge = tp.NetCharge();
     }

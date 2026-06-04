@@ -180,6 +180,48 @@ ParseResult ParseTrajectory(int argc, char* argv[]) {
         m.stride = std::strtoull(s_stride.c_str(), nullptr, 10);
         if (m.stride == 0) m.stride = 1;
     }
+    // Optional window over raw TRR frame indices: [window_start,
+    // window_start + window_len). Bounds the SINGLE dispatch loop; stride
+    // still applies within. Both-or-neither: presence is tested with
+    // HasFlag (a flag may be present yet be the final token, which GetArg
+    // reports as empty) so "exactly one supplied" is caught as an error
+    // rather than silently treated as no-window.
+    const bool has_win_start = HasFlag(argc, argv, "--window-start");
+    const bool has_win_len   = HasFlag(argc, argv, "--window-len");
+    if (has_win_start != has_win_len) {
+        r.error =
+            "--window-start N and --window-len M must be given together "
+            "(both or neither); window = TRR frames [N, N+M), window-local";
+        return r;
+    }
+    if (has_win_start && has_win_len) {
+        // HasFlag confirmed presence, but a flag can be the FINAL token with no
+        // value, which GetArg reports as empty -> strtoull("") == 0 ->
+        // window_len 0 -> HasWindow() false -> a silently full run. Require a
+        // digit string for each value and a window of >= 1 frame. Loud, not
+        // silent: this feature was removed once for silent degradation.
+        const std::string s_start = GetArg(argc, argv, "--window-start");
+        const std::string s_len   = GetArg(argc, argv, "--window-len");
+        const auto is_uint = [](const std::string& s) {
+            return !s.empty() &&
+                   s.find_first_not_of("0123456789") == std::string::npos;
+        };
+        if (!is_uint(s_start) || !is_uint(s_len)) {
+            r.error =
+                "--window-start and --window-len each require a non-negative "
+                "integer: --window-start N --window-len M "
+                "(window = TRR frames [N, N+M))";
+            return r;
+        }
+        m.window_start = std::strtoull(s_start.c_str(), nullptr, 10);
+        m.window_len   = std::strtoull(s_len.c_str(), nullptr, 10);
+        if (m.window_len == 0) {
+            r.error =
+                "--window-len must be >= 1 (window = TRR frames "
+                "[start, start+len); 0 is an empty window)";
+            return r;
+        }
+    }
     r.spec   = ModeSpec{std::move(m)};
     r.common = ParseCommon(argc, argv);
     return r;
