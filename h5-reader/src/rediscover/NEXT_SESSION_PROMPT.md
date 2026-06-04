@@ -2,9 +2,11 @@
 
 Paste to a fresh session. Branch `h5-reader-pysr-spike` — NEVER merge/switch/rebase/PR. The LEAD owns ALL git.
 
-You are resuming the nmr-shielding "rediscover" work. The grounded physics + equivariant case study has neat
-numbers for a student-scale exploration — but **"neat" is not "real" yet, and the spine of this session is the
-careful MATHS AUDIT: are the numbers real?** Do not chase new results until it closes.
+You are resuming the nmr-shielding "rediscover" work. The MATHS AUDIT is **CODE-COMPLETE** (2026-06-04): the
+numbers were chased, three concrete issues found + dispositioned, the docs made honest. The case study now stands
+cleanly — **1P9J is a WITHIN instrument**: charge/ring/the combine recover on the within axis (the cookies); the
+between axis was a mislabel (retracted → 720-WT). The spine now is the parked **VERDICT RE-RUNS** (confirm the
+within numbers) + the secondary tracks — NOT re-doing the audit.
 
 ## STEP 0 — ORIENT (read, in order)
 - `src/rediscover/INDEX.md` — the cold-start map + minimal reading path. Follow it.
@@ -16,26 +18,26 @@ careful MATHS AUDIT: are the numbers real?** Do not chase new results until it c
   `project_stage3_equivariant_gnn`, `feedback_token_economy_codex_codes`, `feedback_all_statistics_minimize_python_15gb`.
 
 ## STEP 1 — PROVE COMPREHENSION + THINK OUT LOUD (a gate, not a formality). Tell the lead back:
-- **SETTLED** (the audit does NOT threaten): charge q/r³ (within 0.28, z451) + ring current (within 0.28,
-  z155) indicative+determinable on the WITHIN axis; the unified combine's WITHIN recovery (0.43, z263) is a
-  REAL combine carried by MOPAC-field + McConnell (charge≈0), not charge-in-a-coat.
-- **PROVISIONAL** (the audit decides): every LOAO/between number + the combine's DEPTH/attribution claim.
-  **CODE-CONFIRMED: the "LOAO" centers by the held-out atom's own mean → WITHIN-modulation, NOT between-atom
-  recovery → 1P9J has NO clean between axis; the 720-WT is the ONLY between instrument.**
+- **SETTLED & STANDING** (survived the audit): 1P9J = WITHIN instrument; charge q/r³ (within 0.28, z451) + ring
+  current (within 0.28, z155) indicative+determinable; the unified combine's WITHIN recovery (0.43, z263) is a
+  REAL combine (MOPAC-field + McConnell, charge≈0), not charge-in-a-coat. field/mc/hbond standalone ~null.
+- **RESOLVED by the audit:** #1 dia/para split benign; **#2 the "LOAO" was within-modulation not between (true-LOAO:
+  1P9J between ~null) → between numbers RETRACTED, code fixed, between defers ENTIRELY to the 720-WT**; #3 ring/broad
+  e3nn leakage code-fixed to the clean EFG protocol. Two VERDICT RE-RUNS remain parked (STEP 2).
 - **THE FRAME:** statistical position + determinability, never survives/overfit; probability where N earns it,
-  case-study where tiny (ring-5); 1P9J = WITHIN instrument; ~0.03 ≈ null, ~0.2 = something-or-trash by
-  determinability; collinearity DESCRIBES the combine (expected for shadows-of-one-object), NOT a dismissal.
+  case-study where tiny; 1P9J = WITHIN instrument; ~0.03 ≈ null, ~0.2 = something-or-trash by determinability;
+  collinearity DESCRIBES the combine (expected for shadows-of-one-object), NOT a dismissal.
 - FLAG anything off/stale. WAIT for the lead's go.
 
-## STEP 2 — THE MATHS AUDIT (the spine; once the lead confirms)
-Walk `MATHS_AUDIT_CHECKLIST` **together — lead + Claude, NOT codex.** The 3 issues, **#2 first** (decide whether
-a true LOAO/atom-MEAN test is even meaningful on one protein, or between is deferred entirely to the 720-WT);
-then #1 (DFT dia/para T0-only validation) and #3 (ring/broad e3nn de-mean/unpurged-split leakage → align to the
-clean EFG e3nn path). Keep VALIDITY (DOF / null / basis-invariance / held-out) separate from ATTRIBUTION
-(collinearity-affected — describe, don't dismiss). Fold in the physics-architecture sharpeners (fixed
-`(3cos²−1)` eigenstructure null; coefficient-agreement-in-physical-units). Decide what is REAL, what stays
-provisional, what to fix. **A SECOND audit pass after**, if it surfaces more. Any fixes: lead-vetted, gated,
-commit-only-green, lead owns git.
+## STEP 2 — THE PARKED VERDICT RE-RUNS (the spine; on the lead's go)
+The audit is code-complete; what remains are the two "are the numbers real, finally" confirmation runs (likely
+one overnight batch): (a) the **LOAO re-fit** — now correct, though 1P9J's between is ~null regardless (720-WT
+owns between); (b) the **e3nn clean-protocol re-run** — the actual clean-vs-leaky number for the combine's
+"three paths agree," the one survivor the #3 fix leaves pending. Keep VALIDITY (DOF / null / basis-invariance /
+held-out) separate from ATTRIBUTION (collinearity — describe, don't dismiss); fold in the physics-architecture
+sharpeners (fixed `(3cos²−1)` null; coefficient-agreement-in-physical-units). Optionally a **second adversarial
+pass** over the now-fixed code (lead floated it). Dispositions/maths = lead + Claude, NOT codex; the re-runs are
+codex grind, gated, lead owns git. Closed dispositions are in `MATHS_AUDIT_CHECKLIST_2026-06-04.md`.
 
 ## STEP 3 — secondary tracks (on the lead's steer, AFTER the audit gates)
 - **720-WT statics pilot, B-path** — now the ONLY between instrument: the durable static-pose/mutant-tree
