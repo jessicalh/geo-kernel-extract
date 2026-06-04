@@ -66,6 +66,13 @@ PER-KERNEL (clean strata; **statistical-position + bucket, NOT literature-match*
   between instrument.** Every LOAO/between number (unified 0.26 / charge 0.38 / ring 0.17) is a mislabeled
   within number — do NOT quote as between until the centering is decided. Cold-start map + minimal reading
   path now in `INDEX.md`.
+- **AUDIT VERDICTS (2026-06-04):** #1 RESOLVED-BENIGN (`POSTMORTEM_DIAPARA_CHECK`) — dia+para=total holds at all
+  components (split targets sound; total never implicated). **#2 RESOLVED (`POSTMORTEM_TRUE_LOAO` / `b6e4d2e`):
+  true between-atom recovery on 1P9J is ~null** (charge 0.036 / ring −1.0 / unified −105 overfit) → every prior
+  LOAO/between number was mislabeled within-modulation, **RETRACTED**; **between / transferability / combine-DEPTH
+  defers ENTIRELY to the 720-WT** (1P9J has NO clean between axis). The WITHIN results stand (charge/ring/unified
+  combine within). CODE FIX landing (`bh5f0e7ve`): the LOAO/between path → true between-atom recovery; full
+  re-fit HELD per lead. **#3 (ring/broad e3nn leakage) OPEN** — bears on the within combine's "3 paths agree."
 
 CAVEATS: ONE protein; thin clean strata (ring 5, unified 25) → "1P9J across its structures," no population
 inference; the two nulls are PROVISIONAL (this cut/data), not earned.

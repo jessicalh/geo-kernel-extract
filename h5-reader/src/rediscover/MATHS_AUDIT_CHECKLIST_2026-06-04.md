@@ -21,6 +21,11 @@ the COMBINE NOTE (NOW.md / STATE.md), the `PHYSICS_ARCHITECTURE_UNIFICATION` fol
    mislabeled WITHIN number; do NOT quote as between. Decide together: is a true LOAO (predict the held-out
    atom's MEAN, not its modulation) even the right between-test on ONE protein, or is between deferred
    entirely to the 720-WT?
+   **[RESOLVED 2026-06-04 — `POSTMORTEM_TRUE_LOAO` / `b6e4d2e`]:** true-LOAO run → 1P9J TRUE between-atom
+   recovery is ~null (charge 0.036, 0.03-class; ring −1.0; unified −105, overfit, null p0.70/z0.06). Between
+   numbers RETRACTED; between / transferability / combine-DEPTH defers ENTIRELY to the 720-WT. **CODE FIX**
+   landing (`bh5f0e7ve`): the LOAO/between path → true between-atom recovery (reuses the validated `true_loao_*`
+   machinery); full re-fit HELD per lead.
 3. **ring/broad e3nn: de-mean over ALL groups + unpurged random frame splits** (`analysis/equiv_t2_e3nn.py`,
    `analysis/equiv_t2_backbone_e3nn.py`) → possible leakage. The EFG e3nn path (`analysis/equiv_t2_efg_e3nn.py`)
    is clean (blocked/purged) = the template to align to. Affects the equivariant-path numbers in "3 paths agree."

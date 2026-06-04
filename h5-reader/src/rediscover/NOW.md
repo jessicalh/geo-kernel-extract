@@ -55,24 +55,25 @@ statistical-position grading.
   (the EFG e3nn path is clean = the template to align to).
 
 ## Current step
-**THE GATE — the maths audit is NOT done; every combine + LOAO/between number is PROVISIONAL until it closes.**
-Do NOT quote the unified 0.43/0.26 or any LOAO/between figure as a result yet. The next session's SPINE is the
-careful maths review — *are the numbers real?* — agenda in `MATHS_AUDIT_CHECKLIST_2026-06-04.md`.
-**CODE-CONFIRMED (fresh-look + maths-walk, `stage2_law_fits.py:663-665,1681-1682`): the "LOAO" path centers by
-the held-out atom's OWN mean → it measures WITHIN-modulation, NOT between-atom recovery → 1P9J has NO clean
-between axis; the 720-WT is the ONLY between instrument.** The settled within-axis results the audit does NOT
-threaten: charge q/r³ (within 0.28, z451), ring current (within 0.28, z155), the unified combine's WITHIN
-recovery (0.43, z263, field+McConnell, not charge-in-a-coat).
+**THE GATE — maths audit IN PROGRESS: #1 + #2 closed, #3 open.** The WITHIN-axis results STAND (the audit does
+NOT threaten them): charge q/r³ (within 0.28, z451), ring current (within 0.28, z155), the unified combine's
+WITHIN recovery (0.43, z263, field+McConnell, not charge-in-a-coat). **#2 RESOLVED (true-LOAO `b6e4d2e`): 1P9J's
+TRUE between-atom recovery is ~null — charge 0.036 (0.03-class), ring −1.0, unified −105 (overfit, null p0.70).
+Every prior "LOAO/between" number (charge 0.38 / ring 0.17 / unified 0.26) was mislabeled within-modulation →
+RETRACTED. Between / transferability / combine-DEPTH defers ENTIRELY to the 720-WT (1P9J has NO clean between
+axis).** Code fix landing (`bh5f0e7ve`): the LOAO/between path → true between-atom recovery; full re-fit HELD per
+lead. #1 RESOLVED-BENIGN (dia/para split sound). **#3 OPEN:** ring/broad e3nn leakage — bears on the WITHIN
+combine's "3 paths agree," the next audit item. Do NOT quote any between/LOAO number.
 
 **Stage 2 + ALL follow-ups landed (`ecbddd1` → `f92109c` → `943915f` → 2.3 probability close).**
-RESULTS (probability + determinability; 1P9J = WITHIN axis): **charge q/r³ = indicative+determinable**
-(within 0.28 z451 / LOAO 0.38 z33); **ring current = indicative+determinable on WITHIN** (0.28, z155) / a thin
-CASE STUDY on between (5 atoms, z3.2); **unified D_ab-sum = a REAL combine** — NOT charge-in-a-coat, carried
-by **MOPAC-field + McConnell** (charge≈0): within 0.43 z263 indicative+determinable, between 0.26 z2.0
-above-null but INDETERMINATE → 720-WT. **field standalone = ~null (0.03-class)** — coeff nonzero but recovery
-null-class (CORRECTS the earlier "recovered-law"; field's value is the TOP combine contributor). **mc + hbond
-standalone = ~null.** Happy-spot: signal pops with **modulation, not isolation** ("loud not isolated"); nulls
-not rescued. Frame: recovery survives ~50 frames → ubiquitin-50fr viable. Cutoff: within robust, between fragile.
+RESULTS (probability + determinability; **1P9J = WITHIN axis ONLY — true-LOAO killed the between axis here**):
+**charge q/r³ = indicative+determinable on WITHIN** (0.28, z451); **ring current = indicative+determinable on
+WITHIN** (0.28, z155); **unified D_ab-sum = a REAL combine on WITHIN** — NOT charge-in-a-coat, carried by
+**MOPAC-field + McConnell** (charge≈0), within 0.43 z263. **field standalone = ~null** (0.03-class; coeff
+nonzero, recovery null-class; its value is the TOP combine contributor, not a standalone law). **mc + hbond
+standalone = ~null.** **ALL between/LOAO numbers RETRACTED** (true-LOAO: 1P9J between ~null → the 720-WT owns
+between + the combine's depth). Happy-spot: signal pops with **modulation, not isolation** ("loud not
+isolated"); nulls not rescued. Frame: recovery survives ~50 frames → ubiquitin-50fr viable.
 
 **REPORTING STANDARD (now law):** statistical position + determinability, NEVER survives/overfit. Probability
 ONLY where N earns it (the within/frame axis, or many-atom sets); **CASE STUDY where N is tiny** (few-atom
