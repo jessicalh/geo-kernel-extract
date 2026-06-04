@@ -1,4 +1,53 @@
-# Rediscover — current state (2026-06-03)
+# Rediscover — current state (2026-06-04)
+
+## STAGE 2 DONE (2026-06-04, `ecbddd1`) — per-mechanism law fits + unified D_ab-sum (fitter decomposed)
+
+Chunk 1: the ~4k-line fitter DECOMPOSED (`allatom_fit_common/build3/legacy` + `stage2_law_fits`;
+`piece2`=wrapper); **reproduce-gate GREEN — Build-3 score/partition artifacts BYTE-FOR-BYTE.** frozen
+get_C (1.11e-16), 5-comp T2, anti-circular (clean strata by CaseHunter + input-side dominance);
+conventions applied (ringχ excluded, WaterEFG→−Hessian, Larsen-ppm separate). Substrate build4; run
+`/tmp/rediscover-runs/2026-06-04-stage2-fits` (165M). Gates lead-verified (no per-source dump,
+Python-only no producer/C++/git, disk 6.7G/15G).
+
+PER-KERNEL (clean strata; **statistical-position + bucket, NOT literature-match**):
+- **charge q/r³ = RECOVERED-LAW** — coeff +9.30 [8.10,10.51]; within 0.28 / **LOAO 0.38** (strongest on
+  the BETWEEN/static axis); paths agree; fixed D_ab shape supported. The cookie.
+- **field (MOPAC-Coulomb) = RECOVERED-LAW** — coeff −0.83 [−1.23,−0.43]; weak (~0.03) but NONZERO, PySR
+  agrees. Vindicates MOPAC>Amber.
+- **ring (Pople) = form-recovered-scale-fitted** — coeff +0.69 [0.21,1.17]; within 0.28 / LOAO 0.17; REAL
+  but THIN (5 atoms — aromatic-ring-facing H).
+- **McConnell = can't-make-it-work standalone** (CI spans 0; home = joint fit).
+- **H-bond = can't-make-it-work this cut** (CI spans 0; geometric + Larsen don't rescue).
+- **UNIFIED D_ab-SUM** (through-space atoms, 25 atoms / 3.9k rows): **within R² 0.432 / LOAO 0.258** — the
+  "calculators as shadows" COMBINE genuinely recovers through-space total-T2. Intensities charge +15.5,
+  MOPAC-field −8.8 well-determined; mc/pq/disp huge/weak. Recovery REAL, calibration NOT literature-clean
+  (correlate-not-match held; disagreeing shadows diagnostic, not averaged).
+- 3 PATHS: ridge + PySR + equivariant-Schur (closed-form on reduced sums — NOT the full e3nn-per-source,
+  which stays the deferred chewer); agree where the law holds.
+
+CAVEATS: ONE protein; thin clean strata (ring 5, unified 25) → "1P9J across its structures," no population
+inference; the two nulls are PROVISIONAL (this cut/data), not earned.
+
+NEXT (open, lead to steer):
+1. **HAPPY-SPOT SWEEP (the core-assumption test).** Stage 2 fit AT a clean threshold but did NOT sweep.
+   The hunt proper = response curves recovery-vs-cleanliness (dominance / isolation / **a geometric-noise
+   criterion we don't yet have** — CaseHunter gates isolation/motion/quiet, none = "low geometric noise";
+   motion even pulls the other way), strict→loose: does recovery POP toward the cleanest spots ("noisy
+   geometry limits visibility")? Could RESCUE McConnell/H-bond at THEIR happy spots. Cheap, existing substrate.
+2. **720-WT STATICS PILOT.** Same r²SCAN + same `.out` files (CONFIRMED — absolute σ present). Lots of rings
+   → fattens ring's thin BETWEEN axis + cross-protein charge validation (charge's LOAO 0.38 is its strongest
+   axis = the static one the 720-WT set is made of). Needs the rediscover substrate emitted on the 720 WT
+   structures (bounded static run). The transferability/statics pilot (arc layer 4).
+3. **Frame-count ablation** — recovery vs n_frames (within-axis only; AR(1) ρ≈0.53 → effective ≪ raw). Cheap.
+   **Doubles as the go/no-go for a fast 2nd-protein-WITH-dynamics run** (lead idea 2026-06-04): ubiquitin,
+   one choice ns @ 20 ps ≈ 50 frames, DFT-cheap. 1P9J is already ~20 ps stride (751 fr / 15 ns) → subsampling
+   1P9J to 50 frames SIMULATES it. If recovery survives at ~50 frames, ubiquitin-50 is viable (within-axis,
+   2nd protein, +a few rings) and complements the static 720-WT. ORCA-budget: weigh vs the one-more-run-
+   Trp-cage earmark ([[project_orca_budget_one_more_run_trpcage]]) — lead's call; ubiquitin-50 is a fraction
+   of a full trajectory's cost.
+4. **McConnell/H-bond → joint/ensemble fit** (their home, per the deep-audit).
+
+---
 
 ## SESSION HANDOFF (2026-06-03 LATE) — all-atoms fit through Build 3 LANDED
 

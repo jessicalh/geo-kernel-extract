@@ -32,24 +32,27 @@ statistical-position grading.
   H-bond get dominant_fraction/gap + C++ quintile bin-ids + CaseHunter habitats; charge widened
   (`charge_wide`); bins C++-side for all 5. Gated green (31/31 parity, 5e-13 two-path field/hbond,
   7/7 tests), build4 substrate (build1 kept). **C++ dominance arc complete.**
+- Stage 2 `ecbddd1` — fitter DECOMPOSED (reproduce-gate byte-for-byte) + per-mechanism law fits +
+  unified D_ab-sum. **charge + MOPAC-field = recovered laws; unified through-space R² 0.43;** ring
+  real-but-thin (5 atoms); McConnell/H-bond standalone-null. Recorded in STATE.md (STAGE 2 block).
 
 ## Current step
-**Build 4 landed (`fba5cd3`) — the C++ dominance arc is complete for the law-bearing five.**
-Every law-bearing kernel (ring/charge/mc/field/hbond) now has its "where can we hear it cleanly"
-handle: dominant_fraction + gap + C++ quintile bins + a CaseHunter habitat (field = MOPAC-Coulomb,
-H-bond = DSSP donor/acceptor partners, charge widened to carbons). Standing fit verdict (Build 3):
-per-type-WITHIN trustworthy; channel = total-T2 (gauge-invariant); H-bond→HN judgeable per-type.
-NEXT — **stage 2 (finish what we started; the payoff):** at the audible places, fit each kernel's
-law the multiple ways we have (equivariant-T2 + PySR + ridge) → coefficient + statistical position
-+ cross-kernel comparison + path-agreement; pull the navigable real examples; decompose the
-~4k-line fitter while in there. Plan-vet then fire.
-SIDE-FRAME landed (`PHYSICS_ARCHITECTURE_UNIFICATION_2026-06-04.md`): the .tex is our own maths
-handed back — it VINDICATES the architecture (independently re-derives shared-angular/per-type-radial)
-and changes nothing structural. FOLD into stage 2: the fixed-eigenstructure `(3cos²−1)` magic-angle
-NULL for statistical position; path-agreement in PHYSICAL UNITS (coefficient, not R²); the convention
-ledger (ring / WaterField+ vs APBS− signs). DEFER the axis-angle dominance refinement unless stage-2
-fits show ring/mc/hbond contaminating each other. GUARD: no grand pointwise fit; Larsen-ppm vs
-geometric-shadow name collision.
+**Stage 2 landed (`ecbddd1`) — the finish.** Fitter decomposed (reproduce-gate byte-for-byte), then
+per-mechanism law fits on the dominance-clean exemplars + the unified D_ab-sum. RESULTS: **charge q/r³ =
+recovered-law** (9.30, LOAO 0.38, paths agree); **field/MOPAC-Coulomb = recovered-law** (−0.83, weak but
+nonzero, PySR agrees — MOPAC>Amber vindicated); **ring = form-recovered-scale-fitted** (real but THIN, 5
+atoms); **McConnell + H-bond = can't-make-it-work standalone** (CIs span 0; joint-fit territory). **Unified
+D_ab-sum recovers through-space total-T2** (within 0.43 / LOAO 0.26) — "calculators as shadows" combine
+fits; intensities real but NOT literature-clean (correlate-not-match held). 3 paths: ridge + PySR +
+equivariant-Schur (full e3nn-per-source still the deferred chewer). ONE protein, thin strata → nulls PROVISIONAL.
+NEXT (open, lead to steer): (1) **happy-spot sweep** — response curves recovery-vs-cleanliness (dominance /
+isolation / + a geometric-noise axis we lack — CaseHunter gates isolation/motion/quiet, none = low geom
+noise), strict→loose: does it POP toward clean (tests "noisy geometry limits visibility")? rescue the nulls?
+cheap, existing substrate. (2) **720-WT statics pilot** — same r²SCAN + same `.out` files (CONFIRMED,
+absolute σ present); lots of rings → fattens ring's thin between-axis + cross-protein charge; needs the
+substrate emitted on the 720 WTs (bounded static run). (3) frame-count ablation (cheap, within-axis).
+(4) McConnell/H-bond → joint/ensemble fit. Full detail: STATE.md STAGE 2 block.
+SIDE-FRAME: `PHYSICS_ARCHITECTURE_UNIFICATION_2026-06-04.md` (vindicates architecture; fold-ins applied in stage 2).
 
 ## Live decisions / through-lines (the marker's real content)
 - **Laws come from dominance-isolated clean exemplars, fit per-mechanism, UN-SHRUNK.** The
