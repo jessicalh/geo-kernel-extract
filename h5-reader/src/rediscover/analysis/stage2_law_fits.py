@@ -21,12 +21,18 @@ import pandas as pd
 
 import change_of_basis as cob
 from allatom_fit_common import (
+    alpha_distribution,
+    blocked_frame_cv_splits,
     centered_by_train_atom,
     ci95,
+    deterministic_index_folds,
     effective_n_components,
     finite_fmt,
     json_sanitize,
+    jackknife_metric_values,
+    jackknife_se_from_values,
     r2_score,
+    select_best_alpha,
     split_frame_block,
 )
 
@@ -34,12 +40,17 @@ from allatom_fit_common import (
 SUBSTRATE_DIR = Path("/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build4")
 OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2-fits")
 STAGE21_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_1-sweep")
+STAGE22_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_2-unified-vet")
 MIN_DISK_FREE_BYTES = 20 * 1024**3
 MAX_REDISCOVER_BYTES = 15 * 1024**3
 T2 = 5
 PYSR_SAMPLE = 3000
 SWEEP_KEEP_FRACTIONS = (0.10, 0.20, 0.35, 0.50, 0.70, 1.00)
 FRAME_COUNTS = (20, 50, 100, 200, 400, 660)
+STAGE22_ALPHA_GRID = (0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 1.0e4, 1.0e5)
+STAGE22_INNER_CV_FOLDS = 5
+STAGE22_BOOTSTRAPS = 500
+STAGE22_BOOTSTRAP_FRAME_BLOCK = 10
 
 
 @dataclass(frozen=True)
@@ -139,6 +150,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--substrate-dir", type=Path, default=SUBSTRATE_DIR)
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR)
     ap.add_argument("--stage2-1", action="store_true", help="run the Stage 2.1 happy-spot sweep and frame-count ablation")
+    ap.add_argument("--stage2-2", action="store_true", help="run the Stage 2.2 unified D_ab overfit/charge-coat vet")
     ap.add_argument("--run-pysr", action="store_true")
     ap.add_argument("--pysr-timeout", type=int, default=45)
     ap.add_argument("--pysr-iterations", type=int, default=8)
@@ -1348,18 +1360,629 @@ def run_stage21(args: argparse.Namespace, data: dict[str, object], out_dir: Path
     return write_stage21_postmortem(out_dir, args.substrate_dir, orth, shape_summary, frame_summary, disk, plots)
 
 
+def stage22_stack_features(features: list[np.ndarray]) -> np.ndarray:
+    if not features:
+        return np.empty((0, 0), dtype=float)
+    return np.column_stack([np.asarray(f, dtype=float).reshape(-1) for f in features])
+
+
+def stage22_fit_ridge_flat(x_train: np.ndarray, y_train: np.ndarray, alpha: float) -> dict[str, object]:
+    x = np.asarray(x_train, dtype=float)
+    y = np.asarray(y_train, dtype=float).reshape(-1, 1)
+    if x.ndim == 1:
+        x = x.reshape(-1, 1)
+    p = int(x.shape[1])
+    ok = np.isfinite(y[:, 0]) & np.isfinite(x).all(axis=1)
+    x = x[ok]
+    y = y[ok]
+    if len(x) < 3 or p == 0:
+        return {
+            "ok": False,
+            "alpha": float(alpha),
+            "intercept": math.nan,
+            "coef_std": np.full(p, np.nan),
+            "coef_original": np.full(p, np.nan),
+            "mean": np.zeros(p),
+            "std": np.ones(p),
+            "train_observations": int(len(x)),
+            "effective_dof_penalized": math.nan,
+            "effective_dof_with_intercept": math.nan,
+        }
+    mean = x.mean(axis=0)
+    std = x.std(axis=0)
+    std[~np.isfinite(std) | (std <= 0.0)] = 1.0
+    z = (x - mean) / std
+    design = np.column_stack([np.ones(len(z)), z])
+    penalty = np.eye(p + 1, dtype=float) * max(0.0, float(alpha))
+    penalty[0, 0] = 0.0
+    xtx = design.T @ design
+    xty = design.T @ y
+    try:
+        beta = np.linalg.solve(xtx + penalty, xty).reshape(-1)
+    except np.linalg.LinAlgError:
+        beta = np.linalg.lstsq(xtx + penalty, xty, rcond=None)[0].reshape(-1)
+    eig = np.linalg.eigvalsh(z.T @ z)
+    eig = np.maximum(eig, 0.0)
+    if float(alpha) <= 0.0:
+        eff_pen = float(np.sum(eig > 1.0e-10))
+    else:
+        eff_pen = float(np.sum(eig / (eig + float(alpha))))
+    coef_std = beta[1:]
+    coef_original = coef_std / std
+    return {
+        "ok": True,
+        "alpha": float(alpha),
+        "intercept": float(beta[0] - np.dot(mean / std, coef_std)),
+        "coef_std": coef_std.astype(float),
+        "coef_original": coef_original.astype(float),
+        "mean": mean.astype(float),
+        "std": std.astype(float),
+        "train_observations": int(len(x)),
+        "effective_dof_penalized": eff_pen,
+        "effective_dof_with_intercept": float(1.0 + eff_pen),
+    }
+
+
+def stage22_predict_ridge_flat(model: dict[str, object], x_eval: np.ndarray) -> np.ndarray:
+    x = np.asarray(x_eval, dtype=float)
+    if x.ndim == 1:
+        x = x.reshape(-1, 1)
+    if not bool(model.get("ok")):
+        return np.full(x.shape[0], np.nan, dtype=float)
+    mean = np.asarray(model["mean"], dtype=float)
+    std = np.asarray(model["std"], dtype=float)
+    coef_std = np.asarray(model["coef_std"], dtype=float)
+    x = np.where(np.isfinite(x), x, mean)
+    return (float(model["intercept"]) + ((x - mean) / std) @ coef_std).astype(float)
+
+
+def stage22_fit_predict_arrays(
+    train_features: list[np.ndarray],
+    y_train: np.ndarray,
+    eval_features: list[np.ndarray],
+    alpha: float,
+) -> tuple[np.ndarray, dict[str, object]]:
+    x_train = stage22_stack_features(train_features)
+    yy = np.asarray(y_train, dtype=float).reshape(-1)
+    model = stage22_fit_ridge_flat(x_train, yy, alpha)
+    pred = stage22_predict_ridge_flat(model, stage22_stack_features(eval_features))
+    eval_rows = int(eval_features[0].shape[0]) if eval_features else 0
+    return pred.reshape((eval_rows, T2)), model
+
+
+def stage22_alpha_scores() -> dict[float, list[float]]:
+    return {float(alpha): [] for alpha in STAGE22_ALPHA_GRID}
+
+
+def stage22_select_within_alpha(
+    features: list[np.ndarray],
+    y: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    outer_train: np.ndarray,
+) -> tuple[float, dict[str, object]]:
+    scores = stage22_alpha_scores()
+    folds = blocked_frame_cv_splits(frames, outer_train, STAGE22_INNER_CV_FOLDS, 1)
+    for fold in folds:
+        fit = np.asarray(fold["fit_mask"], dtype=bool)
+        val = np.asarray(fold["val_mask"], dtype=bool)
+        x_c = [centered_by_train_atom(f, atoms, fit) for f in features]
+        y_c = centered_by_train_atom(y, atoms, fit)
+        train_features = [f[fit] for f in x_c]
+        val_features = [f[val] for f in x_c]
+        for alpha in STAGE22_ALPHA_GRID:
+            pred, _model = stage22_fit_predict_arrays(train_features, y_c[fit], val_features, float(alpha))
+            score = r2_score(pred, y_c[val])
+            if np.isfinite(score):
+                scores[float(alpha)].append(float(score))
+    mean_scores = {float(alpha): (float(np.mean(vals)) if vals else math.nan) for alpha, vals in scores.items()}
+    selected = select_best_alpha(mean_scores, [float(a) for a in STAGE22_ALPHA_GRID])
+    return selected, {
+        "axis": "within_frameblock",
+        "method": "blocked frame inner CV inside outer training frames only",
+        "selected_alpha": float(selected),
+        "inner_cv_folds": int(len(folds)),
+        "alpha_grid": [float(x) for x in STAGE22_ALPHA_GRID],
+        "inner_cv_R2_by_alpha": {f"{alpha:g}": (float(mean_scores[alpha]) if np.isfinite(mean_scores[alpha]) else None) for alpha in mean_scores},
+    }
+
+
+def stage22_center_by_atom_subset(values: np.ndarray, atoms: np.ndarray) -> np.ndarray:
+    return atom_center(np.asarray(values, dtype=float), np.asarray(atoms))
+
+
+def stage22_select_loao_alpha(
+    features: list[np.ndarray],
+    y: np.ndarray,
+    atoms: np.ndarray,
+    outer_train: np.ndarray,
+) -> tuple[float, dict[str, object]]:
+    scores = stage22_alpha_scores()
+    train_atoms = np.unique(atoms[outer_train])
+    folds = deterministic_index_folds(train_atoms, STAGE22_INNER_CV_FOLDS)
+    for inner_fit_atoms, inner_val_atoms in folds:
+        fit = outer_train & np.isin(atoms, inner_fit_atoms)
+        val = outer_train & np.isin(atoms, inner_val_atoms)
+        train_features = [stage22_center_by_atom_subset(f[fit], atoms[fit]) for f in features]
+        train_y = stage22_center_by_atom_subset(y[fit], atoms[fit])
+        val_features = [stage22_center_by_atom_subset(f[val], atoms[val]) for f in features]
+        val_y = stage22_center_by_atom_subset(y[val], atoms[val])
+        for alpha in STAGE22_ALPHA_GRID:
+            pred, _model = stage22_fit_predict_arrays(train_features, train_y, val_features, float(alpha))
+            score = r2_score(pred, val_y)
+            if np.isfinite(score):
+                scores[float(alpha)].append(float(score))
+    mean_scores = {float(alpha): (float(np.mean(vals)) if vals else math.nan) for alpha, vals in scores.items()}
+    selected = select_best_alpha(mean_scores, [float(a) for a in STAGE22_ALPHA_GRID])
+    return selected, {
+        "axis": "LOAO",
+        "method": "deterministic atom-fold inner CV inside each outer held-out atom training set",
+        "selected_alpha": float(selected),
+        "inner_cv_folds": int(len(folds)),
+        "alpha_grid": [float(x) for x in STAGE22_ALPHA_GRID],
+        "inner_cv_R2_by_alpha": {f"{alpha:g}": (float(mean_scores[alpha]) if np.isfinite(mean_scores[alpha]) else None) for alpha in mean_scores},
+    }
+
+
+def stage22_block_bootstrap_values(
+    pred: np.ndarray,
+    target: np.ndarray,
+    frames: np.ndarray,
+    n_boot: int,
+    block_len: int,
+    seed: int,
+) -> np.ndarray:
+    pred = np.asarray(pred, dtype=float)
+    target = np.asarray(target, dtype=float)
+    frames = np.asarray(frames, dtype=int)
+    ok = np.isfinite(pred).all(axis=1) & np.isfinite(target).all(axis=1)
+    pred = pred[ok]
+    target = target[ok]
+    frames = frames[ok]
+    unique = np.sort(np.unique(frames))
+    if len(unique) < 2:
+        return np.asarray([], dtype=float)
+    by_pos = [np.flatnonzero(frames == frame) for frame in unique]
+    n_blocks = int(math.ceil(len(unique) / max(1, int(block_len))))
+    rng = np.random.default_rng(seed)
+    vals: list[float] = []
+    for _ in range(int(n_boot)):
+        starts = rng.integers(0, len(unique), size=n_blocks)
+        chosen_positions: list[int] = []
+        for start in starts:
+            for offset in range(max(1, int(block_len))):
+                chosen_positions.append(int((int(start) + offset) % len(unique)))
+                if len(chosen_positions) >= len(unique):
+                    break
+            if len(chosen_positions) >= len(unique):
+                break
+        pieces = [by_pos[pos] for pos in chosen_positions if len(by_pos[pos])]
+        if not pieces:
+            continue
+        take = np.concatenate(pieces)
+        val = r2_score(pred[take], target[take])
+        if np.isfinite(val):
+            vals.append(float(val))
+    return np.asarray(vals, dtype=float)
+
+
+def stage22_recovery_intervals(
+    pred: np.ndarray,
+    target: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    seed: int,
+    include_bootstrap: bool,
+) -> dict[str, object]:
+    r2 = r2_score(pred, target)
+    jk_vals = jackknife_metric_values(pred, target, atoms)
+    jk_se = jackknife_se_from_values(jk_vals)
+    jk_lo, jk_hi = ci95(float(r2), float(jk_se))
+    if include_bootstrap:
+        boot = stage22_block_bootstrap_values(
+            pred,
+            target,
+            frames,
+            STAGE22_BOOTSTRAPS,
+            STAGE22_BOOTSTRAP_FRAME_BLOCK,
+            seed,
+        )
+    else:
+        boot = np.asarray([], dtype=float)
+    if len(boot):
+        boot_lo, boot_hi = np.nanpercentile(boot, [2.5, 97.5])
+    else:
+        boot_lo, boot_hi = math.nan, math.nan
+    return {
+        "R2": float(r2),
+        "jackknife_se": float(jk_se) if np.isfinite(jk_se) else math.nan,
+        "jackknife_ci95_low": float(jk_lo) if np.isfinite(jk_lo) else math.nan,
+        "jackknife_ci95_high": float(jk_hi) if np.isfinite(jk_hi) else math.nan,
+        "jackknife_groups": int(len(np.unique(atoms))),
+        "bootstrap_ci95_low": float(boot_lo) if np.isfinite(boot_lo) else math.nan,
+        "bootstrap_ci95_high": float(boot_hi) if np.isfinite(boot_hi) else math.nan,
+        "bootstrap_replicates": int(len(boot)),
+        "bootstrap_frame_block": int(STAGE22_BOOTSTRAP_FRAME_BLOCK),
+    }
+
+
+def stage22_prefix(prefix: str, metrics: dict[str, object]) -> dict[str, object]:
+    return {f"{prefix}_{key}": value for key, value in metrics.items()}
+
+
+def stage22_evaluate_within(
+    labels: list[str],
+    features: list[np.ndarray],
+    y: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    include_ci: bool,
+    seed: int,
+) -> tuple[dict[str, object], pd.DataFrame]:
+    split = split_frame_block(frames, 0.20, 1)
+    train = np.asarray(split["train_mask"], dtype=bool)
+    test = np.asarray(split["test_mask"], dtype=bool)
+    alpha, alpha_audit = stage22_select_within_alpha(features, y, atoms, frames, train)
+    x_c = [centered_by_train_atom(f, atoms, train) for f in features]
+    y_c = centered_by_train_atom(y, atoms, train)
+    pred, model = stage22_fit_predict_arrays([f[train] for f in x_c], y_c[train], [f[test] for f in x_c], alpha)
+    intervals = stage22_recovery_intervals(pred, y_c[test], atoms[test], frames[test], seed, include_ci)
+    coef = np.asarray(model["coef_original"], dtype=float)
+    coeffs = pd.DataFrame({
+        "term": labels,
+        "within_ridge_intensity": coef if len(coef) == len(labels) else np.full(len(labels), np.nan),
+        "selected_within_alpha": float(alpha),
+    })
+    return {
+        **intervals,
+        "selected_alpha": float(alpha),
+        "effective_dof_penalized": float(model["effective_dof_penalized"]) if np.isfinite(model["effective_dof_penalized"]) else math.nan,
+        "effective_dof_with_intercept": float(model["effective_dof_with_intercept"]) if np.isfinite(model["effective_dof_with_intercept"]) else math.nan,
+        "train_rows": int(train.sum()),
+        "test_rows": int(test.sum()),
+        "train_observations": int(model["train_observations"]),
+        "terms": int(len(labels)),
+        "test_frames": len(split["test_frames"]),
+        "purged_train_frames": len(split["purged_frames"]),
+        "cross_split_lag1_pairs": int(split["cross_split_lag1_pairs"]),
+        "alpha_audit": alpha_audit,
+    }, coeffs
+
+
+def stage22_evaluate_loao(
+    labels: list[str],
+    features: list[np.ndarray],
+    y: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    include_ci: bool,
+    seed: int,
+) -> dict[str, object]:
+    pred = np.full_like(y, np.nan, dtype=float)
+    target = np.full_like(y, np.nan, dtype=float)
+    alphas: list[float] = []
+    dofs: list[float] = []
+    observations: list[int] = []
+    alpha_audits: list[dict[str, object]] = []
+    for held in np.unique(atoms):
+        train = atoms != held
+        test = atoms == held
+        if int(train.sum()) < 3 or int(test.sum()) < 2:
+            continue
+        alpha, audit = stage22_select_loao_alpha(features, y, atoms, train)
+        train_features = [stage22_center_by_atom_subset(f[train], atoms[train]) for f in features]
+        train_y = stage22_center_by_atom_subset(y[train], atoms[train])
+        test_features = [stage22_center_by_atom_subset(f[test], atoms[test]) for f in features]
+        test_y = stage22_center_by_atom_subset(y[test], atoms[test])
+        pred_test, model = stage22_fit_predict_arrays(train_features, train_y, test_features, alpha)
+        pred[test] = pred_test
+        target[test] = test_y
+        alphas.append(float(alpha))
+        dofs.append(float(model["effective_dof_penalized"]) if np.isfinite(model["effective_dof_penalized"]) else math.nan)
+        observations.append(int(model["train_observations"]))
+        alpha_audits.append({"heldout_atom": int(held), **audit})
+    ok = np.isfinite(pred).all(axis=1) & np.isfinite(target).all(axis=1)
+    intervals = stage22_recovery_intervals(pred[ok], target[ok], atoms[ok], frames[ok], seed, include_ci)
+    dist = alpha_distribution(alphas)
+    finite_dofs = np.asarray(dofs, dtype=float)
+    finite_dofs = finite_dofs[np.isfinite(finite_dofs)]
+    return {
+        **intervals,
+        "selected_alpha_mode": float(dist["selected_alpha"]) if dist["selected_alpha"] is not None else math.nan,
+        "selected_alpha_min": float(dist["min"]) if dist["min"] is not None else math.nan,
+        "selected_alpha_max": float(dist["max"]) if dist["max"] is not None else math.nan,
+        "selected_alpha_counts": dist["counts"],
+        "effective_dof_penalized_median": float(np.median(finite_dofs)) if len(finite_dofs) else math.nan,
+        "effective_dof_penalized_min": float(np.min(finite_dofs)) if len(finite_dofs) else math.nan,
+        "effective_dof_penalized_max": float(np.max(finite_dofs)) if len(finite_dofs) else math.nan,
+        "train_observations_median": float(np.median(observations)) if observations else math.nan,
+        "terms": int(len(labels)),
+        "heldout_atoms": int(len(np.unique(atoms))),
+        "alpha_audit": alpha_audits,
+    }
+
+
+def stage22_term_group(term: str) -> str:
+    if term == "charge_total":
+        return "charge"
+    if term.startswith("mc_"):
+        return "mc"
+    if term.startswith("mopac_field") or term.startswith("water_field"):
+        return "field"
+    if term.startswith("hbond"):
+        return "hbond"
+    if term.startswith("pq_"):
+        return "pq"
+    if term.startswith("disp_"):
+        return "disp"
+    return "other"
+
+
+def stage22_support_flag(n_atoms: int, n_terms: int, n_eff: float) -> str:
+    flags = []
+    if n_terms >= n_atoms:
+        flags.append("thin_LOAO_p_ge_atoms")
+    elif n_atoms < 2 * n_terms:
+        flags.append("thin_LOAO_atoms_lt_2p")
+    if n_atoms < 30:
+        flags.append("thin_atoms")
+    if np.isfinite(n_eff) and n_eff < 10.0 * max(1, n_terms):
+        flags.append("within_N_eff_lt_10p")
+    return ";".join(flags)
+
+
+def stage22_model_fit(
+    model: str,
+    term_set: str,
+    labels: list[str],
+    features: list[np.ndarray],
+    y: np.ndarray,
+    atoms: np.ndarray,
+    frames: np.ndarray,
+    include_ci: bool,
+    seed: int,
+) -> tuple[dict[str, object], pd.DataFrame]:
+    within, coeffs = stage22_evaluate_within(labels, features, y, atoms, frames, include_ci, seed)
+    loao = stage22_evaluate_loao(labels, features, y, atoms, frames, include_ci, seed + 1000)
+    neff_info = effective_n_components(y, atoms, frames)
+    n_eff = float(neff_info["within_N_eff_median"])
+    row = {
+        "model": model,
+        "term_set": term_set,
+        "rows": int(len(y)),
+        "atoms": int(len(np.unique(atoms))),
+        "frames": int(len(np.unique(frames))),
+        "terms": int(len(labels)),
+        "term_labels": "|".join(labels),
+        "within_N_eff_median": n_eff,
+        "median_lag1_rho": float(neff_info["median_lag1_rho"]),
+        "support_flag": stage22_support_flag(int(len(np.unique(atoms))), int(len(labels)), n_eff),
+        **stage22_prefix("within", {k: v for k, v in within.items() if k != "alpha_audit"}),
+        **stage22_prefix("LOAO", {k: v for k, v in loao.items() if k != "alpha_audit"}),
+    }
+    coeffs.insert(0, "model", model)
+    coeffs.insert(1, "term_set", term_set)
+    return row, coeffs
+
+
+def stage22_base_dataset(data: dict[str, object]) -> dict[str, object]:
+    rows: pd.DataFrame = data["rows"]
+    mask, rule = unified_base_mask(data, clean_stage2=True)
+    idx = np.flatnonzero(mask)
+    labels, features_all = build_unified_features(data)
+    return {
+        "selection_rule": rule,
+        "idx": idx,
+        "labels": labels,
+        "features": [f[idx] for f in features_all],
+        "target": stage21_target(data)[idx],
+        "atoms": rows["atom_index"].to_numpy(int)[idx],
+        "frames": rows["original_frame_index"].to_numpy(int)[idx],
+    }
+
+
+def stage22_drop_text(drop: pd.DataFrame, column: str, n: int = 4) -> str:
+    if drop.empty:
+        return "none"
+    rows = drop.sort_values(column, ascending=False).head(n)
+    parts = []
+    for row in rows.itertuples(index=False):
+        parts.append(f"{row.dropped_term} {getattr(row, column):+.3f}/{row.LOAO_loss_vs_all:+.3f}")
+    return "; ".join(parts) if parts else "none"
+
+
+def stage22_harm_text(drop: pd.DataFrame, column: str, n: int = 3) -> str:
+    if drop.empty:
+        return "none"
+    rows = drop.sort_values(column, ascending=True).head(n)
+    parts = []
+    for row in rows.itertuples(index=False):
+        val = getattr(row, column)
+        if np.isfinite(val) and val < 0.0:
+            parts.append(f"{row.dropped_term} {val:+.3f}/{row.LOAO_loss_vs_all:+.3f}")
+    return "; ".join(parts) if parts else "none"
+
+
+def stage22_fmt_ci(row: pd.Series, axis: str) -> str:
+    return (
+        f"{float(row[f'{axis}_R2']):.3f} "
+        f"(JK {float(row[f'{axis}_jackknife_ci95_low']):.3f},{float(row[f'{axis}_jackknife_ci95_high']):.3f}; "
+        f"BB {float(row[f'{axis}_bootstrap_ci95_low']):.3f},{float(row[f'{axis}_bootstrap_ci95_high']):.3f})"
+    )
+
+
+def write_stage22_postmortem(
+    out_dir: Path,
+    substrate_dir: Path,
+    orth: float,
+    selection_rule: str,
+    ols: pd.DataFrame,
+    ablations: pd.DataFrame,
+    drop: pd.DataFrame,
+    disk: dict[str, object],
+) -> Path:
+    by_model = ablations.set_index("model")
+    charge = by_model.loc["charge_alone"]
+    minus = by_model.loc["unified_minus_charge"]
+    allr = by_model.loc["unified_all"]
+    ols_row = ols.iloc[0]
+    delta_within_charge = float(allr["within_R2"] - charge["within_R2"])
+    delta_loao_charge = float(allr["LOAO_R2"] - charge["LOAO_R2"])
+    delta_within_minus = float(allr["within_R2"] - minus["within_R2"])
+    delta_loao_minus = float(allr["LOAO_R2"] - minus["LOAO_R2"])
+    within_survives = bool(float(allr["within_R2"]) > 0.30)
+    loao_survives = bool(float(allr["LOAO_R2"]) >= 0.15)
+    loao_thin_positive = bool(float(allr["LOAO_R2"]) > 0.05)
+    if delta_within_charge > 0.05 and float(minus["within_R2"]) > 0.05:
+        combine_bucket = "REAL combine on within; LOAO support thin"
+        verdict = "real combine, not charge-in-a-coat; within survives shrinkage, LOAO is overfit-sensitive/thin-positive"
+    elif delta_within_charge <= 0.03:
+        combine_bucket = "charge-in-a-coat"
+        verdict = "artifact: unified all adds little beyond charge"
+    else:
+        combine_bucket = "mixed weak-combine"
+        verdict = "mixed: some non-charge lift, but charge dominates"
+    if within_survives and loao_survives:
+        overfit_bucket = "within-and-LOAO-survive-shrinkage"
+    elif within_survives and loao_thin_positive:
+        overfit_bucket = "within-survives; LOAO-shrinks-to-thin-positive"
+    else:
+        overfit_bucket = "collapses-or-thins-under-shrinkage"
+    top_drop = stage22_drop_text(drop, "within_loss_vs_all")
+    harmful = stage22_harm_text(drop, "within_loss_vs_all")
+    lines = [
+        "# Stage 2.2 Postmortem - 2026-06-04",
+        f"Run dir: `{out_dir}`",
+        f"Substrate: `{substrate_dir}`",
+        f"Scope: Build4 CSV/NPY sidecars only; no extraction/DFT/per-source; frozen `get_C`, `|C.T C-I|max={orth:.2e}`; five-component total-T2.",
+        f"Selection: {selection_rule}; input-side dominance only; 25 atoms / 3903 rows / 26 unified terms.",
+        f"Overfit vet: OLS {float(ols_row['within_frameblock_R2']):.3f}/{float(ols_row['LOAO_R2']):.3f} -> ridge ALL within {stage22_fmt_ci(allr, 'within')}; LOAO {stage22_fmt_ci(allr, 'LOAO')}.",
+        f"Shrinkage: within alpha {float(allr['within_selected_alpha']):g}, effDOF {float(allr['within_effective_dof_penalized']):.1f}/26 (+intercept {float(allr['within_effective_dof_with_intercept']):.1f}); within N_eff {float(allr['within_N_eff_median']):.1f}.",
+        f"LOAO shrinkage: alpha mode/min/max {float(allr['LOAO_selected_alpha_mode']):g}/{float(allr['LOAO_selected_alpha_min']):g}/{float(allr['LOAO_selected_alpha_max']):g}; effDOF median {float(allr['LOAO_effective_dof_penalized_median']):.1f}/26; support `{allr['support_flag']}`.",
+        f"Bucket: overfit={overfit_bucket}; old LOAO 0.26 does not survive as-is and should not outrank within.",
+        f"Charge table: charge-alone within {float(charge['within_R2']):.3f}, LOAO {float(charge['LOAO_R2']):.3f}; minus-charge within {float(minus['within_R2']):.3f}, LOAO {float(minus['LOAO_R2']):.3f}; all within {float(allr['within_R2']):.3f}, LOAO {float(allr['LOAO_R2']):.3f}.",
+        f"Deltas ALL-charge: within {delta_within_charge:+.3f}, LOAO {delta_loao_charge:+.3f}; ALL-minus-charge: within {delta_within_minus:+.3f}, LOAO {delta_loao_minus:+.3f}; bucket={combine_bucket}.",
+        f"Drop-one losses (within/LOAO, positive means term carries recovery): {top_drop}.",
+        f"Drop-one removals that improve within (negative loss = noisy/overfit term): {harmful}.",
+        f"Verdict: {verdict}.",
+        "Artifacts: `stage2_2_charge_ablation_recovery.csv`, `stage2_2_drop_one_ablation.csv`, `stage2_2_unified_all_ridge_intensities.csv`, `stage2_2_run_audit.json`.",
+        f"Disk: `/tmp/rediscover-runs` {float(disk['rediscover_runs_GiB_before_write']):.1f}G before write (<15G); output drop-old={disk.get('deleted_existing_output_dir')}; build4+build1 kept.",
+    ]
+    path = Path(__file__).resolve().parents[1] / "POSTMORTEM_STAGE2_2.md"
+    path.write_text("\n".join(lines[:40]) + "\n", encoding="utf-8")
+    return path
+
+
+def run_stage22(args: argparse.Namespace, data: dict[str, object], out_dir: Path, disk: dict[str, object], orth: float) -> Path:
+    base = stage22_base_dataset(data)
+    labels: list[str] = base["labels"]
+    features: list[np.ndarray] = base["features"]
+    y: np.ndarray = base["target"]
+    atoms: np.ndarray = base["atoms"]
+    frames: np.ndarray = base["frames"]
+    charge_i = labels.index("charge_total")
+    model_specs = [
+        ("charge_alone", "charge_total", [charge_i]),
+        ("unified_minus_charge", "all_except_charge_total", [i for i in range(len(labels)) if i != charge_i]),
+        ("unified_all", "all_terms", list(range(len(labels)))),
+    ]
+    ablation_rows = []
+    coeff_tables = []
+    for j, (model_name, term_set, inds) in enumerate(model_specs):
+        row, coeffs = stage22_model_fit(
+            model_name,
+            term_set,
+            [labels[i] for i in inds],
+            [features[i] for i in inds],
+            y,
+            atoms,
+            frames,
+            include_ci=True,
+            seed=20_220 + j,
+        )
+        ablation_rows.append(row)
+        coeff_tables.append(coeffs)
+    ablations = pd.DataFrame(ablation_rows)
+    coeffs_all = pd.concat(coeff_tables, ignore_index=True)
+    all_row = ablations[ablations["model"] == "unified_all"].iloc[0]
+    drop_rows = []
+    for i, label in enumerate(labels):
+        inds = [j for j in range(len(labels)) if j != i]
+        row, _coeffs = stage22_model_fit(
+            f"drop_{label}",
+            f"all_except_{label}",
+            [labels[j] for j in inds],
+            [features[j] for j in inds],
+            y,
+            atoms,
+            frames,
+            include_ci=False,
+            seed=30_000 + i,
+        )
+        drop_rows.append({
+            "dropped_term": label,
+            "dropped_group": stage22_term_group(label),
+            "drop_model_terms": int(row["terms"]),
+            "drop_model_within_R2": float(row["within_R2"]),
+            "drop_model_LOAO_R2": float(row["LOAO_R2"]),
+            "within_loss_vs_all": float(all_row["within_R2"] - row["within_R2"]),
+            "LOAO_loss_vs_all": float(all_row["LOAO_R2"] - row["LOAO_R2"]),
+            "drop_within_alpha": float(row["within_selected_alpha"]),
+            "drop_LOAO_alpha_mode": float(row["LOAO_selected_alpha_mode"]),
+            "drop_within_eff_dof": float(row["within_effective_dof_penalized"]),
+            "drop_LOAO_eff_dof_median": float(row["LOAO_effective_dof_penalized_median"]),
+        })
+    drop = pd.DataFrame(drop_rows).sort_values("within_loss_vs_all", ascending=False).reset_index(drop=True)
+    ols_summary, _ols_intensities = run_unified_fit(data)
+    ablations.to_csv(out_dir / "stage2_2_charge_ablation_recovery.csv", index=False)
+    drop.to_csv(out_dir / "stage2_2_drop_one_ablation.csv", index=False)
+    coeffs_all.to_csv(out_dir / "stage2_2_unified_all_ridge_intensities.csv", index=False)
+    ols_summary.to_csv(out_dir / "stage2_2_ols_unified_reference.csv", index=False)
+    audit = {
+        "substrate_dir": str(args.substrate_dir),
+        "out_dir": str(out_dir),
+        "disk_guard": disk,
+        "change_of_basis_orthogonality_max_abs": orth,
+        "python_read_scope": "Build-4 per_atom_substrate CSV/NPY sidecars and CaseHunter manifests only",
+        "forbidden_inputs_not_opened": ["trajectory.h5", "ORCA outputs", "per-source dumps", "older rediscover dirs for fitting"],
+        "selection_rule": str(base["selection_rule"]),
+        "rows": int(len(y)),
+        "atoms": int(len(np.unique(atoms))),
+        "terms_unified_all": int(len(labels)),
+        "alpha_grid": [float(x) for x in STAGE22_ALPHA_GRID],
+        "inner_cv_folds": int(STAGE22_INNER_CV_FOLDS),
+        "regularization": "ridge with standardized train-only design and unpenalized intercept",
+        "within_outer_split": "centered contiguous frame block; held-out block excluded from alpha selection and centering means",
+        "LOAO_outer_split": "one atom held out; alpha selected by atom-fold CV inside remaining atoms",
+        "ci_methods": {
+            "jackknife": "leave-one-atom recovery jackknife on held-out predictions",
+            "block_bootstrap": f"moving circular frame-block bootstrap, {STAGE22_BOOTSTRAPS} replicates, block length {STAGE22_BOOTSTRAP_FRAME_BLOCK}",
+        },
+        "anti_circularity": "through-space atom selection uses emitted input-side dominance/CaseHunter only; DFT appears only in held-out fitting/scoring",
+    }
+    (out_dir / "stage2_2_run_audit.json").write_text(json.dumps(json_sanitize(audit), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return write_stage22_postmortem(out_dir, args.substrate_dir, orth, str(base["selection_rule"]), ols_summary, ablations, drop, disk)
+
+
 def main() -> None:
     args = parse_args()
     args.substrate_dir = args.substrate_dir.resolve()
     if args.stage2_1 and args.out_dir == OUT_DIR:
         args.out_dir = STAGE21_OUT_DIR
+    if args.stage2_2 and args.out_dir == OUT_DIR:
+        args.out_dir = STAGE22_OUT_DIR
     out_dir = args.out_dir.resolve()
-    disk = disk_guard(out_dir, drop_existing=bool(args.stage2_1))
+    disk = disk_guard(out_dir, drop_existing=bool(args.stage2_1 or args.stage2_2))
     data, orth = load_stage2_inputs(args.substrate_dir, include_stage21=bool(args.stage2_1))
     manifest: dict[str, object] = data["manifest"]
     if args.stage2_1:
         postmortem = run_stage21(args, data, out_dir, disk, orth)
         print(f"stage2.1 wrote {out_dir}")
+        print(f"postmortem {postmortem}")
+        return
+    if args.stage2_2:
+        postmortem = run_stage22(args, data, out_dir, disk, orth)
+        print(f"stage2.2 wrote {out_dir}")
         print(f"postmortem {postmortem}")
         return
     kernel_summary, path_coeffs, case_outputs = run_kernel_fits(args, data, out_dir)
