@@ -42,6 +42,7 @@ OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2-fits")
 STAGE21_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_1-sweep")
 STAGE22_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_2-unified-vet")
 STAGE23_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_3-probability")
+TRUE_LOAO_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-true-loao")
 MIN_DISK_FREE_BYTES = 20 * 1024**3
 MAX_REDISCOVER_BYTES = 15 * 1024**3
 T2 = 5
@@ -157,6 +158,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--stage2-2", action="store_true", help="run the Stage 2.2 unified D_ab overfit/charge-coat vet")
     ap.add_argument("--stage2-3", action="store_true", help="run the Stage 2.3 probability/null framing")
     ap.add_argument("--stage2-3-permutations", type=int, default=STAGE23_PERMUTATIONS)
+    ap.add_argument("--true-loao", action="store_true", help="run the true between-atom LOAO atom-mean diagnostic")
+    ap.add_argument("--true-loao-permutations", type=int, default=1000)
     ap.add_argument("--run-pysr", action="store_true")
     ap.add_argument("--pysr-timeout", type=int, default=45)
     ap.add_argument("--pysr-iterations", type=int, default=8)
@@ -2531,6 +2534,356 @@ def run_stage23(args: argparse.Namespace, data: dict[str, object], out_dir: Path
     return write_stage23_postmortem(out_dir, args.substrate_dir, orth, prob, curve, disk)
 
 
+def true_loao_col_stats(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    arr = np.asarray(values, dtype=float)
+    mean = np.full(arr.shape[1], np.nan, dtype=float)
+    std = np.ones(arr.shape[1], dtype=float)
+    for i in range(arr.shape[1]):
+        col = arr[:, i]
+        ok = np.isfinite(col)
+        if not np.any(ok):
+            continue
+        mean[i] = float(np.mean(col[ok]))
+        s = float(np.std(col[ok]))
+        std[i] = s if np.isfinite(s) and s > 0.0 else 1.0
+    return mean, std
+
+
+def true_loao_atom_mean_arrays(
+    features: list[np.ndarray],
+    y: np.ndarray,
+    atoms: np.ndarray,
+) -> tuple[np.ndarray, list[np.ndarray], np.ndarray, np.ndarray]:
+    labels = np.unique(atoms)
+    counts = np.zeros(len(labels), dtype=int)
+    atom_y = np.full((len(labels), T2), np.nan, dtype=float)
+    atom_features = [np.full((len(labels), T2), np.nan, dtype=float) for _ in features]
+    for i, atom in enumerate(labels):
+        m = atoms == atom
+        counts[i] = int(np.sum(m))
+        atom_y[i], _ = true_loao_col_stats(y[m])
+        for j, f in enumerate(features):
+            atom_features[j][i], _ = true_loao_col_stats(f[m])
+    return labels.astype(int), atom_features, atom_y, counts
+
+
+def true_loao_standardized_fit(
+    train_features: list[np.ndarray],
+    y_train: np.ndarray,
+    eval_features: list[np.ndarray],
+) -> tuple[np.ndarray, dict[str, object]]:
+    p = len(train_features)
+    eval_rows = int(eval_features[0].shape[0]) if eval_features else 0
+    if p == 0:
+        return np.full((eval_rows, T2), np.nan, dtype=float), {"ok": False, "train_observations": 0}
+    x_means = []
+    x_stds = []
+    z_train = []
+    z_eval = []
+    for tr, ev in zip(train_features, eval_features):
+        mean, std = true_loao_col_stats(tr)
+        x_means.append(mean)
+        x_stds.append(std)
+        z_train.append((np.asarray(tr, dtype=float) - mean.reshape(1, T2)) / std.reshape(1, T2))
+        z_eval.append((np.asarray(ev, dtype=float) - mean.reshape(1, T2)) / std.reshape(1, T2))
+    y_mean, y_std = true_loao_col_stats(y_train)
+    x_train = stage23_stack_flat(z_train)
+    yy = ((np.asarray(y_train, dtype=float) - y_mean.reshape(1, T2)) / y_std.reshape(1, T2)).reshape(-1)
+    valid = np.isfinite(yy) & np.isfinite(x_train).all(axis=1)
+    if int(valid.sum()) < p + 2:
+        return np.full((eval_rows, T2), np.nan, dtype=float), {
+            "ok": False,
+            "train_observations": int(valid.sum()),
+            "x_means": x_means,
+            "x_stds": x_stds,
+            "y_mean": y_mean,
+            "y_std": y_std,
+        }
+    beta, *_ = np.linalg.lstsq(x_train[valid], yy[valid], rcond=None)
+    x_eval = stage23_stack_flat(z_eval)
+    valid_eval = np.isfinite(x_eval).all(axis=1)
+    pred_z = np.full(x_eval.shape[0], np.nan, dtype=float)
+    pred_z[valid_eval] = x_eval[valid_eval] @ beta
+    pred = pred_z.reshape((eval_rows, T2)) * y_std.reshape(1, T2) + y_mean.reshape(1, T2)
+    return pred, {
+        "ok": True,
+        "train_observations": int(valid.sum()),
+        "beta_standardized": np.asarray(beta, dtype=float),
+        "x_means": x_means,
+        "x_stds": x_stds,
+        "y_mean": y_mean,
+        "y_std": y_std,
+    }
+
+
+def true_loao_score_atom_means(
+    labels: list[str],
+    atom_features: list[np.ndarray],
+    atom_y: np.ndarray,
+) -> dict[str, object]:
+    n_atoms = int(atom_y.shape[0])
+    pred = np.full_like(atom_y, np.nan, dtype=float)
+    observations = []
+    coef_rows = []
+    for held_i in range(n_atoms):
+        train = np.ones(n_atoms, dtype=bool)
+        train[held_i] = False
+        eval_features = [f[held_i:held_i + 1] for f in atom_features]
+        train_features = [f[train] for f in atom_features]
+        pred_i, model = true_loao_standardized_fit(train_features, atom_y[train], eval_features)
+        pred[held_i] = pred_i[0]
+        observations.append(int(model.get("train_observations", 0)))
+        beta = np.asarray(model.get("beta_standardized", np.full(len(labels), np.nan)), dtype=float)
+        if beta.shape[0] == len(labels):
+            coef_rows.append(beta)
+    coef = np.asarray(coef_rows, dtype=float)
+    coef_median = np.nanmedian(coef, axis=0) if coef.size else np.full(len(labels), np.nan)
+    return {
+        "R2": r2_score(pred, atom_y),
+        "pred": pred,
+        "target": atom_y,
+        "train_observations_median": float(np.median(observations)) if observations else math.nan,
+        "standardized_coef_median": coef_median,
+    }
+
+
+def true_loao_permutation_null(
+    labels: list[str],
+    atom_features: list[np.ndarray],
+    atom_y: np.ndarray,
+    n_perm: int,
+    seed: int,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    vals = np.full(int(n_perm), np.nan, dtype=float)
+    n_atoms = int(atom_y.shape[0])
+    for i in range(int(n_perm)):
+        perm = stage23_derangement(n_atoms, rng)
+        vals[i] = float(true_loao_score_atom_means(labels, atom_features, atom_y[perm])["R2"])
+    return vals
+
+
+def true_loao_support_flag(n_atoms: int, n_terms: int) -> str:
+    flags = []
+    if n_terms >= n_atoms:
+        flags.append("thin_TRUE_LOAO_p_ge_atoms")
+    elif n_atoms < 2 * n_terms:
+        flags.append("thin_TRUE_LOAO_atoms_lt_2p")
+    if n_atoms < 30:
+        flags.append("thin_atoms_case_study")
+    return ";".join(flags) if flags else "ok_atoms_report_N"
+
+
+def true_loao_mislabeled_within_loao(labels: list[str], features: list[np.ndarray], y: np.ndarray, atoms: np.ndarray) -> float:
+    design = stage23_prepare_loao_design(labels, features, atoms)
+    return float(stage23_score_loao(design, y))
+
+
+def true_loao_drop_one_unified(base: dict[str, object]) -> pd.DataFrame:
+    labels: list[str] = base["labels"]
+    features: list[np.ndarray] = base["features"]
+    y: np.ndarray = base["target"]
+    atoms: np.ndarray = base["atoms"]
+    atom_labels, atom_features, atom_y, _counts = true_loao_atom_mean_arrays(features, y, atoms)
+    full = true_loao_score_atom_means(labels, atom_features, atom_y)
+    full_r2 = float(full["R2"])
+    rows = []
+    for i, label in enumerate(labels):
+        keep = [j for j in range(len(labels)) if j != i]
+        sub_labels = [labels[j] for j in keep]
+        sub_features = [atom_features[j] for j in keep]
+        score = true_loao_score_atom_means(sub_labels, sub_features, atom_y)
+        r2 = float(score["R2"])
+        rows.append({
+            "dropped_term": label,
+            "dropped_group": stage22_term_group(label),
+            "atoms": int(len(atom_labels)),
+            "terms_without": int(len(sub_labels)),
+            "TRUE_LOAO_R2_without_term": r2,
+            "TRUE_LOAO_loss_vs_all": float(full_r2 - r2) if np.isfinite(r2) else math.nan,
+        })
+    return pd.DataFrame(rows).sort_values("TRUE_LOAO_loss_vs_all", ascending=False).reset_index(drop=True)
+
+
+def true_loao_drop_text(drop: pd.DataFrame, min_loss: float = 0.01, n: int = 4) -> str:
+    if drop.empty:
+        return "drop-one unavailable"
+    col = "TRUE_LOAO_loss_vs_all"
+    rows = drop[np.isfinite(drop[col].to_numpy(float)) & (drop[col].to_numpy(float) >= min_loss)].sort_values(col, ascending=False).head(n)
+    if rows.empty:
+        return "drop-one diffuse/no term >=0.01"
+    return "; ".join(f"{r.dropped_term} {float(getattr(r, col)):+.3f}" for r in rows.itertuples(index=False))
+
+
+def true_loao_lead_scale(r2: float, support: str) -> str:
+    suffix = " (case-study N)" if "thin" in support else ""
+    if not np.isfinite(r2):
+        return "undetermined" + suffix
+    if r2 < 0.0:
+        return "negative/null; no atom-mean recovery" + suffix
+    if r2 <= 0.05:
+        return "~null / 0.03-class" + suffix
+    if r2 < 0.20:
+        return "below 0.2; weak, read by determinability" + suffix
+    if r2 < 0.35:
+        return "0.2-class; decided by determinability" + suffix
+    return "higher-than-0.2; still read by determinability" + suffix
+
+
+def true_loao_fmt(x: object) -> str:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return "nan"
+    if not np.isfinite(v):
+        return "nan"
+    return f"{v:.3f}"
+
+
+def write_true_loao_postmortem(
+    out_dir: Path,
+    substrate_dir: Path,
+    orth: float,
+    recovery: pd.DataFrame,
+    drop: pd.DataFrame,
+    disk: dict[str, object],
+) -> Path:
+    order = ["charge", "ring", "unified_Dab_sum"]
+    lines = [
+        "# TRUE LOAO Postmortem - 2026-06-04",
+        f"Run dir: `{out_dir}`",
+        f"Substrate: `{substrate_dir}`; Build4 CSV/NPY only; no extraction/DFT; frozen `get_C`, `|C.T C-I|max={orth:.2e}`.",
+        "TRUE LOAO: train on training-atom means only; transform held-out atom means with training-atom feature/target stats; score physical held-out atom means.",
+        "Null: 1000 deranged shuffles of target atom-means across atoms; structural features and LOAO folds unchanged.",
+        "Support note: charge N is the actual Stage2 charge-wide subset tied to old 0.38; the older 54-atom backbone stratum is a different comparison.",
+        "| kernel | N atoms | old mislabeled within-LOAO R2 | TRUE-LOAO R2 | delta | null p/z/pct | determinability | lead-scale | support |",
+        "| --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- |",
+    ]
+    for model in order:
+        row = recovery[recovery["model"] == model]
+        if row.empty:
+            continue
+        r = row.iloc[0]
+        null_text = f"p {stage23_fmt_p(r['empirical_p_upper'])}; z {true_loao_fmt(r['z_vs_null'])}; pct {true_loao_fmt(r['null_percentile'])}"
+        lines.append(
+            f"| {model} | {int(r['atoms'])} | {true_loao_fmt(r['mislabeled_within_LOAO_R2'])} | "
+            f"{true_loao_fmt(r['TRUE_LOAO_R2'])} | {true_loao_fmt(r['delta_TRUE_minus_mislabeled'])} | "
+            f"{null_text} | {r['determinability']} | {r['lead_scale_placement']} | {r['support_flag']} |"
+        )
+    read = str(recovery.attrs.get("one_line_read", "one-line read unavailable"))
+    lines += [
+        f"Unified drop-one determinability: {true_loao_drop_text(drop)}.",
+        f"One-line read: {read}",
+        "Difference is explicit: the old number is within-atom modulation because the held-out atom was centered by its own mean; TRUE LOAO is between-atom atom-mean recovery.",
+        "Artifacts: `true_loao_recovery.csv`, `true_loao_unified_drop_one.csv`, `true_loao_atom_predictions.csv`, `true_loao_null_scores.csv`, `true_loao_run_audit.json`.",
+        f"Disk: `/tmp/rediscover-runs` {float(disk['rediscover_runs_GiB_before_write']):.1f}G before write (<15G); output drop-old={disk.get('deleted_existing_output_dir')}; build4+build1 kept.",
+    ]
+    path = Path(__file__).resolve().parents[1] / "POSTMORTEM_TRUE_LOAO_2026-06-04.md"
+    path.write_text("\n".join(lines[:35]) + "\n", encoding="utf-8")
+    return path
+
+
+def run_true_loao(args: argparse.Namespace, data: dict[str, object], out_dir: Path, disk: dict[str, object], orth: float) -> Path:
+    n_perm = max(1000, int(args.true_loao_permutations))
+    charge = stage23_kernel_dataset(data, next(k for k in KERNELS if k.name == "charge"))
+    ring = stage23_kernel_dataset(data, next(k for k in KERNELS if k.name == "ring"))
+    unified = stage23_unified_dataset_for_cutoffs(data, 0.50, 0.70)
+    datasets = [charge, ring, unified]
+    drop = true_loao_drop_one_unified(unified)
+    unified_drop_text = true_loao_drop_text(drop)
+    recovery_rows = []
+    prediction_rows = []
+    null_rows = []
+    for i, ds in enumerate(datasets):
+        model = str(ds["model"])
+        labels: list[str] = ds["labels"]
+        features: list[np.ndarray] = ds["features"]
+        y: np.ndarray = ds["target"]
+        atoms: np.ndarray = ds["atoms"]
+        frames: np.ndarray = ds["frames"]
+        atom_labels, atom_features, atom_y, counts = true_loao_atom_mean_arrays(features, y, atoms)
+        observed = true_loao_score_atom_means(labels, atom_features, atom_y)
+        true_r2 = float(observed["R2"])
+        null = true_loao_permutation_null(labels, atom_features, atom_y, n_perm, 61_000 + i * 997)
+        position = stage23_null_position(true_r2, null)
+        old_loao = true_loao_mislabeled_within_loao(labels, features, y, atoms)
+        support = true_loao_support_flag(int(len(atom_labels)), int(len(labels)))
+        if model == "charge":
+            determinability = "single q/r3; Stage2 charge-wide subset, N-limited case-study"
+        elif model == "ring":
+            determinability = "single JB ring shadow; N=5 case-study, probability discrete"
+        else:
+            determinability = f"unified drop-one: {unified_drop_text}"
+        recovery_rows.append({
+            "model": model,
+            "rows": int(len(y)),
+            "atoms": int(len(atom_labels)),
+            "frames": int(len(np.unique(frames))),
+            "terms": int(len(labels)),
+            "term_labels": "|".join(labels),
+            "selection_rule": str(ds["selection_rule"]),
+            "mislabeled_within_LOAO_R2": old_loao,
+            "TRUE_LOAO_R2": true_r2,
+            "delta_TRUE_minus_mislabeled": float(true_r2 - old_loao) if np.isfinite(old_loao) and np.isfinite(true_r2) else math.nan,
+            "support_flag": support,
+            "atom_row_count_min": int(np.min(counts)) if len(counts) else 0,
+            "atom_row_count_median": float(np.median(counts)) if len(counts) else math.nan,
+            "atom_row_count_max": int(np.max(counts)) if len(counts) else 0,
+            "null_shuffle": "target atom-means deranged across atoms; structure and LOAO folds unchanged",
+            "determinability": determinability,
+            "lead_scale_placement": true_loao_lead_scale(true_r2, support),
+            **position,
+        })
+        pred = np.asarray(observed["pred"], dtype=float)
+        for ai, atom in enumerate(atom_labels):
+            for comp in range(T2):
+                prediction_rows.append({
+                    "model": model,
+                    "atom_index": int(atom),
+                    "component": int(comp),
+                    "target_atom_mean": float(atom_y[ai, comp]) if np.isfinite(atom_y[ai, comp]) else math.nan,
+                    "predicted_atom_mean": float(pred[ai, comp]) if np.isfinite(pred[ai, comp]) else math.nan,
+                    "rows_for_atom": int(counts[ai]),
+                })
+        for j, val in enumerate(null):
+            null_rows.append({
+                "model": model,
+                "permutation": int(j),
+                "TRUE_LOAO_R2_null": float(val) if np.isfinite(val) else math.nan,
+            })
+    recovery = pd.DataFrame(recovery_rows)
+    unified_r2 = float(recovery[recovery["model"] == "unified_Dab_sum"]["TRUE_LOAO_R2"].iloc[0])
+    charge_r2 = float(recovery[recovery["model"] == "charge"]["TRUE_LOAO_R2"].iloc[0])
+    ring_r2 = float(recovery[recovery["model"] == "ring"]["TRUE_LOAO_R2"].iloc[0])
+    if max(unified_r2, charge_r2, ring_r2) <= 0.05:
+        read = "TRUE between-atom recovery on 1P9J is ~null; between-axis probability should move to the 720-WT."
+    elif unified_r2 < 0.20 and charge_r2 < 0.20 and ring_r2 < 0.20:
+        read = "TRUE between-atom recovery is weak below the 0.2 lead-scale; treat 1P9J as case-study and move probability to the 720-WT."
+    else:
+        read = "TRUE between-atom recovery has non-null case-study signal on 1P9J, but atom support keeps probability with the 720-WT."
+    recovery.attrs["one_line_read"] = read
+    recovery.to_csv(out_dir / "true_loao_recovery.csv", index=False)
+    drop.to_csv(out_dir / "true_loao_unified_drop_one.csv", index=False)
+    pd.DataFrame(prediction_rows).to_csv(out_dir / "true_loao_atom_predictions.csv", index=False)
+    pd.DataFrame(null_rows).to_csv(out_dir / "true_loao_null_scores.csv", index=False)
+    audit = {
+        "substrate_dir": str(args.substrate_dir),
+        "out_dir": str(out_dir),
+        "disk_guard": disk,
+        "change_of_basis_orthogonality_max_abs": orth,
+        "python_read_scope": "Build-4 per_atom_substrate CSV/NPY sidecars and CaseHunter manifests only",
+        "forbidden_inputs_not_opened": ["trajectory.h5", "ORCA outputs", "per-source dumps", "older rediscover dirs for fitting"],
+        "permutations_per_true_loao_row": int(n_perm),
+        "true_loao_definition": "atom means over frames; each held-out atom predicted from model fit on other atom means after train-atom-only per-component feature and target standardization",
+        "mislabeled_reference": "existing LOAO code path that centers the held-out atom by its own mean, hence within-atom modulation",
+        "null": "deranged shuffle of target atom-mean rows across atoms; no feature shuffle and no new DFT/extraction",
+        "unified_drop_one": "drop one unified D_ab term and recompute TRUE LOAO atom-mean recovery",
+        "anti_circularity": "selection cutoffs use emitted input-side dominance only; null shuffles atom means only",
+    }
+    (out_dir / "true_loao_run_audit.json").write_text(json.dumps(json_sanitize(audit), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return write_true_loao_postmortem(out_dir, args.substrate_dir, orth, recovery, drop, disk)
+
+
 def main() -> None:
     args = parse_args()
     args.substrate_dir = args.substrate_dir.resolve()
@@ -2540,8 +2893,10 @@ def main() -> None:
         args.out_dir = STAGE22_OUT_DIR
     if args.stage2_3 and args.out_dir == OUT_DIR:
         args.out_dir = STAGE23_OUT_DIR
+    if args.true_loao and args.out_dir == OUT_DIR:
+        args.out_dir = TRUE_LOAO_OUT_DIR
     out_dir = args.out_dir.resolve()
-    disk = disk_guard(out_dir, drop_existing=bool(args.stage2_1 or args.stage2_2 or args.stage2_3))
+    disk = disk_guard(out_dir, drop_existing=bool(args.stage2_1 or args.stage2_2 or args.stage2_3 or args.true_loao))
     data, orth = load_stage2_inputs(args.substrate_dir, include_stage21=bool(args.stage2_1))
     manifest: dict[str, object] = data["manifest"]
     if args.stage2_1:
@@ -2557,6 +2912,11 @@ def main() -> None:
     if args.stage2_3:
         postmortem = run_stage23(args, data, out_dir, disk, orth)
         print(f"stage2.3 wrote {out_dir}")
+        print(f"postmortem {postmortem}")
+        return
+    if args.true_loao:
+        postmortem = run_true_loao(args, data, out_dir, disk, orth)
+        print(f"true-loao wrote {out_dir}")
         print(f"postmortem {postmortem}")
         return
     kernel_summary, path_coeffs, case_outputs = run_kernel_fits(args, data, out_dir)
