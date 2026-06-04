@@ -59,6 +59,13 @@ PER-KERNEL (clean strata; **statistical-position + bucket, NOT literature-match*
   not codex):** collinearity/identifiability of the field & McConnell shadow blocks (→ drop-one stability),
   regularization + effective DOF, the right null for a combine, determinability stability, basis-invariance.
   Held PROVISIONAL — do not over-claim until the maths is talked through. [[feedback_applied_maths_over_methodology_caveats]]
+- **MATHS-WALK (`POSTMORTEM_MATHS_WALK_2026-06-04`) + FRESH-LOOK (2026-06-04):** maths MOSTLY SOUND; 3 concrete
+  issues, agenda consolidated in `MATHS_AUDIT_CHECKLIST_2026-06-04.md`. **#2 is CODE-CONFIRMED** (fresh-look,
+  `analysis/stage2_law_fits.py:663-665,1681-1682`): the "LOAO" centers by the held-out atom's own mean → it is
+  WITHIN-modulation, NOT between-atom recovery → **1P9J has NO clean between axis; the 720-WT is the ONLY
+  between instrument.** Every LOAO/between number (unified 0.26 / charge 0.38 / ring 0.17) is a mislabeled
+  within number — do NOT quote as between until the centering is decided. Cold-start map + minimal reading
+  path now in `INDEX.md`.
 
 CAVEATS: ONE protein; thin clean strata (ring 5, unified 25) → "1P9J across its structures," no population
 inference; the two nulls are PROVISIONAL (this cut/data), not earned.

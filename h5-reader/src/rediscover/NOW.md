@@ -55,6 +55,15 @@ statistical-position grading.
   (the EFG e3nn path is clean = the template to align to).
 
 ## Current step
+**THE GATE — the maths audit is NOT done; every combine + LOAO/between number is PROVISIONAL until it closes.**
+Do NOT quote the unified 0.43/0.26 or any LOAO/between figure as a result yet. The next session's SPINE is the
+careful maths review — *are the numbers real?* — agenda in `MATHS_AUDIT_CHECKLIST_2026-06-04.md`.
+**CODE-CONFIRMED (fresh-look + maths-walk, `stage2_law_fits.py:663-665,1681-1682`): the "LOAO" path centers by
+the held-out atom's OWN mean → it measures WITHIN-modulation, NOT between-atom recovery → 1P9J has NO clean
+between axis; the 720-WT is the ONLY between instrument.** The settled within-axis results the audit does NOT
+threaten: charge q/r³ (within 0.28, z451), ring current (within 0.28, z155), the unified combine's WITHIN
+recovery (0.43, z263, field+McConnell, not charge-in-a-coat).
+
 **Stage 2 + ALL follow-ups landed (`ecbddd1` → `f92109c` → `943915f` → 2.3 probability close).**
 RESULTS (probability + determinability; 1P9J = WITHIN axis): **charge q/r³ = indicative+determinable**
 (within 0.28 z451 / LOAO 0.38 z33); **ring current = indicative+determinable on WITHIN** (0.28, z155) / a thin
