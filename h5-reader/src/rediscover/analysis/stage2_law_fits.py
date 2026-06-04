@@ -33,10 +33,13 @@ from allatom_fit_common import (
 
 SUBSTRATE_DIR = Path("/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build4")
 OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2-fits")
+STAGE21_OUT_DIR = Path("/tmp/rediscover-runs/2026-06-04-stage2_1-sweep")
 MIN_DISK_FREE_BYTES = 20 * 1024**3
 MAX_REDISCOVER_BYTES = 15 * 1024**3
 T2 = 5
 PYSR_SAMPLE = 3000
+SWEEP_KEEP_FRACTIONS = (0.10, 0.20, 0.35, 0.50, 0.70, 1.00)
+FRAME_COUNTS = (20, 50, 100, 200, 400, 660)
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,7 @@ def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--substrate-dir", type=Path, default=SUBSTRATE_DIR)
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR)
+    ap.add_argument("--stage2-1", action="store_true", help="run the Stage 2.1 happy-spot sweep and frame-count ablation")
     ap.add_argument("--run-pysr", action="store_true")
     ap.add_argument("--pysr-timeout", type=int, default=45)
     ap.add_argument("--pysr-iterations", type=int, default=8)
@@ -160,7 +164,7 @@ def directory_size_bytes(path: Path) -> int:
     return int(total)
 
 
-def disk_guard(out_dir: Path) -> dict[str, object]:
+def disk_guard(out_dir: Path, drop_existing: bool = False) -> dict[str, object]:
     out_dir = out_dir.resolve()
     runs_root = Path("/tmp/rediscover-runs").resolve()
     if not path_under(out_dir, runs_root):
@@ -168,9 +172,13 @@ def disk_guard(out_dir: Path) -> dict[str, object]:
     if path_under(out_dir, Path("/shared").resolve()):
         raise SystemExit(f"FATAL: refusing to write result data under /shared: {out_dir}")
     usage = shutil.disk_usage(out_dir.parent if out_dir.parent.exists() else runs_root)
-    rediscover_bytes = directory_size_bytes(runs_root)
     if usage.free < MIN_DISK_FREE_BYTES:
         raise SystemExit(f"FATAL: disk guard: {usage.free / 1024**3:.1f} GiB free, need >=20 GiB")
+    deleted_existing = False
+    if drop_existing and out_dir.exists():
+        shutil.rmtree(out_dir)
+        deleted_existing = True
+    rediscover_bytes = directory_size_bytes(runs_root)
     if rediscover_bytes > MAX_REDISCOVER_BYTES:
         raise SystemExit(f"FATAL: disk guard: /tmp/rediscover-runs is {rediscover_bytes / 1024**3:.1f} GiB, need <15 GiB")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -181,6 +189,9 @@ def disk_guard(out_dir: Path) -> dict[str, object]:
         "rediscover_runs_GiB_before_write": float(rediscover_bytes / 1024**3),
         "min_free_GiB_required": 20.0,
         "max_rediscover_GiB_required": 15.0,
+        "drop_existing_requested": bool(drop_existing),
+        "deleted_existing_output_dir": bool(deleted_existing),
+        "deleted_existing_output_dir_full_path": str(out_dir) if deleted_existing else "",
     }
 
 
@@ -675,39 +686,682 @@ def run_unified_fit(data: dict[str, object]) -> tuple[pd.DataFrame, pd.DataFrame
     return summary, pd.DataFrame(inten_rows)
 
 
-def main() -> None:
-    args = parse_args()
-    args.substrate_dir = args.substrate_dir.resolve()
-    out_dir = args.out_dir.resolve()
-    disk = disk_guard(out_dir)
-    specs = load_json(args.substrate_dir / "per_atom_substrate_column_specs.json")
-    manifest = load_json(args.substrate_dir / "per_atom_substrate_manifest.json")
-    rows = pd.read_csv(args.substrate_dir / "per_atom_substrate_rows.csv")
-    arrays = {
-        name: load_array(args.substrate_dir, name)
-        for name in [
-            "per_atom_substrate_features_classical",
-            "per_atom_substrate_features_method_paths",
-            "per_atom_substrate_features_hbond_conditioning",
-            "per_atom_substrate_features_ring_paths",
-            "per_atom_substrate_features_dominance",
-            "per_atom_substrate_dominance_bins",
-        ]
-    }
-    target_lib = load_array(args.substrate_dir, "per_atom_substrate_target_T2")
+def load_stage2_inputs(substrate_dir: Path, include_stage21: bool = False) -> tuple[dict[str, object], float]:
+    specs = load_json(substrate_dir / "per_atom_substrate_column_specs.json")
+    manifest = load_json(substrate_dir / "per_atom_substrate_manifest.json")
+    rows = pd.read_csv(substrate_dir / "per_atom_substrate_rows.csv")
+    array_names = [
+        "per_atom_substrate_features_classical",
+        "per_atom_substrate_features_method_paths",
+        "per_atom_substrate_features_hbond_conditioning",
+        "per_atom_substrate_features_ring_paths",
+        "per_atom_substrate_features_dominance",
+        "per_atom_substrate_dominance_bins",
+    ]
+    if include_stage21:
+        array_names.append("per_atom_substrate_driver_modulation_by_atom")
+    arrays = {name: load_array(substrate_dir, name) for name in array_names}
+    target_lib = load_array(substrate_dir, "per_atom_substrate_target_T2")
     C = cob.get_C()
     orth = float(np.abs(C.T @ C - np.eye(T2)).max())
     if orth >= 1.0e-12:
         raise SystemExit(f"FATAL: change_of_basis.get_C orthogonality failed: {orth:.3e}")
-    data = {
+    return {
         "manifest": manifest,
         "specs": specs,
         "rows": rows,
         "arrays": arrays,
         "target_lib": target_lib,
         "C": C,
-        "substrate_dir": args.substrate_dir,
+        "substrate_dir": substrate_dir,
+    }, orth
+
+
+def stage21_target(data: dict[str, object]) -> np.ndarray:
+    cached = data.get("_stage21_target")
+    if cached is None:
+        cached = to_e3nn(data["target_lib"], data["C"])
+        data["_stage21_target"] = cached
+    return cached
+
+
+def stage21_primary_shadow(data: dict[str, object], kernel: KernelSpec) -> np.ndarray:
+    cache = data.setdefault("_stage21_primary_shadows", {})
+    assert isinstance(cache, dict)
+    if kernel.name not in cache:
+        cache[kernel.name] = to_e3nn(raw_t2(data["arrays"], data["specs"], kernel.primary), data["C"])
+    return cache[kernel.name]
+
+
+def stage21_unified_feature_cache(data: dict[str, object]) -> tuple[list[str], list[np.ndarray]]:
+    cached = data.get("_stage21_unified_features")
+    if cached is None:
+        cached = build_unified_features(data)
+        data["_stage21_unified_features"] = cached
+    return cached  # type: ignore[return-value]
+
+
+def kernel_clean_base_mask(data: dict[str, object], kernel: KernelSpec) -> tuple[np.ndarray, str]:
+    rows: pd.DataFrame = data["rows"]
+    specs: dict[str, object] = data["specs"]
+    arrays: dict[str, np.ndarray] = data["arrays"]
+    atoms, _cases = case_atoms(data["substrate_dir"], kernel.case_dir)
+    atoms_all = rows["atom_index"].to_numpy(int)
+    dft = rows["dft_present"].to_numpy(int) == 1
+    dom = arrays["per_atom_substrate_features_dominance"]
+    dom_bins = arrays["per_atom_substrate_dominance_bins"]
+    dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
+    bin_cols = specs_for_array(specs, "per_atom_substrate_dominance_bins")
+    frac = np.asarray(dom[:, dom_cols[f"dominant_fraction_{kernel.dominance}"]], dtype=float)
+    binv = np.asarray(dom_bins[:, bin_cols[f"bin_dominant_fraction_{kernel.dominance}_quintile"]], dtype=int)
+    mask = dft & np.isin(atoms_all, list(atoms)) & np.isfinite(frac) & (frac >= 0.5)
+    rule = "CaseHunter atoms + dominant_fraction>=0.5"
+    if int(mask.sum()) < 500:
+        mask = dft & np.isin(atoms_all, list(atoms)) & (binv >= 4)
+        rule = "CaseHunter atoms + dominance_bin>=Q5 fallback"
+    return mask, rule
+
+
+def kernel_sweep_base_mask(data: dict[str, object], kernel: KernelSpec) -> np.ndarray:
+    rows: pd.DataFrame = data["rows"]
+    atoms, _cases = case_atoms(data["substrate_dir"], kernel.case_dir)
+    return (rows["dft_present"].to_numpy(int) == 1) & np.isin(rows["atom_index"].to_numpy(int), list(atoms))
+
+
+def unified_base_mask(data: dict[str, object], clean_stage2: bool) -> tuple[np.ndarray, str]:
+    rows: pd.DataFrame = data["rows"]
+    specs: dict[str, object] = data["specs"]
+    arrays: dict[str, np.ndarray] = data["arrays"]
+    atoms: set[int] = set()
+    for case_dir in ["charge_wide", "mc", "field", "hbond"]:
+        case_set, _cases = case_atoms(data["substrate_dir"], case_dir)
+        atoms |= case_set
+    dom = arrays["per_atom_substrate_features_dominance"]
+    dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
+    dab_max = np.maximum.reduce([
+        np.asarray(dom[:, dom_cols[f"dominant_fraction_{m}"]], dtype=float)
+        for m in ["charge", "mc", "field", "hbond"]
+    ])
+    ring_frac = np.asarray(dom[:, dom_cols["dominant_fraction_ring"]], dtype=float)
+    atoms_all = rows["atom_index"].to_numpy(int)
+    mask = (
+        (rows["dft_present"].to_numpy(int) == 1)
+        & np.isin(atoms_all, list(atoms))
+        & np.isfinite(dab_max)
+        & np.isfinite(ring_frac)
+        & (ring_frac < 0.7)
+    )
+    rule = "D_ab CaseHunter atoms + ring dominance<0.7"
+    if clean_stage2:
+        mask &= dab_max >= 0.5
+        rule += " + max D_ab dominance>=0.5"
+    return mask, rule
+
+
+def active_dab_arrays(data: dict[str, object]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    rows: pd.DataFrame = data["rows"]
+    specs: dict[str, object] = data["specs"]
+    arrays: dict[str, np.ndarray] = data["arrays"]
+    dom = arrays["per_atom_substrate_features_dominance"]
+    dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
+    dom_stack = np.column_stack([
+        np.asarray(dom[:, dom_cols[f"dominant_fraction_{m}"]], dtype=float)
+        for m in ["charge", "mc", "field", "hbond"]
+    ])
+    with np.errstate(all="ignore"):
+        active = np.nanargmax(np.where(np.isfinite(dom_stack), dom_stack, -np.inf), axis=1)
+    gap_stack = np.column_stack([
+        np.asarray(dom[:, dom_cols["gap_to_2nd_charge_r"]], dtype=float),
+        np.asarray(dom[:, dom_cols["gap_to_2nd_bond_r"]], dtype=float),
+        np.asarray(dom[:, dom_cols["gap_to_2nd_field_r"]], dtype=float),
+        np.asarray(dom[:, dom_cols["gap_to_2nd_hbond_r"]], dtype=float),
+    ])
+    mod_cols = specs_for_array(specs, "per_atom_substrate_driver_modulation_by_atom")
+    mod = arrays["per_atom_substrate_driver_modulation_by_atom"]
+    atom_index = rows["atom_index"].to_numpy(int)
+    mod_stack = np.column_stack([
+        np.asarray(mod[atom_index, mod_cols["sd_charge_T2_by_atom"]], dtype=float),
+        np.asarray(mod[atom_index, mod_cols["sd_mc_lit_T2_by_atom"]], dtype=float),
+        np.asarray(mod[atom_index, mod_cols["sd_mopac_coulomb_T2_by_atom"]], dtype=float),
+        np.full(len(rows), np.nan, dtype=float),
+    ])
+    row = np.arange(len(rows))
+    return np.nanmax(dom_stack, axis=1), gap_stack[row, active], mod_stack[row, active]
+
+
+def kernel_axis_values(data: dict[str, object], kernel: KernelSpec, axis: str) -> tuple[np.ndarray | None, str, str]:
+    rows: pd.DataFrame = data["rows"]
+    specs: dict[str, object] = data["specs"]
+    arrays: dict[str, np.ndarray] = data["arrays"]
+    dom = arrays["per_atom_substrate_features_dominance"]
+    dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
+    if axis == "dominance":
+        col = f"dominant_fraction_{kernel.dominance}"
+        return np.asarray(dom[:, dom_cols[col]], dtype=float), col, "higher_is_cleaner"
+    if axis == "isolation":
+        gap_col = {
+            "ring": "gap_to_2nd_ring_r",
+            "charge": "gap_to_2nd_charge_r",
+            "mc": "gap_to_2nd_bond_r",
+            "field": "gap_to_2nd_field_r",
+            "hbond": "gap_to_2nd_hbond_r",
+        }[kernel.name]
+        return np.asarray(dom[:, dom_cols[gap_col]], dtype=float), gap_col, "higher_is_cleaner"
+    if axis == "modulation":
+        mod_name = {
+            "ring": "sd_ring_jb_T2_by_atom",
+            "charge": "sd_charge_T2_by_atom",
+            "mc": "sd_mc_lit_T2_by_atom",
+            "field": "sd_mopac_coulomb_T2_by_atom",
+            "hbond": "",
+        }[kernel.name]
+        if not mod_name:
+            return None, "not_emitted_for_hbond", "unavailable_in_build4"
+        mod_cols = specs_for_array(specs, "per_atom_substrate_driver_modulation_by_atom")
+        mod = arrays["per_atom_substrate_driver_modulation_by_atom"]
+        atom_index = rows["atom_index"].to_numpy(int)
+        return np.asarray(mod[atom_index, mod_cols[mod_name]], dtype=float), mod_name, "higher_driver_exercise"
+    raise ValueError(axis)
+
+
+def unified_axis_values(data: dict[str, object], axis: str) -> tuple[np.ndarray | None, str, str]:
+    dab_max, active_gap, active_mod = active_dab_arrays(data)
+    if axis == "dominance":
+        return dab_max, "max_dominant_fraction_charge_mc_field_hbond", "higher_is_cleaner"
+    if axis == "isolation":
+        return active_gap, "gap_to_2nd_of_active_Dab_mechanism", "higher_is_cleaner"
+    if axis == "modulation":
+        return active_mod, "sd_of_active_Dab_mechanism_no_hbond_sd", "partial_no_hbond_modulation_column"
+    raise ValueError(axis)
+
+
+def empty_stage21_metrics(model: str, rows: int, atoms: int, frames: int, note: str = "") -> dict[str, object]:
+    return {
+        "model": model,
+        "rows": int(rows),
+        "atoms": int(atoms),
+        "frames": int(frames),
+        "within_R2": math.nan,
+        "LOAO_R2": math.nan,
+        "coefficient": math.nan,
+        "coef_ci95_low": math.nan,
+        "coef_ci95_high": math.nan,
+        "within_N_eff_median": math.nan,
+        "median_lag1_rho": math.nan,
+        "support_flag": "insufficient_rows_or_frames",
+        "bucket": "undetermined",
+        "note": note,
     }
+
+
+def stage21_kernel_metrics(data: dict[str, object], kernel: KernelSpec, mask: np.ndarray) -> dict[str, object]:
+    rows: pd.DataFrame = data["rows"]
+    idx = np.flatnonzero(mask)
+    atoms = rows["atom_index"].to_numpy(int)[idx]
+    frames = rows["original_frame_index"].to_numpy(int)[idx]
+    n_atoms = int(len(np.unique(atoms))) if len(idx) else 0
+    n_frames = int(len(np.unique(frames))) if len(idx) else 0
+    if len(idx) < 10 or n_frames < 3 or n_atoms < 1:
+        return empty_stage21_metrics(kernel.name, len(idx), n_atoms, n_frames)
+    y = stage21_target(data)[idx]
+    x = stage21_primary_shadow(data, kernel)[idx]
+    neff_info = effective_n_components(y, atoms, frames)
+    neff = float(neff_info["within_N_eff_median"])
+    supp = support_flag(n_atoms, len(idx), neff)
+    within = blocked_within_fit(x, y, atoms, frames)
+    loao = loao_modulation_fit(x, y, atoms)
+    coef = float(within["coefficient"])
+    lo = float(within["coefficient_ci95_low"])
+    hi = float(within["coefficient_ci95_high"])
+    within_r2 = float(within["within_R2"])
+    loao_r2 = float(loao["loao_R2"])
+    return {
+        "model": kernel.name,
+        "rows": int(len(idx)),
+        "atoms": n_atoms,
+        "frames": n_frames,
+        "within_R2": within_r2,
+        "LOAO_R2": loao_r2,
+        "free5_within_R2": float(within["free5_within_R2"]),
+        "coefficient": coef,
+        "coef_ci95_low": lo,
+        "coef_ci95_high": hi,
+        "within_N_eff_median": neff,
+        "median_lag1_rho": float(neff_info["median_lag1_rho"]),
+        "support_flag": supp,
+        "bucket": path_bucket(coef, lo, hi, within_r2, loao_r2, supp, math.nan),
+        "note": "",
+    }
+
+
+def stage21_unified_metrics(data: dict[str, object], mask: np.ndarray) -> dict[str, object]:
+    rows: pd.DataFrame = data["rows"]
+    idx = np.flatnonzero(mask)
+    atoms = rows["atom_index"].to_numpy(int)[idx]
+    frames = rows["original_frame_index"].to_numpy(int)[idx]
+    n_atoms = int(len(np.unique(atoms))) if len(idx) else 0
+    n_frames = int(len(np.unique(frames))) if len(idx) else 0
+    labels, features_all = stage21_unified_feature_cache(data)
+    if len(idx) < len(labels) + 3 or n_frames < 3 or n_atoms < 2:
+        return empty_stage21_metrics("unified_Dab_sum", len(idx), n_atoms, n_frames)
+    y = stage21_target(data)[idx]
+    features = [f[idx] for f in features_all]
+    split = split_frame_block(frames, 0.20, 1)
+    train = np.asarray(split["train_mask"], dtype=bool)
+    test = np.asarray(split["test_mask"], dtype=bool)
+    centered_features = [centered_by_train_atom(f, atoms, train) for f in features]
+    y_c = centered_by_train_atom(y, atoms, train)
+    beta, _pred_train = fit_linear_multi(centered_features, y_c, train)
+    if np.isfinite(beta).all() and test.sum() > 0:
+        x_test = np.column_stack([f[test].reshape(-1) for f in centered_features])
+        pred_test = (x_test @ beta).reshape((-1, T2))
+    else:
+        pred_test = np.full_like(y_c[test], np.nan)
+    within_r2 = r2_score(pred_test, y_c[test])
+    loao_pred = np.full_like(y, np.nan, dtype=float)
+    loao_tgt = np.full_like(y, np.nan, dtype=float)
+    for held in np.unique(atoms):
+        tr = atoms != held
+        te = atoms == held
+        if tr.sum() < len(labels) + 3:
+            continue
+        cf = [atom_center(f[tr], atoms[tr]) for f in features]
+        cy = atom_center(y[tr], atoms[tr])
+        b, _ = fit_linear_multi(cf, cy, np.ones(tr.sum(), dtype=bool))
+        if not np.isfinite(b).all():
+            continue
+        hf = [f[te] - f[te].mean(axis=0, keepdims=True) for f in features]
+        loao_pred[te] = (np.column_stack([f.reshape(-1) for f in hf]) @ b).reshape((-1, T2))
+        loao_tgt[te] = y[te] - y[te].mean(axis=0, keepdims=True)
+    ok = np.isfinite(loao_pred).all(axis=1) & np.isfinite(loao_tgt).all(axis=1)
+    loao_r2 = r2_score(loao_pred[ok], loao_tgt[ok])
+    neff_info = effective_n_components(y, atoms, frames)
+    neff = float(neff_info["within_N_eff_median"])
+    supp = support_flag(n_atoms, len(idx), neff)
+    return {
+        "model": "unified_Dab_sum",
+        "rows": int(len(idx)),
+        "atoms": n_atoms,
+        "frames": n_frames,
+        "within_R2": float(within_r2),
+        "LOAO_R2": float(loao_r2),
+        "coefficient": math.nan,
+        "coef_ci95_low": math.nan,
+        "coef_ci95_high": math.nan,
+        "within_N_eff_median": neff,
+        "median_lag1_rho": float(neff_info["median_lag1_rho"]),
+        "support_flag": supp,
+        "bucket": "multi-term-heldout-recovery" if np.isfinite(within_r2) and within_r2 > 0 else "undetermined",
+        "note": f"{len(labels)} unified terms",
+    }
+
+
+def threshold_for_keep(values: np.ndarray, keep_fraction: float) -> float:
+    vals = np.asarray(values, dtype=float)
+    vals = vals[np.isfinite(vals)]
+    if len(vals) == 0:
+        return math.nan
+    if keep_fraction >= 1.0:
+        return float(np.nanmin(vals))
+    return float(np.nanquantile(vals, 1.0 - float(keep_fraction), method="lower"))
+
+
+def run_stage21_happy_sweep(data: dict[str, object]) -> pd.DataFrame:
+    rows_out: list[dict[str, object]] = []
+    axes = ["dominance", "isolation", "modulation"]
+    for kernel in KERNELS:
+        base = kernel_sweep_base_mask(data, kernel)
+        for axis in axes:
+            values, value_column, polarity = kernel_axis_values(data, kernel, axis)
+            if values is None:
+                rows_out.append({
+                    **empty_stage21_metrics(kernel.name, int(base.sum()), int(pd.Series(data["rows"]["atom_index"].to_numpy(int)[base]).nunique()) if base.any() else 0, 0, "axis unavailable"),
+                    "axis": axis,
+                    "axis_value_column": value_column,
+                    "axis_polarity": polarity,
+                    "keep_fraction": math.nan,
+                    "threshold": math.nan,
+                    "selection_rule": "axis unavailable in emitted build4 row/atom substrate",
+                })
+                continue
+            finite_base = base & np.isfinite(values)
+            base_vals = values[finite_base]
+            for keep in SWEEP_KEEP_FRACTIONS:
+                thr = threshold_for_keep(base_vals, keep)
+                mask = finite_base & (values >= thr)
+                metrics = stage21_kernel_metrics(data, kernel, mask)
+                rows_out.append({
+                    **metrics,
+                    "axis": axis,
+                    "axis_value_column": value_column,
+                    "axis_polarity": polarity,
+                    "keep_fraction": float(keep),
+                    "threshold": thr,
+                    "selection_rule": f"CaseHunter {kernel.case_dir} atoms, top {keep:.0%} by {value_column}",
+                })
+    for axis in axes:
+        base, rule = unified_base_mask(data, clean_stage2=False)
+        values, value_column, polarity = unified_axis_values(data, axis)
+        if values is None:
+            continue
+        finite_base = base & np.isfinite(values)
+        base_vals = values[finite_base]
+        for keep in SWEEP_KEEP_FRACTIONS:
+            thr = threshold_for_keep(base_vals, keep)
+            mask = finite_base & (values >= thr)
+            metrics = stage21_unified_metrics(data, mask)
+            rows_out.append({
+                **metrics,
+                "axis": axis,
+                "axis_value_column": value_column,
+                "axis_polarity": polarity,
+                "keep_fraction": float(keep),
+                "threshold": thr,
+                "selection_rule": f"{rule}, top {keep:.0%} by {value_column}",
+            })
+    return pd.DataFrame(rows_out)
+
+
+def centered_frame_mask(frames: np.ndarray, n_frames: int) -> tuple[np.ndarray, list[int]]:
+    unique = np.sort(np.unique(frames))
+    n = min(int(n_frames), len(unique))
+    start = max(0, (len(unique) - n) // 2)
+    chosen = unique[start:start + n]
+    return np.isin(frames, chosen), [int(x) for x in chosen]
+
+
+def run_stage21_frame_ablation(data: dict[str, object]) -> pd.DataFrame:
+    rows: pd.DataFrame = data["rows"]
+    frames_all = rows["original_frame_index"].to_numpy(int)
+    out: list[dict[str, object]] = []
+    for kernel in KERNELS:
+        base, rule = kernel_clean_base_mask(data, kernel)
+        for n in FRAME_COUNTS:
+            fm, chosen = centered_frame_mask(frames_all, n)
+            metrics = stage21_kernel_metrics(data, kernel, base & fm)
+            out.append({
+                **metrics,
+                "n_frames_requested": int(n),
+                "frame_selection": "centered_contiguous_original_frame_index_block",
+                "frame_first": min(chosen) if chosen else math.nan,
+                "frame_last": max(chosen) if chosen else math.nan,
+                "selection_rule": rule,
+            })
+    base, rule = unified_base_mask(data, clean_stage2=True)
+    for n in FRAME_COUNTS:
+        fm, chosen = centered_frame_mask(frames_all, n)
+        metrics = stage21_unified_metrics(data, base & fm)
+        out.append({
+            **metrics,
+            "n_frames_requested": int(n),
+            "frame_selection": "centered_contiguous_original_frame_index_block",
+            "frame_first": min(chosen) if chosen else math.nan,
+            "frame_last": max(chosen) if chosen else math.nan,
+            "selection_rule": rule,
+        })
+    return pd.DataFrame(out)
+
+
+def recovery_mean(row: pd.Series) -> float:
+    vals = [float(row.get("within_R2", math.nan)), float(row.get("LOAO_R2", math.nan))]
+    vals = [v for v in vals if np.isfinite(v)]
+    return float(np.mean(vals)) if vals else math.nan
+
+
+def classify_shape(group: pd.DataFrame) -> dict[str, object]:
+    valid = group[np.isfinite(group["keep_fraction"].to_numpy(float))].copy()
+    valid = valid[np.isfinite(valid["within_R2"].to_numpy(float)) | np.isfinite(valid["LOAO_R2"].to_numpy(float))]
+    if valid.empty:
+        return {"shape": "unavailable", "clean_pop": False, "delta_clean_minus_loose": math.nan, "clean_bucket": "undetermined", "clean_support_flag": "missing"}
+    valid = valid.sort_values("keep_fraction")
+    metric = valid.apply(recovery_mean, axis=1).to_numpy(float)
+    clean = valid.iloc[0]
+    loose = valid.iloc[-1]
+    delta = float(metric[0] - metric[-1]) if np.isfinite(metric[0]) and np.isfinite(metric[-1]) else math.nan
+    if not np.isfinite(delta):
+        shape = "undetermined"
+    elif delta > 0.05:
+        shape = "rises_to_clean"
+    elif delta < -0.05:
+        shape = "falls_to_clean"
+    else:
+        shape = "flat"
+    return {
+        "shape": shape,
+        "clean_pop": bool(shape == "rises_to_clean"),
+        "delta_clean_minus_loose": delta,
+        "clean_keep_fraction": float(clean["keep_fraction"]),
+        "clean_within_R2": float(clean["within_R2"]),
+        "clean_LOAO_R2": float(clean["LOAO_R2"]),
+        "clean_coefficient": float(clean["coefficient"]) if np.isfinite(clean["coefficient"]) else math.nan,
+        "clean_coef_ci95_low": float(clean["coef_ci95_low"]) if np.isfinite(clean["coef_ci95_low"]) else math.nan,
+        "clean_coef_ci95_high": float(clean["coef_ci95_high"]) if np.isfinite(clean["coef_ci95_high"]) else math.nan,
+        "clean_bucket": str(clean["bucket"]),
+        "clean_support_flag": str(clean["support_flag"]) if str(clean["support_flag"]) else "",
+        "loose_within_R2": float(loose["within_R2"]),
+        "loose_LOAO_R2": float(loose["LOAO_R2"]),
+    }
+
+
+def summarize_stage21_shapes(sweep: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for (model, axis), group in sweep.groupby(["model", "axis"], dropna=False):
+        summary = classify_shape(group)
+        axis_col = str(group["axis_value_column"].iloc[0]) if not group.empty else ""
+        rows.append({"model": model, "axis": axis, "axis_value_column": axis_col, **summary})
+    return pd.DataFrame(rows).sort_values(["model", "axis"]).reset_index(drop=True)
+
+
+def ci_off_zero(row: pd.Series) -> bool:
+    lo = float(row.get("clean_coef_ci95_low", math.nan))
+    hi = float(row.get("clean_coef_ci95_high", math.nan))
+    return bool(np.isfinite(lo) and np.isfinite(hi) and (lo > 0.0 or hi < 0.0))
+
+
+def summarize_stage21_frames(frame: pd.DataFrame) -> pd.DataFrame:
+    out = []
+    for model, group in frame.groupby("model", dropna=False):
+        g = group.sort_values("n_frames_requested")
+        full = g[g["n_frames_requested"] == 660]
+        r2_full = float(full["within_R2"].iloc[0]) if not full.empty else math.nan
+        target = 0.90 * r2_full if np.isfinite(r2_full) and r2_full > 0.0 else math.nan
+        knee = "no_positive_plateau"
+        if np.isfinite(target):
+            hit = g[np.isfinite(g["within_R2"].to_numpy(float)) & (g["within_R2"].to_numpy(float) >= target)]
+            if not hit.empty:
+                knee = f"{int(hit['n_frames_requested'].iloc[0])}"
+        r50 = g[g["n_frames_requested"] == 50]
+        out.append({
+            "model": model,
+            "full_660_within_R2": r2_full,
+            "knee_frames_90pct_full": knee,
+            "frame50_within_R2": float(r50["within_R2"].iloc[0]) if not r50.empty else math.nan,
+            "frame50_LOAO_R2": float(r50["LOAO_R2"].iloc[0]) if not r50.empty else math.nan,
+            "frame50_N_eff_median": float(r50["within_N_eff_median"].iloc[0]) if not r50.empty else math.nan,
+            "frame50_median_lag1_rho": float(r50["median_lag1_rho"].iloc[0]) if not r50.empty else math.nan,
+            "full_660_N_eff_median": float(full["within_N_eff_median"].iloc[0]) if not full.empty else math.nan,
+            "full_660_median_lag1_rho": float(full["median_lag1_rho"].iloc[0]) if not full.empty else math.nan,
+            "frame50_support_flag": str(r50["support_flag"].iloc[0]) if not r50.empty else "missing",
+        })
+    return pd.DataFrame(out).sort_values("model").reset_index(drop=True)
+
+
+def write_stage21_plots(out_dir: Path, sweep: pd.DataFrame, frame: pd.DataFrame) -> dict[str, object]:
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as exc:  # pragma: no cover
+        return {"plots_written": False, "reason": str(exc)}
+    written: list[str] = []
+    plot_dir = out_dir / "plots"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    models = ["charge", "field", "ring", "mc", "hbond", "unified_Dab_sum"]
+    axes = ["dominance", "isolation", "modulation"]
+    fig, axs = plt.subplots(len(models), len(axes), figsize=(12, 14), sharex=True)
+    for i, model in enumerate(models):
+        for j, axis in enumerate(axes):
+            ax = axs[i][j]
+            g = sweep[(sweep["model"] == model) & (sweep["axis"] == axis) & np.isfinite(sweep["keep_fraction"].to_numpy(float))]
+            if not g.empty:
+                g = g.sort_values("keep_fraction")
+                ax.plot(g["keep_fraction"], g["within_R2"], marker="o", label="within")
+                ax.plot(g["keep_fraction"], g["LOAO_R2"], marker="s", label="LOAO")
+            ax.axhline(0.0, color="0.7", linewidth=0.7)
+            ax.set_title(f"{model} / {axis}", fontsize=8)
+            if i == len(models) - 1:
+                ax.set_xlabel("kept fraction (strict to loose)")
+            if j == 0:
+                ax.set_ylabel("held-out R2")
+    axs[0][0].legend(fontsize=7, loc="best")
+    fig.tight_layout()
+    path = plot_dir / "happy_spot_curves.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    written.append(str(path))
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for model in models:
+        g = frame[frame["model"] == model].sort_values("n_frames_requested")
+        if not g.empty:
+            ax.plot(g["n_frames_requested"], g["within_R2"], marker="o", label=model)
+    ax.axhline(0.0, color="0.7", linewidth=0.7)
+    ax.set_xlabel("centered contiguous frames")
+    ax.set_ylabel("within-frameblock held-out R2")
+    ax.set_title("Stage 2.1 frame-count ablation")
+    ax.legend(fontsize=7, ncol=2)
+    fig.tight_layout()
+    path = plot_dir / "frame_count_ablation.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    written.append(str(path))
+    return {"plots_written": True, "paths": written}
+
+
+def fmt_num(x: object, digits: int = 3) -> str:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return str(x)
+    if not np.isfinite(v):
+        return "nan"
+    return f"{v:.{digits}f}"
+
+
+def shape_triplet(shape_summary: pd.DataFrame, model: str) -> str:
+    parts = []
+    for axis in ["dominance", "isolation", "modulation"]:
+        row = shape_summary[(shape_summary["model"] == model) & (shape_summary["axis"] == axis)]
+        parts.append(str(row["shape"].iloc[0]) if not row.empty else "missing")
+    return " / ".join(parts)
+
+
+def clean_pop_text(shape_summary: pd.DataFrame, model: str) -> str:
+    rows = shape_summary[shape_summary["model"] == model]
+    if rows.empty:
+        return "missing"
+    axes = [str(r.axis) for r in rows.itertuples(index=False) if bool(r.clean_pop)]
+    return ",".join(axes) if axes else "no"
+
+
+def rescue_text(shape_summary: pd.DataFrame, model: str) -> str:
+    rows = shape_summary[shape_summary["model"] == model]
+    rescuers = [str(r.axis) for r in rows.itertuples(index=False) if ci_off_zero(pd.Series(r._asdict()))]
+    return ",".join(rescuers) if rescuers else "no"
+
+
+def frame_line(frame_summary: pd.DataFrame, model: str) -> str:
+    row = frame_summary[frame_summary["model"] == model]
+    if row.empty:
+        return f"- {model}: missing frame ablation."
+    r = row.iloc[0]
+    knee = str(r["knee_frames_90pct_full"])
+    knee_text = f"{knee} fr" if knee.isdigit() else knee
+    return (
+        f"- {model}: knee {knee_text}; "
+        f"50fr within {fmt_num(r['frame50_within_R2'])}, LOAO {fmt_num(r['frame50_LOAO_R2'])}, "
+        f"N_eff {fmt_num(r['frame50_N_eff_median'], 1)} (rho {fmt_num(r['frame50_median_lag1_rho'])}); "
+        f"660fr N_eff {fmt_num(r['full_660_N_eff_median'], 1)}."
+    )
+
+
+def write_stage21_postmortem(out_dir: Path, substrate_dir: Path, orth: float, shape_summary: pd.DataFrame, frame_summary: pd.DataFrame, disk: dict[str, object], plots: dict[str, object]) -> Path:
+    models = ["charge", "field", "ring", "mc", "hbond", "unified_Dab_sum"]
+    lines = [
+        "# Stage 2.1 Postmortem - 2026-06-04",
+        f"Run dir: `{out_dir}`",
+        f"Substrate: `{substrate_dir}`",
+        f"Scope: Build4 CSV/NPY sidecars only; no extraction/DFT/per-source; frozen `get_C`, `|C.T C-I|max={orth:.2e}`; five-component total-T2.",
+        "Happy-spot shapes are dominance / isolation / driver-modulation; `rises_to_clean` = clean POP, `falls_to_clean` = washout.",
+    ]
+    for model in models:
+        support = shape_summary[shape_summary["model"] == model]["clean_support_flag"].replace("", np.nan).dropna()
+        support_text = f"; support {support.iloc[0]}" if not support.empty and str(support.iloc[0]) != "nan" else ""
+        rescue = ""
+        if model in {"mc", "hbond"}:
+            rescue = f"; rescue {rescue_text(shape_summary, model)}"
+        lines.append(f"- {model}: {shape_triplet(shape_summary, model)}; clean POP {clean_pop_text(shape_summary, model)}{rescue}{support_text}.")
+    lines += [
+        "McConnell/H-bond clean-end rescue criterion: primary coefficient CI off zero at the strict end of an input-side axis; no DFT fit is used to define the axis.",
+        "Frame-count ablation uses centered contiguous 20 ps-stride frame blocks; 50 frames is the 1 ns-at-20 ps ubiquitin proxy.",
+    ]
+    for model in models:
+        lines.append(frame_line(frame_summary, model))
+    lines += [
+        "50-frame read: use per-kernel rows above; charge/unified positive at 50 means the cheap 1 ns run keeps the main signal, null kernels remain provisional.",
+        "Geometric-noise flag: build4 has no noise axis distinct from driver modulation; motion and geometric jitter are not separable here. If clean POP tracks modulation, a future C++ emit should split signal modulation from geometric jitter.",
+        f"Artifacts: `stage2_1_happy_spot_curves.csv`, `stage2_1_happy_spot_shape_summary.csv`, `stage2_1_frame_count_ablation.csv`, plots_written={plots.get('plots_written')}.",
+        f"Disk: `/tmp/rediscover-runs` {float(disk['rediscover_runs_GiB_before_write']):.1f}G before write (<15G); build4+build1 kept; output drop-old={disk.get('deleted_existing_output_dir')}.",
+    ]
+    path = Path(__file__).resolve().parents[1] / "POSTMORTEM_STAGE2_1.md"
+    path.write_text("\n".join(lines[:40]) + "\n", encoding="utf-8")
+    return path
+
+
+def run_stage21(args: argparse.Namespace, data: dict[str, object], out_dir: Path, disk: dict[str, object], orth: float) -> Path:
+    sweep = run_stage21_happy_sweep(data)
+    shape_summary = summarize_stage21_shapes(sweep)
+    frame = run_stage21_frame_ablation(data)
+    frame_summary = summarize_stage21_frames(frame)
+    sweep.to_csv(out_dir / "stage2_1_happy_spot_curves.csv", index=False)
+    shape_summary.to_csv(out_dir / "stage2_1_happy_spot_shape_summary.csv", index=False)
+    frame.to_csv(out_dir / "stage2_1_frame_count_ablation.csv", index=False)
+    frame_summary.to_csv(out_dir / "stage2_1_frame_count_summary.csv", index=False)
+    plots = write_stage21_plots(out_dir, sweep, frame)
+    audit = {
+        "substrate_dir": str(args.substrate_dir),
+        "out_dir": str(out_dir),
+        "disk_guard": disk,
+        "change_of_basis_orthogonality_max_abs": orth,
+        "python_read_scope": "Build-4 per_atom_substrate CSV/NPY sidecars and CaseHunter manifests only",
+        "forbidden_inputs_not_opened": ["trajectory.h5", "ORCA outputs", "per-source dumps", "older rediscover dirs for fitting"],
+        "anti_circularity": "cleanliness axes are emitted input-side dominance/gap/modulation only; DFT target is used only in held-out scoring",
+        "sweep_keep_fractions_strict_to_loose": list(SWEEP_KEEP_FRACTIONS),
+        "frame_counts": list(FRAME_COUNTS),
+        "frame_ablation_policy": "centered contiguous original_frame_index blocks at the emitted 20 ps stride",
+        "hbond_driver_modulation_axis": "not emitted in per_atom_substrate_driver_modulation_by_atom; not fabricated",
+        "unified_driver_modulation_axis": "active charge/mc/field emitted sd column; rows whose active mechanism is hbond have missing modulation",
+        "geometric_noise_axis_distinct_from_driver_modulation": "not available in build4",
+        "plots": plots,
+    }
+    (out_dir / "stage2_1_run_audit.json").write_text(json.dumps(json_sanitize(audit), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return write_stage21_postmortem(out_dir, args.substrate_dir, orth, shape_summary, frame_summary, disk, plots)
+
+
+def main() -> None:
+    args = parse_args()
+    args.substrate_dir = args.substrate_dir.resolve()
+    if args.stage2_1 and args.out_dir == OUT_DIR:
+        args.out_dir = STAGE21_OUT_DIR
+    out_dir = args.out_dir.resolve()
+    disk = disk_guard(out_dir, drop_existing=bool(args.stage2_1))
+    data, orth = load_stage2_inputs(args.substrate_dir, include_stage21=bool(args.stage2_1))
+    manifest: dict[str, object] = data["manifest"]
+    if args.stage2_1:
+        postmortem = run_stage21(args, data, out_dir, disk, orth)
+        print(f"stage2.1 wrote {out_dir}")
+        print(f"postmortem {postmortem}")
+        return
     kernel_summary, path_coeffs, case_outputs = run_kernel_fits(args, data, out_dir)
     unified_summary, unified_intensities = run_unified_fit(data)
 
