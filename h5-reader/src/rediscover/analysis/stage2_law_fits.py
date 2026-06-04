@@ -21,11 +21,9 @@ import pandas as pd
 
 import change_of_basis as cob
 from allatom_fit_common import (
-    alpha_distribution,
     blocked_frame_cv_splits,
     centered_by_train_atom,
     ci95,
-    deterministic_index_folds,
     effective_n_components,
     finite_fmt,
     json_sanitize,
@@ -350,32 +348,23 @@ def blocked_within_fit(x: np.ndarray, y: np.ndarray, atoms: np.ndarray, frames: 
     }
 
 
-def loao_modulation_fit(x: np.ndarray, y: np.ndarray, atoms: np.ndarray) -> dict[str, object]:
-    labels = np.unique(atoms)
-    pred = np.full_like(y, np.nan, dtype=float)
-    target = np.full_like(y, np.nan, dtype=float)
-    coefs = []
-    for held in labels:
-        train_atoms = atoms != held
-        test_atoms = atoms == held
-        if train_atoms.sum() < 3 or test_atoms.sum() < 2:
-            continue
-        x_train = atom_center(x[train_atoms], atoms[train_atoms])
-        y_train = atom_center(y[train_atoms], atoms[train_atoms])
-        k = fit_scalar_no_intercept(x_train, y_train)
-        coefs.append(k)
-        x_test = x[test_atoms] - x[test_atoms].mean(axis=0, keepdims=True)
-        y_test = y[test_atoms] - y[test_atoms].mean(axis=0, keepdims=True)
-        pred[test_atoms] = scalar_predict(x_test, k)
-        target[test_atoms] = y_test
-    ok = np.isfinite(pred).all(axis=1) & np.isfinite(target).all(axis=1)
+def true_loao_single_feature_fit(x: np.ndarray, y: np.ndarray, atoms: np.ndarray) -> dict[str, object]:
+    atom_labels, atom_features, atom_y, _counts = true_loao_atom_mean_arrays([x], y, atoms)
+    score = true_loao_score_atom_means(["shadow"], atom_features, atom_y)
+    coef = np.asarray(score.get("standardized_coef_median", np.asarray([math.nan])), dtype=float)
+    coef_min = np.asarray(score.get("standardized_coef_min", np.asarray([math.nan])), dtype=float)
+    coef_max = np.asarray(score.get("standardized_coef_max", np.asarray([math.nan])), dtype=float)
     return {
-        "loao_R2": r2_score(pred[ok], target[ok]),
-        "loao_atoms": int(len(labels)),
-        "loao_coeff_median": float(np.nanmedian(coefs)) if coefs else math.nan,
-        "loao_coeff_min": float(np.nanmin(coefs)) if coefs else math.nan,
-        "loao_coeff_max": float(np.nanmax(coefs)) if coefs else math.nan,
+        "loao_R2": float(score["R2"]),
+        "loao_atoms": int(len(atom_labels)),
+        "loao_coeff_median": float(coef[0]) if coef.size and np.isfinite(coef[0]) else math.nan,
+        "loao_coeff_min": float(coef_min[0]) if coef_min.size and np.isfinite(coef_min[0]) else math.nan,
+        "loao_coeff_max": float(coef_max[0]) if coef_max.size and np.isfinite(coef_max[0]) else math.nan,
     }
+
+
+def loao_modulation_fit(x: np.ndarray, y: np.ndarray, atoms: np.ndarray) -> dict[str, object]:
+    return true_loao_single_feature_fit(x, y, atoms)
 
 
 def path_bucket(coef: float, lo: float, hi: float, within_r2: float, loao_r2: float, support: str, agreement: float) -> str:
@@ -509,7 +498,7 @@ def run_kernel_fits(args: argparse.Namespace, data: dict[str, object], out_dir: 
             x = to_e3nn(x_lib, C)
             within = blocked_within_fit(x, y, atoms, frames)
             within_lib = blocked_within_fit(x_lib, y_lib, atoms, frames)
-            loao = loao_modulation_fit(x, y, atoms)
+            loao = true_loao_single_feature_fit(x, y, atoms)
             basis_delta = abs(float(within["coefficient"]) - float(within_lib["coefficient"])) if np.isfinite(within["coefficient"]) and np.isfinite(within_lib["coefficient"]) else math.nan
             row = {
                 "kernel": kernel.name,
@@ -655,19 +644,8 @@ def run_unified_fit(data: dict[str, object]) -> tuple[pd.DataFrame, pd.DataFrame
     x_test = np.column_stack([f[test].reshape(-1) for f in centered_features])
     pred_test_arr = (x_test @ beta).reshape((-1, T2)) if np.isfinite(beta).all() else np.full_like(y_c[test], np.nan)
     within_r2 = r2_score(pred_test_arr, y_c[test])
-    loao_pred = np.full_like(y, np.nan, dtype=float)
-    loao_tgt = np.full_like(y, np.nan, dtype=float)
-    for held in np.unique(atoms_s):
-        tr = atoms_s != held
-        te = atoms_s == held
-        cf = [atom_center(f[tr], atoms_s[tr]) for f in features]
-        cy = atom_center(y[tr], atoms_s[tr])
-        b, _ = fit_linear_multi(cf, cy, np.ones(tr.sum(), dtype=bool))
-        hf = [f[te] - f[te].mean(axis=0, keepdims=True) for f in features]
-        loao_pred[te] = (np.column_stack([f.reshape(-1) for f in hf]) @ b).reshape((-1, T2))
-        loao_tgt[te] = y[te] - y[te].mean(axis=0, keepdims=True)
-    ok = np.isfinite(loao_pred).all(axis=1)
-    loao_r2 = r2_score(loao_pred[ok], loao_tgt[ok])
+    _atom_labels, atom_features, atom_y, _counts = true_loao_atom_mean_arrays(features, y, atoms_s)
+    loao_r2 = float(true_loao_score_atom_means(labels, atom_features, atom_y)["R2"])
     beta_j = []
     for held in np.unique(atoms_s):
         tr = (atoms_s != held) & train
@@ -930,7 +908,7 @@ def stage21_kernel_metrics(data: dict[str, object], kernel: KernelSpec, mask: np
     neff = float(neff_info["within_N_eff_median"])
     supp = support_flag(n_atoms, len(idx), neff)
     within = blocked_within_fit(x, y, atoms, frames)
-    loao = loao_modulation_fit(x, y, atoms)
+    loao = true_loao_single_feature_fit(x, y, atoms)
     coef = float(within["coefficient"])
     lo = float(within["coefficient_ci95_low"])
     hi = float(within["coefficient_ci95_high"])
@@ -979,23 +957,8 @@ def stage21_unified_metrics(data: dict[str, object], mask: np.ndarray) -> dict[s
     else:
         pred_test = np.full_like(y_c[test], np.nan)
     within_r2 = r2_score(pred_test, y_c[test])
-    loao_pred = np.full_like(y, np.nan, dtype=float)
-    loao_tgt = np.full_like(y, np.nan, dtype=float)
-    for held in np.unique(atoms):
-        tr = atoms != held
-        te = atoms == held
-        if tr.sum() < len(labels) + 3:
-            continue
-        cf = [atom_center(f[tr], atoms[tr]) for f in features]
-        cy = atom_center(y[tr], atoms[tr])
-        b, _ = fit_linear_multi(cf, cy, np.ones(tr.sum(), dtype=bool))
-        if not np.isfinite(b).all():
-            continue
-        hf = [f[te] - f[te].mean(axis=0, keepdims=True) for f in features]
-        loao_pred[te] = (np.column_stack([f.reshape(-1) for f in hf]) @ b).reshape((-1, T2))
-        loao_tgt[te] = y[te] - y[te].mean(axis=0, keepdims=True)
-    ok = np.isfinite(loao_pred).all(axis=1) & np.isfinite(loao_tgt).all(axis=1)
-    loao_r2 = r2_score(loao_pred[ok], loao_tgt[ok])
+    _atom_labels, atom_features, atom_y, _counts = true_loao_atom_mean_arrays(features, y, atoms)
+    loao_r2 = float(true_loao_score_atom_means(labels, atom_features, atom_y)["R2"])
     neff_info = effective_n_components(y, atoms, frames)
     neff = float(neff_info["within_N_eff_median"])
     supp = support_flag(n_atoms, len(idx), neff)
@@ -1496,43 +1459,6 @@ def stage22_select_within_alpha(
     }
 
 
-def stage22_center_by_atom_subset(values: np.ndarray, atoms: np.ndarray) -> np.ndarray:
-    return atom_center(np.asarray(values, dtype=float), np.asarray(atoms))
-
-
-def stage22_select_loao_alpha(
-    features: list[np.ndarray],
-    y: np.ndarray,
-    atoms: np.ndarray,
-    outer_train: np.ndarray,
-) -> tuple[float, dict[str, object]]:
-    scores = stage22_alpha_scores()
-    train_atoms = np.unique(atoms[outer_train])
-    folds = deterministic_index_folds(train_atoms, STAGE22_INNER_CV_FOLDS)
-    for inner_fit_atoms, inner_val_atoms in folds:
-        fit = outer_train & np.isin(atoms, inner_fit_atoms)
-        val = outer_train & np.isin(atoms, inner_val_atoms)
-        train_features = [stage22_center_by_atom_subset(f[fit], atoms[fit]) for f in features]
-        train_y = stage22_center_by_atom_subset(y[fit], atoms[fit])
-        val_features = [stage22_center_by_atom_subset(f[val], atoms[val]) for f in features]
-        val_y = stage22_center_by_atom_subset(y[val], atoms[val])
-        for alpha in STAGE22_ALPHA_GRID:
-            pred, _model = stage22_fit_predict_arrays(train_features, train_y, val_features, float(alpha))
-            score = r2_score(pred, val_y)
-            if np.isfinite(score):
-                scores[float(alpha)].append(float(score))
-    mean_scores = {float(alpha): (float(np.mean(vals)) if vals else math.nan) for alpha, vals in scores.items()}
-    selected = select_best_alpha(mean_scores, [float(a) for a in STAGE22_ALPHA_GRID])
-    return selected, {
-        "axis": "LOAO",
-        "method": "deterministic atom-fold inner CV inside each outer held-out atom training set",
-        "selected_alpha": float(selected),
-        "inner_cv_folds": int(len(folds)),
-        "alpha_grid": [float(x) for x in STAGE22_ALPHA_GRID],
-        "inner_cv_R2_by_alpha": {f"{alpha:g}": (float(mean_scores[alpha]) if np.isfinite(mean_scores[alpha]) else None) for alpha in mean_scores},
-    }
-
-
 def stage22_block_bootstrap_values(
     pred: np.ndarray,
     target: np.ndarray,
@@ -1615,6 +1541,28 @@ def stage22_recovery_intervals(
     }
 
 
+def stage22_atom_mean_recovery_intervals(
+    pred: np.ndarray,
+    target: np.ndarray,
+    atom_labels: np.ndarray,
+) -> dict[str, object]:
+    r2 = r2_score(pred, target)
+    jk_vals = jackknife_metric_values(pred, target, atom_labels)
+    jk_se = jackknife_se_from_values(jk_vals)
+    jk_lo, jk_hi = ci95(float(r2), float(jk_se))
+    return {
+        "R2": float(r2),
+        "jackknife_se": float(jk_se) if np.isfinite(jk_se) else math.nan,
+        "jackknife_ci95_low": float(jk_lo) if np.isfinite(jk_lo) else math.nan,
+        "jackknife_ci95_high": float(jk_hi) if np.isfinite(jk_hi) else math.nan,
+        "jackknife_groups": int(len(np.unique(atom_labels))),
+        "bootstrap_ci95_low": math.nan,
+        "bootstrap_ci95_high": math.nan,
+        "bootstrap_replicates": 0,
+        "bootstrap_frame_block": 0,
+    }
+
+
 def stage22_prefix(prefix: str, metrics: dict[str, object]) -> dict[str, object]:
     return {f"{prefix}_{key}": value for key, value in metrics.items()}
 
@@ -1667,47 +1615,32 @@ def stage22_evaluate_loao(
     include_ci: bool,
     seed: int,
 ) -> dict[str, object]:
-    pred = np.full_like(y, np.nan, dtype=float)
-    target = np.full_like(y, np.nan, dtype=float)
-    alphas: list[float] = []
-    dofs: list[float] = []
-    observations: list[int] = []
-    alpha_audits: list[dict[str, object]] = []
-    for held in np.unique(atoms):
-        train = atoms != held
-        test = atoms == held
-        if int(train.sum()) < 3 or int(test.sum()) < 2:
-            continue
-        alpha, audit = stage22_select_loao_alpha(features, y, atoms, train)
-        train_features = [stage22_center_by_atom_subset(f[train], atoms[train]) for f in features]
-        train_y = stage22_center_by_atom_subset(y[train], atoms[train])
-        test_features = [stage22_center_by_atom_subset(f[test], atoms[test]) for f in features]
-        test_y = stage22_center_by_atom_subset(y[test], atoms[test])
-        pred_test, model = stage22_fit_predict_arrays(train_features, train_y, test_features, alpha)
-        pred[test] = pred_test
-        target[test] = test_y
-        alphas.append(float(alpha))
-        dofs.append(float(model["effective_dof_penalized"]) if np.isfinite(model["effective_dof_penalized"]) else math.nan)
-        observations.append(int(model["train_observations"]))
-        alpha_audits.append({"heldout_atom": int(held), **audit})
-    ok = np.isfinite(pred).all(axis=1) & np.isfinite(target).all(axis=1)
-    intervals = stage22_recovery_intervals(pred[ok], target[ok], atoms[ok], frames[ok], seed, include_ci)
-    dist = alpha_distribution(alphas)
-    finite_dofs = np.asarray(dofs, dtype=float)
-    finite_dofs = finite_dofs[np.isfinite(finite_dofs)]
+    del frames, include_ci, seed
+    atom_labels, atom_features, atom_y, counts = true_loao_atom_mean_arrays(features, y, atoms)
+    score = true_loao_score_atom_means(labels, atom_features, atom_y)
+    pred = np.asarray(score["pred"], dtype=float)
+    target = np.asarray(score["target"], dtype=float)
+    intervals = stage22_atom_mean_recovery_intervals(pred, target, atom_labels)
     return {
         **intervals,
-        "selected_alpha_mode": float(dist["selected_alpha"]) if dist["selected_alpha"] is not None else math.nan,
-        "selected_alpha_min": float(dist["min"]) if dist["min"] is not None else math.nan,
-        "selected_alpha_max": float(dist["max"]) if dist["max"] is not None else math.nan,
-        "selected_alpha_counts": dist["counts"],
-        "effective_dof_penalized_median": float(np.median(finite_dofs)) if len(finite_dofs) else math.nan,
-        "effective_dof_penalized_min": float(np.min(finite_dofs)) if len(finite_dofs) else math.nan,
-        "effective_dof_penalized_max": float(np.max(finite_dofs)) if len(finite_dofs) else math.nan,
-        "train_observations_median": float(np.median(observations)) if observations else math.nan,
+        "selected_alpha_mode": math.nan,
+        "selected_alpha_min": math.nan,
+        "selected_alpha_max": math.nan,
+        "selected_alpha_counts": {},
+        "effective_dof_penalized_median": math.nan,
+        "effective_dof_penalized_min": math.nan,
+        "effective_dof_penalized_max": math.nan,
+        "train_observations_median": float(score["train_observations_median"]),
         "terms": int(len(labels)),
-        "heldout_atoms": int(len(np.unique(atoms))),
-        "alpha_audit": alpha_audits,
+        "heldout_atoms": int(len(atom_labels)),
+        "atom_row_count_min": int(np.min(counts)) if len(counts) else 0,
+        "atom_row_count_median": float(np.median(counts)) if len(counts) else math.nan,
+        "atom_row_count_max": int(np.max(counts)) if len(counts) else 0,
+        "alpha_audit": [{
+            "axis": "LOAO",
+            "method": "true atom-mean LOAO shared with true_loao_score_atom_means; no own-heldout-atom centering",
+            "selected_alpha": None,
+        }],
     }
 
 
@@ -1867,8 +1800,8 @@ def write_stage22_postmortem(
         f"Selection: {selection_rule}; input-side dominance only; 25 atoms / 3903 rows / 26 unified terms.",
         f"Overfit vet: OLS {float(ols_row['within_frameblock_R2']):.3f}/{float(ols_row['LOAO_R2']):.3f} -> ridge ALL within {stage22_fmt_ci(allr, 'within')}; LOAO {stage22_fmt_ci(allr, 'LOAO')}.",
         f"Shrinkage: within alpha {float(allr['within_selected_alpha']):g}, effDOF {float(allr['within_effective_dof_penalized']):.1f}/26 (+intercept {float(allr['within_effective_dof_with_intercept']):.1f}); within N_eff {float(allr['within_N_eff_median']):.1f}.",
-        f"LOAO shrinkage: alpha mode/min/max {float(allr['LOAO_selected_alpha_mode']):g}/{float(allr['LOAO_selected_alpha_min']):g}/{float(allr['LOAO_selected_alpha_max']):g}; effDOF median {float(allr['LOAO_effective_dof_penalized_median']):.1f}/26; support `{allr['support_flag']}`.",
-        f"Bucket: overfit={overfit_bucket}; old LOAO 0.26 does not survive as-is and should not outrank within.",
+        f"LOAO true-between: atom-mean scorer shared with true_loao; train observations median {float(allr['LOAO_train_observations_median']):.1f}; support `{allr['support_flag']}`.",
+        f"Bucket: overfit={overfit_bucket}; LOAO column is true atom-mean recovery, not within modulation.",
         f"Charge table: charge-alone within {float(charge['within_R2']):.3f}, LOAO {float(charge['LOAO_R2']):.3f}; minus-charge within {float(minus['within_R2']):.3f}, LOAO {float(minus['LOAO_R2']):.3f}; all within {float(allr['within_R2']):.3f}, LOAO {float(allr['LOAO_R2']):.3f}.",
         f"Deltas ALL-charge: within {delta_within_charge:+.3f}, LOAO {delta_loao_charge:+.3f}; ALL-minus-charge: within {delta_within_minus:+.3f}, LOAO {delta_loao_minus:+.3f}; bucket={combine_bucket}.",
         f"Drop-one losses (within/LOAO, positive means term carries recovery): {top_drop}.",
@@ -1962,10 +1895,10 @@ def run_stage22(args: argparse.Namespace, data: dict[str, object], out_dir: Path
         "inner_cv_folds": int(STAGE22_INNER_CV_FOLDS),
         "regularization": "ridge with standardized train-only design and unpenalized intercept",
         "within_outer_split": "centered contiguous frame block; held-out block excluded from alpha selection and centering means",
-        "LOAO_outer_split": "one atom held out; alpha selected by atom-fold CV inside remaining atoms",
+        "LOAO_outer_split": "one atom held out; train on training-atom means only, transform held-out atom mean with training-atom stats",
         "ci_methods": {
             "jackknife": "leave-one-atom recovery jackknife on held-out predictions",
-            "block_bootstrap": f"moving circular frame-block bootstrap, {STAGE22_BOOTSTRAPS} replicates, block length {STAGE22_BOOTSTRAP_FRAME_BLOCK}",
+            "block_bootstrap": f"within axis only: moving circular frame-block bootstrap, {STAGE22_BOOTSTRAPS} replicates, block length {STAGE22_BOOTSTRAP_FRAME_BLOCK}; LOAO uses atom-mean jackknife",
         },
         "anti_circularity": "through-space atom selection uses emitted input-side dominance/CaseHunter only; DFT appears only in held-out fitting/scoring",
     }
@@ -2027,7 +1960,7 @@ def stage23_score_within(design: dict[str, object], y: np.ndarray) -> float:
     return r2_score(pred_flat.reshape((int(design["n_test_rows"]), T2)), y_c[test])
 
 
-def stage23_prepare_loao_design(
+def mislabeled_within_loao_prepare_design(
     labels: list[str],
     features: list[np.ndarray],
     atoms: np.ndarray,
@@ -2059,7 +1992,7 @@ def stage23_prepare_loao_design(
     return {"axis": "LOAO", "labels": labels, "atoms": atoms, "held_designs": held_designs}
 
 
-def stage23_score_loao(design: dict[str, object], y: np.ndarray) -> float:
+def mislabeled_within_loao_score(design: dict[str, object], y: np.ndarray) -> float:
     atoms = np.asarray(design["atoms"], dtype=int)
     pred = np.full_like(y, np.nan, dtype=float)
     target = np.full_like(y, np.nan, dtype=float)
@@ -2188,10 +2121,7 @@ def stage23_null_scores(
             vals[i] = score_fn(stage23_permute_within_atom(y, groups, rng))
         return vals
     if axis == "LOAO":
-        _unique, groups, transfers = stage23_atom_transfer_plan(atoms, frames)
-        for i in range(int(n_perm)):
-            vals[i] = score_fn(stage23_permute_across_atoms(y, groups, transfers, rng))
-        return vals
+        raise ValueError("LOAO nulls use true_loao_permutation_null on atom means")
     raise ValueError(axis)
 
 
@@ -2221,19 +2151,18 @@ def stage23_eval_probability(
         "null_shuffle": "DFT target shuffled across frames within atom",
         **stage23_null_position(within_obs, within_null),
     })
-    loao_design = stage23_prepare_loao_design(labels, features, atoms)
-    loao_score = lambda yy: stage23_score_loao(loao_design, yy)
-    loao_obs = loao_score(y)
-    loao_null = stage23_null_scores("LOAO", loao_score, y, atoms, frames, n_perm, seed + 10_000)
+    atom_labels, atom_features, atom_y, _counts = true_loao_atom_mean_arrays(features, y, atoms)
+    loao_obs = float(true_loao_score_atom_means(labels, atom_features, atom_y)["R2"])
+    loao_null = true_loao_permutation_null(labels, atom_features, atom_y, n_perm, seed + 10_000)
     rows.append({
         "model": model,
         "axis": "LOAO",
         "rows": int(len(y)),
-        "atoms": int(len(np.unique(atoms))),
+        "atoms": int(len(atom_labels)),
         "frames": int(len(np.unique(frames))),
         "terms": int(len(labels)),
         "term_labels": "|".join(labels),
-        "null_shuffle": "DFT target shuffled across atoms with held-out atom blocks kept intact",
+        "null_shuffle": "DFT target atom-means deranged across atoms; structure and LOAO folds unchanged",
         **stage23_null_position(loao_obs, loao_null),
     })
     return pd.DataFrame(rows)
@@ -2303,15 +2232,15 @@ def stage23_drop_one_unified(base: dict[str, object]) -> pd.DataFrame:
     full = stage23_eval_probability("unified_Dab_sum", labels, features, y, atoms, frames, 1, 44)
     full_within = float(full[full["axis"] == "within"]["observed_R2"].iloc[0])
     full_loao = float(full[full["axis"] == "LOAO"]["observed_R2"].iloc[0])
+    _atom_labels, atom_features, atom_y, _counts = true_loao_atom_mean_arrays(features, y, atoms)
     rows = []
     for i, label in enumerate(labels):
         keep = [j for j in range(len(labels)) if j != i]
         sub_labels = [labels[j] for j in keep]
         sub_features = [features[j] for j in keep]
         within_design = stage23_prepare_within_design(sub_labels, sub_features, atoms, frames)
-        loao_design = stage23_prepare_loao_design(sub_labels, sub_features, atoms)
         within_r2 = stage23_score_within(within_design, y)
-        loao_r2 = stage23_score_loao(loao_design, y)
+        loao_r2 = float(true_loao_score_atom_means(sub_labels, [atom_features[j] for j in keep], atom_y)["R2"])
         rows.append({
             "dropped_term": label,
             "dropped_group": stage22_term_group(label),
@@ -2451,7 +2380,7 @@ def write_stage23_postmortem(
         "# Stage 2.3 Postmortem - 2026-06-04",
         f"Run dir: `{out_dir}`",
         f"Substrate: `{substrate_dir}`; Build4 CSV/NPY only; frozen `get_C`, `|C.T C-I|max={orth:.2e}`; five-component total-T2.",
-        "Nulls: within shuffles the DFT target across frames within atom; LOAO shuffles the DFT target across atoms; 1000 shuffles each row.",
+        "Nulls: within shuffles the DFT target across frames within atom; LOAO deranges target atom-means across atoms; 1000 shuffles each row.",
         "| recovery | statistical position vs null | determinability | lead-scale placement |",
         "| --- | --- | --- | --- |",
     ]
@@ -2522,7 +2451,7 @@ def run_stage23(args: argparse.Namespace, data: dict[str, object], out_dir: Path
         "permutations_per_probability_row": int(n_perm),
         "nulls": {
             "within": "DFT target shuffled across frames within atom",
-            "LOAO": "DFT target shuffled across atoms; feature rows and held-out atom grouping unchanged",
+            "LOAO": "DFT target atom-means deranged across atoms; feature atom-means and held-out atom folds unchanged",
         },
         "cutoff_sweeps": {
             "dab_cutoffs_ring_fixed_0.70": list(STAGE23_DAB_CUTOFFS),
@@ -2638,12 +2567,16 @@ def true_loao_score_atom_means(
             coef_rows.append(beta)
     coef = np.asarray(coef_rows, dtype=float)
     coef_median = np.nanmedian(coef, axis=0) if coef.size else np.full(len(labels), np.nan)
+    coef_min = np.nanmin(coef, axis=0) if coef.size else np.full(len(labels), np.nan)
+    coef_max = np.nanmax(coef, axis=0) if coef.size else np.full(len(labels), np.nan)
     return {
         "R2": r2_score(pred, atom_y),
         "pred": pred,
         "target": atom_y,
         "train_observations_median": float(np.median(observations)) if observations else math.nan,
         "standardized_coef_median": coef_median,
+        "standardized_coef_min": coef_min,
+        "standardized_coef_max": coef_max,
     }
 
 
@@ -2675,8 +2608,8 @@ def true_loao_support_flag(n_atoms: int, n_terms: int) -> str:
 
 
 def true_loao_mislabeled_within_loao(labels: list[str], features: list[np.ndarray], y: np.ndarray, atoms: np.ndarray) -> float:
-    design = stage23_prepare_loao_design(labels, features, atoms)
-    return float(stage23_score_loao(design, y))
+    design = mislabeled_within_loao_prepare_design(labels, features, atoms)
+    return float(mislabeled_within_loao_score(design, y))
 
 
 def true_loao_drop_one_unified(base: dict[str, object]) -> pd.DataFrame:
