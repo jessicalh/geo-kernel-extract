@@ -1,4 +1,9 @@
 # Stage 2.1 Postmortem - 2026-06-04
+
+> **Historical run record — not current truth (trued 2026-06-04).** Preserve as
+> provenance. Check `NOW.md`, the corrected top of `STATE.md`, and the June 4
+> audit postmortems before quoting quantitative claims.
+
 Run dir: `/tmp/rediscover-runs/2026-06-04-stage2_1-sweep`
 Substrate: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build4`
 Scope: Build4 CSV/NPY sidecars only; no extraction/DFT/per-source; frozen `get_C`, `|C.T C-I|max=1.11e-16`; five-component total-T2.

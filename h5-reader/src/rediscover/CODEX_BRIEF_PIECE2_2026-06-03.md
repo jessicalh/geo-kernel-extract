@@ -1,5 +1,8 @@
 # Codex brief — Piece 2: all-atoms joint fit + partition-by-condition
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `5b5525b45f363e7c4a05cfff6a02a19d2d8c15ab`; retained as the execution brief.
 
 You own the grind; the lead and the project owner vet and judge. This is **layer 2

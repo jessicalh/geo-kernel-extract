@@ -1,5 +1,8 @@
 # Codex brief — Piece 1: charge-scalars emit extension (`per_atom_substrate`)
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `4bb9a0198594773c016160270b6a872b2f9b23fb`; retained as the execution brief.
 
 You own the grind here; the lead vets and judges. This is the first build loop of

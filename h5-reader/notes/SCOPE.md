@@ -2,10 +2,12 @@
 
 ## What this is
 
-A standalone Qt6/VTK reference implementation that opens a per-protein run
-directory — a `--trajectory` run (`trajectory.h5` + 5-NPY sidecar +
-`per_frame_npys/`) or a single-pose `--orca`/`--mutant`/`--pdb` run — and
-presents the protein and its full per-frame physics — positions, kernel
+A standalone Qt6/VTK reference implementation that opens a calcset directory
+or `.LGS` manifest. The `.LGS` typed wrapper points at the trajectory H5,
+topology sidecars, per-frame NPYs, single-pose payloads, and any DFT campaign;
+`QtProteinLoader::LoadRunPath` dispatches trajectory, single-pose, and related
+calcset shapes. It presents the protein and its full per-frame physics —
+positions, kernel
 contributions, vector fields, solvent environment, DSSP, dihedrals, bonded
 energies — as an inspectable 3D scene (animated for a trajectory, static
 for a single pose). An ordered selection of up to four atoms (the
@@ -49,19 +51,19 @@ nmr-shielding/
 ├── ui/                  — the original single-conformation viewer. Frozen
 │                          as the library-object-model witness. h5-reader
 │                          copies rendering patterns; does not share code.
-├── fileformat/          — frozen H5 serialiser/deserialiser (header +
-│                          analysis_file.cpp). h5-reader compiles this
-│                          directly into its own target, same pattern as
-│                          the existing viewer.
+├── fileformat/          — frozen H5 serialiser/deserialiser reference. The
+│                          reader consumes the documented serialized shape
+│                          through its own Qt-side IO and `.LGS` manifest path.
 ├── extern/HighFive/     — vendored header-only HDF5 C++ wrapper.
 │                          h5-reader points at this via
 │                          HIGHFIVE_INCLUDE_DIR.
 └── h5-reader/           — this directory. Standalone Qt/VTK app.
 ```
 
-The reader is independent of everything except `fileformat/analysis_file.cpp`
-and the HighFive headers. When Jessica hands a zip of `h5-reader/` plus
-those two dependencies to an adviser, the adviser can build and run.
+The reader is independent of the main `nmr_shielding` library. Its current
+external build dependencies are the documented Qt/VTK/HDF5/Eigen stack plus the
+vendored HighFive headers; current run layout is documented in `README.md` and
+`spec/CALCSET_MANIFEST.md`.
 
 ## The object-model discipline this carries over
 

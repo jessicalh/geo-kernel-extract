@@ -1,3 +1,7 @@
+> **Historical review record — not current truth (trued 2026-06-04).** Preserve
+> as review provenance; do not use as a current task prompt. Check
+> `UI_STATE_OVERVIEW_2026-06-04.md` and current backlog/issues first.
+
 **NOW**
 
 - [NOW] `h5-reader/src/app/DashboardDisplayController.cpp:1174` / `h5-reader/src/app/DashboardDisplayController.cpp:1436` / `h5-reader/src/app/DashboardStripDock.cpp:277`: static panels are moved out exactly once, then any frame tick or panel-visibility refresh emits `stripTracksChanged()` and `refreshTracks()` replaces the widget's panels with the now-empty moved-from vector. Split temporal track updates from static panel updates, or keep panel ownership in the widget and only replace it on a rebuild/static-panel generation change.

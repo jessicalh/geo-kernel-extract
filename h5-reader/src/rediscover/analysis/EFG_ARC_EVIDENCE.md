@@ -1,5 +1,9 @@
 # APBS-EFG T2 Arc Evidence
 
+> **Evidence archive — not current truth (trued 2026-06-04).** Preserve as
+> analysis provenance; check `../NOW.md` and corrected `../STATE.md` before
+> quoting quantitative claims.
+
 Run date: 2026-06-01. Branch: `h5-reader-pysr-spike`.
 
 This is corrected capstone evidence after removing the EFG lab-frame rotation

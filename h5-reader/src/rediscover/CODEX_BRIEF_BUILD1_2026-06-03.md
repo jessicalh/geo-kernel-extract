@@ -1,5 +1,8 @@
 # Codex brief — Build 1: the C++ partition-filter tool (isolation primitives + bin-ids + CaseHunter)
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `a3531040655955a4d393e314c5a69de51b1c54bf`; fixed by Build1Fix.
 
 You own the grind; the owner vets. This is the C++ half of the PARTITION step — the

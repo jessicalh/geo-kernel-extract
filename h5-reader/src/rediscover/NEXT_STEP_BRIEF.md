@@ -1,6 +1,9 @@
 > **SUPERSEDED (2026-06-01) — historical.** This described building the
 > multi-scenario surface, which is DONE (commit `99cdc85`). Current handoff:
-> `NEXT_SESSION_PROMPT.md` + `REDISCOVERY_MAP.md` + `STATE.md`. Ignore the below.
+> `NEXT_SESSION_PROMPT.md`, `NOW.md`, and corrected `STATE.md`. Ignore the below.
+>
+> **June 4 true-LOAO retraction:** any positive 1P9J leave-atoms-out/between
+> claim below is historical only and must not be quoted as transfer evidence.
 
 # Next-step brief — build the multi-scenario rediscover surface
 

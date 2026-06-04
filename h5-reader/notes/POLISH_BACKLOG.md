@@ -1,5 +1,10 @@
 # Polish backlog — what's left between now and viva-ready
 
+Status trued 2026-06-04 against `UI_STATE_OVERVIEW_2026-06-04.md`. This remains
+the active polish-debt list, but built or partly built camera/panel/selection
+work should not be re-opened from older wording. Tags on headings below mark the
+June 4 read: `[open]`, `[partial]`, or `[verify]`.
+
 **Framing.** Jessica: *this is a thesis-defense-quality tool for advisor
 review of protein analysis before write-up. Surfacing complex data is
 the fastest way to avoid folly.* The reader's role is not just viewing —
@@ -16,7 +21,7 @@ already earmarked for the time-series illustrator expansion.
 
 ## Thesis-defense critical (the actual content of the reader)
 
-### 0. BS / HM frame-to-frame stacking (user-observed 2026-04-17)
+### 0. BS / HM frame-to-frame stacking (user-observed 2026-04-17) [open]
 
 During playback, the BS/HM isosurfaces visually **stack** — new frames'
 surfaces draw with a few extra frames / extents of persistence still
@@ -78,7 +83,7 @@ glyphs / colour bubbles (also translucent), understand THIS behaviour.
 A per-atom colour overlay would inherit the same mechanism unless we
 fix the pass-ordering story here first.
 
-### 1. BS / HM butterfly extent controls
+### 1. BS / HM butterfly extent controls [open]
 
 Currently the butterfly isosurfaces render with a fixed isovalue and
 grid extent. A reviewer asking "what would this lobe look like at
@@ -96,7 +101,7 @@ half the threshold?" has no UI answer.
 grid and mapper; add the isovalue/extent parameters there, a small
 `QtFieldGridOverlayControls` dock or inline toolbar.
 
-### 2. Per-field glossary / help
+### 2. Per-field glossary / help [open]
 
 Every scalar the time-series dock surfaces, every label in the atom
 inspector, needs a one-paragraph description sourceable from the H5
@@ -145,7 +150,7 @@ minimum. Next session expands this alongside the scope-selector UI.
 The glossary is the *source of truth* for which fields are in which
 dock and how they are displayed.
 
-### 3. Tensor display on atoms
+### 3. Tensor display on atoms [open]
 
 T2 is sacred (feedback_t2_sacred). The 5-component spherical tensor
 traceless symmetric piece IS the thesis argument. Right now the reader
@@ -166,7 +171,7 @@ right fields. The overlay is new (`src/app/QtTensorGlyphOverlay.{h,cpp}`
 — duplicate-and-adapt `QtRingPolygonOverlay` pattern). The time-series
 dock extension is a new tab-row type in the Desc table.
 
-### 4. Per-metric colouring on atoms (the "colour bubble" representation)
+### 4. Per-metric colouring on atoms (the "colour bubble" representation) [open]
 
 Called out in `TIME_SERIES_EXPANSION.md` axis 1. The whole-protein
 scan-at-a-glance view: every atom rendered with its sphere coloured
@@ -189,7 +194,7 @@ the same LUT plumbing.
 
 ## Deferred from code review (thesis-polish, not thesis-critical)
 
-### 5. Inspector in-place update instead of `rebuild()`
+### 5. Inspector in-place update instead of `rebuild()` [open]
 
 `QtAtomInspectorDock::rebuild()` calls `clear()` + repopulates on every
 pick OR frame change. Current scale is fine; when the time-series
@@ -203,7 +208,7 @@ expansion adds hundreds of rows, this will hot-spot.
 
 Est. 1–2 h. Matters most after work item 2 lands (many more rows).
 
-### 6. Picker → selection direct wire
+### 6. Picker → selection direct wire [partial]
 
 Currently when the picker emits `atomPicked`, the selection overlay
 picks up the new atom, and `refreshCurrentFrame()` fires a full
@@ -220,7 +225,7 @@ overlay needed the position update.
 
 Saves kernel evals on every pick. Small, clean.
 
-### 7. Typed `vtkPolyDataMapper` member in `QtBFieldStreamOverlay`
+### 7. Typed `vtkPolyDataMapper` member in `QtBFieldStreamOverlay` [open]
 
 `QtBFieldStreamOverlay` currently does `dynamic_cast<vtkPolyDataMapper*>`
 on the actor's mapper to grab it for property changes. The mapper is
@@ -251,7 +256,7 @@ Jessica's plan (this session):
 
 **Only after all three: cross-platform build pass.**
 
-### 8. Build on macOS and Windows — do NOT do during Linux sessions
+### 8. Build on macOS and Windows — do NOT do during Linux sessions [open]
 
 The shared directory `/shared/2026Thesis/nmr-shielding/h5-reader` is
 accessible from separate macOS and Windows Qt-Creator-or-CMake
@@ -274,14 +279,14 @@ What to do now in Linux sessions to make the cross-platform pass cheap:
   `#ifdef __unix__` with a documented no-op on Windows.
 - File paths: `QStandardPaths` / `QDir` only, never literal POSIX paths.
 
-### 9. Wire Windows MiniDumpWriteDump — during the cross-platform pass
+### 9. Wire Windows MiniDumpWriteDump — during the cross-platform pass [open]
 
 `src/diagnostics/CrashHandler.cpp:171-174` is a stub on Windows. Qt6-cpp
 skill's #1 principle is "when it crashes at 2am, can you read the
 dump?" Wire this during the Windows build pass (session 4+), not
 before — it is Windows-only and needs testing on a real Windows crash.
 
-### 10. Residual render drop
+### 10. Residual render drop [open]
 
 Tracked in `RESIDUAL_RENDER_DROP.md`. Four hypotheses, ordered by
 likelihood. Two cheap probes in place (duplicate-ResetCameraClippingRange

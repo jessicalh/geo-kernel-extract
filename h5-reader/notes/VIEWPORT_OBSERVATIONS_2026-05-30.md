@@ -19,6 +19,11 @@
 > assert, modeChanged toolbar sync). Two canonical recipes for the
 > "focus atom + surroundings legible" goal are documented in
 > `tests/scripts/HARNESS_BASELINE_PIPELINE_2026-05-30.md`.
+>
+> **June 4 truth note:** camera-mode sections are partly superseded by
+> built atom/bond/dihedral/subset composition and plane lock. The local
+> display-isolation observation remains current: no pick atom + radius +
+> hide-nonlocal-atoms/residues UI exists yet.
 
 Senior-engineer reading notes after a day with `h5-reader/src/app/`.
 Output of the first pass on the viewport refactor scope named in

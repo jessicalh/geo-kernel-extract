@@ -1,5 +1,9 @@
 # Corrected Backbone Snapshot
 
+> **Historical analysis record — not current truth (trued 2026-06-04).**
+> Positive 1P9J LOAO/between claims below are superseded by the true-LOAO
+> retraction; use `NOW.md` and corrected `STATE.md`.
+
 Fresh corrected 1P9J broad-backbone snapshot from `/tmp/rediscover-corrected-backbone-snapshot-1p9j`. Python analysis reads emitted CSV/NPY substrate only; no Python H5 read, no ORCA run, no `trajectory.h5` write, and no C++ edit was made in this pass.
 
 ## Lead Read

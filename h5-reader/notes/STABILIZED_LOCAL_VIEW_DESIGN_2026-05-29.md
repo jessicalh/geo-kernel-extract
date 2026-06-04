@@ -2,9 +2,12 @@
 
 Date: 2026-05-29
 
-Status: design note only. This is not implemented yet, and it should not change
-normal trajectory playback until the coordinate-space rules are explicit and
-tested.
+Status: SUPERSEDED (trued 2026-06-04). The stabilisation WAS implemented since this note —
+`TransformedConformation` (display-space transforms) + `CameraComposer` (camera locks); plane lock is
+real and tested. This note remains the original design *rationale*; for the ACTUAL built state, the gap to
+its three-atom-wedge design, and the cruft it carried, see `STABILISATION_FEATURE_EVAL_2026-06-04.md`. The
+radius / local-isolation view it was meant to enable is still UNBUILT (the planned
+`AtomFilter::WithinRadiusOf` path — see `UI_STATE_OVERVIEW_2026-06-04.md`).
 
 ## Purpose
 
@@ -36,6 +39,12 @@ mode. It only has a clear meaning for exactly three selected atoms.
 
 ## Geometry Contract
 
+June 4 correction: the exact three-atom Kabsch path in this original design is
+invalid for the current shared Kabsch implementation. That path rejects
+rank-deficient/coplanar subsets, so a three-atom stabilized local view must use
+a plane/wedge stabilizer instead of treating ordinary Kabsch as the ready
+implementation route.
+
 It is not possible to keep all three selected atoms exactly fixed across frames
 without distorting geometry whenever their internal distances or angles change.
 The implementation must choose an honest stabilization rule.
@@ -44,8 +53,8 @@ Acceptable first rules:
 
 - Fix the centroid, keep one selected edge or first-atom direction stable, and
   let the third atom show its real residual motion in or near the plane.
-- Use a best-fit rigid alignment, such as a Kabsch fit over the three selected
-  atoms, to minimize their motion while leaving residual deformation visible.
+- Use a dedicated plane/wedge stabilizer over the three selected atoms to
+  minimize their apparent motion while leaving residual deformation visible.
 
 The artificial plane should be thick enough to tolerate ordinary local motion.
 If the selected atoms move outside the useful range, the UI should degrade

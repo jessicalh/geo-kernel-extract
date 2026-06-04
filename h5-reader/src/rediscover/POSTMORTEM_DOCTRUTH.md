@@ -1,5 +1,9 @@
 # Doc Truth Pass Postmortem
 
+> **Historical postmortem — not current truth (trued 2026-06-04).** Previous
+> doc-truth pass provenance only; use `NOW.md`, corrected `STATE.md`, and this
+> decruft pass as the current control.
+
 Reality checked without git commands: branch metadata text, current C++ files, and `/tmp/rediscover-runs`.
 
 CORRECTED:

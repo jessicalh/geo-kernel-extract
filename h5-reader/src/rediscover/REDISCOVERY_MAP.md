@@ -1,5 +1,10 @@
 # Rediscovery map — what we recover, how deep, and what's left
 
+> **Historical — not current truth (trued 2026-06-04).** This is an early
+> science roadmap, not the current work catalog. Current control lives in
+> `NOW.md`, the corrected top of `STATE.md`, and the active `SPEC_*` docs.
+> Rebuild a current map only after the parked audit re-runs or 720-WT pilot.
+
 The **science** roadmap, kept separate from the engineering surface
 (`SURFACE_DESIGN.md`) and the instrument framing (`PLAN.md`). Reads with `STATE.md`
 (freshest numbers) + `analysis/FINDINGS.md` + `analysis/PATTERNS.md` (consumer discipline).

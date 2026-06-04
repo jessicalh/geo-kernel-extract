@@ -1,5 +1,8 @@
 # Codex brief — Build 3: fit-architecture loop (per-type fit alongside global + dia-T2 + dominance curve)
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `d35d7ec46e2c6b2064ab90228b6a997e4714e11a`; results are in `POSTMORTEM_BUILD3.md`.
 
 You own the grind; the owner vets. Build 2 fit ONE global ridge across all 846 atoms and

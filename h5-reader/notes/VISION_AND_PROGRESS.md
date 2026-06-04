@@ -1,5 +1,10 @@
 # h5-reader — vision, goals, and progress
 
+> **Historical — not current truth (trued 2026-06-04).** This is a progress
+> ledger from the early reader build, not the live tracker. Current reader truth
+> lives in `README.md`, `notes/SCOPE.md`, `notes/UI_STATE_OVERVIEW_2026-06-04.md`,
+> and `notes/STABILISATION_FEATURE_EVAL_2026-06-04.md`.
+
 **Living tracker.** A status snapshot plus the working vision for the
 current build. It *points to* the living sources (design, contract, code)
 rather than restating them — when this doc and a living source disagree,

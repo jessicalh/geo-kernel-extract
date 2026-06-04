@@ -1,5 +1,8 @@
 # Build 2 Postmortem
 
+> **Historical run record — not current truth (trued 2026-06-04).** Preserve as
+> provenance; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Run dir: `/tmp/rediscover-runs/2026-06-03-build2-partition`.
 Script commit: `a2d69cbb829dcc4901486c1162567fc99ba38b95`.
 Substrate: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1`.

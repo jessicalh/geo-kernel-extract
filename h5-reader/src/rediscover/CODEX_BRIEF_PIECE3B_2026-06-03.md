@@ -1,5 +1,8 @@
 # Codex brief — Loop 3b: the full channel-completion + T1/dia/para targets + comparison-method paths
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** in chunks `9965c2bd1f38f4c138e7dc3836206b45f3e91525`, `1d0f56aac4c8a53310b1214663bd65aa8f8fc0b3`, and `5a39288b30b069bac31e25c38d1c6df5c981d91f`.
 
 You own the grind; the owner vets. This is the FAT, deliberate emit: wire every

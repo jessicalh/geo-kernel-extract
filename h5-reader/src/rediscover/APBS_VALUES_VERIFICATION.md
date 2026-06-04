@@ -1,5 +1,11 @@
 # APBS Values Verification
 
+> **Partly superseded (trued 2026-06-04).** Use
+> `APBS_STAGE1_RECONCILIATION.md` as the high-level APBS/radii source. This
+> investigation correctly flags the trajectory/TPR placeholder-radius path, but
+> should not be read as saying all APBS paths globally use placeholder radii:
+> mutation/ORCA prmtop paths can carry real radii.
+
 Date: 2026-06-02. Scope: read-only verification of the producer APBS path and
 existing emitted artifacts. No ORCA run, no extraction run, and no
 `trajectory.h5` write was performed.

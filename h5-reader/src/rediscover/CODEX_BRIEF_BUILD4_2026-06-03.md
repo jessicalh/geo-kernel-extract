@@ -1,5 +1,8 @@
 # Codex brief — Build 4: dominance-completion C++ emit (the dominance handle for the law-bearing five)
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **DRAFT — pending lead plan-vet, not yet fired.**
 
 You own the grind; the lead vets + judges + owns ALL git. This is the C++ half that

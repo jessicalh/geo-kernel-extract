@@ -1,14 +1,19 @@
 # Rediscover — work catalog (what we want overall)
 
+> **Current backlog trued 2026-06-04.** Old 1P9J LOAO/between positives are
+> retracted and must not guide priority. The near-term work is 720-WT static
+> ingest/pilot, Stage3/joint-model framing, and parked clean re-runs only if
+> the lead restarts them; this file preserves the older catalog below as
+> historical context.
+
 The actionable work breakdown, complementing `REDISCOVERY_MAP.md` (the *science* roadmap —
 two depths, per-cell workflow, constraints). This is the concrete unit list, structured so
 each is a fast **codex-delegated cell** against the now-complete emit-catalog + the exemplar
 template. Reads with `REDISCOVERY_MAP.md`, `STATE.md`, `analysis/PATTERNS.md`.
 
-**Enabling conditions met this session:** the emit-catalog is **complete** (the substrate
-carries the static map *and* the sensitivity probe — codex confirmed no new emit is needed
-for differencing); the backbone exemplar demonstrates the **full B→A→de-circularised arc**
-and is the template each new cell copies. So item C below is mostly fast delegation.
+**Historical enabling-condition note:** this predates the true-LOAO retraction.
+Do not treat the old 1P9J between/LOAO numbers or near-term 750/engine ordering
+as current priority guidance.
 
 ## A. Done — the spine + the exemplar arc
 - Functional API (engine / composed `Relationship` / curried closures) — built, byte-parity (`99cdc85`).

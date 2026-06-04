@@ -1,5 +1,18 @@
 # Cleanup punch list after Phases A-H (2026-05-29)
 
+> **Historical — not current truth (trued 2026-06-04).** This was a
+> late-May cleanup punch list and uncommitted-session snapshot. Use
+> `UI_STATE_OVERVIEW_2026-06-04.md`, `STABILISATION_FEATURE_EVAL_2026-06-04.md`,
+> and the current backlog/issues before treating any item below as open.
+
+Disposition summary:
+
+| Area | 2026-06-04 disposition |
+|---|---|
+| NOW/LATER implementation prompts | Historical only; the stale LATER execution plan is cut. |
+| New-TR dashboard/panel defects | Several were fixed or folded into later dashboard work; verify against current source/UI state before acting. |
+| Working-tree/session notes | Stale by definition; not executable instructions. |
+
 Phases A-H landed the 5 new TR surfaces (iRED, KernelDynamics,
 ReorientationalDynamics, DihedralAutocorrelation, KernelCoherence) end-to-end
 into h5-reader. All three ctest targets are green:

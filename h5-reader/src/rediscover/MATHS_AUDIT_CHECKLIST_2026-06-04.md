@@ -1,5 +1,12 @@
 # Maths Audit Checklist (2026-06-04) — the open agenda for "are the numbers real?"
 
+## Final status (trued 2026-06-04)
+
+Audit code fixes are complete: #1 resolved benign, #2 true-LOAO fixed/retracted,
+and #3 e3nn protocol fixed in code. Clean verdict re-runs are parked for lead
+restart. The audit trail below is preserved; do not rewrite it as if the open
+agenda never happened.
+
 **Disposition: VERIFY TOGETHER (lead + Claude, NOT codex); do NOT fix piecemeal.** The unified combine +
 every LOAO/between number are PROVISIONAL until this closes. A SECOND audit pass after, if the first
 surfaces more. Sources: `POSTMORTEM_MATHS_WALK_2026-06-04` (adversarial walk — mostly sound + 3 issues),

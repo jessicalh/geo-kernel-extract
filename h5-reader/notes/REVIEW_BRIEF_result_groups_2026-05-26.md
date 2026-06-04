@@ -1,5 +1,8 @@
 # Review brief — h5-reader result-group mirror (per-step)
 
+> **Historical review brief — not current truth (trued 2026-06-04).** Session
+> provenance only; do not use as a current task prompt.
+
 **For:** a second set of eyes (codex / any reviewer). **Posture:** *cast a
 wide net.* We verify every lead deterministically against the source before
 acting, so **err toward flagging** — a false positive costs us one grep; a

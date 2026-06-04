@@ -1,4 +1,8 @@
-> PARTIALLY SUPERSEDED (2026-06-02): see `../STATE.md` top (OPEN: weak DYNAMIC field σ-response). §3's "solvation treatment mismatch" (CPCM) framing is a defensible BETWEEN/absolute footnote ONLY — it must NOT be used to excuse the weak WITHIN-axis field σ-response (R²≈0.10). The within-fluctuation is the protein's own charge motion (FF14SB/APBS capture it); CPCM is a geometry-set continuum reaction field, not a within-fluctuating source. Per STATE, the within gap is decided by the raw ΔField-vs-Δσ correlation (units/prefactor vs projection-axis vs genuinely-weak-driver), not by "treatment mismatch." The variance-axis method itself (between=LOAO, within=train-only-centred split, AR(1) N_eff) is current and correct.
+> **METHOD SKETCH ONLY (trued 2026-06-04).** Do not use this file to justify
+> old 1P9J LOAO/between claims. The prior between/LOAO axis was contaminated
+> by within-modulation; true between now belongs to the 720-WT static corpus.
+>
+> PARTIALLY SUPERSEDED (2026-06-02): see `../STATE.md` top (OPEN: weak DYNAMIC field σ-response). §3's "solvation treatment mismatch" (CPCM) framing is a defensible BETWEEN/absolute footnote ONLY — it must NOT be used to excuse the weak WITHIN-axis field σ-response (R²≈0.10). The within-fluctuation is the protein's own charge motion (FF14SB/APBS capture it); CPCM is a geometry-set continuum reaction field, not a within-fluctuating source. Per STATE, the within gap is decided by the raw ΔField-vs-Δσ correlation (units/prefactor vs projection-axis vs genuinely-weak-driver), not by "treatment mismatch." The variance-axis method itself is historical where it equates between with old LOAO.
 
 # Between/within variance decomposition — method design
 

@@ -1,5 +1,11 @@
 # Single-conformation reading + Orca ingestion — design (2026-05-26)
 
+> **Implementation status trued 2026-06-04.** The single-conformation seam
+> landed and evolved: `SingleConformation`, `LoadPose`, and `.LGS` manifest
+> dispatch now cover the current load path. Keep this note for rationale; use
+> `README.md`, `spec/CALCSET_MANIFEST.md`, and `UI_STATE_OVERVIEW_2026-06-04.md`
+> for current behavior.
+
 **Living design note.** Captures the architecture decided in the 2026-05-26
 design conversation. Authoritative on these topics; where it disagrees with an
 older note, this wins. Companion: memory `project_h5reader_formal_model_design`.

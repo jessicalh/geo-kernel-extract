@@ -1,5 +1,11 @@
 # Partition Filter Design
 
+Status trued 2026-06-04: Build4/Stage2 extended this Build1/Build1Fix design.
+Dominance bins and CaseHunter habitats now cover the law-bearing five
+mechanisms, and true-LOAO retracted old 1P9J between claims. Use `STATE.md`,
+`NOW.md`, and the Stage2/audit postmortems before treating the "Current Result"
+below as live priority.
+
 Status: durable summary of the Build1/Build1Fix architecture (`a3531040655955a4d393e314c5a69de51b1c54bf`, fixed by `d9ba53dc0a7929eb4d4ce8185f6d9e6ff868c374`).
 
 ## Purpose
@@ -53,8 +59,9 @@ The anti-circular guard is real: any DFT target read during selection raises an 
 
 ## Current Result
 
-The live substrate is `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1`.
+Historical Build1 result: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1`.
 
 Build2 showed the first partition result but exposed pooled-fit anti-prediction for H strata; Build3 fixed the fit architecture by adding per-type fits and dominance response curves.
 
-Next architecture step, if re-emitting, is to move dominance quantile bin ids into C++ beside the other partition bins.
+Build4/Stage2 moved the dominance arc forward; re-check current substrate and
+audit status before planning any re-emit.

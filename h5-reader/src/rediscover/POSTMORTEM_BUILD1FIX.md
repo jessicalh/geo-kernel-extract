@@ -1,3 +1,6 @@
+> **Historical run record — not current truth (trued 2026-06-04).** Preserve as
+> provenance; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Build1Fix Postmortem - 2026-06-03
 
 Branch: h5-reader-pysr-spike; no switch, merge, or rebase performed.

@@ -1,5 +1,8 @@
 # Codex brief — Build 2: the Python partition (the deliverable)
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `a2d69cbb829dcc4901486c1162567fc99ba38b95`; retained as the execution brief.
 
 You own the grind; the owner vets. Build 2 is the PARTITION — the product of the whole

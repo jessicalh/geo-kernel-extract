@@ -1,4 +1,10 @@
-> PARTIALLY SUPERSEDED (2026-06-02): see `../STATE.md` top + `JOHNSON_BOVEY_REGION_RECOVERY.md` + `../UNITS_AND_ISSUES_AUDIT.md`. Two stale spots: (1) the "in-plane radial R²=0.67 / point-dipole breaks down in the ring plane" claim (lines 36-37, 92-93) was form-reconstruction of the PRODUCER kernel, NOT DFT signal — the in-plane band has ~no DFT ring-modulation (J-B recovery cell `165ed08`: point-dipole T0 R²=0.02, J-B T2 r=0.01), so the misfit is NOT an in-plane-form gap. (2) The "literature-coefficient-FIXED test (the last de-circularising step), TODO" (lines 152-155, 164) was later run reading BARE kernels (γ=−11.3), a UNITS-labeling bug, not a physics failure; re-run in literature-scaled units before reading a verdict. The k≈21 / LOAO R²=0.62 leave-atoms-out result stands.
+> **SUPERSEDED for LOAO/between claims (trued 2026-06-04).** Do not quote
+> LOAO or between results from this file. Use `../NOW.md`, the corrected top
+> of `../STATE.md`, `../POSTMORTEM_TRUE_LOAO_2026-06-04.md`, and
+> `../MATHS_AUDIT_CHECKLIST_2026-06-04.md`. Within/pattern material remains
+> useful with caveats.
+>
+> PARTIALLY SUPERSEDED (2026-06-02): see `../STATE.md` top + `JOHNSON_BOVEY_REGION_RECOVERY.md` + `../UNITS_AND_ISSUES_AUDIT.md`. Two stale spots: (1) the "in-plane radial R²=0.67 / point-dipole breaks down in the ring plane" claim (lines 36-37, 92-93) was form-reconstruction of the PRODUCER kernel, NOT DFT signal — the in-plane band has ~no DFT ring-modulation (J-B recovery cell `165ed08`: point-dipole T0 R²=0.02, J-B T2 r=0.01), so the misfit is NOT an in-plane-form gap. (2) The "literature-coefficient-FIXED test (the last de-circularising step), TODO" (lines 152-155, 164) was later run reading BARE kernels (γ=−11.3), a UNITS-labeling bug, not a physics failure; re-run in literature-scaled units before reading a verdict. The k≈21 leave-atoms-out result is historical only under the June 4 true-LOAO retraction.
 
 # Rediscover — first findings (ring current + McConnell), 2026-05-31
 

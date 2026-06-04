@@ -1,5 +1,9 @@
 # Anthropic Agent adversarial review of Phase A/B/C (2026-05-29)
 
+> **Historical review record — not current truth (trued 2026-06-04).** Preserve
+> as review provenance; do not use as a current task prompt. Check
+> `UI_STATE_OVERVIEW_2026-06-04.md` and current backlog/issues first.
+
 Second-pass independent review of the Phase A (vocabulary), Phase B
 (chassis), and Phase C (iRED end-to-end) changes — run in parallel
 with the Codex review (see `REVIEW_CODEX_PHASE_ABC_2026-05-29.md`).

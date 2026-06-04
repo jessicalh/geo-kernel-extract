@@ -1,5 +1,8 @@
 # Review brief — h5-reader topology spine, ring typing, field catalog
 
+> **Historical review brief — not current truth (trued 2026-06-04).** Session
+> provenance only; do not use as a current task prompt.
+
 **For:** a second set of eyes (codex or any reviewer). **Date:** 2026-05-26.
 **Tone:** this is a *fidelity* review, not a bug hunt — and a friendly one.
 Thank you for reading carefully; the areas below are detailed, and a fresh

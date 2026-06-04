@@ -1,6 +1,6 @@
 # Per-Atom Aggregate Substrate Spec - 2026-06-02
 
-Status: **landed as v1 and extended**: v1 substrate landed at `00ec16876d530bfa9ed5a58be83976559eef9dd8`, later extended through the Build1 substrate at `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1`.
+Status: **landed as v1 and extended**; trued 2026-06-04. v1 substrate landed at `00ec16876d530bfa9ed5a58be83976559eef9dd8`, later extended through Build1, Build4, Stage2, and the maths-audit fixes. Use `STATE.md`/`NOW.md` for current limitations: 1P9J between/LOAO positives are retracted, 720-WT owns transfer, and clean verdict re-runs are parked.
 This document specifies the lean #58
 node-store realization that an 846-atom joint fit plus partition-by-condition
 analysis consumes.

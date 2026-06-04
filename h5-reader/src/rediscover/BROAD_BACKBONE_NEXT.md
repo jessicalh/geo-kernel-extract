@@ -1,7 +1,10 @@
 > **SUPERSEDED (2026-06-01) — historical.** The broad-backbone case is BUILT + GATED
 > (commit `35f3768`) and the equivariant-T2 exemplar landed (`901d1df`). Current
-> handoff: `NEXT_SESSION_PROMPT.md` + `REDISCOVERY_MAP.md` + `STATE.md`. Ignore the
+> handoff: `NEXT_SESSION_PROMPT.md`, `NOW.md`, and corrected `STATE.md`. Ignore the
 > below (historical).
+>
+> **June 4 true-LOAO retraction:** any positive 1P9J leave-atoms-out/between
+> claim below is historical only and must not be quoted as transfer evidence.
 
 # Next step — the BROAD case (every backbone atom, all mechanisms)
 

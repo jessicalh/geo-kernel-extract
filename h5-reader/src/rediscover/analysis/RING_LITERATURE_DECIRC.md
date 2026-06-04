@@ -1,5 +1,9 @@
 # Ring Literature-Scaled De-Circularisation
 
+> **Evidence archive — not current truth (trued 2026-06-04).** Preserve as
+> analysis provenance; check `../NOW.md` and corrected `../STATE.md` before
+> quoting quantitative claims.
+
 Substrate: `/tmp/rediscover-jb-parity-v2/composed`
 CSV artifact: `/tmp/rediscover-ring-literature-decirc/ring_literature_decirc.csv`
 Audit artifact: `/tmp/rediscover-ring-literature-decirc/ring_literature_decirc_audit.json`

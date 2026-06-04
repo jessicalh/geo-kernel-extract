@@ -68,7 +68,9 @@ were removed and must not be re-added.
 Three stages (`project_three_stages` memory):
 
 - **Stage 1 — mutations. Settled.** Per-element, per-atom-type ridge
-  regression on 720 proteins / 446K atoms, 55 kernels, R² = 0.818.
+  regression on 720 proteins / 446K atoms, 55 kernels: weighted R² = 0.718
+  (the thesis number; 0.818 was the 110-protein fair set — the drop is
+  cross-protein generalisation, not physics).
   Atom-type stratification (2026-04-15) showed "nitrogen is hard" was
   an element-pooling artifact: backbone N is hard (R² = 0.387),
   sidechain N is second-best (R² = 0.887). See `learn/stage1-mutations/`.
@@ -238,7 +240,8 @@ more; none relaxes these.
   diagnostic for whether the kernels carry the signal, not the metric
   the thesis is graded on. Do not optimise for R².
 - **The model is ridge regression.** Per-element, per-atom-type strata
-  on 55 kernels give R² = 0.818 (settled 2026-04-10). MLPs were tested
+  on 55 kernels give weighted R² = 0.718 on the full 720 proteins (0.818 on
+  the 110-protein fair set; settled 2026-04-10/13). MLPs were tested
   and rejected.
 - **Do not assert physical conclusions from model diagnostics.** Model
   fit is evidence the kernel set is complete enough; physical

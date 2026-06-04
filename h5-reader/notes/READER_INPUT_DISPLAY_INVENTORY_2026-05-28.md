@@ -2,6 +2,10 @@
 
 Date: 2026-05-28
 
+> **Snapshot only (trued 2026-06-04).** This inventory predates later source,
+> catalog, and dashboard evolution. Verify all counts and drift notes against
+> current source before acting; keep the file as historical inventory.
+
 Pass: 1 of 3.
 
 Purpose: collect the full h5-reader import surface aggressively before

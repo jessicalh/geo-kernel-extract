@@ -1,5 +1,11 @@
 # Engine totality design: fold/sink carrier
 
+> **Historical — not current truth (trued 2026-06-04).** This proposal/no-code
+> design is preserved as design history. Later functional API, placement, and
+> filtering work evolved the story; read `MODEL_PLACEMENT_PROPOSAL.md`,
+> `PARTITION_FILTER_DESIGN.md`, `STATE.md`, and current source/specs before
+> treating this as implementation truth.
+
 Status: proposal for lead + user review. No implementation in this pass.
 
 Context: the broad-backbone run exposed that `RunRelationship` already has the
@@ -293,4 +299,3 @@ set is covered without inventing carriers for unknown future cases.
 6. For `aimnet2_embedding`, should the 256-d NPY be emitted by default when the
    relationship is requested, or require an explicit "large feature" opt-in in
    the same spirit as the Python loader's optional-large policy?
-

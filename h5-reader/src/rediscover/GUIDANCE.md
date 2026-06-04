@@ -1,5 +1,10 @@
 # Rediscover — guidance
 
+> **Current status trued 2026-06-04.** Read this with `NOW.md` and the corrected
+> top of `STATE.md`. Within-1P9J results stand; old positive 1P9J
+> LOAO/between claims are retracted as between evidence, and 720-WT owns the
+> next transfer/static test.
+
 Top-level orientation for the rediscover work. The detailed class model is
 `DESIGN.md`; current state lives in `NOW.md` and `STATE.md`.
 
@@ -134,10 +139,17 @@ The fitter is not part of this build.
 
 ## Status (truthful)
 
-- **Built and run:** `h5reader_extract`, the relationship engine, all-atom substrate emit, partition filters, `CaseHunter`, Build 2 partition fit, and Build 3 per-type fit architecture are landed on `h5-reader-pysr-spike`.
-- **Current substrate:** `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1` is the live emitted substrate; current analysis result dirs include Build 2 and Build 3 under `/tmp/rediscover-runs`.
-- **Current fit result:** Build 3 settled that total-T2 per-type-within is the trustworthy read; dia/para split is due diligence, not the primary target.
-- **Open / undecided:** between-calculator network, equations table, statistical-position grading, and the future hierarchical/type-interaction model.
+- **Built and run:** `h5reader_extract`, the relationship engine, all-atom
+  substrate emit through Build4/Stage2, partition filters, `CaseHunter`, the
+  Stage2 law-fit path, and the maths-audit code fixes.
+- **Current result shape:** 1P9J is reliable as a within-instrument. Charge
+  q/r3, ring current, and unified combine within results stand; field,
+  McConnell, and H-bond standalone are approximately null in this cut.
+- **Retracted as between evidence:** the old positive 1P9J LOAO/between
+  numbers were within-modulation artifacts. Do not quote them as transfer.
+- **Open / undecided:** final clean verdict re-runs are parked; Stage3/joint
+  model work remains open; the next serious between/transfer test is the
+  720-WT static corpus.
 
 ## Where the detail is
 

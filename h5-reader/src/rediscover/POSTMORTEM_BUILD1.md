@@ -1,5 +1,8 @@
 # Build 1 postmortem
 
+> **Historical run record — not current truth (trued 2026-06-04).** Preserve as
+> provenance; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Branch: h5-reader-pysr-spike.
 Run dir: /tmp/rediscover-runs/2026-06-03-per-atom-substrate-build1.
 Commit hash: `a3531040655955a4d393e314c5a69de51b1c54bf`.

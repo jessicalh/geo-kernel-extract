@@ -1,5 +1,10 @@
 # h5-reader — Feature Plan
 
+> **Historical — not current truth (trued 2026-06-04).** This April feature
+> plan is an idea bank, not the active roadmap. Current feature state lives in
+> `UI_STATE_OVERVIEW_2026-06-04.md` and current polish debt in
+> `POLISH_BACKLOG.md`.
+
 Per-feature planning for the work that turns the reader into the
 thesis-data visibility surface. Paired with
 `H5_FIELD_GLOSSARY.md`, which tells you *what* to show; this

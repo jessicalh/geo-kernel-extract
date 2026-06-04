@@ -6,9 +6,10 @@ NOW/STATE for the current truth. (Example: `POSTMORTEM_STAGE2` still says "field
 is SUPERSEDED to "field ~null standalone, top combine contributor" by `POSTMORTEM_STAGE2_3` + NOW.md.)
 
 ## THE GATE — read this first
-The **MATHS AUDIT is NOT done.** The unified combine + every LOAO/between number are **PROVISIONAL**
-until it closes. `MATHS_AUDIT_CHECKLIST_2026-06-04.md` is the open agenda. Do NOT quote the unified
-0.43/0.26 or any LOAO/between figure as a result yet.
+The **maths audit code fixes are complete; clean verdict re-runs are held**
+(trued 2026-06-04). Do not quote any old 1P9J LOAO/between figure as a result.
+Within-axis results stand; between/transferability belongs to the 720-WT path
+unless the lead explicitly restarts the parked re-runs.
 
 ## Minimal reading path (cold start, in order)
 1. `NOW.md` — the live marker: where we are, loop ledger, live decisions, the gate.

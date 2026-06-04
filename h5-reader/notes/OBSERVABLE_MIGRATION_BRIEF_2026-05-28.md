@@ -1,5 +1,8 @@
 # Observable migration brief: first safe slice
 
+> **Historical — not current truth (trued 2026-06-04).** Design history only;
+> current dashboard state lives in `UI_STATE_OVERVIEW_2026-06-04.md`.
+
 Date: 2026-05-28
 
 This brief exists to keep the h5-reader dashboard work from drifting into a

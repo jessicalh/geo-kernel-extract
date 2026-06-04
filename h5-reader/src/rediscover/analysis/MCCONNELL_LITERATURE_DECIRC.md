@@ -1,5 +1,9 @@
 # McConnell literature-scaled de-circularisation
 
+> **Evidence archive — not current truth (trued 2026-06-04).** Preserve as
+> analysis provenance; check `../NOW.md` and corrected `../STATE.md` before
+> quoting quantitative claims.
+
 Read-only analysis of emitted `mc_lit_T0` and `mc_lit_T2_local_*` columns from `broad_backbone_aggregated.csv`. Python only correlates emitted columns against emitted DFT targets; it does not open `trajectory.h5`, apply Delta-chi, rebuild tensors, or call the frozen change-of-basis helper.
 
 Delta-chi values are provisional single-family Williamson-Asakura values from `src/rediscover/MCCONNELL_DCHI_LITERATURE.md`: peptide C=O +2.41, peptide C-N -5.42, sidechain C=O +2.41, aromatic 0 in 10^-6 cm^3/mol. Aromatic is zero because RING carries the pi current.

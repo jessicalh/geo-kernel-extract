@@ -1,5 +1,12 @@
 # Model-placement proposal: one model in C++, an e3nn fitter, no Python recreation
 
+Status trued 2026-06-04: the proposal boundary remains useful, but later work
+implemented/evolved parts of it. The e3nn protocol fix and the bounded
+interpolation result supersede pre-fix protocol details; see
+`POSTMORTEM_E3NN_PROTOCOL_FIX_2026-06-04.md` and
+`BUILD_INTERP_RESULT_2026-06-04.md`. Positive 1P9J leave-atoms-out/between
+claims below are historical only under the true-LOAO retraction.
+
 Status: **proposal for lead + user review. NO code changed in this pass; nothing
 merged.** Branch `h5-reader-pysr-spike`. Written by an independent Opus
 architect/reviewer, deliberately NOT the agent that authored the offending

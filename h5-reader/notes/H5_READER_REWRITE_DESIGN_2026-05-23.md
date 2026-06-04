@@ -1,5 +1,10 @@
 #H5 - Reader Rewrite Design — 2026 - 05 - 23
 
+> **Historical — not current truth (trued 2026-06-04).** This is the original
+> typed-mirror design. The rewrite landed and evolved; current architecture and
+> load behavior live in `README.md`, `notes/SCOPE.md`, and
+> `notes/UI_STATE_OVERVIEW_2026-06-04.md`.
+
 **Status:** DRAFT, pending user review. No code lands against this design until
 approved.
 

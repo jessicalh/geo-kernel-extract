@@ -1,5 +1,9 @@
 # Strip-chart analysis methods — done, planned, deprioritized
 
+> **Historical idea bank — not current truth (trued 2026-06-04).** Useful
+> provenance, but old "planned" language must not drive current work without a
+> fresh check against `UI_STATE_OVERVIEW_2026-06-04.md`.
+
 The strip-chart dock (`src/app/StripChartDock`) turns the selected geometric
 observable into views that reveal MOTION. This note tracks which analysis
 methods are in, which are worthy future work, and which were tried and pulled —

@@ -1,3 +1,6 @@
+> **Historical run record — not current truth (trued 2026-06-04).** Preserve as
+> provenance; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Piece 3 postmortem, 2026-06-03
 Run dir: /tmp/rediscover-runs/2026-06-03-per-atom-substrate-piece3-loop3
 Commit: `b583d7c87af2291ef7c025c828be60f2de0ecff9`

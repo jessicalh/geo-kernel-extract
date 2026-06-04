@@ -1,5 +1,9 @@
 # Johnson-Bovey Region Recovery
 
+> **Evidence archive — not current truth (trued 2026-06-04).** Preserve as
+> analysis provenance; check `../NOW.md` and corrected `../STATE.md` before
+> quoting quantitative claims.
+
 Substrate: `/tmp/rediscover-jb-parity-v2/composed`
 CSV artifact: `/tmp/rediscover-jb-region-recovery/johnson_bovey_region_recovery.csv`
 

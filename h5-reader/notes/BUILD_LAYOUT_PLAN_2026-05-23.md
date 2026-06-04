@@ -1,5 +1,10 @@
 # h5-reader Build System Layout Plan — 2026-05-23
 
+> **Historical — not current truth (trued 2026-06-04).** Source-build presets
+> and dependency notes have evolved; current build instructions live in
+> `README.md`. Packaging/installability remains a gap and is tracked in
+> `UI_STATE_OVERVIEW_2026-06-04.md`.
+
 **Status:** DRAFT, pending user review. No files change against this
 plan until approved.
 

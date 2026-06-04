@@ -1,5 +1,8 @@
 # Independent Opus audit of codex commit f299a01 (applied-maths fixes)
 
+> **Historical audit record — not current truth (trued 2026-06-04).** Superseded
+> by the June 4 maths walk/checklist/fix postmortems; preserve as provenance.
+
 Branch `h5-reader-pysr-spike` (NEVER MERGE). Authored by the independent Opus
 auditor, 2026-06-01. **Audit only. No C++ touched, no fit re-run, nothing
 committed.** This is the *independent* review of codex's fixes + self-audit

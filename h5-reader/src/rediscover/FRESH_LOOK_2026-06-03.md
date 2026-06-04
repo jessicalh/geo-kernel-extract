@@ -1,1 +1,1 @@
-Superseded session-start snapshot: read `NOW.md` for the live marker and `STATE.md` for the corrected history.
+Historical pointer: superseded session-start snapshot cut as current navigation (trued 2026-06-04); read `NOW.md` and `INDEX.md`.

@@ -1,5 +1,8 @@
 # h5-reader — session handoff (2026-05-27): buffered strip chart + DFT shielding channel
 
+> **Historical session handoff — not current kickoff (trued 2026-06-04).**
+> Preserve for session history; use current state/backlog docs before acting.
+
 This session rearchitected the strip chart into a **real, value-buffered** instrument
 and added a **per-frame DFT shielding channel** — the advisor demo: pick atoms, play,
 watch DFT σ move with structure. Built green on `linux-rwdi`; the data path is verified

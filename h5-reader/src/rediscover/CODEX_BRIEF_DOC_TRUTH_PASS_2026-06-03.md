@@ -1,5 +1,8 @@
 # Codex brief — doc truth-pass (grinder): make every rediscover doc TRUE, cut cruft, concise
 
+> **Historical brief — not current truth (trued 2026-06-04).** Previous
+> doc-truth pass provenance only; this decruft pass supersedes it.
+
 You own the grind. Walk every rediscover doc and make it **true** against reality, **cut the
 cruft**, and **correct tersely**. This is an EDIT+REPORT pass; the lead owns all git operations.
 Runs AFTER Build 3 has landed (so you fold its commit/result/postmortem). Branch `h5-reader-pysr-spike` — NEVER merge/switch/rebase/PR.

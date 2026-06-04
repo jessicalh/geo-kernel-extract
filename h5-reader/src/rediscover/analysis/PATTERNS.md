@@ -24,7 +24,8 @@ The `#30` tripwire test is the backstop that catches a drift — not the lead.
      into one-off walks or sibling runners (the broad case forced one — #29 unifies them).
      A blurred functional interface is a blurred model boundary — that is how a second
      model creeps in. (`feedback_functional_api_minimal_clarifying_abstraction`;
-     REDISCOVERY_MAP per-cell workflow step 1.)
+     historical `REDISCOVERY_MAP.md` per-cell workflow step 1; check `NOW.md`
+     and `STATE.md` for current control.)
 2. **Python only fits + reads emitted features.** The fitter (ridge / e3nn / PySR)
    consumes the emitted CSV/NPY substrate: it READS emitted columns and NPYs; it does
    not re-derive physics. (`feedback_no_parallel_h5_in_python` — and never open
@@ -53,7 +54,8 @@ The `#30` tripwire test is the backstop that catches a drift — not the lead.
    additive; broad-specific so the ring/mc oracle stays intact), then Python reads it.
    Exemplars: orientation vectors (#32), literature-kernel T2 (#34). And the GOAL is
    getting back to the PHYSICS — the law (Depth A) + the de-circularising test — not
-   stopping at captured signal (Depth B). See `REDISCOVERY_MAP.md` "per-cell workflow."
+   stopping at captured signal (Depth B). See historical `REDISCOVERY_MAP.md`
+   for provenance, but use `NOW.md`/`STATE.md` for current control.
 7. **EVERYTHING per backbone stratum — report effective N; don't oversell.** Every table,
    chart, and result is broken out per atom-type stratum (N / CA / C / O / HN / HA) — NEVER
    a pooled summary standing in for it. The per-atom-type structure (which mechanism carries

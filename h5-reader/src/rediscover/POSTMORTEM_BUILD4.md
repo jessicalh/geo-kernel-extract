@@ -1,5 +1,8 @@
 # BUILD 4 Postmortem - 2026-06-03
 
+> **Historical run record — not current truth (trued 2026-06-04).** Preserve as
+> provenance; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Run dir: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build4`
 
 Scope completed in C++ only. No git commands were run, and no Python source was added.

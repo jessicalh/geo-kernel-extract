@@ -1,6 +1,6 @@
 # All-Atom Charge-Complete Fit Spec - 2026-06-03
 
-Status: **landed**: Piece 1 emitted charge scalars at `4bb9a0198594773c016160270b6a872b2f9b23fb`; Piece 2 fit/partition landed at `5b5525b45f363e7c4a05cfff6a02a19d2d8c15ab` and the alpha fix at `44e786c094c4f9cd1ae4ebe451454fc3e31406d6`.
+Status: **landed and superseded in part** (trued 2026-06-04): Piece 1 emitted charge scalars at `4bb9a0198594773c016160270b6a872b2f9b23fb`; Piece 2 fit/partition landed at `5b5525b45f363e7c4a05cfff6a02a19d2d8c15ab` and the alpha fix at `44e786c094c4f9cd1ae4ebe451454fc3e31406d6`. Build3/Build4/Stage2 and the maths audit now own the current fit story; use `STATE.md`/`NOW.md` before quoting priority or between-axis claims from this spec.
 This document specifies one small emit
 extension plus the first charge-complete all-atoms joint fit and
 partition-by-condition analysis. It extends

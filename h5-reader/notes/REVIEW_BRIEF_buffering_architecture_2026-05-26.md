@@ -1,5 +1,8 @@
 # Codex review brief — h5-reader buffering / conformation architecture (2026-05-26)
 
+> **Historical review brief — not current truth (trued 2026-06-04).** Session
+> provenance only; do not use as a current task prompt.
+
 ## What to review, and how to respond
 
 You are an adversarial senior Qt/C++ architect. Review the design below —

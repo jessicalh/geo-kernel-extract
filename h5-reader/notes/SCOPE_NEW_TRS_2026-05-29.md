@@ -2,6 +2,13 @@
 
 Date: 2026-05-29 (next-session brief)
 
+Status trued 2026-06-04: the typed result-series/dashboard concepts here are
+partly implemented and evolved. Current UI state includes the panel stack,
+`DashboardStripDock`, `DashboardDisplayController`, `SequenceBarPanel`,
+`PowerSpectrumPanel`, `LagDecayPanel`, `ChordCouplingPanel`, and
+`FixedFreqPanel`; use `UI_STATE_OVERVIEW_2026-06-04.md` before treating any
+forward-work wording below as open.
+
 Five TrajectoryResults landed producer-side this evening:
 
 - `DihedralAutocorrelationTrajectoryResult`

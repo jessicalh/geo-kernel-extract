@@ -1,5 +1,9 @@
 # Rediscover — plan + stop point (2026-05-31)
 
+> **Historical plan — not current truth (trued 2026-06-04).** Positive 1P9J
+> leave-atoms-out/between claims below are superseded by the true-LOAO
+> retraction; current control is `NOW.md` and corrected `STATE.md`.
+
 A forward plan and a deliberate stop, written after the first end-to-end pass.
 Living doc; reads with `STATE.md` (freshest state) + `analysis/FINDINGS.md`
 (the numbers) + `GUIDANCE.md` / `DESIGN.md`.

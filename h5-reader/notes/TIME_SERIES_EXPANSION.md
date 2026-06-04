@@ -1,5 +1,9 @@
 # Time-series illustrator — scope for the next session
 
+> **Historical idea bank — not current truth (trued 2026-06-04).** Do not use
+> this as current "next session" guidance; check `UI_STATE_OVERVIEW_2026-06-04.md`
+> and `POLISH_BACKLOG.md`.
+
 **Context.** Step 7 landed the scaffold: `QtAtomTimeSeriesDock` with a
 QComboBox of ~35 per-atom per-frame scalars plotted against frame
 index via Qt6 Charts, with a vertical cursor tracking the current

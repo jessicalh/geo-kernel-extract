@@ -1,3 +1,7 @@
+> **Evidence archive — not current truth (trued 2026-06-04).** Preserve as
+> analysis provenance; check `../NOW.md` and corrected `../STATE.md` before
+> quoting quantitative claims.
+>
 > SUPERSEDED / pre-units-audit (2026-06-02): see `../UNITS_AND_ISSUES_AUDIT.md` + `../STATE.md`. The `mcconnell_T2_fixed` and `ring_current_T2_fixed` rows carry `calibration_flag = calibrated-to-physics`, `literature_value = 1.0000`, "fixed emitted literature-kernel multiplier" — this is FALSE: the script labels bare emitted kernels as fixed-literature with coefficient 1 (`static_environment_calibration.py:493-523`), but the emit provides BARE kernels (ring unit-current `ppm_T_per_nA`, McConnell unit-Δχ `Angstrom^-3`), not literature-ppm predictions. So those γ are unitful fitted multipliers (e.g. McConnell-N γ≈26, McConnell-HN γ=−11.0, ring-N γ=−391), NOT dimensionless-≈1 de-circularised checks; "calibrated-to-physics" is mislabeled. Treat the verdict bucket as "form-recovered, scale-fitted" (per STATE). `between_LOAO_absT2_r` correlations are scale-invariant and stand.
 
 # Static Environment Calibration

@@ -1,5 +1,12 @@
 # H5 Field Glossary — what is in the analysis file, what it means, and how it should be shown
 
+> **Status trued 2026-06-04.** Keep this as a glossary and presentation
+> rationale, not a complete current UI inventory. The reader now has panels,
+> selection/camera affordances, ribbon/ring/field overlays, inspector/dashboard
+> docks, and REST loopback beyond this April snapshot; use
+> `UI_STATE_OVERVIEW_2026-06-04.md` before treating any "available today" or
+> "missing" claim as implementation truth.
+
 **Status:** living document, written 2026-04-17. Authoritative schema:
 `fileformat/analysis_file.h`. Authoritative writer:
 `src/AnalysisWriter.cpp`. If the schema header disagrees with this

@@ -1,5 +1,8 @@
 # Codex brief — Loop 3 (Piece 3): channel-completion emit (missing classical mechanisms)
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `b583d7c87af2291ef7c025c828be60f2de0ecff9`; retained as the execution brief.
 
 You own the grind; the owner vets. Goal: emit into `per_atom_substrate` the classical

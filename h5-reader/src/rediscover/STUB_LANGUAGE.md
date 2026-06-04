@@ -1,6 +1,6 @@
 # Rediscover — STUB language (Phase 1 waterfall draft, 2026-05-31)
 
-Status: **historical stub draft**; the current C++ surface is partly built in `RelationshipEngine`, `ComposedRelationships`, `ResidentIndexes`, `PerAtomSubstrate`, and `CaseHunter`.
+Status: **historical stub draft**; the current C++ surface is partly built in `RelationshipEngine`, `ComposedRelationships`, `ResidentIndexes`, `PerAtomSubstrate`, and `CaseHunter`. Positive 1P9J leave-atoms-out/between oracle claims below are superseded by the June 4 true-LOAO retraction.
 Branch `h5-reader-pysr-spike`. This is the
 complete-today skeleton of the multi-scenario surface specified in
 `SURFACE_DESIGN.md`: the catalog/ArraySpec, the primitive verbs, the

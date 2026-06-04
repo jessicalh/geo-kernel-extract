@@ -1,5 +1,9 @@
 # McConnell Deep Audit — exhaustive self-error hunt
 
+> **Historical audit record — not current truth (trued 2026-06-04).** Positive
+> 1P9J leave-atoms-out/between claims below are superseded by the true-LOAO
+> retraction; use `NOW.md` and corrected `STATE.md`.
+
 Scope: read-only audit of the WHOLE McConnell path — calculator (`../src/`)
 → rediscover emit (`src/rediscover/`) → SDK contract
 (`python/nmr_extract/_catalog.py`) → consumption

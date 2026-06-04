@@ -1,5 +1,9 @@
 # McConnell Delta-Chi Calibration
 
+> **Evidence archive — not current truth (trued 2026-06-04).** Preserve as
+> analysis provenance; check `../NOW.md` and corrected `../STATE.md` before
+> quoting quantitative claims.
+
 Status: ORCA-free layer-2 calibration from emitted substrate only. The calibrated Delta-chi values below are provisional DFT-calibrated coefficients with within-protein confidence, not a de-circularisation claim.
 
 Input out-dir: `/tmp/rediscover-mc-lit-fresh`

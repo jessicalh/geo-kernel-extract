@@ -1,5 +1,8 @@
 # Codex brief — Build 1 fix loop (H1 + M1 + M2 from the adversarial review)
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `d9ba53dc0a7929eb4d4ce8185f6d9e6ff868c374`; retained as the fix-loop brief.
 
 You own the grind; the owner vets. Three targeted fixes to the just-landed partition-filter

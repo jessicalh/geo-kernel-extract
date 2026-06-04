@@ -1,5 +1,9 @@
 # Strip Calculation Class Tree Design
 
+> **Historical — not current truth (trued 2026-06-04).** Preserve as design
+> history; the implemented dashboard/panel class tree may differ. Current state
+> lives in `UI_STATE_OVERVIEW_2026-06-04.md`.
+
 Date: 2026-05-28
 
 Pass: 2 of 3.

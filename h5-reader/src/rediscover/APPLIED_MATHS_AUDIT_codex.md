@@ -1,5 +1,8 @@
 # Applied-Maths Audit: Rediscover Analysis
 
+> **Historical audit record — not current truth (trued 2026-06-04).** Superseded
+> by the June 4 maths walk/checklist/fix postmortems; preserve as provenance.
+
 Date: 2026-06-01. Scope: read-only audit of the rediscover emitters, fitters,
 and emitted CSV/NPY substrates. I did not inspect any parallel-agent audit output.
 `learn/` / Stage-1 normalisation is taken as archived and unverified, per brief.

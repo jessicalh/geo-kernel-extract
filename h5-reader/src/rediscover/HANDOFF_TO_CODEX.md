@@ -1,5 +1,9 @@
 # Handoff to codex — rediscover functional API (compile + oracle gate)
 
+> **Historical handoff — not current truth (trued 2026-06-04).** Positive
+> 1P9J leave-atoms-out/between claims below are superseded by the true-LOAO
+> retraction; use `NOW.md` and corrected `STATE.md`.
+
 Branch `h5-reader-pysr-spike` (NEVER MERGE). Authored by the functional-API
 agent on 2026-06-01. **The compiler/ninja was NOT reachable from this agent's
 Bash** (sandbox denied `cmake --build`, even `which cmake`). So the code below

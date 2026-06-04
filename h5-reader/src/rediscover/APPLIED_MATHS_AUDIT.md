@@ -1,5 +1,8 @@
 # Applied-mathematics audit — field/tensor handling + variance decomposition
 
+> **Historical audit record — not current truth (trued 2026-06-04).** Superseded
+> by the June 4 maths walk/checklist/fix postmortems; preserve as provenance.
+
 Branch `h5-reader-pysr-spike` (NEVER MERGE). Authored by the Opus applied-maths
 auditor, 2026-06-01. **Audit + corrected designs only; no C++ touched, no fit
 re-run, nothing committed by me.** This sits beside (and does not supersede)

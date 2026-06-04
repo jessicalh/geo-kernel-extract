@@ -1,5 +1,32 @@
 # Rediscover — current state (2026-06-04)
 
+## Current synthesis (trued 2026-06-04)
+
+Use `NOW.md`, this top synthesis, `POSTMORTEM_TRUE_LOAO_2026-06-04.md`, and
+`MATHS_AUDIT_CHECKLIST_2026-06-04.md` before quoting results.
+
+- 1P9J is a within-instrument. WITHIN results stand: charge q/r3 within R2
+  about 0.28, ring current within R2 about 0.28, and unified combine within
+  R2 about 0.43.
+- All prior positive 1P9J LOAO/between numbers are retracted as between
+  evidence. The old charge 0.38, ring 0.17, and unified 0.26 values were
+  within-modulation artifacts from the old centering path, not true
+  leave-one-atom-out/between transfer.
+- True LOAO on 1P9J between is approximately null or nonsensical for the
+  current kernels. Between/transferability now belongs to the 720-WT static
+  corpus.
+- Field standalone is approximately null. Field remains useful inside the
+  combine; McConnell and H-bond standalone are also approximately null.
+- Maths audit code fixes are code-complete; clean verdict re-runs are parked
+  unless the lead explicitly restarts them.
+
+## Historical Stage 2 record — superseded where it quotes LOAO/between
+
+> **Historical — not current truth (trued 2026-06-04).** The Stage 2 notes below
+> are preserved as run history. Positive 1P9J LOAO/between and standalone
+> field-law claims in this historical section are superseded by the true-LOAO
+> retraction above.
+
 ## STAGE 2 DONE (2026-06-04, `ecbddd1`) — per-mechanism law fits + unified D_ab-sum (fitter decomposed)
 
 Chunk 1: the ~4k-line fitter DECOMPOSED (`allatom_fit_common/build3/legacy` + `stage2_law_fits`;
@@ -77,24 +104,15 @@ PER-KERNEL (clean strata; **statistical-position + bucket, NOT literature-match*
 CAVEATS: ONE protein; thin clean strata (ring 5, unified 25) → "1P9J across its structures," no population
 inference; the two nulls are PROVISIONAL (this cut/data), not earned.
 
-NEXT (open, lead to steer):
-1. **HAPPY-SPOT SWEEP (the core-assumption test).** Stage 2 fit AT a clean threshold but did NOT sweep.
-   The hunt proper = response curves recovery-vs-cleanliness (dominance / isolation / **a geometric-noise
-   criterion we don't yet have** — CaseHunter gates isolation/motion/quiet, none = "low geometric noise";
-   motion even pulls the other way), strict→loose: does recovery POP toward the cleanest spots ("noisy
-   geometry limits visibility")? Could RESCUE McConnell/H-bond at THEIR happy spots. Cheap, existing substrate.
-2. **720-WT STATICS PILOT.** Same r²SCAN + same `.out` files (CONFIRMED — absolute σ present). Lots of rings
-   → fattens ring's thin BETWEEN axis + cross-protein charge validation (charge's LOAO 0.38 is its strongest
-   axis = the static one the 720-WT set is made of). Needs the rediscover substrate emitted on the 720 WT
-   structures (bounded static run). The transferability/statics pilot (arc layer 4).
-3. **Frame-count ablation** — recovery vs n_frames (within-axis only; AR(1) ρ≈0.53 → effective ≪ raw). Cheap.
-   **Doubles as the go/no-go for a fast 2nd-protein-WITH-dynamics run** (lead idea 2026-06-04): ubiquitin,
-   one choice ns @ 20 ps ≈ 50 frames, DFT-cheap. 1P9J is already ~20 ps stride (751 fr / 15 ns) → subsampling
-   1P9J to 50 frames SIMULATES it. If recovery survives at ~50 frames, ubiquitin-50 is viable (within-axis,
-   2nd protein, +a few rings) and complements the static 720-WT. ORCA-budget: weigh vs the one-more-run-
-   Trp-cage earmark ([[project_orca_budget_one_more_run_trpcage]]) — lead's call; ubiquitin-50 is a fraction
-   of a full trajectory's cost.
-4. **McConnell/H-bond → joint/ensemble fit** (their home, per the deep-audit).
+NEXT (open, lead to steer; trued 2026-06-04):
+1. **720-WT statics pilot.** This is the next serious between/transferability
+   instrument. Do not use old 1P9J LOAO/between numbers to steer it.
+2. **Stage 3 / joint model work.** Treat McConnell, H-bond, field, and the
+   unified combine through the current Stage 3/statistical-position framing.
+3. **Parked clean re-runs.** Maths-audit code fixes are complete, but final
+   clean verdict re-runs are held until the lead explicitly restarts them.
+4. **Ubiquitin-50fr / other dynamics only as a separate within-axis decision.**
+   This is not a substitute for the 720-WT between/static corpus.
 
 ---
 

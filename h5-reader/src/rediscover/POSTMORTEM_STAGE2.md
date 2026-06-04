@@ -1,5 +1,12 @@
 # Stage 2 Postmortem - 2026-06-04
 
+> **Historical — not current truth (trued 2026-06-04).** This run record keeps
+> the original Stage 2 claims, but positive 1P9J LOAO/between and standalone
+> field-law claims are superseded by `NOW.md`,
+> `POSTMORTEM_TRUE_LOAO_2026-06-04.md`, and
+> `MATHS_AUDIT_CHECKLIST_2026-06-04.md`. Do not quote this file's LOAO/between
+> values as transfer evidence.
+
 Run dir: `/tmp/rediscover-runs/2026-06-04-stage2-fits`
 Substrate: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build4`
 

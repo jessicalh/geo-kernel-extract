@@ -1,5 +1,9 @@
 # McConnell Loose Ends Vet
 
+> **Historical review record — not current truth (trued 2026-06-04).** Any
+> positive 1P9J leave-atoms-out/between framing below is superseded by the
+> true-LOAO retraction; use `NOW.md` and corrected `STATE.md`.
+
 Scope: read-only second-opinion pass against code. No fixes, no re-emit, no ORCA, no `trajectory.h5` read. Final scientific call stays with the lead.
 
 C1 note: I agree the structural ceiling is that McConnell-alone is a minority contributor to the full DFT T2; the fair test is joint/residualized, not standalone McConnell-only.

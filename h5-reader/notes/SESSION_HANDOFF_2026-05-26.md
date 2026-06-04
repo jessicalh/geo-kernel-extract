@@ -1,5 +1,8 @@
 # h5-reader — session handoff (2026-05-26, killer-app increment 1 LANDED)
 
+> **Historical session handoff — not current kickoff (trued 2026-06-04).**
+> Preserve for session history; use current state/backlog docs before acting.
+
 A long, productive session: the killer-app **design pass is settled** (pressure-tested with
 the user) and **increment 1 — multi-atom selection + colour-coded spheres — is built, green,
 and validated live on `:1`** (the user drove it: a 4-atom set via plain + Shift picks,

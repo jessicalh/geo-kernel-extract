@@ -1,4 +1,8 @@
 # Build 3 postmortem - fit architecture loop
+
+> **Historical run record — not current truth (trued 2026-06-04).** Preserve as
+> provenance; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Run dir: `/tmp/rediscover-runs/2026-06-03-build3-fit-arch/`
 Script commit: `d35d7ec46e2c6b2064ab90228b6a997e4714e11a` on `h5-reader-pysr-spike`; script only committed, heavy results not committed.
 

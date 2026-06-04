@@ -1,5 +1,8 @@
 # Codex brief — Loop 2b: alpha-selection + analysis-side AIMNet2 switch
 
+> **Historical run brief — not current truth (trued 2026-06-04).** Session
+> provenance only; current rediscover truth is `NOW.md` and corrected `STATE.md`.
+
 Status: **landed** at `44e786c094c4f9cd1ae4ebe451454fc3e31406d6`; retained as the execution brief.
 
 You own the grind; the owner vets. Loop 2b settles a confound from Loop 2: the

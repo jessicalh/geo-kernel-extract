@@ -1,5 +1,9 @@
 # Handoff — broad-backbone equivariant T2 fitter (codex: run + critique)
 
+> **Evidence archive — not current truth (trued 2026-06-04).** Preserve as
+> handoff provenance; check `../NOW.md` and corrected `../STATE.md` before
+> quoting quantitative claims.
+
 Branch `h5-reader-pysr-spike`. NEVER MERGE. This is the codex half of the
 author-with-Claude / run-with-codex split (the Claude Agent-tool sandbox denies
 `import torch`/`import numpy`, so this pass AUTHORED + self-reviewed + grep-proved

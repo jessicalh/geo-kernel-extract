@@ -1,4 +1,11 @@
 # Stage 2.3 Postmortem - 2026-06-04
+
+> **Historical — not current truth (trued 2026-06-04).** This probability
+> close record is preserved, but its positive 1P9J LOAO/between values were
+> later retracted as between evidence. Use `NOW.md`,
+> `POSTMORTEM_TRUE_LOAO_2026-06-04.md`, and
+> `MATHS_AUDIT_CHECKLIST_2026-06-04.md` before quoting any transfer claim.
+
 Run dir: `/tmp/rediscover-runs/2026-06-04-stage2_3-probability`
 Substrate: `/tmp/rediscover-runs/2026-06-03-per-atom-substrate-build4`; Build4 CSV/NPY only; frozen `get_C`, `|C.T C-I|max=1.11e-16`; five-component total-T2.
 Nulls: within shuffles the DFT target across frames within atom; LOAO shuffles the DFT target across atoms; 1000 shuffles each row.

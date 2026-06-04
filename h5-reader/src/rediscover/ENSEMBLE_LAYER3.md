@@ -1,5 +1,9 @@
 # Ensemble Layer 3
 
+> **Historical analysis record — not current truth (trued 2026-06-04).**
+> Positive 1P9J LOAO/between claims below are superseded by the true-LOAO
+> retraction; use `NOW.md` and corrected `STATE.md`.
+
 Joint per-stratum ridge on the corrected emitted substrate. This is a within-protein signal-capture diagnostic, not a population prediction claim.
 
 ## Lead
