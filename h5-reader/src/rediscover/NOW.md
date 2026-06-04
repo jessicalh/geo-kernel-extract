@@ -43,6 +43,16 @@ statistical-position grading.
 - Stage 2.3 `bp5cixi7k` — probability close DONE (lead-verified): charge/ring/unified = indicative+determinable
   on WITHIN; between indeterminate→720-WT; **field standalone ~null** (0.03-class, top combine contributor);
   mc/hbond ~null. within cutoff-robust, between fragile.
+- Maths-walk `bmgflkzi8` (read-only, overnight; `POSTMORTEM_MATHS_WALK_2026-06-04.md`) — adversarial walk
+  nmr_extract→e3nn. Maths MOSTLY SOUND (strong SUPPORTS: producer formulae/conventions, the T2 basis +
+  frozen/Wigner-tested get_C, train-only CV, axis-appropriate nulls, Larsen+ring excluded from the combine).
+  **3 concrete issues for the MATHS TABLE — verify together, do NOT fix yet:** (1) DFT dia+para validated on
+  T0 only, not T1/T2 (affects the dia/para SPLIT targets, not the total combine); (2) **the "LOAO" path
+  centers by the held-out atom's OWN mean → measures WITHIN-modulation, NOT between-atom recovery** — if real,
+  the WITHIN results stand but every LOAO/BETWEEN number is a mislabeled within-number (reframes the
+  between-axis story + the 720-WT-as-between framing; also reinforces "1P9J is a within instrument"). THE
+  consequential one. (3) ring/broad e3nn: all-group de-mean + unpurged random frame splits → possible leakage
+  (the EFG e3nn path is clean = the template to align to).
 
 ## Current step
 **Stage 2 + ALL follow-ups landed (`ecbddd1` → `f92109c` → `943915f` → 2.3 probability close).**
