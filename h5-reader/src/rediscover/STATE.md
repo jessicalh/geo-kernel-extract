@@ -53,6 +53,12 @@ PER-KERNEL (clean strata; **statistical-position + bucket, NOT literature-match*
   contributor to the COMBINE (drop-one +0.198), not a standalone law. **mc + hbond standalone = ~null**
   (CI spans 0). Cutoff: within p<0.001 + robust across the 0.5/0.7 sweep; LOAO fragile (p→0.12 at one cut) =
   the thin between axis. [[feedback_law_as_statistical_position]] [[feedback_transparent_cutoffs]].
+- **THE COMBINE NOTE (lead, 2026-06-04):** the unified combine, IF IT HOLDS, is DEEPER + better than any
+  standalone — it speaks to the physics (one classical object, calculators as shadows; the object recovers
+  where the parts can't isolate). **Confidence is PENDING a JOINT MATHS discussion (lead + Claude, together,
+  not codex):** collinearity/identifiability of the field & McConnell shadow blocks (→ drop-one stability),
+  regularization + effective DOF, the right null for a combine, determinability stability, basis-invariance.
+  Held PROVISIONAL — do not over-claim until the maths is talked through. [[feedback_applied_maths_over_methodology_caveats]]
 
 CAVEATS: ONE protein; thin clean strata (ring 5, unified 25) → "1P9J across its structures," no population
 inference; the two nulls are PROVISIONAL (this cut/data), not earned.

@@ -74,6 +74,14 @@ result says viable. (3) **McConnell/H-bond → joint/ensemble fit** (their home)
 SIDE-FRAME: `PHYSICS_ARCHITECTURE_UNIFICATION_2026-06-04.md` (vindicates architecture; fold-ins applied in stage 2).
 
 ## Live decisions / through-lines (the marker's real content)
+- **THE COMBINE, IF IT HOLDS, IS THE DEEPEST RESULT — bigger than any standalone** (lead, 2026-06-04): the
+  calculators-as-shadows-of-one-object claim made EMPIRICAL — the unified D_ab-sum recovers (within 0.43)
+  where the individual shadows can't isolate; it carries what no part does alone. **BUT confidence is PENDING
+  a JOINT MATHS discussion — lead + Claude, together, NOT codex.** Agenda: collinearity / identifiability of
+  the shadow blocks (are field & McConnell separable or aliased? → is the drop-one attribution stable),
+  regularization + effective DOF (26 terms), the right NULL for a combine (structured vs shuffle-target),
+  determinability stability across resamples/cuts, basis-invariance (change_of_basis / per-type sums).
+  **Do NOT over-claim the combine until we have talked the maths through.** Held provisional, deepest-if-holds.
 - **Laws come from dominance-isolated clean exemplars, fit per-mechanism, UN-SHRUNK.** The
   per-type fit is a separate MODEL layer that may shrink but never owns the laws. **Dominance is
   the gate** between fine-clean (law) and coarse-mixed (model) — it protects the exemplars from
