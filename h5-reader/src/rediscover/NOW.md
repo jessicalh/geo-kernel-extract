@@ -35,23 +35,39 @@ statistical-position grading.
 - Stage 2 `ecbddd1` — fitter DECOMPOSED (reproduce-gate byte-for-byte) + per-mechanism law fits +
   unified D_ab-sum. **charge + MOPAC-field = recovered laws; unified through-space R² 0.43;** ring
   real-but-thin (5 atoms); McConnell/H-bond standalone-null. Recorded in STATE.md (STAGE 2 block).
+- Stage 2.1 `f92109c` — happy-spot sweep + frame-ablation: signal pops with MODULATION not isolation
+  ("loud not isolated"); field+unified pop, nulls NOT rescued, support thin→720-WT; **ubiquitin-50fr keeps
+  the signal** (cheap 2nd protein viable).
+- Stage 2.2 `943915f` — unified vet: **REAL combine, NOT charge-in-a-coat** (carried by MOPAC-field +
+  McConnell, charge ≈0); within stable, LOAO modest+N-limited (report by PROBABILITY, not overfit-dismiss).
+- Stage 2.3 `bp5cixi7k` (RUNNING, EOD) — probability close: statistical-position-vs-null + determinability +
+  lead-scale + cutoff-sensitivity. Verdict pending; land+verify+commit while lead sleeps.
 
 ## Current step
-**Stage 2 landed (`ecbddd1`) — the finish.** Fitter decomposed (reproduce-gate byte-for-byte), then
-per-mechanism law fits on the dominance-clean exemplars + the unified D_ab-sum. RESULTS: **charge q/r³ =
-recovered-law** (9.30, LOAO 0.38, paths agree); **field/MOPAC-Coulomb = recovered-law** (−0.83, weak but
-nonzero, PySR agrees — MOPAC>Amber vindicated); **ring = form-recovered-scale-fitted** (real but THIN, 5
-atoms); **McConnell + H-bond = can't-make-it-work standalone** (CIs span 0; joint-fit territory). **Unified
-D_ab-sum recovers through-space total-T2** (within 0.43 / LOAO 0.26) — "calculators as shadows" combine
-fits; intensities real but NOT literature-clean (correlate-not-match held). 3 paths: ridge + PySR +
-equivariant-Schur (full e3nn-per-source still the deferred chewer). ONE protein, thin strata → nulls PROVISIONAL.
-NEXT (open, lead to steer): (1) **happy-spot sweep** — response curves recovery-vs-cleanliness (dominance /
-isolation / + a geometric-noise axis we lack — CaseHunter gates isolation/motion/quiet, none = low geom
-noise), strict→loose: does it POP toward clean (tests "noisy geometry limits visibility")? rescue the nulls?
-cheap, existing substrate. (2) **720-WT statics pilot** — same r²SCAN + same `.out` files (CONFIRMED,
-absolute σ present); lots of rings → fattens ring's thin between-axis + cross-protein charge; needs the
-substrate emitted on the 720 WTs (bounded static run). (3) frame-count ablation (cheap, within-axis).
-(4) McConnell/H-bond → joint/ensemble fit. Full detail: STATE.md STAGE 2 block.
+**Stage 2 + follow-ups landed (`ecbddd1` → `f92109c` → `943915f`); probability close running (`bp5cixi7k`).**
+RESULTS: **charge q/r³ = recovered-law** (9.30, LOAO 0.38); **field/MOPAC-Coulomb = recovered-law** (−0.83,
+modest but nonzero, PySR agrees — MOPAC>Amber). **Unified D_ab-sum = a REAL combine** (vet): NOT
+charge-in-a-coat — carried by **MOPAC-field + McConnell** (charge≈0); within 0.43 stable, between-atom LOAO
+0.26 modest+N-limited. **ring = a CASE STUDY** (5 atoms — a found fit, NOT a probability);
+McConnell/H-bond standalone-null. Happy-spot: signal pops with **modulation, not isolation** ("loud not
+isolated"); nulls not rescued at clean. Frame: recovery survives at ~50 frames → ubiquitin-50fr viable.
+
+**REPORTING STANDARD (now law):** statistical position + determinability, NEVER survives/overfit. Probability
+ONLY where N earns it (the within/frame axis, or many-atom sets); **CASE STUDY where N is tiny** (few-atom
+between, e.g. ring-5 — report the found fit honestly; squeeze probability from the within/frame axis where the
+between can't). Scale: ~0.03≈nothing; ~0.2 = something-or-trash decided by determinability; higher = clearly
+something. [[feedback_law_as_statistical_position]] [[feedback_transparent_cutoffs]]. **1P9J is a WITHIN
+instrument** (one protein, deep trajectory → probability lives on the within/modulation axis); its
+between/LOAO is thin-BY-CONSTRUCTION = case-study → the **720-WT is the between-axis probability instrument**
+(many proteins). Lead 1P9J verdicts on WITHIN; treat every LOAO/between figure as suggestive-pending-720-WT.
+
+NEXT (open, lead to steer): (0) **land + verify + commit the probability close** (`bp5cixi7k`) — read tiny-N
+between p-values as case-study, within p-values as real probability. (1) **720-WT statics pilot, B-path** — the
+durable static-pose/mutant-tree ingest = the cure for the thin between-axis (many atoms → between case-studies
+become probabilities) AND the seed of the unified stats engine ([[project_unified_stats_engine]]); same r²SCAN
++ same `.out`, absolute σ present, ~1–2 day adapter. (2) **ubiquitin-50fr** — cheap 2nd dynamic protein, frame
+result says viable. (3) **McConnell/H-bond → joint/ensemble fit** (their home). Detail: STATE.md STAGE 2 block
++ Stage 2.1–2.3 follow-ups.
 SIDE-FRAME: `PHYSICS_ARCHITECTURE_UNIFICATION_2026-06-04.md` (vindicates architecture; fold-ins applied in stage 2).
 
 ## Live decisions / through-lines (the marker's real content)

@@ -25,6 +25,27 @@ PER-KERNEL (clean strata; **statistical-position + bucket, NOT literature-match*
 - 3 PATHS: ridge + PySR + equivariant-Schur (closed-form on reduced sums — NOT the full e3nn-per-source,
   which stays the deferred chewer); agree where the law holds.
 
+### Stage 2.1–2.3 follow-ups (2026-06-04)
+- **2.1 happy-spot sweep + frame-ablation** (`f92109c`): the signal pops with **MODULATION (driver worked),
+  NOT isolation** — "loud, not isolated" (lead). Only **field** (modulation) + **unified** (dominance+modulation)
+  rise toward clean; charge/ring/mc/hbond flat-or-fall; McConnell/H-bond NOT rescued at the clean end. Support
+  THIN everywhere (one protein) → the sweep is power-starved → 720-WT gives it teeth. Frame-ablation: recovery
+  survives at FEW frames (knees ring 20 / field 50 / unified 50 / charge-within 200; charge LOAO 0.40 holds at
+  50fr) → **ubiquitin 1ns@20ps (50fr) keeps the main signal — cheap 2nd protein viable.**
+- **2.2 unified vet** (`943915f`): **REAL combine, NOT charge-in-a-coat** — charge-alone within ≈0.007; the
+  within recovery is carried by **MOPAC-field + McConnell** (drop-one: mopac_field +0.194, mc_cat4 +0.171),
+  charge adds little. within 0.43 stable under shrinkage; **between-atom LOAO 0.26 is modest + N-limited**
+  (26 terms / 25 atoms → 0.10 shrunk) — NOT "overfit-dismissed": a real-but-thin between signal, reportable
+  with PROBABILITY framing; the 25-atom thinness → 720-WT is the cure.
+- **REPORTING STANDARD (lead, 2026-06-04, now law):** grade by STATISTICAL POSITION + DETERMINABILITY, never
+  binary survives/overfit. Two questions: (1) fairly-indicative-AND-not-an-artifact (highly reportable, even
+  necessary, WITH caveats + probability framing); (2) robust-in-context. Scale: ~0.03 ≈ nothing; ~0.2 =
+  potentially something OR trash, decided by whether we can DETERMINE what drives it; higher = clearly
+  something. [[feedback_law_as_statistical_position]] [[feedback_transparent_cutoffs]].
+- **2.3 probability close** (`bp5cixi7k`, RUNNING as of EOD 2026-06-04): permutation-null statistical position
+  + determinability + lead-scale placement for every recovery, + cutoff-sensitivity of the unified's p-vs-null
+  across the 0.5/0.7 cut (the owed cutoff-transparency). Verdict pending; lead-verify + commit on landing.
+
 CAVEATS: ONE protein; thin clean strata (ring 5, unified 25) → "1P9J across its structures," no population
 inference; the two nulls are PROVISIONAL (this cut/data), not earned.
 
