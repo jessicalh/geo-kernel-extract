@@ -58,12 +58,11 @@ AXIS PARITY CONTRACT (consumer-side, no physics recompute):
   NOT recompute missing vectors in Python — we read emitted columns and select
   parity-valid e3nn features.
 
-Honesty (mirrors equiv_t2_e3nn.py): de-mean target AND prediction per atom (strip
-the near-constant per-atom baseline tensor — the local bonding the through-space
-mechanisms do not touch); frame-split is the GATE; leave-atoms-out is available as
-an opt-in audit via --loao, not gated (thin — backbone strata have few coupled
-atoms in one protein; effective N is printed per stratum, not oversold). Reported
-per atom-type stratum (all 8).
+Honesty (mirrors the clean EFG path): blocked/purged frame-split is the GATE;
+target, prediction, and invariant-feature normalization are centered/scaled from
+TRAIN rows only. Leave-atoms-out is available as an opt-in audit via --loao, not
+gated (thin — backbone strata have few coupled atoms in one protein; effective N
+is printed per stratum, not oversold). Reported per atom-type stratum (all 8).
 
 Run (system python; torch cu130 needs nvidia cu13 libs on LD_LIBRARY_PATH or it
 segfaults — see ENV.md / requirements-e3nn.txt):
@@ -83,6 +82,7 @@ import torch.nn as nn
 from e3nn import o3
 
 import change_of_basis as cob
+from e3nn_protocol import centred_by_train_atom, make_split_masks, normalised_by_train_rows
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -103,9 +103,6 @@ FV_HA = {9}             # BackboneHA  (HA / HA2 / HA3 split by atom_name)
 
 STRATA_ORDER = ["N", "CA", "C", "O", "HN", "HA", "HA2", "HA3"]
 
-TEST_FRAME_FRACTION = 0.20
-FRAME_SPLIT_SEED = 0
-MIN_FRAME_SPLIT_FRAMES = 5
 THIN_ATOM_WARN = 10
 
 # ── Per-source-type invariant feature sets (EMITTED columns only) ─────────────
@@ -236,10 +233,10 @@ class KindChannel(nn.Module):
 
 class BroadEquivPool(nn.Module):
     """Heterogeneous equivariant sum-pool: per-source-kind radial channels feed a
-    SHARED scatter-pool to (atom, frame) groups; de-meaned per atom. Each kind's
-    sources are processed by that kind's KindChannel, then all contributions are
-    index-added into the same group accumulator (Deep Sets over the heterogeneous
-    neighbourhood)."""
+    SHARED scatter-pool to (atom, frame) groups; de-meaned per atom from the
+    supplied centering mask. Each kind's sources are processed by that kind's
+    KindChannel, then all contributions are index-added into the same group
+    accumulator (Deep Sets over the heterogeneous neighbourhood)."""
 
     def __init__(self, kind_nfeat, kind_axis, n_groups, n_atoms, cross="exact"):
         super().__init__()
@@ -248,7 +245,7 @@ class BroadEquivPool(nn.Module):
         self.channels = nn.ModuleDict({
             k: KindChannel(kind_nfeat[k], kind_axis[k], cross) for k in kind_nfeat})
 
-    def forward(self, per_kind, group_atom):
+    def forward(self, per_kind, group_atom, center_mask=None):
         """per_kind[k] = dict(featn, y2_disp, y2_axis, src_group) tensors for the
         sources of kind k. group_atom maps each group index -> its atom index."""
         pooled = torch.zeros(self.n_groups, 5, device=group_atom.device)
@@ -258,11 +255,16 @@ class BroadEquivPool(nn.Module):
                 continue
             contrib = ch(pk)                                           # (n_src_k, 5)
             pooled.index_add_(0, pk["src_group"], contrib)
-        # de-mean prediction per atom (mirror the target's per-atom de-meaning)
+        # De-mean prediction per atom using train rows only; this mirrors the
+        # target centering and keeps held-out/purged groups out of the mean.
+        if center_mask is None:
+            center_mask = torch.ones(group_atom.shape, dtype=torch.bool, device=group_atom.device)
         mean = torch.zeros(self.n_atoms, 5, device=pooled.device)
         cnt = torch.zeros(self.n_atoms, 1, device=pooled.device)
-        mean.index_add_(0, group_atom, pooled)
-        cnt.index_add_(0, group_atom, torch.ones(self.n_groups, 1, device=pooled.device))
+        center_atom = group_atom[center_mask]
+        mean.index_add_(0, center_atom, pooled[center_mask])
+        cnt.index_add_(0, center_atom,
+                       torch.ones(center_atom.shape[0], 1, device=pooled.device))
         return pooled - (mean / cnt.clamp_min(1.0))[group_atom]
 
 
@@ -295,6 +297,10 @@ def build_pack(src, agg, target_lib_all, axis_present, with_axes, dev):
     n_atoms = int(group_atom_idx.max()) + 1
     n_groups = len(a)
 
+    # EFG-path frame gate: contiguous held-out block with neighbouring train
+    # frames purged. Target and feature normalization are train-only.
+    g_tr, g_te, split_info = make_split_masks(a.h5_row.to_numpy())
+
     # Target: emitted local-frame library T2 of the kept rows -> e3nn 2e via C.
     gT2_lib = target_lib_all[a["__agg_row"].to_numpy()]            # (n_groups, 5)
     if not np.isfinite(gT2_lib).all():
@@ -305,12 +311,7 @@ def build_pack(src, agg, target_lib_all, axis_present, with_axes, dev):
         sys.exit(f"FATAL: {bad} kept rows have non-finite local-frame target T2 "
                  "despite dft_local_frame_valid==1 (substrate inconsistency).")
     gT2_e3nn = cob.lib_to_e3nn(gT2_lib)                           # constant matmul
-
-    # de-mean target per atom (strip the near-constant per-atom baseline tensor)
-    gT2_dm = gT2_e3nn.copy()
-    for at in np.unique(group_atom_idx):
-        m = group_atom_idx == at
-        gT2_dm[m] -= gT2_e3nn[m].mean(0)
+    gT2_dm = centred_by_train_atom(gT2_e3nn, group_atom_idx, g_tr)
 
     # ── Per-kind source tensors, joined back to the kept groups by row_id ──────
     # Drop the self/bonded ring (the local baseline; matches the ring fitter); the
@@ -351,8 +352,8 @@ def build_pack(src, agg, target_lib_all, axis_present, with_axes, dev):
         else:
             axis_hat = np.zeros_like(disp_hat)  # unused by the channel
         feat = sk[cols].to_numpy(np.float32)
-        fmean, fstd = feat.mean(0), feat.std(0)
-        featn = (feat - fmean) / np.where(fstd > 1e-8, fstd, 1.0)
+        source_train = g_tr[sk["__gid"].to_numpy()]
+        featn, fmean, fstd = normalised_by_train_rows(feat, source_train)
         disp_hat_t = torch.tensor(disp_hat, dtype=torch.float32, device=dev)
         with torch.no_grad():
             y2_disp = o3.spherical_harmonics(
@@ -369,23 +370,15 @@ def build_pack(src, agg, target_lib_all, axis_present, with_axes, dev):
             y2_axis=y2_axis,
             src_group=torch.tensor(sk["__gid"].to_numpy(), dtype=torch.long, device=dev))
 
-    # frame split (gate)
-    frames = np.sort(a.h5_row.unique())
-    if len(frames) < MIN_FRAME_SPLIT_FRAMES:
-        g_te = np.zeros(n_groups, dtype=bool)  # too few frames to split honestly
-    else:
-        test_f = set(np.random.default_rng(FRAME_SPLIT_SEED).choice(
-            frames, max(1, int(TEST_FRAME_FRACTION * len(frames))), replace=False))
-        g_te = a.h5_row.isin(test_f).to_numpy()
-
     t = lambda x, dt=torch.float32: torch.tensor(x, dtype=dt, device=dev)
     return dict(
         per_kind=per_kind, kind_nfeat=kind_nfeat, kind_axis=kind_axis,
         group_atom=t(group_atom_idx, torch.long),
-        target=t(gT2_dm), g_te=t(g_te, torch.bool),
+        target=t(gT2_dm), g_te=t(g_te, torch.bool), g_tr=t(g_tr, torch.bool),
         n_groups=n_groups, n_atoms=n_atoms,
         group_atom_idx=group_atom_idx, gT2_e3nn=gT2_e3nn,
         n_src={k: per_kind[k]["src_group"].numel() for k in per_kind},
+        **split_info,
     )
 
 
@@ -397,18 +390,17 @@ def _new_model(pack, cross, dev):
 def train_one(pack, dev, cross, epochs, lr, run_loao):
     model = _new_model(pack, cross, dev)
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-7)
-    target, g_te = pack["target"], pack["g_te"]
-    g_tr = ~g_te
+    target, g_te, g_tr = pack["target"], pack["g_te"], pack["g_tr"]
     if g_tr.sum() == 0:
         return float("nan"), float("nan"), float("nan")
     for ep in range(epochs):
         model.train(); opt.zero_grad()
-        pred = model(pack["per_kind"], pack["group_atom"])
+        pred = model(pack["per_kind"], pack["group_atom"], center_mask=g_tr)
         loss = ((pred[g_tr] - target[g_tr]) ** 2).mean()
         loss.backward(); opt.step()
     model.eval()
     with torch.no_grad():
-        pr = model(pack["per_kind"], pack["group_atom"]).cpu().numpy()
+        pr = model(pack["per_kind"], pack["group_atom"], center_mask=g_tr).cpu().numpy()
     tg = target.cpu().numpy()
     te = g_te.cpu().numpy()
     if te.sum() < 2:
@@ -436,19 +428,15 @@ def leave_atoms_out(pack, dev, cross, epochs, lr):
         opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-7)
         for ep in range(max(800, epochs // 4)):
             model.train(); opt.zero_grad()
-            p = model(pack["per_kind"], pack["group_atom"])
+            p = model(pack["per_kind"], pack["group_atom"], center_mask=tr_mask)
             loss = ((p[tr_mask] - pack["target"][tr_mask]) ** 2).mean()
             loss.backward(); opt.step()
         model.eval()
         with torch.no_grad():
-            p = model(pack["per_kind"], pack["group_atom"]).cpu().numpy()
+            p = model(pack["per_kind"], pack["group_atom"], center_mask=tr_mask).cpu().numpy()
         pred[ga == held] = p[ga == held]
-    tg = pack["gT2_e3nn"].copy()
-    for at in atoms:
-        m = ga == at
-        tg[m] -= pack["gT2_e3nn"][m].mean(0)
-        pred[m] -= pred[m].mean(0)
-    ok = np.isfinite(pred).all(1)
+    tg = pack["target"].cpu().numpy()
+    ok = np.isfinite(pred).all(1) & np.isfinite(tg).all(1)
     if ok.sum() < 2:
         return float("nan")
     return r2(torch.tensor(pred[ok]), torch.tensor(tg[ok]))
@@ -462,7 +450,9 @@ def report_stratum(name, pack, dev, args):
     thin = n_atoms < THIN_ATOM_WARN
     thin_txt = "  THIN" if thin else ""
     print(f"\n── stratum {name}: groups(atom,frame)={n_groups}  coupled atoms={n_atoms}  "
-          f"test groups={te}{thin_txt}  sources[ring/bond/charge]="
+          f"test groups={te}  split={pack['split_strategy']}  "
+          f"purged_frames={pack['purged_train_frames']}  "
+          f"cross_lag1_pairs={pack['cross_split_lag1_pairs']}{thin_txt}  sources[ring/bond/charge]="
           f"{n_src.get('ring',0)}/{n_src.get('bond',0)}/{n_src.get('charge',0)}",
           flush=True)
     if n_atoms < 2 or n_groups < 4:

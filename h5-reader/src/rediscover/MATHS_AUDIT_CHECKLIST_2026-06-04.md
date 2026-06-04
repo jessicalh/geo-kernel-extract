@@ -29,6 +29,10 @@ the COMBINE NOTE (NOW.md / STATE.md), the `PHYSICS_ARCHITECTURE_UNIFICATION` fol
 3. **ring/broad e3nn: de-mean over ALL groups + unpurged random frame splits** (`analysis/equiv_t2_e3nn.py`,
    `analysis/equiv_t2_backbone_e3nn.py`) → possible leakage. The EFG e3nn path (`analysis/equiv_t2_efg_e3nn.py`)
    is clean (blocked/purged) = the template to align to. Affects the equivariant-path numbers in "3 paths agree."
+   **[FIXED 2026-06-04 — `POSTMORTEM_E3NN_PROTOCOL_FIX` / `b804wd9rr`, code-only]:** ring/broad e3nn aligned to
+   the clean EFG protocol (shared `analysis/e3nn_protocol.py`: blocked/purged split, train-only
+   centering/normalization, `center_mask=g_tr`); all-group de-mean + random unpurged splits REMOVED; structural
+   checks green, NO e3nn re-run. The clean-vs-leaky recovery VERDICT pends the HELD e3nn re-run.
 
 ## The combine: VALIDITY vs ATTRIBUTION (do not conflate)
 - **VALIDITY** (could the combine be a mirage): regularization + effective DOF, the right NULL for a combine

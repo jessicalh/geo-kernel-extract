@@ -98,7 +98,7 @@ def train_model(pack, dev, epochs, lr, train_mask=None, verbose_prefix=""):
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-7)
     target = pack["target"]
     if train_mask is None:
-        train_mask_t = ~pack["g_te"]
+        train_mask_t = pack["g_tr"]
     else:
         train_mask_t = torch.tensor(train_mask, dtype=torch.bool, device=dev)
     if int(train_mask_t.sum().item()) < 3:
@@ -106,13 +106,13 @@ def train_model(pack, dev, epochs, lr, train_mask=None, verbose_prefix=""):
     for ep in range(epochs):
         model.train()
         opt.zero_grad()
-        pred = model(pack["per_kind"], pack["group_atom"])
+        pred = model(pack["per_kind"], pack["group_atom"], center_mask=train_mask_t)
         loss = ((pred[train_mask_t] - target[train_mask_t]) ** 2).mean()
         loss.backward()
         opt.step()
         if verbose_prefix and (ep % 1000 == 0 or ep == epochs - 1):
             with torch.no_grad():
-                pr = model(pack["per_kind"], pack["group_atom"])
+                pr = model(pack["per_kind"], pack["group_atom"], center_mask=train_mask_t)
             te = pack["g_te"]
             print(
                 f"{verbose_prefix} ep={ep:4d} loss={loss.item():.4e} "
@@ -122,7 +122,7 @@ def train_model(pack, dev, epochs, lr, train_mask=None, verbose_prefix=""):
             )
     model.eval()
     with torch.no_grad():
-        pred = model(pack["per_kind"], pack["group_atom"])
+        pred = model(pack["per_kind"], pack["group_atom"], center_mask=train_mask_t)
     te = pack["g_te"]
     pred_np = as_np(pred)
     tgt_np = as_np(target)
@@ -369,7 +369,9 @@ def atom_split_validation(stratum, kind, pack, dev, epochs, lr, splits, rng):
         model, _, _ = train_model(ppack, dev, epochs, lr, train_mask=train_mask, verbose_prefix="")
         model.eval()
         with torch.no_grad():
-            pred = as_np(model(ppack["per_kind"], ppack["group_atom"]))
+            train_mask_t = torch.tensor(train_mask, dtype=torch.bool, device=dev)
+            pred = as_np(model(ppack["per_kind"], ppack["group_atom"],
+                               center_mask=train_mask_t))
         tgt = as_np(ppack["target"])
         if test_mask.sum() < 3:
             continue

@@ -30,10 +30,10 @@ feedback_model_is_spine):
     basis.
   * e3nn's internal (y,z,x) axis convention is handled once, in change_of_basis.
 
-Honesty (unchanged from equiv_t2.py): de-mean target AND prediction per atom
-(strip the near-constant local C-H baseline tensor); frame-split is the GATE;
-leave-atoms-out is reported (not gated, thin at ~7 coupled aromatic H); report
-|T2| (rotation invariant) and the 5-vector R2.
+Honesty (EFG-path protocol): blocked/purged frame-split is the GATE; target,
+prediction, and invariant-feature normalization are centered/scaled from TRAIN
+rows only. Leave-atoms-out is reported (not gated, thin at ~7 coupled aromatic H);
+report |T2| (rotation invariant) and the 5-vector R2.
 
 Cross-term mode (decision 4: test exact vs learnable, pick better, report both):
   --cross exact      : o3.TensorProduct(1o,1o->2e) with FIXED unit path weight
@@ -56,6 +56,7 @@ import torch.nn as nn
 from e3nn import o3
 
 import change_of_basis as cob
+from e3nn_protocol import centred_by_train_atom, make_split_masks, normalised_by_train_rows
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -103,7 +104,7 @@ def load(out_dir):
 class EquivPoolE3nn(nn.Module):
     """e3nn equivariant sum-pool: per-source 2e from spherical harmonics + a
     1o(x)1o->2e cross term, gated by an invariant radial MLP, scatter-pooled to
-    (atom, frame) groups, de-meaned per atom."""
+    (atom, frame) groups, de-meaned per atom from the supplied centering mask."""
 
     def __init__(self, n_groups, n_atoms, cross="exact"):
         super().__init__()
@@ -128,7 +129,7 @@ class EquivPoolE3nn(nn.Module):
             self.tp = o3.FullyConnectedTensorProduct(
                 irr_1o, irr_1o, irr_2e, irrep_normalization="component")
 
-    def forward(self, rhat, nhat, featn, src_group, group_atom):
+    def forward(self, rhat, nhat, featn, src_group, group_atom, center_mask=None):
         w = self.R(featn)                                   # (n_src, 3) gates
         y2_r = o3.spherical_harmonics(2, rhat, normalize=True, normalization="component")
         y2_n = o3.spherical_harmonics(2, nhat, normalize=True, normalization="component")
@@ -138,12 +139,17 @@ class EquivPoolE3nn(nn.Module):
                    + w[:, 2:3] * cross)                     # (n_src, 5)
         pooled = torch.zeros(self.n_groups, 5, device=contrib.device)
         pooled.index_add_(0, src_group, contrib)
-        # de-mean prediction per atom (mirror the target's per-atom de-meaning)
+        # De-mean prediction per atom using train rows only; this mirrors the
+        # target centering and keeps held-out/purged groups out of the mean.
+        if center_mask is None:
+            center_mask = torch.ones(group_atom.shape, dtype=torch.bool, device=group_atom.device)
         mean = torch.zeros(self.n_atoms, 5, device=contrib.device)
         cnt = torch.zeros(self.n_atoms, 1, device=contrib.device)
-        mean.index_add_(0, group_atom, pooled)
-        cnt.index_add_(0, group_atom, torch.ones(self.n_groups, 1, device=contrib.device))
-        return pooled - (mean / cnt)[group_atom]
+        center_atom = group_atom[center_mask]
+        mean.index_add_(0, center_atom, pooled[center_mask])
+        cnt.index_add_(0, center_atom,
+                       torch.ones(center_atom.shape[0], 1, device=contrib.device))
+        return pooled - (mean / cnt.clamp_min(1.0))[group_atom]
 
 
 def r2(p, y):
@@ -163,8 +169,6 @@ def build_tensors(df, target_lib_all, dev):
     nhat = nrm / np.clip(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9, None)
 
     feat = d[["r", "ring_intensity"]].to_numpy(np.float32)
-    fmean, fstd = feat.mean(0), feat.std(0)
-    featn = (feat - fmean) / fstd
 
     # per-source emitted library target -> e3nn 2e via the pinned constant C.
     tgt_lib = target_lib_all[d["__rowid"].to_numpy()]          # (n_src, 5) emitted
@@ -182,16 +186,12 @@ def build_tensors(df, target_lib_all, dev):
     group_atom_idx, _ = pd.factorize(aid_of_group)
     n_atoms = int(group_atom_idx.max()) + 1
 
-    # de-mean target per atom
-    gT2_dm = gT2_e3nn.copy()
-    for a in np.unique(group_atom_idx):
-        m = group_atom_idx == a
-        gT2_dm[m] -= gT2_e3nn[m].mean(0)
-
-    # frame split (gate); also keep atom ids for the leave-atoms-out report
-    frames = np.sort(grp.frame.unique())
-    test_f = set(np.random.default_rng(0).choice(frames, int(0.2 * len(frames)), replace=False))
-    g_te = grp.frame.isin(test_f).to_numpy()
+    # EFG-path frame gate: contiguous held-out block with neighbouring train
+    # frames purged. Target and feature normalization are train-only.
+    g_tr, g_te, split_info = make_split_masks(grp.frame.to_numpy())
+    gT2_dm = centred_by_train_atom(gT2_e3nn, group_atom_idx, g_tr)
+    source_train = g_tr[d["__gid"].to_numpy()]
+    featn, fmean, fstd = normalised_by_train_rows(feat, source_train)
 
     t = lambda x, dt=torch.float32: torch.tensor(x, dtype=dt, device=dev)
     pack = dict(
@@ -200,9 +200,12 @@ def build_tensors(df, target_lib_all, dev):
         group_atom=t(group_atom_idx, torch.long),
         target=t(gT2_dm),
         g_te=t(g_te, torch.bool),
+        g_tr=t(g_tr, torch.bool),
         n_groups=n_groups, n_atoms=n_atoms,
         aid_of_group=aid_of_group, group_atom_idx=group_atom_idx,
         gT2_e3nn=gT2_e3nn,
+        feature_mean=fmean, feature_scale=fstd,
+        **split_info,
     )
     return pack
 
@@ -212,25 +215,25 @@ def train_one(pack, dev, cross, epochs, lr):
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-7)
     target = pack["target"]
     g_te = pack["g_te"]
-    g_tr = ~g_te
+    g_tr = pack["g_tr"]
     for ep in range(epochs):
         model.train(); opt.zero_grad()
         pred = model(pack["rhat"], pack["nhat"], pack["featn"],
-                     pack["src_group"], pack["group_atom"])
+                     pack["src_group"], pack["group_atom"], center_mask=g_tr)
         loss = ((pred[g_tr] - target[g_tr]) ** 2).mean()
         loss.backward(); opt.step()
         if ep % 1000 == 0 or ep == epochs - 1:
             model.eval()
             with torch.no_grad():
                 pr = model(pack["rhat"], pack["nhat"], pack["featn"],
-                           pack["src_group"], pack["group_atom"])
+                           pack["src_group"], pack["group_atom"], center_mask=g_tr)
             print(f"  [{cross:9s}] ep {ep:4d} loss={loss.item():.4e} "
                   f"T2 R2 train={r2(pr[g_tr], target[g_tr]):+.3f} "
                   f"test={r2(pr[g_te], target[g_te]):+.3f}")
     model.eval()
     with torch.no_grad():
         pr = model(pack["rhat"], pack["nhat"], pack["featn"],
-                   pack["src_group"], pack["group_atom"]).cpu().numpy()
+                   pack["src_group"], pack["group_atom"], center_mask=g_tr).cpu().numpy()
     tg = target.cpu().numpy()
     te = g_te.cpu().numpy()
     mag_p, mag_t = np.linalg.norm(pr, axis=1), np.linalg.norm(tg, axis=1)
@@ -264,21 +267,18 @@ def leave_atoms_out(pack, dev, cross, epochs, lr):
         for ep in range(max(800, epochs // 4)):
             model.train(); opt.zero_grad()
             p = model(pack["rhat"], pack["nhat"], pack["featn"],
-                      pack["src_group"], pack["group_atom"])
+                      pack["src_group"], pack["group_atom"], center_mask=gtr)
             loss = ((p[gtr] - pack["target"][gtr]) ** 2).mean()
             loss.backward(); opt.step()
         model.eval()
         with torch.no_grad():
             p = model(pack["rhat"], pack["nhat"], pack["featn"],
-                      pack["src_group"], pack["group_atom"]).cpu().numpy()
+                      pack["src_group"], pack["group_atom"], center_mask=gtr).cpu().numpy()
         pred[te_mask] = p[te_mask]
-    # de-mean per atom for a fair within-atom modulation R2
-    tg = pack["gT2_e3nn"].copy()
-    for a in atoms:
-        m = ga == a
-        tg[m] -= pack["gT2_e3nn"][m].mean(0)
-        pred[m] -= pred[m].mean(0)
-    ok = np.isfinite(pred).all(1)
+    tg = pack["target"].cpu().numpy()
+    ok = np.isfinite(pred).all(1) & np.isfinite(tg).all(1)
+    if ok.sum() < 2:
+        return float("nan")
     return r2(torch.tensor(pred[ok]), torch.tensor(tg[ok]))
 
 

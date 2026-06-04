@@ -62,8 +62,11 @@ TRUE between-atom recovery is ~null — charge 0.036 (0.03-class), ring −1.0, 
 Every prior "LOAO/between" number (charge 0.38 / ring 0.17 / unified 0.26) was mislabeled within-modulation →
 RETRACTED. Between / transferability / combine-DEPTH defers ENTIRELY to the 720-WT (1P9J has NO clean between
 axis).** Code fix landing (`bh5f0e7ve`): the LOAO/between path → true between-atom recovery; full re-fit HELD per
-lead. #1 RESOLVED-BENIGN (dia/para split sound). **#3 OPEN:** ring/broad e3nn leakage — bears on the WITHIN
-combine's "3 paths agree," the next audit item. Do NOT quote any between/LOAO number.
+lead. #1 RESOLVED-BENIGN (dia/para split sound). **#3 FIXED (`b804wd9rr`, code-only):** ring/broad e3nn aligned to the
+clean EFG protocol (blocked/purged split, train-only de-mean; shared `e3nn_protocol.py`) — the all-group
+de-mean + random splits are removed; the clean-vs-leaky verdict for the WITHIN combine's "3 paths agree" pends
+the HELD e3nn re-run. **AUDIT CODE-COMPLETE: #1 benign, #2 + #3 fixed.** Parked verdict re-runs (held for lead):
+the LOAO re-fit + the e3nn clean re-run. Do NOT quote any between/LOAO number.
 
 **Stage 2 + ALL follow-ups landed (`ecbddd1` → `f92109c` → `943915f` → 2.3 probability close).**
 RESULTS (probability + determinability; **1P9J = WITHIN axis ONLY — true-LOAO killed the between axis here**):
