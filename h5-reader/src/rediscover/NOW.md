@@ -77,10 +77,16 @@ SIDE-FRAME: `PHYSICS_ARCHITECTURE_UNIFICATION_2026-06-04.md` (vindicates archite
 - **THE COMBINE, IF IT HOLDS, IS THE DEEPEST RESULT — bigger than any standalone** (lead, 2026-06-04): the
   calculators-as-shadows-of-one-object claim made EMPIRICAL — the unified D_ab-sum recovers (within 0.43)
   where the individual shadows can't isolate; it carries what no part does alone. **BUT confidence is PENDING
-  a JOINT MATHS discussion — lead + Claude, together, NOT codex.** Agenda: collinearity / identifiability of
-  the shadow blocks (are field & McConnell separable or aliased? → is the drop-one attribution stable),
+  a JOINT MATHS discussion — lead + Claude, together, NOT codex.** Agenda, splitting VALIDITY from
+  ATTRIBUTION (lead's correction 2026-06-04): **VALIDITY gates** (could the combine be a mirage) =
   regularization + effective DOF (26 terms), the right NULL for a combine (structured vs shuffle-target),
-  determinability stability across resamples/cuts, basis-invariance (change_of_basis / per-type sums).
+  basis-invariance (change_of_basis / per-type sums), held-out recovery — **collinearity is NOT on this
+  list.** **ATTRIBUTION / DESCRIBE** (not a dismissal): collinearity among the shadow blocks is EXPECTED +
+  possibly CONFIRMATORY for shadows-of-one-object — recovery is the projection onto the spanned column space,
+  INVARIANT to collinearity; collinearity only destabilizes the per-shadow drop-one marginals. So report the
+  RECOVERY as the robust claim, DESCRIBE the collinearity (fingerprint of the shared source), treat
+  per-shadow attribution as the soft part. Dismissing the combine for collinearity = dismissing it for
+  behaving as the one-object hypothesis predicts.
   **Do NOT over-claim the combine until we have talked the maths through.** Held provisional, deepest-if-holds.
 - **Laws come from dominance-isolated clean exemplars, fit per-mechanism, UN-SHRUNK.** The
   per-type fit is a separate MODEL layer that may shrink but never owns the laws. **Dominance is
