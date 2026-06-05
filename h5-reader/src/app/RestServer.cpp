@@ -3,6 +3,7 @@
 #include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
 #include "DashboardDisplayController.h"
+#include "DashboardSelectionController.h"
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
 #include "QtPlaybackController.h"
@@ -52,6 +53,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 #include <optional>
 #include <vector>
@@ -143,6 +145,33 @@ QJsonArray stringListToJson(const QStringList& values) {
 
 QString uuidToString(const QUuid& id) {
     return id.toString(QUuid::WithoutBraces);
+}
+
+QJsonObject stripTrackToJson(const DashboardDisplayController::StripTrack& track) {
+    QJsonArray values;
+    QJsonArray valid;
+    const model::ChannelBuffer* buffer = track.buffer;
+
+    if (buffer) {
+        for (const double value : buffer->values) {
+            values.append(std::isfinite(value) ? QJsonValue(value) : QJsonValue(QJsonValue::Null));
+        }
+        for (const std::uint8_t flag : buffer->valid) {
+            valid.append(flag ? 1 : 0);
+        }
+    }
+
+    return QJsonObject{
+        {"signal_id", uuidToString(track.signalId)},
+        {"descriptor_id", track.descriptorId},
+        {"mode", track.displayModeId},
+        {"channel", track.channelId},
+        {"label", track.label},
+        {"last_frame", buffer ? static_cast<qint64>(buffer->lastFrame()) : static_cast<qint64>(-1)},
+        {"count", buffer ? static_cast<qint64>(buffer->size()) : static_cast<qint64>(0)},
+        {"values", values},
+        {"valid", valid},
+    };
 }
 
 std::optional<QUuid> uuidFromBody(const QJsonObject& body, QString* error) {
@@ -379,12 +408,14 @@ QJsonArray modeStateArray(const model::DashboardSignal& signal,
 
     QJsonArray out;
     for (const QString& mode : modes) {
+        const model::DashboardSignalModel::ModeRenderability renderability =
+            model::DashboardSignalModel::ModeRenderabilityFor(mode);
         out.append(QJsonObject{
             {"mode", mode},
             {"enabled", signal.displayModeIds.contains(mode)},
-            {"is_panel_ref", model::IsPanelDisplayMode(mode)},
-            {"renderable_panel", IsRenderableDashboardPanelMode(mode)},
-            {"has_visible_surface", DashboardModeHasVisibleSurface(mode)},
+            {"is_panel_ref", renderability.emitsPanelRef},
+            {"renderable_panel", renderability.buildsPanelWidget},
+            {"has_visible_surface", renderability.hasVisibleSurface},
         });
     }
     return out;
@@ -395,7 +426,9 @@ QJsonArray selectedStateArray(const model::DashboardSignalModel* signalModel,
     QJsonArray selected;
     if (!signalModel)
         return selected;
-    for (const model::DashboardSignal& signal : signalModel->activeSignals()) {
+    const QVector<model::DashboardSignal>& selectedSignals = signalModel->activeSignals();
+    for (int row = 0; row < selectedSignals.size(); ++row) {
+        const model::DashboardSignal& signal = selectedSignals.at(row);
         const model::SignalDescriptor* descriptor = findAnyDescriptor(catalog, signal.binding.descriptorId);
         selected.append(QJsonObject{
             {"id", uuidToString(signal.id)},
@@ -404,7 +437,7 @@ QJsonArray selectedStateArray(const model::DashboardSignalModel* signalModel,
             {"label", signal.label},
             {"anchor", anchorToJson(signal.binding.anchor)},
             {"enabled", signal.enabled},
-            {"availability", availabilityString(catalog, signal.binding.descriptorId)},
+            {"availability", signalModel->availabilityName(row)},
             {"modes", modeStateArray(signal, descriptor)},
         });
     }
@@ -499,6 +532,8 @@ void RestServer::setContext(MoleculeScene* scene,
                             model::AtomSelection* selection,
                             model::DashboardSignalModel* signalModel,
                             model::DashboardPanelModel* panelModel,
+                            DashboardSelectionController* selectionController,
+                            DashboardDisplayController* dashboardController,
                             const model::TrajectorySignalCatalog* catalog,
                             QtPlaybackController* playback,
                             io::QtLoadResult* loaded,
@@ -510,6 +545,8 @@ void RestServer::setContext(MoleculeScene* scene,
     selection_ = selection;
     signalModel_ = signalModel;
     panelModel_ = panelModel;
+    selectionController_ = selectionController;
+    dashboardController_ = dashboardController;
     catalog_ = catalog;
     playback_ = playback;
     loaded_ = loaded;
@@ -1366,9 +1403,23 @@ void RestServer::registerRoutes() {
         return jsonResponse(out);
     });
 
+    server_->route(QStringLiteral("/dashboard/strip/series"), [this]() {
+        ASSERT_THREAD(this);
+        if (!dashboardController_)
+            return errorResponse(QStringLiteral("dashboard display controller not wired"),
+                                 SC::ServiceUnavailable);
+
+        QJsonArray tracks;
+        const QVector<DashboardDisplayController::StripTrack> stripTracks =
+            dashboardController_->stripTracks();
+        for (const DashboardDisplayController::StripTrack& track : stripTracks)
+            tracks.append(stripTrackToJson(track));
+        return jsonResponse(QJsonObject{{"tracks", tracks}});
+    });
+
     server_->route(QStringLiteral("/dashboard/state"), [this]() {
         ASSERT_THREAD(this);
-        if (!signalModel_ || !panelModel_ || !catalog_)
+        if (!signalModel_ || !panelModel_ || !selectionController_ || !catalog_)
             return errorResponse(QStringLiteral("dashboard models not wired"), SC::ServiceUnavailable);
         if (!readerWindow_)
             return errorResponse(QStringLiteral("reader main window not wired"), SC::ServiceUnavailable);
@@ -1376,7 +1427,7 @@ void RestServer::registerRoutes() {
         const QJsonArray selected = selectedStateArray(signalModel_.data(), catalog_);
         return jsonResponse(QJsonObject{
             {"selected", selected},
-            {"selected_count", selected.size()},
+            {"selected_count", signalModel_->selectedCount()},
             {"dock", QJsonObject{
                 {"visible", readerWindow_->dashboardDockVisible()},
                 {"width", readerWindow_->dashboardDockWidth()},
@@ -1433,6 +1484,26 @@ void RestServer::registerRoutes() {
                                  SC::Conflict);
         }
         return jsonResponse(readerWindow_->signalDisplayPickerState());
+    });
+
+    server_->route(QStringLiteral("/dashboard/picker/add"), Method::Post,
+                   [this](const QHttpServerRequest&) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"), SC::ServiceUnavailable);
+        if (!signalModel_)
+            return errorResponse(QStringLiteral("signal model not wired"), SC::ServiceUnavailable);
+
+        const QJsonObject picker = readerWindow_->addSelectedSignalFromPicker();
+        return jsonResponse(QJsonObject{
+            {"picker", picker},
+            {"selected_count", signalModel_->selectedCount()},
+            {"dock", QJsonObject{
+                {"visible", readerWindow_->dashboardDockVisible()},
+                {"width", readerWindow_->dashboardDockWidth()},
+                {"raised", readerWindow_->dashboardDockRaised()},
+            }},
+        });
     });
 
     server_->route(QStringLiteral("/dashboard/metric"), Method::Post,
@@ -1493,24 +1564,16 @@ void RestServer::registerRoutes() {
         }
 
         const QString label = QStringLiteral("%1 - %2").arg(descriptor->label, parsedAnchor.label);
-        const QUuid id = signalModel_->addSignal(*descriptor,
-                                                 parsedAnchor.anchor,
-                                                 QString(),
-                                                 modes,
-                                                 parsedAnchor.followsFocus,
-                                                 label);
-
         int addedRefs = 0;
-        const QUuid panelId = panelModel_->activePanelId();
-        if (!panelId.isNull()) {
-            const QVector<model::DashboardDisplayRef> refs =
-                model::DisplayRefsForSignal(id, *descriptor, modes);
-            for (const model::DashboardDisplayRef& ref : refs) {
-                if (panelModel_->addDisplayRef(panelId, ref))
-                    ++addedRefs;
-            }
-            panelModel_->setActivePanel(panelId);
-        }
+        DashboardSelectionController::PanelTarget target;
+        target.makeActive = true;
+        const QUuid id = selectionController_->addMetric(*descriptor,
+                                                         parsedAnchor.anchor,
+                                                         modes,
+                                                         target,
+                                                         parsedAnchor.followsFocus,
+                                                         label,
+                                                         &addedRefs);
 
         return jsonResponse(QJsonObject{
             {"id", uuidToString(id)},
@@ -1521,7 +1584,7 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/dashboard/metric/remove"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
-        if (!signalModel_)
+        if (!signalModel_ || !selectionController_)
             return errorResponse(QStringLiteral("signal model not wired"), SC::ServiceUnavailable);
         bool ok = false;
         const QJsonObject body = parseJsonBody(req, &ok);
@@ -1534,7 +1597,7 @@ void RestServer::registerRoutes() {
         if (!signalModel_->signalById(*id))
             return errorResponse(QStringLiteral("signal not found: %1").arg(uuidToString(*id)),
                                  SC::NotFound);
-        if (!signalModel_->removeSignal(*id))
+        if (!selectionController_->removeMetric(*id))
             return errorResponse(QStringLiteral("signal remove failed: %1").arg(uuidToString(*id)),
                                  SC::InternalServerError);
         return jsonResponse(QJsonObject{{"removed", true}});
@@ -1543,7 +1606,7 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/dashboard/metric/mode"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
-        if (!signalModel_ || !panelModel_ || !catalog_)
+        if (!signalModel_ || !panelModel_ || !selectionController_ || !catalog_)
             return errorResponse(QStringLiteral("dashboard models not wired"), SC::ServiceUnavailable);
 
         bool ok = false;
@@ -1585,19 +1648,8 @@ void RestServer::registerRoutes() {
                                  SC::UnprocessableEntity);
         }
 
-        const bool alreadyDesired = before->displayModeIds.contains(mode) == enabled;
-        if (!alreadyDesired && !signalModel_->toggleDisplayMode(*id, mode, enabled)) {
+        if (!selectionController_->setMetricMode(*id, mode, enabled)) {
             return errorResponse(QStringLiteral("display mode toggle failed"), SC::Conflict);
-        }
-
-        const QUuid panelId = panelModel_->activePanelId();
-        if (!panelId.isNull()) {
-            if (enabled) {
-                panelModel_->addDisplayRefs(panelId,
-                                            model::DisplayRefsForSignal(*id, *descriptor, {mode}));
-            } else {
-                panelModel_->removeDisplayRefsForSignalMode(*id, mode);
-            }
         }
 
         const model::DashboardSignal* after = signalModel_->signalById(*id);

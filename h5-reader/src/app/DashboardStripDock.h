@@ -24,6 +24,7 @@ class TrajectorySignalCatalog;
 namespace h5reader::app {
 
 class DashboardDisplayController;
+class DashboardSelectionController;
 class SceneRevealOverlay;
 struct DashboardSmokeSummary;
 class StripStackWidget;
@@ -40,6 +41,7 @@ public:
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
     void setSignalModels(model::TrajectorySignalCatalog* catalog, model::DashboardSignalModel* activeModel);
     void setPanelModel(model::DashboardPanelModel* panelModel);
+    void setSelectionController(DashboardSelectionController* controller);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
     // L-3a (2026-05-29): forwards to the controller so it can fire
@@ -81,6 +83,7 @@ private:
     QPointer<QLabel> viewportReadout_;
     QPointer<QLabel> statusLabel_;
     QPointer<TimeViewportController> timeViewport_;
+    QPointer<DashboardSelectionController> selectionController_;
     QPointer<model::DashboardPanelModel> panelModel_;
     QPointer<model::AtomSelection> selection_;
     int frame_ = 0;

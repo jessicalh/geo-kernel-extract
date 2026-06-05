@@ -33,8 +33,10 @@
 //   GET    /scene/camera                 → {"focal":[x,y,z], "position":[x,y,z], "view_up":[x,y,z], "direction":[x,y,z]}
 //   GET    /dashboard/signals            → [{"id": uuid, "descriptor_id": ..., "modes": [...], "label": ...}, ...]
 //   GET    /dashboard/state              → selected metrics + dock/render state
+//   GET    /dashboard/strip/series       → active strip ChannelBuffer values/valid arrays
 //   GET    /dashboard/picker             → live Metric Picker selector state
 //   POST   /dashboard/picker/open        → live selector state (body: {"atom": int} optional)
+//   POST   /dashboard/picker/add         → user-equivalent Add Signal from current picker state
 //   POST   /dashboard/metric             → {"id": uuid, "added_refs": int}
 //                                            body: {"descriptor_id": "...", "anchor": {...}, "modes": [...]}
 //   POST   /dashboard/metric/remove      → {"removed": true}  body: {"id": uuid}
@@ -69,6 +71,8 @@ class TransformedConformation;
 
 namespace h5reader::app {
 
+class DashboardSelectionController;
+class DashboardDisplayController;
 class MoleculeScene;
 class QtPlaybackController;
 class ReaderMainWindow;
@@ -96,6 +100,8 @@ public:
                     model::AtomSelection* selection,
                     model::DashboardSignalModel* signalModel,
                     model::DashboardPanelModel* panelModel,
+                    DashboardSelectionController* selectionController,
+                    DashboardDisplayController* dashboardController,
                     const model::TrajectorySignalCatalog* catalog,
                     QtPlaybackController* playback,
                     io::QtLoadResult* loaded,
@@ -117,6 +123,8 @@ private:
     QPointer<model::AtomSelection>              selection_;
     QPointer<model::DashboardSignalModel>       signalModel_;
     QPointer<model::DashboardPanelModel>        panelModel_;
+    QPointer<DashboardSelectionController>      selectionController_;
+    QPointer<DashboardDisplayController>        dashboardController_;
     const model::TrajectorySignalCatalog*       catalog_ = nullptr;
     QPointer<QtPlaybackController>              playback_;
     io::QtLoadResult*                           loaded_ = nullptr;

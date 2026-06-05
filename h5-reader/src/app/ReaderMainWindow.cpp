@@ -19,6 +19,7 @@
 #include "SelectionDock.h"
 #include "DashboardStripDock.h"
 #include "DashboardDisplayController.h"
+#include "DashboardSelectionController.h"
 #include "SignalDisplayDialog.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
@@ -57,7 +58,6 @@
 #include <QMenuBar>
 #include <QProcess>
 #include <QRegion>
-#include <QSet>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -99,54 +99,6 @@ constexpr int kMaxRecentFiles  = 10;
 // pass; the DFT campaign now comes from the `.LGS` `dft.frames[]` array
 // (see CalcsetManifest + DftShieldingStore).
 
-// Owns the one intentional signal/panel cleanup loop for dashboard models:
-// removing a signal removes its display refs, and removing the last display
-// ref prunes the now-unreferenced signal.
-class DashboardSignalPanelCoordinator final : public QObject {
-public:
-    DashboardSignalPanelCoordinator(model::DashboardSignalModel* signalModel,
-                                    model::DashboardPanelModel* panelModel,
-                                    QObject* parent)
-        : QObject(parent)
-        , signals_(signalModel)
-        , panels_(panelModel)
-    {
-        if (signals_) {
-            ACONNECT(signals_.data(), &model::DashboardSignalModel::signalRemoved,
-                     this, [this](const QUuid& id) { onSignalRemoved(id); });
-        }
-        if (panels_) {
-            ACONNECT(panels_.data(), &model::DashboardPanelModel::displayRefRemoved,
-                     this, [this](const QUuid&, const model::DashboardDisplayRef& ref) {
-                         onDisplayRefRemoved(ref);
-                     });
-        }
-    }
-
-private:
-    void onSignalRemoved(const QUuid& id)
-    {
-        if (!panels_ || id.isNull())
-            return;
-        signalsBeingRemoved_.insert(id);
-        panels_->removeDisplayRefsForSignal(id);
-        signalsBeingRemoved_.remove(id);
-    }
-
-    void onDisplayRefRemoved(const model::DashboardDisplayRef& ref)
-    {
-        if (!signals_ || !panels_ || ref.signalId.isNull())
-            return;
-        if (signalsBeingRemoved_.contains(ref.signalId) || !signals_->signalById(ref.signalId))
-            return;
-        if (panels_->signalReferenceCount(ref.signalId) == 0)
-            signals_->removeSignal(ref.signalId);
-    }
-
-    QPointer<model::DashboardSignalModel> signals_;
-    QPointer<model::DashboardPanelModel> panels_;
-    QSet<QUuid> signalsBeingRemoved_;
-};
 }  // namespace
 
 ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
@@ -297,16 +249,20 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     signalCatalog_->setFieldAvailability(fieldAvailability);
     inspectorDock_->setFieldAvailability(fieldAvailability);
     dashboardSignals_ = new model::DashboardSignalModel(this);
+    dashboardSignals_->setFieldAvailability(fieldAvailability);
     dashboardPanels_ = new model::DashboardPanelModel(this);
+    dashboardSelectionController_ =
+        new DashboardSelectionController(signalCatalog_, dashboardSignals_, dashboardPanels_, this);
+    lastDashboardSelectedCount_ = dashboardSelectionController_->selectedCount();
     signalDisplayDialog_ = new SignalDisplayDialog(this);
     signalDisplayDialog_->setTrajectorySignalCatalog(signalCatalog_);
     signalDisplayDialog_->setDashboardSignalModel(dashboardSignals_);
     signalDisplayDialog_->setDashboardPanelModel(dashboardPanels_);
+    signalDisplayDialog_->setDashboardSelectionController(dashboardSelectionController_.data());
     signalDisplayDialog_->setContext(loaded_->protein.get(), transformed_);
     signalDisplayDialog_->setSelection(selection_);
     ACONNECT(playback_, &QtPlaybackController::frameChanged,
              signalDisplayDialog_, &SignalDisplayDialog::setFrame);
-    new DashboardSignalPanelCoordinator(dashboardSignals_, dashboardPanels_, this);
 
     ACONNECT(picker_,    &QtAtomPicker::atomPicked,
              selection_, &model::AtomSelection::applyPick);
@@ -383,6 +339,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     dashboardStripDock_->setContext(loaded_->protein.get(), transformed_);
     dashboardStripDock_->setSignalModels(signalCatalog_, dashboardSignals_);
     dashboardStripDock_->setPanelModel(dashboardPanels_);
+    dashboardStripDock_->setSelectionController(dashboardSelectionController_.data());
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
     dashboardController_ = dashboardStripDock_->displayController();
@@ -405,6 +362,19 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                      << QStringLiteral("event=dock_visibility_changed visible=%1 width=%2")
                             .arg(visible ? 1 : 0)
                             .arg(dashboardDockWidth());
+             });
+    ACONNECT(dashboardSelectionController_.data(),
+             &DashboardSelectionController::selectedCountChanged,
+             this,
+             [this](int count) {
+                 ASSERT_THREAD(this);
+                 const bool added = count > lastDashboardSelectedCount_;
+                 lastDashboardSelectedCount_ = count;
+                 if (!added || !dashboardStripDock_ || dashboardStripDock_->isVisible())
+                     return;
+                 qCInfo(diagnostics::cDash).noquote()
+                     << QStringLiteral("event=dock_reveal_on_add count=%1").arg(count);
+                 revealDockQueued(dashboardStripDock_);
              });
 
     // Panel recovery — one QAction per dock from QDockWidget::toggleViewAction().
@@ -521,6 +491,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // explicit defaults intact. Runs AFTER all docks/toolbars exist so
     // restoreState has named docks to bind to.
     restoreAllSettings();
+    resetDashboardStateForRunLoad();
     if (!loaded_->runPath.isEmpty())
         addToRecentFiles(QDir(loaded_->runPath).absolutePath());
 
@@ -585,6 +556,8 @@ quint16 ReaderMainWindow::startRestServer(quint16 port) {
                             selection_,
                             dashboardSignals_,
                             dashboardPanels_,
+                            dashboardSelectionController_.data(),
+                            dashboardController_.data(),
                             signalCatalog_,
                             playback_,
                             loaded_.get(),
@@ -712,6 +685,13 @@ QJsonObject ReaderMainWindow::signalDisplayPickerState() const {
     return signalDisplayDialog_->pickerState();
 }
 
+QJsonObject ReaderMainWindow::addSelectedSignalFromPicker() {
+    ASSERT_THREAD(this);
+    if (signalDisplayDialog_)
+        signalDisplayDialog_->onAddSelected();
+    return signalDisplayPickerState();
+}
+
 void ReaderMainWindow::revealDockQueued(QDockWidget* dock) {
     ASSERT_THREAD(this);
     if (!dock)
@@ -723,6 +703,20 @@ void ReaderMainWindow::revealDockQueued(QDockWidget* dock) {
         resizeDocks({dock.data()}, {360}, Qt::Horizontal);
         dock->raise();
     });
+}
+
+void ReaderMainWindow::resetDashboardStateForRunLoad() {
+    ASSERT_THREAD(this);
+    if (dashboardSelectionController_) {
+        dashboardSelectionController_->clearAllMetrics();
+        lastDashboardSelectedCount_ = dashboardSelectionController_->selectedCount();
+    }
+    if (dashboardStripDock_)
+        dashboardStripDock_->setVisible(false);
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=selection_reset_on_load count=%1 dock_visible=%2")
+               .arg(dashboardSelectionController_ ? dashboardSelectionController_->selectedCount() : 0)
+               .arg(dashboardStripDock_ && dashboardStripDock_->isVisible() ? 1 : 0);
 }
 
 void ReaderMainWindow::shutdown() {

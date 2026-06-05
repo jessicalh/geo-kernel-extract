@@ -26,6 +26,8 @@ namespace h5reader::app {
 
 bool DashboardModeHasVisibleSurface(const QString& modeId);
 
+class DashboardSelectionController;
+
 class SignalDisplayDialog final : public QDialog {
     Q_OBJECT
 
@@ -36,6 +38,7 @@ public:
     void setTrajectorySignalCatalog(model::TrajectorySignalCatalog* catalog);
     void setDashboardSignalModel(model::DashboardSignalModel* model);
     void setDashboardPanelModel(model::DashboardPanelModel* panelModel);
+    void setDashboardSelectionController(DashboardSelectionController* controller);
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
     void setSelection(model::AtomSelection* selection);
 
@@ -46,6 +49,7 @@ public:
 public slots:
     void refreshCatalog();
     void setFrame(int frame);
+    void onAddSelected();
 
 private slots:
     void onFocusChanged(std::size_t atomIdx);
@@ -55,7 +59,6 @@ private slots:
     void onAnchorSelectionChanged();
     void onCandidateSelectionChanged();
     void onCandidateModeChanged();
-    void onAddSelected();
     void refreshPanelTargets();
     void onActiveSelectionChanged();
     void onActiveModeToggled(bool checked);

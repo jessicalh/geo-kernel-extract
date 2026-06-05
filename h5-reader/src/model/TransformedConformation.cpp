@@ -69,8 +69,16 @@ TransformedConformation::loadSnapshot(std::size_t frame) {
     // PLUS calculator NPYs. We do NOT decorate snapshots: consumers that
     // need calculator data already read from the snapshot directly, and
     // applying our 3x3 transform to a snapshot's Pos column would diverge
-    // from the inner conformation's atomPosition seam. Forward unchanged.
-    return inner_ ? inner_->snapshot(frame) : nullptr;
+    // from the inner conformation's atomPosition seam. Forward unchanged —
+    // but TRIGGER the inner's (synchronous) load, do not merely read its
+    // resident slot: the bare accessor returned a snapshot only when the inner
+    // already held this exact frame, so NPY strips sampling frames the display
+    // never loads saw a stale slot. requestSnapshot() makes inner->snapshot()
+    // non-null for the requested frame.
+    if (!inner_)
+        return nullptr;
+    inner_->requestSnapshot(frame);
+    return inner_->snapshot(frame);
 }
 
 void TransformedConformation::setMode(Mode mode,

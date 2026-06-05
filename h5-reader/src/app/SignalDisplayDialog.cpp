@@ -1,5 +1,6 @@
 #include "SignalDisplayDialog.h"
 
+#include "DashboardSelectionController.h"
 #include "NearbySignalModel.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
@@ -10,6 +11,7 @@
 #include "../model/Conformation.h"
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignalModel.h"
+#include "../model/DisplayModeCapability.h"
 #include "../model/QtAtom.h"
 #include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
@@ -222,11 +224,7 @@ bool modeListContainsKind(const QStringList& modes, DisplayModeKind kind) {
 }  // namespace
 
 bool DashboardModeHasVisibleSurface(const QString& modeId) {
-    return modeId.startsWith(QStringLiteral("strip."))
-        || modeId == QStringLiteral("static.bar.sequence")
-        || modeId == QStringLiteral("static.curve.lag.animated")
-        || modeId == QStringLiteral("static.chord.coupling")
-        || modeId == QStringLiteral("static.fixed_freq");
+    return model::DisplayModeCapabilityFor(modeId).hasVisibleSurface;
 }
 
 namespace {
@@ -668,6 +666,7 @@ struct SignalDisplayDialog::Impl {
     QPointer<model::TrajectorySignalCatalog> catalog;
     QPointer<model::DashboardSignalModel> activeModel;
     QPointer<model::DashboardPanelModel> panelModel;
+    QPointer<DashboardSelectionController> selectionController;
     QPointer<model::AtomSelection> selection;
     const model::QtProtein* protein = nullptr;
     QPointer<model::Conformation> conformation;
@@ -979,6 +978,12 @@ void SignalDisplayDialog::setDashboardPanelModel(model::DashboardPanelModel* pan
     refreshPanelTargets();
 }
 
+void SignalDisplayDialog::setDashboardSelectionController(DashboardSelectionController* controller) {
+    ASSERT_THREAD(this);
+    d_->selectionController = controller;
+    onCandidateModeChanged();
+}
+
 void SignalDisplayDialog::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
     ASSERT_THREAD(this);
     d_->protein = protein;
@@ -1187,7 +1192,8 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
     for (const ModeControl& control : d_->candidateModes) {
         QSignalBlocker blocker(control.box);
         const QString modeId = record ? modeForKind(record->displayModes, control.kind) : QString();
-        const bool hasVisibleSurface = !modeId.isEmpty() && DashboardModeHasVisibleSurface(modeId);
+        const model::DisplayModeCapability capability = model::DisplayModeCapabilityFor(modeId);
+        const bool hasVisibleSurface = !modeId.isEmpty() && capability.hasVisibleSurface;
         const bool descriptorAvailable = !record || !d_->catalog || !d_->catalog->fieldAvailability()
             || d_->catalog->fieldAvailability()->canSampleDescriptor(record->descriptor);
         const bool supported = !modeId.isEmpty() && hasVisibleSurface && descriptorAvailable;
@@ -1241,7 +1247,8 @@ void SignalDisplayDialog::onCandidateModeChanged() {
             break;
         }
     }
-    d_->addButton->setEnabled(d_->activeModel && hasAnchor && d_->candidateView->currentIndex().isValid() && hasMode);
+    d_->addButton->setEnabled(d_->activeModel && d_->selectionController && hasAnchor
+                              && d_->candidateView->currentIndex().isValid() && hasMode);
 }
 
 void SignalDisplayDialog::onAddSelected() {
@@ -1249,7 +1256,7 @@ void SignalDisplayDialog::onAddSelected() {
     const QModelIndex proxyIndex = d_->candidateView->currentIndex();
     const QModelIndex sourceIndex = proxyIndex.isValid() ? d_->descriptorProxy->mapToSource(proxyIndex) : QModelIndex();
     const DescriptorRecord* record = d_->descriptorModel->recordAt(sourceIndex);
-    if (!record || !d_->activeModel)
+    if (!record || !d_->activeModel || !d_->selectionController)
         return;
     const QModelIndex anchorIndex = d_->anchorView ? d_->anchorView->currentIndex() : QModelIndex();
     const NearbySignalModel::Candidate* candidate = d_->anchorModel->candidateAt(anchorIndex);
@@ -1277,38 +1284,30 @@ void SignalDisplayDialog::onAddSelected() {
     if (displayModes.isEmpty())
         return;
 
-    QUuid panelId;
     const QString newPanelName = d_->newPanelEdit ? d_->newPanelEdit->text().trimmed() : QString();
+    DashboardSelectionController::PanelTarget target;
+    target.makeActive = true;
     if (d_->panelModel) {
         if (!newPanelName.isEmpty()) {
-            panelId = d_->panelModel->addPanel(newPanelName);
-            d_->panelModel->setActivePanel(panelId);
-            if (d_->newPanelEdit)
-                d_->newPanelEdit->clear();
+            target.newPanelName = newPanelName;
         } else if (d_->panelCombo && d_->panelCombo->currentIndex() >= 0) {
-            panelId = d_->panelCombo->currentData().toUuid();
+            target.panelId = d_->panelCombo->currentData().toUuid();
         }
-        if (panelId.isNull())
-            panelId = d_->panelModel->activePanelId();
     }
 
     const QString label = QStringLiteral("%1 - %2").arg(record->descriptor.label, candidate->label);
-    const QUuid id = d_->activeModel->addSignal(record->descriptor,
-                                                anchor,
-                                                QString(),
-                                                displayModes,
-                                                false,
-                                                label);
     int addedRefs = 0;
-    if (d_->panelModel && !panelId.isNull()) {
-        const QVector<model::DashboardDisplayRef> refs =
-            model::DisplayRefsForSignal(id, record->descriptor, displayModes);
-        for (const model::DashboardDisplayRef& ref : refs) {
-            if (d_->panelModel->addDisplayRef(panelId, ref))
-                ++addedRefs;
-        }
-        d_->panelModel->setActivePanel(panelId);
-    }
+    const QUuid id = d_->selectionController->addMetric(record->descriptor,
+                                                        anchor,
+                                                        displayModes,
+                                                        target,
+                                                        false,
+                                                        label,
+                                                        &addedRefs);
+    if (id.isNull())
+        return;
+    if (!newPanelName.isEmpty() && d_->newPanelEdit)
+        d_->newPanelEdit->clear();
     if (d_->statusLabel) {
         d_->statusLabel->setText(QStringLiteral("Added '%1' on %2 with %3 (%4 display%5).")
                                      .arg(record->descriptor.label,
@@ -1405,7 +1404,8 @@ void SignalDisplayDialog::onActiveSelectionChanged() {
         if (modeId.isEmpty())
             modeId = canonicalModeId(control.kind);
 
-        const bool supported = hasActive && DashboardModeHasVisibleSurface(modeId)
+        const bool hasVisibleSurface = model::DisplayModeCapabilityFor(modeId).hasVisibleSurface;
+        const bool supported = hasActive && hasVisibleSurface
             && (supportedModes.isEmpty() || modeListContainsKind(supportedModes, control.kind));
         control.box->setProperty("modeId", modeId);
         control.box->setEnabled(supported);
@@ -1420,7 +1420,7 @@ void SignalDisplayDialog::onActiveSelectionChanged() {
 void SignalDisplayDialog::onActiveModeToggled(bool checked) {
     ASSERT_THREAD(this);
     auto* box = qobject_cast<QCheckBox*>(sender());
-    if (!box || !d_->activeModel)
+    if (!box || !d_->activeModel || !d_->selectionController)
         return;
     const QModelIndex sourceIndex = currentActiveSourceIndex(d_->activeView, d_->activeProxy);
     const QUuid id = signalIdForActiveRow(d_->activeModel, sourceIndex);
@@ -1428,24 +1428,10 @@ void SignalDisplayDialog::onActiveModeToggled(bool checked) {
     if (id.isNull() || modeId.isEmpty())
         return;
 
-    if (!d_->activeModel->toggleDisplayMode(id, modeId, checked)) {
+    if (!d_->selectionController->setMetricMode(id, modeId, checked)) {
         QSignalBlocker blocker(box);
         box->setChecked(!checked);
         return;
-    }
-    if (d_->panelModel) {
-        const model::SignalDescriptor* descriptor =
-            descriptorForActiveSignal(d_->catalog, d_->activeModel, sourceIndex);
-        const QUuid panelId = d_->panelModel->activePanelId();
-        if (descriptor && !panelId.isNull()) {
-            const QVector<model::DashboardDisplayRef> refs =
-                model::DisplayRefsForSignal(id, *descriptor, {modeId});
-            if (checked) {
-                d_->panelModel->addDisplayRefs(panelId, refs);
-            } else {
-                d_->panelModel->removeDisplayRefsForSignalMode(id, modeId);
-            }
-        }
     }
     if (d_->statusLabel)
         d_->statusLabel->setText(QStringLiteral("Updated display mode '%1'.").arg(modeId));
@@ -1453,13 +1439,13 @@ void SignalDisplayDialog::onActiveModeToggled(bool checked) {
 
 void SignalDisplayDialog::onRemoveActive() {
     ASSERT_THREAD(this);
-    if (!d_->activeModel)
+    if (!d_->activeModel || !d_->selectionController)
         return;
     const QModelIndex sourceIndex = currentActiveSourceIndex(d_->activeView, d_->activeProxy);
     const QUuid id = signalIdForActiveRow(d_->activeModel, sourceIndex);
     if (id.isNull())
         return;
-    const bool removed = d_->activeModel->removeSignal(id);
+    const bool removed = d_->selectionController->removeMetric(id);
     if (d_->statusLabel)
         d_->statusLabel->setText(removed ? QStringLiteral("Removed active signal.")
                                          : QStringLiteral("Could not remove active signal."));

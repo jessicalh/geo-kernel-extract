@@ -59,6 +59,7 @@ namespace h5reader::app {
 class MoleculeScene;
 class QtPlaybackController;
 class DashboardDisplayController;
+class DashboardSelectionController;
 class TimeViewportController;
 
 class ReaderMainWindow final : public QMainWindow {
@@ -108,6 +109,7 @@ public:
     int dashboardStripTrackCount() const;
     bool openSignalDisplayPicker(QString* blockedReason = nullptr);
     QJsonObject signalDisplayPickerState() const;
+    QJsonObject addSelectedSignalFromPicker();
 
 public slots:
     // Called from aboutToQuit. Stops the REST server, stops timers, and
@@ -154,6 +156,7 @@ private:
     // reflect in the toolbar too.
     void updateCameraModeActions();
     void revealDockQueued(QDockWidget* dock);
+    void resetDashboardStateForRunLoad();
     // QSettings persistence — see kSettingsVersion in the .cpp for the
     // versioned QMainWindow state blob policy. Tolerant on restore (any
     // missing / mismatched key is silently skipped) so a fresh install
@@ -204,6 +207,7 @@ private:
     model::TrajectorySignalCatalog* signalCatalog_ = nullptr;
     model::DashboardSignalModel* dashboardSignals_ = nullptr;
     model::DashboardPanelModel* dashboardPanels_ = nullptr;
+    QPointer<DashboardSelectionController> dashboardSelectionController_;
 
     // Unified strip dashboard. SignalDisplayDialog owns selection of active
     // signals/display modes; this dock renders strip-capable active signals.
@@ -263,6 +267,7 @@ private:
 
     bool shutdownDone_ = false;
     bool glInfoLogged_ = false;
+    int lastDashboardSelectedCount_ = 0;
 
     // Wraps loaded_->conformation so consumers (scene, picker, overlays)
     // read positions through a runtime-switchable rigid-body transform.

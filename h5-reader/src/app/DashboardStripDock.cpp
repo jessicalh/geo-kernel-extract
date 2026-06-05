@@ -1,6 +1,7 @@
 #include "DashboardStripDock.h"
 
 #include "DashboardDisplayController.h"
+#include "DashboardSelectionController.h"
 #include "StripStackWidget.h"
 #include "TimeViewportController.h"
 
@@ -182,6 +183,11 @@ void DashboardStripDock::setPanelModel(model::DashboardPanelModel* panelModel) {
     syncPanelTabs();
 }
 
+void DashboardStripDock::setSelectionController(DashboardSelectionController* controller) {
+    ASSERT_THREAD(this);
+    selectionController_ = controller;
+}
+
 void DashboardStripDock::setSelection(model::AtomSelection* selection) {
     ASSERT_THREAD(this);
     if (selection_)
@@ -361,9 +367,15 @@ void DashboardStripDock::onPanelTabChanged(int row) {
 
 void DashboardStripDock::onPanelTabCloseRequested(int row) {
     ASSERT_THREAD(this);
-    if (!panelModel_ || row < 0)
+    if (!panelModel_ || !selectionController_ || row < 0)
         return;
-    panelModel_->removePanelAt(row);
+    const QModelIndex index = panelModel_->index(row, 0);
+    const QUuid panelId = panelModel_->data(index, model::DashboardPanelModel::UuidRole).toUuid();
+    if (!panelId.isNull()) {
+        selectionController_->removePanel(
+            panelId,
+            DashboardSelectionController::PanelRemovalPolicy::RemoveReferencedMetrics);
+    }
 }
 
 void DashboardStripDock::onAddPanelRequested() {

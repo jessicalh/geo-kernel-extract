@@ -95,6 +95,11 @@ class DashboardDisplayController final : public QObject {
 public:
     struct StripTrack {
         const model::ChannelBuffer* buffer = nullptr;
+        QUuid signalId;
+        QString descriptorId;
+        QString displayModeId;
+        QString channelId;
+        QString label;
         QColor color;
         bool hasBinding = false;
         model::SignalBinding binding;

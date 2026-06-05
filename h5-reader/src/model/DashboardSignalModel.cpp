@@ -1,10 +1,17 @@
 #include "DashboardSignalModel.h"
 
 #include "../diagnostics/DashboardLogging.h"
+#include "../diagnostics/ObjectCensus.h"
+#include "../diagnostics/ThreadGuard.h"
 
+#include "DisplayModeCapability.h"
+
+#include <QVariantList>
+#include <QVariantMap>
 #include <QStringList>
 
 #include <algorithm>
+#include <utility>
 
 namespace h5reader::model {
 
@@ -50,7 +57,33 @@ QList<int> allRoles() {
         DashboardSignalModel::ReducerIdRole,
         DashboardSignalModel::DisplayModeRole,
         DashboardSignalModel::FollowsFocusRole,
+        DashboardSignalModel::AvailabilityStateRole,
+        DashboardSignalModel::AvailabilityRole,
+        DashboardSignalModel::AvailabilityReasonRole,
+        DashboardSignalModel::RenderableModeCountRole,
+        DashboardSignalModel::ModeRenderabilityRole,
     };
+}
+
+QString availabilityReasonText(const DashboardSignalModel::SignalAvailability& availability) {
+    if (!availability.evaluated)
+        return QStringLiteral("Availability has not been evaluated for this run.");
+
+    switch (availability.state) {
+    case TrajectoryFieldAvailabilityState::Absent:
+        return QStringLiteral("Source field is absent from the loaded run.");
+    case TrajectoryFieldAvailabilityState::NoFramePayload:
+        return QStringLiteral("Frame-local payload is not loaded for this run.");
+    case TrajectoryFieldAvailabilityState::AllMissing:
+        return QStringLiteral("Source field has no finite samples in the loaded run.");
+    case TrajectoryFieldAvailabilityState::AllZeroStructural:
+        return QStringLiteral("Source field is structurally all zero in the loaded run.");
+    case TrajectoryFieldAvailabilityState::AllZeroObserved:
+        return QStringLiteral("Source field contains only observed zero samples.");
+    case TrajectoryFieldAvailabilityState::Available:
+        return QStringLiteral("Source field has finite non-zero samples.");
+    }
+    return QStringLiteral("Availability state is unknown.");
 }
 
 QString uuidLogValue(const QUuid& id) {
@@ -117,7 +150,22 @@ QString anchorLogValue(const SignalAnchor& anchor) {
 }  // namespace
 
 DashboardSignalModel::DashboardSignalModel(QObject* parent)
-    : QAbstractListModel(parent) {}
+    : QAbstractListModel(parent) {
+    CENSUS_REGISTER(this);
+    setObjectName(QStringLiteral("DashboardSignalModel"));
+}
+
+bool DashboardSignalModel::SignalAvailability::isVisible() const {
+    return !evaluated || TrajectoryFieldAvailability::isVisibleState(state);
+}
+
+bool DashboardSignalModel::SignalAvailability::operator==(const SignalAvailability& other) const {
+    return evaluated == other.evaluated
+           && state == other.state
+           && reason == other.reason
+           && finiteSamples == other.finiteSamples
+           && nonZeroSamples == other.nonZeroSamples;
+}
 
 int DashboardSignalModel::rowCount(const QModelIndex& parent) const {
     if (parent.isValid())
@@ -170,6 +218,16 @@ QVariant DashboardSignalModel::data(const QModelIndex& index, int role) const {
         return signal.binding.displayModeId;
     case FollowsFocusRole:
         return signal.binding.followsFocus;
+    case AvailabilityStateRole:
+        return static_cast<int>(availabilityState(row));
+    case AvailabilityRole:
+        return availabilityName(row);
+    case AvailabilityReasonRole:
+        return availabilityReason(row);
+    case RenderableModeCountRole:
+        return renderableModeCount(row);
+    case ModeRenderabilityRole:
+        return modeRenderabilityVariantList(row);
     default:
         return {};
     }
@@ -211,7 +269,10 @@ bool DashboardSignalModel::setData(const QModelIndex& index, const QVariant& val
         signal.binding.displayModeId = mode;
         if (!mode.isEmpty() && !signal.displayModeIds.contains(mode))
             signal.displayModeIds.push_back(mode);
-        emitRowChanged(row, {DisplayModesRole, DisplayModeRole});
+        emitRowChanged(row, {DisplayModesRole,
+                             DisplayModeRole,
+                             RenderableModeCountRole,
+                             ModeRenderabilityRole});
         return true;
     }
     default:
@@ -230,6 +291,8 @@ bool DashboardSignalModel::removeRows(int row, int count, const QModelIndex& par
 
     beginRemoveRows(QModelIndex(), row, row + count - 1);
     signals_.erase(signals_.begin() + row, signals_.begin() + row + count);
+    availabilityByRow_.erase(availabilityByRow_.begin() + row,
+                             availabilityByRow_.begin() + row + count);
     endRemoveRows();
 
     for (const QUuid& id : removedIds)
@@ -261,6 +324,11 @@ QHash<int, QByteArray> DashboardSignalModel::roleNames() const {
     names[ReducerIdRole] = "reducerId";
     names[DisplayModeRole] = "displayMode";
     names[FollowsFocusRole] = "followsFocus";
+    names[AvailabilityStateRole] = "availabilityState";
+    names[AvailabilityRole] = "availability";
+    names[AvailabilityReasonRole] = "availabilityReason";
+    names[RenderableModeCountRole] = "renderableModeCount";
+    names[ModeRenderabilityRole] = "modeRenderability";
     return names;
 }
 
@@ -293,14 +361,123 @@ int DashboardSignalModel::rowForId(const QUuid& id) const {
     return -1;
 }
 
+void DashboardSignalModel::setFieldAvailability(
+    std::shared_ptr<const TrajectoryFieldAvailability> availability) {
+    ASSERT_THREAD(this);
+    availability_ = std::move(availability);
+    refreshAvailability();
+}
+
+void DashboardSignalModel::refreshAvailability() {
+    ASSERT_THREAD(this);
+    if (availabilityByRow_.size() != signals_.size())
+        availabilityByRow_.resize(signals_.size());
+
+    for (int row = 0; row < signals_.size(); ++row) {
+        const SignalAvailability next = resolveAvailability(signals_.at(row));
+        if (availabilityByRow_.at(row) == next)
+            continue;
+        availabilityByRow_[row] = next;
+        emitAvailabilityChanged(row);
+    }
+}
+
+DashboardSignalModel::SignalAvailability DashboardSignalModel::availabilityAt(int row) const {
+    if (row < 0 || row >= availabilityByRow_.size())
+        return {};
+    return availabilityByRow_.at(row);
+}
+
+TrajectoryFieldAvailabilityState DashboardSignalModel::availabilityState(int row) const {
+    return availabilityAt(row).state;
+}
+
+QString DashboardSignalModel::availabilityName(int row) const {
+    const SignalAvailability availability = availabilityAt(row);
+    if (!availability.evaluated)
+        return QStringLiteral("unknown");
+    return QString::fromLatin1(ToString(availability.state));
+}
+
+QString DashboardSignalModel::availabilityReason(int row) const {
+    return availabilityAt(row).reason;
+}
+
+bool DashboardSignalModel::isVisibleAvailable(int row) const {
+    return availabilityAt(row).isVisible();
+}
+
+DashboardSignalModel::ModeRenderability DashboardSignalModel::ModeRenderabilityFor(const QString& mode) {
+    const DisplayModeCapability capability = DisplayModeCapabilityFor(mode);
+    return ModeRenderability{
+        mode,
+        capability.hasVisibleSurface,
+        capability.buildsPanelWidget,
+        capability.emitsPanelRef,
+    };
+}
+
+QVector<DashboardSignalModel::ModeRenderability> DashboardSignalModel::modeRenderability(int row) const {
+    QVector<ModeRenderability> out;
+    if (row < 0 || row >= signals_.size())
+        return out;
+    const QStringList modes = signals_.at(row).displayModeIds;
+    out.reserve(modes.size());
+    for (const QString& mode : modes)
+        out.push_back(ModeRenderabilityFor(mode));
+    return out;
+}
+
+int DashboardSignalModel::renderableModeCount(int row) const {
+    int count = 0;
+    for (const ModeRenderability& mode : modeRenderability(row)) {
+        if (mode.isRenderable())
+            ++count;
+    }
+    return count;
+}
+
+int DashboardSignalModel::selectedCount() const {
+    return static_cast<int>(signals_.size());
+}
+
+int DashboardSignalModel::renderableSelectedCount() const {
+    int count = 0;
+    for (int row = 0; row < signals_.size(); ++row) {
+        if (isVisibleAvailable(row) && renderableModeCount(row) > 0)
+            ++count;
+    }
+    return count;
+}
+
+int DashboardSignalModel::unavailableCount() const {
+    int count = 0;
+    for (int row = 0; row < availabilityByRow_.size(); ++row) {
+        if (!availabilityByRow_.at(row).isVisible())
+            ++count;
+    }
+    return count;
+}
+
+int DashboardSignalModel::noRendererCount() const {
+    int count = 0;
+    for (int row = 0; row < signals_.size(); ++row) {
+        if (renderableModeCount(row) == 0)
+            ++count;
+    }
+    return count;
+}
+
 QUuid DashboardSignalModel::addSignal(const DashboardSignal& input) {
     DashboardSignal signal = NormalizeSignal(input);
     if (rowForId(signal.id) >= 0)
         signal.id = QUuid::createUuid();
 
+    const SignalAvailability availability = resolveAvailability(signal);
     const int row = static_cast<int>(signals_.size());
     beginInsertRows(QModelIndex(), row, row);
     signals_.push_back(signal);
+    availabilityByRow_.push_back(availability);
     endInsertRows();
     qCInfo(diagnostics::cDash).noquote()
         << QStringLiteral("event=signal_added id=%1 descriptor_id=%2 concept_key=%3 modes=%4 anchor=%5 selected=%6")
@@ -351,6 +528,7 @@ bool DashboardSignalModel::removeSignalAt(int row) {
     const QUuid id = signals_.at(row).id;
     beginRemoveRows(QModelIndex(), row, row);
     signals_.removeAt(row);
+    availabilityByRow_.removeAt(row);
     endRemoveRows();
     qCInfo(diagnostics::cDash).noquote()
         << QStringLiteral("event=signal_removed id=%1 selected=%2")
@@ -370,6 +548,7 @@ void DashboardSignalModel::clear() {
 
     beginResetModel();
     signals_.clear();
+    availabilityByRow_.clear();
     endResetModel();
 
     for (const QUuid& id : removedIds)
@@ -383,6 +562,7 @@ bool DashboardSignalModel::updateSignal(const DashboardSignal& input) {
     if (row < 0)
         return false;
     signals_[row] = NormalizeSignal(input);
+    availabilityByRow_[row] = resolveAvailability(signals_.at(row));
     emitRowChanged(row, allRoles());
     return true;
 }
@@ -394,6 +574,7 @@ bool DashboardSignalModel::updateBinding(const QUuid& id, const DisplaySignalBin
     signals_[row].binding = binding;
     if (!binding.displayModeId.isEmpty() && !signals_[row].displayModeIds.contains(binding.displayModeId))
         signals_[row].displayModeIds.push_back(binding.displayModeId);
+    availabilityByRow_[row] = resolveAvailability(signals_.at(row));
     emitRowChanged(row,
                    {SourceRole,
                     SourceKindRole,
@@ -404,7 +585,12 @@ bool DashboardSignalModel::updateBinding(const QUuid& id, const DisplaySignalBin
                     ConceptKeyRole,
                     ReducerIdRole,
                     DisplayModeRole,
-                    FollowsFocusRole});
+                    FollowsFocusRole,
+                    AvailabilityStateRole,
+                    AvailabilityRole,
+                    AvailabilityReasonRole,
+                    RenderableModeCountRole,
+                    ModeRenderabilityRole});
     return true;
 }
 
@@ -450,7 +636,10 @@ bool DashboardSignalModel::setDisplayModes(const QUuid& id, const QStringList& d
         signal.binding.displayModeId = signal.displayModeIds.first();
     }
 
-    emitRowChanged(row, {DisplayModesRole, DisplayModeRole});
+    emitRowChanged(row, {DisplayModesRole,
+                         DisplayModeRole,
+                         RenderableModeCountRole,
+                         ModeRenderabilityRole});
     return true;
 }
 
@@ -470,7 +659,10 @@ bool DashboardSignalModel::addDisplayMode(const QUuid& id, const QString& displa
         << QStringLiteral("event=display_mode_toggled id=%1 mode=%2 enabled=1")
                .arg(uuidLogValue(id))
                .arg(mode);
-    emitRowChanged(row, {DisplayModesRole, DisplayModeRole});
+    emitRowChanged(row, {DisplayModesRole,
+                         DisplayModeRole,
+                         RenderableModeCountRole,
+                         ModeRenderabilityRole});
     return true;
 }
 
@@ -489,7 +681,10 @@ bool DashboardSignalModel::removeDisplayMode(const QUuid& id, const QString& dis
         << QStringLiteral("event=display_mode_toggled id=%1 mode=%2 enabled=0")
                .arg(uuidLogValue(id))
                .arg(displayModeId.trimmed());
-    emitRowChanged(row, {DisplayModesRole, DisplayModeRole});
+    emitRowChanged(row, {DisplayModesRole,
+                         DisplayModeRole,
+                         RenderableModeCountRole,
+                         ModeRenderabilityRole});
     return true;
 }
 
@@ -529,11 +724,57 @@ DashboardSignal DashboardSignalModel::NormalizeSignal(DashboardSignal signal) {
     return signal;
 }
 
+DashboardSignalModel::SignalAvailability DashboardSignalModel::resolveAvailability(
+    const DashboardSignal& signal) const {
+    SignalAvailability out;
+    if (!availability_) {
+        out.reason = availabilityReasonText(out);
+        return out;
+    }
+
+    out.evaluated = true;
+    const TrajectoryFieldAvailabilityRecord* record =
+        availability_->recordForDescriptor(signal.binding.descriptorId);
+    if (record) {
+        out.state = record->state;
+        out.finiteSamples = record->finiteSamples;
+        out.nonZeroSamples = record->nonZeroSamples;
+    }
+    out.reason = record
+        ? availabilityReasonText(out)
+        : QStringLiteral("Descriptor was not classified by trajectory availability.");
+    return out;
+}
+
+QVariantList DashboardSignalModel::modeRenderabilityVariantList(int row) const {
+    QVariantList out;
+    for (const ModeRenderability& mode : modeRenderability(row)) {
+        out.push_back(QVariantMap{
+            {QStringLiteral("mode"), mode.mode},
+            {QStringLiteral("renderable"), mode.isRenderable()},
+            {QStringLiteral("renderable_panel"), mode.buildsPanelWidget},
+            {QStringLiteral("has_visible_surface"), mode.hasVisibleSurface},
+            {QStringLiteral("is_panel_ref"), mode.emitsPanelRef},
+        });
+    }
+    return out;
+}
+
 void DashboardSignalModel::emitRowChanged(int row, const QList<int>& roles) {
     if (row < 0 || row >= signals_.size())
         return;
     const QModelIndex changed = index(row, 0);
     emit dataChanged(changed, changed, roles);
+    emit signalChanged(signals_.at(row).id);
+}
+
+void DashboardSignalModel::emitAvailabilityChanged(int row) {
+    if (row < 0 || row >= signals_.size())
+        return;
+    const QModelIndex changed = index(row, 0);
+    emit dataChanged(changed,
+                     changed,
+                     {AvailabilityStateRole, AvailabilityRole, AvailabilityReasonRole});
     emit signalChanged(signals_.at(row).id);
 }
 

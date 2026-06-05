@@ -96,6 +96,7 @@ struct ChannelBuffer {
             valid.push_back(0);
         }
     }
+
 };
 
 // How a ChannelBuffer fills, one frame at a time. nullopt == no value at this

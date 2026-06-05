@@ -1,6 +1,7 @@
 #include "DashboardPanelModel.h"
 
 #include "../diagnostics/DashboardLogging.h"
+#include "DisplayModeCapability.h"
 
 #include <QStringList>
 
@@ -81,24 +82,8 @@ QString DashboardDisplayRef::stableKey() const {
         .arg(signalId.toString(QUuid::WithoutBraces), displayModeId, channelId);
 }
 
-// Panel-mode predicate kept in step with the renderable-panel predicate in
-// DashboardDisplayController.cpp — with intentional disagreements documented
-// by /dashboard/state. Codex NOW-2 (2026-05-29) caught the prior version
-// omitting the L-3 modes (static.fixed_freq + static.tensor), which prevented
-// the dialog from creating the refs the controller's active-panel filter
-// needed. Adding either mode here requires checking the matching controller
-// dispatch in rebuild().
 bool IsPanelDisplayMode(const QString& mode) {
-    return mode == QStringLiteral("static.bar.sequence")
-        || mode == QStringLiteral("static.spectrum.power")
-        || mode == QStringLiteral("static.curve.lag.animated")
-        || mode == QStringLiteral("static.chord.coupling")
-        || mode == QStringLiteral("static.fixed_freq")
-        // static.tensor is a scene-overlay mode, not a strip widget
-        // panel — but it still needs a "panel" ref so the dialog +
-        // controller agree on which signal owns the scene glyph
-        // when (the deferred) trigger gesture wires up.
-        || mode == QStringLiteral("static.tensor");
+    return DisplayModeCapabilityFor(mode).emitsPanelRef;
 }
 
 QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
@@ -113,7 +98,7 @@ QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
         // Panel modes are tracked with a "panel" sentinel channel id so
         // the cleanup cascade (removeDisplayRefsForSignal) drops them
         // alongside any strip-mode refs the signal carries.
-        if (IsPanelDisplayMode(mode)) {
+        if (DisplayModeCapabilityFor(mode).emitsPanelRef) {
             refs.push_back(DashboardDisplayRef{signalId, mode, QStringLiteral("panel")});
             continue;
         }

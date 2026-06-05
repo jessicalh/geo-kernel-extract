@@ -30,6 +30,10 @@ void SignalBuffer::clear() {
     gapReasons.clear();
 }
 
+bool SignalBuffer::isValidAt(std::size_t i) const {
+    return i < channel.valid.size() && channel.valid[i] != 0;
+}
+
 void SignalBuffer::append(FrameSignalSample sample) {
     statuses.push_back(sample.status);
     gapReasons.push_back(sample.gapReason);

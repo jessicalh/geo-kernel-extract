@@ -11,6 +11,7 @@
 #include "../model/QtConformationSnapshot.h"
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignalModel.h"
+#include "../model/DisplayModeCapability.h"
 #include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
 #include "../model/QtBondVectorBuffers.h"
@@ -25,6 +26,7 @@
 #include "SequenceBarPanel.h"
 
 #include <QAbstractItemModel>
+#include <QHash>
 #include <QSet>
 #include <QStringList>
 
@@ -50,6 +52,11 @@ bool hasStripMode(const QStringList& modes) {
     return std::any_of(modes.begin(), modes.end(), isStripMode);
 }
 
+QString stripHistoryKey(const QUuid& signalId, const QString& channelId, const QString& displayModeId) {
+    return QStringLiteral("%1|%2|%3")
+        .arg(signalId.toString(QUuid::WithoutBraces), channelId, displayModeId);
+}
+
 struct ScopedScrubReleaseFlag {
     bool& flag;
 
@@ -59,16 +66,8 @@ struct ScopedScrubReleaseFlag {
 
 }  // namespace
 
-// Static-display modes that map to AbstractStripPanel subclasses
-// rendered via setOwnedPanels (NOT via the temporal-strip ChannelBuffer
-// path). Each new panel kind landing in Phases C-G appends its mode
-// here.
 bool IsRenderableDashboardPanelMode(const QString& mode) {
-    return mode == QStringLiteral("static.bar.sequence")
-        || mode == QStringLiteral("static.spectrum.power")
-        || mode == QStringLiteral("static.curve.lag.animated")
-        || mode == QStringLiteral("static.chord.coupling")
-        || mode == QStringLiteral("static.fixed_freq");
+    return model::DisplayModeCapabilityFor(mode).buildsPanelWidget;
 }
 
 namespace {
@@ -1233,8 +1232,8 @@ void DashboardDisplayController::setPanelModel(model::DashboardPanelModel* panel
                  this, [this](const QUuid&) { refreshPanelVisibility(); });
         // Codex NOW-1 (2026-05-29): displayRefsChanged must trigger a
         // full rebuild() rather than the lightweight
-        // refreshPanelVisibility(). The dialog adds a static panel
-        // signal in two steps — addSignal() (sync, fires the
+        // refreshPanelVisibility(). DashboardSelectionController adds a
+        // static panel signal in two steps — addSignal() (sync, fires the
         // controller's signalAdded handler before any refs exist) +
         // addDisplayRef() (fires displayRefsChanged after). The
         // earlier rebuild on signalAdded sees no refs and filters the
@@ -1311,6 +1310,7 @@ void DashboardDisplayController::setScrubActive(bool active) {
 }
 
 QVector<DashboardDisplayController::StripTrack> DashboardDisplayController::stripTracks() const {
+    ASSERT_THREAD(this);
     QVector<StripTrack> out;
     out.reserve(series_.size());
     for (const ActiveSeries& series : series_) {
@@ -1318,6 +1318,11 @@ QVector<DashboardDisplayController::StripTrack> DashboardDisplayController::stri
             continue;
         StripTrack item;
         item.buffer = &series.buffer.channel;
+        item.signalId = series.signal.id;
+        item.descriptorId = series.descriptor.id;
+        item.displayModeId = series.displayModeId;
+        item.channelId = series.channel.id;
+        item.label = series.buffer.channel.label;
         item.color = series.color;
         item.hasBinding = series.hasBinding;
         item.binding = series.binding;
@@ -1536,8 +1541,11 @@ void DashboardDisplayController::rebuild() {
             QStringLiteral("reorient.r2"),
             QStringLiteral("reorient.noe"),
         };
-        for (const model::DashboardSignal& signal : activeModel_->activeSignals()) {
+        const QVector<model::DashboardSignal>& selectedSignals = activeModel_->activeSignals();
+        for (int row = 0; row < selectedSignals.size(); ++row) {
+            const model::DashboardSignal& signal = selectedSignals.at(row);
             if (!signal.enabled) continue;
+            if (!activeModel_->isVisibleAvailable(row)) continue;
             const model::SignalDescriptor* d =
                 catalog_->findDescriptor(signal.binding.descriptorId);
             if (!d) continue;
@@ -1566,13 +1574,25 @@ void DashboardDisplayController::rebuild() {
     }
 
     if (catalog_ && activeModel_) {
-        for (const model::DashboardSignal& signal : activeModel_->activeSignals()) {
+        const QVector<model::DashboardSignal>& selectedSignals = activeModel_->activeSignals();
+        for (int row = 0; row < selectedSignals.size(); ++row) {
+            const model::DashboardSignal& signal = selectedSignals.at(row);
             if (!signal.enabled)
+                continue;
+            if (!activeModel_->isVisibleAvailable(row))
                 continue;
             const model::SignalDescriptor* descriptor =
                 catalog_->findDescriptor(signal.binding.descriptorId);
-            if (!descriptor)
+            if (!descriptor) {
+                qCInfo(diagnostics::cDash).noquote()
+                    << QStringLiteral(
+                           "event=signal_descriptor_unresolved id=%1 descriptor_id=%2 availability=%3 reason=%4 action=skip_render")
+                           .arg(signal.id.toString(QUuid::WithoutBraces),
+                                signal.binding.descriptorId,
+                                activeModel_->availabilityName(row),
+                                activeModel_->availabilityReason(row));
                 continue;
+            }
 
             // Static-display path: build an AbstractStripPanel directly.
             // Mode + descriptor.storagePath dispatch — one branch per
@@ -1583,7 +1603,7 @@ void DashboardDisplayController::rebuild() {
             // SequenceBarPanel regardless of which mode happens to be
             // the binding's primary.
             for (const QString& mode : signal.displayModeIds) {
-                if (!IsRenderableDashboardPanelMode(mode))
+                if (!model::DisplayModeCapabilityFor(mode).buildsPanelWidget)
                     continue;
                 // Active-panel filter: same scope rule the temporal
                 // strip path uses (see seriesIsVisibleInActivePanel).
@@ -1693,6 +1713,34 @@ void DashboardDisplayController::rebuild() {
     }
 
     activeOwnedPanelCount_ = static_cast<int>(nextPanels.size());
+    QHash<QString, int> oldSeriesByKey;
+    oldSeriesByKey.reserve(series_.size());
+    for (int i = 0; i < series_.size(); ++i) {
+        const ActiveSeries& oldSeries = series_.at(i);
+        const QString key = stripHistoryKey(oldSeries.signal.id,
+                                            oldSeries.channel.id,
+                                            oldSeries.displayModeId);
+        if (!oldSeriesByKey.contains(key))
+            oldSeriesByKey.insert(key, i);
+    }
+    for (ActiveSeries& nextSeries : next) {
+        const QString key = stripHistoryKey(nextSeries.signal.id,
+                                            nextSeries.channel.id,
+                                            nextSeries.displayModeId);
+        const auto oldIt = oldSeriesByKey.constFind(key);
+        if (oldIt == oldSeriesByKey.constEnd())
+            continue;
+
+        const model::SignalChannelKey currentKey = nextSeries.buffer.key;
+        const QString currentChannelId = nextSeries.buffer.channel.id;
+        const QString currentChannelLabel = nextSeries.buffer.channel.label;
+        const QString currentChannelUnit = nextSeries.buffer.channel.unit;
+        nextSeries.buffer = std::move(series_[oldIt.value()].buffer);
+        nextSeries.buffer.key = currentKey;
+        nextSeries.buffer.channel.id = currentChannelId;
+        nextSeries.buffer.channel.label = currentChannelLabel;
+        nextSeries.buffer.channel.unit = currentChannelUnit;
+    }
     series_ = std::move(next);
     ownedPanels_ = std::move(nextPanels);
     extendToFrame(frame_);

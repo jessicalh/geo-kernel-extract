@@ -38,6 +38,7 @@ struct SignalBuffer {
 
     long long lastFrame() const { return channel.lastFrame(); }
     void clear();
+    bool isValidAt(std::size_t i) const;
     void append(FrameSignalSample sample);
 };
 
