@@ -46,8 +46,11 @@ it segfaults — see requirements-e3nn.txt / ENV.md):
     LD_LIBRARY_PATH=<cu13 libs>:<torch/lib> python3 equiv_t2_e3nn.py [out_dir] --cross both
 """
 import argparse
+import json
 import os
+import shutil
 import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -69,6 +72,14 @@ def parse_args():
     ap.add_argument("--cross", choices=["exact", "learnable", "both"], default="both")
     ap.add_argument("--epochs", type=int, default=4000)
     ap.add_argument("--lr", type=float, default=3e-3)
+    ap.add_argument("--artifact-dir", default=None,
+                    help="write predictions, metrics, run audit, and advisor graph here")
+    ap.add_argument("--t0-loss-weight", type=float, default=0.25,
+                    help="same-model T0 companion loss weight after train-only scaling")
+    ap.add_argument("--loao", action="store_true",
+                    help="also run the leave-atoms-out audit. It is not the graph gate.")
+    ap.add_argument("--no-graph", action="store_true",
+                    help="skip rendering the PNG/PDF graph, but still write metrics/predictions")
     return ap.parse_args()
 
 
@@ -104,7 +115,9 @@ def load(out_dir):
 class EquivPoolE3nn(nn.Module):
     """e3nn equivariant sum-pool: per-source 2e from spherical harmonics + a
     1o(x)1o->2e cross term, gated by an invariant radial MLP, scatter-pooled to
-    (atom, frame) groups, de-meaned per atom from the supplied centering mask."""
+    (atom, frame) groups, de-meaned per atom from the supplied centering mask.
+    A scalar 0e/T0 companion head is summed over the same emitted source rows; it
+    is not a separate scalar model."""
 
     def __init__(self, n_groups, n_atoms, cross="exact"):
         super().__init__()
@@ -112,10 +125,14 @@ class EquivPoolE3nn(nn.Module):
         self.n_atoms = n_atoms
         self.cross = cross
         # invariant radial MLP -> 2 gates (Y2(r_hat), Y2(n_hat)) + 1 cross gate
-        self.R = nn.Sequential(
+        self.R2 = nn.Sequential(
             nn.Linear(2, 64), nn.SiLU(),
             nn.Linear(64, 64), nn.SiLU(),
             nn.Linear(64, 3))
+        self.R0 = nn.Sequential(
+            nn.Linear(2, 64), nn.SiLU(),
+            nn.Linear(64, 64), nn.SiLU(),
+            nn.Linear(64, 1))
         irr_1o = o3.Irreps("1o")
         irr_2e = o3.Irreps("2e")
         if cross == "exact":
@@ -130,36 +147,121 @@ class EquivPoolE3nn(nn.Module):
                 irr_1o, irr_1o, irr_2e, irrep_normalization="component")
 
     def forward(self, rhat, nhat, featn, src_group, group_atom, center_mask=None):
-        w = self.R(featn)                                   # (n_src, 3) gates
+        w = self.R2(featn)                                  # (n_src, 3) gates
         y2_r = o3.spherical_harmonics(2, rhat, normalize=True, normalization="component")
         y2_n = o3.spherical_harmonics(2, nhat, normalize=True, normalization="component")
         cross = self.tp(rhat, nhat)                         # (n_src, 5) e3nn 2e
-        contrib = (w[:, 0:1] * y2_r
-                   + w[:, 1:2] * y2_n
-                   + w[:, 2:3] * cross)                     # (n_src, 5)
-        pooled = torch.zeros(self.n_groups, 5, device=contrib.device)
-        pooled.index_add_(0, src_group, contrib)
+        contrib2 = (w[:, 0:1] * y2_r
+                    + w[:, 1:2] * y2_n
+                    + w[:, 2:3] * cross)                    # (n_src, 5)
+        contrib0 = self.R0(featn)                            # (n_src, 1), 0e
+        pooled2 = torch.zeros(self.n_groups, 5, device=contrib2.device)
+        pooled0 = torch.zeros(self.n_groups, 1, device=contrib2.device)
+        pooled2.index_add_(0, src_group, contrib2)
+        pooled0.index_add_(0, src_group, contrib0)
         # De-mean prediction per atom using train rows only; this mirrors the
         # target centering and keeps held-out/purged groups out of the mean.
         if center_mask is None:
             center_mask = torch.ones(group_atom.shape, dtype=torch.bool, device=group_atom.device)
-        mean = torch.zeros(self.n_atoms, 5, device=contrib.device)
-        cnt = torch.zeros(self.n_atoms, 1, device=contrib.device)
+        mean2 = torch.zeros(self.n_atoms, 5, device=contrib2.device)
+        mean0 = torch.zeros(self.n_atoms, 1, device=contrib2.device)
+        cnt = torch.zeros(self.n_atoms, 1, device=contrib2.device)
         center_atom = group_atom[center_mask]
-        mean.index_add_(0, center_atom, pooled[center_mask])
+        mean2.index_add_(0, center_atom, pooled2[center_mask])
+        mean0.index_add_(0, center_atom, pooled0[center_mask])
         cnt.index_add_(0, center_atom,
-                       torch.ones(center_atom.shape[0], 1, device=contrib.device))
-        return pooled - (mean / cnt.clamp_min(1.0))[group_atom]
+                       torch.ones(center_atom.shape[0], 1, device=contrib2.device))
+        centered2 = pooled2 - (mean2 / cnt.clamp_min(1.0))[group_atom]
+        centered0 = pooled0 - (mean0 / cnt.clamp_min(1.0))[group_atom]
+        return centered2, centered0.squeeze(1)
 
 
 def r2(p, y):
     return float(1 - ((y - p) ** 2).sum() / ((y - y.mean(0)) ** 2).sum())
 
 
+def r2_np(p, y):
+    p = np.asarray(p, dtype=float)
+    y = np.asarray(y, dtype=float)
+    den = np.sum((y - y.mean(axis=0)) ** 2)
+    if den <= 0:
+        return float("nan")
+    return float(1.0 - np.sum((y - p) ** 2) / den)
+
+
+def corr_np(a, b):
+    a = np.asarray(a, dtype=float).ravel()
+    b = np.asarray(b, dtype=float).ravel()
+    if len(a) < 2 or np.std(a) == 0.0 or np.std(b) == 0.0:
+        return float("nan")
+    return float(np.corrcoef(a, b)[0, 1])
+
+
+def train_atom_means(x, group_atom_idx, train_mask):
+    x = np.asarray(x, dtype=float)
+    group_atom_idx = np.asarray(group_atom_idx)
+    train_mask = np.asarray(train_mask, dtype=bool)
+    means = np.full_like(x, np.nan, dtype=float)
+    for atom in np.unique(group_atom_idx):
+        m = group_atom_idx == atom
+        tr = m & train_mask
+        if tr.sum() == 0:
+            continue
+        means[m] = x[tr].mean(axis=0, keepdims=True)
+    return means
+
+
+def split_labels(train_mask, test_mask):
+    out = np.full(len(train_mask), "purged", dtype=object)
+    out[np.asarray(train_mask, dtype=bool)] = "train"
+    out[np.asarray(test_mask, dtype=bool)] = "test"
+    return out
+
+
+def disk_audit_for_write(path):
+    path = Path(path).resolve()
+    base = path if path.exists() else path.parent
+    usage = shutil.disk_usage(base)
+    min_free = 20 * 1024 ** 3
+    if usage.free < min_free:
+        raise SystemExit(
+            f"FATAL: disk gate failed before write: {base} has "
+            f"{usage.free / 1024 ** 3:.1f} GiB free < 20 GiB")
+    runs = Path("/tmp/rediscover-runs")
+    total = 0
+    if runs.exists():
+        for root, dirs, files in os.walk(runs):
+            for name in files:
+                try:
+                    total += (Path(root) / name).stat().st_size
+                except OSError:
+                    pass
+    max_total = 15 * 1024 ** 3
+    if total > max_total:
+        raise SystemExit(
+            f"FATAL: rediscover run budget failed before write: "
+            f"{total / 1024 ** 3:.2f} GiB > 15 GiB")
+    return {
+        "path": str(path),
+        "free_bytes": int(usage.free),
+        "free_gib": usage.free / 1024 ** 3,
+        "rediscover_runs_bytes": int(total),
+        "rediscover_runs_gib": total / 1024 ** 3,
+    }
+
+
 def build_tensors(df, target_lib_all, dev):
     # through-space sources only (self/bonded is the local baseline; de-meaned)
     keep = (df.dft_present == 1) & (df.is_self_or_bonded == 0) & (df.dft_local_frame_valid == 1)
     d = df.loc[keep].copy()
+    finite_cols = [
+        "disp_local_x", "disp_local_y", "disp_local_z",
+        "source_normal_local_x", "source_normal_local_y", "source_normal_local_z",
+        "r", "ring_intensity", "dft_sigma_iso",
+    ]
+    finite = np.isfinite(d[finite_cols].to_numpy(float)).all(axis=1)
+    if not finite.all():
+        d = d.loc[finite].copy()
     print(f"through-space source rows: {len(d)}  atoms={d.atom_index.nunique()}")
 
     disp = d[["disp_local_x", "disp_local_y", "disp_local_z"]].to_numpy(float)
@@ -177,10 +279,19 @@ def build_tensors(df, target_lib_all, dev):
     for k in range(5):
         d[f"__t{k}"] = tgt_lib[:, k]
     n_groups = int(d["__gid"].max()) + 1
-    grp = d.groupby("__gid").agg(aid=("atom_index", "first"),
-                                 frame=("h5_row", "first")).sort_index()
+    grp = d.groupby("__gid").agg(
+        aid=("atom_index", "first"),
+        residue_number=("residue_number", "first"),
+        atom_name=("atom_name", "first"),
+        frame=("h5_row", "first"),
+        original_index=("original_index", "first"),
+        time_ps=("time_ps", "first"),
+        n_sources=("__gid", "size"),
+        target_T0=("dft_sigma_iso", "first"),
+    ).sort_index()
     gT2_lib = d.groupby("__gid")[[f"__t{k}" for k in range(5)]].first().sort_index().to_numpy()
     gT2_e3nn = cob.lib_to_e3nn(gT2_lib)                        # constant matmul
+    gT0 = grp.target_T0.to_numpy(float)
 
     aid_of_group = grp.aid.to_numpy()
     group_atom_idx, _ = pd.factorize(aid_of_group)
@@ -190,6 +301,9 @@ def build_tensors(df, target_lib_all, dev):
     # frames purged. Target and feature normalization are train-only.
     g_tr, g_te, split_info = make_split_masks(grp.frame.to_numpy())
     gT2_dm = centred_by_train_atom(gT2_e3nn, group_atom_idx, g_tr)
+    gT0_dm = centred_by_train_atom(gT0[:, None], group_atom_idx, g_tr)[:, 0]
+    gT2_mean = train_atom_means(gT2_e3nn, group_atom_idx, g_tr)
+    gT0_mean = train_atom_means(gT0[:, None], group_atom_idx, g_tr)[:, 0]
     source_train = g_tr[d["__gid"].to_numpy()]
     featn, fmean, fstd = normalised_by_train_rows(feat, source_train)
 
@@ -198,55 +312,95 @@ def build_tensors(df, target_lib_all, dev):
         rhat=t(rhat), nhat=t(nhat), featn=t(featn),
         src_group=t(d["__gid"].to_numpy(), torch.long),
         group_atom=t(group_atom_idx, torch.long),
-        target=t(gT2_dm),
+        target_t2=t(gT2_dm),
+        target_t0=t(gT0_dm),
         g_te=t(g_te, torch.bool),
         g_tr=t(g_tr, torch.bool),
         n_groups=n_groups, n_atoms=n_atoms,
         aid_of_group=aid_of_group, group_atom_idx=group_atom_idx,
-        gT2_e3nn=gT2_e3nn,
+        gT2_e3nn=gT2_e3nn, gT0=gT0, gT2_mean=gT2_mean, gT0_mean=gT0_mean,
+        group_frame=grp.frame.to_numpy(),
+        group_original_index=grp.original_index.to_numpy(),
+        group_time_ps=grp.time_ps.to_numpy(float),
+        group_residue_number=grp.residue_number.to_numpy(),
+        group_atom_name=grp.atom_name.to_numpy(),
+        group_source_count=grp.n_sources.to_numpy(),
+        split_label=split_labels(g_tr, g_te),
         feature_mean=fmean, feature_scale=fstd,
+        source_rows_all=len(df),
+        source_rows_kept=len(d),
+        source_columns=len(df.columns),
+        source_dense_bytes_estimate=int(len(df) * len(df.columns) * 8),
         **split_info,
     )
     return pack
 
 
-def train_one(pack, dev, cross, epochs, lr):
+def train_one(pack, dev, cross, epochs, lr, t0_loss_weight=0.25, run_loao=False):
     model = EquivPoolE3nn(pack["n_groups"], pack["n_atoms"], cross=cross).to(dev)
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-7)
-    target = pack["target"]
+    target_t2 = pack["target_t2"]
+    target_t0 = pack["target_t0"]
     g_te = pack["g_te"]
     g_tr = pack["g_tr"]
+    t2_scale = target_t2[g_tr].std().clamp_min(1e-6)
+    t0_scale = target_t0[g_tr].std().clamp_min(1e-6)
     for ep in range(epochs):
         model.train(); opt.zero_grad()
-        pred = model(pack["rhat"], pack["nhat"], pack["featn"],
-                     pack["src_group"], pack["group_atom"], center_mask=g_tr)
-        loss = ((pred[g_tr] - target[g_tr]) ** 2).mean()
+        pred_t2, pred_t0 = model(pack["rhat"], pack["nhat"], pack["featn"],
+                                 pack["src_group"], pack["group_atom"], center_mask=g_tr)
+        loss_t2 = (((pred_t2[g_tr] - target_t2[g_tr]) / t2_scale) ** 2).mean()
+        loss_t0 = (((pred_t0[g_tr] - target_t0[g_tr]) / t0_scale) ** 2).mean()
+        loss = loss_t2 + t0_loss_weight * loss_t0
         loss.backward(); opt.step()
         if ep % 1000 == 0 or ep == epochs - 1:
             model.eval()
             with torch.no_grad():
-                pr = model(pack["rhat"], pack["nhat"], pack["featn"],
-                           pack["src_group"], pack["group_atom"], center_mask=g_tr)
+                pr2, pr0 = model(pack["rhat"], pack["nhat"], pack["featn"],
+                                 pack["src_group"], pack["group_atom"], center_mask=g_tr)
             print(f"  [{cross:9s}] ep {ep:4d} loss={loss.item():.4e} "
-                  f"T2 R2 train={r2(pr[g_tr], target[g_tr]):+.3f} "
-                  f"test={r2(pr[g_te], target[g_te]):+.3f}")
+                  f"T2 R2 train={r2(pr2[g_tr], target_t2[g_tr]):+.3f} "
+                  f"test={r2(pr2[g_te], target_t2[g_te]):+.3f} "
+                  f"T0 test={r2(pr0[g_te], target_t0[g_te]):+.3f}")
     model.eval()
     with torch.no_grad():
-        pr = model(pack["rhat"], pack["nhat"], pack["featn"],
-                   pack["src_group"], pack["group_atom"], center_mask=g_tr).cpu().numpy()
-    tg = target.cpu().numpy()
+        pr_t2_t, pr_t0_t = model(pack["rhat"], pack["nhat"], pack["featn"],
+                                 pack["src_group"], pack["group_atom"], center_mask=g_tr)
+    pr = pr_t2_t.cpu().numpy()
+    pr0 = pr_t0_t.cpu().numpy()
+    tg = target_t2.cpu().numpy()
+    tg0 = target_t0.cpu().numpy()
     te = g_te.cpu().numpy()
+    tr = g_tr.cpu().numpy()
     mag_p, mag_t = np.linalg.norm(pr, axis=1), np.linalg.norm(tg, axis=1)
-    r_mag = np.corrcoef(mag_p[te], mag_t[te])[0, 1]
-    r2_comp = r2(torch.tensor(pr[te]), torch.tensor(tg[te]))
+    r_mag = corr_np(mag_p[te], mag_t[te])
+    r2_comp = r2_np(pr[te], tg[te])
+    r2_train = r2_np(pr[tr], tg[tr])
+    r2_mag = r2_np(mag_p[te], mag_t[te])
+    r2_t0 = r2_np(pr0[te], tg0[te])
+    pred_t0_restored = pr0 + pack["gT0_mean"]
+    r2_t0_restored = r2_np(pred_t0_restored[te], pack["gT0"][te])
     print(f"  [{cross:9s}] frame-split: T2 5-vec R2(test)={r2_comp:+.3f}  "
-          f"|T2| corr(test) r={r_mag:+.3f}")
+          f"|T2| corr(test) r={r_mag:+.3f}  T0 modulation R2(test)={r2_t0:+.3f}")
 
     # leave-atoms-out (reported, NOT gated): refit gates per held-out atom set.
-    loo = leave_atoms_out(pack, dev, cross, epochs, lr)
-    print(f"  [{cross:9s}] leave-atoms-out: T2 5-vec R2={loo:+.3f} "
-          f"(reported, not gated; thin ~7 coupled aromatic H)")
-    return r2_comp, r_mag, loo
+    loo = float("nan")
+    if run_loao:
+        loo = leave_atoms_out(pack, dev, cross, epochs, lr)
+        print(f"  [{cross:9s}] leave-atoms-out: T2 5-vec R2={loo:+.3f} "
+              f"(reported, not gated; thin coupled aromatic H)")
+    return {
+        "cross": cross,
+        "t2_r2_test": r2_comp,
+        "t2_r2_train": r2_train,
+        "t2_mag_r_test": r_mag,
+        "t2_mag_r2_test": r2_mag,
+        "t0_mod_r2_test": r2_t0,
+        "t0_restored_r2_test": r2_t0_restored,
+        "loao_t2_r2": loo,
+        "pred_t2": pr,
+        "pred_t0": pr0,
+    }
 
 
 def leave_atoms_out(pack, dev, cross, epochs, lr):
@@ -266,20 +420,171 @@ def leave_atoms_out(pack, dev, cross, epochs, lr):
         gtr = torch.tensor(tr_mask, dtype=torch.bool, device=dev)
         for ep in range(max(800, epochs // 4)):
             model.train(); opt.zero_grad()
-            p = model(pack["rhat"], pack["nhat"], pack["featn"],
-                      pack["src_group"], pack["group_atom"], center_mask=gtr)
-            loss = ((p[gtr] - pack["target"][gtr]) ** 2).mean()
+            p, _ = model(pack["rhat"], pack["nhat"], pack["featn"],
+                         pack["src_group"], pack["group_atom"], center_mask=gtr)
+            loss = ((p[gtr] - pack["target_t2"][gtr]) ** 2).mean()
             loss.backward(); opt.step()
         model.eval()
         with torch.no_grad():
-            p = model(pack["rhat"], pack["nhat"], pack["featn"],
-                      pack["src_group"], pack["group_atom"], center_mask=gtr).cpu().numpy()
+            p, _ = model(pack["rhat"], pack["nhat"], pack["featn"],
+                         pack["src_group"], pack["group_atom"], center_mask=gtr)
+            p = p.cpu().numpy()
         pred[te_mask] = p[te_mask]
-    tg = pack["target"].cpu().numpy()
+    tg = pack["target_t2"].cpu().numpy()
     ok = np.isfinite(pred).all(1) & np.isfinite(tg).all(1)
     if ok.sum() < 2:
         return float("nan")
     return r2(torch.tensor(pred[ok]), torch.tensor(tg[ok]))
+
+
+def write_predictions(path, pack, result):
+    pred_t2 = result["pred_t2"]
+    pred_t0 = result["pred_t0"]
+    target_t2 = pack["target_t2"].cpu().numpy()
+    target_t0 = pack["target_t0"].cpu().numpy()
+    pred_t0_restored = pred_t0 + pack["gT0_mean"]
+    rows = {
+        "atom_index": pack["aid_of_group"],
+        "residue_number": pack["group_residue_number"],
+        "atom_name": pack["group_atom_name"],
+        "h5_row": pack["group_frame"],
+        "original_frame_index": pack["group_original_index"],
+        "time_ps": pack["group_time_ps"],
+        "split": pack["split_label"],
+        "source_rows_in_group": pack["group_source_count"],
+        "target_T0_centered": target_t0,
+        "pred_T0_centered": pred_t0,
+        "target_T0_restored": pack["gT0"],
+        "pred_T0_restored": pred_t0_restored,
+    }
+    for k in range(5):
+        rows[f"target_T2_{k}_centered"] = target_t2[:, k]
+        rows[f"pred_T2_{k}_centered"] = pred_t2[:, k]
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def write_json(path, payload):
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2, sort_keys=True, allow_nan=True)
+        fh.write("\n")
+
+
+def scatter_limits(*arrays):
+    vals = np.concatenate([np.asarray(a, dtype=float).ravel() for a in arrays])
+    vals = vals[np.isfinite(vals)]
+    if vals.size == 0:
+        return (-1.0, 1.0)
+    lo, hi = np.percentile(vals, [0.5, 99.5])
+    if lo == hi:
+        pad = max(1.0, abs(lo) * 0.1)
+    else:
+        pad = 0.08 * (hi - lo)
+    return float(lo - pad), float(hi + pad)
+
+
+def render_graph(path_png, path_pdf, pack, result, metrics):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
+    te = pack["g_te"].cpu().numpy()
+    target_t2 = pack["target_t2"].cpu().numpy()
+    target_t0 = pack["target_t0"].cpu().numpy()
+    pred_t2 = result["pred_t2"]
+    pred_t0 = result["pred_t0"]
+    mag_t = np.linalg.norm(target_t2, axis=1)
+    mag_p = np.linalg.norm(pred_t2, axis=1)
+    t0_restored = pack["gT0"]
+    p0_restored = pred_t0 + pack["gT0_mean"]
+
+    fig, axs = plt.subplots(2, 2, figsize=(11.0, 8.5), constrained_layout=True)
+    ax = axs[0, 0]
+    x = target_t2[te].ravel()
+    y = pred_t2[te].ravel()
+    lim = scatter_limits(x, y)
+    ax.scatter(x, y, s=9, alpha=0.36, linewidths=0, color="#1f5a78")
+    ax.plot(lim, lim, color="black", lw=1.0, alpha=0.75)
+    ax.set_xlim(lim); ax.set_ylim(lim)
+    ax.set_title("A. Held-out T2 components")
+    ax.set_xlabel("DFT T2 modulation, train-atom centered")
+    ax.set_ylabel("e3nn prediction")
+    ax.text(0.04, 0.96, f"clean R2 = {metrics['t2_r2_test']:+.3f}",
+            transform=ax.transAxes, va="top", ha="left",
+            bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.9))
+
+    ax = axs[0, 1]
+    lim = scatter_limits(mag_t[te], mag_p[te])
+    ax.scatter(mag_t[te], mag_p[te], s=16, alpha=0.45, linewidths=0, color="#7d5a1f")
+    ax.plot(lim, lim, color="black", lw=1.0, alpha=0.75)
+    ax.set_xlim(lim); ax.set_ylim(lim)
+    ax.set_title("B. |T2| modulation recovery")
+    ax.set_xlabel("DFT |T2| modulation")
+    ax.set_ylabel("predicted |T2| modulation")
+    ax.text(0.04, 0.96,
+            f"r = {metrics['t2_mag_r_test']:+.3f}\nmag R2 = {metrics['t2_mag_r2_test']:+.3f}",
+            transform=ax.transAxes, va="top", ha="left",
+            bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.9))
+
+    ax = axs[1, 0]
+    lim = scatter_limits(target_t0[te], pred_t0[te])
+    ax.scatter(target_t0[te], pred_t0[te], s=16, alpha=0.45, linewidths=0, color="#3a6f44")
+    ax.plot(lim, lim, color="black", lw=1.0, alpha=0.75)
+    ax.set_xlim(lim); ax.set_ylim(lim)
+    ax.set_title("C. sigma_iso/T0 companion")
+    ax.set_xlabel("DFT T0 modulation, train-atom centered")
+    ax.set_ylabel("predicted T0 modulation")
+    ax.text(0.04, 0.96, f"MODULATION R2 = {metrics['t0_mod_r2_test']:+.3f}",
+            transform=ax.transAxes, va="top", ha="left", fontsize=11,
+            bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.95))
+    iax = inset_axes(ax, width="38%", height="38%", loc="lower right", borderpad=1.2)
+    ilim = scatter_limits(t0_restored[te], p0_restored[te])
+    iax.scatter(t0_restored[te], p0_restored[te], s=5, alpha=0.35, linewidths=0,
+                color="#6b6b6b")
+    iax.plot(ilim, ilim, color="black", lw=0.7, alpha=0.6)
+    iax.set_xlim(ilim); iax.set_ylim(ilim)
+    iax.set_xticks([]); iax.set_yticks([])
+    iax.set_title("restored inset", fontsize=8)
+    ax.text(0.98, 0.03,
+            f"restored R2 = {metrics['t0_restored_r2_test']:+.3f}\n"
+            "baseline-dominated inset; not skill metric",
+            transform=ax.transAxes, va="bottom", ha="right", fontsize=8,
+            bbox=dict(facecolor="white", edgecolor="0.85", alpha=0.9))
+
+    ax = axs[1, 1]
+    ax.axis("off")
+    bucket = metrics["interpretation_bucket"]
+    text = (
+        "D. Direction, not destination\n\n"
+        "1P9J geometry sampler -> emitted C++ source rows ->\n"
+        "e3nn source-sum predictor -> held-out DFT modulation\n\n"
+        f"Model: source-e3nn v0 ({result['cross']} cross), 5-component T2.\n"
+        f"Protocol: clean blocked/purged split; lag-1 train/test pairs = "
+        f"{metrics['cross_split_lag1_pairs']}.\n"
+        f"Support: {metrics['source_rows_kept']:,} through-space source rows, "
+        f"{metrics['groups']:,} atom-frame groups, {metrics['atoms']} atoms.\n"
+        f"Bucket: {bucket}.\n\n"
+        "Within-axis 1P9J interpolation only. The trajectory samples\n"
+        "instantaneous geometries; this is not a dynamics/process model.\n"
+        "The graph shows correlate-not-match recovery of held-out DFT\n"
+        "modulation and is a direction signal toward Stage-3, not a\n"
+        "transferability or BMRB validation claim."
+    )
+    ax.text(0.02, 0.98, text, va="top", ha="left", fontsize=10,
+            linespacing=1.25, family="DejaVu Sans")
+
+    fig.suptitle("1P9J Source-e3nn Interpolation Advisor Graph", fontsize=14)
+    fig.savefig(path_png, dpi=220)
+    fig.savefig(path_pdf)
+    plt.close(fig)
+
+
+def interpretation_bucket(t2_r2):
+    if not np.isfinite(t2_r2) or t2_r2 < 0.05:
+        return "negative/NO-GO graph"
+    if t2_r2 < 0.25:
+        return "weak direction signal"
+    return "direction signal"
 
 
 def main():
@@ -293,18 +598,105 @@ def main():
     df, target_lib_all = load(args.out_dir)
     pack = build_tensors(df, target_lib_all, dev)
     print(f"groups={pack['n_groups']} atoms={pack['n_atoms']}")
+    print(f"split={pack['split_strategy']} test_frames={pack['test_frames']} "
+          f"purged_frames={pack['purged_train_frames']} "
+          f"cross_split_lag1_pairs={pack['cross_split_lag1_pairs']}")
 
     results = {}
     modes = ["exact", "learnable"] if args.cross == "both" else [args.cross]
     for m in modes:
         print(f"\n== cross-term: {m} ==")
-        results[m] = train_one(pack, dev, m, args.epochs, args.lr)
+        results[m] = train_one(pack, dev, m, args.epochs, args.lr,
+                               t0_loss_weight=args.t0_loss_weight,
+                               run_loao=args.loao)
 
-    if len(results) > 1:
-        best = max(results, key=lambda k: results[k][0])  # by frame-split R2
-        print(f"\nBETTER cross-term by frame-split T2 R2: {best} "
-              f"(R2={results[best][0]:+.3f}, |T2| r={results[best][1]:+.3f})")
-    print("\nGATE: frame-split T2 R2 (baseline to reproduce/beat: 0.467; |T2| r: 0.756)")
+    best = max(results, key=lambda k: results[k]["t2_r2_test"])  # by clean held-out T2 R2
+    best_result = results[best]
+    print(f"\nBETTER cross-term by clean held-out T2 R2: {best} "
+          f"(R2={best_result['t2_r2_test']:+.3f}, "
+          f"|T2| r={best_result['t2_mag_r_test']:+.3f}, "
+          f"T0 mod R2={best_result['t0_mod_r2_test']:+.3f})")
+    print("GATE: clean blocked/purged held-out T2 R2 is the build's baseline. "
+          "Prior 0.466/0.757 is pre-protocol-fix leaky-suspect and is not used.")
+
+    artifact_dir = Path(args.artifact_dir) if args.artifact_dir else None
+    if artifact_dir:
+        disk_audit = disk_audit_for_write(artifact_dir)
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        pred_csv = artifact_dir / "interp_1p9j_predictions.csv"
+        metrics_json = artifact_dir / "interp_1p9j_metrics.json"
+        audit_json = artifact_dir / "interp_1p9j_run_audit.json"
+        png = artifact_dir / "interp_1p9j_advisor_graph.png"
+        pdf = artifact_dir / "interp_1p9j_advisor_graph.pdf"
+
+        te = pack["g_te"].cpu().numpy()
+        tr = pack["g_tr"].cpu().numpy()
+        metrics = {
+            "model_mode": "source-e3nn v0",
+            "input_dir": str(Path(args.out_dir).resolve()),
+            "best_cross": best,
+            "all_cross_metrics": {
+                k: {mk: mv for mk, mv in v.items() if not mk.startswith("pred_")}
+                for k, v in results.items()
+            },
+            "t2_r2_test": best_result["t2_r2_test"],
+            "t2_r2_train": best_result["t2_r2_train"],
+            "t2_mag_r_test": best_result["t2_mag_r_test"],
+            "t2_mag_r2_test": best_result["t2_mag_r2_test"],
+            "t0_mod_r2_test": best_result["t0_mod_r2_test"],
+            "t0_restored_r2_test": best_result["t0_restored_r2_test"],
+            "interpretation_bucket": interpretation_bucket(best_result["t2_r2_test"]),
+            "protocol": "clean_blocked_purged_train_only_centering",
+            "split_strategy": pack["split_strategy"],
+            "test_frames": int(pack["test_frames"]),
+            "purged_train_frames": int(pack["purged_train_frames"]),
+            "cross_split_lag1_pairs": int(pack["cross_split_lag1_pairs"]),
+            "groups": int(pack["n_groups"]),
+            "train_groups": int(tr.sum()),
+            "test_groups": int(te.sum()),
+            "purged_groups": int((~tr & ~te).sum()),
+            "atoms": int(pack["n_atoms"]),
+            "frames": int(len(np.unique(pack["group_frame"]))),
+            "source_rows_all": int(pack["source_rows_all"]),
+            "source_rows_kept": int(pack["source_rows_kept"]),
+            "source_columns": int(pack["source_columns"]),
+            "source_dense_bytes_estimate": int(pack["source_dense_bytes_estimate"]),
+            "held_out_rows_nonempty": bool(te.sum() > 0),
+            "prediction_rows": int(pack["n_groups"]),
+            "leaky_suspect_prior_not_used": {
+                "t2_r2": 0.466,
+                "t2_mag_r": 0.757,
+                "label": "pre-protocol-fix leaky-suspect; clean re-run held before this build",
+            },
+        }
+
+        write_predictions(pred_csv, pack, best_result)
+        write_json(metrics_json, metrics)
+        if not args.no_graph:
+            render_graph(png, pdf, pack, best_result, metrics)
+        audit = {
+            "disk_before_artifact_write": disk_audit,
+            "boundary": {
+                "python_opened_trajectory_h5": False,
+                "python_spatial_or_protein_graph": False,
+                "python_physics_recompute": False,
+                "basis_conversion": "change_of_basis.get_C/lib_to_e3nn only",
+                "extractor_modified_by_this_script": False,
+                "target": "5-component T2 plus companion T0; T2 not scalar-collapsed",
+            },
+            "artifacts": {
+                "predictions_csv": str(pred_csv),
+                "metrics_json": str(metrics_json),
+                "advisor_graph_png": str(png) if not args.no_graph else None,
+                "advisor_graph_pdf": str(pdf) if not args.no_graph else None,
+            },
+        }
+        write_json(audit_json, audit)
+        print(f"wrote predictions: {pred_csv}")
+        print(f"wrote metrics: {metrics_json}")
+        if not args.no_graph:
+            print(f"wrote graph: {png}")
+            print(f"wrote graph: {pdf}")
 
 
 if __name__ == "__main__":

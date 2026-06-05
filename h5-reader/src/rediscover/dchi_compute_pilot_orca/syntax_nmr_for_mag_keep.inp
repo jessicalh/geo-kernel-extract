@@ -1,0 +1,14 @@
+! HF STO-3G TightSCF KeepScratch
+
+* xyz 0 1
+C   0.000000   0.000000   0.000000
+O   1.200000   0.000000   0.000000
+H  -0.600000   0.935000   0.000000
+H  -0.600000  -0.935000   0.000000
+*
+
+%eprnmr
+  Nuclei = all C { shift }
+  Nuclei = all O { shift }
+  Nuclei = all H { shift }
+end
