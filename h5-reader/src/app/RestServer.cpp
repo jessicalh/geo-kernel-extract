@@ -453,10 +453,10 @@ void RestServer::registerRoutes() {
 
     // ---- transform (upstream data-layer transform — TransformedConformation) -
     //
-    // POST /transform {"kind": "identity"|"center_com"|"fit_reference"|"fit_subset",
+    // POST /transform {"kind": "all_atom_fit"|"backbone_fit",
     //                   "reference_frame": int (default 0),
-    //                   "subset_atoms": [int, ...] (FitSubset only),
-    //                   "backbone_only": bool (FitSubset shorthand) }
+    //                   "subset_atoms": [int, ...] (fit_subset alias only),
+    //                   "backbone_only": bool (fit_subset alias shorthand) }
     // Switches the wrapped Conformation's transform mode. Fire-and-forget;
     // the wrapper emits transformChanged() which is connected (in
     // ReaderMainWindow) to scene_->refreshCurrentFrame so the molecule
@@ -472,10 +472,8 @@ void RestServer::registerRoutes() {
                                  SC::ServiceUnavailable);
         QString kind;
         switch (transformed_->mode()) {
-            case model::TransformedConformation::Mode::Identity:     kind = QStringLiteral("identity"); break;
-            case model::TransformedConformation::Mode::CenterCom:    kind = QStringLiteral("center_com"); break;
-            case model::TransformedConformation::Mode::FitReference: kind = QStringLiteral("fit_reference"); break;
-            case model::TransformedConformation::Mode::FitSubset:    kind = QStringLiteral("fit_subset"); break;
+            case model::TransformedConformation::Mode::FitReference: kind = QStringLiteral("all_atom_fit"); break;
+            case model::TransformedConformation::Mode::FitSubset:    kind = QStringLiteral("backbone_fit"); break;
         }
         QJsonArray subsetArr;
         for (std::size_t a : transformed_->subsetAtoms())
@@ -499,21 +497,29 @@ void RestServer::registerRoutes() {
         if (!ok || !body.contains("kind"))
             return errorResponse(QStringLiteral("body must be {\"kind\": ..., ...}"),
                                  SC::BadRequest);
-        const QString kindStr = body.value("kind").toString();
+        const QString kindStr = body.value("kind").toString().toLower();
         const std::size_t referenceFrame = body.contains("reference_frame")
             ? static_cast<std::size_t>(body.value("reference_frame").toInteger(0))
             : 0;
 
         using Mode = model::TransformedConformation::Mode;
-        Mode mode = Mode::Identity;
+        Mode mode = Mode::FitSubset;
         std::vector<std::size_t> subset;
 
-        if (kindStr == QStringLiteral("identity")) {
-            mode = Mode::Identity;
-        } else if (kindStr == QStringLiteral("center_com")) {
-            mode = Mode::CenterCom;
-        } else if (kindStr == QStringLiteral("fit_reference")) {
+        if (kindStr == QStringLiteral("all_atom_fit")
+            || kindStr == QStringLiteral("fit_reference")) {
             mode = Mode::FitReference;
+        } else if (kindStr == QStringLiteral("backbone_fit")) {
+            mode = Mode::FitSubset;
+            const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+            if (!protein)
+                return errorResponse(QStringLiteral("no protein loaded for backbone_fit"),
+                                     SC::ServiceUnavailable);
+            subset = model::TransformedConformation::BackboneSubset(*protein);
+            if (subset.size() < 3)
+                return errorResponse(QStringLiteral("backbone subset has <3 atoms — "
+                                                    "fit underdetermined"),
+                                     SC::Conflict);
         } else if (kindStr == QStringLiteral("fit_subset")) {
             mode = Mode::FitSubset;
             // backbone_only shorthand: compute the subset from the typed
@@ -552,7 +558,9 @@ void RestServer::registerRoutes() {
                                      SC::BadRequest);
             }
         } else {
-            return errorResponse(QStringLiteral("unknown transform kind: %1").arg(kindStr),
+            return errorResponse(QStringLiteral("unknown transform kind: %1 "
+                                                "(expected all_atom_fit or backbone_fit)")
+                                     .arg(kindStr),
                                  SC::BadRequest);
         }
 
@@ -809,6 +817,7 @@ void RestServer::registerRoutes() {
         const std::size_t currentFrame = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
         scene_->cameraComposer()->setMode(std::move(mode), policy, currentFrame);
         // One render to surface the new camera state on this tick.
+        scene_->syncCameraClippingRange();
         scene_->requestRender(MoleculeScene::RenderSource::Rest);
         return QHttpServerResponse(SC::NoContent);
     });
@@ -820,6 +829,7 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("camera composer not wired"), SC::ServiceUnavailable);
         const std::size_t currentFrame = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
         scene_->cameraComposer()->setMode(FreeMode(), DefaultPolicy(), currentFrame);
+        scene_->syncCameraClippingRange();
         scene_->requestRender(MoleculeScene::RenderSource::Rest);
         return QHttpServerResponse(SC::NoContent);
     });
@@ -907,6 +917,7 @@ void RestServer::registerRoutes() {
         scene_->cameraComposer()->setMode(std::move(result.mode),
                                             result.policy,
                                             currentFrame);
+        scene_->syncCameraClippingRange();
         scene_->requestRender(MoleculeScene::RenderSource::Rest);
         return QHttpServerResponse(SC::NoContent);
     });

@@ -126,6 +126,7 @@ private slots:
     void onNewmanProjectionTriggered();
     void onFreeCameraTriggered();
     void onInstrumentToggled(bool checked);
+    void onTransformFitToggled(bool allAtomFit);
 
 private:
     void buildUi();
@@ -138,11 +139,6 @@ private:
     // from the composer's mode().kind so REST or programmatic changes
     // reflect in the toolbar too.
     void updateCameraModeActions();
-    // Apply a TransformedConformation mode chosen from the Transform
-    // popup menu. The mode int is the underlying enum value carried on
-    // the QAction via setData().
-    void applyTransformModeFromAction(QAction* action);
-
     // QSettings persistence — see kSettingsVersion in the .cpp for the
     // versioned QMainWindow state blob policy. Tolerant on restore (any
     // missing / mismatched key is silently skipped) so a fresh install
@@ -217,6 +213,8 @@ private:
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> signalDisplaysAction_;
+    QPointer<QMenu> panelsMenu_;
+    QPointer<QToolButton> panelsButton_;
 
     // Exclusive camera-mode action group. QActionGroup is the standard Qt
     // idiom for radio-style mutual exclusion across actions. Source of
@@ -228,11 +226,8 @@ private:
     QPointer<QAction> planeLockAction_;
     QPointer<QAction> freeAction_;
 
-    // Transform popup-menu button (Identity / Center COM / Fit backbone /
-    // Fit selection). Drives TransformedConformation::setMode directly.
-    QPointer<QToolButton> transformButton_;
-    QPointer<QMenu> transformMenu_;
-    QPointer<QActionGroup> transformGroup_;
+    // One transform switch: unchecked = backbone fit, checked = all-atom fit.
+    QPointer<QAction> transformFitAction_;
 
     // Marker preset toggle for live demos. Same code path as
     // /selection/instrument REST endpoint.
@@ -241,9 +236,10 @@ private:
     // File ▸ Recent submenu — populated from QSettings on ctor restore.
     QPointer<QMenu> recentMenu_;
 
-    // Playback toolbar — built by buildToolbar(); referenced from the
-    // ctor after the docks exist to append their toggleViewAction()s.
+    // Toolbars — built by buildToolbar(); the ctor appends dock panel controls
+    // once the docks and View -> Panels menu exist.
     QPointer<QToolBar> playbackToolbar_;
+    QPointer<QToolBar> toolsToolbar_;
 
     // Status bar labels.
     QPointer<QLabel> proteinLabel_;
@@ -256,8 +252,7 @@ private:
     // Wraps loaded_->conformation so consumers (scene, picker, overlays)
     // read positions through a runtime-switchable rigid-body transform.
     // Owned by the window. Built in the ctor immediately after the
-    // loader returns; default mode is Identity so behaviour at startup
-    // is identical to today.
+    // loader returns; startup mode is FitSubset on the typed backbone.
     h5reader::model::TransformedConformation* transformed_ = nullptr;
 
     // Dock-hide state for setDocksVisible(). We stash each dock's

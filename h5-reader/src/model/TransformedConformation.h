@@ -7,8 +7,8 @@
 // simulation box (3 translation + 3 rotation) which both drift over MD
 // time. None of this is removed before display. The decorator lets a
 // downstream consumer (renderer, picker, overlays) see a stabilised
-// frame: COM-centred, RMSD-fit to a reference, or RMSD-fit on a subset
-// (e.g. backbone).
+// frame: RMSD-fit to a reference using either all atoms or a typed subset
+// (the default UI subset is the backbone).
 //
 // Architectural shape (per the memory entry's prescription): the wrapper
 // is a Conformation itself, holding a Conformation* inner (non-owning).
@@ -31,9 +31,10 @@
 // stabilisation value on a trajectory whose PBC unwrap was already
 // done at extraction time (the typical case for 1P9J and friends).
 //
-// Default mode is `Identity` — same atomPosition(frame, atom) as the
-// inner Conformation, no allocation, no cache use. Behaviour at
-// startup is therefore unchanged.
+// ReaderMainWindow sets the startup mode before the scene builds:
+// FitSubset over the typed backbone subset, reference frame 0. That keeps
+// the displayed molecule stationary on open while preserving all internal
+// motion because the transform is rigid.
 
 #pragma once
 
@@ -55,8 +56,6 @@ class TransformedConformation final : public Conformation {
 
 public:
     enum class Mode {
-        Identity,         // R=I, T=0 — equivalent to "no transform"
-        CenterCom,        // R=I, T=-COM(frame, all_atoms)
         FitReference,     // Kabsch fit of frame against reference frame, all atoms
         FitSubset,        // Kabsch fit using only the provided subset atom indices
     };
@@ -84,9 +83,8 @@ public:
     std::size_t referenceFrame() const { return referenceFrame_; }
     const std::vector<std::size_t>& subsetAtoms() const { return subsetAtoms_; }
 
-    // Switch transform mode. `referenceFrame` is used by FitReference /
-    // FitSubset (ignored by Identity / CenterCom). `subsetAtoms` is used
-    // only by FitSubset. Bumps the generation counter and clears the
+    // Switch transform mode. `referenceFrame` is used by both fit modes.
+    // `subsetAtoms` is used only by FitSubset. Bumps the generation counter and clears the
     // per-frame cache atomically; emits transformChanged() so consumers
     // can request a re-render. ASSERT_THREAD(this).
     void setMode(Mode mode,
@@ -131,7 +129,7 @@ private:
 
     Conformation* inner_ = nullptr;
 
-    Mode mode_ = Mode::Identity;
+    Mode mode_ = Mode::FitReference;
     std::size_t referenceFrame_ = 0;
     std::vector<std::size_t> subsetAtoms_;
 
@@ -143,7 +141,7 @@ private:
     // Cached reference positions for FitReference / FitSubset — set once
     // per setMode() so we don't re-read the inner conformation for every
     // frame. The size matches subsetAtoms_ for FitSubset, or the protein
-    // atom count for FitReference. Empty for Identity / CenterCom.
+    // atom count for FitReference.
     mutable std::vector<Vec3> referencePositions_;
 };
 

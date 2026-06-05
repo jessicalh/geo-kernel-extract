@@ -29,6 +29,7 @@
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
 #include <vtkStreamTracer.h>
@@ -69,6 +70,7 @@ private:
 
         vtkSmartPointer<vtkStreamTracer>   tracer;
         vtkSmartPointer<vtkTubeFilter>     tubes;
+        vtkSmartPointer<vtkPolyDataMapper> mapper;
         vtkSmartPointer<vtkActor>          actor;
     };
 

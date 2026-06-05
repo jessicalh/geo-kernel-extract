@@ -229,12 +229,11 @@ void QtFieldGridOverlay::setFrame(int t) {
     ASSERT_THREAD(this);
     if (!protein_ || !conformation_) return;
     if (t < 0 || static_cast<size_t>(t) >= conformation_->frameCount()) return;
+    currentFrame_ = t;
     if (!visible_) return;   // skip the expensive re-eval when off
 
     // Mirror QtBFieldStreamOverlay's two-stage timing — eval (kernel
-    // grid fill) and pipe (forced contour-filter Update). Logged at
-    // INFO during the Windows-vs-Linux perf investigation; restore
-    // to DEBUG once the bottleneck is identified.
+    // grid fill) and pipe (forced contour-filter Update).
     QElapsedTimer evalT;
     evalT.start();
     for (size_t ri = 0; ri < rings_.size(); ++ri) {
@@ -252,7 +251,7 @@ void QtFieldGridOverlay::setFrame(int t) {
     }
     const qint64 pipeMs = pipeT.elapsed();
 
-    qCInfo(cField).noquote()
+    qCDebug(cField).noquote()
         << "frame" << t
         << "|" << rings_.size() << "rings"
         << "| eval=" << evalMs << "ms"
@@ -267,7 +266,7 @@ void QtFieldGridOverlay::setMode(FieldGridMode mode) {
     // Force re-eval at the current visible state.
     if (visible_) {
         for (size_t ri = 0; ri < rings_.size(); ++ri) {
-            RecomputeRingScalars(ri, /*t*/ 0);
+            RecomputeRingScalars(ri, currentFrame_);
         }
     }
 }

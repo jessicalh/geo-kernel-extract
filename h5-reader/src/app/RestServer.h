@@ -25,7 +25,7 @@
 //   POST   /selection/instrument         → 204 (body: {"enabled": bool, "focus_only": bool})  marker preset
 //   POST   /docks/visible                → 204 (body: {"visible": bool})  hide/restore docks
 //   GET    /transform                    → {"kind": "...", "reference_frame": int, "subset_atoms": [...], "subset_size": int}
-//   POST   /transform                    → 204 (body: {"kind": "identity"|"center_com"|"fit_reference"|"fit_subset",
+//   POST   /transform                    → 204 (body: {"kind": "all_atom_fit"|"backbone_fit",
 //                                                       "reference_frame": int, "subset_atoms": [int, ...], "backbone_only": bool})
 //   GET    /plane-lock                   → {"active": bool, "atoms": [...]|null}
 //   POST   /plane-lock/enable            → 204 or 409 (body: {"atoms": [a,b,c]})

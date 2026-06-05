@@ -6,7 +6,6 @@
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
 #include "QtRingPolygonOverlay.h"
-#include "QtSelectionOverlay.h"
 #include "QuietTrackballStyle.h"
 #include "SceneRevealOverlay.h"
 
@@ -21,8 +20,6 @@
 #include <QVTKOpenGLNativeWidget.h>
 
 #include <vtkActorCollection.h>
-
-#include <cstdio>
 
 #include <vtkCallbackCommand.h>
 #include <vtkCamera.h>
@@ -188,19 +185,29 @@ void MoleculeScene::Build(const model::QtProtein& protein,
     protein_      = &protein;
     conformation_ = &conformation;
     currentFrame_ = -1;
+    cachedPaddedBoundsValid_ = false;
 
     molecule_ = vtkSmartPointer<vtkMolecule>::New();
 
     // Atoms — positions come from frame 0 so the first render is
     // consistent before any setFrame call. atomPosition is the shared
     // seam: the H5 for a trajectory, the snapshot's Pos column for a pose.
+    double initialBounds[6] = {+1e30, -1e30, +1e30, -1e30, +1e30, -1e30};
     for (size_t i = 0; i < protein.atomCount(); ++i) {
         const auto& atom = protein.atom(i);
         const model::Vec3 pos = conformation.atomPosition(0, i);
+        if (pos.x() < initialBounds[0]) initialBounds[0] = pos.x();
+        if (pos.x() > initialBounds[1]) initialBounds[1] = pos.x();
+        if (pos.y() < initialBounds[2]) initialBounds[2] = pos.y();
+        if (pos.y() > initialBounds[3]) initialBounds[3] = pos.y();
+        if (pos.z() < initialBounds[4]) initialBounds[4] = pos.z();
+        if (pos.z() > initialBounds[5]) initialBounds[5] = pos.z();
         const unsigned short z = static_cast<unsigned short>(
             model::AtomicNumberForElement(atom.element));
         molecule_->AppendAtom(z, pos.x(), pos.y(), pos.z());
     }
+    if (protein.atomCount() > 0)
+        cachePaddedBounds(initialBounds);
 
     // Bonds — connectivity is static across the trajectory.
     for (size_t i = 0; i < protein.bondCount(); ++i) {
@@ -254,11 +261,6 @@ void MoleculeScene::Build(const model::QtProtein& protein,
     }
     bfieldStream_->Build(protein, conformation);
 
-    if (!selection_) {
-        selection_ = new QtSelectionOverlay(renderer_, renderWindow_, this);
-    }
-    selection_->Build(protein, conformation);
-
     // Markers go on the overlay-layer renderer (spec §5.2). The overlay
     // takes the main renderer for symmetry but only adds actors to the
     // overlay layer — the harness's marker-blob analysis needs the
@@ -293,7 +295,15 @@ void MoleculeScene::ResetCamera() {
     if (composer_) {
         composer_->setMode(FreeMode(), DefaultPolicy(), 0);
     }
+    syncCameraClippingRange();
     requestRender(RenderSource::External);
+}
+
+void MoleculeScene::syncCameraClippingRange() {
+    ASSERT_THREAD(this);
+    if (!renderer_ || !cachedPaddedBoundsValid_)
+        return;
+    renderer_->ResetCameraClippingRange(cachedPaddedBounds_);
 }
 
 void MoleculeScene::requestRender(RenderSource src) {
@@ -305,6 +315,7 @@ void MoleculeScene::requestRender(RenderSource src) {
     QMetaObject::invokeMethod(this, [self]() {
         if (!self || !self->renderWindow_) return;
         self->renderPending_ = false;
+        self->syncCameraClippingRange();
         // widget->update() alone only schedules a Qt paint; paint then blits
         // the stale FBO because QVTKRenderWindowAdapter::paint() (lines 241-266)
         // only calls iren->Render() when DoVTKRenderInPaintGL is true, and that
@@ -351,6 +362,18 @@ void MoleculeScene::PushAtomPositions(int t, double bounds[6]) {
     }
 }
 
+void MoleculeScene::cachePaddedBounds(const double bounds[6]) {
+    constexpr double pad = 5.0;
+    cachedPaddedBounds_[0] = bounds[0] - pad;
+    cachedPaddedBounds_[1] = bounds[1] + pad;
+    cachedPaddedBounds_[2] = bounds[2] - pad;
+    cachedPaddedBounds_[3] = bounds[3] + pad;
+    cachedPaddedBounds_[4] = bounds[4] - pad;
+    cachedPaddedBounds_[5] = bounds[5] + pad;
+    cachedPaddedBoundsValid_ =
+        bounds[0] <= bounds[1] && bounds[2] <= bounds[3] && bounds[4] <= bounds[5];
+}
+
 void MoleculeScene::setFrame(int t) {
     ASSERT_THREAD(this);
     if (!molecule_ || !protein_ || !conformation_) return;
@@ -372,17 +395,10 @@ void MoleculeScene::setFrame(int t) {
     // 2. Modified bumps. vtkMolecule::SetAtomPosition calls
     //    Points->SetPoint(...) and Modified() on the molecule, but
     //    Points->SetPoint does NOT bump the points array's own MTime
-    //    explicitly (per vtkMolecule.cxx:184-197). Some VBO-gate paths
-    //    in vtkOpenGLPolyDataMapper consult the input data's Points
-    //    MTime through the trivial-producer chain inside
-    //    vtkOpenGLMoleculeMapper; with the molecule's MTime up but the
-    //    points' MTime stale, the gate can miss when other conditions
-    //    on its OR chain fall out. PROBE per spec §6.1: explicitly bump
-    //    the points' MTime. If this clears the end-of-trajectory
-    //    atom-render drop, the missed points-MTime check is the cause
-    //    and this stays as the settled fix. If the drop persists, this
-    //    line is removed and the investigation moves to
-    //    notes/RESIDUAL_RENDER_DROP.md.
+    //    explicitly (per vtkMolecule.cxx:184-197). Bump the points MTime
+    //    here as the settled VTK invalidation fix; otherwise some VBO
+    //    gate paths can keep stale atom positions even after the molecule
+    //    object itself was marked modified.
     molecule_->Modified();
     if (auto* points = molecule_->GetPoints())
         points->Modified();
@@ -410,7 +426,6 @@ void MoleculeScene::setFrame(int t) {
     if (ringPolygons_) ringPolygons_->setFrame(t);
     if (fieldGrid_)    fieldGrid_->setFrame(t);
     if (bfieldStream_) bfieldStream_->setFrame(t);
-    if (selection_)    selection_->setFrame(t);
     if (measurement_)  measurement_->setFrame(t);
     if (reveal_)       reveal_->setFrame(t);
 
@@ -419,13 +434,8 @@ void MoleculeScene::setFrame(int t) {
     //    stays pinned at frame-0 values. Pad each axis by 5 Å so
     //    overlays extending past the molecule (ring polygons, butterfly
     //    isosurfaces, streamlines) also stay inside the frustum.
-    constexpr double pad = 5.0;
-    double padded[6] = {
-        bounds[0] - pad, bounds[1] + pad,
-        bounds[2] - pad, bounds[3] + pad,
-        bounds[4] - pad, bounds[5] + pad,
-    };
-    renderer_->ResetCameraClippingRange(padded);
+    cachePaddedBounds(bounds);
+    syncCameraClippingRange();
 
     // 7. Schedule one render via the Qt paint chain.
     requestRender(RenderSource::Timer);
@@ -444,19 +454,10 @@ void MoleculeScene::setFrame(int t) {
         << "][" << bounds[4] << "," << bounds[5] << "]"
         << "| dt_ms=" << timer.elapsed();
     if (t % 50 == 0) {
-        long rssKb = 0;
-        if (FILE* f = std::fopen("/proc/self/statm", "r")) {
-            long pages = 0;
-            if (std::fscanf(f, "%ld %ld", &pages, &pages) >= 1) {
-                rssKb = pages * 4;   // statm col 2 is resident pages, 4 KB each
-            }
-            std::fclose(f);
-        }
         const int nActors = renderer_->GetActors()->GetNumberOfItems();
         const int molVis  = actor_->GetVisibility();
         qCDebug(cScene).noquote()
             << "snapshot @ frame" << t
-            << "| rss=" << rssKb << "KB"
             << "| actors=" << nActors
             << "| mol vis=" << molVis
             << "| atom bounds=[" << bounds[0] << "," << bounds[1]
@@ -484,21 +485,7 @@ bool MoleculeScene::lockCameraToSelectionPlane(const std::vector<std::size_t>& a
     // camera right after enable should see the locked state, not a
     // stale free-camera state).
     (void)composer_->write(frame);
-    // Refresh clipping from current bounds — the camera moved, so the
-    // stale clipping range may now cut into the molecule.
-    if (renderer_) {
-        double bounds[6];
-        if (protein_) {
-            PushAtomPositions(static_cast<int>(frame), bounds);
-            constexpr double pad = 5.0;
-            double padded[6] = {
-                bounds[0] - pad, bounds[1] + pad,
-                bounds[2] - pad, bounds[3] + pad,
-                bounds[4] - pad, bounds[5] + pad,
-            };
-            renderer_->ResetCameraClippingRange(padded);
-        }
-    }
+    syncCameraClippingRange();
     requestRender(RenderSource::External);
     qCInfo(cScene).noquote()
         << "camera plane lock enabled | atoms="

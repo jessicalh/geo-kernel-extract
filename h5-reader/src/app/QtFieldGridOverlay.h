@@ -98,6 +98,7 @@ private:
     std::vector<RingGrid>                         rings_;
 
     FieldGridMode mode_              = FieldGridMode::BiotSavart;
+    int           currentFrame_      = 0;
     double        thresholdPpm_       = 0.10;    // ppm
     double        opacity_            = 0.40;
     bool          visible_            = false;   // off by default — user enables

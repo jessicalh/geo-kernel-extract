@@ -3,6 +3,8 @@
 #include <QSet>
 #include <QStringList>
 
+#include <utility>
+
 namespace h5reader::model {
 
 namespace {
@@ -1168,7 +1170,23 @@ bool descriptorMatchesAxis(const SignalDescriptor& descriptor, SignalAxis axis) 
 
 TrajectorySignalCatalog::TrajectorySignalCatalog(QObject* parent)
     : QObject(parent)
-    , descriptors_(BuildDescriptorCatalog()) {}
+    , allDescriptors_(BuildDescriptorCatalog())
+    , descriptors_(allDescriptors_) {}
+
+void TrajectorySignalCatalog::setFieldAvailability(
+    std::shared_ptr<const TrajectoryFieldAvailability> availability) {
+    availability_ = std::move(availability);
+    rebuildVisibleDescriptors();
+}
+
+void TrajectorySignalCatalog::rebuildVisibleDescriptors() {
+    descriptors_.clear();
+    descriptors_.reserve(allDescriptors_.size());
+    for (const SignalDescriptor& descriptor : allDescriptors_) {
+        if (!availability_ || availability_->allowsDescriptor(descriptor))
+            descriptors_.push_back(descriptor);
+    }
+}
 
 const SignalDescriptor* TrajectorySignalCatalog::findDescriptor(const QString& descriptorId) const {
     for (const SignalDescriptor& descriptor : descriptors_) {
@@ -1264,7 +1282,8 @@ bool TrajectorySignalCatalog::canBind(const DisplaySignalBinding& binding) const
 bool TrajectorySignalCatalog::canSample(const DisplaySignalBinding& binding) const {
     const SignalDescriptor* descriptor = findDescriptor(binding.descriptorId);
     return descriptor && descriptor->temporal && binding.displayModeId.startsWith(QStringLiteral("strip."))
-        && canBind(binding) && descriptor->samplingStatus == SampleStatus::Valid;
+        && canBind(binding) && descriptor->samplingStatus == SampleStatus::Valid
+        && (!availability_ || availability_->canSampleDescriptor(*descriptor));
 }
 
 QVector<SignalDescriptor> TrajectorySignalCatalog::BuildDescriptorCatalog() {

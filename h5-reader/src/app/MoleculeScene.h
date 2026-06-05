@@ -89,7 +89,6 @@ class QtBackboneRibbonOverlay;
 class QtRingPolygonOverlay;
 class QtFieldGridOverlay;
 class QtBFieldStreamOverlay;
-class QtSelectionOverlay;
 class MeasurementOverlay;
 class SceneRevealOverlay;
 class CameraComposer;
@@ -112,12 +111,11 @@ public:
         External,    // explicit consumer request that doesn't fit above
     };
 
-    // Takes the VTK widget so the render scheduler can call
-    // vtkWidget_->update() (the only render verb in app code per spec
-    // §2.5). The widget owns the render window; the scene pulls the
-    // window out and uses it for actor management and EndEvent
-    // observation. parent is the Qt parent (ReaderMainWindow) so
-    // destruction order is determined.
+    // Takes the VTK widget and render window so the render scheduler can
+    // call into VTK and then let Qt blit the fresh FBO. The widget owns
+    // the render window; the scene pulls the window out and uses it for
+    // actor management and EndEvent observation. parent is the Qt parent
+    // (ReaderMainWindow) so destruction order is determined.
     explicit MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
                            vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow,
                            QObject* parent = nullptr);
@@ -148,6 +146,11 @@ public:
     // Reset camera to frame the molecule. Call after Build().
     void ResetCamera();
 
+    // Reset near/far clipping from the current frame's cached padded atom
+    // bounds. Call after every camera write and before renders that may
+    // follow camera writes. No-op until Build/setFrame has produced bounds.
+    void syncCameraClippingRange();
+
     // Overlays owned by the scene. MoleculeScene propagates setFrame
     // to each and issues a single Render() at the end. Nullable before
     // Build(); non-null after. Raw pointers because lifetime is tied to
@@ -156,7 +159,6 @@ public:
     QtRingPolygonOverlay*    ringPolygonOverlay() const { return ringPolygons_; }
     QtFieldGridOverlay*      fieldGridOverlay()  const { return fieldGrid_; }
     QtBFieldStreamOverlay*   bfieldStreamOverlay() const { return bfieldStream_; }
-    QtSelectionOverlay*      selectionOverlay()   const { return selection_; }
     MeasurementOverlay*      measurementOverlay() const { return measurement_; }
     SceneRevealOverlay*      revealOverlay()      const { return reveal_; }
 
@@ -213,6 +215,7 @@ private:
     // range. See feedback_vtk_bounds_cache for why we compute bounds
     // ourselves rather than calling vtkActor::GetBounds().
     void PushAtomPositions(int t, double bounds[6]);
+    void cachePaddedBounds(const double bounds[6]);
 
     QPointer<QVTKOpenGLNativeWidget>              vtkWidget_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
@@ -226,7 +229,6 @@ private:
     QtRingPolygonOverlay*    ringPolygons_ = nullptr;   // QObject child
     QtFieldGridOverlay*      fieldGrid_    = nullptr;   // QObject child
     QtBFieldStreamOverlay*   bfieldStream_ = nullptr;   // QObject child
-    QtSelectionOverlay*      selection_    = nullptr;   // QObject child (dormant; superseded by measurement_)
     MeasurementOverlay*      measurement_  = nullptr;   // QObject child
     SceneRevealOverlay*      reveal_       = nullptr;   // QObject child
     CameraComposer*          composer_     = nullptr;   // QObject child
@@ -235,6 +237,8 @@ private:
     QPointer<model::Conformation> conformation_;
     int                           currentFrame_ = -1;
     std::optional<model::SignalBinding> activeRevealBinding_;
+    double                        cachedPaddedBounds_[6] = {};
+    bool                          cachedPaddedBoundsValid_ = false;
 
     // Render scheduler state. Single-pending-paint coalesce per
     // event-loop tick. lastRenderSource_ is set by requestRender and

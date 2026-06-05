@@ -1,5 +1,10 @@
 # UI State Overview - 2026-06-04
 
+> **UPDATE 2026-06-04 (evening) — RUNTIME-VERIFIED.** The reader builds (`build/linux-rwdi`, `h5reader`) and
+> launches on 1P9J (846 atoms, plays, picks, ~2–3 ms renders) — the "I did not run the app" caveats below are
+> resolved. First infelicity fixed: clean startup (the three property docks no longer open on launch).
+> Live status + the consolidated infelicity backlog now live in `POLISH_BACKLOG.md` (top dated section).
+
 Read-only survey of the `h5-reader` Qt/VTK UI side, grounded in:
 
 - `/home/jessica/.claude/skills/qt6-cpp/SKILL.md`

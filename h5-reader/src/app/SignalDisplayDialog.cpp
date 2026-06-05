@@ -954,8 +954,11 @@ void SignalDisplayDialog::refreshCatalog() {
     d_->descriptorModel->setDescriptors(descriptors);
     d_->candidateView->resizeColumnsToContents();
     d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::SignalColumn, QHeaderView::Stretch);
-    if (d_->descriptorProxy->rowCount() > 0)
-        d_->candidateView->selectRow(0);
+    if (auto* selection = d_->candidateView->selectionModel()) {
+        selection->clearSelection();
+        selection->clearCurrentIndex();
+    }
+    onCandidateSelectionChanged();
     if (d_->statusLabel) {
         d_->statusLabel->setText(d_->catalog
                                      ? QStringLiteral("%1 catalog descriptors.").arg(descriptors.size())
@@ -1036,8 +1039,12 @@ void SignalDisplayDialog::onAnchorSelectionChanged() {
                                                  candidate != nullptr);
     if (d_->descriptorProxy->rowCount() > 0) {
         const QModelIndex current = d_->candidateView->currentIndex();
-        if (!current.isValid() || !d_->descriptorProxy->mapToSource(current).isValid())
-            d_->candidateView->selectRow(0);
+        if (!current.isValid() || !d_->descriptorProxy->mapToSource(current).isValid()) {
+            if (auto* selection = d_->candidateView->selectionModel()) {
+                selection->clearSelection();
+                selection->clearCurrentIndex();
+            }
+        }
     }
     onCandidateSelectionChanged();
 }

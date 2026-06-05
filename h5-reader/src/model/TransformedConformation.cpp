@@ -51,8 +51,6 @@ const TrajectoryConformation* TransformedConformation::asTrajectory() const {
 Vec3 TransformedConformation::atomPosition(std::size_t frame, std::size_t atomIdx) const {
     if (!inner_)
         return Vec3::Zero();
-    if (mode_ == Mode::Identity)
-        return inner_->atomPosition(frame, atomIdx);
 
     // Look up or compute the transform for this frame.
     auto it = transformCache_.find(frame);
@@ -91,9 +89,9 @@ void TransformedConformation::setMode(Mode mode,
     transformCache_.clear();
     referencePositions_.clear();
 
-    // Pre-load reference positions for the fit modes so each per-frame
-    // Kabsch call doesn't re-scan the inner conformation. For
-    // FitReference we need every atom; for FitSubset just the subset.
+    // Pre-load reference positions so each per-frame Kabsch call doesn't
+    // re-scan the inner conformation. For FitReference we need every atom;
+    // for FitSubset just the subset.
     if (inner_ && protein_) {
         const std::size_t atomCount = protein_->atomCount();
         if (mode_ == Mode::FitReference) {
@@ -113,10 +111,8 @@ void TransformedConformation::setMode(Mode mode,
         }
     }
 
-    const char* modeName = "identity";
+    const char* modeName = "fit_reference";
     switch (mode_) {
-        case Mode::Identity:     modeName = "identity"; break;
-        case Mode::CenterCom:    modeName = "center_com"; break;
         case Mode::FitReference: modeName = "fit_reference"; break;
         case Mode::FitSubset:    modeName = "fit_subset"; break;
     }
@@ -151,22 +147,6 @@ TransformedConformation::computeTransform(std::size_t frame) const {
         return out;
 
     switch (mode_) {
-        case Mode::Identity:
-            return out;
-
-        case Mode::CenterCom: {
-            // T = -COM(frame); R = identity. Equal-weight COM over all atoms
-            // (mass-weighted COM would need atomic masses; equal-weight is
-            // the simplest and addresses the "protein drifts across the box"
-            // case the centroid-follow code was trying to handle).
-            Vec3 com = Vec3::Zero();
-            for (std::size_t a = 0; a < atomCount; ++a)
-                com += inner_->atomPosition(frame, a);
-            com /= static_cast<double>(atomCount);
-            out.T = -com;
-            return out;
-        }
-
         case Mode::FitReference: {
             // Kabsch over ALL atoms. The reference positions were cached
             // at setMode() time; pull the current frame's positions and

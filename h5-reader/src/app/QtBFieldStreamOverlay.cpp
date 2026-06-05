@@ -140,15 +140,15 @@ void QtBFieldStreamOverlay::Build(const model::QtProtein& protein,
         rs.tubes->SetNumberOfSides(kTubeSides);
         rs.tubes->CappingOn();
 
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputConnection(rs.tubes->GetOutputPort());
-        mapper->SetScalarModeToUsePointFieldData();
-        mapper->SelectColorArray("B-magnitude");
+        rs.mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        rs.mapper->SetInputConnection(rs.tubes->GetOutputPort());
+        rs.mapper->SetScalarModeToUsePointFieldData();
+        rs.mapper->SelectColorArray("B-magnitude");
         // Scalar range and lookup table set on first UpdateRing when
         // we know the per-frame magnitude range.
 
         rs.actor = vtkSmartPointer<vtkActor>::New();
-        rs.actor->SetMapper(mapper);
+        rs.actor->SetMapper(rs.mapper);
         rs.actor->GetProperty()->SetOpacity(0.85);
         rs.actor->GetProperty()->SetInterpolationToPhong();
         rs.actor->SetForceTranslucent(true);
@@ -244,13 +244,10 @@ void QtBFieldStreamOverlay::UpdateRing(size_t ri, int t) {
     // Update colour map range per frame so the field stays legible as
     // |B| varies (ring geometry shifts, atoms diffuse away).
     const double absMax = std::max(std::abs(magMin), std::abs(magMax));
-    if (absMax > 1e-10) {
+    if (absMax > 1e-10 && rs.mapper) {
         auto ctf = MakeDivergingCTF(0.0, absMax);
-        auto* mapper = dynamic_cast<vtkPolyDataMapper*>(rs.actor->GetMapper());
-        if (mapper) {
-            mapper->SetLookupTable(ctf);
-            mapper->SetScalarRange(0.0, absMax);
-        }
+        rs.mapper->SetLookupTable(ctf);
+        rs.mapper->SetScalarRange(0.0, absMax);
     }
 }
 
@@ -262,10 +259,8 @@ void QtBFieldStreamOverlay::setFrame(int t) {
 
     // Time the two stages independently so the log distinguishes
     // "CPU BS kernel grid eval" from "VTK pipeline (streamline
-    // integrator + tube tessellator)". The render itself happens
-    // outside this method on the GUI paint event; a separate
-    // observer on the render window captures that. See
-    // MoleculeScene::installRenderTimer().
+    // integrator + tube tessellator)". The render itself is scheduled
+    // by MoleculeScene::requestRender().
     QElapsedTimer evalT;
     evalT.start();
     for (size_t ri = 0; ri < rings_.size(); ++ri) UpdateRing(ri, t);
@@ -285,7 +280,7 @@ void QtBFieldStreamOverlay::setFrame(int t) {
     }
     const qint64 pipeMs = pipeT.elapsed();
 
-    qCInfo(cStream).noquote()
+    qCDebug(cStream).noquote()
         << "frame" << t
         << "|" << rings_.size() << "rings"
         << "| eval=" << evalMs << "ms"

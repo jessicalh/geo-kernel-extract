@@ -19,6 +19,46 @@ already earmarked for the time-series illustrator expansion.
 
 ---
 
+## Session 2026-06-04 (evening) — runtime-verified; active infelicity pass
+
+**Reader RUNTIME-VERIFIED.** Builds (`build/linux-rwdi`, target `h5reader`) and launches on the 1P9J DFT
+calcset (`…/1p9j-calibration-with-dft.LGS`): loads 846 atoms, plays, picks, ~2–3 ms renders. Corrects the
+"not runtime-verified" caveat in `UI_STATE_OVERVIEW_2026-06-04.md`.
+
+**Interactive build/launch loop (reproducible — "in case" this session drops).**
+- Build: `cmake --build /shared/2026Thesis/nmr-shielding/h5-reader/build/linux-rwdi --target h5reader -j$(nproc)`
+- Launch on the workstation display (X11, `:1`):
+  `DISPLAY=:1 LD_LIBRARY_PATH="$HOME/VTK/lib:$LD_LIBRARY_PATH" /shared/2026Thesis/nmr-shielding/h5-reader/build/linux-rwdi/h5reader /shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft/1p9j-calibration-with-dft.LGS`
+- Reader logs to stderr + UDP 9997; watch stderr for startup/crash. Do NOT run `udp_listen.py` alongside the
+  reader — Linux delivers a UDP datagram to one socket only.
+
+**Done this session.**
+- Clean startup — Inspector / Selection / Strip docks no longer open on launch (`ReaderMainWindow.cpp`:
+  `setVisible(false)` on the three + `kSettingsVersion` 1→2 so a stale "docks visible" layout is discarded;
+  window geometry still persists). Opens to a bare molecule; docks live on the toolbar toggles.
+
+**Queued — the headline (brief written, ready to fire).**
+- Radius / local-isolation view — `CODEX_BRIEF_RADIUS_VIEW_2026-06-04.md`. `displayMolecule_` +
+  `AtomFilter::WithinRadiusOf(atom, R, residue-expanded)` + source↔display index map; picking stays over
+  SOURCE positions (the one trap). 8-step path in `UI_STATE_OVERVIEW` §2.
+
+**Infelicity pass (desk-readiness — "not suck"), pending — the "miles to go".**
+- "Instrument" toolbar label → a user word (e.g. Highlight). [`ReaderMainWindow.cpp:829`]
+- No selection **Clear** action.
+- `QtFrame::eeqCharge` returns placeholder `0` → misleads if EEQ shown. [`QtFrame.cpp:342`]
+- Per-frame overlay **log spam** (Butterfly / B-field log info every visible frame).
+- Default `npy:dssp_chi` dashboard signal seeded on load (now hidden with the Strip dock, still seeded).
+  [`ReaderMainWindow.cpp:306`]
+- Reveal-driven Atom/Bond/Subset camera modes active with no matching checked toolbar action.
+- Field overlays are binary toggles (isovalue/extent setters exist, unwired) — overlaps item 1 below.
+- Cruft: `QtSelectionOverlay` dormant; `/proc/self/statm` in `MoleculeScene::setFrame` (Linux-only in app
+  code); B-field `dynamic_cast` mapper (item 7); render-drop PROBE (item 10); `main_reader.cpp:205` raw
+  `QObject::connect`.
+
+**Open question (lead):** should picking an atom auto-show the Inspector, or stay manual / open-on-demand?
+
+---
+
 ## Thesis-defense critical (the actual content of the reader)
 
 ### 0. BS / HM frame-to-frame stacking (user-observed 2026-04-17) [open]

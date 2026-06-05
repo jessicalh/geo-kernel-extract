@@ -16,7 +16,6 @@
 #include "TimeViewportController.h"
 #include "MeasurementOverlay.h"
 #include "QtRingPolygonOverlay.h"
-#include "QtSelectionOverlay.h"
 #include "SelectionDock.h"
 #include "DashboardStripDock.h"
 #include "DashboardDisplayController.h"
@@ -34,6 +33,7 @@
 #include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
 #include "../model/TrajectoryConformation.h"
+#include "../model/TrajectoryFieldAvailability.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "../model/TransformedConformation.h"
 
@@ -75,6 +75,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -88,34 +89,12 @@ Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
 // additions or any layout-invalidating change so old blobs are
 // silently discarded by QMainWindow::restoreState. Schema-evolution
 // safe per ROBUSTNESS_BACKLOG_2026-05-30.md item 7.
-constexpr int kSettingsVersion = 1;
+constexpr int kSettingsVersion = 2;   // bumped: property docks now start hidden
 constexpr int kMaxRecentFiles  = 10;
 
 // Note: locateDftJobsDir was deleted as part of the 2026-05-31 SIMPLIFY
 // pass; the DFT campaign now comes from the `.LGS` `dft.frames[]` array
 // (see CalcsetManifest + DftShieldingStore).
-
-QUuid addInitialGenericDashboardSignal(model::TrajectorySignalCatalog* catalog,
-                                       model::DashboardSignalModel* activeModel,
-                                       model::DashboardPanelModel* panelModel,
-                                       const QString& descriptorId,
-                                       const model::SignalAnchor& anchor,
-                                       const QStringList& displayModes,
-                                       bool followsFocus,
-                                       const QString& label = QString())
-{
-    if (!catalog || !activeModel)
-        return {};
-    const model::SignalDescriptor* descriptor = catalog->findDescriptor(descriptorId);
-    if (!descriptor)
-        return {};
-    const QUuid id = activeModel->addSignal(*descriptor, anchor, QString(), displayModes, followsFocus, label);
-    if (panelModel && !id.isNull()) {
-        panelModel->addDisplayRefs(panelModel->activePanelId(),
-                                   model::DisplayRefsForSignal(id, *descriptor, displayModes));
-    }
-    return id;
-}
 
 // Owns the one intentional signal/panel cleanup loop for dashboard models:
 // removing a signal removes its display refs, and removing the last display
@@ -184,22 +163,38 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // Upstream data-transform layer (feedback_viewer_two_layers_transform_and_camera).
     // Wraps the loader's Conformation so consumers (scene, picker, overlays,
     // REST /positions) read positions through a runtime-switchable rigid-body
-    // transform (identity / center_com / fit_reference / fit_subset). Default
-    // mode is Identity, so behaviour at startup is identical to today; flipping
-    // the mode via POST /transform produces stabilised display positions
-    // without re-extracting the trajectory.
+    // display transform. Startup mode is backbone fit against frame 0 so
+    // the reader opens stationary.
     transformed_ = new h5reader::model::TransformedConformation(loaded_->conformation.get(), this);
+    const auto backboneSubset =
+        h5reader::model::TransformedConformation::BackboneSubset(*loaded_->protein);
+    using TMode = h5reader::model::TransformedConformation::Mode;
+    if (backboneSubset.size() >= 3) {
+        transformed_->setMode(TMode::FitSubset, 0, backboneSubset);
+    } else {
+        qCWarning(cWindow).noquote()
+            << "backbone fit unavailable at startup; falling back to all-atom fit";
+        transformed_->setMode(TMode::FitReference, 0);
+        if (transformFitAction_) {
+            const QSignalBlocker block(transformFitAction_);
+            transformFitAction_->setChecked(true);
+        }
+    }
     ACONNECT(transformed_, &h5reader::model::TransformedConformation::transformChanged,
              this, [this]() {
+                 if (transformFitAction_ && transformed_) {
+                     const QSignalBlocker block(transformFitAction_);
+                     transformFitAction_->setChecked(
+                         transformed_->mode() == h5reader::model::TransformedConformation::Mode::FitReference);
+                 }
                  if (scene_) scene_->refreshCurrentFrame();
              });
 
     // Scene binds to the VTK widget's render window. The scene reads
     // positions through the wrapped conformation so transform mode
     // changes are visible immediately. The widget is passed in so the
-    // render scheduler (MoleculeScene::requestRender) can call
-    // vtkWidget_->update() — the only render verb in app code per
-    // spec/viewport_pipeline_2026-05-30.md §2.5.
+    // render scheduler (MoleculeScene::requestRender) can call VTK Render()
+    // and let Qt blit the fresh FBO.
     scene_ = new MoleculeScene(vtkWidget_, renderWindow_, this);
     scene_->Build(*loaded_->protein, *transformed_);
     scene_->ResetCamera();
@@ -293,6 +288,11 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     selection_ = new model::AtomSelection(loaded_->protein.get(), this);
 
     signalCatalog_ = new model::TrajectorySignalCatalog(this);
+    auto fieldAvailability = std::make_shared<model::TrajectoryFieldAvailability>(
+        model::TrajectoryFieldAvailability::Build(loaded_->conformation.get(),
+                                                  signalCatalog_->allDescriptorList()));
+    signalCatalog_->setFieldAvailability(fieldAvailability);
+    inspectorDock_->setFieldAvailability(fieldAvailability);
     dashboardSignals_ = new model::DashboardSignalModel(this);
     dashboardPanels_ = new model::DashboardPanelModel(this);
     signalDisplayDialog_ = new SignalDisplayDialog(this);
@@ -303,13 +303,6 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     signalDisplayDialog_->setSelection(selection_);
     ACONNECT(playback_, &QtPlaybackController::frameChanged,
              signalDisplayDialog_, &SignalDisplayDialog::setFrame);
-    addInitialGenericDashboardSignal(signalCatalog_, dashboardSignals_,
-                                     dashboardPanels_,
-                                     QStringLiteral("npy:dssp_chi"),
-                                     model::ResidueAnchor{},
-                                     {QStringLiteral("strip.per-class")},
-                                     true,
-                                     QStringLiteral("Generic NPY DSSP chi"));
     new DashboardSignalPanelCoordinator(dashboardSignals_, dashboardPanels_, this);
 
     ACONNECT(picker_,    &QtAtomPicker::atomPicked,
@@ -395,42 +388,51 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     inspectorDock_->raise();
     resizeDocks({inspectorDock_}, {360}, Qt::Horizontal);
 
-    // Allow the tabbed dock group to shrink to a thin tab-only reminder
-    // strip if the user drags the splitter in. By default each dock's
-    // contained widget reports a minimumSizeHint from its layout, which
-    // QDockWidget honours and prevents below. Override to (0, 0) on the
-    // dock AND its inner widget so the splitter's only constraint is the
-    // tab bar's own width.
-    for (QDockWidget* d : std::vector<QDockWidget*>{
-             inspectorDock_, selectionDock_, dashboardStripDock_}) {
-        if (!d) continue;
-        d->setMinimumSize(0, 0);
-        if (QWidget* inner = d->widget())
-            inner->setMinimumSize(0, 0);
-    }
+    // Start clean — no property docks open on launch. The user opens each via
+    // the toolbar toggles (toggleViewAction) below; picking an atom updates the
+    // Inspector's contents but does not force-show the dock. kSettingsVersion
+    // was bumped so a stale "docks visible" layout is discarded by restoreState
+    // rather than re-opening them; window geometry (restoreGeometry) persists.
+    inspectorDock_->setVisible(false);
+    selectionDock_->setVisible(false);
+    dashboardStripDock_->setVisible(false);
 
-    // Panel-toggle buttons — appended to the toolbar now that all three
-    // docks exist. QDockWidget::toggleViewAction() is the standard Qt
-    // primitive for two-way visibility binding; relabel the actions with
-    // short text (the dock's title is verbose) and add them as a group
-    // at the right end of the toolbar.
-    if (playbackToolbar_) {
-        playbackToolbar_->addSeparator();
-        const struct { QDockWidget* dock; const char* label; const char* tip; } kPanels[] = {
-            { inspectorDock_,      "Inspector",
-              "Show / hide the Atom Info panel (focus atom's per-frame state)." },
-            { selectionDock_,      "Selection",
-              "Show / hide the Selected Atoms panel (≤4 ordered atoms with slot colours)." },
-            { dashboardStripDock_, "Strip",
-              "Show / hide the time-series strip dock." },
-        };
+    // Panel recovery — one QAction per dock from QDockWidget::toggleViewAction().
+    // The same QAction instances live in View -> Panels and the toolbar menu,
+    // so checked state stays correct no matter how the user toggles a panel.
+    const struct { QDockWidget* dock; const char* label; const char* tip; } kPanels[] = {
+        { inspectorDock_,      "Inspector",
+          "Show or hide the Atom Info panel." },
+        { selectionDock_,      "Selection",
+          "Show or hide the Selected Atoms panel." },
+        { dashboardStripDock_, "Strip",
+          "Show or hide the time-series strip dock." },
+    };
+    if (panelsMenu_) {
+        panelsMenu_->clear();
         for (const auto& p : kPanels) {
             if (!p.dock) continue;
             QAction* a = p.dock->toggleViewAction();
             a->setText(QString::fromUtf8(p.label));
             a->setToolTip(QString::fromUtf8(p.tip));
-            playbackToolbar_->addAction(a);
+            ACONNECT(p.dock, &QDockWidget::visibilityChanged,
+                     this, [this, dock = QPointer<QDockWidget>(p.dock)](bool visible) {
+                         if (!visible || !dock)
+                             return;
+                         resizeDocks({dock.data()}, {360}, Qt::Horizontal);
+                         dock->raise();
+                     });
+            panelsMenu_->addAction(a);
         }
+    }
+    if (toolsToolbar_ && panelsMenu_) {
+        toolsToolbar_->addSeparator();
+        panelsButton_ = new QToolButton(toolsToolbar_);
+        panelsButton_->setText(QStringLiteral("Panels"));
+        panelsButton_->setToolTip(QStringLiteral("Show or hide panels."));
+        panelsButton_->setPopupMode(QToolButton::InstantPopup);
+        panelsButton_->setMenu(panelsMenu_);
+        toolsToolbar_->addWidget(panelsButton_);
     }
 
     ACONNECT(dashboardStripDock_, &DashboardStripDock::revealRequested,
@@ -500,7 +502,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     onFrameChanged(0);
 
     // Default size — wide enough for the playback + camera + transform +
-    // instrument + metrics + overlays + panel-toggle row to fit in one
+    // metrics + overlays + panel controls to fit in one
     // toolbar without Qt's overflow chevron. QSettings restore overrides
     // this on later launches.
     resize(1600, 900);
@@ -693,6 +695,10 @@ void ReaderMainWindow::buildUi() {
     // Empty until then; each entry launches a fresh reader on click.
     recentMenu_ = fileMenu->addMenu(QStringLiteral("&Recent"));
     recentMenu_->setObjectName(QStringLiteral("RecentMenu"));
+
+    auto* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
+    panelsMenu_ = viewMenu->addMenu(QStringLiteral("&Panels"));
+    panelsMenu_->setObjectName(QStringLiteral("PanelsMenu"));
 }
 
 void ReaderMainWindow::buildToolbar() {
@@ -731,6 +737,13 @@ void ReaderMainWindow::buildToolbar() {
     fpsSpinner_ = new QSpinBox(tb);
     fpsSpinner_->setSuffix(QStringLiteral(" /s"));
     tb->addWidget(fpsSpinner_);
+
+    addToolBarBreak();
+    tb = addToolBar(QStringLiteral("Tools"));
+    tb->setObjectName(QStringLiteral("ToolsToolbar"));
+    tb->setMovable(false);
+    toolsToolbar_ = tb;
+    tb->setFont(toolbarFont);
 
     tb->addSeparator();
 
@@ -784,53 +797,21 @@ void ReaderMainWindow::buildToolbar() {
 
     tb->addSeparator();
 
-    // Transform popup-menu button. Drives TransformedConformation::setMode
-    // directly. Radio items inside the menu via a second exclusive group;
-    // each action's data() carries the underlying Mode enum value.
-    transformMenu_ = new QMenu(QStringLiteral("Transform"), this);
-    transformGroup_ = new QActionGroup(this);
-    transformGroup_->setExclusive(true);
+    transformFitAction_ = tb->addAction(QStringLiteral("All-atom fit"));
+    transformFitAction_->setCheckable(true);
+    transformFitAction_->setChecked(false);
+    transformFitAction_->setToolTip(QStringLiteral(
+        "Toggle between backbone fit and all-atom fit for displayed positions."));
+    ACONNECT(transformFitAction_.data(), &QAction::toggled,
+             this, &ReaderMainWindow::onTransformFitToggled);
 
-    using TMode = h5reader::model::TransformedConformation::Mode;
-    const struct { TMode mode; const char* label; const char* tip; } kTransforms[] = {
-        { TMode::Identity,     "Identity",
-          "No transform applied; positions come straight from the trajectory." },
-        { TMode::CenterCom,    "Center COM",
-          "Translate every frame so the centre of mass sits at the origin." },
-        { TMode::FitReference, "Fit reference",
-          "Kabsch-fit every frame against the reference frame on all atoms." },
-        { TMode::FitSubset,    "Fit backbone",
-          "Kabsch-fit every frame against the reference frame on backbone atoms only — "
-          "removes rigid-body drift while keeping sidechain motion." },
-    };
-    for (const auto& entry : kTransforms) {
-        QAction* act = transformMenu_->addAction(QString::fromUtf8(entry.label));
-        act->setCheckable(true);
-        act->setData(static_cast<int>(entry.mode));
-        act->setToolTip(QString::fromUtf8(entry.tip));
-        transformGroup_->addAction(act);
-        if (entry.mode == TMode::Identity)
-            act->setChecked(true);   // matches TransformedConformation default
-        ACONNECT(act, &QAction::triggered, this, [this, act]() {
-            applyTransformModeFromAction(act);
-        });
-    }
-
-    transformButton_ = new QToolButton(tb);
-    transformButton_->setText(QStringLiteral("Transform"));
-    transformButton_->setToolTip(QStringLiteral(
-        "Choose a rigid-body transform applied to positions before display."));
-    transformButton_->setPopupMode(QToolButton::InstantPopup);
-    transformButton_->setMenu(transformMenu_);
-    tb->addWidget(transformButton_);
-
-    // Instrument-mode toggle — toggles MeasurementOverlay focus-only marker.
-    // Same code path as POST /selection/instrument; useful for live demos.
-    instrumentAction_ = tb->addAction(QStringLiteral("Instrument"));
+    // Harness marker preset. Kept as an action for the existing slot/REST
+    // path, hidden from the normal toolbar.
+    instrumentAction_ = tb->addAction(QStringLiteral("Harness marker"));
     instrumentAction_->setCheckable(true);
     instrumentAction_->setToolTip(QStringLiteral(
-        "Enable the marker preset on the focus atom: magenta, high opacity, "
-        "fixed radius. Used by the harness; useful for live demos."));
+        "Enable the marker preset on the focus atom."));
+    instrumentAction_->setVisible(false);
     ACONNECT(instrumentAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onInstrumentToggled);
 
@@ -992,11 +973,10 @@ void ReaderMainWindow::updateCameraModeActions() {
         case CameraMode::Kind::Free:
             setOne(freeAction_, true); break;
         case CameraMode::Kind::Atom:
+            break;
         case CameraMode::Kind::Bond:
+            break;
         case CameraMode::Kind::Subset:
-            // No dedicated toolbar action; leave the group with nothing
-            // checked. Atom/Bond/Subset arrive only via REST or reveal
-            // bindings today.
             break;
     }
 }
@@ -1057,19 +1037,26 @@ void ReaderMainWindow::onFreeCameraTriggered() {
     scene_->cameraComposer()->setMode(FreeMode(), FreePolicy(), t);
 }
 
-void ReaderMainWindow::applyTransformModeFromAction(QAction* action) {
+void ReaderMainWindow::onTransformFitToggled(bool allAtomFit) {
     ASSERT_THREAD(this);
-    if (!action || !transformed_) return;
-    bool ok = false;
-    const int raw = action->data().toInt(&ok);
-    if (!ok) return;
     using TMode = h5reader::model::TransformedConformation::Mode;
-    const TMode mode = static_cast<TMode>(raw);
-    if (mode == TMode::FitSubset) {
-        transformed_->setMode(mode, 0,
-            h5reader::model::TransformedConformation::BackboneSubset(*loaded_->protein));
+    if (!transformed_ || !loaded_ || !loaded_->protein)
+        return;
+    if (allAtomFit) {
+        transformed_->setMode(TMode::FitReference, 0);
     } else {
-        transformed_->setMode(mode);
+        auto subset = h5reader::model::TransformedConformation::BackboneSubset(*loaded_->protein);
+        if (subset.size() < 3) {
+            qCWarning(cWindow).noquote()
+                << "backbone fit requested but subset has <3 atoms; keeping all-atom fit";
+            if (transformFitAction_) {
+                const QSignalBlocker block(transformFitAction_);
+                transformFitAction_->setChecked(true);
+            }
+            transformed_->setMode(TMode::FitReference, 0);
+            return;
+        }
+        transformed_->setMode(TMode::FitSubset, 0, std::move(subset));
     }
 }
 

@@ -29,9 +29,8 @@ constexpr double kOpacity       = 0.50;
 // slot 0 here pairs with the orange swatch in the dock, etc.
 //
 // Distinct by design from kInstrumentRgb below: bright, opaque, 1.5 Å
-// markers are the harness/debug preset (POST /selection/instrument and the
-// Instrument toolbar toggle); these pastel translucent ones are normal
-// user-facing selection display.
+// markers are the harness/debug preset (POST /selection/instrument); these
+// pastel translucent ones are normal user-facing selection display.
 constexpr double kPastelSlotRgb[4][3] = {
     {0.951, 0.812, 0.500},  // slot 0 — pale peach   (orange + 50% white)
     {0.669, 0.853, 0.957},  // slot 1 — pale sky     (sky blue + 50% white)

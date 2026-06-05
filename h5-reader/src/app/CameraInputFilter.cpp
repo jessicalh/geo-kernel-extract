@@ -130,7 +130,10 @@ void CameraInputFilter::handleMouseMove(QMouseEvent* me) {
         case Gesture::None:
             break;
     }
-    if (scene_) scene_->requestRender(MoleculeScene::RenderSource::CameraInput);
+    if (scene_) {
+        scene_->syncCameraClippingRange();
+        scene_->requestRender(MoleculeScene::RenderSource::CameraInput);
+    }
 }
 
 void CameraInputFilter::handleMouseUp(QMouseEvent* /*me*/) {
@@ -147,7 +150,10 @@ void CameraInputFilter::handleWheel(QWheelEvent* we) {
     g.kind = CameraGesture::Kind::Dolly;
     g.dollyFactor = std::exp(angle * kDollyPerWheelTick);
     composer_->applyGesture(g);
-    if (scene_) scene_->requestRender(MoleculeScene::RenderSource::CameraInput);
+    if (scene_) {
+        scene_->syncCameraClippingRange();
+        scene_->requestRender(MoleculeScene::RenderSource::CameraInput);
+    }
 }
 
 }  // namespace h5reader::app

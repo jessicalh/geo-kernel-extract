@@ -20,11 +20,13 @@
 
 #include "../model/Conformation.h"
 #include "../model/QtProtein.h"
+#include "../model/TrajectoryFieldAvailability.h"
 
 #include <QDockWidget>
 #include <QPointer>
 
 #include <cstddef>
+#include <memory>
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -41,6 +43,7 @@ public:
     // setPickedAtom / setFrame.
     void setContext(const model::QtProtein* protein,
                     model::Conformation*    conformation);
+    void setFieldAvailability(std::shared_ptr<const model::TrajectoryFieldAvailability> availability);
 
 public slots:
     // The dock's two inputs: which atom and which frame. Both cause a
@@ -66,6 +69,7 @@ private:
     QPointer<QTreeWidget>         tree_;
     const model::QtProtein*       protein_      = nullptr;
     QPointer<model::Conformation> conformation_;
+    std::shared_ptr<const model::TrajectoryFieldAvailability> availability_;
     bool                         hasSelection_ = false;
     std::size_t                  atomIdx_      = 0;
     int                          frame_        = 0;

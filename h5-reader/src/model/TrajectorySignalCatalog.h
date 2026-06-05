@@ -1,10 +1,12 @@
 #pragma once
 
 #include "DashboardSignal.h"
+#include "TrajectoryFieldAvailability.h"
 
 #include <QObject>
 #include <QVector>
 
+#include <memory>
 #include <optional>
 
 namespace h5reader::model {
@@ -28,6 +30,9 @@ public:
 
     QVector<SignalDescriptor> descriptors() const { return descriptors_; }
     const QVector<SignalDescriptor>& descriptorList() const { return descriptors_; }
+    const QVector<SignalDescriptor>& allDescriptorList() const { return allDescriptors_; }
+    void setFieldAvailability(std::shared_ptr<const TrajectoryFieldAvailability> availability);
+    std::shared_ptr<const TrajectoryFieldAvailability> fieldAvailability() const { return availability_; }
     const SignalDescriptor* findDescriptor(const QString& descriptorId) const;
     std::optional<SignalDescriptor> descriptorById(const QString& descriptorId) const;
 
@@ -44,8 +49,11 @@ public:
 
 private:
     static QVector<SignalDescriptor> BuildDescriptorCatalog();
+    void rebuildVisibleDescriptors();
 
+    QVector<SignalDescriptor> allDescriptors_;
     QVector<SignalDescriptor> descriptors_;
+    std::shared_ptr<const TrajectoryFieldAvailability> availability_;
 };
 
 }  // namespace h5reader::model
