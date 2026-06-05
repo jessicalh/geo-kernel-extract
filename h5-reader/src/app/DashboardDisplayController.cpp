@@ -16,8 +16,11 @@
 #include "../model/QtProtein.h"
 #include "../model/QtBondVectorBuffers.h"
 #include "../model/QtPerAtomChannelBuffers.h"
+#include "../model/StripVisualization.h"
 #include "../model/TrajectoryConformation.h"
+#include "../model/TrajectoryFieldAvailability.h"
 #include "../model/TrajectorySignalCatalog.h"
+#include "../model/VisualizationRegistry.h"
 #include "ChordCouplingPanel.h"
 #include "FixedFreqPanel.h"
 #include "LagDecayPanel.h"
@@ -72,23 +75,6 @@ bool IsRenderableDashboardPanelMode(const QString& mode) {
 
 namespace {
 
-QString canonicalModeChannel(const QString& mode) {
-    if (mode.startsWith(QStringLiteral("strip.tensor.")))
-        return mode.mid(QStringLiteral("strip.tensor.").size());
-    if (mode == QStringLiteral("strip.vector.magnitude"))
-        return QStringLiteral("magnitude");
-    return {};
-}
-
-bool modeWantsChannel(const QString& mode, const model::ChannelDescriptor& channel) {
-    const QString channelId = canonicalModeChannel(mode);
-    if (!channelId.isEmpty())
-        return channel.id.compare(channelId, Qt::CaseInsensitive) == 0;
-    if (mode == QStringLiteral("strip.vector.component"))
-        return channel.id != QStringLiteral("magnitude");
-    return true;
-}
-
 model::SignalBinding bindingFromAnchor(const model::SignalDescriptor& descriptor,
                                        const model::SignalAnchor& anchor,
                                        bool followsFocus) {
@@ -124,6 +110,24 @@ bool bindingHasRevealTarget(const model::SignalBinding& binding) {
         return false;
     }
     return false;
+}
+
+bool isExpectedEmptyState(model::TrajectoryFieldAvailabilityState state) {
+    switch (state) {
+    case model::TrajectoryFieldAvailabilityState::Absent:
+    case model::TrajectoryFieldAvailabilityState::NoFramePayload:
+    case model::TrajectoryFieldAvailabilityState::AllMissing:
+        return true;
+    case model::TrajectoryFieldAvailabilityState::AllZeroStructural:
+    case model::TrajectoryFieldAvailabilityState::AllZeroObserved:
+    case model::TrajectoryFieldAvailabilityState::Available:
+        return false;
+    }
+    return false;
+}
+
+bool isStructuralZeroState(model::TrajectoryFieldAvailabilityState state) {
+    return state == model::TrajectoryFieldAvailabilityState::AllZeroStructural;
 }
 
 bool unitSpecPresent(const model::UnitSpec& units) {
@@ -239,37 +243,100 @@ double magnitude(const double* row, int first, int count, int cols) {
     return used > 0 ? std::sqrt(sum) : std::numeric_limits<double>::quiet_NaN();
 }
 
+model::StripComponent componentForVectorSample(const model::ChannelDescriptor& channel,
+                                               const QString& displayModeId) {
+    const std::optional<model::StripComponent> modeComponent =
+        model::StripComponentForLegacyMode(displayModeId);
+    if (modeComponent && *modeComponent != model::StripComponent::Auto)
+        return *modeComponent;
+
+    const QString id = channel.id.toLower();
+    if (id == QStringLiteral("y"))
+        return model::StripComponent::VectorY;
+    if (id == QStringLiteral("z"))
+        return model::StripComponent::VectorZ;
+    if (id == QStringLiteral("magnitude"))
+        return model::StripComponent::VectorMagnitude;
+    return model::StripComponent::VectorX;
+}
+
+model::StripComponent componentForTensorSample(const model::ChannelDescriptor& channel,
+                                               const QString& displayModeId) {
+    const std::optional<model::StripComponent> modeComponent =
+        model::StripComponentForLegacyMode(displayModeId);
+    if (modeComponent && *modeComponent != model::StripComponent::Auto)
+        return *modeComponent;
+
+    const QString id = channel.id.toLower();
+    if (id == QStringLiteral("t1"))
+        return model::StripComponent::TensorT1;
+    if (id == QStringLiteral("t2") || id == QStringLiteral("magnitude"))
+        return model::StripComponent::TensorT2;
+    if (id == QStringLiteral("component"))
+        return model::StripComponent::TensorComponent;
+    return model::StripComponent::TensorT0;
+}
+
+model::StripComponent componentForT2Sample(const model::ChannelDescriptor& channel,
+                                           const QString& displayModeId) {
+    const std::optional<model::StripComponent> modeComponent =
+        model::StripComponentForLegacyMode(displayModeId);
+    if (modeComponent && *modeComponent != model::StripComponent::Auto)
+        return *modeComponent;
+
+    const QString id = channel.id.toLower();
+    return id == QStringLiteral("component") ? model::StripComponent::TensorComponent
+                                             : model::StripComponent::TensorT2;
+}
+
 std::optional<double> sampleNpyValue(const model::NpyColumn& column,
                                      std::size_t rowIndex,
                                      const model::ChannelDescriptor& channel,
-                                     const QString& displayModeId) {
+                                     model::StripComponent component) {
     if (rowIndex >= static_cast<std::size_t>(column.rows) || column.cols <= 0)
         return std::nullopt;
 
     const double* row = column.row(rowIndex);
-    const QString id = channel.id.toLower();
 
-    if (id == QStringLiteral("x"))
+    if (component == model::StripComponent::Auto)
+        component = componentForVectorSample(channel, QString());
+
+    if (component == model::StripComponent::VectorX)
         return column.cols > 0 ? std::optional<double>(row[0]) : std::nullopt;
-    if (id == QStringLiteral("y"))
+    if (component == model::StripComponent::VectorY)
         return column.cols > 1 ? std::optional<double>(row[1]) : std::nullopt;
-    if (id == QStringLiteral("z"))
+    if (component == model::StripComponent::VectorZ)
         return column.cols > 2 ? std::optional<double>(row[2]) : std::nullopt;
-    if (id == QStringLiteral("magnitude") || displayModeId == QStringLiteral("strip.vector.magnitude"))
+    if (component == model::StripComponent::VectorMagnitude)
         return magnitude(row, 0, std::min(3, column.cols), column.cols);
-    if (id == QStringLiteral("t0") || displayModeId == QStringLiteral("strip.tensor.T0"))
+    if (component == model::StripComponent::TensorT0)
         return column.cols > 0 ? std::optional<double>(row[0]) : std::nullopt;
-    if (id == QStringLiteral("t1") || displayModeId == QStringLiteral("strip.tensor.T1"))
+    if (component == model::StripComponent::TensorT1)
         return column.cols >= 4 ? std::optional<double>(magnitude(row, 1, 3, column.cols)) : std::nullopt;
-    if (id == QStringLiteral("t2") || displayModeId == QStringLiteral("strip.tensor.T2")) {
+    if (component == model::StripComponent::TensorT2) {
         if (column.cols >= 9)
             return magnitude(row, 4, 5, column.cols);
         if (column.cols >= 5)
             return magnitude(row, 0, 5, column.cols);
         return std::nullopt;
     }
+    if (component == model::StripComponent::TensorComponent)
+        return std::optional<double>(row[0]);
 
     return std::optional<double>(row[0]);
+}
+
+std::optional<double> sampleNpyValue(const model::NpyColumn& column,
+                                     std::size_t rowIndex,
+                                     const model::ChannelDescriptor& channel,
+                                     const QString& displayModeId) {
+    const std::optional<model::StripComponent> modeComponent =
+        model::StripComponentForLegacyMode(displayModeId);
+    const model::StripComponent component =
+        modeComponent && *modeComponent != model::StripComponent::Auto
+            ? *modeComponent
+            : componentForVectorSample(channel, QString());
+    return sampleNpyValue(column, rowIndex, channel, component);
 }
 
 model::FrameSignalSample finiteSample(double value) {
@@ -291,44 +358,61 @@ double arrayMagnitude(const std::array<double, N>& values) {
 
 std::optional<double> sampleTensorValue(const model::SphericalTensor& tensor,
                                         const model::ChannelDescriptor& channel,
-                                        const QString& displayModeId) {
-    const QString id = channel.id.toLower();
-    if (id == QStringLiteral("t0") || displayModeId == QStringLiteral("strip.tensor.T0"))
+                                        model::StripComponent component) {
+    if (component == model::StripComponent::TensorT0)
         return tensor.T0;
-    if (id == QStringLiteral("t1") || displayModeId == QStringLiteral("strip.tensor.T1"))
+    if (component == model::StripComponent::TensorT1)
         return arrayMagnitude(tensor.T1);
-    if (id == QStringLiteral("t2")
-        || id == QStringLiteral("magnitude")
-        || displayModeId == QStringLiteral("strip.tensor.T2")) {
+    if (component == model::StripComponent::TensorT2
+        || component == model::StripComponent::VectorMagnitude) {
         return tensor.T2Magnitude();
     }
-    if (id == QStringLiteral("component") || displayModeId == QStringLiteral("strip.tensor.component"))
+    if (component == model::StripComponent::TensorComponent)
         return tensor.T2[0];
     return tensor.T0;
+}
+
+std::optional<double> sampleTensorValue(const model::SphericalTensor& tensor,
+                                        const model::ChannelDescriptor& channel,
+                                        const QString& displayModeId) {
+    return sampleTensorValue(tensor, channel, componentForTensorSample(channel, displayModeId));
+}
+
+std::optional<double> sampleT2Value(const std::array<double, 5>& t2,
+                                    const model::ChannelDescriptor& channel,
+                                    model::StripComponent component) {
+    Q_UNUSED(channel);
+    if (component == model::StripComponent::TensorComponent)
+        return t2[0];
+    return arrayMagnitude(t2);
 }
 
 std::optional<double> sampleT2Value(const std::array<double, 5>& t2,
                                     const model::ChannelDescriptor& channel,
                                     const QString& displayModeId) {
-    const QString id = channel.id.toLower();
-    if (id == QStringLiteral("component") || displayModeId == QStringLiteral("strip.tensor.component"))
-        return t2[0];
-    return arrayMagnitude(t2);
+    return sampleT2Value(t2, channel, componentForT2Sample(channel, displayModeId));
+}
+
+std::optional<double> sampleVecValue(const model::Vec3& value,
+                                     const model::ChannelDescriptor& channel,
+                                     model::StripComponent component) {
+    Q_UNUSED(channel);
+    if (component == model::StripComponent::VectorX
+        || component == model::StripComponent::Auto)
+        return value.x();
+    if (component == model::StripComponent::VectorY)
+        return value.y();
+    if (component == model::StripComponent::VectorZ)
+        return value.z();
+    if (component == model::StripComponent::VectorMagnitude)
+        return value.norm();
+    return value.x();
 }
 
 std::optional<double> sampleVecValue(const model::Vec3& value,
                                      const model::ChannelDescriptor& channel,
                                      const QString& displayModeId) {
-    const QString id = channel.id.toLower();
-    if (id == QStringLiteral("x"))
-        return value.x();
-    if (id == QStringLiteral("y"))
-        return value.y();
-    if (id == QStringLiteral("z"))
-        return value.z();
-    if (id == QStringLiteral("magnitude") || displayModeId == QStringLiteral("strip.vector.magnitude"))
-        return value.norm();
-    return value.x();
+    return sampleVecValue(value, channel, componentForVectorSample(channel, displayModeId));
 }
 
 std::optional<std::size_t> atomFromAnchor(const model::SignalAnchor& anchor,
@@ -1219,6 +1303,7 @@ void DashboardDisplayController::setSignalModels(model::TrajectorySignalCatalog*
         ACONNECT(activeModel_.data(), &QAbstractItemModel::modelReset,
                  this, &DashboardDisplayController::rebuild);
     }
+    collectExpectedButEmpty();
     rebuild();
 }
 
@@ -1272,6 +1357,13 @@ void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
 void DashboardDisplayController::setDftStore(model::DftShieldingStore* store) {
     ASSERT_THREAD(this);
     dftStore_ = store;
+    rebuild();
+}
+
+void DashboardDisplayController::setVisualizationContext(const model::VisualizationContext& ctx) {
+    ASSERT_THREAD(this);
+    visualizationContext_ = ctx;
+    collectExpectedButEmpty();
     rebuild();
 }
 
@@ -1349,6 +1441,7 @@ DashboardSmokeSummary DashboardDisplayController::smokeSummary() const {
 
 DashboardSmokeSummary DashboardDisplayController::smokeSummary(int firstFrame, int lastFrame) const {
     DashboardSmokeSummary summary;
+    summary.expectedButEmpty = expectedButEmpty_;
     summary.seriesCount = static_cast<int>(series_.size());
     summary.seriesSparseness.reserve(series_.size());
 
@@ -1595,15 +1688,14 @@ void DashboardDisplayController::rebuild() {
             }
 
             // Static-display path: build an AbstractStripPanel directly.
-            // Mode + descriptor.storagePath dispatch — one branch per
-            // (mode, source) pair landing in Phases C-G. We loop over
-            // ALL panel-mode entries in displayModeIds (matches the
-            // temporal-strip loop just below) so a signal carrying
-            // both static.bar.sequence and static.table emits the
-            // SequenceBarPanel regardless of which mode happens to be
-            // the binding's primary.
+            // The registry decides which legacy mode ids are panel
+            // definitions. The composite reorient coordinator remains
+            // outside this per-signal dispatch.
             for (const QString& mode : signal.displayModeIds) {
-                if (!model::DisplayModeCapabilityFor(mode).buildsPanelWidget)
+                const model::VisualizationDefinition* definition =
+                    model::VisualizationRegistry::instance().definitionForMode(mode);
+                if (!definition || definition->surface() != model::DisplaySurface::Panel
+                    || !definition->capability().buildsPanelWidget)
                     continue;
                 // Active-panel filter: same scope rule the temporal
                 // strip path uses (see seriesIsVisibleInActivePanel).
@@ -1619,57 +1711,67 @@ void DashboardDisplayController::rebuild() {
                         continue;
                 }
                 const QString& path = descriptor->storagePath;
-                if (path == QStringLiteral("/trajectory/ired_order_parameters")
-                    && mode == QStringLiteral("static.bar.sequence")) {
-                    if (auto panel = buildIRedSequenceBarPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
-                } else if (path == QStringLiteral("/trajectory/kernel_dynamics")
-                           && mode == QStringLiteral("static.spectrum.power")) {
-                    if (auto panel = buildKernelDynamicsPowerSpectrumPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
-                } else if (path == QStringLiteral("/trajectory/kernel_dynamics")
-                           && mode == QStringLiteral("static.curve.lag.animated")) {
-                    if (auto panel = buildKernelDynamicsLagDecayPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
-                } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
-                           && mode == QStringLiteral("static.bar.sequence")) {
-                    // L-4: skip if this signal is part of an
-                    // auto-composed Reorient group (the composite
-                    // panel is built post-loop below). Other modes
-                    // on the same signal still emit normally.
-                    if (!absorbedSignals.contains(signal.id)) {
-                        if (auto panel = buildReorientSequenceBarPanel(signal, *descriptor))
+                switch (definition->type()) {
+                case model::VisualizationType::SequenceBar:
+                    if (path == QStringLiteral("/trajectory/ired_order_parameters")) {
+                        if (auto panel = buildIRedSequenceBarPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")) {
+                        // L-4: skip if this signal is part of an
+                        // auto-composed Reorient group (the composite
+                        // panel is built post-loop below). Other modes
+                        // on the same signal still emit normally.
+                        if (!absorbedSignals.contains(signal.id)) {
+                            if (auto panel = buildReorientSequenceBarPanel(signal, *descriptor))
+                                nextPanels.push_back(std::move(panel));
+                        }
+                    } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")) {
+                        // Covers dihedral.phi/psi_corr_time AND
+                        // dihedral.chi_corr_time (L-2a) via conceptKey
+                        // dispatch inside the builder.
+                        if (auto panel = buildDihedralSequenceBarPanel(signal, *descriptor))
                             nextPanels.push_back(std::move(panel));
                     }
-                } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
-                           && mode == QStringLiteral("static.curve.lag.animated")) {
-                    if (auto panel = buildReorientLagDecayPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
-                } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")
-                           && mode == QStringLiteral("static.bar.sequence")) {
-                    // Covers dihedral.phi/psi_corr_time AND
-                    // dihedral.chi_corr_time (L-2a) via conceptKey
-                    // dispatch inside the builder.
-                    if (auto panel = buildDihedralSequenceBarPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
-                } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")
-                           && mode == QStringLiteral("static.curve.lag.animated")) {
-                    // Covers dihedral.phi/psi_acf AND dihedral.chi_acf
-                    // (L-2a) — the 4-channel chi variant fans into a
-                    // single multi-curve LagDecayPanel.
-                    if (auto panel = buildDihedralLagDecayPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
-                } else if (path == QStringLiteral("/trajectory/kernel_coherence")
-                           && mode == QStringLiteral("static.chord.coupling")) {
-                    if (auto panel = buildKernelCoherenceChordPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
-                } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
-                           && mode == QStringLiteral("static.fixed_freq")) {
-                    // L-3b (2026-05-29): J(ω) at 5 KTB Larmor combinations.
-                    if (auto panel = buildReorientFixedFreqPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
+                    break;
+                case model::VisualizationType::PowerSpectrum:
+                    if (path == QStringLiteral("/trajectory/kernel_dynamics")) {
+                        if (auto panel = buildKernelDynamicsPowerSpectrumPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    }
+                    break;
+                case model::VisualizationType::LagCurve:
+                    if (path == QStringLiteral("/trajectory/kernel_dynamics")) {
+                        if (auto panel = buildKernelDynamicsLagDecayPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")) {
+                        if (auto panel = buildReorientLagDecayPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")) {
+                        // Covers dihedral.phi/psi_acf AND dihedral.chi_acf
+                        // (L-2a) — the 4-channel chi variant fans into a
+                        // single multi-curve LagDecayPanel.
+                        if (auto panel = buildDihedralLagDecayPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    }
+                    break;
+                case model::VisualizationType::ChordCoupling:
+                    if (path == QStringLiteral("/trajectory/kernel_coherence")) {
+                        if (auto panel = buildKernelCoherenceChordPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    }
+                    break;
+                case model::VisualizationType::FixedFrequency:
+                    if (path == QStringLiteral("/trajectory/reorientational_dynamics")) {
+                        // L-3b (2026-05-29): J(w) at 5 KTB Larmor combinations.
+                        if (auto panel = buildReorientFixedFreqPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    }
+                    break;
+                case model::VisualizationType::TemporalStrip:
+                case model::VisualizationType::TensorGlyph:
+                case model::VisualizationType::AtomColor:
+                    break;
                 }
-                // Future per-phase branches land here.
             }
 
             // L-3a tensor-glyph trigger INTENTIONALLY OMITTED here
@@ -2333,6 +2435,64 @@ void DashboardDisplayController::refreshPanelVisibility() {
     emit stripTracksChanged();
 }
 
+void DashboardDisplayController::collectExpectedButEmpty() {
+    ASSERT_THREAD(this);
+    expectedButEmpty_.clear();
+    if (!catalog_ || !visualizationContext_.availability)
+        return;
+
+    const model::VisualizationRegistry& registry = model::VisualizationRegistry::instance();
+    for (const model::SignalDescriptor& descriptor : catalog_->allDescriptorList()) {
+        const model::TrajectoryFieldAvailabilityRecord* descriptorRecord =
+            visualizationContext_.availability->recordForDescriptor(descriptor.id);
+        if (!descriptorRecord)
+            continue;
+        const model::TrajectoryFieldAvailabilityRecord* storageRecord =
+            visualizationContext_.availability->recordForStoragePath(descriptor.storagePath);
+        const model::TrajectoryFieldAvailabilityState descriptorState = descriptorRecord->state;
+        const model::TrajectoryFieldAvailabilityState storageState =
+            storageRecord ? storageRecord->state : model::TrajectoryFieldAvailabilityState::Available;
+
+        for (const model::VisualizationDefinition* definition : registry.supporting(descriptor)) {
+            if (!definition || definition->isAvailable(visualizationContext_, descriptor))
+                continue;
+
+            const QString type = model::ToString(definition->type());
+            const QString descriptorStateText =
+                QString::fromLatin1(model::ToString(descriptorState));
+            const QString storageStateText =
+                QString::fromLatin1(model::ToString(storageState));
+
+            if (isExpectedEmptyState(descriptorState) || isExpectedEmptyState(storageState)) {
+                DashboardSmokeSummary::ExpectedButEmpty record;
+                record.descriptorId = descriptor.id;
+                record.storagePath = descriptor.storagePath;
+                record.visualizationType = type;
+                record.canonicalState = descriptorStateText;
+                record.storagePathState = storageStateText;
+                expectedButEmpty_.push_back(record);
+                qCWarning(diagnostics::cDash).noquote()
+                    << QStringLiteral(
+                           "event=viz_expected_but_empty descriptor_id=%1 storage_path=%2 visualization_type=%3 canonical_state=%4 storage_path_state=%5")
+                           .arg(record.descriptorId,
+                                record.storagePath,
+                                record.visualizationType,
+                                record.canonicalState,
+                                record.storagePathState);
+            } else if (isStructuralZeroState(descriptorState) || isStructuralZeroState(storageState)) {
+                qCWarning(diagnostics::cDash).noquote()
+                    << QStringLiteral(
+                           "event=viz_structural_zero descriptor_id=%1 storage_path=%2 visualization_type=%3 canonical_state=%4 storage_path_state=%5")
+                           .arg(descriptor.id,
+                                descriptor.storagePath,
+                                type,
+                                descriptorStateText,
+                                storageStateText);
+            }
+        }
+    }
+}
+
 void DashboardDisplayController::updateStatusText() {
     if (!catalog_ || !activeModel_) {
         statusText_ = QStringLiteral("Dashboard signal model is not connected.");
@@ -2432,7 +2592,7 @@ DashboardDisplayController::channelsForMode(const model::SignalDescriptor& descr
     }
 
     for (const model::ChannelDescriptor& channel : descriptor.channels) {
-        if (modeWantsChannel(displayModeId, channel))
+        if (model::StripModeWantsChannel(descriptor, displayModeId, channel))
             channels.push_back(channel);
     }
     if (channels.isEmpty())

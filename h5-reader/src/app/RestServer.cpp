@@ -445,6 +445,20 @@ QJsonArray selectedStateArray(const model::DashboardSignalModel* signalModel,
     return selected;
 }
 
+QJsonArray expectedEmptyArray(const DashboardSmokeSummary& summary) {
+    QJsonArray out;
+    for (const DashboardSmokeSummary::ExpectedButEmpty& record : summary.expectedButEmpty) {
+        out.append(QJsonObject{
+            {"descriptor_id", record.descriptorId},
+            {"storage_path", record.storagePath},
+            {"visualization_type", record.visualizationType},
+            {"canonical_state", record.canonicalState},
+            {"storage_path_state", record.storagePathState},
+        });
+    }
+    return out;
+}
+
 // Capture the current VTK render window into a PNG byte buffer.
 //
 // forceRender (default true, back-compat with prior calls):
@@ -1457,6 +1471,9 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("reader main window not wired"), SC::ServiceUnavailable);
 
         const QJsonArray selected = selectedStateArray(signalModel_.data(), catalog_);
+        const DashboardSmokeSummary smoke =
+            dashboardController_ ? dashboardController_->smokeSummary()
+                                 : DashboardSmokeSummary{};
         return jsonResponse(QJsonObject{
             {"selected", selected},
             {"selected_count", signalModel_->selectedCount()},
@@ -1468,6 +1485,7 @@ void RestServer::registerRoutes() {
             {"render", QJsonObject{
                 {"owned_panel_count", readerWindow_->dashboardOwnedPanelCount()},
                 {"strip_track_count", readerWindow_->dashboardStripTrackCount()},
+                {"expected_empty", expectedEmptyArray(smoke)},
             }},
         });
     });

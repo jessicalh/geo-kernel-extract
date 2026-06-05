@@ -1,5 +1,62 @@
 # Basic-screen state + plan — 2026-06-05
 
+## CURRENT STATE — 2026-06-05 (latest; supersedes conflicting earlier sections)
+
+**Stabilisation: DONE + COMMITTED `33c2f50`** (rediscover work in `c0cce8c`). The duck-walk is
+fixed and shipped — iterative converged-mean reference + centroid-pinned smoothing, default
+window 0. Verified: backbone centroid constant to ~1e-13 across frame/window; opus review SHIP.
+**Floor for new work is now `33c2f50`**, not `141e7b6`. The "Temporal stabilisation — THE key
+refinement" section below describes the OLD windowed approach that WAS the duck-walk bug —
+superseded. Lead to mouse-confirm on `:1` (restart to pick up the new binary).
+
+**Now: the visualisation rebuild (desk-ready).** Decisions (lead, 2026-06-05):
+- **Must-haves = Strips (have) + Atom Colour + Tensor glyph.** Sequence-bar / vector-glyph deferred.
+- **Typed `VisualizationDefinition` registry is the offerability gate** — nothing offered without a
+  registered renderer; hollow modes become structurally impossible. (Lead chose this over a narrow
+  string cleanup.)
+- **Empty ≠ cut.** A registered-but-empty field is a LOUD reality-check log (locate-before-absent),
+  not a silent drop — distinct from no-renderer (a structural cut).
+- **Tensor glyph styles (3):** ovaloid / T2 spherical surface PRIMARY (= the NMR ovaloid = e3nn
+  `l=2` signal, reuses our `T2[5]`, medium VTK cost), superquadric for dense overview, ellipsoid as
+  debug/reference only. LATER = animated ovaloid; PARKED = hyperstreamline.
+- **Naming/dictionary = multi-agent pipeline** — DONE (see **Dictionary** block below).
+
+**Staged build** (each: plan → lead vet → codex → opus review → lead mouse-confirm on `:1`):
+- **Stage 1 — the registry: BUILT + opus SHIP, UNCOMMITTED.** Revised plan
+  (`STAGE1_REGISTRY_PLAN_REVISED_2026-06-05.md`, post-critique, build-ready) → codex implemented →
+  `cmake`+`ctest` green (2/2) → opus review **SHIP** (no CRITICAL/MAJOR; capability table golden-pinned
+  byte-identical; strips render; hollow modes un-offerable; startup can't brick). Runs clean on `:99`.
+  **Uncommitted — lead owns git.** Before/with the commit: the 2 opus test-asks
+  (`visibleOfferable`/`trackedButHidden`/`collectExpectedButEmpty` coverage) + the empty-check refinements.
+- **Stage 2 — Atom Colour** (spatial scalar must-have) **+ empty-check refinements** (false-positive
+  fixes, 2026-06-05): make the reality-check (a) RUN-MODE aware — don't flag mutant-only fields on a
+  trajectory; (b) SIDECAR aware — consult `dft.frames[]` for `orca_dft`, not just the H5 availability table.
+- **Stage 3 — Tensor view** (ovaloid primary; superquadric + ellipsoid registered styles).
+
+**Dictionary: DONE.** Author (`DATA_DICTIONARY_v2`, 204 metrics, 74/84 `[VERIFY]` resolved) → opus vet
+(`DATA_DICTIONARY_VET`, ~93% clean, 15 flagged + fixes) → producer-source+web resolution
+(`DATA_DICTIONARY_RESOLVED`, 18/19; lone gap `atom_displacement` — no producer emitter found anywhere).
+Feeds the metric-selection UI (name+explanation forward, infra hidden) — a later stage.
+
+**DFT → reader bridge: SCOPED + FIXED (2026-06-05).** Headline (`DFT_LGS_REGISTRATION_SCOPE`):
+**read-only reader wiring, no extraction** — the reader parses the completed ORCA campaign into
+`DftShieldingStore` on load; `orca_dft` is a frame-local sidecar. **One registration —
+`manifest.dft.frames[]` — already serves BOTH rediscovery (`RunData.cpp`) and the reader
+(`DftShieldingLoader`)** (the lead's both-consumers constraint, already met). Two operational gaps
+fixed: (A) stale dense LGS re-registered **660→751 DFT frames `[0..1500]`** via `tools/lgs_write.py
+--force --dft-jobs-dir …/1p9j-orcas/jobs` (idempotent, dry-run-gated); (B) lean LGS stashed →
+`…with-dft.LGS.back` so exactly one `.LGS` per dir. Fetcher restarted; campaign 100% (751/751).
+**Data model (lead):** `npy:orca_*` / `npy:{wt,mut,delta}_shielding` are MUTANT-eval-only → honestly
+absent on a trajectory; `orca_dft:*` H5 = the trajectory DFT (now registered). The empty-check still
+false-flags `orca_dft` until the Stage-2 sidecar fix.
+
+**Doc map (2026-06-05):** `DISPLAY_MODE_INVENTORY`, `VISUALISATION_AUDIT_AND_MUSTHAVES`,
+`STABILISATION_PRIORART`, `T2_VISUALISATION_PRIORART`, `DICTIONARY_NAMING_PIPELINE`,
+`DATA_DICTIONARY_{DRAFT,v2,VET,RESOLVED}`, `STAGE1_REGISTRY_PLAN{,_REVISED,_CRITIQUE}`,
+`DFT_LGS_REGISTRATION_SCOPE`. Every codex fire prepends `CODEX_PREAMBLE_QT_VTK.md`.
+
+---
+
 ## Where we are
 - The reader's selected-metrics coherence + the "strips show one dot" bug are DONE and committed (`141e7b6`):
   single-source-of-truth selection controller, availability/renderability model roles, one capability table,
@@ -30,6 +87,10 @@ Nothing else. No residue-only screen, no multi-select camera-lock modes, no half
   toggle. The basic screen must make this obvious.
 
 ## Temporal stabilisation — THE key refinement (lead decision, 2026-06-05)
+> **[SUPERSEDED]** This windowed-smoothing-of-frame-0 approach WAS the duck-walk bug. The shipped
+> fix (`33c2f50`) is the iterative converged-mean reference + centroid-pinned smoothing — see
+> CURRENT STATE up top and "BUILT + VERIFIED" below. Kept here as the record of how we got there.
+
 The "Kabsch gyroscope" is NOT fixed by changing the fit target. Keep BOTH modes and add **temporal
 stabilisation** of the alignment — the lead's instinct, and it's the right one:
 - The alignment transform (the R/T mapping each frame onto the reference) is computed **per-frame,
@@ -164,7 +225,7 @@ reference snapshot.
 temporally smooths). Findings fold into the build brief before firing the build codex on `TransformedConformation`.
 **`:99` reader live:** `build/linux-rwdi/h5reader`, REST port **36669** (software GL on Xvfb `:99`). Stay off `:1`.
 
-## BUILT + VERIFIED (2026-06-05) — stabilisation fix landed (UNCOMMITTED)
+## BUILT + VERIFIED (2026-06-05) — stabilisation fix landed (COMMITTED `33c2f50`)
 Codex `blql3k3uu` rewrote `TransformedConformation.{h,cpp}` per `notes/CODEX_BRIEF_STABILISATION_BUILD_2026-06-05.md`
 (grounded in `notes/STABILISATION_PRIORART_2026-06-05.md`): iterative converged-mean reference
 (MDAnalysis `iterative_average`: max_iter=20, eps=1e-4 Å), centroid-pinned smoothing (smooth R only,
@@ -190,5 +251,7 @@ the pre-commit cleanup.
   (vs OLD `/tmp/ducks/w16_f750.png`, clipped off the right edge).
 
 **To mouse-confirm:** the lead restarts her `:1` reader to pick up `build/linux-rwdi/h5reader` (the new binary).
-The default opens as backbone fit, window 0. UNCOMMITTED — the lead owns git.
+The default opens as backbone fit, window 0. COMMITTED `33c2f50` (the observability cleanup — non-convergence
+warning, timing log, stale-comment fix — was folded in before the commit). Mouse-confirm still pending.
 - 2026-06-05: landed TransformedConformation iterative-mean fit reference plus centroid-pinned smoothing; default stabilisation window is now 0. Convergence params: max_iter=20, eps=1e-4 A, seeded/anchored by `reference_frame` (default 0). REST shape unchanged (`POST /transform/smoothing {"window": int}` kept as optional rotation-only smoothing); UI unchanged.
+- 2026-06-05: Stage 1 visualization registry landed per `notes/STAGE1_REGISTRY_PLAN_REVISED_2026-06-05.md`: typed immutable registry foundation, strips migrated through typed component policy while preserving legacy `displayModeId` strip-history keys, hollow modes peeled so they are structurally un-offerable, tracked-hidden `static.tensor`/`static.spectrum.power` retained, and expected-but-empty runtime logging exposed in `smokeSummary`/REST. Completed plan steps 1-7. Lead-preference choices taken: per-type definition files; new sources added per target. Deviations: added the inert `TensorGlyphVisualization` slot only for tracked-hidden `static.tensor`; fixed an existing model-test diagnostics source-list link gap so touched test targets build.

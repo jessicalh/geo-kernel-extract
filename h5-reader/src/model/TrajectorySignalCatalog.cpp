@@ -87,16 +87,12 @@ QStringList tensorStripModes() {
         QStringLiteral("strip.tensor.T1"),
         QStringLiteral("strip.tensor.T2"),
         QStringLiteral("strip.tensor.component"),
-        QStringLiteral("strip.spectrum"),
     };
 }
 
 QStringList tensorStaticModes() {
     return {
         QStringLiteral("static.tensor"),
-        QStringLiteral("static.scalar"),
-        QStringLiteral("static.table"),
-        QStringLiteral("static.atomColor"),
     };
 }
 
@@ -104,48 +100,34 @@ QStringList efgStripModes() {
     return {
         QStringLiteral("strip.tensor.T2"),
         QStringLiteral("strip.tensor.component"),
-        QStringLiteral("strip.spectrum"),
     };
 }
 
 QStringList efgStaticModes() {
     return {
-        QStringLiteral("static.efg"),
         QStringLiteral("static.tensor"),
-        QStringLiteral("static.table"),
-        QStringLiteral("static.atomColor"),
     };
 }
 
 QStringList scalarStripModes() {
     return {
         QStringLiteral("strip.scalar"),
-        QStringLiteral("strip.spectrum"),
     };
 }
 
 QStringList scalarStaticModes() {
-    return {
-        QStringLiteral("static.scalar"),
-        QStringLiteral("static.table"),
-        QStringLiteral("static.atomColor"),
-    };
+    return {};
 }
 
 QStringList vectorStripModes() {
     return {
         QStringLiteral("strip.vector.component"),
         QStringLiteral("strip.vector.magnitude"),
-        QStringLiteral("strip.spectrum"),
     };
 }
 
 QStringList vectorStaticModes() {
-    return {
-        QStringLiteral("static.vector"),
-        QStringLiteral("static.vectorGlyph"),
-        QStringLiteral("static.table"),
-    };
+    return {};
 }
 
 QStringList categoryStripModes() {
@@ -156,26 +138,18 @@ QStringList categoryStripModes() {
 }
 
 QStringList categoryStaticModes() {
-    return {
-        QStringLiteral("static.category"),
-        QStringLiteral("static.table"),
-    };
+    return {};
 }
 
 QStringList perClassStripModes() {
     return {
         QStringLiteral("strip.per-class"),
         QStringLiteral("strip.scalar"),
-        QStringLiteral("strip.spectrum"),
     };
 }
 
 QStringList perClassStaticModes() {
-    return {
-        QStringLiteral("static.per-class"),
-        QStringLiteral("static.table"),
-        QStringLiteral("static.atomColor"),
-    };
+    return {};
 }
 
 QStringList rollupStripModes() {
@@ -185,10 +159,7 @@ QStringList rollupStripModes() {
 }
 
 QStringList rollupStaticModes() {
-    return {
-        QStringLiteral("static.rollup"),
-        QStringLiteral("static.table"),
-    };
+    return {};
 }
 
 QStringList eventStripModes() {
@@ -199,10 +170,7 @@ QStringList eventStripModes() {
 }
 
 QStringList eventStaticModes() {
-    return {
-        QStringLiteral("static.event"),
-        QStringLiteral("static.table"),
-    };
+    return {};
 }
 
 bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& storagePath)
@@ -385,13 +353,13 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        "Atom positions",
                        SourceResidency::StartupLoaded,
                        SignalAxis::Atom,
-                       SignalAxis::Atom,
-                       SignalValueShape::Vector3,
-                       length,
-                       vectorStripModes(),
-                       {QStringLiteral("static.geometry"), QStringLiteral("static.topology"), QStringLiteral("static.table")},
-                       vectorChannels(length),
-                       "/trajectory/positions"));
+	                       SignalAxis::Atom,
+	                       SignalValueShape::Vector3,
+	                       length,
+	                       vectorStripModes(),
+	                       {},
+	                       vectorChannels(length),
+	                       "/trajectory/positions"));
 
     const struct TensorGroup {
         const char* id;
@@ -441,32 +409,32 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
 
     add(descriptors, makeDescriptor("h5:sasa_time_series", "atom_sasa", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "sasa", "SASA time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, unit(UnitDimension::Length, "A^2", "A^2"), scalarStripModes(), scalarStaticModes(), scalarChannels(unit(UnitDimension::Length, "A^2", "A^2")), "/trajectory/sasa_time_series", true));
     add(descriptors, makeDescriptor("h5:aimnet2_charge_time_series", "aimnet2_charges", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "aimnet2", "AIMNet2 charge time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge), "/trajectory/aimnet2_charge_time_series", true));
-    add(descriptors, makeDescriptor("h5:larsen_hbond_count_time_series", "larsen_hbond_count", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "larsen_hbond", "Larsen H-bond count time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, {QStringLiteral("static.scalar"), QStringLiteral("static.atomColor"), QStringLiteral("static.table")}, countChannels(), "/trajectory/larsen_hbond_count_time_series", true));
+    add(descriptors, makeDescriptor("h5:larsen_hbond_count_time_series", "larsen_hbond_count", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "larsen_hbond", "Larsen H-bond count time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, {}, countChannels(), "/trajectory/larsen_hbond_count_time_series", true));
     add(descriptors, makeDescriptor("h5:larsen_hbond_water_term_time_series", "larsen_hbond_water_term", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "larsen_hbond", "Larsen H-bond water term time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, shielding, scalarStripModes(), scalarStaticModes(), scalarChannels(shielding), "/trajectory/larsen_hbond_water_term_time_series", true));
     add(descriptors, makeDescriptor("h5:bonded_energy_time_series", "bonded_energy", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "bonded", "Bonded energy time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, energy, scalarStripModes(), scalarStaticModes(), scalarChannels(energy), "/trajectory/bonded_energy_time_series", true));
-    add(descriptors, makeDescriptor("h5:mopac_vs_ff14sb_reconciliation", "mopac_vs_ff14sb_reconciliation", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "mopac_core", "MOPAC vs FF14SB reconciliation", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, energy, scalarStripModes(), {QStringLiteral("static.scalar"), QStringLiteral("static.table")}, scalarChannels(energy), "/trajectory/mopac_vs_ff14sb_reconciliation", true));
+    add(descriptors, makeDescriptor("h5:mopac_vs_ff14sb_reconciliation", "mopac_vs_ff14sb_reconciliation", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "mopac_core", "MOPAC vs FF14SB reconciliation", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, energy, scalarStripModes(), {}, scalarChannels(energy), "/trajectory/mopac_vs_ff14sb_reconciliation", true));
 
     add(descriptors, makeDescriptor("h5:water_field_efield_time_series", "water_efield", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "water_field", "Water electric field time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield), "/trajectory/water_field_time_series", true));
     add(descriptors, makeDescriptor("h5:water_field_efg_time_series", "water_efg", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "water_field", "Water EFG time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg), "/trajectory/water_field_time_series", true));
-    add(descriptors, makeDescriptor("h5:water_shell_count_time_series", "water_shell_counts", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "water_field", "Water shell counts", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, {QStringLiteral("static.scalar"), QStringLiteral("static.atomColor"), QStringLiteral("static.table")}, countChannels(), "/trajectory/water_field_time_series", true));
+    add(descriptors, makeDescriptor("h5:water_shell_count_time_series", "water_shell_counts", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "water_field", "Water shell counts", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, {}, countChannels(), "/trajectory/water_field_time_series", true));
     add(descriptors, makeDescriptor("h5:hydration_shell_time_series", "hydration_shell", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "hydration", "Hydration shell time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {}, "/trajectory/hydration_shell_time_series", true));
     add(descriptors, makeDescriptor("h5:hydration_geometry_time_series", "hydration_geometry", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "hydration", "Hydration geometry time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {}, "/trajectory/hydration_geometry_time_series", true));
     add(descriptors, makeDescriptor("h5:apbs_efield_time_series", "apbs_E", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "apbs", "APBS electric field time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield), "/trajectory/apbs_efield_time_series", true));
     add(descriptors, makeDescriptor("h5:apbs_efg_time_series", "apbs_efg", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "apbs", "APBS EFG time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg), "/trajectory/apbs_efg_time_series", true));
-    add(descriptors, makeDescriptor("h5:aimnet2_embedding_time_series", "aimnet2_embedding", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "aimnet2", "AIMNet2 embedding time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Embedding, none, {QStringLiteral("strip.embedding.component")}, {QStringLiteral("static.embedding"), QStringLiteral("static.table")}, {}, "/trajectory/aimnet2_embedding_time_series", true));
+    add(descriptors, makeDescriptor("h5:aimnet2_embedding_time_series", "aimnet2_embedding", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "aimnet2", "AIMNet2 embedding time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Embedding, none, {QStringLiteral("strip.embedding.component")}, {}, {}, "/trajectory/aimnet2_embedding_time_series", true));
     add(descriptors, makeDescriptor("h5:aimnet2_charge_response_gradient_time_series", "aimnet2_charge_response_gradient", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "aimnet2", "AIMNet2 charge-response gradient", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, charge, vectorStripModes(), vectorStaticModes(), vectorChannels(charge), "/trajectory/aimnet2_charge_response_gradient_time_series", true));
     add(descriptors, makeDescriptor("h5:tripeptide_bb_residual_vec_time_series", "tripeptide_bb_residual_vec", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide backbone residual vector", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding), "/trajectory/tripeptide_bb_residual_vec_time_series", true));
     add(descriptors, makeDescriptor("h5:tripeptide_neighbor_residual_vec_prev_time_series", "tripeptide_neighbor_residual_vec_prev", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide previous-neighbor residual vector", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding), "/trajectory/tripeptide_neighbor_residual_vec_prev_time_series", true));
     add(descriptors, makeDescriptor("h5:tripeptide_neighbor_residual_vec_next_time_series", "tripeptide_neighbor_residual_vec_next", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide next-neighbor residual vector", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding), "/trajectory/tripeptide_neighbor_residual_vec_next_time_series", true));
     add(descriptors, makeDescriptor("h5:tripeptide_bb_method_tag_time_series", "tripeptide_bb_method_tag", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide method tag", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), categoryStaticModes(), {channel("method", "Method", SignalValueShape::Category, tag)}, "/trajectory/tripeptide_bb_method_tag_time_series", true));
 
-    add(descriptors, makeDescriptor("h5:dihedral_time_series", "residue_dihedral", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Residue dihedral time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {channel("phi", "Phi", SignalValueShape::Scalar, angle), channel("psi", "Psi", SignalValueShape::Scalar, angle), channel("omega", "Omega", SignalValueShape::Scalar, angle), channel("chi", "Chi", SignalValueShape::Scalar, angle)}, "/trajectory/dihedral_time_series", true));
-    add(descriptors, makeDescriptor("h5:dssp8_time_series", "dssp_ss8", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "dssp", "DSSP8 residue state time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.category"), QStringLiteral("static.table")}, {channel("ss8", "SS8", SignalValueShape::Category, tag)}, "/trajectory/dssp8_time_series", true));
-    add(descriptors, makeDescriptor("h5:j_coupling_time_series", "j_coupling", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "j_coupling", "J-coupling time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::PerClassBlock, unit(UnitDimension::Frequency, "Hz", "Hz"), perClassStripModes(), {QStringLiteral("static.per-class"), QStringLiteral("static.table")}, {}, "/trajectory/j_coupling_time_series", true));
-    add(descriptors, makeDescriptor("h5:ring_pucker_time_series", "ring_pucker", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Ring pucker time series", SourceResidency::StartupLoaded, SignalAxis::Ring, SignalAxis::Ring, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {}, "/trajectory/ring_pucker_time_series", true));
-    add(descriptors, makeDescriptor("h5:ring_neighbourhood_trajectory_stats", "ring_neighbourhood", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "ring_current", "Ring neighbourhood trajectory stats", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::PerClassBlock, length, perClassStripModes(), {QStringLiteral("static.per-class"), QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {channel("distance", "Distance", SignalValueShape::Scalar, length), channel("rho", "Rho", SignalValueShape::Scalar, length), channel("z", "Z", SignalValueShape::Scalar, length), channel("in_plane_angle", "In-plane angle", SignalValueShape::Scalar, angle)}, "/trajectory/ring_neighbourhood_trajectory_stats", true));
-    add(descriptors, makeDescriptor("h5:gromacs_energy_time_series", "gromacs_energy", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "gromacs", "Gromacs energy/runtime time series", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class"), QStringLiteral("strip.tensor.component")}, {QStringLiteral("static.system"), QStringLiteral("static.table")}, {channel("energy", "Energy", SignalValueShape::Scalar, energy), channel("temperature", "Temperature", SignalValueShape::Scalar, unit(UnitDimension::Temperature, "K", "K")), channel("pressure", "Pressure", SignalValueShape::Scalar, unit(UnitDimension::Pressure, "bar", "bar")), channel("volume", "Volume", SignalValueShape::Scalar, unit(UnitDimension::Volume, "nm^3", "nm^3"))}, "/trajectory/gromacs_energy_time_series", true));
-    add(descriptors, makeDescriptor("h5:rmsd_tracking", "rmsd_tracking", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "rmsd", "RMSD tracking", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::Scalar, length, {QStringLiteral("strip.system"), QStringLiteral("strip.scalar"), QStringLiteral("strip.event")}, {QStringLiteral("static.system"), QStringLiteral("static.table")}, scalarChannels(length), "/trajectory/rmsd_tracking", true));
+    add(descriptors, makeDescriptor("h5:dihedral_time_series", "residue_dihedral", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Residue dihedral time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {}, {channel("phi", "Phi", SignalValueShape::Scalar, angle), channel("psi", "Psi", SignalValueShape::Scalar, angle), channel("omega", "Omega", SignalValueShape::Scalar, angle), channel("chi", "Chi", SignalValueShape::Scalar, angle)}, "/trajectory/dihedral_time_series", true));
+    add(descriptors, makeDescriptor("h5:dssp8_time_series", "dssp_ss8", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "dssp", "DSSP8 residue state time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("ss8", "SS8", SignalValueShape::Category, tag)}, "/trajectory/dssp8_time_series", true));
+    add(descriptors, makeDescriptor("h5:j_coupling_time_series", "j_coupling", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "j_coupling", "J-coupling time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::PerClassBlock, unit(UnitDimension::Frequency, "Hz", "Hz"), perClassStripModes(), {}, {}, "/trajectory/j_coupling_time_series", true));
+    add(descriptors, makeDescriptor("h5:ring_pucker_time_series", "ring_pucker", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Ring pucker time series", SourceResidency::StartupLoaded, SignalAxis::Ring, SignalAxis::Ring, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {}, {}, "/trajectory/ring_pucker_time_series", true));
+    add(descriptors, makeDescriptor("h5:ring_neighbourhood_trajectory_stats", "ring_neighbourhood", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "ring_current", "Ring neighbourhood trajectory stats", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::PerClassBlock, length, perClassStripModes(), {}, {channel("distance", "Distance", SignalValueShape::Scalar, length), channel("rho", "Rho", SignalValueShape::Scalar, length), channel("z", "Z", SignalValueShape::Scalar, length), channel("in_plane_angle", "In-plane angle", SignalValueShape::Scalar, angle)}, "/trajectory/ring_neighbourhood_trajectory_stats", true));
+    add(descriptors, makeDescriptor("h5:gromacs_energy_time_series", "gromacs_energy", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "gromacs", "Gromacs energy/runtime time series", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class"), QStringLiteral("strip.tensor.component")}, {}, {channel("energy", "Energy", SignalValueShape::Scalar, energy), channel("temperature", "Temperature", SignalValueShape::Scalar, unit(UnitDimension::Temperature, "K", "K")), channel("pressure", "Pressure", SignalValueShape::Scalar, unit(UnitDimension::Pressure, "bar", "bar")), channel("volume", "Volume", SignalValueShape::Scalar, unit(UnitDimension::Volume, "nm^3", "nm^3"))}, "/trajectory/gromacs_energy_time_series", true));
+    add(descriptors, makeDescriptor("h5:rmsd_tracking", "rmsd_tracking", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "rmsd", "RMSD tracking", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::Scalar, length, {QStringLiteral("strip.system"), QStringLiteral("strip.scalar"), QStringLiteral("strip.event")}, {}, scalarChannels(length), "/trajectory/rmsd_tracking", true));
 
     const struct RollupGroup {
         const char* id;
@@ -621,11 +589,10 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        SignalAxis::Atom,
                        SignalAxis::Atom,
                        SignalValueShape::Matrix,
-                       none,
-                       {},
-                       {QStringLiteral("static.chord.coupling"),
-                        QStringLiteral("static.table")},
-                       kernelChannels,
+	                       none,
+	                       {},
+	                       {QStringLiteral("static.chord.coupling")},
+	                       kernelChannels,
                        "/trajectory/kernel_coherence",
                        true,
                        false,
@@ -645,11 +612,10 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                            SignalAxis::Residue,
                            SignalAxis::Residue,
                            SignalValueShape::Scalar,
-                           unit(UnitDimension::Time, "ps", "ps"),
-                           {},
-                           {QStringLiteral("static.bar.sequence"),
-                            QStringLiteral("static.table")},
-                           scalarChannels(unit(UnitDimension::Time, "ps", "ps")),
+	                           unit(UnitDimension::Time, "ps", "ps"),
+	                           {},
+	                           {QStringLiteral("static.bar.sequence")},
+	                           scalarChannels(unit(UnitDimension::Time, "ps", "ps")),
                            "/trajectory/dihedral_autocorrelation",
                            true,
                            false,
@@ -709,12 +675,11 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        SourceResidency::StartupLoaded,
                        SignalAxis::Residue,
                        SignalAxis::Residue,
-                       SignalValueShape::PerClassBlock,
-                       unit(UnitDimension::Time, "ps", "ps"),
-                       {},
-                       {QStringLiteral("static.bar.sequence"),
-                        QStringLiteral("static.table")},
-                       chiChannels,
+	                       SignalValueShape::PerClassBlock,
+	                       unit(UnitDimension::Time, "ps", "ps"),
+	                       {},
+	                       {QStringLiteral("static.bar.sequence")},
+	                       chiChannels,
                        "/trajectory/dihedral_autocorrelation",
                        true,
                        false,
@@ -765,12 +730,11 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                            SourceResidency::StartupLoaded,
                            SignalAxis::BondVector,
                            SignalAxis::BondVector,
-                           SignalValueShape::Scalar,
-                           units,
-                           {},
-                           {QStringLiteral("static.bar.sequence"),
-                            QStringLiteral("static.table")},
-                           scalarChannels(units),
+	                           SignalValueShape::Scalar,
+	                           units,
+	                           {},
+	                           {QStringLiteral("static.bar.sequence")},
+	                           scalarChannels(units),
                            "/trajectory/reorientational_dynamics",
                            true,
                            false,
@@ -813,10 +777,8 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                      "Reorientational TCF (lab frame)");
 
     // L-3a (2026-05-29): per-vector Mat3 orientation tensor. The Mat3
-    // payload feeds an ellipsoid glyph in the 3-D scene via
-    // SceneRevealOverlay::revealTensor. static.table is kept as a
-    // fallback so the user can inspect the raw 9 components even when
-    // the glyph is disabled.
+    // payload feeds the tracked-hidden static.tensor mode; the 3-D glyph
+    // trigger remains deferred per the planning conversation.
     add(descriptors,
         makeDescriptor("h5:reorient_orientation_tensor",
                        "reorient.orientation_tensor",
@@ -827,12 +789,11 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        SourceResidency::StartupLoaded,
                        SignalAxis::BondVector,
                        SignalAxis::BondVector,
-                       SignalValueShape::Mat3PerRow,
-                       none,
-                       {},
-                       {QStringLiteral("static.tensor"),
-                        QStringLiteral("static.table")},
-                       scalarChannels(none),
+	                       SignalValueShape::Mat3PerRow,
+	                       none,
+	                       {},
+	                       {QStringLiteral("static.tensor")},
+	                       scalarChannels(none),
                        "/trajectory/reorientational_dynamics",
                        true,
                        false,
@@ -853,12 +814,11 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        SourceResidency::StartupLoaded,
                        SignalAxis::BondVector,
                        SignalAxis::BondVector,
-                       SignalValueShape::FixedFreqBlock,
-                       unit(UnitDimension::Time, "s", "s"),
-                       {},
-                       {QStringLiteral("static.fixed_freq"),
-                        QStringLiteral("static.table")},
-                       scalarChannels(unit(UnitDimension::Time, "s", "s")),
+	                       SignalValueShape::FixedFreqBlock,
+	                       unit(UnitDimension::Time, "s", "s"),
+	                       {},
+	                       {QStringLiteral("static.fixed_freq")},
+	                       scalarChannels(unit(UnitDimension::Time, "s", "s")),
                        "/trajectory/reorientational_dynamics",
                        true,
                        false,
@@ -881,12 +841,11 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        SourceResidency::StartupLoaded,
                        SignalAxis::BondVector,
                        SignalAxis::BondVector,
-                       SignalValueShape::Scalar,
-                       none,
-                       {},                                    // not a temporal strip
-                       {QStringLiteral("static.bar.sequence"),
-                        QStringLiteral("static.table")},
-                       scalarChannels(none),
+	                       SignalValueShape::Scalar,
+	                       none,
+	                       {},                                    // not a temporal strip
+	                       {QStringLiteral("static.bar.sequence")},
+	                       scalarChannels(none),
                        "/trajectory/ired_order_parameters",
                        true,
                        false,
@@ -941,13 +900,13 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
         add(descriptors, descriptor);
     };
 
-    npy("pos", "positions", "identity", "Snapshot positions", SignalAxis::Atom, SignalValueShape::Vector3, length, vectorStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.table")}, vectorChannels(length));
-    npy("element", "element", "identity", "Element identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.category"), QStringLiteral("static.table")}, {channel("element", "Element", SignalValueShape::Category, tag)});
-    npy("residue_index", "residue_index", "identity", "Residue index identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.category"), QStringLiteral("static.table")}, {channel("residue_index", "Residue index", SignalValueShape::Category, tag)});
-    npy("residue_type", "residue_type", "identity", "Residue type identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.category"), QStringLiteral("static.table")}, {channel("residue_type", "Residue type", SignalValueShape::Category, tag)});
-    npy("atoms_category_info", "atoms_category_info", "identity", "Atom category info", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.category"), QStringLiteral("static.table")}, {});
-    npy("ring_contributions", "ring_contributions", "identity", "Ring contributions", SignalAxis::RingContributionPair, SignalValueShape::TensorComponents, ringShielding, tensorStripModes(), {QStringLiteral("static.tensor"), QStringLiteral("static.per-class"), QStringLiteral("static.table")}, {});
-    npy("ring_geometry", "ring_geometry", "identity", "Ring geometry", SignalAxis::AromaticRing, SignalValueShape::TensorComponents, length, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {});
+    npy("pos", "positions", "identity", "Snapshot positions", SignalAxis::Atom, SignalValueShape::Vector3, length, vectorStripModes(), {}, vectorChannels(length));
+    npy("element", "element", "identity", "Element identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("element", "Element", SignalValueShape::Category, tag)});
+    npy("residue_index", "residue_index", "identity", "Residue index identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("residue_index", "Residue index", SignalValueShape::Category, tag)});
+    npy("residue_type", "residue_type", "identity", "Residue type identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("residue_type", "Residue type", SignalValueShape::Category, tag)});
+    npy("atoms_category_info", "atoms_category_info", "identity", "Atom category info", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
+    npy("ring_contributions", "ring_contributions", "identity", "Ring contributions", SignalAxis::RingContributionPair, SignalValueShape::TensorComponents, ringShielding, tensorStripModes(), {QStringLiteral("static.tensor")}, {});
+    npy("ring_geometry", "ring_geometry", "identity", "Ring geometry", SignalAxis::AromaticRing, SignalValueShape::TensorComponents, length, scalarStripModes(), {}, {});
 
     const struct TensorField {
         const char* field;
@@ -1010,10 +969,10 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
     npy("coulomb_efg_aromatic", "coulomb_efg_aromatic", "coulomb", "Coulomb aromatic EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
     npy("coulomb_scalars", "coulomb_scalars", "coulomb", "Coulomb scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
     npy("hbond_scalars", "hbond_scalars", "hbond", "H-bond scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("dssp_backbone", "dssp_backbone", "dssp", "DSSP backbone geometry", SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {});
+    npy("dssp_backbone", "dssp_backbone", "dssp", "DSSP backbone geometry", SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {}, {});
     npy("dssp_ss8", "dssp_ss8", "dssp", "DSSP SS8", SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), categoryStaticModes(), {channel("ss8", "SS8", SignalValueShape::Category, tag)});
     npy("dssp_hbond_energy", "dssp_hbond_energy", "dssp", "DSSP H-bond energy", SignalAxis::Residue, SignalValueShape::PerClassBlock, energy, perClassStripModes(), perClassStaticModes(), {});
-    npy("dssp_chi", "dssp_chi", "dssp", "DSSP chi angles", SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {});
+    npy("dssp_chi", "dssp_chi", "dssp", "DSSP chi angles", SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {}, {});
     npy("atom_sasa", "atom_sasa", "sasa", "Atom SASA", SignalAxis::Atom, SignalValueShape::Scalar, unit(UnitDimension::Length, "A^2", "A^2"), scalarStripModes(), scalarStaticModes(), scalarChannels(unit(UnitDimension::Length, "A^2", "A^2")));
     npy("sasa_normal", "sasa_normal", "sasa", "SASA normal", SignalAxis::Atom, SignalValueShape::Vector3, none, vectorStripModes(), vectorStaticModes(), vectorChannels(none));
     npy("water_efield", "water_efield", "water_field", "Water electric field", SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield));
@@ -1025,12 +984,12 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
     npy("water_polarization", "water_polarization", "water_polarization", "Water polarization", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
     npy("eeq_charges", "eeq_charges", "eeq", "EEQ charges", SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge));
     npy("eeq_cn", "eeq_cn", "eeq", "EEQ coordination number", SignalAxis::Atom, SignalValueShape::Scalar, none, scalarStripModes(), scalarStaticModes(), scalarChannels(none));
-    npy("gromacs_energy", "gromacs_energy", "gromacs", "Gromacs energy/runtime", SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class")}, {QStringLiteral("static.system"), QStringLiteral("static.table")}, {});
+    npy("gromacs_energy", "gromacs_energy", "gromacs", "Gromacs energy/runtime", SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class")}, {}, {});
     npy("bonded_energy", "bonded_energy", "bonded", "Bonded energy", SignalAxis::Atom, SignalValueShape::PerClassBlock, energy, perClassStripModes(), perClassStaticModes(), {});
     npy("mopac_charges", "mopac_charges", "mopac_core", "MOPAC charges", SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge));
     npy("mopac_scalars", "mopac_scalars", "mopac_core", "MOPAC scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("mopac_bond_orders", "mopac_bond_orders", "mopac_core", "MOPAC bond orders", SignalAxis::Bond, SignalValueShape::Scalar, none, scalarStripModes(), {QStringLiteral("static.scalar"), QStringLiteral("static.topology"), QStringLiteral("static.table")}, scalarChannels(none));
-    npy("mopac_global", "mopac_global", "mopac_core", "MOPAC global values", SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class")}, {QStringLiteral("static.system"), QStringLiteral("static.table")}, {});
+    npy("mopac_bond_orders", "mopac_bond_orders", "mopac_core", "MOPAC bond orders", SignalAxis::Bond, SignalValueShape::Scalar, none, scalarStripModes(), {}, scalarChannels(none));
+    npy("mopac_global", "mopac_global", "mopac_core", "MOPAC global values", SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class")}, {}, {});
     npy("mopac_coulomb_E", "mopac_coulomb_E", "mopac_coulomb", "MOPAC Coulomb electric field", SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield));
     npy("mopac_coulomb_efg_backbone", "mopac_coulomb_efg_backbone", "mopac_coulomb", "MOPAC Coulomb backbone EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
     npy("mopac_coulomb_efg_aromatic", "mopac_coulomb_efg_aromatic", "mopac_coulomb", "MOPAC Coulomb aromatic EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
@@ -1055,12 +1014,12 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
     npy("aimnet2_efg_backbone", "aimnet2_efg_backbone", "aimnet2", "AIMNet2 backbone EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
     npy("aimnet2_charge_response_gradient", "aimnet2_charge_response_gradient", "aimnet2", "AIMNet2 charge-response gradient", SignalAxis::Atom, SignalValueShape::Vector3, charge, vectorStripModes(), vectorStaticModes(), vectorChannels(charge));
     npy("aimnet2_charge_response_gradient_scalar", "aimnet2_charge_response_gradient_scalar", "aimnet2", "AIMNet2 CRG scalar", SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge));
-    npy("pyramidalization", "pyramidalization", "planar_geometry", "Pyramidalization", SignalAxis::Atom, SignalValueShape::Scalar, angle, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, angleChannels());
-    npy("omega_actual", "omega_actual", "planar_geometry", "Omega actual", SignalAxis::Residue, SignalValueShape::Scalar, angle, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, angleChannels());
-    npy("omega_deviation", "omega_deviation", "planar_geometry", "Omega deviation", SignalAxis::Residue, SignalValueShape::Scalar, angle, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, angleChannels());
-    npy("aromatic_chi2", "aromatic_chi2", "planar_geometry", "Aromatic chi2", SignalAxis::AromaticRing, SignalValueShape::Scalar, angle, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, angleChannels());
-    npy("pucker_Q", "pucker_Q", "planar_geometry", "Ring pucker Q", SignalAxis::SaturatedRing, SignalValueShape::Scalar, length, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, scalarChannels(length));
-    npy("pucker_theta", "pucker_theta", "planar_geometry", "Ring pucker theta", SignalAxis::SaturatedRing, SignalValueShape::Scalar, angle, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, angleChannels());
+    npy("pyramidalization", "pyramidalization", "planar_geometry", "Pyramidalization", SignalAxis::Atom, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
+    npy("omega_actual", "omega_actual", "planar_geometry", "Omega actual", SignalAxis::Residue, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
+    npy("omega_deviation", "omega_deviation", "planar_geometry", "Omega deviation", SignalAxis::Residue, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
+    npy("aromatic_chi2", "aromatic_chi2", "planar_geometry", "Aromatic chi2", SignalAxis::AromaticRing, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
+    npy("pucker_Q", "pucker_Q", "planar_geometry", "Ring pucker Q", SignalAxis::SaturatedRing, SignalValueShape::Scalar, length, scalarStripModes(), {}, scalarChannels(length));
+    npy("pucker_theta", "pucker_theta", "planar_geometry", "Ring pucker theta", SignalAxis::SaturatedRing, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
     npy("omega_is_xpro", "omega_is_xpro", "planar_geometry", "Omega X-Proline flag", SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), categoryStaticModes(), {channel("is_xpro", "Is X-Proline", SignalValueShape::Category, tag)});
     npy("tripeptide_bb_residual_vec", "tripeptide_bb_residual_vec", "tripeptide", "Tripeptide backbone residual vector", SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding));
     npy("tripeptide_bb_match_distance", "tripeptide_bb_match_distance", "tripeptide", "Tripeptide backbone match distance", SignalAxis::Atom, SignalValueShape::Scalar, length, scalarStripModes(), scalarStaticModes(), scalarChannels(length));
@@ -1069,10 +1028,10 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
     npy("tripeptide_neighbor_residual_vec_next", "tripeptide_neighbor_residual_vec_next", "tripeptide", "Tripeptide next-neighbor residual vector", SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding));
     npy("larsen_hbond_water_term", "larsen_hbond_water_term", "larsen_hbond", "Larsen H-bond water term", SignalAxis::Atom, SignalValueShape::Scalar, shielding, scalarStripModes(), scalarStaticModes(), scalarChannels(shielding));
     npy("larsen_hbond_count", "larsen_hbond_count", "larsen_hbond", "Larsen H-bond count", SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, scalarStaticModes(), countChannels());
-    npy("residues", "topology.residues", "topology", "Residue sidecar records", SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.table")}, {});
-    npy("bonds", "topology.bonds", "topology", "Bond sidecar records", SignalAxis::Bond, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.table")}, {});
-    npy("rings", "topology.rings", "topology", "Ring sidecar records", SignalAxis::Ring, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {});
-    npy("ring_membership", "topology.ring_membership", "topology", "Ring membership records", SignalAxis::RingMembership, SignalValueShape::Category, tag, categoryStripModes(), {QStringLiteral("static.topology"), QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {});
+    npy("residues", "topology.residues", "topology", "Residue sidecar records", SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
+    npy("bonds", "topology.bonds", "topology", "Bond sidecar records", SignalAxis::Bond, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
+    npy("rings", "topology.rings", "topology", "Ring sidecar records", SignalAxis::Ring, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
+    npy("ring_membership", "topology.ring_membership", "topology", "Ring membership records", SignalAxis::RingMembership, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
 }
 
 void addOrcaDft(QVector<SignalDescriptor>& descriptors) {
@@ -1086,12 +1045,12 @@ void addOrcaDft(QVector<SignalDescriptor>& descriptors) {
                        "ORCA total shielding",
                        SourceResidency::FrameLoaded,
                        SignalAxis::Atom,
-                       SignalAxis::Atom,
-                       SignalValueShape::SphericalTensor,
-                       shielding,
-                       {QStringLiteral("strip.tensor.T0"), QStringLiteral("strip.spectrum")},
-                       {QStringLiteral("static.tensor"), QStringLiteral("static.scalar"), QStringLiteral("static.table"), QStringLiteral("static.atomColor")},
-                       sphericalTensorChannels(shielding),
+	                       SignalAxis::Atom,
+	                       SignalValueShape::SphericalTensor,
+	                       shielding,
+	                       {QStringLiteral("strip.tensor.T0")},
+	                       {QStringLiteral("static.tensor")},
+	                       sphericalTensorChannels(shielding),
                        "orca_total",
                        false,
                        true,
@@ -1104,12 +1063,12 @@ void addOrcaDft(QVector<SignalDescriptor>& descriptors) {
 void addTopology(QVector<SignalDescriptor>& descriptors) {
     const UnitSpec tag = unit(UnitDimension::Tag, "tag", "tag", 1.0, 0.0, false);
     const UnitSpec length = unit(UnitDimension::Length, "A", "A");
-    add(descriptors, makeDescriptor("topology:atoms", "topology.atoms", SignalSourceKind::Topology, "TopologySidecar", "topology", "Atoms", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Category, tag, {}, {QStringLiteral("static.topology"), QStringLiteral("static.category"), QStringLiteral("static.table")}, {}, "atoms"));
-    add(descriptors, makeDescriptor("topology:residues", "topology.residues", SignalSourceKind::Topology, "TopologySidecar", "topology", "Residues", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::Category, tag, {}, {QStringLiteral("static.topology"), QStringLiteral("static.category"), QStringLiteral("static.table")}, {}, "residues"));
-    add(descriptors, makeDescriptor("topology:bonds", "topology.bonds", SignalSourceKind::Topology, "TopologySidecar", "topology", "Bonds", SourceResidency::StartupLoaded, SignalAxis::Bond, SignalAxis::Bond, SignalValueShape::Category, tag, {}, {QStringLiteral("static.topology"), QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {}, "bonds"));
-    add(descriptors, makeDescriptor("topology:rings", "topology.rings", SignalSourceKind::Topology, "TopologySidecar", "topology", "Rings", SourceResidency::StartupLoaded, SignalAxis::Ring, SignalAxis::Ring, SignalValueShape::Category, tag, {}, {QStringLiteral("static.topology"), QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {}, "rings"));
-    add(descriptors, makeDescriptor("topology:ring_membership", "topology.ring_membership", SignalSourceKind::Topology, "TopologySidecar", "topology", "Ring membership", SourceResidency::StartupLoaded, SignalAxis::RingMembership, SignalAxis::RingMembership, SignalValueShape::Category, tag, {}, {QStringLiteral("static.topology"), QStringLiteral("static.geometry"), QStringLiteral("static.table")}, {}, "ring_membership"));
-    add(descriptors, makeDescriptor("topology:bond_length", "geometry.bond_length", SignalSourceKind::Topology, "DerivedTopology", "topology", "Bond length from topology positions", SourceResidency::Derived, SignalAxis::Bond, SignalAxis::Bond, SignalValueShape::Scalar, length, {QStringLiteral("strip.scalar"), QStringLiteral("strip.rollup")}, {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, scalarChannels(length), "bond_length"));
+    add(descriptors, makeDescriptor("topology:atoms", "topology.atoms", SignalSourceKind::Topology, "TopologySidecar", "topology", "Atoms", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Category, tag, {}, {}, {}, "atoms"));
+    add(descriptors, makeDescriptor("topology:residues", "topology.residues", SignalSourceKind::Topology, "TopologySidecar", "topology", "Residues", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::Category, tag, {}, {}, {}, "residues"));
+    add(descriptors, makeDescriptor("topology:bonds", "topology.bonds", SignalSourceKind::Topology, "TopologySidecar", "topology", "Bonds", SourceResidency::StartupLoaded, SignalAxis::Bond, SignalAxis::Bond, SignalValueShape::Category, tag, {}, {}, {}, "bonds"));
+    add(descriptors, makeDescriptor("topology:rings", "topology.rings", SignalSourceKind::Topology, "TopologySidecar", "topology", "Rings", SourceResidency::StartupLoaded, SignalAxis::Ring, SignalAxis::Ring, SignalValueShape::Category, tag, {}, {}, {}, "rings"));
+    add(descriptors, makeDescriptor("topology:ring_membership", "topology.ring_membership", SignalSourceKind::Topology, "TopologySidecar", "topology", "Ring membership", SourceResidency::StartupLoaded, SignalAxis::RingMembership, SignalAxis::RingMembership, SignalValueShape::Category, tag, {}, {}, {}, "ring_membership"));
+    add(descriptors, makeDescriptor("topology:bond_length", "geometry.bond_length", SignalSourceKind::Topology, "DerivedTopology", "topology", "Bond length from topology positions", SourceResidency::Derived, SignalAxis::Bond, SignalAxis::Bond, SignalValueShape::Scalar, length, {QStringLiteral("strip.scalar"), QStringLiteral("strip.rollup")}, {}, scalarChannels(length), "bond_length"));
 }
 
 void addDerivedGeometry(QVector<SignalDescriptor>& descriptors) {
@@ -1126,24 +1085,24 @@ void addDerivedGeometry(QVector<SignalDescriptor>& descriptors) {
                        SignalAxis::AtomTuple,
                        SignalAxis::AtomTuple,
                        SignalValueShape::Scalar,
-                       length,
-                       scalarStripModes(),
-                       {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")},
-                       scalarChannels(length),
+	                       length,
+	                       scalarStripModes(),
+	                       {},
+	                       scalarChannels(length),
                        "distance",
                        false,
                        false,
                        SampleStatus::Valid,
                        GapReason::None));
-    add(descriptors, makeDescriptor("geometry:angle", "geometry.angle", SignalSourceKind::DerivedGeometry, "Derived", "geometry", "Angle", SourceResidency::Derived, SignalAxis::AtomTuple, SignalAxis::AtomTuple, SignalValueShape::Scalar, degrees, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, angleChannels(), "angle", false, false, SampleStatus::Valid, GapReason::None));
-    add(descriptors, makeDescriptor("geometry:dihedral", "geometry.dihedral", SignalSourceKind::DerivedGeometry, "Derived", "geometry", "Dihedral", SourceResidency::Derived, SignalAxis::AtomTuple, SignalAxis::AtomTuple, SignalValueShape::Scalar, degrees, scalarStripModes(), {QStringLiteral("static.geometry"), QStringLiteral("static.scalar"), QStringLiteral("static.table")}, angleChannels(), "dihedral", false, false, SampleStatus::Valid, GapReason::None));
+    add(descriptors, makeDescriptor("geometry:angle", "geometry.angle", SignalSourceKind::DerivedGeometry, "Derived", "geometry", "Angle", SourceResidency::Derived, SignalAxis::AtomTuple, SignalAxis::AtomTuple, SignalValueShape::Scalar, degrees, scalarStripModes(), {}, angleChannels(), "angle", false, false, SampleStatus::Valid, GapReason::None));
+    add(descriptors, makeDescriptor("geometry:dihedral", "geometry.dihedral", SignalSourceKind::DerivedGeometry, "Derived", "geometry", "Dihedral", SourceResidency::Derived, SignalAxis::AtomTuple, SignalAxis::AtomTuple, SignalValueShape::Scalar, degrees, scalarStripModes(), {}, angleChannels(), "dihedral", false, false, SampleStatus::Valid, GapReason::None));
     add(descriptors, makeDescriptor("geometry:atom_displacement", "geometry.atom_displacement", SignalSourceKind::DerivedGeometry, "Derived", "geometry", "Atom displacement", SourceResidency::Derived, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, length, vectorStripModes(), vectorStaticModes(), vectorChannels(length), "atom_displacement"));
 }
 
 void addSelectionEvents(QVector<SignalDescriptor>& descriptors) {
     const UnitSpec tag = unit(UnitDimension::Tag, "tag", "tag", 1.0, 0.0, false);
     add(descriptors, makeDescriptor("events:selection_timeline", "selections", SignalSourceKind::SelectionEvents, "SelectionBag", "selections", "Selection timeline", SourceResidency::StartupLoaded, SignalAxis::Event, SignalAxis::Event, SignalValueShape::EventRecord, tag, eventStripModes(), eventStaticModes(), {}, "selection_timeline"));
-    add(descriptors, makeDescriptor("events:selection_counts", "selection_counts", SignalSourceKind::SelectionEvents, "SelectionBag", "selections", "Selection counts", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.system")}, {QStringLiteral("static.system"), QStringLiteral("static.table")}, countChannels(), "selection_counts"));
+    add(descriptors, makeDescriptor("events:selection_counts", "selection_counts", SignalSourceKind::SelectionEvents, "SelectionBag", "selections", "Selection counts", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.system")}, {}, countChannels(), "selection_counts"));
 }
 
 bool descriptorMatchesText(const SignalDescriptor& descriptor, const QString& text) {

@@ -16,6 +16,7 @@
 #include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
 #include "../model/TrajectorySignalCatalog.h"
+#include "../model/VisualizationRegistry.h"
 
 #include <QAbstractItemView>
 #include <QAbstractTableModel>
@@ -53,24 +54,8 @@ namespace h5reader::app {
 
 namespace {
 
-enum class DisplayModeKind : std::uint8_t {
-    Strip,
-    Spectrum,
-    Table,
-    ColorMap,
-    TensorGlyph,
-    // Phase A-G additions for the new static-panel modes (see
-    // h5-reader/notes/SCOPE_NEW_TRS_2026-05-29.md). Each maps to a
-    // specific panel subclass via the controller's panel-build
-    // dispatch (isPanelMode in DashboardDisplayController.cpp).
-    BarSequence,   // SequenceBarPanel — iRED S², Reorient relaxation, Dihedral corr_time
-    CurveLag,      // LagDecayPanel    — KernelDynamics ACF, Reorient TCFs, Dihedral ACF
-    ChordCoupling, // ChordCouplingPanel — KernelCoherence Pearson matrix
-    FixedFreq,     // FixedFreqPanel    — Reorient J(ω) at 5 KTB Larmor combinations (L-3b)
-};
-
 struct ModeControl {
-    DisplayModeKind kind = DisplayModeKind::Strip;
+    model::VisualizationType type = model::VisualizationType::TemporalStrip;
     QCheckBox* box = nullptr;
 };
 
@@ -105,120 +90,115 @@ struct DescriptorRecord {
     }
 };
 
-QString modeKindLabel(DisplayModeKind kind) {
-    switch (kind) {
-    case DisplayModeKind::Strip:
+QString visualizationTypeLabel(model::VisualizationType type) {
+    switch (type) {
+    case model::VisualizationType::TemporalStrip:
         return QStringLiteral("Strip");
-    case DisplayModeKind::Spectrum:
-        return QStringLiteral("Spectrum");
-    case DisplayModeKind::Table:
-        return QStringLiteral("Table");
-    case DisplayModeKind::ColorMap:
-        return QStringLiteral("Color map");
-    case DisplayModeKind::TensorGlyph:
-        return QStringLiteral("Glyph / overlay");
-    case DisplayModeKind::BarSequence:
+    case model::VisualizationType::SequenceBar:
         return QStringLiteral("Bar (sequence)");
-    case DisplayModeKind::CurveLag:
+    case model::VisualizationType::LagCurve:
         return QStringLiteral("Curve (lag)");
-    case DisplayModeKind::ChordCoupling:
+    case model::VisualizationType::ChordCoupling:
         return QStringLiteral("Chord (coupling)");
-    case DisplayModeKind::FixedFreq:
-        return QStringLiteral("Fixed-freq J(ω)");
+    case model::VisualizationType::FixedFrequency:
+        return QStringLiteral("Fixed-freq J(w)");
+    case model::VisualizationType::PowerSpectrum:
+        return QStringLiteral("Power spectrum");
+    case model::VisualizationType::TensorGlyph:
+        return QStringLiteral("Glyph / overlay");
+    case model::VisualizationType::AtomColor:
+        return QStringLiteral("Color map");
     }
     return {};
 }
 
-QString modeKindKey(DisplayModeKind kind) {
-    switch (kind) {
-    case DisplayModeKind::Strip:
+QString visualizationTypeKey(model::VisualizationType type) {
+    switch (type) {
+    case model::VisualizationType::TemporalStrip:
         return QStringLiteral("strip");
-    case DisplayModeKind::Spectrum:
-        return QStringLiteral("spectrum");
-    case DisplayModeKind::Table:
-        return QStringLiteral("table");
-    case DisplayModeKind::ColorMap:
-        return QStringLiteral("colorMap");
-    case DisplayModeKind::TensorGlyph:
-        return QStringLiteral("tensorGlyph");
-    case DisplayModeKind::BarSequence:
+    case model::VisualizationType::SequenceBar:
         return QStringLiteral("barSequence");
-    case DisplayModeKind::CurveLag:
+    case model::VisualizationType::LagCurve:
         return QStringLiteral("curveLag");
-    case DisplayModeKind::ChordCoupling:
+    case model::VisualizationType::ChordCoupling:
         return QStringLiteral("chordCoupling");
-    case DisplayModeKind::FixedFreq:
+    case model::VisualizationType::FixedFrequency:
         return QStringLiteral("fixedFreq");
+    case model::VisualizationType::PowerSpectrum:
+        return QStringLiteral("powerSpectrum");
+    case model::VisualizationType::TensorGlyph:
+        return QStringLiteral("tensorGlyph");
+    case model::VisualizationType::AtomColor:
+        return QStringLiteral("colorMap");
     }
     return {};
 }
 
-QString canonicalModeId(DisplayModeKind kind) {
-    switch (kind) {
-    case DisplayModeKind::Strip:
-        return QStringLiteral("strip.scalar");
-    case DisplayModeKind::Spectrum:
-        return QStringLiteral("strip.spectrum");
-    case DisplayModeKind::Table:
-        return QStringLiteral("static.table");
-    case DisplayModeKind::ColorMap:
-        return QStringLiteral("static.atomColor");
-    case DisplayModeKind::TensorGlyph:
-        return QStringLiteral("static.tensor");
-    case DisplayModeKind::BarSequence:
-        return QStringLiteral("static.bar.sequence");
-    case DisplayModeKind::CurveLag:
-        return QStringLiteral("static.curve.lag.animated");
-    case DisplayModeKind::ChordCoupling:
-        return QStringLiteral("static.chord.coupling");
-    case DisplayModeKind::FixedFreq:
-        return QStringLiteral("static.fixed_freq");
-    }
-    return {};
+std::optional<model::VisualizationType> visualizationTypeForKey(const QString& key) {
+    if (key == QStringLiteral("strip"))
+        return model::VisualizationType::TemporalStrip;
+    if (key == QStringLiteral("barSequence"))
+        return model::VisualizationType::SequenceBar;
+    if (key == QStringLiteral("curveLag"))
+        return model::VisualizationType::LagCurve;
+    if (key == QStringLiteral("chordCoupling"))
+        return model::VisualizationType::ChordCoupling;
+    if (key == QStringLiteral("fixedFreq"))
+        return model::VisualizationType::FixedFrequency;
+    if (key == QStringLiteral("powerSpectrum"))
+        return model::VisualizationType::PowerSpectrum;
+    if (key == QStringLiteral("tensorGlyph"))
+        return model::VisualizationType::TensorGlyph;
+    if (key == QStringLiteral("colorMap"))
+        return model::VisualizationType::AtomColor;
+    return std::nullopt;
 }
 
-bool modeMatchesKind(const QString& modeId, DisplayModeKind kind) {
+bool modeMatchesType(const QString& modeId, model::VisualizationType type) {
     const QString lower = modeId.toLower();
-    switch (kind) {
-    case DisplayModeKind::Strip:
+    switch (type) {
+    case model::VisualizationType::TemporalStrip:
         return lower.startsWith(QStringLiteral("strip."))
             && !lower.contains(QStringLiteral("spectrum"))
             && !lower.contains(QStringLiteral("fft"));
-    case DisplayModeKind::Spectrum:
-        return lower.contains(QStringLiteral("spectrum")) || lower.contains(QStringLiteral("fft"));
-    case DisplayModeKind::Table:
-        return lower.contains(QStringLiteral("table"));
-    case DisplayModeKind::ColorMap:
-        return lower.contains(QStringLiteral("color")) || lower.contains(QStringLiteral("map"))
-            || lower.contains(QStringLiteral("band"));
-    case DisplayModeKind::TensorGlyph:
-        return lower.contains(QStringLiteral("glyph")) || lower.contains(QStringLiteral("overlay"))
-            || (lower.startsWith(QStringLiteral("static.")) && lower.contains(QStringLiteral("tensor")));
-    case DisplayModeKind::BarSequence:
-        return lower == QStringLiteral("static.bar.sequence");
-    case DisplayModeKind::CurveLag:
-        return lower == QStringLiteral("static.curve.lag.animated");
-    case DisplayModeKind::ChordCoupling:
-        return lower == QStringLiteral("static.chord.coupling");
-    case DisplayModeKind::FixedFreq:
-        return lower == QStringLiteral("static.fixed_freq");
+    case model::VisualizationType::SequenceBar:
+    case model::VisualizationType::LagCurve:
+    case model::VisualizationType::ChordCoupling:
+    case model::VisualizationType::FixedFrequency:
+    case model::VisualizationType::PowerSpectrum:
+    case model::VisualizationType::TensorGlyph:
+    case model::VisualizationType::AtomColor:
+        if (const model::VisualizationDefinition* definition =
+                model::VisualizationRegistry::instance().definitionForMode(modeId)) {
+            return definition->type() == type;
+        }
+        return false;
     }
     return false;
 }
 
-QString modeForKind(const QStringList& modes, DisplayModeKind kind) {
-    QString preferred = canonicalModeId(kind);
-    if (modes.contains(preferred))
-        return preferred;
+QString modeForType(const QStringList& modes, model::VisualizationType type) {
+    if (type == model::VisualizationType::TemporalStrip && modes.contains(QStringLiteral("strip.scalar")))
+        return QStringLiteral("strip.scalar");
     for (const QString& mode : modes) {
-        if (modeMatchesKind(mode, kind))
+        if (modeMatchesType(mode, type))
             return mode;
     }
     return {};
 }
 
-bool modeListContainsKind(const QStringList& modes, DisplayModeKind kind) {
-    return !modeForKind(modes, kind).isEmpty();
+bool modeListContainsType(const QStringList& modes, model::VisualizationType type) {
+    return !modeForType(modes, type).isEmpty();
+}
+
+const model::VisualizationDefinition*
+definitionForType(const QVector<const model::VisualizationDefinition*>& definitions,
+                  model::VisualizationType type) {
+    for (const model::VisualizationDefinition* definition : definitions) {
+        if (definition && definition->type() == type)
+            return definition;
+    }
+    return nullptr;
 }
 
 }  // namespace
@@ -231,19 +211,13 @@ namespace {
 
 QString modeSummary(const QStringList& displayModes) {
     QStringList labels;
-    // modeSummary uses the same Table-last order as allModeKinds so
-    // the summary labels group concrete renderers before fallbacks.
-    for (DisplayModeKind kind : {DisplayModeKind::Strip,
-                                 DisplayModeKind::Spectrum,
-                                 DisplayModeKind::TensorGlyph,
-                                 DisplayModeKind::BarSequence,
-                                 DisplayModeKind::CurveLag,
-                                 DisplayModeKind::ChordCoupling,
-                                 DisplayModeKind::FixedFreq,
-                                 DisplayModeKind::ColorMap,
-                                 DisplayModeKind::Table}) {
-        if (modeListContainsKind(displayModes, kind))
-            labels.push_back(modeKindLabel(kind));
+    for (model::VisualizationType type : {model::VisualizationType::TemporalStrip,
+                                          model::VisualizationType::SequenceBar,
+                                          model::VisualizationType::LagCurve,
+                                          model::VisualizationType::ChordCoupling,
+                                          model::VisualizationType::FixedFrequency}) {
+        if (modeListContainsType(displayModes, type))
+            labels.push_back(visualizationTypeLabel(type));
     }
     return labels.isEmpty() ? QStringLiteral("None") : labels.join(QStringLiteral(", "));
 }
@@ -336,11 +310,11 @@ QJsonObject signalAnchorToJson(const model::SignalAnchor& anchor) {
 }
 
 QString candidateModeDisabledReason(const QString& modeId,
-                                    bool hasVisibleSurface,
+                                    bool structurallySupported,
                                     bool descriptorAvailable) {
     if (modeId.isEmpty())
         return QStringLiteral("This descriptor does not offer that display mode.");
-    if (!hasVisibleSurface)
+    if (!structurallySupported)
         return QStringLiteral("This display mode has no implemented renderer yet.");
     if (!descriptorAvailable)
         return QStringLiteral("The data for this descriptor is not available in this run.");
@@ -357,23 +331,12 @@ bool anchorAxisCanSatisfy(model::SignalAxis selectedAxis, model::SignalAxis requ
     return model::AxisCanSatisfy(selectedAxis, requiredAxis);
 }
 
-std::array<DisplayModeKind, 9> allModeKinds() {
-    // Codex NOW-3 (2026-05-29) reorder: Table moves LAST so the
-    // dialog's default-checked-mode walk
-    // (onCandidateSelectionChanged) doesn't pick the table fallback
-    // ahead of a concrete renderer. Strip + Spectrum stay first
-    // because strip-capable descriptors should default to strip
-    // mode; the concrete static renderers come next; ColorMap +
-    // Table land last as the visualisation-of-last-resort fallbacks.
-    return {DisplayModeKind::Strip,
-            DisplayModeKind::Spectrum,
-            DisplayModeKind::TensorGlyph,
-            DisplayModeKind::BarSequence,
-            DisplayModeKind::CurveLag,
-            DisplayModeKind::ChordCoupling,
-            DisplayModeKind::FixedFreq,
-            DisplayModeKind::ColorMap,
-            DisplayModeKind::Table};
+std::array<model::VisualizationType, 5> allVisualizationTypes() {
+    return {model::VisualizationType::TemporalStrip,
+            model::VisualizationType::SequenceBar,
+            model::VisualizationType::LagCurve,
+            model::VisualizationType::ChordCoupling,
+            model::VisualizationType::FixedFrequency};
 }
 
 void configureTable(QTableView* view) {
@@ -618,26 +581,11 @@ protected:
                 return false;
         }
         if (!modeKindFilter_.isEmpty()) {
+            const std::optional<model::VisualizationType> type = visualizationTypeForKey(modeKindFilter_);
+            if (!type)
+                return false;
             const QStringList modes = model->data(index, DescriptorTableModel::DisplayModesRole).toStringList();
-            bool matched = false;
-            for (const QString& mode : modes) {
-                if ((modeKindFilter_ == QStringLiteral("strip") && modeMatchesKind(mode, DisplayModeKind::Strip))
-                    || (modeKindFilter_ == QStringLiteral("spectrum") && modeMatchesKind(mode, DisplayModeKind::Spectrum))
-                    || (modeKindFilter_ == QStringLiteral("table") && modeMatchesKind(mode, DisplayModeKind::Table))
-                    || (modeKindFilter_ == QStringLiteral("colorMap") && modeMatchesKind(mode, DisplayModeKind::ColorMap))
-                    || (modeKindFilter_ == QStringLiteral("tensorGlyph") && modeMatchesKind(mode, DisplayModeKind::TensorGlyph))
-                    || (modeKindFilter_ == QStringLiteral("barSequence") && modeMatchesKind(mode, DisplayModeKind::BarSequence))
-                    || (modeKindFilter_ == QStringLiteral("curveLag") && modeMatchesKind(mode, DisplayModeKind::CurveLag))
-                    || (modeKindFilter_ == QStringLiteral("chordCoupling") && modeMatchesKind(mode, DisplayModeKind::ChordCoupling))
-                    // Codex NOW-3 (2026-05-29): fixedFreq filter arm
-                    // was missing; the combo entry existed but the
-                    // filter dropped instead of matching.
-                    || (modeKindFilter_ == QStringLiteral("fixedFreq") && modeMatchesKind(mode, DisplayModeKind::FixedFreq))) {
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched)
+            if (!modeListContainsType(modes, *type))
                 return false;
         }
         if (!searchText_.isEmpty()) {
@@ -670,6 +618,7 @@ struct SignalDisplayDialog::Impl {
     QPointer<model::AtomSelection> selection;
     const model::QtProtein* protein = nullptr;
     QPointer<model::Conformation> conformation;
+    model::VisualizationContext visualizationContext;
 
     NearbySignalModel* anchorModel = nullptr;
     DescriptorTableModel* descriptorModel = nullptr;
@@ -802,10 +751,10 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     auto* addLayout = new QHBoxLayout(addGroup);
     addLayout->setContentsMargins(6, 4, 6, 4);
     addLayout->setSpacing(6);
-    for (DisplayModeKind kind : allModeKinds()) {
-        auto* box = new QCheckBox(modeKindLabel(kind), addGroup);
+    for (model::VisualizationType type : allVisualizationTypes()) {
+        auto* box = new QCheckBox(visualizationTypeLabel(type), addGroup);
         box->setEnabled(false);
-        d_->candidateModes.push_back(ModeControl{kind, box});
+        d_->candidateModes.push_back(ModeControl{type, box});
         addLayout->addWidget(box);
     }
     addLayout->addStretch(1);
@@ -844,10 +793,10 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     auto* displayLayout = new QHBoxLayout(displayGroup);
     displayLayout->setContentsMargins(6, 4, 6, 4);
     displayLayout->setSpacing(6);
-    for (DisplayModeKind kind : allModeKinds()) {
-        auto* box = new QCheckBox(modeKindLabel(kind), displayGroup);
+    for (model::VisualizationType type : allVisualizationTypes()) {
+        auto* box = new QCheckBox(visualizationTypeLabel(type), displayGroup);
         box->setEnabled(false);
-        d_->activeModes.push_back(ModeControl{kind, box});
+        d_->activeModes.push_back(ModeControl{type, box});
         displayLayout->addWidget(box);
     }
     displayLayout->addStretch(1);
@@ -872,8 +821,8 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     refillCombo(d_->axisFilter, QStringLiteral("All axes"), {});
     refillCombo(d_->shapeFilter, QStringLiteral("All shapes"), {});
     d_->modeFilter->addItem(QStringLiteral("Any display"), QString());
-    for (DisplayModeKind kind : allModeKinds())
-        d_->modeFilter->addItem(modeKindLabel(kind), modeKindKey(kind));
+    for (model::VisualizationType type : allVisualizationTypes())
+        d_->modeFilter->addItem(visualizationTypeLabel(type), visualizationTypeKey(type));
 
     ACONNECT(d_->liveBox, &QCheckBox::toggled, this, &SignalDisplayDialog::onLiveToggled);
     ACONNECT(d_->radiusSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
@@ -992,6 +941,13 @@ void SignalDisplayDialog::setContext(const model::QtProtein* protein, model::Con
         d_->anchorModel->setContext(protein, conformation);
 }
 
+void SignalDisplayDialog::setVisualizationContext(const model::VisualizationContext& ctx) {
+    ASSERT_THREAD(this);
+    d_->visualizationContext = ctx;
+    onCandidateSelectionChanged();
+    onActiveSelectionChanged();
+}
+
 void SignalDisplayDialog::setSelection(model::AtomSelection* selection) {
     ASSERT_THREAD(this);
     if (d_->selection)
@@ -1047,7 +1003,7 @@ QJsonObject SignalDisplayDialog::pickerState() const {
         if (!control.box)
             continue;
         modes.append(QJsonObject{
-            {"kind", modeKindKey(control.kind)},
+            {"kind", visualizationTypeKey(control.type)},
             {"mode_id", control.box->property("modeId").toString()},
             {"enabled", control.box->isEnabled()},
             {"checked", control.box->isChecked()},
@@ -1189,21 +1145,31 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
     const DescriptorRecord* record = d_->descriptorModel->recordAt(sourceIndex);
 
     bool checkedOne = false;
+    const model::VisualizationRegistry& registry = model::VisualizationRegistry::instance();
     for (const ModeControl& control : d_->candidateModes) {
         QSignalBlocker blocker(control.box);
-        const QString modeId = record ? modeForKind(record->displayModes, control.kind) : QString();
-        const model::DisplayModeCapability capability = model::DisplayModeCapabilityFor(modeId);
-        const bool hasVisibleSurface = !modeId.isEmpty() && capability.hasVisibleSurface;
-        const bool descriptorAvailable = !record || !d_->catalog || !d_->catalog->fieldAvailability()
-            || d_->catalog->fieldAvailability()->canSampleDescriptor(record->descriptor);
-        const bool supported = !modeId.isEmpty() && hasVisibleSurface && descriptorAvailable;
+        const QString modeId = record ? modeForType(record->displayModes, control.type) : QString();
+        const QVector<const model::VisualizationDefinition*> structural =
+            record ? registry.supporting(record->descriptor)
+                   : QVector<const model::VisualizationDefinition*>{};
+        const model::VisualizationDefinition* structuralDefinition =
+            definitionForType(structural, control.type);
+        const bool structurallySupported = !modeId.isEmpty() && structuralDefinition;
+        const bool descriptorAvailable =
+            !structuralDefinition || !record
+            || structuralDefinition->isAvailable(d_->visualizationContext, record->descriptor);
+        const QVector<const model::VisualizationDefinition*> offerable =
+            record ? registry.visibleOfferable(d_->visualizationContext, record->descriptor)
+                   : QVector<const model::VisualizationDefinition*>{};
+        const bool supported = !modeId.isEmpty()
+            && definitionForType(offerable, control.type) != nullptr;
         control.box->setProperty("modeId", modeId);
         control.box->setEnabled(supported);
-        control.box->setChecked(supported && control.kind == DisplayModeKind::Strip);
+        control.box->setChecked(supported && control.type == model::VisualizationType::TemporalStrip);
         control.box->setToolTip(supported
                                     ? QStringLiteral("Add display mode id '%1'.").arg(modeId)
                                     : candidateModeDisabledReason(modeId,
-                                                                  hasVisibleSurface,
+                                                                  structurallySupported,
                                                                   descriptorAvailable));
         checkedOne = checkedOne || (supported && control.box->isChecked());
     }
@@ -1221,7 +1187,7 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
     QStringList enabledKinds;
     QStringList disabledKinds;
     for (const ModeControl& control : d_->candidateModes) {
-        const QString kind = modeKindKey(control.kind);
+        const QString kind = visualizationTypeKey(control.type);
         if (control.box->isEnabled()) {
             enabledKinds.push_back(kind);
         } else {
@@ -1395,21 +1361,22 @@ void SignalDisplayDialog::onActiveSelectionChanged() {
         descriptorForActiveSignal(d_->catalog, d_->activeModel, sourceIndex);
     const QStringList supportedModes = descriptor ? model::AllDisplayModes(*descriptor) : QStringList{};
     const QStringList enabledModes = displayModesForActiveRow(d_->activeModel, sourceIndex);
+    const model::VisualizationRegistry& registry = model::VisualizationRegistry::instance();
+    const QVector<const model::VisualizationDefinition*> offerable =
+        descriptor ? registry.visibleOfferable(d_->visualizationContext, *descriptor)
+                   : QVector<const model::VisualizationDefinition*>{};
 
     for (const ModeControl& control : d_->activeModes) {
         QSignalBlocker blocker(control.box);
-        QString modeId = modeForKind(supportedModes, control.kind);
+        QString modeId = modeForType(supportedModes, control.type);
         if (modeId.isEmpty())
-            modeId = modeForKind(enabledModes, control.kind);
-        if (modeId.isEmpty())
-            modeId = canonicalModeId(control.kind);
+            modeId = modeForType(enabledModes, control.type);
 
-        const bool hasVisibleSurface = model::DisplayModeCapabilityFor(modeId).hasVisibleSurface;
-        const bool supported = hasActive && hasVisibleSurface
-            && (supportedModes.isEmpty() || modeListContainsKind(supportedModes, control.kind));
+        const bool supported = hasActive && !modeId.isEmpty()
+            && definitionForType(offerable, control.type) != nullptr;
         control.box->setProperty("modeId", modeId);
         control.box->setEnabled(supported);
-        control.box->setChecked(supported && modeListContainsKind(enabledModes, control.kind));
+        control.box->setChecked(supported && modeListContainsType(enabledModes, control.type));
         control.box->setToolTip(supported
                                     ? QStringLiteral("Toggle display mode id '%1'.").arg(modeId)
                                     : QStringLiteral("This display mode does not have an implemented visible renderer."));

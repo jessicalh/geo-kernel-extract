@@ -1,0 +1,23 @@
+flowchart LR
+  classDef frozen fill:#cfe0f2,stroke:#284062,stroke-width:1.5px,color:#1b2a44;
+  classDef trained fill:#f3e4c6,stroke:#7a5a1e,stroke-width:1.5px,color:#3a2c0e;
+  classDef target fill:#efe9e2,stroke:#8a7a66,stroke-width:1.4px,color:#3a322a,stroke-dasharray:5 4;
+  classDef pool fill:#d0e5d2,stroke:#3a6a40,stroke-width:1.5px,color:#1d3320;
+  classDef plain fill:#f6f6f8,stroke:#555,color:#222;
+
+  subgraph PHYS["clean physics — trained on DFT only, never on the experiment"]
+    direction LR
+    DFT["DFT shieldings<br/>1P9J frames + 720 statics"]:::plain --> M1["Model 1 · e3nn<br/>shielding-tensor emulator<br/>(FROZEN here)"]:::frozen
+    M1 --> SIG["per-frame predicted<br/>shielding T2"]:::frozen
+  end
+
+  FEAT["feature firehose<br/>kernels · AIMNet2 · MOPAC · APBS<br/>dihedrals · motion · exposure"]:::plain
+
+  SIG --> M2["Model 2 · shift predictor<br/>per frame · ~656 no-DFT fleet"]:::trained
+  FEAT --> M2
+  M2 --> POOL["learned ensemble pooling<br/>over the trajectory<br/>per-frame smear &rarr; one value"]:::pool
+  POOL --> PRED["predicted shift"]:::plain
+  PRED -. "compared, not trained on" .-> BMRB["BMRB measured shift<br/>RefDB re-referenced · ensemble average<br/>(shot in the dark)"]:::target
+  M1 -. "ablate in / out: does distilled DFT earn its place?" .-> M2
+
+  style PHYS fill:#eef4fb,stroke:#3a5275,stroke-width:1px,color:#2a3f5f

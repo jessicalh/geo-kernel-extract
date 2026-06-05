@@ -25,6 +25,8 @@
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkSmartPointer.h>
 
+#include "../model/VisualizationDefinition.h"
+
 #include <memory>
 #include <vector>
 
@@ -208,6 +210,7 @@ private:
     model::DashboardSignalModel* dashboardSignals_ = nullptr;
     model::DashboardPanelModel* dashboardPanels_ = nullptr;
     QPointer<DashboardSelectionController> dashboardSelectionController_;
+    model::VisualizationContext visualizationContext_;
 
     // Unified strip dashboard. SignalDisplayDialog owns selection of active
     // signals/display modes; this dock renders strip-capable active signals.

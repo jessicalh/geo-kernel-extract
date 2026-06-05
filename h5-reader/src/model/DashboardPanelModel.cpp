@@ -2,6 +2,7 @@
 
 #include "../diagnostics/DashboardLogging.h"
 #include "DisplayModeCapability.h"
+#include "StripVisualization.h"
 
 #include <QStringList>
 
@@ -18,21 +19,10 @@ QString trimmedOrDefault(QString name, int ordinal) {
     return DashboardPanelModel::tr("Panel %1").arg(ordinal);
 }
 
-QString canonicalModeChannel(const QString& mode) {
-    if (mode.startsWith(QStringLiteral("strip.tensor.")))
-        return mode.mid(QStringLiteral("strip.tensor.").size());
-    if (mode == QStringLiteral("strip.vector.magnitude"))
-        return QStringLiteral("magnitude");
-    return {};
-}
-
-bool modeWantsChannel(const QString& mode, const ChannelDescriptor& channel) {
-    const QString channelId = canonicalModeChannel(mode);
-    if (!channelId.isEmpty())
-        return channel.id.compare(channelId, Qt::CaseInsensitive) == 0;
-    if (mode == QStringLiteral("strip.vector.component"))
-        return channel.id != QStringLiteral("magnitude");
-    return true;
+bool modeWantsChannel(const SignalDescriptor& descriptor,
+                      const QString& mode,
+                      const ChannelDescriptor& channel) {
+    return StripModeWantsChannel(descriptor, mode, channel);
 }
 
 QStringList normalizedModeList(const QStringList& modes) {
@@ -112,7 +102,7 @@ QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
 
         const int before = static_cast<int>(refs.size());
         for (const ChannelDescriptor& channel : descriptor.channels) {
-            if (modeWantsChannel(mode, channel))
+            if (modeWantsChannel(descriptor, mode, channel))
                 refs.push_back(DashboardDisplayRef{signalId, mode, channel.id});
         }
         if (static_cast<int>(refs.size()) == before) {

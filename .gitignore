@@ -28,6 +28,10 @@ papers/annotated-bib/*AutoRecovered*
 .cache/
 .codex-skill-dashboard-staging/
 
+# Codex run-logs — the tee'd stdout from `codex exec` brief fires. Transient
+# (the CODEX_BRIEF_*.md briefs ARE committed; the .codex_*.log captures are not).
+.codex_*.log
+
 # Prompt library — lab-notebook retrospectives of the prompts/briefs we build and
 # tune (purpose + what was good + what we tuned). Process, not product; the live
 # prompt files live where they are used (mostly doc/calculators/).
@@ -50,6 +54,9 @@ doc/calculators/.pre-check/
 doc/calculators/.pre-glossrefine/
 doc/calculators/.pre-opus-edit/
 doc/calculators/.normal-effort-drafts/
+
+# Preliminary, unvetted backgrounder reference markers (DOIs/names to vet later).
+doc/calculators/backgrounder-refs/
 
 # Static-analysis output. Reports (clang-tidy / cppcheck / IWYU /
 # scan-build) regenerate on demand; per-sha snapshots can grow large.

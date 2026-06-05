@@ -21,6 +21,7 @@
 #include "model/QtTopology.h"
 #include "model/SignalDictionary.h"
 #include "model/TrajectorySignalCatalog.h"
+#include "model/VisualizationRegistry.h"
 
 #include <QObject>
 #include <QSignalSpy>
@@ -146,6 +147,10 @@ private slots:
     // descriptor but forgot to register its storagePath in kDensePaths
     // AND/OR forgot to add the denseH5Plan branch" failure mode.
     void testCatalog_allValidTemporalDenseH5DescriptorsAreSampleable();
+
+    // ---- Stage-1 visualization registry -----------------------------------
+
+    void testVisualizationRegistry_capabilityTableMirrorsLegacyRows();
 };
 
 // ---- anchor variant + axis-matching -------------------------------------
@@ -257,6 +262,43 @@ void DashboardModelTests::testAxisCanSatisfy() {
     QCOMPARE(AxisCanSatisfy(static_cast<SignalAxis>(selectedInt),
                             static_cast<SignalAxis>(requiredInt)),
              expected);
+}
+
+void DashboardModelTests::testVisualizationRegistry_capabilityTableMirrorsLegacyRows() {
+    auto expectedCapability = [](const QString& mode) {
+        if (mode.startsWith(QStringLiteral("strip.")))
+            return DisplayModeCapability{true, false, false};
+        if (mode == QStringLiteral("static.bar.sequence"))
+            return DisplayModeCapability{true, true, true};
+        if (mode == QStringLiteral("static.spectrum.power"))
+            return DisplayModeCapability{false, true, true};
+        if (mode == QStringLiteral("static.curve.lag.animated"))
+            return DisplayModeCapability{true, true, true};
+        if (mode == QStringLiteral("static.chord.coupling"))
+            return DisplayModeCapability{true, true, true};
+        if (mode == QStringLiteral("static.fixed_freq"))
+            return DisplayModeCapability{true, true, true};
+        if (mode == QStringLiteral("static.tensor"))
+            return DisplayModeCapability{false, false, true};
+        return DisplayModeCapability{};
+    };
+
+    TrajectorySignalCatalog catalog;
+    QSet<QString> modes;
+    for (const SignalDescriptor& descriptor : catalog.allDescriptorList()) {
+        for (const QString& mode : AllDisplayModes(descriptor))
+            modes.insert(mode);
+    }
+
+    QVERIFY(!modes.isEmpty());
+    const VisualizationRegistry& registry = VisualizationRegistry::instance();
+    for (const QString& mode : modes) {
+        const DisplayModeCapability expected = expectedCapability(mode);
+        const DisplayModeCapability actual = registry.capabilityForMode(mode);
+        QCOMPARE(actual.hasVisibleSurface, expected.hasVisibleSurface);
+        QCOMPARE(actual.buildsPanelWidget, expected.buildsPanelWidget);
+        QCOMPARE(actual.emitsPanelRef, expected.emitsPanelRef);
+    }
 }
 
 // ---- ring axis normalisation --------------------------------------------

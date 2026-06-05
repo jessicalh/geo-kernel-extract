@@ -1,4 +1,16 @@
-# Handoff — calculator documentation effort (2026-06-03)
+# Handoff — calculator documentation effort (2026-06-04)
+
+**2026-06-04 — the three core book chapters are done**, each truth-vetted (opus physics +
+codex refs), polished, committed, with a `-backup.tex`: `physics-architecture.tex` (f785fe4),
+`categorical-grounding.tex` (6ca47d6), `method-and-proxy.tex` (5c4bbf6). They unify (the kernel
+`D_ab`), categorize (by atom + geometry), and place each tool on a literal→metaphorical proxy
+spectrum. **The current restart point is `CONTINUE_PROMPT.md`** (the thesis/book continuation);
+memory `project_thesis_book`. The outline (poster/thesis/lit-review) is DISCUSS-FIRST / built
+TOGETHER, not drafted. Everything below is prior orientation (numerics addenda + backgrounders),
+still valid.
+
+---
+
 
 Where this stands and how to restart. Durable standards live in the briefs and the memory
 store; this is the orientation.
@@ -55,8 +67,11 @@ Per-pass pristine snapshots are in `doc/calculators/.pre-check/`, `.pre-glossref
 
 1. **Jessica's human pass** over the 12 addenda — light hand edits. The automated passes
    have taken them as far as they sensibly go; the floor is hers.
-2. **Physics backgrounders** — a new series, **scope TBD as of 2026-06-03**. The next major
-   work after the addenda settle. Do not start without scoping with Jessica.
+2. **Physics backgrounders** — a third per-calculator series (~2pp reaction-paper-style
+   READMEs that ground the *physics*, not the maths; under Jessica's imprint). **Designed
+   2026-06-03 and HELD.** The founding conversation is in `BACKGROUNDERS_SEED.md`; do not
+   start until the morning's physical-laws-network trajectory results give a framing that
+   may narrow the series. Memory: `project_physics_backgrounders`.
 3. **Object-model tone pass** (above) — still open; Jessica leads, sober.
 
 ## The standard, in one breath (full in the briefs)

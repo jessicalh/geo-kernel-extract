@@ -3,6 +3,7 @@
 #include "../model/DashboardSignal.h"
 #include "../model/SignalDictionary.h"
 #include "../model/SignalTimeSeries.h"
+#include "../model/VisualizationDefinition.h"
 #include "AbstractStripPanel.h"
 
 #include <QObject>
@@ -60,6 +61,14 @@ struct DashboardSmokeSummary {
         int longestGapRun = 0;
     };
 
+    struct ExpectedButEmpty {
+        QString descriptorId;
+        QString storagePath;
+        QString visualizationType;
+        QString canonicalState;
+        QString storagePathState;
+    };
+
     int seriesCount = 0;
     int seriesWithSamples = 0;
     int seriesWithValidSamples = 0;
@@ -86,6 +95,7 @@ struct DashboardSmokeSummary {
     long long orcaDftFrameSourceAbsentGapSamples = 0;
     long long anchorUnavailableGapSamples = 0;
     long long invalidSamples = 0;
+    QVector<ExpectedButEmpty> expectedButEmpty;
     QVector<SeriesSparseness> seriesSparseness;
 };
 
@@ -114,6 +124,7 @@ public:
     void setPanelModel(model::DashboardPanelModel* panelModel);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
+    void setVisualizationContext(const model::VisualizationContext& ctx);
     // L-3a (2026-05-29): the scene overlay receives tensor-glyph
     // reveals when the user activates an h5:reorient_orientation_tensor
     // signal with static.tensor mode. Optional — when null, the
@@ -220,6 +231,7 @@ private:
     bool seriesIsVisibleInActivePanel(const ActiveSeries& series) const;
     int activePanelSeriesCount() const;
     void refreshPanelVisibility();
+    void collectExpectedButEmpty();
     void updateStatusText();
     void extendToFrame(int frame);
     QColor colorForIndex(int index) const;
@@ -232,8 +244,10 @@ private:
     QPointer<model::AtomSelection> selection_;
     QPointer<model::DftShieldingStore> dftStore_;
     QPointer<SceneRevealOverlay> sceneOverlay_;
+    model::VisualizationContext visualizationContext_;
 
     QVector<ActiveSeries> series_;
+    QVector<DashboardSmokeSummary::ExpectedButEmpty> expectedButEmpty_;
 
     // Owned panels for static-display signals (built during rebuild(),
     // moved out via takeOwnedPanels()).

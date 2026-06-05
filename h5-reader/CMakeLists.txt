@@ -105,6 +105,25 @@ qt_add_library(h5reader_core STATIC
     src/model/DashboardSignalModel.cpp
     src/model/DashboardPanelModel.h
     src/model/DashboardPanelModel.cpp
+    src/model/DisplayModeCapability.cpp
+    src/model/VisualizationDefinition.h
+    src/model/VisualizationDefinition.cpp
+    src/model/VisualizationRegistry.h
+    src/model/VisualizationRegistry.cpp
+    src/model/StripVisualization.h
+    src/model/StripVisualization.cpp
+    src/model/SequenceBarVisualization.h
+    src/model/SequenceBarVisualization.cpp
+    src/model/LagCurveVisualization.h
+    src/model/LagCurveVisualization.cpp
+    src/model/ChordCouplingVisualization.h
+    src/model/ChordCouplingVisualization.cpp
+    src/model/FixedFrequencyVisualization.h
+    src/model/FixedFrequencyVisualization.cpp
+    src/model/PowerSpectrumVisualization.h
+    src/model/PowerSpectrumVisualization.cpp
+    src/model/TensorGlyphVisualization.h
+    src/model/TensorGlyphVisualization.cpp
     src/model/TrajectorySignalCatalog.h
     src/model/TrajectorySignalCatalog.cpp
     src/model/SignalTimeSeries.h
@@ -510,6 +529,25 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/DashboardSignalModel.cpp
         src/model/DashboardPanelModel.h
         src/model/DashboardPanelModel.cpp
+        src/model/DisplayModeCapability.cpp
+        src/model/VisualizationDefinition.h
+        src/model/VisualizationDefinition.cpp
+        src/model/VisualizationRegistry.h
+        src/model/VisualizationRegistry.cpp
+        src/model/StripVisualization.h
+        src/model/StripVisualization.cpp
+        src/model/SequenceBarVisualization.h
+        src/model/SequenceBarVisualization.cpp
+        src/model/LagCurveVisualization.h
+        src/model/LagCurveVisualization.cpp
+        src/model/ChordCouplingVisualization.h
+        src/model/ChordCouplingVisualization.cpp
+        src/model/FixedFrequencyVisualization.h
+        src/model/FixedFrequencyVisualization.cpp
+        src/model/PowerSpectrumVisualization.h
+        src/model/PowerSpectrumVisualization.cpp
+        src/model/TensorGlyphVisualization.h
+        src/model/TensorGlyphVisualization.cpp
         src/model/QtRing.h
         src/model/QtRing.cpp
         src/model/QtTopology.h
@@ -517,6 +555,9 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/SignalDictionary.h
         src/model/TrajectorySignalCatalog.h
         src/model/TrajectorySignalCatalog.cpp
+        src/diagnostics/ObjectCensus.h
+        src/diagnostics/ObjectCensus.cpp
+        src/diagnostics/Categories.cpp
     )
     target_include_directories(h5reader_model_tests PRIVATE src)
     target_link_libraries(h5reader_model_tests PRIVATE
@@ -612,6 +653,25 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/DashboardSignalModel.cpp
         src/model/DashboardPanelModel.h
         src/model/DashboardPanelModel.cpp
+        src/model/DisplayModeCapability.cpp
+        src/model/VisualizationDefinition.h
+        src/model/VisualizationDefinition.cpp
+        src/model/VisualizationRegistry.h
+        src/model/VisualizationRegistry.cpp
+        src/model/StripVisualization.h
+        src/model/StripVisualization.cpp
+        src/model/SequenceBarVisualization.h
+        src/model/SequenceBarVisualization.cpp
+        src/model/LagCurveVisualization.h
+        src/model/LagCurveVisualization.cpp
+        src/model/ChordCouplingVisualization.h
+        src/model/ChordCouplingVisualization.cpp
+        src/model/FixedFrequencyVisualization.h
+        src/model/FixedFrequencyVisualization.cpp
+        src/model/PowerSpectrumVisualization.h
+        src/model/PowerSpectrumVisualization.cpp
+        src/model/TensorGlyphVisualization.h
+        src/model/TensorGlyphVisualization.cpp
         src/model/AtomSelection.h
         src/model/AtomSelection.cpp
         src/model/TrajectorySignalCatalog.h

@@ -120,6 +120,11 @@ public:
         return it == byDescriptor_.constEnd() ? nullptr : &it.value();
     }
 
+    const TrajectoryFieldAvailabilityRecord* recordForStoragePath(const QString& path) const {
+        const auto it = byStorage_.constFind(path);
+        return it == byStorage_.constEnd() ? nullptr : &it.value();
+    }
+
     TrajectoryFieldAvailabilityState stateForDescriptor(const QString& descriptorId) const {
         const auto* record = recordForDescriptor(descriptorId);
         return record ? record->state : TrajectoryFieldAvailabilityState::Available;

@@ -20,6 +20,7 @@ class DashboardPanelModel;
 class DashboardSignalModel;
 class QtProtein;
 class TrajectorySignalCatalog;
+struct VisualizationContext;
 }
 
 namespace h5reader::app {
@@ -40,6 +41,7 @@ public:
     void setDashboardPanelModel(model::DashboardPanelModel* panelModel);
     void setDashboardSelectionController(DashboardSelectionController* controller);
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
+    void setVisualizationContext(const model::VisualizationContext& ctx);
     void setSelection(model::AtomSelection* selection);
 
     model::TrajectorySignalCatalog* trajectorySignalCatalog() const;

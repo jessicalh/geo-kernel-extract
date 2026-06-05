@@ -55,6 +55,7 @@ class DashboardControllerTests : public QObject {
 
 private slots:
     void scrubDefersFrameSnapshotRequestsUntilRelease();
+    void stripHistorySurvivesRebuildByLegacyModeId();
 };
 
 void DashboardControllerTests::scrubDefersFrameSnapshotRequestsUntilRelease() {
@@ -86,6 +87,42 @@ void DashboardControllerTests::scrubDefersFrameSnapshotRequestsUntilRelease() {
     QCOMPARE(conformation.snapshotRequests, 1);
     QCOMPARE(conformation.requestedFrames.size(), std::size_t{1});
     QCOMPARE(conformation.requestedFrames.front(), std::size_t{750});
+}
+
+void DashboardControllerTests::stripHistorySurvivesRebuildByLegacyModeId() {
+    CountingConformation conformation(1000);
+    model::TrajectorySignalCatalog catalog;
+    model::DashboardSignalModel signalModel;
+    app::DashboardDisplayController controller;
+
+    const model::SignalDescriptor* descriptor =
+        catalog.findDescriptor(QStringLiteral("npy:pos"));
+    QVERIFY(descriptor != nullptr);
+    signalModel.addSignal(*descriptor,
+                          model::AtomAnchor{0},
+                          QString(),
+                          {QStringLiteral("strip.vector.component")},
+                          false,
+                          QStringLiteral("Snapshot positions"));
+
+    controller.setContext(nullptr, &conformation);
+    controller.setSignalModels(&catalog, &signalModel);
+    controller.setFrame(3);
+    const app::DashboardSmokeSummary before = controller.smokeSummary();
+    QCOMPARE(before.seriesSparseness.size(), 3);
+    QCOMPARE(before.seriesSparseness.front().samples, 4);
+
+    controller.rebuild();
+    const app::DashboardSmokeSummary after = controller.smokeSummary();
+    QCOMPARE(after.seriesSparseness.size(), before.seriesSparseness.size());
+    for (int i = 0; i < after.seriesSparseness.size(); ++i) {
+        QCOMPARE(after.seriesSparseness.at(i).displayModeId,
+                 before.seriesSparseness.at(i).displayModeId);
+        QCOMPARE(after.seriesSparseness.at(i).channelId,
+                 before.seriesSparseness.at(i).channelId);
+        QCOMPARE(after.seriesSparseness.at(i).samples,
+                 before.seriesSparseness.at(i).samples);
+    }
 }
 
 QTEST_GUILESS_MAIN(DashboardControllerTests)

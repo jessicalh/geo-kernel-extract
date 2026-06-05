@@ -1,5 +1,7 @@
 #include "DashboardSignal.h"
 
+#include "VisualizationDefinition.h"
+
 #include <QStringList>
 
 #include <type_traits>
@@ -197,6 +199,40 @@ QString ToString(UnitDimension dimension) {
         return QStringLiteral("count");
     case UnitDimension::Tag:
         return QStringLiteral("tag");
+    }
+    return QStringLiteral("unknown");
+}
+
+QString ToString(VisualizationType type) {
+    switch (type) {
+    case VisualizationType::TemporalStrip:
+        return QStringLiteral("temporal strip");
+    case VisualizationType::TensorGlyph:
+        return QStringLiteral("tensor glyph");
+    case VisualizationType::AtomColor:
+        return QStringLiteral("atom colour");
+    case VisualizationType::SequenceBar:
+        return QStringLiteral("sequence bar");
+    case VisualizationType::LagCurve:
+        return QStringLiteral("lag curve");
+    case VisualizationType::ChordCoupling:
+        return QStringLiteral("chord coupling");
+    case VisualizationType::FixedFrequency:
+        return QStringLiteral("fixed frequency");
+    case VisualizationType::PowerSpectrum:
+        return QStringLiteral("power spectrum");
+    }
+    return QStringLiteral("unknown");
+}
+
+QString ToString(DisplaySurface surface) {
+    switch (surface) {
+    case DisplaySurface::Strip:
+        return QStringLiteral("strip");
+    case DisplaySurface::Panel:
+        return QStringLiteral("panel");
+    case DisplaySurface::Scene:
+        return QStringLiteral("scene");
     }
     return QStringLiteral("unknown");
 }

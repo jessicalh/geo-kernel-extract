@@ -880,6 +880,12 @@ target_include_directories(nmr_extract BEFORE PRIVATE
     ${NMR_HDF5_INCLUDE_DIR}
 )
 
+add_executable(apbs_radii_ab_workaround tools/apbs_radii_ab_workaround.cpp)
+target_link_libraries(apbs_radii_ab_workaround PRIVATE nmr_shielding)
+target_include_directories(apbs_radii_ab_workaround BEFORE PRIVATE
+    ${NMR_HDF5_INCLUDE_DIR}
+)
+
 add_custom_target(nmr_shielding_doctor
     COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/nmr-shielding-doctor.sh" "$<TARGET_FILE:nmr_extract>"
     DEPENDS nmr_extract

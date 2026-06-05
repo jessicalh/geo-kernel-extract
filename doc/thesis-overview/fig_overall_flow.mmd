@@ -1,0 +1,32 @@
+flowchart TB
+  classDef eng fill:#e9ecf2,stroke:#444444,color:#222222;
+  classDef stage fill:#eef4fb,stroke:#3a5275,color:#1b2a44;
+  classDef result fill:#d0e5d2,stroke:#3a6a40,color:#1d3320;
+  classDef model fill:#f3e4c6,stroke:#7a5a1e,color:#3a2c0e;
+  classDef ground fill:#f6f6f8,stroke:#666666,color:#222222;
+  classDef ablate fill:#efe9e2,stroke:#8a7a66,color:#3a322a,stroke-dasharray:4 3;
+
+  EXT["Extractor<br/>classical kernels / calculators"]:::eng
+  DFT["DFT shielding<br/>r2SCAN · 720 statics + 1P9J frames"]:::ground
+
+  MUT["720 WT+ALA mutant pairs<br/>AlphaFold · pLDDT &ge; 95"]:::ground --> S1
+  TRAJ["1P9J trajectory<br/>GROMACS MD"]:::ground --> S2
+
+  EXT --> S1
+  EXT --> S2
+  DFT --> S1
+  DFT --> S2
+
+  S1["STAGE 1 · static<br/>ridge + contribution of kernels<br/>vs WT&minus;ALA DFT &Delta;&sigma;"]:::stage --> R1["static contributors<br/>which kernels carry &sigma;,<br/>per element / atom-type"]:::result
+  S2["STAGE 2 · in-frame<br/>kernels + trajectory-only metrics<br/>vs per-frame DFT &sigma;"]:::stage --> R2["in-frame laws<br/>unified D_ab-sum<br/>recovers the tensor"]:::result
+
+  R1 -. informs .-> M1
+  R2 -. informs .-> M1
+  DFT -- trains --> M1
+  M1["MODEL 1 · small shielding model<br/>e3nn equivariant<br/>predicts &sigma; where there is no DFT"]:::model
+
+  M1 --> M2
+  EXT --> M2
+  BMRB["BMRB measured shifts"]:::ground --> M2
+  M2["MODEL 2 · big classic model<br/>trained vs shifts"]:::model --> OUT["predicted shift<br/>+ per-source contributions"]:::result
+  ABL["ablate:<br/>structure quality / atom pLDDT<br/>Model 1 in / out<br/>calculators in / out"]:::ablate -.-> M2

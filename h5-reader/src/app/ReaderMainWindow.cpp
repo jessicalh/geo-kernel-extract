@@ -38,6 +38,7 @@
 #include "../model/TrajectoryFieldAvailability.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "../model/TransformedConformation.h"
+#include "../model/VisualizationRegistry.h"
 
 #include <QDockWidget>
 
@@ -247,6 +248,18 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
         model::TrajectoryFieldAvailability::Build(loaded_->conformation.get(),
                                                   signalCatalog_->allDescriptorList()));
     signalCatalog_->setFieldAvailability(fieldAvailability);
+    visualizationContext_ = {};
+    visualizationContext_.availability = fieldAvailability.get();
+    visualizationContext_.hasTrajectory = loaded_->conformation
+        && loaded_->conformation->asTrajectory() != nullptr;
+    visualizationContext_.tensorGlyphGestureEnabled = false;
+    const QStringList unresolvedModes =
+        model::VisualizationRegistry::instance().unresolvedStaticModes(*signalCatalog_);
+    for (const QString& mode : unresolvedModes) {
+        qCWarning(diagnostics::cDash).noquote()
+            << QStringLiteral("event=viz_unresolved_static_mode mode=%1").arg(mode);
+    }
+    Q_ASSERT(unresolvedModes.isEmpty());
     inspectorDock_->setFieldAvailability(fieldAvailability);
     dashboardSignals_ = new model::DashboardSignalModel(this);
     dashboardSignals_->setFieldAvailability(fieldAvailability);
@@ -260,6 +273,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     signalDisplayDialog_->setDashboardPanelModel(dashboardPanels_);
     signalDisplayDialog_->setDashboardSelectionController(dashboardSelectionController_.data());
     signalDisplayDialog_->setContext(loaded_->protein.get(), transformed_);
+    signalDisplayDialog_->setVisualizationContext(visualizationContext_);
     signalDisplayDialog_->setSelection(selection_);
     ACONNECT(playback_, &QtPlaybackController::frameChanged,
              signalDisplayDialog_, &SignalDisplayDialog::setFrame);
@@ -343,6 +357,8 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
     dashboardController_ = dashboardStripDock_->displayController();
+    if (dashboardController_)
+        dashboardController_->setVisualizationContext(visualizationContext_);
     addDockWidget(Qt::LeftDockWidgetArea, dashboardStripDock_);
     tabifyDockWidget(inspectorDock_, dashboardStripDock_);
     inspectorDock_->raise();
@@ -419,8 +435,14 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // dashboard controller so static.tensor mode on Reorient
     // orientation_tensor signals fires an ellipsoid glyph in the
     // 3-D view.
-    if (scene_ && scene_->revealOverlay())
+    if (scene_ && scene_->revealOverlay()) {
         dashboardStripDock_->setSceneOverlay(scene_->revealOverlay());
+        visualizationContext_.hasSceneOverlay = true;
+        if (dashboardController_)
+            dashboardController_->setVisualizationContext(visualizationContext_);
+        if (signalDisplayDialog_)
+            signalDisplayDialog_->setVisualizationContext(visualizationContext_);
+    }
     ACONNECT(dashboardStripDock_, &DashboardStripDock::metricPickerRequested,
              this,                &ReaderMainWindow::onOpenSignalDisplays);
     ACONNECT(playback_,           &QtPlaybackController::frameChanged,
@@ -446,6 +468,11 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
         const auto& dft = *loaded_->manifest.dft;
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dft.frames, this);
         dashboardStripDock_->setDftStore(dftStore_);
+        visualizationContext_.hasDftStore = true;
+        if (dashboardController_)
+            dashboardController_->setVisualizationContext(visualizationContext_);
+        if (signalDisplayDialog_)
+            signalDisplayDialog_->setVisualizationContext(visualizationContext_);
         qCInfo(cWindow).noquote() << "DFT shielding store wired from .LGS |"
                                   << "method=" << dft.method
                                   << "| frames=" << dftStore_->jobCount()
