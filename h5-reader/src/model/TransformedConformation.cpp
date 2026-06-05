@@ -9,16 +9,59 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
+#include <Eigen/Geometry>
+
+#include <QElapsedTimer>
 #include <QLoggingCategory>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <utility>
+#include <vector>
 
 namespace h5reader::model {
 
 namespace {
 Q_LOGGING_CATEGORY(cXform, "h5reader.transform")
+
+constexpr int kMeanReferenceMaxIterations = 20;
+constexpr double kMeanReferenceEpsAngstrom = 1e-4;
+
+Eigen::Quaterniond NormalisedQuaternion(const Mat3& rotation) {
+    constexpr double kMinNorm = 1e-12;
+    Eigen::Quaterniond q(rotation);
+    if (q.norm() < kMinNorm)
+        return Eigen::Quaterniond::Identity();
+    q.normalize();
+    return q;
+}
+
+Vec3 Centroid(const std::vector<Vec3>& positions) {
+    Vec3 c = Vec3::Zero();
+    if (positions.empty())
+        return c;
+    for (const Vec3& p : positions)
+        c += p;
+    return c / static_cast<double>(positions.size());
+}
+
+std::vector<Vec3> DemeanedCopy(const std::vector<Vec3>& positions, const Vec3& centroid) {
+    std::vector<Vec3> out;
+    out.reserve(positions.size());
+    for (const Vec3& p : positions)
+        out.push_back(p - centroid);
+    return out;
+}
+
+double RmsDifference(const std::vector<Vec3>& a, const std::vector<Vec3>& b) {
+    if (a.empty() || a.size() != b.size())
+        return 0.0;
+    double ss = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        ss += (a[i] - b[i]).squaredNorm();
+    return std::sqrt(ss / static_cast<double>(a.size()));
+}
 }  // namespace
 
 TransformedConformation::TransformedConformation(Conformation* inner, QObject* parent)
@@ -49,18 +92,20 @@ const TrajectoryConformation* TransformedConformation::asTrajectory() const {
 }
 
 Vec3 TransformedConformation::atomPosition(std::size_t frame, std::size_t atomIdx) const {
+    ASSERT_THREAD(this);
     if (!inner_)
         return Vec3::Zero();
 
-    // Look up or compute the transform for this frame.
-    auto it = transformCache_.find(frame);
-    if (it == transformCache_.end()) {
-        const Transform3D tform = computeTransform(frame);
-        it = transformCache_.emplace(frame, tform).first;
+    Transform3D fallback;
+    const Transform3D* t = nullptr;
+    if (frame < transformCache_.size()) {
+        t = &transformCache_[frame];
+    } else {
+        fallback = computeRawTransform(frame);
+        t = &fallback;
     }
-    const Transform3D& t = it->second;
     const Vec3 raw = inner_->atomPosition(frame, atomIdx);
-    return t.R * raw + t.T;
+    return t->R * raw + t->T;
 }
 
 std::shared_ptr<const QtConformationSnapshot>
@@ -88,36 +133,49 @@ void TransformedConformation::setMode(Mode mode,
 
     mode_ = mode;
     referenceFrame_ = referenceFrame;
-    subsetAtoms_ = std::move(subsetAtoms);
+    subsetAtoms_.clear();
+    fitAtomIndices_.clear();
+
+    if (inner_) {
+        const std::size_t frames = inner_->frameCount();
+        if (frames > 0 && referenceFrame_ >= frames) {
+            qCWarning(cXform).noquote()
+                << "reference frame" << static_cast<qlonglong>(referenceFrame_)
+                << "out of range; clamping to" << static_cast<qlonglong>(frames - 1);
+            referenceFrame_ = frames - 1;
+        }
+    }
+
+    if (protein_) {
+        const std::size_t atomCount = protein_->atomCount();
+        if (mode_ == Mode::FitReference) {
+            fitAtomIndices_.reserve(atomCount);
+            for (std::size_t a = 0; a < atomCount; ++a)
+                fitAtomIndices_.push_back(a);
+        } else {
+            subsetAtoms_.reserve(subsetAtoms.size());
+            for (std::size_t a : subsetAtoms) {
+                if (a >= atomCount) {
+                    qCWarning(cXform).noquote()
+                        << "FitSubset atom" << static_cast<qlonglong>(a)
+                        << "out of range; dropping from subset";
+                    continue;
+                }
+                subsetAtoms_.push_back(a);
+            }
+            fitAtomIndices_ = subsetAtoms_;
+        }
+    }
 
     // Bump the generation counter (semantic marker, primarily for logs /
-    // future diagnostics) and wipe the per-frame transform cache so the
-    // next atomPosition() lookup recomputes.
+    // future diagnostics) and wipe the transform sequence before rebuilding.
     ++generation_;
     transformCache_.clear();
     referencePositions_.clear();
+    referenceCentroid_ = Vec3::Zero();
+    rebuildReferenceMean();
 
-    // Pre-load reference positions so each per-frame Kabsch call doesn't
-    // re-scan the inner conformation. For FitReference we need every atom;
-    // for FitSubset just the subset.
-    if (inner_ && protein_) {
-        const std::size_t atomCount = protein_->atomCount();
-        if (mode_ == Mode::FitReference) {
-            referencePositions_.reserve(atomCount);
-            for (std::size_t a = 0; a < atomCount; ++a)
-                referencePositions_.push_back(inner_->atomPosition(referenceFrame_, a));
-        } else if (mode_ == Mode::FitSubset) {
-            referencePositions_.reserve(subsetAtoms_.size());
-            for (std::size_t a : subsetAtoms_) {
-                if (a >= atomCount) {
-                    qCWarning(cXform).noquote()
-                        << "FitSubset atom" << a << "out of range; clamping subset to in-range atoms";
-                    continue;
-                }
-                referencePositions_.push_back(inner_->atomPosition(referenceFrame_, a));
-            }
-        }
-    }
+    rebuildTransformCache();
 
     const char* modeName = "fit_reference";
     switch (mode_) {
@@ -128,6 +186,27 @@ void TransformedConformation::setMode(Mode mode,
         << "mode set to" << modeName
         << "| ref_frame=" << static_cast<qlonglong>(referenceFrame_)
         << "| subset_size=" << static_cast<qlonglong>(subsetAtoms_.size())
+        << "| smoothing_window=" << stabilisationWindow_
+        << "| transforms=" << static_cast<qlonglong>(transformCache_.size())
+        << "| generation=" << static_cast<qlonglong>(generation_);
+
+    emit transformChanged();
+}
+
+void TransformedConformation::setStabilisationWindow(int halfWidth) {
+    ASSERT_THREAD(this);
+
+    const int clamped = std::max(0, halfWidth);
+    if (clamped == stabilisationWindow_)
+        return;
+
+    stabilisationWindow_ = clamped;
+    ++generation_;
+    rebuildTransformCache();
+
+    qCInfo(cXform).noquote()
+        << "stabilisation window set to" << stabilisationWindow_
+        << "| transforms=" << static_cast<qlonglong>(transformCache_.size())
         << "| generation=" << static_cast<qlonglong>(generation_);
 
     emit transformChanged();
@@ -144,55 +223,225 @@ TransformedConformation::BackboneSubset(const QtProtein& protein) {
     return out;
 }
 
-TransformedConformation::Transform3D
-TransformedConformation::computeTransform(std::size_t frame) const {
-    Transform3D out;  // identity by default
+std::vector<Vec3> TransformedConformation::fitPositions(std::size_t frame) const {
+    std::vector<Vec3> positions;
+    if (!inner_ || !protein_)
+        return positions;
+
+    const std::size_t atomCount = protein_->atomCount();
+    positions.reserve(fitAtomIndices_.size());
+    for (std::size_t a : fitAtomIndices_) {
+        if (a >= atomCount) {
+            qCWarning(cXform).noquote()
+                << "fit atom" << static_cast<qlonglong>(a)
+                << "out of range at frame" << static_cast<qlonglong>(frame)
+                << "; dropping from fit";
+            continue;
+        }
+        positions.push_back(inner_->atomPosition(frame, a));
+    }
+    return positions;
+}
+
+void TransformedConformation::rebuildReferenceMean() {
+    referencePositions_.clear();
+    referenceCentroid_ = Vec3::Zero();
 
     if (!inner_ || !protein_)
-        return out;
-    const std::size_t atomCount = protein_->atomCount();
-    if (atomCount == 0)
-        return out;
+        return;
 
-    switch (mode_) {
-        case Mode::FitReference: {
-            // Kabsch over ALL atoms. The reference positions were cached
-            // at setMode() time; pull the current frame's positions and
-            // hand the two equal-length vectors to KabschFit.
-            if (referencePositions_.size() != atomCount)
-                return out;  // cache wasn't built; safest is identity
-            std::vector<Vec3> current;
-            current.reserve(atomCount);
-            for (std::size_t a = 0; a < atomCount; ++a)
-                current.push_back(inner_->atomPosition(frame, a));
-            return KabschFit(current, referencePositions_);
-        }
+    const std::size_t frames = inner_->frameCount();
+    const std::size_t n = fitAtomIndices_.size();
+    if (frames == 0 || n == 0)
+        return;
 
-        case Mode::FitSubset: {
-            // Kabsch over the subset indices. Reference positions are the
-            // subset atoms at referenceFrame_, current is the subset at
-            // `frame`. Use the smaller of (subset.size(), reference.size())
-            // to defend against subset/reference shape mismatches.
-            const std::size_t n = std::min(subsetAtoms_.size(), referencePositions_.size());
-            if (n < 3)
-                return out;  // underdetermined
-            std::vector<Vec3> current;
-            current.reserve(n);
-            for (std::size_t i = 0; i < n; ++i) {
-                const std::size_t a = subsetAtoms_[i];
-                if (a >= atomCount)
+    QElapsedTimer timer;
+    timer.start();
+
+    const std::vector<Vec3> seed = fitPositions(referenceFrame_);
+    if (seed.size() != n) {
+        qCWarning(cXform).noquote()
+            << "iterative mean reference skipped; fit atom count mismatch"
+            << "expected=" << static_cast<qlonglong>(n)
+            << "actual=" << static_cast<qlonglong>(seed.size());
+        return;
+    }
+
+    referenceCentroid_ = Centroid(seed);
+    referencePositions_ = DemeanedCopy(seed, referenceCentroid_);
+
+    int iterations = 0;
+    double delta = 0.0;
+    if (n >= 3) {
+        for (int iter = 0; iter < kMeanReferenceMaxIterations; ++iter) {
+            std::vector<Vec3> accum(n, Vec3::Zero());
+            std::size_t usedFrames = 0;
+
+            for (std::size_t frame = 0; frame < frames; ++frame) {
+                const std::vector<Vec3> current = fitPositions(frame);
+                if (current.size() != n) {
+                    qCWarning(cXform).noquote()
+                        << "iterative mean dropped frame" << static_cast<qlonglong>(frame)
+                        << "because fit atom count changed"
+                        << "expected=" << static_cast<qlonglong>(n)
+                        << "actual=" << static_cast<qlonglong>(current.size());
                     continue;
-                current.push_back(inner_->atomPosition(frame, a));
+                }
+
+                const Vec3 cc = Centroid(current);
+                const std::vector<Vec3> currentDemeaned = DemeanedCopy(current, cc);
+                // v2: pass robust/weighted atom weights into KabschFit here.
+                const Transform3D fit = KabschFit(currentDemeaned, referencePositions_);
+                for (std::size_t i = 0; i < n; ++i)
+                    accum[i] += fit.R * currentDemeaned[i];
+                ++usedFrames;
             }
-            // KabschFit is robust to mismatched length: it requires the
-            // SAME length on both sides — clip the reference to current.size()
-            // (the same atoms in the same order; per-atom in subsetAtoms_).
-            std::vector<Vec3> reference(referencePositions_.begin(),
-                                         referencePositions_.begin() + current.size());
-            return KabschFit(current, reference);
+
+            if (usedFrames == 0) {
+                qCWarning(cXform).noquote()
+                    << "iterative mean reference failed; no frames contributed";
+                referencePositions_.clear();
+                referenceCentroid_ = Vec3::Zero();
+                return;
+            }
+
+            for (Vec3& p : accum)
+                p /= static_cast<double>(usedFrames);
+            const Vec3 avgCentroid = Centroid(accum);
+            std::vector<Vec3> avg = DemeanedCopy(accum, avgCentroid);
+
+            delta = RmsDifference(avg, referencePositions_);
+            referencePositions_ = std::move(avg);
+            iterations = iter + 1;
+            if (delta < kMeanReferenceEpsAngstrom)
+                break;
         }
     }
+
+    if (n >= 3 && iterations >= kMeanReferenceMaxIterations
+            && delta >= kMeanReferenceEpsAngstrom) {
+        qCWarning(cXform).noquote()
+            << "iterative mean reference did NOT converge | delta_A=" << delta
+            << "| eps_A=" << kMeanReferenceEpsAngstrom
+            << "| iterations=" << iterations
+            << "— shipping last average (rigid + centroid-pinned, still valid)";
+    }
+
+    qCInfo(cXform).noquote()
+        << "iterative mean reference built"
+        << "| fit_atoms=" << static_cast<qlonglong>(n)
+        << "| frames=" << static_cast<qlonglong>(frames)
+        << "| iterations=" << iterations
+        << "| delta_A=" << delta
+        << "| eps_A=" << kMeanReferenceEpsAngstrom
+        << "| max_iter=" << kMeanReferenceMaxIterations
+        << "| anchor_frame=" << static_cast<qlonglong>(referenceFrame_)
+        << "| ms=" << timer.elapsed();
+}
+
+TransformedConformation::FrameFit
+TransformedConformation::computeRawFrameFit(std::size_t frame) const {
+    FrameFit out;  // identity by default
+
+    if (!inner_ || referencePositions_.empty())
+        return out;
+
+    const std::vector<Vec3> current = fitPositions(frame);
+    const std::size_t n = referencePositions_.size();
+    if (current.size() != n || n == 0)
+        return out;
+
+    out.currentCentroid = Centroid(current);
+    if (n >= 3)
+        out.transform.R = KabschFit(current, referencePositions_).R;
+    out.transform.T = referenceCentroid_ - out.transform.R * out.currentCentroid;
     return out;
+}
+
+TransformedConformation::Transform3D
+TransformedConformation::computeRawTransform(std::size_t frame) const {
+    return computeRawFrameFit(frame).transform;
+}
+
+void TransformedConformation::rebuildTransformCache() {
+    transformCache_.clear();
+
+    if (!inner_)
+        return;
+    const std::size_t frames = inner_->frameCount();
+    if (frames == 0)
+        return;
+
+    QElapsedTimer timer;
+    timer.start();
+    const std::vector<FrameFit> raw = computeRawTransformSequence();
+    transformCache_ = smoothTransformSequence(raw);
+    qCInfo(cXform).noquote()
+        << "transform cache rebuilt | frames=" << static_cast<qlonglong>(frames)
+        << "| window=" << stabilisationWindow_
+        << "| ms=" << timer.elapsed();
+}
+
+std::vector<TransformedConformation::FrameFit>
+TransformedConformation::computeRawTransformSequence() const {
+    std::vector<FrameFit> raw;
+    if (!inner_)
+        return raw;
+
+    const std::size_t frames = inner_->frameCount();
+    raw.reserve(frames);
+    for (std::size_t frame = 0; frame < frames; ++frame)
+        raw.push_back(computeRawFrameFit(frame));
+    return raw;
+}
+
+std::vector<TransformedConformation::Transform3D>
+TransformedConformation::smoothTransformSequence(const std::vector<FrameFit>& raw) const {
+    if (raw.empty())
+        return {};
+
+    constexpr double kMinQuaternionNorm = 1e-12;
+    const std::size_t frames = raw.size();
+    std::vector<Transform3D> smoothed(frames);
+
+    if (stabilisationWindow_ <= 0) {
+        for (std::size_t frame = 0; frame < frames; ++frame) {
+            Transform3D out = raw[frame].transform;
+            out.T = referenceCentroid_ - out.R * raw[frame].currentCentroid;
+            smoothed[frame] = out;
+        }
+        return smoothed;
+    }
+
+    const std::size_t halfWidth = static_cast<std::size_t>(stabilisationWindow_);
+
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+        const std::size_t begin = (frame > halfWidth) ? frame - halfWidth : 0;
+        const std::size_t end = std::min(frames - 1, frame + halfWidth);
+
+        const Eigen::Quaterniond qRef = NormalisedQuaternion(raw[frame].transform.R);
+        Eigen::Vector4d qSum = Eigen::Vector4d::Zero();
+
+        for (std::size_t k = begin; k <= end; ++k) {
+            Eigen::Quaterniond q = NormalisedQuaternion(raw[k].transform.R);
+            if (q.dot(qRef) < 0.0)
+                q.coeffs() *= -1.0;
+            qSum += q.coeffs();
+        }
+
+        Transform3D out;
+        if (qSum.norm() < kMinQuaternionNorm) {
+            out.R = raw[frame].transform.R;
+        } else {
+            Eigen::Quaterniond qMean;
+            qMean.coeffs() = qSum;
+            qMean.normalize();
+            out.R = qMean.toRotationMatrix();
+        }
+        out.T = referenceCentroid_ - out.R * raw[frame].currentCentroid;
+        smoothed[frame] = out;
+    }
+    return smoothed;
 }
 
 // Kabsch fit — delegates to h5reader::math::ComputeSubsetTransform in

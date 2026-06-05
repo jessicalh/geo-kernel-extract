@@ -9,11 +9,9 @@
 // (CameraComposer) decide how to handle degeneracy — typically fall back
 // to CameraMode::Free for that frame and log a warning.
 //
-// Kabsch implementation lifted from
-// TransformedConformation::KabschFit (TransformedConformation.cpp:228-276).
-// Keeping the math in a header lets the camera composer reuse the same
-// algorithm without depending on the decorator type; the decorator's
-// static method now delegates to ComputeSubsetTransform.
+// This header is the canonical Kabsch implementation. Keeping the math in a
+// header lets the camera composer reuse the same algorithm without depending
+// on the decorator type; TransformedConformation::KabschFit delegates here.
 
 #pragma once
 

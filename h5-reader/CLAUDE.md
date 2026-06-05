@@ -37,6 +37,34 @@ writes H5 files, never triggers extraction.
 
 ---
 
+## The model is the spine (see memory: feedback_model_is_spine)
+
+The reader is built around a typed C++ protein model — `QtProtein`,
+`QtTopology`, the `QtAtom` hierarchy with typed predicates, the
+`QtRing` class hierarchy with virtual methods, typed residues, typed
+bonds, kernel result types (`Mat3` + `SphericalTensor`). The model
+carries the domain knowledge; it's populated from H5 + the producer's
+sidecar via the existing loaders, held live in memory while the
+process runs.
+
+Every consumer **rides this model**: the viewer queries it via Qt
+widgets, scenes, and dashboards; the chewer (when built) exposes it
+to Python via pybind11 so transforms can query it in its native
+NMR-chemistry vocabulary (`atom.is_aromatic_HE()`,
+`frame.kernel('BS', atom).T0`). Multiple prior Python protein-model
+attempts taught this lesson — don't rebuild the model in Python;
+bind it.
+
+Output formats downstream of the chewer (Parquet for PySR, Postgres
+for ad-hoc spatial ablation, Arrow IPC, static snapshots for
+reviewers) are distribution decisions, secondary. The model answers
+questions; the output is just a durable form of those answers.
+Spatial structure lives in the running model, not in the output. The
+load-bearing chewer engineering is the pybind11 binding surface, not
+the output sink.
+
+---
+
 ## The discipline (see memory: feedback_qt_discipline)
 
 Before writing any Qt code in a session, invoke the `qt6-cpp` skill and

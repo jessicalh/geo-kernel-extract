@@ -9,6 +9,15 @@ what the UI *means and shows*. This is the real desk-ready list.
 > Verification caveat: a REST-driven run on `:1` got tangled with the lead's mouse (same window) — discarded,
 > no conclusions. Going forward: isolate the test display or hand off explicitly so my drives never collide.
 
+## Week sequencing (lead, 2026-06-05) — the controlling order
+1. **Make the strips work** — DONE + committed `141e7b6` (B2). Lead mouse-confirming on `:1`.
+2. **Camera + "Kabsch gyroscope" + hard backbone modes** — the 3D/stabilization pass. Maps to A3 (Focus/Free)
+   + D1 (reveal steals camera) + the transform/Kabsch behaviour. "Gyroscope" = the fit may leave a residual
+   spin/precession (investigate before touching). "Hard backbone modes" = a stricter backbone lock. NEXT.
+3. **Remove cruft + things that almost work** — A1/A2 (toolbar chrome, meaningless buttons), B1 (hide
+   render-nothing modes), the dead `SignalBuffer::isValidAt`, the `static.tensor` deferred glyph, etc.
+4. **Back to fields + display modes** — C1 (field glossary) + the display-mode semantics. LAST.
+
 ## A — Chrome wrong / meaningless
 - **A1. Playback bar and button bar not separated.** (A round-1 "split into Playback + Tools rows" supposedly
   landed — verify why the lead still sees them merged: regression? not visually distinct? built binary stale?)

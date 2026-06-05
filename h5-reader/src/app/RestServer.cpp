@@ -55,6 +55,7 @@
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -791,13 +792,17 @@ void RestServer::registerRoutes() {
     // ---- transform (upstream data-layer transform — TransformedConformation) -
     //
     // POST /transform {"kind": "all_atom_fit"|"backbone_fit",
-    //                   "reference_frame": int (default 0),
+    //                   "reference_frame": int (default 0; mean seed + centroid anchor),
     //                   "subset_atoms": [int, ...] (fit_subset alias only),
     //                   "backbone_only": bool (fit_subset alias shorthand) }
     // Switches the wrapped Conformation's transform mode. Fire-and-forget;
     // the wrapper emits transformChanged() which is connected (in
     // ReaderMainWindow) to scene_->refreshCurrentFrame so the molecule
     // re-renders in the new frame without further client involvement.
+    //
+    // POST /transform/smoothing {"window": int} changes the symmetric
+    // temporal rotation-smoothing half-width. window=0 disables smoothing;
+    // translation is always re-derived from the current fit centroid.
     //
     // GET /transform → returns the current mode + parameters for the
     // harness's reproducibility manifest.
@@ -820,6 +825,7 @@ void RestServer::registerRoutes() {
             {"reference_frame", static_cast<qint64>(transformed_->referenceFrame())},
             {"subset_atoms", subsetArr},
             {"subset_size", subsetArr.size()},
+            {"window", transformed_->stabilisationWindow()},
         });
     });
 
@@ -905,6 +911,32 @@ void RestServer::registerRoutes() {
         // setMode emits transformChanged → ReaderMainWindow connects this
         // to scene_->refreshCurrentFrame. No explicit render here; the
         // connected slot handles it.
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    server_->route(QStringLiteral("/transform/smoothing"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!transformed_)
+            return errorResponse(QStringLiteral("transformed conformation not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        const QJsonValue value = body.value(QStringLiteral("window"));
+        if (!ok || !value.isDouble())
+            return errorResponse(QStringLiteral("body must be {\"window\": int}"),
+                                 SC::BadRequest);
+
+        const double asDouble = value.toDouble(-1.0);
+        if (!std::isfinite(asDouble)
+            || std::floor(asDouble) != asDouble
+            || asDouble < 0.0
+            || asDouble > static_cast<double>(std::numeric_limits<int>::max())) {
+            return errorResponse(QStringLiteral("window must be a non-negative integer"),
+                                 SC::BadRequest);
+        }
+
+        transformed_->setStabilisationWindow(static_cast<int>(asDouble));
         return QHttpServerResponse(SC::NoContent);
     });
 

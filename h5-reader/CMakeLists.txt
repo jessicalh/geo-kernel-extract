@@ -196,6 +196,8 @@ qt_add_library(h5reader_core STATIC
     src/app/SignalDisplayDialog.cpp
     src/app/DashboardDisplayController.h
     src/app/DashboardDisplayController.cpp
+    src/app/DashboardSelectionController.h
+    src/app/DashboardSelectionController.cpp
     src/app/DashboardStripDock.h
     src/app/DashboardStripDock.cpp
     src/app/QtAtomInspectorDock.h

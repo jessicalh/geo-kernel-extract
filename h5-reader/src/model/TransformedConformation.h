@@ -17,10 +17,14 @@
 // Conformation* (MoleculeScene, MeasurementOverlay, picker, REST
 // /positions) see the wrapped one; polymorphism does the rest.
 //
-// Per-frame transforms are cached. The cache invalidates when the
-// transform mode changes (setMode bumps a generation counter and clears
-// the table). Cache lookups are not thread-safe but the reader is single-
-// threaded on the GUI thread; ASSERT_THREAD guards entry points.
+// Per-frame transforms are cached as a whole trajectory sequence. The
+// reference is the converged iterative mean of the selected fit atoms; each
+// frame's raw Kabsch rotation is then optionally smoothed. Translation is
+// always derived from the same-frame fit centroid so the fit-set centroid maps
+// exactly to a constant reference anchor before atomPosition() applies
+// R * raw + T. The cache invalidates when the transform mode, reference anchor,
+// or smoothing window changes. Cache access is not thread-safe but the reader
+// is single-threaded on the GUI thread; ASSERT_THREAD guards entry points.
 //
 // PBC unwrap: deliberately NOT implemented in this decorator. The
 // canonical PBC unwrap (fes-sampler's pbc_whole.h via do_pbc_mtop)
@@ -32,8 +36,8 @@
 // done at extraction time (the typical case for 1P9J and friends).
 //
 // ReaderMainWindow sets the startup mode before the scene builds:
-// FitSubset over the typed backbone subset, reference frame 0. That keeps
-// the displayed molecule stationary on open while preserving all internal
+// FitSubset over the typed backbone subset, seeded/anchored at frame 0. That
+// keeps the displayed molecule stationary on open while preserving all internal
 // motion because the transform is rigid.
 
 #pragma once
@@ -42,8 +46,8 @@
 #include "Types.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 namespace h5reader::model {
@@ -55,9 +59,11 @@ class TransformedConformation final : public Conformation {
     Q_OBJECT
 
 public:
+    static constexpr int kDefaultStabilisationWindow = 0;
+
     enum class Mode {
-        FitReference,     // Kabsch fit of frame against reference frame, all atoms
-        FitSubset,        // Kabsch fit using only the provided subset atom indices
+        FitReference,     // Kabsch fit to iterative mean using all atoms
+        FitSubset,        // Kabsch fit to iterative mean using provided subset atom indices
     };
 
     // `inner` is the underlying Conformation (TrajectoryConformation or
@@ -75,21 +81,29 @@ public:
 
     // The ONE virtual this decorator actually decorates: applies the
     // per-frame rigid-body transform to the inner conformation's raw
-    // position. R * raw + T, computed on demand and cached per frame.
+    // position. R * raw + T, from the precomputed transform sequence.
     Vec3 atomPosition(std::size_t frame, std::size_t atomIdx) const override;
 
     // ----- Transform control -----
     Mode mode() const { return mode_; }
     std::size_t referenceFrame() const { return referenceFrame_; }
     const std::vector<std::size_t>& subsetAtoms() const { return subsetAtoms_; }
+    int stabilisationWindow() const { return stabilisationWindow_; }
 
-    // Switch transform mode. `referenceFrame` is used by both fit modes.
+    // Switch transform mode. `referenceFrame` seeds the iterative mean and
+    // anchors the displayed fit-set centroid for both fit modes.
     // `subsetAtoms` is used only by FitSubset. Bumps the generation counter and clears the
     // per-frame cache atomically; emits transformChanged() so consumers
     // can request a re-render. ASSERT_THREAD(this).
     void setMode(Mode mode,
                  std::size_t referenceFrame = 0,
                  std::vector<std::size_t> subsetAtoms = {});
+
+    // Set the symmetric smoothing half-width in frames. 0 means no temporal
+    // smoothing: atomPosition() uses the raw per-frame Kabsch rotation with
+    // centroid-pinned translation. Non-zero windows smooth only rotation;
+    // translation is still re-derived from the current fit-set centroid.
+    void setStabilisationWindow(int halfWidth);
 
     // Convenience for the harness / REST: build a backbone-only subset
     // for FitSubset by walking QtProtein's atoms and selecting those
@@ -116,9 +130,24 @@ private:
         Vec3 T = Vec3::Zero();
     };
 
-    // Compute the transform for `frame` from the inner conformation's
-    // RAW positions. The implementation dispatches on mode_.
-    Transform3D computeTransform(std::size_t frame) const;
+    struct FrameFit {
+        Transform3D transform;
+        Vec3 currentCentroid = Vec3::Zero();
+    };
+
+    // Rebuild the whole-trajectory cache after mode/reference/window changes.
+    void rebuildTransformCache();
+    void rebuildReferenceMean();
+
+    std::vector<Vec3> fitPositions(std::size_t frame) const;
+
+    // Compute the unsmoothed transform for `frame` from the inner
+    // conformation's RAW positions using fitAtomIndices_.
+    FrameFit computeRawFrameFit(std::size_t frame) const;
+    Transform3D computeRawTransform(std::size_t frame) const;
+
+    std::vector<FrameFit> computeRawTransformSequence() const;
+    std::vector<Transform3D> smoothTransformSequence(const std::vector<FrameFit>& raw) const;
 
     // Kabsch algorithm — compute the rotation+translation that minimises
     // sum of squared distances between `current` atoms and the reference's
@@ -132,17 +161,19 @@ private:
     Mode mode_ = Mode::FitReference;
     std::size_t referenceFrame_ = 0;
     std::vector<std::size_t> subsetAtoms_;
+    std::vector<std::size_t> fitAtomIndices_;
+    int stabilisationWindow_ = kDefaultStabilisationWindow;
 
-    // Per-frame cache keyed by frame index. Mutable because atomPosition
-    // is const. Cleared on setMode() via generation_ bump.
-    mutable std::unordered_map<std::size_t, Transform3D> transformCache_;
+    // One display transform per frame, rebuilt on setMode() /
+    // setStabilisationWindow().
+    std::vector<Transform3D> transformCache_;
     mutable std::uint64_t generation_ = 0;
 
-    // Cached reference positions for FitReference / FitSubset — set once
-    // per setMode() so we don't re-read the inner conformation for every
-    // frame. The size matches subsetAtoms_ for FitSubset, or the protein
-    // atom count for FitReference.
+    // Cached converged-mean reference positions for FitReference / FitSubset,
+    // in fitAtomIndices_ order and centred around zero. referenceCentroid_
+    // is the constant world anchor for the fit-set centroid.
     mutable std::vector<Vec3> referencePositions_;
+    mutable Vec3 referenceCentroid_ = Vec3::Zero();
 };
 
 }  // namespace h5reader::model

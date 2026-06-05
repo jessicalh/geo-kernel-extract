@@ -118,8 +118,8 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // Upstream data-transform layer (feedback_viewer_two_layers_transform_and_camera).
     // Wraps the loader's Conformation so consumers (scene, picker, overlays,
     // REST /positions) read positions through a runtime-switchable rigid-body
-    // display transform. Startup mode is backbone fit against frame 0 so
-    // the reader opens stationary.
+    // display transform. Startup mode is backbone fit with the iterative mean
+    // seeded/anchored at frame 0 so the reader opens stationary.
     transformed_ = new h5reader::model::TransformedConformation(loaded_->conformation.get(), this);
     const auto backboneSubset =
         h5reader::model::TransformedConformation::BackboneSubset(*loaded_->protein);
