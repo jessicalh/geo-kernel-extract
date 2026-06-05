@@ -12,7 +12,7 @@
 //
 // TR7 of the 13-TR plan. Combines:
 //   - TR4 pattern: T2-only (N, T, 5) emission via DenseBuffer<SphericalTensor>
-//   - TR5 gate:    sparse-cadence HasResult<MopacCoulombResult>() skip,
+//   - TR5 gate:    conditional-source HasResult<MopacCoulombResult>() skip,
 //                  NaN-fill on absent frames, source_attached_per_frame
 //                  mask, group-absent when source never attached.
 //
@@ -21,10 +21,11 @@
 // trace-projected dipolar EFG from MOPAC Mulliken charges. T0 and T1
 // are structurally zero, so (N, T, 5) emission is information-preserving.
 //
-// SPARSE CADENCE: MopacCoulombResult attaches via TimedAttach, not
-// RequireConformationResult. Same CLI-driven Mopac cadence as TR5/TR6.
-// WriteH5Group skips the entire
-// /trajectory/mopac_coulomb_shielding_time_series/ group when no
+// CONDITIONAL SOURCE: MopacCoulombResult attaches via TimedAttach, not
+// RequireConformationResult. There is no MOPAC-specific cadence; when MOPAC
+// is enabled, attached samples are on the same frames dispatched by the
+// trajectory's single --stride and any dispatch window. WriteH5Group skips
+// the entire /trajectory/mopac_coulomb_shielding_time_series/ group when no
 // frame attached the source.
 //
 // Emission:
@@ -44,7 +45,8 @@
 //                                  (T2-only per source comment 'Pure T2
 //                                  (EFG is traceless)')"
 //       source_attached_policy  = "conditional -- MopacCoulombResult attaches
-//                                  sparsely per the Mopac cadence ..."
+//                                  only on dispatched frames where MOPAC
+//                                  is enabled and Compute succeeds ..."
 //
 
 #include "DenseBuffer.h"

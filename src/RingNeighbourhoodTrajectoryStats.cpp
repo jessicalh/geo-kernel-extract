@@ -322,8 +322,8 @@ void RingNeighbourhoodTrajectoryStats::WriteH5Group(
     // Static: ring_membership_per_atom (N, R) int32, -1 sentinel.
     // This is the per-atom counterpart to TopologySidecar's per-vertex
     // ring_membership.npy (substrate truth); ring_membership_per_atom
-    // is the per-atom cutoff-set snapshot at frame 0 (per-conformation
-    // geometry, not substrate; emitted here rather than in
+    // is the per-atom cutoff-set snapshot at the first dispatched frame
+    // (per-conformation geometry, not substrate; emitted here rather than in
     // TopologySidecar per PATTERNS Lesson 1 "Protein is identity and
     // topology only" + OBJECT_MODEL spatial-neighbours-on-conformation).
     std::vector<std::int32_t> membership(N * R, -1);

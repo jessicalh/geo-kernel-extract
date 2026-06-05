@@ -113,10 +113,10 @@ ReorientationalDynamicsTrajectoryResult::Create(const TrajectoryProtein& tp) {
 
 // ── Compute ──────────────────────────────────────────────────────
 //
-// Per frame: the Kabsch rotation onto frame 0 (computed once from the
-// alignment set), applied to each bond unit vector to reach the body
-// frame. Push body and lab vectors to their TCF accumulators and add the
-// body-frame order-tensor products.
+// Per frame: the Kabsch rotation onto the first dispatched frame (computed
+// once from the alignment set), applied to each bond unit vector to reach
+// the body frame. Push body and lab vectors to their TCF accumulators and
+// add the body-frame order-tensor products.
 
 void ReorientationalDynamicsTrajectoryResult::Compute(
         const ProteinConformation& conf,

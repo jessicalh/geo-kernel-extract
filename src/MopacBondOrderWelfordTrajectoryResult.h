@@ -12,12 +12,13 @@
 // valid because Trajectory::Run Phase 2 (Seed) precedes Phase 3
 // (factory invocation), so the Protein is finalised.
 //
-// SPARSE CADENCE — same "absent, not faked" gate as TR5: MopacResult
+// CONDITIONAL SOURCE — same "absent, not faked" gate as TR5: MopacResult
 // is attached when OperationRunner allows MOPAC and Compute returns
-// non-null; it is NOT a RequireConformationResult. Frames without MOPAC skip the Welford
-// update and record mask=0. When source_attached_count == 0 across
-// the whole trajectory, WriteH5Group skips
-// /trajectory/mopac_bond_order_welford/ entirely.
+// non-null; it is NOT a RequireConformationResult. There is no separate
+// MOPAC stride, so attached MOPAC samples are on the trajectory's dispatched
+// frames. Frames without MOPAC skip the Welford update and record mask=0.
+// When source_attached_count == 0 across the whole trajectory, WriteH5Group
+// skips /trajectory/mopac_bond_order_welford/ entirely.
 //
 // Source: MopacResult.TopologyBondOrders() — std::vector<double>
 // parallel to protein.Bonds(). MopacResult sets bond order to 0.0

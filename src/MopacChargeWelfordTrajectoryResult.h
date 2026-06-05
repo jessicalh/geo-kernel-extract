@@ -6,18 +6,17 @@
 // sparse-Welford-scalar template (the bond-order companion TR6
 // clones this shape against the bond axis).
 //
-// SPARSE CADENCE — "absent, not faked": MopacResult is attached
+// CONDITIONAL SOURCE — "absent, not faked": MopacResult is attached
 // conditionally by OperationRunner (gated by `!opts.skip_mopac` and
-// a non-null Compute return; NOT RequireConformationResult). MOPAC runs
-// every ~20 ps in
-// production (CLI-driven; the TR is cadence-agnostic). On
-// frames where MopacResult is absent, the per-frame `HasResult` gate
-// skips the Welford update and does not increment source_attached_count_;
-// the per-frame mask records 0. When source_attached_count == 0 across
-// the whole trajectory (e.g. MOPAC disabled), WriteH5Group skips the
-// /trajectory/mopac_charge_welford/ group entirely (canonical
-// "absent, not faked" — see OBJECT_MODEL.md "Conditional-attach TR
-// discipline").
+// a non-null Compute return; NOT RequireConformationResult). There is no
+// MOPAC-specific cadence: in trajectory mode, MOPAC runs on the same
+// dispatched frames selected by --stride and any dispatch window. On frames
+// where MopacResult is absent, the per-frame `HasResult` gate skips the
+// Welford update and does not increment source_attached_count_; the per-frame
+// mask records 0. When source_attached_count == 0 across the whole trajectory
+// (e.g. MOPAC disabled), WriteH5Group skips the
+// /trajectory/mopac_charge_welford/ group entirely (canonical "absent, not
+// faked" — see OBJECT_MODEL.md "Conditional-attach TR discipline").
 //
 // MINIMUM-VIABLE v0 (no delta variants): single channel, full
 // canonical Welford row (mean / std / m2 / min / max / min_frame /
@@ -48,10 +47,10 @@
 //   units                   = "e" (elementary charge)
 //   source                  describes MopacResult.mopac_charge (Mulliken)
 //   source_attached_policy  = "conditional -- MopacResult attaches
-//                              sparsely per Mopac cadence
-//                              (OperationRunner TimedAttach not
-//                              Require). Compute's HasResult gate
-//                              ..."
+//                              only on dispatched frames where MOPAC
+//                              is enabled and Compute succeeds
+//                              (OperationRunner Attach not Require).
+//                              Compute's HasResult gate ..."
 //
 
 #include "TrajectoryResult.h"

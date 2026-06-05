@@ -19,8 +19,9 @@
 //                             singularity-guard threshold).
 //
 // Static (atom, ring) cutoff snapshot frozen at first Compute call
-// (frame 0): for each atom, the list of aromatic-ring indices within
-// `ring_current_spatial_cutoff` (15 A) at frame 0 geometry. The pair
+// (the first dispatched frame: trajectory frame 0, or window_start when
+// windowed): for each atom, the list of aromatic-ring indices within
+// `ring_current_spatial_cutoff` (15 A) at that seed geometry. The pair
 // set is fixed FOR THE TRAJECTORY; subsequent frames recompute the
 // geometric channels for those same pairs (a ring that drifts past
 // 15 A during the run still has its geometry emitted -- consumer
@@ -137,7 +138,8 @@ private:
     void InitStaticSnapshot_(const ProteinConformation& conf,
                               const TrajectoryProtein& tp);
 
-    // Static per-atom (atom, aromatic-ring) snapshot from frame 0.
+    // Static per-atom (atom, aromatic-ring) snapshot from the first
+    // dispatched frame.
     // per_atom_ring_list_[atom_idx] is the sorted-ascending list of
     // aromatic ring indices within ring_current_spatial_cutoff at
     // conf0. Sized at first Compute call.

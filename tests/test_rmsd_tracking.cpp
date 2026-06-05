@@ -2,7 +2,7 @@
 // test_rmsd_tracking: discipline + integration for
 // RmsdTrackingTrajectoryResult (TR11). Scalar AV (T,) double — first
 // scalar-AV TR shape in the codebase. Backbone heavy atoms (N/CA/C/O)
-// vs trajectory frame 0, Kabsch-aligned.
+// vs the first dispatched frame, Kabsch-aligned.
 //
 
 #include "CalculatorConfig.h"

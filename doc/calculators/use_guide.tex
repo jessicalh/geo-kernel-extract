@@ -373,6 +373,12 @@ trajectory shape:
 nmr_extract --trajectory /data/1abc/production_scan1 --stride 10 --mopac --output out --aimnet2 model.jpt
 \end{lstlisting}
 
+To process a bounded span of raw TRR frame indices, give both window flags:
+
+\begin{lstlisting}
+nmr_extract --trajectory /data/1abc/production_scan1 --window-start 1000 --window-len 250 --stride 10 --output out --aimnet2 model.jpt
+\end{lstlisting}
+
 The mode directory must contain these exact regular files:
 
 \begin{lstlisting}
@@ -447,10 +453,33 @@ Default \texttt{N} is \texttt{1}. The parser converts \texttt{0} to
 \texttt{1}. Non-numeric strings are parsed by \texttt{std::strtoull}; the code
 does not currently validate that the whole token was numeric. The stride is
 applied by \texttt{RunConfiguration::SetStride}. It controls frame dispatch:
-frame 0 is processed, then every \texttt{N}-th TRR frame after that is
-processed. MOPAC, per-frame NPY emission, and per-frame PDB emission all run
-on exactly the dispatched frames. There is no current \texttt{--npy-stride},
-\texttt{--pdb-stride}, or \texttt{--mopac-stride}.
+with no window, frame 0 is processed, then every \texttt{N}-th TRR frame after
+that is processed. With a window, dispatch starts at \texttt{window\_start}.
+MOPAC, H5 time-series, per-frame NPY emission, and per-frame PDB emission all
+run on exactly the dispatched frames. There is no current
+\texttt{--npy-stride}, \texttt{--pdb-stride}, or \texttt{--mopac-stride}.
+
+\subsection{Trajectory window}
+
+Windowed trajectory extraction uses the paired flags:
+
+\begin{lstlisting}
+--window-start N --window-len M
+\end{lstlisting}
+
+Both flags must be supplied together, or neither. \texttt{N} and \texttt{M}
+must be non-negative integer tokens, and \texttt{M} must be at least
+\texttt{1}; invalid or partial windows fail at parse time. Omitting both
+flags processes the full trajectory.
+
+The window is a bound on the single dispatch loop over raw TRR frame indices:
+\texttt{[N, N+M)}. It is not a second emission gate. \texttt{--stride} still
+applies within the window, and MOPAC when enabled, H5 time-series, per-frame
+NPY emission, and per-frame PDB emission all see exactly the dispatched
+window-local frames. The first conformation \texttt{conf0} is the first frame
+of the window; the trajectory H5 records \texttt{window\_mode},
+\texttt{window\_start}, and \texttt{window\_len} attributes under
+\texttt{/trajectory/}.
 
 \subsection{Trajectory loader rules}
 
@@ -568,10 +597,10 @@ current execution:
   \texttt{--mopac}/\texttt{--no-mopac} toggle across all five modes. Current
   parsing is not symmetric: modes 1--4 only consume \texttt{--no-mopac} and
   default on; trajectory only consumes \texttt{--mopac} and defaults off.
-\item The canonical mode block says trajectory NPY and PDB emissions have
+\item Older canonical prose said trajectory NPY and PDB emissions had
   independent strides \texttt{m} and \texttt{n}. Current code has one
-  \texttt{--stride N}; processing, MOPAC when enabled, NPY emission, and PDB
-  emission all use that same dispatched-frame cadence.
+  \texttt{--stride N}; processing, MOPAC when enabled, NPY emission, PDB
+  emission, and H5 time-series all use that same dispatched-frame cadence.
 \item The brief asks for an \texttt{.xtc}-rejected validation check. Current
   validation does not mention \texttt{.xtc}. It requires
   \texttt{production.trr}; a directory with only \texttt{production.xtc} fails

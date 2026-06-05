@@ -554,9 +554,9 @@ scanning (out of scope per the canonical 5-mode spec in CLAUDE.md).
 ### MD frame loading
 
 - Reading GROMACS trajectory frames (production.tpr + .trr + .edr,
-  via FullSystemReader): frame 0 is seated as the canonical
-  MDFrameConformation; subsequent frames are transient
-  ProteinConformations (TickConformation)
+  via FullSystemReader): the first dispatched frame is seated as the canonical
+  MDFrameConformation (trajectory frame 0, or `window_start` when windowed);
+  subsequent frames are transient ProteinConformations (TickConformation)
 - Each MDFrameConformation carries: walker_index, time_picoseconds,
   boltzmann_weight, rmsd_nm, rg_nm (no frame_index). Later frames are
   transient base ProteinConformations without this metadata.

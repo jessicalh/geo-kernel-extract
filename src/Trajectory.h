@@ -12,16 +12,17 @@
 // after Run completes.
 //
 // Run(tp, config, session, extras, output_dir) drives the traversal
-// in eight named phases. The per-frame body is uniform for frame 0
-// and frames 1..N; the only asymmetry is that frame 0 goes through
-// tp.Seed (canonical conformation, seated permanently on Protein) and
-// frames 1..N go through tp.TickConformation (ephemeral conformation
-// owned by the iteration).
+// in eight named phases. The per-frame body is uniform for the seed
+// frame (TRR frame 0, or window_start when windowed) and later dispatched
+// frames; the only asymmetry is that the seed frame goes through tp.Seed
+// (canonical conformation, seated permanently on Protein) and later frames
+// go through tp.TickConformation (ephemeral conformation owned by the
+// iteration).
 //
 //   1. Open the handler (mount TRR + build PBC fixer from TPR).
-//   2. Read frame 0 and tp.Seed — finalize Protein topology, create
-//      the canonical ProteinConformation (conf0), allocate
-//      TrajectoryAtoms.
+//   2. Read the seed frame and tp.Seed — finalize Protein topology,
+//      create the canonical ProteinConformation (conf0), allocate
+//      TrajectoryAtoms. With a window, the seed is window_start.
 //   3. Attach TrajectoryResults from config.ResultsToBuild()
 //      + extras. Now that Protein is finalized, the builders see bonds,
 //      rings, and the initialized TrajectoryAtoms vector.
@@ -30,8 +31,8 @@
 //      caller-supplied resources (AIMNet2 model if required).
 //   5. Build the per-frame RunOptions template (config's per-frame
 //      opts + tp's charges, bonded params, and session's AIMNet2).
-//   6. Frame 0: update env from handler + EDR; run OperationRunner on
-//      the canonical conformation; tp.DispatchCompute; record.
+//   6. Seed frame: update env from handler + EDR; run OperationRunner
+//      on the canonical conformation; tp.DispatchCompute; record.
 //   7. Per-frame loop: skip stride-1; read next frame; tickify;
 //      update env; run OperationRunner; tp.DispatchCompute; record.
 //   8. tp.FinalizeAllResults. Selections are NOT collected here —

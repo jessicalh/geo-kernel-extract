@@ -126,7 +126,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     }
 
     // =========================================================
-    // Phase 2: read frame 0 + seed
+    // Phase 2: read seed frame + seed
     // =========================================================
     // Seed the canonical conformation (conf0). After Seed, Protein is
     // finalized (bonds + rings detected) and TrajectoryAtoms are

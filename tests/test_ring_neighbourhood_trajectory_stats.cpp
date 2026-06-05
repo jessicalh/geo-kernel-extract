@@ -1,7 +1,8 @@
 //
 // test_ring_neighbourhood_trajectory_stats: discipline + integration
 // for RingNeighbourhoodTrajectoryStats (TR10). Static (atom, ring)
-// snapshot at frame 0 + per-frame geometric residual on those pairs.
+// snapshot at the first dispatched frame + per-frame geometric residual
+// on those pairs.
 // Self-contained TR (positions + GeometryResult + SpatialIndexResult,
 // no source ConformationResult dependency).
 //

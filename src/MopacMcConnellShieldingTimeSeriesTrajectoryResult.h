@@ -10,7 +10,7 @@
 // the same convention; `McConnellShieldingTimeSeriesTrajectoryResult`
 // emits `units = "Angstrom^-3"`.
 //
-// TR8 of the 13-TR plan. Similar shape to TR7 (sparse-cadence T2 TS)
+// TR8 of the 13-TR plan. Similar shape to TR7 (conditional-source T2 TS)
 // but emits ALL 9 components (T0+T1+T2) because the source field is
 // NOT traceless. Per user direction 2026-05-21: "if not traceless
 // write both" — and the methods-accumulate principle.
@@ -26,8 +26,10 @@
 // shielding contribution is not. So emit all 9 components and let
 // downstream readers separate T0/T1/T2 channels as needed.
 //
-// SPARSE CADENCE: MopacMcConnellResult attaches via TimedAttach, not
-// RequireConformationResult. Same gate as TR5/TR6/TR7.
+// CONDITIONAL SOURCE: MopacMcConnellResult attaches via TimedAttach, not
+// RequireConformationResult. Same gate as TR5/TR6/TR7; attached samples
+// ride the trajectory's dispatched frames rather than a MOPAC-specific
+// cadence.
 //
 // Emission:
 //   /trajectory/mopac_mc_shielding_time_series/

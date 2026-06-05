@@ -27,8 +27,11 @@ Landed:
   (FullFat) charge-source reconciliation probe. The five `coulomb_*` SDK specs
   stay (already optional) but are now FullFat-only.
 
-Kept on purpose: the frame-emit window + stride controls (they compose, not
-duplicate) and the FullFat MOPAC-vs-FF14SB Coulomb probe.
+Superseded after this plan: the frame-emit window plus per-emitter stride
+controls were removed on 2026-05-31. Current trajectory extraction has one
+dispatch cadence knob (`--stride N`); the restored
+`--window-start N --window-len M` pair bounds that dispatch loop, not a
+separate emission gate. The FullFat MOPAC-vs-FF14SB Coulomb probe remains.
 
 ## 5. Configuration / portability  — runtime/config DONE; CMake track remains
 

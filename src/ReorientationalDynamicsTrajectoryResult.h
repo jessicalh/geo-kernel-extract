@@ -15,7 +15,8 @@
 // key relaxation_field_tesla.
 //
 // Global tumbling removed by per-frame Kabsch superposition of the
-// backbone heavy atoms (N/CA/C/O) onto frame 0 (the KabschRotation block
+// backbone heavy atoms (N/CA/C/O) onto the first dispatched frame
+// (trajectory frame 0, or window_start when windowed; the KabschRotation block
 // is cloned from RmsdTrackingTrajectoryResult, PATTERNS.md 17). The
 // body-frame second-rank TCF gives the internal order parameter and the
 // effective internal correlation time; the lab-frame TCF carries overall

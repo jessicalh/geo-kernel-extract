@@ -1,10 +1,11 @@
 #pragma once
 //
 // RmsdTrackingTrajectoryResult: AV per-frame backbone-heavy-atom RMSD
-// vs trajectory frame 0. TR11 of the 13-TR plan; first scalar AV (T,)
-// double TR in the codebase.
+// vs the first dispatched frame (trajectory frame 0, or window_start when
+// windowed). TR11 of the 13-TR plan; first scalar AV (T,) double TR in
+// the codebase.
 //
-// Reference frame: frame 0 of the trajectory (captured at first
+// Reference frame: the first dispatched frame (captured at first
 // Compute call). Reference geometry is the position of the backbone
 // heavy atoms (N, CA, C, O) for every residue where each is present.
 // ACE/NME caps contribute their own backbone atoms when present.
@@ -13,7 +14,7 @@
 // set. Per frame:
 //   1. Collect current positions of atom_indices_
 //   2. Compute optimal rotation R via SVD of cross-covariance
-//      against frame-0 reference (translation removed by centroid
+//      against the first-dispatched-frame reference (translation removed by centroid
 //      subtraction).
 //   3. Apply rotation to current positions, compute RMSD vs reference.
 //
@@ -40,14 +41,15 @@
 //   finalized               = bool
 //   alignment_method        = "kabsch_svd"
 //   atom_selection          = "backbone_heavy_atoms_NCACO"
-//   reference_frame_origin  = "trajectory_frame_0"
+//   reference_frame_origin  = "first_dispatched_frame"
 //   units                   = "Angstrom"
 //   source_attached_policy  = "always_attached"
 //
 // Pairs with:
 //   - TR12 RmsdSpikeSelectionTrajectoryResult, which CROSS-RESULT READs
 //     this TR's latest per-frame rmsd to detect spikes (thresholds: 1.5A
-//     vs frame 0 + 0.5A vs rolling 100-frame mean; cooldown 100 frames).
+//     vs first dispatched frame + 0.5A vs rolling 100-frame mean;
+//     cooldown 100 frames).
 //
 // CROSS-RESULT READ (writer side):
 //   Fields read by other TRs during their Compute:
@@ -101,10 +103,10 @@ public:
     // **Trajectory frame index vs sample index** (codex round 1
     // 2026-05-21 critical finding): TR11 stores RMSDs DENSELY by
     // sample order, NOT keyed by the original trajectory frame index.
-    // At stride > 1 (PerFrameExtractionSet default stride=2),
-    // `rmsd_[0]` is the RMSD at original frame 0, `rmsd_[1]` at
-    // original frame 2, etc. — they are positional samples, not
-    // indexed by `frame_idx`.
+    // At stride > 1, `rmsd_[0]` is the RMSD at the first dispatched
+    // frame, `rmsd_[1]` at the next dispatched frame, etc. — they are
+    // positional samples, not indexed by `frame_idx`. With a window,
+    // sample 0 is the window start.
     //
     // For TR12's per-frame cross-result-read pattern (TR11.Compute
     // dispatched before TR12.Compute via Phase 6/7 attach-order =

@@ -172,16 +172,20 @@ protein; ff14SB charges are read from the TPR into a
 PreloadedChargeSource (ChargeModelKind::GromacsTpr).
 
 TRR frames are streamed one at a time by GromacsFrameHandler
-(GromacsFrameHandler.h) into a TrajectoryProtein. The first frame
-finalizes the protein (bond detection) and seats conformation 0 as an
-MDFrameConformation; subsequent frames are free-standing per-frame
-conformations. The per-frame calculator set is
+(GromacsFrameHandler.h) into a TrajectoryProtein. The first dispatched
+frame (trajectory frame 0, or `window_start` when windowed) finalizes the
+protein (bond detection) and seats conformation 0 as an MDFrameConformation;
+subsequent frames are free-standing per-frame conformations. The per-frame
+calculator set is
 RunConfiguration::PerFrameExtractionSet (APBS + AIMNet2 + the classical
 stack; MOPAC off — `--mopac` switches to FullFatFrameExtraction).
 Per-atom statistics accumulate into TrajectoryResult Welford
 accumulators (one TR per metric) plus SphericalTensor time-series TRs;
-per-frame NPYs emit at stride m, PDBs at stride n, and a trajectory H5
-always.
+the single `--stride N` controls dispatch for the whole trajectory
+pipeline. MOPAC when enabled, H5 time-series, per-frame NPYs, and
+per-frame PDBs all act on exactly those dispatched frames. Optional
+`--window-start N --window-len M` bounds the dispatch loop to raw TRR
+frames `[N, N+M)`, with `--stride` applied inside that window.
 
 PBC fix is applied per frame via FullSystemReader::MakeProteinWhole
 (called by GromacsFrameHandler). SolventEnvironment carries water and ion

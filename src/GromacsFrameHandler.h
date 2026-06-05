@@ -15,8 +15,9 @@
 // API — same library we already link for TPR parsing — rather than
 // vendoring xdrfile_trr.
 //
-// Does NOT create ProteinConformations (that's tp.Seed for frame 0
-// and tp.TickConformation for frames 1..N, called by Trajectory::Run).
+// Does NOT create ProteinConformations (that's tp.Seed for the seed frame
+// and tp.TickConformation for later dispatched frames, called by
+// Trajectory::Run).
 // Does NOT run per-frame ConformationResults (that's OperationRunner::
 // Run, called by Trajectory::Run). Does NOT write to Trajectory's env
 // (that's Trajectory::Run populating env from the handler's

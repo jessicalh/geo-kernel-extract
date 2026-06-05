@@ -10,8 +10,11 @@ participant TR as TrajectoryResult list
 participant E as Emitters and records
 
 T->>H: Open trajectory files
-T->>H: Read frame 0
-T->>TP: Seed(frame0 positions, time)
+opt window_start > 0
+  T->>H: Skip to first window frame
+end
+T->>H: Read seed frame (frame 0 or window_start)
+T->>TP: Seed(seed positions, time)
 TP->>P: FinalizeConstruction
 TP->>P: AddMDFrame
 TP->>TP: InitTrajectoryAtoms
@@ -21,14 +24,17 @@ T->>T: Build base RunOptions
 T->>E: Emit invariant sidecars if output_dir is set
 T->>T: Update TrajectoryEnv and frame RunOptions
 T->>TP: MutableCanonicalConformation_()
-TP-->>T: frame0 conformation
-T->>OR: Run(frame0 conformation, options)
+TP-->>T: seed conformation
+T->>OR: Run(seed conformation, options)
 OR->>C: Attach ConformationResult singletons
-T->>TP: DispatchCompute(frame0, trajectory, 0, time)
-TP->>TR: Compute(frame0, trajectory state)
+T->>TP: DispatchCompute(seed conformation, trajectory, index, time)
+TP->>TR: Compute(seed conformation, trajectory state)
 T->>E: Emit PDB and NPY, record frame metadata
 
 loop later dispatched frames
+  opt reached window_start + window_len
+    T-->>T: Stop dispatch
+  end
   T->>H: Skip stride minus one frames
   T->>H: Read next frame
   T->>T: Update TrajectoryEnv and frame RunOptions

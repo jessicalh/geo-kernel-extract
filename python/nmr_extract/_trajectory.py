@@ -1878,18 +1878,19 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
 
 @dataclass(frozen=True)
 class RmsdTrackingGroup:
-    """Per-frame Kabsch-aligned backbone-heavy-atom RMSD vs trajectory
-    frame 0 from /trajectory/rmsd_tracking/. TR11 of the 13-TR plan;
-    first scalar (T,) AV TR in the SDK (2026-05-21).
+    """Per-frame Kabsch-aligned backbone-heavy-atom RMSD vs the first
+    dispatched frame from /trajectory/rmsd_tracking/. TR11 of the
+    13-TR plan; first scalar (T,) AV TR in the SDK (2026-05-21).
 
     Atom selection: backbone heavy atoms N, CA, C, O for every residue
     where each slot is populated (Residue.N/CA/C/O != NONE). ACE caps
     contribute their C/O when present; NME caps contribute their N/CA
     when present. No hydrogens — heavy backbone only.
 
-    Reference: frame 0 of the trajectory. Frame 0's RMSD is 0.0 by
-    construction. Kabsch SVD: centroid + cross-covariance + reflection-
-    corrected rotation.
+    Reference: the first dispatched frame (trajectory frame 0 for a
+    full run, window_start when windowed). That sample's RMSD is 0.0
+    by construction. Kabsch SVD: centroid + cross-covariance +
+    reflection-corrected rotation.
 
     Pairs with TR12 RmsdSpikeSelectionTrajectoryResult (downstream
     detector reading rmsd[t] per frame for dual-threshold spike
@@ -1905,10 +1906,10 @@ class RmsdTrackingGroup:
     n_frames: int
     alignment_method: str               # "kabsch_svd"
     atom_selection: str                 # "backbone_heavy_atoms_NCACO"
-    reference_frame_origin: str         # "trajectory_frame_0"
+    reference_frame_origin: str         # "first_dispatched_frame"
     units: str                          # "Angstrom"
     source_attached_policy: str         # "always_attached"
-    rmsd_frame_0_convention: str        # "0.0 exactly"
+    rmsd_frame_0_convention: str        # legacy attr name; sample 0 is "0.0 exactly"
 
 
 # ─── Ring neighbourhood TR10 (per-atom × per-frame × R_max × 4) ────
@@ -1923,9 +1924,10 @@ class RingNeighbourhoodTrajectoryStatsGroup:
     Two coupled axes per atom:
       - Static (atom, ring) snapshot: ``ring_membership_per_atom``
         (N, R_per_atom_max) int32 records the aromatic-ring indices
-        within ``ring_current_spatial_cutoff`` (15 Å) at FRAME 0. Frozen
-        for the trajectory; -1 sentinel for unfilled slots. The (atom,
-        ring) pair set is stable; a ring drifting past 15 Å mid-run
+        within ``ring_current_spatial_cutoff`` (15 Å) at the first
+        dispatched frame. Frozen for the trajectory; -1 sentinel for
+        unfilled slots. The (atom, ring) pair set is stable; a ring
+        drifting past 15 Å mid-run
         still has its geometry emitted (consumer applies distance-based
         analysis-time filter).
       - Per-frame geometry: ``geometry`` (N, T, R_per_atom_max, 4) float64
@@ -1953,7 +1955,7 @@ class RingNeighbourhoodTrajectoryStatsGroup:
     absence as "no aromatic rings to track" — same semantic as
     conditional-source group skips elsewhere.
     """
-    # Static substrate-snapshot membership (frozen at frame 0)
+    # Static substrate-snapshot membership (frozen at first dispatched frame)
     ring_membership_per_atom: np.ndarray  # (N, R_per_atom_max) int32, -1 sentinel
     # Per-frame geometric residual
     geometry: np.ndarray                  # (N, T, R_per_atom_max, 4) float64
@@ -2264,11 +2266,13 @@ class MopacChargeWelfordGroup:
     /trajectory/mopac_charge_welford/. TR5 of the 13-TR plan;
     canonical sparse-Welford-scalar.
 
-    MopacResult attaches sparsely (TimedAttach in OperationRunner,
-    not Require) per the Mopac cadence (~20 ps in production,
-    CLI-driven). The TR gates on conf.HasResult<MopacResult>()
-    each frame; absent frames skip the Welford update and record
-    mask=0. When MOPAC never ran (source_attached_count == 0), the
+    MopacResult attaches conditionally (OperationRunner Attach, not
+    Require) when MOPAC is enabled and Compute succeeds. There is no
+    MOPAC-specific cadence: in trajectory mode, attached samples ride
+    the same dispatched frames selected by --stride and any dispatch
+    window. The TR gates on conf.HasResult<MopacResult>() each frame;
+    absent frames skip the Welford update and record mask=0. When MOPAC
+    never ran (source_attached_count == 0), the
     H5 group is skipped entirely — readers must tolerate KeyError
     on /trajectory/mopac_charge_welford and treat it as "MOPAC
     disabled for this run."
@@ -3333,7 +3337,7 @@ class TrajectoryData:
     ring_neighbourhood_trajectory_stats: Optional[
         "RingNeighbourhoodTrajectoryStatsGroup"] = None
 
-    # Per-frame backbone-RMSD vs frame 0 (TR #11; 2026-05-21).
+    # Per-frame backbone-RMSD vs the first dispatched frame (TR #11; 2026-05-21).
     # Kabsch-aligned heavy-atom backbone (N, CA, C, O) RMSD timeline.
     # TR12 RmsdSpikeSelection reads from this TR's rmsd[t]; TR13
     # DftPoseCoordinator reads from TR12's SelectionBag at Finalize.

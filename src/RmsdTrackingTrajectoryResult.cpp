@@ -136,14 +136,14 @@ void RmsdTrackingTrajectoryResult::Compute(
 
     const std::size_t M = atom_indices_.size();
 
-    // First frame: capture the reference geometry.
+    // First dispatched frame: capture the reference geometry.
     if (!reference_captured_) {
         reference_positions_.reserve(M);
         for (std::size_t ai : atom_indices_) {
             reference_positions_.push_back(conf.PositionAt(ai));
         }
         reference_captured_ = true;
-        // Frame-0 RMSD vs itself is 0 by definition.
+        // Sample-0 RMSD vs its own reference is 0 by definition.
         rmsd_.push_back(0.0);
     } else {
         std::vector<Vec3> current;

@@ -425,8 +425,8 @@ compared to the DFT delta.
       cylindrical coords, distance decay curve. 465 pairs batch tested.)
 - [x] MD trajectory loading (DONE — FullSystemReader parses GROMACS
       production.tpr + .trr via libgromacs into a TrajectoryProtein
-      (frame 0 the canonical MDFrameConformation; later frames
-      transient), full pipeline per frame)
+      (the first dispatched frame is the canonical MDFrameConformation;
+      later frames are transient), full pipeline per frame)
 
 ### For each classical calculator (Layer 1+):
 All eight classical calculators pass items 1-6. Item 7 requires calibrated parameters.
