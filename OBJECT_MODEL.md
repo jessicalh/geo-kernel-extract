@@ -1752,7 +1752,7 @@ factories (`PerFrameExtractionSet`, `FullFatFrameExtraction`):
 Each configuration records: per-frame `RunOptions` base (with skip
 flags), required `ConformationResult` types (for Phase 4 dependency
 validation), `TrajectoryResult` factory list (attach order = dispatch
-order), stride, and a `RequiresAimnet2` flag.
+order), stride, optional dispatch window, and a `RequiresAimnet2` flag.
 
 ### RecordBag<Record>
 
@@ -2647,8 +2647,10 @@ schema (see pending-include file §7). What's currently emitted:
   emitted by `TrajectoryProtein::WriteH5`. Minimal passthrough from
   `Protein`.
 - `/trajectory/` group attributes: `xtc_path`, `tpr_path`,
-  `edr_path`, `configuration`.
-- `/trajectory/frames/` datasets: `time_ps`, `original_index`.
+  `edr_path`, `configuration`, `window_mode`, `window_start`,
+  `window_len`.
+- `/trajectory/frames/` datasets: `time_ps`, `original_index`
+  (true raw TRR frame indices of the dispatched frames).
 - `/trajectory/selections/<kind>/` per-kind sub-groups walked via
   `selections_.Kinds()`.
 
@@ -3156,13 +3158,34 @@ available from Phase 6 onwards.
 `Status Run(tp, config, session, extras = {}, output_dir = {})`:
 
 1. **Open handler.** `handler_ = make_unique<GromacsFrameHandler>(tp)`; `handler_->Open(xtc_path, tpr_path)` mounts the TRR stream (PBC fixing happens per-frame in `ReadNextFrame` via `MakeProteinWhole`).
-2. **Read frame 0 and seed.** `handler_->ReadNextFrame()`; `tp.Seed(handler_->ProteinPositions(), handler_->Time())`.
+2. **Skip to seed and seed.** If `config.HasWindow()`,
+   `handler_->Skip()` advances `window_start` raw TRR frames before
+   the seed read. Then `handler_->ReadNextFrame()`; `tp.Seed(...)`.
+   `Skip()` and `ReadNextFrame()` advance `Index()` identically, so
+   conf0 is frame 0 with no window and the window's first frame when
+   windowed.
 3. **Attach TrajectoryResults.** Iterate `config.ResultsToBuild()` then caller `extras`. Attach order is dispatch order.
 4. **Validate dependencies and resources.** For each attached TR, every `type_index` in `Dependencies()` must be satisfied by another attached TR OR `config.RequiresConformationResult(t)`. If `config.RequiresAimnet2()`, `session.HasAimnet2Model()` must be true.
 5. **Build base `RunOptions`.** From `config.PerFrameRunOptions()` + `tp.Charges()` + `tp.BondedParams()` + `session.Aimnet2Model()`.
-6. **Frame 0.** Populate `env_` from handler + EDR; `OperationRunner::Run(tp.MutableCanonicalConformation_(), frame_opts)`; `tp.DispatchCompute(conf0, *this, 0, time)`; record.
-7. **Per-frame loop.** `handler_->Skip()` (stride − 1) times; `handler_->ReadNextFrame()`; update `env_`; `tick = tp.TickConformation(positions)`; `OperationRunner::Run(*tick, frame_opts)`; `tp.DispatchCompute(*tick, *this, handler_->Index(), handler_->Time())`; record.
-8. **Finalize.** `tp.FinalizeAllResults(*this)`. Selections were pushed during Compute / Finalize — no sweep here. `state_ = Complete`; release `handler_`.
+6. **Seed frame.** Populate `env_` from handler + EDR;
+   `OperationRunner::Run(tp.MutableCanonicalConformation_(), frame_opts)`;
+   dispatch, PDB emit, NPY emit, and record with the seed's true
+   `handler_->Index()` (0 without a window, `window_start` when
+   windowed).
+7. **Per-frame loop.** `handler_->Skip()` (stride - 1) times;
+   `handler_->ReadNextFrame()`; if windowed and
+   `handler_->Index() >= window_start + window_len`, break before env
+   update, calculators, dispatch, emit, or record. Otherwise update
+   `env_`; `tick = tp.TickConformation(positions)`;
+   `OperationRunner::Run(*tick, frame_opts)`;
+   `tp.DispatchCompute(*tick, *this, handler_->Index(), handler_->Time())`;
+   PDB/NPY emit; record.
+8. **Finalize.** If a requested window captured fewer than
+   `ceil(window_len / stride)` dispatched frames, return
+   `kFrameReadFailed` before Finalize. Otherwise
+   `tp.FinalizeAllResults(*this)`. Selections were pushed during
+   Compute / Finalize — no sweep here. `state_ = Complete`; release
+   `handler_`.
 
 ### Return codes
 
@@ -3182,8 +3205,11 @@ failure site.
 
 `WriteH5(file)`:
 
-- `/trajectory/` — attributes `xtc_path`, `tpr_path`, `edr_path`, `configuration`.
-- `/trajectory/frames/` — datasets `time_ps` (T,), `original_index` (T,); attribute `n_frames`.
+- `/trajectory/` — attributes `xtc_path`, `tpr_path`, `edr_path`,
+  `configuration`, `window_mode` (`"local"` or `"full"`),
+  `window_start`, `window_len`.
+- `/trajectory/frames/` — datasets `time_ps` (T,), `original_index`
+  (T, true raw TRR frame indices); attribute `n_frames`.
 - `/trajectory/selections/<kind>/` — one group per kind in `selections_.Kinds()`, with `frame_idx`, `time_ps`, `reason` datasets and `n_records` attribute. The group path uses `kind.name()` (mangled C++ type name — compiler-dependent but stable within a build).
 
 ---
@@ -3199,7 +3225,7 @@ TRs read it via `traj.Env()`. Overwritten each frame.
 |------------------------|-------------------------|-------------------------------------------------|
 | `solvent`              | `SolventEnvironment`    | `handler_->Solvent()`                           |
 | `current_energy`       | `const GromacsEnergy*`  | `EnergyAtTime(handler_->Time())`; may be null   |
-| `current_frame_idx`    | `size_t`                | `handler_->Index()` (0 on frame 0)              |
+| `current_frame_idx`    | `size_t`                | `handler_->Index()` (true raw TRR index; `window_start` on a windowed seed) |
 | `current_frame_time`   | `double`                | `handler_->Time()`                              |
 
 A TR that needs cross-frame environment (running water-dipole
@@ -3239,6 +3265,8 @@ factories (`PerFrameExtractionSet`, `FullFatFrameExtraction`).
 | `required_conf_result_types_` | `unordered_set<type_index>`         | Checked in Phase 4 against each TR's `Dependencies()`. |
 | `requires_aimnet2_`           | `bool`                              | Phase 4 enforces session has model loaded.           |
 | `stride_`                     | `size_t`                            | Process every N-th frame (default 1).                |
+| `window_start_`               | `size_t`                            | First raw TRR frame for optional dispatch window (default 0). |
+| `window_len_`                 | `size_t`                            | Length of optional dispatch window in TRR frames; 0 = no window. |
 
 ### Factories
 
@@ -3248,9 +3276,16 @@ factories (`PerFrameExtractionSet`, `FullFatFrameExtraction`).
 | `PerFrameExtractionSet()`   | `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `ChargeAssignmentResult`, `ApbsFieldResult`, `BiotSavartResult`, `HaighMallionResult`, `McConnellResult`, `RingSusceptibilityResult`, `PiQuadrupoleResult`, `DispersionResult`, `HBondResult`, `SasaResult`, `EeqResult`, `AIMNet2Result`, `AIMNet2ChargeResponseGradientResult`, `WaterFieldResult`, `HydrationShellResult`, `HydrationGeometryResult`, `GromacsFramePullResult`, `GromacsEnergyResult`, `BondedEnergyResult` (23 types). MOPAC skipped; vacuum Coulomb skipped (APBS supersedes). | 2      | yes              | Production canonical for the trajectory fleet (effective 676 after structure-quality drops).                |
 | `FullFatFrameExtraction()`  | `PerFrameExtractionSet` with `skip_mopac = false`. It additionally `Produces` the five MOPAC-family TRs (`RunConfiguration.cpp:300`); these gate on per-frame `HasResult`, so `MopacResult` is intentionally not a hard `required_conf_result_type` — a frame without MOPAC yields empty MOPAC rows, not a failure.                                                                                                                  | 2      | yes              | Selected-frame MOPAC (DFT pose set, harvester checkpoints). |
 
-Mutators for factory authoring: `SetName`, `MutablePerFrameRunOptions`,
-`AddTrajectoryResultFactory`, `RequireConformationResult`,
-`SetRequiresAimnet2`, `SetStride`.
+Factory stride is only the default cadence. Callers may set
+`SetStride(N)` and optional `SetWindow(start, len)` after choosing a
+factory. The window bounds the single dispatch loop; stride still
+applies within it.
+
+Mutators for factory authoring / caller shaping: `SetName`,
+`MutablePerFrameRunOptions`, `AddTrajectoryResultFactory`,
+`RequireConformationResult`, `SetRequiresAimnet2`, `SetStride`,
+`SetWindow`. Accessors: `Stride`, `WindowStart`, `WindowLen`,
+`HasWindow` (`window_len_ > 0`).
 
 ---
 
@@ -3412,10 +3447,11 @@ The file emitted after a successful `Run` has this top-level shape:
     residue_index                        (N,) uint64
     pdb_atom_name                        (N,) string
 
-/trajectory/                             attributes: xtc_path, tpr_path, edr_path, configuration
+/trajectory/                             attributes: xtc_path, tpr_path, edr_path, configuration,
+                                           window_mode, window_start, window_len
 /trajectory/frames/
     time_ps                              (T,) float64
-    original_index                       (T,) uint64                         attr: n_frames
+    original_index                       (T,) uint64 true raw TRR index      attr: n_frames
 /trajectory/selections/<kind>/           one group per kind in selections_.Kinds()
     frame_idx                            (R,) size_t                         attr: n_records
     time_ps                              (R,) float64

@@ -43,11 +43,14 @@ obsolete planning prose.
    (each a mode-3 pose), run all calculators on both, compute WT-ALA
    delta tensors, emit per-atom NPYs.
 5. **`--trajectory DIR`** — read a GROMACS run (production.tpr +
-   .trr/.xtc + .edr), per-frame calculators. Emits per-frame NPYs at
-   **stride m** (all calculators), per-frame PDBs at **stride n**
-   (geometry only), and a trajectory H5 (always); `m` and `n` are
-   independent. `--mopac` switches the run shape from
-   `PerFrameExtractionSet` to `FullFatFrameExtraction`.
+   .trr/.xtc + .edr), per-frame calculators. `--stride N` is the one
+   cadence knob: MOPAC (when enabled), per-frame NPYs, per-frame PDBs,
+   and trajectory H5 time-series all act on exactly the dispatched
+   frames. Optional `--window-start N --window-len M` bounds dispatch
+   to TRR frames `[N, N+M)`; both flags are required together, stride
+   applies within the window, and omitting both means full trajectory.
+   `--mopac` switches the run shape from `PerFrameExtractionSet` to
+   `FullFatFrameExtraction`.
 
 MOPAC is an orthogonal `--mopac` / `--no-mopac` toggle across all
 five modes. APBS and AIMNet2 are **always on — not switchable**.

@@ -1367,6 +1367,17 @@ legitimate TR write surface stays public: `MutableAtomAt(i)`,
   overwritten each frame. A TR that needs cross-frame environment
   (running water-dipole statistics, bridging-water histograms)
   keeps its own per-frame buffer. `env_` is strictly this-frame.
+- **Window bounds dispatch, not emission.** `--window-start N
+  --window-len M` is implemented in `Trajectory::Run` only: Phase 2
+  skips to the seed so conf0 is the window's first TRR frame, Phase 7
+  breaks before dispatch at `N+M`, and `--stride` still applies inside
+  that single loop. No TR, NPY writer, PDB writer, or H5 writer gets a
+  separate emit gate. The decoupled emit gate was the silent footgun
+  removed 2026-05-31; the restored window is loud via parse errors,
+  window-completeness failure on EOF truncation, and `/trajectory/`
+  attrs `window_mode`, `window_start`, `window_len`. No window keeps
+  the dispatch / emit sequence byte-identical to the full-trajectory
+  path.
 
 Dependency validation is split across two layers.
 `TrajectoryProtein::AttachResult` does the singleton check only.
