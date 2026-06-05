@@ -1,5 +1,7 @@
 #include "DashboardSignalModel.h"
 
+#include "../diagnostics/DashboardLogging.h"
+
 #include <QStringList>
 
 #include <algorithm>
@@ -49,6 +51,67 @@ QList<int> allRoles() {
         DashboardSignalModel::DisplayModeRole,
         DashboardSignalModel::FollowsFocusRole,
     };
+}
+
+QString uuidLogValue(const QUuid& id) {
+    return id.toString(QUuid::WithoutBraces);
+}
+
+QString modesLogValue(const QStringList& modes) {
+    return QStringLiteral("[%1]").arg(modes.join(QStringLiteral(",")));
+}
+
+QString selectedIdsLogValue(const QVector<DashboardSignal>& selectedSignals) {
+    QStringList ids;
+    ids.reserve(selectedSignals.size());
+    for (const DashboardSignal& signal : selectedSignals)
+        ids.push_back(uuidLogValue(signal.id));
+    return modesLogValue(ids);
+}
+
+QString anchorLogValue(const SignalAnchor& anchor) {
+    auto indexValue = [](const char* kind, std::size_t value) {
+        return QStringLiteral("%1:%2").arg(QString::fromLatin1(kind)).arg(static_cast<qulonglong>(value));
+    };
+    if (std::holds_alternative<NoneAnchor>(anchor))
+        return QStringLiteral("none");
+    if (const auto* a = std::get_if<AtomAnchor>(&anchor))
+        return indexValue("atom", a->atom);
+    if (const auto* r = std::get_if<ResidueAnchor>(&anchor))
+        return indexValue("residue", r->residue);
+    if (const auto* t = std::get_if<AtomTupleAnchor>(&anchor)) {
+        QStringList atoms;
+        atoms.reserve(static_cast<int>(t->atoms.size()));
+        for (std::size_t atom : t->atoms)
+            atoms.push_back(QString::number(static_cast<qulonglong>(atom)));
+        return QStringLiteral("atom_tuple:%1").arg(atoms.join(QStringLiteral("+")));
+    }
+    if (const auto* b = std::get_if<BondAnchor>(&anchor))
+        return indexValue("bond", b->bond);
+    if (const auto* v = std::get_if<BondVectorAnchor>(&anchor)) {
+        return QStringLiteral("bond_vector:%1:%2")
+            .arg(static_cast<qulonglong>(v->residue))
+            .arg(static_cast<unsigned>(v->kind));
+    }
+    if (const auto* r = std::get_if<RingAnchor>(&anchor))
+        return indexValue("ring", r->ring);
+    if (const auto* r = std::get_if<AromaticRingAnchor>(&anchor))
+        return indexValue("aromatic_ring", r->ring);
+    if (const auto* r = std::get_if<SaturatedRingAnchor>(&anchor))
+        return indexValue("saturated_ring", r->ring);
+    if (const auto* p = std::get_if<RingContributionPairAnchor>(&anchor))
+        return indexValue("ring_contribution_pair", p->pair);
+    if (const auto* m = std::get_if<RingMembershipAnchor>(&anchor))
+        return indexValue("ring_membership", m->membership);
+    if (const auto* p = std::get_if<MutationMatchPairAnchor>(&anchor))
+        return indexValue("mutation_match_pair", p->pair);
+    if (std::holds_alternative<ProteinAnchor>(anchor))
+        return QStringLiteral("protein");
+    if (std::holds_alternative<SystemAnchor>(anchor))
+        return QStringLiteral("system");
+    if (std::holds_alternative<EventAnchor>(anchor))
+        return QStringLiteral("event");
+    return QStringLiteral("unknown");
 }
 
 }  // namespace
@@ -239,6 +302,14 @@ QUuid DashboardSignalModel::addSignal(const DashboardSignal& input) {
     beginInsertRows(QModelIndex(), row, row);
     signals_.push_back(signal);
     endInsertRows();
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=signal_added id=%1 descriptor_id=%2 concept_key=%3 modes=%4 anchor=%5 selected=%6")
+               .arg(uuidLogValue(signal.id))
+               .arg(signal.binding.descriptorId)
+               .arg(signal.binding.conceptKey)
+               .arg(modesLogValue(signal.displayModeIds))
+               .arg(anchorLogValue(signal.binding.anchor))
+               .arg(selectedIdsLogValue(signals_));
     emit signalAdded(signal.id);
     return signal.id;
 }
@@ -281,6 +352,10 @@ bool DashboardSignalModel::removeSignalAt(int row) {
     beginRemoveRows(QModelIndex(), row, row);
     signals_.removeAt(row);
     endRemoveRows();
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=signal_removed id=%1 selected=%2")
+               .arg(uuidLogValue(id))
+               .arg(selectedIdsLogValue(signals_));
     emit signalRemoved(id);
     return true;
 }
@@ -391,6 +466,10 @@ bool DashboardSignalModel::addDisplayMode(const QUuid& id, const QString& displa
     signal.displayModeIds.push_back(mode);
     if (signal.binding.displayModeId.isEmpty())
         signal.binding.displayModeId = mode;
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=display_mode_toggled id=%1 mode=%2 enabled=1")
+               .arg(uuidLogValue(id))
+               .arg(mode);
     emitRowChanged(row, {DisplayModesRole, DisplayModeRole});
     return true;
 }
@@ -406,6 +485,10 @@ bool DashboardSignalModel::removeDisplayMode(const QUuid& id, const QString& dis
         return false;
     if (signal.binding.displayModeId == displayModeId)
         signal.binding.displayModeId = signal.displayModeIds.isEmpty() ? QString() : signal.displayModeIds.first();
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=display_mode_toggled id=%1 mode=%2 enabled=0")
+               .arg(uuidLogValue(id))
+               .arg(displayModeId.trimmed());
     emitRowChanged(row, {DisplayModesRole, DisplayModeRole});
     return true;
 }

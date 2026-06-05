@@ -36,6 +36,7 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("DashboardStripDock"));
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    setMinimumWidth(260);
     setMinimumHeight(64);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     QFont compactFont = font();
@@ -267,6 +268,16 @@ int DashboardStripDock::stripDisplaySinkCount() const {
 
 int DashboardStripDock::spectrumDisplaySinkCount() const {
     return stackWidget_ ? stackWidget_->spectrumTrackCount() : 0;
+}
+
+int DashboardStripDock::ownedPanelCount() const {
+    return stackWidget_ ? stackWidget_->ownedPanelCount()
+                        : (controller_ ? controller_->ownedPanelCount() : 0);
+}
+
+int DashboardStripDock::stripTrackCount() const {
+    return stackWidget_ ? stackWidget_->trackCount()
+                        : (controller_ ? controller_->stripTrackCount() : 0);
 }
 
 void DashboardStripDock::setFrame(int frame) {

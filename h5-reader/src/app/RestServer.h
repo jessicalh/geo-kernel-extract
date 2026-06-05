@@ -32,6 +32,14 @@
 //   POST   /plane-lock/disable           → 204
 //   GET    /scene/camera                 → {"focal":[x,y,z], "position":[x,y,z], "view_up":[x,y,z], "direction":[x,y,z]}
 //   GET    /dashboard/signals            → [{"id": uuid, "descriptor_id": ..., "modes": [...], "label": ...}, ...]
+//   GET    /dashboard/state              → selected metrics + dock/render state
+//   GET    /dashboard/picker             → live Metric Picker selector state
+//   POST   /dashboard/picker/open        → live selector state (body: {"atom": int} optional)
+//   POST   /dashboard/metric             → {"id": uuid, "added_refs": int}
+//                                            body: {"descriptor_id": "...", "anchor": {...}, "modes": [...]}
+//   POST   /dashboard/metric/remove      → {"removed": true}  body: {"id": uuid}
+//   POST   /dashboard/metric/mode        → {"modes": [...]}  body: {"id": uuid, "mode": "...", "enabled": bool}
+//   POST   /dashboard/dock               → {"visible": bool, "width": int}  body: {"visible": bool}
 //   POST   /screenshot                   → image/png (body: {"target":"scene"|"window",
 //                                                            "force_render": bool})
 

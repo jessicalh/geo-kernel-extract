@@ -171,7 +171,7 @@ QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringL
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("QtAtomInspectorDock"));
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
-    setMinimumWidth(48);
+    setMinimumWidth(260);
     setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     QFont compactFont = font();
     if (compactFont.pointSize() > 8)

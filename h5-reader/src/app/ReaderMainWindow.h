@@ -30,7 +30,9 @@
 
 class QActionGroup;
 class QDockWidget;
+class QJsonObject;
 class QMenu;
+class QString;
 
 class QLabel;
 class QSlider;
@@ -95,6 +97,18 @@ public:
     // construction.
     h5reader::model::TransformedConformation* transformedConformation() const { return transformed_; }
 
+    // Dashboard strip dock surface for the REST instrumentation harness.
+    // Showing uses the same queued reveal path as in-product code, while
+    // hiding is a plain dock visibility change.
+    void setDashboardDockVisible(bool visible);
+    bool dashboardDockVisible() const;
+    int dashboardDockWidth() const;
+    bool dashboardDockRaised() const;
+    int dashboardOwnedPanelCount() const;
+    int dashboardStripTrackCount() const;
+    bool openSignalDisplayPicker(QString* blockedReason = nullptr);
+    QJsonObject signalDisplayPickerState() const;
+
 public slots:
     // Called from aboutToQuit. Stops the REST server, stops timers, and
     // detaches the render window from the widget so the
@@ -139,6 +153,7 @@ private:
     // from the composer's mode().kind so REST or programmatic changes
     // reflect in the toolbar too.
     void updateCameraModeActions();
+    void revealDockQueued(QDockWidget* dock);
     // QSettings persistence — see kSettingsVersion in the .cpp for the
     // versioned QMainWindow state blob policy. Tolerant on restore (any
     // missing / mismatched key is silently skipped) so a fresh install

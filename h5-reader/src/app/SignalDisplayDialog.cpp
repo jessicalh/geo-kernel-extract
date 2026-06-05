@@ -3,6 +3,7 @@
 #include "NearbySignalModel.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
+#include "../diagnostics/DashboardLogging.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../model/AtomSelection.h"
@@ -25,6 +26,9 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -215,6 +219,18 @@ bool modeListContainsKind(const QStringList& modes, DisplayModeKind kind) {
     return !modeForKind(modes, kind).isEmpty();
 }
 
+}  // namespace
+
+bool DashboardModeHasVisibleSurface(const QString& modeId) {
+    return modeId.startsWith(QStringLiteral("strip."))
+        || modeId == QStringLiteral("static.bar.sequence")
+        || modeId == QStringLiteral("static.curve.lag.animated")
+        || modeId == QStringLiteral("static.chord.coupling")
+        || modeId == QStringLiteral("static.fixed_freq");
+}
+
+namespace {
+
 QString modeSummary(const QStringList& displayModes) {
     QStringList labels;
     // modeSummary uses the same Table-last order as allModeKinds so
@@ -279,6 +295,58 @@ model::SignalAxis axisForCandidate(const NearbySignalModel::Candidate& candidate
 
 model::SignalAnchor anchorForCandidate(const NearbySignalModel::Candidate& candidate) {
     return candidate.anchor;
+}
+
+QJsonObject signalAnchorToJson(const model::SignalAnchor& anchor) {
+    QJsonObject out;
+    if (std::holds_alternative<model::NoneAnchor>(anchor)) {
+        out["kind"] = "none";
+    } else if (const auto* a = std::get_if<model::AtomAnchor>(&anchor)) {
+        out["kind"] = "atom"; out["atom"] = static_cast<qint64>(a->atom);
+    } else if (const auto* r = std::get_if<model::ResidueAnchor>(&anchor)) {
+        out["kind"] = "residue"; out["residue"] = static_cast<qint64>(r->residue);
+    } else if (const auto* t = std::get_if<model::AtomTupleAnchor>(&anchor)) {
+        QJsonArray atoms;
+        for (auto a : t->atoms) atoms.append(static_cast<qint64>(a));
+        out["kind"] = "atom_tuple"; out["atoms"] = atoms;
+    } else if (const auto* b = std::get_if<model::BondAnchor>(&anchor)) {
+        out["kind"] = "bond"; out["bond"] = static_cast<qint64>(b->bond);
+    } else if (const auto* v = std::get_if<model::BondVectorAnchor>(&anchor)) {
+        out["kind"] = "bond_vector";
+        out["residue"] = static_cast<qint64>(v->residue);
+        out["kind_id"] = static_cast<qint64>(v->kind);
+    } else if (const auto* r = std::get_if<model::RingAnchor>(&anchor)) {
+        out["kind"] = "ring"; out["ring"] = static_cast<qint64>(r->ring);
+    } else if (const auto* r = std::get_if<model::AromaticRingAnchor>(&anchor)) {
+        out["kind"] = "aromatic_ring"; out["ring"] = static_cast<qint64>(r->ring);
+    } else if (const auto* r = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
+        out["kind"] = "saturated_ring"; out["ring"] = static_cast<qint64>(r->ring);
+    } else if (const auto* p = std::get_if<model::RingContributionPairAnchor>(&anchor)) {
+        out["kind"] = "ring_contribution_pair"; out["pair"] = static_cast<qint64>(p->pair);
+    } else if (const auto* m = std::get_if<model::RingMembershipAnchor>(&anchor)) {
+        out["kind"] = "ring_membership"; out["membership"] = static_cast<qint64>(m->membership);
+    } else if (const auto* p = std::get_if<model::MutationMatchPairAnchor>(&anchor)) {
+        out["kind"] = "mutation_match_pair"; out["pair"] = static_cast<qint64>(p->pair);
+    } else if (std::holds_alternative<model::ProteinAnchor>(anchor)) {
+        out["kind"] = "protein";
+    } else if (std::holds_alternative<model::SystemAnchor>(anchor)) {
+        out["kind"] = "system";
+    } else if (std::holds_alternative<model::EventAnchor>(anchor)) {
+        out["kind"] = "event";
+    }
+    return out;
+}
+
+QString candidateModeDisabledReason(const QString& modeId,
+                                    bool hasVisibleSurface,
+                                    bool descriptorAvailable) {
+    if (modeId.isEmpty())
+        return QStringLiteral("This descriptor does not offer that display mode.");
+    if (!hasVisibleSurface)
+        return QStringLiteral("This display mode has no implemented renderer yet.");
+    if (!descriptorAvailable)
+        return QStringLiteral("The data for this descriptor is not available in this run.");
+    return {};
 }
 
 // Delegates to model::AxisCanSatisfy so the dialog's widening rules
@@ -947,6 +1015,77 @@ model::DashboardSignalModel* SignalDisplayDialog::dashboardSignalModel() const {
     return d_->activeModel.data();
 }
 
+QJsonObject SignalDisplayDialog::pickerState() const {
+    ASSERT_THREAD(this);
+    QJsonObject out;
+    out["open"] = isVisible();
+
+    const QModelIndex proxyIndex = d_->candidateView ? d_->candidateView->currentIndex() : QModelIndex();
+    const QModelIndex sourceIndex = proxyIndex.isValid() ? d_->descriptorProxy->mapToSource(proxyIndex)
+                                                        : QModelIndex();
+    out["candidate_row"] = sourceIndex.isValid() ? QJsonValue(proxyIndex.row()) : QJsonValue(QJsonValue::Null);
+
+    const QModelIndex anchorIndex = d_->anchorView ? d_->anchorView->currentIndex() : QModelIndex();
+    const NearbySignalModel::Candidate* candidate = d_->anchorModel->candidateAt(anchorIndex);
+    QJsonObject anchor = candidate ? signalAnchorToJson(candidate->anchor)
+                                   : QJsonObject{{"kind", "none"}};
+    anchor["row"] = candidate ? QJsonValue(anchorIndex.row()) : QJsonValue(QJsonValue::Null);
+    anchor["label"] = candidate ? candidate->label : QString();
+    anchor["axis"] = candidate ? model::ToString(axisForCandidate(*candidate))
+                               : model::ToString(model::SignalAxis::None);
+    anchor["distance_angstrom"] = candidate ? QJsonValue(candidate->distanceAngstrom)
+                                            : QJsonValue(QJsonValue::Null);
+    out["anchor"] = anchor;
+
+    QJsonArray modes;
+    for (const ModeControl& control : d_->candidateModes) {
+        if (!control.box)
+            continue;
+        modes.append(QJsonObject{
+            {"kind", modeKindKey(control.kind)},
+            {"mode_id", control.box->property("modeId").toString()},
+            {"enabled", control.box->isEnabled()},
+            {"checked", control.box->isChecked()},
+            {"reason", control.box->toolTip()},
+        });
+    }
+    out["modes"] = modes;
+    return out;
+}
+
+bool SignalDisplayDialog::ensureCandidateRowSelected() {
+    ASSERT_THREAD(this);
+    if (!d_->candidateView || !d_->descriptorProxy)
+        return false;
+
+    auto* selection = d_->candidateView->selectionModel();
+    if (d_->descriptorProxy->rowCount() <= 0) {
+        if (selection) {
+            const QSignalBlocker blocker(selection);
+            selection->clearSelection();
+            selection->clearCurrentIndex();
+        }
+        return false;
+    }
+
+    const QModelIndex current = d_->candidateView->currentIndex();
+    if (current.isValid() && d_->descriptorProxy->mapToSource(current).isValid())
+        return false;
+
+    const QModelIndex first = d_->descriptorProxy->index(0, 0);
+    if (!first.isValid())
+        return false;
+
+    if (selection) {
+        const QSignalBlocker blocker(selection);
+        selection->setCurrentIndex(first, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    } else {
+        d_->candidateView->setCurrentIndex(first);
+    }
+    d_->candidateView->scrollTo(first, QAbstractItemView::EnsureVisible);
+    return true;
+}
+
 void SignalDisplayDialog::refreshCatalog() {
     ASSERT_THREAD(this);
     const QVector<model::SignalDescriptor> descriptors = d_->catalog ? d_->catalog->descriptorList()
@@ -954,10 +1093,7 @@ void SignalDisplayDialog::refreshCatalog() {
     d_->descriptorModel->setDescriptors(descriptors);
     d_->candidateView->resizeColumnsToContents();
     d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::SignalColumn, QHeaderView::Stretch);
-    if (auto* selection = d_->candidateView->selectionModel()) {
-        selection->clearSelection();
-        selection->clearCurrentIndex();
-    }
+    ensureCandidateRowSelected();
     onCandidateSelectionChanged();
     if (d_->statusLabel) {
         d_->statusLabel->setText(d_->catalog
@@ -1037,15 +1173,7 @@ void SignalDisplayDialog::onAnchorSelectionChanged() {
     const NearbySignalModel::Candidate* candidate = d_->anchorModel->candidateAt(anchorIndex);
     d_->descriptorProxy->setRequiredAnchorFilter(candidate ? axisForCandidate(*candidate) : model::SignalAxis::None,
                                                  candidate != nullptr);
-    if (d_->descriptorProxy->rowCount() > 0) {
-        const QModelIndex current = d_->candidateView->currentIndex();
-        if (!current.isValid() || !d_->descriptorProxy->mapToSource(current).isValid()) {
-            if (auto* selection = d_->candidateView->selectionModel()) {
-                selection->clearSelection();
-                selection->clearCurrentIndex();
-            }
-        }
-    }
+    ensureCandidateRowSelected();
     onCandidateSelectionChanged();
 }
 
@@ -1059,13 +1187,18 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
     for (const ModeControl& control : d_->candidateModes) {
         QSignalBlocker blocker(control.box);
         const QString modeId = record ? modeForKind(record->displayModes, control.kind) : QString();
-        const bool supported = !modeId.isEmpty();
+        const bool hasVisibleSurface = !modeId.isEmpty() && DashboardModeHasVisibleSurface(modeId);
+        const bool descriptorAvailable = !record || !d_->catalog || !d_->catalog->fieldAvailability()
+            || d_->catalog->fieldAvailability()->canSampleDescriptor(record->descriptor);
+        const bool supported = !modeId.isEmpty() && hasVisibleSurface && descriptorAvailable;
         control.box->setProperty("modeId", modeId);
         control.box->setEnabled(supported);
         control.box->setChecked(supported && control.kind == DisplayModeKind::Strip);
         control.box->setToolTip(supported
                                     ? QStringLiteral("Add display mode id '%1'.").arg(modeId)
-                                    : QStringLiteral("This descriptor does not advertise that display mode."));
+                                    : candidateModeDisabledReason(modeId,
+                                                                  hasVisibleSurface,
+                                                                  descriptorAvailable));
         checkedOne = checkedOne || (supported && control.box->isChecked());
     }
     if (!checkedOne && record) {
@@ -1078,6 +1211,22 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
         }
     }
     onCandidateModeChanged();
+
+    QStringList enabledKinds;
+    QStringList disabledKinds;
+    for (const ModeControl& control : d_->candidateModes) {
+        const QString kind = modeKindKey(control.kind);
+        if (control.box->isEnabled()) {
+            enabledKinds.push_back(kind);
+        } else {
+            disabledKinds.push_back(QStringLiteral("%1:%2").arg(kind, control.box->toolTip()));
+        }
+    }
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=picker_selector_state current_row=%1 enabled=[%2] disabled=[%3]")
+               .arg(sourceIndex.isValid() ? QString::number(proxyIndex.row()) : QStringLiteral("none"),
+                    enabledKinds.join(QStringLiteral(",")),
+                    disabledKinds.join(QStringLiteral(",")));
 }
 
 void SignalDisplayDialog::onCandidateModeChanged() {
@@ -1256,14 +1405,14 @@ void SignalDisplayDialog::onActiveSelectionChanged() {
         if (modeId.isEmpty())
             modeId = canonicalModeId(control.kind);
 
-        const bool supported = hasActive && (supportedModes.isEmpty()
-                                             || modeListContainsKind(supportedModes, control.kind));
+        const bool supported = hasActive && DashboardModeHasVisibleSurface(modeId)
+            && (supportedModes.isEmpty() || modeListContainsKind(supportedModes, control.kind));
         control.box->setProperty("modeId", modeId);
         control.box->setEnabled(supported);
-        control.box->setChecked(hasActive && modeListContainsKind(enabledModes, control.kind));
+        control.box->setChecked(supported && modeListContainsKind(enabledModes, control.kind));
         control.box->setToolTip(supported
                                     ? QStringLiteral("Toggle display mode id '%1'.").arg(modeId)
-                                    : QStringLiteral("The selected signal does not advertise this display mode."));
+                                    : QStringLiteral("This display mode does not have an implemented visible renderer."));
     }
     d_->removeButton->setEnabled(hasActive);
 }

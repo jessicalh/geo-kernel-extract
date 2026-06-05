@@ -127,3 +127,39 @@ for the whole cut: the tumbling transforms, the empty data fields, the accreted 
   because too many things don't"* → the bar is **HANDABLE, not perfect**; fix the handability blockers, not
   depth. → fired **opus check of the map** (`ac6…`, handability-lensed) per the lead's call. Sequence after it
   clears: **checkpoint commit (lead's git)** → apply de-funk fixes → rebuild → relaunch.
+- 2026-06-05 — **opus check verdict: GO** (`ac6…`) — every diagnosis confirmed against the code; refinement:
+  the dead-end modes are MORE pervasive than the map said (`static.table` is offered + enabled on nearly every
+  descriptor and renders nothing), so **"disable show-nothing modes" is CO-EQUAL with the dock fix**, not
+  optional. Risk low + contained (UI/dialog/catalog only).
+- 2026-06-05 — **checkpoint committed `7b3012d`** (vetted surgery + fixes + session docs; restore point before
+  the next fixes). NB git-process: even with permission, ASK/show scope before committing — lead correction.
+- 2026-06-05 — **lead revision + go:** do NOT auto-pop the Strip dock on Add — make the dock-SELECT (Panels
+  toggle) reliably work instead (root cause per opus: `DashboardStripDock` has no `setMinimumWidth` → collapses
+  to ~0). → codex on 3 fixes (`bgcjgs1y7`, brief `CODEX_BRIEF_UI_HANDABILITY_FIXES_2026-06-05.md`):
+  (1) dock-select reliable — min-width + queued resize/raise, no pop; (2) disable dead-end mode checkboxes;
+  (3) Focus/Newman immediate. Defer pick→inspector. **Gate relaunch on a runtime confirm the Strip dock opens
+  at ~360 wide.**
+- 2026-06-05 — **handability fixes landed + relaunched** (`bgcjgs1y7`): dock min-width 260 + queued resize/raise
+  (no auto-pop), dead-mode checkboxes gated by `modeHasVisibleSurface`, Focus/Newman immediate.
+- 2026-06-05 — **lead: panels STILL greyed/empty** ("selected another field, still no panels enabled… the
+  panel selector is constantly greyed out"). Reframe: the **selected-metrics MODEL is murky** — UI greys
+  disconnected from reality (silent failure). Lead's target model: ONE selected-metrics list (source of truth);
+  add→grow, close→shrink; **panel up-by-default unless the user disabled it**; selector REFLECTS the list. PLUS
+  **ultrathink the relation to DATA AVAILABILITY** (`TrajectoryFieldAvailability` as the gate — untangle
+  "display mode has no renderer" from "data unavailable"; the dead-mode-greying conflated them) **and the
+  model-is-spine UI DATA-FLOW** (H5→typed model→views; selection = model state, views derive). → codex
+  **design review** (READ-ONLY, qt-skill-loaded, portable Windows/macOS first-class) `bshk32hbp` →
+  `SELECTED_METRICS_DESIGN_2026-06-05.md`. Then **opus-check → build the unified model**. Git: ask first.
+  Checkpoint floor `7b3012d`.
+- 2026-06-05 — **opus check: GO, staged** (`a2fb…`); diagnosis CORRECT, STEERABLE not rebuild. **Greyed selector
+  = a ROUND-1 SELF-INFLICTED regression** (the `clearSelection`/`clearCurrentIndex` "clean-unselected" line we
+  added is what greys all mode boxes) → fix: auto-select the PICKER candidate while keeping the ADDED-metrics
+  list empty (both asks hold). **Latent bug:** `isPanelMode` (controller) vs `isPanelDisplayMode` (panel-model)
+  ALREADY disagree on `static.tensor` (intentional — scene overlay); the capability-table unify must PRESERVE
+  that (`isPanelRef` vs `hasStripWidget`), not flatten.
+- 2026-06-05 — **DECISION (lead): full coherence is the rescue** (band-aids won't hold; the thrash came from
+  treating view-state as model-truth). **NEXT SESSION → `NEXT_SESSION_UI_HANDOFF_2026-06-05.md`** — carries the
+  deep-dive mandate, the instrument-REST/logging-first directive, the opus-ordered 5-step build
+  (selector-reflection[LOW] → capability-table[LOW] → availability-through-path[MED] → dock-visibility[MED] →
+  named controller[HIGH, LAST]), the 2 product calls (dock-visibility rule; prune-vs-keep stale data), and
+  state. Floor `7b3012d`; ask before git.

@@ -52,6 +52,8 @@ public:
     DashboardSmokeSummary smokeSummary(int firstFrame, int lastFrame) const;
     int stripDisplaySinkCount() const;
     int spectrumDisplaySinkCount() const;
+    int ownedPanelCount() const;
+    int stripTrackCount() const;
 
 signals:
     void revealRequested(const model::SignalBinding& binding);

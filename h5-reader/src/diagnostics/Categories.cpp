@@ -9,11 +9,13 @@
 // the definitions together here for visibility.
 
 #include "ConnectionAuditor.h"
+#include "DashboardLogging.h"
 #include "ThreadGuard.h"
 
 namespace h5reader::diagnostics {
 
 Q_LOGGING_CATEGORY(cThreadGuard, "h5reader.threadguard")
 Q_LOGGING_CATEGORY(cConnections, "h5reader.connections")
+Q_LOGGING_CATEGORY(cDash, "h5reader.dashboard")
 
 }  // namespace h5reader::diagnostics

@@ -34,6 +34,7 @@ struct DashboardPanel {
 QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
                                                   const SignalDescriptor& descriptor,
                                                   const QStringList& displayModeIds);
+bool IsPanelDisplayMode(const QString& mode);
 
 class DashboardPanelModel final : public QAbstractListModel {
     Q_OBJECT

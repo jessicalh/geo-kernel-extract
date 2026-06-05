@@ -22,6 +22,7 @@
 #include "SignalDisplayDialog.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
+#include "../diagnostics/DashboardLogging.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/StructuredLogger.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -48,12 +49,14 @@
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QFont>
+#include <QJsonObject>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLoggingCategory>
 #include <QMenu>
 #include <QMenuBar>
 #include <QProcess>
+#include <QRegion>
 #include <QSet>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -396,6 +399,13 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     inspectorDock_->setVisible(false);
     selectionDock_->setVisible(false);
     dashboardStripDock_->setVisible(false);
+    ACONNECT(dashboardStripDock_, &QDockWidget::visibilityChanged,
+             this, [this](bool visible) {
+                 qCInfo(diagnostics::cDash).noquote()
+                     << QStringLiteral("event=dock_visibility_changed visible=%1 width=%2")
+                            .arg(visible ? 1 : 0)
+                            .arg(dashboardDockWidth());
+             });
 
     // Panel recovery — one QAction per dock from QDockWidget::toggleViewAction().
     // The same QAction instances live in View -> Panels and the toolbar menu,
@@ -415,12 +425,10 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
             QAction* a = p.dock->toggleViewAction();
             a->setText(QString::fromUtf8(p.label));
             a->setToolTip(QString::fromUtf8(p.tip));
-            ACONNECT(p.dock, &QDockWidget::visibilityChanged,
-                     this, [this, dock = QPointer<QDockWidget>(p.dock)](bool visible) {
-                         if (!visible || !dock)
-                             return;
-                         resizeDocks({dock.data()}, {360}, Qt::Horizontal);
-                         dock->raise();
+            ACONNECT(a, &QAction::triggered,
+                     this, [this, dock = QPointer<QDockWidget>(p.dock)](bool checked) {
+                         if (checked && dock)
+                             revealDockQueued(dock.data());
                      });
             panelsMenu_->addAction(a);
         }
@@ -630,6 +638,91 @@ void ReaderMainWindow::setDocksVisible(bool visible) {
         << "docks restored | count=" << stashedDockVisibility_.size();
     stashedDockVisibility_.clear();
     docksHidden_ = false;
+}
+
+void ReaderMainWindow::setDashboardDockVisible(bool visible) {
+    ASSERT_THREAD(this);
+    if (!dashboardStripDock_)
+        return;
+    if (visible) {
+        revealDockQueued(dashboardStripDock_);
+    } else {
+        dashboardStripDock_->setVisible(false);
+    }
+}
+
+bool ReaderMainWindow::dashboardDockVisible() const {
+    ASSERT_THREAD(this);
+    return dashboardStripDock_ && dashboardStripDock_->isVisible();
+}
+
+int ReaderMainWindow::dashboardDockWidth() const {
+    ASSERT_THREAD(this);
+    return dashboardStripDock_ ? dashboardStripDock_->width() : 0;
+}
+
+bool ReaderMainWindow::dashboardDockRaised() const {
+    ASSERT_THREAD(this);
+    return dashboardStripDock_ && dashboardStripDock_->isVisible()
+        && !dashboardStripDock_->visibleRegion().isEmpty();
+}
+
+int ReaderMainWindow::dashboardOwnedPanelCount() const {
+    ASSERT_THREAD(this);
+    return dashboardStripDock_ ? dashboardStripDock_->ownedPanelCount() : 0;
+}
+
+int ReaderMainWindow::dashboardStripTrackCount() const {
+    ASSERT_THREAD(this);
+    return dashboardStripDock_ ? dashboardStripDock_->stripTrackCount() : 0;
+}
+
+bool ReaderMainWindow::openSignalDisplayPicker(QString* blockedReason) {
+    ASSERT_THREAD(this);
+    if (blockedReason)
+        blockedReason->clear();
+    if (!signalDisplayDialog_) {
+        if (blockedReason)
+            *blockedReason = QStringLiteral("signal display dialog not wired");
+        return false;
+    }
+    if (!selection_ || !selection_->hasFocus()) {
+        if (blockedReason)
+            *blockedReason = QStringLiteral("Metrics action is disabled because AtomSelection has no focus.");
+        return false;
+    }
+    if (signalDisplaysAction_ && !signalDisplaysAction_->isEnabled()) {
+        if (blockedReason)
+            *blockedReason = QStringLiteral("Metrics action is disabled.");
+        return false;
+    }
+    if (playback_)
+        signalDisplayDialog_->setFrame(playback_->currentFrame());
+    signalDisplayDialog_->refreshCatalog();
+    signalDisplayDialog_->show();
+    signalDisplayDialog_->raise();
+    signalDisplayDialog_->activateWindow();
+    return true;
+}
+
+QJsonObject ReaderMainWindow::signalDisplayPickerState() const {
+    ASSERT_THREAD(this);
+    if (!signalDisplayDialog_)
+        return QJsonObject{{"open", false}};
+    return signalDisplayDialog_->pickerState();
+}
+
+void ReaderMainWindow::revealDockQueued(QDockWidget* dock) {
+    ASSERT_THREAD(this);
+    if (!dock)
+        return;
+    dock->setVisible(true);
+    QTimer::singleShot(0, this, [this, dock = QPointer<QDockWidget>(dock)]() {
+        if (!dock)
+            return;
+        resizeDocks({dock.data()}, {360}, Qt::Horizontal);
+        dock->raise();
+    });
 }
 
 void ReaderMainWindow::shutdown() {
@@ -1012,6 +1105,10 @@ void ReaderMainWindow::onFocusCameraTriggered() {
     }
     const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
     scene_->cameraComposer()->setMode(result.mode, result.policy, t);
+    (void)scene_->cameraComposer()->write(t);
+    scene_->syncCameraClippingRange();
+    scene_->requestRender(MoleculeScene::RenderSource::External);
+    updateCameraModeActions();
 }
 
 void ReaderMainWindow::onNewmanProjectionTriggered() {
@@ -1025,6 +1122,10 @@ void ReaderMainWindow::onNewmanProjectionTriggered() {
     OrientationPolicy p = DownAxisPolicy(a[1], a[2]);
     const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
     scene_->cameraComposer()->setMode(m, p, t);
+    (void)scene_->cameraComposer()->write(t);
+    scene_->syncCameraClippingRange();
+    scene_->requestRender(MoleculeScene::RenderSource::External);
+    updateCameraModeActions();
 }
 
 void ReaderMainWindow::onFreeCameraTriggered() {
@@ -1172,16 +1273,7 @@ void ReaderMainWindow::onOpenDirectory() {
 
 void ReaderMainWindow::onOpenSignalDisplays() {
     ASSERT_THREAD(this);
-    if (!signalDisplayDialog_)
-        return;
-    if (!selection_ || !selection_->hasFocus())
-        return;
-    if (playback_)
-        signalDisplayDialog_->setFrame(playback_->currentFrame());
-    signalDisplayDialog_->refreshCatalog();
-    signalDisplayDialog_->show();
-    signalDisplayDialog_->raise();
-    signalDisplayDialog_->activateWindow();
+    openSignalDisplayPicker();
 }
 
 }  // namespace h5reader::app

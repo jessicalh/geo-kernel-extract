@@ -30,6 +30,8 @@ namespace h5reader::app {
 
 class SceneRevealOverlay;
 
+bool IsRenderableDashboardPanelMode(const QString& mode);
+
 struct DashboardSmokeSummary {
     struct SeriesSparseness {
         QString signalLabel;
@@ -126,6 +128,8 @@ public:
     DashboardSmokeSummary smokeSummary() const;
     DashboardSmokeSummary smokeSummary(int firstFrame, int lastFrame) const;
     QString statusText() const { return statusText_; }
+    int ownedPanelCount() const { return activeOwnedPanelCount_; }
+    int stripTrackCount() const;
 
 public slots:
     void setFrame(int frame);

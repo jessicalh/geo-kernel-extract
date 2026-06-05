@@ -21,7 +21,7 @@ SelectionDock::SelectionDock(QWidget* parent)
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("SelectionDock"));
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
-    setMinimumWidth(48);
+    setMinimumWidth(260);
     setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     QFont compactFont = font();
     if (compactFont.pointSize() > 8)

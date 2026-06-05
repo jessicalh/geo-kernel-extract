@@ -1,6 +1,7 @@
 #include "DashboardDisplayController.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
+#include "../diagnostics/DashboardLogging.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../io/QtFieldCatalog.gen.h"
@@ -56,17 +57,21 @@ struct ScopedScrubReleaseFlag {
     ~ScopedScrubReleaseFlag() { flag = false; }
 };
 
+}  // namespace
+
 // Static-display modes that map to AbstractStripPanel subclasses
 // rendered via setOwnedPanels (NOT via the temporal-strip ChannelBuffer
 // path). Each new panel kind landing in Phases C-G appends its mode
 // here.
-bool isPanelMode(const QString& mode) {
+bool IsRenderableDashboardPanelMode(const QString& mode) {
     return mode == QStringLiteral("static.bar.sequence")
         || mode == QStringLiteral("static.spectrum.power")
         || mode == QStringLiteral("static.curve.lag.animated")
         || mode == QStringLiteral("static.chord.coupling")
         || mode == QStringLiteral("static.fixed_freq");
 }
+
+namespace {
 
 QString canonicalModeChannel(const QString& mode) {
     if (mode.startsWith(QStringLiteral("strip.tensor.")))
@@ -1321,6 +1326,11 @@ QVector<DashboardDisplayController::StripTrack> DashboardDisplayController::stri
     return out;
 }
 
+int DashboardDisplayController::stripTrackCount() const {
+    ASSERT_THREAD(this);
+    return activePanelSeriesCount();
+}
+
 DashboardSmokeSummary DashboardDisplayController::smokeSummary() const {
     int lastFrame = -1;
     for (const ActiveSeries& series : series_) {
@@ -1573,7 +1583,7 @@ void DashboardDisplayController::rebuild() {
             // SequenceBarPanel regardless of which mode happens to be
             // the binding's primary.
             for (const QString& mode : signal.displayModeIds) {
-                if (!isPanelMode(mode))
+                if (!IsRenderableDashboardPanelMode(mode))
                     continue;
                 // Active-panel filter: same scope rule the temporal
                 // strip path uses (see seriesIsVisibleInActivePanel).
@@ -1693,6 +1703,14 @@ void DashboardDisplayController::rebuild() {
     // and are reachable; the call site is the deferred follow-up.
 
     updateStatusText();
+    const QUuid activePanelId = panelModel_ ? panelModel_->activePanelId() : QUuid{};
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=controller_rebuild owned_panel_count=%1 strip_track_count=%2 active_panel=%3")
+               .arg(activeOwnedPanelCount_)
+               .arg(activePanelSeriesCount())
+               .arg(activePanelId.isNull()
+                        ? QStringLiteral("none")
+                        : activePanelId.toString(QUuid::WithoutBraces));
     emit stripTracksChanged();
     emit ownedPanelsChanged();
 }

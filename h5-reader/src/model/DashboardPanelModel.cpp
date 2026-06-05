@@ -1,5 +1,7 @@
 #include "DashboardPanelModel.h"
 
+#include "../diagnostics/DashboardLogging.h"
+
 #include <QStringList>
 
 #include <algorithm>
@@ -43,6 +45,35 @@ QStringList normalizedModeList(const QStringList& modes) {
     return result;
 }
 
+QString uuidLogValue(const QUuid& id) {
+    return id.toString(QUuid::WithoutBraces);
+}
+
+int signalReferenceCount(const QVector<DashboardPanel>& panels, const QUuid& signalId) {
+    if (signalId.isNull())
+        return 0;
+    int count = 0;
+    for (const DashboardPanel& panel : panels) {
+        for (const DashboardDisplayRef& ref : panel.displays) {
+            if (ref.signalId == signalId)
+                ++count;
+        }
+    }
+    return count;
+}
+
+void logPanelRefsChanged(const QVector<DashboardPanel>& panels,
+                         const QUuid& panelId,
+                         const DashboardDisplayRef& ref) {
+    qCInfo(diagnostics::cDash).noquote()
+        << QStringLiteral("event=panel_refs_changed signal_id=%1 ref_count=%2 panel_id=%3 mode=%4 channel=%5")
+               .arg(uuidLogValue(ref.signalId))
+               .arg(signalReferenceCount(panels, ref.signalId))
+               .arg(uuidLogValue(panelId))
+               .arg(ref.displayModeId)
+               .arg(ref.channelId);
+}
+
 }  // namespace
 
 QString DashboardDisplayRef::stableKey() const {
@@ -50,15 +81,14 @@ QString DashboardDisplayRef::stableKey() const {
         .arg(signalId.toString(QUuid::WithoutBraces), displayModeId, channelId);
 }
 
-// Panel-mode predicate kept in step with isPanelMode in
-// DashboardDisplayController.cpp — both lists must stay aligned.
-// Codex NOW-2 (2026-05-29) caught the prior version omitting the
-// L-3 modes (static.fixed_freq + static.tensor), which prevented the
-// dialog from creating the refs the controller's active-panel filter
-// needed. Adding either mode here requires the matching arm in
-// DashboardDisplayController.cpp:isPanelMode + a per-mode dispatch
-// in rebuild().
-static bool isPanelDisplayMode(const QString& mode) {
+// Panel-mode predicate kept in step with the renderable-panel predicate in
+// DashboardDisplayController.cpp — with intentional disagreements documented
+// by /dashboard/state. Codex NOW-2 (2026-05-29) caught the prior version
+// omitting the L-3 modes (static.fixed_freq + static.tensor), which prevented
+// the dialog from creating the refs the controller's active-panel filter
+// needed. Adding either mode here requires checking the matching controller
+// dispatch in rebuild().
+bool IsPanelDisplayMode(const QString& mode) {
     return mode == QStringLiteral("static.bar.sequence")
         || mode == QStringLiteral("static.spectrum.power")
         || mode == QStringLiteral("static.curve.lag.animated")
@@ -83,7 +113,7 @@ QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
         // Panel modes are tracked with a "panel" sentinel channel id so
         // the cleanup cascade (removeDisplayRefsForSignal) drops them
         // alongside any strip-mode refs the signal carries.
-        if (isPanelDisplayMode(mode)) {
+        if (IsPanelDisplayMode(mode)) {
             refs.push_back(DashboardDisplayRef{signalId, mode, QStringLiteral("panel")});
             continue;
         }
@@ -337,6 +367,7 @@ bool DashboardPanelModel::addDisplayRef(const QUuid& panelId, const DashboardDis
         return false;
     panels_[row].displays.push_back(ref);
     emitPanelRowChanged(row, {DisplayCountRole});
+    logPanelRefsChanged(panels_, panelId, ref);
     emit displayRefAdded(panelId, ref);
     emit displayRefsChanged(panelId);
     return true;
@@ -358,6 +389,7 @@ bool DashboardPanelModel::removeDisplayRef(const QUuid& panelId, const Dashboard
         return false;
     panels_[row].displays.removeAt(index);
     emitPanelRowChanged(row, {DisplayCountRole});
+    logPanelRefsChanged(panels_, panelId, ref);
     emit displayRefRemoved(panelId, ref);
     emit displayRefsChanged(panelId);
     return true;
@@ -377,6 +409,7 @@ int DashboardPanelModel::removeDisplayRefsForSignal(const QUuid& signalId) {
             panel.displays.removeAt(i);
             ++removedCount;
             rowChanged = true;
+            logPanelRefsChanged(panels_, panel.id, ref);
             emit displayRefRemoved(panel.id, ref);
         }
         if (rowChanged) {
@@ -403,6 +436,7 @@ int DashboardPanelModel::removeDisplayRefsForSignalMode(const QUuid& signalId, c
             panel.displays.removeAt(i);
             ++removedCount;
             rowChanged = true;
+            logPanelRefsChanged(panels_, panel.id, ref);
             emit displayRefRemoved(panel.id, ref);
         }
         if (rowChanged) {

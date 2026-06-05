@@ -7,6 +7,8 @@
 #pragma once
 
 #include <QDialog>
+#include <QJsonObject>
+#include <QString>
 
 #include <cstddef>
 #include <memory>
@@ -21,6 +23,8 @@ class TrajectorySignalCatalog;
 }
 
 namespace h5reader::app {
+
+bool DashboardModeHasVisibleSurface(const QString& modeId);
 
 class SignalDisplayDialog final : public QDialog {
     Q_OBJECT
@@ -37,6 +41,7 @@ public:
 
     model::TrajectorySignalCatalog* trajectorySignalCatalog() const;
     model::DashboardSignalModel* dashboardSignalModel() const;
+    QJsonObject pickerState() const;
 
 public slots:
     void refreshCatalog();
@@ -57,6 +62,8 @@ private slots:
     void onRemoveActive();
 
 private:
+    bool ensureCandidateRowSelected();
+
     struct Impl;
     std::unique_ptr<Impl> d_;
 };

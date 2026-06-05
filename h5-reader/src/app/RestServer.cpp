@@ -2,10 +2,12 @@
 
 #include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
+#include "DashboardDisplayController.h"
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
+#include "SignalDisplayDialog.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
@@ -37,6 +39,7 @@
 #include <QTimer>
 #include <QUuid>
 #include <QVariant>
+#include <QApplication>
 #include <QWidget>
 
 #include <vtkCamera.h>
@@ -48,7 +51,9 @@
 #include <vtkWindowToImageFilter.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <vector>
 
 namespace h5reader::app {
@@ -129,6 +134,283 @@ QJsonObject anchorToJson(const model::SignalAnchor& anchor) {
     return out;
 }
 
+QJsonArray stringListToJson(const QStringList& values) {
+    QJsonArray out;
+    for (const QString& value : values)
+        out.append(value);
+    return out;
+}
+
+QString uuidToString(const QUuid& id) {
+    return id.toString(QUuid::WithoutBraces);
+}
+
+std::optional<QUuid> uuidFromBody(const QJsonObject& body, QString* error) {
+    const QString raw = body.value("id").toString().trimmed();
+    if (raw.isEmpty()) {
+        *error = QStringLiteral("body must include non-empty string field \"id\"");
+        return std::nullopt;
+    }
+    QUuid id(raw);
+    if (id.isNull() && !raw.startsWith(QLatin1Char('{')))
+        id = QUuid(QStringLiteral("{%1}").arg(raw));
+    if (id.isNull()) {
+        *error = QStringLiteral("invalid uuid: %1").arg(raw);
+        return std::nullopt;
+    }
+    return id;
+}
+
+bool readNonNegativeInteger(const QJsonObject& obj,
+                            const QString& key,
+                            qint64* out,
+                            QString* error,
+                            bool required = true) {
+    if (!obj.contains(key)) {
+        if (required)
+            *error = QStringLiteral("missing integer field \"%1\"").arg(key);
+        return !required;
+    }
+    const QJsonValue value = obj.value(key);
+    if (!value.isDouble()) {
+        *error = QStringLiteral("field \"%1\" must be an integer").arg(key);
+        return false;
+    }
+    const qint64 raw = value.toInteger(-1);
+    if (raw < 0) {
+        *error = QStringLiteral("field \"%1\" must be >= 0").arg(key);
+        return false;
+    }
+    *out = raw;
+    return true;
+}
+
+bool validateOptionalFrame(const QJsonObject& anchor,
+                           const io::QtLoadResult* loaded,
+                           QString* error) {
+    if (!anchor.contains(QStringLiteral("frame")))
+        return true;
+    qint64 frame = -1;
+    if (!readNonNegativeInteger(anchor, QStringLiteral("frame"), &frame, error))
+        return false;
+    const auto* conformation = loaded ? loaded->conformation.get() : nullptr;
+    if (conformation && static_cast<std::size_t>(frame) >= conformation->frameCount()) {
+        *error = QStringLiteral("anchor frame out of range: %1").arg(frame);
+        return false;
+    }
+    return true;
+}
+
+bool indexInRange(qint64 index, std::size_t count, const QString& label, QString* error) {
+    if (index < 0 || static_cast<std::size_t>(index) >= count) {
+        *error = QStringLiteral("%1 index out of range: %2").arg(label).arg(index);
+        return false;
+    }
+    return true;
+}
+
+struct ParsedDashboardAnchor {
+    model::SignalAnchor anchor = model::NoneAnchor{};
+    bool followsFocus = false;
+    QString label = QStringLiteral("No anchor");
+};
+
+bool parseDashboardAnchor(const QJsonObject& body,
+                          const io::QtLoadResult* loaded,
+                          ParsedDashboardAnchor* out,
+                          QString* error) {
+    const QJsonValue anchorValue = body.value(QStringLiteral("anchor"));
+    if (!anchorValue.isObject()) {
+        *error = QStringLiteral("body must include object field \"anchor\"");
+        return false;
+    }
+    const QJsonObject anchor = anchorValue.toObject();
+    if (anchor.value(QStringLiteral("follows_focus")).toBool(false)) {
+        out->anchor = model::NoneAnchor{};
+        out->followsFocus = true;
+        out->label = QStringLiteral("focus");
+        return true;
+    }
+    if (!validateOptionalFrame(anchor, loaded, error))
+        return false;
+
+    const auto* protein = loaded ? loaded->protein.get() : nullptr;
+    const QString kind = anchor.value(QStringLiteral("kind")).toString();
+    auto readIndex = [&](const QString& key, qint64* value) {
+        return readNonNegativeInteger(anchor, key, value, error);
+    };
+
+    qint64 raw = -1;
+    if (kind == QStringLiteral("none")) {
+        out->anchor = model::NoneAnchor{};
+    } else if (kind == QStringLiteral("protein")) {
+        out->anchor = model::ProteinAnchor{};
+    } else if (kind == QStringLiteral("system")) {
+        out->anchor = model::SystemAnchor{};
+    } else if (kind == QStringLiteral("event")) {
+        out->anchor = model::EventAnchor{};
+    } else if (kind == QStringLiteral("atom") || (kind.isEmpty() && anchor.contains(QStringLiteral("atom")))) {
+        if (!readIndex(QStringLiteral("atom"), &raw))
+            return false;
+        if (protein && !indexInRange(raw, protein->atomCount(), QStringLiteral("atom"), error))
+            return false;
+        out->anchor = model::AtomAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("residue") || (kind.isEmpty() && anchor.contains(QStringLiteral("residue")))) {
+        if (!readIndex(QStringLiteral("residue"), &raw))
+            return false;
+        if (protein && !indexInRange(raw, protein->residueCount(), QStringLiteral("residue"), error))
+            return false;
+        out->anchor = model::ResidueAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("bond") || (kind.isEmpty() && anchor.contains(QStringLiteral("bond")))) {
+        if (!readIndex(QStringLiteral("bond"), &raw))
+            return false;
+        if (protein && !indexInRange(raw, protein->bondCount(), QStringLiteral("bond"), error))
+            return false;
+        out->anchor = model::BondAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("bond_vector")
+               || (kind.isEmpty() && anchor.contains(QStringLiteral("kind_id")))) {
+        qint64 residue = -1;
+        qint64 kindId = 0;
+        if (!readIndex(QStringLiteral("residue"), &residue))
+            return false;
+        if (anchor.contains(QStringLiteral("kind_id"))) {
+            if (!readNonNegativeInteger(anchor, QStringLiteral("kind_id"), &kindId, error))
+                return false;
+        }
+        if (protein && !indexInRange(residue, protein->residueCount(), QStringLiteral("residue"), error))
+            return false;
+        if (kindId > 255) {
+            *error = QStringLiteral("kind_id must be <= 255");
+            return false;
+        }
+        out->anchor = model::BondVectorAnchor{static_cast<std::size_t>(residue),
+                                              static_cast<std::uint8_t>(kindId)};
+    } else if (kind == QStringLiteral("ring") || (kind.isEmpty() && anchor.contains(QStringLiteral("ring")))) {
+        if (!readIndex(QStringLiteral("ring"), &raw))
+            return false;
+        if (protein && !indexInRange(raw, protein->ringCount(), QStringLiteral("ring"), error))
+            return false;
+        out->anchor = model::RingAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("aromatic_ring")) {
+        if (!readIndex(QStringLiteral("ring"), &raw))
+            return false;
+        if (protein && !indexInRange(raw, protein->ringCount(), QStringLiteral("ring"), error))
+            return false;
+        out->anchor = model::AromaticRingAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("saturated_ring")) {
+        if (!readIndex(QStringLiteral("ring"), &raw))
+            return false;
+        if (protein && !indexInRange(raw, protein->ringCount(), QStringLiteral("ring"), error))
+            return false;
+        out->anchor = model::SaturatedRingAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("ring_contribution_pair")
+               || (kind.isEmpty() && anchor.contains(QStringLiteral("pair")))) {
+        if (!readIndex(QStringLiteral("pair"), &raw))
+            return false;
+        out->anchor = model::RingContributionPairAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("ring_membership")
+               || (kind.isEmpty() && anchor.contains(QStringLiteral("membership")))) {
+        if (!readIndex(QStringLiteral("membership"), &raw))
+            return false;
+        out->anchor = model::RingMembershipAnchor{static_cast<std::size_t>(raw)};
+    } else if (kind == QStringLiteral("mutation_match_pair")) {
+        if (!readIndex(QStringLiteral("pair"), &raw))
+            return false;
+        out->anchor = model::MutationMatchPairAnchor{static_cast<std::size_t>(raw)};
+    } else {
+        *error = QStringLiteral("unsupported anchor object");
+        return false;
+    }
+
+    out->followsFocus = false;
+    out->label = model::AnchorLabel(out->anchor);
+    return true;
+}
+
+bool parseModeArray(const QJsonObject& body, QStringList* modes, QString* error) {
+    const QJsonValue modesValue = body.value(QStringLiteral("modes"));
+    if (!modesValue.isArray()) {
+        *error = QStringLiteral("body must include array field \"modes\"");
+        return false;
+    }
+    for (const QJsonValue& value : modesValue.toArray()) {
+        const QString mode = value.toString().trimmed();
+        if (mode.isEmpty()) {
+            *error = QStringLiteral("modes must contain non-empty strings");
+            return false;
+        }
+        if (!modes->contains(mode))
+            modes->push_back(mode);
+    }
+    if (modes->isEmpty()) {
+        *error = QStringLiteral("modes must contain at least one mode");
+        return false;
+    }
+    return true;
+}
+
+const model::SignalDescriptor* findAnyDescriptor(const model::TrajectorySignalCatalog* catalog,
+                                                 const QString& descriptorId) {
+    if (!catalog)
+        return nullptr;
+    if (const auto* descriptor = catalog->findDescriptor(descriptorId))
+        return descriptor;
+    for (const model::SignalDescriptor& descriptor : catalog->allDescriptorList()) {
+        if (descriptor.id == descriptorId)
+            return &descriptor;
+    }
+    return nullptr;
+}
+
+QString availabilityString(const model::TrajectorySignalCatalog* catalog,
+                           const QString& descriptorId) {
+    if (!catalog || !catalog->fieldAvailability())
+        return QStringLiteral("unknown");
+    return QString::fromLatin1(model::ToString(catalog->fieldAvailability()->stateForDescriptor(descriptorId)));
+}
+
+QJsonArray modeStateArray(const model::DashboardSignal& signal,
+                          const model::SignalDescriptor* descriptor) {
+    QStringList modes = descriptor ? model::AllDisplayModes(*descriptor) : QStringList{};
+    for (const QString& enabledMode : signal.displayModeIds) {
+        if (!modes.contains(enabledMode))
+            modes.push_back(enabledMode);
+    }
+
+    QJsonArray out;
+    for (const QString& mode : modes) {
+        out.append(QJsonObject{
+            {"mode", mode},
+            {"enabled", signal.displayModeIds.contains(mode)},
+            {"is_panel_ref", model::IsPanelDisplayMode(mode)},
+            {"renderable_panel", IsRenderableDashboardPanelMode(mode)},
+            {"has_visible_surface", DashboardModeHasVisibleSurface(mode)},
+        });
+    }
+    return out;
+}
+
+QJsonArray selectedStateArray(const model::DashboardSignalModel* signalModel,
+                              const model::TrajectorySignalCatalog* catalog) {
+    QJsonArray selected;
+    if (!signalModel)
+        return selected;
+    for (const model::DashboardSignal& signal : signalModel->activeSignals()) {
+        const model::SignalDescriptor* descriptor = findAnyDescriptor(catalog, signal.binding.descriptorId);
+        selected.append(QJsonObject{
+            {"id", uuidToString(signal.id)},
+            {"descriptor_id", signal.binding.descriptorId},
+            {"concept_key", signal.binding.conceptKey},
+            {"label", signal.label},
+            {"anchor", anchorToJson(signal.binding.anchor)},
+            {"enabled", signal.enabled},
+            {"availability", availabilityString(catalog, signal.binding.descriptorId)},
+            {"modes", modeStateArray(signal, descriptor)},
+        });
+    }
+    return selected;
+}
+
 // Capture the current VTK render window into a PNG byte buffer.
 //
 // forceRender (default true, back-compat with prior calls):
@@ -184,6 +466,24 @@ QByteArray captureWindowPng(QWidget* window) {
     if (!pix.save(&buffer, "PNG"))
         return {};
     return buf;
+}
+
+// Find a live widget by objectName for targeted snapshots — top-level
+// widgets (e.g. the modeless Metric Picker dialog) first, then descendants
+// of the main window (docks, strip panels). Returns nullptr if none match.
+QWidget* findWidgetByObjectName(QWidget* mainWindow, const QString& name) {
+    if (name.isEmpty())
+        return nullptr;
+    const QWidgetList topLevels = QApplication::topLevelWidgets();
+    for (QWidget* w : topLevels) {
+        if (w && w->objectName() == name)
+            return w;
+    }
+    if (mainWindow) {
+        if (QWidget* child = mainWindow->findChild<QWidget*>(name))
+            return child;
+    }
+    return nullptr;
 }
 }  // namespace
 
@@ -1066,6 +1366,262 @@ void RestServer::registerRoutes() {
         return jsonResponse(out);
     });
 
+    server_->route(QStringLiteral("/dashboard/state"), [this]() {
+        ASSERT_THREAD(this);
+        if (!signalModel_ || !panelModel_ || !catalog_)
+            return errorResponse(QStringLiteral("dashboard models not wired"), SC::ServiceUnavailable);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"), SC::ServiceUnavailable);
+
+        const QJsonArray selected = selectedStateArray(signalModel_.data(), catalog_);
+        return jsonResponse(QJsonObject{
+            {"selected", selected},
+            {"selected_count", selected.size()},
+            {"dock", QJsonObject{
+                {"visible", readerWindow_->dashboardDockVisible()},
+                {"width", readerWindow_->dashboardDockWidth()},
+                {"raised", readerWindow_->dashboardDockRaised()},
+            }},
+            {"render", QJsonObject{
+                {"owned_panel_count", readerWindow_->dashboardOwnedPanelCount()},
+                {"strip_track_count", readerWindow_->dashboardStripTrackCount()},
+            }},
+        });
+    });
+
+    server_->route(QStringLiteral("/dashboard/picker"), [this]() {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"), SC::ServiceUnavailable);
+        return jsonResponse(readerWindow_->signalDisplayPickerState());
+    });
+
+    server_->route(QStringLiteral("/dashboard/picker/open"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"), SC::ServiceUnavailable);
+        if (!selection_)
+            return errorResponse(QStringLiteral("selection not wired"), SC::ServiceUnavailable);
+
+        QJsonObject body;
+        if (!req.body().isEmpty()) {
+            bool ok = false;
+            body = parseJsonBody(req, &ok);
+            if (!ok)
+                return errorResponse(QStringLiteral("body must be a JSON object"), SC::BadRequest);
+        }
+
+        if (body.contains(QStringLiteral("atom"))) {
+            QString error;
+            qint64 atom = -1;
+            if (!readNonNegativeInteger(body, QStringLiteral("atom"), &atom, &error))
+                return errorResponse(error, SC::BadRequest);
+            const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+            if (!protein)
+                return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
+            if (!indexInRange(atom, protein->atomCount(), QStringLiteral("atom"), &error))
+                return errorResponse(error, SC::BadRequest);
+            selection_->applyPick(static_cast<std::size_t>(atom), Qt::NoModifier);
+        }
+
+        QString blockedReason;
+        if (!readerWindow_->openSignalDisplayPicker(&blockedReason)) {
+            return errorResponse(blockedReason.isEmpty()
+                                     ? QStringLiteral("Metric Picker open was blocked")
+                                     : blockedReason,
+                                 SC::Conflict);
+        }
+        return jsonResponse(readerWindow_->signalDisplayPickerState());
+    });
+
+    server_->route(QStringLiteral("/dashboard/metric"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!signalModel_ || !panelModel_ || !catalog_)
+            return errorResponse(QStringLiteral("dashboard models not wired"), SC::ServiceUnavailable);
+        if (!loaded_)
+            return errorResponse(QStringLiteral("loaded run not wired"), SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("body must be a JSON object"), SC::BadRequest);
+
+        const QString descriptorId = body.value(QStringLiteral("descriptor_id")).toString().trimmed();
+        if (descriptorId.isEmpty())
+            return errorResponse(QStringLiteral("body must include non-empty string field \"descriptor_id\""),
+                                 SC::BadRequest);
+        const model::SignalDescriptor* descriptor = catalog_->findDescriptor(descriptorId);
+        if (!descriptor) {
+            if (findAnyDescriptor(catalog_, descriptorId)) {
+                return errorResponse(QStringLiteral("descriptor not available: %1")
+                                         .arg(availabilityString(catalog_, descriptorId)),
+                                     SC::Conflict);
+            }
+            return errorResponse(QStringLiteral("descriptor not found: %1").arg(descriptorId),
+                                 SC::NotFound);
+        }
+
+        QString error;
+        ParsedDashboardAnchor parsedAnchor;
+        if (!parseDashboardAnchor(body, loaded_, &parsedAnchor, &error))
+            return errorResponse(error, SC::BadRequest);
+
+        QStringList modes;
+        if (!parseModeArray(body, &modes, &error))
+            return errorResponse(error, SC::BadRequest);
+
+        for (const QString& mode : modes) {
+            model::DisplaySignalBinding binding;
+            binding.sourceKind = descriptor->sourceKind;
+            binding.descriptorId = descriptor->id;
+            binding.conceptKey = descriptor->conceptKey;
+            binding.displayModeId = mode;
+            binding.anchor = parsedAnchor.anchor;
+            binding.followsFocus = parsedAnchor.followsFocus;
+            if (!model::SupportsDisplayMode(*descriptor, mode)) {
+                return errorResponse(QStringLiteral("descriptor %1 does not support mode %2")
+                                         .arg(descriptor->id, mode),
+                                     SC::BadRequest);
+            }
+            if (!catalog_->canBind(binding)) {
+                return errorResponse(QStringLiteral("descriptor %1 mode %2 cannot bind to anchor")
+                                         .arg(descriptor->id, mode),
+                                     SC::UnprocessableEntity);
+            }
+        }
+
+        const QString label = QStringLiteral("%1 - %2").arg(descriptor->label, parsedAnchor.label);
+        const QUuid id = signalModel_->addSignal(*descriptor,
+                                                 parsedAnchor.anchor,
+                                                 QString(),
+                                                 modes,
+                                                 parsedAnchor.followsFocus,
+                                                 label);
+
+        int addedRefs = 0;
+        const QUuid panelId = panelModel_->activePanelId();
+        if (!panelId.isNull()) {
+            const QVector<model::DashboardDisplayRef> refs =
+                model::DisplayRefsForSignal(id, *descriptor, modes);
+            for (const model::DashboardDisplayRef& ref : refs) {
+                if (panelModel_->addDisplayRef(panelId, ref))
+                    ++addedRefs;
+            }
+            panelModel_->setActivePanel(panelId);
+        }
+
+        return jsonResponse(QJsonObject{
+            {"id", uuidToString(id)},
+            {"added_refs", addedRefs},
+        });
+    });
+
+    server_->route(QStringLiteral("/dashboard/metric/remove"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!signalModel_)
+            return errorResponse(QStringLiteral("signal model not wired"), SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("body must be a JSON object"), SC::BadRequest);
+        QString error;
+        const std::optional<QUuid> id = uuidFromBody(body, &error);
+        if (!id)
+            return errorResponse(error, SC::BadRequest);
+        if (!signalModel_->signalById(*id))
+            return errorResponse(QStringLiteral("signal not found: %1").arg(uuidToString(*id)),
+                                 SC::NotFound);
+        if (!signalModel_->removeSignal(*id))
+            return errorResponse(QStringLiteral("signal remove failed: %1").arg(uuidToString(*id)),
+                                 SC::InternalServerError);
+        return jsonResponse(QJsonObject{{"removed", true}});
+    });
+
+    server_->route(QStringLiteral("/dashboard/metric/mode"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!signalModel_ || !panelModel_ || !catalog_)
+            return errorResponse(QStringLiteral("dashboard models not wired"), SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("body must be a JSON object"), SC::BadRequest);
+        QString error;
+        const std::optional<QUuid> id = uuidFromBody(body, &error);
+        if (!id)
+            return errorResponse(error, SC::BadRequest);
+        const QString mode = body.value(QStringLiteral("mode")).toString().trimmed();
+        if (mode.isEmpty())
+            return errorResponse(QStringLiteral("body must include non-empty string field \"mode\""),
+                                 SC::BadRequest);
+        if (!body.contains(QStringLiteral("enabled")) || !body.value(QStringLiteral("enabled")).isBool())
+            return errorResponse(QStringLiteral("body must include bool field \"enabled\""),
+                                 SC::BadRequest);
+        const bool enabled = body.value(QStringLiteral("enabled")).toBool();
+
+        const model::DashboardSignal* before = signalModel_->signalById(*id);
+        if (!before)
+            return errorResponse(QStringLiteral("signal not found: %1").arg(uuidToString(*id)),
+                                 SC::NotFound);
+        const model::SignalDescriptor* descriptor = catalog_->findDescriptor(before->binding.descriptorId);
+        if (!descriptor)
+            return errorResponse(QStringLiteral("descriptor not available: %1")
+                                     .arg(before->binding.descriptorId),
+                                 SC::Conflict);
+        if (!model::SupportsDisplayMode(*descriptor, mode)) {
+            return errorResponse(QStringLiteral("descriptor %1 does not support mode %2")
+                                     .arg(descriptor->id, mode),
+                                 SC::BadRequest);
+        }
+        model::DisplaySignalBinding binding = before->binding;
+        binding.displayModeId = mode;
+        if (!catalog_->canBind(binding)) {
+            return errorResponse(QStringLiteral("descriptor %1 mode %2 cannot bind to signal anchor")
+                                     .arg(descriptor->id, mode),
+                                 SC::UnprocessableEntity);
+        }
+
+        const bool alreadyDesired = before->displayModeIds.contains(mode) == enabled;
+        if (!alreadyDesired && !signalModel_->toggleDisplayMode(*id, mode, enabled)) {
+            return errorResponse(QStringLiteral("display mode toggle failed"), SC::Conflict);
+        }
+
+        const QUuid panelId = panelModel_->activePanelId();
+        if (!panelId.isNull()) {
+            if (enabled) {
+                panelModel_->addDisplayRefs(panelId,
+                                            model::DisplayRefsForSignal(*id, *descriptor, {mode}));
+            } else {
+                panelModel_->removeDisplayRefsForSignalMode(*id, mode);
+            }
+        }
+
+        const model::DashboardSignal* after = signalModel_->signalById(*id);
+        return jsonResponse(QJsonObject{
+            {"modes", after ? stringListToJson(after->displayModeIds) : QJsonArray{}},
+        });
+    });
+
+    server_->route(QStringLiteral("/dashboard/dock"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"), SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains(QStringLiteral("visible")) || !body.value(QStringLiteral("visible")).isBool())
+            return errorResponse(QStringLiteral("body must be {\"visible\": bool}"), SC::BadRequest);
+        readerWindow_->setDashboardDockVisible(body.value(QStringLiteral("visible")).toBool());
+        return jsonResponse(QJsonObject{
+            {"visible", readerWindow_->dashboardDockVisible()},
+            {"width", readerWindow_->dashboardDockWidth()},
+        });
+    });
+
     // ---- shutdown -------------------------------------------------------
 
     // POST /shutdown — graceful exit so the operator (or a test
@@ -1105,8 +1661,16 @@ void RestServer::registerRoutes() {
             png = captureWindowPng(mainWindow_.data());
         } else if (target == QStringLiteral("scene")) {
             png = captureScenePng(scene_.data(), forceRender);
+        } else if (target == QStringLiteral("widget")) {
+            const QString objectName = body.value(QStringLiteral("object_name")).toString();
+            if (objectName.isEmpty())
+                return errorResponse(QStringLiteral("target \"widget\" requires \"object_name\""), SC::BadRequest);
+            QWidget* widget = findWidgetByObjectName(mainWindow_.data(), objectName);
+            if (!widget)
+                return errorResponse(QStringLiteral("no live widget named \"%1\"").arg(objectName), SC::NotFound);
+            png = captureWindowPng(widget);
         } else {
-            return errorResponse(QStringLiteral("target must be \"scene\" or \"window\""), SC::BadRequest);
+            return errorResponse(QStringLiteral("target must be \"scene\", \"window\", or \"widget\""), SC::BadRequest);
         }
         if (png.isEmpty())
             return errorResponse(QStringLiteral("screenshot capture failed"), SC::InternalServerError);
