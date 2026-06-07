@@ -149,6 +149,21 @@ static double T2CosSim(const std::array<double,5>& a,
 }
 
 constexpr double T2_MIN_FOR_INDEPENDENCE = 1e-4;
+constexpr double T0_MIN_FOR_SIGN = 1e-10;
+constexpr double BASELINE_RANDOM_T2_ABS_COS = 0.36;
+constexpr double BASELINE_PARALLEL_T2_ABS_COS = 1.0;
+constexpr double BASELINE_RANDOM_SIGN_AGREEMENT = 0.5;
+constexpr double BASELINE_PERFECT_SIGN_AGREEMENT = 1.0;
+constexpr double MIDPOINT_BETWEEN_BASELINES = 0.5;
+constexpr double BS_HM_T2_ABS_COS_FLOOR =
+    BASELINE_RANDOM_T2_ABS_COS +
+    MIDPOINT_BETWEEN_BASELINES *
+        (BASELINE_PARALLEL_T2_ABS_COS - BASELINE_RANDOM_T2_ABS_COS);
+constexpr double BS_HM_T0_SIGN_AGREEMENT_FLOOR =
+    BASELINE_RANDOM_SIGN_AGREEMENT +
+    MIDPOINT_BETWEEN_BASELINES *
+        (BASELINE_PERFECT_SIGN_AGREEMENT -
+         BASELINE_RANDOM_SIGN_AGREEMENT);
 
 
 // ============================================================================
@@ -203,6 +218,8 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         {8.0, 12.0, "8-12A"},
         {12.0, 15.0, "12-15A"}
     }};
+    const double near_ring_agreement_lo = dist_bins.front().lo;
+    const double near_ring_agreement_hi = dist_bins[2].hi;
 
     // --- T2 independence: all calculator pairs involving BS and HM ---
     struct T2PairAccum {
@@ -211,6 +228,9 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     };
     T2PairAccum bs_vs_hm, bs_vs_mc, bs_vs_co, bs_vs_rchi, bs_vs_hb;
     T2PairAccum hm_vs_mc, hm_vs_co, hm_vs_rchi, hm_vs_hb;
+    T2PairAccum bs_vs_hm_near_ring;
+    int bs_hm_t0_near_ring_sign_agree = 0;
+    int bs_hm_t0_near_ring_sign_count = 0;
 
     // --- Fused ring analysis (TRP): TRP5+TRP6 vs TRP9 ---
     struct FusedRingAccum {
@@ -299,33 +319,19 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
                 double bs_t0 = std::abs(rn.G_spherical.T0);
                 double bs_t2 = rn.G_spherical.T2Magnitude();
-                double hm_t0_raw = std::abs(rn.hm_H_spherical.T0);  // should be ~0
-
-                // Reconstruct HM full kernel G from stored data
-                const RingGeometry& geom = wt_conf.ring_geometries[rn.ring_index];
-                Vec3 V = rn.hm_H_tensor * geom.normal;
-                double hm_full_t0 = std::abs(geom.normal.dot(V) / 3.0);
-
-                SphericalTensor hm_G_st;
-                {
-                    Mat3 G_hm;
-                    for (int a = 0; a < 3; ++a)
-                        for (int b = 0; b < 3; ++b)
-                            G_hm(a, b) = geom.normal(b) * V(a);
-                    hm_G_st = SphericalTensor::Decompose(G_hm);
-                }
-                double hm_full_t2 = hm_G_st.T2Magnitude();
+                double hm_t0 = std::abs(rn.hm_G_spherical.T0);
+                double hm_t2 = rn.hm_G_spherical.T2Magnitude();
 
                 // Per-ring-type accumulation
                 ring_stats[ti].atom_pairs++;
                 ring_stats[ti].sum_bs_t0 += bs_t0;
-                ring_stats[ti].sum_hm_t0 += hm_full_t0;
+                ring_stats[ti].sum_hm_t0 += hm_t0;
                 ring_stats[ti].sum_bs_t2 += bs_t2;
-                ring_stats[ti].sum_hm_t2 += hm_full_t2;
+                ring_stats[ti].sum_hm_t2 += hm_t2;
                 ring_stats[ti].max_bs_t0 = std::max(ring_stats[ti].max_bs_t0, bs_t0);
-                ring_stats[ti].max_hm_t0 = std::max(ring_stats[ti].max_hm_t0, hm_full_t0);
+                ring_stats[ti].max_hm_t0 = std::max(ring_stats[ti].max_hm_t0, hm_t0);
                 ring_stats[ti].max_bs_t2 = std::max(ring_stats[ti].max_bs_t2, bs_t2);
-                ring_stats[ti].max_hm_t2 = std::max(ring_stats[ti].max_hm_t2, hm_full_t2);
+                ring_stats[ti].max_hm_t2 = std::max(ring_stats[ti].max_hm_t2, hm_t2);
                 ring_stats[ti].max_hm_trace = std::max(
                     ring_stats[ti].max_hm_trace, std::abs(rn.hm_H_tensor.trace()));
                 ring_stats[ti].max_hm_asym = std::max(
@@ -337,26 +343,47 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                     if (dist >= bin.lo && dist < bin.hi) {
                         bin.count++;
                         bin.sum_bs_t0 += bs_t0;
-                        bin.sum_hm_t0 += hm_full_t0;
+                        bin.sum_hm_t0 += hm_t0;
                         bin.sum_bs_t2 += bs_t2;
-                        bin.sum_hm_t2 += hm_full_t2;
+                        bin.sum_hm_t2 += hm_t2;
 
                         // T2 cosine similarity between BS and HM
                         if (bs_t2 > T2_MIN_FOR_INDEPENDENCE &&
-                            hm_full_t2 > T2_MIN_FOR_INDEPENDENCE) {
-                            double c = T2CosSim(rn.G_spherical.T2, hm_G_st.T2);
+                            hm_t2 > T2_MIN_FOR_INDEPENDENCE) {
+                            double c = T2CosSim(rn.G_spherical.T2,
+                                                rn.hm_G_spherical.T2);
                             bin.sum_abs_cos_t2 += std::abs(c);
                             bin.cos_count++;
                         }
 
                         // T0 ratio where both are nonzero
-                        if (bs_t0 > 1e-10 && hm_full_t0 > 1e-10) {
-                            double ratio = hm_full_t0 / bs_t0;
+                        if (bs_t0 > T0_MIN_FOR_SIGN &&
+                            hm_t0 > T0_MIN_FOR_SIGN) {
+                            double ratio = hm_t0 / bs_t0;
                             bin.sum_t0_ratio += ratio;
                             bin.sum_t0_ratio_sq += ratio * ratio;
                             bin.ratio_count++;
                         }
                         break;
+                    }
+                }
+
+                if (dist >= near_ring_agreement_lo &&
+                    dist < near_ring_agreement_hi) {
+                    if (bs_t2 > T2_MIN_FOR_INDEPENDENCE &&
+                        hm_t2 > T2_MIN_FOR_INDEPENDENCE) {
+                        bs_vs_hm_near_ring.sum_abs_cos += std::abs(
+                            T2CosSim(rn.G_spherical.T2,
+                                      rn.hm_G_spherical.T2));
+                        bs_vs_hm_near_ring.count++;
+                    }
+                    if (bs_t0 > T0_MIN_FOR_SIGN &&
+                        hm_t0 > T0_MIN_FOR_SIGN) {
+                        if ((rn.G_spherical.T0 > 0) ==
+                            (rn.hm_G_spherical.T0 > 0)) {
+                            bs_hm_t0_near_ring_sign_agree++;
+                        }
+                        bs_hm_t0_near_ring_sign_count++;
                     }
                 }
             }
@@ -383,15 +410,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                     fused_bs.sum_t0_perim += std::abs(rn9->G_spherical.T0);
                     fused_bs.atom_count++;
 
-                    // HM: same analysis using full kernel
-                    auto hm_t0_for = [&](const RingNeighbourhood* rn) {
-                        const RingGeometry& g = wt_conf.ring_geometries[rn->ring_index];
-                        Vec3 v = rn->hm_H_tensor * g.normal;
-                        return g.normal.dot(v) / 3.0;
-                    };
-                    double hm_sum = hm_t0_for(rn5) + hm_t0_for(rn6);
+                    // HM: same analysis using production full-kernel tensor
+                    double hm_sum = rn5->hm_G_spherical.T0 + rn6->hm_G_spherical.T0;
                     fused_hm.sum_t0_sum += std::abs(hm_sum);
-                    fused_hm.sum_t0_perim += std::abs(hm_t0_for(rn9));
+                    fused_hm.sum_t0_perim += std::abs(rn9->hm_G_spherical.T0);
                     fused_hm.atom_count++;
                 }
             }
@@ -589,6 +611,38 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     report_t2("HaighMallion vs HBond:", hm_vs_hb);
     std::cout << "\n";
 
+    auto mean_t2_abs_cos = [](const T2PairAccum& acc) {
+        return (acc.count > 0) ? acc.sum_abs_cos / acc.count : 0.0;
+    };
+
+    double bs_hm_near_ring_t2_abs_cos = mean_t2_abs_cos(bs_vs_hm_near_ring);
+    double bs_hm_near_ring_t0_sign_agreement =
+        (bs_hm_t0_near_ring_sign_count > 0)
+            ? static_cast<double>(bs_hm_t0_near_ring_sign_agree) /
+                  bs_hm_t0_near_ring_sign_count
+            : 0.0;
+
+    std::cout << "  BS-HM REGRESSION GUARD INPUTS (production tensors, "
+              << std::fixed << std::setprecision(1)
+              << near_ring_agreement_lo << "-" << near_ring_agreement_hi
+              << "A near-ring pool):\n"
+              << "    T2 |cos| floor = " << std::setprecision(4)
+              << BS_HM_T2_ABS_COS_FLOOR
+              << " (midpoint of random=" << BASELINE_RANDOM_T2_ABS_COS
+              << " and parallel=" << BASELINE_PARALLEL_T2_ABS_COS << ")\n"
+              << "    BS vs HM T2 |cos| = " << bs_hm_near_ring_t2_abs_cos
+              << " (" << bs_vs_hm_near_ring.count << " atom-ring pairs)\n"
+              << "    T0 sign agreement floor = "
+              << BS_HM_T0_SIGN_AGREEMENT_FLOOR
+              << " (midpoint of random sign="
+              << BASELINE_RANDOM_SIGN_AGREEMENT
+              << " and perfect="
+              << BASELINE_PERFECT_SIGN_AGREEMENT << ")\n"
+              << "    BS vs HM T0 sign agreement = "
+              << bs_hm_near_ring_t0_sign_agreement
+              << " (" << bs_hm_t0_near_ring_sign_count
+              << " atom-ring pairs)\n\n";
+
     // --- DFT proximity ---
     if (total_near > 0 && total_far > 0) {
         double bs_near = sum_bs_near / total_near;
@@ -610,6 +664,12 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     // ======================================================================
     // Hard assertions
     // ======================================================================
+
+    // Regression guard -- internal consistency of our two ring-current
+    // implementations (BS wire-integral vs HM surface-integral). Catches a
+    // future sign/units/parity break. NOT a validation of the physics: that is
+    // the DFT cross-echo + analytic identities, not our own second code path.
+    // CTest-on-fixture; production stays assert-free.
 
     EXPECT_EQ(n_failed, 0) << n_failed << " proteins failed to process";
     EXPECT_GT(n, 100) << "Should process at least 100 clean pairs";
@@ -635,20 +695,34 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
             << "HM signal should be stronger near mutation sites";
     }
 
-    // T2 independence: BS and HM should not be parallel to existing calcs
-    auto check_independent = [](const char* label, const T2PairAccum& acc) {
-        if (acc.count > 1000) {
-            double mean = acc.sum_abs_cos / acc.count;
-            EXPECT_LT(mean, 0.9) << label << " T2 should not be parallel";
+    EXPECT_GT(bs_vs_hm_near_ring.count, 0)
+        << "BS-HM near-ring T2 comparison needs fixture samples";
+    EXPECT_GT(bs_hm_near_ring_t2_abs_cos, BS_HM_T2_ABS_COS_FLOOR)
+        << "BS-HM near-ring T2 |cos| should be closer to parallel than "
+        << "to the random 5D |cos| baseline";
+
+    EXPECT_GT(bs_hm_t0_near_ring_sign_count, 0)
+        << "BS-HM near-ring T0 sign comparison needs fixture samples";
+    EXPECT_GT(bs_hm_near_ring_t0_sign_agreement,
+              BS_HM_T0_SIGN_AGREEMENT_FLOOR)
+        << "BS-HM near-ring T0 sign agreement should be closer to perfect "
+        << "than to random sign agreement";
+
+    double bs_hm_atom_t2_abs_cos = mean_t2_abs_cos(bs_vs_hm);
+    auto check_negative_control = [&](const char* label,
+                                      const T2PairAccum& acc) {
+        EXPECT_GT(acc.count, 0)
+            << label << " negative-control comparison needs fixture samples";
+        if (acc.count > 0) {
+            EXPECT_LT(mean_t2_abs_cos(acc), bs_hm_atom_t2_abs_cos)
+                << label
+                << " should discriminate below BS-HM production agreement";
         }
     };
-    check_independent("BS vs MC", bs_vs_mc);
-    check_independent("BS vs Coulomb", bs_vs_co);
-    check_independent("BS vs RingSuscept", bs_vs_rchi);
-    check_independent("HM vs MC", hm_vs_mc);
-    check_independent("HM vs Coulomb", hm_vs_co);
-    check_independent("HM vs RingSuscept", hm_vs_rchi);
-
-    // BS and HM model the same physics -- they SHOULD be correlated.
-    // But the interesting question is how much. Report, don't assert.
+    EXPECT_GT(bs_vs_hm.count, 0)
+        << "BS-HM atom-level T2 comparison needs fixture samples";
+    check_negative_control("BS vs McConnell", bs_vs_mc);
+    check_negative_control("BS vs Coulomb", bs_vs_co);
+    check_negative_control("BS vs RingSuscept", bs_vs_rchi);
+    check_negative_control("BS vs HBond", bs_vs_hb);
 }
