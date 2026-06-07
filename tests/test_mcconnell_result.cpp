@@ -44,6 +44,71 @@ std::string ReadText(const fs::path& path) {
                        std::istreambuf_iterator<char>());
 }
 
+std::unique_ptr<Protein> BuildSyntheticPeptideCOProtein(
+        bool degenerate = false,
+        const Mat3& rotation = Mat3::Identity()) {
+    auto protein = std::make_unique<Protein>();
+
+    auto atom_n = Atom::Create(Element::N);
+    auto atom_c = Atom::Create(Element::C);
+    auto atom_o = Atom::Create(Element::O);
+    auto atom_h = Atom::Create(Element::H);
+    atom_n->pdb_atom_name = "N";
+    atom_c->pdb_atom_name = "C";
+    atom_o->pdb_atom_name = "O";
+    atom_h->pdb_atom_name = "H";
+    atom_n->residue_index = 0;
+    atom_c->residue_index = 0;
+    atom_o->residue_index = 0;
+    atom_h->residue_index = 0;
+
+    protein->AddAtom(std::move(atom_n));  // 0: amide N
+    protein->AddAtom(std::move(atom_c));  // 1: carbonyl C
+    protein->AddAtom(std::move(atom_o));  // 2: carbonyl O
+    protein->AddAtom(std::move(atom_h));  // 3: target probe
+
+    Residue res;
+    res.type = AminoAcid::ALA;
+    res.sequence_number = 1;
+    res.chain_id = "A";
+    res.atom_indices = {0, 1, 2, 3};
+    res.N = 0;
+    res.C = 1;
+    res.O = 2;
+    res.H = 3;
+    protein->AddResidue(res);
+
+    std::vector<Vec3> positions = {
+        degenerate ? Vec3(-1.45, 0.0, 0.0) : Vec3(0.0, 1.45, 0.0),
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(1.2, 0.0, 0.0),
+        Vec3(0.6, 3.0, 0.0)
+    };
+    for (Vec3& pos : positions) pos = rotation * pos;
+
+    protein->FinalizeConstruction(positions);
+    protein->AddCrystalConformation(positions, 0, 0, 0, "synthetic_peptide_co");
+    return protein;
+}
+
+size_t FirstBondWithCategory(const Protein& protein, BondCategory category) {
+    for (size_t bi = 0; bi < protein.BondCount(); ++bi) {
+        if (protein.BondAt(bi).category == category)
+            return bi;
+    }
+    return SIZE_MAX;
+}
+
+size_t FirstBondBetween(const Protein& protein, size_t a, size_t b) {
+    for (size_t bi = 0; bi < protein.BondCount(); ++bi) {
+        const Bond& bond = protein.BondAt(bi);
+        if ((bond.atom_index_a == a && bond.atom_index_b == b) ||
+            (bond.atom_index_a == b && bond.atom_index_b == a))
+            return bi;
+    }
+    return SIZE_MAX;
+}
+
 }  // namespace
 
 
@@ -367,6 +432,132 @@ TEST(McConnellImplementationChecks, PairPCSScalarIdentity) {
 }
 
 
+TEST(McConnellImplementationChecks, PeptideCORhombicSourceShapePinnedAnalytic) {
+    auto protein = BuildSyntheticPeptideCOProtein();
+    auto& conf = protein->Conformation();
+    conf.AttachResult(GeometryResult::Compute(conf));
+    const size_t co_bond = FirstBondWithCategory(*protein, BondCategory::PeptideCO);
+    ASSERT_NE(co_bond, SIZE_MAX);
+
+    const auto k = McConnellResult::ComputePeptideCORhombicPairKernel(
+        conf, co_bond, conf.PositionAt(3));
+
+    // C->O = +x, plane normal = +z, e_in = +y.  From
+    // (-5.4, +4.0, -14) the mean-subtracted principal values are
+    // (-4/15, 137/15, -133/15); dividing by axial scale 137/10 gives
+    // (out, para, in) = (-8/411, 2/3, -266/411).
+    Mat3 expected = Mat3::Zero();
+    expected(0, 0) = 2.0 / 3.0;
+    expected(1, 1) = -266.0 / 411.0;
+    expected(2, 2) = -8.0 / 411.0;
+
+    EXPECT_LT(MaxAbs(k.source_shape - expected), 1e-12);
+    EXPECT_NEAR(k.source_shape.trace(), 0.0, 1e-15);
+}
+
+
+TEST(McConnellImplementationChecks, PeptideCORhombicSourceShapeRotationEquivariance) {
+    const Mat3 R = Eigen::AngleAxisd(
+        0.91, Vec3(0.3, -0.7, 0.2).normalized()).toRotationMatrix();
+
+    auto protein = BuildSyntheticPeptideCOProtein();
+    auto rotated_protein = BuildSyntheticPeptideCOProtein(false, R);
+    auto& conf = protein->Conformation();
+    auto& rotated_conf = rotated_protein->Conformation();
+    conf.AttachResult(GeometryResult::Compute(conf));
+    rotated_conf.AttachResult(GeometryResult::Compute(rotated_conf));
+    const size_t co_bond = FirstBondWithCategory(*protein, BondCategory::PeptideCO);
+    const size_t rotated_co_bond =
+        FirstBondWithCategory(*rotated_protein, BondCategory::PeptideCO);
+    ASSERT_NE(co_bond, SIZE_MAX);
+    ASSERT_NE(rotated_co_bond, SIZE_MAX);
+
+    const auto k = McConnellResult::ComputePeptideCORhombicPairKernel(
+        conf, co_bond, conf.PositionAt(3));
+    const auto kr = McConnellResult::ComputePeptideCORhombicPairKernel(
+        rotated_conf, rotated_co_bond, rotated_conf.PositionAt(3));
+
+    EXPECT_LT(MaxAbs(kr.source_shape -
+                     R * k.source_shape * R.transpose()), 1e-12);
+    EXPECT_LT(MaxAbs(kr.response -
+                     R * k.response * R.transpose()), 1e-12);
+}
+
+
+TEST(McConnellImplementationChecks, PeptideCORhombicContributionNonZeroAndTraceless) {
+    auto protein = BuildSyntheticPeptideCOProtein();
+    auto& conf = protein->Conformation();
+    conf.AttachResult(GeometryResult::Compute(conf));
+    conf.AttachResult(SpatialIndexResult::Compute(conf));
+    conf.AttachResult(McConnellResult::Compute(conf));
+
+    const size_t co_bond = FirstBondWithCategory(*protein, BondCategory::PeptideCO);
+    ASSERT_NE(co_bond, SIZE_MAX);
+    const auto k = McConnellResult::ComputePeptideCORhombicPairKernel(
+        conf, co_bond, conf.PositionAt(3));
+    EXPECT_NEAR(k.source_shape.trace(), 0.0, 1e-15);
+
+    // The emitted rhombic array is the additive delta relative to the
+    // legacy axial PeptideCO shape.  Here n = e_in = +y, r = 3 A, so
+    // D = diag(-1/27, 2/27, -1/27) and
+    // Q_delta = diag(0, -43/137, +43/137).
+    Mat3 expected_delta = Mat3::Zero();
+    expected_delta(1, 1) = -86.0 / 3699.0;
+    expected_delta(2, 2) = -43.0 / 3699.0;
+
+    const Mat3 actual =
+        conf.AtomAt(3).mcconnell_peptide_co_rhombic.Reconstruct();
+    EXPECT_GT(MaxAbs(actual), 1e-6);
+    EXPECT_LT(MaxAbs(actual - expected_delta), 1e-12);
+}
+
+
+TEST(McConnellImplementationChecks, PeptideCORhombicFallsBackToAxial) {
+    {
+        auto protein = BuildSyntheticPeptideCOProtein();
+        auto& conf = protein->Conformation();
+        conf.AttachResult(GeometryResult::Compute(conf));
+        const size_t nc_bond = FirstBondBetween(*protein, 0, 1);
+        ASSERT_NE(nc_bond, SIZE_MAX);
+        ASSERT_NE(protein->BondAt(nc_bond).category, BondCategory::PeptideCO);
+
+        const auto axial = McConnellResult::ComputePairKernel(
+            conf.PositionAt(3),
+            conf.bond_midpoints[nc_bond],
+            conf.bond_directions[nc_bond]);
+        const auto rhombic = McConnellResult::ComputePeptideCORhombicPairKernel(
+            conf, nc_bond, conf.PositionAt(3));
+
+        EXPECT_LT(MaxAbs(rhombic.source_shape - axial.source_shape), 1e-12);
+        EXPECT_LT(MaxAbs(rhombic.response - axial.response), 1e-12);
+    }
+
+    {
+        auto protein = BuildSyntheticPeptideCOProtein(true);
+        auto& conf = protein->Conformation();
+        conf.AttachResult(GeometryResult::Compute(conf));
+        const size_t co_bond = FirstBondWithCategory(*protein, BondCategory::PeptideCO);
+        ASSERT_NE(co_bond, SIZE_MAX);
+
+        const auto axial = McConnellResult::ComputePairKernel(
+            conf.PositionAt(3),
+            conf.bond_midpoints[co_bond],
+            conf.bond_directions[co_bond]);
+        const auto rhombic = McConnellResult::ComputePeptideCORhombicPairKernel(
+            conf, co_bond, conf.PositionAt(3));
+
+        EXPECT_LT(MaxAbs(rhombic.source_shape - axial.source_shape), 1e-12);
+        EXPECT_LT(MaxAbs(rhombic.response - axial.response), 1e-12);
+
+        conf.AttachResult(SpatialIndexResult::Compute(conf));
+        conf.AttachResult(McConnellResult::Compute(conf));
+        EXPECT_LT(MaxAbs(conf.AtomAt(3)
+                             .mcconnell_peptide_co_rhombic.Reconstruct()),
+                  1e-12);
+    }
+}
+
+
 TEST_F(McConnellProteinTest, AromaticCategoryIsExactlyZero) {
     const Protein& p = protein->Conformation().ProteinRef();
     int aromatic_bonds = 0;
@@ -429,7 +620,7 @@ TEST_F(McConnellProteinTest, NearFieldAuditCountsAreReported) {
 }
 
 
-TEST_F(McConnellProteinTest, WriteFeaturesEmitsFifteenArraysAndManifest) {
+TEST_F(McConnellProteinTest, WriteFeaturesEmitsSixteenArraysAndManifest) {
     auto& conf = protein->Conformation();
     conf.AttachResult(McConnellResult::Compute(conf));
 
@@ -437,7 +628,7 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsFifteenArraysAndManifest) {
         ("mcconnell_features_" + std::to_string(::getpid()));
     fs::create_directories(out_dir);
     const auto& mc = conf.Result<McConnellResult>();
-    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 15);
+    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 16);
 
     for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
         const auto cat = static_cast<McConnellSourceCategory>(c);
@@ -449,11 +640,12 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsFifteenArraysAndManifest) {
             EXPECT_TRUE(fs::exists(p)) << p;
         }
     }
+    EXPECT_TRUE(fs::exists(out_dir / "mc_peptide_co_rhombic.npy"));
 
     const fs::path manifest = out_dir / "extraction_manifest.json";
     ASSERT_TRUE(fs::exists(manifest));
     const std::string text = ReadText(manifest);
-    EXPECT_NE(text.find("\"source_model\": \"unit susceptibility shape; scale learned\""),
+    EXPECT_NE(text.find("\"source_model\": \"unit susceptibility shape; axial scale learned; peptide C=O rhombic scale pinned\""),
               std::string::npos);
     EXPECT_NE(text.find("\"bo_source\": \"MOPAC Wiberg bond order\""),
               std::string::npos);
@@ -462,6 +654,12 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsFifteenArraysAndManifest) {
     EXPECT_NE(text.find("\"irrep_layout\": \"0e,1e_x,1e_y,1e_z,2e_m-2..+2\""),
               std::string::npos);
     EXPECT_NE(text.find("\"units\": \"Angstrom^-3\""),
+              std::string::npos);
+    EXPECT_NE(text.find("\"rhombic_status\": \"peptide_co_pinned_present\""),
+              std::string::npos);
+    EXPECT_NE(text.find("\"rhombic_array\": \"mc_peptide_co_rhombic.npy\""),
+              std::string::npos);
+    EXPECT_NE(text.find("\"source\": \"Hooper & Kaiser 1965 Table III, EF-corrected acetamide A, Abraham-anchored sign\""),
               std::string::npos);
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearfield_counts.npy"));
 
@@ -475,6 +673,7 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsFifteenArraysAndManifest) {
             std::remove(p.string().c_str());
         }
     }
+    std::remove((out_dir / "mc_peptide_co_rhombic.npy").string().c_str());
     std::remove((out_dir / "mc_nearfield_counts.npy").string().c_str());
     std::remove(manifest.string().c_str());
     ::rmdir(out_dir.string().c_str());

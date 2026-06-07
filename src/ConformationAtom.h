@@ -146,6 +146,7 @@ public:
     // channels, each packed as a full even SphericalTensor.
     std::array<std::array<SphericalTensor, kMcConnellChannelCount>,
                kMcConnellSourceCategoryCount> mcconnell_source_tensors = {};
+    SphericalTensor mcconnell_peptide_co_rhombic;
 
     // Counts used by the near-field audit. The geometric filter can reject
     // near contacts; this preserves both accepted and rejected danger-zone

@@ -88,6 +88,7 @@ class McConnellGroup:
     """
     peptide_co_fixed: ShieldingTensor
     peptide_co_bo: ShieldingTensor
+    peptide_co_rhombic: ShieldingTensor
     peptide_cn_fixed: ShieldingTensor
     peptide_cn_bo: ShieldingTensor
     backbone_other_fixed: ShieldingTensor
@@ -1414,6 +1415,7 @@ def load(path: str | Path) -> Protein:
     mcconnell = McConnellGroup(
         peptide_co_fixed=get("mc_peptide_co_fixed"),
         peptide_co_bo=get("mc_peptide_co_bo"),
+        peptide_co_rhombic=get("mc_peptide_co_rhombic"),
         peptide_cn_fixed=get("mc_peptide_cn_fixed"),
         peptide_cn_bo=get("mc_peptide_cn_bo"),
         backbone_other_fixed=get("mc_backbone_other_fixed"),

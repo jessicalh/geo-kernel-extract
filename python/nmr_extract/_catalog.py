@@ -216,6 +216,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_peptide_co_bo",         "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C=O Wiberg BO response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_peptide_co_rhombic",    "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C=O pinned rhombic source response",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_peptide_cn_fixed",      "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C-N fixed source response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_peptide_cn_bo",         "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C-N Wiberg BO response",
@@ -244,7 +246,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               is_feature=False, units="count", mechanism="bond_anisotropy"),
 
     # Legacy McConnell arrays retained as optional/deprecated wrappers for
-    # reading old extraction directories; new C++ emits the 14 arrays above.
+    # reading old extraction directories; new C++ emits the 15 tensor arrays above.
     ArraySpec("mc_shielding",     "mcconnell_legacy", ShieldingTensor,    9,    False,  "Legacy McConnell aggregate shielding",
               is_feature=False, irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_category_T2",   "mcconnell_legacy", PerBondCategoryT2,  25,   False,  "Legacy McConnell T2 per old bond category",

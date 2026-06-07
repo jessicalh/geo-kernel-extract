@@ -30,6 +30,11 @@ namespace nmr {
 namespace {
 
 constexpr double kNearFieldAuditDistanceA = 3.0;
+constexpr double kPeptideCOChiOut = -5.4;
+constexpr double kPeptideCOChiPara = 4.0;
+constexpr double kPeptideCOChiIn = -14.0;
+constexpr double kPeptideCOMolarToSigmaPrefactor = 0.5535130224;
+constexpr const char* kPeptideCORhombicArrayStem = "mc_peptide_co_rhombic";
 
 using McAccum = std::array<std::array<Mat3, kMcConnellChannelCount>,
                            kMcConnellSourceCategoryCount>;
@@ -46,6 +51,131 @@ void ZeroAccum(McAccum& accum) {
     for (auto& by_channel : accum)
         for (auto& m : by_channel)
             m = Mat3::Zero();
+}
+
+Mat3 AxialSourceShape(const Vec3& source_axis) {
+    const double axis_norm = source_axis.norm();
+    if (axis_norm < 1e-15) return Mat3::Zero();
+    const Vec3 u = source_axis / axis_norm;
+    return (u * u.transpose()) - (Mat3::Identity() / 3.0);
+}
+
+McConnellPairKernel ComputePairKernelWithSourceShape(
+        const Vec3& atom_pos,
+        const Vec3& source_center,
+        const Mat3& source_shape) {
+    McConnellPairKernel result;
+
+    Vec3 disp = atom_pos - source_center;
+    const double r = disp.norm();
+    result.distance = r;
+    if (r < CalculatorConfig::Get("singularity_guard_distance"))
+        return result;
+
+    const double r3 = r * r * r;
+    const Vec3 n = disp / r;
+    result.direction = n;
+
+    result.dipolar = (3.0 * (n * n.transpose()) - Mat3::Identity()) / r3;
+    result.source_shape = source_shape;
+    result.response = result.dipolar * result.source_shape;
+    result.pcs_scalar = result.response.trace() / 3.0;
+    return result;
+}
+
+bool FindPeptideCOAxes(const ProteinConformation& conf,
+                       size_t bond_index,
+                       Vec3& u_hat,
+                       Vec3& e_in,
+                       Vec3& e_out) {
+    const Protein& protein = conf.ProteinRef();
+    if (bond_index >= protein.BondCount()) return false;
+
+    const Bond& bond = protein.BondAt(bond_index);
+    if (bond.category != BondCategory::PeptideCO) return false;
+
+    const Atom& atom_a = protein.AtomAt(bond.atom_index_a);
+    const Atom& atom_b = protein.AtomAt(bond.atom_index_b);
+    size_t c_index = SIZE_MAX;
+    size_t o_index = SIZE_MAX;
+    if (atom_a.element == Element::C && atom_b.element == Element::O) {
+        c_index = bond.atom_index_a;
+        o_index = bond.atom_index_b;
+    } else if (atom_a.element == Element::O && atom_b.element == Element::C) {
+        c_index = bond.atom_index_b;
+        o_index = bond.atom_index_a;
+    } else {
+        return false;
+    }
+
+    size_t n_index = SIZE_MAX;
+    for (size_t nb : protein.AtomAt(c_index).bond_indices) {
+        if (nb >= protein.BondCount()) continue;
+        const Bond& adjacent = protein.BondAt(nb);
+        const size_t other =
+            (adjacent.atom_index_a == c_index) ? adjacent.atom_index_b :
+            (adjacent.atom_index_b == c_index) ? adjacent.atom_index_a :
+            SIZE_MAX;
+        if (other == SIZE_MAX || other == o_index) continue;
+        if (protein.AtomAt(other).element != Element::N) continue;
+        if (n_index != SIZE_MAX) return false;
+        n_index = other;
+    }
+    if (n_index == SIZE_MAX) return false;
+
+    const Vec3 r_c = conf.PositionAt(c_index);
+    const Vec3 co = conf.PositionAt(o_index) - r_c;
+    const Vec3 cn = conf.PositionAt(n_index) - r_c;
+    const double co_norm = co.norm();
+    if (co_norm < 1e-15) return false;
+
+    Vec3 normal = co.cross(cn);
+    const double normal_norm = normal.norm();
+    if (normal_norm < 1e-12) return false;
+
+    u_hat = co / co_norm;
+    e_out = normal / normal_norm;
+    e_in = e_out.cross(u_hat);
+    const double in_norm = e_in.norm();
+    if (in_norm < 1e-12) return false;
+    e_in /= in_norm;
+    return true;
+}
+
+Mat3 PeptideCORhombicSourceShape(const ProteinConformation& conf,
+                                 size_t bond_index) {
+    const Protein& protein = conf.ProteinRef();
+    if (bond_index >= protein.BondCount())
+        return Mat3::Zero();
+
+    const Vec3 axial_axis = conf.bond_directions[bond_index];
+    const Mat3 axial = AxialSourceShape(axial_axis);
+
+    Vec3 u_hat = Vec3::Zero();
+    Vec3 e_in = Vec3::Zero();
+    Vec3 e_out = Vec3::Zero();
+    if (!FindPeptideCOAxes(conf, bond_index, u_hat, e_in, e_out))
+        return axial;
+
+    const double mean =
+        (kPeptideCOChiOut + kPeptideCOChiPara + kPeptideCOChiIn) / 3.0;
+    const double axial_scale =
+        kPeptideCOChiPara - 0.5 * (kPeptideCOChiIn + kPeptideCOChiOut);
+
+    // Hooper-Kaiser gives principal molar susceptibilities on
+    // (out-of-plane, C=O, in-plane-perp).  Remove the isotropic mean to
+    // make a traceless susceptibility tensor, then divide by the axial
+    // anisotropy chi_para - (chi_in + chi_out)/2.  This preserves the
+    // existing McConnell unit convention: the C=O-axis eigenvalue is 2/3,
+    // the old axial shape is u*u^T - I/3, and the pinned ratios only add
+    // kappa*(e_in*e_in^T - e_out*e_out^T) with kappa = -43/137.
+    const double q_out = (kPeptideCOChiOut - mean) / axial_scale;
+    const double q_para = (kPeptideCOChiPara - mean) / axial_scale;
+    const double q_in = (kPeptideCOChiIn - mean) / axial_scale;
+
+    return q_para * (u_hat * u_hat.transpose()) +
+           q_in * (e_in * e_in.transpose()) +
+           q_out * (e_out * e_out.transpose());
 }
 
 bool IsStrictBackboneAtom(const Protein& protein, std::size_t atom_index) {
@@ -175,16 +305,37 @@ nlohmann::ordered_json McConnellResult::FeatureMetadata(
                 "_" + McConnellChannelStem(channel) + ".npy");
         }
     }
+    arrays.push_back(std::string(kPeptideCORhombicArrayStem) + ".npy");
 
     return nlohmann::ordered_json{
-        {"source_model", "unit susceptibility shape; scale learned"},
+        {"source_model", "unit susceptibility shape; axial scale learned; peptide C=O rhombic scale pinned"},
         {"bo_source", "MOPAC Wiberg bond order"},
         {"aromatic_zeroed_when_ring_active", true},
         {"aromatic_zeroed_reason",
          "BS/HM always compute the aromatic ring-current; McConnell zeros aromatic to avoid the double-count."},
         {"irrep_layout", kMcConnellPackFull9IrrepLayout},
         {"units", "Angstrom^-3"},
-        {"rhombic_status", "absent_no_primary_table"},
+        {"rhombic_status", "peptide_co_pinned_present"},
+        {"rhombic_scope", "PeptideCO backbone carbonyl only; sidechain C=O and all other categories remain axial"},
+        {"rhombic_array", std::string(kPeptideCORhombicArrayStem) + ".npy"},
+        {"rhombic_emission", "additive delta D(r)*(Qhat_rhombic - Qhat_axial); existing mc_<category>_<fixed|bo> arrays unchanged"},
+        {"rhombic_degenerate_fallback", "axis-only axial shape when the PeptideCO C/O/N plane is missing, ambiguous, or collinear"},
+        {"rhombic_pinned_value", nlohmann::ordered_json{
+            {"status", "lead_signed_off_external"},
+            {"source", "Hooper & Kaiser 1965 Table III, EF-corrected acetamide A, Abraham-anchored sign"},
+            {"units", "10^-6 cm^3 mol^-1"},
+            {"chi_out", kPeptideCOChiOut},
+            {"chi_para", kPeptideCOChiPara},
+            {"chi_in", kPeptideCOChiIn},
+            {"molar_to_sigma_prefactor", kPeptideCOMolarToSigmaPrefactor},
+            {"axial_scale", kPeptideCOChiPara - 0.5 * (kPeptideCOChiIn + kPeptideCOChiOut)},
+            {"rhombic_scale", 0.5 * (kPeptideCOChiIn - kPeptideCOChiOut)},
+            {"normalized_principal_shape", nlohmann::ordered_json{
+                {"out", -8.0 / 411.0},
+                {"para", 2.0 / 3.0},
+                {"in", -266.0 / 411.0},
+                {"kappa_in_minus_out", -43.0 / 137.0}}},
+            {"magnitude_policy", "pinned literature value, not learned; downstream reports sensitivity"}}},
         {"channels", channels},
         {"source_categories", categories},
         {"arrays", arrays},
@@ -210,27 +361,28 @@ McConnellPairKernel McConnellResult::ComputePairKernel(
         const Vec3& source_center,
         const Vec3& source_axis) {
     McConnellPairKernel result;
-
-    Vec3 disp = atom_pos - source_center;
-    const double r = disp.norm();
+    const double r = (atom_pos - source_center).norm();
     result.distance = r;
     if (r < CalculatorConfig::Get("singularity_guard_distance"))
         return result;
-
-    const double axis_norm = source_axis.norm();
-    if (axis_norm < 1e-15)
+    if (source_axis.norm() < 1e-15)
         return result;
 
-    const double r3 = r * r * r;
-    const Vec3 n = disp / r;
-    const Vec3 u = source_axis / axis_norm;
-    result.direction = n;
+    return ComputePairKernelWithSourceShape(
+        atom_pos, source_center, AxialSourceShape(source_axis));
+}
 
-    result.dipolar = (3.0 * (n * n.transpose()) - Mat3::Identity()) / r3;
-    result.source_shape = (u * u.transpose()) - (Mat3::Identity() / 3.0);
-    result.response = result.dipolar * result.source_shape;
-    result.pcs_scalar = result.response.trace() / 3.0;
-    return result;
+
+McConnellPairKernel McConnellResult::ComputePeptideCORhombicPairKernel(
+        const ProteinConformation& conf,
+        size_t bond_index,
+        const Vec3& atom_pos) {
+    if (bond_index >= conf.ProteinRef().BondCount())
+        return McConnellPairKernel{};
+    return ComputePairKernelWithSourceShape(
+        atom_pos,
+        conf.bond_midpoints[bond_index],
+        PeptideCORhombicSourceShape(conf, bond_index));
 }
 
 
@@ -283,6 +435,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
         McAccum accum;
         ZeroAccum(accum);
+        Mat3 peptide_co_rhombic = Mat3::Zero();
 
         double best_co_dist = NO_DATA_SENTINEL;
         double best_cn_dist = NO_DATA_SENTINEL;
@@ -366,6 +519,12 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                     += kernel.response;
                 accum[CatIndex(cat)][ChannelIndex(McConnellChannel::BondOrder)]
                     += bo * kernel.response;
+                if (cat == McConnellSourceCategory::PeptideCO) {
+                    const McConnellPairKernel rhombic_kernel =
+                        ComputePeptideCORhombicPairKernel(conf, bi, atom_pos);
+                    peptide_co_rhombic +=
+                        rhombic_kernel.response - kernel.response;
+                }
             }
 
             if (cat == McConnellSourceCategory::PeptideCO &&
@@ -397,6 +556,8 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             static_cast<int>(atom_near_accepted_lt3);
         ca.mcconnell_near_field_rejected_lt3A =
             static_cast<int>(atom_near_rejected_lt3);
+        ca.mcconnell_peptide_co_rhombic =
+            SphericalTensor::Decompose(peptide_co_rhombic);
 
         const SphericalTensor fixed_co = DecomposeAccum(
             accum, McConnellSourceCategory::PeptideCO,
@@ -608,6 +769,19 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
                                         data.data(), N, kCols)) {
                 ++written;
             }
+        }
+    }
+
+    {
+        std::vector<double> data(N * kCols, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            conf.AtomAt(i).mcconnell_peptide_co_rhombic
+                .PackFull9(&data[i * kCols]);
+        }
+        if (NpyWriter::WriteFloat64(
+                output_dir + "/" + std::string(kPeptideCORhombicArrayStem) + ".npy",
+                data.data(), N, kCols)) {
+            ++written;
         }
     }
 

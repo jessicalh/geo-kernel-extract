@@ -64,6 +64,10 @@ public:
         const Vec3& atom_pos,
         const Vec3& source_center,
         const Vec3& source_axis);
+    static McConnellPairKernel ComputePeptideCORhombicPairKernel(
+        const ProteinConformation& conf,
+        size_t bond_index,
+        const Vec3& atom_pos);
 
     // Single source for extraction_manifest.json::feature_metadata.mcconnell.
     // TopologySidecar owns the top-level manifest file; McConnellResult owns
