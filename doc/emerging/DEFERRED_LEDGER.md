@@ -59,12 +59,19 @@ to-do on this work · **[robustness]** low-priority hardening.
 
 ## Ring to-builds (follow-up on this work)
 
-- **[follow-up] HM `T0`-vs-bond-sum benchmark** — settles whether our surface-integral tensor variant
-  earns the "Haigh–Mallion" name (correlate, don't match). Until then the spec's benchmark-gated wording
-  holds.
-- **[follow-up] The signed two-path emit** — BS↔HM agreement currently lives only in a *test*
-  (`tests/test_batch_biot_savart_haigh_mallion.cpp`, absolute values, "report don't assert"). To *report*
-  the validation it must become an emit carrying **signed** residuals + sign agreement, strongest near the ring.
+- **[RESOLVED 2026-06-07] HM name → "HM-style" (option c); bond-sum benchmark DROPPED.** Earning the
+  literal "Haigh–Mallion" name by implementing the bond-sum and self-correlating it against our
+  surface-integral is **self-test ≠ validation** ([[feedback_consistency_not_validation]]) — Jessica
+  killed it ("using code we didn't produce to test the thing we wrote"; the two paths landed at −2.5× + a
+  sign flip). We keep the surface-integral, labelled **"HM-style / HM-inspired tensor."** Re-openable later
+  via (a) acquire HM 1979/1980 + test our T0 vs *their* published factors, or (b) an algebraic-equivalence
+  proof — neither is held/done; not now.
+- **[design — open] #4 BS↔HM two-path: regression guard, framing TBD.** The agreement is *internal
+  consistency* (both paths ours), valuable as a CTest-on-fixture **regression guard** (flip the report-only
+  test to assert; derived 0.36/1.0 band) — but **not** a validation of the physics. Open call: also *emit*
+  it as a labelled consistency-diagnostic, or keep test-only? Stale hazard: the test reconstructs HM on a
+  different sign path than production (`test:311-315` vs `HaighMallion:293-296`) — any emit must use
+  production tensors.
 
 ## Part-1 decisions
 

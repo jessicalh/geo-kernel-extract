@@ -52,8 +52,10 @@ already computed, and one careful sign pass** — not a rebuild. McConnell alrea
   new physics.
 - **Ring — confirm-and-refine; reality-check NOT yet done, and the one that wants the most care.** Surgery:
   **sign-convention verification first** (against Boyd–Skrynnikov + the PHE worked example
-  `I=−12 → +1.40 ppm`), then naming/parity; confirm the per-type seam pins-or-learns; the BS-`2e` ↔
-  HM-`0e` two-path benchmark (HM `T0` vs the published bond-sum); unit-current emit + literature-intensity
+  `I=−12 → +1.40 ppm`), then naming/parity; confirm the per-type seam **pins** the literature intensity;
+  the BS↔HM **consistency** check (a regression guard, **not** a name-earning self-test — the bond-sum /
+  earn-the-name was DROPPED 2026-06-07: kept **HM-style**, [[feedback_consistency_not_validation]]);
+  unit-current emit + literature-intensity
   scale (rule 1). This is where "we will break things" and "sign issues throughout" both live → it gets
   the reality-check *and* a dedicated sign pass before anything moves.
 
@@ -93,8 +95,10 @@ different numbers and still passes green → exactly the fast loop-back we must 
 **derived, not magic** — the test already prints `random=0.36, parallel=1.0`, so assert BS–HM `|cos|` sits
 near *parallel* and well above the 0.36 random floor, and the negative controls (BS-vs-unrelated) stay at
 ~0.36. Flip `test_batch_biot_savart_haigh_mallion.cpp` + the other `test_batch_*` + `mopac_vs_ff14sb_recon`;
-and #3 (HM↔published-bond-sum benchmark) and #4 (BS↔HM emit) each land their validation as an assert in the
-same build, alongside the formal-tool positive controls ([[feedback_formal_tools_as_pipeline_references]]).
+and #4 (BS↔HM **consistency**) lands its regression-guard assert in the same build, alongside the
+formal-tool positive controls ([[feedback_formal_tools_as_pipeline_references]]). **#3's bond-sum self-test
+was DROPPED — consistency ≠ validation ([[feedback_consistency_not_validation]]); we keep "HM-style," and
+the kernels' real external validation is analytic identities + DFT, not our own second code path.**
 **These are CTest asserts on FIXTURES (the dev/CI gate) — never runtime asserts in the extractor.** A
 regression blocks a *commit*, never a *fleet run*; the production `Compute`/`WriteFeatures` path stays
 assert-free (emit only). The derived 0.36/1.0 band is deliberately *wide* → it fires on a real
