@@ -107,6 +107,20 @@ then the pointer rows become citable.
 - **Tier 3 — C=C:** **ApSimon** alkene anisotropy primary (the original of Martin's lineage) for a Δχ
   term; or the **Martin/Allen** algorithm primaries if the C=C term is recast as a shielding surface.
 
+### 5b. Computed-proxy note — the ORCA route is closed (2026-06-07)
+
+The ORCA-magnetizability cross-check is **ruled out**: our existing ORCA runs were not configured to
+emit magnetizability, and there is no budget to re-run the protein campaigns for it. So the cited value is
+**literature** (§5) — *or* the **one credible computed proxy**: a tiny standalone GIAO/CSGT
+**magnetizability calc on model compounds** (formamide / N-methylacetamide → peptide C=O; acetone → ketone;
+ethylene → C=C). That yields the full susceptibility tensor (three principal values → axial `Δχ_∥` +
+rhombic `Δχ_⊥`) **directly, non-circular, held**, dodging the acquisition gate — and it rests on the same
+model-compound→protein-bond transferability the literature values already assume (so it is at least as
+defensible, and ours). It is a **seconds-scale calc on 3 small molecules**, not a protein campaign — a
+different category from the "one more ORCA run" budget. **Not** credible as proxies: MOPAC polarizability
+(electric, not magnetic) and the DFT CSA tensors (shielding `σ`, not susceptibility `χ`) — wrong physical
+object.
+
 ## 6. Scope — the drop-nothing guarantee
 
 - **Additive only.** New rhombic channels and the `m̂` geometry are *added*; every existing
