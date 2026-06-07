@@ -550,3 +550,51 @@ literature support?). They OVERTURNED three of my conclusions — recorded plain
 reviewed (codex unsandboxed + opus just-read), ledger item marked done, ring spec kept honest (two-path =
 near-ring TWO-IMPLEMENTATION sanity check, write it that way). Then batch two-path review + commit. Baseline
 commit this session = 7bccecf. Worktree dirty; layer additively; stay src/ + python/; no h5-reader.
+
+============================================================
+PUSH STATE — extract-side build push (end of session 2026-06-07)
+============================================================
+The extract-side push is nearly closed. COMMITTED on master (pushed):
+- `7bccecf` three-kernel surgery + MOPAC-full (prior).
+- `06ff147` parity hygiene (#1): shielding T1 -> axial 1e across straggler writers + catalog polar fixes.
+- `ac07882` #5 McConnell rhombic C=O (backbone PeptideCO only): pinned Hooper&Kaiser 1965 Table III
+  EF-corrected acetamide A `(chi_out,chi_para,chi_in)=(-5.4,+4.0,-14)x10^-6 cm3/mol`, Abraham-anchored
+  sign; sp2-plane normal from C/O/amide-N; degenerate->axial fallback; additive DELTA array
+  `mc_peptide_co_rhombic`; analytic CTest asserts (exact source-shape matrix, equivariance, fallback).
+- `85c9339` #2 complete-emit: 21 dropped channels now emitted (additive, each ArraySpec+wrapper+description+
+  readback assert): enrichment flags, ff_partial_charge/pb_radius, coulomb/hbond/mcconnell nearest diag,
+  larsen flag, COO bond-neighbors (spatial/mc/mopac, mirror mopac_bond_orders), ring_direction_to_center,
+  disp per-ring tensor/spherical, piquad_quad_scalar (REAL value; fixed the derived-scalar substitution).
+  + the doc commits (rhombic spec, pinned-not-learned, HM-style, consistency!=validation, surgery guide).
+
+IN FLIGHT: `buugq1lxj` #4 BS<->HM regression guard (test-only: drop the test's stale HM reconstruction,
+use production tensors, flip report->assert with derived 0.36/1.0 tolerance, CTest-on-fixture).
+
+REMAINING: the ONE wholesale golden/smoke re-bless (the finale, after #4) -> then extract side is CLOSED.
+#3 is NOT a build -> "HM-style" label (see below). Parked/contingent: £40 Williamson-Asakura (only if
+rhombic shows promise + magnitude-sensitive), sidechain rhombic (Asn/Gln), X-H ablation (Part 1), the
+reader-pass inbox (h5-reader: QtFieldCatalog regen, internal *_shielding renames) -- NOT this push.
+
+DECISIONS / DISCIPLINES that became law this push (all in memory):
+- **The Three + the cage** (ring/EFG/McConnell built+defended; H-bond/pi-quad/Larsen/dispersion kept-not-
+  updated). [[project_three_kernels_and_cage]]
+- **Pinned-not-learned**: over our N (1P9J within-instrument, 720 statics, thin strata) we CANNOT learn
+  free coefficients -> scales are PINNED from literature/physics; the pinned value's magnitude AND SIGN
+  must be right (the fit won't rescue them); have-it-to-cite-it is load-bearing PHYSICS.
+  [[feedback_fittable_law_is_the_calibration]]
+- **Consistency != validation**: two of OUR code paths agreeing = a regression guard (CTest-on-fixture),
+  NOT a validation and NOT a name-earning. Validate against analytic identities / published values / DFT.
+  Killed #3's "earn Haigh-Mallion by bond-sum self-correlation" -> kept "HM-style".
+  [[feedback_consistency_not_validation]]
+- **Two-path asserts are CTest-on-fixtures, never runtime** (a fleet run is untouchable; production
+  Compute/WriteFeatures stays assert-free). Derived tolerance, never magic.
+- **Review reads CODE, not the agent's report**: codex's #2 "100% passed" was hollow (a silently-guarded
+  ff_* test on a phantom P84477 fixture); reading the diff caught it -> re-pointed to the real
+  A0A7C5FAR6 ORCA fixture, ff_* now genuinely verified. [[feedback_every_vet_reads_the_code]]
+- **Complete-emit standard**: complete + discoverable (catalog) + documented (SDK), names off the model
+  field; no per-channel granularity; COO rows mirror mopac_bond_orders.
+- **Rhombic**: C=O-only (backbone), C=C DROPPED (moot -- no non-aromatic C=C in the 20 residues; aromatic
+  is ring's). magnitude -> sensitivity report (the defence of a medium-conf pin). [[mcconnell_rhombic_spec]]
+
+Builds fired via codex exec --dangerously-bypass-approvals-and-sandbox; each diff-reviewed by reading the
+code (the #2 episode is why). Spec-vs-code vet before firing the builds (codex, read-only).
