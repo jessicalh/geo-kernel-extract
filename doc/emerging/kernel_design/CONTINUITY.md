@@ -567,10 +567,14 @@ The extract-side push is nearly closed. COMMITTED on master (pushed):
   disp per-ring tensor/spherical, piquad_quad_scalar (REAL value; fixed the derived-scalar substitution).
   + the doc commits (rhombic spec, pinned-not-learned, HM-style, consistency!=validation, surgery guide).
 
-IN FLIGHT: `buugq1lxj` #4 BS<->HM regression guard (test-only: drop the test's stale HM reconstruction,
-use production tensors, flip report->assert with derived 0.36/1.0 tolerance, CTest-on-fixture).
+#4 BS<->HM regression guard LANDED `7af2dc1` (test-only): production tensors; derived midpoint floors
+(T2 |cos| > 0.68, T0 sign > 0.75); observed 0.9993 / 0.9837 over 285765 pairs; controls discriminate.
+**ALL FOUR BUILDS DONE** (#1 `06ff147`, #5 `ac07882`, #2 `85c9339`, #4 `7af2dc1`) -- extract-side push
+CODE is COMPLETE.
 
-REMAINING: the ONE wholesale golden/smoke re-bless (the finale, after #4) -> then extract side is CLOSED.
+REMAINING: the ONE wholesale golden/smoke re-bless -- DEFERRED per [[feedback_dont_overhold_builds_bless]]
+(a release/fleet binary-compat act, not a now-step; the new arrays -- mc_peptide_co_rhombic + the 21
+complete-emit channels -- register in the smoke manifest at that re-bless). Until then the push is done.
 #3 is NOT a build -> "HM-style" label (see below). Parked/contingent: £40 Williamson-Asakura (only if
 rhombic shows promise + magnitude-sensitive), sidechain rhombic (Asn/Gln), X-H ablation (Part 1), the
 reader-pass inbox (h5-reader: QtFieldCatalog regen, internal *_shielding renames) -- NOT this push.
