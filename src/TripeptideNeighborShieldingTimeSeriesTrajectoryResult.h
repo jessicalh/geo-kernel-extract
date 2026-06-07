@@ -25,15 +25,15 @@
 //       result_name    = "TripeptideNeighborShieldingTimeSeriesTrajectoryResult"
 //       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
-//       parity         = "0e+1o+2e"
+//       parity         = "0e+1e+2e"
 //       units          = "ppm"
 //       n_atoms, n_frames, finalized
 //
-// Parity "0e+1o+2e": the tripeptide neighbour Δσ tensor is a DFT-
+// Parity "0e+1e+2e": the tripeptide neighbour Δσ tensor is a DFT-
 // derived shielding tensor restamped into the central-atom frame
 // by the cap-side Kabsch alignment of the (i±1)-centered tripeptide
 // onto residue i's N/CA/C backbone. The underlying object is a
-// magnetic shielding tensor (its T1 part is a parity-odd
+// magnetic shielding tensor (its T1 part is a parity-even axial
 // pseudovector in the e3nn Irreps convention), so the parity matches
 // the BS / HM / McConnell magnetic-kernel TimeSeries TRs. Pure EFG
 // emitters with structural T0/T1 zeros use T2-only parity "2e".

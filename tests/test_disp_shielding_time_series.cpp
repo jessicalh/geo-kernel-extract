@@ -210,7 +210,7 @@ TEST(DispersionShieldingTimeSeries, H5RoundTrip) {
     std::string parity, units;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
-    EXPECT_EQ(parity, "0e+1o+2e");
+    EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(units, "Angstrom^-6");
     fs::remove(h5_path);
 }

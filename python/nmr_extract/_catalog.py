@@ -144,7 +144,7 @@ _EFG_IRREPS    = "1x2e"      # T2 only — water/Coulomb/MOPAC/APBS/AIMNet2 EFG
 CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Identity (ConformationResult.cpp) ────────────────────────
     ArraySpec("pos",              "identity",   VectorField,       3,    True,  "Atom positions (A)",
-              native_axis="atom", irreps="1e", units="Å", tensor_rank=1, parity="odd", mechanism="topology"),
+              native_axis="atom", irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="topology"),
     ArraySpec("element",          "identity",   np.ndarray,        None, True,  "Atomic number (int32)",
               native_axis="atom", mechanism="topology"),
     ArraySpec("residue_index",    "identity",   np.ndarray,        None, True,  "Residue index (int32)",
@@ -423,7 +423,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("atom_sasa",        "sasa", np.ndarray,              None, False, "Per-atom Shrake-Rupley SASA (A^2)",
               units="Å^2", mechanism="solvation"),
     ArraySpec("sasa_normal",      "sasa", VectorField,             3,    False, "SASA outward surface normal (unit vector)",
-              irreps="1e", tensor_rank=1, parity="odd", mechanism="solvation"),
+              irreps="1o", tensor_rank=1, parity="odd", mechanism="solvation"),
 
     # ── Explicit water (WaterFieldResult.cpp) ───────────────────
     ArraySpec("water_efield",       "water_field", VectorField,    3,    False, "Water E-field total (V/A)",
@@ -471,7 +471,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mopac_global_terms", "mopac_core", np.ndarray,      2,    False, "All parsed MOPAC graph-level numeric terms [value, source_record_index]",
               is_feature=False, native_axis="mopac_scalar_term", units="mixed", mechanism="quantum_reference"),
     ArraySpec("mopac_dipole_components", "mopac_core", MopacDipoleComponents, 4, False, "Full MOPAC dipole table: POINT-CHG., HYBRID, SUM x/y/z/total",
-              is_feature=False, native_axis="mopac_dipole_component", irreps="1e", units="Debye", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
+              is_feature=False, native_axis="mopac_dipole_component", irreps="1o", units="Debye", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
     ArraySpec("mopac_atom_populations", "mopac_core", MopacAtomPopulations, 12, False, "MOPAC per-atom charge, density, shell populations, dipole contribution, and valencies",
               is_feature=False, native_axis="atom", units="mixed", mechanism="charges"),
     ArraySpec("mopac_ao_table", "mopac_core", MopacAOTable,        7,    False, "MOPAC AO basis table [ao, atom, type, zeta, PQN, population, source]",
@@ -652,7 +652,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("tripeptide_bb_shielding",          "tripeptide", ShieldingTensor, 9,    False, "σ_BB^i — Mat3 (ppm) from typed-identity match against Larsen 2015 AXA tripeptide DFT row",
               irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
     ArraySpec("tripeptide_bb_residual_vec",       "tripeptide", VectorField,     3,    False, "σ_BB^i match residual: aligned_dft - protein position; Vec3 ML feature (magnitude + direction)",
-              irreps="1e", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
+              irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
     ArraySpec("tripeptide_bb_match_distance",     "tripeptide", np.ndarray,      None, False, "σ_BB^i match distance (Å) — magnitude of residual_vec",
               units="Å", mechanism="quantum_reference"),
     ArraySpec("tripeptide_bb_method_tag",         "tripeptide", np.ndarray,      None, False, "DFT method discriminator: 0=none, 1=OPBE Gaussian (Larsen), 2=PBE ORCA (project SER regen)",
@@ -660,9 +660,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("tripeptide_neighbor_shielding",    "tripeptide", ShieldingTensor, 9,    False, "Δσ_BB^{i±1} — neighbour correction at residue i from i±1 cap reads (Larsen 2015 Eq 3)",
               irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
     ArraySpec("tripeptide_neighbor_residual_vec_prev", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i-1} match residual at the C-term ALA cap of (i-1)'s tripeptide; Vec3, NaN where i-1 direction had no contribution",
-              irreps="1e", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
+              irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
     ArraySpec("tripeptide_neighbor_residual_vec_next", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i+1} match residual at the N-term ALA cap of (i+1)'s tripeptide; Vec3, NaN where i+1 direction had no contribution",
-              irreps="1e", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
+              irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
 
     # ────────────────────────────────────────────────────────────────
     # Larsen H-bond shielding contributions

@@ -458,13 +458,13 @@ TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[2], 9u);
 
     // Attribute parity: this is a magnetic-kernel shielding TR
-    // (parity 0e+1o+2e, same as BS).
+    // (parity 0e+1e+2e, same as BS).
     std::string parity, normalization, units, layout;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "0e+1o+2e");
+    EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(normalization, "isometric_real_sph");
     EXPECT_EQ(units, "ppm");
     EXPECT_EQ(layout,

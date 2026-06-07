@@ -4,7 +4,7 @@
     p = load("path/to/extraction")
 
     p.biot_savart.shielding.T2          # (N, 5)
-    p.biot_savart.shielding.irreps      # Irreps("1x0e + 1x1o + 1x2e")
+    p.biot_savart.shielding.irreps      # Irreps("1x0e + 1x1e + 1x2e")
     p.biot_savart.shielding.torch()     # torch.Tensor (N, 9)
     p.ring_contributions.bs.T2          # (P, 5), per-ring
 """

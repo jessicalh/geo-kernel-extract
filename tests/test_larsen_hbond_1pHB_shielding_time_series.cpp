@@ -321,7 +321,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
-    EXPECT_EQ(parity, "0e+1o+2e");
+    EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(normalization, "isometric_real_sph");
     EXPECT_EQ(units, "ppm");
 

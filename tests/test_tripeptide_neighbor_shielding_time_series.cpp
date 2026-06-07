@@ -291,7 +291,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(irrep_layout,
         "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(normalization, "isometric_real_sph");
-    EXPECT_EQ(parity,        "0e+1o+2e");
+    EXPECT_EQ(parity,        "0e+1e+2e");
     EXPECT_EQ(units,         "ppm");
 
     fs::remove(h5_path);

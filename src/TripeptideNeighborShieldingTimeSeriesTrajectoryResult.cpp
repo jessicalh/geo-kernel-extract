@@ -163,7 +163,7 @@ void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("irrep_layout",
         std::string("T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("0e+1o+2e"));
+    grp.createAttribute("parity",        std::string("0e+1e+2e"));
     grp.createAttribute("units",         std::string("ppm"));
 
     // Flat (N, T, 9) via explicit component access. NaN-fill rows where

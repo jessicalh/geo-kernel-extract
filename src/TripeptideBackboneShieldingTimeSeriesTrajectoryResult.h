@@ -21,11 +21,11 @@
 //       result_name    = "TripeptideBackboneShieldingTimeSeriesTrajectoryResult"
 //       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
-//       parity         = "0e+1o+2e"
+//       parity         = "0e+1e+2e"
 //       units          = "ppm"
 //       n_atoms, n_frames, finalized
 //
-// Why parity "0e+1o+2e": the tripeptide DFT tensor σ_BB^i is a
+// Why parity "0e+1e+2e": the tripeptide DFT tensor σ_BB^i is a
 // rank-2 magnetic-shielding tensor (same shape and parity as the
 // Biot-Savart kernel). Both magnetic-kernel shielding TRs share this
 // parity.
