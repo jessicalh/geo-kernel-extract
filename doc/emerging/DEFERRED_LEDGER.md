@@ -79,14 +79,15 @@ Full scope: `kernel_design/mcconnell_rhombic_spec.md`. Jessica wants it; additiv
   rhombic block (`McConnellResult.cpp:230`, axial today); emit the unit shape, scale learned. Buildable
   without the cited value (geometry, additive). Pairs with #3/#4 as the McConnell+ring tensor-richness
   pass; schedule after #2 (same emit surface). Build routes to **codex**.
-- **[parked] The rhombic Δχ acquisition gate.** Have-it-to-cite-it BLOCKS the cited rhombic value: we hold
-  only **axial** C=O (Pauling 1979 −5.36×10⁻⁶ cm³ mol⁻¹; Worcester 1978 ester/carboxyl) and **no** C=C Δχ
-  (Martin 2000 is a shielding surface, not a susceptibility). Tier-1 to acquire: **Hooper & Kaiser 1965**
-  (10.1139/v65-318), **Abraham Part 19** (modgraph), **Abraham & Ainger 1999** (10.1039/A808908F). Tier-2
-  peptide: Williamson–Asakura primary, Abraham mrc.3920, Lonsdale 1939. Tier-3 C=C: ApSimon alkene. Needs
-  Jessica's go to fire the codex download fleet (verify-pdf-matches-name on landing).
-- **[design] C=C construction fork.** No held C=C Δχ. Acquire ApSimon (Δχ term, uniform with C=O) OR use
-  held Martin 2000 GIAO shielding surface (different object). Jessica's call.
+- **[RESOLVED 2026-06-07] Rhombic C=O sourced + pinned; C=C dropped.** C=O rhombic LANDED + sign-resolved:
+  Hooper & Kaiser 1965 (10.1139/v65-318) + Abraham & Ainger 1999 (10.1039/A808908F) held + provenance-
+  verified. **Pinned: Hooper EF-corrected acetamide A `(−5.4, +4.0, −14)` ×10⁻⁶ cm³ mol⁻¹**, Abraham-
+  anchored sign (high-conf), magnitude medium → **sensitivity-reported** (lead sign-off). **C=C DROPPED**
+  — moot (no non-aromatic C=C in the 20 residues; aromatic C=C is ring's, zeroed). Rhombic = C=O-only.
+- **[follow-up — contingent] £40 Williamson–Asakura acquisition.** The pinned magnitude is medium-confidence
+  (Hooper's EF-corrected fit poor). **If** the rhombic shows promise *and* the result proves magnitude-
+  sensitive, spend ~£40 on the WA peptide primary to firm it. Don't pay until it matters; the sensitivity
+  report defends the pin until then. (Jessica, 2026-06-07.)
 - **[author — scholarship] `MCCONNELL_DCHI_LITERATURE.md` hygiene.** Its "Source Anchors" list unheld
   primaries (Hooper-Kaiser, Abraham, WA…) as if they back the table — relabel POINTER-ONLY and add the
   two genuinely-held axial anchors (Pauling 1979, Worcester 1978) it omits.

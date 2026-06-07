@@ -107,7 +107,12 @@ absorbed by a fit.** **Pinned (resolved 2026-06-07): Hooper EF-corrected acetami
 (Abraham's fitted ordering χ_∥ > χ_out > χ_⊥ + the deshielding cone; *not* set B, whose χ_out−χ_⊥ sign
 opposes Abraham — Hooper p. 2371 prefers A but flags the tension, Abraham anchors it). Magnitude
 **medium** (Hooper's EF-corrected fit is poor) → pin the sign/pattern, report a magnitude sensitivity
-(cross-check vs Abraham's ketone or a model-compound calc). **Lead's final sign-off pending.**
+**Lead sign-off (2026-06-07): pin set A, EF-corrected; magnitude handled by a sensitivity report** — the
+sensitivity *is* the defence of a medium-confidence pin (show the rhombic verdict is stable across the
+source spread, so the conclusion doesn't hinge on the exact magnitude). A **~£40 article purchase**
+(Williamson–Asakura peptide primary, the best peptide-specific magnitude) is held as a **contingency**,
+triggered **only if** the rhombic shows promise *and* the result proves magnitude-sensitive — don't pay
+until it matters. "This is the best we can do," disclosed honestly, is defensible.
 
 So the gate is **OPEN for C=O**: rhombic shape buildable now (§2–3) **and** a held, citable `Δχ_rh` exists
 (EF-corrected set, pending the §7 double-count call). **C=C is DROPPED** (§7.3): ApSimon unobtainable and
@@ -167,7 +172,7 @@ object.
 2. **EF-corrected vs EF-neglected Δχ — the double-count call (§4).** Hooper gives both; the EF-*neglected*
    set absorbs the carbonyl electric-field effect we *already* model in charge/EFG. Recommend
    **EF-corrected** (pure magnetic anisotropy, no double-count — same logic as aromatic↔ring), despite
-   Hooper's poorer fit there. Confirm.
+   Hooper's poorer fit there. **Confirmed: EF-corrected, set A pinned (lead, 2026-06-07).**
 3. **C=C — RESOLVED (dropped, 2026-06-07).** ApSimon is unobtainable, and C=C rhombic is **moot for
    standard proteins**: the 20 residues have no non-aromatic C=C (no alkene sidechains); every protein
    C=C is *aromatic* (Phe/Tyr/Trp/His) → ring-current's job, already zeroed in McConnell
