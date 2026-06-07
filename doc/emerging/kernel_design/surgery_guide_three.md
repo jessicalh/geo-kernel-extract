@@ -95,6 +95,11 @@ near *parallel* and well above the 0.36 random floor, and the negative controls 
 ~0.36. Flip `test_batch_biot_savart_haigh_mallion.cpp` + the other `test_batch_*` + `mopac_vs_ff14sb_recon`;
 and #3 (HM↔published-bond-sum benchmark) and #4 (BS↔HM emit) each land their validation as an assert in the
 same build, alongside the formal-tool positive controls ([[feedback_formal_tools_as_pipeline_references]]).
+**These are CTest asserts on FIXTURES (the dev/CI gate) — never runtime asserts in the extractor.** A
+regression blocks a *commit*, never a *fleet run*; the production `Compute`/`WriteFeatures` path stays
+assert-free (emit only). The derived 0.36/1.0 band is deliberately *wide* → it fires on a real
+sign/units/parity break, not on a protein's legitimately-odd geometry (so it won't flake). If a
+production-side signal is ever wanted, it is a **logged `OperationLog` warning, never an abort.**
 
 ### Rule corrections
 - **Rule 2 is FORWARD-looking, not current code.** The SDK/catalog still mark BS/HM/McConnell as *features*
