@@ -228,3 +228,7 @@ data/larsen_hbond_grids/
 # Transient doc scratch (pre-existing untracked search-results dump, Jun 5);
 # not producer material.
 doc/searchresults1/
+
+# WriteFeatures readback scratch (TestEnvironment::BaselineFeatures())
+baseline_features/**/extraction_manifest.json
+baseline_features/**/mopac_full/
