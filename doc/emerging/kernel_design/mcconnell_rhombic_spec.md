@@ -110,8 +110,10 @@ opposes Abraham — Hooper p. 2371 prefers A but flags the tension, Abraham anch
 (cross-check vs Abraham's ketone or a model-compound calc). **Lead's final sign-off pending.**
 
 So the gate is **OPEN for C=O**: rhombic shape buildable now (§2–3) **and** a held, citable `Δχ_rh` exists
-(EF-corrected set, pending the §7 double-count call). **C=C** remains: no held Δχ — ApSimon (acquire), the
-held Martin **shielding-surface** (different object), or the **model-compound calc** (§5b).
+(EF-corrected set, pending the §7 double-count call). **C=C is DROPPED** (§7.3): ApSimon unobtainable and
+C=C rhombic is **moot for standard proteins** — every protein C=C is aromatic (ring-current's, zeroed in
+McConnell); the 20 residues have no non-aromatic C=C. **So the rhombic is C=O-only**, and that is the
+entire production-relevant case.
 
 ## 5. Acquisition gate (route through codex download + scholarship vet)
 
@@ -166,9 +168,11 @@ object.
    set absorbs the carbonyl electric-field effect we *already* model in charge/EFG. Recommend
    **EF-corrected** (pure magnetic anisotropy, no double-count — same logic as aromatic↔ring), despite
    Hooper's poorer fit there. Confirm.
-3. **C=C construction fork.** No held C=C Δχ exists. Acquire ApSimon (Δχ term, uniform with C=O), or use
-   the **held Martin 2000 shielding surface** (different object, but on disk today)? These are not
-   interchangeable — one is a susceptibility, one is a GIAO σ-increment field.
+3. **C=C — RESOLVED (dropped, 2026-06-07).** ApSimon is unobtainable, and C=C rhombic is **moot for
+   standard proteins**: the 20 residues have no non-aromatic C=C (no alkene sidechains); every protein
+   C=C is *aromatic* (Phe/Tyr/Trp/His) → ring-current's job, already zeroed in McConnell
+   (`AromaticZeroed`). So **rhombic is C=O-only** — and dropping C=C costs nothing on the production set.
+   (Alkene ligands like retinal are out of scope; they fall back to axial.) Lead confirm.
 4. **Build-now vs value-gate.** Emit the rhombic *shape* now (additive, **scale-pinned**, defensible as
    geometry), and let the cited `Δχ_rh` land when acquired — or hold the whole thing until Tier-1 is on
    disk? (**C=O Tier-1 is now on disk** — Hooper + Abraham held; the shape is safe to emit; the value is a
