@@ -65,9 +65,10 @@ and the architecture (§2) is what combines them.
 ### 1.1 Stream A — the geometric through-space tensors (the kernels), as irreps
 
 Each kept kernel is emitted as a clean equivariant spherical tensor, raw in the
-molecular frame, geometry unscaled, with the uncertain physical scale carried as a
-calibratable coefficient or a parallel channel. The irrep content per kernel, read
-off the design docs:
+molecular frame, geometry unscaled, with the physical scale **pinned** from
+literature/physics where a law exists (our N is too small to *learn* it —
+`feedback_fittable_law_is_the_calibration`), carried as a per-type constant or a
+parallel channel. The irrep content per kernel, read off the design docs:
 
 | Kernel | Primary irrep | Also | Physical object | Scale knob |
 |---|---|---|---|---|

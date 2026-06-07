@@ -145,28 +145,30 @@ validation lives *inside* it, not as two headline members.)
   shape → always-on); its cutoff is left as-is; the all-pairs/cutoff range difference is **not an EFG
   deliverable**. Code facts: `kernel_design/efg_reality_check.md`.
 - **McConnell** — clean equivariant `D(r)·Q̂`, full even `0e ⊕ 1e ⊕ 2e`, two channels (fixed +
-  Wiberg-BO). Form upgraded; scale **learned**. **BUILT + adversarial-passed** —
+  Wiberg-BO). Form upgraded; scale **pinned** (held `Δχ`). **BUILT + adversarial-passed** —
   `kernel_design/mcconnell_spec.md` + `mcconnell_integration_addendum.md` are the **template for the
   other two**.
 
-**Shared source-based pattern (ring + McConnell): emit the unit kernel; the physical scale rides
-separately.**
-- Ring emits the **unit-current** kernel `G` (`bs_shielding`, `bs_per_type_T0/T2` — all `I = 1 nA`);
-  the **literature ring-current intensity** (`ring.Intensity()`, per ring type, cited, verified
-  `I = −12` PHE → `+1.40 ppm`) is the physical scale, applied via the per-type seam (`σ = I·G`),
-  **not baked into the emit**.
-- McConnell emits the **unit-shape** `Q̂`; its scale is **learned**, not pinned, because literature
-  `Δχ` is scattered 2–5×. Tabulated `Δχ` is the **optional direction-4 physical hypothesis** — the
-  closed-form physical kernel to check the model's discovery against.
-- One pattern; both emit the unit kernel and the scale is **fit downstream**. The literature ring-current
-  intensity is cited, is the physical scale in `σ = I·G`, and the h5-reader viz uses it — but the
-  calibration **likely *learns* the coefficient** rather than pinning literature `I` (codex 2026-06-07:
-  the top-level fitting code isn't present in `learn/` to fully confirm; visible evidence — ridge
-  coefficients as calibrated constants — leans *learned*). So ring and McConnell are **closer mirrors than
-  first framed: both emit unit + learn the scale.** `feedback_emit_is_not_a_limiter` honoured as the
-  *pattern*; the literature `Δχ` / intensity is the **direction-4 physical hypothesis**, not a pinned
-  scale. (The rediscover layer *does* carry a literature-scaled `jb_T*` via `LiteratureIntensity()`,
-  separate from the unit-current producer emit.)
+**Shared source-based pattern (ring + McConnell): emit the unit kernel; the physical scale is PINNED
+from literature/physics, not learned.** Corrected 2026-06-07 ([[feedback_fittable_law_is_the_calibration]]):
+our N — one protein within-instrument, 720-WT statics, thin strata — is too small to reliably *learn*
+free coefficients, so the earlier "scale rides separately / fit downstream" framing overstates what the
+data supports. **Very little is actually fit.** The scale is pinned where a law exists, and the pinned
+value's **magnitude and sign must be right** — the fit will not rescue them.
+- Ring emits the **unit-current** kernel `G` (`bs_shielding`, `bs_per_type_T0/T2` — all `I = 1 nA`); the
+  **literature ring-current intensity** (`ring.Intensity()`, per ring type, cited, verified `I = −12` PHE
+  → `+1.40 ppm`) is the **pinned** physical scale, applied via the per-type seam (`σ = I·G`). The gold
+  case: a found fit space + de-circularised coefficient.
+- McConnell emits the **unit-shape** `Q̂`; its scale `Δχ` is **pinned** from a held literature value, not
+  fit. The 2–5× source scatter is handled by **picking a defensible value and owning it** (a sensitivity
+  note if it bites), not by deferring to a fit. The rhombic C=O `Δχ` is now held (Hooper 1965 / Abraham
+  1999 — `kernel_design/mcconnell_rhombic_spec.md`), so have-it-to-cite-it is **load-bearing physics**,
+  not citation hygiene.
+- The small amount that *is* learned is the residual ensemble combination (arc layer 3), **not** the
+  per-kernel scales (arc layer 2 = the pinned laws). `feedback_emit_is_not_a_limiter` honoured as the
+  *pattern* (emit unit + apply the physical scale); the scale is **pinned**, not "the direction-4
+  hypothesis the fit refines." (The rediscover layer carries the literature-scaled `jb_T*` via
+  `LiteratureIntensity()`, separate from the unit-current producer emit.)
 
 The governing rule the three embody: **keep multiple paths only when they are independent routes to
 the same quantity (ring: BS↔HM); replace when one strictly dominates (McConnell: lose the cruft);

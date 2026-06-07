@@ -45,7 +45,7 @@ where `m̂` is the **sp²-plane normal** of the bond's flat group, `ê_out = m̂
 û` (in-plane perpendicular), and `κ` is the **unit rhombicity shape weight** (dimensionless; the
 `(ê_in⊗ê_in − ê_out⊗ê_out)` block is already traceless, so `Q̂_rhombic` stays traceless and is a clean
 `2e` object to hand e3nn). The physical rhombic magnitude `Δχ_rh` is **not baked in** — it rides as the
-learned/calibrated scale, the same `emit-unit-kernel / scale-rides-separately` pattern the rest of
+**pinned** literature/physics scale (our N is too small to learn it — set, not fit), the same `emit-unit-kernel` pattern the rest of
 McConnell and ring already follow.
 
 **Why this is buildable without the held value.** Because `Δχ` is calibrated downstream (literature values
@@ -100,8 +100,14 @@ effect) sets — and they differ in **sign/pattern**, not just magnitude. Becaus
 **separately** (charge/EFG), the physically-clean, **no-double-count** choice is **EF-corrected** — the
 exact same logic that zeros aromatic McConnell against ring. Hooper found the EF-corrected fit *poorer*
 (crude EF model), but for us EF-corrected avoids counting the carbonyl field twice. Sign A/B is unresolved
-in Hooper; since the scale is **learned**, the fit absorbs sign, so a representative EF-corrected set is
-pinned and calibration decides magnitude.
+in Hooper; **since the scale is PINNED, not learned** (our N can't fit it), the sign and magnitude must be
+physically *correct* — resolved against Abraham's definite sign + the carbonyl deshielding cone — **not
+absorbed by a fit.** **Pinned (resolved 2026-06-07): Hooper EF-corrected acetamide A** —
+`(χ_out, χ_∥, χ_⊥) = (−5.4, +4.0, −14) ×10⁻⁶ cm³ mol⁻¹` (p. 2366 Table III). Sign **high-confidence**
+(Abraham's fitted ordering χ_∥ > χ_out > χ_⊥ + the deshielding cone; *not* set B, whose χ_out−χ_⊥ sign
+opposes Abraham — Hooper p. 2371 prefers A but flags the tension, Abraham anchors it). Magnitude
+**medium** (Hooper's EF-corrected fit is poor) → pin the sign/pattern, report a magnitude sensitivity
+(cross-check vs Abraham's ketone or a model-compound calc). **Lead's final sign-off pending.**
 
 So the gate is **OPEN for C=O**: rhombic shape buildable now (§2–3) **and** a held, citable `Δχ_rh` exists
 (EF-corrected set, pending the §7 double-count call). **C=C** remains: no held Δχ — ApSimon (acquire), the
@@ -163,7 +169,7 @@ object.
 3. **C=C construction fork.** No held C=C Δχ exists. Acquire ApSimon (Δχ term, uniform with C=O), or use
    the **held Martin 2000 shielding surface** (different object, but on disk today)? These are not
    interchangeable — one is a susceptibility, one is a GIAO σ-increment field.
-4. **Build-now vs value-gate.** Emit the rhombic *shape* now (additive, scale-learned, defensible as
+4. **Build-now vs value-gate.** Emit the rhombic *shape* now (additive, **scale-pinned**, defensible as
    geometry), and let the cited `Δχ_rh` land when acquired — or hold the whole thing until Tier-1 is on
    disk? (**C=O Tier-1 is now on disk** — Hooper + Abraham held; the shape is safe to emit; the value is a
    separate, later, citable scale.)
