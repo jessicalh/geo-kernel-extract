@@ -232,3 +232,12 @@ doc/searchresults1/
 # WriteFeatures readback scratch (TestEnvironment::BaselineFeatures())
 baseline_features/**/extraction_manifest.json
 baseline_features/**/mopac_full/
+
+# Golden baseline: oversized high-dim arrays excluded (>100MB GitHub hard limit + repo bloat).
+# Covered by shape/presence + the catalog, NOT byte-comparison.
+tests/golden/blessed/**/mopac_mulliken_overlap_sparse.npy
+tests/golden/blessed/**/mopac_mo_coefficients.npy
+tests/golden/blessed/**/mopac_overlap_packed.npy
+tests/golden/blessed/**/mopac_density_packed.npy
+tests/golden/blessed/**/mc_bond_neighbors.npy
+tests/golden/blessed/**/spatial_neighbors.npy

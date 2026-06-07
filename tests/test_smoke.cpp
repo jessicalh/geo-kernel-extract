@@ -447,14 +447,15 @@ TEST_F(SmokeTest, NoDft) {
 // ============================================================================
 
 TEST_F(SmokeTest, WithDft) {
-    std::string dir = std::string(test::TestEnvironment::Consolidated()) + "P84477/";
-    if (!fs::exists(dir)) GTEST_SKIP() << "P84477 consolidated data not found";
+    std::string dir = std::string(test::TestEnvironment::OrcaDir());
 
-    // Load protein from ORCA run
+    // Load the AMBER-prepared ORCA pose (has _nmr.out = DFT shielding).
     OrcaRunFiles files;
-    files.pdb_path = dir + "P84477_WT.pdb";
-    files.xyz_path = dir + "P84477_WT.xyz";
-    files.prmtop_path = dir + "P84477_WT.prmtop";
+    files.pdb_path = dir + "A0A7C5FAR6_WT.pdb";
+    files.xyz_path = dir + "A0A7C5FAR6_WT.xyz";
+    files.prmtop_path = dir + "A0A7C5FAR6_WT.prmtop";
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+        GTEST_SKIP() << "ORCA test data not found";
 
     auto build = BuildFromOrca(files);
     ASSERT_TRUE(build.Ok()) << build.error;
@@ -469,7 +470,7 @@ TEST_F(SmokeTest, WithDft) {
     // Find ORCA NMR output
     for (const auto& entry : fs::directory_iterator(dir)) {
         std::string name = entry.path().filename().string();
-        if (name.find("P84477_WT") == 0 && name.find("_nmr.out") != std::string::npos) {
+        if (name.find("A0A7C5FAR6_WT") == 0 && name.find("_nmr.out") != std::string::npos) {
             opts.orca_nmr_path = entry.path().string();
             break;
         }
