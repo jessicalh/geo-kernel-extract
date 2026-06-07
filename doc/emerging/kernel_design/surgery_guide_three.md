@@ -87,6 +87,15 @@ though C++ emits the unscaled `G`. Never mix these as the same physical quantity
 the T2 cosine, explicitly "report, don't assert." There is **no emitted** two-path result/H5/group. If the
 thesis wants it reported, that's a small to-build (surface the test's comparison as an emit).
 
+**Build requirement (Jessica 2026-06-07): every two-path validation ships as an ASSERT test, in the same
+build — never report-only.** An un-asserted two-path rots silently: a future sign/units/parity break prints
+different numbers and still passes green → exactly the fast loop-back we must avoid. The tolerance is
+**derived, not magic** — the test already prints `random=0.36, parallel=1.0`, so assert BS–HM `|cos|` sits
+near *parallel* and well above the 0.36 random floor, and the negative controls (BS-vs-unrelated) stay at
+~0.36. Flip `test_batch_biot_savart_haigh_mallion.cpp` + the other `test_batch_*` + `mopac_vs_ff14sb_recon`;
+and #3 (HM↔published-bond-sum benchmark) and #4 (BS↔HM emit) each land their validation as an assert in the
+same build, alongside the formal-tool positive controls ([[feedback_formal_tools_as_pipeline_references]]).
+
 ### Rule corrections
 - **Rule 2 is FORWARD-looking, not current code.** The SDK/catalog still mark BS/HM/McConnell as *features*
   and `learn/` consumes them as ridge inputs. "Kernel = hypothesis, not feature" is the direction-4
