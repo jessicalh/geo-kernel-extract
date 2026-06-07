@@ -105,3 +105,16 @@ Full scope: `kernel_design/mcconnell_rhombic_spec.md`. Jessica wants it; additiv
   rows for every `ring_neighbours` row regardless of whether BS/HM ran. Production always runs them first
   (real values); a *partial/custom* run (e.g. ring-chi without BS) would write default zeros
   (`ConformationResult.cpp:95`, `ConformationAtom.h:37`). Edge case, production-fine. 2026-06-07 (codex ring review).
+
+## Fleet-size + .LGS (2026-06-08)
+
+- **[design — real] Complete-emit heavy arrays blow the fleet budget.** COO arrays (mc_bond_neighbors 63MB,
+  spatial_neighbors 35MB on Ubq) + MOPAC high-dim matrices are huge per-protein; at fleet scale (676)
+  mc_bond_neighbors alone ~42GB vs the <15GB budget. Revisit (cap/top-K/opt-in) BEFORE any fleet run.
+  Already excluded from golden + gitignored (BLESS_NOTES).
+- **[follow-up] .LGS emitter (drafting).** KISS: one root (=--output), `<protein_id>_<timestamp>.lgs`,
+  minimal/derived rest. Codex draft (CalcsetManifestEmitter; trajectory + single-pose; mutant may stub).
+  Schema spec/CALCSET_MANIFEST.md v1; port h5-reader/tools/lgs_write.py. Review the draft next session.
+- **[follow-up] Golden rename-orphan git rm.** 8 renamed-away baselines (coulomb_shielding, mc_category_T2/
+  scalars/shielding + mopac_ versions) still in blessed -> smoke reports them "Missing from run". `git rm`
+  them in a fresh context (deferred per lead, not late-session).

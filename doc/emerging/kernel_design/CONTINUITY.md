@@ -602,3 +602,20 @@ DECISIONS / DISCIPLINES that became law this push (all in memory):
 
 Builds fired via codex exec --dangerously-bypass-approvals-and-sandbox; each diff-reviewed by reading the
 code (the #2 episode is why). Spec-vs-code vet before firing the builds (codex, read-only).
+
+============================================================
+SESSION CLOSE (2026-06-08) — push done, re-bless landed, .LGS teed up
+============================================================
+The extract-side forward-build push is COMPLETE; golden baselines re-blessed + pushed (one weekend).
+
+- Re-bless `7717c6a`: wholesale nodft + withdft vs current output (baseline was 2026-04-10). withdft
+  un-decayed onto the live A0A7C5FAR6 ORCA pose (full DFT+AIMNet2). 10 OVERSIZED arrays excluded +
+  gitignored (459/505 MB: MOPAC high-dim matrices + big complete-emit COO) -- >100MB GitHub limit, not
+  byte-compare targets. Rename-orphan `git rm` (8 arrays) DEFERRED to a fresh context (BLESS_NOTES).
+- **FLEET-SIZE CONCERN (real, on #2):** complete-emit COO arrays are huge per-protein (mc_bond_neighbors
+  63MB, spatial_neighbors 35MB on Ubq). At fleet scale (676) mc_bond_neighbors alone ~42GB vs the <15GB
+  lean-disk budget -- revisit the heavy arrays (cap/top-K/opt-in) BEFORE any fleet run. Ledger + BLESS_NOTES.
+- **.LGS emit teed up.** Lead decisions (KISS): ONE root (--output IS the calcset root);
+  `<protein_id>_<timestamp>.lgs`; minimal/derived rest (no new flags; single-pose DFT via existing
+  sidecars). Schema settled (spec/CALCSET_MANIFEST.md v1); proven assembler h5-reader/tools/lgs_write.py.
+  Drafting via codex (CalcsetManifestEmitter; trajectory + single-pose; mutant = parent mutant_pair, may stub).
