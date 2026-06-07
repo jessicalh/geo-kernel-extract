@@ -505,3 +505,48 @@ but wants organizing into commits eventually (Jessica's call).
 **NEXT:** finish the ring first patch (sign trace + labels), then the ring channel-emit patch (with
 Jessica's array names), then the to-builds; the golden/smoke **wholesale re-bless** comes when binary-compat
 matters (EFG + MOPAC-full + McConnell + broad_backbone together).
+
+============================================================
+ULTRATHINK + 3 SCIENTIFIC-ASSUMPTION AUDITS — DECISIONS (2026-06-07)
+============================================================
+Three codex audits examined the ASSUMPTIONS behind the last-pass triage (good science? end-to-end?
+literature support?). They OVERTURNED three of my conclusions — recorded plainly so they aren't smoothed:
+
+- **Parity (audit1):** science CONFIRMED + held lit (Ben-Mahmoud 2024, Helgaker 1999, Facelli 2011,
+  Plasser 2021) — shielding antisymmetric T1 = axial pseudovector = `1e`. But my "catastrophic mislabeled
+  targets" was OVERSTATED: the SDK target catalog is already correct `1e`; only H5 time-series attrs are
+  stale + the model reads NPY/CSV not H5 -> metadata HYGIENE, not a fire.
+- **Complete-emit (audit2b, emit-by-default framing):** Jessica's "how we described noise determines what we
+  get" VINDICATED. But two of my examples were WRONG: per-type T1 + B-fields are ALREADY emitted (ring
+  patches did them — I double-counted); the APBS-solvent-delta I championed is PROVABLE LINEAR REDUNDANCY
+  (= apbs_E/efg − coulomb_E/efg, both emitted, recomputable) -> NOT a must-emit.
+- **Two-path (audit3):** NARROWED — BS & HM share the same rank-1 lift G=−n⊗V; only the source-field
+  differs. Validates sign/topology/scaling/T2-orientation NEAR-RING, NOT full-tensor, NOT far-field. Name:
+  our code is a surface integral, not the published bond-sum -> "HM-style" UNLESS we implement the bond-sum.
+  We HOLD the published formula (Moyna/Sahakyan/Case) to cite.
+
+**JESSICA'S 4 DECISIONS (all greenlit):**
+1. **Parity hygiene — YES.** Label-only. (#1 patch fired: /tmp/parity_hygiene_brief.txt, log /tmp/parity_hygiene.log.)
+2. **Complete-emit — YES.** Switch on the audit's emit-by-default set; codex proposes pattern names,
+   Jessica signs off each before it ships. Objective exclusions only (tensor-vs-spherical dups, exact linear
+   combos incl. APBS-delta + McConnell legacy sums + chi_scalar, structural-zero EFG T0/T1, masks-already-
+   encoded). Emit-by-default list: enrichment chemical-identity flags (role/hybridisation/is_backbone/
+   is_amide_H/is_alpha_H/is_methyl/is_aromatic_H/aromatic-residue/donor/acceptor); FF partial_charge +
+   pb_radius; spatial neighbor lists (idx/dist/dir); ring sparse omissions (direction_to_center, per-ring
+   quad_scalar, per-ring disp_tensor/spherical); Coulomb aromatic diag (aromatic_E_bond_proj,
+   aromatic_n_sidechain_atoms); H-bond orientation/tensor diag (hbond_nearest_dir/tensor/spherical + flags);
+   McConnell per-bond/nearest diag (bond_neighbours, nearest CO/CN dist/dir/midpoint, nearest T2); MOPAC
+   sorted bond-neighbor lists; Larsen quality flag (larsen_hbond_any_corner_imputed). Full inventory +
+   per-channel verdicts: /tmp/audit2b_complete_emit.log.
+3. **Earn "Haigh–Mallion" — YES, EARN IT.** Implement the published signed-area bond-sum
+   Σ S_ij(1/r_i³+1/r_j³) (Moyna/Sahakyan/Case, HELD) alongside the surface-integral tensor; T0 benchmark
+   correlates them. If they track, name earned + bond-sum IS literal HM. Audit3: /tmp/audit3_twopath.log.
+4. **Signed stratified two-path emit — YES.** Defensible form: signed T0 residual + T0 sign-agreement +
+   full-9 cosine + signed/abs T2 cosine + norm/scale ratio + filter flags, binned by ρ/z/θ/ring_type.
+   Currently an absolute "report-don't-assert" test; make it a production/analysis emit.
+
+**EXECUTION: SERIAL (shared files: _catalog.py, ring/HM) to avoid edit collisions.** #1 parity-hygiene
+(in flight) -> #2 complete-emit (names to Jessica first) -> #3 earn-HM bond-sum -> #4 two-path emit. Each
+reviewed (codex unsandboxed + opus just-read), ledger item marked done, ring spec kept honest (two-path =
+near-ring TWO-IMPLEMENTATION sanity check, write it that way). Then batch two-path review + commit. Baseline
+commit this session = 7bccecf. Worktree dirty; layer additively; stay src/ + python/; no h5-reader.

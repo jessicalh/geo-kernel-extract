@@ -71,6 +71,26 @@ to-do on this work · **[robustness]** low-priority hardening.
 - **[follow-up] X–H ablation.** The `mcconnell_include_xh_sources` toggle (default 1) is a built scaffold;
   Part 1 decides keep/drop the C–H/N–H/O–H source bonds vs DFT.
 
+## McConnell rhombic (value-gated; spec landed 2026-06-07)
+
+Full scope: `kernel_design/mcconnell_rhombic_spec.md`. Jessica wants it; additive, drops nothing.
+
+- **[follow-up] The rhombic shape build (#5).** Extend `Q̂` for C=O + C=C with the sp²-plane-normal
+  rhombic block (`McConnellResult.cpp:230`, axial today); emit the unit shape, scale learned. Buildable
+  without the cited value (geometry, additive). Pairs with #3/#4 as the McConnell+ring tensor-richness
+  pass; schedule after #2 (same emit surface). Build routes to **codex**.
+- **[parked] The rhombic Δχ acquisition gate.** Have-it-to-cite-it BLOCKS the cited rhombic value: we hold
+  only **axial** C=O (Pauling 1979 −5.36×10⁻⁶ cm³ mol⁻¹; Worcester 1978 ester/carboxyl) and **no** C=C Δχ
+  (Martin 2000 is a shielding surface, not a susceptibility). Tier-1 to acquire: **Hooper & Kaiser 1965**
+  (10.1139/v65-318), **Abraham Part 19** (modgraph), **Abraham & Ainger 1999** (10.1039/A808908F). Tier-2
+  peptide: Williamson–Asakura primary, Abraham mrc.3920, Lonsdale 1939. Tier-3 C=C: ApSimon alkene. Needs
+  Jessica's go to fire the codex download fleet (verify-pdf-matches-name on landing).
+- **[design] C=C construction fork.** No held C=C Δχ. Acquire ApSimon (Δχ term, uniform with C=O) OR use
+  held Martin 2000 GIAO shielding surface (different object). Jessica's call.
+- **[author — scholarship] `MCCONNELL_DCHI_LITERATURE.md` hygiene.** Its "Source Anchors" list unheld
+  primaries (Hooper-Kaiser, Abraham, WA…) as if they back the table — relabel POINTER-ONLY and add the
+  two genuinely-held axial anchors (Pauling 1979, Worcester 1978) it omits.
+
 ## Robustness (low-priority)
 
 - **[robustness] B-field conditional-zero in partial pipelines.** `ConformationResult` writes the B-field
