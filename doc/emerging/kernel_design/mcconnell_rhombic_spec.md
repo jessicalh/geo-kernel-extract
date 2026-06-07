@@ -77,18 +77,35 @@ The scholarship audit (held-corpus read, 2026-06-07) is unambiguous:
 |---|---|---|---|
 | **C=O** | peptide-group **axial** molar Δχ = **−5.36 ×10⁻⁶ cm³ mol⁻¹** (Pauling 1979, p. 2293) | HELD-PRIMARY | **axial only** |
 | **C=O** | ester **8.8**, carboxyl **4.5 ×10⁻⁶** (Worcester 1978 p. 5475, quoting Lonsdale) | HELD-PRIMARY (value as reported); Lonsdale itself HELD-SECONDARY | axial |
-| **C=O** | WA `+2.41/−5.42`, Abraham `+3.83/−7.15`, ApSimon `+12.65/−3.61`, Schneider `+14.45/−7.23` (two-component) | **POINTER-ONLY** (primaries not held) | rhombic, but **uncitable** |
+| **C=O** | **Hooper & Kaiser 1965** amide rhombic sets (acetamide/formamide; EF-corrected & EF-neglected) | **HELD-PRIMARY** ✓ | **rhombic** (3 principal values) |
+| **C=O** | **Abraham & Ainger 1999** ketone rhombic χ_∥−χ_⊥=10.30, χ_out−χ_⊥=1.93 ×10⁻⁶ cm³ mol⁻¹ | **HELD-PRIMARY** ✓ | **rhombic** |
+| **C=O** | WA `+2.41/−5.42`, ApSimon `+12.65/−3.61`, Schneider `+14.45/−7.23` (two-component) | POINTER-ONLY (superseded by the held primaries above) | rhombic |
 | **C=C** | **nothing** — Martin 2000 gives a GIAO shielding *surface* (Δσ ppm), not a Δχ, and abandons the cone model | HELD paper, no Δχ | **none, axial or rhombic** |
 
-**Stated loudly:** the **rhombic value cannot be sourced from disk today** for either bond. The most
-defensible held statement is "peptide-group **axial** Δχ = −5.36×10⁻⁶ cm³ mol⁻¹ (Pauling 1979)";
-everything two-component is a pointer. So:
+**Stated loudly (updated 2026-06-07 — C=O rhombic LANDED):** the **C=O two-component value is now
+HELD-PRIMARY** — Hooper & Kaiser 1965 and Abraham & Ainger 1999 were fetched, ingested, and
+provenance-verified (right papers). **C=C is still not held.** Held C=O values, three principal values
+`(χ_out-of-plane, χ_along C=O, χ_in-plane⊥)` in `10⁻⁶ cm³ mol⁻¹`:
 
-- The **rhombic geometric shape** (§2–3) is **buildable now** — additive, drops nothing, scale learned.
-- The **literature-scaled rhombic Δχ_rh** (the cited physical hypothesis) is **acquisition-gated**.
-- For **C=C**, there is no held Δχ at all — even the *axial* C=C term is pointer-only; the held option is
-  Martin's **shielding-surface** construction (a different object from a McConnell Δχ — a real design
-  fork, §7).
+| source | set (assumption) | (χ_out, χ_∥, χ_⊥) | cite |
+|---|---|---:|---|
+| Hooper & Kaiser 1965 | acetamide, **EF-corrected** | `(−5.4, +4.0, −14)` | p. 2366 Table III |
+| Hooper & Kaiser 1965 | acetamide, **EF-neglected** | `(+18, −19, −14)` | p. 2367 Table V |
+| Hooper & Kaiser 1965 | formamide, EF-corrected | `(−13, +3.2, −5.0)` | p. 2366 Table IV |
+| Abraham & Ainger 1999 | ketone C=O (relative) | `χ_∥−χ_⊥=10.30`, `χ_out−χ_⊥=1.93` | pp. 446–447 |
+
+**The design call buried in the data (→ §7):** Hooper reports **EF-corrected** (pure magnetic anisotropy,
+electric-field subtracted) and **EF-neglected** (effective χ that *absorbs* the carbonyl's electric-field
+effect) sets — and they differ in **sign/pattern**, not just magnitude. Because we model the E-field
+**separately** (charge/EFG), the physically-clean, **no-double-count** choice is **EF-corrected** — the
+exact same logic that zeros aromatic McConnell against ring. Hooper found the EF-corrected fit *poorer*
+(crude EF model), but for us EF-corrected avoids counting the carbonyl field twice. Sign A/B is unresolved
+in Hooper; since the scale is **learned**, the fit absorbs sign, so a representative EF-corrected set is
+pinned and calibration decides magnitude.
+
+So the gate is **OPEN for C=O**: rhombic shape buildable now (§2–3) **and** a held, citable `Δχ_rh` exists
+(EF-corrected set, pending the §7 double-count call). **C=C** remains: no held Δχ — ApSimon (acquire), the
+held Martin **shielding-surface** (different object), or the **model-compound calc** (§5b).
 
 ## 5. Acquisition gate (route through codex download + scholarship vet)
 
@@ -139,15 +156,20 @@ object.
 1. **Which categories get rhombic?** C=O backbone (PeptideCO) + sidechain (SidechainCO) + C=C — or
    backbone-only first? (Sidechain carboxylate vs amide is chemically broad — `MCCONNELL_DCHI_LITERATURE.md`
    flags it; split by topology, not IUPAC name.)
-2. **C=C construction fork.** No held C=C Δχ exists. Acquire ApSimon (Δχ term, uniform with C=O), or use
+2. **EF-corrected vs EF-neglected Δχ — the double-count call (§4).** Hooper gives both; the EF-*neglected*
+   set absorbs the carbonyl electric-field effect we *already* model in charge/EFG. Recommend
+   **EF-corrected** (pure magnetic anisotropy, no double-count — same logic as aromatic↔ring), despite
+   Hooper's poorer fit there. Confirm.
+3. **C=C construction fork.** No held C=C Δχ exists. Acquire ApSimon (Δχ term, uniform with C=O), or use
    the **held Martin 2000 shielding surface** (different object, but on disk today)? These are not
    interchangeable — one is a susceptibility, one is a GIAO σ-increment field.
-3. **Build-now vs value-gate.** Emit the rhombic *shape* now (additive, scale-learned, defensible as
+4. **Build-now vs value-gate.** Emit the rhombic *shape* now (additive, scale-learned, defensible as
    geometry), and let the cited `Δχ_rh` land when acquired — or hold the whole thing until Tier-1 is on
-   disk? (The pattern says the shape is safe to emit; the value is a separate, later, citable scale.)
-4. **Second-axis robustness.** Confirm the sp²-plane derivation per category against the real topology
+   disk? (**C=O Tier-1 is now on disk** — Hooper + Abraham held; the shape is safe to emit; the value is a
+   separate, later, citable scale.)
+5. **Second-axis robustness.** Confirm the sp²-plane derivation per category against the real topology
    (which third atom defines the plane for each carbonyl/alkene class).
-5. **Where in the landing plan** (§8).
+6. **Where in the landing plan** (§8).
 
 ## 8. Placement relative to the landing state
 
