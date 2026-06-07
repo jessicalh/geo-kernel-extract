@@ -64,6 +64,16 @@ public:
                      {count});
     }
 
+    // Write a 2D array of int8. cols=1 writes the same 1D shape as the
+    // historical overload.
+    static bool WriteInt8(const std::string& path,
+                          const int8_t* data,
+                          size_t rows, size_t cols) {
+        return Write(path, "|i1", data, rows * cols * sizeof(int8_t),
+                     cols == 1 ? std::vector<size_t>{rows}
+                               : std::vector<size_t>{rows, cols});
+    }
+
 private:
     static bool Write(const std::string& path,
                       const char* descr,

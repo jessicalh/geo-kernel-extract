@@ -1979,6 +1979,35 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         ++written;
     }
 
+    // mopac_bond_neighbors: (M, 4) — [atom_i, atom_j, order, topology_bond_index]
+    // Directed per-atom rows, sorted descending by order within each atom. A
+    // missing covalent topology bond is represented as -1.
+    {
+        constexpr size_t C = 4;
+        size_t rows = 0;
+        for (size_t i = 0; i < N; ++i) {
+            rows += conf.AtomAt(i).mopac_bond_neighbours.size();
+        }
+
+        std::vector<double> data(rows * C, 0.0);
+        size_t row = 0;
+        for (size_t i = 0; i < N; ++i) {
+            for (const auto& nb : conf.AtomAt(i).mopac_bond_neighbours) {
+                data[row*C + 0] = static_cast<double>(i);
+                data[row*C + 1] = static_cast<double>(nb.other_atom);
+                data[row*C + 2] = nb.wiberg_order;
+                data[row*C + 3] = nb.topology_bond_index == SIZE_MAX
+                    ? -1.0
+                    : static_cast<double>(nb.topology_bond_index);
+                ++row;
+            }
+        }
+
+        NpyWriter::WriteFloat64(output_dir + "/mopac_bond_neighbors.npy",
+                                data.empty() ? nullptr : data.data(), rows, C);
+        ++written;
+    }
+
     // mopac_global: (4,) — [heat_of_formation, dipole_x, dipole_y, dipole_z]
     {
         double data[4] = { heat_of_formation_, dipole_.x(), dipole_.y(), dipole_.z() };

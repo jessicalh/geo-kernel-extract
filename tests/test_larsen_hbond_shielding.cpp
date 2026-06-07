@@ -14,7 +14,7 @@
 //     CHOSE not to include in ProCS15); non-zero is the methodology
 //     statement, not a pipeline bug.
 //   - Δσ_w water-term gate is geometric (no candidate O in range).
-//   - WriteFeatures emits 8 NPYs.
+//   - WriteFeatures emits 9 NPYs.
 //
 // Per-cell Larsen Table 2 dispatch unit tests cover LarsenContribDispatch
 // directly (no fixture needed).
@@ -41,9 +41,13 @@
 #include "SpatialIndexResult.h"
 
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace nmr;
 namespace fs = std::filesystem;
@@ -244,11 +248,12 @@ TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
     EXPECT_EQ(n_amide_with_water, result->AmideHsUnboundWithWater())
         << "atom-level water-term count should match result aggregate";
 
-    // WriteFeatures emits 8 NPYs (spherical-packed per Pattern 11 + 6).
+    // WriteFeatures emits 9 NPYs (spherical-packed per Pattern 11 + 6,
+    // plus the int8 corner-imputation flag).
     fs::path tmp = fs::temp_directory_path() / "larsen_hbond_phase1_out";
     fs::create_directories(tmp);
     int n_written = result->WriteFeatures(conf, tmp.string());
-    EXPECT_EQ(n_written, 8);
+    EXPECT_EQ(n_written, 9);
     for (const std::string& stem : {
         "larsen_hbond_shielding",
         "larsen_hbond_1pHB_shielding",
@@ -258,9 +263,37 @@ TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
         "larsen_hbond_diagnostic_CB_shielding",
         "larsen_hbond_water_term",
         "larsen_hbond_count",
+        "larsen_corner_imputed",
     }) {
         fs::path p = tmp / (stem + ".npy");
         EXPECT_TRUE(fs::exists(p)) << "missing " << p.string();
+    }
+
+    {
+        fs::path p = tmp / "larsen_corner_imputed.npy";
+        std::ifstream in(p, std::ios::binary);
+        ASSERT_TRUE(in.is_open()) << p.string();
+        char magic[6] = {};
+        in.read(magic, 6);
+        ASSERT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+        char version[2] = {};
+        in.read(version, 2);
+        ASSERT_EQ(version[0], 1);
+        ASSERT_EQ(version[1], 0);
+        std::uint16_t header_len = 0;
+        in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+        std::string header(header_len, '\0');
+        in.read(header.data(), header_len);
+        EXPECT_NE(header.find("'descr': '|i1'"), std::string::npos) << header;
+        EXPECT_NE(header.find("'shape': (" + std::to_string(conf.AtomCount()) + ",)"),
+                  std::string::npos) << header;
+        std::vector<char> payload{std::istreambuf_iterator<char>(in),
+                                  std::istreambuf_iterator<char>()};
+        ASSERT_EQ(payload.size(), conf.AtomCount());
+        for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
+            EXPECT_EQ(static_cast<std::int8_t>(payload[i]),
+                      conf.AtomAt(i).larsen_hbond_any_corner_imputed ? 1 : 0);
+        }
     }
 }
 

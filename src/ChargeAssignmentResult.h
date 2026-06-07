@@ -55,6 +55,9 @@ public:
     int UnassignedCount() const { return unassigned_count_; }
     const std::string& Source() const { return source_; }
 
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
+
 private:
     const ProteinConformation* conf_ = nullptr;
     const ForceFieldChargeTable* charge_table_ = nullptr;

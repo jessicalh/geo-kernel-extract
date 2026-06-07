@@ -1,9 +1,11 @@
 #include "ChargeAssignmentResult.h"
 #include "ChargeSource.h"
 #include "Protein.h"
+#include "NpyWriter.h"
 #include "OperationLog.h"
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 namespace nmr {
 
@@ -92,6 +94,26 @@ const ForceFieldChargeTable& ChargeAssignmentResult::ChargeTable() const {
         std::abort();
     }
     return *charge_table_;
+}
+
+
+int ChargeAssignmentResult::WriteFeatures(const ProteinConformation& conf,
+                                          const std::string& output_dir) const {
+    const size_t N = conf.AtomCount();
+    std::vector<double> charges(N, 0.0);
+    std::vector<double> radii(N, 0.0);
+    for (size_t i = 0; i < N; ++i) {
+        const auto& ca = conf.AtomAt(i);
+        charges[i] = ca.partial_charge;
+        radii[i] = ca.pb_radius;
+    }
+
+    int written = 0;
+    if (NpyWriter::WriteFloat64(output_dir + "/ff_partial_charge.npy",
+                                charges.data(), N)) ++written;
+    if (NpyWriter::WriteFloat64(output_dir + "/ff_pb_radius.npy",
+                                radii.data(), N)) ++written;
+    return written;
 }
 
 }  // namespace nmr

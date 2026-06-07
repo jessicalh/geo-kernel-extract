@@ -10,6 +10,7 @@
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
+#include <cstdint>
 #include <cmath>
 #include <vector>
 
@@ -381,6 +382,8 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
     std::vector<double> efg_sc(N * 5);
     std::vector<double> efg_aro(N * 5);
     std::vector<double> scalars(N * 4);
+    std::vector<double> aromatic_E_proj(N);
+    std::vector<int32_t> aromatic_n_src(N);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
@@ -410,6 +413,8 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
         scalars[i*4+1] = ca.coulomb_E_bond_proj;
         scalars[i*4+2] = ca.coulomb_E_backbone_frac;
         scalars[i*4+3] = ca.aromatic_E_magnitude;
+        aromatic_E_proj[i] = ca.aromatic_E_bond_proj;
+        aromatic_n_src[i] = static_cast<int32_t>(ca.aromatic_n_sidechain_atoms);
     }
 
     NpyWriter::WriteFloat64(output_dir + "/coulomb_efg.npy", efg_total.data(), N, 9);
@@ -421,7 +426,11 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
     NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_sidechain.npy", efg_sc.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_aromatic.npy", efg_aro.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_scalars.npy", scalars.data(), N, 4);
-    return 9;
+    NpyWriter::WriteFloat64(output_dir + "/coulomb_aromatic_E_proj.npy",
+                            aromatic_E_proj.data(), N);
+    NpyWriter::WriteInt32(output_dir + "/coulomb_aromatic_n_src.npy",
+                          aromatic_n_src.data(), N);
+    return 11;
 }
 
 }  // namespace nmr

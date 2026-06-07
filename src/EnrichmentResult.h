@@ -37,6 +37,9 @@ public:
     // Diagnostics
     int UnknownCount() const { return unknown_count_; }
 
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
+
 private:
     ProteinConformation* conf_ = nullptr;
     std::map<AtomRole, std::vector<size_t>> atoms_by_role_;

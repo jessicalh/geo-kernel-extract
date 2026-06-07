@@ -36,6 +36,14 @@ constexpr double kPeptideCOChiIn = -14.0;
 constexpr double kPeptideCOMolarToSigmaPrefactor = 0.5535130224;
 constexpr const char* kPeptideCORhombicArrayStem = "mc_peptide_co_rhombic";
 
+void PackMat3RowMajor(const Mat3& m, double* out) {
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+            out[r*3 + c] = m(r, c);
+        }
+    }
+}
+
 using McAccum = std::array<std::array<Mat3, kMcConnellChannelCount>,
                            kMcConnellSourceCategoryCount>;
 
@@ -796,6 +804,72 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
         }
         if (NpyWriter::WriteInt32(output_dir + "/mc_nearfield_counts.npy",
                                   counts.data(), N, kCountCols)) {
+            ++written;
+        }
+    }
+
+    {
+        std::vector<double> nearest_co_dir(N * 3, 0.0);
+        std::vector<double> nearest_co_midpoint(N * 3, 0.0);
+        std::vector<double> nearest_co_T2(N * kCols, 0.0);
+        std::vector<double> nearest_cn_T2(N * kCols, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            const auto& ca = conf.AtomAt(i);
+            nearest_co_dir[i*3 + 0] = ca.dir_nearest_CO.x();
+            nearest_co_dir[i*3 + 1] = ca.dir_nearest_CO.y();
+            nearest_co_dir[i*3 + 2] = ca.dir_nearest_CO.z();
+            nearest_co_midpoint[i*3 + 0] = ca.nearest_CO_midpoint.x();
+            nearest_co_midpoint[i*3 + 1] = ca.nearest_CO_midpoint.y();
+            nearest_co_midpoint[i*3 + 2] = ca.nearest_CO_midpoint.z();
+            ca.T2_CO_nearest.PackFull9(&nearest_co_T2[i * kCols]);
+            ca.T2_CN_nearest.PackFull9(&nearest_cn_T2[i * kCols]);
+        }
+        if (NpyWriter::WriteFloat64(output_dir + "/mc_nearest_co_dir.npy",
+                                    nearest_co_dir.data(), N, 3)) {
+            ++written;
+        }
+        if (NpyWriter::WriteFloat64(output_dir + "/mc_nearest_co_midpoint.npy",
+                                    nearest_co_midpoint.data(), N, 3)) {
+            ++written;
+        }
+        if (NpyWriter::WriteFloat64(output_dir + "/mc_nearest_co_T2.npy",
+                                    nearest_co_T2.data(), N, kCols)) {
+            ++written;
+        }
+        if (NpyWriter::WriteFloat64(output_dir + "/mc_nearest_cn_T2.npy",
+                                    nearest_cn_T2.data(), N, kCols)) {
+            ++written;
+        }
+    }
+
+    {
+        size_t rows = 0;
+        for (size_t i = 0; i < N; ++i) {
+            rows += conf.AtomAt(i).bond_neighbours.size();
+        }
+
+        constexpr size_t kBondNeighbourCols = 26;
+        std::vector<double> data(rows * kBondNeighbourCols, 0.0);
+        size_t row = 0;
+        for (size_t i = 0; i < N; ++i) {
+            for (const auto& bn : conf.AtomAt(i).bond_neighbours) {
+                double* r = &data[row * kBondNeighbourCols];
+                r[0] = static_cast<double>(i);
+                r[1] = static_cast<double>(bn.bond_index);
+                r[2] = static_cast<double>(bn.bond_category);
+                r[3] = bn.distance_to_midpoint;
+                r[4] = bn.direction_to_midpoint.x();
+                r[5] = bn.direction_to_midpoint.y();
+                r[6] = bn.direction_to_midpoint.z();
+                PackMat3RowMajor(bn.dipolar_tensor, r + 7);
+                bn.dipolar_spherical.PackFull9(r + 16);
+                r[25] = bn.mcconnell_scalar;
+                ++row;
+            }
+        }
+        if (NpyWriter::WriteFloat64(output_dir + "/mc_bond_neighbors.npy",
+                                    data.empty() ? nullptr : data.data(),
+                                    rows, kBondNeighbourCols)) {
             ++written;
         }
     }

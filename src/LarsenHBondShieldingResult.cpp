@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <set>
@@ -914,6 +915,7 @@ int LarsenHBondShieldingResult::WriteFeatures(
     std::vector<double> sh_CB    (N * 9, std::nan(""));
     std::vector<double> water    (N,     std::nan(""));
     std::vector<std::int32_t> n_pairs(N, 0);
+    std::vector<std::int8_t> corner_imputed(N, 0);
 
     for (std::size_t i = 0; i < N; ++i) {
         const ConformationAtom& a = conf.AtomAt(i);
@@ -925,6 +927,7 @@ int LarsenHBondShieldingResult::WriteFeatures(
         a.larsen_hbond_diagnostic_CB_spherical.PackFull9(&sh_CB    [i * 9]);
         water[i]   = a.larsen_hbond_water_term;
         n_pairs[i] = a.larsen_hbond_n_pairs;
+        corner_imputed[i] = a.larsen_hbond_any_corner_imputed ? 1 : 0;
     }
 
     fs::path dir(output_dir);
@@ -945,6 +948,8 @@ int LarsenHBondShieldingResult::WriteFeatures(
                             water.data(), N, 1); ++n_written;
     NpyWriter::WriteInt32((dir / "larsen_hbond_count.npy").string(),
                           n_pairs.data(), N); ++n_written;
+    NpyWriter::WriteInt8((dir / "larsen_corner_imputed.npy").string(),
+                         corner_imputed.data(), N); ++n_written;
     return n_written;
 }
 

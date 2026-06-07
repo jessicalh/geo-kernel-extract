@@ -80,6 +80,68 @@ class HaighMallionGroup(RingKernelGroup):
 
 
 @dataclass(frozen=True)
+class PiQuadrupoleGroup(RingKernelGroup):
+    """Pi-quadrupole with row-aligned per-ring scalar diagnostics."""
+    quad_scalar: Optional[np.ndarray] = None
+
+
+@dataclass(frozen=True)
+class DispersionGroup(RingKernelGroup):
+    """Dispersion with row-aligned per-ring tensor diagnostics."""
+    per_ring_tensor: Optional[np.ndarray] = None
+    per_ring_spherical: Optional[ShieldingTensor] = None
+
+
+@dataclass(frozen=True)
+class EnrichmentGroup:
+    """Per-atom enrichment classifications from EnrichmentResult."""
+    role: np.ndarray
+    hybridisation: np.ndarray
+    flags: np.ndarray
+
+    @property
+    def is_backbone(self) -> np.ndarray:
+        return self.flags[:, 0] != 0
+
+    @property
+    def is_amide_H(self) -> np.ndarray:
+        return self.flags[:, 1] != 0
+
+    @property
+    def is_alpha_H(self) -> np.ndarray:
+        return self.flags[:, 2] != 0
+
+    @property
+    def is_methyl(self) -> np.ndarray:
+        return self.flags[:, 3] != 0
+
+    @property
+    def is_aromatic_H(self) -> np.ndarray:
+        return self.flags[:, 4] != 0
+
+    @property
+    def is_hbond_donor(self) -> np.ndarray:
+        return self.flags[:, 5] != 0
+
+    @property
+    def is_hbond_acceptor(self) -> np.ndarray:
+        return self.flags[:, 6] != 0
+
+
+@dataclass(frozen=True)
+class ChargeAssignmentGroup:
+    """Force-field charge assignment projected onto atom rows."""
+    partial_charge: np.ndarray
+    pb_radius: np.ndarray
+
+
+@dataclass(frozen=True)
+class SpatialIndexGroup:
+    """Sparse atom-neighbor rows from SpatialIndexResult."""
+    neighbors: np.ndarray
+
+
+@dataclass(frozen=True)
 class McConnellGroup:
     """Two-channel McConnell source response by source category.
 
@@ -102,6 +164,11 @@ class McConnellGroup:
     aromatic_zeroed_fixed: ShieldingTensor
     aromatic_zeroed_bo: ShieldingTensor
     nearfield_counts: Optional[McConnellNearFieldCounts] = None
+    nearest_co_dir: Optional[VectorField] = None
+    nearest_co_midpoint: Optional[VectorField] = None
+    nearest_co_T2: Optional[ShieldingTensor] = None
+    nearest_cn_T2: Optional[ShieldingTensor] = None
+    bond_neighbors: Optional[np.ndarray] = None
 
     @property
     def fixed(self) -> dict[str, ShieldingTensor]:
@@ -140,12 +207,16 @@ class CoulombGroup:
     efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
     scalars: CoulombScalars
+    aromatic_E_proj: Optional[np.ndarray] = None
+    aromatic_n_src: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
 class HBondGroup:
     shielding: ShieldingTensor
     scalars: HBondScalars
+    nearest_dir: Optional[VectorField] = None
+    nearest_tensor: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +225,7 @@ class MopacCoreGroup:
     scalars: MopacScalars
     bond_orders: BondOrders
     global_: MopacGlobal
+    bond_neighbors: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -1086,6 +1158,7 @@ class LarsenHBondGroup:
     diagnostic_CB: Optional[ShieldingTensor] = None
     water_term: Optional[np.ndarray] = None
     count: Optional[np.ndarray] = None
+    corner_imputed: Optional[np.ndarray] = None
 
 
 # ── Top-level protein container ─────────────────────────────────────
@@ -1110,13 +1183,19 @@ class Protein:
     # Ring calculators
     biot_savart: BiotSavartGroup
     haigh_mallion: HaighMallionGroup
-    pi_quadrupole: RingKernelGroup
-    dispersion: RingKernelGroup
+    pi_quadrupole: PiQuadrupoleGroup
+    dispersion: DispersionGroup
     ring_susceptibility: ShieldingTensor
 
     # Per-ring sparse data
     ring_contributions: RingContributions = None
+    ring_direction_to_center: Optional[VectorField] = None
     ring_geometry: RingGeometry = None
+
+    # Foundation calculators
+    enrichment: Optional[EnrichmentGroup] = None
+    charge_assignment: Optional[ChargeAssignmentGroup] = None
+    spatial_index: Optional[SpatialIndexGroup] = None
 
     # Bond calculators
     mcconnell: McConnellGroup = None
@@ -1402,15 +1481,18 @@ def load(path: str | Path) -> Protein:
         per_type_T1=get("hm_per_type_T1"),
         ring_B_field=get("hm_ring_B_field"),
     )
-    pi_quadrupole = RingKernelGroup(
+    pi_quadrupole = PiQuadrupoleGroup(
         shielding=get("pq_shielding"),
         per_type_T0=get("pq_per_type_T0"),
         per_type_T2=get("pq_per_type_T2"),
+        quad_scalar=get("piquad_quad_scalar"),
     )
-    dispersion = RingKernelGroup(
+    dispersion = DispersionGroup(
         shielding=get("disp_shielding"),
         per_type_T0=get("disp_per_type_T0"),
         per_type_T2=get("disp_per_type_T2"),
+        per_ring_tensor=get("disp_per_ring_tensor"),
+        per_ring_spherical=get("disp_per_ring_spherical"),
     )
     mcconnell = McConnellGroup(
         peptide_co_fixed=get("mc_peptide_co_fixed"),
@@ -1429,6 +1511,11 @@ def load(path: str | Path) -> Protein:
         aromatic_zeroed_fixed=get("mc_aromatic_zeroed_fixed"),
         aromatic_zeroed_bo=get("mc_aromatic_zeroed_bo"),
         nearfield_counts=get("mc_nearfield_counts"),
+        nearest_co_dir=get("mc_nearest_co_dir"),
+        nearest_co_midpoint=get("mc_nearest_co_midpoint"),
+        nearest_co_T2=get("mc_nearest_co_T2"),
+        nearest_cn_T2=get("mc_nearest_cn_T2"),
+        bond_neighbors=get("mc_bond_neighbors"),
     )
     coulomb = CoulombGroup(
         efg=get("coulomb_efg", get("coulomb_shielding")),
@@ -1440,11 +1527,34 @@ def load(path: str | Path) -> Protein:
         efg_sidechain=get("coulomb_efg_sidechain"),
         efg_aromatic=get("coulomb_efg_aromatic"),
         scalars=get("coulomb_scalars"),
+        aromatic_E_proj=get("coulomb_aromatic_E_proj"),
+        aromatic_n_src=get("coulomb_aromatic_n_src"),
     )
     hbond = HBondGroup(
         shielding=get("hbond_shielding"),
         scalars=get("hbond_scalars"),
+        nearest_dir=get("hbond_nearest_dir"),
+        nearest_tensor=get("hbond_nearest_tensor"),
     )
+
+    enrichment = None
+    if "enrichment_role" in available:
+        enrichment = EnrichmentGroup(
+            role=get("enrichment_role"),
+            hybridisation=get("enrichment_hybridisation"),
+            flags=get("enrichment_flags"),
+        )
+
+    charge_assignment = None
+    if "ff_partial_charge" in available:
+        charge_assignment = ChargeAssignmentGroup(
+            partial_charge=get("ff_partial_charge"),
+            pb_radius=get("ff_pb_radius"),
+        )
+
+    spatial_index = None
+    if "spatial_neighbors" in available:
+        spatial_index = SpatialIndexGroup(neighbors=get("spatial_neighbors"))
 
     # MOPAC (optional)
     mopac = None
@@ -1522,6 +1632,8 @@ def load(path: str | Path) -> Protein:
                 scalars=get("mopac_scalars"),
                 bond_orders=get("mopac_bond_orders"),
                 global_=get("mopac_global"),
+                bond_neighbors=get("mopac_bond_neighbors")
+                    if "mopac_bond_neighbors" in available else None,
             ),
             coulomb=MopacCoulombGroup(
                 efg=get("mopac_coulomb_efg",
@@ -1719,6 +1831,7 @@ def load(path: str | Path) -> Protein:
         "larsen_hbond_diagnostic_CB_shielding",
         "larsen_hbond_water_term",
         "larsen_hbond_count",
+        "larsen_corner_imputed",
     }
     if any(stem in available for stem in larsen_hbond_stems):
         larsen_hbond = LarsenHBondGroup(
@@ -1738,6 +1851,8 @@ def load(path: str | Path) -> Protein:
                 if "larsen_hbond_water_term" in available else None,
             count=get("larsen_hbond_count")
                 if "larsen_hbond_count" in available else None,
+            corner_imputed=get("larsen_corner_imputed")
+                if "larsen_corner_imputed" in available else None,
         )
 
     return Protein(
@@ -1753,7 +1868,11 @@ def load(path: str | Path) -> Protein:
         dispersion=dispersion,
         ring_susceptibility=get("ringchi_shielding"),
         ring_contributions=get("ring_contributions"),
+        ring_direction_to_center=get("ring_direction_to_center"),
         ring_geometry=get("ring_geometry"),
+        enrichment=enrichment,
+        charge_assignment=charge_assignment,
+        spatial_index=spatial_index,
         mcconnell=mcconnell,
         coulomb=coulomb,
         hbond=hbond,

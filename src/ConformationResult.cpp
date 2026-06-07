@@ -14,6 +14,18 @@ namespace fs = std::filesystem;
 
 namespace nmr {
 
+namespace {
+
+void PackMat3RowMajor(const Mat3& m, double* out) {
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+            out[r*3 + c] = m(r, c);
+        }
+    }
+}
+
+}  // namespace
+
 
 int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                                           const std::string& output_dir) {
@@ -63,6 +75,10 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
             std::vector<double> bs_B(P * 3, 0.0);
             std::vector<double> bs_B_cyl(P * 3, 0.0);
             std::vector<double> hm_B(P * 3, 0.0);
+            std::vector<double> ring_dir(P * 3, 0.0);
+            std::vector<double> disp_tensor(P * 9, 0.0);
+            std::vector<double> disp_spherical(P * 9, 0.0);
+            std::vector<double> piquad_scalar(P, 0.0);
             size_t row = 0;
             for (size_t i = 0; i < N; ++i) {
                 for (const auto& rn : conf.AtomAt(i).ring_neighbours) {
@@ -104,6 +120,14 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                     hm_B[row*3+0] = rn.hm_B_field.x();
                     hm_B[row*3+1] = rn.hm_B_field.y();
                     hm_B[row*3+2] = rn.hm_B_field.z();
+
+                    ring_dir[row*3+0] = rn.direction_to_center.x();
+                    ring_dir[row*3+1] = rn.direction_to_center.y();
+                    ring_dir[row*3+2] = rn.direction_to_center.z();
+
+                    PackMat3RowMajor(rn.disp_tensor, &disp_tensor[row*9]);
+                    rn.disp_spherical.PackFull9(&disp_spherical[row*9]);
+                    piquad_scalar[row] = rn.quad_scalar;
                     row++;
                 }
             }
@@ -115,7 +139,15 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                                     bs_B_cyl.data(), P, 3);
             NpyWriter::WriteFloat64(output_dir + "/hm_ring_B_field.npy",
                                     hm_B.data(), P, 3);
-            total += 4;
+            NpyWriter::WriteFloat64(output_dir + "/ring_direction_to_center.npy",
+                                    ring_dir.data(), P, 3);
+            NpyWriter::WriteFloat64(output_dir + "/disp_per_ring_tensor.npy",
+                                    disp_tensor.data(), P, 9);
+            NpyWriter::WriteFloat64(output_dir + "/disp_per_ring_spherical.npy",
+                                    disp_spherical.data(), P, 9);
+            NpyWriter::WriteFloat64(output_dir + "/piquad_quad_scalar.npy",
+                                    piquad_scalar.data(), P);
+            total += 8;
         }
     }
 

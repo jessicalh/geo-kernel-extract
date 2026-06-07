@@ -71,6 +71,9 @@ public:
     // Radius search on bond midpoints
     std::vector<size_t> BondsWithinRadius(Vec3 point, double radius) const;
 
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
+
 private:
     ProteinConformation* conf_ = nullptr;
 
