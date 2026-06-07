@@ -176,8 +176,10 @@ TEST(HmWelford, H5RoundTrip) {
     ASSERT_TRUE(reopen.exist("/trajectory/hm_welford"));
     auto grp = reopen.getGroup("/trajectory/hm_welford");
 
-    std::string units;
+    std::string parity, units;
+    grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
+    EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(units, "Angstrom^-1");
 
     const auto dims = grp.getDataSet("t0_mean").getSpace().getDimensions();

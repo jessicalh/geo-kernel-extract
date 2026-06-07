@@ -67,14 +67,32 @@ P = number of (atom, aromatic_ring) pairs evaluated.  R = number of aromatic rin
 
 ```
 p.mcconnell             McConnellGroup
-  .shielding            ShieldingTensor (N, 9)
-  .category_T2          PerBondCategoryT2 (N, 25)
-  .scalars              McConnellScalars (N, 6)
+  .peptide_co_fixed     ShieldingTensor (N, 9)
+  .peptide_co_bo        ShieldingTensor (N, 9)
+  .peptide_cn_fixed     ShieldingTensor (N, 9)
+  .peptide_cn_bo        ShieldingTensor (N, 9)
+  .backbone_other_fixed ShieldingTensor (N, 9)
+  .backbone_other_bo    ShieldingTensor (N, 9)
+  .sidechain_co_fixed   ShieldingTensor (N, 9)
+  .sidechain_co_bo      ShieldingTensor (N, 9)
+  .sidechain_other_fixed ShieldingTensor (N, 9)
+  .sidechain_other_bo   ShieldingTensor (N, 9)
+  .disulfide_fixed      ShieldingTensor (N, 9)
+  .disulfide_bo         ShieldingTensor (N, 9)
+  .aromatic_zeroed_fixed ShieldingTensor (N, 9)
+  .aromatic_zeroed_bo   ShieldingTensor (N, 9)
+  .fixed                dict[str, ShieldingTensor] — 7 fixed-source channels
+  .bo                   dict[str, ShieldingTensor] — 7 bond-order channels
+  .nearfield_counts     McConnellNearFieldCounts (N, 2)
 
 p.coulomb               CoulombGroup
-  .shielding            ShieldingTensor (N, 9)
+  .efg                  ShieldingTensor (N, 9) — bare total EFG full 9-pack
   .E                    VectorField (N, 3)
+  .E_backbone           VectorField (N, 3)
+  .E_sidechain          VectorField (N, 3)
+  .E_aromatic           VectorField (N, 3)
   .efg_backbone         EFGTensor (N, 5) — T2-only, symmetric-traceless
+  .efg_sidechain        EFGTensor (N, 5) — T2-only
   .efg_aromatic         EFGTensor (N, 5) — T2-only
   .scalars              CoulombScalars (N, 4)
 
@@ -98,8 +116,24 @@ p.mopac                 MopacGroup | None
   .core.scalars         MopacScalars (N, 4)
   .core.bond_orders     BondOrders (B, 3)
   .core.global_         MopacGlobal (4,)    — [hof, dipole_x, dipole_y, dipole_z]
+  .full                 MopacFullGroup | None
+    .global_terms       ndarray (G, 2) — value + sidecar source row
+    .dipole_components  MopacDipoleComponents (3, 4) — POINT-CHG./HYBRID/SUM
+    .atom_populations   MopacAtomPopulations (N, 12)
+    .ao_table           MopacAOTable (NAO, 7)
+    .atomic_orbital_populations MopacAtomicOrbitalPopulations (N, 9)
+    .mulliken_overlap_sparse ndarray (K, 4)
+    .bond_orders_printed MopacPrintedBondOrders (K, 9)
+    .bond_valencies     ndarray (N,) — MOPAC diagonal valencies
+    .bond_orders_unique MopacUniqueBondOrders (U, 8)
+    .topology_bond_orders_full MopacTopologyBondOrdersFull (B_topo, 8)
+    .mo_meta            MopacMOMeta (NMO, 5)
+    .mo_coefficients    ndarray | None
+    .density_packed     ndarray | None
+    .overlap_packed     ndarray | None
+    .sidecar            MopacFullSidecar | None — mopac_full/extraction_manifest.json
   .coulomb              MopacCoulombGroup — same as CoulombGroup
-  .mcconnell            MopacMcConnellGroup — same as McConnellGroup
+  .mcconnell            MopacMcConnellGroup | None — legacy MOPAC-only group
 
 p.apbs                  APBSGroup | None
   .E                    VectorField (N, 3)
@@ -204,7 +238,7 @@ st = p.biot_savart.shielding
 
 st.data                 # ndarray (N, 9)
 st.torch()              # torch.Tensor (N, 9)
-st.irreps               # Irreps("1x0e+1x1o+1x2e")
+st.irreps               # Irreps("1x0e+1x1e+1x2e")
 
 st.T0                   # ndarray (N, 1)
 st.T1                   # ndarray (N, 3)
@@ -258,16 +292,23 @@ t2.as_block()           # ndarray (N, 8, 5)
 t2.total                # ndarray (N, 5) — sum over types
 ```
 
-### PerBondCategoryT2
-
-5 bond categories x 5 T2 components = 25.
+### McConnellGroup Channels
 
 ```python
-mc = p.mcconnell.category_T2
+mc = p.mcconnell
 
-mc.irreps               # Irreps("5x2e")
-mc.for_category(BondCategory.CO_nearest)  # ndarray (N, 5)
-mc.as_block()           # ndarray (N, 5, 5)
+mc.peptide_co_fixed.data       # ndarray (N, 9)
+mc.peptide_co_fixed.T0         # ndarray (N, 1)
+mc.peptide_co_fixed.T1         # ndarray (N, 3)
+mc.peptide_co_fixed.T2         # ndarray (N, 5)
+mc.peptide_co_fixed.irreps     # Irreps("1x0e+1x1e+1x2e")
+
+mc.fixed["peptide_co"]         # same object as mc.peptide_co_fixed
+mc.bo["peptide_co"]            # same object as mc.peptide_co_bo
+sorted(mc.fixed)               # 7 source categories
+sorted(mc.bo)                  # 7 source categories
+
+mc.nearfield_counts.data       # ndarray (N, 2) — accepted, rejected below 3 A
 ```
 
 ## RingContributions

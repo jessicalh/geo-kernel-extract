@@ -2516,21 +2516,17 @@ class MopacMcConnellShieldingTimeSeriesGroup:
     /trajectory/mopac_mc_shielding_time_series/. TR8 of the 13-TR plan.
 
     UNLIKE the cousin TR7 (MopacCoulombShieldingTimeSeries), this TR
-    emits ALL 9 components (T0+T1+T2) because the source field
-    mopac_mc_shielding_contribution = SphericalTensor::Decompose(M_total)
-    where M_total is NOT symmetric-traceless. The bond-anisotropy
-    kernel has nonzero T0 (trace) and T1 (antisymmetric) parts in
-    practice. Per user direction 2026-05-21 "if not traceless write
-    both" — preserve all 9 components and let downstream readers
-    separate channels as needed.
+    emits ALL 9 components (T0+T1+T2) because the BO channel is the
+    full D(r)Qhat response, not a pure T2 object. The bond-anisotropy
+    kernel can have nonzero T0 (PCS scalar) and T1 (even antisymmetric
+    pseudovector) parts in practice.
 
-      xyz (N, T, 9) float64 — T0, T1_m-1, T1_m0, T1_m+1,
-                              T2_m-2, T2_m-1, T2_m0, T2_m+1, T2_m+2
-            in Å⁻³ (bare bond-order-weighted bo·M/r³ kernel; NO
+      xyz (N, T, 9) float64 — 0e, 1e_x, 1e_y, 1e_z, 2e_m-2..+2
+            in Å⁻³ (bare bond-order-weighted D(r)Qhat kernel; NO
             Δχ × γ multiplication at extraction).
-      T0 = trace(M)/3 = bond-order-weighted sum of McConnell f-scalars.
-      T1 = antisymmetric McConnell pseudovector (real geometric quantity).
-      T2 = symmetric traceless McConnell tensor (canonical bond-anisotropy).
+      T0 = trace(DQhat)/3 = n^T Qhat n/r^3 for a traceless source.
+      T1 = even antisymmetric McConnell pseudovector.
+      T2 = symmetric traceless McConnell tensor branch.
 
     Source: MopacMcConnellResult.mopac_mc_shielding_contribution
     (TimedAttach sparse — same group-skip discipline as TR5/TR6/TR7).

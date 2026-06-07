@@ -21,13 +21,14 @@ from nmr_extract import (
     load,
     Protein,
     RingType,
-    BondCategory,
     ShieldingTensor,
     EFGTensor,
     VectorField,
+    MagneticVectorField,
     PerRingTypeT0,
+    PerRingTypeT1,
     PerRingTypeT2,
-    PerBondCategoryT2,
+    McConnellNearFieldCounts,
     RingContributions,
     RingGeometry,
     CATALOG,
@@ -51,6 +52,21 @@ MUTANT = Path(os.environ.get(
     "NMR_SDK_MUTANT_TEST",
     Path(tempfile.gettempdir()) / "sdk_mutant_test",
 ))
+
+MCCONNELL_CATEGORIES = (
+    "peptide_co",
+    "peptide_cn",
+    "backbone_other",
+    "sidechain_co",
+    "sidechain_other",
+    "disulfide",
+    "aromatic_zeroed",
+)
+MCCONNELL_CHANNELS = tuple(
+    f"{category}_{channel}"
+    for category in MCCONNELL_CATEGORIES
+    for channel in ("fixed", "bo")
+)
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
@@ -122,13 +138,13 @@ class TestIrreps:
     def test_spherical_tensor(self, geo):
         st = geo.biot_savart.shielding
         assert isinstance(st, ShieldingTensor)
-        assert st.irreps == Irreps("1x0e + 1x1o + 1x2e")
+        assert st.irreps == Irreps("1x0e + 1x1e + 1x2e")
         assert st.irreps.dim == 9
 
     def test_efg_tensor(self, geo):
         efg = geo.coulomb.efg_backbone
         assert isinstance(efg, EFGTensor)
-        assert efg.irreps == Irreps("1x0e + 1x1o + 1x2e")
+        assert efg.irreps == Irreps("1x2e")
 
     def test_vector_field(self, geo):
         v = geo.coulomb.E
@@ -146,11 +162,23 @@ class TestIrreps:
         assert t2.irreps == Irreps("8x2e")
         assert t2.irreps.dim == 40
 
-    def test_per_bond_category_T2(self, geo):
-        mc = geo.mcconnell.category_T2
-        assert isinstance(mc, PerBondCategoryT2)
-        assert mc.irreps == Irreps("5x2e")
-        assert mc.irreps.dim == 25
+    def test_per_ring_type_T1(self, geo):
+        t1 = geo.biot_savart.per_type_T1
+        assert isinstance(t1, PerRingTypeT1)
+        assert t1.irreps == Irreps("8x1e")
+        assert t1.irreps.dim == 24
+
+    def test_magnetic_vector_field(self, geo):
+        b = geo.biot_savart.total_B
+        assert isinstance(b, MagneticVectorField)
+        assert b.irreps == Irreps("1x1e")
+
+    def test_mcconnell_channels(self, geo):
+        for name in MCCONNELL_CHANNELS:
+            channel = getattr(geo.mcconnell, name)
+            assert isinstance(channel, ShieldingTensor)
+            assert channel.irreps == Irreps("1x0e + 1x1e + 1x2e")
+            assert channel.irreps.dim == 9
 
 
 # ── Torch conversion ────────────────────────────────────────────────
@@ -228,19 +256,63 @@ class TestPerRingTypeT2:
         np.testing.assert_allclose(t2.as_block().sum(axis=1), t2.total, atol=1e-14)
 
 
-# ── Per-bond-category T2 ────────────────────────────────────────────
+# ── Per-ring-type T1 ────────────────────────────────────────────────
 
 
-class TestPerBondCategoryT2:
+class TestPerRingTypeT1:
 
-    def test_for_category_shape(self, geo):
-        mc = geo.mcconnell.category_T2
-        for cat in BondCategory:
-            assert mc.for_category(cat).shape == (geo.n_atoms, 5)
+    @pytest.mark.parametrize("group_name", ["biot_savart", "haigh_mallion"])
+    def test_wrapper_and_shapes(self, geo, group_name):
+        t1 = getattr(geo, group_name).per_type_T1
+        assert isinstance(t1, PerRingTypeT1)
+        assert t1.data.shape == (geo.n_atoms, 24)
+        for rt in RingType:
+            assert t1.for_type(rt).shape == (geo.n_atoms, 3)
+        assert t1.as_block().shape == (geo.n_atoms, 8, 3)
 
-    def test_as_block_shape(self, geo):
-        mc = geo.mcconnell.category_T2
-        assert mc.as_block().shape == (geo.n_atoms, 5, 5)
+    @pytest.mark.parametrize("group_name", ["biot_savart", "haigh_mallion"])
+    def test_components_reconstruct_shielding(self, geo, group_name):
+        group = getattr(geo, group_name)
+        t0 = group.per_type_T0
+        t1 = group.per_type_T1
+        t2 = group.per_type_T2
+
+        assert isinstance(t0, PerRingTypeT0)
+        assert isinstance(t1, PerRingTypeT1)
+        assert isinstance(t2, PerRingTypeT2)
+        assert t0.data.shape == (geo.n_atoms, 8)
+        assert t1.data.shape == (geo.n_atoms, 24)
+        assert t2.data.shape == (geo.n_atoms, 40)
+
+        reconstructed = np.concatenate(
+            [t0.total[:, None], t1.total, t2.total],
+            axis=-1,
+        )
+        np.testing.assert_allclose(reconstructed, group.shielding.data, atol=1e-14)
+
+
+# ── McConnell source channels ───────────────────────────────────────
+
+
+class TestMcConnellChannels:
+
+    def test_channel_shapes(self, geo):
+        for name in MCCONNELL_CHANNELS:
+            channel = getattr(geo.mcconnell, name)
+            assert channel.data.shape == (geo.n_atoms, 9)
+            assert channel.T0.shape == (geo.n_atoms, 1)
+            assert channel.T1.shape == (geo.n_atoms, 3)
+            assert channel.T2.shape == (geo.n_atoms, 5)
+
+    def test_fixed_and_bo_views(self, geo):
+        mc = geo.mcconnell
+        assert set(mc.fixed) == set(MCCONNELL_CATEGORIES)
+        assert set(mc.bo) == set(MCCONNELL_CATEGORIES)
+        assert len(mc.fixed) == 7
+        assert len(mc.bo) == 7
+        for category in MCCONNELL_CATEGORIES:
+            assert mc.fixed[category] is getattr(mc, f"{category}_fixed")
+            assert mc.bo[category] is getattr(mc, f"{category}_bo")
 
 
 # ── Ring contributions (sparse per-ring) ────────────────────────────
@@ -330,8 +402,11 @@ class TestBiotSavart:
         bs = geo.biot_savart
         assert bs.shielding is not None
         assert bs.per_type_T0 is not None
+        assert bs.per_type_T1 is not None
         assert bs.per_type_T2 is not None
         assert bs.total_B is not None
+        assert bs.ring_B_field is not None
+        assert bs.ring_B_cylindrical is not None
         assert bs.ring_counts is not None
 
     def test_ring_counts_monotone(self, geo):
@@ -340,24 +415,66 @@ class TestBiotSavart:
         assert (rc.within_5A <= rc.within_8A + 1e-10).all()
         assert (rc.within_8A <= rc.within_12A + 1e-10).all()
 
+    def test_total_B_is_magnetic_vector_field(self, geo):
+        b = geo.biot_savart.total_B
+        assert isinstance(b, MagneticVectorField)
+        assert b.irreps == Irreps("1x1e")
+        assert b.data.shape == (geo.n_atoms, 3)
+
+    def test_ring_B_fields_are_sparse_magnetic_vectors(self, geo):
+        n_pairs = len(geo.ring_contributions.atom_index)
+        for field in [geo.biot_savart.ring_B_field, geo.biot_savart.ring_B_cylindrical]:
+            assert isinstance(field, MagneticVectorField)
+            assert field.irreps == Irreps("1x1e")
+            assert field.data.shape == (n_pairs, 3)
+
+    def test_ring_B_fields_row_align_with_contributions(self, geo):
+        n_pairs = len(geo.ring_contributions.atom_index)
+        assert len(geo.biot_savart.ring_B_field.data) == n_pairs
+        assert len(geo.biot_savart.ring_B_cylindrical.data) == n_pairs
+
+
+class TestHaighMallion:
+
+    def test_all_fields_present(self, geo):
+        hm = geo.haigh_mallion
+        assert hm.shielding is not None
+        assert hm.per_type_T0 is not None
+        assert hm.per_type_T1 is not None
+        assert hm.per_type_T2 is not None
+        assert hm.ring_B_field is not None
+
+    def test_ring_B_field_is_sparse_magnetic_vector(self, geo):
+        n_pairs = len(geo.ring_contributions.atom_index)
+        field = geo.haigh_mallion.ring_B_field
+        assert isinstance(field, MagneticVectorField)
+        assert field.irreps == Irreps("1x1e")
+        assert field.data.shape == (n_pairs, 3)
+
+    def test_ring_B_field_row_aligns_with_contributions(self, geo):
+        assert len(geo.haigh_mallion.ring_B_field.data) == \
+            len(geo.ring_contributions.atom_index)
+
 
 class TestMcConnell:
 
     def test_all_fields_present(self, geo):
         mc = geo.mcconnell
-        assert mc.shielding is not None
-        assert mc.category_T2 is not None
-        assert mc.scalars is not None
+        for name in MCCONNELL_CHANNELS:
+            assert getattr(mc, name) is not None
+        assert mc.nearfield_counts is not None
 
-    def test_scalars_shape(self, geo):
-        assert geo.mcconnell.scalars.data.shape == (geo.n_atoms, 6)
+    def test_nearfield_counts_shape(self, geo):
+        counts = geo.mcconnell.nearfield_counts
+        assert isinstance(counts, McConnellNearFieldCounts)
+        assert counts.data.shape == (geo.n_atoms, 2)
 
 
 class TestCoulomb:
 
     def test_all_fields_present(self, geo):
         c = geo.coulomb
-        assert c.shielding is not None
+        assert c.efg is not None
         assert c.E is not None
         assert c.efg_backbone is not None
         assert c.efg_aromatic is not None
@@ -441,7 +558,7 @@ class TestMopac:
 
     def test_coulomb(self, baseline):
         mc = baseline.mopac.coulomb
-        assert mc.shielding.data.shape[-1] == 9
+        assert mc.efg.data.shape[-1] == 9
         assert mc.E.data.shape[-1] == 3
 
 

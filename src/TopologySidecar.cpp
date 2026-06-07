@@ -3,8 +3,10 @@
 #include "AminoAcidType.h"
 #include "Atom.h"
 #include "Bond.h"
+#include "CalculatorConfig.h"
 #include "CovalentTopology.h"
 #include "LegacyAmberTopology.h"
+#include "McConnellResult.h"
 #include "OperationLog.h"
 #include "Protein.h"
 #include "Residue.h"
@@ -555,7 +557,7 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
             "atoms_category_info.row[i] == pos.row[i] == "
             "element.row[i] == residue_index.row[i] == atom_index i. "
             "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
-            "mc_shielding, coulomb_shielding, hbond_shielding, "
+            "mc_<category>_<fixed|bo>, coulomb_efg, hbond_shielding, "
             "larsen_hbond_*, tripeptide_*, etc.) follow the same convention."},
         {"residue",
             "residues.npy is the canonical residue axis. "
@@ -578,6 +580,11 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
         {"ring_membership",
             "ring_membership.npy is per (ring, ring-vertex-atom) pair. "
             "ring_id references rings.npy; atom_index references the atom axis."},
+    };
+
+    j["feature_metadata"] = nlohmann::ordered_json{
+        {"mcconnell", McConnellResult::FeatureMetadata(
+            CalculatorConfig::Get("mcconnell_include_xh_sources") != 0.0)}
     };
 
     const fs::path path = out_dir / "extraction_manifest.json";

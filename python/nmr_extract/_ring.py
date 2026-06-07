@@ -12,7 +12,8 @@ ring_contributions.npy — (P, 58) one row per (atom, ring) pair:
     [8]     exp_decay           exp(-distance / 4.0)
     [9:18]  bs_G                SphericalTensor — BS shielding kernel
     [18:27] hm_H                SphericalTensor — HM raw integral (pure T2)
-    [27:36] hm_G                SphericalTensor — HM shielding kernel (intensity * H)
+    [27:36] hm_G                SphericalTensor — HM unscaled shielding kernel G
+                            (literature intensity is applied downstream)
     [36:45] pq_G                SphericalTensor
     [45:54] chi_G               SphericalTensor
     [54]    disp_scalar
@@ -121,7 +122,7 @@ class RingContributions:
 
     @property
     def hm(self) -> SphericalTensor:
-        """Haigh-Mallion shielding kernel G (intensity * H). Cols 27-35."""
+        """Haigh-Mallion unscaled shielding kernel G; intensity is downstream. Cols 27-35."""
         return SphericalTensor(self._data[:, 27:36])
 
     @property

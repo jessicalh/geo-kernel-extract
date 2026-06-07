@@ -2,8 +2,12 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <iostream>
+#include <fstream>
+#include <iterator>
+#include <cstdio>
 
 #include "McConnellResult.h"
+#include "MopacResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "Protein.h"
@@ -12,8 +16,35 @@
 #include "PhysicalConstants.h"
 
 #include <filesystem>
+#include <Eigen/Geometry>
+#include <unistd.h>
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+double MaxAbs(const Mat3& m) {
+    double v = 0.0;
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c)
+            v = std::max(v, std::abs(m(r, c)));
+    return v;
+}
+
+bool SphericalAllZero(const SphericalTensor& st) {
+    if (st.T0 != 0.0) return false;
+    for (double v : st.T1) if (v != 0.0) return false;
+    for (double v : st.T2) if (v != 0.0) return false;
+    return true;
+}
+
+std::string ReadText(const fs::path& path) {
+    std::ifstream in(path);
+    return std::string(std::istreambuf_iterator<char>(in),
+                       std::istreambuf_iterator<char>());
+}
+
+}  // namespace
 
 
 
@@ -28,7 +59,12 @@ TEST(McConnellAnalytical, DipolarKernelAtKnownGeometry) {
     // b_hat = (0, 0, 1)
     // cos_theta = d_hat . b_hat = 0
     //
-    // McConnell scalar f = (3*0 - 1) / 27 = -1/27 = -0.03704
+    // Unit axial source shape:
+    //   Qhat = u u^T - I/3 = diag(-1/3, -1/3, 2/3)
+    // Clean McConnell response:
+    //   A = D(r) Qhat
+    // PCS scalar branch:
+    //   T0(A) = trace(A)/3 = n^T Qhat n / r^3 = (-1/3)/27 = -1/81
     //
     // Symmetric dipolar kernel K:
     //   K_11 = (3*1*1 - 1) / 27 =  2/27 =  0.07407
@@ -37,18 +73,8 @@ TEST(McConnellAnalytical, DipolarKernelAtKnownGeometry) {
     //   Off-diagonal = 0 (d_hat only has x component)
     //   Trace = 0 (traceless)
     //
-    // Full McConnell tensor M / r^3:
-    //   Term 1: 9*0 * d_hat_a * b_hat_b = 0 (cos_theta = 0)
-    //   Term 2: -3 * b_hat_a * b_hat_b = -3 * outer(b,b) / r^3
-    //           Only (2,2) = -3/27 = -1/9
-    //   Term 3: -(3 d_hat_a d_hat_b - delta_ab) / r^3 = -K
-    //
-    //   M / r^3 = 0 + (-3 b⊗b) / r^3 + (-K)
-    //   M_11 = 0 + 0 + (-2/27) = -2/27
-    //   M_22 = 0 + 0 + (1/27) = 1/27
-    //   M_33 = 0 + (-3/27) + (1/27) = -2/27
-    //   Trace(M/r^3) = -2/27 + 1/27 + (-2/27) = -3/27 = -1/9
-    //   T0 = Trace/3 = -1/27 = f/3   ✓
+    // Response A = D Qhat:
+    //   diag(-2/81, 1/81, -2/81), so trace(A)/3 = -1/81.
 
     // Build a minimal protein with one bond
     auto protein = std::make_unique<Protein>();
@@ -108,9 +134,9 @@ TEST(McConnellAnalytical, DipolarKernelAtKnownGeometry) {
     EXPECT_NEAR(bn.distance_to_midpoint, 3.0, 0.01)
         << "Distance to bond midpoint should be 3.0 A";
 
-    // McConnell scalar: (3*0 - 1) / 27 = -1/27
-    EXPECT_NEAR(bn.mcconnell_scalar, -1.0/27.0, 1e-6)
-        << "McConnell scalar f should be -1/27";
+    // PCS scalar: n^T Qhat n / r^3 = -1/81.
+    EXPECT_NEAR(bn.mcconnell_scalar, -1.0/81.0, 1e-6)
+        << "McConnell PCS scalar should be -1/81";
 
     // Dipolar kernel K should be traceless
     double trace_K = bn.dipolar_tensor.trace();
@@ -126,19 +152,12 @@ TEST(McConnellAnalytical, DipolarKernelAtKnownGeometry) {
     EXPECT_NEAR(bn.dipolar_tensor(0,2), 0.0, 1e-10);
     EXPECT_NEAR(bn.dipolar_tensor(1,2), 0.0, 1e-10);
 
-    // Full McConnell shielding contribution T0 should be non-zero
-    // T0 = f / 3 = -1/81 (if we used the raw kernel)
-    // Actually T0 = Trace(M/r^3) / 3 = (-1/9) / 3 = -1/27
-    // which equals f. The f IS Trace(M)/r^3, not Trace(M/r^3)/3.
-    // Let me check: Trace(M) = 3(3cos^2 theta - 1) = 3(-1) = -3.
-    // M/r^3: Trace = -3/27 = -1/9. T0 = Trace/3 = -1/27.
-    // And f = (3*0-1)/27 = -1/27. So T0 = f. Correct!
-    EXPECT_NEAR(ca.mc_shielding_contribution.T0, -1.0/27.0, 1e-6)
-        << "T0 of full McConnell tensor should equal McConnell scalar f";
+    EXPECT_NEAR(ca.mc_shielding_contribution.T0, -1.0/81.0, 1e-6)
+        << "T0 of D(r)Qhat should equal the PCS scalar";
 
     std::cout << "  Analytical test passed:\n"
-              << "    f = " << bn.mcconnell_scalar << " (expected -1/27 = "
-              << -1.0/27.0 << ")\n"
+              << "    PCS scalar = " << bn.mcconnell_scalar
+              << " (expected -1/81 = " << -1.0/81.0 << ")\n"
               << "    T0 = " << ca.mc_shielding_contribution.T0 << "\n"
               << "    K trace = " << trace_K << "\n"
               << "    K diag = (" << bn.dipolar_tensor(0,0) << ", "
@@ -265,12 +284,7 @@ TEST_F(McConnellProteinTest, ShieldingContributionHasT0AndT2) {
 }
 
 
-TEST_F(McConnellProteinTest, T0EqualsScalarFForSingleBond) {
-    // For any atom-bond pair, T0 of the full McConnell tensor M/r^3
-    // should equal the McConnell scalar f.
-    // This is because Trace(M) = 3(3cos^2 theta - 1),
-    // so T0 = Trace(M/r^3)/3 = (3cos^2 theta - 1)/r^3 = f.
-
+TEST_F(McConnellProteinTest, PCSScalarMatchesTraceBranchForSingleBond) {
     auto& conf = protein->Conformation();
     conf.AttachResult(McConnellResult::Compute(conf));
 
@@ -278,39 +292,192 @@ TEST_F(McConnellProteinTest, T0EqualsScalarFForSingleBond) {
     double max_diff = 0.0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& bn : conf.AtomAt(ai).bond_neighbours) {
-            // Reconstruct the full M tensor for this bond
             Vec3 atom_pos = conf.PositionAt(ai);
             Vec3 midpoint = conf.bond_midpoints[bn.bond_index];
-            Vec3 d = atom_pos - midpoint;
-            double r = d.norm();
+            Vec3 axis = conf.bond_directions[bn.bond_index];
+            auto kernel = McConnellResult::ComputePairKernel(
+                atom_pos, midpoint, axis);
+            double r = kernel.distance;
             if (r < MIN_DISTANCE) continue;
 
-            Vec3 d_hat = d / r;
-            Vec3 b_hat = conf.bond_directions[bn.bond_index];
-            double cos_theta = d_hat.dot(b_hat);
             double r3 = r * r * r;
-
-            // Build M/r^3
-            Mat3 M;
-            for (int a = 0; a < 3; ++a)
-                for (int b = 0; b < 3; ++b)
-                    M(a, b) = (9.0 * cos_theta * d_hat(a) * b_hat(b)
-                               - 3.0 * b_hat(a) * b_hat(b)
-                               - (3.0 * d_hat(a) * d_hat(b) - (a==b ? 1.0 : 0.0)))
-                              / r3;
-
-            double t0 = M.trace() / 3.0;
-            double diff = std::abs(t0 - bn.mcconnell_scalar);
-            max_diff = std::max(max_diff, diff);
+            double pcs = kernel.direction.dot(
+                kernel.source_shape * kernel.direction) / r3;
+            double t0 = SphericalTensor::Decompose(kernel.response).T0;
+            max_diff = std::max(max_diff, std::abs(t0 - bn.mcconnell_scalar));
+            max_diff = std::max(max_diff, std::abs(t0 - pcs));
             checked++;
         }
     }
 
     EXPECT_LT(max_diff, 1e-10)
-        << "T0 of full M tensor must equal McConnell scalar f";
+        << "T0(DQhat) must equal the PCS scalar n^T Qhat n/r^3";
 
-    std::cout << "  Checked " << checked << " pairs, max |T0 - f| = "
+    std::cout << "  Checked " << checked
+              << " pairs, max PCS scalar branch diff = "
               << max_diff << "\n";
+}
+
+
+TEST(McConnellImplementationChecks, RotationEquivariance) {
+    Vec3 source_center(0.3, -0.7, 1.1);
+    Vec3 source_axis(0.4, 0.8, -0.2);
+    Vec3 target(3.2, 1.4, -0.6);
+
+    const auto k = McConnellResult::ComputePairKernel(
+        target, source_center, source_axis);
+    const SphericalTensor st = SphericalTensor::Decompose(k.response);
+
+    const Mat3 R = Eigen::AngleAxisd(
+        0.73, Vec3(0.2, -0.4, 0.9).normalized()).toRotationMatrix();
+    const auto kr = McConnellResult::ComputePairKernel(
+        R * target, R * source_center, R * source_axis);
+    const SphericalTensor sr = SphericalTensor::Decompose(kr.response);
+
+    EXPECT_NEAR(sr.T0, st.T0, 1e-12);
+
+    Vec3 t1(st.T1[0], st.T1[1], st.T1[2]);
+    Vec3 t1_rot(sr.T1[0], sr.T1[1], sr.T1[2]);
+    EXPECT_LT((t1_rot - R * t1).norm(), 1e-12);
+
+    SphericalTensor st_t2 = st;
+    st_t2.T0 = 0.0;
+    st_t2.T1 = {0.0, 0.0, 0.0};
+    SphericalTensor sr_t2 = sr;
+    sr_t2.T0 = 0.0;
+    sr_t2.T1 = {0.0, 0.0, 0.0};
+    const Mat3 expected_t2 = R * st_t2.Reconstruct() * R.transpose();
+    EXPECT_LT(MaxAbs(sr_t2.Reconstruct() - expected_t2), 1e-12);
+
+    EXPECT_LT(MaxAbs(kr.response - R * k.response * R.transpose()), 1e-12);
+}
+
+
+TEST(McConnellImplementationChecks, PairPCSScalarIdentity) {
+    const auto k = McConnellResult::ComputePairKernel(
+        Vec3(2.0, -1.0, 3.0),
+        Vec3(-0.5, 0.25, 0.75),
+        Vec3(0.3, 0.7, 0.2));
+    ASSERT_GT(k.distance, 0.0);
+    const double r3 = k.distance * k.distance * k.distance;
+    const double pcs = k.direction.dot(k.source_shape * k.direction) / r3;
+    const double t0 = SphericalTensor::Decompose(k.response).T0;
+    EXPECT_NEAR(t0, k.response.trace() / 3.0, 1e-15);
+    EXPECT_NEAR(t0, pcs, 1e-15);
+}
+
+
+TEST_F(McConnellProteinTest, AromaticCategoryIsExactlyZero) {
+    const Protein& p = protein->Conformation().ProteinRef();
+    int aromatic_bonds = 0;
+    for (size_t bi = 0; bi < p.BondCount(); ++bi)
+        if (p.BondAt(bi).category == BondCategory::Aromatic)
+            ++aromatic_bonds;
+    ASSERT_GT(aromatic_bonds, 0);
+
+    auto& conf = protein->Conformation();
+    conf.AttachResult(McConnellResult::Compute(conf));
+    const size_t cat = static_cast<size_t>(
+        McConnellSourceCategory::AromaticZeroed);
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        EXPECT_TRUE(SphericalAllZero(
+            conf.AtomAt(ai).mcconnell_source_tensors[cat][0]));
+        EXPECT_TRUE(SphericalAllZero(
+            conf.AtomAt(ai).mcconnell_source_tensors[cat][1]));
+    }
+}
+
+
+TEST_F(McConnellProteinTest, MissingMopacZerosOnlyBoChannel) {
+    auto& conf = protein->Conformation();
+    ASSERT_FALSE(conf.HasResult<MopacResult>());
+    conf.AttachResult(McConnellResult::Compute(conf));
+
+    double max_fixed_t2 = 0.0;
+    double max_bo_abs = 0.0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        const auto& ca = conf.AtomAt(ai);
+        for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
+            max_fixed_t2 = std::max(
+                max_fixed_t2,
+                ca.mcconnell_source_tensors[c][0].T2Magnitude());
+            const auto& bo = ca.mcconnell_source_tensors[c][1];
+            max_bo_abs = std::max(max_bo_abs, std::abs(bo.T0));
+            for (double v : bo.T1) max_bo_abs = std::max(max_bo_abs, std::abs(v));
+            for (double v : bo.T2) max_bo_abs = std::max(max_bo_abs, std::abs(v));
+        }
+    }
+    EXPECT_GT(max_fixed_t2, 0.0);
+    EXPECT_EQ(max_bo_abs, 0.0);
+}
+
+
+TEST_F(McConnellProteinTest, NearFieldAuditCountsAreReported) {
+    auto& conf = protein->Conformation();
+    conf.AttachResult(McConnellResult::Compute(conf));
+
+    int accepted = 0;
+    int rejected = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        accepted += conf.AtomAt(ai).mcconnell_near_field_accepted_lt3A;
+        rejected += conf.AtomAt(ai).mcconnell_near_field_rejected_lt3A;
+    }
+    EXPECT_GE(accepted, 0);
+    EXPECT_GE(rejected, 0);
+    std::cout << "  McConnell near-field audit (<3 A): accepted="
+              << accepted << " rejected=" << rejected << "\n";
+}
+
+
+TEST_F(McConnellProteinTest, WriteFeaturesEmitsFifteenArraysAndManifest) {
+    auto& conf = protein->Conformation();
+    conf.AttachResult(McConnellResult::Compute(conf));
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mcconnell_features_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    const auto& mc = conf.Result<McConnellResult>();
+    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 15);
+
+    for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
+        const auto cat = static_cast<McConnellSourceCategory>(c);
+        for (size_t h = 0; h < kMcConnellChannelCount; ++h) {
+            const auto channel = static_cast<McConnellChannel>(h);
+            const fs::path p = out_dir / (
+                std::string("mc_") + McConnellSourceCategoryStem(cat) +
+                "_" + McConnellChannelStem(channel) + ".npy");
+            EXPECT_TRUE(fs::exists(p)) << p;
+        }
+    }
+
+    const fs::path manifest = out_dir / "extraction_manifest.json";
+    ASSERT_TRUE(fs::exists(manifest));
+    const std::string text = ReadText(manifest);
+    EXPECT_NE(text.find("\"source_model\": \"unit susceptibility shape; scale learned\""),
+              std::string::npos);
+    EXPECT_NE(text.find("\"bo_source\": \"MOPAC Wiberg bond order\""),
+              std::string::npos);
+    EXPECT_NE(text.find("\"aromatic_zeroed_when_ring_active\": true"),
+              std::string::npos);
+    EXPECT_NE(text.find("\"irrep_layout\": \"0e,1e_x,1e_y,1e_z,2e_m-2..+2\""),
+              std::string::npos);
+    EXPECT_NE(text.find("\"units\": \"Angstrom^-3\""),
+              std::string::npos);
+    EXPECT_TRUE(fs::exists(out_dir / "mc_nearfield_counts.npy"));
+
+    for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
+        const auto cat = static_cast<McConnellSourceCategory>(c);
+        for (size_t h = 0; h < kMcConnellChannelCount; ++h) {
+            const auto channel = static_cast<McConnellChannel>(h);
+            const fs::path p = out_dir / (
+                std::string("mc_") + McConnellSourceCategoryStem(cat) +
+                "_" + McConnellChannelStem(channel) + ".npy");
+            std::remove(p.string().c_str());
+        }
+    }
+    std::remove((out_dir / "mc_nearfield_counts.npy").string().c_str());
+    std::remove(manifest.string().c_str());
+    ::rmdir(out_dir.string().c_str());
 }
 
 

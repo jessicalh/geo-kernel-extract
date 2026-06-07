@@ -5,7 +5,8 @@
 **Stabilisation: DONE + COMMITTED `33c2f50`** (rediscover work in `c0cce8c`). The duck-walk is
 fixed and shipped — iterative converged-mean reference + centroid-pinned smoothing, default
 window 0. Verified: backbone centroid constant to ~1e-13 across frame/window; opus review SHIP.
-**Floor for new work is now `33c2f50`**, not `141e7b6`. The "Temporal stabilisation — THE key
+**Floor for new work is now `a6193dd`** (Stage 1 + the session notes/docs are committed AND pushed to
+origin; `33c2f50` was the stabilisation-only floor). The "Temporal stabilisation — THE key
 refinement" section below describes the OLD windowed approach that WAS the duck-walk bug —
 superseded. Lead to mouse-confirm on `:1` (restart to pick up the new binary).
 
@@ -22,12 +23,12 @@ superseded. Lead to mouse-confirm on `:1` (restart to pick up the new binary).
 - **Naming/dictionary = multi-agent pipeline** — DONE (see **Dictionary** block below).
 
 **Staged build** (each: plan → lead vet → codex → opus review → lead mouse-confirm on `:1`):
-- **Stage 1 — the registry: BUILT + opus SHIP, UNCOMMITTED.** Revised plan
+- **Stage 1 — the registry: BUILT + opus SHIP + COMMITTED + PUSHED (`a6193dd`).** Revised plan
   (`STAGE1_REGISTRY_PLAN_REVISED_2026-06-05.md`, post-critique, build-ready) → codex implemented →
   `cmake`+`ctest` green (2/2) → opus review **SHIP** (no CRITICAL/MAJOR; capability table golden-pinned
-  byte-identical; strips render; hollow modes un-offerable; startup can't brick). Runs clean on `:99`.
-  **Uncommitted — lead owns git.** Before/with the commit: the 2 opus test-asks
-  (`visibleOfferable`/`trackedButHidden`/`collectExpectedButEmpty` coverage) + the empty-check refinements.
+  byte-identical; strips render; hollow modes un-offerable; startup can't brick). Runs clean on `:99`,
+  now committed + pushed to origin. **Still queued for the NEXT commit:** the 2 opus test-asks
+  (`visibleOfferable`/`trackedButHidden`/`collectExpectedButEmpty` coverage) + the Stage-2 empty-check refinements.
 - **Stage 2 — Atom Colour** (spatial scalar must-have) **+ empty-check refinements** (false-positive
   fixes, 2026-06-05): make the reality-check (a) RUN-MODE aware — don't flag mutant-only fields on a
   trajectory; (b) SIDECAR aware — consult `dft.frames[]` for `orca_dft`, not just the H5 availability table.
@@ -56,6 +57,13 @@ false-flags `orca_dft` until the Stage-2 sidecar fix.
 `DFT_LGS_REGISTRATION_SCOPE`. Every codex fire prepends `CODEX_PREAMBLE_QT_VTK.md`.
 
 ---
+
+## ⚠️ HISTORICAL SESSION RECORD BELOW — the CURRENT STATE block at the top is authoritative
+
+> Everything from here down is the dated, point-in-time session log, kept for provenance. Floor
+> references below (`141e7b6`, `33c2f50`), the `UNCOMMITTED` / `NEXT` / "mouse-confirm on `:1`" lines,
+> and any `:1`/`:99` instance details are HISTORICAL and superseded wherever they conflict with the
+> CURRENT STATE block up top. For the truth of where things stand, read that block — not these.
 
 ## Where we are
 - The reader's selected-metrics coherence + the "strips show one dot" bug are DONE and committed (`141e7b6`):

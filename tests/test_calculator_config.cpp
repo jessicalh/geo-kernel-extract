@@ -50,6 +50,7 @@ TEST(CalculatorConfig, DefaultsMatchCalculatorConstants) {
     // From calculator .h / .cpp files
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff"),        10.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("mopac_mcconnell_bond_anisotropy_cutoff"),  10.0);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("mcconnell_include_xh_sources"),             1.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("dispersion_vertex_distance_cutoff"),        5.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("dispersion_switching_onset_distance"),      4.3);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l1"),   2.0);

@@ -60,6 +60,9 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
         if (P > 0) {
             const size_t C = 58;
             std::vector<double> data(P * C, 0.0);
+            std::vector<double> bs_B(P * 3, 0.0);
+            std::vector<double> bs_B_cyl(P * 3, 0.0);
+            std::vector<double> hm_B(P * 3, 0.0);
             size_t row = 0;
             for (size_t i = 0; i < N; ++i) {
                 for (const auto& rn : conf.AtomAt(i).ring_neighbours) {
@@ -89,12 +92,30 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                     r[55] = static_cast<double>(rn.disp_contacts);
                     r[56] = rn.cos_phi;
                     r[57] = rn.sin_phi;
+
+                    bs_B[row*3+0] = rn.B_field.x();
+                    bs_B[row*3+1] = rn.B_field.y();
+                    bs_B[row*3+2] = rn.B_field.z();
+
+                    bs_B_cyl[row*3+0] = rn.B_cylindrical.x();
+                    bs_B_cyl[row*3+1] = rn.B_cylindrical.y();
+                    bs_B_cyl[row*3+2] = rn.B_cylindrical.z();
+
+                    hm_B[row*3+0] = rn.hm_B_field.x();
+                    hm_B[row*3+1] = rn.hm_B_field.y();
+                    hm_B[row*3+2] = rn.hm_B_field.z();
                     row++;
                 }
             }
             NpyWriter::WriteFloat64(output_dir + "/ring_contributions.npy",
                                     data.data(), P, C);
-            total++;
+            NpyWriter::WriteFloat64(output_dir + "/bs_ring_B_field.npy",
+                                    bs_B.data(), P, 3);
+            NpyWriter::WriteFloat64(output_dir + "/bs_ring_B_cylindrical.npy",
+                                    bs_B_cyl.data(), P, 3);
+            NpyWriter::WriteFloat64(output_dir + "/hm_ring_B_field.npy",
+                                    hm_B.data(), P, 3);
+            total += 4;
         }
     }
 

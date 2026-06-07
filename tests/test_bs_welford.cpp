@@ -181,8 +181,10 @@ TEST(BsWelford, H5RoundTrip) {
     ASSERT_TRUE(reopen.exist("/trajectory/bs_welford"));
     auto grp = reopen.getGroup("/trajectory/bs_welford");
 
-    std::string units;
+    std::string parity, units;
+    grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
+    EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(units, "ppm_T_per_nA");
 
     // T1 storage convention: Cartesian Levi-Civita dual, NOT real-Y_1m.

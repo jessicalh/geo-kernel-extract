@@ -337,11 +337,13 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             // Accumulate the full shielding kernel G
             G_total += G;
 
-            // Per-type T0 and T2 sums (from the stored shielding kernel G)
+            // Per-type T0, T1 and T2 sums (from the stored shielding kernel G)
             int ti = ring.TypeIndexAsInt();
             // aromatic ring types only (index 8 = saturated Pro; see kAromaticRingTypeCount)
             if (ti >= 0 && ti < 8) {
                 ca.per_type_hm_T0_sum[ti] += rn->hm_G_spherical.T0;
+                for (int c = 0; c < 3; ++c)
+                    ca.per_type_hm_T1_sum[ti][c] += rn->hm_G_spherical.T1[c];
                 for (int c = 0; c < 5; ++c)
                     ca.per_type_hm_T2_sum[ti][c] += rn->hm_G_spherical.T2[c];
             }
@@ -401,7 +403,7 @@ SphericalTensor HaighMallionResult::SampleKernelAt(Vec3 point) const {
 
 
 // ============================================================================
-// WriteFeatures: hm_shielding (9), per-type T0 (8), per-type T2 (40).
+// WriteFeatures: hm_shielding (9), per-type T0 (8), T1 (24), T2 (40).
 // Mirrors BiotSavart layout — same ring-type decomposition, different kernel.
 // ============================================================================
 
@@ -411,6 +413,7 @@ int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
 
     std::vector<double> shielding(N * 9);
     std::vector<double> per_type_T0(N * 8);
+    std::vector<double> per_type_T1(N * 24);
     std::vector<double> per_type_T2(N * 40);
 
     for (size_t i = 0; i < N; ++i) {
@@ -418,14 +421,17 @@ int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
         ca.hm_shielding_contribution.PackFull9(&shielding[i*9]);
         for (int t = 0; t < 8; ++t) {
             per_type_T0[i*8 + t] = ca.per_type_hm_T0_sum[t];
+            for (int c = 0; c < 3; ++c)
+                per_type_T1[i*24 + t*3 + c] = ca.per_type_hm_T1_sum[t][c];
             for (int c = 0; c < 5; ++c)
                 per_type_T2[i*40 + t*5 + c] = ca.per_type_hm_T2_sum[t][c];
         }
     }
     NpyWriter::WriteFloat64(output_dir + "/hm_shielding.npy", shielding.data(), N, 9);
     NpyWriter::WriteFloat64(output_dir + "/hm_per_type_T0.npy", per_type_T0.data(), N, 8);
+    NpyWriter::WriteFloat64(output_dir + "/hm_per_type_T1.npy", per_type_T1.data(), N, 24);
     NpyWriter::WriteFloat64(output_dir + "/hm_per_type_T2.npy", per_type_T2.data(), N, 40);
-    return 3;
+    return 4;
 }
 
 }  // namespace nmr

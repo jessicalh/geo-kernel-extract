@@ -2,11 +2,12 @@
 // test_mopac_mc_shielding_time_series: discipline + integration for
 // MopacMcConnellShieldingTimeSeriesTrajectoryResult (TR8 of the 13-TR
 // plan). Sibling of TR7 but emits 9 components (T0+T1+T2) because
-// the source mopac_mc_shielding_contribution is NOT traceless
-// (bond-anisotropy M_total has nonzero T0/T1 in general).
+// the source mopac_mc_shielding_contribution is the full BO-channel
+// D(r)Qhat response and can have nonzero T0/T1 in general.
 //
 
 #include "MopacMcConnellShieldingTimeSeriesTrajectoryResult.h"
+#include "McConnellResult.h"
 #include "MopacMcConnellResult.h"
 #include "MopacResult.h"
 #include "GeometryResult.h"
@@ -161,11 +162,10 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("irrep_layout").read(layout);
     grp.getAttribute("units").read(units);
-    EXPECT_EQ(parity, "0e+1o+2e");
-    EXPECT_EQ(layout,
-        "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(parity, "0e+1e+2e");
+    EXPECT_EQ(layout, nmr::kMcConnellPackFull9IrrepLayout);
     EXPECT_EQ(units, "Angstrom^-3")
-        << "bare McConnell kernel bo·M/r³, no Δχ × γ multiplication "
+        << "bare McConnell kernel bo·D(r)Qhat, no Δχ × γ multiplication "
            "at extraction; decision 2026-05-21 per science/math review H1.";
 
     const std::size_t N = dims[0];
@@ -188,8 +188,8 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     std::cout << "  max|T0| = " << max_t0
               << "  max|T1| = " << max_t1
               << "  max|T2| = " << max_t2
-              << "  (T0/T1 not necessarily ~0 — McConnell M_total "
-                 "is not traceless)" << std::endl;
+              << "  (T0/T1 not necessarily ~0 — D(r)Qhat is not pure T2)"
+              << std::endl;
     // Sanity: at least T2 should be nonzero on every protein
     // (bond-anisotropy is a real signal). T0/T1 may or may not be —
     // log don't assert per feedback_log_overages_dont_assert.

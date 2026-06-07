@@ -203,7 +203,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         };
         project_traceless(EFG_total);
         project_traceless(EFG_backbone);
-        project_traceless(EFG_sidechain);  // kept for symmetry; not stored or written to NPY
+        project_traceless(EFG_sidechain);
         project_traceless(EFG_aromatic);
 
         // Sanitise NaN/Inf
@@ -273,6 +273,9 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
         ca.coulomb_EFG_backbone = EFG_backbone;
         ca.coulomb_EFG_backbone_spherical = SphericalTensor::Decompose(EFG_backbone);
+
+        ca.coulomb_EFG_sidechain = EFG_sidechain;
+        ca.coulomb_EFG_sidechain_spherical = SphericalTensor::Decompose(EFG_sidechain);
 
         ca.coulomb_EFG_aromatic = EFG_aromatic;
         ca.coulomb_EFG_aromatic_spherical = SphericalTensor::Decompose(EFG_aromatic);
@@ -359,7 +362,7 @@ Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
 
 
 // ============================================================================
-// WriteFeatures: coulomb_shielding (9), E-field (3), EFG decompositions,
+// WriteFeatures: coulomb_efg (9), E-field (3), EFG decompositions,
 // scalar features (magnitude, bond projection, backbone fraction).
 // ============================================================================
 
@@ -367,23 +370,40 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
                                   const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
 
-    std::vector<double> shielding(N * 9);
+    std::vector<double> efg_total(N * 9);
     std::vector<double> efield(N * 3);
+    std::vector<double> efield_bb(N * 3);
+    std::vector<double> efield_sc(N * 3);
+    std::vector<double> efield_aro(N * 3);
     // EFG: T2 only (5 components). Coulomb EFG built from q·(3r⊗r/r⁵−I/r³) —
     // symmetric per charge → T0+T1 structural zeros.
     std::vector<double> efg_bb(N * 5);
+    std::vector<double> efg_sc(N * 5);
     std::vector<double> efg_aro(N * 5);
     std::vector<double> scalars(N * 4);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        ca.coulomb_shielding_contribution.PackFull9(&shielding[i*9]);
+        ca.coulomb_shielding_contribution.PackFull9(&efg_total[i*9]);
 
         efield[i*3+0] = ca.coulomb_E_total.x();
         efield[i*3+1] = ca.coulomb_E_total.y();
         efield[i*3+2] = ca.coulomb_E_total.z();
 
+        efield_bb[i*3+0] = ca.coulomb_E_backbone.x();
+        efield_bb[i*3+1] = ca.coulomb_E_backbone.y();
+        efield_bb[i*3+2] = ca.coulomb_E_backbone.z();
+
+        efield_sc[i*3+0] = ca.coulomb_E_sidechain.x();
+        efield_sc[i*3+1] = ca.coulomb_E_sidechain.y();
+        efield_sc[i*3+2] = ca.coulomb_E_sidechain.z();
+
+        efield_aro[i*3+0] = ca.coulomb_E_aromatic.x();
+        efield_aro[i*3+1] = ca.coulomb_E_aromatic.y();
+        efield_aro[i*3+2] = ca.coulomb_E_aromatic.z();
+
         ca.coulomb_EFG_backbone_spherical.PackT2(&efg_bb[i*5]);
+        ca.coulomb_EFG_sidechain_spherical.PackT2(&efg_sc[i*5]);
         ca.coulomb_EFG_aromatic_spherical.PackT2(&efg_aro[i*5]);
 
         scalars[i*4+0] = ca.coulomb_E_magnitude;
@@ -392,12 +412,16 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
         scalars[i*4+3] = ca.aromatic_E_magnitude;
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_shielding.npy", shielding.data(), N, 9);
+    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg.npy", efg_total.data(), N, 9);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_E.npy", efield.data(), N, 3);
+    NpyWriter::WriteFloat64(output_dir + "/coulomb_E_backbone.npy", efield_bb.data(), N, 3);
+    NpyWriter::WriteFloat64(output_dir + "/coulomb_E_sidechain.npy", efield_sc.data(), N, 3);
+    NpyWriter::WriteFloat64(output_dir + "/coulomb_E_aromatic.npy", efield_aro.data(), N, 3);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_backbone.npy", efg_bb.data(), N, 5);
+    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_sidechain.npy", efg_sc.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_aromatic.npy", efg_aro.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_scalars.npy", scalars.data(), N, 4);
-    return 5;
+    return 9;
 }
 
 }  // namespace nmr

@@ -45,6 +45,16 @@ public:
                      {count});
     }
 
+    // Write a 2D array of int32. cols=1 writes the same 1D shape as the
+    // historical overload.
+    static bool WriteInt32(const std::string& path,
+                           const int32_t* data,
+                           size_t rows, size_t cols) {
+        return Write(path, "<i4", data, rows * cols * sizeof(int32_t),
+                     cols == 1 ? std::vector<size_t>{rows}
+                               : std::vector<size_t>{rows, cols});
+    }
+
     // Write a 1D array of int8. Useful for boolean masks where int32
     // would be 4× the disk size for no information gain.
     static bool WriteInt8(const std::string& path,

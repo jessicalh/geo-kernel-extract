@@ -1,7 +1,9 @@
 # Post-hoc DFT → `.LGS` registration bridge — scope & design
 
 **Date:** 2026-06-05
-**Status:** SCOPE / DESIGN only. No code, no git, no build in this pass.
+**Status:** SCOPE / DESIGN — and **SINCE EXECUTED (2026-06-05):** acting on this design, the dense
+LGS was re-registered 660→751 DFT frames and the lean LGS stashed (`.LGS.back`); the bridge is now
+operational (see the spine doc CURRENT STATE). The prose below is the original design pass.
 **Scope licence:** reader stays read-only; T2 preserved end-to-end; the
 model is the spine; one registration serves BOTH consumers.
 

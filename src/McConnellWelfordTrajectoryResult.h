@@ -5,15 +5,13 @@
 // of a trajectory. AV-pattern clone of BsWelfordTrajectoryResult.
 //
 // Source: `ConformationAtom::mc_shielding_contribution` (units = Å⁻³,
-// full McConnell asymmetric non-traceless three-term form — see
-// PATTERNS.md Lesson 19; T0 = (3cos²θ-1)/r³ is meaningful). McConnellResult
-// is unconditionally attached in `PerFrameExtractionSet`, so the dep
-// is enforced via `Dependencies()`.
+// unscaled D(r)Qhat source-shape response; T0 is the PCS scalar branch).
+// McConnellResult is unconditionally attached in `PerFrameExtractionSet`,
+// so the dep is enforced via `Dependencies()`.
 //
 // Phase 2b expansion (2026-05-17): identical channel shape to BS.
-// McConnell-form T1 is nonzero: the McConnell tensor is asymmetric
-// (T1 ≠ 0), with antisymmetric part
-// (9 cosθ / 2)(d̂_a b̂_b - b̂_a d̂_b)/r³. The sibling
+// McConnell-form T1 can be nonzero because D and Qhat need not commute.
+// The sibling
 // McConnellShieldingTimeSeriesTrajectoryResult emits T1 from the same
 // source field; this Welford rolls up the same channels.
 // T0 / T1[3] / T2[5] / |T2| / delta/rate variants follow BS exactly.

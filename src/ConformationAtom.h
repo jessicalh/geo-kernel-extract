@@ -124,8 +124,10 @@ public:
     Mat3 total_G_tensor = Mat3::Zero();
     SphericalTensor total_G_spherical;
     std::array<double, 8> per_type_G_T0_sum = {};
+    std::array<std::array<double, 3>, 8> per_type_G_T1_sum = {};
     std::array<std::array<double, 5>, 8> per_type_G_T2_sum = {};
     std::array<double, 8> per_type_hm_T0_sum = {};
+    std::array<std::array<double, 3>, 8> per_type_hm_T1_sum = {};
     std::array<std::array<double, 5>, 8> per_type_hm_T2_sum = {};
     SphericalTensor hm_shielding_contribution;
     int n_rings_within_3A = 0;
@@ -140,6 +142,19 @@ public:
     SphericalTensor bs_shielding_contribution;
 
     // === Bond anisotropy totals (McConnellResult) ===
+    // Forward surface: 7 source categories x {fixed, MOPAC bond-order}
+    // channels, each packed as a full even SphericalTensor.
+    std::array<std::array<SphericalTensor, kMcConnellChannelCount>,
+               kMcConnellSourceCategoryCount> mcconnell_source_tensors = {};
+
+    // Counts used by the near-field audit. The geometric filter can reject
+    // near contacts; this preserves both accepted and rejected danger-zone
+    // counts without making the pair list itself part of the atom payload.
+    int mcconnell_near_field_accepted_lt3A = 0;
+    int mcconnell_near_field_rejected_lt3A = 0;
+
+    // Legacy projections retained for trajectory/Welford consumers. Values
+    // are populated from the new fixed/BO channel model.
     double mcconnell_co_sum = 0.0;
     double mcconnell_cn_sum = 0.0;
     double mcconnell_sidechain_sum = 0.0;
@@ -181,6 +196,8 @@ public:
     SphericalTensor coulomb_EFG_total_spherical;
     Mat3 coulomb_EFG_backbone = Mat3::Zero();
     SphericalTensor coulomb_EFG_backbone_spherical;
+    Mat3 coulomb_EFG_sidechain = Mat3::Zero();
+    SphericalTensor coulomb_EFG_sidechain_spherical;
     Mat3 coulomb_EFG_aromatic = Mat3::Zero();
     SphericalTensor coulomb_EFG_aromatic_spherical;
     Vec3 coulomb_E_solvent = Vec3::Zero();
@@ -204,6 +221,8 @@ public:
     SphericalTensor mopac_coulomb_EFG_total_spherical;
     Mat3 mopac_coulomb_EFG_backbone = Mat3::Zero();
     SphericalTensor mopac_coulomb_EFG_backbone_spherical;
+    Mat3 mopac_coulomb_EFG_sidechain = Mat3::Zero();
+    SphericalTensor mopac_coulomb_EFG_sidechain_spherical;
     Mat3 mopac_coulomb_EFG_aromatic = Mat3::Zero();
     SphericalTensor mopac_coulomb_EFG_aromatic_spherical;
     double mopac_coulomb_E_magnitude = 0.0;

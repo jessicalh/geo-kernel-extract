@@ -52,8 +52,8 @@ constexpr int kFingerprintResidueNumber = 28;
 const std::string kFingerprintChainId = "A";
 
 // McConnell kernel magnitude bound. Per
-// PATTERNS.md "Near-field stability per kernel": dipolar kernel M_ab/r^3
-// near-field filter caps T2 around 1 A^-3. 10 A^-3 is a generous sanity
+// PATTERNS.md "Near-field stability per kernel": the D(r)Qhat near-field
+// filter caps T2 around 1 A^-3. 10 A^-3 is a generous sanity
 // bound that catches runaway numerics.
 constexpr double kT0SanityBoundA3 = 10.0;
 
@@ -293,11 +293,10 @@ TEST(McConnellShieldingTimeSeries, H5RoundTrip) {
     grp.getAttribute("units").read(units);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "0e+1o+2e");
+    EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(units, "Angstrom^-3");
     EXPECT_EQ(normalization, "isometric_real_sph");
-    EXPECT_EQ(layout,
-        "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(layout, nmr::kMcConnellPackFull9IrrepLayout);
 
     fs::remove(h5_path);
 }

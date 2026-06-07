@@ -23,6 +23,16 @@ from pathlib import Path
 
 import numpy as np
 
+MC_ARRAYS = [
+    f"mc_{cat}_{channel}.npy"
+    for cat in [
+        "peptide_co", "peptide_cn", "backbone_other",
+        "sidechain_co", "sidechain_other", "disulfide",
+        "aromatic_zeroed",
+    ]
+    for channel in ["fixed", "bo"]
+]
+
 
 def load_npy_files(directory: Path) -> dict[str, np.ndarray]:
     """Load all .npy files in directory, return {name: array}."""
@@ -52,12 +62,20 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
     # Per-atom arrays must have shape[0] == N
     per_atom_files = [
         "pos.npy", "element.npy", "residue_index.npy", "residue_type.npy",
-        "bs_shielding.npy", "hm_shielding.npy", "mc_shielding.npy",
+        "bs_shielding.npy", "hm_shielding.npy",
         "pq_shielding.npy", "disp_shielding.npy", "ringchi_shielding.npy",
-        "coulomb_shielding.npy", "hbond_shielding.npy",
-        "coulomb_E.npy", "apbs_E.npy", "bs_total_B.npy",
+        "coulomb_efg.npy", "hbond_shielding.npy",
+        "coulomb_E.npy", "coulomb_E_backbone.npy",
+        "coulomb_E_sidechain.npy", "coulomb_E_aromatic.npy",
+        "coulomb_efg_backbone.npy", "coulomb_efg_sidechain.npy",
+        "coulomb_efg_aromatic.npy", "apbs_E.npy", "bs_total_B.npy",
         "mopac_charges.npy",
-        "mopac_coulomb_shielding.npy", "mopac_mc_shielding.npy",
+        "mopac_coulomb_efg.npy", "mopac_coulomb_E.npy",
+        "mopac_coulomb_E_backbone.npy", "mopac_coulomb_E_sidechain.npy",
+        "mopac_coulomb_E_aromatic.npy",
+        "mopac_coulomb_efg_backbone.npy",
+        "mopac_coulomb_efg_sidechain.npy",
+        "mopac_coulomb_efg_aromatic.npy",
         # Trajectory-path arrays (optional — present only with --trajectory)
         "water_efield.npy", "water_efg.npy",
         "water_efield_first.npy", "water_efg_first.npy",
@@ -68,7 +86,7 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         "eeq_charges.npy", "eeq_cn.npy",
         # AIMNet2 (optional — present when --aimnet2 provided)
         "aimnet2_charges.npy", "aimnet2_efg.npy",
-    ]
+    ] + MC_ARRAYS
     for name in per_atom_files:
         if name not in arrays:
             continue
@@ -102,10 +120,10 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
 
     # Shielding tensor arrays should be shape (N, 9)
     tensor_files = [
-        "bs_shielding.npy", "hm_shielding.npy", "mc_shielding.npy",
+        "bs_shielding.npy", "hm_shielding.npy",
         "pq_shielding.npy", "disp_shielding.npy", "ringchi_shielding.npy",
-        "coulomb_shielding.npy", "hbond_shielding.npy",
-    ]
+        "coulomb_efg.npy", "mopac_coulomb_efg.npy", "hbond_shielding.npy",
+    ] + MC_ARRAYS
     for name in tensor_files:
         if name not in arrays:
             continue

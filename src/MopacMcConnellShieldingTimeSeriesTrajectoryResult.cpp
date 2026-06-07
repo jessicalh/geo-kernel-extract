@@ -1,5 +1,6 @@
 #include "MopacMcConnellShieldingTimeSeriesTrajectoryResult.h"
 
+#include "McConnellResult.h"
 #include "MopacMcConnellResult.h"
 #include "ConformationAtom.h"
 #include "OperationLog.h"
@@ -28,9 +29,9 @@ MopacMcConnellShieldingTimeSeriesTrajectoryResult::Create(
 
 // ── Compute ──────────────────────────────────────────────────────
 //
-// Same sparse gate as TR7. Source field is NOT traceless (M_total
-// has both symmetric and antisymmetric parts) — we emit the full
-// 9-component SphericalTensor at WriteH5Group time.
+// Same sparse gate as TR7. The BO-channel D(r)Qhat response is a full
+// rank-2 tensor, so we emit the full 9-component SphericalTensor at
+// WriteH5Group time.
 
 void MopacMcConnellShieldingTimeSeriesTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -140,40 +141,24 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",               T);
     grp.createAttribute("source_attached_count",  source_attached_count_);
     grp.createAttribute("finalized",              finalized_);
-    grp.createAttribute("irrep_layout", std::string(
-        "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("irrep_layout",
+        std::string(kMcConnellPackFull9IrrepLayout));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("0e+1o+2e"));
+    grp.createAttribute("parity",        std::string("0e+1e+2e"));
     grp.createAttribute("units",         std::string("Angstrom^-3"));
     grp.createAttribute("source", std::string(
         "MopacMcConnellResult.mopac_mc_shielding_contribution "
-        "(SphericalTensor; bond-order-weighted bo·M/r³ kernel, NO "
-        "Δχ × γ multiplication at extraction — bare kernel in Å^-3). "
-        "M_total is NOT traceless: T0 = trace(M)/3 = bond-order-"
-        "weighted McConnell f-scalar sum over ALL bond categories "
-        "that enter the per-atom loop (PeptideCO, PeptideCN, "
-        "BackboneOther, SidechainCO, SidechainOther, Aromatic — see "
-        "MopacMcConnellResult.cpp:185-227). Note: the named "
-        "ca.mopac_mc_*_sum scalars on ConformationAtom cover only "
-        "{co_sum, cn_sum, sidechain_sum (SidechainCO only), "
-        "aromatic_sum} — BackboneOther and SidechainOther bonds "
-        "contribute to T0 here but NOT to any named per-category "
-        "sum; Disulfide bonds (BondCategory::Disulfide) hit the "
-        "switch default and contribute to neither (pre-existing "
-        "issue across both Mopac and FF14SB McConnell, "
-        "MopacMcConnellResult.cpp:185-227). T1 = antisymmetric "
-        "McConnell pseudovector arising from the asymmetric "
-        "9·cos_θ·d̂_a·b̂_b cross-coupling term (the -3·b̂_a·b̂_b "
-        "and -3·d̂_a·d̂_b outer-product terms are symmetric in (a,b) "
-        "and contribute only to T0+T2). T1 is a real geometric "
-        "quantity, not numerical noise. T2 = symmetric traceless "
-        "McConnell tensor (canonical bond-anisotropy contribution). "
-        "All 9 components emitted per user direction 2026-05-21 "
-        "'if not traceless write both' + the methods-accumulate "
-        "principle. Per-category T2 totals T2_backbone / "
-        "T2_sidechain / T2_aromatic ARE explicitly symmetrized at "
-        "MopacMcConnellResult.cpp:252-262 but live on separate "
-        "ConformationAtom fields, not in this TR."));
+        "(SphericalTensor; MOPAC Wiberg-weighted BO channel from the "
+        "unified McConnellResult source model A=D(r)Qhat, emitted "
+        "unscaled in Angstrom^-3. Delta-chi, sign, and unit conversion "
+        "are learned downstream. T0 is trace(DQhat)/3, equal to the PCS "
+        "scalar n^T Qhat n/r^3 for each traceless unit source shape. "
+        "T1 is the even antisymmetric pseudovector from non-commuting D "
+        "and Qhat. T2 is the symmetric-traceless branch in the same "
+        "SphericalTensor convention. Aromatic McConnell is zeroed "
+        "unconditionally because BS/HM always compute aromatic "
+        "ring-current contributions; missing or below-floor bond order "
+        "zeros only this BO channel, not the fixed channel."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- MopacMcConnellResult attaches sparsely per the "
         "Mopac cadence (OperationRunner.cpp:185, TimedAttach not "
@@ -183,7 +168,7 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "when source_attached_count==0."));
 
     // (N, T, 9) — full SphericalTensor (T0 + T1[3] + T2[5]).
-    // Atom-major: [atom_0_frame_0_(T0,T1_x,T1_y,T1_z,T2_-2,T2_-1,T2_0,T2_+1,T2_+2),
+    // Atom-major: [atom_0_frame_0_(0e,1e_x,1e_y,1e_z,2e_m-2..+2),
     //              atom_0_frame_1_..., atom_1_frame_0_..., ...].
     std::vector<double> flat(N * T * 9);
     for (std::size_t i = 0; i < N; ++i) {

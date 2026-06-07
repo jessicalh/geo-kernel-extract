@@ -144,7 +144,7 @@ private slots:
     void onNewmanProjectionTriggered();
     void onFreeCameraTriggered();
     void onInstrumentToggled(bool checked);
-    void onTransformFitToggled(bool allAtomFit);
+    void onTransformFitClicked();
 
 private:
     void buildUi();
@@ -157,6 +157,7 @@ private:
     // from the composer's mode().kind so REST or programmatic changes
     // reflect in the toolbar too.
     void updateCameraModeActions();
+    void updateFitModeLabel();
     void revealDockQueued(QDockWidget* dock);
     void resetDashboardStateForRunLoad();
     // QSettings persistence — see kSettingsVersion in the .cpp for the
@@ -248,7 +249,7 @@ private:
     QPointer<QAction> planeLockAction_;
     QPointer<QAction> freeAction_;
 
-    // One transform switch: unchecked = backbone fit, checked = all-atom fit.
+    // One transform switch: text names the active stabilisation mode.
     QPointer<QAction> transformFitAction_;
 
     // Marker preset toggle for live demos. Same code path as

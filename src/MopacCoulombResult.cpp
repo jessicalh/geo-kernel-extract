@@ -238,6 +238,9 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         ca.mopac_coulomb_EFG_backbone = EFG_backbone;
         ca.mopac_coulomb_EFG_backbone_spherical = SphericalTensor::Decompose(EFG_backbone);
 
+        ca.mopac_coulomb_EFG_sidechain = EFG_sidechain;
+        ca.mopac_coulomb_EFG_sidechain_spherical = SphericalTensor::Decompose(EFG_sidechain);
+
         ca.mopac_coulomb_EFG_aromatic = EFG_aromatic;
         ca.mopac_coulomb_EFG_aromatic_spherical = SphericalTensor::Decompose(EFG_aromatic);
 
@@ -293,7 +296,7 @@ SphericalTensor MopacCoulombResult::EFGSphericalAt(size_t atom_index) const {
 
 
 // ============================================================================
-// WriteFeatures: mopac_coulomb_shielding (9), E-field (3),
+// WriteFeatures: mopac_coulomb_efg (9), E-field (3),
 // EFG decompositions, scalar features.
 // ============================================================================
 
@@ -301,23 +304,40 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
 
-    std::vector<double> shielding(N * 9);
+    std::vector<double> efg_total(N * 9);
     std::vector<double> efield(N * 3);
+    std::vector<double> efield_bb(N * 3);
+    std::vector<double> efield_sc(N * 3);
+    std::vector<double> efield_aro(N * 3);
     // EFG schema rev 2026-05-18: T2 only (5 components). Same symmetric
     // outer-product physics as Coulomb → T0+T1 structural zeros.
     std::vector<double> efg_bb(N * 5);
+    std::vector<double> efg_sc(N * 5);
     std::vector<double> efg_aro(N * 5);
     std::vector<double> scalars(N * 4);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        ca.mopac_coulomb_shielding_contribution.PackFull9(&shielding[i*9]);
+        ca.mopac_coulomb_shielding_contribution.PackFull9(&efg_total[i*9]);
 
         efield[i*3+0] = ca.mopac_coulomb_E_total.x();
         efield[i*3+1] = ca.mopac_coulomb_E_total.y();
         efield[i*3+2] = ca.mopac_coulomb_E_total.z();
 
+        efield_bb[i*3+0] = ca.mopac_coulomb_E_backbone.x();
+        efield_bb[i*3+1] = ca.mopac_coulomb_E_backbone.y();
+        efield_bb[i*3+2] = ca.mopac_coulomb_E_backbone.z();
+
+        efield_sc[i*3+0] = ca.mopac_coulomb_E_sidechain.x();
+        efield_sc[i*3+1] = ca.mopac_coulomb_E_sidechain.y();
+        efield_sc[i*3+2] = ca.mopac_coulomb_E_sidechain.z();
+
+        efield_aro[i*3+0] = ca.mopac_coulomb_E_aromatic.x();
+        efield_aro[i*3+1] = ca.mopac_coulomb_E_aromatic.y();
+        efield_aro[i*3+2] = ca.mopac_coulomb_E_aromatic.z();
+
         ca.mopac_coulomb_EFG_backbone_spherical.PackT2(&efg_bb[i*5]);
+        ca.mopac_coulomb_EFG_sidechain_spherical.PackT2(&efg_sc[i*5]);
         ca.mopac_coulomb_EFG_aromatic_spherical.PackT2(&efg_aro[i*5]);
 
         scalars[i*4+0] = ca.mopac_coulomb_E_magnitude;
@@ -326,17 +346,25 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
         scalars[i*4+3] = ca.mopac_coulomb_E_aromatic.norm();
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_shielding.npy",
-                            shielding.data(), N, 9);
+    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg.npy",
+                            efg_total.data(), N, 9);
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E.npy",
                             efield.data(), N, 3);
+    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_backbone.npy",
+                            efield_bb.data(), N, 3);
+    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_sidechain.npy",
+                            efield_sc.data(), N, 3);
+    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_aromatic.npy",
+                            efield_aro.data(), N, 3);
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_backbone.npy",
                             efg_bb.data(), N, 5);
+    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_sidechain.npy",
+                            efg_sc.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_aromatic.npy",
                             efg_aro.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_scalars.npy",
                             scalars.data(), N, 4);
-    return 5;
+    return 9;
 }
 
 }  // namespace nmr

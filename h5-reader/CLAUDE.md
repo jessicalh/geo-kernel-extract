@@ -1,5 +1,12 @@
 #h5 - reader directory — rules
 
+> **Current state + active plan — READ FIRST:** `notes/BASIC_SCREEN_STATE_AND_PLAN_2026-06-05.md`
+> (the **CURRENT STATE** block at the top is the live single-source-of-truth; everything under its
+> "HISTORICAL SESSION RECORD" banner is dated provenance). The between-protein / 720 work lives in a
+> separate worktree at `/shared/2026Thesis/nmr-720` (branch `wt-720-build`). This CLAUDE.md is the
+> durable rules. (NOTE: the prose below got mangled by a formatter — spaces shotgunned through inline
+> code; the rules still hold, but it wants a clean re-typeset pass.)
+
 **DO NOT modify any files outside of `h5
         - reader /`
                       .**

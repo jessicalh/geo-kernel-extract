@@ -96,6 +96,13 @@ Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
 constexpr int kSettingsVersion = 2;   // bumped: property docks now start hidden
 constexpr int kMaxRecentFiles  = 10;
 
+QString fitModeToolTip() {
+    return QStringLiteral(
+        "Stabilisation mode — click to switch.\n"
+        "Locked backbone: Kabsch fit of the backbone (industry standard) — removes global tumbling; the backbone holds still while sidechains/loops move.\n"
+        "Kabsch with give: all-atom fit — removes tumbling but lets real internal motion show.");
+}
+
 // Note: locateDftJobsDir was deleted as part of the 2026-05-31 SIMPLIFY
 // pass; the DFT campaign now comes from the `.LGS` `dft.frames[]` array
 // (see CalcsetManifest + DftShieldingStore).
@@ -131,20 +138,13 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
         qCWarning(cWindow).noquote()
             << "backbone fit unavailable at startup; falling back to all-atom fit";
         transformed_->setMode(TMode::FitReference, 0);
-        if (transformFitAction_) {
-            const QSignalBlocker block(transformFitAction_);
-            transformFitAction_->setChecked(true);
-        }
     }
     ACONNECT(transformed_, &h5reader::model::TransformedConformation::transformChanged,
              this, [this]() {
-                 if (transformFitAction_ && transformed_) {
-                     const QSignalBlocker block(transformFitAction_);
-                     transformFitAction_->setChecked(
-                         transformed_->mode() == h5reader::model::TransformedConformation::Mode::FitReference);
-                 }
+                 updateFitModeLabel();
                  if (scene_) scene_->refreshCurrentFrame();
              });
+    updateFitModeLabel();
 
     // Scene binds to the VTK widget's render window. The scene reads
     // positions through the wrapped conformation so transform mode
@@ -911,13 +911,10 @@ void ReaderMainWindow::buildToolbar() {
 
     tb->addSeparator();
 
-    transformFitAction_ = tb->addAction(QStringLiteral("All-atom fit"));
-    transformFitAction_->setCheckable(true);
-    transformFitAction_->setChecked(false);
-    transformFitAction_->setToolTip(QStringLiteral(
-        "Toggle between backbone fit and all-atom fit for displayed positions."));
-    ACONNECT(transformFitAction_.data(), &QAction::toggled,
-             this, &ReaderMainWindow::onTransformFitToggled);
+    transformFitAction_ = tb->addAction(QStringLiteral("Mode: Locked backbone  ⇄"));
+    transformFitAction_->setToolTip(fitModeToolTip());
+    ACONNECT(transformFitAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onTransformFitClicked);
 
     // Harness marker preset. Kept as an action for the existing slot/REST
     // path, hidden from the normal toolbar.
@@ -1095,6 +1092,17 @@ void ReaderMainWindow::updateCameraModeActions() {
     }
 }
 
+void ReaderMainWindow::updateFitModeLabel() {
+    if (!transformFitAction_ || !transformed_)
+        return;
+
+    using TMode = h5reader::model::TransformedConformation::Mode;
+    transformFitAction_->setText(transformed_->mode() == TMode::FitSubset
+        ? QStringLiteral("Mode: Locked backbone  ⇄")
+        : QStringLiteral("Mode: Kabsch with give  ⇄"));
+    transformFitAction_->setToolTip(fitModeToolTip());
+}
+
 void ReaderMainWindow::onPlaneLockTriggered() {
     ASSERT_THREAD(this);
     if (!scene_ || !selection_ || selection_->count() != 3
@@ -1159,26 +1167,23 @@ void ReaderMainWindow::onFreeCameraTriggered() {
     scene_->cameraComposer()->setMode(FreeMode(), FreePolicy(), t);
 }
 
-void ReaderMainWindow::onTransformFitToggled(bool allAtomFit) {
+void ReaderMainWindow::onTransformFitClicked() {
     ASSERT_THREAD(this);
     using TMode = h5reader::model::TransformedConformation::Mode;
     if (!transformed_ || !loaded_ || !loaded_->protein)
         return;
-    if (allAtomFit) {
-        transformed_->setMode(TMode::FitReference, 0);
-    } else {
+
+    if (transformed_->mode() == TMode::FitReference) {
         auto subset = h5reader::model::TransformedConformation::BackboneSubset(*loaded_->protein);
         if (subset.size() < 3) {
             qCWarning(cWindow).noquote()
                 << "backbone fit requested but subset has <3 atoms; keeping all-atom fit";
-            if (transformFitAction_) {
-                const QSignalBlocker block(transformFitAction_);
-                transformFitAction_->setChecked(true);
-            }
             transformed_->setMode(TMode::FitReference, 0);
             return;
         }
         transformed_->setMode(TMode::FitSubset, 0, std::move(subset));
+    } else {
+        transformed_->setMode(TMode::FitReference, 0);
     }
 }
 

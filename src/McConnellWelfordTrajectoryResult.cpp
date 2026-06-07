@@ -41,11 +41,9 @@ McConnellWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 
 // ── Compute ──────────────────────────────────────────────────────
 //
-// Phase 2b expansion (2026-05-17): the McConnell three-term tensor is
-// asymmetric (T1 ≠ 0); the antisymmetric part of M_ab/r³ is
-// (9 cosθ/2)(d̂_a b̂_b - b̂_a d̂_b)/r³. The sibling
-// McConnellShieldingTimeSeriesTrajectoryResult emits T1 from the same
-// source field, and this Welford rolls up the same channels.
+// McConnell's clean D(r)Qhat source response can carry T0, T1, and T2.
+// The sibling McConnellShieldingTimeSeriesTrajectoryResult emits T1 from
+// the same source field, and this Welford rolls up the same channels.
 
 void McConnellWelfordTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -211,8 +209,8 @@ int McConnellWelfordTrajectoryResult::WriteFeatures(
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
 // /trajectory/mc_welford/ — expanded schema (Phase 2b/C). Identical
-// shape to BS; the McConnell three-term tensor is asymmetric and emits
-// T1 from the same source field as McConnellShieldingTimeSeries.
+// shape to BS; McConnell emits T1 from the same source field as
+// McConnellShieldingTimeSeries.
 //
 // T1 storage: SphericalTensor.T1 is the Cartesian Levi-Civita dual
 // of the rank-1 part (T1[0]=v_x, T1[1]=v_y, T1[2]=v_z), NOT real-
@@ -220,7 +218,7 @@ int McConnellWelfordTrajectoryResult::WriteFeatures(
 // this honestly so downstream rotations use Cartesian, not real-Y_1m.
 //
 // Per-TR specifics (vs. BS exemplar):
-//   - Group `units` = "Angstrom^-3" (McConnell three-term form unit).
+//   - Group `units` = "Angstrom^-3" (unscaled D(r)Qhat response).
 //   - Per-dataset `units` attributes: value channels in Angstrom^-3,
 //     squared channels in Angstrom^-6 (Angstrom^-12 for _m2 of
 //     squared channels), rate channels in Angstrom^-3_per_ps.

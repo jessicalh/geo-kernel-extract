@@ -243,6 +243,7 @@ int BsWelfordTrajectoryResult::WriteFeatures(
 //     mean_dt_ps                                  (cadence)
 //     frame_index_range = [first, last]           (trajectory span this rollup covered)
 //     irrep_layout_t1, irrep_layout_t2            (component ordering)
+//     parity = "0e+1e+2e"                       (full shielding tensor)
 //     units                                       (primary value-channel unit; per-dataset
 //                                                  units attributes are authoritative)
 //
@@ -269,6 +270,7 @@ void BsWelfordTrajectoryResult::WriteH5Group(
     // real-Y_1m. T2 IS real-spherical-tesseral.
     grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
+    grp.createAttribute("parity",         std::string("0e+1e+2e"));
     // Group-level `units` describes the primary value channel of the
     // group (T0, T1, T2, |T2|). Per-dataset `units` attributes are
     // authoritative for each individual dataset (e.g. *_m2 has squared

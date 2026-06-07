@@ -10,6 +10,7 @@
 
 #include <Eigen/Dense>
 #include <array>
+#include <cstddef>
 #include <cmath>
 #include <string>
 
@@ -150,6 +151,47 @@ enum class BondCategory {
     SidechainOther,
     Unknown
 };
+
+// McConnell source categories and channels. These are the emitted feature
+// categories, not a replacement for topology-level BondCategory.
+enum class McConnellSourceCategory {
+    PeptideCO = 0,
+    PeptideCN = 1,
+    BackboneOther = 2,
+    SidechainCO = 3,
+    SidechainOther = 4,
+    Disulfide = 5,
+    AromaticZeroed = 6
+};
+
+enum class McConnellChannel {
+    Fixed = 0,
+    BondOrder = 1
+};
+
+inline constexpr std::size_t kMcConnellSourceCategoryCount = 7;
+inline constexpr std::size_t kMcConnellChannelCount = 2;
+
+inline const char* McConnellSourceCategoryStem(McConnellSourceCategory cat) {
+    switch (cat) {
+        case McConnellSourceCategory::PeptideCO:       return "peptide_co";
+        case McConnellSourceCategory::PeptideCN:       return "peptide_cn";
+        case McConnellSourceCategory::BackboneOther:   return "backbone_other";
+        case McConnellSourceCategory::SidechainCO:     return "sidechain_co";
+        case McConnellSourceCategory::SidechainOther:  return "sidechain_other";
+        case McConnellSourceCategory::Disulfide:       return "disulfide";
+        case McConnellSourceCategory::AromaticZeroed:  return "aromatic_zeroed";
+    }
+    return "unknown";
+}
+
+inline const char* McConnellChannelStem(McConnellChannel channel) {
+    switch (channel) {
+        case McConnellChannel::Fixed:     return "fixed";
+        case McConnellChannel::BondOrder: return "bo";
+    }
+    return "unknown";
+}
 
 
 // ============================================================================

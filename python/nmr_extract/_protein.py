@@ -19,16 +19,27 @@ from ._tensors import (
     ShieldingTensor,
     EFGTensor,
     VectorField,
+    MagneticVectorField,
     PerRingTypeT0,
+    PerRingTypeT1,
     PerRingTypeT2,
     PerBondCategoryT2,
     RingCounts,
+    McConnellNearFieldCounts,
     McConnellScalars,
     CoulombScalars,
     HBondScalars,
     DsspScalars,
     MopacScalars,
     MopacGlobal,
+    MopacDipoleComponents,
+    MopacAtomPopulations,
+    MopacAOTable,
+    MopacAtomicOrbitalPopulations,
+    MopacPrintedBondOrders,
+    MopacUniqueBondOrders,
+    MopacTopologyBondOrdersFull,
+    MopacMOMeta,
     BondOrders,
     DeltaScalars,
     DeltaAPBS,
@@ -50,29 +61,82 @@ class RingKernelGroup:
     shielding: ShieldingTensor
     per_type_T0: PerRingTypeT0
     per_type_T2: PerRingTypeT2
+    per_type_T1: Optional[PerRingTypeT1] = None
 
 
 @dataclass(frozen=True)
 class BiotSavartGroup(RingKernelGroup):
     """Biot-Savart with additional B-field and ring counts."""
-    total_B: VectorField = None
+    total_B: MagneticVectorField = None
+    ring_B_field: MagneticVectorField = None
+    ring_B_cylindrical: MagneticVectorField = None
     ring_counts: RingCounts = None
 
 
 @dataclass(frozen=True)
+class HaighMallionGroup(RingKernelGroup):
+    """Haigh-Mallion with per-ring effective B-field diagnostics."""
+    ring_B_field: MagneticVectorField = None
+
+
+@dataclass(frozen=True)
 class McConnellGroup:
-    """McConnell bond anisotropy: shielding + T2 per bond category + scalars."""
-    shielding: ShieldingTensor
-    category_T2: PerBondCategoryT2
-    scalars: McConnellScalars
+    """Two-channel McConnell source response by source category.
+
+    Each field is a packed SphericalTensor view over one ``mc_<cat>_<ch>.npy``
+    array with component order ``0e,1e_x,1e_y,1e_z,2e_m-2..+2``.
+    """
+    peptide_co_fixed: ShieldingTensor
+    peptide_co_bo: ShieldingTensor
+    peptide_cn_fixed: ShieldingTensor
+    peptide_cn_bo: ShieldingTensor
+    backbone_other_fixed: ShieldingTensor
+    backbone_other_bo: ShieldingTensor
+    sidechain_co_fixed: ShieldingTensor
+    sidechain_co_bo: ShieldingTensor
+    sidechain_other_fixed: ShieldingTensor
+    sidechain_other_bo: ShieldingTensor
+    disulfide_fixed: ShieldingTensor
+    disulfide_bo: ShieldingTensor
+    aromatic_zeroed_fixed: ShieldingTensor
+    aromatic_zeroed_bo: ShieldingTensor
+    nearfield_counts: Optional[McConnellNearFieldCounts] = None
+
+    @property
+    def fixed(self) -> dict[str, ShieldingTensor]:
+        return {
+            "peptide_co": self.peptide_co_fixed,
+            "peptide_cn": self.peptide_cn_fixed,
+            "backbone_other": self.backbone_other_fixed,
+            "sidechain_co": self.sidechain_co_fixed,
+            "sidechain_other": self.sidechain_other_fixed,
+            "disulfide": self.disulfide_fixed,
+            "aromatic_zeroed": self.aromatic_zeroed_fixed,
+        }
+
+    @property
+    def bo(self) -> dict[str, ShieldingTensor]:
+        return {
+            "peptide_co": self.peptide_co_bo,
+            "peptide_cn": self.peptide_cn_bo,
+            "backbone_other": self.backbone_other_bo,
+            "sidechain_co": self.sidechain_co_bo,
+            "sidechain_other": self.sidechain_other_bo,
+            "disulfide": self.disulfide_bo,
+            "aromatic_zeroed": self.aromatic_zeroed_bo,
+        }
 
 
 @dataclass(frozen=True)
 class CoulombGroup:
-    """Coulomb E-field: shielding + E-field vector + EFG decompositions."""
-    shielding: ShieldingTensor
+    """Coulomb E-field and bare EFG decompositions."""
+    efg: ShieldingTensor
     E: VectorField
+    E_backbone: VectorField
+    E_sidechain: VectorField
+    E_aromatic: VectorField
     efg_backbone: EFGTensor
+    efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
     scalars: CoulombScalars
 
@@ -92,10 +156,40 @@ class MopacCoreGroup:
 
 
 @dataclass(frozen=True)
+class MopacFullSidecar:
+    """Full MOPAC sidecar manifest and raw-artifact directory."""
+    path: Path
+    manifest: dict
+
+
+@dataclass(frozen=True)
+class MopacFullGroup:
+    global_terms: Optional[np.ndarray] = None
+    dipole_components: Optional[MopacDipoleComponents] = None
+    atom_populations: Optional[MopacAtomPopulations] = None
+    ao_table: Optional[MopacAOTable] = None
+    atomic_orbital_populations: Optional[MopacAtomicOrbitalPopulations] = None
+    mulliken_overlap_sparse: Optional[np.ndarray] = None
+    bond_orders_printed: Optional[MopacPrintedBondOrders] = None
+    bond_valencies: Optional[np.ndarray] = None
+    bond_orders_unique: Optional[MopacUniqueBondOrders] = None
+    topology_bond_orders_full: Optional[MopacTopologyBondOrdersFull] = None
+    mo_meta: Optional[MopacMOMeta] = None
+    mo_coefficients: Optional[np.ndarray] = None
+    density_packed: Optional[np.ndarray] = None
+    overlap_packed: Optional[np.ndarray] = None
+    sidecar: Optional[MopacFullSidecar] = None
+
+
+@dataclass(frozen=True)
 class MopacCoulombGroup:
-    shielding: ShieldingTensor
+    efg: ShieldingTensor
     E: VectorField
+    E_backbone: VectorField
+    E_sidechain: VectorField
+    E_aromatic: VectorField
     efg_backbone: EFGTensor
+    efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
     scalars: CoulombScalars
 
@@ -111,7 +205,8 @@ class MopacMcConnellGroup:
 class MopacGroup:
     core: MopacCoreGroup
     coulomb: MopacCoulombGroup
-    mcconnell: MopacMcConnellGroup
+    mcconnell: Optional[MopacMcConnellGroup] = None
+    full: Optional[MopacFullGroup] = None
 
 
 @dataclass(frozen=True)
@@ -748,6 +843,10 @@ class ExtractionManifest:
     def axis_alignment(self) -> dict:
         return self._data.get("axis_alignment", {})
 
+    @property
+    def feature_metadata(self) -> dict:
+        return self._data.get("feature_metadata", {})
+
     def has_atom_semantic(self) -> bool:
         return bool(self.topology.get("has_atom_semantic", False))
 
@@ -1009,7 +1108,7 @@ class Protein:
 
     # Ring calculators
     biot_savart: BiotSavartGroup
-    haigh_mallion: RingKernelGroup
+    haigh_mallion: HaighMallionGroup
     pi_quadrupole: RingKernelGroup
     dispersion: RingKernelGroup
     ring_susceptibility: ShieldingTensor
@@ -1289,13 +1388,18 @@ def load(path: str | Path) -> Protein:
         shielding=get("bs_shielding"),
         per_type_T0=get("bs_per_type_T0"),
         per_type_T2=get("bs_per_type_T2"),
+        per_type_T1=get("bs_per_type_T1"),
         total_B=get("bs_total_B"),
+        ring_B_field=get("bs_ring_B_field"),
+        ring_B_cylindrical=get("bs_ring_B_cylindrical"),
         ring_counts=get("bs_ring_counts"),
     )
-    haigh_mallion = RingKernelGroup(
+    haigh_mallion = HaighMallionGroup(
         shielding=get("hm_shielding"),
         per_type_T0=get("hm_per_type_T0"),
         per_type_T2=get("hm_per_type_T2"),
+        per_type_T1=get("hm_per_type_T1"),
+        ring_B_field=get("hm_ring_B_field"),
     )
     pi_quadrupole = RingKernelGroup(
         shielding=get("pq_shielding"),
@@ -1308,14 +1412,30 @@ def load(path: str | Path) -> Protein:
         per_type_T2=get("disp_per_type_T2"),
     )
     mcconnell = McConnellGroup(
-        shielding=get("mc_shielding"),
-        category_T2=get("mc_category_T2"),
-        scalars=get("mc_scalars"),
+        peptide_co_fixed=get("mc_peptide_co_fixed"),
+        peptide_co_bo=get("mc_peptide_co_bo"),
+        peptide_cn_fixed=get("mc_peptide_cn_fixed"),
+        peptide_cn_bo=get("mc_peptide_cn_bo"),
+        backbone_other_fixed=get("mc_backbone_other_fixed"),
+        backbone_other_bo=get("mc_backbone_other_bo"),
+        sidechain_co_fixed=get("mc_sidechain_co_fixed"),
+        sidechain_co_bo=get("mc_sidechain_co_bo"),
+        sidechain_other_fixed=get("mc_sidechain_other_fixed"),
+        sidechain_other_bo=get("mc_sidechain_other_bo"),
+        disulfide_fixed=get("mc_disulfide_fixed"),
+        disulfide_bo=get("mc_disulfide_bo"),
+        aromatic_zeroed_fixed=get("mc_aromatic_zeroed_fixed"),
+        aromatic_zeroed_bo=get("mc_aromatic_zeroed_bo"),
+        nearfield_counts=get("mc_nearfield_counts"),
     )
     coulomb = CoulombGroup(
-        shielding=get("coulomb_shielding"),
+        efg=get("coulomb_efg", get("coulomb_shielding")),
         E=get("coulomb_E"),
+        E_backbone=get("coulomb_E_backbone"),
+        E_sidechain=get("coulomb_E_sidechain"),
+        E_aromatic=get("coulomb_E_aromatic"),
         efg_backbone=get("coulomb_efg_backbone"),
+        efg_sidechain=get("coulomb_efg_sidechain"),
         efg_aromatic=get("coulomb_efg_aromatic"),
         scalars=get("coulomb_scalars"),
     )
@@ -1327,6 +1447,73 @@ def load(path: str | Path) -> Protein:
     # MOPAC (optional)
     mopac = None
     if "mopac_charges" in available:
+        import json
+        mopac_sidecar = None
+        mopac_sidecar_path = path / "mopac_full" / "extraction_manifest.json"
+        if not mopac_sidecar_path.exists():
+            mopac_sidecar_path = path / "mopac_full" / "mopac_full.proposed.json"
+        if mopac_sidecar_path.exists():
+            with open(mopac_sidecar_path) as f:
+                mopac_sidecar = MopacFullSidecar(
+                    path=mopac_sidecar_path,
+                    manifest=json.load(f),
+                )
+        mopac_full_stems = {
+            "mopac_global_terms",
+            "mopac_dipole_components",
+            "mopac_atom_populations",
+            "mopac_ao_table",
+            "mopac_atomic_orbital_populations",
+            "mopac_mulliken_overlap_sparse",
+            "mopac_bond_orders_printed",
+            "mopac_bond_valencies",
+            "mopac_bond_orders_unique",
+            "mopac_topology_bond_orders_full",
+            "mopac_mo_meta",
+            "mopac_mo_coefficients",
+            "mopac_density_packed",
+            "mopac_overlap_packed",
+        }
+        mopac_full = None
+        if mopac_sidecar is not None or any(stem in available for stem in mopac_full_stems):
+            mopac_full = MopacFullGroup(
+                global_terms=get("mopac_global_terms")
+                    if "mopac_global_terms" in available else None,
+                dipole_components=get("mopac_dipole_components")
+                    if "mopac_dipole_components" in available else None,
+                atom_populations=get("mopac_atom_populations")
+                    if "mopac_atom_populations" in available else None,
+                ao_table=get("mopac_ao_table")
+                    if "mopac_ao_table" in available else None,
+                atomic_orbital_populations=get("mopac_atomic_orbital_populations")
+                    if "mopac_atomic_orbital_populations" in available else None,
+                mulliken_overlap_sparse=get("mopac_mulliken_overlap_sparse")
+                    if "mopac_mulliken_overlap_sparse" in available else None,
+                bond_orders_printed=get("mopac_bond_orders_printed")
+                    if "mopac_bond_orders_printed" in available else None,
+                bond_valencies=get("mopac_bond_valencies")
+                    if "mopac_bond_valencies" in available else None,
+                bond_orders_unique=get("mopac_bond_orders_unique")
+                    if "mopac_bond_orders_unique" in available else None,
+                topology_bond_orders_full=get("mopac_topology_bond_orders_full")
+                    if "mopac_topology_bond_orders_full" in available else None,
+                mo_meta=get("mopac_mo_meta")
+                    if "mopac_mo_meta" in available else None,
+                mo_coefficients=get("mopac_mo_coefficients")
+                    if "mopac_mo_coefficients" in available else None,
+                density_packed=get("mopac_density_packed")
+                    if "mopac_density_packed" in available else None,
+                overlap_packed=get("mopac_overlap_packed")
+                    if "mopac_overlap_packed" in available else None,
+                sidecar=mopac_sidecar,
+            )
+        legacy_mopac_mcconnell = None
+        if "mopac_mc_shielding" in available:
+            legacy_mopac_mcconnell = MopacMcConnellGroup(
+                shielding=get("mopac_mc_shielding"),
+                category_T2=get("mopac_mc_category_T2"),
+                scalars=get("mopac_mc_scalars"),
+            )
         mopac = MopacGroup(
             core=MopacCoreGroup(
                 charges=get("mopac_charges"),
@@ -1335,17 +1522,19 @@ def load(path: str | Path) -> Protein:
                 global_=get("mopac_global"),
             ),
             coulomb=MopacCoulombGroup(
-                shielding=get("mopac_coulomb_shielding"),
+                efg=get("mopac_coulomb_efg",
+                        get("mopac_coulomb_shielding")),
                 E=get("mopac_coulomb_E"),
+                E_backbone=get("mopac_coulomb_E_backbone"),
+                E_sidechain=get("mopac_coulomb_E_sidechain"),
+                E_aromatic=get("mopac_coulomb_E_aromatic"),
                 efg_backbone=get("mopac_coulomb_efg_backbone"),
+                efg_sidechain=get("mopac_coulomb_efg_sidechain"),
                 efg_aromatic=get("mopac_coulomb_efg_aromatic"),
                 scalars=get("mopac_coulomb_scalars"),
             ),
-            mcconnell=MopacMcConnellGroup(
-                shielding=get("mopac_mc_shielding"),
-                category_T2=get("mopac_mc_category_T2"),
-                scalars=get("mopac_mc_scalars"),
-            ),
+            mcconnell=legacy_mopac_mcconnell,
+            full=mopac_full,
         )
 
     # APBS (optional)

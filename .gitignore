@@ -224,3 +224,7 @@ data/ccd/*
 # scripts/larsen_hbond_grid_parse/parse_larsen_hbond_grids.py.
 # ~10 MB total (6 archive grids).
 data/larsen_hbond_grids/
+
+# Transient doc scratch (pre-existing untracked search-results dump, Jun 5);
+# not producer material.
+doc/searchresults1/

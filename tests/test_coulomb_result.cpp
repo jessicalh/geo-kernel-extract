@@ -239,17 +239,19 @@ TEST_F(CoulombProteinTest, DecompositionSumsToTotal) {
         max_E_diff = std::max(max_E_diff, E_diff);
 
         // EFG_total = EFG_backbone + EFG_sidechain + EFG_aromatic
-        // (sidechain EFG not stored separately, but total - backbone - aromatic
-        //  should give it)
-        Mat3 EFG_sum = ca.coulomb_EFG_backbone + ca.coulomb_EFG_aromatic;
-        // We don't have EFG_sidechain stored as Mat3, but the total should
-        // equal backbone + sidechain + aromatic. Check E decomposition only.
+        Mat3 EFG_sum = ca.coulomb_EFG_backbone + ca.coulomb_EFG_sidechain
+                     + ca.coulomb_EFG_aromatic;
+        double EFG_diff = (ca.coulomb_EFG_total - EFG_sum).norm();
+        max_EFG_diff = std::max(max_EFG_diff, EFG_diff);
     }
 
     EXPECT_LT(max_E_diff, 1e-8)
         << "E decomposition must sum to total";
+    EXPECT_LT(max_EFG_diff, 1e-8)
+        << "EFG decomposition must sum to total";
 
     std::cout << "  Max |E_total - (bb + sc + arom)| = " << max_E_diff << "\n";
+    std::cout << "  Max |EFG_total - (bb + sc + arom)| = " << max_EFG_diff << "\n";
 }
 
 

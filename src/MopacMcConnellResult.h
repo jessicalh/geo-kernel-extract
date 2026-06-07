@@ -1,25 +1,15 @@
 #pragma once
 //
-// MopacMcConnellResult: Bond anisotropy shielding weighted by MOPAC bond order.
+// MopacMcConnellResult: compatibility handle for the McConnell BO channel.
 //
-// Same McConnell kernel as McConnellResult:
-//   M_ab = 9 cos_theta d_hat_a b_hat_b
-//        - 3 b_hat_a b_hat_b
-//        - (3 d_hat_a d_hat_b - delta_ab)
+// The new McConnell model is unified in McConnellResult:
+//   fixed channel: sum D(r) Qhat
+//   BO channel:    sum Wiberg_bond_order * D(r) Qhat
 //
-// Each bond's contribution is weighted by its MOPAC Wiberg bond order:
-//   total += bond_order_k * M_ab_k / r_k^3
-//
-// The bond order is a measured QM quantity (electron density sharing),
-// not a parameter. It modulates which bonds dominate the angular sum.
-// A C=O with order 1.8 contributes more kernel than one with 1.2.
-// The model learns Delta_chi per category for this weighted kernel.
-//
-// Same output grouping as McConnellResult: total shielding, category
-// T2 for backbone/sidechain/aromatic/nearest-CO/nearest-CN, and scalar
-// sums for CO/CN/sidechain/aromatic plus nearest distances.
-//
-// Dependencies: MopacResult (bond orders), SpatialIndexResult, GeometryResult.
+// This result is retained so trajectory consumers that check for
+// MopacMcConnellResult keep their sparse/conditional source semantics. It
+// does not emit separate NPY arrays; the forward NPY surface is the 14-array
+// mc_<category>_{fixed,bo} family from McConnellResult.
 //
 
 #include "ConformationResult.h"
@@ -44,7 +34,8 @@ public:
 
     std::vector<std::type_index> Dependencies() const override;
 
-    // Factory: compute bond-order-weighted McConnell tensors for all atoms.
+    // Factory: attach compatibility result after McConnellResult has populated
+    // ConformationAtom::mopac_mc_* legacy projections from the BO channel.
     static std::unique_ptr<MopacMcConnellResult> Compute(
         ProteinConformation& conf);
 

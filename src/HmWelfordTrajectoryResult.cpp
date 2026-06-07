@@ -213,6 +213,7 @@ int HmWelfordTrajectoryResult::WriteFeatures(
 // structure to BS. See BS exemplar for the full dataset list. Per-TR
 // differences:
 //   - Group `units` = "Angstrom^-1" (HM kernel unit)
+//   - Group `parity` = "0e+1e+2e" (full shielding tensor)
 //   - Per-dataset `units` attributes: value channels in Angstrom^-1,
 //     squared channels (*_m2, *_delta_squared_*) in Angstrom^-2 (or
 //     Angstrom^-4 for the _m2 of squared channels), rate channels
@@ -239,6 +240,7 @@ void HmWelfordTrajectoryResult::WriteH5Group(
     // T1 stored as Cartesian Levi-Civita dual; see BS exemplar comment.
     grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
+    grp.createAttribute("parity",         std::string("0e+1e+2e"));
     // Group-level `units` describes the primary value channel. Per-
     // dataset `units` attributes are authoritative for each individual
     // dataset (e.g. *_m2 is squared, *_delta_squared_* is squared,

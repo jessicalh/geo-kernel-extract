@@ -7,8 +7,11 @@ Every wrapper holds a numpy array and exposes:
 
 SphericalTensor packing (9 components):
     [0]     T0   isotropic scalar       (L=0, even parity)
-    [1:4]   T1   antisymmetric vector   (L=1, odd parity)
+    [1:4]   T1   antisymmetric pseudovector (L=1, even parity)
     [4:9]   T2   traceless symmetric    (L=2, even parity, m=-2..+2)
+
+Canonical PackFull9 layout string:
+    "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
 
 T2 component ordering matches e3nn: m = -2, -1, 0, +1, +2.
 Normalization is isometric (Frobenius-preserving), not orthonormal-on-sphere.
@@ -21,6 +24,9 @@ import torch
 from e3nn.o3 import Irreps
 
 from ._types import N_RING_TYPES, N_BOND_CATEGORIES, RingType, BondCategory
+
+
+PACK_FULL9_IRREP_LAYOUT = "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
 
 
 class SphericalTensor:
@@ -36,7 +42,7 @@ class SphericalTensor:
     """
 
     __slots__ = ("_data",)
-    IRREPS = Irreps("1x0e + 1x1o + 1x2e")
+    IRREPS = Irreps("1x0e + 1x1e + 1x2e")
 
     def __init__(self, data: np.ndarray):
         if data.shape[-1] != 9:
@@ -51,7 +57,7 @@ class SphericalTensor:
 
     @property
     def irreps(self) -> Irreps:
-        """``Irreps("1x0e+1x1o+1x2e")``."""
+        """``Irreps("1x0e+1x1e+1x2e")``."""
         return self.IRREPS
 
     def torch(self) -> torch.Tensor:
@@ -65,7 +71,7 @@ class SphericalTensor:
 
     @property
     def T1(self) -> np.ndarray:
-        """Antisymmetric pseudovector ``(*, 3)``.  L=1, odd parity."""
+        """Antisymmetric pseudovector ``(*, 3)``.  L=1, even parity."""
         return self._data[..., 1:4]
 
     @property
@@ -99,7 +105,7 @@ class ShieldingTensor(SphericalTensor):
     (``ArraySpec.units``). DFT-derived shielding (orca_*, tripeptide_*,
     larsen_hbond_*_shielding) is in ppm. Classical-kernel-derived
     shielding (bs_*, hm_*, mc_*, pq_*, disp_*, hbond_*, ringchi_*,
-    coulomb_shielding) is in the kernel's native unit (ppm·T/nA, Å⁻¹,
+    coulomb_efg) is in the kernel's native unit (ppm·T/nA, Å⁻¹,
     Å⁻³, Å⁻⁵, Å⁻⁶, V/Å²) — calibration multiplies by the relevant
     parameter to map to ppm. See OBJECT_MODEL.md drift-table section.
     """
@@ -233,6 +239,18 @@ class VectorField:
         return f"VectorField(shape={self._data.shape}, irreps='{self.IRREPS}')"
 
 
+class MagneticVectorField(VectorField):
+    """3D axial vector field for magnetic B-field diagnostics.
+
+    Shape ``(*, 3)``.  Cartesian (x, y, z) components with even parity.
+    """
+
+    IRREPS = Irreps("1x1e")
+
+    def __repr__(self) -> str:
+        return f"MagneticVectorField(shape={self._data.shape}, irreps='{self.IRREPS}')"
+
+
 # ── Per-ring-type decompositions ────────────────────────────────────
 
 
@@ -268,6 +286,46 @@ class PerRingTypeT0:
 
     def __repr__(self) -> str:
         return f"PerRingTypeT0(shape={self._data.shape})"
+
+
+class PerRingTypeT1:
+    """T1 (L=1 axial) contribution decomposed by ring type.
+
+    Shape ``(*, 24)`` = 8 ring types x 3 T1 components.
+    Use :meth:`as_block` for ``(*, 8, 3)`` view.
+    """
+
+    __slots__ = ("_data",)
+    IRREPS = Irreps("8x1e")
+
+    def __init__(self, data: np.ndarray):
+        if data.shape[-1] != N_RING_TYPES * 3:
+            raise ValueError(
+                f"PerRingTypeT1: last dim must be {N_RING_TYPES * 3}, got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def irreps(self) -> Irreps:
+        return self.IRREPS
+
+    def for_type(self, rt: RingType) -> np.ndarray:
+        i = int(rt)
+        return self._data[..., i * 3:(i + 1) * 3]
+
+    @property
+    def total(self) -> np.ndarray:
+        return self.as_block().sum(axis=-2)
+
+    def as_block(self) -> np.ndarray:
+        """Reshape to ``(*, 8, 3)``."""
+        return self._data.reshape(*self._data.shape[:-1], N_RING_TYPES, 3)
+
+    def __repr__(self) -> str:
+        return f"PerRingTypeT1(shape={self._data.shape})"
 
 
 class PerRingTypeT2:
@@ -388,6 +446,37 @@ class RingCounts:
 
     def __repr__(self) -> str:
         return f"RingCounts(shape={self._data.shape})"
+
+
+class McConnellNearFieldCounts:
+    """(*, 2) McConnell near-field audit counts below 3 A.
+
+    Columns are accepted and rejected source-target pair counts after the
+    same filters used by the McConnell kernel evaluation path.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.shape[-1] != 2:
+            raise ValueError(
+                f"McConnellNearFieldCounts: last dim must be 2, got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def accepted_lt3A(self) -> np.ndarray:
+        return self._data[..., 0]
+
+    @property
+    def rejected_lt3A(self) -> np.ndarray:
+        return self._data[..., 1]
+
+    def __repr__(self) -> str:
+        return f"McConnellNearFieldCounts(shape={self._data.shape})"
 
 
 class McConnellScalars:
@@ -604,6 +693,261 @@ class MopacGlobal:
     def __repr__(self) -> str:
         return (f"MopacGlobal(hof={self.heat_of_formation:.1f} kcal/mol, "
                 f"|dipole|={self.dipole_magnitude:.2f} D)")
+
+
+class MopacDipoleComponents:
+    """``(3, 4)`` MOPAC dipole rows: POINT-CHG., HYBRID, SUM x/y/z/total."""
+
+    __slots__ = ("_data",)
+    ROWS = ("POINT-CHG.", "HYBRID", "SUM")
+
+    def __init__(self, data: np.ndarray):
+        if data.shape != (3, 4):
+            raise ValueError(f"MopacDipoleComponents: expected (3, 4), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def point_charge(self) -> np.ndarray:
+        return self._data[0]
+
+    @property
+    def hybrid(self) -> np.ndarray:
+        return self._data[1]
+
+    @property
+    def sum(self) -> np.ndarray:
+        return self._data[2]
+
+
+class MopacAtomPopulations:
+    """``(N, 12)`` atom-axis MOPAC charge/population/valency projection."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 12:
+            raise ValueError(f"MopacAtomPopulations: expected (N, 12), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def net_charge(self) -> np.ndarray:
+        return self._data[:, 0]
+
+    @property
+    def electron_density(self) -> np.ndarray:
+        return self._data[:, 1]
+
+    @property
+    def s_population(self) -> np.ndarray:
+        return self._data[:, 2]
+
+    @property
+    def p_population(self) -> np.ndarray:
+        return self._data[:, 3]
+
+    @property
+    def d_population(self) -> np.ndarray:
+        return self._data[:, 4]
+
+    @property
+    def f_population(self) -> np.ndarray:
+        return self._data[:, 5]
+
+    @property
+    def dipole_contribution(self) -> np.ndarray:
+        return self._data[:, 6:10]
+
+    @property
+    def mopac_valency(self) -> np.ndarray:
+        return self._data[:, 10]
+
+    @property
+    def project_valency(self) -> np.ndarray:
+        return self._data[:, 11]
+
+
+class MopacAOTable:
+    """``(NAO, 7)`` AO metadata projection."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 7:
+            raise ValueError(f"MopacAOTable: expected (NAO, 7), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def ao_index(self) -> np.ndarray:
+        return self._data[:, 0].astype(np.intp)
+
+    @property
+    def atom_index(self) -> np.ndarray:
+        return self._data[:, 1].astype(np.intp)
+
+    @property
+    def ao_type_id(self) -> np.ndarray:
+        return self._data[:, 2].astype(np.intp)
+
+    @property
+    def zeta(self) -> np.ndarray:
+        return self._data[:, 3]
+
+    @property
+    def principal_quantum_number(self) -> np.ndarray:
+        return self._data[:, 4].astype(np.intp)
+
+    @property
+    def population(self) -> np.ndarray:
+        return self._data[:, 5]
+
+
+class MopacAtomicOrbitalPopulations:
+    """``(N, 9)`` printed atomic-orbital electron populations."""
+
+    __slots__ = ("_data",)
+    COLUMNS = ("s", "px", "py", "pz", "x2_minus_y2", "xz", "z2", "yz", "xy")
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 9:
+            raise ValueError(
+                f"MopacAtomicOrbitalPopulations: expected (N, 9), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def s(self) -> np.ndarray:
+        return self._data[:, 0]
+
+    @property
+    def p(self) -> np.ndarray:
+        return self._data[:, 1:4]
+
+    @property
+    def d(self) -> np.ndarray:
+        return self._data[:, 4:9]
+
+
+class MopacPrintedBondOrders:
+    """``(K, 9)`` directed MOPAC bond-order entries exactly as printed."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 9:
+            raise ValueError(f"MopacPrintedBondOrders: expected (K, 9), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def row_atom(self) -> np.ndarray:
+        return self._data[:, 2].astype(np.intp)
+
+    @property
+    def neighbour_atom(self) -> np.ndarray:
+        return self._data[:, 5].astype(np.intp)
+
+    @property
+    def order(self) -> np.ndarray:
+        return self._data[:, 7]
+
+
+class MopacUniqueBondOrders:
+    """``(U, 8)`` deterministic symmetric projection over printed rows."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 8:
+            raise ValueError(f"MopacUniqueBondOrders: expected (U, 8), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def atom_i(self) -> np.ndarray:
+        return self._data[:, 0].astype(np.intp)
+
+    @property
+    def atom_j(self) -> np.ndarray:
+        return self._data[:, 1].astype(np.intp)
+
+    @property
+    def max_order(self) -> np.ndarray:
+        return self._data[:, 2]
+
+    @property
+    def mean_order(self) -> np.ndarray:
+        return self._data[:, 3]
+
+
+class MopacTopologyBondOrdersFull:
+    """``(B, 8)`` topology-bond bridge with presence and absence state."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 8:
+            raise ValueError(f"MopacTopologyBondOrdersFull: expected (B, 8), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def order(self) -> np.ndarray:
+        return self._data[:, 3]
+
+    @property
+    def present(self) -> np.ndarray:
+        return self._data[:, 4].astype(bool)
+
+
+class MopacMOMeta:
+    """``(NMO, 5)`` MO/LMO energy, occupation, bonding contribution, label id."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 5:
+            raise ValueError(f"MopacMOMeta: expected (NMO, 5), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def energy(self) -> np.ndarray:
+        return self._data[:, 1]
+
+    @property
+    def occupation(self) -> np.ndarray:
+        return self._data[:, 2]
+
+    @property
+    def bonding_contribution(self) -> np.ndarray:
+        return self._data[:, 3]
 
 
 class BondOrders:
@@ -853,4 +1197,3 @@ class AIMNet2ChargeResponseGradient:
 
     def __repr__(self) -> str:
         return f"AIMNet2ChargeResponseGradient(shape={self._data.shape})"
-

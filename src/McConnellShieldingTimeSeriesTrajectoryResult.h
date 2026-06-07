@@ -10,9 +10,9 @@
 // PerFrameExtractionSet. No source-attached gate.
 //
 // Units: Angstrom^-3 (NOT ppm). McConnell's field on ConformationAtom
-// stores the unparameterised geometric kernel M_ab/r^3 (asymmetric,
-// non-traceless, T0+T1+T2 all physical). The parameter (Δχ_category)
-// is applied downstream in the calibration pipeline.
+// stores the unparameterised D(r)Qhat source-shape response
+// (T0+T1+T2 all physical). Susceptibility scale, sign, and unit
+// conversion are learned downstream in the calibration pipeline.
 //
 // Emission:
 //
@@ -22,9 +22,9 @@
 //     frame_times    (T,)       float64
 //     attrs:
 //       result_name    = "McConnellShieldingTimeSeriesTrajectoryResult"
-//       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+//       irrep_layout   = "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
 //       normalization  = "isometric_real_sph"
-//       parity         = "0e+1o+2e"
+//       parity         = "0e+1e+2e"
 //       units          = "Angstrom^-3"
 //
 

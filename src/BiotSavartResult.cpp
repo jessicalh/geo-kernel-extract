@@ -190,7 +190,7 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 choices.Record(CalculatorId::BiotSavart, ri, "ring current",
                     [&ring, verts_copy, normal_copy, lobe_copy](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
-                        AddNumber(gc, "intensity", ring.Intensity(), "nA");
+                        AddNumber(gc, "intensity", ring.Intensity(), "nA·T⁻¹");
                         AddNumber(gc, "lobe_offset", ring.JohnsonBoveyLobeOffset(), "A");
                         SetSampler(gc, [verts_copy, normal_copy, lobe_copy](Vec3 pt) -> SphericalTensor {
                             Vec3 B = JohnsonBoveyField(verts_copy, normal_copy, lobe_copy, 1.0, pt);
@@ -308,13 +308,15 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
             G_total += G;
             B_total += B;
 
-            // Per-type T0 and T2 sums
+            // Per-type T0, T1 and T2 sums
             // NOTE: 8 = RingTypeIndex count; a ring whose type index >= 8 is
             // silently dropped here. Keep in sync with the enum (and the
             // per-type array widths + catalog) if a ring type is added.
             int ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < 8) {
                 ca.per_type_G_T0_sum[ti] += rn->G_spherical.T0;
+                for (int c = 0; c < 3; ++c)
+                    ca.per_type_G_T1_sum[ti][c] += rn->G_spherical.T1[c];
                 for (int c = 0; c < 5; ++c)
                     ca.per_type_G_T2_sum[ti][c] += rn->G_spherical.T2[c];
             }
@@ -474,6 +476,17 @@ int BiotSavartResult::WriteFeatures(const ProteinConformation& conf,
             for (int t = 0; t < 8; ++t)
                 data[i*8 + t] = conf.AtomAt(i).per_type_G_T0_sum[t];
         NpyWriter::WriteFloat64(output_dir + "/bs_per_type_T0.npy", data.data(), N, 8);
+        written++;
+    }
+
+    // bs_per_type_T1: (N, 24) — T1[3] per ring type[8]
+    {
+        std::vector<double> data(N * 24);
+        for (size_t i = 0; i < N; ++i)
+            for (int t = 0; t < 8; ++t)
+                for (int c = 0; c < 3; ++c)
+                    data[i*24 + t*3 + c] = conf.AtomAt(i).per_type_G_T1_sum[t][c];
+        NpyWriter::WriteFloat64(output_dir + "/bs_per_type_T1.npy", data.data(), N, 24);
         written++;
     }
 

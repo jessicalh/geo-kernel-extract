@@ -23,17 +23,15 @@
 //       result_name    = "BsShieldingTimeSeriesTrajectoryResult"
 //       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
-//       parity         = "0e+1o+2e"
-//       units          = "ppm"
+//       parity         = "0e+1e+2e"
+//       units          = "ppm_T_per_nA"
 //       n_atoms, n_frames, finalized
 //
-// Why parity "0e+1o+2e" for BiotSavart: the shielding kernel
-// G_ab = -n_b · B_a · PPM_FACTOR is the outer product of a ring
-// normal with a magnetic field. B is an axial (pseudo) vector, n is
-// an axial vector, but the rank-2 shielding tensor's antisymmetric
-// part is a parity-odd pseudovector in the e3nn Irreps convention
-// (1o). Magnetic-kernel shielding TRs use the same parity. Pure EFG
-// emitters with structural T0/T1 zeros emit only T2 with even parity.
+// Why parity "0e+1e+2e" for BiotSavart: this is a shielding tensor.
+// Its T1 channel is the antisymmetric Levi-Civita dual pseudovector,
+// so the rank-1 part is axial/even (1e) in the e3nn Irreps convention.
+// Pure EFG emitters with structural T0/T1 zeros emit only T2 with even
+// parity.
 //
 
 #include "DenseBuffer.h"

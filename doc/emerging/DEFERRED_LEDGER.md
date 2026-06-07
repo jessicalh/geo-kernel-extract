@@ -1,0 +1,79 @@
+# Deferred ledger — the couponed items
+
+**Purpose.** The durable home for everything we **deliberately did NOT fix in place** — deferred,
+"not ours," parked, passed to another author, or flagged for a later pass. The rule: **every time a coupon
+is spent (a thing flagged-and-set-aside instead of fixed), it lands here**, with what / why / owner /
+where. Nothing important should live only in chat. Jessica is told about each as it's added.
+
+Status legend: **[parked]** needs Jessica's vet before firing · **[reader-pass]** owned by the
+comprehensive h5-reader downstream-fix pass ([[project_reader_downstream_fix_no_cruft]]) · **[design]** a
+human design call · **[author]** belongs to another author's concurrent work · **[follow-up]** a near-term
+to-do on this work · **[robustness]** low-priority hardening.
+
+---
+
+## Parity / labels
+
+- **[parked] The `1o`→`1e` parity sweep.** Every *shielding-kernel* H5 time-series writer still advertising
+  `0e+1o+2e` is mislabelled — a shielding tensor's antisymmetric `T1` is the **axial** pseudovector →
+  `1e`, not polar `1o`. Ring (BS/HM/ring-chi) and McConnell are now fixed; the **stragglers** are
+  **π-quadrupole, dispersion, H-bond, Larsen, Tripeptide** (`PiQuadrupoleShieldingTimeSeriesTrajectoryResult.cpp:104`,
+  `DispersionShieldingTimeSeriesTrajectoryResult.cpp:104`, `HBondShieldingTimeSeriesTrajectoryResult.cpp:104`,
+  + Larsen/Tripeptide writers). The genuine **polar E-fields stay `1o`** (Coulomb/MOPAC/APBS/water,
+  AIMNet2 charge-response-gradient). *Confirmed still-needed by the ring-review divergence (codex caught
+  it; opus rationalised it away; codex was right). Scope question: several stragglers are CAGED kernels —
+  a parity-label fix is a correctness fix, not a feature update, but it touches caged files; Jessica
+  decides whether the sweep includes them or leaves them caged-mislabelled.* 2026-06-07.
+- **[author] `mopac_dipole_components` is internally contradictory** — `irreps="1e"` with `parity="odd"`
+  (`python/nmr_extract/_catalog.py:208`). A dipole is polar → should be `1o`/odd. Same class of bug the
+  ring patch fixed on `bs_total_B`. Belongs to the **concurrent MOPAC-full work**, not the ring change.
+  2026-06-07 (opus ring review).
+
+## Reader-pass inbox (the h5-reader comprehensive downstream-fix pass owns)
+
+- **[reader-pass] h5-reader stale generated catalog.** `QtFieldCatalog.gen.h` is generated from
+  `python/nmr_extract/_catalog.py` (2026-05-26) and still maps old stems (`coulomb_shielding`,
+  `mopac_coulomb_shielding`) — the new `coulomb_efg` etc. are invisible until regenerated
+  (`python3 h5-reader/scripts/gen_field_catalog.py`). Generated + 1:1 provenance + graceful-absent → a
+  clean wording/regen, not a functional break.
+- **[reader-pass] Internal C++ `*_shielding_contribution` field names** (`coulomb_shielding_contribution`,
+  `mopac_coulomb_shielding_contribution`) — the emitted NPYs are renamed `*_efg`, but the internal field
+  names (and the **MOPAC-vs-FF14SB reconciliation diagnostic** that reads them) still say "shielding."
+  Renaming ripples into the reconciliation result → deferred whole.
+- **[reader-pass] Legacy `ArraySpec` wrappers** kept for reading pre-rename dirs (`coulomb_shielding`,
+  `mopac_coulomb_shielding`, `mc_shielding`, `mc_category_T2`, `mopac_mc_*` → `*_legacy`, `is_feature=False`).
+  Cruft by the no-cruft rule; harmless, swept in the reader pass.
+- **[reader-pass] Docs / golden baselines** still carry old names; the **golden/smoke re-bless** is a
+  separate wholesale act (below).
+
+## Design calls (Jessica)
+
+- **[design] B-field diagnostics: producer vs reader.** `bs_ring_B_field` / `bs_ring_B_cylindrical` /
+  `hm_ring_B_field` are sparse `(P,3)`, ~`24P` bytes each, **~15.5% of the `ring_contributions` payload**,
+  scaling on the atom-ring-pair axis. The reader re-evaluates BS/HM closed-form, so it can **recompute**
+  them for vetting. Emitted now (per "all five"), but a real revisit if trajectory/fleet storage pressure
+  matters: keep emitting, or move to reader-recompute. 2026-06-07.
+- **[design] Golden/smoke wholesale re-bless.** Deferred until binary-compat matters again (release /
+  fleet). The smoke baseline is entangled across EFG + McConnell + MOPAC-full + broad_backbone, so the
+  re-bless is one wholesale act, not per-patch ([[feedback_dont_overhold_builds_bless]]).
+
+## Ring to-builds (follow-up on this work)
+
+- **[follow-up] HM `T0`-vs-bond-sum benchmark** — settles whether our surface-integral tensor variant
+  earns the "Haigh–Mallion" name (correlate, don't match). Until then the spec's benchmark-gated wording
+  holds.
+- **[follow-up] The signed two-path emit** — BS↔HM agreement currently lives only in a *test*
+  (`tests/test_batch_biot_savart_haigh_mallion.cpp`, absolute values, "report don't assert"). To *report*
+  the validation it must become an emit carrying **signed** residuals + sign agreement, strongest near the ring.
+
+## Part-1 decisions
+
+- **[follow-up] X–H ablation.** The `mcconnell_include_xh_sources` toggle (default 1) is a built scaffold;
+  Part 1 decides keep/drop the C–H/N–H/O–H source bonds vs DFT.
+
+## Robustness (low-priority)
+
+- **[robustness] B-field conditional-zero in partial pipelines.** `ConformationResult` writes the B-field
+  rows for every `ring_neighbours` row regardless of whether BS/HM ran. Production always runs them first
+  (real values); a *partial/custom* run (e.g. ring-chi without BS) would write default zeros
+  (`ConformationResult.cpp:95`, `ConformationAtom.h:37`). Edge case, production-fine. 2026-06-07 (codex ring review).

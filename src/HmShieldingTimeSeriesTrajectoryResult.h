@@ -19,16 +19,16 @@
 //       result_name    = "HmShieldingTimeSeriesTrajectoryResult"
 //       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
-//       parity         = "0e+1o+2e"
+//       parity         = "0e+1e+2e"
 //       units          = "Angstrom^-1"
 //       n_atoms, n_frames, finalized
 //
-// Parity matches BS: HM is a magnetic-kernel shielding (surface
-// integral instead of line integral; same physics, same tensor
-// structure). Units differ from BS: HM stores -n⊗V where V is the
-// surface integral in Å⁻¹ (no PPM_FACTOR multiplication, unlike
-// BS), so the field on ConformationAtom is in Å⁻¹, not ppm. See
-// OBJECT_MODEL.md "Contract drift" 2026-05-16.
+// Parity matches BS: HM is a shielding tensor, and the antisymmetric
+// T1 channel is an axial/even pseudovector (1e). Units differ from BS:
+// HM stores -n⊗V where V is the surface integral in Å⁻¹ (no
+// PPM_FACTOR multiplication, unlike BS), so the field on
+// ConformationAtom is in Å⁻¹, not ppm. See OBJECT_MODEL.md "Contract
+// drift" 2026-05-16.
 //
 
 #include "DenseBuffer.h"
