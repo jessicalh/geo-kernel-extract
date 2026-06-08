@@ -1539,7 +1539,8 @@ def load(path: str | Path) -> Protein:
         nearest_co_midpoint=get("mc_nearest_co_midpoint"),
         nearest_co_T2=get("mc_nearest_co_T2"),
         nearest_cn_T2=get("mc_nearest_cn_T2"),
-        bond_neighbors=get("mc_bond_neighbors"),
+        bond_neighbors=get("mc_bond_neighbors")
+            if "mc_bond_neighbors" in available else None,
     )
     coulomb = CoulombGroup(
         efg=get("coulomb_efg", get("coulomb_shielding")),

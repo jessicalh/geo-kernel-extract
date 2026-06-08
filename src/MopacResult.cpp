@@ -11,18 +11,14 @@
 #include <algorithm>
 #include <thread>
 #include <cstdlib>
-#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
-#include <ctime>
 #include <cstring>
 #include <iomanip>
 #include <limits>
 #include <map>
 #include <set>
-
-#include <nlohmann/json.hpp>
 
 namespace fs = std::filesystem;
 
@@ -110,26 +106,10 @@ size_t LineNumberForOffset(const std::vector<size_t>& offsets, size_t byte_offse
     return static_cast<size_t>((it - offsets.begin()) - 1);
 }
 
-int ElementZFromSymbol(const std::string& symbol) {
-    return AtomicNumberForElement(ElementFromSymbol(Upper(symbol)));
-}
-
 uint64_t LocalPairKey(size_t a, size_t b) {
     size_t lo = (a < b) ? a : b;
     size_t hi = (a < b) ? b : a;
     return (static_cast<uint64_t>(lo) << 32) | static_cast<uint64_t>(hi);
-}
-
-int AoTypeId(const std::string& type) {
-    static const std::map<std::string, int> ids = {
-        {"S", 0}, {"PX", 1}, {"PY", 2}, {"PZ", 3},
-        {"X", 1}, {"Y", 2}, {"Z", 3},
-        {"D", 10}, {"DXY", 11}, {"DXZ", 12}, {"DYZ", 13},
-        {"DX2", 14}, {"DX2-Y2", 14}, {"DZ2", 15},
-        {"F", 20}
-    };
-    auto it = ids.find(Upper(type));
-    return it == ids.end() ? -1 : it->second;
 }
 
 std::string Hex32(uint32_t v) {
@@ -214,17 +194,6 @@ std::string Sha256Hex(const std::vector<unsigned char>& bytes) {
     std::string out;
     for (uint32_t v : h) out += Hex32(v);
     return out;
-}
-
-std::string Iso8601UtcNow() {
-    using namespace std::chrono;
-    const auto now = system_clock::now();
-    const auto t = system_clock::to_time_t(now);
-    std::tm tm{};
-    gmtime_r(&t, &tm);
-    char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
-    return std::string(buf);
 }
 
 bool LooksTextArtifact(const fs::path& p) {
@@ -1058,349 +1027,6 @@ void FillElementLabelsFromProtein(const Protein& protein, MopacRunRecord& record
     }
 }
 
-void WriteJsonFile(const fs::path& path, const nlohmann::ordered_json& j) {
-    std::ofstream out(path);
-    if (out)
-        out << j.dump(2, ' ', false,
-                      nlohmann::ordered_json::error_handler_t::replace) << "\n";
-}
-
-std::vector<nlohmann::ordered_json> ColumnSpecs(
-        const std::string& filename,
-        const std::vector<std::string>& names,
-        const std::string& axis,
-        const std::string& units,
-        const std::string& source) {
-    std::vector<nlohmann::ordered_json> cols;
-    for (size_t i = 0; i < names.size(); ++i) {
-        cols.push_back(nlohmann::ordered_json{
-            {"filename", filename},
-            {"column_index", i},
-            {"name", names[i]},
-            {"axis", axis},
-            {"units", units},
-            {"source", source},
-            {"missing_value_policy", "NaN means not printed/not applicable; sidecar raw records are authoritative"},
-        });
-    }
-    return cols;
-}
-
-nlohmann::ordered_json ToJson(const MopacRunRecord& record,
-                              const std::vector<std::string>& written_artifact_names,
-                              size_t legacy_bond_order_count) {
-    nlohmann::ordered_json j;
-    j["schema_version"] = record.schema_version;
-    j["generated_at_utc"] = Iso8601UtcNow();
-    j["format_status"] = record.sidecar_format_status;
-    j["manifest_role"] = "declarations and provenance only; numeric data lives in NPY files and raw MOPAC artifacts";
-    j["missing_value_policy"] = "NaN means not printed or not applicable; missing values are not collapsed to zero in full-capture arrays";
-
-    j["provenance"] = {
-        {"mopac_binary", record.mopac_binary},
-        {"temp_stem", record.temp_stem},
-        {"version", record.version},
-        {"date", record.run_date},
-        {"method", record.method},
-        {"empirical_formula", record.empirical_formula},
-        {"point_group", record.point_group},
-        {"termination_status", record.termination_status},
-        {"net_charge", record.net_charge},
-        {"threads", record.threads},
-        {"atom_count", record.atom_count},
-        {"warnings", record.warnings},
-        {"errors", record.errors},
-        {"convergence_records", record.convergence_records},
-            {"timing_records", record.timing_records}
-    };
-
-    j["input"] = {
-        {"keyword_line", record.keyword_line},
-        {"title_line", record.title_line},
-        {"comment_line", record.comment_line}
-    };
-    for (const auto& atom : record.input_atoms) {
-        j["input"]["atoms"].push_back({
-            {"atom_index", atom.atom_index},
-            {"element", atom.element},
-            {"x", atom.position.x()},
-            {"y", atom.position.y()},
-            {"z", atom.position.z()},
-            {"x_flag", atom.x_flag},
-            {"y_flag", atom.y_flag},
-            {"z_flag", atom.z_flag},
-            {"raw_line", atom.raw_line}
-        });
-    }
-
-    std::set<std::string> present_extensions;
-    for (const auto& artifact : record.artifacts) {
-        present_extensions.insert(Upper(artifact.extension));
-        const bool written = std::find(written_artifact_names.begin(),
-                                       written_artifact_names.end(),
-                                       artifact.filename) != written_artifact_names.end();
-        j["artifacts"].push_back({
-            {"filename", artifact.filename},
-            {"extension", artifact.extension},
-            {"size_bytes", artifact.size_bytes},
-            {"sha256", artifact.sha256},
-            {"is_text", artifact.is_text},
-            {"written_in_sidecar_dir", written}
-        });
-    }
-    for (const char* ext : {".mop", ".out", ".arc", ".aux", ".den"}) {
-        j["expected_artifacts"].push_back({
-            {"extension", ext},
-            {"present", present_extensions.count(Upper(ext)) != 0}
-        });
-    }
-
-    for (const auto& section : record.sections) {
-        j["sections"].push_back({
-            {"id", section.id},
-            {"label", section.label},
-            {"start_byte", section.start_byte},
-            {"end_byte", section.end_byte},
-            {"start_line", section.start_line},
-            {"end_line", section.end_line},
-            {"heading_lines", section.heading_lines},
-            {"raw_line_count", section.raw_lines.size()},
-            {"parser_status", section.parser_status}
-        });
-    }
-
-    for (const auto& table : record.tables) {
-        j["tables"].push_back({
-            {"id", table.id},
-            {"section_id", table.section_id},
-            {"axis", table.axis},
-            {"label", table.label},
-            {"column_labels", table.column_labels},
-            {"units", table.units},
-            {"row_count", table.numeric_values.size()},
-            {"column_count", table.column_labels.size()},
-            {"parse_warnings", table.parse_warnings}
-        });
-    }
-
-    for (const auto& rec : record.aux_records) {
-        j["aux_records"].push_back({
-            {"key", rec.key},
-            {"unit", rec.unit},
-            {"declared_count", rec.declared_count},
-            {"source_line", rec.source_line},
-            {"value_count", rec.values.size()},
-            {"numeric_value_count", rec.numeric_values.size()},
-            {"raw_line_count", rec.raw_lines.size()}
-        });
-    }
-
-    for (size_t i = 0; i < record.scalar_terms.size(); ++i) {
-        const auto& row = record.scalar_terms[i];
-        j["scalar_terms"].push_back({
-            {"source_record_index", i},
-            {"label", row.label},
-            {"unit", row.unit},
-            {"source", row.source}
-        });
-    }
-
-    for (size_t i = 0; i < record.dipole_rows.size(); ++i) {
-        const auto& row = record.dipole_rows[i];
-        j["dipole_rows"].push_back({
-            {"row_index", i},
-            {"label", row.label},
-            {"units", row.units}
-        });
-    }
-
-    for (const auto& block : record.matrix_blocks) {
-        std::string emitted;
-        if (block.name == "LMO_VECTORS" || block.name == "EIGENVECTORS")
-            emitted = "mopac_mo_coefficients.npy";
-        else if (block.name == "DENSITY_MATRIX" || block.name == "TOTAL_DENSITY_MATRIX")
-            emitted = "mopac_density_packed.npy";
-        else if (block.name == "OVERLAP_MATRIX")
-            emitted = "mopac_overlap_packed.npy";
-        else if (block.name == "MULLIKEN_AO_OVERLAP_POPULATION")
-            emitted = "mopac_mulliken_overlap_sparse.npy";
-        j["matrix_blocks"].push_back({
-            {"name", block.name},
-            {"unit", block.unit},
-            {"storage", block.storage},
-            {"rows", block.rows},
-            {"cols", block.cols},
-            {"values_count", block.values.size()},
-            {"original_strings_count", block.original_strings.size()},
-            {"emitted_filename", emitted}
-        });
-    }
-
-    auto matrix_count = [&](const std::string& name) -> size_t {
-        for (const auto& block : record.matrix_blocks)
-            if (block.name == name) return block.values.size();
-        return 0;
-    };
-    auto matrix_shape = [&](const std::string& a, const std::string& b = "") -> std::vector<size_t> {
-        for (const auto& block : record.matrix_blocks) {
-            if (block.name == a || (!b.empty() && block.name == b)) {
-                if (block.rows > 0 && block.cols > 1) return {block.rows, block.cols};
-                return {block.values.size()};
-            }
-        }
-        return {0};
-    };
-    const size_t overlap_population_count = matrix_count("MULLIKEN_AO_OVERLAP_POPULATION");
-    j["axis_sizes"] = {
-        {"atom", record.atom_count},
-        {"ao", record.ao_basis.size()},
-        {"mopac_scalar_term", record.scalar_terms.size()},
-        {"mopac_dipole_component", 3},
-        {"mopac_atomic_orbital_population_row", record.atomic_orbital_populations.size()},
-        {"mopac_overlap_row", overlap_population_count},
-        {"mopac_printed_bond_entry", record.printed_bond_entries.size()},
-        {"mopac_unique_pair", record.unique_bond_orders.size()},
-        {"bond", record.topology_bond_records.size()},
-        {"mo", record.molecular_orbitals.size()}
-    };
-    j["axis_alignment"] = {
-        {"atom", "atom-axis MOPAC arrays use the same row order as pos.npy and the project atom index"},
-        {"ao", "AO rows are in MOPAC/AUX AO order; mopac_ao_table.atom_index maps each AO to the atom axis"},
-        {"mopac_overlap_row", "packed lower-triangle AO/AO order: packed row k maps to row i, col j with i>=j"},
-        {"bond", "mopac_topology_bond_orders_full rows are parallel to protein.BondAt(i) and bonds.npy"}
-    };
-    j["label_maps"] = {
-        {"ao_type_id", {
-            {"0", "S"}, {"1", "PX"}, {"2", "PY"}, {"3", "PZ"},
-            {"10", "D"}, {"11", "DXY"}, {"12", "DXZ"}, {"13", "DYZ"},
-            {"14", "DX2-Y2"}, {"15", "DZ2"}, {"20", "F"}, {"-1", "unknown"}
-        }},
-        {"dipole_row", {{"0", "POINT-CHG."}, {"1", "HYBRID"}, {"2", "SUM"}}},
-        {"topology_absence_reason_id", {
-            {"0", "present"},
-            {"1", "not present in MOPAC printed bond-order rows; below print threshold, not printed by MOZYME, or absent from electronic bond graph"}
-        }}
-    };
-
-    auto add_array = [&](const std::string& filename,
-                         const std::vector<size_t>& shape,
-                         const std::string& axis,
-                         const std::string& dtype,
-                         const std::string& description,
-                         bool authoritative) {
-        j["arrays"].push_back({
-            {"filename", filename},
-            {"shape", shape},
-            {"dtype", dtype},
-            {"axis", axis},
-            {"description", description},
-            {"authoritative_numeric_data", authoritative}
-        });
-    };
-    add_array("mopac_charges.npy", {record.atom_count}, "atom", "float64", "legacy Mulliken net charges", true);
-    add_array("mopac_scalars.npy", {record.atom_count, 4}, "atom", "float64", "legacy [charge, s_population, p_population, valency]", true);
-    add_array("mopac_bond_orders.npy", {legacy_bond_order_count, 3}, "mopac_legacy_bond_order", "float64", "legacy unique-pair bond-order projection [atom_i, atom_j, order]", true);
-    add_array("mopac_global.npy", {4}, "mopac_legacy_global", "float64", "legacy [heat_of_formation, dipole_x, dipole_y, dipole_z]", true);
-    add_array("mopac_global_terms.npy", {record.scalar_terms.size(), 2}, "mopac_scalar_term", "float64", "scalar term values plus scalar_terms source_record_index", true);
-    add_array("mopac_dipole_components.npy", {3, 4}, "mopac_dipole_component", "float64", "POINT-CHG., HYBRID, SUM x/y/z/total", true);
-    add_array("mopac_atom_populations.npy", {record.atom_count, 12}, "atom", "float64", "charge, electron density, shell populations, dipole contribution fields, MOPAC/project valencies", true);
-    add_array("mopac_atomic_orbital_populations.npy", {record.atomic_orbital_populations.size(), 9}, "atom", "float64", "printed ATOMIC ORBITAL ELECTRON POPULATIONS columns", true);
-    add_array("mopac_ao_table.npy", {record.ao_basis.size(), 7}, "ao", "float64", "AO index, atom index, AO type id, zeta, PQN, AO population, source id", true);
-    add_array("mopac_mulliken_overlap_sparse.npy", {overlap_population_count, 4}, "mopac_overlap_row", "float64", "packed AO/AO Mulliken overlap populations [packed, ao_i, ao_j, density*overlap]", true);
-    add_array("mopac_bond_orders_printed.npy", {record.printed_bond_entries.size(), 9}, "mopac_printed_bond_entry", "float64", "directed printed ALLBONDS entries", true);
-    add_array("mopac_bond_valencies.npy", {record.atom_count}, "atom", "float64", "MOPAC valency diagonals from printed bond-order rows", true);
-    add_array("mopac_bond_orders_unique.npy", {record.unique_bond_orders.size(), 8}, "mopac_unique_pair", "float64", "deterministic symmetric projection with directed-row references", true);
-    add_array("mopac_topology_bond_orders_full.npy", {record.topology_bond_records.size(), 8}, "bond", "float64", "topology bridge with presence and absence reason id", true);
-    add_array("mopac_mo_meta.npy", {record.molecular_orbitals.size(), 5}, "mo", "float64", "MO/LMO energy, occupation, bonding contribution, label id", true);
-    add_array("mopac_mo_coefficients.npy", matrix_shape("LMO_VECTORS", "EIGENVECTORS"), "mo,ao", "float64", "MO/LMO coefficient matrix when emitted by AUX", true);
-    add_array("mopac_density_packed.npy", matrix_shape("DENSITY_MATRIX", "TOTAL_DENSITY_MATRIX"), "mopac_matrix_packed", "float64", "density matrix in MOPAC packed lower-triangle order", true);
-    add_array("mopac_overlap_packed.npy", matrix_shape("OVERLAP_MATRIX"), "mopac_matrix_packed", "float64", "overlap matrix in MOPAC packed lower-triangle order", true);
-
-    std::vector<nlohmann::ordered_json> columns;
-    auto append_cols = [&](const std::vector<nlohmann::ordered_json>& v) {
-        columns.insert(columns.end(), v.begin(), v.end());
-    };
-    append_cols(ColumnSpecs("mopac_charges.npy", {"charge"},
-                            "atom", "electron_charge", "legacy MOPAC Mulliken net charges"));
-    append_cols(ColumnSpecs("mopac_scalars.npy", {"charge", "s_population", "p_population", "valency"},
-                            "atom", "mixed", "legacy atom conditioning scalars"));
-    append_cols(ColumnSpecs("mopac_bond_orders.npy", {"atom_i", "atom_j", "bond_order"},
-                            "mopac_legacy_bond_order", "dimensionless", "legacy unique-pair bond-order projection"));
-    append_cols(ColumnSpecs("mopac_global.npy", {"heat_of_formation", "dipole_x", "dipole_y", "dipole_z"},
-                            "mopac_legacy_global", "mixed", "legacy MOPAC global scalar vector"));
-    append_cols(ColumnSpecs("mopac_global_terms.npy", {"value", "source_record_index"},
-                            "mopac_scalar_term", "mixed", "MOPAC .out/.aux scalar records"));
-    append_cols(ColumnSpecs("mopac_dipole_components.npy", {"x", "y", "z", "total"},
-                            "mopac_dipole_component", "Debye", "MOPAC dipole table"));
-    append_cols(ColumnSpecs("mopac_atom_populations.npy",
-                            {"net_charge", "electron_density", "s_population", "p_population",
-                             "d_population", "f_population", "dipole_x", "dipole_y",
-                             "dipole_z", "dipole_total", "mopac_valency", "project_valency"},
-                            "atom", "mixed", "MULLIK/ALLBONDS atom rows"));
-    append_cols(ColumnSpecs("mopac_atomic_orbital_populations.npy",
-                            {"s", "px", "py", "pz", "x2_minus_y2", "xz", "z2", "yz", "xy"},
-                            "atom", "electron", "MOPAC printed atomic-orbital population table"));
-    append_cols(ColumnSpecs("mopac_ao_table.npy",
-                            {"ao_index", "atom_index", "ao_type_id", "zeta",
-                             "principal_quantum_number", "population", "source_record_index"},
-                            "ao", "mixed", "MOPAC AUX AO records"));
-    append_cols(ColumnSpecs("mopac_mulliken_overlap_sparse.npy",
-                            {"packed_index", "ao_i", "ao_j", "overlap_population"},
-                            "mopac_overlap_row", "electron", "DENSITY_MATRIX * OVERLAP_MATRIX from AUX"));
-    append_cols(ColumnSpecs("mopac_bond_orders_printed.npy",
-                            {"printed_entry_index", "row_order", "row_atom", "row_element_z",
-                             "row_valency", "neighbour_atom", "neighbour_element_z", "order", "source_line"},
-                            "mopac_printed_bond_entry", "dimensionless", "MOPAC printed bond-order rows"));
-    append_cols(ColumnSpecs("mopac_bond_valencies.npy",
-                            {"mopac_valency"}, "atom", "dimensionless", "MOPAC printed valency diagonal"));
-    append_cols(ColumnSpecs("mopac_bond_orders_unique.npy",
-                            {"atom_a", "atom_b", "max_order", "mean_order",
-                             "directed_entry_count", "first_printed_entry", "second_printed_entry",
-                             "topology_bond_index"},
-                            "mopac_unique_pair", "dimensionless", "derived deterministic projection"));
-    append_cols(ColumnSpecs("mopac_topology_bond_orders_full.npy",
-                            {"bond_index", "atom_a", "atom_b", "order", "present",
-                             "unique_pair_index", "absence_reason_id", "printed_entry_count"},
-                            "bond", "dimensionless", "topology bridge over MOPAC printed rows"));
-    append_cols(ColumnSpecs("mopac_mo_meta.npy",
-                            {"orbital_index", "energy", "occupation", "bonding_contribution", "label_id"},
-                            "mo", "mixed", "MOPAC AUX and bond-contribution records"));
-    append_cols(ColumnSpecs("mopac_mo_coefficients.npy",
-                            {"coefficient"}, "mo,ao", "dimensionless", "MOPAC AUX LMO/MO vectors"));
-    append_cols(ColumnSpecs("mopac_density_packed.npy",
-                            {"density"}, "mopac_matrix_packed", "electron", "MOPAC AUX density matrix"));
-    append_cols(ColumnSpecs("mopac_overlap_packed.npy",
-                            {"overlap"}, "mopac_matrix_packed", "dimensionless", "MOPAC AUX overlap matrix"));
-    j["columns"] = columns;
-    return j;
-}
-
-int WriteMopacFullSidecar(const MopacRunRecord& record,
-                          const std::string& output_dir,
-                          size_t legacy_bond_order_count) {
-    const fs::path sidecar_dir = fs::path(output_dir) / "mopac_full";
-    fs::create_directories(sidecar_dir);
-
-    std::vector<std::string> written_artifacts;
-    int written = 0;
-    for (const auto& artifact : record.artifacts) {
-        const fs::path artifact_path = sidecar_dir / artifact.filename;
-        std::ofstream out(artifact_path, std::ios::binary);
-        if (!out) continue;
-        out.write(reinterpret_cast<const char*>(artifact.bytes.data()),
-                  static_cast<std::streamsize>(artifact.bytes.size()));
-        if (out.good()) {
-            written_artifacts.push_back(artifact.filename);
-            ++written;
-        }
-    }
-
-    WriteJsonFile(sidecar_dir / "extraction_manifest.json",
-                  ToJson(record, written_artifacts, legacy_bond_order_count));
-    ++written;
-    return written;
-}
-
 }  // anonymous namespace
 
 
@@ -2015,43 +1641,6 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         ++written;
     }
 
-    // mopac_global_terms: (G, 2) — [value, source_record_index]
-    {
-        std::vector<double> data;
-        data.reserve(run_record_.scalar_terms.size() * 2);
-        for (size_t i = 0; i < run_record_.scalar_terms.size(); ++i) {
-            data.push_back(run_record_.scalar_terms[i].value);
-            data.push_back(static_cast<double>(i));
-        }
-        NpyWriter::WriteFloat64(output_dir + "/mopac_global_terms.npy",
-                                data.empty() ? nullptr : data.data(),
-                                run_record_.scalar_terms.size(), 2);
-        ++written;
-    }
-
-    // mopac_dipole_components: (3, 4) — POINT-CHG., HYBRID, SUM x/y/z/total
-    {
-        std::vector<double> data(3 * 4, QuietNaN());
-        auto row_index = [](const std::string& label) -> int {
-            const std::string u = Upper(label);
-            if (u.find("POINT") != std::string::npos) return 0;
-            if (u.find("HYBRID") != std::string::npos) return 1;
-            if (u == "SUM") return 2;
-            return -1;
-        };
-        for (const auto& row : run_record_.dipole_rows) {
-            int r = row_index(row.label);
-            if (r < 0) continue;
-            data[r*4 + 0] = row.x;
-            data[r*4 + 1] = row.y;
-            data[r*4 + 2] = row.z;
-            data[r*4 + 3] = row.total;
-        }
-        NpyWriter::WriteFloat64(output_dir + "/mopac_dipole_components.npy",
-                                data.data(), 3, 4);
-        ++written;
-    }
-
     // mopac_atom_populations: (N, 12)
     {
         constexpr size_t C = 12;
@@ -2083,26 +1672,6 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         ++written;
     }
 
-    // mopac_ao_table: (NAO, 7)
-    {
-        constexpr size_t C = 7;
-        const size_t NAO = run_record_.ao_basis.size();
-        std::vector<double> data(NAO * C, QuietNaN());
-        for (size_t i = 0; i < NAO; ++i) {
-            const auto& ao = run_record_.ao_basis[i];
-            data[i*C + 0] = static_cast<double>(ao.ao_index);
-            data[i*C + 1] = static_cast<double>(ao.atom_index);
-            data[i*C + 2] = static_cast<double>(AoTypeId(ao.symmetry_type));
-            data[i*C + 3] = ao.zeta;
-            data[i*C + 4] = static_cast<double>(ao.principal_quantum_number);
-            data[i*C + 5] = ao.population;
-            data[i*C + 6] = 0.0;
-        }
-        NpyWriter::WriteFloat64(output_dir + "/mopac_ao_table.npy",
-                                data.empty() ? nullptr : data.data(), NAO, C);
-        ++written;
-    }
-
     // mopac_atomic_orbital_populations: (K, 9)
     {
         constexpr size_t C = 9;
@@ -2114,62 +1683,6 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
                 data[i*C + c] = row.populations[c];
         }
         NpyWriter::WriteFloat64(output_dir + "/mopac_atomic_orbital_populations.npy",
-                                data.empty() ? nullptr : data.data(), K, C);
-        ++written;
-    }
-
-    // mopac_mulliken_overlap_sparse: (K, 4) — packed AO/AO overlap-population rows.
-    {
-        auto unpack_lower = [](size_t packed0) -> std::pair<size_t, size_t> {
-            size_t row = 0;
-            size_t rem = packed0;
-            while (rem > row) {
-                rem -= (row + 1);
-                ++row;
-            }
-            return {row, rem};
-        };
-        const MopacMatrixBlock* overlap_population = nullptr;
-        for (const auto& block : run_record_.matrix_blocks) {
-            if (block.name == "MULLIKEN_AO_OVERLAP_POPULATION") {
-                overlap_population = &block;
-                break;
-            }
-        }
-        const size_t K = overlap_population ? overlap_population->values.size() : 0;
-        std::vector<double> data;
-        data.reserve(K * 4);
-        for (size_t k = 0; k < K; ++k) {
-            const size_t packed0 = k;
-            auto [r, c] = unpack_lower(packed0);
-            data.push_back(static_cast<double>(packed0));
-            data.push_back(static_cast<double>(r));
-            data.push_back(static_cast<double>(c));
-            data.push_back(overlap_population->values[k]);
-        }
-        NpyWriter::WriteFloat64(output_dir + "/mopac_mulliken_overlap_sparse.npy",
-                                data.empty() ? nullptr : data.data(), K, 4);
-        ++written;
-    }
-
-    // mopac_bond_orders_printed: (K, 9) — directed rows exactly as printed.
-    {
-        constexpr size_t C = 9;
-        const size_t K = run_record_.printed_bond_entries.size();
-        std::vector<double> data(K * C, QuietNaN());
-        for (size_t i = 0; i < K; ++i) {
-            const auto& e = run_record_.printed_bond_entries[i];
-            data[i*C + 0] = static_cast<double>(e.printed_entry_index);
-            data[i*C + 1] = static_cast<double>(e.row_order);
-            data[i*C + 2] = static_cast<double>(e.row_atom);
-            data[i*C + 3] = static_cast<double>(ElementZFromSymbol(e.row_element));
-            data[i*C + 4] = e.row_valency;
-            data[i*C + 5] = static_cast<double>(e.neighbour_atom);
-            data[i*C + 6] = static_cast<double>(ElementZFromSymbol(e.neighbour_element));
-            data[i*C + 7] = e.order;
-            data[i*C + 8] = static_cast<double>(e.source_line);
-        }
-        NpyWriter::WriteFloat64(output_dir + "/mopac_bond_orders_printed.npy",
                                 data.empty() ? nullptr : data.data(), K, C);
         ++written;
     }
@@ -2232,52 +1745,6 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         ++written;
     }
 
-    // mopac_mo_meta: (NMO, 5)
-    {
-        constexpr size_t C = 5;
-        const size_t M = run_record_.molecular_orbitals.size();
-        std::vector<double> data(M * C, QuietNaN());
-        for (size_t i = 0; i < M; ++i) {
-            const auto& mo = run_record_.molecular_orbitals[i];
-            data[i*C + 0] = static_cast<double>(mo.orbital_index);
-            data[i*C + 1] = mo.energy;
-            data[i*C + 2] = mo.occupation;
-            data[i*C + 3] = mo.bonding_contribution;
-            data[i*C + 4] = static_cast<double>(i);
-        }
-        NpyWriter::WriteFloat64(output_dir + "/mopac_mo_meta.npy",
-                                data.empty() ? nullptr : data.data(), M, C);
-        ++written;
-    }
-
-    bool wrote_mo_coefficients = false;
-    bool wrote_density = false;
-    bool wrote_overlap = false;
-    for (const auto& block : run_record_.matrix_blocks) {
-        if (block.values.empty()) continue;
-        if (!wrote_mo_coefficients &&
-            (block.name == "LMO_VECTORS" || block.name == "EIGENVECTORS") &&
-            block.rows > 0 && block.cols > 0 &&
-            block.values.size() == block.rows * block.cols) {
-            NpyWriter::WriteFloat64(output_dir + "/mopac_mo_coefficients.npy",
-                                    block.values.data(), block.rows, block.cols);
-            ++written;
-            wrote_mo_coefficients = true;
-        } else if (!wrote_density &&
-                   (block.name == "DENSITY_MATRIX" || block.name == "TOTAL_DENSITY_MATRIX")) {
-            NpyWriter::WriteFloat64(output_dir + "/mopac_density_packed.npy",
-                                    block.values.data(), block.values.size());
-            ++written;
-            wrote_density = true;
-        } else if (!wrote_overlap && block.name == "OVERLAP_MATRIX") {
-            NpyWriter::WriteFloat64(output_dir + "/mopac_overlap_packed.npy",
-                                    block.values.data(), block.values.size());
-            ++written;
-            wrote_overlap = true;
-        }
-    }
-
-    written += WriteMopacFullSidecar(run_record_, output_dir, bond_order_map_.size());
     return written;
 }
 

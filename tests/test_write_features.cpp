@@ -194,8 +194,6 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
         "mc_nearest_co_T2",
         "mc_nearest_cn_T2",
         "larsen_corner_imputed",
-        "spatial_neighbors",
-        "mc_bond_neighbors",
         "mopac_bond_neighbors",
         "ring_direction_to_center",
         "disp_per_ring_tensor",
@@ -273,28 +271,6 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
         const double* r = DataAs<double>(radii);
         for (size_t i = 0; i < N; ++i)
             ExpectDoubleEqOrNan(r[i], conf.AtomAt(i).pb_radius);
-    }
-
-    if (conf.HasResult<SpatialIndexResult>()) {
-        SetReadbackContext("spatial_neighbors");
-        size_t rows = 0;
-        for (size_t i = 0; i < N; ++i) rows += conf.AtomAt(i).spatial_neighbours.size();
-        auto arr = ReadNpy(out_dir / "spatial_neighbors.npy");
-        ExpectShapeAndDescr(arr, {rows, 6}, "<f8");
-        const double* d = DataAs<double>(arr);
-        size_t row = 0;
-        for (size_t i = 0; i < N; ++i) {
-            for (const auto& nb : conf.AtomAt(i).spatial_neighbours) {
-                EXPECT_DOUBLE_EQ(d[row*6 + 0], static_cast<double>(i));
-                EXPECT_DOUBLE_EQ(d[row*6 + 1], static_cast<double>(nb.atom_index));
-                ExpectDoubleEqOrNan(d[row*6 + 2], nb.distance);
-                ExpectDoubleEqOrNan(d[row*6 + 3], nb.direction.x());
-                ExpectDoubleEqOrNan(d[row*6 + 4], nb.direction.y());
-                ExpectDoubleEqOrNan(d[row*6 + 5], nb.direction.z());
-                ++row;
-            }
-        }
-        EXPECT_EQ(row, rows);
     }
 
     {
@@ -415,34 +391,6 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
             }
         }
 
-        size_t rows = 0;
-        for (size_t i = 0; i < N; ++i) rows += conf.AtomAt(i).bond_neighbours.size();
-        SetReadbackContext("mc_bond_neighbors");
-        auto bn = ReadNpy(out_dir / "mc_bond_neighbors.npy");
-        ExpectShapeAndDescr(bn, {rows, 26}, "<f8");
-        const double* b = DataAs<double>(bn);
-        size_t row = 0;
-        for (size_t i = 0; i < N; ++i) {
-            for (const auto& nbh : conf.AtomAt(i).bond_neighbours) {
-                EXPECT_DOUBLE_EQ(b[row*26 + 0], static_cast<double>(i));
-                EXPECT_DOUBLE_EQ(b[row*26 + 1], static_cast<double>(nbh.bond_index));
-                EXPECT_DOUBLE_EQ(b[row*26 + 2], static_cast<double>(nbh.bond_category));
-                ExpectDoubleEqOrNan(b[row*26 + 3], nbh.distance_to_midpoint);
-                ExpectDoubleEqOrNan(b[row*26 + 4], nbh.direction_to_midpoint.x());
-                ExpectDoubleEqOrNan(b[row*26 + 5], nbh.direction_to_midpoint.y());
-                ExpectDoubleEqOrNan(b[row*26 + 6], nbh.direction_to_midpoint.z());
-                double mat[9], sph[9];
-                PackMat3RowMajor(nbh.dipolar_tensor, mat);
-                nbh.dipolar_spherical.PackFull9(sph);
-                for (int c = 0; c < 9; ++c) {
-                    ExpectDoubleEqOrNan(b[row*26 + 7 + c], mat[c]);
-                    ExpectDoubleEqOrNan(b[row*26 + 16 + c], sph[c]);
-                }
-                ExpectDoubleEqOrNan(b[row*26 + 25], nbh.mcconnell_scalar);
-                ++row;
-            }
-        }
-        EXPECT_EQ(row, rows);
     }
 
     if (conf.HasResult<MopacResult>()) {
@@ -556,8 +504,6 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
         "mc_nearest_co_T2",
         "mc_nearest_cn_T2",
         "larsen_corner_imputed",
-        "spatial_neighbors",
-        "mc_bond_neighbors",
         "mopac_bond_neighbors",
         "ring_direction_to_center",
         "disp_per_ring_tensor",
@@ -636,27 +582,6 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
         const double* r = DataAs<double>(radii);
         for (size_t i = 0; i < N; ++i)
             ExpectDoubleEqOrNan(r[i], conf.AtomAt(i).pb_radius);
-    }
-
-    if (conf.HasResult<SpatialIndexResult>()) {
-        size_t rows = 0;
-        for (size_t i = 0; i < N; ++i) rows += conf.AtomAt(i).spatial_neighbours.size();
-        auto arr = ReadNpy(out_dir / "spatial_neighbors.npy");
-        ExpectShapeAndDescr(arr, {rows, 6}, "<f8");
-        const double* d = DataAs<double>(arr);
-        size_t row = 0;
-        for (size_t i = 0; i < N; ++i) {
-            for (const auto& nb : conf.AtomAt(i).spatial_neighbours) {
-                EXPECT_DOUBLE_EQ(d[row*6 + 0], static_cast<double>(i));
-                EXPECT_DOUBLE_EQ(d[row*6 + 1], static_cast<double>(nb.atom_index));
-                ExpectDoubleEqOrNan(d[row*6 + 2], nb.distance);
-                ExpectDoubleEqOrNan(d[row*6 + 3], nb.direction.x());
-                ExpectDoubleEqOrNan(d[row*6 + 4], nb.direction.y());
-                ExpectDoubleEqOrNan(d[row*6 + 5], nb.direction.z());
-                ++row;
-            }
-        }
-        EXPECT_EQ(row, rows);
     }
 
     {
@@ -773,33 +698,6 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
             }
         }
 
-        size_t rows = 0;
-        for (size_t i = 0; i < N; ++i) rows += conf.AtomAt(i).bond_neighbours.size();
-        auto bn = ReadNpy(out_dir / "mc_bond_neighbors.npy");
-        ExpectShapeAndDescr(bn, {rows, 26}, "<f8");
-        const double* b = DataAs<double>(bn);
-        size_t row = 0;
-        for (size_t i = 0; i < N; ++i) {
-            for (const auto& nbh : conf.AtomAt(i).bond_neighbours) {
-                EXPECT_DOUBLE_EQ(b[row*26 + 0], static_cast<double>(i));
-                EXPECT_DOUBLE_EQ(b[row*26 + 1], static_cast<double>(nbh.bond_index));
-                EXPECT_DOUBLE_EQ(b[row*26 + 2], static_cast<double>(nbh.bond_category));
-                ExpectDoubleEqOrNan(b[row*26 + 3], nbh.distance_to_midpoint);
-                ExpectDoubleEqOrNan(b[row*26 + 4], nbh.direction_to_midpoint.x());
-                ExpectDoubleEqOrNan(b[row*26 + 5], nbh.direction_to_midpoint.y());
-                ExpectDoubleEqOrNan(b[row*26 + 6], nbh.direction_to_midpoint.z());
-                double mat[9], sph[9];
-                PackMat3RowMajor(nbh.dipolar_tensor, mat);
-                nbh.dipolar_spherical.PackFull9(sph);
-                for (int c = 0; c < 9; ++c) {
-                    ExpectDoubleEqOrNan(b[row*26 + 7 + c], mat[c]);
-                    ExpectDoubleEqOrNan(b[row*26 + 16 + c], sph[c]);
-                }
-                ExpectDoubleEqOrNan(b[row*26 + 25], nbh.mcconnell_scalar);
-                ++row;
-            }
-        }
-        EXPECT_EQ(row, rows);
     }
 
     if (conf.HasResult<MopacResult>()) {
