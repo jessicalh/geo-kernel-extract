@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from nmr_extract import CATALOG
 
 
 # Byte-for-byte mirrors of the C++ structured dtypes in TopologySidecar.cpp.
@@ -74,6 +75,83 @@ _RING_MEMBERSHIP_DTYPE = np.dtype([
     ("is_substituent", "i1"),
     ("_pad0", "i1"),
 ])
+
+
+def _distributed_residue_index(n_atoms: int, n_residues: int) -> np.ndarray:
+    if n_atoms == 0:
+        return np.zeros(0, dtype=np.int32)
+    if n_residues <= 0:
+        raise ValueError("n_residues must be positive for a non-empty atom axis")
+    return np.minimum(
+        (np.arange(n_atoms, dtype=np.int64) * n_residues) // n_atoms,
+        n_residues - 1,
+    ).astype(np.int32)
+
+
+def write_required_sdk_npys(
+    out_dir: Path,
+    n_atoms: int,
+    n_residues: int = None,
+    n_bonds: int = 0,
+    n_aromatic_rings: int = 0,
+    n_saturated_rings: int = 0,
+    n_ring_membership: int = 0,
+    n_ring_contribution_pairs: int = 0,
+    n_mutation_match_pairs: int = 0,
+    n_rediscover_source_rows: int = 0,
+    n_rediscover_aggregated_rows: int = 0,
+    n_rediscover_target_rows: int = 0,
+) -> None:
+    """Write all required non-topology NPYs from ``nmr_extract.CATALOG``.
+
+    This is the source for synthetic SDK extraction fixtures. It is
+    intentionally catalog-derived so a new required emitted array fails here in
+    one place rather than drifting across copied partial fixture stubs.
+    Topology structured NPYs remain owned by ``write_minimal_topology_sidecar``.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if n_residues is None:
+        n_residues = max(1, (n_atoms + 3) // 4)
+
+    axis_rows = {
+        "atom": n_atoms,
+        "residue": n_residues,
+        "bond": n_bonds,
+        "aromatic_ring": n_aromatic_rings,
+        "saturated_ring": n_saturated_rings,
+        "ring": n_aromatic_rings + n_saturated_rings,
+        "ring_membership": n_ring_membership,
+        "ring_contribution_pair": n_ring_contribution_pairs,
+        "mutation_match_pair": n_mutation_match_pairs,
+        "protein": 1,
+        "rediscover_source_row": n_rediscover_source_rows,
+        "rediscover_aggregated_row": n_rediscover_aggregated_rows,
+        "rediscover_target_row": n_rediscover_target_rows,
+        "mopac_bond_neighbor_pair": 0,
+        "mopac_unique_pair": 0,
+    }
+
+    for stem, spec in CATALOG.items():
+        if not spec.required or spec.group == "topology":
+            continue
+
+        rows = axis_rows[spec.native_axis]
+        shape = (rows,) if spec.cols is None else (rows, spec.cols)
+        dtype = np.float64
+        if stem in {"element", "residue_index", "residue_type"}:
+            dtype = np.int32
+        elif stem == "aimnet2_aim":
+            dtype = np.float32
+
+        data = np.zeros(shape, dtype=dtype)
+        if stem == "element":
+            data[...] = 6
+        elif stem == "residue_index":
+            data = _distributed_residue_index(n_atoms, n_residues)
+
+        np.save(out_dir / f"{stem}.npy", data)
 
 
 def write_minimal_topology_sidecar(

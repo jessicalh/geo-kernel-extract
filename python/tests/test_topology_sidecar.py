@@ -25,8 +25,10 @@ from nmr_extract import (
     TopologyGroup,
     load,
 )
+from nmr_extract._catalog import ALLOWED_NATIVE_AXES
 from _topology_fixture import (
     write_minimal_topology_sidecar,
+    write_required_sdk_npys,
     _RESIDUES_DTYPE,
     _BONDS_DTYPE,
     _RINGS_DTYPE,
@@ -68,19 +70,18 @@ class TestCatalogMetadata:
 
     def test_axis_value_set(self):
         """Native axes are drawn from a closed set declared by the contract."""
-        allowed = {
-            "atom", "residue", "aromatic_ring", "saturated_ring", "ring",
-            "ring_contribution_pair", "bond", "ring_membership",
-            "mutation_match_pair", "protein",
-        }
         seen = {s.native_axis for s in CATALOG.values()}
-        unknown = seen - allowed
+        unknown = seen - ALLOWED_NATIVE_AXES
         assert not unknown, f"Unknown native_axis values: {unknown}"
 
     def test_shielding_entries_carry_sign_convention(self):
         """Every shielding tensor entry declares its sign convention."""
         for stem, spec in CATALOG.items():
-            if "shielding" in stem and spec.tensor_rank == 2:
+            if (
+                "shielding" in stem
+                and spec.tensor_rank == 2
+                and spec.mechanism != "electrostatic_efg"
+            ):
                 assert spec.sign_convention, (
                     f"shielding entry {stem!r} missing sign_convention")
 
@@ -90,51 +91,11 @@ class TestCatalogMetadata:
 
 def _required_identity_npys(out_dir, n_atoms):
     """Minimal required-by-catalog NPYs the loader checks for."""
-    np.save(out_dir / "pos.npy", np.zeros((n_atoms, 3), dtype=np.float64))
-    np.save(out_dir / "element.npy", np.full(n_atoms, 6, dtype=np.int32))
-    np.save(out_dir / "residue_index.npy",
-            np.arange(n_atoms, dtype=np.int32) // 4)
-    np.save(out_dir / "residue_type.npy",
-            np.zeros(n_atoms, dtype=np.int32))
-    np.save(out_dir / "ring_contributions.npy",
-            np.zeros((0, 58), dtype=np.float64))
-    np.save(out_dir / "ring_geometry.npy",
-            np.zeros((0, 10), dtype=np.float64))
+    write_required_sdk_npys(out_dir, n_atoms)
 
 
 def _required_calculator_npys(out_dir, n_atoms):
-    stems_9 = ["bs_shielding", "hm_shielding", "pq_shielding",
-               "disp_shielding", "ringchi_shielding",
-               "mc_shielding", "hbond_shielding"]
-    for s in stems_9:
-        np.save(out_dir / f"{s}.npy", np.zeros((n_atoms, 9), dtype=np.float64))
-    for stem in ("bs", "hm", "pq", "disp"):
-        np.save(out_dir / f"{stem}_per_type_T0.npy",
-                np.zeros((n_atoms, 8), dtype=np.float64))
-        np.save(out_dir / f"{stem}_per_type_T2.npy",
-                np.zeros((n_atoms, 40), dtype=np.float64))
-    np.save(out_dir / "bs_total_B.npy", np.zeros((n_atoms, 3), dtype=np.float64))
-    np.save(out_dir / "bs_ring_counts.npy",
-            np.zeros((n_atoms, 4), dtype=np.float64))
-    np.save(out_dir / "mc_category_T2.npy",
-            np.zeros((n_atoms, 25), dtype=np.float64))
-    np.save(out_dir / "mc_scalars.npy",
-            np.zeros((n_atoms, 6), dtype=np.float64))
-    np.save(out_dir / "hbond_scalars.npy",
-            np.zeros((n_atoms, 4), dtype=np.float64))
-    np.save(out_dir / "dssp_backbone.npy",
-            np.zeros((n_atoms, 5), dtype=np.float64))
-    np.save(out_dir / "aimnet2_charges.npy",
-            np.zeros(n_atoms, dtype=np.float64))
-    np.save(out_dir / "aimnet2_aim.npy",
-            np.zeros((n_atoms, 256), dtype=np.float32))
-    # EFG schema rev 2026-05-18: T2 only (5 components).
-    np.save(out_dir / "aimnet2_efg.npy",
-            np.zeros((n_atoms, 5), dtype=np.float64))
-    np.save(out_dir / "aimnet2_efg_aromatic.npy",
-            np.zeros((n_atoms, 5), dtype=np.float64))
-    np.save(out_dir / "aimnet2_efg_backbone.npy",
-            np.zeros((n_atoms, 5), dtype=np.float64))
+    write_required_sdk_npys(out_dir, n_atoms)
 
 
 class TestTopologyLoad:

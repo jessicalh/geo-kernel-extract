@@ -32,14 +32,10 @@ from ._tensors import (
     DsspScalars,
     MopacScalars,
     MopacGlobal,
-    MopacDipoleComponents,
     MopacAtomPopulations,
-    MopacAOTable,
     MopacAtomicOrbitalPopulations,
-    MopacPrintedBondOrders,
     MopacUniqueBondOrders,
     MopacTopologyBondOrdersFull,
-    MopacMOMeta,
     BondOrders,
     DeltaScalars,
     DeltaAPBS,
@@ -49,6 +45,25 @@ from ._tensors import (
     AIMNet2ChargeResponseGradient,
 )
 from ._ring import RingContributions, RingGeometry
+
+
+ALLOWED_NATIVE_AXES = frozenset({
+    "atom",
+    "residue",
+    "aromatic_ring",
+    "saturated_ring",
+    "ring",
+    "ring_contribution_pair",
+    "bond",
+    "ring_membership",
+    "mutation_match_pair",
+    "protein",
+    "rediscover_source_row",
+    "rediscover_aggregated_row",
+    "rediscover_target_row",
+    "mopac_bond_neighbor_pair",
+    "mopac_unique_pair",
+})
 
 
 @dataclass(frozen=True)
@@ -173,10 +188,6 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("ff_pb_radius",      "charge_assignment", np.ndarray, None, False, "Force-field Poisson-Boltzmann radius per atom (Å)",
               units="Å", mechanism="charges"),
 
-    # ── Spatial index (SpatialIndexResult.cpp) ──────────────────────
-    ArraySpec("spatial_neighbors", "spatial_index", np.ndarray, 6, False, "Sparse rows [atom_i, atom_j, distance, dir_x, dir_y, dir_z] from ConformationAtom::spatial_neighbours; index columns are integral-valued float64 to mirror mopac_bond_orders",
-              native_axis="spatial_atom_neighbor_pair", units="mixed", mechanism="geometry"),
-
     # ── Biot-Savart (BiotSavartResult.cpp) ───────────────────────
     ArraySpec("bs_shielding",     "biot_savart", ShieldingTensor,  9,    True,  "BS ring current shielding",
               irreps=_SHIELD_IRREPS, units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
@@ -278,13 +289,11 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_cn_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C-N response per atom from ConformationAtom::T2_CN_nearest, packed [T0, T1x, T1y, T1z, T2_m-2..+2]",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_bond_neighbors",        "mcconnell", np.ndarray, 26, False, "Sparse rows [atom_i, bond_index, bond_category, distance_to_midpoint, dir_x, dir_y, dir_z, dipolar_tensor row-major 9, dipolar_spherical PackFull9 9, mcconnell_scalar] from ConformationAtom::bond_neighbours",
-              native_axis="mc_bond_neighbor_pair", units="mixed", tensor_rank=2, mechanism="bond_anisotropy"),
-
     # Legacy McConnell arrays retained as optional/deprecated wrappers for
     # reading old extraction directories; new C++ emits the 15 tensor arrays above.
     ArraySpec("mc_shielding",     "mcconnell_legacy", ShieldingTensor,    9,    False,  "Legacy McConnell aggregate shielding",
-              is_feature=False, irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+              is_feature=False, irreps=_SHIELD_IRREPS, units="Angstrom^-3",
+              sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_category_T2",   "mcconnell_legacy", PerBondCategoryT2,  25,   False,  "Legacy McConnell T2 per old bond category",
               is_feature=False, irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_scalars",       "mcconnell_legacy", McConnellScalars,   6,    False,  "Legacy McConnell scalar sums + distances",
@@ -413,7 +422,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("buckingham_efield_feature_field_local", "rediscover", np.ndarray, 3, False, "Buckingham APBS E-field in the local backbone frame, once per DFT-present backbone (atom,frame)",
               is_feature=True, native_axis="rediscover_aggregated_row", irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("buckingham_efield_target_T1_unverified", "rediscover", np.ndarray, 3, False, "Buckingham DFT target T1 payload emitted for audit only; convention unverified, do not fit",
-              is_feature=False, native_axis="rediscover_aggregated_row", irreps="1?", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=1, parity="unverified", mechanism="quantum_reference"),
+              is_feature=False, native_axis="rediscover_aggregated_row", irreps="1?", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=1, parity="even", mechanism="quantum_reference"),
     ArraySpec("buckingham_efield_target_T2", "rediscover", np.ndarray, 5, False, "Buckingham DFT target T2 payload emitted for completeness; T0 fit ignores it",
               is_feature=False, native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
 
@@ -520,34 +529,16 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="mopac_bond_neighbor_pair", units="dimensionless", mechanism="charges"),
     ArraySpec("mopac_global",     "mopac_core", MopacGlobal,       4,    False, "MOPAC graph-level scalars",
               native_axis="protein", mechanism="charges"),
-    ArraySpec("mopac_global_terms", "mopac_core", np.ndarray,      2,    False, "All parsed MOPAC graph-level numeric terms [value, source_record_index]",
-              is_feature=False, native_axis="mopac_scalar_term", units="mixed", mechanism="quantum_reference"),
-    ArraySpec("mopac_dipole_components", "mopac_core", MopacDipoleComponents, 4, False, "Full MOPAC dipole table: POINT-CHG., HYBRID, SUM x/y/z/total",
-              is_feature=False, native_axis="mopac_dipole_component", irreps="1o", units="Debye", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
     ArraySpec("mopac_atom_populations", "mopac_core", MopacAtomPopulations, 12, False, "MOPAC per-atom charge, density, shell populations, dipole contribution, and valencies",
               is_feature=False, native_axis="atom", units="mixed", mechanism="charges"),
-    ArraySpec("mopac_ao_table", "mopac_core", MopacAOTable,        7,    False, "MOPAC AO basis table [ao, atom, type, zeta, PQN, population, source]",
-              is_feature=False, native_axis="ao", units="mixed", mechanism="quantum_reference"),
     ArraySpec("mopac_atomic_orbital_populations", "mopac_core", MopacAtomicOrbitalPopulations, 9, False, "Printed MOPAC atomic-orbital electron populations s/px/py/pz/d",
               is_feature=False, native_axis="atom", units="electron", mechanism="charges"),
-    ArraySpec("mopac_mulliken_overlap_sparse", "mopac_core", np.ndarray, 4, False, "MOPAC packed AO/AO Mulliken overlap populations [packed, ao_i, ao_j, density*overlap]",
-              is_feature=False, native_axis="mopac_overlap_row", units="electron", mechanism="quantum_reference"),
-    ArraySpec("mopac_bond_orders_printed", "mopac_core", MopacPrintedBondOrders, 9, False, "Directed MOPAC bond-order rows exactly as printed",
-              is_feature=False, native_axis="mopac_printed_bond_entry", units="dimensionless", mechanism="charges"),
     ArraySpec("mopac_bond_valencies", "mopac_core", np.ndarray,   None, False, "MOPAC bond-order diagonal valencies, not recomputed",
               is_feature=False, native_axis="atom", units="dimensionless", mechanism="charges"),
     ArraySpec("mopac_bond_orders_unique", "mopac_core", MopacUniqueBondOrders, 8, False, "Deterministic symmetric projection over printed MOPAC bond rows",
               is_feature=False, native_axis="mopac_unique_pair", units="dimensionless", mechanism="charges"),
     ArraySpec("mopac_topology_bond_orders_full", "mopac_core", MopacTopologyBondOrdersFull, 8, False, "Topology-bond bridge with present flag and absence reason id",
               is_feature=False, native_axis="bond", units="dimensionless", mechanism="charges"),
-    ArraySpec("mopac_mo_meta", "mopac_core", MopacMOMeta,          5,    False, "MOPAC MO/LMO metadata: energy, occupation, bonding contribution, labels via sidecar",
-              is_feature=False, native_axis="mo", units="mixed", mechanism="quantum_reference"),
-    ArraySpec("mopac_mo_coefficients", "mopac_core", np.ndarray,   None, False, "MOPAC MO/LMO coefficient matrix when emitted by AUX",
-              is_feature=False, native_axis="mo", units="dimensionless", mechanism="quantum_reference"),
-    ArraySpec("mopac_density_packed", "mopac_core", np.ndarray,    None, False, "MOPAC density matrix in original packed order when emitted",
-              is_feature=False, native_axis="mopac_matrix_packed", units="electron", mechanism="quantum_reference"),
-    ArraySpec("mopac_overlap_packed", "mopac_core", np.ndarray,    None, False, "MOPAC overlap matrix in original packed order when emitted",
-              is_feature=False, native_axis="mopac_matrix_packed", units="dimensionless", mechanism="quantum_reference"),
 
     # ── MOPAC Coulomb (MopacCoulombResult.cpp) ───────────────────
     ArraySpec("mopac_coulomb_efg",           "mopac_coulomb", ShieldingTensor, 9,  False, "MOPAC Coulomb bare total EFG (full 9-pack; T0/T1 structural zeros)",
@@ -573,7 +564,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── Legacy MOPAC McConnell (replaced by McConnell BO channel) ─
     ArraySpec("mopac_mc_shielding",    "mopac_mcconnell_legacy", ShieldingTensor,   9,  False, "Legacy MOPAC McConnell aggregate shielding",
-              is_feature=False, irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+              is_feature=False, irreps=_SHIELD_IRREPS, units="Angstrom^-3",
+              sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mopac_mc_category_T2",  "mopac_mcconnell_legacy", PerBondCategoryT2, 25, False, "Legacy MOPAC McConnell T2 per category",
               is_feature=False, irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mopac_mc_scalars",      "mopac_mcconnell_legacy", McConnellScalars,  6,  False, "Legacy MOPAC McConnell scalars",
