@@ -28,8 +28,25 @@ durable architectural record; this index is just a map to the rest.
   appliance handoff: PG18 build recipe, disk policy, runtime checks, and
   future maintainer notes.
 
-The project is code-complete: the planned-calculator docs described work
-now built and are retired history, not implementation authority.
+The extractor is code-complete *as the existing producer*; a **forward
+build** (kernel redesign, equivariant model, revamped stats) is live and
+ahead of the rest of the tree. The older planned-calculator docs described
+work now built and are retired history, not implementation authority.
+
+## Forward build (live — read before kernel/model/stats work)
+
+The current design effort lives under `doc/emerging/` and supersedes the
+old "three stages" with **three Parts** (law study / tensor predictor /
+shift predictor) and **The Three + the cage** kernel set. Reconcile by
+reading code, not the older docs above.
+
+- `doc/emerging/CONTROLLING_SPEC.md` — the spine: the three Parts, The
+  Three, pinned-not-learned, the scope of the forward build.
+- `doc/emerging/kernel_design/CONTINUITY.md` — running session state.
+- `doc/emerging/DEFERRED_LEDGER.md` — every parked / contingent / follow-up
+  item.
+- `doc/emerging/kernel_design/` — per-kernel specs (ring / McConnell /
+  charge-EFG) + the rhombic spec.
 
 ## Tracking
 

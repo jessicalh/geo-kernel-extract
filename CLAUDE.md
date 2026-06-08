@@ -68,26 +68,81 @@ were removed and must not be re-added.
 
 ## Current state
 
-Three stages (`project_three_stages` memory):
+The work is mid-**forward build** — a grounded redesign of the kernel
+set, model, and stats that **supersedes the old three stages** with
+**three Parts** (the same work re-framed as three complete,
+partly-concurrent deliverables). The live spec is
+`doc/emerging/CONTROLLING_SPEC.md`; running state is
+`doc/emerging/kernel_design/CONTINUITY.md`; every parked/contingent item
+is `doc/emerging/DEFERRED_LEDGER.md`. These are **ahead of the rest of the
+tree** — read them before forward-build work, and reconcile by reading
+code, not stale prose.
 
-- **Stage 1 — mutations. Settled.** Per-element, per-atom-type ridge
-  regression on 720 proteins / 446K atoms, 55 kernels: weighted R² = 0.718
-  (the thesis number; 0.818 was the 110-protein fair set — the drop is
-  cross-protein generalisation, not physics).
-  Atom-type stratification (2026-04-15) showed "nitrogen is hard" was
-  an element-pooling artifact: backbone N is hard (R² = 0.387),
-  sidechain N is second-best (R² = 0.887). See `learn/stage1-mutations/`.
-- **Stage 2 — trajectories. In progress.** Narrowed to the single
-  protein **1P9J** (Wingens 2003; `project_1p9j_study_system`). The
-  1P9J 15 ns ORCA r²SCAN/def2-SVP DFT campaign (every other frame,
-  751 frames) runs across the scan fleet, consolidated to
-  `/shared/2026Thesis/1p9j-orcas/` (`project_1p9j_orcas_consolidation`).
-  The 685-protein fleet run was stopped (bad chain extraction in
-  structure prep); recovery via OF3-generated structures dropped 9 on
-  disulfide geometry → **effective count 676**, with MD re-run and
-  residual-fleet DFT deferred until structure quality is resolved.
-- **Stage 3 — model evaluation.** Upstream of Stage 2 results; not
-  yet active.
+**The three Parts** (`CONTROLLING_SPEC.md`):
+
+- **Part 1 — law / correlation study.** DFT-anchored, standalone, **not a
+  predictor**. Per metric × stratum: R² with the angular vs without
+  (T2-in vs T0-only); PySR for closed-form laws; equivariance as the
+  relationship lens; traditional partial/joint fits. Targets: the 751
+  (1P9J) + 720 (WT static) DFTs.
+- **Part 2 — shielding-tensor predictor.** A real model — MatTen/e3nn
+  (`project_matten_predictor_2026-06-07`), T2 preserved, **R² IS the
+  metric**. FIDO inputs earned by internal ablation, **not** measured
+  against the Stage-1 ridge. Tested on held-out 1P9J frames + the 720 WT
+  DFTs.
+- **Part 3 — shift predictor.** Anything-goes, ablatable; ~600 short
+  ML-MD runs (MOPAC + everything but DFT) vs BMRB/RefDB experimental
+  shifts.
+
+**The settled ground the Parts build on (still true):**
+
+- **Stage-1 mutation ridge — settled.** Per-element, per-atom-type ridge
+  on 720 proteins / 446K atoms, 55 kernels: weighted R² = 0.718 (0.818 on
+  the 110-protein fair set — the drop is cross-protein generalisation, not
+  physics; backbone N hard at 0.387, sidechain N second-best at 0.887, so
+  "nitrogen is hard" was an element-pooling artifact). See
+  `learn/stage1-mutations/`. Its 720 WT/ALA static DFTs are now Part-1/2
+  targets.
+- **1P9J DFT campaign.** Single protein **1P9J** (Wingens 2003;
+  `project_1p9j_study_system`); 15 ns ORCA r²SCAN/def2-SVP, every other
+  frame, 751 frames, consolidated to `/shared/2026Thesis/1p9j-orcas/`
+  (`project_1p9j_orcas_consolidation`). Feeds Part 1 + Part 2's held-out
+  test. The 685-protein fleet run was stopped (bad chain extraction in
+  structure prep); OF3 recovery dropped 9 on disulfide geometry →
+  **effective count 676**, with MD re-run and residual-fleet DFT deferred
+  until structure quality resolves.
+
+**The kernels — The Three + the cage** (`project_three_kernels_and_cage`):
+
+- **The Three** (academic-responsibility; built, sourced, emitting):
+  **ring** = Biot–Savart (`BiotSavartResult`, 0e⊕2e) + Haigh–Mallion
+  (`HaighMallionResult`, 0e) — two paths by different math inside one
+  "ring"; **charge/EFG** (`CoulombResult`, emit stem `coulomb_efg`, source
+  fork left emergent); **McConnell** (`D·Q̂`, full even 0e⊕1e⊕2e, plus the
+  pinned rhombic C=O delta `mc_peptide_co_rhombic`).
+- **The cage** (kept, running, **NOT updated**, not featured as recovered
+  laws): H-bond, π-quadrupole, Larsen, dispersion.
+- **MOPAC — recast to first-class** (`MopacResult` full capture:
+  AO/overlap populations, MO coefficients, bond orders, density): the
+  forward build's local-electronic anchor beside the through-space
+  kernels, intended per-frame on everything (the existing `--mopac` CLI
+  toggle + its FullFat run-shape, above, are unchanged).
+- The producer also emits a **`.LGS` calcset manifest** per run (one root
+  = `--output`, `<protein_id>_<timestamp>.lgs`; warn-and-continue on
+  failure) — draft under review, `spec/CALCSET_MANIFEST.md`.
+
+**Standing disciplines (law):**
+
+- **Pinned-not-learned.** Over our N (1P9J within-instrument, 720 statics,
+  thin strata) free coefficients cannot be reliably *learned* → kernel
+  scales are **pinned** from literature/physics; magnitude **and sign**
+  must be right; have-it-to-cite-it is load-bearing physics
+  (`feedback_fittable_law_is_the_calibration`).
+- **Consistency ≠ validation.** Two of our own code paths agreeing is a
+  regression guard (CTest-on-fixture), not validation or a name earned;
+  validate against analytic identities, published values, or DFT. (Ring's
+  BS↔HM agreement is exactly this — "HM-style," the literal name deferred;
+  `feedback_consistency_not_validation`.)
 
 Viewer/reader: `ui/` is retired legacy archive, ignored/untracked and no
 longer part of the release repo or active producer build. `h5-reader/` is
@@ -239,16 +294,20 @@ more; none relaxes these.
 
 ### AI / ML framing
 
-- **The goal is physics explanation, not prediction.** R² is a
-  diagnostic for whether the kernels carry the signal, not the metric
-  the thesis is graded on. Do not optimise for R².
-- **The model is ridge regression.** Per-element, per-atom-type strata
-  on 55 kernels give weighted R² = 0.718 on the full 720 proteins (0.818 on
-  the 110-protein fair set; settled 2026-04-10/13). MLPs were tested
-  and rejected.
-- **Do not assert physical conclusions from model diagnostics.** Model
-  fit is evidence the kernel set is complete enough; physical
-  conclusions come from the kernels themselves.
+- **Explanation vs prediction splits by Part — keep them unconflated.**
+  Part 1 (the law study) is **explanation**: R² is a diagnostic for
+  whether the kernels carry the signal, not a grade — do not optimise for
+  it, and do not assert physical conclusions from model fit (the physics
+  comes from the kernels themselves). Parts 2 & 3 are **predictors**:
+  there **R² IS the metric** (the dragon-informed ethos flip,
+  `project_stage3_equivariant_gnn`).
+- **Three models, by Part.** The settled **Stage-1 model is ridge** —
+  per-element, per-atom-type strata on 55 kernels, weighted R² = 0.718 on
+  720 proteins (0.818 on the 110-protein fair set, settled 2026-04-10/13;
+  MLPs tested and rejected). Part 2 is an **equivariant tensor predictor**
+  (MatTen/e3nn, T2 preserved); Part 3 is a **FIDO shift predictor**.
+  Part 2 earns pieces by internal ablation, **not** against the Stage-1
+  ridge (different target and quantity).
 
 ### References
 
