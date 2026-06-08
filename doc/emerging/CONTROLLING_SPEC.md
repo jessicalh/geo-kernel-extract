@@ -28,7 +28,7 @@ This document governs ONLY the **forward build** — the **new calculators, the 
 "Controlling document" = the spec for what we **newly build and emit**, never a retroactive
 audit of what's done.
 
-## Our geometry-encoding kernels are kept but not used
+## Our novel geometry-encoding kernels are kept, not the defended contribution
 
 **What these kernels are.** Our geometric kernels
 — ring, McConnell, charge/EFG, and the others — are all the **same kind of object**: a low-order
@@ -38,18 +38,19 @@ charge for EFG, a ring-current intensity for ring, a `Δχ` for McConnell) — "
 "physical-source tensors" separable from geometry. They **attempt to encode geometry**, and there are
 many of them, not just McConnell.
 
-**Disposition: kept, not used.** These geometry-encoding kernels stay **built and emitted** (the
-producer surface is unchanged) — **not removed** — but they are **not used** in Step 1's statistical
-model, **not used** in its law work, and **not needed** there. Defending the maths of our novel encoding
-is too much work for this project's scope, and the model does not need them: we have the **actual
-equivariant DFT shieldings** for that study. They may **find a use as we iterate** — reached for only if
-we are really reaching.
+**Disposition: our novel kernel architecture is not the defended contribution.** These geometry-encoding
+kernels stay **built and emitted** (the producer surface is unchanged) — **not removed**. Defending the
+maths of our novel encoding is too much work for this project's scope, so we do not feature it. They may
+**find a use as we iterate** — reached for only if we are really reaching. This is **not** a claim that
+Step 1 lacks tensor data or MOPAC (see below).
 
-**What Step 1 uses instead.** The statistical model is built on **standard, defensible features** — a
-**dihedral space**, **IUPAC backbone/sidechain identity**, **pairwise residue propinquity** (standard
-practice) — plus **equivariant components** on the raw geometry (which e3nn encodes itself; feeding our
-`l≤2` kernels into an `l≤2` e3nn is circular anyway, §7), against the DFT shieldings, with **AIMNet2**
-available. Not our multipole kernels.
+**What Step 1 actually relates.** Step 1's statistical model relates **our T0/T1/T2 tensor data to DFT
+shielding**, with a **dihedral space**, **IUPAC backbone/sidechain identity**, and **pairwise residue
+propinquity** as **modulators** (standard practice) — not as the primary inputs. **MOPAC is central — our
+best predictor**: its electronic data and tensor contributions are core inputs. (Keep the lean predictive
+MOPAC layer; the per-pose raw `O(N²)` matrices + the retained `.aux` are the disk bear, not the signal.)
+Equivariant components are allowed where they help. Our novel `l≤2` geometric kernels are not featured —
+feeding them into an `l≤2` e3nn is circular anyway (§7).
 
 **PySR is unaffected.** The kernels are *lossy functions of the raw geometry* (§3), so the law work
 (PySR, closed-form fits) on raw geometric inputs → the DFT shieldings has everything the kernels encode
@@ -87,12 +88,13 @@ kept and emitted, but not Step-1 inputs.
 
 ### Step 1 — The statistical model (primary deliverable; DFT-anchored)
 
-**Goal.** A **statistical model** predicting DFT shielding from **standard, defensible features** — a
-dihedral space, IUPAC backbone/sidechain identity, pairwise residue propinquity (standard practice) —
-with **equivariant components** allowed, and **law work folded in as appropriate**. It IS a predictor
-(R² is the working metric); the law-finding within it is the explanation-flavoured part. Our
-geometry-encoding kernels are **not** inputs here — kept and emitted, but not used and not needed (we
-have the actual equivariant DFT shieldings; see the note above).
+**Goal.** A **statistical model** relating **our T0/T1/T2 tensor data to DFT shielding**, with a
+**dihedral space, IUPAC backbone/sidechain identity, and pairwise residue propinquity as modulators**
+(standard practice) — not as the primary inputs — and **equivariant components** allowed; **law work
+folded in as appropriate**. **MOPAC is central — our best predictor** (its electronic data + tensor
+contributions are core inputs; keep the lean predictive layer, not the per-pose raw matrices). It IS a
+predictor (R² is the working metric); the law-finding within it is the explanation-flavoured part. Our
+novel geometry-encoding kernel architecture is not featured here (see the note above).
 
 **The law work + diagnostics it folds in, per stratum:**
 - **R² with the angular and without it** — T2-in vs T0-only. Does the tensor content add

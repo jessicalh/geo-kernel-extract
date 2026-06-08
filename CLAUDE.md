@@ -81,15 +81,15 @@ code, not stale prose.
 
 **The three Steps** (`CONTROLLING_SPEC.md`):
 
-- **Step 1 — statistical model (primary deliverable).** Predicts DFT
-  shielding from standard, defensible features — a **dihedral space**,
+- **Step 1 — statistical model (primary deliverable).** Relates **our
+  T0/T1/T2 tensor data to DFT shielding**, with a **dihedral space**,
   **IUPAC backbone/sidechain identity**, and **pairwise residue
-  propinquity** (standard practice) — plus **equivariant components** on
-  the raw geometry, against the actual equivariant DFT shieldings. Law
-  work (**PySR** for closed-form laws, partial/joint fits) is folded in
-  **as appropriate**. Built on standard features, **not** our
-  geometry-encoding kernels. Targets: the 751 (1P9J) + 720 (WT static)
-  DFTs.
+  propinquity** as **modulators** (standard practice) — *not* as the
+  primary inputs. **MOPAC is central — our best predictor**: its electronic
+  data and tensor contributions are core inputs (keep the lean predictive
+  MOPAC layer, not the per-pose raw O(N²) matrices). Equivariant components
+  allowed; law work (**PySR**, partial/joint fits) folded in **as
+  appropriate**. Targets: the 751 (1P9J) + 720 (WT static) DFTs.
 - **Step 2 — shielding-tensor predictor.** A real model — MatTen/e3nn
   (`project_matten_predictor_2026-06-07`), T2 preserved, **R² IS the
   metric**. Inputs earned by internal ablation, **not** measured
@@ -124,11 +124,11 @@ code, not stale prose.
   (`HaighMallionResult`, 0e) — two paths by different math inside one
   "ring"; **charge/EFG** (`CoulombResult`, emit stem `coulomb_efg`, source
   fork left emergent); **McConnell** (`D·Q̂`, full even 0e⊕1e⊕2e, plus the
-  pinned rhombic C=O delta `mc_peptide_co_rhombic`). They are **kept and
-  emitted but not used** in the Step-1 model or its law work, and **not
-  needed** there (the model uses the actual equivariant DFT shieldings);
-  defending the maths of our novel geometry encoding is too much for this
-  project — they may find a use as we iterate
+  pinned rhombic C=O delta `mc_peptide_co_rhombic`). Our **novel kernel
+  architecture is not the defended contribution** — defending its maths is
+  too much for this project — so the kernels are kept and emitted but not
+  featured. (This is **not** a claim that Step 1 lacks tensor data or MOPAC
+  — MOPAC is central; see Step 1.) They may find a use as we iterate
   ([[project_novel_geometry_kernel_dropped]]).
 - **The cage** (kept, running, **NOT updated**, not featured as recovered
   laws): H-bond, π-quadrupole, Larsen, dispersion.
@@ -314,9 +314,9 @@ more; none relaxes these.
 - **The models.** The settled **Stage-1 model is ridge** —
   per-element, per-atom-type strata on 55 kernels, weighted R² = 0.718 on
   720 proteins (0.818 on the 110-protein fair set, settled 2026-04-10/13;
-  MLPs tested and rejected). **Step 1** is a statistical model on standard
-  features (dihedrals, IUPAC identity, residue propinquity) + equivariant
-  components → DFT shieldings; **Step 2** an equivariant tensor predictor
+  MLPs tested and rejected). **Step 1** is a statistical model relating our
+  T0/T1/T2 data (MOPAC central) to DFT, modulated by dihedrals / IUPAC
+  identity / residue propinquity; **Step 2** an equivariant tensor predictor
   (MatTen/e3nn, T2 preserved); **Step 3** a FIDO shift predictor. Earn
   pieces by internal ablation, **not** against the Stage-1 ridge
   (different target and quantity).
