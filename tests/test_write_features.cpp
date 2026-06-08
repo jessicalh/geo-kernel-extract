@@ -187,6 +187,8 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
         "coulomb_aromatic_n_src",
         "hbond_nearest_dir",
         "hbond_nearest_tensor",
+        "hbond_nearest_spherical",
+        "hbond_flags",
         "mc_nearest_co_dir",
         "mc_nearest_co_midpoint",
         "mc_nearest_co_T2",
@@ -242,17 +244,18 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
             EXPECT_EQ(v[i], static_cast<int32_t>(conf.AtomAt(i).hybridisation));
 
         auto flags = ReadNpy(out_dir / "enrichment_flags.npy");
-        ExpectShapeAndDescr(flags, {N, 7}, "|i1");
+        ExpectShapeAndDescr(flags, {N, 8}, "|i1");
         const int8_t* f = DataAs<int8_t>(flags);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
-            EXPECT_EQ(f[i*7 + 0], ca.is_backbone ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 1], ca.is_amide_H ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 2], ca.is_alpha_H ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 3], ca.is_methyl ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 4], ca.is_aromatic_H ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 5], ca.is_hbond_donor ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 6], ca.is_hbond_acceptor ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 0], ca.is_backbone ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 1], ca.is_amide_H ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 2], ca.is_alpha_H ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 3], ca.is_methyl ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 4], ca.is_aromatic_H ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 5], ca.is_hbond_donor ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 6], ca.is_hbond_acceptor ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 7], ca.is_on_aromatic_residue ? 1 : 0);
         }
     }
 
@@ -353,10 +356,16 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
         SetReadbackContext("hbond_nearest arrays");
         auto dir = ReadNpy(out_dir / "hbond_nearest_dir.npy");
         auto tensor = ReadNpy(out_dir / "hbond_nearest_tensor.npy");
+        auto spherical = ReadNpy(out_dir / "hbond_nearest_spherical.npy");
+        auto flags = ReadNpy(out_dir / "hbond_flags.npy");
         ExpectShapeAndDescr(dir, {N, 3}, "<f8");
         ExpectShapeAndDescr(tensor, {N, 9}, "<f8");
+        ExpectShapeAndDescr(spherical, {N, 9}, "<f8");
+        ExpectShapeAndDescr(flags, {N, 3}, "|i1");
         const double* dv = DataAs<double>(dir);
         const double* tv = DataAs<double>(tensor);
+        const double* sv = DataAs<double>(spherical);
+        const int8_t* fv = DataAs<int8_t>(flags);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
             ExpectDoubleEqOrNan(dv[i*3 + 0], ca.hbond_nearest_dir.x());
@@ -366,6 +375,12 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
             PackMat3RowMajor(ca.hbond_nearest_tensor, packed);
             for (int c = 0; c < 9; ++c)
                 ExpectDoubleEqOrNan(tv[i*9 + c], packed[c]);
+            ca.hbond_nearest_spherical.PackFull9(packed);
+            for (int c = 0; c < 9; ++c)
+                ExpectDoubleEqOrNan(sv[i*9 + c], packed[c]);
+            EXPECT_EQ(fv[i*3 + 0], ca.hbond_is_backbone ? 1 : 0);
+            EXPECT_EQ(fv[i*3 + 1], ca.hbond_is_donor ? 1 : 0);
+            EXPECT_EQ(fv[i*3 + 2], ca.hbond_is_acceptor ? 1 : 0);
         }
     }
 
@@ -534,6 +549,8 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
         "coulomb_aromatic_n_src",
         "hbond_nearest_dir",
         "hbond_nearest_tensor",
+        "hbond_nearest_spherical",
+        "hbond_flags",
         "mc_nearest_co_dir",
         "mc_nearest_co_midpoint",
         "mc_nearest_co_T2",
@@ -592,17 +609,18 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
             EXPECT_EQ(v[i], static_cast<int32_t>(conf.AtomAt(i).hybridisation));
 
         auto flags = ReadNpy(out_dir / "enrichment_flags.npy");
-        ExpectShapeAndDescr(flags, {N, 7}, "|i1");
+        ExpectShapeAndDescr(flags, {N, 8}, "|i1");
         const int8_t* f = DataAs<int8_t>(flags);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
-            EXPECT_EQ(f[i*7 + 0], ca.is_backbone ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 1], ca.is_amide_H ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 2], ca.is_alpha_H ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 3], ca.is_methyl ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 4], ca.is_aromatic_H ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 5], ca.is_hbond_donor ? 1 : 0);
-            EXPECT_EQ(f[i*7 + 6], ca.is_hbond_acceptor ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 0], ca.is_backbone ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 1], ca.is_amide_H ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 2], ca.is_alpha_H ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 3], ca.is_methyl ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 4], ca.is_aromatic_H ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 5], ca.is_hbond_donor ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 6], ca.is_hbond_acceptor ? 1 : 0);
+            EXPECT_EQ(f[i*8 + 7], ca.is_on_aromatic_residue ? 1 : 0);
         }
     }
 
@@ -697,10 +715,16 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
     if (conf.HasResult<HBondResult>()) {
         auto dir = ReadNpy(out_dir / "hbond_nearest_dir.npy");
         auto tensor = ReadNpy(out_dir / "hbond_nearest_tensor.npy");
+        auto spherical = ReadNpy(out_dir / "hbond_nearest_spherical.npy");
+        auto flags = ReadNpy(out_dir / "hbond_flags.npy");
         ExpectShapeAndDescr(dir, {N, 3}, "<f8");
         ExpectShapeAndDescr(tensor, {N, 9}, "<f8");
+        ExpectShapeAndDescr(spherical, {N, 9}, "<f8");
+        ExpectShapeAndDescr(flags, {N, 3}, "|i1");
         const double* dv = DataAs<double>(dir);
         const double* tv = DataAs<double>(tensor);
+        const double* sv = DataAs<double>(spherical);
+        const int8_t* fv = DataAs<int8_t>(flags);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
             ExpectDoubleEqOrNan(dv[i*3 + 0], ca.hbond_nearest_dir.x());
@@ -710,6 +734,12 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
             PackMat3RowMajor(ca.hbond_nearest_tensor, packed);
             for (int c = 0; c < 9; ++c)
                 ExpectDoubleEqOrNan(tv[i*9 + c], packed[c]);
+            ca.hbond_nearest_spherical.PackFull9(packed);
+            for (int c = 0; c < 9; ++c)
+                ExpectDoubleEqOrNan(sv[i*9 + c], packed[c]);
+            EXPECT_EQ(fv[i*3 + 0], ca.hbond_is_backbone ? 1 : 0);
+            EXPECT_EQ(fv[i*3 + 1], ca.hbond_is_donor ? 1 : 0);
+            EXPECT_EQ(fv[i*3 + 2], ca.hbond_is_acceptor ? 1 : 0);
         }
     }
 

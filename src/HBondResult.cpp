@@ -9,6 +9,7 @@
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
+#include <cstdint>
 #include <cmath>
 #include <set>
 
@@ -463,6 +464,8 @@ int HBondResult::WriteFeatures(const ProteinConformation& conf,
     std::vector<double> scalars(N * 4);
     std::vector<double> nearest_dir(N * 3);
     std::vector<double> nearest_tensor(N * 9);
+    std::vector<double> nearest_spherical(N * 9);
+    std::vector<int8_t> flags(N * 3, 0);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
@@ -475,6 +478,10 @@ int HBondResult::WriteFeatures(const ProteinConformation& conf,
         nearest_dir[i*3+1] = ca.hbond_nearest_dir.y();
         nearest_dir[i*3+2] = ca.hbond_nearest_dir.z();
         PackMat3RowMajor(ca.hbond_nearest_tensor, &nearest_tensor[i*9]);
+        ca.hbond_nearest_spherical.PackFull9(&nearest_spherical[i*9]);
+        flags[i*3 + 0] = ca.hbond_is_backbone ? 1 : 0;
+        flags[i*3 + 1] = ca.hbond_is_donor ? 1 : 0;
+        flags[i*3 + 2] = ca.hbond_is_acceptor ? 1 : 0;
     }
 
     NpyWriter::WriteFloat64(output_dir + "/hbond_shielding.npy", shielding.data(), N, 9);
@@ -483,7 +490,11 @@ int HBondResult::WriteFeatures(const ProteinConformation& conf,
                             nearest_dir.data(), N, 3);
     NpyWriter::WriteFloat64(output_dir + "/hbond_nearest_tensor.npy",
                             nearest_tensor.data(), N, 9);
-    return 4;
+    NpyWriter::WriteFloat64(output_dir + "/hbond_nearest_spherical.npy",
+                            nearest_spherical.data(), N, 9);
+    NpyWriter::WriteInt8(output_dir + "/hbond_flags.npy",
+                         flags.data(), N, 3);
+    return 6;
 }
 
 }  // namespace nmr

@@ -164,7 +164,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               mechanism="topology"),
     ArraySpec("enrichment_hybridisation", "enrichment", np.ndarray, None, False, "Hybridisation enum per atom (int32)",
               mechanism="topology"),
-    ArraySpec("enrichment_flags",         "enrichment", np.ndarray, 7,    False, "Enrichment boolean flags as int8 columns: is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H, is_hbond_donor, is_hbond_acceptor",
+    ArraySpec("enrichment_flags",         "enrichment", np.ndarray, 8,    False, "Enrichment boolean flags as int8 columns: is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H, is_hbond_donor, is_hbond_acceptor, is_on_aromatic_residue",
               mechanism="topology"),
 
     # ── Force-field charge assignment (ChargeAssignmentResult.cpp) ──
@@ -242,7 +242,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_peptide_co_bo",         "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C=O Wiberg BO response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_peptide_co_rhombic",    "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C=O pinned rhombic source response",
+    ArraySpec("mc_peptide_co_rhombic",    "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C=O additive rhombic source delta",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_peptide_cn_fixed",      "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C-N fixed source response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
@@ -454,6 +454,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1o", tensor_rank=1, parity="odd", mechanism="hbond_kernel"),
     ArraySpec("hbond_nearest_tensor", "hbond", np.ndarray,          9,    False, "Nearest accepted H-bond raw dipolar Mat3 per atom, flattened row-major as xx, xy, xz, yx, yy, yz, zx, zy, zz",
               irreps="matrix", units="Angstrom^-3", tensor_rank=2, mechanism="hbond_kernel"),
+    ArraySpec("hbond_nearest_spherical", "hbond", ShieldingTensor,   9,    False, "Nearest accepted H-bond dipolar tensor per atom packed as [T0, T1x, T1y, T1z, T2_m-2..+2]",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="hbond_kernel"),
+    ArraySpec("hbond_flags", "hbond", np.ndarray,                   3,    False, "H-bond boolean flags as int8 columns: hbond_is_backbone, hbond_is_donor, hbond_is_acceptor",
+              mechanism="hbond_kernel"),
 
     # ── DSSP (DsspResult.cpp) ────────────────────────────────────
     ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry",

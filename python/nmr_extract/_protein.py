@@ -127,6 +127,10 @@ class EnrichmentGroup:
     def is_hbond_acceptor(self) -> np.ndarray:
         return self.flags[:, 6] != 0
 
+    @property
+    def is_on_aromatic_residue(self) -> np.ndarray:
+        return self.flags[:, 7] != 0
+
 
 @dataclass(frozen=True)
 class ChargeAssignmentGroup:
@@ -217,6 +221,26 @@ class HBondGroup:
     scalars: HBondScalars
     nearest_dir: Optional[VectorField] = None
     nearest_tensor: Optional[np.ndarray] = None
+    nearest_spherical: Optional[ShieldingTensor] = None
+    flags: Optional[np.ndarray] = None
+
+    @property
+    def is_backbone(self) -> Optional[np.ndarray]:
+        if self.flags is None:
+            return None
+        return self.flags[:, 0] != 0
+
+    @property
+    def is_donor(self) -> Optional[np.ndarray]:
+        if self.flags is None:
+            return None
+        return self.flags[:, 1] != 0
+
+    @property
+    def is_acceptor(self) -> Optional[np.ndarray]:
+        if self.flags is None:
+            return None
+        return self.flags[:, 2] != 0
 
 
 @dataclass(frozen=True)
@@ -1535,6 +1559,8 @@ def load(path: str | Path) -> Protein:
         scalars=get("hbond_scalars"),
         nearest_dir=get("hbond_nearest_dir"),
         nearest_tensor=get("hbond_nearest_tensor"),
+        nearest_spherical=get("hbond_nearest_spherical"),
+        flags=get("hbond_flags"),
     )
 
     enrichment = None

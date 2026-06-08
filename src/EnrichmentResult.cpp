@@ -241,19 +241,21 @@ int EnrichmentResult::WriteFeatures(const ProteinConformation& conf,
     const size_t N = conf.AtomCount();
     std::vector<int32_t> roles(N, 0);
     std::vector<int32_t> hybridisation(N, 0);
-    std::vector<int8_t> flags(N * 7, 0);
+    constexpr size_t kFlagCols = 8;
+    std::vector<int8_t> flags(N * kFlagCols, 0);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
         roles[i] = static_cast<int32_t>(ca.role);
         hybridisation[i] = static_cast<int32_t>(ca.hybridisation);
-        flags[i*7 + 0] = ca.is_backbone ? 1 : 0;
-        flags[i*7 + 1] = ca.is_amide_H ? 1 : 0;
-        flags[i*7 + 2] = ca.is_alpha_H ? 1 : 0;
-        flags[i*7 + 3] = ca.is_methyl ? 1 : 0;
-        flags[i*7 + 4] = ca.is_aromatic_H ? 1 : 0;
-        flags[i*7 + 5] = ca.is_hbond_donor ? 1 : 0;
-        flags[i*7 + 6] = ca.is_hbond_acceptor ? 1 : 0;
+        flags[i*kFlagCols + 0] = ca.is_backbone ? 1 : 0;
+        flags[i*kFlagCols + 1] = ca.is_amide_H ? 1 : 0;
+        flags[i*kFlagCols + 2] = ca.is_alpha_H ? 1 : 0;
+        flags[i*kFlagCols + 3] = ca.is_methyl ? 1 : 0;
+        flags[i*kFlagCols + 4] = ca.is_aromatic_H ? 1 : 0;
+        flags[i*kFlagCols + 5] = ca.is_hbond_donor ? 1 : 0;
+        flags[i*kFlagCols + 6] = ca.is_hbond_acceptor ? 1 : 0;
+        flags[i*kFlagCols + 7] = ca.is_on_aromatic_residue ? 1 : 0;
     }
 
     int written = 0;
@@ -262,7 +264,7 @@ int EnrichmentResult::WriteFeatures(const ProteinConformation& conf,
     if (NpyWriter::WriteInt32(output_dir + "/enrichment_hybridisation.npy",
                               hybridisation.data(), N)) ++written;
     if (NpyWriter::WriteInt8(output_dir + "/enrichment_flags.npy",
-                             flags.data(), N, 7)) ++written;
+                             flags.data(), N, kFlagCols)) ++written;
     return written;
 }
 
