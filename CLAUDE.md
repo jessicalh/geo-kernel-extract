@@ -70,7 +70,7 @@ were removed and must not be re-added.
 
 The work is mid-**forward build** — a grounded redesign of the kernel
 set, model, and stats that **supersedes the old three stages** with
-**three Parts** (the same work re-framed as three complete,
+**three Steps** (the same work re-framed as three complete,
 partly-concurrent deliverables). The live spec is
 `doc/emerging/CONTROLLING_SPEC.md`; running state is
 `doc/emerging/kernel_design/CONTINUITY.md`; every parked/contingent item
@@ -78,35 +78,39 @@ is `doc/emerging/DEFERRED_LEDGER.md`. These are **ahead of the rest of the
 tree** — read them before forward-build work, and reconcile by reading
 code, not stale prose.
 
-**The three Parts** (`CONTROLLING_SPEC.md`):
+**The three Steps** (`CONTROLLING_SPEC.md`):
 
-- **Part 1 — law / correlation study.** DFT-anchored, standalone, **not a
-  predictor**. Per metric × stratum: R² with the angular vs without
-  (T2-in vs T0-only); PySR for closed-form laws; equivariance as the
-  relationship lens; traditional partial/joint fits. Targets: the 751
-  (1P9J) + 720 (WT static) DFTs.
-- **Part 2 — shielding-tensor predictor.** A real model — MatTen/e3nn
+- **Step 1 — statistical model (primary deliverable).** Predicts DFT
+  shielding from standard, defensible features — a **dihedral space**,
+  **IUPAC backbone/sidechain identity**, and **pairwise residue
+  propinquity** (standard practice) — plus **equivariant components** on
+  the raw geometry, against the actual equivariant DFT shieldings. Law
+  work (**PySR** for closed-form laws, partial/joint fits) is folded in
+  **as appropriate**. Built on standard features, **not** our
+  geometry-encoding kernels. Targets: the 751 (1P9J) + 720 (WT static)
+  DFTs.
+- **Step 2 — shielding-tensor predictor.** A real model — MatTen/e3nn
   (`project_matten_predictor_2026-06-07`), T2 preserved, **R² IS the
   metric**. FIDO inputs earned by internal ablation, **not** measured
   against the Stage-1 ridge. Tested on held-out 1P9J frames + the 720 WT
   DFTs.
-- **Part 3 — shift predictor.** Anything-goes, ablatable; ~600 short
+- **Step 3 — shift predictor.** Anything-goes, ablatable; ~600 short
   ML-MD runs (MOPAC + everything but DFT) vs BMRB/RefDB experimental
   shifts.
 
-**The settled ground the Parts build on (still true):**
+**The settled ground the Steps build on (still true):**
 
 - **Stage-1 mutation ridge — settled.** Per-element, per-atom-type ridge
   on 720 proteins / 446K atoms, 55 kernels: weighted R² = 0.718 (0.818 on
   the 110-protein fair set — the drop is cross-protein generalisation, not
   physics; backbone N hard at 0.387, sidechain N second-best at 0.887, so
   "nitrogen is hard" was an element-pooling artifact). See
-  `learn/stage1-mutations/`. Its 720 WT/ALA static DFTs are now Part-1/2
+  `learn/stage1-mutations/`. Its 720 WT/ALA static DFTs are now Step-1/2
   targets.
 - **1P9J DFT campaign.** Single protein **1P9J** (Wingens 2003;
   `project_1p9j_study_system`); 15 ns ORCA r²SCAN/def2-SVP, every other
   frame, 751 frames, consolidated to `/shared/2026Thesis/1p9j-orcas/`
-  (`project_1p9j_orcas_consolidation`). Feeds Part 1 + Part 2's held-out
+  (`project_1p9j_orcas_consolidation`). Feeds Step 1 + Step 2's held-out
   test. The 685-protein fleet run was stopped (bad chain extraction in
   structure prep); OF3 recovery dropped 9 on disulfide geometry →
   **effective count 676**, with MD re-run and residual-fleet DFT deferred
@@ -114,12 +118,17 @@ code, not stale prose.
 
 **The kernels — The Three + the cage** (`project_three_kernels_and_cage`):
 
-- **The Three** (academic-responsibility; built, sourced, emitting):
+- **The Three** (our geometry-encoding kernels — built and emitting):
   **ring** = Biot–Savart (`BiotSavartResult`, 0e⊕2e) + Haigh–Mallion
   (`HaighMallionResult`, 0e) — two paths by different math inside one
   "ring"; **charge/EFG** (`CoulombResult`, emit stem `coulomb_efg`, source
   fork left emergent); **McConnell** (`D·Q̂`, full even 0e⊕1e⊕2e, plus the
-  pinned rhombic C=O delta `mc_peptide_co_rhombic`).
+  pinned rhombic C=O delta `mc_peptide_co_rhombic`). They are **kept and
+  emitted but not used** in the Step-1 model or its law work, and **not
+  needed** there (the model uses the actual equivariant DFT shieldings);
+  defending the maths of our novel geometry encoding is too much for this
+  project — they may find a use as we iterate
+  ([[project_novel_geometry_kernel_dropped]]).
 - **The cage** (kept, running, **NOT updated**, not featured as recovered
   laws): H-bond, π-quadrupole, Larsen, dispersion.
 - **MOPAC — recast to first-class** (`MopacResult` full capture:
@@ -294,20 +303,22 @@ more; none relaxes these.
 
 ### AI / ML framing
 
-- **Explanation vs prediction splits by Part — keep them unconflated.**
-  Part 1 (the law study) is **explanation**: R² is a diagnostic for
-  whether the kernels carry the signal, not a grade — do not optimise for
-  it, and do not assert physical conclusions from model fit (the physics
-  comes from the kernels themselves). Parts 2 & 3 are **predictors**:
-  there **R² IS the metric** (the dragon-informed ethos flip,
-  `project_stage3_equivariant_gnn`).
-- **Three models, by Part.** The settled **Stage-1 model is ridge** —
+- **Prediction vs explanation, by Step.** All three Steps are
+  **statistical models / predictors** where R² is the working metric. The
+  **explanation discipline applies to the law work** (PySR, closed-form
+  fits) folded into Step 1: there R² is a *diagnostic*, not a grade — do
+  not optimise it, and the physics comes from the data, not the model fit.
+  Don't conflate the law-finding (explanation-flavoured) with the
+  prediction (R²-graded).
+- **The models.** The settled **Stage-1 model is ridge** —
   per-element, per-atom-type strata on 55 kernels, weighted R² = 0.718 on
   720 proteins (0.818 on the 110-protein fair set, settled 2026-04-10/13;
-  MLPs tested and rejected). Part 2 is an **equivariant tensor predictor**
-  (MatTen/e3nn, T2 preserved); Part 3 is a **FIDO shift predictor**.
-  Part 2 earns pieces by internal ablation, **not** against the Stage-1
-  ridge (different target and quantity).
+  MLPs tested and rejected). **Step 1** is a statistical model on standard
+  features (dihedrals, IUPAC identity, residue propinquity) + equivariant
+  components → DFT shieldings; **Step 2** an equivariant tensor predictor
+  (MatTen/e3nn, T2 preserved); **Step 3** a FIDO shift predictor. Earn
+  pieces by internal ablation, **not** against the Stage-1 ridge
+  (different target and quantity).
 
 ### References
 

@@ -28,7 +28,7 @@ This document governs ONLY the **forward build** — the **new calculators, the 
 "Controlling document" = the spec for what we **newly build and emit**, never a retroactive
 audit of what's done.
 
-## Our geometry-encoding kernels are being pulled from the defended thesis (2026-06-08)
+## Our geometry-encoding kernels are kept but not used (2026-06-08)
 
 **What these kernels are (corrected; `GEOMETRIC_KERNEL_ACCOUNT.md` §2–3, §5).** Our geometric kernels
 — ring, McConnell, charge/EFG, and the others — are all the **same kind of object**: a low-order
@@ -38,20 +38,26 @@ charge for EFG, a ring-current intensity for ring, a `Δχ` for McConnell) — "
 "physical-source tensors" separable from geometry (an earlier note this session said that — it was
 wrong). They **attempt to encode geometry**, and there are many of them, not just McConnell.
 
-**Disposition:** these geometry-encoding kernels are being **pulled from the defended thesis** —
-defending the maths of our novel encoding is too much work for this project's scope, whatever its real
-intellectual interest. They stay **built and emitted** (the producer surface is unchanged); they are
-just not what the thesis defends.
+**Disposition: kept, not used.** These geometry-encoding kernels stay **built and emitted** (the
+producer surface is unchanged) — **not removed** — but they are **not used** in Step 1's statistical
+model, **not used** in its law work, and **not needed** there. Defending the maths of our novel encoding
+is too much work for this project's scope, and the model does not need them: we have the **actual
+equivariant DFT shieldings** for that study. They may **find a use as we iterate** — reached for only if
+we are really reaching.
 
-**What stands in their place for the models:** raw geometry, which **e3nn encodes itself** (its own
-`l≤2` machinery — feeding our `l≤2` kernels into it is circular anyway, §7), against the **DFT shielding
-tensors** as the target, with **AIMNet2** and other genuinely-physical tensors available as features —
-not our multipole kernels.
+**What Step 1 uses instead.** The statistical model is built on **standard, defensible features** — a
+**dihedral space**, **IUPAC backbone/sidechain identity**, **pairwise residue propinquity** (standard
+practice) — plus **equivariant components** on the raw geometry (which e3nn encodes itself; feeding our
+`l≤2` kernels into an `l≤2` e3nn is circular anyway, §7), against the DFT shieldings, with **AIMNet2**
+available. Not our multipole kernels.
 
-*OPEN (Jessica): the exact disposition scope — does this pull the kernels from the **law study** too
-(and what does Part 1 then characterise), or only from the predictive models? Pending your call. Do not
-propagate the older "fido-bits for the models" / "Inputs: the four kernels" language as settled
-meanwhile.*
+**PySR is unaffected.** The kernels are *lossy functions of the raw geometry* (§3), so the law work
+(PySR, closed-form fits) on raw geometric inputs → the DFT shieldings has everything the kernels encode
+**and more**, and is non-circular (handing PySR our pre-shaped kernels is the §7 circularity). Pulling
+the kernels does not impair the law step.
+
+*The older "fido-bits for the models" / "Inputs: the four kernels" language elsewhere is superseded by
+this — the doc-reconciliation sweep lists those lines.*
 
 ## The bar — defensibility, not agent-confidence (pinned 2026-06-06)
 
@@ -83,13 +89,16 @@ everything-that-works goes in the pot, ablatable, chunky (now seasoned: the feat
 cited). The four kernels are built regardless — responsibility-features, Part-1 analysis subjects,
 and fido-bits for the models.
 
-### Part 1 — The law / correlation study (DFT-anchored; standalone)
+### Step 1 — The statistical model (primary deliverable; DFT-anchored)
 
-**Goal.** Characterise what *every sane metric we collect* carries against DFT shielding — the
-signal-and-laws audit. This is **correlation and law**, not a predictor; keep it unconflated
-with Parts 2–3.
+**Goal.** A **statistical model** predicting DFT shielding from **standard, defensible features** — a
+dihedral space, IUPAC backbone/sidechain identity, pairwise residue propinquity (standard practice) —
+with **equivariant components** allowed, and **law work folded in as appropriate**. It IS a predictor
+(R² is the working metric); the law-finding within it is the explanation-flavoured part. Our
+geometry-encoding kernels are **not** inputs here — kept and emitted, but not used and not needed (we
+have the actual equivariant DFT shieldings; see the note above).
 
-**For each metric × stratum, produce:**
+**The law work + diagnostics it folds in, per stratum:**
 - **R² with the angular and without it** — T2-in vs T0-only. Does the tensor content add
   signal? (The thesis question — "the angular residual *is* the thesis" — made into a
   deliverable.)
@@ -99,14 +108,14 @@ with Parts 2–3.
   the angular structure carries (law recovery; does an equivariant fit expose a closed-form law),
   **not prediction**. **Deliberately consider what we feed it** — feature selection in the service of
   understanding, not throw-everything-in. Gated on a clean, defensible path. **Distinct deliverable
-  from Part 2's predictor** (may reuse reader-side math).
+  from Step 2's predictor** (may reuse reader-side math).
 - **Traditional stats alongside PySR** — partial / joint / confounder-controlling fits, the standalone-
   vs-joint analysis; the full statistical toolkit, not only the AI methods.
 
 **Strata:** backbone-all · residue-backbone · sidechain-IUPAC.
 **Targets:** the **751** (1P9J trajectory) **+ 720** (WL / WT static) DFTs.
 
-### Part 2 — The shielding-*tensor* predictor (a real model)
+### Step 2 — The shielding-*tensor* predictor (a real model)
 
 **Goal.** Predict the shielding **tensor** (T2 preserved) as well as we can. The honest
 question is *how far we get*: **30 % / 20 % / 10 %** of the tensor. Here **R² IS the metric** —
@@ -125,7 +134,7 @@ quantity — and we do not optimize R² regardless.
 **Test.** First on **held-out 1P9J frames + the 720 WL DFTs**; then on **a few hundred
 purpose-run small-protein test DFTs**.
 
-### Part 3 — The shift predictor (anything-goes; ablatable)
+### Step 3 — The shift predictor (anything-goes; ablatable)
 
 **Goal.** Predict **experimental chemical shifts against BMRB / RefDB** (isotropic, scalar).
 
