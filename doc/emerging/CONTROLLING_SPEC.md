@@ -28,6 +28,31 @@ This document governs ONLY the **forward build** — the **new calculators, the 
 "Controlling document" = the spec for what we **newly build and emit**, never a retroactive
 audit of what's done.
 
+## Our geometry-encoding kernels are being pulled from the defended thesis (2026-06-08)
+
+**What these kernels are (corrected; `GEOMETRIC_KERNEL_ACCOUNT.md` §2–3, §5).** Our geometric kernels
+— ring, McConnell, charge/EFG, and the others — are all the **same kind of object**: a low-order
+(`l≤2`) **multipole moment of the weighted neighbourhood**, `K_i = Σ_j w_j (3 ρ̂ρ̂ − δ)/ρ³`. The
+**geometry** is the substance; each source's chemistry enters **only** as the scalar weight `w_j` (a
+charge for EFG, a ring-current intensity for ring, a `Δχ` for McConnell) — "thrown in." They are **not**
+"physical-source tensors" separable from geometry (an earlier note this session said that — it was
+wrong). They **attempt to encode geometry**, and there are many of them, not just McConnell.
+
+**Disposition:** these geometry-encoding kernels are being **pulled from the defended thesis** —
+defending the maths of our novel encoding is too much work for this project's scope, whatever its real
+intellectual interest. They stay **built and emitted** (the producer surface is unchanged); they are
+just not what the thesis defends.
+
+**What stands in their place for the models:** raw geometry, which **e3nn encodes itself** (its own
+`l≤2` machinery — feeding our `l≤2` kernels into it is circular anyway, §7), against the **DFT shielding
+tensors** as the target, with **AIMNet2** and other genuinely-physical tensors available as features —
+not our multipole kernels.
+
+*OPEN (Jessica): the exact disposition scope — does this pull the kernels from the **law study** too
+(and what does Part 1 then characterise), or only from the predictive models? Pending your call. Do not
+propagate the older "fido-bits for the models" / "Inputs: the four kernels" language as settled
+meanwhile.*
+
 ## The bar — defensibility, not agent-confidence (pinned 2026-06-06)
 
 A feature is **ADDED to the build only when the choice is defensible** — grounded in the literature,
