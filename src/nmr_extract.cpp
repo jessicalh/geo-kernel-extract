@@ -5,6 +5,7 @@
 /// dispatches to the typed mode runner via @c std::visit.
 
 #include "AIMNet2Result.h"
+#include "CalcsetManifestEmitter.h"
 #include "CalculatorConfig.h"
 #include "CategoryInfoProjection.h"
 #include "Cli/Parse.h"
@@ -63,12 +64,86 @@ RunOptions MakeBaseOpts(const Session& session, bool mopac) {
     return opts;
 }
 
+std::string PathStemProteinId(const fs::path& source_path,
+                              const fs::path& fallback_root) {
+    std::string id = source_path.stem().string();
+    if (id.empty()) id = fallback_root.filename().string();
+    if (id.empty()) id = fallback_root.parent_path().filename().string();
+    if (id.empty()) id = "calcset";
+    return id;
+}
+
+int EmitSinglePoseManifest(const fs::path& output_root,
+                           const std::string& protein_id,
+                           const std::string& pose_kind) {
+    CalcsetManifestEmitter::SinglePoseArtifacts artifacts;
+    artifacts.pose_kind = pose_kind;
+    artifacts.pose_dir = output_root;
+    artifacts.extraction_manifest = output_root / "extraction_manifest.json";
+
+    const auto result = CalcsetManifestEmitter::WriteSinglePose(
+        output_root,
+        CalcsetManifestEmitter::IdentityFromProteinId(protein_id),
+        artifacts);
+    if (!result.ok) {
+        std::fprintf(stderr, "ERROR: .lgs emission failed: %s\n",
+                     result.error.c_str());
+        OperationLog::Error("nmr_extract",
+            ".lgs emission failed: " + result.error);
+        return 1;
+    }
+    std::fprintf(stderr, "Wrote %s\n", result.path.string().c_str());
+    return 0;
+}
+
+int EmitTrajectoryManifest(const fs::path& output_root,
+                           const cli::TrajectoryMode& mode,
+                           const TrajectoryProtein& tp,
+                           const Trajectory& traj,
+                           const fs::path& trajectory_h5) {
+    CalcsetManifestEmitter::TrajectoryArtifacts artifacts;
+    artifacts.md_dir = mode.dir;
+
+    // TrajectoryProtein reads this path during BuildFromTrajectory. If the
+    // caller staged topol.top directly under --output instead, prefer the
+    // path that is actually present in the calcset root.
+    const fs::path root_topol = output_root / "topol.top";
+    const fs::path input_topol = mode.dir.parent_path() / "topol.top";
+    artifacts.topology_top = fs::exists(root_topol) ? root_topol : input_topol;
+
+    artifacts.extraction_dir = output_root;
+    artifacts.trajectory_h5 = trajectory_h5;
+    artifacts.extraction_manifest = output_root / "extraction_manifest.json";
+    artifacts.frame_dt_ps =
+        CalcsetManifestEmitter::FrameDtPsFromTimes(traj.FrameTimes());
+    artifacts.frame_index_basis = "trr_frame_index";
+
+    const fs::path reference_pdb = output_root / "reference.pdb";
+    if (fs::exists(reference_pdb)) artifacts.reference_pdb = reference_pdb;
+
+    const auto result = CalcsetManifestEmitter::WriteTrajectory(
+        output_root,
+        CalcsetManifestEmitter::IdentityFromProteinId(tp.ProteinId()),
+        artifacts);
+    if (!result.ok) {
+        std::fprintf(stderr, "ERROR: .lgs emission failed: %s\n",
+                     result.error.c_str());
+        OperationLog::Error("nmr_extract",
+            ".lgs emission failed: " + result.error);
+        return 1;
+    }
+    std::fprintf(stderr, "Wrote %s\n", result.path.string().c_str());
+    return 0;
+}
+
 /// Emit the per-protein sidecars (CategoryInfoProjection + TopologySidecar)
 /// to @p output_dir. Returns true on success, prints error and returns
 /// false otherwise. Single-mode runners share this.
-bool WriteSidecars(const Protein& protein, const std::string& output_dir) {
+bool WriteSidecars(const Protein& protein, const std::string& output_dir,
+                   const std::string& protein_id) {
     const int cat  = CategoryInfoProjection::WriteFeatures(protein, output_dir);
-    const int topo = TopologySidecar::WriteFeatures(protein, output_dir);
+    const int topo = TopologySidecar::WriteFeatures(
+        protein, output_dir, protein_id);
     if (cat != 1 || topo != 5) {
         std::fprintf(stderr,
             "ERROR: incomplete sidecar emission "
@@ -121,8 +196,11 @@ static int RunPdb(const cli::PdbMode& mode, const cli::CommonOptions& common,
 
     const std::string output_dir = common.output_dir.string();
     fs::create_directories(output_dir);
-    if (!WriteSidecars(*build.protein, output_dir)) return 1;
-    return WriteFeaturesAndReport(conf, output_dir);
+    const std::string protein_id = PathStemProteinId(mode.pdb, common.output_dir);
+    if (!WriteSidecars(*build.protein, output_dir, protein_id)) return 1;
+    const int rc = WriteFeaturesAndReport(conf, output_dir);
+    if (rc != 0) return rc;
+    return EmitSinglePoseManifest(common.output_dir, protein_id, "pdb");
 }
 
 
@@ -153,8 +231,11 @@ static int RunProtonatedPdb(const cli::ProtonatedPdbMode& mode,
 
     const std::string output_dir = common.output_dir.string();
     fs::create_directories(output_dir);
-    if (!WriteSidecars(*build.protein, output_dir)) return 1;
-    return WriteFeaturesAndReport(conf, output_dir);
+    const std::string protein_id = PathStemProteinId(mode.pdb, common.output_dir);
+    if (!WriteSidecars(*build.protein, output_dir, protein_id)) return 1;
+    const int rc = WriteFeaturesAndReport(conf, output_dir);
+    if (rc != 0) return rc;
+    return EmitSinglePoseManifest(common.output_dir, protein_id, "protonated_pdb");
 }
 
 
@@ -185,8 +266,12 @@ static int RunOrca(const cli::OrcaMode& mode, const cli::CommonOptions& common,
 
     const std::string output_dir = common.output_dir.string();
     fs::create_directories(output_dir);
-    if (!WriteSidecars(*build.protein, output_dir)) return 1;
-    return WriteFeaturesAndReport(conf, output_dir);
+    const std::string protein_id = PathStemProteinId(
+        mode.files.xyz_path, common.output_dir);
+    if (!WriteSidecars(*build.protein, output_dir, protein_id)) return 1;
+    const int rc = WriteFeaturesAndReport(conf, output_dir);
+    if (rc != 0) return rc;
+    return EmitSinglePoseManifest(common.output_dir, protein_id, "orca");
 }
 
 
@@ -223,7 +308,13 @@ static int RunMutant(const cli::MutantMode& mode, const cli::CommonOptions& comm
 
     const std::string output_dir = common.output_dir.string();
     fs::create_directories(output_dir);
-    if (!WriteSidecars(*wt_build.protein, output_dir)) return 1;
+    const std::string protein_id = PathStemProteinId(
+        mode.wt.xyz_path, common.output_dir);
+    if (!WriteSidecars(*wt_build.protein, output_dir, protein_id)) return 1;
+    // TODO(lgs-mutant): settled shape is a parent kind=mutant_pair .lgs
+    // pointing at WT/ALA child .lgs files. The current --mutant runner writes
+    // WT features into one output root and does not materialize child calcset
+    // roots, so parent emission needs a layout change first.
     return WriteFeaturesAndReport(wt_conf, output_dir);
 }
 
@@ -296,7 +387,7 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
     std::fprintf(stderr, "Wrote %s (%zu frames, %zu atoms, %zu selections)\n",
             h5_path.c_str(), traj.FrameCount(),
             tp.AtomCount(), traj.Selections().Count());
-    return 0;
+    return EmitTrajectoryManifest(common.output_dir, mode, tp, traj, h5_path);
 }
 
 

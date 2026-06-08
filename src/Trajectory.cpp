@@ -245,7 +245,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         const int cat = CategoryInfoProjection::WriteFeatures(
             tp.ProteinRef(), output_dir_.string());
         const int topo = TopologySidecar::WriteFeatures(
-            tp.ProteinRef(), output_dir_.string());
+            tp.ProteinRef(), output_dir_.string(), tp.ProteinId());
         if (cat != 1 || topo != 5) {
             fprintf(stderr, "ERROR: Trajectory incomplete sidecar emission "
                     "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",

@@ -667,6 +667,7 @@ add_library(nmr_shielding
     src/AmberLeapInput.cpp
     src/AmberPreparedChargeSource.cpp
     src/OrcaRunLoader.cpp
+    src/CalcsetManifestEmitter.cpp
     src/SasaResult.cpp
     src/TrajectoryResult.cpp
     src/TrajectoryProtein.cpp
@@ -1154,6 +1155,7 @@ nmr_test(conformation_scope_tests
         tests/test_atom_semantic_predicates.cpp
         tests/test_biot_savart_result.cpp
         tests/test_calculation_runner.cpp
+        tests/test_calcset_manifest_emitter.cpp
         tests/test_category_info_projection.cpp
         tests/test_cli_parse.cpp
         tests/test_coulomb_result.cpp
