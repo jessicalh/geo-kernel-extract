@@ -86,11 +86,14 @@ int EmitSinglePoseManifest(const fs::path& output_root,
         CalcsetManifestEmitter::IdentityFromProteinId(protein_id),
         artifacts);
     if (!result.ok) {
-        std::fprintf(stderr, "ERROR: .lgs emission failed: %s\n",
-                     result.error.c_str());
-        OperationLog::Error("nmr_extract",
-            ".lgs emission failed: " + result.error);
-        return 1;
+        // Warn-and-continue: the .lgs is a wrapper; its failure must NOT sink an
+        // otherwise-good extraction (esp. across a fleet of 100s of runs).
+        std::fprintf(stderr,
+            "WARNING: .lgs emission failed (continuing; extraction succeeded): %s\n",
+            result.error.c_str());
+        OperationLog::Warn("nmr_extract",
+            ".lgs emission failed (continuing; extraction succeeded): " + result.error);
+        return 0;
     }
     std::fprintf(stderr, "Wrote %s\n", result.path.string().c_str());
     return 0;
@@ -126,11 +129,14 @@ int EmitTrajectoryManifest(const fs::path& output_root,
         CalcsetManifestEmitter::IdentityFromProteinId(tp.ProteinId()),
         artifacts);
     if (!result.ok) {
-        std::fprintf(stderr, "ERROR: .lgs emission failed: %s\n",
-                     result.error.c_str());
-        OperationLog::Error("nmr_extract",
-            ".lgs emission failed: " + result.error);
-        return 1;
+        // Warn-and-continue: the .lgs is a wrapper; its failure must NOT sink an
+        // otherwise-good extraction (esp. across a fleet of 100s of runs).
+        std::fprintf(stderr,
+            "WARNING: .lgs emission failed (continuing; extraction succeeded): %s\n",
+            result.error.c_str());
+        OperationLog::Warn("nmr_extract",
+            ".lgs emission failed (continuing; extraction succeeded): " + result.error);
+        return 0;
     }
     std::fprintf(stderr, "Wrote %s\n", result.path.string().c_str());
     return 0;
