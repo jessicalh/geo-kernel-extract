@@ -1,3 +1,5 @@
+**MOSTLY DEPRECATED** — predates the forward build; its geometric-kernel-as-central-contribution framing is superseded (see doc/emerging/CONTROLLING_SPEC.md and spec/INDEX.md for current truth: the Steps + kept-but-not-used kernels). Some maths content below still stands as reference; not fully fixed today.
+
 # Mathematical Goals: What This System Must Get Right
 
 This document specifies what the NMR shielding tensor system must

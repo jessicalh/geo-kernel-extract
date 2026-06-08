@@ -1,3 +1,4 @@
+Historical -- not current truth; see doc/emerging/kernel_design/efg_spec.md and doc/emerging/CONTROLLING_SPEC.md.
 # EFG / charge grounding — first-stage (codex xhigh; read-only; web + corpus), 2026-06-06
 
 Pre-staged for the EFG work-through (after McConnell). Brief: /tmp/efg_grounding_brief.txt. Companion to mcconnell_grounding_agent1.md.

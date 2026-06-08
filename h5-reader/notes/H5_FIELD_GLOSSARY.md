@@ -1,11 +1,8 @@
 # H5 Field Glossary — what is in the analysis file, what it means, and how it should be shown
 
-> **Status trued 2026-06-04.** Keep this as a glossary and presentation
-> rationale, not a complete current UI inventory. The reader now has panels,
-> selection/camera affordances, ribbon/ring/field overlays, inspector/dashboard
-> docks, and REST loopback beyond this April snapshot; use
-> `UI_STATE_OVERVIEW_2026-06-04.md` before treating any "available today" or
-> "missing" claim as implementation truth.
+> Keep this as a glossary and presentation rationale, not a complete current UI
+> inventory. Use `UI_STATE_OVERVIEW_2026-06-04.md` before treating any
+> "available today" or "missing" claim as implementation truth.
 
 **Status:** living document, written 2026-04-17. Authoritative schema:
 `fileformat/analysis_file.h`. Authoritative writer:
@@ -386,8 +383,8 @@ per-ring-type axis is ordered by `RingTypeIndex`.
 - **`bs_T0_per_type (T, N, 8), hm_T0_per_type (T, N, 8) float64,
   ppm.** Isotropic contribution from each of 8 ring types. Most
   slots are zero at most atoms (H's near a PHE see only the PHE
-  column). These are the learnable per-type coefficients from
-  Stage 1 calibration.
+  column). These are per-type decomposition columns, not learned
+  coefficients.
   *Primary:* **3D/n-D chart** — a per-atom horizontal bar chart
   with 8 bars, one per ring type, coloured by type. Dock pattern
   `QtAtomRingTypeBarChart`, one entry per atom per frame, updates
@@ -991,10 +988,10 @@ circular-statistics work.
 
 ---
 
-# /predictions — ridge and MLP shielding predictions
+# /predictions — historical ridge and MLP shielding predictions
 
-Output of the calibrated models (ridge from Stage 1, gated MLP for
-N and C). Every field here is **a model prediction**, not a
+Output of older fitted models (ridge from Stage 1, gated MLP for
+N and C), when present. Every field here is **a model prediction**, not a
 physical observable. The thesis's discipline is that these are
 diagnostics for whether the kernel set carries the signal; they
 are not shielding.
@@ -1029,9 +1026,8 @@ are not shielding.
   *Primary / useful:* same modalities as the raw counterparts,
   selector toggle.
 - **`raw_water, raw_charges, raw_sasa (T, N, 5) float64, ppm.**
-  New-feature groups; zero weights in Stage 1 but ride along so
-  the raw kernel contribution is visible. Phase 2 calibration
-  may assign non-zero weights.
+  New-feature groups; zero weights in historical Stage 1 but ride along so
+  the raw kernel contribution is visible.
   *Primary:* stacked bar chart alongside the core groups; zero
   contribution is itself informative.
 - **`norm_water, norm_charges, norm_sasa (T, N, 5) float64, ppm.**

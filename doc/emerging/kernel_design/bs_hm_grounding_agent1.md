@@ -1,3 +1,4 @@
+Historical -- not current truth; see doc/emerging/kernel_design/ring_spec.md and doc/emerging/CONTROLLING_SPEC.md.
 # Biot-Savart + Haigh-Mallion grounding — first-stage (codex xhigh; read-only; web + corpus), 2026-06-06
 
 Pre-staged for the BS/HM work-through. Brief: /tmp/bs_hm_grounding_brief.txt. Companion to mcconnell_grounding_agent1.md + efg_grounding_agent1.md.

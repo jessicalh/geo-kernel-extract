@@ -1,3 +1,5 @@
+Historical -- not current truth; see doc/emerging/CONTROLLING_SPEC.md.
+
 # Equivariant methodology and field survey for tensor-resolved NMR shielding
 
 Date: 2026-06-06

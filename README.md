@@ -12,9 +12,9 @@ The classical electromagnetic kernels (8 + 2 MOPAC-derived) produce
 full rank-2 tensor output per atom.  Alongside them the production stack
 runs field/charge calculators (APBS, AIMNet2), scalar/vector feature
 calculators (EEQ charges, SASA, water + hydration geometry), and the
-literature-comparison families (tripeptide, Larsen).  An equivariant
-calibration pipeline tunes the calculator parameters against DFT WT-ALA
-deltas across 720 proteins.
+literature-comparison families (tripeptide, Larsen).  Forward-build
+models use DFT shieldings as targets; kernel scales are pinned from
+literature/physics, not learned from the 720 set.
 
 See [spec/INDEX.md](spec/INDEX.md) for documentation reading order.
 

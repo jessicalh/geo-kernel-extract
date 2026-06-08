@@ -1,11 +1,10 @@
 # Kernel design: the hydrogen-bond contribution to shielding
 
-Scope: one input feature for the e3nn equivariant shielding predictor — the
-effect a hydrogen bond has on the magnetic shielding of the nuclei it involves,
-principally the donor proton (amide HN, and Hα as a weak donor). This document
-answers "what *should* we compute, and in what equivariant form," grounded in
-the open literature first. It is a design, not a verdict on our current code;
-our code is summarised neutrally at the end.
+Scope: kept/emitted caged H-bond and Larsen artifacts for the effect a hydrogen
+bond has on the magnetic shielding of the nuclei it involves, principally the
+donor proton (amide HN, and Hα as a weak donor). They are not Step-1 inputs. This
+document answers what the emitted descriptors represent, grounded in the open
+literature first; our code is summarised neutrally at the end.
 
 This kernel is the odd sibling. The other through-space kernels (ring current,
 McConnell, charge/EFG) are *fields* whose primary object is a rank-2 tensor with
@@ -31,7 +30,7 @@ Terms used throughout:
   a standalone observable.
 - **Irrep / l**: an irreducible representation of O(3), labelled by l (l=0
   scalar `0e`; l=1 vector `1o`/`1e`; l=2 the 5-component quadrupole-like object
-  `2e`). e3nn consumes features written in these.
+  `2e`). If consumed by an equivariant model, features are written in these.
 
 ---
 
@@ -141,13 +140,13 @@ lets the fit weigh the shared vs unique content (and discloses the overlap).
 
 ---
 
-## 2. Turning this into an equivariant e3nn feature
+## 2. Emitted equivariant descriptors
 
-e3nn consumes features as irreps (`Nx0e + Mx1o + Kx2e`), each a definite-l,
-definite-parity object transforming by the Wigner-D matrices
+Equivariant models consume features as irreps (`Nx0e + Mx1o + Kx2e`), each a
+definite-l, definite-parity object transforming by the Wigner-D matrices
 ([e3nn irreps guide](https://docs.e3nn.org/en/stable/guide/irreps.html)).
-Physical scalars, vectors and tensors can all be fed as steerable node/edge
-features ([SEGNN, Brandstetter et al., ICLR 2022](https://arxiv.org/abs/2110.02905)).
+Physical scalars, vectors and tensors can all be represented as steerable
+node/edge features ([SEGNN, Brandstetter et al., ICLR 2022](https://arxiv.org/abs/2110.02905)).
 
 The H-bond effect decomposes into three honestly-different pieces:
 
@@ -157,8 +156,8 @@ The H-bond effect decomposes into three honestly-different pieces:
    the spine of the feature and the only part with decades of calibration behind it.
 
 2. **The geometric H-bond descriptors.** The quantities the law is *built on* are
-   themselves natural e3nn features, and feeding them lets the network learn its
-   own geometry response rather than only consuming the pre-baked ppm:
+   natural equivariant descriptors; if consumed, they let a model learn its own
+   geometry response rather than only using the pre-baked ppm:
    - H···O distance r → `0e` (a scalar; or several `0e` powers r⁻¹, r⁻², r⁻³, the
      CamShift-style basis).
    - The H-bond **direction** (donor-H → acceptor-O unit vector) → a `1o` edge/node
@@ -172,7 +171,7 @@ The H-bond effect decomposes into three honestly-different pieces:
    uncertain.** The H-bond's change to the proton CSA is a symmetric rank-2 object
    oriented by the N–H frame (§1b). Where we can build it — i.e. where the
    producer carries a *tensor* readout of the H-bond contribution rather than only
-   the scalar — keep its symmetric part and decompose `1x0e + 1x2e`, feeding the
+   the scalar — keep its symmetric part and decompose `1x0e + 1x2e`, emitting the
    `2e` block. Parity is even (a shielding tensor is inversion-even), so `2e` is
    correct. This is defensible but is the **soft** part of the feature: see §4.
 
@@ -188,7 +187,7 @@ tensor part real but secondary.
 
 ## 3. The defensible, sane recommendation
 
-**Feed the H-bond contribution as a `0e` scalar plus geometric descriptors, with
+**Emit the H-bond contribution as a `0e` scalar plus geometric descriptors, with
 the anisotropy and the literature ppm as labelled parallel channels:**
 
 1. **Primary: the geometric descriptors, raw and equivariant.** Per donor proton
@@ -197,18 +196,17 @@ the anisotropy and the literature ppm as labelled parallel channels:**
    - **H-bond direction** → `1o` (donor-H → acceptor-O unit vector, molecular
      frame, unprojected).
    - **H···O distance** → `0e`, emitted unscaled (Å) and, optionally, as the
-     CamShift power basis (r⁻¹, r⁻², r⁻³) so the network has easy access to the
+     CamShift power basis (r⁻¹, r⁻², r⁻³) so a future model has easy access to the
      forms the empirical laws use.
    - **Acceptor type** as a categorical/`0e` channel (carbonyl / hydroxyl /
      carboxylate), since the empirical tables are per-acceptor-type.
-   This is the law's own input, emitted geometry-unscaled, letting the equivariant
-   network learn the H-bond response and form its own angle invariants. It is the
-   honest "kernel" analogue: geometry in, scaling fitted.
+   This is the law's own input, emitted geometry-unscaled, leaving a future model
+   able to learn the H-bond response and form its own angle invariants.
 
 2. **Carry the literature scalar Δσ(geometry) as a `0e` channel / cross-check.**
    The Barfield/Larsen ppm value (per acceptor type, including the 2.07 ppm
    water-exposure offset for unbonded amide protons) is a calibrated `0e` feature.
-   It is the established law made explicit; feed it as a scalar node feature *and*
+   It is the established law made explicit; emit it as a scalar channel *and*
    keep it as the cross-check that the geometric descriptors reproduce the known
    law. Because it is already calibrated ppm, it is a calibration, not an unscaled
    kernel — label it as such.
@@ -216,9 +214,9 @@ the anisotropy and the literature ppm as labelled parallel channels:**
 3. **Anisotropy as a parallel `2e` channel, only where a tensor readout exists,
    labelled uncertain.** If the producer carries a tensor form of the H-bond
    contribution (oriented by the N–H frame), emit `1x0e + 1x2e` so the `2e` CSA
-   change is available. Treat it as a hypothesis channel the fit can use or drop,
-   not as a settled object — its separability from the rest of the proton CSA is
-   the soft part (§4).
+   change is available. Treat it as a hypothesis channel future ablation can use
+   or drop, not as a settled object — its separability from the rest of the proton
+   CSA is the soft part (§4).
 
 4. **Disclose and do not double-count the charge/EFG overlap.** The long-range
    electrostatic part of the H-bond effect is already in the charge/EFG kernel's
@@ -226,17 +224,17 @@ the anisotropy and the literature ppm as labelled parallel channels:**
    term — the H-bond channel's distinct content is the **short-range
    covalent/Pauli** part the point-charge field misses, carried by the
    geometry descriptors and the Barfield/Larsen scalar. Emit both the charge/EFG
-   field and the H-bond geometry/scalar; let the fit resolve the shared component;
-   say in the feature's documentation that they overlap.
+   field and the H-bond geometry/scalar; let future ablation resolve the shared
+   component; say in the feature's documentation that they overlap.
 
 **Why this and not the alternatives:**
 - *A `2e`-led tensor kernel (treating H-bond like McConnell/dipolar)*: the
   dominant established physics is a scalar empirical law, not a through-space
   dipolar tensor field. Leading with a dipolar-form `2e` would assert a tensor
   shape the literature does not support as the primary effect for the donor proton.
-- *Only the pre-baked ppm scalar*: fine as a calibration channel, but feeding only
-  the cooked number throws away the geometry the equivariant model could learn
-  from, and bakes one paper's fit in as ground truth.
+- *Only the pre-baked ppm scalar*: fine as a calibration channel, but using only
+  the cooked number throws away the geometry a future model could use, and bakes
+  one paper's fit in as ground truth.
 - *Re-deriving the H-bond effect from the electric field*: that part is the
   charge/EFG kernel's job and double-counts; the H-bond channel earns its place by
   the short-range covalent part, which the field does not carry.
@@ -271,7 +269,7 @@ is a fixed linear map. Nothing here is novel.
   much of the H-bond effect is the acceptor's electric field (already in the
   charge/EFG kernel) versus short-range covalent/Pauli depletion (unique to this
   channel)" has no clean numeric answer at this scale — it depends on the charge
-  set and the H-bond. The defensible move is to feed both and disclose the
+  set and the H-bond. The defensible move is to emit both and disclose the
   overlap, not to claim a partition.
 - **The empirical law is a fit, with model-dependent calibration.** ProCS15 is
   OPBE/6-31G(d,p) on capped model systems with continuum solvation, and its ppm is
@@ -332,11 +330,12 @@ Relative to §3, the descriptive gaps are: (a) *which* object is the canonical
 feature — the recommendation leads with the **geometric descriptors + the
 calibrated `0e` scalar**, where the library carries both a scalar-law calculator
 (Larsen, ppm, tensor-stored) and a separate dipolar-kernel calculator (HBond),
-without one designated as the e3nn input; (b) the **`2e` anisotropy** is present in
-the stored Larsen tensor but its status as a labelled parallel hypothesis channel
-(vs the scalar spine) is a framing the current emit does not make explicit; and
+without one designated as the current model input; (b) the **`2e` anisotropy** is
+present in the stored Larsen tensor but its status as a labelled parallel
+hypothesis channel (vs the scalar spine) is a framing the current emit does not
+make explicit; and
 (c) the **charge/EFG overlap** — the recommendation's disclose-and-don't-double-count
-point — is not currently annotated at the feature boundary. This paragraph is a
+point — is not currently annotated at the artifact boundary. This paragraph is a
 description, not a verdict.
 
 ---

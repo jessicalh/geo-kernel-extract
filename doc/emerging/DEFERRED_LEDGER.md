@@ -73,17 +73,17 @@ to-do on this work · **[robustness]** low-priority hardening.
   different sign path than production (`test:311-315` vs `HaighMallion:293-296`) — any emit must use
   production tensors.
 
-## Part-1 decisions
+## Step-1 decisions
 
 - **[follow-up] X–H ablation.** The `mcconnell_include_xh_sources` toggle (default 1) is a built scaffold;
-  Part 1 decides keep/drop the C–H/N–H/O–H source bonds vs DFT.
+  Step 1 decides keep/drop the C–H/N–H/O–H source bonds vs DFT.
 
 ## McConnell rhombic (value-gated; spec landed 2026-06-07)
 
 Full scope: `kernel_design/mcconnell_rhombic_spec.md`. Jessica wants it; additive, drops nothing.
 
 - **[follow-up] The rhombic shape build (#5).** Extend `Q̂` for C=O + C=C with the sp²-plane-normal
-  rhombic block (`McConnellResult.cpp:230`, axial today); emit the unit shape, scale learned. Buildable
+  rhombic block (`McConnellResult.cpp:230`, axial today); emit the unit shape, scale pinned. Buildable
   without the cited value (geometry, additive). Pairs with #3/#4 as the McConnell+ring tensor-richness
   pass; schedule after #2 (same emit surface). Build routes to **codex**.
 - **[RESOLVED 2026-06-07] Rhombic C=O sourced + pinned; C=C dropped.** C=O rhombic LANDED + sign-resolved:

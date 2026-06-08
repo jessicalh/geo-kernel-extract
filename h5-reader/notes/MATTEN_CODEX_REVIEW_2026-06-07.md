@@ -283,8 +283,9 @@ irrelevant.
 What is ready:
 
 - Geometry-only v1 is the right thesis claim. Feeding the hand-built kernels into
-  MatTen would blur the result; using ridge-on-kernels as a baseline is fine
-  because it is a comparator, not model input.
+  MatTen would blur the result; use invariant and non-equivariant baselines on
+  the same split. The Stage-1 ridge is historical context, not the Step-2
+  benchmark.
 - The split logic is directionally right: temporal/block holdout for 1P9J,
   leave-proteins-out only if a real multi-protein full-tensor DFT corpus exists.
 - Per-irrep and per-element scaling are not over-engineering. Without them, T0

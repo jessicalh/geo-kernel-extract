@@ -58,7 +58,7 @@ family as the BS/HM trajectory headers and `mcconnell.md` — already corrected 
 
 ## 4. Metadata home — **DISCUSS-FIRST (Jessica's declarative-format rule)**
 
-The spec wants per-array metadata: `source_model = "unit susceptibility shape; scale learned"`,
+The spec wants per-array metadata: `source_model = "unit susceptibility shape; scale pinned"`,
 `bo_source = "MOPAC Wiberg bond order"`, `aromatic_zeroed_when_ring_active = true`, `irrep_layout`,
 `units`. **`ArraySpec` has no fields for most of these today.** This is a new declarative surface, so per
 your rule it is **discussed before the parser is written.** Options:
@@ -102,9 +102,9 @@ switch today).
 `ALLBONDS` folds C–H/N–H/O–H into the bond-order/valency input (valency changed ~1116/1231 atoms).
 **RESOLVED 2026-06-07 — don't fudge, MEASURE.** Build McConnell with the X–H sources **separable** (an
 ablation scaffold, not a permanent hedge), then ablate **with-vs-without X–H against the DFT target**
-(1P9J / 720) in Part 1; the DFT-match decides **A (keep)** or **B (drop)**, defended as a measurement, not
+(1P9J / 720) in Step 1; the DFT-match decides **A (keep)** or **B (drop)**, defended as a measurement, not
 a physics fudge. **Build decision = keep X–H separable so the ablation is runnable;** the physics answer
-is the Part-1 ablation result (collapse to A/B with data). (Lean on the likely outcome: small Δχ → probably
+is the Step-1 ablation result (collapse to A/B with data). (Lean on the likely outcome: small Δχ → probably
 B — but the data rules.)
 
 ---

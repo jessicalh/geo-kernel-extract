@@ -1,3 +1,5 @@
+**MOSTLY DEPRECATED** — predates the forward build; its geometric-kernel-as-central-contribution framing is superseded (see doc/emerging/CONTROLLING_SPEC.md and spec/INDEX.md for current truth: the Steps + kept-but-not-used kernels). Some physics content below still stands as reference; not fully fixed today.
+
 # Physics Foundations — NMR Shielding at the Protein Scale
 
 **Status:** IN PROGRESS. Session 0 (landscape) started 2026-04-22. The

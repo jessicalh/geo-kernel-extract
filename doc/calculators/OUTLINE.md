@@ -1,3 +1,4 @@
+Historical -- not current truth; see doc/emerging/CONTROLLING_SPEC.md.
 # Outline — Introduction and Poster
 
 Draft scaffold (yours to cut against). It combines the three core chapters with Stage 1,

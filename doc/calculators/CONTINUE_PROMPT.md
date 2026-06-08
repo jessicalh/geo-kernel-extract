@@ -1,3 +1,5 @@
+Historical -- not current truth; see doc/emerging/CONTROLLING_SPEC.md.
+
 # Continuation prompt — the thesis/book chapters
 
 Paste the block below at the start of a fresh session. Full orientation is in `HANDOFF.md`,

@@ -1,10 +1,10 @@
 # Kernel design: the van der Waals / dispersion contribution to shielding
 
-Scope: one input feature for the e3nn equivariant shielding predictor — the
-effect of London (van der Waals) dispersion on a nucleus's magnetic shielding.
-The brief is "what *should* we compute, the defensible standard way, in
-equivariant form", web-grounded first, code-read second. This is a small,
-subtle effect; the document says so honestly and does not inflate it.
+Scope: one kept/emitted caged geometry kernel for the London (van der Waals)
+dispersion contribution to a nucleus's magnetic shielding. It is not a Step-1
+input. The brief is "what the emitted descriptor is trying to represent",
+web-grounded first, code-read second. This is a small, subtle effect; the
+document says so honestly and does not inflate it.
 
 Register: **modest and honest.** Of the through-space terms this is the one the
 literature treats as marginal, hard to separate from steric/electrostatic
@@ -26,7 +26,7 @@ Terms are defined on first use. Nothing below is novel.
   target nucleus. This is the quantity dispersion-shift theory is built on.
 - **Irrep / l**: an irreducible representation of O(3), labelled by l (l=0
   scalar `0e`, l=1 vector, l=2 the 5-component quadrupole-like object) and
-  parity. e3nn consumes features written in these.
+  parity. If consumed by an equivariant model, features are written in these.
 
 ---
 
@@ -136,8 +136,8 @@ Our DFT campaign emitted **total shielding only** and is not re-runnable. So we
 **cannot** extract a per-nucleus "DFT dispersion contribution" to train against
 or to validate a dispersion kernel pointwise. A dispersion feature can only ever
 be a **geometric surrogate** computed from coordinates + tabulated constants,
-offered to e3nn as one more input channel; the model decides whether it carries
-residual signal once ring/electrostatic/H-bond terms are in. This is the
+kept as an emitted descriptor; future ablation can decide whether it carries
+residual signal once ring/electrostatic/H-bond terms are considered. This is the
 strongest reason the term is "may not earn its place" rather than "must be in."
 
 ### 1.6 Double-counting: the honest separation problem
@@ -152,7 +152,7 @@ feature set**, and the literature is explicit that vdW/steric deshielding is
 - the steric-overlap part overlaps the **H-bond** kernel at H-bond distances.
 
 This is not a reason to omit it, but it *is* the reason to (a) emit it as its
-own labelled channel so the fit can decide its marginal value against the
+own labelled channel so future ablation can test its marginal value against the
 others, and (b) not claim a clean physical "dispersion shielding" readout from
 it. Empirical predictors (SHIFTX2, SPARTA, ProCS15) carry proximity/steric
 descriptors of exactly this flavour as minor correction terms, not headline
@@ -162,11 +162,11 @@ physics
 
 ---
 
-## 2. Turning it into an equivariant e3nn feature
+## 2. Emitted equivariant descriptor
 
-e3nn consumes features as irreps (`Nx0e + Mx1o + Kx2e`), each transforming by
-the Wigner-D matrices under rotation; physical scalars/tensors can be fed as
-steerable node features and the network forms invariants by tensor product
+Equivariant models consume features as irreps (`Nx0e + Mx1o + Kx2e`), each
+transforming by the Wigner-D matrices under rotation; physical scalars/tensors
+can be represented as steerable node features
 ([e3nn irreps guide](https://docs.e3nn.org/en/stable/guide/irreps.html);
 [SEGNN, Brandstetter et al., ICLR 2022](https://arxiv.org/abs/2110.02905)).
 
@@ -174,9 +174,8 @@ The dispersion effect's irrep content follows directly from §1:
 
 - **Primary: `0e`.** The ⟨E²⟩·B scalar is a rotational invariant by construction
   (⟨E²⟩ is a scalar; the leading vdW shift is isotropic deshielding). This is the
-  honest, single-irrep statement of the effect. A scalar fed to an equivariant
-  network is perfectly legitimate — it simply enters as an l=0 node feature and
-  modulates the message passing; it does not need to be a tensor to be useful.
+  honest, single-irrep statement of the effect. A scalar can be represented as
+  an l=0 feature; it does not need to be a tensor to be useful.
 - **Optional, weak: `2e`.** If one wants the anisotropic tail of §1.4, build the
   symmetric-traceless R⁻⁶/R⁻⁸ dispersion tensor (the dipolar-shaped
   `3 d̂⊗d̂ − I` kernel weighted by C₆/R⁶, summed over neighbours), keep its
@@ -195,8 +194,8 @@ wrong (a correctness point, not a physics ambiguity).
 ## 3. The defensible, sane recommendation
 
 **Compute, per target nucleus, the dispersion ⟨E²⟩ near-contact scalar as a `0e`
-feature, geometry-only and unscaled, over *all* non-bonded near neighbours — and
-treat it as a candidate the fit may reject.** Concretely:
+descriptor, geometry-only and unscaled, over *all* non-bonded near neighbours —
+and treat it as a candidate for future ablation.** Concretely:
 
 1. **Geometry — an isotropic R⁻⁶ near-neighbour sum, not a ring-only sum.**
    The physics (§1.3) is a sum over *every* non-bonded perturber, weighted by a
@@ -209,26 +208,26 @@ treat it as a candidate the fit may reject.** Concretely:
    over all non-bonded atoms j within a KD-tree cutoff (R⁻⁶ makes ~5–6 Å ample),
    with the standard near-bond/self exclusions and a smooth switching taper S(R)
    so the truncated sum does not jump as atoms cross the cutoff. Emit the
-   geometry **unscaled** (Å⁻⁶); the C₆/B prefactor is the calibration layer
+   geometry **unscaled** (Å⁻⁶); the C₆/B prefactor is the pinned scale
    (point 3). This is the LJ-attractive-shaped descriptor every empirical
    predictor uses for proximity, computed honestly.
 
 2. **Stratify the scalar by perturber element/chemistry, as parallel `0e`
    channels** (e.g. C, N, O, S, aromatic-C separately), rather than one pooled
    number. Different elements have different C₆/polarizability, and keeping them
-   separate (a) lets the fit weight by chemistry and (b) lets the aromatic-C
+   separate (a) keeps chemistry visible and (b) lets the aromatic-C
    channel be zeroed if it double-counts the ring kernel (§1.6). More channels,
    not more assumptions.
 
-3. **The scale (C₆ / the Buckingham B) is a fitted/calibrated coefficient with a
+3. **The scale (C₆ / the Buckingham B) is a pinned coefficient with a
    stated source, not a hard constant.** Per-element C₆ are tabulated (Grimme D3
    dispersion coefficients are the obvious, defensible, widely-used source; or
    atomic-polarizability/ionization estimates per the London theorem of §1.3),
    and the nuclear B-coefficient varies by nucleus type and is only loosely
-   known. Emit unscaled geometry and let the per-channel C₆·B product be a
-   calibratable coefficient — exactly as ring-current intensity and McConnell Δχ
-   are treated in the sibling kernels. The honest state is "the *shape* (R⁻⁶,
-   isotropic, contact-dominated) is solid; the *magnitude* is a fitted scale."
+   known. Emit unscaled geometry and use a defended per-channel C₆·B product —
+   the same pinned-scale discipline as the sibling kernels. The honest state is
+   "the *shape* (R⁻⁶, isotropic, contact-dominated) is solid; the *magnitude*
+   is a pinned scale with source scatter."
 
 4. **Optional anisotropic `2e` channel — only if it earns it.** If wanted, also
    emit the symmetric-traceless dispersion tensor's five l=2 components per
@@ -251,8 +250,8 @@ treat it as a candidate the fit may reject.** Concretely:
   all-neighbour R⁻⁶ sum.
 - *Geometric surrogate, not a DFT-validated readout.* Because the DFT never
   emitted a separable dispersion shielding (§1.5), this feature is a coordinate
-  descriptor offered to the model, validated only by whether it adds marginal
-  fit — never matched pointwise to a "true" dispersion shielding.
+  descriptor available for ablation — never matched pointwise to a "true"
+  dispersion shielding.
 
 ---
 
@@ -267,9 +266,9 @@ treat it as a candidate the fit may reject.** Concretely:
 
 **Not clean (state as footnotes, not bugs):**
 - **Magnitude / scale.** The C₆ coefficients and especially the nuclear
-  B-coefficient are tabulated/fitted with real uncertainty; the right design
-  makes the scale a calibrated per-channel coefficient, not a constant. The
-  shape is solid; the size is fitted.
+  B-coefficient are tabulated with real uncertainty; the right design pins the
+  scale from a stated source rather than learning it from this sample. The shape
+  is solid; the size has source scatter.
 - **Separability from neighbouring terms.** vdW/steric deshielding is
   *explicitly* hard to separate from magnetic anisotropy, electrostatics, and
   H-bonding (§1.6). Its marginal value over those terms is an empirical question
@@ -283,11 +282,10 @@ treat it as a candidate the fit may reject.** Concretely:
 
 **Single most defensible package:** a per-element-stratified, geometry-only
 `0e` R⁻⁶ near-contact scalar (⟨E²⟩-shaped), with the C₆·B scale left as a
-calibratable per-channel coefficient, and the aromatic channel zeroable to
+pinned per-channel coefficient, and the aromatic channel zeroable to
 avoid ring double-counting. The optional `2e` tail is a legitimate but weak
-add-on. **And honestly: this term may not earn its place once ring,
-electrostatic, and H-bond kernels are in — that is an acceptable outcome for a
-small effect, and the design above is built so the fit can say so cleanly.**
+add-on. **And honestly: this term may stay unused once ring and electrostatic
+terms are considered.**
 
 ---
 
@@ -302,7 +300,7 @@ configurable onset and cutoff. It applies a ring near-field filter and a
 through-bond vertex exclusion, accumulates per ring-neighbourhood and per ring
 type, decomposes to a SphericalTensor, and emits `disp_shielding` (N,9),
 `disp_per_type_T0` (N,8), and `disp_per_type_T2` (N,40); the C₆ scale is left
-as "learnable per ring type" and the geometry is emitted unscaled. Relative to
+unapplied and the geometry is emitted unscaled. Relative to
 the recommendation, the descriptive differences are: (a) the present sum is over
 **aromatic-ring vertices** whereas the web physics is an **all-non-bonded-neighbour**
 R⁻⁶ sum (the ring-only form models the aromatic slice of a general close-contact
@@ -312,8 +310,8 @@ treats the `2e` tail as the weak, optional add-on; and (c) the present
 stratification is **per ring type** whereas the recommendation stratifies by
 **perturber element/chemistry** with an aromatic channel zeroable against the
 ring kernel. The switching-taper, KD-tree neighbourhood, traceless decomposition,
-and unscaled-geometry/learnable-scale discipline are already in place. This
-paragraph is description, not a verdict.
+and unscaled-geometry discipline are already in place. The scale should be
+pinned from a stated source. This paragraph is description, not a verdict.
 
 ---
 

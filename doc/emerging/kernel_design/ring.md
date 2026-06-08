@@ -1,3 +1,5 @@
+Historical -- not current truth; see doc/emerging/kernel_design/ring_spec.md and doc/emerging/CONTROLLING_SPEC.md.
+
 # Kernel design: the aromatic ring-current contribution to shielding
 
 Scope: one input feature for the e3nn equivariant shielding predictor — the

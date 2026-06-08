@@ -1,3 +1,5 @@
+Historical -- not current truth; see doc/emerging/CONTROLLING_SPEC.md.
+
 # Stats Program — run under the guardrail
 
 *Draft scaffold, 2026-06-06, for Jessica to shape and place. This is the discipline the

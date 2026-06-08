@@ -57,39 +57,38 @@ theorem, not a convention** — and the reality-check found that exact ghost liv
   body-order = cooperative many-body shielding, ring stacking, H-bond networks). The architecture
   hyperparameters ARE the answer to "what does the model add over the kernels" — the thesis question — so
   they belong in the write-up as claims, not in a config as defaults. The architecture-level version of
-  Part 2's internal ablation.
+  Step 2's internal ablation.
 
 ## The one thing it could not see — the dragon
 
 The review's spine is "the thesis claim is the T2 angular residual, so carry ℓ=2 throughout." That is
-**exactly right for Parts 1–2** — the DFT target IS the full tensor, the `2e` survives at the static
+**exactly right for Steps 1–2** — the DFT target IS the full tensor, the `2e` survives at the static
 anchors, the architecture effort pays there. But the **solution-shift observable is the `0e`**; the `2e`
 is orthogonal to it and averages out under tumbling (the dragon). So the dragon refines every architecture
-recommendation **per-part**: full steerable / carry-ℓ=2 for the DFT-anchored *evidence* (Parts 1–2);
-**not** for the solution-shift *deployment* (Part 3 = `0e`, fido, likely lower-altitude) — which is
+recommendation **per-Step**: full steerable / carry-ℓ=2 for the DFT-anchored *evidence* (Steps 1–2);
+**not** for the solution-shift *deployment* (Step 3 = `0e`, fido, likely lower-altitude) — which is
 precisely our fido reframe (equivariance earned-only-where-it-helps). Blind, the review would build the
 full tower everywhere; we now know that's the right tool for the evidence and over-engineering for the
 deployment. Review and dragon are complementary: it couldn't see the dragon without our docs; we couldn't
 have its `T1`-corollary without its fresh eyes.
 
-**Refinement to its don't-double-feed point:** *don't* double-feed for **Part 1**, where attribution is
-the whole point (raw-geometry-only vs kernels-with-conv-ablated = the maths-methods experiment). But for
-**Part 2 fido**, double-feeding is *fine* — predicting, not attributing. The confound is real only where
-we make the "what did the model add" claim, which is Part 1.
+**Refinement to its don't-double-feed point:** for **Step 1**, fixed kernels stay out of the input set.
+For **Step 2 tensor prediction**, they may enter only if ablation earns them. The confound is real anywhere we make
+a "what did the model add" claim.
 
 ## Actionables
 
 1. **Add the mirror-reflection parity test** — the runtime guard for the convention-mismatch class.
 2. **Seed the radial from `1/rⁿ` + learned residual** — calibration-as-correction; the found-fit-space's home.
-3. **Write the architecture hyperparameters (lmax / depth / body-order) as physics claims**, in the Part-2
+3. **Write the architecture hyperparameters (lmax / depth / body-order) as physics claims**, in the Step-2
    methodology chapter.
-4. **Keep the double-feed split honest:** clean (no double-feed) for Part-1 attribution; fido (double-feed
-   fine) for Part-2 prediction.
+4. **Keep the double-feed split honest:** no fixed-kernel inputs for Step 1; ablation-earned inputs for
+   Step 2 prediction.
 5. **Put TensorNet on the "first architectures to try" list** — lighter, ℓ≤2-Cartesian, isomorphic to our
    `Mat3 ⊕ SphericalTensor` object model; an interpretability gift. (e3nn stays the reference; this is the
    lower-friction candidate.)
-6. **Carry the per-part altitude:** full steerable for the DFT-anchored tensor work (Parts 1–2); not
-   mandated for the solution-shift deployment (Part 3, fido).
+6. **Carry the per-Step altitude:** full steerable for the DFT-anchored tensor work (Steps 1–2); not
+   mandated for the solution-shift deployment (Step 3, fido).
 
 ## The shape of it
 

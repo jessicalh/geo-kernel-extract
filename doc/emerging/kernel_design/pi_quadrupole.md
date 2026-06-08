@@ -1,12 +1,12 @@
 # Kernel design: the aromatic π-system electric-quadrupole effect on shielding
 
-Scope: one input feature for the e3nn equivariant shielding predictor — the
-through-space shielding a nucleus feels from the **electric (electrostatic)
-quadrupole moment of a nearby aromatic π system**. This is the *electrostatic*
-face of an aromatic ring (its permanent charge distribution), **not** the
-magnetic ring current and **not** a point-charge field. The job is to state the
-defensible, standard way to compute and featurize it; web-grounded first, our
-code read last and described neutrally.
+Scope: one kept/emitted caged geometry kernel for the through-space shielding a
+nucleus feels from the **electric (electrostatic) quadrupole moment of a nearby
+aromatic π system**. It is not a Step-1 input. This is the *electrostatic* face
+of an aromatic ring (its permanent charge distribution), **not** the magnetic
+ring current and **not** a point-charge field. The job is to state the emitted
+descriptor plainly; web-grounded first, our code read last and described
+neutrally.
 
 Terms, defined as they appear:
 
@@ -27,7 +27,8 @@ Terms, defined as they appear:
   mechanism the charge/EFG kernel uses; here the *source* of E and ∇E is the
   ring's quadrupole rather than point charges.
 - **l / irrep**: SO(3)/O(3) irreducible representation; `0e` scalar, `1o`/`1e`
-  vector, `2e` the 5-component quadrupolar tensor. e3nn consumes these.
+  vector, `2e` the 5-component quadrupolar tensor. If consumed by an equivariant
+  model, features are written in these.
 
 ---
 
@@ -116,9 +117,9 @@ This is the crux of the kernel, so it is worth stating sharply. There are three
   They share the ring geometry and the (3cos²θ−1) angular skeleton (both are
   axial l=2 about the normal), which makes them look alike on a plot, but they
   are not the same term and do not double-count *each other*. The honest caveat:
-  any *empirical* ring-current calibration fit to DFT/experiment may have already
-  absorbed part of the electrostatic effect into its fitted intensity, so the two
-  are separable in principle but can be entangled in fitted coefficients.
+  any empirical ring-current coefficient may have already absorbed part of the
+  electrostatic effect, so the two are separable in principle but can be
+  entangled in empirical coefficients.
 
 - **vs charge/EFG:** *same mechanism, different multipole order of the same
   charge distribution.* If the charge/EFG kernel already sums a Coulomb field
@@ -156,7 +157,7 @@ point quadrupole as the clean far-field statement.
 
 ---
 
-## 2. Featurizing for e3nn — which irreps
+## 2. Emitted equivariant descriptors
 
 The effect enters shielding through **two multipole orders of the field**, and
 each is a clean irrep:
@@ -169,18 +170,18 @@ each is a clean irrep:
 This mirrors the charge/EFG design exactly (`1o ⊕ 2e`), and for the same reason:
 the Buckingham expansion couples to **both** the field and its gradient, the two
 orders carry independent, non-redundant geometric information (different distance
-weighting, different l), and an equivariant network forms the rotational
-invariants (E·b̂, E:V, …) itself by tensor product rather than us pre-projecting
-into a local frame. Emit raw in the molecular frame, geometry unscaled.
+weighting, different l), and an equivariant model could form the rotational
+invariants (E·b̂, E:V, …) by tensor product rather than us pre-projecting into a
+local frame. Emit raw in the molecular frame, geometry unscaled.
 
 Whether to emit **both** `1o` and `2e` or **only `2e`** is a real choice. The
-EFG `2e` is the cleaner, more-distinctive object (pure l=2 by Laplace, the part a
-tensor model exists to use); the `1o` field is also legitimate but at this
+EFG `2e` is the cleaner, more-distinctive object (pure l=2 by Laplace); the `1o`
+field is also legitimate but at this
 multipole order falls fast (1/R⁴) and overlaps more with what the charge/EFG
 `1o` already carries. The defensible default is to emit the **`2e` EFG as the
-primary feature** and the **`1o` field as a parallel channel** the fit can weigh
-or drop — consistent with the charge/EFG sibling, which feeds both orders and
-lets the model decide. The clean single-irrep statement of *this* kernel is the
+primary descriptor** and the **`1o` field as a parallel channel** for possible
+ablation — consistent with the charge/EFG sibling, which emits both orders. The
+clean single-irrep statement of *this* kernel is the
 `2e`.
 
 This is the field-standard recipe for NMR tensors into equivariant GNNs:
@@ -229,12 +230,11 @@ Concretely:
    keep symmetric-traceless, decompose:
    - `2e`: the 5-component l=2 EFG tensor (primary feature).
    - `1o`: the quadrupole's electric field at the nucleus (parallel channel).
-   Emit **per aromatic ring type** (Phe, Tyr, Trp 5-/6-membered, His) so the model
-   can carry a different effective Θ per chemistry, and emit the **geometry
-   unscaled** (Å⁻⁵ for the EFG, Å⁻⁴ for the field) so the quadrupole magnitude Θ
-   (and its Buckingham response coefficient) is a **fitted/calibrated coefficient**
-   or a parallel literature-scaled channel — not a hard-coded constant. This is the
-   house pattern: emit the clean geometry, fit the uncertain scale.
+   Emit **per aromatic ring type** (Phe, Tyr, Trp 5-/6-membered, His) to keep
+   chemistry visible, and emit the **geometry unscaled** (Å⁻⁵ for the EFG, Å⁻⁴
+   for the field) so the quadrupole magnitude Θ (and its Buckingham response
+   coefficient) is a **pinned literature-scaled coefficient**, not a hard-coded
+   constant.
 
 4. **Fast linalg where it buys defensibility, not novelty.** KD-tree ring
    neighbourhoods; closed-form Stone T-tensor (or distributed Coulomb sum) per
@@ -243,9 +243,8 @@ Concretely:
 
 **Why this and not the alternatives:**
 - *A scalar (3cos²θ−1)/R⁴ alone:* the orientation-skeleton of the effect, but it
-  is one `0e`-like number handed to a model whose purpose is orientation. Keep it
-  only as a sanity/baseline scalar derived from the tensor, never as the primary
-  feature.
+  is one `0e`-like number. Keep it only as a sanity/baseline scalar derived from
+  the tensor, never as the primary descriptor.
 - *Point quadrupole as production source at contact range:* it is the leading
   multipole, not the field — defensible as the far-field anchor, coarse at 3–5 Å.
   Use the distributed charges (or a justified QM Θ) for production, the point form
@@ -281,20 +280,20 @@ Concretely:
   make the kernel null or misleading if left implicit.
 - **Quadrupole magnitude Θ and the Buckingham response.** The geometry is exact;
   the *scale* (the ring's effective Θ per type, and the shielding-response
-  coefficient) is the soft part — sourced from literature benzene Θ, QM moments,
-  or fitted, and treated as a calibrated coefficient with a stated band, not a
-  constant.
+  coefficient) is the soft part — sourced from literature benzene Θ or QM
+  moments, and treated as a pinned coefficient with a stated band, not a
+  learned constant.
 - **Point vs distributed source at contact range.** The point quadrupole is a
   far-field truncation; at the 3–5 Å contacts that matter for proteins it is
   coarse, and a distributed-charge (or QM-moment) source is the honest production
   choice. Same ceiling the ring-current and McConnell kernels carry.
-- **Entanglement with empirical ring-current calibrations.** A ring-current
-  intensity fitted to data may have silently absorbed some of the electrostatic
-  effect; the two are separable in principle but can co-vary in fitted
-  coefficients. Worth disclosing, not fixable here.
+- **Entanglement with empirical ring-current coefficients.** A ring-current
+  coefficient may have silently absorbed some of the electrostatic effect; the
+  two are separable in principle but can co-vary. Worth disclosing, not fixable
+  here.
 
 If forced to the single most defensible package: **the ring-quadrupole EFG as a
-`2e` feature, emitted per ring type with geometry unscaled and Θ as a fitted/
+`2e` descriptor, emitted per ring type with geometry unscaled and Θ as a pinned
 literature-scaled coefficient, under an explicit decision that the charge/EFG
 kernel does not also carry the same ring charges** — with the `1o` field as a
 parallel channel and the point-quadrupole closed form as the far-field anchor.
@@ -309,7 +308,7 @@ computes, per (aromatic ring, atom) pair within a KD-tree cutoff, the EFG of a
 T-tensor: G_αβ = T_αβγδ n_γ n_δ — a symmetric, traceless, pure-l=2 tensor with
 1/R⁵ leading decay (it documents T0=T1=0 and the Laplace tracelessness). The
 −Θ/2 prefactor is deliberately **not** applied; the geometry is emitted unscaled
-in Å⁻⁵ and the per-ring-type quadrupole strength is left as a learnable/fitted
+in Å⁻⁵ and the per-ring-type quadrupole strength is left as a pinned
 coefficient. It also stores the scalar (3cos²θ−1)/R⁴, labelled the **Buckingham
 A-term** (the quadrupole's *electric field* feeding an isotropic/T0 shift), as a
 separate quantity from the EFG→T2 coupling. It accumulates the total EFG per atom
@@ -319,7 +318,7 @@ T0/T1/T2), `pq_per_type_T0` (N×8, the per-ring-type A-term scalar), and
 guard (with a comment noting the quadrupole's larger convergence radius) and a
 ring-bonded topological exclusion; the h5-reader mirrors this as
 `QtPiQuadrupoleGroup`. Relative to §3: the current path already emits the clean
-**`2e` EFG** as a per-type tensor with **unscaled geometry and a fitted scale**,
+**`2e` EFG** as a per-type tensor with **unscaled geometry and a pinned scale**,
 already carries the **field-order scalar separately** (the A-term, the `1o`-family
 content in collapsed form), and already keeps it as its own kernel — closely
 matching the recommendation's shape. The descriptive gaps are that (i) the

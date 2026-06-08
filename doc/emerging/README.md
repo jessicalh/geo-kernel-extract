@@ -1,18 +1,14 @@
 # doc/emerging/ — "Napkin Rescue"
 
-The consolidated home for the **forward build**: the new calculators, the revamped equivariant model,
-and the revamped stats — grounding the four kernels from back-of-the-napkin to defensible, *cited*
-specs. **Keep this index fresh** — it's the map; update it when docs land. (Scope boundary + the three
-NEW points + the bar: `CONTROLLING_SPEC.md`.)
+The consolidated home for the **forward build**: the kept kernels, the tensor/shift models,
+and the revamped stats. **Keep this index fresh** — it's the map; update it when docs land.
+(Scope boundary + the three Steps + the bar: `CONTROLLING_SPEC.md`.)
 
 ## The spine
 
-- **`CONTROLLING_SPEC.md`** — the controlling document. Scope; the three NEW points (law study ·
-  tensor predictor · shift predictor); the Four (Biot–Savart · Haigh–Mallion · McConnell · charge/EFG);
-  the feature tiers; the feature × value matrix; and **the bar** (defensibility, not agent-confidence —
-  no going back to the napkin). *Now carries (2026-06-07) the **dragon** — the solution shift IS the
-  `0e`, the `2e` is orthogonal to it — and the **fido reframe**: equivariance is Part 1's analysis lens,
-  earned-only-where-it-helps in the predictors; both predictors are FIDO.*
+- **`CONTROLLING_SPEC.md`** — the controlling document. Scope; the three Steps (statistical model ·
+  tensor predictor · shift predictor); The Three + the cage; pinned-not-learned; the feature matrix;
+  and **the bar** (defensibility, not agent-confidence).
 
 ## The narrative / account layer
 

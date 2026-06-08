@@ -1,9 +1,12 @@
-# Continuity — kernel redesign & the run from data to model (2026-06-06)
+# Continuity — kernel redesign & the run from data to model
 
 *Draft for Jessica to shape. This is the session handoff across contexts: where the work
 stands, the principle that governs it, what is still open, and the failure modes the next
 instance must be warned about. Jessica takes the held-open issues next; they are flagged
 here, not resolved.*
+
+Current forward-build truth lives in `../CONTROLLING_SPEC.md`; dated handoff blocks below are
+historical records, not current instructions.
 
 ---
 
@@ -13,16 +16,15 @@ Our initial geometric-kernels conception was an interesting **experiment** — w
 its simplicity and its back-of-the-napkin estimation power, the chance that a pile of
 hand-computable forms might carry real signal. It did its job as an experiment. But now we
 have the **framework, the data, and the toolchain** to run the whole way from data → statistics
-→ model — and so we are **replacing those first kernels with better work**: properly grounded,
-cited, equivariant feature designs (the `kernel_design/*.md` set), fed to e3nn, swept and
-ablated under an honest stats program. The napkin estimate was the start of the story, not the
-claim.
+→ model. The kernels stay built and emitted, but Step 1 uses standard features and raw-geometry
+equivariant components against DFT shieldings. The napkin estimate was the start of the story,
+not the claim.
 
 ## The principle that governs inclusion (the underlying thing to remember)
 
 Every feature may have a **scalar (`0e`) form** and a **tensor (`1o`/`2e`) form**. The rule:
 
-> **A feature's scalar form, if it has one, can drop into the final "fido & biscuits" shift
+> **A feature's scalar form, if it has one, can drop into the final shift
 > predictor if it makes sense there. A feature should go away only if it makes sense in
 > NEITHER context.**
 
@@ -38,18 +40,15 @@ with DFT" alone.
 
 ## State of the work (pointers, not re-derivation)
 
-- **Kernel-design program — complete for the core set.** Seven design docs in this directory.
-  Honest tally: a **solid core of three** — ring, McConnell (bond anisotropy folded in, same
-  Δχ⊗propagator→`2e` machine; extend `McConnellResult`), charge/EFG — plus three **carried-along
-  maybes** the partition work decides: H-bond/Larsen (drop-candidate — the Larsen term is circular
-  as a feature and its electrostatic overlaps charge/EFG; *carried, not cut*), π-quadrupole (may be
-  charge/EFG's next multipole order of the same charges), dispersion (may not earn a slot). The set
-  converges toward ~5; the arc is robust to the count; **cut by the two-context inclusion test, not
-  a round number.** House pattern: clean equivariant spherical-tensor features (relevant
-  `0e`/`1o`/`2e`), raw in the molecular frame, geometry unscaled, scales fitted or as parallel
-  channels, e3nn forms the invariants, ceilings disclosed.
-  Docs: `ring.md`, `mcconnell.md`, `charge_efg.md`, `bond_anisotropy.md`, `dispersion.md`,
-  `hbond_larsen.md`, `pi_quadrupole.md`.
+- **Kernel-design pointers.** Honest tally: a **solid core of three** — ring, McConnell (bond anisotropy folded in, same
+  Δχ⊗propagator→`2e` machine; extend `McConnellResult`), charge/EFG — plus the **cage**:
+  H-bond, Larsen, π-quadrupole, and dispersion are kept and emitted, not updated or featured.
+  House pattern: clean equivariant spherical-tensor features (relevant
+  `0e`/`1o`/`2e`), raw in the molecular frame, geometry unscaled, scales pinned from
+  literature/physics where a scale exists.
+  Current docs: `ring_spec.md`, `mcconnell_spec.md`, `efg_spec.md`, `dispersion.md`,
+  `hbond_larsen.md`, `pi_quadrupole.md`; older `ring.md`, `mcconnell.md`, `charge_efg.md`,
+  and `bond_anisotropy.md` are historical.
 - **MOPAC — reclassified to first-class, run on everything (per-frame).** No longer the
   retired/static FullFat probe. Because the OpenFold structures are poor enough that MD must be run
   on everything anyway just to earn ~1 ns of good MolProbity, MOPAC rides along at marginal cost and
@@ -66,7 +65,7 @@ with DFT" alone.
   over the four legacy arrays; respect ConformationAtom + Result conventions; NOT the reader, its own
   effort). **Sidecar format is discuss-first** (codex proposes, human reviews). Partition caveats:
   MOPAC charges overlap AIMNet2's; MOPAC-bond-order McConnell sits beside literature-Δχ McConnell —
-  channels the fit weighs, overlapping for attribution.
+  channels to ablate, overlapping for attribution.
 - **Pipeline adaptation** (`pipeline_adaptation.md`): the substrate already carries irrep fields
   (`ArrayRank` Vec3/T2_5/Tensor9; `value`/`valueVec3`/`valueT2`/`valueTensor`), so the change is
   mostly **registration** plus the attacher/schema in `ComposedRelationships.cpp`. The geometry
@@ -94,8 +93,8 @@ calculator leaves the old ones untouched** — they keep emitting exactly as bef
 Shape:
 - **Foundation** = everything the geometry layer already knows (neighbourhoods, frames,
   displacements — the good layer, kept) + everything MOPAC knows (charges, bond orders, s/p
-  populations, dipole). **MOPAC is treated as ground truth** — the authoritative local-electronic
-  information. The calculator is, honestly, *an extension to MOPAC plus our geometry*, not "our
+  populations, dipole). **MOPAC is treated as first-class local-electronic
+  information.** The calculator is, honestly, *an extension to MOPAC plus our geometry*, not "our
   shielding model."
 - **Composition** = every feature (ring, McConnell, EFG, …) built on that one shared substrate as a
   named composition, so shared sources are visible and each partition (e.g. π-quadrupole vs
@@ -203,7 +202,7 @@ the place the careful spec passes earn their keep.
   accumulation corrupts there.
 - **Fixed-DFT constraint:** the DFT campaign is done and not re-runnable (six months; shielding
   only — no magnetizability/susceptibility). Designs use geometry + literature/tabulated constants
-  (Δχ from tables, fitted) + what the DFT already wrote. Re-extraction is cheap (<1 day); the DFT
+  (Δχ from tables, pinned) + what the DFT already wrote. Re-extraction is cheap (<1 day); the DFT
   is the precious fixed thing.
 - **References:** foundational primaries (Haigh–Mallion 1972, McConnell 1957) are frayed out — not
   openly posted anywhere legitimate. **H&M is covered by held secondaries** (Case 1995, Moyna 1998,
@@ -229,7 +228,7 @@ code** not asserted from memory, and Jessica reviews hardest at these zones.
 
 ---
 
-## SESSION-END HANDOFF — 2026-06-06 (written at 97% context) — READ FIRST
+## Historical Session-End Handoff — 2026-06-06
 
 **THE OUTCOME we're building toward.** ONE **controlling document**: per feature, the **T0/T1/T2 we
 want** it to emit (the spherical-tensor targets) **+ the calculation method, practically**, down to

@@ -17,7 +17,8 @@ It is an **account**: a literal statement of what the geometric kernels are, as
 mathematical objects, and what operation each one performs on a structural frame.
 It is **not a claim** that they explain shielding, nor that the rank-2 signal is
 physically load-bearing for any particular atom. Those are empirical questions held
-elsewhere; here we only say, exactly, what the thing is.
+elsewhere; here we only say, exactly, what the thing is. In the current forward
+build these kernels are kept and emitted, not used as Step-1 inputs.
 
 An honest note on origin, so the account does not have to invent a principled one:
 the geometric kernels are in this project because they were offered early and kept on
@@ -247,43 +248,30 @@ work.
 
 ---
 
-## 5. The dual nature: the physical field and the geometric descriptor are one object
+## 5. The shared object: geometric moment with physical names
 
 Here is the resolution of a tension we circled for a long time — *is the rank-2 signal
 a real physical mechanism, or is it a context-encoding featurization in the manner of a
-multiple-sequence alignment (MSA)?* The literal maths answers: **it is necessarily
-both, because they are the same object.**
+multiple-sequence alignment (MSA)?* The literal maths keeps those readings tied to the
+same emitted object.
 
-The multipole moment K_i is, at one and the same time:
+The multipole moment K_i can be read in two compatible ways:
 
-- a genuine **physical field** — the actual l-pole field (e.g. the electric field
-  gradient) that physically perturbs the shielding at i; this is the "mechanism"
-  reading; and
+- a named low-order field in standard physics vocabulary (e.g. the electric field
+  gradient) when the scalar weights match that source model; and
 - a **lossy, fixed-basis geometric descriptor** — the order-l projection of the
   weighted neighbourhood point cloud, a compression of structural context; this is the
   "featurization / MSA-like" reading.
 
-These are not rival hypotheses to be decided between. The very same five numbers are
-the physical field gradient *and* the rank-2 context fingerprint, because **the
-physical field of a source distribution simply is the low-order geometric moment of
-that distribution.** A field gradient of a cloud of charges is, definitionally, a
-weighted second moment of where those charges are.
-
-This dissolves the MSA worry into an observation rather than a threat. Yes, the kernel
-is MSA-like: an MSA column compresses *evolutionary* context (a position across an
-ensemble of homologues) into a feature; the geometric kernel compresses *spatial*
-context (a neighbourhood across a frame, and across MD frames) into a feature. Both are
-context compressions feeding a downstream predictor. But unlike a pure correlational
-MSA feature, our compression is *also* the physical interaction itself. That joint
-identity is the intelligent thing we can say, and it is **obvious once written, mildly
-novel as a framing, and self-accounting** — it needs no defence because it is a
-definition, not a contested claim.
+These are not separable source tensors. The object emitted by the code is the
+weighted-neighbourhood moment; chemistry enters through the scalar weight w_j. That is
+the account to state.
 
 ---
 
 ## 6. Why T2 helped some atoms and not others — the Stage-1 account
 
-The Stage-1 ridge calibration found, empirically, that the T2 (rank-2) content
+The Stage-1 ridge result found, empirically, that the T2 (rank-2) content
 improved the prediction of some atoms' shielding and not others'. The literal account
 of *what* that means and *why*:
 
@@ -325,9 +313,7 @@ results, and it is the consequence the maths makes unavoidable.
 
 When a model — PySR distilling a closed form, or an equivariant network — appears to
 "recover" the (3cos²θ − 1)/ρ³ form, we must ask what the recovery actually demonstrates.
-The answer is in §2: **we computed the gradient field ourselves and fed it in as the
-input feature, for the very quantities we are studying.** A crudely calculated l = 2
-field went *into* the model. A model that then relates input to output and reports a
+If the gradient field was supplied as a feature, a model that reports a
 gradient-field-shaped relationship is, to a large degree, **handing us back the form of
 its own input.**
 
@@ -345,10 +331,9 @@ State it as the separation it forces:
   own input; it is the empirical, faint, atom-dependent question of §6, and it is the
   only part an ablation can adjudicate.
 
-So the account of "why do we get a T2 equation match out of the model" is: *because we
-put a gradient field in.* The form-recovery measures our pipeline; the target-match
-measures the physics. Keeping those two apart, out loud, is the difference between an
-honest account and an oversold one.
+So the account of "why do we get a T2 equation match out of the model" is conditional:
+if a gradient field was put in, form-recovery measures the pipeline; target-match
+measures the physics. Keeping those two apart keeps the account honest.
 
 ---
 
@@ -358,26 +343,19 @@ honest account and an oversold one.
 
 - The geometric kernels are low-order (l ≤ 2) multipole moments of the weighted local
   neighbourhood — cheap, fixed-basis, equivariant compressions of structural context,
-  computable per frame in seconds to hours. This is a methods statement, squarely in
-  "methods for structural biology," and it survives expert scrutiny because it is a
-  description, not a boast.
-- Each is simultaneously a physical field and a geometric descriptor; the two readings
-  are the same object (§5).
+  computable per frame in seconds to hours. This is a methods statement, not a boast.
+- Each is a weighted-neighbourhood moment with standard physical names in some source
+  models (§5).
 - T2 carries the part of shielding that is l = 2-through-space-governed, which is why it
   helps protons and the exposed and not the local-quantum-dominated backbone (§6).
 
 **What remains an empirical question, held elsewhere (ours to trace, not asserted
 here).**
 
-- *Relevance*: do the kernel features actually improve a downstream predictor? The
-  honest test is the **ablation** (features in vs out, per stratum) and the
-  **target-match** to DFT — not the form-recovery (§7). A methods thesis may report a
-  modest "this feature helps this much" as a result; a measured feature value is not an
-  embarrassment the way a faint physics *claim* would be.
-- *The falsifiable per-atom prediction*: the atoms an equivariant predictor handles
-  well should be the l = 2-through-space-governed ones (protons, exposed positions). If
-  it instead predicts backbone ¹⁵N well, this account is wrong and we revise it in the
-  maths, not by hand.
+- *Relevance*: if the kernel features are tried in a downstream predictor, the honest
+  test is ablation and target-match to DFT — not form-recovery (§7).
+- *The per-atom check*: if a model uses these kernels, compare its successes with the
+  l = 2-through-space-governed account in §6.
 
 **Verification to-dos (the pursuit).**
 
@@ -389,15 +367,12 @@ here).**
 - When the equivariant run lands, check the per-atom result against §6's prediction and
   record which way it fell.
 
-**The claim / account split, restated.** *Claim* the kernels as a featurization method
-— modestly, ablation-backed. *Account for* the downstream predictor as a commodity
-tool, of a known and named class, honestly bounded. The kernels are the contribution to
-defend; the predictor is the thing to describe and not oversell.
+**The claim / account split, restated.** Account for the kernels as emitted geometric
+features. Do not make them the Step-1 foundation.
 
 ---
 
 *Pursue from here. Nothing above is digested; if a future reader needs the short
 version, it is the title of §3 — the kernel is the low-order multipole moment of the
-weighted neighbourhood, which is at once a physical field and a lossy geometric
-compression — but the point of this file is to keep the long version, with its
-definitions and its honest discards intact.*
+weighted neighbourhood — but the point of this file is to keep the long version, with
+its definitions and its discards intact.*

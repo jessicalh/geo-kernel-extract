@@ -1,12 +1,13 @@
 # nmr-shielding — project root
 
-Thesis research tree for NMR chemical shielding prediction via
-geometric kernels on protein structures. The physics pipeline is
-classical calculators (ring current, electric field gradient, bond
-anisotropy, etc.) calibrated against DFT WT-ALA deltas. The
-engineering layers are a C++ library for extraction, two Qt6/VTK
-visualisation subprojects, a Python SDK for reading output, and a
-Python/R analysis pipeline for calibration and model work.
+Thesis research tree for NMR chemical shielding prediction from protein
+structures. The physics pipeline emits classical geometric calculators
+(ring current, electric field gradient, bond anisotropy, etc.) with
+literature/physics-pinned scales; the forward-build models use DFT
+shieldings as targets. The engineering layers are a C++ library for
+extraction, two Qt6/VTK visualisation subprojects, a Python SDK for
+reading output, and a Python/R analysis pipeline for calibration and
+model work.
 
 This `CLAUDE.md` is the entry point for a Claude session opened
 against the tree. Human-oriented project description lives in
@@ -91,7 +92,7 @@ code, not stale prose.
   DFTs.
 - **Step 2 — shielding-tensor predictor.** A real model — MatTen/e3nn
   (`project_matten_predictor_2026-06-07`), T2 preserved, **R² IS the
-  metric**. FIDO inputs earned by internal ablation, **not** measured
+  metric**. Inputs earned by internal ablation, **not** measured
   against the Stage-1 ridge. Tested on held-out 1P9J frames + the 720 WT
   DFTs.
 - **Step 3 — shift predictor.** Anything-goes, ablatable; ~600 short

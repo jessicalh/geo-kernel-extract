@@ -1,3 +1,5 @@
+Historical -- not current truth; see doc/emerging/CONTROLLING_SPEC.md and doc/emerging/GEOMETRIC_KERNEL_ACCOUNT.md.
+
 # What Are We Doing — A Careful, Provisional Account of the Geometric-Kernel Work
 
 *A working description, written in full, every term defined, ambiguity held open

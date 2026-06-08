@@ -1,3 +1,4 @@
+Historical -- not current truth; see doc/emerging/CONTROLLING_SPEC.md.
 # Pipeline spine — extraction → reader → model, held whole
 
 *The foundational knowledge-spine for the numeric pipeline of the NMR

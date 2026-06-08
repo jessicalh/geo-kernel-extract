@@ -36,11 +36,11 @@ work now built and are retired history, not implementation authority.
 ## Forward build (live — read before kernel/model/stats work)
 
 The current design effort lives under `doc/emerging/` and supersedes the
-old "three stages" with **three Parts** (law study / tensor predictor /
-shift predictor) and **The Three + the cage** kernel set. Reconcile by
-reading code, not the older docs above.
+old "three stages" with **three Steps** (statistical model / tensor
+predictor / shift predictor) and **The Three + the cage** kernel set.
+Reconcile by reading code, not the older docs above.
 
-- `doc/emerging/CONTROLLING_SPEC.md` — the spine: the three Parts, The
+- `doc/emerging/CONTROLLING_SPEC.md` — the spine: the three Steps, The
   Three, pinned-not-learned, the scope of the forward build.
 - `doc/emerging/kernel_design/CONTINUITY.md` — running session state.
 - `doc/emerging/DEFERRED_LEDGER.md` — every parked / contingent / follow-up

@@ -53,7 +53,7 @@ to repeat. Verdict: mostly confirmed; one stale spot (AIMNet2).
 
 **5. π-quad vs EFG — NOT a simple double-count.**
 - `PiQuadrupoleResult` does **not read partial charges**; it builds a point axial quadrupole from
-  ring-center / ring-normal / position (Stone's T-tensor, learnable per-ring-type scale; the physical
+  ring-center / ring-normal / position (Stone's T-tensor, pinned per-ring-type scale; the physical
   `−Θ/2` prefactor left to `Q_type`) (`PiQuadrupoleResult.cpp:51,25`; `.h:3`).
 - It overlaps aromatic EFG in electrostatic content but is a **distinct geometric basis** that may carry
   π-cloud anisotropy point charges miss.

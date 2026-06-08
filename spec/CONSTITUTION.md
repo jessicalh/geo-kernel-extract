@@ -1,3 +1,5 @@
+**MOSTLY DEPRECATED** — predates the forward build; its geometric-kernel-as-central-contribution framing is superseded (see CLAUDE.md and spec/INDEX.md for current law: the Steps + kept-but-not-used kernels). Some content below still stands as reference; not fully fixed today.
+
 # Constitution: NMR Shielding Prediction System
 
 This document is the supreme constraint on all implementation work.

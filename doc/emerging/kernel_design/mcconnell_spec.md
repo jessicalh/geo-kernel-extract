@@ -1,7 +1,7 @@
 # McConnell Neighbour Anisotropy — Feature Spec
 
-*Draft for review — the shareable spec for one of the four academic-responsibility kernels, and the
-template for the other three. Built on `mcconnell_structured_grounding.md` (which carries the full
+*Shareable spec for one of the three featured kernels, and the
+template for the other two. Built on `mcconnell_structured_grounding.md` (which carries the full
 cites and the opus-adversarial pass) and `mcconnell_grounding_agent1.md`; decisions are settled in
 `CONTROLLING_SPEC.md`. Figures are marked for generation.*
 
@@ -70,9 +70,9 @@ where `Q̂_s` is the **unit-strength shape** of the source's susceptibility (axi
 - a **bond-order** channel: `Σ (bond_order_s) · A_is`, weighting each source by its measured **MOPAC
   Wiberg bond order** (a rotationally-invariant, QM-derived measure of electron sharing).
 
-A model or fit reads `β₀·fixed + β₁·bond-order` per category — the coefficients absorb the
-susceptibility magnitude, the sign, the units, and the source-strength calibration. **Δχ is never
-hard-coded:** the geometry is emitted unscaled (Å⁻³) and the scale is learned (§4 says why). Aromatic
+A model or fit reads the fixed and bond-order channels per category, with susceptibility scales pinned
+from literature/physics rather than learned as free coefficients. **Δχ is not fitted from this sample:**
+the geometry is emitted as a unit shape (Å⁻³) and scaled by defended values. Aromatic
 sources are kept as a category but set to **zero** while the ring-current kernels are active — that
 anisotropy is the *same physics* the ring kernels already carry, and we do not count it twice.
 
@@ -148,11 +148,8 @@ aromatic-zeroed rows are *kept* (as zeros, while ring is active) so the no-doubl
 auditable in the feature chart. [The full row list and the `SphericalTensor` component order are in
 `mcconnell_structured_grounding.md` → "Fields Produced".]
 
-For the **equivariant model**, these enter as even tensor features by irrep: the `0e` joins the scalar
-conditioning channel, the `2e` is the load-bearing angular input, the `1e` is available if
-antisymmetric shielding is modelled. For the **law study**, the with-angular (`2e`) vs without
-(`0e`-only) contrast is the direct test of whether the tensor content carries signal. For the **shift
-predictor**, all channels go in the pot, ablatable.
+These arrays are emitted for diagnostics and ablations. They are not Step-1 inputs. Step 2 and Step 3
+may use them only if ablation earns them.
 
 ---
 
@@ -168,7 +165,7 @@ predictor**, all channels go in the pot, ablatable.
   biomolecular anchor.
 - The seven-category scheme is an **engineering/topology choice**, not literature-derived — stated.
 - This spec defends the **form**; whether the clean tensor recovers *more signal* than the old `M` is
-  the law study's empirical question, measured later, not claimed here.
+  a later empirical question, measured later, not claimed here.
 - The full build-time numeric checks — rotation-equivariance, parity-declaration, PCS-scalar
   consistency (`T0(D·Q) = trace/3` vs `n·Q·n/r³`), aromatic-zero, MOPAC-channel separation, and the
   near-field audit — are enumerated in `mcconnell_structured_grounding.md` → "Implementation Checks".

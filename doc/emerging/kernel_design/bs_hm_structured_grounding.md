@@ -1,3 +1,4 @@
+Historical -- not current truth; see doc/emerging/kernel_design/ring_spec.md and doc/emerging/CONTROLLING_SPEC.md.
 # Biot-Savart + Haigh-Mallion Structured Grounding
 
 This is the build-and-defend grounding for the ring-current pair:

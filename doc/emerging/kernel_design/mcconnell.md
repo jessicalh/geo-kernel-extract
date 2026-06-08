@@ -1,3 +1,5 @@
+Historical -- not current truth; see doc/emerging/kernel_design/mcconnell_spec.md and doc/emerging/CONTROLLING_SPEC.md.
+
 # McConnell neighbour magnetic-anisotropy — kernel design
 
 What this is: a design note for **one input feature** to an e3nn equivariant

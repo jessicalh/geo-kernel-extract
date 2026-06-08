@@ -24,7 +24,7 @@ contribute to the isotropic shift; the observed effect depends on susceptibility
 anisotropy. Aromatic and unsaturated groups are large examples, but peptide
 groups also matter in proteins. [Case 2013](https://pmc.ncbi.nlm.nih.gov/articles/PMC3877577/)
 
-This earns a place among the Four because it is a named through-space mechanism
+This earns a place among the Three because it is a named through-space mechanism
 with a low-order tensor law. It is not the same as the ring-current calculation:
 ring current is the distributed aromatic-current path, while this McConnell
 feature is the local bond/group susceptibility path. It is also not the charge
@@ -66,11 +66,10 @@ This ordering matters because `D` and `Q` need not commute; the product can
 carry a real antisymmetric `1e` part.
 
 The physical sign and the `4 pi`, SI/cgs, and ppm conversion constants are not
-hard-coded into the emitted feature. They are calibration coefficients. This is
-deliberate: the literature values of organic-group susceptibility anisotropy are
-not stable enough to pretend that one fixed table is ground truth. The emitted
-feature is a geometry-and-source-shape basis in `Angstrom^-3`; the model learns
-the per-category scale.
+hard-coded into the emitted unit shape. The scale is pinned from defended
+literature/physics values, with source scatter disclosed. The emitted feature is
+a geometry-and-source-shape basis in `Angstrom^-3`; the sample is too small to
+learn free per-category scales.
 
 The mathematical anchor is the same point-dipole susceptibility form used in
 the McConnell/PCS literature. Suturina and Kuprov write the point shift tensor
@@ -353,7 +352,7 @@ The schema must also carry:
 ```text
 irrep_layout = "0e,1e_x,1e_y,1e_z,2e_m-2,2e_m-1,2e_m0,2e_m+1,2e_m+2"
 units        = "Angstrom^-3"
-source_model = "unit susceptibility shape; scale learned"
+source_model = "unit susceptibility shape; scale pinned"
 aromatic_zeroed_when_ring_active = true
 bo_source    = "MOPAC Wiberg bond order, dimensionless"
 ```

@@ -7,8 +7,8 @@ element check is reinstated as a required guard** (it does not exist today, only
 the producer-side path has it); several precision fixes landed (row≠molecule
 regrouping, exact reflection rule, hidden-lmax as a sensitivity choice).
 **Correction to codex (Jessica, 2026-06-07): the 720 DFT targets DO exist — they
-are the mutant set** (the WT/ALA poses that calibrated the Stage-1 ridge; codex
-hit a location/naming miss, not absence). So the transferability pilot is
+are the mutant set** (the WT/ALA poses used by the historical Stage-1 ridge
+result; codex hit a location/naming miss, not absence). So the transferability pilot is
 **data-backed**; the remaining task is to **locate and characterize** that DFT,
 not to establish it exists (§7.1).
 
@@ -16,7 +16,7 @@ not to establish it exists (§7.1).
 
 We adopt **MatTen** (e3nn-based equivariant GNN, `github.com/wengroup/matten`)
 as the architecture for an equivariant per-atom NMR shielding-tensor
-predictor. It is the safest defensible choice: a published, peer-reviewed,
+predictor. It is a direct fit: a published, peer-reviewed,
 maintained e3nn model whose irreducible-tensor target machinery already
 predicts full NMR shielding tensors (Venetos et al., silicon oxides,
 *J. Phys. Chem. A* 2023 / PMC10026072), parity-correct, and capable of the
@@ -25,25 +25,23 @@ full `0e ⊕ 1e ⊕ 2e` target including the antisymmetric part.
 **There is exactly one version: v1.** v1 predicts the DFT shielding tensor
 from geometry alone — per-atom Cartesian coordinates + atomic number → the
 per-atom shielding tensor. We do **not** feed the calculator kernels as input
-features. A kernel-conditioned variant ("v2") is explicitly out of scope and
-considered indefensible: the kernels *are* the low-order (ℓ≤2) multipole
-moments of the weighted neighbourhood, and an ℓ≤2 steerable network computes
-the same projections internally — feeding the kernels in would let the model
-relay them and would destroy the one thing the predictor exists to show
-(whether geometry carries the signal). Geometry-only is both the cleaner
-equivariance choice and the only honest experiment.
+features. A kernel-conditioned variant ("v2") is explicitly out of scope for
+v1: the kernels *are* the low-order (ℓ≤2) multipole moments of the weighted
+neighbourhood, and an ℓ≤2 steerable network computes the same projections
+internally. Geometry-only is the current experiment.
 
 ### What v1 is
 
 v1 is the **equivariant transferability pilot** of the thesis arc: an equivariant
 network, given only geometry, reproduces DFT shielding tensors (including the
 anisotropy T2 and the antisymmetric part T1) on **held-out proteins** — trained
-**leave-proteins-out on the 720-WT static poses**, with the Stage-1 ridge as the
-invariant baseline. This is the thesis arc's "720 WT backbones, statics
-baseline."
+**leave-proteins-out on the 720-WT static poses**, with invariant and
+non-equivariant baselines on the same split. This is the thesis arc's
+"720 WT backbones, statics baseline."
 
 This is **data-backed**: the full-tensor per-atom DFT targets exist as the
-**mutant set** — the WT/ALA poses that calibrated the Stage-1 720 ridge (§7.1).
+**mutant set** — the WT/ALA poses used by the historical Stage-1 720 ridge
+result (§7.1).
 The remaining work is to **locate and characterize** that DFT (coverage, confirm
 absolute-σ), not to establish that it exists. 1P9J's 751 frames remain available
 as a within-protein / conformational companion, but the headline is the
@@ -52,9 +50,9 @@ transferable pilot.
 ### What v1 is not
 
 - It does **not** predict experimental chemical shift. It predicts and is
-  validated against **DFT shielding**. Experimental solution shift is the
-  ensemble average ⟨σ⟩ that a 15 ns trajectory never samples — the dragon —
-  and is out of v1's claim entirely.
+  measured against **DFT shielding**. Experimental solution shift is the
+  ensemble average ⟨σ⟩ that a 15 ns trajectory does not sample, and is out of
+  v1's claim.
 - It is **not** a calibration. It is a model (signal-capture / R²), not a
   fittable law.
 
@@ -71,9 +69,9 @@ transferable pilot.
   error — they are alternative backbones, not composable.
 - **PaiNN + tensor channels** — symmetric-rank-2 only (T0+T2, **no T1**),
   parity implicit/polar, and the tensor-channel extension ships no code. It
-  silently drops the antisymmetric part we refuse to drop.
+  drops the antisymmetric part.
 
-MatTen is the one route that is (a) proven on real DFT NMR tensors, (b)
+MatTen is a route that is (a) proven on real DFT NMR tensors, (b)
 parity-correct for a magnetic (axial) response tensor, (c) T1-capable by
 configuration, and (d) reusable rather than green-field.
 
@@ -314,9 +312,8 @@ point-cloud emit (§4.1) instead of the mechanism source sets.
   CPCM term. Do NOT inherit a short calculator cutoff as rcut (would be incomplete
   vs both the QM target and the extractor's own electrostatic ranges). The
   extractor cutoffs thus give a transparent, derived *floor* for rcut, not a
-  guess. The Stage-1 ridge baseline (§7.3) was built with these cutoffs, so
-  MatTen-vs-ridge also tests "does seeing past the kernel cutoffs help" — name it,
-  don't misread it as pure architecture.
+  guess. Any comparison to a cutoff-based invariant model should name that
+  cutoff choice, not misread it as pure architecture.
 - **Layers / body order:** modest depth for v1; each added layer is a
   longer-range claim, stated as such.
 
@@ -349,8 +346,8 @@ The lesson: do the broad search, don't trust a narrow one.)
 
 **Training-set decision:** MatTen trains on the **~720 WT AlphaFold poses** (real
 proteins, full-tensor σ), leave-proteins-out. The **ALA halves are not run by
-default** — they exist for the Stage-1 ridge (the WT−ALA delta that isolates
-ring-current); they are not the predictor's data.
+default** — they exist for the historical Stage-1 ridge result (the WT−ALA delta
+that isolates ring-current); they are not the predictor's data.
 
 **ALA as an *optional* augmentation/probe (allowed — still pure geometry→σ, not a
 v2).** The aromatic-knockout structures are free, valid `(geometry, DFT σ)`
@@ -380,15 +377,15 @@ already spent and on disk — we characterize existing data, buy no new DFT.
 A random split leaks (adjacent frames near-identical; same-protein frames
 correlated) and yields a flattering, meaningless R².
 - Single-protein → temporal/conformational holdout with a real gap.
-- Multi-protein → **leave-proteins-out** (the Stage-1 "fair set" instinct).
+- Multi-protein → **leave-proteins-out**.
 
 ### 7.3 Baselines — or the number means nothing
 
 - Predict-the-per-element-mean (the floor).
-- **Invariant baseline = the Stage-1 ridge-on-kernels.** MatTen-equivariant vs
-  ridge is the clean "does carrying the tensor through beat scalarizing it"
-  experiment — the silicate paper's 2× argument, on our own data. That
-  comparison is the result; the raw MatTen number is not.
+- Use invariant and non-equivariant baselines on the same split: per-element or
+  atom-type means, a geometry-only invariant model, and nearby-frame/block-aware
+  baselines where trajectories are involved. Stage-1 ridge is historical context,
+  not the Step-2 benchmark.
 
 ### 7.4 Loss and per-element scaling
 
@@ -404,12 +401,12 @@ risks (§1b.3) bite hardest, being ring-current-dominated and long-range-sensiti
 ### 7.5 Variance, not a point estimate
 
 Small effective N → report across seeds and folds with intervals. Here R²/MAE
-genuinely *is* the metric (the Stage-3 ethos flip), which is exactly why it
-must be earned on a leak-free split with baselines and variance.
+is the metric, so it must be earned on a leak-free split with baselines and
+variance.
 
 ### 7.6 Framing held throughout
 
-Predicts DFT shielding, validated against DFT. Not experimental shift. Stated
+Predicts DFT shielding, evaluated against DFT. Not experimental shift. Stated
 once, plainly, up front.
 
 ### 7.7 Required artifacts before the first number is defensible
@@ -423,9 +420,9 @@ From the review — concrete deliverables, not just principles:
    with gaps between train/test; random per-row splits are invalid (adjacent
    frames are near-identical).
 3. **An autocorrelation / nearby-frame baseline** in addition to the
-   per-element-mean and ridge baselines — e.g. a block-aware or nearest-frame
-   predictor — so the MatTen number is shown to beat "adjacent frames look alike,"
-   not just exploit it.
+   per-element-mean and invariant/non-equivariant baselines — e.g. a block-aware
+   or nearest-frame predictor — so the MatTen number is shown to beat "adjacent
+   frames look alike," not just exploit it.
 4. **Metrics by irrep and element:** T0, T1 (vector + norm), T2 (component +
    norm), raw-3×3 Cartesian MAE/RMSE/R², and full-tensor reconstruction error
    after the inverse transform — reported per element (H/C/N/O), never pooled.
@@ -438,7 +435,7 @@ From the review — concrete deliverables, not just principles:
 
 ## 8. Non-goals
 
-- No kernel-conditioned variant (v2). Geometry-only, full stop.
+- No kernel-conditioned variant (v2). Geometry-only.
 - No experimental-shift comparison dressed as validation.
 - No changes to the extractor library or to `MopacResult`/analysis.
 - No re-encoding of the "not nice" orientation features (sign-ambiguous ring
@@ -472,8 +469,9 @@ From the review — concrete deliverables, not just principles:
    gate.
 4. Write the MatTen adapter (§5): row→molecule regrouping (assert the invariant),
    explicit `0e+1e+2e` output irreps, non-periodic structure handling.
-5. Commit the split artifact (§7.7.2); wire baselines (§7.3): ridge +
-   per-element-mean + nearby-frame (§7.7.3) on that split.
+5. Commit the split artifact (§7.7.2); wire baselines (§7.3): per-element or
+   atom-type mean + invariant/non-equivariant + nearby-frame (§7.7.3) on that
+   split.
 6. Train with the §7.4 loss; report §7.5 variance and §7.7.4 per-irrep/element
    metrics.
 7. Round-trip + rotation + reflection tests (§7.7.5 / §1).

@@ -1,3 +1,5 @@
+Historical -- not current truth; see doc/emerging/kernel_design/efg_spec.md and doc/emerging/CONTROLLING_SPEC.md.
+
 # Kernel design: the electrostatic contribution — electric field (l=1) and EFG (l=2)
 
 Scope: one input feature for the e3nn equivariant shielding predictor — the

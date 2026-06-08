@@ -174,11 +174,9 @@ Picture two nested regions around a backbone ¹⁵N:
 - Optional `0e` invariants (`|E|²`, EFG η and largest-eigenvalue magnitude) — cheap, give the network easy
   access to the Buckingham `B·E²`/quadrupolar quantities, a sane hedge if message-passing is shallow.
 
-**Per-part altitude (the dragon):** the three feed Part 1 (law study) and Part 2 (tensor predictor), both
-DFT-anchored and tensor-targeted → carry both orders. Under the reframe, the EFG kernel is reported as a
-**characterized descriptor↔DFT relationship** (direction 1, with confounds), and stands as a **closed-form
-hypothesis** the raw-geometry model's ablation is checked against (direction 4) — not optimized as a model
-*input*.
+**Per-Step altitude (the dragon):** EFG emits its `1o` field and `2e` gradient, but it is not a Step-1
+input. Step 2 may use it only if ablation earns it. The EFG kernel can still be reported as a
+**characterized descriptor↔DFT relationship** with confounds, not optimized as a model *input*.
 
 **The surgery (confirm-and-refine, no new physics — the producer already computes the physics):**
 1. **Naming.** `coulomb_shielding.npy` / `mopac_coulomb_shielding.npy` hold a **bare EFG** decomposition,
