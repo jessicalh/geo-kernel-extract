@@ -1,1 +1,0 @@
-# Historical pointer: this stale 2026-05-29 LATER execution plan is cut as current guidance (trued 2026-06-04); use `UI_STATE_OVERVIEW_2026-06-04.md`, `STABILISATION_FEATURE_EVAL_2026-06-04.md`, and the current backlog/issues instead.

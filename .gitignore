@@ -241,3 +241,7 @@ tests/golden/blessed/**/mopac_overlap_packed.npy
 tests/golden/blessed/**/mopac_density_packed.npy
 tests/golden/blessed/**/mc_bond_neighbors.npy
 tests/golden/blessed/**/spatial_neighbors.npy
+
+# Docs are not release-ready yet -- keep local, do not distribute.
+*.md
+*.pdf

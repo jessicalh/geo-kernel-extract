@@ -1,1 +1,0 @@
-# Historical pointer: this stale paste-ready kickoff prompt is cut as current guidance (trued 2026-06-04); start from `UI_STATE_OVERVIEW_2026-06-04.md`, `STABILISATION_FEATURE_EVAL_2026-06-04.md`, and the current issue/backlog docs instead.

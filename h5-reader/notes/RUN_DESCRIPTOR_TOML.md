@@ -1,1 +1,0 @@
-# Historical pointer: this TOML run-descriptor schema is cut as current guidance (trued 2026-06-04); the landed load path is `.LGS` JSON via `spec/CALCSET_MANIFEST.md` and the current README/load docs.
