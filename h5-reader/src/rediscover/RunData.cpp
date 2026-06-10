@@ -73,13 +73,6 @@ std::optional<FrameMap> FrameMap::Build(const model::TrajectoryConformation& tra
     return fm;
 }
 
-FrameMap FrameMap::Static(std::size_t originalIndex, bool hasDft) {
-    FrameMap fm;
-    fm.originalByRow_.push_back(originalIndex);
-    if (hasDft) fm.dftRows_.push_back(0);
-    return fm;
-}
-
 std::optional<RunData> RunLoader::Load(const QString& calcset_path, QString* err_out) {
     // 1. Protein + conformation via the existing loader (resolves the `.LGS`,
     //    sidecar, trajectory.h5). No file discovery here.

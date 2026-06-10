@@ -199,7 +199,7 @@ BuckinghamEfieldStats RunBuckinghamEfieldPerAtomFeature(const Body& body, Buckin
             out.frame_y = fr.frame.y;
             out.h5_row = static_cast<int32_t>(row);
             out.original_index = static_cast<int32_t>(orig);
-            out.time_ps = body.run.timePs(row);
+            out.time_ps = body.run.trajectory()->timePicoseconds(row);
             out.dft_present = true;
             out.dft_total_raw = target.total_raw;
             out.dft_total_decomp = target.total_decomp;

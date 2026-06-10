@@ -155,28 +155,16 @@ std::optional<QString> ResolveLgsPath(const QString& root_or_lgs_path,
         return std::nullopt;
     }
     if (fi.isFile()) {
-        if (!fi.fileName().endsWith(QStringLiteral(".lgs"), Qt::CaseInsensitive)) {
+        if (!root_or_lgs_path.endsWith(QStringLiteral(".LGS"), Qt::CaseSensitive)) {
             if (err) *err = QStringLiteral("file is not a .LGS: %1").arg(root_or_lgs_path);
             return std::nullopt;
         }
         return fi.absoluteFilePath();
     }
-    // Directory: find the single .LGS/.lgs inside. De-dupe symlink and target
-    // so a convenience uppercase symlink beside a lowercase manifest is one
-    // manifest, not an ambiguous pair.
+    // Directory: find the single *.LGS inside.
     QDir dir(root_or_lgs_path);
-    QStringList matches;
-    QStringList canonicalKeys;
-    const QStringList entries = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
-    for (const QString& entry : entries) {
-        if (!entry.endsWith(QStringLiteral(".lgs"), Qt::CaseInsensitive)) continue;
-        const QFileInfo info(dir.absoluteFilePath(entry));
-        QString key = info.canonicalFilePath();
-        if (key.isEmpty()) key = info.absoluteFilePath();
-        if (canonicalKeys.contains(key)) continue;
-        canonicalKeys.push_back(key);
-        matches.push_back(entry);
-    }
+    const QStringList matches =
+        dir.entryList(QStringList{QStringLiteral("*.LGS")}, QDir::Files);
     if (matches.isEmpty()) {
         if (err) *err = QStringLiteral("no .LGS file in directory: %1").arg(root_or_lgs_path);
         return std::nullopt;

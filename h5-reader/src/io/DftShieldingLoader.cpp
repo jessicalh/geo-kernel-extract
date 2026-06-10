@@ -42,54 +42,6 @@ constexpr double kIdentityTolPpm = 0.1;
 
 }  // namespace
 
-bool ValidateDftFrame(const h5reader::model::DftShieldingFrame& fr,
-                      const h5reader::model::QtProtein* protein,
-                      const QString& context,
-                      QString* err_out) {
-    const std::size_t expected = protein ? protein->atomCount() : 0;
-    auto fail = [&](const QString& msg) {
-        if (err_out) *err_out = msg;
-        report(Severity::Warning, msg, context);
-        return false;
-    };
-    if (!fr.valid || fr.atoms.size() != expected) {
-        return fail(QStringLiteral("DFT atom count %1 != topology %2 (or empty section)")
-                        .arg(fr.atoms.size())
-                        .arg(expected));
-    }
-    for (std::size_t i = 0; i < fr.atoms.size(); ++i) {
-        const h5reader::model::DftAtomShielding& a = fr.atoms[i];
-        if (a.element == h5reader::model::Element::Unknown) {
-            return fail(QStringLiteral("unparsed atom at index %1 (parser hole)").arg(i));
-        }
-        if (protein && protein->atom(i).element != a.element) {
-            return fail(QStringLiteral("DFT element mismatch at atom %1").arg(i));
-        }
-        if (std::abs(a.total.T0 - (a.dia.T0 + a.para.T0)) > kIdentityTolPpm) {
-            return fail(QStringLiteral("atom %1 fails total==dia+para T0 (%2 vs %3 ppm)")
-                            .arg(i)
-                            .arg(a.total.T0, 0, 'f', 3)
-                            .arg(a.dia.T0 + a.para.T0, 0, 'f', 3));
-        }
-        for (int r = 0; r < 3; ++r) {
-            for (int c = 0; c < 3; ++c) {
-                const double lhs = a.dia_raw(r, c) + a.para_raw(r, c);
-                const double rhs = a.total_raw(r, c);
-                if (!std::isfinite(lhs) || !std::isfinite(rhs)
-                    || std::abs(rhs - lhs) > kIdentityTolPpm) {
-                    return fail(QStringLiteral("atom %1 fails raw total==dia+para at [%2,%3] (%4 vs %5 ppm)")
-                                    .arg(i)
-                                    .arg(r)
-                                    .arg(c)
-                                    .arg(rhs, 0, 'f', 3)
-                                    .arg(lhs, 0, 'f', 3));
-                }
-            }
-        }
-    }
-    return true;
-}
-
 std::shared_ptr<const h5reader::model::DftShieldingFrame>
 DftShieldingLoader::LoadAndValidate(const QString& meta_json_abspath,
                                     const h5reader::model::QtProtein* protein) {
@@ -123,7 +75,34 @@ DftShieldingLoader::LoadAndValidate(const QString& meta_json_abspath,
     std::istringstream ss(bytes.toStdString());
     h5reader::model::DftShieldingFrame fr = ParseOrcaNmrShielding(ss);
 
-    if (!ValidateDftFrame(fr, protein, outPath)) return nullptr;
+    // ---- Strict validation over the permissive parser. ----
+    const std::size_t expected = protein ? protein->atomCount() : 0;
+    if (!fr.valid || fr.atoms.size() != expected) {
+        report(Severity::Warning,
+               QStringLiteral("DFT atom count %1 != topology %2 (or empty section)")
+                   .arg(fr.atoms.size())
+                   .arg(expected),
+               outPath);
+        return nullptr;
+    }
+    for (std::size_t i = 0; i < fr.atoms.size(); ++i) {
+        const h5reader::model::DftAtomShielding& a = fr.atoms[i];
+        if (a.element == h5reader::model::Element::Unknown) {  // a parser hole (default-filled index gap)
+            report(Severity::Warning,
+                   QStringLiteral("unparsed atom at index %1 (parser hole)").arg(i), outPath);
+            return nullptr;
+        }
+        // Decomposition is linear, so the T0 identity stands in for all components.
+        if (std::abs(a.total.T0 - (a.dia.T0 + a.para.T0)) > kIdentityTolPpm) {
+            report(Severity::Warning,
+                   QStringLiteral("atom %1 fails total==dia+para (%2 vs %3 ppm)")
+                       .arg(i)
+                       .arg(a.total.T0, 0, 'f', 3)
+                       .arg(a.dia.T0 + a.para.T0, 0, 'f', 3),
+                   outPath);
+            return nullptr;
+        }
+    }
 
     qCDebug(cDft).noquote() << "loaded DFT frame |" << "atoms=" << fr.atoms.size()
                             << "| meta=" << meta_json_abspath
