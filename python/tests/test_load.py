@@ -68,6 +68,19 @@ MCCONNELL_CHANNELS = tuple(
     for channel in ("fixed", "bo")
 )
 
+RETIRED_NPY_STEMS = {
+    "disp_per_ring_spherical",
+    "disp_per_ring_tensor",
+    "disp_per_type_T2",
+    "disp_shielding",
+    "hbond_nearest_spherical",
+    "hbond_nearest_tensor",
+    "hbond_shielding",
+    "pq_per_type_T2",
+    "pq_shielding",
+    "ringchi_shielding",
+}
+
 
 # ── Fixtures ────────────────────────────────────────────────────────
 
@@ -339,7 +352,8 @@ class TestRingContributions:
 
     def test_kernel_views_are_spherical_tensors(self, geo):
         rc = geo.ring_contributions
-        for kernel in [rc.bs, rc.hm_H, rc.hm, rc.pq, rc.chi]:
+        assert rc.data.shape == (rc.n_pairs, 40)
+        for kernel in [rc.bs, rc.hm_H, rc.hm]:
             assert hasattr(kernel, 'T2')
             assert kernel.data.shape == (rc.n_pairs, 9)
             assert kernel.T2.shape == (rc.n_pairs, 5)
@@ -491,18 +505,12 @@ class TestCoulomb:
 class TestHBond:
 
     def test_all_fields_present(self, geo):
-        assert geo.hbond.shielding is not None
         assert geo.hbond.scalars is not None
+        assert geo.hbond.nearest_dir is not None
+        assert geo.hbond.flags is not None
 
     def test_scalars_shape(self, geo):
         assert geo.hbond.scalars.data.shape == (geo.n_atoms, 4)
-
-
-class TestRingSusceptibility:
-
-    def test_is_shielding_tensor(self, geo):
-        assert isinstance(geo.ring_susceptibility, ShieldingTensor)
-        assert geo.ring_susceptibility.data.shape == (geo.n_atoms, 9)
 
 
 class TestDssp:
@@ -514,7 +522,7 @@ class TestDssp:
 class TestRingKernelGroups:
 
     @pytest.mark.parametrize("group_name", [
-        "haigh_mallion", "pi_quadrupole", "dispersion",
+        "haigh_mallion",
     ])
     def test_group_structure(self, geo, group_name):
         g = getattr(geo, group_name)
@@ -522,6 +530,13 @@ class TestRingKernelGroups:
         assert g.shielding.data.shape == (N, 9)
         assert g.per_type_T0.data.shape == (N, 8)
         assert g.per_type_T2.data.shape == (N, 40)
+
+    def test_scalar_ring_groups(self, geo):
+        N = geo.n_atoms
+        assert geo.pi_quadrupole.per_type_T0.data.shape == (N, 8)
+        assert geo.dispersion.per_type_T0.data.shape == (N, 8)
+        assert geo.pi_quadrupole.quad_scalar.shape[0] == \
+            geo.ring_contributions.n_pairs
 
 
 # ── Optional groups: absent in geometry-only ────────────────────────
@@ -600,7 +615,7 @@ class TestCatalog:
 
     def test_all_geo_only_files_registered(self):
         on_disk = {p.stem for p in Path(GEO_ONLY).glob("*.npy")}
-        unregistered = on_disk - set(CATALOG.keys())
+        unregistered = on_disk - set(CATALOG.keys()) - RETIRED_NPY_STEMS
         assert not unregistered, f"Unregistered: {unregistered}"
 
     def test_required_count(self):

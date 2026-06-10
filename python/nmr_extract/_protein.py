@@ -80,16 +80,16 @@ class HaighMallionGroup(RingKernelGroup):
 
 
 @dataclass(frozen=True)
-class PiQuadrupoleGroup(RingKernelGroup):
+class PiQuadrupoleGroup:
     """Pi-quadrupole with row-aligned per-ring scalar diagnostics."""
+    per_type_T0: PerRingTypeT0
     quad_scalar: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
-class DispersionGroup(RingKernelGroup):
-    """Dispersion with row-aligned per-ring tensor diagnostics."""
-    per_ring_tensor: Optional[np.ndarray] = None
-    per_ring_spherical: Optional[ShieldingTensor] = None
+class DispersionGroup:
+    """Dispersion scalar decomposition by ring type."""
+    per_type_T0: PerRingTypeT0
 
 
 @dataclass(frozen=True)
@@ -217,11 +217,8 @@ class CoulombGroup:
 
 @dataclass(frozen=True)
 class HBondGroup:
-    shielding: ShieldingTensor
     scalars: HBondScalars
     nearest_dir: Optional[VectorField] = None
-    nearest_tensor: Optional[np.ndarray] = None
-    nearest_spherical: Optional[ShieldingTensor] = None
     flags: Optional[np.ndarray] = None
 
     @property
@@ -1142,7 +1139,7 @@ class LarsenHBondGroup:
     frame (rotated from the canonical donor frame at calculator time)
     and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols).
 
-    Methods accumulate side-by-side with the kernel-form ``HBondGroup``
+    Methods accumulate side-by-side with the scalar-geometry ``HBondGroup``
     — both calculators cover overlapping physics (amide-H / backbone-O
     subset) but use different formulations (kernel × η vs grid lookup).
     Per-atom-type differences are themselves thesis-reportable. See
@@ -1209,7 +1206,6 @@ class Protein:
     haigh_mallion: HaighMallionGroup
     pi_quadrupole: PiQuadrupoleGroup
     dispersion: DispersionGroup
-    ring_susceptibility: ShieldingTensor
 
     # Per-ring sparse data
     ring_contributions: RingContributions = None
@@ -1506,17 +1502,11 @@ def load(path: str | Path) -> Protein:
         ring_B_field=get("hm_ring_B_field"),
     )
     pi_quadrupole = PiQuadrupoleGroup(
-        shielding=get("pq_shielding"),
         per_type_T0=get("pq_per_type_T0"),
-        per_type_T2=get("pq_per_type_T2"),
         quad_scalar=get("piquad_quad_scalar"),
     )
     dispersion = DispersionGroup(
-        shielding=get("disp_shielding"),
         per_type_T0=get("disp_per_type_T0"),
-        per_type_T2=get("disp_per_type_T2"),
-        per_ring_tensor=get("disp_per_ring_tensor"),
-        per_ring_spherical=get("disp_per_ring_spherical"),
     )
     mcconnell = McConnellGroup(
         peptide_co_fixed=get("mc_peptide_co_fixed"),
@@ -1556,11 +1546,8 @@ def load(path: str | Path) -> Protein:
         aromatic_n_src=get("coulomb_aromatic_n_src"),
     )
     hbond = HBondGroup(
-        shielding=get("hbond_shielding"),
         scalars=get("hbond_scalars"),
         nearest_dir=get("hbond_nearest_dir"),
-        nearest_tensor=get("hbond_nearest_tensor"),
-        nearest_spherical=get("hbond_nearest_spherical"),
         flags=get("hbond_flags"),
     )
 
@@ -1893,7 +1880,6 @@ def load(path: str | Path) -> Protein:
         haigh_mallion=haigh_mallion,
         pi_quadrupole=pi_quadrupole,
         dispersion=dispersion,
-        ring_susceptibility=get("ringchi_shielding"),
         ring_contributions=get("ring_contributions"),
         ring_direction_to_center=get("ring_direction_to_center"),
         ring_geometry=get("ring_geometry"),

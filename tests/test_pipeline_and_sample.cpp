@@ -6,7 +6,7 @@
 //   1. Pipeline: OperationRunner::Run attaches all results
 //   2. Traversal: per-atom fields are populated and consistent
 //   3. SampleAt: grid evaluation matches atom-position values
-//   4. All 8 calculators: SampleKernelAt returns sensible values
+//   4. Legal tensor calculators: SampleKernelAt returns sensible values
 //
 // This test is the contract between the library and the viewer.
 // If it passes, the viewer can use the library without touching it.
@@ -95,7 +95,8 @@ TEST(OperationRunnerTest, AttachesAllResults) {
     auto run_result = nmr::OperationRunner::Run(conf, opts);
 
     // Should have: Geometry, SpatialIndex, Enrichment, Dssp,
-    // ChargeAssignment, BS, HM, MC, RingSusc, PQ, Disp, Coulomb, HBond
+    // ChargeAssignment, BS, HM, MC, RingSusc scalar, PQ scalar,
+    // Disp scalar, Coulomb, HBond scalars
     EXPECT_GE(run_result.attached.size(), 13u)
         << "Expected 13+ results, got " << run_result.attached.size();
 
@@ -335,7 +336,7 @@ TEST(SampleAtTest, BSButterflyField) {
 
 
 // ============================================================================
-// Test 6: All other SampleAt methods return non-zero for appropriate queries
+// Test 6: Legal tensor SampleAt methods return non-zero for appropriate queries
 // ============================================================================
 
 TEST(SampleAtTest, AllCalculatorsSample) {
@@ -365,40 +366,28 @@ TEST(SampleAtTest, AllCalculatorsSample) {
     // McConnell is pure T2 (T0 ≈ 0), so check T2 magnitude
     EXPECT_GT(mc_st.T2Magnitude(), 0.0) << "MC SampleAt returned zero T2";
 
-    // Ring Susceptibility
-    auto chi_st = conf.Result<nmr::RingSusceptibilityResult>().SampleKernelAt(test_point);
-    EXPECT_NE(chi_st.T0, 0.0) << "RingSusc SampleAt returned zero";
-
-    // PiQuadrupole — pure T2
-    auto pq_st = conf.Result<nmr::PiQuadrupoleResult>().SampleKernelAt(test_point);
-    EXPECT_GT(pq_st.T2Magnitude(), 0.0) << "PQ SampleAt returned zero T2";
-
-    // Dispersion — sample near a ring vertex
-    const auto& vertices = geom.vertices;
-    if (!vertices.empty()) {
-        nmr::Vec3 disp_test = vertices[0] + nmr::Vec3(3.0, 0.0, 0.0);
-        auto disp_st = conf.Result<nmr::DispersionResult>().SampleKernelAt(disp_test);
-        // Dispersion may be zero if point is outside 5A cutoff from all vertices
-        // Just verify it doesn't crash
-        (void)disp_st;
-    }
-
     // Coulomb E-field
     auto E = conf.Result<nmr::CoulombResult>().SampleEFieldAt(test_point);
     EXPECT_GT(E.norm(), 0.0) << "Coulomb SampleEFieldAt returned zero";
 
-    // HBond — may return zero if no H-bonds near test point, just verify no crash
-    auto hb_st = conf.Result<nmr::HBondResult>().SampleKernelAt(test_point);
-    (void)hb_st;
+    // Scalar-only calculators still attach and populate retained fields.
+    const auto& atom0 = conf.AtomAt(0);
+    (void)conf.Result<nmr::RingSusceptibilityResult>();
+    (void)conf.Result<nmr::PiQuadrupoleResult>();
+    (void)conf.Result<nmr::DispersionResult>();
+    (void)conf.Result<nmr::HBondResult>();
+    if (!atom0.ring_neighbours.empty()) {
+        (void)atom0.ring_neighbours.front().chi_scalar;
+        (void)atom0.ring_neighbours.front().quad_scalar;
+        (void)atom0.ring_neighbours.front().disp_scalar;
+    }
+    (void)atom0.hbond_mcconnell_scalar;
 
     std::cout << "  All SampleAt methods exercised successfully\n"
               << "    BS T0=" << conf.Result<nmr::BiotSavartResult>().SampleKernelAt(test_point).T0 << "\n"
               << "    HM T0=" << hm_st.T0 << "\n"
               << "    MC T2_mag=" << mc_st.T2Magnitude() << "\n"
-              << "    Chi T0=" << chi_st.T0 << "\n"
-              << "    PQ T2_mag=" << pq_st.T2Magnitude() << "\n"
-              << "    |E|=" << E.norm() << " V/A\n"
-              << "    HBond T0=" << hb_st.T0 << "\n";
+              << "    |E|=" << E.norm() << " V/A\n";
 }
 
 

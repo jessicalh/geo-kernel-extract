@@ -10,11 +10,11 @@
 // instrument over the kernels, the move IDENTITY_AND_DYNAMICS_ROLLUP 13.5
 // places before any modelling choice.
 //
-// Channels (per atom, per frame): the per-atom *_shielding_contribution
+// Channels (per atom, per frame): the legal per-atom shielding contributions
 // SphericalTensors reduced two honest ways -- T0 where the kernel carries
 // a physical isotropic part, |T2| = SphericalTensor::T2Magnitude() for
-// all. piquad / disp / apbs(EFG) are structurally traceless (T0 == 0 by
-// Laplace / symmetry), so only their |T2| channel is emitted.
+// all. APBS EFG is structurally traceless, so only its |T2| channel is
+// emitted.
 //
 // Lifecycle: FO. Per (atom, channel) an exact bounded-memory biased
 // autocorrelation (TrajectorySpectral.h) accumulates each frame; Finalize
@@ -65,13 +65,12 @@ public:
 
     // The reduced scalar channels, in emission order. T0 channels carry
     // the kernel's isotropic part; AbsT2 channels carry the angular
-    // amplitude |T2|. Pure-T2 kernels (piquad/disp/apbs) have no T0 channel.
+    // amplitude |T2|. APBS EFG has no T0 channel.
     enum class Channel : std::uint8_t {
         BsT0, BsAbsT2, HmT0, HmAbsT2, McT0, McAbsT2,
-        RingChiT0, RingChiAbsT2, HBondT0, HBondAbsT2,
-        PiQuadAbsT2, DispAbsT2, ApbsAbsT2
+        ApbsAbsT2
     };
-    static constexpr std::size_t N_CHANNELS = 13;
+    static constexpr std::size_t N_CHANNELS = 7;
 
     std::string Name() const override {
         return "KernelDynamicsTrajectoryResult";

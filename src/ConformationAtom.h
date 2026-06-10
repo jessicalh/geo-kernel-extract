@@ -41,14 +41,8 @@ struct RingNeighbourhood {
     Vec3 hm_B_field = Vec3::Zero();             // effective B-field V = H . n
     Mat3 hm_G_tensor = Mat3::Zero();            // full shielding kernel G = -n ⊗ V (rank-1)
     SphericalTensor hm_G_spherical;             // Decompose(G) — T0, T1, T2 all non-zero
-    Mat3 quad_tensor = Mat3::Zero();
-    SphericalTensor quad_spherical;
     double quad_scalar = 0.0;
-    Mat3 chi_tensor = Mat3::Zero();
-    SphericalTensor chi_spherical;
     double chi_scalar = 0.0;
-    Mat3 disp_tensor = Mat3::Zero();
-    SphericalTensor disp_spherical;
     double disp_scalar = 0.0;
     int disp_contacts = 0;
     double cos_phi = 1.0;   // azimuthal: cos of in-plane angle to vertex 0
@@ -241,28 +235,18 @@ public:
     // === H-bond properties (HBondResult) ===
     double hbond_nearest_dist = 0.0;
     Vec3 hbond_nearest_dir = Vec3::Zero();
-    Mat3 hbond_nearest_tensor = Mat3::Zero();
-    SphericalTensor hbond_nearest_spherical;
     double hbond_inv_d3 = 0.0;
     bool hbond_is_backbone = false;
     int hbond_count_within_3_5A = 0;
     double hbond_mcconnell_scalar = 0.0;  // Σ (3cos²θ−1)/r³ over contributing H-bonds
     bool hbond_is_donor = false;
     bool hbond_is_acceptor = false;
-    SphericalTensor hbond_shielding_contribution;
-
-    // === Ring-based shielding contributions ===
-    SphericalTensor piquad_shielding_contribution;
-    SphericalTensor ringchi_shielding_contribution;
-    SphericalTensor disp_shielding_contribution;
 
     // === Per-type PiQuadrupole accumulation (PiQuadrupoleResult) ===
     std::array<double, 8> per_type_pq_scalar_sum = {};           // (3cos²θ-1)/r⁴ per ring type
-    std::array<std::array<double, 5>, 8> per_type_pq_T2_sum = {}; // EFG T2 per ring type
 
     // === Per-type Dispersion accumulation (DispersionResult) ===
     std::array<double, 8> per_type_disp_scalar_sum = {};           // 1/r⁶ per ring type
-    std::array<std::array<double, 5>, 8> per_type_disp_T2_sum = {}; // disp T2 per ring type
 
     // === Graph topology (MolecularGraphResult) ===
     int graph_dist_ring = -1;

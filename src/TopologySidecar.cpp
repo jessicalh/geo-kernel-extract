@@ -557,7 +557,7 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
             "atoms_category_info.row[i] == pos.row[i] == "
             "element.row[i] == residue_index.row[i] == atom_index i. "
             "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
-            "mc_<category>_<fixed|bo>, coulomb_efg, hbond_shielding, "
+            "mc_<category>_<fixed|bo>, coulomb_efg, hbond_scalars, "
             "larsen_hbond_*, tripeptide_*, etc.) follow the same convention."},
         {"residue",
             "residues.npy is the canonical residue axis. "

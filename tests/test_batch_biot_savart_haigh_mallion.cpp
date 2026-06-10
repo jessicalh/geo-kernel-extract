@@ -221,13 +221,13 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     const double near_ring_agreement_lo = dist_bins.front().lo;
     const double near_ring_agreement_hi = dist_bins[2].hi;
 
-    // --- T2 independence: all calculator pairs involving BS and HM ---
+    // --- T2 independence: retained tensor calculator pairs involving BS and HM ---
     struct T2PairAccum {
         double sum_abs_cos = 0;
         int count = 0;
     };
-    T2PairAccum bs_vs_hm, bs_vs_mc, bs_vs_co, bs_vs_rchi, bs_vs_hb;
-    T2PairAccum hm_vs_mc, hm_vs_co, hm_vs_rchi, hm_vs_hb;
+    T2PairAccum bs_vs_hm, bs_vs_mc, bs_vs_co;
+    T2PairAccum hm_vs_mc, hm_vs_co;
     T2PairAccum bs_vs_hm_near_ring;
     int bs_hm_t0_near_ring_sign_agree = 0;
     int bs_hm_t0_near_ring_sign_count = 0;
@@ -418,13 +418,11 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                 }
             }
 
-            // --- T2 independence: BS and HM vs all other calculators ---
+            // --- T2 independence: BS and HM vs retained tensor calculators ---
             double bs_t2_mag = ca.bs_shielding_contribution.T2Magnitude();
             double hm_t2_mag = ca.hm_shielding_contribution.T2Magnitude();
             double mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
             double co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
-            double rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
-            double hb_t2_mag = ca.hbond_shielding_contribution.T2Magnitude();
 
             auto accum = [&](T2PairAccum& acc, const std::array<double,5>& a,
                              const std::array<double,5>& b, double a_mag, double b_mag) {
@@ -435,27 +433,19 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                 }
             };
 
-            // BS vs everything
+            // BS vs retained tensor calculators
             accum(bs_vs_hm, ca.bs_shielding_contribution.T2,
                   ca.hm_shielding_contribution.T2, bs_t2_mag, hm_t2_mag);
             accum(bs_vs_mc, ca.bs_shielding_contribution.T2,
                   ca.mc_shielding_contribution.T2, bs_t2_mag, mc_t2_mag);
             accum(bs_vs_co, ca.bs_shielding_contribution.T2,
                   ca.coulomb_shielding_contribution.T2, bs_t2_mag, co_t2_mag);
-            accum(bs_vs_rchi, ca.bs_shielding_contribution.T2,
-                  ca.ringchi_shielding_contribution.T2, bs_t2_mag, rc_t2_mag);
-            accum(bs_vs_hb, ca.bs_shielding_contribution.T2,
-                  ca.hbond_shielding_contribution.T2, bs_t2_mag, hb_t2_mag);
 
-            // HM vs everything
+            // HM vs retained tensor calculators
             accum(hm_vs_mc, ca.hm_shielding_contribution.T2,
                   ca.mc_shielding_contribution.T2, hm_t2_mag, mc_t2_mag);
             accum(hm_vs_co, ca.hm_shielding_contribution.T2,
                   ca.coulomb_shielding_contribution.T2, hm_t2_mag, co_t2_mag);
-            accum(hm_vs_rchi, ca.hm_shielding_contribution.T2,
-                  ca.ringchi_shielding_contribution.T2, hm_t2_mag, rc_t2_mag);
-            accum(hm_vs_hb, ca.hm_shielding_contribution.T2,
-                  ca.hbond_shielding_contribution.T2, hm_t2_mag, hb_t2_mag);
         }
 
         // --- DFT proximity analysis ---
@@ -603,12 +593,8 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     report_t2("BiotSavart vs HaighMallion:", bs_vs_hm);
     report_t2("BiotSavart vs McConnell:", bs_vs_mc);
     report_t2("BiotSavart vs Coulomb:", bs_vs_co);
-    report_t2("BiotSavart vs RingSuscept:", bs_vs_rchi);
-    report_t2("BiotSavart vs HBond:", bs_vs_hb);
     report_t2("HaighMallion vs McConnell:", hm_vs_mc);
     report_t2("HaighMallion vs Coulomb:", hm_vs_co);
-    report_t2("HaighMallion vs RingSuscept:", hm_vs_rchi);
-    report_t2("HaighMallion vs HBond:", hm_vs_hb);
     std::cout << "\n";
 
     auto mean_t2_abs_cos = [](const T2PairAccum& acc) {
@@ -723,6 +709,4 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         << "BS-HM atom-level T2 comparison needs fixture samples";
     check_negative_control("BS vs McConnell", bs_vs_mc);
     check_negative_control("BS vs Coulomb", bs_vs_co);
-    check_negative_control("BS vs RingSuscept", bs_vs_rchi);
-    check_negative_control("BS vs HBond", bs_vs_hb);
 }

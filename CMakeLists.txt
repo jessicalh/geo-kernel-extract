@@ -683,10 +683,6 @@ add_library(nmr_shielding
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
     src/HmShieldingTimeSeriesTrajectoryResult.cpp
     src/McConnellShieldingTimeSeriesTrajectoryResult.cpp
-    src/PiQuadrupoleShieldingTimeSeriesTrajectoryResult.cpp
-    src/RingSusceptibilityShieldingTimeSeriesTrajectoryResult.cpp
-    src/DispersionShieldingTimeSeriesTrajectoryResult.cpp
-    src/HBondShieldingTimeSeriesTrajectoryResult.cpp
     src/SasaTimeSeriesTrajectoryResult.cpp
     src/AIMNet2ChargeTimeSeriesTrajectoryResult.cpp
     src/AIMNet2EmbeddingTimeSeriesTrajectoryResult.cpp
@@ -1211,14 +1207,12 @@ nmr_test(trajectory_scope_tests
         tests/test_dihedral_bin_transition.cpp
         tests/test_dihedral_time_series.cpp
         tests/test_dynamics_observables.cpp
-        tests/test_disp_shielding_time_series.cpp
         tests/test_dssp8_time_series.cpp
         tests/test_dssp8_transition.cpp
         tests/test_eeq_welford.cpp
         tests/test_frame_pdb_emitter.cpp
         tests/test_gromacs_energy_time_series.cpp
         tests/test_hbond_count_welford.cpp
-        tests/test_hbond_shielding_time_series.cpp
         tests/test_hm_shielding_time_series.cpp
         tests/test_hm_welford.cpp
         tests/test_hydration_geometry_time_series.cpp
@@ -1234,10 +1228,8 @@ nmr_test(trajectory_scope_tests
         tests/test_larsen_hbond_water_term_time_series.cpp
         tests/test_mc_shielding_time_series.cpp
         tests/test_mc_welford.cpp
-        tests/test_piquad_shielding_time_series.cpp
         tests/test_ring_neighbourhood_trajectory_stats.cpp
         tests/test_ring_pucker_time_series.cpp
-        tests/test_ringchi_shielding_time_series.cpp
         tests/test_rmsd_spike_dft_coord.cpp
         tests/test_rmsd_tracking.cpp
         tests/test_sasa_time_series.cpp
@@ -1282,9 +1274,7 @@ nmr_test(batch_tests
     LABELS batch
     SOURCES
         tests/test_batch_biot_savart_haigh_mallion.cpp
-        tests/test_batch_coulomb_ringchi.cpp
         tests/test_batch_mcconnell.cpp
-        tests/test_batch_piquad_disp.cpp
 )
 
 

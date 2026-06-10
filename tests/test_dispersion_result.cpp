@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <iostream>
+#include <array>
 
 #include "DispersionResult.h"
 #include "GeometryResult.h"
@@ -144,36 +145,27 @@ TEST_F(DispProteinTest, ComputeAndAttach) {
 }
 
 
-TEST_F(DispProteinTest, TracelessAndSymmetric) {
+TEST_F(DispProteinTest, ScalarsAndContactsPopulated) {
     auto& conf = protein->Conformation();
     conf.AttachResult(DispersionResult::Compute(conf));
 
-    int checked = 0;
-    double max_trace = 0.0;
-    double max_asym = 0.0;
+    int with_scalar = 0;
+    double max_scalar = 0.0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
-            if (rn.disp_tensor.isZero(1e-20)) continue;
-
-            max_trace = std::max(max_trace, std::abs(rn.disp_tensor.trace()));
-
-            for (int a = 0; a < 3; ++a)
-                for (int b = a + 1; b < 3; ++b)
-                    max_asym = std::max(max_asym,
-                        std::abs(rn.disp_tensor(a, b) - rn.disp_tensor(b, a)));
-
-            checked++;
+            if (rn.disp_scalar > 0.0) {
+                with_scalar++;
+                max_scalar = std::max(max_scalar, rn.disp_scalar);
+            }
         }
     }
 
-    EXPECT_GT(checked, 0) << "Should have dispersion pairs";
-    EXPECT_LT(max_trace, 1e-10) << "Dispersion tensor must be traceless";
-    EXPECT_LT(max_asym, 1e-14) << "Dispersion tensor must be symmetric";
+    EXPECT_GT(with_scalar, 0) << "Should have dispersion scalar pairs";
+    EXPECT_GT(max_scalar, 0.0) << "Dispersion scalar should be positive";
 
-    std::cout << "  Checked " << checked << " ring-atom pairs\n"
-              << "  max |Tr| = " << max_trace
-              << ", max asymmetry = " << max_asym << "\n";
+    std::cout << "  Pairs with scalar: " << with_scalar
+              << ", max scalar = " << max_scalar << "\n";
 }
 
 
@@ -205,23 +197,29 @@ TEST_F(DispProteinTest, ContactCountsReasonable) {
 }
 
 
-TEST_F(DispProteinTest, ShieldingContributionHasT2) {
+TEST_F(DispProteinTest, PerTypeT0AccumulatesScalars) {
     auto& conf = protein->Conformation();
     conf.AttachResult(DispersionResult::Compute(conf));
 
-    int nonzero_t2 = 0;
-    double max_t2 = 0.0;
+    int checked_atoms = 0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double t2m = conf.AtomAt(ai).disp_shielding_contribution.T2Magnitude();
-        if (t2m > 1e-10) nonzero_t2++;
-        max_t2 = std::max(max_t2, t2m);
+        const auto& ca = conf.AtomAt(ai);
+        std::array<double, 8> sparse_sum = {};
+        for (const auto& rn : ca.ring_neighbours) {
+            int ti = static_cast<int>(rn.ring_type);
+            if (ti >= 0 && ti < 8)
+                sparse_sum[ti] += rn.disp_scalar;
+        }
+        for (int ti = 0; ti < 8; ++ti)
+            EXPECT_NEAR(ca.per_type_disp_scalar_sum[ti], sparse_sum[ti], 1e-14);
+        checked_atoms++;
     }
 
-    EXPECT_GT(nonzero_t2, 0) << "Some atoms should have dispersion T2";
+    EXPECT_GT(checked_atoms, 0) << "Should check atoms";
 
-    std::cout << "  T2 nonzero: " << nonzero_t2
-              << ", max |T2| = " << max_t2 << "\n";
+    std::cout << "  Checked per-type dispersion scalar sums on "
+              << checked_atoms << " atoms\n";
 }
 
 
@@ -248,15 +246,12 @@ TEST(DispOrcaTest, RunOnProtonatedProtein) {
 
     int with_disp = 0;
     double max_scalar = 0.0;
-    double max_t2 = 0.0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (rn.disp_contacts > 0) with_disp++;
             max_scalar = std::max(max_scalar, std::abs(rn.disp_scalar));
         }
-        max_t2 = std::max(max_t2,
-            conf.AtomAt(ai).disp_shielding_contribution.T2Magnitude());
     }
 
     EXPECT_GT(with_disp, 0) << "Some pairs should have dispersion contacts";
@@ -265,6 +260,5 @@ TEST(DispOrcaTest, RunOnProtonatedProtein) {
               << "    atoms=" << conf.AtomCount()
               << " rings=" << load.protein->RingCount() << "\n"
               << "    pairs with contacts: " << with_disp << "\n"
-              << "    max |scalar| = " << max_scalar << " A^-6\n"
-              << "    max |T2| = " << max_t2 << " A^-6\n";
+              << "    max |scalar| = " << max_scalar << " A^-6\n";
 }

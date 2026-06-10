@@ -345,7 +345,8 @@ TEST(DynamicsObservables, KernelInstrumentPerFrameExtractionSet) {
         std::vector<std::vector<std::vector<double>>> spec;    // (N, C, F)
         kg.getDataSet("power_spectrum").read(spec);
         ASSERT_GT(acf.size(), 0u);
-        ASSERT_EQ(acf[0].size(), 13u) << "13 kernel channels";
+        ASSERT_EQ(acf[0].size(), nmr::KernelDynamicsTrajectoryResult::N_CHANNELS)
+            << "retained kernel channels";
         std::size_t n_active = 0;
         for (const auto& atom : acf)
             for (const auto& ch : atom) {
@@ -371,7 +372,7 @@ TEST(DynamicsObservables, KernelInstrumentPerFrameExtractionSet) {
         cg.getDataSet("correlation_matrix").read(cm);
         ASSERT_GT(cm.size(), 0u);
         const std::size_t C = cm[0].size();
-        ASSERT_EQ(C, 13u);
+        ASSERT_EQ(C, nmr::KernelCoherenceTrajectoryResult::N_CHANNELS);
         std::size_t n_diag = 0;
         for (const auto& atom : cm)
             for (std::size_t a = 0; a < C; ++a) {

@@ -14,7 +14,7 @@
 // per Larsen's NMA-water complex DFT).
 //
 // Methods accumulate (feedback_methods_accumulate): this calculator
-// runs side-by-side with the kernel-form HBondResult. Both emit their
+// runs side-by-side with the scalar-geometry HBondResult. Both emit their
 // own NPYs. The kernel-vs-grid per-atom-type residual is itself a
 // methodological coordinate.
 //

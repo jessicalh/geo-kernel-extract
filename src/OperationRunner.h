@@ -103,7 +103,7 @@ struct RunOptions {
     // Null = skip LarsenHBondShieldingResult.
     // When set, OperationRunner::Run attaches the calculator after the
     // tripeptide block. Methods accumulate side-by-side with the
-    // kernel-form HBondResult (feedback_methods_accumulate).
+    // scalar-geometry HBondResult (feedback_methods_accumulate).
     const LarsenHBondGrid* larsen_hbond_grid = nullptr;
 };
 

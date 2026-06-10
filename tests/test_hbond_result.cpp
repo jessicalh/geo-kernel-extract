@@ -53,11 +53,9 @@ TEST(HBondOrcaTest, RunOnProtonatedProtein) {
     ASSERT_NE(hbond, nullptr);
     conf.AttachResult(std::move(hbond));
 
-    // T0 = f identity: verify on nearest H-bond tensor
     int checked = 0;
-    double max_diff = 0.0;
     int has_hbond = 0;
-    double max_t0 = 0, max_t2 = 0;
+    double max_scalar = 0;
     int donors = 0, acceptors = 0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
@@ -65,19 +63,12 @@ TEST(HBondOrcaTest, RunOnProtonatedProtein) {
 
         if (ca.hbond_nearest_dist > 0 && ca.hbond_nearest_dist < NO_DATA_SENTINEL) {
             has_hbond++;
-
-            // Verify T0 = f for nearest H-bond tensor
-            double t0 = ca.hbond_nearest_spherical.T0;
-            // Recompute f from the tensor trace
-            double trace = ca.hbond_nearest_tensor.trace();
-            double f_from_trace = trace / 3.0;
-            double diff = std::abs(t0 - f_from_trace);
-            max_diff = std::max(max_diff, diff);
+            EXPECT_GT(ca.hbond_inv_d3, 0.0);
+            EXPECT_NEAR(ca.hbond_nearest_dir.norm(), 1.0, 1e-8);
             checked++;
         }
 
-        max_t0 = std::max(max_t0, std::abs(ca.hbond_shielding_contribution.T0));
-        max_t2 = std::max(max_t2, ca.hbond_shielding_contribution.T2Magnitude());
+        max_scalar = std::max(max_scalar, std::abs(ca.hbond_mcconnell_scalar));
         if (ca.hbond_is_donor) donors++;
         if (ca.hbond_is_acceptor) acceptors++;
     }
@@ -87,17 +78,13 @@ TEST(HBondOrcaTest, RunOnProtonatedProtein) {
               << " residues=" << load.protein->ResidueCount() << "\n"
               << "    atoms with H-bond neighbours: " << has_hbond << "\n"
               << "    donors: " << donors << " acceptors: " << acceptors << "\n"
-              << "    T0=Trace/3 verified on " << checked
-              << " nearest tensors, max diff = " << max_diff << "\n"
-              << "    max |T0| = " << max_t0 << " A^-3\n"
-              << "    max |T2| = " << max_t2 << " A^-3\n";
+              << "    nearest geometry verified on " << checked << " atoms\n"
+              << "    max |scalar| = " << max_scalar << " A^-3\n";
 
     EXPECT_GT(has_hbond, 0) << "Some atoms should have H-bond neighbours";
     EXPECT_GT(donors, 0) << "Should have donor atoms";
     EXPECT_GT(acceptors, 0) << "Should have acceptor atoms";
-    EXPECT_LT(max_diff, 1e-10) << "T0 must equal Trace/3 at machine precision";
-    EXPECT_GT(max_t0, 0.001) << "T0 should be non-zero";
-    EXPECT_GT(max_t2, 0.001) << "T2 should be non-zero";
+    EXPECT_GT(max_scalar, 0.001) << "Scalar should be non-zero";
 }
 
 
@@ -125,29 +112,10 @@ TEST(BatchHBond, AllCleanPairs) {
     uint32_t saved_mask = OperationLog::GetChannelMask();
     OperationLog::SetChannelMask(0);
 
-    // T2 independence accumulators
-    auto t2_cos_sim = [](const std::array<double,5>& a,
-                         const std::array<double,5>& b) -> double {
-        double dot = 0, na = 0, nb = 0;
-        for (int m = 0; m < 5; ++m) {
-            dot += a[m] * b[m];
-            na += a[m] * a[m];
-            nb += b[m] * b[m];
-        }
-        double denom = std::sqrt(na * nb);
-        return (denom < 1e-20) ? 0.0 : dot / denom;
-    };
-
-    constexpr double TEST_T2_MIN = 1e-4;
-
-    struct T2Pair { double sum_abs_cos = 0; int count = 0; };
-    T2Pair hb_vs_mc, hb_vs_co, hb_vs_rc;
-
     int processed = 0, skipped = 0, failed = 0;
-    int total_hbonds = 0;
-    double grand_max_t0 = 0, grand_max_t2 = 0;
-    double grand_sum_t0 = 0, grand_sum_t2 = 0;
-    int grand_t0_count = 0;
+    double grand_max_scalar = 0;
+    double grand_sum_scalar = 0;
+    int grand_scalar_count = 0;
 
     // Per-secondary-structure: H-bond count in helix vs sheet vs coil
     int hb_in_helix = 0, hb_in_sheet = 0, hb_in_coil = 0;
@@ -213,15 +181,12 @@ TEST(BatchHBond, AllCleanPairs) {
         for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
             const auto& ca = conf.AtomAt(ai);
 
-            double t0 = std::abs(ca.hbond_shielding_contribution.T0);
-            double t2 = ca.hbond_shielding_contribution.T2Magnitude();
+            double scalar = std::abs(ca.hbond_mcconnell_scalar);
 
-            if (t0 > 1e-10) {
-                grand_sum_t0 += t0;
-                grand_sum_t2 += t2;
-                grand_t0_count++;
-                grand_max_t0 = std::max(grand_max_t0, t0);
-                grand_max_t2 = std::max(grand_max_t2, t2);
+            if (scalar > 1e-10) {
+                grand_sum_scalar += scalar;
+                grand_scalar_count++;
+                grand_max_scalar = std::max(grand_max_scalar, scalar);
             }
 
             // Per-SS H-bond counting: for atoms that are donors
@@ -233,30 +198,6 @@ TEST(BatchHBond, AllCleanPairs) {
                 else hb_in_coil++;
             }
 
-            // T2 independence: HBond vs other three calculators
-            double hb_t2_mag = ca.hbond_shielding_contribution.T2Magnitude();
-            double mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
-            double co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
-            double rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
-
-            if (hb_t2_mag > TEST_T2_MIN && mc_t2_mag > TEST_T2_MIN) {
-                double c = t2_cos_sim(ca.hbond_shielding_contribution.T2,
-                                      ca.mc_shielding_contribution.T2);
-                hb_vs_mc.sum_abs_cos += std::abs(c);
-                hb_vs_mc.count++;
-            }
-            if (hb_t2_mag > TEST_T2_MIN && co_t2_mag > TEST_T2_MIN) {
-                double c = t2_cos_sim(ca.hbond_shielding_contribution.T2,
-                                      ca.coulomb_shielding_contribution.T2);
-                hb_vs_co.sum_abs_cos += std::abs(c);
-                hb_vs_co.count++;
-            }
-            if (hb_t2_mag > TEST_T2_MIN && rc_t2_mag > TEST_T2_MIN) {
-                double c = t2_cos_sim(ca.hbond_shielding_contribution.T2,
-                                      ca.ringchi_shielding_contribution.T2);
-                hb_vs_rc.sum_abs_cos += std::abs(c);
-                hb_vs_rc.count++;
-            }
         }
 
         // ------ DFT proximity: load ALA, compute MutationDelta ------
@@ -296,7 +237,7 @@ TEST(BatchHBond, AllCleanPairs) {
                     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
                         if (!delta->HasMatch(ai)) continue;
                         double hb_t0 = std::abs(
-                            conf.AtomAt(ai).hbond_shielding_contribution.T0);
+                            conf.AtomAt(ai).hbond_mcconnell_scalar);
 
                         bool near_mut = false;
                         Vec3 pos = conf.PositionAt(ai);
@@ -333,58 +274,28 @@ TEST(BatchHBond, AllCleanPairs) {
 
     if (processed == 0) GTEST_SKIP() << "No proteins processed";
 
-    double mean_t0 = grand_sum_t0 / std::max(grand_t0_count, 1);
-    double mean_t2 = grand_sum_t2 / std::max(grand_t0_count, 1);
+    double mean_scalar = grand_sum_scalar / std::max(grand_scalar_count, 1);
 
     std::cout << "  MAGNITUDES:\n"
-              << "    Atoms with non-zero HBond T0: " << grand_t0_count << "\n"
-              << "    Mean |T0|: " << mean_t0 << " A^-3\n"
-              << "    Max |T0|:  " << grand_max_t0 << " A^-3\n"
-              << "    Mean |T2|: " << mean_t2 << " A^-3\n"
-              << "    Max |T2|:  " << grand_max_t2 << " A^-3\n"
-              << "    T2/T0 ratio: " << ((mean_t0 > 1e-10) ? mean_t2/mean_t0 : 0) << "\n\n";
+              << "    Atoms with non-zero HBond scalar: " << grand_scalar_count << "\n"
+              << "    Mean |scalar|: " << mean_scalar << " A^-3\n"
+              << "    Max |scalar|:  " << grand_max_scalar << " A^-3\n\n";
 
     std::cout << "  H-BOND DONORS BY SECONDARY STRUCTURE:\n"
               << "    Helix: " << hb_in_helix << "\n"
               << "    Sheet: " << hb_in_sheet << "\n"
               << "    Coil:  " << hb_in_coil << "\n\n";
 
-    double mean_hb_mc = (hb_vs_mc.count > 0)
-        ? hb_vs_mc.sum_abs_cos / hb_vs_mc.count : 0;
-    double mean_hb_co = (hb_vs_co.count > 0)
-        ? hb_vs_co.sum_abs_cos / hb_vs_co.count : 0;
-    double mean_hb_rc = (hb_vs_rc.count > 0)
-        ? hb_vs_rc.sum_abs_cos / hb_vs_rc.count : 0;
-
-    std::cout << "  T2 INDEPENDENCE (mean |cos| in 5D):\n"
-              << "    HBond vs McConnell:     " << mean_hb_mc
-              << " (" << hb_vs_mc.count << " atoms)\n"
-              << "    HBond vs Coulomb EFG:   " << mean_hb_co
-              << " (" << hb_vs_co.count << " atoms)\n"
-              << "    HBond vs Ring Chi:      " << mean_hb_rc
-              << " (" << hb_vs_rc.count << " atoms)\n\n";
-
     // Assertions
     EXPECT_EQ(failed, 0);
     EXPECT_GT(processed, 100);
 
     // Physical magnitudes
-    EXPECT_GT(grand_max_t0, 0.001) << "H-bond T0 should be non-zero";
-    EXPECT_GT(grand_max_t2, 0.001) << "H-bond T2 should be non-zero";
-
-    // T2 should exceed T0 (dipolar kernel)
-    EXPECT_GT(mean_t2, mean_t0)
-        << "T2 should exceed T0 for dipolar kernel";
+    EXPECT_GT(grand_max_scalar, 0.001) << "H-bond scalar should be non-zero";
 
     // H-bonds should exist in all SS types
     EXPECT_GT(hb_in_helix, 0) << "Should have helix H-bond donors";
     EXPECT_GT(hb_in_sheet, 0) << "Should have sheet H-bond donors";
-
-    // T2 independence: HBond should not be parallel to other calculators
-    if (hb_vs_mc.count > 1000) {
-        EXPECT_LT(mean_hb_mc, 0.9)
-            << "HBond and McConnell T2 should not be parallel";
-    }
 
     // DFT proximity: H-bond signal near vs far from aromatic mutation sites.
     // Unlike ring chi and Coulomb aromatic (which concentrate near mutations),
@@ -396,7 +307,7 @@ TEST(BatchHBond, AllCleanPairs) {
     double hb_near_far_ratio = (grand_hb_far > 1e-10)
         ? grand_hb_near / grand_hb_far : 0;
 
-    std::cout << "  DFT PROXIMITY (HBond |T0| near vs far from mutation sites):\n"
+    std::cout << "  DFT PROXIMITY (HBond |scalar| near vs far from mutation sites):\n"
               << "    Near mutation (<8A): " << grand_hb_near << " A^-3\n"
               << "    Far from mutation:   " << grand_hb_far << " A^-3\n"
               << "    Ratio near/far: " << hb_near_far_ratio

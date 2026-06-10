@@ -166,7 +166,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="atom", mechanism="topology"),
     ArraySpec("residue_type",     "identity",   np.ndarray,        None, True,  "Residue type enum (int32)",
               native_axis="atom", mechanism="topology"),
-    ArraySpec("ring_contributions","identity",  RingContributions, 58,   True,  "Per-(atom,ring) pair contributions",
+    ArraySpec("ring_contributions","identity",  RingContributions, 40,   True,  "Per-(atom,ring) pair contributions",
               native_axis="ring_contribution_pair", irreps=_SHIELD_IRREPS, units="",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
     ArraySpec("ring_direction_to_center", "identity", VectorField, 3, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: RingNeighbourhood.direction_to_center vector",
@@ -219,30 +219,14 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="ring_contribution_pair", irreps="1e", units="Angstrom^-1", tensor_rank=1, parity="even", mechanism="ring_current"),
 
     # ── Pi-Quadrupole (PiQuadrupoleResult.cpp) ───────────────────
-    ArraySpec("pq_shielding",     "pi_quadrupole", ShieldingTensor, 9,   True,  "PQ EFG shielding",
-              irreps=_SHIELD_IRREPS, units="Angstrom^-5", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_efg"),
     ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "PQ Buckingham A-term scalar per ring type",
               irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
-    ArraySpec("pq_per_type_T2",   "pi_quadrupole", PerRingTypeT2,   40,  True,  "PQ T2 per ring type",
-              irreps="2e", units="Angstrom^-5", tensor_rank=2, mechanism="ring_efg"),
     ArraySpec("piquad_quad_scalar", "pi_quadrupole", np.ndarray, None, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: real computed RingNeighbourhood.quad_scalar, not the derived geometry scalar in ring_contributions column 7",
               native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
 
     # ── Dispersion (DispersionResult.cpp) ────────────────────────
-    ArraySpec("disp_shielding",   "dispersion", ShieldingTensor,   9,    True,  "Dispersion shielding (1/r^6)",
-              irreps=_SHIELD_IRREPS, units="Angstrom^-6", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_dispersion"),
     ArraySpec("disp_per_type_T0", "dispersion", PerRingTypeT0,     8,    True,  "Dispersion scalar per ring type",
               irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion"),
-    ArraySpec("disp_per_type_T2", "dispersion", PerRingTypeT2,     40,   True,  "Dispersion T2 per ring type",
-              irreps="2e", units="Angstrom^-6", tensor_rank=2, mechanism="ring_dispersion"),
-    ArraySpec("disp_per_ring_tensor", "dispersion", np.ndarray, 9, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: raw RingNeighbourhood.disp_tensor flattened row-major as xx, xy, xz, yx, yy, yz, zx, zy, zz",
-              native_axis="ring_contribution_pair", irreps="matrix", units="Angstrom^-6", tensor_rank=2, mechanism="ring_dispersion"),
-    ArraySpec("disp_per_ring_spherical", "dispersion", ShieldingTensor, 9, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: RingNeighbourhood.disp_spherical packed as [T0, T1x, T1y, T1z, T2_m-2..+2]",
-              native_axis="ring_contribution_pair", irreps=_SHIELD_IRREPS, units="Angstrom^-6", tensor_rank=2, mechanism="ring_dispersion"),
-
-    # ── Ring Susceptibility (RingSusceptibilityResult.cpp) ───────
-    ArraySpec("ringchi_shielding","ring_susceptibility", ShieldingTensor, 9, True, "Ring susceptibility shielding",
-              irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
 
     # ── McConnell (McConnellResult.cpp) ──────────────────────────
     # Forward schema: packed SphericalTensor
@@ -455,16 +439,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               is_feature=False, irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
-    ArraySpec("hbond_shielding",  "hbond", ShieldingTensor,        9,    True,  "H-bond shielding",
-              irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_kernel"),
     ArraySpec("hbond_scalars",    "hbond", HBondScalars,           4,    True,  "H-bond scalars (nearest_dist, 1/r^3, count, McConnell angular scalar Σ)",
               mechanism="hbond_kernel"),
     ArraySpec("hbond_nearest_dir", "hbond", VectorField,            3,    False, "Nearest accepted H-bond direction per atom from H-bond midpoint to target atom",
               irreps="1o", tensor_rank=1, parity="odd", mechanism="hbond_kernel"),
-    ArraySpec("hbond_nearest_tensor", "hbond", np.ndarray,          9,    False, "Nearest accepted H-bond raw dipolar Mat3 per atom, flattened row-major as xx, xy, xz, yx, yy, yz, zx, zy, zz",
-              irreps="matrix", units="Angstrom^-3", tensor_rank=2, mechanism="hbond_kernel"),
-    ArraySpec("hbond_nearest_spherical", "hbond", ShieldingTensor,   9,    False, "Nearest accepted H-bond dipolar tensor per atom packed as [T0, T1x, T1y, T1z, T2_m-2..+2]",
-              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="hbond_kernel"),
     ArraySpec("hbond_flags", "hbond", np.ndarray,                   3,    False, "H-bond boolean flags as int8 columns: hbond_is_backbone, hbond_is_donor, hbond_is_acceptor",
               mechanism="hbond_kernel"),
 
@@ -722,7 +700,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # Per-class Mat3 contributions are decomposed per Pattern 11 into
     # SphericalTensor (T0 + T1 + T2 = 9 columns) and accumulated to
     # ConformationAtom. Methods accumulate side-by-side with the
-    # kernel-form HBondResult — see feedback_methods_accumulate memory
+    # scalar-geometry HBondResult — see feedback_methods_accumulate memory
     # entry.
     #
     # ML ELIGIBILITY NOTE (per audit 2026-05-13):

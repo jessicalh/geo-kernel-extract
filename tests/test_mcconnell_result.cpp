@@ -620,7 +620,7 @@ TEST_F(McConnellProteinTest, NearFieldAuditCountsAreReported) {
 }
 
 
-TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyOneArraysAndManifest) {
+TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyArraysAndManifest) {
     auto& conf = protein->Conformation();
     conf.AttachResult(McConnellResult::Compute(conf));
 
@@ -628,7 +628,7 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyOneArraysAndManifest) {
         ("mcconnell_features_" + std::to_string(::getpid()));
     fs::create_directories(out_dir);
     const auto& mc = conf.Result<McConnellResult>();
-    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 21);
+    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 20);
 
     for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
         const auto cat = static_cast<McConnellSourceCategory>(c);
@@ -645,7 +645,6 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyOneArraysAndManifest) {
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_co_midpoint.npy"));
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_co_T2.npy"));
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_cn_T2.npy"));
-    EXPECT_TRUE(fs::exists(out_dir / "mc_bond_neighbors.npy"));
 
     const fs::path manifest = out_dir / "extraction_manifest.json";
     ASSERT_TRUE(fs::exists(manifest));

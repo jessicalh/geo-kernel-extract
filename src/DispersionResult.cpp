@@ -14,10 +14,6 @@
 
 namespace nmr {
 
-// Number of T2 (rank-2) spherical-tensor components per ring type.
-static constexpr int kT2Components = 5;
-
-
 std::vector<std::type_index> DispersionResult::Dependencies() const {
     return {
         std::type_index(typeid(SpatialIndexResult)),
@@ -63,20 +59,18 @@ static double DispersionSwitchingFunction(double r) {
 
 
 // ============================================================================
-// per-vertex kernel: London dispersion from one ring vertex at one atom.
+// Per-vertex clean London dispersion scalar from one ring vertex at one atom.
 //
 // Per vertex, with unit C6 = 1:
 //
-//   K_ab   = S(r) * (3 d_a d_b / r^8 - delta_ab / r^6)   (Angstrom^-6)
 //   scalar = S(r) / r^6                                  (Angstrom^-6)
 //
 // where d = r_atom - r_vertex, r = |d|, and S(r) is the switching function.
-// The tensor is traceless per vertex:
-//   Tr(K) = S(r) * (3|d|^2/r^8 - 3/r^6) = S(r) * 0 = 0.
+// The former unit-C6 rank-2 tensor is intentionally no longer computed
+// or emitted.
 // ============================================================================
 
 struct DispVertexResult {
-    Mat3 K = Mat3::Zero();
     double scalar = 0.0;
     bool valid = false;
 };
@@ -97,18 +91,10 @@ static DispVertexResult ComputeDispVertex(
     double S = DispersionSwitchingFunction(r);
     if (S < CalculatorConfig::Get("dispersion_switching_noise_floor")) return result;  // below noise floor
 
-    Vec3 d_av = atom_pos - vertex_pos;   // d = r_atom − r_vertex (header symbol)
     double r2 = r * r;
     double r6 = r2 * r2 * r2;
-    double r8 = r6 * r2;
 
     result.scalar = S / r6;
-
-    // K_ab = S(r) * (3 d_a d_b / r^8 - delta_ab / r^6)
-    for (int a = 0; a < 3; ++a)
-        for (int b = 0; b < 3; ++b)
-            result.K(a, b) = S * (3.0 * d_av(a) * d_av(b) / r8
-                                - (a == b ? 1.0 : 0.0) / r6);
 
     result.valid = true;
     return result;
@@ -197,8 +183,6 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
 
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
-        Mat3 disp_total = Mat3::Zero();
-
         for (size_t ri : nearby_rings) {
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
@@ -252,7 +236,6 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
             }
 
             // --- vertex kernel sum ---
-            Mat3 K_ring = Mat3::Zero();
             double s_ring = 0.0;
             int contacts = 0;
 
@@ -275,7 +258,6 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
                     continue;
                 }
 
-                K_ring += vertex_result.K;
                 s_ring += vertex_result.scalar;
                 contacts++;
             }
@@ -310,9 +292,7 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
                 ring_neighbour = &ca.ring_neighbours.back();
             }
 
-            // store kernel on the ring-neighbourhood record (spherical decomposition)
-            ring_neighbour->disp_tensor = K_ring;
-            ring_neighbour->disp_spherical = SphericalTensor::Decompose(K_ring);
+            // Store only the clean scalar/contact rescue.
             ring_neighbour->disp_scalar = s_ring;
             ring_neighbour->disp_contacts = contacts;
 
@@ -320,16 +300,11 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
             int ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < kAromaticRingTypeCount) {
                 ca.per_type_disp_scalar_sum[ti] += s_ring;
-                for (int c = 0; c < kT2Components; ++c)
-                    ca.per_type_disp_T2_sum[ti][c] += ring_neighbour->disp_spherical.T2[c];
             }
 
-            disp_total += K_ring;
             total_contacts += contacts;
             total_pairs++;
         }
-
-        ca.disp_shielding_contribution = SphericalTensor::Decompose(disp_total);
     }
 
     OperationLog::Info(LogCalcOther, "DispersionResult::Compute",
@@ -344,61 +319,21 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
 }
 
 
-SphericalTensor DispersionResult::SampleKernelAt(Vec3 point) const {
-    if (!conf_) return SphericalTensor{};
-
-    const Protein& protein = conf_->ProteinRef();
-    Mat3 K_total = Mat3::Zero();
-
-    for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
-        const RingGeometry& geom = conf_->ring_geometries[ri];
-
-        // grid-sampling guard: skip points inside the ring-radius sphere and
-        // out-of-range points (raw field sample, no provenance recording)
-        double ring_dist = (point - geom.center).norm();
-        if (ring_dist < CalculatorConfig::Get("singularity_guard_distance")) continue;
-        if (ring_dist < geom.radius) continue;
-        if (ring_dist > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
-
-        // Sum over ring vertices
-        for (const auto& vertex : geom.vertices) {
-            double r = (point - vertex).norm();
-            if (r < CalculatorConfig::Get("singularity_guard_distance") || r > CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) continue;
-
-            auto vertex_result = ComputeDispVertex(point, vertex, r);
-            if (vertex_result.valid) K_total += vertex_result.K;
-        }
-    }
-
-    return SphericalTensor::Decompose(K_total);
-}
-
-
 int DispersionResult::WriteFeatures(const ProteinConformation& conf,
                                      const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
 
-    // per_type_T2 layout: 8 ring types × 5 T2 components = 40
-    constexpr int kPerTypeT2Width = kAromaticRingTypeCount * kT2Components;  // 40
-
-    std::vector<double> shielding(N * 9);
     std::vector<double> per_type_T0(N * kAromaticRingTypeCount);
-    std::vector<double> per_type_T2(N * kPerTypeT2Width);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        ca.disp_shielding_contribution.PackFull9(&shielding[i*9]);
         for (int t = 0; t < kAromaticRingTypeCount; ++t) {
             per_type_T0[i*kAromaticRingTypeCount + t] = ca.per_type_disp_scalar_sum[t];
-            for (int c = 0; c < kT2Components; ++c)
-                per_type_T2[i*kPerTypeT2Width + t*kT2Components + c] = ca.per_type_disp_T2_sum[t][c];
         }
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/disp_shielding.npy", shielding.data(), N, 9);
     NpyWriter::WriteFloat64(output_dir + "/disp_per_type_T0.npy", per_type_T0.data(), N, kAromaticRingTypeCount);
-    NpyWriter::WriteFloat64(output_dir + "/disp_per_type_T2.npy", per_type_T2.data(), N, kPerTypeT2Width);
-    return 3;
+    return 1;
 }
 
 }  // namespace nmr

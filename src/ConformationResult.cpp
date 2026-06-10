@@ -14,19 +14,6 @@ namespace fs = std::filesystem;
 
 namespace nmr {
 
-namespace {
-
-void PackMat3RowMajor(const Mat3& m, double* out) {
-    for (int r = 0; r < 3; ++r) {
-        for (int c = 0; c < 3; ++c) {
-            out[r*3 + c] = m(r, c);
-        }
-    }
-}
-
-}  // namespace
-
-
 int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                                           const std::string& output_dir) {
     OperationLog::Scope scope("ConformationResult::WriteAllFeatures",
@@ -60,24 +47,22 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
     }
 
     // Per-ring contributions — sparse (atom, ring) pair array.
-    // Shape (P, 58) where P = total evaluated (atom, ring) pairs.
+    // Shape (P, 40) where P = total evaluated (atom, ring) pairs.
     // Columns: [0-8] geometry, [9-17] BS G, [18-26] HM H (pure T2),
-    //          [27-35] HM G (shielding), [36-44] quad, [45-53] chi,
-    //          [54-55] dispersion, [56-57] azimuthal angle.
+    //          [27-35] HM G (shielding), [36-37] dispersion,
+    //          [38-39] azimuthal angle.
     {
         size_t P = 0;
         for (size_t i = 0; i < N; ++i)
             P += conf.AtomAt(i).ring_neighbours.size();
 
         if (P > 0) {
-            const size_t C = 58;
+            const size_t C = 40;
             std::vector<double> data(P * C, 0.0);
             std::vector<double> bs_B(P * 3, 0.0);
             std::vector<double> bs_B_cyl(P * 3, 0.0);
             std::vector<double> hm_B(P * 3, 0.0);
             std::vector<double> ring_dir(P * 3, 0.0);
-            std::vector<double> disp_tensor(P * 9, 0.0);
-            std::vector<double> disp_spherical(P * 9, 0.0);
             std::vector<double> piquad_scalar(P, 0.0);
             size_t row = 0;
             for (size_t i = 0; i < N; ++i) {
@@ -102,12 +87,10 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                     rn.G_spherical.PackFull9(r + 9);       // BS shielding kernel
                     rn.hm_H_spherical.PackFull9(r + 18);   // HM raw integral (pure T2)
                     rn.hm_G_spherical.PackFull9(r + 27);   // HM shielding kernel (T0+T1+T2)
-                    rn.quad_spherical.PackFull9(r + 36);
-                    rn.chi_spherical.PackFull9(r + 45);
-                    r[54] = rn.disp_scalar;
-                    r[55] = static_cast<double>(rn.disp_contacts);
-                    r[56] = rn.cos_phi;
-                    r[57] = rn.sin_phi;
+                    r[36] = rn.disp_scalar;
+                    r[37] = static_cast<double>(rn.disp_contacts);
+                    r[38] = rn.cos_phi;
+                    r[39] = rn.sin_phi;
 
                     bs_B[row*3+0] = rn.B_field.x();
                     bs_B[row*3+1] = rn.B_field.y();
@@ -125,8 +108,6 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                     ring_dir[row*3+1] = rn.direction_to_center.y();
                     ring_dir[row*3+2] = rn.direction_to_center.z();
 
-                    PackMat3RowMajor(rn.disp_tensor, &disp_tensor[row*9]);
-                    rn.disp_spherical.PackFull9(&disp_spherical[row*9]);
                     piquad_scalar[row] = rn.quad_scalar;
                     row++;
                 }
@@ -141,13 +122,9 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                                     hm_B.data(), P, 3);
             NpyWriter::WriteFloat64(output_dir + "/ring_direction_to_center.npy",
                                     ring_dir.data(), P, 3);
-            NpyWriter::WriteFloat64(output_dir + "/disp_per_ring_tensor.npy",
-                                    disp_tensor.data(), P, 9);
-            NpyWriter::WriteFloat64(output_dir + "/disp_per_ring_spherical.npy",
-                                    disp_spherical.data(), P, 9);
             NpyWriter::WriteFloat64(output_dir + "/piquad_quad_scalar.npy",
                                     piquad_scalar.data(), P);
-            total += 8;
+            total += 6;
         }
     }
 

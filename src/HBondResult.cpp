@@ -15,19 +15,6 @@
 
 namespace nmr {
 
-namespace {
-
-void PackMat3RowMajor(const Mat3& m, double* out) {
-    for (int r = 0; r < 3; ++r) {
-        for (int c = 0; c < 3; ++c) {
-            out[r*3 + c] = m(r, c);
-        }
-    }
-}
-
-}  // namespace
-
-
 std::vector<std::type_index> HBondResult::Dependencies() const {
     return {
         std::type_index(typeid(DsspResult)),
@@ -65,17 +52,12 @@ struct ResolvedHBond {
 
 
 // ============================================================================
-// The H-bond dipolar tensor kernel from one H-bond at one atom.
-//
-// Same derivation as McConnell with b_hat → h_hat:
-//
-//   M_ab = 9 cosθ d̂_a h_b  -  3 h_a h_b  -  (3 d̂_a d̂_b - δ_ab)
-//
-// Returns the stored M_ab / r³ kernel (Angstrom⁻³).
+// The clean H-bond angular scalar from one H-bond at one atom.
+// The former McConnell-form rank-2 kernel is intentionally no longer
+// computed or emitted.
 // ============================================================================
 
 struct HBondKernelResult {
-    Mat3 M_over_r3 = Mat3::Zero();
     double f = 0.0;
     double distance = 0.0;
 };
@@ -101,17 +83,6 @@ static HBondKernelResult ComputeHBondKernel(
 
     // angular factor
     result.f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
-
-    // Dipolar tensor kernel, M_ab / r3.
-    for (int a = 0; a < 3; ++a) {
-        for (int b = 0; b < 3; ++b) {
-            result.M_over_r3(a, b) =
-                (9.0 * cos_theta * d_hat(a) * h_hat(b)
-                 - 3.0 * h_hat(a) * h_hat(b)
-                 - (3.0 * d_hat(a) * d_hat(b) - (a == b ? 1.0 : 0.0)))
-                / r3;
-        }
-    }
 
     return result;
 }
@@ -281,12 +252,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         "resolved " + std::to_string(hbonds.size()) +
         " unique backbone H-bonds from DSSP");
 
-    // Store resolved H-bond geometry for SampleKernelAt grid queries
-    for (const auto& hb : hbonds) {
-        result_ptr->hbond_midpoints_.push_back(hb.midpoint);
-        result_ptr->hbond_directions_.push_back(hb.h_hat);
-        result_ptr->hbond_distances_.push_back(hb.distance);
-    }
+    result_ptr->hbond_count_ = hbonds.size();
 
     if (hbonds.empty()) {
         return result_ptr;
@@ -325,7 +291,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         // Residue index of this atom (for sequence separation)
         size_t ai_res = protein.AtomAt(ai).residue_index;
 
-        Mat3 M_total = Mat3::Zero();
         double f_sum = 0.0;  // McConnell angular scalar, summed over contributing H-bonds
         double nearest_dist = NO_DATA_SENTINEL;
         size_t nearest_hb_idx = SIZE_MAX;
@@ -379,8 +344,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
                 nearest_hb_idx = hi;
             }
 
-            // Accumulate tensor from all H-bonds (1/r³ decay handles range)
-            M_total += kernel.M_over_r3;
             f_sum += kernel.f;  // same accepted H-bond set as the tensor
             total_pairs++;
         }
@@ -400,16 +363,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             ca.hbond_nearest_dir = (atom_pos - nearest_hb.midpoint).normalized();
             ca.hbond_is_backbone = true;  // all DSSP H-bonds are backbone
 
-            // recompute kernel for the nearest H-bond only (inner loop did not
-            // retain per-bond kernels)
-            HBondKernelResult nearest_kernel = ComputeHBondKernel(
-                atom_pos, nearest_hb.midpoint, nearest_hb.h_hat);
-
-            ca.hbond_nearest_tensor = nearest_kernel.M_over_r3;
-            ca.hbond_nearest_spherical = SphericalTensor::Decompose(
-                nearest_kernel.M_over_r3);
             // 1/r3 to the NEAREST bond's midpoint (atom-to-midpoint r, distinct
-            // from the N...O source extent stored in hbond_distances_)
+            // from the N...O source extent.
             ca.hbond_inv_d3 = 1.0 / (nearest_dist * nearest_dist * nearest_dist);
         }
 
@@ -419,8 +374,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             if (ai == hb.acceptor_O) ca.hbond_is_acceptor = true;
         }
 
-        // decompose accumulated total tensor
-        ca.hbond_shielding_contribution = SphericalTensor::Decompose(M_total);
         ca.hbond_mcconnell_scalar = f_sum;
     }
 
@@ -434,42 +387,16 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 }
 
 
-SphericalTensor HBondResult::SampleKernelAt(Vec3 point) const {
-    if (!conf_ || hbond_midpoints_.empty()) return SphericalTensor{};
-
-    Mat3 M_total = Mat3::Zero();
-
-    for (size_t hi = 0; hi < hbond_midpoints_.size(); ++hi) {
-        auto kernel = ComputeHBondKernel(
-            point, hbond_midpoints_[hi], hbond_directions_[hi]);
-        // distance==0 here means the kernel hit the singularity guard and
-        // returned zero; skip it
-        if (kernel.distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
-
-        // DipolarNearFieldFilter: skip if inside the N...O distribution
-        if (kernel.distance < CalculatorConfig::Get("near_field_exclusion_ratio") * hbond_distances_[hi]) continue;
-
-        M_total += kernel.M_over_r3;
-    }
-
-    return SphericalTensor::Decompose(M_total);
-}
-
-
 int HBondResult::WriteFeatures(const ProteinConformation& conf,
                                 const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
 
-    std::vector<double> shielding(N * 9);
     std::vector<double> scalars(N * 4);
     std::vector<double> nearest_dir(N * 3);
-    std::vector<double> nearest_tensor(N * 9);
-    std::vector<double> nearest_spherical(N * 9);
     std::vector<int8_t> flags(N * 3, 0);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        ca.hbond_shielding_contribution.PackFull9(&shielding[i*9]);
         scalars[i*4+0] = ca.hbond_nearest_dist;
         scalars[i*4+1] = ca.hbond_inv_d3;
         scalars[i*4+2] = static_cast<double>(ca.hbond_count_within_3_5A);
@@ -477,24 +404,17 @@ int HBondResult::WriteFeatures(const ProteinConformation& conf,
         nearest_dir[i*3+0] = ca.hbond_nearest_dir.x();
         nearest_dir[i*3+1] = ca.hbond_nearest_dir.y();
         nearest_dir[i*3+2] = ca.hbond_nearest_dir.z();
-        PackMat3RowMajor(ca.hbond_nearest_tensor, &nearest_tensor[i*9]);
-        ca.hbond_nearest_spherical.PackFull9(&nearest_spherical[i*9]);
         flags[i*3 + 0] = ca.hbond_is_backbone ? 1 : 0;
         flags[i*3 + 1] = ca.hbond_is_donor ? 1 : 0;
         flags[i*3 + 2] = ca.hbond_is_acceptor ? 1 : 0;
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/hbond_shielding.npy", shielding.data(), N, 9);
     NpyWriter::WriteFloat64(output_dir + "/hbond_scalars.npy", scalars.data(), N, 4);
     NpyWriter::WriteFloat64(output_dir + "/hbond_nearest_dir.npy",
                             nearest_dir.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/hbond_nearest_tensor.npy",
-                            nearest_tensor.data(), N, 9);
-    NpyWriter::WriteFloat64(output_dir + "/hbond_nearest_spherical.npy",
-                            nearest_spherical.data(), N, 9);
     NpyWriter::WriteInt8(output_dir + "/hbond_flags.npy",
                          flags.data(), N, 3);
-    return 6;
+    return 3;
 }
 
 }  // namespace nmr

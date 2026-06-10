@@ -1,6 +1,6 @@
 """Per-ring sparse contributions and ring geometry reference.
 
-ring_contributions.npy — (P, 58) one row per (atom, ring) pair:
+ring_contributions.npy — (P, 40) one row per (atom, ring) pair:
     [0]     atom_index
     [1]     ring_index
     [2]     ring_type           RingTypeIndex 0-7
@@ -14,12 +14,10 @@ ring_contributions.npy — (P, 58) one row per (atom, ring) pair:
     [18:27] hm_H                SphericalTensor — HM raw integral (pure T2)
     [27:36] hm_G                SphericalTensor — HM unscaled shielding kernel G
                             (literature intensity is applied downstream)
-    [36:45] pq_G                SphericalTensor
-    [45:54] chi_G               SphericalTensor
-    [54]    disp_scalar
-    [55]    disp_contacts
-    [56]    cos_phi             azimuthal angle cosine (relative to vertex 0)
-    [57]    sin_phi             azimuthal angle sine (relative to vertex 0)
+    [36]    disp_scalar
+    [37]    disp_contacts
+    [38]    cos_phi             azimuthal angle cosine (relative to vertex 0)
+    [39]    sin_phi             azimuthal angle sine (relative to vertex 0)
 
 ring_geometry.npy — (R, 10) one row per ring:
     [0]     ring_index
@@ -41,18 +39,18 @@ from ._tensors import SphericalTensor
 class RingContributions:
     """Sparse per-(atom, ring) pair contributions.
 
-    Shape ``(P, 58)`` where P = number of evaluated (atom, ring) pairs.
-    Each row carries geometry, all ring current kernels as
+    Shape ``(P, 40)`` where P = number of evaluated (atom, ring) pairs.
+    Each row carries geometry, retained ring current kernels as
     :class:`SphericalTensor` views, dispersion scalars, and azimuthal angle.
 
     Use :meth:`for_atom` and :meth:`for_ring_type` to filter rows.
 
     Args:
-        data: numpy array of shape ``(P, 58)``.
+        data: numpy array of shape ``(P, 40)``.
     """
 
     __slots__ = ("_data",)
-    COLS = 58
+    COLS = 40
 
     def __init__(self, data: np.ndarray):
         if data.ndim != 2 or data.shape[1] != self.COLS:
@@ -126,32 +124,22 @@ class RingContributions:
         return SphericalTensor(self._data[:, 27:36])
 
     @property
-    def pq(self) -> SphericalTensor:
-        """Pi-quadrupole kernel. Cols 36-44."""
-        return SphericalTensor(self._data[:, 36:45])
-
-    @property
-    def chi(self) -> SphericalTensor:
-        """Ring susceptibility kernel. Cols 45-53."""
-        return SphericalTensor(self._data[:, 45:54])
-
-    @property
     def disp_scalar(self) -> np.ndarray:
-        return self._data[:, 54]
+        return self._data[:, 36]
 
     @property
     def disp_contacts(self) -> np.ndarray:
-        return self._data[:, 55].astype(np.intp)
+        return self._data[:, 37].astype(np.intp)
 
     @property
     def cos_phi(self) -> np.ndarray:
         """Cosine of azimuthal angle in ring plane (relative to vertex 0)."""
-        return self._data[:, 56]
+        return self._data[:, 38]
 
     @property
     def sin_phi(self) -> np.ndarray:
         """Sine of azimuthal angle in ring plane (relative to vertex 0)."""
-        return self._data[:, 57]
+        return self._data[:, 39]
 
     # ── Filtering ───────────────────────────────────────────────────
 

@@ -6,7 +6,6 @@
 #include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
 #include "GeometryChoice.h"
-#include "NpyWriter.h"
 #include "OperationLog.h"
 
 #include <cmath>
@@ -23,28 +22,18 @@ std::vector<std::type_index> RingSusceptibilityResult::Dependencies() const {
 
 
 // ============================================================================
-// The full ring-susceptibility tensor kernel from one ring at one atom.
+// The clean ring-susceptibility scalar from one ring at one atom.
 //
 // Same derivation as McConnell (GEOMETRIC_KERNEL_CATALOGUE.md) with
 // b_hat → n_hat (ring normal):
 //
 //   M_ab = 9 cosθ d̂_a n_b  -  3 n_a n_b  -  (3 d̂_a d̂_b - δ_ab)
 //
-// Returns M_ab / r³ (Angstrom⁻³).
-//
-// Also computes:
-//   K_ab = (3 d̂_a d̂_b - δ_ab) / r³   (symmetric traceless dipolar kernel)
-//   f    = (3 cos²θ - 1) / r³           (ring susceptibility scalar)
-//
-// Three terms in M:
-//   Term 1: 9 cosθ d̂ ⊗ n̂      — generally asymmetric; can contribute T1
-//   Term 2: -3 n̂ ⊗ n̂           — symmetric; contributes T0 and T2
-//   Term 3: -(3 d̂ ⊗ d̂ - I)    — symmetric traceless; contributes T2
+// The former M_ab / r³ tensor family is intentionally no longer computed
+// or emitted; this result now preserves only the clean scalar rescue.
 // ============================================================================
 
 struct RingChiKernelResult {
-    Mat3 full_tensor_over_r3 = Mat3::Zero();  // full tensor M_ab / r³ (asymmetric)
-    Mat3 dipolar_kernel = Mat3::Zero();       // symmetric traceless dipolar kernel K_ab
     double scalar_kernel = 0.0;               // ring susceptibility scalar f
     double distance = 0.0;
     Vec3 direction = Vec3::Zero();   // unit vector from ring center to atom
@@ -74,24 +63,6 @@ static RingChiKernelResult ComputeRingChiKernel(
 
     // Ring susceptibility scalar: (3 cos²θ - 1) / r³
     result.scalar_kernel = (3.0 * cos_theta * cos_theta - 1.0) / r3;
-
-    // Symmetric traceless dipolar kernel K_ab
-    for (int a = 0; a < 3; ++a)
-        for (int b = 0; b < 3; ++b)
-            result.dipolar_kernel(a, b) = (3.0 * d_hat(a) * d_hat(b)
-                              - (a == b ? 1.0 : 0.0)) / r3;  // δ_ab
-
-    // Full tensor M_ab / r³
-    //   = [9 cosθ d̂_a n_b - 3 n_a n_b - (3 d̂_a d̂_b - δ_ab)] / r³
-    for (int a = 0; a < 3; ++a) {
-        for (int b = 0; b < 3; ++b) {
-            result.full_tensor_over_r3(a, b) =
-                (9.0 * cos_theta * d_hat(a) * ring_normal(b)
-                 - 3.0 * ring_normal(a) * ring_normal(b)
-                 - (3.0 * d_hat(a) * d_hat(b) - (a == b ? 1.0 : 0.0)))  // δ_ab
-                / r3;
-        }
-    }
 
     return result;
 }
@@ -145,8 +116,6 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
 
         // nearby rings (spatial index)
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
-
-        Mat3 M_total = Mat3::Zero();
 
         for (size_t ri : nearby_rings) {
             const Ring& ring = protein.RingAt(ri);
@@ -207,19 +176,12 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
                 neighbour = &atom.ring_neighbours.back();
             }
 
-            // store ring kernel
-            // per-neighbour record (overwritten per ring); per-atom sum is M_total below
-            neighbour->chi_tensor = kernel.full_tensor_over_r3;
-            neighbour->chi_spherical = SphericalTensor::Decompose(kernel.full_tensor_over_r3);
+            // Store only the scalar rescue. The manufactured rank-2
+            // ring-chi tensor family was removed.
             neighbour->chi_scalar = kernel.scalar_kernel;
 
-            // accumulate atom tensor
-            M_total += kernel.full_tensor_over_r3;
             total_pairs++;
         }
-
-        // decompose atom total
-        atom.ringchi_shielding_contribution = SphericalTensor::Decompose(M_total);
     }
 
     OperationLog::Info(LogCalcOther, "RingSusceptibilityResult::Compute",
@@ -232,38 +194,11 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
 }
 
 
-SphericalTensor RingSusceptibilityResult::SampleKernelAt(Vec3 point) const {
-    if (!conf_) return SphericalTensor{};
-
-    const Protein& protein = conf_->ProteinRef();
-    Mat3 M_total = Mat3::Zero();
-
-    // Grid-point sampling: same kernel as Compute, evaluated at an arbitrary
-    // point with no per-atom filter set.
-    for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
-        const RingGeometry& geom = conf_->ring_geometries[ri];
-
-        double distance = (point - geom.center).norm();
-        if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;  // singularity
-        if (distance < geom.radius) continue;                                          // inside-ring
-        if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue; // cutoff
-
-        auto kernel = ComputeRingChiKernel(point, geom.center, geom.normal);
-        M_total += kernel.full_tensor_over_r3;
-    }
-
-    return SphericalTensor::Decompose(M_total);
-}
-
-
 int RingSusceptibilityResult::WriteFeatures(const ProteinConformation& conf,
                                              const std::string& output_dir) const {
-    const size_t N = conf.AtomCount();
-    std::vector<double> shielding(N * 9);
-    for (size_t i = 0; i < N; ++i)
-        conf.AtomAt(i).ringchi_shielding_contribution.PackFull9(&shielding[i*9]);
-    NpyWriter::WriteFloat64(output_dir + "/ringchi_shielding.npy", shielding.data(), N, 9);
-    return 1;
+    (void)conf;
+    (void)output_dir;
+    return 0;
 }
 
 }  // namespace nmr

@@ -1,7 +1,9 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 #include "CoulombResult.h"
 #include "ChargeAssignmentResult.h"
@@ -281,6 +283,60 @@ TEST_F(CoulombProteinTest, BackboneFractionIsReasonable) {
 
     std::cout << "  Mean backbone E projection = " << mean_proj << " V/A\n"
               << "  Positive projection: " << positive << " / " << count << "\n";
+}
+
+
+TEST_F(CoulombProteinTest, AromaticEIsStrongerNearAromaticRings) {
+    auto& conf = protein->Conformation();
+    conf.AttachResult(CoulombResult::Compute(conf));
+
+    ASSERT_GT(conf.ring_geometries.size(), 0u)
+        << "1UBQ should have aromatic rings";
+
+    constexpr double kNearRingCenter = 6.0;
+    constexpr double kFarRingCenter = 12.0;
+
+    double sum_near = 0.0;
+    double sum_far = 0.0;
+    int near_count = 0;
+    int far_count = 0;
+    double max_mag_diff = 0.0;
+
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        double nearest_ring_center = std::numeric_limits<double>::infinity();
+        for (const auto& geom : conf.ring_geometries) {
+            double d = (conf.PositionAt(ai) - geom.center).norm();
+            nearest_ring_center = std::min(nearest_ring_center, d);
+        }
+
+        const auto& ca = conf.AtomAt(ai);
+        max_mag_diff = std::max(
+            max_mag_diff,
+            std::abs(ca.aromatic_E_magnitude - ca.coulomb_E_aromatic.norm()));
+
+        if (nearest_ring_center <= kNearRingCenter) {
+            sum_near += ca.aromatic_E_magnitude;
+            near_count++;
+        } else if (nearest_ring_center >= kFarRingCenter) {
+            sum_far += ca.aromatic_E_magnitude;
+            far_count++;
+        }
+    }
+
+    ASSERT_GT(near_count, 0);
+    ASSERT_GT(far_count, 0);
+
+    double mean_near = sum_near / near_count;
+    double mean_far = sum_far / far_count;
+
+    EXPECT_LT(max_mag_diff, 1e-12)
+        << "aromatic_E_magnitude should match |coulomb_E_aromatic|";
+    EXPECT_GT(mean_near, mean_far)
+        << "Aromatic E-field should be stronger near aromatic rings";
+
+    std::cout << "  Aromatic E near rings = " << mean_near << " V/A over "
+              << near_count << " atoms; far = " << mean_far << " V/A over "
+              << far_count << " atoms\n";
 }
 
 

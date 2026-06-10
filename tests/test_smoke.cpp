@@ -40,10 +40,12 @@
 #include <fstream>
 #include <chrono>
 #include <ctime>
+#include <cstring>
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
 #include <set>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace nmr;

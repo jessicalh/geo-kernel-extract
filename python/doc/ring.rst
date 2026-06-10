@@ -1,7 +1,7 @@
 Per-Ring Data
 =============
 
-Sparse (P, 58) table of per-(atom, ring) pair contributions, plus a
+Sparse (P, 40) table of per-(atom, ring) pair contributions, plus a
 (R, 10) ring geometry reference table.
 
 RingContributions
@@ -26,12 +26,10 @@ Column layout::
    [9:18]  bs_G                SphericalTensor -- BS shielding kernel
    [18:27] hm_H                SphericalTensor -- HM raw integral (pure T2)
    [27:36] hm_G                SphericalTensor -- HM shielding kernel
-   [36:45] pq_G                SphericalTensor
-   [45:54] chi_G               SphericalTensor
-   [54]    disp_scalar         1/r^6
-   [55]    disp_contacts       vertex contact count
-   [56]    cos_phi             azimuthal angle cosine (relative to vertex 0)
-   [57]    sin_phi             azimuthal angle sine (relative to vertex 0)
+   [36]    disp_scalar         1/r^6
+   [37]    disp_contacts       vertex contact count
+   [38]    cos_phi             azimuthal angle cosine (relative to vertex 0)
+   [39]    sin_phi             azimuthal angle sine (relative to vertex 0)
 
 RingGeometry
 ------------

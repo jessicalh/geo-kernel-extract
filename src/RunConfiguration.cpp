@@ -58,10 +58,6 @@
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
 #include "HmShieldingTimeSeriesTrajectoryResult.h"
 #include "McConnellShieldingTimeSeriesTrajectoryResult.h"
-#include "PiQuadrupoleShieldingTimeSeriesTrajectoryResult.h"
-#include "RingSusceptibilityShieldingTimeSeriesTrajectoryResult.h"
-#include "DispersionShieldingTimeSeriesTrajectoryResult.h"
-#include "HBondShieldingTimeSeriesTrajectoryResult.h"
 #include "SasaTimeSeriesTrajectoryResult.h"
 #include "AIMNet2ChargeTimeSeriesTrajectoryResult.h"
 #include "AIMNet2EmbeddingTimeSeriesTrajectoryResult.h"
@@ -195,10 +191,6 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     Produces<BsShieldingTimeSeriesTrajectoryResult,
              HmShieldingTimeSeriesTrajectoryResult,
              McConnellShieldingTimeSeriesTrajectoryResult,
-             PiQuadrupoleShieldingTimeSeriesTrajectoryResult,
-             RingSusceptibilityShieldingTimeSeriesTrajectoryResult,
-             DispersionShieldingTimeSeriesTrajectoryResult,
-             HBondShieldingTimeSeriesTrajectoryResult,
              SasaTimeSeriesTrajectoryResult>(c);
 
     // ── AIMNet2 (charge, embedding, charge-response gradient) ──

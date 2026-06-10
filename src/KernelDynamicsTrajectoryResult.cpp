@@ -4,14 +4,10 @@
 #include "BiotSavartResult.h"
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
-#include "DispersionResult.h"
-#include "HBondResult.h"
 #include "HaighMallionResult.h"
 #include "McConnellResult.h"
 #include "OperationLog.h"
-#include "PiQuadrupoleResult.h"
 #include "ProteinConformation.h"
-#include "RingSusceptibilityResult.h"
 #include "Trajectory.h"
 #include "TrajectoryProtein.h"
 
@@ -43,12 +39,6 @@ double ChannelValue(Channel c, const ConformationAtom& a) {
         case Channel::HmAbsT2:      return a.hm_shielding_contribution.T2Magnitude();
         case Channel::McT0:         return a.mc_shielding_contribution.T0;
         case Channel::McAbsT2:      return a.mc_shielding_contribution.T2Magnitude();
-        case Channel::RingChiT0:    return a.ringchi_shielding_contribution.T0;
-        case Channel::RingChiAbsT2: return a.ringchi_shielding_contribution.T2Magnitude();
-        case Channel::HBondT0:      return a.hbond_shielding_contribution.T0;
-        case Channel::HBondAbsT2:   return a.hbond_shielding_contribution.T2Magnitude();
-        case Channel::PiQuadAbsT2:  return a.piquad_shielding_contribution.T2Magnitude();
-        case Channel::DispAbsT2:    return a.disp_shielding_contribution.T2Magnitude();
         case Channel::ApbsAbsT2:    return a.apbs_efg_spherical.T2Magnitude();
     }
     return 0.0;
@@ -62,12 +52,6 @@ const char* ChannelName(Channel c) {
         case Channel::HmAbsT2:      return "hm_absT2";
         case Channel::McT0:         return "mc_T0";
         case Channel::McAbsT2:      return "mc_absT2";
-        case Channel::RingChiT0:    return "ringchi_T0";
-        case Channel::RingChiAbsT2: return "ringchi_absT2";
-        case Channel::HBondT0:      return "hbond_T0";
-        case Channel::HBondAbsT2:   return "hbond_absT2";
-        case Channel::PiQuadAbsT2:  return "piquad_absT2";
-        case Channel::DispAbsT2:    return "disp_absT2";
         case Channel::ApbsAbsT2:    return "apbs_absT2";
     }
     return "unknown";
@@ -83,13 +67,7 @@ const char* ChannelUnits(Channel c) {
         case Channel::HmT0:
         case Channel::HmAbsT2:      return "Angstrom^-1";
         case Channel::McT0:
-        case Channel::McAbsT2:
-        case Channel::RingChiT0:
-        case Channel::RingChiAbsT2:
-        case Channel::HBondT0:
-        case Channel::HBondAbsT2:   return "Angstrom^-3";
-        case Channel::PiQuadAbsT2:  return "Angstrom^-5";
-        case Channel::DispAbsT2:    return "Angstrom^-6";
+        case Channel::McAbsT2:      return "Angstrom^-3";
         case Channel::ApbsAbsT2:    return "V/A^2";
     }
     return "";
@@ -104,10 +82,6 @@ KernelDynamicsTrajectoryResult::Dependencies() const {
         std::type_index(typeid(BiotSavartResult)),
         std::type_index(typeid(HaighMallionResult)),
         std::type_index(typeid(McConnellResult)),
-        std::type_index(typeid(RingSusceptibilityResult)),
-        std::type_index(typeid(PiQuadrupoleResult)),
-        std::type_index(typeid(DispersionResult)),
-        std::type_index(typeid(HBondResult)),
         std::type_index(typeid(ApbsFieldResult)),
     };
 }

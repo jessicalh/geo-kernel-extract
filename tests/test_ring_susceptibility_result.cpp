@@ -18,39 +18,10 @@ using namespace nmr;
 
 
 // ============================================================================
-// Analytical test: atom at known position relative to ring center,
-// hand-calculable result.
-//
-// Same formula as McConnell analytical test (lesson 19) with b_hat → n_hat.
-// Ring center at origin, normal along z. Atom at (3, 0, 0).
-//
-// d = (3, 0, 0), r = 3, d_hat = (1, 0, 0)
-// n_hat = (0, 0, 1)
-// cos_theta = d_hat . n_hat = 0
-//
-// Scalar f = (3*0 - 1) / 27 = -1/27
-//
-// Full tensor M / r³:
-//   Term 1: 9*0 * d_hat ⊗ n_hat / r³ = 0 (cos_theta = 0)
-//   Term 2: -3 * n_hat ⊗ n_hat / r³ → only (2,2) = -3/27 = -1/9
-//   Term 3: -(3 d_hat ⊗ d_hat - I) / r³ = -K
-//
-//   M_11 / r³ = 0 + 0 + (-2/27) = -2/27
-//   M_22 / r³ = 0 + 0 + (1/27)  = 1/27
-//   M_33 / r³ = 0 + (-3/27) + (1/27) = -2/27
-//
-//   Trace = -2/27 + 1/27 + (-2/27) = -3/27 = -1/9
-//   T0 = Trace/3 = -1/27 = f  ✓
+// Analytical test: verify the kept scalar rescue.
 // ============================================================================
 
-TEST(RingChiAnalytical, T0EqualsFOnRealProtein) {
-    // Verify T0 = f identity on a real protein. This is the same identity
-    // as McConnell (Trace(M)/3 = (3cos²θ-1)/r³) applied to the ring
-    // susceptibility tensor with n_hat instead of b_hat.
-    //
-    // We verify by recomputing M from scratch for each ring-atom pair
-    // and checking Trace(M/r³)/3 == f at machine precision.
-
+TEST(RingChiAnalytical, ScalarMatchesRingContributionColumn7Formula) {
     if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated())) GTEST_SKIP() << "1UBQ not found";
     auto r = BuildFromProtonatedPdb(nmr::test::TestEnvironment::UbqProtonated());
     if (!r.Ok()) GTEST_SKIP() << r.error;
@@ -68,7 +39,6 @@ TEST(RingChiAnalytical, T0EqualsFOnRealProtein) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (std::abs(rn.chi_scalar) < 1e-15) continue;
 
-            // Reconstruct M/r³ from geometry and verify trace
             const RingGeometry& geom = conf.ring_geometries[rn.ring_index];
             Vec3 d = conf.PositionAt(ai) - geom.center;
             double rm = d.norm();
@@ -78,31 +48,29 @@ TEST(RingChiAnalytical, T0EqualsFOnRealProtein) {
             double cos_theta = d_hat.dot(geom.normal);
             double r3 = rm * rm * rm;
 
-            Mat3 M;
-            for (int a = 0; a < 3; ++a)
-                for (int b = 0; b < 3; ++b)
-                    M(a, b) = (9.0 * cos_theta * d_hat(a) * geom.normal(b)
-                               - 3.0 * geom.normal(a) * geom.normal(b)
-                               - (3.0 * d_hat(a) * d_hat(b) - (a==b ? 1.0 : 0.0)))
-                              / r3;
-
-            double t0 = M.trace() / 3.0;
             double f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
-            double diff = std::abs(t0 - f);
+            double col7_formula = 0.0;
+            if (rn.distance_to_center > 1e-12) {
+                double cos_th = rn.z / rn.distance_to_center;
+                double rr3 = rn.distance_to_center * rn.distance_to_center
+                           * rn.distance_to_center;
+                if (rr3 > 1e-30)
+                    col7_formula = (3.0 * cos_th * cos_th - 1.0) / rr3;
+            }
+            double diff = std::abs(col7_formula - f);
             max_diff = std::max(max_diff, diff);
 
-            // Also verify stored values match
             EXPECT_NEAR(rn.chi_scalar, f, 1e-10);
-            EXPECT_NEAR(rn.chi_spherical.T0, f, 1e-10);
+            EXPECT_NEAR(col7_formula, f, 1e-10);
             checked++;
         }
     }
 
     EXPECT_GT(checked, 100) << "Should verify many ring-atom pairs";
-    EXPECT_LT(max_diff, 1e-10) << "T0 must equal f at machine precision";
+    EXPECT_LT(max_diff, 1e-10) << "Column-7 formula must equal f at machine precision";
 
-    std::cout << "  Verified T0 = f on " << checked
-              << " ring-atom pairs, max |T0-f| = " << max_diff << "\n";
+    std::cout << "  Verified ring-chi scalar rescue on " << checked
+              << " ring-atom pairs, max |col7-f| = " << max_diff << "\n";
 }
 
 
@@ -138,8 +106,7 @@ TEST_F(RingChiProteinTest, ComputeAndAttach) {
 }
 
 
-TEST_F(RingChiProteinTest, T0EqualsScalarF) {
-    // For each atom-ring pair, T0 of the full tensor M/r³ should equal f.
+TEST_F(RingChiProteinTest, ScalarMatchesColumn7Formula) {
     auto& conf = protein->Conformation();
     conf.AttachResult(RingSusceptibilityResult::Compute(conf));
 
@@ -148,7 +115,15 @@ TEST_F(RingChiProteinTest, T0EqualsScalarF) {
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (std::abs(rn.chi_scalar) < 1e-15) continue;
-            double diff = std::abs(rn.chi_spherical.T0 - rn.chi_scalar);
+            double col7_formula = 0.0;
+            if (rn.distance_to_center > 1e-12) {
+                double cos_th = rn.z / rn.distance_to_center;
+                double r3 = rn.distance_to_center * rn.distance_to_center
+                          * rn.distance_to_center;
+                if (r3 > 1e-30)
+                    col7_formula = (3.0 * cos_th * cos_th - 1.0) / r3;
+            }
+            double diff = std::abs(col7_formula - rn.chi_scalar);
             max_diff = std::max(max_diff, diff);
             checked++;
         }
@@ -156,33 +131,31 @@ TEST_F(RingChiProteinTest, T0EqualsScalarF) {
 
     EXPECT_GT(checked, 0) << "Should have checked some ring-atom pairs";
     EXPECT_LT(max_diff, 1e-10)
-        << "T0 of full tensor must equal scalar f";
+        << "Ring contribution column-7 formula must equal scalar f";
 
-    std::cout << "  Checked " << checked << " pairs, max |T0 - f| = "
+    std::cout << "  Checked " << checked << " pairs, max |col7 - f| = "
               << max_diff << "\n";
 }
 
 
-TEST_F(RingChiProteinTest, ShieldingContributionHasT0AndT2) {
+TEST_F(RingChiProteinTest, ScalarIsPopulated) {
     auto& conf = protein->Conformation();
     conf.AttachResult(RingSusceptibilityResult::Compute(conf));
 
-    int nonzero_t0 = 0, nonzero_t2 = 0;
-    double max_t0 = 0, max_t2 = 0;
+    int nonzero_scalar = 0;
+    double max_scalar = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        const auto& sc = conf.AtomAt(ai).ringchi_shielding_contribution;
-        if (std::abs(sc.T0) > 1e-8) nonzero_t0++;
-        double t2 = sc.T2Magnitude();
-        if (t2 > 1e-8) nonzero_t2++;
-        max_t0 = std::max(max_t0, std::abs(sc.T0));
-        max_t2 = std::max(max_t2, t2);
+        for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
+            const double s = std::abs(rn.chi_scalar);
+            if (s > 1e-8) nonzero_scalar++;
+            max_scalar = std::max(max_scalar, s);
+        }
     }
 
-    EXPECT_GT(nonzero_t0, 0) << "Full tensor must have non-zero T0";
-    EXPECT_GT(nonzero_t2, 0) << "Full tensor must have non-zero T2";
+    EXPECT_GT(nonzero_scalar, 0) << "Ring chi scalar should be non-zero";
 
-    std::cout << "  T0 nonzero: " << nonzero_t0 << ", max |T0| = " << max_t0 << "\n";
-    std::cout << "  T2 nonzero: " << nonzero_t2 << ", max |T2| = " << max_t2 << "\n";
+    std::cout << "  Scalar nonzero: " << nonzero_scalar
+              << ", max |scalar| = " << max_scalar << "\n";
 }
 
 
@@ -211,23 +184,21 @@ TEST(RingChiOrcaTest, RunOnProtonatedProtein) {
     conf.AttachResult(std::move(rchi));
 
     // Summary
-    double max_t0 = 0, max_t2 = 0;
+    double max_scalar = 0;
     int with_rings = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        const auto& sc = conf.AtomAt(ai).ringchi_shielding_contribution;
-        max_t0 = std::max(max_t0, std::abs(sc.T0));
-        max_t2 = std::max(max_t2, sc.T2Magnitude());
-        if (!conf.AtomAt(ai).ring_neighbours.empty()) with_rings++;
+        const auto& atom = conf.AtomAt(ai);
+        if (!atom.ring_neighbours.empty()) with_rings++;
+        for (const auto& rn : atom.ring_neighbours)
+            max_scalar = std::max(max_scalar, std::abs(rn.chi_scalar));
     }
 
     std::cout << "  ORCA protein RingSusceptibility summary:\n"
               << "    atoms=" << conf.AtomCount()
               << " rings=" << load.protein->RingCount() << "\n"
               << "    atoms with ring neighbours: " << with_rings << "\n"
-              << "    max |T0| = " << max_t0 << " A^-3\n"
-              << "    max |T2| = " << max_t2 << " A^-3\n";
+              << "    max |scalar| = " << max_scalar << " A^-3\n";
 
     EXPECT_GT(with_rings, 0) << "Some atoms should see rings";
-    EXPECT_GT(max_t0, 0.001) << "T0 should be non-zero";
-    EXPECT_GT(max_t2, 0.001) << "T2 should be non-zero";
+    EXPECT_GT(max_scalar, 0.001) << "Scalar should be non-zero";
 }

@@ -13,7 +13,7 @@
 // which -- is a documented follow-up: it needs a second bounded
 // accumulator and is better landed carefully than rushed.
 //
-// Same 13 channels as KernelDynamicsTrajectoryResult, cloned here rather
+// Same legal channels as KernelDynamicsTrajectoryResult, cloned here rather
 // than shared (PATTERNS.md 17: each TR self-contained, testable in
 // isolation, safe to delete). FO lifecycle: per atom, running sums of
 // each channel, its square, and each channel-pair product accumulate each
@@ -45,10 +45,9 @@ public:
     // same emission order) -- the two TRs stay independent.
     enum class Channel : std::uint8_t {
         BsT0, BsAbsT2, HmT0, HmAbsT2, McT0, McAbsT2,
-        RingChiT0, RingChiAbsT2, HBondT0, HBondAbsT2,
-        PiQuadAbsT2, DispAbsT2, ApbsAbsT2
+        ApbsAbsT2
     };
-    static constexpr std::size_t N_CHANNELS = 13;
+    static constexpr std::size_t N_CHANNELS = 7;
 
     std::string Name() const override {
         return "KernelCoherenceTrajectoryResult";

@@ -62,9 +62,7 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
     # Per-atom arrays must have shape[0] == N
     per_atom_files = [
         "pos.npy", "element.npy", "residue_index.npy", "residue_type.npy",
-        "bs_shielding.npy", "hm_shielding.npy",
-        "pq_shielding.npy", "disp_shielding.npy", "ringchi_shielding.npy",
-        "coulomb_efg.npy", "hbond_shielding.npy",
+        "bs_shielding.npy", "hm_shielding.npy", "coulomb_efg.npy",
         "coulomb_E.npy", "coulomb_E_backbone.npy",
         "coulomb_E_sidechain.npy", "coulomb_E_aromatic.npy",
         "coulomb_efg_backbone.npy", "coulomb_efg_sidechain.npy",
@@ -121,8 +119,7 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
     # Shielding tensor arrays should be shape (N, 9)
     tensor_files = [
         "bs_shielding.npy", "hm_shielding.npy",
-        "pq_shielding.npy", "disp_shielding.npy", "ringchi_shielding.npy",
-        "coulomb_efg.npy", "mopac_coulomb_efg.npy", "hbond_shielding.npy",
+        "coulomb_efg.npy", "mopac_coulomb_efg.npy",
     ] + MC_ARRAYS
     for name in tensor_files:
         if name not in arrays:
@@ -137,8 +134,8 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         rc = arrays["ring_contributions.npy"]
         print(f"  Ring contributions: {rc.shape[0]} (atom,ring) pairs, "
               f"{rc.shape[1]} columns")
-        if rc.shape[1] != 58:
-            print(f"  FAIL: ring_contributions columns={rc.shape[1]}, expected 58")
+        if rc.shape[1] != 40:
+            print(f"  FAIL: ring_contributions columns={rc.shape[1]}, expected 40")
             errors += 1
 
     # Summary
