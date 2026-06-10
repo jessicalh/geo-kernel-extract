@@ -1,1 +1,0 @@
-dependence of NMR chemical shifts and shielding on dihedral (torsion) angles — backbone phi/psi and sidechain chi angle effects, their correlation with secondary structure (e.g. chemical-shift index, Karplus-type angular relations), the historical development, and the use in predicting or interpreting shifts

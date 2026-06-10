@@ -1,1 +1,0 @@
-ab-initio and DFT calculation of NMR magnetic shielding tensors — gauge methods (GIAO, CSGT, GIPAW), functionals and basis sets, cluster versus periodic approaches, accuracy and calibration against experiment, the historical development, and the use as a reference for shift prediction

@@ -245,3 +245,10 @@ tests/golden/blessed/**/spatial_neighbors.npy
 # Docs are not release-ready yet -- keep local, do not distribute.
 *.md
 *.pdf
+
+# --- non-source cruft (on disk, out of git) ---
+nmrstats/
+nmrstats.Rcheck/
+lit-map/
+h5-reader/analysis/
+*.npy

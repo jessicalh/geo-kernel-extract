@@ -1,1 +1,0 @@
-electric-field and electric-field-gradient (EFG) effects on NMR chemical shielding — polarization of the local electron distribution by intramolecular and solvent electric fields (Buckingham-type power-series treatment), the dominance of these effects for heavier nuclei, the historical development, and the use in predicting or interpreting shifts

@@ -1,4 +1,0 @@
-block,columns
-ring,ring_bs_T0;ring_bs_absT2
-mc,mc_lit_T0;mc_lit_absT2
-field_charge,mopac_efield_mag;apbs_efield_mag;aimnet2_charge;ff14sb_charge;eeq_charge;eeq_cn;sasa;larsen_hbond_count;larsen_hbond_absT2

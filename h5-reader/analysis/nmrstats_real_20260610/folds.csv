@@ -1,4 +1,0 @@
-fold,n_train,n_test,train_proteins,test_proteins,purge
-fold_01,741038,369424,481,241,1
-fold_02,738714,371748,481,241,1
-fold_03,741172,369290,481,241,1
