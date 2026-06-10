@@ -15,7 +15,6 @@
 #include "../model/QtBiotSavartGroup.h"
 #include "../model/QtBondedGroup.h"
 #include "../model/QtCoulombGroup.h"
-#include "../model/QtDispersionGroup.h"
 #include "../model/QtDsspGroup.h"
 #include "../model/QtEeqGroup.h"
 #include "../model/QtGromacsGroup.h"
@@ -28,9 +27,7 @@
 #include "../model/QtMopacCoulombGroup.h"
 #include "../model/QtMopacMcConnellGroup.h"
 #include "../model/QtOrcaGroup.h"
-#include "../model/QtPiQuadrupoleGroup.h"
 #include "../model/QtPlanarGeometryGroup.h"
-#include "../model/QtRingSusceptibilityGroup.h"
 #include "../model/QtSasaGroup.h"
 #include "../model/QtTripeptideGroup.h"
 #include "../model/QtWaterFieldGroup.h"
@@ -342,14 +339,12 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
 
     // ── Ring current (Biot-Savart / Haigh-Mallion / ring susceptibility) ──
     if (AllowsAny(availability_, {"npy:bs_shielding", "npy:hm_shielding",
-                                  "npy:ringchi_shielding", "npy:bs_total_B",
                                   "npy:bs_ring_counts"})) {
         auto* g = AddKV(root, QStringLiteral("Ring current"), QString());
         model::QtBiotSavartGroup bs(s);
         bool any = false;
         any |= AddOptSpherical(g, QStringLiteral("bs_shielding"), bs.shielding(a), QStringLiteral("ppm·T/nA"));
         any |= AddOptSpherical(g, QStringLiteral("hm_shielding"), model::QtHaighMallionGroup(s).shielding(a), QStringLiteral("Å⁻¹"));
-        any |= AddOptSpherical(g, QStringLiteral("ringchi_shielding"), model::QtRingSusceptibilityGroup(s).shielding(a), QStringLiteral("Å⁻³"));
         any |= AddOptVec3(g, QStringLiteral("bs_total_B"), bs.totalB(a), QStringLiteral("T"));
         if (auto rc = bs.ringCounts(a)) {
             AddKV(g, QStringLiteral("ring counts (3/5/8/12 Å)"),
@@ -359,14 +354,6 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
         if (!any) DeleteIfEmpty(g);
     }
 
-    // ── π-quadrupole / dispersion ──
-    if (AllowsAny(availability_, {"npy:pq_shielding", "npy:disp_shielding"})) {
-        auto* g = AddKV(root, QStringLiteral("Quadrupole / Dispersion"), QString());
-        bool any = false;
-        any |= AddOptSpherical(g, QStringLiteral("pq_shielding"), model::QtPiQuadrupoleGroup(s).shielding(a), QStringLiteral("Å⁻⁵"));
-        any |= AddOptSpherical(g, QStringLiteral("disp_shielding"), model::QtDispersionGroup(s).shielding(a), QStringLiteral("Å⁻⁶"));
-        if (!any) DeleteIfEmpty(g);
-    }
 
     // ── Bond anisotropy (McConnell) ──
     if (AllowsAny(availability_, {"npy:mc_shielding", "npy:mc_category_T2",
@@ -406,11 +393,10 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
     }
 
     // ── H-bond (kernel form) ──
-    if (AllowsAny(availability_, {"npy:hbond_shielding", "npy:hbond_scalars"})) {
+    if (AllowsAny(availability_, {"npy:hbond_scalars"})) {
         auto* g = AddKV(root, QStringLiteral("H-bond"), QString());
         model::QtHBondGroup hb(s);
         bool any = false;
-        any |= AddOptSpherical(g, QStringLiteral("hbond_shielding"), hb.shielding(a), QStringLiteral("Å⁻³"));
         if (auto sc = hb.scalars(a)) {
             AddScalar(g, QStringLiteral("nearest dist"), sc->nearest_dist, QStringLiteral("Å"));
             AddScalar(g, QStringLiteral("1/r³"), sc->inv_d3);

@@ -22,12 +22,6 @@ class QtHBondGroup {
 public:
     explicit QtHBondGroup(const QtConformationSnapshot& snapshot) : snap_(&snapshot) {}
 
-    std::optional<SphericalTensor> shielding(std::size_t atomIdx) const {
-        if (!snap_->has(io::FieldKind::HBondShielding))
-            return std::nullopt;
-        return UnpackSphericalTensor(snap_->column(io::FieldKind::HBondShielding).row(atomIdx));
-    }
-
     std::optional<HBondScalars> scalars(std::size_t atomIdx) const {
         const auto& col = snap_->column(io::FieldKind::HBondScalars);
         if (!col.present)

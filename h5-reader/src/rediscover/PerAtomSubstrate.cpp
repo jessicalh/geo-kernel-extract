@@ -1569,16 +1569,16 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::HMPerTypeT0, atom, 8);
     out.hm_per_type_T2_present =
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::HMPerTypeT2, atom, 40);
-    out.ringchi_path_present =
-        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::RingChiShielding, atom, 9);
+    out.ringchi_path_present = false;
+    rp += 9;  // ring-χ removed (dead kernel); slot kept NaN for ring_paths alignment
     out.pq_per_type_T0_present =
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::PQPerTypeT0, atom, 8);
-    out.pq_per_type_T2_present =
-        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::PQPerTypeT2, atom, 40);
+    out.pq_per_type_T2_present = false;
+    rp += 40;  // pq_per_type_T2 removed (dead tensor); slot kept NaN for alignment
     out.disp_per_type_T0_present =
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT0, atom, 8);
-    out.disp_per_type_T2_present =
-        copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT2, atom, 40);
+    out.disp_per_type_T2_present = false;
+    rp += 40;  // disp_per_type_T2 removed (dead tensor); slot kept NaN for alignment
 
     std::size_t mp = 0;
     out.mc_category_T2_present =
