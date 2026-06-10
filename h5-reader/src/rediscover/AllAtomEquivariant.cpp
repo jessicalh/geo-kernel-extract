@@ -122,7 +122,7 @@ void fillTargetIdentity(const Body& body, std::size_t atom, std::size_t row, All
     }
     out.h5_row = static_cast<int32_t>(row);
     out.original_index = static_cast<int32_t>(body.run.frameMap.originalIndex(row));
-    out.time_ps = body.run.trajectory()->timePicoseconds(row);
+    out.time_ps = body.run.timePs(row);
 }
 
 void fillSourceTargetIdentity(const AllAtomEquivariantTargetRecord& target, AllAtomEquivariantSourceRecord& out) {

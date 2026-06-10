@@ -1,0 +1,314 @@
+[
+  {
+    "schema_version": 1,
+    "generated_by": "nmrstats::estimate_regions",
+    "training_split_id": "fold_01",
+    "row_count": 741038,
+    "finite_phi_psi": 722038,
+    "angle_convention": "IUPAC signed radians",
+    "grid": {
+      "n": 72,
+      "min": -3.1416,
+      "max": 3.1416
+    },
+    "hdr_thresholds": [
+      {
+        "hdr_mass": 0.5,
+        "min_bin_n": 1428
+      },
+      {
+        "hdr_mass": 0.8,
+        "min_bin_n": 463
+      },
+      {
+        "hdr_mass": 0.95,
+        "min_bin_n": 108
+      }
+    ],
+    "rama_summary": [
+      {
+        "rama_region": 5,
+        "n": 19000,
+        "phi_mean": 4.936,
+        "psi_mean": 2.2934,
+        "phi_finite": 10000,
+        "psi_finite": 9000
+      },
+      {
+        "rama_region": 1,
+        "n": 354565,
+        "phi_mean": 4.5595,
+        "psi_mean": 2.4525,
+        "phi_finite": 354565,
+        "psi_finite": 354565
+      },
+      {
+        "rama_region": 4,
+        "n": 24149,
+        "phi_mean": 0.6925,
+        "psi_mean": 2.7678,
+        "phi_finite": 24149,
+        "psi_finite": 24149
+      },
+      {
+        "rama_region": 0,
+        "n": 306843,
+        "phi_mean": 4.9643,
+        "psi_mean": 5.86,
+        "phi_finite": 306843,
+        "psi_finite": 306843
+      },
+      {
+        "rama_region": 3,
+        "n": 36481,
+        "phi_mean": 1.0374,
+        "psi_mean": 0.4912,
+        "phi_finite": 36481,
+        "psi_finite": 36481
+      }
+    ],
+    "chi_summary": [
+      {
+        "chi": 1,
+        "n": 690579,
+        "mean_angle": 1.5717,
+        "rotamer_minus": 140629,
+        "rotamer_plus": 376233,
+        "rotamer_trans": 173717
+      },
+      {
+        "chi": 2,
+        "n": 549855,
+        "mean_angle": 3.1545,
+        "rotamer_minus": 261968,
+        "rotamer_plus": 199562,
+        "rotamer_trans": 88325
+      },
+      {
+        "chi": 3,
+        "n": 197643,
+        "mean_angle": 3.0369,
+        "rotamer_minus": 81211,
+        "rotamer_plus": 82211,
+        "rotamer_trans": 34221
+      },
+      {
+        "chi": 4,
+        "n": 114956,
+        "mean_angle": 3.0233,
+        "rotamer_minus": 55650,
+        "rotamer_plus": 54103,
+        "rotamer_trans": 5203
+      }
+    ],
+    "note": "Core pass estimates regions only; region_def_id remains emitted placeholder until C++ re-emit round-trip."
+  },
+  {
+    "schema_version": 1,
+    "generated_by": "nmrstats::estimate_regions",
+    "training_split_id": "fold_02",
+    "row_count": 738714,
+    "finite_phi_psi": 719676,
+    "angle_convention": "IUPAC signed radians",
+    "grid": {
+      "n": 72,
+      "min": -3.1416,
+      "max": 3.1416
+    },
+    "hdr_thresholds": [
+      {
+        "hdr_mass": 0.5,
+        "min_bin_n": 1415
+      },
+      {
+        "hdr_mass": 0.8,
+        "min_bin_n": 483
+      },
+      {
+        "hdr_mass": 0.95,
+        "min_bin_n": 105
+      }
+    ],
+    "rama_summary": [
+      {
+        "rama_region": 5,
+        "n": 19038,
+        "phi_mean": 4.8767,
+        "psi_mean": 2.2396,
+        "phi_finite": 10020,
+        "psi_finite": 9018
+      },
+      {
+        "rama_region": 1,
+        "n": 360853,
+        "phi_mean": 4.5497,
+        "psi_mean": 2.4487,
+        "phi_finite": 360853,
+        "psi_finite": 360853
+      },
+      {
+        "rama_region": 4,
+        "n": 24554,
+        "phi_mean": 0.7132,
+        "psi_mean": 2.7667,
+        "phi_finite": 24554,
+        "psi_finite": 24554
+      },
+      {
+        "rama_region": 0,
+        "n": 298228,
+        "phi_mean": 4.9636,
+        "psi_mean": 5.8648,
+        "phi_finite": 298228,
+        "psi_finite": 298228
+      },
+      {
+        "rama_region": 3,
+        "n": 36041,
+        "phi_mean": 1.0379,
+        "psi_mean": 0.4997,
+        "phi_finite": 36041,
+        "psi_finite": 36041
+      }
+    ],
+    "chi_summary": [
+      {
+        "chi": 1,
+        "n": 687204,
+        "mean_angle": 1.633,
+        "rotamer_minus": 142395,
+        "rotamer_plus": 376973,
+        "rotamer_trans": 167836
+      },
+      {
+        "chi": 2,
+        "n": 545843,
+        "mean_angle": 3.1841,
+        "rotamer_minus": 260861,
+        "rotamer_plus": 198235,
+        "rotamer_trans": 86747
+      },
+      {
+        "chi": 3,
+        "n": 193296,
+        "mean_angle": 3.1135,
+        "rotamer_minus": 82737,
+        "rotamer_plus": 79669,
+        "rotamer_trans": 30890
+      },
+      {
+        "chi": 4,
+        "n": 111018,
+        "mean_angle": 3.0911,
+        "rotamer_minus": 56134,
+        "rotamer_plus": 50497,
+        "rotamer_trans": 4387
+      }
+    ],
+    "note": "Core pass estimates regions only; region_def_id remains emitted placeholder until C++ re-emit round-trip."
+  },
+  {
+    "schema_version": 1,
+    "generated_by": "nmrstats::estimate_regions",
+    "training_split_id": "fold_03",
+    "row_count": 741172,
+    "finite_phi_psi": 722134,
+    "angle_convention": "IUPAC signed radians",
+    "grid": {
+      "n": 72,
+      "min": -3.1416,
+      "max": 3.1416
+    },
+    "hdr_thresholds": [
+      {
+        "hdr_mass": 0.5,
+        "min_bin_n": 1405
+      },
+      {
+        "hdr_mass": 0.8,
+        "min_bin_n": 486
+      },
+      {
+        "hdr_mass": 0.95,
+        "min_bin_n": 108
+      }
+    ],
+    "rama_summary": [
+      {
+        "rama_region": 5,
+        "n": 19038,
+        "phi_mean": 4.8999,
+        "psi_mean": 2.2913,
+        "phi_finite": 10020,
+        "psi_finite": 9018
+      },
+      {
+        "rama_region": 1,
+        "n": 353992,
+        "phi_mean": 4.5761,
+        "psi_mean": 2.4659,
+        "phi_finite": 353992,
+        "psi_finite": 353992
+      },
+      {
+        "rama_region": 4,
+        "n": 23477,
+        "phi_mean": 0.7265,
+        "psi_mean": 2.8111,
+        "phi_finite": 23477,
+        "psi_finite": 23477
+      },
+      {
+        "rama_region": 0,
+        "n": 308503,
+        "phi_mean": 4.9639,
+        "psi_mean": 5.8572,
+        "phi_finite": 308503,
+        "psi_finite": 308503
+      },
+      {
+        "rama_region": 3,
+        "n": 36162,
+        "phi_mean": 1.0296,
+        "psi_mean": 0.5175,
+        "phi_finite": 36162,
+        "psi_finite": 36162
+      }
+    ],
+    "chi_summary": [
+      {
+        "chi": 1,
+        "n": 689713,
+        "mean_angle": 1.5411,
+        "rotamer_minus": 154798,
+        "rotamer_plus": 365286,
+        "rotamer_trans": 169629
+      },
+      {
+        "chi": 2,
+        "n": 550528,
+        "mean_angle": 3.1457,
+        "rotamer_minus": 260875,
+        "rotamer_plus": 198661,
+        "rotamer_trans": 90992
+      },
+      {
+        "chi": 3,
+        "n": 195283,
+        "mean_angle": 3.1504,
+        "rotamer_minus": 86152,
+        "rotamer_plus": 78872,
+        "rotamer_trans": 30259
+      },
+      {
+        "chi": 4,
+        "n": 111360,
+        "mean_angle": 3.0952,
+        "rotamer_minus": 55118,
+        "rotamer_plus": 52774,
+        "rotamer_trans": 3468
+      }
+    ],
+    "note": "Core pass estimates regions only; region_def_id remains emitted placeholder until C++ re-emit round-trip."
+  }
+]

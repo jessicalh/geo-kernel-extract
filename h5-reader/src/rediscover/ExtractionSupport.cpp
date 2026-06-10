@@ -31,7 +31,7 @@ void FillIdentity(NeighborhoodRecord& rec, const RunData& run, std::size_t atomI
 
     rec.h5_row = static_cast<int32_t>(h5Row);
     rec.original_index = static_cast<int32_t>(run.frameMap.originalIndex(h5Row));
-    rec.time_ps = run.trajectory()->timePicoseconds(h5Row);
+    rec.time_ps = run.timePs(h5Row);
 
     rec.frame_z = frame.z;
     rec.frame_x = frame.x;

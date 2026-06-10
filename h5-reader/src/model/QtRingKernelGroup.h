@@ -1,9 +1,6 @@
-// QtRingKernelGroup — shared base for the through-space ring-current /
-// ring-kernel groups (BiotSavart, HaighMallion, PiQuadrupole, Dispersion),
-// mirroring the SDK's RingKernelGroup. Each carries the same three per-atom
-// fields — a full shielding SphericalTensor (T0+T1+T2) plus per-aromatic-
-// ring-type T0 and T2 decompositions — differing only in which catalog
-// FieldKind backs them. Subclasses pass their FieldKinds in the ctor;
+// QtRingKernelGroup — shared base for the through-space ring-current groups
+// that still emit a full shielding tensor plus per-aromatic-ring-type T0/T2
+// decompositions. Subclasses pass their FieldKinds in the ctor;
 // QtBiotSavartGroup extends this with total_B + ring_counts.
 //
 // Thin, const, copyable view over one QtConformationSnapshot. Every

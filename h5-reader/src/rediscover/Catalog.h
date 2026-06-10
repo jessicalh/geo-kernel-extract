@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "../io/QtFieldCatalog.gen.h"
 #include "../model/Types.h"
 
 #include <QString>
@@ -32,22 +33,24 @@ enum class ArrayId : int {
     Aimnet2ChargeRespVector,
     Aimnet2Embedding,
     Ff14sbCharge,
-    MopacCharge,                 // per-frame MOPAC Mulliken charge — NOT on the
-                                 // trajectory H5 (no TR exists); see MopacChargeWelfordMean.
+    MopacCharge,                 // producer mopac_charges.npy (static or flattened per-frame)
     MopacChargeWelfordMean,      // per-atom MOPAC charge Welford MEAN (static, no T)
     MopacCoulombShielding,       // T2: MOPAC-Coulomb-EFG-DERIVED shielding (NOT raw EFG)
+    MopacCoulombEfield,
     MopacMcShielding,            // T2: MOPAC-charge McConnell bond-anisotropy shielding
     MopacVsFf14sbReconciliation, // scalar QC: cos(MOPAC-EFG-T2, FF14SB-EFG-T2)
-    HbondShielding,
-    HbondNearestDistance,
+    HbondScalars,
     HbondNearestDirection,
+    HbondFlags,
     HbondCount,
-    HbondDonorFlag,
-    HbondAcceptorFlag,
-    PiQuadShielding,
-    DispShielding,
     HmShielding,
-    RingChiShielding,
+    BSPerTypeT0,
+    BSPerTypeT1,
+    BSPerTypeT2,
+    HMPerTypeT0,
+    HMPerTypeT1,
+    HMPerTypeT2,
+    LarsenHBondShielding,
     WaterEfield,
     WaterNFirst,
     WaterNSecond,
@@ -57,14 +60,51 @@ enum class ArrayId : int {
     SasaNormal,
     EeqChargeMean,
     EeqCoordinationNumber,
+    Aimnet2Efg,
+    DsspBackbone,
+    DsspChi,
+    DsspSs8,
+    DsspHBondEnergy,
+    PuckerQ,
+    PuckerTheta,
+    OmegaActual,
+    AromaticChi2,
+    Pyramidalization,
     DftTotalRaw,
     DftDiaRaw,
     DftParaRaw,
+    McPeptideCoFixed,
+    McPeptideCoBo,
+    McPeptideCoRhombic,
+    McPeptideCnFixed,
+    McPeptideCnBo,
+    McBackboneOtherFixed,
+    McBackboneOtherBo,
+    McSidechainCoFixed,
+    McSidechainCoBo,
+    McSidechainOtherFixed,
+    McSidechainOtherBo,
+    McDisulfideFixed,
+    McDisulfideBo,
+    McAromaticZeroedFixed,
+    McAromaticZeroedBo,
+    McNearestCoT2,
+    McNearestCnT2,
 };
 
-enum class ArrayRank : int { Scalar, Vec3, T2_5, Tensor9, Embedding256, RingNbhd4 };
+enum class ArrayRank : int {
+    Scalar,
+    Vec3,
+    T2_5,
+    Tensor9,
+    PerTypeT0_8,
+    PerTypeT1_24,
+    PerTypeT2_40,
+    Embedding256,
+    RingNbhd4
+};
 enum class ArrayDType : int { F64, F32, I32 };
-enum class ArrayResidence : int { DenseH5, StaticTopol, SparseDftByOriginal, Absent };
+enum class ArrayResidence : int { DenseH5, StaticTopol, StaticNpy, SparseDftByOriginal, Absent };
 
 struct AxisSpec {
     bool atom = false;
@@ -84,6 +124,10 @@ struct ArraySpec {
     QString unit;
     bool available = false;
 };
+
+std::optional<io::FieldKind> ProducerFieldFor(ArrayId id);
+std::optional<ArrayId> ArrayIdForProducerField(io::FieldKind kind);
+const io::FieldSpec* ProducerFieldSpecFor(ArrayId id);
 
 class Catalog {
 public:

@@ -16,6 +16,7 @@
 #pragma once
 
 #include "../io/CalcsetManifest.h"
+#include "../io/QtFieldCatalog.gen.h"
 #include "../model/Conformation.h"
 #include "../model/DftShielding.h"
 #include "../model/QtProtein.h"
@@ -24,7 +25,9 @@
 #include <QString>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <unordered_map>
@@ -109,6 +112,7 @@ public:
                                          const DftFrameSet& dft,
                                          const QString& frame_index_basis,
                                          QString* err_out);
+    static FrameMap Static(std::size_t originalIndex, bool hasDft);
 
     std::size_t frameCount() const { return originalByRow_.size(); }
     std::size_t originalIndex(std::size_t row) const { return originalByRow_[row]; }
@@ -122,12 +126,52 @@ private:
 };
 
 // ── RunData ───────────────────────────────────────────────────────────────
+enum class PoseKind : int { Trajectory = 0, Static = 1 };
+
+struct StaticNpyArray {
+    QString stem;
+    QString path;
+    std::size_t rows = 0;
+    std::size_t cols = 0;
+    bool frameVarying = false;
+    std::size_t atomsPerFrame = 0;
+    std::size_t frameCount = 1;
+    QString dtype_descr;
+    std::vector<double> values;
+    std::vector<float> floatValues;
+
+    bool empty() const { return rows == 0 || cols == 0; }
+    bool hasRow(std::size_t row) const { return row < rows; }
+    std::size_t rowFor(std::size_t atom, std::size_t frame = 0) const {
+        return frameVarying ? frame * atomsPerFrame + atom : atom;
+    }
+    double value(std::size_t row, std::size_t col = 0) const {
+        if (row >= rows || col >= cols || values.empty()) return 0.0;
+        return values[row * cols + col];
+    }
+    const double* rowData(std::size_t row) const {
+        if (row >= rows || values.empty()) return nullptr;
+        return values.data() + row * cols;
+    }
+    const float* floatRowData(std::size_t row) const {
+        if (row >= rows || floatValues.empty()) return nullptr;
+        return floatValues.data() + row * cols;
+    }
+};
+
 struct RunData {
+    RunData() = default;
+    RunData(RunData&&) noexcept = default;
+    RunData& operator=(RunData&&) noexcept = default;
+    RunData(const RunData&) = delete;
+    RunData& operator=(const RunData&) = delete;
+
     std::unique_ptr<model::QtProtein> protein;
     std::unique_ptr<model::Conformation> conformation;  // owns the H5 trajectory
     io::CalcsetManifest manifest;
     DftFrameSet dft;
     FrameMap frameMap;
+    std::unordered_map<int, StaticNpyArray> producerArrays;
 
     // Typed downcast convenience: non-null because RunLoader rejects
     // non-trajectory calcsets.
@@ -137,6 +181,16 @@ struct RunData {
     const io::QtTrajectoryH5* h5() const {
         const auto* t = trajectory();
         return t ? t->h5() : nullptr;
+    }
+    PoseKind poseKind() const { return trajectory() ? PoseKind::Trajectory : PoseKind::Static; }
+    double timePs(std::size_t row) const {
+        const auto* t = trajectory();
+        if (t) return t->timePicoseconds(row);
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const StaticNpyArray* producerArray(io::FieldKind kind) const {
+        auto it = producerArrays.find(static_cast<int>(kind));
+        return it == producerArrays.end() ? nullptr : &it->second;
     }
 };
 

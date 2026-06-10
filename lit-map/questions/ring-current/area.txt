@@ -1,0 +1,1 @@
+ring-current effects on NMR chemical shielding and chemical shifts — the secondary magnetic field produced by circulating aromatic pi-electron currents, its theory (point-dipole / Pople, equivalent-loop / Johnson-Bovey, current-density / Haigh-Mallion), its historical development, and its use in predicting or interpreting shifts

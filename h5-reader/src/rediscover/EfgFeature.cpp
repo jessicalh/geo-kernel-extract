@@ -238,7 +238,7 @@ EfgFeatureStats RunEfgPerAtomFeature(const Body& body, EfgFeatureSink& sink) {
             out.frame_y = fr.frame.y;
             out.h5_row = static_cast<int32_t>(row);
             out.original_index = static_cast<int32_t>(orig);
-            out.time_ps = body.run.trajectory()->timePicoseconds(row);
+            out.time_ps = body.run.timePs(row);
             out.dft_present = true;
             out.dft_target_lab_T2 = target.total_decomp.T2;
             if (target.local_frame_valid)

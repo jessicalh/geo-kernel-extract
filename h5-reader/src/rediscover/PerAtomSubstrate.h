@@ -102,13 +102,9 @@ struct PerAtomSubstrateStats {
     std::size_t charge_complete = 0;
     std::size_t mopac_coulomb_shielding_present = 0;
     std::size_t mopac_mc_shielding_present = 0;
-    std::size_t hbond_shielding_present = 0;
     std::size_t hbond_count_present = 0;
     std::size_t hbond_geometry_present = 0;
-    std::size_t pi_quadrupole_present = 0;
-    std::size_t dispersion_present = 0;
     std::size_t hm_shielding_present = 0;
-    std::size_t ringchi_shielding_present = 0;
     std::size_t water_field_present = 0;
     std::size_t hydration_shell_present = 0;
     std::size_t sasa_present = 0;
@@ -128,7 +124,7 @@ struct PerAtomSubstrateStats {
     QStringList absent_new_channel_slabs;
 };
 
-constexpr std::size_t kPerAtomClassicalCols = 89;
+constexpr std::size_t kPerAtomClassicalCols = 69;
 constexpr std::size_t kPerAtomConditioningCols = 32;
 constexpr std::size_t kPerAtomDominanceCols = 10;
 constexpr std::size_t kPerAtomDriverMagnitudeCols = 9;
@@ -136,7 +132,7 @@ constexpr std::size_t kPerAtomPartitionBinCols = 25;
 constexpr std::size_t kPerAtomDominanceBinCols = 5;
 constexpr std::size_t kPerAtomBackboneAuditCols = 14;
 constexpr std::size_t kPerAtomTargetDecompositionCols = 21;
-constexpr std::size_t kPerAtomRingPathCols = 226;
+constexpr std::size_t kPerAtomRingPathCols = 137;
 constexpr std::size_t kPerAtomMethodPathCols = 111;
 constexpr std::size_t kPerAtomHbondConditioningCols = 73;
 

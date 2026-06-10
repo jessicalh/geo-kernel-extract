@@ -13,6 +13,11 @@ class QtProtein;
 
 namespace h5reader::io {
 
+bool ValidateDftFrame(const h5reader::model::DftShieldingFrame& frame,
+                      const h5reader::model::QtProtein* protein,
+                      const QString& context,
+                      QString* err_out = nullptr);
+
 class DftShieldingLoader {
 public:
     // Parse + validate one DFT job. meta_json_abspath is the path to the
