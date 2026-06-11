@@ -63,22 +63,6 @@ bool present(const Body& body, ArrayId id, std::size_t atom, std::size_t frame) 
     return body.catalog.present(body, id, atom, frame);
 }
 
-std::optional<double> value(const Body& body,
-                            io::FieldKind kind,
-                            std::size_t nativeRow,
-                            std::size_t frame,
-                            std::size_t component) {
-    return body.catalog.value(body, kind, nativeRow, frame, component);
-}
-
-FieldPresence present(const Body& body,
-                      io::FieldKind kind,
-                      std::size_t nativeRow,
-                      std::size_t frame,
-                      std::size_t component) {
-    return body.catalog.present(body, kind, nativeRow, frame, component);
-}
-
 std::vector<RingSlot> ringSlots(const Body& body, std::size_t atom, std::size_t frame) {
     std::vector<RingSlot> out;
     const io::QtTrajectoryH5* h5 = body.run.h5();

@@ -398,54 +398,6 @@ struct QtHydrationGeometryTimeSeries {
     }
 };
 
-// ──────────────────────────────────────────────────────────────────
-// QtBondedEnergyTimeSeries — per-atom bonded energy split.
-// Source: /trajectory/bonded_energy_time_series/. Seven channels:
-// bond, angle, proper_dih, improper_dih, urey_bradley, cmap_dih, total.
-// ──────────────────────────────────────────────────────────────────
-
-struct QtBondedEnergyTimeSeries {
-    std::size_t n_atoms = 0;
-    std::size_t n_frames = 0;
-
-    std::vector<double> bond;
-    std::vector<double> angle;
-    std::vector<double> proper_dih;
-    std::vector<double> improper_dih;
-    std::vector<double> urey_bradley;
-    std::vector<double> cmap_dih;
-    std::vector<double> total;
-
-    std::vector<uint64_t> frame_indices;
-    std::vector<double> frame_times;
-    std::vector<uint8_t> source_attached;
-
-    QString result_name;
-
-    bool sourceAttachedAt(std::size_t t) const {
-        return source_attached.empty() || (t < source_attached.size() && source_attached[t] != 0);
-    }
-    bool hasChannel(const std::vector<double>& channel) const {
-        return channel.size() == n_atoms * n_frames;
-    }
-    double at(std::size_t atomIdx, std::size_t t, std::size_t component) const {
-        if (atomIdx >= n_atoms || t >= n_frames) return 0.0;
-        const std::vector<double>* channel = nullptr;
-        switch (component) {
-        case 0: channel = &bond; break;
-        case 1: channel = &angle; break;
-        case 2: channel = &proper_dih; break;
-        case 3: channel = &improper_dih; break;
-        case 4: channel = &urey_bradley; break;
-        case 5: channel = &cmap_dih; break;
-        case 6: channel = &total; break;
-        default: return 0.0;
-        }
-        if (!hasChannel(*channel)) return 0.0;
-        return (*channel)[atomIdx * n_frames + t];
-    }
-};
-
 
 // ──────────────────────────────────────────────────────────────────
 // QtRingPuckerTimeSeries — per-ring conformational TR.

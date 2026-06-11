@@ -127,7 +127,6 @@ public:
 
     // ── Bonded energy (per-atom split) ────────────────────────────
     const h5reader::model::QtScalarTimeSeries* bondedEnergyTotal() const { return bonded_energy_total_.get(); }
-    const h5reader::model::QtBondedEnergyTimeSeries* bondedEnergy() const { return bonded_energy_.get(); }
 
     // ── Per-residue TRs ───────────────────────────────────────────
     const h5reader::model::QtDihedralTimeSeries* dihedrals() const { return dihedrals_.get(); }
@@ -239,7 +238,6 @@ private:
     std::unique_ptr<h5reader::model::QtScalarTimeSeries> larsen_hbond_count_;
     std::unique_ptr<h5reader::model::QtScalarTimeSeries> larsen_hbond_water_term_;
     std::unique_ptr<h5reader::model::QtScalarTimeSeries> bonded_energy_total_;
-    std::unique_ptr<h5reader::model::QtBondedEnergyTimeSeries> bonded_energy_;
     std::unique_ptr<h5reader::model::QtHydrationShellTimeSeries> hydration_shell_ts_;
     std::unique_ptr<h5reader::model::QtHydrationGeometryTimeSeries> hydration_geometry_ts_;
 

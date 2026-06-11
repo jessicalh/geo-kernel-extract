@@ -42,7 +42,6 @@
 #include "RowDesignEmitter.h"
 #include "RowDesignSink.h"
 #include "RunData.h"
-#include "SpineReachabilityProbe.h"
 #include "StatsManifests.h"
 #include "StaticRunData.h"
 
@@ -227,7 +226,7 @@ int main(int argc, char** argv) {
     QCommandLineOption fixtureOpt(QStringLiteral("fixture"),
                                   QStringLiteral("Allow a non-final fixture row_design emission (tagged in manifests)."));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): spine_probe | row_design | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): row_design | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -451,35 +450,6 @@ int main(int argc, char** argv) {
                                 << "/" << totalStats.phiPsiEligible
                                 << "| embedding_present=" << totalStats.embeddingPresent;
         return 0;
-    }
-
-    if (which == QStringLiteral("spine_probe")) {
-        QString err;
-        auto loadedRun = loadRowDesignRun(runPath, &err);
-        if (!loadedRun) {
-            qCCritical(cMain).noquote() << "spine_probe load failed:" << err;
-            return 1;
-        }
-        h5reader::rediscover::Catalog catalog(*loadedRun);
-        h5reader::rediscover::ResidentIndexes indexes =
-            h5reader::rediscover::BuildResidentIndexes(*loadedRun);
-        const h5reader::rediscover::Body body{*loadedRun, indexes, catalog};
-        const QString datasetLabel =
-            loadedRun->poseKind() == h5reader::rediscover::PoseKind::Static
-                ? QStringLiteral("static")
-                : QStringLiteral("trajectory");
-        QString probeErr;
-        const h5reader::rediscover::SpineProbeDatasetResult probe =
-            h5reader::rediscover::RunSpineReachabilityProbe(body, datasetLabel, outDir, &probeErr);
-        if (!probeErr.isEmpty()) {
-            qCCritical(cMain).noquote() << "spine_probe write failed:" << probeErr;
-            return 4;
-        }
-        qCInfo(cMain).noquote() << "spine_probe | dataset=" << datasetLabel
-                                << "| fields=" << probe.field_count
-                                << "| failed_fields=" << probe.failed_fields
-                                << "| manifest=" << probe.manifest_path;
-        return probe.passed ? 0 : 2;
     }
 
     qCInfo(cMain).noquote() << "loading run" << runPath;
