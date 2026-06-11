@@ -1,5 +1,6 @@
 #include "RunData.h"
 
+#include "CanonicalSpineGuard.h"
 #include "ChargeStore.h"
 
 #include "../io/DftShieldingLoader.h"
@@ -81,6 +82,8 @@ FrameMap FrameMap::Static(std::size_t originalIndex, bool hasDft) {
 }
 
 std::optional<RunData> RunLoader::Load(const QString& calcset_path, QString* err_out) {
+    if (!ValidateCanonical1p9jRoot(calcset_path, err_out)) return std::nullopt;
+
     // 1. Protein + conformation via the existing loader (resolves the `.LGS`,
     //    sidecar, trajectory.h5). No file discovery here.
     io::QtLoadResult loaded = io::QtProteinLoader::LoadRunPath(calcset_path);

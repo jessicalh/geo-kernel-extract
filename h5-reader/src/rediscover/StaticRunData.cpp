@@ -1,6 +1,7 @@
 #include "StaticRunData.h"
 
 #include "Catalog.h"
+#include "CanonicalSpineGuard.h"
 #include "SphericalBasis.h"
 
 #include "../io/DftShieldingLoader.h"
@@ -218,6 +219,8 @@ bool loadStaticDft(const QString& poseDir,
 }  // namespace
 
 std::optional<RunData> StaticRunData::Load(const QString& poseDir, QString* err_out) {
+    if (!ValidateCanonical720Pose(poseDir, err_out)) return std::nullopt;
+
     const QFileInfo poseInfo(poseDir);
     if (!poseInfo.isDir()) {
         if (err_out) *err_out = QStringLiteral("static pose dir does not exist: %1").arg(poseDir);

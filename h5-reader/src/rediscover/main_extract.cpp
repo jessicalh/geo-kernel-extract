@@ -25,6 +25,7 @@
 #include "BuckinghamEfield.h"
 #include "BuckinghamEfieldSink.h"
 #include "Catalog.h"
+#include "CanonicalSpineGuard.h"
 #include "ChargeDipoleNeighborhood.h"
 #include "ComposedRelationships.h"
 #include "EfgFeature.h"
@@ -357,6 +358,11 @@ int main(int argc, char** argv) {
         QString contextDataset;
 
         if (!root720.isEmpty()) {
+            QString canonicalErr;
+            if (!h5reader::rediscover::ValidateCanonical720Root(root720, &canonicalErr)) {
+                qCCritical(cMain).noquote() << "row_design canonical guard failed:" << canonicalErr;
+                return 2;
+            }
             QDir root(root720);
             if (!root.exists()) {
                 qCCritical(cMain).noquote() << "row_design --root720 does not exist:" << root720;

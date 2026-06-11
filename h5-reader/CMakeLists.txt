@@ -339,6 +339,9 @@ qt_add_executable(h5reader_extract
     src/rediscover/ResidentIndexes.cpp
     src/rediscover/Catalog.h
     src/rediscover/Catalog.cpp
+    src/rediscover/CanonicalSpineInputs.h
+    src/rediscover/CanonicalSpineGuard.h
+    src/rediscover/CanonicalSpineGuard.cpp
     src/rediscover/AnalysisBody.h
     src/rediscover/ChargeStore.h
     src/rediscover/ChargeStore.cpp
