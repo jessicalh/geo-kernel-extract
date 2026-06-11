@@ -281,4 +281,73 @@ Selector TargetPresentSelector(io::FieldKind target) {
         [](const Body&, std::size_t, std::size_t) { return QStringLiteral("target_present"); });
 }
 
+Selector IupacNameSelector(QString iupacName) {
+    return Selector::Atom(
+        QStringLiteral("iupac:%1").arg(iupacName),
+        [iupacName](const Body& body, std::size_t atom) {
+            return body.idx.iupacNames.containsAtom(iupacName, atom);
+        },
+        [iupacName](const Body&, std::size_t, std::size_t) { return iupacName; });
+}
+
+Selector ChemicalCategorySelector(QString category) {
+    return Selector::Atom(
+        QStringLiteral("chemical:%1").arg(category),
+        [category](const Body& body, std::size_t atom) {
+            return body.idx.chemicalCategories.containsAtom(category, atom);
+        },
+        [category](const Body&, std::size_t, std::size_t) { return category; });
+}
+
+Selector SecondaryStructureSelector(SecondaryStructure3 ss3) {
+    return Selector::Frame(
+        QStringLiteral("ss3:%1").arg(static_cast<int>(ss3)),
+        [ss3](const Body& body, std::size_t atom, std::size_t frame) {
+            return body.idx.secondaryStructure.state(atom, frame).ss3 == ss3;
+        },
+        [ss3](const Body&, std::size_t, std::size_t) {
+            return QStringLiteral("ss3:%1").arg(static_cast<int>(ss3));
+        });
+}
+
+Selector SecondaryStructureSelector(SecondaryStructure8 ss8) {
+    return Selector::Frame(
+        QStringLiteral("ss8:%1").arg(static_cast<int>(ss8)),
+        [ss8](const Body& body, std::size_t atom, std::size_t frame) {
+            return body.idx.secondaryStructure.state(atom, frame).ss8 == ss8;
+        },
+        [ss8](const Body&, std::size_t, std::size_t) {
+            return QStringLiteral("ss8:%1").arg(static_cast<int>(ss8));
+        });
+}
+
+Selector DihedralBinSelector(DihedralKind kind, int fixedBin) {
+    return Selector::Frame(
+        QStringLiteral("dihedral:%1:bin:%2").arg(static_cast<int>(kind)).arg(fixedBin),
+        [kind, fixedBin](const Body& body, std::size_t atom, std::size_t frame) {
+            const DihedralState state = body.idx.dihedrals.state(kind, atom, frame);
+            return state.present && state.fixed_bin == fixedBin;
+        },
+        [kind, fixedBin](const Body&, std::size_t, std::size_t) {
+            return QStringLiteral("dihedral:%1:bin:%2").arg(static_cast<int>(kind)).arg(fixedBin);
+        });
+}
+
+Selector DihedralRangeSelector(DihedralKind kind, double loRadians, double hiRadians) {
+    return Selector::Frame(
+        QStringLiteral("dihedral:%1:range").arg(static_cast<int>(kind)),
+        [kind, loRadians, hiRadians](const Body& body, std::size_t atom, std::size_t frame) {
+            const DihedralState state = body.idx.dihedrals.state(kind, atom, frame);
+            if (!state.present) return false;
+            const double x = WrapRadians(state.radians);
+            const double lo = WrapRadians(loRadians);
+            const double hi = WrapRadians(hiRadians);
+            if (lo <= hi) return x >= lo && x <= hi;
+            return x >= lo || x <= hi;
+        },
+        [kind](const Body&, std::size_t, std::size_t) {
+            return QStringLiteral("dihedral:%1:range").arg(static_cast<int>(kind));
+        });
+}
+
 }  // namespace h5reader::rediscover

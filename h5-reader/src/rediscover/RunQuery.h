@@ -117,5 +117,11 @@ std::vector<std::size_t> FramesForTraversal(const Body& body, TraversalDomain do
 std::size_t RunQuery(const Body& body, const Query& query, const QueryRowSink& sink);
 
 Selector TargetPresentSelector(io::FieldKind target = io::FieldKind::OrcaTotal);
+Selector IupacNameSelector(QString iupacName);
+Selector ChemicalCategorySelector(QString category);
+Selector SecondaryStructureSelector(SecondaryStructure3 ss3);
+Selector SecondaryStructureSelector(SecondaryStructure8 ss8);
+Selector DihedralBinSelector(DihedralKind kind, int fixedBin);
+Selector DihedralRangeSelector(DihedralKind kind, double loRadians, double hiRadians);
 
 }  // namespace h5reader::rediscover
