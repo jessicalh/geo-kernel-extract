@@ -38,17 +38,25 @@
 #include "RelationshipEngine.h"
 #include "ResidentIndexes.h"
 #include "RingCurrentNeighborhood.h"
+#include "RowDesignEmitter.h"
+#include "RowDesignSink.h"
 #include "RunData.h"
+#include "StatsManifests.h"
+#include "StaticRunData.h"
 
 #include "../diagnostics/StructuredLogger.h"
+#include "../io/QtFieldCatalog.gen.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QLoggingCategory>
 #include <QStringList>
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -140,6 +148,52 @@ QString aimnet2FeatureMissingMessage(const h5reader::rediscover::Catalog& catalo
     return QStringLiteral("aimnet2_features requires AIMNet2 charge, CRG scalar/vector, and 256-d embedding; missing: %1")
         .arg(missing.join(QStringLiteral(", ")));
 }
+
+h5reader::rediscover::RowDesignStats addStats(h5reader::rediscover::RowDesignStats a,
+                                              const h5reader::rediscover::RowDesignStats& b) {
+    a.rows += b.rows;
+    a.atoms += b.atoms;
+    a.dftRows += b.dftRows;
+    a.dftPresent += b.dftPresent;
+    a.phiPsiPresent += b.phiPsiPresent;
+    a.phiPsiEligible += b.phiPsiEligible;
+    a.phiPsiFiniteEligible += b.phiPsiFiniteEligible;
+    a.dsspPresent += b.dsspPresent;
+    a.embeddingPresent += b.embeddingPresent;
+    if (a.populatedCounts.size() < b.populatedCounts.size())
+        a.populatedCounts.resize(b.populatedCounts.size(), 0);
+    for (std::size_t i = 0; i < b.populatedCounts.size(); ++i)
+        a.populatedCounts[i] += b.populatedCounts[i];
+    return a;
+}
+
+std::optional<h5reader::rediscover::RunData> loadRowDesignRun(const QString& path, QString* err) {
+    const QFileInfo fi(path);
+    const QString manifest = fi.isDir() ? QDir(path).filePath(QStringLiteral("extraction_manifest.json")) : QString();
+    const auto& totalSpec = h5reader::io::FieldSpecFor(h5reader::io::FieldKind::OrcaTotal);
+    const QString totalStem = QString::fromUtf8(totalSpec.stem.data(), static_cast<qsizetype>(totalSpec.stem.size()));
+    const QString total = fi.isDir() ? QDir(path).filePath(totalStem + QStringLiteral(".npy")) : QString();
+    if (fi.isDir() && QFileInfo::exists(manifest) && QFileInfo::exists(total))
+        return h5reader::rediscover::StaticRunData::Load(path, err);
+    return h5reader::rediscover::RunLoader::Load(path, err);
+}
+
+void emitRowDesignForRun(h5reader::rediscover::RunData& run,
+                         h5reader::rediscover::RowDesignSink& sink,
+                         const h5reader::rediscover::ConditioningSpec& spec,
+                         h5reader::rediscover::RowDesignStats* statsOut) {
+    QString ringErr;
+    if (!h5reader::rediscover::EnsureRowDesignRingArrays(run, &ringErr))
+        throw std::runtime_error(QStringLiteral("row_design ring restore setup failed: %1")
+                                     .arg(ringErr)
+                                     .toStdString());
+    h5reader::rediscover::Catalog catalog(run);
+    h5reader::rediscover::ResidentIndexes indexes = h5reader::rediscover::BuildResidentIndexes(run);
+    const h5reader::rediscover::Body body{run, indexes, catalog};
+    const h5reader::rediscover::RowDesignStats stats =
+        h5reader::rediscover::RunRowDesignEmit(body, sink, spec);
+    *statsOut = addStats(*statsOut, stats);
+}
 }
 
 int main(int argc, char** argv) {
@@ -162,8 +216,16 @@ int main(int argc, char** argv) {
     QCommandLineOption outOpt(QStringLiteral("out"),
                               QStringLiteral("Output directory for the CSV files."),
                               QStringLiteral("dir"));
+    QCommandLineOption root720Opt(QStringLiteral("root720"),
+                                  QStringLiteral("Authoritative full720 root for row_design static emission."),
+                                  QStringLiteral("dir"));
+    QCommandLineOption conditioningSpecOpt(QStringLiteral("conditioning-spec"),
+                                           QStringLiteral("Optional row_design conditioning-spec JSON."),
+                                           QStringLiteral("json"));
+    QCommandLineOption fixtureOpt(QStringLiteral("fixture"),
+                                  QStringLiteral("Allow a non-final fixture row_design emission (tagged in manifests)."));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): row_design | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -199,6 +261,9 @@ int main(int argc, char** argv) {
                                  QStringLiteral("engine"), QStringLiteral("composed"));
     parser.addOption(runOpt);
     parser.addOption(outOpt);
+    parser.addOption(root720Opt);
+    parser.addOption(conditioningSpecOpt);
+    parser.addOption(fixtureOpt);
     parser.addOption(caseOpt);
     parser.addOption(mcCutoffOpt);
     parser.addOption(chargeSourceOpt);
@@ -207,13 +272,18 @@ int main(int argc, char** argv) {
     parser.addOption(bondCutoffOpt);
     parser.addOption(mcNearFieldRatioOpt);
     parser.addOption(engineOpt);
+    parser.addPositionalArgument(QStringLiteral("run"),
+                                 QStringLiteral("Calcset path for row_design or legacy --run alternative."));
     parser.process(app);
 
-    if (!parser.isSet(runOpt) || !parser.isSet(outOpt)) {
-        qCCritical(cMain) << "both --run and --out are required";
+    QString runPath = parser.value(runOpt);
+    if (runPath.isEmpty() && !parser.positionalArguments().isEmpty())
+        runPath = parser.positionalArguments().front();
+    const QString root720 = parser.value(root720Opt);
+    if (!parser.isSet(outOpt) || (runPath.isEmpty() && root720.isEmpty())) {
+        qCCritical(cMain) << "--out and either --run/positional-run or --root720 are required";
         parser.showHelp(2);
     }
-    const QString runPath = parser.value(runOpt);
     const QString outDir = parser.value(outOpt);
     const QString which = parser.value(caseOpt);
     const QString chargeSource = parser.value(chargeSourceOpt);
@@ -259,6 +329,118 @@ int main(int argc, char** argv) {
         qCCritical(cMain).noquote()
             << "invalid --mc-near-field-ratio" << parser.value(mcNearFieldRatioOpt);
         return 2;
+    }
+
+    if (which == QStringLiteral("row_design")) {
+        h5reader::rediscover::ConditioningSpec spec = h5reader::rediscover::ConditioningSpec::Default();
+        if (parser.isSet(conditioningSpecOpt)) {
+            QString specErr;
+            auto loadedSpec = h5reader::rediscover::ConditioningSpec::Load(parser.value(conditioningSpecOpt), &specErr);
+            if (!loadedSpec) {
+                qCCritical(cMain).noquote() << "conditioning spec load failed:" << specErr;
+                return 2;
+            }
+            spec = std::move(*loadedSpec);
+        }
+        spec.fixture = parser.isSet(fixtureOpt);
+
+        h5reader::rediscover::RowDesignSink sink(outDir, 256);
+        if (!sink.Ok()) {
+            qCCritical(cMain).noquote() << "row_design sink open failed";
+            return 3;
+        }
+        h5reader::rediscover::RowDesignStats totalStats;
+        h5reader::rediscover::RunData* manifestRun = nullptr;
+        std::vector<h5reader::rediscover::RunData> residentRuns;
+        QString contextRoot;
+        QString contextDataset;
+
+        if (!root720.isEmpty()) {
+            QDir root(root720);
+            if (!root.exists()) {
+                qCCritical(cMain).noquote() << "row_design --root720 does not exist:" << root720;
+                return 2;
+            }
+            const QStringList dirs = root.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+            if (dirs.isEmpty()) {
+                qCCritical(cMain).noquote() << "row_design --root720 has no pose dirs:" << root720;
+                return 2;
+            }
+            residentRuns.reserve(static_cast<std::size_t>(dirs.size()));
+            for (const QString& name : dirs) {
+                QString err;
+                auto staticRun = h5reader::rediscover::StaticRunData::Load(root.filePath(name), &err);
+                if (!staticRun) {
+                    qCCritical(cMain).noquote() << "static load failed for" << name << ":" << err;
+                    return 1;
+                }
+                residentRuns.push_back(std::move(*staticRun));
+            }
+            for (auto& staticRun : residentRuns) {
+                if (!manifestRun) manifestRun = &staticRun;
+                try {
+                    emitRowDesignForRun(staticRun, sink, spec, &totalStats);
+                } catch (const std::exception& e) {
+                    qCCritical(cMain).noquote() << "row_design failed:" << e.what();
+                    return 1;
+                }
+            }
+            contextRoot = QFileInfo(root720).absoluteFilePath();
+            contextDataset = QStringLiteral("720_static");
+        } else {
+            QString err;
+            auto loadedRun = loadRowDesignRun(runPath, &err);
+            if (!loadedRun) {
+                qCCritical(cMain).noquote() << "row_design load failed:" << err;
+                return 1;
+            }
+            residentRuns.push_back(std::move(*loadedRun));
+            manifestRun = &residentRuns.front();
+            try {
+                emitRowDesignForRun(residentRuns.front(), sink, spec, &totalStats);
+            } catch (const std::exception& e) {
+                qCCritical(cMain).noquote() << "row_design failed:" << e.what();
+                return 1;
+            }
+            contextRoot = QFileInfo(runPath).absoluteFilePath();
+            contextDataset = manifestRun->manifest.dataset_id;
+        }
+
+        if (!sink.Commit()) {
+            qCCritical(cMain).noquote() << "row_design sink commit failed";
+            return 4;
+        }
+        if (!spec.fixture && sink.rowsWritten() != totalStats.rows) {
+            qCCritical(cMain).noquote() << "row_design row-count gate failed:"
+                                        << sink.rowsWritten() << "!=" << totalStats.rows;
+            return 2;
+        }
+        if (!spec.fixture && totalStats.phiPsiFiniteEligible != totalStats.phiPsiEligible) {
+            qCCritical(cMain).noquote() << "row_design phi/psi gate failed:"
+                                        << totalStats.phiPsiFiniteEligible << "!=" << totalStats.phiPsiEligible
+                                        << "(eligible non-terminal backbone rows)";
+            return 2;
+        }
+        QString manifestErr;
+        h5reader::rediscover::RowDesignManifestContext ctx;
+        ctx.datasetId = contextDataset;
+        ctx.rootPath = contextRoot;
+        ctx.fixture = spec.fixture;
+        if (!manifestRun
+            || !h5reader::rediscover::WriteRowDesignManifests(outDir, h5reader::rediscover::RowDesignSchema(),
+                                                              totalStats, *manifestRun, spec, ctx, &manifestErr)) {
+            qCCritical(cMain).noquote() << "row_design manifest write failed:" << manifestErr;
+            return 4;
+        }
+        qCInfo(cMain).noquote() << "row_design | rows=" << sink.rowsWritten()
+                                << "| atoms=" << totalStats.atoms
+                                << "| dft_rows=" << totalStats.dftRows
+                                << "| dft_present=" << totalStats.dftPresent
+                                << "| phi_psi_present=" << totalStats.phiPsiPresent
+                                << "| phi_psi_backbone_finite=" << totalStats.phiPsiFiniteEligible
+                                << "/" << totalStats.phiPsiEligible
+                                << "| embedding_present=" << totalStats.embeddingPresent;
+        return 0;
     }
 
     qCInfo(cMain).noquote() << "loading run" << runPath;
@@ -530,9 +712,6 @@ int main(int argc, char** argv) {
             << "| ring_present=" << stats.ring_present
             << "| charge_present=" << stats.charge_present
             << "| mc_lit_valid_present=" << stats.mc_lit_valid_present
-            << "| hbond_shielding_present=" << stats.hbond_shielding_present
-            << "| pi_quadrupole_present=" << stats.pi_quadrupole_present
-            << "| dispersion_present=" << stats.dispersion_present
             << "| water_field_present=" << stats.water_field_present
             << "| sasa_present=" << stats.sasa_present
             << "| eeq_charge_present=" << stats.eeq_charge_present

@@ -346,6 +346,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/OutputManifest.cpp
     src/rediscover/RunData.h
     src/rediscover/RunData.cpp
+    src/rediscover/StaticRunData.h
+    src/rediscover/StaticRunData.cpp
     src/rediscover/RecordSink.h
     src/rediscover/RecordSink.cpp
     src/rediscover/ExtractionSupport.h
@@ -398,6 +400,18 @@ qt_add_executable(h5reader_extract
     src/rediscover/AllAtomEquivariantSink.cpp
     src/rediscover/AllAtomEquivariant.h
     src/rediscover/AllAtomEquivariant.cpp
+    src/rediscover/RamaRegion.h
+    src/rediscover/RamaRegion.cpp
+    src/rediscover/ConditioningSpec.h
+    src/rediscover/ConditioningSpec.cpp
+    src/rediscover/RowDesign.h
+    src/rediscover/RowDesign.cpp
+    src/rediscover/RowDesignSink.h
+    src/rediscover/RowDesignSink.cpp
+    src/rediscover/RowDesignEmitter.h
+    src/rediscover/RowDesignEmitter.cpp
+    src/rediscover/StatsManifests.h
+    src/rediscover/StatsManifests.cpp
     src/rediscover/CaseHunter.h
     src/rediscover/CaseHunter.cpp
     src/rediscover/PerAtomSubstrate.h

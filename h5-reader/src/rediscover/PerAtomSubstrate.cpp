@@ -1350,26 +1350,14 @@ struct DirectFeatures {
     std::array<double, 5> mopac_coulomb_T2 = {};
     bool mopac_mc_present = false;
     std::array<double, 5> mopac_mc_T2 = {};
-    bool hbond_shielding_present = false;
-    std::array<double, 5> hbond_T2 = {};
-    bool hbond_nearest_distance_present = false;
-    double hbond_nearest_distance = kNaN;
     bool hbond_nearest_direction_present = false;
     Vec3 hbond_nearest_direction = Vec3::Zero();
+    bool hbond_flags_present = false;
+    std::array<double, 3> hbond_flags = {};
     bool hbond_count_present = false;
     double hbond_count = kNaN;
-    bool hbond_donor_flag_present = false;
-    double hbond_donor_flag = kNaN;
-    bool hbond_acceptor_flag_present = false;
-    double hbond_acceptor_flag = kNaN;
-    bool pi_quadrupole_present = false;
-    std::array<double, 5> pi_quadrupole_T2 = {};
-    bool dispersion_present = false;
-    std::array<double, 5> dispersion_T2 = {};
     bool hm_shielding_present = false;
     std::array<double, 5> hm_T2 = {};
-    bool ringchi_shielding_present = false;
-    std::array<double, 5> ringchi_T2 = {};
     bool water_efield_present = false;
     Vec3 water_efield = Vec3::Zero();
     bool water_n_first_present = false;
@@ -1393,11 +1381,8 @@ struct DirectFeatures {
     bool hm_shielding_path_present = false;
     bool hm_per_type_T0_present = false;
     bool hm_per_type_T2_present = false;
-    bool ringchi_path_present = false;
     bool pq_per_type_T0_present = false;
-    bool pq_per_type_T2_present = false;
     bool disp_per_type_T0_present = false;
-    bool disp_per_type_T2_present = false;
     std::array<double, kPerAtomMethodPathCols> method_paths = {};
     bool mc_category_T2_present = false;
     bool mc_scalars_present = false;
@@ -1472,53 +1457,43 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
     if (out.mopac_mc_present)
         out.mopac_mc_T2 = body.catalog.valueT2(body, ArrayId::MopacMcShielding, atom, row);
     out.mopac_mc_present = out.mopac_mc_present && finiteT2(out.mopac_mc_T2);
-    out.hbond_shielding_present = body.catalog.present(body, ArrayId::HbondShielding, atom, row);
-    if (out.hbond_shielding_present)
-        out.hbond_T2 = body.catalog.valueT2(body, ArrayId::HbondShielding, atom, row);
-    out.hbond_shielding_present = out.hbond_shielding_present && finiteT2(out.hbond_T2);
-    out.hbond_nearest_distance_present =
-        body.catalog.present(body, ArrayId::HbondNearestDistance, atom, row);
-    if (out.hbond_nearest_distance_present)
-        out.hbond_nearest_distance =
-            body.catalog.value(body, ArrayId::HbondNearestDistance, atom, row);
-    out.hbond_nearest_distance_present =
-        out.hbond_nearest_distance_present && std::isfinite(out.hbond_nearest_distance);
-    out.hbond_nearest_direction_present =
-        body.catalog.present(body, ArrayId::HbondNearestDirection, atom, row);
-    if (out.hbond_nearest_direction_present)
-        out.hbond_nearest_direction =
-            body.catalog.valueVec3(body, ArrayId::HbondNearestDirection, atom, row);
-    out.hbond_nearest_direction_present =
-        out.hbond_nearest_direction_present && finiteVec3(out.hbond_nearest_direction);
+    if (const model::NpyColumn* hdir =
+            atomColumn(snapshot, io::FieldKind::HBondNearestDir, atom, 3)) {
+        const double* v = hdir->row(atom);
+        out.hbond_nearest_direction = Vec3(v[0], v[1], v[2]);
+        out.hbond_nearest_direction_present = finiteRaw(v, 3);
+    } else {
+        out.hbond_nearest_direction_present =
+            body.catalog.present(body, ArrayId::HbondNearestDirection, atom, row);
+        if (out.hbond_nearest_direction_present)
+            out.hbond_nearest_direction =
+                body.catalog.valueVec3(body, ArrayId::HbondNearestDirection, atom, row);
+        out.hbond_nearest_direction_present =
+            out.hbond_nearest_direction_present && finiteVec3(out.hbond_nearest_direction);
+    }
+    if (const model::NpyColumn* hflags =
+            atomColumn(snapshot, io::FieldKind::HBondFlags, atom, 3)) {
+        const double* v = hflags->row(atom);
+        for (std::size_t i = 0; i < out.hbond_flags.size(); ++i) out.hbond_flags[i] = v[i];
+        out.hbond_flags_present = finiteRaw(v, 3);
+    } else {
+        out.hbond_flags_present = body.catalog.present(body, ArrayId::HbondFlags, atom, row);
+        if (out.hbond_flags_present) {
+            for (std::size_t i = 0; i < out.hbond_flags.size(); ++i)
+                out.hbond_flags[i] =
+                    body.catalog.value(body, ArrayId::HbondFlags, atom, row, -1, static_cast<int>(i));
+        }
+        out.hbond_flags_present =
+            out.hbond_flags_present && finiteRaw(out.hbond_flags.data(), out.hbond_flags.size());
+    }
     out.hbond_count_present = body.catalog.present(body, ArrayId::HbondCount, atom, row);
     if (out.hbond_count_present)
         out.hbond_count = body.catalog.value(body, ArrayId::HbondCount, atom, row);
     out.hbond_count_present = out.hbond_count_present && std::isfinite(out.hbond_count);
-    out.hbond_donor_flag_present = body.catalog.present(body, ArrayId::HbondDonorFlag, atom, row);
-    if (out.hbond_donor_flag_present)
-        out.hbond_donor_flag = body.catalog.value(body, ArrayId::HbondDonorFlag, atom, row);
-    out.hbond_donor_flag_present = out.hbond_donor_flag_present && std::isfinite(out.hbond_donor_flag);
-    out.hbond_acceptor_flag_present = body.catalog.present(body, ArrayId::HbondAcceptorFlag, atom, row);
-    if (out.hbond_acceptor_flag_present)
-        out.hbond_acceptor_flag = body.catalog.value(body, ArrayId::HbondAcceptorFlag, atom, row);
-    out.hbond_acceptor_flag_present =
-        out.hbond_acceptor_flag_present && std::isfinite(out.hbond_acceptor_flag);
-    out.pi_quadrupole_present = body.catalog.present(body, ArrayId::PiQuadShielding, atom, row);
-    if (out.pi_quadrupole_present)
-        out.pi_quadrupole_T2 = body.catalog.valueT2(body, ArrayId::PiQuadShielding, atom, row);
-    out.pi_quadrupole_present = out.pi_quadrupole_present && finiteT2(out.pi_quadrupole_T2);
-    out.dispersion_present = body.catalog.present(body, ArrayId::DispShielding, atom, row);
-    if (out.dispersion_present)
-        out.dispersion_T2 = body.catalog.valueT2(body, ArrayId::DispShielding, atom, row);
-    out.dispersion_present = out.dispersion_present && finiteT2(out.dispersion_T2);
     out.hm_shielding_present = body.catalog.present(body, ArrayId::HmShielding, atom, row);
     if (out.hm_shielding_present)
         out.hm_T2 = body.catalog.valueT2(body, ArrayId::HmShielding, atom, row);
     out.hm_shielding_present = out.hm_shielding_present && finiteT2(out.hm_T2);
-    out.ringchi_shielding_present = body.catalog.present(body, ArrayId::RingChiShielding, atom, row);
-    if (out.ringchi_shielding_present)
-        out.ringchi_T2 = body.catalog.valueT2(body, ArrayId::RingChiShielding, atom, row);
-    out.ringchi_shielding_present = out.ringchi_shielding_present && finiteT2(out.ringchi_T2);
     out.water_efield_present = body.catalog.present(body, ArrayId::WaterEfield, atom, row);
     if (out.water_efield_present)
         out.water_efield = body.catalog.valueVec3(body, ArrayId::WaterEfield, atom, row);
@@ -1569,16 +1544,10 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::HMPerTypeT0, atom, 8);
     out.hm_per_type_T2_present =
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::HMPerTypeT2, atom, 40);
-    out.ringchi_path_present = false;
-    rp += 9;  // ring-χ removed (dead kernel); slot kept NaN for ring_paths alignment
     out.pq_per_type_T0_present =
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::PQPerTypeT0, atom, 8);
-    out.pq_per_type_T2_present = false;
-    rp += 40;  // pq_per_type_T2 removed (dead tensor); slot kept NaN for alignment
     out.disp_per_type_T0_present =
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT0, atom, 8);
-    out.disp_per_type_T2_present = false;
-    rp += 40;  // disp_per_type_T2 removed (dead tensor); slot kept NaN for alignment
 
     std::size_t mp = 0;
     out.mc_category_T2_present =
@@ -1756,20 +1725,11 @@ void auditRingPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& d
     auditArraySegment(stats, QStringLiteral("hm_per_type_T2"), direct.hm_per_type_T2_present,
                       direct.ring_paths, c, 40);
     c += 40;
-    auditArraySegment(stats, QStringLiteral("ringchi_shielding_full"),
-                      direct.ringchi_path_present, direct.ring_paths, c, 9);
-    c += 9;
     auditArraySegment(stats, QStringLiteral("pq_per_type_T0"), direct.pq_per_type_T0_present,
                       direct.ring_paths, c, 8);
     c += 8;
-    auditArraySegment(stats, QStringLiteral("pq_per_type_T2"), direct.pq_per_type_T2_present,
-                      direct.ring_paths, c, 40);
-    c += 40;
     auditArraySegment(stats, QStringLiteral("disp_per_type_T0"), direct.disp_per_type_T0_present,
                       direct.ring_paths, c, 8);
-    c += 8;
-    auditArraySegment(stats, QStringLiteral("disp_per_type_T2"), direct.disp_per_type_T2_present,
-                      direct.ring_paths, c, 40);
 }
 
 void auditMethodPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct) {
@@ -1893,29 +1853,20 @@ void auditIsolationFeatures(PerAtomSubstrateStats& stats, const PerAtomIsolation
 
 void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct,
                          const RowChargeScalars& charges) {
-    const bool hbondGeometryPresent = direct.hbond_nearest_distance_present
-                                      && direct.hbond_nearest_direction_present
-                                      && direct.hbond_donor_flag_present
-                                      && direct.hbond_acceptor_flag_present;
+    const bool hbondGeometryPresent = direct.hbond_nearest_direction_present
+                                      && direct.hbond_flags_present;
 
-    auditT2(stats, QStringLiteral("hbond_T2"), direct.hbond_shielding_present, direct.hbond_T2);
     auditScalar(stats, QStringLiteral("hbond_count"), direct.hbond_count_present, direct.hbond_count);
-    auditScalar(stats, QStringLiteral("hbond_nearest_dist"), hbondGeometryPresent,
-                direct.hbond_nearest_distance);
     auditVec3(stats, QStringLiteral("hbond_nearest_dir"), hbondGeometryPresent,
               direct.hbond_nearest_direction);
-    auditScalar(stats, QStringLiteral("hbond_donor_flag"), hbondGeometryPresent,
-                direct.hbond_donor_flag);
-    auditScalar(stats, QStringLiteral("hbond_acceptor_flag"), hbondGeometryPresent,
-                direct.hbond_acceptor_flag);
-    auditT2(stats, QStringLiteral("pi_quadrupole_T2"), direct.pi_quadrupole_present,
-            direct.pi_quadrupole_T2);
-    auditT2(stats, QStringLiteral("dispersion_T2"), direct.dispersion_present,
-            direct.dispersion_T2);
+    auditScalar(stats, QStringLiteral("hbond_flags_is_backbone"), hbondGeometryPresent,
+                direct.hbond_flags[0]);
+    auditScalar(stats, QStringLiteral("hbond_flags_is_donor"), hbondGeometryPresent,
+                direct.hbond_flags[1]);
+    auditScalar(stats, QStringLiteral("hbond_flags_is_acceptor"), hbondGeometryPresent,
+                direct.hbond_flags[2]);
     auditT2(stats, QStringLiteral("hm_shielding_T2"), direct.hm_shielding_present,
             direct.hm_T2);
-    auditT2(stats, QStringLiteral("ringchi_shielding_T2"), direct.ringchi_shielding_present,
-            direct.ringchi_T2);
     auditVec3(stats, QStringLiteral("water_efield"), direct.water_efield_present,
               direct.water_efield);
     auditScalar(stats, QStringLiteral("water_n_first"), direct.water_n_first_present,
@@ -1956,16 +1907,11 @@ void auditDirectFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& dir
 
 void recordAbsentNewChannelSlabs(const Body& body, PerAtomSubstrateStats& stats) {
     const std::vector<std::pair<QString, ArrayId>> slabs = {
-        {QStringLiteral("hbond_shielding_time_series"), ArrayId::HbondShielding},
-        {QStringLiteral("hbond_nearest_dist"), ArrayId::HbondNearestDistance},
+        {QStringLiteral("hbond_scalars"), ArrayId::HbondScalars},
         {QStringLiteral("hbond_nearest_dir"), ArrayId::HbondNearestDirection},
+        {QStringLiteral("hbond_flags"), ArrayId::HbondFlags},
         {QStringLiteral("larsen_hbond_count_time_series"), ArrayId::HbondCount},
-        {QStringLiteral("hbond_is_donor"), ArrayId::HbondDonorFlag},
-        {QStringLiteral("hbond_is_acceptor"), ArrayId::HbondAcceptorFlag},
-        {QStringLiteral("piquad_shielding_time_series"), ArrayId::PiQuadShielding},
-        {QStringLiteral("disp_shielding_time_series"), ArrayId::DispShielding},
         {QStringLiteral("hm_shielding_time_series"), ArrayId::HmShielding},
-        {QStringLiteral("ringchi_shielding_time_series"), ArrayId::RingChiShielding},
         {QStringLiteral("water_field_time_series/efield"), ArrayId::WaterEfield},
         {QStringLiteral("water_field_time_series/n_first"), ArrayId::WaterNFirst},
         {QStringLiteral("water_field_time_series/n_second"), ArrayId::WaterNSecond},
@@ -2010,18 +1956,14 @@ std::array<double, kPerAtomClassicalCols> classicalFeatures(const MechanismAggre
     f[c++] = direct.aimnet2_crg_present ? direct.aimnet2_crg.x() : kNaN;
     f[c++] = direct.aimnet2_crg_present ? direct.aimnet2_crg.y() : kNaN;
     f[c++] = direct.aimnet2_crg_present ? direct.aimnet2_crg.z() : kNaN;
-    for (double v : direct.hbond_T2) f[c++] = direct.hbond_shielding_present ? v : kNaN;
-    f[c++] = direct.hbond_nearest_distance_present ? direct.hbond_nearest_distance : kNaN;
+    f[c++] = direct.hbond_flags_present ? direct.hbond_flags[0] : kNaN;
     f[c++] = direct.hbond_nearest_direction_present ? direct.hbond_nearest_direction.x() : kNaN;
     f[c++] = direct.hbond_nearest_direction_present ? direct.hbond_nearest_direction.y() : kNaN;
     f[c++] = direct.hbond_nearest_direction_present ? direct.hbond_nearest_direction.z() : kNaN;
     f[c++] = direct.hbond_count_present ? direct.hbond_count : kNaN;
-    f[c++] = direct.hbond_donor_flag_present ? direct.hbond_donor_flag : kNaN;
-    f[c++] = direct.hbond_acceptor_flag_present ? direct.hbond_acceptor_flag : kNaN;
-    for (double v : direct.pi_quadrupole_T2) f[c++] = direct.pi_quadrupole_present ? v : kNaN;
-    for (double v : direct.dispersion_T2) f[c++] = direct.dispersion_present ? v : kNaN;
+    f[c++] = direct.hbond_flags_present ? direct.hbond_flags[1] : kNaN;
+    f[c++] = direct.hbond_flags_present ? direct.hbond_flags[2] : kNaN;
     for (double v : direct.hm_T2) f[c++] = direct.hm_shielding_present ? v : kNaN;
-    for (double v : direct.ringchi_T2) f[c++] = direct.ringchi_shielding_present ? v : kNaN;
     f[c++] = direct.water_efield_present ? direct.water_efield.x() : kNaN;
     f[c++] = direct.water_efield_present ? direct.water_efield.y() : kNaN;
     f[c++] = direct.water_efield_present ? direct.water_efield.z() : kNaN;
@@ -2124,11 +2066,8 @@ QStringList makeRingPathColumns() {
     appendTensor9Names(cols, QStringLiteral("hm_shielding"));
     appendIndexedNames(cols, QStringLiteral("hm_per_type_T0"), 8);
     appendIndexedNames(cols, QStringLiteral("hm_per_type_T2"), 40);
-    appendTensor9Names(cols, QStringLiteral("ringchi_shielding"));
     appendIndexedNames(cols, QStringLiteral("pq_per_type_T0"), 8);
-    appendIndexedNames(cols, QStringLiteral("pq_per_type_T2"), 40);
     appendIndexedNames(cols, QStringLiteral("disp_per_type_T0"), 8);
-    appendIndexedNames(cols, QStringLiteral("disp_per_type_T2"), 40);
     return cols;
 }
 
@@ -2217,25 +2156,13 @@ const QStringList kClassicalColumns = {
     QStringLiteral("aimnet2_charge"), QStringLiteral("aimnet2_crg_scalar"),
     QStringLiteral("aimnet2_crg_x"), QStringLiteral("aimnet2_crg_y"),
     QStringLiteral("aimnet2_crg_z"),
-    QStringLiteral("hbond_T2_0"), QStringLiteral("hbond_T2_1"),
-    QStringLiteral("hbond_T2_2"), QStringLiteral("hbond_T2_3"),
-    QStringLiteral("hbond_T2_4"),
-    QStringLiteral("hbond_nearest_dist"), QStringLiteral("hbond_nearest_dir_x"),
+    QStringLiteral("hbond_flags_is_backbone"), QStringLiteral("hbond_nearest_dir_x"),
     QStringLiteral("hbond_nearest_dir_y"), QStringLiteral("hbond_nearest_dir_z"),
-    QStringLiteral("hbond_count"), QStringLiteral("hbond_is_donor"),
-    QStringLiteral("hbond_is_acceptor"),
-    QStringLiteral("pi_quadrupole_T2_0"), QStringLiteral("pi_quadrupole_T2_1"),
-    QStringLiteral("pi_quadrupole_T2_2"), QStringLiteral("pi_quadrupole_T2_3"),
-    QStringLiteral("pi_quadrupole_T2_4"),
-    QStringLiteral("dispersion_T2_0"), QStringLiteral("dispersion_T2_1"),
-    QStringLiteral("dispersion_T2_2"), QStringLiteral("dispersion_T2_3"),
-    QStringLiteral("dispersion_T2_4"),
+    QStringLiteral("hbond_count"), QStringLiteral("hbond_flags_is_donor"),
+    QStringLiteral("hbond_flags_is_acceptor"),
     QStringLiteral("hm_shielding_T2_0"), QStringLiteral("hm_shielding_T2_1"),
     QStringLiteral("hm_shielding_T2_2"), QStringLiteral("hm_shielding_T2_3"),
     QStringLiteral("hm_shielding_T2_4"),
-    QStringLiteral("ringchi_shielding_T2_0"), QStringLiteral("ringchi_shielding_T2_1"),
-    QStringLiteral("ringchi_shielding_T2_2"), QStringLiteral("ringchi_shielding_T2_3"),
-    QStringLiteral("ringchi_shielding_T2_4"),
     QStringLiteral("water_efield_x"), QStringLiteral("water_efield_y"),
     QStringLiteral("water_efield_z"), QStringLiteral("water_efield_mag"),
     QStringLiteral("water_n_first"), QStringLiteral("water_n_second"),
@@ -2736,7 +2663,7 @@ public:
         const int64_t rowId = static_cast<int64_t>(rowsWritten_);
         *rowsOut_ << rowId << ',' << a.atomIndex << ',' << static_cast<qint64>(row) << ','
                   << static_cast<qint64>(frameSlot) << ',' << static_cast<qint64>(orig) << ','
-                  << num(body.run.trajectory()->timePicoseconds(row)) << ','
+                  << num(body.run.timePs(row)) << ','
                   << static_cast<int>(a.element) << ',' << static_cast<int>(a.ffAtomType) << ','
                   << p.atomLabel(atom, model::NamingConvention::Bmrb) << ','
                   << p.atomLabel(atom, model::NamingConvention::Iupac) << ','
@@ -2773,16 +2700,10 @@ public:
                   << ',' << (charges.ff14sb.present ? 1 : 0)
                   << ',' << csvScalar(charges.mopac_welford_mean)
                   << ',' << (charges.mopac_welford_mean.present ? 1 : 0)
-                  << ',' << (direct.hbond_shielding_present ? 1 : 0)
                   << ',' << (direct.hbond_count_present ? 1 : 0)
-                  << ',' << ((direct.hbond_nearest_distance_present
-                               && direct.hbond_nearest_direction_present
-                               && direct.hbond_donor_flag_present
-                               && direct.hbond_acceptor_flag_present) ? 1 : 0)
-                  << ',' << (direct.pi_quadrupole_present ? 1 : 0)
-                  << ',' << (direct.dispersion_present ? 1 : 0)
+                  << ',' << ((direct.hbond_nearest_direction_present
+                               && direct.hbond_flags_present) ? 1 : 0)
                   << ',' << (direct.hm_shielding_present ? 1 : 0)
-                  << ',' << (direct.ringchi_shielding_present ? 1 : 0)
                   << ',' << ((direct.water_efield_present
                                && direct.water_n_first_present
                                && direct.water_n_second_present) ? 1 : 0)
@@ -2882,9 +2803,8 @@ private:
             "bond_self_or_bonded_n,has_self_or_bonded_driver,"
             "ff14sb_charge,ff14sb_charge_present,"
             "mopac_welford_mean_charge,mopac_welford_mean_charge_present,"
-            "hbond_shielding_present,hbond_count_present,hbond_geometry_present,"
-            "pi_quadrupole_present,dispersion_present,hm_shielding_present,"
-            "ringchi_shielding_present,water_field_present,hydration_shell_present,"
+            "hbond_count_present,hbond_geometry_present,hm_shielding_present,"
+            "water_field_present,hydration_shell_present,"
             "sasa_present,sasa_normal_present,eeq_charge,eeq_charge_present,"
             "eeq_coordination_number,eeq_coordination_number_present");
     }
@@ -2992,35 +2912,16 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
             irreps = QStringLiteral("1x2e");
             mechanism = QStringLiteral("hbond");
             sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
-        } else if (name.contains(QStringLiteral("hbond_nearest_dist"))) {
-            units = QStringLiteral("A");
-            irreps = QStringLiteral("0e");
-            mechanism = QStringLiteral("hbond");
         } else if (name.contains(QStringLiteral("hbond_nearest_dir"))) {
             irreps = QStringLiteral("1o");
             mechanism = QStringLiteral("hbond");
         } else if (name.contains(QStringLiteral("hbond_count"))
-                   || name.contains(QStringLiteral("hbond_is_"))) {
+                   || name.contains(QStringLiteral("hbond_flags_"))) {
             units = name.contains(QStringLiteral("count")) ? QStringLiteral("count") : QString();
             irreps = QStringLiteral("0e");
             mechanism = QStringLiteral("hbond");
-        } else if (name.contains(QStringLiteral("pi_quadrupole"))) {
-            units = QStringLiteral("Angstrom^-5");
-            irreps = QStringLiteral("1x2e");
-            mechanism = QStringLiteral("pi_quadrupole");
-            sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
-        } else if (name.contains(QStringLiteral("dispersion"))) {
-            units = QStringLiteral("Angstrom^-6");
-            irreps = QStringLiteral("1x2e");
-            mechanism = QStringLiteral("dispersion");
-            sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
         } else if (name.contains(QStringLiteral("hm_shielding"))) {
             units = QStringLiteral("Angstrom^-1");
-            irreps = QStringLiteral("1x2e");
-            mechanism = QStringLiteral("ring_current_alt");
-            sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
-        } else if (name.contains(QStringLiteral("ringchi_shielding"))) {
-            units = QStringLiteral("Angstrom^-3");
             irreps = QStringLiteral("1x2e");
             mechanism = QStringLiteral("ring_current_alt");
             sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
@@ -3247,13 +3148,9 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
                   QStringLiteral("mopac_welford_mean_charge_present"), 55, QString(),
                   QStringLiteral("0e"), QStringLiteral("provenance_qc"), false);
     const QStringList rowPresentCols = {
-        QStringLiteral("hbond_shielding_present"),
         QStringLiteral("hbond_count_present"),
         QStringLiteral("hbond_geometry_present"),
-        QStringLiteral("pi_quadrupole_present"),
-        QStringLiteral("dispersion_present"),
         QStringLiteral("hm_shielding_present"),
-        QStringLiteral("ringchi_shielding_present"),
         QStringLiteral("water_field_present"),
         QStringLiteral("hydration_shell_present"),
         QStringLiteral("sasa_present"),
@@ -3392,20 +3289,12 @@ bool writePerAtomManifest(const QString& outDir, const PerAtomSubstrateStats& st
                    static_cast<qint64>(stats.mopac_welford_mean_charge_present));
     support.insert(QStringLiteral("charge_complete_rows"),
                    static_cast<qint64>(stats.charge_complete));
-    support.insert(QStringLiteral("hbond_shielding_present_rows"),
-                   static_cast<qint64>(stats.hbond_shielding_present));
     support.insert(QStringLiteral("hbond_count_present_rows"),
                    static_cast<qint64>(stats.hbond_count_present));
     support.insert(QStringLiteral("hbond_geometry_present_rows"),
                    static_cast<qint64>(stats.hbond_geometry_present));
-    support.insert(QStringLiteral("pi_quadrupole_present_rows"),
-                   static_cast<qint64>(stats.pi_quadrupole_present));
-    support.insert(QStringLiteral("dispersion_present_rows"),
-                   static_cast<qint64>(stats.dispersion_present));
     support.insert(QStringLiteral("hm_shielding_present_rows"),
                    static_cast<qint64>(stats.hm_shielding_present));
-    support.insert(QStringLiteral("ringchi_shielding_present_rows"),
-                   static_cast<qint64>(stats.ringchi_shielding_present));
     support.insert(QStringLiteral("water_field_present_rows"),
                    static_cast<qint64>(stats.water_field_present));
     support.insert(QStringLiteral("hydration_shell_present_rows"),
@@ -3750,13 +3639,9 @@ QMap<QString, std::size_t> PerAtomSubstrateFeatureSupport(const PerAtomSubstrate
         {QStringLiteral("charge_complete_rows"), stats.charge_complete},
         {QStringLiteral("mopac_coulomb_shielding_present_rows"), stats.mopac_coulomb_shielding_present},
         {QStringLiteral("mopac_mc_shielding_present_rows"), stats.mopac_mc_shielding_present},
-        {QStringLiteral("hbond_shielding_present_rows"), stats.hbond_shielding_present},
         {QStringLiteral("hbond_count_present_rows"), stats.hbond_count_present},
         {QStringLiteral("hbond_geometry_present_rows"), stats.hbond_geometry_present},
-        {QStringLiteral("pi_quadrupole_present_rows"), stats.pi_quadrupole_present},
-        {QStringLiteral("dispersion_present_rows"), stats.dispersion_present},
         {QStringLiteral("hm_shielding_present_rows"), stats.hm_shielding_present},
-        {QStringLiteral("ringchi_shielding_present_rows"), stats.ringchi_shielding_present},
         {QStringLiteral("water_field_present_rows"), stats.water_field_present},
         {QStringLiteral("hydration_shell_present_rows"), stats.hydration_shell_present},
         {QStringLiteral("sasa_present_rows"), stats.sasa_present},
@@ -3857,10 +3742,8 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
             const std::array<double, kPerAtomDriverMagnitudeCols> mag =
                 driverMagnitudes(agg, direct);
             const RowChargeScalars charges = rowChargeScalars(body, atom, row, direct);
-            const bool hbondGeometryPresent = direct.hbond_nearest_distance_present
-                                              && direct.hbond_nearest_direction_present
-                                              && direct.hbond_donor_flag_present
-                                              && direct.hbond_acceptor_flag_present;
+            const bool hbondGeometryPresent = direct.hbond_nearest_direction_present
+                                              && direct.hbond_flags_present;
             const bool waterFieldPresent = direct.water_efield_present
                                            && direct.water_n_first_present
                                            && direct.water_n_second_present;
@@ -3919,13 +3802,9 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
             if (charges.charge_complete) ++stats.charge_complete;
             if (direct.mopac_coulomb_present) ++stats.mopac_coulomb_shielding_present;
             if (direct.mopac_mc_present) ++stats.mopac_mc_shielding_present;
-            if (direct.hbond_shielding_present) ++stats.hbond_shielding_present;
             if (direct.hbond_count_present) ++stats.hbond_count_present;
             if (hbondGeometryPresent) ++stats.hbond_geometry_present;
-            if (direct.pi_quadrupole_present) ++stats.pi_quadrupole_present;
-            if (direct.dispersion_present) ++stats.dispersion_present;
             if (direct.hm_shielding_present) ++stats.hm_shielding_present;
-            if (direct.ringchi_shielding_present) ++stats.ringchi_shielding_present;
             if (waterFieldPresent) ++stats.water_field_present;
             if (hydrationShellPresent) ++stats.hydration_shell_present;
             if (direct.sasa_present) ++stats.sasa_present;
@@ -3963,9 +3842,6 @@ PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
         << "| ring_present=" << stats.ring_present
         << "| charge_present=" << stats.charge_present
         << "| mc_lit_valid_present=" << stats.mc_lit_valid_present
-        << "| hbond_shielding_present=" << stats.hbond_shielding_present
-        << "| pi_quadrupole_present=" << stats.pi_quadrupole_present
-        << "| dispersion_present=" << stats.dispersion_present
         << "| water_field_present=" << stats.water_field_present
         << "| sasa_present=" << stats.sasa_present
         << "| eeq_charge_present=" << stats.eeq_charge_present
