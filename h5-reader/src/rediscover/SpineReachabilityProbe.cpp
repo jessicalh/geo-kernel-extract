@@ -4,8 +4,8 @@
 #include "CanonicalSpineGuard.h"
 #include "Catalog.h"
 #include "ResidentIndexes.h"
-#include "RowDesignCatalogCoverage.h"
 #include "RunData.h"
+#include "ScopedProducerCatalog.h"
 #include "StaticRunData.h"
 
 #include <QDir>
@@ -397,6 +397,7 @@ bool writeReport(const QString& path,
     ts << "- Added FieldKind-native Catalog access with provider resolution, native row/frame/component reads, and absence reasons.\n";
     ts << "- Added full-detail reachability probe with flat coverage comparison.\n\n";
     ts << "- Made explicit `dataset_absent` a first-class provider: the probe verifies `present()` is false with a reason and still fails if flat coverage expects populated values.\n\n";
+    ts << "- Removed the flat `RowDesignCatalogCoverage` generator, the row-design catalog-column bridge, and the three old row-design sidecar writers after the canonical probe passed.\n\n";
     ts << "## Per-field results\n\n";
     ts << "| field | native axis | 720 provider | 720 extent/result | 1P9J provider | 1P9J extent/result |\n";
     ts << "| --- | --- | --- | --- | --- | --- |\n";
@@ -416,7 +417,7 @@ bool writeReport(const QString& path,
     }
     ts << "\n## Remaining\n\n";
     if (pass) {
-        ts << "- None from the probe. Flat path deletion is still left as a separate gated cleanup step.\n";
+        ts << "- None from the probe. The flat-path code cleanup and old sidecar-writer cleanup are complete.\n";
     } else {
         ts << "- Probe failed; see `spine_reachability_manifest.json` for per-field errors. Flat path was not deleted.\n";
     }

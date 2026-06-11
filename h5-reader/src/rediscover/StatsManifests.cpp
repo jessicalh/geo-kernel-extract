@@ -201,23 +201,7 @@ bool WriteRowDesignManifests(const QString& outDir,
     prov.insert(QStringLiteral("columns"), columnProvenanceJson(schema, stats));
     prov.insert(QStringLiteral("ring_restore_note"),
                 QStringLiteral("ring_bs_* and ring_hm_* are raw unit-current geometric multipoles; ring_jb_* columns are literature-intensity-scaled shielding sigma. Per-type order verified from RingTypeIndex: phe,tyr,trp6,trp5,trp9,his,hid,hie; pro is saturated and zero."));
-    QJsonArray sidecars;
-    sidecars.push_back(QJsonObject{
-        {QStringLiteral("name"), QStringLiteral("row_design_target_T2.npy")},
-        {QStringLiteral("shape"), QStringLiteral("(rows,5)")},
-        {QStringLiteral("contents"), QStringLiteral("DFT target T2 in library spherical basis")},
-    });
-    sidecars.push_back(QJsonObject{
-        {QStringLiteral("name"), QStringLiteral("row_design_ring_tensors.npy")},
-        {QStringLiteral("shape"), QStringLiteral("(rows,162)")},
-        {QStringLiteral("contents"), QStringLiteral("BS per-type T0/T1/T2, HM per-type T0/T1/T2, summed bs_shielding, summed hm_shielding")},
-    });
-    sidecars.push_back(QJsonObject{
-        {QStringLiteral("name"), QStringLiteral("row_design_aimnet2_embedding.npy")},
-        {QStringLiteral("shape"), QStringLiteral("(rows,256)")},
-        {QStringLiteral("contents"), QStringLiteral("AIMNet2 atom embedding or NaN rows when absent")},
-    });
-    prov.insert(QStringLiteral("sidecars"), sidecars);
+    prov.insert(QStringLiteral("sidecars"), QJsonArray{});
     if (!writeText(QDir(outDir).filePath(QStringLiteral("column_provenance.json")),
                    QJsonDocument(prov).toJson(QJsonDocument::Indented), err_out)) return false;
 

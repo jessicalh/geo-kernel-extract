@@ -411,8 +411,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/ConditioningSpec.cpp
     src/rediscover/RowDesign.h
     src/rediscover/RowDesign.cpp
-    src/rediscover/RowDesignCatalogCoverage.h
-    src/rediscover/RowDesignCatalogCoverage.cpp
+    src/rediscover/ScopedProducerCatalog.h
+    src/rediscover/ScopedProducerCatalog.cpp
     src/rediscover/RowDesignSink.h
     src/rediscover/RowDesignSink.cpp
     src/rediscover/RowDesignEmitter.h

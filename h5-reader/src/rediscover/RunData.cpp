@@ -2,7 +2,7 @@
 
 #include "CanonicalSpineGuard.h"
 #include "ChargeStore.h"
-#include "RowDesignCatalogCoverage.h"
+#include "ScopedProducerCatalog.h"
 
 #include "../io/DftShieldingLoader.h"
 #include "../io/QtNpyReader.h"

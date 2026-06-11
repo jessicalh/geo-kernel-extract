@@ -8,9 +8,7 @@
 #include <QTextStream>
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
-#include <vector>
 
 namespace h5reader::rediscover {
 
@@ -36,9 +34,6 @@ private:
     bool committed_ = false;
     std::size_t rows_ = 0;
     std::size_t embeddingDims_ = 256;
-    std::vector<double> targetT2_;
-    std::vector<double> ringTensors_;
-    std::vector<float> embeddings_;
 };
 
 }  // namespace h5reader::rediscover

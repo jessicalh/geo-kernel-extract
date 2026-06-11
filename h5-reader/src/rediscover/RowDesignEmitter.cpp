@@ -4,7 +4,6 @@
 #include "ExtractionSupport.h"
 #include "RamaRegion.h"
 #include "RelationshipEngine.h"
-#include "RowDesignCatalogCoverage.h"
 #include "SphericalBasis.h"
 #include "Verbs.h"
 
@@ -1130,13 +1129,6 @@ RowDesignRow buildRow(const Body& body, std::size_t atom, std::size_t row, std::
     rowCtx.set("region_def_id", QStringLiteral("row_design_v1"));
     rowCtx.set("rama_region_hdr", QString::fromLatin1(NameForRowRama(rama)));
     rowCtx.set("rotamer_id", QString());
-    for (const CatalogRowColumn& c : CatalogRowColumns()) {
-        if (const std::optional<double> v =
-                CatalogRowValue(body.run, c.kind, c.component, atom, row, original)) {
-            rowCtx.set(c.spec.name, *v);
-        }
-    }
-
     std::size_t dims = 0;
     out.embedding = body.catalog.valueEmbedding(body, ArrayId::Aimnet2Embedding, atom, row, dims);
     out.embeddingDims = dims;
@@ -1169,7 +1161,6 @@ bool EnsureRowDesignRingArrays(RunData& run, QString* err_out) {
         for (const TrajectoryNpyRequirement& req : kTrajectorySourceArrays) {
             if (!loadTrajectorySourceArray(run, req, atomCount, err_out)) return false;
         }
-        if (!EnsureCatalogRowColumnArrays(run, err_out)) return false;
         return true;
     }
 
