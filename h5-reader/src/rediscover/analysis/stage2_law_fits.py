@@ -122,17 +122,6 @@ KERNELS = [
         ),
         "CaseHunter field atoms plus dominant_fraction_field >= 0.5",
     ),
-    KernelSpec(
-        "hbond",
-        "hbond",
-        "hbond",
-        ShadowSpec("hbond_geometric", "per_atom_substrate_features_classical", "hbond_T2"),
-        (
-            ShadowSpec("hbond_geometric", "per_atom_substrate_features_classical", "hbond_T2"),
-            ShadowSpec("larsen_ppm_sum", "per_atom_substrate_features_hbond_conditioning", "larsen_hbond", groups=4),
-        ),
-        "CaseHunter hbond atoms plus dominant_fraction_hbond >= 0.5",
-    ),
 ]
 
 
@@ -142,7 +131,6 @@ UNIFIED_SPECS = [
     ShadowSpec("mopac_field_backbone", "per_atom_substrate_features_method_paths", "mopac_coulomb_efg_backbone"),
     ShadowSpec("mopac_field_aromatic", "per_atom_substrate_features_method_paths", "mopac_coulomb_efg_aromatic"),
     ShadowSpec("water_field_efg_reconciled", "per_atom_substrate_features_method_paths", "water_efg", sign=-1.0),
-    ShadowSpec("hbond_geometric", "per_atom_substrate_features_classical", "hbond_T2"),
     *[ShadowSpec(f"pq_type_{i}", "per_atom_substrate_features_ring_paths", f"pq_per_type_T2_{5*i}", groups=0) for i in range(8)],
     *[ShadowSpec(f"disp_type_{i}", "per_atom_substrate_features_ring_paths", f"disp_per_type_T2_{5*i}", groups=0) for i in range(8)],
 ]
@@ -618,12 +606,12 @@ def run_unified_fit(data: dict[str, object]) -> tuple[pd.DataFrame, pd.DataFrame
     dom = arrays["per_atom_substrate_features_dominance"]
     dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
     atoms: set[int] = set()
-    for case_dir in ["charge_wide", "mc", "field", "hbond"]:
+    for case_dir in ["charge_wide", "mc", "field"]:
         case_set, _ = case_atoms(data["substrate_dir"], case_dir)
         atoms |= case_set
     dab_max = np.maximum.reduce([
         np.asarray(dom[:, dom_cols[f"dominant_fraction_{m}"]], dtype=float)
-        for m in ["charge", "mc", "field", "hbond"]
+        for m in ["charge", "mc", "field"]
     ])
     ring_frac = np.asarray(dom[:, dom_cols["dominant_fraction_ring"]], dtype=float)
     mask = dft & np.isin(atoms_all, list(atoms)) & (dab_max >= 0.5) & (ring_frac < 0.7)
@@ -674,7 +662,7 @@ def run_unified_fit(data: dict[str, object]) -> tuple[pd.DataFrame, pd.DataFrame
         "model": "unified_Dab_sum",
         "rows": int(len(idx)),
         "atoms": int(len(np.unique(atoms_s))),
-        "selection_rule": "charge/mc/field/hbond CaseHunter atoms, max D_ab dominance >=0.5, ring dominance <0.7",
+        "selection_rule": "charge/mc/field CaseHunter atoms, max D_ab dominance >=0.5, ring dominance <0.7",
         "within_frameblock_R2": within_r2,
         "LOAO_R2": loao_r2,
         "terms": int(len(labels)),
@@ -772,14 +760,14 @@ def unified_base_mask(data: dict[str, object], clean_stage2: bool) -> tuple[np.n
     specs: dict[str, object] = data["specs"]
     arrays: dict[str, np.ndarray] = data["arrays"]
     atoms: set[int] = set()
-    for case_dir in ["charge_wide", "mc", "field", "hbond"]:
+    for case_dir in ["charge_wide", "mc", "field"]:
         case_set, _cases = case_atoms(data["substrate_dir"], case_dir)
         atoms |= case_set
     dom = arrays["per_atom_substrate_features_dominance"]
     dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
     dab_max = np.maximum.reduce([
         np.asarray(dom[:, dom_cols[f"dominant_fraction_{m}"]], dtype=float)
-        for m in ["charge", "mc", "field", "hbond"]
+        for m in ["charge", "mc", "field"]
     ])
     ring_frac = np.asarray(dom[:, dom_cols["dominant_fraction_ring"]], dtype=float)
     atoms_all = rows["atom_index"].to_numpy(int)
@@ -805,7 +793,7 @@ def active_dab_arrays(data: dict[str, object]) -> tuple[np.ndarray, np.ndarray, 
     dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
     dom_stack = np.column_stack([
         np.asarray(dom[:, dom_cols[f"dominant_fraction_{m}"]], dtype=float)
-        for m in ["charge", "mc", "field", "hbond"]
+        for m in ["charge", "mc", "field"]
     ])
     with np.errstate(all="ignore"):
         active = np.nanargmax(np.where(np.isfinite(dom_stack), dom_stack, -np.inf), axis=1)
@@ -813,7 +801,6 @@ def active_dab_arrays(data: dict[str, object]) -> tuple[np.ndarray, np.ndarray, 
         np.asarray(dom[:, dom_cols["gap_to_2nd_charge_r"]], dtype=float),
         np.asarray(dom[:, dom_cols["gap_to_2nd_bond_r"]], dtype=float),
         np.asarray(dom[:, dom_cols["gap_to_2nd_field_r"]], dtype=float),
-        np.asarray(dom[:, dom_cols["gap_to_2nd_hbond_r"]], dtype=float),
     ])
     mod_cols = specs_for_array(specs, "per_atom_substrate_driver_modulation_by_atom")
     mod = arrays["per_atom_substrate_driver_modulation_by_atom"]
@@ -822,7 +809,6 @@ def active_dab_arrays(data: dict[str, object]) -> tuple[np.ndarray, np.ndarray, 
         np.asarray(mod[atom_index, mod_cols["sd_charge_T2_by_atom"]], dtype=float),
         np.asarray(mod[atom_index, mod_cols["sd_mc_lit_T2_by_atom"]], dtype=float),
         np.asarray(mod[atom_index, mod_cols["sd_mopac_coulomb_T2_by_atom"]], dtype=float),
-        np.full(len(rows), np.nan, dtype=float),
     ])
     row = np.arange(len(rows))
     return np.nanmax(dom_stack, axis=1), gap_stack[row, active], mod_stack[row, active]
@@ -843,7 +829,6 @@ def kernel_axis_values(data: dict[str, object], kernel: KernelSpec, axis: str) -
             "charge": "gap_to_2nd_charge_r",
             "mc": "gap_to_2nd_bond_r",
             "field": "gap_to_2nd_field_r",
-            "hbond": "gap_to_2nd_hbond_r",
         }[kernel.name]
         return np.asarray(dom[:, dom_cols[gap_col]], dtype=float), gap_col, "higher_is_cleaner"
     if axis == "modulation":
@@ -852,10 +837,7 @@ def kernel_axis_values(data: dict[str, object], kernel: KernelSpec, axis: str) -
             "charge": "sd_charge_T2_by_atom",
             "mc": "sd_mc_lit_T2_by_atom",
             "field": "sd_mopac_coulomb_T2_by_atom",
-            "hbond": "",
         }[kernel.name]
-        if not mod_name:
-            return None, "not_emitted_for_hbond", "unavailable_in_build4"
         mod_cols = specs_for_array(specs, "per_atom_substrate_driver_modulation_by_atom")
         mod = arrays["per_atom_substrate_driver_modulation_by_atom"]
         atom_index = rows["atom_index"].to_numpy(int)
@@ -866,11 +848,11 @@ def kernel_axis_values(data: dict[str, object], kernel: KernelSpec, axis: str) -
 def unified_axis_values(data: dict[str, object], axis: str) -> tuple[np.ndarray | None, str, str]:
     dab_max, active_gap, active_mod = active_dab_arrays(data)
     if axis == "dominance":
-        return dab_max, "max_dominant_fraction_charge_mc_field_hbond", "higher_is_cleaner"
+        return dab_max, "max_dominant_fraction_charge_mc_field", "higher_is_cleaner"
     if axis == "isolation":
         return active_gap, "gap_to_2nd_of_active_Dab_mechanism", "higher_is_cleaner"
     if axis == "modulation":
-        return active_mod, "sd_of_active_Dab_mechanism_no_hbond_sd", "partial_no_hbond_modulation_column"
+        return active_mod, "sd_of_active_Dab_mechanism", "higher_driver_exercise"
     raise ValueError(axis)
 
 
@@ -1180,7 +1162,7 @@ def write_stage21_plots(out_dir: Path, sweep: pd.DataFrame, frame: pd.DataFrame)
     written: list[str] = []
     plot_dir = out_dir / "plots"
     plot_dir.mkdir(parents=True, exist_ok=True)
-    models = ["charge", "field", "ring", "mc", "hbond", "unified_Dab_sum"]
+    models = ["charge", "field", "ring", "mc", "unified_Dab_sum"]
     axes = ["dominance", "isolation", "modulation"]
     fig, axs = plt.subplots(len(models), len(axes), figsize=(12, 14), sharex=True)
     for i, model in enumerate(models):
@@ -1270,7 +1252,7 @@ def frame_line(frame_summary: pd.DataFrame, model: str) -> str:
 
 
 def write_stage21_postmortem(out_dir: Path, substrate_dir: Path, orth: float, shape_summary: pd.DataFrame, frame_summary: pd.DataFrame, disk: dict[str, object], plots: dict[str, object]) -> Path:
-    models = ["charge", "field", "ring", "mc", "hbond", "unified_Dab_sum"]
+    models = ["charge", "field", "ring", "mc", "unified_Dab_sum"]
     lines = [
         "# Stage 2.1 Postmortem - 2026-06-04",
         f"Run dir: `{out_dir}`",
@@ -1282,11 +1264,11 @@ def write_stage21_postmortem(out_dir: Path, substrate_dir: Path, orth: float, sh
         support = shape_summary[shape_summary["model"] == model]["clean_support_flag"].replace("", np.nan).dropna()
         support_text = f"; support {support.iloc[0]}" if not support.empty and str(support.iloc[0]) != "nan" else ""
         rescue = ""
-        if model in {"mc", "hbond"}:
+        if model == "mc":
             rescue = f"; rescue {rescue_text(shape_summary, model)}"
         lines.append(f"- {model}: {shape_triplet(shape_summary, model)}; clean POP {clean_pop_text(shape_summary, model)}{rescue}{support_text}.")
     lines += [
-        "McConnell/H-bond clean-end rescue criterion: primary coefficient CI off zero at the strict end of an input-side axis; no DFT fit is used to define the axis.",
+        "McConnell clean-end rescue criterion: primary coefficient CI off zero at the strict end of an input-side axis; no DFT fit is used to define the axis.",
         "Frame-count ablation uses centered contiguous 20 ps-stride frame blocks; 50 frames is the 1 ns-at-20 ps ubiquitin proxy.",
     ]
     for model in models:
@@ -1323,8 +1305,7 @@ def run_stage21(args: argparse.Namespace, data: dict[str, object], out_dir: Path
         "sweep_keep_fractions_strict_to_loose": list(SWEEP_KEEP_FRACTIONS),
         "frame_counts": list(FRAME_COUNTS),
         "frame_ablation_policy": "centered contiguous original_frame_index blocks at the emitted 20 ps stride",
-        "hbond_driver_modulation_axis": "not emitted in per_atom_substrate_driver_modulation_by_atom; not fabricated",
-        "unified_driver_modulation_axis": "active charge/mc/field emitted sd column; rows whose active mechanism is hbond have missing modulation",
+        "unified_driver_modulation_axis": "active charge/mc/field emitted sd column",
         "geometric_noise_axis_distinct_from_driver_modulation": "not available in build4",
         "plots": plots,
     }
@@ -1651,8 +1632,6 @@ def stage22_term_group(term: str) -> str:
         return "mc"
     if term.startswith("mopac_field") or term.startswith("water_field"):
         return "field"
-    if term.startswith("hbond"):
-        return "hbond"
     if term.startswith("pq_"):
         return "pq"
     if term.startswith("disp_"):
@@ -2189,14 +2168,14 @@ def stage23_unified_dataset_for_cutoffs(data: dict[str, object], dab_cut: float,
     specs: dict[str, object] = data["specs"]
     arrays: dict[str, np.ndarray] = data["arrays"]
     atoms: set[int] = set()
-    for case_dir in ["charge_wide", "mc", "field", "hbond"]:
+    for case_dir in ["charge_wide", "mc", "field"]:
         case_set, _cases = case_atoms(data["substrate_dir"], case_dir)
         atoms |= case_set
     dom = arrays["per_atom_substrate_features_dominance"]
     dom_cols = specs_for_array(specs, "per_atom_substrate_features_dominance")
     dab_max = np.maximum.reduce([
         np.asarray(dom[:, dom_cols[f"dominant_fraction_{m}"]], dtype=float)
-        for m in ["charge", "mc", "field", "hbond"]
+        for m in ["charge", "mc", "field"]
     ])
     ring_frac = np.asarray(dom[:, dom_cols["dominant_fraction_ring"]], dtype=float)
     atoms_all = rows["atom_index"].to_numpy(int)
@@ -2308,9 +2287,6 @@ def stage23_attach_interpretation(prob: pd.DataFrame, kernel_metrics: dict[str, 
         elif model == "mc":
             d = "single McConnell shadow; CI spans zero"
             place = "not indicative (~null)" if not above_null else "potentially indicative but INDETERMINATE -> needs joint fit"
-        elif model == "hbond":
-            d = "single geometric H-bond shadow; CI spans zero"
-            place = "not indicative (~null)" if not above_null else "potentially indicative but INDETERMINATE -> needs geometry/noise split"
         else:
             d = "indeterminate"
             place = "potentially indicative but INDETERMINATE -> needs targeted test" if above_null else "not indicative (~null)"
@@ -2375,7 +2351,7 @@ def write_stage23_postmortem(
     curve: pd.DataFrame,
     disk: dict[str, object],
 ) -> Path:
-    order = ["unified_Dab_sum", "charge", "field", "ring", "mc", "hbond"]
+    order = ["unified_Dab_sum", "charge", "field", "ring", "mc"]
     lines = [
         "# Stage 2.3 Postmortem - 2026-06-04",
         f"Run dir: `{out_dir}`",
@@ -2872,7 +2848,6 @@ def main() -> None:
             + f"{orth:.3e}.",
             "- Ring uses JB/BS/HM as same-convention current-loop paths; ringchi is excluded from path agreement because its sign convention is separate.",
             "- Field keeps MOPAC-Coulomb as the dominance source; water_efg is sign-flipped into the APBS/MOPAC -Hessian convention before field/unified fits.",
-            "- H-bond unified fit uses the geometric hbond_T2 shadow only; Larsen ppm tensors are reported as a separate per-kernel path and not double-counted.",
             "- Ring is not included in the unified D_ab sum; it is a current-loop G=-V_a n_b object, not the symmetric D_ab shadow.",
         ]) + "\n",
         encoding="utf-8",

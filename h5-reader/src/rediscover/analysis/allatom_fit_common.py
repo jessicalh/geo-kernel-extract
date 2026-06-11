@@ -89,7 +89,6 @@ RAW_CHARGE_BLOCK_SPECS = [
     ("eeq_charge", "rows", ["eeq_charge"], []),
 ]
 NEW_MECH_BLOCK_NAMES = [
-    "hbond_T2",
     "larsen_hbond_T2",
     "hbond_count",
     "pi_quadrupole_T2",
@@ -2427,5 +2426,4 @@ def fit_stage_checks(audit: dict[str, object], score_table: pd.DataFrame, curves
         "no_condition_uses_dft_target_residual_or_coefficients": True,
         "thin_bins_excluded_from_favorable_shortlist": not shortlist_thin,
     }
-
 

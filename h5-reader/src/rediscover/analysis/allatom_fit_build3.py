@@ -219,7 +219,6 @@ def build2_feature_block_specs() -> list[dict[str, object]]:
         {"name": "ff14sb_field_x/y/z/mag", "array": "per_atom_substrate_features_classical", "scalar": ["ff14sb_field_x", "ff14sb_field_y", "ff14sb_field_z", "ff14sb_field_mag"], "t2": []},
         {"name": "apbs_E_x/y/z/mag", "array": "per_atom_substrate_features_classical", "scalar": ["apbs_E_x", "apbs_E_y", "apbs_E_z", "apbs_E_mag"], "t2": []},
         {"name": "apbs_efg_T2", "array": "per_atom_substrate_features_classical", "scalar": [], "t2": ["apbs_efg_T2"]},
-        {"name": "hbond_T2", "array": "per_atom_substrate_features_classical", "scalar": [], "t2": ["hbond_T2"]},
         {"name": "larsen_hbond_T2", "array": "per_atom_substrate_features_hbond_conditioning", "scalar": ["larsen_hbond_water_term"], "t2": ["larsen_hbond_1pHB_T2", "larsen_hbond_2pHB_T2", "larsen_hbond_1pHaB_T2", "larsen_hbond_2pHaB_T2"]},
         {"name": "hbond_count", "array": "per_atom_substrate_features_classical", "scalar": ["hbond_count"], "t2": []},
         {"name": "pi_quadrupole_T2", "array": "per_atom_substrate_features_classical", "scalar": [], "t2": ["pi_quadrupole_T2"]},
@@ -1432,5 +1431,4 @@ def build2_main() -> None:
     (out_dir / "run_audit.json").write_text(json.dumps(json_sanitize(audit), indent=2, sort_keys=True), encoding="utf-8")
     write_build2_reports(out_dir, score_table, curves, favorable, case_shortlist, audit)
     print(f"wrote {out_dir}")
-
 

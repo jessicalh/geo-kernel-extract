@@ -43,12 +43,10 @@ struct PerAtomIsolationScalars {
     double gap_to_2nd_charge_r = std::numeric_limits<double>::quiet_NaN();
     double gap_to_2nd_bond_r = std::numeric_limits<double>::quiet_NaN();
     double gap_to_2nd_field_r = std::numeric_limits<double>::quiet_NaN();
-    double gap_to_2nd_hbond_r = std::numeric_limits<double>::quiet_NaN();
     double dominant_fraction_ring = std::numeric_limits<double>::quiet_NaN();
     double dominant_fraction_charge = std::numeric_limits<double>::quiet_NaN();
     double dominant_fraction_mc = std::numeric_limits<double>::quiet_NaN();
     double dominant_fraction_field = std::numeric_limits<double>::quiet_NaN();
-    double dominant_fraction_hbond = std::numeric_limits<double>::quiet_NaN();
 };
 
 struct PairContribution {
@@ -126,10 +124,11 @@ struct PerAtomSubstrateStats {
 
 constexpr std::size_t kPerAtomClassicalCols = 69;
 constexpr std::size_t kPerAtomConditioningCols = 32;
-constexpr std::size_t kPerAtomDominanceCols = 10;
+constexpr std::size_t kPerAtomDominanceGapCols = 4;
+constexpr std::size_t kPerAtomDominanceCols = 8;
 constexpr std::size_t kPerAtomDriverMagnitudeCols = 9;
 constexpr std::size_t kPerAtomPartitionBinCols = 25;
-constexpr std::size_t kPerAtomDominanceBinCols = 5;
+constexpr std::size_t kPerAtomDominanceBinCols = 4;
 constexpr std::size_t kPerAtomBackboneAuditCols = 14;
 constexpr std::size_t kPerAtomTargetDecompositionCols = 21;
 constexpr std::size_t kPerAtomRingPathCols = 137;
