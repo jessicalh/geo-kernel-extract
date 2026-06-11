@@ -351,6 +351,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/RunData.cpp
     src/rediscover/StaticRunData.h
     src/rediscover/StaticRunData.cpp
+    src/rediscover/SpineReachabilityProbe.h
+    src/rediscover/SpineReachabilityProbe.cpp
     src/rediscover/RecordSink.h
     src/rediscover/RecordSink.cpp
     src/rediscover/ExtractionSupport.h

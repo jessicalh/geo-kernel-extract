@@ -43,6 +43,7 @@
 #include "RowDesignEmitter.h"
 #include "RowDesignSink.h"
 #include "RunData.h"
+#include "SpineReachabilityProbe.h"
 #include "StatsManifests.h"
 #include "StaticRunData.h"
 
@@ -226,8 +227,23 @@ int main(int argc, char** argv) {
                                            QStringLiteral("json"));
     QCommandLineOption fixtureOpt(QStringLiteral("fixture"),
                                   QStringLiteral("Allow a non-final fixture row_design emission (tagged in manifests)."));
+    QCommandLineOption flat720CoverageOpt(
+        QStringLiteral("flat720-coverage"),
+        QStringLiteral("Flat catalog_coverage.json for the canonical 720 floor comparison."),
+        QStringLiteral("json"),
+        QStringLiteral("/shared/2026Thesis/shielding-calcsets/data/row-design/full_wireup_20260611/720/catalog_coverage.json"));
+    QCommandLineOption flat1p9jCoverageOpt(
+        QStringLiteral("flat1p9j-coverage"),
+        QStringLiteral("Flat catalog_coverage.json for the canonical 1P9J floor comparison."),
+        QStringLiteral("json"),
+        QStringLiteral("/shared/2026Thesis/shielding-calcsets/data/row-design/full_wireup_20260611/1p9j/catalog_coverage.json"));
+    QCommandLineOption spineReportOpt(
+        QStringLiteral("spine-report"),
+        QStringLiteral("Markdown report path for the SPINE reachability probe."),
+        QStringLiteral("md"),
+        QStringLiteral("h5-reader/notes/CODEX_SPINE_WIREUP_REPORT.md"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): row_design | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): spine_probe | row_design | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -266,6 +282,9 @@ int main(int argc, char** argv) {
     parser.addOption(root720Opt);
     parser.addOption(conditioningSpecOpt);
     parser.addOption(fixtureOpt);
+    parser.addOption(flat720CoverageOpt);
+    parser.addOption(flat1p9jCoverageOpt);
+    parser.addOption(spineReportOpt);
     parser.addOption(caseOpt);
     parser.addOption(mcCutoffOpt);
     parser.addOption(chargeSourceOpt);
@@ -331,6 +350,29 @@ int main(int argc, char** argv) {
         qCCritical(cMain).noquote()
             << "invalid --mc-near-field-ratio" << parser.value(mcNearFieldRatioOpt);
         return 2;
+    }
+
+    if (which == QStringLiteral("spine_probe")) {
+        if (root720.isEmpty() || runPath.isEmpty()) {
+            qCCritical(cMain) << "spine_probe requires both --root720 and --run";
+            return 2;
+        }
+        h5reader::rediscover::SpineProbeConfig cfg;
+        cfg.root720 = root720;
+        cfg.run1p9j = runPath;
+        cfg.outDir = outDir;
+        cfg.flat720Coverage = parser.value(flat720CoverageOpt);
+        cfg.flat1p9jCoverage = parser.value(flat1p9jCoverageOpt);
+        cfg.reportPath = parser.value(spineReportOpt);
+        QString probeErr;
+        if (!h5reader::rediscover::RunSpineReachabilityProbe(cfg, &probeErr)) {
+            qCCritical(cMain).noquote() << "spine_probe failed:" << probeErr;
+            return 1;
+        }
+        qCInfo(cMain).noquote() << "spine_probe passed | manifest="
+                                << QDir(outDir).filePath(QStringLiteral("spine_reachability_manifest.json"))
+                                << "| report=" << cfg.reportPath;
+        return 0;
     }
 
     if (which == QStringLiteral("row_design")) {
