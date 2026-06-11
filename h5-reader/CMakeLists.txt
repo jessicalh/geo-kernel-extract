@@ -353,6 +353,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/StaticRunData.cpp
     src/rediscover/SpineReachabilityProbe.h
     src/rediscover/SpineReachabilityProbe.cpp
+    src/rediscover/SubstrateParity.h
+    src/rediscover/SubstrateParity.cpp
     src/rediscover/RecordSink.h
     src/rediscover/RecordSink.cpp
     src/rediscover/ExtractionSupport.h
@@ -541,6 +543,28 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_all_atom_equivariant_tests
              COMMAND h5reader_rediscover_all_atom_equivariant_tests)
+
+    qt_add_executable(h5reader_rediscover_substrate_parity_tests
+        tests/rediscover_substrate_parity_tests.cpp
+        src/rediscover/SubstrateParity.h
+        src/rediscover/SubstrateParity.cpp
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
+        src/rediscover/Catalog.h
+        src/rediscover/Catalog.cpp
+    )
+    target_include_directories(h5reader_rediscover_substrate_parity_tests PRIVATE
+        src
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern
+    )
+    target_link_libraries(h5reader_rediscover_substrate_parity_tests PRIVATE
+        h5reader_core
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_substrate_parity_tests
+             COMMAND h5reader_rediscover_substrate_parity_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp
