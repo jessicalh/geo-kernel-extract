@@ -82,10 +82,6 @@ public:
     const h5reader::model::QtShieldingTimeSeries* bsShielding() const { return bs_shielding_.get(); }
     const h5reader::model::QtShieldingTimeSeries* hmShielding() const { return hm_shielding_.get(); }
     const h5reader::model::QtShieldingTimeSeries* mcShielding() const { return mc_shielding_.get(); }
-    const h5reader::model::QtShieldingTimeSeries* piQuadShielding() const { return piquad_shielding_.get(); }
-    const h5reader::model::QtShieldingTimeSeries* ringChiShielding() const { return ringchi_shielding_.get(); }
-    const h5reader::model::QtShieldingTimeSeries* dispShielding() const { return disp_shielding_.get(); }
-    const h5reader::model::QtShieldingTimeSeries* hbondShielding() const { return hbond_shielding_.get(); }
     const h5reader::model::QtT2TimeSeries* mopacCoulombShielding() const { return mopac_coulomb_shielding_.get(); }
     const h5reader::model::QtShieldingTimeSeries* mopacMcShielding() const { return mopac_mc_shielding_.get(); }
     const h5reader::model::QtScalarTimeSeries* mopacVsFf14sbReconciliation() const {
@@ -216,10 +212,6 @@ private:
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> bs_shielding_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> hm_shielding_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> mc_shielding_;
-    std::unique_ptr<h5reader::model::QtShieldingTimeSeries> piquad_shielding_;
-    std::unique_ptr<h5reader::model::QtShieldingTimeSeries> ringchi_shielding_;
-    std::unique_ptr<h5reader::model::QtShieldingTimeSeries> disp_shielding_;
-    std::unique_ptr<h5reader::model::QtShieldingTimeSeries> hbond_shielding_;
     std::unique_ptr<h5reader::model::QtT2TimeSeries> mopac_coulomb_shielding_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> mopac_mc_shielding_;
     std::unique_ptr<h5reader::model::QtScalarTimeSeries> mopac_vs_ff14sb_reconciliation_;

@@ -1,8 +1,6 @@
-// QtHBondGroup — read-side mirror of the SDK's HBondGroup. Dipolar H-bond
-// shielding (full McConnell form with the coupling direction = D-H…A), plus
-// the geometric summary scalars.
+// QtHBondGroup — read-side mirror of the SDK's HBondGroup geometric summary
+// scalars.
 //
-//   hbond_shielding (N, 9)  SphericalTensor, Å⁻³ (asymmetric; T0+T1+T2)
 //   hbond_scalars   (N, 4)  nearest_dist, 1/r³, count within 3.5 Å, McConnell scalar Σ
 
 #pragma once

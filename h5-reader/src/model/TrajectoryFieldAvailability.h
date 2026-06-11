@@ -274,14 +274,6 @@ private:
             scanTimeSeries(acc, h5->hmShielding(), h5->hmShielding() ? h5->hmShielding()->xyz : emptyDouble(), h5->hmShielding() ? h5->hmShielding()->meta : emptyMeta());
         } else if (path == QStringLiteral("/trajectory/mc_shielding_time_series")) {
             scanTimeSeries(acc, h5->mcShielding(), h5->mcShielding() ? h5->mcShielding()->xyz : emptyDouble(), h5->mcShielding() ? h5->mcShielding()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/piquad_shielding_time_series")) {
-            scanTimeSeries(acc, h5->piQuadShielding(), h5->piQuadShielding() ? h5->piQuadShielding()->xyz : emptyDouble(), h5->piQuadShielding() ? h5->piQuadShielding()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/ringchi_shielding_time_series")) {
-            scanTimeSeries(acc, h5->ringChiShielding(), h5->ringChiShielding() ? h5->ringChiShielding()->xyz : emptyDouble(), h5->ringChiShielding() ? h5->ringChiShielding()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/disp_shielding_time_series")) {
-            scanTimeSeries(acc, h5->dispShielding(), h5->dispShielding() ? h5->dispShielding()->xyz : emptyDouble(), h5->dispShielding() ? h5->dispShielding()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/hbond_shielding_time_series")) {
-            scanTimeSeries(acc, h5->hbondShielding(), h5->hbondShielding() ? h5->hbondShielding()->xyz : emptyDouble(), h5->hbondShielding() ? h5->hbondShielding()->meta : emptyMeta());
         } else if (path == QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series")) {
             scanTimeSeries(acc, h5->mopacCoulombShielding(), h5->mopacCoulombShielding() ? h5->mopacCoulombShielding()->t2 : emptyDouble(), h5->mopacCoulombShielding() ? h5->mopacCoulombShielding()->meta : emptyMeta());
         } else if (path == QStringLiteral("/trajectory/mopac_mc_shielding_time_series")) {

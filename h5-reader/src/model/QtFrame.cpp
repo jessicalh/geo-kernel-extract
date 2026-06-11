@@ -94,12 +94,6 @@ SphericalTensor QtFrame::hmShielding(std::size_t atomIdx) const {
     const auto* ts = conformation_->h5()->hmShielding();
     return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
 }
-SphericalTensor QtFrame::rsShielding(std::size_t atomIdx) const {
-    if (!conformation_ || !conformation_->h5())
-        return {};
-    const auto* ts = conformation_->h5()->ringChiShielding();
-    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
-}
 Vec3 QtFrame::totalBField(std::size_t /*atomIdx*/) const {
     // Not in new format directly; would need to sum BS B-fields per ring
     // via QtBiotSavartCalc. Returning zero in v1; Session 5 wires the
@@ -208,23 +202,6 @@ Vec3 QtFrame::mcNearestCODir(std::size_t /*atomIdx*/) const {
     return Vec3::Zero();
 }
 
-
-// ── Quadrupole / Dispersion ──────────────────────────────────────
-
-SphericalTensor QtFrame::pqShielding(std::size_t atomIdx) const {
-    if (!conformation_ || !conformation_->h5())
-        return {};
-    const auto* ts = conformation_->h5()->piQuadShielding();
-    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
-}
-SphericalTensor QtFrame::dispShielding(std::size_t atomIdx) const {
-    if (!conformation_ || !conformation_->h5())
-        return {};
-    const auto* ts = conformation_->h5()->dispShielding();
-    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
-}
-
-
 // ── Electrostatics ───────────────────────────────────────────────
 
 SphericalTensor QtFrame::coulombShielding(std::size_t /*atomIdx*/) const {
@@ -264,15 +241,6 @@ SphericalTensor QtFrame::aimnet2Shielding(std::size_t /*atomIdx*/) const {
     return {};  // Not exposed; AIMNet2 in new format = embedding + charge + crg
 }
 
-
-// ── H-bond ───────────────────────────────────────────────────────
-
-SphericalTensor QtFrame::hbondShielding(std::size_t atomIdx) const {
-    if (!conformation_ || !conformation_->h5())
-        return {};
-    const auto* ts = conformation_->h5()->hbondShielding();
-    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
-}
 double QtFrame::hbondNearestDist(std::size_t /*atomIdx*/) const {
     return 0.0;
 }

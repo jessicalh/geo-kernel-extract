@@ -61,7 +61,6 @@ public:
     // Ring-current
     SphericalTensor bsShielding(std::size_t atomIdx) const;
     SphericalTensor hmShielding(std::size_t atomIdx) const;
-    SphericalTensor rsShielding(std::size_t atomIdx) const;  // ringchi
     Vec3 totalBField(std::size_t atomIdx) const;
     int nRings3A(std::size_t atomIdx) const;  // derived; ring_neighbourhood
     int nRings5A(std::size_t atomIdx) const;
@@ -75,10 +74,6 @@ public:
     double mcNearestCODist(std::size_t atomIdx) const;
     Vec3 mcNearestCODir(std::size_t atomIdx) const;
 
-    // Quadrupole / dispersion
-    SphericalTensor pqShielding(std::size_t atomIdx) const;
-    SphericalTensor dispShielding(std::size_t atomIdx) const;
-
     // Electrostatics
     SphericalTensor coulombShielding(std::size_t atomIdx) const;
     Vec3 coulombETotal(std::size_t atomIdx) const;
@@ -88,7 +83,6 @@ public:
     SphericalTensor aimnet2Shielding(std::size_t atomIdx) const;
 
     // H-bond (kernel form)
-    SphericalTensor hbondShielding(std::size_t atomIdx) const;
     double hbondNearestDist(std::size_t atomIdx) const;
     Vec3 hbondNearestDir(std::size_t atomIdx) const;
     int hbondCount35A(std::size_t atomIdx) const;

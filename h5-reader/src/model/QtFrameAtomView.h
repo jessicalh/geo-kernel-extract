@@ -44,10 +44,6 @@ struct QtFrameAtomView {
     std::optional<SphericalTensor> bs_shielding;
     std::optional<SphericalTensor> hm_shielding;
     std::optional<SphericalTensor> mc_shielding;
-    std::optional<SphericalTensor> piquad_shielding;
-    std::optional<SphericalTensor> ringchi_shielding;
-    std::optional<SphericalTensor> disp_shielding;
-    std::optional<SphericalTensor> hbond_shielding;
     std::optional<SphericalTensor> mopac_coulomb_shielding;
     std::optional<SphericalTensor> mopac_mc_shielding;
     std::optional<SphericalTensor> mopac_vs_ff14sb_reconciliation;

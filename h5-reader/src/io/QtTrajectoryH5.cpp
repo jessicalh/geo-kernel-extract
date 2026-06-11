@@ -2317,10 +2317,6 @@ QtTrajectoryH5::QtTrajectoryH5(const QString& h5_path) {
     ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/bs_shielding_time_series", n_atoms_, bs_shielding_);
     ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/hm_shielding_time_series", n_atoms_, hm_shielding_);
     ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/mc_shielding_time_series", n_atoms_, mc_shielding_);
-    ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/piquad_shielding_time_series", n_atoms_, piquad_shielding_);
-    ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/ringchi_shielding_time_series", n_atoms_, ringchi_shielding_);
-    ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/disp_shielding_time_series", n_atoms_, disp_shielding_);
-    ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/hbond_shielding_time_series", n_atoms_, hbond_shielding_);
     // mopac_coulomb_shielding is T2-only (no T0 / T1); read as QtT2TimeSeries.
     ReadT2TimeSeries(const_cast<File&>(file),
                      "/trajectory/mopac_coulomb_shielding_time_series",

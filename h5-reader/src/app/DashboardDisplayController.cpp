@@ -614,14 +614,6 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
             return sampleTensorSeries(h5->hmShielding());
         if (path == QStringLiteral("/trajectory/mc_shielding_time_series"))
             return sampleTensorSeries(h5->mcShielding());
-        if (path == QStringLiteral("/trajectory/piquad_shielding_time_series"))
-            return sampleTensorSeries(h5->piQuadShielding());
-        if (path == QStringLiteral("/trajectory/ringchi_shielding_time_series"))
-            return sampleTensorSeries(h5->ringChiShielding());
-        if (path == QStringLiteral("/trajectory/disp_shielding_time_series"))
-            return sampleTensorSeries(h5->dispShielding());
-        if (path == QStringLiteral("/trajectory/hbond_shielding_time_series"))
-            return sampleTensorSeries(h5->hbondShielding());
         if (path == QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series"))
             return sampleT2Series(h5->mopacCoulombShielding());
         if (path == QStringLiteral("/trajectory/mopac_mc_shielding_time_series"))
