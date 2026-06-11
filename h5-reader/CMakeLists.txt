@@ -393,6 +393,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/Relationship.cpp
     src/rediscover/RelationshipEngine.h
     src/rediscover/RelationshipEngine.cpp
+    src/rediscover/RunQuery.h
+    src/rediscover/RunQuery.cpp
     src/rediscover/ComposedRelationships.h
     src/rediscover/ComposedRelationships.cpp
     # broad_backbone — the first composed relationship over EVERY backbone atom
@@ -565,6 +567,26 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_substrate_parity_tests
              COMMAND h5reader_rediscover_substrate_parity_tests)
+
+    qt_add_executable(h5reader_rediscover_query_tests
+        tests/rediscover_query_tests.cpp
+        src/rediscover/RunQuery.h
+        src/rediscover/RunQuery.cpp
+        src/rediscover/Catalog.h
+        src/rediscover/Catalog.cpp
+    )
+    target_include_directories(h5reader_rediscover_query_tests PRIVATE
+        src
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern
+    )
+    target_link_libraries(h5reader_rediscover_query_tests PRIVATE
+        h5reader_core
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_query_tests
+             COMMAND h5reader_rediscover_query_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp
