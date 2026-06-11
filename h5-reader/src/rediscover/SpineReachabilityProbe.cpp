@@ -125,6 +125,7 @@ struct FieldDatasetStats {
     std::size_t failures = 0;
     std::vector<std::size_t> finiteCounts;
     QStringList errors;
+    QStringList absenceReasons;
     QString flatRepresentation;
     bool flatCompared = false;
     bool flatOk = false;
@@ -148,7 +149,7 @@ QString extentString(const FieldDatasetStats& s) {
                                    .arg(s.nativeRowsMin)
                                    .arg(s.nativeRowsMax)
                                    .arg(s.nativeRowsTotal);
-    return QStringLiteral("runs=%1 frames=%2..%3 visited=%4 native_rows=%5 comps=%6 values=%7")
+    QString out = QStringLiteral("runs=%1 frames=%2..%3 visited=%4 native_rows=%5 comps=%6 values=%7")
         .arg(s.runs)
         .arg(s.frameExtentMin == std::numeric_limits<std::size_t>::max() ? 0 : s.frameExtentMin)
         .arg(s.frameExtentMax)
@@ -156,6 +157,9 @@ QString extentString(const FieldDatasetStats& s) {
         .arg(rows)
         .arg(s.componentsMax)
         .arg(s.valuesRead);
+    if (!s.absenceReasons.isEmpty())
+        out += QStringLiteral("; absence=`%1`").arg(s.absenceReasons.front());
+    return out;
 }
 
 QJsonObject statsJson(const FieldDatasetStats& s) {
@@ -182,6 +186,9 @@ QJsonObject statsJson(const FieldDatasetStats& s) {
     QJsonArray errors;
     for (const QString& e : s.errors) errors.push_back(e);
     o.insert(QStringLiteral("errors"), errors);
+    QJsonArray absenceReasons;
+    for (const QString& e : s.absenceReasons) absenceReasons.push_back(e);
+    o.insert(QStringLiteral("absence_reasons"), absenceReasons);
     o.insert(QStringLiteral("flat_representation"), s.flatRepresentation);
     o.insert(QStringLiteral("flat_coverage_compared"), s.flatCompared);
     o.insert(QStringLiteral("flat_coverage_ok"), s.flatOk);
@@ -219,9 +226,41 @@ void compareFlat(const io::FieldSpec& spec,
 bool scanField(const Body& body,
                const io::FieldSpec& spec,
                FieldDatasetStats* s) {
-    s->provider = FieldProviderName(body.catalog.provider(body.run, spec.kind));
+    QString providerReason;
+    const FieldProvider provider = body.catalog.provider(body.run, spec.kind, &providerReason);
+    s->provider = FieldProviderName(provider);
     s->nativeAxis = axisName(spec.axis);
     ++s->runs;
+
+    if (provider == FieldProvider::DatasetAbsent) {
+        s->frameExtentMin = std::min<std::size_t>(s->frameExtentMin, 0);
+        s->frameExtentMax = std::max<std::size_t>(s->frameExtentMax, 0);
+        s->nativeRowsMin = std::min<std::size_t>(s->nativeRowsMin, 0);
+        s->nativeRowsMax = std::max<std::size_t>(s->nativeRowsMax, 0);
+        if (spec.cols > 0) {
+            s->componentsMax = std::max<std::size_t>(s->componentsMax,
+                                                     static_cast<std::size_t>(spec.cols));
+            if (s->finiteCounts.empty())
+                s->finiteCounts.resize(static_cast<std::size_t>(spec.cols), 0);
+        }
+        QString reason;
+        const bool p = body.catalog.present(body, spec.kind, 0, 0, 0, &reason);
+        if (p) {
+            appendError(s, QStringLiteral("%1 dataset-absent provider reported present")
+                               .arg(fieldStem(spec)));
+        } else {
+            const QString recorded = reason.isEmpty() ? providerReason : reason;
+            if (!recorded.isEmpty() && s->absenceReasons.size() < 8)
+                s->absenceReasons.push_back(recorded);
+        }
+        return s->failures == 0;
+    }
+
+    if (provider == FieldProvider::Unsupported) {
+        appendError(s, QStringLiteral("%1 unsupported in Catalog: %2")
+                           .arg(fieldStem(spec), providerReason));
+        return false;
+    }
 
     if (structuredField(spec)) {
         const std::size_t rows = body.catalog.nativeRowCount(body, spec.kind, 0);
@@ -357,6 +396,7 @@ bool writeReport(const QString& path,
     ts << "- Added loader-owned trajectory producer residency for scoped per-frame NPY fields, including variable native-row axes.\n";
     ts << "- Added FieldKind-native Catalog access with provider resolution, native row/frame/component reads, and absence reasons.\n";
     ts << "- Added full-detail reachability probe with flat coverage comparison.\n\n";
+    ts << "- Made explicit `dataset_absent` a first-class provider: the probe verifies `present()` is false with a reason and still fails if flat coverage expects populated values.\n\n";
     ts << "## Per-field results\n\n";
     ts << "| field | native axis | 720 provider | 720 extent/result | 1P9J provider | 1P9J extent/result |\n";
     ts << "| --- | --- | --- | --- | --- | --- |\n";
