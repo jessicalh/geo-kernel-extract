@@ -14,6 +14,7 @@
 #include <QTextStream>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -252,6 +253,26 @@ bool readRunArray(const RunData& run,
     return true;
 }
 
+void normalizeNativeArray(const io::FieldSpec& spec, io::QtNpyReader::WidenedArray* a) {
+    if (!a || !a->ok) return;
+    if (spec.axis == io::NativeAxis::Protein
+        && spec.cols > 1
+        && a->cols == 1
+        && a->rows == static_cast<std::size_t>(spec.cols)) {
+        a->rows = 1;
+        a->cols = static_cast<std::size_t>(spec.cols);
+    }
+}
+
+bool readRunArrayForSpec(const RunData& run,
+                         std::size_t row,
+                         const io::FieldSpec& spec,
+                         io::QtNpyReader::WidenedArray* out) {
+    if (!readRunArray(run, row, spec.kind, out)) return false;
+    normalizeNativeArray(spec, out);
+    return true;
+}
+
 bool hasNumericArray(const RunData& run, io::FieldKind kind) {
     if (run.poseKind() == PoseKind::Static) return run.producerArray(kind) != nullptr;
     for (std::size_t row : run.frameMap.dftRows()) {
@@ -301,6 +322,110 @@ QJsonArray countsJson(const std::vector<std::size_t>& counts) {
     QJsonArray a;
     for (std::size_t c : counts) a.push_back(static_cast<double>(c));
     return a;
+}
+
+QJsonArray stringJson(const std::vector<QString>& values) {
+    QJsonArray a;
+    for (const QString& v : values) a.push_back(v);
+    return a;
+}
+
+std::size_t totalEmittedRows(const std::vector<RunData>& runs) {
+    std::size_t n = 0;
+    for (const RunData& run : runs) n += emittedRowsForRun(run);
+    return n;
+}
+
+int primaryNativeRingForAtom(const RunData& run, std::size_t atom, io::NativeAxis axis) {
+    if (!run.protein) return -1;
+    const model::QtTopology& topo = run.protein->topology();
+    for (int32_t membershipIndex : topo.ringMembershipsForAtom(atom)) {
+        if (membershipIndex < 0
+            || static_cast<std::size_t>(membershipIndex) >= topo.ringMembershipCount()) {
+            continue;
+        }
+        const model::QtRingMembership& membership =
+            topo.ringMembershipAt(static_cast<std::size_t>(membershipIndex));
+        if (membership.ringId < 0
+            || static_cast<std::size_t>(membership.ringId) >= topo.ringCount()) {
+            continue;
+        }
+        const model::QtRing& ring = topo.ringAt(static_cast<std::size_t>(membership.ringId));
+        const bool wanted =
+            (axis == io::NativeAxis::AromaticRing && ring.ringKind == model::RingKind::Aromatic)
+            || (axis == io::NativeAxis::SaturatedRing && ring.ringKind == model::RingKind::Saturated)
+            || (axis == io::NativeAxis::Ring);
+        if (wanted && ring.nativeAxisIndex >= 0) return ring.nativeAxisIndex;
+    }
+    return -1;
+}
+
+std::vector<QString> directReductionNames(std::size_t cols, const QString& prefix) {
+    std::vector<QString> names;
+    names.reserve(cols);
+    for (std::size_t c = 0; c < cols; ++c)
+        names.push_back(QStringLiteral("%1_%2").arg(prefix).arg(c));
+    return names;
+}
+
+std::vector<QString> ringPairReductionNames(std::size_t cols) {
+    std::vector<QString> names;
+    names.reserve(1 + cols * 10);
+    names.push_back(QStringLiteral("pair_count"));
+    for (std::size_t c = 0; c < cols; ++c) {
+        names.push_back(QStringLiteral("sum_%1").arg(c));
+        names.push_back(QStringLiteral("nearest_%1").arg(c));
+        for (int t = 0; t < 8; ++t)
+            names.push_back(QStringLiteral("type%1_sum_%2").arg(t).arg(c));
+    }
+    return names;
+}
+
+std::vector<QString> incidentReductionNames(std::size_t cols, bool includeMeanMax) {
+    std::vector<QString> names;
+    names.reserve(1 + cols * (includeMeanMax ? 3 : 1));
+    names.push_back(QStringLiteral("incident_count"));
+    for (std::size_t c = 0; c < cols; ++c) {
+        names.push_back(QStringLiteral("sum_%1").arg(c));
+        if (includeMeanMax) {
+            names.push_back(QStringLiteral("mean_%1").arg(c));
+            names.push_back(QStringLiteral("max_%1").arg(c));
+        }
+    }
+    return names;
+}
+
+void countReductionRow(const std::vector<double>& row, std::vector<std::size_t>* counts) {
+    for (std::size_t i = 0; i < row.size(); ++i)
+        if (std::isfinite(row[i])) ++(*counts)[i];
+}
+
+struct ReductionSpec {
+    QString policy;
+    std::vector<QString> names;
+    bool flaggedForReview = false;
+};
+
+ReductionSpec reductionSpecFor(const io::FieldSpec& spec, std::size_t cols) {
+    switch (spec.axis) {
+    case io::NativeAxis::Protein:
+        return {QStringLiteral("broadcast protein-axis values to every emitted atom row"), directReductionNames(cols, QStringLiteral("broadcast")), false};
+    case io::NativeAxis::Residue:
+        return {QStringLiteral("broadcast residue-axis values by atom.residue_index"), directReductionNames(cols, QStringLiteral("residue_broadcast")), false};
+    case io::NativeAxis::AromaticRing:
+    case io::NativeAxis::SaturatedRing:
+    case io::NativeAxis::Ring:
+        return {QStringLiteral("primary ring-membership policy: first topology membership matching the catalog native axis"), directReductionNames(cols, QStringLiteral("primary_membership")), false};
+    case io::NativeAxis::RingContributionPair:
+        return {QStringLiteral("per-(atom,ring): pair count, sum over rings, nearest-ring value by ring_contributions distance, and ring-type sum bins"), ringPairReductionNames(cols), false};
+    case io::NativeAxis::MOPACBondNeighborPair:
+        return {QStringLiteral("mopac_bond_neighbors incident aggregate: count, sum, mean, max by atom endpoint"), incidentReductionNames(cols, true), false};
+    case io::NativeAxis::Bond:
+    case io::NativeAxis::MOPACUniquePair:
+        return {QStringLiteral("generic incident endpoint sum for bond-like native axis; review downstream semantics before modelling"), incidentReductionNames(cols, false), true};
+    default:
+        return {QStringLiteral("generic native-axis sum reduction; review downstream semantics before modelling"), incidentReductionNames(cols, false), true};
+    }
 }
 
 bool writeStructuredIndex(const QString& outDir,
@@ -409,6 +534,232 @@ bool writeAtomSidecar(const QString& outDir,
     return true;
 }
 
+bool writeNativeReductionSidecar(const QString& outDir,
+                                  const io::FieldSpec& spec,
+                                  std::size_t dataCols,
+                                  const std::vector<RunData>& runs,
+                                  QJsonObject* field,
+                                  QString* err_out) {
+    const std::size_t totalRows = totalEmittedRows(runs);
+    const ReductionSpec red = reductionSpecFor(spec, dataCols);
+    const QString name = QStringLiteral("row_design_field_%1_reduction.npy").arg(fieldStem(spec));
+    NpyDoubleWriter writer(QDir(outDir).filePath(name), totalRows, red.names.size());
+    std::vector<std::size_t> counts(red.names.size(), 0);
+    std::vector<double> out(red.names.size(), kNaN);
+
+    auto writeOut = [&]() -> bool {
+        countReductionRow(out, &counts);
+        if (!writer.writeRow(out)) {
+            if (err_out) *err_out = QStringLiteral("native reduction write failed for %1").arg(name);
+            return false;
+        }
+        return true;
+    };
+
+    auto writeDirectRows = [&](const RunData& run,
+                               std::size_t frame,
+                               const io::QtNpyReader::WidenedArray& arr) -> bool {
+        const std::size_t atomCount = run.protein ? run.protein->atomCount() : 0;
+        for (std::size_t atom = 0; atom < atomCount; ++atom) {
+            std::fill(out.begin(), out.end(), kNaN);
+            std::size_t native = 0;
+            bool ok = false;
+            if (spec.axis == io::NativeAxis::Protein) {
+                native = 0;
+                ok = arr.rows > 0;
+            } else if (spec.axis == io::NativeAxis::Residue && run.protein) {
+                const model::QtAtom& a = run.protein->atom(atom);
+                ok = a.residueIndex >= 0;
+                native = ok ? static_cast<std::size_t>(a.residueIndex) : 0;
+            } else if (spec.axis == io::NativeAxis::AromaticRing
+                       || spec.axis == io::NativeAxis::SaturatedRing
+                       || spec.axis == io::NativeAxis::Ring) {
+                const int idx = primaryNativeRingForAtom(run, atom, spec.axis);
+                ok = idx >= 0;
+                native = ok ? static_cast<std::size_t>(idx) : 0;
+            }
+            if (ok && native < arr.rows) {
+                for (std::size_t c = 0; c < dataCols && c < arr.cols; ++c)
+                    out[c] = arr.data[native * arr.cols + c];
+            }
+            Q_UNUSED(frame);
+            if (!writeOut()) return false;
+        }
+        return true;
+    };
+
+    auto writeRingPairRows = [&](const RunData& run,
+                                 const io::QtNpyReader::WidenedArray& arr,
+                                 const io::QtNpyReader::WidenedArray& map) -> bool {
+        const std::size_t atomCount = run.protein ? run.protein->atomCount() : 0;
+        std::vector<std::vector<std::size_t>> byAtom(atomCount);
+        for (std::size_t native = 0; native < map.rows; ++native) {
+            const double atomV = map.data[native * map.cols + 0];
+            if (!std::isfinite(atomV)) continue;
+            const long atomIdx = std::lround(atomV);
+            if (atomIdx >= 0 && static_cast<std::size_t>(atomIdx) < atomCount)
+                byAtom[static_cast<std::size_t>(atomIdx)].push_back(native);
+        }
+        for (std::size_t atom = 0; atom < atomCount; ++atom) {
+            std::fill(out.begin(), out.end(), kNaN);
+            out[0] = static_cast<double>(byAtom[atom].size());
+            std::size_t bestNative = std::numeric_limits<std::size_t>::max();
+            double bestDist = kNaN;
+            for (std::size_t native : byAtom[atom]) {
+                const double dist = map.cols > 3 ? map.data[native * map.cols + 3] : kNaN;
+                if (std::isfinite(dist) && (std::isnan(bestDist) || dist < bestDist)) {
+                    bestDist = dist;
+                    bestNative = native;
+                }
+            }
+            for (std::size_t c = 0; c < dataCols; ++c) {
+                const std::size_t base = 1 + c * 10;
+                double sum = 0.0;
+                std::array<double, 8> typeSums = {};
+                bool any = false;
+                std::array<bool, 8> typeAny = {};
+                for (std::size_t native : byAtom[atom]) {
+                    if (native >= arr.rows || c >= arr.cols) continue;
+                    const double v = arr.data[native * arr.cols + c];
+                    if (!std::isfinite(v)) continue;
+                    any = true;
+                    sum += v;
+                    const double typeV = map.cols > 2 ? map.data[native * map.cols + 2] : kNaN;
+                    if (std::isfinite(typeV)) {
+                        const long t = std::lround(typeV);
+                        if (t >= 0 && t < 8) {
+                            typeSums[static_cast<std::size_t>(t)] += v;
+                            typeAny[static_cast<std::size_t>(t)] = true;
+                        }
+                    }
+                }
+                if (any) out[base] = sum;
+                if (bestNative != std::numeric_limits<std::size_t>::max()
+                    && bestNative < arr.rows
+                    && c < arr.cols) {
+                    const double v = arr.data[bestNative * arr.cols + c];
+                    if (std::isfinite(v)) out[base + 1] = v;
+                }
+                for (std::size_t t = 0; t < typeSums.size(); ++t)
+                    if (typeAny[t]) out[base + 2 + t] = typeSums[t];
+            }
+            if (!writeOut()) return false;
+        }
+        return true;
+    };
+
+    auto writeIncidentRows = [&](const RunData& run,
+                                 const io::QtNpyReader::WidenedArray& arr,
+                                 bool includeMeanMax) -> bool {
+        const std::size_t atomCount = run.protein ? run.protein->atomCount() : 0;
+        std::vector<std::vector<std::size_t>> byAtom(atomCount);
+        for (std::size_t native = 0; native < arr.rows; ++native) {
+            auto addEndpoint = [&](std::size_t comp) {
+                if (comp >= arr.cols) return;
+                const double atomV = arr.data[native * arr.cols + comp];
+                if (!std::isfinite(atomV)) return;
+                const long atomIdx = std::lround(atomV);
+                if (atomIdx >= 0 && static_cast<std::size_t>(atomIdx) < atomCount)
+                    byAtom[static_cast<std::size_t>(atomIdx)].push_back(native);
+            };
+            addEndpoint(0);
+            if (spec.axis != io::NativeAxis::MOPACBondNeighborPair) addEndpoint(1);
+        }
+        for (std::size_t atom = 0; atom < atomCount; ++atom) {
+            std::fill(out.begin(), out.end(), kNaN);
+            out[0] = static_cast<double>(byAtom[atom].size());
+            for (std::size_t c = 0; c < dataCols; ++c) {
+                const std::size_t base = 1 + c * (includeMeanMax ? 3 : 1);
+                double sum = 0.0;
+                double maxv = kNaN;
+                std::size_t n = 0;
+                for (std::size_t native : byAtom[atom]) {
+                    if (native >= arr.rows || c >= arr.cols) continue;
+                    const double v = arr.data[native * arr.cols + c];
+                    if (!std::isfinite(v)) continue;
+                    sum += v;
+                    maxv = std::isnan(maxv) ? v : std::max(maxv, v);
+                    ++n;
+                }
+                if (n > 0) {
+                    out[base] = sum;
+                    if (includeMeanMax) {
+                        out[base + 1] = sum / static_cast<double>(n);
+                        out[base + 2] = maxv;
+                    }
+                }
+            }
+            if (!writeOut()) return false;
+        }
+        return true;
+    };
+
+    for (const RunData& run : runs) {
+        for (std::size_t frame : run.frameMap.dftRows()) {
+            io::QtNpyReader::WidenedArray arr;
+            if (!readRunArrayForSpec(run, frame, spec, &arr)) {
+                const std::size_t atomCount = run.protein ? run.protein->atomCount() : 0;
+                std::fill(out.begin(), out.end(), kNaN);
+                for (std::size_t atom = 0; atom < atomCount; ++atom)
+                    if (!writeOut()) return false;
+                continue;
+            }
+            if (arr.cols != dataCols) {
+                if (err_out) {
+                    *err_out = QStringLiteral("%1 reduction width drift: expected %2 cols, saw %3")
+                                   .arg(fieldStem(spec))
+                                   .arg(dataCols)
+                                   .arg(arr.cols);
+                }
+                return false;
+            }
+            if (spec.axis == io::NativeAxis::Protein
+                || spec.axis == io::NativeAxis::Residue
+                || spec.axis == io::NativeAxis::AromaticRing
+                || spec.axis == io::NativeAxis::SaturatedRing
+                || spec.axis == io::NativeAxis::Ring) {
+                if (!writeDirectRows(run, frame, arr)) return false;
+            } else if (spec.axis == io::NativeAxis::RingContributionPair) {
+                io::QtNpyReader::WidenedArray map;
+                if (!readRunArrayForSpec(run, frame, io::FieldSpecFor(io::FieldKind::RingContributions), &map)
+                    || map.cols < 3
+                    || map.rows != arr.rows) {
+                    if (err_out) {
+                        *err_out = QStringLiteral("%1 reduction requires ring_contributions map with matching rows")
+                                       .arg(fieldStem(spec));
+                    }
+                    return false;
+                }
+                if (!writeRingPairRows(run, arr, map)) return false;
+            } else if (spec.axis == io::NativeAxis::MOPACBondNeighborPair) {
+                if (!writeIncidentRows(run, arr, true)) return false;
+            } else if (spec.axis == io::NativeAxis::Bond
+                       || spec.axis == io::NativeAxis::MOPACUniquePair) {
+                if (!writeIncidentRows(run, arr, false)) return false;
+            } else {
+                if (!writeIncidentRows(run, arr, false)) return false;
+            }
+        }
+    }
+
+    if (!writer.commit()) {
+        if (err_out) *err_out = QStringLiteral("native reduction commit failed for %1").arg(name);
+        return false;
+    }
+
+    QJsonObject r;
+    r.insert(QStringLiteral("representation"), QStringLiteral("atom_row_reduction_sidecar"));
+    r.insert(QStringLiteral("sidecar"), name);
+    r.insert(QStringLiteral("shape"), QStringLiteral("(%1,%2)").arg(totalRows).arg(red.names.size()));
+    r.insert(QStringLiteral("policy"), red.policy);
+    r.insert(QStringLiteral("component_names"), stringJson(red.names));
+    r.insert(QStringLiteral("populated_counts"), countsJson(counts));
+    r.insert(QStringLiteral("row_count"), static_cast<double>(totalRows));
+    if (red.flaggedForReview) r.insert(QStringLiteral("flagged_for_review"), true);
+    (*field).insert(QStringLiteral("row_reduction"), r);
+    return true;
+}
+
 bool writeNativeNumericSidecar(const QString& outDir,
                                const io::FieldSpec& spec,
                                const std::vector<RunData>& runs,
@@ -420,7 +771,7 @@ bool writeNativeNumericSidecar(const QString& outDir,
     for (const RunData& run : runs) {
         for (std::size_t row : run.frameMap.dftRows()) {
             io::QtNpyReader::WidenedArray arr;
-            if (!readRunArray(run, row, spec.kind, &arr)) continue;
+            if (!readRunArrayForSpec(run, row, spec, &arr)) continue;
             any = true;
             dataCols = arr.cols;
             totalRows += arr.rows;
@@ -443,7 +794,7 @@ bool writeNativeNumericSidecar(const QString& outDir,
     for (const RunData& run : runs) {
         for (std::size_t row : run.frameMap.dftRows()) {
             io::QtNpyReader::WidenedArray arr;
-            if (!readRunArray(run, row, spec.kind, &arr)) continue;
+            if (!readRunArrayForSpec(run, row, spec, &arr)) continue;
             for (std::size_t native = 0; native < arr.rows; ++native) {
                 out[0] = static_cast<double>(proteinOrdinal);
                 out[1] = static_cast<double>(row);
@@ -472,6 +823,7 @@ bool writeNativeNumericSidecar(const QString& outDir,
                                QStringLiteral("original_index"), QStringLiteral("native_index")});
     (*field).insert(QStringLiteral("populated_counts"), countsJson(counts));
     (*field).insert(QStringLiteral("row_count"), static_cast<double>(totalRows));
+    if (!writeNativeReductionSidecar(outDir, spec, dataCols, runs, field, err_out)) return false;
     return true;
 }
 
@@ -654,6 +1006,22 @@ bool WriteCatalogCoverageArtifacts(const QString& outDir,
                << QString::number(counts[i].toDouble(), 'f', 0) << ","
                << QString::number(o.value(QStringLiteral("row_count")).toDouble(), 'f', 0) << ","
                << o.value(QStringLiteral("sidecar")).toString() << "\n";
+        }
+        const QJsonObject reduction = o.value(QStringLiteral("row_reduction")).toObject();
+        if (!reduction.isEmpty()) {
+            const QJsonArray rCounts = reduction.value(QStringLiteral("populated_counts")).toArray();
+            const QJsonArray names = reduction.value(QStringLiteral("component_names")).toArray();
+            for (int i = 0; i < rCounts.size(); ++i) {
+                const QString component = i < names.size()
+                                              ? QStringLiteral("reduction:%1").arg(names[i].toString())
+                                              : QStringLiteral("reduction:%1").arg(i);
+                ts << o.value(QStringLiteral("stem")).toString() << ","
+                   << reduction.value(QStringLiteral("representation")).toString() << ","
+                   << component << ","
+                   << QString::number(rCounts[i].toDouble(), 'f', 0) << ","
+                   << QString::number(reduction.value(QStringLiteral("row_count")).toDouble(), 'f', 0) << ","
+                   << reduction.value(QStringLiteral("sidecar")).toString() << "\n";
+            }
         }
     }
 
