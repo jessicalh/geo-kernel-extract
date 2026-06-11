@@ -143,11 +143,11 @@ RowNativeAxis rowAxis(io::NativeAxis a) {
     }
 }
 
-QByteArray npyHeader(const QByteArray& descr, const std::vector<std::size_t>& shape) {
+QByteArray npyHeaderLiteral(const QByteArray& descr, const std::vector<std::size_t>& shape) {
     QByteArray header;
-    header += "{'descr': '";
+    header += "{'descr': ";
     header += descr;
-    header += "', 'fortran_order': False, 'shape': (";
+    header += ", 'fortran_order': False, 'shape': (";
     for (std::size_t i = 0; i < shape.size(); ++i) {
         if (i) header += ", ";
         header += QByteArray::number(static_cast<qulonglong>(shape[i]));
@@ -169,6 +169,14 @@ QByteArray npyHeader(const QByteArray& descr, const std::vector<std::size_t>& sh
     prefix.append(char(headerLen & 0xff));
     prefix.append(char((headerLen >> 8) & 0xff));
     return prefix + header;
+}
+
+QByteArray npyHeader(const QByteArray& descr, const std::vector<std::size_t>& shape) {
+    QByteArray literal;
+    literal += "'";
+    literal += descr;
+    literal += "'";
+    return npyHeaderLiteral(literal, shape);
 }
 
 class NpyDoubleWriter {
@@ -434,6 +442,73 @@ bool writeStructuredIndex(const QString& outDir,
                           QJsonObject* field,
                           QString* err_out) {
     const QString indexName = QStringLiteral("row_design_field_%1_index.csv").arg(fieldStem(spec));
+    const QString sidecarName = QStringLiteral("row_design_field_%1_native.npy").arg(fieldStem(spec));
+
+    struct Chunk {
+        QString path;
+        QString proteinId;
+        std::size_t rowStart = 0;
+        std::size_t rowCount = 0;
+    };
+
+    std::vector<Chunk> chunks;
+    chunks.reserve(runs.size());
+    std::size_t total = 0;
+    std::size_t recordSize = 0;
+    std::string descr;
+
+    for (const RunData& run : runs) {
+        const QString path = staticFieldPath(run, spec.kind);
+        std::vector<unsigned char> bytes;
+        std::size_t rs = 0;
+        auto r = io::QtNpyReader::ReadRawBytes(path, bytes, rs);
+        if (!r.ok) {
+            if (err_out) *err_out = QStringLiteral("required structured field %1 is missing or unreadable: %2")
+                                      .arg(fieldStem(spec), path);
+            return false;
+        }
+        if (recordSize == 0) {
+            recordSize = rs;
+            descr = r.dtype_descr;
+        } else if (recordSize != rs || descr != r.dtype_descr) {
+            if (err_out) *err_out = QStringLiteral("structured field %1 dtype drift at %2")
+                                      .arg(fieldStem(spec), path);
+            return false;
+        }
+        chunks.push_back(Chunk{path, run.protein ? run.protein->proteinId() : QString(), total, r.row_count});
+        total += r.row_count;
+    }
+
+    QSaveFile rawFile(QDir(outDir).filePath(sidecarName));
+    if (!rawFile.open(QIODevice::WriteOnly)) {
+        if (err_out) *err_out = QStringLiteral("cannot write %1").arg(sidecarName);
+        return false;
+    }
+    const QByteArray header = npyHeaderLiteral(QByteArray::fromStdString(descr), {total});
+    if (rawFile.write(header) != header.size()) {
+        if (err_out) *err_out = QStringLiteral("short write to %1").arg(sidecarName);
+        return false;
+    }
+    for (const Chunk& chunk : chunks) {
+        std::vector<unsigned char> bytes;
+        std::size_t rs = 0;
+        auto r = io::QtNpyReader::ReadRawBytes(chunk.path, bytes, rs);
+        if (!r.ok || rs != recordSize || r.dtype_descr != descr) {
+            if (err_out) *err_out = QStringLiteral("structured field %1 changed while writing %2")
+                                      .arg(fieldStem(spec), chunk.path);
+            return false;
+        }
+        const qsizetype n = static_cast<qsizetype>(bytes.size());
+        if (rawFile.write(reinterpret_cast<const char*>(bytes.data()), n) != n) {
+            if (err_out) *err_out = QStringLiteral("short raw write to %1").arg(sidecarName);
+            return false;
+        }
+    }
+    if (!rawFile.commit()) {
+        if (err_out) *err_out = QStringLiteral("structured sidecar commit failed for %1").arg(sidecarName);
+        return false;
+    }
+
     QFile indexFile(QDir(outDir).filePath(indexName));
     if (!indexFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
         if (err_out) *err_out = QStringLiteral("cannot write %1").arg(indexName);
@@ -442,24 +517,15 @@ bool writeStructuredIndex(const QString& outDir,
     QTextStream ts(&indexFile);
     ts << "protein_ordinal,protein_id,source_path,row_start,row_count\n";
 
-    std::size_t total = 0;
-    int proteinOrdinal = 0;
-    for (const RunData& run : runs) {
-        const QString path = staticFieldPath(run, spec.kind);
-        std::vector<unsigned char> bytes;
-        std::size_t recordSize = 0;
-        std::size_t rows = 0;
-        if (QFileInfo::exists(path)) {
-            auto r = io::QtNpyReader::ReadRawBytes(path, bytes, recordSize);
-            if (r.ok) rows = r.row_count;
-        }
-        ts << proteinOrdinal << "," << (run.protein ? run.protein->proteinId() : QString())
-           << "," << path << "," << total << "," << rows << "\n";
-        total += rows;
-        ++proteinOrdinal;
+    for (std::size_t i = 0; i < chunks.size(); ++i) {
+        const Chunk& chunk = chunks[i];
+        ts << i << "," << chunk.proteinId
+           << "," << chunk.path << "," << chunk.rowStart << "," << chunk.rowCount << "\n";
     }
-    (*field).insert(QStringLiteral("representation"), QStringLiteral("structured_native_sidecar_index"));
-    (*field).insert(QStringLiteral("sidecar"), indexName);
+    (*field).insert(QStringLiteral("representation"), QStringLiteral("structured_native_sidecar"));
+    (*field).insert(QStringLiteral("sidecar"), sidecarName);
+    (*field).insert(QStringLiteral("index_sidecar"), indexName);
+    (*field).insert(QStringLiteral("shape"), QStringLiteral("(%1,)").arg(total));
     (*field).insert(QStringLiteral("component_names"), QJsonArray{QStringLiteral("record")});
     (*field).insert(QStringLiteral("populated_counts"), QJsonArray{static_cast<double>(total)});
     (*field).insert(QStringLiteral("row_count"), static_cast<double>(total));
