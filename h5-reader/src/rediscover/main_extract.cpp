@@ -33,6 +33,7 @@
 #include "McConnellNeighborhood.h"
 #include "OutputManifest.h"
 #include "PerAtomSubstrate.h"
+#include "QueryAudit.h"
 #include "RecordSink.h"
 #include "RediscoveryExtraction.h"
 #include "Relationship.h"
@@ -242,7 +243,7 @@ int main(int argc, char** argv) {
         QStringLiteral("md"),
         QStringLiteral("h5-reader/notes/CODEX_SPINE_WIREUP_REPORT.md"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): spine_probe | row_design | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): spine_probe | row_design | query_audit | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -517,6 +518,25 @@ int main(int argc, char** argv) {
     if (isFailLoudStub(which)) {
         qCCritical(cMain).noquote() << "ValidateScenario failed:" << stubMessage(which, chargeSource, catalog);
         return 2;
+    }
+
+    if (which == QStringLiteral("query_audit")) {
+        h5reader::rediscover::QueryAuditOptions auditOptions;
+        auditOptions.oldOutputDir = outDir;
+        h5reader::rediscover::QueryAuditStats auditStats;
+        QString auditErr;
+        if (!h5reader::rediscover::WriteQueryAuditParquet(body, outDir, auditOptions,
+                                                          &auditStats, &auditErr)) {
+            qCCritical(cMain).noquote() << "query_audit failed:" << auditErr;
+            return 1;
+        }
+        qCInfo(cMain).noquote()
+            << "query_audit | rows=" << auditStats.rows
+            << "| producer_mismatch_rows=" << auditStats.producer_mismatch_rows
+            << "| old_output_mismatch_rows=" << auditStats.old_output_mismatch_rows
+            << "| old_output_parity_rows_checked=" << auditStats.old_output_parity.rows_checked
+            << "| parquet=" << QDir(outDir).filePath(QStringLiteral("query_audit.parquet"));
+        return 0;
     }
 
     if (which == QStringLiteral("charge_dipole")) {
@@ -907,7 +927,7 @@ int main(int argc, char** argv) {
     }
     if (cases_to_run.empty()) {
         qCCritical(cMain).noquote() << "unknown --case" << which
-                                    << "(expected ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|per_atom_substrate|efg|buckingham_efield|aimnet2_features|all)";
+                                    << "(expected ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|per_atom_substrate|query_audit|efg|buckingham_efield|aimnet2_features|all)";
         return 2;
     }
     qCInfo(cMain).noquote() << "engine =" << engine << "| cases =" << cases_to_run.size();

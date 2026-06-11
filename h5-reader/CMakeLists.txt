@@ -321,6 +321,9 @@ endif()
 # substrate. See src/rediscover/{GUIDANCE,DESIGN}.md.
 # ============================================================================
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ARROW_PARQUET REQUIRED IMPORTED_TARGET arrow parquet)
+
 qt_add_executable(h5reader_extract
     src/rediscover/SphericalBasis.h
     src/rediscover/SphericalBasis.cpp
@@ -395,6 +398,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/RelationshipEngine.cpp
     src/rediscover/RunQuery.h
     src/rediscover/RunQuery.cpp
+    src/rediscover/QueryAudit.h
+    src/rediscover/QueryAudit.cpp
     src/rediscover/ReducerParity.h
     src/rediscover/ReducerParity.cpp
     src/rediscover/ComposedRelationships.h
@@ -439,7 +444,9 @@ target_include_directories(h5reader_extract PRIVATE
 target_link_libraries(h5reader_extract PRIVATE
     h5reader_core
     Eigen3::Eigen
+    PkgConfig::ARROW_PARQUET
 )
+target_compile_features(h5reader_extract PRIVATE cxx_std_20)
 h5reader_apply_platform_target_settings(h5reader_extract)
 if(COMMAND h5reader_apply_build_type_settings)
     h5reader_apply_build_type_settings(h5reader_extract)
