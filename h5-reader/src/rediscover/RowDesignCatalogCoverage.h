@@ -2,6 +2,7 @@
 
 #include "RowDesign.h"
 #include "RunData.h"
+#include "ScopedProducerCatalog.h"
 
 #include "../io/QtFieldCatalog.gen.h"
 
@@ -28,7 +29,6 @@ struct CatalogCoverageArtifacts {
     QStringList sidecarFiles;
 };
 
-const std::vector<const io::FieldSpec*>& ScopedProducerCatalog();
 const std::vector<CatalogRowColumn>& CatalogRowColumns();
 bool IsCatalogRowColumn(io::FieldKind kind);
 

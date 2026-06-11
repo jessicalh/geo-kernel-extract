@@ -139,6 +139,24 @@ bool loadStaticFieldArray(const ProducerPathMap& paths,
         }
         return false;
     }
+    if (kind == io::FieldKind::MOPACTopologyBondOrdersFull
+        && s.rows != protein.topology().bondCount()) {
+        if (err_out) {
+            *err_out = QStringLiteral("%1 has %2 rows; topology has %3 bonds")
+                           .arg(path)
+                           .arg(s.rows)
+                           .arg(protein.topology().bondCount());
+        }
+        return false;
+    }
+    if (spec.axis == io::NativeAxis::Protein && s.rows != 1) {
+        if (err_out) {
+            *err_out = QStringLiteral("%1 has %2 rows; protein-axis fields must have one row")
+                           .arg(path)
+                           .arg(s.rows);
+        }
+        return false;
+    }
     *out = std::move(s);
     if (present_out) *present_out = true;
     return true;
@@ -259,8 +277,7 @@ std::optional<RunData> StaticRunData::Load(const QString& poseDir, QString* err_
                                  &arr, &present, &arrErr)) {
             if (present) run.producerArrays[static_cast<int>(kind)] = std::move(arr);
         } else if (!arrErr.isEmpty()) {
-            if (err_out) *err_out = arrErr;
-            return std::nullopt;
+            run.producerArrayIssues[static_cast<int>(kind)] = arrErr;
         }
     }
     const std::size_t atomCount = run.protein ? run.protein->atomCount() : 0;

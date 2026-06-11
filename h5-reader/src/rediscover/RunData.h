@@ -172,6 +172,7 @@ struct RunData {
     DftFrameSet dft;
     FrameMap frameMap;
     std::unordered_map<int, StaticNpyArray> producerArrays;
+    std::unordered_map<int, QString> producerArrayIssues;
 
     // Typed downcast convenience: non-null because RunLoader rejects
     // non-trajectory calcsets.
@@ -191,6 +192,10 @@ struct RunData {
     const StaticNpyArray* producerArray(io::FieldKind kind) const {
         auto it = producerArrays.find(static_cast<int>(kind));
         return it == producerArrays.end() ? nullptr : &it->second;
+    }
+    QString producerArrayIssue(io::FieldKind kind) const {
+        auto it = producerArrayIssues.find(static_cast<int>(kind));
+        return it == producerArrayIssues.end() ? QString() : it->second;
     }
 };
 

@@ -1621,6 +1621,57 @@ void ReadHydrationGeometryTimeSeries(HighFive::File& file,
     }
 }
 
+void ReadBondedEnergyTimeSeries(HighFive::File& file,
+                                const char* group_path,
+                                std::size_t n_atoms,
+                                std::unique_ptr<QtBondedEnergyTimeSeries>& out) {
+    try {
+    if (!file.exist(group_path)) {
+        WarnGroupAbsent(group_path);
+        return;
+    }
+    auto grp = file.getGroup(group_path);
+    if (!grp.exist("total")) {
+        WarnShapeMismatch(group_path, QStringLiteral("missing total"));
+        return;
+    }
+    auto ds = grp.getDataSet("total");
+    const auto dims = ds.getDimensions();
+    if (dims.size() != 2 || dims[0] != n_atoms) {
+        WarnShapeMismatch(group_path, QStringLiteral("total shape != [n_atoms=%1, T]").arg(n_atoms));
+        return;
+    }
+    auto buf = std::make_unique<QtBondedEnergyTimeSeries>();
+    buf->n_atoms = n_atoms;
+    buf->n_frames = dims[1];
+    auto read_channel = [&](const char* name, std::vector<double>& dst) {
+        if (grp.exist(name)) ReadFlat<double>(grp.getDataSet(name), dst, n_atoms * buf->n_frames);
+    };
+    read_channel("bond", buf->bond);
+    read_channel("angle", buf->angle);
+    read_channel("proper_dih", buf->proper_dih);
+    read_channel("improper_dih", buf->improper_dih);
+    read_channel("urey_bradley", buf->urey_bradley);
+    read_channel("cmap_dih", buf->cmap_dih);
+    read_channel("total", buf->total);
+    if (grp.exist("frame_indices")) grp.getDataSet("frame_indices").read(buf->frame_indices);
+    if (grp.exist("frame_times")) grp.getDataSet("frame_times").read(buf->frame_times);
+    if (grp.exist("source_attached_per_frame"))
+        grp.getDataSet("source_attached_per_frame").read(buf->source_attached);
+    TryReadAttributeQ(grp, "result_name", buf->result_name);
+    out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
+}
+
 void ReadRingPuckerTimeSeries(HighFive::File& file, const char* group_path, std::unique_ptr<QtRingPuckerTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
@@ -2390,6 +2441,10 @@ QtTrajectoryH5::QtTrajectoryH5(const QString& h5_path) {
                          "total",
                          n_atoms_,
                          bonded_energy_total_);
+    ReadBondedEnergyTimeSeries(const_cast<File&>(file),
+                               "/trajectory/bonded_energy_time_series",
+                               n_atoms_,
+                               bonded_energy_);
     // Hydration is composite (4 channels for shell, 5 for geometry).
     ReadHydrationShellTimeSeries(const_cast<File&>(file),
                                  "/trajectory/hydration_shell_time_series",

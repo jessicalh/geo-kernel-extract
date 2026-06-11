@@ -95,6 +95,16 @@ model::SphericalTensor valueTensor(const Body& body, ArrayId id, std::size_t ato
                                    std::size_t frame);
 std::array<double, 5> valueT2(const Body& body, ArrayId id, std::size_t atom, std::size_t frame);
 bool present(const Body& body, ArrayId id, std::size_t atom, std::size_t frame);
+std::optional<double> value(const Body& body,
+                            io::FieldKind kind,
+                            std::size_t nativeRow,
+                            std::size_t frame,
+                            std::size_t component = 0);
+FieldPresence present(const Body& body,
+                      io::FieldKind kind,
+                      std::size_t nativeRow,
+                      std::size_t frame,
+                      std::size_t component = 0);
 
 // ringSlots(atom, frame) -> the H5 ring-neighbourhood per-slot rows for this atom.
 // The frozen frame-0 ring-membership backend (NOT a KD query): each used slot

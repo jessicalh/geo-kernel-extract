@@ -337,6 +337,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/RingGeometryCache.cpp
     src/rediscover/ResidentIndexes.h
     src/rediscover/ResidentIndexes.cpp
+    src/rediscover/ScopedProducerCatalog.h
+    src/rediscover/ScopedProducerCatalog.cpp
     src/rediscover/Catalog.h
     src/rediscover/Catalog.cpp
     src/rediscover/AnalysisBody.h
@@ -418,6 +420,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/CaseHunter.cpp
     src/rediscover/PerAtomSubstrate.h
     src/rediscover/PerAtomSubstrate.cpp
+    src/rediscover/SpineReachabilityProbe.h
+    src/rediscover/SpineReachabilityProbe.cpp
     src/rediscover/main_extract.cpp
 )
 target_include_directories(h5reader_extract PRIVATE

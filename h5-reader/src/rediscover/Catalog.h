@@ -105,6 +105,13 @@ enum class ArrayRank : int {
 };
 enum class ArrayDType : int { F64, F32, I32 };
 enum class ArrayResidence : int { DenseH5, StaticTopol, StaticNpy, SparseDftByOriginal, Absent };
+enum class FieldProvider : int {
+    StaticProducerArray,
+    DenseH5TimeSeries,
+    SparseDftByOriginal,
+    TypedTopology,
+    DatasetAbsent
+};
 
 struct AxisSpec {
     bool atom = false;
@@ -124,6 +131,28 @@ struct ArraySpec {
     QString unit;
     bool available = false;
 };
+
+struct FieldPresence {
+    bool present = false;
+    QString reason;
+};
+
+struct FieldAccessSpec {
+    io::FieldKind kind = io::FieldKind::Count;
+    QString stem;
+    io::NativeAxis axis = io::NativeAxis::Atom;
+    FieldProvider provider = FieldProvider::DatasetAbsent;
+    ArrayResidence residence = ArrayResidence::Absent;
+    std::size_t native_rows = 0;
+    std::size_t frames = 0;
+    std::size_t components = 0;
+    bool structured = false;
+    bool available = false;
+    QString absence_reason;
+};
+
+QString FieldProviderName(FieldProvider provider);
+QString ArrayResidenceName(ArrayResidence residence);
 
 std::optional<io::FieldKind> ProducerFieldFor(ArrayId id);
 std::optional<ArrayId> ArrayIdForProducerField(io::FieldKind kind);
@@ -147,8 +176,23 @@ public:
     const float* valueEmbedding(const Body& body, ArrayId id, std::size_t atom,
                                 std::size_t frame, std::size_t& n_dims_out) const;
 
+    const FieldAccessSpec& fieldSpec(io::FieldKind kind) const;
+    const std::vector<FieldAccessSpec>& fieldSpecs() const { return field_specs_; }
+    bool has(io::FieldKind kind) const;
+    FieldPresence present(const Body& body,
+                          io::FieldKind kind,
+                          std::size_t native_row,
+                          std::size_t frame,
+                          std::size_t component = 0) const;
+    std::optional<double> value(const Body& body,
+                                io::FieldKind kind,
+                                std::size_t native_row,
+                                std::size_t frame,
+                                std::size_t component = 0) const;
+
 private:
     std::vector<ArraySpec> specs_;
+    std::vector<FieldAccessSpec> field_specs_;
 };
 
 }  // namespace h5reader::rediscover
