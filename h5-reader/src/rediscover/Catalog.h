@@ -106,6 +106,18 @@ enum class ArrayRank : int {
 enum class ArrayDType : int { F64, F32, I32 };
 enum class ArrayResidence : int { DenseH5, StaticTopol, StaticNpy, SparseDftByOriginal, Absent };
 
+enum class FieldProvider : int {
+    StaticNpy,
+    TrajectoryNpy,
+    DenseH5,
+    SparseDftByOriginal,
+    TypedTopology,
+    DatasetAbsent,
+    Unsupported
+};
+
+QString FieldProviderName(FieldProvider provider);
+
 struct AxisSpec {
     bool atom = false;
     bool frame = false;
@@ -136,6 +148,21 @@ public:
     const ArraySpec& spec(ArrayId id) const;
     bool has(ArrayId id) const;
     bool present(const Body& body, ArrayId id, std::size_t atom, std::size_t frame) const;
+
+    FieldProvider provider(const RunData& run, io::FieldKind kind,
+                           QString* reason_out = nullptr) const;
+    bool has(const RunData& run, io::FieldKind kind) const;
+    bool present(const Body& body, io::FieldKind kind, std::size_t nativeRow,
+                 std::size_t frame, int component = -1,
+                 QString* reason_out = nullptr) const;
+    std::optional<double> value(const Body& body, io::FieldKind kind,
+                                std::size_t nativeRow, std::size_t frame,
+                                int component, QString* reason_out = nullptr) const;
+    std::size_t nativeRowCount(const Body& body, io::FieldKind kind,
+                               std::size_t frame = 0) const;
+    std::size_t componentCount(const Body& body, io::FieldKind kind,
+                               std::size_t frame = 0) const;
+    std::size_t frameCount(const Body& body, io::FieldKind kind) const;
 
     double value(const Body& body, ArrayId id, std::size_t atom, std::size_t frame,
                  int slot = -1, int comp = -1) const;

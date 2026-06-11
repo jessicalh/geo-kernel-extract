@@ -2,11 +2,15 @@
 
 #include "CanonicalSpineGuard.h"
 #include "ChargeStore.h"
+#include "RowDesignCatalogCoverage.h"
 
 #include "../io/DftShieldingLoader.h"
+#include "../io/QtNpyReader.h"
 #include "../io/QtProteinLoader.h"
 #include "../model/QtBond.h"
 
+#include <QDir>
+#include <QFileInfo>
 #include <QLoggingCategory>
 
 #include <algorithm>
@@ -39,6 +43,159 @@ bool proteinLooksWhole(const RunData& run, QString* err_out) {
                 return false;
             }
         }
+    }
+    return true;
+}
+
+QString qsv(std::string_view s) {
+    return QString::fromUtf8(s.data(), static_cast<qsizetype>(s.size()));
+}
+
+QString fieldStem(const io::FieldSpec& spec) { return qsv(spec.stem); }
+
+bool structuredField(const io::FieldSpec& spec) {
+    return spec.kind == io::FieldKind::AtomsCategoryInfo
+           || spec.group == io::FieldGroup::Topology;
+}
+
+bool dftField(io::FieldKind kind) {
+    return kind == io::FieldKind::OrcaTotal
+           || kind == io::FieldKind::OrcaDiamagnetic
+           || kind == io::FieldKind::OrcaParamagnetic;
+}
+
+void normalizeProducerArray(const io::FieldSpec& spec, io::QtNpyReader::WidenedArray* a) {
+    if (!a || !a->ok) return;
+    if (spec.axis == io::NativeAxis::Protein
+        && spec.cols > 1
+        && a->cols == 1
+        && a->rows == static_cast<std::size_t>(spec.cols)) {
+        a->rows = 1;
+        a->cols = static_cast<std::size_t>(spec.cols);
+    }
+}
+
+QString trajectoryFrameNpyPath(const RunData& run, std::size_t row, const io::FieldSpec& spec) {
+    if (!run.manifest.trajectory) return {};
+    const QString npysDir = QDir(run.manifest.trajectory->extraction_dir_abspath)
+                                .filePath(QStringLiteral("npys"));
+    const std::size_t original = run.frameMap.originalIndex(row);
+    const QString frameDir = QDir(npysDir).filePath(
+        QStringLiteral("frame_%1").arg(original, 6, 10, QLatin1Char('0')));
+    return QDir(frameDir).filePath(fieldStem(spec) + QStringLiteral(".npy"));
+}
+
+bool validateFixedNativeRows(const io::FieldSpec& spec,
+                             const model::QtProtein& protein,
+                             std::size_t rows,
+                             const QString& path,
+                             QString* err_out) {
+    std::optional<std::size_t> expected;
+    switch (spec.axis) {
+    case io::NativeAxis::Atom:
+        expected = protein.atomCount();
+        break;
+    case io::NativeAxis::Residue:
+        expected = protein.residueCount();
+        break;
+    case io::NativeAxis::Protein:
+        expected = 1;
+        break;
+    case io::NativeAxis::AromaticRing:
+        expected = protein.topology().aromaticRingCount();
+        break;
+    case io::NativeAxis::SaturatedRing:
+        expected = protein.topology().saturatedRingCount();
+        break;
+    case io::NativeAxis::Ring:
+        expected = protein.topology().ringCount();
+        break;
+    case io::NativeAxis::RingMembership:
+        expected = protein.topology().ringMembershipCount();
+        break;
+    default:
+        break;
+    }
+    if (expected && rows != *expected) {
+        if (err_out) {
+            *err_out = QStringLiteral("%1 has %2 native rows; %3 expects %4")
+                           .arg(path)
+                           .arg(rows)
+                           .arg(fieldStem(spec))
+                           .arg(*expected);
+        }
+        return false;
+    }
+    return true;
+}
+
+bool loadTrajectoryProducerArrays(RunData& run, QString* err_out) {
+    if (!run.manifest.trajectory || !run.protein) return true;
+    const std::size_t frames = run.frameMap.frameCount();
+    for (const io::FieldSpec* spec : ScopedProducerCatalog()) {
+        if (!spec || structuredField(*spec) || dftField(spec->kind)) continue;
+
+        StaticNpyArray resident;
+        resident.stem = fieldStem(*spec);
+        resident.path = QDir(run.manifest.trajectory->extraction_dir_abspath)
+                            .filePath(QStringLiteral("npys"));
+        resident.frameVarying = true;
+        resident.frameCount = frames;
+        resident.frameRowOffsets.reserve(frames);
+        resident.frameRowCounts.reserve(frames);
+        const bool keepFloat = spec->kind == io::FieldKind::AIMNet2Aim;
+        std::size_t cols = 0;
+        std::size_t totalRows = 0;
+
+        for (std::size_t row = 0; row < frames; ++row) {
+            const QString path = trajectoryFrameNpyPath(run, row, *spec);
+            io::QtNpyReader::WidenedArray arr = io::QtNpyReader::ReadArrayWidened(path);
+            if (!arr.ok) {
+                if (err_out) *err_out = arr.error;
+                return false;
+            }
+            normalizeProducerArray(*spec, &arr);
+            if (spec->cols != -1 && arr.cols != static_cast<std::size_t>(spec->cols)) {
+                if (err_out) {
+                    *err_out = QStringLiteral("%1 has %2 columns; catalog %3 expects %4")
+                                   .arg(path)
+                                   .arg(arr.cols)
+                                   .arg(fieldStem(*spec))
+                                   .arg(spec->cols);
+                }
+                return false;
+            }
+            if (!validateFixedNativeRows(*spec, *run.protein, arr.rows, path, err_out))
+                return false;
+            if (row == 0) {
+                cols = arr.cols;
+                resident.dtype_descr = QString::fromStdString(arr.descr);
+                resident.atomsPerFrame = arr.rows;
+            } else if (arr.cols != cols) {
+                if (err_out) {
+                    *err_out = QStringLiteral("%1 column drift at frame row %2: expected %3, saw %4")
+                                   .arg(fieldStem(*spec))
+                                   .arg(row)
+                                   .arg(cols)
+                                   .arg(arr.cols);
+                }
+                return false;
+            }
+
+            resident.frameRowOffsets.push_back(totalRows);
+            resident.frameRowCounts.push_back(arr.rows);
+            totalRows += arr.rows;
+            if (keepFloat) {
+                resident.floatValues.reserve(resident.floatValues.size() + arr.data.size());
+                for (double v : arr.data)
+                    resident.floatValues.push_back(static_cast<float>(v));
+            } else {
+                resident.values.insert(resident.values.end(), arr.data.begin(), arr.data.end());
+            }
+        }
+        resident.rows = totalRows;
+        resident.cols = cols;
+        run.producerArrays[static_cast<int>(spec->kind)] = std::move(resident);
     }
     return true;
 }
@@ -150,9 +307,16 @@ std::optional<RunData> RunLoader::Load(const QString& calcset_path, QString* err
     }
     run.frameMap = std::move(*fm);
 
+    QString residentErr;
+    if (!loadTrajectoryProducerArrays(run, &residentErr)) {
+        if (err_out) *err_out = residentErr;
+        return std::nullopt;
+    }
+
     qCInfo(cRun).noquote() << "RunData ready | atoms=" << run.protein->atomCount()
                            << "| frames=" << run.trajectory()->frameCount()
-                           << "| dft_rows=" << run.frameMap.dftRows().size();
+                           << "| dft_rows=" << run.frameMap.dftRows().size()
+                           << "| producer_arrays=" << run.producerArrays.size();
     return run;
 }
 

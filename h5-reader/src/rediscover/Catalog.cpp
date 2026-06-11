@@ -14,6 +14,7 @@
 #include "../model/QtTimeSeriesBuffers.h"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace h5reader::rediscover {
@@ -156,6 +157,19 @@ const io::FieldSpec* ProducerFieldSpecFor(ArrayId id) {
     return kind ? &io::FieldSpecFor(*kind) : nullptr;
 }
 
+QString FieldProviderName(FieldProvider provider) {
+    switch (provider) {
+    case FieldProvider::StaticNpy: return QStringLiteral("static_npy");
+    case FieldProvider::TrajectoryNpy: return QStringLiteral("trajectory_npy_resident");
+    case FieldProvider::DenseH5: return QStringLiteral("dense_h5_typed");
+    case FieldProvider::SparseDftByOriginal: return QStringLiteral("sparse_dft_by_original");
+    case FieldProvider::TypedTopology: return QStringLiteral("typed_topology");
+    case FieldProvider::DatasetAbsent: return QStringLiteral("dataset_absent");
+    case FieldProvider::Unsupported: return QStringLiteral("unsupported");
+    }
+    return QStringLiteral("unknown");
+}
+
 namespace {
 
 int ord(ArrayId id) { return static_cast<int>(id); }
@@ -180,6 +194,41 @@ void add(std::vector<ArraySpec>& specs, ArrayId id, const QString& name, ArrayRa
 
 QString qsv(std::string_view s) {
     return QString::fromUtf8(s.data(), static_cast<qsizetype>(s.size()));
+}
+
+bool structuredField(const io::FieldSpec& spec) {
+    return spec.kind == io::FieldKind::AtomsCategoryInfo
+           || spec.group == io::FieldGroup::Topology;
+}
+
+bool dftField(io::FieldKind kind) {
+    return kind == io::FieldKind::OrcaTotal
+           || kind == io::FieldKind::OrcaDiamagnetic
+           || kind == io::FieldKind::OrcaParamagnetic;
+}
+
+bool typedTopologyCount(const RunData& run, io::FieldKind kind, std::size_t* out) {
+    if (!run.protein || !out) return false;
+    const model::QtTopology& topo = run.protein->topology();
+    switch (kind) {
+    case io::FieldKind::AtomsCategoryInfo:
+        *out = run.protein->atomCount();
+        return true;
+    case io::FieldKind::Residues:
+        *out = run.protein->residueCount();
+        return true;
+    case io::FieldKind::Bonds:
+        *out = topo.bondCount();
+        return true;
+    case io::FieldKind::Rings:
+        *out = topo.ringCount();
+        return true;
+    case io::FieldKind::RingMembership:
+        *out = topo.ringMembershipCount();
+        return true;
+    default:
+        return false;
+    }
 }
 
 ArrayRank rankForProducerField(const io::FieldSpec& spec) {
@@ -250,6 +299,10 @@ const StaticNpyArray* staticAt(const RunData& run, ArrayId id) {
     return kind ? run.producerArray(*kind) : nullptr;
 }
 
+const StaticNpyArray* producerAt(const RunData& run, io::FieldKind kind) {
+    return run.producerArray(kind);
+}
+
 std::size_t staticRow(const StaticNpyArray* a, std::size_t atom, std::size_t frame) {
     return a ? a->rowFor(atom, frame) : 0;
 }
@@ -257,8 +310,8 @@ std::size_t staticRow(const StaticNpyArray* a, std::size_t atom, std::size_t fra
 bool staticArrayPresent(const StaticNpyArray* a, std::size_t atom, std::size_t frame = 0,
                         int colsNeeded = 1) {
     if (!a || a->cols < static_cast<std::size_t>(colsNeeded)) return false;
-    if (a->frameVarying
-        && (atom >= a->atomsPerFrame || frame >= a->frameCount)) return false;
+    if (a->frameVarying && frame >= a->frameCount) return false;
+    if (atom >= a->rowsForFrame(frame)) return false;
     return staticRow(a, atom, frame) < a->rows;
 }
 
@@ -468,6 +521,191 @@ const ArraySpec& Catalog::spec(ArrayId id) const {
 
 bool Catalog::has(ArrayId id) const { return spec(id).available; }
 
+FieldProvider Catalog::provider(const RunData& run, io::FieldKind kind,
+                                QString* reason_out) const {
+    const io::FieldSpec& fs = io::FieldSpecFor(kind);
+    if (structuredField(fs)) {
+        std::size_t n = 0;
+        if (typedTopologyCount(run, kind, &n)) {
+            if (reason_out) reason_out->clear();
+            return FieldProvider::TypedTopology;
+        }
+        if (reason_out) *reason_out = QStringLiteral("typed-model-absence");
+        return FieldProvider::DatasetAbsent;
+    }
+    if (producerAt(run, kind)) {
+        if (reason_out) reason_out->clear();
+        return run.poseKind() == PoseKind::Trajectory
+                   ? FieldProvider::TrajectoryNpy
+                   : FieldProvider::StaticNpy;
+    }
+    if (dftField(kind)) {
+        if (run.dft.frameCount() > 0) {
+            if (reason_out) reason_out->clear();
+            return FieldProvider::SparseDftByOriginal;
+        }
+        if (reason_out) *reason_out = QStringLiteral("not-produced-in-dataset");
+        return FieldProvider::DatasetAbsent;
+    }
+    if (reason_out) *reason_out = QStringLiteral("not-produced-in-dataset");
+    return FieldProvider::DatasetAbsent;
+}
+
+bool Catalog::has(const RunData& run, io::FieldKind kind) const {
+    const FieldProvider p = provider(run, kind);
+    return p != FieldProvider::DatasetAbsent && p != FieldProvider::Unsupported;
+}
+
+bool Catalog::present(const Body& body, io::FieldKind kind, std::size_t nativeRow,
+                      std::size_t frame, int component, QString* reason_out) const {
+    QString providerReason;
+    const FieldProvider p = provider(body.run, kind, &providerReason);
+    if (p == FieldProvider::DatasetAbsent || p == FieldProvider::Unsupported) {
+        if (reason_out) *reason_out = providerReason.isEmpty()
+                                          ? QStringLiteral("unsupported-in-residence")
+                                          : providerReason;
+        return false;
+    }
+    if (p == FieldProvider::TypedTopology) {
+        std::size_t n = 0;
+        if (!typedTopologyCount(body.run, kind, &n)) {
+            if (reason_out) *reason_out = QStringLiteral("typed-model-absence");
+            return false;
+        }
+        if (frame != 0) {
+            if (reason_out) *reason_out = QStringLiteral("frame-out-of-range");
+            return false;
+        }
+        if (nativeRow >= n) {
+            if (reason_out) *reason_out = QStringLiteral("native-row-out-of-range");
+            return false;
+        }
+        if (component >= 0) {
+            if (reason_out) *reason_out = QStringLiteral("structured-field-not-numeric");
+            return false;
+        }
+        if (reason_out) reason_out->clear();
+        return true;
+    }
+    if (p == FieldProvider::SparseDftByOriginal) {
+        if (component >= 9) {
+            if (reason_out) *reason_out = QStringLiteral("component-out-of-range");
+            return false;
+        }
+        if (frame >= body.run.frameMap.frameCount()) {
+            if (reason_out) *reason_out = QStringLiteral("frame-out-of-range");
+            return false;
+        }
+        if (!dftAt(body, nativeRow, frame)) {
+            if (reason_out) *reason_out = QStringLiteral("frame-gap");
+            return false;
+        }
+        if (reason_out) reason_out->clear();
+        return true;
+    }
+
+    const StaticNpyArray* a = producerAt(body.run, kind);
+    if (!a) {
+        if (reason_out) *reason_out = QStringLiteral("not-produced-in-dataset");
+        return false;
+    }
+    if (component >= 0 && static_cast<std::size_t>(component) >= a->cols) {
+        if (reason_out) *reason_out = QStringLiteral("component-out-of-range");
+        return false;
+    }
+    if (a->frameVarying && frame >= a->frameCount) {
+        if (reason_out) *reason_out = QStringLiteral("frame-out-of-range");
+        return false;
+    }
+    if (nativeRow >= a->rowsForFrame(frame)) {
+        if (reason_out) *reason_out = QStringLiteral("native-row-out-of-range");
+        return false;
+    }
+    const std::size_t sourceRow = a->rowFor(nativeRow, frame);
+    if (sourceRow >= a->rows || a->cols == 0) {
+        if (reason_out) *reason_out = QStringLiteral("malformed-shape");
+        return false;
+    }
+    if (a->values.empty() && a->floatValues.empty()) {
+        if (reason_out) *reason_out = QStringLiteral("malformed-shape");
+        return false;
+    }
+    if (reason_out) reason_out->clear();
+    return true;
+}
+
+std::optional<double> Catalog::value(const Body& body, io::FieldKind kind,
+                                     std::size_t nativeRow, std::size_t frame,
+                                     int component, QString* reason_out) const {
+    if (!present(body, kind, nativeRow, frame, component, reason_out))
+        return std::nullopt;
+    const FieldProvider p = provider(body.run, kind);
+    if (p == FieldProvider::SparseDftByOriginal) {
+        const model::DftAtomShielding* dft = dftAt(body, nativeRow, frame);
+        if (!dft) {
+            if (reason_out) *reason_out = QStringLiteral("frame-gap");
+            return std::nullopt;
+        }
+        if (kind == io::FieldKind::OrcaTotal)
+            return matComponent(dft->total_raw, component);
+        if (kind == io::FieldKind::OrcaDiamagnetic)
+            return matComponent(dft->dia_raw, component);
+        if (kind == io::FieldKind::OrcaParamagnetic)
+            return matComponent(dft->para_raw, component);
+        if (reason_out) *reason_out = QStringLiteral("unsupported-dft-field");
+        return std::nullopt;
+    }
+    if (p == FieldProvider::TypedTopology) {
+        if (reason_out) *reason_out = QStringLiteral("structured-field-not-numeric");
+        return std::nullopt;
+    }
+    const StaticNpyArray* a = producerAt(body.run, kind);
+    if (!a) {
+        if (reason_out) *reason_out = QStringLiteral("not-produced-in-dataset");
+        return std::nullopt;
+    }
+    const int c = component >= 0 ? component : 0;
+    const std::size_t row = a->rowFor(nativeRow, frame);
+    const std::size_t idx = row * a->cols + static_cast<std::size_t>(c);
+    if (!a->values.empty()) return a->values[idx];
+    if (!a->floatValues.empty()) return static_cast<double>(a->floatValues[idx]);
+    if (reason_out) *reason_out = QStringLiteral("malformed-shape");
+    return std::nullopt;
+}
+
+std::size_t Catalog::nativeRowCount(const Body& body, io::FieldKind kind,
+                                    std::size_t frame) const {
+    const FieldProvider p = provider(body.run, kind);
+    if (p == FieldProvider::TypedTopology) {
+        std::size_t n = 0;
+        return typedTopologyCount(body.run, kind, &n) ? n : 0;
+    }
+    if (p == FieldProvider::SparseDftByOriginal)
+        return body.run.protein ? body.run.protein->atomCount() : 0;
+    if (const StaticNpyArray* a = producerAt(body.run, kind))
+        return a->rowsForFrame(frame);
+    return 0;
+}
+
+std::size_t Catalog::componentCount(const Body& body, io::FieldKind kind,
+                                    std::size_t) const {
+    const FieldProvider p = provider(body.run, kind);
+    if (p == FieldProvider::TypedTopology) return 1;
+    if (p == FieldProvider::SparseDftByOriginal) return 9;
+    if (const StaticNpyArray* a = producerAt(body.run, kind)) return a->cols;
+    const io::FieldSpec& fs = io::FieldSpecFor(kind);
+    return fs.cols > 0 ? static_cast<std::size_t>(fs.cols) : 0;
+}
+
+std::size_t Catalog::frameCount(const Body& body, io::FieldKind kind) const {
+    const FieldProvider p = provider(body.run, kind);
+    if (p == FieldProvider::TypedTopology) return 1;
+    if (p == FieldProvider::SparseDftByOriginal) return body.run.frameMap.frameCount();
+    if (const StaticNpyArray* a = producerAt(body.run, kind))
+        return a->frameVarying ? a->frameCount : 1;
+    return 0;
+}
+
 bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_t frame) const {
     if (!has(id)) return false;
     if (const StaticNpyArray* a = staticAt(body.run, id)) {
@@ -571,7 +809,7 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
     case ArrayId::LarsenHBondShielding:
         return false;
     default:
-        return true;
+        return false;
     }
 }
 

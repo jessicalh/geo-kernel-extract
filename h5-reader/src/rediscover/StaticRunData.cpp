@@ -140,6 +140,43 @@ bool loadStaticFieldArray(const ProducerPathMap& paths,
         }
         return false;
     }
+    if (spec.axis == io::NativeAxis::Protein && s.rows != 1) {
+        if (err_out) {
+            *err_out = QStringLiteral("%1 has %2 rows; protein-axis fields must have 1 row")
+                           .arg(path)
+                           .arg(s.rows);
+        }
+        return false;
+    }
+    if (spec.axis == io::NativeAxis::Ring && s.rows != protein.topology().ringCount()) {
+        if (err_out) {
+            *err_out = QStringLiteral("%1 has %2 rows; topology has %3 rings")
+                           .arg(path)
+                           .arg(s.rows)
+                           .arg(protein.topology().ringCount());
+        }
+        return false;
+    }
+    if (spec.axis == io::NativeAxis::RingMembership
+        && s.rows != protein.topology().ringMembershipCount()) {
+        if (err_out) {
+            *err_out = QStringLiteral("%1 has %2 rows; topology has %3 ring memberships")
+                           .arg(path)
+                           .arg(s.rows)
+                           .arg(protein.topology().ringMembershipCount());
+        }
+        return false;
+    }
+    if (kind == io::FieldKind::MOPACTopologyBondOrdersFull
+        && s.rows != protein.topology().bondCount()) {
+        if (err_out) {
+            *err_out = QStringLiteral("%1 has %2 rows; topology has %3 bonds")
+                           .arg(path)
+                           .arg(s.rows)
+                           .arg(protein.topology().bondCount());
+        }
+        return false;
+    }
     *out = std::move(s);
     if (present_out) *present_out = true;
     return true;

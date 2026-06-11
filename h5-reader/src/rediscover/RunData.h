@@ -139,11 +139,21 @@ struct StaticNpyArray {
     QString dtype_descr;
     std::vector<double> values;
     std::vector<float> floatValues;
+    std::vector<std::size_t> frameRowOffsets;
+    std::vector<std::size_t> frameRowCounts;
 
     bool empty() const { return rows == 0 || cols == 0; }
     bool hasRow(std::size_t row) const { return row < rows; }
-    std::size_t rowFor(std::size_t atom, std::size_t frame = 0) const {
-        return frameVarying ? frame * atomsPerFrame + atom : atom;
+    std::size_t rowsForFrame(std::size_t frame = 0) const {
+        if (!frameRowCounts.empty())
+            return frame < frameRowCounts.size() ? frameRowCounts[frame] : 0;
+        if (frameVarying) return atomsPerFrame;
+        return rows;
+    }
+    std::size_t rowFor(std::size_t nativeRow, std::size_t frame = 0) const {
+        if (!frameRowOffsets.empty())
+            return frame < frameRowOffsets.size() ? frameRowOffsets[frame] + nativeRow : rows;
+        return frameVarying ? frame * atomsPerFrame + nativeRow : nativeRow;
     }
     double value(std::size_t row, std::size_t col = 0) const {
         if (row >= rows || col >= cols || values.empty()) return 0.0;
