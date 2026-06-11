@@ -155,7 +155,7 @@ std::optional<QString> ResolveLgsPath(const QString& root_or_lgs_path,
         return std::nullopt;
     }
     if (fi.isFile()) {
-        if (!root_or_lgs_path.endsWith(QStringLiteral(".LGS"), Qt::CaseSensitive)) {
+        if (!root_or_lgs_path.endsWith(QStringLiteral(".LGS"), Qt::CaseInsensitive)) {
             if (err) *err = QStringLiteral("file is not a .LGS: %1").arg(root_or_lgs_path);
             return std::nullopt;
         }
@@ -164,7 +164,7 @@ std::optional<QString> ResolveLgsPath(const QString& root_or_lgs_path,
     // Directory: find the single *.LGS inside.
     QDir dir(root_or_lgs_path);
     const QStringList matches =
-        dir.entryList(QStringList{QStringLiteral("*.LGS")}, QDir::Files);
+        dir.entryList(QStringList{QStringLiteral("*.LGS"), QStringLiteral("*.lgs")}, QDir::Files);
     if (matches.isEmpty()) {
         if (err) *err = QStringLiteral("no .LGS file in directory: %1").arg(root_or_lgs_path);
         return std::nullopt;
