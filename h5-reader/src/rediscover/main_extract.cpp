@@ -38,6 +38,7 @@
 #include "RelationshipEngine.h"
 #include "ResidentIndexes.h"
 #include "RingCurrentNeighborhood.h"
+#include "RowDesignCatalogCoverage.h"
 #include "RowDesignEmitter.h"
 #include "RowDesignSink.h"
 #include "RunData.h"
@@ -420,6 +421,14 @@ int main(int argc, char** argv) {
                                         << totalStats.phiPsiFiniteEligible << "!=" << totalStats.phiPsiEligible
                                         << "(eligible non-terminal backbone rows)";
             return 2;
+        }
+        h5reader::rediscover::CatalogCoverageArtifacts coverageArtifacts;
+        QString coverageErr;
+        if (!h5reader::rediscover::WriteCatalogCoverageArtifacts(
+                outDir, residentRuns, h5reader::rediscover::RowDesignSchema(),
+                totalStats, &coverageArtifacts, &coverageErr)) {
+            qCCritical(cMain).noquote() << "row_design catalog coverage write failed:" << coverageErr;
+            return 4;
         }
         QString manifestErr;
         h5reader::rediscover::RowDesignManifestContext ctx;

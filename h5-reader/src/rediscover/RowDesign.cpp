@@ -1,5 +1,7 @@
 #include "RowDesign.h"
 
+#include "RowDesignCatalogCoverage.h"
+
 #include <QStringList>
 
 namespace h5reader::rediscover {
@@ -146,6 +148,7 @@ std::vector<RowColumnSpec> buildSchema() {
     s.push_back(col("region_def_id", RowColType::String, "", "", RowNativeAxis::Row, false, false));
     s.push_back(col("rama_region_hdr", RowColType::String, "", "", RowNativeAxis::Residue, true, false));
     s.push_back(col("rotamer_id", RowColType::String, "", "", RowNativeAxis::Residue, true, false));
+    for (const CatalogRowColumn& c : CatalogRowColumns()) s.push_back(c.spec);
     return s;
 }
 
