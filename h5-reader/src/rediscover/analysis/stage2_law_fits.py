@@ -105,7 +105,6 @@ KERNELS = [
         ShadowSpec("mc_lit", "per_atom_substrate_features_classical", "mc_lit_T2_valid"),
         (
             ShadowSpec("mc_lit", "per_atom_substrate_features_classical", "mc_lit_T2_valid"),
-            ShadowSpec("mc_category_sum", "per_atom_substrate_features_method_paths", "mc_category_T2", groups=5),
             ShadowSpec("mopac_mc", "per_atom_substrate_features_classical", "mopac_mc_shielding_T2"),
         ),
         "CaseHunter mc atoms plus dominant_fraction_mc >= 0.5",
@@ -127,7 +126,6 @@ KERNELS = [
 
 UNIFIED_SPECS = [
     ShadowSpec("charge_total", "per_atom_substrate_features_classical", "charge_q_over_r3_T2"),
-    *[ShadowSpec(f"mc_category_{i}", "per_atom_substrate_features_method_paths", f"mc_category_T2_{5*i}", groups=0) for i in range(5)],
     ShadowSpec("mopac_field_backbone", "per_atom_substrate_features_method_paths", "mopac_coulomb_efg_backbone"),
     ShadowSpec("mopac_field_aromatic", "per_atom_substrate_features_method_paths", "mopac_coulomb_efg_aromatic"),
     ShadowSpec("water_field_efg_reconciled", "per_atom_substrate_features_method_paths", "water_efg", sign=-1.0),

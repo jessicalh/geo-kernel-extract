@@ -132,7 +132,7 @@ constexpr std::size_t kPerAtomDominanceBinCols = 4;
 constexpr std::size_t kPerAtomBackboneAuditCols = 14;
 constexpr std::size_t kPerAtomTargetDecompositionCols = 21;
 constexpr std::size_t kPerAtomRingPathCols = 137;
-constexpr std::size_t kPerAtomMethodPathCols = 111;
+constexpr std::size_t kPerAtomMethodPathCols = 61;
 constexpr std::size_t kPerAtomHbondConditioningCols = 73;
 
 PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,

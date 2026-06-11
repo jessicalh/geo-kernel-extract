@@ -134,7 +134,7 @@ def build2_input_acceptance_checks(data: dict[str, object], substrate_dir: Path)
         "per_atom_substrate_features_classical": (n_rows, 89),
         "per_atom_substrate_features_conditioning": (n_rows, 32),
         "per_atom_substrate_features_hbond_conditioning": (n_rows, 73),
-        "per_atom_substrate_features_method_paths": (n_rows, 111),
+        "per_atom_substrate_features_method_paths": (n_rows, 61),
         "per_atom_substrate_partition_bins": (n_rows, 25),
         "per_atom_substrate_aimnet2_embedding": (n_rows, 256),
     }
@@ -1431,4 +1431,3 @@ def build2_main() -> None:
     (out_dir / "run_audit.json").write_text(json.dumps(json_sanitize(audit), indent=2, sort_keys=True), encoding="utf-8")
     write_build2_reports(out_dir, score_table, curves, favorable, case_shortlist, audit)
     print(f"wrote {out_dir}")
-

@@ -1225,9 +1225,7 @@ struct DirectFeatures {
     bool pq_per_type_T0_present = false;
     bool disp_per_type_T0_present = false;
     std::array<double, kPerAtomMethodPathCols> method_paths = {};
-    bool mc_category_T2_present = false;
     bool mc_scalars_present = false;
-    bool mopac_mc_category_T2_present = false;
     bool mopac_mc_scalars_present = false;
     bool mopac_bond_orders_aggregate_present = false;
     bool mopac_coulomb_E_present = false;
@@ -1391,12 +1389,8 @@ DirectFeatures directFeatures(const Body& body, std::size_t atom, std::size_t ro
         copyAtomField(out.ring_paths, rp, snapshot, io::FieldKind::DispPerTypeT0, atom, 8);
 
     std::size_t mp = 0;
-    out.mc_category_T2_present =
-        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::McCategoryT2, atom, 25);
     out.mc_scalars_present =
         copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::McScalars, atom, 6);
-    out.mopac_mc_category_T2_present =
-        copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACMcCategoryT2, atom, 25);
     out.mopac_mc_scalars_present =
         copyAtomField(out.method_paths, mp, snapshot, io::FieldKind::MOPACMcScalars, atom, 6);
     if (mopacBondAggregate && finiteRaw(mopacBondAggregate->data(), mopacBondAggregate->size())) {
@@ -1575,15 +1569,9 @@ void auditRingPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& d
 
 void auditMethodPathFeatures(PerAtomSubstrateStats& stats, const DirectFeatures& direct) {
     std::size_t c = 0;
-    auditArraySegment(stats, QStringLiteral("mc_category_T2"), direct.mc_category_T2_present,
-                      direct.method_paths, c, 25);
-    c += 25;
     auditArraySegment(stats, QStringLiteral("mc_scalars"), direct.mc_scalars_present,
                       direct.method_paths, c, 6);
     c += 6;
-    auditArraySegment(stats, QStringLiteral("mopac_mc_category_T2"),
-                      direct.mopac_mc_category_T2_present, direct.method_paths, c, 25);
-    c += 25;
     auditArraySegment(stats, QStringLiteral("mopac_mc_scalars"),
                       direct.mopac_mc_scalars_present, direct.method_paths, c, 6);
     c += 6;
@@ -1908,9 +1896,7 @@ QStringList makeRingPathColumns() {
 
 QStringList makeMethodPathColumns() {
     QStringList cols;
-    appendIndexedNames(cols, QStringLiteral("mc_category_T2"), 25);
     appendIndexedNames(cols, QStringLiteral("mc_scalars"), 6);
-    appendIndexedNames(cols, QStringLiteral("mopac_mc_category_T2"), 25);
     appendIndexedNames(cols, QStringLiteral("mopac_mc_scalars"), 6);
     cols << QStringLiteral("mopac_bond_orders_incident_count")
          << QStringLiteral("mopac_bond_orders_incident_sum")
