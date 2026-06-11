@@ -17,8 +17,8 @@ Generated from the emitted `catalog_coverage.json` manifests, not from the snaps
 
 ## Manifest Summary
 
-- 1P9J: field_count=122; atom_row_sidecar=59, native_axis_sidecar=19, row_columns=39, structured_native_sidecar_index=5; row_reductions=19
-- 720: field_count=122; atom_row_sidecar=47, atom_row_sidecar_absent=12, native_axis_sidecar=18, native_axis_sidecar_absent=1, row_columns=39, structured_native_sidecar_index=5; row_reductions=18
+- 1P9J: field_count=122; atom_row_sidecar=59, native_axis_sidecar=19, row_columns=39, structured_native_sidecar=5; row_reductions=19
+- 720: field_count=122; atom_row_sidecar=47, atom_row_sidecar_absent=12, native_axis_sidecar=18, native_axis_sidecar_absent=1, row_columns=39, structured_native_sidecar=5; row_reductions=18
 
 ## Coverage Table
 
@@ -127,7 +127,7 @@ Generated from the emitted `catalog_coverage.json` manifests, not from the snaps
 | orca_total | orca | atom | atom_row_sidecar: row_design_field_orca_total.npy | 635346 x9 |  | atom_row_sidecar: row_design_field_orca_total.npy | 475116 x9 |  |
 | orca_diamagnetic | orca | atom | atom_row_sidecar: row_design_field_orca_diamagnetic.npy | 635346 x9 |  | atom_row_sidecar: row_design_field_orca_diamagnetic.npy | 475116 x9 |  |
 | orca_paramagnetic | orca | atom | atom_row_sidecar: row_design_field_orca_paramagnetic.npy | 635346 x9 |  | atom_row_sidecar: row_design_field_orca_paramagnetic.npy | 475116 x9 |  |
-| atoms_category_info | identity | atom | structured_native_sidecar_index: row_design_field_atoms_category_info_index.csv | 846 |  | structured_native_sidecar_index: row_design_field_atoms_category_info_index.csv | 475116 |  |
+| atoms_category_info | identity | atom | structured_native_sidecar: row_design_field_atoms_category_info_native.npy + index row_design_field_atoms_category_info_index.csv | 846 |  | structured_native_sidecar: row_design_field_atoms_category_info_native.npy + index row_design_field_atoms_category_info_index.csv | 475116 |  |
 | aimnet2_charges | aimnet2 | atom | row columns: catalog_aimnet2_charges | 635346 |  | row columns: catalog_aimnet2_charges | 475116 |  |
 | aimnet2_aim | aimnet2 | atom | atom_row_sidecar: row_design_field_aimnet2_aim.npy | 635346 x256 |  | atom_row_sidecar: row_design_field_aimnet2_aim.npy | 475116 x256 |  |
 | aimnet2_efg | aimnet2 | atom | atom_row_sidecar: row_design_field_aimnet2_efg.npy | 635346 x5 |  | atom_row_sidecar: row_design_field_aimnet2_efg.npy | 475116 x5 |  |
@@ -142,10 +142,10 @@ Generated from the emitted `catalog_coverage.json` manifests, not from the snaps
 | pucker_Q | planar_geometry | saturated_ring | native_axis_sidecar: row_design_field_pucker_Q_native.npy | 751 | row_design_field_pucker_Q_reduction.npy (3755) | native_axis_sidecar: row_design_field_pucker_Q_native.npy | 965 | row_design_field_pucker_Q_reduction.npy (4825) |
 | pucker_theta | planar_geometry | saturated_ring | native_axis_sidecar: row_design_field_pucker_theta_native.npy | 751 | row_design_field_pucker_theta_reduction.npy (3755) | native_axis_sidecar: row_design_field_pucker_theta_native.npy | 965 | row_design_field_pucker_theta_reduction.npy (4825) |
 | omega_is_xpro | planar_geometry | residue | native_axis_sidecar: row_design_field_omega_is_xpro_native.npy | 40554 | row_design_field_omega_is_xpro_reduction.npy (635346) | native_axis_sidecar: row_design_field_omega_is_xpro_native.npy | 29944 | row_design_field_omega_is_xpro_reduction.npy (475116) |
-| residues | topology | residue | structured_native_sidecar_index: row_design_field_residues_index.csv | 54 |  | structured_native_sidecar_index: row_design_field_residues_index.csv | 29944 |  |
-| bonds | topology | bond | structured_native_sidecar_index: row_design_field_bonds_index.csv | 862 |  | structured_native_sidecar_index: row_design_field_bonds_index.csv | 478093 |  |
-| rings | topology | ring | structured_native_sidecar_index: row_design_field_rings_index.csv | 16 |  | structured_native_sidecar_index: row_design_field_rings_index.csv | 3980 |  |
-| ring_membership | topology | ring_membership | structured_native_sidecar_index: row_design_field_ring_membership_index.csv | 96 |  | structured_native_sidecar_index: row_design_field_ring_membership_index.csv | 22862 |  |
+| residues | topology | residue | structured_native_sidecar: row_design_field_residues_native.npy + index row_design_field_residues_index.csv | 54 |  | structured_native_sidecar: row_design_field_residues_native.npy + index row_design_field_residues_index.csv | 29944 |  |
+| bonds | topology | bond | structured_native_sidecar: row_design_field_bonds_native.npy + index row_design_field_bonds_index.csv | 862 |  | structured_native_sidecar: row_design_field_bonds_native.npy + index row_design_field_bonds_index.csv | 478093 |  |
+| rings | topology | ring | structured_native_sidecar: row_design_field_rings_native.npy + index row_design_field_rings_index.csv | 16 |  | structured_native_sidecar: row_design_field_rings_native.npy + index row_design_field_rings_index.csv | 3980 |  |
+| ring_membership | topology | ring_membership | structured_native_sidecar: row_design_field_ring_membership_native.npy + index row_design_field_ring_membership_index.csv | 96 |  | structured_native_sidecar: row_design_field_ring_membership_native.npy + index row_design_field_ring_membership_index.csv | 22862 |  |
 
 ## Dataset-Specific Absence
 
