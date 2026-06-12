@@ -354,6 +354,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/RunData.cpp
     src/rediscover/StaticRunData.h
     src/rediscover/StaticRunData.cpp
+    src/rediscover/NpyWriter.h
+    src/rediscover/NpyWriter.cpp
     src/rediscover/SpineReachabilityProbe.h
     src/rediscover/SpineReachabilityProbe.cpp
     src/rediscover/SubstrateParity.h
@@ -420,6 +422,8 @@ qt_add_executable(h5reader_extract
     src/rediscover/RamaRegion.cpp
     src/rediscover/ConditioningSpec.h
     src/rediscover/ConditioningSpec.cpp
+    src/rediscover/ConsolidatedEmit.h
+    src/rediscover/ConsolidatedEmit.cpp
     src/rediscover/RowDesign.h
     src/rediscover/RowDesign.cpp
     src/rediscover/ScopedProducerCatalog.h
