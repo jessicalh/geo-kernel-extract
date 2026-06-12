@@ -28,6 +28,7 @@
 #include "CanonicalSpineGuard.h"
 #include "ChargeDipoleNeighborhood.h"
 #include "ComposedRelationships.h"
+#include "ConsolidatedEmit.h"
 #include "EfgFeature.h"
 #include "EfgFeatureSink.h"
 #include "McConnellNeighborhood.h"
@@ -243,7 +244,7 @@ int main(int argc, char** argv) {
         QStringLiteral("md"),
         QStringLiteral("h5-reader/notes/CODEX_SPINE_WIREUP_REPORT.md"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): spine_probe | row_design | query_audit | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): consolidated_emit | spine_probe | row_design | query_audit | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -489,6 +490,39 @@ int main(int argc, char** argv) {
                                 << "| phi_psi_backbone_finite=" << totalStats.phiPsiFiniteEligible
                                 << "/" << totalStats.phiPsiEligible
                                 << "| embedding_present=" << totalStats.embeddingPresent;
+        return 0;
+    }
+
+    if (which == QStringLiteral("consolidated_emit")
+        || which == QStringLiteral("fp_emit")) {
+        if (root720.isEmpty() || runPath.isEmpty()) {
+            qCCritical(cMain) << "consolidated_emit requires both --root720 and --run";
+            return 2;
+        }
+        h5reader::rediscover::ConditioningSpec spec = h5reader::rediscover::ConditioningSpec::Default();
+        if (parser.isSet(conditioningSpecOpt)) {
+            QString specErr;
+            auto loadedSpec = h5reader::rediscover::ConditioningSpec::Load(parser.value(conditioningSpecOpt), &specErr);
+            if (!loadedSpec) {
+                qCCritical(cMain).noquote() << "conditioning spec load failed:" << specErr;
+                return 2;
+            }
+            spec = std::move(*loadedSpec);
+        }
+        h5reader::rediscover::ConsolidatedEmitOptions emitOptions;
+        emitOptions.root720 = root720;
+        emitOptions.run1p9j = runPath;
+        emitOptions.outDir = outDir;
+        emitOptions.conditioningSpec = spec;
+        h5reader::rediscover::ConsolidatedEmitStats emitStats;
+        QString emitErr;
+        if (!h5reader::rediscover::RunConsolidatedEmit(emitOptions, &emitStats, &emitErr)) {
+            qCCritical(cMain).noquote() << "consolidated_emit failed:" << emitErr;
+            return 1;
+        }
+        qCInfo(cMain).noquote() << "consolidated_emit | rows=" << emitStats.rows
+                                << "| scoped_fields=" << emitStats.scopedFieldCount
+                                << "| out=" << outDir;
         return 0;
     }
 
