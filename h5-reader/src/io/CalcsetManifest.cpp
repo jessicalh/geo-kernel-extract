@@ -126,6 +126,34 @@ OptionalResolvedPath(const QJsonObject& obj, QStringView jsonKey,
     return std::nullopt;
 }
 
+// Provenance path (md_dir, topology_top): recorded if present and valid, but a
+// declared-but-missing path is a WARNING, not fatal. The viewer reads only
+// trajectory.h5 + the sidecars, so a moved raw-MD / topology reference must
+// never block opening an otherwise self-contained calcset — e.g. one carried to
+// another machine where the original source tree does not exist. `out` is left
+// empty when the path is absent.
+void ResolveProvenancePath(const QJsonObject& obj, QStringView jsonKey,
+                           const QString& fullKeyForError, const QString& rootDir,
+                           bool mustBeDir, QString& out, const QString& ctx) {
+    out.clear();
+    const QJsonValue v = obj.value(jsonKey);
+    if (v.isUndefined() || v.isNull() || !v.isString() || v.toString().isEmpty()) {
+        qCInfo(cCalcset).noquote()
+            << QStringLiteral("provenance path [%1] absent — skipped (not needed for viewing)")
+                   .arg(fullKeyForError)
+            << "|" << ctx;
+        return;
+    }
+    const QString abs = ResolveRelative(rootDir, v.toString());
+    if (auto perr = ValidatePath(fullKeyForError, abs, mustBeDir)) {
+        qCWarning(cCalcset).noquote()
+            << *perr << QStringLiteral("— provenance only, continuing (not needed for viewing)")
+            << "|" << ctx;
+        return;
+    }
+    out = abs;
+}
+
 CalcsetManifest::Kind ParseKind(const QString& s, bool& ok) {
     ok = true;
     if (s == QLatin1String("trajectory"))   return CalcsetManifest::Kind::Trajectory;
@@ -322,18 +350,18 @@ CalcsetManifest::Load(const QString& root_or_lgs_path, QString* err_out) {
             }
             const QJsonObject tobj = tv.toObject();
             Trajectory t;
-            if (auto e = RequireResolvedPath(tobj, QStringLiteral("md_dir"),
-                                              QStringLiteral("trajectory.md_dir"),
-                                              m.calcset_root_abspath, /*mustBeDir=*/true,
-                                              t.md_dir_abspath, &err)) {
-                if (err_out) *err_out = err; reportErr(err, m.lgs_path_abspath); return std::nullopt;
-            }
-            if (auto e = RequireResolvedPath(tobj, QStringLiteral("topology_top"),
-                                              QStringLiteral("trajectory.topology_top"),
-                                              m.calcset_root_abspath, /*mustBeDir=*/false,
-                                              t.topology_top_abspath, &err)) {
-                if (err_out) *err_out = err; reportErr(err, m.lgs_path_abspath); return std::nullopt;
-            }
+            // md_dir and topology_top are the raw-MD source + topology —
+            // provenance only. The viewer reads trajectory.h5 + the sidecars,
+            // so these must not block load when absent (a carried bundle has no
+            // raw MD tree). Resolved when present, warned when not.
+            ResolveProvenancePath(tobj, QStringLiteral("md_dir"),
+                                  QStringLiteral("trajectory.md_dir"),
+                                  m.calcset_root_abspath, /*mustBeDir=*/true,
+                                  t.md_dir_abspath, m.lgs_path_abspath);
+            ResolveProvenancePath(tobj, QStringLiteral("topology_top"),
+                                  QStringLiteral("trajectory.topology_top"),
+                                  m.calcset_root_abspath, /*mustBeDir=*/false,
+                                  t.topology_top_abspath, m.lgs_path_abspath);
             if (auto e = RequireResolvedPath(tobj, QStringLiteral("extraction_dir"),
                                               QStringLiteral("trajectory.extraction_dir"),
                                               m.calcset_root_abspath, /*mustBeDir=*/true,
@@ -516,9 +544,12 @@ CalcsetManifest::Load(const QString& root_or_lgs_path, QString* err_out) {
             df.meta_json_abspath = ResolveRelative(m.calcset_root_abspath, *metaRel);
             if (auto perr = ValidatePath(QStringLiteral("dft.frames[%1].meta_json").arg(i),
                                           df.meta_json_abspath, /*mustBeDir=*/false)) {
-                if (err_out) *err_out = *perr;
-                reportErr(*perr, m.lgs_path_abspath);
-                return std::nullopt;
+                // A missing DFT frame is non-fatal: skip it (its overlay is
+                // simply absent) rather than failing the whole trajectory load.
+                // Lets a calcset open where only some/no DFT .out files travel.
+                qCWarning(cCalcset).noquote()
+                    << *perr << QStringLiteral("— DFT frame skipped, overlay absent for it");
+                continue;
             }
             d.frames.push_back(std::move(df));
         }

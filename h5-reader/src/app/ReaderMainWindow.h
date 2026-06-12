@@ -21,6 +21,7 @@
 
 #include <QMainWindow>
 #include <QPointer>
+#include <QString>
 
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkSmartPointer.h>
@@ -41,6 +42,7 @@ class QSlider;
 class QSpinBox;
 class QToolBar;
 class QToolButton;
+class QWidget;
 class QVTKOpenGLNativeWidget;
 
 namespace h5reader::io {
@@ -53,6 +55,7 @@ class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
 class TrajectorySignalCatalog;
+class TrajectoryFieldAvailability;
 class TransformedConformation;
 }
 
@@ -68,12 +71,16 @@ class ReaderMainWindow final : public QMainWindow {
     Q_OBJECT
 
 public:
-    // Takes the loader's result by rvalue — the window assumes ownership
-    // of the protein and conformation (which owns the typed H5 reader).
-    // The result must have ok=true; otherwise the caller should have
-    // aborted already.
-    explicit ReaderMainWindow(h5reader::io::QtLoadResult&& loaded, QWidget* parent = nullptr);
+    // Constructs the chrome in a clean pre-load state. A calcset can be
+    // loaded later through loadRunPath().
+    explicit ReaderMainWindow(QWidget* parent = nullptr);
     ~ReaderMainWindow() override;
+
+    // Load or replace the current calcset in this window. The path is resolved
+    // through QtProteinLoader::LoadRunPath. Returns false without changing the
+    // current run when loading fails; lastLoadError() carries the loader error.
+    bool loadRunPath(const QString& path);
+    QString lastLoadError() const { return lastLoadError_; }
 
     // Start the embedded REST test surface bound to 127.0.0.1:<port>.
     // Port 0 asks the kernel to pick a free port. Returns the actually-bound
@@ -96,8 +103,8 @@ public:
     bool docksVisible() const { return docksHidden_ == false; }
 
     // Access to the wrapped TransformedConformation so REST handlers can
-    // call setMode without re-walking the loader result. Non-null after
-    // construction.
+    // call setMode without re-walking the loader result. Null until a run
+    // is loaded.
     h5reader::model::TransformedConformation* transformedConformation() const { return transformed_; }
 
     // Dashboard strip dock surface for the REST instrumentation harness.
@@ -137,6 +144,7 @@ protected:
 private slots:
     void onFrameChanged(int t);
     void onPlayPauseClicked();
+    void onOpenFile();
     void onOpenDirectory();
     void onOpenSignalDisplays();
     void onPlaneLockTriggered();
@@ -150,6 +158,14 @@ private:
     void buildUi();
     void buildToolbar();
     void buildStatusBar();
+    void buildDocks();
+    void installLoadedRun(h5reader::io::QtLoadResult&& loaded);
+    void clearLoadedRun();
+    void setEmptyState();
+    void setLoadedControlsEnabled(bool enabled);
+    void applyOverlayActionState();
+    void updateMutantAlternateAction(const QString& alternatePath);
+    void syncRestServerContext();
     // Update enabled state + checked state of the exclusive camera-mode
     // action group (Focus / Newman / Plane lock / Free). Gating: Focus
     // needs selection focus; Newman needs exactly 4 selected atoms; Plane
@@ -168,8 +184,8 @@ private:
     void restoreAllSettings();
 
     // File ▸ Recent — prepend a path, dedupe, cap at 10, rebuild menu,
-    // write to QSettings immediately. Called from the ctor with the
-    // current runPath so the next session sees it at the top.
+    // write to QSettings immediately. Called after a successful load so
+    // the next session sees that calcset at the top.
     void addToRecentFiles(const QString& path);
     void rebuildRecentFilesMenu(const QStringList& paths);
     void openRecentPath(const QString& path);
@@ -177,7 +193,9 @@ private:
     // The loaded model. Owned by the window for its lifetime.
     std::unique_ptr<h5reader::io::QtLoadResult> loaded_;
 
-    // VTK viewport widget.
+    // VTK viewport widget plus quiet empty-state placeholder.
+    QPointer<QWidget> centralContainer_;
+    QPointer<QLabel> emptyPlaceholder_;
     QVTKOpenGLNativeWidget* vtkWidget_ = nullptr;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
 
@@ -210,6 +228,7 @@ private:
     model::TrajectorySignalCatalog* signalCatalog_ = nullptr;
     model::DashboardSignalModel* dashboardSignals_ = nullptr;
     model::DashboardPanelModel* dashboardPanels_ = nullptr;
+    std::shared_ptr<const model::TrajectoryFieldAvailability> fieldAvailability_;
     QPointer<DashboardSelectionController> dashboardSelectionController_;
     model::VisualizationContext visualizationContext_;
 
@@ -231,6 +250,8 @@ private:
     QPointer<QSlider> frameSlider_;
     QPointer<QSpinBox> fpsSpinner_;
     QPointer<QAction> playAction_;
+    QPointer<QAction> stepBackAction_;
+    QPointer<QAction> stepForwardAction_;
     QPointer<QAction> showRibbonAction_;
     QPointer<QAction> showRingsAction_;
     QPointer<QAction> showButterflyAction_;
@@ -257,7 +278,9 @@ private:
     QPointer<QAction> instrumentAction_;
 
     // File ▸ Recent submenu — populated from QSettings on ctor restore.
+    QPointer<QMenu> fileMenu_;
     QPointer<QMenu> recentMenu_;
+    QPointer<QAction> mutantAlternateAction_;
 
     // Toolbars — built by buildToolbar(); the ctor appends dock panel controls
     // once the docks and View -> Panels menu exist.
@@ -272,11 +295,12 @@ private:
     bool shutdownDone_ = false;
     bool glInfoLogged_ = false;
     int lastDashboardSelectedCount_ = 0;
+    QString lastLoadError_;
 
     // Wraps loaded_->conformation so consumers (scene, picker, overlays)
     // read positions through a runtime-switchable rigid-body transform.
-    // Owned by the window. Built in the ctor immediately after the
-    // loader returns; startup mode is FitSubset on the typed backbone.
+    // Owned by the window and rebuilt on each successful load; startup
+    // mode is FitSubset on the typed backbone.
     h5reader::model::TransformedConformation* transformed_ = nullptr;
 
     // Dock-hide state for setDocksVisible(). We stash each dock's

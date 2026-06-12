@@ -244,6 +244,7 @@ private:
     // event-loop tick. lastRenderSource_ is set by requestRender and
     // read by the EndEvent observer in the constructor. Plain non-atomic
     // members because the scene is GUI-thread-only (ASSERT_THREAD enforced).
+    unsigned long endEventObserverTag_ = 0;
     bool         renderPending_    = false;
     RenderSource lastRenderSource_ = RenderSource::External;
 };
