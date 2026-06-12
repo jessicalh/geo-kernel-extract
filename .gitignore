@@ -252,3 +252,9 @@ nmrstats.Rcheck/
 lit-map/
 h5-reader/analysis/
 *.npy
+
+# Local-only, never on GitHub (2026-06-12): working docs + the annotated
+# bibliography. Kept on disk in the worktrees, but untracked. (references/ and
+# references-meta/ are already ignored above.)
+doc/
+papers/annotated-bib/
