@@ -258,3 +258,8 @@ h5-reader/analysis/
 # references-meta/ are already ignored above.)
 doc/
 papers/annotated-bib/
+
+# Built artifacts, generated output, codex run scratch (not source)
+deploy/*.sif
+output/
+h5-reader/notes/.codex_*
