@@ -192,11 +192,15 @@ QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringL
 }
 
 void QtAtomInspectorDock::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
+    if (conformation_)
+        disconnect(conformation_.data(), nullptr, this, nullptr);
     protein_ = protein;
     conformation_ = conformation;
     if (conformation_) {
         ACONNECT(conformation_.data(), &model::Conformation::snapshotReady,
                  this, &QtAtomInspectorDock::onSnapshotReady);
+    } else {
+        clearSelection();
     }
 }
 

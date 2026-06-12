@@ -1,0 +1,72 @@
+# h5reader — NMR shielding trajectory viewer, packaged for Singularity / Apptainer.
+#
+# Carries its own Ubuntu 24.04 userspace (glibc 2.39) + Qt 6.4.2 + VTK 9.5.2 +
+# Mesa software OpenGL. Because Singularity runs the container's userspace on the
+# host kernel, this image runs on ANY host that has apptainer/singularity —
+# regardless of the host distro or its glibc. Built for "some weird CentOS scene":
+# the host only supplies the kernel and the singularity runtime.
+#
+# Build (on a box with apptainer):
+#     sudo apptainer build h5reader.sif h5reader.def
+#     # or unprivileged: apptainer build --fakeroot h5reader.sif h5reader.def
+#
+# Run (software GL — renders with no GPU, even over a remote session):
+#     apptainer run --bind /path/to/calcset-parent h5reader.sif /path/to/run.lgs
+#
+# Run with hardware acceleration (NVIDIA GPU present):
+#     LIBGL_ALWAYS_SOFTWARE=0 apptainer run --nv --bind /data h5reader.sif /data/run.lgs
+#
+# The two %files source paths below are this build host's paths; re-point them
+# if rebuilding elsewhere (VTK install tree, and the linux-rwdi h5reader binary).
+
+Bootstrap: docker
+From: ubuntu:24.04
+
+%files
+    /home/jessica/VTK/lib /opt/vtk/lib
+    /shared/2026Thesis/nmr-shielding-ui/h5-reader/build/linux-rwdi/h5reader /opt/h5reader/h5reader
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    # Qt 6.4.2 runtime (matches the build; the t64 packages are Ubuntu 24.04's
+    # 64-bit-time_t renames), HDF5, the full Mesa GL stack (incl. the DRI driver
+    # that provides llvmpipe software rendering), and the xcb/xkb libs the Qt
+    # xcb platform plugin needs.
+    apt-get install -y --no-install-recommends \
+        libqt6core6t64 libqt6gui6t64 libqt6widgets6t64 libqt6opengl6t64 \
+        libqt6openglwidgets6t64 libqt6network6t64 libqt6dbus6t64 \
+        libqt6websockets6 libqt6httpserver6 \
+        libhdf5-103-1t64 \
+        libgl1 libglx0 libopengl0 libglvnd0 libegl1 libegl-mesa0 \
+        libglx-mesa0 libgl1-mesa-dri libglu1-mesa \
+        libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+        libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+        libxcb-xkb1 libxcb-util1 libxkbcommon0 libxkbcommon-x11-0 \
+        libfontconfig1 libfreetype6 libdbus-1-3 libgomp1 \
+        libssl3 libcurl4 ca-certificates
+    rm -rf /var/lib/apt/lists/*
+    # The h5reader binary and VTK libs may carry an absolute build-tree RPATH to
+    # /home/jessica/VTK/lib; symlink it to the bundled copy so resolution holds
+    # even if LD_LIBRARY_PATH is overridden.
+    mkdir -p /home/jessica/VTK
+    ln -sf /opt/vtk/lib /home/jessica/VTK/lib
+    ldconfig
+
+%environment
+    export LD_LIBRARY_PATH=/opt/vtk/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+    export QT_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/qt6/plugins
+    # Software OpenGL (llvmpipe) by default so it renders with no GPU. For GPU
+    # acceleration run with --nv and set LIBGL_ALWAYS_SOFTWARE=0.
+    export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
+    export GALLIUM_DRIVER=${GALLIUM_DRIVER:-llvmpipe}
+
+%runscript
+    exec /opt/h5reader/h5reader "$@"
+
+%labels
+    Name        h5reader
+    Description NMR shielding trajectory viewer (Qt6 / VTK), Singularity-packaged
+    QtVersion   6.4.2
+    VTKVersion  9.5.2
+    Base        ubuntu:24.04

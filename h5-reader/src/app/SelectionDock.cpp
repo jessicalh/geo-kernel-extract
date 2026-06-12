@@ -64,6 +64,8 @@ SelectionDock::SelectionDock(QWidget* parent)
 
 void SelectionDock::setModel(model::AtomSelection* selection) {
     ASSERT_THREAD(this);
+    if (selection_)
+        disconnect(selection_, nullptr, this, nullptr);
     selection_ = selection;
     if (list_)
         list_->setModel(selection);

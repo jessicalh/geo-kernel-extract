@@ -1,9 +1,9 @@
 // h5-reader — entry point.
 //
-// Step 3: open an H5, decode the typed model, construct the main
-// window with the VTK viewport, show it. Playback controller animates
-// the protein through the trajectory. Still no overlays, no atom
-// inspector, no REST server — those ride on top of this substrate.
+// Construct the main window with the VTK viewport in a clean pre-load
+// state. If the user supplies a calcset path, load it into that same
+// window before showing; otherwise the user can load one later via File
+// -> Open.
 //
 // Startup order (matches the existing viewer; see
 // feedback_qt_discipline):
@@ -14,9 +14,8 @@
 //   4. StructuredLogger (installs qInstallMessageHandler).
 //   5. Warm ErrorBus and ObjectCensus singletons.
 //   6. Parse CLI.
-//   7. Load H5 via QtProteinLoader (synchronous on the GUI thread for
-//      now; a worker isn't justified yet at typical H5 sizes).
-//   8. Construct ReaderMainWindow, connect aboutToQuit → shutdown.
+//   7. Construct ReaderMainWindow in its empty pre-load state.
+//   8. If a path was supplied, load it into the same window.
 //   9. Deferred show() via QTimer::singleShot(0, ...) so the event loop
 //      is running before any first render.
 //  10. app.exec().
@@ -27,12 +26,10 @@
 #include "diagnostics/ObjectCensus.h"
 #include "diagnostics/ShutdownSignals.h"
 #include "diagnostics/StructuredLogger.h"
-#include "io/QtProteinLoader.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QFile>
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QSurfaceFormat>
@@ -152,8 +149,7 @@ int main(int argc, char* argv[]) {
     cli.addHelpOption();
     cli.addVersionOption();
     cli.addPositionalArgument(QStringLiteral("run_path"),
-                              QStringLiteral("A run directory (trajectory or single-pose) "
-                                             "or a trajectory.h5 file."),
+                              QStringLiteral("A calcset directory or .LGS calcset manifest."),
                               QStringLiteral("<run_path>"));
     const QCommandLineOption restOption(
         QStringLiteral("rest"),
@@ -177,32 +173,30 @@ int main(int argc, char* argv[]) {
     }
 
     const QStringList args = cli.positionalArguments();
-    if (args.isEmpty()) {
+    QString runPath;
+    if (!args.isEmpty()) {
+        runPath = args.first();
+    } else if (runRest) {
         qCCritical(cLifecycle).noquote()
-            << "No run path given. Usage: h5reader <run-dir | trajectory.h5>";
+            << "No run path given. Usage: h5reader <calcset-dir | calcset.lgs>";
         return 1;
     }
-    const QString& runPath = args.first();
-    if (!QFileInfo::exists(runPath)) {
+    if (!runPath.isEmpty() && !QFileInfo::exists(runPath)) {
         qCCritical(cLifecycle).noquote() << "Run path not found:" << runPath;
         return 2;
     }
 
-    // 7. Load — sniff trajectory vs single-pose by documented convention.
-    qCInfo(cLifecycle).noquote() << "loading" << runPath;
-    auto loaded = h5reader::io::QtProteinLoader::LoadRunPath(runPath);
-    if (!loaded.ok) {
-        qCCritical(cLifecycle).noquote() << "Load failed:" << loaded.error;
+    // 7. Construct window. aboutToQuit → window->shutdown() runs the
+    //    VTK-finalise-before-GL-context-destruction sequence.
+    auto* window = new h5reader::app::ReaderMainWindow();
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
+
+    // 8. Optional startup load into that same window.
+    if (!runPath.isEmpty() && !window->loadRunPath(runPath)) {
+        qCCritical(cLifecycle).noquote() << "Load failed:" << window->lastLoadError();
+        delete window;
         return 3;
     }
-    if (loaded.decodeWarnings > 0) {
-        qCWarning(cLifecycle).noquote() << "Decode completed with" << loaded.decodeWarnings << "warnings";
-    }
-
-    // 8. Construct window. aboutToQuit → window->shutdown() runs the
-    //    VTK-finalise-before-GL-context-destruction sequence.
-    auto* window = new h5reader::app::ReaderMainWindow(std::move(loaded));
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
 
     // 9. Deferred show — event loop must be running before first render.
     if (runRest) {

@@ -154,7 +154,7 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
                 << "| ms=" << QString::number(ms, 'f', 1)
                 << "| mode=" << modeName;
         });
-    renderWindow_->AddObserver(vtkCommand::EndEvent, endEventCb);
+    endEventObserverTag_ = renderWindow_->AddObserver(vtkCommand::EndEvent, endEventCb);
 
     qCInfo(cScene).noquote()
         << "Renderer initialised: 2 layers (main FXAA + overlay), depth peeling OFF,"
@@ -162,7 +162,16 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
 }
 
 MoleculeScene::~MoleculeScene() {
-    // VTK smart pointers clean up themselves. We just drop the references.
+    if (renderWindow_) {
+        if (endEventObserverTag_ != 0) {
+            renderWindow_->RemoveObserver(endEventObserverTag_);
+            endEventObserverTag_ = 0;
+        }
+        if (renderer_)
+            renderWindow_->RemoveRenderer(renderer_);
+        if (overlayRenderer_)
+            renderWindow_->RemoveRenderer(overlayRenderer_);
+    }
 }
 
 void MoleculeScene::Build(const model::QtProtein& protein,
