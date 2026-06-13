@@ -130,6 +130,8 @@ def main():
     ctxs = []
     for p in glob.glob(os.path.join(args.figdir, "*.png")):
         base = os.path.basename(p)[:-4]
+        if base.endswith("_chi"):
+            continue
         if "_" not in base: continue
         res, atom = base.split("_", 1)
         if only and res not in only: continue
@@ -194,18 +196,35 @@ def main():
             L += view_table(res, atom, "between_720", "Between proteins (720)")
             L += view_table(res, atom, "within_1p9j", "Within protein (1P9J)")
             if os.path.exists(fig):
-                L.append(r"\begin{figure}[H]\centering\includegraphics[width=0.58\textwidth]{\detokenize{%s}}" % fig)
-                L.append(r"\caption{$\sigma$ vs.\ $(\varphi,\psi)$ --- %s:%s (pooled).}\end{figure}" % (esc(res), esc(atom)))
+                chi_fig = os.path.join(args.figdir, f"{res}_{atom}_chi.png")
+                if os.path.exists(chi_fig):
+                    L.append(
+                        r"\begin{figure}[H]\centering"
+                        r"\includegraphics[width=0.52\textwidth]{\detokenize{%s}}\\[3pt]"
+                        r"\includegraphics[width=0.52\textwidth]{\detokenize{%s}}"
+                        % (fig, chi_fig)
+                    )
+                    L.append(
+                        r"\caption{$\sigma$ vs.\ $(\varphi,\psi)$ and sidechain $\chi$ --- %s:%s (pooled).}\end{figure}"
+                        % (esc(res), esc(atom))
+                    )
+                else:
+                    L.append(r"\begin{figure}[H]\centering\includegraphics[width=0.58\textwidth]{\detokenize{%s}}" % fig)
+                    L.append(r"\caption{$\sigma$ vs.\ $(\varphi,\psi)$ --- %s:%s (pooled).}\end{figure}" % (esc(res), esc(atom)))
             n += 1
         if stop: break
 
     # glossary
     L.append(r"\clearpage\section*{Glossary of input fields}")
     L.append(r"\small Contributors that appear in this atlas: the field, the tool that observed it "
-             r"and what that tool measures, and the physical mechanism relating it to the shielding $\sigma$. "
-             r"Linear-independence groups are empirical (sample collinearity), not claims of physical independence.\\[4pt]")
+             r"and what that tool measures, and the \emph{known/hypothesised physical pathway} by which it is "
+             r"\emph{associated} with the shielding $\sigma$. The $R$ / $R^2$ in the tables are "
+             r"\textbf{correlational} --- co-variation within this dataset; neither $R$ nor $R^2$ implies "
+             r"causation --- and the pathway column is textbook physics, \emph{not} a mechanism established by "
+             r"this atlas. Linear-independence groups are empirical (sample collinearity), not claims of "
+             r"physical independence.\\[4pt]")
     L.append(r"\begin{longtable}{p{3.5cm}p{6.0cm}p{6.0cm}}\toprule "
-             r"Field & Tool \& what it observes & Physics link to $\sigma$\\\midrule\endhead")
+             r"Field & Tool \& what it observes & Physical pathway to $\sigma$ (hypothesis)\\\midrule\endhead")
     prev_tool = prev_phys = None
     for cid in sorted(used_cids, key=lambda c: (mech.get(c, "zzz"), c)):
         idtex = cid.replace("_", r"\_\allowbreak{}")   # break long names at underscores
