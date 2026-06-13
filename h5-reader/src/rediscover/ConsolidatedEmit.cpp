@@ -866,6 +866,7 @@ std::vector<QString> aggregateOfFor(const QString& stem) {
     static const std::map<QString, std::vector<QString>> k = {
         {QStringLiteral("bs_shielding"), {QStringLiteral("bs_per_type_T0"), QStringLiteral("bs_per_type_T1"), QStringLiteral("bs_per_type_T2")}},
         {QStringLiteral("hm_shielding"), {QStringLiteral("hm_per_type_T0"), QStringLiteral("hm_per_type_T1"), QStringLiteral("hm_per_type_T2")}},
+        {QStringLiteral("larsen_hbond_shielding"), {QStringLiteral("larsen_hbond_1pHB_shielding"), QStringLiteral("larsen_hbond_2pHB_shielding"), QStringLiteral("larsen_hbond_1pHaB_shielding"), QStringLiteral("larsen_hbond_2pHaB_shielding")}},
         {QStringLiteral("coulomb_efg"), {QStringLiteral("coulomb_efg_backbone"), QStringLiteral("coulomb_efg_sidechain"), QStringLiteral("coulomb_efg_aromatic")}},
         {QStringLiteral("coulomb_E"), {QStringLiteral("coulomb_E_backbone"), QStringLiteral("coulomb_E_sidechain"), QStringLiteral("coulomb_E_aromatic")}},
         {QStringLiteral("mopac_coulomb_efg"), {QStringLiteral("mopac_coulomb_efg_backbone"), QStringLiteral("mopac_coulomb_efg_sidechain"), QStringLiteral("mopac_coulomb_efg_aromatic")}},
@@ -1068,8 +1069,8 @@ bool survivalGate(const RowSchema& rowSchema,
             return false;
         }
     }
-    if (ScopedProducerCatalog().size() != 122) {
-        if (err_out) *err_out = QStringLiteral("survival gate failed: scoped catalog count is %1, expected 122")
+    if (ScopedProducerCatalog().size() != 131) {
+        if (err_out) *err_out = QStringLiteral("survival gate failed: scoped catalog count is %1, expected 131")
                                     .arg(ScopedProducerCatalog().size());
         return false;
     }

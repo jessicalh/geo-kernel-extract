@@ -22,23 +22,10 @@ public:
 
     std::optional<HBondScalars> scalars(std::size_t atomIdx) const {
         const auto& col = snap_->column(io::FieldKind::HBondScalars);
-        if (!col.present)
+        if (!col.present || col.cols < 4)
             return std::nullopt;
-        // Writer-definitive shape guard: the 1P9J fixtures (2026-05-24) carry
-        // hbond_scalars with 3 columns, NOT the catalog's 4. NPY columns are
-        // positional in the writer's order (HBondResult.cpp WriteFeatures), so a
-        // short emit drops TRAILING fields — read only what is present and leave
-        // the rest at their 0.0 default. This is the difference between a benign
-        // missing field and an out-of-bounds read of the next atom's row (the
-        // last atom's r[3] would run off the buffer). Which 4th field the writer
-        // dropped is a writer question, flagged not guessed.
-        HBondScalars s;
         const double* r = col.row(atomIdx);
-        if (col.cols > 0) s.nearest_dist = r[0];
-        if (col.cols > 1) s.inv_d3 = r[1];
-        if (col.cols > 2) s.count_3_5A = r[2];
-        if (col.cols > 3) s.mcconnell_scalar = r[3];
-        return s;
+        return HBondScalars{r[0], r[1], r[2], r[3]};
     }
 
 private:

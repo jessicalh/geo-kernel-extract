@@ -722,9 +722,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     #   shielding magnitude; not a clean physics feature on its own.
     #   `is_feature=False`.
     #
-    #   `larsen_hbond_water_term` IS a real Larsen term (Δσ_w = 2.07
-    #   ppm isotropic on solvent-exposed amide Hs) and stays
-    #   `is_feature=True` even though it's binary 0-or-2.07.
+    #   `larsen_hbond_water_term` is a real Larsen diagnostic/metadata
+    #   term (Δσ_w = 2.07 ppm isotropic on solvent-exposed amide Hs),
+    #   but not a regression contributor in the scoped producer substrate.
+    #   `is_feature=False`.
     # ────────────────────────────────────────────────────────────────
     ArraySpec("larsen_hbond_shielding",                  "larsen_hbond", ShieldingTensor, 9, False, "Σ Larsen H-bond contributions across all four Table 2 classes (1°HB + 2°HB + 1°HαB + 2°HαB) — ppm, lab frame. Structurally = sum of the four per-class arrays; NOT a feature.",
               is_feature=False, irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_grid"),
@@ -739,7 +740,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("larsen_hbond_diagnostic_CB_shielding",    "larsen_hbond", ShieldingTensor, 9, False, "Cβ diagnostic — Larsen Table 2 says Cβ gets NO contribution; emitted as parser→loader→frame-rotation reality check. NOT a feature.",
               is_feature=False, irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms with NO geometric H-bond candidate (θ ≥ 90° in 4.2 Å); proxies the NMA+water complex Larsen scanned for solvent-exposed amides",
-              units="ppm", mechanism="hbond_grid"),
+              is_feature=False, units="ppm", mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_count",                      "larsen_hbond", np.ndarray,      None, False, "Per-atom count of H-bond pairs that contributed under any of the four Table 2 classes; metadata, NOT a feature.",
               is_feature=False, mechanism="hbond_grid"),
     ArraySpec("larsen_corner_imputed",                   "larsen_hbond", np.ndarray,      None, False, "Per-atom int8 flag: 1 iff any Larsen H-bond grid lookup corner serving this atom was imputed",

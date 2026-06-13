@@ -941,7 +941,6 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
         {"hm_per_type_T0", "hm_per_type_T0", "haigh_mallion", "Haigh-Mallion per-type T0", ringShielding},
         {"hm_per_type_T2", "hm_per_type_T2", "haigh_mallion", "Haigh-Mallion per-type T2", ringShielding},
         {"pq_per_type_T0", "pq_per_type_T0", "pi_quadrupole", "Pi quadrupole per-type T0", ringShielding},
-        {"pq_per_type_T2", "pq_per_type_T2", "pi_quadrupole", "Pi quadrupole per-type T2", ringShielding},
         {"disp_per_type_T0", "disp_per_type_T0", "dispersion", "Dispersion per-type T0", ringShielding},
         {"disp_per_type_T2", "disp_per_type_T2", "dispersion", "Dispersion per-type T2", ringShielding},
         {"mc_category_T2", "mc_category_T2", "mcconnell", "McConnell category T2", shielding},

@@ -5,7 +5,6 @@ namespace {
 
 bool excludedGroup(io::FieldGroup g) {
     switch (g) {
-    case io::FieldGroup::LarsenHBond:
     case io::FieldGroup::Tripeptide:
     case io::FieldGroup::Delta:
     case io::FieldGroup::Rediscover:
