@@ -256,6 +256,7 @@ private:
     QPointer<QAction> showRingsAction_;
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
+    QPointer<QAction> showOccupancyAction_;
     QPointer<QAction> signalDisplaysAction_;
     QPointer<QMenu> panelsMenu_;
     QPointer<QToolButton> panelsButton_;

@@ -5,6 +5,7 @@
 #include "QtBackboneRibbonOverlay.h"
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
+#include "QtOccupancyShellsOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "QuietTrackballStyle.h"
 #include "SceneRevealOverlay.h"
@@ -92,18 +93,22 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
     // paint into the overlay layer so they remain visible regardless of
     // depth occlusion (the harness needs this for blob analysis).
     //
-    // The existing nmr-viewer (ui/src/MainWindow.cpp:217-231) uses
-    // FXAA + NO depth peeling after hitting translucency artifacts on
-    // AMD hardware. We keep that choice for now because it's proven on
-    // this codebase's target hardware. If a translucent overlay shows
-    // sorting artifacts, flip to depth peeling per the qt6-cpp skill's
-    // references/3d-vtk.md and log the change.
+    // The mainline viewer uses FXAA + NO depth peeling (proven on the AMD /
+    // llvmpipe demo box). THIS worktree flips depth peeling ON because the
+    // occupancy-shells overlay draws nested translucent surfaces (50% inside
+    // 90%) that need order-independent transparency; single-layer overlays
+    // tolerated plain alpha blending, concentric shells do not. The prereqs are
+    // already set below (AlphaBitPlanes=1, MSAA=0). Isolated to this worktree so
+    // the proven demo config is untouched until measured on the Mesa/Xvfb
+    // software-GL path (qt6-cpp 3d-vtk.md §8; llvmpipe multipass cost).
 
     renderer_ = vtkSmartPointer<vtkRenderer>::New();
     renderer_->SetLayer(0);
     renderer_->SetBackground(1.0, 1.0, 1.0);
     renderer_->SetUseFXAA(true);
-    renderer_->SetUseDepthPeeling(0);
+    renderer_->SetUseDepthPeeling(1);
+    renderer_->SetMaximumNumberOfPeels(8);
+    renderer_->SetOcclusionRatio(0.0);
 
     overlayRenderer_ = vtkSmartPointer<vtkRenderer>::New();
     overlayRenderer_->SetLayer(1);
@@ -157,7 +162,7 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
     endEventObserverTag_ = renderWindow_->AddObserver(vtkCommand::EndEvent, endEventCb);
 
     qCInfo(cScene).noquote()
-        << "Renderer initialised: 2 layers (main FXAA + overlay), depth peeling OFF,"
+        << "Renderer initialised: 2 layers (main FXAA + overlay), depth peeling ON (shells worktree),"
         << "AlphaBitPlanes=1, MSAA=0, style=QuietTrackballStyle";
 }
 
@@ -270,6 +275,16 @@ void MoleculeScene::Build(const model::QtProtein& protein,
     }
     bfieldStream_->Build(protein, conformation);
 
+    // Occupancy-shells overlay — main renderer (layer 0) so its translucent
+    // shells depth-compose with the molecule. Deliberately NOT added to the
+    // setFrame fan: the shells are a whole-trajectory aggregate (frame-
+    // invariant); they rebuild on selection focus / transform change, wired in
+    // ReaderMainWindow once the selection exists.
+    if (!occupancyShells_) {
+        occupancyShells_ = new QtOccupancyShellsOverlay(renderer_, renderWindow_, this);
+    }
+    occupancyShells_->Build(protein, conformation);
+
     // Markers go on the overlay-layer renderer (spec §5.2). The overlay
     // takes the main renderer for symmetry but only adds actors to the
     // overlay layer — the harness's marker-blob analysis needs the
@@ -312,7 +327,21 @@ void MoleculeScene::syncCameraClippingRange() {
     ASSERT_THREAD(this);
     if (!renderer_ || !cachedPaddedBoundsValid_)
         return;
-    renderer_->ResetCameraClippingRange(cachedPaddedBounds_);
+    double b[6] = {cachedPaddedBounds_[0], cachedPaddedBounds_[1],
+                   cachedPaddedBounds_[2], cachedPaddedBounds_[3],
+                   cachedPaddedBounds_[4], cachedPaddedBounds_[5]};
+    // Occupancy shells are static whole-trajectory geometry that can extend well
+    // past the current-frame molecule (a mobile terminus wanders 15-25 A). Union
+    // their world bounds so the near/far planes don't slice them (codex review).
+    if (occupancyShells_) {
+        double sb[6];
+        if (occupancyShells_->worldBounds(sb)) {
+            b[0] = std::min(b[0], sb[0]); b[1] = std::max(b[1], sb[1]);
+            b[2] = std::min(b[2], sb[2]); b[3] = std::max(b[3], sb[3]);
+            b[4] = std::min(b[4], sb[4]); b[5] = std::max(b[5], sb[5]);
+        }
+    }
+    renderer_->ResetCameraClippingRange(b);
 }
 
 void MoleculeScene::requestRender(RenderSource src) {

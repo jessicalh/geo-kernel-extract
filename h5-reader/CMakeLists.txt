@@ -197,6 +197,9 @@ qt_add_library(h5reader_core STATIC
     src/app/QtFieldGridOverlay.cpp
     src/app/QtBFieldStreamOverlay.h
     src/app/QtBFieldStreamOverlay.cpp
+    src/app/OccupancyShellsMath.h
+    src/app/QtOccupancyShellsOverlay.h
+    src/app/QtOccupancyShellsOverlay.cpp
     src/app/Colormap.h
 
     src/app/QtAtomPicker.h
@@ -693,6 +696,26 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         Eigen3::Eigen
     )
     add_test(NAME h5reader_scene_math_tests COMMAND h5reader_scene_math_tests)
+
+    # Pure-function occupancy-shells density / HDR math (OccupancyShellsMath.h).
+    # The correctness core of the occupancy-shells overlay, factored out for
+    # direct testing per the Opus/codex pre-build reviews. Header-only math over
+    # model::Vec3/Mat3; links Qt6::Test + Eigen3 only. (No VTK here is
+    # incidental, not a goal: the anisotropic-covariance kernel has no fitting
+    # VTK primitive; the overlay contours this field with vtkContourFilter
+    # downstream — where VTK IS the right tool.)
+    qt_add_executable(h5reader_occupancy_shells_math_tests
+        tests/occupancy_shells_math_tests.cpp
+        src/app/OccupancyShellsMath.h
+    )
+    target_include_directories(h5reader_occupancy_shells_math_tests PRIVATE src)
+    target_link_libraries(h5reader_occupancy_shells_math_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_occupancy_shells_math_tests
+             COMMAND h5reader_occupancy_shells_math_tests)
 
     # CalcsetManifest tests — `.LGS` JSON loader + path validation
     # (replaces the retired ReaderInputManifest TOML loader). Pure Qt /

@@ -12,6 +12,7 @@
 #include "QtBackboneRibbonOverlay.h"
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
+#include "QtOccupancyShellsOverlay.h"
 #include "QtPlaybackController.h"
 #include "TimeViewportController.h"
 #include "MeasurementOverlay.h"
@@ -337,6 +338,30 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
         ACONNECT(selection_, &model::AtomSelection::changed,
                  meas,       &MeasurementOverlay::onSelectionChanged);
     }
+
+    // Occupancy-shells overlay: focus-driven (NOT changed() — focus-only, so a
+    // plain pick doesn't rebuild twice) + transform-driven (a fit-mode change
+    // moves every aligned position, so the whole-trajectory aggregate is
+    // stale). The overlay self-guards single-pose / rigid atoms. A render is
+    // requested after focus/clear rebuilds (coalesced); transformChanged is
+    // already followed by refreshCurrentFrame above.
+    if (auto* occ = scene_->occupancyShellsOverlay()) {
+        occ->setSelection(selection_);
+        ACONNECT(selection_, &model::AtomSelection::focusChanged,
+                 occ,        &QtOccupancyShellsOverlay::onFocusChanged);
+        ACONNECT(selection_, &model::AtomSelection::cleared,
+                 occ,        &QtOccupancyShellsOverlay::onSelectionCleared);
+        ACONNECT(transformed_, &model::TransformedConformation::transformChanged,
+                 occ,          &QtOccupancyShellsOverlay::onTransformChanged);
+        ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+                 [this](std::size_t) {
+                     if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+                 });
+        ACONNECT(selection_, &model::AtomSelection::cleared, this,
+                 [this]() {
+                     if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+                 });
+    }
     ACONNECT(selection_, &model::AtomSelection::changed,
              this, [this]() {
                  if (scene_ && scene_->cameraComposer()
@@ -556,6 +581,7 @@ void ReaderMainWindow::setLoadedControlsEnabled(bool enabled) {
     if (showRingsAction_) showRingsAction_->setEnabled(enabled && scene_);
     if (showButterflyAction_) showButterflyAction_->setEnabled(enabled && scene_);
     if (showBFieldAction_) showBFieldAction_->setEnabled(enabled && scene_);
+    if (showOccupancyAction_) showOccupancyAction_->setEnabled(enabled && scene_);
 }
 
 void ReaderMainWindow::applyOverlayActionState() {
@@ -570,6 +596,8 @@ void ReaderMainWindow::applyOverlayActionState() {
         scene_->fieldGridOverlay()->setVisible(showButterflyAction_->isChecked());
     if (showBFieldAction_ && scene_->bfieldStreamOverlay())
         scene_->bfieldStreamOverlay()->setVisible(showBFieldAction_->isChecked());
+    if (showOccupancyAction_ && scene_->occupancyShellsOverlay())
+        scene_->occupancyShellsOverlay()->setVisible(showOccupancyAction_->isChecked());
 }
 
 void ReaderMainWindow::updateMutantAlternateAction(const QString& alternatePath) {
@@ -1085,6 +1113,14 @@ void ReaderMainWindow::buildToolbar() {
         "Biot-Savart B-field streamlines around each aromatic ring, "
         "seeded on a circle at 1.5× ring radius, coloured by |B|."));
 
+    showOccupancyAction_ = tb->addAction(QStringLiteral("Shadow"));
+    showOccupancyAction_->setCheckable(true);
+    showOccupancyAction_->setChecked(false);   // off by default
+    showOccupancyAction_->setToolTip(QStringLiteral(
+        "Occupation-probability envelope shells for the FOCUSED atom: nested "
+        "50% / 90% highest-density regions over the trajectory (backbone-aligned). "
+        "Trajectory data only; rigid atoms are skipped."));
+
     ACONNECT(showRibbonAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->ribbonOverlay()) return;
@@ -1110,6 +1146,15 @@ void ReaderMainWindow::buildToolbar() {
                  scene_->bfieldStreamOverlay()->setVisible(on);
                  if (on) scene_->refreshCurrentFrame();
                  else    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+             });
+    ACONNECT(showOccupancyAction_.data(), &QAction::toggled,
+             this, [this](bool on) {
+                 if (!scene_ || !scene_->occupancyShellsOverlay()) return;
+                 // setVisible(true) rebuilds for the current focus; shells are
+                 // frame-invariant so a plain render (not refreshCurrentFrame)
+                 // suffices.
+                 scene_->occupancyShellsOverlay()->setVisible(on);
+                 scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
 }
 
