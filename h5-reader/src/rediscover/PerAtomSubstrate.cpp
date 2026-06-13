@@ -2685,7 +2685,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
     for (int i = 0; i < 3; ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T1"),
                       QStringLiteral("target_T1_%1").arg(i), i, QStringLiteral("ppm"),
-                      QStringLiteral("1o"), QStringLiteral("quantum_reference_diagnostic"));
+                      QStringLiteral("1x1e"), QStringLiteral("quantum_reference_diagnostic"));
     }
     for (int i = 0; i < 5; ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T2"),
@@ -2703,7 +2703,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         for (int i = 0; i < 3; ++i) {
             addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_%1_T1").arg(split),
                           QStringLiteral("target_%1_T1_%2").arg(split).arg(i), i,
-                          QStringLiteral("ppm"), QStringLiteral("1o"),
+                          QStringLiteral("ppm"), QStringLiteral("1x1e"),
                           QStringLiteral("quantum_reference_split_diagnostic"));
         }
         for (int i = 0; i < 5; ++i) {
@@ -2791,7 +2791,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         QString mechanism = QStringLiteral("ring_current");
         QString sign;
         if (name.contains(QStringLiteral("_T1_")) || name.contains(QStringLiteral("total_B"))) {
-            irreps = QStringLiteral("1o");
+            irreps = QStringLiteral("1x1e");
         } else if (name.contains(QStringLiteral("_T2_"))) {
             irreps = QStringLiteral("1x2e");
         }

@@ -2,6 +2,40 @@
 """equiv_t2_e3nn — the ring-current T2 equivariant fitter, on e3nn (replaces the
 hand-rolled equiv_t2.py and its numpy lib_T2 end-run).
 
+================================================================================
+PARITY DEFECT — STALE FITTER, DO NOT COPY THE CROSS TERM (note 2026-06-13)
+================================================================================
+NATURE: the `cross_term(r_hat, n_hat)` below is built as an o3 TensorProduct
+  `1o (x) 1o -> 2e`, declaring BOTH inputs polar. But n_hat is the ring NORMAL,
+  an AXIAL pseudovector (parity EVEN, irrep `1e`) — a cross product of two
+  in-plane polar vectors. r_hat is polar (`1o`). So an axial vector is being fed
+  through a polar slot.
+EXTENT / why it is wrong: the parity-valid product of a polar r_hat (1o) and an
+  axial n_hat (1e) is `1o (x) 1e -> 2o` (ODD). The shielding T2 target is EVEN
+  (`2e`) — because B is axial and sigma maps axial->axial (B = nabla x A; first
+  principles, verified 2026-06-13). So this cross term silently injects a
+  parity-FORBIDDEN (2o-flavoured) contribution labelled 2e: it PASSES
+  rotation-only equivariance checks and BREAKS under reflection/inversion. There
+  is NO parity-valid `2e` bilinear from (polar)(x)(axial). The only even ways to
+  couple r_hat and n_hat are: Y2(r_hat), Y2(n_hat) (each already here, each `2e`),
+  or gating those by the even invariant (r_hat . n_hat)^2 (`0e`). Note
+  (r_hat . n_hat) alone is a PSEUDOscalar (`0o`).
+WHY NOT FIX/EXTEND HERE: this fitter is STALE and superseded. The parity-correct
+  pattern already exists in equiv_t2_backbone_e3nn.py — ring normals labelled
+  `1e`, orientation carried by Y2(axis) (= traceless axis(x)axis, the `2e`
+  director), and NO normal/axis ever fed through a `1o` cross path. A fix here is
+  a redesign (drop the cross term — Y2(r)+Y2(n) already supply the valid `2e` — or
+  use the (r.n)^2 even-gate), to be done ONLY if this fitter is revived. It is
+  not retrofitted now, and the scope of this defect is exactly this one cross
+  term in this one stale file — nothing else here is implicated.
+DO NOT GENERALISE: do not copy this `1o (x) 1o -> 2e` cross term into a new model
+  (e.g. the equivariant side model, EQUIVARIANT_SIDE_MODEL_SPEC_2026-06-13.md), and
+  do not extend the pattern to other axial inputs (B-field, shielding T1, bond
+  directors). Build on equiv_t2_backbone_e3nn.py, and make a rotation + REFLECTION
+  equivariance test a build gate — a reflection test catches exactly this defect;
+  rotation-only checks miss it.
+================================================================================
+
 The model is the same physics ansatz as before — a permutation-invariant sum over
 through-space ring sources of an l=2 contribution oriented by the displacement
 direction r_hat and the source ring normal n_hat, gated by an invariant radial
@@ -133,6 +167,11 @@ class EquivPoolE3nn(nn.Module):
             nn.Linear(2, 64), nn.SiLU(),
             nn.Linear(64, 64), nn.SiLU(),
             nn.Linear(64, 1))
+        # >>> PARITY DEFECT (see module docstring) — DO NOT COPY THIS CROSS TERM <<<
+        # This `1o (x) 1o -> 2e` treats n_hat (the AXIAL ring normal, `1e`) as polar.
+        # (polar r_hat) (x) (axial n_hat) is parity `2o`, FORBIDDEN for the even
+        # (`2e`) shielding T2. Stale/superseded — use equiv_t2_backbone_e3nn.py's
+        # Y2(axis) / `2e`-director pattern instead.
         irr_1o = o3.Irreps("1o")
         irr_2e = o3.Irreps("2e")
         if cross == "exact":
@@ -150,7 +189,7 @@ class EquivPoolE3nn(nn.Module):
         w = self.R2(featn)                                  # (n_src, 3) gates
         y2_r = o3.spherical_harmonics(2, rhat, normalize=True, normalization="component")
         y2_n = o3.spherical_harmonics(2, nhat, normalize=True, normalization="component")
-        cross = self.tp(rhat, nhat)                         # (n_src, 5) e3nn 2e
+        cross = self.tp(rhat, nhat)  # PARITY DEFECT (see docstring): nhat is axial 1e, not 1o
         contrib2 = (w[:, 0:1] * y2_r
                     + w[:, 1:2] * y2_n
                     + w[:, 2:3] * cross)                    # (n_src, 5)

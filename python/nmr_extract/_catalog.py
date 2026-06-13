@@ -84,7 +84,8 @@ class ArraySpec:
 
     * ``irreps`` carries the e3nn-style irrep decomposition for
       tensor-valued arrays: ``"0e + 1e + 2e"`` for a 9-component
-      SphericalTensor (T0 + T1 + T2), ``"1e"`` for a Vec3,
+      SphericalTensor (T0 + T1 + T2), ``"1o"`` for a polar Vec3,
+      ``"1e"`` for an axial / magnetic / shielding-T1 Vec3,
       ``"0e + 2e"`` for an EFG (symmetric traceless), ``""`` for
       scalar / structured / categorical arrays where irreps do not
       apply.
@@ -348,7 +349,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # parity with the broad_backbone local Coulomb field. Target T1 is emitted
     # but convention-unverified and must not be fitted.
     ArraySpec("buckingham_efield_feature_field_local", "rediscover", np.ndarray, 3, False, "Buckingham APBS E-field in the local backbone frame, once per DFT-present backbone (atom,frame)", native_axis="rediscover_aggregated_row", irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("buckingham_efield_target_T1_unverified", "rediscover", np.ndarray, 3, False, "Buckingham DFT target T1 payload emitted for audit only; convention unverified, do not fit", native_axis="rediscover_aggregated_row", irreps="1?", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=1, parity="even", mechanism="quantum_reference"),
+    ArraySpec("buckingham_efield_target_T1_unverified", "rediscover", np.ndarray, 3, False, "Buckingham DFT target T1 payload emitted for audit only; convention unverified, do not fit", native_axis="rediscover_aggregated_row", irreps="1x1e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=1, parity="even", mechanism="quantum_reference"),
     ArraySpec("buckingham_efield_target_T2", "rediscover", np.ndarray, 5, False, "Buckingham DFT target T2 payload emitted for completeness; T0 fit ignores it", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
 
     # ── Coulomb (CoulombResult.cpp) — optional; retired from production

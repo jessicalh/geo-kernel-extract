@@ -382,7 +382,7 @@ inline constexpr std::array<FieldSpec, 200> kFieldCatalog = {{
     { FieldKind::EFGFeatureT2, "efg_feature_T2", FieldGroup::Rediscover, NativeAxis::RediscoverAggregatedRow, 5, false, 2, false, "np.ndarray", "1x2e", "V/A^2", "electrostatic_efg" },
     { FieldKind::EFGTargetT2, "efg_target_T2", FieldGroup::Rediscover, NativeAxis::RediscoverAggregatedRow, 5, false, 2, false, "np.ndarray", "2e", "ppm", "quantum_reference" },
     { FieldKind::BuckinghamEfieldFeatureFieldLocal, "buckingham_efield_feature_field_local", FieldGroup::Rediscover, NativeAxis::RediscoverAggregatedRow, 3, false, 1, true, "np.ndarray", "1o", "V/A", "electrostatic_efg" },
-    { FieldKind::BuckinghamEfieldTargetT1Unverified, "buckingham_efield_target_T1_unverified", FieldGroup::Rediscover, NativeAxis::RediscoverAggregatedRow, 3, false, 1, false, "np.ndarray", "1?", "ppm", "quantum_reference" },
+    { FieldKind::BuckinghamEfieldTargetT1Unverified, "buckingham_efield_target_T1_unverified", FieldGroup::Rediscover, NativeAxis::RediscoverAggregatedRow, 3, false, 1, false, "np.ndarray", "1x1e", "ppm", "quantum_reference" },
     { FieldKind::BuckinghamEfieldTargetT2, "buckingham_efield_target_T2", FieldGroup::Rediscover, NativeAxis::RediscoverAggregatedRow, 5, false, 2, false, "np.ndarray", "2e", "ppm", "quantum_reference" },
     { FieldKind::CoulombEFG, "coulomb_efg", FieldGroup::Coulomb, NativeAxis::Atom, 9, false, 2, false, "ShieldingTensor", "0e + 1e + 2e", "V/A^2", "electrostatic_efg" },
     { FieldKind::CoulombE, "coulomb_E", FieldGroup::Coulomb, NativeAxis::Atom, 3, false, 1, true, "VectorField", "1o", "V/A", "electrostatic_efg" },

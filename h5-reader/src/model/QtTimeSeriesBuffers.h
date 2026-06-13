@@ -66,7 +66,7 @@ struct QtShieldingTimeSeries {
     // Attrs — display only
     QString irrep_layout;  // "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,..."
     QString units;
-    QString parity;         // e.g. "0e+1o+2e"
+    QString parity;         // e.g. "0e+1e+2e"
     QString normalization;  // "isometric_real_sph"
     QString result_name;
 
