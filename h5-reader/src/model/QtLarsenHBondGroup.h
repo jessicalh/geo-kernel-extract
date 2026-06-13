@@ -21,9 +21,10 @@
 //     parse → grid-load → rotation pipeline. A non-zero Cβ is a METHODOLOGICAL
 //     SIGNAL, not a bug (the fixture carries up to ±2.5 ppm on ~14 atoms).
 //
-// ML note (catalog is_feature): the four decomposition terms AND the water
-// term are ML features; the summed total, the Cβ diagnostic, and the count are
-// not (the model consumes the decomposition, not the redundant sum).
+// STRUCTURE: larsen_hbond_shielding is the redundant element-wise sum of the
+// four per-class decomposition terms (an exact linear combination) — the
+// analysis handles that dependence at modeling time. The Cβ diagnostic and the
+// count are provenance, not physical fields.
 //
 // SENTINELS: unlike QtTripeptideGroup (which writes NaN), Larsen writes 0.0
 // for "no contribution" — the per-class tensors are packed UNCONDITIONALLY,

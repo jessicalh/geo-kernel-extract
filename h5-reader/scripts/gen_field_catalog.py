@@ -169,7 +169,6 @@ def main() -> int:
     w("    NativeAxis axis;")
     w("    int cols;                     // -1 = variable / 1-D (None in _catalog.py)")
     w("    bool required;")
-    w("    bool is_feature;              // ML-eligibility flag from _catalog.py")
     w("    std::int8_t tensor_rank;")
     w("    bool parity_odd;")
     w("    std::string_view wrapper;     // Python wrapper class name (shape hint)")
@@ -184,11 +183,10 @@ def main() -> int:
         cols = -1 if cols is None else int(cols)
         rank = int(e.get("tensor_rank", 0) or 0)
         req = "true" if e.get("required") else "false"
-        feat = "true" if e.get("is_feature", True) else "false"
         parity = "true" if e.get("parity") == "odd" else "false"
         w(f"    {{ FieldKind::{pascal(e['stem'])}, {cpp_str(e['stem'])}, "
           f"FieldGroup::{pascal(e['group'])}, NativeAxis::{pascal(e.get('native_axis', 'atom'))}, "
-          f"{cols}, {req}, {feat}, {rank}, {parity}, "
+          f"{cols}, {req}, {rank}, {parity}, "
           f"{cpp_str(e.get('wrapper', ''))}, {cpp_str(e.get('irreps', ''))}, "
           f"{cpp_str(e.get('units', ''))}, {cpp_str(e.get('mechanism', ''))} }},")
     w("}};")

@@ -841,7 +841,6 @@ QJsonObject fieldJson(const io::FieldSpec& spec, const FieldSink& sink) {
     o.insert(QStringLiteral("dtype"), sink.support.dtype);
     o.insert(QStringLiteral("component_layout"), sink.support.componentLayout);
     o.insert(QStringLiteral("required"), spec.required);
-    o.insert(QStringLiteral("is_feature"), spec.is_feature);
     o.insert(QStringLiteral("units"), qsv(spec.units));
     o.insert(QStringLiteral("mechanism"), qsv(spec.mechanism));
     return o;
