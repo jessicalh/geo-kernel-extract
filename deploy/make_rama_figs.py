@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-TBL = "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables/dihedral_sigma_bins.csv"
+TBL = os.environ.get("ATLAS_TABLES", "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables") + "/dihedral_sigma_bins.csv"
 
 def main():
     ap = argparse.ArgumentParser()

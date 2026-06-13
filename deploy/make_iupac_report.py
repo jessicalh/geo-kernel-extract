@@ -13,7 +13,7 @@ Usage: make_iupac_report.py --out <dir> --figdir <rama dir> --li <li_data.json> 
 """
 import argparse, csv, collections, json, os, glob
 
-T = "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables"
+T = os.environ.get("ATLAS_TABLES", "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables")
 AA = ["ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS","ILE","LEU","LYS",
       "MET","PHE","PRO","SER","THR","TRP","TYR","VAL"]
 BB = ["N","CA","C","O","H","HA"]
@@ -32,6 +32,7 @@ TOOL = [
  ("hm", "Haigh-Mallion ring-current kernel (ours): ring-current geometry factor"),
  ("mc", "McConnell bond-anisotropy kernel (ours): anisotropic susceptibility of nearby bonds"),
  ("ff_coulomb", "Force-field point charges: Coulomb field / energy"),
+ ("ff", "Force-field (MM) parameters: per-atom partial charge / Poisson-Boltzmann radius"),
  ("coulomb", "Force-field point charges: Coulomb field / energy"),
  ("eeq", "EEQ charge model: electronegativity-equilibrated partial charges / coordination number"),
  ("dssp", "DSSP: secondary-structure assignment and backbone H-bond geometry"),
@@ -40,7 +41,9 @@ TOOL = [
  ("atom_sasa", "Shrake-Rupley: solvent-accessible surface area"),
  ("water", "Explicit solvent: local water field / polarization"),
  ("disp", "Dispersion (D4-type): per-type dispersion term"),
- ("pq", "pi-quadrupole kernel (ours)"),
+ ("pq", "pi-quadrupole kernel (ours): aromatic quadrupole geometry factor (3cos^2theta-1)/r^4 at the site"),
+ ("larsen", "Larsen ProCS15-grid H-bond term (ours): per-class backbone N-H / C=O hydrogen-bond shielding from the ProCS15 lookup"),
+ ("hbond", "H-bond kernel (ours): donor-H..acceptor geometry, the angular/distance scalar (3cos^2theta-1)/r^3 at the site"),
  ("omega", "Geometry: backbone omega dihedral / deviation"),
  ("phi", "Geometry: backbone phi"), ("psi", "Geometry: backbone psi"),
  ("pyramid", "Geometry: pyramidalisation"), ("planar", "Geometry: planarity deviation"),
@@ -59,6 +62,7 @@ PHYS = {
  "ring_efg": "Electric field / gradient contributed specifically by aromatic-ring atoms.",
  "ring_dispersion": "Dispersion interaction with aromatic rings (a weak van der Waals proxy).",
  "hbond_kernel": "Hydrogen-bond geometry / strength at the site, which shifts sigma (especially for H, N, O).",
+ "hbond_grid": "Backbone N-H / C=O hydrogen-bond geometry mapped through the ProCS15 empirical shielding surface (a per-class lookup), which shifts sigma at backbone N, H, and C=O.",
  "topology": "An identity or positional label (residue, element, locant) -- a descriptor, not a physical field.",
 }
 

@@ -89,6 +89,55 @@ atlas_parse_shape <- function(shape) {
   as.integer(regmatches(shape, gregexpr("[0-9]+", shape))[[1]])
 }
 
+## Single door for every .npy the atlas reads.
+##
+## RcppCNPy 0.2.15 mis-handles 1-byte dtypes (|u1 / |i1 / |b1): it reinterprets
+## the bytes as if they were 8-byte doubles, over-reading the buffer ~8x. On a
+## tiny array the over-read stays in-page (silent garbage); on a full-size array
+## (e.g. the 1.74M-row target_present / *_presence masks) it crosses unmapped
+## pages and SIGSEGVs. Earlier runs only escaped this because load_substrate had
+## a warm rows_index_with_targets checkpoint that skipped the npy read entirely;
+## a cold run hits it. So read 1-byte arrays directly with readBin, and delegate
+## everything multi-byte (the <f8 targets and contributor blocks) to RcppCNPy
+## unchanged -- verified bit-for-bit identical on <f8.
+atlas_npy_load <- function(path) {
+  con <- file(path, "rb")
+  closed <- FALSE
+  on.exit(if (!closed) close(con))
+  magic <- readBin(con, "raw", n = 6L)
+  if (length(magic) < 6L ||
+      !identical(magic, as.raw(c(0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59)))) {
+    stop("not a .npy file: ", path)
+  }
+  ver <- readBin(con, "raw", n = 2L)
+  major <- as.integer(ver[1L])
+  if (major >= 2L) {
+    hlen <- readBin(con, "integer", n = 1L, size = 4L, endian = "little", signed = TRUE)
+  } else {
+    hlen <- readBin(con, "integer", n = 1L, size = 2L, endian = "little", signed = FALSE)
+  }
+  header <- rawToChar(readBin(con, "raw", n = hlen))
+  descr <- sub(".*'descr'\\s*:\\s*'([^']*)'.*", "\\1", header)
+  shape_str <- sub(".*'shape'\\s*:\\s*\\(([^)]*)\\).*", "\\1", header)
+  shape <- atlas_parse_shape(shape_str)
+  n <- if (length(shape)) prod(shape) else 1L
+  byte_order <- substr(descr, 1L, 1L)
+  kind <- substr(descr, 2L, 2L)
+  itemsize <- as.integer(sub("^.[a-zA-Z]", "", descr))
+  endian <- if (byte_order == ">") "big" else "little"
+  if (isTRUE(itemsize == 1L) && kind %in% c("u", "i", "b")) {
+    if (length(shape) > 1L) {
+      stop("multi-dim 1-byte npy not supported by atlas_npy_load: ", path)
+    }
+    vals <- readBin(con, "integer", n = n, size = 1L,
+                    signed = (kind == "i"), endian = endian)
+    return(vals)
+  }
+  close(con)
+  closed <- TRUE
+  RcppCNPy::npyLoad(path)
+}
+
 atlas_read_json <- function(path) {
   jsonlite::fromJSON(path, simplifyVector = TRUE)
 }
@@ -175,10 +224,10 @@ atlas_read_rows <- function(cfg) {
   atlas_msg("loading ORCA scalar targets with RcppCNPy")
   target_dir <- file.path(cfg$input_dir, "targets")
   row_idx <- rows$row_id + 1L
-  rows[, target_present_sidecar := as.logical(RcppCNPy::npyLoad(file.path(target_dir, "target_present.npy"))[row_idx])]
-  rows[, sigma_iso := as.numeric(RcppCNPy::npyLoad(file.path(target_dir, "orca_total_T0.npy"))[row_idx])]
-  dia <- as.numeric(RcppCNPy::npyLoad(file.path(target_dir, "orca_diamagnetic_T0.npy"))[row_idx])
-  para <- as.numeric(RcppCNPy::npyLoad(file.path(target_dir, "orca_paramagnetic_T0.npy"))[row_idx])
+  rows[, target_present_sidecar := as.logical(atlas_npy_load(file.path(target_dir, "target_present.npy"))[row_idx])]
+  rows[, sigma_iso := as.numeric(atlas_npy_load(file.path(target_dir, "orca_total_T0.npy"))[row_idx])]
+  dia <- as.numeric(atlas_npy_load(file.path(target_dir, "orca_diamagnetic_T0.npy"))[row_idx])
+  para <- as.numeric(atlas_npy_load(file.path(target_dir, "orca_paramagnetic_T0.npy"))[row_idx])
   rows[, dft_floor_resid := sigma_iso - dia - para]
   rows[, supervised := target_present_sidecar & target_total_present == 1 & is.finite(sigma_iso)]
 
@@ -343,12 +392,12 @@ atlas_as_matrix <- function(x) {
 atlas_load_contributor_block <- function(cfg, meta, row_ids, max_cols) {
   path <- file.path(cfg$input_dir, meta$sidecar)
   atlas_msg("loading contributor ", meta$stem, " from ", meta$sidecar)
-  arr <- RcppCNPy::npyLoad(path)
+  arr <- atlas_npy_load(path)
   x <- atlas_as_matrix(arr)
   x <- x[row_ids + 1L, , drop = FALSE]
   presence_path <- sub("\\.npy$", "_presence.npy", path)
   if (file.exists(presence_path)) {
-    present <- as.logical(RcppCNPy::npyLoad(presence_path)[row_ids + 1L])
+    present <- as.logical(atlas_npy_load(presence_path)[row_ids + 1L])
     x[!present, ] <- NA_real_
   }
   atlas_reduce_block(x, meta, max_cols)
@@ -773,12 +822,12 @@ atlas_score_t2 <- function(rows, support, cfg) {
   tensor <- contrib[component_layout %in% c("T2_5", "tensor9_raw")]
   supervised_rows <- rows[supervised == TRUE]
   row_ids <- supervised_rows$row_id
-  y_all <- atlas_as_matrix(RcppCNPy::npyLoad(file.path(cfg$input_dir, "targets", "orca_total_T2.npy")))[row_ids + 1L, , drop = FALSE]
+  y_all <- atlas_as_matrix(atlas_npy_load(file.path(cfg$input_dir, "targets", "orca_total_T2.npy")))[row_ids + 1L, , drop = FALSE]
   res <- list()
   rix <- 1L
   for (i in seq_len(nrow(tensor))) {
     meta <- tensor[i]
-    raw <- RcppCNPy::npyLoad(file.path(cfg$input_dir, meta$sidecar))
+    raw <- atlas_npy_load(file.path(cfg$input_dir, meta$sidecar))
     x <- atlas_as_matrix(raw)[row_ids + 1L, , drop = FALSE]
     if (meta$component_layout == "tensor9_raw" && ncol(x) >= 9L) x <- x[, 5:9, drop = FALSE]
     x <- atlas_reduce_block(x, meta, min(cfg$max_block_cols, 5L))$x
