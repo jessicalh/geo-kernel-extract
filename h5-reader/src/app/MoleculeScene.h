@@ -89,6 +89,7 @@ class QtBackboneRibbonOverlay;
 class QtRingPolygonOverlay;
 class QtFieldGridOverlay;
 class QtBFieldStreamOverlay;
+class QtOccupancyShellsOverlay;
 class MeasurementOverlay;
 class SceneRevealOverlay;
 class CameraComposer;
@@ -159,6 +160,7 @@ public:
     QtRingPolygonOverlay*    ringPolygonOverlay() const { return ringPolygons_; }
     QtFieldGridOverlay*      fieldGridOverlay()  const { return fieldGrid_; }
     QtBFieldStreamOverlay*   bfieldStreamOverlay() const { return bfieldStream_; }
+    QtOccupancyShellsOverlay* occupancyShellsOverlay() const { return occupancyShells_; }
     MeasurementOverlay*      measurementOverlay() const { return measurement_; }
     SceneRevealOverlay*      revealOverlay()      const { return reveal_; }
 
@@ -229,6 +231,7 @@ private:
     QtRingPolygonOverlay*    ringPolygons_ = nullptr;   // QObject child
     QtFieldGridOverlay*      fieldGrid_    = nullptr;   // QObject child
     QtBFieldStreamOverlay*   bfieldStream_ = nullptr;   // QObject child
+    QtOccupancyShellsOverlay* occupancyShells_ = nullptr;  // QObject child
     MeasurementOverlay*      measurement_  = nullptr;   // QObject child
     SceneRevealOverlay*      reveal_       = nullptr;   // QObject child
     CameraComposer*          composer_     = nullptr;   // QObject child
