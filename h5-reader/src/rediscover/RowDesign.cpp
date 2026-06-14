@@ -11,8 +11,7 @@ RowColumnSpec col(const char* name,
                   const char* unit = "",
                   const char* irrep = "",
                   RowNativeAxis axis = RowNativeAxis::Row,
-                  bool timeVarying = false,
-                  bool isFeature = true) {
+                  bool timeVarying = false) {
     RowColumnSpec c;
     c.name = QString::fromLatin1(name);
     c.type = type;
@@ -20,22 +19,21 @@ RowColumnSpec col(const char* name,
     c.irrep = QString::fromLatin1(irrep);
     c.nativeAxis = axis;
     c.timeVarying = timeVarying;
-    c.isFeature = isFeature;
     return c;
 }
 
 std::vector<RowColumnSpec> buildSchema() {
     std::vector<RowColumnSpec> s = {
-        col("dataset_id", RowColType::String, "", "", RowNativeAxis::Protein, false, false),
-        col("protein_id", RowColType::String, "", "", RowNativeAxis::Protein, false, false),
-        col("case_id", RowColType::String, "", "", RowNativeAxis::Row, false, false),
-        col("pose_kind", RowColType::String, "", "", RowNativeAxis::Frame, false, false),
-        col("frame_slot", RowColType::Int, "", "", RowNativeAxis::Frame, true, false),
-        col("split_group_id", RowColType::String, "", "", RowNativeAxis::Protein, false, false),
-        col("atom_index", RowColType::Int, "", "", RowNativeAxis::Atom, false, false),
-        col("h5_row", RowColType::Int, "", "", RowNativeAxis::Frame, true, false),
-        col("original_index", RowColType::Int, "", "", RowNativeAxis::Frame, true, false),
-        col("time_ps", RowColType::Double, "ps", "0e", RowNativeAxis::Frame, true, false),
+        col("dataset_id", RowColType::String, "", "", RowNativeAxis::Protein, false),
+        col("protein_id", RowColType::String, "", "", RowNativeAxis::Protein, false),
+        col("case_id", RowColType::String, "", "", RowNativeAxis::Row, false),
+        col("pose_kind", RowColType::String, "", "", RowNativeAxis::Frame, false),
+        col("frame_slot", RowColType::Int, "", "", RowNativeAxis::Frame, true),
+        col("split_group_id", RowColType::String, "", "", RowNativeAxis::Protein, false),
+        col("atom_index", RowColType::Int, "", "", RowNativeAxis::Atom, false),
+        col("h5_row", RowColType::Int, "", "", RowNativeAxis::Frame, true),
+        col("original_index", RowColType::Int, "", "", RowNativeAxis::Frame, true),
+        col("time_ps", RowColType::Double, "ps", "0e", RowNativeAxis::Frame, true),
         col("element", RowColType::Int, "", "", RowNativeAxis::Atom),
         col("residue_index", RowColType::Int, "", "", RowNativeAxis::Residue),
         col("residue_number", RowColType::Int, "", "", RowNativeAxis::Residue),
@@ -141,11 +139,11 @@ std::vector<RowColumnSpec> buildSchema() {
     };
     for (const char* name : scalarFeaturesAfterRing)
         s.push_back(col(name, RowColType::Double, "", "0e", RowNativeAxis::Atom, true));
-    s.push_back(col("tensor_frame", RowColType::String, "", "", RowNativeAxis::Row, false, false));
-    s.push_back(col("valid_for_T2_model", RowColType::Bool, "", "", RowNativeAxis::Row, false, false));
-    s.push_back(col("region_def_id", RowColType::String, "", "", RowNativeAxis::Row, false, false));
-    s.push_back(col("rama_region_hdr", RowColType::String, "", "", RowNativeAxis::Residue, true, false));
-    s.push_back(col("rotamer_id", RowColType::String, "", "", RowNativeAxis::Residue, true, false));
+    s.push_back(col("tensor_frame", RowColType::String, "", "", RowNativeAxis::Row, false));
+    s.push_back(col("valid_for_T2_model", RowColType::Bool, "", "", RowNativeAxis::Row, false));
+    s.push_back(col("region_def_id", RowColType::String, "", "", RowNativeAxis::Row, false));
+    s.push_back(col("rama_region_hdr", RowColType::String, "", "", RowNativeAxis::Residue, true));
+    s.push_back(col("rotamer_id", RowColType::String, "", "", RowNativeAxis::Residue, true));
     return s;
 }
 

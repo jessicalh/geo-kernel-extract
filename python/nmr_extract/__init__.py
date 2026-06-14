@@ -88,7 +88,7 @@ from ._tensors import (
     AIMNet2ChargeResponseGradient,
 )
 from ._ring import RingContributions, RingGeometry
-from ._catalog import CATALOG, ArraySpec, feature_specs
+from ._catalog import CATALOG, ArraySpec
 from ._protein import (
     AIMNet2Group,
     PlanarGeometryGroup,
@@ -127,7 +127,6 @@ __all__ = [
     "RingGeometry",
     "CATALOG",
     "ArraySpec",
-    "feature_specs",
     "AIMNet2Charges",
     "AIMNet2AimEmbedding",
     "AIMNet2ChargeResponseGradient",

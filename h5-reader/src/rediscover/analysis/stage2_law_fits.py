@@ -129,7 +129,7 @@ UNIFIED_SPECS = [
     ShadowSpec("mopac_field_backbone", "per_atom_substrate_features_method_paths", "mopac_coulomb_efg_backbone"),
     ShadowSpec("mopac_field_aromatic", "per_atom_substrate_features_method_paths", "mopac_coulomb_efg_aromatic"),
     ShadowSpec("water_field_efg_reconciled", "per_atom_substrate_features_method_paths", "water_efg", sign=-1.0),
-    *[ShadowSpec(f"pq_type_{i}", "per_atom_substrate_features_ring_paths", f"pq_per_type_T2_{5*i}", groups=0) for i in range(8)],
+    *[ShadowSpec(f"pq_type_{i}", "per_atom_substrate_features_ring_paths", f"pq_per_type_T0_{i}", groups=0) for i in range(8)],
     *[ShadowSpec(f"disp_type_{i}", "per_atom_substrate_features_ring_paths", f"disp_per_type_T2_{5*i}", groups=0) for i in range(8)],
 ]
 

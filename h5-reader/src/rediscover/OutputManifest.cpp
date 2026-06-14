@@ -35,7 +35,7 @@ bool WriteOutputManifest(const QString& outDir, const std::vector<OutputEntry>& 
     conventions.insert(QStringLiteral("pbc_mode"), QStringLiteral("none_protein_whole_upstream"));
     conventions.insert(QStringLiteral("output_carrier"), QStringLiteral("per_relationship_schema"));
     conventions.insert(QStringLiteral("wide_array_payloads"),
-                       QStringLiteral("sidecar_npy_entries_documented_in_python/nmr_extract/_catalog.py"));
+                       QStringLiteral("reader_sidecar_npy_entries_documented_in_src/rediscover/ReaderOutputCatalog.h"));
     QJsonObject target;
     target.insert(QStringLiteral("T0"), QStringLiteral("dft_sigma_iso"));
     target.insert(QStringLiteral("T1_status"), QStringLiteral("unverified_emitted_not_discarded"));

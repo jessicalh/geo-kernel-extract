@@ -25,16 +25,23 @@
 
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <memory>
 
 using h5reader::io::DftShieldingLoader;
+using h5reader::model::Element;
 using h5reader::model::QtProtein;
 
 namespace {
 
-std::unique_ptr<QtProtein> makeProtein(std::size_t atomCount) {
+// Build a protein whose atom elements match the ORCA fixture the test feeds the
+// loader — the loader validates element-by-element against topology, so the
+// fixture protein must carry real elements, not the default Unknown.
+std::unique_ptr<QtProtein> makeProtein(std::initializer_list<Element> elements) {
     auto protein = std::make_unique<QtProtein>();
-    protein->atoms_.resize(atomCount);
+    protein->atoms_.resize(elements.size());
+    std::size_t i = 0;
+    for (Element e : elements) protein->atoms_[i++].element = e;
     return protein;
 }
 
@@ -103,7 +110,7 @@ private slots:
 void DftShieldingLoaderTests::loadAndValidateHappyPath() {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
-    const auto protein = makeProtein(2);
+    const auto protein = makeProtein({Element::H, Element::C});
     const QString out = orcaOut(atomBlock(0, QStringLiteral("H"), 10.0, 1.0)
                                 + atomBlock(1, QStringLiteral("C"), 20.0, 2.0));
     const QString metaPath = writeJob(dir.path(), 7, out);
@@ -121,7 +128,7 @@ void DftShieldingLoaderTests::loadAndValidateHappyPath() {
 
 void DftShieldingLoaderTests::missingMetaReturnsNull() {
     // No file at the supplied path → null.
-    const auto protein = makeProtein(1);
+    const auto protein = makeProtein({Element::H});
     const auto frame = DftShieldingLoader::LoadAndValidate(
         QStringLiteral("/tmp/this-meta-does-not-exist.json"), protein.get());
     QVERIFY(frame == nullptr);
@@ -130,7 +137,7 @@ void DftShieldingLoaderTests::missingMetaReturnsNull() {
 void DftShieldingLoaderTests::parserHoleReturnsNull() {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
-    const auto protein = makeProtein(3);
+    const auto protein = makeProtein({Element::H, Element::N, Element::C});
     const QString out = orcaOut(atomBlock(0, QStringLiteral("H"), 10.0, 1.0)
                                 + atomBlock(2, QStringLiteral("C"), 20.0, 2.0));
     const QString metaPath = writeJob(dir.path(), 13, out);

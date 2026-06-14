@@ -89,6 +89,55 @@ atlas_parse_shape <- function(shape) {
   as.integer(regmatches(shape, gregexpr("[0-9]+", shape))[[1]])
 }
 
+## Single door for every .npy the atlas reads.
+##
+## RcppCNPy 0.2.15 mis-handles 1-byte dtypes (|u1 / |i1 / |b1): it reinterprets
+## the bytes as if they were 8-byte doubles, over-reading the buffer ~8x. On a
+## tiny array the over-read stays in-page (silent garbage); on a full-size array
+## (e.g. the 1.74M-row target_present / *_presence masks) it crosses unmapped
+## pages and SIGSEGVs. Earlier runs only escaped this because load_substrate had
+## a warm rows_index_with_targets checkpoint that skipped the npy read entirely;
+## a cold run hits it. So read 1-byte arrays directly with readBin, and delegate
+## everything multi-byte (the <f8 targets and contributor blocks) to RcppCNPy
+## unchanged -- verified bit-for-bit identical on <f8.
+atlas_npy_load <- function(path) {
+  con <- file(path, "rb")
+  closed <- FALSE
+  on.exit(if (!closed) close(con))
+  magic <- readBin(con, "raw", n = 6L)
+  if (length(magic) < 6L ||
+      !identical(magic, as.raw(c(0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59)))) {
+    stop("not a .npy file: ", path)
+  }
+  ver <- readBin(con, "raw", n = 2L)
+  major <- as.integer(ver[1L])
+  if (major >= 2L) {
+    hlen <- readBin(con, "integer", n = 1L, size = 4L, endian = "little", signed = TRUE)
+  } else {
+    hlen <- readBin(con, "integer", n = 1L, size = 2L, endian = "little", signed = FALSE)
+  }
+  header <- rawToChar(readBin(con, "raw", n = hlen))
+  descr <- sub(".*'descr'\\s*:\\s*'([^']*)'.*", "\\1", header)
+  shape_str <- sub(".*'shape'\\s*:\\s*\\(([^)]*)\\).*", "\\1", header)
+  shape <- atlas_parse_shape(shape_str)
+  n <- if (length(shape)) prod(shape) else 1L
+  byte_order <- substr(descr, 1L, 1L)
+  kind <- substr(descr, 2L, 2L)
+  itemsize <- as.integer(sub("^.[a-zA-Z]", "", descr))
+  endian <- if (byte_order == ">") "big" else "little"
+  if (isTRUE(itemsize == 1L) && kind %in% c("u", "i", "b")) {
+    if (length(shape) > 1L) {
+      stop("multi-dim 1-byte npy not supported by atlas_npy_load: ", path)
+    }
+    vals <- readBin(con, "integer", n = n, size = 1L,
+                    signed = (kind == "i"), endian = endian)
+    return(vals)
+  }
+  close(con)
+  closed <- TRUE
+  RcppCNPy::npyLoad(path)
+}
+
 atlas_read_json <- function(path) {
   jsonlite::fromJSON(path, simplifyVector = TRUE)
 }
@@ -133,6 +182,19 @@ atlas_sidecar_manifest <- function(cfg) {
   data.table::as.data.table(atlas_read_json(atlas_manifest_path(cfg, "sidecar_manifest.json"))$sidecars)
 }
 
+atlas_irrep_manifest <- function(cfg) {
+  path <- atlas_manifest_path(cfg, "irrep_manifest.json")
+  if (!file.exists(path)) {
+    return(data.table::data.table(
+      stem = character(), irreps = character(), tensor_frame = character(),
+      tensor_rank = numeric(), parity_odd = logical()
+    ))
+  }
+  out <- data.table::as.data.table(atlas_read_json(path)$fields)
+  keep <- intersect(names(out), c("stem", "irreps", "tensor_frame", "tensor_rank", "parity_odd"))
+  out[, ..keep]
+}
+
 atlas_family_manifest <- function(cfg) {
   fam <- atlas_read_json(atlas_manifest_path(cfg, "contributor_family_manifest.json"))
   rows <- data.table::as.data.table(fam$rows)
@@ -175,10 +237,10 @@ atlas_read_rows <- function(cfg) {
   atlas_msg("loading ORCA scalar targets with RcppCNPy")
   target_dir <- file.path(cfg$input_dir, "targets")
   row_idx <- rows$row_id + 1L
-  rows[, target_present_sidecar := as.logical(RcppCNPy::npyLoad(file.path(target_dir, "target_present.npy"))[row_idx])]
-  rows[, sigma_iso := as.numeric(RcppCNPy::npyLoad(file.path(target_dir, "orca_total_T0.npy"))[row_idx])]
-  dia <- as.numeric(RcppCNPy::npyLoad(file.path(target_dir, "orca_diamagnetic_T0.npy"))[row_idx])
-  para <- as.numeric(RcppCNPy::npyLoad(file.path(target_dir, "orca_paramagnetic_T0.npy"))[row_idx])
+  rows[, target_present_sidecar := as.logical(atlas_npy_load(file.path(target_dir, "target_present.npy"))[row_idx])]
+  rows[, sigma_iso := as.numeric(atlas_npy_load(file.path(target_dir, "orca_total_T0.npy"))[row_idx])]
+  dia <- as.numeric(atlas_npy_load(file.path(target_dir, "orca_diamagnetic_T0.npy"))[row_idx])
+  para <- as.numeric(atlas_npy_load(file.path(target_dir, "orca_paramagnetic_T0.npy"))[row_idx])
   rows[, dft_floor_resid := sigma_iso - dia - para]
   rows[, supervised := target_present_sidecar & target_total_present == 1 & is.finite(sigma_iso)]
 
@@ -313,6 +375,7 @@ atlas_make_support <- function(rows, cfg) {
 
 atlas_contributors <- function(cfg) {
   sidecars <- atlas_sidecar_manifest(cfg)
+  irreps <- atlas_irrep_manifest(cfg)
   fam <- atlas_family_manifest(cfg)
   contrib <- sidecars[route == "measure"]
   contrib[, row_aligned := vapply(shape, function(s) {
@@ -320,15 +383,20 @@ atlas_contributors <- function(cfg) {
     length(sh) >= 1L && sh[1L] == 1744962L
   }, logical(1))]
   contrib <- contrib[row_aligned == TRUE]
+  if (nrow(irreps)) {
+    contrib <- merge(contrib, irreps, by = "stem", all.x = TRUE, sort = FALSE)
+  }
   contrib <- merge(
     contrib, fam,
     by.x = "stem", by.y = "contributor_stem",
     all.x = TRUE, sort = FALSE
   )
-  for (nm in c("family_id", "legal_permutation_block")) {
+  for (nm in c("family_id", "legal_permutation_block", "irreps", "tensor_frame")) {
     if (!nm %in% names(contrib)) contrib[, (nm) := ""]
     contrib[is.na(get(nm)), (nm) := ""]
   }
+  if (!"tensor_rank" %in% names(contrib)) contrib[, tensor_rank := NA_real_]
+  if (!"parity_odd" %in% names(contrib)) contrib[, parity_odd := NA]
   contrib[, contributor_id := stem]
   contrib[]
 }
@@ -341,42 +409,169 @@ atlas_as_matrix <- function(x) {
 }
 
 atlas_load_contributor_block <- function(cfg, meta, row_ids, max_cols) {
+  blocks <- atlas_load_contributor_blocks(cfg, meta, row_ids, max_cols)
+  blocks[[1L]]
+}
+
+atlas_load_contributor_blocks <- function(cfg, meta, row_ids, max_cols) {
   path <- file.path(cfg$input_dir, meta$sidecar)
   atlas_msg("loading contributor ", meta$stem, " from ", meta$sidecar)
-  arr <- RcppCNPy::npyLoad(path)
+  arr <- atlas_npy_load(path)
   x <- atlas_as_matrix(arr)
   x <- x[row_ids + 1L, , drop = FALSE]
   presence_path <- sub("\\.npy$", "_presence.npy", path)
   if (file.exists(presence_path)) {
-    present <- as.logical(RcppCNPy::npyLoad(presence_path)[row_ids + 1L])
+    present <- as.logical(atlas_npy_load(presence_path)[row_ids + 1L])
     x[!present, ] <- NA_real_
   }
-  atlas_reduce_block(x, meta, max_cols)
+  atlas_contributor_blocks(x, meta, max_cols)
 }
 
 atlas_reduce_block <- function(x, meta, max_cols) {
   note <- "as_emitted"
   keep <- vapply(seq_len(ncol(x)), function(j) {
     z <- x[, j]
-    any(is.finite(z)) && stats::sd(z[is.finite(z)]) > 0
+    any(is.finite(z))
   }, logical(1))
   x <- x[, keep, drop = FALSE]
   if (!ncol(x)) {
-    return(list(x = matrix(NA_real_, nrow = nrow(x), ncol = 1L), note = "no_finite_nonconstant_columns"))
+    return(list(
+      x = matrix(NA_real_, nrow = nrow(x), ncol = 1L),
+      note = "no_finite_columns",
+      max_cols = max_cols
+    ))
   }
   if (ncol(x) > max_cols) {
-    note <- paste0("all_rows_predictor_pca_to_", max_cols)
-    mu <- colMeans(x, na.rm = TRUE)
-    sdv <- apply(x, 2L, stats::sd, na.rm = TRUE)
-    sdv[!is.finite(sdv) | sdv == 0] <- 1
-    z <- sweep(sweep(x, 2L, mu, "-"), 2L, sdv, "/")
-    z[!is.finite(z)] <- 0
-    eig <- eigen(crossprod(z) / max(1, nrow(z) - 1), symmetric = TRUE)
-    k <- min(max_cols, ncol(z), ncol(eig$vectors))
-    x <- z %*% eig$vectors[, seq_len(k), drop = FALSE]
-    colnames(x) <- paste0("PC", seq_len(k))
+    note <- paste0("fold_local_predictor_pca_to_", max_cols)
   }
-  list(x = x, note = note)
+  list(x = x, note = note, max_cols = max_cols)
+}
+
+atlas_meta_scalar <- function(meta, name, default = "") {
+  if (name %in% names(meta)) {
+    val <- meta[[name]][1L]
+    if (!is.na(val)) return(as.character(val))
+  }
+  default
+}
+
+atlas_meta_numeric <- function(meta, name, default = NA_real_) {
+  if (name %in% names(meta)) {
+    val <- suppressWarnings(as.numeric(meta[[name]][1L]))
+    if (!is.na(val)) return(val)
+  }
+  default
+}
+
+atlas_tensor5_cartesian_terms <- function(t2, t0 = NULL) {
+  n <- nrow(t2)
+  if (is.null(t0)) t0 <- rep(0, n)
+  inv_sqrt2 <- 1 / sqrt(2)
+  inv_sqrt_three_halves <- 1 / sqrt(3 / 2)
+  sxy <- t2[, 1L] * inv_sqrt2
+  syz <- t2[, 2L] * inv_sqrt2
+  szz <- t2[, 3L] * inv_sqrt_three_halves
+  sxz <- t2[, 4L] * inv_sqrt2
+  sxx_minus_syy <- t2[, 5L] * sqrt(2)
+  sxx <- (-szz + sxx_minus_syy) / 2
+  syy <- (-szz - sxx_minus_syy) / 2
+  list(
+    xx = sxx + t0, yy = syy + t0, zz = szz + t0,
+    xy = sxy, xz = sxz, yz = syz
+  )
+}
+
+atlas_symmetric3_eigen_invariants <- function(m) {
+  a <- m$xx
+  d <- m$yy
+  f <- m$zz
+  b <- m$xy
+  c <- m$xz
+  e <- m$yz
+  q <- (a + d + f) / 3
+  p1 <- b^2 + c^2 + e^2
+  p2 <- (a - q)^2 + (d - q)^2 + (f - q)^2 + 2 * p1
+  p <- sqrt(p2 / 6)
+  det_b <- rep(NA_real_, length(q))
+  good <- is.finite(p) & p > .Machine$double.eps
+  ba <- bd <- bf <- bb <- bc <- be <- rep(NA_real_, length(q))
+  ba[good] <- (a[good] - q[good]) / p[good]
+  bd[good] <- (d[good] - q[good]) / p[good]
+  bf[good] <- (f[good] - q[good]) / p[good]
+  bb[good] <- b[good] / p[good]
+  bc[good] <- c[good] / p[good]
+  be[good] <- e[good] / p[good]
+  det_b[good] <-
+    ba[good] * bd[good] * bf[good] +
+    2 * bb[good] * bc[good] * be[good] -
+    ba[good] * be[good]^2 -
+    bd[good] * bc[good]^2 -
+    bf[good] * bb[good]^2
+  r <- pmin(1, pmax(-1, det_b / 2))
+  phi <- acos(r) / 3
+  eig_max <- eig_mid <- eig_min <- q
+  eig_max[good] <- q[good] + 2 * p[good] * cos(phi[good])
+  eig_min[good] <- q[good] + 2 * p[good] * cos(phi[good] + 2 * pi / 3)
+  eig_mid[good] <- 3 * q[good] - eig_max[good] - eig_min[good]
+  anisotropy <- eig_max - 0.5 * (eig_mid + eig_min)
+  asymmetry <- (eig_mid - eig_min) / pmax(abs(anisotropy), .Machine$double.eps)
+  data.table::data.table(
+    frobenius_norm = sqrt(a^2 + d^2 + f^2 + 2 * (b^2 + c^2 + e^2)),
+    eig_min = eig_min,
+    eig_mid = eig_mid,
+    eig_max = eig_max,
+    anisotropy = anisotropy,
+    asymmetry = asymmetry
+  )
+}
+
+atlas_invariant_block <- function(x, meta) {
+  layout <- atlas_meta_scalar(meta, "component_layout")
+  rank <- atlas_meta_numeric(meta, "tensor_rank")
+  irreps <- atlas_meta_scalar(meta, "irreps")
+  is_vector <- ncol(x) == 3L &&
+    (identical(layout, "vec3") || isTRUE(rank == 1) || grepl("1[eo]", irreps))
+  is_rank2 <- (identical(layout, "T2_5") && ncol(x) >= 5L) ||
+    (identical(layout, "tensor9_raw") && ncol(x) >= 9L) ||
+    (ncol(x) == 5L && isTRUE(rank == 2))
+  if (is_vector) {
+    out <- matrix(sqrt(rowSums(x[, seq_len(3L), drop = FALSE]^2)), ncol = 1L)
+    colnames(out) <- "l2_norm"
+    return(list(x = out, component_layout = "invariant_vector_norm", note = "vector_l2_norm"))
+  }
+  if (is_rank2) {
+    if (layout == "tensor9_raw" && ncol(x) >= 9L) {
+      t0 <- x[, 1L]
+      t2 <- x[, 5:9, drop = FALSE]
+    } else {
+      t0 <- rep(0, nrow(x))
+      t2 <- x[, seq_len(5L), drop = FALSE]
+    }
+    inv <- as.matrix(atlas_symmetric3_eigen_invariants(atlas_tensor5_cartesian_terms(t2, t0)))
+    colnames(inv) <- c("frobenius_norm", "eig_min", "eig_mid", "eig_max", "anisotropy", "asymmetry")
+    return(list(x = inv, component_layout = "invariant_rank2", note = "rank2_symmetric_invariants"))
+  }
+  NULL
+}
+
+atlas_contributor_blocks <- function(x, meta, max_cols) {
+  raw <- atlas_reduce_block(x, meta, max_cols)
+  raw$contributor_id <- atlas_meta_scalar(meta, "stem")
+  raw$contributor_stem <- atlas_meta_scalar(meta, "stem")
+  raw$representation <- "raw"
+  raw$component_layout <- atlas_meta_scalar(meta, "component_layout")
+  blocks <- list(raw)
+  inv_src <- atlas_invariant_block(x, meta)
+  if (!is.null(inv_src)) {
+    inv <- atlas_reduce_block(inv_src$x, meta, Inf)
+    inv$contributor_id <- paste0(atlas_meta_scalar(meta, "stem"), "__inv")
+    inv$contributor_stem <- atlas_meta_scalar(meta, "stem")
+    inv$representation <- "invariant"
+    inv$component_layout <- inv_src$component_layout
+    inv$note <- paste(inv_src$note, "fold_clean_no_pca", sep = ";")
+    blocks[[length(blocks) + 1L]] <- inv
+  }
+  blocks
 }
 
 atlas_scale_train <- function(x_train, x_test) {
@@ -390,6 +585,67 @@ atlas_scale_train <- function(x_train, x_test) {
   list(train = xt, test = xv)
 }
 
+atlas_prepare_train_predictors <- function(x_train, x_test, max_cols = NULL) {
+  sc <- atlas_scale_train(x_train, x_test)
+  if (is.null(max_cols) || !is.finite(max_cols) || ncol(sc$train) <= max_cols) {
+    return(sc)
+  }
+  eig <- eigen(crossprod(sc$train) / max(1, nrow(sc$train) - 1L), symmetric = TRUE)
+  k <- min(as.integer(max_cols), ncol(sc$train), ncol(eig$vectors))
+  if (k < 1L) return(sc)
+  loadings <- eig$vectors[, seq_len(k), drop = FALSE]
+  train <- sc$train %*% loadings
+  test <- sc$test %*% loadings
+  colnames(train) <- colnames(test) <- paste0("PC", seq_len(k))
+  list(train = train, test = test)
+}
+
+atlas_predict_fold_from_stats <- function(x_test, xsum_train, xtx_train,
+                                          xy_res_train, y_res_sum_train,
+                                          n_train, lambda, max_cols = NULL) {
+  p <- length(xsum_train)
+  mu <- xsum_train / n_train
+  xss <- diag(xtx_train)
+  var <- (xss - n_train * mu^2) / max(1, n_train - 1L)
+  sdv <- sqrt(pmax(var, 0))
+  sdv[!is.finite(sdv) | sdv == 0] <- 1
+  centered_xtx <- xtx_train - n_train * tcrossprod(mu)
+  zz <- centered_xtx / tcrossprod(sdv)
+  zz[!is.finite(zz)] <- 0
+  zy <- (as.numeric(xy_res_train) - mu * y_res_sum_train) / sdv
+  zy[!is.finite(zy)] <- 0
+  ztest <- sweep(sweep(x_test, 2L, mu, "-"), 2L, sdv, "/")
+  ztest[!is.finite(ztest)] <- 0
+
+  if (!is.null(max_cols) && is.finite(max_cols) && p > max_cols) {
+    k <- min(as.integer(max_cols), p)
+    pca_mat <- zz / max(1, n_train - 1L)
+    eig <- tryCatch(
+      {
+        if (requireNamespace("RSpectra", quietly = TRUE) && k < (p - 1L)) {
+          RSpectra::eigs_sym(pca_mat, k = k, which = "LA")
+        } else {
+          eigen(pca_mat, symmetric = TRUE)
+        }
+      },
+      error = function(e) eigen(pca_mat, symmetric = TRUE)
+    )
+    k <- min(k, ncol(eig$vectors))
+    if (k >= 1L) {
+      loadings <- eig$vectors[, seq_len(k), drop = FALSE]
+      pc_xtx <- crossprod(loadings, zz %*% loadings)
+      diag(pc_xtx) <- diag(pc_xtx) + lambda
+      beta <- atlas_solve(pc_xtx, crossprod(loadings, matrix(zy, ncol = 1L)))
+      return(as.numeric((ztest %*% loadings) %*% beta))
+    }
+  }
+
+  penalized <- zz
+  diag(penalized) <- diag(penalized) + lambda
+  beta <- atlas_solve(penalized, matrix(zy, ncol = 1L))
+  as.numeric(ztest %*% beta)
+}
+
 atlas_ridge_beta <- function(x, y, lambda) {
   p <- ncol(x)
   xtx <- crossprod(x)
@@ -400,81 +656,6 @@ atlas_ridge_beta <- function(x, y, lambda) {
     error = function(e) qr.solve(xtx, rhs)
   )
   matrix(out, nrow = p)
-}
-
-atlas_crossfit_block <- function(y, x, fold, floor_resid, baseline_factor = NULL,
-                                 lambda = 1e-6, n_perm = 49L, min_rows = 20L,
-                                 min_units = 3L) {
-  ok <- is.finite(y) & is.finite(floor_resid) & !is.na(fold) & apply(x, 1L, function(z) all(is.finite(z)))
-  if (!is.null(baseline_factor)) ok <- ok & !is.na(baseline_factor)
-  y <- y[ok]
-  x <- x[ok, , drop = FALSE]
-  fold <- as.character(fold[ok])
-  floor_resid <- floor_resid[ok]
-  baseline_factor <- if (is.null(baseline_factor)) rep("baseline", length(y)) else as.character(baseline_factor[ok])
-  folds <- unique(fold)
-  if (length(y) < min_rows || length(folds) < min_units) {
-    return(list(
-      n_model_rows = length(y), n_fold_units = length(folds), R_oof = NA_real_,
-      R2_oof = NA_real_, R2_oof_floor = NA_real_, dft_floor_mse = mean(floor_resid^2),
-      permutation_null_p = NA_real_, fold_scheme = "insufficient_support"
-    ))
-  }
-  pred <- rep(NA_real_, length(y))
-  base_oof <- rep(NA_real_, length(y))
-  for (f in folds) {
-    test <- fold == f
-    train <- !test
-    train_base <- data.table::data.table(y = y[train], b = baseline_factor[train])[, .(base = mean(y)), by = b]
-    base_map <- stats::setNames(train_base$base, train_base$b)
-    global_base <- mean(y[train])
-    base_oof[test] <- base_map[baseline_factor[test]]
-    base_oof[test][is.na(base_oof[test])] <- global_base
-    y_res <- y[train] - (base_map[baseline_factor[train]] %||% global_base)
-    missing_base <- is.na(y_res)
-    if (any(missing_base)) y_res[missing_base] <- y[train][missing_base] - global_base
-    sc <- atlas_scale_train(x[train, , drop = FALSE], x[test, , drop = FALSE])
-    beta <- atlas_ridge_beta(sc$train, y_res, lambda)
-    pred[test] <- base_oof[test] + as.numeric(sc$test %*% beta)
-  }
-  valid <- is.finite(pred) & is.finite(base_oof)
-  if (sum(valid) < min_rows) {
-    return(list(
-      n_model_rows = sum(valid), n_fold_units = length(folds), R_oof = NA_real_,
-      R2_oof = NA_real_, R2_oof_floor = NA_real_, dft_floor_mse = mean(floor_resid^2),
-      permutation_null_p = NA_real_, fold_scheme = "failed_fit"
-    ))
-  }
-  y <- y[valid]
-  pred <- pred[valid]
-  base_oof <- base_oof[valid]
-  fold <- fold[valid]
-  floor_resid <- floor_resid[valid]
-  contrib_pred <- pred - base_oof
-  y_res <- y - base_oof
-  r <- suppressWarnings(stats::cor(y_res, contrib_pred, use = "complete.obs"))
-  sse <- sum((y - pred)^2)
-  sst <- sum((y - base_oof)^2)
-  floor_mse <- mean(floor_resid^2, na.rm = TRUE)
-  r2 <- 1 - sse / max(sst, .Machine$double.eps)
-  r2_floor <- 1 - max(sse - length(y) * floor_mse, 0) / max(sst - length(y) * floor_mse, .Machine$double.eps)
-  p_null <- NA_real_
-  if (n_perm > 0L && is.finite(r)) {
-    set.seed(7349L)
-    fold_levels <- unique(fold)
-    null_r <- numeric(n_perm)
-    for (i in seq_len(n_perm)) {
-      signs <- sample(c(-1, 1), length(fold_levels), replace = TRUE)
-      names(signs) <- fold_levels
-      null_r[i] <- suppressWarnings(stats::cor(y_res, contrib_pred * signs[fold], use = "complete.obs"))
-    }
-    p_null <- (1 + sum(abs(null_r) >= abs(r), na.rm = TRUE)) / (n_perm + 1)
-  }
-  list(
-    n_model_rows = length(y), n_fold_units = length(folds), R_oof = r,
-    R2_oof = r2, R2_oof_floor = r2_floor, dft_floor_mse = floor_mse,
-    permutation_null_p = p_null, fold_scheme = "leave_fold_unit_out"
-  )
 }
 
 `%||%` <- function(a, b) {
@@ -529,9 +710,9 @@ atlas_baseline_design <- function(baseline_factor) {
 
 atlas_crossfit_block <- function(y, x, fold, floor_resid, baseline_factor = NULL,
                                  lambda = 1e-6, n_perm = 49L, min_rows = 20L,
-                                 min_units = 3L) {
+                                 min_units = 3L, max_cols = NULL) {
   row_ok <- is.finite(y) & is.finite(floor_resid) & !is.na(fold)
-  x_ok <- apply(x, 1L, function(z) all(is.finite(z)))
+  x_ok <- rowSums(!is.finite(x)) == 0L
   if (!is.null(baseline_factor)) row_ok <- row_ok & !is.na(baseline_factor)
   ok <- row_ok & x_ok
   y <- y[ok]
@@ -548,27 +729,67 @@ atlas_crossfit_block <- function(y, x, fold, floor_resid, baseline_factor = NULL
     ))
   }
 
-  mu <- colMeans(x, na.rm = TRUE)
-  sdv <- apply(x, 2L, stats::sd, na.rm = TRUE)
-  sdv[!is.finite(sdv) | sdv == 0] <- 1
-  xs <- sweep(sweep(x, 2L, mu, "-"), 2L, sdv, "/")
-  xs[!is.finite(xs)] <- 0
-  base_design <- atlas_baseline_design(baseline_factor)
-  full_design <- cbind(base_design, xs)
-  pred_base <- atlas_oof_refit_predictions(
-    base_design, y, fold,
-    penalty_diag = rep(0, ncol(base_design))
-  )
-  pred_full <- atlas_oof_refit_predictions(
-    full_design, y, fold,
-    penalty_diag = c(rep(0, ncol(base_design)), rep(lambda, ncol(xs)))
-  )
+  pred_base <- rep(NA_real_, length(y))
+  pred_full <- rep(NA_real_, length(y))
+  all_idx <- seq_along(y)
+  split_idx <- split(seq_along(y), fold, drop = TRUE)
+  baseline_levels <- unique(baseline_factor)
+  group_index <- match(baseline_factor, baseline_levels)
+  n_groups <- length(baseline_levels)
+  y_sum <- sum(y)
+  xsum_all <- colSums(x)
+  xtx_all <- crossprod(x)
+  xy_all <- crossprod(x, y)
+  group_n_all <- tabulate(group_index, nbins = n_groups)
+  group_y_all <- numeric(n_groups)
+  rs_y_all <- rowsum(y, group_index, reorder = FALSE)
+  group_y_all[as.integer(rownames(rs_y_all))] <- as.numeric(rs_y_all)
+  group_xsum_all <- matrix(0, nrow = n_groups, ncol = ncol(x))
+  rs_all <- rowsum(x, group_index, reorder = FALSE)
+  group_xsum_all[as.integer(rownames(rs_all)), ] <- rs_all
+  for (test_idx in split_idx) {
+    train_idx <- all_idx[-test_idx]
+    if (!length(train_idx)) next
+    x_test <- x[test_idx, , drop = FALSE]
+    y_test <- y[test_idx]
+    test_group <- group_index[test_idx]
+    n_train <- length(train_idx)
+    global_base <- (y_sum - sum(y_test)) / n_train
+    group_n_test <- tabulate(test_group, nbins = n_groups)
+    group_y_test <- numeric(n_groups)
+    rs_y_test <- rowsum(y_test, test_group, reorder = FALSE)
+    group_y_test[as.integer(rownames(rs_y_test))] <- as.numeric(rs_y_test)
+    group_xsum_test <- matrix(0, nrow = n_groups, ncol = ncol(x))
+    rs_test <- rowsum(x_test, test_group, reorder = FALSE)
+    group_xsum_test[as.integer(rownames(rs_test)), ] <- rs_test
+    group_n_train <- group_n_all - group_n_test
+    group_y_train <- group_y_all - group_y_test
+    group_base <- ifelse(group_n_train > 0, group_y_train / group_n_train, global_base)
+    test_base <- group_base[test_group]
+    pred_base[test_idx] <- test_base
+    xsum_train <- xsum_all - colSums(x_test)
+    xtx_train <- xtx_all - crossprod(x_test)
+    xy_train <- xy_all - crossprod(x_test, y_test)
+    group_xsum_train <- group_xsum_all - group_xsum_test
+    xy_res_train <- xy_train - matrix(colSums(group_xsum_train * group_base), ncol = 1L)
+    y_res_sum_train <- sum(group_y_train - group_base * group_n_train)
+    pred_full[test_idx] <- test_base + atlas_predict_fold_from_stats(
+      x_test = x_test,
+      xsum_train = xsum_train,
+      xtx_train = xtx_train,
+      xy_res_train = xy_res_train,
+      y_res_sum_train = y_res_sum_train,
+      n_train = n_train,
+      lambda = lambda,
+      max_cols = max_cols
+    )
+  }
   valid <- is.finite(pred_base) & is.finite(pred_full)
   if (sum(valid) < min_rows) {
     return(list(
       n_model_rows = sum(valid), n_fold_units = length(folds), R_oof = NA_real_,
       R2_oof = NA_real_, R2_oof_floor = NA_real_, dft_floor_mse = mean(floor_resid^2),
-      permutation_null_p = NA_real_, fold_scheme = "failed_press_refit"
+      permutation_null_p = NA_real_, fold_scheme = "failed_fold_clean_refit"
     ))
   }
   y <- y[valid]
@@ -599,7 +820,7 @@ atlas_crossfit_block <- function(y, x, fold, floor_resid, baseline_factor = NULL
   list(
     n_model_rows = length(y), n_fold_units = length(folds), R_oof = r,
     R2_oof = r2, R2_oof_floor = r2_floor, dft_floor_mse = floor_mse,
-    permutation_null_p = p_null, fold_scheme = "leave_fold_unit_out_crossproduct_refit"
+    permutation_null_p = p_null, fold_scheme = "leave_fold_unit_out_fold_clean_refit"
   )
 }
 
@@ -613,16 +834,29 @@ atlas_crossfit_t2 <- function(y, x, fold, lambda = 1e-6, min_rows = 20L, min_uni
     return(list(n_model_rows = nrow(y), n_fold_units = length(folds), vector_R2_oof = NA_real_,
                 angular_cosine = NA_real_, norm_recovery_slope = NA_real_, norm_rmse = NA_real_))
   }
-  mu <- colMeans(x, na.rm = TRUE)
-  sdv <- apply(x, 2L, stats::sd, na.rm = TRUE)
-  sdv[!is.finite(sdv) | sdv == 0] <- 1
-  xs <- sweep(sweep(x, 2L, mu, "-"), 2L, sdv, "/")
-  xs[!is.finite(xs)] <- 0
   base_design <- matrix(1, nrow = nrow(y), ncol = 1L)
   colnames(base_design) <- "baseline_intercept"
-  full_design <- cbind(base_design, xs)
-  base <- atlas_oof_refit_predictions(base_design, y, fold, penalty_diag = 0)
-  pred <- atlas_oof_refit_predictions(full_design, y, fold, penalty_diag = c(0, rep(lambda, ncol(xs))))
+  base <- matrix(NA_real_, nrow = nrow(y), ncol = ncol(y))
+  pred <- matrix(NA_real_, nrow = nrow(y), ncol = ncol(y))
+  split_idx <- split(seq_len(nrow(y)), fold, drop = TRUE)
+  for (test_idx in split_idx) {
+    train_idx <- setdiff(seq_len(nrow(y)), test_idx)
+    if (!length(train_idx)) next
+    base_train <- base_design[train_idx, , drop = FALSE]
+    base_test <- base_design[test_idx, , drop = FALSE]
+    beta_base <- atlas_solve(crossprod(base_train), crossprod(base_train, y[train_idx, , drop = FALSE]))
+    base[test_idx, ] <- base_test %*% beta_base
+    xp <- atlas_prepare_train_predictors(
+      x[train_idx, , drop = FALSE],
+      x[test_idx, , drop = FALSE]
+    )
+    full_train <- cbind(base_train, xp$train)
+    full_test <- cbind(base_test, xp$test)
+    penalized <- crossprod(full_train)
+    diag(penalized) <- diag(penalized) + c(0, rep(lambda, ncol(xp$train)))
+    beta_full <- atlas_solve(penalized, crossprod(full_train, y[train_idx, , drop = FALSE]))
+    pred[test_idx, ] <- full_test %*% beta_full
+  }
   okp <- stats::complete.cases(pred)
   y <- y[okp, , drop = FALSE]
   pred <- pred[okp, , drop = FALSE]
@@ -668,85 +902,96 @@ atlas_score_contributors <- function(rows, support, cfg) {
 
   for (i in seq_len(nrow(contrib))) {
     meta <- contrib[i]
-    out_file <- atlas_table(cfg, file.path("contributor_scores", paste0(meta$stem, ".csv")))
-    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-    if (file.exists(out_file)) {
-      score_files <- c(score_files, out_file)
-      next
-    }
-    block <- atlas_load_contributor_block(cfg, meta, row_ids, cfg$max_block_cols)
-    x <- block$x
-    prep_rows[[length(prep_rows) + 1L]] <- data.table::data.table(
-      contributor_id = meta$stem,
-      original_component_layout = meta$component_layout,
-      scored_columns = ncol(x),
-      preprocessing = block$note
-    )
-    res <- list()
-    rix <- 1L
-    for (view in c("within_1p9j", "between_720", "pooled")) {
-      idx_view <- which(
-        if (view == "within_1p9j") supervised_rows$dataset_id == "1p9j"
-        else if (view == "between_720") supervised_rows$dataset_id == "720_static"
-        else rep(TRUE, nrow(supervised_rows))
+    blocks <- atlas_load_contributor_blocks(cfg, meta, row_ids, cfg$max_block_cols)
+    for (block in blocks) {
+      out_file <- atlas_table(cfg, file.path("contributor_scores", paste0(block$contributor_id, ".csv")))
+      dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+      x <- block$x
+      prep_rows[[length(prep_rows) + 1L]] <- data.table::data.table(
+        contributor_id = block$contributor_id,
+        contributor_stem = block$contributor_stem,
+        representation = block$representation,
+        original_component_layout = meta$component_layout,
+        component_layout = block$component_layout,
+        scored_columns = ncol(x),
+        preprocessing = block$note
       )
-      dtv <- supervised_rows[idx_view]
-      xv <- x[idx_view, , drop = FALSE]
-      for (granularity in c("per_residue_type", "pooled_over_residue")) {
-        this_granularity <- granularity
-        cell_vec <- if (granularity == "per_residue_type") dtv$residue_nucleus_id else dtv$pooled_nucleus_id
-        sup <- support[dataset_scope == view & granularity == this_granularity]
-        split_idx <- split(seq_along(cell_vec), cell_vec, drop = TRUE)
-        for (cell_id in sup$cell_id) {
-          this_cell_id <- cell_id
-          srow <- sup[cell_id == this_cell_id]
-          if (!length(split_idx[[cell_id]]) || srow$support_gate %in% c("singleton_shrinkage_only", "shrinkage_only", "descriptive_only")) {
+      if (file.exists(out_file)) {
+        score_files <- c(score_files, out_file)
+        next
+      }
+      res <- list()
+      rix <- 1L
+      for (view in c("within_1p9j", "between_720", "pooled")) {
+        idx_view <- which(
+          if (view == "within_1p9j") supervised_rows$dataset_id == "1p9j"
+          else if (view == "between_720") supervised_rows$dataset_id == "720_static"
+          else rep(TRUE, nrow(supervised_rows))
+        )
+        dtv <- supervised_rows[idx_view]
+        xv <- x[idx_view, , drop = FALSE]
+        for (granularity in c("per_residue_type", "pooled_over_residue")) {
+          this_granularity <- granularity
+          cell_vec <- if (granularity == "per_residue_type") dtv$residue_nucleus_id else dtv$pooled_nucleus_id
+          sup <- support[dataset_scope == view & granularity == this_granularity]
+          split_idx <- split(seq_along(cell_vec), cell_vec, drop = TRUE)
+          for (cell_id in sup$cell_id) {
+            this_cell_id <- cell_id
+            srow <- sup[cell_id == this_cell_id]
+            if (!length(split_idx[[cell_id]]) || srow$support_gate %in% c("singleton_shrinkage_only", "shrinkage_only", "descriptive_only")) {
+              res[[rix]] <- data.table::data.table(
+                dataset_scope = view, granularity = granularity, cell_id = cell_id,
+                residue_scope = srow$residue_scope, nucleus_id = srow$nucleus_id,
+                nucleus_label = srow$nucleus_label, contributor_id = block$contributor_id,
+                contributor_stem = block$contributor_stem, representation = block$representation,
+                mechanism = meta$mechanism, units = meta$units, component_layout = block$component_layout,
+                original_component_layout = meta$component_layout,
+                family_id = meta$family_id, legal_permutation_block = meta$legal_permutation_block,
+                support_gate = srow$support_gate, n_rows = srow$n_rows,
+                n_proteins = srow$n_proteins, n_eff = srow$n_eff,
+                n_model_rows = 0L, n_fold_units = 0L, R_oof = NA_real_,
+                R2_oof = NA_real_, R2_oof_floor = NA_real_,
+                dft_floor_mse = srow$dft_floor_mse, permutation_null_p = NA_real_,
+                fold_scheme = "support_gated_descriptive_only"
+              )
+              rix <- rix + 1L
+              next
+            }
+            jj <- split_idx[[cell_id]]
+            baseline_factor <- if (view == "pooled") dtv$dataset_id[jj] else NULL
+            sc <- atlas_crossfit_block(
+              y = dtv$sigma_iso[jj], x = xv[jj, , drop = FALSE],
+              fold = dtv$fold_id[jj], floor_resid = dtv$dft_floor_resid[jj],
+              baseline_factor = baseline_factor, lambda = cfg$ridge_lambda,
+              n_perm = cfg$null_sign_permutations, min_rows = cfg$min_model_rows,
+              min_units = cfg$min_model_units, max_cols = block$max_cols
+            )
             res[[rix]] <- data.table::data.table(
               dataset_scope = view, granularity = granularity, cell_id = cell_id,
               residue_scope = srow$residue_scope, nucleus_id = srow$nucleus_id,
-              nucleus_label = srow$nucleus_label, contributor_id = meta$stem,
-              mechanism = meta$mechanism, units = meta$units, component_layout = meta$component_layout,
+              nucleus_label = srow$nucleus_label, contributor_id = block$contributor_id,
+              contributor_stem = block$contributor_stem, representation = block$representation,
+              mechanism = meta$mechanism, units = meta$units, component_layout = block$component_layout,
+              original_component_layout = meta$component_layout,
               family_id = meta$family_id, legal_permutation_block = meta$legal_permutation_block,
               support_gate = srow$support_gate, n_rows = srow$n_rows,
               n_proteins = srow$n_proteins, n_eff = srow$n_eff,
-              n_model_rows = 0L, n_fold_units = 0L, R_oof = NA_real_,
-              R2_oof = NA_real_, R2_oof_floor = NA_real_,
-              dft_floor_mse = srow$dft_floor_mse, permutation_null_p = NA_real_,
-              fold_scheme = "support_gated_descriptive_only"
+              n_model_rows = sc$n_model_rows, n_fold_units = sc$n_fold_units,
+              R_oof = sc$R_oof, R2_oof = sc$R2_oof, R2_oof_floor = sc$R2_oof_floor,
+              dft_floor_mse = sc$dft_floor_mse, permutation_null_p = sc$permutation_null_p,
+              fold_scheme = sc$fold_scheme
             )
             rix <- rix + 1L
-            next
           }
-          jj <- split_idx[[cell_id]]
-          baseline_factor <- if (view == "pooled") dtv$dataset_id[jj] else NULL
-          sc <- atlas_crossfit_block(
-            y = dtv$sigma_iso[jj], x = xv[jj, , drop = FALSE],
-            fold = dtv$fold_id[jj], floor_resid = dtv$dft_floor_resid[jj],
-            baseline_factor = baseline_factor, lambda = cfg$ridge_lambda,
-            n_perm = cfg$null_sign_permutations, min_rows = cfg$min_model_rows,
-            min_units = cfg$min_model_units
-          )
-          res[[rix]] <- data.table::data.table(
-            dataset_scope = view, granularity = granularity, cell_id = cell_id,
-            residue_scope = srow$residue_scope, nucleus_id = srow$nucleus_id,
-            nucleus_label = srow$nucleus_label, contributor_id = meta$stem,
-            mechanism = meta$mechanism, units = meta$units, component_layout = meta$component_layout,
-            family_id = meta$family_id, legal_permutation_block = meta$legal_permutation_block,
-            support_gate = srow$support_gate, n_rows = srow$n_rows,
-            n_proteins = srow$n_proteins, n_eff = srow$n_eff,
-            n_model_rows = sc$n_model_rows, n_fold_units = sc$n_fold_units,
-            R_oof = sc$R_oof, R2_oof = sc$R2_oof, R2_oof_floor = sc$R2_oof_floor,
-            dft_floor_mse = sc$dft_floor_mse, permutation_null_p = sc$permutation_null_p,
-            fold_scheme = sc$fold_scheme
-          )
-          rix <- rix + 1L
         }
       }
+      one <- data.table::rbindlist(res, use.names = TRUE, fill = TRUE)
+      atlas_write_csv(one, out_file)
+      score_files <- c(score_files, out_file)
+      rm(x, one)
+      gc()
     }
-    one <- data.table::rbindlist(res, use.names = TRUE, fill = TRUE)
-    atlas_write_csv(one, out_file)
-    score_files <- c(score_files, out_file)
-    rm(block, x, one)
+    rm(blocks)
     gc()
   }
   scores <- data.table::rbindlist(lapply(score_files, data.table::fread), use.names = TRUE, fill = TRUE)
@@ -773,12 +1018,12 @@ atlas_score_t2 <- function(rows, support, cfg) {
   tensor <- contrib[component_layout %in% c("T2_5", "tensor9_raw")]
   supervised_rows <- rows[supervised == TRUE]
   row_ids <- supervised_rows$row_id
-  y_all <- atlas_as_matrix(RcppCNPy::npyLoad(file.path(cfg$input_dir, "targets", "orca_total_T2.npy")))[row_ids + 1L, , drop = FALSE]
+  y_all <- atlas_as_matrix(atlas_npy_load(file.path(cfg$input_dir, "targets", "orca_total_T2.npy")))[row_ids + 1L, , drop = FALSE]
   res <- list()
   rix <- 1L
   for (i in seq_len(nrow(tensor))) {
     meta <- tensor[i]
-    raw <- RcppCNPy::npyLoad(file.path(cfg$input_dir, meta$sidecar))
+    raw <- atlas_npy_load(file.path(cfg$input_dir, meta$sidecar))
     x <- atlas_as_matrix(raw)[row_ids + 1L, , drop = FALSE]
     if (meta$component_layout == "tensor9_raw" && ncol(x) >= 9L) x <- x[, 5:9, drop = FALSE]
     x <- atlas_reduce_block(x, meta, min(cfg$max_block_cols, 5L))$x

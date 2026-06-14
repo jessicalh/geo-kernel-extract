@@ -2,7 +2,7 @@
   "schema_id": "rediscover.mc_lit_csv_columns.v1",
   "scope": "rediscover-local",
   "owner": "src/rediscover",
-  "parent_sdk_catalog": "not modified; python/nmr_extract/_catalog.py remains the producer-SDK home for NPY ArraySpec decisions",
+  "parent_sdk_catalog": "python/nmr_extract/_catalog.py is producer-SDK only; reader-owned sidecar NPY declarations live in h5-reader/src/rediscover/ReaderOutputCatalog.h",
   "carrier": "CSV columns emitted by BroadBackboneSink",
   "mechanism": "bond_anisotropy",
   "frame": "target atom local backbone frame",

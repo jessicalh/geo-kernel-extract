@@ -2659,7 +2659,7 @@ private:
 
 void addColumnSpec(QJsonArray& arr, const QString& array, const QString& name,
                    int index, const QString& units, const QString& irreps,
-                   const QString& mechanism, bool isFeature,
+                   const QString& mechanism,
                    const QString& sign = QString(), const QString& nativeAxis = QStringLiteral("rediscover_target_row")) {
     QJsonObject o;
     o.insert(QStringLiteral("array"), array);
@@ -2668,7 +2668,6 @@ void addColumnSpec(QJsonArray& arr, const QString& array, const QString& name,
     o.insert(QStringLiteral("units"), units);
     o.insert(QStringLiteral("irreps"), irreps);
     o.insert(QStringLiteral("mechanism"), mechanism);
-    o.insert(QStringLiteral("is_feature"), isFeature);
     o.insert(QStringLiteral("sign_convention"), sign);
     o.insert(QStringLiteral("native_axis"), nativeAxis);
     arr.append(o);
@@ -2682,16 +2681,16 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
     QJsonArray cols;
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T0"),
                   QStringLiteral("target_T0"), 0, QStringLiteral("ppm"), QStringLiteral("1x0e"),
-                  QStringLiteral("quantum_reference"), false);
+                  QStringLiteral("quantum_reference"));
     for (int i = 0; i < 3; ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T1"),
                       QStringLiteral("target_T1_%1").arg(i), i, QStringLiteral("ppm"),
-                      QStringLiteral("1o"), QStringLiteral("quantum_reference_diagnostic"), false);
+                      QStringLiteral("1x1e"), QStringLiteral("quantum_reference_diagnostic"));
     }
     for (int i = 0; i < 5; ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_T2"),
                       QStringLiteral("target_T2_%1").arg(i), i, QStringLiteral("ppm"),
-                      QStringLiteral("1x2e"), QStringLiteral("quantum_reference"), false);
+                      QStringLiteral("1x2e"), QStringLiteral("quantum_reference"));
     }
     const QStringList targetSplits = {
         QStringLiteral("dia"),
@@ -2700,18 +2699,18 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
     for (const QString& split : targetSplits) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_%1_T0").arg(split),
                       QStringLiteral("target_%1_T0").arg(split), 0, QStringLiteral("ppm"),
-                      QStringLiteral("1x0e"), QStringLiteral("quantum_reference_split"), false);
+                      QStringLiteral("1x0e"), QStringLiteral("quantum_reference_split"));
         for (int i = 0; i < 3; ++i) {
             addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_%1_T1").arg(split),
                           QStringLiteral("target_%1_T1_%2").arg(split).arg(i), i,
-                          QStringLiteral("ppm"), QStringLiteral("1o"),
-                          QStringLiteral("quantum_reference_split_diagnostic"), false);
+                          QStringLiteral("ppm"), QStringLiteral("1x1e"),
+                          QStringLiteral("quantum_reference_split_diagnostic"));
         }
         for (int i = 0; i < 5; ++i) {
             addColumnSpec(cols, QStringLiteral("per_atom_substrate_target_%1_T2").arg(split),
                           QStringLiteral("target_%1_T2_%2").arg(split).arg(i), i,
                           QStringLiteral("ppm"), QStringLiteral("1x2e"),
-                          QStringLiteral("quantum_reference_split"), false);
+                          QStringLiteral("quantum_reference_split"));
         }
     }
     for (int i = 0; i < kClassicalColumns.size(); ++i) {
@@ -2719,7 +2718,6 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         QString units;
         QString irreps = QStringLiteral("0e");
         QString mechanism = QStringLiteral("geometry");
-        bool feature = true;
         QString sign;
         if (name.contains(QStringLiteral("ring_jb"))) {
             units = QStringLiteral("ppm");
@@ -2784,7 +2782,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
             mechanism = QStringLiteral("aimnet2");
         }
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_classical"), name, i,
-                      units, irreps, mechanism, feature, sign);
+                      units, irreps, mechanism, sign);
     }
     for (int i = 0; i < kRingPathColumns.size(); ++i) {
         const QString name = kRingPathColumns[i];
@@ -2793,7 +2791,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         QString mechanism = QStringLiteral("ring_current");
         QString sign;
         if (name.contains(QStringLiteral("_T1_")) || name.contains(QStringLiteral("total_B"))) {
-            irreps = QStringLiteral("1o");
+            irreps = QStringLiteral("1x1e");
         } else if (name.contains(QStringLiteral("_T2_"))) {
             irreps = QStringLiteral("1x2e");
         }
@@ -2815,7 +2813,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
         if (name.contains(QStringLiteral("shielding")) || name.contains(QStringLiteral("per_type_T")))
             sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_ring_paths"),
-                      name, i, units, irreps, mechanism, true, sign);
+                      name, i, units, irreps, mechanism, sign);
     }
     for (int i = 0; i < kMethodPathColumns.size(); ++i) {
         const QString name = kMethodPathColumns[i];
@@ -2854,34 +2852,29 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
             mechanism = QStringLiteral("charges");
         }
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_method_paths"),
-                      name, i, units, irreps, mechanism, true, sign);
+                      name, i, units, irreps, mechanism, sign);
     }
     for (int i = 0; i < kHbondConditioningColumns.size(); ++i) {
         const QString name = kHbondConditioningColumns[i];
         QString units;
         QString irreps = QStringLiteral("0e");
         QString mechanism = QStringLiteral("conditioning");
-        bool feature = false;
         QString sign;
         if (name.contains(QStringLiteral("larsen_hbond")) && name.contains(QStringLiteral("_T2_"))) {
             units = QStringLiteral("ppm");
             irreps = QStringLiteral("1x2e");
             mechanism = QStringLiteral("larsen_hbond");
-            feature = true;
             sign = QStringLiteral("sigma_ab=-dB_sec_a/dB0_b");
         } else if (name == QStringLiteral("larsen_hbond_water_term")) {
             units = QStringLiteral("ppm");
             mechanism = QStringLiteral("larsen_hbond");
-            feature = true;
         } else if (name.contains(QStringLiteral("hbond_scalars"))) {
             mechanism = QStringLiteral("hbond_geometry");
-            feature = true;
         } else if (name.contains(QStringLiteral("dssp_hbond"))
                    || name.contains(QStringLiteral("dssp_chem"))
                    || name.contains(QStringLiteral("dssp_acceptor"))
                    || name.contains(QStringLiteral("dssp_donor"))) {
             mechanism = QStringLiteral("dssp_hbond_backup");
-            feature = true;
             units = name.contains(QStringLiteral("energy")) ? QStringLiteral("kcal/mol") : QString();
         } else if (name.contains(QStringLiteral("dssp_ss8")) || name.contains(QStringLiteral("dssp_chi"))) {
             mechanism = QStringLiteral("secondary_structure");
@@ -2896,7 +2889,7 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
             mechanism = QStringLiteral("ring_geometry");
         }
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_hbond_conditioning"),
-                      name, i, units, irreps, mechanism, feature, sign);
+                      name, i, units, irreps, mechanism, sign);
     }
     for (int i = 0; i < kConditioningColumns.size(); ++i) {
         const QString name = kConditioningColumns[i];
@@ -2907,19 +2900,19 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
                                   : QStringLiteral("conditioning");
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_conditioning"),
                       name, i, units, QStringLiteral("0e"),
-                      mechanism, false);
+                      mechanism);
     }
     for (int i = 0; i < kDominanceColumns.size(); ++i) {
         const QString name = kDominanceColumns[i];
         const QString units = name.startsWith(QStringLiteral("gap_to_2nd")) ? QStringLiteral("A") : QString();
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_features_dominance"),
                       name, i, units, QStringLiteral("0e"),
-                      QStringLiteral("isolation"), false);
+                      QStringLiteral("isolation"));
     }
     for (int i = 0; i < kMagnitudeColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_driver_modulation_by_atom"),
                       kMagnitudeColumns[i], i, QString(), QStringLiteral("0e"),
-                      QStringLiteral("conditioning"), false, QString(),
+                      QStringLiteral("conditioning"), QString(),
                       QStringLiteral("atom"));
     }
     for (int i = 0; i < kPartitionBinColumns.size(); ++i) {
@@ -2932,35 +2925,35 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
             family = QStringLiteral("driver_magnitude_quintile");
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_partition_bins"),
                       kPartitionBinColumns[i], i, QStringLiteral("bin_id"),
-                      QStringLiteral("0e"), family, false);
+                      QStringLiteral("0e"), family);
     }
     for (int i = 0; i < kDominanceBinColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_dominance_bins"),
                       kDominanceBinColumns[i], i, QStringLiteral("bin_id"),
-                      QStringLiteral("0e"), QStringLiteral("dominance_quintile"), false);
+                      QStringLiteral("0e"), QStringLiteral("dominance_quintile"));
     }
     for (int i = 0; i < kBackboneAuditColumns.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_backbone_audit"),
                       kBackboneAuditColumns[i], i, QString(), QStringLiteral("audit"),
-                      QStringLiteral("provenance_qc"), false);
+                      QStringLiteral("provenance_qc"));
     }
     if (cfg.emit_embedding) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_aimnet2_embedding"),
                       QStringLiteral("embedding_000..255"), 0, QString(), QStringLiteral("256x0e"),
-                      QStringLiteral("aimnet2"), true);
+                      QStringLiteral("aimnet2"));
     }
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("ff14sb_charge"), 52, QStringLiteral("e"),
-                  QStringLiteral("0e"), QStringLiteral("charges"), true);
+                  QStringLiteral("0e"), QStringLiteral("charges"));
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("ff14sb_charge_present"), 53, QString(),
-                  QStringLiteral("0e"), QStringLiteral("provenance_qc"), false);
+                  QStringLiteral("0e"), QStringLiteral("provenance_qc"));
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("mopac_welford_mean_charge"), 54, QStringLiteral("e"),
-                  QStringLiteral("0e"), QStringLiteral("charges"), true);
+                  QStringLiteral("0e"), QStringLiteral("charges"));
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("mopac_welford_mean_charge_present"), 55, QString(),
-                  QStringLiteral("0e"), QStringLiteral("provenance_qc"), false);
+                  QStringLiteral("0e"), QStringLiteral("provenance_qc"));
     const QStringList rowPresentCols = {
         QStringLiteral("hbond_count_present"),
         QStringLiteral("hbond_geometry_present"),
@@ -2973,20 +2966,20 @@ bool writeColumnSpecs(const QString& outDir, const PerAtomSubstrateConfig& cfg) 
     for (int i = 0; i < rowPresentCols.size(); ++i) {
         addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                       rowPresentCols[i], 56 + i, QString(), QStringLiteral("0e"),
-                      QStringLiteral("provenance_qc"), false);
+                      QStringLiteral("provenance_qc"));
     }
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("eeq_charge"), 67, QStringLiteral("e"),
-                  QStringLiteral("0e"), QStringLiteral("eeq"), true);
+                  QStringLiteral("0e"), QStringLiteral("eeq"));
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("eeq_charge_present"), 68, QString(),
-                  QStringLiteral("0e"), QStringLiteral("provenance_qc"), false);
+                  QStringLiteral("0e"), QStringLiteral("provenance_qc"));
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("eeq_coordination_number"), 69, QString(),
-                  QStringLiteral("0e"), QStringLiteral("eeq"), true);
+                  QStringLiteral("0e"), QStringLiteral("eeq"));
     addColumnSpec(cols, QStringLiteral("per_atom_substrate_rows"),
                   QStringLiteral("eeq_coordination_number_present"), 70, QString(),
-                  QStringLiteral("0e"), QStringLiteral("provenance_qc"), false);
+                  QStringLiteral("0e"), QStringLiteral("provenance_qc"));
     root.insert(QStringLiteral("columns"), cols);
     QSaveFile f(QStringLiteral("%1/per_atom_substrate_column_specs.json").arg(outDir));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
@@ -3398,29 +3391,13 @@ private:
 }  // namespace
 
 QStringList PerAtomSubstrateSidecars(const PerAtomSubstrateConfig& config) {
-    QStringList out = {
-        QStringLiteral("per_atom_substrate_target_T2.npy"),
-        QStringLiteral("per_atom_substrate_target_T0.npy"),
-        QStringLiteral("per_atom_substrate_target_T1.npy"),
-        QStringLiteral("per_atom_substrate_target_dia_T0.npy"),
-        QStringLiteral("per_atom_substrate_target_dia_T1.npy"),
-        QStringLiteral("per_atom_substrate_target_dia_T2.npy"),
-        QStringLiteral("per_atom_substrate_target_para_T0.npy"),
-        QStringLiteral("per_atom_substrate_target_para_T1.npy"),
-        QStringLiteral("per_atom_substrate_target_para_T2.npy"),
-        QStringLiteral("per_atom_substrate_features_classical.npy"),
-        QStringLiteral("per_atom_substrate_features_ring_paths.npy"),
-        QStringLiteral("per_atom_substrate_features_method_paths.npy"),
-        QStringLiteral("per_atom_substrate_features_hbond_conditioning.npy"),
-        QStringLiteral("per_atom_substrate_features_conditioning.npy"),
-        QStringLiteral("per_atom_substrate_features_dominance.npy"),
-        QStringLiteral("per_atom_substrate_partition_bins.npy"),
-        QStringLiteral("per_atom_substrate_dominance_bins.npy"),
-        QStringLiteral("per_atom_substrate_driver_modulation_by_atom.npy"),
-        QStringLiteral("per_atom_substrate_backbone_audit.npy"),
-    };
+    QStringList out;
+    out.reserve(static_cast<int>(kPerAtomSubstrateAlwaysSidecars.size() + 1));
+    for (const std::string_view stem : kPerAtomSubstrateAlwaysSidecars)
+        out << QString::fromLatin1(stem.data(), static_cast<qsizetype>(stem.size()));
     if (config.emit_embedding)
-        out << QStringLiteral("per_atom_substrate_aimnet2_embedding.npy");
+        out << QString::fromLatin1(kPerAtomSubstrateEmbeddingSidecar.data(),
+                                   static_cast<qsizetype>(kPerAtomSubstrateEmbeddingSidecar.size()));
     return out;
 }
 

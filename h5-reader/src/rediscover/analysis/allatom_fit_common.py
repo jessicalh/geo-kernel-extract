@@ -819,6 +819,26 @@ def specs_for_array(specs: dict[str, object], array_name: str) -> dict[str, dict
     return {str(c["column"]): c for c in specs["columns"] if c["array"] == array_name}
 
 
+def expected_width_from_specs(specs: dict[str, object], array_name: str) -> int:
+    entries = [c for c in specs["columns"] if c["array"] == array_name]
+    if not entries:
+        raise SystemExit(f"FATAL: column specs missing array {array_name}")
+    if len(entries) == 1:
+        irreps = str(entries[0].get("irreps", ""))
+        prefix = irreps.split("x", 1)[0]
+        if prefix.isdigit():
+            return int(prefix)
+        column = str(entries[0].get("column", ""))
+        if ".." in column:
+            upper = column.rsplit("..", 1)[1]
+            if upper.isdigit():
+                return int(upper) + 1
+    try:
+        return max(int(c["index"]) for c in entries) + 1
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(f"FATAL: column specs for {array_name} do not carry integer indices") from exc
+
+
 def get_classical_columns(
     classical: np.ndarray,
     classical_specs: dict[str, dict[str, object]],
@@ -1001,15 +1021,22 @@ def input_acceptance_checks(data: dict[str, object], substrate_dir: Path) -> tup
     n_frames = int(manifest.get("n_dft_frames", -1))
     dense_row_ids = np.array_equal(rows["row_id"].to_numpy(int), np.arange(n_rows, dtype=int))
     row_contract = bool(dense_row_ids and np.all(rows["row_id"].to_numpy(int) == rows["frame_slot"].to_numpy(int) * n_atoms + rows["atom_index"].to_numpy(int)))
+    expected_widths = {
+        "per_atom_substrate_target_T2": expected_width_from_specs(specs, "per_atom_substrate_target_T2"),
+        "per_atom_substrate_features_classical": expected_width_from_specs(specs, "per_atom_substrate_features_classical"),
+        "per_atom_substrate_features_conditioning": expected_width_from_specs(specs, "per_atom_substrate_features_conditioning"),
+        "per_atom_substrate_driver_modulation_by_atom": expected_width_from_specs(specs, "per_atom_substrate_driver_modulation_by_atom"),
+        "per_atom_substrate_aimnet2_embedding": expected_width_from_specs(specs, "per_atom_substrate_aimnet2_embedding"),
+    }
     shapes_ok = (
         n_atoms == 846
         and n_frames == 660
         and n_rows == 558_360
-        and target_T2.shape == (n_rows, 5)
-        and classical.shape == (n_rows, 45)
-        and conditioning.shape == (n_rows, 26)
-        and modulation.shape == (n_atoms, 9)
-        and embedding.shape == (n_rows, 256)
+        and target_T2.shape == (n_rows, expected_widths["per_atom_substrate_target_T2"])
+        and classical.shape == (n_rows, expected_widths["per_atom_substrate_features_classical"])
+        and conditioning.shape == (n_rows, expected_widths["per_atom_substrate_features_conditioning"])
+        and modulation.shape == (n_atoms, expected_widths["per_atom_substrate_driver_modulation_by_atom"])
+        and embedding.shape == (n_rows, expected_widths["per_atom_substrate_aimnet2_embedding"])
     )
     classical_specs = specs_for_array(specs, "per_atom_substrate_features_classical")
     row_spec_cols = {c["column"] for c in specs["columns"] if c["array"] == "per_atom_substrate_rows"}
@@ -1048,6 +1075,7 @@ def input_acceptance_checks(data: dict[str, object], substrate_dir: Path) -> tup
         "relationship_kind": manifest.get("relationship_kind"),
         "shape": {"n_atoms": n_atoms, "n_dft_frames": n_frames, "rows": n_rows},
         "expected_shape_846x660": shapes_ok,
+        "expected_widths_from_column_specs": expected_widths,
         "row_contract": row_contract,
         "charge_complete_rows_manifest": manifest_charge_rows,
         "charge_complete_rows_used": charge_complete_rows,
@@ -2426,4 +2454,3 @@ def fit_stage_checks(audit: dict[str, object], score_table: pd.DataFrame, curves
         "no_condition_uses_dft_target_residual_or_coefficients": True,
         "thin_bins_excluded_from_favorable_shortlist": not shortlist_thin,
     }
-

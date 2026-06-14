@@ -68,7 +68,17 @@ public:
     static StructuredResult
     ReadRawBytes(const QString& path, std::vector<unsigned char>& out_bytes, std::size_t& out_record_size);
 
-    // ── 2-D / 1-D numeric read with dtype widening ──────────────────
+    // ── Numeric reads with dtype widening ───────────────────────────
+    // General numeric result preserving the full NPY shape, for reader-owned
+    // payloads such as rank-3 tensor sidecars.
+    struct NumericArray {
+        bool ok = false;
+        QString error;                    // empty on success
+        std::vector<std::size_t> shape;    // header shape, unchanged
+        std::string descr;                 // verbatim dtype descr, for diagnostics
+        std::vector<double> data;          // row-major flattened payload
+    };
+
     // Result of ReadArrayWidened: a plain (non-structured) NPY of rank 1 or 2,
     // every dtype widened element-wise to double, row-major.
     struct WidenedArray {
@@ -80,14 +90,14 @@ public:
         std::vector<double> data;  // size == rows * cols, row-major
     };
 
-    // Read a plain numeric NPY (the per-frame calculator arrays) of rank 1 or 2
-    // and widen every element to double. Supports float32/64, int8/16/32/64,
-    // uint8/16/32/64 (little-endian — the reader's contract); structured dtypes
-    // and rank>2 fail loud via ErrorBus. This is the per-frame loader's array
-    // primitive; the ReadStructured overload above stays for the 1-D sidecar
-    // record arrays. The header shape is authoritative for (rows, cols) — the
-    // field catalog's `cols` is only a cross-check (and drifts, e.g.
-    // gromacs_energy).
+    // Read a plain numeric NPY of any positive rank and widen every element to
+    // double. Supports float32/64, int8/16/32/64, uint8/16/32/64 (little-endian
+    // — the reader's contract); structured dtypes fail loud via ErrorBus.
+    static NumericArray ReadNumericArrayWidened(const QString& path);
+
+    // Rank-1/rank-2 compatibility adapter for the per-frame producer arrays.
+    // The header shape is authoritative for (rows, cols) — the field catalog's
+    // `cols` is only a cross-check (and drifts, e.g. gromacs_energy).
     static WidenedArray ReadArrayWidened(const QString& path);
 
 private:

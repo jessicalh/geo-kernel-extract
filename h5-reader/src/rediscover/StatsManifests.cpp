@@ -80,7 +80,6 @@ QJsonArray schemaJson(const std::vector<RowColumnSpec>& schema, const RowDesignS
         o.insert(QStringLiteral("irrep"), c.irrep);
         o.insert(QStringLiteral("native_axis"), axisName(c.nativeAxis));
         o.insert(QStringLiteral("time_varying"), c.timeVarying);
-        o.insert(QStringLiteral("is_feature"), c.isFeature);
         o.insert(QStringLiteral("populated_count"), static_cast<double>(populatedCountAt(stats, i)));
         cols.push_back(o);
     }

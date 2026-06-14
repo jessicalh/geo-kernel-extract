@@ -119,7 +119,7 @@ void writeAllAtomFixture(const QString& dir) {
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j) flatRaw.push_back(raw(i, j));
     QVERIFY(writeNpy<double>(QStringLiteral("%1/all_atom_equivariant_target_raw.npy").arg(dir),
-                             {1, 9}, flatRaw, QByteArray("<f8")));
+                             {1, 3, 3}, flatRaw, QByteArray("<f8")));
 }
 
 }  // namespace

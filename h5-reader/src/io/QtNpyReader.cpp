@@ -292,13 +292,13 @@ QtNpyReader::ReadRawBytes(const QString& path, std::vector<unsigned char>& out_b
 }
 
 
-// ── 2-D / 1-D numeric read with dtype widening ──────────────────────
-QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
-    WidenedArray r;
+// ── Numeric read with dtype widening ────────────────────────────────
+QtNpyReader::NumericArray QtNpyReader::ReadNumericArrayWidened(const QString& path) {
+    NumericArray r;
 
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
-        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: could not open %1").arg(path);
+        r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: could not open %1").arg(path);
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
                                                 QStringLiteral("QtNpyReader"), r.error, path);
         return r;
@@ -312,20 +312,9 @@ QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
         return r;
     }
     r.descr = hdr.descr_substring;
-
-    // Rank → (rows, cols). 1-D is rows x 1; the caller reshapes a Protein-axis
-    // 1-D row if needed.
-    std::size_t rows = 0;
-    std::size_t cols = 0;
-    if (hdr.shape.size() == 1) {
-        rows = hdr.shape[0];
-        cols = 1;
-    } else if (hdr.shape.size() == 2) {
-        rows = hdr.shape[0];
-        cols = hdr.shape[1];
-    } else {
-        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: rank %1 unsupported in %2")
-                      .arg(hdr.shape.size())
+    r.shape = hdr.shape;
+    if (r.shape.empty()) {
+        r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: scalar shape unsupported in %1")
                       .arg(path);
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
                                                 QStringLiteral("QtNpyReader"), r.error, path);
@@ -335,7 +324,7 @@ QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
     // Reject structured dtypes (list-of-tuples descr) — those are sidecar
     // records read via ReadStructured, not numeric calculator arrays.
     if (hdr.descr_substring.find('[') != std::string::npos) {
-        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: structured dtype %1 in %2")
+        r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: structured dtype %1 in %2")
                       .arg(QString::fromStdString(hdr.descr_substring), path);
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
                                                 QStringLiteral("QtNpyReader"), r.error, path);
@@ -362,19 +351,20 @@ QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
     }
     const bool supported = (kind == 'f' && (esize == 4 || esize == 8)) ||
                            ((kind == 'i' || kind == 'u' || kind == 'b') &&
-                            (esize == 1 || esize == 2 || esize == 4 || esize == 8));
+	                           (esize == 1 || esize == 2 || esize == 4 || esize == 8));
     if (!supported) {
-        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: unsupported dtype %1 in %2")
+        r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: unsupported dtype %1 in %2")
                       .arg(QString::fromStdString(hdr.descr_substring), path);
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
                                                 QStringLiteral("QtNpyReader"), r.error, path);
         return r;
     }
 
-    const std::size_t n = rows * cols;
+    std::size_t n = 1;
+    for (const std::size_t dim : r.shape) n *= dim;
     const std::size_t raw = static_cast<std::size_t>(bytes.size()) - hdr.data_offset;
     if (raw != n * static_cast<std::size_t>(esize)) {
-        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: byte count %1 != rows*cols*esize %2 in %3")
+        r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: byte count %1 != product(shape)*esize %2 in %3")
                       .arg(raw)
                       .arg(n * static_cast<std::size_t>(esize))
                       .arg(path);
@@ -434,8 +424,36 @@ QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
         r.data[i] = v;
     }
 
-    r.rows = rows;
-    r.cols = cols;
+    r.ok = true;
+    return r;
+}
+
+// ── 2-D / 1-D numeric compatibility adapter ────────────────────────
+QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
+    WidenedArray r;
+    const NumericArray numeric = ReadNumericArrayWidened(path);
+    if (!numeric.ok) {
+        r.error = numeric.error;
+        return r;
+    }
+    r.descr = numeric.descr;
+
+    if (numeric.shape.size() == 1) {
+        r.rows = numeric.shape[0];
+        r.cols = 1;
+    } else if (numeric.shape.size() == 2) {
+        r.rows = numeric.shape[0];
+        r.cols = numeric.shape[1];
+    } else {
+        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: rank %1 unsupported in %2")
+                      .arg(numeric.shape.size())
+                      .arg(path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
+
+    r.data = numeric.data;
     r.ok = true;
     return r;
 }

@@ -10,10 +10,10 @@ Writes li_data.json keyed "RES|ATOM|view".
 """
 import numpy as np, csv, collections, json, os
 
-E = "/shared/2026Thesis/nmr-shielding-emit-build/output/consolidated_fp_emit_20260612T000000Z"
-T = "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables"
-CACHE = "/tmp/li_rows_cache.npz"
-OUT = "/shared/2026Thesis/atlas_report_20260612/li_data.json"
+E = os.environ.get("EMIT_DIR", "/shared/2026Thesis/nmr-shielding-emit-build/output/consolidated_fp_emit_20260612T000000Z")
+T = os.environ.get("ATLAS_TABLES", "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables")
+CACHE = os.environ.get("LI_CACHE", "/tmp/li_rows_cache.npz")
+OUT = os.environ.get("LI_OUT", "/shared/2026Thesis/atlas_report_20260612/li_data.json")
 
 def fnum(x):
     try: return float(x)

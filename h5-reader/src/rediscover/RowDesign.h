@@ -37,7 +37,6 @@ struct RowColumnSpec {
     RowDatasetScope scope = RowDatasetScope::Both;
     double nullSentinel = 0.0;
     bool signFlipLegal = false;
-    bool isFeature = true;
 };
 
 struct RowDesignRow {

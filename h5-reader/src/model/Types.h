@@ -521,9 +521,8 @@ enum class QtFfAtomType : int16_t {
 //    against QtTrajectoryH5 — flagged, not assumed.
 //
 // Parity: T1 (antisymmetric pseudovector) is axial -> e3nn 1e (even); the
-// whole tensor is 0e+1e+2e (all-even), per _catalog.py. The SDK _tensors.py
-// declares 1o for T1 — a library-side inconsistency (a definite-parity tensor
-// cannot mix 1o with 0e/2e); the catalog's 1e is correct.
+// whole tensor is 0e+1e+2e (all-even), matching _catalog.py and the SDK
+// _tensors.py SphericalTensor irreps ("1x0e + 1x1e + 1x2e").
 // ============================================================================
 
 struct SphericalTensor {

@@ -13,7 +13,7 @@ Usage: make_iupac_report.py --out <dir> --figdir <rama dir> --li <li_data.json> 
 """
 import argparse, csv, collections, json, os, glob
 
-T = "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables"
+T = os.environ.get("ATLAS_TABLES", "/shared/2026Thesis/nmr-shielding-emit-build/output/contribution_atlas_20260612T000000Z/tables")
 AA = ["ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS","ILE","LEU","LYS",
       "MET","PHE","PRO","SER","THR","TRP","TYR","VAL"]
 BB = ["N","CA","C","O","H","HA"]
@@ -32,6 +32,7 @@ TOOL = [
  ("hm", "Haigh-Mallion ring-current kernel (ours): ring-current geometry factor"),
  ("mc", "McConnell bond-anisotropy kernel (ours): anisotropic susceptibility of nearby bonds"),
  ("ff_coulomb", "Force-field point charges: Coulomb field / energy"),
+ ("ff", "Force-field (MM) parameters: per-atom partial charge / Poisson-Boltzmann radius"),
  ("coulomb", "Force-field point charges: Coulomb field / energy"),
  ("eeq", "EEQ charge model: electronegativity-equilibrated partial charges / coordination number"),
  ("dssp", "DSSP: secondary-structure assignment and backbone H-bond geometry"),
@@ -40,7 +41,9 @@ TOOL = [
  ("atom_sasa", "Shrake-Rupley: solvent-accessible surface area"),
  ("water", "Explicit solvent: local water field / polarization"),
  ("disp", "Dispersion (D4-type): per-type dispersion term"),
- ("pq", "pi-quadrupole kernel (ours)"),
+ ("pq", "pi-quadrupole kernel (ours): aromatic quadrupole geometry factor (3cos^2theta-1)/r^4 at the site"),
+ ("larsen", "Larsen ProCS15-grid H-bond term (ours): per-class backbone N-H / C=O hydrogen-bond shielding from the ProCS15 lookup"),
+ ("hbond", "H-bond kernel (ours): donor-H..acceptor geometry, the angular/distance scalar (3cos^2theta-1)/r^3 at the site"),
  ("omega", "Geometry: backbone omega dihedral / deviation"),
  ("phi", "Geometry: backbone phi"), ("psi", "Geometry: backbone psi"),
  ("pyramid", "Geometry: pyramidalisation"), ("planar", "Geometry: planarity deviation"),
@@ -59,6 +62,7 @@ PHYS = {
  "ring_efg": "Electric field / gradient contributed specifically by aromatic-ring atoms.",
  "ring_dispersion": "Dispersion interaction with aromatic rings (a weak van der Waals proxy).",
  "hbond_kernel": "Hydrogen-bond geometry / strength at the site, which shifts sigma (especially for H, N, O).",
+ "hbond_grid": "Backbone N-H / C=O hydrogen-bond geometry mapped through the ProCS15 empirical shielding surface (a per-class lookup), which shifts sigma at backbone N, H, and C=O.",
  "topology": "An identity or positional label (residue, element, locant) -- a descriptor, not a physical field.",
 }
 
@@ -126,6 +130,8 @@ def main():
     ctxs = []
     for p in glob.glob(os.path.join(args.figdir, "*.png")):
         base = os.path.basename(p)[:-4]
+        if base.endswith("_chi"):
+            continue
         if "_" not in base: continue
         res, atom = base.split("_", 1)
         if only and res not in only: continue
@@ -190,18 +196,35 @@ def main():
             L += view_table(res, atom, "between_720", "Between proteins (720)")
             L += view_table(res, atom, "within_1p9j", "Within protein (1P9J)")
             if os.path.exists(fig):
-                L.append(r"\begin{figure}[H]\centering\includegraphics[width=0.58\textwidth]{\detokenize{%s}}" % fig)
-                L.append(r"\caption{$\sigma$ vs.\ $(\varphi,\psi)$ --- %s:%s (pooled).}\end{figure}" % (esc(res), esc(atom)))
+                chi_fig = os.path.join(args.figdir, f"{res}_{atom}_chi.png")
+                if os.path.exists(chi_fig):
+                    L.append(
+                        r"\begin{figure}[H]\centering"
+                        r"\includegraphics[width=0.52\textwidth]{\detokenize{%s}}\\[3pt]"
+                        r"\includegraphics[width=0.52\textwidth]{\detokenize{%s}}"
+                        % (fig, chi_fig)
+                    )
+                    L.append(
+                        r"\caption{$\sigma$ vs.\ $(\varphi,\psi)$ and sidechain $\chi$ --- %s:%s (pooled).}\end{figure}"
+                        % (esc(res), esc(atom))
+                    )
+                else:
+                    L.append(r"\begin{figure}[H]\centering\includegraphics[width=0.58\textwidth]{\detokenize{%s}}" % fig)
+                    L.append(r"\caption{$\sigma$ vs.\ $(\varphi,\psi)$ --- %s:%s (pooled).}\end{figure}" % (esc(res), esc(atom)))
             n += 1
         if stop: break
 
     # glossary
     L.append(r"\clearpage\section*{Glossary of input fields}")
     L.append(r"\small Contributors that appear in this atlas: the field, the tool that observed it "
-             r"and what that tool measures, and the physical mechanism relating it to the shielding $\sigma$. "
-             r"Linear-independence groups are empirical (sample collinearity), not claims of physical independence.\\[4pt]")
+             r"and what that tool measures, and the \emph{known/hypothesised physical pathway} by which it is "
+             r"\emph{associated} with the shielding $\sigma$. The $R$ / $R^2$ in the tables are "
+             r"\textbf{correlational} --- co-variation within this dataset; neither $R$ nor $R^2$ implies "
+             r"causation --- and the pathway column is textbook physics, \emph{not} a mechanism established by "
+             r"this atlas. Linear-independence groups are empirical (sample collinearity), not claims of "
+             r"physical independence.\\[4pt]")
     L.append(r"\begin{longtable}{p{3.5cm}p{6.0cm}p{6.0cm}}\toprule "
-             r"Field & Tool \& what it observes & Physics link to $\sigma$\\\midrule\endhead")
+             r"Field & Tool \& what it observes & Physical pathway to $\sigma$ (hypothesis)\\\midrule\endhead")
     prev_tool = prev_phys = None
     for cid in sorted(used_cids, key=lambda c: (mech.get(c, "zzz"), c)):
         idtex = cid.replace("_", r"\_\allowbreak{}")   # break long names at underscores
