@@ -22,6 +22,8 @@
 
 namespace h5reader::rediscover {
 
+constexpr std::size_t kAimnet2FeatureEmbeddingDims = 256;
+
 using model::Mat3;
 using model::SphericalTensor;
 using model::Vec3;
@@ -69,7 +71,7 @@ struct Aimnet2FeatureStats {
     std::size_t charge_present = 0;
     std::size_t crg_present = 0;
     std::size_t embedding_present = 0;
-    std::size_t embedding_dims = 256;
+    std::size_t embedding_dims = kAimnet2FeatureEmbeddingDims;
 };
 
 bool FiniteAimnetVec3(const Vec3& v);
@@ -77,7 +79,7 @@ bool FiniteAimnetVec3(const Vec3& v);
 class Aimnet2FeatureSink {
 public:
     Aimnet2FeatureSink(const QString& outDir, const QString& caseName,
-                       std::size_t embeddingDims = 256);
+                       std::size_t embeddingDims = kAimnet2FeatureEmbeddingDims);
     ~Aimnet2FeatureSink();
 
     bool Ok() const { return ok_; }
@@ -98,7 +100,7 @@ private:
     bool ok_ = false;
     std::size_t rows_ = 0;
     int64_t nextRowId_ = 0;
-    std::size_t embeddingDims_ = 256;
+    std::size_t embeddingDims_ = kAimnet2FeatureEmbeddingDims;
 
     std::vector<double> crgVectorLocal_;     // (rows, 3)
     std::vector<double> crgVectorLab_;       // (rows, 3), audit payload

@@ -3391,29 +3391,13 @@ private:
 }  // namespace
 
 QStringList PerAtomSubstrateSidecars(const PerAtomSubstrateConfig& config) {
-    QStringList out = {
-        QStringLiteral("per_atom_substrate_target_T2.npy"),
-        QStringLiteral("per_atom_substrate_target_T0.npy"),
-        QStringLiteral("per_atom_substrate_target_T1.npy"),
-        QStringLiteral("per_atom_substrate_target_dia_T0.npy"),
-        QStringLiteral("per_atom_substrate_target_dia_T1.npy"),
-        QStringLiteral("per_atom_substrate_target_dia_T2.npy"),
-        QStringLiteral("per_atom_substrate_target_para_T0.npy"),
-        QStringLiteral("per_atom_substrate_target_para_T1.npy"),
-        QStringLiteral("per_atom_substrate_target_para_T2.npy"),
-        QStringLiteral("per_atom_substrate_features_classical.npy"),
-        QStringLiteral("per_atom_substrate_features_ring_paths.npy"),
-        QStringLiteral("per_atom_substrate_features_method_paths.npy"),
-        QStringLiteral("per_atom_substrate_features_hbond_conditioning.npy"),
-        QStringLiteral("per_atom_substrate_features_conditioning.npy"),
-        QStringLiteral("per_atom_substrate_features_dominance.npy"),
-        QStringLiteral("per_atom_substrate_partition_bins.npy"),
-        QStringLiteral("per_atom_substrate_dominance_bins.npy"),
-        QStringLiteral("per_atom_substrate_driver_modulation_by_atom.npy"),
-        QStringLiteral("per_atom_substrate_backbone_audit.npy"),
-    };
+    QStringList out;
+    out.reserve(static_cast<int>(kPerAtomSubstrateAlwaysSidecars.size() + 1));
+    for (const std::string_view stem : kPerAtomSubstrateAlwaysSidecars)
+        out << QString::fromLatin1(stem.data(), static_cast<qsizetype>(stem.size()));
     if (config.emit_embedding)
-        out << QStringLiteral("per_atom_substrate_aimnet2_embedding.npy");
+        out << QString::fromLatin1(kPerAtomSubstrateEmbeddingSidecar.data(),
+                                   static_cast<qsizetype>(kPerAtomSubstrateEmbeddingSidecar.size()));
     return out;
 }
 

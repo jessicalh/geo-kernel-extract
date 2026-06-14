@@ -7,7 +7,6 @@ bool excludedGroup(io::FieldGroup g) {
     switch (g) {
     case io::FieldGroup::Tripeptide:
     case io::FieldGroup::Delta:
-    case io::FieldGroup::Rediscover:
     case io::FieldGroup::McConnellLegacy:
     case io::FieldGroup::MOPACMcConnellLegacy:
     case io::FieldGroup::MOPACCoulombLegacy:

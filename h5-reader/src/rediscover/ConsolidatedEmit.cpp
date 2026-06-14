@@ -79,9 +79,6 @@ QString axisName(io::NativeAxis axis) {
     case io::NativeAxis::Atom: return QStringLiteral("Atom");
     case io::NativeAxis::RingContributionPair: return QStringLiteral("RingContributionPair");
     case io::NativeAxis::AromaticRing: return QStringLiteral("AromaticRing");
-    case io::NativeAxis::RediscoverSourceRow: return QStringLiteral("RediscoverSourceRow");
-    case io::NativeAxis::RediscoverAggregatedRow: return QStringLiteral("RediscoverAggregatedRow");
-    case io::NativeAxis::RediscoverTargetRow: return QStringLiteral("RediscoverTargetRow");
     case io::NativeAxis::Protein: return QStringLiteral("Protein");
     case io::NativeAxis::Bond: return QStringLiteral("Bond");
     case io::NativeAxis::MOPACBondNeighborPair: return QStringLiteral("MOPACBondNeighborPair");

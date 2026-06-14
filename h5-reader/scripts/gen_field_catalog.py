@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Generate QtFieldCatalog.gen.h from python/nmr_extract/_catalog.py.
+"""Generate producer QtFieldCatalog.gen.h from python/nmr_extract/_catalog.py.
 
-This is the h5-reader's no-strings load boundary. `_catalog.py` is the
-single source of truth for every NPY the C++ extractor can emit; this
-script mirrors its CATALOG into a typed C++ table so the reader resolves
-a filename stem to a typed FieldSpec exactly once (FindFieldByStem) and
-then dispatches on the FieldKind / FieldGroup / NativeAxis enums.
+This is the h5-reader's producer no-strings load boundary. `_catalog.py`
+is the SDK source of truth for producer-owned NPY arrays; reader-owned
+rediscover/statistics sidecars are declared in
+src/rediscover/ReaderOutputCatalog.h. This script mirrors the producer
+CATALOG into a typed C++ table so the reader resolves a producer filename
+stem to a typed FieldSpec exactly once (FindFieldByStem) and then
+dispatches on the FieldKind / FieldGroup / NativeAxis enums.
 
 Faithful-by-construction: it parses _catalog.py's CATALOG with the
 stdlib `ast` module rather than re-typing ~70 entries by hand, so a
@@ -134,10 +136,10 @@ def main() -> int:
     w(f"// {len(entries)} fields / {len(groups)} groups / {len(axes)} axes. DO NOT EDIT BY HAND.")
     w("// Regenerate: python3 h5-reader/scripts/gen_field_catalog.py")
     w("//")
-    w("// The no-strings load boundary. A filename stem is resolved to a typed")
-    w("// FieldSpec exactly once (FindFieldByStem); everything downstream uses the")
-    w("// FieldKind / FieldGroup / NativeAxis enums. wrapper/irreps/units/mechanism")
-    w("// are interop + display metadata (e3nn irrep string etc.), never identity.")
+    w("// The producer no-strings load boundary. A producer filename stem is resolved")
+    w("// to a typed FieldSpec exactly once (FindFieldByStem); reader-owned sidecars")
+    w("// are declared in rediscover/ReaderOutputCatalog.h. wrapper/irreps/units/")
+    w("// mechanism are interop + display metadata, never identity.")
     w("#pragma once")
     w("#include <array>")
     w("#include <cstdint>")

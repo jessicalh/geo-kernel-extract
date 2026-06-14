@@ -18,9 +18,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 #include <vector>
 
 namespace h5reader::rediscover {
+
+constexpr std::size_t kPerAtomEmbeddingDims = 256;
 
 struct PerAtomSubstrateConfig {
     double ring_cutoff_A = 8.0;
@@ -28,7 +31,7 @@ struct PerAtomSubstrateConfig {
     double charge_cutoff_A = 6.0;
     double mc_near_field_ratio = 0.5;
     bool emit_embedding = true;
-    std::size_t embedding_dims = 256;
+    std::size_t embedding_dims = kPerAtomEmbeddingDims;
 
     // Bounded named query outputs. These are deliberately small defaults, not a
     // resident pair dump.
@@ -134,6 +137,29 @@ constexpr std::size_t kPerAtomTargetDecompositionCols = 21;
 constexpr std::size_t kPerAtomRingPathCols = 137;
 constexpr std::size_t kPerAtomMethodPathCols = 61;
 constexpr std::size_t kPerAtomHbondConditioningCols = 73;
+inline constexpr std::array<std::string_view, 19> kPerAtomSubstrateAlwaysSidecars = {
+    "per_atom_substrate_target_T2.npy",
+    "per_atom_substrate_target_T0.npy",
+    "per_atom_substrate_target_T1.npy",
+    "per_atom_substrate_target_dia_T0.npy",
+    "per_atom_substrate_target_dia_T1.npy",
+    "per_atom_substrate_target_dia_T2.npy",
+    "per_atom_substrate_target_para_T0.npy",
+    "per_atom_substrate_target_para_T1.npy",
+    "per_atom_substrate_target_para_T2.npy",
+    "per_atom_substrate_features_classical.npy",
+    "per_atom_substrate_features_ring_paths.npy",
+    "per_atom_substrate_features_method_paths.npy",
+    "per_atom_substrate_features_hbond_conditioning.npy",
+    "per_atom_substrate_features_conditioning.npy",
+    "per_atom_substrate_features_dominance.npy",
+    "per_atom_substrate_partition_bins.npy",
+    "per_atom_substrate_dominance_bins.npy",
+    "per_atom_substrate_driver_modulation_by_atom.npy",
+    "per_atom_substrate_backbone_audit.npy",
+};
+inline constexpr std::string_view kPerAtomSubstrateEmbeddingSidecar =
+    "per_atom_substrate_aimnet2_embedding.npy";
 
 PerAtomSubstrateStats RunPerAtomSubstrateEmit(const Body& body,
                                               const QString& outDir,

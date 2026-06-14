@@ -350,6 +350,7 @@ qt_add_executable(h5reader_extract
     src/rediscover/ChargeStore.cpp
     src/rediscover/OutputManifest.h
     src/rediscover/OutputManifest.cpp
+    src/rediscover/ReaderOutputCatalog.h
     src/rediscover/RunData.h
     src/rediscover/RunData.cpp
     src/rediscover/StaticRunData.h
@@ -558,6 +559,38 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_all_atom_equivariant_tests
              COMMAND h5reader_rediscover_all_atom_equivariant_tests)
+
+    qt_add_executable(h5reader_reader_output_catalog_tests
+        tests/reader_output_catalog_tests.cpp
+        src/rediscover/ReaderOutputCatalog.h
+        src/rediscover/RecordSink.h
+        src/rediscover/RecordSink.cpp
+        src/rediscover/BroadBackboneSink.h
+        src/rediscover/BroadBackboneSink.cpp
+        src/rediscover/EfgFeatureSink.h
+        src/rediscover/EfgFeatureSink.cpp
+        src/rediscover/BuckinghamEfieldSink.h
+        src/rediscover/BuckinghamEfieldSink.cpp
+        src/rediscover/Aimnet2FeatureSink.h
+        src/rediscover/Aimnet2FeatureSink.cpp
+        src/rediscover/AllAtomEquivariantSink.h
+        src/rediscover/AllAtomEquivariantSink.cpp
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_reader_output_catalog_tests PRIVATE
+        src
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern
+    )
+    target_link_libraries(h5reader_reader_output_catalog_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_reader_output_catalog_tests
+             COMMAND h5reader_reader_output_catalog_tests)
 
     qt_add_executable(h5reader_rediscover_substrate_parity_tests
         tests/rediscover_substrate_parity_tests.cpp

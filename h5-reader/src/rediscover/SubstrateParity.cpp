@@ -151,6 +151,12 @@ io::QtNpyReader::WidenedArray readNpy(const QString& path, SubstrateParityStats*
     return a;
 }
 
+io::QtNpyReader::NumericArray readNumericNpy(const QString& path, SubstrateParityStats* stats) {
+    const io::QtNpyReader::NumericArray a = io::QtNpyReader::ReadNumericArrayWidened(path);
+    if (!a.ok) stats->errors << a.error;
+    return a;
+}
+
 std::optional<double> npyAt(const io::QtNpyReader::WidenedArray& a,
                             std::size_t row,
                             std::size_t col,
@@ -168,6 +174,29 @@ std::optional<double> npyAt(const io::QtNpyReader::WidenedArray& a,
     return a.data[row * a.cols + col];
 }
 
+std::optional<double> npyAt3(const io::QtNpyReader::NumericArray& a,
+                             std::size_t row,
+                             std::size_t i,
+                             std::size_t j,
+                             const QString& label,
+                             SubstrateParityStats* stats) {
+    if (a.shape.size() != 3 || row >= a.shape[0] || i >= a.shape[1] || j >= a.shape[2]) {
+        QString shape;
+        for (std::size_t k = 0; k < a.shape.size(); ++k) {
+            if (k) shape += QLatin1Char(',');
+            shape += QString::number(static_cast<qulonglong>(a.shape[k]));
+        }
+        stats->errors << QStringLiteral("%1 out of range row=%2 i=%3 j=%4 shape=(%5)")
+                             .arg(label)
+                             .arg(static_cast<qulonglong>(row))
+                             .arg(static_cast<qulonglong>(i))
+                             .arg(static_cast<qulonglong>(j))
+                             .arg(shape);
+        return std::nullopt;
+    }
+    return a.data[(row * a.shape[1] + i) * a.shape[2] + j];
+}
+
 void checkShape(const io::QtNpyReader::WidenedArray& a,
                 const QString& label,
                 std::size_t rows,
@@ -181,6 +210,28 @@ void checkShape(const io::QtNpyReader::WidenedArray& a,
                              .arg(static_cast<qulonglong>(a.cols))
                              .arg(static_cast<qulonglong>(rows))
                              .arg(static_cast<qulonglong>(cols));
+    }
+}
+
+void checkShape3(const io::QtNpyReader::NumericArray& a,
+                 const QString& label,
+                 std::size_t rows,
+                 std::size_t d1,
+                 std::size_t d2,
+                 SubstrateParityStats* stats) {
+    if (!a.ok) return;
+    if (a.shape.size() != 3 || a.shape[0] != rows || a.shape[1] != d1 || a.shape[2] != d2) {
+        QString shape;
+        for (std::size_t k = 0; k < a.shape.size(); ++k) {
+            if (k) shape += QLatin1Char(',');
+            shape += QString::number(static_cast<qulonglong>(a.shape[k]));
+        }
+        stats->errors << QStringLiteral("%1 shape mismatch: got (%2), expected (%3,%4,%5)")
+                             .arg(label)
+                             .arg(shape)
+                             .arg(static_cast<qulonglong>(rows))
+                             .arg(static_cast<qulonglong>(d1))
+                             .arg(static_cast<qulonglong>(d2));
     }
 }
 
@@ -204,15 +255,15 @@ SubstrateParityStats auditTargets(const QString& rowsPath,
         ? io::QtNpyReader::WidenedArray{}
         : readNpy(t1Path, &stats);
     const io::QtNpyReader::WidenedArray t2 = readNpy(t2Path, &stats);
-    const io::QtNpyReader::WidenedArray raw = rawPath.isEmpty()
-        ? io::QtNpyReader::WidenedArray{}
-        : readNpy(rawPath, &stats);
+    const io::QtNpyReader::NumericArray raw = rawPath.isEmpty()
+        ? io::QtNpyReader::NumericArray{}
+        : readNumericNpy(rawPath, &stats);
     if (!stats.errors.isEmpty()) return stats;
 
     if (!t0Path.isEmpty()) checkShape(t0, t0Path, rows.size(), 1, &stats);
     if (!t1Path.isEmpty()) checkShape(t1, t1Path, rows.size(), 3, &stats);
     checkShape(t2, t2Path, rows.size(), 5, &stats);
-    if (!rawPath.isEmpty()) checkShape(raw, rawPath, rows.size(), 9, &stats);
+    if (!rawPath.isEmpty()) checkShape3(raw, rawPath, rows.size(), 3, 3, &stats);
     if (!stats.errors.isEmpty()) return stats;
 
     const std::size_t limit = options.max_rows == 0
@@ -269,17 +320,18 @@ SubstrateParityStats auditTargets(const QString& rowsPath,
             ++stats.target_T2_checked;
         }
         if (!rawPath.isEmpty()) {
-            for (std::size_t c = 0; c < 9; ++c) {
-                const std::optional<double> actual = npyAt(raw, i, c, rawPath, &stats);
-                if (actual) {
-                    const double expectedComp = (*expectedRaw)(static_cast<int>(c / 3),
-                                                               static_cast<int>(c % 3));
-                    compareValue(&stats,
-                                 QStringLiteral("target_raw row %1 comp %2").arg(i).arg(c),
-                                 *actual, expectedComp, options);
+            for (std::size_t r = 0; r < 3; ++r)
+                for (std::size_t c = 0; c < 3; ++c) {
+                    const std::optional<double> actual = npyAt3(raw, i, r, c, rawPath, &stats);
+                    if (actual) {
+                        const double expectedComp = (*expectedRaw)(static_cast<int>(r),
+                                                                   static_cast<int>(c));
+                        compareValue(&stats,
+                                     QStringLiteral("target_raw row %1 comp %2,%3").arg(i).arg(r).arg(c),
+                                     *actual, expectedComp, options);
+                    }
+                    ++stats.target_raw_components_checked;
                 }
-                ++stats.target_raw_components_checked;
-            }
         }
         ++stats.rows_checked;
     }

@@ -22,6 +22,8 @@
 
 namespace h5reader::rediscover {
 
+constexpr std::size_t kAllAtomEquivariantEmbeddingDims = 256;
+
 struct AllAtomEquivariantTargetRecord {
     int32_t atom_index = -1;
     int32_t residue_index = -1;
@@ -131,7 +133,7 @@ struct AllAtomEquivariantSourceRecord {
 class AllAtomEquivariantSink {
 public:
     AllAtomEquivariantSink(const QString& outDir, const QString& caseName,
-                           std::size_t embeddingDims = 256);
+                           std::size_t embeddingDims = kAllAtomEquivariantEmbeddingDims);
     ~AllAtomEquivariantSink();
 
     bool Ok() const { return ok_; }
@@ -157,11 +159,11 @@ private:
     int64_t nextRowId_ = 0;
     std::size_t targetRows_ = 0;
     std::size_t sourceRows_ = 0;
-    std::size_t embeddingDims_ = 256;
+    std::size_t embeddingDims_ = kAllAtomEquivariantEmbeddingDims;
 
     std::vector<double> targetT2_;             // (targetRows, 5), lab frame
     std::vector<double> targetSigmaIso_;       // (targetRows,)
-    std::vector<double> targetRaw_;            // (targetRows, 9), lab frame
+    std::vector<double> targetRaw_;            // (targetRows, 3, 3), lab frame
     std::vector<double> apbsEfield_;           // (targetRows, 3), lab frame
     std::vector<double> apbsEfgT2_;            // (targetRows, 5), lab frame
     std::vector<double> aimnet2Charge_;        // (targetRows,)

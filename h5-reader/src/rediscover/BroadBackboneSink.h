@@ -18,10 +18,14 @@
 //   broad_backbone_sources.csv — one row per (atom, frame, source): row_id +
 //     mechanism + source geometry (disp_local, r, cosθ, dipolar) + per-mechanism
 //     identity (ring / bond / charge). NO target columns.
-//   NPY payloads (one ArraySpec each in python/nmr_extract/_catalog.py):
+//   NPY payloads (one ReaderOutputCatalog entry each):
 //     broad_backbone_aggregated_target_T2.npy        (agg_rows, 5)
 //     broad_backbone_aggregated_target_local_T2.npy  (agg_rows, 5)
 //     broad_backbone_aggregated_field_local.npy      (agg_rows, 3)  Coulomb E
+//     broad_backbone_aggregated_literature_kernel_T2.npy          (agg_rows, 5)
+//     broad_backbone_aggregated_ring_literature_kernel_T2.npy     (agg_rows, 5)
+//     broad_backbone_aggregated_bond_literature_kernel_T2.npy     (agg_rows, 5)
+//     broad_backbone_aggregated_charge_literature_kernel_T2.npy   (agg_rows, 5)
 //   CSV-only mc_lit_* columns are documented locally in
 //     src/rediscover/MC_LIT_CSV_CONTRACT.json
 //

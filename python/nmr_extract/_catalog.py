@@ -1,8 +1,9 @@
-"""Format contract: every NPY file the C++ extractor can produce.
+"""Producer SDK format contract for NMR-extract NPY files.
 
-This is the single source of truth for what's on disk. If the C++ side
-adds a new array, add an entry here. Nothing else in the SDK needs to
-change — the loader picks it up automatically.
+This is the SDK source of truth for producer-owned arrays on disk. If the
+nmr_extract producer adds a new array, add an entry here. Reader-owned
+rediscover/statistics sidecars live in h5-reader/src/rediscover/
+ReaderOutputCatalog.h.
 
 Generated from the WriteFeatures methods in src/*Result.cpp and
 src/ConformationResult.cpp.
@@ -58,9 +59,6 @@ ALLOWED_NATIVE_AXES = frozenset({
     "ring_membership",
     "mutation_match_pair",
     "protein",
-    "rediscover_source_row",
-    "rediscover_aggregated_row",
-    "rediscover_target_row",
     "mopac_bond_neighbor_pair",
     "mopac_unique_pair",
 })
@@ -77,8 +75,7 @@ class ArraySpec:
       indexed along: ``atom`` / ``residue`` / ``aromatic_ring`` /
       ``saturated_ring`` / ``ring`` / ``ring_contribution_pair`` /
       ``bond`` / ``ring_membership`` / ``mutation_match_pair`` /
-      ``protein`` / ``rediscover_source_row`` /
-      ``rediscover_aggregated_row`` / ``rediscover_target_row``.
+      ``protein``.
       R / Python analysis must read this metadata column rather than infer axis
       from filename.
 
@@ -268,89 +265,6 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_category_T2",   "mcconnell_legacy", PerBondCategoryT2,  25,   False,  "Legacy McConnell T2 per old bond category", irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_scalars",       "mcconnell_legacy", McConnellScalars,   6,    False,  "Legacy McConnell scalar sums + distances", mechanism="bond_anisotropy"),
-
-    # ── Rediscover substrate sidecars (h5-reader/src/rediscover) ─────────
-    # CSV rows carry identity/scalars; these NPYs carry 5-component T2 payloads
-    # keyed by the corresponding source or aggregated CSV row order.
-    ArraySpec("rediscover_ring_current_sources_target_T2",          "rediscover", np.ndarray, 5, False, "Rediscover ring-current source-row DFT target T2 payload", native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_ring_current_sources_target_local_T2",    "rediscover", np.ndarray, 5, False, "Rediscover ring-current source-row local-frame DFT target T2 payload", native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_ring_current_sources_bare_kernel_T2",     "rediscover", np.ndarray, 5, False, "Rediscover ring-current source-row producer bare-kernel T2 payload", native_axis="rediscover_source_row", irreps="2e", units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
-    ArraySpec("rediscover_ring_current_aggregated_target_T2",       "rediscover", np.ndarray, 5, False, "Rediscover ring-current aggregated-row DFT target T2 payload", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_ring_current_aggregated_target_local_T2", "rediscover", np.ndarray, 5, False, "Rediscover ring-current aggregated-row local-frame DFT target T2 payload", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_ring_current_aggregated_bare_kernel_T2",  "rediscover", np.ndarray, 5, False, "Rediscover ring-current aggregated-row producer bare-kernel T2 payload", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
-    ArraySpec("rediscover_mcconnell_sources_target_T2",             "rediscover", np.ndarray, 5, False, "Rediscover McConnell source-row DFT target T2 payload", native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_mcconnell_sources_target_local_T2",       "rediscover", np.ndarray, 5, False, "Rediscover McConnell source-row local-frame DFT target T2 payload", native_axis="rediscover_source_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_mcconnell_sources_bare_kernel_T2",        "rediscover", np.ndarray, 5, False, "Rediscover McConnell source-row producer bare-kernel T2 payload", native_axis="rediscover_source_row", irreps="2e", units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("rediscover_mcconnell_aggregated_target_T2",          "rediscover", np.ndarray, 5, False, "Rediscover McConnell aggregated-row DFT target T2 payload", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_mcconnell_aggregated_target_local_T2",    "rediscover", np.ndarray, 5, False, "Rediscover McConnell aggregated-row local-frame DFT target T2 payload", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("rediscover_mcconnell_aggregated_bare_kernel_T2",     "rediscover", np.ndarray, 5, False, "Rediscover McConnell aggregated-row producer bare-kernel T2 payload", native_axis="rediscover_aggregated_row", irreps="2e", units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
-
-    # ── broad_backbone (h5-reader/src/rediscover/BroadBackbone) — the composed
-    # heterogeneous relationship: EVERY backbone atom × {rings, aniso bonds,
-    # charge FIELD}. Two-kind carrier with the target-repeat FIX: the DFT target
-    # lives ONCE per (atom,frame) on the aggregated row + these NPYs (keyed by
-    # the broad_backbone_aggregated.csv row order); per-source rows carry only
-    # source fields + a row_id join key, NOT the target. ───
-    ArraySpec("broad_backbone_aggregated_target_T2",       "rediscover", np.ndarray, 5, False, "Broad-backbone aggregated-row DFT target T2 payload (lab frame), once per (atom,frame)", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("broad_backbone_aggregated_target_local_T2", "rediscover", np.ndarray, 5, False, "Broad-backbone aggregated-row local-frame DFT target T2 payload, once per (atom,frame)", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("broad_backbone_aggregated_field_local",     "rediscover", np.ndarray, 3, True,  "Broad-backbone local-frame Coulomb E-field (FF14SB, the field-not-mu feature), once per (atom,frame)", native_axis="rediscover_aggregated_row", irreps="1o", units="e/Angstrom^2", tensor_rank=1, parity="odd", mechanism="charges"),
-    ArraySpec("broad_backbone_aggregated_literature_kernel_T2", "rediscover", np.ndarray, 5, False, "Broad-backbone total fixed-kernel T2 payload: ring + bond + charge components, local frame", native_axis="rediscover_aggregated_row", irreps="2e", units="mixed", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mixed"),
-    ArraySpec("broad_backbone_aggregated_ring_literature_kernel_T2", "rediscover", np.ndarray, 5, True, "Broad-backbone ring-current fixed-kernel T2 payload, local frame", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
-    ArraySpec("broad_backbone_aggregated_bond_literature_kernel_T2", "rediscover", np.ndarray, 5, True, "Broad-backbone bond-anisotropy fixed-kernel T2 payload, local frame", native_axis="rediscover_aggregated_row", irreps="2e", units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("broad_backbone_aggregated_charge_literature_kernel_T2", "rediscover", np.ndarray, 5, True, "Broad-backbone FF14SB charge q/r3 EFG-like T2 payload, local frame", native_axis="rediscover_aggregated_row", irreps=_EFG_IRREPS, units="CoulombKe*e/Angstrom^3", tensor_rank=2, mechanism="electrostatic_efg"),
-
-    # -- per_atom_substrate (#58; h5-reader/src/rediscover/PerAtomSubstrate) --
-    # Every atom x DFT-present frame, lab/equivariant frame for target-axis
-    # tensors. CSV carries identity, support flags, and support counts; these
-    # sidecars carry dense row-aligned payloads.
-    ArraySpec("per_atom_substrate_target_T2", "rediscover", np.ndarray, 5, False, "Per-atom substrate DFT target T2 payload (molecular/lab frame)", native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("per_atom_substrate_target_T0", "rediscover", np.ndarray, 1, False, "Per-atom substrate DFT sigma_iso target payload", native_axis="rediscover_target_row", irreps="0e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=0, mechanism="quantum_reference"),
-    ArraySpec("per_atom_substrate_features_classical", "rediscover", np.ndarray, 45, False, "Per-atom substrate classical mechanism features; per-column metadata is in per_atom_substrate_column_specs.json", native_axis="rediscover_target_row", irreps="mixed", units="mixed", tensor_rank=2, mechanism="mixed"),
-    ArraySpec("per_atom_substrate_features_conditioning", "rediscover", np.ndarray, 26, False, "Per-atom substrate conditioning scalars from topology, geometry, support, and C++ feature reducers", native_axis="rediscover_target_row", irreps="26x0e", mechanism="conditioning"),
-    ArraySpec("per_atom_substrate_driver_modulation_by_atom", "rediscover", np.ndarray, 9, False, "Per-atom substrate Welford driver-modulation scalars by atom", native_axis="atom", irreps="9x0e", mechanism="conditioning"),
-    ArraySpec("per_atom_substrate_backbone_audit", "rediscover", np.ndarray, 14, False, "Per-atom substrate backbone compatibility audit payload for broad-backbone regression gates", native_axis="rediscover_target_row", irreps="mixed", units="mixed", tensor_rank=2, mechanism="provenance_qc"),
-    ArraySpec("per_atom_substrate_aimnet2_embedding", "rediscover", np.ndarray, 256, False, "Per-atom substrate AIMNet2 256-d embedding f32 sidecar, row-aligned with target rows", native_axis="rediscover_target_row", irreps="256x0e", mechanism="aimnet2"),
-
-    # -- all_atom_equivariant (h5-reader/src/rediscover/AllAtomEquivariant) --
-    # Corrected e3nn substrate: every atom, KD source geometry, and per-atom
-    # producer feature payloads are in the molecular/lab frame. No per-atom
-    # local frame is imposed; the ORCA/H5 frame alignment diagnostic in the
-    # manifest is the frame contract.
-    ArraySpec("all_atom_equivariant_target_T2", "rediscover", np.ndarray, 5, False, "All-atom equivariant DFT target T2 payload (molecular/lab frame)", native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("all_atom_equivariant_target_sigma_iso", "rediscover", np.ndarray, 1, False, "All-atom equivariant DFT sigma_iso target payload", native_axis="rediscover_target_row", irreps="0e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=0, mechanism="quantum_reference"),
-    ArraySpec("all_atom_equivariant_target_raw", "rediscover", np.ndarray, 9, False, "All-atom equivariant raw 3x3 DFT shielding tensor (molecular/lab frame)", native_axis="rediscover_target_row", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("all_atom_equivariant_apbs_efield", "rediscover", np.ndarray, 3, True, "All-atom equivariant APBS E-field vector (molecular/lab frame)", native_axis="rediscover_target_row", irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("all_atom_equivariant_apbs_efg_T2", "rediscover", np.ndarray, 5, True, "All-atom equivariant APBS EFG T2 payload (molecular/lab frame)", native_axis="rediscover_target_row", irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("all_atom_equivariant_aimnet2_charge", "rediscover", np.ndarray, 1, True, "All-atom equivariant AIMNet2 Hirshfeld charge", native_axis="rediscover_target_row", irreps="0e", units="e", tensor_rank=0, mechanism="aimnet2"),
-    ArraySpec("all_atom_equivariant_aimnet2_charge_response_gradient", "rediscover", np.ndarray, 3, True, "All-atom equivariant AIMNet2 charge-response-gradient vector (not polarizability), molecular/lab frame", native_axis="rediscover_target_row", irreps="1o", units="e^2/A", tensor_rank=1, parity="odd", mechanism="aimnet2"),
-    ArraySpec("all_atom_equivariant_aimnet2_charge_response_gradient_scalar", "rediscover", np.ndarray, 1, True, "All-atom equivariant AIMNet2 charge-response-gradient scalar", native_axis="rediscover_target_row", irreps="0e", units="e^2/A", tensor_rank=0, mechanism="aimnet2"),
-    ArraySpec("all_atom_equivariant_aimnet2_embedding", "rediscover", np.ndarray, 256, True, "All-atom equivariant AIMNet2 256-d embedding, row-aligned with target rows", native_axis="rediscover_target_row", irreps="256x0e", mechanism="aimnet2"),
-    # MOPAC family (#51) — RAW un-normalized lab-frame target features. The
-    # mopac_coulomb_shielding_T2 is the MOPAC-Coulomb-EFG-DERIVED shielding T2
-    # (the moderate Stage-1 field/EFG leg), NOT the raw MOPAC Coulomb EFG tensor
-    # (that EFG tensor is a per-atom NPY only, absent from this trajectory H5).
-    ArraySpec("all_atom_equivariant_mopac_coulomb_shielding_T2", "rediscover", np.ndarray, 5, True, "All-atom equivariant MOPAC-Coulomb-EFG-DERIVED shielding T2 (RAW lab frame; NOT the raw EFG tensor)", native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("all_atom_equivariant_mopac_mc_shielding_T2", "rediscover", np.ndarray, 5, True, "All-atom equivariant MOPAC-charge McConnell bond-anisotropy shielding T2 (RAW lab frame)", native_axis="rediscover_target_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("all_atom_equivariant_mopac_charge_welford_mean", "rediscover", np.ndarray, 1, True, "All-atom equivariant MOPAC charge Welford MEAN (STATIC per-atom; no per-frame MOPAC charge TR exists)", native_axis="rediscover_target_row", irreps="0e", units="e", tensor_rank=0, mechanism="charges"),
-    ArraySpec("all_atom_equivariant_mopac_vs_ff14sb_reconciliation", "rediscover", np.ndarray, 1, True, "All-atom equivariant MOPAC-vs-FF14SB EFG-T2 cosine similarity (charge-source-divergence QC; diagnostic, NOT training material)", native_axis="rediscover_target_row", irreps="0e", units="", tensor_rank=0, mechanism="provenance_qc"),
-
-    # ── efg per_atom_feature (h5-reader/src/rediscover/EfgFeature) — APBS
-    # solvated-PB EFG T2 -> DFT target T2. Both sidecars are in the same
-    # library isometric T2 basis as DecomposeLibrary / SphericalTensor::Decompose:
-    # [xy, yz, zz, xz, xx-yy]. Python applies only the frozen library->e3nn
-    # change_of_basis to both arrays; it does not re-project the EFG.
-    ArraySpec("efg_feature_T2", "rediscover", np.ndarray, 5, False, "EFG per_atom_feature APBS EFG T2 payload, once per DFT-present (atom,frame)", native_axis="rediscover_aggregated_row", irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("efg_target_T2",  "rediscover", np.ndarray, 5, False, "EFG per_atom_feature DFT target T2 payload, row-aligned with efg_feature_T2", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-
-    # ── buckingham_efield per_atom_feature (h5-reader/src/rediscover/
-    # BuckinghamEfield) — APBS solvated-PB E-field projected by the C++ spine
-    # into the local backbone frame. The T0 fit reads scalar CSV columns
-    # E_proj and E_mag only; this vector payload is emitted for audit and
-    # parity with the broad_backbone local Coulomb field. Target T1 is emitted
-    # but convention-unverified and must not be fitted.
-    ArraySpec("buckingham_efield_feature_field_local", "rediscover", np.ndarray, 3, False, "Buckingham APBS E-field in the local backbone frame, once per DFT-present backbone (atom,frame)", native_axis="rediscover_aggregated_row", irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("buckingham_efield_target_T1_unverified", "rediscover", np.ndarray, 3, False, "Buckingham DFT target T1 payload emitted for audit only; convention unverified, do not fit", native_axis="rediscover_aggregated_row", irreps="1x1e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=1, parity="even", mechanism="quantum_reference"),
-    ArraySpec("buckingham_efield_target_T2", "rediscover", np.ndarray, 5, False, "Buckingham DFT target T2 payload emitted for completeness; T0 fit ignores it", native_axis="rediscover_aggregated_row", irreps="2e", units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
 
     # ── Coulomb (CoulombResult.cpp) — optional; retired from production
     # (APBS is canonical), so present only in the FullFatFrameExtraction
@@ -685,5 +599,3 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="ring_membership", mechanism="topology"),
 ]}
 # fmt: on
-
-

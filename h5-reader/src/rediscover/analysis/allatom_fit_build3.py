@@ -130,22 +130,24 @@ def build2_input_acceptance_checks(data: dict[str, object], substrate_dir: Path)
         np.array_equal(rows["row_id"].to_numpy(int), np.arange(n_rows, dtype=int))
         and np.all(rows["row_id"].to_numpy(int) == rows["frame_slot"].to_numpy(int) * n_atoms + rows["atom_index"].to_numpy(int))
     )
+    expected_widths = {
+        name: expected_width_from_specs(specs, name)
+        for name in arrays
+    }
     shape_expected = {
-        "per_atom_substrate_features_classical": (n_rows, 89),
-        "per_atom_substrate_features_conditioning": (n_rows, 32),
-        "per_atom_substrate_features_hbond_conditioning": (n_rows, 73),
-        "per_atom_substrate_features_method_paths": (n_rows, 61),
-        "per_atom_substrate_partition_bins": (n_rows, 25),
-        "per_atom_substrate_aimnet2_embedding": (n_rows, 256),
+        name: (n_rows, width)
+        for name, width in expected_widths.items()
     }
     shapes_ok = n_atoms == 846 and n_frames == 660 and n_rows == 558_360
     for name, shape in shape_expected.items():
         shapes_ok = shapes_ok and tuple(arrays[name].shape) == shape
-    target_shapes_ok = (
-        tuple(targets["total-T2"].shape) == (n_rows, 5)
-        and tuple(targets["dia-T2"].shape) == (n_rows, 5)
-        and tuple(targets["para-T2"].shape) == (n_rows, 5)
-        and tuple(targets["T1-field-linear-diagnostic"].shape) == (n_rows, 3)
+    target_expected_widths = {
+        target_name: expected_width_from_specs(specs, str(TARGET_SPECS[target_name]["array"]))
+        for target_name in targets
+    }
+    target_shapes_ok = all(
+        tuple(targets[target_name].shape) == (n_rows, width)
+        for target_name, width in target_expected_widths.items()
     )
     classical_specs = specs_for_array(specs, "per_atom_substrate_features_classical")
     aim_idx = int(classical_specs["aimnet2_charge"]["index"])
@@ -196,6 +198,8 @@ def build2_input_acceptance_checks(data: dict[str, object], substrate_dir: Path)
         "relationship_kind": manifest.get("relationship_kind"),
         "shape": {"n_atoms": n_atoms, "n_dft_frames": n_frames, "rows": n_rows},
         "expected_shape_846x660": shapes_ok,
+        "expected_widths_from_column_specs": expected_widths,
+        "target_expected_widths_from_column_specs": target_expected_widths,
         "target_shapes_ok": target_shapes_ok,
         "row_contract": row_contract,
         "charge_complete_rows_manifest": manifest_charge_rows,
