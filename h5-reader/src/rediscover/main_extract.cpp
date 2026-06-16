@@ -20,6 +20,7 @@
 #include "AllAtomEquivariantSink.h"
 #include "Aimnet2Feature.h"
 #include "Aimnet2FeatureSink.h"
+#include "AnalysisAtom.h"
 #include "BroadBackbone.h"
 #include "BroadBackboneSink.h"
 #include "BuckinghamEfield.h"
@@ -244,7 +245,7 @@ int main(int argc, char** argv) {
         QStringLiteral("md"),
         QStringLiteral("h5-reader/notes/CODEX_SPINE_WIREUP_REPORT.md"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): consolidated_emit | spine_probe | row_design | query_audit | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): consolidated_emit | spine_probe | row_design | query_audit | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | analysis_atom | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -715,6 +716,40 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // -- analysis_atom: first-pass long-lived per-atom collector. Diagnostic
+    // only: the atoms accrue internally; this pass reads back only counts and a
+    // sample fold so collection can be verified without emitting data.
+    if (which == QStringLiteral("analysis_atom") || which == QStringLiteral("AnalysisAtom")) {
+        h5reader::rediscover::PerAtomSubstrateConfig cfg;
+        cfg.ring_cutoff_A = ringCutoff;
+        cfg.bond_cutoff_A = bondCutoff;
+        cfg.charge_cutoff_A = chargeCutoff;
+        cfg.mc_near_field_ratio = mcNearFieldRatio;
+        h5reader::rediscover::AnalysisAtomDiagnostics stats;
+        try {
+            stats = h5reader::rediscover::RunAnalysisAtomFirstPass(body, cfg);
+        } catch (const std::exception& e) {
+            qCCritical(cMain).noquote() << "analysis_atom failed:" << e.what();
+            return 1;
+        }
+        qCInfo(cMain).noquote()
+            << "analysis_atom | atoms_alive=" << stats.atom_count
+            << "| dft_rows=" << stats.dft_rows
+            << "| frame_events=" << stats.frame_events
+            << "| dft_present=" << stats.dft_present
+            << "| relationship_folds=" << stats.relationship_folds
+            << "| relationship_organs=" << stats.relationship_organs
+            << "| self_property_folds=" << stats.self_property_folds
+            << "| self_property_organs=" << stats.self_property_organs
+            << "| sigma_folds=" << stats.sigma_folds
+            << "| dihedral_folds=" << stats.dihedral_folds
+            << "| mopac_scalar_folds=" << stats.mopac_scalar_folds
+            << "| efg_folds=" << stats.efg_folds
+            << "| sample_label=" << (stats.has_sample ? stats.sample_label : QStringLiteral("<none>"))
+            << "| sample_value=" << (stats.has_sample ? stats.sample_value : 0.0);
+        return 0;
+    }
+
     // -- all_atom_equivariant: corrected e3nn substrate. Every atom, all ring
     // types, all producer bond categories, FF14SB/AIMNet2 charge-site rows when
     // available, and per-target APBS/AIMNet2 source rows. Everything is emitted
@@ -961,7 +996,7 @@ int main(int argc, char** argv) {
     }
     if (cases_to_run.empty()) {
         qCCritical(cMain).noquote() << "unknown --case" << which
-                                    << "(expected ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|per_atom_substrate|query_audit|efg|buckingham_efield|aimnet2_features|all)";
+                                    << "(expected ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|per_atom_substrate|analysis_atom|query_audit|efg|buckingham_efield|aimnet2_features|all)";
         return 2;
     }
     qCInfo(cMain).noquote() << "engine =" << engine << "| cases =" << cases_to_run.size();
