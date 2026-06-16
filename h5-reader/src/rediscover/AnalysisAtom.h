@@ -38,6 +38,22 @@ struct AnalysisAtomDiagnostics {
     bool has_sample = false;
 };
 
+struct AnalysisAtomTruth {
+    std::size_t frame_events = 0;
+    std::size_t relationship_folds = 0;
+    std::size_t self_property_folds = 0;
+    std::size_t relationship_organs = 0;
+    std::size_t self_property_organs = 0;
+    std::size_t dft_present = 0;
+    std::size_t sigma_folds = 0;
+    std::size_t dihedral_folds = 0;
+    std::size_t mopac_scalar_folds = 0;
+    std::size_t efg_folds = 0;
+    double sample_value = 0.0;
+    QString sample_label;
+    bool has_sample = false;
+};
+
 class AnalysisAtom {
 public:
     AnalysisAtom(const Body& body, std::size_t atom_index);
@@ -49,7 +65,7 @@ public:
     std::size_t atomIndex() const { return atom_index_; }
 
     virtual void observeFrame(std::size_t h5_row) = 0;
-    virtual void contributeDiagnostics(AnalysisAtomDiagnostics& out) const = 0;
+    virtual AnalysisAtomTruth diagnostics() const = 0;
 
 protected:
     const Body& body_;
@@ -63,7 +79,7 @@ public:
                                           PerAtomSubstrateConfig config);
 
     void observeFrame(std::size_t h5_row) override;
-    void contributeDiagnostics(AnalysisAtomDiagnostics& out) const override;
+    AnalysisAtomTruth diagnostics() const override;
 
 private:
     class Impl;
