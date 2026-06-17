@@ -716,37 +716,41 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // -- analysis_atom: first-pass long-lived per-atom collector. Diagnostic
-    // only: the atoms accrue internally; this pass reads back only counts and a
-    // sample fold so collection can be verified without emitting data.
+    // -- analysis_atom: analysis-object pass. One long-lived object per atom,
+    // ring, and residue walks every step and writes the schema-pinned object
+    // JSON files.
     if (which == QStringLiteral("analysis_atom") || which == QStringLiteral("AnalysisAtom")) {
-        h5reader::rediscover::PerAtomSubstrateConfig cfg;
-        cfg.ring_cutoff_A = ringCutoff;
-        cfg.bond_cutoff_A = bondCutoff;
-        cfg.charge_cutoff_A = chargeCutoff;
-        cfg.mc_near_field_ratio = mcNearFieldRatio;
-        h5reader::rediscover::AnalysisAtomDiagnostics stats;
-        try {
-            stats = h5reader::rediscover::RunAnalysisAtomFirstPass(body, cfg);
-        } catch (const std::exception& e) {
-            qCCritical(cMain).noquote() << "analysis_atom failed:" << e.what();
+        h5reader::rediscover::AnalysisObjectPassConfig cfg;
+        cfg.per_atom.ring_cutoff_A = ringCutoff;
+        cfg.per_atom.bond_cutoff_A = bondCutoff;
+        cfg.per_atom.charge_cutoff_A = chargeCutoff;
+        cfg.per_atom.mc_near_field_ratio = mcNearFieldRatio;
+        h5reader::rediscover::AnalysisObjectPassDiagnostics stats;
+        QString objectErr;
+        if (!h5reader::rediscover::RunAnalysisObjectPass(body, outDir, cfg, &stats, &objectErr)) {
+            qCCritical(cMain).noquote() << "analysis_atom failed:" << objectErr;
             return 1;
         }
         qCInfo(cMain).noquote()
             << "analysis_atom | atoms_alive=" << stats.atom_count
-            << "| dft_rows=" << stats.dft_rows
-            << "| frame_events=" << stats.frame_events
-            << "| dft_present=" << stats.dft_present
-            << "| relationship_folds=" << stats.relationship_folds
-            << "| relationship_organs=" << stats.relationship_organs
-            << "| self_property_folds=" << stats.self_property_folds
-            << "| self_property_organs=" << stats.self_property_organs
-            << "| sigma_folds=" << stats.sigma_folds
-            << "| dihedral_folds=" << stats.dihedral_folds
-            << "| mopac_scalar_folds=" << stats.mopac_scalar_folds
-            << "| efg_folds=" << stats.efg_folds
-            << "| sample_label=" << (stats.has_sample ? stats.sample_label : QStringLiteral("<none>"))
-            << "| sample_value=" << (stats.has_sample ? stats.sample_value : 0.0);
+            << "| rings_alive=" << stats.ring_count
+            << "| residues_alive=" << stats.residue_count
+            << "| steps=" << stats.step_count
+            << "| sigma_steps=" << stats.sigma_step_count
+            << "| calculate_calls=" << stats.calculate_calls
+            << "| sigma_mask_recorded=" << stats.sigma_mask_recorded
+            << "| sigma_folds=" << stats.atom_sigma_folds
+            << "| relationships=" << stats.atom_relationships
+            << "| ring_near_center_hits=" << stats.ring_near_center_hits
+            << "| residue_frame_folds=" << stats.residue_frame_folds
+            << "| field_vectors_retained=" << stats.field_vectors_retained
+            << "| full_sigma_tensors_retained=" << stats.full_sigma_tensors_retained
+            << "| mapped_bonds=" << stats.mapped_bonds
+            << "| mismatch_events=" << stats.mismatch_events
+            << "| boost_coupling=" << stats.boost_coupling_results
+            << "| boost_serial=" << stats.boost_serial_results
+            << "| oxygen_gate_passed=" << stats.oxygen_gate_passed
+            << "| manifest=" << stats.manifest_path;
         return 0;
     }
 
