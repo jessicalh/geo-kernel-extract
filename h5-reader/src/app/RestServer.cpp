@@ -37,6 +37,7 @@
 #include <QLoggingCategory>
 #include <QPixmap>
 #include <QString>
+#include <QTcpServer>
 #include <QTimer>
 #include <QUuid>
 #include <QVariant>
@@ -581,6 +582,21 @@ quint16 RestServer::listen(quint16 port) {
     server_ = std::make_unique<QHttpServer>(this);
     registerRoutes();
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    // Qt 6.10 removed the QHttpServer::listen() convenience overload. The
+    // supported path is now QAbstractHttpServer::bind() with a QTcpServer that
+    // is already listening. The Linux dev boxes still run Qt 6.4, so the old
+    // listen() path is kept under the version guard below.
+    auto* tcp = new QTcpServer(this);
+    if (!tcp->listen(QHostAddress::LocalHost, port) || !server_->bind(tcp)) {
+        qCCritical(cRest).noquote()
+            << "REST server failed to bind 127.0.0.1 port" << port;
+        delete tcp;
+        server_.reset();
+        return 0;
+    }
+    const quint16 bound = tcp->serverPort();
+#else
     const quint16 bound = server_->listen(QHostAddress::LocalHost, port);
     if (bound == 0) {
         qCCritical(cRest).noquote()
@@ -588,6 +604,7 @@ quint16 RestServer::listen(quint16 port) {
         server_.reset();
         return 0;
     }
+#endif
 
     qCInfo(cRest).noquote() << "REST server listening on 127.0.0.1:" << bound;
     // Handshake line for the pytest fixture to scrape.

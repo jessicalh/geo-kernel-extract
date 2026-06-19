@@ -315,6 +315,13 @@ if(COMMAND h5reader_apply_build_type_settings)
 endif()
 
 
+# --- Local Windows feasibility gate (do NOT upstream as-is) -----------------
+# h5reader_extract is the headless (non-UI) extractor. It needs PkgConfig +
+# Arrow/Parquet, which are not set up on the Windows dev box, and it is the
+# non-UI mode that is out of scope for the Windows reader build. Skip it on
+# Windows so the UI (h5reader) configures cleanly.
+if(NOT WIN32)
+
 # ============================================================================
 # Rediscover — headless feature extractor (experimental branch
 # h5-reader-pysr-spike). QCoreApplication only: NO widgets, NO VTK. Links
@@ -459,6 +466,8 @@ h5reader_apply_platform_target_settings(h5reader_extract)
 if(COMMAND h5reader_apply_build_type_settings)
     h5reader_apply_build_type_settings(h5reader_extract)
 endif()
+
+endif()  # NOT WIN32 — end Windows feasibility gate for h5reader_extract
 
 include(CTest)
 if(BUILD_TESTING AND Qt6Test_FOUND)

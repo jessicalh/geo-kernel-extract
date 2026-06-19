@@ -17,7 +17,11 @@ class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
 class QtProtein;
-class SignalBinding;
+// 'struct' to match the definition in model/SignalDictionary.h. MSVC encodes
+// the class-key into decorated symbol names (class=V, struct=U), so declaring
+// it 'class' here makes the revealRequested(const SignalBinding&) signal fail
+// to link (LNK2001). GCC/Clang mangle both keys identically and don't care.
+struct SignalBinding;
 class TrajectorySignalCatalog;
 }
 
