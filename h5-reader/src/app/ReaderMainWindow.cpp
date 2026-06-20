@@ -584,6 +584,10 @@ void ReaderMainWindow::refreshControlStates() {
     const bool hasFocus = selection_ && selection_->hasFocus();
     const bool hasRings = loaded && loaded_ && loaded_->protein
                             && loaded_->protein->ringCount() > 0;
+    // Filter (isolation) mode hides the whole-molecule overlays, so their
+    // toggles can't do anything while it's on — keep them on the toolbar
+    // (consistent layout) but disabled.
+    const bool filtered = loaded && scene_->atomFilterActive();
 
     const auto en = [](QAction* a, bool e) { if (a) a->setEnabled(e); };
 
@@ -602,11 +606,11 @@ void ReaderMainWindow::refreshControlStates() {
     en(instrumentAction_,     loaded);
 
     // Overlays — gated on the data that makes each one mean something.
-    en(showRibbonAction_,    loaded);
-    en(showRingsAction_,     hasRings);
-    en(showButterflyAction_, hasRings);
-    en(showBFieldAction_,    hasRings);
-    en(showOccupancyAction_, traj);   // per-atom envelope needs a trajectory
+    en(showRibbonAction_,    loaded   && !filtered);
+    en(showRingsAction_,     hasRings && !filtered);
+    en(showButterflyAction_, hasRings && !filtered);
+    en(showBFieldAction_,    hasRings && !filtered);
+    en(showOccupancyAction_, traj     && !filtered);   // per-atom; needs trajectory
 
     // Camera modes (enable gating + checked-state sync).
     updateCameraModeActions();
@@ -897,6 +901,7 @@ void ReaderMainWindow::setResidueFilter(const std::vector<std::size_t>& residues
         hideOverlays();
         scene_->setAtomFilter(atoms);
     }
+    refreshControlStates();   // grey overlay toggles while filtered; restore on clear
 }
 
 void ReaderMainWindow::setDocksVisible(bool visible) {
