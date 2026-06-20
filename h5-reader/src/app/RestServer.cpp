@@ -820,6 +820,108 @@ void RestServer::registerRoutes() {
         return QHttpServerResponse(SC::NoContent);
     });
 
+    // ---- overlay visibility (automation / snapshot harness) -------------
+    //
+    // POST /overlay {"name": "ribbon"|"rings"|"butterfly"|"bfield"|"shadow",
+    //                "visible": bool}
+    // Drives the same toolbar toggle path a human click would, so the kernel
+    // overlays (butterfly isosurfaces, B-field streamlines) get their per-frame
+    // refresh and the toolbar checkbox stays in sync. Lets the headless
+    // snapshot loop enable the field overlays, which default off and are not
+    // persisted in QSettings.
+    server_->route(QStringLiteral("/overlay"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("visible") || !body.value("visible").isBool())
+            return errorResponse(
+                QStringLiteral("body must be {\"name\": str, \"visible\": bool}"),
+                SC::BadRequest);
+        const QString name = body.value("name").toString();
+        const bool visible = body.value("visible").toBool();
+        if (!readerWindow_->setOverlayVisible(name, visible))
+            return errorResponse(
+                QStringLiteral("unknown overlay \"%1\" "
+                               "(ribbon|rings|butterfly|bfield|shadow)").arg(name),
+                SC::BadRequest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- field-grid isosurface threshold (live tuning) ------------------
+    //
+    // POST /field/threshold {"ppm": number >= 0}
+    // Sets the butterfly (field-grid) |T0| isosurface contour level in ppm and
+    // re-renders. Lets the snapshot harness sweep the dominant-zone threshold
+    // (default 0.30) without a rebuild while we tune the picture.
+    server_->route(QStringLiteral("/field/threshold"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("ppm") || !body.value("ppm").isDouble())
+            return errorResponse(QStringLiteral("body must be {\"ppm\": number}"),
+                                 SC::BadRequest);
+        const double ppm = body.value("ppm").toDouble();
+        if (ppm < 0.0)
+            return errorResponse(QStringLiteral("ppm must be >= 0"), SC::BadRequest);
+        if (!readerWindow_->setFieldThreshold(ppm))
+            return errorResponse(QStringLiteral("field-grid overlay not available"),
+                                 SC::ServiceUnavailable);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- butterfly Gaussian taper: extent σ + peak amplitude ------------
+    //
+    // POST /field/gaussian {"extent": σ_Å >= 0.1 (optional),
+    //                       "peak":   amplitude >= 0 (optional)}
+    // The two orthogonal butterfly knobs: extent = radial Gaussian σ (lobe
+    // reach), peak = amplitude gain (1.0 = true near-ring physics). Either or
+    // both per call, so the tuning loop can sweep one at a time. (Contour level
+    // is the separate /field/threshold knob.)
+    server_->route(QStringLiteral("/field/gaussian"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+        bool applied = false;
+        if (body.value("extent").isDouble()) {
+            const double sigma = body.value("extent").toDouble();
+            if (sigma < 0.1)
+                return errorResponse(QStringLiteral("extent (σ) must be >= 0.1"),
+                                     SC::BadRequest);
+            if (!readerWindow_->setFieldExtent(sigma))
+                return errorResponse(QStringLiteral("field-grid overlay not available"),
+                                     SC::ServiceUnavailable);
+            applied = true;
+        }
+        if (body.value("peak").isDouble()) {
+            const double peak = body.value("peak").toDouble();
+            if (peak < 0.0)
+                return errorResponse(QStringLiteral("peak must be >= 0"), SC::BadRequest);
+            if (!readerWindow_->setFieldPeak(peak))
+                return errorResponse(QStringLiteral("field-grid overlay not available"),
+                                     SC::ServiceUnavailable);
+            applied = true;
+        }
+        if (!applied)
+            return errorResponse(
+                QStringLiteral("body must set \"extent\" and/or \"peak\" (numbers)"),
+                SC::BadRequest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
     // ---- transform (upstream data-layer transform — TransformedConformation) -
     //
     // POST /transform {"kind": "all_atom_fit"|"backbone_fit",

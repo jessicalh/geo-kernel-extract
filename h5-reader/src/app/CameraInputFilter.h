@@ -54,6 +54,12 @@ public:
                        QObject*                parent = nullptr);
     ~CameraInputFilter() override;
 
+signals:
+    // A left-button press+release with no meaningful drag — a plain click, not
+    // a rotate. pos is in widget coordinates. ReaderMainWindow uses it to toggle
+    // playback when the click misses every atom.
+    void viewportClicked(QPointF posInWidget);
+
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
 
@@ -71,6 +77,11 @@ private:
 
     Gesture activeGesture_ = Gesture::None;
     QPointF lastPos_;
+
+    // Click-vs-drag discrimination for viewportClicked.
+    QPointF         pressPos_;
+    bool            moved_       = false;
+    Qt::MouseButton pressButton_ = Qt::NoButton;
 };
 
 }  // namespace h5reader::app

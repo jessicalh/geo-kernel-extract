@@ -51,6 +51,16 @@ void QtPlaybackController::togglePlayPause() {
     else             play();
 }
 
+void QtPlaybackController::playForward() {
+    direction_ = +1;
+    play();
+}
+
+void QtPlaybackController::playBackward() {
+    direction_ = -1;
+    play();
+}
+
 void QtPlaybackController::setFrame(int t) {
     ASSERT_THREAD(this);
     const int clamped = std::clamp(t, 0, frameCount_ - 1);
@@ -84,14 +94,13 @@ void QtPlaybackController::setLooping(bool loop) {
 
 void QtPlaybackController::advance() {
     ASSERT_THREAD(this);
-    int next = currentFrame_ + 1;
+    int next = currentFrame_ + direction_;
     if (next >= frameCount_) {
-        if (looping_) {
-            next = 0;
-        } else {
-            pause();
-            return;
-        }
+        if (looping_) next = 0;
+        else { pause(); return; }
+    } else if (next < 0) {
+        if (looping_) next = frameCount_ - 1;
+        else { pause(); return; }
     }
     currentFrame_ = next;
     emit frameChanged(currentFrame_);

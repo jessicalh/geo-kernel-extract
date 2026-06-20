@@ -48,10 +48,15 @@ inline constexpr double SINGULARITY_GUARD_DISTANCE = 0.1;
 inline constexpr double RING_CURRENT_CUTOFF        = 15.0;
 
 // ---- Grid-sampling parameters (viewer choice, not physics) -----------
-// Grid extent from ring center, in Angstroms. The library viewer uses
-// 7 Å for the T0 field grid and 6 Å for the butterfly B-field grid.
-// We use 7 for the isosurface grid.
-inline constexpr double FIELD_GRID_EXTENT_A = 7.0;
+// Grid extent from ring center, in Angstroms. Sized so the T0 isosurface at
+// the default threshold (0.30 ppm — the chemically-dominant zone) decays to
+// sub-threshold BEFORE the box face, so vtkContourFilter closes the bulb
+// inside the grid. The library viewer's 7 Å truncated the 0.10 ppm contour
+// (which physically reaches ~9–11 Å via 1/r³) into flat-faced "sheared"
+// lobes; 9 Å contains the ~6–7.5 Å, 0.30 ppm contour with margin and is still
+// well inside the 15 Å kernel cutoff. (RecomputeRingScalars also clamps the
+// boundary shell sub-threshold to guarantee closure at any threshold.)
+inline constexpr double FIELD_GRID_EXTENT_A = 9.0;
 
 // Grid resolution per axis. 20³ = 8000 evaluations per ring per frame.
 // At typical BS cost ~1 μs/eval, that's ~8 ms per ring per frame —

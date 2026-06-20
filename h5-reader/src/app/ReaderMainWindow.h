@@ -102,6 +102,29 @@ public:
     // hidden by the user, but we have not stashed and hidden them all).
     bool docksVisible() const { return docksHidden_ == false; }
 
+    // Toggle a named overlay by driving its toolbar action, so REST /
+    // automation changes run the SAME path as a human click (per-frame
+    // refresh for the kernel overlays) and keep the toolbar checkbox in
+    // sync. name ∈ {ribbon, rings, butterfly, bfield, shadow} (+ aliases
+    // fieldgrid/field/isosurface, streamlines/stream, occupancy/shells).
+    // Returns false on an unknown name. Used by POST /overlay so the
+    // headless snapshot harness can enable the field overlays, which
+    // default off and are not persisted in QSettings.
+    bool setOverlayVisible(const QString& name, bool on);
+
+    // Set the butterfly (field-grid) isosurface |T0| contour threshold in ppm
+    // and re-render. Runtime-tunable so the dominant-zone level can be swept
+    // (POST /field/threshold) without a rebuild. Returns false if no field-grid
+    // overlay is live (no scene loaded).
+    bool setFieldThreshold(double ppm);
+
+    // The two orthogonal butterfly knobs (POST /field/gaussian): the radial
+    // Gaussian taper width σ in Å ("extent" — lobe reach) and the amplitude
+    // gain ("peak"; 1.0 = true physics). Re-evaluate + re-render. Return false
+    // if no field-grid overlay is live.
+    bool setFieldExtent(double sigmaA);
+    bool setFieldPeak(double amplitude);
+
     // Access to the wrapped TransformedConformation so REST handlers can
     // call setMode without re-walking the loader result. Null until a run
     // is loaded.
@@ -175,6 +198,7 @@ private:
     void updateCameraModeActions();
     void updateFitModeLabel();
     void revealDockQueued(QDockWidget* dock);
+    void updateSelectionStatus();   // status-bar selection count + geometry kind
     void resetDashboardStateForRunLoad();
     // QSettings persistence — see kSettingsVersion in the .cpp for the
     // versioned QMainWindow state blob policy. Tolerant on restore (any
@@ -216,11 +240,12 @@ private:
     // double-clicks fall through to the picker.
     class CameraInputFilter* cameraInputFilter_ = nullptr;
 
-    // Selection model — the QAbstractListModel for the ≤4-atom group — plus
-    // its QListView panel. The picker feeds the model; the model fans focus
-    // to Atom Info and the set to the measurement overlay/dashboard context.
+    // Selection model — the QAbstractListModel for the ≤4-atom group. The picker
+    // feeds the model; focus fans to Atom Info, the set to the measurement
+    // overlay/dashboard context, and a count/kind summary to the status bar.
+    // (The compact SelectionDock was retired — redundant with the in-scene
+    // MeasurementOverlay.)
     model::AtomSelection* selection_ = nullptr;
-    class SelectionDock* selectionDock_ = nullptr;
     class SignalDisplayDialog* signalDisplayDialog_ = nullptr;
 
     // Scale-first dashboard signal state. AtomSelection supplies focus/context;
@@ -249,17 +274,17 @@ private:
     // Toolbar controls.
     QPointer<QSlider> frameSlider_;
     QPointer<QSpinBox> fpsSpinner_;
-    QPointer<QAction> playAction_;
-    QPointer<QAction> stepBackAction_;
-    QPointer<QAction> stepForwardAction_;
+    QPointer<QAction> playBackAction_;      // continuous reverse
+    QPointer<QAction> stepBackAction_;      // single frame back
+    QPointer<QAction> stopAction_;          // stop / pause
+    QPointer<QAction> stepForwardAction_;   // single frame forward
+    QPointer<QAction> playForwardAction_;   // continuous forward
     QPointer<QAction> showRibbonAction_;
     QPointer<QAction> showRingsAction_;
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> showOccupancyAction_;
     QPointer<QAction> signalDisplaysAction_;
-    QPointer<QMenu> panelsMenu_;
-    QPointer<QToolButton> panelsButton_;
 
     // Exclusive camera-mode action group. QActionGroup is the standard Qt
     // idiom for radio-style mutual exclusion across actions. Source of
@@ -289,6 +314,7 @@ private:
     QPointer<QToolBar> toolsToolbar_;
 
     // Status bar labels.
+    QPointer<QLabel> selectionLabel_;
     QPointer<QLabel> proteinLabel_;
     QPointer<QLabel> frameLabel_;
     QPointer<QLabel> timeLabel_;

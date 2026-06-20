@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 namespace h5reader::app {
 
@@ -62,19 +63,15 @@ bool QtAtomPicker::eventFilter(QObject* obj, QEvent* event) {
     return QObject::eventFilter(obj, event);
 }
 
-void QtAtomPicker::doPick(int displayX, int displayY, Qt::KeyboardModifiers mods) {
-    ASSERT_THREAD(this);
-    if (!protein_ || !conformation_ || !renderer_ || !vtkWidget_) return;
+std::optional<std::size_t> QtAtomPicker::atomAt(int displayX, int displayY) const {
+    if (!protein_ || !conformation_ || !renderer_ || !vtkWidget_)
+        return std::nullopt;
 
     // Convert Qt widget coords → VTK widget coords. Qt origin is top-
     // left; VTK is bottom-left. Device pixel ratio for Hi-DPI displays.
     const double dpr = vtkWidget_->devicePixelRatioF();
     const int    vtkX = static_cast<int>(displayX * dpr);
     const int    vtkY = static_cast<int>((vtkWidget_->height() - displayY) * dpr);
-
-    qCDebug(cPicker).noquote()
-        << "qt=(" << displayX << "," << displayY << ")"
-        << "vtk=(" << vtkX << "," << vtkY << ") dpr=" << dpr;
 
     auto* camera = renderer_->GetActiveCamera();
     double camPos[3]; camera->GetPosition(camPos);
@@ -84,7 +81,7 @@ void QtAtomPicker::doPick(int displayX, int displayY, Qt::KeyboardModifiers mods
     renderer_->DisplayToWorld();
     double worldPt[4]; renderer_->GetWorldPoint(worldPt);
     const double w = worldPt[3];
-    if (std::abs(w) < 1e-12) return;
+    if (std::abs(w) < 1e-12) return std::nullopt;
     const model::Vec3 clickWorld(worldPt[0] / w, worldPt[1] / w, worldPt[2] / w);
     const model::Vec3 rayDir = (clickWorld - rayOrigin).normalized();
 
@@ -113,16 +110,22 @@ void QtAtomPicker::doPick(int displayX, int displayY, Qt::KeyboardModifiers mods
         }
     }
 
-    if (!found || bestDist > kMaxPickDistanceA) {
-        qCDebug(cPicker).noquote()
-            << "no pick | best dist=" << bestDist << "Å";
+    if (!found || bestDist > kMaxPickDistanceA)
+        return std::nullopt;
+    return bestAtom;
+}
+
+void QtAtomPicker::doPick(int displayX, int displayY, Qt::KeyboardModifiers mods) {
+    ASSERT_THREAD(this);
+    const auto hit = atomAt(displayX, displayY);
+    if (!hit) {
+        qCDebug(cPicker).noquote() << "no pick";
         return;
     }
-
     qCInfo(cPicker).noquote()
-        << "atom" << bestAtom << "| dist=" << bestDist << "Å"
-        << "| frame=" << t;
-    emit atomPicked(bestAtom, mods);
+        << "atom" << *hit
+        << "| frame=" << (playback_ ? playback_->currentFrame() : 0);
+    emit atomPicked(*hit, mods);
 }
 
 }  // namespace h5reader::app

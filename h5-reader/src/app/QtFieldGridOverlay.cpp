@@ -18,6 +18,7 @@
 #include <vtkProperty.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace h5reader::app {
@@ -215,9 +216,36 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
                     }
                 }
 
+                // Physics-preserving Gaussian radial taper: keep the true
+                // kernel value near the ring, smoothly kill the 1/r³ tail so
+                // the lobe has a bounded, tunable REACH (extent σ). gaussianPeak_
+                // is an amplitude gain (1.0 = real ppm). This is what bounds the
+                // field so the isosurface closes; the boundary clamp below is a
+                // belt-and-suspenders guard for very large σ.
+                const double rDist  = (p - geo.center).norm();
+                const double window = std::exp(
+                    -(rDist * rDist) /
+                    (2.0 * gaussianExtentA_ * gaussianExtentA_));
+                t0 *= gaussianPeak_ * window;
+
                 const int idx = ix + iy * dim + iz * dim * dim;
+                // Guaranteed closure: force the outermost grid shell to 0
+                // (sub-threshold) so vtkContourFilter always emits a CLOSED
+                // isosurface inside the box. Without this, any lobe still above
+                // |threshold| at the box face exits the volume as an open/torn
+                // surface — the "sheared butterfly" artifact. With the box
+                // (FIELD_GRID_EXTENT_A) sized so the field decays below the
+                // default threshold before the boundary, this normally clamps
+                // only already-sub-threshold voxels; it also makes lowering the
+                // threshold at runtime degrade gracefully (a cap at the box)
+                // instead of tearing.
+                const bool onBoundary =
+                    (ix == 0 || ix == dim - 1 ||
+                     iy == 0 || iy == dim - 1 ||
+                     iz == 0 || iz == dim - 1);
                 rg.scalars->SetValue(idx,
-                    std::isfinite(t0) ? static_cast<float>(t0) : 0.0f);
+                    onBoundary ? 0.0f
+                               : (std::isfinite(t0) ? static_cast<float>(t0) : 0.0f));
             }
         }
     }
@@ -282,6 +310,25 @@ void QtFieldGridOverlay::setThresholdPpm(double threshold) {
     ASSERT_THREAD(this);
     thresholdPpm_ = std::max(0.0, threshold);
     UpdateThresholds();
+}
+
+void QtFieldGridOverlay::setGaussianExtent(double sigmaA) {
+    ASSERT_THREAD(this);
+    gaussianExtentA_ = std::max(0.1, sigmaA);   // guard div-by-zero in the window
+    // The taper changes the scalar field itself, so re-evaluate the grid at the
+    // current frame (cheap one-exp-per-point added on top of the kernel). The
+    // contour filters rerun on the next render via Modified().
+    if (visible_ && protein_ && conformation_)
+        for (size_t ri = 0; ri < rings_.size(); ++ri)
+            RecomputeRingScalars(ri, currentFrame_);
+}
+
+void QtFieldGridOverlay::setGaussianPeak(double amplitude) {
+    ASSERT_THREAD(this);
+    gaussianPeak_ = std::max(0.0, amplitude);
+    if (visible_ && protein_ && conformation_)
+        for (size_t ri = 0; ri < rings_.size(); ++ri)
+            RecomputeRingScalars(ri, currentFrame_);
 }
 
 void QtFieldGridOverlay::setOpacity(double opacity) {

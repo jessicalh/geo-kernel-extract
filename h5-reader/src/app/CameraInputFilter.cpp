@@ -21,6 +21,9 @@ namespace {
 constexpr double kRotateRadiansPerPixel = 0.005;
 constexpr double kDollyPerWheelTick     = 1.0 / 1200.0;  // 1 wheel notch = 120 angleDelta
 constexpr double kDollyPerDragPixel     = 1.0 / 200.0;
+// A press/release within this many pixels (no real drag) is a click, not a
+// rotate — used to fire viewportClicked.
+constexpr double kClickSlopPx           = 4.0;
 }  // namespace
 
 CameraInputFilter::CameraInputFilter(QVTKOpenGLNativeWidget* widget,
@@ -79,6 +82,9 @@ void CameraInputFilter::handleMouseDown(QMouseEvent* me) {
     ASSERT_THREAD(this);
     if (!me) return;
     lastPos_ = me->position();
+    pressPos_ = me->position();
+    pressButton_ = me->button();
+    moved_ = false;
     const auto mods = me->modifiers();
     const auto buttons = me->button();
     if (buttons == Qt::LeftButton) {
@@ -96,6 +102,12 @@ void CameraInputFilter::handleMouseMove(QMouseEvent* me) {
     ASSERT_THREAD(this);
     if (!me || !composer_) return;
     const QPointF p = me->position();
+    if (!moved_) {
+        const double mdx = p.x() - pressPos_.x();
+        const double mdy = p.y() - pressPos_.y();
+        if ((mdx * mdx + mdy * mdy) > (kClickSlopPx * kClickSlopPx))
+            moved_ = true;
+    }
     const double dx = p.x() - lastPos_.x();
     const double dy = p.y() - lastPos_.y();
     lastPos_ = p;
@@ -138,6 +150,10 @@ void CameraInputFilter::handleMouseMove(QMouseEvent* me) {
 
 void CameraInputFilter::handleMouseUp(QMouseEvent* /*me*/) {
     ASSERT_THREAD(this);
+    // A left click that never became a drag is a select/toggle click, not a
+    // camera move — let the window decide (toggle playback on empty space).
+    if (pressButton_ == Qt::LeftButton && !moved_)
+        emit viewportClicked(pressPos_);
     activeGesture_ = Gesture::None;
 }
 

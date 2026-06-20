@@ -37,11 +37,16 @@ public:
     bool isPlaying()    const { return timer_.isActive(); }
     int  fps()          const { return fps_; }
     bool isLooping()    const { return looping_; }
+    // +1 forward, -1 backward — the direction advance() steps and that play()
+    // (and the directional play buttons) resume in.
+    int  direction()    const { return direction_; }
 
 public slots:
-    void play();
+    void play();                // resume in the current direction_
     void pause();
     void togglePlayPause();
+    void playForward();         // set direction +1 and play
+    void playBackward();        // set direction -1 and play
     void setFrame(int t);       // clamps to [0, frameCount-1]
     void stepForward();         // one frame, irrespective of play state
     void stepBackward();
@@ -67,6 +72,7 @@ private:
     // individual configurations blur into each other.
     int    fps_          = 5;
     bool   looping_      = true;
+    int    direction_    = +1;   // +1 forward, -1 backward
 };
 
 }  // namespace h5reader::app

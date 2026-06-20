@@ -341,6 +341,24 @@ void MoleculeScene::syncCameraClippingRange() {
             b[4] = std::min(b[4], sb[4]); b[5] = std::max(b[5], sb[5]);
         }
     }
+    // Generalise that union to every visible prop in the main renderer. With
+    // AutoAdjustCameraClippingRangeOff() we are the sole authority on the near/
+    // far planes, so they must enclose everything drawn in layer 0 — not just
+    // the molecule. Overlays whose geometry reaches past the molecule surface
+    // were being sheared by the planes: the B-field "butterfly" streamline tubes
+    // integrate out to kMaxPropagation (~12 A) from each ring, and the field-grid
+    // isosurfaces / ribbon can likewise overhang. ComputeVisiblePropBounds() is
+    // VTK's own visible-bounds query (what auto-adjust would use); unioning it
+    // can only widen b, never shrink it, so the molecule's depth precision is
+    // unaffected while the overlays stop being clipped. Guard the inverted
+    // sentinel VTK returns when nothing is visible (min > max).
+    double vp[6];
+    renderer_->ComputeVisiblePropBounds(vp);
+    if (vp[0] <= vp[1] && vp[2] <= vp[3] && vp[4] <= vp[5]) {
+        b[0] = std::min(b[0], vp[0]); b[1] = std::max(b[1], vp[1]);
+        b[2] = std::min(b[2], vp[2]); b[3] = std::max(b[3], vp[3]);
+        b[4] = std::min(b[4], vp[4]); b[5] = std::max(b[5], vp[5]);
+    }
     renderer_->ResetCameraClippingRange(b);
 }
 

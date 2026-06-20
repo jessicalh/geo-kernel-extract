@@ -66,6 +66,10 @@ public slots:
     void setThresholdPpm(double threshold);
     void setOpacity(double opacity);
 
+    // Two orthogonal butterfly knobs (re-evaluate the scalar grid).
+    void setGaussianExtent(double sigmaA);   // radial taper σ in Å — lobe reach
+    void setGaussianPeak(double amplitude);  // amplitude gain (1.0 = true physics)
+
     // Master visibility; also split shielded / deshielded toggles.
     void setVisible(bool visible);
     void setShieldedVisible(bool visible);
@@ -99,7 +103,19 @@ private:
 
     FieldGridMode mode_              = FieldGridMode::BiotSavart;
     int           currentFrame_      = 0;
-    double        thresholdPpm_       = 0.10;    // ppm
+    double        thresholdPpm_       = 0.30;    // ppm — dominant-zone default
+                                                 // (~6–7.5 Å reach; fits the
+                                                 // 9 Å grid). Runtime-tunable
+                                                 // via setThresholdPpm().
+    // Physics-preserving Gaussian radial taper on the kernel field:
+    //   T0_shown(p) = gaussianPeak_ · T0_kernel(p) · exp(-r²/(2·σ²))
+    // r = |p - ring centre|. σ (gaussianExtentA_) bounds the lobe REACH by
+    // smoothly killing the unbounded 1/r³ tail, so the isosurface always
+    // closes; gaussianPeak_ is an amplitude gain (1.0 keeps the true near-ring
+    // ppm). Both runtime-tunable (POST /field/gaussian) — the two orthogonal
+    // "extent" and "peak" controls.
+    double        gaussianExtentA_    = 9.0;    // σ, Å — reach (taper width)
+    double        gaussianPeak_       = 1.0;    // amplitude gain (1 = physics)
     double        opacity_            = 0.40;
     bool          visible_            = false;   // off by default — user enables
     bool          shieldedVisible_    = true;

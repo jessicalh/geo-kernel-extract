@@ -17,7 +17,6 @@
 #include "TimeViewportController.h"
 #include "MeasurementOverlay.h"
 #include "QtRingPolygonOverlay.h"
-#include "SelectionDock.h"
 #include "DashboardStripDock.h"
 #include "DashboardDisplayController.h"
 #include "DashboardSelectionController.h"
@@ -67,6 +66,12 @@
 #include <QStackedLayout>
 #include <QStringList>
 #include <QStatusBar>
+#include <QColor>
+#include <QIcon>
+#include <QPainter>
+#include <QPalette>
+#include <QPixmap>
+#include <QPolygonF>
 #include <QStyle>
 #include <QTimer>
 #include <QToolBar>
@@ -228,10 +233,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              playback_,     &QtPlaybackController::setFrame);
     ACONNECT(playback_, &QtPlaybackController::playingChanged,
              this,      [this](bool playing) {
-                 if (playAction_) {
-                     playAction_->setIcon(style()->standardIcon(
-                         playing ? QStyle::SP_MediaPause : QStyle::SP_MediaPlay));
-                 }
+                 // Stop is live only while something is animating.
+                 if (stopAction_) stopAction_->setEnabled(playing);
              });
 
     if (frameSlider_) {
@@ -258,6 +261,15 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // chain runs THIS first. Double-click events fall through to the picker.
     cameraInputFilter_ = new CameraInputFilter(vtkWidget_, scene_,
                                                  scene_->cameraComposer(), this);
+
+    // Click on empty space (no atom hit, no drag) stops/restarts the animation.
+    ACONNECT(cameraInputFilter_, &CameraInputFilter::viewportClicked,
+             this, [this](QPointF pos) {
+                 if (!picker_ || !playback_) return;
+                 const auto hit = picker_->atomAt(
+                     static_cast<int>(pos.x()), static_cast<int>(pos.y()));
+                 if (!hit) playback_->togglePlayPause();
+             });
 
     inspectorDock_->setContext(loaded_->protein.get(), transformed_);
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
@@ -314,6 +326,14 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              this,   [this](std::size_t, Qt::KeyboardModifiers) {
                  if (scene_) scene_->requestRender(
                      MoleculeScene::RenderSource::Picker);
+             });
+
+    // Reveal-on-pick: picking an atom brings up its Inspector (it starts hidden;
+    // this is the dock's reveal path now that the Panels menu is gone).
+    ACONNECT(picker_, &QtAtomPicker::atomPicked,
+             this,   [this](std::size_t, Qt::KeyboardModifiers) {
+                 if (inspectorDock_ && !inspectorDock_->isVisible())
+                     revealDockQueued(inspectorDock_);
              });
 
     ACONNECT(selection_, &model::AtomSelection::focusChanged,
@@ -375,7 +395,10 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                  if (scene_) scene_->refreshCurrentFrame();
              });
 
-    selectionDock_->setModel(selection_);
+    // Selection summary in the status bar (count + measurement kind).
+    ACONNECT(selection_, &model::AtomSelection::changed, this, [this]() { updateSelectionStatus(); });
+    ACONNECT(selection_, &model::AtomSelection::cleared, this, [this]() { updateSelectionStatus(); });
+    updateSelectionStatus();
 
     dashboardStripDock_->setContext(loaded_->protein.get(), transformed_);
     dashboardStripDock_->setSignalModels(signalCatalog_, dashboardSignals_);
@@ -452,6 +475,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     if (emptyPlaceholder_)
         emptyPlaceholder_->setVisible(false);
     setWindowTitle(QStringLiteral("h5-reader — %1").arg(loaded_->proteinId));
+    if (proteinLabel_)
+        proteinLabel_->setText(loaded_->proteinId);
     if (!loaded_->runPath.isEmpty())
         addToRecentFiles(QDir(loaded_->runPath).absolutePath());
     syncRestServerContext();
@@ -485,8 +510,8 @@ void ReaderMainWindow::clearLoadedRun() {
     }
     if (dashboardController_)
         dashboardController_->setVisualizationContext({});
-    if (selectionDock_)
-        selectionDock_->setModel(nullptr);
+    if (selectionLabel_)
+        selectionLabel_->setText(QStringLiteral("no selection"));
     if (inspectorDock_) {
         inspectorDock_->setContext(nullptr, nullptr);
         inspectorDock_->setFieldAvailability({});
@@ -558,17 +583,16 @@ void ReaderMainWindow::setEmptyState() {
         fpsSpinner_->setRange(1, 60);
         fpsSpinner_->setValue(5);
     }
-    if (playAction_) {
-        playAction_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
-    }
     setWindowTitle(QStringLiteral("h5-reader"));
 }
 
 void ReaderMainWindow::setLoadedControlsEnabled(bool enabled) {
     ASSERT_THREAD(this);
-    if (playAction_) playAction_->setEnabled(enabled);
+    if (playBackAction_) playBackAction_->setEnabled(enabled);
     if (stepBackAction_) stepBackAction_->setEnabled(enabled);
+    if (stopAction_) stopAction_->setEnabled(enabled);
     if (stepForwardAction_) stepForwardAction_->setEnabled(enabled);
+    if (playForwardAction_) playForwardAction_->setEnabled(enabled);
     if (frameSlider_) frameSlider_->setEnabled(enabled);
     if (fpsSpinner_) fpsSpinner_->setEnabled(enabled);
 
@@ -718,6 +742,65 @@ quint16 ReaderMainWindow::startRestServer(quint16 port) {
     return bound;
 }
 
+bool ReaderMainWindow::setOverlayVisible(const QString& name, bool on) {
+    ASSERT_THREAD(this);
+    // Map a stable automation key → the toolbar QAction, then setChecked()
+    // so the already-connected QAction::toggled handler runs the real overlay
+    // logic (setVisible + refreshCurrentFrame for the per-frame kernel
+    // overlays). This keeps REST control and the toolbar UI on one code path.
+    const QString key = name.toLower();
+    QPointer<QAction> a;
+    if (key == QStringLiteral("ribbon"))
+        a = showRibbonAction_;
+    else if (key == QStringLiteral("rings"))
+        a = showRingsAction_;
+    else if (key == QStringLiteral("butterfly") || key == QStringLiteral("fieldgrid")
+             || key == QStringLiteral("field") || key == QStringLiteral("isosurface"))
+        a = showButterflyAction_;
+    else if (key == QStringLiteral("bfield") || key == QStringLiteral("streamlines")
+             || key == QStringLiteral("stream"))
+        a = showBFieldAction_;
+    else if (key == QStringLiteral("shadow") || key == QStringLiteral("occupancy")
+             || key == QStringLiteral("shells"))
+        a = showOccupancyAction_;
+    if (!a)
+        return false;
+    if (a->isChecked() != on)
+        a->setChecked(on);   // fires QAction::toggled → overlay setVisible + refresh
+    return true;
+}
+
+bool ReaderMainWindow::setFieldThreshold(double ppm) {
+    ASSERT_THREAD(this);
+    if (!scene_ || !scene_->fieldGridOverlay())
+        return false;
+    scene_->fieldGridOverlay()->setThresholdPpm(ppm);
+    // Only the isovalue changed (scalar field unchanged), so a plain render
+    // re-runs the contour filters — no need to re-evaluate the kernel grid.
+    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+    return true;
+}
+
+bool ReaderMainWindow::setFieldExtent(double sigmaA) {
+    ASSERT_THREAD(this);
+    if (!scene_ || !scene_->fieldGridOverlay())
+        return false;
+    // setGaussianExtent re-evaluates the scalar grid (the taper reshapes the
+    // field); a render then re-contours it.
+    scene_->fieldGridOverlay()->setGaussianExtent(sigmaA);
+    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+    return true;
+}
+
+bool ReaderMainWindow::setFieldPeak(double amplitude) {
+    ASSERT_THREAD(this);
+    if (!scene_ || !scene_->fieldGridOverlay())
+        return false;
+    scene_->fieldGridOverlay()->setGaussianPeak(amplitude);
+    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+    return true;
+}
+
 void ReaderMainWindow::setDocksVisible(bool visible) {
     ASSERT_THREAD(this);
 
@@ -729,7 +812,7 @@ void ReaderMainWindow::setDocksVisible(bool visible) {
             return;
         stashedDockVisibility_.clear();
         const std::vector<QDockWidget*> docks = {
-            inspectorDock_, selectionDock_, dashboardStripDock_
+            inspectorDock_, dashboardStripDock_
         };
         for (QDockWidget* d : docks) {
             if (!d) continue;
@@ -850,6 +933,23 @@ void ReaderMainWindow::revealDockQueued(QDockWidget* dock) {
     });
 }
 
+void ReaderMainWindow::updateSelectionStatus() {
+    ASSERT_THREAD(this);
+    if (!selectionLabel_)
+        return;
+    if (!selection_ || selection_->empty()) {
+        selectionLabel_->setText(QStringLiteral("no selection"));
+        return;
+    }
+    const std::size_t        n = selection_->count();
+    const model::GeometryKind k = selection_->geometryKind();
+    if (k == model::GeometryKind::None)
+        selectionLabel_->setText(QStringLiteral("%1 atom selected").arg(n));
+    else
+        selectionLabel_->setText(QStringLiteral("%1 atoms · %2")
+            .arg(n).arg(QString::fromLatin1(model::NameForGeometryKind(k))));
+}
+
 void ReaderMainWindow::resetDashboardStateForRunLoad() {
     ASSERT_THREAD(this);
     if (dashboardSelectionController_) {
@@ -943,11 +1043,57 @@ void ReaderMainWindow::buildUi() {
     // Empty until then; each entry loads into this window on click.
     recentMenu_ = fileMenu_->addMenu(QStringLiteral("&Recent"));
     recentMenu_->setObjectName(QStringLiteral("RecentMenu"));
-
-    auto* viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
-    panelsMenu_ = viewMenu->addMenu(QStringLiteral("&Panels"));
-    panelsMenu_->setObjectName(QStringLiteral("PanelsMenu"));
 }
+
+namespace {
+// Transport-control glyphs drawn in a given colour so they stay legible on any
+// palette — Qt's SP_Media* standard icons render near-black on the dark Fusion
+// toolbar. Centred in a 32 px square.
+enum class TransportGlyph { PlayForward, PlayBackward, StepForward, StepBackward, Stop };
+
+QIcon makeTransportIcon(TransportGlyph kind, const QColor& color) {
+    constexpr int s = 32;
+    QPixmap pm(s, s);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    const double m   = s * 0.30;             // margin
+    const double x0  = m, y0 = m, x1 = s - m, y1 = s - m, yc = s * 0.5;
+    const double bar = (x1 - x0) * 0.32;     // bar thickness for the step glyphs
+    switch (kind) {
+        case TransportGlyph::PlayForward: {
+            QPolygonF t; t << QPointF(x0, y0) << QPointF(x1, yc) << QPointF(x0, y1);
+            p.drawPolygon(t);
+            break;
+        }
+        case TransportGlyph::PlayBackward: {
+            QPolygonF t; t << QPointF(x1, y0) << QPointF(x0, yc) << QPointF(x1, y1);
+            p.drawPolygon(t);
+            break;
+        }
+        case TransportGlyph::StepForward: {
+            QPolygonF t; t << QPointF(x0, y0) << QPointF(x1 - bar, yc) << QPointF(x0, y1);
+            p.drawPolygon(t);
+            p.drawRect(QRectF(x1 - bar, y0, bar, y1 - y0));
+            break;
+        }
+        case TransportGlyph::StepBackward: {
+            QPolygonF t; t << QPointF(x1, y0) << QPointF(x0 + bar, yc) << QPointF(x1, y1);
+            p.drawPolygon(t);
+            p.drawRect(QRectF(x0, y0, bar, y1 - y0));
+            break;
+        }
+        case TransportGlyph::Stop: {
+            p.drawRect(QRectF(x0, y0, x1 - x0, y1 - y0));
+            break;
+        }
+    }
+    p.end();
+    return QIcon(pm);
+}
+}  // namespace
 
 void ReaderMainWindow::buildToolbar() {
     auto* tb = addToolBar(QStringLiteral("Playback"));
@@ -961,26 +1107,44 @@ void ReaderMainWindow::buildToolbar() {
         toolbarFont.setPixelSize(toolbarFont.pixelSize() - 1);
     tb->setFont(toolbarFont);
 
-    playAction_ = tb->addAction(
-        style()->standardIcon(QStyle::SP_MediaPlay),
-        QStringLiteral("Play / Pause"));
-    ACONNECT(playAction_.data(), &QAction::triggered,
-             this, &ReaderMainWindow::onPlayPauseClicked);
+    // Transport: ⏪ play-back · ◀ step-back · ■ stop · ▶ step-fwd · ⏩ play-fwd.
+    // Custom glyphs in the palette text colour (legible on the dark toolbar).
+    const QColor glyph = palette().color(QPalette::ButtonText);
+
+    playBackAction_ = tb->addAction(
+        makeTransportIcon(TransportGlyph::PlayBackward, glyph),
+        QStringLiteral("Play backward"));
+    playBackAction_->setToolTip(QStringLiteral("Play continuously, backward in time."));
+    ACONNECT(playBackAction_.data(), &QAction::triggered,
+             this, [this]() { if (playback_) playback_->playBackward(); });
 
     stepBackAction_ = tb->addAction(
-        style()->standardIcon(QStyle::SP_MediaSeekBackward),
+        makeTransportIcon(TransportGlyph::StepBackward, glyph),
         QStringLiteral("Step back"));
+    stepBackAction_->setToolTip(QStringLiteral("Step one frame back."));
     ACONNECT(stepBackAction_.data(), &QAction::triggered,
-             this, [this]() {
-                 if (playback_) playback_->stepBackward();
-             });
-    stepForwardAction_  = tb->addAction(
-        style()->standardIcon(QStyle::SP_MediaSeekForward),
+             this, [this]() { if (playback_) playback_->stepBackward(); });
+
+    stopAction_ = tb->addAction(
+        makeTransportIcon(TransportGlyph::Stop, glyph),
+        QStringLiteral("Stop"));
+    stopAction_->setToolTip(QStringLiteral("Stop the animation."));
+    ACONNECT(stopAction_.data(), &QAction::triggered,
+             this, [this]() { if (playback_) playback_->pause(); });
+
+    stepForwardAction_ = tb->addAction(
+        makeTransportIcon(TransportGlyph::StepForward, glyph),
         QStringLiteral("Step forward"));
+    stepForwardAction_->setToolTip(QStringLiteral("Step one frame forward."));
     ACONNECT(stepForwardAction_.data(), &QAction::triggered,
-             this, [this]() {
-                 if (playback_) playback_->stepForward();
-             });
+             this, [this]() { if (playback_) playback_->stepForward(); });
+
+    playForwardAction_ = tb->addAction(
+        makeTransportIcon(TransportGlyph::PlayForward, glyph),
+        QStringLiteral("Play forward"));
+    playForwardAction_->setToolTip(QStringLiteral("Play continuously, forward in time."));
+    ACONNECT(playForwardAction_.data(), &QAction::triggered,
+             this, [this]() { if (playback_) playback_->playForward(); });
 
     tb->addSeparator();
 
@@ -1050,7 +1214,7 @@ void ReaderMainWindow::buildToolbar() {
     ACONNECT(planeLockAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onPlaneLockTriggered);
 
-    freeAction_ = tb->addAction(QStringLiteral("Free"));
+    freeAction_ = tb->addAction(QStringLiteral("Free Camera"));
     freeAction_->setCheckable(true);
     freeAction_->setChecked(true);   // composer's default mode is Free
     freeAction_->setToolTip(QStringLiteral(
@@ -1113,7 +1277,7 @@ void ReaderMainWindow::buildToolbar() {
         "Biot-Savart B-field streamlines around each aromatic ring, "
         "seeded on a circle at 1.5× ring radius, coloured by |B|."));
 
-    showOccupancyAction_ = tb->addAction(QStringLiteral("Shadow"));
+    showOccupancyAction_ = tb->addAction(QStringLiteral("Occupancy"));
     showOccupancyAction_->setCheckable(true);
     showOccupancyAction_->setChecked(false);   // off by default
     showOccupancyAction_->setToolTip(QStringLiteral(
@@ -1159,10 +1323,13 @@ void ReaderMainWindow::buildToolbar() {
 }
 
 void ReaderMainWindow::buildStatusBar() {
-    proteinLabel_ = new QLabel(QStringLiteral("No calcset loaded"), this);
-    frameLabel_   = new QLabel(QStringLiteral("frame —"), this);
-    timeLabel_    = new QLabel(QStringLiteral("t=— ps"), this);
+    selectionLabel_ = new QLabel(QStringLiteral("no selection"), this);
+    proteinLabel_   = new QLabel(QStringLiteral("No calcset loaded"), this);
+    frameLabel_     = new QLabel(QStringLiteral("frame —"), this);
+    timeLabel_      = new QLabel(QStringLiteral("t=— ps"), this);
 
+    // Selection summary on the LEFT; identity/frame/time pinned on the right.
+    statusBar()->addWidget(selectionLabel_);
     statusBar()->addPermanentWidget(proteinLabel_);
     statusBar()->addPermanentWidget(frameLabel_);
     statusBar()->addPermanentWidget(timeLabel_);
@@ -1173,12 +1340,6 @@ void ReaderMainWindow::buildDocks() {
     // It is constructed before load and starts with its own placeholder.
     inspectorDock_ = new QtAtomInspectorDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, inspectorDock_);
-
-    // Selected-atoms panel — the QListView binds to AtomSelection after load.
-    selectionDock_ = new SelectionDock(this);
-    selectionDock_->setModel(nullptr);
-    addDockWidget(Qt::LeftDockWidgetArea, selectionDock_);
-    tabifyDockWidget(inspectorDock_, selectionDock_);
 
     // Dashboard strips — the dock and controller are stable chrome; run-backed
     // models are swapped in by installLoadedRun().
@@ -1197,11 +1358,10 @@ void ReaderMainWindow::buildDocks() {
     inspectorDock_->raise();
     resizeDocks({inspectorDock_}, {360}, Qt::Horizontal);
 
-    // Start clean — no property docks open on launch. The user opens each via
-    // View -> Panels or the toolbar menu. QSettings restore can override this
+    // Start clean — docks hidden on launch. The Inspector reveals on atom pick,
+    // the Strip dock when a metric is added. QSettings restore can override this
     // for users who intentionally left a dock visible.
     inspectorDock_->setVisible(false);
-    selectionDock_->setVisible(false);
     dashboardStripDock_->setVisible(false);
 
     ACONNECT(dashboardStripDock_, &QDockWidget::visibilityChanged,
@@ -1219,40 +1379,10 @@ void ReaderMainWindow::buildDocks() {
     ACONNECT(dashboardStripDock_, &DashboardStripDock::metricPickerRequested,
              this, &ReaderMainWindow::onOpenSignalDisplays);
 
-    // Panel recovery — one QAction per dock from QDockWidget::toggleViewAction().
-    // The same QAction instances live in View -> Panels and the toolbar menu.
-    const struct { QDockWidget* dock; const char* label; const char* tip; } kPanels[] = {
-        { inspectorDock_,      "Inspector",
-          "Show or hide the Atom Info panel." },
-        { selectionDock_,      "Selection",
-          "Show or hide the Selected Atoms panel." },
-        { dashboardStripDock_, "Strip",
-          "Show or hide the time-series strip dock." },
-    };
-    if (panelsMenu_) {
-        panelsMenu_->clear();
-        for (const auto& p : kPanels) {
-            if (!p.dock) continue;
-            QAction* a = p.dock->toggleViewAction();
-            a->setText(QString::fromUtf8(p.label));
-            a->setToolTip(QString::fromUtf8(p.tip));
-            ACONNECT(a, &QAction::triggered,
-                     this, [this, dock = QPointer<QDockWidget>(p.dock)](bool checked) {
-                         if (checked && dock)
-                             revealDockQueued(dock.data());
-                     });
-            panelsMenu_->addAction(a);
-        }
-    }
-    if (toolsToolbar_ && panelsMenu_) {
-        toolsToolbar_->addSeparator();
-        panelsButton_ = new QToolButton(toolsToolbar_);
-        panelsButton_->setText(QStringLiteral("Panels"));
-        panelsButton_->setToolTip(QStringLiteral("Show or hide panels."));
-        panelsButton_->setPopupMode(QToolButton::InstantPopup);
-        panelsButton_->setMenu(panelsMenu_);
-        toolsToolbar_->addWidget(panelsButton_);
-    }
+    // The "Panels" menu/toolbar button was removed: it exposed dock toggles that
+    // greyed out with no working route. Docks reveal themselves where it makes
+    // sense — the Strip dock when a metric is added, the Inspector on atom pick;
+    // the Selection dock was retired (redundant with the in-scene measurements).
 
     if (frameSlider_) {
         ACONNECT(frameSlider_.data(), &QSlider::sliderPressed,

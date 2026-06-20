@@ -22,6 +22,7 @@
 #include <vtkSmartPointer.h>
 
 #include <cstddef>
+#include <optional>
 
 class QVTKOpenGLNativeWidget;
 
@@ -52,6 +53,13 @@ signals:
     // add-to-selection) for AtomSelection to interpret — the picker stays
     // dumb and does not act on it. If no atom is close enough, none fires.
     void atomPicked(std::size_t atomIdx, Qt::KeyboardModifiers modifiers);
+
+public:
+    // Ray-cast the atom under a widget-space point at the current frame; returns
+    // the atom index, or nullopt if none is within tolerance. Lets callers ask
+    // "did this click land on an atom?" without triggering a selection (used by
+    // the empty-click-toggles-playback path).
+    std::optional<std::size_t> atomAt(int displayX, int displayY) const;
 
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
