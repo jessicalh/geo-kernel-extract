@@ -898,34 +898,6 @@ std::vector<double> componentSeriesT0(const TensorSeries& s) {
     return out;
 }
 
-std::vector<double> componentSeriesT1(const TensorSeries& s, int c) {
-    std::vector<double> out(s.values.size(), kNaN);
-    for (std::size_t i = 0; i < s.values.size(); ++i)
-        if (s.present[i]) out[i] = s.values[i].T1[static_cast<std::size_t>(c)];
-    return out;
-}
-
-std::vector<double> componentSeriesT2(const TensorSeries& s, int c) {
-    std::vector<double> out(s.values.size(), kNaN);
-    for (std::size_t i = 0; i < s.values.size(); ++i)
-        if (s.present[i]) out[i] = s.values[i].T2[static_cast<std::size_t>(c)];
-    return out;
-}
-
-std::vector<double> componentSeriesEfgT0(const EfgSeries& s) {
-    std::vector<double> out(s.values.size(), kNaN);
-    for (std::size_t i = 0; i < s.values.size(); ++i)
-        if (s.present[i]) out[i] = s.values[i].t0;
-    return out;
-}
-
-std::vector<double> componentSeriesEfgT2(const EfgSeries& s, int c) {
-    std::vector<double> out(s.values.size(), kNaN);
-    for (std::size_t i = 0; i < s.values.size(); ++i)
-        if (s.present[i]) out[i] = s.values[i].t2[static_cast<std::size_t>(c)];
-    return out;
-}
-
 struct RunningSeriesRef {
     QString series_ref;
     QJsonValue component_ref = QJsonValue(QJsonValue::Null);
@@ -1789,44 +1761,17 @@ QJsonObject serialRecord(const RunningSeriesRef& series) {
     return o;
 }
 
+void addScalarSeriesRef(std::vector<RunningSeriesRef>& refs, const QString& key, const ScalarSeries& s) {
+    refs.push_back({key, QJsonValue(QJsonValue::Null), QJsonValue(QJsonValue::Null),
+                    QJsonValue(QJsonValue::Null), componentSeries(s)});
+}
+
 void addVec3SeriesRefs(std::vector<RunningSeriesRef>& refs, const QString& key, const Vec3Series& s) {
     static constexpr std::array<const char*, 3> comps = {"x", "y", "z"};
     for (int c = 0; c < 3; ++c)
         refs.push_back({key, QString::fromLatin1(comps[static_cast<std::size_t>(c)]),
                         QJsonValue(QJsonValue::Null), QJsonValue(QJsonValue::Null),
                         componentSeries(s, c)});
-}
-
-void addScalarSeriesRef(std::vector<RunningSeriesRef>& refs, const QString& key, const ScalarSeries& s) {
-    refs.push_back({key, QJsonValue(QJsonValue::Null), QJsonValue(QJsonValue::Null),
-                    QJsonValue(QJsonValue::Null), componentSeries(s)});
-}
-
-void addEfgSeriesRefs(std::vector<RunningSeriesRef>& refs, const QString& key, const EfgSeries& s) {
-    refs.push_back({key, QStringLiteral("T0"), QJsonValue(QJsonValue::Null),
-                    QJsonValue(QJsonValue::Null), componentSeriesEfgT0(s)});
-    for (int c = 0; c < 5; ++c)
-        refs.push_back({key, QStringLiteral("T2.c%1").arg(c), QJsonValue(QJsonValue::Null),
-                        QJsonValue(QJsonValue::Null), componentSeriesEfgT2(s, c)});
-}
-
-std::vector<std::pair<QString, std::vector<double>>> sigmaComponents(const TensorSeries& total,
-                                                                      const TensorSeries& dia,
-                                                                      const TensorSeries& para,
-                                                                      const ScalarSeries& frob) {
-    std::vector<std::pair<QString, std::vector<double>>> out;
-    auto addTensor = [&](const QString& prefix, const TensorSeries& s) {
-        out.push_back({prefix + QStringLiteral(".T0"), componentSeriesT0(s)});
-        for (int i = 0; i < 3; ++i)
-            out.push_back({prefix + QStringLiteral(".T1.c%1").arg(i), componentSeriesT1(s, i)});
-        for (int i = 0; i < 5; ++i)
-            out.push_back({prefix + QStringLiteral(".T2.c%1").arg(i), componentSeriesT2(s, i)});
-    };
-    addTensor(QStringLiteral("total"), total);
-    out.push_back({QStringLiteral("total.frobenius"), componentSeries(frob)});
-    addTensor(QStringLiteral("dia"), dia);
-    addTensor(QStringLiteral("para"), para);
-    return out;
 }
 
 QJsonObject boostJson(const std::vector<std::pair<QString, std::vector<double>>>& sigmas,
@@ -1899,6 +1844,7 @@ struct RelationshipSeries {
         kernel_T0.samples.clear();
         contribution.samples.clear();
         kernel_T2.samples.clear();
+        kernel_mol.samples.clear();
     }
 
     struct SparseScalar {
@@ -1960,6 +1906,32 @@ struct RelationshipSeries {
         std::vector<std::pair<std::size_t, std::array<double, 5>>> samples;
     };
 
+    struct SparseMat3 {
+        void set(std::size_t step, const Mat3& v) {
+            if (!v.allFinite()) return;
+            if (!samples.empty() && samples.back().first == step) {
+                samples.back().second = v;
+                return;
+            }
+            samples.push_back({step, v});
+        }
+        std::vector<double> componentDense(std::size_t n, MolComp comp) const {
+            std::vector<double> out(n, kNaN);
+            const std::size_t idx = static_cast<std::size_t>(comp);
+            for (const auto& sample : samples)
+                if (sample.first < n)
+                    out[sample.first] = symmetricComponents(sample.second)[idx];
+            return out;
+        }
+        Mat3Series dense(std::size_t n) const {
+            Mat3Series out(n);
+            for (const auto& sample : samples)
+                if (sample.first < n) out.set(sample.first, sample.second);
+            return out;
+        }
+        std::vector<std::pair<std::size_t, Mat3>> samples;
+    };
+
     void markPresent(std::size_t step, bool present) {
         if (!present) return;
         if (present_steps.empty() || present_steps.back() != step) present_steps.push_back(step);
@@ -1984,16 +1956,8 @@ struct RelationshipSeries {
     SparseScalar kernel_T0;
     SparseScalar contribution;
     SparseT2 kernel_T2;
+    SparseMat3 kernel_mol;
 };
-
-// Per-frame magnitude (right-frame invariant) of a relationship's T2 kernel, for the
-// folded partner census; NaN where the partner was absent that frame.
-std::vector<double> kernelT2NormSeries(const RelationshipSeries::SparseT2& t2, std::size_t n) {
-    std::vector<double> out(n, kNaN);
-    for (const auto& s : t2.samples)
-        if (s.first < n) out[s.first] = norm5(s.second);
-    return out;
-}
 
 QString relationshipScope(const Body& body, std::size_t target_atom, const PairContribution& pair) {
     const bool selfOrBonded = (pair.pointer_flags & SelfOrBondedFlag) != 0;
@@ -2054,12 +2018,6 @@ EfgValue readT2Field(const Body& body, io::FieldKind kind, ArrayId id, std::size
         }
     }
     return out;
-}
-
-QJsonArray scalarAsSerialJson(const std::vector<double>& values) {
-    QJsonArray a;
-    for (double v : values) a.append(jd(v));
-    return a;
 }
 
 }  // namespace
@@ -2201,8 +2159,13 @@ public:
           bs_per_type_T2_(cadence_.stepCount()),
           hm_per_type_T2_(cadence_.stepCount()),
           mc_tensor_series_(kMcTensorFields.size(), TensorSeries(cadence_.stepCount())),
+          bs_per_type_mol_(8, Mat3Series(cadence_.stepCount())),
+          hm_per_type_mol_(8, Mat3Series(cadence_.stepCount())),
+          mc_tensor_mol_series_(kMcTensorFields.size(), Mat3Series(cadence_.stepCount())),
           tripeptide_bb_shielding_(cadence_.stepCount()),
           larsen_hbond_shielding_(cadence_.stepCount()),
+          tripeptide_bb_shielding_mol_(cadence_.stepCount()),
+          larsen_hbond_shielding_mol_(cadence_.stepCount()),
           sasa_(cadence_.stepCount()),
           hbond_nearest_dir_(cadence_.stepCount()),
           hbond_count_(cadence_.stepCount()),
@@ -2248,8 +2211,6 @@ public:
         root.insert(QStringLiteral("identity"), identityJson());
         qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=model";
         root.insert(QStringLiteral("model"), modelJson());
-        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=series";
-        root.insert(QStringLiteral("series"), seriesJson());
         qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=accumulator";
         // ACCUMULATOR_RESPEC §5.1.1: the all-pairs boost grid is GONE; the
         // certified methods feed the compact per-context accumulator instead.
@@ -2692,85 +2653,6 @@ private:
         return n;
     }
 
-    QJsonObject seriesJson() const {
-        QJsonObject s;
-        s.insert(QStringLiteral("sigma_present"), boolArrayJson(cadence_.sigmaMask()));
-        s.insert(QStringLiteral("coord"), coord_.json());
-        s.insert(QStringLiteral("molecular_frame"), molecular_frame_.json());
-        s.insert(QStringLiteral("sigma.total"), sigma_total_.json());
-        s.insert(QStringLiteral("sigma.dia"), sigma_dia_.json());
-        s.insert(QStringLiteral("sigma.para"), sigma_para_.json());
-        s.insert(QStringLiteral("sigma.total_raw"), sigma_total_raw_.json());
-        s.insert(QStringLiteral("sigma.dia_raw"), sigma_dia_raw_.json());
-        s.insert(QStringLiteral("sigma.para_raw"), sigma_para_raw_.json());
-        s.insert(QStringLiteral("sigma_mol.total"), sigma_mol_total_.json());
-        s.insert(QStringLiteral("sigma_mol.dia"), sigma_mol_dia_.json());
-        s.insert(QStringLiteral("sigma_mol.para"), sigma_mol_para_.json());
-        s.insert(QStringLiteral("sigma.total_frobenius"), sigma_frob_.json());
-        s.insert(QStringLiteral("sigma.csa_descriptors"), sigma_csa_.json());
-        s.insert(QStringLiteral("field.mopac_coulomb"), field_mopac_.json());
-        s.insert(QStringLiteral("field.ff14sb"), field_ff14sb_.json());
-        s.insert(QStringLiteral("field.apbs"), field_apbs_.json());
-        s.insert(QStringLiteral("field.charge_ff14sb"), field_charge_ff14sb_.json());
-        s.insert(QStringLiteral("field_mol.mopac_coulomb"), field_mol_mopac_.json());
-        s.insert(QStringLiteral("field_mol.apbs"), field_mol_apbs_.json());
-        s.insert(QStringLiteral("field_mol.charge_ff14sb"), field_mol_charge_ff14sb_.json());
-        s.insert(QStringLiteral("field.E_z.mopac_coulomb"), field_E_z_mopac_.json());
-        s.insert(QStringLiteral("field.E_z.apbs"), field_E_z_apbs_.json());
-        s.insert(QStringLiteral("field.E_z.charge_ff14sb"), field_E_z_charge_ff14sb_.json());
-        s.insert(QStringLiteral("field.E2.mopac_coulomb"), field_E2_mopac_.json());
-        s.insert(QStringLiteral("field.E2.apbs"), field_E2_apbs_.json());
-        s.insert(QStringLiteral("field.E2.charge_ff14sb"), field_E2_charge_ff14sb_.json());
-        s.insert(QStringLiteral("field.abs_E.mopac_coulomb"), field_abs_E_mopac_.json());
-        s.insert(QStringLiteral("field.abs_E.apbs"), field_abs_E_apbs_.json());
-        s.insert(QStringLiteral("field.abs_E.charge_ff14sb"), field_abs_E_charge_ff14sb_.json());
-        s.insert(QStringLiteral("field.abs_E2.mopac_coulomb"), field_abs_E2_mopac_.json());
-        s.insert(QStringLiteral("field.abs_E2.apbs"), field_abs_E2_apbs_.json());
-        s.insert(QStringLiteral("field.abs_E2.charge_ff14sb"), field_abs_E2_charge_ff14sb_.json());
-        s.insert(QStringLiteral("field.charge_ff14sb_source_count"), charge_field_source_count_.json());
-        s.insert(QStringLiteral("field.charge_ff14sb_rejected_self"), charge_field_rejected_self_.json());
-        s.insert(QStringLiteral("field.charge_ff14sb_rejected_degenerate"), charge_field_rejected_degenerate_.json());
-        s.insert(QStringLiteral("field.charge_ff14sb_rejected_cutoff"), charge_field_rejected_cutoff_.json());
-        s.insert(QStringLiteral("field.charge_ff14sb_missing_charge"), charge_field_missing_charge_.json());
-        s.insert(QStringLiteral("efg.apbs"), efg_apbs_.json());
-        s.insert(QStringLiteral("efg.aimnet2"), efg_aimnet2_.json());
-        s.insert(QStringLiteral("efg_mol.apbs"), efg_mol_apbs_.json());
-        s.insert(QStringLiteral("efg_mol.aimnet2"), efg_mol_aimnet2_.json());
-        s.insert(QStringLiteral("efg.abs.apbs"), efg_abs_apbs_.json());
-        s.insert(QStringLiteral("efg.abs.aimnet2"), efg_abs_aimnet2_.json());
-        s.insert(QStringLiteral("shielding.mopac_coulomb"), shielding_mopac_coulomb_.json());
-        s.insert(QStringLiteral("shielding.abs_T2.mopac_coulomb"), shielding_abs_mopac_coulomb_.json());
-        s.insert(QStringLiteral("shielding_mol.mopac_coulomb"), shielding_mol_mopac_.json());
-        s.insert(QStringLiteral("bs_per_type_T2"), bs_per_type_T2_.json());
-        s.insert(QStringLiteral("hm_per_type_T2"), hm_per_type_T2_.json());
-        for (std::size_t i = 0; i < kMcTensorFields.size(); ++i)
-            s.insert(QString::fromLatin1(kMcTensorFields[i].key), mc_tensor_series_[i].json());
-        s.insert(QStringLiteral("tripeptide_bb_shielding"), tripeptide_bb_shielding_.json());
-        s.insert(QStringLiteral("larsen_hbond_shielding"), larsen_hbond_shielding_.json());
-        s.insert(QStringLiteral("sasa"), sasa_.json());
-        s.insert(QStringLiteral("hbond.nearest_dir"), hbond_nearest_dir_.json());
-        s.insert(QStringLiteral("hbond.count"), hbond_count_.json());
-        s.insert(QStringLiteral("ff_pb_radius"), ff_pb_radius_.json());
-        s.insert(QStringLiteral("bond.lengths"), bondLengthsJson());
-        s.insert(QStringLiteral("dihedral.phi"), phi_.json());
-        s.insert(QStringLiteral("dihedral.psi"), psi_.json());
-        s.insert(QStringLiteral("dihedral.omega"), omega_.json());
-        s.insert(QStringLiteral("dihedral.chi1"), chi1_.json());
-        s.insert(QStringLiteral("dihedral.chi2"), chi2_.json());
-        s.insert(QStringLiteral("dihedral.chi3"), chi3_.json());
-        s.insert(QStringLiteral("dihedral.chi4"), chi4_.json());
-        s.insert(QStringLiteral("mopac.charge"), mopac_charge_.json());
-        s.insert(QStringLiteral("mopac.s_pop"), mopac_s_pop_.json());
-        s.insert(QStringLiteral("mopac.p_pop"), mopac_p_pop_.json());
-        s.insert(QStringLiteral("mopac.valency"), mopac_valency_.json());
-        s.insert(QStringLiteral("mopac.s_character"), mopac_s_character_.json());
-        QJsonArray rels;
-        int idx = 0;
-        for (const auto& item : relationships_) rels.append(relationshipJson(item.first, item.second, idx++));
-        s.insert(QStringLiteral("relationships"), rels);
-        return s;
-    }
-
     QJsonObject relationshipJson(const RelationshipKey& key, const RelationshipSeries& rel, int) const {
         QJsonObject o;
         QJsonObject k;
@@ -2814,7 +2696,12 @@ private:
         facets.insert(QStringLiteral("inv_r3"), scalarSummaryJson(rel.inv_r3.dense(n)));
         facets.insert(QStringLiteral("dipolar"), scalarSummaryJson(rel.dipolar.dense(n)));
         facets.insert(QStringLiteral("kernel_T0"), scalarSummaryJson(rel.kernel_T0.dense(n)));
-        facets.insert(QStringLiteral("kernel_T2"), scalarSummaryJson(kernelT2NormSeries(rel.kernel_T2, n)));
+        QJsonObject kernelMol;
+        for (int c = 0; c < 6; ++c) {
+            kernelMol.insert(QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(c)]),
+                             scalarSummaryJson(rel.kernel_mol.componentDense(n, static_cast<MolComp>(c))));
+        }
+        facets.insert(QStringLiteral("kernel_mol_components"), kernelMol);
         facets.insert(QStringLiteral("contribution"), scalarSummaryJson(rel.contribution.dense(n)));
         o.insert(QStringLiteral("facets"), facets);
         return o;
@@ -2882,6 +2769,111 @@ private:
         return out;
     }
 
+    bool t2Complete(const std::array<double, 5>& t2) const {
+        for (double v : t2)
+            if (!finite(v)) return false;
+        return true;
+    }
+
+    std::optional<Mat3> projectLabTensorToMolecular(std::size_t step, const Mat3& lab) const {
+        if (!lab.allFinite()) return std::nullopt;
+        const auto axes = molecularAxesAt(step);
+        if (!axes) return std::nullopt;
+        const Mat3 local = axes->transpose() * lab * (*axes);
+        if (!local.allFinite()) return std::nullopt;
+        return local;
+    }
+
+    std::optional<Mat3> projectLibraryT2ToMolecular(std::size_t step,
+                                                    double t0,
+                                                    const std::array<double, 5>& t2) const {
+        if (!t2Complete(t2)) return std::nullopt;
+        const Mat3 lab = ReconstructLibraryT2Matrix(finite(t0) ? t0 : 0.0, t2);
+        return projectLabTensorToMolecular(step, lab);
+    }
+
+    std::optional<Mat3> projectSphericalTensorToMolecular(std::size_t step,
+                                                          const model::SphericalTensor& t) const {
+        if (!finite(t.T0) || !t2Complete(t.T2)) return std::nullopt;
+        return projectLibraryT2ToMolecular(step, t.T0, t.T2);
+    }
+
+    void projectFixedT2Array(std::size_t step,
+                             const std::array<double, 40>& values,
+                             std::vector<Mat3Series>& out) {
+        for (int type = 0; type < 8; ++type) {
+            std::array<double, 5> t2{};
+            for (int c = 0; c < 5; ++c)
+                t2[static_cast<std::size_t>(c)] =
+                    values[static_cast<std::size_t>(type * 5 + c)];
+            if (const auto local = projectLibraryT2ToMolecular(step, 0.0, t2))
+                out[static_cast<std::size_t>(type)].set(step, *local);
+        }
+    }
+
+    static double tensorDoubleDot(const Mat3& a, const Mat3& b) {
+        return (a.array() * b.array()).sum();
+    }
+
+    Mat3 pairedMeanSigmaTensor(const Mat3Series& sigma,
+                               const Mat3Series& mechanism,
+                               const std::vector<std::size_t>& rows) const {
+        Mat3 sum = Mat3::Zero();
+        int n = 0;
+        for (std::size_t row : rows) {
+            if (row >= sigma.values.size() || row >= mechanism.values.size()) continue;
+            if (!sigma.present[row] || !mechanism.present[row]) continue;
+            sum += sigma.values[row];
+            ++n;
+        }
+        if (n == 0) return Mat3::Constant(kNaN);
+        return sum / static_cast<double>(n);
+    }
+
+    std::vector<double> tensorContractionSeries(const Mat3Series& sigma,
+                                                const Mat3Series& mechanism,
+                                                const std::vector<std::size_t>& rows,
+                                                bool centeredSigma,
+                                                bool cosineAlignment) const {
+        std::vector<double> out(sigma.values.size(), kNaN);
+        const Mat3 mean = centeredSigma ? pairedMeanSigmaTensor(sigma, mechanism, rows)
+                                        : Mat3::Zero();
+        if (centeredSigma && !mean.allFinite()) return out;
+        for (std::size_t row : rows) {
+            if (row >= sigma.values.size() || row >= mechanism.values.size()) continue;
+            if (!sigma.present[row] || !mechanism.present[row]) continue;
+            const Mat3 s = centeredSigma ? sigma.values[row] - mean : sigma.values[row];
+            const Mat3& m = mechanism.values[row];
+            double v = tensorDoubleDot(s, m);
+            if (cosineAlignment) {
+                const double sn = tensorFrobenius(s);
+                const double mn = tensorFrobenius(m);
+                if (!(sn > 0.0) || !(mn > 0.0)) continue;
+                v /= (sn * mn);
+            }
+            if (finite(v)) out[row] = v;
+        }
+        return out;
+    }
+
+    std::vector<double> centeredScalarSeries(const std::vector<double>& values,
+                                             const std::vector<std::size_t>& rows) const {
+        std::vector<double> out(values.size(), kNaN);
+        double sum = 0.0;
+        int n = 0;
+        for (std::size_t row : rows) {
+            if (row >= values.size() || !finite(values[row])) continue;
+            sum += values[row];
+            ++n;
+        }
+        if (n == 0) return out;
+        const double mean = sum / static_cast<double>(n);
+        for (std::size_t row : rows) {
+            if (row < values.size() && finite(values[row])) out[row] = values[row] - mean;
+        }
+        return out;
+    }
+
     // -- EFG |V_zz| and eta series from the (preferred) EFG T2.
     std::vector<double> efgEigenSeries(bool wantVzz) const {
         std::vector<double> out(efg_aimnet2_.values.size(), kNaN);
@@ -2894,46 +2886,6 @@ private:
             const EfgEigen e = efgEigen(src->t2);
             out[i] = wantVzz ? e.v_zz_abs : e.eta;
         }
-        return out;
-    }
-
-    // -- summed ring-current rollup Frobenius (§4.7.4) from bs_per_type_T2
-    // (8 ring-types x 5 T2). bs_sum_T2 = elementwise sum over the 8 types.
-    std::vector<double> ringSummedFrobeniusSeries() const {
-        std::vector<double> out(bs_per_type_T2_.values.size(), kNaN);
-        for (std::size_t i = 0; i < bs_per_type_T2_.values.size(); ++i) {
-            if (!bs_per_type_T2_.present[i]) continue;
-            std::array<double, 5> sum = {0, 0, 0, 0, 0};
-            for (int type = 0; type < 8; ++type)
-                for (int c = 0; c < 5; ++c)
-                    sum[static_cast<std::size_t>(c)] += bs_per_type_T2_.values[i][static_cast<std::size_t>(type * 5 + c)];
-            out[i] = norm5(sum);
-        }
-        return out;
-    }
-
-    // -- McConnell family rollup Frobenius (§4.7.4): the dominant-member ||T2||
-    // (the member with the largest time-mean ||T2|| -- the partner casting the
-    // field). Returns the per-step ||T2|| of that dominant member.
-    std::vector<double> mcDominantFrobeniusSeries() const {
-        // Find the dominant member by time-mean ||T2||.
-        int bestMember = -1;
-        double bestMean = -1.0;
-        for (std::size_t m = 0; m < mc_tensor_series_.size(); ++m) {
-            double sum = 0.0;
-            int n = 0;
-            for (std::size_t i = 0; i < mc_tensor_series_[m].values.size(); ++i) {
-                if (!mc_tensor_series_[m].present[i]) continue;
-                sum += norm5(mc_tensor_series_[m].values[i].T2);
-                ++n;
-            }
-            if (n > 0 && (sum / n) > bestMean) { bestMean = sum / n; bestMember = static_cast<int>(m); }
-        }
-        std::vector<double> out(cadence_.stepCount(), kNaN);
-        if (bestMember < 0) return out;
-        const TensorSeries& s = mc_tensor_series_[static_cast<std::size_t>(bestMember)];
-        for (std::size_t i = 0; i < s.values.size(); ++i)
-            if (s.present[i]) out[i] = norm5(s.values[i].T2);
         return out;
     }
 
@@ -2976,9 +2928,13 @@ private:
     }
 
     bool hasMcPartner() const {
-        for (const TensorSeries& s : mc_tensor_series_)
-            for (std::size_t i = 0; i < s.values.size(); ++i)
-                if (s.present[i] && norm5(s.values[i].T2) > 0.0) return true;
+        for (const TensorSeries& s : mc_tensor_series_) {
+            for (std::size_t i = 0; i < s.values.size(); ++i) {
+                if (!s.present[i]) continue;
+                for (double v : s.values[i].T2)
+                    if (finite(v) && v != 0.0) return true;
+            }
+        }
         return false;
     }
 
@@ -3065,9 +3021,86 @@ private:
     struct Candidate {
         std::vector<double> driver;
         std::vector<double> sigma;
-        QString sigma_target;     // iso | invariant:span | molcomp:yy | dia | para | T1norm
+        QString sigma_target;     // iso | invariant:span | molcomp:yy | sigma_total.molcomp:yy | ...
         QString driver_channel;   // the channel + component
     };
+
+    void appendTensorComponentCandidates(std::vector<Candidate>& out,
+                                         const Mat3Series& mechanism,
+                                         const QString& channel,
+                                         bool crossProduct,
+                                         bool includePara) const {
+        for (int dc = 0; dc < 6; ++dc) {
+            const auto dcomp = static_cast<MolComp>(dc);
+            const std::vector<double> driver = molCompFrom(mechanism, dcomp);
+            const QString dcName = QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(dc)]);
+            for (int sc = 0; sc < 6; ++sc) {
+                if (!crossProduct && sc != dc) continue;
+                const auto scomp = static_cast<MolComp>(sc);
+                const QString scName = QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)]);
+                out.push_back({driver, sigmaMolCompSeries(sigma_mol_total_, scomp),
+                               QStringLiteral("sigma_total.molcomp:%1").arg(scName),
+                               QStringLiteral("%1|molcomp:%2").arg(channel, dcName)});
+                if (includePara) {
+                    out.push_back({driver, sigmaMolCompSeries(sigma_mol_para_, scomp),
+                                   QStringLiteral("sigma_para.molcomp:%1").arg(scName),
+                                   QStringLiteral("%1|molcomp:%2").arg(channel, dcName)});
+                }
+            }
+        }
+    }
+
+    void appendRingTensorCandidates(std::vector<Candidate>& out, bool crossProduct) const {
+        for (int type = 0; type < 8; ++type) {
+            appendTensorComponentCandidates(
+                out, bs_per_type_mol_[static_cast<std::size_t>(type)],
+                QStringLiteral("bs.type%1").arg(type), crossProduct, true);
+            appendTensorComponentCandidates(
+                out, hm_per_type_mol_[static_cast<std::size_t>(type)],
+                QStringLiteral("hm.type%1").arg(type), crossProduct, true);
+        }
+    }
+
+    void appendMcTensorCandidates(std::vector<Candidate>& out, bool crossProduct) const {
+        for (std::size_t i = 0; i < mc_tensor_mol_series_.size(); ++i) {
+            appendTensorComponentCandidates(out, mc_tensor_mol_series_[i],
+                                            QString::fromLatin1(kMcTensorFields[i].key),
+                                            crossProduct, true);
+        }
+    }
+
+    std::vector<double> summedMolCompFrom(const std::vector<Mat3Series>& sources, MolComp comp) const {
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        for (const Mat3Series& src : sources) {
+            const std::vector<double> c = molCompFrom(src, comp);
+            for (std::size_t i = 0; i < out.size() && i < c.size(); ++i) {
+                if (!finite(c[i])) continue;
+                out[i] = finite(out[i]) ? out[i] + c[i] : c[i];
+            }
+        }
+        return out;
+    }
+
+    std::vector<double> sumSeries(const std::vector<double>& a, const std::vector<double>& b) const {
+        std::vector<double> out(std::max(a.size(), b.size()), kNaN);
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            const double av = i < a.size() ? a[i] : kNaN;
+            const double bv = i < b.size() ? b[i] : kNaN;
+            if (finite(av) && finite(bv)) out[i] = av + bv;
+            else if (finite(av)) out[i] = av;
+            else if (finite(bv)) out[i] = bv;
+        }
+        return out;
+    }
+
+    void appendCatalogueSignedComponentCandidate(std::vector<Candidate>& out,
+                                                 const std::vector<double>& driver,
+                                                 const QString& channel) const {
+        out.push_back({driver, sigmaMolCompSeries(sigma_mol_total_, MolComp::zz),
+                       QStringLiteral("sigma_total.molcomp:zz"), channel});
+        out.push_back({driver, sigmaMolCompSeries(sigma_mol_para_, MolComp::zz),
+                       QStringLiteral("sigma_para.molcomp:zz"), channel});
+    }
 
     std::vector<Candidate> candidatesFor(CatalogueId id) const {
         std::vector<Candidate> out;
@@ -3137,19 +3170,24 @@ private:
                            QStringLiteral("invariant:eta_H"), QStringLiteral("efg|eta")});
             break;
         case CatalogueId::RING_HEAVY:
-            out.push_back({ringSummedFrobeniusSeries(), sigmaInvariantSeries(QStringLiteral("frobenius")),
-                           QStringLiteral("invariant:frobenius"), QStringLiteral("bs_sum_T2|frobenius")});
+            appendCatalogueSignedComponentCandidate(
+                out,
+                sumSeries(summedMolCompFrom(bs_per_type_mol_, MolComp::zz),
+                          summedMolCompFrom(hm_per_type_mol_, MolComp::zz)),
+                QStringLiteral("ring_tensor_signed_sum|molcomp:zz"));
             break;
         case CatalogueId::RING_H:
-            out.push_back({ringSummedFrobeniusSeries(), sigmaInvariantSeries(QStringLiteral("span")),
-                           QStringLiteral("invariant:span"), QStringLiteral("bs_sum_T2|frobenius")});
-            // also the molecular sigma33-ish: use molcomp zz as the loaded axis
-            out.push_back({ringSummedFrobeniusSeries(), sigmaMolCompSeries(sigma_mol_total_, MolComp::zz),
-                           QStringLiteral("molcomp:zz"), QStringLiteral("bs_sum_T2|frobenius")});
+            appendCatalogueSignedComponentCandidate(
+                out,
+                sumSeries(summedMolCompFrom(bs_per_type_mol_, MolComp::zz),
+                          summedMolCompFrom(hm_per_type_mol_, MolComp::zz)),
+                QStringLiteral("ring_tensor_signed_sum|molcomp:zz"));
             break;
         case CatalogueId::MCCONNELL:
-            out.push_back({mcDominantFrobeniusSeries(), sigmaInvariantSeries(QStringLiteral("frobenius")),
-                           QStringLiteral("invariant:frobenius"), QStringLiteral("mc_dominant|T2norm")});
+            appendCatalogueSignedComponentCandidate(
+                out,
+                summedMolCompFrom(mc_tensor_mol_series_, MolComp::zz),
+                QStringLiteral("mc_tensor_signed_sum|molcomp:zz"));
             break;
         case CatalogueId::SCHAR_ISO:
             out.push_back({mopac_s_character_.values, iso, QStringLiteral("iso"),
@@ -3308,7 +3346,9 @@ private:
     };
 
     FrameTag frameForTarget(CatalogueId id, const QString& sigmaTarget) const {
-        if (sigmaTarget.startsWith(QStringLiteral("molcomp:"))) return FrameTag::Molecular;
+        if (sigmaTarget.startsWith(QStringLiteral("molcomp:"))
+            || sigmaTarget.contains(QStringLiteral(".molcomp:")))
+            return FrameTag::Molecular;
         if (sigmaTarget.startsWith(QStringLiteral("invariant:"))) return FrameTag::Invariant;
         return catalogueRow(id).frame;
     }
@@ -3885,6 +3925,412 @@ private:
         return o;
     }
 
+    QJsonObject evaluatedTargetJson(CatalogueId id,
+                                    const Candidate& c,
+                                    const std::vector<std::size_t>& rows) const {
+        std::vector<double> x;
+        std::vector<double> y;
+        pairedOnSigmaRows(c.sigma, c.driver, rows, x, y);
+        if (x.size() < 3) {
+            QJsonObject miss = targetJson(id, nullTargetFor(c, id));
+            miss.insert(QStringLiteral("bounded_reveal_response"), true);
+            return miss;
+        }
+
+        EvaluatedTarget t;
+        t.sigma_target = c.sigma_target;
+        t.driver_channel = c.driver_channel;
+        t.frame = frameForTarget(id, c.sigma_target);
+        const OlsResult fit = ols(x, y);
+        t.slope = fit.slope;
+        t.intercept = fit.intercept;
+        t.r = pearsonR(x, y);
+        t.leverage = leverageTop1(x, y);
+        t.coverage = coverageJson(x);
+        t.delta_survives = deltaSurvives(x, y, t.r);
+        t.seg_min_r = segMinR(x, y);
+        const LeadLagResult ll = leadLag(x, y);
+        t.best_lag = ll.best_lag;
+        t.lead_r = ll.lead_r;
+
+        QJsonObject o = targetJson(id, t);
+        o.insert(QStringLiteral("bounded_reveal_response"), true);
+        return o;
+    }
+
+    int presentCount(const Mat3Series& s) const {
+        return static_cast<int>(std::count(s.present.begin(), s.present.end(), true));
+    }
+
+    QJsonObject tensorComponentSummariesJson(const Mat3Series& s) const {
+        QJsonObject o;
+        for (int c = 0; c < 6; ++c) {
+            o.insert(QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(c)]),
+                     scalarSummaryJson(molCompFrom(s, static_cast<MolComp>(c))));
+        }
+        return o;
+    }
+
+    QJsonArray componentResponsesJson(const Mat3Series& mechanism,
+                                      const QString& channel,
+                                      const std::vector<std::size_t>& rows,
+                                      CatalogueId id,
+                                      bool crossProduct) const {
+        QJsonArray out;
+        for (int dc = 0; dc < 6; ++dc) {
+            const auto dcomp = static_cast<MolComp>(dc);
+            const std::vector<double> driver = molCompFrom(mechanism, dcomp);
+            const QString dcName = QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(dc)]);
+            for (int sc = 0; sc < 6; ++sc) {
+                if (!crossProduct && sc != dc) continue;
+                const auto scomp = static_cast<MolComp>(sc);
+                const QString scName = QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)]);
+                const std::array<std::pair<const Mat3Series*, const char*>, 2> sigmaSources = {{
+                    {&sigma_mol_total_, "sigma_total"},
+                    {&sigma_mol_para_, "sigma_para"},
+                }};
+                for (const auto& sigmaSource : sigmaSources) {
+                    const QString basis = QString::fromLatin1(sigmaSource.second);
+                    Candidate c{driver,
+                                sigmaMolCompSeries(*sigmaSource.first, scomp),
+                                QStringLiteral("%1.molcomp:%2").arg(basis, scName),
+                                QStringLiteral("%1|molcomp:%2").arg(channel, dcName)};
+                    QJsonObject o = evaluatedTargetJson(id, c, rows);
+                    o.insert(QStringLiteral("sigma_basis"), basis);
+                    o.insert(QStringLiteral("gauge_flag"), basis == QStringLiteral("sigma_para"));
+                    o.insert(QStringLiteral("driver_component"), dcName);
+                    o.insert(QStringLiteral("sigma_component"), scName);
+                    o.insert(QStringLiteral("component_pair"),
+                             QStringLiteral("%1->%2").arg(dcName, scName));
+                    out.append(o);
+                }
+            }
+        }
+        return out;
+    }
+
+    std::vector<double> sigmaIsoForBasis(const QString& basis) const {
+        if (basis == QStringLiteral("sigma_para")) return componentSeriesT0(sigma_para_);
+        return sigmaIsoSeries();
+    }
+
+    QJsonArray contractionResponsesJson(const Mat3Series& mechanism,
+                                        const QString& channel,
+                                        const std::vector<std::size_t>& rows,
+                                        CatalogueId id) const {
+        QJsonArray out;
+        const std::array<std::pair<const Mat3Series*, const char*>, 2> sigmaSources = {{
+            {&sigma_mol_total_, "sigma_total"},
+            {&sigma_mol_para_, "sigma_para"},
+        }};
+        for (const auto& sigmaSource : sigmaSources) {
+            const QString basis = QString::fromLatin1(sigmaSource.second);
+            for (bool centered : {false, true}) {
+                for (bool cosine : {false, true}) {
+                    const QString form = cosine ? QStringLiteral("cosine_alignment")
+                                                : QStringLiteral("raw_inner");
+                    const std::vector<double> driver =
+                        tensorContractionSeries(*sigmaSource.first, mechanism, rows, centered, cosine);
+                    std::vector<double> sigma = sigmaIsoForBasis(basis);
+                    if (centered) sigma = centeredScalarSeries(sigma, rows);
+                    Candidate c{driver,
+                                sigma,
+                                centered ? QStringLiteral("%1.delta_iso").arg(basis)
+                                         : QStringLiteral("%1.iso").arg(basis),
+                                QStringLiteral("%1|contraction:%2:%3")
+                                    .arg(channel, form,
+                                         centered ? QStringLiteral("delta_sigma")
+                                                  : QStringLiteral("sigma"))};
+                    QJsonObject o;
+                    o.insert(QStringLiteral("sigma_basis"), basis);
+                    o.insert(QStringLiteral("gauge_flag"), basis == QStringLiteral("sigma_para"));
+                    o.insert(QStringLiteral("form"), form);
+                    o.insert(QStringLiteral("sigma_delta"), centered);
+                    o.insert(QStringLiteral("series_summary"), scalarSummaryJson(driver));
+                    o.insert(QStringLiteral("response"), evaluatedTargetJson(id, c, rows));
+                    out.append(o);
+                }
+            }
+        }
+        return out;
+    }
+
+    static int signClass(double v) {
+        if (!finite(v) || v == 0.0) return 0;
+        return v > 0.0 ? 1 : -1;
+    }
+
+    int crossingCount(const std::vector<double>& values) const {
+        int crossings = 0;
+        int prev = 0;
+        for (double v : values) {
+            const int s = signClass(v);
+            if (s == 0) continue;
+            if (prev != 0 && s != prev) ++crossings;
+            prev = s;
+        }
+        return crossings;
+    }
+
+    QJsonObject magicAngleSummaryJson(const std::vector<double>& cosTheta,
+                                      const std::vector<double>& dipolar,
+                                      int crossingOverride = -1) const {
+        int pos = 0;
+        int neg = 0;
+        int zero = 0;
+        for (double v : dipolar) {
+            const int s = signClass(v);
+            if (s > 0) ++pos;
+            else if (s < 0) ++neg;
+            else if (finite(v)) ++zero;
+        }
+        const int n = pos + neg + zero;
+        QJsonObject o;
+        o.insert(QStringLiteral("cos_theta"), scalarSummaryJson(cosTheta));
+        o.insert(QStringLiteral("dipolar"), scalarSummaryJson(dipolar));
+        o.insert(QStringLiteral("magic_angle_abs_cos"), jd(1.0 / std::sqrt(3.0)));
+        o.insert(QStringLiteral("crossing_count"),
+                 crossingOverride >= 0 ? crossingOverride : crossingCount(dipolar));
+        o.insert(QStringLiteral("above_magic_fraction"), n > 0 ? jd(static_cast<double>(pos) / n) : jd(kNaN));
+        o.insert(QStringLiteral("below_magic_fraction"), n > 0 ? jd(static_cast<double>(neg) / n) : jd(kNaN));
+        o.insert(QStringLiteral("on_crossing_fraction"), n > 0 ? jd(static_cast<double>(zero) / n) : jd(kNaN));
+        return o;
+    }
+
+    QJsonObject angularContextForMechanism(int mechanismOrdValue,
+                                           std::optional<int> sourceCategory = std::nullopt) const {
+        std::vector<double> cosTheta;
+        std::vector<double> dipolar;
+        int relationships = 0;
+        int crossings = 0;
+        const std::size_t n = cadence_.stepCount();
+        for (const auto& item : relationships_) {
+            const RelationshipKey& key = item.first;
+            if (key.mechanism_ord != mechanismOrdValue) continue;
+            if (sourceCategory && key.source_category_ord != *sourceCategory) continue;
+            const RelationshipSeries& rel = item.second;
+            ++relationships;
+            const std::vector<double> relCos = rel.cos_theta.dense(n);
+            const std::vector<double> relDip = rel.dipolar.dense(n);
+            crossings += crossingCount(relDip);
+            for (double v : relCos)
+                if (finite(v)) cosTheta.push_back(v);
+            for (double v : relDip)
+                if (finite(v)) dipolar.push_back(v);
+        }
+        QJsonObject o = magicAngleSummaryJson(cosTheta, dipolar, crossings);
+        o.insert(QStringLiteral("relationship_count"), relationships);
+        o.insert(QStringLiteral("mechanism"), mechanismName(mechanismOrdValue));
+        if (sourceCategory) o.insert(QStringLiteral("source_category_ord"), *sourceCategory);
+        return o;
+    }
+
+    QJsonArray sigmaFlipFollowJson(const RelationshipSeries& rel) const {
+        QJsonArray out;
+        const std::size_t n = cadence_.stepCount();
+        const std::vector<double> dip = rel.dipolar.dense(n);
+        const std::array<std::pair<const Mat3Series*, const char*>, 2> sigmaSources = {{
+            {&sigma_mol_total_, "sigma_total"},
+            {&sigma_mol_para_, "sigma_para"},
+        }};
+        for (const auto& sigmaSource : sigmaSources) {
+            const QString basis = QString::fromLatin1(sigmaSource.second);
+            for (int sc = 0; sc < 6; ++sc) {
+                const auto comp = static_cast<MolComp>(sc);
+                const QString compName = QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)]);
+                const std::vector<double> sigma = sigmaMolCompSeries(*sigmaSource.first, comp);
+                std::vector<int> prevFinite(n, -1);
+                std::vector<int> nextFinite(n, -1);
+                int last = -1;
+                for (std::size_t i = 0; i < n; ++i) {
+                    if (i < sigma.size() && finite(sigma[i])) last = static_cast<int>(i);
+                    prevFinite[i] = last;
+                }
+                last = -1;
+                for (std::size_t i = n; i-- > 0;) {
+                    if (i < sigma.size() && finite(sigma[i])) last = static_cast<int>(i);
+                    nextFinite[i] = last;
+                }
+                int crossings = 0;
+                int compared = 0;
+                int followed = 0;
+                for (std::size_t i = 1; i < n; ++i) {
+                    const int s0 = signClass(dip[i - 1]);
+                    const int s1 = signClass(dip[i]);
+                    if (s0 == 0 || s1 == 0 || s0 == s1) continue;
+                    ++crossings;
+                    const int before = prevFinite[i - 1];
+                    const int after = nextFinite[i];
+                    if (before < 0 || after < 0 || before == after) continue;
+                    const int ds = signClass(sigma[static_cast<std::size_t>(after)]
+                                             - sigma[static_cast<std::size_t>(before)]);
+                    const int dd = signClass(dip[i] - dip[i - 1]);
+                    if (ds == 0 || dd == 0) continue;
+                    ++compared;
+                    if (ds == dd) ++followed;
+                }
+                QJsonObject o;
+                o.insert(QStringLiteral("sigma_basis"), basis);
+                o.insert(QStringLiteral("gauge_flag"), basis == QStringLiteral("sigma_para"));
+                o.insert(QStringLiteral("sigma_component"), compName);
+                o.insert(QStringLiteral("crossing_count"), crossings);
+                o.insert(QStringLiteral("compared_crossings"), compared);
+                o.insert(QStringLiteral("followed_crossings"), followed);
+                o.insert(QStringLiteral("opposed_crossings"), compared - followed);
+                o.insert(QStringLiteral("follow_fraction"),
+                         compared > 0 ? jd(static_cast<double>(followed) / compared) : jd(kNaN));
+                o.insert(QStringLiteral("sigma_flips_on_driver_crossing"),
+                         compared > 0 ? QJsonValue(followed > (compared - followed))
+                                      : QJsonValue(QJsonValue::Null));
+                out.append(o);
+            }
+        }
+        return out;
+    }
+
+    QJsonObject typeTensorRevealJson(const QString& family,
+                                     const QString& sourceKey,
+                                     const Mat3Series& mechanism,
+                                     const std::vector<std::size_t>& rows,
+                                     CatalogueId id,
+                                     const QJsonValue& angularContext = QJsonValue(QJsonValue::Null)) const {
+        QJsonObject o;
+        o.insert(QStringLiteral("level"), QStringLiteral("per_type"));
+        o.insert(QStringLiteral("family"), family);
+        o.insert(QStringLiteral("source_key"), sourceKey);
+        o.insert(QStringLiteral("frame"), QStringLiteral("molecular"));
+        o.insert(QStringLiteral("projection"), QStringLiteral("T_mol = R^T * T_lab * R"));
+        o.insert(QStringLiteral("present_frames"), presentCount(mechanism));
+        o.insert(QStringLiteral("component_summaries"), tensorComponentSummariesJson(mechanism));
+        o.insert(QStringLiteral("component_responses"),
+                 componentResponsesJson(mechanism, sourceKey, rows, id, true));
+        o.insert(QStringLiteral("contractions"),
+                 contractionResponsesJson(mechanism, sourceKey, rows, id));
+        if (!angularContext.isNull()) o.insert(QStringLiteral("angular_context"), angularContext);
+        return o;
+    }
+
+    QJsonArray perTypeTensorRevealsJson(const std::vector<std::size_t>& rows) const {
+        QJsonArray out;
+        const QJsonObject mcAngular =
+            angularContextForMechanism(mechanismOrd(QStringLiteral("mc_lit_valid")));
+        for (std::size_t i = 0; i < mc_tensor_mol_series_.size(); ++i) {
+            out.append(typeTensorRevealJson(QStringLiteral("mc"),
+                                            QString::fromLatin1(kMcTensorFields[i].key),
+                                            mc_tensor_mol_series_[i], rows,
+                                            CatalogueId::MCCONNELL, mcAngular));
+        }
+        const int ringOrd = mechanismOrd(QStringLiteral("ring_jb"));
+        for (int type = 0; type < 8; ++type) {
+            const QJsonObject ringAngular = angularContextForMechanism(ringOrd, type);
+            out.append(typeTensorRevealJson(QStringLiteral("bs"),
+                                            QStringLiteral("bs.type%1").arg(type),
+                                            bs_per_type_mol_[static_cast<std::size_t>(type)],
+                                            rows, CatalogueId::RING_H, ringAngular));
+            out.append(typeTensorRevealJson(QStringLiteral("hm"),
+                                            QStringLiteral("hm.type%1").arg(type),
+                                            hm_per_type_mol_[static_cast<std::size_t>(type)],
+                                            rows, CatalogueId::RING_H, ringAngular));
+        }
+        out.append(typeTensorRevealJson(QStringLiteral("tripeptide"),
+                                        QStringLiteral("tripeptide_bb_shielding"),
+                                        tripeptide_bb_shielding_mol_, rows,
+                                        CatalogueId::MCCONNELL));
+        out.append(typeTensorRevealJson(QStringLiteral("larsen"),
+                                        QStringLiteral("larsen_hbond_shielding"),
+                                        larsen_hbond_shielding_mol_, rows,
+                                        CatalogueId::MCCONNELL));
+        return out;
+    }
+
+    bool isAngularPartner(const RelationshipKey& key) const {
+        return key.mechanism_ord == mechanismOrd(QStringLiteral("mc_lit_valid"))
+               || key.mechanism_ord == mechanismOrd(QStringLiteral("ring_jb"));
+    }
+
+    QJsonArray partnerIsoResponsesJson(const RelationshipSeries& rel,
+                                       const QString& channel,
+                                       const std::vector<std::size_t>& rows,
+                                       CatalogueId id) const {
+        QJsonArray out;
+        const std::vector<double> contribution = rel.contribution.dense(cadence_.stepCount());
+        const std::array<std::pair<std::vector<double>, const char*>, 2> sigmaSources = {{
+            {sigmaIsoSeries(), "sigma_total"},
+            {componentSeriesT0(sigma_para_), "sigma_para"},
+        }};
+        for (const auto& sigmaSource : sigmaSources) {
+            const QString basis = QString::fromLatin1(sigmaSource.second);
+            Candidate c{contribution,
+                        sigmaSource.first,
+                        QStringLiteral("%1.iso").arg(basis),
+                        QStringLiteral("%1|signed_contribution").arg(channel)};
+            QJsonObject o = evaluatedTargetJson(id, c, rows);
+            o.insert(QStringLiteral("sigma_basis"), basis);
+            o.insert(QStringLiteral("gauge_flag"), basis == QStringLiteral("sigma_para"));
+            o.insert(QStringLiteral("sigma_component"), QStringLiteral("iso"));
+            o.insert(QStringLiteral("driver_component"), QStringLiteral("signed_contribution"));
+            out.append(o);
+        }
+        return out;
+    }
+
+    QJsonObject partnerTensorRevealJson(const RelationshipKey& key,
+                                        const RelationshipSeries& rel,
+                                        int index,
+                                        const std::vector<std::size_t>& rows) const {
+        const Mat3Series kernel = rel.kernel_mol.dense(cadence_.stepCount());
+        const QString channel =
+            QStringLiteral("partner%1.%2.source%3")
+                .arg(index)
+                .arg(mechanismName(key.mechanism_ord))
+                .arg(key.source_id);
+        const CatalogueId id = key.mechanism_ord == mechanismOrd(QStringLiteral("ring_jb"))
+                                   ? CatalogueId::RING_H
+                                   : CatalogueId::MCCONNELL;
+        QJsonObject o;
+        o.insert(QStringLiteral("level"), QStringLiteral("per_partner"));
+        o.insert(QStringLiteral("frame"), QStringLiteral("molecular"));
+        o.insert(QStringLiteral("projection"), QStringLiteral("T_mol = R^T * T_lab * R"));
+        o.insert(QStringLiteral("present_frames"), presentCount(kernel));
+        o.insert(QStringLiteral("kernel_component_summaries"), tensorComponentSummariesJson(kernel));
+        o.insert(QStringLiteral("component_responses"),
+                 componentResponsesJson(kernel, channel, rows, id, false));
+        o.insert(QStringLiteral("iso_responses"),
+                 partnerIsoResponsesJson(rel, channel, rows, id));
+        o.insert(QStringLiteral("magic_angle_crossing"),
+                 magicAngleSummaryJson(rel.cos_theta.dense(cadence_.stepCount()),
+                                       rel.dipolar.dense(cadence_.stepCount())));
+        o.insert(QStringLiteral("sigma_follow_flip"), sigmaFlipFollowJson(rel));
+        return o;
+    }
+
+    QJsonArray perPartnerTensorRevealsJson(const std::vector<std::size_t>& rows) const {
+        QJsonArray out;
+        int idx = 0;
+        for (const auto& item : relationships_) {
+            if (!isAngularPartner(item.first)) continue;
+            QJsonObject o = relationshipJson(item.first, item.second, idx);
+            o.insert(QStringLiteral("tensorial_reveal"),
+                     partnerTensorRevealJson(item.first, item.second, idx, rows));
+            out.append(o);
+            ++idx;
+        }
+        return out;
+    }
+
+    QJsonObject buildTensorialRevealsJson() const {
+        const std::vector<std::size_t> rows = cadence_.sigmaRows();
+        QJsonObject o;
+        o.insert(QStringLiteral("projection"), QStringLiteral("T_mol = R^T * T_lab * R"));
+        o.insert(QStringLiteral("sigma_targets"),
+                 QJsonArray{QStringLiteral("sigma_total.molcomp:*"),
+                            QStringLiteral("sigma_para.molcomp:*")});
+        o.insert(QStringLiteral("para_gauge_flagged"), true);
+        o.insert(QStringLiteral("per_type"), perTypeTensorRevealsJson(rows));
+        o.insert(QStringLiteral("per_partner"), perPartnerTensorRevealsJson(rows));
+        return o;
+    }
+
     QJsonObject responseJson(const EvaluatedResponse& e) const {
         QJsonObject o;
         o.insert(QStringLiteral("catalogue_id"), QString::fromLatin1(catalogueRow(e.id).id_name));
@@ -4174,6 +4620,7 @@ private:
         acc.insert(QStringLiteral("recurrence"), recurrence);
 
         acc.insert(QStringLiteral("molecular_frame_audit"), molecularFrameAuditJson());
+        acc.insert(QStringLiteral("tensorial_reveals"), buildTensorialRevealsJson());
 
         // Wiberg is a structured slot (§2.1), not a flat responses[] row.
         acc.insert(QStringLiteral("wiberg"), buildWibergJson());
@@ -4907,11 +5354,11 @@ private:
     }
 
     template <std::size_t N>
-    void setFixedArrayIfPresent(FixedArraySeries<N>& out, ArrayId id, std::size_t step) {
-        if (!body_.catalog.has(id)) return;
+    bool setFixedArrayIfPresent(FixedArraySeries<N>& out, ArrayId id, std::size_t step) {
+        if (!body_.catalog.has(id)) return false;
         const ArraySpec& spec = body_.catalog.spec(id);
-        if (spec.axes.comp_count < static_cast<int>(N)) return;
-        if (!body_.catalog.present(body_, id, atom_, step)) return;
+        if (spec.axes.comp_count < static_cast<int>(N)) return false;
+        if (!body_.catalog.present(body_, id, atom_, step)) return false;
         std::array<double, N> values{};
         bool ok = true;
         for (std::size_t c = 0; c < N; ++c) {
@@ -4919,24 +5366,43 @@ private:
             values[c] = v;
             ok = ok && finite(v);
         }
-        if (ok) out.set(step, values);
+        if (!ok) return false;
+        out.set(step, values);
+        return true;
     }
 
-    void setTensorIfPresent(TensorSeries& out, ArrayId id, std::size_t step) {
-        if (!body_.catalog.has(id)) return;
-        if (body_.catalog.spec(id).axes.comp_count < 9) return;
-        if (!body_.catalog.present(body_, id, atom_, step)) return;
+    bool setTensorIfPresent(TensorSeries& out, ArrayId id, std::size_t step) {
+        if (!body_.catalog.has(id)) return false;
+        if (body_.catalog.spec(id).axes.comp_count < 9) return false;
+        if (!body_.catalog.present(body_, id, atom_, step)) return false;
         const model::SphericalTensor t = body_.catalog.valueTensor(body_, id, atom_, step);
-        if (tensorFinite(t)) out.set(step, t);
+        if (!tensorFinite(t)) return false;
+        out.set(step, t);
+        return true;
     }
 
     void foldProducerSubstrate(std::size_t step) {
-        setFixedArrayIfPresent(bs_per_type_T2_, ArrayId::BSPerTypeT2, step);
-        setFixedArrayIfPresent(hm_per_type_T2_, ArrayId::HMPerTypeT2, step);
-        for (std::size_t i = 0; i < kMcTensorFields.size(); ++i)
-            setTensorIfPresent(mc_tensor_series_[i], kMcTensorFields[i].id, step);
-        setTensorIfPresent(tripeptide_bb_shielding_, ArrayId::TripeptideBBShielding, step);
-        setTensorIfPresent(larsen_hbond_shielding_, ArrayId::LarsenHBondShielding, step);
+        if (setFixedArrayIfPresent(bs_per_type_T2_, ArrayId::BSPerTypeT2, step))
+            projectFixedT2Array(step, bs_per_type_T2_.values[step], bs_per_type_mol_);
+        if (setFixedArrayIfPresent(hm_per_type_T2_, ArrayId::HMPerTypeT2, step))
+            projectFixedT2Array(step, hm_per_type_T2_.values[step], hm_per_type_mol_);
+        for (std::size_t i = 0; i < kMcTensorFields.size(); ++i) {
+            if (setTensorIfPresent(mc_tensor_series_[i], kMcTensorFields[i].id, step)) {
+                if (const auto local =
+                        projectSphericalTensorToMolecular(step, mc_tensor_series_[i].values[step]))
+                    mc_tensor_mol_series_[i].set(step, *local);
+            }
+        }
+        if (setTensorIfPresent(tripeptide_bb_shielding_, ArrayId::TripeptideBBShielding, step)) {
+            if (const auto local =
+                    projectSphericalTensorToMolecular(step, tripeptide_bb_shielding_.values[step]))
+                tripeptide_bb_shielding_mol_.set(step, *local);
+        }
+        if (setTensorIfPresent(larsen_hbond_shielding_, ArrayId::LarsenHBondShielding, step)) {
+            if (const auto local =
+                    projectSphericalTensorToMolecular(step, larsen_hbond_shielding_.values[step]))
+                larsen_hbond_shielding_mol_.set(step, *local);
+        }
     }
 
     void foldRelationship(std::size_t step, const PairContribution& pair) {
@@ -4971,6 +5437,8 @@ private:
         r.kernel_T0.set(step, pair.kernel_T0);
         r.contribution.set(step, pair.contribution);
         r.kernel_T2.set(step, pair.kernel_T2);
+        if (const auto local = projectLibraryT2ToMolecular(step, 0.0, pair.kernel_T2))
+            r.kernel_mol.set(step, *local);
     }
 
     static bool efgT2Complete(const EfgValue& v) {
@@ -5164,8 +5632,13 @@ private:
     FixedArraySeries<40> bs_per_type_T2_;
     FixedArraySeries<40> hm_per_type_T2_;
     std::vector<TensorSeries> mc_tensor_series_;
+    std::vector<Mat3Series> bs_per_type_mol_;
+    std::vector<Mat3Series> hm_per_type_mol_;
+    std::vector<Mat3Series> mc_tensor_mol_series_;
     TensorSeries tripeptide_bb_shielding_;
     TensorSeries larsen_hbond_shielding_;
+    Mat3Series tripeptide_bb_shielding_mol_;
+    Mat3Series larsen_hbond_shielding_mol_;
     ScalarSeries sasa_;
     Vec3Series hbond_nearest_dir_;
     ScalarSeries hbond_count_;
