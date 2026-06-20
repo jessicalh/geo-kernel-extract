@@ -191,6 +191,15 @@ public slots:
     void revealBinding(const model::SignalBinding& binding);
     void clearReveal();
 
+    // Display isolation ("filter mode"): rebuild the molecule actor from a
+    // subset of atoms (the rest hidden); clearAtomFilter restores the whole
+    // structure. setFrame keeps updating only the visible subset via the
+    // atom-index remap, so stepping + overlays keep working. Used to show just
+    // a picked atom + chosen nearby residues while stepping the trajectory.
+    void setAtomFilter(const std::vector<std::size_t>& atomIndices);
+    void clearAtomFilter();
+    bool atomFilterActive() const { return atomFilterActive_; }
+
     // ---- Plane lock compatibility shim ---------------------------------
     //
     // Public signatures unchanged for back-compat with the toolbar action
@@ -218,6 +227,10 @@ private:
     // ourselves rather than calling vtkActor::GetBounds().
     void PushAtomPositions(int t, double bounds[6]);
     void cachePaddedBounds(const double bounds[6]);
+    // (Re)build molecule_ from a subset of protein atom indices (all atoms =
+    // the full structure), wiring moleculeAtomMap_ so setFrame pushes positions
+    // for exactly the atoms present.
+    void rebuildMolecule(const std::vector<std::size_t>& atoms);
 
     QPointer<QVTKOpenGLNativeWidget>              vtkWidget_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
@@ -226,6 +239,10 @@ private:
     vtkSmartPointer<vtkMolecule>                  molecule_;
     vtkSmartPointer<vtkOpenGLMoleculeMapper>      mapper_;
     vtkSmartPointer<vtkActor>                     actor_;
+    // molecule_ atom j → protein atom index. Identity for the full structure;
+    // the visible subset in filter mode. Drives setFrame's position push.
+    std::vector<std::size_t>                      moleculeAtomMap_;
+    bool                                          atomFilterActive_ = false;
 
     QtBackboneRibbonOverlay* ribbon_       = nullptr;   // QObject child
     QtRingPolygonOverlay*    ringPolygons_ = nullptr;   // QObject child

@@ -232,6 +232,12 @@ void MoleculeScene::Build(const model::QtProtein& protein,
             VtkBondOrderFor(bond.order));
     }
 
+    // molecule_ atom index maps 1:1 to the protein atom index for the full
+    // structure. setAtomFilter swaps this for a subset; setFrame reads it.
+    moleculeAtomMap_.resize(protein.atomCount());
+    for (std::size_t i = 0; i < moleculeAtomMap_.size(); ++i)
+        moleculeAtomMap_[i] = i;
+
     // Mapper — GPU imposters for ball-and-stick, scales with molecule size.
     mapper_ = vtkSmartPointer<vtkOpenGLMoleculeMapper>::New();
     mapper_->SetInputData(molecule_);
@@ -402,11 +408,14 @@ void MoleculeScene::refreshCurrentFrame() {
 
 void MoleculeScene::PushAtomPositions(int t, double bounds[6]) {
     const size_t st = static_cast<size_t>(t);
-    const size_t N  = protein_->atomCount();
     bounds[0] = bounds[2] = bounds[4] = +1e30;
     bounds[1] = bounds[3] = bounds[5] = -1e30;
-    for (size_t i = 0; i < N; ++i) {
-        const model::Vec3 p = conformation_->atomPosition(st, i);
+    // Iterate the VISIBLE atoms: moleculeAtomMap_ is identity for the full
+    // structure and the subset in filter mode, so molecule_ index j and protein
+    // atom index a stay aligned.
+    for (size_t j = 0; j < moleculeAtomMap_.size(); ++j) {
+        const size_t a = moleculeAtomMap_[j];
+        const model::Vec3 p = conformation_->atomPosition(st, a);
         if (p.x() < bounds[0]) bounds[0] = p.x();
         if (p.x() > bounds[1]) bounds[1] = p.x();
         if (p.y() < bounds[2]) bounds[2] = p.y();
@@ -414,7 +423,7 @@ void MoleculeScene::PushAtomPositions(int t, double bounds[6]) {
         if (p.z() < bounds[4]) bounds[4] = p.z();
         if (p.z() > bounds[5]) bounds[5] = p.z();
         molecule_->SetAtomPosition(
-            static_cast<vtkIdType>(i), p.x(), p.y(), p.z());
+            static_cast<vtkIdType>(j), p.x(), p.y(), p.z());
     }
 }
 
@@ -428,6 +437,58 @@ void MoleculeScene::cachePaddedBounds(const double bounds[6]) {
     cachedPaddedBounds_[5] = bounds[5] + pad;
     cachedPaddedBoundsValid_ =
         bounds[0] <= bounds[1] && bounds[2] <= bounds[3] && bounds[4] <= bounds[5];
+}
+
+void MoleculeScene::rebuildMolecule(const std::vector<std::size_t>& atoms) {
+    if (!protein_ || !conformation_ || !mapper_)
+        return;
+    moleculeAtomMap_ = atoms;
+    molecule_ = vtkSmartPointer<vtkMolecule>::New();
+    const size_t t = currentFrame_ >= 0 ? static_cast<size_t>(currentFrame_) : 0;
+    // protein atom index → local molecule index (-1 if not in the subset), so
+    // bonds can be remapped to the subset.
+    std::vector<vtkIdType> localOf(protein_->atomCount(), static_cast<vtkIdType>(-1));
+    for (size_t j = 0; j < atoms.size(); ++j) {
+        const size_t a = atoms[j];
+        if (a >= protein_->atomCount()) continue;
+        const auto& atom = protein_->atom(a);
+        const model::Vec3 pos = conformation_->atomPosition(t, a);
+        const unsigned short z =
+            static_cast<unsigned short>(model::AtomicNumberForElement(atom.element));
+        molecule_->AppendAtom(z, pos.x(), pos.y(), pos.z());
+        localOf[a] = static_cast<vtkIdType>(j);
+    }
+    for (size_t i = 0; i < protein_->bondCount(); ++i) {
+        const auto& bond = protein_->bond(i);
+        const size_t a = static_cast<size_t>(bond.atomIndexA);
+        const size_t b = static_cast<size_t>(bond.atomIndexB);
+        if (a < localOf.size() && b < localOf.size()
+            && localOf[a] >= 0 && localOf[b] >= 0) {
+            molecule_->AppendBond(localOf[a], localOf[b], VtkBondOrderFor(bond.order));
+        }
+    }
+    mapper_->SetInputData(molecule_);
+    molecule_->Modified();
+}
+
+void MoleculeScene::setAtomFilter(const std::vector<std::size_t>& atomIndices) {
+    ASSERT_THREAD(this);
+    if (!protein_ || !mapper_ || atomIndices.empty())
+        return;
+    rebuildMolecule(atomIndices);
+    atomFilterActive_ = true;
+    refreshCurrentFrame();   // re-push the subset positions + overlays, then render
+}
+
+void MoleculeScene::clearAtomFilter() {
+    ASSERT_THREAD(this);
+    if (!protein_ || !mapper_ || !atomFilterActive_)
+        return;
+    std::vector<std::size_t> all(protein_->atomCount());
+    for (size_t i = 0; i < all.size(); ++i) all[i] = i;
+    rebuildMolecule(all);
+    atomFilterActive_ = false;
+    refreshCurrentFrame();
 }
 
 void MoleculeScene::setFrame(int t) {

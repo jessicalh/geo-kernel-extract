@@ -858,6 +858,47 @@ bool ReaderMainWindow::setFieldPeak(double amplitude) {
     return true;
 }
 
+void ReaderMainWindow::setResidueFilter(const std::vector<std::size_t>& residues) {
+    ASSERT_THREAD(this);
+    if (!scene_ || !loaded_ || !loaded_->protein)
+        return;
+
+    // The whole-molecule overlays (ribbon, rings, field, occupancy) would keep
+    // drawing the entire structure and defeat the isolation, so hide them while
+    // filtered and restore them (per the toolbar toggles) when the filter clears.
+    const auto restoreOverlays = [this]() { applyOverlayActionState(); };
+    const auto hideOverlays = [this]() {
+        if (scene_->ribbonOverlay())          scene_->ribbonOverlay()->setVisible(false);
+        if (scene_->ringPolygonOverlay())     scene_->ringPolygonOverlay()->setVisible(false);
+        if (scene_->fieldGridOverlay())       scene_->fieldGridOverlay()->setVisible(false);
+        if (scene_->bfieldStreamOverlay())    scene_->bfieldStreamOverlay()->setVisible(false);
+        if (scene_->occupancyShellsOverlay()) scene_->occupancyShellsOverlay()->setVisible(false);
+    };
+
+    const auto* protein = loaded_->protein.get();
+    std::vector<std::size_t> atoms;
+    if (!residues.empty()) {
+        std::vector<char> keep(protein->residueCount(), 0);
+        for (std::size_t r : residues)
+            if (r < keep.size()) keep[r] = 1;
+        for (std::size_t i = 0; i < protein->atomCount(); ++i) {
+            const auto& atom = protein->atom(i);
+            if (atom.residueIndex >= 0
+                && static_cast<std::size_t>(atom.residueIndex) < keep.size()
+                && keep[static_cast<std::size_t>(atom.residueIndex)])
+                atoms.push_back(i);
+        }
+    }
+
+    if (atoms.empty()) {
+        restoreOverlays();
+        scene_->clearAtomFilter();
+    } else {
+        hideOverlays();
+        scene_->setAtomFilter(atoms);
+    }
+}
+
 void ReaderMainWindow::setDocksVisible(bool visible) {
     ASSERT_THREAD(this);
 

@@ -965,6 +965,29 @@ void RestServer::registerRoutes() {
         return QHttpServerResponse(SC::NoContent);
     });
 
+    // ---- display isolation (filter mode) --------------------------------
+    //
+    // POST /filter {"residues": [int, ...]} — show only those residues' atoms in
+    // the 3-D view; an empty/absent array restores the full structure. The
+    // atom + nearby-residue view the camera modes used to approximate.
+    server_->route(QStringLiteral("/filter"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+        std::vector<std::size_t> residues;
+        const QJsonArray arr = body.value(QStringLiteral("residues")).toArray();
+        for (const QJsonValue v : arr)
+            if (v.isDouble()) residues.push_back(static_cast<std::size_t>(v.toInt()));
+        readerWindow_->setResidueFilter(residues);   // empty → restore full
+        return QHttpServerResponse(SC::NoContent);
+    });
+
     // ---- transform (upstream data-layer transform — TransformedConformation) -
     //
     // POST /transform {"kind": "all_atom_fit"|"backbone_fit",

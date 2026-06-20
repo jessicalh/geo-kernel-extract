@@ -125,6 +125,12 @@ public:
     bool setFieldExtent(double sigmaA);
     bool setFieldPeak(double amplitude);
 
+    // Display-isolation: show only the given residues (their atoms) in the 3-D
+    // view; an empty list restores the full structure. Maps residues → atoms and
+    // drives MoleculeScene::setAtomFilter. Backs POST /filter and (soon) the
+    // Filter toolbar toggle + nearby-residue checklist.
+    void setResidueFilter(const std::vector<std::size_t>& residues);
+
     // Access to the wrapped TransformedConformation so REST handlers can
     // call setMode without re-walking the loader result. Null until a run
     // is loaded.
