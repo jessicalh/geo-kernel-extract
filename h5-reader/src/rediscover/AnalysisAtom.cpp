@@ -2183,7 +2183,12 @@ public:
           mopac_valency_(cadence_.stepCount()),
           mopac_s_character_(cadence_.stepCount()),
           hybridisation_(cadence_.stepCount()),
-          pi_character_(cadence_.stepCount()) {
+          contact_class_(cadence_.stepCount()),
+          pi_character_(cadence_.stepCount()),
+          contact_class_best_distance_(cadence_.stepCount(), kNaN),
+          contact_class_has_contact_(cadence_.stepCount(), false) {
+        std::fill(contact_class_.values.begin(), contact_class_.values.end(),
+                  static_cast<int>(ContactedClass::NONE));
         buildStaticBonds();
         readStaticHybridisation();
         configureMolecularFrame();
@@ -2434,6 +2439,15 @@ private:
             prev = cur;
         }
         c.insert(QStringLiteral("hybridisation_change_events"), events);
+        c.insert(QStringLiteral("contacted_class_change_events"), contactedClassChangeEventsJson());
+        QJsonObject contactSelection;
+        contactSelection.insert(QStringLiteral("per_frame_policy"),
+                                QStringLiteral("NEAREST_PRESENT_CONTACT"));
+        contactSelection.insert(QStringLiteral("multiple_classes_policy"),
+                                QStringLiteral("nearest contact wins"));
+        contactSelection.insert(QStringLiteral("none_policy"),
+                                QStringLiteral("NONE when no classified present contact is folded for the frame"));
+        c.insert(QStringLiteral("contacted_class_selection"), contactSelection);
         QJsonArray contacted;
         for (const auto& r : contacted_residues_) {
             QJsonObject o;
@@ -3291,21 +3305,48 @@ private:
         return chosen ? chosen->values : std::vector<double>(cadence_.stepCount(), kNaN);
     }
 
-    // The per-frame contacted class (dominant): the class of the nearest /
-    // most-frequent contacted residue. Folded to ONE value per atom for the
-    // context key (most atoms NONE). The individual residues ride in a
-    // companion table (§2.4), not the context.
-    ContactedClass dominantContactedClass() const {
-        std::map<ContactedClass, int> counts;
-        for (const auto& r : contacted_residues_) {
-            const ContactedClass c = classOf(static_cast<model::AminoAcid>(r.second));
-            if (c != ContactedClass::NONE) ++counts[c];
+    ContactedClass contactedClassAtStep(std::size_t step) const {
+        if (step >= contact_class_.values.size()) return ContactedClass::NONE;
+        const int ord = contact_class_.values[step];
+        if (ord == IntSeries::kMissing) return ContactedClass::NONE;
+        return static_cast<ContactedClass>(ord);
+    }
+
+    QJsonArray contactedClassChangeEventsJson() const {
+        QJsonArray events;
+        int prev = IntSeries::kMissing;
+        for (std::size_t i = 0; i < contact_class_.values.size(); ++i) {
+            int cur = contact_class_.values[i];
+            if (cur == IntSeries::kMissing) cur = static_cast<int>(ContactedClass::NONE);
+            if (prev != IntSeries::kMissing && cur != prev) {
+                QJsonObject e;
+                e.insert(QStringLiteral("step_row"), static_cast<int>(i));
+                e.insert(QStringLiteral("from_ord"), prev);
+                e.insert(QStringLiteral("from"), contactedClassName(static_cast<ContactedClass>(prev)));
+                e.insert(QStringLiteral("to_ord"), cur);
+                e.insert(QStringLiteral("to"), contactedClassName(static_cast<ContactedClass>(cur)));
+                events.append(e);
+            }
+            prev = cur;
         }
-        ContactedClass best = ContactedClass::NONE;
-        int bestN = 0;
-        for (const auto& kv : counts)
-            if (kv.second > bestN) { bestN = kv.second; best = kv.first; }
-        return best;
+        return events;
+    }
+
+    void foldContactClass(std::size_t step,
+                          const std::pair<int, model::AminoAcid>& contacted,
+                          bool present,
+                          double distance) {
+        if (!present || step >= contact_class_.values.size() || contacted.first < 0) return;
+        const ContactedClass c = classOf(contacted.second);
+        if (c == ContactedClass::NONE) return;
+        if (!contact_class_has_contact_[step]
+            || (finite(distance)
+                && (!finite(contact_class_best_distance_[step])
+                    || distance < contact_class_best_distance_[step]))) {
+            contact_class_.set(step, static_cast<int>(c));
+            contact_class_best_distance_[step] = distance;
+            contact_class_has_contact_[step] = true;
+        }
     }
 
     // One characterized sigma target inside a catalogue channel. A channel may
@@ -4372,21 +4413,10 @@ private:
         key.insert(QStringLiteral("n_frames_in_context"), static_cast<int>(rows.size()));
         ctx.insert(QStringLiteral("context_key"), key);
 
-        const bool computed = forceComputed || rows.size() >= static_cast<std::size_t>(kMinContextFrames);
+        const bool lowSupport =
+            !forceComputed && rows.size() < static_cast<std::size_t>(kMinContextFrames);
         ctx.insert(QStringLiteral("context_status"),
-                   computed ? QStringLiteral("COMPUTED") : QStringLiteral("DEGRADED_SPARSE"));
-        if (!computed) {
-            QJsonArray considerations;
-            considerations.append(QStringLiteral("DEGRADED_SPARSE: n_frames_in_context < kMinContextFrames"));
-            ctx.insert(QStringLiteral("considerations"), considerations);
-            ctx.insert(QStringLiteral("responses"), QJsonArray{});
-            QJsonObject chains;
-            chains.insert(QStringLiteral("collinearity"), QJsonArray{});
-            chains.insert(QStringLiteral("mediations"), QJsonArray{});
-            ctx.insert(QStringLiteral("chains"), chains);
-            characterizedOut = 0;
-            return ctx;
-        }
+                   lowSupport ? QStringLiteral("COMPUTED_LOW_SUPPORT") : QStringLiteral("COMPUTED"));
 
         std::vector<EvaluatedResponse> characterized;
         int applicableChannels = 0;
@@ -4422,6 +4452,10 @@ private:
 
         // considerations[] -- notes that ride with the characterization.
         QJsonArray considerations;
+        if (lowSupport) {
+            considerations.append(
+                QStringLiteral("LOW_SUPPORT: n_frames_in_context < kMinContextFrames; responses and chains computed with existing support guards"));
+        }
         considerations.append(QStringLiteral("gauge(dia/para): GIAO total is gauge-invariant; dia/para is context colour only"));
         ctx.insert(QStringLiteral("considerations"), considerations);
 
@@ -4494,20 +4528,22 @@ private:
         acc.insert(QStringLiteral("sigma0_ref"), jd(isoMean));
 
         // contexts[] -- emit the whole-trajectory BASE context first (§2.4B),
-        // then additional hybridisation-stratified contexts where supported.
-        const ContactedClass cc = dominantContactedClass();
+        // then additional hybridisation/contact-class stratified contexts where
+        // the trajectory actually splits into regimes.
         const int stratum = graphStratum();
-        std::map<int, std::vector<std::size_t>> rowsByHyb;
+        std::map<std::pair<int, int>, std::vector<std::size_t>> rowsByHybContact;
         for (std::size_t row : cadence_.sigmaRows()) {
             int hyb = static_cast<int>(model::Hybridisation::Unassigned);
             if (row < hybridisation_.values.size() && hybridisation_.values[row] != IntSeries::kMissing)
                 hyb = hybridisation_.values[row];
             else
                 hyb = static_hybridisation_ord_;
-            rowsByHyb[hyb].push_back(row);
+            const int contactClass = static_cast<int>(contactedClassAtStep(row));
+            rowsByHybContact[{hyb, contactClass}].push_back(row);
         }
-        if (rowsByHyb.empty())
-            rowsByHyb[static_hybridisation_ord_] = cadence_.sigmaRows();
+        if (rowsByHybContact.empty())
+            rowsByHybContact[{static_hybridisation_ord_, static_cast<int>(ContactedClass::NONE)}] =
+                cadence_.sigmaRows();
 
         QJsonArray contexts;
         std::set<QString> serialDrivers;
@@ -4523,10 +4559,12 @@ private:
             contexts.append(ctx);
             totalResponses += characterizedCount;
         }
-        if (rowsByHyb.size() > 1) {
-            for (const auto& kv : rowsByHyb) {
+        if (rowsByHybContact.size() > 1) {
+            for (const auto& kv : rowsByHybContact) {
                 std::size_t characterizedCount = 0;
-                QJsonObject ctx = buildContextJson(kv.first, contactedClassName(cc),
+                QJsonObject ctx = buildContextJson(kv.first.first,
+                                                   contactedClassName(
+                                                       static_cast<ContactedClass>(kv.first.second)),
                                                    QString::number(stratum), kv.second,
                                                    characterizedCount,
                                                    serialDrivers, serialSigma, false);
@@ -4726,12 +4764,24 @@ private:
                 if (!seenIds.insert(cid).second)
                     qFatal("accumulator regression: atom %lld duplicate catalogue_id '%s'",
                            static_cast<long long>(atom_), qPrintable(cid));
-                if (!r.contains(QStringLiteral("targets")) || !r.value(QStringLiteral("targets")).isArray()
-                    || r.value(QStringLiteral("targets")).toArray().isEmpty())
+                const QJsonArray responseConsiderations =
+                    r.value(QStringLiteral("considerations")).toArray();
+                bool insufficientSupport = false;
+                for (const QJsonValue& note : responseConsiderations) {
+                    if (note.toString() == QStringLiteral("ZERO_VARIANCE_OR_INSUFFICIENT_SUPPORT")) {
+                        insufficientSupport = true;
+                        break;
+                    }
+                }
+                if ((!r.contains(QStringLiteral("targets")) || !r.value(QStringLiteral("targets")).isArray()
+                     || r.value(QStringLiteral("targets")).toArray().isEmpty())
+                    && !insufficientSupport)
                     qFatal("accumulator regression: atom %lld response '%s' missing targets[]",
                            static_cast<long long>(atom_), qPrintable(cid));
             }
-            if (status == QStringLiteral("COMPUTED") && seenIds != expectedIds)
+            if ((status == QStringLiteral("COMPUTED")
+                 || status == QStringLiteral("COMPUTED_LOW_SUPPORT"))
+                && seenIds != expectedIds)
                 qFatal("accumulator regression: atom %lld context has %d catalogue entries, expected %d",
                        static_cast<long long>(atom_), static_cast<int>(seenIds.size()),
                        static_cast<int>(expectedIds.size()));
@@ -5412,6 +5462,7 @@ private:
         const model::QtAtom& atom = body_.run.protein->atom(atom_);
         const auto cr = contactedResidue(body_, pair);
         if (cr.first >= 0) contacted_residues_.insert({cr.first, static_cast<int>(cr.second)});
+        const bool present = (pair.pointer_flags & PresentFlag) != 0;
         const QString scope = relationshipScope(body_, atom_, pair);
         RelationshipKey key;
         key.hybridisation_ord = hyb;
@@ -5429,7 +5480,8 @@ private:
             it = relationships_.emplace(key, RelationshipSeries(cadence_.stepCount())).first;
         RelationshipSeries& r = it->second;
         if (step >= cadence_.stepCount()) return;
-        r.markPresent(step, (pair.pointer_flags & PresentFlag) != 0);
+        foldContactClass(step, cr, present, pair.r);
+        r.markPresent(step, present);
         r.distance.set(step, pair.r);
         r.cos_theta.set(step, pair.cos_theta);
         r.inv_r3.set(step, pair.inv_r3);
@@ -5656,7 +5708,10 @@ private:
     ScalarSeries mopac_valency_;
     ScalarSeries mopac_s_character_;
     IntSeries hybridisation_;
+    IntSeries contact_class_;
     ScalarSeries pi_character_;
+    std::vector<double> contact_class_best_distance_;
+    std::vector<bool> contact_class_has_contact_;
     std::map<RelationshipKey, RelationshipSeries> relationships_;
     std::map<std::uint64_t, StaticBondInfo> static_bonds_;
     std::map<std::uint64_t, ScalarSeries> bond_series_;
