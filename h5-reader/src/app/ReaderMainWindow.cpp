@@ -232,10 +232,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ACONNECT(timeViewport_, &TimeViewportController::playbackFrameRequested,
              playback_,     &QtPlaybackController::setFrame);
     ACONNECT(playback_, &QtPlaybackController::playingChanged,
-             this,      [this](bool playing) {
-                 // Stop is live only while something is animating.
-                 if (stopAction_) stopAction_->setEnabled(playing);
-             });
+             this,      [this](bool) { refreshControlStates(); });
 
     if (frameSlider_) {
         const QSignalBlocker block(frameSlider_);
@@ -340,18 +337,10 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
     ACONNECT(selection_, &model::AtomSelection::cleared,
              inspectorDock_, &QtAtomInspectorDock::clearSelection);
-    const auto updateMetricAction = [this]() {
-        if (signalDisplaysAction_)
-            signalDisplaysAction_->setEnabled(selection_ && selection_->hasFocus());
-    };
-    ACONNECT(selection_, &model::AtomSelection::focusChanged, this, [this, updateMetricAction](std::size_t) {
-        updateMetricAction();
-        updateCameraModeActions();
-    });
-    ACONNECT(selection_, &model::AtomSelection::cleared, this, [this, updateMetricAction]() {
-        updateMetricAction();
-        updateCameraModeActions();
-    });
+    ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+             [this](std::size_t) { refreshControlStates(); });
+    ACONNECT(selection_, &model::AtomSelection::cleared, this,
+             [this]() { refreshControlStates(); });
 
     if (auto* meas = scene_->measurementOverlay()) {
         meas->setSelection(selection_);
@@ -391,7 +380,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                          ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
                      scene_->cameraComposer()->setMode(FreeMode(), FreePolicy(), t);
                  }
-                 updateCameraModeActions();
+                 refreshControlStates();
                  if (scene_) scene_->refreshCurrentFrame();
              });
 
@@ -463,9 +452,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     }
     updateMutantAlternateAction(alternatePath);
 
-    setLoadedControlsEnabled(true);
-    updateMetricAction();
-    updateCameraModeActions();
+    refreshControlStates();
     onFrameChanged(0);
     resetDashboardStateForRunLoad();
     if (centralContainer_) {
@@ -558,9 +545,8 @@ void ReaderMainWindow::clearLoadedRun() {
 
 void ReaderMainWindow::setEmptyState() {
     ASSERT_THREAD(this);
-    setLoadedControlsEnabled(false);
+    refreshControlStates();
     updateFitModeLabel();
-    updateCameraModeActions();
     if (emptyPlaceholder_)
         emptyPlaceholder_->setVisible(true);
     if (centralContainer_) {
@@ -586,26 +572,97 @@ void ReaderMainWindow::setEmptyState() {
     setWindowTitle(QStringLiteral("h5-reader"));
 }
 
-void ReaderMainWindow::setLoadedControlsEnabled(bool enabled) {
+void ReaderMainWindow::refreshControlStates() {
     ASSERT_THREAD(this);
-    if (playBackAction_) playBackAction_->setEnabled(enabled);
-    if (stepBackAction_) stepBackAction_->setEnabled(enabled);
-    if (stopAction_) stopAction_->setEnabled(enabled);
-    if (stepForwardAction_) stepForwardAction_->setEnabled(enabled);
-    if (playForwardAction_) playForwardAction_->setEnabled(enabled);
-    if (frameSlider_) frameSlider_->setEnabled(enabled);
-    if (fpsSpinner_) fpsSpinner_->setEnabled(enabled);
+    // Derive the whole operating state once — single source of truth.
+    const bool loaded   = scene_ != nullptr;
+    const int  frames   = (loaded && loaded_ && loaded_->conformation)
+                            ? static_cast<int>(loaded_->conformation->frameCount()) : 0;
+    const bool playable = loaded && frames > 1;            // single pose: nothing to play
+    const bool playing  = playback_ && playback_->isPlaying();
+    const bool traj     = loaded && visualizationContext_.hasTrajectory;
+    const bool hasFocus = selection_ && selection_->hasFocus();
+    const bool hasRings = loaded && loaded_ && loaded_->protein
+                            && loaded_->protein->ringCount() > 0;
 
-    if (transformFitAction_) transformFitAction_->setEnabled(enabled && transformed_);
-    if (instrumentAction_) instrumentAction_->setEnabled(enabled && scene_);
-    if (signalDisplaysAction_)
-        signalDisplaysAction_->setEnabled(enabled && selection_ && selection_->hasFocus());
+    const auto en = [](QAction* a, bool e) { if (a) a->setEnabled(e); };
 
-    if (showRibbonAction_) showRibbonAction_->setEnabled(enabled && scene_);
-    if (showRingsAction_) showRingsAction_->setEnabled(enabled && scene_);
-    if (showButterflyAction_) showButterflyAction_->setEnabled(enabled && scene_);
-    if (showBFieldAction_) showBFieldAction_->setEnabled(enabled && scene_);
-    if (showOccupancyAction_) showOccupancyAction_->setEnabled(enabled && scene_);
+    // Transport — only meaningful for a multi-frame trajectory.
+    en(playBackAction_,    playable);
+    en(stepBackAction_,    playable);
+    en(stepForwardAction_, playable);
+    en(playForwardAction_, playable);
+    en(stopAction_,        playable && playing);   // stop is inert when stopped
+    if (frameSlider_) frameSlider_->setEnabled(playable);
+    if (fpsSpinner_)  fpsSpinner_->setEnabled(playable);
+
+    // Analysis controls.
+    en(transformFitAction_,   loaded && transformed_ != nullptr);
+    en(signalDisplaysAction_, loaded && hasFocus);
+    en(instrumentAction_,     loaded);
+
+    // Overlays — gated on the data that makes each one mean something.
+    en(showRibbonAction_,    loaded);
+    en(showRingsAction_,     hasRings);
+    en(showButterflyAction_, hasRings);
+    en(showBFieldAction_,    hasRings);
+    en(showOccupancyAction_, traj);   // per-atom envelope needs a trajectory
+
+    // Camera modes (enable gating + checked-state sync).
+    updateCameraModeActions();
+}
+
+QJsonObject ReaderMainWindow::uiStateJson() const {
+    const bool loaded  = scene_ != nullptr;
+    const int  frames  = (loaded && loaded_ && loaded_->conformation)
+                           ? static_cast<int>(loaded_->conformation->frameCount()) : 0;
+    const bool playing = playback_ && playback_->isPlaying();
+
+    const auto ctl = [](const QAction* a) {
+        QJsonObject o;
+        o[QStringLiteral("present")] = (a != nullptr);
+        o[QStringLiteral("enabled")] = (a != nullptr && a->isEnabled());
+        if (a && a->isCheckable())
+            o[QStringLiteral("checked")] = a->isChecked();
+        return o;
+    };
+
+    QJsonObject controls;
+    controls[QStringLiteral("playBack")]     = ctl(playBackAction_);
+    controls[QStringLiteral("stepBack")]     = ctl(stepBackAction_);
+    controls[QStringLiteral("stop")]         = ctl(stopAction_);
+    controls[QStringLiteral("stepForward")]  = ctl(stepForwardAction_);
+    controls[QStringLiteral("playForward")]  = ctl(playForwardAction_);
+    controls[QStringLiteral("focus")]        = ctl(focusAction_);
+    controls[QStringLiteral("newman")]       = ctl(newmanAction_);
+    controls[QStringLiteral("planeLock")]    = ctl(planeLockAction_);
+    controls[QStringLiteral("freeCamera")]   = ctl(freeAction_);
+    controls[QStringLiteral("transformFit")] = ctl(transformFitAction_);
+    controls[QStringLiteral("metrics")]      = ctl(signalDisplaysAction_);
+    controls[QStringLiteral("ribbon")]       = ctl(showRibbonAction_);
+    controls[QStringLiteral("rings")]        = ctl(showRingsAction_);
+    controls[QStringLiteral("butterfly")]    = ctl(showButterflyAction_);
+    controls[QStringLiteral("bfield")]       = ctl(showBFieldAction_);
+    controls[QStringLiteral("occupancy")]    = ctl(showOccupancyAction_);
+
+    QJsonObject sel;
+    sel[QStringLiteral("count")] = static_cast<int>(selection_ ? selection_->count() : 0);
+    sel[QStringLiteral("focus")] = (selection_ && selection_->hasFocus());
+
+    QJsonObject out;
+    out[QStringLiteral("loaded")]        = loaded;
+    out[QStringLiteral("protein")]       = (loaded && loaded_) ? loaded_->proteinId : QString();
+    out[QStringLiteral("frames")]        = frames;
+    out[QStringLiteral("currentFrame")]  = playback_ ? playback_->currentFrame() : 0;
+    out[QStringLiteral("playing")]       = playing;
+    out[QStringLiteral("playDirection")] = playback_ ? playback_->direction() : 1;
+    out[QStringLiteral("selection")]     = sel;
+    out[QStringLiteral("cameraMode")]    =
+        (loaded && scene_ && scene_->cameraComposer())
+            ? QString::fromLatin1(NameFor(scene_->cameraComposer()->mode().kind))
+            : QStringLiteral("none");
+    out[QStringLiteral("controls")]      = controls;
+    return out;
 }
 
 void ReaderMainWindow::applyOverlayActionState() {

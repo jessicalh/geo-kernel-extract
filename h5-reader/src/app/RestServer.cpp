@@ -922,6 +922,49 @@ void RestServer::registerRoutes() {
         return QHttpServerResponse(SC::NoContent);
     });
 
+    // ---- UI state introspection -----------------------------------------
+    //
+    // GET /ui/state → full operating-state + per-control {enabled, checked}
+    // snapshot. A real introspection API (a client can mirror the toolbar from
+    // it), and how the selectability rules get asserted across states.
+    server_->route(QStringLiteral("/ui/state"), Method::Get,
+                   [this](const QHttpServerRequest&) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader main window not wired"),
+                                 SC::ServiceUnavailable);
+        return jsonResponse(readerWindow_->uiStateJson());
+    });
+
+    // ---- playback control (real transport API; mirrors the toolbar) ------
+    //
+    // POST /playback {"action": "play_forward"|"play_backward"|"pause"|
+    //                 "step_forward"|"step_backward"|"toggle"}
+    server_->route(QStringLiteral("/playback"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!playback_)
+            return errorResponse(QStringLiteral("no playback (nothing loaded)"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        const QString a = (ok && body.contains("action"))
+                              ? body.value("action").toString() : QString();
+        if      (a == QStringLiteral("play_forward"))  playback_->playForward();
+        else if (a == QStringLiteral("play_backward")) playback_->playBackward();
+        else if (a == QStringLiteral("pause") ||
+                 a == QStringLiteral("stop"))          playback_->pause();
+        else if (a == QStringLiteral("step_forward"))  playback_->stepForward();
+        else if (a == QStringLiteral("step_backward")) playback_->stepBackward();
+        else if (a == QStringLiteral("toggle"))        playback_->togglePlayPause();
+        else
+            return errorResponse(
+                QStringLiteral("action must be play_forward|play_backward|pause|"
+                               "step_forward|step_backward|toggle"),
+                SC::BadRequest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
     // ---- transform (upstream data-layer transform — TransformedConformation) -
     //
     // POST /transform {"kind": "all_atom_fit"|"backbone_fit",

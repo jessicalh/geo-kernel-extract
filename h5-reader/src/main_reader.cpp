@@ -43,6 +43,7 @@
 
 #ifdef _WIN32
 #  include <QPalette>
+#  include <QStyle>
 #  include <QStyleFactory>
 #  include <QStyleHints>
 #endif
@@ -80,43 +81,39 @@ int main(int argc, char* argv[]) {
     h5reader::diagnostics::StructuredLogger::Install();
 
 #ifdef _WIN32
-    // Windows 11's "modern" QStyle renders QStyle::SP_Media* icons in
-    // the OS text colour. When the toolbar inherits the OS dark-mode
-    // background but Qt's palette is still its default light Fusion
-    // palette (or vice versa), the VCR icons collapse to black-on-black
-    // — only the highlight on hover makes them visible. Fix: install
-    // Fusion AND a matching palette so widgets and icons share one
-    // colour scheme. We pick palette to match the OS preference.
+    // Traditional LIGHT Fusion, regardless of the OS dark-mode preference.
+    // Rationale (2026-06-20): a light palette makes the three button states
+    // unambiguous — disabled greys to clear light-grey, enabled is full
+    // contrast, checked is the sunken+highlight look — which the previous
+    // forced-dark palette obscured (grey-on-dark disabled was nearly invisible).
+    // The transport icons are drawn in palette(ButtonText), so a light palette
+    // also makes them dark-on-light and grey cleanly when disabled.
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+    // Force the LIGHT scheme regardless of the OS setting — Qt 6.10's Fusion is
+    // color-scheme-aware and otherwise follows the OS into dark mode (which
+    // hides the disabled state). setColorScheme handles the scheme-aware bits;
+    // the explicit palette below makes the widget colours deterministic.
+    QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
 
-    const bool osDark =
-        QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
     QPalette pal;
-    if (osDark) {
-        // "Dark Fusion" — the standard Qt dark palette in the wild.
-        pal.setColor(QPalette::Window,          QColor(53, 53, 53));
-        pal.setColor(QPalette::WindowText,      Qt::white);
-        pal.setColor(QPalette::Base,            QColor(35, 35, 35));
-        pal.setColor(QPalette::AlternateBase,   QColor(53, 53, 53));
-        pal.setColor(QPalette::ToolTipBase,     Qt::white);
-        pal.setColor(QPalette::ToolTipText,     Qt::white);
-        pal.setColor(QPalette::Text,            Qt::white);
-        pal.setColor(QPalette::Button,          QColor(53, 53, 53));
-        pal.setColor(QPalette::ButtonText,      Qt::white);
-        pal.setColor(QPalette::BrightText,      Qt::red);
-        pal.setColor(QPalette::Link,            QColor(42, 130, 218));
-        pal.setColor(QPalette::Highlight,       QColor(42, 130, 218));
-        pal.setColor(QPalette::HighlightedText, Qt::black);
-        pal.setColor(QPalette::Disabled, QPalette::Text,       QColor(127, 127, 127));
-        pal.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(127, 127, 127));
-    } else {
-        // Fusion's default light palette is already fine; nothing to do.
-        pal = QApplication::palette();
-    }
+    pal.setColor(QPalette::Window,          QColor(239, 239, 239));
+    pal.setColor(QPalette::WindowText,      Qt::black);
+    pal.setColor(QPalette::Base,            Qt::white);
+    pal.setColor(QPalette::AlternateBase,   QColor(247, 247, 247));
+    pal.setColor(QPalette::Text,            Qt::black);
+    pal.setColor(QPalette::Button,          QColor(239, 239, 239));
+    pal.setColor(QPalette::ButtonText,      Qt::black);
+    pal.setColor(QPalette::BrightText,      Qt::red);
+    pal.setColor(QPalette::Highlight,       QColor(48, 140, 198));
+    pal.setColor(QPalette::HighlightedText, Qt::white);
+    pal.setColor(QPalette::ToolTipBase,     QColor(255, 255, 225));
+    pal.setColor(QPalette::ToolTipText,     Qt::black);
+    // Clear, obvious disabled greys — the whole point of going light/traditional.
+    pal.setColor(QPalette::Disabled, QPalette::WindowText, QColor(160, 160, 160));
+    pal.setColor(QPalette::Disabled, QPalette::Text,       QColor(160, 160, 160));
+    pal.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(160, 160, 160));
     QApplication::setPalette(pal);
-    qInfo().noquote() << "UI: Fusion style +"
-                      << (osDark ? "dark" : "light")
-                      << "palette installed";
+    qInfo().noquote() << "UI: Fusion + forced light palette (traditional) installed";
 #endif
 
     // VTK SMP backend: STDThread parallelises vtkStreamTracer + the

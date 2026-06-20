@@ -143,6 +143,11 @@ public:
     QJsonObject signalDisplayPickerState() const;
     QJsonObject addSelectedSignalFromPicker();
 
+    // Full operating-state + per-control {enabled,checked} snapshot. Backs
+    // GET /ui/state and is the introspection used to verify the selectability
+    // rules. Pure read of the live control states.
+    QJsonObject uiStateJson() const;
+
 public slots:
     // Called from aboutToQuit. Stops the REST server, stops timers, and
     // detaches the render window from the widget so the
@@ -185,7 +190,12 @@ private:
     void installLoadedRun(h5reader::io::QtLoadResult&& loaded);
     void clearLoadedRun();
     void setEmptyState();
-    void setLoadedControlsEnabled(bool enabled);
+    // Single source of truth for control enable/checked state. Derives the
+    // whole operating state (loaded / playable / playing / selection / data
+    // capabilities) and sets every control accordingly. Called on every
+    // state-changing signal — replaces the old scattered setLoadedControlsEnabled
+    // + per-signal enable lambdas.
+    void refreshControlStates();
     void applyOverlayActionState();
     void updateMutantAlternateAction(const QString& alternatePath);
     void syncRestServerContext();
