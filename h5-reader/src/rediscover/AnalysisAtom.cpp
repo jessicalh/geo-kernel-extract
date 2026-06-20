@@ -34,6 +34,7 @@
 #include <QJsonValue>
 #include <QLoggingCategory>
 #include <QProcess>
+#include <QStringList>
 #include <QTextStream>
 
 #include <algorithm>
@@ -1512,6 +1513,14 @@ EfgEigen efgEigen(const std::array<double, 5>& t2) {
 // (§2.4 / D-S3). NONE is the through-space-isolated baseline (no contact).
 enum class ContactedClass { NONE = 0, ACIDIC, BASIC, AROMATIC, POLAR, APOLAR };
 
+constexpr std::array<ContactedClass, 5> kPresentContactClasses = {
+    ContactedClass::ACIDIC,
+    ContactedClass::BASIC,
+    ContactedClass::AROMATIC,
+    ContactedClass::POLAR,
+    ContactedClass::APOLAR,
+};
+
 ContactedClass classOf(model::AminoAcid aa) {
     switch (aa) {
     case model::AminoAcid::ASP:
@@ -1555,6 +1564,49 @@ QString contactedClassName(ContactedClass c) {
     case ContactedClass::APOLAR: return QStringLiteral("APOLAR");
     }
     return QStringLiteral("NONE");
+}
+
+std::uint8_t contactedClassBit(ContactedClass c) {
+    const int ord = static_cast<int>(c);
+    if (ord <= static_cast<int>(ContactedClass::NONE)) return 0;
+    return static_cast<std::uint8_t>(1u << (ord - 1));
+}
+
+QJsonArray contactedClassMaskOrdsJson(std::uint8_t mask) {
+    QJsonArray a;
+    for (ContactedClass c : kPresentContactClasses) {
+        if ((mask & contactedClassBit(c)) != 0)
+            a.append(static_cast<int>(c));
+    }
+    return a;
+}
+
+QJsonArray contactedClassMaskNamesJson(std::uint8_t mask) {
+    QJsonArray a;
+    for (ContactedClass c : kPresentContactClasses) {
+        if ((mask & contactedClassBit(c)) != 0)
+            a.append(contactedClassName(c));
+    }
+    return a;
+}
+
+QString contactedClassMaskName(std::uint8_t mask) {
+    QStringList names;
+    for (ContactedClass c : kPresentContactClasses) {
+        if ((mask & contactedClassBit(c)) != 0)
+            names.append(contactedClassName(c));
+    }
+    return names.isEmpty() ? QStringLiteral("NONE") : names.join(QStringLiteral("+"));
+}
+
+int contactedClassSingleOrd(std::uint8_t mask) {
+    int ord = static_cast<int>(ContactedClass::NONE);
+    for (ContactedClass c : kPresentContactClasses) {
+        if ((mask & contactedClassBit(c)) == 0) continue;
+        if (ord != static_cast<int>(ContactedClass::NONE)) return -1;
+        ord = static_cast<int>(c);
+    }
+    return ord;
 }
 
 // ---------------------------------------------------------------------------
@@ -2183,12 +2235,8 @@ public:
           mopac_valency_(cadence_.stepCount()),
           mopac_s_character_(cadence_.stepCount()),
           hybridisation_(cadence_.stepCount()),
-          contact_class_(cadence_.stepCount()),
-          pi_character_(cadence_.stepCount()),
-          contact_class_best_distance_(cadence_.stepCount(), kNaN),
-          contact_class_has_contact_(cadence_.stepCount(), false) {
-        std::fill(contact_class_.values.begin(), contact_class_.values.end(),
-                  static_cast<int>(ContactedClass::NONE));
+          contacted_class_membership_(cadence_.stepCount(), 0),
+          pi_character_(cadence_.stepCount()) {
         buildStaticBonds();
         readStaticHybridisation();
         configureMolecularFrame();
@@ -2420,6 +2468,8 @@ private:
         c.insert(QStringLiteral("hybridisation_series"), hybridisation_.json());
         c.insert(QStringLiteral("hybridisation_pi_character_series"), pi_character_.json());
         c.insert(QStringLiteral("s_character_series"), mopac_s_character_.json());
+        c.insert(QStringLiteral("contacted_class_membership_series"),
+                 contactedClassMembershipSeriesJson());
         c.insert(QStringLiteral("static_hybridisation_ord"), static_hybridisation_ord_);
         c.insert(QStringLiteral("static_hybridisation"), hybridName(static_cast<model::Hybridisation>(static_hybridisation_ord_)));
         QJsonArray events;
@@ -2442,11 +2492,13 @@ private:
         c.insert(QStringLiteral("contacted_class_change_events"), contactedClassChangeEventsJson());
         QJsonObject contactSelection;
         contactSelection.insert(QStringLiteral("per_frame_policy"),
-                                QStringLiteral("NEAREST_PRESENT_CONTACT"));
+                                QStringLiteral("MEMBERSHIP_OF_ALL_PRESENT_CONTACT_CLASSES"));
         contactSelection.insert(QStringLiteral("multiple_classes_policy"),
-                                QStringLiteral("nearest contact wins"));
+                                QStringLiteral("frame contributes to every present contacted class; contacted-class regimes overlap"));
         contactSelection.insert(QStringLiteral("none_policy"),
                                 QStringLiteral("NONE when no classified present contact is folded for the frame"));
+        contactSelection.insert(QStringLiteral("regime_occupancy_policy"),
+                                QStringLiteral("overlapping contacted-class memberships; occupancy sums may exceed the frame count"));
         c.insert(QStringLiteral("contacted_class_selection"), contactSelection);
         QJsonArray contacted;
         for (const auto& r : contacted_residues_) {
@@ -3305,28 +3357,58 @@ private:
         return chosen ? chosen->values : std::vector<double>(cadence_.stepCount(), kNaN);
     }
 
-    ContactedClass contactedClassAtStep(std::size_t step) const {
-        if (step >= contact_class_.values.size()) return ContactedClass::NONE;
-        const int ord = contact_class_.values[step];
-        if (ord == IntSeries::kMissing) return ContactedClass::NONE;
-        return static_cast<ContactedClass>(ord);
+    std::uint8_t contactedClassMaskAtStep(std::size_t step) const {
+        if (step >= contacted_class_membership_.size()) return 0;
+        return contacted_class_membership_[step];
+    }
+
+    QJsonObject contactedClassMembershipSeriesJson() const {
+        QJsonObject root;
+        QJsonArray classes;
+        QJsonArray ords;
+        QJsonObject presence;
+        for (ContactedClass c : kPresentContactClasses) {
+            const QString name = contactedClassName(c);
+            classes.append(name);
+            ords.append(static_cast<int>(c));
+            QJsonArray values;
+            const std::uint8_t bit = contactedClassBit(c);
+            for (std::uint8_t mask : contacted_class_membership_)
+                values.append((mask & bit) != 0);
+            presence.insert(name, values);
+        }
+        root.insert(QStringLiteral("classes"), classes);
+        root.insert(QStringLiteral("class_ords"), ords);
+        root.insert(QStringLiteral("presence_by_class"), presence);
+        return root;
     }
 
     QJsonArray contactedClassChangeEventsJson() const {
         QJsonArray events;
-        int prev = IntSeries::kMissing;
-        for (std::size_t i = 0; i < contact_class_.values.size(); ++i) {
-            int cur = contact_class_.values[i];
-            if (cur == IntSeries::kMissing) cur = static_cast<int>(ContactedClass::NONE);
-            if (prev != IntSeries::kMissing && cur != prev) {
+        bool havePrev = false;
+        std::uint8_t prev = 0;
+        for (std::size_t i = 0; i < contacted_class_membership_.size(); ++i) {
+            const std::uint8_t cur = contacted_class_membership_[i];
+            if (havePrev && cur != prev) {
+                const std::uint8_t entered = static_cast<std::uint8_t>(cur & ~prev);
+                const std::uint8_t exited = static_cast<std::uint8_t>(prev & ~cur);
                 QJsonObject e;
                 e.insert(QStringLiteral("step_row"), static_cast<int>(i));
-                e.insert(QStringLiteral("from_ord"), prev);
-                e.insert(QStringLiteral("from"), contactedClassName(static_cast<ContactedClass>(prev)));
-                e.insert(QStringLiteral("to_ord"), cur);
-                e.insert(QStringLiteral("to"), contactedClassName(static_cast<ContactedClass>(cur)));
+                e.insert(QStringLiteral("from_ord"), contactedClassSingleOrd(prev));
+                e.insert(QStringLiteral("from"), contactedClassMaskName(prev));
+                e.insert(QStringLiteral("to_ord"), contactedClassSingleOrd(cur));
+                e.insert(QStringLiteral("to"), contactedClassMaskName(cur));
+                e.insert(QStringLiteral("from_ords"), contactedClassMaskOrdsJson(prev));
+                e.insert(QStringLiteral("from_classes"), contactedClassMaskNamesJson(prev));
+                e.insert(QStringLiteral("to_ords"), contactedClassMaskOrdsJson(cur));
+                e.insert(QStringLiteral("to_classes"), contactedClassMaskNamesJson(cur));
+                e.insert(QStringLiteral("entered_ords"), contactedClassMaskOrdsJson(entered));
+                e.insert(QStringLiteral("entered_classes"), contactedClassMaskNamesJson(entered));
+                e.insert(QStringLiteral("exited_ords"), contactedClassMaskOrdsJson(exited));
+                e.insert(QStringLiteral("exited_classes"), contactedClassMaskNamesJson(exited));
                 events.append(e);
             }
+            havePrev = true;
             prev = cur;
         }
         return events;
@@ -3335,18 +3417,12 @@ private:
     void foldContactClass(std::size_t step,
                           const std::pair<int, model::AminoAcid>& contacted,
                           bool present,
-                          double distance) {
-        if (!present || step >= contact_class_.values.size() || contacted.first < 0) return;
+                          double /*distance*/) {
+        if (!present || step >= contacted_class_membership_.size() || contacted.first < 0) return;
         const ContactedClass c = classOf(contacted.second);
         if (c == ContactedClass::NONE) return;
-        if (!contact_class_has_contact_[step]
-            || (finite(distance)
-                && (!finite(contact_class_best_distance_[step])
-                    || distance < contact_class_best_distance_[step]))) {
-            contact_class_.set(step, static_cast<int>(c));
-            contact_class_best_distance_[step] = distance;
-            contact_class_has_contact_[step] = true;
-        }
+        contacted_class_membership_[step] =
+            static_cast<std::uint8_t>(contacted_class_membership_[step] | contactedClassBit(c));
     }
 
     // One characterized sigma target inside a catalogue channel. A channel may
@@ -4538,8 +4614,15 @@ private:
                 hyb = hybridisation_.values[row];
             else
                 hyb = static_hybridisation_ord_;
-            const int contactClass = static_cast<int>(contactedClassAtStep(row));
-            rowsByHybContact[{hyb, contactClass}].push_back(row);
+            const std::uint8_t membership = contactedClassMaskAtStep(row);
+            bool emittedContactClass = false;
+            for (ContactedClass c : kPresentContactClasses) {
+                if ((membership & contactedClassBit(c)) == 0) continue;
+                rowsByHybContact[{hyb, static_cast<int>(c)}].push_back(row);
+                emittedContactClass = true;
+            }
+            if (!emittedContactClass)
+                rowsByHybContact[{hyb, static_cast<int>(ContactedClass::NONE)}].push_back(row);
         }
         if (rowsByHybContact.empty())
             rowsByHybContact[{static_hybridisation_ord_, static_cast<int>(ContactedClass::NONE)}] =
@@ -4559,18 +4642,16 @@ private:
             contexts.append(ctx);
             totalResponses += characterizedCount;
         }
-        if (rowsByHybContact.size() > 1) {
-            for (const auto& kv : rowsByHybContact) {
-                std::size_t characterizedCount = 0;
-                QJsonObject ctx = buildContextJson(kv.first.first,
-                                                   contactedClassName(
-                                                       static_cast<ContactedClass>(kv.first.second)),
-                                                   QString::number(stratum), kv.second,
-                                                   characterizedCount,
-                                                   serialDrivers, serialSigma, false);
-                contexts.append(ctx);
-                totalResponses += characterizedCount;
-            }
+        for (const auto& kv : rowsByHybContact) {
+            std::size_t characterizedCount = 0;
+            QJsonObject ctx = buildContextJson(kv.first.first,
+                                               contactedClassName(
+                                                   static_cast<ContactedClass>(kv.first.second)),
+                                               QString::number(stratum), kv.second,
+                                               characterizedCount,
+                                               serialDrivers, serialSigma, false);
+            contexts.append(ctx);
+            totalResponses += characterizedCount;
         }
         acc.insert(QStringLiteral("contexts"), contexts);
 
@@ -5708,10 +5789,8 @@ private:
     ScalarSeries mopac_valency_;
     ScalarSeries mopac_s_character_;
     IntSeries hybridisation_;
-    IntSeries contact_class_;
+    std::vector<std::uint8_t> contacted_class_membership_;
     ScalarSeries pi_character_;
-    std::vector<double> contact_class_best_distance_;
-    std::vector<bool> contact_class_has_contact_;
     std::map<RelationshipKey, RelationshipSeries> relationships_;
     std::map<std::uint64_t, StaticBondInfo> static_bonds_;
     std::map<std::uint64_t, ScalarSeries> bond_series_;
@@ -6290,6 +6369,7 @@ QJsonArray seriesCatalogJson() {
         {"relationships", "f64", "relationship_facets", false, "mixed"},
         {"model.category.hybridisation_series", "int8", "scalar", false, "ordinal"},
         {"model.category.hybridisation_pi_character_series", "f64", "scalar", false, "dimensionless_wiberg"},
+        {"model.category.contacted_class_membership_series", "bool", "contact_class_membership", false, "boolean"},
     };
     QJsonArray a;
     for (const Item& item : items) {
