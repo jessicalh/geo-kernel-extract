@@ -32,6 +32,7 @@ std::optional<io::FieldKind> ProducerFieldFor(ArrayId id) {
     case ArrayId::Aimnet2ChargeRespVector: return FieldKind::AIMNet2ChargeResponseGradient;
     case ArrayId::Aimnet2Embedding: return FieldKind::AIMNet2Aim;
     case ArrayId::Ff14sbCharge: return FieldKind::FfPartialCharge;
+    case ArrayId::FfPbRadius: return FieldKind::FfPbRadius;
     case ArrayId::MopacCharge: return FieldKind::MOPACCharges;
     case ArrayId::MopacCoulombShielding: return FieldKind::MOPACCoulombEFG;
     case ArrayId::MopacCoulombEfield: return FieldKind::MOPACCoulombE;
@@ -47,6 +48,7 @@ std::optional<io::FieldKind> ProducerFieldFor(ArrayId id) {
     case ArrayId::HMPerTypeT0: return FieldKind::HMPerTypeT0;
     case ArrayId::HMPerTypeT1: return FieldKind::HMPerTypeT1;
     case ArrayId::HMPerTypeT2: return FieldKind::HMPerTypeT2;
+    case ArrayId::TripeptideBBShielding: return FieldKind::TripeptideBBShielding;
     case ArrayId::LarsenHBondShielding: return FieldKind::LarsenHBondShielding;
     case ArrayId::Sasa: return FieldKind::AtomSASA;
     case ArrayId::SasaNormal: return FieldKind::SASANormal;
@@ -98,6 +100,7 @@ std::optional<ArrayId> ArrayIdForProducerField(io::FieldKind kind) {
     case io::FieldKind::AIMNet2ChargeResponseGradient: return ArrayId::Aimnet2ChargeRespVector;
     case io::FieldKind::AIMNet2Aim: return ArrayId::Aimnet2Embedding;
     case io::FieldKind::FfPartialCharge: return ArrayId::Ff14sbCharge;
+    case io::FieldKind::FfPbRadius: return ArrayId::FfPbRadius;
     case io::FieldKind::MOPACCharges: return ArrayId::MopacCharge;
     case io::FieldKind::MOPACCoulombEFG: return ArrayId::MopacCoulombShielding;
     case io::FieldKind::MOPACCoulombE: return ArrayId::MopacCoulombEfield;
@@ -113,6 +116,7 @@ std::optional<ArrayId> ArrayIdForProducerField(io::FieldKind kind) {
     case io::FieldKind::HMPerTypeT0: return ArrayId::HMPerTypeT0;
     case io::FieldKind::HMPerTypeT1: return ArrayId::HMPerTypeT1;
     case io::FieldKind::HMPerTypeT2: return ArrayId::HMPerTypeT2;
+    case io::FieldKind::TripeptideBBShielding: return ArrayId::TripeptideBBShielding;
     case io::FieldKind::LarsenHBondShielding: return ArrayId::LarsenHBondShielding;
     case io::FieldKind::AtomSASA: return ArrayId::Sasa;
     case io::FieldKind::SASANormal: return ArrayId::SasaNormal;
@@ -378,6 +382,8 @@ Catalog::Catalog(const RunData& run) {
     addProducer(specs_, ArrayId::Ff14sbCharge,
                 hasStatic(ArrayId::Ff14sbCharge) ? ArrayResidence::StaticNpy : ArrayResidence::StaticTopol,
                 ff14);
+    addProducer(specs_, ArrayId::FfPbRadius, residence(ArrayId::FfPbRadius, ArrayResidence::Absent),
+                hasStatic(ArrayId::FfPbRadius));
     addProducer(specs_, ArrayId::MopacCharge, residence(ArrayId::MopacCharge, ArrayResidence::Absent),
                 hasStatic(ArrayId::MopacCharge));
     // MOPAC charge may be present as the producer's raw mopac_charges.npy
@@ -428,6 +434,8 @@ Catalog::Catalog(const RunData& run) {
                 hasStatic(ArrayId::HMPerTypeT1));
     addProducer(specs_, ArrayId::HMPerTypeT2, residence(ArrayId::HMPerTypeT2),
                 hasStatic(ArrayId::HMPerTypeT2));
+    addProducer(specs_, ArrayId::TripeptideBBShielding, residence(ArrayId::TripeptideBBShielding),
+                (h5 && h5->tripeptideBbShielding()) || hasStatic(ArrayId::TripeptideBBShielding));
     addProducer(specs_, ArrayId::LarsenHBondShielding, residence(ArrayId::LarsenHBondShielding),
                 hasStatic(ArrayId::LarsenHBondShielding));
     add(specs_, ArrayId::WaterEfield, QStringLiteral("water_efield"),
@@ -753,6 +761,8 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
                && atom < body.run.h5()->mopacMcShielding()->n_atoms
                && frame < body.run.h5()->mopacMcShielding()->n_frames
                && body.run.h5()->mopacMcShielding()->sourceAttachedAt(frame);
+    case ArrayId::TripeptideBBShielding:
+        return body.run.h5() && shieldingPresent(body.run.h5()->tripeptideBbShielding(), atom, frame);
     case ArrayId::MopacVsFf14sbReconciliation:
         return body.run.h5() && body.run.h5()->mopacVsFf14sbReconciliation()
                && atom < body.run.h5()->mopacVsFf14sbReconciliation()->n_atoms
@@ -793,6 +803,7 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
     case ArrayId::HbondScalars:
     case ArrayId::HbondNearestDirection:
     case ArrayId::HbondFlags:
+    case ArrayId::FfPbRadius:
     case ArrayId::EeqCoordinationNumber:
         return false;
     case ArrayId::MopacCoulombEfield:
@@ -878,6 +889,7 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
     case ArrayId::Aimnet2Efg:
     case ArrayId::MopacMcShielding:
     case ArrayId::HmShielding:
+    case ArrayId::TripeptideBBShielding:
     case ArrayId::LarsenHBondShielding:
         return comp >= 0 && comp < 5 ? valueT2(body, id, atom, frame)[static_cast<std::size_t>(comp)]
                                      : 0.0;
@@ -910,6 +922,7 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
     case ArrayId::Aimnet2Embedding:
     case ArrayId::MopacCharge:
     case ArrayId::MopacCoulombEfield:
+    case ArrayId::FfPbRadius:
     case ArrayId::BSPerTypeT0:
     case ArrayId::BSPerTypeT1:
     case ArrayId::BSPerTypeT2:
@@ -986,6 +999,8 @@ std::array<double, 5> Catalog::valueT2(const Body& body, ArrayId id, std::size_t
         return h5->mopacMcShielding()->at(atom, frame).T2;
     if (id == ArrayId::HmShielding && h5 && h5->hmShielding())
         return h5->hmShielding()->at(atom, frame).T2;
+    if (id == ArrayId::TripeptideBBShielding && h5 && h5->tripeptideBbShielding())
+        return h5->tripeptideBbShielding()->at(atom, frame).T2;
     return {};
 }
 
@@ -998,6 +1013,8 @@ SphericalTensor Catalog::valueTensor(const Body& body, ArrayId id, std::size_t a
     if (id == ArrayId::MopacMcShielding && h5 && h5->mopacMcShielding())
         return h5->mopacMcShielding()->at(atom, frame);
     if (id == ArrayId::HmShielding && h5 && h5->hmShielding()) return h5->hmShielding()->at(atom, frame);
+    if (id == ArrayId::TripeptideBBShielding && h5 && h5->tripeptideBbShielding())
+        return h5->tripeptideBbShielding()->at(atom, frame);
     return {};
 }
 

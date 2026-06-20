@@ -13,6 +13,7 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 #include <cstddef>
 #include <cstdint>
@@ -133,6 +134,14 @@ private:
 struct AnalysisObjectPassConfig {
     PerAtomSubstrateConfig per_atom;
     bool ndjson = false;
+    // The small-run emit selector (ACCUMULATOR_RESPEC work-item 9). When
+    // non-empty, ONLY the listed atoms emit an accumulator/object JSON; the
+    // FULL protein still runs every step as the field/EFG/ring source
+    // environment for every emitted atom, and every emitted atom runs the FULL
+    // trajectory. Each entry is "residue_number:atom_name" (e.g. "ASP7:CG"),
+    // resolved against the loaded protein. Empty => all atoms emit (production:
+    // byte-identical path).
+    QStringList only_atoms;
 };
 
 struct AnalysisObjectPassDiagnostics {
@@ -148,8 +157,8 @@ struct AnalysisObjectPassDiagnostics {
     std::size_t residue_frame_folds = 0;
     std::size_t mapped_bonds = 0;
     std::size_t mismatch_events = 0;
-    std::size_t boost_coupling_results = 0;
-    std::size_t boost_serial_results = 0;
+    std::size_t accumulator_responses = 0;
+    std::size_t accumulator_contexts = 0;
     bool sigma_mask_recorded = false;
     bool field_vectors_retained = false;
     bool full_sigma_tensors_retained = false;

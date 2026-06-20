@@ -93,7 +93,7 @@ class ReaderOutputCatalogTests : public QObject {
 
 private slots:
     void entriesAreCompleteAndUnique() {
-        QCOMPARE(kReaderOutputCatalog.size(), std::size_t{73});
+        QCOMPARE(kReaderOutputCatalog.size(), std::size_t{92});
 
         QSet<QString> seen;
         for (const ReaderOutputSpec& spec : kReaderOutputCatalog) {

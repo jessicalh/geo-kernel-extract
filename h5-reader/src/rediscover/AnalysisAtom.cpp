@@ -2,6 +2,7 @@
 
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
+#include "McConnellLiteratureKernel.h"
 #include "SphericalBasis.h"
 #include "Verbs.h"
 
@@ -32,15 +33,18 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QLoggingCategory>
+#include <QProcess>
 #include <QTextStream>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <set>
 #include <stdexcept>
@@ -59,8 +63,21 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr std::uint32_t kNullSeed = 0xC0DE5EEDu;
 constexpr int kRollingWindow = 32;
 constexpr int kNullBlock = 16;
-constexpr int kNullShifts = 200;
+// kNullShifts raised 200 -> 2000 for parity with the inventory's circular-shift
+// null floor (ACCUMULATOR_RESPEC §4.6: the reads used 2000 shifts -> the 1/2001
+// floor). Cost is bounded by the fixed characterization catalogue.
+constexpr int kNullShifts = 2000;
 constexpr double kCoulombKe = 14.3996;
+
+constexpr int kMaxChannels = 16;          // structural catalogue cap, not a significance cap.
+constexpr int kMaxCollinearityChains = 4;  // bounded named driver-driver chains.
+constexpr int kMaxMediationChains = 1;     // the named salt-bridge mediation chain.
+constexpr double kDeltaSurvivalRMin = 0.2;  // minimum signed-delta support carried in the gauntlet.
+constexpr int kMinContextFrames = 30;    // sparse stratified contexts are marked (§2.4B).
+constexpr int kMinThirdFrames = 10;      // segment-thirds edge policy (§4.6.1).
+constexpr int kMinDwell = 3;             // debounce a well transition (§4.6.1).
+constexpr int kLagWindow = 4;          // lead_lag window, within the sigma-Nyquist (§4.5).
+constexpr double kCollinearThreshold = 0.7;  // driver-driver collinearity report floor (§4.6).
 
 bool finite(double v) { return std::isfinite(v); }
 
@@ -90,6 +107,24 @@ QJsonArray vec5Json(const std::array<double, 5>& v, bool present = true) {
     return a;
 }
 
+template <std::size_t N>
+QJsonArray arrayJson(const std::array<double, N>& v, bool present = true) {
+    QJsonArray a;
+    for (double x : v) a.append(present ? jd(x) : QJsonValue(QJsonValue::Null));
+    return a;
+}
+
+QJsonArray mat3Json(const Mat3& m, bool present = true) {
+    QJsonArray rows;
+    for (int r = 0; r < 3; ++r) {
+        QJsonArray row;
+        for (int c = 0; c < 3; ++c)
+            row.append(present ? jd(m(r, c)) : QJsonValue(QJsonValue::Null));
+        rows.append(row);
+    }
+    return rows;
+}
+
 QJsonArray boolArrayJson(const std::vector<bool>& values) {
     QJsonArray a;
     for (bool v : values) a.append(v);
@@ -108,6 +143,13 @@ model::SphericalTensor nanTensor() {
     t.T1 = {kNaN, kNaN, kNaN};
     t.T2 = {kNaN, kNaN, kNaN, kNaN, kNaN};
     return t;
+}
+
+bool tensorFinite(const model::SphericalTensor& t) {
+    bool ok = finite(t.T0);
+    for (double v : t.T1) ok = ok && finite(v);
+    for (double v : t.T2) ok = ok && finite(v);
+    return ok;
 }
 
 QJsonObject tensorJson(const model::SphericalTensor& t, bool present) {
@@ -378,6 +420,31 @@ QString scopeName(int ord) {
     }
 }
 
+struct ProducerTensorField {
+    ArrayId id;
+    const char* key;
+};
+
+static constexpr std::array<ProducerTensorField, 17> kMcTensorFields = {{
+    {ArrayId::McPeptideCoFixed, "mc_peptide_co_fixed"},
+    {ArrayId::McPeptideCoBo, "mc_peptide_co_bo"},
+    {ArrayId::McPeptideCoRhombic, "mc_peptide_co_rhombic"},
+    {ArrayId::McPeptideCnFixed, "mc_peptide_cn_fixed"},
+    {ArrayId::McPeptideCnBo, "mc_peptide_cn_bo"},
+    {ArrayId::McBackboneOtherFixed, "mc_backbone_other_fixed"},
+    {ArrayId::McBackboneOtherBo, "mc_backbone_other_bo"},
+    {ArrayId::McSidechainCoFixed, "mc_sidechain_co_fixed"},
+    {ArrayId::McSidechainCoBo, "mc_sidechain_co_bo"},
+    {ArrayId::McSidechainOtherFixed, "mc_sidechain_other_fixed"},
+    {ArrayId::McSidechainOtherBo, "mc_sidechain_other_bo"},
+    {ArrayId::McDisulfideFixed, "mc_disulfide_fixed"},
+    {ArrayId::McDisulfideBo, "mc_disulfide_bo"},
+    {ArrayId::McAromaticZeroedFixed, "mc_aromatic_zeroed_fixed"},
+    {ArrayId::McAromaticZeroedBo, "mc_aromatic_zeroed_bo"},
+    {ArrayId::McNearestCoT2, "mc_nearest_co_T2"},
+    {ArrayId::McNearestCnT2, "mc_nearest_cn_T2"},
+}};
+
 struct ScalarSeries {
     explicit ScalarSeries(std::size_t n = 0) : values(n, kNaN) {}
     void reset(std::size_t n) { values.assign(n, kNaN); }
@@ -444,6 +511,54 @@ struct Vec3Series {
     std::vector<bool> present;
 };
 
+struct Mat3Series {
+    explicit Mat3Series(std::size_t n = 0) : values(n, Mat3::Constant(kNaN)), present(n, false) {}
+    void reset(std::size_t n) {
+        values.assign(n, Mat3::Constant(kNaN));
+        present.assign(n, false);
+    }
+    void set(std::size_t step, const Mat3& m) {
+        if (step >= values.size()) return;
+        values[step] = m;
+        present[step] = m.allFinite();
+    }
+    QJsonArray json() const {
+        QJsonArray a;
+        for (std::size_t i = 0; i < values.size(); ++i)
+            a.append(present[i] ? QJsonValue(mat3Json(values[i])) : QJsonValue(QJsonValue::Null));
+        return a;
+    }
+    std::vector<Mat3> values;
+    std::vector<bool> present;
+};
+
+template <std::size_t N>
+struct FixedArraySeries {
+    explicit FixedArraySeries(std::size_t n = 0) : values(n), present(n, false) {
+        for (auto& v : values) v.fill(kNaN);
+    }
+    void reset(std::size_t n) {
+        values.assign(n, {});
+        for (auto& v : values) v.fill(kNaN);
+        present.assign(n, false);
+    }
+    void set(std::size_t step, const std::array<double, N>& v) {
+        if (step >= values.size()) return;
+        values[step] = v;
+        bool ok = true;
+        for (double x : v) ok = ok && finite(x);
+        present[step] = ok;
+    }
+    QJsonArray json() const {
+        QJsonArray a;
+        for (std::size_t i = 0; i < values.size(); ++i)
+            a.append(present[i] ? QJsonValue(arrayJson(values[i])) : QJsonValue(QJsonValue::Null));
+        return a;
+    }
+    std::vector<std::array<double, N>> values;
+    std::vector<bool> present;
+};
+
 struct TensorSeries {
     explicit TensorSeries(std::size_t n = 0) : values(n, nanTensor()), present(n, false) {}
     void reset(std::size_t n) {
@@ -500,6 +615,272 @@ struct EfgSeries {
     std::vector<EfgValue> values;
     std::vector<bool> present;
 };
+
+struct CsaDescriptor {
+    bool valid = false;
+    Vec3 principal_values = Vec3::Constant(kNaN);   // value order: sigma11 <= sigma22 <= sigma33
+    Mat3 pas_axes = Mat3::Constant(kNaN);           // columns follow principal_values
+    Vec3 haeberlen_values = Vec3::Constant(kNaN);   // columns/values ordered sigma_xx, sigma_yy, sigma_zz
+    Mat3 haeberlen_axes = Mat3::Constant(kNaN);
+    double sigma_iso = kNaN;
+    double haeberlen_eta = kNaN;
+    double haeberlen_span = kNaN;
+    double haeberlen_skew = kNaN;
+};
+
+struct CsaDescriptorSeries {
+    explicit CsaDescriptorSeries(std::size_t n = 0) : values(n) {}
+    void reset(std::size_t n) { values.assign(n, {}); }
+    void set(std::size_t step, const CsaDescriptor& v) {
+        if (step < values.size()) values[step] = v;
+    }
+    QJsonObject json() const {
+        QJsonObject o;
+        QJsonArray valid;
+        QJsonArray iso;
+        QJsonArray eta;
+        QJsonArray span;
+        QJsonArray skew;
+        QJsonArray principal;
+        QJsonArray pasAxes;
+        QJsonArray haeberlenValues;
+        QJsonArray haeberlenAxes;
+        for (const CsaDescriptor& v : values) {
+            valid.append(v.valid);
+            iso.append(v.valid ? jd(v.sigma_iso) : QJsonValue(QJsonValue::Null));
+            eta.append(v.valid ? jd(v.haeberlen_eta) : QJsonValue(QJsonValue::Null));
+            span.append(v.valid ? jd(v.haeberlen_span) : QJsonValue(QJsonValue::Null));
+            skew.append(v.valid ? jd(v.haeberlen_skew) : QJsonValue(QJsonValue::Null));
+            principal.append(v.valid ? QJsonValue(vec3Json(v.principal_values))
+                                     : QJsonValue(QJsonValue::Null));
+            pasAxes.append(v.valid ? QJsonValue(mat3Json(v.pas_axes))
+                                   : QJsonValue(QJsonValue::Null));
+            haeberlenValues.append(v.valid ? QJsonValue(vec3Json(v.haeberlen_values))
+                                           : QJsonValue(QJsonValue::Null));
+            haeberlenAxes.append(v.valid ? QJsonValue(mat3Json(v.haeberlen_axes))
+                                         : QJsonValue(QJsonValue::Null));
+        }
+        o.insert(QStringLiteral("valid"), valid);
+        o.insert(QStringLiteral("sigma_iso"), iso);
+        o.insert(QStringLiteral("haeberlen_eta"), eta);
+        o.insert(QStringLiteral("haeberlen_span"), span);
+        o.insert(QStringLiteral("haeberlen_skew"), skew);
+        o.insert(QStringLiteral("principal_values"), principal);
+        o.insert(QStringLiteral("pas_axes"), pasAxes);
+        o.insert(QStringLiteral("haeberlen_values"), haeberlenValues);
+        o.insert(QStringLiteral("haeberlen_axes"), haeberlenAxes);
+        o.insert(QStringLiteral("layout"),
+                 QStringLiteral("per-step arrays; axes are 3x3 row-major matrices with lab-frame director columns"));
+        o.insert(QStringLiteral("source"), QStringLiteral("sigma.total total_raw symmetric part"));
+        return o;
+    }
+    std::vector<CsaDescriptor> values;
+};
+
+int molecularFrameKindOrd(const QString& kind) {
+    if (kind == QStringLiteral("none")) return 0;
+    if (kind == QStringLiteral("backbone_carbonyl")) return 1;
+    if (kind == QStringLiteral("backbone_amide_n")) return 2;
+    if (kind == QStringLiteral("aromatic_ring_local")) return 3;
+    if (kind == QStringLiteral("met_sd_cg_s_ce")) return 4;
+    if (kind == QStringLiteral("sidechain_carboxylate")) return 5;
+    if (kind == QStringLiteral("sidechain_guanidinium")) return 6;
+    if (kind == QStringLiteral("sidechain_carboxamide")) return 7;
+    return -1;
+}
+
+struct MolecularFrameValue {
+    bool valid = false;
+    Mat3 axes = Mat3::Constant(kNaN);  // columns are x, y, z in lab coordinates
+};
+
+struct MolecularFrameSeries {
+    explicit MolecularFrameSeries(std::size_t n = 0) : values(n) {}
+    void reset(std::size_t n) { values.assign(n, {}); }
+    void setMetadata(QString kindValue,
+                     std::vector<int32_t> anchorValues,
+                     QString ringUidValue = {},
+                     QString ringTypeValue = {}) {
+        kind = std::move(kindValue);
+        kind_ord = molecularFrameKindOrd(kind);
+        anchors = std::move(anchorValues);
+        ring_uid = std::move(ringUidValue);
+        ring_type = std::move(ringTypeValue);
+    }
+    void set(std::size_t step, const Mat3& axesValue) {
+        if (step >= values.size()) return;
+        MolecularFrameValue v;
+        v.axes = axesValue;
+        v.valid = axesValue.allFinite();
+        values[step] = v;
+    }
+    QJsonObject json() const {
+        QJsonObject o;
+        o.insert(QStringLiteral("frame_kind"), kind);
+        o.insert(QStringLiteral("frame_kind_ord"), kind_ord);
+        QJsonArray anchorArray;
+        for (int32_t a : anchors) anchorArray.append(a);
+        o.insert(QStringLiteral("anchors"), anchorArray);
+        if (!ring_uid.isEmpty()) o.insert(QStringLiteral("ring_uid"), ring_uid);
+        if (!ring_type.isEmpty()) o.insert(QStringLiteral("ring_type"), ring_type);
+
+        QJsonArray valid;
+        QJsonArray axesArray;
+        for (const MolecularFrameValue& v : values) {
+            valid.append(v.valid);
+            axesArray.append(v.valid ? QJsonValue(mat3Json(v.axes))
+                                     : QJsonValue(QJsonValue::Null));
+        }
+        o.insert(QStringLiteral("valid"), valid);
+        o.insert(QStringLiteral("axes"), axesArray);
+        o.insert(QStringLiteral("layout"),
+                 QStringLiteral("per-step arrays; axes[t][row][col] with columns x,y,z in lab coordinates"));
+        o.insert(QStringLiteral("source"), QStringLiteral("ported pas_projection.molecular_frame() geometry"));
+        return o;
+    }
+
+    QString kind = QStringLiteral("none");
+    int kind_ord = 0;
+    std::vector<int32_t> anchors;
+    QString ring_uid;
+    QString ring_type;
+    std::vector<MolecularFrameValue> values;
+};
+
+std::optional<Vec3> normalizeFrameVec(const Vec3& v, double eps = 1e-12) {
+    const double norm = v.norm();
+    if (!finite(norm) || !(norm > eps)) return std::nullopt;
+    return v / norm;
+}
+
+std::optional<Mat3> frameFromColumns(const Vec3& x, const Vec3& y, const Vec3& z) {
+    Mat3 frame;
+    frame.col(0) = x;
+    frame.col(1) = y;
+    frame.col(2) = z;
+    if (!frame.allFinite()) return std::nullopt;
+    return frame;
+}
+
+std::optional<Mat3> frameFromXAndPlane(const Vec3& xVec, const Vec3& planeVec) {
+    const auto xOpt = normalizeFrameVec(xVec);
+    if (!xOpt) return std::nullopt;
+    const Vec3& x = *xOpt;
+    const Vec3 plane = planeVec - planeVec.dot(x) * x;
+    const auto y0Opt = normalizeFrameVec(plane);
+    if (!y0Opt) return std::nullopt;
+    const auto zOpt = normalizeFrameVec(x.cross(*y0Opt));
+    if (!zOpt) return std::nullopt;
+    const auto yOpt = normalizeFrameVec(zOpt->cross(x));
+    if (!yOpt) return std::nullopt;
+    return frameFromColumns(x, *yOpt, *zOpt);
+}
+
+std::optional<Mat3> frameFromXAndZ(const Vec3& xVec, const Vec3& zVec) {
+    const auto zOpt = normalizeFrameVec(zVec);
+    if (!zOpt) return std::nullopt;
+    const Vec3& z = *zOpt;
+    const Vec3 xProj = xVec - xVec.dot(z) * z;
+    const auto xOpt = normalizeFrameVec(xProj);
+    if (!xOpt) return std::nullopt;
+    const auto yOpt = normalizeFrameVec(z.cross(*xOpt));
+    if (!yOpt) return std::nullopt;
+    return frameFromColumns(*xOpt, *yOpt, z);
+}
+
+std::optional<Mat3> frameFromXAndPlaneLocked(const Vec3& xVec,
+                                             const Vec3& planeVec,
+                                             std::optional<Vec3>& prevX,
+                                             std::optional<Vec3>& prevZ) {
+    auto xOpt = normalizeFrameVec(xVec);
+    if (!xOpt) return std::nullopt;
+    Vec3 x = *xOpt;
+    const Vec3 plane = planeVec - planeVec.dot(x) * x;
+    const auto y0Opt = normalizeFrameVec(plane);
+    if (!y0Opt) return std::nullopt;
+    auto zOpt = normalizeFrameVec(x.cross(*y0Opt));
+    if (!zOpt) return std::nullopt;
+    Vec3 z = *zOpt;
+
+    if (prevX && prevX->dot(x) < 0.0) x *= -1.0;
+    if (prevZ && prevZ->dot(z) < 0.0) z *= -1.0;
+
+    const auto yOpt = normalizeFrameVec(z.cross(x));
+    if (!yOpt) return std::nullopt;
+    const auto frame = frameFromColumns(x, *yOpt, z);
+    if (!frame) return std::nullopt;
+    prevX = x;
+    prevZ = z;
+    return frame;
+}
+
+double sigmaRoundTripMaxAbs(const Mat3& axes, const Mat3& raw) {
+    long double x[3] = {
+        static_cast<long double>(axes(0, 0)),
+        static_cast<long double>(axes(1, 0)),
+        static_cast<long double>(axes(2, 0)),
+    };
+    long double z[3] = {
+        static_cast<long double>(axes(0, 2)),
+        static_cast<long double>(axes(1, 2)),
+        static_cast<long double>(axes(2, 2)),
+    };
+    auto normalize = [](long double (&v)[3]) -> bool {
+        const long double n = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        if (!(n > 0.0L) || !std::isfinite(static_cast<double>(n))) return false;
+        v[0] /= n;
+        v[1] /= n;
+        v[2] /= n;
+        return true;
+    };
+    if (!normalize(x)) return kNaN;
+    const long double zx = z[0] * x[0] + z[1] * x[1] + z[2] * x[2];
+    z[0] -= zx * x[0];
+    z[1] -= zx * x[1];
+    z[2] -= zx * x[2];
+    if (!normalize(z)) return kNaN;
+    long double y[3] = {
+        z[1] * x[2] - z[2] * x[1],
+        z[2] * x[0] - z[0] * x[2],
+        z[0] * x[1] - z[1] * x[0],
+    };
+    if (!normalize(y)) return kNaN;
+    long double a[3][3] = {
+        {x[0], y[0], z[0]},
+        {x[1], y[1], z[1]},
+        {x[2], y[2], z[2]},
+    };
+    long double local[3][3]{};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            long double sum = 0.0L;
+            for (int k = 0; k < 3; ++k) {
+                for (int l = 0; l < 3; ++l) {
+                    sum += a[k][i]
+                           * static_cast<long double>(raw(k, l))
+                           * a[l][j];
+                }
+            }
+            local[i][j] = sum;
+        }
+    }
+    long double maxAbs = 0.0L;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            long double sum = 0.0L;
+            for (int k = 0; k < 3; ++k) {
+                for (int l = 0; l < 3; ++l) {
+                    sum += a[i][k]
+                           * local[k][l]
+                           * a[j][l];
+                }
+            }
+            const long double err = std::abs(sum - static_cast<long double>(raw(i, j)));
+            if (err > maxAbs) maxAbs = err;
+        }
+    }
+    return static_cast<double>(maxAbs);
+}
 
 std::vector<double> componentSeries(const ScalarSeries& s) { return s.values; }
 
@@ -678,10 +1059,10 @@ double chatterjeeXi(std::vector<double> x, std::vector<double> y) {
     return std::abs(xi - 1.0) < std::numeric_limits<double>::epsilon() ? kNaN : xi;
 }
 
-std::tuple<double, double, double> nullShiftStats(const std::vector<double>& x,
-                                                  const std::vector<double>& y,
-                                                  double observedSlope) {
-    if (x.size() != y.size() || x.size() < 2) return {kNaN, kNaN, kNaN};
+std::tuple<double, double, double, double> nullShiftStats(const std::vector<double>& x,
+                                                          const std::vector<double>& y,
+                                                          double observedSlope) {
+    if (x.size() != y.size() || x.size() < 2) return {kNaN, kNaN, kNaN, kNaN};
     std::mt19937 rng(kNullSeed);
     const int n = static_cast<int>(x.size());
     const int blocks = std::max(1, (n + kNullBlock - 1) / kNullBlock);
@@ -689,13 +1070,16 @@ std::tuple<double, double, double> nullShiftStats(const std::vector<double>& x,
     std::vector<double> slopes;
     slopes.reserve(kNullShifts);
     std::vector<double> shifted(x.size(), kNaN);
+    int ge = 0;
     for (int i = 0; i < kNullShifts; ++i) {
         const int shift = (dist(rng) * kNullBlock) % n;
         for (int j = 0; j < n; ++j) shifted[static_cast<std::size_t>(j)] = x[static_cast<std::size_t>((j + shift) % n)];
         const OlsResult r = ols(shifted, y);
-        if (finite(r.slope)) slopes.push_back(r.slope);
+        if (!finite(r.slope)) continue;
+        slopes.push_back(r.slope);
+        if (finite(observedSlope) && std::abs(r.slope) >= std::abs(observedSlope)) ++ge;
     }
-    if (slopes.empty()) return {kNaN, kNaN, kNaN};
+    if (slopes.empty()) return {kNaN, kNaN, kNaN, kNaN};
     const double mean = bmstats::mean(slopes);
     double variance = 0.0;
     if (slopes.size() > 1) {
@@ -707,7 +1091,570 @@ std::tuple<double, double, double> nullShiftStats(const std::vector<double>& x,
     }
     const double sd = slopes.size() > 1 ? std::sqrt(variance) : 0.0;
     const double z = (sd > 0.0 && finite(observedSlope)) ? (observedSlope - mean) / sd : kNaN;
-    return {mean, sd, z};
+    const double p = finite(observedSlope)
+        ? static_cast<double>(ge + 1) / static_cast<double>(slopes.size() + 1)
+        : kNaN;
+    return {mean, sd, z, p};
+}
+
+// ---------------------------------------------------------------------------
+// NEW statistics (ACCUMULATOR_RESPEC §4.6). Each carries its inventory
+// cross-check in a comment. They reuse the certified bmstats primitives
+// (mean/variance/covariance) but are otherwise new code (the engine's bmstats
+// has only mean/var/cov/ljung_box/runs/snr).
+// ---------------------------------------------------------------------------
+
+// Pull the finite paired (driver, sigma) samples on the sigma rows, in time
+// order. This is the single gather every response-law/gauntlet statistic runs
+// on, so the right-frame pairing happens once.
+void pairedOnSigmaRows(const std::vector<double>& sigma,
+                       const std::vector<double>& driver,
+                       const std::vector<std::size_t>& sigmaRows,
+                       std::vector<double>& xOut,
+                       std::vector<double>& yOut) {
+    xOut.clear();
+    yOut.clear();
+    xOut.reserve(sigmaRows.size());
+    yOut.reserve(sigmaRows.size());
+    for (std::size_t row : sigmaRows) {
+        if (row >= sigma.size() || row >= driver.size()) continue;
+        if (!finite(sigma[row]) || !finite(driver[row])) continue;
+        xOut.push_back(driver[row]);  // x = driver
+        yOut.push_back(sigma[row]);   // y = sigma
+    }
+}
+
+// Pearson r on a paired series. r = cov / sqrt(var_x * var_y).
+// Cross-check (§4.6): ASP7 CG efg_xz->sigma_xz r=0.952; LYS30 C sigma_yy via
+// efg_zz r~=0.83; carbonyl C lab 0.14 -> mol 0.75.
+double pearsonR(const std::vector<double>& x, const std::vector<double>& y) {
+    if (x.size() != y.size() || x.size() < 2) return kNaN;
+    const double mx = bmstats::mean(x);
+    const double my = bmstats::mean(y);
+    double sxx = 0.0;
+    double syy = 0.0;
+    double sxy = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        const double dx = x[i] - mx;
+        const double dy = y[i] - my;
+        sxx += dx * dx;
+        syy += dy * dy;
+        sxy += dx * dy;
+    }
+    const double denom = std::sqrt(sxx * syy);
+    if (!(denom > 0.0)) return kNaN;
+    return sxy / denom;
+}
+
+// Segment-thirds weakest-third |r|. Split the paired series into 3 equal
+// contiguous thirds; r in each; report the min-|r|.
+// Cross-check (§4.6): carbonyl C' weakest-third 0.63; ASP7 CG seg-min 0.940;
+// the ASP29 OD2 demotion fires here.
+double segMinR(const std::vector<double>& x, const std::vector<double>& y) {
+    if (x.size() != y.size() || x.size() < 6) return kNaN;
+    const std::size_t n = x.size();
+    const std::size_t first = (n + 2) / 3;  // ceil(n/3)
+    const std::size_t second = first;
+    if (n <= first + second) return kNaN;
+    const std::array<std::size_t, 3> sizes = {first, second, n - first - second};
+    double minAbs = std::numeric_limits<double>::infinity();
+    double minSigned = kNaN;
+    std::size_t lo = 0;
+    for (int seg = 0; seg < 3; ++seg) {
+        const std::size_t hi = lo + sizes[static_cast<std::size_t>(seg)];
+        if (hi > n || hi <= lo || (hi - lo) < static_cast<std::size_t>(kMinThirdFrames)) return kNaN;
+        std::vector<double> sx(x.begin() + static_cast<std::ptrdiff_t>(lo),
+                               x.begin() + static_cast<std::ptrdiff_t>(hi));
+        std::vector<double> sy(y.begin() + static_cast<std::ptrdiff_t>(lo),
+                               y.begin() + static_cast<std::ptrdiff_t>(hi));
+        const double r = pearsonR(sx, sy);
+        if (!finite(r)) return kNaN;
+        if (std::abs(r) < minAbs) {
+            minAbs = std::abs(r);
+            minSigned = r;
+        }
+        lo = hi;
+    }
+    return finite(minSigned) ? minSigned : kNaN;
+}
+
+// First-difference r on the paired series (the differenced-pair Pearson r).
+double deltaR(const std::vector<double>& x, const std::vector<double>& y) {
+    if (x.size() != y.size() || x.size() < 3) return kNaN;
+    std::vector<double> dx;
+    std::vector<double> dy;
+    dx.reserve(x.size() - 1);
+    dy.reserve(y.size() - 1);
+    for (std::size_t i = 1; i < x.size(); ++i) {
+        dx.push_back(x[i] - x[i - 1]);
+        dy.push_back(y[i] - y[i - 1]);
+    }
+    return pearsonR(dx, dy);
+}
+
+// delta_survives: the first-difference relationship retains the level sign AND
+// |r_delta| >= floor (the co-drift demotion). Cross-check (§4.6): the 206/274
+// co-drift nulls collapse (ASP29 OD1 level 0.73 -> delta 0.04 = FALSE); the
+// carboxylate delta >= level = TRUE.
+bool deltaSurvives(const std::vector<double>& x, const std::vector<double>& y, double levelR) {
+    const double rd = deltaR(x, y);
+    if (!finite(rd) || !finite(levelR)) return false;
+    const bool signKept = (rd > 0.0) == (levelR > 0.0) || levelR == 0.0;
+    return signKept && std::abs(rd) >= kDeltaSurvivalRMin;
+}
+
+// Plain autocorrelation function at a lag.
+double acfAtLag(const std::vector<double>& v, int lag) {
+    const int n = static_cast<int>(v.size());
+    if (lag <= 0 || lag >= n) return kNaN;
+    const double m = bmstats::mean(v);
+    double num = 0.0;
+    double den = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double d = v[static_cast<std::size_t>(i)] - m;
+        den += d * d;
+        if (i + lag < n) num += d * (v[static_cast<std::size_t>(i + lag)] - m);
+    }
+    if (!(den > 0.0)) return kNaN;
+    return num / den;
+}
+
+struct DwellResult {
+    double mean_dwell_frames = kNaN;
+    int n_transitions = -1;
+    double autocorr_time = kNaN;  // first lag where ACF < 1/e.
+};
+
+// dwell / n_transitions / autocorr_time on a scalar series. A "well" is the
+// sign of (value - median); a transition is a sign flip; dwell = mean run
+// length; autocorr_time = first lag where ACF < 1/e (MEASURED, never a deflator).
+// Cross-check (§4.6): MET23 chi3 dwell; TYR46 2 transitions; HIS18 chi2 102.
+DwellResult dwellStats(const std::vector<double>& series) {
+    DwellResult out;
+    std::vector<double> v;
+    v.reserve(series.size());
+    for (double x : series)
+        if (finite(x)) v.push_back(x);
+    if (v.size() < 3) return out;
+    std::vector<double> sorted = v;
+    std::sort(sorted.begin(), sorted.end());
+    const double median = sorted[sorted.size() / 2];
+    std::vector<int> wells;
+    wells.reserve(v.size());
+    for (double x : v) wells.push_back(x >= median ? 1 : 0);
+    std::vector<int> rawRunLengths;
+    int run = 1;
+    for (std::size_t i = 1; i < wells.size(); ++i) {
+        if (wells[i] != wells[i - 1]) {
+            rawRunLengths.push_back(run);
+            run = 1;
+        } else {
+            ++run;
+        }
+    }
+    rawRunLengths.push_back(run);
+
+    std::vector<int> runLengths;
+    for (int len : rawRunLengths) {
+        if (!runLengths.empty() && len < kMinDwell)
+            runLengths.back() += len;
+        else
+            runLengths.push_back(len);
+    }
+    const int transitions = runLengths.empty() ? 0 : static_cast<int>(runLengths.size()) - 1;
+    out.n_transitions = transitions;
+    double sum = 0.0;
+    for (int r : runLengths) sum += r;
+    out.mean_dwell_frames = runLengths.empty() ? kNaN : sum / static_cast<double>(runLengths.size());
+    const double oneOverE = 1.0 / std::exp(1.0);
+    for (int lag = 1; lag < static_cast<int>(v.size()); ++lag) {
+        const double acf = acfAtLag(v, lag);
+        if (finite(acf) && acf < oneOverE) {
+            out.autocorr_time = static_cast<double>(lag);
+            break;
+        }
+    }
+    return out;
+}
+
+// Circular wells for a dihedral series: the standard 3-rotamer bins by the
+// nearest of {+60, 180, -60} degrees (radians). Returns -1 where absent.
+std::vector<int> circularWells(const std::vector<double>& radians) {
+    std::vector<int> wells(radians.size(), -1);
+    constexpr double pi = 3.14159265358979323846264338327950288;
+    const std::array<double, 3> centres = {pi / 3.0, pi, -pi / 3.0};  // +60, 180, -60
+    for (std::size_t i = 0; i < radians.size(); ++i) {
+        if (!finite(radians[i])) continue;
+        int best = 0;
+        double bestDist = std::numeric_limits<double>::infinity();
+        for (int w = 0; w < 3; ++w) {
+            double d = std::abs(radians[i] - centres[static_cast<std::size_t>(w)]);
+            d = std::min(d, 2.0 * pi - d);  // circular distance
+            if (d < bestDist) {
+                bestDist = d;
+                best = w;
+            }
+        }
+        wells[i] = best;
+    }
+    return wells;
+}
+
+// eta^2 (one-way between-well SS / total SS) of a response series stratified by
+// circular wells of a driver, both gathered on the sigma rows.
+// Cross-check (§4.6): MET23 chi3->SD T2norm eta^2=0.58; PRO9 pucker 0.63/0.70/0.81.
+double etaSquaredByWell(const std::vector<double>& response,
+                        const std::vector<int>& wells,
+                        const std::vector<std::size_t>& sigmaRows) {
+    std::vector<double> vals;
+    std::vector<int> grp;
+    for (std::size_t row : sigmaRows) {
+        if (row >= response.size() || row >= wells.size()) continue;
+        if (!finite(response[row]) || wells[row] < 0) continue;
+        vals.push_back(response[row]);
+        grp.push_back(wells[row]);
+    }
+    if (vals.size() < 4) return kNaN;
+    const double grand = bmstats::mean(vals);
+    std::array<double, 3> sum = {0, 0, 0};
+    std::array<int, 3> cnt = {0, 0, 0};
+    for (std::size_t i = 0; i < vals.size(); ++i) {
+        sum[static_cast<std::size_t>(grp[i])] += vals[i];
+        ++cnt[static_cast<std::size_t>(grp[i])];
+    }
+    int nonEmpty = 0;
+    for (int c : cnt) nonEmpty += (c > 0) ? 1 : 0;
+    if (nonEmpty < 2) return kNaN;  // need >=2 occupied wells for between-well SS.
+    double ssBetween = 0.0;
+    double ssTotal = 0.0;
+    for (int w = 0; w < 3; ++w) {
+        if (cnt[static_cast<std::size_t>(w)] == 0) continue;
+        const double mw = sum[static_cast<std::size_t>(w)] / cnt[static_cast<std::size_t>(w)];
+        ssBetween += cnt[static_cast<std::size_t>(w)] * (mw - grand) * (mw - grand);
+    }
+    for (double v : vals) ssTotal += (v - grand) * (v - grand);
+    if (!(ssTotal > 0.0)) return kNaN;
+    return ssBetween / ssTotal;
+}
+
+// Partial r: corr(sigma, driver | mediator) via residualised series.
+// Cross-check (§4.6): Arg43 CZ 91% mediation-collapse (raw r ~0.50 -> partial ~0.045).
+double partialR(const std::vector<double>& y,
+                const std::vector<double>& x,
+                const std::vector<double>& m) {
+    if (y.size() != x.size() || y.size() != m.size() || y.size() < 3) return kNaN;
+    const OlsResult yOnM = ols(m, y);
+    const OlsResult xOnM = ols(m, x);
+    if (!finite(yOnM.slope) || !finite(xOnM.slope)) return kNaN;
+    std::vector<double> yres;
+    std::vector<double> xres;
+    yres.reserve(y.size());
+    xres.reserve(x.size());
+    for (std::size_t i = 0; i < y.size(); ++i) {
+        yres.push_back(y[i] - (yOnM.intercept + yOnM.slope * m[i]));
+        xres.push_back(x[i] - (xOnM.intercept + xOnM.slope * m[i]));
+    }
+    return pearsonR(xres, yres);
+}
+
+// Block-bootstrap CI for partial r: resample contiguous blocks (block =
+// kNullBlock), recompute partial r, take the 2.5/97.5 percentiles. NOT
+// n_eff-deflated (progression-not-mean). The honest small-n CI (§4.6).
+std::pair<double, double> blockBootstrapPartialR(const std::vector<double>& y,
+                                                 const std::vector<double>& x,
+                                                 const std::vector<double>& m) {
+    if (y.size() != x.size() || y.size() != m.size() || y.size() < kNullBlock * 2)
+        return {kNaN, kNaN};
+    std::mt19937 rng(kNullSeed);
+    const int n = static_cast<int>(y.size());
+    const int nBlocks = (n + kNullBlock - 1) / kNullBlock;
+    std::uniform_int_distribution<int> startDist(0, std::max(0, n - kNullBlock));
+    constexpr int kBootstrap = 2000;
+    std::vector<double> estimates;
+    estimates.reserve(kBootstrap);
+    for (int b = 0; b < kBootstrap; ++b) {
+        std::vector<double> by;
+        std::vector<double> bx;
+        std::vector<double> bm;
+        by.reserve(static_cast<std::size_t>(n));
+        bx.reserve(static_cast<std::size_t>(n));
+        bm.reserve(static_cast<std::size_t>(n));
+        for (int blk = 0; blk < nBlocks; ++blk) {
+            const int start = startDist(rng);
+            for (int j = 0; j < kNullBlock && static_cast<int>(by.size()) < n; ++j) {
+                const int idx = start + j;
+                if (idx >= n) break;
+                by.push_back(y[static_cast<std::size_t>(idx)]);
+                bx.push_back(x[static_cast<std::size_t>(idx)]);
+                bm.push_back(m[static_cast<std::size_t>(idx)]);
+            }
+        }
+        const double pr = partialR(by, bx, bm);
+        if (finite(pr)) estimates.push_back(pr);
+    }
+    if (estimates.size() < 20) return {kNaN, kNaN};
+    std::sort(estimates.begin(), estimates.end());
+    auto pct = [&](double q) {
+        const double pos = q * static_cast<double>(estimates.size() - 1);
+        const std::size_t lo = static_cast<std::size_t>(std::floor(pos));
+        const std::size_t hi = std::min(lo + 1, estimates.size() - 1);
+        const double frac = pos - static_cast<double>(lo);
+        return estimates[lo] * (1.0 - frac) + estimates[hi] * frac;
+    };
+    return {pct(0.025), pct(0.975)};
+}
+
+struct LeadLagResult {
+    int best_lag = 0;
+    double lead_r = kNaN;
+};
+
+// Lagged cross-correlation: driver(t) vs sigma(t+k) over |k| <= kLagWindow.
+// best_lag is the k maximising |r|; positive k = driver leads sigma (§4.5).
+// Both gathered on the sigma rows (the driver is read at the sigma cadence).
+LeadLagResult leadLag(const std::vector<double>& x, const std::vector<double>& y) {
+    LeadLagResult out;
+    if (x.size() != y.size() || x.size() < static_cast<std::size_t>(2 * kLagWindow + 2))
+        return out;
+    const int n = static_cast<int>(x.size());
+    double bestAbs = -1.0;
+    for (int k = -kLagWindow; k <= kLagWindow; ++k) {
+        std::vector<double> dx;
+        std::vector<double> sy;
+        for (int i = 0; i < n; ++i) {
+            const int j = i + k;  // sigma at t+k
+            if (j < 0 || j >= n) continue;
+            dx.push_back(x[static_cast<std::size_t>(i)]);
+            sy.push_back(y[static_cast<std::size_t>(j)]);
+        }
+        const double r = pearsonR(dx, sy);
+        if (finite(r) && std::abs(r) > bestAbs) {
+            bestAbs = std::abs(r);
+            out.best_lag = k;
+            out.lead_r = r;
+        }
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Molecular-component extraction (ACCUMULATOR_RESPEC §4.7) + ContactedClass
+// (§2.4). Concrete, named, version-pinned.
+// ---------------------------------------------------------------------------
+
+// The 6 symmetrized components of a (generally asymmetric) molecular-frame
+// tensor, in the fixed order/naming the molecular-frame reads use (§4.7.1):
+// {xx, yy, zz, xy, xz, yz} of S = 1/2 (M + M^T).
+enum class MolComp { xx = 0, yy, xy, xz, yz, zz };
+constexpr std::array<const char*, 6> kMolCompNames = {"xx", "yy", "xy", "xz", "yz", "zz"};
+
+std::array<double, 6> symmetricComponents(const Mat3& m) {
+    const Mat3 s = 0.5 * (m + m.transpose());
+    return {s(0, 0), s(1, 1), s(0, 1), s(0, 2), s(1, 2), s(2, 2)};
+}
+
+double antisymmetricNorm(const Mat3& m) {
+    const Mat3 a = 0.5 * (m - m.transpose());
+    return tensorFrobenius(a);
+}
+
+struct TensorInvariants {
+    double iso = kNaN;
+    double span = kNaN;     // Omega = s33 - s11
+    double aniso = kNaN;    // ||T2|| of the symmetric-traceless part (the size axis)
+    double eta_H = kNaN;    // proper distance-from-isotropic asymmetry in [0,1]
+    double skew = kNaN;     // Maryland skew 3(s22-iso)/Omega
+    double frobenius = kNaN;
+};
+
+// Invariants from the symmetric part of a tensor, by the SAME proper
+// distance-from-isotropic eta_H discipline as foldCsa (§4.7.2, the D1 fix).
+TensorInvariants tensorInvariants(const Mat3& raw) {
+    TensorInvariants inv;
+    const Mat3 sym = 0.5 * (raw + raw.transpose());
+    inv.frobenius = tensorFrobenius(raw);
+    Eigen::SelfAdjointEigenSolver<Mat3> solver(sym);
+    if (solver.info() != Eigen::Success) return inv;
+    const Vec3 ev = solver.eigenvalues();  // ascending: s11 <= s22 <= s33
+    if (!ev.allFinite()) return inv;
+    const double s11 = ev[0];
+    const double s22 = ev[1];
+    const double s33 = ev[2];
+    inv.iso = (s11 + s22 + s33) / 3.0;
+    inv.span = s33 - s11;
+    // aniso = ||symmetric-traceless T2||
+    const Mat3 trless = sym - inv.iso * Mat3::Identity();
+    inv.aniso = tensorFrobenius(trless);
+    if (std::abs(inv.span) > 1e-12) inv.skew = 3.0 * (s22 - inv.iso) / inv.span;
+    // proper eta_H: order by distance from isotropic (zz farthest), xx the next
+    // farthest of the remaining, yy the closest.
+    int zz = 0;
+    double farthest = -1.0;
+    for (int i = 0; i < 3; ++i) {
+        const double d = std::abs(ev[i] - inv.iso);
+        if (d > farthest) { farthest = d; zz = i; }
+    }
+    std::array<int, 2> rem{};
+    int k = 0;
+    for (int i = 0; i < 3; ++i) if (i != zz) rem[static_cast<std::size_t>(k++)] = i;
+    int xx = rem[0];
+    int yy = rem[1];
+    if (std::abs(ev[xx] - inv.iso) < std::abs(ev[yy] - inv.iso)) std::swap(xx, yy);
+    const double denom = ev[zz] - inv.iso;
+    if (std::abs(denom) > 1e-12) {
+        double eta = (ev[yy] - ev[xx]) / denom;
+        if (eta < 0.0 && eta > -1e-9) eta = 0.0;
+        if (eta > 1.0 && eta < 1.0 + 1e-9) eta = 1.0;
+        if (eta >= 0.0 && eta <= 1.0) inv.eta_H = eta;
+    }
+    return inv;
+}
+
+struct EfgEigen {
+    double v_zz_abs = kNaN;  // |V_zz|, NMR convention |V_zz| >= |V_yy| >= |V_xx|
+    double eta = kNaN;       // (V_xx - V_yy)/V_zz, the internal asymmetry
+};
+
+// EFG eigenframe from a library-basis T2 5-vector: reconstruct the symmetric
+// 3x3, eigendecompose, order by |eigenvalue| (NMR convention), eta from the
+// two smaller-magnitude principal values (§4.7.2).
+EfgEigen efgEigen(const std::array<double, 5>& t2) {
+    EfgEigen out;
+    const Mat3 m = ReconstructLibraryT2Matrix(0.0, t2);
+    Eigen::SelfAdjointEigenSolver<Mat3> solver(m);
+    if (solver.info() != Eigen::Success) return out;
+    Vec3 ev = solver.eigenvalues();
+    if (!ev.allFinite()) return out;
+    std::array<double, 3> vals = {ev[0], ev[1], ev[2]};
+    std::sort(vals.begin(), vals.end(),
+              [](double a, double b) { return std::abs(a) < std::abs(b); });
+    const double vxx = vals[0];
+    const double vyy = vals[1];
+    const double vzz = vals[2];
+    out.v_zz_abs = std::abs(vzz);
+    if (std::abs(vzz) > 1e-12) out.eta = (vxx - vyy) / vzz;
+    return out;
+}
+
+// ContactedClass — the six-value CHARGE/AROMATICITY enum for the context key
+// (§2.4 / D-S3). NONE is the through-space-isolated baseline (no contact).
+enum class ContactedClass { NONE = 0, ACIDIC, BASIC, AROMATIC, POLAR, APOLAR };
+
+ContactedClass classOf(model::AminoAcid aa) {
+    switch (aa) {
+    case model::AminoAcid::ASP:
+    case model::AminoAcid::GLU:
+        return ContactedClass::ACIDIC;
+    case model::AminoAcid::ARG:
+    case model::AminoAcid::LYS:
+    case model::AminoAcid::HIS:  // titratable salt-bridge/pi partner -> BASIC (§2.4)
+        return ContactedClass::BASIC;
+    case model::AminoAcid::PHE:
+    case model::AminoAcid::TYR:  // AROMATIC for its ring (the TYR default, §2.4)
+    case model::AminoAcid::TRP:
+        return ContactedClass::AROMATIC;
+    case model::AminoAcid::ASN:
+    case model::AminoAcid::GLN:
+    case model::AminoAcid::SER:
+    case model::AminoAcid::THR:
+    case model::AminoAcid::CYS:
+    case model::AminoAcid::GLY:
+        return ContactedClass::POLAR;
+    case model::AminoAcid::ALA:
+    case model::AminoAcid::VAL:
+    case model::AminoAcid::LEU:
+    case model::AminoAcid::ILE:
+    case model::AminoAcid::MET:
+    case model::AminoAcid::PRO:
+        return ContactedClass::APOLAR;
+    case model::AminoAcid::Unknown:
+        return ContactedClass::NONE;
+    }
+    return ContactedClass::NONE;
+}
+
+QString contactedClassName(ContactedClass c) {
+    switch (c) {
+    case ContactedClass::NONE: return QStringLiteral("NONE");
+    case ContactedClass::ACIDIC: return QStringLiteral("ACIDIC");
+    case ContactedClass::BASIC: return QStringLiteral("BASIC");
+    case ContactedClass::AROMATIC: return QStringLiteral("AROMATIC");
+    case ContactedClass::POLAR: return QStringLiteral("POLAR");
+    case ContactedClass::APOLAR: return QStringLiteral("APOLAR");
+    }
+    return QStringLiteral("NONE");
+}
+
+// ---------------------------------------------------------------------------
+// THE CHARACTERIZATION CATALOGUE (ACCUMULATOR_RESPEC §2.2A).
+// The fixed, version-pinned set
+// of named (driver-family -> sigma-target -> frame) relationships any context
+// may instantiate. The catalogue is the ONLY door: every emitted responses[]
+// entry carries a CatalogueId from this enum -> the row-mill is structurally
+// impossible (there is no slot for an arbitrary (driver, sigma-target) pair).
+// 16 rows; each gated by a membership predicate evaluated against the atom.
+// ---------------------------------------------------------------------------
+enum class CatalogueId {
+    FIELD_ISO = 0,
+    FIELD_SPAN,
+    FIELD_MOLCOMP,
+    FIELD_SIGNED_BOND,
+    EFG_ISO,
+    EFG_MOLCOMP,
+    EFG_EIGEN,
+    RING_HEAVY,
+    RING_H,
+    MCCONNELL,
+    SCHAR_ISO,
+    WIBERG,
+    BONDLEN_ISO,
+    DIHEDRAL,
+    HBOND,
+    STRUCT,
+};
+
+// The right-frame tag carried on each response (§2.1 frame).
+enum class FrameTag { Invariant = 0, Molecular, SignedBond, Scalar, Circular };
+
+QString frameTagName(FrameTag f) {
+    switch (f) {
+    case FrameTag::Invariant: return QStringLiteral("invariant");
+    case FrameTag::Molecular: return QStringLiteral("molecular");
+    case FrameTag::SignedBond: return QStringLiteral("signed-bond");
+    case FrameTag::Scalar: return QStringLiteral("scalar");
+    case FrameTag::Circular: return QStringLiteral("circular");
+    }
+    return QStringLiteral("scalar");
+}
+
+struct CatalogueRow {
+    CatalogueId id;
+    const char* id_name;
+    const char* driver_family;  // the mechanism family tag (category, not a filter)
+    FrameTag frame;
+};
+
+static constexpr std::array<CatalogueRow, 16> kCharacterizationCatalogue = {{
+    {CatalogueId::FIELD_ISO, "FIELD_ISO", "Electric-field", FrameTag::Invariant},
+    {CatalogueId::FIELD_SPAN, "FIELD_SPAN", "Electric-field", FrameTag::Invariant},
+    {CatalogueId::FIELD_MOLCOMP, "FIELD_MOLCOMP", "Electric-field", FrameTag::Molecular},
+    {CatalogueId::FIELD_SIGNED_BOND, "FIELD_SIGNED_BOND", "Electric-field", FrameTag::SignedBond},
+    {CatalogueId::EFG_ISO, "EFG_ISO", "EFG", FrameTag::Invariant},
+    {CatalogueId::EFG_MOLCOMP, "EFG_MOLCOMP", "EFG", FrameTag::Molecular},
+    {CatalogueId::EFG_EIGEN, "EFG_EIGEN", "EFG", FrameTag::Molecular},
+    {CatalogueId::RING_HEAVY, "RING_HEAVY", "Ring-current", FrameTag::Invariant},
+    {CatalogueId::RING_H, "RING_H", "Ring-current", FrameTag::Molecular},
+    {CatalogueId::MCCONNELL, "MCCONNELL", "McConnell", FrameTag::Molecular},
+    {CatalogueId::SCHAR_ISO, "SCHAR_ISO", "Local-electronic", FrameTag::Scalar},
+    {CatalogueId::WIBERG, "WIBERG", "Local-electronic", FrameTag::Scalar},
+    {CatalogueId::BONDLEN_ISO, "BONDLEN_ISO", "Local-electronic", FrameTag::Scalar},
+    {CatalogueId::DIHEDRAL, "DIHEDRAL", "Geometry-dihedral", FrameTag::Circular},
+    {CatalogueId::HBOND, "HBOND", "Structural-environment", FrameTag::Scalar},
+    {CatalogueId::STRUCT, "STRUCT", "Structural-environment", FrameTag::Scalar},
+}};
+
+const CatalogueRow& catalogueRow(CatalogueId id) {
+    return kCharacterizationCatalogue[static_cast<std::size_t>(id)];
 }
 
 QJsonObject couplingRecord(const QString& sigmaComponent,
@@ -767,7 +1714,8 @@ QJsonObject couplingRecord(const QString& sigmaComponent,
         deltaSlope = ols(dx, dy).slope;
     }
     o.insert(QStringLiteral("delta_slope"), jd(deltaSlope));
-    auto [nullMean, nullSd, obsZ] = nullShiftStats(x, y, fit.slope);
+    auto [nullMean, nullSd, obsZ, circP] = nullShiftStats(x, y, fit.slope);
+    (void)circP;
     o.insert(QStringLiteral("null_slope_mean"), jd(nullMean));
     o.insert(QStringLiteral("null_slope_sd"), jd(nullSd));
     o.insert(QStringLiteral("obs_slope_z"), jd(obsZ));
@@ -1038,6 +1986,15 @@ struct RelationshipSeries {
     SparseT2 kernel_T2;
 };
 
+// Per-frame magnitude (right-frame invariant) of a relationship's T2 kernel, for the
+// folded partner census; NaN where the partner was absent that frame.
+std::vector<double> kernelT2NormSeries(const RelationshipSeries::SparseT2& t2, std::size_t n) {
+    std::vector<double> out(n, kNaN);
+    for (const auto& s : t2.samples)
+        if (s.first < n) out[s.first] = norm5(s.second);
+    return out;
+}
+
 QString relationshipScope(const Body& body, std::size_t target_atom, const PairContribution& pair) {
     const bool selfOrBonded = (pair.pointer_flags & SelfOrBondedFlag) != 0;
     if (!selfOrBonded) return QStringLiteral("through_space");
@@ -1088,11 +2045,6 @@ std::pair<int, model::AminoAcid> contactedResidue(const Body& body, const PairCo
 
 EfgValue readT2Field(const Body& body, io::FieldKind kind, ArrayId id, std::size_t atom, std::size_t row) {
     EfgValue out;
-    const bool carriesT0 = kind == io::FieldKind::MOPACCoulombEFG;
-    if (carriesT0 && body.catalog.present(body, kind, atom, row, 0)) {
-        if (const std::optional<double> t0 = body.catalog.value(body, kind, atom, row, 0))
-            out.t0 = *t0;
-    }
     if (body.catalog.present(body, id, atom, row)) {
         out.t2 = body.catalog.valueT2(body, id, atom, row);
     } else {
@@ -1201,15 +2153,60 @@ public:
           atom_(atom),
           config_(std::move(config)),
           coord_(cadence_.stepCount()),
+          molecular_frame_(cadence_.stepCount()),
           sigma_total_(cadence_.stepCount()),
           sigma_dia_(cadence_.stepCount()),
           sigma_para_(cadence_.stepCount()),
+          sigma_total_raw_(cadence_.stepCount()),
+          sigma_dia_raw_(cadence_.stepCount()),
+          sigma_para_raw_(cadence_.stepCount()),
+          sigma_mol_total_(cadence_.stepCount()),
+          sigma_mol_dia_(cadence_.stepCount()),
+          sigma_mol_para_(cadence_.stepCount()),
           sigma_frob_(cadence_.stepCount()),
+          sigma_csa_(cadence_.stepCount()),
           field_mopac_(cadence_.stepCount()),
           field_ff14sb_(cadence_.stepCount()),
+          field_apbs_(cadence_.stepCount()),
+          field_charge_ff14sb_(cadence_.stepCount()),
+          field_mol_mopac_(cadence_.stepCount()),
+          field_mol_apbs_(cadence_.stepCount()),
+          field_mol_charge_ff14sb_(cadence_.stepCount()),
+          field_E_z_mopac_(cadence_.stepCount()),
+          field_E_z_apbs_(cadence_.stepCount()),
+          field_E_z_charge_ff14sb_(cadence_.stepCount()),
+          field_E2_mopac_(cadence_.stepCount()),
+          field_E2_apbs_(cadence_.stepCount()),
+          field_E2_charge_ff14sb_(cadence_.stepCount()),
+          field_abs_E_mopac_(cadence_.stepCount()),
+          field_abs_E_apbs_(cadence_.stepCount()),
+          field_abs_E_charge_ff14sb_(cadence_.stepCount()),
+          field_abs_E2_mopac_(cadence_.stepCount()),
+          field_abs_E2_apbs_(cadence_.stepCount()),
+          field_abs_E2_charge_ff14sb_(cadence_.stepCount()),
+          charge_field_source_count_(cadence_.stepCount()),
+          charge_field_rejected_self_(cadence_.stepCount()),
+          charge_field_rejected_degenerate_(cadence_.stepCount()),
+          charge_field_rejected_cutoff_(cadence_.stepCount()),
+          charge_field_missing_charge_(cadence_.stepCount()),
           efg_apbs_(cadence_.stepCount()),
           efg_aimnet2_(cadence_.stepCount()),
-          efg_mopac_(cadence_.stepCount()),
+          efg_mol_apbs_(cadence_.stepCount()),
+          efg_mol_aimnet2_(cadence_.stepCount()),
+          efg_abs_apbs_(cadence_.stepCount()),
+          efg_abs_aimnet2_(cadence_.stepCount()),
+          shielding_mopac_coulomb_(cadence_.stepCount()),
+          shielding_abs_mopac_coulomb_(cadence_.stepCount()),
+          shielding_mol_mopac_(cadence_.stepCount()),
+          bs_per_type_T2_(cadence_.stepCount()),
+          hm_per_type_T2_(cadence_.stepCount()),
+          mc_tensor_series_(kMcTensorFields.size(), TensorSeries(cadence_.stepCount())),
+          tripeptide_bb_shielding_(cadence_.stepCount()),
+          larsen_hbond_shielding_(cadence_.stepCount()),
+          sasa_(cadence_.stepCount()),
+          hbond_nearest_dir_(cadence_.stepCount()),
+          hbond_count_(cadence_.stepCount()),
+          ff_pb_radius_(cadence_.stepCount()),
           phi_(cadence_.stepCount()),
           psi_(cadence_.stepCount()),
           omega_(cadence_.stepCount()),
@@ -1226,17 +2223,20 @@ public:
           pi_character_(cadence_.stepCount()) {
         buildStaticBonds();
         readStaticHybridisation();
+        configureMolecularFrame();
     }
 
     void calculate(std::size_t step) {
         if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return;
         coord_.set(step, verbs::pos(body_, atom_, step));
+        foldMolecularFrame(step);
         foldMopacSelfState(step);
         foldTopologyJoin(step);
         foldGeometry(step);
         foldDihedrals(step);
         foldFieldsAndRelationships(step);
         foldEfg(step);
+        foldProducerSubstrate(step);
         if (cadence_.sigmaPresent(step)) foldSigma(step);
     }
 
@@ -1250,8 +2250,11 @@ public:
         root.insert(QStringLiteral("model"), modelJson());
         qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=series";
         root.insert(QStringLiteral("series"), seriesJson());
-        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=boost";
-        root.insert(QStringLiteral("boost"), buildBoostJson());
+        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=accumulator";
+        // ACCUMULATOR_RESPEC §5.1.1: the all-pairs boost grid is GONE; the
+        // certified methods feed the compact per-context accumulator instead.
+        // There is no `boost` key in the emitted atom object (§2.2A anti-boost).
+        root.insert(QStringLiteral("accumulator"), buildAccumulatorJson());
         qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=done";
         return root;
     }
@@ -1266,8 +2269,8 @@ public:
     }
     std::size_t mismatchEventCount() const { return mismatchCount(); }
     bool oxygenGatePassed() const { return !oxygenGateVerdict().suspect_sp3; }
-    mutable std::size_t last_boost_coupling_count = 0;
-    mutable std::size_t last_boost_serial_count = 0;
+    mutable std::size_t last_accumulator_response_count = 0;
+    mutable std::size_t last_accumulator_context_count = 0;
 
 private:
     struct StaticBondInfo {
@@ -1388,6 +2391,58 @@ private:
         m.insert(QStringLiteral("typing"), typingJson());
         m.insert(QStringLiteral("category"), categoryJson());
         m.insert(QStringLiteral("topology_join"), topologyJoinJson());
+        m.insert(QStringLiteral("substrate_parameters"), substrateParametersJson());
+        m.insert(QStringLiteral("graph_topology"), graphTopologyJson());
+        return m;
+    }
+
+    QJsonObject substrateParametersJson() const {
+        QJsonObject m;
+        QJsonObject charge;
+        charge.insert(QStringLiteral("field_key"), QStringLiteral("field.charge_ff14sb"));
+        charge.insert(QStringLiteral("cutoff_A"), config_.charge_cutoff_A);
+        charge.insert(QStringLiteral("same_residue_sources_included"), true);
+        charge.insert(QStringLiteral("self_sources_rejected_with_flag"), true);
+        charge.insert(QStringLiteral("degenerate_geometry_rejected_with_flag"), true);
+        charge.insert(QStringLiteral("unit_conversion_ke_V_A_per_e_over_A2"), kCoulombKe);
+        m.insert(QStringLiteral("charge_field"), charge);
+
+        QJsonObject ring;
+        ring.insert(QStringLiteral("cutoff_A"), config_.ring_cutoff_A);
+        QJsonArray intensities;
+        auto addRing = [&](const QString& name, double value) {
+            QJsonObject o;
+            o.insert(QStringLiteral("ring_type"), name);
+            o.insert(QStringLiteral("literature_intensity_nA_per_T"), value);
+            intensities.append(o);
+        };
+        addRing(QStringLiteral("PheBenzene"), -12.0);
+        addRing(QStringLiteral("TyrPhenol"), -11.28);
+        addRing(QStringLiteral("TrpBenzene"), -12.48);
+        addRing(QStringLiteral("TrpPyrrole"), -6.72);
+        addRing(QStringLiteral("TrpPerimeter"), -19.2);
+        addRing(QStringLiteral("HisImidazole"), -5.16);
+        addRing(QStringLiteral("HidImidazole"), -5.16);
+        addRing(QStringLiteral("HieImidazole"), -5.16);
+        ring.insert(QStringLiteral("literature_intensities"), intensities);
+        m.insert(QStringLiteral("ring_current"), ring);
+
+        QJsonObject mc;
+        mc.insert(QStringLiteral("near_field_ratio"), config_.mc_near_field_ratio);
+        mc.insert(QStringLiteral("molar_prefactor"), McConnellMolarPrefactor());
+        QJsonArray dchi;
+        for (model::BondCategory category : {model::BondCategory::PeptideCO,
+                                             model::BondCategory::PeptideCN,
+                                             model::BondCategory::SidechainCO,
+                                             model::BondCategory::Aromatic}) {
+            QJsonObject o;
+            o.insert(QStringLiteral("bond_category"), bondCategoryName(category));
+            o.insert(QStringLiteral("delta_chi_q_1e_minus_6_cm3_per_mol"),
+                     McConnellDeltaChiQ(category));
+            dchi.append(o);
+        }
+        mc.insert(QStringLiteral("delta_chi_literature"), dchi);
+        m.insert(QStringLiteral("mcconnell"), mc);
         return m;
     }
 
@@ -1507,6 +2562,119 @@ private:
         return t;
     }
 
+    template <typename Predicate>
+    int minGraphHopsTo(Predicate pred) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return -1;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtTopology& topo = p.topology();
+        std::vector<int> dist(p.atomCount(), -1);
+        std::vector<std::size_t> queue;
+        queue.reserve(p.atomCount());
+        dist[atom_] = 0;
+        queue.push_back(atom_);
+        for (std::size_t qi = 0; qi < queue.size(); ++qi) {
+            const std::size_t cur = queue[qi];
+            if (pred(p.atom(cur))) return dist[cur];
+            for (int32_t bi : topo.bondIndicesForAtom(cur)) {
+                if (bi < 0 || static_cast<std::size_t>(bi) >= topo.bondCount()) continue;
+                const model::QtBond& b = topo.bondAt(static_cast<std::size_t>(bi));
+                const int32_t next = b.atomIndexA == static_cast<int32_t>(cur) ? b.atomIndexB : b.atomIndexA;
+                if (next < 0 || static_cast<std::size_t>(next) >= p.atomCount()) continue;
+                const std::size_t ni = static_cast<std::size_t>(next);
+                if (dist[ni] >= 0) continue;
+                dist[ni] = dist[cur] + 1;
+                queue.push_back(ni);
+            }
+        }
+        return -1;
+    }
+
+    QJsonObject graphTopologyJson() const {
+        QJsonObject g;
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return g;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        const model::QtTopology& topo = p.topology();
+        const auto& bondIndices = topo.bondIndicesForAtom(atom_);
+        int degreeHeavy = 0;
+        int degreeHydrogen = 0;
+        for (int32_t bi : bondIndices) {
+            if (bi < 0 || static_cast<std::size_t>(bi) >= topo.bondCount()) continue;
+            const model::QtBond& b = topo.bondAt(static_cast<std::size_t>(bi));
+            const int32_t other = b.atomIndexA == static_cast<int32_t>(atom_) ? b.atomIndexB : b.atomIndexA;
+            if (other < 0 || static_cast<std::size_t>(other) >= p.atomCount()) continue;
+            if (p.atom(static_cast<std::size_t>(other)).element == model::Element::H)
+                ++degreeHydrogen;
+            else
+                ++degreeHeavy;
+        }
+        g.insert(QStringLiteral("definition"),
+                 QStringLiteral("covalent topology graph; hop counts are bond-edge counts; ring centroid hops use the nearest ring-member atom as the graph anchor"));
+        g.insert(QStringLiteral("degree_total"), static_cast<int>(bondIndices.size()));
+        g.insert(QStringLiteral("degree_heavy"), degreeHeavy);
+        g.insert(QStringLiteral("degree_hydrogen"), degreeHydrogen);
+        g.insert(QStringLiteral("is_hydrogen"), a.element == model::Element::H);
+        g.insert(QStringLiteral("is_heavy_atom"), a.element != model::Element::H);
+        g.insert(QStringLiteral("is_ring_atom"), a.IsInAnyRing());
+        g.insert(QStringLiteral("is_aromatic"), a.aromatic);
+        g.insert(QStringLiteral("parent_heavy_atom_index"), a.parentAtomIndex);
+        g.insert(QStringLiteral("nearest_backbone_hops"),
+                 minGraphHopsTo([](const model::QtAtom& x) { return x.IsBackbone(); }));
+        const int ringHops = minGraphHopsTo([](const model::QtAtom& x) { return x.IsInAnyRing(); });
+        g.insert(QStringLiteral("nearest_ring_atom_hops"), ringHops);
+        g.insert(QStringLiteral("nearest_ring_centroid_hops"), ringHops);
+        g.insert(QStringLiteral("electronegativity_scale"), QStringLiteral("Pauling"));
+        g.insert(QStringLiteral("electronegativity_pauling"), a.Electronegativity());
+        g.insert(QStringLiteral("covalent_radius_A"), a.CovalentRadius());
+        g.insert(QStringLiteral("atomic_number"), a.AtomicNumber());
+        if (validResidue(p, a.residueIndex)) {
+            g.insert(QStringLiteral("residue_atom_count"),
+                     static_cast<int>(p.residue(static_cast<std::size_t>(a.residueIndex)).atomIndices.size()));
+        }
+        return g;
+    }
+
+    QJsonArray bondLengthsJson() const {
+        QJsonArray out;
+        if (!body_.run.protein) return out;
+        const model::QtProtein& p = *body_.run.protein;
+        for (const auto& item : static_bonds_) {
+            const std::uint64_t key = item.first;
+            const StaticBondInfo& info = item.second;
+            const auto pair = pairFromKey(key);
+            QJsonObject o;
+            o.insert(QStringLiteral("atom_a"), static_cast<int>(pair.first));
+            o.insert(QStringLiteral("atom_b"), static_cast<int>(pair.second));
+            o.insert(QStringLiteral("other_atom_index"), static_cast<int>(info.other));
+            if (info.other < p.atomCount())
+                o.insert(QStringLiteral("other_atom_name"),
+                         p.atomLabel(info.other, model::NamingConvention::Iupac));
+            o.insert(QStringLiteral("static_bond_index"), info.index);
+            o.insert(QStringLiteral("static_order_ord"), static_cast<int>(info.order));
+            o.insert(QStringLiteral("static_order"), bondOrderName(info.order));
+            o.insert(QStringLiteral("static_category_ord"), static_cast<int>(info.category));
+            o.insert(QStringLiteral("static_category"), bondCategoryName(info.category));
+            bool disulfideSS = false;
+            if (pair.first < p.atomCount() && pair.second < p.atomCount()) {
+                disulfideSS = info.category == model::BondCategory::Disulfide
+                              && p.atom(pair.first).element == model::Element::S
+                              && p.atom(pair.second).element == model::Element::S;
+            }
+            o.insert(QStringLiteral("is_disulfide_ss"), disulfideSS);
+            const auto lenIt = bond_length_series_.find(key);
+            const auto rejIt = bond_length_rejected_degenerate_.find(key);
+            o.insert(QStringLiteral("length_A"),
+                     lenIt != bond_length_series_.end() ? QJsonValue(lenIt->second.json())
+                                                        : QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("rejected_degenerate"),
+                     rejIt != bond_length_rejected_degenerate_.end()
+                         ? QJsonValue(rejIt->second.json())
+                         : QJsonValue(QJsonValue::Null));
+            out.append(o);
+        }
+        return out;
+    }
+
     std::size_t mismatchCount() const {
         std::size_t n = 0;
         for (const auto& item : bond_series_)
@@ -1528,15 +2696,62 @@ private:
         QJsonObject s;
         s.insert(QStringLiteral("sigma_present"), boolArrayJson(cadence_.sigmaMask()));
         s.insert(QStringLiteral("coord"), coord_.json());
+        s.insert(QStringLiteral("molecular_frame"), molecular_frame_.json());
         s.insert(QStringLiteral("sigma.total"), sigma_total_.json());
         s.insert(QStringLiteral("sigma.dia"), sigma_dia_.json());
         s.insert(QStringLiteral("sigma.para"), sigma_para_.json());
+        s.insert(QStringLiteral("sigma.total_raw"), sigma_total_raw_.json());
+        s.insert(QStringLiteral("sigma.dia_raw"), sigma_dia_raw_.json());
+        s.insert(QStringLiteral("sigma.para_raw"), sigma_para_raw_.json());
+        s.insert(QStringLiteral("sigma_mol.total"), sigma_mol_total_.json());
+        s.insert(QStringLiteral("sigma_mol.dia"), sigma_mol_dia_.json());
+        s.insert(QStringLiteral("sigma_mol.para"), sigma_mol_para_.json());
         s.insert(QStringLiteral("sigma.total_frobenius"), sigma_frob_.json());
+        s.insert(QStringLiteral("sigma.csa_descriptors"), sigma_csa_.json());
         s.insert(QStringLiteral("field.mopac_coulomb"), field_mopac_.json());
         s.insert(QStringLiteral("field.ff14sb"), field_ff14sb_.json());
+        s.insert(QStringLiteral("field.apbs"), field_apbs_.json());
+        s.insert(QStringLiteral("field.charge_ff14sb"), field_charge_ff14sb_.json());
+        s.insert(QStringLiteral("field_mol.mopac_coulomb"), field_mol_mopac_.json());
+        s.insert(QStringLiteral("field_mol.apbs"), field_mol_apbs_.json());
+        s.insert(QStringLiteral("field_mol.charge_ff14sb"), field_mol_charge_ff14sb_.json());
+        s.insert(QStringLiteral("field.E_z.mopac_coulomb"), field_E_z_mopac_.json());
+        s.insert(QStringLiteral("field.E_z.apbs"), field_E_z_apbs_.json());
+        s.insert(QStringLiteral("field.E_z.charge_ff14sb"), field_E_z_charge_ff14sb_.json());
+        s.insert(QStringLiteral("field.E2.mopac_coulomb"), field_E2_mopac_.json());
+        s.insert(QStringLiteral("field.E2.apbs"), field_E2_apbs_.json());
+        s.insert(QStringLiteral("field.E2.charge_ff14sb"), field_E2_charge_ff14sb_.json());
+        s.insert(QStringLiteral("field.abs_E.mopac_coulomb"), field_abs_E_mopac_.json());
+        s.insert(QStringLiteral("field.abs_E.apbs"), field_abs_E_apbs_.json());
+        s.insert(QStringLiteral("field.abs_E.charge_ff14sb"), field_abs_E_charge_ff14sb_.json());
+        s.insert(QStringLiteral("field.abs_E2.mopac_coulomb"), field_abs_E2_mopac_.json());
+        s.insert(QStringLiteral("field.abs_E2.apbs"), field_abs_E2_apbs_.json());
+        s.insert(QStringLiteral("field.abs_E2.charge_ff14sb"), field_abs_E2_charge_ff14sb_.json());
+        s.insert(QStringLiteral("field.charge_ff14sb_source_count"), charge_field_source_count_.json());
+        s.insert(QStringLiteral("field.charge_ff14sb_rejected_self"), charge_field_rejected_self_.json());
+        s.insert(QStringLiteral("field.charge_ff14sb_rejected_degenerate"), charge_field_rejected_degenerate_.json());
+        s.insert(QStringLiteral("field.charge_ff14sb_rejected_cutoff"), charge_field_rejected_cutoff_.json());
+        s.insert(QStringLiteral("field.charge_ff14sb_missing_charge"), charge_field_missing_charge_.json());
         s.insert(QStringLiteral("efg.apbs"), efg_apbs_.json());
         s.insert(QStringLiteral("efg.aimnet2"), efg_aimnet2_.json());
-        s.insert(QStringLiteral("efg.mopac_coulomb"), efg_mopac_.json());
+        s.insert(QStringLiteral("efg_mol.apbs"), efg_mol_apbs_.json());
+        s.insert(QStringLiteral("efg_mol.aimnet2"), efg_mol_aimnet2_.json());
+        s.insert(QStringLiteral("efg.abs.apbs"), efg_abs_apbs_.json());
+        s.insert(QStringLiteral("efg.abs.aimnet2"), efg_abs_aimnet2_.json());
+        s.insert(QStringLiteral("shielding.mopac_coulomb"), shielding_mopac_coulomb_.json());
+        s.insert(QStringLiteral("shielding.abs_T2.mopac_coulomb"), shielding_abs_mopac_coulomb_.json());
+        s.insert(QStringLiteral("shielding_mol.mopac_coulomb"), shielding_mol_mopac_.json());
+        s.insert(QStringLiteral("bs_per_type_T2"), bs_per_type_T2_.json());
+        s.insert(QStringLiteral("hm_per_type_T2"), hm_per_type_T2_.json());
+        for (std::size_t i = 0; i < kMcTensorFields.size(); ++i)
+            s.insert(QString::fromLatin1(kMcTensorFields[i].key), mc_tensor_series_[i].json());
+        s.insert(QStringLiteral("tripeptide_bb_shielding"), tripeptide_bb_shielding_.json());
+        s.insert(QStringLiteral("larsen_hbond_shielding"), larsen_hbond_shielding_.json());
+        s.insert(QStringLiteral("sasa"), sasa_.json());
+        s.insert(QStringLiteral("hbond.nearest_dir"), hbond_nearest_dir_.json());
+        s.insert(QStringLiteral("hbond.count"), hbond_count_.json());
+        s.insert(QStringLiteral("ff_pb_radius"), ff_pb_radius_.json());
+        s.insert(QStringLiteral("bond.lengths"), bondLengthsJson());
         s.insert(QStringLiteral("dihedral.phi"), phi_.json());
         s.insert(QStringLiteral("dihedral.psi"), psi_.json());
         s.insert(QStringLiteral("dihedral.omega"), omega_.json());
@@ -1581,103 +2796,1499 @@ private:
         k.insert(QStringLiteral("source_atom_index"), key.source_atom_index);
         k.insert(QStringLiteral("source_category_ord"), key.source_category_ord);
         o.insert(QStringLiteral("key"), k);
-        o.insert(QStringLiteral("present"), rel.presentJson());
+        // The partner census is FOLDED, not retained: every partner stays enumerated
+        // (the key above), but each facet is a characterization (summary + shape), not a
+        // per-frame series — "who I danced with, via which mechanism, how often, and what
+        // each did," as character rather than rows.
+        const std::size_t n = cadence_.stepCount();
+        QJsonObject present;
+        present.insert(QStringLiteral("n"), static_cast<int>(rel.present_steps.size()));
+        if (!rel.present_steps.empty()) {
+            present.insert(QStringLiteral("first"), static_cast<int>(rel.present_steps.front()));
+            present.insert(QStringLiteral("last"), static_cast<int>(rel.present_steps.back()));
+        }
+        o.insert(QStringLiteral("present"), present);
         QJsonObject facets;
-        facets.insert(QStringLiteral("distance"), rel.distance.json(cadence_.stepCount()));
-        facets.insert(QStringLiteral("cos_theta"), rel.cos_theta.json(cadence_.stepCount()));
-        facets.insert(QStringLiteral("inv_r3"), rel.inv_r3.json(cadence_.stepCount()));
-        facets.insert(QStringLiteral("dipolar"), rel.dipolar.json(cadence_.stepCount()));
-        facets.insert(QStringLiteral("kernel_T0"), rel.kernel_T0.json(cadence_.stepCount()));
-        facets.insert(QStringLiteral("kernel_T2"), rel.kernel_T2.json(cadence_.stepCount()));
-        facets.insert(QStringLiteral("contribution"), rel.contribution.json(cadence_.stepCount()));
+        facets.insert(QStringLiteral("distance"), scalarSummaryJson(rel.distance.dense(n)));
+        facets.insert(QStringLiteral("cos_theta"), scalarSummaryJson(rel.cos_theta.dense(n)));
+        facets.insert(QStringLiteral("inv_r3"), scalarSummaryJson(rel.inv_r3.dense(n)));
+        facets.insert(QStringLiteral("dipolar"), scalarSummaryJson(rel.dipolar.dense(n)));
+        facets.insert(QStringLiteral("kernel_T0"), scalarSummaryJson(rel.kernel_T0.dense(n)));
+        facets.insert(QStringLiteral("kernel_T2"), scalarSummaryJson(kernelT2NormSeries(rel.kernel_T2, n)));
+        facets.insert(QStringLiteral("contribution"), scalarSummaryJson(rel.contribution.dense(n)));
         o.insert(QStringLiteral("facets"), facets);
         return o;
     }
 
-    QJsonObject buildBoostJson() const {
-        std::vector<RunningSeriesRef> refs;
-        addVec3SeriesRefs(refs, QStringLiteral("coord"), coord_);
-        addVec3SeriesRefs(refs, QStringLiteral("field.mopac_coulomb"), field_mopac_);
-        addVec3SeriesRefs(refs, QStringLiteral("field.ff14sb"), field_ff14sb_);
-        addEfgSeriesRefs(refs, QStringLiteral("efg.apbs"), efg_apbs_);
-        addEfgSeriesRefs(refs, QStringLiteral("efg.aimnet2"), efg_aimnet2_);
-        addEfgSeriesRefs(refs, QStringLiteral("efg.mopac_coulomb"), efg_mopac_);
-        addScalarSeriesRef(refs, QStringLiteral("dihedral.phi"), phi_);
-        addScalarSeriesRef(refs, QStringLiteral("dihedral.psi"), psi_);
-        addScalarSeriesRef(refs, QStringLiteral("dihedral.omega"), omega_);
-        addScalarSeriesRef(refs, QStringLiteral("dihedral.chi1"), chi1_);
-        addScalarSeriesRef(refs, QStringLiteral("dihedral.chi2"), chi2_);
-        addScalarSeriesRef(refs, QStringLiteral("dihedral.chi3"), chi3_);
-        addScalarSeriesRef(refs, QStringLiteral("dihedral.chi4"), chi4_);
-        addScalarSeriesRef(refs, QStringLiteral("mopac.charge"), mopac_charge_);
-        addScalarSeriesRef(refs, QStringLiteral("mopac.s_pop"), mopac_s_pop_);
-        addScalarSeriesRef(refs, QStringLiteral("mopac.p_pop"), mopac_p_pop_);
-        addScalarSeriesRef(refs, QStringLiteral("mopac.valency"), mopac_valency_);
-        addScalarSeriesRef(refs, QStringLiteral("mopac.s_character"), mopac_s_character_);
+    // =======================================================================
+    // THE COMPACT PER-CONTEXT ACCUMULATOR (ACCUMULATOR_RESPEC PART 2).
+    // The atom folds its own response by context and tells its truth. The
+    // certified methods (ols/pearsonR/chatterjeeXi/circular-shift null/foldCsa
+    // eta_H/serial dynamics) are re-pointed at the MOLECULAR-frame quantities
+    // and the invariants; the fixed characterization catalogue (§2.2A) is the only door; the cap
+    // bounded by the fixed characterization catalogue; there is NO boost key.
+    // =======================================================================
 
-        const auto sigmas = sigmaComponents(sigma_total_, sigma_dia_, sigma_para_, sigma_frob_);
-        qCInfo(cAnalysisObject).noquote()
-            << "analysis_atom boost begin | atom=" << atom_
-            << "| base_refs=" << refs.size()
-            << "| relationships=" << relationships_.size()
-            << "| sigma_components=" << sigmas.size();
-        QJsonObject out = boostJson(sigmas, refs, cadence_.sigmaRows(), true);
-        QJsonArray couplingArray = out.value(QStringLiteral("coupling")).toArray();
-        QJsonArray serialArray = out.value(QStringLiteral("serial")).toArray();
-        qCInfo(cAnalysisObject).noquote()
-            << "analysis_atom boost base complete | atom=" << atom_
-            << "| coupling=" << couplingArray.size()
-            << "| serial=" << serialArray.size();
+    // -- molecular-frame sigma component series (symmetrized), on every step.
+    std::vector<double> sigmaMolCompSeries(const Mat3Series& mol, MolComp comp) const {
+        std::vector<double> out(mol.values.size(), kNaN);
+        for (std::size_t i = 0; i < mol.values.size(); ++i) {
+            if (!mol.present[i]) continue;
+            out[i] = symmetricComponents(mol.values[i])[static_cast<std::size_t>(comp)];
+        }
+        return out;
+    }
 
-        int relIndex = 0;
-        for (const auto& item : relationships_) {
-            const RelationshipSeries& r = item.second;
-            const QJsonValue ri(relIndex);
-            auto appendRel = [&](const QString& facet,
-                                 QJsonValue component,
-                                 std::vector<double> values) {
-                RunningSeriesRef ref{QStringLiteral("relationships"), std::move(component), ri,
-                                     facet, std::move(values)};
-                for (const auto& s : sigmas) {
-                    couplingArray.append(couplingRecord(s.first, s.second, ref, cadence_.sigmaRows()));
+    // -- sigma invariant series from sigma_mol.total (frame-independent, so
+    // computed from the lab raw tensor where present; molecular not required).
+    std::vector<double> sigmaInvariantSeries(const QString& which) const {
+        std::vector<double> out(sigma_total_raw_.values.size(), kNaN);
+        for (std::size_t i = 0; i < sigma_total_raw_.values.size(); ++i) {
+            if (!sigma_total_raw_.present[i]) continue;
+            const TensorInvariants inv = tensorInvariants(sigma_total_raw_.values[i]);
+            if (which == QStringLiteral("iso")) out[i] = inv.iso;
+            else if (which == QStringLiteral("span")) out[i] = inv.span;
+            else if (which == QStringLiteral("aniso")) out[i] = inv.aniso;
+            else if (which == QStringLiteral("eta_H")) out[i] = inv.eta_H;
+            else if (which == QStringLiteral("frobenius")) out[i] = inv.frobenius;
+        }
+        return out;
+    }
+
+    // -- sigma iso T0 series (the scalar target).
+    std::vector<double> sigmaIsoSeries() const { return componentSeriesT0(sigma_total_); }
+
+    // -- driver invariant magnitude series helpers.
+    std::vector<double> fieldAbsSeries() const { return field_abs_E_mopac_.values; }
+    std::vector<double> efgAbsSeries() const {
+        // best of the available |EFG| channels (aimnet2 primary, shielding fallback).
+        std::vector<double> out = efg_abs_aimnet2_.values;
+        bool any = std::any_of(out.begin(), out.end(), [](double v) { return finite(v); });
+        if (!any) out = shielding_abs_mopac_coulomb_.values;
+        return out;
+    }
+
+    // -- molecular field component series.
+    std::vector<double> fieldMolCompSeries(int c) const {
+        return componentSeries(field_mol_mopac_, c);
+    }
+
+    // -- EFG molecular component series from a specific source tensor series.
+    std::vector<double> molCompFrom(const Mat3Series& src, MolComp comp) const {
+        std::vector<double> out(src.values.size(), kNaN);
+        for (std::size_t i = 0; i < src.values.size(); ++i)
+            if (src.present[i])
+                out[i] = symmetricComponents(src.values[i])[static_cast<std::size_t>(comp)];
+        return out;
+    }
+
+    // -- EFG |V_zz| and eta series from the (preferred) EFG T2.
+    std::vector<double> efgEigenSeries(bool wantVzz) const {
+        std::vector<double> out(efg_aimnet2_.values.size(), kNaN);
+        for (std::size_t i = 0; i < efg_aimnet2_.values.size(); ++i) {
+            const EfgValue* src = nullptr;
+            if (efg_aimnet2_.present[i]) src = &efg_aimnet2_.values[i];
+            else if (i < shielding_mopac_coulomb_.values.size() && shielding_mopac_coulomb_.present[i])
+                src = &shielding_mopac_coulomb_.values[i];
+            if (!src) continue;
+            const EfgEigen e = efgEigen(src->t2);
+            out[i] = wantVzz ? e.v_zz_abs : e.eta;
+        }
+        return out;
+    }
+
+    // -- summed ring-current rollup Frobenius (§4.7.4) from bs_per_type_T2
+    // (8 ring-types x 5 T2). bs_sum_T2 = elementwise sum over the 8 types.
+    std::vector<double> ringSummedFrobeniusSeries() const {
+        std::vector<double> out(bs_per_type_T2_.values.size(), kNaN);
+        for (std::size_t i = 0; i < bs_per_type_T2_.values.size(); ++i) {
+            if (!bs_per_type_T2_.present[i]) continue;
+            std::array<double, 5> sum = {0, 0, 0, 0, 0};
+            for (int type = 0; type < 8; ++type)
+                for (int c = 0; c < 5; ++c)
+                    sum[static_cast<std::size_t>(c)] += bs_per_type_T2_.values[i][static_cast<std::size_t>(type * 5 + c)];
+            out[i] = norm5(sum);
+        }
+        return out;
+    }
+
+    // -- McConnell family rollup Frobenius (§4.7.4): the dominant-member ||T2||
+    // (the member with the largest time-mean ||T2|| -- the partner casting the
+    // field). Returns the per-step ||T2|| of that dominant member.
+    std::vector<double> mcDominantFrobeniusSeries() const {
+        // Find the dominant member by time-mean ||T2||.
+        int bestMember = -1;
+        double bestMean = -1.0;
+        for (std::size_t m = 0; m < mc_tensor_series_.size(); ++m) {
+            double sum = 0.0;
+            int n = 0;
+            for (std::size_t i = 0; i < mc_tensor_series_[m].values.size(); ++i) {
+                if (!mc_tensor_series_[m].present[i]) continue;
+                sum += norm5(mc_tensor_series_[m].values[i].T2);
+                ++n;
+            }
+            if (n > 0 && (sum / n) > bestMean) { bestMean = sum / n; bestMember = static_cast<int>(m); }
+        }
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        if (bestMember < 0) return out;
+        const TensorSeries& s = mc_tensor_series_[static_cast<std::size_t>(bestMember)];
+        for (std::size_t i = 0; i < s.values.size(); ++i)
+            if (s.present[i]) out[i] = norm5(s.values[i].T2);
+        return out;
+    }
+
+    // -- signed X-H bond field E_|| series (§4.8): the field projected onto the
+    // unit X-H bond vector, per frame. Signed (negative for a donor). Only for
+    // an exchangeable/polar H with a single heavy parent.
+    std::vector<double> signedBondFieldSeries() const {
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return out;
+        const model::QtAtom& a = body_.run.protein->atom(atom_);
+        if (a.element != model::Element::H || a.parentAtomIndex < 0) return out;
+        for (std::size_t step = 0; step < cadence_.stepCount(); ++step) {
+            if (!field_mopac_.present[step]) continue;
+            const auto h = coordAt(static_cast<int32_t>(atom_), step);
+            const auto x = coordAt(a.parentAtomIndex, step);
+            if (!h || !x) continue;
+            const auto u = normalizeFrameVec(*h - *x);  // bond axis X->H
+            if (!u) continue;
+            out[step] = field_mopac_.values[step].dot(*u);  // signed E_||
+        }
+        return out;
+    }
+
+    bool isDonorH() const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return false;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        if (a.element != model::Element::H || a.parentAtomIndex < 0
+            || static_cast<std::size_t>(a.parentAtomIndex) >= p.atomCount())
+            return false;
+        const model::Element parentEl = p.atom(static_cast<std::size_t>(a.parentAtomIndex)).element;
+        return a.isExchangeable || parentEl == model::Element::N || parentEl == model::Element::O;
+    }
+
+    bool withinRingCutoff() const {
+        // a heavy/H atom that has any ring-current kernel signal at all.
+        for (std::size_t i = 0; i < bs_per_type_T2_.values.size(); ++i)
+            if (bs_per_type_T2_.present[i]) return true;
+        return false;
+    }
+
+    bool hasMcPartner() const {
+        for (const TensorSeries& s : mc_tensor_series_)
+            for (std::size_t i = 0; i < s.values.size(); ++i)
+                if (s.present[i] && norm5(s.values[i].T2) > 0.0) return true;
+        return false;
+    }
+
+    bool hasMappedBond() const {
+        for (const auto& item : bond_series_)
+            if (static_bonds_.count(item.first) != 0) return true;
+        return false;
+    }
+
+    bool hasFramedAtom() const {
+        for (const MolecularFrameValue& v : molecular_frame_.values)
+            if (v.valid) return true;
+        return false;
+    }
+
+    int graphStratum() const {
+        // coarse hops-bucket on nearest_ring_atom_hops (the spatial-locality
+        // moderator); a single static value per atom (does not multiply contexts).
+        const int hops = minGraphHopsTo([](const model::QtAtom& x) { return x.IsInAnyRing(); });
+        if (hops < 0) return -1;
+        if (hops == 0) return 0;     // is a ring atom
+        if (hops <= 2) return 1;     // proximal
+        return 2;                    // distal
+    }
+
+    // Does the catalogue row's membership predicate hold for this atom (§2.2A)?
+    bool membershipHolds(CatalogueId id) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return false;
+        const model::QtAtom& a = body_.run.protein->atom(atom_);
+        const bool heavy = a.element != model::Element::H;
+        const bool framed = hasFramedAtom();
+        switch (id) {
+        case CatalogueId::FIELD_ISO:
+        case CatalogueId::FIELD_SPAN:
+        case CatalogueId::STRUCT:
+            return true;  // all atoms
+        case CatalogueId::FIELD_MOLCOMP:
+            return framed;
+        case CatalogueId::FIELD_SIGNED_BOND:
+            return isDonorH();
+        case CatalogueId::EFG_ISO:
+            return heavy;
+        case CatalogueId::EFG_MOLCOMP:
+            return heavy && framed;
+        case CatalogueId::EFG_EIGEN:
+            return heavy && framed;  // framed heavy atom (sp2 groups carry the cleanest eigen)
+        case CatalogueId::RING_HEAVY:
+            return heavy && withinRingCutoff();
+        case CatalogueId::RING_H:
+            return a.element == model::Element::H && withinRingCutoff();
+        case CatalogueId::MCCONNELL:
+            return hasMcPartner();
+        case CatalogueId::SCHAR_ISO:
+            return a.element == model::Element::N || a.element == model::Element::C;
+        case CatalogueId::WIBERG:
+            return hasMappedBond();
+        case CatalogueId::BONDLEN_ISO:
+            return a.element == model::Element::S || !static_bonds_.empty();
+        case CatalogueId::DIHEDRAL:
+            return hasAnyDihedral();
+        case CatalogueId::HBOND:
+            return hasHbondSignal();
+        }
+        return false;
+    }
+
+    bool hasAnyDihedral() const {
+        for (const ScalarSeries* s : {&phi_, &psi_, &chi1_, &chi2_, &chi3_, &chi4_})
+            for (double v : s->values)
+                if (finite(v)) return true;
+        return false;
+    }
+
+    bool hasHbondSignal() const {
+        for (double v : hbond_count_.values)
+            if (finite(v) && v > 0.0) return true;
+        return false;
+    }
+
+    // The candidate (driver-series, sigma-target-series, sigma_target label,
+    // driver component label) pairs a catalogue row evaluates. The builder
+    // groups these by sigma_target: one primary source per target, every
+    // physically-relevant target carried in targets[].
+    struct Candidate {
+        std::vector<double> driver;
+        std::vector<double> sigma;
+        QString sigma_target;     // iso | invariant:span | molcomp:yy | dia | para | T1norm
+        QString driver_channel;   // the channel + component
+    };
+
+    std::vector<Candidate> candidatesFor(CatalogueId id) const {
+        std::vector<Candidate> out;
+        const std::vector<double> iso = sigmaIsoSeries();
+        switch (id) {
+        case CatalogueId::FIELD_ISO:
+            out.push_back({fieldAbsSeries(), iso, QStringLiteral("iso"),
+                           QStringLiteral("field.mopac_coulomb|abs_E")});
+            break;
+        case CatalogueId::FIELD_SPAN:
+            out.push_back({fieldAbsSeries(), sigmaInvariantSeries(QStringLiteral("span")),
+                           QStringLiteral("invariant:span"), QStringLiteral("field.mopac_coulomb|abs_E")});
+            break;
+        case CatalogueId::FIELD_MOLCOMP:
+            // cross-product (field axis x/y/z) x (sigma molcomp) so a
+            // cross-component coupling (field_y -> sigma_xy etc.) is found, not
+            // only same-component pairs. Sources are summarized per sigma target.
+            for (int axis = 0; axis < 3; ++axis) {
+                const std::vector<double> fieldComp = fieldMolCompSeries(axis);
+                const QString axisName = QStringLiteral("xyz").mid(axis, 1);
+                for (int sc = 0; sc < 6; ++sc) {
+                    const auto smc = static_cast<MolComp>(sc);
+                    out.push_back({fieldComp, sigmaMolCompSeries(sigma_mol_total_, smc),
+                                   QStringLiteral("molcomp:%1").arg(QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)])),
+                                   QStringLiteral("field_mol|%1").arg(axisName)});
                 }
-                serialArray.append(serialRecord(ref));
-            };
-            appendRel(QStringLiteral("distance"), QJsonValue(QJsonValue::Null),
-                      r.distance.dense(cadence_.stepCount()));
-            appendRel(QStringLiteral("cos_theta"), QJsonValue(QJsonValue::Null),
-                      r.cos_theta.dense(cadence_.stepCount()));
-            appendRel(QStringLiteral("inv_r3"), QJsonValue(QJsonValue::Null),
-                      r.inv_r3.dense(cadence_.stepCount()));
-            appendRel(QStringLiteral("dipolar"), QJsonValue(QJsonValue::Null),
-                      r.dipolar.dense(cadence_.stepCount()));
-            appendRel(QStringLiteral("kernel_T0"), QJsonValue(QJsonValue::Null),
-                      r.kernel_T0.dense(cadence_.stepCount()));
-            appendRel(QStringLiteral("contribution"), QJsonValue(QJsonValue::Null),
-                      r.contribution.dense(cadence_.stepCount()));
-            for (int c = 0; c < 5; ++c) {
-                appendRel(QStringLiteral("kernel_T2"), QStringLiteral("T2.c%1").arg(c),
-                          r.kernel_T2.componentDense(cadence_.stepCount(), c));
             }
-            if (relIndex > 0 && relIndex % 100 == 0) {
-                qCInfo(cAnalysisObject).noquote()
-                    << "analysis_atom boost relationships | atom=" << atom_
-                    << "| relationship_index=" << relIndex
-                    << "| coupling=" << couplingArray.size()
-                    << "| serial=" << serialArray.size();
+            break;
+        case CatalogueId::FIELD_SIGNED_BOND:
+            out.push_back({signedBondFieldSeries(), iso, QStringLiteral("iso"),
+                           QStringLiteral("field.mopac_coulomb|E_parallel_XH")});
+            break;
+        case CatalogueId::EFG_ISO:
+            out.push_back({efgAbsSeries(), iso, QStringLiteral("iso"),
+                           QStringLiteral("efg|abs_T2")});
+            break;
+        case CatalogueId::EFG_MOLCOMP: {
+            // cross-product (efg molcomp) x (sigma molcomp), over BOTH EFG
+            // sources: the AIMNet2 EFG and the MOPAC-Coulomb EFG (the inventory's
+            // strongest heavy-atom |EFG| correlate, now shielding_mol). The
+            // keystone cross-component coupling efg_zz -> sigma_yy (LYS30 C) and
+            // the ASP7 CG efg_xz -> sigma_xz both live here; primary source is
+            // summarized per sigma target.
+            struct EfgSrc { const Mat3Series* s; const char* tag; };
+            const std::array<EfgSrc, 2> srcs = {{
+                {&efg_mol_aimnet2_, "efg_mol.aimnet2"},
+                {&shielding_mol_mopac_, "shielding_mol.mopac_coulomb"},
+            }};
+            for (const EfgSrc& src : srcs) {
+                for (int dc = 0; dc < 6; ++dc) {
+                    const std::vector<double> efgComp = molCompFrom(*src.s, static_cast<MolComp>(dc));
+                    const QString dcName = QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(dc)]);
+                    for (int sc = 0; sc < 6; ++sc) {
+                        const auto smc = static_cast<MolComp>(sc);
+                        out.push_back({efgComp, sigmaMolCompSeries(sigma_mol_total_, smc),
+                                       QStringLiteral("molcomp:%1").arg(QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)])),
+                                       QStringLiteral("%1|%2").arg(QString::fromLatin1(src.tag), dcName)});
+                    }
+                }
             }
-            ++relIndex;
+            break;
+        }
+        case CatalogueId::EFG_EIGEN:
+            out.push_back({efgEigenSeries(true), sigmaInvariantSeries(QStringLiteral("span")),
+                           QStringLiteral("invariant:span"), QStringLiteral("efg|V_zz_abs")});
+            out.push_back({efgEigenSeries(false), sigmaInvariantSeries(QStringLiteral("eta_H")),
+                           QStringLiteral("invariant:eta_H"), QStringLiteral("efg|eta")});
+            break;
+        case CatalogueId::RING_HEAVY:
+            out.push_back({ringSummedFrobeniusSeries(), sigmaInvariantSeries(QStringLiteral("frobenius")),
+                           QStringLiteral("invariant:frobenius"), QStringLiteral("bs_sum_T2|frobenius")});
+            break;
+        case CatalogueId::RING_H:
+            out.push_back({ringSummedFrobeniusSeries(), sigmaInvariantSeries(QStringLiteral("span")),
+                           QStringLiteral("invariant:span"), QStringLiteral("bs_sum_T2|frobenius")});
+            // also the molecular sigma33-ish: use molcomp zz as the loaded axis
+            out.push_back({ringSummedFrobeniusSeries(), sigmaMolCompSeries(sigma_mol_total_, MolComp::zz),
+                           QStringLiteral("molcomp:zz"), QStringLiteral("bs_sum_T2|frobenius")});
+            break;
+        case CatalogueId::MCCONNELL:
+            out.push_back({mcDominantFrobeniusSeries(), sigmaInvariantSeries(QStringLiteral("frobenius")),
+                           QStringLiteral("invariant:frobenius"), QStringLiteral("mc_dominant|T2norm")});
+            break;
+        case CatalogueId::SCHAR_ISO:
+            out.push_back({mopac_s_character_.values, iso, QStringLiteral("iso"),
+                           QStringLiteral("mopac.s_character")});
+            break;
+        case CatalogueId::WIBERG:
+            // WIBERG is a structured accumulator object (§2.1), not a
+            // responses[] row. buildWibergJson() evaluates its member series.
+            break;
+        case CatalogueId::BONDLEN_ISO:
+            out.push_back({disulfideOrFirstBondLengthSeries(), iso, QStringLiteral("iso"),
+                           QStringLiteral("bond.length")});
+            break;
+        case CatalogueId::DIHEDRAL:
+            // the dihedral with the most signal (chi-first), correlated as
+            // |sin| projection to sigma iso + anisotropy. Use eta^2 over wells
+            // in the response_law; the linear pair here uses cos(dihedral).
+            out.push_back({dihedralCosSeries(), iso, QStringLiteral("iso"),
+                           QStringLiteral("dihedral|cos")});
+            out.push_back({dihedralCosSeries(), sigmaInvariantSeries(QStringLiteral("aniso")),
+                           QStringLiteral("invariant:aniso"), QStringLiteral("dihedral|cos")});
+            break;
+        case CatalogueId::HBOND:
+            out.push_back({hbond_count_.values, iso, QStringLiteral("iso"),
+                           QStringLiteral("hbond.count")});
+            break;
+        case CatalogueId::STRUCT:
+            out.push_back({sasa_.values, iso, QStringLiteral("iso"),
+                           QStringLiteral("sasa")});
+            break;
+        }
+        return out;
+    }
+
+
+    bool hasFiniteSample(const ScalarSeries& s) const {
+        for (double v : s.values)
+            if (finite(v)) return true;
+        return false;
+    }
+
+    const ScalarSeries* rotamerRelevantDihedralSeries() const {
+        if (body_.run.protein && atom_ < body_.run.protein->atomCount()) {
+            const model::QtProtein& p = *body_.run.protein;
+            const model::QtAtom& a = p.atom(atom_);
+            if (validResidue(p, a.residueIndex)) {
+                const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+                const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+                if (r.aminoAcid == model::AminoAcid::MET && atomName == QStringLiteral("SD")
+                    && hasFiniteSample(chi3_))
+                    return &chi3_;
+            }
         }
 
-        out.insert(QStringLiteral("coupling"), couplingArray);
-        out.insert(QStringLiteral("serial"), serialArray);
-        qCInfo(cAnalysisObject).noquote()
-            << "analysis_atom boost complete | atom=" << atom_
-            << "| coupling=" << couplingArray.size()
-            << "| serial=" << serialArray.size();
-        last_boost_coupling_count = static_cast<std::size_t>(out.value(QStringLiteral("coupling")).toArray().size());
-        last_boost_serial_count = static_cast<std::size_t>(out.value(QStringLiteral("serial")).toArray().size());
+        // Physical side-chain priority, not "most populated": use the deepest
+        // available chi first, then backbone torsions as the fallback context.
+        for (const ScalarSeries* s : {&chi4_, &chi3_, &chi2_, &chi1_, &phi_, &psi_})
+            if (hasFiniteSample(*s)) return s;
+        return nullptr;
+    }
+
+    std::vector<double> dihedralCosSeries() const {
+        const ScalarSeries* best = rotamerRelevantDihedralSeries();
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        if (!best) return out;
+        for (std::size_t i = 0; i < best->values.size(); ++i)
+            if (finite(best->values[i])) out[i] = std::cos(best->values[i]);
         return out;
+    }
+
+    // The rotamer-relevant dihedral's circular-well series (for eta^2 in DIHEDRAL).
+    std::vector<int> rotamerRelevantDihedralWells() const {
+        const ScalarSeries* best = rotamerRelevantDihedralSeries();
+        if (!best) return std::vector<int>(cadence_.stepCount(), -1);
+        return circularWells(best->values);
+    }
+
+    std::vector<double> partnerWibergSeries() const {
+        // the partner-bond Wiberg order with the most present frames.
+        const ScalarSeries* best = nullptr;
+        int bestN = 0;
+        for (const auto& item : bond_series_) {
+            if (static_bonds_.count(item.first) == 0) continue;
+            int n = 0;
+            for (double v : item.second.values) if (finite(v)) ++n;
+            if (n > bestN) { bestN = n; best = &item.second; }
+        }
+        return best ? best->values : std::vector<double>(cadence_.stepCount(), kNaN);
+    }
+
+    std::vector<double> disulfideOrFirstBondLengthSeries() const {
+        // prefer a disulfide S-S length; else the first static bond length.
+        const ScalarSeries* chosen = nullptr;
+        for (const auto& item : static_bonds_) {
+            if (item.second.category == model::BondCategory::Disulfide) {
+                const auto it = bond_length_series_.find(item.first);
+                if (it != bond_length_series_.end()) { chosen = &it->second; break; }
+            }
+        }
+        if (!chosen && !bond_length_series_.empty()) chosen = &bond_length_series_.begin()->second;
+        return chosen ? chosen->values : std::vector<double>(cadence_.stepCount(), kNaN);
+    }
+
+    // The per-frame contacted class (dominant): the class of the nearest /
+    // most-frequent contacted residue. Folded to ONE value per atom for the
+    // context key (most atoms NONE). The individual residues ride in a
+    // companion table (§2.4), not the context.
+    ContactedClass dominantContactedClass() const {
+        std::map<ContactedClass, int> counts;
+        for (const auto& r : contacted_residues_) {
+            const ContactedClass c = classOf(static_cast<model::AminoAcid>(r.second));
+            if (c != ContactedClass::NONE) ++counts[c];
+        }
+        ContactedClass best = ContactedClass::NONE;
+        int bestN = 0;
+        for (const auto& kv : counts)
+            if (kv.second > bestN) { bestN = kv.second; best = kv.first; }
+        return best;
+    }
+
+    // One characterized sigma target inside a catalogue channel. A channel may
+    // summarize sources to a primary, but it carries every physically-relevant
+    // sigma target in response.targets[].
+    struct EvaluatedTarget {
+        QString sigma_target;
+        QString driver_channel;
+        FrameTag frame;
+        // response_law
+        double slope = kNaN;
+        double intercept = kNaN;
+        double r = kNaN;
+        double null_z = kNaN;
+        double xi = kNaN;
+        double pchip_mid = kNaN;
+        double leverage = kNaN;
+        QJsonObject coverage;
+        // gauntlet
+        bool delta_survives = false;
+        double seg_min_r = kNaN;
+        double circshift_p = kNaN;
+        // lead_lag
+        int best_lag = 0;
+        double lead_r = kNaN;
+        // dihedral eta^2 (only for DIHEDRAL)
+        double eta_squared = kNaN;
+        std::vector<double> driver_series;
+        std::vector<double> sigma_series;
+    };
+
+    struct EvaluatedResponse {
+        CatalogueId id;
+        QString driver_channel;
+        FrameTag frame;
+        std::vector<EvaluatedTarget> targets;
+        QStringList considerations;
+    };
+
+    FrameTag frameForTarget(CatalogueId id, const QString& sigmaTarget) const {
+        if (sigmaTarget.startsWith(QStringLiteral("molcomp:"))) return FrameTag::Molecular;
+        if (sigmaTarget.startsWith(QStringLiteral("invariant:"))) return FrameTag::Invariant;
+        return catalogueRow(id).frame;
+    }
+
+    double targetCharacterizationScore(CatalogueId id, const EvaluatedTarget& t) const {
+        if (id == CatalogueId::DIHEDRAL
+            && t.sigma_target == QStringLiteral("invariant:aniso")
+            && finite(t.eta_squared))
+            return t.eta_squared;
+        return finite(t.r) ? std::abs(t.r) : -1.0;
+    }
+
+    const EvaluatedTarget* primaryTarget(const EvaluatedResponse& e) const {
+        const EvaluatedTarget* best = nullptr;
+        double bestScore = -1.0;
+        for (const EvaluatedTarget& t : e.targets) {
+            const double s = targetCharacterizationScore(e.id, t);
+            if (s > bestScore) {
+                bestScore = s;
+                best = &t;
+            }
+        }
+        return best;
+    }
+
+    EvaluatedTarget nullTargetFor(const Candidate& c, CatalogueId id) const {
+        EvaluatedTarget t;
+        t.sigma_target = c.sigma_target;
+        t.driver_channel = c.driver_channel;
+        t.frame = frameForTarget(id, c.sigma_target);
+        t.driver_series = c.driver;
+        t.sigma_series = c.sigma;
+        return t;
+    }
+
+    std::optional<EvaluatedTarget> evaluateCandidateTarget(CatalogueId id,
+                                                           const Candidate& c,
+                                                           const std::vector<std::size_t>& rows) const {
+        std::vector<double> x;
+        std::vector<double> y;
+        pairedOnSigmaRows(c.sigma, c.driver, rows, x, y);
+        if (x.size() < 3) return std::nullopt;
+
+        EvaluatedTarget t;
+        t.sigma_target = c.sigma_target;
+        t.driver_channel = c.driver_channel;
+        t.frame = frameForTarget(id, c.sigma_target);
+        t.driver_series = c.driver;
+        t.sigma_series = c.sigma;
+        const OlsResult fit = ols(x, y);
+        t.slope = fit.slope;
+        t.intercept = fit.intercept;
+        t.r = pearsonR(x, y);
+        const auto [nm, nsd, nz, cp] = nullShiftStats(x, y, fit.slope);
+        (void)nm; (void)nsd;
+        t.null_z = nz;
+        t.xi = chatterjeeXi(x, y);
+        t.pchip_mid = pchipMidpoint(x, y);
+        t.leverage = leverageTop1(x, y);
+        t.coverage = coverageJson(x);
+        t.delta_survives = deltaSurvives(x, y, t.r);
+        t.seg_min_r = segMinR(x, y);
+        t.circshift_p = cp;
+        const LeadLagResult ll = leadLag(x, y);
+        t.best_lag = ll.best_lag;
+        t.lead_r = ll.lead_r;
+        if (id == CatalogueId::DIHEDRAL && c.sigma_target == QStringLiteral("invariant:aniso"))
+            t.eta_squared = etaSquaredByWell(c.sigma, rotamerRelevantDihedralWells(), rows);
+        return t;
+    }
+
+    std::optional<EvaluatedResponse> evaluateCatalogueRowFromCandidates(
+            CatalogueId id,
+            const std::vector<Candidate>& cands,
+            const std::vector<std::size_t>& rows) const {
+        if (cands.empty()) return std::nullopt;
+
+        EvaluatedResponse e;
+        e.id = id;
+        e.frame = catalogueRow(id).frame;
+
+        std::vector<QString> order;
+        std::map<QString, Candidate> firstCandidate;
+        std::map<QString, EvaluatedTarget> bestByTarget;
+        std::map<QString, QStringList> sourcesByTarget;
+
+        for (const Candidate& c : cands) {
+            if (!firstCandidate.count(c.sigma_target)) {
+                firstCandidate.emplace(c.sigma_target, c);
+                order.push_back(c.sigma_target);
+            }
+            if (!sourcesByTarget[c.sigma_target].contains(c.driver_channel))
+                sourcesByTarget[c.sigma_target].append(c.driver_channel);
+
+            const auto t = evaluateCandidateTarget(id, c, rows);
+            if (!t) continue;
+            const auto it = bestByTarget.find(c.sigma_target);
+            if (it == bestByTarget.end()
+                || targetCharacterizationScore(id, *t) > targetCharacterizationScore(id, it->second))
+                bestByTarget[c.sigma_target] = *t;
+        }
+
+        for (const QString& targetName : order) {
+            const auto hit = bestByTarget.find(targetName);
+            if (hit != bestByTarget.end()) {
+                e.targets.push_back(hit->second);
+            } else {
+                e.targets.push_back(nullTargetFor(firstCandidate.at(targetName), id));
+            }
+        }
+
+        const EvaluatedTarget* primary = primaryTarget(e);
+        if (primary) {
+            e.driver_channel = primary->driver_channel;
+        } else {
+            e.driver_channel = QString::fromLatin1(catalogueRow(id).driver_family);
+        }
+
+        for (const EvaluatedTarget& t : e.targets) {
+            const QStringList srcs = sourcesByTarget[t.sigma_target];
+            for (const QString& src : srcs) {
+                if (src == t.driver_channel) continue;
+                e.considerations.append(QStringLiteral("candidate_source[%1]: %2")
+                                            .arg(t.sigma_target, src));
+            }
+        }
+
+        return e;
+    }
+
+    std::optional<EvaluatedResponse> evaluateCatalogueRow(CatalogueId id,
+                                                          const std::vector<std::size_t>& rows) const {
+        return evaluateCatalogueRowFromCandidates(id, candidatesFor(id), rows);
+    }
+
+    std::optional<int32_t> residueIndexForNumber(int residueNumberValue,
+                                                 model::AminoAcid aa = model::AminoAcid::Unknown) const {
+        if (!body_.run.protein) return std::nullopt;
+        const model::QtProtein& p = *body_.run.protein;
+        for (std::size_t ri = 0; ri < p.residueCount(); ++ri) {
+            const model::QtResidue& r = p.residue(ri);
+            if (r.address.residueNumber != residueNumberValue) continue;
+            if (aa != model::AminoAcid::Unknown && r.aminoAcid != aa) continue;
+            return static_cast<int32_t>(ri);
+        }
+        return std::nullopt;
+    }
+
+    // The salt-bridge partner = the NEAREST acidic contact, chosen by geometry
+    // (smallest mean donor↔carboxylate-O distance) from the atom's own contact
+    // set. No residue is pinned — the selection carries no 1P9J knowledge, so the
+    // pass is protein-agnostic (feed any protein, it finds that protein's partner).
+    std::optional<int32_t> acidicContactResidueIndex() const {
+        std::optional<int32_t> best;
+        double bestMean = 0.0;
+        for (const auto& r : contacted_residues_) {
+            const auto aa = static_cast<model::AminoAcid>(r.second);
+            if (classOf(aa) != ContactedClass::ACIDIC) continue;
+            const auto ri = residueIndexForNumber(r.first, aa);
+            if (!ri) continue;
+            const std::vector<double> d = saltBridgeDistanceSeriesFor(*ri);
+            double sum = 0.0;
+            std::size_t n = 0;
+            for (double v : d) if (finite(v)) { sum += v; ++n; }
+            if (n == 0) continue;
+            const double mean = sum / static_cast<double>(n);
+            if (!best || mean < bestMean) { bestMean = mean; best = ri; }
+        }
+        return best;
+    }
+
+    std::vector<int32_t> guanidiniumDonorAtoms(int32_t residueIndex) const {
+        std::vector<int32_t> atoms;
+        const std::array<QString, 3> names = {
+            QStringLiteral("NH1"), QStringLiteral("NH2"), QStringLiteral("NE")
+        };
+        for (const QString& name : names) {
+            if (const auto ai = atomByResidueName(residueIndex, name)) atoms.push_back(*ai);
+        }
+        return atoms;
+    }
+
+    std::vector<int32_t> acidicSidechainAtoms(int32_t residueIndex) const {
+        std::vector<int32_t> atoms;
+        if (!body_.run.protein || !validResidue(*body_.run.protein, residueIndex)) return atoms;
+        const model::QtResidue& r =
+            body_.run.protein->residue(static_cast<std::size_t>(residueIndex));
+        const std::array<QString, 2> asp = {QStringLiteral("OD1"), QStringLiteral("OD2")};
+        const std::array<QString, 2> glu = {QStringLiteral("OE1"), QStringLiteral("OE2")};
+        const auto& names = r.aminoAcid == model::AminoAcid::GLU ? glu : asp;
+        for (const QString& name : names) {
+            if (const auto ai = atomByResidueName(residueIndex, name)) atoms.push_back(*ai);
+        }
+        if (!atoms.empty()) return atoms;
+        for (int32_t ai : r.atomIndices) {
+            if (!validAtomIndex(ai)) continue;
+            if (body_.run.protein->atom(static_cast<std::size_t>(ai)).element != model::Element::H)
+                atoms.push_back(ai);
+        }
+        return atoms;
+    }
+
+    // Per-step min donor↔carboxylate-O distance to a GIVEN acidic residue. The
+    // donor is the atom's guanidinium N's (NH1/NH2/NE) for an ARG, else the atom
+    // itself. Parameterised by the acidic residue so the partner selection can
+    // score every acidic candidate — no residue pinned.
+    std::vector<double> saltBridgeDistanceSeriesFor(int32_t acidRi) const {
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        const std::vector<int32_t> acidAtoms = acidicSidechainAtoms(acidRi);
+        if (acidAtoms.empty()) return out;
+        std::vector<int32_t> donorAtoms;
+        if (body_.run.protein && atom_ < body_.run.protein->atomCount()) {
+            const model::QtProtein& p = *body_.run.protein;
+            const model::QtAtom& a = p.atom(atom_);
+            if (validResidue(p, a.residueIndex)) {
+                const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+                if (r.aminoAcid == model::AminoAcid::ARG)
+                    donorAtoms = guanidiniumDonorAtoms(a.residueIndex);
+            }
+        }
+        if (donorAtoms.empty()) donorAtoms.push_back(static_cast<int32_t>(atom_));
+        for (std::size_t step = 0; step < cadence_.stepCount(); ++step) {
+            double minR = kNaN;
+            for (int32_t donor : donorAtoms) {
+                const auto dpos = coordAt(donor, step);
+                if (!dpos) continue;
+                for (int32_t ai : acidAtoms) {
+                    const auto apos = coordAt(ai, step);
+                    if (!apos) continue;
+                    const double r = (*dpos - *apos).norm();
+                    if (!finite(minR) || r < minR) minR = r;
+                }
+            }
+            if (finite(minR)) out[step] = minR;
+        }
+        return out;
+    }
+
+    std::vector<double> saltBridgeDistanceSeries() const {
+        const auto acidRi = acidicContactResidueIndex();
+        if (!acidRi) return std::vector<double>(cadence_.stepCount(), kNaN);
+        return saltBridgeDistanceSeriesFor(*acidRi);
+    }
+
+    bool saltBridgeMediationApplies() const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return false;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = body_.run.protein->atom(atom_);
+        return a.element == model::Element::C
+               && validResidue(p, a.residueIndex)
+               && p.residue(static_cast<std::size_t>(a.residueIndex)).aminoAcid == model::AminoAcid::ARG
+               && p.atomLabel(atom_, model::NamingConvention::Iupac) == QStringLiteral("CZ")
+               && acidicContactResidueIndex().has_value();
+    }
+
+    QJsonArray mediationChainsJson(const std::vector<EvaluatedResponse>& characterized,
+                                   const std::vector<std::size_t>& rows) const {
+        QJsonArray out;
+        if (!saltBridgeMediationApplies()) return out;
+
+        const EvaluatedResponse* chosen = nullptr;
+        const EvaluatedTarget* target = nullptr;
+        const std::array<CatalogueId, 4> preference = {{
+            CatalogueId::EFG_MOLCOMP,
+            CatalogueId::EFG_ISO,
+            CatalogueId::FIELD_MOLCOMP,
+            CatalogueId::FIELD_ISO,
+        }};
+        for (CatalogueId id : preference) {
+            for (const EvaluatedResponse& e : characterized) {
+                if (e.id != id) continue;
+                const EvaluatedTarget* primary = primaryTarget(e);
+                if (!primary) continue;
+                chosen = &e;
+                target = primary;
+                break;
+            }
+            if (chosen && target) break;
+        }
+        if (!chosen || !target) return out;
+
+        std::vector<double> sigma;
+        std::vector<double> distance;
+        std::vector<double> mediator;
+        const std::vector<double> distanceSeries = saltBridgeDistanceSeries();
+        for (std::size_t row : rows) {
+            if (row >= target->sigma_series.size()
+                || row >= target->driver_series.size()
+                || row >= distanceSeries.size())
+                continue;
+            const double sig = target->sigma_series[row];
+            const double med = target->driver_series[row];
+            const double dist = distanceSeries[row];
+            if (!finite(sig) || !finite(med) || !finite(dist)) continue;
+            sigma.push_back(sig);
+            mediator.push_back(med);
+            distance.push_back(dist);
+        }
+        if (sigma.size() < kNullBlock * 2) return out;
+
+        QJsonObject chain;
+        chain.insert(QStringLiteral("driver"), QStringLiteral("salt_bridge.distance_A"));
+        chain.insert(QStringLiteral("driver_geometry"),
+                     QStringLiteral("ARG guanidinium N(NH1/NH2/NE) <-> acidic carboxylate O(OD/OE)"));
+        chain.insert(QStringLiteral("mediator"), target->driver_channel);
+        chain.insert(QStringLiteral("catalogue_id"),
+                     QString::fromLatin1(catalogueRow(chosen->id).id_name));
+        chain.insert(QStringLiteral("sigma_target"), target->sigma_target);
+        chain.insert(QStringLiteral("n"), static_cast<int>(sigma.size()));
+
+        QJsonObject links;
+        links.insert(QStringLiteral("dist_to_field_r"), jd(pearsonR(distance, mediator)));
+        links.insert(QStringLiteral("field_to_sigma_r"), jd(pearsonR(mediator, sigma)));
+        links.insert(QStringLiteral("dist_to_sigma_r"), jd(pearsonR(distance, sigma)));
+        chain.insert(QStringLiteral("links"), links);
+        chain.insert(QStringLiteral("partial_r"), jd(partialR(sigma, distance, mediator)));
+        const auto [lo, hi] = blockBootstrapPartialR(sigma, distance, mediator);
+        chain.insert(QStringLiteral("bootstrap_lo"), jd(lo));
+        chain.insert(QStringLiteral("bootstrap_hi"), jd(hi));
+        out.append(chain);
+        return out;
+    }
+
+    std::vector<Candidate> wibergTensorCandidates(const QString& channel,
+                                                  const std::vector<double>& driver) const {
+        std::vector<Candidate> cands;
+        cands.push_back({driver, sigmaIsoSeries(), QStringLiteral("iso"), channel});
+        cands.push_back({driver, sigmaInvariantSeries(QStringLiteral("aniso")),
+                         QStringLiteral("invariant:aniso"), channel});
+        cands.push_back({driver, sigmaInvariantSeries(QStringLiteral("span")),
+                         QStringLiteral("invariant:span"), channel});
+        for (int sc = 0; sc < 6; ++sc) {
+            const auto smc = static_cast<MolComp>(sc);
+            cands.push_back({driver, sigmaMolCompSeries(sigma_mol_total_, smc),
+                             QStringLiteral("molcomp:%1").arg(QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)])),
+                             channel});
+        }
+        return cands;
+    }
+
+    std::optional<EvaluatedResponse> evaluateWibergMember(const QString& channel,
+                                                          const std::vector<double>& driver,
+                                                          const std::vector<std::size_t>& rows) const {
+        return evaluateCatalogueRowFromCandidates(CatalogueId::WIBERG,
+                                                  wibergTensorCandidates(channel, driver),
+                                                  rows);
+    }
+
+    QJsonObject scalarSummaryJson(const std::vector<double>& values) const {
+        std::vector<double> finiteValues;
+        finiteValues.reserve(values.size());
+        for (double v : values)
+            if (finite(v)) finiteValues.push_back(v);
+        QJsonObject o;
+        o.insert(QStringLiteral("n"), static_cast<int>(finiteValues.size()));
+        if (finiteValues.empty()) {
+            o.insert(QStringLiteral("mean"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("sd"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("min"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("max"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("skewness"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("excess_kurtosis"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("bimodality"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("constant"), false);
+            return o;
+        }
+        const auto [mn, mx] = std::minmax_element(finiteValues.begin(), finiteValues.end());
+        const double var = finiteValues.size() > 1 ? bmstats::variance(finiteValues) : 0.0;
+        const double sd = std::sqrt(var);
+        o.insert(QStringLiteral("mean"), jd(bmstats::mean(finiteValues)));
+        o.insert(QStringLiteral("sd"), jd(sd));
+        o.insert(QStringLiteral("min"), jd(*mn));
+        o.insert(QStringLiteral("max"), jd(*mx));
+        // A (near-)constant series has no shape, and the flatness is itself the signal
+        // (a static partner / locked geometry). boost special-cases EXACTLY zero variance
+        // ("a constant dataset has no skewness" -> 0); near-constant values (sd at the
+        // floating-point-noise floor relative to magnitude) would otherwise yield noise
+        // skewness/kurtosis -- so detect them here, mark `constant`, and null the shape.
+        constexpr double kRelSpreadFloor = 1e-9;  // numerical-validity floor, NOT a data cutoff
+        const double scale = std::max({std::abs(*mn), std::abs(*mx), 1e-300});
+        const bool hasSpread = finiteValues.size() >= 2 && sd > kRelSpreadFloor * scale;
+        o.insert(QStringLiteral("constant"), !hasSpread);
+        // Shape-signal for pass-1 shape detection (priors to confirm, never imposed):
+        // skewness, excess kurtosis, and Sarle's bimodality coefficient
+        // BC = (skew^2 + 1) / kurtosis (raw 4th moment = excess + 3).
+        QJsonValue skewVal(QJsonValue::Null), exKurtVal(QJsonValue::Null), bcVal(QJsonValue::Null);
+        if (hasSpread && finiteValues.size() >= 3) {
+            try {
+                const double skew = bmstats::skewness(finiteValues);
+                const double kurt = bmstats::kurtosis(finiteValues);
+                skewVal = jd(skew);
+                exKurtVal = jd(kurt - 3.0);
+                if (kurt > 0.0) bcVal = jd((skew * skew + 1.0) / kurt);
+            } catch (...) {}
+        }
+        o.insert(QStringLiteral("skewness"), skewVal);
+        o.insert(QStringLiteral("excess_kurtosis"), exKurtVal);
+        o.insert(QStringLiteral("bimodality"), bcVal);
+        return o;
+    }
+
+    QJsonObject wibergResponseOrNull(const std::optional<EvaluatedResponse>& e) const {
+        if (e) return responseJson(*e);
+        QJsonObject o;
+        o.insert(QStringLiteral("catalogue_id"), QStringLiteral("WIBERG"));
+        QJsonArray considerations;
+        considerations.append(QStringLiteral("ZERO_VARIANCE_OR_INSUFFICIENT_SUPPORT"));
+        o.insert(QStringLiteral("considerations"), considerations);
+        o.insert(QStringLiteral("targets"), QJsonArray{});
+        return o;
+    }
+
+    std::vector<double> wibergSeriesForBond(std::uint64_t key) const {
+        const auto it = bond_series_.find(key);
+        if (it != bond_series_.end()) return it->second.values;
+        const auto p = pairFromKey(key);
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        for (std::size_t step = 0; step < cadence_.stepCount(); ++step) {
+            const auto v = context_.mopacWiberg(step, p.first, p.second);
+            if (v && finite(*v)) out[step] = *v;
+        }
+        return out;
+    }
+
+    double finiteMeanOrNan(const std::vector<double>& values) const {
+        double sum = 0.0;
+        int n = 0;
+        for (double v : values) {
+            if (!finite(v)) continue;
+            sum += v;
+            ++n;
+        }
+        return n > 0 ? sum / static_cast<double>(n) : kNaN;
+    }
+
+    QJsonObject buildWibergJson() const {
+        QJsonObject w;
+        w.insert(QStringLiteral("catalogue_id"), QStringLiteral("WIBERG"));
+        w.insert(QStringLiteral("slot_kind"), QStringLiteral("STRUCTURED"));
+        const std::vector<std::size_t> rows = cadence_.sigmaRows();
+        if (!hasMappedBond()) {
+            w.insert(QStringLiteral("present"), false);
+            return w;
+        }
+        w.insert(QStringLiteral("present"), true);
+
+        const auto valencyScore =
+            evaluateWibergMember(QStringLiteral("mopac.valency"), mopac_valency_.values, rows);
+        QJsonObject valency;
+        valency.insert(QStringLiteral("order_series_summary"), scalarSummaryJson(mopac_valency_.values));
+        valency.insert(QStringLiteral("response"), wibergResponseOrNull(valencyScore));
+        w.insert(QStringLiteral("valency"), valency);
+
+        std::uint64_t dominantKey = 0;
+        double dominantMean = -std::numeric_limits<double>::infinity();
+        for (const auto& item : bond_series_) {
+            if (static_bonds_.count(item.first) == 0) continue;
+            const double mean = finiteMeanOrNan(item.second.values);
+            if (finite(mean) && mean > dominantMean) {
+                dominantMean = mean;
+                dominantKey = item.first;
+            }
+        }
+
+        QJsonArray own;
+        std::vector<std::pair<QString, std::vector<double>>> ownSeries;
+        for (const auto& item : bond_series_) {
+            const auto sit = static_bonds_.find(item.first);
+            if (sit == static_bonds_.end()) continue;
+            const auto p = pairFromKey(item.first);
+            const std::size_t partner = p.first == atom_ ? p.second : p.first;
+            const QString channel = QStringLiteral("mopac_wiberg_order|atom%1").arg(partner);
+            const auto score = evaluateWibergMember(channel, item.second.values, rows);
+            QJsonObject o;
+            o.insert(QStringLiteral("partner_atom_index"), static_cast<int>(partner));
+            if (partner < body_.run.protein->atomCount())
+                o.insert(QStringLiteral("partner_element"),
+                         elementName(body_.run.protein->atom(partner).element));
+            o.insert(QStringLiteral("bond_type"), bondOrderName(sit->second.order));
+            o.insert(QStringLiteral("bond_category"), bondCategoryName(sit->second.category));
+            o.insert(QStringLiteral("order_summary"), scalarSummaryJson(item.second.values));
+            o.insert(QStringLiteral("is_dominant"), item.first == dominantKey);
+            o.insert(QStringLiteral("response"), wibergResponseOrNull(score));
+            own.append(o);
+            ownSeries.push_back({channel, item.second.values});
+        }
+        w.insert(QStringLiteral("own_bonds"), own);
+
+        QJsonArray neighborhood;
+        if (body_.run.protein) {
+            const model::QtTopology& topo = body_.run.protein->topology();
+            std::set<std::uint64_t> seen;
+            for (const auto& item : static_bonds_) {
+                const std::size_t other = item.second.other;
+                if (other >= body_.run.protein->atomCount()) continue;
+                for (int32_t bi : topo.bondIndicesForAtom(other)) {
+                    if (bi < 0 || static_cast<std::size_t>(bi) >= topo.bondCount()) continue;
+                    const model::QtBond& b = topo.bondAt(static_cast<std::size_t>(bi));
+                    if (b.atomIndexA < 0 || b.atomIndexB < 0) continue;
+                    const std::size_t a = static_cast<std::size_t>(b.atomIndexA);
+                    const std::size_t bb = static_cast<std::size_t>(b.atomIndexB);
+                    if (a == atom_ || bb == atom_) continue;
+                    const std::uint64_t key = pairKey(a, bb);
+                    if (!seen.insert(key).second) continue;
+                    const std::vector<double> series = wibergSeriesForBond(key);
+                    const QString channel =
+                        QStringLiteral("mopac_wiberg_neighbor|atom%1-atom%2").arg(a).arg(bb);
+                    const auto score = evaluateWibergMember(channel, series, rows);
+                    QJsonObject o;
+                    o.insert(QStringLiteral("resonance_partner_bond"),
+                             QStringLiteral("atom%1-atom%2").arg(a).arg(bb));
+                    o.insert(QStringLiteral("reach"), QStringLiteral("hops<=1"));
+                    o.insert(QStringLiteral("order_summary"), scalarSummaryJson(series));
+                    o.insert(QStringLiteral("response"), wibergResponseOrNull(score));
+                    neighborhood.append(o);
+                }
+            }
+        }
+        w.insert(QStringLiteral("neighborhood"), neighborhood);
+
+        QJsonObject collinearity;
+        double bestAbs = -1.0;
+        QString bestPair;
+        double bestR = kNaN;
+        for (std::size_t i = 0; i < ownSeries.size(); ++i) {
+            for (std::size_t j = i + 1; j < ownSeries.size(); ++j) {
+                std::vector<double> x;
+                std::vector<double> y;
+                pairedOnSigmaRows(ownSeries[i].second, ownSeries[j].second, rows, x, y);
+                const double r = pearsonR(x, y);
+                if (finite(r) && std::abs(r) > bestAbs) {
+                    bestAbs = std::abs(r);
+                    bestR = r;
+                    bestPair = QStringLiteral("%1 <-> %2").arg(ownSeries[i].first, ownSeries[j].first);
+                }
+            }
+        }
+        collinearity.insert(QStringLiteral("best_pair"), bestPair);
+        collinearity.insert(QStringLiteral("r"), jd(bestR));
+        collinearity.insert(QStringLiteral("reported_not_precut"), true);
+        w.insert(QStringLiteral("collinearity"), collinearity);
+        return w;
+    }
+
+    QJsonObject targetJson(CatalogueId id, const EvaluatedTarget& t) const {
+        QJsonObject o;
+        o.insert(QStringLiteral("sigma_target"), t.sigma_target);
+        o.insert(QStringLiteral("frame"), frameTagName(t.frame));
+        o.insert(QStringLiteral("driver"), t.driver_channel);
+        QJsonObject law;
+        law.insert(QStringLiteral("slope"), jd(t.slope));
+        law.insert(QStringLiteral("intercept"), jd(t.intercept));
+        law.insert(QStringLiteral("r"), jd(t.r));
+        law.insert(QStringLiteral("null_z"), jd(t.null_z));
+        law.insert(QStringLiteral("xi"), jd(t.xi));
+        law.insert(QStringLiteral("pchip_mid"), jd(t.pchip_mid));
+        law.insert(QStringLiteral("leverage"), jd(t.leverage));
+        law.insert(QStringLiteral("coverage"), t.coverage);
+        o.insert(QStringLiteral("response_law"), law);
+        QJsonObject g;
+        g.insert(QStringLiteral("delta_survives"), t.delta_survives);
+        g.insert(QStringLiteral("seg_min_r"), jd(t.seg_min_r));
+        g.insert(QStringLiteral("circshift_p"), jd(t.circshift_p));
+        o.insert(QStringLiteral("gauntlet"), g);
+        if (id == CatalogueId::DIHEDRAL && finite(t.eta_squared)) {
+            QJsonObject change;
+            change.insert(QStringLiteral("eta_sq"), jd(t.eta_squared));
+            change.insert(QStringLiteral("change_point_ratio"), QJsonValue(QJsonValue::Null));
+            change.insert(QStringLiteral("change_point_p"), QJsonValue(QJsonValue::Null));
+            o.insert(QStringLiteral("change_metrics"), change);
+        } else {
+            o.insert(QStringLiteral("change_metrics"), QJsonValue(QJsonValue::Null));
+        }
+        return o;
+    }
+
+    QJsonObject responseJson(const EvaluatedResponse& e) const {
+        QJsonObject o;
+        o.insert(QStringLiteral("catalogue_id"), QString::fromLatin1(catalogueRow(e.id).id_name));
+        o.insert(QStringLiteral("driver"), QStringLiteral("%1 [%2]")
+                                               .arg(e.driver_channel, QString::fromLatin1(catalogueRow(e.id).driver_family)));
+        o.insert(QStringLiteral("frame"), frameTagName(e.frame));
+        QJsonArray targets;
+        for (const EvaluatedTarget& t : e.targets) targets.append(targetJson(e.id, t));
+        o.insert(QStringLiteral("targets"), targets);
+        const EvaluatedTarget* primary = primaryTarget(e);
+        QJsonObject ll;
+        ll.insert(QStringLiteral("best_lag"), primary ? primary->best_lag : 0);
+        ll.insert(QStringLiteral("lead_r"), primary ? jd(primary->lead_r) : QJsonValue(QJsonValue::Null));
+        o.insert(QStringLiteral("lead_lag"), ll);
+        QJsonArray considerations;
+        for (const QString& note : e.considerations) considerations.append(note);
+        o.insert(QStringLiteral("considerations"), considerations);
+        return o;
+    }
+
+    // Build a single context entry's bounded responses[] plus its within-atom chains.
+    QJsonObject buildContextJson(int hybOrd,
+                                 const QString& contactedCategory,
+                                 const QString& graphStratum,
+                                 const std::vector<std::size_t>& rows,
+                                 std::size_t& characterizedOut,
+                                 std::set<QString>& serialDriversOut,
+                                 std::set<QString>& serialSigmaOut,
+                                 bool forceComputed) const {
+        QJsonObject ctx;
+        QJsonObject key;
+        key.insert(QStringLiteral("hybridisation"),
+                   hybridName(static_cast<model::Hybridisation>(hybOrd)));
+        key.insert(QStringLiteral("hybridisation_ord"), hybOrd);
+        const model::QtAtom& a = body_.run.protein->atom(atom_);
+        key.insert(QStringLiteral("element"), elementName(a.element));
+        key.insert(QStringLiteral("contacted_category"), contactedCategory);
+        key.insert(QStringLiteral("graph_stratum"), graphStratum);
+        key.insert(QStringLiteral("n_frames_in_context"), static_cast<int>(rows.size()));
+        ctx.insert(QStringLiteral("context_key"), key);
+
+        const bool computed = forceComputed || rows.size() >= static_cast<std::size_t>(kMinContextFrames);
+        ctx.insert(QStringLiteral("context_status"),
+                   computed ? QStringLiteral("COMPUTED") : QStringLiteral("DEGRADED_SPARSE"));
+        if (!computed) {
+            QJsonArray considerations;
+            considerations.append(QStringLiteral("DEGRADED_SPARSE: n_frames_in_context < kMinContextFrames"));
+            ctx.insert(QStringLiteral("considerations"), considerations);
+            ctx.insert(QStringLiteral("responses"), QJsonArray{});
+            QJsonObject chains;
+            chains.insert(QStringLiteral("collinearity"), QJsonArray{});
+            chains.insert(QStringLiteral("mediations"), QJsonArray{});
+            ctx.insert(QStringLiteral("chains"), chains);
+            characterizedOut = 0;
+            return ctx;
+        }
+
+        std::vector<EvaluatedResponse> characterized;
+        int applicableChannels = 0;
+        for (const CatalogueRow& row : kCharacterizationCatalogue) {
+            if (row.id == CatalogueId::WIBERG) continue;  // structured object slot, not responses[].
+            if (!membershipHolds(row.id)) continue;
+            ++applicableChannels;
+            auto e = evaluateCatalogueRow(row.id, rows);
+            if (!e) {
+                // Membership held but no computable candidate: recorded as a flat
+                // characterization, not dropped.
+                EvaluatedResponse miss;
+                miss.id = row.id;
+                miss.frame = row.frame;
+                miss.driver_channel = QString::fromLatin1(row.driver_family);
+                miss.considerations.append(QStringLiteral("ZERO_VARIANCE_OR_INSUFFICIENT_SUPPORT"));
+                characterized.push_back(miss);
+                continue;
+            }
+            characterized.push_back(*e);
+        }
+        const int nOverCap =
+            std::max(0, static_cast<int>(characterized.size()) - applicableChannels);
+        QJsonArray responses;
+        for (const EvaluatedResponse& e : characterized) {
+            responses.append(responseJson(e));
+            for (const EvaluatedTarget& t : e.targets) serialSigmaOut.insert(t.sigma_target);
+            serialDriversOut.insert(e.driver_channel);
+        }
+        ctx.insert(QStringLiteral("responses"), responses);
+        ctx.insert(QStringLiteral("n_over_cap"), nOverCap);
+        characterizedOut = characterized.size();
+
+        // considerations[] -- notes that ride with the characterization.
+        QJsonArray considerations;
+        considerations.append(QStringLiteral("gauge(dia/para): GIAO total is gauge-invariant; dia/para is context colour only"));
+        ctx.insert(QStringLiteral("considerations"), considerations);
+
+        QJsonObject chains;
+        chains.insert(QStringLiteral("collinearity"), driverCollinearityChains(characterized, rows));
+        chains.insert(QStringLiteral("mediations"), mediationChainsJson(characterized, rows));
+        ctx.insert(QStringLiteral("chains"), chains);
+        return ctx;
+    }
+
+    QJsonArray driverCollinearityChains(const std::vector<EvaluatedResponse>& characterized,
+                                        const std::vector<std::size_t>& rows) const {
+        auto hasAny = [&](std::initializer_list<CatalogueId> ids) {
+            for (const EvaluatedResponse& e : characterized)
+                for (CatalogueId id : ids)
+                    if (e.id == id) return true;
+            return false;
+        };
+        const bool hasField = hasAny({CatalogueId::FIELD_ISO,
+                                      CatalogueId::FIELD_SPAN,
+                                      CatalogueId::FIELD_MOLCOMP});
+        const bool hasEfg = hasAny({CatalogueId::EFG_ISO,
+                                    CatalogueId::EFG_MOLCOMP,
+                                    CatalogueId::EFG_EIGEN});
+        QJsonArray out;
+        if (!hasField || !hasEfg) return out;
+
+        std::vector<double> x;
+        std::vector<double> y;
+        pairedOnSigmaRows(fieldAbsSeries(), efgAbsSeries(), rows, x, y);
+        if (x.size() < 4) return out;
+        const double r = pearsonR(x, y);
+        if (finite(r) && std::abs(r) > kCollinearThreshold) {
+            QJsonObject o;
+            o.insert(QStringLiteral("driver_a"), QStringLiteral("field.mopac_coulomb|abs_E"));
+            o.insert(QStringLiteral("driver_b"), QStringLiteral("efg|abs_T2"));
+            o.insert(QStringLiteral("r"), jd(r));
+            out.append(o);
+        }
+        return out;
+    }
+
+    QJsonObject buildAccumulatorJson() const {
+        QJsonObject acc;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+
+        // atom_key
+        QJsonObject atomKey;
+        atomKey.insert(QStringLiteral("uid"), uid(QStringLiteral("atom"), atom_));
+        atomKey.insert(QStringLiteral("atom_index"), static_cast<int>(atom_));
+        atomKey.insert(QStringLiteral("atom_name"), p.atomLabel(atom_, model::NamingConvention::Iupac));
+        atomKey.insert(QStringLiteral("element"), elementName(a.element));
+        atomKey.insert(QStringLiteral("residue_index"), a.residueIndex);
+        if (validResidue(p, a.residueIndex)) {
+            const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+            atomKey.insert(QStringLiteral("residue_number"), r.address.residueNumber);
+            atomKey.insert(QStringLiteral("amino_acid"), aaName(r.aminoAcid));
+        }
+        atomKey.insert(QStringLiteral("backbone_role"), backboneRoleName(a.backboneRole));
+        acc.insert(QStringLiteral("atom_key"), atomKey);
+
+        // sigma0_ref -- the per-IUPAC zero-field reference handle (mean iso).
+        double isoMean = kNaN;
+        {
+            std::vector<double> iso;
+            for (double v : sigmaIsoSeries()) if (finite(v)) iso.push_back(v);
+            if (!iso.empty()) isoMean = bmstats::mean(iso);
+        }
+        acc.insert(QStringLiteral("sigma0_ref"), jd(isoMean));
+
+        // contexts[] -- emit the whole-trajectory BASE context first (§2.4B),
+        // then additional hybridisation-stratified contexts where supported.
+        const ContactedClass cc = dominantContactedClass();
+        const int stratum = graphStratum();
+        std::map<int, std::vector<std::size_t>> rowsByHyb;
+        for (std::size_t row : cadence_.sigmaRows()) {
+            int hyb = static_cast<int>(model::Hybridisation::Unassigned);
+            if (row < hybridisation_.values.size() && hybridisation_.values[row] != IntSeries::kMissing)
+                hyb = hybridisation_.values[row];
+            else
+                hyb = static_hybridisation_ord_;
+            rowsByHyb[hyb].push_back(row);
+        }
+        if (rowsByHyb.empty())
+            rowsByHyb[static_hybridisation_ord_] = cadence_.sigmaRows();
+
+        QJsonArray contexts;
+        std::set<QString> serialDrivers;
+        std::set<QString> serialSigma;
+        std::size_t totalResponses = 0;
+        {
+            std::size_t characterizedCount = 0;
+            QJsonObject ctx = buildContextJson(static_hybridisation_ord_,
+                                               QStringLiteral("WHOLE_TRAJECTORY"),
+                                               QStringLiteral("ALL"),
+                                               cadence_.sigmaRows(), characterizedCount,
+                                               serialDrivers, serialSigma, true);
+            contexts.append(ctx);
+            totalResponses += characterizedCount;
+        }
+        if (rowsByHyb.size() > 1) {
+            for (const auto& kv : rowsByHyb) {
+                std::size_t characterizedCount = 0;
+                QJsonObject ctx = buildContextJson(kv.first, contactedClassName(cc),
+                                                   QString::number(stratum), kv.second,
+                                                   characterizedCount,
+                                                   serialDrivers, serialSigma, false);
+                contexts.append(ctx);
+                totalResponses += characterizedCount;
+            }
+        }
+        acc.insert(QStringLiteral("contexts"), contexts);
+
+        // serial[] -- one entry per (sigma_target ∪ driver) a characterized
+        // response touched (§4.2; bounded by the catalogue, never all 85 channels).
+        QJsonArray serial;
+        auto addSerial = [&](const QString& ref, const QString& kind, const std::vector<double>& series) {
+            RunningSeriesRef sref;
+            sref.series_ref = ref;
+            sref.values = series;
+            QJsonObject o = serialRecord(sref);
+            o.insert(QStringLiteral("target_ref_kind"), kind);
+            const DwellResult d = dwellStats(series);
+            QJsonObject dwell;
+            dwell.insert(QStringLiteral("mean_dwell_frames"), jd(d.mean_dwell_frames));
+            dwell.insert(QStringLiteral("n_transitions"), d.n_transitions);
+            dwell.insert(QStringLiteral("autocorr_time"), jd(d.autocorr_time));
+            o.insert(QStringLiteral("dwell"), dwell);
+            serial.append(o);
+        };
+        // the sigma iso/aniso targets (a sigma-response always present).
+        addSerial(QStringLiteral("sigma.iso"), QStringLiteral("SIGMA"), sigmaIsoSeries());
+        if (serialSigma.count(QStringLiteral("invariant:aniso")) || serialSigma.empty())
+            addSerial(QStringLiteral("sigma.aniso"), QStringLiteral("SIGMA"),
+                      sigmaInvariantSeries(QStringLiteral("aniso")));
+        // the characterized drivers' own dynamics (bounded set).
+        if (serialDrivers.count(QStringLiteral("field.mopac_coulomb|abs_E")) || true)
+            addSerial(QStringLiteral("field.abs_E"), QStringLiteral("DRIVER"), fieldAbsSeries());
+        bool anyEfgDriver = false;
+        for (const QString& d : serialDrivers) if (d.startsWith(QStringLiteral("efg"))) anyEfgDriver = true;
+        if (anyEfgDriver) addSerial(QStringLiteral("efg.abs_T2"), QStringLiteral("DRIVER"), efgAbsSeries());
+        acc.insert(QStringLiteral("serial"), serial);
+
+        // dia_para_split[] -- per characterized FIELD/EFG driver; gauge colour only.
+        QJsonArray diaPara;
+        {
+            // for the headline field/EFG drivers, does the response live in dia/para?
+            const std::vector<double> diaIso = componentSeriesT0(sigma_dia_);
+            const std::vector<double> paraIso = componentSeriesT0(sigma_para_);
+            const std::vector<double> field = fieldAbsSeries();
+            std::vector<double> x;
+            std::vector<double> y;
+            pairedOnSigmaRows(diaIso, field, cadence_.sigmaRows(), x, y);
+            const double rDia = pearsonR(x, y);
+            pairedOnSigmaRows(paraIso, field, cadence_.sigmaRows(), x, y);
+            const double rPara = pearsonR(x, y);
+            if (finite(rDia) || finite(rPara)) {
+                QJsonObject o;
+                o.insert(QStringLiteral("driver"), QStringLiteral("field.mopac_coulomb|abs_E"));
+                o.insert(QStringLiteral("moves_dia"), jd(rDia));
+                o.insert(QStringLiteral("moves_para"), jd(rPara));
+                o.insert(QStringLiteral("gauge_caveat"), true);
+                diaPara.append(o);
+            }
+        }
+        acc.insert(QStringLiteral("dia_para_split"), diaPara);
+
+        // recurrence[] -- per hybridisation_change_event: the sigma response and
+        // whether it recurred (§6.1.5). Most atoms carry [].
+        QJsonArray recurrence;
+        {
+            std::vector<std::size_t> eventRows;
+            int prev = IntSeries::kMissing;
+            for (std::size_t i = 0; i < hybridisation_.values.size(); ++i) {
+                const int cur = hybridisation_.values[i];
+                if (cur == IntSeries::kMissing) continue;
+                if (prev != IntSeries::kMissing && cur != prev) eventRows.push_back(i);
+                prev = cur;
+            }
+            const std::vector<double> iso = sigmaIsoSeries();
+            for (std::size_t k = 0; k < eventRows.size(); ++k) {
+                QJsonObject o;
+                o.insert(QStringLiteral("event_frame"), static_cast<int>(eventRows[k]));
+                // sigma response = the iso step magnitude across the nearest sigma rows.
+                double before = kNaN;
+                double after = kNaN;
+                for (std::size_t r = eventRows[k]; r-- > 0;) if (finite(iso[r])) { before = iso[r]; break; }
+                for (std::size_t r = eventRows[k]; r < iso.size(); ++r) if (finite(iso[r])) { after = iso[r]; break; }
+                const double step = (finite(before) && finite(after)) ? (after - before) : kNaN;
+                o.insert(QStringLiteral("sigma_response"), jd(step));
+                o.insert(QStringLiteral("recurred"), eventRows.size() > 1);
+                recurrence.append(o);
+            }
+        }
+        acc.insert(QStringLiteral("recurrence"), recurrence);
+
+        acc.insert(QStringLiteral("molecular_frame_audit"), molecularFrameAuditJson());
+
+        // Wiberg is a structured slot (§2.1), not a flat responses[] row.
+        acc.insert(QStringLiteral("wiberg"), buildWibergJson());
+
+        // companion: the individual contacted residues (§2.4), un-folded.
+        QJsonArray contactedCompanion;
+        for (const auto& r : contacted_residues_) {
+            QJsonObject o;
+            o.insert(QStringLiteral("residue_number"), r.first);
+            o.insert(QStringLiteral("amino_acid"), aaName(static_cast<model::AminoAcid>(r.second)));
+            o.insert(QStringLiteral("contacted_class"),
+                     contactedClassName(classOf(static_cast<model::AminoAcid>(r.second))));
+            contactedCompanion.append(o);
+        }
+        acc.insert(QStringLiteral("contacted_residues"), contactedCompanion);
+
+        last_accumulator_response_count = totalResponses;
+        last_accumulator_context_count = static_cast<std::size_t>(contexts.size());
+
+        // -- the four structural asserts (§5.1.3), fail-loud.
+        assertAccumulatorStructure(acc);
+        return acc;
+    }
+
+    // ACCUMULATOR_RESPEC §5.1.3 anti-regression asserts (fail-loud on the
+    // emitted object). These guard the doctrine structurally.
+    void assertAccumulatorStructure(const QJsonObject& acc) const {
+        const auto containsKey = [](const QJsonValue& root, const QString& key) {
+            std::function<bool(const QJsonValue&)> walk = [&](const QJsonValue& v) -> bool {
+                if (v.isObject()) {
+                    const QJsonObject o = v.toObject();
+                    if (o.contains(key)) return true;
+                    for (auto it = o.begin(); it != o.end(); ++it)
+                        if (walk(it.value())) return true;
+                } else if (v.isArray()) {
+                    const QJsonArray a = v.toArray();
+                    for (const QJsonValue& item : a)
+                        if (walk(item)) return true;
+                }
+                return false;
+            };
+            return walk(root);
+        };
+
+        // 1. no `boost` key anywhere.
+        if (containsKey(acc, QStringLiteral("boost")))
+            qFatal("accumulator regression: atom %lld emitted a 'boost' key",
+                   static_cast<long long>(atom_));
+        if (containsKey(acc, QStringLiteral("grade")))
+            qFatal("accumulator regression: atom %lld emitted a 'grade' key",
+                   static_cast<long long>(atom_));
+
+        std::set<QString> expectedIds;
+        for (const CatalogueRow& row : kCharacterizationCatalogue) {
+            if (row.id == CatalogueId::WIBERG) continue;
+            if (membershipHolds(row.id))
+                expectedIds.insert(QString::fromLatin1(row.id_name));
+        }
+
+        const QJsonArray contexts = acc.value(QStringLiteral("contexts")).toArray();
+        for (const QJsonValue& cv : contexts) {
+            const QJsonObject ctx = cv.toObject();
+            const QJsonArray responses = ctx.value(QStringLiteral("responses")).toArray();
+            const QString status = ctx.value(QStringLiteral("context_status")).toString();
+            if (responses.size() > kMaxChannels)
+                qFatal("accumulator regression: atom %lld context has %d responses > structural cap %d",
+                       static_cast<long long>(atom_), static_cast<int>(responses.size()), kMaxChannels);
+            const int nOverCap = ctx.value(QStringLiteral("n_over_cap")).toInt(0);
+            if (nOverCap != 0)
+                qFatal("accumulator regression: atom %lld context has n_over_cap=%d",
+                       static_cast<long long>(atom_), nOverCap);
+            if (!ctx.contains(QStringLiteral("chains")) || !ctx.value(QStringLiteral("chains")).isObject())
+                qFatal("accumulator regression: atom %lld context missing bounded chains slot",
+                       static_cast<long long>(atom_));
+            const QJsonObject chains = ctx.value(QStringLiteral("chains")).toObject();
+            if (!chains.value(QStringLiteral("collinearity")).isArray()
+                || !chains.value(QStringLiteral("mediations")).isArray())
+                qFatal("accumulator regression: atom %lld context chains malformed",
+                       static_cast<long long>(atom_));
+            const int nCollinear = chains.value(QStringLiteral("collinearity")).toArray().size();
+            const int nMediations = chains.value(QStringLiteral("mediations")).toArray().size();
+            if (nCollinear > kMaxCollinearityChains || nMediations > kMaxMediationChains)
+                qFatal("accumulator regression: atom %lld context chains are unbounded (%d collinearity, %d mediations)",
+                       static_cast<long long>(atom_), nCollinear, nMediations);
+
+            std::set<QString> seenIds;
+            for (const QJsonValue& rv : responses) {
+                const QJsonObject r = rv.toObject();
+                if (!r.contains(QStringLiteral("catalogue_id"))
+                    || r.value(QStringLiteral("catalogue_id")).toString().isEmpty())
+                    qFatal("accumulator regression: atom %lld response missing catalogue_id",
+                           static_cast<long long>(atom_));
+                if (r.contains(QStringLiteral("kept_reason")))
+                    qFatal("accumulator regression: atom %lld response still emits kept_reason",
+                           static_cast<long long>(atom_));
+                if (r.contains(QStringLiteral("mediation")))
+                    qFatal("accumulator regression: atom %lld response still emits per-entry mediation",
+                           static_cast<long long>(atom_));
+                const QString cid = r.value(QStringLiteral("catalogue_id")).toString();
+                if (!expectedIds.count(cid))
+                    qFatal("accumulator regression: atom %lld response has non-applicable catalogue_id '%s'",
+                           static_cast<long long>(atom_), qPrintable(cid));
+                if (!seenIds.insert(cid).second)
+                    qFatal("accumulator regression: atom %lld duplicate catalogue_id '%s'",
+                           static_cast<long long>(atom_), qPrintable(cid));
+                if (!r.contains(QStringLiteral("targets")) || !r.value(QStringLiteral("targets")).isArray()
+                    || r.value(QStringLiteral("targets")).toArray().isEmpty())
+                    qFatal("accumulator regression: atom %lld response '%s' missing targets[]",
+                           static_cast<long long>(atom_), qPrintable(cid));
+            }
+            if (status == QStringLiteral("COMPUTED") && seenIds != expectedIds)
+                qFatal("accumulator regression: atom %lld context has %d catalogue entries, expected %d",
+                       static_cast<long long>(atom_), static_cast<int>(seenIds.size()),
+                       static_cast<int>(expectedIds.size()));
+        }
     }
 
     void buildStaticBonds() {
@@ -1690,7 +4301,10 @@ private:
             const std::size_t a = static_cast<std::size_t>(b.atomIndexA);
             const std::size_t bb = static_cast<std::size_t>(b.atomIndexB);
             const std::size_t other = a == atom_ ? bb : a;
-            static_bonds_[pairKey(a, bb)] = {b.bondIndex, b.order, b.category, other};
+            const std::uint64_t key = pairKey(a, bb);
+            static_bonds_[key] = {b.bondIndex, b.order, b.category, other};
+            bond_length_series_.try_emplace(key, cadence_.stepCount());
+            bond_length_rejected_degenerate_.try_emplace(key, cadence_.stepCount());
         }
     }
 
@@ -1702,8 +4316,413 @@ private:
         }
     }
 
+    enum class MolFrameKind {
+        None,
+        BackboneCarbonyl,
+        BackboneAmideN,
+        AromaticRingLocal,
+        MetSd,
+        SidechainCarboxylate,
+        SidechainGuanidinium,
+        SidechainCarboxamide,
+    };
+
+    struct MolFrameSpec {
+        MolFrameKind kind = MolFrameKind::None;
+        QString label = QStringLiteral("none");
+        std::vector<int32_t> anchors;
+        int32_t origin = -1;
+        int32_t x_anchor = -1;
+        int32_t plane_anchor = -1;
+        int32_t second_anchor = -1;
+        int32_t ring = -1;
+        int32_t heavy = -1;
+        QString ring_type;
+    };
+
+    bool validAtomIndex(int32_t atomIndex) const {
+        return atomIndex >= 0 && body_.run.protein
+               && static_cast<std::size_t>(atomIndex) < body_.run.protein->atomCount();
+    }
+
+    std::optional<int32_t> atomByResidueName(int32_t residueIndex, const QString& name) const {
+        if (!body_.run.protein || !validResidue(*body_.run.protein, residueIndex)) return std::nullopt;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtResidue& r = p.residue(static_cast<std::size_t>(residueIndex));
+        for (int32_t atomIndex : r.atomIndices) {
+            if (!validAtomIndex(atomIndex)) continue;
+            if (p.atomLabel(static_cast<std::size_t>(atomIndex), model::NamingConvention::Iupac) == name)
+                return atomIndex;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<int32_t> ringContainingAtom(int32_t atomIndex) const {
+        if (!validAtomIndex(atomIndex) || !body_.run.protein) return std::nullopt;
+        const model::QtTopology& topo = body_.run.protein->topology();
+        for (std::size_t ring = 0; ring < topo.ringCount(); ++ring) {
+            const model::QtRing& r = topo.ringAt(ring);
+            if (ringTypeName(r.TypeIndex()).endsWith(QStringLiteral("Perimeter"))) continue;
+            if (std::find(r.atomIndices.begin(), r.atomIndices.end(), atomIndex) != r.atomIndices.end())
+                return static_cast<int32_t>(ring);
+        }
+        return std::nullopt;
+    }
+
+    std::optional<int32_t> molecularFrameRingForAtom(const model::QtAtom& atom) const {
+        if (const auto direct = ringContainingAtom(static_cast<int32_t>(atom_))) return direct;
+        if (atom.parentAtomIndex >= 0) return ringContainingAtom(atom.parentAtomIndex);
+        return std::nullopt;
+    }
+
+    bool hasResidueAtom(int32_t residueIndex, const QString& name) const {
+        return atomByResidueName(residueIndex, name).has_value();
+    }
+
+    std::optional<std::array<QString, 3>> carboxylateGroup(const QString& name, int32_t residueIndex) const {
+        auto present = [&](const QString& atomName) { return hasResidueAtom(residueIndex, atomName); };
+        if ((name == QStringLiteral("CG") || name == QStringLiteral("OD1") || name == QStringLiteral("OD2"))
+            && present(QStringLiteral("CG")) && present(QStringLiteral("OD1")) && present(QStringLiteral("OD2")))
+            return std::array<QString, 3>{QStringLiteral("CG"), QStringLiteral("OD1"), QStringLiteral("OD2")};
+        if ((name == QStringLiteral("CD") || name == QStringLiteral("OE1") || name == QStringLiteral("OE2"))
+            && present(QStringLiteral("CD")) && present(QStringLiteral("OE1")) && present(QStringLiteral("OE2")))
+            return std::array<QString, 3>{QStringLiteral("CD"), QStringLiteral("OE1"), QStringLiteral("OE2")};
+        return std::nullopt;
+    }
+
+    std::optional<std::array<QString, 4>> guanidiniumGroup(const QString& name, int32_t residueIndex) const {
+        auto present = [&](const QString& atomName) { return hasResidueAtom(residueIndex, atomName); };
+        if ((name == QStringLiteral("CZ") || name == QStringLiteral("NE") || name == QStringLiteral("NH1")
+             || name == QStringLiteral("NH2"))
+            && present(QStringLiteral("CZ")) && present(QStringLiteral("NE")) && present(QStringLiteral("NH1"))
+            && present(QStringLiteral("NH2")))
+            return std::array<QString, 4>{QStringLiteral("CZ"), QStringLiteral("NE"), QStringLiteral("NH1"),
+                                          QStringLiteral("NH2")};
+        return std::nullopt;
+    }
+
+    std::optional<std::array<QString, 3>> carboxamideGroup(const QString& name, int32_t residueIndex) const {
+        auto present = [&](const QString& atomName) { return hasResidueAtom(residueIndex, atomName); };
+        if (name == QStringLiteral("ND2") && present(QStringLiteral("CG")) && present(QStringLiteral("OD1"))
+            && present(QStringLiteral("ND2")) && !present(QStringLiteral("OD2")))
+            return std::array<QString, 3>{QStringLiteral("CG"), QStringLiteral("OD1"), QStringLiteral("ND2")};
+        if (name == QStringLiteral("NE2") && present(QStringLiteral("CD")) && present(QStringLiteral("OE1"))
+            && present(QStringLiteral("NE2")) && !present(QStringLiteral("OE2")))
+            return std::array<QString, 3>{QStringLiteral("CD"), QStringLiteral("OE1"), QStringLiteral("NE2")};
+        if (name == QStringLiteral("CG") && present(QStringLiteral("OD1")) && present(QStringLiteral("ND2"))
+            && !present(QStringLiteral("OD2")))
+            return std::array<QString, 3>{QStringLiteral("CG"), QStringLiteral("OD1"), QStringLiteral("ND2")};
+        if (name == QStringLiteral("OD1") && present(QStringLiteral("CG")) && present(QStringLiteral("ND2"))
+            && !present(QStringLiteral("OD2")))
+            return std::array<QString, 3>{QStringLiteral("CG"), QStringLiteral("OD1"), QStringLiteral("ND2")};
+        if (name == QStringLiteral("CD") && present(QStringLiteral("OE1")) && present(QStringLiteral("NE2"))
+            && !present(QStringLiteral("OE2")))
+            return std::array<QString, 3>{QStringLiteral("CD"), QStringLiteral("OE1"), QStringLiteral("NE2")};
+        if (name == QStringLiteral("OE1") && present(QStringLiteral("CD")) && present(QStringLiteral("NE2"))
+            && !present(QStringLiteral("OE2")))
+            return std::array<QString, 3>{QStringLiteral("CD"), QStringLiteral("OE1"), QStringLiteral("NE2")};
+        return std::nullopt;
+    }
+
+    void applyMolecularFrameSpec(const MolFrameSpec& spec) {
+        molecular_frame_spec_ = spec;
+        molecular_frame_.setMetadata(spec.label, spec.anchors,
+                                     spec.ring >= 0 ? uid(QStringLiteral("ring"), static_cast<std::size_t>(spec.ring))
+                                                    : QString(),
+                                     spec.ring_type);
+    }
+
+    void configureMolecularFrame() {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& atom = p.atom(atom_);
+        const int32_t ri = atom.residueIndex;
+        if (!validResidue(p, ri)) return;
+        const QString name = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        auto recAt = [&](const QString& atomName, int32_t residueIndex) {
+            return atomByResidueName(residueIndex, atomName);
+        };
+        auto rec = [&](const QString& atomName) { return recAt(atomName, ri); };
+
+        if (atom.backboneRole == model::BackboneRole::CarbonylCarbon
+            || atom.backboneRole == model::BackboneRole::CarbonylOxygen) {
+            const auto c = rec(QStringLiteral("C"));
+            const auto o = rec(QStringLiteral("O"));
+            const auto ca = rec(QStringLiteral("CA"));
+            const auto nNext = recAt(QStringLiteral("N"), ri + 1);
+            if (c && o && ca) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::BackboneCarbonyl;
+                spec.label = QStringLiteral("backbone_carbonyl");
+                spec.origin = *c;
+                spec.x_anchor = *o;
+                spec.plane_anchor = nNext ? *nNext : *ca;
+                spec.anchors = std::vector<int32_t>{*c, *o, *ca};
+                if (nNext) spec.anchors.push_back(*nNext);
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+
+        if (atom.backboneRole == model::BackboneRole::Nitrogen || name == QStringLiteral("N")) {
+            const auto n = rec(QStringLiteral("N"));
+            const auto h = rec(QStringLiteral("H"));
+            const auto ca = rec(QStringLiteral("CA"));
+            const auto cPrev = recAt(QStringLiteral("C"), ri - 1);
+            if (n && ca && (h || cPrev)) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::BackboneAmideN;
+                spec.label = QStringLiteral("backbone_amide_n");
+                spec.origin = *n;
+                spec.x_anchor = h ? *h : *ca;
+                spec.plane_anchor = cPrev ? *cPrev : *ca;
+                spec.anchors = std::vector<int32_t>{*n, *ca};
+                if (h) spec.anchors.push_back(*h);
+                if (cPrev) spec.anchors.push_back(*cPrev);
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+
+        const bool ringElement = atom.element == model::Element::C || atom.element == model::Element::H
+                                 || atom.element == model::Element::N || atom.element == model::Element::O;
+        if (ringElement) {
+            const auto ring = molecularFrameRingForAtom(atom);
+            if (ring && *ring >= 0 && static_cast<std::size_t>(*ring) < p.topology().ringCount()) {
+                const model::QtRing& r = p.topology().ringAt(static_cast<std::size_t>(*ring));
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::AromaticRingLocal;
+                spec.label = QStringLiteral("aromatic_ring_local");
+                spec.ring = *ring;
+                spec.heavy = atom.element == model::Element::H && atom.parentAtomIndex >= 0
+                                 ? atom.parentAtomIndex
+                                 : static_cast<int32_t>(atom_);
+                spec.anchors = r.atomIndices;
+                if (std::find(spec.anchors.begin(), spec.anchors.end(), spec.heavy) == spec.anchors.end())
+                    spec.anchors.push_back(spec.heavy);
+                spec.ring_type = ringTypeName(r.TypeIndex());
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+
+        if (atom.element == model::Element::S && name == QStringLiteral("SD")) {
+            const auto sd = rec(QStringLiteral("SD"));
+            const auto cg = rec(QStringLiteral("CG"));
+            const auto ce = rec(QStringLiteral("CE"));
+            if (sd && cg && ce) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::MetSd;
+                spec.label = QStringLiteral("met_sd_cg_s_ce");
+                spec.origin = *sd;
+                spec.x_anchor = *ce;
+                spec.plane_anchor = *cg;
+                spec.anchors = std::vector<int32_t>{*cg, *sd, *ce};
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+
+        if (const auto group = carboxylateGroup(name, ri)) {
+            const auto c = rec((*group)[0]);
+            const auto o1 = rec((*group)[1]);
+            const auto o2 = rec((*group)[2]);
+            if (c && o1 && o2) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::SidechainCarboxylate;
+                spec.label = QStringLiteral("sidechain_carboxylate");
+                spec.origin = *c;
+                spec.x_anchor = *o1;
+                spec.second_anchor = *o2;
+                spec.plane_anchor = *o1;
+                spec.anchors = std::vector<int32_t>{*c, *o1, *o2};
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+
+        if (const auto group = guanidiniumGroup(name, ri)) {
+            const auto cz = rec((*group)[0]);
+            const auto ne = rec((*group)[1]);
+            const auto nh1 = rec((*group)[2]);
+            const auto nh2 = rec((*group)[3]);
+            if (cz && ne && nh1) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::SidechainGuanidinium;
+                spec.label = QStringLiteral("sidechain_guanidinium");
+                spec.origin = *cz;
+                spec.x_anchor = *ne;
+                spec.plane_anchor = *nh1;
+                spec.anchors = std::vector<int32_t>{*cz, *ne, *nh1};
+                if (nh2) spec.anchors.push_back(*nh2);
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+
+        if (const auto group = carboxamideGroup(name, ri)) {
+            const auto c = rec((*group)[0]);
+            const auto o = rec((*group)[1]);
+            const auto n = rec((*group)[2]);
+            if (c && o && n) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::SidechainCarboxamide;
+                spec.label = QStringLiteral("sidechain_carboxamide");
+                spec.origin = *c;
+                spec.x_anchor = *o;
+                spec.plane_anchor = *n;
+                spec.anchors = std::vector<int32_t>{*c, *o, *n};
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+    }
+
+    std::optional<Vec3> coordAt(int32_t atomIndex, std::size_t step) const {
+        if (!validAtomIndex(atomIndex)) return std::nullopt;
+        const Vec3 v = verbs::pos(body_, static_cast<std::size_t>(atomIndex), step);
+        if (!v.allFinite()) return std::nullopt;
+        return v;
+    }
+
+    void foldMolecularFrame(std::size_t step) {
+        const MolFrameSpec& spec = molecular_frame_spec_;
+        std::optional<Mat3> frame;
+        switch (spec.kind) {
+        case MolFrameKind::None:
+            return;
+        case MolFrameKind::BackboneCarbonyl:
+        case MolFrameKind::BackboneAmideN: {
+            const auto origin = coordAt(spec.origin, step);
+            const auto xAnchor = coordAt(spec.x_anchor, step);
+            const auto planeAnchor = coordAt(spec.plane_anchor, step);
+            if (origin && xAnchor && planeAnchor)
+                frame = frameFromXAndPlane(*xAnchor - *origin, *planeAnchor - *origin);
+            break;
+        }
+        case MolFrameKind::MetSd: {
+            const auto origin = coordAt(spec.origin, step);
+            const auto xAnchor = coordAt(spec.x_anchor, step);
+            const auto planeAnchor = coordAt(spec.plane_anchor, step);
+            if (origin && xAnchor && planeAnchor)
+                frame = frameFromXAndPlaneLocked(*xAnchor - *origin, *planeAnchor - *origin,
+                                                 prev_mol_locked_x_, prev_mol_locked_z_);
+            break;
+        }
+        case MolFrameKind::AromaticRingLocal: {
+            if (spec.ring < 0 || spec.heavy < 0) break;
+            const auto heavy = coordAt(spec.heavy, step);
+            if (!heavy) break;
+            const model::RingGeometry& g = body_.idx.ringGeometry.at(static_cast<std::size_t>(spec.ring), step);
+            frame = frameFromXAndZ(*heavy - g.center, g.normal);
+            break;
+        }
+        case MolFrameKind::SidechainCarboxylate: {
+            const auto c = coordAt(spec.origin, step);
+            const auto o1 = coordAt(spec.x_anchor, step);
+            const auto o2 = coordAt(spec.second_anchor, step);
+            if (c && o1 && o2) {
+                const auto d1 = normalizeFrameVec(*o1 - *c);
+                const auto d2 = normalizeFrameVec(*o2 - *c);
+                if (d1 && d2)
+                    frame = frameFromXAndPlaneLocked(*d1 + *d2, *o1 - *c,
+                                                     prev_mol_locked_x_, prev_mol_locked_z_);
+            }
+            break;
+        }
+        case MolFrameKind::SidechainGuanidinium:
+        case MolFrameKind::SidechainCarboxamide: {
+            const auto origin = coordAt(spec.origin, step);
+            const auto xAnchor = coordAt(spec.x_anchor, step);
+            const auto planeAnchor = coordAt(spec.plane_anchor, step);
+            if (origin && xAnchor && planeAnchor)
+                frame = frameFromXAndPlaneLocked(*xAnchor - *origin, *planeAnchor - *origin,
+                                                 prev_mol_locked_x_, prev_mol_locked_z_);
+            break;
+        }
+        }
+        if (frame) molecular_frame_.set(step, *frame);
+    }
+
+    std::optional<Mat3> molecularAxesAt(std::size_t step) const {
+        if (step >= molecular_frame_.values.size()) return std::nullopt;
+        const MolecularFrameValue& f = molecular_frame_.values[step];
+        if (!f.valid || !f.axes.allFinite()) return std::nullopt;
+        return f.axes;
+    }
+
+    QJsonObject molecularFrameAuditJson() const {
+        QJsonObject audit;
+        audit.insert(QStringLiteral("frame_kind"), molecular_frame_.kind);
+        audit.insert(QStringLiteral("frame_kind_ord"), molecular_frame_.kind_ord);
+        audit.insert(QStringLiteral("checked"), molecular_frame_.kind_ord != 0);
+        int validFrames = 0;
+        int normalFlips = 0;
+        double maxOrthonormalAbs = 0.0;
+        double maxDetAbs = 0.0;
+        double maxSigmaRoundtripAbs = 0.0;
+        std::optional<Vec3> prevZ;
+        for (std::size_t step = 0; step < molecular_frame_.values.size(); ++step) {
+            const MolecularFrameValue& f = molecular_frame_.values[step];
+            if (!f.valid) continue;
+            ++validFrames;
+            const Mat3 gram = f.axes.transpose() * f.axes;
+            const Mat3 err = gram - Mat3::Identity();
+            maxOrthonormalAbs = std::max(maxOrthonormalAbs, err.cwiseAbs().maxCoeff());
+            maxDetAbs = std::max(maxDetAbs, std::abs(f.axes.determinant() - 1.0));
+            const Vec3 z = f.axes.col(2);
+            if (prevZ && prevZ->dot(z) < 0.0) ++normalFlips;
+            prevZ = z;
+            if (step < sigma_total_raw_.values.size() && sigma_total_raw_.present[step]) {
+                maxSigmaRoundtripAbs =
+                    std::max(maxSigmaRoundtripAbs,
+                             sigmaRoundTripMaxAbs(f.axes, sigma_total_raw_.values[step]));
+            }
+        }
+        audit.insert(QStringLiteral("valid_frames"), validFrames);
+        audit.insert(QStringLiteral("max_orthonormal_abs"), jd(validFrames > 0 ? maxOrthonormalAbs : kNaN));
+        audit.insert(QStringLiteral("max_det_abs"), jd(validFrames > 0 ? maxDetAbs : kNaN));
+        audit.insert(QStringLiteral("normal_flip_count"), normalFlips);
+        audit.insert(QStringLiteral("max_sigma_roundtrip_abs"),
+                     jd(validFrames > 0 ? maxSigmaRoundtripAbs : kNaN));
+        audit.insert(QStringLiteral("roundtrip_tolerance"), 1.0e-13);
+        audit.insert(QStringLiteral("roundtrip_method"),
+                     QStringLiteral("long_double_reorthonormalized_axes"));
+        return audit;
+    }
+
+    void setScalarIfPresent(ScalarSeries& out, ArrayId id, std::size_t step) {
+        if (!body_.catalog.present(body_, id, atom_, step)) return;
+        const double v = body_.catalog.value(body_, id, atom_, step);
+        if (finite(v)) out.set(step, v);
+    }
+
+    void setVec3IfPresent(Vec3Series& out, ArrayId id, std::size_t step) {
+        if (!body_.catalog.present(body_, id, atom_, step)) return;
+        const Vec3 v = body_.catalog.valueVec3(body_, id, atom_, step);
+        if (v.allFinite()) out.set(step, v);
+    }
+
     void foldGeometry(std::size_t step) {
-        (void)step;
+        for (const auto& item : static_bonds_) {
+            const std::uint64_t key = item.first;
+            const StaticBondInfo& info = item.second;
+            const auto a = coordAt(static_cast<int32_t>(atom_), step);
+            const auto b = coordAt(static_cast<int32_t>(info.other), step);
+            if (!a || !b) continue;
+            const double length = (*b - *a).norm();
+            if (finite(length) && length > 1e-12) {
+                bond_length_series_[key].set(step, length);
+                bond_length_rejected_degenerate_[key].set(step, false);
+            } else {
+                bond_length_rejected_degenerate_[key].set(step, true);
+            }
+        }
+
+        setScalarIfPresent(sasa_, ArrayId::Sasa, step);
+        setVec3IfPresent(hbond_nearest_dir_, ArrayId::HbondNearestDirection, step);
+        setScalarIfPresent(hbond_count_, ArrayId::HbondCount, step);
+        setScalarIfPresent(ff_pb_radius_, ArrayId::FfPbRadius, step);
     }
 
     void foldMopacSelfState(std::size_t step) {
@@ -1770,6 +4789,81 @@ private:
         }
     }
 
+    void setFieldDerived(std::size_t step,
+                         const Vec3& field,
+                         Vec3Series& mol,
+                         ScalarSeries& ez,
+                         ScalarSeries& e2,
+                         ScalarSeries& absE,
+                         ScalarSeries& absE2) {
+        if (!field.allFinite()) return;
+        const double e2Value = field.squaredNorm();
+        if (!finite(e2Value)) return;
+        absE.set(step, std::sqrt(e2Value));
+        absE2.set(step, e2Value);
+
+        const auto axes = molecularAxesAt(step);
+        if (!axes) return;
+        const Vec3 local = axes->transpose() * field;
+        if (!local.allFinite()) return;
+        mol.set(step, local);
+        ez.set(step, local.z());
+        e2.set(step, e2Value);
+    }
+
+    void foldDirectChargeField(std::size_t step) {
+        if (!body_.run.protein || !body_.catalog.has(ArrayId::Ff14sbCharge)) return;
+        const auto target = coordAt(static_cast<int32_t>(atom_), step);
+        if (!target) return;
+
+        Vec3 field = Vec3::Zero();
+        int sourceCount = 0;
+        int rejectedSelf = 0;
+        int rejectedDegenerate = 0;
+        int rejectedCutoff = 0;
+        int missingCharge = 0;
+        const std::size_t nAtoms = body_.run.protein->atomCount();
+        for (std::size_t source = 0; source < nAtoms; ++source) {
+            if (source == atom_) {
+                ++rejectedSelf;
+                continue;
+            }
+            if (!body_.catalog.present(body_, ArrayId::Ff14sbCharge, source, step)) {
+                ++missingCharge;
+                continue;
+            }
+            const auto sourcePos = coordAt(static_cast<int32_t>(source), step);
+            if (!sourcePos) {
+                ++rejectedDegenerate;
+                continue;
+            }
+            const Vec3 disp = *sourcePos - *target;
+            const double r = disp.norm();
+            if (!finite(r) || !(r > 1e-12)) {
+                ++rejectedDegenerate;
+                continue;
+            }
+            if (r > config_.charge_cutoff_A) {
+                ++rejectedCutoff;
+                continue;
+            }
+            const double q = body_.catalog.value(body_, ArrayId::Ff14sbCharge, source, step);
+            if (!finite(q)) {
+                ++missingCharge;
+                continue;
+            }
+            field += (-kCoulombKe * q / (r * r * r)) * disp;
+            ++sourceCount;
+        }
+
+        charge_field_source_count_.set(step, sourceCount);
+        charge_field_rejected_self_.set(step, rejectedSelf);
+        charge_field_rejected_degenerate_.set(step, rejectedDegenerate);
+        charge_field_rejected_cutoff_.set(step, rejectedCutoff);
+        charge_field_missing_charge_.set(step, missingCharge);
+        if (field.allFinite()) field_charge_ff14sb_.set(step, field);
+    }
+
     void foldFieldsAndRelationships(std::size_t step) {
         Vec3 ff = Vec3::Zero();
         bool ffPresent = false;
@@ -1790,8 +4884,59 @@ private:
             }
         }
         if (ffPresent) field_ff14sb_.set(step, ff);
-        if (body_.catalog.present(body_, ArrayId::MopacCoulombEfield, atom_, step))
-            field_mopac_.set(step, body_.catalog.valueVec3(body_, ArrayId::MopacCoulombEfield, atom_, step));
+        if (body_.catalog.present(body_, ArrayId::MopacCoulombEfield, atom_, step)) {
+            const Vec3 v = body_.catalog.valueVec3(body_, ArrayId::MopacCoulombEfield, atom_, step);
+            if (v.allFinite()) field_mopac_.set(step, v);
+        }
+        if (body_.catalog.present(body_, ArrayId::ApbsEfield, atom_, step)) {
+            const Vec3 v = body_.catalog.valueVec3(body_, ArrayId::ApbsEfield, atom_, step);
+            if (v.allFinite()) field_apbs_.set(step, v);
+        }
+        foldDirectChargeField(step);
+
+        if (field_mopac_.present[step])
+            setFieldDerived(step, field_mopac_.values[step], field_mol_mopac_, field_E_z_mopac_,
+                            field_E2_mopac_, field_abs_E_mopac_, field_abs_E2_mopac_);
+        if (field_apbs_.present[step])
+            setFieldDerived(step, field_apbs_.values[step], field_mol_apbs_, field_E_z_apbs_,
+                            field_E2_apbs_, field_abs_E_apbs_, field_abs_E2_apbs_);
+        if (field_charge_ff14sb_.present[step])
+            setFieldDerived(step, field_charge_ff14sb_.values[step], field_mol_charge_ff14sb_,
+                            field_E_z_charge_ff14sb_, field_E2_charge_ff14sb_,
+                            field_abs_E_charge_ff14sb_, field_abs_E2_charge_ff14sb_);
+    }
+
+    template <std::size_t N>
+    void setFixedArrayIfPresent(FixedArraySeries<N>& out, ArrayId id, std::size_t step) {
+        if (!body_.catalog.has(id)) return;
+        const ArraySpec& spec = body_.catalog.spec(id);
+        if (spec.axes.comp_count < static_cast<int>(N)) return;
+        if (!body_.catalog.present(body_, id, atom_, step)) return;
+        std::array<double, N> values{};
+        bool ok = true;
+        for (std::size_t c = 0; c < N; ++c) {
+            const double v = body_.catalog.value(body_, id, atom_, step, -1, static_cast<int>(c));
+            values[c] = v;
+            ok = ok && finite(v);
+        }
+        if (ok) out.set(step, values);
+    }
+
+    void setTensorIfPresent(TensorSeries& out, ArrayId id, std::size_t step) {
+        if (!body_.catalog.has(id)) return;
+        if (body_.catalog.spec(id).axes.comp_count < 9) return;
+        if (!body_.catalog.present(body_, id, atom_, step)) return;
+        const model::SphericalTensor t = body_.catalog.valueTensor(body_, id, atom_, step);
+        if (tensorFinite(t)) out.set(step, t);
+    }
+
+    void foldProducerSubstrate(std::size_t step) {
+        setFixedArrayIfPresent(bs_per_type_T2_, ArrayId::BSPerTypeT2, step);
+        setFixedArrayIfPresent(hm_per_type_T2_, ArrayId::HMPerTypeT2, step);
+        for (std::size_t i = 0; i < kMcTensorFields.size(); ++i)
+            setTensorIfPresent(mc_tensor_series_[i], kMcTensorFields[i].id, step);
+        setTensorIfPresent(tripeptide_bb_shielding_, ArrayId::TripeptideBBShielding, step);
+        setTensorIfPresent(larsen_hbond_shielding_, ArrayId::LarsenHBondShielding, step);
     }
 
     void foldRelationship(std::size_t step, const PairContribution& pair) {
@@ -1828,11 +4973,37 @@ private:
         r.kernel_T2.set(step, pair.kernel_T2);
     }
 
+    static bool efgT2Complete(const EfgValue& v) {
+        for (double x : v.t2)
+            if (!finite(x)) return false;
+        return true;
+    }
+
+    void setEfgDerived(std::size_t step, const EfgValue& v, Mat3Series& mol, ScalarSeries& absSeries) {
+        if (!efgT2Complete(v)) return;
+        absSeries.set(step, norm5(v.t2));
+        const auto axes = molecularAxesAt(step);
+        if (!axes) return;
+        const Mat3 lab = ReconstructLibraryT2Matrix(finite(v.t0) ? v.t0 : 0.0, v.t2);
+        const Mat3 local = axes->transpose() * lab * (*axes);
+        if (local.allFinite()) mol.set(step, local);
+    }
+
     void foldEfg(std::size_t step) {
-        efg_apbs_.set(step, readT2Field(body_, io::FieldKind::APBSEFG, ArrayId::ApbsEfg, atom_, step));
-        efg_aimnet2_.set(step, readT2Field(body_, io::FieldKind::AIMNet2EFG, ArrayId::Aimnet2Efg, atom_, step));
-        efg_mopac_.set(step, readT2Field(body_, io::FieldKind::MOPACCoulombEFG,
-                                         ArrayId::MopacCoulombShielding, atom_, step));
+        const EfgValue apbs = readT2Field(body_, io::FieldKind::APBSEFG, ArrayId::ApbsEfg, atom_, step);
+        const EfgValue aimnet = readT2Field(body_, io::FieldKind::AIMNet2EFG, ArrayId::Aimnet2Efg, atom_, step);
+        efg_apbs_.set(step, apbs);
+        efg_aimnet2_.set(step, aimnet);
+        setEfgDerived(step, apbs, efg_mol_apbs_, efg_abs_apbs_);
+        setEfgDerived(step, aimnet, efg_mol_aimnet2_, efg_abs_aimnet2_);
+
+        const EfgValue shielding = readT2Field(body_, io::FieldKind::MOPACCoulombEFG,
+                                              ArrayId::MopacCoulombShielding, atom_, step);
+        shielding_mopac_coulomb_.set(step, shielding);
+        // §4.7.3: |T2| + molecular-frame projection (it is an EFG, projected
+        // exactly as foldEfg does for efg_mol). setEfgDerived sets the abs norm
+        // and, on framed atoms, the molecular matrix.
+        setEfgDerived(step, shielding, shielding_mol_mopac_, shielding_abs_mopac_coulomb_);
     }
 
     void foldSigma(std::size_t step) {
@@ -1842,8 +5013,96 @@ private:
         sigma_total_.set(step, target.total_decomp);
         sigma_dia_.set(step, target.dia_decomp);
         sigma_para_.set(step, target.para_decomp);
+        sigma_total_raw_.set(step, target.total_raw);
+        sigma_dia_raw_.set(step, target.dia_raw);
+        sigma_para_raw_.set(step, target.para_raw);
+        if (const auto axes = molecularAxesAt(step)) {
+            sigma_mol_total_.set(step, axes->transpose() * target.total_raw * (*axes));
+            sigma_mol_dia_.set(step, axes->transpose() * target.dia_raw * (*axes));
+            sigma_mol_para_.set(step, axes->transpose() * target.para_raw * (*axes));
+        }
         sigma_frob_.set(step, tensorFrobenius(target.total_raw));
+        foldCsa(step, target.total_raw);
         ++sigma_folds_;
+    }
+
+    void foldCsa(std::size_t step, const Mat3& totalRaw) {
+        const Mat3 sym = 0.5 * (totalRaw + totalRaw.transpose());
+        Eigen::SelfAdjointEigenSolver<Mat3> solver(sym);
+        if (solver.info() != Eigen::Success) return;
+
+        CsaDescriptor d;
+        d.principal_values = solver.eigenvalues();
+        d.pas_axes = solver.eigenvectors();
+        if (!d.principal_values.allFinite() || !d.pas_axes.allFinite()) return;
+
+        if (prev_pas_axes_) {
+            for (int c = 0; c < 3; ++c) {
+                if (prev_pas_axes_->col(c).dot(d.pas_axes.col(c)) < 0.0)
+                    d.pas_axes.col(c) *= -1.0;
+            }
+        }
+        if (d.pas_axes.determinant() < 0.0) {
+            if (prev_pas_axes_) {
+                int flipCol = 0;
+                double smallest = std::numeric_limits<double>::infinity();
+                for (int c = 0; c < 3; ++c) {
+                    const double continuity = std::abs(prev_pas_axes_->col(c).dot(d.pas_axes.col(c)));
+                    if (continuity < smallest) {
+                        smallest = continuity;
+                        flipCol = c;
+                    }
+                }
+                d.pas_axes.col(flipCol) *= -1.0;
+            } else {
+                d.pas_axes.col(2) *= -1.0;
+            }
+        }
+
+        const double s11 = d.principal_values[0];
+        const double s22 = d.principal_values[1];
+        const double s33 = d.principal_values[2];
+        d.sigma_iso = (s11 + s22 + s33) / 3.0;
+        d.haeberlen_span = s33 - s11;
+        if (!(std::abs(d.haeberlen_span) > 1e-12)) return;
+
+        int zz = 0;
+        double farthest = -1.0;
+        for (int i = 0; i < 3; ++i) {
+            const double dist = std::abs(d.principal_values[i] - d.sigma_iso);
+            if (dist > farthest) {
+                farthest = dist;
+                zz = i;
+            }
+        }
+        std::array<int, 2> rem{};
+        int k = 0;
+        for (int i = 0; i < 3; ++i)
+            if (i != zz) rem[static_cast<std::size_t>(k++)] = i;
+
+        int xx = rem[0];
+        int yy = rem[1];
+        const double dx = std::abs(d.principal_values[xx] - d.sigma_iso);
+        const double dy = std::abs(d.principal_values[yy] - d.sigma_iso);
+        if (dx < dy) std::swap(xx, yy);  // xx is the remaining value farther from isotropic.
+
+        const double denomEta = d.principal_values[zz] - d.sigma_iso;
+        if (!(std::abs(denomEta) > 1e-12)) return;
+        d.haeberlen_eta = (d.principal_values[yy] - d.principal_values[xx]) / denomEta;
+        if (d.haeberlen_eta < 0.0 && d.haeberlen_eta > -1e-12) d.haeberlen_eta = 0.0;
+        if (d.haeberlen_eta > 1.0 && d.haeberlen_eta < 1.0 + 1e-12) d.haeberlen_eta = 1.0;
+        if (!(d.haeberlen_eta >= 0.0 && d.haeberlen_eta <= 1.0)) return;
+
+        d.haeberlen_skew = 3.0 * (s22 - d.sigma_iso) / d.haeberlen_span;
+        d.haeberlen_values = Vec3(d.principal_values[xx], d.principal_values[yy], d.principal_values[zz]);
+        d.haeberlen_axes.col(0) = d.pas_axes.col(xx);
+        d.haeberlen_axes.col(1) = d.pas_axes.col(yy);
+        d.haeberlen_axes.col(2) = d.pas_axes.col(zz);
+        d.valid = finite(d.sigma_iso) && finite(d.haeberlen_eta) && finite(d.haeberlen_span)
+                  && finite(d.haeberlen_skew) && d.haeberlen_axes.allFinite();
+        if (!d.valid) return;
+        sigma_csa_.set(step, d);
+        prev_pas_axes_ = d.pas_axes;
     }
 
     std::pair<std::size_t, std::size_t> pairFromKey(std::uint64_t k) const {
@@ -1857,15 +5116,60 @@ private:
     PerAtomSubstrateConfig config_;
 
     Vec3Series coord_;
+    MolecularFrameSeries molecular_frame_;
     TensorSeries sigma_total_;
     TensorSeries sigma_dia_;
     TensorSeries sigma_para_;
+    Mat3Series sigma_total_raw_;
+    Mat3Series sigma_dia_raw_;
+    Mat3Series sigma_para_raw_;
+    Mat3Series sigma_mol_total_;
+    Mat3Series sigma_mol_dia_;
+    Mat3Series sigma_mol_para_;
     ScalarSeries sigma_frob_;
+    CsaDescriptorSeries sigma_csa_;
     Vec3Series field_mopac_;
     Vec3Series field_ff14sb_;
+    Vec3Series field_apbs_;
+    Vec3Series field_charge_ff14sb_;
+    Vec3Series field_mol_mopac_;
+    Vec3Series field_mol_apbs_;
+    Vec3Series field_mol_charge_ff14sb_;
+    ScalarSeries field_E_z_mopac_;
+    ScalarSeries field_E_z_apbs_;
+    ScalarSeries field_E_z_charge_ff14sb_;
+    ScalarSeries field_E2_mopac_;
+    ScalarSeries field_E2_apbs_;
+    ScalarSeries field_E2_charge_ff14sb_;
+    ScalarSeries field_abs_E_mopac_;
+    ScalarSeries field_abs_E_apbs_;
+    ScalarSeries field_abs_E_charge_ff14sb_;
+    ScalarSeries field_abs_E2_mopac_;
+    ScalarSeries field_abs_E2_apbs_;
+    ScalarSeries field_abs_E2_charge_ff14sb_;
+    IntSeries charge_field_source_count_;
+    IntSeries charge_field_rejected_self_;
+    IntSeries charge_field_rejected_degenerate_;
+    IntSeries charge_field_rejected_cutoff_;
+    IntSeries charge_field_missing_charge_;
     EfgSeries efg_apbs_;
     EfgSeries efg_aimnet2_;
-    EfgSeries efg_mopac_;
+    Mat3Series efg_mol_apbs_;
+    Mat3Series efg_mol_aimnet2_;
+    ScalarSeries efg_abs_apbs_;
+    ScalarSeries efg_abs_aimnet2_;
+    EfgSeries shielding_mopac_coulomb_;
+    ScalarSeries shielding_abs_mopac_coulomb_;
+    Mat3Series shielding_mol_mopac_;  // §4.7.3 molecular projection of the MOPAC-Coulomb EFG
+    FixedArraySeries<40> bs_per_type_T2_;
+    FixedArraySeries<40> hm_per_type_T2_;
+    std::vector<TensorSeries> mc_tensor_series_;
+    TensorSeries tripeptide_bb_shielding_;
+    TensorSeries larsen_hbond_shielding_;
+    ScalarSeries sasa_;
+    Vec3Series hbond_nearest_dir_;
+    ScalarSeries hbond_count_;
+    ScalarSeries ff_pb_radius_;
     ScalarSeries phi_;
     ScalarSeries psi_;
     ScalarSeries omega_;
@@ -1883,10 +5187,16 @@ private:
     std::map<RelationshipKey, RelationshipSeries> relationships_;
     std::map<std::uint64_t, StaticBondInfo> static_bonds_;
     std::map<std::uint64_t, ScalarSeries> bond_series_;
+    std::map<std::uint64_t, ScalarSeries> bond_length_series_;
+    std::map<std::uint64_t, BoolTriSeries> bond_length_rejected_degenerate_;
     std::set<std::pair<int, int>> contacted_residues_;
     int static_hybridisation_ord_ = static_cast<int>(model::Hybridisation::Unassigned);
     bool oxygen_gate_checked_ = false;
     std::size_t sigma_folds_ = 0;
+    std::optional<Mat3> prev_pas_axes_;
+    MolFrameSpec molecular_frame_spec_;
+    std::optional<Vec3> prev_mol_locked_x_;
+    std::optional<Vec3> prev_mol_locked_z_;
 };
 
 AnalysisAtom::AnalysisAtom(const AnalysisObjectContext& context,
@@ -1909,8 +5219,8 @@ std::size_t AnalysisAtom::sigmaFolds() const { return impl_->sigmaFolds(); }
 std::size_t AnalysisAtom::relationshipCount() const { return impl_->relationshipCount(); }
 std::size_t AnalysisAtom::mappedBondCount() const { return impl_->mappedBondCount(); }
 std::size_t AnalysisAtom::mismatchEventCount() const { return impl_->mismatchEventCount(); }
-std::size_t AnalysisAtom::boostCouplingCount() const { return impl_->last_boost_coupling_count; }
-std::size_t AnalysisAtom::boostSerialCount() const { return impl_->last_boost_serial_count; }
+std::size_t AnalysisAtom::accumulatorResponseCount() const { return impl_->last_accumulator_response_count; }
+std::size_t AnalysisAtom::accumulatorContextCount() const { return impl_->last_accumulator_context_count; }
 bool AnalysisAtom::oxygenGatePassed() const { return impl_->oxygenGatePassed(); }
 
 class AnalysisRing::Impl {
@@ -2331,19 +5641,93 @@ QJsonObject AnalysisResidue::Truth() const { return impl_->truth(); }
 
 namespace {
 
+QString currentGitCommit() {
+    QProcess git;
+    git.setProgram(QStringLiteral("git"));
+    git.setArguments({QStringLiteral("rev-parse"), QStringLiteral("HEAD")});
+    git.setWorkingDirectory(QDir::currentPath());
+    git.start();
+    if (!git.waitForFinished(1000) || git.exitStatus() != QProcess::NormalExit || git.exitCode() != 0)
+        return QStringLiteral("unknown");
+    const QString sha = QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+    return sha.isEmpty() ? QStringLiteral("unknown") : sha;
+}
+
 QJsonArray seriesCatalogJson() {
     struct Item { const char* key; const char* dtype; const char* layout; bool sigma; const char* units; };
-    static constexpr std::array<Item, 44> items = {{
+    static const std::vector<Item> items = {
         {"coord", "f64", "vec3_xyz", false, "angstrom"},
+        {"molecular_frame", "object", "molecular_frame_axes", false, "dimensionless"},
         {"sigma.total", "f64", "spherical_tensor_T0_T1_T2", true, "ppm"},
         {"sigma.dia", "f64", "spherical_tensor_T0_T1_T2", true, "ppm"},
         {"sigma.para", "f64", "spherical_tensor_T0_T1_T2", true, "ppm"},
+        {"sigma.total_raw", "f64", "mat3_row_major", true, "ppm"},
+        {"sigma.dia_raw", "f64", "mat3_row_major", true, "ppm"},
+        {"sigma.para_raw", "f64", "mat3_row_major", true, "ppm"},
+        {"sigma_mol.total", "f64", "mat3_row_major_molecular_frame", true, "ppm"},
+        {"sigma_mol.dia", "f64", "mat3_row_major_molecular_frame", true, "ppm"},
+        {"sigma_mol.para", "f64", "mat3_row_major_molecular_frame", true, "ppm"},
         {"sigma.total_frobenius", "f64", "scalar", true, "ppm"},
+        {"sigma.csa_descriptors", "object", "csa_descriptor_arrays", true, "ppm"},
         {"field.mopac_coulomb", "f64", "vec3_xyz", false, "V/angstrom"},
         {"field.ff14sb", "f64", "vec3_xyz", false, "V/angstrom"},
+        {"field.apbs", "f64", "vec3_xyz", false, "V/angstrom"},
+        {"field.charge_ff14sb", "f64", "vec3_xyz", false, "V/angstrom"},
+        {"field_mol.mopac_coulomb", "f64", "vec3_molecular_xyz", false, "V/angstrom"},
+        {"field_mol.apbs", "f64", "vec3_molecular_xyz", false, "V/angstrom"},
+        {"field_mol.charge_ff14sb", "f64", "vec3_molecular_xyz", false, "V/angstrom"},
+        {"field.E_z.mopac_coulomb", "f64", "scalar", false, "V/angstrom"},
+        {"field.E_z.apbs", "f64", "scalar", false, "V/angstrom"},
+        {"field.E_z.charge_ff14sb", "f64", "scalar", false, "V/angstrom"},
+        {"field.E2.mopac_coulomb", "f64", "scalar", false, "(V/angstrom)^2"},
+        {"field.E2.apbs", "f64", "scalar", false, "(V/angstrom)^2"},
+        {"field.E2.charge_ff14sb", "f64", "scalar", false, "(V/angstrom)^2"},
+        {"field.abs_E.mopac_coulomb", "f64", "scalar", false, "V/angstrom"},
+        {"field.abs_E.apbs", "f64", "scalar", false, "V/angstrom"},
+        {"field.abs_E.charge_ff14sb", "f64", "scalar", false, "V/angstrom"},
+        {"field.abs_E2.mopac_coulomb", "f64", "scalar", false, "(V/angstrom)^2"},
+        {"field.abs_E2.apbs", "f64", "scalar", false, "(V/angstrom)^2"},
+        {"field.abs_E2.charge_ff14sb", "f64", "scalar", false, "(V/angstrom)^2"},
+        {"field.charge_ff14sb_source_count", "int32", "scalar", false, "count"},
+        {"field.charge_ff14sb_rejected_self", "int32", "scalar", false, "count"},
+        {"field.charge_ff14sb_rejected_degenerate", "int32", "scalar", false, "count"},
+        {"field.charge_ff14sb_rejected_cutoff", "int32", "scalar", false, "count"},
+        {"field.charge_ff14sb_missing_charge", "int32", "scalar", false, "count"},
         {"efg.apbs", "f64", "efg_tensor_T0_T2", false, "ppm"},
         {"efg.aimnet2", "f64", "efg_tensor_T0_T2", false, "ppm"},
-        {"efg.mopac_coulomb", "f64", "efg_tensor_T0_T2", false, "ppm"},
+        {"efg_mol.apbs", "f64", "mat3_row_major_molecular_frame", false, "V/angstrom^2"},
+        {"efg_mol.aimnet2", "f64", "mat3_row_major_molecular_frame", false, "V/angstrom^2"},
+        {"efg.abs.apbs", "f64", "scalar", false, "V/angstrom^2"},
+        {"efg.abs.aimnet2", "f64", "scalar", false, "V/angstrom^2"},
+        {"shielding.mopac_coulomb", "f64", "t2_only_T0_null_T2", false, "ppm"},
+        {"shielding.abs_T2.mopac_coulomb", "f64", "scalar", false, "ppm"},
+        {"shielding_mol.mopac_coulomb", "f64", "mat3_row_major_molecular_frame", false, "ppm"},
+        {"bs_per_type_T2", "f64", "per_ring_type_T2_8x5_flat_40", false, "ppm_T_per_nA"},
+        {"hm_per_type_T2", "f64", "per_ring_type_T2_8x5_flat_40", false, "angstrom^-1"},
+        {"mc_peptide_co_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_peptide_co_bo", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_peptide_co_rhombic", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_peptide_cn_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_peptide_cn_bo", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_backbone_other_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_backbone_other_bo", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_sidechain_co_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_sidechain_co_bo", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_sidechain_other_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_sidechain_other_bo", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_disulfide_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_disulfide_bo", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_aromatic_zeroed_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_aromatic_zeroed_bo", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_nearest_co_T2", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"mc_nearest_cn_T2", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
+        {"tripeptide_bb_shielding", "f64", "spherical_tensor_T0_T1_T2", false, "ppm"},
+        {"larsen_hbond_shielding", "f64", "spherical_tensor_T0_T1_T2", false, "ppm"},
+        {"sasa", "f64", "scalar", false, "angstrom^2"},
+        {"hbond.nearest_dir", "f64", "vec3_xyz", false, "dimensionless"},
+        {"hbond.count", "f64", "scalar", false, "count"},
+        {"ff_pb_radius", "f64", "scalar", false, "angstrom"},
+        {"bond.lengths", "object", "per_static_bond_length_series_with_rejection_flags", false, "angstrom"},
         {"dihedral.phi", "f64", "scalar", false, "radian"},
         {"dihedral.psi", "f64", "scalar", false, "radian"},
         {"dihedral.omega", "f64", "scalar", false, "radian"},
@@ -2378,7 +5762,7 @@ QJsonArray seriesCatalogJson() {
         {"relationships", "f64", "relationship_facets", false, "mixed"},
         {"model.category.hybridisation_series", "int8", "scalar", false, "ordinal"},
         {"model.category.hybridisation_pi_character_series", "f64", "scalar", false, "dimensionless_wiberg"},
-    }};
+    };
     QJsonArray a;
     for (const Item& item : items) {
         QJsonObject o;
@@ -2399,9 +5783,10 @@ QJsonObject manifestJson(const Body& body,
     QJsonObject root;
     QJsonObject schema;
     schema.insert(QStringLiteral("name"), QStringLiteral("nmr-shielding-analysis-object-pass"));
-    schema.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
-    schema.insert(QStringLiteral("spec_source"), QStringLiteral("COLLECTION_PASS_SPEC_2026-06-16.md"));
+    schema.insert(QStringLiteral("version"), QStringLiteral("1.2.0"));
+    schema.insert(QStringLiteral("spec_source"), QStringLiteral("FORWARD_SUBSTRATE_PASS_SPEC_2026-06-18.md"));
     schema.insert(QStringLiteral("emitted_utc"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    schema.insert(QStringLiteral("producing_git_commit"), currentGitCommit());
     root.insert(QStringLiteral("schema"), schema);
 
     QJsonObject run;
@@ -2500,15 +5885,6 @@ bool writeJsonFile(const QString& path, const QJsonObject& object, QString* errO
     return true;
 }
 
-bool looksLikeCompletedJsonFile(const QString& path) {
-    QFile f(path);
-    if (!f.exists()) return false;
-    if (!f.open(QIODevice::ReadOnly)) return false;
-    if (f.size() <= 1) return false;
-    if (!f.seek(f.size() - 1)) return false;
-    return f.read(1) == QByteArrayLiteral("\n");
-}
-
 }  // namespace
 
 bool RunAnalysisObjectPass(const Body& body,
@@ -2545,6 +5921,55 @@ bool RunAnalysisObjectPass(const Body& body,
     diag.atom_count = body.run.protein->atomCount();
     diag.ring_count = body.run.protein->topology().ringCount();
     diag.residue_count = body.run.protein->residueCount();
+
+    // Resolve the small-run emit selector (work-item 9). Each "residue:atom"
+    // string -> the matching atom index. The FULL protein is still constructed
+    // and walked (the source environment); only the WRITE is filtered. Empty
+    // selector => all atoms emit (production byte-identical path).
+    std::set<std::size_t> emitAtoms;
+    const bool emitFilterActive = !config.only_atoms.isEmpty();
+    if (emitFilterActive) {
+        const model::QtProtein& prot = *body.run.protein;
+        for (const QString& spec : config.only_atoms) {
+            const int colon = spec.indexOf(QLatin1Char(':'));
+            if (colon <= 0) {
+                if (errOut) *errOut = QStringLiteral("invalid --only-atoms entry (want residue:atom): %1").arg(spec);
+                return false;
+            }
+            const QString resTok = spec.left(colon).trimmed();
+            const QString atomName = spec.mid(colon + 1).trimmed();
+            // residue token: a PDB residue NUMBER, optionally prefixed by the
+            // 3-letter name (e.g. "ASP7" or "7"). Parse the trailing integer.
+            int digitStart = resTok.size();
+            while (digitStart > 0 && resTok[digitStart - 1].isDigit()) --digitStart;
+            bool numOk = false;
+            const int resNum = resTok.mid(digitStart).toInt(&numOk);
+            if (!numOk) {
+                if (errOut) *errOut = QStringLiteral("invalid --only-atoms residue token: %1").arg(spec);
+                return false;
+            }
+            bool found = false;
+            for (std::size_t ai = 0; ai < prot.atomCount(); ++ai) {
+                const model::QtAtom& a = prot.atom(ai);
+                if (!validResidue(prot, a.residueIndex)) continue;
+                if (prot.residue(static_cast<std::size_t>(a.residueIndex)).address.residueNumber != resNum)
+                    continue;
+                if (prot.atomLabel(ai, model::NamingConvention::Iupac) == atomName) {
+                    emitAtoms.insert(ai);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                if (errOut) *errOut = QStringLiteral("--only-atoms entry not found in protein: %1").arg(spec);
+                return false;
+            }
+        }
+        qCInfo(cAnalysisObject).noquote()
+            << "analysis_object emit-filter active | requested=" << config.only_atoms.size()
+            << "| resolved_atoms=" << emitAtoms.size();
+    }
+
     for (std::size_t atom = 0; atom < body.run.protein->atomCount(); ++atom)
         objects.push_back(std::make_unique<AnalysisAtom>(context, atom, config.per_atom));
     for (std::size_t ring = 0; ring < body.run.protein->topology().ringCount(); ++ring)
@@ -2602,7 +6027,14 @@ bool RunAnalysisObjectPass(const Body& body,
             return false;
         }
         const QString path = out.filePath(QStringLiteral("objects/%1.json").arg(expectedUid));
-        const bool skipped = looksLikeCompletedJsonFile(path);
+        // Emit-filter (work-item 9): when active, only the selected atoms emit a
+        // JSON object. Non-selected atoms + rings + residues are skipped from the
+        // WRITE (they still ran the full trajectory as the source environment).
+        bool skipped = false;
+        if (emitFilterActive) {
+            const auto* atomObj = dynamic_cast<const AnalysisAtom*>(object.get());
+            skipped = !(atomObj != nullptr && emitAtoms.count(object->modelIndex()) != 0);
+        }
         QJsonObject truth;
         if (skipped) {
             ++skippedExisting;
@@ -2625,16 +6057,13 @@ bool RunAnalysisObjectPass(const Body& body,
             }
             if (!writeJsonFile(path, truth, errOut)) return false;
         }
-        if (!skipped) {
-            const QJsonObject boost = truth.value(QStringLiteral("boost")).toObject();
-            diag.boost_coupling_results += static_cast<std::size_t>(boost.value(QStringLiteral("coupling")).toArray().size());
-            diag.boost_serial_results += static_cast<std::size_t>(boost.value(QStringLiteral("serial")).toArray().size());
-        }
         if (const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get())) {
             diag.atom_sigma_folds += atom->sigmaFolds();
             diag.atom_relationships += atom->relationshipCount();
             diag.mapped_bonds += atom->mappedBondCount();
             diag.mismatch_events += atom->mismatchEventCount();
+            diag.accumulator_responses += atom->accumulatorResponseCount();
+            diag.accumulator_contexts += atom->accumulatorContextCount();
             allOxygenOk = allOxygenOk && atom->oxygenGatePassed();
         }
         if (!skipped && object->objectType() == QStringLiteral("ring")) {

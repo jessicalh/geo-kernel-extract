@@ -28,8 +28,10 @@ public:
     std::size_t relationshipCount() const;
     std::size_t mappedBondCount() const;
     std::size_t mismatchEventCount() const;
-    std::size_t boostCouplingCount() const;
-    std::size_t boostSerialCount() const;
+    // Compact per-context accumulator counts (replaces the deleted boost grid):
+    // total characterized responses, and contexts the atom occupied.
+    std::size_t accumulatorResponseCount() const;
+    std::size_t accumulatorContextCount() const;
     bool oxygenGatePassed() const;
 
 private:

@@ -33,6 +33,7 @@ enum class ArrayId : int {
     Aimnet2ChargeRespVector,
     Aimnet2Embedding,
     Ff14sbCharge,
+    FfPbRadius,
     MopacCharge,                 // producer mopac_charges.npy (static or flattened per-frame)
     MopacChargeWelfordMean,      // per-atom MOPAC charge Welford MEAN (static, no T)
     MopacCoulombShielding,       // T2: MOPAC-Coulomb-EFG-DERIVED shielding (NOT raw EFG)
@@ -50,6 +51,7 @@ enum class ArrayId : int {
     HMPerTypeT0,
     HMPerTypeT1,
     HMPerTypeT2,
+    TripeptideBBShielding,
     LarsenHBondShielding,
     WaterEfield,
     WaterNFirst,

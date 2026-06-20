@@ -37,4 +37,30 @@ model::SphericalTensor DecomposeLibrary(const model::Mat3& sigma) {
     return st;
 }
 
+model::Mat3 ReconstructLibraryT2Matrix(double t0, const std::array<double, 5>& t2) {
+    const double kSqrt2 = std::sqrt(2.0);
+
+    const double Sxy = t2[0] / kSqrt2;
+    const double Syz = t2[1] / kSqrt2;
+    const double Szz = t2[2] * std::sqrt(2.0 / 3.0);
+    const double Sxz = t2[3] / kSqrt2;
+    const double SxxMinusSyy = kSqrt2 * t2[4];
+
+    const double Sxx = 0.5 * (-Szz + SxxMinusSyy);
+    const double Syy = 0.5 * (-Szz - SxxMinusSyy);
+
+    model::Mat3 m = model::Mat3::Zero();
+    m(0, 0) = t0 + Sxx;
+    m(1, 1) = t0 + Syy;
+    m(2, 2) = t0 + Szz;
+    m(0, 1) = m(1, 0) = Sxy;
+    m(1, 2) = m(2, 1) = Syz;
+    m(0, 2) = m(2, 0) = Sxz;
+    return m;
+}
+
+model::Mat3 ReconstructLibraryT2Matrix(const std::array<double, 5>& t2) {
+    return ReconstructLibraryT2Matrix(0.0, t2);
+}
+
 }  // namespace h5reader::rediscover

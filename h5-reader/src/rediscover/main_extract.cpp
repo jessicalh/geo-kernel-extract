@@ -279,6 +279,13 @@ int main(int argc, char** argv) {
     QCommandLineOption engineOpt(QStringLiteral("engine"),
                                  QStringLiteral("ring/mc traversal: composed (functional API, default) | procedural (reference oracle cells)."),
                                  QStringLiteral("engine"), QStringLiteral("composed"));
+    // analysis_atom small-run emit selector: a comma-separated residue:atom
+    // list (e.g. "ASP7:CG,LYS30:N"). Filters which atoms EMIT an accumulator;
+    // the full protein still runs every step as the source environment and
+    // every emitted atom runs the full trajectory. Omit => all 846 atoms emit.
+    QCommandLineOption onlyAtomsOpt(QStringLiteral("only-atoms"),
+                                    QStringLiteral("analysis_atom emit selector: comma-separated residue:atom list (e.g. ASP7:CG,LYS30:N). Filters the emit set only; the full protein remains the source environment. Omit for all atoms."),
+                                    QStringLiteral("list"), QString());
     parser.addOption(runOpt);
     parser.addOption(outOpt);
     parser.addOption(root720Opt);
@@ -295,6 +302,7 @@ int main(int argc, char** argv) {
     parser.addOption(bondCutoffOpt);
     parser.addOption(mcNearFieldRatioOpt);
     parser.addOption(engineOpt);
+    parser.addOption(onlyAtomsOpt);
     parser.addPositionalArgument(QStringLiteral("run"),
                                  QStringLiteral("Calcset path for row_design or legacy --run alternative."));
     parser.process(app);
@@ -725,6 +733,11 @@ int main(int argc, char** argv) {
         cfg.per_atom.bond_cutoff_A = bondCutoff;
         cfg.per_atom.charge_cutoff_A = chargeCutoff;
         cfg.per_atom.mc_near_field_ratio = mcNearFieldRatio;
+        const QString onlyAtomsValue = parser.value(onlyAtomsOpt).trimmed();
+        if (!onlyAtomsValue.isEmpty()) {
+            cfg.only_atoms = onlyAtomsValue.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (QString& s : cfg.only_atoms) s = s.trimmed();
+        }
         h5reader::rediscover::AnalysisObjectPassDiagnostics stats;
         QString objectErr;
         if (!h5reader::rediscover::RunAnalysisObjectPass(body, outDir, cfg, &stats, &objectErr)) {
@@ -747,8 +760,8 @@ int main(int argc, char** argv) {
             << "| full_sigma_tensors_retained=" << stats.full_sigma_tensors_retained
             << "| mapped_bonds=" << stats.mapped_bonds
             << "| mismatch_events=" << stats.mismatch_events
-            << "| boost_coupling=" << stats.boost_coupling_results
-            << "| boost_serial=" << stats.boost_serial_results
+            << "| accumulator_responses=" << stats.accumulator_responses
+            << "| accumulator_contexts=" << stats.accumulator_contexts
             << "| oxygen_gate_passed=" << stats.oxygen_gate_passed
             << "| manifest=" << stats.manifest_path;
         return 0;
