@@ -6,6 +6,7 @@
 #include "CameraMode.h"
 #include "OrientationPolicy.h"
 #include "MoleculeScene.h"
+#include "NearbySignalModel.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
 #include "RestServer.h"
@@ -57,6 +58,7 @@
 #include <QLoggingCategory>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMouseEvent>
 #include <QMessageBox>
 #include <QRegion>
 #include <QSettings>
@@ -274,6 +276,19 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
 
     // ---- Selection model — the single source of selection truth ----------
     selection_ = new model::AtomSelection(loaded_->protein.get(), this);
+
+    // Nearby-residue source for the Filter checklist. Prefer the transformed
+    // (displayed) conformation; fall back to the base conformation if no
+    // backbone fit is active so the checklist still populates. Lazily created
+    // once and re-pointed on each load (parented to this; never per-load leak).
+    if (!filterNearby_)
+        filterNearby_ = new NearbySignalModel(this);
+    filterNearby_->setContext(
+        loaded_->protein.get(),
+        transformed_ ? static_cast<model::Conformation*>(transformed_)
+                     : loaded_->conformation.get());
+    filterNearby_->setRadiusAngstrom(5.0);
+    filterResidues_.clear();
 
     signalCatalog_ = new model::TrajectorySignalCatalog(this);
     fieldAvailability_ = std::make_shared<model::TrajectoryFieldAvailability>(
@@ -614,6 +629,11 @@ void ReaderMainWindow::refreshControlStates() {
 
     // Camera modes (enable gating + checked-state sync).
     updateCameraModeActions();
+
+    // Filter button: usable whenever a run is loaded (so an active filter can
+    // always be cleared) — its dropdown content adapts to the current focus.
+    if (filterButton_) filterButton_->setEnabled(loaded);
+    updateFilterButton();
 }
 
 QJsonObject ReaderMainWindow::uiStateJson() const {
@@ -648,6 +668,16 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     controls[QStringLiteral("butterfly")]    = ctl(showButterflyAction_);
     controls[QStringLiteral("bfield")]       = ctl(showBFieldAction_);
     controls[QStringLiteral("occupancy")]    = ctl(showOccupancyAction_);
+
+    // Filter is a QToolButton (not a QAction), so report it explicitly:
+    // present/enabled like the others, plus whether isolation is active and
+    // how many residues are pinned. Keeps /ui/state an honest mirror of the UI.
+    QJsonObject filter;
+    filter[QStringLiteral("present")] = (filterButton_ != nullptr);
+    filter[QStringLiteral("enabled")] = (filterButton_ && filterButton_->isEnabled());
+    filter[QStringLiteral("active")]  = (scene_ && scene_->atomFilterActive());
+    filter[QStringLiteral("count")]   = static_cast<int>(filterResidues_.size());
+    controls[QStringLiteral("filter")] = filter;
 
     QJsonObject sel;
     sel[QStringLiteral("count")] = static_cast<int>(selection_ ? selection_->count() : 0);
@@ -895,11 +925,13 @@ void ReaderMainWindow::setResidueFilter(const std::vector<std::size_t>& residues
     }
 
     if (atoms.empty()) {
+        filterResidues_.clear();
         restoreOverlays();
         scene_->clearAtomFilter();
     } else {
-        hideOverlays();
-        scene_->setAtomFilter(atoms);
+        filterResidues_ = residues;   // single source of truth: keeps the button
+        hideOverlays();               // label + checklist consistent whether the
+        scene_->setAtomFilter(atoms); // filter was driven by the menu or REST
     }
     refreshControlStates();   // grey overlay toggles while filtered; restore on clear
 }
@@ -1053,6 +1085,94 @@ void ReaderMainWindow::updateSelectionStatus() {
             .arg(n).arg(QString::fromLatin1(model::NameForGeometryKind(k))));
 }
 
+void ReaderMainWindow::buildFilterMenu() {
+    ASSERT_THREAD(this);
+    if (!filterMenu_)
+        return;
+    filterMenu_->clear();
+
+    // Leaving filter mode is always offered, enabled only while a filter is on.
+    QAction* showAll = filterMenu_->addAction(QStringLiteral("Show whole structure"));
+    showAll->setEnabled(scene_ && scene_->atomFilterActive());
+    ACONNECT(showAll, &QAction::triggered, this, [this]() {
+        setResidueFilter({});      // empty restores the full structure + overlays
+    });
+    filterMenu_->addSeparator();
+
+    // The checklist is the residues near the focused atom. No focus → nothing
+    // to list; say so rather than present an empty menu.
+    if (!selection_ || !selection_->hasFocus() || !filterNearby_) {
+        QAction* hint = filterMenu_->addAction(
+            QStringLiteral("Select an atom to list nearby residues"));
+        hint->setEnabled(false);
+        return;
+    }
+
+    // Rebuild the neighbourhood for the current focus + frame, then offer one
+    // checkable row per nearby residue, nearest first.
+    filterNearby_->setAnchor(selection_->focus(),
+                             playback_ ? playback_->currentFrame() : 0);
+
+    struct Row { std::size_t residue; double dist; QString label; };
+    std::vector<Row> rows;
+    const int rowN = filterNearby_->rowCount();
+    for (int r = 0; r < rowN; ++r) {
+        const NearbySignalModel::Candidate* c =
+            filterNearby_->candidateAt(filterNearby_->index(r, 0));
+        if (!c || c->kind != NearbySignalModel::CandidateKind::Residue
+              || !c->residueContext)
+            continue;
+        rows.push_back({*c->residueContext, c->distanceAngstrom, c->label});
+    }
+    std::sort(rows.begin(), rows.end(),
+              [](const Row& a, const Row& b) { return a.dist < b.dist; });
+
+    if (rows.empty()) {
+        QAction* none = filterMenu_->addAction(
+            QStringLiteral("No residues within %1 Å")
+                .arg(filterNearby_->radiusAngstrom(), 0, 'f', 1));
+        none->setEnabled(false);
+        return;
+    }
+
+    for (const Row& row : rows) {
+        QAction* a = filterMenu_->addAction(
+            QStringLiteral("%1 · %2 Å").arg(row.label).arg(row.dist, 0, 'f', 1));
+        a->setCheckable(true);
+        a->setChecked(std::find(filterResidues_.begin(), filterResidues_.end(),
+                                row.residue) != filterResidues_.end());
+        const std::size_t residue = row.residue;
+        ACONNECT(a, &QAction::toggled, this, [this, residue](bool on) {
+            onFilterResidueToggled(residue, on);
+        });
+    }
+}
+
+void ReaderMainWindow::onFilterResidueToggled(std::size_t residue, bool on) {
+    ASSERT_THREAD(this);
+    // Build the desired set locally; setResidueFilter is the sole writer of
+    // filterResidues_, so it (not this handler) keeps the button label synced.
+    std::vector<std::size_t> next = filterResidues_;
+    const auto it = std::find(next.begin(), next.end(), residue);
+    if (on) {
+        if (it == next.end())
+            next.push_back(residue);
+    } else if (it != next.end()) {
+        next.erase(it);
+    }
+    setResidueFilter(next);   // empty set restores the whole structure
+}
+
+void ReaderMainWindow::updateFilterButton() {
+    ASSERT_THREAD(this);
+    if (!filterButton_)
+        return;
+    const bool active = scene_ && scene_->atomFilterActive();
+    filterButton_->setText(active
+        ? QStringLiteral("Filter (%1)").arg(filterResidues_.size())
+        : QStringLiteral("Filter"));
+}
+
 void ReaderMainWindow::resetDashboardStateForRunLoad() {
     ASSERT_THREAD(this);
     if (dashboardSelectionController_) {
@@ -1196,6 +1316,22 @@ QIcon makeTransportIcon(TransportGlyph kind, const QColor& color) {
     p.end();
     return QIcon(pm);
 }
+
+// A QMenu that does NOT close when a checkable item is clicked, so the Filter
+// checklist lets you tick several residues in one go.
+class FilterMenu final : public QMenu {
+public:
+    using QMenu::QMenu;
+protected:
+    void mouseReleaseEvent(QMouseEvent* e) override {
+        QAction* a = activeAction();
+        if (a && a->isEnabled() && a->isCheckable()) {
+            a->trigger();   // toggle + fire; keep the menu open
+            return;
+        }
+        QMenu::mouseReleaseEvent(e);
+    }
+};
 }  // namespace
 
 void ReaderMainWindow::buildToolbar() {
@@ -1350,6 +1486,25 @@ void ReaderMainWindow::buildToolbar() {
     signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
     ACONNECT(signalDisplaysAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onOpenSignalDisplays);
+
+    // Display isolation ("Filter"): a dropdown checklist of residues near the
+    // focused atom. Ticking residues enters filter mode (only those render);
+    // "Show whole structure" leaves it. Disabled until a run is loaded; the
+    // dropdown is (re)built lazily on aboutToShow so it tracks the current
+    // focus + frame. First QToolButton-with-menu on this toolbar.
+    filterMenu_ = new FilterMenu(this);
+    filterButton_ = new QToolButton(this);
+    filterButton_->setText(QStringLiteral("Filter"));
+    filterButton_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    filterButton_->setPopupMode(QToolButton::InstantPopup);
+    filterButton_->setMenu(filterMenu_);
+    filterButton_->setEnabled(false);
+    filterButton_->setToolTip(QStringLiteral(
+        "Show only chosen residues near the selected atom and step through "
+        "frames isolated. Select an atom first."));
+    tb->addWidget(filterButton_);
+    ACONNECT(filterMenu_.data(), &QMenu::aboutToShow,
+             this, &ReaderMainWindow::buildFilterMenu);
 
     tb->addSeparator();
 

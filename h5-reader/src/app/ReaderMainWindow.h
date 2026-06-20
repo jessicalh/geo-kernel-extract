@@ -215,6 +215,9 @@ private:
     void updateFitModeLabel();
     void revealDockQueued(QDockWidget* dock);
     void updateSelectionStatus();   // status-bar selection count + geometry kind
+    void buildFilterMenu();         // (re)populate the Filter dropdown checklist
+    void onFilterResidueToggled(std::size_t residue, bool on);
+    void updateFilterButton();      // text/state of the Filter toolbar button
     void resetDashboardStateForRunLoad();
     // QSettings persistence — see kSettingsVersion in the .cpp for the
     // versioned QMainWindow state blob policy. Tolerant on restore (any
@@ -301,6 +304,14 @@ private:
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> showOccupancyAction_;
     QPointer<QAction> signalDisplaysAction_;
+
+    // Display-isolation ("Filter"): a toolbar button whose dropdown is a live
+    // checklist of residues near the focused atom (NearbySignalModel). The
+    // checked set (filterResidues_) drives setResidueFilter.
+    QPointer<QToolButton>    filterButton_;
+    QPointer<QMenu>          filterMenu_;
+    class NearbySignalModel* filterNearby_ = nullptr;
+    std::vector<std::size_t> filterResidues_;
 
     // Exclusive camera-mode action group. QActionGroup is the standard Qt
     // idiom for radio-style mutual exclusion across actions. Source of
