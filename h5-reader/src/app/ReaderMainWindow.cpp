@@ -7,6 +7,7 @@
 #include "OrientationPolicy.h"
 #include "MoleculeScene.h"
 #include "NearbySignalModel.h"
+#include "NewmanDock.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
 #include "RestServer.h"
@@ -274,6 +275,12 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
              inspectorDock_, &QtAtomInspectorDock::setFrame);
 
+    if (newmanDock_) {
+        newmanDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+        ACONNECT(playback_, &QtPlaybackController::frameChanged,
+                 newmanDock_, &NewmanDock::setFrame);
+    }
+
     // ---- Selection model — the single source of selection truth ----------
     selection_ = new model::AtomSelection(loaded_->protein.get(), this);
 
@@ -352,6 +359,19 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
     ACONNECT(selection_, &model::AtomSelection::cleared,
              inspectorDock_, &QtAtomInspectorDock::clearSelection);
+
+    if (newmanDock_) {
+        ACONNECT(selection_, &model::AtomSelection::focusChanged,
+                 newmanDock_, &NewmanDock::setFocusAtom);
+        ACONNECT(selection_, &model::AtomSelection::cleared,
+                 newmanDock_, &NewmanDock::clear);
+        // Reveal on first focus (3D pick or REST), like the Inspector.
+        ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+                 [this](std::size_t) {
+                     if (newmanDock_ && !newmanDock_->isVisible())
+                         revealDockQueued(newmanDock_);
+                 });
+    }
     ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) { refreshControlStates(); });
     ACONNECT(selection_, &model::AtomSelection::cleared, this,
@@ -519,6 +539,8 @@ void ReaderMainWindow::clearLoadedRun() {
         inspectorDock_->setFieldAvailability({});
         inspectorDock_->clearSelection();
     }
+    if (newmanDock_)
+        newmanDock_->setContext(nullptr, nullptr);
 
     delete cameraInputFilter_;
     cameraInputFilter_ = nullptr;
@@ -1578,6 +1600,13 @@ void ReaderMainWindow::buildDocks() {
         dashboardController_->setVisualizationContext({});
     addDockWidget(Qt::LeftDockWidgetArea, dashboardStripDock_);
     tabifyDockWidget(inspectorDock_, dashboardStripDock_);
+
+    // Newman dock — tabified alongside; reveals on focus like the Inspector,
+    // and redraws the focused residue's backbone phi/psi live as frames play.
+    newmanDock_ = new NewmanDock(this);
+    addDockWidget(Qt::LeftDockWidgetArea, newmanDock_);
+    tabifyDockWidget(inspectorDock_, newmanDock_);
+
     inspectorDock_->raise();
     resizeDocks({inspectorDock_}, {360}, Qt::Horizontal);
 
@@ -1586,6 +1615,7 @@ void ReaderMainWindow::buildDocks() {
     // for users who intentionally left a dock visible.
     inspectorDock_->setVisible(false);
     dashboardStripDock_->setVisible(false);
+    newmanDock_->setVisible(false);
 
     ACONNECT(dashboardStripDock_, &QDockWidget::visibilityChanged,
              this, [this](bool visible) {
