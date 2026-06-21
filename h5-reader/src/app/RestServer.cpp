@@ -6,6 +6,7 @@
 #include "DashboardSelectionController.h"
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
+#include "NewmanProjection.h"
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
 #include "SignalDisplayDialog.h"
@@ -655,6 +656,59 @@ void RestServer::registerRoutes() {
             {"time_ps", time_ps},
             {"count", playback_->frameCount()},
         });
+    });
+
+    // GET /newman -> the focused residue's backbone phi/psi Newman projections
+    // (torsion angle + substituent spokes) at the current frame. Drives and
+    // verifies the Newman dock; pure geometry, transform-invariant so it reads
+    // the base conformation.
+    server_->route(QStringLiteral("/newman"), [this]() {
+        ASSERT_THREAD(this);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        const auto* conf    = loaded_ ? loaded_->conformation.get() : nullptr;
+        if (!protein || !conf)
+            return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
+        if (!selection_ || !selection_->hasFocus())
+            return errorResponse(QStringLiteral("no focused atom"), SC::ServiceUnavailable);
+        const std::size_t atom = selection_->focus();
+        if (atom >= protein->atomCount())
+            return errorResponse(QStringLiteral("focus atom out of range"), SC::BadRequest);
+        const int rRaw = protein->atom(atom).residueIndex;
+        if (rRaw < 0 || static_cast<std::size_t>(rRaw) >= protein->residueCount())
+            return errorResponse(QStringLiteral("focus atom has no residue"), SC::ServiceUnavailable);
+        const std::size_t residue = static_cast<std::size_t>(rRaw);
+        const int frame = playback_ ? playback_->currentFrame() : 0;
+        const std::size_t f = (frame >= 0) ? static_cast<std::size_t>(frame) : 0u;
+
+        const double kRadToDeg = 57.295779513082320876;
+        auto encode = [&](const NewmanProjection& p) {
+            QJsonObject o;
+            o["valid"] = p.valid;
+            if (!p.valid) { o["reason"] = p.invalidReason; return o; }
+            o["angleDeg"] = p.torsionDeg;
+            o["front"]    = p.frontLabel;
+            o["back"]     = p.backLabel;
+            QJsonArray spokes;
+            for (const NewmanSpoke& s : p.spokes)
+                spokes.append(QJsonObject{
+                    {"label", s.label},
+                    {"angleDeg", s.angleRad * kRadToDeg},
+                    {"front", s.front},
+                    {"reference", s.reference},
+                });
+            o["spokes"] = spokes;
+            return o;
+        };
+
+        const NewmanProjection phiP = ComputeNewmanProjection(*protein, *conf, residue, f, NewmanKind::Phi);
+        const NewmanProjection psiP = ComputeNewmanProjection(*protein, *conf, residue, f, NewmanKind::Psi);
+        QJsonObject out;
+        out["residue"]      = static_cast<qint64>(residue);
+        out["residueLabel"] = phiP.residueLabel;
+        out["frame"]        = frame;
+        out["phi"]          = encode(phiP);
+        out["psi"]          = encode(psiP);
+        return jsonResponse(out);
     });
 
     server_->route(QStringLiteral("/frame/set"), Method::Post,
