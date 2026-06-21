@@ -252,6 +252,8 @@ nmrstats.Rcheck/
 lit-map/
 h5-reader/analysis/
 *.npy
+# stray MATLAB MCP-tool log written at the repo root
+matlab_mcp_server.log
 
 # Local-only, never on GitHub (2026-06-12): working docs + the annotated
 # bibliography. Kept on disk in the worktrees, but untracked. (references/ and
