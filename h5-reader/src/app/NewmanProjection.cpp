@@ -4,6 +4,7 @@
 #include "../model/ConformationGeometry.h"   // DihedralDegrees
 #include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
+#include "../model/QtResidueNames.h"          // IupacResidue3LetterFor
 #include "../model/Types.h"                   // Vec3 (Eigen::Vector3d)
 
 #include <Eigen/Dense>
@@ -42,8 +43,11 @@ NewmanProjection ComputeNewmanProjection(const model::QtProtein& protein,
         return out;
     }
     const model::QtResidue& res = protein.residue(residueIndex);
-    out.residueLabel = protein.residueLabel(residueIndex, model::NamingConvention::Amber,
-                                            model::NamingSource::Derived);
+    // Match the Inspector's residue identity ("LEU #28"): IUPAC 3-letter +
+    // the residue NUMBER from the chain address, not the 0-based index.
+    out.residueLabel = QStringLiteral("%1 #%2")
+        .arg(QString::fromLatin1(model::IupacResidue3LetterFor(res.aminoAcid)))
+        .arg(res.address.residueNumber);
 
     // Resolve the four dihedral atoms a-b-c-d (sight down b->c) and the
     // substituent spokes of the front (b) and back (c) atoms.

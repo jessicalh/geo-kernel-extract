@@ -24,8 +24,13 @@ namespace h5reader::app {
 
 namespace {
 
-QString kindName(NewmanKind k) {
-    return k == NewmanKind::Phi ? QStringLiteral("phi") : QStringLiteral("psi");
+// Glyphs as code points so the source stays pure ASCII (no BOM / /utf-8 needed).
+const QChar kPhi = QChar(char16_t(0x03C6));  // phi
+const QChar kPsi = QChar(char16_t(0x03C8));  // psi
+const QChar kDeg = QChar(char16_t(0x00B0));  // degree
+
+QString kindGlyph(NewmanKind k) {
+    return QString(k == NewmanKind::Phi ? kPhi : kPsi);
 }
 
 void drawCenteredText(QPainter& p, const QPointF& at, const QString& text) {
@@ -70,7 +75,7 @@ void NewmanView::paintEvent(QPaintEvent*) {
         p.setPen(QColor(120, 120, 120));
         const QString msg = !has_
             ? hint_
-            : QStringLiteral("%1 not defined here:\n%2").arg(kindName(drawn_.kind), drawn_.invalidReason);
+            : QStringLiteral("%1 not defined here:\n%2").arg(kindGlyph(drawn_.kind), drawn_.invalidReason);
         p.drawText(area.adjusted(10, 10, -10, -10), Qt::AlignCenter | Qt::TextWordWrap, msg);
         return;
     }
@@ -92,6 +97,21 @@ void NewmanView::paintEvent(QPaintEvent*) {
     p.setPen(Qt::NoPen);
     p.drawEllipse(c, 3.2, 3.2);
 
+    // Torsion arc: front reference (0) -> back reference (torsion), in the disc.
+    {
+        const double arcR = R * 0.44;
+        const QRectF arcRect(c.x() - arcR, c.y() - arcR, 2 * arcR, 2 * arcR);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(QColor(150, 150, 150), 1.5));
+        // QPainter arc units are 1/16 deg, 0 at 3 o'clock, CCW+ -- matches the basis.
+        p.drawArc(arcRect, 0, static_cast<int>(std::lround(drawn_.torsionDeg * 16.0)));
+    }
+
+    // Slightly larger spoke labels.
+    QFont lblFont = p.font();
+    lblFont.setPointSizeF(lblFont.pointSizeF() * 1.06);
+    p.setFont(lblFont);
+
     // Back spokes: from the rim outward.
     for (const NewmanSpoke& s : drawn_.spokes) {
         if (s.front) continue;
@@ -111,6 +131,22 @@ void NewmanView::paintEvent(QPaintEvent*) {
         drawCenteredText(p, pt(R * 0.60, s.angleRad), s.label);
     }
 
+    // Legend (top-right): front / back colour key.
+    {
+        QFont lf = p.font();
+        lf.setPointSizeF(lf.pointSizeF() * 0.82);
+        p.setFont(lf);
+        const double lx = area.right() - 74.0, ly = area.top() + 12.0;
+        p.setPen(Qt::NoPen);
+        p.setBrush(frontCol);
+        p.drawEllipse(QPointF(lx, ly), 4.0, 4.0);
+        p.setBrush(backCol);
+        p.drawEllipse(QPointF(lx, ly + 15.0), 4.0, 4.0);
+        p.setPen(QColor(90, 90, 90));
+        p.drawText(QPointF(lx + 9.0, ly + 4.0), QStringLiteral("front"));
+        p.drawText(QPointF(lx + 9.0, ly + 19.0), QStringLiteral("back"));
+    }
+
     // Front/back atom identity + the torsion readout.
     p.setPen(QColor(40, 40, 40));
     QFont fhdr = p.font();
@@ -126,8 +162,8 @@ void NewmanView::paintEvent(QPaintEvent*) {
     p.setPen(Qt::black);
     p.drawText(QRectF(area.left(), area.bottom() - 30, area.width(), 26),
                Qt::AlignHCenter | Qt::AlignVCenter,
-               QStringLiteral("%1 = %2 deg").arg(kindName(drawn_.kind))
-                   .arg(drawn_.torsionDeg, 0, 'f', 1));
+               QStringLiteral("%1 = %2%3").arg(kindGlyph(drawn_.kind))
+                   .arg(drawn_.torsionDeg, 0, 'f', 1).arg(kDeg));
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +184,7 @@ NewmanDock::NewmanDock(QWidget* parent)
     caption_ = new QLabel(QStringLiteral("Select an atom"), container);
     caption_->setWordWrap(true);
     toggle_ = new QToolButton(container);
-    toggle_->setText(QStringLiteral("phi / psi"));
+    toggle_->setText(QString(kPhi) + QStringLiteral(" / ") + QString(kPsi));
     toggle_->setToolTip(QStringLiteral("Switch the drawn torsion between backbone phi and psi."));
     top->addWidget(caption_, 1);
     top->addWidget(toggle_, 0);
@@ -217,14 +253,12 @@ void NewmanDock::recompute() {
 
     if (caption_) {
         auto fmt = [](const NewmanProjection& p) {
-            return p.valid ? QStringLiteral("%1 %2").arg(kindName(p.kind))
-                                 .arg(p.torsionDeg, 0, 'f', 1)
-                           : QStringLiteral("%1 n/a").arg(kindName(p.kind));
+            return p.valid ? QStringLiteral("%1 %2%3").arg(kindGlyph(p.kind))
+                                 .arg(p.torsionDeg, 0, 'f', 1).arg(kDeg)
+                           : QStringLiteral("%1 n/a").arg(kindGlyph(p.kind));
         };
-        caption_->setText(QStringLiteral("%1 %2   |   %3   %4")
-                              .arg(phi.residueLabel)
-                              .arg(residue_)
-                              .arg(fmt(phi), fmt(psi)));
+        caption_->setText(QStringLiteral("%1   |   %2   %3")
+                              .arg(phi.residueLabel, fmt(phi), fmt(psi)));
     }
 }
 
