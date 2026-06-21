@@ -89,19 +89,27 @@ inline std::optional<MolFrameSpec> SelectMolecularFrameSpec(const QtProtein& pro
         }
     }
 
-    // ---- Aromatic-ring atom -> ring-local frame: x radial to the heavy atom
-    // (an aromatic H borrows its heavy parent), z along the ring normal. ----
-    if (atom.aromatic && atom.IsInAnyRing()) {
+    // ---- Aromatic-ring atom, OR a hydrogen attached to one -> ring-local
+    // frame (z = ring normal, x radial to the heavy atom). An aromatic ring H
+    // is NOT itself flagged aromatic / in-ring, so resolve to its heavy parent
+    // and test THAT -- the stats pass frames ring H's too, and we match it
+    // (otherwise ~56 aromatic H's silently drop out of the framed set). ----
+    {
         const std::int32_t heavy =
             (atom.element == Element::H && atom.parentAtomIndex >= 0)
                 ? atom.parentAtomIndex
                 : static_cast<std::int32_t>(atomIndex);
-        if (const auto ringIdx = RingContainingAtom(protein, heavy)) {
-            MolFrameSpec spec;
-            spec.kind = MolecularFrameKind::AromaticRingLocal;
-            spec.ring = static_cast<std::int32_t>(*ringIdx);
-            spec.heavy = heavy;
-            return spec;
+        if (heavy >= 0 && static_cast<std::size_t>(heavy) < protein.atomCount()) {
+            const QtAtom& heavyAtom = protein.atom(static_cast<std::size_t>(heavy));
+            if (heavyAtom.aromatic && heavyAtom.IsInAnyRing()) {
+                if (const auto ringIdx = RingContainingAtom(protein, heavy)) {
+                    MolFrameSpec spec;
+                    spec.kind = MolecularFrameKind::AromaticRingLocal;
+                    spec.ring = static_cast<std::int32_t>(*ringIdx);
+                    spec.heavy = heavy;
+                    return spec;
+                }
+            }
         }
     }
 
