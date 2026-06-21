@@ -92,6 +92,7 @@ class QtBFieldStreamOverlay;
 class QtOccupancyShellsOverlay;
 class MeasurementOverlay;
 class SceneRevealOverlay;
+class CsaTensorOverlay;
 class CameraComposer;
 
 class MoleculeScene final : public QObject {
@@ -163,6 +164,7 @@ public:
     QtOccupancyShellsOverlay* occupancyShellsOverlay() const { return occupancyShells_; }
     MeasurementOverlay*      measurementOverlay() const { return measurement_; }
     SceneRevealOverlay*      revealOverlay()      const { return reveal_; }
+    CsaTensorOverlay*        csaOverlay()         const { return csaOverlay_; }
 
 public slots:
     // Update atom positions to frame t AND propagate to every overlay.
@@ -251,6 +253,7 @@ private:
     QtOccupancyShellsOverlay* occupancyShells_ = nullptr;  // QObject child
     MeasurementOverlay*      measurement_  = nullptr;   // QObject child
     SceneRevealOverlay*      reveal_       = nullptr;   // QObject child
+    CsaTensorOverlay*        csaOverlay_   = nullptr;   // QObject child
     CameraComposer*          composer_     = nullptr;   // QObject child
 
     const model::QtProtein*       protein_      = nullptr;

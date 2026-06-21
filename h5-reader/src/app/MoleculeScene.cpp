@@ -8,6 +8,7 @@
 #include "QtOccupancyShellsOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "QuietTrackballStyle.h"
+#include "CsaTensorOverlay.h"
 #include "SceneRevealOverlay.h"
 
 #include "../diagnostics/ObjectCensus.h"
@@ -305,6 +306,12 @@ void MoleculeScene::Build(const model::QtProtein& protein,
         reveal_ = new SceneRevealOverlay(overlayRenderer_, this);
     }
     reveal_->Build(protein, conformation);
+
+    // CSA tensor glyph (mode-2 standalone view). Pure renderer: the controller
+    // computes the shape + molecular axes and feeds show(); no Build needed.
+    if (!csaOverlay_) {
+        csaOverlay_ = new CsaTensorOverlay(overlayRenderer_, this);
+    }
 
     qCInfo(cScene).noquote()
         << "Built molecule + overlays |"

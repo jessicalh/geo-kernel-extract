@@ -192,6 +192,10 @@ private:
     void buildDocks();
     void installLoadedRun(h5reader::io::QtLoadResult&& loaded);
     void clearLoadedRun();
+    // Recompute + redraw the focused atom's DFT shielding-tensor glyph (PAS
+    // ellipsoid + molecular-frame axes) for the current frame; clears when
+    // there is no focus or no DFT for the frame. Focus/frame driven.
+    void updateCsaGlyph();
     void setEmptyState();
     // Single source of truth for control enable/checked state. Derives the
     // whole operating state (loaded / playable / playing / selection / data

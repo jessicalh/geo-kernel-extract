@@ -214,6 +214,8 @@ qt_add_library(h5reader_core STATIC
     src/app/MeasurementOverlay.cpp
     src/app/SceneRevealOverlay.h
     src/app/SceneRevealOverlay.cpp
+    src/app/CsaTensorOverlay.h
+    src/app/CsaTensorOverlay.cpp
     src/app/SelectionDock.h
     src/app/SelectionDock.cpp
     src/app/NearbySignalModel.h
@@ -746,6 +748,23 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         Eigen3::Eigen
     )
     add_test(NAME h5reader_scene_math_tests COMMAND h5reader_scene_math_tests)
+
+    # Pure-function CSA / molecular-frame math (CsaShape.h + MolecularFrame.h) --
+    # the viewer-side tensor decomposition/projection grabbed from AnalysisAtom,
+    # for the standalone "look at a bare extractor run" path. Header-only math;
+    # links Qt6::Test + Eigen3 only.
+    qt_add_executable(h5reader_csa_math_tests
+        tests/csa_math_tests.cpp
+        src/model/CsaShape.h
+        src/model/MolecularFrame.h
+    )
+    target_include_directories(h5reader_csa_math_tests PRIVATE src)
+    target_link_libraries(h5reader_csa_math_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_csa_math_tests COMMAND h5reader_csa_math_tests)
 
     # Pure-function occupancy-shells density / HDR math (OccupancyShellsMath.h).
     # The correctness core of the occupancy-shells overlay, factored out for

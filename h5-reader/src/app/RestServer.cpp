@@ -1544,6 +1544,86 @@ void RestServer::registerRoutes() {
         return QHttpServerResponse(SC::NoContent);
     });
 
+    // ---- camera inspect atom (free-camera framing to judge ONE atom) -----
+    //
+    // POST /camera/inspect_atom {"atom": int, "distance"?: double,
+    //                            "azimuth"?: double, "elevation"?: double,
+    //                            "roll"?: double}
+    //
+    // Frees the camera (so this absolute write STICKS -- a Free-mode per-frame
+    // write is a no-op) and aims it at the atom's current display position from
+    // `distance` Angstrom (default 12) along the current view direction,
+    // optionally orbited by azimuth/elevation and rolled. Frames ONE atom close
+    // enough, with its neighbourhood in view, so its orientation and its
+    // appearance relative to nearby atoms can be judged. Returns the resulting
+    // camera + the framed point. Pair with /selection/pick to highlight it and
+    // (for tensor work) drive the CSA glyph.
+    server_->route(QStringLiteral("/camera/inspect_atom"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->cameraComposer() || !scene_->Renderer())
+            return errorResponse(QStringLiteral("scene not wired"), SC::ServiceUnavailable);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        if (!protein || !transformed_)
+            return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("atom"))
+            return errorResponse(QStringLiteral(
+                "body must be {\"atom\": int, \"distance\"?, \"azimuth\"?, "
+                "\"elevation\"?, \"roll\"?}"), SC::BadRequest);
+        const qint64 rawAtom = body.value("atom").toInteger(-1);
+        if (rawAtom < 0 || static_cast<std::size_t>(rawAtom) >= protein->atomCount())
+            return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+        const std::size_t atomIdx = static_cast<std::size_t>(rawAtom);
+
+        double distance = body.value("distance").toDouble(12.0);
+        if (!(distance > 0.5)) distance = 12.0;
+        const double azimuth = body.value("azimuth").toDouble(0.0);
+        const double elevation = body.value("elevation").toDouble(0.0);
+        const double roll = body.value("roll").toDouble(0.0);
+
+        const std::size_t frame = playback_
+            ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
+        const model::Vec3 p = transformed_->atomPosition(frame, atomIdx);
+
+        // Free the camera so the per-frame composer write does not clobber this.
+        scene_->cameraComposer()->setMode(FreeMode(), DefaultPolicy(), frame);
+
+        auto* cam = scene_->Renderer()->GetActiveCamera();
+        if (!cam)
+            return errorResponse(QStringLiteral("no active camera"), SC::ServiceUnavailable);
+        double dop[3];
+        cam->GetDirectionOfProjection(dop);  // unit vector, camera -> focal
+        cam->SetFocalPoint(p.x(), p.y(), p.z());
+        cam->SetPosition(p.x() - dop[0] * distance,
+                         p.y() - dop[1] * distance,
+                         p.z() - dop[2] * distance);
+        cam->OrthogonalizeViewUp();
+        if (azimuth != 0.0) cam->Azimuth(azimuth);
+        if (elevation != 0.0) cam->Elevation(elevation);
+        cam->OrthogonalizeViewUp();
+        if (roll != 0.0) cam->Roll(roll);
+        scene_->Renderer()->ResetCameraClippingRange();
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+
+        double point[3] = {p.x(), p.y(), p.z()};
+        double focal[3]{}, position[3]{}, viewUp[3]{};
+        cam->GetFocalPoint(focal);
+        cam->GetPosition(position);
+        cam->GetViewUp(viewUp);
+        return jsonResponse(QJsonObject{
+            {"atom", static_cast<qint64>(atomIdx)},
+            {"frame", static_cast<qint64>(frame)},
+            {"distance", distance},
+            {"point", vec3FromRaw(point)},
+            {"focal", vec3FromRaw(focal)},
+            {"position", vec3FromRaw(position)},
+            {"view_up", vec3FromRaw(viewUp)},
+        });
+    });
+
     // ---- log mask (bitmask gate for StructuredLogger) ------------------
     //
     // GET /log/mask → {"mask": int, "categories": ["FRAME", "CAMERA", ...]}
