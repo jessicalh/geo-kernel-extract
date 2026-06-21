@@ -32,6 +32,7 @@
 #include <QHttpServerRequest>
 #include <QHttpServerResponse>
 #include <QJsonArray>
+#include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -1622,6 +1623,75 @@ void RestServer::registerRoutes() {
             {"position", vec3FromRaw(position)},
             {"view_up", vec3FromRaw(viewUp)},
         });
+    });
+
+    // ---- CSA probe (vet the shielding-tensor glyph numerically) ----------
+    //
+    // GET /csa          -> the focused atom's CSA result.
+    // GET /csa?atom=N   -> atom N's CSA result (no selection side-effects).
+    //
+    // Returns {atom, dft_present, valid, framed, frame_kind, sigma_iso, eta,
+    // span, skew, principal_values, pas_axes, molecular_axes}. Computed by the
+    // SAME ComputeAtomCsa the glyph uses (via ReaderMainWindow::probeAtomCsa),
+    // so the picture and these numbers can never disagree. pas_axes /
+    // molecular_axes are 3 director columns (x,y,z) in display coordinates.
+    server_->route(QStringLiteral("/csa"), [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader window not wired"), SC::ServiceUnavailable);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        if (!protein)
+            return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
+
+        std::size_t atom = 0;
+        const QString atomQ = req.query().queryItemValue(QStringLiteral("atom"));
+        if (!atomQ.isEmpty()) {
+            bool okNum = false;
+            const qint64 a = atomQ.toLongLong(&okNum);
+            if (!okNum || a < 0 || static_cast<std::size_t>(a) >= protein->atomCount())
+                return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+            atom = static_cast<std::size_t>(a);
+        } else if (selection_ && selection_->hasFocus()) {
+            atom = selection_->focus();
+        } else {
+            return errorResponse(QStringLiteral("no atom: pass ?atom=N or focus one"),
+                                 SC::BadRequest);
+        }
+
+        const model::AtomCsaResult r = readerWindow_->probeAtomCsa(atom);
+        QJsonObject out{
+            {"atom", static_cast<qint64>(atom)},
+            {"dft_present", r.dftPresent},
+            {"valid", r.valid},
+            {"framed", r.framed},
+            {"frame_kind", QString::fromLatin1(model::MolecularFrameKindName(r.frameKind))},
+        };
+        if (r.valid) {
+            out.insert(QStringLiteral("sigma_iso"), r.shape.sigma_iso);
+            out.insert(QStringLiteral("eta"), r.shape.eta);
+            out.insert(QStringLiteral("span"), r.shape.span);
+            out.insert(QStringLiteral("skew"), r.shape.skew);
+            out.insert(QStringLiteral("principal_values"),
+                       QJsonArray{r.shape.principal_values[0], r.shape.principal_values[1],
+                                  r.shape.principal_values[2]});
+            QJsonArray pas;
+            for (int c = 0; c < 3; ++c) {
+                double col[3] = {r.shape.pas_axes(0, c), r.shape.pas_axes(1, c),
+                                 r.shape.pas_axes(2, c)};
+                pas.append(vec3FromRaw(col));
+            }
+            out.insert(QStringLiteral("pas_axes"), pas);
+            if (r.framed && r.molecularAxes) {
+                QJsonArray mol;
+                for (int c = 0; c < 3; ++c) {
+                    double col[3] = {(*r.molecularAxes)(0, c), (*r.molecularAxes)(1, c),
+                                     (*r.molecularAxes)(2, c)};
+                    mol.append(vec3FromRaw(col));
+                }
+                out.insert(QStringLiteral("molecular_axes"), mol);
+            }
+        }
+        return jsonResponse(out);
     });
 
     // ---- log mask (bitmask gate for StructuredLogger) ------------------

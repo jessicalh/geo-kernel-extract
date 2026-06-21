@@ -540,94 +540,33 @@ void ReaderMainWindow::updateCsaGlyph() {
         hide();
         return;
     }
+    const std::size_t atom = selection_->focus();
+    const model::AtomCsaResult r = probeAtomCsa(atom);
+    if (!r.valid) {
+        hide();
+        return;
+    }
+    qCDebug(cWindow).noquote()
+        << "CSA glyph | atom=" << atom << "| framed=" << r.framed
+        << "| kind=" << model::MolecularFrameKindName(r.frameKind)
+        << "| iso=" << r.shape.sigma_iso << "| eta=" << r.shape.eta
+        << "| span=" << r.shape.span;
+    overlay->show(r.atomPos, r.shape, r.molecularAxes);
+    redraw();
+}
+
+// Compute one atom's CSA result for the current frame -- the SAME orchestration
+// the glyph uses, exposed so REST /csa vets exactly what is drawn.
+model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom) {
+    if (!loaded_ || !dftStore_ || !transformed_)
+        return {};
     const model::QtProtein* protein = loaded_->protein.get();
     model::Conformation* rawConf = loaded_->conformation.get();
-    if (!protein || !rawConf) {
-        hide();
-        return;
-    }
-    const std::size_t atom = selection_->focus();
-    if (atom >= protein->atomCount()) {
-        hide();
-        return;
-    }
+    if (!protein || !rawConf)
+        return {};
     const int frameI = playback_ ? playback_->currentFrame() : 0;
     const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
-
-    // DFT shielding tensor for this atom + frame; the campaign is partial, so a
-    // missing frame is an honest gap (clear), never a faked value.
-    const std::size_t original = rawConf->originalFrameIndex(frame);
-    if (!dftStore_->hasJob(original)) {
-        hide();
-        return;
-    }
-    dftStore_->requestFrame(original);
-    const model::DftShieldingFrame* dft = dftStore_->frame(original);
-    if (!dft || !dft->valid || atom >= dft->atoms.size()) {
-        hide();
-        return;
-    }
-    const model::Mat3 sigmaRaw = dft->atoms[atom].total_raw;
-
-    // Align the raw-frame tensor onto the displayed (Kabsch-stabilized)
-    // molecule via the molecular frame: sigma_mol = M_raw^T sigma M_raw is
-    // rotation-invariant (and IS the molecular-frame component basis the stats
-    // report), so lift it back out through the molecular frame built from
-    // DISPLAY positions. Framed atoms only; unframed fall back to the raw PAS.
-    model::CsaShape shape;
-    std::optional<model::Mat3> molDisp;
-    if (const auto spec = model::SelectMolecularFrameSpec(*protein, atom)) {
-        const auto posRaw = [&](std::int32_t i) -> std::optional<model::Vec3> {
-            if (i < 0 || static_cast<std::size_t>(i) >= protein->atomCount())
-                return std::nullopt;
-            return rawConf->atomPosition(frame, static_cast<std::size_t>(i));
-        };
-        const auto ringRaw =
-            [&](std::int32_t r) -> std::optional<std::pair<model::Vec3, model::Vec3>> {
-            if (r < 0) return std::nullopt;
-            const model::RingGeometry g =
-                model::RingGeometryAt(*rawConf, static_cast<std::size_t>(r), frame);
-            return std::make_pair(g.center, g.normal);
-        };
-        const auto posDisp = [&](std::int32_t i) -> std::optional<model::Vec3> {
-            if (i < 0 || static_cast<std::size_t>(i) >= protein->atomCount())
-                return std::nullopt;
-            return transformed_->atomPosition(frame, static_cast<std::size_t>(i));
-        };
-        const auto ringDisp =
-            [&](std::int32_t r) -> std::optional<std::pair<model::Vec3, model::Vec3>> {
-            if (r < 0) return std::nullopt;
-            const model::RingGeometry g =
-                model::RingGeometryAt(*transformed_, static_cast<std::size_t>(r), frame);
-            return std::make_pair(g.center, g.normal);
-        };
-        model::MolFrameContinuity contRaw;
-        model::MolFrameContinuity contDisp;
-        const auto mRaw = model::BuildMolecularFrameAxes(*spec, posRaw, ringRaw, contRaw);
-        const auto mDisp = model::BuildMolecularFrameAxes(*spec, posDisp, ringDisp, contDisp);
-        if (mRaw && mDisp) {
-            const model::Mat3 sigmaMol = mRaw->transpose() * sigmaRaw * (*mRaw);
-            const model::Mat3 sigmaDisp = (*mDisp) * sigmaMol * mDisp->transpose();
-            shape = model::ComputeCsaShape(sigmaDisp);
-            if (shape.valid)
-                molDisp = *mDisp;
-        }
-    }
-    if (!shape.valid)
-        shape = model::ComputeCsaShape(sigmaRaw);  // unframed: raw-frame PAS
-    if (!shape.valid) {
-        hide();
-        return;
-    }
-
-    const model::Vec3 atomPos = transformed_->atomPosition(frame, atom);
-    qCDebug(cWindow).noquote()
-        << "CSA glyph | atom=" << atom << "| frame=" << frame
-        << "| framed=" << molDisp.has_value() << "| iso=" << shape.sigma_iso
-        << "| s11/s22/s33=" << shape.principal_values[0] << shape.principal_values[1]
-        << shape.principal_values[2] << "| eta=" << shape.eta << "| span=" << shape.span;
-    overlay->show(atomPos, shape, molDisp);
-    redraw();
+    return model::ComputeAtomCsa(*protein, *rawConf, *transformed_, *dftStore_, atom, frame);
 }
 
 void ReaderMainWindow::clearLoadedRun() {

@@ -50,6 +50,20 @@ enum class MolecularFrameKind : std::uint8_t {
     SidechainCarboxamide,
 };
 
+inline const char* MolecularFrameKindName(MolecularFrameKind k) {
+    switch (k) {
+    case MolecularFrameKind::None: return "none";
+    case MolecularFrameKind::BackboneCarbonyl: return "backbone_carbonyl";
+    case MolecularFrameKind::BackboneAmideN: return "backbone_amide_n";
+    case MolecularFrameKind::AromaticRingLocal: return "aromatic_ring_local";
+    case MolecularFrameKind::MetSd: return "met_sd";
+    case MolecularFrameKind::SidechainCarboxylate: return "sidechain_carboxylate";
+    case MolecularFrameKind::SidechainGuanidinium: return "sidechain_guanidinium";
+    case MolecularFrameKind::SidechainCarboxamide: return "sidechain_carboxamide";
+    }
+    return "none";
+}
+
 // Molecular-frame symmetric-tensor component order. MUST equal the engine's
 // enum (AnalysisAtom.cpp:1421) -- a reorder silently corrupts every component
 // relationship the viewer would show against the extractor's reveals.

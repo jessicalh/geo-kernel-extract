@@ -26,6 +26,7 @@
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkSmartPointer.h>
 
+#include "../model/CsaProbe.h"
 #include "../model/VisualizationDefinition.h"
 
 #include <memory>
@@ -75,6 +76,11 @@ public:
     // loaded later through loadRunPath().
     explicit ReaderMainWindow(QWidget* parent = nullptr);
     ~ReaderMainWindow() override;
+
+    // Compute one atom's CSA result (PAS shape + molecular frame) for the
+    // current frame -- the same orchestration the focus-driven glyph uses.
+    // Public so RestServer's GET /csa vets exactly what is drawn.
+    model::AtomCsaResult probeAtomCsa(std::size_t atom);
 
     // Load or replace the current calcset in this window. The path is resolved
     // through QtProteinLoader::LoadRunPath. Returns false without changing the
