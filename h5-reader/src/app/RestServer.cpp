@@ -1694,6 +1694,67 @@ void RestServer::registerRoutes() {
         return jsonResponse(out);
     });
 
+    // ---- catalog dump (the full "seeable list", for auditing) -----------
+    //
+    // GET /catalog -> every signal descriptor with its real state: provenance
+    // (source), axis, value shape, storage path, temporal/static, the display
+    // modes it offers, and -- crucially -- whether it is genuinely SHOWABLE for
+    // the loaded run (field availability), not merely declared. Plus a summary
+    // by source / availability / value-shape so the catalog's shape is visible
+    // at a glance. The audit surface for the displayable-catalog cleanup.
+    server_->route(QStringLiteral("/catalog"), [this]() {
+        ASSERT_THREAD(this);
+        if (!catalog_)
+            return errorResponse(QStringLiteral("catalog not wired"), SC::ServiceUnavailable);
+        const auto& descriptors = catalog_->allDescriptorList();
+        QJsonArray arr;
+        QJsonObject bySource, byAvail, byShape;
+        int showable = 0;
+        for (const model::SignalDescriptor& d : descriptors) {
+            const QString source = model::ToString(d.sourceKind);
+            const QString avail = availabilityString(catalog_, d.id);
+            const QString shape = model::ToString(d.valueShape);
+            bySource[source] = bySource.value(source).toInt() + 1;
+            byAvail[avail] = byAvail.value(avail).toInt() + 1;
+            byShape[shape] = byShape.value(shape).toInt() + 1;
+            const bool isShowable = (avail == QStringLiteral("Available")
+                                     || avail == QStringLiteral("AllZeroObserved"));
+            if (isShowable) ++showable;
+            QJsonArray modeArr;
+            for (const QString& m : model::AllDisplayModes(d)) modeArr.append(m);
+            QJsonArray tagArr;
+            for (const QString& t : d.tags) tagArr.append(t);
+            arr.append(QJsonObject{
+                {"id", d.id},
+                {"label", d.label},
+                {"family", d.family},
+                {"concept", d.conceptKey},
+                {"import_set", d.importSet},
+                {"source", source},
+                {"axis", model::ToString(d.nativeAxis)},
+                {"value_shape", shape},
+                {"storage", d.storagePath},
+                {"temporal", d.temporal},
+                {"static", d.staticDisplay},
+                {"availability", avail},
+                {"showable", isShowable},
+                {"sampling", model::ToString(d.samplingStatus)},
+                {"modes", modeArr},
+                {"tags", tagArr},
+            });
+        }
+        return jsonResponse(QJsonObject{
+            {"count", static_cast<qint64>(descriptors.size())},
+            {"summary", QJsonObject{
+                {"showable", showable},
+                {"by_source", bySource},
+                {"by_availability", byAvail},
+                {"by_value_shape", byShape},
+            }},
+            {"descriptors", arr},
+        });
+    });
+
     // ---- log mask (bitmask gate for StructuredLogger) ------------------
     //
     // GET /log/mask → {"mask": int, "categories": ["FRAME", "CAMERA", ...]}
