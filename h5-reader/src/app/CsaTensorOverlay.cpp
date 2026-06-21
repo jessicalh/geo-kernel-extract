@@ -13,9 +13,9 @@
 namespace h5reader::app {
 
 namespace {
-constexpr double kBaseRadius = 1.2;   // Angstrom, the glyph's neutral size
+constexpr double kBaseRadius = 0.8;   // Angstrom, the glyph's neutral size
 constexpr double kAniso = 0.6;        // fractional elongation by deviation
-constexpr double kAxisLength = 4.0;   // Angstrom, molecular-frame axis arms
+constexpr double kAxisLength = 2.8;   // Angstrom, molecular-frame axis arms
 }  // namespace
 
 CsaTensorOverlay::CsaTensorOverlay(vtkSmartPointer<vtkRenderer> renderer, QObject* parent)

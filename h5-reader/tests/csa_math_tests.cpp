@@ -18,11 +18,34 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
 using namespace h5reader;
 
 namespace {
 bool nearly(double a, double b, double tol = 1e-9) { return std::abs(a - b) <= tol; }
+
+bool orthonormalRH(const model::Mat3& m) {
+    const model::Mat3 g = m.transpose() * m;
+    return (g - model::Mat3::Identity()).cwiseAbs().maxCoeff() < 1e-9
+           && std::abs(m.determinant() - 1.0) < 1e-9;
+}
+
+// Build per-frame axes from a fixed position table; the single ring is centred
+// at the origin with a +z normal (for the aromatic-ring-local kind).
+std::optional<model::Mat3> buildAxes(const model::MolFrameSpec& spec,
+                                     const std::vector<model::Vec3>& pos) {
+    const model::PositionLookup posOf = [&](std::int32_t i) -> std::optional<model::Vec3> {
+        if (i < 0 || static_cast<std::size_t>(i) >= pos.size()) return std::nullopt;
+        return pos[static_cast<std::size_t>(i)];
+    };
+    const model::RingFrameLookup ringOf =
+        [](std::int32_t) -> std::optional<std::pair<model::Vec3, model::Vec3>> {
+        return std::make_pair(model::Vec3(0, 0, 0), model::Vec3(0, 0, 1));
+    };
+    model::MolFrameContinuity cont;
+    return model::BuildMolecularFrameAxes(spec, posOf, ringOf, cont);
+}
 }  // namespace
 
 class CsaMathTests : public QObject {
@@ -35,6 +58,13 @@ private slots:
     void projectIdentityAndRotationTraceInvariant();
     void frameFromXAndPlaneIsOrthonormal();
     void buildCarbonylFrameOrthonormal();
+    // Every molecular-frame kind builds an orthonormal right-handed frame.
+    void buildAmideNFrame();
+    void buildAromaticRingFrame();
+    void buildMetSdFrame();
+    void buildCarboxylateFrame();
+    void buildGuanidiniumFrame();
+    void buildCarboxamideFrame();
 };
 
 void CsaMathTests::csaDiagonalKnownShape() {
@@ -131,6 +161,68 @@ void CsaMathTests::buildCarbonylFrameOrthonormal() {
     QVERIFY((gram - model::Mat3::Identity()).cwiseAbs().maxCoeff() < 1e-9);
     QVERIFY(nearly(axes->determinant(), 1.0));
     QVERIFY(nearly(axes->col(0).x(), 1.0));  // x director along O - C = +x
+}
+
+void CsaMathTests::buildAmideNFrame() {
+    model::MolFrameSpec s;
+    s.kind = model::MolecularFrameKind::BackboneAmideN;
+    s.origin = 0; s.xAnchor = 1; s.planeAnchor = 2;
+    const auto a = buildAxes(s, {model::Vec3(0, 0, 0), model::Vec3(1, 0, 0), model::Vec3(0, 1, 0)});
+    QVERIFY(a.has_value());
+    QVERIFY(orthonormalRH(*a));
+    QVERIFY(nearly(a->col(0).x(), 1.0));  // x along N -> H
+}
+
+void CsaMathTests::buildAromaticRingFrame() {
+    model::MolFrameSpec s;
+    s.kind = model::MolecularFrameKind::AromaticRingLocal;
+    s.ring = 0; s.heavy = 0;
+    const auto a = buildAxes(s, {model::Vec3(1, 0, 0)});  // heavy atom; ring at origin, +z normal
+    QVERIFY(a.has_value());
+    QVERIFY(orthonormalRH(*a));
+    QVERIFY(nearly(a->col(2).z(), 1.0));  // z along the ring normal
+    QVERIFY(nearly(a->col(0).x(), 1.0));  // x radial to the heavy atom
+}
+
+void CsaMathTests::buildMetSdFrame() {
+    model::MolFrameSpec s;
+    s.kind = model::MolecularFrameKind::MetSd;
+    s.origin = 0; s.xAnchor = 1; s.planeAnchor = 2;
+    const auto a = buildAxes(s, {model::Vec3(0, 0, 0), model::Vec3(1, 0, 0), model::Vec3(0, 1, 0)});
+    QVERIFY(a.has_value());
+    QVERIFY(orthonormalRH(*a));
+    QVERIFY(nearly(a->col(0).x(), 1.0));  // x along SD -> CE
+}
+
+void CsaMathTests::buildCarboxylateFrame() {
+    model::MolFrameSpec s;
+    s.kind = model::MolecularFrameKind::SidechainCarboxylate;
+    s.origin = 0; s.xAnchor = 1; s.secondAnchor = 2;
+    // C at origin; O1 (1,1,0), O2 (1,-1,0): the O-C-O bisector is +x.
+    const auto a = buildAxes(s, {model::Vec3(0, 0, 0), model::Vec3(1, 1, 0), model::Vec3(1, -1, 0)});
+    QVERIFY(a.has_value());
+    QVERIFY(orthonormalRH(*a));
+    QVERIFY(nearly(a->col(0).x(), 1.0));  // x along the carboxylate bisector
+}
+
+void CsaMathTests::buildGuanidiniumFrame() {
+    model::MolFrameSpec s;
+    s.kind = model::MolecularFrameKind::SidechainGuanidinium;
+    s.origin = 0; s.xAnchor = 1; s.planeAnchor = 2;
+    const auto a = buildAxes(s, {model::Vec3(0, 0, 0), model::Vec3(1, 0, 0), model::Vec3(0, 1, 0)});
+    QVERIFY(a.has_value());
+    QVERIFY(orthonormalRH(*a));
+    QVERIFY(nearly(a->col(0).x(), 1.0));  // x along CZ -> N
+}
+
+void CsaMathTests::buildCarboxamideFrame() {
+    model::MolFrameSpec s;
+    s.kind = model::MolecularFrameKind::SidechainCarboxamide;
+    s.origin = 0; s.xAnchor = 1; s.planeAnchor = 2;
+    const auto a = buildAxes(s, {model::Vec3(0, 0, 0), model::Vec3(1, 0, 0), model::Vec3(0, 1, 0)});
+    QVERIFY(a.has_value());
+    QVERIFY(orthonormalRH(*a));
+    QVERIFY(nearly(a->col(0).x(), 1.0));  // x along C -> O
 }
 
 QTEST_APPLESS_MAIN(CsaMathTests)

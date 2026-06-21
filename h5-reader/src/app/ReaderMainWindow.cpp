@@ -621,7 +621,7 @@ void ReaderMainWindow::updateCsaGlyph() {
     }
 
     const model::Vec3 atomPos = transformed_->atomPosition(frame, atom);
-    qCInfo(cWindow).noquote()
+    qCDebug(cWindow).noquote()
         << "CSA glyph | atom=" << atom << "| frame=" << frame
         << "| framed=" << molDisp.has_value() << "| iso=" << shape.sigma_iso
         << "| s11/s22/s33=" << shape.principal_values[0] << shape.principal_values[1]

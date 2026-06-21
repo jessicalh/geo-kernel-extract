@@ -105,10 +105,88 @@ inline std::optional<MolFrameSpec> SelectMolecularFrameSpec(const QtProtein& pro
         }
     }
 
-    // TODO(next): sidechain groups via PlanarGroupKind == Carboxylate /
-    // Guanidinium / SidechainAmide (gather the group's C/O/N members from
-    // res.atomIndices by element), and Met SD (element S + locant). Same typed
-    // pattern; same BuildMolecularFrameAxes kinds (already implemented).
+    // ---- Sidechain planar groups: gather the group's atoms from the residue
+    // by shared PlanarGroupKind + element (the planar moiety tags all its
+    // members), then anchor the typed frame. ----
+
+    if (atom.planarGroup == PlanarGroupKind::Carboxylate) {
+        // C + two O (ASP CG/OD1/OD2, GLU CD/OE1/OE2, C-terminus).
+        std::int32_t c = -1, o1 = -1, o2 = -1;
+        for (std::int32_t ai : res.atomIndices) {
+            const QtAtom& a = protein.atom(static_cast<std::size_t>(ai));
+            if (a.planarGroup != PlanarGroupKind::Carboxylate) continue;
+            if (a.element == Element::C) { if (c < 0) c = ai; }
+            else if (a.element == Element::O) { if (o1 < 0) o1 = ai; else if (o2 < 0) o2 = ai; }
+        }
+        if (c >= 0 && o1 >= 0 && o2 >= 0) {
+            MolFrameSpec spec;
+            spec.kind = MolecularFrameKind::SidechainCarboxylate;
+            spec.origin = c;
+            spec.xAnchor = o1;
+            spec.secondAnchor = o2;
+            return spec;
+        }
+    }
+
+    if (atom.planarGroup == PlanarGroupKind::Guanidinium) {
+        // CZ + the guanidinium N (ARG): origin CZ, x toward one N, plane another.
+        std::int32_t cz = -1, n1 = -1, n2 = -1;
+        for (std::int32_t ai : res.atomIndices) {
+            const QtAtom& a = protein.atom(static_cast<std::size_t>(ai));
+            if (a.planarGroup != PlanarGroupKind::Guanidinium) continue;
+            if (a.element == Element::C) { if (cz < 0) cz = ai; }
+            else if (a.element == Element::N) { if (n1 < 0) n1 = ai; else if (n2 < 0) n2 = ai; }
+        }
+        if (cz >= 0 && n1 >= 0 && n2 >= 0) {
+            MolFrameSpec spec;
+            spec.kind = MolecularFrameKind::SidechainGuanidinium;
+            spec.origin = cz;
+            spec.xAnchor = n1;
+            spec.planeAnchor = n2;
+            return spec;
+        }
+    }
+
+    if (atom.planarGroup == PlanarGroupKind::SidechainAmide) {
+        // C + O + N (ASN CG/OD1/ND2, GLN CD/OE1/NE2).
+        std::int32_t c = -1, o = -1, n = -1;
+        for (std::int32_t ai : res.atomIndices) {
+            const QtAtom& a = protein.atom(static_cast<std::size_t>(ai));
+            if (a.planarGroup != PlanarGroupKind::SidechainAmide) continue;
+            if (a.element == Element::C) { if (c < 0) c = ai; }
+            else if (a.element == Element::O) { if (o < 0) o = ai; }
+            else if (a.element == Element::N) { if (n < 0) n = ai; }
+        }
+        if (c >= 0 && o >= 0 && n >= 0) {
+            MolFrameSpec spec;
+            spec.kind = MolecularFrameKind::SidechainCarboxamide;
+            spec.origin = c;
+            spec.xAnchor = o;
+            spec.planeAnchor = n;
+            return spec;
+        }
+    }
+
+    // Methionine thioether sulphur (SD): origin SD, x toward CE, plane toward
+    // CG. Cys SG has no epsilon carbon, so requiring CG + CE excludes it.
+    if (atom.element == Element::S) {
+        std::int32_t cg = -1, ce = -1;
+        for (std::int32_t ai : res.atomIndices) {
+            const QtAtom& a = protein.atom(static_cast<std::size_t>(ai));
+            if (a.element != Element::C) continue;
+            if (a.locant == Locant::Gamma) cg = ai;
+            else if (a.locant == Locant::Epsilon) ce = ai;
+        }
+        if (cg >= 0 && ce >= 0) {
+            MolFrameSpec spec;
+            spec.kind = MolecularFrameKind::MetSd;
+            spec.origin = static_cast<std::int32_t>(atomIndex);
+            spec.xAnchor = ce;
+            spec.planeAnchor = cg;
+            return spec;
+        }
+    }
+
     return std::nullopt;
 }
 
