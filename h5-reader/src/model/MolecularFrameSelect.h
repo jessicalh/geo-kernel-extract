@@ -89,26 +89,29 @@ inline std::optional<MolFrameSpec> SelectMolecularFrameSpec(const QtProtein& pro
         }
     }
 
-    // ---- Aromatic-ring atom, OR a hydrogen attached to one -> ring-local
-    // frame (z = ring normal, x radial to the heavy atom). An aromatic ring H
-    // is NOT itself flagged aromatic / in-ring, so resolve to its heavy parent
-    // and test THAT -- the stats pass frames ring H's too, and we match it
-    // (otherwise ~56 aromatic H's silently drop out of the framed set). ----
+    // ---- Any ring atom (aromatic Phe/Tyr/Trp/His OR saturated Pro), or a
+    // hydrogen attached to one -> ring-local frame (z = ring normal, x radial
+    // to the heavy atom). An H is not itself a ring member, so resolve to its
+    // heavy parent and test THAT. Mirrors the stats pass exactly: it frames
+    // every ring atom + its H's via the heavy parent, with NO aromaticity gate
+    // (so Pro's pyrrolidine ring is framed too; the "aromatic_ring_local" kind
+    // name is the stats' inherited label, applied to any ring). ----
     {
         const std::int32_t heavy =
             (atom.element == Element::H && atom.parentAtomIndex >= 0)
                 ? atom.parentAtomIndex
                 : static_cast<std::int32_t>(atomIndex);
         if (heavy >= 0 && static_cast<std::size_t>(heavy) < protein.atomCount()) {
-            const QtAtom& heavyAtom = protein.atom(static_cast<std::size_t>(heavy));
-            if (heavyAtom.aromatic && heavyAtom.IsInAnyRing()) {
-                if (const auto ringIdx = RingContainingAtom(protein, heavy)) {
-                    MolFrameSpec spec;
-                    spec.kind = MolecularFrameKind::AromaticRingLocal;
-                    spec.ring = static_cast<std::int32_t>(*ringIdx);
-                    spec.heavy = heavy;
-                    return spec;
-                }
+            if (const auto ringIdx = RingContainingAtom(protein, heavy)) {
+                // Honest label: only PHE/TYR/TRP/HIS rings are aromatic; PRO's
+                // pyrrolidine is saturated. Same ring-local geometry either way.
+                const bool aromatic = protein.ring(*ringIdx).IsAromatic();
+                MolFrameSpec spec;
+                spec.kind = aromatic ? MolecularFrameKind::AromaticRingLocal
+                                     : MolecularFrameKind::SaturatedRingLocal;
+                spec.ring = static_cast<std::int32_t>(*ringIdx);
+                spec.heavy = heavy;
+                return spec;
             }
         }
     }

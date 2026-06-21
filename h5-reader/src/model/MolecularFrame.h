@@ -44,6 +44,7 @@ enum class MolecularFrameKind : std::uint8_t {
     BackboneCarbonyl,
     BackboneAmideN,
     AromaticRingLocal,
+    SaturatedRingLocal,
     MetSd,
     SidechainCarboxylate,
     SidechainGuanidinium,
@@ -56,6 +57,7 @@ inline const char* MolecularFrameKindName(MolecularFrameKind k) {
     case MolecularFrameKind::BackboneCarbonyl: return "backbone_carbonyl";
     case MolecularFrameKind::BackboneAmideN: return "backbone_amide_n";
     case MolecularFrameKind::AromaticRingLocal: return "aromatic_ring_local";
+    case MolecularFrameKind::SaturatedRingLocal: return "saturated_ring_local";
     case MolecularFrameKind::MetSd: return "met_sd";
     case MolecularFrameKind::SidechainCarboxylate: return "sidechain_carboxylate";
     case MolecularFrameKind::SidechainGuanidinium: return "sidechain_guanidinium";
@@ -202,7 +204,8 @@ inline std::optional<Mat3> BuildMolecularFrameAxes(const MolFrameSpec& spec,
         return std::nullopt;
     }
 
-    case MolecularFrameKind::AromaticRingLocal: {
+    case MolecularFrameKind::AromaticRingLocal:
+    case MolecularFrameKind::SaturatedRingLocal: {
         if (spec.ring < 0 || spec.heavy < 0) return std::nullopt;
         const auto heavy = posOf(spec.heavy);
         const auto ring = ringCenterNormalOf(spec.ring);

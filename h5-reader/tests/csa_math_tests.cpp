@@ -61,6 +61,7 @@ private slots:
     // Every molecular-frame kind builds an orthonormal right-handed frame.
     void buildAmideNFrame();
     void buildAromaticRingFrame();
+    void buildSaturatedRingFrame();
     void buildMetSdFrame();
     void buildCarboxylateFrame();
     void buildGuanidiniumFrame();
@@ -178,6 +179,17 @@ void CsaMathTests::buildAromaticRingFrame() {
     s.kind = model::MolecularFrameKind::AromaticRingLocal;
     s.ring = 0; s.heavy = 0;
     const auto a = buildAxes(s, {model::Vec3(1, 0, 0)});  // heavy atom; ring at origin, +z normal
+    QVERIFY(a.has_value());
+    QVERIFY(orthonormalRH(*a));
+    QVERIFY(nearly(a->col(2).z(), 1.0));  // z along the ring normal
+    QVERIFY(nearly(a->col(0).x(), 1.0));  // x radial to the heavy atom
+}
+
+void CsaMathTests::buildSaturatedRingFrame() {
+    model::MolFrameSpec s;
+    s.kind = model::MolecularFrameKind::SaturatedRingLocal;
+    s.ring = 0; s.heavy = 0;
+    const auto a = buildAxes(s, {model::Vec3(1, 0, 0)});  // Pro-style ring; same geometry
     QVERIFY(a.has_value());
     QVERIFY(orthonormalRH(*a));
     QVERIFY(nearly(a->col(2).z(), 1.0));  // z along the ring normal
