@@ -159,10 +159,17 @@ struct AnalysisObjectPassDiagnostics {
     std::size_t mismatch_events = 0;
     std::size_t accumulator_responses = 0;
     std::size_t accumulator_contexts = 0;
+    std::size_t bounded_sigma_rows = 0;
+    std::size_t bounded_sigma_atoms = 0;
+    qint64 bounded_sigma_bytes = 0;
+    std::size_t classical_source_rows = 0;
+    qint64 classical_source_bytes = 0;
     bool sigma_mask_recorded = false;
     bool field_vectors_retained = false;
     bool full_sigma_tensors_retained = false;
     bool oxygen_gate_passed = false;
+    QString bounded_sigma_path;
+    QString classical_source_path;
     QString manifest_path;
 };
 

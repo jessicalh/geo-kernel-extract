@@ -762,7 +762,14 @@ int main(int argc, char** argv) {
             << "| mismatch_events=" << stats.mismatch_events
             << "| accumulator_responses=" << stats.accumulator_responses
             << "| accumulator_contexts=" << stats.accumulator_contexts
+            << "| bounded_sigma_rows=" << stats.bounded_sigma_rows
+            << "| bounded_sigma_atoms=" << stats.bounded_sigma_atoms
+            << "| bounded_sigma_bytes=" << stats.bounded_sigma_bytes
+            << "| classical_source_rows=" << stats.classical_source_rows
+            << "| classical_source_bytes=" << stats.classical_source_bytes
             << "| oxygen_gate_passed=" << stats.oxygen_gate_passed
+            << "| bounded_sigma=" << stats.bounded_sigma_path
+            << "| classical_source_terms=" << stats.classical_source_path
             << "| manifest=" << stats.manifest_path;
         return 0;
     }

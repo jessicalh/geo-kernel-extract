@@ -5,6 +5,7 @@
 #include "AnalysisElement.h"
 
 #include <QJsonObject>
+#include <QTextStream>
 
 #include <cstddef>
 #include <memory>
@@ -33,6 +34,16 @@ public:
     std::size_t accumulatorResponseCount() const;
     std::size_t accumulatorContextCount() const;
     bool oxygenGatePassed() const;
+    std::size_t writeBoundedSigmaRows(QTextStream& out,
+                                      const QString& datasetId,
+                                      const QString& proteinId) const;
+    std::size_t writeClassicalSourceTermRows(QTextStream& out,
+                                             const QString& datasetId,
+                                             const QString& proteinId) const;
+
+    static void WriteBoundedSigmaHeader(QTextStream& out);
+    static void WriteClassicalSourceTermHeader(QTextStream& out);
+    static bool AssertMolCompOrder(QString* errOut = nullptr);
 
 private:
     class Impl;

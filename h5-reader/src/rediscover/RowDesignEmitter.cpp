@@ -472,6 +472,47 @@ struct RowWriteContext {
     }
 };
 
+struct PredecessorChi1Region {
+    int region = -1;
+    bool present = false;
+    QString missingReason;
+};
+
+PredecessorChi1Region predecessorChi1Region(const Body& body,
+                                            const model::QtProtein& protein,
+                                            const model::QtResidue* residue,
+                                            std::size_t frame) {
+    PredecessorChi1Region out;
+    if (!residue) {
+        out.missingReason = QStringLiteral("no_current_residue");
+        return out;
+    }
+    if (residue->prevResidueIndex < 0
+        || static_cast<std::size_t>(residue->prevResidueIndex) >= protein.residueCount()) {
+        out.missingReason = QStringLiteral("no_predecessor");
+        return out;
+    }
+    const model::QtResidue& prev =
+        protein.residue(static_cast<std::size_t>(residue->prevResidueIndex));
+    if (prev.atomIndices.empty()) {
+        out.missingReason = QStringLiteral("predecessor_empty");
+        return out;
+    }
+    for (int32_t atomIndex : prev.atomIndices) {
+        if (atomIndex < 0 || static_cast<std::size_t>(atomIndex) >= protein.atomCount()) continue;
+        const DihedralState chi =
+            body.idx.dihedrals.state(DihedralKind::Chi1,
+                                     static_cast<std::size_t>(atomIndex),
+                                     frame);
+        if (!chi.present) continue;
+        out.region = chi.fixed_bin;
+        out.present = true;
+        return out;
+    }
+    out.missingReason = QStringLiteral("predecessor_chi1_absent");
+    return out;
+}
+
 double t2Magnitude(const std::array<double, 5>& t2) {
     double s = 0.0;
     for (double v : t2) {
@@ -939,6 +980,10 @@ RowDesignRow buildRow(const Body& body, std::size_t atom, std::size_t row, std::
     rowCtx.setInt("next_class", r ? static_cast<int>(ClassifyResidue(r->nextResidueType)) : -1);
     rowCtx.setInt("prev_restype", r ? static_cast<int>(r->prevResidueType) : -1);
     rowCtx.setInt("next_restype", r ? static_cast<int>(r->nextResidueType) : -1);
+    const PredecessorChi1Region prevChi1 = predecessorChi1Region(body, p, r, row);
+    rowCtx.setInt("prev_chi1_region", prevChi1.region);
+    rowCtx.setBool("prev_chi1_present", prevChi1.present);
+    rowCtx.set("prev_chi1_missing_reason", prevChi1.missingReason);
     rowCtx.setBool("pre_proline", r && r->nextResidueType == model::AminoAcid::PRO);
     rowCtx.setBool("is_pro", r && r->isProline);
     rowCtx.setBool("is_gly", r && r->aminoAcid == model::AminoAcid::GLY);
