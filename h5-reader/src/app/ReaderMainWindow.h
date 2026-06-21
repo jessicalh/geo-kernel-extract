@@ -181,10 +181,7 @@ private slots:
     void onOpenFile();
     void onOpenDirectory();
     void onOpenSignalDisplays();
-    void onPlaneLockTriggered();
-    void onFocusCameraTriggered();
-    void onNewmanProjectionTriggered();
-    void onFreeCameraTriggered();
+    void onFocusCameraTriggered();   // toggle: track focused atom / release to manual
     void onInstrumentToggled(bool checked);
     void onTransformFitClicked();
 
@@ -313,15 +310,11 @@ private:
     class NearbySignalModel* filterNearby_ = nullptr;
     std::vector<std::size_t> filterResidues_;
 
-    // Exclusive camera-mode action group. QActionGroup is the standard Qt
-    // idiom for radio-style mutual exclusion across actions. Source of
-    // truth is the composer's mode_; updateCameraModeActions() syncs the
-    // checked state from composer->mode().kind whenever modeChanged fires.
-    QActionGroup* cameraModeGroup_ = nullptr;
+    // Focus is a self-contained checkable toggle (no action group): checked =
+    // the composer tracks the focused atom, unchecked = manual camera.
+    // updateCameraModeActions() syncs its checked/enabled state from
+    // composer->mode().kind whenever modeChanged fires.
     QPointer<QAction> focusAction_;
-    QPointer<QAction> newmanAction_;
-    QPointer<QAction> planeLockAction_;
-    QPointer<QAction> freeAction_;
 
     // One transform switch: text names the active stabilisation mode.
     QPointer<QAction> transformFitAction_;

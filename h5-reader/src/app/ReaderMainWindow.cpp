@@ -658,9 +658,6 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     controls[QStringLiteral("stepForward")]  = ctl(stepForwardAction_);
     controls[QStringLiteral("playForward")]  = ctl(playForwardAction_);
     controls[QStringLiteral("focus")]        = ctl(focusAction_);
-    controls[QStringLiteral("newman")]       = ctl(newmanAction_);
-    controls[QStringLiteral("planeLock")]    = ctl(planeLockAction_);
-    controls[QStringLiteral("freeCamera")]   = ctl(freeAction_);
     controls[QStringLiteral("transformFit")] = ctl(transformFitAction_);
     controls[QStringLiteral("metrics")]      = ctl(signalDisplaysAction_);
     controls[QStringLiteral("ribbon")]       = ctl(showRibbonAction_);
@@ -1412,58 +1409,10 @@ void ReaderMainWindow::buildToolbar() {
     toolsToolbar_ = tb;
     tb->setFont(toolbarFont);
 
-    tb->addSeparator();
-
-    // Camera-mode action group — Focus / Newman / Plane lock / Free as
-    // mutually-exclusive radio actions. QActionGroup with exclusive=true is
-    // the standard Qt idiom; the visual checked state is the union of
-    // user clicks and the composer's modeChanged signal (updateCameraModeActions
-    // syncs to composer->mode().kind). Each action uses QAction::triggered
-    // (user-only) not QAction::toggled (also fires on programmatic setChecked)
-    // so the sync loop is closed.
-    cameraModeGroup_ = new QActionGroup(this);
-    cameraModeGroup_->setExclusive(true);
-
-    focusAction_ = tb->addAction(QStringLiteral("Focus"));
-    focusAction_->setCheckable(true);
-    focusAction_->setEnabled(false);
-    focusAction_->setToolTip(QStringLiteral(
-        "Focus the camera on the selected atom's residue backbone plane (N, CA, C). "
-        "Requires a focused atom."));
-    cameraModeGroup_->addAction(focusAction_);
-    ACONNECT(focusAction_.data(), &QAction::triggered,
-             this, &ReaderMainWindow::onFocusCameraTriggered);
-
-    newmanAction_ = tb->addAction(QStringLiteral("Newman"));
-    newmanAction_->setCheckable(true);
-    newmanAction_->setEnabled(false);
-    newmanAction_->setToolTip(QStringLiteral(
-        "Newman projection — sight down the central bond of a 4-atom dihedral. "
-        "Requires exactly 4 selected atoms."));
-    cameraModeGroup_->addAction(newmanAction_);
-    ACONNECT(newmanAction_.data(), &QAction::triggered,
-             this, &ReaderMainWindow::onNewmanProjectionTriggered);
-
-    planeLockAction_ = tb->addAction(QStringLiteral("Plane lock"));
-    planeLockAction_->setCheckable(true);
-    planeLockAction_->setEnabled(false);
-    planeLockAction_->setToolTip(QStringLiteral(
-        "Keep the view centred and oriented to the plane defined by exactly three selected atoms."));
-    cameraModeGroup_->addAction(planeLockAction_);
-    ACONNECT(planeLockAction_.data(), &QAction::triggered,
-             this, &ReaderMainWindow::onPlaneLockTriggered);
-
-    freeAction_ = tb->addAction(QStringLiteral("Free Camera"));
-    freeAction_->setCheckable(true);
-    freeAction_->setChecked(true);   // composer's default mode is Free
-    freeAction_->setToolTip(QStringLiteral(
-        "Release any camera lock; mouse drag controls the view directly."));
-    cameraModeGroup_->addAction(freeAction_);
-    ACONNECT(freeAction_.data(), &QAction::triggered,
-             this, &ReaderMainWindow::onFreeCameraTriggered);
-
-    tb->addSeparator();
-
+    // Camera-mode cluster removed: Focus is now a single de-emphasized toggle
+    // at the toolbar tail (built below). The Newman / Plane-lock / Free buttons
+    // are gone; the composer keeps every mode for the dashboard-reveal + REST
+    // paths, which are their real consumers.
     transformFitAction_ = tb->addAction(QStringLiteral("Mode: Locked backbone  ⇄"));
     transformFitAction_->setToolTip(fitModeToolTip());
     ACONNECT(transformFitAction_.data(), &QAction::triggered,
@@ -1578,6 +1527,22 @@ void ReaderMainWindow::buildToolbar() {
                  scene_->occupancyShellsOverlay()->setVisible(on);
                  scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
+
+    // Focus — a self-contained toggle at the toolbar tail (deliberately
+    // de-emphasized; the Filter feature now covers the common "see one atom +
+    // neighbours" need). Checked = track the focused atom, keeping it centred
+    // as frames play; unchecked = manual mouse camera. No separate Free/lock
+    // mode is surfaced — the button's own state is the only indicator, and it
+    // also releases a lock a dashboard reveal engaged.
+    tb->addSeparator();
+    focusAction_ = tb->addAction(QStringLiteral("Focus"));
+    focusAction_->setCheckable(true);
+    focusAction_->setEnabled(false);
+    focusAction_->setToolTip(QStringLiteral(
+        "Track the focused atom — keep it centred as frames play. "
+        "Toggle off for free mouse control. Requires a focused atom."));
+    ACONNECT(focusAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onFocusCameraTriggered);
 }
 
 void ReaderMainWindow::buildStatusBar() {
@@ -1687,51 +1652,19 @@ void ReaderMainWindow::onFrameChanged(int t) {
 }
 
 void ReaderMainWindow::updateCameraModeActions() {
-    // Gating — what each action requires from the current selection.
-    const bool hasFocus  = selection_ && selection_->hasFocus();
-    const std::size_t n  = selection_ ? selection_->count() : 0;
-    if (focusAction_)     focusAction_->setEnabled(scene_ && hasFocus);
-    if (newmanAction_)    newmanAction_->setEnabled(scene_ && n == 4);
-    if (planeLockAction_) planeLockAction_->setEnabled(scene_ && n == 3);
-    if (freeAction_)      freeAction_->setEnabled(scene_ != nullptr);
-
-    // Visual checked state — sourced from the composer. Programmatic
-    // setChecked here would fire QAction::toggled but we connected via
-    // QAction::triggered (user-only), so no loop. Use a signal blocker
-    // anyway since QActionGroup itself emits triggered on exclusive change.
-    const auto setOne = [](QAction* a, bool on) {
-        if (!a) return;
-        const QSignalBlocker block(a);
-        a->setChecked(on);
-    };
-    if (!scene_ || !scene_->cameraComposer()) {
-        setOne(focusAction_,     false);
-        setOne(newmanAction_,    false);
-        setOne(planeLockAction_, false);
-        setOne(freeAction_,      true);
+    // Focus is the only camera control now. Enabled when there's a focused atom
+    // to track OR the composer is already tracking (so a lock can always be
+    // released); checked iff the composer is tracking anything — any non-Free
+    // mode, including one a dashboard reveal engaged. Signal-blocked because we
+    // connect via QAction::triggered (user-only), not toggled.
+    if (!focusAction_)
         return;
-    }
-    const auto kind = scene_->cameraComposer()->mode().kind;
-    setOne(focusAction_,     false);
-    setOne(newmanAction_,    false);
-    setOne(planeLockAction_, false);
-    setOne(freeAction_,      false);
-    switch (kind) {
-        case CameraMode::Kind::Plane:
-            setOne(planeLockAction_, true); break;
-        case CameraMode::Kind::Dihedral:
-            // Newman is the only dihedral path we expose in the toolbar; a
-            // dihedral mode that came in via REST also shows here.
-            setOne(newmanAction_, true); break;
-        case CameraMode::Kind::Free:
-            setOne(freeAction_, true); break;
-        case CameraMode::Kind::Atom:
-            break;
-        case CameraMode::Kind::Bond:
-            break;
-        case CameraMode::Kind::Subset:
-            break;
-    }
+    const bool hasFocus = selection_ && selection_->hasFocus();
+    const bool tracking = scene_ && scene_->cameraComposer()
+        && scene_->cameraComposer()->mode().kind != CameraMode::Kind::Free;
+    focusAction_->setEnabled(scene_ && (hasFocus || tracking));
+    const QSignalBlocker block(focusAction_);
+    focusAction_->setChecked(tracking);
 }
 
 void ReaderMainWindow::updateFitModeLabel() {
@@ -1750,23 +1683,21 @@ void ReaderMainWindow::updateFitModeLabel() {
     transformFitAction_->setToolTip(fitModeToolTip());
 }
 
-void ReaderMainWindow::onPlaneLockTriggered() {
+void ReaderMainWindow::onFocusCameraTriggered() {
     ASSERT_THREAD(this);
-    if (!scene_ || !selection_ || selection_->count() != 3
-        || !scene_->lockCameraToSelectionPlane(selection_->atoms())) {
-        // setMode failed (degenerate); make sure the toolbar reflects
-        // composer truth — likely Free or whatever was active before.
+    if (!scene_ || !scene_->cameraComposer()) {
         updateCameraModeActions();
         return;
     }
-    // The composer's modeChanged signal will fire updateCameraModeActions
-    // for us; nothing else to do.
-}
-
-void ReaderMainWindow::onFocusCameraTriggered() {
-    ASSERT_THREAD(this);
-    if (!scene_ || !scene_->cameraComposer() || !selection_ || !selection_->hasFocus()
-        || !loaded_ || !loaded_->protein) {
+    const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
+    // Toggle: unchecked → release to manual (Free); modeChanged re-syncs the
+    // button. This also releases a lock a dashboard reveal engaged, so the one
+    // toggle is the universal "stop tracking" control.
+    if (focusAction_ && !focusAction_->isChecked()) {
+        scene_->cameraComposer()->setMode(FreeMode(), FreePolicy(), t);
+        return;
+    }
+    if (!selection_ || !selection_->hasFocus() || !loaded_ || !loaded_->protein) {
         updateCameraModeActions();
         return;
     }
@@ -1780,39 +1711,11 @@ void ReaderMainWindow::onFocusCameraTriggered() {
         updateCameraModeActions();
         return;
     }
-    const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
     scene_->cameraComposer()->setMode(result.mode, result.policy, t);
     (void)scene_->cameraComposer()->write(t);
     scene_->syncCameraClippingRange();
     scene_->requestRender(MoleculeScene::RenderSource::External);
     updateCameraModeActions();
-}
-
-void ReaderMainWindow::onNewmanProjectionTriggered() {
-    ASSERT_THREAD(this);
-    if (!scene_ || !scene_->cameraComposer() || !selection_ || selection_->count() != 4) {
-        updateCameraModeActions();
-        return;
-    }
-    const auto& a = selection_->atoms();
-    CameraMode m = DihedralMode(a[0], a[1], a[2], a[3]);
-    OrientationPolicy p = DownAxisPolicy(a[1], a[2]);
-    const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
-    scene_->cameraComposer()->setMode(m, p, t);
-    (void)scene_->cameraComposer()->write(t);
-    scene_->syncCameraClippingRange();
-    scene_->requestRender(MoleculeScene::RenderSource::External);
-    updateCameraModeActions();
-}
-
-void ReaderMainWindow::onFreeCameraTriggered() {
-    ASSERT_THREAD(this);
-    if (!scene_ || !scene_->cameraComposer()) {
-        updateCameraModeActions();
-        return;
-    }
-    const std::size_t t = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0u;
-    scene_->cameraComposer()->setMode(FreeMode(), FreePolicy(), t);
 }
 
 void ReaderMainWindow::onTransformFitClicked() {
