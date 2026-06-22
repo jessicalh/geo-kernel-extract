@@ -537,9 +537,8 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
     // ── DFT / ProCS15 reference shielding (single-pose --orca + tripeptide / Larsen) ──
     {
         model::QtOrcaGroup orca(s);
-        if (AllowsAny(availability_, {"npy:orca_total", "npy:orca_diamagnetic",
-                                      "npy:orca_paramagnetic", "orca_dft:total",
-                                      "orca_dft:diamagnetic", "orca_dft:paramagnetic"})) {
+        if (AllowsAny(availability_, {"orca_dft:total", "orca_dft:diamagnetic",
+                                      "orca_dft:paramagnetic"})) {
             if (auto tot = orca.total(a)) {
                 auto* g = AddKV(root, QStringLiteral("DFT reference (ORCA)"), QString());
                 AddOptSpherical(g, QStringLiteral("σ total"), tot, QStringLiteral("ppm"));

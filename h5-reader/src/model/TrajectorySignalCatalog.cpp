@@ -913,9 +913,11 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
         {"coulomb_shielding", "coulomb_shielding", "coulomb", "Coulomb shielding", shielding},
         {"mopac_coulomb_shielding", "mopac_coulomb_shielding", "mopac_coulomb", "MOPAC Coulomb shielding", shielding},
         {"mopac_mc_shielding", "mopac_mc_shielding", "mopac_mcconnell", "MOPAC McConnell shielding", shielding},
-        {"orca_total", "orca_total", "orca", "ORCA total shielding snapshot", shielding},
-        {"orca_diamagnetic", "orca_diamagnetic", "orca", "ORCA diamagnetic shielding snapshot", shielding},
-        {"orca_paramagnetic", "orca_paramagnetic", "orca", "ORCA paramagnetic shielding snapshot", shielding},
+        // ORCA shielding is NOT a per-frame NPY -- it is .out-backed and served
+        // live via DftShieldingStore as the orca_dft:* descriptors (addOrcaDft).
+        // The npy:orca_* triplet here was a dead duplicate (always Absent);
+        // dropped so the catalog shows 3 ORCA quantities, not 6. orca_dft:* is
+        // canonical (conceptKey orca_total/diamagnetic/paramagnetic preserved).
         {"tripeptide_bb_shielding", "tripeptide_bb_shielding", "tripeptide", "Tripeptide backbone shielding", shielding},
         {"tripeptide_neighbor_shielding", "tripeptide_neighbor_shielding", "tripeptide", "Tripeptide neighbor shielding", shielding},
         {"larsen_hbond_shielding", "larsen_hbond_shielding", "larsen_hbond", "Larsen H-bond shielding", shielding},
@@ -1015,10 +1017,11 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
     npy("tripeptide_neighbor_residual_vec_next", "tripeptide_neighbor_residual_vec_next", "tripeptide", "Tripeptide next-neighbor residual vector", SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding));
     npy("larsen_hbond_water_term", "larsen_hbond_water_term", "larsen_hbond", "Larsen H-bond water term", SignalAxis::Atom, SignalValueShape::Scalar, shielding, scalarStripModes(), scalarStaticModes(), scalarChannels(shielding));
     npy("larsen_hbond_count", "larsen_hbond_count", "larsen_hbond", "Larsen H-bond count", SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, scalarStaticModes(), countChannels());
-    npy("residues", "topology.residues", "topology", "Residue sidecar records", SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
-    npy("bonds", "topology.bonds", "topology", "Bond sidecar records", SignalAxis::Bond, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
-    npy("rings", "topology.rings", "topology", "Ring sidecar records", SignalAxis::Ring, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
-    npy("ring_membership", "topology.ring_membership", "topology", "Ring membership records", SignalAxis::RingMembership, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
+    // The topology sidecars (residues/bonds/rings/ring_membership) are loaded ONCE
+    // into the QtProtein spine at startup, NOT as per-frame NPY columns, so these
+    // npy:* views were dead duplicates (always Absent) of the canonical topology:*
+    // descriptors (addTopology). Dropped; topology:* is canonical (the shared
+    // conceptKey topology.<x> is preserved there).
 }
 
 void addOrcaDft(QVector<SignalDescriptor>& descriptors) {
