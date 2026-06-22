@@ -21,6 +21,7 @@
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignal.h"
 #include "../model/DashboardSignalModel.h"
+#include "../model/MetricTaxonomy.h"
 #include "../model/QtProtein.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "../model/TransformedConformation.h"
@@ -1752,6 +1753,65 @@ void RestServer::registerRoutes() {
                 {"by_value_shape", byShape},
             }},
             {"descriptors", arr},
+        });
+    });
+
+    // GET /catalog/tree -- the same catalog, organized mechanism -> concept ->
+    // form (model/MetricTaxonomy.h). Sane hypothesis-first grouping: the four
+    // shielding-contribution kernels (role=hypothesis), the DFT/ProCS15 reference
+    // (role=reference), the conditioning inputs, dynamics, scaffold. The ~188 flat
+    // rows fold to ~35 base concepts; each concept lists its FORMS (snapshot /
+    // series / rollup / ...) as related items, not a hidden collapse.
+    server_->route(QStringLiteral("/catalog/tree"), [this]() {
+        ASSERT_THREAD(this);
+        if (!catalog_)
+            return errorResponse(QStringLiteral("catalog not wired"), SC::ServiceUnavailable);
+        const QVector<model::MetricGroupNode> tree =
+            model::GroupCatalog(catalog_->allDescriptorList());
+        QJsonArray groups;
+        int conceptTotal = 0, formTotal = 0;
+        QJsonObject groupsByRole;
+        for (const model::MetricGroupNode& g : tree) {
+            QJsonArray concepts;
+            for (const model::MetricConceptNode& c : g.concepts) {
+                ++conceptTotal;
+                QJsonArray forms;
+                bool anyAvailable = false;
+                for (const model::MetricFormEntry& f : c.forms) {
+                    ++formTotal;
+                    const QString avail = availabilityString(catalog_, f.descriptorId);
+                    if (avail == QStringLiteral("Available")) anyAvailable = true;
+                    forms.append(QJsonObject{
+                        {"form", QString::fromLatin1(model::ToString(f.form))},
+                        {"id", f.descriptorId},
+                        {"availability", avail},
+                    });
+                }
+                QJsonObject cobj{
+                    {"concept", c.baseConcept},
+                    {"label", c.label},
+                    {"available", anyAvailable},
+                    {"forms", forms},
+                };
+                if (!c.chargeModel.isEmpty()) cobj["charge_model"] = c.chargeModel;
+                concepts.append(cobj);
+            }
+            const QString role = QString::fromLatin1(model::ToString(g.role));
+            groupsByRole[role] = groupsByRole.value(role).toInt() + 1;
+            groups.append(QJsonObject{
+                {"group", QString::fromLatin1(model::ToString(g.group))},
+                {"role", role},
+                {"concept_count", static_cast<int>(concepts.size())},
+                {"concepts", concepts},
+            });
+        }
+        return jsonResponse(QJsonObject{
+            {"descriptor_count", static_cast<qint64>(catalog_->allDescriptorList().size())},
+            {"group_count", static_cast<int>(groups.size())},
+            {"concept_count", conceptTotal},
+            {"form_count", formTotal},
+            {"groups_by_role", groupsByRole},
+            {"groups", groups},
         });
     });
 

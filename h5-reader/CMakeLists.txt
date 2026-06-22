@@ -784,6 +784,22 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     add_test(NAME h5reader_field_availability_tests
              COMMAND h5reader_field_availability_tests)
 
+    # Metric taxonomy (mechanism -> concept -> form) -- the pure classification
+    # that organizes the flat catalog into a navigable, hypothesis-first tree
+    # (the metrics-clarity de-sprawl). Header-only; links Qt6::Test only.
+    qt_add_executable(h5reader_metric_taxonomy_tests
+        tests/metric_taxonomy_tests.cpp
+        src/model/MetricTaxonomy.h
+    )
+    target_include_directories(h5reader_metric_taxonomy_tests PRIVATE src)
+    target_link_libraries(h5reader_metric_taxonomy_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_metric_taxonomy_tests
+             COMMAND h5reader_metric_taxonomy_tests)
+
     # Pure-function occupancy-shells density / HDR math (OccupancyShellsMath.h).
     # The correctness core of the occupancy-shells overlay, factored out for
     # direct testing per the Opus/codex pre-build reviews. Header-only math over
