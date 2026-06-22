@@ -9,6 +9,7 @@
 #include <QTextStream>
 
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -42,7 +43,13 @@ struct ClassicalSourceTermRecord {
 
     QString sigma0_status;
     QString buckingham_linear_status;
+    QString buckingham_linear_key;
+    double buckingham_linear_constant_value = std::numeric_limits<double>::quiet_NaN();
+    QString buckingham_linear_units;
     QString buckingham_quadratic_status;
+    QString buckingham_quadratic_key;
+    double buckingham_quadratic_constant_value = std::numeric_limits<double>::quiet_NaN();
+    QString buckingham_quadratic_units;
     QString ring_status = QStringLiteral("good_enough");
     QString mcconnell_status = QStringLiteral("good_enough");
     QString larsen_status = QStringLiteral("cited");

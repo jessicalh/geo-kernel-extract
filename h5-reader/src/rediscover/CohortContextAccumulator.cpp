@@ -333,6 +333,30 @@ std::optional<model::Mat3> genericBondAxes(const RunData& run, std::size_t atom)
     return axesFromXAndPlane(*x - *origin, *plane - *origin);
 }
 
+QString molecularFrameKindForAtom(const RunData& run, std::size_t atom) {
+    if (!run.protein || atom >= run.protein->atomCount()) return QStringLiteral("none");
+    const model::QtProtein& protein = *run.protein;
+    const model::QtAtom& a = protein.atom(atom);
+    const QString name = atomName(protein, atom);
+    if (name == QStringLiteral("CA")) return QStringLiteral("backbone_ca");
+    if (a.IsBackboneNitrogen() || name == QStringLiteral("N"))
+        return QStringLiteral("backbone_amide_n");
+    if (a.element == model::Element::H
+        && a.backboneRole == model::BackboneRole::AmideHydrogen)
+        return QStringLiteral("backbone_amide_h");
+    if (a.IsBackboneCarbonylCarbon() || a.IsBackboneCarbonylOxygen()
+        || name == QStringLiteral("C") || name == QStringLiteral("O")
+        || name == QStringLiteral("OXT"))
+        return QStringLiteral("backbone_carbonyl");
+    if (a.element == model::Element::O
+        && (name == QStringLiteral("OG") || name == QStringLiteral("OG1")
+            || name == QStringLiteral("OH")))
+        return QStringLiteral("hydroxyl_oxygen");
+    if (a.element == model::Element::C && name != QStringLiteral("C") && !a.IsInAnyRing())
+        return QStringLiteral("aliphatic_carbon");
+    return QStringLiteral("none");
+}
+
 std::optional<model::Mat3> molecularAxesForAtom(const RunData& run, std::size_t atom) {
     if (!run.protein || !run.conformation || atom >= run.protein->atomCount())
         return std::nullopt;
@@ -553,6 +577,7 @@ CohortSample sampleForAtom(const RunData& run,
     f.element = elementName(a.element);
     f.residue_type = residue;
     f.atom_name = atomName(protein, atom);
+    f.frame_kind = molecularFrameKindForAtom(run, atom);
     f.hyb = hybridisationForAtom(run, a, atom);
     f.contact_class = nearestContactClass(run, atom);
     f.dihedral_region = dihedralRegion(indexes, atom);
@@ -700,7 +725,7 @@ bool emitStaticTable(const QString& outDir,
     writeCsvLine(ts, {
         QStringLiteral("schema_version"), QStringLiteral("table"), QStringLiteral("context_key"),
         QStringLiteral("identity_key"), QStringLiteral("element"), QStringLiteral("residue_type"),
-        QStringLiteral("atom_name"), QStringLiteral("hyb"), QStringLiteral("contact_class"),
+        QStringLiteral("atom_name"), QStringLiteral("frame_kind"), QStringLiteral("hyb"), QStringLiteral("contact_class"),
         QStringLiteral("dihedral_region"), QStringLiteral("SS"), QStringLiteral("n_proteins"),
         QStringLiteral("cohort_n_proteins"), QStringLiteral("protein_residency"),
         QStringLiteral("atoms_per_dimension"), QStringLiteral("support_class"),
@@ -757,7 +782,8 @@ bool emitStaticTable(const QString& outDir,
                          : cell.key.fields.element == QStringLiteral("S") ? model::Element::S
                                                                            : model::Element::Unknown,
                          cell.key.fields.residue_type.toStdString(),
-                         cell.key.fields.atom_name.toStdString());
+                         cell.key.fields.atom_name.toStdString(),
+                         cell.key.fields.frame_kind.toStdString());
         const double contribBuck = buck.value * channelMean(cell, QStringLiteral("apbs_E_mag"));
         const double contribRing = channelMean(cell, QStringLiteral("ring_bs_iso"));
         const double contribMc = channelMean(cell, QStringLiteral("mc_lit_iso"));
@@ -774,6 +800,7 @@ bool emitStaticTable(const QString& outDir,
             cell.key.fields.element,
             cell.key.fields.residue_type,
             cell.key.fields.atom_name,
+            cell.key.fields.frame_kind,
             cell.key.fields.hyb,
             cell.key.fields.contact_class,
             cell.key.fields.dihedral_region,

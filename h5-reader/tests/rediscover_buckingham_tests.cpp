@@ -6,6 +6,7 @@
 
 #include "io/QtNpyReader.h"
 #include "rediscover/BuckinghamEfieldSink.h"
+#include "rediscover/LiteratureConstants.h"
 #include "rediscover/LocalFrameBasis.h"
 #include "rediscover/SphericalBasis.h"
 
@@ -21,8 +22,11 @@ using h5reader::model::SphericalTensor;
 using h5reader::model::Vec3;
 using h5reader::rediscover::BuckinghamEfieldRow;
 using h5reader::rediscover::BuckinghamEfieldSink;
+using h5reader::rediscover::BuckinghamA;
+using h5reader::rediscover::BuckinghamB;
 using h5reader::rediscover::DecomposeLibrary;
 using h5reader::rediscover::FiniteVec3;
+using h5reader::rediscover::LiteratureStatus;
 using h5reader::rediscover::LocalFrame;
 
 namespace {
@@ -89,6 +93,7 @@ private slots:
     void projectionIsLocalZAndMagnitudeInvariant();
     void targetBasisKeepsSqrt6Fixture();
     void sinkWritesScalarCsvAndAuditSidecars();
+    void classSpecificConstantsSelectByFrameKind();
 };
 
 void RediscoverBuckinghamTests::projectionIsLocalZAndMagnitudeInvariant() {
@@ -155,6 +160,43 @@ void RediscoverBuckinghamTests::sinkWritesScalarCsvAndAuditSidecars() {
     for (const QByteArray& line : lines)
         if (!line.trimmed().isEmpty()) ++nonEmpty;
     QCOMPARE(nonEmpty, 3);  // header + two rows
+}
+
+void RediscoverBuckinghamTests::classSpecificConstantsSelectByFrameKind() {
+    namespace model = h5reader::model;
+
+    const auto carbonylC = BuckinghamA(model::Element::C, "ALA", "C", "backbone_carbonyl");
+    QCOMPARE(QString::fromLatin1(carbonylC.key), QStringLiteral("buckingham.A.carbonyl_13C"));
+    QVERIFY(carbonylC.status == LiteratureStatus::GoodEnough);
+    QVERIFY(std::abs(carbonylC.value - 7.28) < kTol);
+    QVERIFY(QString::fromLatin1(carbonylC.axis_convention_note).contains(QStringLiteral("carbonyl sign")));
+    QVERIFY(std::abs(BuckinghamB(model::Element::C, "ALA", "C", "backbone_carbonyl").value) < kTol);
+
+    const auto amideN = BuckinghamA(model::Element::N, "GLY", "N", "backbone_amide_n");
+    QCOMPARE(QString::fromLatin1(amideN.key), QStringLiteral("buckingham.A.amide_15N"));
+    QVERIFY(amideN.status == LiteratureStatus::Cited);
+    QVERIFY(std::abs(amideN.value - 16.88) < kTol);
+
+    const auto amideH = BuckinghamA(model::Element::H, "GLY", "H", "backbone_amide_h");
+    QCOMPARE(QString::fromLatin1(amideH.key), QStringLiteral("buckingham.A.amide_1HN"));
+    QVERIFY(amideH.status == LiteratureStatus::Cited);
+    QVERIFY(std::abs(amideH.value - 3.66) < kTol);
+
+    const auto aliphaticC = BuckinghamA(model::Element::C, "ALA", "CB", "aliphatic_carbon");
+    QCOMPARE(QString::fromLatin1(aliphaticC.key), QStringLiteral("buckingham.A.aliphatic_sp3_13C"));
+    QVERIFY(aliphaticC.status == LiteratureStatus::GoodEnough);
+    QVERIFY(std::abs(aliphaticC.value + 0.96) < kTol);
+    QVERIFY(std::abs(BuckinghamB(model::Element::C, "ALA", "CB", "aliphatic_carbon").value - 0.35) < kTol);
+
+    const auto hydroxylO = BuckinghamA(model::Element::O, "SER", "OG", "hydroxyl_oxygen");
+    QCOMPARE(QString::fromLatin1(hydroxylO.key), QStringLiteral("buckingham.A.hydroxyl_17O"));
+    QVERIFY(std::abs(hydroxylO.value + 6.55) < kTol);
+    QVERIFY(std::abs(BuckinghamB(model::Element::O, "SER", "OG", "hydroxyl_oxygen").value - 0.52) < kTol);
+
+    const auto genericS = BuckinghamA(model::Element::S, "MET", "SD", "met_sd_cg_s_ce");
+    QCOMPARE(QString::fromLatin1(genericS.key), QStringLiteral("buckingham.A.S.structural_absent"));
+    QVERIFY(genericS.status == LiteratureStatus::GoodEnough);
+    QVERIFY(std::abs(genericS.value) < kTol);
 }
 
 QTEST_GUILESS_MAIN(RediscoverBuckinghamTests)

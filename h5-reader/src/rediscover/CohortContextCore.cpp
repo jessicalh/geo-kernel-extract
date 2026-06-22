@@ -81,6 +81,7 @@ Axis2ContextKey BuildAxis2ContextKey(const Axis2ContextKeyFields& input) {
     out.fields.element = cleanToken(out.fields.element);
     out.fields.residue_type = cleanToken(out.fields.residue_type);
     out.fields.atom_name = cleanToken(out.fields.atom_name);
+    out.fields.frame_kind = cleanToken(out.fields.frame_kind, QStringLiteral("none"));
     out.fields.hyb = cleanToken(out.fields.hyb);
     out.fields.contact_class = cleanToken(out.fields.contact_class);
     out.fields.dihedral_region = cleanToken(out.fields.dihedral_region);

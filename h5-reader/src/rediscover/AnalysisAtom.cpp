@@ -1564,8 +1564,14 @@ QStringList classicalSourceHeaderColumns() {
         QStringLiteral("sigma0_constant_status"),
         QStringLiteral("buckingham_linear_term_present"),
         QStringLiteral("buckingham_linear_constant_status"),
+        QStringLiteral("buckingham_linear_constant_key"),
+        QStringLiteral("buckingham_linear_constant_value"),
+        QStringLiteral("buckingham_linear_constant_units"),
         QStringLiteral("buckingham_quadratic_term_present"),
         QStringLiteral("buckingham_quadratic_constant_status"),
+        QStringLiteral("buckingham_quadratic_constant_key"),
+        QStringLiteral("buckingham_quadratic_constant_value"),
+        QStringLiteral("buckingham_quadratic_constant_units"),
         QStringLiteral("ring_term_present"),
         QStringLiteral("ring_constant_status"),
         QStringLiteral("mcconnell_term_present"),
@@ -1763,8 +1769,14 @@ void writeClassicalSourceRecord(QTextStream& out, const ClassicalSourceTermRecor
           << csvEscape(r.sigma0_status)
           << csvBool(buckLinearPresent)
           << csvEscape(r.buckingham_linear_status)
+          << csvEscape(r.buckingham_linear_key)
+          << csvNum(r.buckingham_linear_constant_value)
+          << csvEscape(r.buckingham_linear_units)
           << csvBool(buckQuadraticPresent)
           << csvEscape(r.buckingham_quadratic_status)
+          << csvEscape(r.buckingham_quadratic_key)
+          << csvNum(r.buckingham_quadratic_constant_value)
+          << csvEscape(r.buckingham_quadratic_units)
           << csvBool(ringPresent)
           << csvEscape(r.ring_status)
           << csvBool(mcPresent)
@@ -2878,9 +2890,10 @@ public:
 
         const std::string residueStd = residueType.toStdString();
         const std::string atomStd = atomName.toStdString();
+        const std::string frameKindStd = molecular_frame_.kind.toStdString();
         const LiteratureConstant sigma0 = Sigma0(a.element, residueStd, atomStd);
-        const LiteratureConstant buckinghamA = BuckinghamA(a.element, residueStd, atomStd);
-        const LiteratureConstant buckinghamB = BuckinghamB(a.element, residueStd, atomStd);
+        const LiteratureConstant buckinghamA = BuckinghamA(a.element, residueStd, atomStd, frameKindStd);
+        const LiteratureConstant buckinghamB = BuckinghamB(a.element, residueStd, atomStd, frameKindStd);
 
         record.sigma_qm = sigmaIsoSeries();
         record.sigma0.assign(cadence_.stepCount(), finite(sigma0.value) ? sigma0.value : kNaN);
@@ -2889,7 +2902,13 @@ public:
         };
         record.sigma0_status = statusName(sigma0);
         record.buckingham_linear_status = statusName(buckinghamA);
+        record.buckingham_linear_key = QString::fromLatin1(buckinghamA.key);
+        record.buckingham_linear_constant_value = buckinghamA.value;
+        record.buckingham_linear_units = QString::fromLatin1(buckinghamA.units);
         record.buckingham_quadratic_status = statusName(buckinghamB);
+        record.buckingham_quadratic_key = QString::fromLatin1(buckinghamB.key);
+        record.buckingham_quadratic_constant_value = buckinghamB.value;
+        record.buckingham_quadratic_units = QString::fromLatin1(buckinghamB.units);
         for (const LiteratureConstant* c : {&sigma0, &buckinghamA, &buckinghamB})
             if (c->status == LiteratureStatus::Placeholder) ++record.constant_placeholder_n;
 
@@ -2897,14 +2916,13 @@ public:
         const bool hasSignedBondField =
             std::any_of(eParallel.begin(), eParallel.end(), [](double v) { return finite(v); });
         if (!hasSignedBondField) eParallel = field_E_z_mopac_.values;
-        const std::vector<double> e2 = field_abs_E2_mopac_.values;
         record.buckingham_linear.assign(cadence_.stepCount(), kNaN);
         record.buckingham_quadratic.assign(cadence_.stepCount(), kNaN);
         for (std::size_t i = 0; i < cadence_.stepCount(); ++i) {
-            if (i < eParallel.size() && finite(eParallel[i]))
+            if (i < eParallel.size() && finite(eParallel[i])) {
                 record.buckingham_linear[i] = -buckinghamA.value * eParallel[i];
-            if (i < e2.size() && finite(e2[i]))
-                record.buckingham_quadratic[i] = -buckinghamB.value * e2[i];
+                record.buckingham_quadratic[i] = -buckinghamB.value * eParallel[i] * eParallel[i];
+            }
         }
         record.ring = sumMechanism(QStringLiteral("ring_jb"));
         record.mcconnell = sumMechanism(QStringLiteral("mc_lit_valid"));
@@ -8241,13 +8259,22 @@ QJsonObject manifestJson(const Body& body,
     root.insert(QStringLiteral("eta2_by_well_sidecar"), eta2ByWell);
 
     const LiteratureStatusCounts literatureCounts = CountLiteratureConstantStatuses();
+    const LiteratureStatusCounts buckinghamCounts = CountBuckinghamConstantStatuses();
     QJsonObject literature;
     literature.insert(QStringLiteral("header"), QStringLiteral("src/rediscover/LiteratureConstants.h"));
+    literature.insert(QStringLiteral("buckingham_header_note"),
+                      QStringLiteral("Buckingham convention: sigma=sigma0-A*Eparallel-B*Eparallel^2, E in V/angstrom. Carbonyl 13C/17O signs are Augspurger CO d_sigma/dE values sign-flipped into this convention, but engine Eparallel positive-axis agreement is not verified."));
+    literature.insert(QStringLiteral("buckingham_carbonyl_sign_unverified"), true);
     QJsonObject literatureStatus;
     literatureStatus.insert(QStringLiteral("cited"), literatureCounts.cited);
     literatureStatus.insert(QStringLiteral("good_enough"), literatureCounts.good_enough);
     literatureStatus.insert(QStringLiteral("placeholder"), literatureCounts.placeholder);
     literature.insert(QStringLiteral("status_counts"), literatureStatus);
+    QJsonObject buckinghamStatus;
+    buckinghamStatus.insert(QStringLiteral("cited"), buckinghamCounts.cited);
+    buckinghamStatus.insert(QStringLiteral("good_enough"), buckinghamCounts.good_enough);
+    buckinghamStatus.insert(QStringLiteral("placeholder"), buckinghamCounts.placeholder);
+    literature.insert(QStringLiteral("buckingham_status_counts"), buckinghamStatus);
     literature.insert(QStringLiteral("placeholder_visible_smell"), literatureCounts.placeholder > 0);
     root.insert(QStringLiteral("literature_constants"), literature);
 

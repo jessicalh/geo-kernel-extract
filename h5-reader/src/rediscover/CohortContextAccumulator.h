@@ -22,6 +22,7 @@ struct Axis2ContextKeyFields {
     QString element;
     QString residue_type;
     QString atom_name;
+    QString frame_kind;
     QString hyb;
     QString contact_class;
     QString dihedral_region;
