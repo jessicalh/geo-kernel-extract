@@ -800,6 +800,22 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     add_test(NAME h5reader_metric_taxonomy_tests
              COMMAND h5reader_metric_taxonomy_tests)
 
+    # Display policy (per-field presentation limits) -- A2: the data-driven
+    # displayability rule (topology tables + the 256-d embedding non-displayable,
+    # so the audit splits intentional non-display from real dead options). Pure.
+    qt_add_executable(h5reader_display_policy_tests
+        tests/display_policy_tests.cpp
+        src/model/DisplayPolicy.h
+    )
+    target_include_directories(h5reader_display_policy_tests PRIVATE src)
+    target_link_libraries(h5reader_display_policy_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_display_policy_tests
+             COMMAND h5reader_display_policy_tests)
+
     # Pure-function occupancy-shells density / HDR math (OccupancyShellsMath.h).
     # The correctness core of the occupancy-shells overlay, factored out for
     # direct testing per the Opus/codex pre-build reviews. Header-only math over

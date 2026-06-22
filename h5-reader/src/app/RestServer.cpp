@@ -21,6 +21,7 @@
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignal.h"
 #include "../model/DashboardSignalModel.h"
+#include "../model/DisplayPolicy.h"
 #include "../model/MetricTaxonomy.h"
 #include "../model/QtProtein.h"
 #include "../model/VisualizationRegistry.h"
@@ -1828,7 +1829,8 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("catalog not wired"), SC::ServiceUnavailable);
         const model::VisualizationRegistry& reg = model::VisualizationRegistry::instance();
         QJsonArray fields;
-        QJsonArray deadFields;
+        QJsonArray deadFields;            // intended as a signal but NO viz renders it (a real bug)
+        QJsonArray nonDisplayableFields;  // intentionally not a dashboard signal (DisplayPolicy)
         QHash<QString, int> shapeCount, shapeDead;
         QHash<QString, QStringList> shapeViz;
         for (const model::SignalDescriptor& d : catalog_->allDescriptorList()) {
@@ -1841,16 +1843,20 @@ void RestServer::registerRoutes() {
                 vizArr.append(vt);
                 if (!shapeViz[shape].contains(vt)) shapeViz[shape].append(vt);
             }
-            const bool displayable = !vizArr.isEmpty();
+            const bool intended = model::IsDashboardDisplayable(d);
+            const bool hasViz = !vizArr.isEmpty();
+            const bool dead = intended && !hasViz;  // claims to be a signal but nothing renders it
             ++shapeCount[shape];
-            if (!displayable) { ++shapeDead[shape]; deadFields.append(d.id); }
+            if (dead) { ++shapeDead[shape]; deadFields.append(d.id); }
+            if (!intended) nonDisplayableFields.append(d.id);
             fields.append(QJsonObject{
                 {"id", d.id},
                 {"group", QString::fromLatin1(model::ToString(model::ClassifyMetric(d).group))},
                 {"value_shape", shape},
+                {"displayable", intended},
                 {"offered_modes", modeArr},
                 {"supporting_viz", vizArr},
-                {"displayable", displayable},
+                {"dead", dead},
             });
         }
         QJsonObject byShape;
@@ -1867,6 +1873,8 @@ void RestServer::registerRoutes() {
             {"total", static_cast<qint64>(catalog_->allDescriptorList().size())},
             {"dead_count", deadFields.size()},
             {"dead_fields", deadFields},
+            {"non_displayable_count", nonDisplayableFields.size()},
+            {"non_displayable_fields", nonDisplayableFields},
             {"by_value_shape", byShape},
             {"fields", fields},
         });
