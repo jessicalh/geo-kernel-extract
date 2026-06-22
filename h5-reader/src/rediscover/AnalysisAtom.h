@@ -40,9 +40,17 @@ public:
     std::size_t writeClassicalSourceTermRows(QTextStream& out,
                                              const QString& datasetId,
                                              const QString& proteinId) const;
+    std::size_t writeSourceFamilyMatrixRows(QTextStream& out,
+                                            const QString& datasetId,
+                                            const QString& proteinId) const;
+    std::size_t writeSubspaceOverlapRows(QTextStream& out,
+                                         const QString& datasetId,
+                                         const QString& proteinId) const;
 
     static void WriteBoundedSigmaHeader(QTextStream& out);
     static void WriteClassicalSourceTermHeader(QTextStream& out);
+    static void WriteSourceFamilyMatrixHeader(QTextStream& out);
+    static void WriteSubspaceOverlapHeader(QTextStream& out);
     static bool AssertMolCompOrder(QString* errOut = nullptr);
 
 private:

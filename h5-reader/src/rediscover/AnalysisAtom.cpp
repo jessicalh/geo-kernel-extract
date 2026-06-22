@@ -3,8 +3,10 @@
 #include "DistributionSummary.h"
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
+#include "LiteratureConstants.h"
 #include "McConnellLiteratureKernel.h"
 #include "SphericalBasis.h"
+#include "SubspaceCompare.h"
 #include "Verbs.h"
 
 #include "../io/QtFieldCatalog.gen.h"
@@ -70,8 +72,6 @@ constexpr int kNullBlock = 16;
 // null floor (ACCUMULATOR_RESPEC §4.6: the reads used 2000 shifts -> the 1/2001
 // floor). Cost is bounded by the fixed characterization catalogue.
 constexpr int kNullShifts = 2000;
-constexpr double kCoulombKe = 14.3996;
-
 constexpr int kMaxChannels = 16;          // structural catalogue cap, not a significance cap.
 constexpr int kMaxCollinearityChains = 4;  // bounded named driver-driver chains.
 constexpr int kMaxMediationChains = 1;     // the named salt-bridge mediation chain.
@@ -109,6 +109,16 @@ QString csvNum(double v) {
 
 QString csvBool(bool v) {
     return v ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+QString csvSemiDoubles(const std::vector<double>& values) {
+    QStringList out;
+    for (double v : values) out << csvNum(v);
+    return csvEscape(out.join(QLatin1Char(';')));
+}
+
+QString csvSemiStrings(const QStringList& values) {
+    return csvEscape(values.join(QLatin1Char(';')));
 }
 
 QString frameVariantName(FrameVariant v) {
@@ -1416,6 +1426,28 @@ std::pair<double, double> blockBootstrapPartialR(const std::vector<double>& y,
     return {pct(0.025), pct(0.975)};
 }
 
+std::pair<double, double> olsSlopeCi95(const std::vector<double>& x,
+                                       const std::vector<double>& y,
+                                       const OlsResult& fit) {
+    if (x.size() != y.size() || x.size() < 3 || !finite(fit.slope) || !finite(fit.intercept))
+        return {kNaN, kNaN};
+    const double mx = bmstats::mean(x);
+    double sxx = 0.0;
+    double rss = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        const double dx = x[i] - mx;
+        sxx += dx * dx;
+        const double r = y[i] - (fit.intercept + fit.slope * x[i]);
+        rss += r * r;
+    }
+    if (!(sxx > 0.0)) return {kNaN, kNaN};
+    const double sigma2 = rss / static_cast<double>(x.size() - 2);
+    const double se = std::sqrt(sigma2 / sxx);
+    if (!finite(se)) return {kNaN, kNaN};
+    constexpr double z95 = 1.959963984540054;
+    return {fit.slope - z95 * se, fit.slope + z95 * se};
+}
+
 struct LeadLagResult {
     int best_lag = 0;
     double lead_r = kNaN;
@@ -1456,7 +1488,7 @@ LeadLagResult leadLag(const std::vector<double>& x, const std::vector<double>& y
 
 // The 6 symmetrized components of a (generally asymmetric) molecular-frame
 // tensor, in the fixed order/naming the molecular-frame reads use (§4.7.1):
-// {xx, yy, zz, xy, xz, yz} of S = 1/2 (M + M^T).
+// {xx, yy, xy, xz, yz, zz} of S = 1/2 (M + M^T).
 enum class MolComp { xx = 0, yy, xy, xz, yz, zz };
 constexpr std::array<const char*, 6> kMolCompNames = {"xx", "yy", "xy", "xz", "yz", "zz"};
 
@@ -2154,6 +2186,10 @@ void AnalysisObjectContext::rebuildMopacCache(std::size_t step) const {
         if (!b || !finite(b->wibergOrder)) continue;
         const auto p = canonicalPair(b->atomA, b->atomB);
         cached_mopac_bonds_.push_back({p.first, p.second, b->wibergOrder});
+        std::vector<double>& series = mopac_wiberg_by_pair_[pairKey(p.first, p.second)];
+        if (series.size() != cadence_.stepCount())
+            series.assign(cadence_.stepCount(), kNaN);
+        if (step < series.size()) series[step] = b->wibergOrder;
     }
 }
 
@@ -2173,10 +2209,24 @@ std::optional<double> AnalysisObjectContext::mopacWiberg(std::size_t step,
                                                          std::size_t atomA,
                                                          std::size_t atomB) const {
     const auto p = canonicalPair(atomA, atomB);
+    const auto sit = mopac_wiberg_by_pair_.find(pairKey(p.first, p.second));
+    if (sit != mopac_wiberg_by_pair_.end()
+        && step < sit->second.size()
+        && finite(sit->second[step])) {
+        return sit->second[step];
+    }
     for (const MopacFrameBond& b : mopacBonds(step)) {
         if (b.atom_a == p.first && b.atom_b == p.second) return b.wiberg_order;
     }
     return std::nullopt;
+}
+
+std::vector<double> AnalysisObjectContext::mopacWibergSeries(std::size_t atomA,
+                                                             std::size_t atomB) const {
+    const auto p = canonicalPair(atomA, atomB);
+    const auto it = mopac_wiberg_by_pair_.find(pairKey(p.first, p.second));
+    if (it != mopac_wiberg_by_pair_.end()) return it->second;
+    return std::vector<double>(cadence_.stepCount(), kNaN);
 }
 
 AnalysisElement::AnalysisElement(const AnalysisObjectContext& context,
@@ -2297,18 +2347,13 @@ public:
 
     QJsonObject truth() const {
         QJsonObject root;
-        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=object_type";
         root.insert(QStringLiteral("object_type"), QStringLiteral("atom"));
-        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=identity";
         root.insert(QStringLiteral("identity"), identityJson());
-        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=model";
         root.insert(QStringLiteral("model"), modelJson());
-        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=accumulator";
         // ACCUMULATOR_RESPEC §5.1.1: the all-pairs boost grid is GONE; the
         // certified methods feed the compact per-context accumulator instead.
         // There is no `boost` key in the emitted atom object (§2.2A anti-boost).
         root.insert(QStringLiteral("accumulator"), buildAccumulatorJson());
-        qCInfo(cAnalysisObject).noquote() << "analysis_atom truth section | atom=" << atom_ << "| section=done";
         return root;
     }
 
@@ -2447,15 +2492,42 @@ public:
             return outv;
         };
 
+        const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        const std::string residueStd = residueType.toStdString();
+        const std::string atomStd = atomName.toStdString();
+        const LiteratureConstant sigma0 = Sigma0(a.element, residueStd, atomStd);
+        const LiteratureConstant buckinghamA = BuckinghamA(a.element, residueStd, atomStd);
+        const LiteratureConstant buckinghamB = BuckinghamB(a.element, residueStd, atomStd);
+
         const std::vector<double> sigma = sigmaIsoSeries();
-        const std::vector<double> buckingham = fieldAbsSeries();
+        std::vector<double> eParallel = signedBondFieldSeries();
+        const bool hasSignedBondField =
+            std::any_of(eParallel.begin(), eParallel.end(), [](double v) { return finite(v); });
+        if (!hasSignedBondField) eParallel = field_E_z_mopac_.values;
+        const std::vector<double> e2 = field_abs_E2_mopac_.values;
+        std::vector<double> buckinghamLinear(cadence_.stepCount(), kNaN);
+        std::vector<double> buckinghamQuadratic(cadence_.stepCount(), kNaN);
+        for (std::size_t i = 0; i < cadence_.stepCount(); ++i) {
+            if (i < eParallel.size() && finite(eParallel[i]))
+                buckinghamLinear[i] = -buckinghamA.value * eParallel[i];
+            if (i < e2.size() && finite(e2[i]))
+                buckinghamQuadratic[i] = -buckinghamB.value * e2[i];
+        }
         const std::vector<double> ring = sumMechanism(QStringLiteral("ring_jb"));
         const std::vector<double> mc = sumMechanism(QStringLiteral("mc_lit_valid"));
         const std::vector<double> larsen = componentSeriesT0(larsen_hbond_shielding_);
         std::vector<double> sigmaCl(cadence_.stepCount(), kNaN);
         for (std::size_t i = 0; i < sigmaCl.size(); ++i) {
-            double v = 0.0;
-            bool any = false;
+            double v = sigma0.value;
+            bool any = finite(sigma0.value);
+            if (i < buckinghamLinear.size() && finite(buckinghamLinear[i])) {
+                v += buckinghamLinear[i];
+                any = true;
+            }
+            if (i < buckinghamQuadratic.size() && finite(buckinghamQuadratic[i])) {
+                v += buckinghamQuadratic[i];
+                any = true;
+            }
             if (i < ring.size() && finite(ring[i])) {
                 v += ring[i];
                 any = true;
@@ -2471,15 +2543,13 @@ public:
         std::vector<double> y;
         pairedOnSigmaRows(sigma, sigmaCl, cadence_.sigmaRows(), x, y);
         const OlsResult fit = ols(x, y);
+        const auto [slopeLo, slopeHi] = olsSlopeCi95(x, y, fit);
         const double r = pearsonR(x, y);
         std::vector<double> residuals;
         residuals.reserve(x.size());
         double ss = 0.0;
         for (std::size_t i = 0; i < x.size(); ++i) {
-            const double pred = finite(fit.slope) && finite(fit.intercept)
-                                    ? fit.intercept + fit.slope * x[i]
-                                    : x[i];
-            const double res = y[i] - pred;
+            const double res = y[i] - x[i];
             residuals.push_back(res);
             ss += res * res;
         }
@@ -2494,7 +2564,8 @@ public:
             return s.hasFinite() ? s.sd : kNaN;
         };
         const DistributionSummary sigmaSummary = SummarizeDistribution(sigma);
-        const DistributionSummary buckinghamSummary = SummarizeDistribution(buckingham);
+        const DistributionSummary buckinghamLinearSummary = SummarizeDistribution(buckinghamLinear);
+        const DistributionSummary buckinghamQuadraticSummary = SummarizeDistribution(buckinghamQuadratic);
         const DistributionSummary ringSummary = SummarizeDistribution(ring);
         const DistributionSummary mcSummary = SummarizeDistribution(mc);
         const DistributionSummary larsenSummary = SummarizeDistribution(larsen);
@@ -2505,6 +2576,12 @@ public:
             : finite(r) && std::abs(r) >= 0.3 ? QStringLiteral("partial_tracking")
             : finite(r) ? QStringLiteral("weak_or_flat")
                         : QStringLiteral("insufficient_finite_pairs");
+        auto statusName = [](const LiteratureConstant& c) {
+            return QString::fromLatin1(LiteratureStatusName(c.status));
+        };
+        int placeholderCount = 0;
+        for (const LiteratureConstant* c : {&sigma0, &buckinghamA, &buckinghamB})
+            if (c->status == LiteratureStatus::Placeholder) ++placeholderCount;
 
         QStringList cells;
         cells << QStringLiteral("classical_source_terms_v1")
@@ -2515,31 +2592,228 @@ public:
               << QString::number(a.residueIndex)
               << QString::number(residueNumber)
               << csvEscape(residueType)
-              << csvEscape(p.atomLabel(atom_, model::NamingConvention::Iupac))
+              << csvEscape(atomName)
               << csvEscape(elementName(a.element))
               << csvEscape(backboneRoleName(a.backboneRole))
               << QString::number(static_cast<qulonglong>(x.size()))
               << csvNum(meanOf(sigmaSummary))
               << csvNum(sdOf(sigmaSummary))
-              << csvNum(meanOf(buckinghamSummary))
-              << csvEscape(QStringLiteral("pending-citation"))
+              << csvNum(sigma0.value)
+              << csvEscape(statusName(sigma0))
+              << csvNum(meanOf(buckinghamLinearSummary))
+              << csvEscape(statusName(buckinghamA))
+              << csvNum(meanOf(buckinghamQuadraticSummary))
+              << csvEscape(statusName(buckinghamB))
               << csvNum(meanOf(ringSummary))
-              << csvEscape(QStringLiteral("embedded-code-constant"))
+              << csvEscape(QStringLiteral("good_enough"))
               << csvNum(meanOf(mcSummary))
-              << csvEscape(QStringLiteral("embedded-code-constant"))
+              << csvEscape(QStringLiteral("good_enough"))
               << csvNum(meanOf(larsenSummary))
-              << csvEscape(QStringLiteral("pending-citation"))
+              << csvEscape(QStringLiteral("cited"))
               << csvNum(meanOf(clSummary))
               << csvNum(sdOf(clSummary))
               << csvNum(fit.slope)
+              << csvNum(slopeLo)
+              << csvNum(slopeHi)
               << csvNum(r)
               << csvNum(rmsd)
               << csvNum(meanOf(residualSummary))
               << csvNum(sdOf(residualSummary))
               << csvNum(fit.slope)
-              << csvEscape(trackingLabel);
+              << csvEscape(trackingLabel)
+              << QString::number(placeholderCount);
         out << cells.join(QLatin1Char(',')) << '\n';
         return 1;
+    }
+
+    std::size_t writeSourceFamilyMatrixRows(QTextStream& out,
+                                            const QString& datasetId,
+                                            const QString& proteinId) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        QString residueType;
+        int residueNumber = 0;
+        if (validResidue(p, a.residueIndex)) {
+            const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+            residueType = aaName(r.aminoAcid);
+            residueNumber = r.address.residueNumber;
+        }
+        const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        const QString atomUid = uid(QStringLiteral("atom"), atom_);
+        const QString identityKey = QStringLiteral("%1:%2:%3").arg(datasetId, proteinId, atomUid);
+        const QString contextKey =
+            QStringLiteral("%1:%2:%3:%4").arg(proteinId, residueType, atomName, elementName(a.element));
+
+        const std::vector<SubspaceFamily> families = {
+            fieldMopacFamily(),
+            fieldExternalFamily(),
+            efgNodeFamily(),
+            ringTensorFamily(QStringLiteral("ring_bs_tensor"), bs_per_type_mol_),
+            ringTensorFamily(QStringLiteral("ring_hm_tensor"), hm_per_type_mol_),
+            mcAxialFamily(),
+            mcRhombicFamily(),
+            localElectronicPopulationFamily(),
+            localElectronicBondingFamily(),
+            larsenHbondFamily(),
+        };
+
+        const std::vector<std::size_t> rows = cadence_.sigmaRows();
+        std::size_t emitted = 0;
+        for (const SubspaceFamily& f : families) {
+            QStringList channelNames;
+            std::vector<double> means;
+            std::vector<double> sds;
+            int completeRows = 0;
+            for (const SubspaceChannel& ch : f.channels) {
+                channelNames << ch.name;
+                std::vector<double> finiteVals;
+                finiteVals.reserve(rows.size());
+                for (std::size_t row : rows)
+                    if (row < ch.values.size() && finite(ch.values[row]))
+                        finiteVals.push_back(ch.values[row]);
+                const DistributionSummary s = SummarizeDistribution(finiteVals);
+                means.push_back(s.hasFinite() ? s.mean : kNaN);
+                sds.push_back(s.hasFinite() ? s.sd : kNaN);
+            }
+            for (std::size_t row : rows) {
+                bool ok = !f.channels.empty();
+                for (const SubspaceChannel& ch : f.channels) {
+                    if (row >= ch.values.size() || !finite(ch.values[row])) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) ++completeRows;
+            }
+
+            QStringList cells;
+            cells << QStringLiteral("source_family_matrix_v1")
+                  << csvEscape(datasetId)
+                  << csvEscape(proteinId)
+                  << csvEscape(atomUid)
+                  << QString::number(static_cast<qulonglong>(atom_))
+                  << QString::number(a.residueIndex)
+                  << QString::number(residueNumber)
+                  << csvEscape(residueType)
+                  << csvEscape(atomName)
+                  << csvEscape(elementName(a.element))
+                  << csvEscape(backboneRoleName(a.backboneRole))
+                  << csvEscape(identityKey)
+                  << csvEscape(contextKey)
+                  << csvEscape(QStringLiteral("axis1"))
+                  << csvEscape(QStringLiteral("axis1_trajectory"))
+                  << csvEscape(f.name)
+                  << csvEscape(f.name)
+                  << QString::number(static_cast<qulonglong>(f.channels.size()))
+                  << QString::number(completeRows)
+                  << csvSemiStrings(channelNames)
+                  << csvSemiDoubles(means)
+                  << csvSemiDoubles(sds)
+                  << csvEscape(QStringLiteral("axis1_ready;cross_axis_join_blocked_pending_axis2"));
+            out << cells.join(QLatin1Char(',')) << '\n';
+            ++emitted;
+        }
+        return emitted;
+    }
+
+    std::size_t writeSubspaceOverlapRows(QTextStream& out,
+                                         const QString& datasetId,
+                                         const QString& proteinId) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        QString residueType;
+        int residueNumber = 0;
+        if (validResidue(p, a.residueIndex)) {
+            const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+            residueType = aaName(r.aminoAcid);
+            residueNumber = r.address.residueNumber;
+        }
+        const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        const QString atomUid = uid(QStringLiteral("atom"), atom_);
+        const QString identityKey = QStringLiteral("%1:%2:%3").arg(datasetId, proteinId, atomUid);
+        const QString contextKey =
+            QStringLiteral("%1:%2:%3:%4").arg(proteinId, residueType, atomName, elementName(a.element));
+
+        struct ReadSpec {
+            QString id;
+            SubspaceFamily a;
+            SubspaceFamily b;
+        };
+        const std::vector<ReadSpec> reads = {
+            {QStringLiteral("G2_field_sources"),
+             fieldMopacFamily(),
+             fieldExternalFamily()},
+            {QStringLiteral("G6_field_vs_efg"),
+             fieldSourcesFamily(),
+             efgNodeFamily()},
+            {QStringLiteral("G4_bs_vs_hm_tensor_components"),
+             ringTensorFamily(QStringLiteral("ring_bs_tensor"), bs_per_type_mol_),
+             ringTensorFamily(QStringLiteral("ring_hm_tensor"), hm_per_type_mol_)},
+            {QStringLiteral("G6_efg_node"),
+             efgAimnetApbsFamily(),
+             efgMopacFamily()},
+            {QStringLiteral("G6_local_electronic_bundle"),
+             localElectronicPopulationFamily(),
+             localElectronicBondingFamily()},
+            {QStringLiteral("G6_mcconnell_axial_vs_rhombic"),
+             mcAxialFamily(),
+             mcRhombicFamily()},
+        };
+
+        std::size_t emitted = 0;
+        const std::vector<std::size_t> rows = cadence_.sigmaRows();
+        for (const ReadSpec& read : reads) {
+            const SubspaceCompareResult r = CompareSubspaces(read.a, read.b, rows);
+            QStringList cells;
+            cells << QStringLiteral("subspace_overlap_v1")
+                  << csvEscape(datasetId)
+                  << csvEscape(proteinId)
+                  << csvEscape(atomUid)
+                  << QString::number(static_cast<qulonglong>(atom_))
+                  << QString::number(a.residueIndex)
+                  << QString::number(residueNumber)
+                  << csvEscape(residueType)
+                  << csvEscape(atomName)
+                  << csvEscape(elementName(a.element))
+                  << csvEscape(backboneRoleName(a.backboneRole))
+                  << csvEscape(identityKey)
+                  << csvEscape(contextKey)
+                  << csvEscape(QStringLiteral("axis1"))
+                  << csvEscape(QStringLiteral("axis1_trajectory"))
+                  << csvEscape(read.id)
+                  << csvEscape(read.a.name)
+                  << csvEscape(read.b.name)
+                  << QString::number(r.finite_n)
+                  << QString::number(r.input_dim_a)
+                  << QString::number(r.input_dim_b)
+                  << QString::number(r.active_dim_a)
+                  << QString::number(r.active_dim_b)
+                  << (r.computed ? QString::number(r.basis_dim_a) : QString())
+                  << (r.computed ? QString::number(r.basis_dim_b) : QString())
+                  << csvNum(r.explained_fraction_a)
+                  << csvNum(r.explained_fraction_b)
+                  << csvNum(r.condition_number_a)
+                  << csvNum(r.condition_number_b)
+                  << csvNum(r.max_canonical_corr)
+                  << csvNum(r.mean_canonical_corr)
+                  << QString::number(r.n_cc_ge_0_80)
+                  << QString::number(r.n_cc_ge_0_95)
+                  << csvNum(r.min_angle_deg)
+                  << csvSemiDoubles(r.canonical_corrs)
+                  << csvSemiDoubles(r.principal_angles_deg)
+                  << csvEscape(r.overlap_label)
+                  << csvEscape(r.provenance)
+                  << csvEscape(r.computed ? QStringLiteral("computed") : QStringLiteral("missing"))
+                  << csvEscape(r.missing_reason)
+                  << csvSemiStrings(r.dropped_channels_a)
+                  << csvSemiStrings(r.dropped_channels_b)
+                  << csvEscape(QStringLiteral("axis1_ready;cross_axis_join_blocked_pending_axis2"));
+            out << cells.join(QLatin1Char(',')) << '\n';
+            ++emitted;
+        }
+        return emitted;
     }
     mutable std::size_t last_accumulator_response_count = 0;
     mutable std::size_t last_accumulator_context_count = 0;
@@ -2676,26 +2950,23 @@ private:
         charge.insert(QStringLiteral("same_residue_sources_included"), true);
         charge.insert(QStringLiteral("self_sources_rejected_with_flag"), true);
         charge.insert(QStringLiteral("degenerate_geometry_rejected_with_flag"), true);
-        charge.insert(QStringLiteral("unit_conversion_ke_V_A_per_e_over_A2"), kCoulombKe);
+        charge.insert(QStringLiteral("unit_conversion_ke_V_A_per_e_over_A2"), CoulombKeVA());
         m.insert(QStringLiteral("charge_field"), charge);
 
         QJsonObject ring;
         ring.insert(QStringLiteral("cutoff_A"), config_.ring_cutoff_A);
         QJsonArray intensities;
-        auto addRing = [&](const QString& name, double value) {
+        auto addRing = [&](model::RingTypeIndex type) {
+            const LiteratureConstant c = RingIntensity(type);
             QJsonObject o;
-            o.insert(QStringLiteral("ring_type"), name);
-            o.insert(QStringLiteral("literature_intensity_nA_per_T"), value);
+            o.insert(QStringLiteral("ring_type"), ringTypeName(type));
+            o.insert(QStringLiteral("literature_intensity_nA_per_T"), c.value);
+            o.insert(QStringLiteral("constant_status"),
+                     QString::fromLatin1(LiteratureStatusName(c.status)));
             intensities.append(o);
         };
-        addRing(QStringLiteral("PheBenzene"), -12.0);
-        addRing(QStringLiteral("TyrPhenol"), -11.28);
-        addRing(QStringLiteral("TrpBenzene"), -12.48);
-        addRing(QStringLiteral("TrpPyrrole"), -6.72);
-        addRing(QStringLiteral("TrpPerimeter"), -19.2);
-        addRing(QStringLiteral("HisImidazole"), -5.16);
-        addRing(QStringLiteral("HidImidazole"), -5.16);
-        addRing(QStringLiteral("HieImidazole"), -5.16);
+        for (int type = 0; type < model::kAromaticRingTypeCount; ++type)
+            addRing(static_cast<model::RingTypeIndex>(type));
         ring.insert(QStringLiteral("literature_intensities"), intensities);
         m.insert(QStringLiteral("ring_current"), ring);
 
@@ -3242,6 +3513,218 @@ private:
             out[step] = field_mopac_.values[step].dot(*u);  // signed E_||
         }
         return out;
+    }
+
+    static void appendChannel(SubspaceFamily& f,
+                              const QString& name,
+                              const std::vector<double>& values) {
+        f.channels.push_back({name, values});
+    }
+
+    void appendMat3Channels(SubspaceFamily& f,
+                            const QString& prefix,
+                            const Mat3Series& src) const {
+        for (int c = 0; c < 6; ++c) {
+            const QString comp = QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(c)]);
+            appendChannel(f, QStringLiteral("%1.%2").arg(prefix, comp),
+                          molCompFrom(src, static_cast<MolComp>(c)));
+        }
+    }
+
+    std::vector<double> intSeriesAsDouble(const IntSeries& src) const {
+        std::vector<double> out(src.values.size(), kNaN);
+        for (std::size_t i = 0; i < src.values.size(); ++i) {
+            if (src.values[i] != IntSeries::kMissing)
+                out[i] = static_cast<double>(src.values[i]);
+        }
+        return out;
+    }
+
+    SubspaceFamily fieldMopacFamily() const {
+        SubspaceFamily f{QStringLiteral("field_mopac"), {}};
+        appendChannel(f, QStringLiteral("field.mopac_coulomb.abs_E"), field_abs_E_mopac_.values);
+        appendChannel(f, QStringLiteral("field.mopac_coulomb.E2"), field_abs_E2_mopac_.values);
+        appendChannel(f, QStringLiteral("field.mopac_coulomb.E_parallel_mol_z"), field_E_z_mopac_.values);
+        appendChannel(f, QStringLiteral("field.mopac_coulomb.mol_x"), componentSeries(field_mol_mopac_, 0));
+        appendChannel(f, QStringLiteral("field.mopac_coulomb.mol_y"), componentSeries(field_mol_mopac_, 1));
+        appendChannel(f, QStringLiteral("field.mopac_coulomb.mol_z"), componentSeries(field_mol_mopac_, 2));
+        return f;
+    }
+
+    SubspaceFamily fieldExternalFamily() const {
+        SubspaceFamily f{QStringLiteral("field_external"), {}};
+        appendChannel(f, QStringLiteral("field.apbs.abs_E"), field_abs_E_apbs_.values);
+        appendChannel(f, QStringLiteral("field.apbs.E2"), field_abs_E2_apbs_.values);
+        appendChannel(f, QStringLiteral("field.apbs.E_parallel_mol_z"), field_E_z_apbs_.values);
+        appendChannel(f, QStringLiteral("field.apbs.mol_x"), componentSeries(field_mol_apbs_, 0));
+        appendChannel(f, QStringLiteral("field.apbs.mol_y"), componentSeries(field_mol_apbs_, 1));
+        appendChannel(f, QStringLiteral("field.apbs.mol_z"), componentSeries(field_mol_apbs_, 2));
+        appendChannel(f, QStringLiteral("field.charge_ff14sb.abs_E"), field_abs_E_charge_ff14sb_.values);
+        appendChannel(f, QStringLiteral("field.charge_ff14sb.E2"), field_abs_E2_charge_ff14sb_.values);
+        appendChannel(f, QStringLiteral("field.charge_ff14sb.E_parallel_mol_z"), field_E_z_charge_ff14sb_.values);
+        appendChannel(f, QStringLiteral("field.charge_ff14sb.mol_x"), componentSeries(field_mol_charge_ff14sb_, 0));
+        appendChannel(f, QStringLiteral("field.charge_ff14sb.mol_y"), componentSeries(field_mol_charge_ff14sb_, 1));
+        appendChannel(f, QStringLiteral("field.charge_ff14sb.mol_z"), componentSeries(field_mol_charge_ff14sb_, 2));
+        return f;
+    }
+
+    SubspaceFamily fieldSourcesFamily() const {
+        SubspaceFamily f{QStringLiteral("field_sources"), {}};
+        for (const SubspaceChannel& ch : fieldMopacFamily().channels) f.channels.push_back(ch);
+        for (const SubspaceChannel& ch : fieldExternalFamily().channels) f.channels.push_back(ch);
+        return f;
+    }
+
+    SubspaceFamily efgNodeFamily() const {
+        SubspaceFamily f{QStringLiteral("efg_node"), {}};
+        appendChannel(f, QStringLiteral("efg.aimnet2.abs_T2"), efg_abs_aimnet2_.values);
+        appendChannel(f, QStringLiteral("efg.apbs.abs_T2"), efg_abs_apbs_.values);
+        appendChannel(f, QStringLiteral("shielding_mopac_coulomb.abs_T2"), shielding_abs_mopac_coulomb_.values);
+        appendChannel(f, QStringLiteral("efg.best.Vzz_abs"), efgEigenSeries(true));
+        appendChannel(f, QStringLiteral("efg.best.eta"), efgEigenSeries(false));
+        appendMat3Channels(f, QStringLiteral("efg.aimnet2.mol"), efg_mol_aimnet2_);
+        appendMat3Channels(f, QStringLiteral("efg.apbs.mol"), efg_mol_apbs_);
+        appendMat3Channels(f, QStringLiteral("shielding_mopac_coulomb.mol"), shielding_mol_mopac_);
+        return f;
+    }
+
+    SubspaceFamily efgAimnetApbsFamily() const {
+        SubspaceFamily f{QStringLiteral("efg_aimnet2_apbs"), {}};
+        appendChannel(f, QStringLiteral("efg.aimnet2.abs_T2"), efg_abs_aimnet2_.values);
+        appendChannel(f, QStringLiteral("efg.apbs.abs_T2"), efg_abs_apbs_.values);
+        appendMat3Channels(f, QStringLiteral("efg.aimnet2.mol"), efg_mol_aimnet2_);
+        appendMat3Channels(f, QStringLiteral("efg.apbs.mol"), efg_mol_apbs_);
+        return f;
+    }
+
+    SubspaceFamily efgMopacFamily() const {
+        SubspaceFamily f{QStringLiteral("efg_mopac_coulomb"), {}};
+        appendChannel(f, QStringLiteral("shielding_mopac_coulomb.abs_T2"), shielding_abs_mopac_coulomb_.values);
+        appendMat3Channels(f, QStringLiteral("shielding_mopac_coulomb.mol"), shielding_mol_mopac_);
+        return f;
+    }
+
+    SubspaceFamily ringTensorFamily(const QString& name,
+                                    const std::vector<Mat3Series>& tensors) const {
+        SubspaceFamily f{name, {}};
+        for (std::size_t type = 0; type < tensors.size(); ++type)
+            appendMat3Channels(f, QStringLiteral("%1.type%2").arg(name).arg(type), tensors[type]);
+        return f;
+    }
+
+    SubspaceFamily bsTensorFamilyForType(int type) const {
+        SubspaceFamily f{QStringLiteral("bs_tensor_type%1").arg(type), {}};
+        if (type >= 0 && static_cast<std::size_t>(type) < bs_per_type_mol_.size())
+            appendMat3Channels(f, QStringLiteral("bs.type%1").arg(type),
+                               bs_per_type_mol_[static_cast<std::size_t>(type)]);
+        return f;
+    }
+
+    SubspaceFamily hmTensorFamilyForType(int type) const {
+        SubspaceFamily f{QStringLiteral("hm_tensor_type%1").arg(type), {}};
+        if (type >= 0 && static_cast<std::size_t>(type) < hm_per_type_mol_.size())
+            appendMat3Channels(f, QStringLiteral("hm.type%1").arg(type),
+                               hm_per_type_mol_[static_cast<std::size_t>(type)]);
+        return f;
+    }
+
+    SubspaceFamily localElectronicPopulationFamily() const {
+        SubspaceFamily f{QStringLiteral("local_electronic_population"), {}};
+        appendChannel(f, QStringLiteral("mopac.charge"), mopac_charge_.values);
+        appendChannel(f, QStringLiteral("mopac.s_population"), mopac_s_pop_.values);
+        appendChannel(f, QStringLiteral("mopac.p_population"), mopac_p_pop_.values);
+        appendChannel(f, QStringLiteral("mopac.valency"), mopac_valency_.values);
+        return f;
+    }
+
+    SubspaceFamily localElectronicBondingFamily() const {
+        SubspaceFamily f{QStringLiteral("local_electronic_bonding"), {}};
+        appendChannel(f, QStringLiteral("mopac.s_character"), mopac_s_character_.values);
+        appendChannel(f, QStringLiteral("hybridisation.ordinal"), intSeriesAsDouble(hybridisation_));
+        appendChannel(f, QStringLiteral("hybridisation.pi_character"), pi_character_.values);
+        appendChannel(f, QStringLiteral("dominant_partner_wiberg"), partnerWibergSeries());
+        return f;
+    }
+
+    SubspaceFamily localElectronicBundleFamily() const {
+        SubspaceFamily f{QStringLiteral("local_electronic_bundle"), {}};
+        for (const SubspaceChannel& ch : localElectronicPopulationFamily().channels) f.channels.push_back(ch);
+        for (const SubspaceChannel& ch : localElectronicBondingFamily().channels) f.channels.push_back(ch);
+        return f;
+    }
+
+    SubspaceFamily larsenHbondFamily() const {
+        SubspaceFamily f{QStringLiteral("hbond_larsen"), {}};
+        appendChannel(f, QStringLiteral("larsen_hbond.T0"), componentSeriesT0(larsen_hbond_shielding_));
+        appendChannel(f, QStringLiteral("hbond.count"), hbond_count_.values);
+        appendChannel(f, QStringLiteral("hbond.nearest_dir.x"), componentSeries(hbond_nearest_dir_, 0));
+        appendChannel(f, QStringLiteral("hbond.nearest_dir.y"), componentSeries(hbond_nearest_dir_, 1));
+        appendChannel(f, QStringLiteral("hbond.nearest_dir.z"), componentSeries(hbond_nearest_dir_, 2));
+        appendMat3Channels(f, QStringLiteral("larsen_hbond.mol"), larsen_hbond_shielding_mol_);
+        return f;
+    }
+
+    std::vector<double> mcAxialSeries(const Mat3Series& src) const {
+        std::vector<double> xx = molCompFrom(src, MolComp::xx);
+        std::vector<double> yy = molCompFrom(src, MolComp::yy);
+        std::vector<double> zz = molCompFrom(src, MolComp::zz);
+        std::vector<double> out(std::max({xx.size(), yy.size(), zz.size()}), kNaN);
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            const double x = i < xx.size() ? xx[i] : kNaN;
+            const double y = i < yy.size() ? yy[i] : kNaN;
+            const double z = i < zz.size() ? zz[i] : kNaN;
+            if (finite(x) && finite(y) && finite(z)) out[i] = z - 0.5 * (x + y);
+        }
+        return out;
+    }
+
+    std::vector<double> mcRhombicSeries(const Mat3Series& src) const {
+        std::vector<double> xx = molCompFrom(src, MolComp::xx);
+        std::vector<double> yy = molCompFrom(src, MolComp::yy);
+        std::vector<double> xy = molCompFrom(src, MolComp::xy);
+        std::vector<double> xz = molCompFrom(src, MolComp::xz);
+        std::vector<double> yz = molCompFrom(src, MolComp::yz);
+        std::vector<double> out(std::max({xx.size(), yy.size(), xy.size(), xz.size(), yz.size()}), kNaN);
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            const double x = i < xx.size() ? xx[i] : kNaN;
+            const double y = i < yy.size() ? yy[i] : kNaN;
+            const double a = i < xy.size() ? xy[i] : kNaN;
+            const double b = i < xz.size() ? xz[i] : kNaN;
+            const double c = i < yz.size() ? yz[i] : kNaN;
+            if (finite(x) && finite(y) && finite(a) && finite(b) && finite(c))
+                out[i] = std::sqrt((x - y) * (x - y) + 4.0 * (a * a + b * b + c * c));
+        }
+        return out;
+    }
+
+    SubspaceFamily mcAxialFamily() const {
+        SubspaceFamily f{QStringLiteral("mcconnell_axial"), {}};
+        for (std::size_t i = 0; i < mc_tensor_mol_series_.size(); ++i)
+            appendChannel(f, QStringLiteral("%1.axial")
+                                .arg(QString::fromLatin1(kMcTensorFields[i].key)),
+                          mcAxialSeries(mc_tensor_mol_series_[i]));
+        return f;
+    }
+
+    SubspaceFamily mcRhombicFamily() const {
+        SubspaceFamily f{QStringLiteral("mcconnell_rhombic"), {}};
+        for (std::size_t i = 0; i < mc_tensor_mol_series_.size(); ++i)
+            appendChannel(f, QStringLiteral("%1.rhombic")
+                                .arg(QString::fromLatin1(kMcTensorFields[i].key)),
+                          mcRhombicSeries(mc_tensor_mol_series_[i]));
+        return f;
+    }
+
+    QJsonObject subspaceCompareObject(const QString& readId,
+                                      const SubspaceFamily& a,
+                                      const SubspaceFamily& b,
+                                      const std::vector<std::size_t>& rows) const {
+        const SubspaceCompareResult r = CompareSubspaces(a, b, rows);
+        QJsonObject o = SubspaceCompareJson(r);
+        o.insert(QStringLiteral("read_id"), readId);
+        o.insert(QStringLiteral("family_a"), a.name);
+        o.insert(QStringLiteral("family_b"), b.name);
+        return o;
     }
 
     bool isDonorH() const {
@@ -4159,12 +4642,7 @@ private:
         const auto it = bond_series_.find(key);
         if (it != bond_series_.end()) return it->second.values;
         const auto p = pairFromKey(key);
-        std::vector<double> out(cadence_.stepCount(), kNaN);
-        for (std::size_t step = 0; step < cadence_.stepCount(); ++step) {
-            const auto v = context_.mopacWiberg(step, p.first, p.second);
-            if (v && finite(*v)) out[step] = *v;
-        }
-        return out;
+        return context_.mopacWibergSeries(p.first, p.second);
     }
 
     double finiteMeanOrNan(const std::vector<double>& values) const {
@@ -4551,6 +5029,11 @@ private:
                                    scalarSummaryJson(delta));
         }
         o.insert(QStringLiteral("component_deltas"), componentDeltas);
+        o.insert(QStringLiteral("subspace_compare"),
+                 subspaceCompareObject(QStringLiteral("bs_vs_hm_tensor_components_type%1").arg(type),
+                                       bsTensorFamilyForType(type),
+                                       hmTensorFamilyForType(type),
+                                       rows));
 
         QJsonArray contractions;
         const std::array<std::pair<const Mat3Series*, const char*>, 2> sigmaSources = {{
@@ -4578,23 +5061,11 @@ private:
                     c.insert(QStringLiteral("sigma_delta"), centered);
                     c.insert(QStringLiteral("finite_n"), static_cast<int>(x.size()));
                     c.insert(QStringLiteral("r_bs_hm_contraction"), jd(r));
-                    c.insert(QStringLiteral("max_canonical_corr"), finite(r) ? jd(std::abs(r)) : jd(kNaN));
-                    c.insert(QStringLiteral("mean_canonical_corr"), finite(r) ? jd(std::abs(r)) : jd(kNaN));
-                    c.insert(QStringLiteral("n_cc_ge_0_80"),
-                             finite(r) && std::abs(r) >= 0.80 ? 1 : 0);
-                    c.insert(QStringLiteral("n_cc_ge_0_95"),
-                             finite(r) && std::abs(r) >= 0.95 ? 1 : 0);
-                    constexpr double pi = 3.14159265358979323846264338327950288;
-                    c.insert(QStringLiteral("min_angle_deg"),
-                             finite(r)
-                                 ? jd(std::acos(std::min(1.0, std::max(0.0, std::abs(r))))
-                                      * 180.0 / pi)
-                                 : jd(kNaN));
                     contractions.append(c);
                 }
             }
         }
-        o.insert(QStringLiteral("contraction_canonical_correlations"), contractions);
+        o.insert(QStringLiteral("contraction_pearson_correlations"), contractions);
         return o;
     }
 
@@ -4995,21 +5466,15 @@ private:
         QJsonObject o;
         o.insert(QStringLiteral("driver_a"), QStringLiteral("field.mopac_coulomb|abs_E"));
         o.insert(QStringLiteral("driver_b"), QStringLiteral("efg|abs_T2"));
-        o.insert(QStringLiteral("r"), jd(r));
+        o.insert(QStringLiteral("field_efg_pearson_r_unthresholded"), jd(r));
         o.insert(QStringLiteral("finite_n"), static_cast<int>(x.size()));
         o.insert(QStringLiteral("family_a"), QStringLiteral("field_sources"));
         o.insert(QStringLiteral("family_b"), QStringLiteral("efg_sources"));
-        o.insert(QStringLiteral("basis_dim_a"), 1);
-        o.insert(QStringLiteral("basis_dim_b"), 1);
-        o.insert(QStringLiteral("explained_fraction_a"), 1.0);
-        o.insert(QStringLiteral("explained_fraction_b"), 1.0);
-        o.insert(QStringLiteral("max_canonical_corr"), std::abs(r));
-        o.insert(QStringLiteral("mean_canonical_corr"), std::abs(r));
-        o.insert(QStringLiteral("n_cc_ge_0_80"), std::abs(r) >= 0.80 ? 1 : 0);
-        o.insert(QStringLiteral("n_cc_ge_0_95"), std::abs(r) >= 0.95 ? 1 : 0);
-        constexpr double pi = 3.14159265358979323846264338327950288;
-        o.insert(QStringLiteral("min_angle_deg"),
-                 std::acos(std::min(1.0, std::max(0.0, std::abs(r)))) * 180.0 / pi);
+        o.insert(QStringLiteral("subspace_compare"),
+                 subspaceCompareObject(QStringLiteral("field_sources_vs_efg_node"),
+                                       fieldSourcesFamily(),
+                                       efgNodeFamily(),
+                                       rows));
         o.insert(QStringLiteral("threshold"), kCollinearThreshold);
         o.insert(QStringLiteral("above_threshold"), std::abs(r) > kCollinearThreshold);
         o.insert(QStringLiteral("emit_policy"), QStringLiteral("unthresholded"));
@@ -5925,7 +6390,7 @@ private:
                 ++missingCharge;
                 continue;
             }
-            field += (-kCoulombKe * q / (r * r * r)) * disp;
+            field += (-CoulombKeVA() * q / (r * r * r)) * disp;
             ++sourceCount;
         }
 
@@ -6334,6 +6799,16 @@ std::size_t AnalysisAtom::writeClassicalSourceTermRows(QTextStream& out,
                                                        const QString& proteinId) const {
     return impl_->writeClassicalSourceTermRows(out, datasetId, proteinId);
 }
+std::size_t AnalysisAtom::writeSourceFamilyMatrixRows(QTextStream& out,
+                                                      const QString& datasetId,
+                                                      const QString& proteinId) const {
+    return impl_->writeSourceFamilyMatrixRows(out, datasetId, proteinId);
+}
+std::size_t AnalysisAtom::writeSubspaceOverlapRows(QTextStream& out,
+                                                   const QString& datasetId,
+                                                   const QString& proteinId) const {
+    return impl_->writeSubspaceOverlapRows(out, datasetId, proteinId);
+}
 
 void AnalysisAtom::WriteBoundedSigmaHeader(QTextStream& out) {
     out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
@@ -6349,12 +6824,34 @@ void AnalysisAtom::WriteBoundedSigmaHeader(QTextStream& out) {
 void AnalysisAtom::WriteClassicalSourceTermHeader(QTextStream& out) {
     out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
            "residue_number,residue_type,atom_name,element,backbone_role,finite_n,"
-           "sigma_qm_mean,sigma_qm_sd,contrib_buckingham_mean,"
-           "contrib_buckingham_constant_status,contrib_ring_mean,"
+           "sigma_qm_mean,sigma_qm_sd,sigma0,sigma0_constant_status,"
+           "contrib_buckingham_linear_mean,contrib_buckingham_linear_constant_status,"
+           "contrib_buckingham_quadratic_mean,contrib_buckingham_quadratic_constant_status,"
+           "contrib_ring_mean,"
            "contrib_ring_constant_status,contrib_mcconnell_mean,"
            "contrib_mcconnell_constant_status,contrib_larsen_mean,"
            "contrib_larsen_constant_status,sigma_cl_mean,sigma_cl_sd,slope_cl_qm,"
-           "r_cl_qm,rmsd_ppm,residual_mean,residual_sd,scale_factor,tracking_label\n";
+           "slope_ci_low,slope_ci_high,r_cl_qm,rmsd_ppm,residual_mean,residual_sd,"
+           "scale_factor,tracking_label,constant_placeholder_n\n";
+}
+
+void AnalysisAtom::WriteSourceFamilyMatrixHeader(QTextStream& out) {
+    out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
+           "residue_number,residue_type,atom_name,element,backbone_role,identity_key,"
+           "context_key,axis,target_view,family_key,family_label,channel_count,"
+           "finite_row_count,channel_names,channel_means,channel_sds,cross_axis_join_status\n";
+}
+
+void AnalysisAtom::WriteSubspaceOverlapHeader(QTextStream& out) {
+    out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
+           "residue_number,residue_type,atom_name,element,backbone_role,identity_key,"
+           "context_key,axis,target_view,read_id,family_a,family_b,finite_n,input_dim_a,"
+           "input_dim_b,active_dim_a,active_dim_b,basis_dim_a,basis_dim_b,"
+           "explained_fraction_a,explained_fraction_b,condition_number_a,"
+           "condition_number_b,max_canonical_corr,mean_canonical_corr,n_cc_ge_0_80,"
+           "n_cc_ge_0_95,min_angle_deg,canonical_corrs,principal_angles_deg,"
+           "overlap_label,provenance,status,missing_reason,dropped_channels_a,"
+           "dropped_channels_b,cross_axis_join_status\n";
 }
 
 bool AnalysisAtom::AssertMolCompOrder(QString* errOut) {
@@ -6941,7 +7438,7 @@ QJsonArray seriesCatalogJson() {
 
 QJsonObject manifestJson(const Body& body,
                          const AnalysisCadence& cadence,
-                         const std::vector<std::unique_ptr<AnalysisElement>>& objects,
+                         const QJsonArray& objectInventory,
                          const AnalysisObjectPassDiagnostics& diag) {
     QJsonObject root;
     QJsonObject schema;
@@ -6985,11 +7482,49 @@ QJsonObject manifestJson(const Body& body,
     classicalSource.insert(QStringLiteral("rows"), static_cast<qint64>(diag.classical_source_rows));
     classicalSource.insert(QStringLiteral("bytes"), diag.classical_source_bytes);
     classicalSource.insert(QStringLiteral("fit"),
-                           QStringLiteral("per emitted atom OLS sigma_QM ~ sigma_cl; sigma_cl includes embedded ring and McConnell constants"));
-    classicalSource.insert(QStringLiteral("pending_citation_terms"),
-                           QJsonArray{QStringLiteral("contrib_buckingham"),
-                                      QStringLiteral("contrib_larsen")});
+                           QStringLiteral("per emitted atom OLS sigma_QM ~ sigma_cl; sigma_cl = sigma0 - A*E_parallel - B*E^2 + ring + McConnell + Larsen"));
+    classicalSource.insert(QStringLiteral("constant_source"),
+                           QStringLiteral("src/rediscover/LiteratureConstants.h"));
+    classicalSource.insert(QStringLiteral("placeholder_visible_smell"), true);
     root.insert(QStringLiteral("classical_source_terms_sidecar"), classicalSource);
+
+    QJsonObject sourceFamilies;
+    sourceFamilies.insert(QStringLiteral("path"), diag.source_family_matrix_path);
+    sourceFamilies.insert(QStringLiteral("rows"), static_cast<qint64>(diag.source_family_matrix_rows));
+    sourceFamilies.insert(QStringLiteral("bytes"), diag.source_family_matrix_bytes);
+    sourceFamilies.insert(QStringLiteral("row_granularity"),
+                          QStringLiteral("one row per emitted atom per Axis-1 registered source family"));
+    sourceFamilies.insert(QStringLiteral("cross_axis_join_status"),
+                          QStringLiteral("axis1_keys_ready;cross_axis_join_blocked_pending_axis2"));
+    root.insert(QStringLiteral("source_family_matrices_sidecar"), sourceFamilies);
+
+    QJsonObject subspaceOverlaps;
+    subspaceOverlaps.insert(QStringLiteral("path"), diag.subspace_overlap_path);
+    subspaceOverlaps.insert(QStringLiteral("rows"), static_cast<qint64>(diag.subspace_overlap_rows));
+    subspaceOverlaps.insert(QStringLiteral("bytes"), diag.subspace_overlap_bytes);
+    subspaceOverlaps.insert(QStringLiteral("primitive"),
+                            QStringLiteral("svd_subspace_compare_v1"));
+    subspaceOverlaps.insert(QStringLiteral("read_ids"),
+                            QJsonArray{QStringLiteral("G2_field_sources"),
+                                       QStringLiteral("G6_field_vs_efg"),
+                                       QStringLiteral("G4_bs_vs_hm_tensor_components"),
+                                       QStringLiteral("G6_efg_node"),
+                                       QStringLiteral("G6_local_electronic_bundle"),
+                                       QStringLiteral("G6_mcconnell_axial_vs_rhombic")});
+    subspaceOverlaps.insert(QStringLiteral("no_relabel_policy"),
+                            QStringLiteral("canonical_corr/basis_dim/explained_fraction/principal_angles only emitted by CompareSubspaces"));
+    root.insert(QStringLiteral("subspace_overlaps_sidecar"), subspaceOverlaps);
+
+    const LiteratureStatusCounts literatureCounts = CountLiteratureConstantStatuses();
+    QJsonObject literature;
+    literature.insert(QStringLiteral("header"), QStringLiteral("src/rediscover/LiteratureConstants.h"));
+    QJsonObject literatureStatus;
+    literatureStatus.insert(QStringLiteral("cited"), literatureCounts.cited);
+    literatureStatus.insert(QStringLiteral("good_enough"), literatureCounts.good_enough);
+    literatureStatus.insert(QStringLiteral("placeholder"), literatureCounts.placeholder);
+    literature.insert(QStringLiteral("status_counts"), literatureStatus);
+    literature.insert(QStringLiteral("placeholder_visible_smell"), literatureCounts.placeholder > 0);
+    root.insert(QStringLiteral("literature_constants"), literature);
 
     QJsonObject cad;
     std::vector<std::size_t> originalByStep;
@@ -7060,18 +7595,33 @@ QJsonObject manifestJson(const Body& body,
     catalogs.insert(QStringLiteral("scope"),
                     ordNameArray({QStringLiteral("self"), QStringLiteral("bonded"),
                                   QStringLiteral("bonded_near_field"), QStringLiteral("through_space")}));
+    QJsonArray sourceFamilyRegistry;
+    const std::vector<std::pair<QString, QString>> registeredFamilies = {
+        {QStringLiteral("field_mopac"), QStringLiteral("MOPAC Coulomb field magnitude, squared magnitude, signed/local components")},
+        {QStringLiteral("field_external"), QStringLiteral("APBS and ff14SB charge-field controls")},
+        {QStringLiteral("efg_node"), QStringLiteral("AIMNet2/APBS/MOPAC-Coulomb EFG tensors and eigen channels")},
+        {QStringLiteral("ring_bs_tensor"), QStringLiteral("Biot-Savart ring-current molecular tensor components")},
+        {QStringLiteral("ring_hm_tensor"), QStringLiteral("Haigh-Mallion/Johnson-Bovey ring-current molecular tensor components")},
+        {QStringLiteral("mcconnell_axial"), QStringLiteral("McConnell tensor axial projections")},
+        {QStringLiteral("mcconnell_rhombic"), QStringLiteral("McConnell tensor rhombic/off-axis projections")},
+        {QStringLiteral("local_electronic_population"), QStringLiteral("MOPAC charge, s/p populations, valency")},
+        {QStringLiteral("local_electronic_bonding"), QStringLiteral("hybridisation, pi character, dominant Wiberg order")},
+        {QStringLiteral("hbond_larsen"), QStringLiteral("Larsen hydrogen-bond shielding and local H-bond geometry")},
+    };
+    int familyOrd = 0;
+    for (const auto& item : registeredFamilies) {
+        QJsonObject f;
+        f.insert(QStringLiteral("ord"), familyOrd++);
+        f.insert(QStringLiteral("family_key"), item.first);
+        f.insert(QStringLiteral("description"), item.second);
+        f.insert(QStringLiteral("registry_status"), QStringLiteral("registered_axis1"));
+        sourceFamilyRegistry.append(f);
+    }
+    catalogs.insert(QStringLiteral("source_family_registry"), sourceFamilyRegistry);
     catalogs.insert(QStringLiteral("series_catalog"), seriesCatalogJson());
     root.insert(QStringLiteral("catalogs"), catalogs);
 
-    QJsonArray inventory;
-    for (const auto& obj : objects) {
-        QJsonObject o;
-        o.insert(QStringLiteral("uid"), uid(obj->objectType(), obj->modelIndex()));
-        o.insert(QStringLiteral("object_type"), obj->objectType());
-        o.insert(QStringLiteral("model_index"), static_cast<int>(obj->modelIndex()));
-        inventory.append(o);
-    }
-    root.insert(QStringLiteral("objects"), inventory);
+    root.insert(QStringLiteral("objects"), objectInventory);
     return root;
 }
 
@@ -7284,18 +7834,95 @@ bool RunAnalysisObjectPass(const Body& body,
         << "| rows=" << static_cast<qulonglong>(diag.classical_source_rows)
         << "| bytes=" << diag.classical_source_bytes;
 
+    const QString sourceFamilyPath = out.filePath(QStringLiteral("source_family_matrices.csv"));
+    {
+        QFile f(sourceFamilyPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (errOut) {
+                *errOut = QStringLiteral("open failed for %1: %2")
+                              .arg(sourceFamilyPath, f.errorString());
+            }
+            return false;
+        }
+        QTextStream ts(&f);
+        AnalysisAtom::WriteSourceFamilyMatrixHeader(ts);
+        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
+                                      ? body.run.manifest.protein_id
+                                      : body.run.manifest.dataset_id;
+        const QString proteinId = body.run.manifest.protein_id.isEmpty()
+                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
+                                      : body.run.manifest.protein_id;
+        for (const std::unique_ptr<AnalysisElement>& object : objects) {
+            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
+            if (!atom) continue;
+            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
+            diag.source_family_matrix_rows +=
+                atom->writeSourceFamilyMatrixRows(ts, datasetId, proteinId);
+        }
+    }
+    diag.source_family_matrix_path = sourceFamilyPath;
+    diag.source_family_matrix_bytes = QFileInfo(sourceFamilyPath).size();
+    qCInfo(cAnalysisObject).noquote()
+        << "analysis_object source-family matrix sidecar | path=" << sourceFamilyPath
+        << "| rows=" << static_cast<qulonglong>(diag.source_family_matrix_rows)
+        << "| bytes=" << diag.source_family_matrix_bytes;
+
+    const QString subspaceOverlapPath = out.filePath(QStringLiteral("subspace_overlaps.csv"));
+    {
+        QFile f(subspaceOverlapPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (errOut) {
+                *errOut = QStringLiteral("open failed for %1: %2")
+                              .arg(subspaceOverlapPath, f.errorString());
+            }
+            return false;
+        }
+        QTextStream ts(&f);
+        AnalysisAtom::WriteSubspaceOverlapHeader(ts);
+        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
+                                      ? body.run.manifest.protein_id
+                                      : body.run.manifest.dataset_id;
+        const QString proteinId = body.run.manifest.protein_id.isEmpty()
+                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
+                                      : body.run.manifest.protein_id;
+        for (const std::unique_ptr<AnalysisElement>& object : objects) {
+            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
+            if (!atom) continue;
+            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
+            diag.subspace_overlap_rows +=
+                atom->writeSubspaceOverlapRows(ts, datasetId, proteinId);
+        }
+    }
+    diag.subspace_overlap_path = subspaceOverlapPath;
+    diag.subspace_overlap_bytes = QFileInfo(subspaceOverlapPath).size();
+    qCInfo(cAnalysisObject).noquote()
+        << "analysis_object subspace-overlap sidecar | path=" << subspaceOverlapPath
+        << "| rows=" << static_cast<qulonglong>(diag.subspace_overlap_rows)
+        << "| bytes=" << diag.subspace_overlap_bytes;
+
+    QJsonArray objectInventory;
+    for (const std::unique_ptr<AnalysisElement>& object : objects) {
+        QJsonObject o;
+        o.insert(QStringLiteral("uid"), uid(object->objectType(), object->modelIndex()));
+        o.insert(QStringLiteral("object_type"), object->objectType());
+        o.insert(QStringLiteral("model_index"), static_cast<int>(object->modelIndex()));
+        objectInventory.append(o);
+    }
+
     qCInfo(cAnalysisObject).noquote() << "analysis_object writing truth";
     bool allOxygenOk = true;
     std::size_t writeIndex = 0;
     std::size_t skippedExisting = 0;
-    for (const std::unique_ptr<AnalysisElement>& object : objects) {
+    for (std::unique_ptr<AnalysisElement>& object : objects) {
+        const QString objectType = object->objectType();
+        const std::size_t modelIndex = object->modelIndex();
         if ((writeIndex % 100) == 0) {
             qCInfo(cAnalysisObject).noquote()
                 << "analysis_object truth begin | object_index=" << writeIndex
-                << "| type=" << object->objectType()
-                << "| model_index=" << object->modelIndex();
+                << "| type=" << objectType
+                << "| model_index=" << modelIndex;
         }
-        const QString expectedUid = uid(object->objectType(), object->modelIndex());
+        const QString expectedUid = uid(objectType, modelIndex);
         if (expectedUid.isEmpty()) {
             if (errOut) *errOut = QStringLiteral("analysis object has empty expected uid");
             return false;
@@ -7307,7 +7934,7 @@ bool RunAnalysisObjectPass(const Body& body,
         bool skipped = false;
         if (emitFilterActive) {
             const auto* atomObj = dynamic_cast<const AnalysisAtom*>(object.get());
-            skipped = !(atomObj != nullptr && emitAtoms.count(object->modelIndex()) != 0);
+            skipped = !(atomObj != nullptr && emitAtoms.count(modelIndex) != 0);
         }
         QJsonObject truth;
         if (skipped) {
@@ -7340,14 +7967,15 @@ bool RunAnalysisObjectPass(const Body& body,
             diag.accumulator_contexts += atom->accumulatorContextCount();
             allOxygenOk = allOxygenOk && atom->oxygenGatePassed();
         }
-        if (!skipped && object->objectType() == QStringLiteral("ring")) {
+        if (!skipped && objectType == QStringLiteral("ring")) {
             const QJsonArray near = truth.value(QStringLiteral("series")).toObject()
                                         .value(QStringLiteral("ring.near_center")).toArray();
             for (const QJsonValue& stepHits : near)
                 diag.ring_near_center_hits += static_cast<std::size_t>(stepHits.toArray().size());
-        } else if (object->objectType() == QStringLiteral("residue")) {
+        } else if (objectType == QStringLiteral("residue")) {
             diag.residue_frame_folds += cadence.stepCount();
         }
+        object.reset();
         ++writeIndex;
     }
     diag.oxygen_gate_passed = allOxygenOk;
@@ -7358,7 +7986,7 @@ bool RunAnalysisObjectPass(const Body& body,
 
     const QString manifestPath = out.filePath(QStringLiteral("manifest.json"));
     diag.manifest_path = manifestPath;
-    if (!writeJsonFile(manifestPath, manifestJson(body, cadence, objects, diag), errOut)) return false;
+    if (!writeJsonFile(manifestPath, manifestJson(body, cadence, objectInventory, diag), errOut)) return false;
     if (skippedExisting > 0) {
         qCInfo(cAnalysisObject).noquote()
             << "analysis_object truth resume skipped existing files | count=" << skippedExisting;

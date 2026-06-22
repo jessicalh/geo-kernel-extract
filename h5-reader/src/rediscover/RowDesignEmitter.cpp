@@ -2,6 +2,7 @@
 
 #include "Catalog.h"
 #include "ExtractionSupport.h"
+#include "LiteratureConstants.h"
 #include "RamaRegion.h"
 #include "RelationshipEngine.h"
 #include "SphericalBasis.h"
@@ -49,17 +50,6 @@ static_assert(static_cast<int>(model::RingTypeIndex::HieImidazole) == 7, "ring i
 static_assert(static_cast<int>(model::RingTypeIndex::ProPyrrolidine)
               == model::kAromaticRingTypeCount,
               "Pro must remain outside the per-aromatic ring arrays");
-
-constexpr std::array<double, model::kAromaticRingTypeCount> kRingLiteratureIntensity = {
-    -12.0,   // PheBenzene
-    -11.28,  // TyrPhenol
-    -12.48,  // TrpBenzene
-    -6.72,   // TrpPyrrole
-    -19.2,   // Trp indole perimeter
-    -5.16,   // HisImidazole
-    -5.16,   // HidImidazole
-    -5.16,   // HieImidazole
-};
 
 struct RingArrayRequirement {
     ArrayId id;
@@ -571,7 +561,8 @@ model::SphericalTensor scaledPerTypeTensor(const Body& body,
     model::SphericalTensor out;
     if (scaledT0ByType) scaledT0ByType->fill(0.0);
     for (int t = 0; t < model::kAromaticRingTypeCount; ++t) {
-        const double intensity = kRingLiteratureIntensity[static_cast<std::size_t>(t)];
+        const double intensity =
+            RingIntensity(static_cast<model::RingTypeIndex>(t)).value;
         const double scaledT0 = intensity * requiredComponent(body, t0Id, atom, row, t);
         out.T0 += scaledT0;
         if (scaledT0ByType) (*scaledT0ByType)[static_cast<std::size_t>(t)] = scaledT0;

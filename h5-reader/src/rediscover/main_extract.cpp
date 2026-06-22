@@ -767,9 +767,15 @@ int main(int argc, char** argv) {
             << "| bounded_sigma_bytes=" << stats.bounded_sigma_bytes
             << "| classical_source_rows=" << stats.classical_source_rows
             << "| classical_source_bytes=" << stats.classical_source_bytes
+            << "| source_family_matrix_rows=" << stats.source_family_matrix_rows
+            << "| source_family_matrix_bytes=" << stats.source_family_matrix_bytes
+            << "| subspace_overlap_rows=" << stats.subspace_overlap_rows
+            << "| subspace_overlap_bytes=" << stats.subspace_overlap_bytes
             << "| oxygen_gate_passed=" << stats.oxygen_gate_passed
             << "| bounded_sigma=" << stats.bounded_sigma_path
             << "| classical_source_terms=" << stats.classical_source_path
+            << "| source_family_matrices=" << stats.source_family_matrix_path
+            << "| subspace_overlaps=" << stats.subspace_overlap_path
             << "| manifest=" << stats.manifest_path;
         return 0;
     }

@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -63,6 +64,7 @@ public:
     const std::vector<MopacFrameBond>& mopacBonds(std::size_t step) const;
     std::vector<MopacFrameBond> mopacBondsForAtom(std::size_t step, std::size_t atom) const;
     std::optional<double> mopacWiberg(std::size_t step, std::size_t atomA, std::size_t atomB) const;
+    std::vector<double> mopacWibergSeries(std::size_t atomA, std::size_t atomB) const;
 
 private:
     void rebuildMopacCache(std::size_t step) const;
@@ -72,6 +74,7 @@ private:
     mutable std::size_t cached_step_ = static_cast<std::size_t>(-1);
     mutable std::shared_ptr<const model::QtConformationSnapshot> cached_snapshot_;
     mutable std::vector<MopacFrameBond> cached_mopac_bonds_;
+    mutable std::map<std::uint64_t, std::vector<double>> mopac_wiberg_by_pair_;
 };
 
 class AnalysisElement {
@@ -164,12 +167,18 @@ struct AnalysisObjectPassDiagnostics {
     qint64 bounded_sigma_bytes = 0;
     std::size_t classical_source_rows = 0;
     qint64 classical_source_bytes = 0;
+    std::size_t source_family_matrix_rows = 0;
+    qint64 source_family_matrix_bytes = 0;
+    std::size_t subspace_overlap_rows = 0;
+    qint64 subspace_overlap_bytes = 0;
     bool sigma_mask_recorded = false;
     bool field_vectors_retained = false;
     bool full_sigma_tensors_retained = false;
     bool oxygen_gate_passed = false;
     QString bounded_sigma_path;
     QString classical_source_path;
+    QString source_family_matrix_path;
+    QString subspace_overlap_path;
     QString manifest_path;
 };
 

@@ -351,6 +351,9 @@ qt_add_executable(h5reader_extract
     src/rediscover/AnalysisBody.h
     src/rediscover/DistributionSummary.h
     src/rediscover/DistributionSummary.cpp
+    src/rediscover/LiteratureConstants.h
+    src/rediscover/SubspaceCompare.h
+    src/rediscover/SubspaceCompare.cpp
     src/rediscover/AnalysisElement.h
     src/rediscover/AnalysisAtom.h
     src/rediscover/AnalysisAtom.cpp
@@ -676,6 +679,33 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_reducer_parity_tests
              COMMAND h5reader_rediscover_reducer_parity_tests)
+
+    qt_add_executable(h5reader_rediscover_subspace_compare_tests
+        tests/rediscover_subspace_compare_tests.cpp
+        src/rediscover/SubspaceCompare.h
+        src/rediscover/SubspaceCompare.cpp
+    )
+    target_include_directories(h5reader_rediscover_subspace_compare_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_subspace_compare_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_subspace_compare_tests
+             COMMAND h5reader_rediscover_subspace_compare_tests)
+
+    qt_add_executable(h5reader_rediscover_no_relabel_tests
+        tests/rediscover_no_relabel_tests.cpp
+    )
+    target_include_directories(h5reader_rediscover_no_relabel_tests PRIVATE src)
+    target_compile_definitions(h5reader_rediscover_no_relabel_tests PRIVATE
+        H5READER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(h5reader_rediscover_no_relabel_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME h5reader_rediscover_no_relabel_tests
+             COMMAND h5reader_rediscover_no_relabel_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp

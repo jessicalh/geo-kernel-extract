@@ -1,5 +1,6 @@
 #include "McConnellLiteratureKernel.h"
 
+#include "LiteratureConstants.h"
 #include "SphericalBasis.h"
 
 #include <cmath>
@@ -7,9 +8,6 @@
 namespace h5reader::rediscover {
 
 namespace {
-
-constexpr double kAvogadro = 6.02214076e23;
-
 bool finiteVec(const Vec3& v) {
     return std::isfinite(v.x()) && std::isfinite(v.y()) && std::isfinite(v.z());
 }
@@ -29,22 +27,11 @@ bool McConnellLiteratureCategory(model::BondCategory category) {
 }
 
 double McConnellDeltaChiQ(model::BondCategory category) {
-    switch (category) {
-    case model::BondCategory::PeptideCO:
-        return 2.41;
-    case model::BondCategory::PeptideCN:
-        return -5.42;
-    case model::BondCategory::SidechainCO:
-        return 2.41;
-    case model::BondCategory::Aromatic:
-        return 0.0;  // RING carries the aromatic pi current; avoid double-counting.
-    default:
-        return 0.0;
-    }
+    return McConnellDeltaChi(category).value;
 }
 
 double McConnellMolarPrefactor() {
-    return 1.0e24 / kAvogadro;
+    return kMcConnellMolarPrefactor.value;
 }
 
 model::SphericalTensor McConnellSourceLiteratureKernelLocal(const SourceSlot& source,
