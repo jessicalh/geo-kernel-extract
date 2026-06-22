@@ -2,6 +2,7 @@
 
 #include "DeltaRunData.h"
 #include "LiteratureConstants.h"
+#include "LocalFrameBasis.h"
 #include "RamaRegion.h"
 #include "ResidentIndexes.h"
 #include "RowDesign.h"
@@ -201,30 +202,6 @@ double iso(const model::Mat3& m) {
     return (m(0, 0) + m(1, 1) + m(2, 2)) / 3.0;
 }
 
-double etaH(const model::Mat3& raw) {
-    if (!raw.allFinite()) return kNan;
-    const model::Mat3 sym = 0.5 * (raw + raw.transpose());
-    Eigen::SelfAdjointEigenSolver<model::Mat3> es(sym);
-    if (es.info() != Eigen::Success) return kNan;
-    struct Eval {
-        double value = 0.0;
-        double distance = 0.0;
-    };
-    const double isotropic = es.eigenvalues().mean();
-    std::array<Eval, 3> e{};
-    for (int i = 0; i < 3; ++i)
-        e[static_cast<std::size_t>(i)] = {es.eigenvalues()(i), std::abs(es.eigenvalues()(i) - isotropic)};
-    std::sort(e.begin(), e.end(), [](const Eval& a, const Eval& b) {
-        return a.distance < b.distance;
-    });
-    const double xx = e[0].value;
-    const double yy = e[1].value;
-    const double zz = e[2].value;
-    const double denom = zz - isotropic;
-    if (!finite(denom) || std::abs(denom) < 1.0e-12) return kNan;
-    return (yy - xx) / denom;
-}
-
 QString hybridisationForAtom(const RunData& run, const model::QtAtom& atom, std::size_t atomIndex) {
     const double h = valueAt(run, io::FieldKind::EnrichmentHybridisation, atomIndex);
     if (finite(h)) {
@@ -277,6 +254,133 @@ QString dihedralRegion(const ResidentIndexes& idx, std::size_t atom) {
 
 QString psiRegion(const DihedralState& state) {
     return state.present ? dihedralBinName(state.fixed_bin) : QStringLiteral("unknown");
+}
+
+std::optional<model::Mat3> axesFromLocalFrame(const LocalFrame& f) {
+    if (!f.is_valid) return std::nullopt;
+    model::Mat3 axes;
+    axes.col(0) = f.x;
+    axes.col(1) = f.y;
+    axes.col(2) = f.z;
+    return axes.allFinite() ? std::optional<model::Mat3>(axes) : std::nullopt;
+}
+
+std::optional<model::Vec3> normVec(const model::Vec3& v) {
+    const double n = v.norm();
+    if (!(n > 1.0e-9) || !finite(n)) return std::nullopt;
+    return v / n;
+}
+
+std::optional<model::Mat3> axesFromXAndPlane(const model::Vec3& xVec,
+                                             const model::Vec3& planeVec) {
+    const auto xOpt = normVec(xVec);
+    if (!xOpt) return std::nullopt;
+    const model::Vec3 x = *xOpt;
+    const model::Vec3 plane = planeVec - x * planeVec.dot(x);
+    const auto y0Opt = normVec(plane);
+    if (!y0Opt) return std::nullopt;
+    const auto zOpt = normVec(x.cross(*y0Opt));
+    if (!zOpt) return std::nullopt;
+    const model::Vec3 z = *zOpt;
+    const auto yOpt = normVec(z.cross(x));
+    if (!yOpt) return std::nullopt;
+    model::Mat3 axes;
+    axes.col(0) = x;
+    axes.col(1) = *yOpt;
+    axes.col(2) = z;
+    return axes.allFinite() ? std::optional<model::Mat3>(axes) : std::nullopt;
+}
+
+std::optional<std::size_t> atomByResidueName(const model::QtProtein& protein,
+                                             int residueIndex,
+                                             const QString& name) {
+    if (residueIndex < 0 || static_cast<std::size_t>(residueIndex) >= protein.residueCount())
+        return std::nullopt;
+    const model::QtResidue& residue = protein.residue(static_cast<std::size_t>(residueIndex));
+    for (int32_t ai : residue.atomIndices) {
+        if (ai < 0 || static_cast<std::size_t>(ai) >= protein.atomCount()) continue;
+        if (atomName(protein, static_cast<std::size_t>(ai)) == name)
+            return static_cast<std::size_t>(ai);
+    }
+    return std::nullopt;
+}
+
+std::optional<model::Vec3> atomPosition(const RunData& run, std::size_t atom, std::size_t frame = 0) {
+    if (!run.conformation || !run.protein || atom >= run.protein->atomCount())
+        return std::nullopt;
+    const model::Vec3 p = run.conformation->atomPosition(frame, atom);
+    return p.allFinite() ? std::optional<model::Vec3>(p) : std::nullopt;
+}
+
+std::optional<model::Mat3> genericBondAxes(const RunData& run, std::size_t atom) {
+    if (!run.protein || !run.conformation || atom >= run.protein->atomCount())
+        return std::nullopt;
+    std::vector<std::size_t> bonded;
+    for (int32_t bi : run.protein->topology().bondIndicesForAtom(atom)) {
+        if (bi < 0 || static_cast<std::size_t>(bi) >= run.protein->topology().bondCount()) continue;
+        const model::QtBond& b = run.protein->topology().bondAt(static_cast<std::size_t>(bi));
+        const int32_t other = b.atomIndexA == static_cast<int32_t>(atom) ? b.atomIndexB
+                              : b.atomIndexB == static_cast<int32_t>(atom) ? b.atomIndexA
+                                                                           : -1;
+        if (other >= 0 && static_cast<std::size_t>(other) < run.protein->atomCount())
+            bonded.push_back(static_cast<std::size_t>(other));
+    }
+    if (bonded.size() < 2) return std::nullopt;
+    const auto origin = atomPosition(run, atom);
+    const auto x = atomPosition(run, bonded[0]);
+    const auto plane = atomPosition(run, bonded[1]);
+    if (!origin || !x || !plane) return std::nullopt;
+    return axesFromXAndPlane(*x - *origin, *plane - *origin);
+}
+
+std::optional<model::Mat3> molecularAxesForAtom(const RunData& run, std::size_t atom) {
+    if (!run.protein || !run.conformation || atom >= run.protein->atomCount())
+        return std::nullopt;
+    const model::QtProtein& protein = *run.protein;
+    const model::QtAtom& a = protein.atom(atom);
+    const int ri = a.residueIndex;
+    const QString name = atomName(protein, atom);
+    auto rec = [&](const QString& atomName) {
+        return atomByResidueName(protein, ri, atomName);
+    };
+    auto posOf = [&](std::optional<std::size_t> idx) -> std::optional<model::Vec3> {
+        return idx ? atomPosition(run, *idx) : std::nullopt;
+    };
+
+    if (name == QStringLiteral("CA")) {
+        const auto ca = posOf(rec(QStringLiteral("CA")));
+        const auto n = posOf(rec(QStringLiteral("N")));
+        const auto c = posOf(rec(QStringLiteral("C")));
+        if (ca && n && c) return axesFromLocalFrame(BuildBackboneCaFrame(*ca, *n, *c));
+    }
+    if (a.IsBackboneNitrogen() || name == QStringLiteral("N")) {
+        const auto n = posOf(rec(QStringLiteral("N")));
+        const auto ca = posOf(rec(QStringLiteral("CA")));
+        const auto cPrev = posOf(atomByResidueName(protein, ri - 1, QStringLiteral("C")));
+        const auto cOwn = posOf(rec(QStringLiteral("C")));
+        if (n && ca && (cPrev || cOwn))
+            return axesFromLocalFrame(BuildBackboneNFrame(*n, *ca, cPrev ? *cPrev : *cOwn,
+                                                         cPrev.has_value()));
+    }
+    if (a.IsBackboneCarbonylCarbon() || name == QStringLiteral("C")) {
+        const auto c = posOf(rec(QStringLiteral("C")));
+        const auto o = posOf(rec(QStringLiteral("O")));
+        const auto ca = posOf(rec(QStringLiteral("CA")));
+        if (c && o && ca) return axesFromLocalFrame(BuildBackboneCarbonylCFrame(*c, *o, *ca));
+    }
+    if (a.IsBackboneCarbonylOxygen() || name == QStringLiteral("O")) {
+        const auto o = posOf(rec(QStringLiteral("O")));
+        const auto c = posOf(rec(QStringLiteral("C")));
+        const auto ca = posOf(rec(QStringLiteral("CA")));
+        if (o && c && ca) return axesFromLocalFrame(BuildBackboneCarbonylOFrame(*o, *c, *ca));
+    }
+    if (a.IsAnyAlphaHydrogen()) {
+        const auto h = atomPosition(run, atom);
+        const auto ca = posOf(rec(QStringLiteral("CA")));
+        const auto n = posOf(rec(QStringLiteral("N")));
+        if (h && ca && n) return axesFromLocalFrame(BuildBackboneHaFrame(*h, *ca, *n));
+    }
+    return genericBondAxes(run, atom);
 }
 
 struct MutationSite {
@@ -457,18 +561,19 @@ CohortSample sampleForAtom(const RunData& run,
     s.protein_id = run.manifest.protein_id.isEmpty() ? protein.proteinId() : run.manifest.protein_id;
     s.atom_index = static_cast<int>(atom);
     s.residue_index = residueIndex;
+    s.molecular_axes = molecularAxesForAtom(run, atom);
 
     const model::DftAtomShielding* dft = run.dft.AtomShielding(atom, 0);
     if (dft) {
-        const model::Mat3& m = dft->total_raw;
-        s.sigma_iso = iso(m);
-        s.sigma_eta_H = etaH(m);
-        s.mol_xx = m(0, 0);
-        s.mol_yy = m(1, 1);
-        s.mol_xy = m(0, 1);
-        s.mol_xz = m(0, 2);
-        s.mol_yz = m(1, 2);
-        s.mol_zz = m(2, 2);
+        const Axis2FoldedTensor folded = FoldAxis2TensorChannels(dft->total_raw, s.molecular_axes);
+        s.sigma_iso = folded.sigma_iso;
+        s.sigma_eta_H = folded.sigma_eta_H;
+        s.mol_xx = folded.mol_components[0];
+        s.mol_yy = folded.mol_components[1];
+        s.mol_xy = folded.mol_components[2];
+        s.mol_xz = folded.mol_components[3];
+        s.mol_yz = folded.mol_components[4];
+        s.mol_zz = folded.mol_components[5];
     }
 
     s.channels.insert(QStringLiteral("apbs_E_mag"), vectorMag(run, io::FieldKind::APBSE, atom));
@@ -528,26 +633,29 @@ CohortSample sampleForAtom(const RunData& run,
     return s;
 }
 
-std::vector<double> collectSigma(const CohortCellTruth& cell) {
+std::vector<double> proteinSigmaMeans(const CohortCellTruth& cell) {
     std::vector<double> out;
-    out.reserve(cell.samples.size());
-    for (const CohortSample& s : cell.samples) out.push_back(s.sigma_iso);
+    out.reserve(static_cast<std::size_t>(cell.protein_folds.size()));
+    for (auto it = cell.protein_folds.begin(); it != cell.protein_folds.end(); ++it)
+        out.push_back(it.value().sigma.meanValue());
     return out;
 }
 
-std::vector<double> collectChannel(const CohortCellTruth& cell, const QString& name) {
+std::vector<double> proteinChannelMeans(const CohortCellTruth& cell, const QString& name) {
     std::vector<double> out;
-    out.reserve(cell.samples.size());
-    for (const CohortSample& s : cell.samples)
-        out.push_back(s.channels.value(name, kNan));
+    out.reserve(static_cast<std::size_t>(cell.protein_folds.size()));
+    for (auto it = cell.protein_folds.begin(); it != cell.protein_folds.end(); ++it)
+        out.push_back(it.value().channels.value(name).meanValue());
     return out;
 }
 
-std::vector<double> collectField(const CohortCellTruth& cell, double CohortSample::*field) {
-    std::vector<double> out;
-    out.reserve(cell.samples.size());
-    for (const CohortSample& s : cell.samples) out.push_back(s.*field);
-    return out;
+DistributionSummary channelSummary(const CohortCellTruth& cell, const QString& name) {
+    return cell.channel_distributions.value(name).summary();
+}
+
+double channelMean(const CohortCellTruth& cell, const QString& name) {
+    const DistributionSummary s = channelSummary(cell, name);
+    return s.hasFinite() ? s.mean : kNan;
 }
 
 QString proteinResidency(const CohortCellTruth& cell) {
@@ -605,7 +713,8 @@ bool emitStaticTable(const QString& outDir,
         QStringLiteral("mol_zz_mean"), QStringLiteral("eta_H_mean"), QStringLiteral("full_tensor_r2"),
         QStringLiteral("magnitude_only_r2"), QStringLiteral("direction_only_r2"),
         QStringLiteral("angular_gain"), QStringLiteral("protein_label_permutation_p"),
-        QStringLiteral("permutation_K"), QStringLiteral("helix_dipole_field_mean"),
+        QStringLiteral("protein_label_permutation_status"), QStringLiteral("permutation_K"),
+        QStringLiteral("helix_dipole_field_mean"),
         QStringLiteral("helix_dipole_citation_status"), QStringLiteral("helix_membership"),
         QStringLiteral("psi_iminus1_region"), QStringLiteral("r_psi_iminus1"),
         QStringLiteral("r_psi_own"), QStringLiteral("sensitivity_ratio"),
@@ -620,24 +729,23 @@ bool emitStaticTable(const QString& outDir,
 
     for (const auto& item : acc.cells()) {
         const CohortCellTruth& cell = item.second;
-        const DistributionSummary sigma = SummarizeDistribution(collectSigma(cell));
-        const DistributionSummary xx = SummarizeDistribution(collectField(cell, &CohortSample::mol_xx));
-        const DistributionSummary yy = SummarizeDistribution(collectField(cell, &CohortSample::mol_yy));
-        const DistributionSummary xy = SummarizeDistribution(collectField(cell, &CohortSample::mol_xy));
-        const DistributionSummary xz = SummarizeDistribution(collectField(cell, &CohortSample::mol_xz));
-        const DistributionSummary yz = SummarizeDistribution(collectField(cell, &CohortSample::mol_yz));
-        const DistributionSummary zz = SummarizeDistribution(collectField(cell, &CohortSample::mol_zz));
-        const DistributionSummary eta = SummarizeDistribution(collectField(cell, &CohortSample::sigma_eta_H));
-        const DistributionSummary helix =
-            SummarizeDistribution(collectField(cell, &CohortSample::helix_dipole_field));
+        const DistributionSummary sigma = cell.sigma.summary();
+        const DistributionSummary xx = cell.mol_xx.summary();
+        const DistributionSummary yy = cell.mol_yy.summary();
+        const DistributionSummary xy = cell.mol_xy.summary();
+        const DistributionSummary xz = cell.mol_xz.summary();
+        const DistributionSummary yz = cell.mol_yz.summary();
+        const DistributionSummary zz = cell.mol_zz.summary();
+        const DistributionSummary eta = cell.eta_H.summary();
+        const DistributionSummary helix = cell.helix_dipole_field.summary();
         const SupportCredential support =
             CredentialSupport(cell.proteins.size(), true, thresholds);
-        const std::vector<double> sigmaVals = collectSigma(cell);
-        const std::vector<double> ring = collectChannel(cell, QStringLiteral("ring_bs_iso"));
-        const std::vector<double> apbs = collectChannel(cell, QStringLiteral("apbs_E_mag"));
+        const std::vector<double> sigmaVals = proteinSigmaMeans(cell);
+        const std::vector<double> ring = proteinChannelMeans(cell, QStringLiteral("ring_bs_iso"));
+        const std::vector<double> apbs = proteinChannelMeans(cell, QStringLiteral("apbs_E_mag"));
         const PermutationNull null = ProteinLabelPermutationNull(apbs, sigmaVals, permutationK);
-        const double rPsiPrev = PearsonR(collectField(cell, &CohortSample::psi_iminus1), sigmaVals);
-        const double rPsiOwn = PearsonR(collectField(cell, &CohortSample::psi_own), sigmaVals);
+        const double rPsiPrev = cell.psi_iminus1_vs_sigma.pearson();
+        const double rPsiOwn = cell.psi_own_vs_sigma.pearson();
         const double sensitivity = finite(rPsiPrev) && finite(rPsiOwn) && std::abs(rPsiOwn) > 1.0e-12
                                        ? std::abs(rPsiPrev / rPsiOwn)
                                        : kNan;
@@ -650,24 +758,13 @@ bool emitStaticTable(const QString& outDir,
                                                                            : model::Element::Unknown,
                          cell.key.fields.residue_type.toStdString(),
                          cell.key.fields.atom_name.toStdString());
-        const double contribBuck = buck.value * SummarizeDistribution(apbs).mean;
-        const double contribRing = SummarizeDistribution(ring).mean;
-        const double contribMc = SummarizeDistribution(collectChannel(cell, QStringLiteral("mc_lit_iso"))).mean;
-        const double contribLarsen = SummarizeDistribution(collectChannel(cell, QStringLiteral("sasa"))).mean * 0.0;
+        const double contribBuck = buck.value * channelMean(cell, QStringLiteral("apbs_E_mag"));
+        const double contribRing = channelMean(cell, QStringLiteral("ring_bs_iso"));
+        const double contribMc = channelMean(cell, QStringLiteral("mc_lit_iso"));
+        const double contribLarsen = channelMean(cell, QStringLiteral("sasa")) * 0.0;
         const double cl = contribBuck + contribRing + contribMc + contribLarsen;
-        const double residual = finite(sigma.mean) && finite(cl) ? sigma.mean - cl : kNan;
-
-        QString psiRegionValue = QStringLiteral("not_backbone_N");
-        QString predecessor = QStringLiteral("not_backbone_N");
-        for (const CohortSample& s : cell.samples) {
-            if (s.backbone_n) {
-                psiRegionValue = s.psi_iminus1_region.isEmpty() ? QStringLiteral("unknown")
-                                                                 : s.psi_iminus1_region;
-                predecessor = s.predecessor_identity.isEmpty() ? QStringLiteral("unknown")
-                                                               : s.predecessor_identity;
-                break;
-            }
-        }
+        Q_UNUSED(cl);
+        const ClassicalAgreementStats clAgreement = ComputeClassicalAgreementForCell(cell, buck.value);
 
         QStringList row = {
             kSchemaName,
@@ -684,7 +781,7 @@ bool emitStaticTable(const QString& outDir,
             QString::number(static_cast<qulonglong>(cell.proteins.size())),
             QString::number(static_cast<qulonglong>(cell.proteins.size())),
             proteinResidency(cell),
-            QString::number(static_cast<qulonglong>(cell.samples.size())),
+            QString::number(static_cast<qulonglong>(cell.sample_count)),
             support.support_name,
             support.underpowered_dimensions,
         };
@@ -693,30 +790,32 @@ bool emitStaticTable(const QString& outDir,
             << csvDouble(xx.mean) << csvDouble(yy.mean) << csvDouble(xy.mean)
             << csvDouble(xz.mean) << csvDouble(yz.mean) << csvDouble(zz.mean)
             << csvDouble(eta.mean)
-            << csvDouble(PearsonR(collectChannel(cell, QStringLiteral("apbs_efg_absT2")), sigmaVals))
-            << csvDouble(PearsonR(apbs, sigmaVals))
-            << csvDouble(PearsonR(ring, sigmaVals))
-            << csvDouble(std::abs(PearsonR(ring, sigmaVals)) - std::abs(PearsonR(apbs, sigmaVals)))
+            << csvDouble(cell.channel_vs_sigma.value(QStringLiteral("apbs_efg_absT2")).pearson())
+            << csvDouble(cell.channel_vs_sigma.value(QStringLiteral("apbs_E_mag")).pearson())
+            << csvDouble(cell.channel_vs_sigma.value(QStringLiteral("ring_bs_iso")).pearson())
+            << csvDouble(std::abs(cell.channel_vs_sigma.value(QStringLiteral("ring_bs_iso")).pearson())
+                         - std::abs(cell.channel_vs_sigma.value(QStringLiteral("apbs_E_mag")).pearson()))
             << csvDouble(null.perm_p)
+            << (finite(null.perm_p) ? QStringLiteral("computed") : QStringLiteral("not_computable"))
             << QString::number(null.permutation_K)
             << csvDouble(helix.mean)
             << QStringLiteral("pending-citation")
             << (helix.finite_n > 0 ? QStringLiteral("helix_backbone_N") : QStringLiteral("not_applicable"))
-            << psiRegionValue
+            << cell.psi_iminus1_region
             << csvDouble(rPsiPrev)
             << csvDouble(rPsiOwn)
             << csvDouble(sensitivity)
             << QStringLiteral("blocked pending predecessor chi1")
-            << predecessor
+            << cell.predecessor_identity
             << csvDouble(contribBuck)
             << csvDouble(contribRing)
             << csvDouble(contribMc)
             << csvDouble(contribLarsen)
-            << csvDouble(PearsonR({cl}, {sigma.mean}))
-            << csvDouble(LinearSlope({cl}, {sigma.mean}))
-            << csvDouble(std::abs(residual))
-            << csvDouble(residual)
-            << csvDouble(0.0)
+            << csvDouble(clAgreement.r)
+            << csvDouble(clAgreement.slope)
+            << csvDouble(clAgreement.rmsd)
+            << csvDouble(clAgreement.residual_mean)
+            << csvDouble(clAgreement.residual_sd)
             << QString::fromLatin1(buck.key)
             << QString::fromLatin1(buck.units)
             << QString::fromLatin1(LiteratureStatusName(buck.status));
@@ -748,18 +847,17 @@ bool emitIndependenceTable(const QString& outDir,
         QStringLiteral("n_cc_ge_0_95"), QStringLiteral("min_angle_deg"),
         QStringLiteral("basis_dim_a"), QStringLiteral("basis_dim_b"),
         QStringLiteral("explained_fraction_a"), QStringLiteral("explained_fraction_b"),
-        QStringLiteral("pearson_r"), QStringLiteral("spearman_rho"), QStringLiteral("signed_slope"),
+        QStringLiteral("pearson_r"), QStringLiteral("pairwise_pearson_r"), QStringLiteral("signed_slope"),
         QStringLiteral("vif"), QStringLiteral("condition_number"), QStringLiteral("overlap_label"),
         QStringLiteral("provenance"), QStringLiteral("mediation_chain")
     });
     for (const auto& item : acc.cells()) {
         const CohortCellTruth& cell = item.second;
         const std::size_t n = cell.proteins.size();
-        const std::vector<std::size_t> rows(cell.samples.size());
-        std::vector<std::size_t> rowIdx(cell.samples.size());
+        std::vector<std::size_t> rowIdx(n);
         std::iota(rowIdx.begin(), rowIdx.end(), 0);
         auto channel = [&](const QString& name) {
-            return SubspaceChannel{name, collectChannel(cell, name)};
+            return SubspaceChannel{name, proteinChannelMeans(cell, name)};
         };
         std::vector<FamilyPair> pairs = {
             {QStringLiteral("G2_field_sources"),
@@ -777,7 +875,7 @@ bool emitIndependenceTable(const QString& outDir,
              {QStringLiteral("efg"), {channel(QStringLiteral("apbs_efg_absT2"))}}},
         };
         for (const FamilyPair& pair : pairs) {
-            const bool fullRank = cell.samples.size() >= 3;
+            const bool fullRank = n >= 3;
             const SupportCredential support = CredentialSupport(n, fullRank, thresholds);
             SubspaceCompareResult cc;
             double pearson = kNan;
@@ -843,6 +941,8 @@ struct RidgeBucket {
     std::size_t wt_n = 0;
     std::size_t ala_n = 0;
     std::size_t matched_atom_n = 0;
+    BoundedDistributionAccumulator distant_abs_delta_sigma;
+    BoundedDistributionAccumulator distant_nearest_site_distance_A;
 };
 
 void addRidge(std::map<QString, RidgeBucket>* buckets,
@@ -866,16 +966,16 @@ void addRidge(std::map<QString, RidgeBucket>* buckets,
     b.sigma.push_back(deltaSigma);
     b.proteins.insert(sample.protein_id);
     if (sample.near_mutation) ++b.near_n;
-    if (sample.distant_from_all_sites) ++b.distant_n;
+    if (sample.distant_from_all_sites) {
+        ++b.distant_n;
+        b.distant_abs_delta_sigma.add(std::abs(deltaSigma));
+        const double k = sample.mutation_contact_kernel;
+        const double d = finite(k) && k > 0.0 ? std::sqrt(std::max(0.0, 1.0 / k - 1.0)) : kNan;
+        b.distant_nearest_site_distance_A.add(d);
+    }
     b.wt_n += wt_n;
     b.ala_n += ala_n;
     b.matched_atom_n += matched_n;
-}
-
-model::Mat3 totalTensor(const StaticNpyArray* dia,
-                        const StaticNpyArray* para,
-                        std::size_t row) {
-    return matFromArray(dia, row) + matFromArray(para, row);
 }
 
 bool emitRidgeTable(const QString& outDir,
@@ -900,7 +1000,15 @@ bool emitRidgeTable(const QString& outDir,
         QStringLiteral("ridge_r"), QStringLiteral("ridge_xi"), QStringLiteral("pchip_shape"),
         QStringLiteral("leverage"), QStringLiteral("coverage"), QStringLiteral("contact_scope"),
         QStringLiteral("any_site_scope"), QStringLiteral("near_mutation_flag"),
-        QStringLiteral("distant_zero_check"), QStringLiteral("delta_permutation_p"),
+        QStringLiteral("distant_zero_check"), QStringLiteral("distant_characterization"),
+        QStringLiteral("distant_nonzero_channel"), QStringLiteral("distant_abs_delta_sigma_mean"),
+        QStringLiteral("distant_abs_delta_sigma_sd"), QStringLiteral("distant_abs_delta_sigma_min"),
+        QStringLiteral("distant_abs_delta_sigma_median"), QStringLiteral("distant_abs_delta_sigma_max"),
+        QStringLiteral("distant_nearest_site_distance_A_mean"),
+        QStringLiteral("distant_nearest_site_distance_A_min"),
+        QStringLiteral("distant_nearest_site_distance_A_median"),
+        QStringLiteral("distant_nearest_site_distance_A_max"),
+        QStringLiteral("delta_permutation_p"), QStringLiteral("delta_permutation_status"),
         QStringLiteral("null_slope_mean"), QStringLiteral("null_slope_sd"),
         QStringLiteral("obs_slope_z"), QStringLiteral("permutation_K"),
         QStringLiteral("wt_n"), QStringLiteral("ala_n"), QStringLiteral("matched_atom_n"),
@@ -915,8 +1023,14 @@ bool emitRidgeTable(const QString& outDir,
         const PermutationNull null = support.may_emit_coupling
                                          ? ProteinLabelPermutationNull(b.driver, b.sigma, permutationK)
                                          : PermutationNull{};
-        const bool distantFlag = b.distant_n > 0 && finite(slope) && std::abs(slope) > 0.05
-                                 && b.any_site_scope == QStringLiteral("distant_from_all_sites");
+        const DistantRidgeCharacterization distantFlag =
+            CharacterizeDistantNonzeroRidge(static_cast<std::size_t>(b.distant_n),
+                                            b.any_site_scope,
+                                            slope,
+                                            b.channel);
+        const bool hasDistant = b.distant_n > 0;
+        const DistributionSummary distantMag = b.distant_abs_delta_sigma.summary();
+        const DistributionSummary distantDist = b.distant_nearest_site_distance_A.summary();
         QStringList row = {
             kSchemaName,
             QStringLiteral("mutant_delta_ridge"),
@@ -938,9 +1052,21 @@ bool emitRidgeTable(const QString& outDir,
             << b.contact_scope
             << b.any_site_scope
             << (b.near_n > 0 ? QStringLiteral("true") : QStringLiteral("false"))
-            << (distantFlag ? QStringLiteral("flagged_nonzero_distant_from_all_sites")
-                            : QStringLiteral("ok"))
+            << distantFlag.distant_zero_check
+            << distantFlag.characterization
+            << distantFlag.nonzero_channel
+            << csvDouble(hasDistant ? distantMag.mean : kNan)
+            << csvDouble(hasDistant ? distantMag.sd : kNan)
+            << csvDouble(hasDistant ? distantMag.min : kNan)
+            << csvDouble(hasDistant ? distantMag.median : kNan)
+            << csvDouble(hasDistant ? distantMag.max : kNan)
+            << csvDouble(hasDistant ? distantDist.mean : kNan)
+            << csvDouble(hasDistant ? distantDist.min : kNan)
+            << csvDouble(hasDistant ? distantDist.median : kNan)
+            << csvDouble(hasDistant ? distantDist.max : kNan)
             << (support.may_emit_coupling ? csvDouble(null.perm_p) : QString())
+            << (support.may_emit_coupling && finite(null.perm_p) ? QStringLiteral("computed")
+                                                                 : QStringLiteral("not_computable"))
             << (support.may_emit_coupling ? csvDouble(null.null_slope_mean) : QString())
             << (support.may_emit_coupling ? csvDouble(null.null_slope_sd) : QString())
             << (support.may_emit_coupling ? csvDouble(null.obs_slope_z) : QString())
@@ -948,7 +1074,7 @@ bool emitRidgeTable(const QString& outDir,
             << QString::number(static_cast<qulonglong>(b.wt_n))
             << QString::number(static_cast<qulonglong>(b.ala_n))
             << QString::number(static_cast<qulonglong>(b.matched_atom_n))
-            << QStringLiteral("refolded_wt_ala_components;no_prebaked_delta_channel");
+            << QStringLiteral("engine_fold_adapter_v1;wt_ala_refolded;molecular_frame_projected_when_available;no_prebaked_delta_channel");
         writeCsvLine(ts, row);
     }
     return true;
@@ -973,6 +1099,10 @@ bool emitOverlayTable(const QString& outDir,
             const int residueIdx = header.indexOf(QStringLiteral("residue_type"));
             const int atomIdx = header.indexOf(QStringLiteral("atom_name"));
             const int elemIdx = header.indexOf(QStringLiteral("element"));
+            const int hybIdx = header.indexOf(QStringLiteral("hyb"));
+            const int contactIdx = header.indexOf(QStringLiteral("contact_class"));
+            const int dihedralIdx = header.indexOf(QStringLiteral("dihedral_region"));
+            const int ssIdx = header.indexOf(QStringLiteral("SS"));
             const int sigmaIdx = header.indexOf(QStringLiteral("sigma_iso"));
             const int validIdx = header.indexOf(QStringLiteral("sigma_valid"));
             while (!in.atEnd()) {
@@ -985,8 +1115,22 @@ bool emitOverlayTable(const QString& outDir,
                 const double sigma = cols[sigmaIdx].toDouble(&ok);
                 if (!ok || !finite(sigma))
                     continue;
-                const QString k = cols[residueIdx] + QLatin1Char('|') + cols[atomIdx]
-                                  + QLatin1Char('|') + cols[elemIdx];
+                QString k;
+                if (hybIdx >= 0 && contactIdx >= 0 && dihedralIdx >= 0 && ssIdx >= 0
+                    && cols.size() > std::max({hybIdx, contactIdx, dihedralIdx, ssIdx})) {
+                    Axis2ContextKeyFields f;
+                    f.element = cols[elemIdx];
+                    f.residue_type = cols[residueIdx];
+                    f.atom_name = cols[atomIdx];
+                    f.hyb = cols[hybIdx];
+                    f.contact_class = cols[contactIdx];
+                    f.dihedral_region = cols[dihedralIdx];
+                    f.SS = cols[ssIdx];
+                    k = BuildAxis2ContextKey(f).canonical;
+                } else {
+                    k = cols[residueIdx] + QLatin1Char('|') + cols[atomIdx]
+                        + QLatin1Char('|') + cols[elemIdx];
+                }
                 Axis1Aggregate& agg = axis1Effect[k];
                 agg.sum += sigma;
                 agg.sum_sq += sigma * sigma;
@@ -1014,10 +1158,12 @@ bool emitOverlayTable(const QString& outDir,
     });
     for (const auto& item : acc.cells()) {
         const CohortCellTruth& cell = item.second;
-        const QString axis1Key = cell.key.fields.residue_type + QLatin1Char('|')
-                                 + cell.key.fields.atom_name + QLatin1Char('|')
-                                 + cell.key.fields.element;
-        const DistributionSummary sigma = SummarizeDistribution(collectSigma(cell));
+        const QString identityOnlyKey = cell.key.fields.residue_type + QLatin1Char('|')
+                                        + cell.key.fields.atom_name + QLatin1Char('|')
+                                        + cell.key.fields.element;
+        const bool contextJoinAvailable = axis1Effect.contains(cell.key.canonical);
+        const QString axis1Key = contextJoinAvailable ? cell.key.canonical : identityOnlyKey;
+        const DistributionSummary sigma = cell.sigma.summary();
         const SupportCredential axis2Support = CredentialSupport(cell.proteins.size(), true, thresholds);
         const Axis1Aggregate axis1 = axis1Effect.value(axis1Key);
         const SupportCredential axis1Support = CredentialSupport(axis1.n, axis1.n > 0, thresholds);
@@ -1064,13 +1210,15 @@ bool emitOverlayTable(const QString& outDir,
                 ? (mayEmitEffect ? QStringLiteral("static_only") : QStringLiteral("underpowered"))
                 : QStringLiteral("compare"),
             QStringLiteral("protein_centered"),
-            QStringLiteral("kernel_scales"),
             QStringLiteral("protein_sd_retained"),
+            QStringLiteral("kernel_scales"),
             support.support_class == SupportClass::Full ? QStringLiteral("computed_in_independence_table")
                                                         : QString(),
             QStringLiteral("stage1_bmrb_normalization_audit"),
             effectTrajectory.isEmpty() ? QStringLiteral("axis1_crosswalk_missing")
-                                       : QStringLiteral("identity_level_axis1_context_crosswalk"),
+                                       : (contextJoinAvailable
+                                              ? QStringLiteral("identity_context_axis1_crosswalk")
+                                              : QStringLiteral("identity_level_axis1_context_crosswalk")),
             axis1.n ? axis1Support.support_name : QStringLiteral("missing"),
             axis2Support.support_name,
             support.support_name,
@@ -1106,9 +1254,17 @@ bool emitSharedLedgers(const QString& outDir,
     manifest.insert(QStringLiteral("ridge_rows"), static_cast<qint64>(stats.ridge_rows));
     manifest.insert(QStringLiteral("distinct_identities"), static_cast<qint64>(stats.distinct_identities));
     manifest.insert(QStringLiteral("distinct_elements"), static_cast<qint64>(stats.distinct_elements));
+    manifest.insert(QStringLiteral("resident_samples_retained"),
+                    static_cast<qint64>(stats.resident_samples_retained));
+    manifest.insert(QStringLiteral("max_retained_accumulator_values_per_cell"),
+                    static_cast<qint64>(stats.max_retained_accumulator_values_per_cell));
+    manifest.insert(QStringLiteral("accumulator_residency_model"),
+                    QStringLiteral("cell_bounded_running_accumulators;no_CohortSample_vectors;fixed_reservoir_per_distribution"));
     manifest.insert(QStringLiteral("bounded_memory_diagnostic"),
-                    QStringLiteral("max_atoms_in_resident_protein=%1; accumulators_persist_proteins_ephemeral")
-                        .arg(stats.max_atoms_in_resident_protein));
+                    QStringLiteral("max_atoms_in_resident_protein=%1;resident_samples_retained=%2;max_retained_accumulator_values_per_cell=%3")
+                        .arg(stats.max_atoms_in_resident_protein)
+                        .arg(stats.resident_samples_retained)
+                        .arg(stats.max_retained_accumulator_values_per_cell));
     QJsonArray delta;
     for (const QString& s : deltaAudit) delta.append(s);
     manifest.insert(QStringLiteral("delta_loader_fields"), delta);
@@ -1125,6 +1281,10 @@ bool emitSharedLedgers(const QString& outDir,
     writeCsvLine(ts, {QStringLiteral("support_N_min"), QString::number(options.supportThresholds.n_min)});
     writeCsvLine(ts, {QStringLiteral("support_N_full"), QString::number(options.supportThresholds.n_full)});
     writeCsvLine(ts, {QStringLiteral("molcomp_order"), QStringLiteral("xx,yy,xy,xz,yz,zz")});
+    writeCsvLine(ts, {QStringLiteral("resident_samples_retained"),
+                      QString::number(stats.resident_samples_retained)});
+    writeCsvLine(ts, {QStringLiteral("accumulator_residency_model"),
+                      QStringLiteral("cell_bounded_running_accumulators")});
     writeCsvLine(ts, {QStringLiteral("delta_fields"), deltaAudit.join(QLatin1Char(';'))});
 
     QFile missing(QDir(outDir).filePath(QStringLiteral("missing_or_structural_absence.csv")));
@@ -1240,34 +1400,43 @@ bool RunCohortAxis2(const Axis2RunOptions& options,
                 ++local.static_samples;
             }
             if (delta && atom < delta->matched_axis_count) {
-                const model::Mat3 wt = totalTensor(delta->wt_dia, delta->wt_para, atom);
-                const model::Mat3 ala = totalTensor(delta->ala_dia, delta->ala_para, atom);
-                const model::Mat3 d = wt - ala;
-                const model::Mat3 diaD = matFromArray(delta->wt_dia, atom) - matFromArray(delta->ala_dia, atom);
-                const model::Mat3 paraD = matFromArray(delta->wt_para, atom) - matFromArray(delta->ala_para, atom);
-                const double deltaSigma = iso(d);
+                const model::Mat3 wtDia = matFromArray(delta->wt_dia, atom);
+                const model::Mat3 wtPara = matFromArray(delta->wt_para, atom);
+                const model::Mat3 alaDia = matFromArray(delta->ala_dia, atom);
+                const model::Mat3 alaPara = matFromArray(delta->ala_para, atom);
+                const Axis2FoldedTensor wtFold = FoldAxis2TensorChannels(wtDia, wtPara, sample.molecular_axes);
+                const Axis2FoldedTensor alaFold = FoldAxis2TensorChannels(alaDia, alaPara, sample.molecular_axes);
+                const Axis2FoldedTensor wtDiaFold = FoldAxis2TensorChannels(wtDia, sample.molecular_axes);
+                const Axis2FoldedTensor alaDiaFold = FoldAxis2TensorChannels(alaDia, sample.molecular_axes);
+                const Axis2FoldedTensor wtParaFold = FoldAxis2TensorChannels(wtPara, sample.molecular_axes);
+                const Axis2FoldedTensor alaParaFold = FoldAxis2TensorChannels(alaPara, sample.molecular_axes);
+                const bool projected = wtFold.molecular_frame_projected && alaFold.molecular_frame_projected;
+                const double deltaSigma = wtFold.sigma_iso - alaFold.sigma_iso;
                 addRidge(&ridgeBuckets, sample, QStringLiteral("mutation_contact_kernel"),
                          sample.mutation_contact_kernel, deltaSigma, delta->wt_n, delta->ala_n,
                          delta->matched_axis_count);
                 addRidge(&ridgeBuckets, sample, QStringLiteral("delta_eta_H_refolded"),
-                         etaH(wt) - etaH(ala), deltaSigma, delta->wt_n, delta->ala_n,
+                         wtFold.sigma_eta_H - alaFold.sigma_eta_H, deltaSigma, delta->wt_n, delta->ala_n,
                          delta->matched_axis_count);
-                addRidge(&ridgeBuckets, sample, QStringLiteral("delta_mol_xx_refolded"),
-                         d(0, 0), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
-                addRidge(&ridgeBuckets, sample, QStringLiteral("delta_mol_yy_refolded"),
-                         d(1, 1), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
-                addRidge(&ridgeBuckets, sample, QStringLiteral("delta_mol_xy_refolded"),
-                         d(0, 1), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
-                addRidge(&ridgeBuckets, sample, QStringLiteral("delta_mol_xz_refolded"),
-                         d(0, 2), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
-                addRidge(&ridgeBuckets, sample, QStringLiteral("delta_mol_yz_refolded"),
-                         d(1, 2), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
-                addRidge(&ridgeBuckets, sample, QStringLiteral("delta_mol_zz_refolded"),
-                         d(2, 2), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
+                const std::array<QString, 6> molNames = {
+                    QStringLiteral("delta_mol_xx_projected_refolded"),
+                    QStringLiteral("delta_mol_yy_projected_refolded"),
+                    QStringLiteral("delta_mol_xy_projected_refolded"),
+                    QStringLiteral("delta_mol_xz_projected_refolded"),
+                    QStringLiteral("delta_mol_yz_projected_refolded"),
+                    QStringLiteral("delta_mol_zz_projected_refolded")
+                };
+                for (std::size_t ci = 0; ci < molNames.size(); ++ci) {
+                    addRidge(&ridgeBuckets, sample, molNames[ci],
+                             projected ? wtFold.mol_components[ci] - alaFold.mol_components[ci] : kNan,
+                             deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
+                }
                 addRidge(&ridgeBuckets, sample, QStringLiteral("delta_dia_iso_refolded"),
-                         iso(diaD), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
+                         wtDiaFold.sigma_iso - alaDiaFold.sigma_iso, deltaSigma, delta->wt_n, delta->ala_n,
+                         delta->matched_axis_count);
                 addRidge(&ridgeBuckets, sample, QStringLiteral("delta_para_iso_refolded"),
-                         iso(paraD), deltaSigma, delta->wt_n, delta->ala_n, delta->matched_axis_count);
+                         wtParaFold.sigma_iso - alaParaFold.sigma_iso, deltaSigma, delta->wt_n, delta->ala_n,
+                         delta->matched_axis_count);
                 ++local.ridge_samples;
             }
         }
@@ -1277,6 +1446,12 @@ bool RunCohortAxis2(const Axis2RunOptions& options,
     local.ridge_rows = ridgeBuckets.size();
     local.distinct_identities = identitySet.size();
     local.distinct_elements = elementSet.size();
+    local.resident_samples_retained = 0;
+    for (const auto& item : staticAcc.cells()) {
+        local.max_retained_accumulator_values_per_cell =
+            std::max(local.max_retained_accumulator_values_per_cell,
+                     item.second.retainedAccumulatorValueCount());
+    }
 
     if (options.runStatic && staticAcc.cellCount() == 0) {
         if (err_out) *err_out = QStringLiteral("Axis-2 produced no static cells");
@@ -1356,6 +1531,11 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
         if (err_out) *err_out = QStringLiteral("static sigma distribution is not 9-number");
         return false;
     }
+    const QStringList staticColsHeader = parseCsvLine(staticHeader);
+    const int nProteinsIdx = staticColsHeader.indexOf(QStringLiteral("n_proteins"));
+    const int rClQmIdx = staticColsHeader.indexOf(QStringLiteral("r_cl_qm"));
+    const int slopeClQmIdx = staticColsHeader.indexOf(QStringLiteral("slope_cl_qm"));
+    const int rmsdIdx = staticColsHeader.indexOf(QStringLiteral("rmsd_ppm"));
     while (!ss.atEnd()) {
         const QString line = ss.readLine();
         if (line.isEmpty()) continue;
@@ -1371,10 +1551,24 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
             if (err_out) *err_out = QStringLiteral("Axis-2 key contains forbidden Axis-1 context token");
             return false;
         }
-        const QStringList cols = line.split(QLatin1Char(','));
+        const QStringList cols = parseCsvLine(line);
         if (cols.size() > 6) {
             elements.insert(cols[4]);
             identities.insert(cols[3]);
+        }
+        if (nProteinsIdx >= 0 && nProteinsIdx < cols.size()) {
+            bool ok = false;
+            const int nProteins = cols[nProteinsIdx].toInt(&ok);
+            if (ok && nProteins >= 3) {
+                const bool c1Present =
+                    rClQmIdx >= 0 && rClQmIdx < cols.size() && !cols[rClQmIdx].trimmed().isEmpty()
+                    && slopeClQmIdx >= 0 && slopeClQmIdx < cols.size() && !cols[slopeClQmIdx].trimmed().isEmpty()
+                    && rmsdIdx >= 0 && rmsdIdx < cols.size() && !cols[rmsdIdx].trimmed().isEmpty();
+                if (!c1Present) {
+                    if (err_out) *err_out = QStringLiteral("A2-13 audit failed: multi-protein cell has blank C1 agreement stats");
+                    return false;
+                }
+            }
         }
     }
     if (identities.size() <= elements.size()) {
@@ -1384,6 +1578,41 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
                            .arg(elements.size());
         }
         return false;
+    }
+    QFile independenceFile(QDir(outDir).filePath(QStringLiteral("cohort_static_independence.csv")));
+    if (independenceFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&independenceFile);
+        const QString header = in.readLine();
+        if (header.contains(QStringLiteral("spearman_rho"))) {
+            if (err_out) *err_out = QStringLiteral("A2-6 audit failed: stale spearman_rho label present");
+            return false;
+        }
+    }
+
+    QFile ridgeFile(QDir(outDir).filePath(QStringLiteral("mutant_delta_ridge.csv")));
+    if (ridgeFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&ridgeFile);
+        const QString header = in.readLine();
+        if (!header.contains(QStringLiteral("distant_characterization"))
+            || !header.contains(QStringLiteral("distant_nearest_site_distance_A_mean"))) {
+            if (err_out) *err_out = QStringLiteral("A2-9 audit failed: distant characterization columns missing");
+            return false;
+        }
+        if (header.contains(QStringLiteral("delta_mol_xx_refolded"))
+            || header.contains(QStringLiteral("delta_mol_yy_refolded"))) {
+            if (err_out) *err_out = QStringLiteral("A2-8 audit failed: raw-looking delta_mol_*_refolded header present");
+            return false;
+        }
+    }
+
+    QFile manifestFile(QDir(outDir).filePath(QStringLiteral("manifest_audit.json")));
+    if (manifestFile.open(QIODevice::ReadOnly)) {
+        const QJsonObject manifest = QJsonDocument::fromJson(manifestFile.readAll()).object();
+        if (manifest.value(QStringLiteral("resident_samples_retained")).toInt(-1) != 0
+            || manifest.value(QStringLiteral("accumulator_residency_model")).toString().isEmpty()) {
+            if (err_out) *err_out = QStringLiteral("A2-1 audit failed: bounded accumulator residency manifest missing/invalid");
+            return false;
+        }
     }
 
     auto auditNoInsufficientCoupling = [&](const QString& table, const QStringList& couplingNames) -> bool {
@@ -1417,7 +1646,7 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
                                      {QStringLiteral("max_canonical_corr"),
                                       QStringLiteral("mean_canonical_corr"),
                                       QStringLiteral("pearson_r"),
-                                      QStringLiteral("spearman_rho"),
+                                      QStringLiteral("pairwise_pearson_r"),
                                       QStringLiteral("condition_number"),
                                       QStringLiteral("vif"),
                                       QStringLiteral("signed_slope")}))

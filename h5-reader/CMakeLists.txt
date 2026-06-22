@@ -738,6 +738,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         tests/rediscover_cohort_context_tests.cpp
         src/rediscover/CohortContextAccumulator.h
         src/rediscover/CohortContextCore.cpp
+        src/rediscover/DistributionSummary.h
+        src/rediscover/DistributionSummary.cpp
         src/rediscover/DeltaRunData.h
         src/rediscover/DeltaRunData.cpp
         src/rediscover/ScopedProducerCatalog.h

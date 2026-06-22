@@ -2,6 +2,8 @@
 
 #include <QRegularExpression>
 
+#include <Eigen/Dense>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -24,6 +26,51 @@ QString cleanToken(QString v, const QString& fallback = QStringLiteral("unknown"
     v.replace(QLatin1Char('\n'), QLatin1Char('_'));
     v.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral("_"));
     return v.isEmpty() ? fallback : v;
+}
+
+double percentile(const std::vector<double>& sorted, double p) {
+    if (sorted.empty()) return kNan;
+    if (sorted.size() == 1) return sorted.front();
+    const double x = p * static_cast<double>(sorted.size() - 1);
+    const auto lo = static_cast<std::size_t>(std::floor(x));
+    const auto hi = static_cast<std::size_t>(std::ceil(x));
+    const double frac = x - static_cast<double>(lo);
+    return sorted[lo] * (1.0 - frac) + sorted[hi] * frac;
+}
+
+std::array<double, 6> symmetricComponents(const model::Mat3& raw) {
+    const model::Mat3 sym = 0.5 * (raw + raw.transpose());
+    return {sym(0, 0), sym(1, 1), sym(0, 1), sym(0, 2), sym(1, 2), sym(2, 2)};
+}
+
+double iso(const model::Mat3& m) {
+    if (!m.allFinite()) return kNan;
+    const model::Mat3 sym = 0.5 * (m + m.transpose());
+    return (sym(0, 0) + sym(1, 1) + sym(2, 2)) / 3.0;
+}
+
+double etaH(const model::Mat3& raw) {
+    if (!raw.allFinite()) return kNan;
+    const model::Mat3 sym = 0.5 * (raw + raw.transpose());
+    Eigen::SelfAdjointEigenSolver<model::Mat3> es(sym);
+    if (es.info() != Eigen::Success) return kNan;
+    struct Eval {
+        double value = 0.0;
+        double distance = 0.0;
+    };
+    const double isotropic = es.eigenvalues().mean();
+    std::array<Eval, 3> e{};
+    for (int i = 0; i < 3; ++i)
+        e[static_cast<std::size_t>(i)] = {es.eigenvalues()(i), std::abs(es.eigenvalues()(i) - isotropic)};
+    std::sort(e.begin(), e.end(), [](const Eval& a, const Eval& b) {
+        return a.distance < b.distance;
+    });
+    const double xx = e[0].value;
+    const double yy = e[1].value;
+    const double zz = e[2].value;
+    const double denom = zz - isotropic;
+    if (!finite(denom) || std::abs(denom) < 1.0e-12) return kNan;
+    return (yy - xx) / denom;
 }
 
 }  // namespace
@@ -73,6 +120,23 @@ SupportCredential CredentialSupport(std::size_t n_proteins,
         out.may_emit_coupling = false;
         out.may_emit_full_subspace = false;
         out.underpowered_dimensions = QStringLiteral("n<N_min");
+    }
+    return out;
+}
+
+DistantRidgeCharacterization CharacterizeDistantNonzeroRidge(std::size_t distantCount,
+                                                            const QString& anySiteScope,
+                                                            double slope,
+                                                            const QString& channel) {
+    DistantRidgeCharacterization out;
+    out.flagged = distantCount > 0
+                  && finite(slope)
+                  && std::abs(slope) > 0.05
+                  && anySiteScope == QStringLiteral("distant_from_all_sites");
+    if (out.flagged) {
+        out.distant_zero_check = QStringLiteral("flagged_nonzero_distant_from_all_sites");
+        out.characterization = QStringLiteral("characterized_not_gated");
+        out.nonzero_channel = channel;
     }
     return out;
 }
@@ -184,12 +248,211 @@ double ComputeHelixDipoleField(const HelixDipoleInput& input) {
     return field;
 }
 
+void BoundedDistributionAccumulator::add(double v) {
+    ++n;
+    if (!finite(v)) return;
+    ++finite_n;
+    if (finite_n == 1) {
+        mean = v;
+        m2 = 0.0;
+        min = v;
+        max = v;
+    } else {
+        const double delta = v - mean;
+        mean += delta / static_cast<double>(finite_n);
+        m2 += delta * (v - mean);
+        min = std::min(min, v);
+        max = std::max(max, v);
+    }
+    if (reservoir.size() < kReservoirLimit) {
+        reservoir.push_back(v);
+    } else {
+        const std::size_t idx = (finite_n * 1103515245ull + 12345ull) % kReservoirLimit;
+        reservoir[idx] = v;
+    }
+}
+
+DistributionSummary BoundedDistributionAccumulator::summary(std::size_t binCount) const {
+    DistributionSummary s;
+    s.n = n;
+    s.finite_n = finite_n;
+    s.finite_frac = n > 0 ? static_cast<double>(finite_n) / static_cast<double>(n) : 0.0;
+    if (finite_n == 0 || reservoir.empty()) return s;
+
+    std::vector<double> sorted = reservoir;
+    std::sort(sorted.begin(), sorted.end());
+    s.mean = mean;
+    s.sd = finite_n > 1 ? std::sqrt(m2 / static_cast<double>(finite_n - 1)) : 0.0;
+    s.min = min;
+    s.p05 = percentile(sorted, 0.05);
+    s.p25 = percentile(sorted, 0.25);
+    s.median = percentile(sorted, 0.50);
+    s.p75 = percentile(sorted, 0.75);
+    s.p95 = percentile(sorted, 0.95);
+    s.max = max;
+    if (binCount > 0) {
+        s.quantile_bins.assign(binCount, 0);
+        if (max == min) {
+            s.quantile_bins.front() = finite_n;
+        } else {
+            for (double v : sorted) {
+                std::size_t b = static_cast<std::size_t>(
+                    std::floor((v - min) / (max - min) * static_cast<double>(binCount)));
+                if (b >= binCount) b = binCount - 1;
+                ++s.quantile_bins[b];
+            }
+        }
+    }
+    return s;
+}
+
+void RunningMeanAccumulator::add(double v) {
+    if (!finite(v)) return;
+    ++n;
+    sum += v;
+}
+
+double RunningMeanAccumulator::meanValue() const {
+    return n > 0 ? sum / static_cast<double>(n) : kNan;
+}
+
+void PairAccumulator::add(double x, double y) {
+    if (!finite(x) || !finite(y)) return;
+    ++n;
+    sx += x;
+    sy += y;
+    sxx += x * x;
+    syy += y * y;
+    sxy += x * y;
+}
+
+double PairAccumulator::slope() const {
+    if (n < 2) return kNan;
+    const double nn = static_cast<double>(n);
+    const double den = sxx - sx * sx / nn;
+    if (!(den > 0.0)) return kNan;
+    return (sxy - sx * sy / nn) / den;
+}
+
+double PairAccumulator::pearson() const {
+    if (n < 2) return kNan;
+    const double nn = static_cast<double>(n);
+    const double vx = sxx - sx * sx / nn;
+    const double vy = syy - sy * sy / nn;
+    const double cov = sxy - sx * sy / nn;
+    const double den = std::sqrt(vx * vy);
+    return den > 0.0 ? cov / den : kNan;
+}
+
+ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell,
+                                                         double buckinghamA) {
+    std::vector<double> cl;
+    std::vector<double> qm;
+    std::vector<double> residuals;
+    cl.reserve(static_cast<std::size_t>(cell.protein_folds.size()));
+    qm.reserve(static_cast<std::size_t>(cell.protein_folds.size()));
+    residuals.reserve(static_cast<std::size_t>(cell.protein_folds.size()));
+    double ss = 0.0;
+    for (auto it = cell.protein_folds.begin(); it != cell.protein_folds.end(); ++it) {
+        const CohortProteinFold& p = it.value();
+        const double sigma = p.sigma.meanValue();
+        const double apbs = p.channels.value(QStringLiteral("apbs_E_mag")).meanValue();
+        const double ring = p.channels.value(QStringLiteral("ring_bs_iso")).meanValue();
+        const double mc = p.channels.value(QStringLiteral("mc_lit_iso")).meanValue();
+        const double classical = buckinghamA * apbs + ring + mc;
+        if (!finite(sigma) || !finite(classical)) continue;
+        cl.push_back(classical);
+        qm.push_back(sigma);
+        const double residual = sigma - classical;
+        residuals.push_back(residual);
+        ss += residual * residual;
+    }
+    ClassicalAgreementStats out;
+    out.r = PearsonR(cl, qm);
+    out.slope = LinearSlope(cl, qm);
+    if (!residuals.empty()) {
+        out.rmsd = std::sqrt(ss / static_cast<double>(residuals.size()));
+        const DistributionSummary res = SummarizeDistribution(residuals);
+        out.residual_mean = res.mean;
+        out.residual_sd = res.sd;
+    }
+    return out;
+}
+
+Axis2FoldedTensor FoldAxis2TensorChannels(const model::Mat3& raw,
+                                          const std::optional<model::Mat3>& molecularAxes) {
+    Axis2FoldedTensor out;
+    out.sigma_iso = iso(raw);
+    out.sigma_eta_H = etaH(raw);
+    if (molecularAxes && molecularAxes->allFinite()) {
+        const model::Mat3 local = molecularAxes->transpose() * raw * (*molecularAxes);
+        if (local.allFinite()) {
+            out.mol_components = symmetricComponents(local);
+            out.molecular_frame_projected = true;
+            out.projection = QStringLiteral("molecular_frame_projected:R^T*T*R");
+        }
+    }
+    if (!out.molecular_frame_projected) {
+        out.projection = QStringLiteral("molecular_frame_unavailable_no_raw_lab_fallback");
+    }
+    return out;
+}
+
+Axis2FoldedTensor FoldAxis2TensorChannels(const model::Mat3& dia,
+                                          const model::Mat3& para,
+                                          const std::optional<model::Mat3>& molecularAxes) {
+    return FoldAxis2TensorChannels(dia + para, molecularAxes);
+}
+
+std::size_t CohortCellTruth::retainedAccumulatorValueCount() const {
+    std::size_t n = sigma.retainedValueCount()
+                    + mol_xx.retainedValueCount()
+                    + mol_yy.retainedValueCount()
+                    + mol_xy.retainedValueCount()
+                    + mol_xz.retainedValueCount()
+                    + mol_yz.retainedValueCount()
+                    + mol_zz.retainedValueCount()
+                    + eta_H.retainedValueCount()
+                    + helix_dipole_field.retainedValueCount();
+    for (const auto& item : channel_distributions)
+        n += item.retainedValueCount();
+    return n;
+}
+
 void CohortContextAccumulator::push(const CohortSample& sample) {
     CohortCellTruth& cell = cells_[sample.key.canonical];
     if (cell.key.canonical.isEmpty())
         cell.key = sample.key;
     cell.proteins.insert(sample.protein_id);
-    cell.samples.push_back(sample);
+    ++cell.sample_count;
+    cell.sigma.add(sample.sigma_iso);
+    cell.mol_xx.add(sample.mol_xx);
+    cell.mol_yy.add(sample.mol_yy);
+    cell.mol_xy.add(sample.mol_xy);
+    cell.mol_xz.add(sample.mol_xz);
+    cell.mol_yz.add(sample.mol_yz);
+    cell.mol_zz.add(sample.mol_zz);
+    cell.eta_H.add(sample.sigma_eta_H);
+    cell.helix_dipole_field.add(sample.helix_dipole_field);
+    cell.psi_iminus1_vs_sigma.add(sample.psi_iminus1, sample.sigma_iso);
+    cell.psi_own_vs_sigma.add(sample.psi_own, sample.sigma_iso);
+
+    if (sample.backbone_n && cell.psi_iminus1_region == QStringLiteral("not_backbone_N")) {
+        cell.psi_iminus1_region = sample.psi_iminus1_region.isEmpty()
+                                      ? QStringLiteral("unknown")
+                                      : sample.psi_iminus1_region;
+        cell.predecessor_identity = sample.predecessor_identity.isEmpty()
+                                        ? QStringLiteral("unknown")
+                                        : sample.predecessor_identity;
+    }
+
+    CohortProteinFold& protein = cell.protein_folds[sample.protein_id];
+    protein.sigma.add(sample.sigma_iso);
+    for (auto it = sample.channels.begin(); it != sample.channels.end(); ++it) {
+        cell.channel_distributions[it.key()].add(it.value());
+        cell.channel_vs_sigma[it.key()].add(it.value(), sample.sigma_iso);
+        protein.channels[it.key()].add(it.value());
+    }
     ++sample_count_;
 }
 

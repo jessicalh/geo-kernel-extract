@@ -6,6 +6,8 @@
 #include "LocalFrameBasis.h"
 #include "LiteratureConstants.h"
 #include "McConnellLiteratureKernel.h"
+#include "RamaRegion.h"
+#include "RowDesign.h"
 #include "SphericalBasis.h"
 #include "SubspaceCompare.h"
 #include "TensorConventionGuard.h"
@@ -374,19 +376,57 @@ QString aromaticityName(model::RingAromaticity a) {
     return QStringLiteral("Unknown");
 }
 
-QString ss8Name(SecondaryStructure8 ss8) {
-    switch (ss8) {
-    case SecondaryStructure8::H: return QStringLiteral("H");
-    case SecondaryStructure8::G: return QStringLiteral("G");
-    case SecondaryStructure8::I: return QStringLiteral("I");
-    case SecondaryStructure8::E: return QStringLiteral("E");
-    case SecondaryStructure8::B: return QStringLiteral("B");
-    case SecondaryStructure8::T: return QStringLiteral("T");
-    case SecondaryStructure8::S: return QStringLiteral("S");
-    case SecondaryStructure8::C: return QStringLiteral("C");
-    case SecondaryStructure8::Unknown: return QStringLiteral("Unknown");
+QString ss3ContextName(SecondaryStructure3 ss3) {
+    switch (ss3) {
+    case SecondaryStructure3::Helix: return QStringLiteral("helix");
+    case SecondaryStructure3::Sheet: return QStringLiteral("sheet");
+    case SecondaryStructure3::Coil: return QStringLiteral("coil");
+    case SecondaryStructure3::Unknown: return QStringLiteral("unknown");
     }
-    return QStringLiteral("Unknown");
+    return QStringLiteral("unknown");
+}
+
+QString dihedralBinContextName(int8_t bin) {
+    switch (bin) {
+    case 0: return QStringLiteral("neg");
+    case 1: return QStringLiteral("mid");
+    case 2: return QStringLiteral("pos");
+    default: return QStringLiteral("unknown");
+    }
+}
+
+QString dihedralContextName(const ResidentIndexes& idx, std::size_t atom, std::size_t step) {
+    const DihedralState phi = idx.dihedrals.state(DihedralKind::Phi, atom, step);
+    const DihedralState psi = idx.dihedrals.state(DihedralKind::Psi, atom, step);
+    if (phi.present && psi.present)
+        return QString::fromLatin1(NameForRowRama(ClassifyRowRama(phi.radians, psi.radians)));
+    if (psi.present) return QStringLiteral("psi_%1").arg(dihedralBinContextName(psi.fixed_bin));
+    if (phi.present) return QStringLiteral("phi_%1").arg(dihedralBinContextName(phi.fixed_bin));
+    return QStringLiteral("unknown");
+}
+
+QString nearestContactClassContext(const Body& body, std::size_t atom, std::size_t step) {
+    if (!body.run.protein || atom >= body.run.protein->atomCount())
+        return QStringLiteral("unknown");
+    const model::QtProtein& protein = *body.run.protein;
+    const model::QtAtom& target = protein.atom(atom);
+    if (target.residueIndex < 0) return QStringLiteral("unknown");
+    const Vec3 p = verbs::pos(body, atom, step);
+    double best = std::numeric_limits<double>::infinity();
+    int bestResidue = -1;
+    for (std::size_t other = 0; other < protein.atomCount(); ++other) {
+        const model::QtAtom& oa = protein.atom(other);
+        if (oa.residueIndex < 0 || oa.residueIndex == target.residueIndex) continue;
+        const Vec3 q = verbs::pos(body, other, step);
+        const double d2 = (p - q).squaredNorm();
+        if (d2 < best) {
+            best = d2;
+            bestResidue = oa.residueIndex;
+        }
+    }
+    if (bestResidue < 0 || best > 36.0) return QStringLiteral("no_contact");
+    return QString::fromLatin1(
+        NameForResidueClass(ClassifyResidue(protein.residue(static_cast<std::size_t>(bestResidue)).aminoAcid)));
 }
 
 QString uid(const QString& type, std::size_t index) {
@@ -2729,6 +2769,19 @@ public:
             const std::size_t missingSupportN = sigmaPresent ? 0u : 1u;
             const QString missingSupportReason =
                 sigmaPresent ? QString() : QStringLiteral("missing_sigma");
+            QString hybContext = QStringLiteral("unknown");
+            if (static_hybridisation_ord_ >= static_cast<int>(model::Hybridisation::sp)
+                && static_hybridisation_ord_ <= static_cast<int>(model::Hybridisation::Unassigned)) {
+                hybContext = hybridName(static_cast<model::Hybridisation>(static_hybridisation_ord_)).toLower();
+                if (hybContext == QStringLiteral("unassigned")) hybContext = QStringLiteral("unknown");
+            }
+            const SecondaryStructureState ssContext =
+                body_.idx.secondaryStructure.state(atom_, step);
+            const QString contactContext = nearestContactClassContext(body_, atom_, step);
+            const QString dihedralContext = dihedralContextName(body_.idx, atom_, step);
+            const QString ssContextName = ssContext.observed
+                                              ? ss3ContextName(ssContext.ss3)
+                                              : QStringLiteral("unknown");
 
             QStringList cells;
             cells << QStringLiteral("bounded_sigma_v1")
@@ -2769,7 +2822,11 @@ public:
                   << csvNum(static_cast<double>(finiteSupportN))
                   << csvBool(finiteSupportN == 1)
                   << QString::number(static_cast<qulonglong>(missingSupportN))
-                  << csvEscape(missingSupportReason);
+                  << csvEscape(missingSupportReason)
+                  << csvEscape(hybContext)
+                  << csvEscape(contactContext)
+                  << csvEscape(dihedralContext)
+                  << csvEscape(ssContextName);
             out << cells.join(QLatin1Char(',')) << '\n';
             ++rows;
             ++sigmaOrdinal;
@@ -7450,7 +7507,8 @@ void AnalysisAtom::WriteBoundedSigmaHeader(QTextStream& out) {
            "molcomp_yz,molcomp_zz,invariant_span,invariant_aniso,invariant_eta_H,"
            "invariant_skew,invariant_frobenius,antisymmetric_norm,t1_fraction,"
            "mol_frobenius,sigma_roundtrip_abs,support_class,finite_frac,"
-           "singleton_flag,missing_n,missing_reason\n";
+           "singleton_flag,missing_n,missing_reason,hyb,contact_class,"
+           "dihedral_region,SS\n";
 }
 
 void AnalysisAtom::WriteClassicalSourceTermHeader(QTextStream& out) {

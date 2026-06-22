@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <array>
 #include <optional>
 #include <vector>
 
@@ -62,10 +63,10 @@ SupportCredential CredentialSupport(std::size_t n_proteins,
 
 struct PermutationNull {
     int permutation_K = 0;
-    double null_slope_mean = 0.0;
-    double null_slope_sd = 0.0;
-    double obs_slope_z = 0.0;
-    double perm_p = 1.0;
+    double null_slope_mean = std::numeric_limits<double>::quiet_NaN();
+    double null_slope_sd = std::numeric_limits<double>::quiet_NaN();
+    double obs_slope_z = std::numeric_limits<double>::quiet_NaN();
+    double perm_p = std::numeric_limits<double>::quiet_NaN();
 };
 
 double LinearSlope(const std::vector<double>& x, const std::vector<double>& y);
@@ -82,6 +83,84 @@ struct HelixDipoleInput {
 };
 
 double ComputeHelixDipoleField(const HelixDipoleInput& input);
+
+struct BoundedDistributionAccumulator {
+    static constexpr std::size_t kReservoirLimit = 257;
+
+    void add(double v);
+    DistributionSummary summary(std::size_t binCount = 5) const;
+    std::size_t retainedValueCount() const { return reservoir.size(); }
+
+    std::size_t n = 0;
+    std::size_t finite_n = 0;
+    double mean = 0.0;
+    double m2 = 0.0;
+    double min = std::numeric_limits<double>::quiet_NaN();
+    double max = std::numeric_limits<double>::quiet_NaN();
+    std::vector<double> reservoir;
+};
+
+struct RunningMeanAccumulator {
+    void add(double v);
+    double meanValue() const;
+
+    std::size_t n = 0;
+    double sum = 0.0;
+};
+
+struct PairAccumulator {
+    void add(double x, double y);
+    double slope() const;
+    double pearson() const;
+
+    std::size_t n = 0;
+    double sx = 0.0;
+    double sy = 0.0;
+    double sxx = 0.0;
+    double syy = 0.0;
+    double sxy = 0.0;
+};
+
+struct ClassicalAgreementStats {
+    double r = std::numeric_limits<double>::quiet_NaN();
+    double slope = std::numeric_limits<double>::quiet_NaN();
+    double rmsd = std::numeric_limits<double>::quiet_NaN();
+    double residual_mean = std::numeric_limits<double>::quiet_NaN();
+    double residual_sd = std::numeric_limits<double>::quiet_NaN();
+};
+
+struct DistantRidgeCharacterization {
+    bool flagged = false;
+    QString distant_zero_check = QStringLiteral("ok");
+    QString characterization;
+    QString nonzero_channel;
+};
+
+DistantRidgeCharacterization CharacterizeDistantNonzeroRidge(std::size_t distantCount,
+                                                            const QString& anySiteScope,
+                                                            double slope,
+                                                            const QString& channel);
+
+struct Axis2FoldedTensor {
+    double sigma_iso = std::numeric_limits<double>::quiet_NaN();
+    double sigma_eta_H = std::numeric_limits<double>::quiet_NaN();
+    std::array<double, 6> mol_components = {
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN()
+    };
+    bool molecular_frame_projected = false;
+    QString projection;
+};
+
+Axis2FoldedTensor FoldAxis2TensorChannels(const model::Mat3& raw,
+                                          const std::optional<model::Mat3>& molecularAxes = std::nullopt);
+Axis2FoldedTensor FoldAxis2TensorChannels(const model::Mat3& dia,
+                                          const model::Mat3& para,
+                                          const std::optional<model::Mat3>& molecularAxes = std::nullopt);
 
 struct CohortSample {
     Axis2ContextKey key;
@@ -108,14 +187,42 @@ struct CohortSample {
     QString any_site_scope;
     bool near_mutation = false;
     bool distant_from_all_sites = true;
+    std::optional<model::Mat3> molecular_axes;
     QMap<QString, double> channels;
+};
+
+struct CohortProteinFold {
+    RunningMeanAccumulator sigma;
+    QMap<QString, RunningMeanAccumulator> channels;
 };
 
 struct CohortCellTruth {
     Axis2ContextKey key;
     QSet<QString> proteins;
-    std::vector<CohortSample> samples;
+    std::size_t sample_count = 0;
+    BoundedDistributionAccumulator sigma;
+    BoundedDistributionAccumulator mol_xx;
+    BoundedDistributionAccumulator mol_yy;
+    BoundedDistributionAccumulator mol_xy;
+    BoundedDistributionAccumulator mol_xz;
+    BoundedDistributionAccumulator mol_yz;
+    BoundedDistributionAccumulator mol_zz;
+    BoundedDistributionAccumulator eta_H;
+    BoundedDistributionAccumulator helix_dipole_field;
+    QMap<QString, BoundedDistributionAccumulator> channel_distributions;
+    QMap<QString, PairAccumulator> channel_vs_sigma;
+    PairAccumulator psi_iminus1_vs_sigma;
+    PairAccumulator psi_own_vs_sigma;
+    QMap<QString, CohortProteinFold> protein_folds;
+    QString psi_iminus1_region = QStringLiteral("not_backbone_N");
+    QString predecessor_identity = QStringLiteral("not_backbone_N");
+
+    std::size_t retainedSampleCount() const { return 0; }
+    std::size_t retainedAccumulatorValueCount() const;
 };
+
+ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell,
+                                                         double buckinghamA);
 
 class CohortContextAccumulator {
 public:
@@ -151,6 +258,8 @@ struct Axis2RunStats {
     std::size_t distinct_identities = 0;
     std::size_t distinct_elements = 0;
     std::size_t max_atoms_in_resident_protein = 0;
+    std::size_t resident_samples_retained = 0;
+    std::size_t max_retained_accumulator_values_per_cell = 0;
     std::size_t delta_refusals = 0;
     QStringList refusal_reasons;
 };
