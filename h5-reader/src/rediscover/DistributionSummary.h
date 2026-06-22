@@ -34,20 +34,4 @@ DistributionSummary SummarizeDistribution(const std::vector<double>& values,
 
 QJsonObject DistributionSummaryJson(const DistributionSummary& summary);
 
-struct SigmaDistributionSummary {
-    DistributionSummary sigma_iso;
-    DistributionSummary span;
-    DistributionSummary eta_H;
-    DistributionSummary frobenius;
-};
-
-struct PasShapeT1Summary {
-    DistributionSummary eta_H;
-    DistributionSummary span;
-    DistributionSummary maryland_skew;
-    DistributionSummary t1_fraction;
-    QString convention = QStringLiteral("haeberlen_distance_from_isotropic_v1");
-    QString pas_axis_continuity = QStringLiteral("trajectory_sign_continuity_used");
-};
-
 }  // namespace h5reader::rediscover

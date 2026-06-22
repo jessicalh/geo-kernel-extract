@@ -1,5 +1,6 @@
 #include "AnalysisAtom.h"
 
+#include "ClassicalSourceMath.h"
 #include "DistributionSummary.h"
 #include "ExtractionSupport.h"
 #include "LocalFrameBasis.h"
@@ -7,6 +8,7 @@
 #include "McConnellLiteratureKernel.h"
 #include "SphericalBasis.h"
 #include "SubspaceCompare.h"
+#include "TensorConventionGuard.h"
 #include "Verbs.h"
 
 #include "../io/QtFieldCatalog.gen.h"
@@ -729,6 +731,9 @@ int molecularFrameKindOrd(const QString& kind) {
     if (kind == QStringLiteral("sidechain_guanidinium")) return 6;
     if (kind == QStringLiteral("sidechain_carboxamide")) return 7;
     if (kind == QStringLiteral("backbone_amide_h")) return 8;
+    if (kind == QStringLiteral("backbone_ca")) return 9;
+    if (kind == QStringLiteral("aliphatic_carbon")) return 10;
+    if (kind == QStringLiteral("hydroxyl_oxygen")) return 11;
     return -1;
 }
 
@@ -1446,6 +1451,308 @@ std::pair<double, double> olsSlopeCi95(const std::vector<double>& x,
     if (!finite(se)) return {kNaN, kNaN};
     constexpr double z95 = 1.959963984540054;
     return {fit.slope - z95 * se, fit.slope + z95 * se};
+}
+
+QString supportClass(std::size_t finiteN) {
+    if (finiteN == 0) return QStringLiteral("empty");
+    if (finiteN == 1) return QStringLiteral("singleton");
+    if (finiteN < 10) return QStringLiteral("very_low");
+    if (finiteN < 30) return QStringLiteral("low");
+    return QStringLiteral("standard");
+}
+
+bool summaryPresent(const DistributionSummary& s) {
+    return s.finite_n > 0;
+}
+
+void appendDistributionHeader(QStringList& cols, const QString& prefix) {
+    cols << prefix + QStringLiteral("_n")
+         << prefix + QStringLiteral("_finite_n")
+         << prefix + QStringLiteral("_finite_frac")
+         << prefix + QStringLiteral("_mean")
+         << prefix + QStringLiteral("_sd")
+         << prefix + QStringLiteral("_min")
+         << prefix + QStringLiteral("_p05")
+         << prefix + QStringLiteral("_p25")
+         << prefix + QStringLiteral("_median")
+         << prefix + QStringLiteral("_p75")
+         << prefix + QStringLiteral("_p95")
+         << prefix + QStringLiteral("_max");
+}
+
+void appendDistributionCells(QStringList& cells, const DistributionSummary& s) {
+    cells << QString::number(static_cast<qulonglong>(s.n))
+          << QString::number(static_cast<qulonglong>(s.finite_n))
+          << csvNum(s.finite_frac)
+          << csvNum(summaryPresent(s) ? s.mean : kNaN)
+          << csvNum(summaryPresent(s) ? s.sd : kNaN)
+          << csvNum(summaryPresent(s) ? s.min : kNaN)
+          << csvNum(summaryPresent(s) ? s.p05 : kNaN)
+          << csvNum(summaryPresent(s) ? s.p25 : kNaN)
+          << csvNum(summaryPresent(s) ? s.median : kNaN)
+          << csvNum(summaryPresent(s) ? s.p75 : kNaN)
+          << csvNum(summaryPresent(s) ? s.p95 : kNaN)
+          << csvNum(summaryPresent(s) ? s.max : kNaN);
+}
+
+QStringList classicalSourceHeaderColumns() {
+    QStringList cols = {
+        QStringLiteral("schema_version"),
+        QStringLiteral("granularity"),
+        QStringLiteral("dataset_id"),
+        QStringLiteral("protein_id"),
+        QStringLiteral("atom_uid"),
+        QStringLiteral("atom_index"),
+        QStringLiteral("residue_index"),
+        QStringLiteral("residue_number"),
+        QStringLiteral("residue_type"),
+        QStringLiteral("atom_name"),
+        QStringLiteral("element"),
+        QStringLiteral("backbone_role"),
+        QStringLiteral("frame_kind"),
+        QStringLiteral("frame_kind_ord"),
+        QStringLiteral("n_instances"),
+        QStringLiteral("finite_n"),
+        QStringLiteral("finite_frac"),
+        QStringLiteral("support_class"),
+        QStringLiteral("singleton_flag"),
+        QStringLiteral("missing_n"),
+        QStringLiteral("missing_reason"),
+        QStringLiteral("sigma_cl_formula"),
+        QStringLiteral("formula_terms_present"),
+        QStringLiteral("sigma0_term_present"),
+        QStringLiteral("sigma0_constant_status"),
+        QStringLiteral("buckingham_linear_term_present"),
+        QStringLiteral("buckingham_linear_constant_status"),
+        QStringLiteral("buckingham_quadratic_term_present"),
+        QStringLiteral("buckingham_quadratic_constant_status"),
+        QStringLiteral("ring_term_present"),
+        QStringLiteral("ring_constant_status"),
+        QStringLiteral("mcconnell_term_present"),
+        QStringLiteral("mcconnell_constant_status"),
+        QStringLiteral("larsen_term_present"),
+        QStringLiteral("larsen_constant_status"),
+    };
+    for (const QString& prefix : {
+             QStringLiteral("sigma_qm"),
+             QStringLiteral("sigma0"),
+             QStringLiteral("contrib_buckingham_linear"),
+             QStringLiteral("contrib_buckingham_quadratic"),
+             QStringLiteral("contrib_ring"),
+             QStringLiteral("contrib_mcconnell"),
+             QStringLiteral("contrib_larsen"),
+             QStringLiteral("sigma_cl"),
+             QStringLiteral("residual"),
+         }) {
+        appendDistributionHeader(cols, prefix);
+    }
+    cols << QStringLiteral("slope_cl_qm")
+         << QStringLiteral("slope_ci_low")
+         << QStringLiteral("slope_ci_high")
+         << QStringLiteral("r_cl_qm")
+         << QStringLiteral("rmsd_ppm")
+         << QStringLiteral("residual_mean")
+         << QStringLiteral("residual_sd")
+         << QStringLiteral("scale_factor")
+         << QStringLiteral("tracking_label")
+         << QStringLiteral("constant_placeholder_n");
+    return cols;
+}
+
+QString termsPresentString(bool sigma0Present,
+                           bool buckLinearPresent,
+                           bool buckQuadraticPresent,
+                           bool ringPresent,
+                           bool mcPresent,
+                           bool larsenPresent) {
+    QStringList terms;
+    if (sigma0Present) terms << QStringLiteral("sigma0");
+    if (buckLinearPresent) terms << QStringLiteral("buckingham_linear");
+    if (buckQuadraticPresent) terms << QStringLiteral("buckingham_quadratic");
+    if (ringPresent) terms << QStringLiteral("ring");
+    if (mcPresent) terms << QStringLiteral("mcconnell");
+    if (larsenPresent) terms << QStringLiteral("larsen");
+    return terms.join(QLatin1Char('+'));
+}
+
+double rmsd(const std::vector<double>& residuals) {
+    double ss = 0.0;
+    std::size_t n = 0;
+    for (double v : residuals) {
+        if (!finite(v)) continue;
+        ss += v * v;
+        ++n;
+    }
+    return n > 0 ? std::sqrt(ss / static_cast<double>(n)) : kNaN;
+}
+
+ClassicalSourceTermRecord MergeClassicalSourceRecords(
+        const ClassicalSourceTermRecord& seed,
+        const std::vector<ClassicalSourceTermRecord>& records) {
+    ClassicalSourceTermRecord out = seed;
+    out.schema_version = QStringLiteral("classical_source_terms_v2");
+    out.granularity = QStringLiteral("residue_iupac");
+    out.atom_uid.clear();
+    out.atom_index = 0;
+    out.residue_index = -1;
+    out.residue_number = 0;
+    out.backbone_role = seed.backbone_role;
+    out.frame_kind = seed.frame_kind;
+    out.frame_kind_ord = seed.frame_kind_ord;
+    out.sigma_qm.clear();
+    out.sigma0.clear();
+    out.buckingham_linear.clear();
+    out.buckingham_quadratic.clear();
+    out.ring.clear();
+    out.mcconnell.clear();
+    out.larsen.clear();
+    out.sigma_cl.clear();
+    out.residual.clear();
+    out.constant_placeholder_n = 0;
+
+    auto append = [](std::vector<double>& dst, const std::vector<double>& src) {
+        dst.insert(dst.end(), src.begin(), src.end());
+    };
+    QStringList sigma0Statuses;
+    QStringList buckLinStatuses;
+    QStringList buckQuadStatuses;
+    QStringList ringStatuses;
+    QStringList mcStatuses;
+    QStringList larsenStatuses;
+    auto addStatus = [](QStringList& statuses, const QString& status) {
+        if (!status.isEmpty() && !statuses.contains(status)) statuses.append(status);
+    };
+
+    for (const ClassicalSourceTermRecord& r : records) {
+        append(out.sigma_qm, r.sigma_qm);
+        append(out.sigma0, r.sigma0);
+        append(out.buckingham_linear, r.buckingham_linear);
+        append(out.buckingham_quadratic, r.buckingham_quadratic);
+        append(out.ring, r.ring);
+        append(out.mcconnell, r.mcconnell);
+        append(out.larsen, r.larsen);
+        append(out.sigma_cl, r.sigma_cl);
+        append(out.residual, r.residual);
+        out.constant_placeholder_n += r.constant_placeholder_n;
+        addStatus(sigma0Statuses, r.sigma0_status);
+        addStatus(buckLinStatuses, r.buckingham_linear_status);
+        addStatus(buckQuadStatuses, r.buckingham_quadratic_status);
+        addStatus(ringStatuses, r.ring_status);
+        addStatus(mcStatuses, r.mcconnell_status);
+        addStatus(larsenStatuses, r.larsen_status);
+    }
+    out.sigma0_status = sigma0Statuses.join(QLatin1Char(';'));
+    out.buckingham_linear_status = buckLinStatuses.join(QLatin1Char(';'));
+    out.buckingham_quadratic_status = buckQuadStatuses.join(QLatin1Char(';'));
+    out.ring_status = ringStatuses.join(QLatin1Char(';'));
+    out.mcconnell_status = mcStatuses.join(QLatin1Char(';'));
+    out.larsen_status = larsenStatuses.join(QLatin1Char(';'));
+    return out;
+}
+
+void writeClassicalSourceRecord(QTextStream& out, const ClassicalSourceTermRecord& r) {
+    const DistributionSummary sigmaQm = SummarizeDistribution(r.sigma_qm);
+    const DistributionSummary sigma0 = SummarizeDistribution(r.sigma0);
+    const DistributionSummary buckLinear = SummarizeDistribution(r.buckingham_linear);
+    const DistributionSummary buckQuadratic = SummarizeDistribution(r.buckingham_quadratic);
+    const DistributionSummary ring = SummarizeDistribution(r.ring);
+    const DistributionSummary mc = SummarizeDistribution(r.mcconnell);
+    const DistributionSummary larsen = SummarizeDistribution(r.larsen);
+    const DistributionSummary sigmaCl = SummarizeDistribution(r.sigma_cl);
+    const DistributionSummary residual = SummarizeDistribution(r.residual);
+
+    std::vector<double> x;
+    std::vector<double> y;
+    const std::size_t n = std::min(r.sigma_qm.size(), r.sigma_cl.size());
+    x.reserve(n);
+    y.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!finite(r.sigma_qm[i]) || !finite(r.sigma_cl[i])) continue;
+        x.push_back(r.sigma_cl[i]);
+        y.push_back(r.sigma_qm[i]);
+    }
+    const OlsResult fit = ols(x, y);
+    const auto [slopeLo, slopeHi] = olsSlopeCi95(x, y, fit);
+    const double corr = pearsonR(x, y);
+    const double scale = SdRatioScaleFactor(y, x);
+    const double rmsdPpm = rmsd(r.residual);
+    const QString trackingLabel =
+        finite(corr) && std::abs(corr) >= 0.7 ? QStringLiteral("tracking")
+        : finite(corr) && std::abs(corr) >= 0.3 ? QStringLiteral("partial_tracking")
+        : finite(corr) ? QStringLiteral("weak_or_flat")
+                       : QStringLiteral("insufficient_finite_pairs");
+
+    const bool sigma0Present = summaryPresent(sigma0);
+    const bool buckLinearPresent = summaryPresent(buckLinear);
+    const bool buckQuadraticPresent = summaryPresent(buckQuadratic);
+    const bool ringPresent = summaryPresent(ring);
+    const bool mcPresent = summaryPresent(mc);
+    const bool larsenPresent = summaryPresent(larsen);
+    const QString termsPresent = termsPresentString(sigma0Present, buckLinearPresent,
+                                                    buckQuadraticPresent, ringPresent,
+                                                    mcPresent, larsenPresent);
+    const std::size_t finiteN = x.size();
+    const std::size_t missingN = n > finiteN ? n - finiteN : 0;
+    const QString missingReason = missingN == 0 ? QString()
+                                : QStringLiteral("nonfinite_sigma_qm_or_sigma_cl");
+    QStringList cells;
+    cells << csvEscape(r.schema_version)
+          << csvEscape(r.granularity)
+          << csvEscape(r.dataset_id)
+          << csvEscape(r.protein_id)
+          << csvEscape(r.atom_uid)
+          << (r.granularity == QStringLiteral("atom_leaf")
+                  ? QString::number(static_cast<qulonglong>(r.atom_index))
+                  : QString())
+          << QString::number(r.residue_index)
+          << QString::number(r.residue_number)
+          << csvEscape(r.residue_type)
+          << csvEscape(r.atom_name)
+          << csvEscape(r.element)
+          << csvEscape(r.backbone_role)
+          << csvEscape(r.frame_kind)
+          << csvEscape(r.frame_kind_ord)
+          << QString::number(static_cast<qulonglong>(n))
+          << QString::number(static_cast<qulonglong>(finiteN))
+          << csvNum(n > 0 ? static_cast<double>(finiteN) / static_cast<double>(n) : kNaN)
+          << csvEscape(supportClass(finiteN))
+          << csvBool(finiteN == 1)
+          << QString::number(static_cast<qulonglong>(missingN))
+          << csvEscape(missingReason)
+          << csvEscape(QStringLiteral("sigma_cl = sigma0 + buckingham_linear + buckingham_quadratic + ring + mcconnell + larsen (present terms only)"))
+          << csvEscape(termsPresent)
+          << csvBool(sigma0Present)
+          << csvEscape(r.sigma0_status)
+          << csvBool(buckLinearPresent)
+          << csvEscape(r.buckingham_linear_status)
+          << csvBool(buckQuadraticPresent)
+          << csvEscape(r.buckingham_quadratic_status)
+          << csvBool(ringPresent)
+          << csvEscape(r.ring_status)
+          << csvBool(mcPresent)
+          << csvEscape(r.mcconnell_status)
+          << csvBool(larsenPresent)
+          << csvEscape(r.larsen_status);
+    appendDistributionCells(cells, sigmaQm);
+    appendDistributionCells(cells, sigma0);
+    appendDistributionCells(cells, buckLinear);
+    appendDistributionCells(cells, buckQuadratic);
+    appendDistributionCells(cells, ring);
+    appendDistributionCells(cells, mc);
+    appendDistributionCells(cells, larsen);
+    appendDistributionCells(cells, sigmaCl);
+    appendDistributionCells(cells, residual);
+    cells << csvNum(fit.slope)
+          << csvNum(slopeLo)
+          << csvNum(slopeHi)
+          << csvNum(corr)
+          << csvNum(rmsdPpm)
+          << csvNum(summaryPresent(residual) ? residual.mean : kNaN)
+          << csvNum(summaryPresent(residual) ? residual.sd : kNaN)
+          << csvNum(scale)
+          << csvEscape(trackingLabel)
+          << QString::number(r.constant_placeholder_n);
+    out << cells.join(QLatin1Char(',')) << '\n';
 }
 
 struct LeadLagResult {
@@ -2309,6 +2616,7 @@ public:
           larsen_hbond_shielding_mol_(cadence_.stepCount()),
           sasa_(cadence_.stepCount()),
           hbond_nearest_dir_(cadence_.stepCount()),
+          hbond_nearest_dir_mol_(cadence_.stepCount()),
           hbond_count_(cadence_.stepCount()),
           ff_pb_radius_(cadence_.stepCount()),
           phi_(cadence_.stepCount()),
@@ -2421,6 +2729,10 @@ public:
                     roundtrip = sigmaRoundTripMaxAbs(molecular_frame_.values[step].axes,
                                                      sigma_total_raw_.values[step]);
             }
+            const std::size_t finiteSupportN = sigmaPresent ? 1u : 0u;
+            const std::size_t missingSupportN = sigmaPresent ? 0u : 1u;
+            const QString missingSupportReason =
+                sigmaPresent ? QString() : QStringLiteral("missing_sigma");
 
             QStringList cells;
             cells << QStringLiteral("bounded_sigma_v1")
@@ -2456,7 +2768,12 @@ public:
                   << csvNum(antisym)
                   << csvNum(t1Fraction)
                   << csvNum(molFrob)
-                  << csvNum(roundtrip);
+                  << csvNum(roundtrip)
+                  << csvEscape(supportClass(finiteSupportN))
+                  << csvNum(static_cast<double>(finiteSupportN))
+                  << csvBool(finiteSupportN == 1)
+                  << QString::number(static_cast<qulonglong>(missingSupportN))
+                  << csvEscape(missingSupportReason);
             out << cells.join(QLatin1Char(',')) << '\n';
             ++rows;
             ++sigmaOrdinal;
@@ -2464,10 +2781,12 @@ public:
         return rows;
     }
 
-    std::size_t writeClassicalSourceTermRows(QTextStream& out,
-                                             const QString& datasetId,
-                                             const QString& proteinId) const {
-        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+    ClassicalSourceTermRecord classicalSourceTermRecord(const QString& datasetId,
+                                                        const QString& proteinId) const {
+        ClassicalSourceTermRecord record;
+        record.dataset_id = datasetId;
+        record.protein_id = proteinId;
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return record;
         const model::QtProtein& p = *body_.run.protein;
         const model::QtAtom& a = p.atom(atom_);
         QString residueType;
@@ -2493,136 +2812,82 @@ public:
         };
 
         const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        record.atom_uid = uid(QStringLiteral("atom"), atom_);
+        record.atom_index = atom_;
+        record.residue_index = a.residueIndex;
+        record.residue_number = residueNumber;
+        record.residue_type = residueType;
+        record.atom_name = atomName;
+        record.element = elementName(a.element);
+        record.backbone_role = backboneRoleName(a.backboneRole);
+        record.frame_kind = molecular_frame_.kind;
+        record.frame_kind_ord = QString::number(molecular_frame_.kind_ord);
+
         const std::string residueStd = residueType.toStdString();
         const std::string atomStd = atomName.toStdString();
         const LiteratureConstant sigma0 = Sigma0(a.element, residueStd, atomStd);
         const LiteratureConstant buckinghamA = BuckinghamA(a.element, residueStd, atomStd);
         const LiteratureConstant buckinghamB = BuckinghamB(a.element, residueStd, atomStd);
 
-        const std::vector<double> sigma = sigmaIsoSeries();
+        record.sigma_qm = sigmaIsoSeries();
+        record.sigma0.assign(cadence_.stepCount(), finite(sigma0.value) ? sigma0.value : kNaN);
+        auto statusName = [](const LiteratureConstant& c) {
+            return QString::fromLatin1(LiteratureStatusName(c.status));
+        };
+        record.sigma0_status = statusName(sigma0);
+        record.buckingham_linear_status = statusName(buckinghamA);
+        record.buckingham_quadratic_status = statusName(buckinghamB);
+        for (const LiteratureConstant* c : {&sigma0, &buckinghamA, &buckinghamB})
+            if (c->status == LiteratureStatus::Placeholder) ++record.constant_placeholder_n;
+
         std::vector<double> eParallel = signedBondFieldSeries();
         const bool hasSignedBondField =
             std::any_of(eParallel.begin(), eParallel.end(), [](double v) { return finite(v); });
         if (!hasSignedBondField) eParallel = field_E_z_mopac_.values;
         const std::vector<double> e2 = field_abs_E2_mopac_.values;
-        std::vector<double> buckinghamLinear(cadence_.stepCount(), kNaN);
-        std::vector<double> buckinghamQuadratic(cadence_.stepCount(), kNaN);
+        record.buckingham_linear.assign(cadence_.stepCount(), kNaN);
+        record.buckingham_quadratic.assign(cadence_.stepCount(), kNaN);
         for (std::size_t i = 0; i < cadence_.stepCount(); ++i) {
             if (i < eParallel.size() && finite(eParallel[i]))
-                buckinghamLinear[i] = -buckinghamA.value * eParallel[i];
+                record.buckingham_linear[i] = -buckinghamA.value * eParallel[i];
             if (i < e2.size() && finite(e2[i]))
-                buckinghamQuadratic[i] = -buckinghamB.value * e2[i];
+                record.buckingham_quadratic[i] = -buckinghamB.value * e2[i];
         }
-        const std::vector<double> ring = sumMechanism(QStringLiteral("ring_jb"));
-        const std::vector<double> mc = sumMechanism(QStringLiteral("mc_lit_valid"));
-        const std::vector<double> larsen = componentSeriesT0(larsen_hbond_shielding_);
-        std::vector<double> sigmaCl(cadence_.stepCount(), kNaN);
-        for (std::size_t i = 0; i < sigmaCl.size(); ++i) {
-            double v = sigma0.value;
-            bool any = finite(sigma0.value);
-            if (i < buckinghamLinear.size() && finite(buckinghamLinear[i])) {
-                v += buckinghamLinear[i];
-                any = true;
-            }
-            if (i < buckinghamQuadratic.size() && finite(buckinghamQuadratic[i])) {
-                v += buckinghamQuadratic[i];
-                any = true;
-            }
-            if (i < ring.size() && finite(ring[i])) {
-                v += ring[i];
-                any = true;
-            }
-            if (i < mc.size() && finite(mc[i])) {
-                v += mc[i];
-                any = true;
-            }
-            if (any) sigmaCl[i] = v;
+        record.ring = sumMechanism(QStringLiteral("ring_jb"));
+        record.mcconnell = sumMechanism(QStringLiteral("mc_lit_valid"));
+        record.larsen = componentSeriesT0(larsen_hbond_shielding_);
+        record.sigma_cl.assign(cadence_.stepCount(), kNaN);
+        record.residual.assign(cadence_.stepCount(), kNaN);
+        for (std::size_t i = 0; i < cadence_.stepCount(); ++i) {
+            bool anyPresent = false;
+            const double sigmaCl = FoldClassicalSigma(
+                sigma0.value,
+                {
+                    {i < record.buckingham_linear.size() ? record.buckingham_linear[i] : kNaN,
+                     i < record.buckingham_linear.size() && finite(record.buckingham_linear[i])},
+                    {i < record.buckingham_quadratic.size() ? record.buckingham_quadratic[i] : kNaN,
+                     i < record.buckingham_quadratic.size() && finite(record.buckingham_quadratic[i])},
+                    {i < record.ring.size() ? record.ring[i] : kNaN,
+                     i < record.ring.size() && finite(record.ring[i])},
+                    {i < record.mcconnell.size() ? record.mcconnell[i] : kNaN,
+                     i < record.mcconnell.size() && finite(record.mcconnell[i])},
+                    {i < record.larsen.size() ? record.larsen[i] : kNaN,
+                     i < record.larsen.size() && finite(record.larsen[i])},
+                },
+                &anyPresent);
+            if (!anyPresent || !finite(sigmaCl)) continue;
+            record.sigma_cl[i] = sigmaCl;
+            if (i < record.sigma_qm.size() && finite(record.sigma_qm[i]))
+                record.residual[i] = record.sigma_qm[i] - sigmaCl;
         }
+        return record;
+    }
 
-        std::vector<double> x;
-        std::vector<double> y;
-        pairedOnSigmaRows(sigma, sigmaCl, cadence_.sigmaRows(), x, y);
-        const OlsResult fit = ols(x, y);
-        const auto [slopeLo, slopeHi] = olsSlopeCi95(x, y, fit);
-        const double r = pearsonR(x, y);
-        std::vector<double> residuals;
-        residuals.reserve(x.size());
-        double ss = 0.0;
-        for (std::size_t i = 0; i < x.size(); ++i) {
-            const double res = y[i] - x[i];
-            residuals.push_back(res);
-            ss += res * res;
-        }
-        const double rmsd = residuals.empty()
-                                ? kNaN
-                                : std::sqrt(ss / static_cast<double>(residuals.size()));
-
-        auto meanOf = [](const DistributionSummary& s) {
-            return s.hasFinite() ? s.mean : kNaN;
-        };
-        auto sdOf = [](const DistributionSummary& s) {
-            return s.hasFinite() ? s.sd : kNaN;
-        };
-        const DistributionSummary sigmaSummary = SummarizeDistribution(sigma);
-        const DistributionSummary buckinghamLinearSummary = SummarizeDistribution(buckinghamLinear);
-        const DistributionSummary buckinghamQuadraticSummary = SummarizeDistribution(buckinghamQuadratic);
-        const DistributionSummary ringSummary = SummarizeDistribution(ring);
-        const DistributionSummary mcSummary = SummarizeDistribution(mc);
-        const DistributionSummary larsenSummary = SummarizeDistribution(larsen);
-        const DistributionSummary clSummary = SummarizeDistribution(sigmaCl);
-        const DistributionSummary residualSummary = SummarizeDistribution(residuals);
-        const QString trackingLabel =
-            finite(r) && std::abs(r) >= 0.7 ? QStringLiteral("tracking")
-            : finite(r) && std::abs(r) >= 0.3 ? QStringLiteral("partial_tracking")
-            : finite(r) ? QStringLiteral("weak_or_flat")
-                        : QStringLiteral("insufficient_finite_pairs");
-        auto statusName = [](const LiteratureConstant& c) {
-            return QString::fromLatin1(LiteratureStatusName(c.status));
-        };
-        int placeholderCount = 0;
-        for (const LiteratureConstant* c : {&sigma0, &buckinghamA, &buckinghamB})
-            if (c->status == LiteratureStatus::Placeholder) ++placeholderCount;
-
-        QStringList cells;
-        cells << QStringLiteral("classical_source_terms_v1")
-              << csvEscape(datasetId)
-              << csvEscape(proteinId)
-              << csvEscape(uid(QStringLiteral("atom"), atom_))
-              << QString::number(static_cast<qulonglong>(atom_))
-              << QString::number(a.residueIndex)
-              << QString::number(residueNumber)
-              << csvEscape(residueType)
-              << csvEscape(atomName)
-              << csvEscape(elementName(a.element))
-              << csvEscape(backboneRoleName(a.backboneRole))
-              << QString::number(static_cast<qulonglong>(x.size()))
-              << csvNum(meanOf(sigmaSummary))
-              << csvNum(sdOf(sigmaSummary))
-              << csvNum(sigma0.value)
-              << csvEscape(statusName(sigma0))
-              << csvNum(meanOf(buckinghamLinearSummary))
-              << csvEscape(statusName(buckinghamA))
-              << csvNum(meanOf(buckinghamQuadraticSummary))
-              << csvEscape(statusName(buckinghamB))
-              << csvNum(meanOf(ringSummary))
-              << csvEscape(QStringLiteral("good_enough"))
-              << csvNum(meanOf(mcSummary))
-              << csvEscape(QStringLiteral("good_enough"))
-              << csvNum(meanOf(larsenSummary))
-              << csvEscape(QStringLiteral("cited"))
-              << csvNum(meanOf(clSummary))
-              << csvNum(sdOf(clSummary))
-              << csvNum(fit.slope)
-              << csvNum(slopeLo)
-              << csvNum(slopeHi)
-              << csvNum(r)
-              << csvNum(rmsd)
-              << csvNum(meanOf(residualSummary))
-              << csvNum(sdOf(residualSummary))
-              << csvNum(fit.slope)
-              << csvEscape(trackingLabel)
-              << QString::number(placeholderCount);
-        out << cells.join(QLatin1Char(',')) << '\n';
+    std::size_t writeClassicalSourceTermRows(QTextStream& out,
+                                             const QString& datasetId,
+                                             const QString& proteinId) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+        writeClassicalSourceRecord(out, classicalSourceTermRecord(datasetId, proteinId));
         return 1;
     }
 
@@ -2686,6 +2951,15 @@ public:
                 }
                 if (ok) ++completeRows;
             }
+            const std::size_t finiteRows = completeRows > 0
+                ? static_cast<std::size_t>(completeRows)
+                : 0u;
+            const std::size_t missingRows = rows.size() > finiteRows ? rows.size() - finiteRows : 0u;
+            const QString missingReason =
+                missingRows == 0 ? QString()
+                                 : f.channels.empty()
+                                       ? QStringLiteral("no_channels")
+                                       : QStringLiteral("nonfinite_channel_row");
 
             QStringList cells;
             cells << QStringLiteral("source_family_matrix_v1")
@@ -2707,6 +2981,13 @@ public:
                   << csvEscape(f.name)
                   << QString::number(static_cast<qulonglong>(f.channels.size()))
                   << QString::number(completeRows)
+                  << csvEscape(supportClass(finiteRows))
+                  << csvNum(rows.empty() ? kNaN
+                                         : static_cast<double>(finiteRows)
+                                               / static_cast<double>(rows.size()))
+                  << csvBool(finiteRows == 1)
+                  << QString::number(static_cast<qulonglong>(missingRows))
+                  << csvEscape(missingReason)
                   << csvSemiStrings(channelNames)
                   << csvSemiDoubles(means)
                   << csvSemiDoubles(sds)
@@ -2766,6 +3047,20 @@ public:
         const std::vector<std::size_t> rows = cadence_.sigmaRows();
         for (const ReadSpec& read : reads) {
             const SubspaceCompareResult r = CompareSubspaces(read.a, read.b, rows);
+            const std::size_t finiteRows = r.finite_n >= 0 ? static_cast<std::size_t>(r.finite_n) : 0u;
+            const std::size_t missingRows = rows.size() > finiteRows ? rows.size() - finiteRows : 0u;
+            const QString supportMissingReason =
+                missingRows == 0 ? QString()
+                                 : (r.missing_reason.isEmpty()
+                                        ? QStringLiteral("nonfinite_subspace_row")
+                                        : r.missing_reason);
+            const bool bsHmRead = read.id == QStringLiteral("G4_bs_vs_hm_tensor_components");
+            const QString independenceVerdict =
+                bsHmRead ? QStringLiteral("independent_forms_checked") : QString();
+            const QString independenceBasis =
+                bsHmRead
+                    ? QStringLiteral("BS and HM are read from distinct BSPerTypeT2/HMPerTypeT2 producer fields; null divergence is reported as null, not relabeled as signal")
+                    : QString();
             QStringList cells;
             cells << QStringLiteral("subspace_overlap_v1")
                   << csvEscape(datasetId)
@@ -2806,12 +3101,170 @@ public:
                   << csvEscape(r.overlap_label)
                   << csvEscape(r.provenance)
                   << csvEscape(r.computed ? QStringLiteral("computed") : QStringLiteral("missing"))
-                  << csvEscape(r.missing_reason)
+                  << csvEscape(supportMissingReason)
+                  << csvEscape(supportClass(finiteRows))
+                  << csvNum(rows.empty() ? kNaN
+                                         : static_cast<double>(finiteRows)
+                                               / static_cast<double>(rows.size()))
+                  << csvBool(finiteRows == 1)
+                  << QString::number(static_cast<qulonglong>(missingRows))
+                  << QString::number(static_cast<qulonglong>(missingRows))
                   << csvSemiStrings(r.dropped_channels_a)
                   << csvSemiStrings(r.dropped_channels_b)
+                  << csvEscape(independenceVerdict)
+                  << csvEscape(independenceBasis)
                   << csvEscape(QStringLiteral("axis1_ready;cross_axis_join_blocked_pending_axis2"));
             out << cells.join(QLatin1Char(',')) << '\n';
             ++emitted;
+        }
+        return emitted;
+    }
+
+    std::size_t writeEtaByWellRows(QTextStream& out,
+                                   const QString& datasetId,
+                                   const QString& proteinId) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        QString residueType;
+        int residueNumber = 0;
+        if (validResidue(p, a.residueIndex)) {
+            const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+            residueType = aaName(r.aminoAcid);
+            residueNumber = r.address.residueNumber;
+        }
+        const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        const QString atomUid = uid(QStringLiteral("atom"), atom_);
+
+        auto ternaryWells = [&](const std::vector<double>& series) {
+            std::vector<int> wells(series.size(), -1);
+            std::vector<double> finiteVals;
+            finiteVals.reserve(series.size());
+            for (double v : series) {
+                if (finite(v)) finiteVals.push_back(v);
+            }
+            if (finiteVals.size() < 4) return wells;
+            std::sort(finiteVals.begin(), finiteVals.end());
+            const double q1 = finiteVals[finiteVals.size() / 3];
+            const double q2 = finiteVals[(2 * finiteVals.size()) / 3];
+            for (std::size_t i = 0; i < series.size(); ++i) {
+                if (!finite(series[i])) continue;
+                wells[i] = series[i] <= q1 ? 0 : (series[i] <= q2 ? 1 : 2);
+            }
+            return wells;
+        };
+        auto contactedClassWells = [&]() {
+            std::vector<int> wells(contacted_class_membership_.size(), -1);
+            const std::uint8_t charged = static_cast<std::uint8_t>(
+                contactedClassBit(ContactedClass::ACIDIC) | contactedClassBit(ContactedClass::BASIC));
+            const std::uint8_t piOrApolar = static_cast<std::uint8_t>(
+                contactedClassBit(ContactedClass::AROMATIC) | contactedClassBit(ContactedClass::APOLAR));
+            for (std::size_t i = 0; i < contacted_class_membership_.size(); ++i) {
+                const std::uint8_t mask = contacted_class_membership_[i];
+                wells[i] = (mask & charged) != 0 ? 2
+                         : (mask & piOrApolar) != 0 ? 1
+                         : 0;
+            }
+            return wells;
+        };
+        struct WellSpec {
+            QString family;
+            QString source;
+            std::vector<int> wells;
+        };
+        const std::vector<WellSpec> wells = {
+            {QStringLiteral("dihedral_rotamer"),
+             QStringLiteral("rotamerRelevantDihedralWells"),
+             rotamerRelevantDihedralWells()},
+            {QStringLiteral("contacted_class"),
+             QStringLiteral("contacted_class_membership"),
+             contactedClassWells()},
+            {QStringLiteral("hbond_count_tertiles"),
+             QStringLiteral("hbond.count"),
+             ternaryWells(hbond_count_.values)},
+            {QStringLiteral("sasa_tertiles"),
+             QStringLiteral("sasa"),
+             ternaryWells(sasa_.values)},
+            {QStringLiteral("mopac_charge_tertiles"),
+             QStringLiteral("mopac.charge"),
+             ternaryWells(mopac_charge_.values)},
+            {QStringLiteral("field_abs_E_mopac_tertiles"),
+             QStringLiteral("field.mopac_coulomb.abs_E"),
+             ternaryWells(field_abs_E_mopac_.values)},
+        };
+
+        struct TargetSpec {
+            QString key;
+            QString frame;
+            std::vector<double> values;
+        };
+        std::vector<TargetSpec> targets = {
+            {QStringLiteral("sigma.iso"), QStringLiteral("lab"), sigmaIsoSeries()},
+            {QStringLiteral("sigma.invariant.span"), QStringLiteral("pas_invariant"),
+             sigmaInvariantSeries(QStringLiteral("span"))},
+            {QStringLiteral("sigma.invariant.aniso"), QStringLiteral("pas_invariant"),
+             sigmaInvariantSeries(QStringLiteral("aniso"))},
+            {QStringLiteral("sigma.invariant.eta_H"), QStringLiteral("pas_invariant"),
+             sigmaInvariantSeries(QStringLiteral("eta_H"))},
+            {QStringLiteral("sigma.shape.t1_fraction"), QStringLiteral("lab_shape"),
+             sigmaT1FractionSeries()},
+        };
+        for (int sc = 0; sc < 6; ++sc) {
+            const auto comp = static_cast<MolComp>(sc);
+            targets.push_back({
+                QStringLiteral("sigma.total.molcomp:%1")
+                    .arg(QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)])),
+                QStringLiteral("molecular"),
+                sigmaMolCompSeries(sigma_mol_total_, comp),
+            });
+        }
+
+        const std::vector<std::size_t> rows = cadence_.sigmaRows();
+        std::size_t emitted = 0;
+        for (const WellSpec& well : wells) {
+            for (const TargetSpec& target : targets) {
+                std::array<int, 3> counts = {0, 0, 0};
+                std::size_t finiteN = 0;
+                for (std::size_t row : rows) {
+                    if (row >= target.values.size() || row >= well.wells.size()) continue;
+                    if (!finite(target.values[row]) || well.wells[row] < 0 || well.wells[row] > 2)
+                        continue;
+                    ++counts[static_cast<std::size_t>(well.wells[row])];
+                    ++finiteN;
+                }
+                const std::size_t missingN = rows.size() > finiteN ? rows.size() - finiteN : 0u;
+                QStringList countStrings;
+                for (int c : counts) countStrings << QString::number(c);
+                QStringList cells;
+                cells << QStringLiteral("eta2_by_well_v1")
+                      << csvEscape(datasetId)
+                      << csvEscape(proteinId)
+                      << csvEscape(atomUid)
+                      << QString::number(static_cast<qulonglong>(atom_))
+                      << QString::number(a.residueIndex)
+                      << QString::number(residueNumber)
+                      << csvEscape(residueType)
+                      << csvEscape(atomName)
+                      << csvEscape(elementName(a.element))
+                      << csvEscape(backboneRoleName(a.backboneRole))
+                      << csvEscape(well.family)
+                      << csvEscape(well.source)
+                      << csvEscape(target.key)
+                      << csvEscape(target.frame)
+                      << QString::number(static_cast<qulonglong>(finiteN))
+                      << csvEscape(supportClass(finiteN))
+                      << csvNum(rows.empty() ? kNaN
+                                             : static_cast<double>(finiteN)
+                                                   / static_cast<double>(rows.size()))
+                      << csvBool(finiteN == 1)
+                      << QString::number(static_cast<qulonglong>(missingN))
+                      << csvEscape(missingN == 0 ? QString()
+                                                 : QStringLiteral("nonfinite_target_or_well"))
+                      << csvNum(etaSquaredByWell(target.values, well.wells, rows))
+                      << csvEscape(countStrings.join(QLatin1Char(';')));
+                out << cells.join(QLatin1Char(',')) << '\n';
+                ++emitted;
+            }
         }
         return emitted;
     }
@@ -3579,12 +4032,12 @@ private:
         SubspaceFamily f{QStringLiteral("efg_node"), {}};
         appendChannel(f, QStringLiteral("efg.aimnet2.abs_T2"), efg_abs_aimnet2_.values);
         appendChannel(f, QStringLiteral("efg.apbs.abs_T2"), efg_abs_apbs_.values);
-        appendChannel(f, QStringLiteral("shielding_mopac_coulomb.abs_T2"), shielding_abs_mopac_coulomb_.values);
+        appendChannel(f, QStringLiteral("efg.mopac_coulomb.abs_T2"), shielding_abs_mopac_coulomb_.values);
         appendChannel(f, QStringLiteral("efg.best.Vzz_abs"), efgEigenSeries(true));
         appendChannel(f, QStringLiteral("efg.best.eta"), efgEigenSeries(false));
         appendMat3Channels(f, QStringLiteral("efg.aimnet2.mol"), efg_mol_aimnet2_);
         appendMat3Channels(f, QStringLiteral("efg.apbs.mol"), efg_mol_apbs_);
-        appendMat3Channels(f, QStringLiteral("shielding_mopac_coulomb.mol"), shielding_mol_mopac_);
+        appendMat3Channels(f, QStringLiteral("efg.mopac_coulomb.mol"), shielding_mol_mopac_);
         return f;
     }
 
@@ -3599,8 +4052,8 @@ private:
 
     SubspaceFamily efgMopacFamily() const {
         SubspaceFamily f{QStringLiteral("efg_mopac_coulomb"), {}};
-        appendChannel(f, QStringLiteral("shielding_mopac_coulomb.abs_T2"), shielding_abs_mopac_coulomb_.values);
-        appendMat3Channels(f, QStringLiteral("shielding_mopac_coulomb.mol"), shielding_mol_mopac_);
+        appendChannel(f, QStringLiteral("efg.mopac_coulomb.abs_T2"), shielding_abs_mopac_coulomb_.values);
+        appendMat3Channels(f, QStringLiteral("efg.mopac_coulomb.mol"), shielding_mol_mopac_);
         return f;
     }
 
@@ -3657,9 +4110,9 @@ private:
         SubspaceFamily f{QStringLiteral("hbond_larsen"), {}};
         appendChannel(f, QStringLiteral("larsen_hbond.T0"), componentSeriesT0(larsen_hbond_shielding_));
         appendChannel(f, QStringLiteral("hbond.count"), hbond_count_.values);
-        appendChannel(f, QStringLiteral("hbond.nearest_dir.x"), componentSeries(hbond_nearest_dir_, 0));
-        appendChannel(f, QStringLiteral("hbond.nearest_dir.y"), componentSeries(hbond_nearest_dir_, 1));
-        appendChannel(f, QStringLiteral("hbond.nearest_dir.z"), componentSeries(hbond_nearest_dir_, 2));
+        appendChannel(f, QStringLiteral("hbond.nearest_dir.mol_x"), componentSeries(hbond_nearest_dir_mol_, 0));
+        appendChannel(f, QStringLiteral("hbond.nearest_dir.mol_y"), componentSeries(hbond_nearest_dir_mol_, 1));
+        appendChannel(f, QStringLiteral("hbond.nearest_dir.mol_z"), componentSeries(hbond_nearest_dir_mol_, 2));
         appendMat3Channels(f, QStringLiteral("larsen_hbond.mol"), larsen_hbond_shielding_mol_);
         return f;
     }
@@ -3965,7 +4418,7 @@ private:
             struct EfgSrc { const Mat3Series* s; const char* tag; };
             const std::array<EfgSrc, 2> srcs = {{
                 {&efg_mol_aimnet2_, "efg_mol.aimnet2"},
-                {&shielding_mol_mopac_, "shielding_mol.mopac_coulomb"},
+                {&shielding_mol_mopac_, "efg_mol.mopac_coulomb"},
             }};
             for (const EfgSrc& src : srcs) {
                 for (int dc = 0; dc < 6; ++dc) {
@@ -5814,6 +6267,9 @@ private:
         SidechainCarboxylate,
         SidechainGuanidinium,
         SidechainCarboxamide,
+        BackboneCA,
+        AliphaticCarbon,
+        HydroxylOxygen,
     };
 
     struct MolFrameSpec {
@@ -5867,6 +6323,51 @@ private:
 
     bool hasResidueAtom(int32_t residueIndex, const QString& name) const {
         return atomByResidueName(residueIndex, name).has_value();
+    }
+
+    std::vector<int32_t> bondedAtomIndices(bool heavyOnly = false) const {
+        std::vector<int32_t> out;
+        if (!body_.run.protein) return out;
+        for (const auto& item : static_bonds_) {
+            const int32_t other = static_cast<int32_t>(item.second.other);
+            if (!validAtomIndex(other)) continue;
+            if (heavyOnly
+                && body_.run.protein->atom(static_cast<std::size_t>(other)).element
+                       == model::Element::H)
+                continue;
+            if (std::find(out.begin(), out.end(), other) == out.end()) out.push_back(other);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+
+    std::optional<int32_t> firstBondedAtomByElement(model::Element element) const {
+        if (!body_.run.protein) return std::nullopt;
+        for (int32_t ai : bondedAtomIndices(false)) {
+            if (body_.run.protein->atom(static_cast<std::size_t>(ai)).element == element)
+                return ai;
+        }
+        return std::nullopt;
+    }
+
+    bool isHydroxylOxygen(const model::QtAtom& atom, const QString& name) const {
+        if (atom.element != model::Element::O) return false;
+        if (oxygenExpectedSp2(atom)) return false;
+        if (atom.ffAtomType == model::QtFfAtomType::OH
+            || atom.planarGroup == model::PlanarGroupKind::AromaticHydroxyl)
+            return true;
+        return name == QStringLiteral("OG") || name == QStringLiteral("OG1")
+               || name == QStringLiteral("OH");
+    }
+
+    bool isAliphaticCarbon(const model::QtAtom& atom, const QString& name) const {
+        if (atom.element != model::Element::C) return false;
+        if (name == QStringLiteral("C") || name == QStringLiteral("CA")) return false;
+        if (atom.backboneRole == model::BackboneRole::CarbonylCarbon) return false;
+        if (atom.IsInAnyRing()) return false;
+        return atom.planarGroup == model::PlanarGroupKind::None
+               || static_hybridisation_ord_ == static_cast<int>(model::Hybridisation::sp3)
+               || name.startsWith(QStringLiteral("C"));
     }
 
     std::optional<std::array<QString, 3>> carboxylateGroup(const QString& name, int32_t residueIndex) const {
@@ -5934,6 +6435,24 @@ private:
             return atomByResidueName(residueIndex, atomName);
         };
         auto rec = [&](const QString& atomName) { return recAt(atomName, ri); };
+
+        if (name == QStringLiteral("CA")) {
+            const auto ca = rec(QStringLiteral("CA"));
+            const auto n = rec(QStringLiteral("N"));
+            const auto c = rec(QStringLiteral("C"));
+            if (ca && n && c) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::BackboneCA;
+                spec.label = QStringLiteral("backbone_ca");
+                spec.origin = *ca;
+                spec.x_anchor = *n;
+                spec.plane_anchor = *c;
+                spec.anchors = std::vector<int32_t>{*ca, *n, *c};
+                spec.variant = FrameVariant::BackboneCA;
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
 
         if (atom.backboneRole == model::BackboneRole::CarbonylCarbon
             || atom.backboneRole == model::BackboneRole::CarbonylOxygen) {
@@ -6092,6 +6611,61 @@ private:
                 return;
             }
         }
+
+        if (isHydroxylOxygen(atom, name)) {
+            const std::vector<int32_t> bonded = bondedAtomIndices(false);
+            const auto h = firstBondedAtomByElement(model::Element::H);
+            int32_t heavy = atom.parentAtomIndex;
+            if (!validAtomIndex(heavy)) {
+                const std::vector<int32_t> heavyBonded = bondedAtomIndices(true);
+                if (!heavyBonded.empty()) heavy = heavyBonded.front();
+            }
+            int32_t plane = h.value_or(-1);
+            if (!validAtomIndex(plane)) {
+                for (int32_t ai : bonded) {
+                    if (ai != heavy) { plane = ai; break; }
+                }
+            }
+            if (validAtomIndex(heavy) && validAtomIndex(plane) && heavy != plane) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::HydroxylOxygen;
+                spec.label = QStringLiteral("hydroxyl_oxygen");
+                spec.origin = static_cast<int32_t>(atom_);
+                spec.x_anchor = heavy;
+                spec.plane_anchor = plane;
+                spec.anchors = std::vector<int32_t>{static_cast<int32_t>(atom_), heavy, plane};
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
+
+        if (isAliphaticCarbon(atom, name)) {
+            const std::vector<int32_t> bonded = bondedAtomIndices(false);
+            const std::vector<int32_t> heavyBonded = bondedAtomIndices(true);
+            int32_t xAnchor = atom.parentAtomIndex;
+            if (!validAtomIndex(xAnchor) && !heavyBonded.empty()) xAnchor = heavyBonded.front();
+            if (!validAtomIndex(xAnchor) && !bonded.empty()) xAnchor = bonded.front();
+            int32_t planeAnchor = -1;
+            for (int32_t ai : heavyBonded) {
+                if (ai != xAnchor) { planeAnchor = ai; break; }
+            }
+            if (!validAtomIndex(planeAnchor)) {
+                for (int32_t ai : bonded) {
+                    if (ai != xAnchor) { planeAnchor = ai; break; }
+                }
+            }
+            if (validAtomIndex(xAnchor) && validAtomIndex(planeAnchor) && xAnchor != planeAnchor) {
+                MolFrameSpec spec;
+                spec.kind = MolFrameKind::AliphaticCarbon;
+                spec.label = QStringLiteral("aliphatic_carbon");
+                spec.origin = static_cast<int32_t>(atom_);
+                spec.x_anchor = xAnchor;
+                spec.plane_anchor = planeAnchor;
+                spec.anchors = std::vector<int32_t>{static_cast<int32_t>(atom_), xAnchor, planeAnchor};
+                applyMolecularFrameSpec(spec);
+                return;
+            }
+        }
     }
 
     std::optional<Vec3> coordAt(int32_t atomIndex, std::size_t step) const {
@@ -6107,6 +6681,22 @@ private:
         switch (spec.kind) {
         case MolFrameKind::None:
             return;
+        case MolFrameKind::BackboneCA: {
+            const auto ca = coordAt(spec.origin, step);
+            const auto n = coordAt(spec.x_anchor, step);
+            const auto c = coordAt(spec.plane_anchor, step);
+            if (ca && n && c) {
+                const LocalFrame caFrame = BuildBackboneCaFrame(*ca, *n, *c);
+                if (caFrame.is_valid) {
+                    Mat3 axes;
+                    axes.col(0) = caFrame.x;
+                    axes.col(1) = caFrame.y;
+                    axes.col(2) = caFrame.z;
+                    frame = axes;
+                }
+            }
+            break;
+        }
         case MolFrameKind::BackboneCarbonyl:
         case MolFrameKind::BackboneAmideN: {
             const auto origin = coordAt(spec.origin, step);
@@ -6167,7 +6757,9 @@ private:
             break;
         }
         case MolFrameKind::SidechainGuanidinium:
-        case MolFrameKind::SidechainCarboxamide: {
+        case MolFrameKind::SidechainCarboxamide:
+        case MolFrameKind::AliphaticCarbon:
+        case MolFrameKind::HydroxylOxygen: {
             const auto origin = coordAt(spec.origin, step);
             const auto xAnchor = coordAt(spec.x_anchor, step);
             const auto planeAnchor = coordAt(spec.plane_anchor, step);
@@ -6259,6 +6851,12 @@ private:
 
         setScalarIfPresent(sasa_, ArrayId::Sasa, step);
         setVec3IfPresent(hbond_nearest_dir_, ArrayId::HbondNearestDirection, step);
+        if (step < hbond_nearest_dir_.present.size() && hbond_nearest_dir_.present[step]) {
+            if (const auto axes = molecularAxesAt(step)) {
+                const Vec3 local = axes->transpose() * hbond_nearest_dir_.values[step];
+                if (local.allFinite()) hbond_nearest_dir_mol_.set(step, local);
+            }
+        }
         setScalarIfPresent(hbond_count_, ArrayId::HbondCount, step);
         setScalarIfPresent(ff_pb_radius_, ArrayId::FfPbRadius, step);
     }
@@ -6734,6 +7332,7 @@ private:
     Mat3Series larsen_hbond_shielding_mol_;
     ScalarSeries sasa_;
     Vec3Series hbond_nearest_dir_;
+    Vec3Series hbond_nearest_dir_mol_;
     ScalarSeries hbond_count_;
     ScalarSeries ff_pb_radius_;
     ScalarSeries phi_;
@@ -6799,6 +7398,10 @@ std::size_t AnalysisAtom::writeClassicalSourceTermRows(QTextStream& out,
                                                        const QString& proteinId) const {
     return impl_->writeClassicalSourceTermRows(out, datasetId, proteinId);
 }
+ClassicalSourceTermRecord AnalysisAtom::classicalSourceTermRecord(const QString& datasetId,
+                                                                  const QString& proteinId) const {
+    return impl_->classicalSourceTermRecord(datasetId, proteinId);
+}
 std::size_t AnalysisAtom::writeSourceFamilyMatrixRows(QTextStream& out,
                                                       const QString& datasetId,
                                                       const QString& proteinId) const {
@@ -6809,6 +7412,11 @@ std::size_t AnalysisAtom::writeSubspaceOverlapRows(QTextStream& out,
                                                    const QString& proteinId) const {
     return impl_->writeSubspaceOverlapRows(out, datasetId, proteinId);
 }
+std::size_t AnalysisAtom::writeEtaByWellRows(QTextStream& out,
+                                             const QString& datasetId,
+                                             const QString& proteinId) const {
+    return impl_->writeEtaByWellRows(out, datasetId, proteinId);
+}
 
 void AnalysisAtom::WriteBoundedSigmaHeader(QTextStream& out) {
     out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
@@ -6818,28 +7426,20 @@ void AnalysisAtom::WriteBoundedSigmaHeader(QTextStream& out) {
            "sigma_valid,sigma_iso,molcomp_xx,molcomp_yy,molcomp_xy,molcomp_xz,"
            "molcomp_yz,molcomp_zz,invariant_span,invariant_aniso,invariant_eta_H,"
            "invariant_skew,invariant_frobenius,antisymmetric_norm,t1_fraction,"
-           "mol_frobenius,sigma_roundtrip_abs\n";
+           "mol_frobenius,sigma_roundtrip_abs,support_class,finite_frac,"
+           "singleton_flag,missing_n,missing_reason\n";
 }
 
 void AnalysisAtom::WriteClassicalSourceTermHeader(QTextStream& out) {
-    out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
-           "residue_number,residue_type,atom_name,element,backbone_role,finite_n,"
-           "sigma_qm_mean,sigma_qm_sd,sigma0,sigma0_constant_status,"
-           "contrib_buckingham_linear_mean,contrib_buckingham_linear_constant_status,"
-           "contrib_buckingham_quadratic_mean,contrib_buckingham_quadratic_constant_status,"
-           "contrib_ring_mean,"
-           "contrib_ring_constant_status,contrib_mcconnell_mean,"
-           "contrib_mcconnell_constant_status,contrib_larsen_mean,"
-           "contrib_larsen_constant_status,sigma_cl_mean,sigma_cl_sd,slope_cl_qm,"
-           "slope_ci_low,slope_ci_high,r_cl_qm,rmsd_ppm,residual_mean,residual_sd,"
-           "scale_factor,tracking_label,constant_placeholder_n\n";
+    out << classicalSourceHeaderColumns().join(QLatin1Char(',')) << '\n';
 }
 
 void AnalysisAtom::WriteSourceFamilyMatrixHeader(QTextStream& out) {
     out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
            "residue_number,residue_type,atom_name,element,backbone_role,identity_key,"
            "context_key,axis,target_view,family_key,family_label,channel_count,"
-           "finite_row_count,channel_names,channel_means,channel_sds,cross_axis_join_status\n";
+           "finite_row_count,support_class,finite_frac,singleton_flag,missing_n,"
+           "missing_reason,channel_names,channel_means,channel_sds,cross_axis_join_status\n";
 }
 
 void AnalysisAtom::WriteSubspaceOverlapHeader(QTextStream& out) {
@@ -6850,8 +7450,17 @@ void AnalysisAtom::WriteSubspaceOverlapHeader(QTextStream& out) {
            "explained_fraction_a,explained_fraction_b,condition_number_a,"
            "condition_number_b,max_canonical_corr,mean_canonical_corr,n_cc_ge_0_80,"
            "n_cc_ge_0_95,min_angle_deg,canonical_corrs,principal_angles_deg,"
-           "overlap_label,provenance,status,missing_reason,dropped_channels_a,"
-           "dropped_channels_b,cross_axis_join_status\n";
+           "overlap_label,provenance,status,missing_reason,support_class,finite_frac,"
+           "singleton_flag,missing_n,missing_reason_count,dropped_channels_a,"
+           "dropped_channels_b,independence_verdict,independence_basis,"
+           "cross_axis_join_status\n";
+}
+
+void AnalysisAtom::WriteEtaByWellHeader(QTextStream& out) {
+    out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
+           "residue_number,residue_type,atom_name,element,backbone_role,well_family,"
+           "well_source,target_key,target_frame,finite_n,support_class,finite_frac,"
+           "singleton_flag,missing_n,missing_reason,eta2,well_counts\n";
 }
 
 bool AnalysisAtom::AssertMolCompOrder(QString* errOut) {
@@ -6880,6 +7489,10 @@ bool AnalysisAtom::AssertMolCompOrder(QString* errOut) {
         }
     }
     return true;
+}
+
+bool AnalysisAtom::AssertPasShapeConvention(QString* errOut) {
+    return AssertPasShapeConventionEnv(errOut);
 }
 
 class AnalysisRing::Impl {
@@ -7358,9 +7971,9 @@ QJsonArray seriesCatalogJson() {
         {"efg_mol.aimnet2", "f64", "mat3_row_major_molecular_frame", false, "V/angstrom^2"},
         {"efg.abs.apbs", "f64", "scalar", false, "V/angstrom^2"},
         {"efg.abs.aimnet2", "f64", "scalar", false, "V/angstrom^2"},
-        {"shielding.mopac_coulomb", "f64", "t2_only_T0_null_T2", false, "ppm"},
-        {"shielding.abs_T2.mopac_coulomb", "f64", "scalar", false, "ppm"},
-        {"shielding_mol.mopac_coulomb", "f64", "mat3_row_major_molecular_frame", false, "ppm"},
+        {"efg.mopac_coulomb", "f64", "t2_only_T0_null_T2", false, "ppm"},
+        {"efg.abs_T2.mopac_coulomb", "f64", "scalar", false, "ppm"},
+        {"efg_mol.mopac_coulomb", "f64", "mat3_row_major_molecular_frame", false, "ppm"},
         {"bs_per_type_T2", "f64", "per_ring_type_T2_8x5_flat_40", false, "ppm_T_per_nA"},
         {"hm_per_type_T2", "f64", "per_ring_type_T2_8x5_flat_40", false, "angstrom^-1"},
         {"mc_peptide_co_fixed", "f64", "spherical_tensor_T0_T1_T2", false, "angstrom^-3"},
@@ -7384,6 +7997,7 @@ QJsonArray seriesCatalogJson() {
         {"larsen_hbond_shielding", "f64", "spherical_tensor_T0_T1_T2", false, "ppm"},
         {"sasa", "f64", "scalar", false, "angstrom^2"},
         {"hbond.nearest_dir", "f64", "vec3_xyz", false, "dimensionless"},
+        {"hbond.nearest_dir_mol", "f64", "vec3_molecular_xyz", false, "dimensionless"},
         {"hbond.count", "f64", "scalar", false, "count"},
         {"ff_pb_radius", "f64", "scalar", false, "angstrom"},
         {"bond.lengths", "object", "per_static_bond_length_series_with_rejection_flags", false, "angstrom"},
@@ -7475,14 +8089,27 @@ QJsonObject manifestJson(const Body& body,
                                    QStringLiteral("molcomp_xz"),
                                    QStringLiteral("molcomp_yz"),
                                    QStringLiteral("molcomp_zz")});
+    QJsonObject frameScope;
+    frameScope.insert(QStringLiteral("backbone_ca"), QStringLiteral("N-CA-C molecular frame for C-alpha atoms"));
+    frameScope.insert(QStringLiteral("aliphatic_carbon"), QStringLiteral("bonded-topology X/plane molecular frame for non-aromatic aliphatic carbons"));
+    frameScope.insert(QStringLiteral("hydroxyl_oxygen"), QStringLiteral("O-heavy/H molecular frame for hydroxyl oxygens"));
+    frameScope.insert(QStringLiteral("legacy_specific_frames"),
+                      QStringLiteral("amide-H, amide-N, carbonyl, aromatic ring, MET SD, carboxylate, guanidinium, carboxamide"));
+    boundedSigma.insert(QStringLiteral("molecular_frame_scope"), frameScope);
     root.insert(QStringLiteral("bounded_sigma_sidecar"), boundedSigma);
 
     QJsonObject classicalSource;
     classicalSource.insert(QStringLiteral("path"), diag.classical_source_path);
     classicalSource.insert(QStringLiteral("rows"), static_cast<qint64>(diag.classical_source_rows));
     classicalSource.insert(QStringLiteral("bytes"), diag.classical_source_bytes);
+    classicalSource.insert(QStringLiteral("row_granularity"),
+                           QStringLiteral("residue_type + IUPAC atom_name + element + backbone_role + frame_kind"));
+    classicalSource.insert(QStringLiteral("leaf_audit_path"), diag.classical_source_leaf_path);
+    classicalSource.insert(QStringLiteral("leaf_audit_rows"),
+                           static_cast<qint64>(diag.classical_source_leaf_rows));
+    classicalSource.insert(QStringLiteral("leaf_audit_bytes"), diag.classical_source_leaf_bytes);
     classicalSource.insert(QStringLiteral("fit"),
-                           QStringLiteral("per emitted atom OLS sigma_QM ~ sigma_cl; sigma_cl = sigma0 - A*E_parallel - B*E^2 + ring + McConnell + Larsen"));
+                           QStringLiteral("per IUPAC residue/atom group OLS sigma_QM ~ sigma_cl; scale_factor = sd_QM/sd_cl, not OLS slope; sigma_cl = sigma0 + buckingham_linear + buckingham_quadratic + ring + McConnell + Larsen"));
     classicalSource.insert(QStringLiteral("constant_source"),
                            QStringLiteral("src/rediscover/LiteratureConstants.h"));
     classicalSource.insert(QStringLiteral("placeholder_visible_smell"), true);
@@ -7513,7 +8140,24 @@ QJsonObject manifestJson(const Body& body,
                                        QStringLiteral("G6_mcconnell_axial_vs_rhombic")});
     subspaceOverlaps.insert(QStringLiteral("no_relabel_policy"),
                             QStringLiteral("canonical_corr/basis_dim/explained_fraction/principal_angles only emitted by CompareSubspaces"));
+    subspaceOverlaps.insert(QStringLiteral("bs_hm_independence_verdict"),
+                            QStringLiteral("producer form check: BSPerTypeT2 and HMPerTypeT2 are distinct producer fields; null divergence is a reported null"));
     root.insert(QStringLiteral("subspace_overlaps_sidecar"), subspaceOverlaps);
+
+    QJsonObject eta2ByWell;
+    eta2ByWell.insert(QStringLiteral("path"), diag.eta2_by_well_path);
+    eta2ByWell.insert(QStringLiteral("rows"), static_cast<qint64>(diag.eta2_by_well_rows));
+    eta2ByWell.insert(QStringLiteral("bytes"), diag.eta2_by_well_bytes);
+    eta2ByWell.insert(QStringLiteral("registry"),
+                      QStringLiteral("well families crossed with sigma targets; no DIHEDRAL-only gate"));
+    eta2ByWell.insert(QStringLiteral("well_families"),
+                      QJsonArray{QStringLiteral("dihedral_rotamer"),
+                                 QStringLiteral("contacted_class"),
+                                 QStringLiteral("hbond_count_tertiles"),
+                                 QStringLiteral("sasa_tertiles"),
+                                 QStringLiteral("mopac_charge_tertiles"),
+                                 QStringLiteral("field_abs_E_mopac_tertiles")});
+    root.insert(QStringLiteral("eta2_by_well_sidecar"), eta2ByWell);
 
     const LiteratureStatusCounts literatureCounts = CountLiteratureConstantStatuses();
     QJsonObject literature;
@@ -7645,6 +8289,11 @@ bool RunAnalysisObjectPass(const Body& body,
                            QString* errOut) {
     if (!body.run.protein) {
         if (errOut) *errOut = QStringLiteral("analysis object pass requires a loaded protein");
+        return false;
+    }
+    QString pasErr;
+    if (!AnalysisAtom::AssertPasShapeConvention(&pasErr)) {
+        if (errOut) *errOut = pasErr;
         return false;
     }
     QDir out(outDir);
@@ -7803,7 +8452,43 @@ bool RunAnalysisObjectPass(const Body& body,
         << "| bytes=" << diag.bounded_sigma_bytes;
 
     const QString classicalSourcePath = out.filePath(QStringLiteral("classical_source_terms.csv"));
+    const QString classicalSourceLeafPath = out.filePath(QStringLiteral("classical_source_terms_atom_leaf.csv"));
     {
+        QFile leaf(classicalSourceLeafPath);
+        if (!leaf.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (errOut) {
+                *errOut = QStringLiteral("open failed for %1: %2")
+                              .arg(classicalSourceLeafPath, leaf.errorString());
+            }
+            return false;
+        }
+        QTextStream leafTs(&leaf);
+        AnalysisAtom::WriteClassicalSourceTermHeader(leafTs);
+        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
+                                      ? body.run.manifest.protein_id
+                                      : body.run.manifest.dataset_id;
+        const QString proteinId = body.run.manifest.protein_id.isEmpty()
+                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
+                                      : body.run.manifest.protein_id;
+        std::map<QString, std::vector<ClassicalSourceTermRecord>> grouped;
+        for (const std::unique_ptr<AnalysisElement>& object : objects) {
+            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
+            if (!atom) continue;
+            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
+            ClassicalSourceTermRecord record = atom->classicalSourceTermRecord(datasetId, proteinId);
+            if (record.atom_uid.isEmpty()) continue;
+            writeClassicalSourceRecord(leafTs, record);
+            ++diag.classical_source_leaf_rows;
+            const QString groupKey =
+                QStringLiteral("%1\x1f%2\x1f%3\x1f%4\x1f%5")
+                    .arg(record.residue_type,
+                         record.atom_name,
+                         record.element,
+                         record.backbone_role,
+                         record.frame_kind);
+            grouped[groupKey].push_back(std::move(record));
+        }
+        leaf.close();
         QFile f(classicalSourcePath);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
             if (errOut) {
@@ -7814,25 +8499,25 @@ bool RunAnalysisObjectPass(const Body& body,
         }
         QTextStream ts(&f);
         AnalysisAtom::WriteClassicalSourceTermHeader(ts);
-        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
-                                      ? body.run.manifest.protein_id
-                                      : body.run.manifest.dataset_id;
-        const QString proteinId = body.run.manifest.protein_id.isEmpty()
-                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
-                                      : body.run.manifest.protein_id;
-        for (const std::unique_ptr<AnalysisElement>& object : objects) {
-            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
-            if (!atom) continue;
-            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
-            diag.classical_source_rows += atom->writeClassicalSourceTermRows(ts, datasetId, proteinId);
+        for (const auto& item : grouped) {
+            if (item.second.empty()) continue;
+            writeClassicalSourceRecord(ts,
+                                       MergeClassicalSourceRecords(item.second.front(),
+                                                                  item.second));
+            ++diag.classical_source_rows;
         }
     }
     diag.classical_source_path = classicalSourcePath;
     diag.classical_source_bytes = QFileInfo(classicalSourcePath).size();
+    diag.classical_source_leaf_path = classicalSourceLeafPath;
+    diag.classical_source_leaf_bytes = QFileInfo(classicalSourceLeafPath).size();
     qCInfo(cAnalysisObject).noquote()
         << "analysis_object classical source-term sidecar | path=" << classicalSourcePath
         << "| rows=" << static_cast<qulonglong>(diag.classical_source_rows)
-        << "| bytes=" << diag.classical_source_bytes;
+        << "| bytes=" << diag.classical_source_bytes
+        << "| leaf_path=" << classicalSourceLeafPath
+        << "| leaf_rows=" << static_cast<qulonglong>(diag.classical_source_leaf_rows)
+        << "| leaf_bytes=" << diag.classical_source_leaf_bytes;
 
     const QString sourceFamilyPath = out.filePath(QStringLiteral("source_family_matrices.csv"));
     {
@@ -7899,6 +8584,38 @@ bool RunAnalysisObjectPass(const Body& body,
         << "analysis_object subspace-overlap sidecar | path=" << subspaceOverlapPath
         << "| rows=" << static_cast<qulonglong>(diag.subspace_overlap_rows)
         << "| bytes=" << diag.subspace_overlap_bytes;
+
+    const QString etaByWellPath = out.filePath(QStringLiteral("eta2_by_well.csv"));
+    {
+        QFile f(etaByWellPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (errOut) {
+                *errOut = QStringLiteral("open failed for %1: %2")
+                              .arg(etaByWellPath, f.errorString());
+            }
+            return false;
+        }
+        QTextStream ts(&f);
+        AnalysisAtom::WriteEtaByWellHeader(ts);
+        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
+                                      ? body.run.manifest.protein_id
+                                      : body.run.manifest.dataset_id;
+        const QString proteinId = body.run.manifest.protein_id.isEmpty()
+                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
+                                      : body.run.manifest.protein_id;
+        for (const std::unique_ptr<AnalysisElement>& object : objects) {
+            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
+            if (!atom) continue;
+            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
+            diag.eta2_by_well_rows += atom->writeEtaByWellRows(ts, datasetId, proteinId);
+        }
+    }
+    diag.eta2_by_well_path = etaByWellPath;
+    diag.eta2_by_well_bytes = QFileInfo(etaByWellPath).size();
+    qCInfo(cAnalysisObject).noquote()
+        << "analysis_object eta2-by-well sidecar | path=" << etaByWellPath
+        << "| rows=" << static_cast<qulonglong>(diag.eta2_by_well_rows)
+        << "| bytes=" << diag.eta2_by_well_bytes;
 
     QJsonArray objectInventory;
     for (const std::unique_ptr<AnalysisElement>& object : objects) {

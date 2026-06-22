@@ -167,18 +167,24 @@ struct AnalysisObjectPassDiagnostics {
     qint64 bounded_sigma_bytes = 0;
     std::size_t classical_source_rows = 0;
     qint64 classical_source_bytes = 0;
+    std::size_t classical_source_leaf_rows = 0;
+    qint64 classical_source_leaf_bytes = 0;
     std::size_t source_family_matrix_rows = 0;
     qint64 source_family_matrix_bytes = 0;
     std::size_t subspace_overlap_rows = 0;
     qint64 subspace_overlap_bytes = 0;
+    std::size_t eta2_by_well_rows = 0;
+    qint64 eta2_by_well_bytes = 0;
     bool sigma_mask_recorded = false;
     bool field_vectors_retained = false;
     bool full_sigma_tensors_retained = false;
     bool oxygen_gate_passed = false;
     QString bounded_sigma_path;
     QString classical_source_path;
+    QString classical_source_leaf_path;
     QString source_family_matrix_path;
     QString subspace_overlap_path;
+    QString eta2_by_well_path;
     QString manifest_path;
 };
 

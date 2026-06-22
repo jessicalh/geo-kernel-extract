@@ -351,6 +351,10 @@ qt_add_executable(h5reader_extract
     src/rediscover/AnalysisBody.h
     src/rediscover/DistributionSummary.h
     src/rediscover/DistributionSummary.cpp
+    src/rediscover/ClassicalSourceMath.h
+    src/rediscover/ClassicalSourceMath.cpp
+    src/rediscover/TensorConventionGuard.h
+    src/rediscover/TensorConventionGuard.cpp
     src/rediscover/LiteratureConstants.h
     src/rediscover/SubspaceCompare.h
     src/rediscover/SubspaceCompare.cpp
@@ -553,6 +557,21 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     add_test(NAME h5reader_rediscover_buckingham_tests
              COMMAND h5reader_rediscover_buckingham_tests)
 
+    qt_add_executable(h5reader_rediscover_classical_source_math_tests
+        tests/rediscover_classical_source_math_tests.cpp
+        src/rediscover/ClassicalSourceMath.h
+        src/rediscover/ClassicalSourceMath.cpp
+        src/rediscover/TensorConventionGuard.h
+        src/rediscover/TensorConventionGuard.cpp
+    )
+    target_include_directories(h5reader_rediscover_classical_source_math_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_classical_source_math_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME h5reader_rediscover_classical_source_math_tests
+             COMMAND h5reader_rediscover_classical_source_math_tests)
+
     qt_add_executable(h5reader_rediscover_all_atom_equivariant_tests
         tests/rediscover_all_atom_equivariant_tests.cpp
         src/rediscover/AllAtomEquivariantSink.h
@@ -696,6 +715,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
 
     qt_add_executable(h5reader_rediscover_no_relabel_tests
         tests/rediscover_no_relabel_tests.cpp
+        src/rediscover/SubspaceCompare.h
+        src/rediscover/SubspaceCompare.cpp
     )
     target_include_directories(h5reader_rediscover_no_relabel_tests PRIVATE src)
     target_compile_definitions(h5reader_rediscover_no_relabel_tests PRIVATE
@@ -703,6 +724,7 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     target_link_libraries(h5reader_rediscover_no_relabel_tests PRIVATE
         Qt6::Core
         Qt6::Test
+        Eigen3::Eigen
     )
     add_test(NAME h5reader_rediscover_no_relabel_tests
              COMMAND h5reader_rediscover_no_relabel_tests)

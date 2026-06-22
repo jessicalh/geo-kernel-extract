@@ -1,13 +1,86 @@
+#include "rediscover/SubspaceCompare.h"
+
 #include <QtTest/QtTest>
 
 #include <QFile>
+#include <QJsonObject>
 #include <QString>
 #include <QTextStream>
+
+#include <cmath>
+#include <limits>
+#include <numeric>
+#include <vector>
+
+using namespace h5reader::rediscover;
+
+namespace {
+
+double pearson(const std::vector<double>& x, const std::vector<double>& y) {
+    if (x.size() != y.size() || x.size() < 2) return std::numeric_limits<double>::quiet_NaN();
+    double sx = 0.0;
+    double sy = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        sx += x[i];
+        sy += y[i];
+    }
+    const double mx = sx / static_cast<double>(x.size());
+    const double my = sy / static_cast<double>(y.size());
+    double sxx = 0.0;
+    double syy = 0.0;
+    double sxy = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i) {
+        const double dx = x[i] - mx;
+        const double dy = y[i] - my;
+        sxx += dx * dx;
+        syy += dy * dy;
+        sxy += dx * dy;
+    }
+    const double denom = std::sqrt(sxx * syy);
+    return denom > 0.0 ? sxy / denom : std::numeric_limits<double>::quiet_NaN();
+}
+
+}  // namespace
 
 class RediscoverNoRelabelTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void canonicalCorrelationJsonComesFromSubspaceComputation() {
+        std::vector<double> x(96);
+        std::vector<double> y(96);
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            const double t = static_cast<double>(i) / 7.0;
+            x[i] = std::sin(t);
+            y[i] = std::cos(t);
+        }
+        std::vector<double> bx(x.size());
+        std::vector<double> by(x.size());
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            bx[i] = x[i] + y[i];
+            by[i] = x[i] - y[i];
+        }
+        std::vector<std::size_t> rows(x.size());
+        std::iota(rows.begin(), rows.end(), 0);
+
+        const double scalarR = pearson(x, bx);
+        QVERIFY(std::isfinite(scalarR));
+        QVERIFY(std::abs(scalarR) < 0.90);
+
+        const SubspaceCompareResult r =
+            CompareSubspaces({QStringLiteral("a"),
+                              {{QStringLiteral("x"), x}, {QStringLiteral("y"), y}}},
+                             {QStringLiteral("b"),
+                              {{QStringLiteral("bx"), bx}, {QStringLiteral("by"), by}}},
+                             rows);
+        const QJsonObject json = SubspaceCompareJson(r);
+        const double maxCanonical = json.value(QStringLiteral("max_canonical_corr")).toDouble();
+        QVERIFY(maxCanonical > 0.999);
+        QVERIFY(std::abs(maxCanonical - std::abs(scalarR)) > 0.10);
+        QCOMPARE(json.value(QStringLiteral("provenance")).toString(),
+                 QStringLiteral("svd_subspace_compare_v1"));
+    }
+
     void analysisAtomDoesNotMapPearsonToCanonicalFields() {
         QFile f(QStringLiteral(H5READER_SOURCE_DIR "/src/rediscover/AnalysisAtom.cpp"));
         QVERIFY2(f.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(f.errorString()));
