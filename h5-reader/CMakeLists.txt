@@ -438,6 +438,11 @@ qt_add_executable(h5reader_extract
     src/rediscover/RamaRegion.cpp
     src/rediscover/ConditioningSpec.h
     src/rediscover/ConditioningSpec.cpp
+    src/rediscover/DeltaRunData.h
+    src/rediscover/DeltaRunData.cpp
+    src/rediscover/CohortContextAccumulator.h
+    src/rediscover/CohortContextCore.cpp
+    src/rediscover/CohortContextAccumulator.cpp
     src/rediscover/ConsolidatedEmit.h
     src/rediscover/ConsolidatedEmit.cpp
     src/rediscover/RowDesign.h
@@ -728,6 +733,27 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_no_relabel_tests
              COMMAND h5reader_rediscover_no_relabel_tests)
+
+    qt_add_executable(h5reader_rediscover_cohort_context_tests
+        tests/rediscover_cohort_context_tests.cpp
+        src/rediscover/CohortContextAccumulator.h
+        src/rediscover/CohortContextCore.cpp
+        src/rediscover/DeltaRunData.h
+        src/rediscover/DeltaRunData.cpp
+        src/rediscover/ScopedProducerCatalog.h
+        src/rediscover/ScopedProducerCatalog.cpp
+    )
+    target_include_directories(h5reader_rediscover_cohort_context_tests PRIVATE
+        src
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern
+    )
+    target_link_libraries(h5reader_rediscover_cohort_context_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_cohort_context_tests
+             COMMAND h5reader_rediscover_cohort_context_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp

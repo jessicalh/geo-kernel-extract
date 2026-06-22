@@ -28,6 +28,7 @@
 #include "Catalog.h"
 #include "CanonicalSpineGuard.h"
 #include "ChargeDipoleNeighborhood.h"
+#include "CohortContextAccumulator.h"
 #include "ComposedRelationships.h"
 #include "ConsolidatedEmit.h"
 #include "EfgFeature.h"
@@ -139,6 +140,35 @@ bool isAimnet2FeatureCase(const QString& which) {
            || which == QStringLiteral("crg");
 }
 
+bool isKnownCaseName(const QString& which) {
+    return which == QStringLiteral("cohort")
+           || which == QStringLiteral("axis2")
+           || which == QStringLiteral("static")
+           || which == QStringLiteral("cohort_static")
+           || which == QStringLiteral("mutant_delta_ridge")
+           || which == QStringLiteral("spine_probe")
+           || which == QStringLiteral("row_design")
+           || which == QStringLiteral("consolidated_emit")
+           || which == QStringLiteral("fp_emit")
+           || which == QStringLiteral("query_audit")
+           || which == QStringLiteral("charge_dipole")
+           || which == QStringLiteral("efg")
+           || which == QStringLiteral("buckingham_efield")
+           || which == QStringLiteral("analysis_atom")
+           || which == QStringLiteral("AnalysisAtom")
+           || which == QStringLiteral("all_atom_equivariant")
+           || which == QStringLiteral("all_atom_equiv")
+           || which == QStringLiteral("per_atom_substrate")
+           || which == QStringLiteral("broad_backbone")
+           || which == QStringLiteral("ring")
+           || which == QStringLiteral("ring_current")
+           || which == QStringLiteral("mc")
+           || which == QStringLiteral("mcconnell")
+           || which == QStringLiteral("all")
+           || isAimnet2FeatureCase(which)
+           || isFailLoudStub(which);
+}
+
 QString aimnet2FeatureMissingMessage(const h5reader::rediscover::Catalog& catalog) {
     QStringList missing;
     if (!catalog.has(h5reader::rediscover::ArrayId::Aimnet2Charge))
@@ -224,6 +254,17 @@ int main(int argc, char** argv) {
     QCommandLineOption root720Opt(QStringLiteral("root720"),
                                   QStringLiteral("Authoritative full720 root for row_design static emission."),
                                   QStringLiteral("dir"));
+    QCommandLineOption mutantRootOpt(QStringLiteral("mutant-root"),
+                                     QStringLiteral("Canonical layer-2 WT/ALA mutant-pair root for Axis-2 site derivation."),
+                                     QStringLiteral("dir"),
+                                     QStringLiteral("/shared/2026Thesis/shielding-calcsets/data/orca-alphafold-and-mutants"));
+    QCommandLineOption axis1OverlayOpt(QStringLiteral("axis1-overlay"),
+                                       QStringLiteral("Axis-1 close-round sidecar output directory for cross_axis_overlay."),
+                                       QStringLiteral("dir"));
+    QCommandLineOption axis2MaxProteinsOpt(QStringLiteral("axis2-max-proteins"),
+                                           QStringLiteral("Axis-2 fixture limiter; omit or 0 for the full cohort."),
+                                           QStringLiteral("n"),
+                                           QStringLiteral("0"));
     QCommandLineOption conditioningSpecOpt(QStringLiteral("conditioning-spec"),
                                            QStringLiteral("Optional row_design conditioning-spec JSON."),
                                            QStringLiteral("json"));
@@ -245,7 +286,7 @@ int main(int argc, char** argv) {
         QStringLiteral("md"),
         QStringLiteral("h5-reader/notes/CODEX_SPINE_WIREUP_REPORT.md"));
     QCommandLineOption caseOpt(QStringLiteral("case"),
-                               QStringLiteral("Which extraction(s): consolidated_emit | spine_probe | row_design | query_audit | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | analysis_atom | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
+                               QStringLiteral("Which extraction(s): cohort | static | mutant_delta_ridge | consolidated_emit | spine_probe | row_design | query_audit | ring_current | mcconnell | charge_dipole | broad_backbone | all_atom_equivariant | per_atom_substrate | analysis_atom | efg | buckingham_efield | aimnet2_features | ring | mc | all, or a registered fail-loud stub."),
                                QStringLiteral("case"), QStringLiteral("all"));
     // McConnell source-discovery cutoff (Å). Surfaced + recorded per the
     // substrate conventions' no-hidden-cutoffs rule; 10.0 Å matches the
@@ -289,6 +330,9 @@ int main(int argc, char** argv) {
     parser.addOption(runOpt);
     parser.addOption(outOpt);
     parser.addOption(root720Opt);
+    parser.addOption(mutantRootOpt);
+    parser.addOption(axis1OverlayOpt);
+    parser.addOption(axis2MaxProteinsOpt);
     parser.addOption(conditioningSpecOpt);
     parser.addOption(fixtureOpt);
     parser.addOption(flat720CoverageOpt);
@@ -359,6 +403,58 @@ int main(int argc, char** argv) {
     if (!mcNearFieldRatioOk || !(mcNearFieldRatio >= 0.0)) {
         qCCritical(cMain).noquote()
             << "invalid --mc-near-field-ratio" << parser.value(mcNearFieldRatioOpt);
+        return 2;
+    }
+
+    if (which == QStringLiteral("cohort") || which == QStringLiteral("axis2")
+        || which == QStringLiteral("static") || which == QStringLiteral("cohort_static")
+        || which == QStringLiteral("mutant_delta_ridge")) {
+        if (root720.isEmpty()) {
+            qCCritical(cMain) << "Axis-2 cohort modes require --root720";
+            return 2;
+        }
+        bool maxOk = false;
+        const std::size_t maxProteins =
+            static_cast<std::size_t>(parser.value(axis2MaxProteinsOpt).toULongLong(&maxOk));
+        if (!maxOk) {
+            qCCritical(cMain).noquote() << "invalid --axis2-max-proteins"
+                                        << parser.value(axis2MaxProteinsOpt);
+            return 2;
+        }
+        h5reader::rediscover::Axis2RunOptions cfg;
+        cfg.root720 = root720;
+        cfg.mutantRoot = parser.value(mutantRootOpt);
+        cfg.axis1OverlayDir = parser.value(axis1OverlayOpt);
+        cfg.outDir = outDir;
+        cfg.maxProteins = maxProteins;
+        cfg.runStatic = which != QStringLiteral("mutant_delta_ridge");
+        cfg.runMutantDeltaRidge = which != QStringLiteral("static")
+                                  && which != QStringLiteral("cohort_static");
+        if (which == QStringLiteral("cohort") || which == QStringLiteral("axis2")) {
+            cfg.runStatic = true;
+            cfg.runMutantDeltaRidge = true;
+        }
+        h5reader::rediscover::Axis2RunStats stats;
+        QString axis2Err;
+        if (!h5reader::rediscover::RunCohortAxis2(cfg, &stats, &axis2Err)) {
+            qCCritical(cMain).noquote() << "Axis-2 cohort failed:" << axis2Err;
+            return 1;
+        }
+        qCInfo(cMain).noquote()
+            << "axis2 cohort | proteins_loaded=" << stats.proteins_loaded
+            << "| static_samples=" << stats.static_samples
+            << "| static_cells=" << stats.static_cells
+            << "| ridge_samples=" << stats.ridge_samples
+            << "| ridge_rows=" << stats.ridge_rows
+            << "| distinct_identities=" << stats.distinct_identities
+            << "| distinct_elements=" << stats.distinct_elements
+            << "| out=" << outDir;
+        return 0;
+    }
+
+    if (!isKnownCaseName(which)) {
+        qCCritical(cMain).noquote() << "unknown --case" << which
+                                    << "(expected cohort|static|mutant_delta_ridge|ring|mc|charge_dipole|broad_backbone|all_atom_equivariant|per_atom_substrate|analysis_atom|query_audit|efg|buckingham_efield|aimnet2_features|all)";
         return 2;
     }
 
