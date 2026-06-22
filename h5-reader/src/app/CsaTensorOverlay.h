@@ -1,15 +1,18 @@
-// CsaTensorOverlay -- atom-centered 3-D glyph for the viewer's standalone
-// tensor view. Draws sigma's PAS ellipsoid (oriented by its OWN eigenvectors,
-// sized by the principal shielding deviations) together with the chemical
-// molecular-frame axes, so the directional story the stats report ("sigma_33
-// along C=O", "ring current loads the ring-normal axis") is visible on a bare
-// extractor run -- no rediscover pass required.
+// CsaTensorOverlay -- atom-centered superquadric tensor glyph for the viewer's
+// standalone CSA view. Follows the Schultz & Kindlmann superquadric tensor-glyph
+// best practice (IEEE TVCG 2010): the glyph's SHAPE is sharpened by the
+// deviatoric anisotropy so axial (cigar), planar/rhombic (disc) and isotropic
+// (sphere) tensors are distinguishable at a glance -- the disambiguation a plain
+// ellipsoid cannot give -- sized by |sigma_i - sigma_iso|, oriented onto the
+// principal-axis system, and SIGN-COLOURED per surface point (shielded vs
+// deshielded directions). sigma_11/22/33 tip labels and a corner readout
+// (iso / span / eta / skew) carry the exact numbers. No arrow thicket: the
+// surface carries orientation + magnitude, the way TensorView / Kindlmann
+// glyphs do. Visible on a bare extractor run (DFT, no rediscover pass).
 //
-// A scene overlay on the layer-1 overlay renderer (always legible, like
-// SceneRevealOverlay). PURE RENDERER: the controller (ReaderMainWindow) owns
-// the DFT store + selection + frame, computes the CsaShape and molecular axes,
-// and feeds them via show(); the overlay only draws. No DFT / model-load
-// coupling here -- mirrors how SceneRevealOverlay is fed by its controller.
+// A scene overlay on the layer-1 overlay renderer. PURE RENDERER: the controller
+// (ReaderMainWindow) owns the DFT store + selection + frame, computes the
+// CsaShape, and feeds it via show(); the overlay only draws.
 
 #pragma once
 
@@ -19,16 +22,18 @@
 #include <QObject>
 
 #include <vtkActor.h>
-#include <vtkCellArray.h>
+#include <vtkBillboardTextActor3D.h>
+#include <vtkColorTransferFunction.h>
+#include <vtkCornerAnnotation.h>
 #include <vtkPolyData.h>
-#include <vtkPoints.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
-#include <vtkSphereSource.h>
+#include <vtkSuperquadricSource.h>
 #include <vtkTransform.h>
 #include <vtkTransformPolyDataFilter.h>
-#include <vtkUnsignedCharArray.h>
 
+#include <array>
 #include <optional>
 
 namespace h5reader::app {
@@ -39,10 +44,10 @@ public:
     explicit CsaTensorOverlay(vtkSmartPointer<vtkRenderer> renderer, QObject* parent = nullptr);
     ~CsaTensorOverlay() override;
 
-    // Draw sigma's PAS ellipsoid at atomPos, plus (when present) the molecular
-    // frame axes. Replaces any prior glyph. molecularAxes columns are the x, y,
-    // z directors in lab coordinates; std::nullopt for an unframed atom (the
-    // ellipsoid still shows the intrinsic PAS orientation).
+    // Draw the superquadric tensor glyph + sigma_11/22/33 labels + corner readout
+    // at atomPos. Replaces any prior glyph. molecularAxes is accepted for
+    // signature stability with the controller but no longer drawn (the surface
+    // carries the orientation); pass std::nullopt or anything.
     void show(const model::Vec3& atomPos,
               const model::CsaShape& shape,
               const std::optional<model::Mat3>& molecularAxes);
@@ -52,25 +57,27 @@ public:
 
 private:
     void ensureActors();
+    void hideAll();
 
     vtkSmartPointer<vtkRenderer> renderer_;
 
-    // PAS ellipsoid (unit sphere -> scaled+rotated+translated by a vtkTransform).
-    vtkSmartPointer<vtkSphereSource>            ellipsoidSource_;
-    vtkSmartPointer<vtkTransform>               ellipsoidTransform_;
-    vtkSmartPointer<vtkTransformPolyDataFilter> ellipsoidFilter_;
-    vtkSmartPointer<vtkActor>                   ellipsoidActor_;
+    // Superquadric glyph pipeline: source -> (deep copy + per-vertex sign scalar)
+    // -> transform (scale by |dev|, orient onto PAS, translate to atom) -> actor.
+    vtkSmartPointer<vtkSuperquadricSource>      glyphSource_;
+    vtkSmartPointer<vtkPolyData>                glyphLocal_;
+    vtkSmartPointer<vtkTransform>               glyphTransform_;
+    vtkSmartPointer<vtkTransformPolyDataFilter> glyphFilter_;
+    vtkSmartPointer<vtkColorTransferFunction>   glyphLut_;   // diverging sign map
+    vtkSmartPointer<vtkActor>                   glyphActor_;
 
-    // Molecular-frame axes: three colored line segments (x=R, y=G, z=B).
-    vtkSmartPointer<vtkPolyData>          axesData_;
-    vtkSmartPointer<vtkPoints>            axesPoints_;
-    vtkSmartPointer<vtkCellArray>         axesLines_;
-    vtkSmartPointer<vtkUnsignedCharArray> axesColors_;
-    vtkSmartPointer<vtkActor>             axesActor_;
+    // sigma_11/22/33 tip labels (billboard = always camera-facing).
+    std::array<vtkSmartPointer<vtkBillboardTextActor3D>, 3> axisLabels_;
+
+    // Corner readout: iso / span / eta / skew + the colour key.
+    vtkSmartPointer<vtkCornerAnnotation> readout_;
 
     bool actorsBuilt_ = false;
     bool active_ = false;
-    bool hasAxes_ = false;
 };
 
 }  // namespace h5reader::app

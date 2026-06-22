@@ -67,6 +67,7 @@ find_package(VTK 9 REQUIRED COMPONENTS
     RenderingOpenGL2
     RenderingCore
     RenderingAnnotation
+    RenderingFreeType
     GUISupportQt
     InteractionStyle
     ImagingHybrid
