@@ -1697,12 +1697,13 @@ void RestServer::registerRoutes() {
         return jsonResponse(out);
     });
 
-    // POST /csa/style {"classic": bool}
+    // POST /csa/style {"style": "superquadric" | "ovaloid" | "ellipsoid"}
     //
-    // Toggle the focused-atom CSA glyph between the superquadric (Kindlmann;
-    // the shape disambiguates axial vs rhombic) and the classic smooth ellipsoid
-    // an NMR advisor may prefer. Routes through the toolbar action so the GUI and
-    // REST stay in step, then re-feeds the glyph. Returns the resulting style.
+    // Set the focused-atom CSA glyph style: superquadric (Kindlmann; the shape
+    // disambiguates axial vs rhombic), ovaloid (TensorView; the NMR shielding
+    // surface, sign by lobes), or the classic smooth ellipsoid. Routes through
+    // the toolbar action so the GUI and REST stay in step, then re-feeds the
+    // glyph. Returns the resulting style.
     server_->route(QStringLiteral("/csa/style"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
@@ -1710,13 +1711,20 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("reader window not wired"), SC::ServiceUnavailable);
         bool ok = false;
         const QJsonObject body = parseJsonBody(req, &ok);
-        if (!ok || !body.contains("classic"))
-            return errorResponse(QStringLiteral("body must be {\"classic\": bool}"), SC::BadRequest);
-        const bool classic = body.value("classic").toBool();
-        readerWindow_->setCsaGlyphClassic(classic);
-        return jsonResponse(QJsonObject{
-            {"classic", classic},
-            {"style", classic ? QStringLiteral("ellipsoid") : QStringLiteral("superquadric")}});
+        if (!ok || !body.contains("style"))
+            return errorResponse(QStringLiteral(
+                "body must be {\"style\": \"superquadric\"|\"ovaloid\"|\"ellipsoid\"}"),
+                SC::BadRequest);
+        const QString styleStr = body.value("style").toString();
+        int idx = -1;
+        if (styleStr == QLatin1String("superquadric")) idx = 0;
+        else if (styleStr == QLatin1String("ovaloid")) idx = 1;
+        else if (styleStr == QLatin1String("ellipsoid")) idx = 2;
+        if (idx < 0)
+            return errorResponse(QStringLiteral(
+                "style must be superquadric, ovaloid, or ellipsoid"), SC::BadRequest);
+        readerWindow_->setCsaGlyphStyle(idx);
+        return jsonResponse(QJsonObject{{"style", styleStr}});
     });
 
     // ---- catalog dump (the full "seeable list", for auditing) -----------

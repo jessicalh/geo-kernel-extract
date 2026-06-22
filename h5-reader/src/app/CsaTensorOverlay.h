@@ -27,8 +27,10 @@
 #include <vtkCornerAnnotation.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
+#include <vtkPolyDataNormals.h>
 #include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
+#include <vtkSphereSource.h>
 #include <vtkSuperquadricSource.h>
 #include <vtkTransform.h>
 #include <vtkTransformPolyDataFilter.h>
@@ -55,11 +57,13 @@ public:
     void setVisible(bool on);
     bool isActive() const { return active_; }
 
-    // Superquadric (Kindlmann, default) vs the classic smooth ellipsoid the
-    // advisor may prefer. A roundness-1 superquadric IS an ellipsoid, so the
-    // toggle only changes the edge sharpness; scale / orientation / sign-colour /
-    // labels are identical. The controller re-feeds show() after a change.
-    enum class GlyphStyle { Superquadric, Ellipsoid };
+    // Three glyph styles the controller cycles (re-feeding show() after a change):
+    //  * Superquadric (Kindlmann, default) -- shape sharpens by anisotropy type.
+    //  * Ovaloid (TensorView, NMR-community "more correct") -- a sphere deformed
+    //    radially by r ~ |dev(n)|, sign-coloured, pinching at the zero-crossing.
+    //  * Ellipsoid (the popular smooth form) -- a roundness-1 superquadric.
+    // Enum ORDER is the cycle order + the REST/int index (0/1/2); do not reorder.
+    enum class GlyphStyle { Superquadric, Ovaloid, Ellipsoid };
     void setStyle(GlyphStyle s) { style_ = s; }
     GlyphStyle style() const { return style_; }
 
@@ -72,9 +76,11 @@ private:
     // Superquadric glyph pipeline: source -> (deep copy + per-vertex sign scalar)
     // -> transform (scale by |dev|, orient onto PAS, translate to atom) -> actor.
     vtkSmartPointer<vtkSuperquadricSource>      glyphSource_;
+    vtkSmartPointer<vtkSphereSource>            ovaloidSource_;  // base for the ovaloid
     vtkSmartPointer<vtkPolyData>                glyphLocal_;
     vtkSmartPointer<vtkTransform>               glyphTransform_;
     vtkSmartPointer<vtkTransformPolyDataFilter> glyphFilter_;
+    vtkSmartPointer<vtkPolyDataNormals>         glyphNormals_;  // re-derive after deform
     vtkSmartPointer<vtkColorTransferFunction>   glyphLut_;   // diverging sign map
     vtkSmartPointer<vtkActor>                   glyphActor_;
 
