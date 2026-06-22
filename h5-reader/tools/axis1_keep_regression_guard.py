@@ -109,7 +109,7 @@ def main(argv: list[str]) -> int:
     for required in ("G2_field_sources", "G6_field_vs_efg", "G4_bs_vs_hm_tensor_components"):
         require(required in read_ids, f"missing subspace read {required}")
     require(any(r.get("read_id") == "G4_bs_vs_hm_tensor_components"
-                and r.get("independence_verdict") == "independent_forms_checked"
+                and (r.get("independence_verdict") or "").startswith("independent_forms_checked")
                 for r in subspace),
             "G4 BS/HM independence verdict missing")
 

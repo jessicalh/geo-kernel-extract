@@ -103,6 +103,8 @@ private slots:
 
         QVERIFY(source.contains(QStringLiteral("field_efg_pearson_r_unthresholded")));
         QVERIFY(source.contains(QStringLiteral("r_bs_hm_contraction")));
+        QVERIFY(source.contains(QStringLiteral("bs_hm_divergence_to_ring_contribution_ratio")));
+        QVERIFY(source.contains(QStringLiteral("independent_forms_checked_distinct_kernel_forms_shared_geometry_projection_decomposition")));
         QVERIFY(source.contains(QStringLiteral("subspaceCompareObject")));
     }
 };

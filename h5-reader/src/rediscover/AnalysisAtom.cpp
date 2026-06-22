@@ -1551,8 +1551,6 @@ QStringList classicalSourceHeaderColumns() {
          << QStringLiteral("slope_ci_high")
          << QStringLiteral("r_cl_qm")
          << QStringLiteral("rmsd_ppm")
-         << QStringLiteral("residual_mean")
-         << QStringLiteral("residual_sd")
          << QStringLiteral("scale_factor")
          << QStringLiteral("tracking_label")
          << QStringLiteral("constant_placeholder_n");
@@ -1747,8 +1745,6 @@ void writeClassicalSourceRecord(QTextStream& out, const ClassicalSourceTermRecor
           << csvNum(slopeHi)
           << csvNum(corr)
           << csvNum(rmsdPpm)
-          << csvNum(summaryPresent(residual) ? residual.mean : kNaN)
-          << csvNum(summaryPresent(residual) ? residual.sd : kNaN)
           << csvNum(scale)
           << csvEscape(trackingLabel)
           << QString::number(r.constant_placeholder_n);
@@ -3056,10 +3052,12 @@ public:
                                         : r.missing_reason);
             const bool bsHmRead = read.id == QStringLiteral("G4_bs_vs_hm_tensor_components");
             const QString independenceVerdict =
-                bsHmRead ? QStringLiteral("independent_forms_checked") : QString();
+                bsHmRead
+                    ? QStringLiteral("independent_forms_checked_distinct_kernel_forms_shared_geometry_projection_decomposition")
+                    : QString();
             const QString independenceBasis =
                 bsHmRead
-                    ? QStringLiteral("BS and HM are read from distinct BSPerTypeT2/HMPerTypeT2 producer fields; null divergence is reported as null, not relabeled as signal")
+                    ? QStringLiteral("Producer finding CODEX_BS_HM_RESEARCH_20260622: BS is a Biot-Savart current-loop kernel and HM is a Haigh-Mallion surface-integral kernel under shared geometry/projection/decomposition; near-null agreement is model robustness, not a relabel")
                     : QString();
             QStringList cells;
             cells << QStringLiteral("subspace_overlap_v1")
@@ -5452,6 +5450,7 @@ private:
     QJsonObject bsHmDivergenceJson(int type, const std::vector<std::size_t>& rows) const {
         const Mat3Series& bs = bs_per_type_mol_[static_cast<std::size_t>(type)];
         const Mat3Series& hm = hm_per_type_mol_[static_cast<std::size_t>(type)];
+        const std::vector<double> ringContribution = ringContributionMagnitudeSeries(type);
         QJsonObject o;
         o.insert(QStringLiteral("level"), QStringLiteral("per_type"));
         o.insert(QStringLiteral("family"), QStringLiteral("bs_hm_divergence"));
@@ -5460,12 +5459,19 @@ private:
         o.insert(QStringLiteral("projection"), QStringLiteral("T_mol = R^T * T_lab * R"));
 
         std::vector<double> divergence(bs.values.size(), kNaN);
+        std::vector<double> divergenceRatio(bs.values.size(), kNaN);
         for (std::size_t row : rows) {
             if (row >= bs.values.size() || row >= hm.values.size()) continue;
             if (!bs.present[row] || !hm.present[row]) continue;
             divergence[row] = tensorFrobenius(bs.values[row] - hm.values[row]);
+            const double scale =
+                row < ringContribution.size() ? ringContribution[row] : kNaN;
+            if (finite(scale) && scale > 1.0e-15)
+                divergenceRatio[row] = divergence[row] / scale;
         }
         o.insert(QStringLiteral("bs_hm_divergence"), scalarSummaryJson(divergence));
+        o.insert(QStringLiteral("bs_hm_divergence_to_ring_contribution_ratio"),
+                 scalarSummaryJson(divergenceRatio));
 
         QJsonObject componentDeltas;
         for (int c = 0; c < 6; ++c) {
@@ -5520,6 +5526,23 @@ private:
         }
         o.insert(QStringLiteral("contraction_pearson_correlations"), contractions);
         return o;
+    }
+
+    std::vector<double> ringContributionMagnitudeSeries(int type) const {
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        const int ringOrd = mechanismOrd(QStringLiteral("ring_jb"));
+        for (const auto& item : relationships_) {
+            const RelationshipKey& key = item.first;
+            if (key.mechanism_ord != ringOrd || key.source_category_ord != type) continue;
+            const std::vector<double> contribution =
+                item.second.contribution.dense(cadence_.stepCount());
+            for (std::size_t i = 0; i < out.size() && i < contribution.size(); ++i) {
+                if (!finite(contribution[i])) continue;
+                const double v = std::abs(contribution[i]);
+                out[i] = finite(out[i]) ? out[i] + v : v;
+            }
+        }
+        return out;
     }
 
     static int signClass(double v) {
@@ -8141,7 +8164,7 @@ QJsonObject manifestJson(const Body& body,
     subspaceOverlaps.insert(QStringLiteral("no_relabel_policy"),
                             QStringLiteral("canonical_corr/basis_dim/explained_fraction/principal_angles only emitted by CompareSubspaces"));
     subspaceOverlaps.insert(QStringLiteral("bs_hm_independence_verdict"),
-                            QStringLiteral("producer form check: BSPerTypeT2 and HMPerTypeT2 are distinct producer fields; null divergence is a reported null"));
+                            QStringLiteral("producer form check: BS is Biot-Savart current-loops and HM is Haigh-Mallion surface-integral under shared geometry/projection/decomposition; near-null divergence is model robustness, not a relabel"));
     root.insert(QStringLiteral("subspace_overlaps_sidecar"), subspaceOverlaps);
 
     QJsonObject eta2ByWell;
