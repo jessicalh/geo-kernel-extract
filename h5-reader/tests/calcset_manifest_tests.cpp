@@ -471,9 +471,14 @@ void CalcsetManifestTests::testDftBlockMissingMetaJsonFile() {
         })")));
     QString err;
     auto m = CalcsetManifest::Load(tmp.path(), &err);
-    QVERIFY(!m.has_value());
-    QVERIFY(err.contains(QStringLiteral("meta_json")));
-    QVERIFY(err.contains(QStringLiteral("does not exist")));
+    // A missing DFT meta.json is NON-FATAL: the loader skips that frame (logging
+    // a warning) and the calcset still opens, so a partial / zero-coverage DFT
+    // campaign can travel. The viewer depends on this gap-tolerance (tier-A
+    // extractor-only loads + partial-DFT runs like the 1P9J case study). The
+    // skipped frame leaves an empty dft.frames list, not a load failure.
+    QVERIFY(m.has_value());
+    QVERIFY(m->dft.has_value());
+    QVERIFY(m->dft->frames.empty());
 }
 
 // --- metadata -------------------------------------------------------

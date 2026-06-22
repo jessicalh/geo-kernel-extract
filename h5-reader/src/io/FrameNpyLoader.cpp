@@ -81,11 +81,11 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
         }
 
         // Writer is definitive: when the NPY column count disagrees with the
-        // catalog's (non -1) value, trust the NPY and flag the drift — this is
-        // how gromacs_energy's 43-vs-catalog-42 surfaces at load.
+        // catalog's (non -1) value, trust the NPY and flag the drift -- e.g.
+        // ring_contributions surfaces 58-vs-catalog-40 on the older 1P9J set.
         if (spec.cols != -1 && cols != spec.cols) {
             ErrorBus::Report(Severity::Warning, QStringLiteral("FrameNpyLoader"),
-                             QStringLiteral("%1: NPY cols=%2 disagrees with catalog cols=%3 — trusting the NPY")
+                             QStringLiteral("%1: NPY cols=%2 disagrees with catalog cols=%3 -- trusting the NPY")
                                  .arg(QString::fromStdString(stem))
                                  .arg(cols)
                                  .arg(spec.cols),

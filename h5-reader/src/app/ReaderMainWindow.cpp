@@ -303,8 +303,22 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     filterResidues_.clear();
 
     signalCatalog_ = new model::TrajectorySignalCatalog(this);
+    // The availability gate needs the startup-loaded topology spine sizes and
+    // the DFT job count to classify Topology + live ORCA descriptors honestly
+    // (neither travels through the per-frame NPY path the gate probes). The DFT
+    // count comes from the manifest (== DftShieldingStore::jobCount(); the store
+    // itself is built further below, after this).
+    const model::TrajectoryFieldAvailability::TopologyExtent topologyExtent{
+        static_cast<qsizetype>(loaded_->protein->atomCount()),
+        static_cast<qsizetype>(loaded_->protein->bondCount()),
+        static_cast<qsizetype>(loaded_->protein->residueCount()),
+        static_cast<qsizetype>(loaded_->protein->ringCount()),
+        static_cast<qsizetype>(loaded_->protein->ringMembershipCount())};
+    const std::size_t dftJobCount =
+        loaded_->manifest.dft.has_value() ? loaded_->manifest.dft->frames.size() : 0;
     fieldAvailability_ = std::make_shared<model::TrajectoryFieldAvailability>(
         model::TrajectoryFieldAvailability::Build(loaded_->conformation.get(),
+                                                  topologyExtent, dftJobCount,
                                                   signalCatalog_->allDescriptorList()));
     signalCatalog_->setFieldAvailability(fieldAvailability_);
     visualizationContext_ = {};

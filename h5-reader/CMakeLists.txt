@@ -766,6 +766,24 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_csa_math_tests COMMAND h5reader_csa_math_tests)
 
+    # Availability-gate classification policy (TrajectoryFieldAvailability) --
+    # the pure classifyDft / classifyTopology / visible-state / conservative-
+    # default logic of leg #1 (make the catalog tell the truth about what is
+    # live). Build() itself is coupled to H5/NPY I/O and is REST-integration-
+    # tested; this pins the header-only policy. Links Qt6::Test only.
+    qt_add_executable(h5reader_field_availability_tests
+        tests/field_availability_tests.cpp
+        src/model/TrajectoryFieldAvailability.h
+    )
+    target_include_directories(h5reader_field_availability_tests PRIVATE src)
+    target_link_libraries(h5reader_field_availability_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_field_availability_tests
+             COMMAND h5reader_field_availability_tests)
+
     # Pure-function occupancy-shells density / HDR math (OccupancyShellsMath.h).
     # The correctness core of the occupancy-shells overlay, factored out for
     # direct testing per the Opus/codex pre-build reviews. Header-only math over

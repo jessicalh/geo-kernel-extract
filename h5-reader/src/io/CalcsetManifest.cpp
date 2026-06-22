@@ -548,7 +548,7 @@ CalcsetManifest::Load(const QString& root_or_lgs_path, QString* err_out) {
                 // simply absent) rather than failing the whole trajectory load.
                 // Lets a calcset open where only some/no DFT .out files travel.
                 qCWarning(cCalcset).noquote()
-                    << *perr << QStringLiteral("— DFT frame skipped, overlay absent for it");
+                    << *perr << QStringLiteral("-- DFT frame skipped, overlay absent for it");
                 continue;
             }
             d.frames.push_back(std::move(df));

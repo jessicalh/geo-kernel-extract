@@ -359,11 +359,12 @@ struct BondedEnergy {
 // units. Column order per the writer GromacsEnergyResult.cpp:29-53 (= the
 // GromacsEnergy struct in GromacsEnergyResult.h, EXCLUDING its time_ps field).
 //
-// SCHEMA NOTE (writer-definitive): the writer emits 43 columns; _catalog.py and
-// the generated QtFieldCatalog.gen.h declare cols=42 — an off-by-one CONFIRMED
-// against the fixture bytes (shape (1,43)). This block decodes 43. Flagged for
-// the library team (_catalog.py gromacs_energy 42→43); the loader must take the
-// actual NPY shape as truth over the catalog cols and log the mismatch.
+// SCHEMA NOTE (writer-definitive): this block decodes 43 columns, which now
+// MATCHES the catalog -- _catalog.py and the generated QtFieldCatalog.gen.h both
+// declare cols=43; the old 42-vs-43 off-by-one was fixed and re-verified against
+// the on-disk fixture shape (1,43). The writer-definitive rule still holds in
+// general (loader trusts the NPY shape over catalog cols and logs any mismatch);
+// the live drift example is now ring_contributions (40 declared vs 58 on 1P9J).
 struct GromacsEnergy {
     std::array<double, 43> raw = {};
     static GromacsEnergy FromRow(const double* r) {

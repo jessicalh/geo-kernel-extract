@@ -50,7 +50,32 @@ struct TrajectoryFieldAvailabilityRecord {
 
 class TrajectoryFieldAvailability {
 public:
+    // Sizes of the startup-loaded topology spine's tables, snapshotted by the
+    // caller from the loaded QtProtein. The gate uses these to classify
+    // Topology-source descriptors honestly: the topology is loaded ONCE at
+    // startup (not as a per-frame NPY column), so the per-frame probe can never
+    // see it. A zero count is an honest empty table (e.g. rings on a ring-less
+    // peptide), not a missing source.
+    struct TopologyExtent {
+        qsizetype atoms = 0;
+        qsizetype bonds = 0;
+        qsizetype residues = 0;
+        qsizetype rings = 0;
+        qsizetype ringMemberships = 0;
+    };
+
+    // conformation: dense-H5 + per-frame-NPY probing, as before.
+    // topology:     table sizes of the startup-loaded topology spine.
+    // dftJobCount:  number of DFT jobs registered for this run (== the .LGS
+    //               dft.frames count == DftShieldingStore::jobCount()); 0 when
+    //               there is no DFT campaign. The live ORCA shielding lives in
+    //               .out files behind DftShieldingStore, NOT in the per-frame
+    //               NPYs, so it must be classified from the job count — the old
+    //               code routed it through the NPY probe, which can only ever
+    //               report it Absent.
     static TrajectoryFieldAvailability Build(Conformation* conformation,
+                                             const TopologyExtent& topology,
+                                             std::size_t dftJobCount,
                                              const QVector<SignalDescriptor>& descriptors) {
         TrajectoryFieldAvailability out;
         const auto* traj = conformation ? conformation->asTrajectory() : nullptr;
@@ -65,8 +90,7 @@ public:
                 const QString key = descriptor.storagePath;
                 if (!denseByStorage.contains(key))
                     denseByStorage.insert(key, classifyDenseH5(h5, descriptor));
-            } else if (descriptor.sourceKind == SignalSourceKind::FrameNpySnapshot
-                       || descriptor.sourceKind == SignalSourceKind::OrcaDftFrame) {
+            } else if (descriptor.sourceKind == SignalSourceKind::FrameNpySnapshot) {
                 const QString key = descriptor.storagePath;
                 if (key.isEmpty()) {
                     frameByStorage.insert(key, {TrajectoryFieldAvailabilityState::Absent, 0, 0});
@@ -88,31 +112,81 @@ public:
                 frameByStorage.insert(it.key(), it.value());
         }
 
+        // The live ORCA shielding is classified once from the registered job
+        // count (it feeds the CSA glyph via DftShieldingStore; it is never a
+        // per-frame NPY column). DerivedGeometry/SelectionEvents are offerable
+        // affordances computed/created on demand — always offerable once a run
+        // is loaded. Marking these EXPLICITLY (rather than via the old silent
+        // no-record default) is what lets the missing-record default be Absent.
+        const TrajectoryFieldAvailabilityRecord dftRecord = classifyDft(dftJobCount);
+        const TrajectoryFieldAvailabilityRecord affordanceRecord{
+            TrajectoryFieldAvailabilityState::Available, 1, 1};
+
         for (const SignalDescriptor& descriptor : descriptors) {
             TrajectoryFieldAvailabilityRecord record;
             bool hasRecord = false;
-            if (descriptor.sourceKind == SignalSourceKind::DenseH5Trajectory) {
-                const auto it = denseByStorage.constFind(descriptor.storagePath);
-                if (it != denseByStorage.constEnd()) {
-                    record = it.value();
-                    hasRecord = true;
+            switch (descriptor.sourceKind) {
+                case SignalSourceKind::DenseH5Trajectory: {
+                    const auto it = denseByStorage.constFind(descriptor.storagePath);
+                    if (it != denseByStorage.constEnd()) { record = it.value(); hasRecord = true; }
+                    break;
                 }
-            } else if (descriptor.sourceKind == SignalSourceKind::FrameNpySnapshot
-                       || descriptor.sourceKind == SignalSourceKind::OrcaDftFrame) {
-                const auto it = frameByStorage.constFind(descriptor.storagePath);
-                if (it != frameByStorage.constEnd()) {
-                    record = it.value();
-                    hasRecord = true;
+                case SignalSourceKind::FrameNpySnapshot: {
+                    const auto it = frameByStorage.constFind(descriptor.storagePath);
+                    if (it != frameByStorage.constEnd()) { record = it.value(); hasRecord = true; }
+                    break;
                 }
+                case SignalSourceKind::OrcaDftFrame:
+                    record = dftRecord;
+                    hasRecord = true;
+                    break;
+                case SignalSourceKind::Topology:
+                    record = classifyTopology(descriptor.storagePath, topology);
+                    hasRecord = true;
+                    break;
+                case SignalSourceKind::DerivedGeometry:
+                case SignalSourceKind::SelectionEvents:
+                    record = affordanceRecord;
+                    hasRecord = true;
+                    break;
             }
             if (hasRecord) {
                 out.byDescriptor_.insert(descriptor.id, record);
-                if (!descriptor.storagePath.isEmpty())
-                    out.byStorage_.insert(descriptor.storagePath, record);
+                upgradeStorage(out.byStorage_, descriptor.storagePath, record);
             }
         }
 
         return out;
+    }
+
+    // Classify the ORCA DFT source from the registered job count: a campaign of
+    // N>0 jobs is live (Available); no campaign (N==0) is honestly Absent. Pure;
+    // unit-tested directly (Build itself is integration-tested via REST because
+    // it is coupled to the H5/NPY I/O it probes).
+    static TrajectoryFieldAvailabilityRecord classifyDft(std::size_t jobCount) {
+        if (jobCount == 0)
+            return {TrajectoryFieldAvailabilityState::Absent, 0, 0};
+        const auto n = static_cast<qsizetype>(jobCount);
+        return {TrajectoryFieldAvailabilityState::Available, n, n};
+    }
+
+    // Classify a Topology-source descriptor from the loaded spine's table size.
+    // A non-empty table is live (Available); an empty one is an honest
+    // AllMissing (the spine loaded, but this protein has no rows for it). Pure.
+    static TrajectoryFieldAvailabilityRecord classifyTopology(const QString& storagePath,
+                                                              const TopologyExtent& t) {
+        qsizetype n = -1;
+        if (storagePath == QLatin1String("atoms")) n = t.atoms;
+        else if (storagePath == QLatin1String("residues")) n = t.residues;
+        else if (storagePath == QLatin1String("bonds")
+                 || storagePath == QLatin1String("bond_length")) n = t.bonds;
+        else if (storagePath == QLatin1String("rings")) n = t.rings;
+        else if (storagePath == QLatin1String("ring_membership")) n = t.ringMemberships;
+        if (n < 0)  // unknown topology stem: live iff the spine itself loaded.
+            n = t.atoms;
+        if (n <= 0)
+            return {TrajectoryFieldAvailabilityState::AllMissing, 0, 0};
+        return {TrajectoryFieldAvailabilityState::Available, n, n};
     }
 
     const TrajectoryFieldAvailabilityRecord* recordForDescriptor(const QString& descriptorId) const {
@@ -127,7 +201,12 @@ public:
 
     TrajectoryFieldAvailabilityState stateForDescriptor(const QString& descriptorId) const {
         const auto* record = recordForDescriptor(descriptorId);
-        return record ? record->state : TrajectoryFieldAvailabilityState::Available;
+        // Build() now records every source kind, so a missing record means an id
+        // not in the catalog (or a future, unhandled kind) -- report it
+        // conservatively as Absent. The old default of Available was the root of
+        // the topology/ORCA "lies-Available" leak: an unhandled source kind got
+        // no record and was silently reported live.
+        return record ? record->state : TrajectoryFieldAvailabilityState::Absent;
     }
 
     bool allowsDescriptor(const SignalDescriptor& descriptor) const {
@@ -394,6 +473,23 @@ private:
     static const QtTimeSeriesFrameMeta& emptyMeta() {
         static const QtTimeSeriesFrameMeta empty;
         return empty;
+    }
+
+    // Merge a record into the by-storage map, preferring the MORE-available one
+    // when two descriptors alias the same storage stem (the orca_total /
+    // residues duplication: a live `orca_dft:*` and a dead `npy:orca_*` share
+    // the stem). recordForStoragePath is the secondary gate in
+    // VisualizationDescriptorDataAvailable, so a dead duplicate's Absent must
+    // not mask the live aliased descriptor here.
+    static void upgradeStorage(QHash<QString, TrajectoryFieldAvailabilityRecord>& byStorage,
+                               const QString& path,
+                               const TrajectoryFieldAvailabilityRecord& record) {
+        if (path.isEmpty())
+            return;
+        const auto it = byStorage.constFind(path);
+        if (it == byStorage.constEnd()
+            || (isVisibleState(record.state) && !isVisibleState(it.value().state)))
+            byStorage.insert(path, record);
     }
 
     QHash<QString, TrajectoryFieldAvailabilityRecord> byDescriptor_;
