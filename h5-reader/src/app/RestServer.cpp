@@ -1697,6 +1697,28 @@ void RestServer::registerRoutes() {
         return jsonResponse(out);
     });
 
+    // POST /csa/style {"classic": bool}
+    //
+    // Toggle the focused-atom CSA glyph between the superquadric (Kindlmann;
+    // the shape disambiguates axial vs rhombic) and the classic smooth ellipsoid
+    // an NMR advisor may prefer. Routes through the toolbar action so the GUI and
+    // REST stay in step, then re-feeds the glyph. Returns the resulting style.
+    server_->route(QStringLiteral("/csa/style"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader window not wired"), SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("classic"))
+            return errorResponse(QStringLiteral("body must be {\"classic\": bool}"), SC::BadRequest);
+        const bool classic = body.value("classic").toBool();
+        readerWindow_->setCsaGlyphClassic(classic);
+        return jsonResponse(QJsonObject{
+            {"classic", classic},
+            {"style", classic ? QStringLiteral("ellipsoid") : QStringLiteral("superquadric")}});
+    });
+
     // ---- catalog dump (the full "seeable list", for auditing) -----------
     //
     // GET /catalog -> every signal descriptor with its real state: provenance

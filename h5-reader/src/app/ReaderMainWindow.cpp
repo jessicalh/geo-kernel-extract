@@ -583,6 +583,14 @@ model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom) {
     return model::ComputeAtomCsa(*protein, *rawConf, *transformed_, *dftStore_, atom, frame);
 }
 
+void ReaderMainWindow::setCsaGlyphClassic(bool classic) {
+    ASSERT_THREAD(this);
+    // Route through the toolbar action so the GUI checkbox and REST agree; the
+    // action's toggled handler sets the overlay style and re-feeds the glyph.
+    if (showCsaClassicAction_)
+        showCsaClassicAction_->setChecked(classic);
+}
+
 void ReaderMainWindow::clearLoadedRun() {
     ASSERT_THREAD(this);
 
@@ -1589,6 +1597,14 @@ void ReaderMainWindow::buildToolbar() {
         "50% / 90% highest-density regions over the trajectory (backbone-aligned). "
         "Trajectory data only; rigid atoms are skipped."));
 
+    showCsaClassicAction_ = tb->addAction(QStringLiteral("CSA: classic"));
+    showCsaClassicAction_->setCheckable(true);
+    showCsaClassicAction_->setChecked(false);   // superquadric by default
+    showCsaClassicAction_->setShortcut(QKeySequence(Qt::Key_G));
+    showCsaClassicAction_->setToolTip(QStringLiteral(
+        "CSA tensor glyph for the focused atom: off = superquadric (Kindlmann; "
+        "the shape shows axial vs rhombic at a glance), on = classic ellipsoid."));
+
     ACONNECT(showRibbonAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->ribbonOverlay()) return;
@@ -1623,6 +1639,14 @@ void ReaderMainWindow::buildToolbar() {
                  // suffices.
                  scene_->occupancyShellsOverlay()->setVisible(on);
                  scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+             });
+    ACONNECT(showCsaClassicAction_.data(), &QAction::toggled,
+             this, [this](bool on) {
+                 if (scene_ && scene_->csaOverlay())
+                     scene_->csaOverlay()->setStyle(
+                         on ? CsaTensorOverlay::GlyphStyle::Ellipsoid
+                            : CsaTensorOverlay::GlyphStyle::Superquadric);
+                 updateCsaGlyph();  // re-feed the focused atom in the new style
              });
 
     // Focus — a self-contained toggle at the toolbar tail (deliberately

@@ -55,6 +55,14 @@ public:
     void setVisible(bool on);
     bool isActive() const { return active_; }
 
+    // Superquadric (Kindlmann, default) vs the classic smooth ellipsoid the
+    // advisor may prefer. A roundness-1 superquadric IS an ellipsoid, so the
+    // toggle only changes the edge sharpness; scale / orientation / sign-colour /
+    // labels are identical. The controller re-feeds show() after a change.
+    enum class GlyphStyle { Superquadric, Ellipsoid };
+    void setStyle(GlyphStyle s) { style_ = s; }
+    GlyphStyle style() const { return style_; }
+
 private:
     void ensureActors();
     void hideAll();
@@ -78,6 +86,7 @@ private:
 
     bool actorsBuilt_ = false;
     bool active_ = false;
+    GlyphStyle style_ = GlyphStyle::Superquadric;
 };
 
 }  // namespace h5reader::app

@@ -183,6 +183,12 @@ void CsaTensorOverlay::show(const model::Vec3& atomPos,
         thetaR = clampR(std::pow(1.0 - cl, kSharpGamma));
     }
 
+    // Classic-ellipsoid mode: a roundness-1 superquadric is a smooth ellipsoid.
+    if (style_ == GlyphStyle::Ellipsoid) {
+        thetaR = 1.0;
+        phiR = 1.0;
+    }
+
     glyphSource_->SetThetaRoundness(thetaR);
     glyphSource_->SetPhiRoundness(phiR);
     glyphSource_->Update();

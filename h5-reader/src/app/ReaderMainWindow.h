@@ -81,6 +81,9 @@ public:
     // current frame -- the same orchestration the focus-driven glyph uses.
     // Public so RestServer's GET /csa vets exactly what is drawn.
     model::AtomCsaResult probeAtomCsa(std::size_t atom);
+    // CSA glyph style toggle (superquadric <-> classic ellipsoid); routes through
+    // the toolbar action so REST and the GUI stay in step, then re-feeds the glyph.
+    void setCsaGlyphClassic(bool classic);
 
     // Load or replace the current calcset in this window. The path is resolved
     // through QtProteinLoader::LoadRunPath. Returns false without changing the
@@ -311,6 +314,7 @@ private:
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> showOccupancyAction_;
+    QPointer<QAction> showCsaClassicAction_;
     QPointer<QAction> signalDisplaysAction_;
 
     // Display-isolation ("Filter"): a toolbar button whose dropdown is a live
