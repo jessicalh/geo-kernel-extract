@@ -23,6 +23,7 @@
 #include "../model/DashboardSignalModel.h"
 #include "../model/MetricTaxonomy.h"
 #include "../model/QtProtein.h"
+#include "../model/VisualizationRegistry.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "../model/TransformedConformation.h"
 
@@ -1812,6 +1813,62 @@ void RestServer::registerRoutes() {
             {"form_count", formTotal},
             {"groups_by_role", groupsByRole},
             {"groups", groups},
+        });
+    });
+
+    // GET /catalog/display-audit -- coherence of the per-field DISPLAY OPTIONS.
+    // For every descriptor: its value_shape, the modes it OFFERS (AllDisplayModes),
+    // and the visualizations that actually SUPPORT it (registry.supporting). A
+    // field whose supporting set is EMPTY can never be shown -- a dead option.
+    // Aggregated by value_shape so incoherence is visible at a glance (e.g. a
+    // shape that no viz supports, or a shape offering modes nothing renders).
+    server_->route(QStringLiteral("/catalog/display-audit"), [this]() {
+        ASSERT_THREAD(this);
+        if (!catalog_)
+            return errorResponse(QStringLiteral("catalog not wired"), SC::ServiceUnavailable);
+        const model::VisualizationRegistry& reg = model::VisualizationRegistry::instance();
+        QJsonArray fields;
+        QJsonArray deadFields;
+        QHash<QString, int> shapeCount, shapeDead;
+        QHash<QString, QStringList> shapeViz;
+        for (const model::SignalDescriptor& d : catalog_->allDescriptorList()) {
+            const QString shape = model::ToString(d.valueShape);
+            QJsonArray modeArr;
+            for (const QString& m : model::AllDisplayModes(d)) modeArr.append(m);
+            QJsonArray vizArr;
+            for (const model::VisualizationDefinition* def : reg.supporting(d)) {
+                const QString vt = model::ToString(def->type());
+                vizArr.append(vt);
+                if (!shapeViz[shape].contains(vt)) shapeViz[shape].append(vt);
+            }
+            const bool displayable = !vizArr.isEmpty();
+            ++shapeCount[shape];
+            if (!displayable) { ++shapeDead[shape]; deadFields.append(d.id); }
+            fields.append(QJsonObject{
+                {"id", d.id},
+                {"group", QString::fromLatin1(model::ToString(model::ClassifyMetric(d).group))},
+                {"value_shape", shape},
+                {"offered_modes", modeArr},
+                {"supporting_viz", vizArr},
+                {"displayable", displayable},
+            });
+        }
+        QJsonObject byShape;
+        for (auto it = shapeCount.constBegin(); it != shapeCount.constEnd(); ++it) {
+            QJsonArray viz;
+            for (const QString& v : shapeViz.value(it.key())) viz.append(v);
+            byShape[it.key()] = QJsonObject{
+                {"fields", it.value()},
+                {"dead", shapeDead.value(it.key())},
+                {"supporting_viz", viz},
+            };
+        }
+        return jsonResponse(QJsonObject{
+            {"total", static_cast<qint64>(catalog_->allDescriptorList().size())},
+            {"dead_count", deadFields.size()},
+            {"dead_fields", deadFields},
+            {"by_value_shape", byShape},
+            {"fields", fields},
         });
     });
 
