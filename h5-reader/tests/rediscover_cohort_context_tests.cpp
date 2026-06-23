@@ -75,6 +75,7 @@ private slots:
     void foldAdapterProjectsMolecularComponents();
     void classicalAgreementUsesPerProteinPoints();
     void classicalAgreementUsesSignedBuckinghamField();
+    void classicalAgreementSanctionedAbsentBuckinghamField();
     void predecessorChi1EffectUsesPairAccumulator();
     void syntheticFoldedDeltaRidgeMatchesHandSlope();
     void syntheticDistantNonzeroRidgeIsCharacterizedNotGated();
@@ -357,6 +358,47 @@ void RediscoverCohortContextTests::classicalAgreementUsesSignedBuckinghamField()
     QVERIFY(stats.r > 0.999);
     QCOMPARE(stats.slope, 1.0);
     QCOMPARE(stats.rmsd, 0.0);
+}
+
+void RediscoverCohortContextTests::classicalAgreementSanctionedAbsentBuckinghamField() {
+    // Regression for the 2026-06-23 oxygen-drop bug (A2-13): sidechain carboxylate/carbonyl O
+    // (OD1/OD2/OE1/OE2/OXT) have no X-H bond and no backbone frame, so signed E|| is undefined
+    // (both apbs_E_parallel_XH and apbs_E_parallel_mol_z absent -> meanValue() == NaN). With a
+    // NON-ZERO Buckingham constant the old code set buckingham = NaN, poisoned the whole classical
+    // sum, dropped EVERY sample, and emitted a blank C1 agreement. The forward sum must instead
+    // treat the missing field axis as a SANCTIONED ABSENCE (Buckingham = 0, keep ring + mc) and
+    // still produce a FINITE r/slope/rmsd.
+    Axis2ContextKeyFields f;
+    f.element = QStringLiteral("O");
+    f.residue_type = QStringLiteral("ASP");
+    f.atom_name = QStringLiteral("OD1");
+    f.hyb = QStringLiteral("sp2");
+    f.contact_class = QStringLiteral("polar");
+    f.dihedral_region = QStringLiteral("AlphaR");
+    f.SS = QStringLiteral("helix");
+
+    CohortContextAccumulator acc;
+    constexpr double buckinghamA = 2.0;  // non-zero: the old path would NaN-poison and blank C1
+    constexpr double buckinghamB = 0.5;
+    for (int i = 0; i < 4; ++i) {
+        CohortSample s;
+        s.key = BuildAxis2ContextKey(f);
+        s.protein_id = QStringLiteral("p%1").arg(i);
+        s.sigma_iso = 10.0 + 2.0 * static_cast<double>(i);
+        // No apbs_E_parallel_XH and no apbs_E_parallel_mol_z -> eParallel undefined for this O.
+        // classical = ring + mc = sigma exactly -> r = 1, slope = 1 (Buckingham sanctioned-absent).
+        s.channels.insert(QStringLiteral("ring_bs_iso"), 10.0 + 2.0 * static_cast<double>(i));
+        s.channels.insert(QStringLiteral("mc_lit_iso"), 0.0);
+        acc.push(s);
+    }
+
+    const ClassicalAgreementStats stats =
+        ComputeClassicalAgreementForCell(acc.cells().begin()->second, buckinghamA, buckinghamB);
+    QVERIFY(std::isfinite(stats.r));      // was NaN (blank C1) under the NaN-poison path
+    QVERIFY(std::isfinite(stats.slope));
+    QVERIFY(std::isfinite(stats.rmsd));
+    QVERIFY(stats.r > 0.999);             // classical = ring (buckingham absent, mc=0) tracks sigma
+    QCOMPARE(stats.slope, 1.0);
 }
 
 void RediscoverCohortContextTests::predecessorChi1EffectUsesPairAccumulator() {

@@ -363,12 +363,24 @@ ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& 
         const double eParallel = finite(xh) ? xh : molZ;
         const double ring = p.channels.value(QStringLiteral("ring_bs_iso")).meanValue();
         const double mc = p.channels.value(QStringLiteral("mc_lit_iso")).meanValue();
+        // The Buckingham field term needs a defined projection axis: signed E|| along the X-H bond,
+        // or the molecular-frame z for backbone atoms. Sidechain carboxylate/carbonyl oxygens
+        // (OD1/OD2/OE1/OE2/OXT) have NEITHER an X-H bond NOR a backbone frame, so eParallel is
+        // undefined for them. Treat that as a SANCTIONED ABSENCE of the Buckingham channel
+        // (contribution = 0; the forward sum proceeds from ring + mc), exactly as the per-atom path
+        // (AnalysisAtom buckinghamEParallelSeries) already does. Do NOT poison the whole classical
+        // sum with NaN and drop the atom -- that silently deleted the sidechain-O C1 agreement,
+        // including the D4 sp2-O and Asp29 chi2 poster oxygens (caught by the A2-13 fail-loud audit).
+        //
+        // CAVEAT (modeling, signed off 2026-06-23): these oxygens therefore carry no field term in
+        // sigma_cl; their classical model is ring + mc only. This is honest -- a carboxylate/carbonyl
+        // O's shielding is dominated by local-paramagnetic physics the classical stack never modeled,
+        // and the pre-fix code only "had" a field term because it used the unphysical |E| magnitude.
+        // A proper C=O-bond Buckingham axis for carbonyls is a future extractor-side enhancement.
         double buckingham = 0.0;
         if (finite(eParallel)) {
             buckingham = (-buckinghamA * eParallel)
                          + (-buckinghamB * eParallel * eParallel);
-        } else if (buckinghamA != 0.0 || buckinghamB != 0.0) {
-            buckingham = kNan;
         }
         const double classical = buckingham + ring + mc;
         if (!finite(sigma) || !finite(classical)) continue;
