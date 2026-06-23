@@ -583,23 +583,6 @@ model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom) {
     return model::ComputeAtomCsa(*protein, *rawConf, *transformed_, *dftStore_, atom, frame);
 }
 
-void ReaderMainWindow::setCsaGlyphStyle(int style) {
-    ASSERT_THREAD(this);
-    const int idx = ((style % 3) + 3) % 3;  // 0=superquadric 1=ovaloid 2=ellipsoid
-    const CsaTensorOverlay::GlyphStyle gs =
-        idx == 1   ? CsaTensorOverlay::GlyphStyle::Ovaloid
-        : idx == 2 ? CsaTensorOverlay::GlyphStyle::Ellipsoid
-                   : CsaTensorOverlay::GlyphStyle::Superquadric;
-    if (scene_ && scene_->csaOverlay())
-        scene_->csaOverlay()->setStyle(gs);
-    if (csaGlyphStyleAction_) {
-        static const char* kNames[3] = {"superquadric", "ovaloid", "ellipsoid"};
-        csaGlyphStyleAction_->setText(
-            QStringLiteral("CSA: ") + QString::fromLatin1(kNames[idx]));
-    }
-    updateCsaGlyph();  // re-feed the focused atom in the new style
-}
-
 void ReaderMainWindow::clearLoadedRun() {
     ASSERT_THREAD(this);
 
@@ -732,7 +715,6 @@ void ReaderMainWindow::refreshControlStates() {
     // Analysis controls.
     en(transformFitAction_,   loaded && transformed_ != nullptr);
     en(signalDisplaysAction_, loaded && hasFocus);
-    en(instrumentAction_,     loaded);
 
     // Overlays — gated on the data that makes each one mean something.
     en(showRibbonAction_,    loaded   && !filtered);
@@ -1532,16 +1514,6 @@ void ReaderMainWindow::buildToolbar() {
     ACONNECT(transformFitAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onTransformFitClicked);
 
-    // Harness marker preset. Kept as an action for the existing slot/REST
-    // path, hidden from the normal toolbar.
-    instrumentAction_ = tb->addAction(QStringLiteral("Harness marker"));
-    instrumentAction_->setCheckable(true);
-    instrumentAction_->setToolTip(QStringLiteral(
-        "Enable the marker preset on the focus atom."));
-    instrumentAction_->setVisible(false);
-    ACONNECT(instrumentAction_.data(), &QAction::triggered,
-             this, &ReaderMainWindow::onInstrumentToggled);
-
     tb->addSeparator();
 
     signalDisplaysAction_ = tb->addAction(QStringLiteral("Metrics..."));
@@ -1606,13 +1578,6 @@ void ReaderMainWindow::buildToolbar() {
         "50% / 90% highest-density regions over the trajectory (backbone-aligned). "
         "Trajectory data only; rigid atoms are skipped."));
 
-    csaGlyphStyleAction_ = tb->addAction(QStringLiteral("CSA: superquadric"));
-    csaGlyphStyleAction_->setShortcut(QKeySequence(Qt::Key_G));
-    csaGlyphStyleAction_->setToolTip(QStringLiteral(
-        "Cycle the focused atom's CSA tensor glyph (shortcut G): superquadric "
-        "(Kindlmann; shape shows axial vs rhombic) -> ovaloid (TensorView; the "
-        "NMR shielding surface, sign by lobes) -> classic ellipsoid."));
-
     ACONNECT(showRibbonAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->ribbonOverlay()) return;
@@ -1647,13 +1612,6 @@ void ReaderMainWindow::buildToolbar() {
                  // suffices.
                  scene_->occupancyShellsOverlay()->setVisible(on);
                  scene_->requestRender(MoleculeScene::RenderSource::Overlay);
-             });
-    ACONNECT(csaGlyphStyleAction_.data(), &QAction::triggered,
-             this, [this] {
-                 int cur = 0;
-                 if (scene_ && scene_->csaOverlay())
-                     cur = static_cast<int>(scene_->csaOverlay()->style());
-                 setCsaGlyphStyle((cur + 1) % 3);  // superquadric -> ovaloid -> ellipsoid
              });
 
     // Focus — a self-contained toggle at the toolbar tail (deliberately
@@ -1872,13 +1830,6 @@ void ReaderMainWindow::onTransformFitClicked() {
     } else {
         transformed_->setMode(TMode::FitReference, 0);
     }
-}
-
-void ReaderMainWindow::onInstrumentToggled(bool checked) {
-    ASSERT_THREAD(this);
-    if (!scene_ || !scene_->measurementOverlay()) return;
-    scene_->measurementOverlay()->setInstrumentMode(checked, /*focusOnly=*/true);
-    scene_->requestRender(MoleculeScene::RenderSource::External);
 }
 
 void ReaderMainWindow::closeEvent(QCloseEvent* event) {

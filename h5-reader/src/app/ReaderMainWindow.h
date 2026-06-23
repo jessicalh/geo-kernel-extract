@@ -81,10 +81,6 @@ public:
     // current frame -- the same orchestration the focus-driven glyph uses.
     // Public so RestServer's GET /csa vets exactly what is drawn.
     model::AtomCsaResult probeAtomCsa(std::size_t atom);
-    // CSA glyph style cycle (0=superquadric, 1=ovaloid, 2=ellipsoid); routes
-    // through the toolbar action so REST and the GUI stay in step, then re-feeds
-    // the glyph. Wraps out-of-range values.
-    void setCsaGlyphStyle(int style);
 
     // Load or replace the current calcset in this window. The path is resolved
     // through QtProteinLoader::LoadRunPath. Returns false without changing the
@@ -192,7 +188,6 @@ private slots:
     void onOpenDirectory();
     void onOpenSignalDisplays();
     void onFocusCameraTriggered();   // toggle: track focused atom / release to manual
-    void onInstrumentToggled(bool checked);
     void onTransformFitClicked();
 
 private:
@@ -315,7 +310,6 @@ private:
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> showOccupancyAction_;
-    QPointer<QAction> csaGlyphStyleAction_;
     QPointer<QAction> signalDisplaysAction_;
 
     // Display-isolation ("Filter"): a toolbar button whose dropdown is a live
@@ -334,10 +328,6 @@ private:
 
     // One transform switch: text names the active stabilisation mode.
     QPointer<QAction> transformFitAction_;
-
-    // Marker preset toggle for live demos. Same code path as
-    // /selection/instrument REST endpoint.
-    QPointer<QAction> instrumentAction_;
 
     // File ▸ Recent submenu — populated from QSettings on ctor restore.
     QPointer<QMenu> fileMenu_;
