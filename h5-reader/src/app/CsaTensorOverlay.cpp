@@ -37,15 +37,19 @@ QByteArray axisLabelText(int axis) {
 }
 }  // namespace
 
-CsaTensorOverlay::CsaTensorOverlay(vtkSmartPointer<vtkRenderer> renderer, QObject* parent)
-    : QObject(parent), renderer_(std::move(renderer)) {}
+CsaTensorOverlay::CsaTensorOverlay(vtkSmartPointer<vtkRenderer> sceneRenderer,
+                                   vtkSmartPointer<vtkRenderer> hudRenderer,
+                                   QObject* parent)
+    : QObject(parent),
+      renderer_(std::move(sceneRenderer)),
+      hudRenderer_(std::move(hudRenderer)) {}
 
 CsaTensorOverlay::~CsaTensorOverlay() {
-    if (renderer_) {
-        if (glyphActor_) renderer_->RemoveActor(glyphActor_);
+    if (renderer_ && glyphActor_) renderer_->RemoveActor(glyphActor_);
+    if (hudRenderer_) {
         for (auto& t : axisLabels_)
-            if (t) renderer_->RemoveViewProp(t);
-        if (readout_) renderer_->RemoveViewProp(readout_);
+            if (t) hudRenderer_->RemoveViewProp(t);
+        if (readout_) hudRenderer_->RemoveViewProp(readout_);
     }
 }
 
@@ -101,8 +105,10 @@ void CsaTensorOverlay::ensureActors() {
     glyphActor_->GetProperty()->SetDiffuse(0.85);
     glyphActor_->GetProperty()->SetSpecular(0.40);  // specular form-shading -> reads 3-D
     glyphActor_->GetProperty()->SetSpecularPower(30);
+    glyphActor_->GetProperty()->SetOpacity(0.62);           // translucent: seamless via depth peeling
+    glyphActor_->GetProperty()->SetInterpolationToPhong();  // smooth shading, like the isosurfaces
     glyphActor_->SetVisibility(false);
-    renderer_->AddActor(glyphActor_);
+    renderer_->AddActor(glyphActor_);  // MAIN renderer (depth-peeled)
 
     for (auto& t : axisLabels_) {
         t = vtkSmartPointer<vtkBillboardTextActor3D>::New();
@@ -121,7 +127,7 @@ void CsaTensorOverlay::ensureActors() {
             tp->SetFontFile(kGreekFont);
         }
         t->SetVisibility(false);
-        renderer_->AddViewProp(t);
+        hudRenderer_->AddViewProp(t);  // overlay renderer (always readable)
     }
 
     readout_ = vtkSmartPointer<vtkCornerAnnotation>::New();
@@ -134,7 +140,7 @@ void CsaTensorOverlay::ensureActors() {
     rp->SetBackgroundColor(0.05, 0.05, 0.08);
     rp->SetBackgroundOpacity(0.55);
     readout_->SetVisibility(false);
-    renderer_->AddViewProp(readout_);
+    hudRenderer_->AddViewProp(readout_);  // overlay renderer (always readable)
 
     actorsBuilt_ = true;
 }
@@ -149,7 +155,7 @@ void CsaTensorOverlay::hideAll() {
 void CsaTensorOverlay::show(const model::Vec3& atomPos,
                             const model::CsaShape& shape,
                             const std::optional<model::Mat3>& /*molecularAxes*/) {
-    if (!renderer_ || !shape.valid) {
+    if (!renderer_ || !hudRenderer_ || !shape.valid) {
         clear();
         return;
     }

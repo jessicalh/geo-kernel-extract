@@ -310,7 +310,9 @@ void MoleculeScene::Build(const model::QtProtein& protein,
     // CSA tensor glyph (mode-2 standalone view). Pure renderer: the controller
     // computes the shape + molecular axes and feeds show(); no Build needed.
     if (!csaOverlay_) {
-        csaOverlay_ = new CsaTensorOverlay(overlayRenderer_, this);
+        // Glyph on the depth-peeled MAIN renderer (translucent, seamless with the
+        // molecule like the isosurfaces); labels + readout on the overlay layer.
+        csaOverlay_ = new CsaTensorOverlay(renderer_, overlayRenderer_, this);
     }
 
     qCInfo(cScene).noquote()

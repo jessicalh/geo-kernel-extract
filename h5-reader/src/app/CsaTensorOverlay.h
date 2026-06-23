@@ -10,7 +10,11 @@
 // surface carries orientation + magnitude, the way TensorView / Kindlmann
 // glyphs do. Visible on a bare extractor run (DFT, no rediscover pass).
 //
-// A scene overlay on the layer-1 overlay renderer. PURE RENDERER: the controller
+// The translucent glyph draws on the depth-peeled MAIN renderer, so it composes
+// seamlessly with the molecule (order-independent transparency, the same path
+// the field-grid isosurfaces and occupancy shells use); the sigma_11/22/33
+// labels + corner readout draw on the always-on-top overlay renderer so they
+// stay readable regardless of depth. PURE RENDERER: the controller
 // (ReaderMainWindow) owns the DFT store + selection + frame, computes the
 // CsaShape, and feeds it via show(); the overlay only draws.
 
@@ -43,7 +47,9 @@ namespace h5reader::app {
 class CsaTensorOverlay final : public QObject {
     Q_OBJECT
 public:
-    explicit CsaTensorOverlay(vtkSmartPointer<vtkRenderer> renderer, QObject* parent = nullptr);
+    explicit CsaTensorOverlay(vtkSmartPointer<vtkRenderer> sceneRenderer,
+                              vtkSmartPointer<vtkRenderer> hudRenderer,
+                              QObject* parent = nullptr);
     ~CsaTensorOverlay() override;
 
     // Draw the superquadric tensor glyph + sigma_11/22/33 labels + corner readout
@@ -71,7 +77,8 @@ private:
     void ensureActors();
     void hideAll();
 
-    vtkSmartPointer<vtkRenderer> renderer_;
+    vtkSmartPointer<vtkRenderer> renderer_;     // scene renderer (depth-peeled): the glyph
+    vtkSmartPointer<vtkRenderer> hudRenderer_;  // overlay renderer: sigma labels + readout
 
     // Superquadric glyph pipeline: source -> (deep copy + per-vertex sign scalar)
     // -> transform (scale by |dev|, orient onto PAS, translate to atom) -> actor.
