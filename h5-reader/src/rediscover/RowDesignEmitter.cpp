@@ -2,7 +2,6 @@
 
 #include "Catalog.h"
 #include "ExtractionSupport.h"
-#include "LiteratureConstants.h"
 #include "RamaRegion.h"
 #include "RelationshipEngine.h"
 #include "SphericalBasis.h"

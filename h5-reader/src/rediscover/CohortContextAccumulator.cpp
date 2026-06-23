@@ -202,6 +202,11 @@ double iso(const model::Mat3& m) {
     return (m(0, 0) + m(1, 1) + m(2, 2)) / 3.0;
 }
 
+double scaledRingIso(const RunData& run, io::FieldKind kind, std::size_t atom) {
+    const double raw = iso(matFromArray(arr(run, kind), atom));
+    return finite(raw) ? raw * RingCurrentPpmFactor() : kNan;
+}
+
 QString hybridisationForAtom(const RunData& run, const model::QtAtom& atom, std::size_t atomIndex) {
     const double h = valueAt(run, io::FieldKind::EnrichmentHybridisation, atomIndex);
     if (finite(h)) {
@@ -407,6 +412,50 @@ std::optional<model::Mat3> molecularAxesForAtom(const RunData& run, std::size_t 
     return genericBondAxes(run, atom);
 }
 
+std::optional<model::Vec3> fieldVector(const RunData& run, io::FieldKind kind, std::size_t atom) {
+    const StaticNpyArray* a = arr(run, kind);
+    if (!a || atom >= a->rows || a->cols < 3) return std::nullopt;
+    const model::Vec3 e(a->value(atom, 0), a->value(atom, 1), a->value(atom, 2));
+    return e.allFinite() ? std::optional<model::Vec3>(e) : std::nullopt;
+}
+
+double signedParallelMolZ(const RunData& run,
+                          io::FieldKind kind,
+                          std::size_t atom,
+                          const std::optional<model::Mat3>& axes) {
+    const auto e = fieldVector(run, kind, atom);
+    if (!e || !axes) return kNan;
+    return e->dot(axes->col(2));
+}
+
+double signedParallelXH(const RunData& run, io::FieldKind kind, std::size_t atom) {
+    if (!run.protein || atom >= run.protein->atomCount()) return kNan;
+    const model::QtAtom& a = run.protein->atom(atom);
+    if (a.element != model::Element::H || a.parentAtomIndex < 0) return kNan;
+    const auto e = fieldVector(run, kind, atom);
+    const auto h = atomPosition(run, atom);
+    const auto x = atomPosition(run, static_cast<std::size_t>(a.parentAtomIndex));
+    if (!e || !h || !x) return kNan;
+    const auto u = normVec(*h - *x);
+    return u ? e->dot(*u) : kNan;
+}
+
+double larsenHbondIso(const RunData& run, std::size_t atom) {
+    const std::array<io::FieldKind, 4> parts = {
+        io::FieldKind::LarsenHBond1pHBShielding,
+        io::FieldKind::LarsenHBond1pHaBShielding,
+        io::FieldKind::LarsenHBond2pHBShielding,
+        io::FieldKind::LarsenHBond2pHaBShielding,
+    };
+    model::Mat3 sum = model::Mat3::Zero();
+    for (io::FieldKind kind : parts) {
+        const model::Mat3 m = matFromArray(arr(run, kind), atom);
+        if (!m.allFinite()) return kNan;
+        sum += m;
+    }
+    return iso(sum);
+}
+
 struct MutationSite {
     QString chain;
     int residue_number = 0;
@@ -602,11 +651,16 @@ CohortSample sampleForAtom(const RunData& run,
     }
 
     s.channels.insert(QStringLiteral("apbs_E_mag"), vectorMag(run, io::FieldKind::APBSE, atom));
+    s.channels.insert(QStringLiteral("apbs_E_parallel_mol_z"),
+                      signedParallelMolZ(run, io::FieldKind::APBSE, atom, s.molecular_axes));
+    s.channels.insert(QStringLiteral("apbs_E_parallel_XH"),
+                      signedParallelXH(run, io::FieldKind::APBSE, atom));
     s.channels.insert(QStringLiteral("mopac_E_mag"), vectorMag(run, io::FieldKind::MOPACCoulombE, atom));
     s.channels.insert(QStringLiteral("apbs_efg_absT2"), rowNorm(run, io::FieldKind::APBSEFG, atom));
     s.channels.insert(QStringLiteral("aimnet2_efg_absT2"), rowNorm(run, io::FieldKind::AIMNet2EFG, atom));
-    s.channels.insert(QStringLiteral("ring_bs_iso"), iso(matFromArray(arr(run, io::FieldKind::BSShielding), atom)));
-    s.channels.insert(QStringLiteral("ring_hm_iso"), iso(matFromArray(arr(run, io::FieldKind::HMShielding), atom)));
+    s.channels.insert(QStringLiteral("ring_bs_iso"), scaledRingIso(run, io::FieldKind::BSShielding, atom));
+    s.channels.insert(QStringLiteral("ring_hm_iso"), scaledRingIso(run, io::FieldKind::HMShielding, atom));
+    s.channels.insert(QStringLiteral("larsen_hbond_iso"), larsenHbondIso(run, atom));
     s.channels.insert(QStringLiteral("mc_lit_iso"), iso(matFromArray(arr(run, io::FieldKind::McPeptideCoFixed), atom)));
     s.channels.insert(QStringLiteral("ff14sb_charge"), valueAt(run, io::FieldKind::FfPartialCharge, atom));
     s.channels.insert(QStringLiteral("aimnet2_charge"), valueAt(run, io::FieldKind::AIMNet2Charges, atom));
@@ -803,13 +857,32 @@ bool emitStaticTable(const QString& outDir,
                          cell.key.fields.residue_type.toStdString(),
                          cell.key.fields.atom_name.toStdString(),
                          cell.key.fields.frame_kind.toStdString());
-        const double contribBuck = buck.value * channelMean(cell, QStringLiteral("apbs_E_mag"));
+        const LiteratureConstant buckB =
+            BuckinghamB(cell.key.fields.element == QStringLiteral("H") ? model::Element::H
+                         : cell.key.fields.element == QStringLiteral("C") ? model::Element::C
+                         : cell.key.fields.element == QStringLiteral("N") ? model::Element::N
+                         : cell.key.fields.element == QStringLiteral("O") ? model::Element::O
+                         : cell.key.fields.element == QStringLiteral("S") ? model::Element::S
+                                                                           : model::Element::Unknown,
+                         cell.key.fields.residue_type.toStdString(),
+                         cell.key.fields.atom_name.toStdString(),
+                         cell.key.fields.frame_kind.toStdString());
+        const double xh = channelMean(cell, QStringLiteral("apbs_E_parallel_XH"));
+        const double molZ = channelMean(cell, QStringLiteral("apbs_E_parallel_mol_z"));
+        const double eParallel = finite(xh) ? xh : molZ;
+        double contribBuck = 0.0;
+        if (finite(eParallel)) {
+            contribBuck = (-buck.value * eParallel) - (buckB.value * eParallel * eParallel);
+        } else if (buck.value != 0.0 || buckB.value != 0.0) {
+            contribBuck = kNan;
+        }
         const double contribRing = channelMean(cell, QStringLiteral("ring_bs_iso"));
         const double contribMc = channelMean(cell, QStringLiteral("mc_lit_iso"));
-        const double contribLarsen = channelMean(cell, QStringLiteral("sasa")) * 0.0;
+        const double contribLarsen = channelMean(cell, QStringLiteral("larsen_hbond_iso"));
         const double cl = contribBuck + contribRing + contribMc + contribLarsen;
         Q_UNUSED(cl);
-        const ClassicalAgreementStats clAgreement = ComputeClassicalAgreementForCell(cell, buck.value);
+        const ClassicalAgreementStats clAgreement =
+            ComputeClassicalAgreementForCell(cell, buck.value, buckB.value);
 
         QStringList row = {
             kSchemaName,

@@ -1,6 +1,7 @@
 #include "ComposedRelationships.h"
 
 #include "ExtractionSupport.h"
+#include "LiteratureConstants.h"
 #include "LocalFrameBasis.h"
 #include "McConnellLiteratureKernel.h"
 #include "McConnellNeighborhood.h"
@@ -117,7 +118,7 @@ void ringAttacher(const Body& body, const AtomState& st, const FrameResult& fr,
         JohnsonBoveySourceUnitKernelLocal(body, fr.frame, st.pos,
                                           static_cast<std::size_t>(rs.ring_index), sring, st.frame);
     s.ring_jb_kernel = ScaleSphericalTensor(s.ring_jb_unit_kernel,
-                                            sring.LiteratureIntensity());
+                                            sring.LiteratureIntensity() * RingCurrentPpmFactor());
     s.ring_jb_kernel_present = true;
 
     // is_self_or_bonded is set by the per-source classifier (it needs the atom's

@@ -1,6 +1,7 @@
 #include "rediscover/RunQuery.h"
 
 #include "rediscover/Catalog.h"
+#include "rediscover/LiteratureConstants.h"
 #include "rediscover/ResidentIndexes.h"
 #include "rediscover/RunData.h"
 
@@ -23,6 +24,7 @@ class RediscoverQueryTests : public QObject {
 
 private slots:
     void fieldKindGatherUsesProducerArrayComponents();
+    void catalogScalesRingShieldingFields();
     void selectorEvaluationIsTwoPhase();
 };
 
@@ -47,6 +49,61 @@ void RediscoverQueryTests::fieldKindGatherUsesProducerArrayComponents() {
     QCOMPARE(gathered.values[0], 4.0);
     QCOMPARE(gathered.values[1], 5.0);
     QCOMPARE(gathered.values[2], 6.0);
+}
+
+void RediscoverQueryTests::catalogScalesRingShieldingFields() {
+    RunData run;
+
+    StaticNpyArray bs;
+    bs.stem = QStringLiteral("bs_shielding");
+    bs.rows = 1;
+    bs.cols = 9;
+    bs.values = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
+    run.producerArrays[static_cast<int>(h5reader::io::FieldKind::BSShielding)] = bs;
+
+    StaticNpyArray ringContrib;
+    ringContrib.stem = QStringLiteral("ring_contributions");
+    ringContrib.rows = 1;
+    ringContrib.cols = 40;
+    ringContrib.values.resize(40);
+    for (std::size_t i = 0; i < ringContrib.values.size(); ++i)
+        ringContrib.values[i] = static_cast<double>(i);
+    run.producerArrays[static_cast<int>(h5reader::io::FieldKind::RingContributions)] = ringContrib;
+
+    ResidentIndexes indexes;
+    Catalog catalog(run);
+    Body body{run, indexes, catalog};
+    const double factor = h5reader::rediscover::RingCurrentPpmFactor();
+
+    const auto tensor = catalog.valueTensor(body, h5reader::rediscover::ArrayId::KernelBs, 0, 0);
+    QVERIFY(std::abs(tensor.T0 - 1.0 * factor) < 1e-12);
+    QVERIFY(std::abs(tensor.T1[2] - 4.0 * factor) < 1e-12);
+    QVERIFY(std::abs(tensor.T2[4] - 9.0 * factor) < 1e-12);
+
+    const auto t2 = catalog.valueT2(body, h5reader::rediscover::ArrayId::KernelBs, 0, 0);
+    QVERIFY(std::abs(t2[0] - 5.0 * factor) < 1e-12);
+    QVERIFY(std::abs(t2[4] - 9.0 * factor) < 1e-12);
+
+    const auto bsComponent = catalog.value(body, h5reader::io::FieldKind::BSShielding, 0, 0, 8);
+    QVERIFY(bsComponent.has_value());
+    QVERIFY(std::abs(*bsComponent - 9.0 * factor) < 1e-12);
+
+    const auto rc8 = catalog.value(body, h5reader::io::FieldKind::RingContributions, 0, 0, 8);
+    const auto rc9 = catalog.value(body, h5reader::io::FieldKind::RingContributions, 0, 0, 9);
+    const auto rc17 = catalog.value(body, h5reader::io::FieldKind::RingContributions, 0, 0, 17);
+    const auto rc18 = catalog.value(body, h5reader::io::FieldKind::RingContributions, 0, 0, 18);
+    const auto rc27 = catalog.value(body, h5reader::io::FieldKind::RingContributions, 0, 0, 27);
+    const auto rc35 = catalog.value(body, h5reader::io::FieldKind::RingContributions, 0, 0, 35);
+    const auto rc36 = catalog.value(body, h5reader::io::FieldKind::RingContributions, 0, 0, 36);
+    QVERIFY(rc8.has_value() && rc9.has_value() && rc17.has_value() && rc18.has_value()
+            && rc27.has_value() && rc35.has_value() && rc36.has_value());
+    QVERIFY(std::abs(*rc8 - 8.0) < 1e-12);
+    QVERIFY(std::abs(*rc9 - 9.0 * factor) < 1e-12);
+    QVERIFY(std::abs(*rc17 - 17.0 * factor) < 1e-12);
+    QVERIFY(std::abs(*rc18 - 18.0) < 1e-12);
+    QVERIFY(std::abs(*rc27 - 27.0 * factor) < 1e-12);
+    QVERIFY(std::abs(*rc35 - 35.0 * factor) < 1e-12);
+    QVERIFY(std::abs(*rc36 - 36.0) < 1e-12);
 }
 
 void RediscoverQueryTests::selectorEvaluationIsTwoPhase() {

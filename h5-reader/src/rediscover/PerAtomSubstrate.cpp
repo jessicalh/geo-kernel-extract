@@ -62,6 +62,22 @@ bool finiteVec3(const Vec3& v) {
     return std::isfinite(v.x()) && std::isfinite(v.y()) && std::isfinite(v.z());
 }
 
+double ringPathFieldScale(io::FieldKind kind) {
+    switch (kind) {
+    case io::FieldKind::BSShielding:
+    case io::FieldKind::BSPerTypeT0:
+    case io::FieldKind::BSPerTypeT1:
+    case io::FieldKind::BSPerTypeT2:
+    case io::FieldKind::HMShielding:
+    case io::FieldKind::HMPerTypeT0:
+    case io::FieldKind::HMPerTypeT1:
+    case io::FieldKind::HMPerTypeT2:
+        return RingCurrentPpmFactor();
+    default:
+        return 1.0;
+    }
+}
+
 bool finiteT2(const std::array<double, 5>& t2) {
     for (double v : t2)
         if (!std::isfinite(v)) return false;
@@ -157,7 +173,8 @@ bool copyAtomField(std::array<double, N>& out,
         const double* row = col->row(atom);
         present = finiteRaw(row, static_cast<std::size_t>(count));
         if (present) {
-            for (int i = 0; i < count; ++i) out[offset + static_cast<std::size_t>(i)] = row[i];
+            const double scale = ringPathFieldScale(kind);
+            for (int i = 0; i < count; ++i) out[offset + static_cast<std::size_t>(i)] = row[i] * scale;
         }
     }
     offset += static_cast<std::size_t>(count);
@@ -585,7 +602,8 @@ PairContribution makeRingContribution(const Body& body, std::size_t targetAtom,
     const verbs::Displacement d = verbs::displacement(targetPos, g.center, g.normal);
     const model::SphericalTensor unit =
         JohnsonBoveySourceUnitKernelLocal(body, frame, targetPos, ringIdx, ring, row);
-    const model::SphericalTensor fixed = ScaleSphericalTensor(unit, ring.LiteratureIntensity());
+    const model::SphericalTensor fixed =
+        ScaleSphericalTensor(unit, ring.LiteratureIntensity() * RingCurrentPpmFactor());
     const bool self = ringSourceIsSelfOrBonded(body, targetAtom, ring);
 
     out.mechanism = QStringLiteral("ring_jb");

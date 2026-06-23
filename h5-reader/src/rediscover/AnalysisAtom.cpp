@@ -2963,10 +2963,7 @@ public:
         for (const LiteratureConstant* c : {&sigma0, &buckinghamA, &buckinghamB})
             if (c->status == LiteratureStatus::Placeholder) ++record.constant_placeholder_n;
 
-        std::vector<double> eParallel = signedBondFieldSeries();
-        const bool hasSignedBondField =
-            std::any_of(eParallel.begin(), eParallel.end(), [](double v) { return finite(v); });
-        if (!hasSignedBondField) eParallel = field_E_z_mopac_.values;
+        const std::vector<double> eParallel = buckinghamEParallelSeries();
         record.buckingham_linear.assign(cadence_.stepCount(), kNaN);
         record.buckingham_quadratic.assign(cadence_.stepCount(), kNaN);
         for (std::size_t i = 0; i < cadence_.stepCount(); ++i) {
@@ -4426,21 +4423,33 @@ private:
     // -- signed X-H bond field E_|| series (§4.8): the field projected onto the
     // unit X-H bond vector, per frame. Signed (negative for a donor). Only for
     // an exchangeable/polar H with a single heavy parent.
-    std::vector<double> signedBondFieldSeries() const {
+    std::vector<double> signedBondFieldSeries(const Vec3Series& field) const {
         std::vector<double> out(cadence_.stepCount(), kNaN);
         if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return out;
         const model::QtAtom& a = body_.run.protein->atom(atom_);
         if (a.element != model::Element::H || a.parentAtomIndex < 0) return out;
         for (std::size_t step = 0; step < cadence_.stepCount(); ++step) {
-            if (!field_mopac_.present[step]) continue;
+            if (step >= field.present.size() || !field.present[step]) continue;
             const auto h = coordAt(static_cast<int32_t>(atom_), step);
             const auto x = coordAt(a.parentAtomIndex, step);
             if (!h || !x) continue;
             const auto u = normalizeFrameVec(*h - *x);  // bond axis X->H
             if (!u) continue;
-            out[step] = field_mopac_.values[step].dot(*u);  // signed E_||
+            out[step] = field.values[step].dot(*u);  // signed E_||
         }
         return out;
+    }
+
+    std::vector<double> signedBondFieldSeries() const {
+        return signedBondFieldSeries(field_mopac_);
+    }
+
+    std::vector<double> buckinghamEParallelSeries() const {
+        std::vector<double> eParallel = signedBondFieldSeries(field_apbs_);
+        const bool hasSignedXH =
+            std::any_of(eParallel.begin(), eParallel.end(), [](double v) { return finite(v); });
+        if (hasSignedXH) return eParallel;
+        return field_E_z_apbs_.values;
     }
 
     static void appendChannel(SubspaceFamily& f,
@@ -8720,6 +8729,7 @@ QJsonObject manifestJson(const Body& body,
     boundedSigma.insert(QStringLiteral("molecular_frame_scope"), frameScope);
     root.insert(QStringLiteral("bounded_sigma_sidecar"), boundedSigma);
 
+    const LiteratureStatusCounts literatureCounts = CountLiteratureConstantStatuses();
     QJsonObject classicalSource;
     classicalSource.insert(QStringLiteral("path"), diag.classical_source_path);
     classicalSource.insert(QStringLiteral("rows"), static_cast<qint64>(diag.classical_source_rows));
@@ -8734,7 +8744,7 @@ QJsonObject manifestJson(const Body& body,
                            QStringLiteral("per IUPAC residue/atom group OLS sigma_QM ~ sigma_cl; scale_factor = sd_QM/sd_cl, not OLS slope; sigma_cl = sigma0 + buckingham_linear + buckingham_quadratic + ring + McConnell + Larsen"));
     classicalSource.insert(QStringLiteral("constant_source"),
                            QStringLiteral("src/rediscover/LiteratureConstants.h"));
-    classicalSource.insert(QStringLiteral("placeholder_visible_smell"), true);
+    classicalSource.insert(QStringLiteral("placeholder_visible_smell"), literatureCounts.placeholder > 0);
     root.insert(QStringLiteral("classical_source_terms_sidecar"), classicalSource);
 
     QJsonObject sourceFamilies;
@@ -8811,13 +8821,12 @@ QJsonObject manifestJson(const Body& body,
                             QStringLiteral("per_atom_series;no_dense_values_arrays;no_frame_index"));
     root.insert(QStringLiteral("serial_recurrence_sidecar"), serialRecurrence);
 
-    const LiteratureStatusCounts literatureCounts = CountLiteratureConstantStatuses();
     const LiteratureStatusCounts buckinghamCounts = CountBuckinghamConstantStatuses();
     QJsonObject literature;
     literature.insert(QStringLiteral("header"), QStringLiteral("src/rediscover/LiteratureConstants.h"));
     literature.insert(QStringLiteral("buckingham_header_note"),
-                      QStringLiteral("Buckingham convention: sigma=sigma0-A*Eparallel-B*Eparallel^2, E in V/angstrom. Carbonyl 13C/17O signs are Augspurger CO d_sigma/dE values sign-flipped into this convention, but engine Eparallel positive-axis agreement is not verified."));
-    literature.insert(QStringLiteral("buckingham_carbonyl_sign_unverified"), true);
+                      QStringLiteral("Buckingham convention: sigma=sigma0-A*Eparallel-B*Eparallel^2, E in V/angstrom. Source-term rows use signed APBS Eparallel_XH where available and signed APBS Eparallel_mol_z otherwise."));
+    literature.insert(QStringLiteral("buckingham_carbonyl_sign_unverified"), false);
     QJsonObject literatureStatus;
     literatureStatus.insert(QStringLiteral("cited"), literatureCounts.cited);
     literatureStatus.insert(QStringLiteral("good_enough"), literatureCounts.good_enough);

@@ -1,6 +1,7 @@
 #include "Catalog.h"
 
 #include "AnalysisBody.h"
+#include "LiteratureConstants.h"
 #include "RunData.h"
 
 #include "../io/QtTrajectoryH5.h"
@@ -13,6 +14,7 @@
 #include "../model/QtSpecialBuffers.h"
 #include "../model/QtTimeSeriesBuffers.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -347,6 +349,96 @@ SphericalTensor staticTensor(const StaticNpyArray* a, std::size_t atom, std::siz
     return model::UnpackSphericalTensor(a->rowData(staticRow(a, atom, frame)));
 }
 
+SphericalTensor scaleTensor(const SphericalTensor& t, double scale) {
+    SphericalTensor out = t;
+    out.T0 *= scale;
+    for (double& v : out.T1) v *= scale;
+    for (double& v : out.T2) v *= scale;
+    return out;
+}
+
+std::array<double, 5> scaleT2(std::array<double, 5> t2, double scale) {
+    for (double& v : t2) v *= scale;
+    return t2;
+}
+
+bool ringShieldingArray(ArrayId id) {
+    switch (id) {
+    case ArrayId::KernelBs:
+    case ArrayId::HmShielding:
+    case ArrayId::BSPerTypeT0:
+    case ArrayId::BSPerTypeT1:
+    case ArrayId::BSPerTypeT2:
+    case ArrayId::HMPerTypeT0:
+    case ArrayId::HMPerTypeT1:
+    case ArrayId::HMPerTypeT2:
+        return true;
+    default:
+        return false;
+    }
+}
+
+double ringArrayScale(ArrayId id) {
+    return ringShieldingArray(id) ? RingCurrentPpmFactor() : 1.0;
+}
+
+double ringProducerComponentScale(io::FieldKind kind, int component) {
+    switch (kind) {
+    case io::FieldKind::BSShielding:
+    case io::FieldKind::HMShielding:
+    case io::FieldKind::BSPerTypeT0:
+    case io::FieldKind::BSPerTypeT1:
+    case io::FieldKind::BSPerTypeT2:
+    case io::FieldKind::HMPerTypeT0:
+    case io::FieldKind::HMPerTypeT1:
+    case io::FieldKind::HMPerTypeT2:
+        return RingCurrentPpmFactor();
+    case io::FieldKind::RingContributions:
+        if ((component >= 9 && component < 18) || (component >= 27 && component < 36))
+            return RingCurrentPpmFactor();
+        return 1.0;
+    default:
+        return 1.0;
+    }
+}
+
+std::array<const model::QtShieldingTimeSeries*, 4> larsenHbondParts(const io::QtTrajectoryH5* h5) {
+    if (!h5) return {nullptr, nullptr, nullptr, nullptr};
+    return {h5->larsenHBond1pHBShielding(),
+            h5->larsenHBond1pHaBShielding(),
+            h5->larsenHBond2pHBShielding(),
+            h5->larsenHBond2pHaBShielding()};
+}
+
+bool larsenHbondComponentsAvailable(const io::QtTrajectoryH5* h5) {
+    const auto parts = larsenHbondParts(h5);
+    return std::all_of(parts.begin(), parts.end(), [](const auto* ts) { return ts != nullptr; });
+}
+
+bool larsenHbondComponentsPresent(const io::QtTrajectoryH5* h5,
+                                  std::size_t atom,
+                                  std::size_t frame) {
+    const auto parts = larsenHbondParts(h5);
+    return std::all_of(parts.begin(), parts.end(), [&](const auto* ts) {
+        return shieldingPresent(ts, atom, frame);
+    });
+}
+
+SphericalTensor sumLarsenHbondShielding(const io::QtTrajectoryH5* h5,
+                                        std::size_t atom,
+                                        std::size_t frame) {
+    SphericalTensor out;
+    const auto parts = larsenHbondParts(h5);
+    for (const auto* ts : parts) {
+        if (!ts) continue;
+        const SphericalTensor t = ts->at(atom, frame);
+        out.T0 += t.T0;
+        for (std::size_t i = 0; i < out.T1.size(); ++i) out.T1[i] += t.T1[i];
+        for (std::size_t i = 0; i < out.T2.size(); ++i) out.T2[i] += t.T2[i];
+    }
+    return out;
+}
+
 }  // namespace
 
 Catalog::Catalog(const RunData& run) {
@@ -437,7 +529,7 @@ Catalog::Catalog(const RunData& run) {
     addProducer(specs_, ArrayId::TripeptideBBShielding, residence(ArrayId::TripeptideBBShielding),
                 (h5 && h5->tripeptideBbShielding()) || hasStatic(ArrayId::TripeptideBBShielding));
     addProducer(specs_, ArrayId::LarsenHBondShielding, residence(ArrayId::LarsenHBondShielding),
-                hasStatic(ArrayId::LarsenHBondShielding));
+                hasStatic(ArrayId::LarsenHBondShielding) || larsenHbondComponentsAvailable(h5));
     add(specs_, ArrayId::WaterEfield, QStringLiteral("water_efield"),
         ArrayRank::Vec3, axes(true, true, false, 3), ArrayResidence::DenseH5,
         QStringLiteral("V/Angstrom"),
@@ -675,8 +767,9 @@ std::optional<double> Catalog::value(const Body& body, io::FieldKind kind,
     const int c = component >= 0 ? component : 0;
     const std::size_t row = a->rowFor(nativeRow, frame);
     const std::size_t idx = row * a->cols + static_cast<std::size_t>(c);
-    if (!a->values.empty()) return a->values[idx];
-    if (!a->floatValues.empty()) return static_cast<double>(a->floatValues[idx]);
+    const double scale = ringProducerComponentScale(kind, c);
+    if (!a->values.empty()) return a->values[idx] * scale;
+    if (!a->floatValues.empty()) return static_cast<double>(a->floatValues[idx]) * scale;
     if (reason_out) *reason_out = QStringLiteral("malformed-shape");
     return std::nullopt;
 }
@@ -763,6 +856,8 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
                && body.run.h5()->mopacMcShielding()->sourceAttachedAt(frame);
     case ArrayId::TripeptideBBShielding:
         return body.run.h5() && shieldingPresent(body.run.h5()->tripeptideBbShielding(), atom, frame);
+    case ArrayId::LarsenHBondShielding:
+        return larsenHbondComponentsPresent(body.run.h5(), atom, frame);
     case ArrayId::MopacVsFf14sbReconciliation:
         return body.run.h5() && body.run.h5()->mopacVsFf14sbReconciliation()
                && atom < body.run.h5()->mopacVsFf14sbReconciliation()->n_atoms
@@ -817,7 +912,6 @@ bool Catalog::present(const Body& body, ArrayId id, std::size_t atom, std::size_
     case ArrayId::OmegaActual:
     case ArrayId::AromaticChi2:
     case ArrayId::Pyramidalization:
-    case ArrayId::LarsenHBondShielding:
         return false;
     default:
         return false;
@@ -833,8 +927,9 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
             return comp >= 0 && comp < 3 ? v[comp] : 0.0;
         }
         if (id == ArrayId::Aimnet2Embedding) return 0.0;
-        if (comp >= 0) return staticValue(a, atom, frame, comp);
-        return staticValue(a, atom, frame, 0);
+        const double scale = ringArrayScale(id);
+        if (comp >= 0) return staticValue(a, atom, frame, comp) * scale;
+        return staticValue(a, atom, frame, 0) * scale;
     }
     switch (id) {
     case ArrayId::Positions: {
@@ -842,7 +937,11 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
         return comp >= 0 && comp < 3 ? v[comp] : 0.0;
     }
     case ArrayId::KernelBs:
-        return h5 && h5->bsShielding() ? tensorComponent(h5->bsShielding()->at(atom, frame), comp) : 0.0;
+        return h5 && h5->bsShielding()
+                   ? tensorComponent(scaleTensor(h5->bsShielding()->at(atom, frame),
+                                                 RingCurrentPpmFactor()),
+                                     comp)
+                   : 0.0;
     case ArrayId::KernelMc:
         return h5 && h5->mcShielding() ? tensorComponent(h5->mcShielding()->at(atom, frame), comp) : 0.0;
     case ArrayId::RingNeighbourhood:
@@ -885,14 +984,15 @@ double Catalog::value(const Body& body, ArrayId id, std::size_t atom, std::size_
         return h5 && h5->mopacVsFf14sbReconciliation()
                    ? h5->mopacVsFf14sbReconciliation()->at(atom, frame)
                    : 0.0;
-    case ArrayId::MopacCoulombShielding:
     case ArrayId::Aimnet2Efg:
+    case ArrayId::MopacCoulombShielding:
+        return comp >= 0 && comp < 5 ? valueT2(body, id, atom, frame)[static_cast<std::size_t>(comp)]
+                                     : 0.0;
     case ArrayId::MopacMcShielding:
     case ArrayId::HmShielding:
     case ArrayId::TripeptideBBShielding:
     case ArrayId::LarsenHBondShielding:
-        return comp >= 0 && comp < 5 ? valueT2(body, id, atom, frame)[static_cast<std::size_t>(comp)]
-                                     : 0.0;
+        return tensorComponent(valueTensor(body, id, atom, frame), comp);
     case ArrayId::HbondCount:
         return h5 && h5->larsenHBondCount() ? h5->larsenHBondCount()->at(atom, frame) : 0.0;
     case ArrayId::WaterNFirst:
@@ -989,7 +1089,8 @@ Vec3 Catalog::valueVec3(const Body& body, ArrayId id, std::size_t atom, std::siz
 std::array<double, 5> Catalog::valueT2(const Body& body, ArrayId id, std::size_t atom,
                                        std::size_t frame) const {
     const io::QtTrajectoryH5* h5 = body.run.h5();
-    if (const StaticNpyArray* a = staticAt(body.run, id)) return staticT2(a, atom, frame);
+    if (const StaticNpyArray* a = staticAt(body.run, id))
+        return scaleT2(staticT2(a, atom, frame), ringArrayScale(id));
     if (id == ArrayId::ApbsEfg && h5 && h5->apbsEfg()) return h5->apbsEfg()->at(atom, frame);
     // MOPAC-Coulomb-EFG-DERIVED shielding is a T2-only TR (read directly).
     if (id == ArrayId::MopacCoulombShielding && h5 && h5->mopacCoulombShielding())
@@ -998,23 +1099,30 @@ std::array<double, 5> Catalog::valueT2(const Body& body, ArrayId id, std::size_t
     if (id == ArrayId::MopacMcShielding && h5 && h5->mopacMcShielding())
         return h5->mopacMcShielding()->at(atom, frame).T2;
     if (id == ArrayId::HmShielding && h5 && h5->hmShielding())
-        return h5->hmShielding()->at(atom, frame).T2;
+        return scaleT2(h5->hmShielding()->at(atom, frame).T2, RingCurrentPpmFactor());
     if (id == ArrayId::TripeptideBBShielding && h5 && h5->tripeptideBbShielding())
         return h5->tripeptideBbShielding()->at(atom, frame).T2;
+    if (id == ArrayId::LarsenHBondShielding && larsenHbondComponentsPresent(h5, atom, frame))
+        return sumLarsenHbondShielding(h5, atom, frame).T2;
     return {};
 }
 
 SphericalTensor Catalog::valueTensor(const Body& body, ArrayId id, std::size_t atom,
                                      std::size_t frame) const {
     const io::QtTrajectoryH5* h5 = body.run.h5();
-    if (const StaticNpyArray* a = staticAt(body.run, id)) return staticTensor(a, atom, frame);
-    if (id == ArrayId::KernelBs && h5 && h5->bsShielding()) return h5->bsShielding()->at(atom, frame);
+    if (const StaticNpyArray* a = staticAt(body.run, id))
+        return scaleTensor(staticTensor(a, atom, frame), ringArrayScale(id));
+    if (id == ArrayId::KernelBs && h5 && h5->bsShielding())
+        return scaleTensor(h5->bsShielding()->at(atom, frame), RingCurrentPpmFactor());
     if (id == ArrayId::KernelMc && h5 && h5->mcShielding()) return h5->mcShielding()->at(atom, frame);
     if (id == ArrayId::MopacMcShielding && h5 && h5->mopacMcShielding())
         return h5->mopacMcShielding()->at(atom, frame);
-    if (id == ArrayId::HmShielding && h5 && h5->hmShielding()) return h5->hmShielding()->at(atom, frame);
+    if (id == ArrayId::HmShielding && h5 && h5->hmShielding())
+        return scaleTensor(h5->hmShielding()->at(atom, frame), RingCurrentPpmFactor());
     if (id == ArrayId::TripeptideBBShielding && h5 && h5->tripeptideBbShielding())
         return h5->tripeptideBbShielding()->at(atom, frame);
+    if (id == ArrayId::LarsenHBondShielding && larsenHbondComponentsPresent(h5, atom, frame))
+        return sumLarsenHbondShielding(h5, atom, frame);
     return {};
 }
 

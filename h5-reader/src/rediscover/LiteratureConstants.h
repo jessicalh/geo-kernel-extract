@@ -160,23 +160,23 @@ inline constexpr LiteratureConstant kCoulombKeVA{
     "standard molecular electrostatic conversion used by charge-field and EFG producers"};
 
 inline constexpr LiteratureConstant kSigma0_H{
-    "sigma0.H", 30.0, "ppm", LiteratureStatus::Placeholder,
-    "self-placeholder zero-field absolute shielding reference"};
+    "sigma0.H", 31.43, "ppm", LiteratureStatus::Cited,
+    "Alkorta & Elguero absolute nuclear shieldings table; experimental 1H TMS absolute shielding"};
 inline constexpr LiteratureConstant kSigma0_C{
-    "sigma0.C", 170.0, "ppm", LiteratureStatus::Placeholder,
-    "self-placeholder zero-field absolute shielding reference"};
+    "sigma0.C", 188.1, "ppm", LiteratureStatus::Cited,
+    "Alkorta & Elguero absolute nuclear shieldings table; experimental 13C TMS absolute shielding"};
 inline constexpr LiteratureConstant kSigma0_N{
-    "sigma0.N", 250.0, "ppm", LiteratureStatus::Placeholder,
-    "self-placeholder zero-field absolute shielding reference"};
+    "sigma0.N", 244.6, "ppm", LiteratureStatus::Cited,
+    "liquid ammonia 15N absolute shielding scale at ambient temperature; e.g. Brender et al. JACS 2001, DOI 10.1021/ja001980q"};
 inline constexpr LiteratureConstant kSigma0_O{
-    "sigma0.O", 350.0, "ppm", LiteratureStatus::Placeholder,
-    "self-placeholder zero-field absolute shielding reference"};
+    "sigma0.O", 328.4, "ppm", LiteratureStatus::Cited,
+    "Komorovsky et al. 2015 J. Chem. Phys. 142, 091102, DOI 10.1063/1.4913634; 17O in H2O"};
 inline constexpr LiteratureConstant kSigma0_S{
-    "sigma0.S", 700.0, "ppm", LiteratureStatus::Placeholder,
-    "self-placeholder zero-field absolute shielding reference"};
+    "sigma0.S", 742.9, "ppm", LiteratureStatus::Cited,
+    "Komorovsky et al. 2015 J. Chem. Phys. 142, 091102, DOI 10.1063/1.4913634; 33S in H2S"};
 inline constexpr LiteratureConstant kSigma0_Generic{
-    "sigma0.generic", 0.0, "ppm", LiteratureStatus::Placeholder,
-    "self-placeholder zero-field absolute shielding reference"};
+    "sigma0.generic.structural_absent", 0.0, "ppm", LiteratureStatus::GoodEnough,
+    "structural-absent marker: no generic absolute shielding reference is physically meaningful"};
 
 inline constexpr LiteratureConstant kMcConnellPeptideCO{
     "mcconnell.delta_chi.peptide_co", 2.41, "10^-6 cm^3/mol", LiteratureStatus::Cited,
@@ -199,7 +199,21 @@ inline constexpr LiteratureConstant kLarsenWaterTerm{
     "Larsen 2015 ProCS15 NMA-water amide-H term; DOI 10.7717/peerj.1344"};
 inline constexpr LiteratureConstant kLarsenShieldingTensors{
     "larsen.hbond_shielding_tensors", 1.0, "producer ppm tensor scale", LiteratureStatus::Cited,
-    "Larsen 2015 ProCS15 table/grid producer emits ppm tensors"};
+    "Larsen 2015 ProCS15 Eq. 4-5 hydrogen-bond terms; DOI 10.7717/peerj.1344; producer emits ppm tensors"};
+
+inline constexpr LiteratureConstant kRingCurrentPopleB{
+    "ring.current.pople_benzene_B", 27.6, "ppm*angstrom^3", LiteratureStatus::Cited,
+    "Pople benzene equivalent-dipole ring-current parameter B/mu = 27.6 ppm*angstrom^3"};
+inline constexpr LiteratureConstant kRingCurrentExtractorKeff{
+    "ring.current.extractor_keff", 1.699, "internal ppm*angstrom^3", LiteratureStatus::GoodEnough,
+    "diagnosed extractor effective constant in RING_CURRENT_FINDING.md; retained only to derive downstream scale"};
+inline constexpr LiteratureConstant kRingCurrentPpmFactor{
+    "ring.current.downstream_ppm_factor", 27.6 / 1.699, "dimensionless", LiteratureStatus::GoodEnough,
+    "downstream whole-tensor correction: Pople benzene B 27.6 ppm*angstrom^3 divided by extractor K_eff 1.699"};
+
+inline constexpr double RingCurrentPpmFactor() {
+    return kRingCurrentPpmFactor.value;
+}
 
 inline constexpr std::array<LiteratureConstant, 9> kRingIntensityByType{{
     {"ring.intensity.PheBenzene", -12.0, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
@@ -225,7 +239,7 @@ inline constexpr std::array<LiteratureConstant, 9> kJohnsonBoveyLobeOffsetByType
     {"ring.jb_lobe_offset.ProPyrrolidine", 0.0, "angstrom", LiteratureStatus::Cited, "saturated ring, no aromatic pi current"},
 }};
 
-inline constexpr std::array<LiteratureConstant, 56> kAllLiteratureConstants{{
+inline constexpr std::array<LiteratureConstant, 59> kAllLiteratureConstants{{
     kBuckinghamA_H,
     kBuckinghamA_C,
     kBuckinghamA_N,
@@ -264,6 +278,9 @@ inline constexpr std::array<LiteratureConstant, 56> kAllLiteratureConstants{{
     kMcConnellMolarPrefactor,
     kLarsenWaterTerm,
     kLarsenShieldingTensors,
+    kRingCurrentPopleB,
+    kRingCurrentExtractorKeff,
+    kRingCurrentPpmFactor,
     kRingIntensityByType[0],
     kRingIntensityByType[1],
     kRingIntensityByType[2],

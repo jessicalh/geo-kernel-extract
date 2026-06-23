@@ -6,6 +6,7 @@
 
 #include <QFile>
 
+#include <array>
 #include <cmath>
 #include <optional>
 #include <utility>
@@ -73,6 +74,7 @@ private slots:
     void deltaLoaderIsNarrowAndRefusesMissingArrays();
     void foldAdapterProjectsMolecularComponents();
     void classicalAgreementUsesPerProteinPoints();
+    void classicalAgreementUsesSignedBuckinghamField();
     void predecessorChi1EffectUsesPairAccumulator();
     void syntheticFoldedDeltaRidgeMatchesHandSlope();
     void syntheticDistantNonzeroRidgeIsCharacterizedNotGated();
@@ -314,12 +316,47 @@ void RediscoverCohortContextTests::classicalAgreementUsesPerProteinPoints() {
     }
 
     const ClassicalAgreementStats stats =
-        ComputeClassicalAgreementForCell(acc.cells().begin()->second, 0.0);
+        ComputeClassicalAgreementForCell(acc.cells().begin()->second, 0.0, 0.0);
     QVERIFY(std::isfinite(stats.r));
     QVERIFY(stats.r > 0.999);
     QCOMPARE(stats.slope, 1.0);
     QCOMPARE(stats.rmsd, 0.0);
     QVERIFY(std::isfinite(stats.residual_sd));
+}
+
+void RediscoverCohortContextTests::classicalAgreementUsesSignedBuckinghamField() {
+    Axis2ContextKeyFields f;
+    f.element = QStringLiteral("H");
+    f.residue_type = QStringLiteral("GLY");
+    f.atom_name = QStringLiteral("H");
+    f.hyb = QStringLiteral("s");
+    f.contact_class = QStringLiteral("polar");
+    f.dihedral_region = QStringLiteral("AlphaR");
+    f.SS = QStringLiteral("helix");
+
+    CohortContextAccumulator acc;
+    const std::array<double, 4> fields = {-2.0, -1.0, 1.0, 2.0};
+    constexpr double buckinghamA = 2.0;
+    constexpr double buckinghamB = 0.5;
+    for (int i = 0; i < static_cast<int>(fields.size()); ++i) {
+        const double e = fields[static_cast<std::size_t>(i)];
+        CohortSample s;
+        s.key = BuildAxis2ContextKey(f);
+        s.protein_id = QStringLiteral("p%1").arg(i);
+        s.sigma_iso = (-buckinghamA * e) - (buckinghamB * e * e);
+        s.channels.insert(QStringLiteral("apbs_E_mag"), std::abs(e));
+        s.channels.insert(QStringLiteral("apbs_E_parallel_mol_z"), e);
+        s.channels.insert(QStringLiteral("ring_bs_iso"), 0.0);
+        s.channels.insert(QStringLiteral("mc_lit_iso"), 0.0);
+        acc.push(s);
+    }
+
+    const ClassicalAgreementStats stats =
+        ComputeClassicalAgreementForCell(acc.cells().begin()->second, buckinghamA, buckinghamB);
+    QVERIFY(std::isfinite(stats.r));
+    QVERIFY(stats.r > 0.999);
+    QCOMPARE(stats.slope, 1.0);
+    QCOMPARE(stats.rmsd, 0.0);
 }
 
 void RediscoverCohortContextTests::predecessorChi1EffectUsesPairAccumulator() {

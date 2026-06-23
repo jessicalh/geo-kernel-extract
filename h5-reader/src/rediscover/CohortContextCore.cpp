@@ -346,7 +346,8 @@ double PairAccumulator::pearson() const {
 }
 
 ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell,
-                                                         double buckinghamA) {
+                                                         double buckinghamA,
+                                                         double buckinghamB) {
     std::vector<double> cl;
     std::vector<double> qm;
     std::vector<double> residuals;
@@ -357,10 +358,19 @@ ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& 
     for (auto it = cell.protein_folds.begin(); it != cell.protein_folds.end(); ++it) {
         const CohortProteinFold& p = it.value();
         const double sigma = p.sigma.meanValue();
-        const double apbs = p.channels.value(QStringLiteral("apbs_E_mag")).meanValue();
+        const double xh = p.channels.value(QStringLiteral("apbs_E_parallel_XH")).meanValue();
+        const double molZ = p.channels.value(QStringLiteral("apbs_E_parallel_mol_z")).meanValue();
+        const double eParallel = finite(xh) ? xh : molZ;
         const double ring = p.channels.value(QStringLiteral("ring_bs_iso")).meanValue();
         const double mc = p.channels.value(QStringLiteral("mc_lit_iso")).meanValue();
-        const double classical = buckinghamA * apbs + ring + mc;
+        double buckingham = 0.0;
+        if (finite(eParallel)) {
+            buckingham = (-buckinghamA * eParallel)
+                         + (-buckinghamB * eParallel * eParallel);
+        } else if (buckinghamA != 0.0 || buckinghamB != 0.0) {
+            buckingham = kNan;
+        }
+        const double classical = buckingham + ring + mc;
         if (!finite(sigma) || !finite(classical)) continue;
         cl.push_back(classical);
         qm.push_back(sigma);

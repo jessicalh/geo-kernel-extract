@@ -2,6 +2,7 @@
 
 #include "AnalysisBody.h"
 #include "ExtractionSupport.h"
+#include "LiteratureConstants.h"
 #include "LocalFrameBasis.h"
 #include "RingCurrentKernel.h"
 #include "TypedAtomIndex.h"
@@ -268,8 +269,9 @@ std::size_t RingCurrentNeighborhood::extract(const Body& body, RecordSink& sink)
                 s.ring_jb_unit_kernel =
                     JohnsonBoveySourceUnitKernelLocal(body, frame, atomPos,
                                                       static_cast<std::size_t>(srcRingId), sring, row);
-                s.ring_jb_kernel = ScaleSphericalTensor(s.ring_jb_unit_kernel,
-                                                        sring.LiteratureIntensity());
+                s.ring_jb_kernel = ScaleSphericalTensor(
+                    s.ring_jb_unit_kernel,
+                    sring.LiteratureIntensity() * RingCurrentPpmFactor());
                 s.ring_jb_kernel_present = true;
 
                 rec.sources.push_back(s);

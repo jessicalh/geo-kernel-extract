@@ -94,6 +94,7 @@ private slots:
     void targetBasisKeepsSqrt6Fixture();
     void sinkWritesScalarCsvAndAuditSidecars();
     void classSpecificConstantsSelectByFrameKind();
+    void literatureLedgerHasRealSigma0AndRingScale();
 };
 
 void RediscoverBuckinghamTests::projectionIsLocalZAndMagnitudeInvariant() {
@@ -197,6 +198,31 @@ void RediscoverBuckinghamTests::classSpecificConstantsSelectByFrameKind() {
     QCOMPARE(QString::fromLatin1(genericS.key), QStringLiteral("buckingham.A.S.structural_absent"));
     QVERIFY(genericS.status == LiteratureStatus::GoodEnough);
     QVERIFY(std::abs(genericS.value) < kTol);
+}
+
+void RediscoverBuckinghamTests::literatureLedgerHasRealSigma0AndRingScale() {
+    namespace model = h5reader::model;
+    namespace rediscover = h5reader::rediscover;
+
+    const auto counts = rediscover::CountLiteratureConstantStatuses();
+    QCOMPARE(counts.placeholder, 0);
+    QVERIFY(std::abs(rediscover::RingCurrentPpmFactor() - (27.6 / 1.699)) < kTol);
+
+    const auto sigmaH = rediscover::Sigma0(model::Element::H, "GLY", "H");
+    const auto sigmaC = rediscover::Sigma0(model::Element::C, "GLY", "C");
+    const auto sigmaN = rediscover::Sigma0(model::Element::N, "GLY", "N");
+    const auto sigmaO = rediscover::Sigma0(model::Element::O, "GLY", "O");
+    const auto sigmaS = rediscover::Sigma0(model::Element::S, "MET", "SD");
+    QVERIFY(sigmaH.status == LiteratureStatus::Cited);
+    QVERIFY(sigmaC.status == LiteratureStatus::Cited);
+    QVERIFY(sigmaN.status == LiteratureStatus::Cited);
+    QVERIFY(sigmaO.status == LiteratureStatus::Cited);
+    QVERIFY(sigmaS.status == LiteratureStatus::Cited);
+    QVERIFY(std::abs(sigmaH.value - 31.43) < kTol);
+    QVERIFY(std::abs(sigmaC.value - 188.1) < kTol);
+    QVERIFY(std::abs(sigmaN.value - 244.6) < kTol);
+    QVERIFY(std::abs(sigmaO.value - 328.4) < kTol);
+    QVERIFY(std::abs(sigmaS.value - 742.9) < kTol);
 }
 
 QTEST_GUILESS_MAIN(RediscoverBuckinghamTests)

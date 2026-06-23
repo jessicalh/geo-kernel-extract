@@ -225,7 +225,8 @@ struct CohortCellTruth {
 };
 
 ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell,
-                                                         double buckinghamA);
+                                                         double buckinghamA,
+                                                         double buckinghamB);
 
 class CohortContextAccumulator {
 public:
