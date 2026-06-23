@@ -5,6 +5,7 @@
 #include "LocalFrameBasis.h"
 #include "RamaRegion.h"
 #include "ResidentIndexes.h"
+#include "RingCurrentScalars.h"
 #include "RowDesign.h"
 #include "StaticRunData.h"
 #include "SubspaceCompare.h"
@@ -200,6 +201,13 @@ model::Mat3 matFromArray(const StaticNpyArray* a, std::size_t row) {
 
 double iso(const model::Mat3& m) {
     return (m(0, 0) + m(1, 1) + m(2, 2)) / 3.0;
+}
+
+double ringBsPerTypeIsoPpm(const RunData& run, std::size_t atom) {
+    const StaticNpyArray* a = arr(run, io::FieldKind::BSPerTypeT0);
+    if (!a || atom >= a->rows || a->cols < static_cast<std::size_t>(model::kAromaticRingTypeCount))
+        return kNan;
+    return RingPerTypeT0Ppm(a->rowData(atom), a->cols);
 }
 
 QString hybridisationForAtom(const RunData& run, const model::QtAtom& atom, std::size_t atomIndex) {
@@ -605,7 +613,7 @@ CohortSample sampleForAtom(const RunData& run,
     s.channels.insert(QStringLiteral("mopac_E_mag"), vectorMag(run, io::FieldKind::MOPACCoulombE, atom));
     s.channels.insert(QStringLiteral("apbs_efg_absT2"), rowNorm(run, io::FieldKind::APBSEFG, atom));
     s.channels.insert(QStringLiteral("aimnet2_efg_absT2"), rowNorm(run, io::FieldKind::AIMNet2EFG, atom));
-    s.channels.insert(QStringLiteral("ring_bs_iso"), iso(matFromArray(arr(run, io::FieldKind::BSShielding), atom)));
+    s.channels.insert(QStringLiteral("ring_bs_iso"), ringBsPerTypeIsoPpm(run, atom));
     s.channels.insert(QStringLiteral("ring_hm_iso"), iso(matFromArray(arr(run, io::FieldKind::HMShielding), atom)));
     s.channels.insert(QStringLiteral("mc_lit_iso"), iso(matFromArray(arr(run, io::FieldKind::McPeptideCoFixed), atom)));
     s.channels.insert(QStringLiteral("ff14sb_charge"), valueAt(run, io::FieldKind::FfPartialCharge, atom));

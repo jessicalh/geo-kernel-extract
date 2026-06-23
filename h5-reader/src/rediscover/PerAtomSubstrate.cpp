@@ -601,7 +601,7 @@ PairContribution makeRingContribution(const Body& body, std::size_t targetAtom,
     out.dipolar = d.dipolar;
     out.kernel_T0 = fixed.T0;
     out.kernel_T2 = fixed.T2;
-    out.contribution = t2Magnitude(fixed.T2);
+    out.contribution = RingForwardContributionPpm(fixed);
     return out;
 }
 

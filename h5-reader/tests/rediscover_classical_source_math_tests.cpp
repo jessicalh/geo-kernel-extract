@@ -1,15 +1,22 @@
 #include "rediscover/ClassicalSourceMath.h"
+#include "rediscover/LiteratureConstants.h"
+#include "rediscover/RingCurrentScalars.h"
 #include "rediscover/TensorConventionGuard.h"
+
+#include "calculators/QtBiotSavartCalc.h"
 
 #include <QtTest/QtTest>
 
 #include <QByteArray>
 
+#include <array>
 #include <cmath>
 #include <limits>
 #include <vector>
 
 using namespace h5reader::rediscover;
+namespace calculators = h5reader::calculators;
+namespace model = h5reader::model;
 
 namespace {
 
@@ -58,6 +65,68 @@ private slots:
         QVERIFY(std::abs(scale - 10.0) < 1e-12);
         QVERIFY(std::abs(slope - 5.0) < 1e-12);
         QVERIFY(std::abs(scale - slope) > 1.0);
+    }
+
+    void ringContributionUsesSignedIsotropicKernel() {
+        model::SphericalTensor fixed;
+        fixed.T0 = -2.5;
+        fixed.T2 = {3.0, 4.0, 0.0, 0.0, 0.0};
+
+        const double t2Magnitude = std::sqrt(3.0 * 3.0 + 4.0 * 4.0);
+        QCOMPARE(RingForwardContributionPpm(fixed), -2.5);
+        QVERIFY(RingForwardContributionPpm(fixed) != t2Magnitude);
+    }
+
+    void ringCurrentSignConventionShieldsFaceDeshieldsInPlane() {
+        model::RingGeometry geo;
+        geo.center = model::Vec3::Zero();
+        geo.normal = model::Vec3::UnitZ();
+        geo.radius = 1.4;
+
+        std::vector<model::Vec3> vertices;
+        vertices.reserve(6);
+        constexpr double kPi = 3.14159265358979323846264338327950288;
+        for (int i = 0; i < 6; ++i) {
+            const double theta = (2.0 * kPi * static_cast<double>(i)) / 6.0;
+            vertices.emplace_back(geo.radius * std::cos(theta),
+                                  geo.radius * std::sin(theta),
+                                  0.0);
+        }
+
+        const double intensity = RingIntensity(model::RingTypeIndex::PheBenzene).value;
+        const double lobeOffset = JohnsonBoveyLobeOffset(model::RingTypeIndex::PheBenzene).value;
+        const model::SphericalTensor face =
+            calculators::EvaluateShielding(model::Vec3(0.0, 0.0, 3.0), geo, vertices,
+                                           lobeOffset, intensity);
+        const model::SphericalTensor inPlane =
+            calculators::EvaluateShielding(model::Vec3(3.0, 0.0, 0.0), geo, vertices,
+                                           lobeOffset, intensity);
+
+        QVERIFY2(face.T0 > 0.0,
+                 qPrintable(QStringLiteral("face T0 should be shielding-positive, got %1")
+                                .arg(face.T0, 0, 'g', 17)));
+        QVERIFY2(inPlane.T0 < 0.0,
+                 qPrintable(QStringLiteral("in-plane T0 should be deshielding-negative, got %1")
+                                .arg(inPlane.T0, 0, 'g', 17)));
+    }
+
+    void ringPerTypeWeightingUsesLiteratureIntensities() {
+        std::array<double, model::kAromaticRingTypeCount> perType{};
+        perType[static_cast<std::size_t>(model::RingTypeIndex::PheBenzene)] = 0.25;
+        const double phe = RingPerTypeT0Ppm(perType.data(), perType.size());
+
+        perType.fill(0.0);
+        perType[static_cast<std::size_t>(model::RingTypeIndex::HisImidazole)] = 0.25;
+        const double his = RingPerTypeT0Ppm(perType.data(), perType.size());
+
+        perType.fill(0.0);
+        perType[static_cast<std::size_t>(model::RingTypeIndex::TrpPyrrole)] = 0.25;
+        const double trpPyrrole = RingPerTypeT0Ppm(perType.data(), perType.size());
+
+        const double hisRatio = std::abs(his / phe);
+        const double trpPyrroleRatio = std::abs(trpPyrrole / phe);
+        QVERIFY(std::abs(hisRatio - (5.16 / 12.0)) < 1e-12);
+        QVERIFY(std::abs(trpPyrroleRatio - (6.72 / 12.0)) < 1e-12);
     }
 
     void larsenTermParticipatesInClassicalFold() {

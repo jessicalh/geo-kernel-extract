@@ -395,6 +395,7 @@ qt_add_executable(h5reader_extract
     src/rediscover/RediscoveryExtraction.h
     src/rediscover/FrameSpatialIndex.h
     src/rediscover/FrameSpatialIndex.cpp
+    src/rediscover/RingCurrentScalars.h
     src/rediscover/RingCurrentKernel.h
     src/rediscover/RingCurrentKernel.cpp
     src/rediscover/McConnellLiteratureKernel.h
@@ -566,6 +567,9 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         tests/rediscover_classical_source_math_tests.cpp
         src/rediscover/ClassicalSourceMath.h
         src/rediscover/ClassicalSourceMath.cpp
+        src/rediscover/RingCurrentScalars.h
+        src/calculators/QtBiotSavartCalc.h
+        src/calculators/QtBiotSavartCalc.cpp
         src/rediscover/TensorConventionGuard.h
         src/rediscover/TensorConventionGuard.cpp
     )
@@ -573,6 +577,7 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     target_link_libraries(h5reader_rediscover_classical_source_math_tests PRIVATE
         Qt6::Core
         Qt6::Test
+        Eigen3::Eigen
     )
     add_test(NAME h5reader_rediscover_classical_source_math_tests
              COMMAND h5reader_rediscover_classical_source_math_tests)
