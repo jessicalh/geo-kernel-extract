@@ -503,6 +503,16 @@ int StripStackWidget::panelCount() const
     return static_cast<int>(panels_.size());
 }
 
+QVector<PanelDisplayData> StripStackWidget::ownedPanelDisplayData() const
+{
+    QVector<PanelDisplayData> out;
+    const std::size_t start = n_temporal_ + n_spectrum_;
+    for (std::size_t i = start; i < panels_.size(); ++i)
+        if (panels_[i])
+            out.append(panels_[i]->displayData());
+    return out;
+}
+
 void StripStackWidget::updateMinimumHeight()
 {
     const int n = std::max(2, panelCount());

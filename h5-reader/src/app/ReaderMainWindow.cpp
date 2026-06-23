@@ -58,6 +58,7 @@
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QFont>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QKeySequence>
 #include <QLabel>
@@ -1099,6 +1100,31 @@ bool ReaderMainWindow::dashboardDockRaised() const {
 int ReaderMainWindow::dashboardOwnedPanelCount() const {
     ASSERT_THREAD(this);
     return dashboardStripDock_ ? dashboardStripDock_->ownedPanelCount() : 0;
+}
+
+QJsonArray ReaderMainWindow::dashboardPanelManifest() const {
+    ASSERT_THREAD(this);
+    QJsonArray out;
+    if (!dashboardStripDock_) return out;
+    for (const PanelDisplayData& d : dashboardStripDock_->ownedPanelDisplayData()) {
+        QJsonObject o{
+            {QStringLiteral("kind"), d.kind},
+            {QStringLiteral("title"), d.title},
+            {QStringLiteral("series_count"), d.seriesCount},
+            {QStringLiteral("point_count"), d.pointCount},
+            {QStringLiteral("finite_count"), d.finiteCount},
+            {QStringLiteral("nan_count"), d.nanCount},
+            {QStringLiteral("empty"), d.empty()},
+        };
+        if (d.finiteCount > 0) {
+            o.insert(QStringLiteral("min"), d.minValue);
+            o.insert(QStringLiteral("max"), d.maxValue);
+        }
+        if (!d.descriptorId.isEmpty())
+            o.insert(QStringLiteral("descriptor_id"), d.descriptorId);
+        out.append(o);
+    }
+    return out;
 }
 
 int ReaderMainWindow::dashboardStripTrackCount() const {

@@ -11,6 +11,18 @@
 
 namespace h5reader::app {
 
+PanelDisplayData FixedFreqPanel::displayData() const {
+    PanelDisplayData d;
+    d.kind = QStringLiteral("fixed_freq");
+    d.title = label_;
+    if (data_) {
+        d.seriesCount = 1;
+        for (std::size_t f = 0; f < data_->n_freqs; ++f)
+            d.note(data_->at(row_, f));
+    }
+    return d;
+}
+
 namespace {
 
 constexpr double kMarkerRadiusPx = 4.0;

@@ -13,6 +13,19 @@
 
 namespace h5reader::app {
 
+PanelDisplayData SequenceBarPanel::displayData() const {
+    PanelDisplayData d;
+    d.kind = QStringLiteral("sequence_bar");
+    d.title = label_;
+    d.seriesCount = 1 + static_cast<int>(overlays_.size());
+    for (const SequenceBarRow& r : rows_)
+        d.note(r.value);
+    for (const OverlaySeries& ov : overlays_)
+        for (const SequenceBarRow& r : ov.rows)
+            d.note(r.value);
+    return d;
+}
+
 SequenceBarPanel::SequenceBarPanel(QString label,
                                    QString unit,
                                    std::vector<SequenceBarRow> rows,

@@ -15,6 +15,21 @@
 
 namespace h5reader::app {
 
+PanelDisplayData ChordCouplingPanel::displayData() const {
+    PanelDisplayData d;
+    d.kind = QStringLiteral("chord_matrix");
+    d.title = label_;
+    if (matrix_) {
+        d.seriesCount = static_cast<int>(matrix_->n_channels);
+        // The matrix carries EXPECTED NaN on channel-constant rows/cols, so
+        // nanCount here is informative, not a failure (the test allows it).
+        for (std::size_t a = 0; a < matrix_->n_channels; ++a)
+            for (std::size_t b = 0; b < matrix_->n_channels; ++b)
+                d.note(matrix_->at(atomRow_, a, b));
+    }
+    return d;
+}
+
 ChordCouplingPanel::ChordCouplingPanel(QString label,
                                        const model::QtPerAtomMatrix* matrix,
                                        std::size_t atomRow,

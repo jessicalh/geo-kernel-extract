@@ -281,6 +281,11 @@ int DashboardStripDock::ownedPanelCount() const {
                         : (controller_ ? controller_->ownedPanelCount() : 0);
 }
 
+QVector<PanelDisplayData> DashboardStripDock::ownedPanelDisplayData() const {
+    return stackWidget_ ? stackWidget_->ownedPanelDisplayData()
+                        : QVector<PanelDisplayData>{};
+}
+
 int DashboardStripDock::stripTrackCount() const {
     return stackWidget_ ? stackWidget_->trackCount()
                         : (controller_ ? controller_->stripTrackCount() : 0);

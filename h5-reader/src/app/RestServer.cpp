@@ -2038,6 +2038,25 @@ void RestServer::registerRoutes() {
         return jsonResponse(QJsonObject{{"tracks", tracks}});
     });
 
+    // GET /dashboard/display -- the unified display MANIFEST: every active
+    // display element + the data it actually plots. Temporal strip tracks (the
+    // per-frame sampled series) PLUS the static panels (curve/spectrum/matrix/
+    // fixed-freq/sequence-bar), which the strip-series path could not see. The
+    // read-to-display test reads this to verify each metric reaches a sane,
+    // renderable form -- closing the static-panel blind spot.
+    server_->route(QStringLiteral("/dashboard/display"), [this]() {
+        ASSERT_THREAD(this);
+        if (!dashboardController_ || !readerWindow_)
+            return errorResponse(QStringLiteral("dashboard not wired"), SC::ServiceUnavailable);
+        QJsonArray tracks;
+        for (const DashboardDisplayController::StripTrack& t : dashboardController_->stripTracks())
+            tracks.append(stripTrackToJson(t));
+        return jsonResponse(QJsonObject{
+            {"strip_tracks", tracks},
+            {"panels", readerWindow_->dashboardPanelManifest()},
+        });
+    });
+
     server_->route(QStringLiteral("/dashboard/state"), [this]() {
         ASSERT_THREAD(this);
         if (!signalModel_ || !panelModel_ || !selectionController_ || !catalog_)

@@ -16,6 +16,19 @@
 
 namespace h5reader::app {
 
+PanelDisplayData PowerSpectrumPanel::displayData() const {
+    PanelDisplayData d;
+    d.kind = QStringLiteral("power_spectrum");
+    d.title = label_;
+    if (data_) {
+        d.seriesCount = static_cast<int>(data_->n_channels);
+        for (std::size_t ch = 0; ch < data_->n_channels; ++ch)
+            for (std::size_t s = 0; s < data_->n_samples; ++s)
+                d.note(data_->at(atomRow_, ch, s));
+    }
+    return d;
+}
+
 namespace {
 
 // Distinct colours for up to 13 channels; chosen for legibility on the

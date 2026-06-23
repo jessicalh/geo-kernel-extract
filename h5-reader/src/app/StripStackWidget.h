@@ -77,6 +77,11 @@ public:
         return static_cast<int>(panels_.size() - n_temporal_ - n_spectrum_);
     }
 
+    // Display-manifest summary of each OWNED (static) panel -- the trailing
+    // section, the panels that were invisible to REST. Temporal/spectrum panels
+    // are covered by the strip-series path.
+    QVector<PanelDisplayData> ownedPanelDisplayData() const;
+
 signals:
     void revealRequested(const model::SignalBinding& binding);
 

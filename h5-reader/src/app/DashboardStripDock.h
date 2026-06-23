@@ -2,6 +2,9 @@
 
 #include <QDockWidget>
 #include <QPointer>
+#include <QVector>
+
+#include "AbstractStripPanel.h"
 
 class QCheckBox;
 class QLabel;
@@ -59,6 +62,7 @@ public:
     int stripDisplaySinkCount() const;
     int spectrumDisplaySinkCount() const;
     int ownedPanelCount() const;
+    QVector<PanelDisplayData> ownedPanelDisplayData() const;
     int stripTrackCount() const;
 
 signals:

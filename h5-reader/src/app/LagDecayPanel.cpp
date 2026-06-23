@@ -15,6 +15,20 @@
 
 namespace h5reader::app {
 
+PanelDisplayData LagDecayPanel::displayData() const {
+    PanelDisplayData d;
+    d.kind = QStringLiteral("lag_curve");
+    d.title = label_;
+    const model::QtPerAtomChannelCurve* c = data_ ? data_ : owned_.get();
+    if (c) {
+        d.seriesCount = static_cast<int>(c->n_channels);
+        for (std::size_t ch = 0; ch < c->n_channels; ++ch)
+            for (std::size_t s = 0; s < c->n_samples; ++s)
+                d.note(c->at(atomRow_, ch, s));
+    }
+    return d;
+}
+
 namespace {
 
 const std::array<QColor, 13> kChannelPalette{

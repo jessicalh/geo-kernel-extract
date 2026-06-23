@@ -54,6 +54,7 @@ public:
 
     bool hasRevealBinding() const override { return false; }
     model::SignalBinding revealBinding() const override { return {}; }
+    PanelDisplayData displayData() const override;
 
     void paint(QPainter& p,
                const PanelGeometry& geometry,

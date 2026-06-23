@@ -30,6 +30,8 @@
 #include <QSize>
 #include <QString>
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
 
 class QMouseEvent;
@@ -140,11 +142,47 @@ void paintSpectrumTicks(QPainter& p, const QRectF& plot, double xMin, double xMa
 void paintSelectedTimeRange(QPainter& p, const PanelGeometry& geometry, const PaintContext& context);
 void paintTemporalCursor(QPainter& p, const PanelGeometry& geometry, const PaintContext& context);
 
+// --- display manifest ---------------------------------------------------
+
+// What a panel actually plots, summarised so a read-to-display test can assert
+// sanity (right shape, non-empty, no rogue NaN) WITHOUT re-reading the source --
+// the panel is the source of truth for what is on screen. Filled by
+// displayData(); the default record is empty (kind == "").
+struct PanelDisplayData {
+    QString kind;          // "lag_curve"/"power_spectrum"/"chord_matrix"/"fixed_freq"/"sequence_bar"/""
+    QString descriptorId;  // best-effort, from the reveal binding when present
+    QString title;
+    int seriesCount = 0;   // channels / rows / arcs the panel draws
+    int pointCount = 0;    // total plotted scalar values inspected
+    int finiteCount = 0;   // finite among them
+    int nanCount = 0;      // non-finite among them (NaN/Inf)
+    double minValue = 0.0;
+    double maxValue = 0.0;
+
+    bool empty() const { return pointCount == 0; }
+
+    // Accumulate one plotted value's stats. Call once per scalar the panel draws.
+    void note(double v) {
+        ++pointCount;
+        if (std::isfinite(v)) {
+            if (finiteCount == 0) { minValue = maxValue = v; }
+            else { minValue = std::min(minValue, v); maxValue = std::max(maxValue, v); }
+            ++finiteCount;
+        } else {
+            ++nanCount;
+        }
+    }
+};
+
 // --- abstract base ------------------------------------------------------
 
 class AbstractStripPanel {
 public:
     virtual ~AbstractStripPanel() = default;
+
+    // What this panel plots, summarised for the display manifest / read-to-
+    // display test. Default reports nothing (kind == ""); panels override it.
+    virtual PanelDisplayData displayData() const { return {}; }
 
     virtual void paint(QPainter& p,
                        const PanelGeometry& geometry,

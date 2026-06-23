@@ -35,6 +35,7 @@
 class QActionGroup;
 class QDockWidget;
 class QJsonObject;
+class QJsonArray;
 class QMenu;
 class QString;
 
@@ -151,6 +152,10 @@ public:
     bool dashboardDockRaised() const;
     int dashboardOwnedPanelCount() const;
     int dashboardStripTrackCount() const;
+    // Display manifest of the static panels (curve/spectrum/matrix/fixed-freq/
+    // sequence-bar) -- the read-to-display hook that makes those panels, which
+    // the strip-series path can't see, REST-visible for the metrics test.
+    QJsonArray dashboardPanelManifest() const;
     bool openSignalDisplayPicker(QString* blockedReason = nullptr);
     QJsonObject signalDisplayPickerState() const;
     QJsonObject addSelectedSignalFromPicker();
