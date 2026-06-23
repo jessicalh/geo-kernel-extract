@@ -107,6 +107,37 @@ private slots:
         QVERIFY(source.contains(QStringLiteral("independent_forms_checked_distinct_kernel_forms_shared_geometry_projection_decomposition")));
         QVERIFY(source.contains(QStringLiteral("subspaceCompareObject")));
     }
+
+    void exposurePassSurfacesUseBoundedGrains() {
+        QFile atom(QStringLiteral(H5READER_SOURCE_DIR "/src/rediscover/AnalysisAtom.cpp"));
+        QVERIFY2(atom.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(atom.errorString()));
+        const QString source = QString::fromUtf8(atom.readAll());
+
+        QVERIFY(source.contains(QStringLiteral("per_type_tensor_reveals.csv")));
+        QVERIFY(source.contains(QStringLiteral("ring_well_target_eta2.csv")));
+        QVERIFY(source.contains(QStringLiteral("serial_recurrence_summary.csv")));
+        QVERIFY(source.contains(QStringLiteral("per_atom_per_type_record")));
+        QVERIFY(source.contains(QStringLiteral("per_atom_ring_well_target")));
+        QVERIFY(source.contains(QStringLiteral("no_per_partner_rows;no_frame_index")));
+        QVERIFY(source.contains(QStringLiteral("pyramidalization_oop_A")));
+        QVERIFY(source.contains(QStringLiteral("E_parallel_XH")));
+        QVERIFY(source.contains(QStringLiteral("pas_delta11")));
+    }
+
+    void cohortStaticRelationshipRelabelDetectorIsLegacyAware() {
+        QFile cohort(QStringLiteral(H5READER_SOURCE_DIR "/src/rediscover/CohortContextAccumulator.cpp"));
+        QVERIFY2(cohort.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(cohort.errorString()));
+        const QString source = QString::fromUtf8(cohort.readAll());
+
+        QVERIFY(source.contains(QStringLiteral("cohort_static_source_relationships.csv")));
+        QVERIFY(source.contains(QStringLiteral("legacyEquivalentColumnForChannel")));
+        QVERIFY(source.contains(QStringLiteral("channel_vs_sigma[%1]")));
+        QVERIFY(source.contains(QStringLiteral("full_tensor_r2")));
+        QVERIFY(source.contains(QStringLiteral("magnitude_only_r2")));
+        QVERIFY(source.contains(QStringLiteral("direction_only_r2")));
+        QVERIFY(!source.contains(QStringLiteral("blocked pending predecessor chi1")));
+        QVERIFY(source.contains(QStringLiteral("full_run_reference=1148/1494=0.768")));
+    }
 };
 
 QTEST_MAIN(RediscoverNoRelabelTests)

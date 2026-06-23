@@ -95,12 +95,24 @@ public:
     std::size_t writeEtaByWellRows(QTextStream& out,
                                    const QString& datasetId,
                                    const QString& proteinId) const;
+    std::size_t writePerTypeTensorRevealRows(QTextStream& out,
+                                             const QString& datasetId,
+                                             const QString& proteinId) const;
+    std::size_t writeRingWellTargetRows(QTextStream& out,
+                                        const QString& datasetId,
+                                        const QString& proteinId) const;
+    std::size_t writeSerialRecurrenceRows(QTextStream& out,
+                                          const QString& datasetId,
+                                          const QString& proteinId) const;
 
     static void WriteBoundedSigmaHeader(QTextStream& out);
     static void WriteClassicalSourceTermHeader(QTextStream& out);
     static void WriteSourceFamilyMatrixHeader(QTextStream& out);
     static void WriteSubspaceOverlapHeader(QTextStream& out);
     static void WriteEtaByWellHeader(QTextStream& out);
+    static void WritePerTypeTensorRevealHeader(QTextStream& out);
+    static void WriteRingWellTargetHeader(QTextStream& out);
+    static void WriteSerialRecurrenceHeader(QTextStream& out);
     static bool AssertMolCompOrder(QString* errOut = nullptr);
     static bool AssertPasShapeConvention(QString* errOut = nullptr);
 

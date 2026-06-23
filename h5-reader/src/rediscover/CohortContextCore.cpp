@@ -436,6 +436,7 @@ void CohortContextAccumulator::push(const CohortSample& sample) {
     cell.eta_H.add(sample.sigma_eta_H);
     cell.helix_dipole_field.add(sample.helix_dipole_field);
     cell.psi_iminus1_vs_sigma.add(sample.psi_iminus1, sample.sigma_iso);
+    cell.chi1_iminus1_vs_sigma.add(sample.chi1_iminus1, sample.sigma_iso);
     cell.psi_own_vs_sigma.add(sample.psi_own, sample.sigma_iso);
 
     if (sample.backbone_n && cell.psi_iminus1_region == QStringLiteral("not_backbone_N")) {

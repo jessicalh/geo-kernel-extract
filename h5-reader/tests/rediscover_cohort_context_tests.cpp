@@ -73,6 +73,7 @@ private slots:
     void deltaLoaderIsNarrowAndRefusesMissingArrays();
     void foldAdapterProjectsMolecularComponents();
     void classicalAgreementUsesPerProteinPoints();
+    void predecessorChi1EffectUsesPairAccumulator();
     void syntheticFoldedDeltaRidgeMatchesHandSlope();
     void syntheticDistantNonzeroRidgeIsCharacterizedNotGated();
 };
@@ -319,6 +320,34 @@ void RediscoverCohortContextTests::classicalAgreementUsesPerProteinPoints() {
     QCOMPARE(stats.slope, 1.0);
     QCOMPARE(stats.rmsd, 0.0);
     QVERIFY(std::isfinite(stats.residual_sd));
+}
+
+void RediscoverCohortContextTests::predecessorChi1EffectUsesPairAccumulator() {
+    Axis2ContextKeyFields f;
+    f.element = QStringLiteral("N");
+    f.residue_type = QStringLiteral("GLY");
+    f.atom_name = QStringLiteral("N");
+    f.hyb = QStringLiteral("sp2");
+    f.contact_class = QStringLiteral("polar");
+    f.dihedral_region = QStringLiteral("AlphaR");
+    f.SS = QStringLiteral("helix");
+
+    CohortContextAccumulator acc;
+    for (int i = 0; i < 5; ++i) {
+        CohortSample s;
+        s.key = BuildAxis2ContextKey(f);
+        s.protein_id = QStringLiteral("p%1").arg(i);
+        s.backbone_n = true;
+        s.predecessor_identity = QStringLiteral("VAL:%1").arg(i);
+        s.chi1_iminus1 = static_cast<double>(i);
+        s.sigma_iso = 20.0 + 3.0 * static_cast<double>(i);
+        acc.push(s);
+    }
+
+    const CohortCellTruth& cell = acc.cells().begin()->second;
+    QCOMPARE(cell.chi1_iminus1_vs_sigma.n, std::size_t(5));
+    QCOMPARE(cell.chi1_iminus1_vs_sigma.slope(), 3.0);
+    QVERIFY(std::isfinite(cell.chi1_iminus1_vs_sigma.pearson()));
 }
 
 void RediscoverCohortContextTests::syntheticFoldedDeltaRidgeMatchesHandSlope() {

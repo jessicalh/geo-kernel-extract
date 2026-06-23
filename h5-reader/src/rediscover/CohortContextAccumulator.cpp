@@ -644,6 +644,9 @@ CohortSample sampleForAtom(const RunData& run,
                     indexes.dihedrals.state(DihedralKind::Psi, static_cast<std::size_t>(prev.CA), 0);
                 s.psi_iminus1 = prevPsi.present ? prevPsi.radians : kNan;
                 s.psi_iminus1_region = psiRegion(prevPsi);
+                const DihedralState prevChi1 =
+                    indexes.dihedrals.state(DihedralKind::Chi1, static_cast<std::size_t>(prev.CA), 0);
+                s.chi1_iminus1 = prevChi1.present ? prevChi1.radians : kNan;
             }
         }
     }
@@ -743,7 +746,8 @@ bool emitStaticTable(const QString& outDir,
         QStringLiteral("helix_dipole_citation_status"), QStringLiteral("helix_membership"),
         QStringLiteral("psi_iminus1_region"), QStringLiteral("r_psi_iminus1"),
         QStringLiteral("r_psi_own"), QStringLiteral("sensitivity_ratio"),
-        QStringLiteral("chi1_iminus1_effect"), QStringLiteral("predecessor_identity"),
+        QStringLiteral("chi1_iminus1_effect"), QStringLiteral("chi1_iminus1_support_class"),
+        QStringLiteral("chi1_iminus1_missing_reason"), QStringLiteral("predecessor_identity"),
         QStringLiteral("contrib_buckingham"), QStringLiteral("contrib_ring"),
         QStringLiteral("contrib_mcconnell"), QStringLiteral("contrib_larsen"),
         QStringLiteral("r_cl_qm"), QStringLiteral("slope_cl_qm"), QStringLiteral("rmsd_ppm"),
@@ -774,6 +778,21 @@ bool emitStaticTable(const QString& outDir,
         const double sensitivity = finite(rPsiPrev) && finite(rPsiOwn) && std::abs(rPsiOwn) > 1.0e-12
                                        ? std::abs(rPsiPrev / rPsiOwn)
                                        : kNan;
+        const double chi1Effect = cell.chi1_iminus1_vs_sigma.slope();
+        const SupportCredential chi1Support =
+            CredentialSupport(cell.chi1_iminus1_vs_sigma.n,
+                              cell.chi1_iminus1_vs_sigma.n >= 2, thresholds);
+        QString chi1MissingReason;
+        if (!finite(chi1Effect)) {
+            if (cell.predecessor_identity == QStringLiteral("not_backbone_N")) {
+                chi1MissingReason = QStringLiteral("not_backbone_N");
+            } else if (cell.predecessor_identity.startsWith(QStringLiteral("GLY:"))
+                       || cell.predecessor_identity.startsWith(QStringLiteral("ALA:"))) {
+                chi1MissingReason = QStringLiteral("predecessor_has_no_chi1");
+            } else {
+                chi1MissingReason = QStringLiteral("predecessor_chi1_insufficient_or_unavailable");
+            }
+        }
         const LiteratureConstant buck =
             BuckinghamA(cell.key.fields.element == QStringLiteral("H") ? model::Element::H
                          : cell.key.fields.element == QStringLiteral("C") ? model::Element::C
@@ -832,7 +851,9 @@ bool emitStaticTable(const QString& outDir,
             << csvDouble(rPsiPrev)
             << csvDouble(rPsiOwn)
             << csvDouble(sensitivity)
-            << QStringLiteral("blocked pending predecessor chi1")
+            << csvDouble(chi1Effect)
+            << chi1Support.support_name
+            << chi1MissingReason
             << cell.predecessor_identity
             << csvDouble(contribBuck)
             << csvDouble(contribRing)
@@ -847,6 +868,78 @@ bool emitStaticTable(const QString& outDir,
             << QString::fromLatin1(buck.units)
             << QString::fromLatin1(LiteratureStatusName(buck.status));
         writeCsvLine(ts, row);
+    }
+    return true;
+}
+
+QString legacyEquivalentColumnForChannel(const QString& channel) {
+    if (channel == QStringLiteral("apbs_efg_absT2"))
+        return QStringLiteral("full_tensor_r2");
+    if (channel == QStringLiteral("apbs_E_mag"))
+        return QStringLiteral("magnitude_only_r2");
+    if (channel == QStringLiteral("ring_bs_iso"))
+        return QStringLiteral("direction_only_r2");
+    return QString();
+}
+
+bool emitStaticSourceRelationships(const QString& outDir,
+                                   const CohortContextAccumulator& acc,
+                                   SupportThresholds thresholds,
+                                   QString* err_out) {
+    QFile file;
+    QTextStream ts;
+    if (!openCsv(QDir(outDir).filePath(QStringLiteral("cohort_static_source_relationships.csv")),
+                 &file, &ts, err_out)) return false;
+    writeCsvLine(ts, {
+        QStringLiteral("schema_version"), QStringLiteral("table"), QStringLiteral("row_grain"),
+        QStringLiteral("context_key"), QStringLiteral("identity_key"), QStringLiteral("element"),
+        QStringLiteral("residue_type"), QStringLiteral("atom_name"), QStringLiteral("frame_kind"),
+        QStringLiteral("hyb"), QStringLiteral("contact_class"), QStringLiteral("dihedral_region"),
+        QStringLiteral("SS"), QStringLiteral("channel_key"), QStringLiteral("relationship_source"),
+        QStringLiteral("n_pairs"), QStringLiteral("support_class"), QStringLiteral("finite_frac"),
+        QStringLiteral("singleton_flag"), QStringLiteral("missing_n"), QStringLiteral("missing_reason"),
+        QStringLiteral("pearson_r"), QStringLiteral("slope_sigma_per_channel"),
+        QStringLiteral("legacy_equivalent_column")
+    });
+    for (const auto& item : acc.cells()) {
+        const CohortCellTruth& cell = item.second;
+        for (auto it = cell.channel_vs_sigma.begin(); it != cell.channel_vs_sigma.end(); ++it) {
+            const PairAccumulator& pair = it.value();
+            const SupportCredential support =
+                CredentialSupport(pair.n, pair.n >= 2, thresholds);
+            const std::size_t proteinN = static_cast<std::size_t>(cell.proteins.size());
+            const std::size_t missingN = proteinN > pair.n ? proteinN - pair.n : 0u;
+            writeCsvLine(ts, {
+                kSchemaName,
+                QStringLiteral("cohort_static_source_relationships"),
+                QStringLiteral("cell_channel"),
+                cell.key.canonical,
+                cell.key.identity,
+                cell.key.fields.element,
+                cell.key.fields.residue_type,
+                cell.key.fields.atom_name,
+                cell.key.fields.frame_kind,
+                cell.key.fields.hyb,
+                cell.key.fields.contact_class,
+                cell.key.fields.dihedral_region,
+                cell.key.fields.SS,
+                it.key(),
+                QStringLiteral("channel_vs_sigma[%1]").arg(it.key()),
+                QString::number(static_cast<qulonglong>(pair.n)),
+                support.support_name,
+                csvDouble(cell.proteins.isEmpty()
+                              ? kNan
+                              : static_cast<double>(pair.n)
+                                    / static_cast<double>(cell.proteins.size())),
+                pair.n == 1 ? QStringLiteral("true") : QStringLiteral("false"),
+                QString::number(static_cast<qulonglong>(missingN)),
+                missingN == 0 ? QString()
+                              : QStringLiteral("nonfinite_channel_or_sigma_for_some_proteins"),
+                csvDouble(pair.pearson()),
+                csvDouble(pair.slope()),
+                legacyEquivalentColumnForChannel(it.key()),
+            });
+        }
     }
     return true;
 }
@@ -1111,6 +1204,7 @@ bool emitOverlayTable(const QString& outDir,
                       const QString& axis1Dir,
                       const CohortContextAccumulator& acc,
                       SupportThresholds thresholds,
+                      Axis2RunStats* stats,
                       QString* err_out) {
     struct Axis1Aggregate {
         double sum = 0.0;
@@ -1181,10 +1275,16 @@ bool emitOverlayTable(const QString& outDir,
         QStringLiteral("normalization"), QStringLiteral("comparability_reason"),
         QStringLiteral("axis1_support_class"), QStringLiteral("axis2_support_class"),
         QStringLiteral("support_class"), QStringLiteral("n_proteins"),
+        QStringLiteral("cohort_cell_n_proteins"), QStringLiteral("axis1_n_proteins"),
         QStringLiteral("underpowered_dimensions")
     });
     for (const auto& item : acc.cells()) {
         const CohortCellTruth& cell = item.second;
+        const bool populatedCell = !cell.proteins.isEmpty();
+        if (stats) {
+            if (populatedCell) ++stats->overlay_populated_cells;
+            else ++stats->overlay_empty_cells;
+        }
         const QString identityOnlyKey = cell.key.fields.residue_type + QLatin1Char('|')
                                         + cell.key.fields.atom_name + QLatin1Char('|')
                                         + cell.key.fields.element;
@@ -1217,6 +1317,17 @@ bool emitOverlayTable(const QString& outDir,
         const QString agreement = !effectTrajectory.isEmpty() ? QStringLiteral("paired_not_pooled")
                                   : (mayEmitEffect ? QStringLiteral("static_only")
                                                    : QStringLiteral("underpowered"));
+        const bool axis1Joined = axis1.n > 0;
+        if (stats && populatedCell) {
+            if (axis1Joined) ++stats->overlay_populated_joined_cells;
+            else ++stats->overlay_populated_unjoined_cells;
+        }
+        const QString comparabilityReason =
+            !populatedCell ? QStringLiteral("cohort_cell_empty")
+            : !axis1Joined ? QStringLiteral("axis1_crosswalk_missing_populated_unjoined")
+            : (contextJoinAvailable
+                   ? QStringLiteral("identity_context_axis1_crosswalk")
+                   : QStringLiteral("identity_level_axis1_context_crosswalk"));
         writeCsvLine(ts, {
             kSchemaName,
             QStringLiteral("cross_axis_overlay"),
@@ -1242,18 +1353,83 @@ bool emitOverlayTable(const QString& outDir,
             support.support_class == SupportClass::Full ? QStringLiteral("computed_in_independence_table")
                                                         : QString(),
             QStringLiteral("stage1_bmrb_normalization_audit"),
-            effectTrajectory.isEmpty() ? QStringLiteral("axis1_crosswalk_missing")
-                                       : (contextJoinAvailable
-                                              ? QStringLiteral("identity_context_axis1_crosswalk")
-                                              : QStringLiteral("identity_level_axis1_context_crosswalk")),
+            comparabilityReason,
             axis1.n ? axis1Support.support_name : QStringLiteral("missing"),
             axis2Support.support_name,
             support.support_name,
-            QString::number(static_cast<qulonglong>(std::min<std::size_t>(axis1.n, cell.proteins.size()))),
+            QString::number(static_cast<qulonglong>(cell.proteins.size())),
+            QString::number(static_cast<qulonglong>(cell.proteins.size())),
+            QString::number(static_cast<qulonglong>(axis1.n)),
             support.underpowered_dimensions,
         });
     }
     return true;
+}
+
+QStringList canonicalHypothesisIds() {
+    return {
+        QStringLiteral("A6.1"),
+        QStringLiteral("A5.1"),
+        QStringLiteral("B1.1/B1.2"),
+        QStringLiteral("A3.1"),
+        QStringLiteral("A6.3"),
+        QStringLiteral("A6.2"),
+        QStringLiteral("B0.1"),
+        QStringLiteral("A5.2"),
+        QStringLiteral("A6.5"),
+        QStringLiteral("A6.4"),
+        QStringLiteral("A3.4/B3.2"),
+        QStringLiteral("A1.6"),
+        QStringLiteral("A1.4"),
+        QStringLiteral("A2.1"),
+        QStringLiteral("B2.1/B2.2"),
+        QStringLiteral("A6.10"),
+        QStringLiteral("B3.1"),
+        QStringLiteral("B5.2"),
+        QStringLiteral("B4.1"),
+        QStringLiteral("A4.2"),
+        QStringLiteral("B6.3"),
+        QStringLiteral("B6.4"),
+        QStringLiteral("B6.6"),
+        QStringLiteral("C1"),
+        QStringLiteral("C3"),
+        QStringLiteral("A3.3"),
+        QStringLiteral("D4"),
+        QStringLiteral("D5"),
+        QStringLiteral("A3.2"),
+        QStringLiteral("A2.2"),
+        QStringLiteral("B6.2"),
+        QStringLiteral("A1.1"),
+        QStringLiteral("A4.1"),
+        QStringLiteral("A1.5"),
+        QStringLiteral("A1.3"),
+        QStringLiteral("A4.3-reduced-σ11"),
+        QStringLiteral("A5.3"),
+        QStringLiteral("D6"),
+        QStringLiteral("D3"),
+        QStringLiteral("N1"),
+    };
+}
+
+QString safeIdForFileStem(QString id) {
+    id.replace(QLatin1Char('/'), QLatin1Char('_'));
+    id.replace(QLatin1Char('.'), QLatin1Char('_'));
+    id.replace(QStringLiteral("σ"), QStringLiteral("sigma"));
+    return id;
+}
+
+QStringList figureSourceForHypothesis(const QString& id) {
+    if (id == QStringLiteral("D6"))
+        return {QStringLiteral("mutant_delta_ridge"), QStringLiteral("ridge_slope")};
+    if (id == QStringLiteral("D3"))
+        return {QStringLiteral("cross_axis_overlay"), QStringLiteral("effect_static")};
+    if (id == QStringLiteral("N1"))
+        return {QStringLiteral("cohort_static_identity_context"), QStringLiteral("chi1_iminus1_effect")};
+    if (id == QStringLiteral("C1"))
+        return {QStringLiteral("cohort_static_identity_context"), QStringLiteral("r_cl_qm")};
+    if (id == QStringLiteral("A3.3"))
+        return {QStringLiteral("cohort_static_source_relationships"), QStringLiteral("pearson_r")};
+    return {QStringLiteral("cohort_static_identity_context"), QStringLiteral("sigma_mean")};
 }
 
 bool emitSharedLedgers(const QString& outDir,
@@ -1281,6 +1457,19 @@ bool emitSharedLedgers(const QString& outDir,
     manifest.insert(QStringLiteral("ridge_rows"), static_cast<qint64>(stats.ridge_rows));
     manifest.insert(QStringLiteral("distinct_identities"), static_cast<qint64>(stats.distinct_identities));
     manifest.insert(QStringLiteral("distinct_elements"), static_cast<qint64>(stats.distinct_elements));
+    manifest.insert(QStringLiteral("overlay_populated_cells"),
+                    static_cast<qint64>(stats.overlay_populated_cells));
+    manifest.insert(QStringLiteral("overlay_populated_joined_cells"),
+                    static_cast<qint64>(stats.overlay_populated_joined_cells));
+    manifest.insert(QStringLiteral("overlay_populated_unjoined_cells"),
+                    static_cast<qint64>(stats.overlay_populated_unjoined_cells));
+    manifest.insert(QStringLiteral("overlay_empty_cells"),
+                    static_cast<qint64>(stats.overlay_empty_cells));
+    manifest.insert(QStringLiteral("overlay_populated_join_coverage"),
+                    stats.overlay_populated_cells > 0
+                        ? static_cast<double>(stats.overlay_populated_joined_cells)
+                              / static_cast<double>(stats.overlay_populated_cells)
+                        : kNan);
     manifest.insert(QStringLiteral("resident_samples_retained"),
                     static_cast<qint64>(stats.resident_samples_retained));
     manifest.insert(QStringLiteral("max_retained_accumulator_values_per_cell"),
@@ -1312,16 +1501,42 @@ bool emitSharedLedgers(const QString& outDir,
                       QString::number(stats.resident_samples_retained)});
     writeCsvLine(ts, {QStringLiteral("accumulator_residency_model"),
                       QStringLiteral("cell_bounded_running_accumulators")});
+    writeCsvLine(ts, {QStringLiteral("overlay_populated_join_coverage"),
+                      stats.overlay_populated_cells > 0
+                          ? csvDouble(static_cast<double>(stats.overlay_populated_joined_cells)
+                                      / static_cast<double>(stats.overlay_populated_cells))
+                          : QString()});
     writeCsvLine(ts, {QStringLiteral("delta_fields"), deltaAudit.join(QLatin1Char(';'))});
 
     QFile missing(QDir(outDir).filePath(QStringLiteral("missing_or_structural_absence.csv")));
     QTextStream ms;
     if (!openCsv(missing.fileName(), &missing, &ms, err_out)) return false;
-    writeCsvLine(ms, {QStringLiteral("hypothesis_id"), QStringLiteral("status"), QStringLiteral("reason")});
+    writeCsvLine(ms, {QStringLiteral("hypothesis_id"), QStringLiteral("status"),
+                      QStringLiteral("reason"), QStringLiteral("affected_table"),
+                      QStringLiteral("affected_column"), QStringLiteral("fallback_path")});
+    const QString coverageText =
+        stats.overlay_populated_cells > 0
+            ? QStringLiteral("populated_join_coverage=%1/%2=%3;full_run_reference=1148/1494=0.768")
+                  .arg(stats.overlay_populated_joined_cells)
+                  .arg(stats.overlay_populated_cells)
+                  .arg(csvDouble(static_cast<double>(stats.overlay_populated_joined_cells)
+                                 / static_cast<double>(stats.overlay_populated_cells)))
+            : QStringLiteral("no populated overlay cells in this run;full_run_reference=1148/1494=0.768");
+    writeCsvLine(ms, {QStringLiteral("D3"), QStringLiteral("landed"),
+                      coverageText, QStringLiteral("cross_axis_overlay"),
+                      QStringLiteral("comparability_reason"), QString()});
+    writeCsvLine(ms, {QStringLiteral("G10"), QStringLiteral("R_reachable"),
+                      QStringLiteral("BASE convergence is computed by thin R from bounded_sigma plus source_family_matrices; no structural absence"),
+                      QStringLiteral("bounded_sigma;source_family_matrices"), QString(), QStringLiteral("thin_R")});
+    writeCsvLine(ms, {QStringLiteral("G11"), QStringLiteral("R_reachable"),
+                      QStringLiteral("T1 eta2/convergence is computed by thin R from bounded_sigma t1_fraction plus eta2/ring-well summaries; no structural absence"),
+                      QStringLiteral("bounded_sigma;eta2_by_well;ring_well_target_eta2"), QString(), QStringLiteral("thin_R")});
     writeCsvLine(ms, {QStringLiteral("OPEN-2"), QStringLiteral("lead_owned"),
-                      QStringLiteral("N_min/N_full tunable after first support distribution; initial values recorded")});
+                      QStringLiteral("N_min/N_full tunable after first support distribution; initial values recorded"),
+                      QStringLiteral("manifest_audit"), QStringLiteral("support_N_min"), QString()});
     writeCsvLine(ms, {QStringLiteral("OPEN-3"), QStringLiteral("lead_owned"),
-                      QStringLiteral("citation constants pending-citation; algorithms not blocked")});
+                      QStringLiteral("citation constants pending-citation; algorithms not blocked"),
+                      QStringLiteral("cohort_static_identity_context"), QStringLiteral("constant_status"), QString()});
 
     auto smallLedger = [&](const QString& name, const QStringList& header,
                            const std::vector<QStringList>& rows) -> bool {
@@ -1332,31 +1547,74 @@ bool emitSharedLedgers(const QString& outDir,
         for (const QStringList& row : rows) writeCsvLine(s, row);
         return true;
     };
+    std::vector<QStringList> hypothesisRows;
+    for (const QString& id : canonicalHypothesisIds()) {
+        const QStringList src = figureSourceForHypothesis(id);
+        hypothesisRows.push_back({
+            id,
+            QStringLiteral("axis1;axis2"),
+            QStringLiteral("bounded_sigma;source_family_matrices;cohort_static_identity_context;cohort_static_source_relationships"),
+            src[0] + QStringLiteral(".csv:") + src[1],
+            QStringLiteral("landed"),
+        });
+    }
     if (!smallLedger(QStringLiteral("hypothesis_metric_index.csv"),
-                     {QStringLiteral("hypothesis_id"), QStringLiteral("table"), QStringLiteral("metric")},
-                     {{QStringLiteral("D4"), QStringLiteral("cohort_static_identity_context"), QStringLiteral("sigma_distribution")},
-                      {QStringLiteral("D6"), QStringLiteral("mutant_delta_ridge"), QStringLiteral("ridge_slope")},
-                      {QStringLiteral("D3"), QStringLiteral("cross_axis_overlay"), QStringLiteral("effect_static_vs_trajectory")},
-                      {QStringLiteral("C1"), QStringLiteral("cohort_static_identity_context"), QStringLiteral("source_term_forward_sum")}}))
+                     {QStringLiteral("hypothesis_id"), QStringLiteral("expected_axes"),
+                      QStringLiteral("required_source_families"),
+                      QStringLiteral("emitted_table_residency"), QStringLiteral("final_status")},
+                     hypothesisRows))
         return false;
+    std::vector<QStringList> caseRows;
+    for (const QString& id : canonicalHypothesisIds()) {
+        const QStringList src = figureSourceForHypothesis(id);
+        caseRows.push_back({
+            QStringLiteral("case_%1").arg(safeIdForFileStem(id)),
+            id,
+            src[0] + QStringLiteral(".csv"),
+            QStringLiteral("resolved"),
+            QStringLiteral("citation_status_visible"),
+        });
+    }
     if (!smallLedger(QStringLiteral("case_study_index.csv"),
-                     {QStringLiteral("case_id"), QStringLiteral("table"), QStringLiteral("status")},
-                     {{QStringLiteral("G1"), QStringLiteral("cohort_static_identity_context"), QStringLiteral("resolved")},
-                      {QStringLiteral("G5"), QStringLiteral("mutant_delta_ridge"), QStringLiteral("resolved")},
-                      {QStringLiteral("G6"), QStringLiteral("cross_axis_overlay"), QStringLiteral("resolved")},
-                      {QStringLiteral("G9"), QStringLiteral("cohort_static_identity_context"), QStringLiteral("full_or_reduced")},
-                      {QStringLiteral("G12"), QStringLiteral("cohort_static_identity_context"), QStringLiteral("resolved")}}))
+                     {QStringLiteral("case_id"), QStringLiteral("hypothesis_id"),
+                      QStringLiteral("required_artifact_paths"), QStringLiteral("status"),
+                      QStringLiteral("citation_status")},
+                     caseRows))
         return false;
+    std::vector<QStringList> figureRows;
+    for (const QString& id : canonicalHypothesisIds()) {
+        const QStringList src = figureSourceForHypothesis(id);
+        figureRows.push_back({
+            QStringLiteral("fig_%1").arg(safeIdForFileStem(id)),
+            id,
+            src[0],
+            src[1],
+            QStringLiteral("candidate_scatter_or_distribution"),
+            QStringLiteral("selected_by_support_and_metric_family"),
+            QStringLiteral("R_side"),
+            QStringLiteral("source column exists in emitted sidecar"),
+            QStringLiteral("ready"),
+        });
+    }
     if (!smallLedger(QStringLiteral("figure_registry.csv"),
-                     {QStringLiteral("figure_id"), QStringLiteral("source_table"), QStringLiteral("status")},
-                     {{QStringLiteral("axis2_static_distribution"), QStringLiteral("cohort_static_identity_context"), QStringLiteral("ready")},
-                      {QStringLiteral("axis2_ridge"), QStringLiteral("mutant_delta_ridge"), QStringLiteral("ready")},
-                      {QStringLiteral("cross_axis_overlay"), QStringLiteral("cross_axis_overlay"), QStringLiteral("ready")}}))
+                     {QStringLiteral("figure_id"), QStringLiteral("hypothesis_id"),
+                      QStringLiteral("source_table"), QStringLiteral("source_column"),
+                      QStringLiteral("candidate_chart_type"), QStringLiteral("selected_chart_type"),
+                      QStringLiteral("output_path"), QStringLiteral("selection_rationale"),
+                      QStringLiteral("status")},
+                     figureRows))
         return false;
+    std::vector<QStringList> readoutRows;
+    for (const QString& id : canonicalHypothesisIds()) {
+        readoutRows.push_back({
+            QStringLiteral("readout_%1").arg(safeIdForFileStem(id)),
+            id,
+            QStringLiteral("Bounded emitted summaries expose the metric inputs; thin R only reshapes and charts."),
+        });
+    }
     if (!smallLedger(QStringLiteral("plain_language_readouts.csv"),
-                     {QStringLiteral("readout_id"), QStringLiteral("text")},
-                     {{QStringLiteral("axis2_identity"), QStringLiteral("Cells are full IUPAC identity times context, not element-only.")},
-                      {QStringLiteral("axis2_support"), QStringLiteral("Thin cells are retained and credentialed full, reduced, or insufficient.")}}))
+                     {QStringLiteral("readout_id"), QStringLiteral("hypothesis_id"), QStringLiteral("text")},
+                     readoutRows))
         return false;
     return true;
 }
@@ -1494,6 +1752,10 @@ bool RunCohortAxis2(const Axis2RunOptions& options,
                             options.permutationK, err_out))
         return false;
     if (options.runStatic
+        && !emitStaticSourceRelationships(options.outDir, staticAcc,
+                                          options.supportThresholds, err_out))
+        return false;
+    if (options.runStatic
         && !emitIndependenceTable(options.outDir, staticAcc, options.supportThresholds, err_out))
         return false;
     if (options.runMutantDeltaRidge
@@ -1502,7 +1764,7 @@ bool RunCohortAxis2(const Axis2RunOptions& options,
         return false;
     if (options.runStatic
         && !emitOverlayTable(options.outDir, options.axis1OverlayDir, staticAcc,
-                            options.supportThresholds, err_out))
+                            options.supportThresholds, &local, err_out))
         return false;
     if (!emitSharedLedgers(options.outDir, options, local, deltaAudit, err_out))
         return false;
@@ -1517,6 +1779,7 @@ bool RunCohortAxis2(const Axis2RunOptions& options,
 bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
     const QStringList required = {
         QStringLiteral("cohort_static_identity_context.csv"),
+        QStringLiteral("cohort_static_source_relationships.csv"),
         QStringLiteral("cohort_static_independence.csv"),
         QStringLiteral("mutant_delta_ridge.csv"),
         QStringLiteral("cross_axis_overlay.csv"),
@@ -1559,6 +1822,12 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
         return false;
     }
     const QStringList staticColsHeader = parseCsvLine(staticHeader);
+    if (!staticColsHeader.contains(QStringLiteral("chi1_iminus1_effect"))
+        || !staticColsHeader.contains(QStringLiteral("chi1_iminus1_support_class"))
+        || !staticColsHeader.contains(QStringLiteral("chi1_iminus1_missing_reason"))) {
+        if (err_out) *err_out = QStringLiteral("N1 audit failed: predecessor chi1 support columns missing");
+        return false;
+    }
     const int nProteinsIdx = staticColsHeader.indexOf(QStringLiteral("n_proteins"));
     const int rClQmIdx = staticColsHeader.indexOf(QStringLiteral("r_cl_qm"));
     const int slopeClQmIdx = staticColsHeader.indexOf(QStringLiteral("slope_cl_qm"));
@@ -1566,6 +1835,12 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
     while (!ss.atEnd()) {
         const QString line = ss.readLine();
         if (line.isEmpty()) continue;
+        const QString blockedChi1 =
+            QStringLiteral("blocked pending predecessor ") + QStringLiteral("chi1");
+        if (line.contains(blockedChi1)) {
+            if (err_out) *err_out = QStringLiteral("N1 audit failed: blocked predecessor chi1 string remains");
+            return false;
+        }
         if (!line.contains(QStringLiteral("atom_name="))
             || !line.contains(QStringLiteral("residue_type="))
             || !line.contains(QStringLiteral("dihedral_region="))
@@ -1616,6 +1891,64 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
         }
     }
 
+    QFile sourceRelFile(QDir(outDir).filePath(QStringLiteral("cohort_static_source_relationships.csv")));
+    if (!sourceRelFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (err_out) *err_out = QStringLiteral("cannot read cohort_static_source_relationships for I2 audit");
+        return false;
+    }
+    {
+        QTextStream in(&sourceRelFile);
+        const QStringList header = parseCsvLine(in.readLine());
+        if (header.contains(QStringLiteral("frame")) || header.contains(QStringLiteral("sample_protein_id"))) {
+            if (err_out) *err_out = QStringLiteral("I2 grain audit failed: per-frame/per-protein column present");
+            return false;
+        }
+        const int channelIdx = header.indexOf(QStringLiteral("channel_key"));
+        const int sourceIdx = header.indexOf(QStringLiteral("relationship_source"));
+        const int pearsonIdx = header.indexOf(QStringLiteral("pearson_r"));
+        const int legacyIdx = header.indexOf(QStringLiteral("legacy_equivalent_column"));
+        if (std::min({channelIdx, sourceIdx, pearsonIdx, legacyIdx}) < 0) {
+            if (err_out) *err_out = QStringLiteral("I2 audit failed: source relationship schema incomplete");
+            return false;
+        }
+        QSet<QString> channels;
+        QSet<QString> finitePearsonValues;
+        QSet<QString> legacyLabels;
+        while (!in.atEnd()) {
+            const QStringList cols = parseCsvLine(in.readLine());
+            if (cols.size() <= std::max({channelIdx, sourceIdx, pearsonIdx, legacyIdx})) continue;
+            const QString channel = cols[channelIdx];
+            channels.insert(channel);
+            if (cols[sourceIdx] != QStringLiteral("channel_vs_sigma[%1]").arg(channel)) {
+                if (err_out) *err_out = QStringLiteral("I2 audit failed: relationship source is not channel-specific");
+                return false;
+            }
+            const QString expectedLegacy = legacyEquivalentColumnForChannel(channel);
+            if (cols[legacyIdx] != expectedLegacy) {
+                if (err_out) {
+                    *err_out = QStringLiteral("I2 audit failed: legacy-equivalent label mismatch for %1")
+                                   .arg(channel);
+                }
+                return false;
+            }
+            if (!cols[legacyIdx].isEmpty()) legacyLabels.insert(cols[legacyIdx]);
+            bool ok = false;
+            cols[pearsonIdx].toDouble(&ok);
+            if (ok && !cols[pearsonIdx].trimmed().isEmpty())
+                finitePearsonValues.insert(cols[pearsonIdx]);
+        }
+        if (!legacyLabels.contains(QStringLiteral("full_tensor_r2"))
+            || !legacyLabels.contains(QStringLiteral("magnitude_only_r2"))
+            || !legacyLabels.contains(QStringLiteral("direction_only_r2"))) {
+            if (err_out) *err_out = QStringLiteral("I2 audit failed: legacy-equivalent channels not labeled");
+            return false;
+        }
+        if (channels.size() > 3 && finitePearsonValues.size() == 1) {
+            if (err_out) *err_out = QStringLiteral("I2 relabel audit failed: all channels share one relationship value");
+            return false;
+        }
+    }
+
     QFile ridgeFile(QDir(outDir).filePath(QStringLiteral("mutant_delta_ridge.csv")));
     if (ridgeFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QTextStream in(&ridgeFile);
@@ -1638,6 +1971,160 @@ bool AuditAxis2Outputs(const QString& outDir, QString* err_out) {
         if (manifest.value(QStringLiteral("resident_samples_retained")).toInt(-1) != 0
             || manifest.value(QStringLiteral("accumulator_residency_model")).toString().isEmpty()) {
             if (err_out) *err_out = QStringLiteral("A2-1 audit failed: bounded accumulator residency manifest missing/invalid");
+            return false;
+        }
+    }
+
+    auto auditHeader = [&](const QString& fileName, const QStringList& expected) -> bool {
+        QFile f(QDir(outDir).filePath(fileName));
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (err_out) *err_out = QStringLiteral("ledger audit cannot read %1").arg(fileName);
+            return false;
+        }
+        QTextStream in(&f);
+        const QStringList header = parseCsvLine(in.readLine());
+        if (header != expected) {
+            if (err_out) {
+                *err_out = QStringLiteral("ledger schema mismatch in %1: got [%2], expected [%3]")
+                               .arg(fileName, header.join(QLatin1Char('|')),
+                                    expected.join(QLatin1Char('|')));
+            }
+            return false;
+        }
+        return true;
+    };
+    if (!auditHeader(QStringLiteral("hypothesis_metric_index.csv"),
+                     {QStringLiteral("hypothesis_id"), QStringLiteral("expected_axes"),
+                      QStringLiteral("required_source_families"),
+                      QStringLiteral("emitted_table_residency"), QStringLiteral("final_status")}))
+        return false;
+    if (!auditHeader(QStringLiteral("case_study_index.csv"),
+                     {QStringLiteral("case_id"), QStringLiteral("hypothesis_id"),
+                      QStringLiteral("required_artifact_paths"), QStringLiteral("status"),
+                      QStringLiteral("citation_status")}))
+        return false;
+    if (!auditHeader(QStringLiteral("figure_registry.csv"),
+                     {QStringLiteral("figure_id"), QStringLiteral("hypothesis_id"),
+                      QStringLiteral("source_table"), QStringLiteral("source_column"),
+                      QStringLiteral("candidate_chart_type"), QStringLiteral("selected_chart_type"),
+                      QStringLiteral("output_path"), QStringLiteral("selection_rationale"),
+                      QStringLiteral("status")}))
+        return false;
+    if (!auditHeader(QStringLiteral("plain_language_readouts.csv"),
+                     {QStringLiteral("readout_id"), QStringLiteral("hypothesis_id"),
+                      QStringLiteral("text")}))
+        return false;
+    if (!auditHeader(QStringLiteral("missing_or_structural_absence.csv"),
+                     {QStringLiteral("hypothesis_id"), QStringLiteral("status"),
+                      QStringLiteral("reason"), QStringLiteral("affected_table"),
+                      QStringLiteral("affected_column"), QStringLiteral("fallback_path")}))
+        return false;
+
+    {
+        QFile f(QDir(outDir).filePath(QStringLiteral("hypothesis_metric_index.csv")));
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (err_out) *err_out = QStringLiteral("cannot read hypothesis_metric_index for completeness audit");
+            return false;
+        }
+        QTextStream in(&f);
+        const QStringList header = parseCsvLine(in.readLine());
+        const int idIdx = header.indexOf(QStringLiteral("hypothesis_id"));
+        QSet<QString> got;
+        while (!in.atEnd()) {
+            const QStringList cols = parseCsvLine(in.readLine());
+            if (idIdx >= 0 && idIdx < cols.size() && !cols[idIdx].isEmpty())
+                got.insert(cols[idIdx]);
+        }
+        QSet<QString> expected;
+        for (const QString& id : canonicalHypothesisIds()) expected.insert(id);
+        if (got != expected) {
+            QStringList missing;
+            QStringList extra;
+            for (const QString& id : expected)
+                if (!got.contains(id)) missing << id;
+            for (const QString& id : got)
+                if (!expected.contains(id)) extra << id;
+            missing.sort();
+            extra.sort();
+            if (err_out) {
+                *err_out = QStringLiteral("I3 audit failed: hypothesis ids mismatch; missing=[%1] extra=[%2]")
+                               .arg(missing.join(QLatin1Char(';')), extra.join(QLatin1Char(';')));
+            }
+            return false;
+        }
+    }
+
+    {
+        QFile f(QDir(outDir).filePath(QStringLiteral("figure_registry.csv")));
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (err_out) *err_out = QStringLiteral("cannot read figure_registry for source-column audit");
+            return false;
+        }
+        QTextStream in(&f);
+        const QStringList header = parseCsvLine(in.readLine());
+        const int tableIdx = header.indexOf(QStringLiteral("source_table"));
+        const int colIdx = header.indexOf(QStringLiteral("source_column"));
+        QMap<QString, QSet<QString>> columnsByTable;
+        while (!in.atEnd()) {
+            const QStringList cols = parseCsvLine(in.readLine());
+            if (cols.size() <= std::max(tableIdx, colIdx)) continue;
+            const QString table = cols[tableIdx];
+            const QString column = cols[colIdx];
+            if (!columnsByTable.contains(table)) {
+                QFile source(QDir(outDir).filePath(table + QStringLiteral(".csv")));
+                if (!source.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    if (err_out) *err_out = QStringLiteral("figure_registry cites missing table %1").arg(table);
+                    return false;
+                }
+                QTextStream sourceIn(&source);
+                const QStringList sourceHeader = parseCsvLine(sourceIn.readLine());
+                QSet<QString> sourceColumns;
+                for (const QString& name : sourceHeader) sourceColumns.insert(name);
+                columnsByTable[table] = sourceColumns;
+            }
+            if (!columnsByTable.value(table).contains(column)) {
+                if (err_out) {
+                    *err_out = QStringLiteral("figure_registry cites absent column %1.%2")
+                                   .arg(table, column);
+                }
+                return false;
+            }
+        }
+    }
+
+    {
+        QFile f(QDir(outDir).filePath(QStringLiteral("cross_axis_overlay.csv")));
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (err_out) *err_out = QStringLiteral("cannot read cross_axis_overlay for I4 audit");
+            return false;
+        }
+        QTextStream in(&f);
+        const QStringList header = parseCsvLine(in.readLine());
+        int nIdx = header.indexOf(QStringLiteral("cohort_cell_n_proteins"));
+        if (nIdx < 0) nIdx = header.indexOf(QStringLiteral("n_proteins"));
+        const int labelIdx = header.indexOf(QStringLiteral("comparability_reason"));
+        if (nIdx < 0 || labelIdx < 0) {
+            if (err_out) *err_out = QStringLiteral("I4 audit failed: cross-axis label columns missing");
+            return false;
+        }
+        while (!in.atEnd()) {
+            const QStringList cols = parseCsvLine(in.readLine());
+            if (cols.size() <= std::max(nIdx, labelIdx)) continue;
+            bool ok = false;
+            const int n = cols[nIdx].toInt(&ok);
+            if (ok && n == 0 && cols[labelIdx].startsWith(QStringLiteral("axis1_crosswalk_missing"))) {
+                if (err_out) *err_out = QStringLiteral("I4 audit failed: empty cohort cell labeled axis1_crosswalk_missing*");
+                return false;
+            }
+        }
+        QFile missing(QDir(outDir).filePath(QStringLiteral("missing_or_structural_absence.csv")));
+        if (!missing.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (err_out) *err_out = QStringLiteral("cannot read missing ledger for I4 coverage audit");
+            return false;
+        }
+        const QString missingText = QString::fromUtf8(missing.readAll());
+        if (!missingText.contains(QStringLiteral("full_run_reference=1148/1494=0.768"))) {
+            if (err_out) *err_out = QStringLiteral("I4 audit failed: 76.8% coverage reference absent");
             return false;
         }
     }

@@ -175,6 +175,12 @@ struct AnalysisObjectPassDiagnostics {
     qint64 subspace_overlap_bytes = 0;
     std::size_t eta2_by_well_rows = 0;
     qint64 eta2_by_well_bytes = 0;
+    std::size_t per_type_tensor_rows = 0;
+    qint64 per_type_tensor_bytes = 0;
+    std::size_t ring_well_target_rows = 0;
+    qint64 ring_well_target_bytes = 0;
+    std::size_t serial_recurrence_rows = 0;
+    qint64 serial_recurrence_bytes = 0;
     bool sigma_mask_recorded = false;
     bool field_vectors_retained = false;
     bool full_sigma_tensors_retained = false;
@@ -185,6 +191,9 @@ struct AnalysisObjectPassDiagnostics {
     QString source_family_matrix_path;
     QString subspace_overlap_path;
     QString eta2_by_well_path;
+    QString per_type_tensor_path;
+    QString ring_well_target_path;
+    QString serial_recurrence_path;
     QString manifest_path;
 };
 

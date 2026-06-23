@@ -1032,7 +1032,7 @@ inline constexpr std::array<ReaderOutputSpec, 92> kReaderOutputCatalog = {{
      false,
      "ppm",
      "sigma_total_raw",
-     "analysis-object series sigma.csa_descriptors: value-ordered principal values, PAS directors, Haeberlen descriptors, and Maryland skew"},
+     "analysis-object series sigma.csa_descriptors: descending principal shielding values, PAS directors, Haeberlen descriptors, and Maryland skew"},
     {"analysis_atom_molecular_frame",
      ReaderOutputProducer::AnalysisObject,
      ReaderOutputAxis::AtomRow,

@@ -125,6 +125,12 @@ QString csvSemiStrings(const QStringList& values) {
     return csvEscape(values.join(QLatin1Char(';')));
 }
 
+QString csvSemiInts(const std::vector<int32_t>& values) {
+    QStringList out;
+    for (int32_t v : values) out << QString::number(v);
+    return csvEscape(out.join(QLatin1Char(';')));
+}
+
 QString frameVariantName(FrameVariant v) {
     switch (v) {
     case FrameVariant::Invalid: return QStringLiteral("invalid");
@@ -702,7 +708,7 @@ struct EfgSeries {
 
 struct CsaDescriptor {
     bool valid = false;
-    Vec3 principal_values = Vec3::Constant(kNaN);   // value order: sigma11 <= sigma22 <= sigma33
+    Vec3 principal_values = Vec3::Constant(kNaN);   // value order: sigma11 >= sigma22 >= sigma33
     Mat3 pas_axes = Mat3::Constant(kNaN);           // columns follow principal_values
     Vec3 haeberlen_values = Vec3::Constant(kNaN);   // columns/values ordered sigma_xx, sigma_yy, sigma_zz
     Mat3 haeberlen_axes = Mat3::Constant(kNaN);
@@ -754,7 +760,7 @@ struct CsaDescriptorSeries {
         o.insert(QStringLiteral("haeberlen_values"), haeberlenValues);
         o.insert(QStringLiteral("haeberlen_axes"), haeberlenAxes);
         o.insert(QStringLiteral("layout"),
-                 QStringLiteral("per-step arrays; axes are 3x3 row-major matrices with lab-frame director columns"));
+                 QStringLiteral("per-step arrays; principal values are descending sigma11>=sigma22>=sigma33; axes are 3x3 row-major matrices with lab-frame director columns"));
         o.insert(QStringLiteral("source"), QStringLiteral("sigma.total total_raw symmetric part"));
         return o;
     }
@@ -2742,6 +2748,7 @@ public:
             molecular_frame_.variant_ord == static_cast<int>(FrameVariant::Invalid)
                 ? molecular_frame_.kind
                 : molecular_frame_.variant;
+        const std::vector<double> signedXH = signedBondFieldSeries();
         std::size_t rows = 0;
         std::size_t sigmaOrdinal = 0;
         for (std::size_t step : cadence_.sigmaRows()) {
@@ -2794,6 +2801,22 @@ public:
             const QString ssContextName = ssContext.observed
                                               ? ss3ContextName(ssContext.ss3)
                                               : QStringLiteral("unknown");
+            const bool csaValid = step < sigma_csa_.values.size() && sigma_csa_.values[step].valid;
+            const CsaDescriptor csa = csaValid ? sigma_csa_.values[step] : CsaDescriptor{};
+            const QString csaMissingReason =
+                csaValid ? QString()
+                         : (sigmaPresent ? QStringLiteral("csa_invalid_degenerate_span_or_eta")
+                                         : QStringLiteral("missing_sigma"));
+            const double phi = step < phi_.values.size() ? phi_.values[step] : kNaN;
+            const double psi = step < psi_.values.size() ? psi_.values[step] : kNaN;
+            const double chi1 = step < chi1_.values.size() ? chi1_.values[step] : kNaN;
+            const QString phiMissing = finite(phi) ? QString() : QStringLiteral("terminal_or_dihedral_unavailable");
+            const QString psiMissing = finite(psi) ? QString() : QStringLiteral("terminal_or_dihedral_unavailable");
+            const QString chi1Missing = finite(chi1) ? QString() : QStringLiteral("structural_absence_or_chi1_unavailable");
+            const double eMolZ = step < field_E_z_mopac_.values.size() ? field_E_z_mopac_.values[step] : kNaN;
+            const double eXH = step < signedXH.size() ? signedXH[step] : kNaN;
+            const PyramidalizationValue pyr = pyramidalizationAt(step);
+            const bool pyrFinite = finite(pyr.signed_oop_A) && finite(pyr.oop_angle_deg);
 
             QStringList cells;
             cells << QStringLiteral("bounded_sigma_v1")
@@ -2838,7 +2861,35 @@ public:
                   << csvEscape(hybContext)
                   << csvEscape(contactContext)
                   << csvEscape(dihedralContext)
-                  << csvEscape(ssContextName);
+                  << csvEscape(ssContextName)
+                  << csvBool(csaValid)
+                  << csvNum(csa.principal_values[0])
+                  << csvNum(csa.principal_values[1])
+                  << csvNum(csa.principal_values[2]);
+            for (int axis = 0; axis < 3; ++axis)
+                for (int coord = 0; coord < 3; ++coord)
+                    cells << csvNum(csa.pas_axes(coord, axis));
+            cells << csvEscape(csaMissingReason)
+                  << csvNum(phi)
+                  << csvNum(psi)
+                  << csvNum(chi1)
+                  << csvEscape(phiMissing)
+                  << csvEscape(psiMissing)
+                  << csvEscape(chi1Missing)
+                  << csvNum(eMolZ)
+                  << csvNum(eXH)
+                  << csvEscape(supportClass(finite(eMolZ) ? 1u : 0u))
+                  << csvEscape(supportClass(finite(eXH) ? 1u : 0u))
+                  << csvEscape(finite(eMolZ) ? QString()
+                                             : QStringLiteral("missing_mopac_field_or_molecular_z_frame"))
+                  << csvEscape(finite(eXH) ? QString()
+                                           : QStringLiteral("not_exchangeable_xh_or_missing_field"))
+                  << csvNum(pyr.signed_oop_A)
+                  << csvNum(pyr.oop_angle_deg)
+                  << QString::number(static_cast<qulonglong>(pyr.neighbor_ids.size()))
+                  << csvSemiInts(pyr.neighbor_ids)
+                  << csvEscape(supportClass(pyrFinite ? 1u : 0u))
+                  << csvEscape(pyr.missing_reason);
             out << cells.join(QLatin1Char(',')) << '\n';
             ++rows;
             ++sigmaOrdinal;
@@ -3338,6 +3389,357 @@ public:
                 out << cells.join(QLatin1Char(',')) << '\n';
                 ++emitted;
             }
+        }
+        return emitted;
+    }
+
+    std::size_t writePerTypeTensorRevealRows(QTextStream& out,
+                                             const QString& datasetId,
+                                             const QString& proteinId) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        QString residueType;
+        int residueNumber = 0;
+        if (validResidue(p, a.residueIndex)) {
+            const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+            residueType = aaName(r.aminoAcid);
+            residueNumber = r.address.residueNumber;
+        }
+        const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        const QString atomUid = uid(QStringLiteral("atom"), atom_);
+        const std::vector<std::size_t> rows = cadence_.sigmaRows();
+
+        auto finiteRows = [&](const Mat3Series& series) {
+            std::size_t n = 0;
+            for (std::size_t row : rows)
+                if (row < series.present.size() && series.present[row]) ++n;
+            return n;
+        };
+        auto emitTensor = [&](const QString& family,
+                              const QString& sourceKey,
+                              const QString& revealKind,
+                              const Mat3Series& series) {
+            QStringList compNames;
+            std::vector<double> means;
+            std::vector<double> sds;
+            std::vector<double> mins;
+            std::vector<double> maxs;
+            for (int c = 0; c < 6; ++c) {
+                const auto comp = static_cast<MolComp>(c);
+                compNames << QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(c)]);
+                const DistributionSummary s = SummarizeDistribution(molCompFrom(series, comp));
+                means.push_back(summaryPresent(s) ? s.mean : kNaN);
+                sds.push_back(summaryPresent(s) ? s.sd : kNaN);
+                mins.push_back(summaryPresent(s) ? s.min : kNaN);
+                maxs.push_back(summaryPresent(s) ? s.max : kNaN);
+            }
+            const std::size_t finiteN = finiteRows(series);
+            const std::size_t missingN = rows.size() > finiteN ? rows.size() - finiteN : 0u;
+            QStringList cells;
+            cells << QStringLiteral("per_type_tensor_reveals_v1")
+                  << csvEscape(QStringLiteral("per_atom_per_type_record"))
+                  << csvEscape(datasetId)
+                  << csvEscape(proteinId)
+                  << csvEscape(atomUid)
+                  << QString::number(static_cast<qulonglong>(atom_))
+                  << QString::number(a.residueIndex)
+                  << QString::number(residueNumber)
+                  << csvEscape(residueType)
+                  << csvEscape(atomName)
+                  << csvEscape(elementName(a.element))
+                  << csvEscape(backboneRoleName(a.backboneRole))
+                  << csvEscape(QStringLiteral("per_type"))
+                  << csvEscape(family)
+                  << csvEscape(sourceKey)
+                  << csvEscape(revealKind)
+                  << csvEscape(QStringLiteral("molecular"))
+                  << csvEscape(QStringLiteral("T_mol = R^T * T_lab * R"))
+                  << QString::number(static_cast<qulonglong>(finiteN))
+                  << csvEscape(supportClass(finiteN))
+                  << csvNum(rows.empty() ? kNaN
+                                         : static_cast<double>(finiteN)
+                                               / static_cast<double>(rows.size()))
+                  << csvBool(finiteN == 1)
+                  << QString::number(static_cast<qulonglong>(missingN))
+                  << csvEscape(missingN == 0 ? QString()
+                                             : QStringLiteral("nonfinite_or_unavailable_tensor"))
+                  << csvSemiStrings(compNames)
+                  << csvSemiDoubles(means)
+                  << csvSemiDoubles(sds)
+                  << csvSemiDoubles(mins)
+                  << csvSemiDoubles(maxs);
+            out << cells.join(QLatin1Char(',')) << '\n';
+        };
+
+        std::size_t emitted = 0;
+        for (std::size_t i = 0; i < mc_tensor_mol_series_.size(); ++i) {
+            emitTensor(QStringLiteral("mc"),
+                       QString::fromLatin1(kMcTensorFields[i].key),
+                       QStringLiteral("tensor_components"),
+                       mc_tensor_mol_series_[i]);
+            ++emitted;
+        }
+        for (int type = 0; type < 8; ++type) {
+            emitTensor(QStringLiteral("bs"),
+                       QStringLiteral("bs.type%1").arg(type),
+                       QStringLiteral("tensor_components"),
+                       bs_per_type_mol_[static_cast<std::size_t>(type)]);
+            ++emitted;
+            emitTensor(QStringLiteral("hm"),
+                       QStringLiteral("hm.type%1").arg(type),
+                       QStringLiteral("tensor_components"),
+                       hm_per_type_mol_[static_cast<std::size_t>(type)]);
+            ++emitted;
+
+            Mat3Series delta(cadence_.stepCount());
+            const Mat3Series& bs = bs_per_type_mol_[static_cast<std::size_t>(type)];
+            const Mat3Series& hm = hm_per_type_mol_[static_cast<std::size_t>(type)];
+            for (std::size_t row : rows) {
+                if (row >= bs.present.size() || row >= hm.present.size()) continue;
+                if (bs.present[row] && hm.present[row]) delta.set(row, bs.values[row] - hm.values[row]);
+            }
+            emitTensor(QStringLiteral("bs_hm_divergence"),
+                       QStringLiteral("ring.type%1").arg(type),
+                       QStringLiteral("component_delta_bs_minus_hm"),
+                       delta);
+            ++emitted;
+        }
+        emitTensor(QStringLiteral("tripeptide"),
+                   QStringLiteral("tripeptide_bb_shielding"),
+                   QStringLiteral("tensor_components"),
+                   tripeptide_bb_shielding_mol_);
+        ++emitted;
+        emitTensor(QStringLiteral("larsen"),
+                   QStringLiteral("larsen_hbond_shielding"),
+                   QStringLiteral("tensor_components"),
+                   larsen_hbond_shielding_mol_);
+        ++emitted;
+        return emitted;
+    }
+
+    std::size_t writeRingWellTargetRows(QTextStream& out,
+                                        const QString& datasetId,
+                                        const QString& proteinId) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        QString residueType;
+        int residueNumber = 0;
+        if (validResidue(p, a.residueIndex)) {
+            const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+            residueType = aaName(r.aminoAcid);
+            residueNumber = r.address.residueNumber;
+        }
+        const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        const QString atomUid = uid(QStringLiteral("atom"), atom_);
+        const std::vector<std::size_t> rows = cadence_.sigmaRows();
+
+        auto ternaryWells = [&](const std::vector<double>& series) {
+            std::vector<int> wells(series.size(), -1);
+            std::vector<double> finiteVals;
+            finiteVals.reserve(series.size());
+            for (double v : series) if (finite(v)) finiteVals.push_back(v);
+            if (finiteVals.size() < 4) return wells;
+            std::sort(finiteVals.begin(), finiteVals.end());
+            const double q1 = finiteVals[finiteVals.size() / 3];
+            const double q2 = finiteVals[(2 * finiteVals.size()) / 3];
+            for (std::size_t i = 0; i < series.size(); ++i) {
+                if (!finite(series[i])) continue;
+                wells[i] = series[i] <= q1 ? 0 : (series[i] <= q2 ? 1 : 2);
+            }
+            return wells;
+        };
+        auto ringSeries = [&](const model::QtRing& ring, const QString& source) {
+            std::vector<double> values(cadence_.stepCount(), kNaN);
+            const std::size_t native =
+                ring.nativeAxisIndex >= 0 ? static_cast<std::size_t>(ring.nativeAxisIndex) : 0u;
+            for (std::size_t step = 0; step < cadence_.stepCount(); ++step) {
+                std::optional<double> v;
+                if (source == QStringLiteral("ring.flip_state")) {
+                    v = body_.catalog.value(body_, io::FieldKind::AromaticChi2, native, step, 0);
+                } else if (source == QStringLiteral("ring.pucker_Q")) {
+                    v = body_.catalog.value(body_, io::FieldKind::PuckerQ, native, step, 0);
+                } else if (source == QStringLiteral("ring.pucker_theta")) {
+                    v = body_.catalog.value(body_, io::FieldKind::PuckerTheta, native, step, 0);
+                }
+                if (v && finite(*v)) values[step] = *v;
+            }
+            return values;
+        };
+        struct TargetSpec {
+            QString key;
+            QString coordinateFrame;
+            std::vector<double> values;
+        };
+        std::vector<TargetSpec> targets = {
+            {QStringLiteral("sigma.iso"), QStringLiteral("lab"), sigmaIsoSeries()},
+            {QStringLiteral("sigma.invariant.span"), QStringLiteral("pas_invariant"),
+             sigmaInvariantSeries(QStringLiteral("span"))},
+            {QStringLiteral("sigma.invariant.aniso"), QStringLiteral("pas_invariant"),
+             sigmaInvariantSeries(QStringLiteral("aniso"))},
+            {QStringLiteral("sigma.invariant.eta_H"), QStringLiteral("pas_invariant"),
+             sigmaInvariantSeries(QStringLiteral("eta_H"))},
+            {QStringLiteral("sigma.shape.t1_fraction"), QStringLiteral("lab_shape"),
+             sigmaT1FractionSeries()},
+        };
+        for (int sc = 0; sc < 6; ++sc) {
+            const auto comp = static_cast<MolComp>(sc);
+            targets.push_back({
+                QStringLiteral("sigma.total.molcomp:%1")
+                    .arg(QString::fromLatin1(kMolCompNames[static_cast<std::size_t>(sc)])),
+                QStringLiteral("molecular"),
+                sigmaMolCompSeries(sigma_mol_total_, comp),
+            });
+        }
+
+        std::size_t emitted = 0;
+        const model::QtTopology& topo = p.topology();
+        for (std::size_t ringIndex = 0; ringIndex < topo.ringCount(); ++ringIndex) {
+            const model::QtRing& ring = topo.ringAt(ringIndex);
+            QStringList sources;
+            if (ring.IsAromatic()) {
+                sources << QStringLiteral("ring.flip_state");
+            } else {
+                sources << QStringLiteral("ring.pucker_Q")
+                        << QStringLiteral("ring.pucker_theta");
+            }
+            for (const QString& source : sources) {
+                const std::vector<double> series = ringSeries(ring, source);
+                const std::vector<int> wells = ternaryWells(series);
+                for (const TargetSpec& target : targets) {
+                    std::array<int, 3> counts = {0, 0, 0};
+                    std::size_t finiteN = 0;
+                    for (std::size_t row : rows) {
+                        if (row >= target.values.size() || row >= wells.size()) continue;
+                        if (!finite(target.values[row]) || wells[row] < 0 || wells[row] > 2)
+                            continue;
+                        ++counts[static_cast<std::size_t>(wells[row])];
+                        ++finiteN;
+                    }
+                    const std::size_t missingN = rows.size() > finiteN ? rows.size() - finiteN : 0u;
+                    QStringList countStrings;
+                    for (int c : counts) countStrings << QString::number(c);
+                    QStringList cells;
+                    cells << QStringLiteral("ring_well_target_eta2_v1")
+                          << csvEscape(QStringLiteral("per_atom_ring_well_target"))
+                          << csvEscape(datasetId)
+                          << csvEscape(proteinId)
+                          << csvEscape(atomUid)
+                          << QString::number(static_cast<qulonglong>(atom_))
+                          << QString::number(a.residueIndex)
+                          << QString::number(residueNumber)
+                          << csvEscape(residueType)
+                          << csvEscape(atomName)
+                          << csvEscape(elementName(a.element))
+                          << csvEscape(backboneRoleName(a.backboneRole))
+                          << csvEscape(uid(QStringLiteral("ring"), ringIndex))
+                          << QString::number(static_cast<qulonglong>(ringIndex))
+                          << csvEscape(ringTypeName(ring.TypeIndex()))
+                          << csvEscape(ring.IsAromatic() ? QStringLiteral("aromatic")
+                                                         : QStringLiteral("saturated"))
+                          << csvEscape(source)
+                          << csvEscape(target.key)
+                          << csvEscape(target.coordinateFrame)
+                          << QString::number(static_cast<qulonglong>(finiteN))
+                          << csvEscape(supportClass(finiteN))
+                          << csvNum(rows.empty() ? kNaN
+                                                 : static_cast<double>(finiteN)
+                                                       / static_cast<double>(rows.size()))
+                          << csvBool(finiteN == 1)
+                          << QString::number(static_cast<qulonglong>(missingN))
+                          << csvEscape(missingN == 0 ? QString()
+                                                     : QStringLiteral("nonfinite_target_or_ring_well"))
+                          << csvNum(etaSquaredByWell(target.values, wells, rows))
+                          << csvEscape(countStrings.join(QLatin1Char(';')));
+                    out << cells.join(QLatin1Char(',')) << '\n';
+                    ++emitted;
+                }
+            }
+        }
+        return emitted;
+    }
+
+    std::size_t writeSerialRecurrenceRows(QTextStream& out,
+                                          const QString& datasetId,
+                                          const QString& proteinId) const {
+        if (!body_.run.protein || atom_ >= body_.run.protein->atomCount()) return 0;
+        const model::QtProtein& p = *body_.run.protein;
+        const model::QtAtom& a = p.atom(atom_);
+        QString residueType;
+        int residueNumber = 0;
+        if (validResidue(p, a.residueIndex)) {
+            const model::QtResidue& r = p.residue(static_cast<std::size_t>(a.residueIndex));
+            residueType = aaName(r.aminoAcid);
+            residueNumber = r.address.residueNumber;
+        }
+        const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
+        const QString atomUid = uid(QStringLiteral("atom"), atom_);
+
+        std::vector<std::pair<QString, std::vector<double>>> series = {
+            {QStringLiteral("sigma.iso"), sigmaIsoSeries()},
+            {QStringLiteral("sigma.aniso"), sigmaInvariantSeries(QStringLiteral("aniso"))},
+            {QStringLiteral("field.mopac_coulomb.abs_E"), fieldAbsSeries()},
+            {QStringLiteral("field.mopac_coulomb.E_parallel_mol_z"), field_E_z_mopac_.values},
+            {QStringLiteral("field.mopac_coulomb.E_parallel_XH"), signedBondFieldSeries()},
+            {QStringLiteral("efg.abs_T2"), efgAbsSeries()},
+            {QStringLiteral("dihedral.phi"), phi_.values},
+            {QStringLiteral("dihedral.psi"), psi_.values},
+            {QStringLiteral("dihedral.chi1"), chi1_.values},
+            {QStringLiteral("hbond.count"), hbond_count_.values},
+            {QStringLiteral("sasa"), sasa_.values},
+            {QStringLiteral("mopac.charge"), mopac_charge_.values},
+            {QStringLiteral("model.hybridisation"), intSeriesAsDouble(hybridisation_)},
+        };
+        std::size_t emitted = 0;
+        for (const auto& item : series) {
+            RunningSeriesRef ref;
+            ref.series_ref = item.first;
+            ref.values = item.second;
+            const QJsonObject serial = serialRecord(ref);
+            const DwellResult dwell = dwellStats(item.second);
+            int finiteN = 0;
+            for (double v : item.second)
+                if (finite(v)) ++finiteN;
+            const std::size_t missingN =
+                item.second.size() > static_cast<std::size_t>(finiteN)
+                    ? item.second.size() - static_cast<std::size_t>(finiteN)
+                    : 0u;
+            QStringList cells;
+            cells << QStringLiteral("serial_recurrence_summary_v1")
+                  << csvEscape(QStringLiteral("per_atom_series"))
+                  << csvEscape(datasetId)
+                  << csvEscape(proteinId)
+                  << csvEscape(atomUid)
+                  << QString::number(static_cast<qulonglong>(atom_))
+                  << QString::number(a.residueIndex)
+                  << QString::number(residueNumber)
+                  << csvEscape(residueType)
+                  << csvEscape(atomName)
+                  << csvEscape(elementName(a.element))
+                  << csvEscape(backboneRoleName(a.backboneRole))
+                  << csvEscape(item.first)
+                  << QString::number(finiteN)
+                  << csvEscape(supportClass(static_cast<std::size_t>(finiteN)))
+                  << csvNum(item.second.empty()
+                                ? kNaN
+                                : static_cast<double>(finiteN)
+                                      / static_cast<double>(item.second.size()))
+                  << csvBool(finiteN == 1)
+                  << QString::number(static_cast<qulonglong>(missingN))
+                  << csvEscape(missingN == 0 ? QString() : QStringLiteral("nonfinite_series_value"))
+                  << QString::number(serial.value(QStringLiteral("ljung_box_lags")).toInt())
+                  << csvNum(serial.value(QStringLiteral("ljung_box")).toDouble(kNaN))
+                  << csvNum(serial.value(QStringLiteral("runs_test")).toDouble(kNaN))
+                  << csvNum(serial.value(QStringLiteral("snr")).toDouble(kNaN))
+                  << csvNum(serial.value(QStringLiteral("period_dominant")).toDouble(kNaN))
+                  << csvNum(serial.value(QStringLiteral("period_amplitude")).toDouble(kNaN))
+                  << csvNum(dwell.mean_dwell_frames)
+                  << QString::number(dwell.n_transitions)
+                  << csvNum(dwell.autocorr_time)
+                  << QString::number(std::max(0, dwell.n_transitions));
+            out << cells.join(QLatin1Char(',')) << '\n';
+            ++emitted;
         }
         return emitted;
     }
@@ -6439,6 +6841,71 @@ private:
         return out;
     }
 
+    struct PyramidalizationValue {
+        double signed_oop_A = kNaN;
+        double oop_angle_deg = kNaN;
+        QString missing_reason;
+        std::vector<int32_t> neighbor_ids;
+    };
+
+    PyramidalizationValue pyramidalizationAt(std::size_t step) const {
+        PyramidalizationValue out;
+        out.neighbor_ids = bondedAtomIndices(false);
+        if (out.neighbor_ids.size() != 3) {
+            out.missing_reason =
+                QStringLiteral("requires_exactly_3_bonded_neighbors");
+            return out;
+        }
+        const auto p0 = coordAt(static_cast<int32_t>(atom_), step);
+        const auto p1 = coordAt(out.neighbor_ids[0], step);
+        const auto p2 = coordAt(out.neighbor_ids[1], step);
+        const auto p3 = coordAt(out.neighbor_ids[2], step);
+        if (!p0 || !p1 || !p2 || !p3) {
+            out.missing_reason = QStringLiteral("missing_or_degenerate_coordinates");
+            return out;
+        }
+        const Vec3 normalRaw = (*p2 - *p1).cross(*p3 - *p1);
+        const auto normal = normalizeFrameVec(normalRaw);
+        if (!normal) {
+            out.missing_reason = QStringLiteral("neighbor_plane_degenerate");
+            return out;
+        }
+        out.signed_oop_A = (*p0 - *p1).dot(*normal);
+
+        constexpr double kPiLocal = 3.14159265358979323846264338327950288;
+        constexpr double radToDeg = 180.0 / kPiLocal;
+        auto bondVector = [&](const Vec3& neighbor) -> std::optional<Vec3> {
+            const Vec3 v = neighbor - *p0;
+            const double n = v.norm();
+            if (!finite(n) || n <= 1e-12) return std::nullopt;
+            return v;
+        };
+        const auto b1 = bondVector(*p1);
+        const auto b2 = bondVector(*p2);
+        const auto b3 = bondVector(*p3);
+        if (!b1 || !b2 || !b3) {
+            out.missing_reason = QStringLiteral("degenerate_bond_vector");
+            return out;
+        }
+        auto bondAngle = [](const Vec3& a, const Vec3& b) {
+            const double x = a.cross(b).norm();
+            const double y = a.dot(b);
+            if (!finite(x) || !finite(y)) return kNaN;
+            return std::atan2(x, y);
+        };
+        const double angleSum = bondAngle(*b1, *b2)
+                                + bondAngle(*b2, *b3)
+                                + bondAngle(*b3, *b1);
+        if (finite(out.signed_oop_A) && finite(angleSum)) {
+            const double defect = std::abs(2.0 * kPiLocal - angleSum);
+            const double signedDefect = out.signed_oop_A < 0.0 ? -defect : defect;
+            out.oop_angle_deg = signedDefect * radToDeg;
+        }
+        if (!finite(out.signed_oop_A) || !finite(out.oop_angle_deg))
+            out.missing_reason = QStringLiteral("nonfinite_oop_geometry");
+        return out;
+    }
+
     std::optional<int32_t> firstBondedAtomByElement(model::Element element) const {
         if (!body_.run.protein) return std::nullopt;
         for (int32_t ai : bondedAtomIndices(false)) {
@@ -7289,8 +7756,12 @@ private:
         if (solver.info() != Eigen::Success) return;
 
         CsaDescriptor d;
-        d.principal_values = solver.eigenvalues();
-        d.pas_axes = solver.eigenvectors();
+        const Vec3 evAsc = solver.eigenvalues();
+        const Mat3 axesAsc = solver.eigenvectors();
+        d.principal_values = Vec3(evAsc[2], evAsc[1], evAsc[0]);
+        d.pas_axes.col(0) = axesAsc.col(2);
+        d.pas_axes.col(1) = axesAsc.col(1);
+        d.pas_axes.col(2) = axesAsc.col(0);
         if (!d.principal_values.allFinite() || !d.pas_axes.allFinite()) return;
 
         if (prev_pas_axes_) {
@@ -7320,7 +7791,7 @@ private:
         const double s22 = d.principal_values[1];
         const double s33 = d.principal_values[2];
         d.sigma_iso = (s11 + s22 + s33) / 3.0;
-        d.haeberlen_span = s33 - s11;
+        d.haeberlen_span = s11 - s33;
         if (!(std::abs(d.haeberlen_span) > 1e-12)) return;
 
         int zz = 0;
@@ -7356,7 +7827,10 @@ private:
         d.haeberlen_axes.col(1) = d.pas_axes.col(yy);
         d.haeberlen_axes.col(2) = d.pas_axes.col(zz);
         d.valid = finite(d.sigma_iso) && finite(d.haeberlen_eta) && finite(d.haeberlen_span)
-                  && finite(d.haeberlen_skew) && d.haeberlen_axes.allFinite();
+                  && finite(d.haeberlen_skew) && d.principal_values.allFinite()
+                  && d.pas_axes.allFinite() && d.haeberlen_axes.allFinite()
+                  && d.principal_values[0] >= d.principal_values[1]
+                  && d.principal_values[1] >= d.principal_values[2];
         if (!d.valid) return;
         sigma_csa_.set(step, d);
         prev_pas_axes_ = d.pas_axes;
@@ -7515,6 +7989,21 @@ std::size_t AnalysisAtom::writeEtaByWellRows(QTextStream& out,
                                              const QString& proteinId) const {
     return impl_->writeEtaByWellRows(out, datasetId, proteinId);
 }
+std::size_t AnalysisAtom::writePerTypeTensorRevealRows(QTextStream& out,
+                                                       const QString& datasetId,
+                                                       const QString& proteinId) const {
+    return impl_->writePerTypeTensorRevealRows(out, datasetId, proteinId);
+}
+std::size_t AnalysisAtom::writeRingWellTargetRows(QTextStream& out,
+                                                  const QString& datasetId,
+                                                  const QString& proteinId) const {
+    return impl_->writeRingWellTargetRows(out, datasetId, proteinId);
+}
+std::size_t AnalysisAtom::writeSerialRecurrenceRows(QTextStream& out,
+                                                    const QString& datasetId,
+                                                    const QString& proteinId) const {
+    return impl_->writeSerialRecurrenceRows(out, datasetId, proteinId);
+}
 
 void AnalysisAtom::WriteBoundedSigmaHeader(QTextStream& out) {
     out << "schema_version,dataset_id,protein_id,atom_uid,atom_index,residue_index,"
@@ -7526,7 +8015,16 @@ void AnalysisAtom::WriteBoundedSigmaHeader(QTextStream& out) {
            "invariant_skew,invariant_frobenius,antisymmetric_norm,t1_fraction,"
            "mol_frobenius,sigma_roundtrip_abs,support_class,finite_frac,"
            "singleton_flag,missing_n,missing_reason,hyb,contact_class,"
-           "dihedral_region,SS\n";
+           "dihedral_region,SS,pas_csa_valid,pas_delta11,pas_delta22,pas_delta33,"
+           "pas_axis11_x,pas_axis11_y,pas_axis11_z,pas_axis22_x,pas_axis22_y,"
+           "pas_axis22_z,pas_axis33_x,pas_axis33_y,pas_axis33_z,csa_missing_reason,"
+           "phi_rad,psi_rad,chi1_rad,phi_missing_reason,psi_missing_reason,"
+           "chi1_missing_reason,E_parallel_mol_z,E_parallel_XH,"
+           "E_parallel_mol_z_support_class,E_parallel_XH_support_class,"
+           "E_parallel_mol_z_missing_reason,E_parallel_XH_missing_reason,"
+           "pyramidalization_oop_A,pyramidalization_oop_angle_deg,"
+           "pyramidalization_neighbor_count,pyramidalization_neighbor_ids,"
+           "pyramidalization_support_class,pyramidalization_missing_reason\n";
 }
 
 void AnalysisAtom::WriteClassicalSourceTermHeader(QTextStream& out) {
@@ -7560,6 +8058,31 @@ void AnalysisAtom::WriteEtaByWellHeader(QTextStream& out) {
            "residue_number,residue_type,atom_name,element,backbone_role,well_family,"
            "well_source,target_key,target_frame,finite_n,support_class,finite_frac,"
            "singleton_flag,missing_n,missing_reason,eta2,well_counts\n";
+}
+
+void AnalysisAtom::WritePerTypeTensorRevealHeader(QTextStream& out) {
+    out << "schema_version,row_grain,dataset_id,protein_id,atom_uid,atom_index,"
+           "residue_index,residue_number,residue_type,atom_name,element,backbone_role,"
+           "level,family,source_key,reveal_kind,coordinate_frame,projection,finite_n,"
+           "support_class,finite_frac,singleton_flag,missing_n,missing_reason,"
+           "component_names,component_means,component_sds,component_mins,component_maxs\n";
+}
+
+void AnalysisAtom::WriteRingWellTargetHeader(QTextStream& out) {
+    out << "schema_version,row_grain,dataset_id,protein_id,atom_uid,atom_index,"
+           "residue_index,residue_number,residue_type,atom_name,element,backbone_role,"
+           "ring_uid,ring_index,ring_type,ring_kind,well_source,target_key,"
+           "target_coordinate_frame,finite_n,support_class,finite_frac,singleton_flag,"
+           "missing_n,missing_reason,eta2,well_counts\n";
+}
+
+void AnalysisAtom::WriteSerialRecurrenceHeader(QTextStream& out) {
+    out << "schema_version,row_grain,dataset_id,protein_id,atom_uid,atom_index,"
+           "residue_index,residue_number,residue_type,atom_name,element,backbone_role,"
+           "series_ref,finite_n,support_class,finite_frac,singleton_flag,missing_n,"
+           "missing_reason,ljung_box_lags,ljung_box,runs_test,snr,period_dominant,"
+           "period_amplitude,mean_dwell_frames,n_transitions,autocorr_time,"
+           "recurrence_count\n";
 }
 
 bool AnalysisAtom::AssertMolCompOrder(QString* errOut) {
@@ -8258,6 +8781,36 @@ QJsonObject manifestJson(const Body& body,
                                  QStringLiteral("field_abs_E_mopac_tertiles")});
     root.insert(QStringLiteral("eta2_by_well_sidecar"), eta2ByWell);
 
+    QJsonObject perTypeTensor;
+    perTypeTensor.insert(QStringLiteral("path"), diag.per_type_tensor_path);
+    perTypeTensor.insert(QStringLiteral("rows"), static_cast<qint64>(diag.per_type_tensor_rows));
+    perTypeTensor.insert(QStringLiteral("bytes"), diag.per_type_tensor_bytes);
+    perTypeTensor.insert(QStringLiteral("row_granularity"),
+                         QStringLiteral("one row per emitted atom per bounded per-type tensor record"));
+    perTypeTensor.insert(QStringLiteral("grain_contract"),
+                         QStringLiteral("per_atom_per_type_record;no_per_partner_rows;no_frame_index"));
+    root.insert(QStringLiteral("per_type_tensor_reveals_sidecar"), perTypeTensor);
+
+    QJsonObject ringWells;
+    ringWells.insert(QStringLiteral("path"), diag.ring_well_target_path);
+    ringWells.insert(QStringLiteral("rows"), static_cast<qint64>(diag.ring_well_target_rows));
+    ringWells.insert(QStringLiteral("bytes"), diag.ring_well_target_bytes);
+    ringWells.insert(QStringLiteral("row_granularity"),
+                     QStringLiteral("one row per emitted target atom per ring object per ring-well source per sigma target"));
+    ringWells.insert(QStringLiteral("grain_contract"),
+                     QStringLiteral("per_atom_ring_well_target;no_raw_event_rows;no_frame_index"));
+    root.insert(QStringLiteral("ring_well_target_eta2_sidecar"), ringWells);
+
+    QJsonObject serialRecurrence;
+    serialRecurrence.insert(QStringLiteral("path"), diag.serial_recurrence_path);
+    serialRecurrence.insert(QStringLiteral("rows"), static_cast<qint64>(diag.serial_recurrence_rows));
+    serialRecurrence.insert(QStringLiteral("bytes"), diag.serial_recurrence_bytes);
+    serialRecurrence.insert(QStringLiteral("row_granularity"),
+                            QStringLiteral("one row per emitted atom per bounded series reference"));
+    serialRecurrence.insert(QStringLiteral("grain_contract"),
+                            QStringLiteral("per_atom_series;no_dense_values_arrays;no_frame_index"));
+    root.insert(QStringLiteral("serial_recurrence_sidecar"), serialRecurrence);
+
     const LiteratureStatusCounts literatureCounts = CountLiteratureConstantStatuses();
     const LiteratureStatusCounts buckinghamCounts = CountBuckinghamConstantStatuses();
     QJsonObject literature;
@@ -8319,7 +8872,9 @@ QJsonObject manifestJson(const Body& body,
                              QStringLiteral("xx,yy,xy,xz,yz,zz"));
     tensorConventions.insert(QStringLiteral("molcomp_order_asserted"), true);
     tensorConventions.insert(QStringLiteral("pas_shape_convention"),
-                             QStringLiteral("haeberlen_distance_from_isotropic_v1"));
+                             QStringLiteral("principal_shielding_descending_v1"));
+    tensorConventions.insert(QStringLiteral("haeberlen_shape_convention"),
+                             QStringLiteral("distance_from_isotropic_v1"));
     tensorConventions.insert(QStringLiteral("signed_sorted_haeberlen_eta_refused"), true);
     tensorConventions.insert(QStringLiteral("pas_axis_continuity"),
                              QStringLiteral("trajectory_sign_continuity_used_for_csa_series"));
@@ -8724,6 +9279,103 @@ bool RunAnalysisObjectPass(const Body& body,
         << "analysis_object eta2-by-well sidecar | path=" << etaByWellPath
         << "| rows=" << static_cast<qulonglong>(diag.eta2_by_well_rows)
         << "| bytes=" << diag.eta2_by_well_bytes;
+
+    const QString perTypeTensorPath = out.filePath(QStringLiteral("per_type_tensor_reveals.csv"));
+    {
+        QFile f(perTypeTensorPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (errOut) {
+                *errOut = QStringLiteral("open failed for %1: %2")
+                              .arg(perTypeTensorPath, f.errorString());
+            }
+            return false;
+        }
+        QTextStream ts(&f);
+        AnalysisAtom::WritePerTypeTensorRevealHeader(ts);
+        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
+                                      ? body.run.manifest.protein_id
+                                      : body.run.manifest.dataset_id;
+        const QString proteinId = body.run.manifest.protein_id.isEmpty()
+                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
+                                      : body.run.manifest.protein_id;
+        for (const std::unique_ptr<AnalysisElement>& object : objects) {
+            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
+            if (!atom) continue;
+            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
+            diag.per_type_tensor_rows +=
+                atom->writePerTypeTensorRevealRows(ts, datasetId, proteinId);
+        }
+    }
+    diag.per_type_tensor_path = perTypeTensorPath;
+    diag.per_type_tensor_bytes = QFileInfo(perTypeTensorPath).size();
+    qCInfo(cAnalysisObject).noquote()
+        << "analysis_object per-type tensor sidecar | path=" << perTypeTensorPath
+        << "| rows=" << static_cast<qulonglong>(diag.per_type_tensor_rows)
+        << "| bytes=" << diag.per_type_tensor_bytes;
+
+    const QString ringWellTargetPath = out.filePath(QStringLiteral("ring_well_target_eta2.csv"));
+    {
+        QFile f(ringWellTargetPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (errOut) {
+                *errOut = QStringLiteral("open failed for %1: %2")
+                              .arg(ringWellTargetPath, f.errorString());
+            }
+            return false;
+        }
+        QTextStream ts(&f);
+        AnalysisAtom::WriteRingWellTargetHeader(ts);
+        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
+                                      ? body.run.manifest.protein_id
+                                      : body.run.manifest.dataset_id;
+        const QString proteinId = body.run.manifest.protein_id.isEmpty()
+                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
+                                      : body.run.manifest.protein_id;
+        for (const std::unique_ptr<AnalysisElement>& object : objects) {
+            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
+            if (!atom) continue;
+            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
+            diag.ring_well_target_rows += atom->writeRingWellTargetRows(ts, datasetId, proteinId);
+        }
+    }
+    diag.ring_well_target_path = ringWellTargetPath;
+    diag.ring_well_target_bytes = QFileInfo(ringWellTargetPath).size();
+    qCInfo(cAnalysisObject).noquote()
+        << "analysis_object ring-well target sidecar | path=" << ringWellTargetPath
+        << "| rows=" << static_cast<qulonglong>(diag.ring_well_target_rows)
+        << "| bytes=" << diag.ring_well_target_bytes;
+
+    const QString serialRecurrencePath = out.filePath(QStringLiteral("serial_recurrence_summary.csv"));
+    {
+        QFile f(serialRecurrencePath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            if (errOut) {
+                *errOut = QStringLiteral("open failed for %1: %2")
+                              .arg(serialRecurrencePath, f.errorString());
+            }
+            return false;
+        }
+        QTextStream ts(&f);
+        AnalysisAtom::WriteSerialRecurrenceHeader(ts);
+        const QString datasetId = body.run.manifest.dataset_id.isEmpty()
+                                      ? body.run.manifest.protein_id
+                                      : body.run.manifest.dataset_id;
+        const QString proteinId = body.run.manifest.protein_id.isEmpty()
+                                      ? (body.run.protein ? body.run.protein->proteinId() : QString())
+                                      : body.run.manifest.protein_id;
+        for (const std::unique_ptr<AnalysisElement>& object : objects) {
+            const auto* atom = dynamic_cast<const AnalysisAtom*>(object.get());
+            if (!atom) continue;
+            if (emitFilterActive && emitAtoms.count(object->modelIndex()) == 0) continue;
+            diag.serial_recurrence_rows += atom->writeSerialRecurrenceRows(ts, datasetId, proteinId);
+        }
+    }
+    diag.serial_recurrence_path = serialRecurrencePath;
+    diag.serial_recurrence_bytes = QFileInfo(serialRecurrencePath).size();
+    qCInfo(cAnalysisObject).noquote()
+        << "analysis_object serial-recurrence sidecar | path=" << serialRecurrencePath
+        << "| rows=" << static_cast<qulonglong>(diag.serial_recurrence_rows)
+        << "| bytes=" << diag.serial_recurrence_bytes;
 
     QJsonArray objectInventory;
     for (const std::unique_ptr<AnalysisElement>& object : objects) {

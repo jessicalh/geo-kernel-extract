@@ -171,6 +171,7 @@ struct CohortSample {
     QString predecessor_identity;
     QString psi_iminus1_region;
     double psi_iminus1 = std::numeric_limits<double>::quiet_NaN();
+    double chi1_iminus1 = std::numeric_limits<double>::quiet_NaN();
     double psi_own = std::numeric_limits<double>::quiet_NaN();
     double sigma_iso = std::numeric_limits<double>::quiet_NaN();
     double sigma_eta_H = std::numeric_limits<double>::quiet_NaN();
@@ -213,6 +214,7 @@ struct CohortCellTruth {
     QMap<QString, BoundedDistributionAccumulator> channel_distributions;
     QMap<QString, PairAccumulator> channel_vs_sigma;
     PairAccumulator psi_iminus1_vs_sigma;
+    PairAccumulator chi1_iminus1_vs_sigma;
     PairAccumulator psi_own_vs_sigma;
     QMap<QString, CohortProteinFold> protein_folds;
     QString psi_iminus1_region = QStringLiteral("not_backbone_N");
@@ -262,6 +264,10 @@ struct Axis2RunStats {
     std::size_t resident_samples_retained = 0;
     std::size_t max_retained_accumulator_values_per_cell = 0;
     std::size_t delta_refusals = 0;
+    std::size_t overlay_populated_cells = 0;
+    std::size_t overlay_populated_joined_cells = 0;
+    std::size_t overlay_populated_unjoined_cells = 0;
+    std::size_t overlay_empty_cells = 0;
     QStringList refusal_reasons;
 };
 

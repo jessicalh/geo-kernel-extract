@@ -69,7 +69,7 @@ private slots:
         QVERIFY(std::abs((withLarsen - withoutLarsen) - 7.0) < 1e-12);
     }
 
-    void pasConventionRefusesSignedSortedOverride() {
+    void pasConventionRequiresPrincipalDescendingOverride() {
         qunsetenv("H5READER_PAS_SHAPE_CONVENTION_OVERRIDE");
         QString err;
         QVERIFY(AssertPasShapeConventionEnv(&err));
@@ -82,6 +82,12 @@ private slots:
 
         qputenv("H5READER_PAS_SHAPE_CONVENTION_OVERRIDE",
                 QByteArrayLiteral("haeberlen_distance_from_isotropic_v1"));
+        err.clear();
+        QVERIFY(!AssertPasShapeConventionEnv(&err));
+        QVERIFY(err.contains(QStringLiteral("unsupported PAS shape convention")));
+
+        qputenv("H5READER_PAS_SHAPE_CONVENTION_OVERRIDE",
+                QByteArrayLiteral("principal_shielding_descending_v1"));
         err.clear();
         QVERIFY(AssertPasShapeConventionEnv(&err));
         QVERIFY(err.isEmpty());
