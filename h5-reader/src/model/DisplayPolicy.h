@@ -35,6 +35,15 @@ inline bool IsDashboardDisplayable(const SignalDescriptor& descriptor) {
     if (descriptor.family == QLatin1String("topology")
         && descriptor.valueShape == SignalValueShape::Category)
         return false;
+    // Rollup-moment summaries (welford mean/var/count, *.stats, autocorrelation)
+    // are whole-TRAJECTORY statistics, not per-frame series -- shown as a temporal
+    // strip they draw a flat line (one constant value repeated every frame; the
+    // read-to-display sweep flagged the whole family flat/empty). De-stripped
+    // pending a static "mean +/- std (n)" readout; until that lands they are not a
+    // dashboard signal. RollupMoments is exclusively this family, so the shape gate
+    // is exact. (When the readout mode ships, drop this clause + offer that mode.)
+    if (descriptor.valueShape == SignalValueShape::RollupMoments)
+        return false;
     return true;
 }
 

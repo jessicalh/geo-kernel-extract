@@ -6,7 +6,7 @@ DashboardDisplayController, counted sampleable strip descriptors. Much of
 that lives behind unexposed buffers on the controller; the REST surface
 exposes the user-visible contract:
 
-  - the default startup signal exists and is listed,
+  - a signal added via REST is listed with a well-formed entry,
   - frame advance via REST is honoured and round-trips,
   - the camera moves between frames (proxy for "the per-frame visit ran"),
   - the catalog reports at least one strip-sampleable descriptor.
@@ -17,16 +17,27 @@ Deep per-channel sampling coverage stays in the QtTest unit tier.
 from __future__ import annotations
 
 
-def test_default_signal_listed(rest):
-    signals = rest.client.get("/dashboard/signals").json()
-    assert isinstance(signals, list)
-    # ReaderMainWindow seeds one default signal (Generic NPY DSSP chi)
-    # at startup. If that ever changes, this test should be loosened
-    # rather than tightened — the load-bearing assertion is "signals
-    # listing works," not the specific default.
-    assert len(signals) >= 1, "no dashboard signals listed at startup"
-    assert all("id" in s and "descriptor_id" in s for s in signals)
-    assert all("display_modes" in s for s in signals)
+def test_signal_add_is_listed(rest):
+    """The dashboard opens EMPTY -- the pruned reader seeds no default signal;
+    signals are added via the picker / POST /dashboard/metric. (An earlier
+    version of this test assumed a startup default existed; it does not, and the
+    load-bearing assertion is that the listing works, not that a default
+    pre-exists.) Add a known metric and assert it lists, well-formed; clean up."""
+    assert isinstance(rest.client.get("/dashboard/signals").json(), list)
+    r = rest.client.post("/dashboard/metric", json={
+        "descriptor_id": "h5:sasa_time_series",
+        "anchor": {"atom": 16},
+        "modes": ["strip.scalar"],
+    })
+    assert r.status_code == 200, r.text
+    sid = r.json()["id"]
+    try:
+        signals = rest.client.get("/dashboard/signals").json()
+        entry = next((s for s in signals if s["id"] == sid), None)
+        assert entry is not None, "added signal not listed by /dashboard/signals"
+        assert "descriptor_id" in entry and "display_modes" in entry
+    finally:
+        rest.client.post("/dashboard/metric/remove", json={"id": sid})
 
 
 def test_frame_set_round_trip(rest):

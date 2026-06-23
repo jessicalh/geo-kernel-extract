@@ -28,6 +28,7 @@ private slots:
     void topologyTablesNotDisplayable();
     void topologyBondLengthStaysDisplayable();
     void physicsFieldsDisplayable();
+    void rollupSummariesNotDisplayable();
 };
 
 void DisplayPolicyTests::embeddingNotDisplayable() {
@@ -52,6 +53,15 @@ void DisplayPolicyTests::physicsFieldsDisplayable() {
     QVERIFY(IsDashboardDisplayable(field("sasa", SignalValueShape::Scalar)));
     QVERIFY(IsDashboardDisplayable(field("coulomb", SignalValueShape::EfgT2)));
     QVERIFY(IsDashboardDisplayable(field("aimnet2", SignalValueShape::Vector3)));
+}
+
+void DisplayPolicyTests::rollupSummariesNotDisplayable() {
+    // Rollup-moment summaries (welford mean/var/count, *.stats, autocorrelation)
+    // are whole-trajectory statistics -- in a temporal strip they draw a flat
+    // line, so they are de-stripped pending a static mean +/- std readout and are
+    // not dashboard signals for now. RollupMoments is exclusively this family.
+    QVERIFY(!IsDashboardDisplayable(field("biot_savart", SignalValueShape::RollupMoments)));
+    QVERIFY(!IsDashboardDisplayable(field("sasa", SignalValueShape::RollupMoments)));
 }
 
 QTEST_APPLESS_MAIN(DisplayPolicyTests)

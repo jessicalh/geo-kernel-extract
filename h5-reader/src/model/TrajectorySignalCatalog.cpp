@@ -152,12 +152,10 @@ QStringList perClassStaticModes() {
     return {};
 }
 
-QStringList rollupStripModes() {
-    return {
-        QStringLiteral("strip.rollup"),
-    };
-}
-
+// rollupStripModes() removed: rollup-moment summaries are whole-trajectory
+// statistics that render as a flat line in a temporal strip (see DisplayPolicy
+// IsDashboardDisplayable). They are de-stripped pending a static mean +/- std
+// readout; rollupStaticModes() stays as the slot that readout mode will fill.
 QStringList rollupStaticModes() {
     return {};
 }
@@ -466,7 +464,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                            group.axis,
                            SignalValueShape::RollupMoments,
                            group.units,
-                           rollupStripModes(),
+                           {},   // de-stripped (DisplayPolicy): whole-traj summaries flat-line in a strip
                            rollupStaticModes(),
                            {},
                            group.path,
