@@ -12,6 +12,7 @@
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignalModel.h"
 #include "../model/DisplayModeCapability.h"
+#include "../model/MetricTaxonomy.h"
 #include "../model/QtAtom.h"
 #include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
@@ -25,7 +26,9 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QFont>
 #include <QGroupBox>
+#include <QHash>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
@@ -41,6 +44,7 @@
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QTableView>
+#include <QTreeView>
 #include <QUuid>
 #include <QVBoxLayout>
 
@@ -350,6 +354,18 @@ void configureTable(QTableView* view) {
     view->horizontalHeader()->setStretchLastSection(false);
 }
 
+void configureTree(QTreeView* view) {
+    view->setSelectionBehavior(QAbstractItemView::SelectRows);
+    view->setSelectionMode(QAbstractItemView::SingleSelection);
+    view->setUniformRowHeights(true);
+    view->setAllColumnsShowFocus(true);
+    view->setSortingEnabled(false);
+    view->setAnimated(false);
+    view->setExpandsOnDoubleClick(true);
+    view->header()->setStretchLastSection(false);
+    view->header()->setDefaultSectionSize(110);
+}
+
 void refillCombo(QComboBox* combo, const QString& allLabel, const QStringList& values) {
     const QVariant previous = combo->currentData();
     QSignalBlocker blocker(combo);
@@ -361,14 +377,90 @@ void refillCombo(QComboBox* combo, const QString& allLabel, const QStringList& v
     combo->setCurrentIndex(previousIndex >= 0 ? previousIndex : 0);
 }
 
-class DescriptorTableModel final : public QAbstractTableModel {
+// ---- Mechanism -> concept -> form tree over the catalog ----------------------
+// The candidate list is a MetricTaxonomy tree, not a flat table: the ~188
+// descriptors fold to ~35 base concepts in ~11 mechanism groups (the four
+// shielding-kernel hypotheses first, then the DFT reference, conditioning
+// inputs, dynamics, scaffold). Leaves carry an index into a flat record vector
+// so selection / filtering / mode-offering reuse the SAME DescriptorRecord the
+// old table model used. Electrostatic is sub-grouped by charge model.
+
+QString groupTitle(model::MetricGroup group) {
+    switch (group) {
+    case model::MetricGroup::RingCurrent:    return QStringLiteral("Ring current");
+    case model::MetricGroup::BondAnisotropy: return QStringLiteral("Bond anisotropy (McConnell)");
+    case model::MetricGroup::Electrostatic:  return QStringLiteral("Electrostatic (E-field / EFG)");
+    case model::MetricGroup::HBond:          return QStringLiteral("H-bond");
+    case model::MetricGroup::DftReference:   return QStringLiteral("DFT reference");
+    case model::MetricGroup::Charges:        return QStringLiteral("Charges & electronic structure");
+    case model::MetricGroup::Solvation:      return QStringLiteral("Solvation & water");
+    case model::MetricGroup::Structure:      return QStringLiteral("Structure & geometry");
+    case model::MetricGroup::Dynamics:       return QStringLiteral("Dynamics");
+    case model::MetricGroup::Scaffold:       return QStringLiteral("Scaffold & bookkeeping");
+    case model::MetricGroup::Mutation:       return QStringLiteral("Mutation (WT / mutant / delta)");
+    case model::MetricGroup::Other:          return QStringLiteral("Other");
+    }
+    return QStringLiteral("Other");
+}
+
+QString roleTitle(model::MetricRole role) {
+    switch (role) {
+    case model::MetricRole::Hypothesis: return QStringLiteral("hypothesis kernel");
+    case model::MetricRole::Reference:  return QStringLiteral("reference");
+    case model::MetricRole::Input:      return QStringLiteral("input");
+    case model::MetricRole::Dynamics:   return QStringLiteral("dynamics");
+    case model::MetricRole::Scaffold:   return QStringLiteral("scaffold");
+    }
+    return {};
+}
+
+QString formTitle(model::MetricForm form) {
+    switch (form) {
+    case model::MetricForm::Snapshot:   return QStringLiteral("snapshot");
+    case model::MetricForm::Series:     return QStringLiteral("series");
+    case model::MetricForm::Rollup:     return QStringLiteral("rollup");
+    case model::MetricForm::Dynamics:   return QStringLiteral("autocorr");
+    case model::MetricForm::Transition: return QStringLiteral("transition");
+    case model::MetricForm::Reference:  return QStringLiteral("DFT");
+    case model::MetricForm::Spine:      return QStringLiteral("topology");
+    case model::MetricForm::Derived:    return QStringLiteral("derived");
+    case model::MetricForm::Other:      return QStringLiteral("-");
+    }
+    return QStringLiteral("-");
+}
+
+struct DescriptorTreeNode {
+    enum class Kind : std::uint8_t { Group, ChargeModel, Concept, Form };
+    Kind kind = Kind::Group;
+    QString name;         // column 0 label (group / charge-model / concept / form)
+    QString detail;       // group: role; concept or leaf: forms summary
+    QString searchExtra;  // ancestor labels, appended to a leaf's search text
+    int recordIndex = -1; // >= 0 marks a selectable leaf (index into records_)
+    DescriptorTreeNode* parent = nullptr;
+    int row = 0;
+    QVector<DescriptorTreeNode*> children;
+
+    ~DescriptorTreeNode() { qDeleteAll(children); }
+};
+
+DescriptorTreeNode* appendChild(DescriptorTreeNode* parent, DescriptorTreeNode::Kind kind,
+                                const QString& name) {
+    auto* node = new DescriptorTreeNode;
+    node->kind = kind;
+    node->name = name;
+    node->parent = parent;
+    node->row = static_cast<int>(parent->children.size());
+    parent->children.push_back(node);
+    return node;
+}
+
+class DescriptorTreeModel final : public QAbstractItemModel {
 public:
     enum Column : std::uint8_t {
-        SourceColumn,
-        AxisColumn,
+        NameColumn,
+        FormColumn,
         ShapeColumn,
-        SignalColumn,
-        ModesColumn,
+        DisplaysColumn,
         UnitsColumn,
         ColumnCount,
     };
@@ -380,82 +472,139 @@ public:
         AxisRole,
         ShapeRole,
         RequiredAnchorAxisRole,
+        RecordIndexRole,
+        KindRole,
     };
 
-    explicit DescriptorTableModel(QObject* parent = nullptr)
-        : QAbstractTableModel(parent)
+    explicit DescriptorTreeModel(QObject* parent = nullptr)
+        : QAbstractItemModel(parent)
+        , root_(new DescriptorTreeNode)
     {
         CENSUS_REGISTER(this);
-        setObjectName(QStringLiteral("SignalDescriptorTableModel"));
+        setObjectName(QStringLiteral("SignalDescriptorTreeModel"));
+    }
+
+    ~DescriptorTreeModel() override { delete root_; }
+
+    QModelIndex index(int row, int column, const QModelIndex& parent = QModelIndex()) const override {
+        if (!hasIndex(row, column, parent))
+            return {};
+        DescriptorTreeNode* parentNode = nodeFor(parent);
+        if (!parentNode || row < 0 || row >= parentNode->children.size())
+            return {};
+        return createIndex(row, column, parentNode->children.at(row));
+    }
+
+    QModelIndex parent(const QModelIndex& index) const override {
+        if (!index.isValid())
+            return {};
+        auto* node = static_cast<DescriptorTreeNode*>(index.internalPointer());
+        DescriptorTreeNode* parentNode = node ? node->parent : nullptr;
+        if (!parentNode || parentNode == root_)
+            return {};
+        return createIndex(parentNode->row, 0, parentNode);
     }
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override {
-        return parent.isValid() ? 0 : static_cast<int>(records_.size());
+        if (parent.column() > 0)
+            return 0;
+        DescriptorTreeNode* node = nodeFor(parent);
+        return node ? static_cast<int>(node->children.size()) : 0;
     }
 
-    int columnCount(const QModelIndex& parent = QModelIndex()) const override {
-        return parent.isValid() ? 0 : ColumnCount;
+    int columnCount(const QModelIndex& = QModelIndex()) const override {
+        return ColumnCount;
     }
 
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override {
-        if (!index.isValid() || index.row() < 0 || index.row() >= records_.size())
+        DescriptorTreeNode* node = nodeFor(index);
+        if (!node || node == root_)
             return {};
-        const DescriptorRecord& record = records_.at(index.row());
-        if (role == Qt::DisplayRole || role == Qt::EditRole) {
+        const DescriptorRecord* record =
+            (node->recordIndex >= 0 && node->recordIndex < records_.size())
+                ? &records_.at(node->recordIndex)
+                : nullptr;
+
+        if (role == Qt::DisplayRole) {
             switch (index.column()) {
-            case SourceColumn:
-                return record.source;
-            case AxisColumn:
-                return record.axis;
+            case NameColumn:
+                return node->name;
+            case FormColumn:
+                return node->detail;
             case ShapeColumn:
-                return record.valueShape;
-            case SignalColumn:
-                return record.descriptor.label;
-            case ModesColumn:
-                return modeSummary(record.displayModes);
+                return record ? record->valueShape : QString();
+            case DisplaysColumn:
+                return record ? modeSummary(record->displayModes) : QString();
             case UnitsColumn:
-                return record.units;
+                return record ? record->units : QString();
             default:
                 return {};
             }
         }
         if (role == Qt::ToolTipRole) {
-            return QStringLiteral("%1\nid: %2\nconcept: %3\nmodes: %4")
-                .arg(record.descriptor.label,
-                     record.descriptor.id,
-                     record.descriptor.conceptKey.isEmpty() ? QStringLiteral("-") : record.descriptor.conceptKey,
-                     record.displayModes.join(QStringLiteral(", ")));
+            if (record) {
+                return QStringLiteral("%1\nid: %2\nconcept: %3\nmodes: %4")
+                    .arg(record->descriptor.label,
+                         record->descriptor.id,
+                         record->descriptor.conceptKey.isEmpty() ? QStringLiteral("-")
+                                                                 : record->descriptor.conceptKey,
+                         record->displayModes.join(QStringLiteral(", ")));
+            }
+            return node->detail.isEmpty()
+                       ? node->name
+                       : QStringLiteral("%1  (%2)").arg(node->name, node->detail);
         }
-        if (role == Qt::ForegroundRole && record.displayModes.isEmpty())
+        if (role == Qt::FontRole && node->kind == DescriptorTreeNode::Kind::Group) {
+            QFont font;
+            font.setBold(true);
+            return font;
+        }
+        if (role == Qt::ForegroundRole && record && record->displayModes.isEmpty())
             return QBrush(Qt::darkGray);
-        if (role == DisplayModesRole)
-            return record.displayModes;
+        if (role == RecordIndexRole)
+            return node->recordIndex;
+        if (role == KindRole)
+            return static_cast<int>(node->kind);
+
+        if (record) {
+            switch (role) {
+            case DisplayModesRole:
+                return record->displayModes;
+            case SearchTextRole:
+                return node->searchExtra.isEmpty()
+                           ? record->searchText()
+                           : record->searchText() + QLatin1Char(' ') + node->searchExtra;
+            case SourceRole:
+                return record->source;
+            case AxisRole:
+                return record->axis;
+            case ShapeRole:
+                return record->valueShape;
+            case RequiredAnchorAxisRole:
+                return static_cast<int>(record->descriptor.requiredAnchor);
+            default:
+                return {};
+            }
+        }
         if (role == SearchTextRole)
-            return record.searchText();
-        if (role == SourceRole)
-            return record.source;
-        if (role == AxisRole)
-            return record.axis;
-        if (role == ShapeRole)
-            return record.valueShape;
+            return node->name + QLatin1Char(' ') + node->detail;
         if (role == RequiredAnchorAxisRole)
-            return static_cast<int>(record.descriptor.requiredAnchor);
+            return -1;
         return {};
     }
 
-    QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override {
+    QVariant headerData(int section, Qt::Orientation orientation,
+                        int role = Qt::DisplayRole) const override {
         if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
             return {};
         switch (section) {
-        case SourceColumn:
-            return QStringLiteral("Source");
-        case AxisColumn:
-            return QStringLiteral("Axis");
+        case NameColumn:
+            return QStringLiteral("Metric");
+        case FormColumn:
+            return QStringLiteral("Form");
         case ShapeColumn:
             return QStringLiteral("Shape");
-        case SignalColumn:
-            return QStringLiteral("Descriptor");
-        case ModesColumn:
+        case DisplaysColumn:
             return QStringLiteral("Displays");
         case UnitsColumn:
             return QStringLiteral("Units");
@@ -465,20 +614,94 @@ public:
     }
 
     void setDescriptors(const QVector<model::SignalDescriptor>& descriptors) {
-        QVector<DescriptorRecord> records;
-        records.reserve(descriptors.size());
-        for (const model::SignalDescriptor& descriptor : descriptors)
-            records.push_back(recordFromDescriptor(descriptor));
-
         beginResetModel();
-        records_ = std::move(records);
+        delete root_;
+        root_ = new DescriptorTreeNode;
+        records_.clear();
+        records_.reserve(descriptors.size());
+        QHash<QString, int> indexById;
+        indexById.reserve(descriptors.size());
+        for (const model::SignalDescriptor& descriptor : descriptors) {
+            indexById.insert(descriptor.id, static_cast<int>(records_.size()));
+            records_.push_back(recordFromDescriptor(descriptor));
+        }
+
+        const auto conceptLabel = [](const model::MetricConceptNode& concept) {
+            return concept.label.isEmpty() ? concept.baseConcept : concept.label;
+        };
+        const auto formsSummary = [](const model::MetricConceptNode& concept) {
+            QStringList names;
+            for (const model::MetricFormEntry& form : concept.forms)
+                names.push_back(formTitle(form.form));
+            names.removeDuplicates();
+            return names.join(QStringLiteral(", "));
+        };
+
+        QVector<model::MetricGroupNode> groups = model::GroupCatalog(descriptors);
+        // Present mechanism groups in the curated hypothesis-first order the
+        // MetricGroup enum is authored in (the ring-current / bond / electrostatic
+        // / H-bond kernels, then the DFT reference, then inputs / dynamics /
+        // scaffold) rather than catalog-insertion order.
+        std::sort(groups.begin(), groups.end(),
+                  [](const model::MetricGroupNode& a, const model::MetricGroupNode& b) {
+                      return static_cast<int>(a.group) < static_cast<int>(b.group);
+                  });
+        for (const model::MetricGroupNode& group : groups) {
+            DescriptorTreeNode* groupNode =
+                appendChild(root_, DescriptorTreeNode::Kind::Group, groupTitle(group.group));
+            groupNode->detail = roleTitle(group.role);
+
+            const auto addConcept = [&](DescriptorTreeNode* parent,
+                                        const model::MetricConceptNode& concept,
+                                        const QString& parentLabel) {
+                const QString ancestor =
+                    (groupNode->name + QLatin1Char(' ') + parentLabel + QLatin1Char(' ')
+                     + concept.baseConcept).simplified();
+                if (concept.forms.size() == 1) {
+                    DescriptorTreeNode* leaf =
+                        appendChild(parent, DescriptorTreeNode::Kind::Concept, conceptLabel(concept));
+                    leaf->recordIndex = indexById.value(concept.forms.front().descriptorId, -1);
+                    leaf->detail = formTitle(concept.forms.front().form);
+                    leaf->searchExtra = ancestor;
+                    return;
+                }
+                DescriptorTreeNode* conceptNode =
+                    appendChild(parent, DescriptorTreeNode::Kind::Concept, conceptLabel(concept));
+                conceptNode->detail = formsSummary(concept);
+                for (const model::MetricFormEntry& form : concept.forms) {
+                    DescriptorTreeNode* leaf =
+                        appendChild(conceptNode, DescriptorTreeNode::Kind::Form, formTitle(form.form));
+                    leaf->recordIndex = indexById.value(form.descriptorId, -1);
+                    leaf->detail = formTitle(form.form);
+                    leaf->searchExtra = ancestor + QLatin1Char(' ') + conceptNode->name;
+                }
+            };
+
+            if (group.group == model::MetricGroup::Electrostatic) {
+                QHash<QString, DescriptorTreeNode*> byChargeModel;
+                for (const model::MetricConceptNode& concept : group.concepts) {
+                    const QString chargeModel =
+                        concept.chargeModel.isEmpty() ? QStringLiteral("Other") : concept.chargeModel;
+                    DescriptorTreeNode* bucket = byChargeModel.value(chargeModel, nullptr);
+                    if (!bucket) {
+                        bucket = appendChild(groupNode, DescriptorTreeNode::Kind::ChargeModel, chargeModel);
+                        byChargeModel.insert(chargeModel, bucket);
+                    }
+                    addConcept(bucket, concept, chargeModel);
+                }
+            } else {
+                for (const model::MetricConceptNode& concept : group.concepts)
+                    addConcept(groupNode, concept, QString());
+            }
+        }
         endResetModel();
     }
 
-    const DescriptorRecord* recordAt(const QModelIndex& index) const {
-        if (!index.isValid() || index.row() < 0 || index.row() >= records_.size())
+    const DescriptorRecord* recordForIndex(const QModelIndex& index) const {
+        DescriptorTreeNode* node = nodeFor(index);
+        if (!node || node->recordIndex < 0 || node->recordIndex >= records_.size())
             return nullptr;
-        return &records_.at(index.row());
+        return &records_.at(node->recordIndex);
     }
 
     QStringList uniqueValues(int role) const {
@@ -491,17 +714,68 @@ public:
             else if (role == ShapeRole && !record.valueShape.isEmpty())
                 seen.insert(record.valueShape);
         }
-        QStringList values;
-        values.reserve(seen.size());
-        for (const QString& value : seen)
-            values.push_back(value);
+        QStringList values(seen.cbegin(), seen.cend());
         values.sort(Qt::CaseInsensitive);
         return values;
     }
 
 private:
+    DescriptorTreeNode* nodeFor(const QModelIndex& index) const {
+        if (!index.isValid())
+            return root_;
+        return static_cast<DescriptorTreeNode*>(index.internalPointer());
+    }
+
+    DescriptorTreeNode* root_ = nullptr;
     QVector<DescriptorRecord> records_;
 };
+
+// Depth-first first selectable leaf in a (possibly filtered) candidate model.
+// With requireDisplayable, skip leaves that declare no display modes (the
+// honestly-non-displayable rows) so auto-selection lands on an ACTIONABLE
+// metric rather than a greyed one; callers fall back without the constraint.
+QModelIndex firstCandidateLeaf(QAbstractItemModel* model, const QModelIndex& parent,
+                               bool requireDisplayable) {
+    if (!model)
+        return {};
+    const int rows = model->rowCount(parent);
+    for (int row = 0; row < rows; ++row) {
+        const QModelIndex index = model->index(row, 0, parent);
+        if (model->data(index, DescriptorTreeModel::RecordIndexRole).toInt() >= 0) {
+            if (!requireDisplayable
+                || !model->data(index, DescriptorTreeModel::DisplayModesRole).toStringList().isEmpty())
+                return index;
+            continue;
+        }
+        const QModelIndex deep = firstCandidateLeaf(model, index, requireDisplayable);
+        if (deep.isValid())
+            return deep;
+    }
+    return {};
+}
+
+// Default expansion: mechanism groups and charge-model buckets are always open;
+// multi-form concept nodes stay collapsed unless a search/filter is active (so
+// the matches under them are revealed). Operates on the proxy the view is bound to.
+void expandCandidateTree(QTreeView* view, QAbstractItemModel* model,
+                         const QModelIndex& parent, bool expandConcepts) {
+    if (!view || !model)
+        return;
+    const int rows = model->rowCount(parent);
+    for (int row = 0; row < rows; ++row) {
+        const QModelIndex index = model->index(row, 0, parent);
+        if (model->data(index, DescriptorTreeModel::RecordIndexRole).toInt() >= 0)
+            continue;  // leaf
+        const int kind = model->data(index, DescriptorTreeModel::KindRole).toInt();
+        const bool structural = kind == static_cast<int>(DescriptorTreeNode::Kind::Group)
+                                || kind == static_cast<int>(DescriptorTreeNode::Kind::ChargeModel);
+        if (structural || expandConcepts)
+            view->expand(index);
+        else
+            view->collapse(index);
+        expandCandidateTree(view, model, index, expandConcepts);
+    }
+}
 
 class DescriptorFilterProxyModel final : public QSortFilterProxyModel {
 public:
@@ -512,6 +786,7 @@ public:
         setObjectName(QStringLiteral("SignalDescriptorFilterProxyModel"));
         setFilterCaseSensitivity(Qt::CaseInsensitive);
         setSortCaseSensitivity(Qt::CaseInsensitive);
+        setRecursiveFilteringEnabled(true);
     }
 
     void setSearchText(const QString& text) {
@@ -563,20 +838,25 @@ protected:
         if (!model)
             return false;
         const QModelIndex index = model->index(sourceRow, 0, sourceParent);
+        // Header rows (groups / charge models / multi-form concepts) carry no
+        // record: reject them here and let recursive filtering pull them back in
+        // whenever a descendant leaf is accepted. Only leaves run the predicates.
+        if (model->data(index, DescriptorTreeModel::RecordIndexRole).toInt() < 0)
+            return false;
         const auto textForRole = [&](int role) {
             return model->data(index, role).toString();
         };
-        if (!sourceFilter_.isEmpty() && textForRole(DescriptorTableModel::SourceRole) != sourceFilter_)
+        if (!sourceFilter_.isEmpty() && textForRole(DescriptorTreeModel::SourceRole) != sourceFilter_)
             return false;
-        if (!axisFilter_.isEmpty() && textForRole(DescriptorTableModel::AxisRole) != axisFilter_)
+        if (!axisFilter_.isEmpty() && textForRole(DescriptorTreeModel::AxisRole) != axisFilter_)
             return false;
-        if (!shapeFilter_.isEmpty() && textForRole(DescriptorTableModel::ShapeRole) != shapeFilter_)
+        if (!shapeFilter_.isEmpty() && textForRole(DescriptorTreeModel::ShapeRole) != shapeFilter_)
             return false;
         if (requiredAnchorFilter_ >= 0) {
             const auto selectedAxis = static_cast<model::SignalAxis>(requiredAnchorFilter_);
             const auto requiredAxis =
                 static_cast<model::SignalAxis>(
-                    model->data(index, DescriptorTableModel::RequiredAnchorAxisRole).toInt());
+                    model->data(index, DescriptorTreeModel::RequiredAnchorAxisRole).toInt());
             if (!anchorAxisCanSatisfy(selectedAxis, requiredAxis))
                 return false;
         }
@@ -584,12 +864,12 @@ protected:
             const std::optional<model::VisualizationType> type = visualizationTypeForKey(modeKindFilter_);
             if (!type)
                 return false;
-            const QStringList modes = model->data(index, DescriptorTableModel::DisplayModesRole).toStringList();
+            const QStringList modes = model->data(index, DescriptorTreeModel::DisplayModesRole).toStringList();
             if (!modeListContainsType(modes, *type))
                 return false;
         }
         if (!searchText_.isEmpty()) {
-            const QString haystack = model->data(index, DescriptorTableModel::SearchTextRole).toString();
+            const QString haystack = model->data(index, DescriptorTreeModel::SearchTextRole).toString();
             const QStringList tokens = searchText_.split(QLatin1Char(' '), Qt::SkipEmptyParts);
             for (const QString& token : tokens) {
                 if (!haystack.contains(token, Qt::CaseInsensitive))
@@ -621,7 +901,7 @@ struct SignalDisplayDialog::Impl {
     model::VisualizationContext visualizationContext;
 
     NearbySignalModel* anchorModel = nullptr;
-    DescriptorTableModel* descriptorModel = nullptr;
+    DescriptorTreeModel* descriptorModel = nullptr;
     DescriptorFilterProxyModel* descriptorProxy = nullptr;
     QSortFilterProxyModel* activeProxy = nullptr;
 
@@ -635,7 +915,7 @@ struct SignalDisplayDialog::Impl {
     QComboBox* axisFilter = nullptr;
     QComboBox* shapeFilter = nullptr;
     QComboBox* modeFilter = nullptr;
-    QTableView* candidateView = nullptr;
+    QTreeView* candidateView = nullptr;
     QVector<ModeControl> candidateModes;
     QComboBox* panelCombo = nullptr;
     QLineEdit* newPanelEdit = nullptr;
@@ -662,7 +942,7 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     setMinimumSize(960, 560);
 
     d_->anchorModel = new NearbySignalModel(this);
-    d_->descriptorModel = new DescriptorTableModel(this);
+    d_->descriptorModel = new DescriptorTreeModel(this);
     d_->descriptorProxy = new DescriptorFilterProxyModel(this);
     d_->descriptorProxy->setSourceModel(d_->descriptorModel);
 
@@ -735,16 +1015,14 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     }
     candidatesLayout->addLayout(filterRow);
 
-    d_->candidateView = new QTableView(candidatesPanel);
-    configureTable(d_->candidateView);
+    d_->candidateView = new QTreeView(candidatesPanel);
+    configureTree(d_->candidateView);
     d_->candidateView->setModel(d_->descriptorProxy);
-    d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::SourceColumn, QHeaderView::ResizeToContents);
-    d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::AxisColumn, QHeaderView::ResizeToContents);
-    d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::ShapeColumn, QHeaderView::ResizeToContents);
-    d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::SignalColumn, QHeaderView::Stretch);
-    d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::ModesColumn, QHeaderView::ResizeToContents);
-    d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::UnitsColumn, QHeaderView::ResizeToContents);
-    d_->candidateView->sortByColumn(DescriptorTableModel::SourceColumn, Qt::AscendingOrder);
+    d_->candidateView->header()->setSectionResizeMode(DescriptorTreeModel::NameColumn, QHeaderView::Stretch);
+    d_->candidateView->header()->setSectionResizeMode(DescriptorTreeModel::FormColumn, QHeaderView::ResizeToContents);
+    d_->candidateView->header()->setSectionResizeMode(DescriptorTreeModel::ShapeColumn, QHeaderView::ResizeToContents);
+    d_->candidateView->header()->setSectionResizeMode(DescriptorTreeModel::DisplaysColumn, QHeaderView::ResizeToContents);
+    d_->candidateView->header()->setSectionResizeMode(DescriptorTreeModel::UnitsColumn, QHeaderView::ResizeToContents);
     candidatesLayout->addWidget(d_->candidateView, 1);
 
     auto* addGroup = new QGroupBox(QStringLiteral("Add selected descriptor as"), candidatesPanel);
@@ -839,32 +1117,31 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
 
     ACONNECT(d_->descriptorModel, &QAbstractItemModel::modelReset, this, [this]() {
         refillCombo(d_->sourceFilter, QStringLiteral("All sources"),
-                    d_->descriptorModel->uniqueValues(DescriptorTableModel::SourceRole));
+                    d_->descriptorModel->uniqueValues(DescriptorTreeModel::SourceRole));
         refillCombo(d_->axisFilter, QStringLiteral("All axes"),
-                    d_->descriptorModel->uniqueValues(DescriptorTableModel::AxisRole));
+                    d_->descriptorModel->uniqueValues(DescriptorTreeModel::AxisRole));
         refillCombo(d_->shapeFilter, QStringLiteral("All shapes"),
-                    d_->descriptorModel->uniqueValues(DescriptorTableModel::ShapeRole));
-        onCandidateSelectionChanged();
+                    d_->descriptorModel->uniqueValues(DescriptorTreeModel::ShapeRole));
     });
     ACONNECT(d_->candidateSearch, &QLineEdit::textChanged, this, [this](const QString& text) {
         d_->descriptorProxy->setSearchText(text);
-        onCandidateSelectionChanged();
+        refreshCandidateTree();
     });
     ACONNECT(d_->sourceFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setSourceFilter(d_->sourceFilter->currentData().toString());
-        onCandidateSelectionChanged();
+        refreshCandidateTree();
     });
     ACONNECT(d_->axisFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setAxisFilter(d_->axisFilter->currentData().toString());
-        onCandidateSelectionChanged();
+        refreshCandidateTree();
     });
     ACONNECT(d_->shapeFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setShapeFilter(d_->shapeFilter->currentData().toString());
-        onCandidateSelectionChanged();
+        refreshCandidateTree();
     });
     ACONNECT(d_->modeFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setModeKindFilter(d_->modeFilter->currentData().toString());
-        onCandidateSelectionChanged();
+        refreshCandidateTree();
     });
     ACONNECT(d_->candidateView->selectionModel(),
              &QItemSelectionModel::currentRowChanged,
@@ -984,7 +1261,10 @@ QJsonObject SignalDisplayDialog::pickerState() const {
     const QModelIndex proxyIndex = d_->candidateView ? d_->candidateView->currentIndex() : QModelIndex();
     const QModelIndex sourceIndex = proxyIndex.isValid() ? d_->descriptorProxy->mapToSource(proxyIndex)
                                                         : QModelIndex();
-    out["candidate_row"] = sourceIndex.isValid() ? QJsonValue(proxyIndex.row()) : QJsonValue(QJsonValue::Null);
+    const DescriptorRecord* candidateRecord = d_->descriptorModel->recordForIndex(sourceIndex);
+    out["candidate_row"] = candidateRecord ? QJsonValue(proxyIndex.row()) : QJsonValue(QJsonValue::Null);
+    out["candidate_descriptor"] = candidateRecord ? QJsonValue(candidateRecord->descriptor.id)
+                                                   : QJsonValue(QJsonValue::Null);
 
     const QModelIndex anchorIndex = d_->anchorView ? d_->anchorView->currentIndex() : QModelIndex();
     const NearbySignalModel::Candidate* candidate = d_->anchorModel->candidateAt(anchorIndex);
@@ -1014,13 +1294,39 @@ QJsonObject SignalDisplayDialog::pickerState() const {
     return out;
 }
 
+void SignalDisplayDialog::refreshCandidateTree() {
+    ASSERT_THREAD(this);
+    if (!d_->candidateView || !d_->descriptorProxy)
+        return;
+    // A typed search or an explicit source/axis/shape/display filter narrows the
+    // set enough that revealing every matching leaf helps; the anchor-axis filter
+    // is the normal resting state, so it does NOT force the concepts open.
+    const bool expandConcepts =
+        (d_->candidateSearch && !d_->candidateSearch->text().trimmed().isEmpty())
+        || (d_->sourceFilter && d_->sourceFilter->currentIndex() > 0)
+        || (d_->axisFilter && d_->axisFilter->currentIndex() > 0)
+        || (d_->shapeFilter && d_->shapeFilter->currentIndex() > 0)
+        || (d_->modeFilter && d_->modeFilter->currentIndex() > 0);
+    expandCandidateTree(d_->candidateView, d_->descriptorProxy, QModelIndex(), expandConcepts);
+    ensureCandidateRowSelected();
+    onCandidateSelectionChanged();
+}
+
 bool SignalDisplayDialog::ensureCandidateRowSelected() {
     ASSERT_THREAD(this);
     if (!d_->candidateView || !d_->descriptorProxy)
         return false;
 
     auto* selection = d_->candidateView->selectionModel();
-    if (d_->descriptorProxy->rowCount() <= 0) {
+    const QModelIndex current = d_->candidateView->currentIndex();
+    if (current.isValid()
+        && d_->descriptorProxy->data(current, DescriptorTreeModel::RecordIndexRole).toInt() >= 0)
+        return false;  // a real leaf is already current
+
+    QModelIndex leaf = firstCandidateLeaf(d_->descriptorProxy, QModelIndex(), /*requireDisplayable=*/true);
+    if (!leaf.isValid())
+        leaf = firstCandidateLeaf(d_->descriptorProxy, QModelIndex(), /*requireDisplayable=*/false);
+    if (!leaf.isValid()) {
         if (selection) {
             const QSignalBlocker blocker(selection);
             selection->clearSelection();
@@ -1029,21 +1335,15 @@ bool SignalDisplayDialog::ensureCandidateRowSelected() {
         return false;
     }
 
-    const QModelIndex current = d_->candidateView->currentIndex();
-    if (current.isValid() && d_->descriptorProxy->mapToSource(current).isValid())
-        return false;
-
-    const QModelIndex first = d_->descriptorProxy->index(0, 0);
-    if (!first.isValid())
-        return false;
-
+    for (QModelIndex ancestor = leaf.parent(); ancestor.isValid(); ancestor = ancestor.parent())
+        d_->candidateView->expand(ancestor);
     if (selection) {
         const QSignalBlocker blocker(selection);
-        selection->setCurrentIndex(first, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        selection->setCurrentIndex(leaf, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     } else {
-        d_->candidateView->setCurrentIndex(first);
+        d_->candidateView->setCurrentIndex(leaf);
     }
-    d_->candidateView->scrollTo(first, QAbstractItemView::EnsureVisible);
+    d_->candidateView->scrollTo(leaf, QAbstractItemView::EnsureVisible);
     return true;
 }
 
@@ -1052,10 +1352,7 @@ void SignalDisplayDialog::refreshCatalog() {
     const QVector<model::SignalDescriptor> descriptors = d_->catalog ? d_->catalog->descriptorList()
                                                                      : QVector<model::SignalDescriptor>{};
     d_->descriptorModel->setDescriptors(descriptors);
-    d_->candidateView->resizeColumnsToContents();
-    d_->candidateView->horizontalHeader()->setSectionResizeMode(DescriptorTableModel::SignalColumn, QHeaderView::Stretch);
-    ensureCandidateRowSelected();
-    onCandidateSelectionChanged();
+    refreshCandidateTree();
     if (d_->statusLabel) {
         d_->statusLabel->setText(d_->catalog
                                      ? QStringLiteral("%1 catalog descriptors.").arg(descriptors.size())
@@ -1134,15 +1431,14 @@ void SignalDisplayDialog::onAnchorSelectionChanged() {
     const NearbySignalModel::Candidate* candidate = d_->anchorModel->candidateAt(anchorIndex);
     d_->descriptorProxy->setRequiredAnchorFilter(candidate ? axisForCandidate(*candidate) : model::SignalAxis::None,
                                                  candidate != nullptr);
-    ensureCandidateRowSelected();
-    onCandidateSelectionChanged();
+    refreshCandidateTree();
 }
 
 void SignalDisplayDialog::onCandidateSelectionChanged() {
     ASSERT_THREAD(this);
     const QModelIndex proxyIndex = d_->candidateView->currentIndex();
     const QModelIndex sourceIndex = proxyIndex.isValid() ? d_->descriptorProxy->mapToSource(proxyIndex) : QModelIndex();
-    const DescriptorRecord* record = d_->descriptorModel->recordAt(sourceIndex);
+    const DescriptorRecord* record = d_->descriptorModel->recordForIndex(sourceIndex);
 
     bool checkedOne = false;
     const model::VisualizationRegistry& registry = model::VisualizationRegistry::instance();
@@ -1196,7 +1492,7 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
     }
     qCInfo(diagnostics::cDash).noquote()
         << QStringLiteral("event=picker_selector_state current_row=%1 enabled=[%2] disabled=[%3]")
-               .arg(sourceIndex.isValid() ? QString::number(proxyIndex.row()) : QStringLiteral("none"),
+               .arg(record ? QString::number(proxyIndex.row()) : QStringLiteral("none"),
                     enabledKinds.join(QStringLiteral(",")),
                     disabledKinds.join(QStringLiteral(",")));
 }
@@ -1221,7 +1517,7 @@ void SignalDisplayDialog::onAddSelected() {
     ASSERT_THREAD(this);
     const QModelIndex proxyIndex = d_->candidateView->currentIndex();
     const QModelIndex sourceIndex = proxyIndex.isValid() ? d_->descriptorProxy->mapToSource(proxyIndex) : QModelIndex();
-    const DescriptorRecord* record = d_->descriptorModel->recordAt(sourceIndex);
+    const DescriptorRecord* record = d_->descriptorModel->recordForIndex(sourceIndex);
     if (!record || !d_->activeModel || !d_->selectionController)
         return;
     const QModelIndex anchorIndex = d_->anchorView ? d_->anchorView->currentIndex() : QModelIndex();

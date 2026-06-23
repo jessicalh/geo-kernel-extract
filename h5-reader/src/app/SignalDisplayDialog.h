@@ -67,6 +67,7 @@ private slots:
     void onRemoveActive();
 
 private:
+    void refreshCandidateTree();
     bool ensureCandidateRowSelected();
 
     struct Impl;
