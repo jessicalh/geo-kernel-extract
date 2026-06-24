@@ -216,6 +216,8 @@ qt_add_library(h5reader_core STATIC
     src/app/MeasurementOverlay.cpp
     src/app/SceneRevealOverlay.h
     src/app/SceneRevealOverlay.cpp
+    src/app/TensorGlyphActor.h
+    src/app/TensorGlyphActor.cpp
     src/app/CsaTensorOverlay.h
     src/app/CsaTensorOverlay.cpp
     src/app/NearbySignalModel.h

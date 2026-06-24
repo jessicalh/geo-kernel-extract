@@ -93,6 +93,7 @@ class QtOccupancyShellsOverlay;
 class MeasurementOverlay;
 class SceneRevealOverlay;
 class CsaTensorOverlay;
+class TensorGlyphActor;
 class CameraComposer;
 
 class MoleculeScene final : public QObject {
@@ -165,6 +166,9 @@ public:
     MeasurementOverlay*      measurementOverlay() const { return measurement_; }
     SceneRevealOverlay*      revealOverlay()      const { return reveal_; }
     CsaTensorOverlay*        csaOverlay()         const { return csaOverlay_; }
+    // Bond-orientation order tensor glyph -- the SAME TensorGlyphActor the CSA
+    // overlay uses, so the two tensor representations stay consistent.
+    TensorGlyphActor*        orientationGlyph()   const { return orientationGlyph_.get(); }
 
 public slots:
     // Update atom positions to frame t AND propagate to every overlay.
@@ -254,6 +258,7 @@ private:
     MeasurementOverlay*      measurement_  = nullptr;   // QObject child
     SceneRevealOverlay*      reveal_       = nullptr;   // QObject child
     CsaTensorOverlay*        csaOverlay_   = nullptr;   // QObject child
+    std::unique_ptr<TensorGlyphActor> orientationGlyph_;  // plain RAII (not a QObject)
     CameraComposer*          composer_     = nullptr;   // QObject child
 
     const model::QtProtein*       protein_      = nullptr;

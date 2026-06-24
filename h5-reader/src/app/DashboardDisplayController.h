@@ -125,11 +125,8 @@ public:
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
     void setVisualizationContext(const model::VisualizationContext& ctx);
-    // L-3a (2026-05-29): the scene overlay receives tensor-glyph
-    // reveals when the user activates an h5:reorient_orientation_tensor
-    // signal with static.tensor mode. Optional — when null, the
-    // controller silently skips the tensor dispatch in rebuild()
-    // (the descriptor still works for static.table inspection).
+    // The scene overlay draws the dashboard sphere/line reveals (a pinned strip
+    // binding highlights its atoms in the scene). Optional -- null is fine.
     void setSceneOverlay(SceneRevealOverlay* overlay);
 
     QVector<StripTrack> stripTracks() const;

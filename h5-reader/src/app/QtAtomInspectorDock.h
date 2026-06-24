@@ -52,6 +52,19 @@ struct CsaTensorInfo {
     double  sigma33 = 0.0;
 };
 
+// Carrier for the focused atom's bond-orientation ORDER tensor (<u(x)u>), shown
+// as the "Bond orientation tensor" section -- the text twin of the orientation
+// glyph, exactly as CsaTensorInfo is for the CSA glyph. Fed by
+// ReaderMainWindow::updateOrientationTensorGlyph so picture and numbers agree;
+// per-axis colours match the glyph arrows (amber/teal/violet).
+struct OrientationTensorInfo {
+    QString bond;            // e.g. "N-H (residue 5)"
+    double  s2 = 0.0;        // Henry-Szabo order parameter S^2
+    double  lambda1 = 0.0;   // order-tensor eigenvalues, descending (sum to 1)
+    double  lambda2 = 0.0;
+    double  lambda3 = 0.0;
+};
+
 class QtAtomInspectorDock final : public QDockWidget {
     Q_OBJECT
 public:
@@ -70,6 +83,12 @@ public:
     // clearCsaTensor hides it.
     void setCsaTensor(std::size_t atom, const CsaTensorInfo& info);
     void clearCsaTensor();
+
+    // The focused atom's bond-orientation order tensor, mirrored from the same
+    // glyph driver. setOrientationTensor shows the section (iff this stays the
+    // focused atom); clearOrientationTensor hides it.
+    void setOrientationTensor(std::size_t atom, const OrientationTensorInfo& info);
+    void clearOrientationTensor();
 
 public slots:
     // The dock's two inputs: which atom and which frame. Both cause a
@@ -92,6 +111,7 @@ private:
     void populateIdentity(QTreeWidgetItem* parent);
     void populatePerFrame(QTreeWidgetItem* root);
     void populateCsa(QTreeWidgetItem* root);
+    void populateOrientation(QTreeWidgetItem* root);
 
     QPointer<QTreeWidget>         tree_;
     const model::QtProtein*       protein_      = nullptr;
@@ -104,6 +124,10 @@ private:
     bool                         hasCsa_       = false;
     std::size_t                  csaAtom_      = 0;
     CsaTensorInfo                csa_;
+    // Bond orientation tensor mirror; shown iff orientAtom_ == atomIdx_.
+    bool                         hasOrient_    = false;
+    std::size_t                  orientAtom_   = 0;
+    OrientationTensorInfo        orient_;
 };
 
 }  // namespace h5reader::app

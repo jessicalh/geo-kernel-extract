@@ -51,10 +51,8 @@ public:
     void setSelectionController(DashboardSelectionController* controller);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
-    // L-3a (2026-05-29): forwards to the controller so it can fire
-    // tensor-glyph reveals on the scene overlay when the user
-    // activates a Reorient orientation_tensor signal with
-    // static.tensor mode.
+    // Forwards the scene reveal overlay to the controller (dashboard strip
+    // bindings highlight their atoms in the scene).
     void setSceneOverlay(SceneRevealOverlay* overlay);
     void setTimeViewport(TimeViewportController* viewport);
     DashboardSmokeSummary smokeSummary() const;

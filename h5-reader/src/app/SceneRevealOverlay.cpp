@@ -5,7 +5,6 @@
 #include "../io/QtTrajectoryH5.h"
 #include "../model/QtBondVectorBuffers.h"
 #include "../model/TrajectoryConformation.h"
-#include "TensorGlyphMath.h"
 
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
@@ -25,16 +24,6 @@ constexpr double kLineWidth = 3.0;
 constexpr double kLineOpacity = 0.92;
 constexpr double kRevealRgb[3] = {0.0, 0.72, 0.78};
 constexpr double kLineRgb[3] = {0.78, 1.0, 0.96};
-// Distinct hue from the sphere/line highlights so the ellipsoid reads
-// as "the orientation tensor" rather than another sphere. Soft amber.
-constexpr double kTensorRgb[3] = {0.95, 0.74, 0.32};
-constexpr double kTensorOpacity = 0.40;
-// Scale factor on the eigendecomposition radii — orientation tensors
-// have eigenvalues that sum to 1 (PSD trace-normalised), so sqrt
-// values land near ~0.3-0.7. A 2.0× scale gives an ellipsoid roughly
-// the size of a backbone bond — same visual budget as the highlight
-// spheres.
-constexpr double kTensorScale = 2.0;
 
 // Resolve a (residue, kind) bond-vector anchor to its {tail, head}
 // atom pair by walking the TR identity tables that own it. iRED is
@@ -87,8 +76,6 @@ SceneRevealOverlay::~SceneRevealOverlay()
     }
     if (lineActor_)
         renderer_->RemoveActor(lineActor_);
-    if (tensorActor_)
-        renderer_->RemoveActor(tensorActor_);
 }
 
 void SceneRevealOverlay::Build(const model::QtProtein& protein,
@@ -134,39 +121,6 @@ void SceneRevealOverlay::Build(const model::QtProtein& protein,
     lineActor_->SetVisibility(0);
     lineActor_->PickableOff();
     renderer_->AddActor(lineActor_);
-
-    // L-3a (2026-05-29): tensor glyph pipeline. vtkSphereSource → per-
-    // frame vtkTransform (scale = eigendecomposition radii; rotation =
-    // eigenvector frame) → vtkTransformPolyDataFilter → mapper →
-    // actor. Mat3 update happens in applyTensorFrame; we set up the
-    // pipeline once here so per-frame ticks are cheap.
-    if (tensorActor_) {
-        renderer_->RemoveActor(tensorActor_);
-        tensorActor_ = nullptr;
-    }
-    tensorSphere_ = vtkSmartPointer<vtkSphereSource>::New();
-    tensorSphere_->SetRadius(1.0);
-    tensorSphere_->SetPhiResolution(24);
-    tensorSphere_->SetThetaResolution(24);
-
-    tensorTransform_ = vtkSmartPointer<vtkTransform>::New();
-    tensorTransform_->Identity();
-
-    tensorFilter_ = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
-    tensorFilter_->SetInputConnection(tensorSphere_->GetOutputPort());
-    tensorFilter_->SetTransform(tensorTransform_);
-
-    auto tensorMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    tensorMapper->SetInputConnection(tensorFilter_->GetOutputPort());
-
-    tensorActor_ = vtkSmartPointer<vtkActor>::New();
-    tensorActor_->SetMapper(tensorMapper);
-    tensorActor_->GetProperty()->SetColor(kTensorRgb[0], kTensorRgb[1], kTensorRgb[2]);
-    tensorActor_->GetProperty()->SetOpacity(kTensorOpacity);
-    tensorActor_->SetVisibility(0);
-    tensorActor_->PickableOff();
-    renderer_->AddActor(tensorActor_);
-    tensorActive_ = false;
 }
 
 void SceneRevealOverlay::ensureSphereCount(std::size_t count)
@@ -370,79 +324,6 @@ void SceneRevealOverlay::setFrame(int t)
     ASSERT_THREAD(this);
     lastFrame_ = t;
     applyFrame(t);
-    applyTensorFrame(t);
-}
-
-void SceneRevealOverlay::revealTensor(std::size_t tailAtom,
-                                      std::size_t headAtom,
-                                      const std::array<double, 9>& tensor,
-                                      int frame)
-{
-    ASSERT_THREAD(this);
-    if (!protein_ || tailAtom >= protein_->atomCount() || headAtom >= protein_->atomCount()) {
-        clearTensor();
-        return;
-    }
-    tensorTail_ = tailAtom;
-    tensorHead_ = headAtom;
-    tensorData_ = tensor;
-    tensorActive_ = true;
-    applyTensorFrame(frame);
-}
-
-void SceneRevealOverlay::clearTensor()
-{
-    ASSERT_THREAD(this);
-    tensorActive_ = false;
-    if (tensorActor_)
-        tensorActor_->SetVisibility(0);
-}
-
-void SceneRevealOverlay::applyTensorFrame(int t)
-{
-    if (!tensorActor_ || !tensorTransform_)
-        return;
-    if (!tensorActive_ || !protein_ || !conformation_) {
-        tensorActor_->SetVisibility(0);
-        return;
-    }
-    if (t < 0 || static_cast<std::size_t>(t) >= conformation_->frameCount()) {
-        tensorActor_->SetVisibility(0);
-        return;
-    }
-    // Body→lab transform per frame. The bond_orientation_tensor is
-    // accumulated in the body frame (producer-side: trajectory rigidly
-    // aligned to frame 0). The eigenvectors decomposeSymmetric3x3
-    // returns are body-frame; writing them into the VTK world
-    // transform unchanged would produce a glyph whose orientation is
-    // wrong once the molecule rotates relative to frame 0 (Codex
-    // NOW-4, 2026-05-29). composeEllipsoidTransform takes the current
-    // lab-frame bond direction and rotates the body-frame
-    // eigenvectors to align the primary axis with the current bond,
-    // approximating the per-frame body→lab rotation without needing
-    // the full Kabsch matrix.
-    const model::Vec3 tail =
-        conformation_->atomPosition(static_cast<std::size_t>(t), tensorTail_);
-    const model::Vec3 head =
-        conformation_->atomPosition(static_cast<std::size_t>(t), tensorHead_);
-    const model::Vec3 mid = (tail + head) * 0.5;
-    const model::Vec3 bondVec = head - tail;
-    if (bondVec.norm() < 1e-9) {
-        tensorActor_->SetVisibility(0);
-        return;
-    }
-    const model::Vec3 bondDir = bondVec.normalized();
-
-    const auto eig = math::decomposeSymmetric3x3(tensorData_);
-    const auto M = math::composeEllipsoidTransform(eig, bondDir, mid, kTensorScale);
-
-    vtkNew<vtkMatrix4x4> vtkM;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c)
-            vtkM->SetElement(r, c, M[r * 4 + c]);
-    tensorTransform_->SetMatrix(vtkM);
-    tensorTransform_->Modified();
-    tensorActor_->SetVisibility(1);
 }
 
 void SceneRevealOverlay::applyFrame(int t)

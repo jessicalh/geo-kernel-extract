@@ -261,6 +261,22 @@ void QtAtomInspectorDock::clearCsaTensor() {
         rebuild();
 }
 
+void QtAtomInspectorDock::setOrientationTensor(std::size_t atom, const OrientationTensorInfo& info) {
+    orient_ = info;
+    orientAtom_ = atom;
+    hasOrient_ = true;
+    if (hasSelection_)
+        rebuild();
+}
+
+void QtAtomInspectorDock::clearOrientationTensor() {
+    if (!hasOrient_)
+        return;
+    hasOrient_ = false;
+    if (hasSelection_)
+        rebuild();
+}
+
 void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
     auto* group = AddKV(root, QStringLiteral("CSA shielding tensor (DFT)"),
                         csa_.framed ? csa_.frameKind : QStringLiteral("unframed"));
@@ -290,6 +306,30 @@ void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
           QStringLiteral("blue = shielded, red = deshielded (absolute shielding)"));
 }
 
+void QtAtomInspectorDock::populateOrientation(QTreeWidgetItem* root) {
+    auto* group = AddKV(root, QStringLiteral("Bond orientation tensor"), orient_.bond);
+    group->setExpanded(true);
+    AddScalar(group, QStringLiteral("S^2 (order parameter)"), orient_.s2);
+
+    // Order-tensor eigenvalues (descending; sum to 1), text-coloured to match the
+    // glyph's principal-axis arrows so the in-scene arrows stay decodable. axis 1
+    // (amber) is the dominant order axis -- aligned to the bond.
+    static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
+        {"lambda_1", 0.96, 0.66, 0.16},  // amber
+        {"lambda_2", 0.18, 0.74, 0.74},  // teal
+        {"lambda_3", 0.74, 0.36, 0.86},  // violet
+    };
+    const double vals[3] = {orient_.lambda1, orient_.lambda2, orient_.lambda3};
+    for (int i = 0; i < 3; ++i) {
+        auto* row = AddKV(group, QString::fromLatin1(kAxes[i].name), FmtDouble(vals[i]));
+        const QBrush brush(QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b));
+        row->setForeground(0, brush);
+        row->setForeground(1, brush);
+    }
+    AddKV(group, QStringLiteral("key"),
+          QStringLiteral("ovaloid: blue = preferred, red = depleted (deviation from isotropic 1/3)"));
+}
+
 void QtAtomInspectorDock::rebuild() {
     if (!tree_ || !protein_ || !conformation_)
         return;
@@ -314,6 +354,8 @@ void QtAtomInspectorDock::rebuild() {
     populatePerFrame(title);
     if (hasCsa_ && csaAtom_ == atomIdx_)
         populateCsa(title);
+    if (hasOrient_ && orientAtom_ == atomIdx_)
+        populateOrientation(title);
 }
 
 void QtAtomInspectorDock::populateIdentity(QTreeWidgetItem* parent) {

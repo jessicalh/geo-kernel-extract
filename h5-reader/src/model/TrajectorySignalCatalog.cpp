@@ -716,10 +716,10 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     //   active in the same dashboard panel (L-4 builder).
     // - Two TCF curves (body / lab frame) via static.curve.lag.animated
     //   (LagDecayPanel).
-    // - Orientation tensor (Mat3 per vector) via static.tensor — the
-    //   3-D ellipsoid glyph (L-3a math + revealTensor API; the trigger
-    //   gesture is intentionally deferred per the planning conversation
-    //   2026-05-29, so the glyph does not auto-fire on signal addition).
+    // - Orientation tensor (Mat3 per vector) via static.tensor -- shown as a
+    //   focus-driven SCENE glyph (the shared TensorGlyphActor, the same ovaloid
+    //   + arrows as the CSA glyph), not a dashboard panel; static.tensor stays
+    //   tracked-but-hidden in the dashboard.
     // - Spectral density J(ω) at 5 KTB Larmor frequencies via
     //   static.fixed_freq (FixedFreqPanel, L-3b).
     auto addReorientScalar = [&](const char* id, const char* conceptKey,

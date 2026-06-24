@@ -1362,10 +1362,6 @@ void DashboardDisplayController::setVisualizationContext(const model::Visualizat
 
 void DashboardDisplayController::setSceneOverlay(SceneRevealOverlay* overlay) {
     ASSERT_THREAD(this);
-    // If the overlay is being detached, clear any tensor reveal we
-    // pushed to the previous one so it doesn't linger after rebuild.
-    if (sceneOverlay_ && sceneOverlay_ != overlay)
-        sceneOverlay_->clearTensor();
     sceneOverlay_ = overlay;
     rebuild();
 }
@@ -1773,25 +1769,12 @@ void DashboardDisplayController::rebuild() {
                 }
             }
 
-            // L-3a tensor-glyph trigger INTENTIONALLY OMITTED here
-            // (decision 2026-05-29 mid-session, per user request).
-            // The earlier draft auto-fired sceneOverlay_->revealTensor
-            // for the first active Reorient orientation_tensor signal
-            // in the active panel. That was the wrong scope: the user
-            // explicitly chose "no UI yet, defer trigger to follow-up"
-            // because auto-fire on signal addition is too eager — the
-            // ellipsoid should appear only on an explicit user
-            // gesture (a Reveal button, context menu, or panel
-            // interaction) that does not yet exist. The follow-up
-            // session designs and lands that gesture.
-            //
-            // The supporting infrastructure stays in place:
-            //   - revealTensor / clearTensor on SceneRevealOverlay
-            //   - setSceneOverlay on the controller + dock wiring
-            //   - TensorGlyphMath + h5:reorient_orientation_tensor
-            //     catalog descriptor
-            // When the follow-up adds the gesture, the trigger code
-            // lives here and calls sceneOverlay_->revealTensor(...).
+            // The bond-orientation tensor (h5:reorient_orientation_tensor) is
+            // NOT a dashboard panel: it renders as a focus-driven SCENE glyph
+            // (ReaderMainWindow::updateOrientationTensorGlyph -> the shared
+            // TensorGlyphActor, the SAME ovaloid + principal-axis arrows as the
+            // CSA glyph, consistent not ad hoc), so nothing is emitted here. Its
+            // static.tensor mode stays tracked-but-hidden in the dashboard.
 
             // Temporal-strip path: existing ChannelBuffer pipeline.
             if (hasStripMode(signal.displayModeIds)) {
@@ -1846,10 +1829,8 @@ void DashboardDisplayController::rebuild() {
     ownedPanels_ = std::move(nextPanels);
     extendToFrame(frame_);
 
-    // L-3a: tensor-glyph trigger intentionally not wired here yet —
-    // see the comment block above in the per-signal loop. The
-    // sceneOverlay_ pointer + revealTensor / clearTensor API exist
-    // and are reachable; the call site is the deferred follow-up.
+    // (The bond-orientation tensor renders as a focus-driven scene glyph in
+    // ReaderMainWindow, not from here -- see the per-signal loop note above.)
 
     updateStatusText();
     const QUuid activePanelId = panelModel_ ? panelModel_->activePanelId() : QUuid{};

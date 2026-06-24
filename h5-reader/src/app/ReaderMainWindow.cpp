@@ -6,6 +6,8 @@
 #include "CameraMode.h"
 #include "OrientationPolicy.h"
 #include "MoleculeScene.h"
+#include "TensorGlyphActor.h"
+#include "TensorGlyphMath.h"
 #include "NearbySignalModel.h"
 #include "MeasurementsDock.h"
 #include "QtAtomInspectorDock.h"
@@ -37,6 +39,8 @@
 #include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
 #include "../model/TrajectoryConformation.h"
+#include "../model/QtBondVectorBuffers.h"
+#include "../io/QtTrajectoryH5.h"
 #include "../model/TrajectoryFieldAvailability.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "../model/TransformedConformation.h"
@@ -413,15 +417,17 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // CSA tensor glyph (mode-2): focus + frame driven; honest gap on a missing
     // DFT frame; raw->display alignment via the molecular frame.
     ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
-             [this](std::size_t) { updateCsaGlyph(); });
+             [this](std::size_t) { updateCsaGlyph(); updateOrientationTensorGlyph(); });
     ACONNECT(selection_, &model::AtomSelection::cleared, this, [this]() {
-        if (scene_ && scene_->csaOverlay()) {
+        if (scene_ && scene_->csaOverlay())
             scene_->csaOverlay()->clear();
+        if (scene_ && scene_->orientationGlyph())
+            scene_->orientationGlyph()->clear();
+        if (scene_)
             scene_->requestRender(MoleculeScene::RenderSource::Overlay);
-        }
     });
     ACONNECT(playback_, &QtPlaybackController::frameChanged, this,
-             [this](int) { updateCsaGlyph(); });
+             [this](int) { updateCsaGlyph(); updateOrientationTensorGlyph(); });
 
     if (auto* meas = scene_->measurementOverlay()) {
         meas->setSelection(selection_);
@@ -600,6 +606,119 @@ void ReaderMainWindow::updateCsaGlyph() {
         inspectorDock_->setCsaTensor(atom, info);
     }
     redraw();
+}
+
+void ReaderMainWindow::updateOrientationTensorGlyph() {
+    ASSERT_THREAD(this);
+    TensorGlyphActor* glyph = scene_ ? scene_->orientationGlyph() : nullptr;
+    if (!glyph)
+        return;
+    auto hide = [&] {
+        glyph->clear();
+        if (inspectorDock_) inspectorDock_->clearOrientationTensor();
+        if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+    };
+    if (!loaded_ || !transformed_ || !selection_ || !selection_->hasFocus()) {
+        hide();
+        return;
+    }
+    const model::QtProtein* protein = loaded_->protein.get();
+    model::Conformation* conf = loaded_->conformation.get();
+    if (!protein || !conf) {
+        hide();
+        return;
+    }
+    const auto* traj = conf->asTrajectory();
+    const auto* h5 = traj ? traj->h5() : nullptr;
+    const auto* rd = h5 ? h5->reorientationalDynamics() : nullptr;
+    if (!rd || rd->identity.n_vectors == 0) {
+        hide();
+        return;
+    }
+
+    // The first reorient bond vector whose tail or head IS the focused atom.
+    const std::size_t atom = selection_->focus();
+    std::optional<std::size_t> row;
+    for (std::size_t i = 0; i < rd->identity.n_vectors; ++i) {
+        const std::int32_t t = rd->identity.tail_atom[i];
+        const std::int32_t h = rd->identity.head_atom[i];
+        if ((t >= 0 && static_cast<std::size_t>(t) == atom)
+            || (h >= 0 && static_cast<std::size_t>(h) == atom)) {
+            row = i;
+            break;
+        }
+    }
+    if (!row || (*row + 1) * 9 > rd->orientation_tensor.data.size()) {
+        hide();
+        return;
+    }
+    const std::size_t tailAtom = static_cast<std::size_t>(rd->identity.tail_atom[*row]);
+    const std::size_t headAtom = static_cast<std::size_t>(rd->identity.head_atom[*row]);
+    if (tailAtom >= protein->atomCount() || headAtom >= protein->atomCount()) {
+        hide();
+        return;
+    }
+
+    std::array<double, 9> flat{};
+    for (std::size_t k = 0; k < 9; ++k)
+        flat[k] = rd->orientation_tensor.data[*row * 9 + k];
+    const math::TensorEllipsoid eig = math::decomposeSymmetric3x3(flat);
+
+    const int frameI = playback_ ? playback_->currentFrame() : 0;
+    const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
+    const model::Vec3 tailPos = transformed_->atomPosition(frame, tailAtom);
+    const model::Vec3 headPos = transformed_->atomPosition(frame, headAtom);
+    const model::Vec3 mid = (tailPos + headPos) * 0.5;
+    const model::Vec3 bondVec = headPos - tailPos;
+    if (bondVec.norm() < 1e-9) {
+        hide();
+        return;
+    }
+    const model::Vec3 bondDir = bondVec.normalized();
+
+    // Body->lab: the bond_orientation_tensor accumulates in the producer's
+    // frame-0-aligned BODY frame. Align its dominant eigenvector to the CURRENT
+    // displayed bond direction (the same approximation the old reorient ellipsoid
+    // used) so the glyph tracks the molecule as it tumbles.
+    const Eigen::Quaterniond q = Eigen::Quaterniond::FromTwoVectors(eig.axes[0], bondDir);
+    model::Mat3 labAxes;
+    std::array<double, 3> pv{};
+    for (int i = 0; i < 3; ++i) {
+        const std::size_t ai = static_cast<std::size_t>(i);
+        const model::Vec3 lab = q * eig.axes[ai];
+        labAxes.col(i) = lab;
+        const double r = eig.radii[ai];  // decomposeSymmetric3x3 returns sqrt(lambda)
+        pv[ai] = r * r;
+    }
+    const double iso = (pv[0] + pv[1] + pv[2]) / 3.0;
+
+    glyph->show(mid, pv, labAxes, iso);
+
+    // Mirror the numbers into the Atom Info panel (text -> window), exactly as the
+    // CSA glyph does, so picture and numbers agree and the scene stays geometry.
+    if (inspectorDock_) {
+        OrientationTensorInfo info;
+        QString bondName;
+        switch (rd->identity.kind[*row]) {
+        case 1: bondName = QStringLiteral("N-H"); break;
+        case 2: bondName = QStringLiteral("CA-HA"); break;
+        case 3: bondName = QStringLiteral("C-O"); break;
+        default: bondName = QStringLiteral("bond"); break;
+        }
+        info.bond = QStringLiteral("%1 (residue %2)")
+                        .arg(bondName)
+                        .arg(rd->identity.residue_index[*row]);
+        // Lipari-Szabo order parameter straight from the order-tensor
+        // eigenvalues: S^2 = (3*sum(lambda^2) - 1)/2. Universal across NH/CaHa/CO,
+        // unlike rd->s2 (NH-only -> NaN on a C=O or CA-HA bond).
+        info.s2 = (3.0 * (pv[0] * pv[0] + pv[1] * pv[1] + pv[2] * pv[2]) - 1.0) / 2.0;
+        info.lambda1 = pv[0];
+        info.lambda2 = pv[1];
+        info.lambda3 = pv[2];
+        inspectorDock_->setOrientationTensor(atom, info);
+    }
+
+    if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
 }
 
 // Compute one atom's CSA result for the current frame -- the SAME orchestration

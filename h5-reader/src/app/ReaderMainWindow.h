@@ -206,6 +206,12 @@ private:
     // ellipsoid + molecular-frame axes) for the current frame; clears when
     // there is no focus or no DFT for the frame. Focus/frame driven.
     void updateCsaGlyph();
+    // Recompute + redraw the focused atom's bond-orientation order tensor
+    // (<u(x)u>) as the SAME ovaloid + principal-axis arrows the CSA glyph uses
+    // (shared TensorGlyphActor) -- consistent, not ad hoc. Drawn at the bond
+    // midpoint when the focused atom is an endpoint of a reorient bond vector;
+    // clears otherwise. Focus/frame driven, like updateCsaGlyph.
+    void updateOrientationTensorGlyph();
     void setEmptyState();
     // Single source of truth for control enable/checked state. Derives the
     // whole operating state (loaded / playable / playing / selection / data

@@ -9,6 +9,7 @@
 #include "QtRingPolygonOverlay.h"
 #include "QuietTrackballStyle.h"
 #include "CsaTensorOverlay.h"
+#include "TensorGlyphActor.h"
 #include "SceneRevealOverlay.h"
 
 #include "../diagnostics/ObjectCensus.h"
@@ -313,6 +314,14 @@ void MoleculeScene::Build(const model::QtProtein& protein,
         // Glyph on the depth-peeled MAIN renderer (translucent, seamless with the
         // molecule like the isosurfaces); labels + readout on the overlay layer.
         csaOverlay_ = new CsaTensorOverlay(renderer_, overlayRenderer_, this);
+    }
+
+    // Bond-orientation order tensor glyph -- the SAME TensorGlyphActor the CSA
+    // overlay draws through, on the SAME depth-peeled renderer, so the two tensor
+    // representations are identical (consistent, not ad hoc). Focus-driven by
+    // ReaderMainWindow::updateOrientationTensorGlyph, like the CSA glyph.
+    if (!orientationGlyph_) {
+        orientationGlyph_ = std::make_unique<TensorGlyphActor>(renderer_);
     }
 
     qCInfo(cScene).noquote()
