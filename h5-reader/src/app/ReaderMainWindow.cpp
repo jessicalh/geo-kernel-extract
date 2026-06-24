@@ -414,6 +414,17 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
         ACONNECT(selection_, &model::AtomSelection::cleared,
                  measurementsDock_, &MeasurementsDock::clear);
     }
+
+    // Atom Info is the DEFAULT front tab on a single-atom focus: Newman (and the
+    // Measurements / strip docks) reveal alongside as tabs but must not steal it.
+    // Covers REST picks too (the picker-signal reveal above is GUI-only). Queued
+    // AFTER Newman's reveal so this deferred raise wins; gated on a single atom so
+    // a 2-4 atom geometry instead raises the Measurements tab (handled above).
+    ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+             [this](std::size_t) {
+                 if (inspectorDock_ && selection_ && selection_->atoms().size() < 2)
+                     revealDockQueued(inspectorDock_);
+             });
     ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) { refreshControlStates(); });
     ACONNECT(selection_, &model::AtomSelection::cleared, this,
