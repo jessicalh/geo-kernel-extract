@@ -212,16 +212,12 @@ qt_add_library(h5reader_core STATIC
 
     src/app/QtAtomPicker.h
     src/app/QtAtomPicker.cpp
-    src/app/QtSelectionOverlay.h
-    src/app/QtSelectionOverlay.cpp
     src/app/MeasurementOverlay.h
     src/app/MeasurementOverlay.cpp
     src/app/SceneRevealOverlay.h
     src/app/SceneRevealOverlay.cpp
     src/app/CsaTensorOverlay.h
     src/app/CsaTensorOverlay.cpp
-    src/app/SelectionDock.h
-    src/app/SelectionDock.cpp
     src/app/NearbySignalModel.h
     src/app/NearbySignalModel.cpp
     src/app/SignalDisplayDialog.h

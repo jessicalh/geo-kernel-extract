@@ -12,10 +12,12 @@
 //   * focus  → the single-atom consumers (inspector dock, time-series dock)
 //              that show one atom's full state. focus follows the most
 //              recently touched member.
-//   * the ordered set → the measurement overlay (≤4 colour-coded spheres,
-//              and later distance/angle/dihedral) and the comparison plots.
-//   * the model rows → any QAbstractItemView (the SelectionDock panel today;
-//              the comparison table tomorrow).
+//   * the ordered set -> the measurement overlay (up to 4 colour-coded
+//              spheres + connecting polyline) and the Measurements dock
+//              (distance / angle / dihedral readouts) -- both shipped.
+// (The role-based model rows once fed a view, the SelectionDock; that dock was
+//  retired, so no QAbstractItemView consumes them today -- only the typed C++
+//  API below. The planned comparison plots / table were never built.)
 //
 // Gesture policy:
 //   * plain pick  → replace the whole set with {idx} (focus = idx).
