@@ -262,7 +262,6 @@ private:
     // VTK widget; Atom Info is tabified with the compact selection panel.
     class QtAtomPicker* picker_ = nullptr;
     class QtAtomInspectorDock* inspectorDock_ = nullptr;
-    class NewmanDock* newmanDock_ = nullptr;
     class MeasurementsDock* measurementsDock_ = nullptr;
 
     // Camera input filter — Qt eventFilter on the VTK widget, intercepts

@@ -204,6 +204,9 @@ private:
         buildDihedralLagDecayPanel(const model::DashboardSignal& signal,
                                     const model::SignalDescriptor& descriptor) const;
     std::unique_ptr<AbstractStripPanel>
+        buildDihedralNewmanPanel(const model::DashboardSignal& signal,
+                                 const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
         buildKernelCoherenceChordPanel(const model::DashboardSignal& signal,
                                         const model::SignalDescriptor& descriptor) const;
     std::unique_ptr<AbstractStripPanel>

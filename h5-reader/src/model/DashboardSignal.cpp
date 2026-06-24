@@ -221,6 +221,8 @@ QString ToString(VisualizationType type) {
         return QStringLiteral("fixed frequency");
     case VisualizationType::PowerSpectrum:
         return QStringLiteral("power spectrum");
+    case VisualizationType::Newman:
+        return QStringLiteral("newman");
     }
     return QStringLiteral("unknown");
 }

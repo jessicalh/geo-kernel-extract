@@ -3,6 +3,7 @@
 #include "ChordCouplingVisualization.h"
 #include "FixedFrequencyVisualization.h"
 #include "LagCurveVisualization.h"
+#include "NewmanVisualization.h"
 #include "PowerSpectrumVisualization.h"
 #include "SequenceBarVisualization.h"
 #include "StripVisualization.h"
@@ -18,13 +19,14 @@ namespace h5reader::model {
 
 namespace {
 
-constexpr std::array<detail::DisplayModeCapabilityRow, 6> kStaticModeCapabilities{{
+constexpr std::array<detail::DisplayModeCapabilityRow, 7> kStaticModeCapabilities{{
     {"static.bar.sequence", {true, true, true}},
     {"static.spectrum.power", {false, true, true}},
     {"static.curve.lag.animated", {true, true, true}},
     {"static.chord.coupling", {true, true, true}},
     {"static.fixed_freq", {true, true, true}},
     {"static.tensor", {false, false, true}},
+    {"static.newman", {true, true, true}},
 }};
 
 bool isStripMode(const QString& modeId) {
@@ -46,6 +48,7 @@ VisualizationRegistry::VisualizationRegistry() {
     defs_.push_back(std::make_unique<FixedFrequencyVisualization>());
     defs_.push_back(std::make_unique<PowerSpectrumVisualization>());
     defs_.push_back(std::make_unique<TensorGlyphVisualization>());
+    defs_.push_back(std::make_unique<NewmanVisualization>());
 }
 
 QVector<const VisualizationDefinition*> VisualizationRegistry::definitions() const {

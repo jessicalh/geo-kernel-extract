@@ -112,6 +112,8 @@ QString visualizationTypeLabel(model::VisualizationType type) {
         return QStringLiteral("Glyph / overlay");
     case model::VisualizationType::AtomColor:
         return QStringLiteral("Color map");
+    case model::VisualizationType::Newman:
+        return QStringLiteral("Newman");
     }
     return {};
 }
@@ -134,6 +136,8 @@ QString visualizationTypeKey(model::VisualizationType type) {
         return QStringLiteral("tensorGlyph");
     case model::VisualizationType::AtomColor:
         return QStringLiteral("colorMap");
+    case model::VisualizationType::Newman:
+        return QStringLiteral("newman");
     }
     return {};
 }
@@ -155,6 +159,8 @@ std::optional<model::VisualizationType> visualizationTypeForKey(const QString& k
         return model::VisualizationType::TensorGlyph;
     if (key == QStringLiteral("colorMap"))
         return model::VisualizationType::AtomColor;
+    if (key == QStringLiteral("newman"))
+        return model::VisualizationType::Newman;
     return std::nullopt;
 }
 
@@ -172,6 +178,7 @@ bool modeMatchesType(const QString& modeId, model::VisualizationType type) {
     case model::VisualizationType::PowerSpectrum:
     case model::VisualizationType::TensorGlyph:
     case model::VisualizationType::AtomColor:
+    case model::VisualizationType::Newman:
         if (const model::VisualizationDefinition* definition =
                 model::VisualizationRegistry::instance().definitionForMode(modeId)) {
             return definition->type() == type;
@@ -335,12 +342,13 @@ bool anchorAxisCanSatisfy(model::SignalAxis selectedAxis, model::SignalAxis requ
     return model::AxisCanSatisfy(selectedAxis, requiredAxis);
 }
 
-std::array<model::VisualizationType, 5> allVisualizationTypes() {
+std::array<model::VisualizationType, 6> allVisualizationTypes() {
     return {model::VisualizationType::TemporalStrip,
             model::VisualizationType::SequenceBar,
             model::VisualizationType::LagCurve,
             model::VisualizationType::ChordCoupling,
-            model::VisualizationType::FixedFrequency};
+            model::VisualizationType::FixedFrequency,
+            model::VisualizationType::Newman};
 }
 
 void configureTable(QTableView* view) {

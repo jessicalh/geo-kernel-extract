@@ -8,7 +8,6 @@
 #include "MoleculeScene.h"
 #include "NearbySignalModel.h"
 #include "MeasurementsDock.h"
-#include "NewmanDock.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
 #include "RestServer.h"
@@ -282,12 +281,6 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
              inspectorDock_, &QtAtomInspectorDock::setFrame);
 
-    if (newmanDock_) {
-        newmanDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
-        ACONNECT(playback_, &QtPlaybackController::frameChanged,
-                 newmanDock_, &NewmanDock::setFrame);
-    }
-
     if (measurementsDock_) {
         measurementsDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
         ACONNECT(playback_, &QtPlaybackController::frameChanged,
@@ -387,19 +380,6 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ACONNECT(selection_, &model::AtomSelection::cleared,
              inspectorDock_, &QtAtomInspectorDock::clearSelection);
 
-    if (newmanDock_) {
-        ACONNECT(selection_, &model::AtomSelection::focusChanged,
-                 newmanDock_, &NewmanDock::setFocusAtom);
-        ACONNECT(selection_, &model::AtomSelection::cleared,
-                 newmanDock_, &NewmanDock::clear);
-        // Reveal on first focus (3D pick or REST), like the Inspector.
-        ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
-                 [this](std::size_t) {
-                     if (newmanDock_ && !newmanDock_->isVisible())
-                         revealDockQueued(newmanDock_);
-                 });
-    }
-
     if (measurementsDock_) {
         // The whole ORDERED tuple drives a measurement (not just focus), so this
         // tracks AtomSelection::changed; it reveals only once a 2+ atom geometry
@@ -415,11 +395,11 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                  measurementsDock_, &MeasurementsDock::clear);
     }
 
-    // Atom Info is the DEFAULT front tab on a single-atom focus: Newman (and the
-    // Measurements / strip docks) reveal alongside as tabs but must not steal it.
-    // Covers REST picks too (the picker-signal reveal above is GUI-only). Queued
-    // AFTER Newman's reveal so this deferred raise wins; gated on a single atom so
-    // a 2-4 atom geometry instead raises the Measurements tab (handled above).
+    // Atom Info is the DEFAULT front tab on a single-atom focus: the Measurements
+    // / strip docks reveal alongside as tabs but must not steal it. Covers REST
+    // picks too (the picker-signal reveal above is GUI-only). Deferred via
+    // revealDockQueued so this raise wins; gated on a single atom so a 2-4 atom
+    // geometry instead raises the Measurements tab (handled above).
     ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) {
                  if (inspectorDock_ && selection_ && selection_->atoms().size() < 2)
@@ -667,8 +647,6 @@ void ReaderMainWindow::clearLoadedRun() {
         inspectorDock_->setFieldAvailability({});
         inspectorDock_->clearSelection();
     }
-    if (newmanDock_)
-        newmanDock_->setContext(nullptr, nullptr);
     if (measurementsDock_)
         measurementsDock_->setContext(nullptr, nullptr);
 
@@ -1745,12 +1723,6 @@ void ReaderMainWindow::buildDocks() {
     addDockWidget(Qt::LeftDockWidgetArea, dashboardStripDock_);
     tabifyDockWidget(inspectorDock_, dashboardStripDock_);
 
-    // Newman dock — tabified alongside; reveals on focus like the Inspector,
-    // and redraws the focused residue's backbone phi/psi live as frames play.
-    newmanDock_ = new NewmanDock(this);
-    addDockWidget(Qt::LeftDockWidgetArea, newmanDock_);
-    tabifyDockWidget(inspectorDock_, newmanDock_);
-
     // Measurements dock -- tabified alongside; reveals when a 2-4 atom geometry
     // is selected, and re-reads the distance/angle/dihedral live as frames play.
     // The value lives here, not as floating text on the molecule.
@@ -1767,7 +1739,6 @@ void ReaderMainWindow::buildDocks() {
     // for users who intentionally left a dock visible.
     inspectorDock_->setVisible(false);
     dashboardStripDock_->setVisible(false);
-    newmanDock_->setVisible(false);
 
     ACONNECT(dashboardStripDock_, &QDockWidget::visibilityChanged,
              this, [this](bool visible) {

@@ -22,6 +22,7 @@ enum class VisualizationType : std::uint8_t {
     ChordCoupling,
     FixedFrequency,
     PowerSpectrum,
+    Newman,
 };
 
 enum class DisplaySurface : std::uint8_t {

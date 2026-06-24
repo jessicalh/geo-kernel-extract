@@ -24,6 +24,7 @@
 #include "ChordCouplingPanel.h"
 #include "FixedFreqPanel.h"
 #include "LagDecayPanel.h"
+#include "NewmanPanel.h"
 #include "PowerSpectrumPanel.h"
 #include "SceneRevealOverlay.h"
 #include "SequenceBarPanel.h"
@@ -1759,6 +1760,12 @@ void DashboardDisplayController::rebuild() {
                             nextPanels.push_back(std::move(panel));
                     }
                     break;
+                case model::VisualizationType::Newman:
+                    if (path == QStringLiteral("/trajectory/dihedral_time_series")) {
+                        if (auto panel = buildDihedralNewmanPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    }
+                    break;
                 case model::VisualizationType::TemporalStrip:
                 case model::VisualizationType::TensorGlyph:
                 case model::VisualizationType::AtomColor:
@@ -2418,6 +2425,57 @@ DashboardDisplayController::buildDihedralLagDecayPanel(
         signal.label.isEmpty() ? descriptor.label : signal.label,
         std::move(view),
         /*atomRow=*/0,
+        std::move(reveal));
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildDihedralNewmanPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    model::Conformation* conf = conformation_.data();
+    if (!protein_ || !conf) return nullptr;
+
+    const auto* res = std::get_if<model::ResidueAnchor>(&signal.binding.anchor);
+    if (!res) return nullptr;
+    const std::size_t residue = res->residue;
+
+    // Whole-trajectory angle-occupancy haze: a 72-bin histogram over [-180, 180)
+    // accumulated across every frame, drawn behind the live d'Arsonval needle.
+    // The torsion is rigid-invariant, so this runs on the base conformation.
+    constexpr std::size_t kBins = 72;
+    NewmanOccupancy occPhi;
+    NewmanOccupancy occPsi;
+    occPhi.bins.assign(kBins, 0.0f);
+    occPsi.bins.assign(kBins, 0.0f);
+    const std::size_t frames = conf->frameCount();
+    const auto accumulate = [&](NewmanKind kind, NewmanOccupancy& occ) {
+        for (std::size_t f = 0; f < frames; ++f) {
+            const NewmanProjection pr =
+                ComputeNewmanProjection(*protein_, *conf, residue, f, kind);
+            if (!pr.valid) continue;
+            double a = pr.torsionDeg;  // (-180, 180]
+            while (a < -180.0) a += 360.0;
+            while (a >= 180.0) a -= 360.0;
+            std::size_t bin = static_cast<std::size_t>(
+                (a + 180.0) / 360.0 * static_cast<double>(kBins));
+            if (bin >= kBins) bin = kBins - 1;
+            occ.bins[bin] += 1.0f;
+        }
+    };
+    accumulate(NewmanKind::Phi, occPhi);
+    accumulate(NewmanKind::Psi, occPsi);
+
+    model::SignalBinding reveal;
+    reveal.descriptorId = descriptor.id;
+    reveal.anchor = model::ResidueAnchor{residue};
+
+    return std::make_unique<NewmanPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        protein_,
+        conf,
+        residue,
+        std::move(occPhi),
+        std::move(occPsi),
         std::move(reveal));
 }
 

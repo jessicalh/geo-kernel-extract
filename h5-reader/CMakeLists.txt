@@ -124,6 +124,8 @@ qt_add_library(h5reader_core STATIC
     src/model/PowerSpectrumVisualization.cpp
     src/model/TensorGlyphVisualization.h
     src/model/TensorGlyphVisualization.cpp
+    src/model/NewmanVisualization.h
+    src/model/NewmanVisualization.cpp
     src/model/TrajectorySignalCatalog.h
     src/model/TrajectorySignalCatalog.cpp
     src/model/SignalTimeSeries.h
@@ -189,8 +191,8 @@ qt_add_library(h5reader_core STATIC
     src/app/MoleculeScene.cpp
     src/app/NewmanProjection.h
     src/app/NewmanProjection.cpp
-    src/app/NewmanDock.h
-    src/app/NewmanDock.cpp
+    src/app/NewmanPaint.h
+    src/app/NewmanPaint.cpp
     src/app/MeasurementsDock.h
     src/app/MeasurementsDock.cpp
     src/app/ReaderMainWindow.h
@@ -244,6 +246,8 @@ qt_add_library(h5reader_core STATIC
     src/app/ChordCouplingPanel.cpp
     src/app/FixedFreqPanel.h
     src/app/FixedFreqPanel.cpp
+    src/app/NewmanPanel.h
+    src/app/NewmanPanel.cpp
     src/app/TensorGlyphMath.h
     src/app/StripStackWidget.h
     src/app/StripStackWidget.cpp
@@ -716,6 +720,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/PowerSpectrumVisualization.cpp
         src/model/TensorGlyphVisualization.h
         src/model/TensorGlyphVisualization.cpp
+        src/model/NewmanVisualization.h
+        src/model/NewmanVisualization.cpp
         src/model/QtRing.h
         src/model/QtRing.cpp
         src/model/QtTopology.h
@@ -896,6 +902,12 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/app/ChordCouplingPanel.cpp
         src/app/FixedFreqPanel.h
         src/app/FixedFreqPanel.cpp
+        src/app/NewmanPanel.h
+        src/app/NewmanPanel.cpp
+        src/app/NewmanPaint.h
+        src/app/NewmanPaint.cpp
+        src/app/NewmanProjection.h
+        src/app/NewmanProjection.cpp
         src/app/SceneRevealOverlay.h
         src/app/SceneRevealOverlay.cpp
         src/model/Conformation.h
@@ -927,6 +939,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/PowerSpectrumVisualization.cpp
         src/model/TensorGlyphVisualization.h
         src/model/TensorGlyphVisualization.cpp
+        src/model/NewmanVisualization.h
+        src/model/NewmanVisualization.cpp
         src/model/AtomSelection.h
         src/model/AtomSelection.cpp
         src/model/TrajectorySignalCatalog.h
