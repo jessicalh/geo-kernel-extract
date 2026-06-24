@@ -405,7 +405,7 @@ QString groupTitle(model::MetricGroup group) {
 
 QString roleTitle(model::MetricRole role) {
     switch (role) {
-    case model::MetricRole::Hypothesis: return QStringLiteral("hypothesis kernel");
+    case model::MetricRole::Hypothesis: return QStringLiteral("contribution");
     case model::MetricRole::Reference:  return QStringLiteral("reference");
     case model::MetricRole::Input:      return QStringLiteral("input");
     case model::MetricRole::Dynamics:   return QStringLiteral("dynamics");
