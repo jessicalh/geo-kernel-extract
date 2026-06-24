@@ -481,8 +481,8 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
         bool any = false;
         any |= AddOptSpherical(g, QStringLiteral("coulomb_shielding"), coul.shielding(a), QStringLiteral("V/Å²"));
         any |= AddOptVec3(g, QStringLiteral("coulomb_E"), coul.E(a), QStringLiteral("V/Å"));
-        any |= AddOptVec3(g, QStringLiteral("apbs_E"), apbs.E(a), QStringLiteral("V/Å"));
-        any |= AddOptEfg(g, QStringLiteral("apbs_efg"), apbs.efg(a), QStringLiteral("V/Å²"));
+        any |= AddOptVec3(g, QStringLiteral("apbs_E (APBS placeholder)"), apbs.E(a), QStringLiteral("V/Å"));
+        any |= AddOptEfg(g, QStringLiteral("apbs_efg (APBS placeholder)"), apbs.efg(a), QStringLiteral("V/Å²"));
         any |= AddOptEfg(g, QStringLiteral("aimnet2_efg"), model::QtAimnet2Group(s).efg(a), QStringLiteral("V/Å²"));
         if (!any) DeleteIfEmpty(g);
     }
@@ -633,8 +633,8 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
             if (auto tot = orca.total(a)) {
                 auto* g = AddKV(root, QStringLiteral("DFT reference (ORCA)"), QString());
                 AddOptSpherical(g, QStringLiteral("σ total"), tot, QStringLiteral("ppm"));
-                AddOptSpherical(g, QStringLiteral("σ diamagnetic"), orca.diamagnetic(a), QStringLiteral("ppm"));
-                AddOptSpherical(g, QStringLiteral("σ paramagnetic"), orca.paramagnetic(a), QStringLiteral("ppm"));
+                AddOptSpherical(g, QStringLiteral("σ diamagnetic (gauge-dependent)"), orca.diamagnetic(a), QStringLiteral("ppm"));
+                AddOptSpherical(g, QStringLiteral("σ paramagnetic (gauge-dependent)"), orca.paramagnetic(a), QStringLiteral("ppm"));
             }
         }
         model::QtTripeptideGroup trip(s);
