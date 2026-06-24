@@ -103,6 +103,19 @@ QStringList efgStripModes() {
     };
 }
 
+// Strip modes for a SPHERICAL-tensor field that is physically traceless +
+// symmetric -- the Coulomb / MOPAC-Coulomb electric-field shielding
+// contribution, whose isotropic (T0) and antisymmetric (T1) parts are
+// identically zero (measured flat, span ~1e-16). Offer the rank-2 (T2) signal +
+// component browse only, matching the EfgT2 H5 sibling; the on-disk snapshot
+// stays a full spherical tensor, so the value SHAPE is unchanged.
+QStringList tracelessTensorStripModes() {
+    return {
+        QStringLiteral("strip.tensor.T2"),
+        QStringLiteral("strip.tensor.component"),
+    };
+}
+
 QStringList efgStaticModes() {
     return {
         QStringLiteral("static.tensor"),
@@ -908,8 +921,8 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
         {"bs_shielding", "bs_shielding", "biot_savart", "Biot-Savart shielding", ringShielding},
         {"hm_shielding", "hm_shielding", "haigh_mallion", "Haigh-Mallion shielding", ringShielding},
         {"mc_shielding", "mc_shielding", "mcconnell", "McConnell shielding", shielding},
-        {"coulomb_shielding", "coulomb_shielding", "coulomb", "Coulomb shielding", shielding},
-        {"mopac_coulomb_shielding", "mopac_coulomb_shielding", "mopac_coulomb", "MOPAC Coulomb shielding", shielding},
+        // coulomb_shielding + mopac_coulomb_shielding are 2e-only (traceless) --
+        // added after this loop with T2-only modes (see tracelessTensorStripModes).
         {"mopac_mc_shielding", "mopac_mc_shielding", "mopac_mcconnell", "MOPAC McConnell shielding", shielding},
         // ORCA shielding is NOT a per-frame NPY -- it is .out-backed and served
         // live via DftShieldingStore as the orca_dft:* descriptors (addOrcaDft).
@@ -928,6 +941,15 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
 
     for (const TensorField& field : tensorFields)
         npy(field.field, field.conceptKey, field.family, field.label, SignalAxis::Atom, SignalValueShape::SphericalTensor, field.units, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(field.units));
+
+    // The Coulomb / MOPAC-Coulomb electric-field shielding contribution is the
+    // rank-2 (T2) response only: T0 (isotropic) and T1 (antisymmetric) are
+    // identically zero (measured flat, span ~1e-16), so offering strip.tensor.T0
+    // /.T1 drew flat-zero lines. Offer T2 + component, matching the EfgT2 H5
+    // sibling mopac_coulomb_shielding_time_series. Shape stays SphericalTensor --
+    // the on-disk NPY snapshot is a full 9-component tensor.
+    npy("coulomb_shielding", "coulomb_shielding", "coulomb", "Coulomb shielding", SignalAxis::Atom, SignalValueShape::SphericalTensor, shielding, tracelessTensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
+    npy("mopac_coulomb_shielding", "mopac_coulomb_shielding", "mopac_coulomb", "MOPAC Coulomb shielding", SignalAxis::Atom, SignalValueShape::SphericalTensor, shielding, tracelessTensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
 
     const struct PerClassField {
         const char* field;
