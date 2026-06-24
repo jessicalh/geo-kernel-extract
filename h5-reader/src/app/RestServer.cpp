@@ -480,7 +480,7 @@ QJsonArray expectedEmptyArray(const DashboardSmokeSummary& summary) {
 // Thread: VTK render/read must happen on the GUI thread. ASSERT_THREAD against
 // the scene's affinity catches a future regression where a route handler
 // might be routed off the GUI thread by QHttpServer.
-QByteArray captureScenePng(MoleculeScene* scene, bool forceRender = true) {
+QByteArray captureScenePng(MoleculeScene* scene, bool forceRender = true, int scale = 1) {
     if (!scene || !scene->Renderer() || !scene->Renderer()->GetRenderWindow())
         return {};
     ASSERT_THREAD(scene);
@@ -489,8 +489,17 @@ QByteArray captureScenePng(MoleculeScene* scene, bool forceRender = true) {
     w2i->SetInput(scene->Renderer()->GetRenderWindow());
     w2i->SetInputBufferTypeToRGB();
     w2i->ReadFrontBufferOff();
-    if (!forceRender)
+    if (scale > 1) {
+        // Poster / print export: render the scene at scale x scale tiles, then
+        // stitch. The extra pixels are effective supersampling (SSAA) -- edges
+        // smoother than the live FXAA, and a high-DPI image fit for print.
+        // FixBoundary removes the seams between tiles. Scale > 1 always forces
+        // a re-render (the tiles must be drawn), so ShouldRerender is moot here.
+        w2i->SetScale(scale);
+        w2i->FixBoundaryOn();
+    } else if (!forceRender) {
         w2i->ShouldRerenderOff();
+    }
     w2i->Update();
 
     auto writer = vtkSmartPointer<vtkPNGWriter>::New();
@@ -2352,11 +2361,18 @@ void RestServer::registerRoutes() {
         const bool forceRender = (ok && body.contains("force_render") && body.value("force_render").isBool())
                                      ? body.value("force_render").toBool()
                                      : true;
+        // Poster / print export: scale > 1 supersamples the scene capture for a
+        // high-DPI, smoother image (target="scene" only). Clamp to 1..8.
+        int scale = (ok && body.contains(QStringLiteral("scale")))
+                        ? body.value(QStringLiteral("scale")).toInt(1)
+                        : 1;
+        if (scale < 1) scale = 1;
+        else if (scale > 8) scale = 8;
         QByteArray png;
         if (target == QStringLiteral("window")) {
             png = captureWindowPng(mainWindow_.data());
         } else if (target == QStringLiteral("scene")) {
-            png = captureScenePng(scene_.data(), forceRender);
+            png = captureScenePng(scene_.data(), forceRender, scale);
         } else if (target == QStringLiteral("widget")) {
             const QString objectName = body.value(QStringLiteral("object_name")).toString();
             if (objectName.isEmpty())
