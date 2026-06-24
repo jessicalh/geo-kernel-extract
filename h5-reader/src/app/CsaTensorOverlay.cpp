@@ -5,12 +5,6 @@
 #include <vtkPointData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
-#include <vtkTextProperty.h>
-
-#include <QByteArray>
-#include <QFile>
-#include <QLatin1String>
-#include <QString>
 
 #include <algorithm>
 #include <array>
@@ -20,26 +14,17 @@
 namespace h5reader::app {
 
 namespace {
-constexpr double kLabelGap = 0.75;       // Angstrom beyond the arrow tip
-constexpr const char* kGreekFont = "C:/Windows/Fonts/arialbd.ttf";  // has Greek sigma
 constexpr double kOvaloidRadius = 1.5;   // ovaloid extent along the most-anisotropic axis
 constexpr double kOvaloidFloor = 0.015;  // tiny floor so the pinch does not degenerate
 constexpr double kArrowReach = 1.30;     // arrow tip beyond the surface extent
 constexpr double kArrowMinLen = 0.70;    // floor so a near-iso axis still shows an arrow
 constexpr double kArrowInnerGap = 0.10;  // tail offset from centre (+/- arrows don't coincide)
 constexpr double kArrowWidth = 1.25;     // radial scale of the principal-axis arrows
-constexpr double kSigmaRgb[3][3] = {     // distinct per-axis colours (sigma_11/22/33)
-    {0.96, 0.66, 0.16},  // sigma_11 amber
-    {0.18, 0.74, 0.74},  // sigma_22 teal
-    {0.74, 0.36, 0.86},  // sigma_33 violet
+constexpr double kSigmaRgb[3][3] = {     // distinct per-axis colours (sigma_11/22/33);
+    {0.96, 0.66, 0.16},  // sigma_11 amber   mirrored in QtAtomInspectorDock's
+    {0.18, 0.74, 0.74},  // sigma_22 teal    CSA colour key so the arrows stay
+    {0.74, 0.36, 0.86},  // sigma_33 violet  decodable without in-scene labels
 };
-
-// "sigma_11" etc. as UTF-8 (Greek sigma U+03C3). Source stays ASCII.
-QByteArray axisLabelText(int axis) {
-    const QChar sigma(char16_t(0x03C3));
-    const char* idx = (axis == 0) ? "11" : (axis == 1) ? "22" : "33";
-    return (QString(sigma) + QLatin1String(idx)).toUtf8();
-}
 }  // namespace
 
 CsaTensorOverlay::CsaTensorOverlay(vtkSmartPointer<vtkRenderer> sceneRenderer,
@@ -54,11 +39,6 @@ CsaTensorOverlay::~CsaTensorOverlay() {
         if (glyphActor_) renderer_->RemoveActor(glyphActor_);
         for (auto& a : arrowActors_)
             if (a) renderer_->RemoveActor(a);
-    }
-    if (hudRenderer_) {
-        for (auto& t : axisLabels_)
-            if (t) hudRenderer_->RemoveViewProp(t);
-        if (readout_) hudRenderer_->RemoveViewProp(readout_);
     }
 }
 
@@ -133,38 +113,6 @@ void CsaTensorOverlay::ensureActors() {
         renderer_->AddActor(a);
     }
 
-    for (auto& t : axisLabels_) {
-        t = vtkSmartPointer<vtkBillboardTextActor3D>::New();
-        vtkTextProperty* tp = t->GetTextProperty();
-        tp->SetFontSize(22);
-        tp->SetBold(true);
-        tp->SetJustificationToCentered();
-        tp->SetVerticalJustificationToCentered();
-        tp->SetColor(0.97, 0.97, 0.92);
-        tp->SetBackgroundColor(0.05, 0.05, 0.06);
-        tp->SetBackgroundOpacity(0.5);
-        tp->SetFrame(true);
-        tp->SetFrameColor(0.3, 0.3, 0.3);
-        if (QFile::exists(QString::fromLatin1(kGreekFont))) {
-            tp->SetFontFamily(VTK_FONT_FILE);  // Greek sigma in the labels
-            tp->SetFontFile(kGreekFont);
-        }
-        t->SetVisibility(false);
-        hudRenderer_->AddViewProp(t);  // overlay renderer (always readable)
-    }
-
-    readout_ = vtkSmartPointer<vtkCornerAnnotation>::New();
-    readout_->SetLinearFontScaleFactor(2);
-    readout_->SetNonlinearFontScaleFactor(1);
-    readout_->SetMaximumFontSize(20);
-    vtkTextProperty* rp = readout_->GetTextProperty();
-    rp->SetColor(0.97, 0.97, 0.88);
-    rp->SetBold(true);
-    rp->SetBackgroundColor(0.05, 0.05, 0.08);
-    rp->SetBackgroundOpacity(0.55);
-    readout_->SetVisibility(false);
-    hudRenderer_->AddViewProp(readout_);  // overlay renderer (always readable)
-
     actorsBuilt_ = true;
 }
 
@@ -172,9 +120,6 @@ void CsaTensorOverlay::hideAll() {
     if (glyphActor_) glyphActor_->SetVisibility(false);
     for (auto& a : arrowActors_)
         if (a) a->SetVisibility(false);
-    for (auto& t : axisLabels_)
-        if (t) t->SetVisibility(false);
-    if (readout_) readout_->SetVisibility(false);
 }
 
 void CsaTensorOverlay::show(const model::Vec3& atomPos,
@@ -241,10 +186,11 @@ void CsaTensorOverlay::show(const model::Vec3& atomPos,
     glyphFilter_->Modified();
     glyphActor_->SetVisibility(true);
 
-    // Principal-axis arrows + sigma_11/22/33 labels -- the descriptive element.
-    // Each PAS axis is drawn double-headed (+/- director), index-coloured, length
-    // tracking the surface extent (with a floor) so the arrowheads clear the
-    // translucent surface; the label sits at the + tip in the matching colour.
+    // Principal-axis arrows -- the descriptive element. Each PAS axis is drawn
+    // double-headed (+/- director), index-coloured (amber/teal/violet for
+    // sigma_11/22/33), length tracking the surface extent (with a floor) so the
+    // arrowheads clear the translucent surface. The sigma values + colour key are
+    // shown in the Atom Info panel, not labelled here.
     for (int axis = 0; axis < 3; ++axis) {
         const std::size_t ai = static_cast<std::size_t>(axis);
         const model::Vec3 d = shape.pas_axes.col(axis).normalized();
@@ -271,26 +217,7 @@ void CsaTensorOverlay::show(const model::Vec3& atomPos,
             arrowActors_[slot]->GetProperty()->SetColor(col[0], col[1], col[2]);
             arrowActors_[slot]->SetVisibility(true);
         }
-
-        const model::Vec3 tip = atomPos + d * (tipDist + kLabelGap);
-        const QByteArray lbl = axisLabelText(axis);
-        axisLabels_[ai]->SetInput(lbl.constData());
-        axisLabels_[ai]->SetPosition(tip[0], tip[1], tip[2]);
-        axisLabels_[ai]->GetTextProperty()->SetColor(col[0], col[1], col[2]);
-        axisLabels_[ai]->SetVisibility(true);
     }
-
-    // Corner readout -- the shape numbers (absolute shielding, NOT shift) + key.
-    // ASCII words (the embedded VTK font lacks Greek), so this always renders.
-    QString txt = QStringLiteral("CSA tensor  (DFT, viewer-derived)\n");
-    txt += QStringLiteral("iso  = %1 ppm   (absolute shielding)\n").arg(shape.sigma_iso, 0, 'f', 1);
-    txt += QStringLiteral("span = %1 ppm\n").arg(shape.span, 0, 'f', 1);
-    txt += QStringLiteral("skew = %1\n").arg(shape.skew, 0, 'f', 2);
-    txt += QStringLiteral("eta  = %1\n").arg(shape.eta, 0, 'f', 2);
-    txt += QStringLiteral("blue = shielded    red = deshielded");
-    const QByteArray readoutBytes = txt.toUtf8();
-    readout_->SetText(vtkCornerAnnotation::UpperLeft, readoutBytes.constData());
-    readout_->SetVisibility(true);
 
     active_ = true;
 }
@@ -305,9 +232,6 @@ void CsaTensorOverlay::setVisible(bool on) {
     if (glyphActor_) glyphActor_->SetVisibility(v);
     for (auto& a : arrowActors_)
         if (a) a->SetVisibility(v);
-    for (auto& t : axisLabels_)
-        if (t) t->SetVisibility(v);
-    if (readout_) readout_->SetVisibility(v);
 }
 
 }  // namespace h5reader::app

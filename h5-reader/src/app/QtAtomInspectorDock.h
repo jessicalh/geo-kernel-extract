@@ -24,6 +24,7 @@
 
 #include <QDockWidget>
 #include <QPointer>
+#include <QString>
 
 #include <cstddef>
 #include <memory>
@@ -32,6 +33,24 @@ class QTreeWidget;
 class QTreeWidgetItem;
 
 namespace h5reader::app {
+
+// Light, Qt-only carrier for the focused atom's DFT CSA tensor shape so this
+// header stays free of the heavy CsaProbe / DftShieldingStore graph.
+// ReaderMainWindow fills it from the AtomCsaResult it already computes for the
+// glyph; the panel shows it as the "CSA shielding tensor (DFT)" section. The
+// per-axis colours match CsaTensorOverlay's arrows (amber/teal/violet) so the
+// in-scene colour-coded arrows stay decodable without in-scene labels.
+struct CsaTensorInfo {
+    bool    framed = false;
+    QString frameKind;        // human label; "unframed (raw PAS)" when not framed
+    double  sigmaIso = 0.0;   // absolute shielding (ppm), NOT chemical shift
+    double  span = 0.0;       // sigma33 - sigma11 (ppm)
+    double  skew = 0.0;       // 3 (sigma22 - iso) / span
+    double  eta = 0.0;        // asymmetry [0,1]
+    double  sigma11 = 0.0;    // ascending principal values (ppm)
+    double  sigma22 = 0.0;
+    double  sigma33 = 0.0;
+};
 
 class QtAtomInspectorDock final : public QDockWidget {
     Q_OBJECT
@@ -44,6 +63,13 @@ public:
     void setContext(const model::QtProtein* protein,
                     model::Conformation*    conformation);
     void setFieldAvailability(std::shared_ptr<const model::TrajectoryFieldAvailability> availability);
+
+    // The focused atom's DFT CSA tensor for the current frame, mirrored from the
+    // glyph driver (ReaderMainWindow::updateCsaGlyph) so picture and numbers
+    // agree. setCsaTensor shows the section (iff this stays the focused atom);
+    // clearCsaTensor hides it.
+    void setCsaTensor(std::size_t atom, const CsaTensorInfo& info);
+    void clearCsaTensor();
 
 public slots:
     // The dock's two inputs: which atom and which frame. Both cause a
@@ -65,6 +91,7 @@ private:
     void rebuild();
     void populateIdentity(QTreeWidgetItem* parent);
     void populatePerFrame(QTreeWidgetItem* root);
+    void populateCsa(QTreeWidgetItem* root);
 
     QPointer<QTreeWidget>         tree_;
     const model::QtProtein*       protein_      = nullptr;
@@ -73,6 +100,10 @@ private:
     bool                         hasSelection_ = false;
     std::size_t                  atomIdx_      = 0;
     int                          frame_        = 0;
+    // CSA tensor mirror (fed by ReaderMainWindow); shown iff csaAtom_ == atomIdx_.
+    bool                         hasCsa_       = false;
+    std::size_t                  csaAtom_      = 0;
+    CsaTensorInfo                csa_;
 };
 
 }  // namespace h5reader::app

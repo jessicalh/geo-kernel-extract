@@ -33,6 +33,8 @@
 #include "../model/QtWaterFieldGroup.h"
 #include "../model/QtWaterPolarizationGroup.h"
 
+#include <QBrush>
+#include <QColor>
 #include <QFont>
 #include <QHeaderView>
 #include <QLoggingCategory>
@@ -243,6 +245,51 @@ void QtAtomInspectorDock::clearSelection() {
     hint->setText(0, QStringLiteral("Double-click an atom in the viewport"));
 }
 
+void QtAtomInspectorDock::setCsaTensor(std::size_t atom, const CsaTensorInfo& info) {
+    csa_ = info;
+    csaAtom_ = atom;
+    hasCsa_ = true;
+    if (hasSelection_)
+        rebuild();
+}
+
+void QtAtomInspectorDock::clearCsaTensor() {
+    if (!hasCsa_)
+        return;
+    hasCsa_ = false;
+    if (hasSelection_)
+        rebuild();
+}
+
+void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
+    auto* group = AddKV(root, QStringLiteral("CSA shielding tensor (DFT)"),
+                        csa_.framed ? csa_.frameKind : QStringLiteral("unframed"));
+    group->setExpanded(true);
+    AddScalar(group, QStringLiteral("sigma_iso"), csa_.sigmaIso, QStringLiteral("ppm"));
+    AddScalar(group, QStringLiteral("span"), csa_.span, QStringLiteral("ppm"));
+    AddScalar(group, QStringLiteral("skew"), csa_.skew);
+    AddScalar(group, QStringLiteral("eta"), csa_.eta);
+
+    // Per-axis principal values, text-coloured to match the glyph's arrows so the
+    // colour-coded arrows in the scene stay decodable now that the in-scene sigma
+    // labels are gone (colours mirror CsaTensorOverlay's kSigmaRgb).
+    static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
+        {"sigma_11", 0.96, 0.66, 0.16},  // amber
+        {"sigma_22", 0.18, 0.74, 0.74},  // teal
+        {"sigma_33", 0.74, 0.36, 0.86},  // violet
+    };
+    const double vals[3] = {csa_.sigma11, csa_.sigma22, csa_.sigma33};
+    for (int i = 0; i < 3; ++i) {
+        auto* row = AddKV(group, QString::fromLatin1(kAxes[i].name),
+                          FmtDouble(vals[i]) + QStringLiteral(" ppm"));
+        const QBrush brush(QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b));
+        row->setForeground(0, brush);
+        row->setForeground(1, brush);
+    }
+    AddKV(group, QStringLiteral("key"),
+          QStringLiteral("blue = shielded, red = deshielded (absolute shielding)"));
+}
+
 void QtAtomInspectorDock::rebuild() {
     if (!tree_ || !protein_ || !conformation_)
         return;
@@ -265,6 +312,8 @@ void QtAtomInspectorDock::rebuild() {
 
     populateIdentity(title);
     populatePerFrame(title);
+    if (hasCsa_ && csaAtom_ == atomIdx_)
+        populateCsa(title);
 }
 
 void QtAtomInspectorDock::populateIdentity(QTreeWidgetItem* parent) {

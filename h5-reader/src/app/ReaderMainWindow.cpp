@@ -549,7 +549,11 @@ void ReaderMainWindow::updateCsaGlyph() {
     auto redraw = [this] {
         if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
     };
-    auto hide = [&] { overlay->clear(); redraw(); };
+    auto hide = [&] {
+        overlay->clear();
+        if (inspectorDock_) inspectorDock_->clearCsaTensor();
+        redraw();
+    };
 
     if (!loaded_ || !dftStore_ || !transformed_ || !selection_->hasFocus()) {
         hide();
@@ -567,6 +571,21 @@ void ReaderMainWindow::updateCsaGlyph() {
         << "| iso=" << r.shape.sigma_iso << "| eta=" << r.shape.eta
         << "| span=" << r.shape.span;
     overlay->show(r.atomPos, r.shape, r.molecularAxes);
+    if (inspectorDock_) {
+        CsaTensorInfo info;
+        info.framed = r.framed;
+        info.frameKind = r.framed
+                             ? QString::fromLatin1(model::MolecularFrameKindName(r.frameKind))
+                             : QStringLiteral("unframed (raw PAS)");
+        info.sigmaIso = r.shape.sigma_iso;
+        info.span = r.shape.span;
+        info.skew = r.shape.skew;
+        info.eta = r.shape.eta;
+        info.sigma11 = r.shape.principal_values[0];
+        info.sigma22 = r.shape.principal_values[1];
+        info.sigma33 = r.shape.principal_values[2];
+        inspectorDock_->setCsaTensor(atom, info);
+    }
     redraw();
 }
 
