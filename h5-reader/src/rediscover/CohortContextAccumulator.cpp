@@ -1,5 +1,6 @@
 #include "CohortContextAccumulator.h"
 
+#include "ClassicalSourceMath.h"
 #include "DeltaRunData.h"
 #include "LiteratureConstants.h"
 #include "LocalFrameBasis.h"
@@ -111,6 +112,15 @@ QString elementName(model::Element e) {
     return QString::fromLatin1(model::SymbolForElement(e));
 }
 
+model::Element elementFromName(const QString& element) {
+    if (element == QStringLiteral("H")) return model::Element::H;
+    if (element == QStringLiteral("C")) return model::Element::C;
+    if (element == QStringLiteral("N")) return model::Element::N;
+    if (element == QStringLiteral("O")) return model::Element::O;
+    if (element == QStringLiteral("S")) return model::Element::S;
+    return model::Element::Unknown;
+}
+
 QString hybName(model::Hybridisation h) {
     return QString::fromLatin1(model::NameForHybridisation(h)).toLower();
 }
@@ -199,15 +209,45 @@ model::Mat3 matFromArray(const StaticNpyArray* a, std::size_t row) {
     return m;
 }
 
-double iso(const model::Mat3& m) {
-    return (m(0, 0) + m(1, 1) + m(2, 2)) / 3.0;
-}
-
 double ringBsPerTypeIsoPpm(const RunData& run, std::size_t atom) {
     const StaticNpyArray* a = arr(run, io::FieldKind::BSPerTypeT0);
     if (!a || atom >= a->rows || a->cols < static_cast<std::size_t>(model::kAromaticRingTypeCount))
         return kNan;
     return RingPerTypeT0Ppm(a->rowData(atom), a->cols);
+}
+
+struct McProducerField {
+    io::FieldKind kind;
+    model::BondCategory category;
+};
+
+constexpr std::array<McProducerField, 6> kMcForwardProducerFields = {{
+    {io::FieldKind::McPeptideCoBo, model::BondCategory::PeptideCO},
+    {io::FieldKind::McPeptideCNBo, model::BondCategory::PeptideCN},
+    {io::FieldKind::McBackboneOtherBo, model::BondCategory::BackboneOther},
+    {io::FieldKind::McSidechainCoBo, model::BondCategory::SidechainCO},
+    {io::FieldKind::McSidechainOtherBo, model::BondCategory::SidechainOther},
+    {io::FieldKind::McAromaticZeroedBo, model::BondCategory::Aromatic},
+}};
+
+double mcconnellProducerBoPpm(const RunData& run, std::size_t atom) {
+    double out = kNan;
+    for (const McProducerField& field : kMcForwardProducerFields) {
+        const double t0 = PackedSphericalTensorT0(arr(run, field.kind), atom);
+        const double term = McConnellProducerT0ToPpm(field.category, t0);
+        if (!finite(term)) continue;
+        out = finite(out) ? out + term : term;
+    }
+    return out;
+}
+
+double larsenForwardPpm(const RunData& run, std::size_t atom) {
+    double out = kNan;
+    const double tensorT0 = PackedSphericalTensorT0(arr(run, io::FieldKind::LarsenHBondShielding), atom);
+    const double water = valueAt(run, io::FieldKind::LarsenHBondWaterTerm, atom);
+    if (finite(tensorT0)) out = tensorT0;
+    if (finite(water)) out = finite(out) ? out + water : water;
+    return out;
 }
 
 QString hybridisationForAtom(const RunData& run, const model::QtAtom& atom, std::size_t atomIndex) {
@@ -609,13 +649,49 @@ CohortSample sampleForAtom(const RunData& run,
         s.mol_zz = folded.mol_components[5];
     }
 
+    const double eBondProj = valueAt(run, io::FieldKind::MOPACCoulombScalars, atom, 1);
+    const double ring = ringBsPerTypeIsoPpm(run, atom);
+    const double mc = mcconnellProducerBoPpm(run, atom);
+    const double larsen = larsenForwardPpm(run, atom);
+    const LiteratureConstant sigma0 =
+        Sigma0(a.element, residue.toStdString(), f.atom_name.toStdString());
+    const LiteratureConstant buckA =
+        BuckinghamA(a.element, residue.toStdString(), f.atom_name.toStdString(),
+                    f.frame_kind.toStdString());
+    const LiteratureConstant buckB =
+        BuckinghamB(a.element, residue.toStdString(), f.atom_name.toStdString(),
+                    f.frame_kind.toStdString());
+    const ClassicalSigmaResult classical = ComputeClassicalSigma({
+        {sigma0.value, finite(sigma0.value)},
+        {eBondProj, finite(eBondProj)},
+        {buckA.value, finite(buckA.value)},
+        {buckB.value, finite(buckB.value)},
+        {ring, finite(ring)},
+        {mc, finite(mc)},
+        {larsen, finite(larsen)},
+    });
+
     s.channels.insert(QStringLiteral("apbs_E_mag"), vectorMag(run, io::FieldKind::APBSE, atom));
     s.channels.insert(QStringLiteral("mopac_E_mag"), vectorMag(run, io::FieldKind::MOPACCoulombE, atom));
+    s.channels.insert(QStringLiteral("mopac_E_bond_proj"), eBondProj);
     s.channels.insert(QStringLiteral("apbs_efg_absT2"), rowNorm(run, io::FieldKind::APBSEFG, atom));
     s.channels.insert(QStringLiteral("aimnet2_efg_absT2"), rowNorm(run, io::FieldKind::AIMNet2EFG, atom));
-    s.channels.insert(QStringLiteral("ring_bs_iso"), ringBsPerTypeIsoPpm(run, atom));
-    s.channels.insert(QStringLiteral("ring_hm_iso"), iso(matFromArray(arr(run, io::FieldKind::HMShielding), atom)));
-    s.channels.insert(QStringLiteral("mc_lit_iso"), iso(matFromArray(arr(run, io::FieldKind::McPeptideCoFixed), atom)));
+    s.channels.insert(QStringLiteral("ring_bs_iso"), ring);
+    s.channels.insert(QStringLiteral("ring_hm_iso"),
+                      PackedSphericalTensorT0(arr(run, io::FieldKind::HMShielding), atom));
+    s.channels.insert(QStringLiteral("mc_lit_iso"), mc);
+    s.channels.insert(QStringLiteral("mc_bo_iso"), mc);
+    s.channels.insert(QStringLiteral("larsen_iso"), larsen);
+    s.channels.insert(QStringLiteral("classical_sigma0"), classical.sigma0.value);
+    s.channels.insert(QStringLiteral("classical_buckingham_linear"),
+                      classical.buckingham_linear.value);
+    s.channels.insert(QStringLiteral("classical_buckingham_quadratic"),
+                      classical.buckingham_quadratic.value);
+    s.channels.insert(QStringLiteral("classical_buckingham"), classical.buckingham.value);
+    s.channels.insert(QStringLiteral("classical_ring"), classical.ring.value);
+    s.channels.insert(QStringLiteral("classical_mcconnell"), classical.mcconnell.value);
+    s.channels.insert(QStringLiteral("classical_larsen"), classical.larsen.value);
+    s.channels.insert(QStringLiteral("classical_sigma_cl"), classical.sigma_cl.value);
     s.channels.insert(QStringLiteral("ff14sb_charge"), valueAt(run, io::FieldKind::FfPartialCharge, atom));
     s.channels.insert(QStringLiteral("aimnet2_charge"), valueAt(run, io::FieldKind::AIMNet2Charges, atom));
     s.channels.insert(QStringLiteral("sasa"), valueAt(run, io::FieldKind::AtomSASA, atom));
@@ -756,8 +832,11 @@ bool emitStaticTable(const QString& outDir,
         QStringLiteral("r_psi_own"), QStringLiteral("sensitivity_ratio"),
         QStringLiteral("chi1_iminus1_effect"), QStringLiteral("chi1_iminus1_support_class"),
         QStringLiteral("chi1_iminus1_missing_reason"), QStringLiteral("predecessor_identity"),
-        QStringLiteral("contrib_buckingham"), QStringLiteral("contrib_ring"),
+        QStringLiteral("sigma0"), QStringLiteral("mopac_E_parallel"),
+        QStringLiteral("contrib_buckingham"), QStringLiteral("contrib_buckingham_linear"),
+        QStringLiteral("contrib_buckingham_quadratic"), QStringLiteral("contrib_ring"),
         QStringLiteral("contrib_mcconnell"), QStringLiteral("contrib_larsen"),
+        QStringLiteral("sigma_cl"),
         QStringLiteral("r_cl_qm"), QStringLiteral("slope_cl_qm"), QStringLiteral("rmsd_ppm"),
         QStringLiteral("residual_mean"), QStringLiteral("residual_sd"),
         QStringLiteral("constant_buckingham_key"), QStringLiteral("constant_buckingham_units"),
@@ -778,7 +857,6 @@ bool emitStaticTable(const QString& outDir,
         const SupportCredential support =
             CredentialSupport(cell.proteins.size(), true, thresholds);
         const std::vector<double> sigmaVals = proteinSigmaMeans(cell);
-        const std::vector<double> ring = proteinChannelMeans(cell, QStringLiteral("ring_bs_iso"));
         const std::vector<double> apbs = proteinChannelMeans(cell, QStringLiteral("apbs_E_mag"));
         const PermutationNull null = ProteinLabelPermutationNull(apbs, sigmaVals, permutationK);
         const double rPsiPrev = cell.psi_iminus1_vs_sigma.pearson();
@@ -801,23 +879,26 @@ bool emitStaticTable(const QString& outDir,
                 chi1MissingReason = QStringLiteral("predecessor_chi1_insufficient_or_unavailable");
             }
         }
+        const model::Element element = elementFromName(cell.key.fields.element);
         const LiteratureConstant buck =
-            BuckinghamA(cell.key.fields.element == QStringLiteral("H") ? model::Element::H
-                         : cell.key.fields.element == QStringLiteral("C") ? model::Element::C
-                         : cell.key.fields.element == QStringLiteral("N") ? model::Element::N
-                         : cell.key.fields.element == QStringLiteral("O") ? model::Element::O
-                         : cell.key.fields.element == QStringLiteral("S") ? model::Element::S
-                                                                           : model::Element::Unknown,
-                         cell.key.fields.residue_type.toStdString(),
-                         cell.key.fields.atom_name.toStdString(),
-                         cell.key.fields.frame_kind.toStdString());
-        const double contribBuck = buck.value * channelMean(cell, QStringLiteral("apbs_E_mag"));
-        const double contribRing = channelMean(cell, QStringLiteral("ring_bs_iso"));
-        const double contribMc = channelMean(cell, QStringLiteral("mc_lit_iso"));
-        const double contribLarsen = channelMean(cell, QStringLiteral("sasa")) * 0.0;
-        const double cl = contribBuck + contribRing + contribMc + contribLarsen;
-        Q_UNUSED(cl);
-        const ClassicalAgreementStats clAgreement = ComputeClassicalAgreementForCell(cell, buck.value);
+            BuckinghamA(element, cell.key.fields.residue_type.toStdString(),
+                        cell.key.fields.atom_name.toStdString(),
+                        cell.key.fields.frame_kind.toStdString());
+        const LiteratureConstant buckB =
+            BuckinghamB(element, cell.key.fields.residue_type.toStdString(),
+                        cell.key.fields.atom_name.toStdString(),
+                        cell.key.fields.frame_kind.toStdString());
+        const double sigma0 = channelMean(cell, QStringLiteral("classical_sigma0"));
+        const double eParallel = channelMean(cell, QStringLiteral("mopac_E_bond_proj"));
+        const double contribBuck = channelMean(cell, QStringLiteral("classical_buckingham"));
+        const double contribBuckLinear = channelMean(cell, QStringLiteral("classical_buckingham_linear"));
+        const double contribBuckQuadratic =
+            channelMean(cell, QStringLiteral("classical_buckingham_quadratic"));
+        const double contribRing = channelMean(cell, QStringLiteral("classical_ring"));
+        const double contribMc = channelMean(cell, QStringLiteral("classical_mcconnell"));
+        const double contribLarsen = channelMean(cell, QStringLiteral("classical_larsen"));
+        const double sigmaCl = channelMean(cell, QStringLiteral("classical_sigma_cl"));
+        const ClassicalAgreementStats clAgreement = ComputeClassicalAgreementForCell(cell);
 
         QStringList row = {
             kSchemaName,
@@ -863,17 +944,24 @@ bool emitStaticTable(const QString& outDir,
             << chi1Support.support_name
             << chi1MissingReason
             << cell.predecessor_identity
+            << csvDouble(sigma0)
+            << csvDouble(eParallel)
             << csvDouble(contribBuck)
+            << csvDouble(contribBuckLinear)
+            << csvDouble(contribBuckQuadratic)
             << csvDouble(contribRing)
             << csvDouble(contribMc)
             << csvDouble(contribLarsen)
+            << csvDouble(sigmaCl)
             << csvDouble(clAgreement.r)
             << csvDouble(clAgreement.slope)
             << csvDouble(clAgreement.rmsd)
             << csvDouble(clAgreement.residual_mean)
             << csvDouble(clAgreement.residual_sd)
-            << QString::fromLatin1(buck.key)
-            << QString::fromLatin1(buck.units)
+            << QStringLiteral("%1;%2").arg(QString::fromLatin1(buck.key),
+                                           QString::fromLatin1(buckB.key))
+            << QStringLiteral("%1;%2").arg(QString::fromLatin1(buck.units),
+                                           QString::fromLatin1(buckB.units))
             << QString::fromLatin1(LiteratureStatusName(buck.status));
         writeCsvLine(ts, row);
     }

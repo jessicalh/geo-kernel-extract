@@ -567,7 +567,11 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         tests/rediscover_classical_source_math_tests.cpp
         src/rediscover/ClassicalSourceMath.h
         src/rediscover/ClassicalSourceMath.cpp
+        src/rediscover/McConnellLiteratureKernel.h
+        src/rediscover/McConnellLiteratureKernel.cpp
         src/rediscover/RingCurrentScalars.h
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
         src/calculators/QtBiotSavartCalc.h
         src/calculators/QtBiotSavartCalc.cpp
         src/rediscover/TensorConventionGuard.h
@@ -741,6 +745,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
 
     qt_add_executable(h5reader_rediscover_cohort_context_tests
         tests/rediscover_cohort_context_tests.cpp
+        src/rediscover/ClassicalSourceMath.h
+        src/rediscover/ClassicalSourceMath.cpp
         src/rediscover/CohortContextAccumulator.h
         src/rediscover/CohortContextCore.cpp
         src/rediscover/DistributionSummary.h

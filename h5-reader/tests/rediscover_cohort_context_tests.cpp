@@ -1,5 +1,7 @@
 #include "rediscover/CohortContextAccumulator.h"
+#include "rediscover/ClassicalSourceMath.h"
 #include "rediscover/DeltaRunData.h"
+#include "rediscover/LiteratureConstants.h"
 #include "rediscover/ScopedProducerCatalog.h"
 
 #include <QtTest/QtTest>
@@ -71,6 +73,8 @@ private slots:
     void permutationNullLeavesSentinelBlankWhenNotComputable();
     void helixDipoleHasExpectedSign();
     void deltaLoaderIsNarrowAndRefusesMissingArrays();
+    void packedTensorT0UsesProducerLayout();
+    void axis2McConnellBoAppliesCategoryDeltaChi();
     void foldAdapterProjectsMolecularComponents();
     void classicalAgreementUsesPerProteinPoints();
     void predecessorChi1EffectUsesPairAccumulator();
@@ -272,6 +276,35 @@ void RediscoverCohortContextTests::deltaLoaderIsNarrowAndRefusesMissingArrays() 
     QCOMPARE(delta->ala_n, std::size_t(3));
 }
 
+void RediscoverCohortContextTests::packedTensorT0UsesProducerLayout() {
+    StaticNpyArray a = tensorArray(QStringLiteral("packed_tensor"), 2);
+    a.values[9 + 0] = -0.25;
+    a.values[9 + 4] = 5.0;
+    a.values[9 + 8] = 8.0;
+
+    const double oldRowMajorIso = (-0.25 + 5.0 + 8.0) / 3.0;
+    const double packedT0 = PackedSphericalTensorT0(&a, 1);
+    QCOMPARE(packedT0, -0.25);
+    QVERIFY(packedT0 != oldRowMajorIso);
+}
+
+void RediscoverCohortContextTests::axis2McConnellBoAppliesCategoryDeltaChi() {
+    StaticNpyArray a = tensorArray(QStringLiteral("mc_peptide_co_bo"), 1);
+    a.values[0] = 0.125;
+    a.values[4] = 99.0;
+    a.values[8] = -22.0;
+
+    const double expected = -kMcConnellMolarPrefactor.value
+                            * McConnellDeltaChi(model::BondCategory::PeptideCO).value
+                            * 0.125;
+    const double scaled =
+        McConnellProducerT0ToPpm(model::BondCategory::PeptideCO,
+                                 PackedSphericalTensorT0(&a, 0));
+    QVERIFY(std::abs(scaled - expected) < 1e-15);
+    QVERIFY(scaled != a.values[0]);
+    QVERIFY(scaled != (a.values[0] + a.values[4] + a.values[8]) / 3.0);
+}
+
 void RediscoverCohortContextTests::foldAdapterProjectsMolecularComponents() {
     model::Mat3 raw = model::Mat3::Zero();
     raw(0, 0) = 1.0;
@@ -310,11 +343,12 @@ void RediscoverCohortContextTests::classicalAgreementUsesPerProteinPoints() {
         s.channels.insert(QStringLiteral("apbs_E_mag"), static_cast<double>(i));
         s.channels.insert(QStringLiteral("ring_bs_iso"), 10.0 + static_cast<double>(i));
         s.channels.insert(QStringLiteral("mc_lit_iso"), static_cast<double>(i));
+        s.channels.insert(QStringLiteral("classical_sigma_cl"), s.sigma_iso);
         acc.push(s);
     }
 
     const ClassicalAgreementStats stats =
-        ComputeClassicalAgreementForCell(acc.cells().begin()->second, 0.0);
+        ComputeClassicalAgreementForCell(acc.cells().begin()->second);
     QVERIFY(std::isfinite(stats.r));
     QVERIFY(stats.r > 0.999);
     QCOMPARE(stats.slope, 1.0);

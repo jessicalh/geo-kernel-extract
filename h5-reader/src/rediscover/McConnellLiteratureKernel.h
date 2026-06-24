@@ -16,10 +16,11 @@ namespace h5reader::rediscover {
 bool McConnellLiteratureCategory(model::BondCategory category);
 double McConnellDeltaChiQ(model::BondCategory category);
 double McConnellMolarPrefactor();
+double McConnellForwardContributionPpm(const model::SphericalTensor& literatureScaledKernel);
 
 // Source-level shielding-signed, literature-scaled McConnell PCS tensor in the
-// target atom's local frame. T0 is forced to the traceless PCS value (~0); T2 is
-// ppm in the rediscover/library component order.
+// target atom's local frame. T0 is the signed isotropic ppm scalar; T2 is ppm in
+// the rediscover/library component order.
 model::SphericalTensor McConnellSourceLiteratureKernelLocal(const SourceSlot& source,
                                                             bool* present = nullptr);
 

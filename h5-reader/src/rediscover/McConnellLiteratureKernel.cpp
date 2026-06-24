@@ -34,6 +34,10 @@ double McConnellMolarPrefactor() {
     return kMcConnellMolarPrefactor.value;
 }
 
+double McConnellForwardContributionPpm(const model::SphericalTensor& literatureScaledKernel) {
+    return literatureScaledKernel.T0;
+}
+
 model::SphericalTensor McConnellSourceLiteratureKernelLocal(const SourceSlot& source,
                                                             bool* present) {
     if (present) *present = false;
@@ -62,13 +66,12 @@ model::SphericalTensor McConnellSourceLiteratureKernelLocal(const SourceSlot& so
         / r3;
 
     // The project-canonical M tensor has T0=f=(3cos^2-1)/r^3. The literature
-    // shielding scalar is sigma=-prefactor*q*f/3, so scale M by -prefactor*q/3
-    // before taking the traceless PCS tensor. The trace removal leaves T2
-    // unchanged and makes mc_lit_T0 an explicit near-zero audit channel.
+    // shielding scalar is sigma=-prefactor*q*f/3, so scale M by -prefactor*q/3.
+    // DecomposeLibrary keeps that signed isotropic scalar in T0 while deriving
+    // T2 from the traceless symmetric part.
     const double q = McConnellDeltaChiQ(category);
     const double scale = -McConnellMolarPrefactor() * q / 3.0;
-    Mat3 sigma = scale * mCode;
-    sigma -= (sigma.trace() / 3.0) * Mat3::Identity();
+    const Mat3 sigma = scale * mCode;
 
     if (present) *present = true;
     return DecomposeLibrary(sigma);

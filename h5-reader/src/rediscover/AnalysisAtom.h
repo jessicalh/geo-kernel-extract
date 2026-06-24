@@ -33,6 +33,7 @@ struct ClassicalSourceTermRecord {
 
     std::vector<double> sigma_qm;
     std::vector<double> sigma0;
+    std::vector<double> buckingham;
     std::vector<double> buckingham_linear;
     std::vector<double> buckingham_quadratic;
     std::vector<double> ring;

@@ -1,5 +1,10 @@
 #include "CohortContextAccumulator.h"
 
+#include "ClassicalSourceMath.h"
+#include "LiteratureConstants.h"
+
+#include "../model/QtResultBlocks.h"
+
 #include <QRegularExpression>
 
 #include <Eigen/Dense>
@@ -345,8 +350,7 @@ double PairAccumulator::pearson() const {
     return den > 0.0 ? cov / den : kNan;
 }
 
-ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell,
-                                                         double buckinghamA) {
+ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell) {
     std::vector<double> cl;
     std::vector<double> qm;
     std::vector<double> residuals;
@@ -357,10 +361,8 @@ ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& 
     for (auto it = cell.protein_folds.begin(); it != cell.protein_folds.end(); ++it) {
         const CohortProteinFold& p = it.value();
         const double sigma = p.sigma.meanValue();
-        const double apbs = p.channels.value(QStringLiteral("apbs_E_mag")).meanValue();
-        const double ring = p.channels.value(QStringLiteral("ring_bs_iso")).meanValue();
-        const double mc = p.channels.value(QStringLiteral("mc_lit_iso")).meanValue();
-        const double classical = buckinghamA * apbs + ring + mc;
+        const double classical =
+            p.channels.value(QStringLiteral("classical_sigma_cl")).meanValue();
         if (!finite(sigma) || !finite(classical)) continue;
         cl.push_back(classical);
         qm.push_back(sigma);
@@ -378,6 +380,17 @@ ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& 
         out.residual_sd = res.sd;
     }
     return out;
+}
+
+double PackedSphericalTensorT0(const StaticNpyArray* a, std::size_t row) {
+    if (!a || row >= a->rows || a->cols < 9) return kNan;
+    const double* packed = a->rowData(row);
+    if (!packed) return kNan;
+    return model::UnpackSphericalTensor(packed).T0;
+}
+
+double McConnellPeptideCoT0ToPpm(double packedT0) {
+    return McConnellProducerT0ToPpm(model::BondCategory::PeptideCO, packedT0);
 }
 
 Axis2FoldedTensor FoldAxis2TensorChannels(const model::Mat3& raw,

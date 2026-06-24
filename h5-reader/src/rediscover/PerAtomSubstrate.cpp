@@ -760,7 +760,7 @@ PairContribution makeBondContribution(const Body& body, std::size_t targetAtom,
     if (litPresent && !slot.mc_source_is_self_or_bonded) {
         out.kernel_T0 = lit.T0;
         out.kernel_T2 = lit.T2;
-        out.contribution = t2Magnitude(lit.T2);
+        out.contribution = McConnellForwardContributionPpm(lit);
     }
     return out;
 }

@@ -224,8 +224,10 @@ struct CohortCellTruth {
     std::size_t retainedAccumulatorValueCount() const;
 };
 
-ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell,
-                                                         double buckinghamA);
+ClassicalAgreementStats ComputeClassicalAgreementForCell(const CohortCellTruth& cell);
+
+double PackedSphericalTensorT0(const StaticNpyArray* a, std::size_t row);
+double McConnellPeptideCoT0ToPpm(double packedT0);
 
 class CohortContextAccumulator {
 public:

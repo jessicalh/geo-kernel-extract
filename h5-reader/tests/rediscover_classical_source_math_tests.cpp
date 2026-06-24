@@ -1,5 +1,6 @@
 #include "rediscover/ClassicalSourceMath.h"
 #include "rediscover/LiteratureConstants.h"
+#include "rediscover/McConnellLiteratureKernel.h"
 #include "rediscover/RingCurrentScalars.h"
 #include "rediscover/TensorConventionGuard.h"
 
@@ -9,6 +10,7 @@
 
 #include <QByteArray>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -44,6 +46,20 @@ double finiteOlsSlope(const std::vector<double>& x, const std::vector<double>& y
     return sxx > 0.0 ? sxy / sxx : std::numeric_limits<double>::quiet_NaN();
 }
 
+SourceSlot peptideCoSource(double r, double cosTheta) {
+    const double sinTheta = std::sqrt(std::max(0.0, 1.0 - cosTheta * cosTheta));
+    const model::Vec3 dHat(sinTheta, 0.0, cosTheta);
+    SourceSlot s;
+    s.kind = SourceKind::Bond;
+    s.disp_local = -r * dHat;
+    s.r = r;
+    s.cos_theta = cosTheta;
+    s.dipolar = (3.0 * cosTheta * cosTheta - 1.0) / (r * r * r);
+    s.bond_category = static_cast<int>(model::BondCategory::PeptideCO);
+    s.bond_axis_local = model::Vec3::UnitZ();
+    return s;
+}
+
 }  // namespace
 
 class RediscoverClassicalSourceMathTests : public QObject {
@@ -75,6 +91,92 @@ private slots:
         const double t2Magnitude = std::sqrt(3.0 * 3.0 + 4.0 * 4.0);
         QCOMPARE(RingForwardContributionPpm(fixed), -2.5);
         QVERIFY(RingForwardContributionPpm(fixed) != t2Magnitude);
+    }
+
+    void mcconnellContributionUsesSignedIsotropicKernel() {
+        model::SphericalTensor fixed;
+        fixed.T0 = -1.25;
+        fixed.T2 = {3.0, 4.0, 0.0, 0.0, 0.0};
+
+        const double t2Magnitude = std::sqrt(3.0 * 3.0 + 4.0 * 4.0);
+        QCOMPARE(McConnellForwardContributionPpm(fixed), -1.25);
+        QVERIFY(McConnellForwardContributionPpm(fixed) != t2Magnitude);
+    }
+
+    void sharedClassicalSigmaUsesSignedMopacFieldAndAllTerms() {
+        const ClassicalSigmaResult out = ComputeClassicalSigma({
+            {100.0, true},
+            {-2.0, true},
+            {3.0, true},
+            {0.5, true},
+            {4.0, true},
+            {-1.5, true},
+            {2.25, true},
+        });
+        QVERIFY(out.buckingham_linear.present);
+        QVERIFY(out.buckingham_quadratic.present);
+        QVERIFY(out.buckingham.present);
+        QCOMPARE(out.buckingham_linear.value, 6.0);
+        QCOMPARE(out.buckingham_quadratic.value, -2.0);
+        QCOMPARE(out.buckingham.value, 4.0);
+        QCOMPARE(out.sigma_cl.value, 108.75);
+    }
+
+    void sharedClassicalSigmaOmitsAbsentBuckinghamAxis() {
+        const ClassicalSigmaResult out = ComputeClassicalSigma({
+            {100.0, true},
+            {std::numeric_limits<double>::quiet_NaN(), false},
+            {3.0, true},
+            {0.5, true},
+            {4.0, true},
+            {-1.5, true},
+            {2.25, true},
+        });
+        QVERIFY(!out.buckingham.present);
+        QCOMPARE(out.sigma_cl.value, 104.75);
+    }
+
+    void mcconnellProducerT0ScalingUsesCategoryDeltaChi() {
+        const double co = McConnellProducerT0ToPpm(model::BondCategory::PeptideCO, 0.125);
+        const double cn = McConnellProducerT0ToPpm(model::BondCategory::PeptideCN, 0.125);
+        const double aromatic = McConnellProducerT0ToPpm(model::BondCategory::Aromatic, 0.125);
+        QVERIFY(std::abs(co - (-kMcConnellMolarPrefactor.value
+                               * McConnellDeltaChi(model::BondCategory::PeptideCO).value
+                               * 0.125)) < 1e-15);
+        QVERIFY(co < 0.0);
+        QVERIFY(cn > 0.0);
+        QCOMPARE(aromatic, 0.0);
+    }
+
+    void mcconnellMagicAngleSignFollowsSignedT0() {
+        constexpr double r = 3.0;
+        const double prefactor = McConnellMolarPrefactor();
+        const double deltaChi = McConnellDeltaChi(model::BondCategory::PeptideCO).value;
+
+        bool facePresent = false;
+        const model::SphericalTensor face =
+            McConnellSourceLiteratureKernelLocal(peptideCoSource(r, 1.0), &facePresent);
+        QVERIFY(facePresent);
+        const double faceExpected = -prefactor * deltaChi * (3.0 * 1.0 * 1.0 - 1.0)
+                                    / (3.0 * r * r * r);
+        QVERIFY(std::abs(face.T0 - faceExpected) < 1e-14);
+        QVERIFY(face.T0 < 0.0);
+
+        bool inPlanePresent = false;
+        const model::SphericalTensor inPlane =
+            McConnellSourceLiteratureKernelLocal(peptideCoSource(r, 0.0), &inPlanePresent);
+        QVERIFY(inPlanePresent);
+        const double inPlaneExpected = -prefactor * deltaChi * (3.0 * 0.0 * 0.0 - 1.0)
+                                       / (3.0 * r * r * r);
+        QVERIFY(std::abs(inPlane.T0 - inPlaneExpected) < 1e-14);
+        QVERIFY(inPlane.T0 > 0.0);
+
+        const double magicCos = 1.0 / std::sqrt(3.0);
+        bool magicPresent = false;
+        const model::SphericalTensor magic =
+            McConnellSourceLiteratureKernelLocal(peptideCoSource(r, magicCos), &magicPresent);
+        QVERIFY(magicPresent);
+        QVERIFY(std::abs(magic.T0) < 1e-14);
     }
 
     void ringCurrentSignConventionShieldsFaceDeshieldsInPlane() {

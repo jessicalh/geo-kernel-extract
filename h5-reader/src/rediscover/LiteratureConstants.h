@@ -187,6 +187,16 @@ inline constexpr LiteratureConstant kMcConnellPeptideCN{
 inline constexpr LiteratureConstant kMcConnellSidechainCO{
     "mcconnell.delta_chi.sidechain_co", 2.41, "10^-6 cm^3/mol", LiteratureStatus::Cited,
     "Peptide C=O value reused as good literature-side default for sidechain C=O"};
+inline constexpr LiteratureConstant kMcConnellBackboneOther{
+    "mcconnell.delta_chi.backbone_other_provisional", 2.41, "10^-6 cm^3/mol",
+    LiteratureStatus::GoodEnough,
+    "Provisional Williamson-Asakura magnitude scalar for non C=O/C-N backbone bonds; "
+    "Wiberg _bo producer carries the per-bond weighting"};
+inline constexpr LiteratureConstant kMcConnellSidechainOther{
+    "mcconnell.delta_chi.sidechain_other_provisional", 2.41, "10^-6 cm^3/mol",
+    LiteratureStatus::GoodEnough,
+    "Provisional Williamson-Asakura magnitude scalar for sidechain non-carbonyl bonds; "
+    "Wiberg _bo producer carries the per-bond weighting"};
 inline constexpr LiteratureConstant kMcConnellAromaticZero{
     "mcconnell.delta_chi.aromatic_zeroed", 0.0, "10^-6 cm^3/mol", LiteratureStatus::GoodEnough,
     "aromatic pi current is carried by ring-current kernels to avoid double-counting"};
@@ -225,7 +235,7 @@ inline constexpr std::array<LiteratureConstant, 9> kJohnsonBoveyLobeOffsetByType
     {"ring.jb_lobe_offset.ProPyrrolidine", 0.0, "angstrom", LiteratureStatus::Cited, "saturated ring, no aromatic pi current"},
 }};
 
-inline constexpr std::array<LiteratureConstant, 56> kAllLiteratureConstants{{
+inline constexpr std::array<LiteratureConstant, 58> kAllLiteratureConstants{{
     kBuckinghamA_H,
     kBuckinghamA_C,
     kBuckinghamA_N,
@@ -260,6 +270,8 @@ inline constexpr std::array<LiteratureConstant, 56> kAllLiteratureConstants{{
     kMcConnellPeptideCO,
     kMcConnellPeptideCN,
     kMcConnellSidechainCO,
+    kMcConnellBackboneOther,
+    kMcConnellSidechainOther,
     kMcConnellAromaticZero,
     kMcConnellMolarPrefactor,
     kLarsenWaterTerm,
@@ -450,7 +462,9 @@ inline LiteratureConstant McConnellDeltaChi(model::BondCategory category) {
     switch (category) {
     case model::BondCategory::PeptideCO: return kMcConnellPeptideCO;
     case model::BondCategory::PeptideCN: return kMcConnellPeptideCN;
+    case model::BondCategory::BackboneOther: return kMcConnellBackboneOther;
     case model::BondCategory::SidechainCO: return kMcConnellSidechainCO;
+    case model::BondCategory::SidechainOther: return kMcConnellSidechainOther;
     case model::BondCategory::Aromatic: return kMcConnellAromaticZero;
     default:
         return {"mcconnell.delta_chi.inapplicable", 0.0, "10^-6 cm^3/mol",

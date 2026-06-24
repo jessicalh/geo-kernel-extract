@@ -7,6 +7,7 @@
 #include "LiteratureConstants.h"
 #include "McConnellLiteratureKernel.h"
 #include "RamaRegion.h"
+#include "RingCurrentScalars.h"
 #include "RowDesign.h"
 #include "SphericalBasis.h"
 #include "SubspaceCompare.h"
@@ -534,6 +535,26 @@ static constexpr std::array<ProducerTensorField, 17> kMcTensorFields = {{
     {ArrayId::McNearestCoT2, "mc_nearest_co_T2"},
     {ArrayId::McNearestCnT2, "mc_nearest_cn_T2"},
 }};
+
+struct McForwardProducerField {
+    ArrayId id;
+    model::BondCategory category;
+};
+
+static constexpr std::array<McForwardProducerField, 6> kMcForwardProducerFields = {{
+    {ArrayId::McPeptideCoBo, model::BondCategory::PeptideCO},
+    {ArrayId::McPeptideCnBo, model::BondCategory::PeptideCN},
+    {ArrayId::McBackboneOtherBo, model::BondCategory::BackboneOther},
+    {ArrayId::McSidechainCoBo, model::BondCategory::SidechainCO},
+    {ArrayId::McSidechainOtherBo, model::BondCategory::SidechainOther},
+    {ArrayId::McAromaticZeroedBo, model::BondCategory::Aromatic},
+}};
+
+std::size_t mcTensorFieldIndex(ArrayId id) {
+    for (std::size_t i = 0; i < kMcTensorFields.size(); ++i)
+        if (kMcTensorFields[i].id == id) return i;
+    return kMcTensorFields.size();
+}
 
 struct ScalarSeries {
     explicit ScalarSeries(std::size_t n = 0) : values(n, kNaN) {}
@@ -1588,6 +1609,7 @@ QStringList classicalSourceHeaderColumns() {
     for (const QString& prefix : {
              QStringLiteral("sigma_qm"),
              QStringLiteral("sigma0"),
+             QStringLiteral("contrib_buckingham"),
              QStringLiteral("contrib_buckingham_linear"),
              QStringLiteral("contrib_buckingham_quadratic"),
              QStringLiteral("contrib_ring"),
@@ -1651,6 +1673,7 @@ ClassicalSourceTermRecord MergeClassicalSourceRecords(
     out.frame_kind_ord = seed.frame_kind_ord;
     out.sigma_qm.clear();
     out.sigma0.clear();
+    out.buckingham.clear();
     out.buckingham_linear.clear();
     out.buckingham_quadratic.clear();
     out.ring.clear();
@@ -1676,6 +1699,7 @@ ClassicalSourceTermRecord MergeClassicalSourceRecords(
     for (const ClassicalSourceTermRecord& r : records) {
         append(out.sigma_qm, r.sigma_qm);
         append(out.sigma0, r.sigma0);
+        append(out.buckingham, r.buckingham);
         append(out.buckingham_linear, r.buckingham_linear);
         append(out.buckingham_quadratic, r.buckingham_quadratic);
         append(out.ring, r.ring);
@@ -1703,6 +1727,7 @@ ClassicalSourceTermRecord MergeClassicalSourceRecords(
 void writeClassicalSourceRecord(QTextStream& out, const ClassicalSourceTermRecord& r) {
     const DistributionSummary sigmaQm = SummarizeDistribution(r.sigma_qm);
     const DistributionSummary sigma0 = SummarizeDistribution(r.sigma0);
+    const DistributionSummary buckingham = SummarizeDistribution(r.buckingham);
     const DistributionSummary buckLinear = SummarizeDistribution(r.buckingham_linear);
     const DistributionSummary buckQuadratic = SummarizeDistribution(r.buckingham_quadratic);
     const DistributionSummary ring = SummarizeDistribution(r.ring);
@@ -1791,6 +1816,7 @@ void writeClassicalSourceRecord(QTextStream& out, const ClassicalSourceTermRecor
           << csvEscape(r.larsen_status);
     appendDistributionCells(cells, sigmaQm);
     appendDistributionCells(cells, sigma0);
+    appendDistributionCells(cells, buckingham);
     appendDistributionCells(cells, buckLinear);
     appendDistributionCells(cells, buckQuadratic);
     appendDistributionCells(cells, ring);
@@ -2633,6 +2659,7 @@ public:
           field_mol_apbs_(cadence_.stepCount()),
           field_mol_charge_ff14sb_(cadence_.stepCount()),
           field_E_z_mopac_(cadence_.stepCount()),
+          field_E_bond_proj_mopac_(cadence_.stepCount()),
           field_E_z_apbs_(cadence_.stepCount()),
           field_E_z_charge_ff14sb_(cadence_.stepCount()),
           field_E2_mopac_(cadence_.stepCount()),
@@ -2666,6 +2693,7 @@ public:
           mc_tensor_mol_series_(kMcTensorFields.size(), Mat3Series(cadence_.stepCount())),
           tripeptide_bb_shielding_(cadence_.stepCount()),
           larsen_hbond_shielding_(cadence_.stepCount()),
+          larsen_hbond_water_term_(cadence_.stepCount()),
           tripeptide_bb_shielding_mol_(cadence_.stepCount()),
           larsen_hbond_shielding_mol_(cadence_.stepCount()),
           sasa_(cadence_.stepCount()),
@@ -2913,20 +2941,6 @@ public:
             residueNumber = r.address.residueNumber;
         }
 
-        auto sumMechanism = [&](const QString& mechanism) {
-            std::vector<double> outv(cadence_.stepCount(), kNaN);
-            const int ord = mechanismOrd(mechanism);
-            for (const auto& item : relationships_) {
-                if (item.first.mechanism_ord != ord) continue;
-                const std::vector<double> v = item.second.contribution.dense(cadence_.stepCount());
-                for (std::size_t i = 0; i < outv.size() && i < v.size(); ++i) {
-                    if (!finite(v[i])) continue;
-                    outv[i] = finite(outv[i]) ? outv[i] + v[i] : v[i];
-                }
-            }
-            return outv;
-        };
-
         const QString atomName = p.atomLabel(atom_, model::NamingConvention::Iupac);
         record.atom_uid = uid(QStringLiteral("atom"), atom_);
         record.atom_index = atom_;
@@ -2963,41 +2977,36 @@ public:
         for (const LiteratureConstant* c : {&sigma0, &buckinghamA, &buckinghamB})
             if (c->status == LiteratureStatus::Placeholder) ++record.constant_placeholder_n;
 
-        std::vector<double> eParallel = signedBondFieldSeries();
-        const bool hasSignedBondField =
-            std::any_of(eParallel.begin(), eParallel.end(), [](double v) { return finite(v); });
-        if (!hasSignedBondField) eParallel = field_E_z_mopac_.values;
+        const std::vector<double> eParallel = field_E_bond_proj_mopac_.values;
+        record.buckingham.assign(cadence_.stepCount(), kNaN);
         record.buckingham_linear.assign(cadence_.stepCount(), kNaN);
         record.buckingham_quadratic.assign(cadence_.stepCount(), kNaN);
-        for (std::size_t i = 0; i < cadence_.stepCount(); ++i) {
-            if (i < eParallel.size() && finite(eParallel[i])) {
-                record.buckingham_linear[i] = -buckinghamA.value * eParallel[i];
-                record.buckingham_quadratic[i] = -buckinghamB.value * eParallel[i] * eParallel[i];
-            }
-        }
-        record.ring = sumMechanism(QStringLiteral("ring_jb"));
-        record.mcconnell = sumMechanism(QStringLiteral("mc_lit_valid"));
-        record.larsen = componentSeriesT0(larsen_hbond_shielding_);
+        record.ring = ringPerTypeT0Series();
+        record.mcconnell = mcconnellProducerBoSeries();
+        record.larsen = larsenForwardSeries();
         record.sigma_cl.assign(cadence_.stepCount(), kNaN);
         record.residual.assign(cadence_.stepCount(), kNaN);
         for (std::size_t i = 0; i < cadence_.stepCount(); ++i) {
-            bool anyPresent = false;
-            const double sigmaCl = FoldClassicalSigma(
-                sigma0.value,
-                {
-                    {i < record.buckingham_linear.size() ? record.buckingham_linear[i] : kNaN,
-                     i < record.buckingham_linear.size() && finite(record.buckingham_linear[i])},
-                    {i < record.buckingham_quadratic.size() ? record.buckingham_quadratic[i] : kNaN,
-                     i < record.buckingham_quadratic.size() && finite(record.buckingham_quadratic[i])},
-                    {i < record.ring.size() ? record.ring[i] : kNaN,
-                     i < record.ring.size() && finite(record.ring[i])},
-                    {i < record.mcconnell.size() ? record.mcconnell[i] : kNaN,
-                     i < record.mcconnell.size() && finite(record.mcconnell[i])},
-                    {i < record.larsen.size() ? record.larsen[i] : kNaN,
-                     i < record.larsen.size() && finite(record.larsen[i])},
-                },
-                &anyPresent);
-            if (!anyPresent || !finite(sigmaCl)) continue;
+            const auto termAt = [&](const std::vector<double>& values) {
+                const double v = i < values.size() ? values[i] : kNaN;
+                return ClassicalTermValue{v, finite(v)};
+            };
+            const ClassicalSigmaResult folded = ComputeClassicalSigma({
+                {sigma0.value, finite(sigma0.value)},
+                termAt(eParallel),
+                {buckinghamA.value, finite(buckinghamA.value)},
+                {buckinghamB.value, finite(buckinghamB.value)},
+                termAt(record.ring),
+                termAt(record.mcconnell),
+                termAt(record.larsen),
+            });
+            if (folded.buckingham.present) record.buckingham[i] = folded.buckingham.value;
+            if (folded.buckingham_linear.present)
+                record.buckingham_linear[i] = folded.buckingham_linear.value;
+            if (folded.buckingham_quadratic.present)
+                record.buckingham_quadratic[i] = folded.buckingham_quadratic.value;
+            if (!folded.sigma_cl.present) continue;
+            const double sigmaCl = folded.sigma_cl.value;
             record.sigma_cl[i] = sigmaCl;
             if (i < record.sigma_qm.size() && finite(record.sigma_qm[i]))
                 record.residual[i] = record.sigma_qm[i] - sigmaCl;
@@ -4439,6 +4448,55 @@ private:
             const auto u = normalizeFrameVec(*h - *x);  // bond axis X->H
             if (!u) continue;
             out[step] = field_mopac_.values[step].dot(*u);  // signed E_||
+        }
+        return out;
+    }
+
+    std::vector<double> ringPerTypeT0Series() const {
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        for (std::size_t step = 0; step < cadence_.stepCount(); ++step) {
+            if (!body_.catalog.present(body_, ArrayId::BSPerTypeT0, atom_, step)) continue;
+            std::array<double, model::kAromaticRingTypeCount> perType{};
+            bool ok = true;
+            for (std::size_t t = 0; t < perType.size(); ++t) {
+                const double v =
+                    body_.catalog.value(body_, ArrayId::BSPerTypeT0, atom_, step, -1,
+                                        static_cast<int>(t));
+                perType[t] = v;
+                ok = ok && finite(v);
+            }
+            if (ok) out[step] = RingPerTypeT0Ppm(perType.data(), perType.size());
+        }
+        return out;
+    }
+
+    std::vector<double> mcconnellProducerBoSeries() const {
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        for (const McForwardProducerField& field : kMcForwardProducerFields) {
+            const std::size_t idx = mcTensorFieldIndex(field.id);
+            if (idx >= mc_tensor_series_.size()) continue;
+            const TensorSeries& series = mc_tensor_series_[idx];
+            for (std::size_t step = 0; step < out.size() && step < series.values.size(); ++step) {
+                if (!series.present[step]) continue;
+                const double term = McConnellProducerT0ToPpm(field.category,
+                                                             series.values[step].T0);
+                if (!finite(term)) continue;
+                out[step] = finite(out[step]) ? out[step] + term : term;
+            }
+        }
+        return out;
+    }
+
+    std::vector<double> larsenForwardSeries() const {
+        std::vector<double> out(cadence_.stepCount(), kNaN);
+        const std::vector<double> t0 = componentSeriesT0(larsen_hbond_shielding_);
+        for (std::size_t step = 0; step < out.size(); ++step) {
+            const double tensor = step < t0.size() ? t0[step] : kNaN;
+            const double water = step < larsen_hbond_water_term_.values.size()
+                                     ? larsen_hbond_water_term_.values[step]
+                                     : kNaN;
+            if (finite(tensor)) out[step] = tensor;
+            if (finite(water)) out[step] = finite(out[step]) ? out[step] + water : water;
         }
         return out;
     }
@@ -7593,6 +7651,9 @@ private:
             const Vec3 v = body_.catalog.valueVec3(body_, ArrayId::ApbsEfield, atom_, step);
             if (v.allFinite()) field_apbs_.set(step, v);
         }
+        const std::optional<double> eBondProj =
+            body_.catalog.value(body_, io::FieldKind::MOPACCoulombScalars, atom_, step, 1);
+        if (eBondProj && finite(*eBondProj)) field_E_bond_proj_mopac_.set(step, *eBondProj);
         foldDirectChargeField(step);
 
         if (field_mopac_.present[step])
@@ -7657,6 +7718,9 @@ private:
                     projectSphericalTensorToMolecular(step, larsen_hbond_shielding_.values[step]))
                 larsen_hbond_shielding_mol_.set(step, *local);
         }
+        const std::optional<double> water =
+            body_.catalog.value(body_, io::FieldKind::LarsenHBondWaterTerm, atom_, step, 0);
+        if (water && finite(*water)) larsen_hbond_water_term_.set(step, *water);
     }
 
     void foldRelationship(std::size_t step, const PairContribution& pair) {
@@ -7867,6 +7931,7 @@ private:
     Vec3Series field_mol_apbs_;
     Vec3Series field_mol_charge_ff14sb_;
     ScalarSeries field_E_z_mopac_;
+    ScalarSeries field_E_bond_proj_mopac_;
     ScalarSeries field_E_z_apbs_;
     ScalarSeries field_E_z_charge_ff14sb_;
     ScalarSeries field_E2_mopac_;
@@ -7900,6 +7965,7 @@ private:
     std::vector<Mat3Series> mc_tensor_mol_series_;
     TensorSeries tripeptide_bb_shielding_;
     TensorSeries larsen_hbond_shielding_;
+    ScalarSeries larsen_hbond_water_term_;
     Mat3Series tripeptide_bb_shielding_mol_;
     Mat3Series larsen_hbond_shielding_mol_;
     ScalarSeries sasa_;
