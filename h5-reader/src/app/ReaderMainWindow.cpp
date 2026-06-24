@@ -7,6 +7,7 @@
 #include "OrientationPolicy.h"
 #include "MoleculeScene.h"
 #include "NearbySignalModel.h"
+#include "MeasurementsDock.h"
 #include "NewmanDock.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
@@ -287,6 +288,12 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                  newmanDock_, &NewmanDock::setFrame);
     }
 
+    if (measurementsDock_) {
+        measurementsDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+        ACONNECT(playback_, &QtPlaybackController::frameChanged,
+                 measurementsDock_, &MeasurementsDock::setFrame);
+    }
+
     // ---- Selection model — the single source of selection truth ----------
     selection_ = new model::AtomSelection(loaded_->protein.get(), this);
 
@@ -391,6 +398,21 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                      if (newmanDock_ && !newmanDock_->isVisible())
                          revealDockQueued(newmanDock_);
                  });
+    }
+
+    if (measurementsDock_) {
+        // The whole ORDERED tuple drives a measurement (not just focus), so this
+        // tracks AtomSelection::changed; it reveals only once a 2+ atom geometry
+        // exists (a single pick is the Inspector's job, not a measurement).
+        ACONNECT(selection_, &model::AtomSelection::changed, this, [this]() {
+            if (!measurementsDock_)
+                return;
+            measurementsDock_->setAtoms(selection_->atoms());
+            if (selection_->atoms().size() >= 2 && !measurementsDock_->isVisible())
+                revealDockQueued(measurementsDock_);
+        });
+        ACONNECT(selection_, &model::AtomSelection::cleared,
+                 measurementsDock_, &MeasurementsDock::clear);
     }
     ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) { refreshControlStates(); });
@@ -636,6 +658,8 @@ void ReaderMainWindow::clearLoadedRun() {
     }
     if (newmanDock_)
         newmanDock_->setContext(nullptr, nullptr);
+    if (measurementsDock_)
+        measurementsDock_->setContext(nullptr, nullptr);
 
     delete cameraInputFilter_;
     cameraInputFilter_ = nullptr;
@@ -1715,6 +1739,14 @@ void ReaderMainWindow::buildDocks() {
     newmanDock_ = new NewmanDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, newmanDock_);
     tabifyDockWidget(inspectorDock_, newmanDock_);
+
+    // Measurements dock -- tabified alongside; reveals when a 2-4 atom geometry
+    // is selected, and re-reads the distance/angle/dihedral live as frames play.
+    // The value lives here, not as floating text on the molecule.
+    measurementsDock_ = new MeasurementsDock(this);
+    addDockWidget(Qt::LeftDockWidgetArea, measurementsDock_);
+    tabifyDockWidget(inspectorDock_, measurementsDock_);
+    measurementsDock_->setVisible(false);
 
     inspectorDock_->raise();
     resizeDocks({inspectorDock_}, {360}, Qt::Horizontal);

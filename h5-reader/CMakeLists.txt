@@ -191,6 +191,8 @@ qt_add_library(h5reader_core STATIC
     src/app/NewmanProjection.cpp
     src/app/NewmanDock.h
     src/app/NewmanDock.cpp
+    src/app/MeasurementsDock.h
+    src/app/MeasurementsDock.cpp
     src/app/ReaderMainWindow.h
     src/app/ReaderMainWindow.cpp
     src/app/QtRingPolygonOverlay.h
