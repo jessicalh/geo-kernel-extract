@@ -453,11 +453,12 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
     }
     const auto& s = *snap;
 
-    // --- Classical forward sum (VIEWER-DERIVED) --- the validated forward terms,
-    // computed HERE from the loaded npy via the shared rediscover math
-    // (RingPerTypeT0Ppm; Larsen T0 + water) -- the reader NEVER runs the emit.
-    // The raw kernels that feed these live in the drawer below. McConnell +
-    // Buckingham + sigma_cl + residual land here as their inputs get wired.
+    // --- Classical forward sum (VIEWER-DERIVED) --- the full classical shielding
+    // model computed HERE from the loaded npy via the shared rediscover math
+    // (ring, McConnell, Larsen, Buckingham -> ComputeClassicalSigma) -- the reader
+    // NEVER runs the emit. The raw kernels that feed these live in the drawer below.
+    // sigma_cl + residual appear only when every mechanism's input is present
+    // (and sigma_qm/ORCA, single-pose, for the residual).
     {
         model::QtBiotSavartGroup bsFwd(s);
         model::QtLarsenHBondGroup larsenFwd(s);
@@ -469,20 +470,36 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
             }
             return fwd;
         };
+
+        // Per-atom identity for the literature-constant lookups (Buckingham, sigma0).
+        const auto& fa = protein_->atom(atomIdx_);
+        const auto& fres = fa.residueIndex >= 0 ? protein_->residue(fa.residueIndex)
+                                                : model::QtResidue{};
+        const std::string residueStd = model::IupacResidue3LetterFor(fres.aminoAcid);
+        const std::string atomNameStd = protein_->atomNames(atomIdx_).amber.toStdString();
+        const std::string frameKindStd =
+            (hasCsa_ && csaAtom_ == atomIdx_ && csa_.framed) ? csa_.frameKind.toStdString()
+                                                             : std::string();
+        rediscover::ClassicalSigmaInputs in;  // each term defaults to {NaN, present=false}
+
         // ring = sum_t bs_per_type_T0[t] * RingIntensity[t]  (signed T0, ppm)
         if (auto pt = bsFwd.perTypeT0(a)) {
             const double ring =
                 rediscover::RingPerTypeT0Ppm(pt->byType.data(), model::kAromaticRingTypeCount);
-            if (std::isfinite(ring))
+            if (std::isfinite(ring)) {
+                in.ring = {ring, true};
                 AddScalar(ensureFwd(), QStringLiteral("ring contribution"), ring, QStringLiteral("ppm"));
+            }
         }
         // Larsen = signed T0 + ProCS15 water term  (ppm)
         if (auto sh = larsenFwd.shielding(a)) {
             double lars = sh->T0;
             if (auto wt = larsenFwd.waterTerm(a))
                 lars += *wt;
-            if (std::isfinite(lars))
+            if (std::isfinite(lars)) {
+                in.larsen = {lars, true};
                 AddScalar(ensureFwd(), QStringLiteral("Larsen contribution"), lars, QStringLiteral("ppm"));
+            }
         }
         // McConnell = Sum over the 6 forward bond producers of
         // McConnellProducerT0ToPpm(category, producer.T0)  (signed, ppm). The raw
@@ -512,34 +529,55 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 mc += term;
                 anyMc = true;
             }
-            if (anyMc && std::isfinite(mc))
+            if (anyMc && std::isfinite(mc)) {
+                in.mcconnell = {mc, true};
                 AddScalar(ensureFwd(), QStringLiteral("McConnell contribution"), mc, QStringLiteral("ppm"));
+            }
         }
-        // Buckingham = -A*E|| - B*E||^2  (signed E|| = MOPAC Coulomb field on the
-        // primary bond axis = mopac_coulomb_scalars E_bond_proj, "Buckingham
-        // sigma_iso input"; A,B element/frame-specific literature constants). ppm.
-        // frame_kind comes from the cached CSA result when present; otherwise the
-        // BuckinghamA/B atom-name checks resolve backbone atoms.
+        // Buckingham inputs: signed E|| = mopac_coulomb_scalars E_bond_proj (the
+        // "Buckingham sigma_iso input" = component 1, MOPAC Coulomb field on the
+        // primary bond axis) + element/frame-specific A,B literature constants. The
+        // -A*E|| - B*E||^2 fold (and the row) come from ComputeClassicalSigma below.
         if (auto sc = model::QtMopacCoulombGroup(s).scalars(a)) {
             const double ePar = sc->E_bond_proj;
             if (std::isfinite(ePar)) {
-                const auto& atom = protein_->atom(atomIdx_);
-                const auto& res = atom.residueIndex >= 0
-                                      ? protein_->residue(atom.residueIndex)
-                                      : model::QtResidue{};
-                const std::string residueStd = model::IupacResidue3LetterFor(res.aminoAcid);
-                const std::string atomNameStd = protein_->atomNames(atomIdx_).amber.toStdString();
-                const std::string frameKindStd =
-                    (hasCsa_ && csaAtom_ == atomIdx_ && csa_.framed) ? csa_.frameKind.toStdString()
-                                                                     : std::string();
-                const auto bA = rediscover::BuckinghamA(atom.element, residueStd, atomNameStd, frameKindStd);
-                const auto bB = rediscover::BuckinghamB(atom.element, residueStd, atomNameStd, frameKindStd);
-                double buck = 0.0;
-                bool anyB = false;
-                if (std::isfinite(bA.value)) { buck += -bA.value * ePar; anyB = true; }
-                if (std::isfinite(bB.value)) { buck += -bB.value * ePar * ePar; anyB = true; }
-                if (anyB && std::isfinite(buck))
-                    AddScalar(ensureFwd(), QStringLiteral("Buckingham contribution"), buck, QStringLiteral("ppm"));
+                in.e_parallel_mopac = {ePar, true};
+                const auto bA = rediscover::BuckinghamA(fa.element, residueStd, atomNameStd, frameKindStd);
+                const auto bB = rediscover::BuckinghamB(fa.element, residueStd, atomNameStd, frameKindStd);
+                if (std::isfinite(bA.value)) in.buckingham_A = {bA.value, true};
+                if (std::isfinite(bB.value)) in.buckingham_B = {bB.value, true};
+            }
+        }
+        // sigma0 baseline -- element-level literature constant, PLACEHOLDER status.
+        const auto sigma0c = rediscover::Sigma0(fa.element, residueStd, atomNameStd);
+        if (std::isfinite(sigma0c.value))
+            in.sigma0 = {sigma0c.value, true};
+
+        // Fold all terms through the shared engine math (single source of truth);
+        // the Buckingham term (-A*E|| - B*E||^2) is computed inside the fold.
+        const rediscover::ClassicalSigmaResult folded = rediscover::ComputeClassicalSigma(in);
+        if (folded.buckingham.present && std::isfinite(folded.buckingham.value))
+            AddScalar(ensureFwd(), QStringLiteral("Buckingham contribution"),
+                      folded.buckingham.value, QStringLiteral("ppm"));
+
+        // sigma_cl + residual ONLY when the full classical model is computable
+        // (every mechanism's source field present). Otherwise sigma_cl would
+        // silently drop a term and mislead -- show just the present contributions.
+        const bool fwdComplete = in.ring.present && in.mcconnell.present
+                                 && in.larsen.present && in.e_parallel_mopac.present;
+        if (fwdComplete && folded.sigma_cl.present && std::isfinite(folded.sigma_cl.value)) {
+            // sigma0 is a placeholder baseline -> caveat the absolute number.
+            if (in.sigma0.present)
+                AddScalar(ensureFwd(), QStringLiteral("sigma0 (placeholder baseline)"),
+                          in.sigma0.value, QStringLiteral("ppm"));
+            AddScalar(ensureFwd(), QStringLiteral("sigma_cl (sigma0 placeholder)"),
+                      folded.sigma_cl.value, QStringLiteral("ppm"));
+            // residual = sigma_qm - sigma_cl; sigma_qm = ORCA total T0 (single-pose
+            // DFT only, so absent on a trajectory snapshot).
+            if (auto qm = model::QtOrcaGroup(s).total(a)) {
+                if (std::isfinite(qm->T0))
+                    AddScalar(ensureFwd(), QStringLiteral("residual (sigma_qm - sigma_cl)"),
+                              qm->T0 - folded.sigma_cl.value, QStringLiteral("ppm"));
             }
         }
     }
