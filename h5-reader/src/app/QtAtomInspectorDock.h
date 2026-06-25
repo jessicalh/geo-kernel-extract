@@ -109,7 +109,7 @@ private slots:
 private:
     void rebuild();
     void populateIdentity(QTreeWidgetItem* parent);
-    void populatePerFrame(QTreeWidgetItem* root);
+    void populatePerFrame(QTreeWidgetItem* root, QTreeWidgetItem* drawer);
     void populateCsa(QTreeWidgetItem* root);
     void populateOrientation(QTreeWidgetItem* root);
 

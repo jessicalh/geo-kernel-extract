@@ -336,6 +336,9 @@ void QtAtomInspectorDock::rebuild() {
     if (!hasSelection_ || atomIdx_ >= protein_->atomCount())
         return;
 
+    // Batch the rebuild into a single repaint: this tree is cleared + fully
+    // repopulated on every focus / frame change, so per-item updates would flicker.
+    tree_->setUpdatesEnabled(false);
     tree_->clear();
 
     auto* title = new QTreeWidgetItem(tree_);
@@ -351,11 +354,26 @@ void QtAtomInspectorDock::rebuild() {
     title->setExpanded(true);
 
     populateIdentity(title);
-    populatePerFrame(title);
+    // Raw kernels / diagnostics collapse into ONE drawer at the very bottom: the
+    // npy "show your work" stays available but does not compete with the
+    // validated metrics. Built as an orphan, filled in populatePerFrame, attached
+    // last (below CSA / orientation) iff it ended up with content.
+    auto* drawer = new QTreeWidgetItem();
+    drawer->setText(0, QStringLiteral("Raw kernels & diagnostics"));
+    drawer->setText(1, QStringLiteral("raw npy inputs (not validated)"));
+    populatePerFrame(title, drawer);
     if (hasCsa_ && csaAtom_ == atomIdx_)
         populateCsa(title);
     if (hasOrient_ && orientAtom_ == atomIdx_)
         populateOrientation(title);
+    if (drawer->childCount() > 0) {
+        title->addChild(drawer);     // tree takes ownership; collapse AFTER attach
+        drawer->setExpanded(false);
+    } else {
+        delete drawer;               // orphan, never attached -- we own it
+    }
+
+    tree_->setUpdatesEnabled(true);
 }
 
 void QtAtomInspectorDock::populateIdentity(QTreeWidgetItem* parent) {
@@ -399,7 +417,7 @@ void QtAtomInspectorDock::populateIdentity(QTreeWidgetItem* parent) {
     AddKV(flags, QStringLiteral("is_exchangeable"), atom.isExchangeable ? QStringLiteral("true") : QStringLiteral("false"));
 }
 
-void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
+void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetItem* drawer) {
     const int T = static_cast<int>(conformation_->frameCount());
     const int t = std::clamp(frame_, 0, std::max(0, T - 1));
     const std::size_t st = static_cast<std::size_t>(t);
@@ -435,47 +453,54 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
     // ── Ring current (Biot-Savart / Haigh-Mallion / ring susceptibility) ──
     if (AllowsAny(availability_, {"npy:bs_shielding", "npy:hm_shielding",
                                   "npy:bs_ring_counts"})) {
-        auto* g = AddKV(root, QStringLiteral("Ring current"), QString());
         model::QtBiotSavartGroup bs(s);
-        bool any = false;
-        any |= AddOptSpherical(g, QStringLiteral("bs_shielding"), bs.shielding(a), QStringLiteral("ppm·T/nA"));
-        any |= AddOptSpherical(g, QStringLiteral("hm_shielding"), model::QtHaighMallionGroup(s).shielding(a), QStringLiteral("Å⁻¹"));
-        any |= AddOptVec3(g, QStringLiteral("bs_total_B"), bs.totalB(a), QStringLiteral("T"));
+        // raw unit-current kernels -> drawer (the validated ppm form is the
+        // viewer-derived ring contribution = bs_per_type_T0 x RingIntensity)
+        auto* rk = AddKV(drawer, QStringLiteral("Ring current"), QString());
+        bool anyRaw = false;
+        anyRaw |= AddOptSpherical(rk, QStringLiteral("bs_shielding"), bs.shielding(a), QStringLiteral("ppm·T/nA"));
+        anyRaw |= AddOptSpherical(rk, QStringLiteral("hm_shielding"), model::QtHaighMallionGroup(s).shielding(a), QStringLiteral("Å⁻¹"));
+        anyRaw |= AddOptVec3(rk, QStringLiteral("bs_total_B"), bs.totalB(a), QStringLiteral("T"));
+        if (!anyRaw) DeleteIfEmpty(rk);
+        // ring counts are geometry context -> top
         if (auto rc = bs.ringCounts(a)) {
+            auto* g = AddKV(root, QStringLiteral("Ring geometry"), QString());
             AddKV(g, QStringLiteral("ring counts (3/5/8/12 Å)"),
                   QStringLiteral("%1 / %2 / %3 / %4").arg(rc->within3A).arg(rc->within5A).arg(rc->within8A).arg(rc->within12A));
-            any = true;
         }
-        if (!any) DeleteIfEmpty(g);
     }
 
 
     // ── Bond anisotropy (McConnell) ──
     if (AllowsAny(availability_, {"npy:mc_shielding", "npy:mc_category_T2",
                                   "npy:mc_scalars"})) {
-        auto* g = AddKV(root, QStringLiteral("Bond anisotropy (McConnell)"), QString());
         model::QtMcConnellGroup mc(s);
-        bool any = false;
-        any |= AddOptSpherical(g, QStringLiteral("mc_shielding"), mc.shielding(a), QStringLiteral("Å⁻³"));
+        // raw geometry kernel + angular sums -> drawer (the validated ppm form is
+        // the viewer-derived McConnell contribution, _bo signed T0 x DeltaChi)
+        auto* mk = AddKV(drawer, QStringLiteral("Bond anisotropy (McConnell)"), QString());
+        bool anyMk = false;
+        anyMk |= AddOptSpherical(mk, QStringLiteral("mc_shielding"), mc.shielding(a), QStringLiteral("Å⁻³"));
         if (auto sc = mc.scalars(a)) {
-            AddScalar(g, QStringLiteral("Σ C=O angular"), sc->co_sum);
-            AddScalar(g, QStringLiteral("Σ C–N angular"), sc->cn_sum);
-            AddScalar(g, QStringLiteral("Σ sidechain"), sc->sidechain_sum);
-            AddScalar(g, QStringLiteral("Σ aromatic"), sc->aromatic_sum);
+            AddScalar(mk, QStringLiteral("Σ C=O angular"), sc->co_sum);
+            AddScalar(mk, QStringLiteral("Σ C–N angular"), sc->cn_sum);
+            AddScalar(mk, QStringLiteral("Σ sidechain"), sc->sidechain_sum);
+            AddScalar(mk, QStringLiteral("Σ aromatic"), sc->aromatic_sum);
+            anyMk = true;
+            // nearest carbonyl / amide are geometry -> top
+            auto* g = AddKV(root, QStringLiteral("Nearest backbone partners"), QString());
             AddKV(g, QStringLiteral("nearest C=O"),
                   sc->hasNearestCO() ? FmtDouble(sc->nearest_CO_dist) + QStringLiteral(" Å") : QStringLiteral("none"));
             AddKV(g, QStringLiteral("nearest C–N"),
                   sc->hasNearestCN() ? FmtDouble(sc->nearest_CN_dist) + QStringLiteral(" Å") : QStringLiteral("none"));
-            any = true;
         }
-        if (!any) DeleteIfEmpty(g);
+        if (!anyMk) DeleteIfEmpty(mk);
     }
 
     // ── Electrostatics (Coulomb / APBS / AIMNet2 EFG) ──
     if (AllowsAny(availability_, {"npy:coulomb_shielding", "npy:coulomb_E",
                                   "npy:apbs_E", "npy:apbs_efg",
                                   "npy:aimnet2_efg"})) {
-        auto* g = AddKV(root, QStringLiteral("Electrostatics"), QString());
+        auto* g = AddKV(drawer, QStringLiteral("Electrostatics"), QString());
         model::QtCoulombGroup coul(s);
         model::QtApbsGroup apbs(s);
         bool any = false;
@@ -518,8 +543,13 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
         auto* g = AddKV(root, QStringLiteral("Water"), QString());
         model::QtWaterFieldGroup wf(s);
         bool any = false;
-        any |= AddOptVec3(g, QStringLiteral("water_efield"), wf.efield(a), QStringLiteral("V/Å"));
-        any |= AddOptEfg(g, QStringLiteral("water_efg"), wf.efg(a), QStringLiteral("V/Å²"));
+        // raw field vectors -> drawer; shell / hydration / polarization (the
+        // environmental descriptors) stay at top.
+        auto* wk = AddKV(drawer, QStringLiteral("Water field"), QString());
+        bool anyWk = false;
+        anyWk |= AddOptVec3(wk, QStringLiteral("water_efield"), wf.efield(a), QStringLiteral("V/Å"));
+        anyWk |= AddOptEfg(wk, QStringLiteral("water_efg"), wf.efg(a), QStringLiteral("V/Å²"));
+        if (!anyWk) DeleteIfEmpty(wk);
         if (auto wc = wf.shellCounts(a)) {
             AddKV(g, QStringLiteral("shell counts (1st/2nd)"), QStringLiteral("%1 / %2").arg(wc->nFirst).arg(wc->nSecond));
             any = true;
@@ -545,7 +575,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
     if (AllowsAny(availability_, {"npy:aimnet2_charges", "npy:eeq_charges",
                                   "npy:eeq_cn",
                                   "npy:aimnet2_charge_response_gradient"})) {
-        auto* g = AddKV(root, QStringLiteral("Charges"), QString());
+        auto* g = AddKV(drawer, QStringLiteral("Charges"), QString());
         model::QtAimnet2Group aim(s);
         model::QtEeqGroup eeq(s);
         bool any = false;
@@ -618,8 +648,11 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
             AddScalar(g, QStringLiteral("s population"), ms->sPop, QStringLiteral("e"));
             AddScalar(g, QStringLiteral("p population"), ms->pPop, QStringLiteral("e"));
             AddScalar(g, QStringLiteral("Wiberg valency"), ms->valency);
-            AddOptSpherical(g, QStringLiteral("mopac_coulomb_shielding"), model::QtMopacCoulombGroup(s).shielding(a), QStringLiteral("V/Å²"));
-            AddOptSpherical(g, QStringLiteral("mopac_mc_shielding"), model::QtMopacMcConnellGroup(s).shielding(a), QStringLiteral("Å⁻³"));
+            auto* mk = AddKV(drawer, QStringLiteral("MOPAC kernels"), QString());
+            bool anyMk = false;
+            anyMk |= AddOptSpherical(mk, QStringLiteral("mopac_coulomb_shielding"), model::QtMopacCoulombGroup(s).shielding(a), QStringLiteral("V/Å²"));
+            anyMk |= AddOptSpherical(mk, QStringLiteral("mopac_mc_shielding"), model::QtMopacMcConnellGroup(s).shielding(a), QStringLiteral("Å⁻³"));
+            if (!anyMk) DeleteIfEmpty(mk);
             if (auto mg = mopac.global())
                 AddScalar(g, QStringLiteral("ΔHf (frame)"), mg->heatOfFormation, QStringLiteral("kcal/mol"));
         }
@@ -633,8 +666,11 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root) {
             if (auto tot = orca.total(a)) {
                 auto* g = AddKV(root, QStringLiteral("DFT reference (ORCA)"), QString());
                 AddOptSpherical(g, QStringLiteral("σ total"), tot, QStringLiteral("ppm"));
-                AddOptSpherical(g, QStringLiteral("σ diamagnetic (gauge-dependent)"), orca.diamagnetic(a), QStringLiteral("ppm"));
-                AddOptSpherical(g, QStringLiteral("σ paramagnetic (gauge-dependent)"), orca.paramagnetic(a), QStringLiteral("ppm"));
+                auto* dk = AddKV(drawer, QStringLiteral("Shielding components (gauge-dependent)"), QString());
+                bool anyDk = false;
+                anyDk |= AddOptSpherical(dk, QStringLiteral("σ diamagnetic"), orca.diamagnetic(a), QStringLiteral("ppm"));
+                anyDk |= AddOptSpherical(dk, QStringLiteral("σ paramagnetic"), orca.paramagnetic(a), QStringLiteral("ppm"));
+                if (!anyDk) DeleteIfEmpty(dk);
             }
         }
         model::QtTripeptideGroup trip(s);
