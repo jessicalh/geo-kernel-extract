@@ -195,9 +195,11 @@ int main(int argc, char* argv[]) {
         return 3;
     }
 
-    // 9. Deferred show — event loop must be running before first render.
+    // 9. Deferred show — posted onto the window's event queue so it runs once
+    //    app.exec() is spinning (event loop live before first render). An explicit
+    //    queued event onto `window`, not a timer guessing at "next tick".
     if (runRest) {
-        QTimer::singleShot(0, window, [window, restPort]() {
+        QMetaObject::invokeMethod(window, [window, restPort]() {
             window->show();
             qCInfo(cLifecycle).noquote() << "window shown for REST surface on port" << restPort;
             const quint16 bound = window->startRestServer(restPort);
@@ -206,12 +208,12 @@ int main(int argc, char* argv[]) {
                     << "REST server failed to bind; exiting";
                 QCoreApplication::exit(6);
             }
-        });
+        }, Qt::QueuedConnection);
     } else {
-        QTimer::singleShot(0, window, [window]() {
+        QMetaObject::invokeMethod(window, [window]() {
             window->show();
             qCInfo(cLifecycle).noquote() << "window shown";
-        });
+        }, Qt::QueuedConnection);
     }
 
     // 10. Event loop.

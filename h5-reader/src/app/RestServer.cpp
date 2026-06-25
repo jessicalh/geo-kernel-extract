@@ -43,7 +43,7 @@
 #include <QPixmap>
 #include <QString>
 #include <QTcpServer>
-#include <QTimer>
+#include <QTcpSocket>
 #include <QUuid>
 #include <QVariant>
 #include <QApplication>
@@ -59,6 +59,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -69,6 +70,21 @@ namespace h5reader::app {
 
 namespace {
 Q_LOGGING_CATEGORY(cRest, "h5reader.rest")
+
+// A QTcpServer that reports each accepted socket as QAbstractHttpServer pulls it,
+// so /shutdown can hook the live socket's flush event and exit on the real
+// "response has left the wire" moment instead of a timer.
+class TrackingTcpServer : public QTcpServer {
+public:
+    explicit TrackingTcpServer(QObject* parent = nullptr) : QTcpServer(parent) {}
+    std::function<void(QTcpSocket*)> onConnection;
+    QTcpSocket* nextPendingConnection() override {
+        QTcpSocket* socket = QTcpServer::nextPendingConnection();
+        if (socket && onConnection)
+            onConnection(socket);
+        return socket;
+    }
+};
 
 constexpr const char* kMimeJson = "application/json";
 constexpr const char* kMimePng = "image/png";
@@ -601,7 +617,8 @@ quint16 RestServer::listen(quint16 port) {
     // supported path is now QAbstractHttpServer::bind() with a QTcpServer that
     // is already listening. The Linux dev boxes still run Qt 6.4, so the old
     // listen() path is kept under the version guard below.
-    auto* tcp = new QTcpServer(this);
+    auto* tcp = new TrackingTcpServer(this);
+    tcp->onConnection = [this](QTcpSocket* socket) { activeSocket_ = socket; };
     if (!tcp->listen(QHostAddress::LocalHost, port) || !server_->bind(tcp)) {
         qCCritical(cRest).noquote()
             << "REST server failed to bind 127.0.0.1 port" << port;
@@ -2329,17 +2346,28 @@ void RestServer::registerRoutes() {
 
     // ---- shutdown -------------------------------------------------------
 
-    // POST /shutdown — graceful exit so the operator (or a test
-    // harness) doesn't need pkill. Returns 204 immediately, then
-    // posts a deferred quit() to the event loop so the response can
-    // flush first. Async-fire vs synchronous quit() matters because
-    // QHttpServer holds the request handler frame; calling quit()
-    // synchronously would tear down before the response bytes ship.
+    // POST /shutdown — graceful exit so the operator (or a test harness)
+    // doesn't need pkill. Returns 204, then exits on the socket's flush event
+    // (bytesWritten -> bytesToWrite()==0), NOT a timer: the response write is
+    // itself async, so any clock races it and truncates the reply. Quitting
+    // synchronously in the handler would tear down before the bytes ship.
     server_->route(QStringLiteral("/shutdown"), Method::Post,
                    [this](const QHttpServerRequest&) {
         ASSERT_THREAD(this);
-        qCInfo(cRest).noquote() << "REST /shutdown — quitting on next event loop tick";
-        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+        QTcpSocket* sock = activeSocket_.data();
+        if (sock) {
+            qCInfo(cRest).noquote() << "REST /shutdown — exiting once the 204 has flushed";
+            QObject::connect(sock, &QTcpSocket::bytesWritten, qApp, [sock]() {
+                if (sock->bytesToWrite() == 0)
+                    QCoreApplication::quit();
+            });
+            QObject::connect(sock, &QTcpSocket::disconnected,
+                             qApp, &QCoreApplication::quit);
+        } else {
+            // Qt 6.4 listen() path: no socket handle captured — exit directly.
+            qCInfo(cRest).noquote() << "REST /shutdown — quitting (no socket handle)";
+            QCoreApplication::quit();
+        }
         return QHttpServerResponse(SC::NoContent);
     });
 

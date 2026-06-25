@@ -60,6 +60,7 @@
 
 class QHttpServer;
 class QWidget;
+class QTcpSocket;
 
 namespace h5reader {
 namespace io { struct QtLoadResult; }
@@ -122,6 +123,9 @@ private:
     void registerRoutes();
 
     std::unique_ptr<QHttpServer>                server_;
+    // Most recently accepted REST socket (captured at connection time). POST
+    // /shutdown waits on its flush event to exit cleanly — see RestServer.cpp.
+    QPointer<QTcpSocket>                        activeSocket_;
     QPointer<MoleculeScene>                     scene_;
     QPointer<model::AtomSelection>              selection_;
     QPointer<model::DashboardSignalModel>       signalModel_;

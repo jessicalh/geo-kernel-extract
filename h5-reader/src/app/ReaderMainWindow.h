@@ -358,6 +358,7 @@ private:
 
     bool shutdownDone_ = false;
     bool glInfoLogged_ = false;
+    unsigned long glCapsObserverTag_ = 0;  // one-shot GL-caps EndEvent observer
     int lastDashboardSelectedCount_ = 0;
     QString lastLoadError_;
 

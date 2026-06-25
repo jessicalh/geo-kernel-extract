@@ -97,6 +97,8 @@
 
 #include <vtkRendererCollection.h>
 #include <vtkCamera.h>
+#include <vtkCallbackCommand.h>
+#include <vtkCommand.h>
 
 #include <algorithm>
 #include <cmath>
@@ -1008,30 +1010,43 @@ void ReaderMainWindow::showEvent(QShowEvent* event) {
     if (glInfoLogged_) return;
     glInfoLogged_ = true;
 
-    // The VTK widget hasn't painted yet at showEvent time, so the GL
-    // context isn't current. Defer the query to the next event-loop
-    // tick — by then the first frame has rendered and ReportCapabilities
-    // returns a populated string. Single-shot, never repeats.
-    QPointer<ReaderMainWindow> self(this);
-    QTimer::singleShot(0, this, [self]() {
-        if (!self || !self->renderWindow_) return;
-        const QString caps =
-            QString::fromUtf8(self->renderWindow_->ReportCapabilities());
-        const QStringList wanted = {
-            QStringLiteral("OpenGL vendor"),
-            QStringLiteral("OpenGL renderer"),
-            QStringLiteral("OpenGL version"),
-            QStringLiteral("OpenGL vendor-specific"),
-        };
-        for (const QString& line : caps.split(QChar('\n'))) {
-            for (const QString& key : wanted) {
-                if (line.contains(key, Qt::CaseInsensitive)) {
-                    qCInfo(cWindow).noquote() << "GL:" << line.trimmed();
-                    break;
+    // The VTK widget hasn't painted yet at showEvent time, so the GL context
+    // isn't current and ReportCapabilities() is empty. Hook the render window's
+    // first EndEvent — the actual moment the context is current and a frame has
+    // rendered — and read caps there. One-shot: the callback removes its own
+    // observer. Event-driven, not a guessed "next tick". Mirrors
+    // MoleculeScene's EndEvent observer.
+    if (!renderWindow_)
+        return;
+    auto capsCb = vtkSmartPointer<vtkCallbackCommand>::New();
+    capsCb->SetClientData(this);
+    capsCb->SetCallback(
+        [](vtkObject* /*caller*/, unsigned long, void* clientData, void*) {
+            auto* self = static_cast<ReaderMainWindow*>(clientData);
+            if (!self || !self->renderWindow_)
+                return;
+            if (self->glCapsObserverTag_ != 0) {
+                self->renderWindow_->RemoveObserver(self->glCapsObserverTag_);
+                self->glCapsObserverTag_ = 0;
+            }
+            const QString caps =
+                QString::fromUtf8(self->renderWindow_->ReportCapabilities());
+            const QStringList wanted = {
+                QStringLiteral("OpenGL vendor"),
+                QStringLiteral("OpenGL renderer"),
+                QStringLiteral("OpenGL version"),
+                QStringLiteral("OpenGL vendor-specific"),
+            };
+            for (const QString& line : caps.split(QChar('\n'))) {
+                for (const QString& key : wanted) {
+                    if (line.contains(key, Qt::CaseInsensitive)) {
+                        qCInfo(cWindow).noquote() << "GL:" << line.trimmed();
+                        break;
+                    }
                 }
             }
-        }
-    });
+        });
+    glCapsObserverTag_ = renderWindow_->AddObserver(vtkCommand::EndEvent, capsCb);
 }
 
 ReaderMainWindow::~ReaderMainWindow() {
@@ -1330,12 +1345,15 @@ void ReaderMainWindow::revealDockQueued(QDockWidget* dock) {
     if (!dock)
         return;
     dock->setVisible(true);
-    QTimer::singleShot(0, this, [this, dock = QPointer<QDockWidget>(dock)]() {
+    // Queue the resize behind the show/relayout events already in this window's
+    // queue (deterministic FIFO), instead of guessing a tick on the timer wheel.
+    // Same queued-invoke pattern as MoleculeScene::requestRender.
+    QMetaObject::invokeMethod(this, [this, dock = QPointer<QDockWidget>(dock)]() {
         if (!dock)
             return;
         resizeDocks({dock.data()}, {360}, Qt::Horizontal);
         dock->raise();
-    });
+    }, Qt::QueuedConnection);
 }
 
 void ReaderMainWindow::updateSelectionStatus() {
