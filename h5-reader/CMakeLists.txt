@@ -366,6 +366,18 @@ qt_add_executable(h5reader_extract
     src/rediscover/CanonicalSpineGuard.h
     src/rediscover/CanonicalSpineGuard.cpp
     src/rediscover/AnalysisBody.h
+    src/rediscover/DistributionSummary.h
+    src/rediscover/DistributionSummary.cpp
+    src/rediscover/ClassicalSourceMath.h
+    src/rediscover/ClassicalSourceMath.cpp
+    src/rediscover/TensorConventionGuard.h
+    src/rediscover/TensorConventionGuard.cpp
+    src/rediscover/LiteratureConstants.h
+    src/rediscover/SubspaceCompare.h
+    src/rediscover/SubspaceCompare.cpp
+    src/rediscover/AnalysisElement.h
+    src/rediscover/AnalysisAtom.h
+    src/rediscover/AnalysisAtom.cpp
     src/rediscover/ChargeStore.h
     src/rediscover/ChargeStore.cpp
     src/rediscover/OutputManifest.h
@@ -400,6 +412,7 @@ qt_add_executable(h5reader_extract
     src/rediscover/RediscoveryExtraction.h
     src/rediscover/FrameSpatialIndex.h
     src/rediscover/FrameSpatialIndex.cpp
+    src/rediscover/RingCurrentScalars.h
     src/rediscover/RingCurrentKernel.h
     src/rediscover/RingCurrentKernel.cpp
     src/rediscover/McConnellLiteratureKernel.h
@@ -443,6 +456,11 @@ qt_add_executable(h5reader_extract
     src/rediscover/RamaRegion.cpp
     src/rediscover/ConditioningSpec.h
     src/rediscover/ConditioningSpec.cpp
+    src/rediscover/DeltaRunData.h
+    src/rediscover/DeltaRunData.cpp
+    src/rediscover/CohortContextAccumulator.h
+    src/rediscover/CohortContextCore.cpp
+    src/rediscover/CohortContextAccumulator.cpp
     src/rediscover/ConsolidatedEmit.h
     src/rediscover/ConsolidatedEmit.cpp
     src/rediscover/RowDesign.h
@@ -563,6 +581,29 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_buckingham_tests
              COMMAND h5reader_rediscover_buckingham_tests)
+
+    qt_add_executable(h5reader_rediscover_classical_source_math_tests
+        tests/rediscover_classical_source_math_tests.cpp
+        src/rediscover/ClassicalSourceMath.h
+        src/rediscover/ClassicalSourceMath.cpp
+        src/rediscover/McConnellLiteratureKernel.h
+        src/rediscover/McConnellLiteratureKernel.cpp
+        src/rediscover/RingCurrentScalars.h
+        src/rediscover/SphericalBasis.h
+        src/rediscover/SphericalBasis.cpp
+        src/calculators/QtBiotSavartCalc.h
+        src/calculators/QtBiotSavartCalc.cpp
+        src/rediscover/TensorConventionGuard.h
+        src/rediscover/TensorConventionGuard.cpp
+    )
+    target_include_directories(h5reader_rediscover_classical_source_math_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_classical_source_math_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_classical_source_math_tests
+             COMMAND h5reader_rediscover_classical_source_math_tests)
 
     qt_add_executable(h5reader_rediscover_all_atom_equivariant_tests
         tests/rediscover_all_atom_equivariant_tests.cpp
@@ -690,6 +731,61 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_rediscover_reducer_parity_tests
              COMMAND h5reader_rediscover_reducer_parity_tests)
+
+    qt_add_executable(h5reader_rediscover_subspace_compare_tests
+        tests/rediscover_subspace_compare_tests.cpp
+        src/rediscover/SubspaceCompare.h
+        src/rediscover/SubspaceCompare.cpp
+    )
+    target_include_directories(h5reader_rediscover_subspace_compare_tests PRIVATE src)
+    target_link_libraries(h5reader_rediscover_subspace_compare_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_subspace_compare_tests
+             COMMAND h5reader_rediscover_subspace_compare_tests)
+
+    qt_add_executable(h5reader_rediscover_no_relabel_tests
+        tests/rediscover_no_relabel_tests.cpp
+        src/rediscover/SubspaceCompare.h
+        src/rediscover/SubspaceCompare.cpp
+    )
+    target_include_directories(h5reader_rediscover_no_relabel_tests PRIVATE src)
+    target_compile_definitions(h5reader_rediscover_no_relabel_tests PRIVATE
+        H5READER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(h5reader_rediscover_no_relabel_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_no_relabel_tests
+             COMMAND h5reader_rediscover_no_relabel_tests)
+
+    qt_add_executable(h5reader_rediscover_cohort_context_tests
+        tests/rediscover_cohort_context_tests.cpp
+        src/rediscover/ClassicalSourceMath.h
+        src/rediscover/ClassicalSourceMath.cpp
+        src/rediscover/CohortContextAccumulator.h
+        src/rediscover/CohortContextCore.cpp
+        src/rediscover/DistributionSummary.h
+        src/rediscover/DistributionSummary.cpp
+        src/rediscover/DeltaRunData.h
+        src/rediscover/DeltaRunData.cpp
+        src/rediscover/ScopedProducerCatalog.h
+        src/rediscover/ScopedProducerCatalog.cpp
+    )
+    target_include_directories(h5reader_rediscover_cohort_context_tests PRIVATE
+        src
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern
+    )
+    target_link_libraries(h5reader_rediscover_cohort_context_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_rediscover_cohort_context_tests
+             COMMAND h5reader_rediscover_cohort_context_tests)
 
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp

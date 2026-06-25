@@ -121,6 +121,47 @@ QString residueClassName(ResidueClass c) {
     return QString::fromLatin1(NameForResidueClass(c));
 }
 
+struct PredecessorChi1Region {
+    int region = -1;
+    bool present = false;
+    QString missingReason;
+};
+
+PredecessorChi1Region predecessorChi1Region(const Body& body,
+                                            const model::QtProtein& protein,
+                                            const model::QtResidue* residue,
+                                            std::size_t frame) {
+    PredecessorChi1Region out;
+    if (!residue) {
+        out.missingReason = QStringLiteral("no_current_residue");
+        return out;
+    }
+    if (residue->prevResidueIndex < 0
+        || static_cast<std::size_t>(residue->prevResidueIndex) >= protein.residueCount()) {
+        out.missingReason = QStringLiteral("no_predecessor");
+        return out;
+    }
+    const model::QtResidue& prev =
+        protein.residue(static_cast<std::size_t>(residue->prevResidueIndex));
+    if (prev.atomIndices.empty()) {
+        out.missingReason = QStringLiteral("predecessor_empty");
+        return out;
+    }
+    for (int32_t atomIndex : prev.atomIndices) {
+        if (atomIndex < 0 || static_cast<std::size_t>(atomIndex) >= protein.atomCount()) continue;
+        const DihedralState chi =
+            body.idx.dihedrals.state(DihedralKind::Chi1,
+                                     static_cast<std::size_t>(atomIndex),
+                                     frame);
+        if (!chi.present) continue;
+        out.region = chi.fixed_bin;
+        out.present = true;
+        return out;
+    }
+    out.missingReason = QStringLiteral("predecessor_chi1_absent");
+    return out;
+}
+
 QJsonArray stringArray(const std::vector<QString>& values) {
     QJsonArray out;
     for (const QString& v : values) out.append(v);
@@ -1761,6 +1802,9 @@ RowSchema buildRowSchema(const std::vector<int>& cutoffs) {
         QStringLiteral("next_residue_type"),
         QStringLiteral("prev_residue_class"),
         QStringLiteral("next_residue_class"),
+        QStringLiteral("prev_chi1_region"),
+        QStringLiteral("prev_chi1_present"),
+        QStringLiteral("prev_chi1_missing_reason"),
         QStringLiteral("pre_proline"),
         QStringLiteral("is_pro"),
         QStringLiteral("is_gly"),
@@ -1935,6 +1979,10 @@ void fillRowLabels(RowBuilder& row,
             r ? residueClassName(ClassifyResidue(r->prevResidueType)) : QString());
     row.set(QStringLiteral("next_residue_class"),
             r ? residueClassName(ClassifyResidue(r->nextResidueType)) : QString());
+    const PredecessorChi1Region prevChi1 = predecessorChi1Region(body, p, r, frame);
+    row.setInt(QStringLiteral("prev_chi1_region"), prevChi1.region);
+    row.setBool(QStringLiteral("prev_chi1_present"), prevChi1.present);
+    row.set(QStringLiteral("prev_chi1_missing_reason"), prevChi1.missingReason);
     row.setBool(QStringLiteral("pre_proline"), r && r->nextResidueType == model::AminoAcid::PRO);
     row.setBool(QStringLiteral("is_pro"), r && r->isProline);
     row.setBool(QStringLiteral("is_gly"), r && r->aminoAcid == model::AminoAcid::GLY);

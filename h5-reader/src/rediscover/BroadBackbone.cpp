@@ -2,6 +2,7 @@
 
 #include "Catalog.h"
 #include "ExtractionSupport.h"
+#include "LiteratureConstants.h"
 #include "LocalFrameBasis.h"
 #include "McConnellLiteratureKernel.h"
 #include "RelationshipEngine.h"
@@ -30,7 +31,6 @@ namespace {
 Q_LOGGING_CATEGORY(cBroad, "h5reader.rediscover.broad_backbone")
 
 const double kNaN = std::numeric_limits<double>::quiet_NaN();
-constexpr double kCoulombKe = 14.3996;
 
 bool finiteT2(const std::array<double, 5>& t2) {
     for (const double v : t2)
@@ -119,7 +119,7 @@ BroadKernelT2 chargeKernelT2FromSources(const FrameResult& fr,
         const Vec3 d = s.disp_local;  // sign-invariant for EFG outer product
         efg += s.source_q_e * (3.0 * d * d.transpose() / r5 - Mat3::Identity() / r3);
     }
-    efg *= kCoulombKe;
+    efg *= CoulombKeVA();
     efg -= (efg.trace() / 3.0) * Mat3::Identity();
     const SphericalTensor st = DecomposeLibrary(efg);
     if (!finiteT2(st.T2)) return out;

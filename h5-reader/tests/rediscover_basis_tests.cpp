@@ -18,8 +18,10 @@
 
 using h5reader::model::Mat3;
 using h5reader::model::SphericalTensor;
+using h5reader::model::Vec3;
 using h5reader::rediscover::DftFrameSet;
 using h5reader::rediscover::DecomposeLibrary;
+using h5reader::rediscover::ReconstructLibraryT2Matrix;
 
 class RediscoverBasisTests : public QObject {
     Q_OBJECT
@@ -29,6 +31,8 @@ private slots:
     void offDiagonalComponents();
     void isometricNormPreserved();
     void traceIsotropic();
+    void reconstructT2RoundTrip();
+    void molecularFrameRoundTripAuditMath();
     void caseHunterSelectionGuardRejectsDftRead();
 };
 
@@ -95,6 +99,49 @@ void RediscoverBasisTests::traceIsotropic() {
     const SphericalTensor st = DecomposeLibrary(m);
     QVERIFY(std::abs(st.T0 - 30.0) < 1e-12);
     QVERIFY(st.T2Magnitude() < 1e-12);
+}
+
+void RediscoverBasisTests::reconstructT2RoundTrip() {
+    const std::array<double, 5> t2 = {0.25, -1.5, std::sqrt(6.0), 0.75, -0.4};
+    const Mat3 m = ReconstructLibraryT2Matrix(12.0, t2);
+    const SphericalTensor st = DecomposeLibrary(m);
+
+    QVERIFY(std::abs(st.T0 - 12.0) < 1e-9);
+    for (double v : st.T1) QVERIFY(std::abs(v) < 1e-12);
+    for (std::size_t i = 0; i < t2.size(); ++i)
+        QVERIFY(std::abs(st.T2[i] - t2[i]) < 1e-9);
+
+    const Mat3 dipolar = ReconstructLibraryT2Matrix({0.0, 0.0, std::sqrt(6.0), 0.0, 0.0});
+    QVERIFY(std::abs(dipolar(0, 0) + 1.0) < 1e-9);
+    QVERIFY(std::abs(dipolar(1, 1) + 1.0) < 1e-9);
+    QVERIFY(std::abs(dipolar(2, 2) - 2.0) < 1e-9);
+}
+
+void RediscoverBasisTests::molecularFrameRoundTripAuditMath() {
+    Vec3 x(1.0, 2.0, 0.5);
+    x.normalize();
+    Vec3 zSeed(-0.25, 0.4, 1.0);
+    Vec3 z = zSeed - zSeed.dot(x) * x;
+    z.normalize();
+    Vec3 y = z.cross(x);
+    y.normalize();
+    z = x.cross(y);
+    z.normalize();
+
+    Mat3 axes;
+    axes.col(0) = x;
+    axes.col(1) = y;
+    axes.col(2) = z;
+    QVERIFY((axes.transpose() * axes - Mat3::Identity()).cwiseAbs().maxCoeff() < 1e-13);
+    QVERIFY(std::abs(axes.determinant() - 1.0) < 1e-13);
+
+    Mat3 sigma;
+    sigma << 101.0, 1.2, -0.7,
+             0.4, 94.0, 2.1,
+            -0.2, 1.4, 88.0;
+    const Mat3 sigmaMol = axes.transpose() * sigma * axes;
+    const Mat3 roundTrip = axes * sigmaMol * axes.transpose();
+    QVERIFY((roundTrip - sigma).cwiseAbs().maxCoeff() < 1e-13);
 }
 
 void RediscoverBasisTests::caseHunterSelectionGuardRejectsDftRead() {

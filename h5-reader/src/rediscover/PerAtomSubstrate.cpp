@@ -2,6 +2,7 @@
 
 #include "CaseHunter.h"
 #include "Catalog.h"
+#include "LiteratureConstants.h"
 #include "LocalFrameBasis.h"
 #include "McConnellLiteratureKernel.h"
 #include "RelationshipEngine.h"
@@ -49,7 +50,6 @@ Q_LOGGING_CATEGORY(cPerAtom, "h5reader.rediscover.per_atom_substrate")
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr float kNaNF32 = std::numeric_limits<float>::quiet_NaN();
-constexpr double kCoulombKe = 14.3996;
 
 QString num(double v) { return QString::number(v, 'g', 12); }
 
@@ -601,7 +601,7 @@ PairContribution makeRingContribution(const Body& body, std::size_t targetAtom,
     out.dipolar = d.dipolar;
     out.kernel_T0 = fixed.T0;
     out.kernel_T2 = fixed.T2;
-    out.contribution = t2Magnitude(fixed.T2);
+    out.contribution = RingForwardContributionPpm(fixed);
     return out;
 }
 
@@ -643,7 +643,7 @@ PairContribution makeChargeContribution(const Body& body, std::size_t targetAtom
     const double r3 = r * r * r;
     const double r5 = r3 * r * r;
     Mat3 efg = q * (3.0 * disp * disp.transpose() / r5 - Mat3::Identity() / r3);
-    efg *= kCoulombKe;
+    efg *= CoulombKeVA();
     efg -= (efg.trace() / 3.0) * Mat3::Identity();
     const model::SphericalTensor st = DecomposeLibrary(efg);
 
@@ -760,7 +760,7 @@ PairContribution makeBondContribution(const Body& body, std::size_t targetAtom,
     if (litPresent && !slot.mc_source_is_self_or_bonded) {
         out.kernel_T0 = lit.T0;
         out.kernel_T2 = lit.T2;
-        out.contribution = t2Magnitude(lit.T2);
+        out.contribution = McConnellForwardContributionPpm(lit);
     }
     return out;
 }
@@ -813,7 +813,7 @@ std::array<double, 5> chargeKernelT2Local(const Body& body, std::size_t atom, st
         any = true;
     }
     if (!any) return std::array<double, 5>{};
-    efg *= kCoulombKe;
+    efg *= CoulombKeVA();
     efg -= (efg.trace() / 3.0) * Mat3::Identity();
     const model::SphericalTensor st = DecomposeLibrary(efg);
     return finiteT2(st.T2) ? st.T2 : nanT2();

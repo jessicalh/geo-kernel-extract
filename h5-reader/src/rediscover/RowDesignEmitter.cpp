@@ -2,6 +2,7 @@
 
 #include "Catalog.h"
 #include "ExtractionSupport.h"
+#include "LiteratureConstants.h"
 #include "RamaRegion.h"
 #include "RelationshipEngine.h"
 #include "SphericalBasis.h"
@@ -49,17 +50,6 @@ static_assert(static_cast<int>(model::RingTypeIndex::HieImidazole) == 7, "ring i
 static_assert(static_cast<int>(model::RingTypeIndex::ProPyrrolidine)
               == model::kAromaticRingTypeCount,
               "Pro must remain outside the per-aromatic ring arrays");
-
-constexpr std::array<double, model::kAromaticRingTypeCount> kRingLiteratureIntensity = {
-    -12.0,   // PheBenzene
-    -11.28,  // TyrPhenol
-    -12.48,  // TrpBenzene
-    -6.72,   // TrpPyrrole
-    -19.2,   // Trp indole perimeter
-    -5.16,   // HisImidazole
-    -5.16,   // HidImidazole
-    -5.16,   // HieImidazole
-};
 
 struct RingArrayRequirement {
     ArrayId id;
@@ -472,6 +462,47 @@ struct RowWriteContext {
     }
 };
 
+struct PredecessorChi1Region {
+    int region = -1;
+    bool present = false;
+    QString missingReason;
+};
+
+PredecessorChi1Region predecessorChi1Region(const Body& body,
+                                            const model::QtProtein& protein,
+                                            const model::QtResidue* residue,
+                                            std::size_t frame) {
+    PredecessorChi1Region out;
+    if (!residue) {
+        out.missingReason = QStringLiteral("no_current_residue");
+        return out;
+    }
+    if (residue->prevResidueIndex < 0
+        || static_cast<std::size_t>(residue->prevResidueIndex) >= protein.residueCount()) {
+        out.missingReason = QStringLiteral("no_predecessor");
+        return out;
+    }
+    const model::QtResidue& prev =
+        protein.residue(static_cast<std::size_t>(residue->prevResidueIndex));
+    if (prev.atomIndices.empty()) {
+        out.missingReason = QStringLiteral("predecessor_empty");
+        return out;
+    }
+    for (int32_t atomIndex : prev.atomIndices) {
+        if (atomIndex < 0 || static_cast<std::size_t>(atomIndex) >= protein.atomCount()) continue;
+        const DihedralState chi =
+            body.idx.dihedrals.state(DihedralKind::Chi1,
+                                     static_cast<std::size_t>(atomIndex),
+                                     frame);
+        if (!chi.present) continue;
+        out.region = chi.fixed_bin;
+        out.present = true;
+        return out;
+    }
+    out.missingReason = QStringLiteral("predecessor_chi1_absent");
+    return out;
+}
+
 double t2Magnitude(const std::array<double, 5>& t2) {
     double s = 0.0;
     for (double v : t2) {
@@ -530,7 +561,8 @@ model::SphericalTensor scaledPerTypeTensor(const Body& body,
     model::SphericalTensor out;
     if (scaledT0ByType) scaledT0ByType->fill(0.0);
     for (int t = 0; t < model::kAromaticRingTypeCount; ++t) {
-        const double intensity = kRingLiteratureIntensity[static_cast<std::size_t>(t)];
+        const double intensity =
+            RingIntensity(static_cast<model::RingTypeIndex>(t)).value;
         const double scaledT0 = intensity * requiredComponent(body, t0Id, atom, row, t);
         out.T0 += scaledT0;
         if (scaledT0ByType) (*scaledT0ByType)[static_cast<std::size_t>(t)] = scaledT0;
@@ -939,6 +971,10 @@ RowDesignRow buildRow(const Body& body, std::size_t atom, std::size_t row, std::
     rowCtx.setInt("next_class", r ? static_cast<int>(ClassifyResidue(r->nextResidueType)) : -1);
     rowCtx.setInt("prev_restype", r ? static_cast<int>(r->prevResidueType) : -1);
     rowCtx.setInt("next_restype", r ? static_cast<int>(r->nextResidueType) : -1);
+    const PredecessorChi1Region prevChi1 = predecessorChi1Region(body, p, r, row);
+    rowCtx.setInt("prev_chi1_region", prevChi1.region);
+    rowCtx.setBool("prev_chi1_present", prevChi1.present);
+    rowCtx.set("prev_chi1_missing_reason", prevChi1.missingReason);
     rowCtx.setBool("pre_proline", r && r->nextResidueType == model::AminoAcid::PRO);
     rowCtx.setBool("is_pro", r && r->isProline);
     rowCtx.setBool("is_gly", r && r->aminoAcid == model::AminoAcid::GLY);

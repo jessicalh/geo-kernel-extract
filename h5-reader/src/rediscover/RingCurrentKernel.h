@@ -8,6 +8,7 @@
 
 #include "AnalysisBody.h"
 #include "LocalFrameBasis.h"
+#include "RingCurrentScalars.h"
 
 #include "../model/QtRing.h"
 #include "../model/Types.h"

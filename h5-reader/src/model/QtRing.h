@@ -20,6 +20,8 @@
 
 #include "Types.h"
 
+#include "../rediscover/LiteratureConstants.h"
+
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -114,8 +116,8 @@ class QtFusedRing : public QtRing {};
 class QtPheBenzeneRing final : public QtSixMemberedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::PheBenzene; }
-    double LiteratureIntensity() const override { return -12.0; }
-    double JohnsonBoveyLobeOffset() const override { return 0.64; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 0; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
     const char* TypeName() const override { return "PHE"; }
@@ -124,8 +126,8 @@ public:
 class QtTyrPhenolRing final : public QtSixMemberedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::TyrPhenol; }
-    double LiteratureIntensity() const override { return -11.28; }
-    double JohnsonBoveyLobeOffset() const override { return 0.64; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 0; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
     const char* TypeName() const override { return "TYR"; }
@@ -134,8 +136,8 @@ public:
 class QtTrpBenzeneRing final : public QtSixMemberedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::TrpBenzene; }
-    double LiteratureIntensity() const override { return -12.48; }
-    double JohnsonBoveyLobeOffset() const override { return 0.64; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 0; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
     const char* TypeName() const override { return "TRP6"; }
@@ -149,8 +151,8 @@ public:
 class QtTrpPyrroleRing final : public QtFiveMemberedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::TrpPyrrole; }
-    double LiteratureIntensity() const override { return -6.72; }
-    double JohnsonBoveyLobeOffset() const override { return 0.52; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 1; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Reduced; }
     const char* TypeName() const override { return "TRP5"; }
@@ -160,8 +162,8 @@ public:
 class QtHisImidazoleRing final : public QtFiveMemberedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::HisImidazole; }
-    double LiteratureIntensity() const override { return -5.16; }
-    double JohnsonBoveyLobeOffset() const override { return 0.50; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 2; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Weak; }
     const char* TypeName() const override { return "HIS"; }
@@ -171,8 +173,8 @@ public:
 class QtHidImidazoleRing final : public QtFiveMemberedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::HidImidazole; }
-    double LiteratureIntensity() const override { return -5.16; }
-    double JohnsonBoveyLobeOffset() const override { return 0.50; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 2; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Weak; }
     const char* TypeName() const override { return "HID"; }
@@ -182,8 +184,8 @@ public:
 class QtHieImidazoleRing final : public QtFiveMemberedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::HieImidazole; }
-    double LiteratureIntensity() const override { return -5.16; }
-    double JohnsonBoveyLobeOffset() const override { return 0.50; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 2; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Weak; }
     const char* TypeName() const override { return "HIE"; }
@@ -197,8 +199,8 @@ public:
 class QtIndolePerimeterRing final : public QtFusedRing {
 public:
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::TrpPerimeter; }
-    double LiteratureIntensity() const override { return -19.2; }
-    double JohnsonBoveyLobeOffset() const override { return 0.60; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 1; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
     int RingSizeValue() const override { return 9; }
@@ -223,8 +225,8 @@ public:
     QtProPyrrolidineRing() { ringKind = RingKind::Saturated; }
 
     RingTypeIndex TypeIndex() const override { return RingTypeIndex::ProPyrrolidine; }
-    double LiteratureIntensity() const override { return 0.0; }
-    double JohnsonBoveyLobeOffset() const override { return 0.0; }
+    double LiteratureIntensity() const override { return h5reader::rediscover::RingIntensity(TypeIndex()).value; }
+    double JohnsonBoveyLobeOffset() const override { return h5reader::rediscover::JohnsonBoveyLobeOffset(TypeIndex()).value; }
     int NitrogenCount() const override { return 1; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::None; }
     const char* TypeName() const override { return "PRO"; }

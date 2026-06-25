@@ -26,4 +26,10 @@ namespace h5reader::rediscover {
 // nmr::SphericalTensor::Decompose component-for-component.
 model::SphericalTensor DecomposeLibrary(const model::Mat3& sigma);
 
+// Reconstruct the symmetric matrix whose library-basis T0/T2 components are
+// exactly `t0` and `t2`. This is the inverse of the T2 convention documented
+// above; T1 is antisymmetric and is not represented in an EFG T2 tensor.
+model::Mat3 ReconstructLibraryT2Matrix(double t0, const std::array<double, 5>& t2);
+model::Mat3 ReconstructLibraryT2Matrix(const std::array<double, 5>& t2);
+
 }  // namespace h5reader::rediscover

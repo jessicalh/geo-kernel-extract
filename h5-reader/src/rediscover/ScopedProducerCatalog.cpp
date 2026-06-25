@@ -20,6 +20,7 @@ bool excludedGroup(io::FieldGroup g) {
 }  // namespace
 
 bool IsScopedProducerField(const io::FieldSpec& spec) {
+    if (spec.kind == io::FieldKind::TripeptideBBShielding) return true;
     return !excludedGroup(spec.group);
 }
 
