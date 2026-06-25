@@ -24,6 +24,7 @@
 #include "../model/QtLarsenHBondGroup.h"
 #include "../rediscover/RingCurrentScalars.h"
 #include "../rediscover/ClassicalSourceMath.h"
+#include "../rediscover/LiteratureConstants.h"
 #include "../model/QtMcConnellGroup.h"
 #include "../model/QtMopacCoreGroup.h"
 #include "../model/QtMopacCoulombGroup.h"
@@ -513,6 +514,33 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
             }
             if (anyMc && std::isfinite(mc))
                 AddScalar(ensureFwd(), QStringLiteral("McConnell contribution"), mc, QStringLiteral("ppm"));
+        }
+        // Buckingham = -A*E|| - B*E||^2  (signed E|| = MOPAC Coulomb field on the
+        // primary bond axis = mopac_coulomb_scalars E_bond_proj, "Buckingham
+        // sigma_iso input"; A,B element/frame-specific literature constants). ppm.
+        // frame_kind comes from the cached CSA result when present; otherwise the
+        // BuckinghamA/B atom-name checks resolve backbone atoms.
+        if (auto sc = model::QtMopacCoulombGroup(s).scalars(a)) {
+            const double ePar = sc->E_bond_proj;
+            if (std::isfinite(ePar)) {
+                const auto& atom = protein_->atom(atomIdx_);
+                const auto& res = atom.residueIndex >= 0
+                                      ? protein_->residue(atom.residueIndex)
+                                      : model::QtResidue{};
+                const std::string residueStd = model::IupacResidue3LetterFor(res.aminoAcid);
+                const std::string atomNameStd = protein_->atomNames(atomIdx_).amber.toStdString();
+                const std::string frameKindStd =
+                    (hasCsa_ && csaAtom_ == atomIdx_ && csa_.framed) ? csa_.frameKind.toStdString()
+                                                                     : std::string();
+                const auto bA = rediscover::BuckinghamA(atom.element, residueStd, atomNameStd, frameKindStd);
+                const auto bB = rediscover::BuckinghamB(atom.element, residueStd, atomNameStd, frameKindStd);
+                double buck = 0.0;
+                bool anyB = false;
+                if (std::isfinite(bA.value)) { buck += -bA.value * ePar; anyB = true; }
+                if (std::isfinite(bB.value)) { buck += -bB.value * ePar * ePar; anyB = true; }
+                if (anyB && std::isfinite(buck))
+                    AddScalar(ensureFwd(), QStringLiteral("Buckingham contribution"), buck, QStringLiteral("ppm"));
+            }
         }
     }
 
