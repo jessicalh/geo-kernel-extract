@@ -22,6 +22,7 @@
 #include "../model/QtHBondGroup.h"
 #include "../model/QtHydrationGroup.h"
 #include "../model/QtLarsenHBondGroup.h"
+#include "../rediscover/RingCurrentScalars.h"
 #include "../model/QtMcConnellGroup.h"
 #include "../model/QtMopacCoreGroup.h"
 #include "../model/QtMopacCoulombGroup.h"
@@ -449,6 +450,39 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         return;
     }
     const auto& s = *snap;
+
+    // --- Classical forward sum (VIEWER-DERIVED) --- the validated forward terms,
+    // computed HERE from the loaded npy via the shared rediscover math
+    // (RingPerTypeT0Ppm; Larsen T0 + water) -- the reader NEVER runs the emit.
+    // The raw kernels that feed these live in the drawer below. McConnell +
+    // Buckingham + sigma_cl + residual land here as their inputs get wired.
+    {
+        model::QtBiotSavartGroup bsFwd(s);
+        model::QtLarsenHBondGroup larsenFwd(s);
+        QTreeWidgetItem* fwd = nullptr;
+        auto ensureFwd = [&]() -> QTreeWidgetItem* {
+            if (!fwd) {
+                fwd = AddKV(root, QStringLiteral("Classical forward sum (derived)"), QString());
+                fwd->setExpanded(true);
+            }
+            return fwd;
+        };
+        // ring = sum_t bs_per_type_T0[t] * RingIntensity[t]  (signed T0, ppm)
+        if (auto pt = bsFwd.perTypeT0(a)) {
+            const double ring =
+                rediscover::RingPerTypeT0Ppm(pt->byType.data(), model::kAromaticRingTypeCount);
+            if (std::isfinite(ring))
+                AddScalar(ensureFwd(), QStringLiteral("ring contribution"), ring, QStringLiteral("ppm"));
+        }
+        // Larsen = signed T0 + ProCS15 water term  (ppm)
+        if (auto sh = larsenFwd.shielding(a)) {
+            double lars = sh->T0;
+            if (auto wt = larsenFwd.waterTerm(a))
+                lars += *wt;
+            if (std::isfinite(lars))
+                AddScalar(ensureFwd(), QStringLiteral("Larsen contribution"), lars, QStringLiteral("ppm"));
+        }
+    }
 
     // ── Ring current (Biot-Savart / Haigh-Mallion / ring susceptibility) ──
     if (AllowsAny(availability_, {"npy:bs_shielding", "npy:hm_shielding",
