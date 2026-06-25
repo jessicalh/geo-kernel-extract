@@ -95,6 +95,10 @@ public:
     // `H5READER_REST_PORT=NNNNN\n` for the pytest fixture to scrape.
     quint16 startRestServer(quint16 port);
 
+    // The focused atom's Atom Info panel serialized to JSON (field / value /
+    // provenance tooltip), for the REST harness. Empty if no inspector. Read-only.
+    QJsonArray inspectorTreeJson() const;
+
     // Hide or restore the docks (inspector, selection, dashboard strip)
     // wholesale. Hide preserves each dock's prior visibility so restore
     // returns each one to whatever it was — a dock that was already hidden

@@ -1060,6 +1060,10 @@ ReaderMainWindow::~ReaderMainWindow() {
     }
 }
 
+QJsonArray ReaderMainWindow::inspectorTreeJson() const {
+    return inspectorDock_ ? inspectorDock_->dumpTree() : QJsonArray();
+}
+
 
 quint16 ReaderMainWindow::startRestServer(quint16 port) {
     ASSERT_THREAD(this);

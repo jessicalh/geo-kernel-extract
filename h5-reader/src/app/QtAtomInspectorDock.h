@@ -31,6 +31,7 @@
 
 class QTreeWidget;
 class QTreeWidgetItem;
+class QJsonArray;
 
 namespace h5reader::app {
 
@@ -89,6 +90,11 @@ public:
     // focused atom); clearOrientationTensor hides it.
     void setOrientationTensor(std::size_t atom, const OrientationTensorInfo& info);
     void clearOrientationTensor();
+
+    // Serialize the current panel tree (field / value / provenance tooltip,
+    // recursively) for the REST harness, so the curated display and its
+    // provenance labels are programmatically assertable. Read-only.
+    QJsonArray dumpTree() const;
 
 public slots:
     // The dock's two inputs: which atom and which frame. Both cause a

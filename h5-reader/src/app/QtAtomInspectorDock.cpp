@@ -40,6 +40,8 @@
 #include <QColor>
 #include <QFont>
 #include <QHeaderView>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QLoggingCategory>
 #include <QSizePolicy>
 #include <QString>
@@ -883,6 +885,45 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
 
     tree_->expandToDepth(1);
     qCDebug(cDock).noquote() << "rebuilt | atom=" << a << "| frame=" << t << "| snapshot= resident";
+}
+
+namespace {
+// Recursively serialize a tree item's children to JSON (field / value / tooltip).
+QJsonArray serializeInspectorChildren(const QTreeWidgetItem* item) {
+    QJsonArray out;
+    for (int i = 0; i < item->childCount(); ++i) {
+        const QTreeWidgetItem* c = item->child(i);
+        QJsonObject o{{QStringLiteral("field"), c->text(0)},
+                      {QStringLiteral("value"), c->text(1)}};
+        const QString tip = c->toolTip(0);
+        if (!tip.isEmpty())
+            o.insert(QStringLiteral("tooltip"), tip);
+        if (c->childCount() > 0)
+            o.insert(QStringLiteral("children"), serializeInspectorChildren(c));
+        out.append(o);
+    }
+    return out;
+}
+}  // namespace
+
+// Serialize the focused atom's panel tree for the REST harness so the curated
+// display + provenance tooltips are programmatically assertable. Read-only.
+QJsonArray QtAtomInspectorDock::dumpTree() const {
+    QJsonArray out;
+    if (!tree_)
+        return out;
+    for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
+        const QTreeWidgetItem* top = tree_->topLevelItem(i);
+        QJsonObject o{{QStringLiteral("field"), top->text(0)},
+                      {QStringLiteral("value"), top->text(1)}};
+        const QString tip = top->toolTip(0);
+        if (!tip.isEmpty())
+            o.insert(QStringLiteral("tooltip"), tip);
+        if (top->childCount() > 0)
+            o.insert(QStringLiteral("children"), serializeInspectorChildren(top));
+        out.append(o);
+    }
+    return out;
 }
 
 }  // namespace h5reader::app

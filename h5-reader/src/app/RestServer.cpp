@@ -670,6 +670,18 @@ void RestServer::registerRoutes() {
         });
     });
 
+    // ---- inspector panel readout ----------------------------------------
+
+    // GET /inspector/tree -> the focused atom's Atom Info panel serialized as
+    // [{field, value, tooltip?, children?}], so the curated primary set and its
+    // provenance/status tooltips are REST-assertable (tooltips don't screenshot).
+    server_->route(QStringLiteral("/inspector/tree"), [this]() {
+        ASSERT_THREAD(this);
+        if (!readerWindow_)
+            return errorResponse(QStringLiteral("reader window not wired"), SC::ServiceUnavailable);
+        return jsonResponse(readerWindow_->inspectorTreeJson());
+    });
+
     // ---- frame ----------------------------------------------------------
 
     server_->route(QStringLiteral("/frame/current"), [this]() {
