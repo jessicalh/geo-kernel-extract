@@ -98,6 +98,18 @@ bool AddScalar(QTreeWidgetItem* parent, const QString& name, double value, const
     return true;
 }
 
+// Like AddScalar but returns the row and attaches a provenance/status tooltip
+// (the curated metric-inventory label) to both columns, so a primary value
+// carries its source + USE/PLACEHOLDER status on hover.
+QTreeWidgetItem* AddScalarP(QTreeWidgetItem* parent, const QString& name, double value,
+                            const QString& unit, const QString& provenance) {
+    auto* it = AddKV(parent, name,
+                     unit.isEmpty() ? FmtDouble(value) : FmtDouble(value) + QStringLiteral(" ") + unit);
+    it->setToolTip(0, provenance);
+    it->setToolTip(1, provenance);
+    return it;
+}
+
 bool AddVec3(QTreeWidgetItem* parent, const QString& name, const Vec3& v, const QString& unit = QString()) {
     AddKV(parent, name, FmtVec3(v, unit));
     return true;
@@ -488,7 +500,9 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 rediscover::RingPerTypeT0Ppm(pt->byType.data(), model::kAromaticRingTypeCount);
             if (std::isfinite(ring)) {
                 in.ring = {ring, true};
-                AddScalar(ensureFwd(), QStringLiteral("ring contribution"), ring, QStringLiteral("ppm"));
+                AddScalarP(ensureFwd(), QStringLiteral("ring contribution"), ring, QStringLiteral("ppm"),
+                           QStringLiteral("Biot-Savart per-type signed T0 x Giessner-Prettre ring "
+                                          "intensity (ppm). [USE]"));
             }
         }
         // Larsen = signed T0 + ProCS15 water term  (ppm)
@@ -498,7 +512,9 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 lars += *wt;
             if (std::isfinite(lars)) {
                 in.larsen = {lars, true};
-                AddScalar(ensureFwd(), QStringLiteral("Larsen contribution"), lars, QStringLiteral("ppm"));
+                AddScalarP(ensureFwd(), QStringLiteral("Larsen contribution"), lars, QStringLiteral("ppm"),
+                           QStringLiteral("Larsen/ProCS15 signed H-bond T0 + 2.07 ppm ProCS15 water "
+                                          "term (ppm). [USE]"));
             }
         }
         // McConnell = Sum over the 6 forward bond producers of
@@ -531,7 +547,9 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
             }
             if (anyMc && std::isfinite(mc)) {
                 in.mcconnell = {mc, true};
-                AddScalar(ensureFwd(), QStringLiteral("McConnell contribution"), mc, QStringLiteral("ppm"));
+                AddScalarP(ensureFwd(), QStringLiteral("McConnell contribution"), mc, QStringLiteral("ppm"),
+                           QStringLiteral("Wiberg-weighted (_bo) McConnell signed T0 x DeltaChi x "
+                                          "molar prefactor (ppm). [USE]"));
             }
         }
         // Buckingham inputs: signed E|| = mopac_coulomb_scalars E_bond_proj (the
@@ -557,8 +575,10 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         // the Buckingham term (-A*E|| - B*E||^2) is computed inside the fold.
         const rediscover::ClassicalSigmaResult folded = rediscover::ComputeClassicalSigma(in);
         if (folded.buckingham.present && std::isfinite(folded.buckingham.value))
-            AddScalar(ensureFwd(), QStringLiteral("Buckingham contribution"),
-                      folded.buckingham.value, QStringLiteral("ppm"));
+            AddScalarP(ensureFwd(), QStringLiteral("Buckingham contribution"),
+                       folded.buckingham.value, QStringLiteral("ppm"),
+                       QStringLiteral("-A*E_parallel - B*E_parallel^2 with signed MOPAC bond-axis "
+                                      "field and literature A,B (ppm). [USE]"));
 
         // sigma_cl + residual ONLY when the full classical model is computable
         // (every mechanism's source field present). Otherwise sigma_cl would
@@ -568,17 +588,51 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         if (fwdComplete && folded.sigma_cl.present && std::isfinite(folded.sigma_cl.value)) {
             // sigma0 is a placeholder baseline -> caveat the absolute number.
             if (in.sigma0.present)
-                AddScalar(ensureFwd(), QStringLiteral("sigma0 (placeholder baseline)"),
-                          in.sigma0.value, QStringLiteral("ppm"));
-            AddScalar(ensureFwd(), QStringLiteral("sigma_cl (sigma0 placeholder)"),
-                      folded.sigma_cl.value, QStringLiteral("ppm"));
+                AddScalarP(ensureFwd(), QStringLiteral("sigma0 (placeholder baseline)"),
+                           in.sigma0.value, QStringLiteral("ppm"),
+                           QStringLiteral("Element-specific literature placeholder baseline, not a "
+                                          "measured reference. [PLACEHOLDER]"));
+            AddScalarP(ensureFwd(), QStringLiteral("sigma_cl (sigma0 placeholder)"),
+                       folded.sigma_cl.value, QStringLiteral("ppm"),
+                       QStringLiteral("Forward sum sigma0 + Buckingham + ring + McConnell + Larsen; "
+                                      "absolute value rests on the sigma0 placeholder. [USE; sigma0 placeholder]"));
             // residual = sigma_qm - sigma_cl; sigma_qm = ORCA total T0 (single-pose
             // DFT only, so absent on a trajectory snapshot).
             if (auto qm = model::QtOrcaGroup(s).total(a)) {
                 if (std::isfinite(qm->T0))
-                    AddScalar(ensureFwd(), QStringLiteral("residual (sigma_qm - sigma_cl)"),
-                              qm->T0 - folded.sigma_cl.value, QStringLiteral("ppm"));
+                    AddScalarP(ensureFwd(), QStringLiteral("residual (sigma_qm - sigma_cl)"),
+                               qm->T0 - folded.sigma_cl.value, QStringLiteral("ppm"),
+                               QStringLiteral("sigma_qm (ORCA total signed T0) - sigma_cl (ppm). [USE]"));
             }
+        }
+    }
+
+    // ── Electric field & EFG (PRIMARY descriptors per the curated list) ──
+    // signed E|| (the Buckingham linear-term input) + the EFG |T2| invariant
+    // (AIMNet2). The raw Coulomb/APBS field vectors and full EFG components stay
+    // in the "Electrostatics" drawer below.
+    {
+        QTreeWidgetItem* ef = nullptr;
+        auto ensureEf = [&]() -> QTreeWidgetItem* {
+            if (!ef) {
+                ef = AddKV(root, QStringLiteral("Electric field & EFG"), QString());
+                ef->setExpanded(true);
+            }
+            return ef;
+        };
+        if (auto sc = model::QtMopacCoulombGroup(s).scalars(a)) {
+            if (std::isfinite(sc->E_bond_proj))
+                AddScalarP(ensureEf(), QStringLiteral("signed E_parallel"), sc->E_bond_proj,
+                           QStringLiteral("V/Å"),
+                           QStringLiteral("MOPAC Coulomb field on the local bond / molecular-z axis, "
+                                          "signed (V/A); the Buckingham linear-term input. [USE]"));
+        }
+        if (auto efg = model::QtAimnet2Group(s).efg(a)) {
+            if (std::isfinite(efg->t2Magnitude()))
+                AddScalarP(ensureEf(), QStringLiteral("EFG |T2| (AIMNet2)"), efg->t2Magnitude(),
+                           QStringLiteral("V/Å²"),
+                           QStringLiteral("AIMNet2 electric-field-gradient symmetric-traceless invariant "
+                                          "|T2| (MOPAC Coulomb is the fallback source). [USE]"));
         }
     }
 
