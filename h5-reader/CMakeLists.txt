@@ -259,6 +259,13 @@ qt_add_library(h5reader_core STATIC
     src/calculators/QtHaighMallionCalc.h
     src/calculators/QtHaighMallionCalc.cpp
 
+    # Rediscover — pure, dependency-free shared math reused by the viewer to
+    # DERIVE validated metrics on loaded npy (no emit). Self-contained (only
+    # LiteratureConstants.h, header-only); the Arrow/Parquet-bound rediscover
+    # engine stays behind the NOT-WIN32 gate (h5reader_extract links this).
+    src/rediscover/ClassicalSourceMath.h
+    src/rediscover/ClassicalSourceMath.cpp
+
 )
 
 target_include_directories(h5reader_core PUBLIC
@@ -368,8 +375,6 @@ qt_add_executable(h5reader_extract
     src/rediscover/AnalysisBody.h
     src/rediscover/DistributionSummary.h
     src/rediscover/DistributionSummary.cpp
-    src/rediscover/ClassicalSourceMath.h
-    src/rediscover/ClassicalSourceMath.cpp
     src/rediscover/TensorConventionGuard.h
     src/rediscover/TensorConventionGuard.cpp
     src/rediscover/LiteratureConstants.h

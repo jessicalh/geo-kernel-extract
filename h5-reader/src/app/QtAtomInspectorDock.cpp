@@ -23,6 +23,7 @@
 #include "../model/QtHydrationGroup.h"
 #include "../model/QtLarsenHBondGroup.h"
 #include "../rediscover/RingCurrentScalars.h"
+#include "../rediscover/ClassicalSourceMath.h"
 #include "../model/QtMcConnellGroup.h"
 #include "../model/QtMopacCoreGroup.h"
 #include "../model/QtMopacCoulombGroup.h"
@@ -481,6 +482,37 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 lars += *wt;
             if (std::isfinite(lars))
                 AddScalar(ensureFwd(), QStringLiteral("Larsen contribution"), lars, QStringLiteral("ppm"));
+        }
+        // McConnell = Sum over the 6 forward bond producers of
+        // McConnellProducerT0ToPpm(category, producer.T0)  (signed, ppm). The raw
+        // per-category _bo kernels feed this; the validated ppm form is this
+        // viewer-derived sum. No disulfide producer in the forward set (mirrors
+        // the engine's kMcForwardProducerFields).
+        {
+            static constexpr struct {
+                io::FieldKind kind;
+                model::BondCategory category;
+            } kMcProducers[] = {
+                {io::FieldKind::McPeptideCoBo, model::BondCategory::PeptideCO},
+                {io::FieldKind::McPeptideCNBo, model::BondCategory::PeptideCN},
+                {io::FieldKind::McBackboneOtherBo, model::BondCategory::BackboneOther},
+                {io::FieldKind::McSidechainCoBo, model::BondCategory::SidechainCO},
+                {io::FieldKind::McSidechainOtherBo, model::BondCategory::SidechainOther},
+                {io::FieldKind::McAromaticZeroedBo, model::BondCategory::Aromatic},
+            };
+            model::QtMcConnellGroup mcFwd(s);
+            double mc = 0.0;
+            bool anyMc = false;
+            for (const auto& p : kMcProducers) {
+                auto bo = mcFwd.producerBo(p.kind, a);
+                if (!bo) continue;
+                const double term = rediscover::McConnellProducerT0ToPpm(p.category, bo->T0);
+                if (!std::isfinite(term)) continue;
+                mc += term;
+                anyMc = true;
+            }
+            if (anyMc && std::isfinite(mc))
+                AddScalar(ensureFwd(), QStringLiteral("McConnell contribution"), mc, QStringLiteral("ppm"));
         }
     }
 

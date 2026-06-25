@@ -6,6 +6,7 @@
 //   mc_shielding   (N, 9)   SphericalTensor, Å⁻³
 //   mc_category_T2 (N, 25)  T2 per McConnell category (5 × 5)
 //   mc_scalars     (N, 6)   CO/CN/sidechain/aromatic angular sums + nearest dists
+//   mc_*_bo        (N, 9)   per-category bond-order producer tensors (forward sum)
 
 #pragma once
 
@@ -48,6 +49,17 @@ public:
             return std::nullopt;
         const double* r = snap_->column(io::FieldKind::McScalars).row(atomIdx);
         return McConnellScalars{r[0], r[1], r[2], r[3], r[4], r[5]};
+    }
+
+    // Per-category bond-order ("_bo") producer tensor for the forward McConnell
+    // contribution. The validated ppm term is the viewer-side sum
+    // Sum_category McConnellProducerT0ToPpm(category, producer.T0); the reader
+    // never runs the emit. Caller supplies the producer FieldKind
+    // (McPeptideCoBo ... McAromaticZeroedBo) paired with its BondCategory.
+    std::optional<SphericalTensor> producerBo(io::FieldKind producer, std::size_t atomIdx) const {
+        if (!snap_->has(producer))
+            return std::nullopt;
+        return UnpackSphericalTensor(snap_->column(producer).row(atomIdx));
     }
 
 private:
