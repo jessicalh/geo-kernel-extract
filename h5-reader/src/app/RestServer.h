@@ -80,6 +80,7 @@ class DashboardDisplayController;
 class MoleculeScene;
 class QtPlaybackController;
 class ReaderMainWindow;
+class TensorGhostTrail;
 
 class RestServer final : public QObject {
     Q_OBJECT
@@ -138,6 +139,10 @@ private:
     QPointer<QWidget>                           mainWindow_;
     QPointer<ReaderMainWindow>                  readerWindow_;
     QPointer<model::TransformedConformation>    transformed_;
+    // Heroshot layer (transient figure FX, never part of the reader UI): the
+    // tensor ghost trail built on demand by POST /heroshot/ghost_trail. Rebuilt
+    // against the live scene renderer each call; cleared by /heroshot/clear.
+    std::unique_ptr<TensorGhostTrail>           heroshotTrail_;
     bool                                        contextSet_ = false;
 };
 

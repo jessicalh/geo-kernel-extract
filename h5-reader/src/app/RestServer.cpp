@@ -10,6 +10,7 @@
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
 #include "SignalDisplayDialog.h"
+#include "TensorGhostTrail.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
@@ -57,6 +58,7 @@
 #include <vtkUnsignedCharArray.h>
 #include <vtkWindowToImageFilter.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -1748,6 +1750,119 @@ void RestServer::registerRoutes() {
             }
         }
         return jsonResponse(out);
+    });
+
+    // ---- heroshot: tensor ghost trail -----------------------------------
+    //
+    // POST /heroshot/ghost_trail  {atom?, n?, end_frame?, step?}
+    //   Draw the focused (or {"atom":N}) atom's shielding tensor at its last
+    //   `n` DFT-measured frames as a fading stack of glyphs -- newest opaque,
+    //   oldest faint -- so the re-orientation reads "from the side". Walks
+    //   backward from `end_frame` (default the live frame) by `step` (default
+    //   2, the DFT cadence), keeping only frames whose tensor is valid; up to
+    //   `n` (default 5, clamped 2..12) ghosts. Each ghost is the REAL measured
+    //   tensor at a REAL frame -- probeAtomCsa reads the DFT store directly, no
+    //   interpolation and the live frame never moves. Heroshot layer only: the
+    //   reader's own single live glyph is untouched. Echoes the frames + fades
+    //   actually drawn so a script can verify what it sees.
+    //   POST /heroshot/clear  removes the trail.
+    server_->route(QStringLiteral("/heroshot/ghost_trail"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_ || !scene_)
+            return errorResponse(QStringLiteral("reader window / scene not wired"),
+                                 SC::ServiceUnavailable);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        if (!protein)
+            return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+
+        std::size_t atom = 0;
+        if (body.contains("atom")) {
+            const int a = body.value("atom").toInt(-1);
+            if (a < 0 || static_cast<std::size_t>(a) >= protein->atomCount())
+                return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+            atom = static_cast<std::size_t>(a);
+        } else if (selection_ && selection_->hasFocus()) {
+            atom = selection_->focus();
+        } else {
+            return errorResponse(QStringLiteral("no atom: pass {\"atom\":N} or focus one"),
+                                 SC::BadRequest);
+        }
+
+        const int n = std::clamp(body.value("n").toInt(5), 2, 12);
+        const int step = std::clamp(body.value("step").toInt(2), 1, 16);
+        const int liveFrame = playback_ ? playback_->currentFrame() : 0;
+        int endFrame = body.contains("end_frame") ? body.value("end_frame").toInt(liveFrame)
+                                                   : liveFrame;
+        if (endFrame < 0) endFrame = 0;
+
+        // Walk backward from endFrame keeping valid (DFT-present) frames only.
+        // Bound the scan so a sparse DFT cadence cannot loop the whole way back.
+        constexpr double kFloor = 0.20;  // faintest ghost opacity (oldest frame)
+        std::vector<TensorGhostTrail::Sample> samples;
+        std::vector<int> framesKept;
+        const int scanLimit = n * step + 64;
+        for (int f = endFrame, scanned = 0;
+             f >= 0 && static_cast<int>(samples.size()) < n && scanned < scanLimit;
+             f -= step, ++scanned) {
+            const model::AtomCsaResult r = readerWindow_->probeAtomCsa(atom, f);
+            if (!r.valid) continue;
+            TensorGhostTrail::Sample s;
+            s.center = r.atomPos;
+            s.principalValues = {r.shape.principal_values[0], r.shape.principal_values[1],
+                                 r.shape.principal_values[2]};
+            s.pasAxes = r.shape.pas_axes;
+            s.iso = r.shape.sigma_iso;
+            samples.push_back(s);
+            framesKept.push_back(f);
+        }
+        if (samples.empty())
+            return errorResponse(
+                QStringLiteral("no DFT-valid frames at/under end_frame for this atom"),
+                SC::ServiceUnavailable);
+
+        // Fade: newest (index 0 = endFrame) opaque -> oldest faint at kFloor.
+        const std::size_t m = samples.size();
+        QJsonArray ghosts;
+        for (std::size_t i = 0; i < m; ++i) {
+            const double t = (m <= 1) ? 0.0
+                                      : static_cast<double>(i) / static_cast<double>(m - 1);
+            const double op = 1.0 - (1.0 - kFloor) * t;
+            samples[i].opacity = op;
+            ghosts.append(QJsonObject{
+                {"frame", framesKept[i]},
+                {"opacity", op},
+                {"sigma_iso", samples[i].iso},
+            });
+        }
+
+        // Rebuild against the CURRENT scene renderer each call -- cheap, and it
+        // sidesteps any stale-renderer hazard if the run was reloaded.
+        heroshotTrail_ = std::make_unique<TensorGhostTrail>(
+            vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
+        heroshotTrail_->show(samples);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+
+        return jsonResponse(QJsonObject{
+            {"atom", static_cast<qint64>(atom)},
+            {"end_frame", endFrame},
+            {"step", step},
+            {"requested_n", n},
+            {"kept", static_cast<qint64>(m)},
+            {"ghosts", ghosts},
+        });
+    });
+
+    server_->route(QStringLiteral("/heroshot/clear"), Method::Post, [this]() {
+        ASSERT_THREAD(this);
+        if (heroshotTrail_) heroshotTrail_->clear();
+        if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return QHttpServerResponse(SC::NoContent);
     });
 
     // ---- catalog dump (the full "seeable list", for auditing) -----------

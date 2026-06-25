@@ -121,7 +121,8 @@ void TensorGlyphActor::hideAll() {
 void TensorGlyphActor::show(const model::Vec3& center,
                             const std::array<double, 3>& principalValues,
                             const model::Mat3& pasAxes,
-                            double iso) {
+                            double iso,
+                            double opacity) {
     if (!renderer_) {
         clear();
         return;
@@ -180,6 +181,9 @@ void TensorGlyphActor::show(const model::Vec3& center,
                 kOvaloidRadius * std::abs(dev[static_cast<std::size_t>(i)]) / maxAbs;
     }
     glyphFilter_->Modified();
+    // Per-show opacity: the ovaloid keeps its 0.50 translucency scaled by the
+    // caller's fade; arrows (otherwise opaque) fade with it too.
+    glyphActor_->GetProperty()->SetOpacity(0.50 * opacity);
     glyphActor_->SetVisibility(true);
 
     // Principal-axis arrows -- the descriptive element. Each PAS axis is drawn
@@ -211,6 +215,7 @@ void TensorGlyphActor::show(const model::Vec3& center,
             }
             arrowActors_[slot]->SetUserMatrix(um);
             arrowActors_[slot]->GetProperty()->SetColor(col[0], col[1], col[2]);
+            arrowActors_[slot]->GetProperty()->SetOpacity(opacity);
             arrowActors_[slot]->SetVisibility(true);
         }
     }

@@ -47,10 +47,14 @@ public:
     // isotropic tensor collapses toward a point and an anisotropic one bulges
     // along its dominant deviation. Arrows are coloured by principal-value index
     // (0/1/2 -> amber/teal/violet). Replaces any prior glyph.
+    // `opacity` (default 1.0) scales the whole glyph -- the translucent ovaloid
+    // and the arrows -- so a caller can fade it (e.g. a ghost trail's older
+    // frames). At 1.0 the appearance is unchanged from before.
     void show(const model::Vec3& center,
               const std::array<double, 3>& principalValues,
               const model::Mat3& pasAxes,
-              double iso);
+              double iso,
+              double opacity = 1.0);
     void clear();
     void setVisible(bool on);
     bool isActive() const { return active_; }
