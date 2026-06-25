@@ -725,14 +725,19 @@ void ReaderMainWindow::updateOrientationTensorGlyph() {
 
 // Compute one atom's CSA result for the current frame -- the SAME orchestration
 // the glyph uses, exposed so REST /csa vets exactly what is drawn.
-model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom) {
+model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom, int requestedFrame) {
     if (!loaded_ || !dftStore_ || !transformed_)
         return {};
     const model::QtProtein* protein = loaded_->protein.get();
     model::Conformation* rawConf = loaded_->conformation.get();
     if (!protein || !rawConf)
         return {};
-    const int frameI = playback_ ? playback_->currentFrame() : 0;
+    // requestedFrame < 0 -> live frame; >= 0 -> that frame, read directly from
+    // the DFT store (ComputeAtomCsa already takes an explicit frame), so probing
+    // a past frame never moves playback.
+    const int frameI = requestedFrame >= 0
+                           ? requestedFrame
+                           : (playback_ ? playback_->currentFrame() : 0);
     const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
     return model::ComputeAtomCsa(*protein, *rawConf, *transformed_, *dftStore_, atom, frame);
 }

@@ -80,8 +80,11 @@ public:
 
     // Compute one atom's CSA result (PAS shape + molecular frame) for the
     // current frame -- the same orchestration the focus-driven glyph uses.
-    // Public so RestServer's GET /csa vets exactly what is drawn.
-    model::AtomCsaResult probeAtomCsa(std::size_t atom);
+    // Public so RestServer's GET /csa vets exactly what is drawn. `frame` < 0
+    // means the live frame; >= 0 probes that frame's tensor straight from the
+    // DFT store WITHOUT moving playback -- the per-frame basis for tensor ghost
+    // trails (each ghost = the real measured tensor at a real past frame).
+    model::AtomCsaResult probeAtomCsa(std::size_t atom, int frame = -1);
 
     // Load or replace the current calcset in this window. The path is resolved
     // through QtProteinLoader::LoadRunPath. Returns false without changing the

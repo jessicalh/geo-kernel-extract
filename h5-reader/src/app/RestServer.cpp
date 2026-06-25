@@ -1699,9 +1699,24 @@ void RestServer::registerRoutes() {
                                  SC::BadRequest);
         }
 
-        const model::AtomCsaResult r = readerWindow_->probeAtomCsa(atom);
+        // Optional ?frame=N probes that frame's tensor straight from the DFT
+        // store WITHOUT moving the live frame -- the per-frame basis the tensor
+        // ghost trail samples. Default (or <0) is the live frame.
+        int requestedFrame = -1;
+        const QString frameQ = req.query().queryItemValue(QStringLiteral("frame"));
+        if (!frameQ.isEmpty()) {
+            bool okF = false;
+            const qint64 f = frameQ.toLongLong(&okF);
+            if (!okF || f < 0)
+                return errorResponse(QStringLiteral("frame must be a non-negative integer"), SC::BadRequest);
+            requestedFrame = static_cast<int>(f);
+        }
+        const model::AtomCsaResult r = readerWindow_->probeAtomCsa(atom, requestedFrame);
+        const int resolvedFrame = requestedFrame >= 0
+            ? requestedFrame : (playback_ ? playback_->currentFrame() : 0);
         QJsonObject out{
             {"atom", static_cast<qint64>(atom)},
+            {"frame", resolvedFrame},
             {"dft_present", r.dftPresent},
             {"valid", r.valid},
             {"framed", r.framed},
