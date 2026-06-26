@@ -20,8 +20,8 @@ Q_LOGGING_CATEGORY(cMeas, "h5reader.overlay.measurement")
 // overlapping selections stay readable.
 // Keep the familiar filled selection marker; make it lighter now that tensors
 // are axes-only.
-constexpr double kSphereRadiusA = 0.85;
-constexpr double kOpacity       = 0.22;
+constexpr double kSphereRadiusA = 0.62;
+constexpr double kOpacity       = 0.14;
 
 // User-mode marker palette — pastel-shifted Okabe-Ito (50% mix with white).
 // Local to the overlay because the dashboard dock's slot swatches keep the

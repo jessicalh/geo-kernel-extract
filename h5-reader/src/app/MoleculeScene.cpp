@@ -2,10 +2,10 @@
 
 #include "CameraComposer.h"
 #include "MeasurementOverlay.h"
+#include "QtAtomTrajectoryOverlay.h"
 #include "QtBackboneRibbonOverlay.h"
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
-#include "QtOccupancyShellsOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "QuietTrackballStyle.h"
 #include "CsaTensorOverlay.h"
@@ -96,13 +96,12 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
     // depth occlusion (the harness needs this for blob analysis).
     //
     // The mainline viewer uses FXAA + NO depth peeling (proven on the AMD /
-    // llvmpipe demo box). THIS worktree flips depth peeling ON because the
-    // occupancy-shells overlay draws nested translucent surfaces (50% inside
-    // 90%) that need order-independent transparency; single-layer overlays
-    // tolerated plain alpha blending, concentric shells do not. The prereqs are
-    // already set below (AlphaBitPlanes=1, MSAA=0). Isolated to this worktree so
-    // the proven demo config is untouched until measured on the Mesa/Xvfb
-    // software-GL path (qt6-cpp 3d-vtk.md §8; llvmpipe multipass cost).
+    // llvmpipe demo box). THIS worktree flips depth peeling ON because tensor,
+    // field, and trajectory-envelope overlays need order-independent
+    // transparency. The prereqs are already set below (AlphaBitPlanes=1,
+    // MSAA=0). Isolated to this worktree so the proven demo config is untouched
+    // until measured on the Mesa/Xvfb software-GL path (qt6-cpp 3d-vtk.md §8;
+    // llvmpipe multipass cost).
 
     renderer_ = vtkSmartPointer<vtkRenderer>::New();
     renderer_->SetLayer(0);
@@ -283,15 +282,14 @@ void MoleculeScene::Build(const model::QtProtein& protein,
     }
     bfieldStream_->Build(protein, conformation);
 
-    // Occupancy-shells overlay — main renderer (layer 0) so its translucent
-    // shells depth-compose with the molecule. Deliberately NOT added to the
-    // setFrame fan: the shells are a whole-trajectory aggregate (frame-
-    // invariant); they rebuild on selection focus / transform change, wired in
-    // ReaderMainWindow once the selection exists.
-    if (!occupancyShells_) {
-        occupancyShells_ = new QtOccupancyShellsOverlay(renderer_, renderWindow_, this);
+    // Selected-atom trajectory envelope: main renderer geometry so its
+    // translucent local-density shells depth-compose with the molecule. It
+    // rebuilds on focus, transform, and bounded frame-window changes; wiring
+    // lives in ReaderMainWindow once the selection and DFT store exist.
+    if (!atomTrajectory_) {
+        atomTrajectory_ = new QtAtomTrajectoryOverlay(renderer_, this);
     }
-    occupancyShells_->Build(protein, conformation);
+    atomTrajectory_->Build(protein, conformation);
 
     // Markers go on the overlay-layer renderer (spec §5.2). The overlay
     // takes the main renderer for symmetry but only adds actors to the
@@ -355,17 +353,8 @@ void MoleculeScene::syncCameraClippingRange() {
                    cachedPaddedBounds_[2], cachedPaddedBounds_[3],
                    cachedPaddedBounds_[4], cachedPaddedBounds_[5]};
     // Occupancy shells are static whole-trajectory geometry that can extend well
-    // past the current-frame molecule (a mobile terminus wanders 15-25 A). Union
-    // their world bounds so the near/far planes don't slice them (codex review).
-    if (occupancyShells_) {
-        double sb[6];
-        if (occupancyShells_->worldBounds(sb)) {
-            b[0] = std::min(b[0], sb[0]); b[1] = std::max(b[1], sb[1]);
-            b[2] = std::min(b[2], sb[2]); b[3] = std::max(b[3], sb[3]);
-            b[4] = std::min(b[4], sb[4]); b[5] = std::max(b[5], sb[5]);
-        }
-    }
-    // Generalise that union to every visible prop in the main renderer. With
+    // past the current-frame molecule. Union every visible prop in the main
+    // renderer. With
     // AutoAdjustCameraClippingRangeOff() we are the sole authority on the near/
     // far planes, so they must enclose everything drawn in layer 0 — not just
     // the molecule. Overlays whose geometry reaches past the molecule surface
@@ -603,9 +592,10 @@ void MoleculeScene::setFrame(int t) {
     // 5. Fan to overlays — each updates its own backing data.
     if (ribbon_)       ribbon_->setFrame(t);
     if (ringPolygons_) ringPolygons_->setFrame(t);
-    if (fieldGrid_)    fieldGrid_->setFrame(t);
-    if (bfieldStream_) bfieldStream_->setFrame(t);
-    if (measurement_)  measurement_->setFrame(t);
+    if (fieldGrid_)       fieldGrid_->setFrame(t);
+    if (bfieldStream_)    bfieldStream_->setFrame(t);
+    if (atomTrajectory_)  atomTrajectory_->setFrame(t);
+    if (measurement_)     measurement_->setFrame(t);
     if (reveal_)       reveal_->setFrame(t);
 
     // 6. Resync near/far clipping planes from THIS FRAME's actual atom

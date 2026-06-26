@@ -120,7 +120,7 @@ public:
     // automation changes run the SAME path as a human click (per-frame
     // refresh for the kernel overlays) and keep the toolbar checkbox in
     // sync. name ∈ {ribbon, rings, butterfly, bfield, shadow} (+ aliases
-    // fieldgrid/field/isosurface, streamlines/stream, occupancy/shells).
+    // fieldgrid/field/isosurface, streamlines/stream, trajectory/path).
     // Returns false on an unknown name. Used by POST /overlay so the
     // headless snapshot harness can enable the field overlays, which
     // default off and are not persisted in QSettings.
@@ -199,6 +199,7 @@ private slots:
     void onOpenFile();
     void onOpenDirectory();
     void onOpenSignalDisplays();
+    void onGoToAtomTriggered();
     void onFocusCameraTriggered();   // toggle: track focused atom / release to manual
     void onTransformFitClicked();
 
@@ -238,6 +239,7 @@ private:
     // reflect in the toolbar too.
     void updateCameraModeActions();
     void updateFitModeLabel();
+    bool trajectoryOverlayActive() const;
     void revealDockQueued(QDockWidget* dock);
     void updateSelectionStatus();   // status-bar selection count + geometry kind
     void buildFilterMenu();         // (re)populate the Filter dropdown checklist
@@ -328,7 +330,8 @@ private:
     QPointer<QAction> showRingsAction_;
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
-    QPointer<QAction> showOccupancyAction_;
+    QPointer<QAction> showTrajectoryAction_;
+    QPointer<QAction> goToAtomAction_;
     QPointer<QAction> signalDisplaysAction_;
 
     // Display-isolation ("Filter"): a toolbar button whose dropdown is a live

@@ -14,9 +14,9 @@
 #include "QtAtomPicker.h"
 #include "RestServer.h"
 #include "QtBackboneRibbonOverlay.h"
+#include "QtAtomTrajectoryOverlay.h"
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
-#include "QtOccupancyShellsOverlay.h"
 #include "QtPlaybackController.h"
 #include "TimeViewportController.h"
 #include "MeasurementOverlay.h"
@@ -60,8 +60,12 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFont>
+#include <QFormLayout>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QKeySequence>
@@ -85,6 +89,7 @@
 #include <QPalette>
 #include <QPixmap>
 #include <QPolygonF>
+#include <QPushButton>
 #include <QStyle>
 #include <QTimer>
 #include <QToolBar>
@@ -442,20 +447,33 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                  meas,       &MeasurementOverlay::onSelectionChanged);
     }
 
-    // Occupancy-shells overlay: focus-driven (NOT changed() — focus-only, so a
+    // Trajectory overlay: focus-driven (NOT changed() -- focus-only, so a
     // plain pick doesn't rebuild twice) + transform-driven (a fit-mode change
-    // moves every aligned position, so the whole-trajectory aggregate is
-    // stale). The overlay self-guards single-pose / rigid atoms. A render is
-    // requested after focus/clear rebuilds (coalesced); transformChanged is
-    // already followed by refreshCurrentFrame above.
-    if (auto* occ = scene_->occupancyShellsOverlay()) {
-        occ->setSelection(selection_);
+    // moves every aligned position, so the path is stale). The overlay
+    // self-guards single-pose / rigid atoms. A render is requested after
+    // focus/clear rebuilds (coalesced); transformChanged is already followed
+    // by refreshCurrentFrame above.
+    if (auto* traj = scene_->atomTrajectoryOverlay()) {
+        traj->setSelection(selection_);
         ACONNECT(selection_, &model::AtomSelection::focusChanged,
-                 occ,        &QtOccupancyShellsOverlay::onFocusChanged);
+                 traj,       &QtAtomTrajectoryOverlay::onFocusChanged);
         ACONNECT(selection_, &model::AtomSelection::cleared,
-                 occ,        &QtOccupancyShellsOverlay::onSelectionCleared);
+                 traj,       &QtAtomTrajectoryOverlay::onSelectionCleared);
         ACONNECT(transformed_, &model::TransformedConformation::transformChanged,
-                 occ,          &QtOccupancyShellsOverlay::onTransformChanged);
+                 traj,         &QtAtomTrajectoryOverlay::onTransformChanged);
+        ACONNECT(traj, &QtAtomTrajectoryOverlay::rebuildStarted,
+                 this, [this](int frames) {
+                     QApplication::setOverrideCursor(Qt::WaitCursor);
+                     statusBar()->showMessage(
+                         QStringLiteral("Loading trajectory envelope (%1 frames)...").arg(frames));
+                 });
+        ACONNECT(traj, &QtAtomTrajectoryOverlay::rebuildFinished,
+                 this, [this](int frames, int /*dftSamples*/, int loadMs) {
+                     QApplication::restoreOverrideCursor();
+                     statusBar()->showMessage(
+                         QStringLiteral("Trajectory envelope: %1 frames (%2 ms)")
+                             .arg(frames).arg(loadMs));
+                 });
         ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
                  [this](std::size_t) {
                      if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
@@ -527,6 +545,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     if (loaded_->manifest.dft.has_value()) {
         const auto& dft = *loaded_->manifest.dft;
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dft.frames, this);
+        if (scene_ && scene_->atomTrajectoryOverlay())
+            scene_->atomTrajectoryOverlay()->setDftStore(dftStore_);
         ACONNECT(dftStore_, &model::DftShieldingStore::frameReady,
                  this, [this](std::size_t originalIndex) {
             if (!loaded_ || !loaded_->conformation || !playback_)
@@ -589,6 +609,10 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         if (inspectorDock_) inspectorDock_->clearCsaTensor();
         redraw();
     };
+    if (trajectoryOverlayActive()) {
+        hide();
+        return;
+    }
 
     if (!loaded_ || !dftStore_ || !transformed_ || !selection_ || !selection_->hasFocus()) {
         hide();
@@ -656,6 +680,10 @@ void ReaderMainWindow::updateOrientationTensorGlyph() {
         if (inspectorDock_) inspectorDock_->clearOrientationTensor();
         if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
     };
+    if (trajectoryOverlayActive()) {
+        hide();
+        return;
+    }
     if (!loaded_ || !transformed_ || !selection_ || !selection_->hasFocus()) {
         hide();
         return;
@@ -909,6 +937,7 @@ void ReaderMainWindow::refreshControlStates() {
 
     // Analysis controls.
     en(transformFitAction_,   loaded && transformed_ != nullptr);
+    en(goToAtomAction_,       loaded && loaded_ && loaded_->protein);
     en(signalDisplaysAction_, loaded && hasFocus);
 
     // Overlays — gated on the data that makes each one mean something.
@@ -916,7 +945,7 @@ void ReaderMainWindow::refreshControlStates() {
     en(showRingsAction_,     hasRings && !filtered);
     en(showButterflyAction_, hasRings && !filtered);
     en(showBFieldAction_,    hasRings && !filtered);
-    en(showOccupancyAction_, traj     && !filtered);   // per-atom; needs trajectory
+    en(showTrajectoryAction_, traj);   // selected-atom path; needs trajectory
 
     // Camera modes (enable gating + checked-state sync).
     updateCameraModeActions();
@@ -950,12 +979,13 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     controls[QStringLiteral("playForward")]  = ctl(playForwardAction_);
     controls[QStringLiteral("focus")]        = ctl(focusAction_);
     controls[QStringLiteral("transformFit")] = ctl(transformFitAction_);
+    controls[QStringLiteral("goToAtom")]     = ctl(goToAtomAction_);
     controls[QStringLiteral("metrics")]      = ctl(signalDisplaysAction_);
     controls[QStringLiteral("ribbon")]       = ctl(showRibbonAction_);
     controls[QStringLiteral("rings")]        = ctl(showRingsAction_);
     controls[QStringLiteral("butterfly")]    = ctl(showButterflyAction_);
     controls[QStringLiteral("bfield")]       = ctl(showBFieldAction_);
-    controls[QStringLiteral("occupancy")]    = ctl(showOccupancyAction_);
+    controls[QStringLiteral("trajectory")]   = ctl(showTrajectoryAction_);
 
     // Filter is a QToolButton (not a QAction), so report it explicitly:
     // present/enabled like the others, plus whether isolation is active and
@@ -999,8 +1029,8 @@ void ReaderMainWindow::applyOverlayActionState() {
         scene_->fieldGridOverlay()->setVisible(showButterflyAction_->isChecked());
     if (showBFieldAction_ && scene_->bfieldStreamOverlay())
         scene_->bfieldStreamOverlay()->setVisible(showBFieldAction_->isChecked());
-    if (showOccupancyAction_ && scene_->occupancyShellsOverlay())
-        scene_->occupancyShellsOverlay()->setVisible(showOccupancyAction_->isChecked());
+    if (showTrajectoryAction_ && scene_->atomTrajectoryOverlay())
+        scene_->atomTrajectoryOverlay()->setVisible(showTrajectoryAction_->isChecked());
 }
 
 void ReaderMainWindow::updateMutantAlternateAction(const QString& alternatePath) {
@@ -1156,9 +1186,8 @@ bool ReaderMainWindow::setOverlayVisible(const QString& name, bool on) {
     else if (key == QStringLiteral("bfield") || key == QStringLiteral("streamlines")
              || key == QStringLiteral("stream"))
         a = showBFieldAction_;
-    else if (key == QStringLiteral("shadow") || key == QStringLiteral("occupancy")
-             || key == QStringLiteral("shells"))
-        a = showOccupancyAction_;
+    else if (key == QStringLiteral("trajectory") || key == QStringLiteral("path"))
+        a = showTrajectoryAction_;
     if (!a)
         return false;
     if (a->isChecked() != on)
@@ -1202,7 +1231,7 @@ void ReaderMainWindow::setResidueFilter(const std::vector<std::size_t>& residues
     if (!scene_ || !loaded_ || !loaded_->protein)
         return;
 
-    // The whole-molecule overlays (ribbon, rings, field, occupancy) would keep
+    // The whole-molecule overlays (ribbon, rings, field) would keep
     // drawing the entire structure and defeat the isolation, so hide them while
     // filtered and restore them (per the toolbar toggles) when the filter clears.
     const auto restoreOverlays = [this]() { applyOverlayActionState(); };
@@ -1211,7 +1240,6 @@ void ReaderMainWindow::setResidueFilter(const std::vector<std::size_t>& residues
         if (scene_->ringPolygonOverlay())     scene_->ringPolygonOverlay()->setVisible(false);
         if (scene_->fieldGridOverlay())       scene_->fieldGridOverlay()->setVisible(false);
         if (scene_->bfieldStreamOverlay())    scene_->bfieldStreamOverlay()->setVisible(false);
-        if (scene_->occupancyShellsOverlay()) scene_->occupancyShellsOverlay()->setVisible(false);
     };
 
     const auto* protein = loaded_->protein.get();
@@ -1756,6 +1784,13 @@ void ReaderMainWindow::buildToolbar() {
 
     tb->addSeparator();
 
+    goToAtomAction_ = tb->addAction(QStringLiteral("Go..."));
+    goToAtomAction_->setEnabled(false);
+    goToAtomAction_->setToolTip(QStringLiteral(
+        "Jump to a residue number, atom, and frame."));
+    ACONNECT(goToAtomAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onGoToAtomTriggered);
+
     signalDisplaysAction_ = tb->addAction(QStringLiteral("Metrics..."));
     signalDisplaysAction_->setEnabled(false);
     signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
@@ -1810,13 +1845,12 @@ void ReaderMainWindow::buildToolbar() {
         "Biot-Savart B-field streamlines around each aromatic ring, "
         "seeded on a circle at 1.5× ring radius, coloured by |B|."));
 
-    showOccupancyAction_ = tb->addAction(QStringLiteral("Occupancy"));
-    showOccupancyAction_->setCheckable(true);
-    showOccupancyAction_->setChecked(false);   // off by default
-    showOccupancyAction_->setToolTip(QStringLiteral(
-        "Occupation-probability envelope shells for the FOCUSED atom: nested "
-        "50% / 90% highest-density regions over the trajectory (backbone-aligned). "
-        "Trajectory data only; rigid atoms are skipped."));
+    showTrajectoryAction_ = tb->addAction(QStringLiteral("Trajectory"));
+    showTrajectoryAction_->setCheckable(true);
+    showTrajectoryAction_->setChecked(false);   // off by default
+    showTrajectoryAction_->setToolTip(QStringLiteral(
+        "Focused-atom trajectory envelope across the loaded trajectory. Frame "
+        "changes move the atom through the same shell."));
 
     ACONNECT(showRibbonAction_.data(), &QAction::toggled,
              this, [this](bool on) {
@@ -1844,15 +1878,19 @@ void ReaderMainWindow::buildToolbar() {
                  if (on) scene_->refreshCurrentFrame();
                  else    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
-    ACONNECT(showOccupancyAction_.data(), &QAction::toggled,
+    ACONNECT(showTrajectoryAction_.data(), &QAction::toggled,
              this, [this](bool on) {
-                 if (!scene_ || !scene_->occupancyShellsOverlay()) return;
-                 // setVisible(true) rebuilds for the current focus; shells are
-                 // frame-invariant so a plain render (not refreshCurrentFrame)
-                 // suffices.
-                 scene_->occupancyShellsOverlay()->setVisible(on);
-                 scene_->requestRender(MoleculeScene::RenderSource::Overlay);
-             });
+                  if (!scene_ || !scene_->atomTrajectoryOverlay()) return;
+                  scene_->atomTrajectoryOverlay()->setVisible(on);
+                  if (on) {
+                      updateCsaGlyph(false);
+                      updateOrientationTensorGlyph();
+                  } else {
+                      updateCsaGlyph(true);
+                      updateOrientationTensorGlyph();
+                  }
+                  scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+              });
 
     // Focus — a self-contained toggle at the toolbar tail (deliberately
     // de-emphasized; the Filter feature now covers the common "see one atom +
@@ -2017,6 +2055,10 @@ void ReaderMainWindow::updateFitModeLabel() {
         ? QStringLiteral("Mode: Locked backbone  ⇄")
         : QStringLiteral("Mode: Kabsch with give  ⇄"));
     transformFitAction_->setToolTip(fitModeToolTip());
+}
+
+bool ReaderMainWindow::trajectoryOverlayActive() const {
+    return showTrajectoryAction_ && showTrajectoryAction_->isChecked();
 }
 
 void ReaderMainWindow::onFocusCameraTriggered() {
@@ -2190,6 +2232,146 @@ void ReaderMainWindow::onOpenDirectory() {
                               QStringLiteral("Open calcset failed"),
                               lastLoadError());
     }
+}
+
+void ReaderMainWindow::onGoToAtomTriggered() {
+    ASSERT_THREAD(this);
+    if (!loaded_ || !loaded_->protein || !loaded_->conformation || !selection_) {
+        QMessageBox::information(this,
+                                 QStringLiteral("Go to atom"),
+                                 QStringLiteral("Load a calcset before jumping to an atom."));
+        return;
+    }
+
+    const model::QtProtein& protein = *loaded_->protein;
+    if (protein.residueCount() == 0 || protein.atomCount() == 0) {
+        QMessageBox::information(this,
+                                 QStringLiteral("Go to atom"),
+                                 QStringLiteral("This calcset has no residues or atoms to select."));
+        return;
+    }
+
+    int minResidueNumber = protein.residue(0).address.residueNumber;
+    int maxResidueNumber = minResidueNumber;
+    for (std::size_t i = 1; i < protein.residueCount(); ++i) {
+        const int n = protein.residue(i).address.residueNumber;
+        minResidueNumber = std::min(minResidueNumber, n);
+        maxResidueNumber = std::max(maxResidueNumber, n);
+    }
+
+    int initialResidueNumber = minResidueNumber;
+    std::optional<std::size_t> preferredAtom;
+    if (selection_->hasFocus()) {
+        const std::size_t atom = selection_->focus();
+        if (atom < protein.atomCount()) {
+            const model::QtAtom& picked = protein.atom(atom);
+            if (picked.residueIndex >= 0
+                && static_cast<std::size_t>(picked.residueIndex) < protein.residueCount()) {
+                initialResidueNumber =
+                    protein.residue(static_cast<std::size_t>(picked.residueIndex))
+                        .address.residueNumber;
+                preferredAtom = atom;
+            }
+        }
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Go to atom"));
+    dialog.setModal(true);
+
+    auto* form = new QFormLayout(&dialog);
+
+    auto* residueSpin = new QSpinBox(&dialog);
+    residueSpin->setRange(minResidueNumber, maxResidueNumber);
+    residueSpin->setValue(initialResidueNumber);
+    residueSpin->setToolTip(QStringLiteral("Visible residue sequence number."));
+    form->addRow(QStringLiteral("Residue"), residueSpin);
+
+    auto* atomCombo = new QComboBox(&dialog);
+    atomCombo->setMinimumContentsLength(18);
+    atomCombo->setToolTip(QStringLiteral("Atoms in matching residues."));
+    form->addRow(QStringLiteral("Atom"), atomCombo);
+
+    auto* frameSpin = new QSpinBox(&dialog);
+    const int frameCount = static_cast<int>(loaded_->conformation->frameCount());
+    frameSpin->setRange(0, std::max(0, frameCount - 1));
+    frameSpin->setValue(playback_ ? playback_->currentFrame() : 0);
+    frameSpin->setToolTip(QStringLiteral("Zero-based frame index."));
+    form->addRow(QStringLiteral("Frame"), frameSpin);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                                         &dialog);
+    form->addRow(buttons);
+
+    auto residueLabel = [&protein](std::size_t residueIndex) {
+        const model::QtResidue& residue = protein.residue(residueIndex);
+        QString label = QStringLiteral("%1%2")
+            .arg(protein.residueLabel(residueIndex,
+                                      model::NamingConvention::Amber,
+                                      model::NamingSource::Verbatim))
+            .arg(residue.address.residueNumber);
+        if (!residue.address.chainId.isEmpty())
+            label += QStringLiteral(" chain %1").arg(residue.address.chainId);
+        if (!residue.address.insertionCode.isEmpty())
+            label += QStringLiteral(" ins %1").arg(residue.address.insertionCode);
+        return label;
+    };
+
+    auto rebuildAtomChoices = [&]() {
+        const QSignalBlocker block(atomCombo);
+        atomCombo->clear();
+        const int residueNumber = residueSpin->value();
+        int preferredIndex = -1;
+        for (std::size_t r = 0; r < protein.residueCount(); ++r) {
+            const model::QtResidue& residue = protein.residue(r);
+            if (residue.address.residueNumber != residueNumber)
+                continue;
+            const QString residueText = residueLabel(r);
+            for (int32_t atomIndex : residue.atomIndices) {
+                if (atomIndex < 0)
+                    continue;
+                const std::size_t atom = static_cast<std::size_t>(atomIndex);
+                if (atom >= protein.atomCount())
+                    continue;
+                const QString atomName = protein.atomNames(atom).amber;
+                atomCombo->addItem(QStringLiteral("%1:%2  #%3")
+                                       .arg(residueText)
+                                       .arg(atomName)
+                                       .arg(atom),
+                                   QVariant::fromValue<qulonglong>(
+                                       static_cast<qulonglong>(atom)));
+                if (preferredAtom && *preferredAtom == atom)
+                    preferredIndex = atomCombo->count() - 1;
+            }
+        }
+        if (preferredIndex >= 0)
+            atomCombo->setCurrentIndex(preferredIndex);
+        if (QPushButton* ok = buttons->button(QDialogButtonBox::Ok))
+            ok->setEnabled(atomCombo->count() > 0);
+    };
+
+    ACONNECT(residueSpin, qOverload<int>(&QSpinBox::valueChanged),
+             &dialog,    [rebuildAtomChoices](int) mutable { rebuildAtomChoices(); });
+    ACONNECT(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    ACONNECT(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    rebuildAtomChoices();
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    bool ok = false;
+    const qulonglong atomValue = atomCombo->currentData().toULongLong(&ok);
+    if (!ok || atomValue >= static_cast<qulonglong>(protein.atomCount()))
+        return;
+
+    if (playback_)
+        playback_->setFrame(frameSpin->value());
+    selection_->bulkSet({static_cast<std::size_t>(atomValue)});
+    if (scene_)
+        scene_->clearReveal();
+    statusBar()->showMessage(QStringLiteral("Jumped to %1 at frame %2")
+                                 .arg(atomCombo->currentText())
+                                 .arg(frameSpin->value()));
 }
 
 void ReaderMainWindow::onOpenSignalDisplays() {

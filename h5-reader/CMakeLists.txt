@@ -202,8 +202,8 @@ qt_add_library(h5reader_core STATIC
     src/app/QtBFieldStreamOverlay.h
     src/app/QtBFieldStreamOverlay.cpp
     src/app/OccupancyShellsMath.h
-    src/app/QtOccupancyShellsOverlay.h
-    src/app/QtOccupancyShellsOverlay.cpp
+    src/app/QtAtomTrajectoryOverlay.h
+    src/app/QtAtomTrajectoryOverlay.cpp
     src/app/Colormap.h
 
     src/app/QtAtomPicker.h
@@ -923,13 +923,10 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     add_test(NAME h5reader_display_policy_tests
              COMMAND h5reader_display_policy_tests)
 
-    # Pure-function occupancy-shells density / HDR math (OccupancyShellsMath.h).
-    # The correctness core of the occupancy-shells overlay, factored out for
-    # direct testing per the Opus/codex pre-build reviews. Header-only math over
-    # model::Vec3/Mat3; links Qt6::Test + Eigen3 only. (No VTK here is
-    # incidental, not a goal: the anisotropic-covariance kernel has no fitting
-    # VTK primitive; the overlay contours this field with vtkContourFilter
-    # downstream — where VTK IS the right tool.)
+    # Pure-function density / HDR math used by the selected-atom trajectory
+    # envelope. Header-only math over model::Vec3/Mat3; links Qt6::Test +
+    # Eigen3 only. The viewer contours the resulting field downstream, where
+    # VTK is the right tool.
     qt_add_executable(h5reader_occupancy_shells_math_tests
         tests/occupancy_shells_math_tests.cpp
         src/app/OccupancyShellsMath.h
