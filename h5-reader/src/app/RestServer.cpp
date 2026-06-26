@@ -1965,17 +1965,19 @@ void RestServer::registerRoutes() {
 
     // ---- heroshot: tensor ghost trail -----------------------------------
     //
-    // POST /heroshot/ghost_trail  {atom?, n?, end_frame?, step?}
+    // POST /heroshot/ghost_trail  {atom?, n?, end_frame?, step?, frames?}
     //   Draw the focused (or {"atom":N}) atom's shielding tensor at its last
     //   `n` DFT-measured frames as a fading stack of glyphs -- newest opaque,
     //   oldest faint -- so the re-orientation reads "from the side". Walks
     //   backward from `end_frame` (default the live frame) by `step` (default
     //   2, the DFT cadence), keeping only frames whose tensor is valid; up to
-    //   `n` (default 5, clamped 2..12) ghosts. Each ghost is the REAL measured
-    //   tensor at a REAL frame -- probeAtomCsa reads the DFT store directly, no
-    //   interpolation and the live frame never moves. Heroshot layer only: the
-    //   reader's own single live glyph is untouched. Echoes the frames + fades
-    //   actually drawn so a script can verify what it sees.
+    //   `n` (default 5, clamped 2..12) ghosts. Or pass `frames:[...]` to draw
+    //   an explicit statistics-selected set such as rotamer wells. Each ghost
+    //   is the REAL measured tensor at a REAL frame -- probeAtomCsa reads the
+    //   DFT store directly, no interpolation and the live frame never moves.
+    //   Heroshot layer only: the reader's own single live glyph is untouched.
+    //   Echoes the frames + fades actually drawn so a script can verify what it
+    //   sees.
     //   POST /heroshot/clear  removes the trail.
     server_->route(QStringLiteral("/heroshot/ghost_trail"), Method::Post,
                    [this](const QHttpServerRequest& req) {
@@ -2089,18 +2091,11 @@ void RestServer::registerRoutes() {
             scene_->measurementOverlay()->setVisible(false);
         }
 
-        // Walk backward from endFrame keeping valid (DFT-present) frames only.
-        // Bound the scan so a sparse DFT cadence cannot loop the whole way back.
-        constexpr double kFloor = 0.20;  // faintest ghost opacity (oldest frame)
         std::vector<TensorGhostTrail::Sample> samples;
         std::vector<int> framesKept;
-        const int scanLimit = n * step + 64;
-        const int firstFrame = includeCurrent ? endFrame : endFrame - step;
-        for (int f = firstFrame, scanned = 0;
-             f >= 0 && static_cast<int>(samples.size()) < n && scanned < scanLimit;
-             f -= step, ++scanned) {
+        const auto addFrameSample = [&](int f) {
             const model::AtomCsaResult r = readerWindow_->probeAtomCsa(atom, f);
-            if (!r.valid) continue;
+            if (!r.valid) return false;
             TensorGhostTrail::Sample s;
             s.center = r.atomPos;
             s.principalValues = {r.shape.principal_values[0], r.shape.principal_values[1],
@@ -2110,13 +2105,46 @@ void RestServer::registerRoutes() {
             s.style = (f == endFrame) ? currentStyle : historyStyle;
             samples.push_back(s);
             framesKept.push_back(f);
+            return true;
+        };
+
+        const QJsonArray explicitFrames =
+            body.value(QStringLiteral("frames")).isArray()
+                ? body.value(QStringLiteral("frames")).toArray()
+                : QJsonArray{};
+        if (!explicitFrames.isEmpty()) {
+            for (const QJsonValue& v : explicitFrames) {
+                if (static_cast<int>(samples.size()) >= 12) break;
+                if (!v.isDouble()) continue;
+                const int f = v.toInt(-1);
+                if (f < 0) continue;
+                addFrameSample(f);
+            }
+        } else {
+            // Walk backward from endFrame keeping valid (DFT-present) frames
+            // only. Bound the scan so a sparse DFT cadence cannot loop the whole
+            // way back.
+            const int scanLimit = n * step + 64;
+            const int firstFrame = includeCurrent ? endFrame : endFrame - step;
+            for (int f = firstFrame, scanned = 0;
+                 f >= 0 && static_cast<int>(samples.size()) < n && scanned < scanLimit;
+                 f -= step, ++scanned) {
+                addFrameSample(f);
+            }
         }
         if (samples.empty())
             return errorResponse(
-                QStringLiteral("no DFT-valid frames at/under end_frame for this atom"),
+                explicitFrames.isEmpty()
+                    ? QStringLiteral("no DFT-valid frames at/under end_frame for this atom")
+                    : QStringLiteral("none of the requested frames have valid DFT tensors for this atom"),
                 SC::ServiceUnavailable);
 
         // Fade: newest (index 0 = endFrame) opaque -> oldest faint at kFloor.
+        if (!explicitFrames.isEmpty()) {
+            endFrame = framesKept.front();
+            samples.front().style = currentStyle;
+        }
+        constexpr double kFloor = 0.20;  // faintest ghost opacity (oldest frame)
         const std::size_t m = samples.size();
         QJsonArray ghosts;
         for (std::size_t i = 0; i < m; ++i) {
@@ -2145,6 +2173,8 @@ void RestServer::registerRoutes() {
             {"end_frame", endFrame},
             {"reference_frame", endFrame},
             {"include_current", includeCurrent},
+            {"mode", explicitFrames.isEmpty() ? QStringLiteral("cadence")
+                                               : QStringLiteral("frames")},
             {"selection_marker_hidden", hideSelectionMarker},
             {"step", step},
             {"requested_n", n},
