@@ -280,6 +280,8 @@ void DashboardModelTests::testVisualizationRegistry_capabilityTableMirrorsLegacy
             return DisplayModeCapability{true, true, true};
         if (mode == QStringLiteral("static.tensor"))
             return DisplayModeCapability{false, false, true};
+        if (mode == QStringLiteral("static.newman"))
+            return DisplayModeCapability{true, true, true};
         return DisplayModeCapability{};
     };
 

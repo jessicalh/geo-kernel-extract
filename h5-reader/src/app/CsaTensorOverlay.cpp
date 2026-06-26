@@ -23,8 +23,8 @@ void CsaTensorOverlay::show(const model::Vec3& atomPos,
         return;
     }
     // CSA convention: principal_values ascending sigma11<=sigma22<=sigma33, with
-    // pas_axes columns following the same order; iso = sigma_iso. The ovaloid
-    // (deviation from iso) + index-coloured arrows are drawn by the shared actor.
+    // pas_axes columns following the same order; iso = sigma_iso. The shared
+    // actor draws the index-coloured principal-axis arrows.
     glyph_->show(atomPos,
                  {shape.principal_values[0], shape.principal_values[1], shape.principal_values[2]},
                  shape.pas_axes,

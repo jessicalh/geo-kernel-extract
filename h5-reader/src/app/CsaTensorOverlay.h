@@ -1,10 +1,10 @@
 // CsaTensorOverlay -- atom-centered NMR shielding-tensor glyph for the viewer's
 // CSA view. A thin ADAPTER: it computes nothing about how a tensor is drawn --
-// that lives in the shared TensorGlyphActor (ovaloid + principal-axis arrows),
-// the ONE representation every tensor in the scene uses. This class only feeds
-// the shielding tensor's eigendecomposition (CsaShape: principal values, PAS
-// axes, sigma_iso) to that actor, so CSA and the bond-orientation tensor render
-// identically -- consistent, not ad hoc.
+// that lives in the shared TensorGlyphActor, the ONE representation every
+// tensor in the scene uses. This class only feeds the shielding tensor's
+// eigendecomposition (CsaShape: principal values, PAS axes, sigma_iso) to that
+// actor, so CSA and the bond-orientation tensor render identically --
+// consistent, not ad hoc.
 //
 // NO in-scene text: the numbers (iso/span/skew/eta, per-axis principal values)
 // and the colour key live in the Atom Info panel (QtAtomInspectorDock); the
@@ -37,8 +37,8 @@ public:
                               QObject* parent = nullptr);
     ~CsaTensorOverlay() override;
 
-    // Draw the shielding tensor's ovaloid + sigma_11/22/33 principal-axis arrows
-    // at atomPos via the shared TensorGlyphActor. molecularAxes is accepted for
+    // Draw the shielding tensor's sigma_11/22/33 principal-axis arrows at
+    // atomPos via the shared TensorGlyphActor. molecularAxes is accepted for
     // signature stability but unused (the PAS axes carry the orientation).
     void show(const model::Vec3& atomPos,
               const model::CsaShape& shape,

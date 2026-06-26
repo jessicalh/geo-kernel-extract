@@ -18,8 +18,10 @@ Q_LOGGING_CATEGORY(cMeas, "h5reader.overlay.measurement")
 // A touch smaller than QtSelectionOverlay's 1.0 Å so the slot colour wraps the
 // atom without hiding the ball-and-stick sphere underneath; translucent so
 // overlapping selections stay readable.
+// Keep the familiar filled selection marker; make it lighter now that tensors
+// are axes-only.
 constexpr double kSphereRadiusA = 0.85;
-constexpr double kOpacity       = 0.50;
+constexpr double kOpacity       = 0.22;
 
 // User-mode marker palette — pastel-shifted Okabe-Ito (50% mix with white).
 // Local to the overlay because the dashboard dock's slot swatches keep the
@@ -209,11 +211,17 @@ void MeasurementOverlay::applyInstrumentModeToActors() {
                     kInstrumentRgb[s][0], kInstrumentRgb[s][1], kInstrumentRgb[s][2]);
             }
             actors_[s]->GetProperty()->SetOpacity(kInstrumentOpacity);
+            actors_[s]->GetProperty()->SetRepresentationToSurface();
+            actors_[s]->GetProperty()->SetLineWidth(1.0);
+            actors_[s]->GetProperty()->LightingOn();
             spheres_[s]->SetRadius(kInstrumentRadiusA);
         } else {
             actors_[s]->GetProperty()->SetColor(
                 kPastelSlotRgb[s][0], kPastelSlotRgb[s][1], kPastelSlotRgb[s][2]);
             actors_[s]->GetProperty()->SetOpacity(kOpacity);
+            actors_[s]->GetProperty()->SetRepresentationToSurface();
+            actors_[s]->GetProperty()->SetLineWidth(1.0);
+            actors_[s]->GetProperty()->LightingOn();
             spheres_[s]->SetRadius(kSphereRadiusA);
         }
     }

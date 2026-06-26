@@ -102,7 +102,6 @@ public:
 
     // Charges
     double aimnet2Charge(std::size_t atomIdx) const;
-    double eeqCharge(std::size_t atomIdx) const;
     double eeqCoordinationNumber(std::size_t atomIdx) const;
 
 private:

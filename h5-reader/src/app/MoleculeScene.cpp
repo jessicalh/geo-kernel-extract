@@ -386,6 +386,50 @@ void MoleculeScene::syncCameraClippingRange() {
     renderer_->ResetCameraClippingRange(b);
 }
 
+MoleculeScene::MoleculeStyle MoleculeScene::moleculeStyle() const {
+    MoleculeStyle style;
+    if (!mapper_)
+        return style;
+
+    style.renderAtoms = mapper_->GetRenderAtoms();
+    style.renderBonds = mapper_->GetRenderBonds();
+    style.useMultiCylindersForBonds = mapper_->GetUseMultiCylindersForBonds();
+    style.atomicRadiusType = mapper_->GetAtomicRadiusType();
+    style.atomColorMode = mapper_->GetAtomColorMode();
+    style.bondColorMode = mapper_->GetBondColorMode();
+    style.atomicRadiusScaleFactor = mapper_->GetAtomicRadiusScaleFactor();
+    style.bondRadius = mapper_->GetBondRadius();
+
+    const unsigned char* atomColor = mapper_->GetAtomColor();
+    const unsigned char* bondColor = mapper_->GetBondColor();
+    if (atomColor)
+        style.atomColor = {atomColor[0], atomColor[1], atomColor[2]};
+    if (bondColor)
+        style.bondColor = {bondColor[0], bondColor[1], bondColor[2]};
+    return style;
+}
+
+void MoleculeScene::applyMoleculeStyle(const MoleculeStyle& style) {
+    ASSERT_THREAD(this);
+    if (!mapper_)
+        return;
+
+    mapper_->SetRenderAtoms(style.renderAtoms);
+    mapper_->SetRenderBonds(style.renderBonds);
+    mapper_->SetUseMultiCylindersForBonds(style.useMultiCylindersForBonds);
+    mapper_->SetAtomicRadiusType(style.atomicRadiusType);
+    mapper_->SetAtomColorMode(style.atomColorMode);
+    mapper_->SetBondColorMode(style.bondColorMode);
+    mapper_->SetAtomicRadiusScaleFactor(style.atomicRadiusScaleFactor);
+    mapper_->SetBondRadius(style.bondRadius);
+    mapper_->SetAtomColor(style.atomColor[0], style.atomColor[1], style.atomColor[2]);
+    mapper_->SetBondColor(style.bondColor[0], style.bondColor[1], style.bondColor[2]);
+    mapper_->Modified();
+    if (actor_)
+        actor_->Modified();
+    requestRender(RenderSource::Rest);
+}
+
 void MoleculeScene::requestRender(RenderSource src) {
     ASSERT_THREAD(this);
     lastRenderSource_ = src;

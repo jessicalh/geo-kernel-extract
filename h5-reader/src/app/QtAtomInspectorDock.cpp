@@ -40,9 +40,12 @@
 #include <QColor>
 #include <QFont>
 #include <QHeaderView>
+#include <QIcon>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLoggingCategory>
+#include <QPainter>
+#include <QPixmap>
 #include <QSizePolicy>
 #include <QString>
 #include <QTreeWidget>
@@ -92,6 +95,27 @@ QTreeWidgetItem* AddKV(QTreeWidgetItem* parent, const QString& field, const QStr
     auto* it = new QTreeWidgetItem(parent);
     it->setText(0, field);
     it->setText(1, value);
+    return it;
+}
+
+QIcon SwatchIcon(const QColor& color) {
+    QPixmap pix(14, 14);
+    pix.fill(Qt::transparent);
+
+    QPainter painter(&pix);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(color.darker(130), 1.0));
+    painter.setBrush(color);
+    painter.drawRect(3, 3, 8, 8);
+    return QIcon(pix);
+}
+
+QTreeWidgetItem* AddSwatchKV(QTreeWidgetItem* parent,
+                             const QString& field,
+                             const QString& value,
+                             const QColor& color) {
+    auto* it = AddKV(parent, field, value);
+    it->setIcon(0, SwatchIcon(color));
     return it;
 }
 
@@ -303,9 +327,8 @@ void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
     AddScalar(group, QStringLiteral("skew"), csa_.skew);
     AddScalar(group, QStringLiteral("eta"), csa_.eta);
 
-    // Per-axis principal values, text-coloured to match the glyph's arrows so the
-    // colour-coded arrows in the scene stay decodable now that the in-scene sigma
-    // labels are gone (colours mirror CsaTensorOverlay's kSigmaRgb).
+    // Per-axis principal values. The swatch is the colour key for the scene
+    // arrows; no floating labels in the molecule view.
     static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
         {"sigma_11", 0.96, 0.66, 0.16},  // amber
         {"sigma_22", 0.18, 0.74, 0.74},  // teal
@@ -313,14 +336,10 @@ void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
     };
     const double vals[3] = {csa_.sigma11, csa_.sigma22, csa_.sigma33};
     for (int i = 0; i < 3; ++i) {
-        auto* row = AddKV(group, QString::fromLatin1(kAxes[i].name),
-                          FmtDouble(vals[i]) + QStringLiteral(" ppm"));
-        const QBrush brush(QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b));
-        row->setForeground(0, brush);
-        row->setForeground(1, brush);
+        const QColor color = QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b);
+        AddSwatchKV(group, QString::fromLatin1(kAxes[i].name),
+                    FmtDouble(vals[i]) + QStringLiteral(" ppm"), color);
     }
-    AddKV(group, QStringLiteral("key"),
-          QStringLiteral("blue = shielded, red = deshielded (absolute shielding)"));
 }
 
 void QtAtomInspectorDock::populateOrientation(QTreeWidgetItem* root) {
@@ -328,9 +347,8 @@ void QtAtomInspectorDock::populateOrientation(QTreeWidgetItem* root) {
     group->setExpanded(true);
     AddScalar(group, QStringLiteral("S^2 (order parameter)"), orient_.s2);
 
-    // Order-tensor eigenvalues (descending; sum to 1), text-coloured to match the
-    // glyph's principal-axis arrows so the in-scene arrows stay decodable. axis 1
-    // (amber) is the dominant order axis -- aligned to the bond.
+    // Order-tensor eigenvalues (descending; sum to 1). The swatch is the
+    // colour key for the scene arrows; no floating labels in the molecule view.
     static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
         {"lambda_1", 0.96, 0.66, 0.16},  // amber
         {"lambda_2", 0.18, 0.74, 0.74},  // teal
@@ -338,13 +356,9 @@ void QtAtomInspectorDock::populateOrientation(QTreeWidgetItem* root) {
     };
     const double vals[3] = {orient_.lambda1, orient_.lambda2, orient_.lambda3};
     for (int i = 0; i < 3; ++i) {
-        auto* row = AddKV(group, QString::fromLatin1(kAxes[i].name), FmtDouble(vals[i]));
-        const QBrush brush(QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b));
-        row->setForeground(0, brush);
-        row->setForeground(1, brush);
+        const QColor color = QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b);
+        AddSwatchKV(group, QString::fromLatin1(kAxes[i].name), FmtDouble(vals[i]), color);
     }
-    AddKV(group, QStringLiteral("key"),
-          QStringLiteral("ovaloid: blue = preferred, red = depleted (deviation from isotropic 1/3)"));
 }
 
 void QtAtomInspectorDock::rebuild() {
@@ -467,19 +481,21 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
     }
     const auto& s = *snap;
 
-    // --- Classical forward sum (VIEWER-DERIVED) --- the full classical shielding
-    // model computed HERE from the loaded npy via the shared rediscover math
-    // (ring, McConnell, Larsen, Buckingham -> ComputeClassicalSigma) -- the reader
-    // NEVER runs the emit. The raw kernels that feed these live in the drawer below.
-    // sigma_cl + residual appear only when every mechanism's input is present
-    // (and sigma_qm/ORCA, single-pose, for the residual).
+    // --- Local classical estimate (VIEWER-DERIVED, TENTATIVE) --- a local
+    // estimate computed HERE from loaded npy via the shared rediscover math
+    // (ring, McConnell, Larsen, Buckingham -> ComputeClassicalSigma). Treat the
+    // fold like a regression-style explanatory scaffold, not a validated
+    // absolute shielding model. The reader NEVER runs the emit; the raw kernels
+    // that feed these live in the drawer below. sigma_cl + residual appear only
+    // when every mechanism's input is present (and sigma_qm/ORCA, single-pose,
+    // for the residual).
     {
         model::QtBiotSavartGroup bsFwd(s);
         model::QtLarsenHBondGroup larsenFwd(s);
         QTreeWidgetItem* fwd = nullptr;
         auto ensureFwd = [&]() -> QTreeWidgetItem* {
             if (!fwd) {
-                fwd = AddKV(root, QStringLiteral("Classical forward sum (derived)"), QString());
+                fwd = AddKV(root, QStringLiteral("Local classical estimate (tentative)"), QString());
                 fwd->setExpanded(true);
             }
             return fwd;
@@ -502,9 +518,10 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 rediscover::RingPerTypeT0Ppm(pt->byType.data(), model::kAromaticRingTypeCount);
             if (std::isfinite(ring)) {
                 in.ring = {ring, true};
-                AddScalarP(ensureFwd(), QStringLiteral("ring contribution"), ring, QStringLiteral("ppm"),
+                AddScalarP(ensureFwd(), QStringLiteral("estimated ring contribution"), ring, QStringLiteral("ppm"),
                            QStringLiteral("Biot-Savart per-type signed T0 x Giessner-Prettre ring "
-                                          "intensity (ppm). [USE]"));
+                                          "intensity (ppm); local estimate term, not a measured value. "
+                                          "[LOCAL ESTIMATE]"));
             }
         }
         // Larsen = signed T0 + ProCS15 water term  (ppm)
@@ -514,9 +531,10 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 lars += *wt;
             if (std::isfinite(lars)) {
                 in.larsen = {lars, true};
-                AddScalarP(ensureFwd(), QStringLiteral("Larsen contribution"), lars, QStringLiteral("ppm"),
+                AddScalarP(ensureFwd(), QStringLiteral("estimated Larsen contribution"), lars, QStringLiteral("ppm"),
                            QStringLiteral("Larsen/ProCS15 signed H-bond T0 + 2.07 ppm ProCS15 water "
-                                          "term (ppm). [USE]"));
+                                          "term (ppm); local estimate term, not a measured value. "
+                                          "[LOCAL ESTIMATE]"));
             }
         }
         // McConnell = Sum over the 6 forward bond producers of
@@ -549,9 +567,10 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
             }
             if (anyMc && std::isfinite(mc)) {
                 in.mcconnell = {mc, true};
-                AddScalarP(ensureFwd(), QStringLiteral("McConnell contribution"), mc, QStringLiteral("ppm"),
+                AddScalarP(ensureFwd(), QStringLiteral("estimated McConnell contribution"), mc, QStringLiteral("ppm"),
                            QStringLiteral("Wiberg-weighted (_bo) McConnell signed T0 x DeltaChi x "
-                                          "molar prefactor (ppm). [USE]"));
+                                          "molar prefactor (ppm); local estimate term, not a measured value. "
+                                          "[LOCAL ESTIMATE]"));
             }
         }
         // Buckingham inputs: signed E|| = mopac_coulomb_scalars E_bond_proj (the
@@ -577,10 +596,11 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         // the Buckingham term (-A*E|| - B*E||^2) is computed inside the fold.
         const rediscover::ClassicalSigmaResult folded = rediscover::ComputeClassicalSigma(in);
         if (folded.buckingham.present && std::isfinite(folded.buckingham.value))
-            AddScalarP(ensureFwd(), QStringLiteral("Buckingham contribution"),
+            AddScalarP(ensureFwd(), QStringLiteral("estimated Buckingham contribution"),
                        folded.buckingham.value, QStringLiteral("ppm"),
                        QStringLiteral("-A*E_parallel - B*E_parallel^2 with signed MOPAC bond-axis "
-                                      "field and literature A,B (ppm). [USE]"));
+                                      "field and literature A,B (ppm); local estimate term, not a measured "
+                                      "value. [LOCAL ESTIMATE]"));
 
         // sigma_cl + residual ONLY when the full classical model is computable
         // (every mechanism's source field present). Otherwise sigma_cl would
@@ -594,17 +614,19 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                            in.sigma0.value, QStringLiteral("ppm"),
                            QStringLiteral("Element-specific literature placeholder baseline, not a "
                                           "measured reference. [PLACEHOLDER]"));
-            AddScalarP(ensureFwd(), QStringLiteral("sigma_cl (sigma0 placeholder)"),
+            AddScalarP(ensureFwd(), QStringLiteral("estimated sigma_cl (tentative)"),
                        folded.sigma_cl.value, QStringLiteral("ppm"),
-                       QStringLiteral("Forward sum sigma0 + Buckingham + ring + McConnell + Larsen; "
-                                      "absolute value rests on the sigma0 placeholder. [USE; sigma0 placeholder]"));
+                       QStringLiteral("Local estimated fold: sigma0 + Buckingham + ring + McConnell + Larsen. "
+                                      "Use as a tentative local explanatory/regression-style model; absolute "
+                                      "value rests on the sigma0 placeholder. [ESTIMATE; sigma0 placeholder]"));
             // residual = sigma_qm - sigma_cl; sigma_qm = ORCA total T0 (single-pose
             // DFT only, so absent on a trajectory snapshot).
             if (auto qm = model::QtOrcaGroup(s).total(a)) {
                 if (std::isfinite(qm->T0))
-                    AddScalarP(ensureFwd(), QStringLiteral("residual (sigma_qm - sigma_cl)"),
+                    AddScalarP(ensureFwd(), QStringLiteral("tentative residual (sigma_qm - estimate)"),
                                qm->T0 - folded.sigma_cl.value, QStringLiteral("ppm"),
-                               QStringLiteral("sigma_qm (ORCA total signed T0) - sigma_cl (ppm). [USE]"));
+                               QStringLiteral("sigma_qm (ORCA total signed T0) minus the local tentative "
+                                              "classical estimate (ppm). [ESTIMATE]"));
             }
         }
     }

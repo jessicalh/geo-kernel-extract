@@ -1,5 +1,5 @@
 // TensorGlyphMath — pure-function eigendecomposition for the
-// bond-orientation Mat3 glyph rendered by SceneRevealOverlay.
+// bond-orientation Mat3 glyph rendered by TensorGlyphActor.
 //
 // Decomposes a symmetric 3x3 tensor (the producer's
 // bond_orientation_tensor ⟨u⊗u⟩, sampled per bond vector per
@@ -9,11 +9,10 @@
 //     eigenvalue magnitude),
 //   - three radii (positive double, = sqrt(max(eigenvalue, eps))).
 //
-// The radii feed a vtkSphereSource scaled+rotated by a vtkTransform
-// to draw the ellipsoid attached to the highlighted bond. Sorting by
-// descending eigenvalue puts the dominant axis first; the glyph's
-// "elongation" axis matches the bond vector for highly ordered
-// (S² → 1) systems.
+// The radii feed the shared tensor glyph actor, which carries the scene
+// representation. Sorting by descending eigenvalue puts the dominant axis
+// first; the glyph's dominant axis matches the bond vector for highly ordered
+// systems.
 //
 // Eigen3 is the only dependency; no VTK, no Qt — by design so this
 // can be unit-tested headlessly in scene_math_tests.

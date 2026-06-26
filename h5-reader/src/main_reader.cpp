@@ -16,8 +16,8 @@
 //   6. Parse CLI.
 //   7. Construct ReaderMainWindow in its empty pre-load state.
 //   8. If a path was supplied, load it into the same window.
-//   9. Deferred show() via QTimer::singleShot(0, ...) so the event loop
-//      is running before any first render.
+//   9. Deferred show() via a queued invoke on the main window so the event
+//      loop is running before any first render.
 //  10. app.exec().
 
 #include "app/ReaderMainWindow.h"

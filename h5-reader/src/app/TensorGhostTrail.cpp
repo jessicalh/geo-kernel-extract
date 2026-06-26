@@ -22,7 +22,7 @@ void TensorGhostTrail::show(const std::vector<Sample>& samples) {
 
     for (std::size_t i = 0; i < samples.size(); ++i) {
         const Sample& s = samples[i];
-        glyphs_[i]->show(s.center, s.principalValues, s.pasAxes, s.iso, s.opacity);
+        glyphs_[i]->show(s.center, s.principalValues, s.pasAxes, s.iso, s.opacity, s.style);
     }
     for (std::size_t i = samples.size(); i < glyphs_.size(); ++i)
         glyphs_[i]->clear();

@@ -91,6 +91,8 @@ public slots:
     // (on=false) restores the multi-slot view regardless of focusOnly.
     void setInstrumentMode(bool on, bool focusOnly = false);
 
+    bool isVisible() const { return visible_; }
+
 private:
     void applyFrame(int t);
     void applyInstrumentModeToActors();

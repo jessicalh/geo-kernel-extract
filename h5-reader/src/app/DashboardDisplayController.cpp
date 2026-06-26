@@ -1764,7 +1764,6 @@ void DashboardDisplayController::rebuild() {
                     break;
                 case model::VisualizationType::TemporalStrip:
                 case model::VisualizationType::TensorGlyph:
-                case model::VisualizationType::AtomColor:
                     break;
                 }
             }

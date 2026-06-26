@@ -1,5 +1,6 @@
 #include "RestServer.h"
 
+#include "AngleCollarActor.h"
 #include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
 #include "DashboardDisplayController.h"
@@ -25,6 +26,7 @@
 #include "../model/DisplayPolicy.h"
 #include "../model/MetricTaxonomy.h"
 #include "../model/QtProtein.h"
+#include "../model/TrajectoryConformation.h"
 #include "../model/VisualizationRegistry.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "../model/TransformedConformation.h"
@@ -51,6 +53,7 @@
 #include <QWidget>
 
 #include <vtkCamera.h>
+#include <vtkMoleculeMapper.h>
 #include <vtkPNGWriter.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderer.h>
@@ -59,6 +62,7 @@
 #include <vtkWindowToImageFilter.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -118,6 +122,154 @@ QJsonObject parseJsonBody(const QHttpServerRequest& request, bool* ok) {
 
 QJsonArray vec3FromRaw(const double raw[3]) {
     return QJsonArray{raw[0], raw[1], raw[2]};
+}
+
+QJsonArray vec3FromEigen(const model::Vec3& v) {
+    return QJsonArray{v.x(), v.y(), v.z()};
+}
+
+std::optional<std::size_t> residueIndexFromRequest(const model::QtProtein& protein,
+                                                   const QJsonObject& body,
+                                                   const model::AtomSelection* selection) {
+    if (body.contains(QStringLiteral("residue"))) {
+        const int r = body.value(QStringLiteral("residue")).toInt(-1);
+        if (r >= 0 && static_cast<std::size_t>(r) < protein.residueCount())
+            return static_cast<std::size_t>(r);
+        return std::nullopt;
+    }
+    if (body.contains(QStringLiteral("residue_number"))) {
+        const int residueNumber = body.value(QStringLiteral("residue_number")).toInt(-1);
+        for (std::size_t i = 0; i < protein.residueCount(); ++i) {
+            if (protein.residue(i).address.residueNumber == residueNumber)
+                return i;
+        }
+        return std::nullopt;
+    }
+    if (selection && selection->hasFocus()) {
+        const std::size_t atom = selection->focus();
+        if (atom < protein.atomCount()) {
+            const int r = protein.atom(atom).residueIndex;
+            if (r >= 0 && static_cast<std::size_t>(r) < protein.residueCount())
+                return static_cast<std::size_t>(r);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::size_t> findResidueAtomByName(const model::QtProtein& protein,
+                                                 std::size_t residue,
+                                                 const QString& name) {
+    if (residue >= protein.residueCount())
+        return std::nullopt;
+    const model::QtResidue& r = protein.residue(residue);
+    for (int32_t atomIndex : r.atomIndices) {
+        if (atomIndex < 0)
+            continue;
+        const std::size_t a = static_cast<std::size_t>(atomIndex);
+        if (a >= protein.atomCount())
+            continue;
+        const auto& names = protein.atomNames(a);
+        if (names.amber == name || names.iupac == name || names.bmrb == name)
+            return a;
+    }
+    return std::nullopt;
+}
+
+QString rotamerState(double radians) {
+    constexpr double kPiLocal = 3.141592653589793238462643383279502884;
+    if (!std::isfinite(radians))
+        return QStringLiteral("unknown");
+    const double deg = (std::remainder(radians, 2.0 * kPiLocal)) * 180.0 / kPiLocal;
+    if (deg < -120.0 || deg >= 120.0)
+        return QStringLiteral("trans");
+    if (deg < 0.0)
+        return QStringLiteral("gminus");
+    return QStringLiteral("gplus");
+}
+
+double radiansToDegrees(double radians) {
+    constexpr double kRadToDeg = 57.295779513082320876798;
+    return radians * kRadToDeg;
+}
+
+unsigned char byteColorComponent(const QJsonValue& value, unsigned char fallback) {
+    if (!value.isDouble())
+        return fallback;
+    const double raw = value.toDouble();
+    const double scaled = raw <= 1.0 ? raw * 255.0 : raw;
+    return static_cast<unsigned char>(std::clamp(std::lround(scaled), 0L, 255L));
+}
+
+std::array<unsigned char, 3> colorFromJson(const QJsonValue& value,
+                                           std::array<unsigned char, 3> fallback) {
+    const QJsonArray arr = value.toArray();
+    if (arr.size() != 3)
+        return fallback;
+    return {byteColorComponent(arr.at(0), fallback[0]),
+            byteColorComponent(arr.at(1), fallback[1]),
+            byteColorComponent(arr.at(2), fallback[2])};
+}
+
+QJsonArray colorToJson(const std::array<unsigned char, 3>& color) {
+    return QJsonArray{static_cast<int>(color[0]), static_cast<int>(color[1]),
+                      static_cast<int>(color[2])};
+}
+
+QJsonObject moleculeStyleToJson(const MoleculeScene::MoleculeStyle& style) {
+    return QJsonObject{
+        {"render_atoms", style.renderAtoms},
+        {"render_bonds", style.renderBonds},
+        {"use_multi_bonds", style.useMultiCylindersForBonds},
+        {"atomic_radius_type", style.atomicRadiusType},
+        {"atom_color_mode", style.atomColorMode},
+        {"bond_color_mode", style.bondColorMode},
+        {"atom_radius_scale", style.atomicRadiusScaleFactor},
+        {"bond_radius", style.bondRadius},
+        {"atom_color", colorToJson(style.atomColor)},
+        {"bond_color", colorToJson(style.bondColor)},
+    };
+}
+
+void applyMoleculeStylePreset(MoleculeScene::MoleculeStyle& style, const QString& preset) {
+    if (preset == QStringLiteral("sticks")) {
+        style.renderAtoms = false;
+        style.renderBonds = true;
+        style.useMultiCylindersForBonds = false;
+        style.bondColorMode = vtkMoleculeMapper::SingleColor;
+        style.bondRadius = 0.035f;
+        style.bondColor = {176, 180, 184};
+        return;
+    }
+    if (preset == QStringLiteral("scaffold") || preset.isEmpty()) {
+        style.renderAtoms = true;
+        style.renderBonds = true;
+        style.useMultiCylindersForBonds = false;
+        style.atomicRadiusType = vtkMoleculeMapper::UnitRadius;
+        style.atomColorMode = vtkMoleculeMapper::SingleColor;
+        style.bondColorMode = vtkMoleculeMapper::SingleColor;
+        style.atomicRadiusScaleFactor = 0.11f;
+        style.bondRadius = 0.030f;
+        style.atomColor = {222, 224, 226};
+        style.bondColor = {170, 174, 178};
+    }
+}
+
+int radiusTypeFromString(const QString& value, int fallback) {
+    if (value == QStringLiteral("covalent"))
+        return vtkMoleculeMapper::CovalentRadius;
+    if (value == QStringLiteral("vdw"))
+        return vtkMoleculeMapper::VDWRadius;
+    if (value == QStringLiteral("unit"))
+        return vtkMoleculeMapper::UnitRadius;
+    return fallback;
+}
+
+int colorModeFromString(const QString& value, int fallback) {
+    if (value == QStringLiteral("single"))
+        return vtkMoleculeMapper::SingleColor;
+    if (value == QStringLiteral("element") || value == QStringLiteral("discrete"))
+        return vtkMoleculeMapper::DiscreteByAtom;
+    return fallback;
 }
 
 QJsonObject anchorToJson(const model::SignalAnchor& anchor) {
@@ -704,8 +856,8 @@ void RestServer::registerRoutes() {
 
     // GET /newman -> the focused residue's backbone phi/psi Newman projections
     // (torsion angle + substituent spokes) at the current frame. Drives and
-    // verifies the Newman dock; pure geometry, transform-invariant so it reads
-    // the base conformation.
+    // verifies the dashboard Newman display; pure geometry, transform-invariant
+    // so it reads the base conformation.
     server_->route(QStringLiteral("/newman"), [this]() {
         ASSERT_THREAD(this);
         const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
@@ -1752,6 +1904,65 @@ void RestServer::registerRoutes() {
         return jsonResponse(out);
     });
 
+    // ---- heroshot: transient molecule styling ---------------------------
+    //
+    // POST /heroshot/molecule_style
+    //   {preset:"scaffold"|"sticks", atom_radius_scale?, bond_radius?,
+    //    atom_color?, bond_color?, render_atoms?, render_bonds?, ...}
+    //
+    // Figure work often needs the molecule to recede so tensor/angle geometry
+    // can read. This is deliberately transient and restored by /heroshot/clear.
+    server_->route(QStringLiteral("/heroshot/molecule_style"), Method::Post,
+                   [this](const QHttpServerRequest& request) {
+        ASSERT_THREAD(this);
+        if (!scene_)
+            return errorResponse(QStringLiteral("scene not loaded"), SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(request, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("expected JSON object"), SC::BadRequest);
+
+        if (!heroshotMoleculeStyleBefore_.has_value())
+            heroshotMoleculeStyleBefore_ = scene_->moleculeStyle();
+        MoleculeScene::MoleculeStyle style = scene_->moleculeStyle();
+        applyMoleculeStylePreset(style, body.value(QStringLiteral("preset")).toString(
+                                            QStringLiteral("scaffold")));
+
+        auto styledBool = [&](const QString& key, bool fallback) {
+            const QJsonValue v = body.value(key);
+            return v.isBool() ? v.toBool() : fallback;
+        };
+        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
+            const QJsonValue v = body.value(key);
+            if (!v.isDouble()) return fallback;
+            return std::clamp(v.toDouble(), lo, hi);
+        };
+
+        style.renderAtoms = styledBool(QStringLiteral("render_atoms"), style.renderAtoms);
+        style.renderBonds = styledBool(QStringLiteral("render_bonds"), style.renderBonds);
+        style.useMultiCylindersForBonds =
+            styledBool(QStringLiteral("use_multi_bonds"), style.useMultiCylindersForBonds);
+        style.atomicRadiusScaleFactor = static_cast<float>(
+            styledDouble(QStringLiteral("atom_radius_scale"),
+                         style.atomicRadiusScaleFactor, 0.0, 2.0));
+        style.bondRadius = static_cast<float>(
+            styledDouble(QStringLiteral("bond_radius"), style.bondRadius, 0.0, 0.5));
+        style.atomicRadiusType = radiusTypeFromString(
+            body.value(QStringLiteral("atomic_radius_type")).toString(), style.atomicRadiusType);
+        style.atomColorMode = colorModeFromString(
+            body.value(QStringLiteral("atom_color_mode")).toString(), style.atomColorMode);
+        style.bondColorMode = colorModeFromString(
+            body.value(QStringLiteral("bond_color_mode")).toString(), style.bondColorMode);
+        style.atomColor = colorFromJson(body.value(QStringLiteral("atom_color")), style.atomColor);
+        style.bondColor = colorFromJson(body.value(QStringLiteral("bond_color")), style.bondColor);
+
+        scene_->applyMoleculeStyle(style);
+        return jsonResponse(QJsonObject{
+            {"style", moleculeStyleToJson(style)},
+            {"will_restore_on_clear", true},
+        });
+    });
+
     // ---- heroshot: tensor ghost trail -----------------------------------
     //
     // POST /heroshot/ghost_trail  {atom?, n?, end_frame?, step?}
@@ -1796,10 +2007,87 @@ void RestServer::registerRoutes() {
 
         const int n = std::clamp(body.value("n").toInt(5), 2, 12);
         const int step = std::clamp(body.value("step").toInt(2), 1, 16);
+        const bool includeCurrent =
+            body.contains(QStringLiteral("include_current")) &&
+                    body.value(QStringLiteral("include_current")).isBool()
+                ? body.value(QStringLiteral("include_current")).toBool()
+                : true;
+        const bool hideSelectionMarker =
+            body.contains(QStringLiteral("hide_selection_marker")) &&
+                    body.value(QStringLiteral("hide_selection_marker")).isBool()
+                ? body.value(QStringLiteral("hide_selection_marker")).toBool()
+                : false;
+        auto styledDouble = [&](const QString& key,
+                                double fallback,
+                                double lo,
+                                double hi) {
+            const QJsonValue v = body.value(key);
+            if (!v.isDouble()) return fallback;
+            return std::clamp(v.toDouble(), lo, hi);
+        };
+        auto styledBool = [&](const QString& key, bool fallback) {
+            const QJsonValue v = body.value(key);
+            return v.isBool() ? v.toBool() : fallback;
+        };
+        TensorGlyphActor::Style historyStyle;
+        historyStyle.ovaloidScale =
+            styledDouble(QStringLiteral("history_surface_scale"), 1.0, 0.0, 3.0);
+        historyStyle.arrowLengthScale =
+            styledDouble(QStringLiteral("history_arrow_scale"), 1.0, 0.0, 3.0);
+        historyStyle.arrowWidthScale =
+            styledDouble(QStringLiteral("history_arrow_width_scale"), 1.0, 0.0, 3.0);
+        historyStyle.surfaceOpacity =
+            styledDouble(QStringLiteral("history_surface_opacity"), 0.18, 0.0, 1.0);
+        historyStyle.arrowOpacity =
+            styledDouble(QStringLiteral("history_arrow_opacity"), 0.75, 0.0, 1.0);
+        historyStyle.showSurface =
+            styledBool(QStringLiteral("history_surface_visible"), false);
+        historyStyle.showArrows =
+            styledBool(QStringLiteral("history_arrows_visible"), true);
+        TensorGlyphActor::Style currentStyle;
+        currentStyle.ovaloidScale =
+            styledDouble(QStringLiteral("current_surface_scale"), 1.0, 0.0, 3.0);
+        currentStyle.arrowLengthScale =
+            styledDouble(QStringLiteral("current_arrow_scale"), 1.0, 0.0, 3.0);
+        currentStyle.arrowWidthScale =
+            styledDouble(QStringLiteral("current_arrow_width_scale"), 1.0, 0.0, 3.0);
+        currentStyle.surfaceOpacity =
+            styledDouble(QStringLiteral("current_surface_opacity"), 0.50, 0.0, 1.0);
+        currentStyle.arrowOpacity =
+            styledDouble(QStringLiteral("current_arrow_opacity"), 1.0, 0.0, 1.0);
+        currentStyle.showSurface =
+            styledBool(QStringLiteral("current_surface_visible"), false);
+        currentStyle.showArrows =
+            styledBool(QStringLiteral("current_arrows_visible"), true);
+        auto applyAxes = [](TensorGlyphActor::Style& style, const QString& mode) {
+            if (mode == QStringLiteral("none")) {
+                style.showAxes = {false, false, false};
+            } else if (mode == QStringLiteral("sigma11") || mode == QStringLiteral("axis0")) {
+                style.showAxes = {true, false, false};
+            } else if (mode == QStringLiteral("sigma22") || mode == QStringLiteral("axis1")) {
+                style.showAxes = {false, true, false};
+            } else if (mode == QStringLiteral("sigma33") || mode == QStringLiteral("axis2")) {
+                style.showAxes = {false, false, true};
+            } else {
+                style.showAxes = {true, true, true};
+            }
+        };
+        const QString axesMode = body.value(QStringLiteral("axes")).toString(QStringLiteral("all"));
+        applyAxes(historyStyle,
+                  body.value(QStringLiteral("history_axes")).toString(axesMode));
+        applyAxes(currentStyle,
+                  body.value(QStringLiteral("current_axes")).toString(axesMode));
+
         const int liveFrame = playback_ ? playback_->currentFrame() : 0;
         int endFrame = body.contains("end_frame") ? body.value("end_frame").toInt(liveFrame)
                                                    : liveFrame;
         if (endFrame < 0) endFrame = 0;
+
+        if (hideSelectionMarker && scene_->measurementOverlay()) {
+            if (!heroshotMeasurementVisibleBefore_.has_value())
+                heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
+            scene_->measurementOverlay()->setVisible(false);
+        }
 
         // Walk backward from endFrame keeping valid (DFT-present) frames only.
         // Bound the scan so a sparse DFT cadence cannot loop the whole way back.
@@ -1807,7 +2095,8 @@ void RestServer::registerRoutes() {
         std::vector<TensorGhostTrail::Sample> samples;
         std::vector<int> framesKept;
         const int scanLimit = n * step + 64;
-        for (int f = endFrame, scanned = 0;
+        const int firstFrame = includeCurrent ? endFrame : endFrame - step;
+        for (int f = firstFrame, scanned = 0;
              f >= 0 && static_cast<int>(samples.size()) < n && scanned < scanLimit;
              f -= step, ++scanned) {
             const model::AtomCsaResult r = readerWindow_->probeAtomCsa(atom, f);
@@ -1818,6 +2107,7 @@ void RestServer::registerRoutes() {
                                  r.shape.principal_values[2]};
             s.pasAxes = r.shape.pas_axes;
             s.iso = r.shape.sigma_iso;
+            s.style = (f == endFrame) ? currentStyle : historyStyle;
             samples.push_back(s);
             framesKept.push_back(f);
         }
@@ -1838,6 +2128,8 @@ void RestServer::registerRoutes() {
                 {"frame", framesKept[i]},
                 {"opacity", op},
                 {"sigma_iso", samples[i].iso},
+                {"role", framesKept[i] == endFrame ? QStringLiteral("current")
+                                                   : QStringLiteral("history")},
             });
         }
 
@@ -1851,6 +2143,9 @@ void RestServer::registerRoutes() {
         return jsonResponse(QJsonObject{
             {"atom", static_cast<qint64>(atom)},
             {"end_frame", endFrame},
+            {"reference_frame", endFrame},
+            {"include_current", includeCurrent},
+            {"selection_marker_hidden", hideSelectionMarker},
             {"step", step},
             {"requested_n", n},
             {"kept", static_cast<qint64>(m)},
@@ -1858,9 +2153,174 @@ void RestServer::registerRoutes() {
         });
     });
 
+    // POST /heroshot/angle_collar
+    //   Draw a transient, chart-derived dihedral collar in the molecule scene.
+    //   Defaults are aimed at the Asp29 chi2 baton-pass: CA-CB-CG-OD1, with
+    //   the signed angle read from the loaded H5 dihedral_time_series rather
+    //   than guessed from labels. The collar sits around the CG->CB axis so the
+    //   signed sweep matches residue.chi2's chart/stat convention.
+    server_->route(QStringLiteral("/heroshot/angle_collar"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !loaded_ || !loaded_->protein || !loaded_->conformation || !transformed_)
+            return errorResponse(QStringLiteral("scene / loaded run not wired"),
+                                 SC::ServiceUnavailable);
+        const model::QtProtein& protein = *loaded_->protein;
+        const auto* traj = loaded_->conformation->asTrajectory();
+        const auto* h5 = traj ? traj->h5() : nullptr;
+        const auto* dihedrals = h5 ? h5->dihedrals() : nullptr;
+        if (!dihedrals)
+            return errorResponse(QStringLiteral("loaded run has no dihedral time series"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+
+        const auto residueOpt = residueIndexFromRequest(protein, body, selection_);
+        if (!residueOpt)
+            return errorResponse(
+                QStringLiteral("residue not found: pass {\"residue_number\":N}, {\"residue\":i}, or focus an atom"),
+                SC::BadRequest);
+        const std::size_t residue = *residueOpt;
+        if (residue >= dihedrals->n_residues)
+            return errorResponse(QStringLiteral("residue out of dihedral range"), SC::BadRequest);
+
+        const int chi = std::clamp(body.value(QStringLiteral("chi")).toInt(2), 1, 4);
+        const int chiIndex = chi - 1;
+        const std::size_t chiExistsIndex = residue * 4u + static_cast<std::size_t>(chiIndex);
+        if (chiExistsIndex >= dihedrals->chi_exists.size() || dihedrals->chi_exists[chiExistsIndex] == 0)
+            return errorResponse(QStringLiteral("requested chi is not defined for this residue"),
+                                 SC::BadRequest);
+
+        const int liveFrame = playback_ ? playback_->currentFrame() : 0;
+        const int maxFrame = static_cast<int>(std::min(transformed_->frameCount(), dihedrals->n_frames)) - 1;
+        if (maxFrame < 0)
+            return errorResponse(QStringLiteral("no frames available"), SC::ServiceUnavailable);
+        const int frame = std::clamp(
+            body.contains(QStringLiteral("frame")) ? body.value(QStringLiteral("frame")).toInt(liveFrame)
+                                                   : liveFrame,
+            0, maxFrame);
+        const int previousFrame = std::clamp(
+            body.contains(QStringLiteral("previous_frame"))
+                ? body.value(QStringLiteral("previous_frame")).toInt(frame - 2)
+                : frame - 2,
+            0, maxFrame);
+
+        const QString atomAName = body.value(QStringLiteral("a")).toString(QStringLiteral("CA"));
+        const QString atomBName = body.value(QStringLiteral("b")).toString(QStringLiteral("CB"));
+        const QString atomCName = body.value(QStringLiteral("c")).toString(QStringLiteral("CG"));
+        const QString atomDName = body.value(QStringLiteral("d")).toString(QStringLiteral("OD1"));
+        const auto atomA = findResidueAtomByName(protein, residue, atomAName);
+        const auto atomB = findResidueAtomByName(protein, residue, atomBName);
+        const auto atomC = findResidueAtomByName(protein, residue, atomCName);
+        const auto atomD = findResidueAtomByName(protein, residue, atomDName);
+        if (!atomA || !atomB || !atomC || !atomD)
+            return errorResponse(QStringLiteral("could not resolve requested dihedral atoms in residue"),
+                                 SC::BadRequest);
+
+        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
+            const QJsonValue v = body.value(key);
+            if (!v.isDouble()) return fallback;
+            return std::clamp(v.toDouble(), lo, hi);
+        };
+        const bool hideSelectionMarker =
+            body.contains(QStringLiteral("hide_selection_marker")) &&
+                    body.value(QStringLiteral("hide_selection_marker")).isBool()
+                ? body.value(QStringLiteral("hide_selection_marker")).toBool()
+                : false;
+
+        if (hideSelectionMarker && scene_->measurementOverlay()) {
+            if (!heroshotMeasurementVisibleBefore_.has_value())
+                heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
+            scene_->measurementOverlay()->setVisible(false);
+        }
+
+        const double angle = dihedrals->chiAt(residue, static_cast<std::size_t>(frame), chiIndex);
+        const double previousAngle =
+            dihedrals->chiAt(residue, static_cast<std::size_t>(previousFrame), chiIndex);
+        if (!std::isfinite(angle) || !std::isfinite(previousAngle))
+            return errorResponse(QStringLiteral("requested frame has no finite chi angle"),
+                                 SC::ServiceUnavailable);
+
+        const model::Vec3 a = transformed_->atomPosition(static_cast<std::size_t>(frame), *atomA);
+        const model::Vec3 b = transformed_->atomPosition(static_cast<std::size_t>(frame), *atomB);
+        const model::Vec3 c = transformed_->atomPosition(static_cast<std::size_t>(frame), *atomC);
+
+        AngleCollarActor::Style style;
+        style.radius = styledDouble(QStringLiteral("radius"), 1.25, 0.1, 8.0);
+        style.tubeRadius = styledDouble(QStringLiteral("tube_radius"), 0.035, 0.002, 0.25);
+        style.axisPadding = styledDouble(QStringLiteral("axis_padding"), 0.35, 0.0, 3.0);
+        style.coneLength = styledDouble(QStringLiteral("cone_length"), 0.0, 0.0, 8.0);
+        style.neckRadius = styledDouble(QStringLiteral("neck_radius"), 0.0, 0.0, 4.0);
+        style.rimRadius = styledDouble(QStringLiteral("rim_radius"), 0.0, 0.0, 8.0);
+        style.coneOpacity = styledDouble(QStringLiteral("cone_opacity"), 0.26, 0.0, 1.0);
+        style.coneDirection =
+            body.contains(QStringLiteral("cone_flip")) &&
+                    body.value(QStringLiteral("cone_flip")).isBool() &&
+                    body.value(QStringLiteral("cone_flip")).toBool()
+                ? 1.0
+                : -1.0;
+        style.arcSegments = std::clamp(body.value(QStringLiteral("segments")).toInt(96), 24, 240);
+
+        std::vector<AngleCollarActor::Arc> arcs;
+        arcs.push_back(AngleCollarActor::Arc{
+            previousAngle,
+            styledDouble(QStringLiteral("previous_opacity"), 0.42, 0.0, 1.0),
+            styledDouble(QStringLiteral("previous_radius_scale"), 0.94, 0.2, 3.0),
+            std::array<double, 3>{{0.95, 0.30, 0.38}},
+        });
+        arcs.push_back(AngleCollarActor::Arc{
+            angle,
+            styledDouble(QStringLiteral("current_opacity"), 0.92, 0.0, 1.0),
+            styledDouble(QStringLiteral("current_radius_scale"), 1.04, 0.2, 3.0),
+            std::array<double, 3>{{1.00, 0.72, 0.18}},
+        });
+
+        heroshotAngleCollar_ = std::make_unique<AngleCollarActor>(
+            vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
+        // Axis start/end are CG->CB, not CB->CG: this matches the signed
+        // residue.chi2 values used by nmrfigs/events_table.
+        heroshotAngleCollar_->show(c, b, c, a - b, arcs, style);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+
+        const model::QtResidue& rr = protein.residue(residue);
+        return jsonResponse(QJsonObject{
+            {"residue", static_cast<qint64>(residue)},
+            {"residue_number", rr.address.residueNumber},
+            {"chi", chi},
+            {"frame", frame},
+            {"previous_frame", previousFrame},
+            {"angle_degrees", radiansToDegrees(angle)},
+            {"previous_angle_degrees", radiansToDegrees(previousAngle)},
+            {"delta_degrees", radiansToDegrees(angle - previousAngle)},
+            {"state", rotamerState(angle)},
+            {"previous_state", rotamerState(previousAngle)},
+            {"axis", QJsonArray{static_cast<qint64>(*atomC), static_cast<qint64>(*atomB)}},
+            {"atoms", QJsonArray{static_cast<qint64>(*atomA), static_cast<qint64>(*atomB),
+                                  static_cast<qint64>(*atomC), static_cast<qint64>(*atomD)}},
+            {"atom_names", QJsonArray{atomAName, atomBName, atomCName, atomDName}},
+            {"center", vec3FromEigen(c)},
+            {"collar_shape", QStringLiteral("cone")},
+            {"cone_opens_opposite_axis", style.coneDirection < 0.0},
+            {"selection_marker_hidden", hideSelectionMarker},
+        });
+    });
+
     server_->route(QStringLiteral("/heroshot/clear"), Method::Post, [this]() {
         ASSERT_THREAD(this);
         if (heroshotTrail_) heroshotTrail_->clear();
+        if (heroshotAngleCollar_) heroshotAngleCollar_->clear();
+        if (scene_ && scene_->measurementOverlay()
+            && heroshotMeasurementVisibleBefore_.has_value()) {
+            scene_->measurementOverlay()->setVisible(*heroshotMeasurementVisibleBefore_);
+            heroshotMeasurementVisibleBefore_.reset();
+        }
+        if (scene_ && heroshotMoleculeStyleBefore_.has_value()) {
+            scene_->applyMoleculeStyle(*heroshotMoleculeStyleBefore_);
+            heroshotMoleculeStyleBefore_.reset();
+        }
         if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Rest);
         return QHttpServerResponse(SC::NoContent);
     });

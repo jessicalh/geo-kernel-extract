@@ -50,6 +50,8 @@
 
 #pragma once
 
+#include "MoleculeScene.h"
+
 #include "../diagnostics/ObjectCensus.h"
 
 #include <QHostAddress>
@@ -57,6 +59,7 @@
 #include <QPointer>
 
 #include <memory>
+#include <optional>
 
 class QHttpServer;
 class QWidget;
@@ -77,9 +80,9 @@ namespace h5reader::app {
 
 class DashboardSelectionController;
 class DashboardDisplayController;
-class MoleculeScene;
 class QtPlaybackController;
 class ReaderMainWindow;
+class AngleCollarActor;
 class TensorGhostTrail;
 
 class RestServer final : public QObject {
@@ -143,6 +146,9 @@ private:
     // tensor ghost trail built on demand by POST /heroshot/ghost_trail. Rebuilt
     // against the live scene renderer each call; cleared by /heroshot/clear.
     std::unique_ptr<TensorGhostTrail>           heroshotTrail_;
+    std::unique_ptr<AngleCollarActor>           heroshotAngleCollar_;
+    std::optional<bool>                         heroshotMeasurementVisibleBefore_;
+    std::optional<MoleculeScene::MoleculeStyle> heroshotMoleculeStyleBefore_;
     bool                                        contextSet_ = false;
 };
 

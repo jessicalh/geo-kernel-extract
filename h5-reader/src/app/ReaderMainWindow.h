@@ -183,8 +183,8 @@ public slots:
 protected:
     // Logs OpenGL vendor / renderer / version exactly once on the first
     // show. The GL context only exists after the widget has been mapped
-    // and painted, so the log itself defers via QTimer::singleShot(0)
-    // from inside this handler. Diagnostic-only — if Qt fell back to
+    // and painted, so the log hooks VTK's first EndEvent from inside this
+    // handler. Diagnostic-only — if Qt fell back to
     // ANGLE / software OpenGL, this is where it shows up.
     void showEvent(QShowEvent* event) override;
 

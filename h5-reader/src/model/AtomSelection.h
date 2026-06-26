@@ -17,7 +17,7 @@
 //              (distance / angle / dihedral readouts) -- both shipped.
 // (The role-based model rows once fed a view, the SelectionDock; that dock was
 //  retired, so no QAbstractItemView consumes them today -- only the typed C++
-//  API below. The planned comparison plots / table were never built.)
+//  API below.)
 //
 // Gesture policy:
 //   * plain pick  → replace the whole set with {idx} (focus = idx).
@@ -69,7 +69,7 @@ public:
 
     // Custom roles for views. DisplayRole = "TRP42:CA"; DecorationRole =
     // the slot colour swatch (matches the 3-D sphere). The typed roles feed
-    // a delegate / the comparison plots that want the raw values.
+    // future model views or delegates that want the raw values.
     enum Roles {
         AtomIndexRole = Qt::UserRole + 1,  // int    — global atom index
         SlotRole,                          // int    — 0-based slot
@@ -119,20 +119,21 @@ public slots:
     // does primary validation, this is belt+suspenders). One `changed()` and
     // one `focusChanged()` (or `cleared()`) emit at the end, NOT per atom —
     // consumers that rebuild from the full set (MeasurementOverlay,
-    // comparison plots) only need one update.
+    // MeasurementsDock, tensor overlays) only need one update.
     void bulkSet(const std::vector<std::size_t>& atoms);
 
     // Empty the selection (a future Clear action / Esc).
     void clear();
 
 signals:
-    // Set membership changed (atom appended / removed / replaced). The
-    // measurement overlay + comparison plots rebuild from atoms(). Emitted
-    // alongside the QAbstractItemModel structural signals, as the single
-    // "something changed" hook for non-view consumers.
+    // Set membership changed (atom appended / removed / replaced). Geometry
+    // and scene consumers rebuild from atoms(). Emitted alongside the
+    // QAbstractItemModel structural signals, as the single "something changed"
+    // hook for non-view consumers.
     void changed();
 
-    // The focus member changed. The inspector + time-series dock retarget.
+    // The focus member changed. The inspector, tensor glyphs, and dashboard
+    // focus consumers retarget.
     void focusChanged(std::size_t atomIdx);
 
     // The selection became empty. Focus consumers clear their views.

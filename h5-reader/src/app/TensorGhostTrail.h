@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "TensorGlyphActor.h"
+
 #include "../model/Types.h"
 
 #include <vtkRenderer.h>
@@ -26,8 +28,6 @@
 
 namespace h5reader::app {
 
-class TensorGlyphActor;  // owned by unique_ptr; full type only needed in the .cpp
-
 class TensorGhostTrail {
 public:
     // One ghost: a tensor's lab-frame eigendecomposition at one frame plus the
@@ -38,6 +38,7 @@ public:
         model::Mat3 pasAxes = model::Mat3::Identity();  // lab-frame eigenvector columns
         double iso = 0.0;                               // isotropic reference (= trace/3)
         double opacity = 1.0;                           // 1 = newest/opaque, ->0 = oldest/faint
+        TensorGlyphActor::Style style;                  // per-ghost figure styling
     };
 
     explicit TensorGhostTrail(vtkSmartPointer<vtkRenderer> sceneRenderer);

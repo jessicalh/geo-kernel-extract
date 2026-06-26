@@ -156,10 +156,6 @@ qt_add_library(h5reader_core STATIC
     src/io/QtTopologySidecar.cpp
     src/io/QtTrajectoryH5.h
     src/io/QtTrajectoryH5.cpp
-    # QtNamingRegistry.{h,cpp} retired 2026-05-23 — vestigial CHARMM↔IUPAC
-    # translation; the new sidecar format carries typed AmberAtomName /
-    # IupacAtomName / BmrbAtomName per atom in atoms_category_info.npy.
-    # No consumers. Files remain on disk for now; deletion in a future session.
     src/io/QtProteinLoader.h
     src/io/QtProteinLoader.cpp
     src/io/FrameNpyLoader.h
@@ -222,6 +218,8 @@ qt_add_library(h5reader_core STATIC
     src/app/CsaTensorOverlay.cpp
     src/app/TensorGhostTrail.h
     src/app/TensorGhostTrail.cpp
+    src/app/AngleCollarActor.h
+    src/app/AngleCollarActor.cpp
     src/app/NearbySignalModel.h
     src/app/NearbySignalModel.cpp
     src/app/SignalDisplayDialog.h
@@ -1162,5 +1160,83 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         TIMEOUT 300
     )
 endif()
+
+# ============================================================================
+# Install / package
+# ============================================================================
+
+install(TARGETS h5reader
+    RUNTIME DESTINATION .
+    COMPONENT Runtime
+)
+
+if(WIN32)
+    if(NOT H5READER_VCPKG_BIN_DIR)
+        if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET
+                AND EXISTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
+            set(H5READER_VCPKG_BIN_DIR
+                "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
+                CACHE PATH "vcpkg runtime DLL directory")
+        elseif(EXISTS "C:/Projects/vcpkg/installed/x64-windows/bin")
+            set(H5READER_VCPKG_BIN_DIR
+                "C:/Projects/vcpkg/installed/x64-windows/bin"
+                CACHE PATH "vcpkg runtime DLL directory")
+        endif()
+    endif()
+
+    if(NOT H5READER_MSVC_RUNTIME_DIR)
+        set(_h5reader_msvc_redist_dirs)
+        foreach(_h5reader_msvc_redist_root IN ITEMS
+                "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Redist/MSVC"
+                "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Redist/MSVC"
+                "C:/Program Files/Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC")
+            if(EXISTS "${_h5reader_msvc_redist_root}")
+                file(GLOB _h5reader_msvc_redist_candidates
+                    LIST_DIRECTORIES true
+                    "${_h5reader_msvc_redist_root}/*/x64/Microsoft.VC*.CRT")
+                list(APPEND _h5reader_msvc_redist_dirs
+                    ${_h5reader_msvc_redist_candidates})
+            endif()
+        endforeach()
+        if(_h5reader_msvc_redist_dirs)
+            list(SORT _h5reader_msvc_redist_dirs ORDER DESCENDING)
+            list(GET _h5reader_msvc_redist_dirs 0 _h5reader_msvc_redist_dir)
+            set(H5READER_MSVC_RUNTIME_DIR
+                "${_h5reader_msvc_redist_dir}"
+                CACHE PATH "MSVC runtime DLL directory")
+        endif()
+    endif()
+
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallWindowsRuntimeDeps.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/InstallWindowsRuntimeDeps.cmake"
+        @ONLY
+    )
+    install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/InstallWindowsRuntimeDeps.cmake"
+            COMPONENT Runtime)
+endif()
+
+set(CPACK_PACKAGE_NAME "h5reader")
+set(CPACK_PACKAGE_VENDOR "h5reader")
+set(CPACK_PACKAGE_VERSION "0.5.0")
+set(CPACK_PACKAGE_FILE_NAME
+    "h5reader-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "h5reader")
+set(CPACK_MONOLITHIC_INSTALL ON)
+
+if(WIN32)
+    find_program(H5READER_MAKENSIS_EXECUTABLE makensis)
+    if(H5READER_MAKENSIS_EXECUTABLE)
+        set(CPACK_GENERATOR "NSIS;ZIP")
+        set(CPACK_NSIS_DISPLAY_NAME "h5reader")
+        set(CPACK_NSIS_PACKAGE_NAME "h5reader")
+        set(CPACK_NSIS_MODIFY_PATH OFF)
+    else()
+        set(CPACK_GENERATOR "ZIP")
+    endif()
+else()
+    set(CPACK_GENERATOR "TGZ")
+endif()
+include(CPack)
 
 message(STATUS "h5reader: Qt ${Qt6_VERSION}, VTK ${VTK_VERSION}, HDF5 ${HDF5_VERSION}")

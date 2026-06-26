@@ -301,14 +301,6 @@ double QtFrame::aimnet2Charge(std::size_t atomIdx) const {
     const auto* ts = conformation_->h5()->aimnet2Charge();
     return ts ? ts->at(atomIdx, tIndex_) : 0.0;
 }
-double QtFrame::eeqCharge(std::size_t /*atomIdx*/) const {
-    // EEQ is in the eeq_welford TR (no per-frame TS); return Welford mean
-    // as a "current value" proxy. Or 0.0 if absent.
-    if (!conformation_ || !conformation_->h5())
-        return 0.0;
-    const auto* w = conformation_->h5()->eeqWelford();
-    return w ? 0.0 : 0.0;  // intentional placeholder until Session 5
-}
 double QtFrame::eeqCoordinationNumber(std::size_t /*atomIdx*/) const {
     return 0.0;
 }

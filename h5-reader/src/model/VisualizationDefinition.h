@@ -16,7 +16,6 @@ class TrajectoryFieldAvailability;
 enum class VisualizationType : std::uint8_t {
     TemporalStrip,
     TensorGlyph,
-    AtomColor,
     SequenceBar,
     LagCurve,
     ChordCoupling,

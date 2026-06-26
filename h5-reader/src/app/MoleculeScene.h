@@ -77,6 +77,7 @@
 #include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -100,6 +101,19 @@ class MoleculeScene final : public QObject {
     Q_OBJECT
 
 public:
+    struct MoleculeStyle {
+        bool renderAtoms = true;
+        bool renderBonds = true;
+        bool useMultiCylindersForBonds = true;
+        int atomicRadiusType = 1;
+        int atomColorMode = 1;
+        int bondColorMode = 1;
+        float atomicRadiusScaleFactor = 0.3f;
+        float bondRadius = 0.075f;
+        std::array<unsigned char, 3> atomColor{{150, 150, 150}};
+        std::array<unsigned char, 3> bondColor{{50, 50, 50}};
+    };
+
     // Source-of-render hint set by requestRender, read by the EndEvent
     // observer (Stage 8 in spec/viewport_pipeline_2026-05-30.md) so each
     // logged render line carries the trigger that caused it.
@@ -169,6 +183,9 @@ public:
     // Bond-orientation order tensor glyph -- the SAME TensorGlyphActor the CSA
     // overlay uses, so the two tensor representations stay consistent.
     TensorGlyphActor*        orientationGlyph()   const { return orientationGlyph_.get(); }
+
+    MoleculeStyle moleculeStyle() const;
+    void applyMoleculeStyle(const MoleculeStyle& style);
 
 public slots:
     // Update atom positions to frame t AND propagate to every overlay.

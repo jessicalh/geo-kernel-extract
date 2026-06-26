@@ -1,7 +1,6 @@
 // MeasurementsDock -- a small dockable readout of the current AtomSelection's
 // geometry measurement (distance / angle / dihedral) for the focused frame,
-// redrawn live as frames play. Mirrors NewmanDock's reveal-on-selection +
-// frameChanged update pattern. The value comes from model::Measure (pure compute
+// redrawn live as frames play. The value comes from model::Measure (pure compute
 // over Conformation positions); this is just the view.
 //
 // Realises the "text info lives in a window, not on the molecule" rule (see the

@@ -37,18 +37,22 @@ def test_inspector_tree_is_well_formed(rest):
 
 def test_forward_sum_primaries_carry_provenance(rest):
     rows = _tree_for_atom(rest, 16)
-    assert "Classical forward sum (derived)" in rows, \
-        "forward-sum section missing (does the fixture carry the producers?)"
-    ring = rows.get("ring contribution")
+    assert "Local classical estimate (tentative)" in rows, \
+        "local estimate section missing (does the fixture carry the producers?)"
+    ring = rows.get("estimated ring contribution")
     assert ring is not None, "ring contribution row missing"
     assert "Biot-Savart" in ring.get("tooltip", ""), ring
-    assert "[USE]" in ring.get("tooltip", ""), ring
-    mc = rows.get("McConnell contribution")
+    assert "[LOCAL ESTIMATE]" in ring.get("tooltip", ""), ring
+    mc = rows.get("estimated McConnell contribution")
     assert mc is not None, "McConnell contribution missing (fixture lacks mc_*_bo?)"
     assert "DeltaChi" in mc.get("tooltip", ""), mc
+    assert "[LOCAL ESTIMATE]" in mc.get("tooltip", ""), mc
     s0 = rows.get("sigma0 (placeholder baseline)")
     assert s0 is not None, "sigma0 row missing"
     assert "[PLACEHOLDER]" in s0.get("tooltip", ""), s0
+    est = rows.get("estimated sigma_cl (tentative)")
+    assert est is not None, "estimated sigma_cl row missing"
+    assert "[ESTIMATE" in est.get("tooltip", ""), est
 
 
 def test_efield_efg_promoted_to_primary(rest):

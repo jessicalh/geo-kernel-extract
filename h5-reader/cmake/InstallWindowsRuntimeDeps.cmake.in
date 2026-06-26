@@ -1,0 +1,43 @@
+if(NOT WIN32)
+    return()
+endif()
+
+set(_prefix "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}")
+file(TO_CMAKE_PATH "${_prefix}" _prefix)
+set(_exe "${_prefix}/h5reader.exe")
+if(NOT EXISTS "${_exe}")
+    message(FATAL_ERROR "h5reader deploy expected ${_exe}")
+endif()
+
+set(_windeployqt "@H5READER_QT_DIR@/bin/windeployqt.exe")
+if(NOT EXISTS "${_windeployqt}")
+    message(FATAL_ERROR "windeployqt not found at ${_windeployqt}")
+endif()
+
+execute_process(
+    COMMAND "${_windeployqt}" --release --no-translations "${_exe}"
+    WORKING_DIRECTORY "${_prefix}"
+    RESULT_VARIABLE _windeployqt_result
+    OUTPUT_VARIABLE _windeployqt_out
+    ERROR_VARIABLE _windeployqt_err
+)
+if(NOT _windeployqt_result EQUAL 0)
+    message(FATAL_ERROR
+        "windeployqt failed with code ${_windeployqt_result}\n"
+        "stdout:\n${_windeployqt_out}\n"
+        "stderr:\n${_windeployqt_err}")
+endif()
+
+foreach(_runtime_dir IN ITEMS
+        "@H5READER_VTK_DIR@/bin"
+        "@H5READER_VCPKG_BIN_DIR@"
+        "@H5READER_MSVC_RUNTIME_DIR@")
+    if(NOT EXISTS "${_runtime_dir}")
+        message(WARNING "h5reader deploy runtime dir not found: ${_runtime_dir}")
+        continue()
+    endif()
+    file(GLOB _runtime_dlls "${_runtime_dir}/*.dll")
+    foreach(_dll IN LISTS _runtime_dlls)
+        file(COPY "${_dll}" DESTINATION "${_prefix}")
+    endforeach()
+endforeach()

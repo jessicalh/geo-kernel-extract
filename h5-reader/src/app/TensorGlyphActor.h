@@ -1,9 +1,8 @@
 // TensorGlyphActor -- the single, shared scene representation for a symmetric
 // 3x3 tensor. ONE form, drawn for EVERY tensor the viewer shows (CSA shielding,
 // bond-orientation order, ...) so the representation stays consistent, not ad
-// hoc: a TensorView OVALOID (a unit sphere deformed radially by |dev(n)|, the
-// deviation-from-isotropic surface, sign-coloured by a diverging map) plus three
-// double-headed PRINCIPAL-AXIS arrows (index-coloured amber/teal/violet).
+// hoc. Usable-mode default is principal-axis arrows only; the older deformed
+// ovaloid surface remains an explicit style option for figure experiments.
 //
 // Pure renderer: the caller supplies the eigendecomposition ALREADY resolved
 // into the lab frame -- centre, the three principal values, their eigenvector
@@ -34,27 +33,38 @@ namespace h5reader::app {
 
 class TensorGlyphActor {
 public:
+    struct Style {
+        double ovaloidScale = 1.0;
+        double arrowLengthScale = 1.0;
+        double arrowWidthScale = 1.0;
+        double surfaceOpacity = 0.50;
+        double arrowOpacity = 1.0;
+        bool showSurface = false;
+        bool showArrows = true;
+        std::array<bool, 3> showAxes{{true, true, true}};
+    };
+
     explicit TensorGlyphActor(vtkSmartPointer<vtkRenderer> sceneRenderer);
     ~TensorGlyphActor();
 
     TensorGlyphActor(const TensorGlyphActor&) = delete;
     TensorGlyphActor& operator=(const TensorGlyphActor&) = delete;
 
-    // Draw the ovaloid + principal-axis arrows for the symmetric tensor whose
+    // Draw the principal-axis arrows for the symmetric tensor whose
     // lab-frame eigendecomposition is (principalValues[i] along pasAxes.col(i)),
     // centred at `center`, isotropic reference `iso` (= trace/3). The ovaloid
     // radius along direction n is ~ |dev(n)| where dev = value - iso, so an
     // isotropic tensor collapses toward a point and an anisotropic one bulges
     // along its dominant deviation. Arrows are coloured by principal-value index
     // (0/1/2 -> amber/teal/violet). Replaces any prior glyph.
-    // `opacity` (default 1.0) scales the whole glyph -- the translucent ovaloid
-    // and the arrows -- so a caller can fade it (e.g. a ghost trail's older
-    // frames). At 1.0 the appearance is unchanged from before.
+    // `opacity` (default 1.0) scales the arrows and any explicitly enabled
+    // surface so a caller can fade it (e.g. a ghost trail's older frames).
     void show(const model::Vec3& center,
               const std::array<double, 3>& principalValues,
               const model::Mat3& pasAxes,
               double iso,
-              double opacity = 1.0);
+              double opacity = 1.0,
+              const Style& style = Style{});
     void clear();
     void setVisible(bool on);
     bool isActive() const { return active_; }
@@ -80,6 +90,8 @@ private:
     vtkSmartPointer<vtkArrowSource>          arrowSource_;
     vtkSmartPointer<vtkPolyDataMapper>       arrowMapper_;
     std::array<vtkSmartPointer<vtkActor>, 6> arrowActors_;
+    std::array<bool, 6> arrowSlotVisible_{{false, false, false, false, false, false}};
+    bool surfaceVisible_ = false;
 
     bool actorsBuilt_ = false;
     bool active_ = false;

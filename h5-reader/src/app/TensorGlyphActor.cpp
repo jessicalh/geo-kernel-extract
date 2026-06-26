@@ -116,18 +116,27 @@ void TensorGlyphActor::hideAll() {
     if (glyphActor_) glyphActor_->SetVisibility(false);
     for (auto& a : arrowActors_)
         if (a) a->SetVisibility(false);
+    surfaceVisible_ = false;
+    arrowSlotVisible_.fill(false);
 }
 
 void TensorGlyphActor::show(const model::Vec3& center,
                             const std::array<double, 3>& principalValues,
                             const model::Mat3& pasAxes,
                             double iso,
-                            double opacity) {
+                            double opacity,
+                            const Style& style) {
     if (!renderer_) {
         clear();
         return;
     }
     ensureActors();
+
+    const double ovaloidScale = std::max(0.0, style.ovaloidScale);
+    const double arrowLengthScale = std::max(0.0, style.arrowLengthScale);
+    const double arrowWidthScale = std::max(0.0, style.arrowWidthScale);
+    const double surfaceOpacity = std::clamp(style.surfaceOpacity, 0.0, 1.0);
+    const double arrowOpacity = std::clamp(style.arrowOpacity, 0.0, 1.0);
 
     std::array<double, 3> dev{
         principalValues[0] - iso,
@@ -159,7 +168,8 @@ void TensorGlyphActor::show(const model::Vec3& center,
             double nx = 0.0, ny = 0.0, nz = 1.0;
             if (len > 1e-9) { nx = p[0] / len; ny = p[1] / len; nz = p[2] / len; }
             const double devN = nx * nx * dev[0] + ny * ny * dev[1] + nz * nz * dev[2];
-            const double r = kOvaloidRadius * std::max(kOvaloidFloor, std::abs(devN) / maxAbs);
+            const double r = kOvaloidRadius * ovaloidScale
+                             * std::max(kOvaloidFloor, std::abs(devN) / maxAbs);
             glyphLocal_->GetPoints()->SetPoint(i, nx * r, ny * r, nz * r);
             signScalar->SetValue(i, std::clamp(devN / maxAbs, -1.0, 1.0));
         }
@@ -178,13 +188,16 @@ void TensorGlyphActor::show(const model::Vec3& center,
         glyphTransform_->SetMatrix(m);
         for (int i = 0; i < 3; ++i)
             surfaceExtent[static_cast<std::size_t>(i)] =
-                kOvaloidRadius * std::abs(dev[static_cast<std::size_t>(i)]) / maxAbs;
+                kOvaloidRadius * ovaloidScale
+                * std::abs(dev[static_cast<std::size_t>(i)]) / maxAbs;
     }
     glyphFilter_->Modified();
     // Per-show opacity: the ovaloid keeps its 0.50 translucency scaled by the
     // caller's fade; arrows (otherwise opaque) fade with it too.
-    glyphActor_->GetProperty()->SetOpacity(0.50 * opacity);
-    glyphActor_->SetVisibility(true);
+    glyphActor_->GetProperty()->SetOpacity(surfaceOpacity * opacity);
+    surfaceVisible_ = style.showSurface;
+    glyphActor_->SetVisibility(surfaceVisible_ ? 1 : 0);
+    arrowSlotVisible_.fill(false);
 
     // Principal-axis arrows -- the descriptive element. Each PAS axis is drawn
     // double-headed (+/- director), index-coloured (amber/teal/violet for
@@ -193,11 +206,14 @@ void TensorGlyphActor::show(const model::Vec3& center,
     // shown in the Atom Info panel, not labelled here.
     for (int axis = 0; axis < 3; ++axis) {
         const std::size_t ai = static_cast<std::size_t>(axis);
+        const bool axisVisible = style.showArrows && style.showAxes[ai];
         const model::Vec3 d = pasAxes.col(axis).normalized();
         const model::Vec3 ref = (std::abs(d[0]) < 0.9) ? model::Vec3(1, 0, 0) : model::Vec3(0, 1, 0);
         const model::Vec3 e1 = ref.cross(d).normalized();
         const model::Vec3 e2 = d.cross(e1);
-        const double tipDist = std::max(kArrowMinLen, surfaceExtent[ai] * kArrowReach);
+        const double tipDist =
+            std::max(kArrowMinLen * arrowLengthScale,
+                     surfaceExtent[ai] * kArrowReach * arrowLengthScale);
         const double* col = kAxisRgb[ai];
 
         for (int s = 0; s < 2; ++s) {
@@ -209,14 +225,15 @@ void TensorGlyphActor::show(const model::Vec3& center,
             um->Identity();
             for (int r = 0; r < 3; ++r) {
                 um->SetElement(r, 0, dir[r] * shaftLen);
-                um->SetElement(r, 1, e1[r] * kArrowWidth);
-                um->SetElement(r, 2, e2[r] * kArrowWidth);
+                um->SetElement(r, 1, e1[r] * kArrowWidth * arrowWidthScale);
+                um->SetElement(r, 2, e2[r] * kArrowWidth * arrowWidthScale);
                 um->SetElement(r, 3, tail[r]);
             }
             arrowActors_[slot]->SetUserMatrix(um);
             arrowActors_[slot]->GetProperty()->SetColor(col[0], col[1], col[2]);
-            arrowActors_[slot]->GetProperty()->SetOpacity(opacity);
-            arrowActors_[slot]->SetVisibility(true);
+            arrowActors_[slot]->GetProperty()->SetOpacity(arrowOpacity * opacity);
+            arrowSlotVisible_[slot] = axisVisible;
+            arrowActors_[slot]->SetVisibility(axisVisible ? 1 : 0);
         }
     }
 
@@ -230,9 +247,9 @@ void TensorGlyphActor::clear() {
 
 void TensorGlyphActor::setVisible(bool on) {
     const bool v = on && active_;
-    if (glyphActor_) glyphActor_->SetVisibility(v);
-    for (auto& a : arrowActors_)
-        if (a) a->SetVisibility(v);
+    if (glyphActor_) glyphActor_->SetVisibility(v && surfaceVisible_);
+    for (std::size_t i = 0; i < arrowActors_.size(); ++i)
+        if (arrowActors_[i]) arrowActors_[i]->SetVisibility(v && arrowSlotVisible_[i]);
 }
 
 }  // namespace h5reader::app

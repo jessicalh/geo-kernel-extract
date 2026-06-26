@@ -781,7 +781,8 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
 
     // L-3a (2026-05-29): per-vector Mat3 orientation tensor. The Mat3
     // payload feeds the tracked-hidden static.tensor mode; the 3-D glyph
-    // trigger remains deferred per the planning conversation.
+    // is focus-driven by ReaderMainWindow rather than emitted as a dashboard
+    // panel.
     add(descriptors,
         makeDescriptor("h5:reorient_orientation_tensor",
                        "reorient.orientation_tensor",

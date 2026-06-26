@@ -209,8 +209,6 @@ QString ToString(VisualizationType type) {
         return QStringLiteral("temporal strip");
     case VisualizationType::TensorGlyph:
         return QStringLiteral("tensor glyph");
-    case VisualizationType::AtomColor:
-        return QStringLiteral("atom colour");
     case VisualizationType::SequenceBar:
         return QStringLiteral("sequence bar");
     case VisualizationType::LagCurve:
