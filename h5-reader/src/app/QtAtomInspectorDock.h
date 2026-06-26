@@ -97,8 +97,10 @@ public:
     QJsonArray dumpTree() const;
 
 public slots:
-    // The dock's two inputs: which atom and which frame. Both cause a
-    // full tree rebuild because per-frame values affect many fields.
+    // The dock's two inputs: which atom and which frame. Atom picks may request
+    // full source detail for the parked frame. Frame ticks only rebuild from
+    // resident detail so playback does not wait on per-frame NPY directory IO;
+    // snapshotReady fills the full calculator pile when a request completes.
     void setPickedAtom(std::size_t atomIdx);
     void setFrame(int t);
 

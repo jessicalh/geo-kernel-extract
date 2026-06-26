@@ -1370,7 +1370,6 @@ void DashboardDisplayController::setFrame(int frame) {
     ASSERT_THREAD(this);
     frame_ = std::max(0, frame);
     extendToFrame(frame_);
-    emit stripTracksChanged();
 }
 
 // Slider drags defer per-frame snapshot fetches so one valueChanged

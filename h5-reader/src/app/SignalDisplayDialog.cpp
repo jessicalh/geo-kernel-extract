@@ -1364,6 +1364,8 @@ void SignalDisplayDialog::refreshCatalog() {
 void SignalDisplayDialog::setFrame(int frame) {
     ASSERT_THREAD(this);
     d_->frame = std::max(0, frame);
+    if (!isVisible())
+        return;
     if (d_->liveBox && d_->liveBox->isChecked() && d_->focusAtom.has_value()) {
         const std::size_t focusAtom = d_->focusAtom.value_or(0);
         d_->anchorModel->setAnchor(focusAtom, d_->frame);

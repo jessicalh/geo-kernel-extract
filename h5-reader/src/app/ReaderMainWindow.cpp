@@ -419,7 +419,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // CSA tensor glyph (mode-2): focus + frame driven; honest gap on a missing
     // DFT frame; raw->display alignment via the molecular frame.
     ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
-             [this](std::size_t) { updateCsaGlyph(); updateOrientationTensorGlyph(); });
+             [this](std::size_t) { updateCsaGlyph(true); updateOrientationTensorGlyph(); });
     ACONNECT(selection_, &model::AtomSelection::cleared, this, [this]() {
         if (scene_ && scene_->csaOverlay())
             scene_->csaOverlay()->clear();
@@ -429,7 +429,12 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
             scene_->requestRender(MoleculeScene::RenderSource::Overlay);
     });
     ACONNECT(playback_, &QtPlaybackController::frameChanged, this,
-             [this](int) { updateCsaGlyph(); updateOrientationTensorGlyph(); });
+             [this](int) { updateCsaGlyph(false); updateOrientationTensorGlyph(); });
+    ACONNECT(playback_, &QtPlaybackController::playingChanged, this,
+             [this](bool playing) {
+        if (!playing)
+            updateCsaGlyph(true);
+    });
 
     if (auto* meas = scene_->measurementOverlay()) {
         meas->setSelection(selection_);
@@ -522,6 +527,15 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     if (loaded_->manifest.dft.has_value()) {
         const auto& dft = *loaded_->manifest.dft;
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dft.frames, this);
+        ACONNECT(dftStore_, &model::DftShieldingStore::frameReady,
+                 this, [this](std::size_t originalIndex) {
+            if (!loaded_ || !loaded_->conformation || !playback_)
+                return;
+            const int frameI = playback_->currentFrame();
+            const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
+            if (loaded_->conformation->originalFrameIndex(frame) == originalIndex)
+                updateCsaGlyph(false);
+        });
         dashboardStripDock_->setDftStore(dftStore_);
         visualizationContext_.hasDftStore = true;
         if (dashboardController_)
@@ -562,7 +576,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
         << "| path=" << loaded_->runPath;
 }
 
-void ReaderMainWindow::updateCsaGlyph() {
+void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
     ASSERT_THREAD(this);
     CsaTensorOverlay* overlay = scene_ ? scene_->csaOverlay() : nullptr;
     if (!overlay)
@@ -576,12 +590,34 @@ void ReaderMainWindow::updateCsaGlyph() {
         redraw();
     };
 
-    if (!loaded_ || !dftStore_ || !transformed_ || !selection_->hasFocus()) {
+    if (!loaded_ || !dftStore_ || !transformed_ || !selection_ || !selection_->hasFocus()) {
         hide();
         return;
     }
     const std::size_t atom = selection_->focus();
-    const model::AtomCsaResult r = probeAtomCsa(atom);
+    const model::QtProtein* protein = loaded_->protein.get();
+    model::Conformation* rawConf = loaded_->conformation.get();
+    if (!protein || !rawConf) {
+        hide();
+        return;
+    }
+    const int frameI = playback_ ? playback_->currentFrame() : 0;
+    const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
+    const std::size_t original = rawConf->originalFrameIndex(frame);
+    if (!dftStore_->hasJob(original)) {
+        hide();
+        return;
+    }
+    if (!dftStore_->frame(original)) {
+        if (requestMissingDft && (!playback_ || !playback_->isPlaying()))
+            dftStore_->requestFrameAsync(original);
+        hide();
+        return;
+    }
+
+    const model::AtomCsaResult r =
+        model::ComputeAtomCsa(*protein, *rawConf, *transformed_, *dftStore_,
+                              atom, frame, false);
     if (!r.valid) {
         hide();
         return;
@@ -1916,6 +1952,7 @@ void ReaderMainWindow::buildDocks() {
                  this, [this]() {
                      if (dashboardController_)
                          dashboardController_->setScrubActive(false);
+                     updateCsaGlyph(true);
                  });
     }
 }

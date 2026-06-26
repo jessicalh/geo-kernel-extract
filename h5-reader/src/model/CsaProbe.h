@@ -38,20 +38,24 @@ struct AtomCsaResult {
 };
 
 // rawConf = the loader's untransformed trajectory; transformed = the
-// Kabsch-stabilized display conformation the scene renders.
+// Kabsch-stabilized display conformation the scene renders. requestDftFrame
+// keeps REST/heroshot probes deterministic; live glyph refresh can pass false
+// so frame advance never waits on ORCA output parsing.
 inline AtomCsaResult ComputeAtomCsa(const QtProtein& protein,
                                     Conformation& rawConf,
                                     TransformedConformation& transformed,
                                     DftShieldingStore& dftStore,
                                     std::size_t atom,
-                                    std::size_t frame) {
+                                    std::size_t frame,
+                                    bool requestDftFrame = true) {
     AtomCsaResult out;
     if (atom >= protein.atomCount()) return out;
     out.atomPos = transformed.atomPosition(frame, atom);
 
     const std::size_t original = rawConf.originalFrameIndex(frame);
     if (!dftStore.hasJob(original)) return out;  // honest gap; dftPresent stays false
-    dftStore.requestFrame(original);
+    if (requestDftFrame)
+        dftStore.requestFrame(original);
     const DftShieldingFrame* dft = dftStore.frame(original);
     if (!dft || !dft->valid || atom >= dft->atoms.size()) return out;
     out.dftPresent = true;

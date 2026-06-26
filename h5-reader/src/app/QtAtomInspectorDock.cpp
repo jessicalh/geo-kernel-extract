@@ -257,19 +257,22 @@ void QtAtomInspectorDock::setPickedAtom(std::size_t atomIdx) {
     ASSERT_THREAD(this);
     hasSelection_ = true;
     atomIdx_ = atomIdx;
-    if (conformation_)
-        conformation_->requestSnapshot(static_cast<std::size_t>(std::max(0, frame_)));
+    const std::size_t frame = static_cast<std::size_t>(std::max(0, frame_));
+    if (conformation_) {
+        conformation_->requestSnapshot(frame);
+        if (conformation_->snapshot(frame))
+            return;  // snapshotReady already rebuilt the tree.
+    }
     rebuild();
 }
 
 void QtAtomInspectorDock::setFrame(int t) {
     ASSERT_THREAD(this);
+    if (t != frame_)
+        hasCsa_ = false;  // CSA values are frame-local; never carry old tensors forward.
     frame_ = t;
-    if (hasSelection_) {
-        if (conformation_)
-            conformation_->requestSnapshot(static_cast<std::size_t>(std::max(0, t)));
+    if (hasSelection_)
         rebuild();
-    }
 }
 
 void QtAtomInspectorDock::onSnapshotReady(std::size_t frame) {

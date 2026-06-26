@@ -211,8 +211,9 @@ private:
     void clearLoadedRun();
     // Recompute + redraw the focused atom's DFT shielding-tensor glyph (PAS
     // ellipsoid + molecular-frame axes) for the current frame; clears when
-    // there is no focus or no DFT for the frame. Focus/frame driven.
-    void updateCsaGlyph();
+    // there is no focus or no DFT for the frame. Frame ticks are resident-only;
+    // focus/pause/scrub release may request the missing DFT frame asynchronously.
+    void updateCsaGlyph(bool requestMissingDft = false);
     // Recompute + redraw the focused atom's bond-orientation order tensor
     // (<u(x)u>) as the SAME ovaloid + principal-axis arrows the CSA glyph uses
     // (shared TensorGlyphActor) -- consistent, not ad hoc. Drawn at the bond

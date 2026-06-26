@@ -48,6 +48,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -76,7 +77,7 @@ public:
     DftShieldingStore(const QtProtein* protein,
                       const std::vector<h5reader::io::DftFrame>& frames,
                       QObject* parent = nullptr);
-    ~DftShieldingStore() override = default;
+    ~DftShieldingStore() override;
 
     std::size_t jobCount() const { return metaByOriginal_.size(); }
 
@@ -95,6 +96,13 @@ public:
     // re-attempted every frame.
     void requestFrame(std::size_t originalIndex);
 
+    // Same residency contract as requestFrame(), but returns immediately and
+    // emits frameReady() from the GUI thread after the parser finishes. This is
+    // for live display refreshes that must not make frame advance wait on ORCA
+    // output parsing. Dashboard history sampling and REST probes still use the
+    // blocking requestFrame() path when they need a deterministic sample now.
+    void requestFrameAsync(std::size_t originalIndex);
+
     // Cheap chart sample: resident value for (atom, part, scalar), or nullopt when
     // the frame is not resident / absent / the atom is out of range. Never
     // parses — the caller drives loading with requestFrame().
@@ -110,6 +118,8 @@ private:
     // Read meta.json -> files.out_primary, parse that .out, validate against the
     // topology. Returns null (and logs at the seam) on any failure.
     std::shared_ptr<const DftShieldingFrame> loadAndValidate(std::size_t originalIndex) const;
+    void finishAsyncFrame(std::size_t originalIndex,
+                          std::shared_ptr<const DftShieldingFrame> frame);
 
     const QtProtein* protein_ = nullptr;
 
@@ -123,6 +133,12 @@ private:
 
     // Negative cache only: no parsed data is retained for these frames.
     std::unordered_set<std::size_t> resolvedAbsent_;
+
+    // Background live-glyph requests. Threads are joined in the destructor
+    // before the protein/topology they read can be released by ReaderMainWindow.
+    std::unordered_set<std::size_t> asyncInFlight_;
+    std::optional<std::size_t> asyncPendingOriginal_;
+    std::vector<std::thread> asyncThreads_;
 };
 
 }  // namespace h5reader::model
