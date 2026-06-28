@@ -15,10 +15,10 @@ namespace h5reader::model {
 
 TrajectoryConformation::TrajectoryConformation(const QtProtein* protein,
                                                std::unique_ptr<h5reader::io::QtTrajectoryH5> h5,
-                                               QString perFrameNpysDir)
+                                               const QString& perFrameNpysDir)
     : Conformation(protein),
       h5_(std::move(h5)),
-      perFrameNpysDir_(std::move(perFrameNpysDir)) {
+      perFrameNpysDir_(perFrameNpysDir) {
     setObjectName(QStringLiteral("TrajectoryConformation"));
 
     // Index which H5 rows have a per-frame snapshot dir, so the UI can point at
@@ -28,41 +28,42 @@ TrajectoryConformation::TrajectoryConformation(const QtProtein* protein,
 
 TrajectoryConformation::~TrajectoryConformation() = default;
 
-double TrajectoryConformation::timePicoseconds(std::size_t frame) const {
+double TrajectoryConformation::timePicoseconds(std::size_t frameIndex) const {
     const auto& ft = h5_->frameTimes();
-    return frame < ft.size() ? ft[frame] : 0.0;
+    return frameIndex < ft.size() ? ft[frameIndex] : 0.0;
 }
 
-Vec3 TrajectoryConformation::atomPosition(std::size_t frame, std::size_t atomIdx) const {
+Vec3 TrajectoryConformation::atomPosition(std::size_t frameIndex, std::size_t atomIdx) const {
     const auto* pos = h5_->positions();
-    return pos ? pos->at(atomIdx, frame) : Vec3::Zero();
+    return pos ? pos->at(atomIdx, frameIndex) : Vec3::Zero();
 }
 
 QtFrame TrajectoryConformation::frame(std::size_t t) const {
     return QtFrame(this, t);
 }
 
-std::optional<std::size_t> TrajectoryConformation::nearestSampledFrame(std::size_t frame) const {
+std::optional<std::size_t> TrajectoryConformation::nearestSampledFrame(std::size_t frameIndex) const {
     if (sampledRows_.empty())
         return std::nullopt;
-    const auto hi = std::lower_bound(sampledRows_.begin(), sampledRows_.end(), frame);
+    const auto hi = std::lower_bound(sampledRows_.begin(), sampledRows_.end(), frameIndex);
     if (hi == sampledRows_.begin())
         return *hi;
     if (hi == sampledRows_.end())
         return sampledRows_.back();
     const auto lo = std::prev(hi);
-    return (frame - *lo <= *hi - frame) ? *lo : *hi;
+    return (frameIndex - *lo <= *hi - frameIndex) ? *lo : *hi;
 }
 
-std::shared_ptr<const QtConformationSnapshot> TrajectoryConformation::loadSnapshot(std::size_t frame) {
+std::shared_ptr<const QtConformationSnapshot> TrajectoryConformation::loadSnapshot(std::size_t frameIndex) {
     if (perFrameNpysDir_.isEmpty())
         return nullptr;  // run emitted no per-frame NPY snapshots; detail unavailable
 
     // The frame dir is keyed by the ORIGINAL (XTC) frame index, zero-padded to
     // six digits (frame_NNNNNN), matching FrameNpyEmitter's layout. The H5 row
-    // `frame` maps to that original index via frame_indices.
+    // frameIndex maps to that original index via frame_indices.
     const auto& idx = h5_->frameIndices();
-    const std::size_t orig = frame < idx.size() ? static_cast<std::size_t>(idx[frame]) : frame;
+    const std::size_t orig =
+        frameIndex < idx.size() ? static_cast<std::size_t>(idx[frameIndex]) : frameIndex;
     const QString dir = QStringLiteral("%1/frame_%2").arg(perFrameNpysDir_).arg(orig, 6, 10, QLatin1Char('0'));
 
     // Per-frame NPYs may be emitted at a stride. Check the documented frame
@@ -73,7 +74,7 @@ std::shared_ptr<const QtConformationSnapshot> TrajectoryConformation::loadSnapsh
     if (!QFileInfo::exists(dir))
         return nullptr;
 
-    return h5reader::io::FrameNpyLoader::LoadSnapshotDir(dir, protein_, orig, timePicoseconds(frame));
+    return h5reader::io::FrameNpyLoader::LoadSnapshotDir(dir, protein_, orig, timePicoseconds(frameIndex));
 }
 
 }  // namespace h5reader::model

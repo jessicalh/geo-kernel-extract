@@ -187,6 +187,10 @@ public:
     MoleculeStyle moleculeStyle() const;
     void applyMoleculeStyle(const MoleculeStyle& style);
 
+    bool atomFilterActive() const { return atomFilterActive_; }
+    bool isCameraPlaneLocked() const;
+    std::vector<size_t> cameraPlaneLockAtoms() const;
+
 public:
     // Update atom positions to frame t AND propagate to every overlay.
     // Early-returns when t == currentFrame to keep playback cheap; use
@@ -197,7 +201,7 @@ public:
     // Schedule one render via the Qt paint chain (widget->update()).
     // Coalesces multiple per-tick requests into one paint. The source
     // tag is recorded for the EndEvent observer to log.
-    void requestRender(RenderSource src);
+    void requestRender(h5reader::app::MoleculeScene::RenderSource src);
 
     // Back-compat shim — overlay toggle paths still call requestRender()
     // without a source. Forwards to requestRender(External).
@@ -211,7 +215,7 @@ public:
 
     // Dashboard strip reveal: highlight and camera-focus the atom, residue, or
     // atom tuple represented by a strip binding without changing AtomSelection.
-    void revealBinding(const model::SignalBinding& binding);
+    void revealBinding(const h5reader::model::SignalBinding& binding);
     void clearReveal();
 
     // Display isolation ("filter mode"): rebuild the molecule actor from a
@@ -219,9 +223,8 @@ public:
     // structure. setFrame keeps updating only the visible subset via the
     // atom-index remap, so stepping + overlays keep working. Used to show just
     // a picked atom + chosen nearby residues while stepping the trajectory.
-    void setAtomFilter(const std::vector<std::size_t>& atomIndices);
+    void setAtomFilter(const std::vector<size_t>& atomIndices);
     void clearAtomFilter();
-    bool atomFilterActive() const { return atomFilterActive_; }
 
     // ---- Plane lock compatibility shim ---------------------------------
     //
@@ -230,10 +233,8 @@ public:
     // to the camera composer (CameraMode::Plane + OrientationPolicy::Default).
     // The internal CameraPlaneLock struct has been removed; the composer
     // owns the lock state.
-    bool lockCameraToSelectionPlane(const std::vector<std::size_t>& atoms);
+    bool lockCameraToSelectionPlane(const std::vector<size_t>& atoms);
     void clearCameraPlaneLock();
-    bool isCameraPlaneLocked() const;
-    std::vector<std::size_t> cameraPlaneLockAtoms() const;
 
 signals:
     void cameraPlaneLockChanged(bool active);

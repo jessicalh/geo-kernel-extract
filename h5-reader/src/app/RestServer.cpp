@@ -127,6 +127,21 @@ QJsonObject parseJsonBody(const QHttpServerRequest& request, bool* ok) {
     return doc.object();
 }
 
+struct JsonDoubleBounds {
+    double fallback = 0.0;
+    double lower = 0.0;
+    double upper = 0.0;
+};
+
+double clampedJsonDouble(const QJsonObject& body,
+                         const QString& key,
+                         JsonDoubleBounds bounds) {
+    const QJsonValue v = body.value(key);
+    if (!v.isDouble())
+        return bounds.fallback;
+    return std::clamp(v.toDouble(), bounds.lower, bounds.upper);
+}
+
 QJsonArray vec3FromRaw(const double raw[3]) {
     return QJsonArray{raw[0], raw[1], raw[2]};
 }
@@ -2950,21 +2965,16 @@ void RestServer::registerRoutes() {
             const QJsonValue v = body.value(key);
             return v.isBool() ? v.toBool() : fallback;
         };
-        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
-            const QJsonValue v = body.value(key);
-            if (!v.isDouble()) return fallback;
-            return std::clamp(v.toDouble(), lo, hi);
-        };
-
         style.renderAtoms = styledBool(QStringLiteral("render_atoms"), style.renderAtoms);
         style.renderBonds = styledBool(QStringLiteral("render_bonds"), style.renderBonds);
         style.useMultiCylindersForBonds =
             styledBool(QStringLiteral("use_multi_bonds"), style.useMultiCylindersForBonds);
         style.atomicRadiusScaleFactor = static_cast<float>(
-            styledDouble(QStringLiteral("atom_radius_scale"),
-                         style.atomicRadiusScaleFactor, 0.0, 2.0));
+            clampedJsonDouble(body, QStringLiteral("atom_radius_scale"),
+                              {style.atomicRadiusScaleFactor, 0.0, 2.0}));
         style.bondRadius = static_cast<float>(
-            styledDouble(QStringLiteral("bond_radius"), style.bondRadius, 0.0, 0.5));
+            clampedJsonDouble(body, QStringLiteral("bond_radius"),
+                              {style.bondRadius, 0.0, 0.5}));
         style.atomicRadiusType = radiusTypeFromString(
             body.value(QStringLiteral("atomic_radius_type")).toString(), style.atomicRadiusType);
         style.atomColorMode = colorModeFromString(
@@ -3080,24 +3090,24 @@ void RestServer::registerRoutes() {
                 : currentFrame,
             0, std::max(0, frameCount - 1));
 
-        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
-            const QJsonValue v = body.value(key);
-            if (!v.isDouble()) return fallback;
-            return std::clamp(v.toDouble(), lo, hi);
-        };
-
         HeroshotButterflyOverlay::Style style;
         style.gridDim = std::clamp(body.value(QStringLiteral("dim")).toInt(style.gridDim),
                                    16, 72);
-        style.thresholdPpm = styledDouble(QStringLiteral("threshold_ppm"),
-                                          styledDouble(QStringLiteral("ppm"),
-                                                       style.thresholdPpm, 0.0, 1000.0),
-                                          0.0, 1000.0);
-        style.opacity = styledDouble(QStringLiteral("opacity"), style.opacity, 0.0, 1.0);
-        style.gaussianExtentA = styledDouble(QStringLiteral("extent"),
-                                             style.gaussianExtentA, 0.1, 30.0);
-        style.gaussianPeak = styledDouble(QStringLiteral("peak"),
-                                          style.gaussianPeak, 0.0, 1000.0);
+        const double thresholdFallback =
+            clampedJsonDouble(body, QStringLiteral("ppm"),
+                              {style.thresholdPpm, 0.0, 1000.0});
+        style.thresholdPpm =
+            clampedJsonDouble(body, QStringLiteral("threshold_ppm"),
+                              {thresholdFallback, 0.0, 1000.0});
+        style.opacity =
+            clampedJsonDouble(body, QStringLiteral("opacity"),
+                              {style.opacity, 0.0, 1.0});
+        style.gaussianExtentA =
+            clampedJsonDouble(body, QStringLiteral("extent"),
+                              {style.gaussianExtentA, 0.1, 30.0});
+        style.gaussianPeak =
+            clampedJsonDouble(body, QStringLiteral("peak"),
+                              {style.gaussianPeak, 0.0, 1000.0});
         style.showShielded = body.value(QStringLiteral("show_shielded")).isBool()
             ? body.value(QStringLiteral("show_shielded")).toBool()
             : style.showShielded;
@@ -3390,39 +3400,45 @@ void RestServer::registerRoutes() {
                                      SC::BadRequest);
         }
 
-        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
-            const QJsonValue v = body.value(key);
-            if (!v.isDouble()) return fallback;
-            return std::clamp(v.toDouble(), lo, hi);
-        };
         auto styledBool = [&](const QString& key, bool fallback) {
             const QJsonValue v = body.value(key);
             return v.isBool() ? v.toBool() : fallback;
         };
 
         AtomTrackOverlay::Style style;
-        style.pointSizePixels = styledDouble(QStringLiteral("point_size"),
-                                             style.pointSizePixels, 1.0, 72.0);
-        style.sphereRadiusA = styledDouble(QStringLiteral("dot_radius_A"),
-                                           style.sphereRadiusA, 0.002, 0.20);
-        style.currentPointScale = styledDouble(QStringLiteral("current_point_scale"),
-                                               style.currentPointScale, 0.5, 6.0);
-        style.pointOpacity = styledDouble(QStringLiteral("point_opacity"),
-                                          style.pointOpacity, 0.0, 1.0);
-        style.haloScale = styledDouble(QStringLiteral("halo_scale"),
-                                       style.haloScale, 1.0, 10.0);
-        style.haloOpacity = styledDouble(QStringLiteral("halo_opacity"),
-                                         style.haloOpacity, 0.0, 1.0);
-        style.lineWidthPixels = styledDouble(QStringLiteral("line_width"),
-                                             style.lineWidthPixels, 1.0, 12.0);
-        style.lineOpacity = styledDouble(QStringLiteral("line_opacity"), style.lineOpacity,
-                                         0.0, 1.0);
-        style.colorScale = styledDouble(QStringLiteral("color_scale"),
-                                        style.colorScale, 0.0, 1e6);
-        style.colorGamma = styledDouble(QStringLiteral("color_gamma"),
-                                        style.colorGamma, 0.1, 4.0);
-        style.minColorFraction = styledDouble(QStringLiteral("min_color_fraction"),
-                                              style.minColorFraction, 0.0, 0.6);
+        style.pointSizePixels =
+            clampedJsonDouble(body, QStringLiteral("point_size"),
+                              {style.pointSizePixels, 1.0, 72.0});
+        style.sphereRadiusA =
+            clampedJsonDouble(body, QStringLiteral("dot_radius_A"),
+                              {style.sphereRadiusA, 0.002, 0.20});
+        style.currentPointScale =
+            clampedJsonDouble(body, QStringLiteral("current_point_scale"),
+                              {style.currentPointScale, 0.5, 6.0});
+        style.pointOpacity =
+            clampedJsonDouble(body, QStringLiteral("point_opacity"),
+                              {style.pointOpacity, 0.0, 1.0});
+        style.haloScale =
+            clampedJsonDouble(body, QStringLiteral("halo_scale"),
+                              {style.haloScale, 1.0, 10.0});
+        style.haloOpacity =
+            clampedJsonDouble(body, QStringLiteral("halo_opacity"),
+                              {style.haloOpacity, 0.0, 1.0});
+        style.lineWidthPixels =
+            clampedJsonDouble(body, QStringLiteral("line_width"),
+                              {style.lineWidthPixels, 1.0, 12.0});
+        style.lineOpacity =
+            clampedJsonDouble(body, QStringLiteral("line_opacity"),
+                              {style.lineOpacity, 0.0, 1.0});
+        style.colorScale =
+            clampedJsonDouble(body, QStringLiteral("color_scale"),
+                              {style.colorScale, 0.0, 1e6});
+        style.colorGamma =
+            clampedJsonDouble(body, QStringLiteral("color_gamma"),
+                              {style.colorGamma, 0.1, 4.0});
+        style.minColorFraction =
+            clampedJsonDouble(body, QStringLiteral("min_color_fraction"),
+                              {style.minColorFraction, 0.0, 0.6});
         style.showPoints = styledBool(QStringLiteral("show_points"), style.showPoints);
         style.showHalos = styledBool(QStringLiteral("show_halos"), style.showHalos);
         style.showLines = styledBool(QStringLiteral("show_lines"), style.showLines);
@@ -3711,44 +3727,46 @@ void RestServer::registerRoutes() {
                     body.value(QStringLiteral("hide_selection_marker")).isBool()
                 ? body.value(QStringLiteral("hide_selection_marker")).toBool()
                 : false;
-        auto styledDouble = [&](const QString& key,
-                                double fallback,
-                                double lo,
-                                double hi) {
-            const QJsonValue v = body.value(key);
-            if (!v.isDouble()) return fallback;
-            return std::clamp(v.toDouble(), lo, hi);
-        };
         auto styledBool = [&](const QString& key, bool fallback) {
             const QJsonValue v = body.value(key);
             return v.isBool() ? v.toBool() : fallback;
         };
         TensorGlyphActor::Style historyStyle;
         historyStyle.ovaloidScale =
-            styledDouble(QStringLiteral("history_surface_scale"), 1.0, 0.0, 3.0);
+            clampedJsonDouble(body, QStringLiteral("history_surface_scale"),
+                              {1.0, 0.0, 3.0});
         historyStyle.arrowLengthScale =
-            styledDouble(QStringLiteral("history_arrow_scale"), 1.0, 0.0, 3.0);
+            clampedJsonDouble(body, QStringLiteral("history_arrow_scale"),
+                              {1.0, 0.0, 3.0});
         historyStyle.arrowWidthScale =
-            styledDouble(QStringLiteral("history_arrow_width_scale"), 1.0, 0.0, 3.0);
+            clampedJsonDouble(body, QStringLiteral("history_arrow_width_scale"),
+                              {1.0, 0.0, 3.0});
         historyStyle.surfaceOpacity =
-            styledDouble(QStringLiteral("history_surface_opacity"), 0.18, 0.0, 1.0);
+            clampedJsonDouble(body, QStringLiteral("history_surface_opacity"),
+                              {0.18, 0.0, 1.0});
         historyStyle.arrowOpacity =
-            styledDouble(QStringLiteral("history_arrow_opacity"), 0.75, 0.0, 1.0);
+            clampedJsonDouble(body, QStringLiteral("history_arrow_opacity"),
+                              {0.75, 0.0, 1.0});
         historyStyle.showSurface =
             styledBool(QStringLiteral("history_surface_visible"), false);
         historyStyle.showArrows =
             styledBool(QStringLiteral("history_arrows_visible"), true);
         TensorGlyphActor::Style currentStyle;
         currentStyle.ovaloidScale =
-            styledDouble(QStringLiteral("current_surface_scale"), 1.0, 0.0, 3.0);
+            clampedJsonDouble(body, QStringLiteral("current_surface_scale"),
+                              {1.0, 0.0, 3.0});
         currentStyle.arrowLengthScale =
-            styledDouble(QStringLiteral("current_arrow_scale"), 1.0, 0.0, 3.0);
+            clampedJsonDouble(body, QStringLiteral("current_arrow_scale"),
+                              {1.0, 0.0, 3.0});
         currentStyle.arrowWidthScale =
-            styledDouble(QStringLiteral("current_arrow_width_scale"), 1.0, 0.0, 3.0);
+            clampedJsonDouble(body, QStringLiteral("current_arrow_width_scale"),
+                              {1.0, 0.0, 3.0});
         currentStyle.surfaceOpacity =
-            styledDouble(QStringLiteral("current_surface_opacity"), 0.50, 0.0, 1.0);
+            clampedJsonDouble(body, QStringLiteral("current_surface_opacity"),
+                              {0.50, 0.0, 1.0});
         currentStyle.arrowOpacity =
-            styledDouble(QStringLiteral("current_arrow_opacity"), 1.0, 0.0, 1.0);
+            clampedJsonDouble(body, QStringLiteral("current_arrow_opacity"),
+                              {1.0, 0.0, 1.0});
         currentStyle.showSurface =
             styledBool(QStringLiteral("current_surface_visible"), false);
         currentStyle.showArrows =
@@ -3943,11 +3961,6 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("could not resolve requested dihedral atoms in residue"),
                                  SC::BadRequest);
 
-        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
-            const QJsonValue v = body.value(key);
-            if (!v.isDouble()) return fallback;
-            return std::clamp(v.toDouble(), lo, hi);
-        };
         const bool hideSelectionMarker =
             body.contains(QStringLiteral("hide_selection_marker")) &&
                     body.value(QStringLiteral("hide_selection_marker")).isBool()
@@ -3972,13 +3985,20 @@ void RestServer::registerRoutes() {
         const model::Vec3 c = transformed_->atomPosition(static_cast<std::size_t>(frame), *atomC);
 
         AngleCollarActor::Style style;
-        style.radius = styledDouble(QStringLiteral("radius"), 1.25, 0.1, 8.0);
-        style.tubeRadius = styledDouble(QStringLiteral("tube_radius"), 0.035, 0.002, 0.25);
-        style.axisPadding = styledDouble(QStringLiteral("axis_padding"), 0.35, 0.0, 3.0);
-        style.coneLength = styledDouble(QStringLiteral("cone_length"), 0.0, 0.0, 8.0);
-        style.neckRadius = styledDouble(QStringLiteral("neck_radius"), 0.0, 0.0, 4.0);
-        style.rimRadius = styledDouble(QStringLiteral("rim_radius"), 0.0, 0.0, 8.0);
-        style.coneOpacity = styledDouble(QStringLiteral("cone_opacity"), 0.26, 0.0, 1.0);
+        style.radius =
+            clampedJsonDouble(body, QStringLiteral("radius"), {1.25, 0.1, 8.0});
+        style.tubeRadius =
+            clampedJsonDouble(body, QStringLiteral("tube_radius"), {0.035, 0.002, 0.25});
+        style.axisPadding =
+            clampedJsonDouble(body, QStringLiteral("axis_padding"), {0.35, 0.0, 3.0});
+        style.coneLength =
+            clampedJsonDouble(body, QStringLiteral("cone_length"), {0.0, 0.0, 8.0});
+        style.neckRadius =
+            clampedJsonDouble(body, QStringLiteral("neck_radius"), {0.0, 0.0, 4.0});
+        style.rimRadius =
+            clampedJsonDouble(body, QStringLiteral("rim_radius"), {0.0, 0.0, 8.0});
+        style.coneOpacity =
+            clampedJsonDouble(body, QStringLiteral("cone_opacity"), {0.26, 0.0, 1.0});
         style.coneDirection =
             body.contains(QStringLiteral("cone_flip")) &&
                     body.value(QStringLiteral("cone_flip")).isBool() &&
@@ -3990,14 +4010,14 @@ void RestServer::registerRoutes() {
         std::vector<AngleCollarActor::Arc> arcs;
         arcs.push_back(AngleCollarActor::Arc{
             previousAngle,
-            styledDouble(QStringLiteral("previous_opacity"), 0.42, 0.0, 1.0),
-            styledDouble(QStringLiteral("previous_radius_scale"), 0.94, 0.2, 3.0),
+            clampedJsonDouble(body, QStringLiteral("previous_opacity"), {0.42, 0.0, 1.0}),
+            clampedJsonDouble(body, QStringLiteral("previous_radius_scale"), {0.94, 0.2, 3.0}),
             std::array<double, 3>{{0.95, 0.30, 0.38}},
         });
         arcs.push_back(AngleCollarActor::Arc{
             angle,
-            styledDouble(QStringLiteral("current_opacity"), 0.92, 0.0, 1.0),
-            styledDouble(QStringLiteral("current_radius_scale"), 1.04, 0.2, 3.0),
+            clampedJsonDouble(body, QStringLiteral("current_opacity"), {0.92, 0.0, 1.0}),
+            clampedJsonDouble(body, QStringLiteral("current_radius_scale"), {1.04, 0.2, 3.0}),
             std::array<double, 3>{{1.00, 0.72, 0.18}},
         });
 

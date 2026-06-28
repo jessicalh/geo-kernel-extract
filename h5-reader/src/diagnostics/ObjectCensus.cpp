@@ -22,6 +22,7 @@ void SafeWrite(int fd, const char* s) {
     const ssize_t rc = ::write(fd, s, std::strlen(s));
     (void)rc;
 #else
+    (void)fd;
     std::fputs(s, stderr);  // TODO: Win32 WriteFile when CrashHandler lands
 #endif
 }
@@ -55,7 +56,7 @@ void ObjectCensus::Dump(int fd) {
     // We iterate the set without locking — on a crash the state may be
     // inconsistent, but reading addresses is cheap and addresses can be
     // matched later against memory maps or the live symbol table.
-    auto* inst = g_instance;
+    const auto* inst = g_instance;
     if (!inst) {
         SafeWrite(fd, "  (no census instance)\n");
         return;
@@ -65,7 +66,8 @@ void ObjectCensus::Dump(int fd) {
     for (const auto& obj : inst->live_) {
         if (!obj) continue;
         char buf[64];
-        const int n = std::snprintf(buf, sizeof(buf), "  %p\n", (void*)obj);
+        const int n = std::snprintf(buf, sizeof(buf), "  %p\n",
+                                    static_cast<const void*>(obj));
         if (n > 0) {
 #ifndef _WIN32
             const ssize_t rc = ::write(fd, buf, static_cast<size_t>(n));

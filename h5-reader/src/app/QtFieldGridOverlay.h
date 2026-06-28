@@ -69,7 +69,7 @@ public:
     // MoleculeScene owner after all overlays have updated.
     void setFrame(int t);
 
-    void setMode(FieldGridMode mode);
+    void setMode(h5reader::app::FieldGridMode mode);
     void setThresholdPpm(double threshold);
     void setOpacity(double opacity);
 

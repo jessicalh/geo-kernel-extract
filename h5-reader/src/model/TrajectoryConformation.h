@@ -36,19 +36,19 @@ public:
     // snapshots simply never become resident -- dense H5 still drives playback).
     TrajectoryConformation(const QtProtein* protein,
                            std::unique_ptr<h5reader::io::QtTrajectoryH5> h5,
-                           QString perFrameNpysDir);
+                           const QString& perFrameNpysDir);
     ~TrajectoryConformation() override;
 
     // ----- Conformation seam -----
     std::size_t frameCount() const override { return h5_->frameCount(); }
-    double timePicoseconds(std::size_t frame) const override;
+    double timePicoseconds(std::size_t frameIndex) const override;
     // H5 row -> original (XTC) frame index via the frame_indices map; identity
     // fallback if the row is out of range. This is the key the DFT job dirs and
     // per-frame npys are named by.
-    std::size_t originalFrameIndex(std::size_t frame) const override {
-        return h5reader::io::TrajectoryFrameMap::OriginalIndex(frame, *h5_);
+    std::size_t originalFrameIndex(std::size_t frameIndex) const override {
+        return h5reader::io::TrajectoryFrameMap::OriginalIndex(frameIndex, *h5_);
     }
-    Vec3 atomPosition(std::size_t frame, std::size_t atomIdx) const override;
+    Vec3 atomPosition(std::size_t frameIndex, std::size_t atomIdx) const override;
     const TrajectoryConformation* asTrajectory() const override { return this; }
 
     // ----- Dense H5 layer (trajectory-only) -----
@@ -58,11 +58,11 @@ public:
     // Nearest H5 frame-row that has a per-frame snapshot on disk — lets the UI
     // point at where full per-atom detail IS sampled when the cursor sits
     // between emit-stride frames. nullopt if the run emitted no frame snapshots.
-    std::optional<std::size_t> nearestSampledFrame(std::size_t frame) const;
+    std::optional<std::size_t> nearestSampledFrame(std::size_t frameIndex) const;
     const std::vector<std::size_t>& sampledFrameRows() const { return sampledRows_; }
 
 protected:
-    std::shared_ptr<const QtConformationSnapshot> loadSnapshot(std::size_t frame) override;
+    std::shared_ptr<const QtConformationSnapshot> loadSnapshot(std::size_t frameIndex) override;
 
 private:
     std::unique_ptr<h5reader::io::QtTrajectoryH5> h5_;

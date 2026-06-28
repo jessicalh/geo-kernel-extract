@@ -60,6 +60,8 @@ public:
     // ReaderMainWindow once the scene + selection both exist.
     void setSelection(model::AtomSelection* selection);
 
+    bool isVisible() const { return visible_; }
+
 public:
     // Selection membership changed — re-evaluate which spheres show, at the
     // current frame. No Render (the scene refreshes the frame right after).
@@ -90,8 +92,6 @@ public:
     // blob detector miss the magenta marker). Disabling instrument mode
     // (on=false) restores the multi-slot view regardless of focusOnly.
     void setInstrumentMode(bool on, bool focusOnly = false);
-
-    bool isVisible() const { return visible_; }
 
 private:
     void applyFrame(int t);

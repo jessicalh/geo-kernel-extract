@@ -123,7 +123,9 @@ std::array<double, 3> AtomSelection::SlotColorRgb(std::size_t slot) {
 
 QColor AtomSelection::SlotColor(std::size_t slot) {
     const std::array<double, 3> c = SlotColorRgb(slot);
-    return QColor::fromRgbF(c[0], c[1], c[2]);
+    return QColor::fromRgbF(static_cast<float>(c[0]),
+                            static_cast<float>(c[1]),
+                            static_cast<float>(c[2]));
 }
 
 // ----- Mutation -------------------------------------------------------------
@@ -215,7 +217,7 @@ void AtomSelection::clear() {
     emit cleared();
 }
 
-void AtomSelection::bulkSet(const std::vector<std::size_t>& atoms) {
+void AtomSelection::bulkSet(const std::vector<std::size_t>& atomIndices) {
     ASSERT_THREAD(this);
 
     // Validate against the protein's atomCount and the geometric cap; drop
@@ -223,8 +225,8 @@ void AtomSelection::bulkSet(const std::vector<std::size_t>& atoms) {
     // The REST handler validates first; this is the belt+suspenders pass for
     // any future caller.
     std::vector<std::size_t> kept;
-    kept.reserve(std::min(atoms.size(), kMaxAtoms));
-    for (std::size_t atomIdx : atoms) {
+    kept.reserve(std::min(atomIndices.size(), kMaxAtoms));
+    for (std::size_t atomIdx : atomIndices) {
         if (kept.size() >= kMaxAtoms) {
             qCWarning(cSel).noquote()
                 << "bulkSet truncated to" << kMaxAtoms << "atoms; ignored" << atomIdx;

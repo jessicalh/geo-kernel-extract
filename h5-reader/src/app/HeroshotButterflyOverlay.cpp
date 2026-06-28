@@ -12,6 +12,7 @@
 #include <vtkProperty.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -23,23 +24,24 @@ namespace {
 constexpr int kMinGridDim = 16;
 constexpr int kMaxGridDim = 72;
 
-void styleSurfaceActor(vtkActor* actor,
-                       double r,
-                       double g,
-                       double b,
-                       double opacity,
-                       bool visible) {
+struct SurfaceAppearance {
+    std::array<double, 3> color = {1.0, 1.0, 1.0};
+    double opacity = 1.0;
+    bool visible = true;
+};
+
+void styleSurfaceActor(vtkActor* actor, const SurfaceAppearance& appearance) {
     if (!actor)
         return;
     auto* prop = actor->GetProperty();
-    prop->SetColor(r, g, b);
-    prop->SetOpacity(std::clamp(opacity, 0.0, 1.0));
+    prop->SetColor(appearance.color[0], appearance.color[1], appearance.color[2]);
+    prop->SetOpacity(std::clamp(appearance.opacity, 0.0, 1.0));
     prop->LightingOff();
     prop->SetAmbient(1.0);
     prop->SetDiffuse(0.0);
     prop->SetSpecular(0.0);
-    actor->SetForceTranslucent(opacity < 1.0);
-    actor->SetVisibility(visible ? 1 : 0);
+    actor->SetForceTranslucent(appearance.opacity < 1.0);
+    actor->SetVisibility(appearance.visible ? 1 : 0);
 }
 
 double sampleT0(const model::Vec3& p,
@@ -93,14 +95,14 @@ void HeroshotButterflyOverlay::clear() {
 }
 
 bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
-                                    model::Conformation& conformation,
+                                    const model::Conformation& conformation,
                                     std::size_t ringIdx,
                                     std::size_t frame) {
     return show(protein, conformation, ringIdx, frame, Style{});
 }
 
 bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
-                                    model::Conformation& conformation,
+                                    const model::Conformation& conformation,
                                     std::size_t ringIdx,
                                     std::size_t frame,
                                     const Style& style) {
@@ -123,9 +125,9 @@ bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
     const double threshold = std::max(0.0, style.thresholdPpm);
     const double sigma = std::max(0.1, style.gaussianExtentA);
     const double peak = std::max(0.0, style.gaussianPeak);
-    Stats stats;
-    stats.minT0 = std::numeric_limits<double>::infinity();
-    stats.maxT0 = -std::numeric_limits<double>::infinity();
+    Stats computedStats;
+    computedStats.minT0 = std::numeric_limits<double>::infinity();
+    computedStats.maxT0 = -std::numeric_limits<double>::infinity();
 
     Pipeline pipe;
     pipe.scalars = vtkSmartPointer<vtkFloatArray>::New();
@@ -159,8 +161,8 @@ bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
                                                (2.0 * sigma * sigma));
                 t0 *= peak * window;
                 if (std::isfinite(t0)) {
-                    stats.minT0 = std::min(stats.minT0, t0);
-                    stats.maxT0 = std::max(stats.maxT0, t0);
+                    computedStats.minT0 = std::min(computedStats.minT0, t0);
+                    computedStats.maxT0 = std::max(computedStats.maxT0, t0);
                 }
                 const bool onBoundary =
                     (ix == 0 || ix == dim - 1 ||
@@ -184,44 +186,48 @@ bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
     pipe.contourShielded->SetInputConnection(pipe.producer->GetOutputPort());
     pipe.contourShielded->SetValue(0, -threshold);
     pipe.contourShielded->Update();
-    stats.shieldedPoints = static_cast<std::size_t>(
+    computedStats.shieldedPoints = static_cast<std::size_t>(
         pipe.contourShielded->GetOutput()->GetNumberOfPoints());
-    stats.shieldedCells = static_cast<std::size_t>(
+    computedStats.shieldedCells = static_cast<std::size_t>(
         pipe.contourShielded->GetOutput()->GetNumberOfCells());
 
     pipe.contourDeshielded = vtkSmartPointer<vtkContourFilter>::New();
     pipe.contourDeshielded->SetInputConnection(pipe.producer->GetOutputPort());
     pipe.contourDeshielded->SetValue(0, threshold);
     pipe.contourDeshielded->Update();
-    stats.deshieldedPoints = static_cast<std::size_t>(
+    computedStats.deshieldedPoints = static_cast<std::size_t>(
         pipe.contourDeshielded->GetOutput()->GetNumberOfPoints());
-    stats.deshieldedCells = static_cast<std::size_t>(
+    computedStats.deshieldedCells = static_cast<std::size_t>(
         pipe.contourDeshielded->GetOutput()->GetNumberOfCells());
-    if (!std::isfinite(stats.minT0))
-        stats.minT0 = 0.0;
-    if (!std::isfinite(stats.maxT0))
-        stats.maxT0 = 0.0;
+    if (!std::isfinite(computedStats.minT0))
+        computedStats.minT0 = 0.0;
+    if (!std::isfinite(computedStats.maxT0))
+        computedStats.maxT0 = 0.0;
 
     pipe.mapperShielded = vtkSmartPointer<vtkPolyDataMapper>::New();
     pipe.mapperShielded->SetInputConnection(pipe.contourShielded->GetOutputPort());
     pipe.mapperShielded->ScalarVisibilityOff();
     pipe.actorShielded = vtkSmartPointer<vtkActor>::New();
     pipe.actorShielded->SetMapper(pipe.mapperShielded);
-    styleSurfaceActor(pipe.actorShielded, 0.50, 0.70, 0.95,
-                      style.opacity, style.showShielded);
+    styleSurfaceActor(pipe.actorShielded,
+                      SurfaceAppearance{{0.50, 0.70, 0.95},
+                                        style.opacity,
+                                        style.showShielded});
 
     pipe.mapperDeshielded = vtkSmartPointer<vtkPolyDataMapper>::New();
     pipe.mapperDeshielded->SetInputConnection(pipe.contourDeshielded->GetOutputPort());
     pipe.mapperDeshielded->ScalarVisibilityOff();
     pipe.actorDeshielded = vtkSmartPointer<vtkActor>::New();
     pipe.actorDeshielded->SetMapper(pipe.mapperDeshielded);
-    styleSurfaceActor(pipe.actorDeshielded, 0.95, 0.55, 0.45,
-                      style.opacity, style.showDeshielded);
+    styleSurfaceActor(pipe.actorDeshielded,
+                      SurfaceAppearance{{0.95, 0.55, 0.45},
+                                        style.opacity,
+                                        style.showDeshielded});
 
     renderer_->AddActor(pipe.actorShielded);
     renderer_->AddActor(pipe.actorDeshielded);
     pipelines_.push_back(std::move(pipe));
-    stats_ = stats;
+    stats_ = computedStats;
     return true;
 }
 

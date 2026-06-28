@@ -102,10 +102,10 @@ struct RingCurrentFaceCollarSummary {
 // trace. Collection and evaluation stay explicit so the stash can be audited.
 class RingCurrentFaceCollar {
 public:
-    explicit RingCurrentFaceCollar(RingCurrentFaceCollarOptions options = {});
+    explicit RingCurrentFaceCollar(const RingCurrentFaceCollarOptions& options = {});
 
     bool collect(const QtProtein& protein,
-                 Conformation& conformation,
+                 const Conformation& conformation,
                  const std::vector<h5reader::io::DftFrame>& dftFrames,
                  QString* error = nullptr);
 

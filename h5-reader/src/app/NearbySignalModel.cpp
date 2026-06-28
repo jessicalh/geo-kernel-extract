@@ -136,9 +136,10 @@ QVariant NearbySignalModel::data(const QModelIndex& index, int role) const {
             return QVariant::fromValue(static_cast<qulonglong>(atom->atom));
         if (const auto* membership = std::get_if<model::RingMembershipAnchor>(&c.anchor)) {
             if (protein_ && membership->membership < protein_->ringMembershipCount()) {
-                const auto& row = protein_->topology().ringMembershipAt(membership->membership);
-                if (row.atomIndex >= 0)
-                    return QVariant::fromValue(static_cast<qulonglong>(row.atomIndex));
+                const auto& membershipRow =
+                    protein_->topology().ringMembershipAt(membership->membership);
+                if (membershipRow.atomIndex >= 0)
+                    return QVariant::fromValue(static_cast<qulonglong>(membershipRow.atomIndex));
             }
         }
         return {};
@@ -230,10 +231,10 @@ void NearbySignalModel::setRadiusAngstrom(double radius) {
     rebuild();
 }
 
-void NearbySignalModel::setAnchor(std::size_t atom, int frame) {
+void NearbySignalModel::setAnchor(AnchorContext anchor) {
     ASSERT_THREAD(this);
-    anchorAtom_ = atom;
-    frame_ = std::max(0, frame);
+    anchorAtom_ = anchor.atom;
+    frame_ = std::max(0, anchor.frame);
     rebuild();
 }
 

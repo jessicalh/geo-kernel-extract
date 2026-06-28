@@ -1528,8 +1528,8 @@ void ReaderMainWindow::buildFilterMenu() {
 
     // Rebuild the neighbourhood for the current focus + frame, then offer one
     // checkable row per nearby residue, nearest first.
-    filterNearby_->setAnchor(selection_->focus(),
-                             playback_ ? playback_->currentFrame() : 0);
+    filterNearby_->setAnchor({selection_->focus(),
+                              playback_ ? playback_->currentFrame() : 0});
 
     struct Row { std::size_t residue; double dist; QString label; };
     std::vector<Row> rows;

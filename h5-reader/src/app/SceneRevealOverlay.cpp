@@ -175,9 +175,9 @@ std::vector<std::size_t> SceneRevealOverlay::atomsForBinding(const model::Signal
         if (ringIndex >= protein_->ringCount())
             return;
         const auto& ring = protein_->ring(ringIndex);
-        for (int32_t atom : ring.atomIndices) {
-            if (atom >= 0)
-                addAtom(static_cast<std::size_t>(atom));
+        for (int32_t atomIndex : ring.atomIndices) {
+            if (atomIndex >= 0)
+                addAtom(static_cast<std::size_t>(atomIndex));
         }
     };
     auto addTypedRing = [&](model::QtRingAxis axis, std::size_t ringIndex) {
@@ -196,27 +196,29 @@ std::vector<std::size_t> SceneRevealOverlay::atomsForBinding(const model::Signal
     };
 
     const model::SignalAnchor& anchor = binding.anchor;
-    if (const auto* atom = std::get_if<model::AtomAnchor>(&anchor)) {
-        addAtom(atom->atom);
+    if (const auto* atomAnchor = std::get_if<model::AtomAnchor>(&anchor)) {
+        addAtom(atomAnchor->atom);
     } else if (const auto* residueAnchor = std::get_if<model::ResidueAnchor>(&anchor)) {
         if (residueAnchor->residue < protein_->residueCount()) {
             const auto& residue = protein_->residue(residueAnchor->residue);
-            for (int32_t atom : residue.atomIndices) {
-                if (atom >= 0)
-                    addAtom(static_cast<std::size_t>(atom));
+            for (int32_t atomIndex : residue.atomIndices) {
+                if (atomIndex >= 0)
+                    addAtom(static_cast<std::size_t>(atomIndex));
             }
         }
     } else if (const auto* tuple = std::get_if<model::AtomTupleAnchor>(&anchor)) {
-        for (std::size_t atom : tuple->atoms)
-            addAtom(atom);
+        for (std::size_t atomIndex : tuple->atoms)
+            addAtom(atomIndex);
     } else if (const auto* bond = std::get_if<model::BondAnchor>(&anchor)) {
         addBond(bond->bond);
-    } else if (const auto* ring = std::get_if<model::RingAnchor>(&anchor)) {
-        addRing(ring->ring);
-    } else if (const auto* ring = std::get_if<model::AromaticRingAnchor>(&anchor)) {
-        addTypedRing(model::QtRingAxis::AromaticRing, ring->ring);
-    } else if (const auto* ring = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
-        addTypedRing(model::QtRingAxis::SaturatedRing, ring->ring);
+    } else if (const auto* ringAnchor = std::get_if<model::RingAnchor>(&anchor)) {
+        addRing(ringAnchor->ring);
+    } else if (const auto* aromaticRing =
+                   std::get_if<model::AromaticRingAnchor>(&anchor)) {
+        addTypedRing(model::QtRingAxis::AromaticRing, aromaticRing->ring);
+    } else if (const auto* saturatedRing =
+                   std::get_if<model::SaturatedRingAnchor>(&anchor)) {
+        addTypedRing(model::QtRingAxis::SaturatedRing, saturatedRing->ring);
     } else if (const auto* membership = std::get_if<model::RingMembershipAnchor>(&anchor)) {
         addRingMembership(membership->membership);
     } else if (const auto* vec = std::get_if<model::BondVectorAnchor>(&anchor)) {
@@ -250,30 +252,34 @@ void SceneRevealOverlay::reveal(const model::SignalBinding& binding, int frame)
         if (!protein_ || ringIndex >= protein_->ringCount())
             return;
         const auto& ring = protein_->ring(ringIndex);
-        for (int32_t atom : ring.atomIndices) {
-            if (atom >= 0)
-                lineAtoms_.push_back(static_cast<std::size_t>(atom));
+        for (int32_t atomIndex : ring.atomIndices) {
+            if (atomIndex >= 0)
+                lineAtoms_.push_back(static_cast<std::size_t>(atomIndex));
         }
         if (lineAtoms_.size() > 2)
             lineAtoms_.push_back(lineAtoms_.front());
     };
     const model::SignalAnchor& anchor = binding.anchor;
     if (const auto* tuple = std::get_if<model::AtomTupleAnchor>(&anchor)) {
-        for (std::size_t atom : tuple->atoms) {
-            if (protein_ && atom < protein_->atomCount())
-                lineAtoms_.push_back(atom);
+        for (std::size_t atomIndex : tuple->atoms) {
+            if (protein_ && atomIndex < protein_->atomCount())
+                lineAtoms_.push_back(atomIndex);
         }
     } else if (const auto* bond = std::get_if<model::BondAnchor>(&anchor)) {
         setLineFromBond(bond->bond);
-    } else if (const auto* ring = std::get_if<model::RingAnchor>(&anchor)) {
-        setLineFromRing(ring->ring);
-    } else if (const auto* ring = std::get_if<model::AromaticRingAnchor>(&anchor)) {
-        const auto absolute = protein_ ? protein_->topology().absoluteRingIndex(model::QtRingAxis::AromaticRing, ring->ring)
+    } else if (const auto* ringAnchor = std::get_if<model::RingAnchor>(&anchor)) {
+        setLineFromRing(ringAnchor->ring);
+    } else if (const auto* aromaticRing =
+                   std::get_if<model::AromaticRingAnchor>(&anchor)) {
+        const auto absolute = protein_ ? protein_->topology().absoluteRingIndex(model::QtRingAxis::AromaticRing,
+                                                                                aromaticRing->ring)
                                        : std::nullopt;
         if (absolute)
             setLineFromRing(*absolute);
-    } else if (const auto* ring = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
-        const auto absolute = protein_ ? protein_->topology().absoluteRingIndex(model::QtRingAxis::SaturatedRing, ring->ring)
+    } else if (const auto* saturatedRing =
+                   std::get_if<model::SaturatedRingAnchor>(&anchor)) {
+        const auto absolute = protein_ ? protein_->topology().absoluteRingIndex(model::QtRingAxis::SaturatedRing,
+                                                                                saturatedRing->ring)
                                        : std::nullopt;
         if (absolute)
             setLineFromRing(*absolute);
@@ -345,16 +351,18 @@ void SceneRevealOverlay::applyFrame(int t)
         sphereActors_[i]->SetVisibility(show ? 1 : 0);
     }
 
-    bool showLine = active_ && lineAtoms_.size() >= 2;
-    if (showLine) {
+    const bool lineCandidate = active_ && lineAtoms_.size() >= 2;
+    bool showLine = false;
+    if (lineCandidate) {
         linePoints_->Reset();
-        for (std::size_t atom : lineAtoms_) {
-            if (atom >= protein_->atomCount()) {
+        showLine = true;
+        for (std::size_t atomIndex : lineAtoms_) {
+            if (atomIndex >= protein_->atomCount()) {
                 showLine = false;
                 break;
             }
             const model::Vec3 p =
-                conformation_->atomPosition(static_cast<std::size_t>(t), atom);
+                conformation_->atomPosition(static_cast<std::size_t>(t), atomIndex);
             linePoints_->InsertNextPoint(p.x(), p.y(), p.z());
         }
         if (showLine) {

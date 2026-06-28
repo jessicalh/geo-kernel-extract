@@ -93,14 +93,29 @@ double t2Magnitude(const SphericalTensor& tensor) {
     return tensor.T2Magnitude();
 }
 
+using SampleSignal = double (*)(const RingCurrentFaceSample&);
+
+struct FitSignals {
+    SampleSignal expected = nullptr;
+    SampleSignal observed = nullptr;
+};
+
+struct RegressionResult {
+    double intercept = 0.0;
+    double scale = 0.0;
+    double r2 = 0.0;
+    double correlation = 0.0;
+    double sse = 0.0;
+    double sst = 0.0;
+};
+
 RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples,
-                               double (*predictor)(const RingCurrentFaceSample&),
-                               double (*observed)(const RingCurrentFaceSample&),
+                               FitSignals channels,
                                int requestedNullShifts) {
     RingCurrentLinearFit out;
     out.sampleCount = static_cast<int>(samples.size());
     const std::size_t n = samples.size();
-    if (n < 3)
+    if (n < 3 || !channels.expected || !channels.observed)
         return out;
 
     std::vector<double> x;
@@ -108,8 +123,8 @@ RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples
     x.reserve(n);
     y.reserve(n);
     for (const RingCurrentFaceSample& sample : samples) {
-        const double xi = predictor(sample);
-        const double yi = observed(sample);
+        const double xi = channels.expected(sample);
+        const double yi = channels.observed(sample);
         if (!std::isfinite(xi) || !std::isfinite(yi))
             return out;
         x.push_back(xi);
@@ -117,16 +132,11 @@ RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples
     }
 
     const auto regress = [](const std::vector<double>& xs,
-                            const std::vector<double>& ys,
-                            double* intercept,
-                            double* scale,
-                            double* r2,
-                            double* corr,
-                            double* sse,
-                            double* sst) -> bool {
+                            const std::vector<double>& ys)
+                            -> std::optional<RegressionResult> {
         const std::size_t count = xs.size();
         if (count < 3 || count != ys.size())
-            return false;
+            return std::nullopt;
 
         const double meanX = std::accumulate(xs.begin(), xs.end(), 0.0) /
                              static_cast<double>(count);
@@ -143,25 +153,33 @@ RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples
             sxy += dx * dy;
         }
         if (sxx <= 1e-30 || syy <= 1e-30)
-            return false;
+            return std::nullopt;
 
-        *scale = sxy / sxx;
-        *intercept = meanY - (*scale) * meanX;
-        *sse = 0.0;
+        RegressionResult result;
+        result.scale = sxy / sxx;
+        result.intercept = meanY - result.scale * meanX;
         for (std::size_t i = 0; i < count; ++i) {
-            const double residual = ys[i] - (*intercept + (*scale) * xs[i]);
-            *sse += residual * residual;
+            const double residual = ys[i] - (result.intercept + result.scale * xs[i]);
+            result.sse += residual * residual;
         }
-        *sst = syy;
-        *r2 = 1.0 - (*sse / *sst);
-        *corr = sxy / std::sqrt(sxx * syy);
-        return std::isfinite(*r2) && std::isfinite(*corr);
+        result.sst = syy;
+        result.r2 = 1.0 - (result.sse / result.sst);
+        result.correlation = sxy / std::sqrt(sxx * syy);
+        if (!std::isfinite(result.r2) || !std::isfinite(result.correlation))
+            return std::nullopt;
+        return result;
     };
 
-    if (!regress(x, y, &out.intercept, &out.scale, &out.r2, &out.correlation,
-                 &out.sse, &out.sst)) {
+    const std::optional<RegressionResult> fit = regress(x, y);
+    if (!fit) {
         return out;
     }
+    out.intercept = fit->intercept;
+    out.scale = fit->scale;
+    out.r2 = fit->r2;
+    out.correlation = fit->correlation;
+    out.sse = fit->sse;
+    out.sst = fit->sst;
     out.valid = true;
 
     const int maxShifts = std::max(0, std::min(requestedNullShifts, static_cast<int>(n) - 1));
@@ -172,14 +190,8 @@ RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples
         for (std::size_t i = 0; i < n; ++i)
             shiftedY.push_back(y[(i + static_cast<std::size_t>(shift)) % n]);
 
-        double intercept = 0.0;
-        double scale = 0.0;
-        double r2 = 0.0;
-        double corr = 0.0;
-        double sse = 0.0;
-        double sst = 0.0;
-        if (regress(x, shiftedY, &intercept, &scale, &r2, &corr, &sse, &sst))
-            out.nullR2.push_back(r2);
+        if (const std::optional<RegressionResult> shiftedFit = regress(x, shiftedY))
+            out.nullR2.push_back(shiftedFit->r2);
     }
 
     out.nullShiftCount = static_cast<int>(out.nullR2.size());
@@ -234,12 +246,12 @@ double orcaTotalT2Magnitude(const RingCurrentFaceSample& sample) {
 
 }  // namespace
 
-RingCurrentFaceCollar::RingCurrentFaceCollar(RingCurrentFaceCollarOptions options)
-    : options_(std::move(options)) {}
+RingCurrentFaceCollar::RingCurrentFaceCollar(const RingCurrentFaceCollarOptions& options)
+    : options_(options) {}
 
 bool RingCurrentFaceCollar::collect(
     const QtProtein& protein,
-    Conformation& conformation,
+    const Conformation& conformation,
     const std::vector<h5reader::io::DftFrame>& dftFrames,
     QString* error) {
     summary_ = {};
@@ -477,24 +489,24 @@ bool RingCurrentFaceCollar::collect(
             }
 
             entry.orcaTotalT0 =
-                fitLinear(entry.samples, expectedValue, orcaTotalT0, options_.nullShiftCount);
+                fitLinear(entry.samples, {expectedValue, orcaTotalT0}, options_.nullShiftCount);
             entry.orcaDiamagneticT0 =
-                fitLinear(entry.samples, expectedValue, orcaDiaT0, options_.nullShiftCount);
+                fitLinear(entry.samples, {expectedValue, orcaDiaT0}, options_.nullShiftCount);
             entry.orcaParamagneticT0 =
-                fitLinear(entry.samples, expectedValue, orcaParaT0, options_.nullShiftCount);
+                fitLinear(entry.samples, {expectedValue, orcaParaT0}, options_.nullShiftCount);
             entry.orcaTotalT2Magnitude =
-                fitLinear(entry.samples, expectedValue, orcaTotalT2Magnitude,
+                fitLinear(entry.samples, {expectedValue, orcaTotalT2Magnitude},
                           options_.nullShiftCount);
             entry.biotSavartOrcaTotalT0 =
-                fitLinear(entry.samples, biotSavartT0, orcaTotalT0,
+                fitLinear(entry.samples, {biotSavartT0, orcaTotalT0},
                           options_.nullShiftCount);
             entry.expectedRelationshipBiotSavartT0 =
-                fitLinear(entry.samples, expectedValue, biotSavartT0,
+                fitLinear(entry.samples, {expectedValue, biotSavartT0},
                           options_.nullShiftCount);
             entry.distanceOnlyOrcaTotalT0 =
-                fitLinear(entry.samples, distanceValue, orcaTotalT0, options_.nullShiftCount);
+                fitLinear(entry.samples, {distanceValue, orcaTotalT0}, options_.nullShiftCount);
             entry.angularOnlyOrcaTotalT0 =
-                fitLinear(entry.samples, angularValue, orcaTotalT0, options_.nullShiftCount);
+                fitLinear(entry.samples, {angularValue, orcaTotalT0}, options_.nullShiftCount);
 
             entries_.push_back(std::move(entry));
             if (options_.maxEntries > 0 &&

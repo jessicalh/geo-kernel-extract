@@ -113,14 +113,14 @@ public:
     // log answers, not a silent state).
     void applyPick(std::size_t atomIdx, Qt::KeyboardModifiers mods);
 
-    // Bulk replace the entire selection with `atoms`, in order, focus =
-    // atoms.back() if non-empty. Validates each index against the protein's
+    // Bulk replace the entire selection with atomIndices, in order, focus =
+    // atomIndices.back() if non-empty. Validates each index against the protein's
     // atomCount (out-of-range are dropped with a warning; the REST handler
     // does primary validation, this is belt+suspenders). One `changed()` and
     // one `focusChanged()` (or `cleared()`) emit at the end, NOT per atom —
     // consumers that rebuild from the full set (MeasurementOverlay,
     // MeasurementsDock, tensor overlays) only need one update.
-    void bulkSet(const std::vector<std::size_t>& atoms);
+    void bulkSet(const std::vector<size_t>& atomIndices);
 
     // Empty the selection (a future Clear action / Esc).
     void clear();

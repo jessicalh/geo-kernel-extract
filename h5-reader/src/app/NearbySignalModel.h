@@ -50,6 +50,11 @@ public:
         QString label;
     };
 
+    struct AnchorContext {
+        std::size_t atom = 0;
+        int frame = 0;
+    };
+
     enum Roles {
         KindRole = Qt::UserRole + 1,
         AtomIndexRole,
@@ -71,7 +76,7 @@ public:
 
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
     void setRadiusAngstrom(double radius);
-    void setAnchor(std::size_t atom, int frame);
+    void setAnchor(AnchorContext anchor);
     void clear();
 
     double radiusAngstrom() const { return radiusAngstrom_; }

@@ -63,11 +63,11 @@ public:
     HeroshotButterflyOverlay& operator=(const HeroshotButterflyOverlay&) = delete;
 
     bool show(const model::QtProtein& protein,
-              model::Conformation& conformation,
+              const model::Conformation& conformation,
               std::size_t ring,
               std::size_t frame);
     bool show(const model::QtProtein& protein,
-              model::Conformation& conformation,
+              const model::Conformation& conformation,
               std::size_t ring,
               std::size_t frame,
               const Style& style);

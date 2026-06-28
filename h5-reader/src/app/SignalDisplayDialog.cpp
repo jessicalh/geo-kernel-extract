@@ -1379,7 +1379,7 @@ void SignalDisplayDialog::setFrame(int frame) {
         return;
     if (d_->liveBox && d_->liveBox->isChecked() && d_->focusAtom.has_value()) {
         const std::size_t focusAtom = d_->focusAtom.value_or(0);
-        d_->anchorModel->setAnchor(focusAtom, d_->frame);
+        d_->anchorModel->setAnchor({focusAtom, d_->frame});
     }
 }
 
@@ -1413,7 +1413,7 @@ void SignalDisplayDialog::onFocusChanged(std::size_t atomIdx) {
     if (d_->focusLabel)
         d_->focusLabel->setText(focusText);
     if (!d_->liveBox || d_->liveBox->isChecked())
-        d_->anchorModel->setAnchor(atomIdx, d_->frame);
+        d_->anchorModel->setAnchor({atomIdx, d_->frame});
 }
 
 void SignalDisplayDialog::onSelectionCleared() {
@@ -1430,7 +1430,7 @@ void SignalDisplayDialog::onLiveToggled(bool live) {
     ASSERT_THREAD(this);
     if (live && d_->focusAtom.has_value()) {
         const std::size_t focusAtom = d_->focusAtom.value_or(0);
-        d_->anchorModel->setAnchor(focusAtom, d_->frame);
+        d_->anchorModel->setAnchor({focusAtom, d_->frame});
     }
 }
 

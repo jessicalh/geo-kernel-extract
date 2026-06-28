@@ -51,7 +51,10 @@ NewmanProjection ComputeNewmanProjection(const model::QtProtein& protein,
 
     // Resolve the four dihedral atoms a-b-c-d (sight down b->c) and the
     // substituent spokes of the front (b) and back (c) atoms.
-    int a = NONE, b = NONE, c = NONE, d = NONE;
+    int a;
+    int b;
+    int c;
+    int d;
     struct Sub { int idx; const char* label; bool front; bool reference; };
     std::vector<Sub> subs;
 
