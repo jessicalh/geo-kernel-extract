@@ -22,9 +22,6 @@
 #include "../model/QtHBondGroup.h"
 #include "../model/QtHydrationGroup.h"
 #include "../model/QtLarsenHBondGroup.h"
-#include "../rediscover/RingCurrentScalars.h"
-#include "../rediscover/ClassicalSourceMath.h"
-#include "../rediscover/LiteratureConstants.h"
 #include "../model/QtMcConnellGroup.h"
 #include "../model/QtMopacCoreGroup.h"
 #include "../model/QtMopacCoulombGroup.h"
@@ -35,6 +32,10 @@
 #include "../model/QtTripeptideGroup.h"
 #include "../model/QtWaterFieldGroup.h"
 #include "../model/QtWaterPolarizationGroup.h"
+#include "../physics/ClassicalSourceMath.h"
+#include "../physics/LiteratureAccessors.h"
+#include "../physics/RingCurrentScalars.h"
+#include "constants/LiteratureConstants.h"
 
 #include <QBrush>
 #include <QColor>
@@ -485,7 +486,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
     const auto& s = *snap;
 
     // --- Local classical estimate (VIEWER-DERIVED, TENTATIVE) --- a local
-    // estimate computed HERE from loaded npy via the shared rediscover math
+    // estimate computed HERE from loaded npy via the shared physics math
     // (ring, McConnell, Larsen, Buckingham -> ComputeClassicalSigma). Treat the
     // fold like a regression-style explanatory scaffold, not a validated
     // absolute shielding model. The reader NEVER runs the emit; the raw kernels
@@ -513,12 +514,12 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         const std::string frameKindStd =
             (hasCsa_ && csaAtom_ == atomIdx_ && csa_.framed) ? csa_.frameKind.toStdString()
                                                              : std::string();
-        rediscover::ClassicalSigmaInputs in;  // each term defaults to {NaN, present=false}
+        h5reader::physics::ClassicalSigmaInputs in;  // each term defaults to {NaN, present=false}
 
         // ring = sum_t bs_per_type_T0[t] * RingIntensity[t]  (signed T0, ppm)
         if (auto pt = bsFwd.perTypeT0(a)) {
             const double ring =
-                rediscover::RingPerTypeT0Ppm(pt->byType.data(), model::kAromaticRingTypeCount);
+                h5reader::physics::RingPerTypeT0Ppm(pt->byType.data(), model::kAromaticRingTypeCount);
             if (std::isfinite(ring)) {
                 in.ring = {ring, true};
                 AddScalarP(ensureFwd(), QStringLiteral("estimated ring contribution"), ring, QStringLiteral("ppm"),
@@ -563,7 +564,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
             for (const auto& p : kMcProducers) {
                 auto bo = mcFwd.producerBo(p.kind, a);
                 if (!bo) continue;
-                const double term = rediscover::McConnellProducerT0ToPpm(p.category, bo->T0);
+                const double term = h5reader::physics::McConnellProducerT0ToPpm(p.category, bo->T0);
                 if (!std::isfinite(term)) continue;
                 mc += term;
                 anyMc = true;
@@ -584,20 +585,20 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
             const double ePar = sc->E_bond_proj;
             if (std::isfinite(ePar)) {
                 in.e_parallel_mopac = {ePar, true};
-                const auto bA = rediscover::BuckinghamA(fa.element, residueStd, atomNameStd, frameKindStd);
-                const auto bB = rediscover::BuckinghamB(fa.element, residueStd, atomNameStd, frameKindStd);
+                const auto bA = h5reader::physics::BuckinghamA(fa.element, residueStd, atomNameStd, frameKindStd);
+                const auto bB = h5reader::physics::BuckinghamB(fa.element, residueStd, atomNameStd, frameKindStd);
                 if (std::isfinite(bA.value)) in.buckingham_A = {bA.value, true};
                 if (std::isfinite(bB.value)) in.buckingham_B = {bB.value, true};
             }
         }
         // sigma0 baseline -- element-level literature constant, PLACEHOLDER status.
-        const auto sigma0c = rediscover::Sigma0(fa.element, residueStd, atomNameStd);
+        const auto sigma0c = h5reader::physics::Sigma0(fa.element, residueStd, atomNameStd);
         if (std::isfinite(sigma0c.value))
             in.sigma0 = {sigma0c.value, true};
 
         // Fold all terms through the shared engine math (single source of truth);
         // the Buckingham term (-A*E|| - B*E||^2) is computed inside the fold.
-        const rediscover::ClassicalSigmaResult folded = rediscover::ComputeClassicalSigma(in);
+        const h5reader::physics::ClassicalSigmaResult folded = h5reader::physics::ComputeClassicalSigma(in);
         if (folded.buckingham.present && std::isfinite(folded.buckingham.value))
             AddScalarP(ensureFwd(), QStringLiteral("estimated Buckingham contribution"),
                        folded.buckingham.value, QStringLiteral("ppm"),

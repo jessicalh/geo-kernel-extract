@@ -22,6 +22,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(H5READER_SHARED_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
 
 # ============================================================================
 # Platform module + dependency discovery + per-build-type flags
@@ -267,17 +268,30 @@ qt_add_library(h5reader_core STATIC
     src/calculators/QtHaighMallionCalc.h
     src/calculators/QtHaighMallionCalc.cpp
 
-    # Rediscover — pure, dependency-free shared math reused by the viewer to
-    # DERIVE validated metrics on loaded npy (no emit). Self-contained (only
-    # LiteratureConstants.h, header-only); the Arrow/Parquet-bound rediscover
-    # engine stays behind the NOT-WIN32 gate (h5reader_extract links this).
-    src/rediscover/ClassicalSourceMath.h
-    src/rediscover/ClassicalSourceMath.cpp
+    # Physics — pure shared math reused by the viewer to derive validated
+    # metrics on loaded npy (no emit path).
+    src/physics/LiteratureAccessors.h
+    src/physics/SphericalBasis.h
+    src/physics/SphericalBasis.cpp
+    src/physics/LocalFrameBasis.h
+    src/physics/LocalFrameBasis.cpp
+    src/physics/ClassicalSourceMath.h
+    src/physics/ClassicalSourceMath.cpp
+    src/physics/RingCurrentScalars.h
+    src/physics/RingCurrentScalars.cpp
+    src/physics/McConnellLiteratureKernel.h
+    src/physics/McConnellLiteratureKernel.cpp
+    src/physics/BuckinghamEfield.h
+    src/physics/BuckinghamEfield.cpp
+    src/physics/EfgFeature.h
+    src/physics/EfgFeature.cpp
 
 )
 
 target_include_directories(h5reader_core PUBLIC
     src
+    src/physics
+    ${H5READER_SHARED_INCLUDE_DIR}
     ${HIGHFIVE_INCLUDE_DIR}
 )
 
@@ -339,467 +353,38 @@ if(COMMAND h5reader_apply_build_type_settings)
     h5reader_apply_build_type_settings(h5reader)
 endif()
 
-
-# --- Local Windows feasibility gate (do NOT upstream as-is) -----------------
-# h5reader_extract is the headless (non-UI) extractor. It needs PkgConfig +
-# Arrow/Parquet, which are not set up on the Windows dev box, and it is the
-# non-UI mode that is out of scope for the Windows reader build. Skip it on
-# Windows so the UI (h5reader) configures cleanly.
-if(NOT WIN32)
-
-# ============================================================================
-# Rediscover — headless feature extractor (experimental branch
-# h5-reader-pysr-spike). QCoreApplication only: NO widgets, NO VTK. Links
-# h5reader_core + Eigen + the vendored nanoflann header. Loads one 1P9J
-# calcset into an all-frames-resident RunData and writes the ring-current
-# and McConnell feature/target CSVs. Not wired into the GUI; one-shot study
-# substrate. See src/rediscover/{GUIDANCE,DESIGN}.md.
-# ============================================================================
-
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(ARROW_PARQUET REQUIRED IMPORTED_TARGET arrow parquet)
-
-qt_add_executable(h5reader_extract
-    src/rediscover/SphericalBasis.h
-    src/rediscover/SphericalBasis.cpp
-    src/rediscover/LocalFrameBasis.h
-    src/rediscover/LocalFrameBasis.cpp
-    src/rediscover/RediscoverTypes.h
-    src/rediscover/TemporalIndex.h
-    src/rediscover/TemporalIndex.cpp
-    src/rediscover/TypedAtomIndex.h
-    src/rediscover/TypedAtomIndex.cpp
-    src/rediscover/SpatialIndexSet.h
-    src/rediscover/SpatialIndexSet.cpp
-    src/rediscover/RingGeometryCache.h
-    src/rediscover/RingGeometryCache.cpp
-    src/rediscover/ResidentIndexes.h
-    src/rediscover/ResidentIndexes.cpp
-    src/rediscover/Catalog.h
-    src/rediscover/Catalog.cpp
-    src/rediscover/CanonicalSpineInputs.h
-    src/rediscover/CanonicalSpineGuard.h
-    src/rediscover/CanonicalSpineGuard.cpp
-    src/rediscover/AnalysisBody.h
-    src/rediscover/DistributionSummary.h
-    src/rediscover/DistributionSummary.cpp
-    src/rediscover/TensorConventionGuard.h
-    src/rediscover/TensorConventionGuard.cpp
-    src/rediscover/LiteratureConstants.h
-    src/rediscover/SubspaceCompare.h
-    src/rediscover/SubspaceCompare.cpp
-    src/rediscover/AnalysisElement.h
-    src/rediscover/AnalysisAtom.h
-    src/rediscover/AnalysisAtom.cpp
-    src/rediscover/ChargeStore.h
-    src/rediscover/ChargeStore.cpp
-    src/rediscover/OutputManifest.h
-    src/rediscover/OutputManifest.cpp
-    src/rediscover/ReaderOutputCatalog.h
-    src/rediscover/RunData.h
-    src/rediscover/RunData.cpp
-    src/rediscover/StaticRunData.h
-    src/rediscover/StaticRunData.cpp
-    src/rediscover/NpyWriter.h
-    src/rediscover/NpyWriter.cpp
-    src/rediscover/SpineReachabilityProbe.h
-    src/rediscover/SpineReachabilityProbe.cpp
-    src/rediscover/SubstrateParity.h
-    src/rediscover/SubstrateParity.cpp
-    src/rediscover/RecordSink.h
-    src/rediscover/RecordSink.cpp
-    src/rediscover/ExtractionSupport.h
-    src/rediscover/ExtractionSupport.cpp
-    src/rediscover/EfgFeatureSink.h
-    src/rediscover/EfgFeatureSink.cpp
-    src/rediscover/EfgFeature.h
-    src/rediscover/EfgFeature.cpp
-    src/rediscover/Aimnet2FeatureSink.h
-    src/rediscover/Aimnet2FeatureSink.cpp
-    src/rediscover/Aimnet2Feature.h
-    src/rediscover/Aimnet2Feature.cpp
-    src/rediscover/BuckinghamEfieldSink.h
-    src/rediscover/BuckinghamEfieldSink.cpp
-    src/rediscover/BuckinghamEfield.h
-    src/rediscover/BuckinghamEfield.cpp
-    src/rediscover/RediscoveryExtraction.h
-    src/rediscover/FrameSpatialIndex.h
-    src/rediscover/FrameSpatialIndex.cpp
-    src/rediscover/RingCurrentScalars.h
-    src/rediscover/RingCurrentKernel.h
-    src/rediscover/RingCurrentKernel.cpp
-    src/rediscover/McConnellLiteratureKernel.h
-    src/rediscover/McConnellLiteratureKernel.cpp
-    src/rediscover/RingCurrentNeighborhood.h
-    src/rediscover/RingCurrentNeighborhood.cpp
-    src/rediscover/McConnellNeighborhood.h
-    src/rediscover/McConnellNeighborhood.cpp
-    src/rediscover/ChargeDipoleNeighborhood.h
-    src/rediscover/ChargeDipoleNeighborhood.cpp
-    # Functional API (SURFACE_DESIGN Layers 1-3): primitive verbs, curried
-    # relationship combinators, the pure iterated-closure engine, and the two
-    # composed relationships (ring_current / mcconnell) the driver runs.
-    src/rediscover/Verbs.h
-    src/rediscover/Verbs.cpp
-    src/rediscover/Relationship.h
-    src/rediscover/Relationship.cpp
-    src/rediscover/RelationshipEngine.h
-    src/rediscover/RelationshipEngine.cpp
-    src/rediscover/RunQuery.h
-    src/rediscover/RunQuery.cpp
-    src/rediscover/QueryAudit.h
-    src/rediscover/QueryAudit.cpp
-    src/rediscover/ReducerParity.h
-    src/rediscover/ReducerParity.cpp
-    src/rediscover/ComposedRelationships.h
-    src/rediscover/ComposedRelationships.cpp
-    # broad_backbone — the first composed relationship over EVERY backbone atom
-    # × all mechanisms (rings + aniso bonds + charge field), with its own
-    # heterogeneous two-kind carrier (the target-repeat fix). Backbone frames
-    # added in LocalFrameBasis.{h,cpp} above.
-    src/rediscover/BroadBackboneSink.h
-    src/rediscover/BroadBackboneSink.cpp
-    src/rediscover/BroadBackbone.h
-    src/rediscover/BroadBackbone.cpp
-    src/rediscover/AllAtomEquivariantSink.h
-    src/rediscover/AllAtomEquivariantSink.cpp
-    src/rediscover/AllAtomEquivariant.h
-    src/rediscover/AllAtomEquivariant.cpp
-    src/rediscover/RamaRegion.h
-    src/rediscover/RamaRegion.cpp
-    src/rediscover/ConditioningSpec.h
-    src/rediscover/ConditioningSpec.cpp
-    src/rediscover/DeltaRunData.h
-    src/rediscover/DeltaRunData.cpp
-    src/rediscover/CohortContextAccumulator.h
-    src/rediscover/CohortContextCore.cpp
-    src/rediscover/CohortContextAccumulator.cpp
-    src/rediscover/ConsolidatedEmit.h
-    src/rediscover/ConsolidatedEmit.cpp
-    src/rediscover/RowDesign.h
-    src/rediscover/RowDesign.cpp
-    src/rediscover/ScopedProducerCatalog.h
-    src/rediscover/ScopedProducerCatalog.cpp
-    src/rediscover/RowDesignSink.h
-    src/rediscover/RowDesignSink.cpp
-    src/rediscover/RowDesignEmitter.h
-    src/rediscover/RowDesignEmitter.cpp
-    src/rediscover/StatsManifests.h
-    src/rediscover/StatsManifests.cpp
-    src/rediscover/CaseHunter.h
-    src/rediscover/CaseHunter.cpp
-    src/rediscover/PerAtomSubstrate.h
-    src/rediscover/PerAtomSubstrate.cpp
-    src/rediscover/main_extract.cpp
-)
-target_include_directories(h5reader_extract PRIVATE
-    src
-    ${CMAKE_CURRENT_SOURCE_DIR}/extern
-    ${HIGHFIVE_INCLUDE_DIR}
-)
-target_link_libraries(h5reader_extract PRIVATE
-    h5reader_core
-    Eigen3::Eigen
-    PkgConfig::ARROW_PARQUET
-)
-target_compile_features(h5reader_extract PRIVATE cxx_std_20)
-h5reader_apply_platform_target_settings(h5reader_extract)
-if(COMMAND h5reader_apply_build_type_settings)
-    h5reader_apply_build_type_settings(h5reader_extract)
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(h5reader_physics_tests
+        src/physics/PhysicsTests.cpp
+        src/physics/SphericalBasis.cpp
+        src/physics/LocalFrameBasis.cpp
+        src/physics/ClassicalSourceMath.cpp
+        src/physics/RingCurrentScalars.cpp
+        src/physics/McConnellLiteratureKernel.cpp
+        src/physics/BuckinghamEfield.cpp
+        src/physics/EfgFeature.cpp
+    )
+    set_target_properties(h5reader_physics_tests PROPERTIES
+        AUTOMOC OFF
+        AUTOUIC OFF
+        AUTORCC OFF
+    )
+    target_include_directories(h5reader_physics_tests PRIVATE
+        src
+        src/physics
+        ${H5READER_SHARED_INCLUDE_DIR}
+    )
+    target_link_libraries(h5reader_physics_tests PRIVATE
+        Eigen3::Eigen
+    )
+    target_compile_definitions(h5reader_physics_tests PRIVATE
+        H5READER_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+    add_test(NAME h5reader_physics_tests COMMAND h5reader_physics_tests)
 endif()
 
-endif()  # NOT WIN32 — end Windows feasibility gate for h5reader_extract
-
-include(CTest)
 if(BUILD_TESTING AND Qt6Test_FOUND)
-    # SphericalBasis library-order decomposition fixture (the foundation).
-    qt_add_executable(h5reader_rediscover_tests
-        tests/rediscover_basis_tests.cpp
-        src/rediscover/SphericalBasis.h
-        src/rediscover/SphericalBasis.cpp
-    )
-    target_include_directories(h5reader_rediscover_tests PRIVATE src)
-    target_link_libraries(h5reader_rediscover_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_tests COMMAND h5reader_rediscover_tests)
-
-    # Broad-backbone local-frame fixtures (broad-backbone spike, 2026-06-01).
-    # Pure synthetic Vec3 geometry over LocalFrameBasis — no calcset / H5 /
-    # model. Pins the N / Cα / C=O / HA frame conventions + handedness +
-    # degenerate-fail-loud by assertion (the aromatic-H positional-anchor bug
-    # class). Links only LocalFrameBasis + Eigen + Qt::Test, like the basis test.
-    qt_add_executable(h5reader_rediscover_backbone_frame_tests
-        tests/rediscover_backbone_frame_tests.cpp
-        src/rediscover/LocalFrameBasis.h
-        src/rediscover/LocalFrameBasis.cpp
-        src/rediscover/SphericalBasis.h
-        src/rediscover/SphericalBasis.cpp
-    )
-    target_include_directories(h5reader_rediscover_backbone_frame_tests PRIVATE src)
-    target_link_libraries(h5reader_rediscover_backbone_frame_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_backbone_frame_tests
-             COMMAND h5reader_rediscover_backbone_frame_tests)
-
-    # APBS EFG per_atom_feature fixtures: the EFG T2 basis equals the DFT
-    # target basis (DecomposeLibrary), rotation preserves |T2|, and the sink
-    # writes finite row-aligned (rows,5) feature/target sidecars.
-    qt_add_executable(h5reader_rediscover_efg_tests
-        tests/rediscover_efg_tests.cpp
-        src/rediscover/EfgFeatureSink.h
-        src/rediscover/EfgFeatureSink.cpp
-        src/rediscover/SphericalBasis.h
-        src/rediscover/SphericalBasis.cpp
-        src/io/QtNpyReader.h
-        src/io/QtNpyReader.cpp
-        src/diagnostics/ErrorBus.h
-        src/diagnostics/ErrorBus.cpp
-    )
-    target_include_directories(h5reader_rediscover_efg_tests PRIVATE src)
-    target_link_libraries(h5reader_rediscover_efg_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_efg_tests
-             COMMAND h5reader_rediscover_efg_tests)
-
-    # APBS E-field per_atom_feature fixtures: the spine-side local-frame
-    # projection is E_local.z, |E| is invariant, target T2 keeps the √6
-    # library fixture, and T1 is emitted as an unverified audit payload only.
-    qt_add_executable(h5reader_rediscover_buckingham_tests
-        tests/rediscover_buckingham_tests.cpp
-        src/rediscover/BuckinghamEfieldSink.h
-        src/rediscover/BuckinghamEfieldSink.cpp
-        src/rediscover/LocalFrameBasis.h
-        src/rediscover/LocalFrameBasis.cpp
-        src/rediscover/SphericalBasis.h
-        src/rediscover/SphericalBasis.cpp
-        src/io/QtNpyReader.h
-        src/io/QtNpyReader.cpp
-        src/diagnostics/ErrorBus.h
-        src/diagnostics/ErrorBus.cpp
-    )
-    target_include_directories(h5reader_rediscover_buckingham_tests PRIVATE src)
-    target_link_libraries(h5reader_rediscover_buckingham_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_buckingham_tests
-             COMMAND h5reader_rediscover_buckingham_tests)
-
-    qt_add_executable(h5reader_rediscover_classical_source_math_tests
-        tests/rediscover_classical_source_math_tests.cpp
-        src/rediscover/ClassicalSourceMath.h
-        src/rediscover/ClassicalSourceMath.cpp
-        src/rediscover/McConnellLiteratureKernel.h
-        src/rediscover/McConnellLiteratureKernel.cpp
-        src/rediscover/RingCurrentScalars.h
-        src/rediscover/SphericalBasis.h
-        src/rediscover/SphericalBasis.cpp
-        src/calculators/QtBiotSavartCalc.h
-        src/calculators/QtBiotSavartCalc.cpp
-        src/rediscover/TensorConventionGuard.h
-        src/rediscover/TensorConventionGuard.cpp
-    )
-    target_include_directories(h5reader_rediscover_classical_source_math_tests PRIVATE src)
-    target_link_libraries(h5reader_rediscover_classical_source_math_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_classical_source_math_tests
-             COMMAND h5reader_rediscover_classical_source_math_tests)
-
-    qt_add_executable(h5reader_rediscover_all_atom_equivariant_tests
-        tests/rediscover_all_atom_equivariant_tests.cpp
-        src/rediscover/AllAtomEquivariantSink.h
-        src/rediscover/AllAtomEquivariantSink.cpp
-        src/io/QtNpyReader.h
-        src/io/QtNpyReader.cpp
-        src/diagnostics/ErrorBus.h
-        src/diagnostics/ErrorBus.cpp
-    )
-    target_include_directories(h5reader_rediscover_all_atom_equivariant_tests PRIVATE src)
-    target_link_libraries(h5reader_rediscover_all_atom_equivariant_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_all_atom_equivariant_tests
-             COMMAND h5reader_rediscover_all_atom_equivariant_tests)
-
-    qt_add_executable(h5reader_reader_output_catalog_tests
-        tests/reader_output_catalog_tests.cpp
-        src/rediscover/ReaderOutputCatalog.h
-        src/rediscover/RecordSink.h
-        src/rediscover/RecordSink.cpp
-        src/rediscover/BroadBackboneSink.h
-        src/rediscover/BroadBackboneSink.cpp
-        src/rediscover/EfgFeatureSink.h
-        src/rediscover/EfgFeatureSink.cpp
-        src/rediscover/BuckinghamEfieldSink.h
-        src/rediscover/BuckinghamEfieldSink.cpp
-        src/rediscover/Aimnet2FeatureSink.h
-        src/rediscover/Aimnet2FeatureSink.cpp
-        src/rediscover/AllAtomEquivariantSink.h
-        src/rediscover/AllAtomEquivariantSink.cpp
-        src/rediscover/SphericalBasis.h
-        src/rediscover/SphericalBasis.cpp
-        src/diagnostics/ErrorBus.h
-        src/diagnostics/ErrorBus.cpp
-    )
-    target_include_directories(h5reader_reader_output_catalog_tests PRIVATE
-        src
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern
-    )
-    target_link_libraries(h5reader_reader_output_catalog_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_reader_output_catalog_tests
-             COMMAND h5reader_reader_output_catalog_tests)
-
-    qt_add_executable(h5reader_rediscover_substrate_parity_tests
-        tests/rediscover_substrate_parity_tests.cpp
-        src/rediscover/SubstrateParity.h
-        src/rediscover/SubstrateParity.cpp
-        src/rediscover/SphericalBasis.h
-        src/rediscover/SphericalBasis.cpp
-        src/rediscover/Catalog.h
-        src/rediscover/Catalog.cpp
-    )
-    target_include_directories(h5reader_rediscover_substrate_parity_tests PRIVATE
-        src
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern
-    )
-    target_link_libraries(h5reader_rediscover_substrate_parity_tests PRIVATE
-        h5reader_core
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_substrate_parity_tests
-             COMMAND h5reader_rediscover_substrate_parity_tests)
-
-    qt_add_executable(h5reader_rediscover_query_tests
-        tests/rediscover_query_tests.cpp
-        src/rediscover/RunQuery.h
-        src/rediscover/RunQuery.cpp
-        src/rediscover/Catalog.h
-        src/rediscover/Catalog.cpp
-    )
-    target_include_directories(h5reader_rediscover_query_tests PRIVATE
-        src
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern
-    )
-    target_link_libraries(h5reader_rediscover_query_tests PRIVATE
-        h5reader_core
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_query_tests
-             COMMAND h5reader_rediscover_query_tests)
-
-    qt_add_executable(h5reader_rediscover_resident_index_tests
-        tests/rediscover_resident_index_tests.cpp
-        src/rediscover/RunQuery.h
-        src/rediscover/RunQuery.cpp
-        src/rediscover/Catalog.h
-        src/rediscover/Catalog.cpp
-    )
-    target_include_directories(h5reader_rediscover_resident_index_tests PRIVATE
-        src
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern
-    )
-    target_link_libraries(h5reader_rediscover_resident_index_tests PRIVATE
-        h5reader_core
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_resident_index_tests
-             COMMAND h5reader_rediscover_resident_index_tests)
-
-    qt_add_executable(h5reader_rediscover_reducer_parity_tests
-        tests/rediscover_reducer_parity_tests.cpp
-    )
-    target_include_directories(h5reader_rediscover_reducer_parity_tests PRIVATE
-        src
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern
-    )
-    target_link_libraries(h5reader_rediscover_reducer_parity_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_reducer_parity_tests
-             COMMAND h5reader_rediscover_reducer_parity_tests)
-
-    qt_add_executable(h5reader_rediscover_subspace_compare_tests
-        tests/rediscover_subspace_compare_tests.cpp
-        src/rediscover/SubspaceCompare.h
-        src/rediscover/SubspaceCompare.cpp
-    )
-    target_include_directories(h5reader_rediscover_subspace_compare_tests PRIVATE src)
-    target_link_libraries(h5reader_rediscover_subspace_compare_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_subspace_compare_tests
-             COMMAND h5reader_rediscover_subspace_compare_tests)
-
-    qt_add_executable(h5reader_rediscover_no_relabel_tests
-        tests/rediscover_no_relabel_tests.cpp
-        src/rediscover/SubspaceCompare.h
-        src/rediscover/SubspaceCompare.cpp
-    )
-    target_include_directories(h5reader_rediscover_no_relabel_tests PRIVATE src)
-    target_compile_definitions(h5reader_rediscover_no_relabel_tests PRIVATE
-        H5READER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-    target_link_libraries(h5reader_rediscover_no_relabel_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_no_relabel_tests
-             COMMAND h5reader_rediscover_no_relabel_tests)
-
-    qt_add_executable(h5reader_rediscover_cohort_context_tests
-        tests/rediscover_cohort_context_tests.cpp
-        src/rediscover/ClassicalSourceMath.h
-        src/rediscover/ClassicalSourceMath.cpp
-        src/rediscover/CohortContextAccumulator.h
-        src/rediscover/CohortContextCore.cpp
-        src/rediscover/DistributionSummary.h
-        src/rediscover/DistributionSummary.cpp
-        src/rediscover/DeltaRunData.h
-        src/rediscover/DeltaRunData.cpp
-        src/rediscover/ScopedProducerCatalog.h
-        src/rediscover/ScopedProducerCatalog.cpp
-    )
-    target_include_directories(h5reader_rediscover_cohort_context_tests PRIVATE
-        src
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern
-    )
-    target_link_libraries(h5reader_rediscover_cohort_context_tests PRIVATE
-        Qt6::Core
-        Qt6::Test
-        Eigen3::Eigen
-    )
-    add_test(NAME h5reader_rediscover_cohort_context_tests
-             COMMAND h5reader_rediscover_cohort_context_tests)
-
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp
         src/model/DashboardSignal.h
@@ -840,7 +425,11 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/diagnostics/ObjectCensus.cpp
         src/diagnostics/Categories.cpp
     )
-    target_include_directories(h5reader_model_tests PRIVATE src)
+    target_include_directories(h5reader_model_tests PRIVATE
+        src
+        src/physics
+        ${H5READER_SHARED_INCLUDE_DIR}
+    )
     target_link_libraries(h5reader_model_tests PRIVATE
         Qt6::Core
         Qt6::Test
@@ -890,7 +479,11 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         tests/field_availability_tests.cpp
         src/model/TrajectoryFieldAvailability.h
     )
-    target_include_directories(h5reader_field_availability_tests PRIVATE src)
+    target_include_directories(h5reader_field_availability_tests PRIVATE
+        src
+        src/physics
+        ${H5READER_SHARED_INCLUDE_DIR}
+    )
     target_link_libraries(h5reader_field_availability_tests PRIVATE
         Qt6::Core
         Qt6::Test
@@ -1080,6 +673,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     target_include_directories(h5reader_app_tests PRIVATE
         src
+        src/physics
+        ${H5READER_SHARED_INCLUDE_DIR}
         ${HIGHFIVE_INCLUDE_DIR}
     )
     target_link_libraries(h5reader_app_tests PRIVATE
@@ -1105,7 +700,11 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/diagnostics/ErrorBus.h
         src/diagnostics/ErrorBus.cpp
     )
-    target_include_directories(h5reader_dft_shielding_loader_tests PRIVATE src)
+    target_include_directories(h5reader_dft_shielding_loader_tests PRIVATE
+        src
+        src/physics
+        ${H5READER_SHARED_INCLUDE_DIR}
+    )
     target_link_libraries(h5reader_dft_shielding_loader_tests PRIVATE
         Qt6::Core
         Qt6::Test
