@@ -37,6 +37,8 @@ QString ToString(SignalSourceKind kind) {
         return QStringLiteral("Derived geometry");
     case SignalSourceKind::SelectionEvents:
         return QStringLiteral("Selections/events");
+    case SignalSourceKind::ExperimentalShieldingMl:
+        return QStringLiteral("Experimental Shielding ML");
     }
     return QStringLiteral("Unknown source");
 }

@@ -76,6 +76,7 @@ public:
     static TrajectoryFieldAvailability Build(Conformation* conformation,
                                              const TopologyExtent& topology,
                                              std::size_t dftJobCount,
+                                             bool experimentalShieldingMlAvailable,
                                              const QVector<SignalDescriptor>& descriptors) {
         TrajectoryFieldAvailability out;
         const auto* traj = conformation ? conformation->asTrajectory() : nullptr;
@@ -119,6 +120,8 @@ public:
         // is loaded. Marking these EXPLICITLY (rather than via the old silent
         // no-record default) is what lets the missing-record default be Absent.
         const TrajectoryFieldAvailabilityRecord dftRecord = classifyDft(dftJobCount);
+        const TrajectoryFieldAvailabilityRecord experimentalMlRecord =
+            classifyExperimentalShieldingMl(experimentalShieldingMlAvailable);
         const TrajectoryFieldAvailabilityRecord affordanceRecord{
             TrajectoryFieldAvailabilityState::Available, 1, 1};
 
@@ -149,6 +152,10 @@ public:
                     record = affordanceRecord;
                     hasRecord = true;
                     break;
+                case SignalSourceKind::ExperimentalShieldingMl:
+                    record = experimentalMlRecord;
+                    hasRecord = true;
+                    break;
             }
             if (hasRecord) {
                 out.byDescriptor_.insert(descriptor.id, record);
@@ -168,6 +175,12 @@ public:
             return {TrajectoryFieldAvailabilityState::Absent, 0, 0};
         const auto n = static_cast<qsizetype>(jobCount);
         return {TrajectoryFieldAvailabilityState::Available, n, n};
+    }
+
+    static TrajectoryFieldAvailabilityRecord classifyExperimentalShieldingMl(bool available) {
+        return available
+                   ? TrajectoryFieldAvailabilityRecord{TrajectoryFieldAvailabilityState::Available, 1, 1}
+                   : TrajectoryFieldAvailabilityRecord{TrajectoryFieldAvailabilityState::Absent, 0, 0};
     }
 
     // Classify a Topology-source descriptor from the loaded spine's table size.

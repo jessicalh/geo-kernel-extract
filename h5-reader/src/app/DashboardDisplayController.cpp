@@ -1260,6 +1260,8 @@ SamplePlan samplePlanFor(const model::DashboardSignal& signal,
         return topologyPlan(descriptor, anchor, protein, conformation);
     case model::SignalSourceKind::SelectionEvents:
         return selectionEventsPlan(descriptor, conformation, selection);
+    case model::SignalSourceKind::ExperimentalShieldingMl:
+        return pendingPlan();
     }
     return pendingPlan();
 }

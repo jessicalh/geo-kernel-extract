@@ -58,9 +58,11 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QtGlobal>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -123,6 +125,49 @@ Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
 // safe per ROBUSTNESS_BACKLOG_2026-05-30.md item 7.
 constexpr int kSettingsVersion = 2;   // bumped: property docks now start hidden
 constexpr int kMaxRecentFiles  = 10;
+
+bool fileExistsInDir(const QDir& dir, const QString& fileName) {
+    return QFileInfo(dir.filePath(fileName)).isFile();
+}
+
+bool installedExperimentalShieldingMlRuntimeAvailable() {
+    const QDir mlDir(QDir(QCoreApplication::applicationDirPath())
+                         .filePath(QStringLiteral("ml/experimental_shielding_ml")));
+    const QStringList requiredFiles{
+        QStringLiteral("local_tensor_mopac_neighbors005.ts"),
+        QStringLiteral("poc_manifest.json"),
+        QStringLiteral("libtorch_e3nn_poc.exe"),
+        QStringLiteral("c10.dll"),
+        QStringLiteral("torch.dll"),
+        QStringLiteral("torch_cpu.dll"),
+        QStringLiteral("torch_global_deps.dll"),
+        QStringLiteral("libiomp5md.dll"),
+        QStringLiteral("shm.dll"),
+        QStringLiteral("uv.dll"),
+    };
+    for (const QString& fileName : requiredFiles) {
+        if (!fileExistsInDir(mlDir, fileName))
+            return false;
+    }
+    return true;
+}
+
+bool devExperimentalShieldingMlRuntimeAvailable() {
+    const QString modelPath =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
+    const QString helperPath =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
+    if (modelPath.isEmpty() && helperPath.isEmpty())
+        return false;
+    return QFileInfo(modelPath).isFile() && QFileInfo(helperPath).isFile();
+}
+
+bool experimentalShieldingMlRuntimeAvailable() {
+    if (!qEnvironmentVariableIsSet("H5READER_EXPERIMENTAL_SHIELDING_ML_ENABLE"))
+        return false;
+    return devExperimentalShieldingMlRuntimeAvailable()
+           || installedExperimentalShieldingMlRuntimeAvailable();
+}
 
 QString fitModeToolTip() {
     return QStringLiteral(
@@ -331,6 +376,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     fieldAvailability_ = std::make_shared<model::TrajectoryFieldAvailability>(
         model::TrajectoryFieldAvailability::Build(loaded_->conformation.get(),
                                                   topologyExtent, dftJobCount,
+                                                  experimentalShieldingMlRuntimeAvailable(),
                                                   signalCatalog_->allDescriptorList()));
     signalCatalog_->setFieldAvailability(fieldAvailability_);
     visualizationContext_ = {};
@@ -944,6 +990,7 @@ void ReaderMainWindow::refreshControlStates() {
     en(showRibbonAction_,    loaded   && !filtered);
     en(showRingsAction_,     hasRings && !filtered);
     en(showButterflyAction_, hasRings && !filtered);
+    en(showNullConeAction_,  hasRings && !filtered);
     en(showBFieldAction_,    hasRings && !filtered);
     en(showTrajectoryAction_, traj);   // selected-atom path; needs trajectory
 
@@ -984,6 +1031,7 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     controls[QStringLiteral("ribbon")]       = ctl(showRibbonAction_);
     controls[QStringLiteral("rings")]        = ctl(showRingsAction_);
     controls[QStringLiteral("butterfly")]    = ctl(showButterflyAction_);
+    controls[QStringLiteral("nullcone")]     = ctl(showNullConeAction_);
     controls[QStringLiteral("bfield")]       = ctl(showBFieldAction_);
     controls[QStringLiteral("trajectory")]   = ctl(showTrajectoryAction_);
 
@@ -1027,6 +1075,8 @@ void ReaderMainWindow::applyOverlayActionState() {
         scene_->ringPolygonOverlay()->setVisible(showRingsAction_->isChecked());
     if (showButterflyAction_ && scene_->fieldGridOverlay())
         scene_->fieldGridOverlay()->setVisible(showButterflyAction_->isChecked());
+    if (showNullConeAction_ && scene_->fieldGridOverlay())
+        scene_->fieldGridOverlay()->setNullConeVisible(showNullConeAction_->isChecked());
     if (showBFieldAction_ && scene_->bfieldStreamOverlay())
         scene_->bfieldStreamOverlay()->setVisible(showBFieldAction_->isChecked());
     if (showTrajectoryAction_ && scene_->atomTrajectoryOverlay())
@@ -1183,6 +1233,10 @@ bool ReaderMainWindow::setOverlayVisible(const QString& name, bool on) {
     else if (key == QStringLiteral("butterfly") || key == QStringLiteral("fieldgrid")
              || key == QStringLiteral("field") || key == QStringLiteral("isosurface"))
         a = showButterflyAction_;
+    else if (key == QStringLiteral("nullcone") || key == QStringLiteral("null_cone")
+             || key == QStringLiteral("ring_null") || key == QStringLiteral("ringnull")
+             || key == QStringLiteral("magiccone") || key == QStringLiteral("magic_cone"))
+        a = showNullConeAction_;
     else if (key == QStringLiteral("bfield") || key == QStringLiteral("streamlines")
              || key == QStringLiteral("stream"))
         a = showBFieldAction_;
@@ -1238,7 +1292,10 @@ void ReaderMainWindow::setResidueFilter(const std::vector<std::size_t>& residues
     const auto hideOverlays = [this]() {
         if (scene_->ribbonOverlay())          scene_->ribbonOverlay()->setVisible(false);
         if (scene_->ringPolygonOverlay())     scene_->ringPolygonOverlay()->setVisible(false);
-        if (scene_->fieldGridOverlay())       scene_->fieldGridOverlay()->setVisible(false);
+        if (scene_->fieldGridOverlay()) {
+            scene_->fieldGridOverlay()->setVisible(false);
+            scene_->fieldGridOverlay()->setNullConeVisible(false);
+        }
         if (scene_->bfieldStreamOverlay())    scene_->bfieldStreamOverlay()->setVisible(false);
     };
 
@@ -1838,6 +1895,13 @@ void ReaderMainWindow::buildToolbar() {
         "BS / HM volumetric isosurfaces around each aromatic ring. "
         "Re-evaluates closed-form kernel per frame on a 20³ grid."));
 
+    showNullConeAction_ = tb->addAction(QStringLiteral("Ring null"));
+    showNullConeAction_->setCheckable(true);
+    showNullConeAction_->setChecked(false);
+    showNullConeAction_->setToolTip(QStringLiteral(
+        "Transparent ring null surface: the magic-angle boundary used for "
+        "operational ring-null-crossing tests."));
+
     showBFieldAction_ = tb->addAction(QStringLiteral("B-field"));
     showBFieldAction_->setCheckable(true);
     showBFieldAction_->setChecked(false);   // off by default — expensive
@@ -1868,6 +1932,13 @@ void ReaderMainWindow::buildToolbar() {
              this, [this](bool on) {
                  if (!scene_ || !scene_->fieldGridOverlay()) return;
                  scene_->fieldGridOverlay()->setVisible(on);
+                 if (on) scene_->refreshCurrentFrame();
+                 else    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+             });
+    ACONNECT(showNullConeAction_.data(), &QAction::toggled,
+             this, [this](bool on) {
+                 if (!scene_ || !scene_->fieldGridOverlay()) return;
+                 scene_->fieldGridOverlay()->setNullConeVisible(on);
                  if (on) scene_->refreshCurrentFrame();
                  else    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });

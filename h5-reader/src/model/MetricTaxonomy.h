@@ -39,6 +39,7 @@ enum class MetricGroup : std::uint8_t {
     Electrostatic,   // A3  E-field / EFG, sub-grouped by charge model
     HBond,           // A4  Larsen / ProCS15 H-bond
     DftReference,    // B   ORCA + tripeptide/ProCS15 -- the targets
+    Experimental,    // B'  local experimental model estimates
     Charges,         // C   MOPAC / EEQ / AIMNet2 charges + electronic structure
     Solvation,       // C   SASA / hydration / water environment
     Structure,       // C   secondary structure + geometry
@@ -51,6 +52,7 @@ enum class MetricGroup : std::uint8_t {
 enum class MetricRole : std::uint8_t {
     Hypothesis,  // the competing shielding-contribution kernels (A1-A4)
     Reference,   // the DFT / empirical truth they are compared against (B)
+    Experimental,  // local experimental estimates, not QM references
     Input,       // conditioning features (C)
     Dynamics,    // time-evolution summaries (D)
     Scaffold,    // identity / bookkeeping / perturbation (E)
@@ -75,6 +77,7 @@ inline const char* ToString(MetricGroup g) {
         case MetricGroup::Electrostatic:  return "electrostatic";
         case MetricGroup::HBond:          return "hbond";
         case MetricGroup::DftReference:   return "dft_reference";
+        case MetricGroup::Experimental:   return "experimental";
         case MetricGroup::Charges:        return "charges";
         case MetricGroup::Solvation:      return "solvation";
         case MetricGroup::Structure:      return "structure";
@@ -90,6 +93,7 @@ inline const char* ToString(MetricRole r) {
     switch (r) {
         case MetricRole::Hypothesis: return "hypothesis";
         case MetricRole::Reference:  return "reference";
+        case MetricRole::Experimental: return "experimental";
         case MetricRole::Input:      return "input";
         case MetricRole::Dynamics:   return "dynamics";
         case MetricRole::Scaffold:   return "scaffold";
@@ -121,6 +125,8 @@ inline MetricRole RoleForGroup(MetricGroup g) {
             return MetricRole::Hypothesis;
         case MetricGroup::DftReference:
             return MetricRole::Reference;
+        case MetricGroup::Experimental:
+            return MetricRole::Experimental;
         case MetricGroup::Charges:
         case MetricGroup::Solvation:
         case MetricGroup::Structure:
@@ -192,6 +198,8 @@ inline MetricGroup GroupForDescriptor(const QString& family, const QString& base
         return MetricGroup::HBond;
     if (family == QLatin1String("orca") || family == QLatin1String("tripeptide"))
         return MetricGroup::DftReference;
+    if (family == QLatin1String("experimental_shielding_ml"))
+        return MetricGroup::Experimental;
     if (family == QLatin1String("eeq") || family == QLatin1String("mopac_core")
         || family == QLatin1String("aimnet2")) return MetricGroup::Charges;
     if (family == QLatin1String("sasa") || family == QLatin1String("hydration")
@@ -222,6 +230,7 @@ inline MetricForm FormForDescriptor(const SignalDescriptor& d, MetricForm suffix
         case SignalSourceKind::Topology:          return MetricForm::Spine;
         case SignalSourceKind::DerivedGeometry:   return MetricForm::Derived;
         case SignalSourceKind::SelectionEvents:   return MetricForm::Other;
+        case SignalSourceKind::ExperimentalShieldingMl: return MetricForm::Derived;
     }
     return MetricForm::Other;
 }

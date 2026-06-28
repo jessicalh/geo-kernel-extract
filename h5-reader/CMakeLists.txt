@@ -96,6 +96,10 @@ qt_add_library(h5reader_core STATIC
     src/model/TransformedConformation.cpp
     src/model/ConformationGeometry.h
     src/model/ConformationGeometry.cpp
+    src/model/RingNullCollar.h
+    src/model/RingNullCollar.cpp
+    src/model/RingCurrentFaceCollar.h
+    src/model/RingCurrentFaceCollar.cpp
     src/model/SpectralAnalysis.h
     src/model/SpectralAnalysis.cpp
     src/model/SignalDictionary.h
@@ -204,6 +208,10 @@ qt_add_library(h5reader_core STATIC
     src/app/OccupancyShellsMath.h
     src/app/QtAtomTrajectoryOverlay.h
     src/app/QtAtomTrajectoryOverlay.cpp
+    src/app/AtomTrackOverlay.h
+    src/app/AtomTrackOverlay.cpp
+    src/app/HeroshotButterflyOverlay.h
+    src/app/HeroshotButterflyOverlay.cpp
     src/app/Colormap.h
 
     src/app/QtAtomPicker.h
@@ -1168,6 +1176,88 @@ install(TARGETS h5reader
 )
 
 if(WIN32)
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR
+        "ml/experimental_shielding_ml"
+        CACHE STRING "Install subdirectory for the Experimental Shielding ML runtime")
+    option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML
+        "Require and package the Experimental Shielding ML model/runtime" ON)
+
+    set(_h5reader_experimental_ml_model_default
+        "C:/Users/jessi/Documents/Codex/2026-06-23/i-am-looking-for-a-real/work/libtorch-e3nn-poc/out/local_tensor_mopac_neighbors005.ts")
+    set(_h5reader_experimental_ml_manifest_default
+        "C:/Users/jessi/Documents/Codex/2026-06-23/i-am-looking-for-a-real/work/libtorch-e3nn-poc/out/poc_manifest.json")
+    set(_h5reader_experimental_ml_helper_default
+        "C:/Users/jessi/Documents/Codex/2026-06-23/i-am-looking-for-a-real/work/libtorch-e3nn-poc/build-cpu/libtorch_e3nn_poc.exe")
+    set(_h5reader_libtorch_cpu_bin_default
+        "C:/projects/ml-envs/libtorch-cpu-poc/Lib/site-packages/torch/lib")
+
+    if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
+            "${_h5reader_experimental_ml_model_default}"
+            CACHE FILEPATH "TorchScript model for Experimental Shielding ML")
+    endif()
+    if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
+            "${_h5reader_experimental_ml_manifest_default}"
+            CACHE FILEPATH "Provenance manifest for Experimental Shielding ML")
+    endif()
+    if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
+            "${_h5reader_experimental_ml_helper_default}"
+            CACHE FILEPATH "CPU inference helper for Experimental Shielding ML")
+    endif()
+    if(NOT H5READER_LIBTORCH_CPU_BIN_DIR)
+        set(H5READER_LIBTORCH_CPU_BIN_DIR
+            "${_h5reader_libtorch_cpu_bin_default}"
+            CACHE PATH "LibTorch CPU DLL directory for Experimental Shielding ML")
+    endif()
+
+    if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
+        foreach(_ml_asset IN ITEMS
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}")
+            if(NOT EXISTS "${_ml_asset}")
+                message(FATAL_ERROR
+                    "Experimental Shielding ML packaging is required, but this asset is missing: ${_ml_asset}")
+            endif()
+        endforeach()
+        if(NOT EXISTS "${H5READER_LIBTORCH_CPU_BIN_DIR}")
+            message(FATAL_ERROR
+                "Experimental Shielding ML packaging is required, but LibTorch CPU DLL dir is missing: ${H5READER_LIBTORCH_CPU_BIN_DIR}")
+        endif()
+
+        set(_h5reader_libtorch_cpu_dlls)
+        foreach(_torch_dll_name IN ITEMS
+                c10.dll
+                torch.dll
+                torch_cpu.dll
+                torch_global_deps.dll
+                libiomp5md.dll
+                shm.dll
+                uv.dll)
+            set(_torch_dll "${H5READER_LIBTORCH_CPU_BIN_DIR}/${_torch_dll_name}")
+            if(NOT EXISTS "${_torch_dll}")
+                message(FATAL_ERROR
+                    "Experimental Shielding ML packaging is required, but LibTorch DLL is missing: ${_torch_dll}")
+            endif()
+            list(APPEND _h5reader_libtorch_cpu_dlls "${_torch_dll}")
+        endforeach()
+
+        install(FILES
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
+            ${_h5reader_libtorch_cpu_dlls}
+            DESTINATION "${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
+            COMPONENT Runtime
+        )
+        install(PROGRAMS
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}"
+            DESTINATION "${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
+            COMPONENT Runtime
+        )
+    endif()
+
     if(NOT H5READER_VCPKG_BIN_DIR)
         if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET
                 AND EXISTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")

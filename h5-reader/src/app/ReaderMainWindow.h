@@ -119,8 +119,9 @@ public:
     // Toggle a named overlay by driving its toolbar action, so REST /
     // automation changes run the SAME path as a human click (per-frame
     // refresh for the kernel overlays) and keep the toolbar checkbox in
-    // sync. name ∈ {ribbon, rings, butterfly, bfield, shadow} (+ aliases
-    // fieldgrid/field/isosurface, streamlines/stream, trajectory/path).
+    // sync. name in {ribbon, rings, butterfly, nullcone, bfield, shadow}
+    // (+ aliases fieldgrid/field/isosurface, null_cone/ring_null,
+    // streamlines/stream, trajectory/path).
     // Returns false on an unknown name. Used by POST /overlay so the
     // headless snapshot harness can enable the field overlays, which
     // default off and are not persisted in QSettings.
@@ -329,6 +330,7 @@ private:
     QPointer<QAction> showRibbonAction_;
     QPointer<QAction> showRingsAction_;
     QPointer<QAction> showButterflyAction_;
+    QPointer<QAction> showNullConeAction_;
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> showTrajectoryAction_;
     QPointer<QAction> goToAtomAction_;

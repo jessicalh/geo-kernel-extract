@@ -267,6 +267,9 @@ bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& s
         return storagePath == QStringLiteral("/trajectory/selections")
                || storagePath == QStringLiteral("selection_timeline")
                || storagePath == QStringLiteral("selection_counts");
+    case SignalSourceKind::ExperimentalShieldingMl:
+        return storagePath == QStringLiteral("experimental_shielding_ml:t2")
+               || storagePath == QStringLiteral("experimental_shielding_ml:t2_norm");
     }
     return false;
 }
@@ -344,6 +347,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     const UnitSpec none = unit(UnitDimension::Dimensionless, "", "");
     const UnitSpec length = unit(UnitDimension::Length, "A", "A");
     const UnitSpec shielding = unit(UnitDimension::MagneticShielding, "ppm", "ppm");
+    const UnitSpec ringKernel = unit(UnitDimension::MagneticShielding, "ppm_T_per_nA", "ppm_T_per_nA");
     const UnitSpec efield = unit(UnitDimension::ElectricField, "V/A", "V/A");
     const UnitSpec efg = unit(UnitDimension::ElectricFieldGradient, "V/A^2", "V/A^2");
     const UnitSpec charge = unit(UnitDimension::Charge, "e", "e");
@@ -376,8 +380,8 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
         const char* path;
         SignalValueShape shape;
     } tensorGroups[] = {
-        {"h5:bs_shielding_time_series", "bs_shielding", "biot_savart", "Biot-Savart shielding time series", "/trajectory/bs_shielding_time_series", SignalValueShape::SphericalTensor},
-        {"h5:hm_shielding_time_series", "hm_shielding", "haigh_mallion", "Haigh-Mallion shielding time series", "/trajectory/hm_shielding_time_series", SignalValueShape::SphericalTensor},
+        {"h5:bs_shielding_time_series", "bs_shielding", "biot_savart", "Biot-Savart unit-current kernel time series", "/trajectory/bs_shielding_time_series", SignalValueShape::SphericalTensor},
+        {"h5:hm_shielding_time_series", "hm_shielding", "haigh_mallion", "Haigh-Mallion unit-current kernel time series", "/trajectory/hm_shielding_time_series", SignalValueShape::SphericalTensor},
         {"h5:mc_shielding_time_series", "mc_shielding", "mcconnell", "McConnell shielding time series", "/trajectory/mc_shielding_time_series", SignalValueShape::SphericalTensor},
         {"h5:mopac_coulomb_shielding_time_series", "mopac_coulomb_shielding", "mopac_coulomb", "MOPAC Coulomb T2 shielding time series", "/trajectory/mopac_coulomb_shielding_time_series", SignalValueShape::EfgT2},
         {"h5:mopac_mc_shielding_time_series", "mopac_mc_shielding", "mopac_mcconnell", "MOPAC McConnell shielding time series", "/trajectory/mopac_mc_shielding_time_series", SignalValueShape::SphericalTensor},
@@ -391,6 +395,10 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
 
     for (const TensorGroup& group : tensorGroups) {
         const bool efgOnly = group.shape == SignalValueShape::EfgT2;
+        const QString conceptKey = QString::fromLatin1(group.conceptKey);
+        const bool rawRingKernel = conceptKey == QStringLiteral("bs_shielding")
+                                   || conceptKey == QStringLiteral("hm_shielding");
+        const UnitSpec groupUnits = rawRingKernel ? ringKernel : shielding;
         add(descriptors,
             makeDescriptor(group.id,
                            group.conceptKey,
@@ -402,10 +410,10 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                            SignalAxis::Atom,
                            SignalAxis::Atom,
                            group.shape,
-                           shielding,
+                           groupUnits,
                            efgOnly ? efgStripModes() : tensorStripModes(),
                            efgOnly ? efgStaticModes() : tensorStaticModes(),
-                           efgOnly ? efgChannels(shielding) : sphericalTensorChannels(shielding),
+                           efgOnly ? efgChannels(shielding) : sphericalTensorChannels(groupUnits),
                            group.path,
                            true));
     }
@@ -449,8 +457,8 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
         UnitSpec units;
     } rollups[] = {
         {"h5:bond_length_stats", "bond_length.stats", "topology", "Bond length statistics", "/trajectory/bond_length_stats", SignalAxis::Bond, length},
-        {"h5:bs_welford", "bs_shielding.stats", "biot_savart", "Biot-Savart Welford rollup", "/trajectory/bs_welford", SignalAxis::Atom, shielding},
-        {"h5:hm_welford", "hm_shielding.stats", "haigh_mallion", "Haigh-Mallion Welford rollup", "/trajectory/hm_welford", SignalAxis::Atom, shielding},
+        {"h5:bs_welford", "bs_shielding.stats", "biot_savart", "Biot-Savart unit-current Welford rollup", "/trajectory/bs_welford", SignalAxis::Atom, ringKernel},
+        {"h5:hm_welford", "hm_shielding.stats", "haigh_mallion", "Haigh-Mallion unit-current Welford rollup", "/trajectory/hm_welford", SignalAxis::Atom, ringKernel},
         {"h5:mc_welford", "mc_shielding.stats", "mcconnell", "McConnell Welford rollup", "/trajectory/mc_welford", SignalAxis::Atom, shielding},
         {"h5:sasa_welford", "atom_sasa.stats", "sasa", "SASA Welford rollup", "/trajectory/sasa_welford", SignalAxis::Atom, unit(UnitDimension::Length, "A^2", "A^2")},
         {"h5:eeq_welford", "eeq_charges.stats", "eeq", "EEQ charge Welford rollup", "/trajectory/eeq_welford", SignalAxis::Atom, charge},
@@ -461,7 +469,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
         {"h5:aimnet2_charge_response_gradient_welford", "aimnet2_charge_response_gradient.stats", "aimnet2", "AIMNet2 CRG Welford rollup", "/trajectory/aimnet2_charge_response_gradient_welford", SignalAxis::Atom, charge},
         {"h5:hydration_shell_welford", "hydration_shell.stats", "hydration", "Hydration shell Welford rollup", "/trajectory/hydration_shell_welford", SignalAxis::Atom, none},
         {"h5:hydration_geometry_welford", "hydration_geometry.stats", "hydration", "Hydration geometry Welford rollup", "/trajectory/hydration_geometry_welford", SignalAxis::Atom, none},
-        {"h5:bs_t0_autocorrelation", "bs_shielding.autocorrelation", "biot_savart", "Biot-Savart T0 autocorrelation", "/trajectory/bs_t0_autocorrelation", SignalAxis::Atom, shielding},
+        {"h5:bs_t0_autocorrelation", "bs_shielding.autocorrelation", "biot_savart", "Biot-Savart unit-current T0 autocorrelation", "/trajectory/bs_t0_autocorrelation", SignalAxis::Atom, ringKernel},
     };
 
     for (const RollupGroup& group : rollups) {
@@ -919,8 +927,8 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
         const char* label;
         UnitSpec units;
     } tensorFields[] = {
-        {"bs_shielding", "bs_shielding", "biot_savart", "Biot-Savart shielding", ringShielding},
-        {"hm_shielding", "hm_shielding", "haigh_mallion", "Haigh-Mallion shielding", ringShielding},
+        {"bs_shielding", "bs_shielding", "biot_savart", "Biot-Savart unit-current kernel", ringShielding},
+        {"hm_shielding", "hm_shielding", "haigh_mallion", "Haigh-Mallion unit-current kernel", ringShielding},
         {"mc_shielding", "mc_shielding", "mcconnell", "McConnell shielding", shielding},
         // coulomb_shielding + mopac_coulomb_shielding are 2e-only (traceless) --
         // added after this loop with T2-only modes (see tracelessTensorStripModes).
@@ -959,10 +967,10 @@ void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
         const char* label;
         UnitSpec units;
     } perClassFields[] = {
-        {"bs_per_type_T0", "bs_per_type_T0", "biot_savart", "Biot-Savart per-type T0", ringShielding},
-        {"bs_per_type_T2", "bs_per_type_T2", "biot_savart", "Biot-Savart per-type T2", ringShielding},
-        {"hm_per_type_T0", "hm_per_type_T0", "haigh_mallion", "Haigh-Mallion per-type T0", ringShielding},
-        {"hm_per_type_T2", "hm_per_type_T2", "haigh_mallion", "Haigh-Mallion per-type T2", ringShielding},
+        {"bs_per_type_T0", "bs_per_type_T0", "biot_savart", "Biot-Savart per-type unit-current T0", ringShielding},
+        {"bs_per_type_T2", "bs_per_type_T2", "biot_savart", "Biot-Savart per-type unit-current T2", ringShielding},
+        {"hm_per_type_T0", "hm_per_type_T0", "haigh_mallion", "Haigh-Mallion per-type unit-current T0", ringShielding},
+        {"hm_per_type_T2", "hm_per_type_T2", "haigh_mallion", "Haigh-Mallion per-type unit-current T2", ringShielding},
         {"pq_per_type_T0", "pq_per_type_T0", "pi_quadrupole", "Pi quadrupole per-type T0", ringShielding},
         {"disp_per_type_T0", "disp_per_type_T0", "dispersion", "Dispersion per-type T0", ringShielding},
         {"disp_per_type_T2", "disp_per_type_T2", "dispersion", "Dispersion per-type T2", ringShielding},
@@ -1069,6 +1077,50 @@ void addOrcaDft(QVector<SignalDescriptor>& descriptors) {
                        GapReason::None));
     add(descriptors, makeDescriptor("orca_dft:diamagnetic", "orca_diamagnetic", SignalSourceKind::OrcaDftFrame, "ORCA", "orca", "ORCA diamagnetic shielding", SourceResidency::FrameLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding), "orca_diamagnetic", false, true));
     add(descriptors, makeDescriptor("orca_dft:paramagnetic", "orca_paramagnetic", SignalSourceKind::OrcaDftFrame, "ORCA", "orca", "ORCA paramagnetic shielding", SourceResidency::FrameLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding), "orca_paramagnetic", false, true));
+}
+
+void addExperimentalShieldingMl(QVector<SignalDescriptor>& descriptors) {
+    const UnitSpec shielding = unit(UnitDimension::MagneticShielding, "ppm", "ppm");
+    add(descriptors,
+        makeDescriptor("ml:experimental_shielding_t2",
+                       "experimental_shielding_ml.t2",
+                       SignalSourceKind::ExperimentalShieldingMl,
+                       "Experimental Shielding ML",
+                       "experimental_shielding_ml",
+                       "Experimental ML shielding tensor",
+                       SourceResidency::Derived,
+                       SignalAxis::Atom,
+                       SignalAxis::Atom,
+                       SignalValueShape::EfgT2,
+                       shielding,
+                       efgStripModes(),
+                       efgStaticModes(),
+                       efgChannels(shielding),
+                       "experimental_shielding_ml:t2",
+                       false,
+                       true,
+                       SampleStatus::Gap,
+                       GapReason::Pending));
+    add(descriptors,
+        makeDescriptor("ml:experimental_shielding_t2_norm",
+                       "experimental_shielding_ml.t2_norm",
+                       SignalSourceKind::ExperimentalShieldingMl,
+                       "Experimental Shielding ML",
+                       "experimental_shielding_ml",
+                       "Experimental ML shielding |T2|",
+                       SourceResidency::Derived,
+                       SignalAxis::Atom,
+                       SignalAxis::Atom,
+                       SignalValueShape::Scalar,
+                       shielding,
+                       scalarStripModes(),
+                       scalarStaticModes(),
+                       scalarChannels(shielding),
+                       "experimental_shielding_ml:t2_norm",
+                       false,
+                       true,
+                       SampleStatus::Gap,
+                       GapReason::Pending));
 }
 
 void addTopology(QVector<SignalDescriptor>& descriptors) {
@@ -1262,6 +1314,7 @@ QVector<SignalDescriptor> TrajectorySignalCatalog::BuildDescriptorCatalog() {
     addDenseH5(descriptors);
     addFrameNpy(descriptors);
     addOrcaDft(descriptors);
+    addExperimentalShieldingMl(descriptors);
     addTopology(descriptors);
     addDerivedGeometry(descriptors);
     addSelectionEvents(descriptors);

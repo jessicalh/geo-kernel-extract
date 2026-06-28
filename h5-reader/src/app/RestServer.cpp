@@ -1,13 +1,16 @@
 #include "RestServer.h"
 
 #include "AngleCollarActor.h"
+#include "AtomTrackOverlay.h"
 #include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
 #include "DashboardDisplayController.h"
 #include "DashboardSelectionController.h"
+#include "HeroshotButterflyOverlay.h"
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
 #include "NewmanProjection.h"
+#include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
 #include "SignalDisplayDialog.h"
@@ -19,6 +22,7 @@
 #include "../diagnostics/ThreadGuard.h"
 #include "../io/QtProteinLoader.h"
 #include "../model/AtomSelection.h"
+#include "../model/ConformationGeometry.h"
 #include "../model/Conformation.h"
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignal.h"
@@ -26,6 +30,8 @@
 #include "../model/DisplayPolicy.h"
 #include "../model/MetricTaxonomy.h"
 #include "../model/QtProtein.h"
+#include "../model/RingCurrentFaceCollar.h"
+#include "../model/RingNullCollar.h"
 #include "../model/TrajectoryConformation.h"
 #include "../model/VisualizationRegistry.h"
 #include "../model/TrajectorySignalCatalog.h"
@@ -63,6 +69,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -126,6 +133,523 @@ QJsonArray vec3FromRaw(const double raw[3]) {
 
 QJsonArray vec3FromEigen(const model::Vec3& v) {
     return QJsonArray{v.x(), v.y(), v.z()};
+}
+
+QJsonValue finiteJson(double value) {
+    return std::isfinite(value) ? QJsonValue(value) : QJsonValue(QJsonValue::Null);
+}
+
+QJsonArray mat3ToJson(const model::Mat3& m) {
+    QJsonArray rows;
+    for (int r = 0; r < 3; ++r)
+        rows.append(QJsonArray{m(r, 0), m(r, 1), m(r, 2)});
+    return rows;
+}
+
+QJsonArray array3ToJson(const std::array<double, 3>& values) {
+    return QJsonArray{values[0], values[1], values[2]};
+}
+
+QJsonArray array5ToJson(const std::array<double, 5>& values) {
+    return QJsonArray{values[0], values[1], values[2], values[3], values[4]};
+}
+
+QJsonArray intVectorToJson(const std::vector<int>& values) {
+    QJsonArray out;
+    for (int value : values)
+        out.append(value);
+    return out;
+}
+
+QJsonArray doubleVectorToJson(const std::vector<double>& values) {
+    QJsonArray out;
+    for (double value : values)
+        out.append(finiteJson(value));
+    return out;
+}
+
+struct RingLocalFrame {
+    bool valid = false;
+    model::RingGeometry geometry;
+    model::Vec3 u = model::Vec3::Zero();
+    model::Vec3 v = model::Vec3::Zero();
+    model::Vec3 n = model::Vec3::Zero();
+};
+
+RingLocalFrame ringLocalFrameAt(const model::Conformation& conf,
+                                std::size_t ringIdx,
+                                std::size_t frame) {
+    RingLocalFrame out;
+    const std::vector<model::Vec3> verts = model::RingVertices(conf, ringIdx, frame);
+    out.geometry = model::FitRingGeometry(verts);
+
+    const double nNorm = out.geometry.normal.norm();
+    if (verts.empty() || out.geometry.radius < 1e-9 || nNorm < 1e-12)
+        return out;
+
+    out.n = out.geometry.normal / nNorm;
+    for (const model::Vec3& vert : verts) {
+        model::Vec3 radial = vert - out.geometry.center;
+        radial -= out.n * radial.dot(out.n);
+        const double rNorm = radial.norm();
+        if (rNorm > 1e-9) {
+            out.u = radial / rNorm;
+            break;
+        }
+    }
+    if (out.u.norm() < 1e-9) {
+        const model::RingOrthoBasis fallback = model::OrthoBasisFromNormal(out.n);
+        out.u = fallback.u;
+    }
+    out.v = out.n.cross(out.u);
+    const double vNorm = out.v.norm();
+    if (vNorm < 1e-12)
+        return out;
+    out.v /= vNorm;
+    out.u = out.v.cross(out.n).normalized();
+    out.valid = true;
+    return out;
+}
+
+model::Vec3 toRingLocal(const RingLocalFrame& frame, const model::Vec3& world) {
+    const model::Vec3 delta = world - frame.geometry.center;
+    return model::Vec3(delta.dot(frame.u), delta.dot(frame.v), delta.dot(frame.n));
+}
+
+model::Vec3 fromRingLocal(const RingLocalFrame& frame, const model::Vec3& local) {
+    return frame.geometry.center
+        + frame.u * local.x()
+        + frame.v * local.y()
+        + frame.n * local.z();
+}
+
+double ringCurrentExpectedValue(const model::RingNullMeasurement& m) {
+    if (!m.valid || m.distanceA <= 1e-12)
+        return std::numeric_limits<double>::quiet_NaN();
+    return m.angularFactor / (m.distanceA * m.distanceA * m.distanceA);
+}
+
+QJsonObject sphericalTensorToJson(const model::SphericalTensor& tensor) {
+    return QJsonObject{
+        {"T0", finiteJson(tensor.T0)},
+        {"T1", array3ToJson(tensor.T1)},
+        {"T2", array5ToJson(tensor.T2)},
+        {"T2_magnitude", finiteJson(tensor.T2Magnitude())},
+    };
+}
+
+QJsonObject efgToJson(const model::QtEfg& efg) {
+    return QJsonObject{
+        {"T2", array5ToJson(efg.t2)},
+        {"T2_magnitude", finiteJson(efg.t2Magnitude())},
+    };
+}
+
+QJsonObject mopacScalarsToJson(const model::MopacScalars& scalars) {
+    return QJsonObject{
+        {"charge", finiteJson(scalars.charge)},
+        {"sPop", finiteJson(scalars.sPop)},
+        {"pPop", finiteJson(scalars.pPop)},
+        {"valency", finiteJson(scalars.valency)},
+    };
+}
+
+QJsonObject coulombScalarsToJson(const model::CoulombScalars& scalars) {
+    return QJsonObject{
+        {"E_magnitude", finiteJson(scalars.E_magnitude)},
+        {"E_bond_proj", finiteJson(scalars.E_bond_proj)},
+        {"E_backbone_signed_projection", finiteJson(scalars.E_backbone_frac)},
+        {"aromatic_E_magnitude", finiteJson(scalars.aromatic_E_magnitude)},
+    };
+}
+
+QJsonObject mcScalarsToJson(const model::McConnellScalars& scalars) {
+    return QJsonObject{
+        {"co_sum", finiteJson(scalars.co_sum)},
+        {"cn_sum", finiteJson(scalars.cn_sum)},
+        {"sidechain_sum", finiteJson(scalars.sidechain_sum)},
+        {"aromatic_sum", finiteJson(scalars.aromatic_sum)},
+        {"nearest_CO_dist", finiteJson(scalars.nearest_CO_dist)},
+        {"nearest_CN_dist", finiteJson(scalars.nearest_CN_dist)},
+        {"has_nearest_CO", scalars.hasNearestCO()},
+        {"has_nearest_CN", scalars.hasNearestCN()},
+    };
+}
+
+QJsonArray mcCategoryT2ToJson(const model::PerBondCategoryT2& categories) {
+    static constexpr std::array<const char*, model::kMcConnellCategoryCount> kNames{
+        "backbone_total",
+        "sidechain_total",
+        "aromatic_total",
+        "co_nearest",
+        "cn_nearest",
+    };
+    QJsonArray out;
+    for (int i = 0; i < model::kMcConnellCategoryCount; ++i) {
+        const auto& values = categories.byCategory[static_cast<std::size_t>(i)];
+        double magnitude = 0.0;
+        for (double value : values)
+            magnitude += value * value;
+        out.append(QJsonObject{
+            {"category", QString::fromLatin1(kNames[static_cast<std::size_t>(i)])},
+            {"T2", array5ToJson(values)},
+            {"T2_magnitude", finiteJson(std::sqrt(magnitude))},
+        });
+    }
+    return out;
+}
+
+QJsonObject mopacSignalsToJson(const model::RingNullMopacSignals& observed) {
+    QJsonObject charge{{"present", observed.chargePresent}};
+    if (observed.chargePresent)
+        charge.insert(QStringLiteral("value"), finiteJson(observed.charge));
+
+    QJsonObject core{{"present", observed.coreScalarsPresent}};
+    if (observed.coreScalarsPresent)
+        core.insert(QStringLiteral("scalars"), mopacScalarsToJson(observed.coreScalars));
+
+    QJsonObject coulombE{{"present", observed.coulombEPresent}};
+    if (observed.coulombEPresent) {
+        coulombE.insert(QStringLiteral("vector"), vec3FromEigen(observed.coulombE));
+        coulombE.insert(QStringLiteral("magnitude"), finiteJson(observed.coulombE.norm()));
+    }
+
+    QJsonObject coulombScalars{{"present", observed.coulombScalarsPresent}};
+    if (observed.coulombScalarsPresent)
+        coulombScalars.insert(QStringLiteral("scalars"),
+                              coulombScalarsToJson(observed.coulombScalars));
+
+    QJsonObject coulombShielding{{"present", observed.coulombShieldingPresent}};
+    if (observed.coulombShieldingPresent)
+        coulombShielding.insert(QStringLiteral("tensor"),
+                                sphericalTensorToJson(observed.coulombShielding));
+
+    QJsonObject efgBackbone{{"present", observed.coulombEfgBackbonePresent}};
+    if (observed.coulombEfgBackbonePresent)
+        efgBackbone.insert(QStringLiteral("efg"), efgToJson(observed.coulombEfgBackbone));
+
+    QJsonObject efgAromatic{{"present", observed.coulombEfgAromaticPresent}};
+    if (observed.coulombEfgAromaticPresent)
+        efgAromatic.insert(QStringLiteral("efg"), efgToJson(observed.coulombEfgAromatic));
+
+    QJsonObject mcShielding{{"present", observed.mcShieldingPresent}};
+    if (observed.mcShieldingPresent)
+        mcShielding.insert(QStringLiteral("tensor"),
+                           sphericalTensorToJson(observed.mcShielding));
+
+    QJsonObject mcCategory{{"present", observed.mcCategoryT2Present}};
+    if (observed.mcCategoryT2Present)
+        mcCategory.insert(QStringLiteral("categories"),
+                          mcCategoryT2ToJson(observed.mcCategoryT2));
+
+    QJsonObject mcScalars{{"present", observed.mcScalarsPresent}};
+    if (observed.mcScalarsPresent)
+        mcScalars.insert(QStringLiteral("scalars"), mcScalarsToJson(observed.mcScalars));
+
+    return QJsonObject{
+        {"present", observed.present},
+        {"charge", charge},
+        {"core", core},
+        {"coulomb_E", coulombE},
+        {"coulomb_scalars", coulombScalars},
+        {"coulomb_shielding", coulombShielding},
+        {"coulomb_efg_backbone", efgBackbone},
+        {"coulomb_efg_aromatic", efgAromatic},
+        {"mc_shielding", mcShielding},
+        {"mc_category_T2", mcCategory},
+        {"mc_scalars", mcScalars},
+    };
+}
+
+QJsonObject csaShapeToJson(const model::CsaShape& shape) {
+    QJsonObject out{{"valid", shape.valid}};
+    if (!shape.valid)
+        return out;
+    out.insert(QStringLiteral("sigma_iso"), finiteJson(shape.sigma_iso));
+    out.insert(QStringLiteral("span"), finiteJson(shape.span));
+    out.insert(QStringLiteral("eta"), finiteJson(shape.eta));
+    out.insert(QStringLiteral("skew"), finiteJson(shape.skew));
+    out.insert(QStringLiteral("principal_values"), vec3FromEigen(shape.principal_values));
+    out.insert(QStringLiteral("haeberlen_values"), vec3FromEigen(shape.haeberlen_values));
+    return out;
+}
+
+QJsonObject dftShieldingToJson(const model::DftAtomShielding& shielding) {
+    return QJsonObject{
+        {"element", QString::fromLatin1(model::SymbolForElement(shielding.element))},
+        {"total", sphericalTensorToJson(shielding.total)},
+        {"diamagnetic", sphericalTensorToJson(shielding.dia)},
+        {"paramagnetic", sphericalTensorToJson(shielding.para)},
+        {"total_raw", mat3ToJson(shielding.total_raw)},
+        {"diamagnetic_raw", mat3ToJson(shielding.dia_raw)},
+        {"paramagnetic_raw", mat3ToJson(shielding.para_raw)},
+        {"orca_coord_A", vec3FromEigen(shielding.orca_coord)},
+    };
+}
+
+QJsonObject ringNullMeasurementToJson(const model::RingNullMeasurement& m) {
+    QJsonObject out{
+        {"valid", m.valid},
+        {"side", QString::fromLatin1(model::RingNullSideName(m.side))},
+        {"distance_A", finiteJson(m.distanceA)},
+        {"axial_A", finiteJson(m.axialA)},
+        {"abs_axial_A", finiteJson(m.absAxialA)},
+        {"radial_A", finiteJson(m.radialA)},
+        {"null_radius_A", finiteJson(m.nullRadiusA)},
+        {"null_margin_A", finiteJson(m.nullMarginA)},
+        {"angle_deg", finiteJson(m.angleDeg)},
+        {"angular_factor", finiteJson(m.angularFactor)},
+    };
+    out.insert(QStringLiteral("atom_position"), vec3FromEigen(m.atomPosition));
+    out.insert(QStringLiteral("ring_center"), vec3FromEigen(m.ring.center));
+    out.insert(QStringLiteral("ring_normal"), vec3FromEigen(m.ring.normal));
+    out.insert(QStringLiteral("ring_radius_A"), finiteJson(m.ring.radius));
+    return out;
+}
+
+QJsonObject ringNullAtomIdentityToJson(const model::RingNullAtomIdentity& identity) {
+    return QJsonObject{
+        {"atom_label_amber", identity.atomLabelAmber},
+        {"atom_label_iupac", identity.atomLabelIupac},
+        {"atom_label_bmrb", identity.atomLabelBmrb},
+        {"residue_index", identity.residueIndex},
+        {"residue_number", identity.residueNumber},
+        {"residue_label_amber", identity.residueLabelAmber},
+        {"residue_label_iupac", identity.residueLabelIupac},
+        {"residue_label_bmrb", identity.residueLabelBmrb},
+    };
+}
+
+QJsonObject ringNullRingIdentityToJson(const model::RingNullRingIdentity& identity) {
+    return QJsonObject{
+        {"type_name", identity.typeName},
+        {"type_index", identity.typeIndex},
+        {"kind", identity.kind},
+        {"parent_residue_index", identity.parentResidueIndex},
+        {"parent_residue_number", identity.parentResidueNumber},
+        {"parent_residue_label_amber", identity.parentResidueLabelAmber},
+        {"parent_residue_label_iupac", identity.parentResidueLabelIupac},
+        {"parent_residue_label_bmrb", identity.parentResidueLabelBmrb},
+        {"fused_partner_ring_id", identity.fusedPartnerRingId},
+        {"atom_indices", intVectorToJson(identity.atomIndices)},
+    };
+}
+
+QJsonObject ringNullEventFrameToJson(const model::RingNullEventFrame& frame) {
+    return QJsonObject{
+        {"phase_coordinate", QStringLiteral("signed_null_margin_A")},
+        {"zero_definition", QStringLiteral("linear interpolation to null_margin_A = 0")},
+        {"from_signed_null_margin_A", finiteJson(frame.fromSignedNullMarginA)},
+        {"to_signed_null_margin_A", finiteJson(frame.toSignedNullMarginA)},
+        {"signed_null_margin_step_A", finiteJson(frame.signedNullMarginStepA)},
+        {"zero_fraction", finiteJson(frame.zeroFraction)},
+        {"zero_time_ps", finiteJson(frame.zeroTimePs)},
+        {"zero_atom_position", vec3FromEigen(frame.zeroAtomPosition)},
+    };
+}
+
+QJsonObject ringNullMotionToJson(const model::RingNullMotion& motion) {
+    return QJsonObject{
+        {"world_vector_A", vec3FromEigen(motion.worldVectorA)},
+        {"distance_A", finiteJson(motion.distanceA)},
+        {"time_step_ps", finiteJson(motion.timeStepPs)},
+        {"radial_change_A", finiteJson(motion.radialChangeA)},
+        {"abs_axial_change_A", finiteJson(motion.absAxialChangeA)},
+        {"distance_change_A", finiteJson(motion.distanceChangeA)},
+        {"angle_change_deg", finiteJson(motion.angleChangeDeg)},
+        {"angular_factor_change", finiteJson(motion.angularFactorChange)},
+    };
+}
+
+QJsonObject ringNullSnapshotToJson(const model::RingNullOrcaSnapshot& snapshot) {
+    return QJsonObject{
+        {"frame", snapshot.frameIndex},
+        {"time_ps", finiteJson(snapshot.timePs)},
+        {"null", ringNullMeasurementToJson(snapshot.null)},
+        {"orca", dftShieldingToJson(snapshot.shielding)},
+        {"shape", QJsonObject{
+            {"total", csaShapeToJson(snapshot.totalShape)},
+            {"diamagnetic", csaShapeToJson(snapshot.diaShape)},
+            {"paramagnetic", csaShapeToJson(snapshot.paraShape)},
+        }},
+    };
+}
+
+QJsonObject ringNullSignalStampToJson(const model::RingNullSignalStamp& stamp) {
+    QJsonObject orca{{"present", stamp.orcaPresent}};
+    if (stamp.orcaPresent) {
+        orca.insert(QStringLiteral("shielding"), dftShieldingToJson(stamp.orca));
+        orca.insert(QStringLiteral("shape"), QJsonObject{
+            {"total", csaShapeToJson(stamp.orcaTotalShape)},
+            {"diamagnetic", csaShapeToJson(stamp.orcaDiaShape)},
+            {"paramagnetic", csaShapeToJson(stamp.orcaParaShape)},
+        });
+    }
+    return QJsonObject{
+        {"frame", stamp.frameIndex},
+        {"time_ps", finiteJson(stamp.timePs)},
+        {"time_offset_from_zero_ps", finiteJson(stamp.timeOffsetFromZeroPs)},
+        {"dft_ordinal_offset_from_zero", finiteJson(stamp.dftOrdinalOffsetFromZero)},
+        {"null", ringNullMeasurementToJson(stamp.null)},
+        {"orca", orca},
+        {"snapshot_present", stamp.snapshotPresent},
+        {"mopac", mopacSignalsToJson(stamp.mopac)},
+    };
+}
+
+QJsonArray ringNullSignalStampsToJson(const std::vector<model::RingNullSignalStamp>& stamps) {
+    QJsonArray out;
+    for (const model::RingNullSignalStamp& stamp : stamps)
+        out.append(ringNullSignalStampToJson(stamp));
+    return out;
+}
+
+QJsonObject ringNullEntryToJson(const model::RingNullCollarEntry& entry) {
+    return QJsonObject{
+        {"atom", static_cast<qint64>(entry.atom)},
+        {"ring", static_cast<qint64>(entry.ring)},
+        {"atom_identity", ringNullAtomIdentityToJson(entry.atomIdentity)},
+        {"ring_identity", ringNullRingIdentityToJson(entry.ringIdentity)},
+        {"event_frame", ringNullEventFrameToJson(entry.eventFrame)},
+        {"motion", ringNullMotionToJson(entry.motion)},
+        {"from", ringNullSnapshotToJson(entry.from)},
+        {"to", ringNullSnapshotToJson(entry.to)},
+        {"signal_stamps", ringNullSignalStampsToJson(entry.signalStamps)},
+    };
+}
+
+QJsonObject proteinAtomIdentityToJson(const model::QtProtein& protein, std::size_t atom) {
+    QJsonObject out{
+        {"atom_label_amber", protein.atomLabel(atom, model::NamingConvention::Amber)},
+        {"atom_label_iupac", protein.atomLabel(atom, model::NamingConvention::Iupac)},
+        {"atom_label_bmrb", protein.atomLabel(atom, model::NamingConvention::Bmrb)},
+    };
+    const model::QtAtom& qtAtom = protein.atom(atom);
+    out.insert(QStringLiteral("residue_index"), qtAtom.residueIndex);
+    if (qtAtom.residueIndex >= 0 &&
+        static_cast<std::size_t>(qtAtom.residueIndex) < protein.residueCount()) {
+        const std::size_t residue = static_cast<std::size_t>(qtAtom.residueIndex);
+        out.insert(QStringLiteral("residue_number"),
+                   protein.residue(residue).address.residueNumber);
+        out.insert(QStringLiteral("residue_label_amber"),
+                   protein.residueLabel(residue, model::NamingConvention::Amber,
+                                        model::NamingSource::Verbatim));
+        out.insert(QStringLiteral("residue_label_iupac"),
+                   protein.residueLabel(residue, model::NamingConvention::Iupac,
+                                        model::NamingSource::Verbatim));
+        out.insert(QStringLiteral("residue_label_bmrb"),
+                   protein.residueLabel(residue, model::NamingConvention::Bmrb,
+                                        model::NamingSource::Verbatim));
+    }
+    return out;
+}
+
+QJsonObject proteinRingIdentityToJson(const model::QtProtein& protein, std::size_t ring) {
+    const model::QtRing& qtRing = protein.ring(ring);
+    QJsonObject out{
+        {"type_name", QString::fromLatin1(qtRing.TypeName())},
+        {"type_index", qtRing.TypeIndexAsInt()},
+        {"kind", qtRing.IsAromatic() ? QStringLiteral("aromatic") : QStringLiteral("saturated")},
+        {"parent_residue_index", qtRing.parentResidueIndex},
+        {"parent_residue_number", qtRing.parentResidueNumber},
+        {"fused_partner_ring_id", qtRing.fusedPartnerRingId},
+    };
+    QJsonArray atomIndices;
+    for (int32_t atomIndex : qtRing.atomIndices)
+        atomIndices.append(atomIndex);
+    out.insert(QStringLiteral("atom_indices"), atomIndices);
+    if (qtRing.parentResidueIndex >= 0 &&
+        static_cast<std::size_t>(qtRing.parentResidueIndex) < protein.residueCount()) {
+        const std::size_t residue = static_cast<std::size_t>(qtRing.parentResidueIndex);
+        out.insert(QStringLiteral("parent_residue_label_amber"),
+                   protein.residueLabel(residue, model::NamingConvention::Amber,
+                                        model::NamingSource::Verbatim));
+        out.insert(QStringLiteral("parent_residue_label_iupac"),
+                   protein.residueLabel(residue, model::NamingConvention::Iupac,
+                                        model::NamingSource::Verbatim));
+        out.insert(QStringLiteral("parent_residue_label_bmrb"),
+                   protein.residueLabel(residue, model::NamingConvention::Bmrb,
+                                        model::NamingSource::Verbatim));
+    }
+    return out;
+}
+
+QJsonObject ringCurrentFitToJson(const model::RingCurrentLinearFit& fit) {
+    return QJsonObject{
+        {"valid", fit.valid},
+        {"sample_count", fit.sampleCount},
+        {"intercept", finiteJson(fit.intercept)},
+        {"scale", finiteJson(fit.scale)},
+        {"r2", finiteJson(fit.r2)},
+        {"correlation", finiteJson(fit.correlation)},
+        {"sse", finiteJson(fit.sse)},
+        {"sst", finiteJson(fit.sst)},
+        {"null_shift_count", fit.nullShiftCount},
+        {"null_median_r2", finiteJson(fit.nullMedianR2)},
+        {"null_max_r2", finiteJson(fit.nullMaxR2)},
+        {"null_ge_real_fraction", finiteJson(fit.nullGeRealFraction)},
+        {"null_r2", doubleVectorToJson(fit.nullR2)},
+    };
+}
+
+QJsonObject ringCurrentSampleToJson(const model::RingCurrentFaceSample& sample) {
+    return QJsonObject{
+        {"frame", sample.frameIndex},
+        {"time_ps", finiteJson(sample.timePs)},
+        {"expected_relationship_value", finiteJson(sample.expectedRelationshipValue)},
+        {"distance_only_value", finiteJson(sample.distanceOnlyValue)},
+        {"angular_only_value", finiteJson(sample.angularOnlyValue)},
+        {"biot_savart", sphericalTensorToJson(sample.biotSavart)},
+        {"geometry", ringNullMeasurementToJson(sample.geometry)},
+        {"orca", dftShieldingToJson(sample.orca)},
+    };
+}
+
+QJsonArray ringCurrentSamplesToJson(const std::vector<model::RingCurrentFaceSample>& samples) {
+    QJsonArray out;
+    for (const model::RingCurrentFaceSample& sample : samples)
+        out.append(ringCurrentSampleToJson(sample));
+    return out;
+}
+
+QJsonObject ringCurrentEntryToJson(const model::QtProtein& protein,
+                                   const model::RingCurrentFaceEntry& entry,
+                                   bool includeSamples) {
+    QJsonObject out{
+        {"atom", static_cast<qint64>(entry.atom)},
+        {"ring", static_cast<qint64>(entry.ring)},
+        {"atom_identity", proteinAtomIdentityToJson(protein, entry.atom)},
+        {"ring_identity", proteinRingIdentityToJson(protein, entry.ring)},
+        {"sample_count", static_cast<int>(entry.samples.size())},
+        {"hard_lobe_crossing", entry.hardLobeCrossing},
+        {"positive_template_samples", entry.positiveTemplateSamples},
+        {"negative_template_samples", entry.negativeTemplateSamples},
+        {"template_sign_changes", entry.templateSignChanges},
+        {"min_expected_relationship_value", finiteJson(entry.minTemplate)},
+        {"max_expected_relationship_value", finiteJson(entry.maxTemplate)},
+        {"expected_relationship_span", finiteJson(entry.templateSpan)},
+        {"fits", QJsonObject{
+            {"orca_total_T0", ringCurrentFitToJson(entry.orcaTotalT0)},
+            {"orca_diamagnetic_T0", ringCurrentFitToJson(entry.orcaDiamagneticT0)},
+            {"orca_paramagnetic_T0", ringCurrentFitToJson(entry.orcaParamagneticT0)},
+            {"orca_total_T2_magnitude", ringCurrentFitToJson(entry.orcaTotalT2Magnitude)},
+            {"biot_savart_T0_vs_orca_total_T0",
+             ringCurrentFitToJson(entry.biotSavartOrcaTotalT0)},
+        }},
+        {"predictor_diagnostics", QJsonObject{
+            {"expected_relationship_value_vs_biot_savart_T0",
+             ringCurrentFitToJson(entry.expectedRelationshipBiotSavartT0)},
+        }},
+        {"confound_fits", QJsonObject{
+            {"distance_only_orca_total_T0",
+             ringCurrentFitToJson(entry.distanceOnlyOrcaTotalT0)},
+            {"angular_only_orca_total_T0",
+             ringCurrentFitToJson(entry.angularOnlyOrcaTotalT0)},
+        }},
+    };
+    if (includeSamples)
+        out.insert(QStringLiteral("samples"), ringCurrentSamplesToJson(entry.samples));
+    return out;
 }
 
 std::optional<std::size_t> residueIndexFromRequest(const model::QtProtein& protein,
@@ -764,6 +1288,9 @@ quint16 RestServer::listen(quint16 port) {
     }
 
     server_ = std::make_unique<QHttpServer>(this);
+    QHttpServerConfiguration config = server_->configuration();
+    config.setKeepAliveTimeout(std::chrono::seconds(300));
+    server_->setConfiguration(config);
     registerRoutes();
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
@@ -1072,8 +1599,8 @@ void RestServer::registerRoutes() {
 
     // ---- overlay visibility (automation / snapshot harness) -------------
     //
-    // POST /overlay {"name": "ribbon"|"rings"|"butterfly"|"bfield"|"shadow",
-    //                "visible": bool}
+    // POST /overlay {"name": "ribbon"|"rings"|"butterfly"|"nullcone"|"bfield"
+    //                         |"shadow", "visible": bool}
     // Drives the same toolbar toggle path a human click would, so the kernel
     // overlays (butterfly isosurfaces, B-field streamlines) get their per-frame
     // refresh and the toolbar checkbox stays in sync. Lets the headless
@@ -1096,7 +1623,7 @@ void RestServer::registerRoutes() {
         if (!readerWindow_->setOverlayVisible(name, visible))
             return errorResponse(
                 QStringLiteral("unknown overlay \"%1\" "
-                               "(ribbon|rings|butterfly|bfield|shadow)").arg(name),
+                               "(ribbon|rings|butterfly|nullcone|bfield|shadow)").arg(name),
                 SC::BadRequest);
         return QHttpServerResponse(SC::NoContent);
     });
@@ -1135,6 +1662,33 @@ void RestServer::registerRoutes() {
     // reach), peak = amplitude gain (1.0 = true near-ring physics). Either or
     // both per call, so the tuning loop can sweep one at a time. (Contour level
     // is the separate /field/threshold knob.)
+    // ---- field-grid isosurface opacity (live tuning) --------------------
+    //
+    // POST /field/opacity {"opacity": number 0..1}
+    // Sets the butterfly isosurface opacity independently from the null cone.
+    // This is a heroshot tuning knob for making the field a thin context layer.
+    server_->route(QStringLiteral("/field/opacity"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->fieldGridOverlay())
+            return errorResponse(QStringLiteral("field-grid overlay not available"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains(QStringLiteral("opacity")) ||
+            !body.value(QStringLiteral("opacity")).isDouble()) {
+            return errorResponse(QStringLiteral("body must be {\"opacity\": number}"),
+                                 SC::BadRequest);
+        }
+        const double opacity = body.value(QStringLiteral("opacity")).toDouble();
+        if (opacity < 0.0 || opacity > 1.0)
+            return errorResponse(QStringLiteral("opacity must be between 0 and 1"),
+                                 SC::BadRequest);
+        scene_->fieldGridOverlay()->setOpacity(opacity);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
     server_->route(QStringLiteral("/field/gaussian"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
@@ -1171,6 +1725,373 @@ void RestServer::registerRoutes() {
                 SC::BadRequest);
         return QHttpServerResponse(SC::NoContent);
     });
+
+    // ---- field null cone: magic-angle sign boundary ---------------------
+    //
+    // POST /field/null_cone {"visible"?: bool, "opacity"?: 0..1,
+    //                         "length"?: Angstrom}
+    // The null cone is lightweight geometry on the same ring-field overlay:
+    // the dipolar magic-angle boundary where the ring-current sign flips.
+    // It is intentionally independent of the expensive butterfly isosurface,
+    // but shares selected-ring filtering.
+    server_->route(QStringLiteral("/field/null_cone"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->fieldGridOverlay())
+            return errorResponse(QStringLiteral("field-grid overlay not available"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+
+        bool applied = false;
+        QtFieldGridOverlay* field = scene_->fieldGridOverlay();
+        if (body.value(QStringLiteral("visible")).isBool()) {
+            field->setNullConeVisible(body.value(QStringLiteral("visible")).toBool());
+            applied = true;
+        }
+        if (body.value(QStringLiteral("opacity")).isDouble()) {
+            const double opacity = body.value(QStringLiteral("opacity")).toDouble();
+            if (opacity < 0.0 || opacity > 1.0)
+                return errorResponse(QStringLiteral("opacity must be between 0 and 1"),
+                                     SC::BadRequest);
+            field->setNullConeOpacity(opacity);
+            applied = true;
+        }
+        if (body.value(QStringLiteral("length")).isDouble()) {
+            const double length = body.value(QStringLiteral("length")).toDouble();
+            if (length <= 0.0)
+                return errorResponse(QStringLiteral("length must be > 0"),
+                                     SC::BadRequest);
+            field->setNullConeLength(length);
+            applied = true;
+        }
+        if (!applied)
+            return errorResponse(
+                QStringLiteral("body must set visible, opacity, and/or length"),
+                SC::BadRequest);
+
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- ring null collar collection ------------------------------------
+    //
+    // POST /ring/null_crossings {"atom"?, "ring"?, "start_frame"?, "end_frame"?}
+    // Runs an explicit collar object over adjacent DFT frames and returns the
+    // whole before/after per-atom ORCA shielding records for crossings.
+    auto ringNullCrossingsHandler = [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        model::Conformation* conf = loaded_ ? loaded_->conformation.get() : nullptr;
+        if (!protein || !conf)
+            return errorResponse(QStringLiteral("protein/conformation not wired"),
+                                 SC::ServiceUnavailable);
+        if (!loaded_->manifest.dft)
+            return errorResponse(QStringLiteral("calcset has no DFT frame manifest"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+
+        model::RingNullCollarOptions options;
+        if (body.contains(QStringLiteral("atom"))) {
+            const qint64 raw = body.value(QStringLiteral("atom")).toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
+                return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+            options.atom = static_cast<std::size_t>(raw);
+        }
+
+        if (body.contains(QStringLiteral("ring"))) {
+            const qint64 raw = body.value(QStringLiteral("ring")).toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->ringCount())
+                return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+            options.ring = static_cast<std::size_t>(raw);
+        }
+
+        const int frameCount = static_cast<int>(conf->frameCount());
+        if (frameCount <= 0)
+            return errorResponse(QStringLiteral("conformation has no frames"),
+                                 SC::ServiceUnavailable);
+        if (body.contains(QStringLiteral("start_frame")))
+            options.startFrame = body.value(QStringLiteral("start_frame")).toInt(-1);
+        if (body.contains(QStringLiteral("end_frame")))
+            options.endFrame = body.value(QStringLiteral("end_frame")).toInt(-1);
+        if (body.contains(QStringLiteral("surface_tolerance_A"))) {
+            options.surfaceToleranceA =
+                body.value(QStringLiteral("surface_tolerance_A")).toDouble(-1.0);
+        } else if (body.contains(QStringLiteral("tolerance_A"))) {
+            options.surfaceToleranceA =
+                body.value(QStringLiteral("tolerance_A")).toDouble(-1.0);
+        }
+
+        if (!std::isfinite(options.surfaceToleranceA) || options.surfaceToleranceA < 0.0)
+            return errorResponse(QStringLiteral("surface_tolerance_A must be finite and >= 0"),
+                                 SC::BadRequest);
+        options.includeSaturatedRings =
+            body.value(QStringLiteral("include_saturated")).toBool(false);
+        options.includeSignalStamps =
+            body.value(QStringLiteral("include_signal_stamps")).toBool(true);
+        options.stampRadiusDft =
+            body.value(QStringLiteral("stamp_radius_dft")).toInt(2);
+        if (options.stampRadiusDft < 0 || options.stampRadiusDft > 20)
+            return errorResponse(QStringLiteral("stamp_radius_dft must be between 0 and 20"),
+                                 SC::BadRequest);
+        const bool explicitFullScan = body.value(QStringLiteral("full_scan")).toBool(false);
+        if (!options.atom && !options.ring && !explicitFullScan) {
+            return errorResponse(
+                QStringLiteral("body must set atom and/or ring, or set full_scan=true"),
+                SC::BadRequest);
+        }
+
+        model::RingNullCollar collar(options);
+        QString collectError;
+        if (!collar.collect(*protein, *conf, loaded_->manifest.dft->frames, &collectError))
+            return errorResponse(collectError, SC::BadRequest);
+
+        QJsonArray entries;
+        for (const model::RingNullCollarEntry& entry : collar.entries())
+            entries.append(ringNullEntryToJson(entry));
+
+        const model::RingNullCollarSummary& summary = collar.summary();
+
+        QJsonObject out{
+            {"kind", QStringLiteral("ring_null_collar_collection")},
+            {"collar", QJsonObject{
+                {"mode", QStringLiteral("zero_width_surface_crossing")},
+                {"physical_width_A", 0.0},
+                {"surface_tolerance_A", options.surfaceToleranceA},
+                {"phase_coordinate", QStringLiteral("signed_null_margin_A")},
+                {"phase_zero", QStringLiteral("radial_A - sqrt(2) * abs(axial_A) = 0")},
+                {"width_semantics",
+                 QStringLiteral("surface_tolerance_A is numerical classification tolerance; it is not a finite physical aperture")},
+            }},
+            {"statistic", QJsonObject{
+                {"name", QStringLiteral("ring_null_margin_A")},
+                {"unit", QStringLiteral("A")},
+                {"definition", QStringLiteral("radial_A - sqrt(2) * abs(axial_A)")},
+                {"crossing_definition", QStringLiteral("sign change between adjacent DFT frames")},
+                {"magic_angle_deg", model::RingNullMagicAngleDegrees()},
+            }},
+            {"options", QJsonObject{
+                {"atom", options.atom ? QJsonValue(static_cast<qint64>(*options.atom))
+                                      : QJsonValue(QJsonValue::Null)},
+                {"ring", options.ring ? QJsonValue(static_cast<qint64>(*options.ring))
+                                      : QJsonValue(QJsonValue::Null)},
+                {"start_frame", options.startFrame ? QJsonValue(*options.startFrame)
+                                                   : QJsonValue(QJsonValue::Null)},
+                {"end_frame", options.endFrame ? QJsonValue(*options.endFrame)
+                                               : QJsonValue(QJsonValue::Null)},
+                {"surface_tolerance_A", options.surfaceToleranceA},
+                {"include_saturated", options.includeSaturatedRings},
+                {"full_scan", explicitFullScan},
+                {"include_signal_stamps", options.includeSignalStamps},
+                {"stamp_radius_dft", options.stampRadiusDft},
+            }},
+            {"summary", QJsonObject{
+                {"complete", summary.complete},
+                {"dft_frames_declared", summary.dftFramesDeclared},
+                {"dft_frames_loaded", summary.dftFramesLoaded},
+                {"dft_frames_skipped", summary.dftFramesSkipped},
+                {"dft_pairs_scanned", summary.dftPairsScanned},
+                {"atoms_scanned", summary.atomsScanned},
+                {"rings_scanned", summary.ringsScanned},
+                {"entry_count", summary.entryCount},
+                {"signal_stamp_count", summary.signalStampCount},
+            }},
+            {"entries", entries},
+        };
+        return jsonResponse(out);
+    };
+    server_->route(QStringLiteral("/ring/null_crossings"), Method::Post,
+                   ringNullCrossingsHandler);
+    server_->route(QStringLiteral("/ring_null_crossings"), Method::Post,
+                   ringNullCrossingsHandler);
+
+    // ---- ring-current receiver: stash paths, fit ORCA -------------------
+    //
+    // POST /ring/current_face_collar {"atom"?, "ring"?, "start_frame"?,
+    //                                 "end_frame"?, "min_samples"?}
+    // Collects atom/ring paths whose expected ring-current relationship value
+    // samples both lobes, then evaluates the stash as:
+    // ORCA_component = intercept + scale * expected_relationship_value.
+    auto ringCurrentFaceCollarHandler = [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        model::Conformation* conf = loaded_ ? loaded_->conformation.get() : nullptr;
+        if (!protein || !conf)
+            return errorResponse(QStringLiteral("protein/conformation not wired"),
+                                 SC::ServiceUnavailable);
+        if (!loaded_->manifest.dft)
+            return errorResponse(QStringLiteral("calcset has no DFT frame manifest"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+
+        model::RingCurrentFaceCollarOptions options;
+        if (body.contains(QStringLiteral("atom"))) {
+            const qint64 raw = body.value(QStringLiteral("atom")).toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
+                return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+            options.atom = static_cast<std::size_t>(raw);
+        }
+        if (body.contains(QStringLiteral("ring"))) {
+            const qint64 raw = body.value(QStringLiteral("ring")).toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->ringCount())
+                return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+            options.ring = static_cast<std::size_t>(raw);
+        }
+
+        const int frameCount = static_cast<int>(conf->frameCount());
+        if (frameCount <= 0)
+            return errorResponse(QStringLiteral("conformation has no frames"),
+                                 SC::ServiceUnavailable);
+        if (body.contains(QStringLiteral("start_frame")))
+            options.startFrame = body.value(QStringLiteral("start_frame")).toInt(-1);
+        if (body.contains(QStringLiteral("end_frame")))
+            options.endFrame = body.value(QStringLiteral("end_frame")).toInt(-1);
+        if (body.contains(QStringLiteral("surface_tolerance_A"))) {
+            options.surfaceToleranceA =
+                body.value(QStringLiteral("surface_tolerance_A")).toDouble(-1.0);
+        } else if (body.contains(QStringLiteral("tolerance_A"))) {
+            options.surfaceToleranceA =
+                body.value(QStringLiteral("tolerance_A")).toDouble(-1.0);
+        }
+        if (!std::isfinite(options.surfaceToleranceA) || options.surfaceToleranceA < 0.0)
+            return errorResponse(QStringLiteral("surface_tolerance_A must be finite and >= 0"),
+                                 SC::BadRequest);
+
+        if (body.contains(QStringLiteral("template_zero_tolerance")))
+            options.templateZeroTolerance =
+                body.value(QStringLiteral("template_zero_tolerance")).toDouble(-1.0);
+        if (!std::isfinite(options.templateZeroTolerance) ||
+            options.templateZeroTolerance < 0.0) {
+            return errorResponse(QStringLiteral("template_zero_tolerance must be finite and >= 0"),
+                                 SC::BadRequest);
+        }
+
+        options.includeSaturatedRings =
+            body.value(QStringLiteral("include_saturated")).toBool(false);
+        options.minSamples = body.value(QStringLiteral("min_samples")).toInt(6);
+        options.minSamplesPerLobe =
+            body.value(QStringLiteral("min_samples_per_lobe")).toInt(3);
+        options.minExpectedRelationshipSpan =
+            body.value(QStringLiteral("min_expected_relationship_span")).toDouble(0.02);
+        options.minAbsLobeExpectedValue =
+            body.value(QStringLiteral("min_abs_lobe_expected_value")).toDouble(0.005);
+        options.maxEntries = body.value(QStringLiteral("max_entries")).toInt(25);
+        options.nullShiftCount = body.value(QStringLiteral("null_shift_count")).toInt(64);
+        if (options.minSamples < 3 || options.minSamples > 1000)
+            return errorResponse(QStringLiteral("min_samples must be between 3 and 1000"),
+                                 SC::BadRequest);
+        if (options.minSamplesPerLobe < 1 || options.minSamplesPerLobe > options.minSamples)
+            return errorResponse(QStringLiteral("min_samples_per_lobe must be between 1 and min_samples"),
+                                 SC::BadRequest);
+        if (!std::isfinite(options.minExpectedRelationshipSpan) ||
+            options.minExpectedRelationshipSpan < 0.0) {
+            return errorResponse(QStringLiteral("min_expected_relationship_span must be finite and >= 0"),
+                                 SC::BadRequest);
+        }
+        if (!std::isfinite(options.minAbsLobeExpectedValue) ||
+            options.minAbsLobeExpectedValue < 0.0) {
+            return errorResponse(QStringLiteral("min_abs_lobe_expected_value must be finite and >= 0"),
+                                 SC::BadRequest);
+        }
+        if (options.maxEntries < 0 || options.maxEntries > 500)
+            return errorResponse(QStringLiteral("max_entries must be between 0 and 500"),
+                                 SC::BadRequest);
+        if (options.nullShiftCount < 0 || options.nullShiftCount > 500)
+            return errorResponse(QStringLiteral("null_shift_count must be between 0 and 500"),
+                                 SC::BadRequest);
+
+        const bool explicitFullScan = body.value(QStringLiteral("full_scan")).toBool(false);
+        if (!options.atom && !options.ring && !explicitFullScan) {
+            return errorResponse(
+                QStringLiteral("body must set atom and/or ring, or set full_scan=true"),
+                SC::BadRequest);
+        }
+        const bool includeSamples = body.value(QStringLiteral("include_samples")).toBool(true);
+
+        model::RingCurrentFaceCollar collar(options);
+        QString collectError;
+        if (!collar.collect(*protein, *conf, loaded_->manifest.dft->frames, &collectError))
+            return errorResponse(collectError, SC::BadRequest);
+
+        QJsonArray entries;
+        for (const model::RingCurrentFaceEntry& entry : collar.entries())
+            entries.append(ringCurrentEntryToJson(*protein, entry, includeSamples));
+
+        const model::RingCurrentFaceCollarSummary& summary = collar.summary();
+        QJsonObject out{
+            {"kind", QStringLiteral("ring_current_face_collar")},
+            {"receiver", QJsonObject{
+                {"collector", QStringLiteral("stash atom/ring DFT paths only when expected_relationship_value crosses both lobes")},
+                {"expected_relationship_value",
+                 QStringLiteral("(3*cos(theta)^2 - 1) / distance_A^3")},
+                {"fit_model",
+                 QStringLiteral("ORCA_component = intercept + scale * expected_relationship_value + residual")},
+                {"biot_savart_fit_model",
+                 QStringLiteral("ORCA_total_T0 = intercept + scale * recomputed_BS_T0 + residual")},
+                {"biot_savart_relationship",
+                 QStringLiteral("recomputed_BS_T0 is the finite Johnson-Bovey/Biot-Savart version of the same ring-current geometry; in the far field it tracks expected_relationship_value")},
+                {"predictor_diagnostic_model",
+                 QStringLiteral("recomputed_BS_T0 = intercept + scale * expected_relationship_value + residual")},
+                {"biot_savart_source",
+                 QStringLiteral("recomputed from current ring geometry via QtBiotSavartCalc and ring literature intensity; does not read ring_contributions.npy")},
+                {"hard_crossing_requirement",
+                 QStringLiteral("positive and negative expected_relationship_value samples with at least one sign change")},
+                {"null_model",
+                 QStringLiteral("circular shifts of the ORCA trace against the same expected relationship values")},
+            }},
+            {"options", QJsonObject{
+                {"atom", options.atom ? QJsonValue(static_cast<qint64>(*options.atom))
+                                      : QJsonValue(QJsonValue::Null)},
+                {"ring", options.ring ? QJsonValue(static_cast<qint64>(*options.ring))
+                                      : QJsonValue(QJsonValue::Null)},
+                {"start_frame", options.startFrame ? QJsonValue(*options.startFrame)
+                                                   : QJsonValue(QJsonValue::Null)},
+                {"end_frame", options.endFrame ? QJsonValue(*options.endFrame)
+                                               : QJsonValue(QJsonValue::Null)},
+                {"surface_tolerance_A", options.surfaceToleranceA},
+                {"template_zero_tolerance", options.templateZeroTolerance},
+                {"include_saturated", options.includeSaturatedRings},
+                {"full_scan", explicitFullScan},
+                {"min_samples", options.minSamples},
+                {"min_samples_per_lobe", options.minSamplesPerLobe},
+                {"min_expected_relationship_span", options.minExpectedRelationshipSpan},
+                {"min_abs_lobe_expected_value", options.minAbsLobeExpectedValue},
+                {"max_entries", options.maxEntries},
+                {"null_shift_count", options.nullShiftCount},
+                {"include_samples", includeSamples},
+            }},
+            {"summary", QJsonObject{
+                {"complete", summary.complete},
+                {"dft_frames_declared", summary.dftFramesDeclared},
+                {"dft_frames_loaded", summary.dftFramesLoaded},
+                {"dft_frames_skipped", summary.dftFramesSkipped},
+                {"atoms_scanned", summary.atomsScanned},
+                {"rings_scanned", summary.ringsScanned},
+                {"paths_considered", summary.pathsConsidered},
+                {"paths_rejected_for_samples", summary.pathsRejectedForSamples},
+                {"paths_rejected_for_hard_crossing", summary.pathsRejectedForHardCrossing},
+                {"paths_rejected_for_weak_lobes", summary.pathsRejectedForWeakLobes},
+                {"entry_count", summary.entryCount},
+                {"truncated_by_max_entries", summary.truncatedByMaxEntries},
+            }},
+            {"entries", entries},
+        };
+        return jsonResponse(out);
+    };
+    server_->route(QStringLiteral("/ring/current_face_collar"), Method::Post,
+                   ringCurrentFaceCollarHandler);
+    server_->route(QStringLiteral("/ring_current_face_collar"), Method::Post,
+                   ringCurrentFaceCollarHandler);
 
     // ---- UI state introspection -----------------------------------------
     //
@@ -1963,6 +2884,676 @@ void RestServer::registerRoutes() {
         });
     });
 
+    // ---- heroshot: isolate one aromatic ring field ----------------------
+    //
+    // POST /heroshot/ring_field {"ring": N|null}
+    // Narrows the butterfly isosurface to one ring for figure work. This is
+    // deliberately heroshot-only: the normal UI toggle still owns whether the
+    // butterfly overlay is visible, and /heroshot/clear restores the previous
+    // all-rings/single-ring setting.
+    server_->route(QStringLiteral("/heroshot/ring_field"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->fieldGridOverlay())
+            return errorResponse(QStringLiteral("field-grid overlay not available"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+        if (!body.contains(QStringLiteral("ring")))
+            return errorResponse(QStringLiteral("body must be {\"ring\": number|null}"),
+                                 SC::BadRequest);
+
+        QtFieldGridOverlay* field = scene_->fieldGridOverlay();
+        std::optional<std::size_t> ring;
+        const QJsonValue ringValue = body.value(QStringLiteral("ring"));
+        if (ringValue.isNull()) {
+            ring = std::nullopt;
+        } else if (ringValue.isDouble()) {
+            const int requested = ringValue.toInt(-1);
+            if (requested < 0 ||
+                static_cast<std::size_t>(requested) >= field->ringCount()) {
+                return errorResponse(QStringLiteral("ring out of range"),
+                                     SC::BadRequest);
+            }
+            ring = static_cast<std::size_t>(requested);
+        } else {
+            return errorResponse(QStringLiteral("ring must be a number or null"),
+                                 SC::BadRequest);
+        }
+
+        if (!heroshotFieldRingWasSet_) {
+            heroshotFieldRingBefore_ = field->visibleRing();
+            heroshotFieldRingWasSet_ = true;
+        }
+        field->setVisibleRing(ring);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+
+        QJsonObject out{
+            {"ring_count", static_cast<qint64>(field->ringCount())},
+            {"will_restore_on_clear", true},
+        };
+        out.insert(QStringLiteral("ring"),
+                   ring ? QJsonValue(static_cast<qint64>(*ring)) : QJsonValue());
+        return jsonResponse(out);
+    });
+
+    // ---- heroshot: high-resolution ring-current butterfly --------------
+    //
+    // POST /heroshot/butterfly {"ring": N, "frame"?, "dim"?,
+    //                           "threshold_ppm"?, "opacity"?,
+    //                           "extent"?, "peak"?, "mode"?}
+    // A transient figure/export layer, separate from the normal
+    // QtFieldGridOverlay used by the UI and playback. It samples the same
+    // closed-form BS/HM scalar field more densely for one selected ring and
+    // contours the same signed T0 isovalues. This is a numerical approximation
+    // knob for resthero images, not a smoothing filter and not a mainline
+    // butterfly change.
+    server_->route(QStringLiteral("/heroshot/butterfly"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        model::Conformation* loadedConf = loaded_ ? loaded_->conformation.get() : nullptr;
+        model::Conformation* conf = transformed_
+            ? static_cast<model::Conformation*>(transformed_.data())
+            : loadedConf;
+        if (!scene_ || !protein || !conf)
+            return errorResponse(QStringLiteral("scene / protein not wired"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains(QStringLiteral("ring")))
+            return errorResponse(QStringLiteral("body must be {\"ring\": int, ...}"),
+                                 SC::BadRequest);
+        const int ringRaw = body.value(QStringLiteral("ring")).toInt(-1);
+        if (ringRaw < 0 || static_cast<std::size_t>(ringRaw) >= protein->ringCount())
+            return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+        const std::size_t ring = static_cast<std::size_t>(ringRaw);
+
+        const int frameCount = static_cast<int>(conf->frameCount());
+        const int currentFrame = playback_ ? playback_->currentFrame() : 0;
+        const int frame = std::clamp(
+            body.contains(QStringLiteral("frame"))
+                ? body.value(QStringLiteral("frame")).toInt(currentFrame)
+                : currentFrame,
+            0, std::max(0, frameCount - 1));
+
+        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
+            const QJsonValue v = body.value(key);
+            if (!v.isDouble()) return fallback;
+            return std::clamp(v.toDouble(), lo, hi);
+        };
+
+        HeroshotButterflyOverlay::Style style;
+        style.gridDim = std::clamp(body.value(QStringLiteral("dim")).toInt(style.gridDim),
+                                   16, 72);
+        style.thresholdPpm = styledDouble(QStringLiteral("threshold_ppm"),
+                                          styledDouble(QStringLiteral("ppm"),
+                                                       style.thresholdPpm, 0.0, 1000.0),
+                                          0.0, 1000.0);
+        style.opacity = styledDouble(QStringLiteral("opacity"), style.opacity, 0.0, 1.0);
+        style.gaussianExtentA = styledDouble(QStringLiteral("extent"),
+                                             style.gaussianExtentA, 0.1, 30.0);
+        style.gaussianPeak = styledDouble(QStringLiteral("peak"),
+                                          style.gaussianPeak, 0.0, 1000.0);
+        style.showShielded = body.value(QStringLiteral("show_shielded")).isBool()
+            ? body.value(QStringLiteral("show_shielded")).toBool()
+            : style.showShielded;
+        style.showDeshielded = body.value(QStringLiteral("show_deshielded")).isBool()
+            ? body.value(QStringLiteral("show_deshielded")).toBool()
+            : style.showDeshielded;
+
+        const QString mode = body.value(QStringLiteral("mode"))
+                                 .toString(QStringLiteral("biot_savart")).toLower();
+        if (mode == QStringLiteral("biot_savart") || mode == QStringLiteral("bs")) {
+            style.mode = HeroshotButterflyOverlay::Mode::BiotSavart;
+        } else if (mode == QStringLiteral("haigh_mallion") ||
+                   mode == QStringLiteral("hm")) {
+            style.mode = HeroshotButterflyOverlay::Mode::HaighMallion;
+        } else if (mode == QStringLiteral("sum")) {
+            style.mode = HeroshotButterflyOverlay::Mode::Sum;
+        } else {
+            return errorResponse(QStringLiteral("mode must be biot_savart, haigh_mallion, or sum"),
+                                 SC::BadRequest);
+        }
+
+        heroshotButterfly_ = std::make_unique<HeroshotButterflyOverlay>(
+            vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
+        if (!heroshotButterfly_->show(*protein, *conf, ring,
+                                      static_cast<std::size_t>(frame), style)) {
+            heroshotButterfly_.reset();
+            return errorResponse(QStringLiteral("could not build heroshot butterfly"),
+                                 SC::Conflict);
+        }
+        const HeroshotButterflyOverlay::Stats stats = heroshotButterfly_->stats();
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return jsonResponse(QJsonObject{
+            {"ring", static_cast<qint64>(ring)},
+            {"frame", frame},
+            {"mode", mode},
+            {"grid_dim", style.gridDim},
+            {"samples", static_cast<qint64>(style.gridDim * style.gridDim * style.gridDim)},
+            {"threshold_ppm", finiteJson(style.thresholdPpm)},
+            {"opacity", finiteJson(style.opacity)},
+            {"extent", finiteJson(style.gaussianExtentA)},
+            {"peak", finiteJson(style.gaussianPeak)},
+            {"min_T0", finiteJson(stats.minT0)},
+            {"max_T0", finiteJson(stats.maxT0)},
+            {"shielded_points", static_cast<qint64>(stats.shieldedPoints)},
+            {"shielded_cells", static_cast<qint64>(stats.shieldedCells)},
+            {"deshielded_points", static_cast<qint64>(stats.deshieldedPoints)},
+            {"deshielded_cells", static_cast<qint64>(stats.deshieldedCells)},
+            {"will_clear_on_heroshot_clear", true},
+        });
+    });
+
+    // ---- heroshot: atom track ------------------------------------------
+    //
+    // POST /heroshot/atom_track
+    //   {atom?, ring?, color_by?, color_mode?,
+    //    frame_source:"dft"|"range", coordinate_space:"source_ring_local"|"world",
+    //    frames? | start_frame?/end_frame?/step?/max_points?}
+    //
+    // Draws a sampled atom path as luminous signal marks plus optional hairline
+    // connectors. This
+    // is deliberately a distinct object from the selected-atom trajectory
+    // envelope: the track says "these are the sampled positions", not "this is a
+    // density volume". It also deliberately avoids molecular primitives: the
+    // marks are screen-space points/halos, not atoms, and the connections are
+    // lines, not bonds. With ring_current coloring, each mark is colored by the
+    // signed analytic ring-current expected relationship for atom->ring at
+    // that frame:
+    // (3*cos(theta)^2 - 1) / r^3. The scene stays geometry-only; the response
+    // echoes the sample table for audit and panels/scripts can carry text.
+    //
+    // coordinate_space="source_ring_local" answers the heroshot question:
+    // for each DFT graph sample, if the source ring were held stationary in
+    // reference_frame, where would this atom's relative position land?
+    server_->route(QStringLiteral("/heroshot/atom_track"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !loaded_ || !loaded_->protein)
+            return errorResponse(QStringLiteral("scene / protein not wired"),
+                                 SC::ServiceUnavailable);
+        const model::Conformation* conf = transformed_
+            ? static_cast<const model::Conformation*>(transformed_.data())
+            : loaded_->conformation.get();
+        if (!conf)
+            return errorResponse(QStringLiteral("conformation not wired"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+
+        const model::QtProtein& protein = *loaded_->protein;
+        std::size_t atom = 0;
+        if (body.contains(QStringLiteral("atom"))) {
+            const qint64 rawAtom = body.value(QStringLiteral("atom")).toInteger(-1);
+            if (rawAtom < 0 || static_cast<std::size_t>(rawAtom) >= protein.atomCount())
+                return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+            atom = static_cast<std::size_t>(rawAtom);
+        } else if (selection_ && selection_->hasFocus()) {
+            atom = selection_->focus();
+        } else {
+            return errorResponse(QStringLiteral("no atom: pass {\"atom\":N} or focus one"),
+                                 SC::BadRequest);
+        }
+
+        const int frameCount = static_cast<int>(conf->frameCount());
+        if (frameCount <= 0)
+            return errorResponse(QStringLiteral("no frames available"), SC::ServiceUnavailable);
+        const int liveFrame = playback_ ? playback_->currentFrame() : 0;
+        const int currentFrame = std::clamp(
+            body.contains(QStringLiteral("current_frame"))
+                ? body.value(QStringLiteral("current_frame")).toInt(liveFrame)
+                : liveFrame,
+            0, frameCount - 1);
+
+        std::optional<std::size_t> ring;
+        if (body.contains(QStringLiteral("ring"))) {
+            const QJsonValue rv = body.value(QStringLiteral("ring"));
+            if (!rv.isNull()) {
+                const qint64 rawRing = rv.toInteger(-1);
+                if (rawRing < 0 || static_cast<std::size_t>(rawRing) >= protein.ringCount())
+                    return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+                ring = static_cast<std::size_t>(rawRing);
+            }
+        }
+
+        const QString colorBy = body.value(QStringLiteral("color_by")).toString(
+            ring ? QStringLiteral("ring_current") : QStringLiteral("none")).toLower();
+        if (colorBy != QStringLiteral("ring_current")
+            && colorBy != QStringLiteral("null_margin")
+            && colorBy != QStringLiteral("none")) {
+            return errorResponse(
+                QStringLiteral("color_by must be ring_current, null_margin, or none"),
+                SC::BadRequest);
+        }
+        if ((colorBy == QStringLiteral("ring_current")
+             || colorBy == QStringLiteral("null_margin"))
+            && !ring) {
+            return errorResponse(QStringLiteral("color_by requires {\"ring\": N}"),
+                                 SC::BadRequest);
+        }
+
+        QString frameSource = body.value(QStringLiteral("frame_source"))
+                                  .toString(QStringLiteral("range"))
+                                  .toLower();
+        if (frameSource != QStringLiteral("range") &&
+            frameSource != QStringLiteral("dft")) {
+            return errorResponse(QStringLiteral("frame_source must be range or dft"),
+                                 SC::BadRequest);
+        }
+
+        const QJsonArray explicitFrames =
+            body.value(QStringLiteral("frames")).isArray()
+                ? body.value(QStringLiteral("frames")).toArray()
+                : QJsonArray{};
+        if (!explicitFrames.isEmpty())
+            frameSource = QStringLiteral("explicit");
+
+        const int maxPointDefault =
+            frameSource == QStringLiteral("dft") ? 10000 : 120;
+        const int maxPoints = std::clamp(
+            body.value(QStringLiteral("max_points")).toInt(maxPointDefault),
+            1, 10000);
+        std::vector<int> frames;
+        int candidateFrameCount = 0;
+        bool decimatedByMaxPoints = false;
+        if (!explicitFrames.isEmpty()) {
+            frames.reserve(static_cast<std::size_t>(
+                std::min(static_cast<int>(explicitFrames.size()), maxPoints)));
+            for (const QJsonValue& v : explicitFrames) {
+                if (static_cast<int>(frames.size()) >= maxPoints)
+                    break;
+                const int f = v.toInt(-1);
+                if (f < 0 || f >= frameCount)
+                    return errorResponse(QStringLiteral("frame out of range"), SC::BadRequest);
+                frames.push_back(f);
+            }
+            candidateFrameCount = static_cast<int>(explicitFrames.size());
+        } else if (frameSource == QStringLiteral("dft")) {
+            if (!loaded_->manifest.dft)
+                return errorResponse(QStringLiteral("calcset has no DFT frame manifest"),
+                                     SC::ServiceUnavailable);
+            const int startFrame = std::clamp(
+                body.contains(QStringLiteral("start_frame"))
+                    ? body.value(QStringLiteral("start_frame")).toInt(0)
+                    : 0,
+                0, frameCount - 1);
+            const int endFrame = std::clamp(
+                body.contains(QStringLiteral("end_frame"))
+                    ? body.value(QStringLiteral("end_frame")).toInt(frameCount - 1)
+                    : frameCount - 1,
+                0, frameCount - 1);
+            const int lo = std::min(startFrame, endFrame);
+            const int hi = std::max(startFrame, endFrame);
+            std::vector<int> dftFrames;
+            dftFrames.reserve(loaded_->manifest.dft->frames.size());
+            for (const h5reader::io::DftFrame& declared : loaded_->manifest.dft->frames) {
+                const int f = declared.frame_index;
+                if (f < 0 || f >= frameCount)
+                    continue;
+                if (f < lo || f > hi)
+                    continue;
+                dftFrames.push_back(f);
+            }
+            std::sort(dftFrames.begin(), dftFrames.end());
+            dftFrames.erase(std::unique(dftFrames.begin(), dftFrames.end()),
+                            dftFrames.end());
+            candidateFrameCount = static_cast<int>(dftFrames.size());
+            if (candidateFrameCount > maxPoints) {
+                decimatedByMaxPoints = true;
+                const double stride = static_cast<double>(candidateFrameCount)
+                                    / static_cast<double>(maxPoints);
+                for (int i = 0; i < maxPoints; ++i) {
+                    const int idx = std::clamp(
+                        static_cast<int>(std::floor(static_cast<double>(i) * stride)),
+                        0, candidateFrameCount - 1);
+                    frames.push_back(dftFrames[static_cast<std::size_t>(idx)]);
+                }
+            } else {
+                frames = std::move(dftFrames);
+            }
+        } else {
+            const int startFrame = std::clamp(
+                body.contains(QStringLiteral("start_frame"))
+                    ? body.value(QStringLiteral("start_frame")).toInt(0)
+                    : 0,
+                0, frameCount - 1);
+            const int endFrame = std::clamp(
+                body.contains(QStringLiteral("end_frame"))
+                    ? body.value(QStringLiteral("end_frame")).toInt(frameCount - 1)
+                    : frameCount - 1,
+                0, frameCount - 1);
+            const int lo = std::min(startFrame, endFrame);
+            const int hi = std::max(startFrame, endFrame);
+            const int span = hi - lo + 1;
+            const int requestedStep = body.value(QStringLiteral("step")).toInt(0);
+            const int step = requestedStep > 0
+                ? std::clamp(requestedStep, 1, frameCount)
+                : std::max(1, static_cast<int>(
+                      std::ceil(static_cast<double>(span) / static_cast<double>(maxPoints))));
+            for (int f = lo; f <= hi && static_cast<int>(frames.size()) < maxPoints; f += step)
+                frames.push_back(f);
+
+            const bool includeCurrent =
+                body.contains(QStringLiteral("include_current"))
+                    ? body.value(QStringLiteral("include_current")).toBool(true)
+                    : true;
+            if (includeCurrent && currentFrame >= lo && currentFrame <= hi
+                && std::find(frames.begin(), frames.end(), currentFrame) == frames.end()) {
+                frames.push_back(currentFrame);
+                std::sort(frames.begin(), frames.end());
+                if (static_cast<int>(frames.size()) > maxPoints)
+                    frames.erase(frames.begin());
+            }
+            candidateFrameCount = span;
+        }
+        frames.erase(std::unique(frames.begin(), frames.end()), frames.end());
+        if (frames.empty())
+            return errorResponse(QStringLiteral("no frames selected"), SC::BadRequest);
+
+        const int referenceFrame = std::clamp(
+            body.contains(QStringLiteral("reference_frame"))
+                ? body.value(QStringLiteral("reference_frame")).toInt(currentFrame)
+                : currentFrame,
+            0, frameCount - 1);
+        QString coordinateSpace = body.value(QStringLiteral("coordinate_space"))
+                                      .toString(ring ? QStringLiteral("source_ring_local")
+                                                     : QStringLiteral("world"))
+                                      .toLower();
+        if (coordinateSpace == QStringLiteral("frozen_ring"))
+            coordinateSpace = QStringLiteral("source_ring_local");
+        if (coordinateSpace != QStringLiteral("world") &&
+            coordinateSpace != QStringLiteral("source_ring_local")) {
+            return errorResponse(
+                QStringLiteral("coordinate_space must be world or source_ring_local"),
+                SC::BadRequest);
+        }
+        if (coordinateSpace == QStringLiteral("source_ring_local") && !ring) {
+            return errorResponse(
+                QStringLiteral("coordinate_space=source_ring_local requires {\"ring\": N}"),
+                SC::BadRequest);
+        }
+        RingLocalFrame referenceRingFrame;
+        if (coordinateSpace == QStringLiteral("source_ring_local")) {
+            referenceRingFrame =
+                ringLocalFrameAt(*conf, *ring, static_cast<std::size_t>(referenceFrame));
+            if (!referenceRingFrame.valid)
+                return errorResponse(QStringLiteral("reference ring geometry invalid"),
+                                     SC::BadRequest);
+        }
+
+        auto styledDouble = [&](const QString& key, double fallback, double lo, double hi) {
+            const QJsonValue v = body.value(key);
+            if (!v.isDouble()) return fallback;
+            return std::clamp(v.toDouble(), lo, hi);
+        };
+        auto styledBool = [&](const QString& key, bool fallback) {
+            const QJsonValue v = body.value(key);
+            return v.isBool() ? v.toBool() : fallback;
+        };
+
+        AtomTrackOverlay::Style style;
+        style.pointSizePixels = styledDouble(QStringLiteral("point_size"),
+                                             style.pointSizePixels, 1.0, 72.0);
+        style.sphereRadiusA = styledDouble(QStringLiteral("dot_radius_A"),
+                                           style.sphereRadiusA, 0.002, 0.20);
+        style.currentPointScale = styledDouble(QStringLiteral("current_point_scale"),
+                                               style.currentPointScale, 0.5, 6.0);
+        style.pointOpacity = styledDouble(QStringLiteral("point_opacity"),
+                                          style.pointOpacity, 0.0, 1.0);
+        style.haloScale = styledDouble(QStringLiteral("halo_scale"),
+                                       style.haloScale, 1.0, 10.0);
+        style.haloOpacity = styledDouble(QStringLiteral("halo_opacity"),
+                                         style.haloOpacity, 0.0, 1.0);
+        style.lineWidthPixels = styledDouble(QStringLiteral("line_width"),
+                                             style.lineWidthPixels, 1.0, 12.0);
+        style.lineOpacity = styledDouble(QStringLiteral("line_opacity"), style.lineOpacity,
+                                         0.0, 1.0);
+        style.colorScale = styledDouble(QStringLiteral("color_scale"),
+                                        style.colorScale, 0.0, 1e6);
+        style.colorGamma = styledDouble(QStringLiteral("color_gamma"),
+                                        style.colorGamma, 0.1, 4.0);
+        style.minColorFraction = styledDouble(QStringLiteral("min_color_fraction"),
+                                              style.minColorFraction, 0.0, 0.6);
+        style.showPoints = styledBool(QStringLiteral("show_points"), style.showPoints);
+        style.showHalos = styledBool(QStringLiteral("show_halos"), style.showHalos);
+        style.showLines = styledBool(QStringLiteral("show_lines"), style.showLines);
+        style.highlightCurrent = styledBool(QStringLiteral("highlight_current"),
+                                            style.highlightCurrent);
+        const QString pointShape = body.value(QStringLiteral("point_shape"))
+                                       .toString(QStringLiteral("screen_point"))
+                                       .toLower();
+        if (pointShape == QStringLiteral("sphere") ||
+            pointShape == QStringLiteral("spheres") ||
+            pointShape == QStringLiteral("dot") ||
+            pointShape == QStringLiteral("dots")) {
+            style.pointShape = AtomTrackOverlay::PointShape::Sphere;
+        } else if (pointShape == QStringLiteral("screen_point") ||
+                   pointShape == QStringLiteral("screen_points") ||
+                   pointShape == QStringLiteral("point") ||
+                   pointShape == QStringLiteral("points")) {
+            style.pointShape = AtomTrackOverlay::PointShape::ScreenPoint;
+        } else {
+            return errorResponse(
+                QStringLiteral("point_shape must be screen_point or sphere"),
+                SC::BadRequest);
+        }
+        const QString colorMode = body.value(QStringLiteral("color_mode"))
+                                      .toString(QStringLiteral("signed")).toLower();
+        if (colorMode == QStringLiteral("absolute")) {
+            style.colorMode = AtomTrackOverlay::ColorMode::Absolute;
+        } else if (colorMode == QStringLiteral("signed")) {
+            style.colorMode = AtomTrackOverlay::ColorMode::Signed;
+        } else {
+            return errorResponse(QStringLiteral("color_mode must be signed or absolute"),
+                                 SC::BadRequest);
+        }
+        std::vector<AtomTrackOverlay::Sample> samples;
+        samples.reserve(frames.size());
+        QJsonArray sampleJson;
+        double minIntensity = std::numeric_limits<double>::infinity();
+        double maxIntensity = -std::numeric_limits<double>::infinity();
+        int ringValidCount = 0;
+        int ringInvalidCount = 0;
+        int vetComparedCount = 0;
+        double vetMaxAbsKernelDelta = 0.0;
+        double vetMaxAbsNullMarginDelta = 0.0;
+        double vetMaxAbsDistanceDelta = 0.0;
+        double vetMaxAbsLocalRoundtripDelta = 0.0;
+        bool vetOk = true;
+        for (int f : frames) {
+            const model::Vec3 sourcePosition =
+                conf->atomPosition(static_cast<std::size_t>(f), atom);
+            model::Vec3 drawnPosition = sourcePosition;
+            model::Vec3 sourceRingLocal = model::Vec3::Zero();
+            model::RingNullMeasurement sourceMeasure;
+            model::RingNullMeasurement projectedMeasure;
+            double sourceKernel = std::numeric_limits<double>::quiet_NaN();
+            double projectedKernel = std::numeric_limits<double>::quiet_NaN();
+            bool ringMeasurementValid = false;
+
+            AtomTrackOverlay::Sample sample;
+            sample.current = (f == currentFrame);
+
+            QJsonObject row{
+                {"frame", f},
+                {"original_frame", static_cast<qint64>(
+                    conf->originalFrameIndex(static_cast<std::size_t>(f)))},
+                {"current", sample.current},
+            };
+            if (ring) {
+                if (coordinateSpace == QStringLiteral("source_ring_local")) {
+                    const RingLocalFrame sourceRingFrame =
+                        ringLocalFrameAt(*conf, *ring, static_cast<std::size_t>(f));
+                    if (sourceRingFrame.valid) {
+                        sourceRingLocal = toRingLocal(sourceRingFrame, sourcePosition);
+                        drawnPosition = fromRingLocal(referenceRingFrame, sourceRingLocal);
+                        sourceMeasure =
+                            model::MeasureRingNull(sourceRingFrame.geometry, sourcePosition);
+                        projectedMeasure =
+                            model::MeasureRingNull(referenceRingFrame.geometry, drawnPosition);
+                    }
+                } else {
+                    sourceMeasure =
+                        model::MeasureRingNull(*conf, atom, *ring,
+                                               static_cast<std::size_t>(f));
+                    projectedMeasure = sourceMeasure;
+                }
+
+                ringMeasurementValid = sourceMeasure.valid;
+                if (!ringMeasurementValid) {
+                    row.insert(QStringLiteral("ring_measurement_valid"), false);
+                    sample.intensity = 0.0;
+                    ++ringInvalidCount;
+                    if (frameSource == QStringLiteral("dft") &&
+                        coordinateSpace == QStringLiteral("source_ring_local")) {
+                        continue;
+                    }
+                } else {
+                    ++ringValidCount;
+                    sourceKernel = ringCurrentExpectedValue(sourceMeasure);
+                    projectedKernel = ringCurrentExpectedValue(projectedMeasure);
+                    if (colorBy == QStringLiteral("ring_current")) {
+                        sample.intensity = sourceKernel;
+                    } else if (colorBy == QStringLiteral("null_margin")) {
+                        sample.intensity = sourceMeasure.nullMarginA;
+                    } else {
+                        sample.intensity = 0.0;
+                    }
+                    row.insert(QStringLiteral("ring_measurement_valid"), true);
+                    row.insert(QStringLiteral("ring_current_kernel"), finiteJson(sourceKernel));
+                    row.insert(QStringLiteral("expected_relationship_value"),
+                               finiteJson(sourceKernel));
+                    row.insert(QStringLiteral("null_margin_A"),
+                               finiteJson(sourceMeasure.nullMarginA));
+                    row.insert(QStringLiteral("distance_A"), finiteJson(sourceMeasure.distanceA));
+                    row.insert(QStringLiteral("angle_degrees"), finiteJson(sourceMeasure.angleDeg));
+                    row.insert(QStringLiteral("side"),
+                               QString::fromLatin1(model::RingNullSideName(sourceMeasure.side)));
+                    if (coordinateSpace == QStringLiteral("source_ring_local")) {
+                        row.insert(QStringLiteral("projected_ring_current_kernel"),
+                                   finiteJson(projectedKernel));
+                        row.insert(QStringLiteral("projected_null_margin_A"),
+                                   finiteJson(projectedMeasure.nullMarginA));
+                        row.insert(QStringLiteral("projected_distance_A"),
+                                   finiteJson(projectedMeasure.distanceA));
+                        row.insert(QStringLiteral("projected_angle_degrees"),
+                                   finiteJson(projectedMeasure.angleDeg));
+                        row.insert(QStringLiteral("source_ring_local"),
+                                   vec3FromEigen(sourceRingLocal));
+
+                        const model::Vec3 roundtripLocal =
+                            toRingLocal(referenceRingFrame, drawnPosition);
+                        const double localRoundtripDelta =
+                            (roundtripLocal - sourceRingLocal).norm();
+                        const double kernelDelta =
+                            std::abs(projectedKernel - sourceKernel);
+                        const double nullMarginDelta =
+                            std::abs(projectedMeasure.nullMarginA -
+                                     sourceMeasure.nullMarginA);
+                        const double distanceDelta =
+                            std::abs(projectedMeasure.distanceA -
+                                     sourceMeasure.distanceA);
+                        vetMaxAbsKernelDelta =
+                            std::max(vetMaxAbsKernelDelta, kernelDelta);
+                        vetMaxAbsNullMarginDelta =
+                            std::max(vetMaxAbsNullMarginDelta, nullMarginDelta);
+                        vetMaxAbsDistanceDelta =
+                            std::max(vetMaxAbsDistanceDelta, distanceDelta);
+                        vetMaxAbsLocalRoundtripDelta =
+                            std::max(vetMaxAbsLocalRoundtripDelta,
+                                     localRoundtripDelta);
+                        ++vetComparedCount;
+                        if (!projectedMeasure.valid ||
+                            kernelDelta > 1e-9 ||
+                            nullMarginDelta > 1e-9 ||
+                            distanceDelta > 1e-9 ||
+                            localRoundtripDelta > 1e-9) {
+                            vetOk = false;
+                        }
+                        row.insert(QStringLiteral("vet_kernel_delta"),
+                                   finiteJson(projectedKernel - sourceKernel));
+                        row.insert(QStringLiteral("vet_null_margin_delta_A"),
+                                   finiteJson(projectedMeasure.nullMarginA -
+                                              sourceMeasure.nullMarginA));
+                        row.insert(QStringLiteral("vet_distance_delta_A"),
+                                   finiteJson(projectedMeasure.distanceA -
+                                              sourceMeasure.distanceA));
+                        row.insert(QStringLiteral("vet_local_roundtrip_delta_A"),
+                                   finiteJson(localRoundtripDelta));
+                    }
+                }
+            } else {
+                sample.intensity = 0.0;
+            }
+            sample.position = drawnPosition;
+            row.insert(QStringLiteral("source_position"), vec3FromEigen(sourcePosition));
+            row.insert(QStringLiteral("drawn_position"), vec3FromEigen(drawnPosition));
+            row.insert(QStringLiteral("position"), vec3FromEigen(drawnPosition));
+            row.insert(QStringLiteral("intensity"), finiteJson(sample.intensity));
+            if (std::isfinite(sample.intensity)) {
+                minIntensity = std::min(minIntensity, sample.intensity);
+                maxIntensity = std::max(maxIntensity, sample.intensity);
+            }
+            samples.push_back(sample);
+            sampleJson.append(row);
+        }
+        if (samples.empty())
+            return errorResponse(QStringLiteral("no valid samples selected"), SC::BadRequest);
+
+        heroshotAtomTrack_ = std::make_unique<AtomTrackOverlay>(
+            vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
+        heroshotAtomTrack_->show(samples, style);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+
+        QJsonObject out{
+            {"atom", static_cast<qint64>(atom)},
+            {"current_frame", currentFrame},
+            {"reference_frame", referenceFrame},
+            {"frame_source", frameSource},
+            {"coordinate_space", coordinateSpace},
+            {"color_by", colorBy},
+            {"color_mode", colorMode},
+            {"kept", static_cast<qint64>(samples.size())},
+            {"max_points", maxPoints},
+            {"candidate_frame_count", candidateFrameCount},
+            {"decimated_by_max_points", decimatedByMaxPoints},
+            {"show_lines", style.showLines},
+            {"show_points", style.showPoints},
+            {"show_halos", style.showHalos},
+            {"point_shape", pointShape},
+            {"dot_radius_A", finiteJson(style.sphereRadiusA)},
+            {"color_scale", finiteJson(style.colorScale)},
+            {"color_gamma", finiteJson(style.colorGamma)},
+            {"min_color_fraction", finiteJson(style.minColorFraction)},
+            {"ring_measurements_valid", ringValidCount},
+            {"ring_measurements_invalid", ringInvalidCount},
+            {"min_intensity", finiteJson(minIntensity)},
+            {"max_intensity", finiteJson(maxIntensity)},
+            {"vet", QJsonObject{
+                {"ok", coordinateSpace == QStringLiteral("source_ring_local") ? vetOk : true},
+                {"compared", vetComparedCount},
+                {"max_abs_kernel_delta", finiteJson(vetMaxAbsKernelDelta)},
+                {"max_abs_null_margin_delta_A", finiteJson(vetMaxAbsNullMarginDelta)},
+                {"max_abs_distance_delta_A", finiteJson(vetMaxAbsDistanceDelta)},
+                {"max_abs_local_roundtrip_delta_A",
+                 finiteJson(vetMaxAbsLocalRoundtripDelta)},
+            }},
+            {"samples", sampleJson},
+        };
+        out.insert(QStringLiteral("ring"),
+                   ring ? QJsonValue(static_cast<qint64>(*ring)) : QJsonValue());
+        return jsonResponse(out);
+    });
+
     // ---- heroshot: tensor ghost trail -----------------------------------
     //
     // POST /heroshot/ghost_trail  {atom?, n?, end_frame?, step?, frames?}
@@ -2340,12 +3931,20 @@ void RestServer::registerRoutes() {
 
     server_->route(QStringLiteral("/heroshot/clear"), Method::Post, [this]() {
         ASSERT_THREAD(this);
+        if (heroshotAtomTrack_) heroshotAtomTrack_->clear();
+        if (heroshotButterfly_) heroshotButterfly_->clear();
         if (heroshotTrail_) heroshotTrail_->clear();
         if (heroshotAngleCollar_) heroshotAngleCollar_->clear();
         if (scene_ && scene_->measurementOverlay()
             && heroshotMeasurementVisibleBefore_.has_value()) {
             scene_->measurementOverlay()->setVisible(*heroshotMeasurementVisibleBefore_);
             heroshotMeasurementVisibleBefore_.reset();
+        }
+        if (heroshotFieldRingWasSet_) {
+            if (scene_ && scene_->fieldGridOverlay())
+                scene_->fieldGridOverlay()->setVisibleRing(heroshotFieldRingBefore_);
+            heroshotFieldRingBefore_.reset();
+            heroshotFieldRingWasSet_ = false;
         }
         if (scene_ && heroshotMoleculeStyleBefore_.has_value()) {
             scene_->applyMoleculeStyle(*heroshotMoleculeStyleBefore_);

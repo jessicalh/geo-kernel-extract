@@ -1,12 +1,11 @@
 // ConformationGeometry — shared geometry helpers over a Conformation.
 //
-// Ring vertices + the least-squares plane fit used to be private to
+// Ring vertices + ring geometry fitting used to be private to
 // QtFrame (trajectory-only). They are pure functions of positions +
 // topology, so they belong over the Conformation base: a SingleConformation
 // (one pose, no H5) and a TrajectoryConformation share the same ring
 // geometry the same way. The trajectory.h5 format does not store per-frame
-// ring geometry — it is fit on demand from the ring's vertex positions,
-// matching nmr::Ring::ComputeGeometry's least-squares plane fit.
+// ring geometry; it is fit on demand from the ring's vertex positions.
 //
 // `frame` indexes the Conformation's frame axis (0 for a single pose); the
 // positions come from Conformation::atomPosition, so both run shapes work.
@@ -28,13 +27,53 @@ class Conformation;
 // ring index is out of range or the protein spine is absent.
 std::vector<Vec3> RingVertices(const Conformation& conf, std::size_t ringIdx, std::size_t frame);
 
-// Least-squares plane fit: center = centroid, normal = smallest singular
-// vector of the centered vertex matrix (SVD), radius = mean spoke length.
-// Returns a zero geometry (radius 0) for < 3 vertices.
+// Ring geometry: center = centroid, normal = canonical ring-walk winding,
+// radius = mean spoke length. The winding normal is stable across frames
+// because it follows the stored ring atom order rather than an arbitrary SVD
+// sign. Returns a zero geometry (radius 0) for an empty vertex list; for
+// one/two vertices center/radius are still meaningful, but normal remains zero.
 RingGeometry FitRingGeometry(const std::vector<Vec3>& verts);
 
 // Convenience: RingVertices + FitRingGeometry at (ringIdx, frame).
 RingGeometry RingGeometryAt(const Conformation& conf, std::size_t ringIdx, std::size_t frame);
+
+// Ring null surface geometry -- the operational ring-null-crossing statistic.
+// null_margin_A = radial_A - sqrt(2) * abs(axial_A). A ring null crossing is
+// a sign change of that value between adjacent sampled frames.
+enum class RingNullSide {
+    Invalid,
+    Axial,
+    Equatorial,
+    OnSurface,
+};
+
+struct RingNullMeasurement {
+    bool         valid         = false;
+    RingNullSide side          = RingNullSide::Invalid;
+    Vec3         atomPosition  = Vec3::Zero();
+    RingGeometry ring;
+    double       distanceA     = 0.0;
+    double       axialA        = 0.0;
+    double       absAxialA     = 0.0;
+    double       radialA       = 0.0;
+    double       nullRadiusA   = 0.0;
+    double       nullMarginA   = 0.0;
+    double       angleDeg      = 0.0;  // angle to unsigned ring normal, [0, 90]
+    double       angularFactor = 0.0;  // 3*cos(angle)^2 - 1
+};
+
+double RingNullMagicAngleDegrees();
+const char* RingNullSideName(RingNullSide side);
+RingNullSide RingNullSideFromMargin(double nullMarginA, double toleranceA = 1e-9);
+
+RingNullMeasurement MeasureRingNull(const RingGeometry& ring, const Vec3& atomPosition,
+                                    double toleranceA = 1e-9);
+RingNullMeasurement MeasureRingNull(const Conformation& conf, std::size_t atomIdx,
+                                    std::size_t ringIdx, std::size_t frame,
+                                    double toleranceA = 1e-9);
+
+bool RingNullCrosses(const RingNullMeasurement& a, const RingNullMeasurement& b,
+                     double toleranceA = 1e-9);
 
 // ---------------------------------------------------------------------------
 // Geometry of an ordered atom selection — the killer app's measurements.

@@ -28,9 +28,11 @@ public:
     explicit QtCoulombGroup(const QtConformationSnapshot& snapshot) : snap_(&snapshot) {}
 
     std::optional<SphericalTensor> shielding(std::size_t atomIdx) const {
-        if (!snap_->has(io::FieldKind::CoulombShielding))
-            return std::nullopt;
-        return UnpackSphericalTensor(snap_->column(io::FieldKind::CoulombShielding).row(atomIdx));
+        if (snap_->has(io::FieldKind::CoulombEFG))
+            return UnpackSphericalTensor(snap_->column(io::FieldKind::CoulombEFG).row(atomIdx));
+        if (snap_->has(io::FieldKind::CoulombShielding))
+            return UnpackSphericalTensor(snap_->column(io::FieldKind::CoulombShielding).row(atomIdx));
+        return std::nullopt;
     }
 
     std::optional<Vec3> E(std::size_t atomIdx) const {

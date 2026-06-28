@@ -8,8 +8,6 @@
 #include "QtProtein.h"
 #include "AtomSelection.h"  // GeometryKind enumerators (None/Distance/Angle/Dihedral)
 
-#include <Eigen/SVD>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -40,15 +38,19 @@ RingGeometry FitRingGeometry(const std::vector<Vec3>& verts) {
         g.center += v;
     g.center /= static_cast<double>(verts.size());
 
-    // Normal = smallest singular vector of the centered point matrix.
+    // Normal = canonical ring-walk winding. The SVD plane normal has an
+    // arbitrary sign, which made display/collar crossings unstable frame to
+    // frame; the atom order gives this calculation one durable orientation.
     if (verts.size() >= 3) {
-        Eigen::Matrix<double, Eigen::Dynamic, 3> M(static_cast<Eigen::Index>(verts.size()), 3);
-        for (std::size_t i = 0; i < verts.size(); ++i)
-            M.row(static_cast<Eigen::Index>(i)) = (verts[i] - g.center).transpose();
-        Eigen::JacobiSVD<Eigen::Matrix<double, Eigen::Dynamic, 3>> svd(M, Eigen::ComputeFullV);
-        g.normal = svd.matrixV().col(2);
-        if (g.normal.norm() > 1e-12)
-            g.normal.normalize();
+        Vec3 winding = Vec3::Zero();
+        for (std::size_t i = 0; i < verts.size(); ++i) {
+            const Vec3 rel  = verts[i] - g.center;
+            const Vec3 next = verts[(i + 1) % verts.size()] - g.center;
+            winding += rel.cross(next);
+        }
+        const double n = winding.norm();
+        if (n > 1e-12)
+            g.normal = winding / n;
     }
 
     // Radius = mean distance from center.
@@ -70,10 +72,99 @@ RingGeometry RingGeometryAt(const Conformation& conf, std::size_t ringIdx, std::
 
 namespace {
 constexpr double kRadToDeg = 57.295779513082320876798;  // 180 / pi
+constexpr double kRingNullMagicConeTan = 1.41421356237309504880;
+constexpr double kRingNullMagicAngleDeg = 54.735610317245345684622;
 // Below this (Å) a difference vector has no reliable direction, so the angle
 // / dihedral it would define is undefined rather than noisy.
 constexpr double kMinVecNorm = 1e-9;
 }  // namespace
+
+double RingNullMagicAngleDegrees() {
+    return kRingNullMagicAngleDeg;
+}
+
+const char* RingNullSideName(RingNullSide side) {
+    switch (side) {
+    case RingNullSide::Axial:
+        return "axial";
+    case RingNullSide::Equatorial:
+        return "equatorial";
+    case RingNullSide::OnSurface:
+        return "on_surface";
+    case RingNullSide::Invalid:
+        return "invalid";
+    }
+    return "invalid";
+}
+
+RingNullSide RingNullSideFromMargin(double nullMarginA, double toleranceA) {
+    if (!std::isfinite(nullMarginA))
+        return RingNullSide::Invalid;
+    const double tol = std::max(0.0, toleranceA);
+    if (std::abs(nullMarginA) <= tol)
+        return RingNullSide::OnSurface;
+    return nullMarginA < 0.0 ? RingNullSide::Axial : RingNullSide::Equatorial;
+}
+
+RingNullMeasurement MeasureRingNull(const RingGeometry& ring, const Vec3& atomPosition,
+                                    double toleranceA) {
+    RingNullMeasurement out;
+    out.atomPosition = atomPosition;
+    out.ring = ring;
+
+    const double nNorm = ring.normal.norm();
+    if (ring.radius < 1e-9 || nNorm < 1e-12)
+        return out;
+
+    const Vec3 n = ring.normal / nNorm;
+    const Vec3 delta = atomPosition - ring.center;
+    out.distanceA = delta.norm();
+    out.axialA = delta.dot(n);
+    out.absAxialA = std::abs(out.axialA);
+    const Vec3 radial = delta - n * out.axialA;
+    out.radialA = radial.norm();
+    out.nullRadiusA = kRingNullMagicConeTan * out.absAxialA;
+    out.nullMarginA = out.radialA - out.nullRadiusA;
+
+    if (out.distanceA > kMinVecNorm) {
+        const double cosAbs = std::clamp(out.absAxialA / out.distanceA, 0.0, 1.0);
+        out.angleDeg = std::acos(cosAbs) * kRadToDeg;
+        out.angularFactor = 3.0 * cosAbs * cosAbs - 1.0;
+    } else {
+        out.angleDeg = 0.0;
+        out.angularFactor = 2.0;
+    }
+
+    out.side = RingNullSideFromMargin(out.nullMarginA, toleranceA);
+    out.valid = out.side != RingNullSide::Invalid;
+    return out;
+}
+
+RingNullMeasurement MeasureRingNull(const Conformation& conf, std::size_t atomIdx,
+                                    std::size_t ringIdx, std::size_t frame,
+                                    double toleranceA) {
+    const QtProtein* p = conf.protein();
+    if (!p || frame >= conf.frameCount() || atomIdx >= p->atomCount() ||
+        ringIdx >= p->ringCount()) {
+        return {};
+    }
+    return MeasureRingNull(RingGeometryAt(conf, ringIdx, frame),
+                           conf.atomPosition(frame, atomIdx),
+                           toleranceA);
+}
+
+bool RingNullCrosses(const RingNullMeasurement& a, const RingNullMeasurement& b,
+                     double toleranceA) {
+    const RingNullSide sa = RingNullSideFromMargin(a.nullMarginA, toleranceA);
+    const RingNullSide sb = RingNullSideFromMargin(b.nullMarginA, toleranceA);
+    if (!a.valid || !b.valid || sa == RingNullSide::Invalid || sb == RingNullSide::Invalid)
+        return false;
+    if (sa == RingNullSide::OnSurface && sb == RingNullSide::OnSurface)
+        return false;
+    if (sa == RingNullSide::OnSurface || sb == RingNullSide::OnSurface)
+        return true;
+    return sa != sb;
+}
 
 double Distance(const Vec3& a, const Vec3& b) {
     return (b - a).norm();

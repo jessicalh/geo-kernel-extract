@@ -20,6 +20,7 @@ enum class SignalSourceKind : std::uint8_t {
     Topology,
     DerivedGeometry,
     SelectionEvents,
+    ExperimentalShieldingMl,
 };
 
 enum class SourceResidency : std::uint8_t {

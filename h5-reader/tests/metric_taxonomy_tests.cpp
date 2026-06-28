@@ -36,6 +36,7 @@ private slots:
     void electrostaticByChargeModel();
     void crossFamilyOverrides();
     void referenceAndForms();
+    void experimentalShieldingMlIsNotReference();
     void namespaceDotsNotFolded();
     void formSuffixesFold();
     void formCollapseGathersForms();
@@ -84,6 +85,15 @@ void MetricTaxonomyTests::referenceAndForms() {
     QVERIFY(cls("npy:tp", "tripeptide_bb_shielding", "tripeptide", SignalSourceKind::FrameNpySnapshot).group == MetricGroup::DftReference);
     QVERIFY(cls("topology:res", "topology.residues", "topology", SignalSourceKind::Topology).form == MetricForm::Spine);
     QVERIFY(cls("geo:d", "geometry.distance", "geometry", SignalSourceKind::DerivedGeometry).form == MetricForm::Derived);
+}
+
+void MetricTaxonomyTests::experimentalShieldingMlIsNotReference() {
+    const auto e = cls("ml:t2", "experimental_shielding_ml.t2",
+                       "experimental_shielding_ml",
+                       SignalSourceKind::ExperimentalShieldingMl);
+    QVERIFY(e.group == MetricGroup::Experimental);
+    QVERIFY(e.form == MetricForm::Derived);
+    QVERIFY(RoleForGroup(e.group) == MetricRole::Experimental);
 }
 
 void MetricTaxonomyTests::namespaceDotsNotFolded() {

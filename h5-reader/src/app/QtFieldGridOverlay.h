@@ -25,14 +25,18 @@
 #include <QPointer>
 
 #include <vtkActor.h>
+#include <vtkCellArray.h>
 #include <vtkContourFilter.h>
 #include <vtkFloatArray.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkImageData.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
 #include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
 #include <vtkTrivialProducer.h>
 
+#include <optional>
 #include <vector>
 
 namespace h5reader::app {
@@ -56,6 +60,9 @@ public:
     void Build(const model::QtProtein& protein,
                model::Conformation&    conformation);
 
+    size_t ringCount() const { return rings_.size(); }
+    std::optional<size_t> visibleRing() const { return visibleRing_; }
+
 public slots:
     // Recompute per-ring scalar grids from kernel re-eval at frame t,
     // then rerun the contour filters. One Render() is issued by the
@@ -74,6 +81,10 @@ public slots:
     void setVisible(bool visible);
     void setShieldedVisible(bool visible);
     void setDeshieldedVisible(bool visible);
+    void setNullConeVisible(bool visible);
+    void setNullConeOpacity(double opacity);
+    void setNullConeLength(double lengthA);
+    void setVisibleRing(std::optional<size_t> ringIdx);
 
 private:
     struct RingGrid {
@@ -84,6 +95,10 @@ private:
         vtkSmartPointer<vtkContourFilter>  contourDeshielded;
         vtkSmartPointer<vtkActor>          actorShielded;    // sky blue, T0 < -threshold
         vtkSmartPointer<vtkActor>          actorDeshielded;  // coral,    T0 > +threshold
+        vtkSmartPointer<vtkPoints>         nullConePoints;
+        vtkSmartPointer<vtkCellArray>      nullConePolys;
+        vtkSmartPointer<vtkPolyData>       nullConePoly;
+        vtkSmartPointer<vtkActor>          actorNullCone;
     };
 
     // Rebuild the scalar field for one ring at the given frame. Uses
@@ -93,7 +108,11 @@ private:
     // Apply current threshold to each contour filter (Modified()).
     void UpdateThresholds();
 
-    void ApplyActorStyling(RingGrid& rg);
+    bool RingIsAllowed(size_t ringIdx) const;
+    void RecomputeVisibleRings();
+    void UpdateNullConeGeometry(size_t ringIdx, RingGrid& rg, const model::RingGeometry& geo);
+    void UpdateVisibleNullCones();
+    void ApplyActorStyling(size_t ringIdx, RingGrid& rg);
 
     vtkSmartPointer<vtkRenderer>                  renderer_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
@@ -117,7 +136,11 @@ private:
     double        gaussianExtentA_    = 9.0;    // σ, Å — reach (taper width)
     double        gaussianPeak_       = 1.0;    // amplitude gain (1 = physics)
     double        opacity_            = 0.40;
+    double        nullConeOpacity_    = 0.12;
+    double        nullConeLengthA_    = 4.5;
+    std::optional<size_t> visibleRing_;         // nullopt = all rings
     bool          visible_            = false;   // off by default — user enables
+    bool          nullConeVisible_    = false;
     bool          shieldedVisible_    = true;
     bool          deshieldedVisible_  = true;
 };

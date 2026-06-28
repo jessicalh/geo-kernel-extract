@@ -58,6 +58,7 @@
 #include <QObject>
 #include <QPointer>
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 
@@ -83,6 +84,8 @@ class DashboardDisplayController;
 class QtPlaybackController;
 class ReaderMainWindow;
 class AngleCollarActor;
+class AtomTrackOverlay;
+class HeroshotButterflyOverlay;
 class TensorGhostTrail;
 
 class RestServer final : public QObject {
@@ -145,10 +148,14 @@ private:
     // Heroshot layer (transient figure FX, never part of the reader UI): the
     // tensor ghost trail built on demand by POST /heroshot/ghost_trail. Rebuilt
     // against the live scene renderer each call; cleared by /heroshot/clear.
+    std::unique_ptr<AtomTrackOverlay>            heroshotAtomTrack_;
+    std::unique_ptr<HeroshotButterflyOverlay>    heroshotButterfly_;
     std::unique_ptr<TensorGhostTrail>           heroshotTrail_;
     std::unique_ptr<AngleCollarActor>           heroshotAngleCollar_;
     std::optional<bool>                         heroshotMeasurementVisibleBefore_;
     std::optional<MoleculeScene::MoleculeStyle> heroshotMoleculeStyleBefore_;
+    std::optional<std::size_t>                  heroshotFieldRingBefore_;
+    bool                                        heroshotFieldRingWasSet_ = false;
     bool                                        contextSet_ = false;
 };
 

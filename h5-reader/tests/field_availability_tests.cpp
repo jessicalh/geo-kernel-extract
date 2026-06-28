@@ -40,6 +40,7 @@ class FieldAvailabilityTests : public QObject {
 private slots:
     void dftLiveWhenJobsExist();
     void dftAbsentWhenNoCampaign();
+    void experimentalShieldingMlAvailabilityIsExplicit();
     void topologyLiveWhenTableNonEmpty();
     void topologyAllMissingWhenTableEmpty();
     void topologyBondLengthTracksBonds();
@@ -59,6 +60,16 @@ void FieldAvailabilityTests::dftAbsentWhenNoCampaign() {
     // No DFT campaign (tier A / extractor-only) -> honestly Absent, not faked.
     QVERIFY(dftState(0) == State::Absent);
     QVERIFY(!TrajectoryFieldAvailability::isVisibleState(dftState(0)));
+}
+
+void FieldAvailabilityTests::experimentalShieldingMlAvailabilityIsExplicit() {
+    const auto off = TrajectoryFieldAvailability::classifyExperimentalShieldingMl(false);
+    QVERIFY(off.state == State::Absent);
+    QVERIFY(!TrajectoryFieldAvailability::isVisibleState(off.state));
+
+    const auto on = TrajectoryFieldAvailability::classifyExperimentalShieldingMl(true);
+    QVERIFY(on.state == State::Available);
+    QVERIFY(TrajectoryFieldAvailability::isVisibleState(on.state));
 }
 
 void FieldAvailabilityTests::topologyLiveWhenTableNonEmpty() {
