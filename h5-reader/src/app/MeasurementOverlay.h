@@ -60,7 +60,7 @@ public:
     // ReaderMainWindow once the scene + selection both exist.
     void setSelection(model::AtomSelection* selection);
 
-public slots:
+public:
     // Selection membership changed — re-evaluate which spheres show, at the
     // current frame. No Render (the scene refreshes the frame right after).
     void onSelectionChanged();

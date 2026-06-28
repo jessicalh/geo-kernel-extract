@@ -187,7 +187,7 @@ public:
     MoleculeStyle moleculeStyle() const;
     void applyMoleculeStyle(const MoleculeStyle& style);
 
-public slots:
+public:
     // Update atom positions to frame t AND propagate to every overlay.
     // Early-returns when t == currentFrame to keep playback cheap; use
     // refreshCurrentFrame() to force a re-update on the same frame

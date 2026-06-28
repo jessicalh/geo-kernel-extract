@@ -106,7 +106,7 @@ public:
     static std::array<double, 3> SlotColorRgb(std::size_t slot);
     static QColor                SlotColor(std::size_t slot);
 
-public slots:
+public:
     // Interpret one pick. mods is the keyboard state captured at click time.
     // Out-of-range idx, and an append when the set is full, are no-ops
     // (logged at info — a wrongly-empty selection should be a question the

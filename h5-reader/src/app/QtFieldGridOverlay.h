@@ -63,7 +63,7 @@ public:
     size_t ringCount() const { return rings_.size(); }
     std::optional<size_t> visibleRing() const { return visibleRing_; }
 
-public slots:
+public:
     // Recompute per-ring scalar grids from kernel re-eval at frame t,
     // then rerun the contour filters. One Render() is issued by the
     // MoleculeScene owner after all overlays have updated.
