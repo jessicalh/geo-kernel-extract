@@ -63,8 +63,13 @@ public:
               const std::array<double, 3>& principalValues,
               const model::Mat3& pasAxes,
               double iso,
-              double opacity = 1.0,
-              const Style& style = Style{});
+              double opacity = 1.0);
+    void show(const model::Vec3& center,
+              const std::array<double, 3>& principalValues,
+              const model::Mat3& pasAxes,
+              double iso,
+              double opacity,
+              const Style& style);
     void clear();
     void setVisible(bool on);
     bool isActive() const { return active_; }

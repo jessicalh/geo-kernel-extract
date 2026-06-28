@@ -65,8 +65,12 @@ public:
     bool show(const model::QtProtein& protein,
               model::Conformation& conformation,
               std::size_t ring,
+              std::size_t frame);
+    bool show(const model::QtProtein& protein,
+              model::Conformation& conformation,
+              std::size_t ring,
               std::size_t frame,
-              const Style& style = Style{});
+              const Style& style);
     void clear();
     std::size_t size() const { return pipelines_.size(); }
     const Stats& stats() const { return stats_; }

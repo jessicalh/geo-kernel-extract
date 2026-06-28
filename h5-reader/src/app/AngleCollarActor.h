@@ -49,8 +49,13 @@ public:
               const model::Vec3& axisEnd,
               const model::Vec3& center,
               const model::Vec3& referenceDirection,
+              const std::vector<Arc>& arcs);
+    void show(const model::Vec3& axisStart,
+              const model::Vec3& axisEnd,
+              const model::Vec3& center,
+              const model::Vec3& referenceDirection,
               const std::vector<Arc>& arcs,
-              const Style& style = Style{});
+              const Style& style);
     void clear();
 
 private:

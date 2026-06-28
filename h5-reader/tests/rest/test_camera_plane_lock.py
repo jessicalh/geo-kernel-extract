@@ -18,9 +18,6 @@ atoms, enables the lock, walks frames, asserts:
 from __future__ import annotations
 
 import math
-from pathlib import Path
-
-import pytest
 
 
 ATOMS = [1, 100, 200]

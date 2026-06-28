@@ -360,6 +360,7 @@ double arrayMagnitude(const std::array<double, N>& values) {
 std::optional<double> sampleTensorValue(const model::SphericalTensor& tensor,
                                         const model::ChannelDescriptor& channel,
                                         model::StripComponent component) {
+    static_cast<void>(channel);
     if (component == model::StripComponent::TensorT0)
         return tensor.T0;
     if (component == model::StripComponent::TensorT1)

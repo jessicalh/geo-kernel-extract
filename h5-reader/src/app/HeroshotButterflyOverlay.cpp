@@ -95,6 +95,13 @@ void HeroshotButterflyOverlay::clear() {
 bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
                                     model::Conformation& conformation,
                                     std::size_t ringIdx,
+                                    std::size_t frame) {
+    return show(protein, conformation, ringIdx, frame, Style{});
+}
+
+bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
+                                    model::Conformation& conformation,
+                                    std::size_t ringIdx,
                                     std::size_t frame,
                                     const Style& style) {
     clear();
@@ -123,7 +130,10 @@ bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
     Pipeline pipe;
     pipe.scalars = vtkSmartPointer<vtkFloatArray>::New();
     pipe.scalars->SetName("heroshot_T0");
-    pipe.scalars->SetNumberOfTuples(dim * dim * dim);
+    const vtkIdType voxelCount = static_cast<vtkIdType>(dim)
+                                 * static_cast<vtkIdType>(dim)
+                                 * static_cast<vtkIdType>(dim);
+    pipe.scalars->SetNumberOfTuples(voxelCount);
 
     pipe.imageData = vtkSmartPointer<vtkImageData>::New();
     pipe.imageData->SetDimensions(dim, dim, dim);

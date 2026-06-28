@@ -63,17 +63,18 @@ public:
     AtomTrackOverlay(const AtomTrackOverlay&) = delete;
     AtomTrackOverlay& operator=(const AtomTrackOverlay&) = delete;
 
-    void show(const std::vector<Sample>& samples, const Style& style = Style{});
+    void show(const std::vector<Sample>& samples);
+    void show(const std::vector<Sample>& samples, const Style& style);
     void clear();
     std::size_t size() const { return actors_.size(); }
 
 private:
-    std::array<unsigned char, 3> colorFor(double value,
-                                          double scale,
-                                          ColorMode mode,
-                                          double gamma,
-                                          double minFraction) const;
-    void addActor(vtkSmartPointer<vtkActor> actor);
+    static std::array<unsigned char, 3> colorFor(double value,
+                                                 double scale,
+                                                 ColorMode mode,
+                                                 double gamma,
+                                                 double minFraction);
+    void addActor(const vtkSmartPointer<vtkActor>& actor);
 
     vtkSmartPointer<vtkRenderer> renderer_;
     std::vector<vtkSmartPointer<vtkActor>> actors_;

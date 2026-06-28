@@ -77,6 +77,7 @@
 #include <cstdio>
 #include <limits>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace h5reader::app {
@@ -99,7 +100,6 @@ public:
     }
 };
 
-constexpr const char* kMimeJson = "application/json";
 constexpr const char* kMimePng = "image/png";
 
 QHttpServerResponse jsonResponse(const QJsonObject& obj,
@@ -895,32 +895,34 @@ QJsonObject anchorToJson(const model::SignalAnchor& anchor) {
     QJsonObject out;
     if (std::holds_alternative<NoneAnchor>(anchor)) {
         out["kind"] = "none";
-    } else if (const auto* a = std::get_if<AtomAnchor>(&anchor)) {
-        out["kind"] = "atom"; out["atom"] = static_cast<qint64>(a->atom);
-    } else if (const auto* r = std::get_if<ResidueAnchor>(&anchor)) {
-        out["kind"] = "residue"; out["residue"] = static_cast<qint64>(r->residue);
-    } else if (const auto* t = std::get_if<AtomTupleAnchor>(&anchor)) {
+    } else if (const auto* atomAnchor = std::get_if<AtomAnchor>(&anchor)) {
+        out["kind"] = "atom"; out["atom"] = static_cast<qint64>(atomAnchor->atom);
+    } else if (const auto* residueAnchor = std::get_if<ResidueAnchor>(&anchor)) {
+        out["kind"] = "residue"; out["residue"] = static_cast<qint64>(residueAnchor->residue);
+    } else if (const auto* tupleAnchor = std::get_if<AtomTupleAnchor>(&anchor)) {
         QJsonArray atoms;
-        for (auto a : t->atoms) atoms.append(static_cast<qint64>(a));
+        for (auto atom : tupleAnchor->atoms) atoms.append(static_cast<qint64>(atom));
         out["kind"] = "atom_tuple"; out["atoms"] = atoms;
-    } else if (const auto* b = std::get_if<BondAnchor>(&anchor)) {
-        out["kind"] = "bond"; out["bond"] = static_cast<qint64>(b->bond);
-    } else if (const auto* v = std::get_if<BondVectorAnchor>(&anchor)) {
+    } else if (const auto* bondAnchor = std::get_if<BondAnchor>(&anchor)) {
+        out["kind"] = "bond"; out["bond"] = static_cast<qint64>(bondAnchor->bond);
+    } else if (const auto* vectorAnchor = std::get_if<BondVectorAnchor>(&anchor)) {
         out["kind"] = "bond_vector";
-        out["residue"] = static_cast<qint64>(v->residue);
-        out["kind_id"] = static_cast<qint64>(v->kind);
-    } else if (const auto* r = std::get_if<RingAnchor>(&anchor)) {
-        out["kind"] = "ring"; out["ring"] = static_cast<qint64>(r->ring);
-    } else if (const auto* r = std::get_if<AromaticRingAnchor>(&anchor)) {
-        out["kind"] = "aromatic_ring"; out["ring"] = static_cast<qint64>(r->ring);
-    } else if (const auto* r = std::get_if<SaturatedRingAnchor>(&anchor)) {
-        out["kind"] = "saturated_ring"; out["ring"] = static_cast<qint64>(r->ring);
-    } else if (const auto* p = std::get_if<RingContributionPairAnchor>(&anchor)) {
-        out["kind"] = "ring_contribution_pair"; out["pair"] = static_cast<qint64>(p->pair);
-    } else if (const auto* m = std::get_if<RingMembershipAnchor>(&anchor)) {
-        out["kind"] = "ring_membership"; out["membership"] = static_cast<qint64>(m->membership);
-    } else if (const auto* p = std::get_if<MutationMatchPairAnchor>(&anchor)) {
-        out["kind"] = "mutation_match_pair"; out["pair"] = static_cast<qint64>(p->pair);
+        out["residue"] = static_cast<qint64>(vectorAnchor->residue);
+        out["kind_id"] = static_cast<qint64>(vectorAnchor->kind);
+    } else if (const auto* ringAnchor = std::get_if<RingAnchor>(&anchor)) {
+        out["kind"] = "ring"; out["ring"] = static_cast<qint64>(ringAnchor->ring);
+    } else if (const auto* aromaticAnchor = std::get_if<AromaticRingAnchor>(&anchor)) {
+        out["kind"] = "aromatic_ring"; out["ring"] = static_cast<qint64>(aromaticAnchor->ring);
+    } else if (const auto* saturatedAnchor = std::get_if<SaturatedRingAnchor>(&anchor)) {
+        out["kind"] = "saturated_ring"; out["ring"] = static_cast<qint64>(saturatedAnchor->ring);
+    } else if (const auto* contributionAnchor = std::get_if<RingContributionPairAnchor>(&anchor)) {
+        out["kind"] = "ring_contribution_pair";
+        out["pair"] = static_cast<qint64>(contributionAnchor->pair);
+    } else if (const auto* membershipAnchor = std::get_if<RingMembershipAnchor>(&anchor)) {
+        out["kind"] = "ring_membership";
+        out["membership"] = static_cast<qint64>(membershipAnchor->membership);
+    } else if (const auto* mutationAnchor = std::get_if<MutationMatchPairAnchor>(&anchor)) {
+        out["kind"] = "mutation_match_pair"; out["pair"] = static_cast<qint64>(mutationAnchor->pair);
     } else if (std::holds_alternative<ProteinAnchor>(anchor)) {
         out["kind"] = "protein";
     } else if (std::holds_alternative<SystemAnchor>(anchor)) {
@@ -1157,7 +1159,8 @@ bool parseModeArray(const QJsonObject& body, QStringList* modes, QString* error)
         *error = QStringLiteral("body must include array field \"modes\"");
         return false;
     }
-    for (const QJsonValue& value : modesValue.toArray()) {
+    const QJsonArray modeArray = modesValue.toArray();
+    for (const auto& value : std::as_const(modeArray)) {
         const QString mode = value.toString().trimmed();
         if (mode.isEmpty()) {
             *error = QStringLiteral("modes must contain non-empty strings");
@@ -1610,7 +1613,7 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
         std::vector<std::size_t> atoms;
         atoms.reserve(static_cast<std::size_t>(arr.size()));
-        for (const QJsonValue& v : arr) {
+        for (const auto& v : std::as_const(arr)) {
             const qint64 raw = v.toInteger(-1);
             if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
                 return errorResponse(
@@ -2248,7 +2251,7 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
         std::vector<std::size_t> residues;
         const QJsonArray arr = body.value(QStringLiteral("residues")).toArray();
-        for (const QJsonValue v : arr)
+        for (const auto& v : std::as_const(arr))
             if (v.isDouble()) residues.push_back(static_cast<std::size_t>(v.toInt()));
         readerWindow_->setResidueFilter(residues);   // empty → restore full
         return QHttpServerResponse(SC::NoContent);
@@ -2351,7 +2354,7 @@ void RestServer::registerRoutes() {
                                          SC::ServiceUnavailable);
                 const QJsonArray arr = body.value("subset_atoms").toArray();
                 subset.reserve(static_cast<std::size_t>(arr.size()));
-                for (const QJsonValue& v : arr) {
+                for (const auto& v : std::as_const(arr)) {
                     const qint64 raw = v.toInteger(-1);
                     if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
                         return errorResponse(QStringLiteral("subset_atoms index out of range: %1").arg(raw),
@@ -2434,7 +2437,7 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("plane lock requires exactly three atom indices"), SC::BadRequest);
         std::vector<std::size_t> atoms;
         atoms.reserve(3);
-        for (const QJsonValue& v : arr)
+        for (const auto& v : std::as_const(arr))
             atoms.push_back(static_cast<std::size_t>(v.toInteger()));
         if (!scene_->lockCameraToSelectionPlane(atoms))
             return errorResponse(QStringLiteral("scene rejected the lock (degenerate plane or invalid atoms)"),
@@ -2516,7 +2519,7 @@ void RestServer::registerRoutes() {
             const QJsonArray arr = body.value("atoms").toArray();
             std::vector<std::size_t> atoms;
             atoms.reserve(static_cast<std::size_t>(arr.size()));
-            for (const QJsonValue& v : arr) {
+            for (const auto& v : std::as_const(arr)) {
                 const qint64 raw = v.toInteger(-1);
                 if (raw < 0 || static_cast<std::size_t>(raw) >= atomCount)
                     return std::nullopt;
@@ -2748,7 +2751,7 @@ void RestServer::registerRoutes() {
 
         const std::size_t currentFrame = playback_
             ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
-        scene_->cameraComposer()->setMode(std::move(result.mode),
+        scene_->cameraComposer()->setMode(result.mode,
                                             result.policy,
                                             currentFrame);
         scene_->syncCameraClippingRange();
@@ -3265,7 +3268,7 @@ void RestServer::registerRoutes() {
         if (!explicitFrames.isEmpty()) {
             frames.reserve(static_cast<std::size_t>(
                 std::min(static_cast<int>(explicitFrames.size()), maxPoints)));
-            for (const QJsonValue& v : explicitFrames) {
+            for (const auto& v : std::as_const(explicitFrames)) {
                 if (static_cast<int>(frames.size()) >= maxPoints)
                     break;
                 const int f = v.toInt(-1);
@@ -3802,7 +3805,7 @@ void RestServer::registerRoutes() {
                 ? body.value(QStringLiteral("frames")).toArray()
                 : QJsonArray{};
         if (!explicitFrames.isEmpty()) {
-            for (const QJsonValue& v : explicitFrames) {
+            for (const auto& v : std::as_const(explicitFrames)) {
                 if (static_cast<int>(samples.size()) >= 12) break;
                 if (!v.isDouble()) continue;
                 const int f = v.toInt(-1);
@@ -4083,7 +4086,8 @@ void RestServer::registerRoutes() {
                                      || avail == QStringLiteral("AllZeroObserved"));
             if (isShowable) ++showable;
             QJsonArray modeArr;
-            for (const QString& m : model::AllDisplayModes(d)) modeArr.append(m);
+            const QStringList displayModes = model::AllDisplayModes(d);
+            for (const QString& m : std::as_const(displayModes)) modeArr.append(m);
             QJsonArray tagArr;
             for (const QString& t : d.tags) tagArr.append(t);
             arr.append(QJsonObject{
@@ -4195,9 +4199,11 @@ void RestServer::registerRoutes() {
         for (const model::SignalDescriptor& d : catalog_->allDescriptorList()) {
             const QString shape = model::ToString(d.valueShape);
             QJsonArray modeArr;
-            for (const QString& m : model::AllDisplayModes(d)) modeArr.append(m);
+            const QStringList displayModes = model::AllDisplayModes(d);
+            for (const QString& m : std::as_const(displayModes)) modeArr.append(m);
             QJsonArray vizArr;
-            for (const model::VisualizationDefinition* def : reg.supporting(d)) {
+            const auto supportingViz = reg.supporting(d);
+            for (const model::VisualizationDefinition* def : std::as_const(supportingViz)) {
                 const QString vt = model::ToString(def->type());
                 vizArr.append(vt);
                 if (!shapeViz[shape].contains(vt)) shapeViz[shape].append(vt);
@@ -4221,7 +4227,8 @@ void RestServer::registerRoutes() {
         QJsonObject byShape;
         for (auto it = shapeCount.constBegin(); it != shapeCount.constEnd(); ++it) {
             QJsonArray viz;
-            for (const QString& v : shapeViz.value(it.key())) viz.append(v);
+            const QStringList shapeVisualizations = shapeViz.value(it.key());
+            for (const QString& v : std::as_const(shapeVisualizations)) viz.append(v);
             byShape[it.key()] = QJsonObject{
                 {"fields", it.value()},
                 {"dead", shapeDead.value(it.key())},
@@ -4251,7 +4258,8 @@ void RestServer::registerRoutes() {
                    [](const QHttpServerRequest&) {
         const std::uint32_t mask = diagnostics::StructuredLogger::CategoryMask();
         QJsonArray cats;
-        for (const QString& n : diagnostics::StructuredLogger::SymbolicNamesFromMask(mask))
+        const QStringList activeNames = diagnostics::StructuredLogger::SymbolicNamesFromMask(mask);
+        for (const QString& n : std::as_const(activeNames))
             cats.append(n);
         return jsonResponse(QJsonObject{
             {"mask", static_cast<qint64>(mask)},
@@ -4277,7 +4285,8 @@ void RestServer::registerRoutes() {
             mask = static_cast<std::uint32_t>(raw);
         } else if (body.value("categories").isArray()) {
             QStringList names;
-            for (const QJsonValue& v : body.value("categories").toArray())
+            const QJsonArray categories = body.value("categories").toArray();
+            for (const auto& v : std::as_const(categories))
                 names.append(v.toString());
             mask = diagnostics::StructuredLogger::MaskFromSymbolicNames(names);
         } else {
@@ -4287,7 +4296,8 @@ void RestServer::registerRoutes() {
         }
         diagnostics::StructuredLogger::SetCategoryMask(mask);
         QJsonArray cats;
-        for (const QString& n : diagnostics::StructuredLogger::SymbolicNamesFromMask(mask))
+        const QStringList activeNames = diagnostics::StructuredLogger::SymbolicNamesFromMask(mask);
+        for (const QString& n : std::as_const(activeNames))
             cats.append(n);
         return jsonResponse(QJsonObject{
             {"mask", static_cast<qint64>(mask)},
@@ -4320,7 +4330,7 @@ void RestServer::registerRoutes() {
         if (frame < 0 || static_cast<std::size_t>(frame) >= conf->frameCount())
             return errorResponse(QStringLiteral("frame out of range"), SC::BadRequest);
         QJsonArray out;
-        for (const QJsonValue& v : atomsArr) {
+        for (const auto& v : std::as_const(atomsArr)) {
             const auto atom = static_cast<std::size_t>(v.toInteger());
             if (atom >= protein->atomCount())
                 return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
@@ -4408,7 +4418,8 @@ void RestServer::registerRoutes() {
         if (!dashboardController_ || !readerWindow_)
             return errorResponse(QStringLiteral("dashboard not wired"), SC::ServiceUnavailable);
         QJsonArray tracks;
-        for (const DashboardDisplayController::StripTrack& t : dashboardController_->stripTracks())
+        const auto stripTracks = dashboardController_->stripTracks();
+        for (const DashboardDisplayController::StripTrack& t : std::as_const(stripTracks))
             tracks.append(stripTrackToJson(t));
         return jsonResponse(QJsonObject{
             {"strip_tracks", tracks},
@@ -4546,7 +4557,7 @@ void RestServer::registerRoutes() {
         if (!parseModeArray(body, &modes, &error))
             return errorResponse(error, SC::BadRequest);
 
-        for (const QString& mode : modes) {
+        for (const QString& mode : std::as_const(modes)) {
             model::DisplaySignalBinding binding;
             binding.sourceKind = descriptor->sourceKind;
             binding.descriptorId = descriptor->id;

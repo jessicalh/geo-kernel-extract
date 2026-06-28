@@ -46,7 +46,7 @@ vtkSmartPointer<vtkActor> tubeActor(const std::vector<model::Vec3>& points,
 
     auto line = vtkSmartPointer<vtkCellArray>::New();
     const vtkIdType pointCount = static_cast<vtkIdType>(points.size());
-    line->InsertNextCell(pointCount);
+    line->InsertNextCell(static_cast<int>(pointCount));
     for (vtkIdType i = 0; i < pointCount; ++i)
         line->InsertCellPoint(i);
 
@@ -96,9 +96,11 @@ vtkSmartPointer<vtkActor> coneActor(const model::Vec3& neckCenter,
 
     auto polys = vtkSmartPointer<vtkCellArray>::New();
     for (int i = 0; i < n; ++i) {
-        const vtkIdType neck0 = static_cast<vtkIdType>(2 * i);
+        const vtkIdType vi = static_cast<vtkIdType>(i);
+        const vtkIdType vn = static_cast<vtkIdType>(n);
+        const vtkIdType neck0 = static_cast<vtkIdType>(2) * vi;
         const vtkIdType rim0 = neck0 + 1;
-        const vtkIdType neck1 = static_cast<vtkIdType>(2 * ((i + 1) % n));
+        const vtkIdType neck1 = static_cast<vtkIdType>(2) * ((vi + 1) % vn);
         const vtkIdType rim1 = neck1 + 1;
         polys->InsertNextCell(4);
         polys->InsertCellPoint(neck0);
@@ -140,7 +142,7 @@ std::vector<model::Vec3> arcPoints(const model::Vec3& center,
     const int byAngle = static_cast<int>(std::ceil(std::abs(angleRadians) / (kPi / 48.0)));
     const int segments = std::max({8, byAngle, preferredSegments / 4});
     std::vector<model::Vec3> pts;
-    pts.reserve(static_cast<std::size_t>(segments + 1));
+    pts.reserve(static_cast<std::size_t>(segments) + 1U);
     for (int i = 0; i <= segments; ++i) {
         const double t = static_cast<double>(i) / static_cast<double>(segments);
         const model::Vec3 dir = rotateAroundAxis(referenceUnit, axisUnit, angleRadians * t);
@@ -156,7 +158,7 @@ std::vector<model::Vec3> circlePoints(const model::Vec3& center,
                                       int segments) {
     const int n = std::max(24, segments);
     std::vector<model::Vec3> pts;
-    pts.reserve(static_cast<std::size_t>(n + 1));
+    pts.reserve(static_cast<std::size_t>(n) + 1U);
     for (int i = 0; i <= n; ++i) {
         const double theta = (2.0 * kPi * static_cast<double>(i)) / static_cast<double>(n);
         pts.push_back(center + rotateAroundAxis(referenceUnit, axisUnit, theta) * radius);
@@ -195,6 +197,14 @@ void AngleCollarActor::show(const model::Vec3& axisStart,
                             const model::Vec3& axisEnd,
                             const model::Vec3& center,
                             const model::Vec3& referenceDirection,
+                            const std::vector<Arc>& arcs) {
+    show(axisStart, axisEnd, center, referenceDirection, arcs, Style{});
+}
+
+void AngleCollarActor::show(const model::Vec3& axisStart,
+                            const model::Vec3& axisEnd,
+                            const model::Vec3& center,
+                            const model::Vec3& referenceDirection,
                             const std::vector<Arc>& arcs,
                             const Style& style) {
     clear();
@@ -224,7 +234,7 @@ void AngleCollarActor::show(const model::Vec3& axisStart,
     const model::Vec3 neckCenter = center - coneAxis * std::min(0.18, coneLength * 0.18);
     const model::Vec3 rimCenter = center + coneAxis * coneLength;
 
-    auto add = [&](vtkSmartPointer<vtkActor> actor) {
+    auto add = [&](const vtkSmartPointer<vtkActor>& actor) {
         renderer_->AddActor(actor);
         actors_.push_back(actor);
     };

@@ -277,32 +277,34 @@ QJsonObject signalAnchorToJson(const model::SignalAnchor& anchor) {
     QJsonObject out;
     if (std::holds_alternative<model::NoneAnchor>(anchor)) {
         out["kind"] = "none";
-    } else if (const auto* a = std::get_if<model::AtomAnchor>(&anchor)) {
-        out["kind"] = "atom"; out["atom"] = static_cast<qint64>(a->atom);
-    } else if (const auto* r = std::get_if<model::ResidueAnchor>(&anchor)) {
-        out["kind"] = "residue"; out["residue"] = static_cast<qint64>(r->residue);
-    } else if (const auto* t = std::get_if<model::AtomTupleAnchor>(&anchor)) {
+    } else if (const auto* atomAnchor = std::get_if<model::AtomAnchor>(&anchor)) {
+        out["kind"] = "atom"; out["atom"] = static_cast<qint64>(atomAnchor->atom);
+    } else if (const auto* residueAnchor = std::get_if<model::ResidueAnchor>(&anchor)) {
+        out["kind"] = "residue"; out["residue"] = static_cast<qint64>(residueAnchor->residue);
+    } else if (const auto* tupleAnchor = std::get_if<model::AtomTupleAnchor>(&anchor)) {
         QJsonArray atoms;
-        for (auto a : t->atoms) atoms.append(static_cast<qint64>(a));
+        for (auto atom : tupleAnchor->atoms) atoms.append(static_cast<qint64>(atom));
         out["kind"] = "atom_tuple"; out["atoms"] = atoms;
-    } else if (const auto* b = std::get_if<model::BondAnchor>(&anchor)) {
-        out["kind"] = "bond"; out["bond"] = static_cast<qint64>(b->bond);
-    } else if (const auto* v = std::get_if<model::BondVectorAnchor>(&anchor)) {
+    } else if (const auto* bondAnchor = std::get_if<model::BondAnchor>(&anchor)) {
+        out["kind"] = "bond"; out["bond"] = static_cast<qint64>(bondAnchor->bond);
+    } else if (const auto* vectorAnchor = std::get_if<model::BondVectorAnchor>(&anchor)) {
         out["kind"] = "bond_vector";
-        out["residue"] = static_cast<qint64>(v->residue);
-        out["kind_id"] = static_cast<qint64>(v->kind);
-    } else if (const auto* r = std::get_if<model::RingAnchor>(&anchor)) {
-        out["kind"] = "ring"; out["ring"] = static_cast<qint64>(r->ring);
-    } else if (const auto* r = std::get_if<model::AromaticRingAnchor>(&anchor)) {
-        out["kind"] = "aromatic_ring"; out["ring"] = static_cast<qint64>(r->ring);
-    } else if (const auto* r = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
-        out["kind"] = "saturated_ring"; out["ring"] = static_cast<qint64>(r->ring);
-    } else if (const auto* p = std::get_if<model::RingContributionPairAnchor>(&anchor)) {
-        out["kind"] = "ring_contribution_pair"; out["pair"] = static_cast<qint64>(p->pair);
-    } else if (const auto* m = std::get_if<model::RingMembershipAnchor>(&anchor)) {
-        out["kind"] = "ring_membership"; out["membership"] = static_cast<qint64>(m->membership);
-    } else if (const auto* p = std::get_if<model::MutationMatchPairAnchor>(&anchor)) {
-        out["kind"] = "mutation_match_pair"; out["pair"] = static_cast<qint64>(p->pair);
+        out["residue"] = static_cast<qint64>(vectorAnchor->residue);
+        out["kind_id"] = static_cast<qint64>(vectorAnchor->kind);
+    } else if (const auto* ringAnchor = std::get_if<model::RingAnchor>(&anchor)) {
+        out["kind"] = "ring"; out["ring"] = static_cast<qint64>(ringAnchor->ring);
+    } else if (const auto* aromaticAnchor = std::get_if<model::AromaticRingAnchor>(&anchor)) {
+        out["kind"] = "aromatic_ring"; out["ring"] = static_cast<qint64>(aromaticAnchor->ring);
+    } else if (const auto* saturatedAnchor = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
+        out["kind"] = "saturated_ring"; out["ring"] = static_cast<qint64>(saturatedAnchor->ring);
+    } else if (const auto* contributionAnchor = std::get_if<model::RingContributionPairAnchor>(&anchor)) {
+        out["kind"] = "ring_contribution_pair";
+        out["pair"] = static_cast<qint64>(contributionAnchor->pair);
+    } else if (const auto* membershipAnchor = std::get_if<model::RingMembershipAnchor>(&anchor)) {
+        out["kind"] = "ring_membership";
+        out["membership"] = static_cast<qint64>(membershipAnchor->membership);
+    } else if (const auto* mutationAnchor = std::get_if<model::MutationMatchPairAnchor>(&anchor)) {
+        out["kind"] = "mutation_match_pair"; out["pair"] = static_cast<qint64>(mutationAnchor->pair);
     } else if (std::holds_alternative<model::ProteinAnchor>(anchor)) {
         out["kind"] = "protein";
     } else if (std::holds_alternative<model::SystemAnchor>(anchor)) {
@@ -794,35 +796,35 @@ public:
         if (searchText_ == text.trimmed())
             return;
         searchText_ = text.trimmed();
-        invalidateFilter();
+        refreshFilter();
     }
 
     void setSourceFilter(const QString& value) {
         if (sourceFilter_ == value)
             return;
         sourceFilter_ = value;
-        invalidateFilter();
+        refreshFilter();
     }
 
     void setAxisFilter(const QString& value) {
         if (axisFilter_ == value)
             return;
         axisFilter_ = value;
-        invalidateFilter();
+        refreshFilter();
     }
 
     void setShapeFilter(const QString& value) {
         if (shapeFilter_ == value)
             return;
         shapeFilter_ = value;
-        invalidateFilter();
+        refreshFilter();
     }
 
     void setModeKindFilter(const QString& value) {
         if (modeKindFilter_ == value)
             return;
         modeKindFilter_ = value;
-        invalidateFilter();
+        refreshFilter();
     }
 
     void setRequiredAnchorFilter(model::SignalAxis axis, bool enabled) {
@@ -830,7 +832,7 @@ public:
         if (requiredAnchorFilter_ == value)
             return;
         requiredAnchorFilter_ = value;
-        invalidateFilter();
+        refreshFilter();
     }
 
 protected:
@@ -881,6 +883,15 @@ protected:
     }
 
 private:
+    void refreshFilter() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+        beginFilterChange();
+        endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
+        invalidateFilter();
+#endif
+    }
+
     QString searchText_;
     QString sourceFilter_;
     QString axisFilter_;

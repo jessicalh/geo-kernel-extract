@@ -37,6 +37,8 @@ QMetaObject::Connection LogAndConnect(QObject* sender,
                                       const char* file,
                                       int line,
                                       Fn&& makeConnection) {
+    static_cast<void>(sender);
+    static_cast<void>(receiver);
     const auto conn = makeConnection();
     if (conn) {
         qCInfo(cConnections).nospace().noquote()

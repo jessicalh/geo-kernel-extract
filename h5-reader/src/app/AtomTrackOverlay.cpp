@@ -113,7 +113,7 @@ vtkSmartPointer<vtkActor> makeSphereGlyphActor(
         vtkIdType npts = 0;
         const vtkIdType* ids = nullptr;
         while (spherePoly->GetPolys()->GetNextCell(npts, ids)) {
-            polys->InsertNextCell(npts);
+            polys->InsertNextCell(static_cast<int>(npts));
             for (vtkIdType k = 0; k < npts; ++k)
                 polys->InsertCellPoint(base + ids[k]);
         }
@@ -209,7 +209,7 @@ AtomTrackOverlay::~AtomTrackOverlay() {
     clear();
 }
 
-void AtomTrackOverlay::addActor(vtkSmartPointer<vtkActor> actor) {
+void AtomTrackOverlay::addActor(const vtkSmartPointer<vtkActor>& actor) {
     if (!renderer_ || !actor)
         return;
     renderer_->AddActor(actor);
@@ -220,7 +220,7 @@ std::array<unsigned char, 3> AtomTrackOverlay::colorFor(double value,
                                                         double scale,
                                                         ColorMode mode,
                                                         double gamma,
-                                                        double minFraction) const {
+                                                        double minFraction) {
     if (!std::isfinite(value) || !std::isfinite(scale) || scale <= 1e-12)
         return {154, 158, 164};
 
@@ -251,6 +251,10 @@ void AtomTrackOverlay::clear() {
             if (actor) renderer_->RemoveActor(actor);
     }
     actors_.clear();
+}
+
+void AtomTrackOverlay::show(const std::vector<Sample>& samples) {
+    show(samples, Style{});
 }
 
 void AtomTrackOverlay::show(const std::vector<Sample>& samples, const Style& style) {

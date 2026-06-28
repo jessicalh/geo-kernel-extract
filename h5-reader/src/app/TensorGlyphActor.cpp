@@ -124,6 +124,14 @@ void TensorGlyphActor::show(const model::Vec3& center,
                             const std::array<double, 3>& principalValues,
                             const model::Mat3& pasAxes,
                             double iso,
+                            double opacity) {
+    show(center, principalValues, pasAxes, iso, opacity, Style{});
+}
+
+void TensorGlyphActor::show(const model::Vec3& center,
+                            const std::array<double, 3>& principalValues,
+                            const model::Mat3& pasAxes,
+                            double iso,
                             double opacity,
                             const Style& style) {
     if (!renderer_) {
