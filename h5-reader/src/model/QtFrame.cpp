@@ -94,12 +94,6 @@ SphericalTensor QtFrame::hmShielding(std::size_t atomIdx) const {
     const auto* ts = conformation_->h5()->hmShielding();
     return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
 }
-Vec3 QtFrame::totalBField(std::size_t /*atomIdx*/) const {
-    // Not in new format directly; would need to sum BS B-fields per ring
-    // via QtBiotSavartCalc. Returning zero in v1; Session 5 wires the
-    // recompute on demand.
-    return Vec3::Zero();
-}
 int QtFrame::nRings3A(std::size_t atomIdx) const {
     // Derive from ring_neighbourhood_trajectory_stats: count ring slots
     // with distance <= 3 Å at this frame.
@@ -192,24 +186,9 @@ SphericalTensor QtFrame::mcShielding(std::size_t atomIdx) const {
     const auto* ts = conformation_->h5()->mcShielding();
     return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
 }
-double QtFrame::mcCOSum(std::size_t /*atomIdx*/) const {
-    return 0.0;
-}  // not in new format
-double QtFrame::mcNearestCODist(std::size_t /*atomIdx*/) const {
-    return 0.0;
-}
-Vec3 QtFrame::mcNearestCODir(std::size_t /*atomIdx*/) const {
-    return Vec3::Zero();
-}
 
 // ── Electrostatics ───────────────────────────────────────────────
 
-SphericalTensor QtFrame::coulombShielding(std::size_t /*atomIdx*/) const {
-    // The current format does not emit a coulomb shielding TR — only
-    // the per-frame APBS efield/efg + AIMNet2 charges. Return zero so
-    // legacy overlays compile; consumer code uses what's available.
-    return {};
-}
 Vec3 QtFrame::coulombETotal(std::size_t atomIdx) const {
     if (!conformation_ || !conformation_->h5())
         return Vec3::Zero();
@@ -237,27 +216,12 @@ Vec3 QtFrame::apbsEfield(std::size_t atomIdx) const {
     const auto* ts = conformation_->h5()->apbsEfield();
     return ts ? ts->at(atomIdx, tIndex_) : Vec3::Zero();
 }
-SphericalTensor QtFrame::aimnet2Shielding(std::size_t /*atomIdx*/) const {
-    return {};  // Not exposed; AIMNet2 in new format = embedding + charge + crg
-}
 
-double QtFrame::hbondNearestDist(std::size_t /*atomIdx*/) const {
-    return 0.0;
-}
-Vec3 QtFrame::hbondNearestDir(std::size_t /*atomIdx*/) const {
-    return Vec3::Zero();
-}
 int QtFrame::hbondCount35A(std::size_t atomIdx) const {
     if (!conformation_ || !conformation_->h5())
         return 0;
     const auto* ts = conformation_->h5()->larsenHBondCount();
     return ts ? static_cast<int>(ts->at(atomIdx, tIndex_)) : 0;
-}
-bool QtFrame::hbondIsDonor(std::size_t /*atomIdx*/) const {
-    return false;
-}
-bool QtFrame::hbondIsAcceptor(std::size_t /*atomIdx*/) const {
-    return false;
 }
 
 
@@ -269,28 +233,6 @@ double QtFrame::sasa(std::size_t atomIdx) const {
     const auto* ts = conformation_->h5()->sasa();
     return ts ? ts->at(atomIdx, tIndex_) : 0.0;
 }
-Vec3 QtFrame::sasaNormal(std::size_t /*atomIdx*/) const {
-    return Vec3::Zero();
-}
-
-
-// ── Water ────────────────────────────────────────────────────────
-
-Vec3 QtFrame::waterEfield(std::size_t /*atomIdx*/) const {
-    return Vec3::Zero();
-}
-int QtFrame::waterNFirst(std::size_t /*atomIdx*/) const {
-    return 0;
-}
-int QtFrame::waterNSecond(std::size_t /*atomIdx*/) const {
-    return 0;
-}
-double QtFrame::waterHalfShellAsymmetry(std::size_t /*atomIdx*/) const {
-    return 0.0;
-}
-double QtFrame::waterDipoleCos(std::size_t /*atomIdx*/) const {
-    return 0.0;
-}
 
 
 // ── Charges ──────────────────────────────────────────────────────
@@ -300,9 +242,6 @@ double QtFrame::aimnet2Charge(std::size_t atomIdx) const {
         return 0.0;
     const auto* ts = conformation_->h5()->aimnet2Charge();
     return ts ? ts->at(atomIdx, tIndex_) : 0.0;
-}
-double QtFrame::eeqCoordinationNumber(std::size_t /*atomIdx*/) const {
-    return 0.0;
 }
 
 

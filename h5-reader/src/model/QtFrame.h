@@ -7,11 +7,10 @@
 // asks for `frame.bsShielding(atom)` against an H5 without bs_shielding
 // reads as "no contribution" naturally.
 //
-// API preserved from the pre-2026-05-23 QtFrame so existing overlays /
-// inspectors compile without changes; the implementation reads from
-// QtTrajectoryH5 typed buffers. Consumers wanting explicit "absent vs
-// zero" semantics should consult TrajectoryConformation::h5()->xxx() pointer-
-// or-null directly, or use QtFrameAtomView's typed-optional accessors.
+// The implementation reads from QtTrajectoryH5 typed buffers. Consumers wanting
+// explicit "absent vs zero" semantics should consult
+// TrajectoryConformation::h5()->xxx() pointer-or-null directly, or use
+// QtFrameAtomView's typed-optional accessors.
 
 #pragma once
 
@@ -61,7 +60,6 @@ public:
     // Ring-current
     SphericalTensor bsShielding(std::size_t atomIdx) const;
     SphericalTensor hmShielding(std::size_t atomIdx) const;
-    Vec3 totalBField(std::size_t atomIdx) const;
     int nRings3A(std::size_t atomIdx) const;  // derived; ring_neighbourhood
     int nRings5A(std::size_t atomIdx) const;
     int nRings8A(std::size_t atomIdx) const;
@@ -70,39 +68,21 @@ public:
 
     // Bond anisotropy (McConnell)
     SphericalTensor mcShielding(std::size_t atomIdx) const;
-    double mcCOSum(std::size_t atomIdx) const;
-    double mcNearestCODist(std::size_t atomIdx) const;
-    Vec3 mcNearestCODir(std::size_t atomIdx) const;
 
     // Electrostatics
-    SphericalTensor coulombShielding(std::size_t atomIdx) const;
     Vec3 coulombETotal(std::size_t atomIdx) const;
     double coulombEMagnitude(std::size_t atomIdx) const;
     SphericalTensor apbsEfg(std::size_t atomIdx) const;  // T2-only; T0/T1 zero
     Vec3 apbsEfield(std::size_t atomIdx) const;
-    SphericalTensor aimnet2Shielding(std::size_t atomIdx) const;
 
     // H-bond (kernel form)
-    double hbondNearestDist(std::size_t atomIdx) const;
-    Vec3 hbondNearestDir(std::size_t atomIdx) const;
     int hbondCount35A(std::size_t atomIdx) const;
-    bool hbondIsDonor(std::size_t atomIdx) const;
-    bool hbondIsAcceptor(std::size_t atomIdx) const;
 
     // SASA
     double sasa(std::size_t atomIdx) const;
-    Vec3 sasaNormal(std::size_t atomIdx) const;
-
-    // Water
-    Vec3 waterEfield(std::size_t atomIdx) const;
-    int waterNFirst(std::size_t atomIdx) const;
-    int waterNSecond(std::size_t atomIdx) const;
-    double waterHalfShellAsymmetry(std::size_t atomIdx) const;
-    double waterDipoleCos(std::size_t atomIdx) const;
 
     // Charges
     double aimnet2Charge(std::size_t atomIdx) const;
-    double eeqCoordinationNumber(std::size_t atomIdx) const;
 
 private:
     const TrajectoryConformation* conformation_ = nullptr;
