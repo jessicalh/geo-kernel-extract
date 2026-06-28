@@ -102,10 +102,10 @@ inline std::optional<AtomAnchor> ComputeDihedralAnchor(
             return std::nullopt;
         return perp.normalized();
     };
-    if (auto up = project(a - b))
-        out.viewUp = up;
-    else if (auto up = project(d - c))
-        out.viewUp = up;
+    if (auto leadingViewUp = project(a - b))
+        out.viewUp = leadingViewUp;
+    else if (auto trailingViewUp = project(d - c))
+        out.viewUp = trailingViewUp;
     return out;
 }
 

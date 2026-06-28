@@ -299,15 +299,15 @@ void SequenceBarPanel::paint(QPainter& p,
 
             p.setFont(monoFont(9));
             p.setPen(overlay.color);
-            const QRectF& plot = geometry.plot;
+            const QRectF& overlayAxisPlot = geometry.plot;
             const double ticks = 3.0;
             for (int i = 0; i <= 3; ++i) {
                 const double frac = i / ticks;
                 const double v = oRange.min + frac * (oRange.max - oRange.min);
-                const double y = yForValue(v, oRange, plot);
+                const double y = yForValue(v, oRange, overlayAxisPlot);
                 const QString text = QStringLiteral("%1 %2")
                                          .arg(fmtValue(v, 2), overlay.unit);
-                const QRectF labelRect(plot.right() + 2.0, y - 7.0, 70.0, 14.0);
+                const QRectF labelRect(overlayAxisPlot.right() + 2.0, y - 7.0, 70.0, 14.0);
                 p.drawText(labelRect,
                            Qt::AlignLeft | Qt::AlignVCenter, text);
             }
