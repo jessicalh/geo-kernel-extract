@@ -1,11 +1,11 @@
-"""REST coverage for transient heroshot composition helpers."""
+"""REST coverage for transient resthero composition helpers."""
 
 from __future__ import annotations
 
 
 def test_ghost_trail_accepts_explicit_frames(rest):
     before = rest.client.get("/frame/current").json()["frame"]
-    response = rest.client.post("/heroshot/ghost_trail", json={
+    response = rest.client.post("/resthero/ghost_trail", json={
         "atom": 16,
         "frames": [2, 0],
         "axes": "sigma33",
@@ -18,4 +18,4 @@ def test_ghost_trail_accepts_explicit_frames(rest):
     assert payload["reference_frame"] == 2
     assert payload["kept"] == 2
     assert rest.client.get("/frame/current").json()["frame"] == before
-    rest.client.post("/heroshot/clear")
+    rest.client.post("/resthero/clear")

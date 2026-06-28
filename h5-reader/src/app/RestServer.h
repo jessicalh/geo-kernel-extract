@@ -7,8 +7,8 @@
 // default handler thread is the thread the server was constructed on);
 // handlers may directly read/mutate model + scene state without marshalling.
 //
-// Binding: loopback only (QHostAddress::LocalHost). No authentication. This
-// is a test fixture, not a public API.
+// Binding: loopback only (QHostAddress::LocalHost). No authentication; this is
+// a local operator/API harness, not a remote public service.
 //
 // JSON: QJsonDocument / QJsonObject / QJsonArray only. No third-party JSON.
 //
@@ -45,8 +45,10 @@
 //   POST   /dashboard/metric/remove      → {"removed": true}  body: {"id": uuid}
 //   POST   /dashboard/metric/mode        → {"modes": [...]}  body: {"id": uuid, "mode": "...", "enabled": bool}
 //   POST   /dashboard/dock               → {"visible": bool, "width": int}  body: {"visible": bool}
-//   POST   /screenshot                   → image/png (body: {"target":"scene"|"window",
-//                                                            "force_render": bool})
+//   GET    /api/interface                -> namespace + route contract map
+//   POST   /api/screenshot               -> image/png (body: {"target":"scene"|"window",
+//                                                            "scale": int})
+//   POST   /diagnostics/screenshot       -> image/png (adds target:"widget" and force_render)
 
 #pragma once
 
@@ -145,9 +147,10 @@ private:
     QPointer<QWidget>                           mainWindow_;
     QPointer<ReaderMainWindow>                  readerWindow_;
     QPointer<model::TransformedConformation>    transformed_;
-    // Heroshot layer (transient figure FX, never part of the reader UI): the
-    // tensor ghost trail built on demand by POST /heroshot/ghost_trail. Rebuilt
-    // against the live scene renderer each call; cleared by /heroshot/clear.
+    // Resthero layer (transient figure FX, never part of the reader UI): the
+    // tensor ghost trail built on demand by POST /resthero/ghost_trail.
+    // Rebuilt against the live scene renderer each call; cleared by
+    // /resthero/clear.
     std::unique_ptr<AtomTrackOverlay>            heroshotAtomTrack_;
     std::unique_ptr<HeroshotButterflyOverlay>    heroshotButterfly_;
     std::unique_ptr<TensorGhostTrail>           heroshotTrail_;

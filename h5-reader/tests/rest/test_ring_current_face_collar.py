@@ -4,14 +4,14 @@ from __future__ import annotations
 
 
 def test_ring_current_face_collar_requires_filter_or_explicit_full_scan(rest):
-    response = rest.client.post("/ring/current_face_collar", json={})
+    response = rest.client.post("/api/ring/current_face_collar", json={})
     assert response.status_code == 400
     assert "full_scan" in response.json()["error"]
 
 
 def test_ring_current_face_collar_fits_orca_to_expected_relationship(rest):
     response = rest.client.post(
-        "/ring/current_face_collar",
+        "/api/ring/current_face_collar",
         json={
             "atom": 568,
             "ring": 4,

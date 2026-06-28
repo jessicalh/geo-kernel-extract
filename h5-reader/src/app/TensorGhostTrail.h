@@ -1,13 +1,13 @@
 // TensorGhostTrail -- a transient "ghost trail" of a single atom's shielding
-// tensor across its last N measured frames, for heroshot figures. Each ghost is
+// tensor across its last N measured frames, for resthero figures. Each ghost is
 // the SAME shared TensorGlyphActor (ovaloid + principal-axis arrows) the live
 // CSA glyph uses, drawn at that frame's REAL atom position with its REAL
 // PAS-frame eigendecomposition -- no interpolation, every angle true -- and
 // faded by the caller (newest opaque, oldest faint) so the re-orientation reads
 // "from the side" as a stack of translucent tensors telling the story over time.
 //
-// Heroshot-only: owned by the REST layer (RestServer), built and cleared on
-// demand by POST /heroshot/ghost_trail and /heroshot/clear. It does NOT live in
+// Resthero-only: owned by the REST layer (RestServer), built and cleared on
+// demand by POST /resthero/ghost_trail and /resthero/clear. It does NOT live in
 // the reader UI and does NOT move playback; the reader's own single live glyph
 // is untouched. Pure renderer: the caller supplies each ghost's lab-frame
 // eigendecomposition (via ReaderMainWindow::probeAtomCsa) and its fade.

@@ -139,6 +139,100 @@ QJsonValue finiteJson(double value) {
     return std::isfinite(value) ? QJsonValue(value) : QJsonValue(QJsonValue::Null);
 }
 
+QJsonObject restNamespace(const QString& prefix,
+                          const QString& tier,
+                          const QString& audience,
+                          const QString& contract,
+                          const QString& notes) {
+    return QJsonObject{
+        {"prefix", prefix},
+        {"tier", tier},
+        {"audience", audience},
+        {"contract", contract},
+        {"notes", notes},
+    };
+}
+
+QJsonObject restRoute(const QString& method,
+                      const QString& path,
+                      const QString& tier,
+                      const QString& summary) {
+    return QJsonObject{
+        {"method", method},
+        {"path", path},
+        {"tier", tier},
+        {"summary", summary},
+    };
+}
+
+QJsonObject restInterfaceDescription() {
+    return QJsonObject{
+        {"version", 1},
+        {"namespaces", QJsonArray{
+            restNamespace(QStringLiteral("/api"),
+                          QStringLiteral("general"),
+                          QStringLiteral("user/mcp"),
+                          QStringLiteral("stable intent; suitable for automation clients"),
+                          QStringLiteral("Promoted routes whose semantics are useful outside testing.")),
+            restNamespace(QStringLiteral("/field"),
+                          QStringLiteral("general"),
+                          QStringLiteral("user/mcp"),
+                          QStringLiteral("stable scene field display controls"),
+                          QStringLiteral("Normal reader visualization controls, including ring-null context geometry.")),
+            restNamespace(QStringLiteral("/resthero"),
+                          QStringLiteral("figure_composition"),
+                          QStringLiteral("operator/figure harness"),
+                          QStringLiteral("transient scene styling; clear with /resthero/clear"),
+                          QStringLiteral("Poster and review tools may move the scene away from normal UI state.")),
+            restNamespace(QStringLiteral("/catalog"),
+                          QStringLiteral("diagnostic"),
+                          QStringLiteral("tests/development"),
+                          QStringLiteral("display catalog audit"),
+                          QStringLiteral("Inventory and coherence checks for the loaded signal catalog.")),
+            restNamespace(QStringLiteral("/diagnostics"),
+                          QStringLiteral("diagnostic"),
+                          QStringLiteral("tests/development"),
+                          QStringLiteral("inspection and snapshot utilities"),
+                          QStringLiteral("Allowed to expose implementation detail; not the product API.")),
+        }},
+        {"routes", QJsonArray{
+            restRoute(QStringLiteral("GET"), QStringLiteral("/api/interface"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Machine-readable REST namespace map.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/screenshot"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Scene/window screenshot capture for review, export, and automation.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/null_crossings"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Operational ring-null crossing collection.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/current_face_collar"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Ring-current weak-signal receiver and fit summary.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/field/null_cone"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Regular-use ring null surface display.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/resthero/butterfly"),
+                      QStringLiteral("figure_composition"),
+                      QStringLiteral("High-resolution transient ring-current surfaces.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/resthero/atom_track"),
+                      QStringLiteral("figure_composition"),
+                      QStringLiteral("Transient point-cloud track for sampled atom positions.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/resthero/ghost_trail"),
+                      QStringLiteral("figure_composition"),
+                      QStringLiteral("Transient tensor ghost trail.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/resthero/clear"),
+                      QStringLiteral("figure_composition"),
+                      QStringLiteral("Clear transient resthero scene state.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/diagnostics/screenshot"),
+                      QStringLiteral("diagnostic"),
+                      QStringLiteral("Qt widget/framebuffer screenshot capture for tests.")),
+            restRoute(QStringLiteral("GET"), QStringLiteral("/catalog"),
+                      QStringLiteral("diagnostic"),
+                      QStringLiteral("Full display catalog audit surface.")),
+        }},
+    };
+}
+
 QJsonArray mat3ToJson(const model::Mat3& m) {
     QJsonArray rows;
     for (int r = 0; r < 3; ++r)
@@ -1339,6 +1433,11 @@ void RestServer::registerRoutes() {
         });
     });
 
+    server_->route(QStringLiteral("/api/interface"), [this]() {
+        ASSERT_THREAD(this);
+        return jsonResponse(restInterfaceDescription());
+    });
+
     // ---- protein / atoms inventory --------------------------------------
 
     server_->route(QStringLiteral("/protein/atoms"), [this]() {
@@ -1666,7 +1765,7 @@ void RestServer::registerRoutes() {
     //
     // POST /field/opacity {"opacity": number 0..1}
     // Sets the butterfly isosurface opacity independently from the null cone.
-    // This is a heroshot tuning knob for making the field a thin context layer.
+    // This is a resthero tuning knob for making the field a thin context layer.
     server_->route(QStringLiteral("/field/opacity"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
@@ -1778,7 +1877,7 @@ void RestServer::registerRoutes() {
 
     // ---- ring null collar collection ------------------------------------
     //
-    // POST /ring/null_crossings {"atom"?, "ring"?, "start_frame"?, "end_frame"?}
+    // POST /api/ring/null_crossings {"atom"?, "ring"?, "start_frame"?, "end_frame"?}
     // Runs an explicit collar object over adjacent DFT frames and returns the
     // whole before/after per-atom ORCA shielding records for crossings.
     auto ringNullCrossingsHandler = [this](const QHttpServerRequest& req) {
@@ -1906,15 +2005,13 @@ void RestServer::registerRoutes() {
         };
         return jsonResponse(out);
     };
-    server_->route(QStringLiteral("/ring/null_crossings"), Method::Post,
-                   ringNullCrossingsHandler);
-    server_->route(QStringLiteral("/ring_null_crossings"), Method::Post,
+    server_->route(QStringLiteral("/api/ring/null_crossings"), Method::Post,
                    ringNullCrossingsHandler);
 
     // ---- ring-current receiver: stash paths, fit ORCA -------------------
     //
-    // POST /ring/current_face_collar {"atom"?, "ring"?, "start_frame"?,
-    //                                 "end_frame"?, "min_samples"?}
+    // POST /api/ring/current_face_collar {"atom"?, "ring"?, "start_frame"?,
+    //                                     "end_frame"?, "min_samples"?}
     // Collects atom/ring paths whose expected ring-current relationship value
     // samples both lobes, then evaluates the stash as:
     // ORCA_component = intercept + scale * expected_relationship_value.
@@ -2088,9 +2185,7 @@ void RestServer::registerRoutes() {
         };
         return jsonResponse(out);
     };
-    server_->route(QStringLiteral("/ring/current_face_collar"), Method::Post,
-                   ringCurrentFaceCollarHandler);
-    server_->route(QStringLiteral("/ring_current_face_collar"), Method::Post,
+    server_->route(QStringLiteral("/api/ring/current_face_collar"), Method::Post,
                    ringCurrentFaceCollarHandler);
 
     // ---- UI state introspection -----------------------------------------
@@ -2825,16 +2920,15 @@ void RestServer::registerRoutes() {
         return jsonResponse(out);
     });
 
-    // ---- heroshot: transient molecule styling ---------------------------
+    // ---- resthero: transient molecule styling ---------------------------
     //
-    // POST /heroshot/molecule_style
+    // POST /resthero/molecule_style
     //   {preset:"scaffold"|"sticks", atom_radius_scale?, bond_radius?,
     //    atom_color?, bond_color?, render_atoms?, render_bonds?, ...}
     //
     // Figure work often needs the molecule to recede so tensor/angle geometry
-    // can read. This is deliberately transient and restored by /heroshot/clear.
-    server_->route(QStringLiteral("/heroshot/molecule_style"), Method::Post,
-                   [this](const QHttpServerRequest& request) {
+    // can read. This is deliberately transient and restored by /resthero/clear.
+    auto restheroMoleculeStyleHandler = [this](const QHttpServerRequest& request) {
         ASSERT_THREAD(this);
         if (!scene_)
             return errorResponse(QStringLiteral("scene not loaded"), SC::ServiceUnavailable);
@@ -2882,17 +2976,18 @@ void RestServer::registerRoutes() {
             {"style", moleculeStyleToJson(style)},
             {"will_restore_on_clear", true},
         });
-    });
+    };
+    server_->route(QStringLiteral("/resthero/molecule_style"), Method::Post,
+                   restheroMoleculeStyleHandler);
 
-    // ---- heroshot: isolate one aromatic ring field ----------------------
+    // ---- resthero: isolate one aromatic ring field ----------------------
     //
-    // POST /heroshot/ring_field {"ring": N|null}
+    // POST /resthero/ring_field {"ring": N|null}
     // Narrows the butterfly isosurface to one ring for figure work. This is
-    // deliberately heroshot-only: the normal UI toggle still owns whether the
-    // butterfly overlay is visible, and /heroshot/clear restores the previous
+    // deliberately resthero-only: the normal UI toggle still owns whether the
+    // butterfly overlay is visible, and /resthero/clear restores the previous
     // all-rings/single-ring setting.
-    server_->route(QStringLiteral("/heroshot/ring_field"), Method::Post,
-                   [this](const QHttpServerRequest& req) {
+    auto restheroRingFieldHandler = [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
         if (!scene_ || !scene_->fieldGridOverlay())
             return errorResponse(QStringLiteral("field-grid overlay not available"),
@@ -2938,11 +3033,13 @@ void RestServer::registerRoutes() {
         out.insert(QStringLiteral("ring"),
                    ring ? QJsonValue(static_cast<qint64>(*ring)) : QJsonValue());
         return jsonResponse(out);
-    });
+    };
+    server_->route(QStringLiteral("/resthero/ring_field"), Method::Post,
+                   restheroRingFieldHandler);
 
-    // ---- heroshot: high-resolution ring-current butterfly --------------
+    // ---- resthero: high-resolution ring-current butterfly --------------
     //
-    // POST /heroshot/butterfly {"ring": N, "frame"?, "dim"?,
+    // POST /resthero/butterfly {"ring": N, "frame"?, "dim"?,
     //                           "threshold_ppm"?, "opacity"?,
     //                           "extent"?, "peak"?, "mode"?}
     // A transient figure/export layer, separate from the normal
@@ -2951,8 +3048,7 @@ void RestServer::registerRoutes() {
     // contours the same signed T0 isovalues. This is a numerical approximation
     // knob for resthero images, not a smoothing filter and not a mainline
     // butterfly change.
-    server_->route(QStringLiteral("/heroshot/butterfly"), Method::Post,
-                   [this](const QHttpServerRequest& req) {
+    auto restheroButterflyHandler = [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
         const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
         model::Conformation* loadedConf = loaded_ ? loaded_->conformation.get() : nullptr;
@@ -3025,7 +3121,7 @@ void RestServer::registerRoutes() {
         if (!heroshotButterfly_->show(*protein, *conf, ring,
                                       static_cast<std::size_t>(frame), style)) {
             heroshotButterfly_.reset();
-            return errorResponse(QStringLiteral("could not build heroshot butterfly"),
+            return errorResponse(QStringLiteral("could not build resthero butterfly"),
                                  SC::Conflict);
         }
         const HeroshotButterflyOverlay::Stats stats = heroshotButterfly_->stats();
@@ -3046,13 +3142,15 @@ void RestServer::registerRoutes() {
             {"shielded_cells", static_cast<qint64>(stats.shieldedCells)},
             {"deshielded_points", static_cast<qint64>(stats.deshieldedPoints)},
             {"deshielded_cells", static_cast<qint64>(stats.deshieldedCells)},
-            {"will_clear_on_heroshot_clear", true},
+            {"will_clear_on_resthero_clear", true},
         });
-    });
+    };
+    server_->route(QStringLiteral("/resthero/butterfly"), Method::Post,
+                   restheroButterflyHandler);
 
-    // ---- heroshot: atom track ------------------------------------------
+    // ---- resthero: atom track ------------------------------------------
     //
-    // POST /heroshot/atom_track
+    // POST /resthero/atom_track
     //   {atom?, ring?, color_by?, color_mode?,
     //    frame_source:"dft"|"range", coordinate_space:"source_ring_local"|"world",
     //    frames? | start_frame?/end_frame?/step?/max_points?}
@@ -3069,11 +3167,10 @@ void RestServer::registerRoutes() {
     // (3*cos(theta)^2 - 1) / r^3. The scene stays geometry-only; the response
     // echoes the sample table for audit and panels/scripts can carry text.
     //
-    // coordinate_space="source_ring_local" answers the heroshot question:
+    // coordinate_space="source_ring_local" answers the resthero question:
     // for each DFT graph sample, if the source ring were held stationary in
     // reference_frame, where would this atom's relative position land?
-    server_->route(QStringLiteral("/heroshot/atom_track"), Method::Post,
-                   [this](const QHttpServerRequest& req) {
+    auto restheroAtomTrackHandler = [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
         if (!scene_ || !loaded_ || !loaded_->protein)
             return errorResponse(QStringLiteral("scene / protein not wired"),
@@ -3552,11 +3649,13 @@ void RestServer::registerRoutes() {
         out.insert(QStringLiteral("ring"),
                    ring ? QJsonValue(static_cast<qint64>(*ring)) : QJsonValue());
         return jsonResponse(out);
-    });
+    };
+    server_->route(QStringLiteral("/resthero/atom_track"), Method::Post,
+                   restheroAtomTrackHandler);
 
-    // ---- heroshot: tensor ghost trail -----------------------------------
+    // ---- resthero: tensor ghost trail -----------------------------------
     //
-    // POST /heroshot/ghost_trail  {atom?, n?, end_frame?, step?, frames?}
+    // POST /resthero/ghost_trail  {atom?, n?, end_frame?, step?, frames?}
     //   Draw the focused (or {"atom":N}) atom's shielding tensor at its last
     //   `n` DFT-measured frames as a fading stack of glyphs -- newest opaque,
     //   oldest faint -- so the re-orientation reads "from the side". Walks
@@ -3566,12 +3665,11 @@ void RestServer::registerRoutes() {
     //   an explicit statistics-selected set such as rotamer wells. Each ghost
     //   is the REAL measured tensor at a REAL frame -- probeAtomCsa reads the
     //   DFT store directly, no interpolation and the live frame never moves.
-    //   Heroshot layer only: the reader's own single live glyph is untouched.
+    //   Resthero layer only: the reader's own single live glyph is untouched.
     //   Echoes the frames + fades actually drawn so a script can verify what it
     //   sees.
-    //   POST /heroshot/clear  removes the trail.
-    server_->route(QStringLiteral("/heroshot/ghost_trail"), Method::Post,
-                   [this](const QHttpServerRequest& req) {
+    //   POST /resthero/clear  removes the trail.
+    auto restheroGhostTrailHandler = [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
         if (!readerWindow_ || !scene_)
             return errorResponse(QStringLiteral("reader window / scene not wired"),
@@ -3772,16 +3870,17 @@ void RestServer::registerRoutes() {
             {"kept", static_cast<qint64>(m)},
             {"ghosts", ghosts},
         });
-    });
+    };
+    server_->route(QStringLiteral("/resthero/ghost_trail"), Method::Post,
+                   restheroGhostTrailHandler);
 
-    // POST /heroshot/angle_collar
+    // POST /resthero/angle_collar
     //   Draw a transient, chart-derived dihedral collar in the molecule scene.
     //   Defaults are aimed at the Asp29 chi2 baton-pass: CA-CB-CG-OD1, with
     //   the signed angle read from the loaded H5 dihedral_time_series rather
     //   than guessed from labels. The collar sits around the CG->CB axis so the
     //   signed sweep matches residue.chi2's chart/stat convention.
-    server_->route(QStringLiteral("/heroshot/angle_collar"), Method::Post,
-                   [this](const QHttpServerRequest& req) {
+    auto restheroAngleCollarHandler = [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
         if (!scene_ || !loaded_ || !loaded_->protein || !loaded_->conformation || !transformed_)
             return errorResponse(QStringLiteral("scene / loaded run not wired"),
@@ -3927,9 +4026,11 @@ void RestServer::registerRoutes() {
             {"cone_opens_opposite_axis", style.coneDirection < 0.0},
             {"selection_marker_hidden", hideSelectionMarker},
         });
-    });
+    };
+    server_->route(QStringLiteral("/resthero/angle_collar"), Method::Post,
+                   restheroAngleCollarHandler);
 
-    server_->route(QStringLiteral("/heroshot/clear"), Method::Post, [this]() {
+    auto restheroClearHandler = [this]() {
         ASSERT_THREAD(this);
         if (heroshotAtomTrack_) heroshotAtomTrack_->clear();
         if (heroshotButterfly_) heroshotButterfly_->clear();
@@ -3952,7 +4053,8 @@ void RestServer::registerRoutes() {
         }
         if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Rest);
         return QHttpServerResponse(SC::NoContent);
-    });
+    };
+    server_->route(QStringLiteral("/resthero/clear"), Method::Post, restheroClearHandler);
 
     // ---- catalog dump (the full "seeable list", for auditing) -----------
     //
@@ -4604,22 +4706,29 @@ void RestServer::registerRoutes() {
 
     // ---- screenshot -----------------------------------------------------
 
-    server_->route(QStringLiteral("/screenshot"), Method::Post,
-                   [this](const QHttpServerRequest& req) {
+    auto screenshotHandler = [this](const QHttpServerRequest& req, bool diagnostic) {
         ASSERT_THREAD(this);
         bool ok = false;
         const QJsonObject body = parseJsonBody(req, &ok);
         const QString target = (ok && body.contains("target"))
                                    ? body.value("target").toString()
                                    : QStringLiteral("scene");
-        // force_render: default true (back-compat). false skips the
-        // vtkWindowToImageFilter::ShouldRerender step so the snapshot reads
-        // whatever pixels are currently in the framebuffer — the harness
-        // mode for the paint-cycle-inversion experiment (VIEWPORT
-        // OBSERVATIONS §5b). Only meaningful for target="scene".
-        const bool forceRender = (ok && body.contains("force_render") && body.value("force_render").isBool())
-                                     ? body.value("force_render").toBool()
-                                     : true;
+        if (!diagnostic && ok && body.contains(QStringLiteral("force_render"))) {
+            return errorResponse(
+                QStringLiteral("force_render is diagnostics-only; use /diagnostics/screenshot"),
+                SC::BadRequest);
+        }
+
+        bool forceRender = true;
+        if (diagnostic && ok && body.contains(QStringLiteral("force_render"))) {
+            if (!body.value(QStringLiteral("force_render")).isBool())
+                return errorResponse(QStringLiteral("force_render must be bool"),
+                                     SC::BadRequest);
+            // false skips vtkWindowToImageFilter::ShouldRerender so diagnostic
+            // probes can read the current framebuffer instead of forcing a new
+            // scene render. Only meaningful for target="scene".
+            forceRender = body.value(QStringLiteral("force_render")).toBool();
+        }
         // Poster / print export: scale > 1 supersamples the scene capture for a
         // high-DPI, smoother image (target="scene" only). Clamp to 1..8.
         int scale = (ok && body.contains(QStringLiteral("scale")))
@@ -4633,6 +4742,10 @@ void RestServer::registerRoutes() {
         } else if (target == QStringLiteral("scene")) {
             png = captureScenePng(scene_.data(), forceRender, scale);
         } else if (target == QStringLiteral("widget")) {
+            if (!diagnostic) {
+                return errorResponse(QStringLiteral("target must be \"scene\" or \"window\""),
+                                     SC::BadRequest);
+            }
             const QString objectName = body.value(QStringLiteral("object_name")).toString();
             if (objectName.isEmpty())
                 return errorResponse(QStringLiteral("target \"widget\" requires \"object_name\""), SC::BadRequest);
@@ -4641,11 +4754,23 @@ void RestServer::registerRoutes() {
                 return errorResponse(QStringLiteral("no live widget named \"%1\"").arg(objectName), SC::NotFound);
             png = captureWindowPng(widget);
         } else {
-            return errorResponse(QStringLiteral("target must be \"scene\", \"window\", or \"widget\""), SC::BadRequest);
+            return errorResponse(
+                diagnostic
+                    ? QStringLiteral("target must be \"scene\", \"window\", or \"widget\"")
+                    : QStringLiteral("target must be \"scene\" or \"window\""),
+                SC::BadRequest);
         }
         if (png.isEmpty())
             return errorResponse(QStringLiteral("screenshot capture failed"), SC::InternalServerError);
         return QHttpServerResponse(QByteArray(kMimePng), png);
+    };
+    server_->route(QStringLiteral("/api/screenshot"), Method::Post,
+                   [screenshotHandler](const QHttpServerRequest& req) {
+        return screenshotHandler(req, false);
+    });
+    server_->route(QStringLiteral("/diagnostics/screenshot"), Method::Post,
+                   [screenshotHandler](const QHttpServerRequest& req) {
+        return screenshotHandler(req, true);
     });
 }
 

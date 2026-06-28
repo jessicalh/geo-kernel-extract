@@ -1,7 +1,7 @@
-// AtomTrackOverlay -- transient heroshot signal geometry for one atom path.
+// AtomTrackOverlay -- transient resthero signal geometry for one atom path.
 //
 // Draws sampled positions as signal marks, optionally connected by hairline
-// sample edges. The default is screen-space points; heroshots may request tiny
+// sample edges. The default is screen-space points; resthero may request tiny
 // 3-D dot glyphs. It deliberately avoids atom/bond visual grammar: no tubes, no
 // chemistry-sized spheres. The caller supplies the samples and their scalar
 // intensity; this class only maps them to VTK geometry. No text, no labels, no

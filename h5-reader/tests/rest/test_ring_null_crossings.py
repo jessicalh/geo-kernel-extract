@@ -6,14 +6,14 @@ import math
 
 
 def test_ring_null_collar_requires_filter_or_explicit_full_scan(rest):
-    response = rest.client.post("/ring/null_crossings", json={})
+    response = rest.client.post("/api/ring/null_crossings", json={})
     assert response.status_code == 400
     assert "full_scan" in response.json()["error"]
 
 
 def test_ring_null_collar_collects_adjacent_dft_orca_pair(rest):
     response = rest.client.post(
-        "/ring/null_crossings",
+        "/api/ring/null_crossings",
         json={"atom": 568, "ring": 4, "start_frame": 538, "end_frame": 540},
     )
     assert response.status_code == 200, response.text

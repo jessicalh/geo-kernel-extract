@@ -1,6 +1,6 @@
 """REST coverage for high-resolution (poster / print) scene capture.
 
-`POST /screenshot {target:"scene", scale:N}` renders the scene at N x N tiles
+`POST /api/screenshot {target:"scene", scale:N}` renders the scene at N x N tiles
 and stitches them (vtkWindowToImageFilter SetScale + FixBoundary) -> a high-DPI
 image whose extra pixels are effective supersampled antialiasing. Used to export
 figure-quality stills for posters/thesis. These tests pin the contract:
@@ -9,7 +9,7 @@ figure-quality stills for posters/thesis. These tests pin the contract:
     render stitched without dropping/duplicating rows),
   - the result is still a valid, non-blank PNG (depth-peeled translucency +
     overlay layer survive the tiled capture),
-  - omitting scale is identical to scale=1 (back-compat for existing callers).
+  - omitting scale is identical to scale=1.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def _scene_png(rest, scale=None):
     body = {"target": "scene"}
     if scale is not None:
         body["scale"] = scale
-    r = rest.client.post("/screenshot", json=body)
+    r = rest.client.post("/api/screenshot", json=body)
     assert r.status_code == 200, r.text
     assert r.headers["content-type"] == "image/png"
     assert r.content.startswith(b"\x89PNG"), "response is not a PNG"
@@ -50,7 +50,7 @@ def test_scale_two_doubles_dimensions(rest):
 
 
 def test_scale_omitted_matches_scale_one(rest):
-    """Back-compat: no scale field == scale 1 (same dimensions)."""
+    """No scale field == scale 1 (same dimensions)."""
     from PIL import Image
 
     rest.client.post("/frame/set", json={"frame": 0})

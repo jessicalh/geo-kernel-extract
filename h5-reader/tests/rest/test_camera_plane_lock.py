@@ -140,7 +140,7 @@ def test_plane_lock_scene_screenshot_is_valid_png(rest):
     rest.client.post("/plane-lock/enable", json={"atoms": ATOMS})
     rest.client.post("/frame/set", json={"frame": 0})
 
-    r = rest.client.post("/screenshot", json={"target": "scene"})
+    r = rest.client.post("/api/screenshot", json={"target": "scene"})
     assert r.status_code == 200, r.text
     assert r.headers["content-type"] == "image/png"
     png_bytes = r.content

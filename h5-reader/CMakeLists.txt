@@ -1182,35 +1182,55 @@ if(WIN32)
     option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML
         "Require and package the Experimental Shielding ML model/runtime" ON)
 
-    set(_h5reader_experimental_ml_model_default
-        "C:/Users/jessi/Documents/Codex/2026-06-23/i-am-looking-for-a-real/work/libtorch-e3nn-poc/out/local_tensor_mopac_neighbors005.ts")
-    set(_h5reader_experimental_ml_manifest_default
-        "C:/Users/jessi/Documents/Codex/2026-06-23/i-am-looking-for-a-real/work/libtorch-e3nn-poc/out/poc_manifest.json")
-    set(_h5reader_experimental_ml_helper_default
-        "C:/Users/jessi/Documents/Codex/2026-06-23/i-am-looking-for-a-real/work/libtorch-e3nn-poc/build-cpu/libtorch_e3nn_poc.exe")
-    set(_h5reader_libtorch_cpu_bin_default
-        "C:/projects/ml-envs/libtorch-cpu-poc/Lib/site-packages/torch/lib")
+    if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT
+            AND DEFINED ENV{H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT})
+        file(TO_CMAKE_PATH "$ENV{H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
+             H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT)
+    endif()
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT
+        "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
+        CACHE PATH
+        "Directory containing the Experimental Shielding ML bundle")
 
-    if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL)
-        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
-            "${_h5reader_experimental_ml_model_default}"
-            CACHE FILEPATH "TorchScript model for Experimental Shielding ML")
+    if(H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT)
+        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL)
+            set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/local_tensor_mopac_neighbors005.ts")
+        endif()
+        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST)
+            set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/poc_manifest.json")
+        endif()
+        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER)
+            set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch_e3nn_poc.exe")
+        endif()
+        if(NOT H5READER_LIBTORCH_CPU_BIN_DIR)
+            foreach(_torch_candidate IN ITEMS
+                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
+                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/torch/lib"
+                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch/lib"
+                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/Lib/site-packages/torch/lib")
+                if(EXISTS "${_torch_candidate}/c10.dll")
+                    set(H5READER_LIBTORCH_CPU_BIN_DIR "${_torch_candidate}")
+                    break()
+                endif()
+            endforeach()
+        endif()
     endif()
-    if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST)
-        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
-            "${_h5reader_experimental_ml_manifest_default}"
-            CACHE FILEPATH "Provenance manifest for Experimental Shielding ML")
-    endif()
-    if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER)
-        set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
-            "${_h5reader_experimental_ml_helper_default}"
-            CACHE FILEPATH "CPU inference helper for Experimental Shielding ML")
-    endif()
-    if(NOT H5READER_LIBTORCH_CPU_BIN_DIR)
-        set(H5READER_LIBTORCH_CPU_BIN_DIR
-            "${_h5reader_libtorch_cpu_bin_default}"
-            CACHE PATH "LibTorch CPU DLL directory for Experimental Shielding ML")
-    endif()
+
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
+        "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+        CACHE FILEPATH "TorchScript model for Experimental Shielding ML")
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
+        "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
+        CACHE FILEPATH "Provenance manifest for Experimental Shielding ML")
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
+        "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}"
+        CACHE FILEPATH "CPU inference helper for Experimental Shielding ML")
+    set(H5READER_LIBTORCH_CPU_BIN_DIR
+        "${H5READER_LIBTORCH_CPU_BIN_DIR}"
+        CACHE PATH "LibTorch CPU DLL directory for Experimental Shielding ML")
 
     if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
         foreach(_ml_asset IN ITEMS
@@ -1219,12 +1239,20 @@ if(WIN32)
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}")
             if(NOT EXISTS "${_ml_asset}")
                 message(FATAL_ERROR
-                    "Experimental Shielding ML packaging is required, but this asset is missing: ${_ml_asset}")
+                    "Experimental Shielding ML packaging is required, but this asset is missing: ${_ml_asset}\n"
+                    "Set H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT to a portable bundle directory, "
+                    "or set H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL, "
+                    "H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST, "
+                    "H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER, and "
+                    "H5READER_LIBTORCH_CPU_BIN_DIR explicitly.")
             endif()
         endforeach()
         if(NOT EXISTS "${H5READER_LIBTORCH_CPU_BIN_DIR}")
             message(FATAL_ERROR
-                "Experimental Shielding ML packaging is required, but LibTorch CPU DLL dir is missing: ${H5READER_LIBTORCH_CPU_BIN_DIR}")
+                "Experimental Shielding ML packaging is required, but LibTorch CPU DLL dir is missing: ${H5READER_LIBTORCH_CPU_BIN_DIR}\n"
+                "Place the LibTorch CPU DLLs in H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT, "
+                "H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT/torch/lib, or set "
+                "H5READER_LIBTORCH_CPU_BIN_DIR explicitly.")
         endif()
 
         set(_h5reader_libtorch_cpu_dlls)

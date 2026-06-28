@@ -39,7 +39,7 @@ struct AtomCsaResult {
 
 // rawConf = the loader's untransformed trajectory; transformed = the
 // Kabsch-stabilized display conformation the scene renders. requestDftFrame
-// keeps REST/heroshot probes deterministic; live glyph refresh can pass false
+// keeps REST/resthero probes deterministic; live glyph refresh can pass false
 // so frame advance never waits on ORCA output parsing.
 inline AtomCsaResult ComputeAtomCsa(const QtProtein& protein,
                                     Conformation& rawConf,

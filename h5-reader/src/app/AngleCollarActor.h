@@ -1,9 +1,9 @@
-// AngleCollarActor -- transient heroshot geometry for a true dihedral angle.
+// AngleCollarActor -- transient resthero geometry for a true dihedral angle.
 //
 // Draws an Elizabethan-collar style cone around a hinge axis, plus the true
 // signed angle arcs and seams on its rim. The caller supplies the real
 // axis/reference geometry and the real angle values; this class only turns
-// them into transient VTK geometry. Heroshot-only, no UI ownership.
+// them into transient VTK geometry. Resthero-only, no UI ownership.
 
 #pragma once
 

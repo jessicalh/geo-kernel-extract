@@ -236,9 +236,13 @@ def frame_count(base: str) -> int:
 
 
 def screenshot(base: str, force_render: bool = True) -> bytes:
+    path = "/api/screenshot" if force_render else "/diagnostics/screenshot"
+    body = {"target": "scene"}
+    if not force_render:
+        body["force_render"] = False
     r = requests.post(
-        f"{base}/screenshot",
-        json={"target": "scene", "force_render": bool(force_render)},
+        f"{base}{path}",
+        json=body,
         timeout=15.0,
     )
     r.raise_for_status()
