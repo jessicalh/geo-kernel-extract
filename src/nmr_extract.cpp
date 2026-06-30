@@ -317,11 +317,23 @@ static int RunMutant(const cli::MutantMode& mode, const cli::CommonOptions& comm
     const std::string protein_id = PathStemProteinId(
         mode.wt.xyz_path, common.output_dir);
     if (!WriteSidecars(*wt_build.protein, output_dir, protein_id)) return 1;
-    // TODO(lgs-mutant): settled shape is a parent kind=mutant_pair .lgs
-    // pointing at WT/ALA child .lgs files. The current --mutant runner writes
-    // WT features into one output root and does not materialize child calcset
-    // roots, so parent emission needs a layout change first.
-    return WriteFeaturesAndReport(wt_conf, output_dir);
+    if (const int wt_rc = WriteFeaturesAndReport(wt_conf, output_dir); wt_rc != 0)
+        return wt_rc;
+
+    // ALA side: RunMutantComparison already ran the full calculator stack on
+    // ala_conf (OperationRunner::Run, the same sequence as --orca); it was used
+    // to form the WT-ALA delta and then discarded unemitted. Materialize it as a
+    // child calcset so each mutant case carries BOTH sides' full calculator NPYs
+    // and IUPAC sidecar (atoms_category_info). The WT side stays at the flat
+    // output root untouched -- delta_*, wt/mut shieldings, and existing consumers
+    // depend on that layout. No calculator VALUES change; this is a pure emit of
+    // results that were already computed for the delta.
+    const std::string ala_dir = (fs::path(output_dir) / "ala").string();
+    fs::create_directories(ala_dir);
+    const std::string ala_protein_id =
+        PathStemProteinId(mode.ala.xyz_path, common.output_dir);
+    if (!WriteSidecars(*ala_build.protein, ala_dir, ala_protein_id)) return 1;
+    return WriteFeaturesAndReport(ala_conf, ala_dir);
 }
 
 
