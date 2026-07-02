@@ -14,10 +14,10 @@ Env contract:
                             CTest defaults it to the 1P9J calibration dataset.
 
 Headless: VTK needs a real GL FBO, which `QT_QPA_PLATFORM=offscreen` does
-not provide. If the test environment has no DISPLAY, the fixture wraps the
+not provide. On non-Windows hosts with no DISPLAY, the fixture wraps the
 binary in `xvfb-run -a` (which provisions a Xvfb-backed display on demand).
-On dev machines with an X display already set, the binary runs against
-that display directly.
+On Windows and on dev machines with an X display already set, the binary
+runs directly.
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def h5reader_session() -> Generator[RestSession, None, None]:
 
     env = {**os.environ}
     cmd: list[str] = []
-    if not env.get("DISPLAY"):
+    if os.name != "nt" and not env.get("DISPLAY"):
         xvfb = shutil.which("xvfb-run")
         if not xvfb:
             pytest.skip("no DISPLAY and xvfb-run not on PATH; install xvfb or run under an X session")
@@ -148,7 +148,9 @@ def h5reader_session() -> Generator[RestSession, None, None]:
         )
 
     base_url = f"http://127.0.0.1:{port}"
-    client = httpx.Client(base_url=base_url, timeout=20.0)
+    # The all-metric display sweep intentionally backfills a 24-frame window.
+    # On Windows that may cold-load thousands of NPY arrays for a single request.
+    client = httpx.Client(base_url=base_url, timeout=60.0)
 
     # One-shot health check — fail fast if the server isn't actually serving.
     deadline = time.monotonic() + 10.0

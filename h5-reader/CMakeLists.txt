@@ -736,6 +736,19 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     h5reader_apply_platform_target_settings(h5reader_trajectory_frame_map_tests)
     add_test(NAME h5reader_trajectory_frame_map_tests COMMAND h5reader_trajectory_frame_map_tests)
+
+    qt_add_executable(h5reader_ring_current_case_tests
+        tests/ring_current_case_tests.cpp
+    )
+    target_link_libraries(h5reader_ring_current_case_tests PRIVATE
+        h5reader_core
+        Qt6::Test
+    )
+    vtk_module_autoinit(TARGETS h5reader_ring_current_case_tests MODULES ${VTK_LIBRARIES})
+    h5reader_apply_platform_target_settings(h5reader_ring_current_case_tests)
+    add_test(NAME h5reader_ring_current_case_tests
+             COMMAND h5reader_ring_current_case_tests)
+    set_tests_properties(h5reader_ring_current_case_tests PROPERTIES TIMEOUT 900)
 endif()
 
 # REST end-to-end smoke: pytest drives the built h5reader binary via its
@@ -762,6 +775,19 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
             "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}"
         LABELS "rest;e2e"
         TIMEOUT 300
+    )
+
+    set(H5READER_CHIGNOLIN_FIXTURE_DEFAULT
+        "C:/projects/reader-data/chignolin-oneoff/chignolin_CLN025_5AWL_0.LGS"
+        CACHE FILEPATH "Optional chignolin/CLN025 dense-DFT .LGS for REST fixture smoke")
+    add_test(NAME h5reader_rest_chignolin_fixture
+             COMMAND ${Python3_EXECUTABLE} -m pytest
+                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_chignolin_fixture.py -v --tb=short)
+    set_tests_properties(h5reader_rest_chignolin_fixture PROPERTIES
+        ENVIRONMENT
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_CHIGNOLIN_FIXTURE_DEFAULT}"
+        LABELS "rest;e2e;chignolin"
+        TIMEOUT 180
     )
 endif()
 
@@ -792,30 +818,25 @@ if(WIN32)
         "Directory containing the Experimental Shielding ML bundle")
 
     if(H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT)
-        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL)
-            set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
-                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/local_tensor_mopac_neighbors005.ts")
-        endif()
-        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST)
-            set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
-                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/poc_manifest.json")
-        endif()
-        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER)
-            set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
-                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch_e3nn_poc.exe")
-        endif()
-        if(NOT H5READER_LIBTORCH_CPU_BIN_DIR)
-            foreach(_torch_candidate IN ITEMS
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/torch/lib"
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch/lib"
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/Lib/site-packages/torch/lib")
-                if(EXISTS "${_torch_candidate}/c10.dll")
-                    set(H5READER_LIBTORCH_CPU_BIN_DIR "${_torch_candidate}")
-                    break()
-                endif()
-            endforeach()
-        endif()
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/model.ts"
+            CACHE FILEPATH "TorchScript model for Experimental Shielding ML" FORCE)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/manifest.json"
+            CACHE FILEPATH "Provenance manifest for Experimental Shielding ML" FORCE)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/infer.exe"
+            CACHE FILEPATH "CPU inference helper for Experimental Shielding ML" FORCE)
+        foreach(_torch_candidate IN ITEMS
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/torch/lib"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch/lib")
+            if(EXISTS "${_torch_candidate}/c10.dll")
+                set(H5READER_LIBTORCH_CPU_BIN_DIR "${_torch_candidate}"
+                    CACHE PATH "LibTorch CPU DLL directory for Experimental Shielding ML" FORCE)
+                break()
+            endif()
+        endforeach()
     endif()
 
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
@@ -861,7 +882,7 @@ if(WIN32)
                 torch_cpu.dll
                 torch_global_deps.dll
                 libiomp5md.dll
-                shm.dll
+                libiompstubs5md.dll
                 uv.dll)
             set(_torch_dll "${H5READER_LIBTORCH_CPU_BIN_DIR}/${_torch_dll_name}")
             if(NOT EXISTS "${_torch_dll}")

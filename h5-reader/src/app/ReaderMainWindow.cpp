@@ -134,15 +134,15 @@ bool installedExperimentalShieldingMlRuntimeAvailable() {
     const QDir mlDir(QDir(QCoreApplication::applicationDirPath())
                          .filePath(QStringLiteral("ml/experimental_shielding_ml")));
     const QStringList requiredFiles{
-        QStringLiteral("local_tensor_mopac_neighbors005.ts"),
-        QStringLiteral("poc_manifest.json"),
-        QStringLiteral("libtorch_e3nn_poc.exe"),
+        QStringLiteral("model.ts"),
+        QStringLiteral("manifest.json"),
+        QStringLiteral("infer.exe"),
         QStringLiteral("c10.dll"),
         QStringLiteral("torch.dll"),
         QStringLiteral("torch_cpu.dll"),
         QStringLiteral("torch_global_deps.dll"),
         QStringLiteral("libiomp5md.dll"),
-        QStringLiteral("shm.dll"),
+        QStringLiteral("libiompstubs5md.dll"),
         QStringLiteral("uv.dll"),
     };
     for (const QString& fileName : requiredFiles) {
@@ -155,16 +155,18 @@ bool installedExperimentalShieldingMlRuntimeAvailable() {
 bool devExperimentalShieldingMlRuntimeAvailable() {
     const QString modelPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
+    const QString manifestPath =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST");
     const QString helperPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
-    if (modelPath.isEmpty() && helperPath.isEmpty())
+    if (modelPath.isEmpty() && manifestPath.isEmpty() && helperPath.isEmpty())
         return false;
-    return QFileInfo(modelPath).isFile() && QFileInfo(helperPath).isFile();
+    return QFileInfo(modelPath).isFile()
+           && QFileInfo(manifestPath).isFile()
+           && QFileInfo(helperPath).isFile();
 }
 
 bool experimentalShieldingMlRuntimeAvailable() {
-    if (!qEnvironmentVariableIsSet("H5READER_EXPERIMENTAL_SHIELDING_ML_ENABLE"))
-        return false;
     return devExperimentalShieldingMlRuntimeAvailable()
            || installedExperimentalShieldingMlRuntimeAvailable();
 }

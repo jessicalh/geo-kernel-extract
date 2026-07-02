@@ -268,8 +268,9 @@ bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& s
                || storagePath == QStringLiteral("selection_timeline")
                || storagePath == QStringLiteral("selection_counts");
     case SignalSourceKind::ExperimentalShieldingMl:
-        return storagePath == QStringLiteral("experimental_shielding_ml:t2")
-               || storagePath == QStringLiteral("experimental_shielding_ml:t2_norm");
+        // Bundle presence is not enough: the reader still needs a graph builder
+        // plus a sampled output cache before this can produce per-frame values.
+        return false;
     }
     return false;
 }
