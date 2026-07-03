@@ -54,6 +54,7 @@
 #include <QDockWidget>
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 
 #include <QAction>
@@ -69,6 +70,7 @@
 #include <QFont>
 #include <QFormLayout>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeySequence>
 #include <QLabel>
@@ -130,10 +132,13 @@ bool fileExistsInDir(const QDir& dir, const QString& fileName) {
     return QFileInfo(dir.filePath(fileName)).isFile();
 }
 
-bool installedExperimentalShieldingMlRuntimeAvailable() {
-    const QDir mlDir(QDir(QCoreApplication::applicationDirPath())
-                         .filePath(QStringLiteral("ml/experimental_shielding_ml")));
-    const QStringList requiredFiles{
+QDir installedExperimentalShieldingMlDir() {
+    return QDir(QDir(QCoreApplication::applicationDirPath())
+                    .filePath(QStringLiteral("ml/experimental_shielding_ml")));
+}
+
+QStringList experimentalShieldingMlRequiredFiles() {
+    return {
         QStringLiteral("model.ts"),
         QStringLiteral("manifest.json"),
         QStringLiteral("infer.exe"),
@@ -145,6 +150,11 @@ bool installedExperimentalShieldingMlRuntimeAvailable() {
         QStringLiteral("libiompstubs5md.dll"),
         QStringLiteral("uv.dll"),
     };
+}
+
+bool installedExperimentalShieldingMlRuntimeAvailable() {
+    const QDir mlDir = installedExperimentalShieldingMlDir();
+    const QStringList requiredFiles = experimentalShieldingMlRequiredFiles();
     for (const QString& fileName : requiredFiles) {
         if (!fileExistsInDir(mlDir, fileName))
             return false;
@@ -169,6 +179,91 @@ bool devExperimentalShieldingMlRuntimeAvailable() {
 bool experimentalShieldingMlRuntimeAvailable() {
     return devExperimentalShieldingMlRuntimeAvailable()
            || installedExperimentalShieldingMlRuntimeAvailable();
+}
+
+QJsonObject readExperimentalShieldingMlManifestSummary(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QJsonParseError error{};
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !doc.isObject())
+        return {};
+    const QJsonObject manifest = doc.object();
+    QJsonObject out;
+    const auto copyString = [&manifest, &out](const char* key, const QString& outKey) {
+        const QJsonValue value = manifest.value(QLatin1String(key));
+        if (value.isString())
+            out.insert(outKey, value.toString());
+    };
+    copyString("name", QStringLiteral("name"));
+    copyString("bundle_version", QStringLiteral("bundleVersion"));
+    copyString("bundle_date", QStringLiteral("bundleDate"));
+    copyString("source_checkpoint", QStringLiteral("sourceCheckpoint"));
+    copyString("target", QStringLiteral("target"));
+    const QJsonObject training = manifest.value(QStringLiteral("training")).toObject();
+    if (!training.isEmpty()) {
+        QJsonObject trainingOut;
+        const QJsonValue fold = training.value(QStringLiteral("fold"));
+        if (fold.isString())
+            trainingOut.insert(QStringLiteral("fold"), fold.toString());
+        const QJsonValue claim = training.value(QStringLiteral("training_claim"));
+        if (claim.isString())
+            trainingOut.insert(QStringLiteral("claim"), claim.toString());
+        const QJsonValue bestEpoch = training.value(QStringLiteral("best_epoch"));
+        if (bestEpoch.isDouble())
+            trainingOut.insert(QStringLiteral("bestEpoch"), bestEpoch.toInt());
+        const QJsonValue bestVal = training.value(QStringLiteral("best_val"));
+        if (bestVal.isDouble())
+            trainingOut.insert(QStringLiteral("bestVal"), bestVal.toDouble());
+        const QJsonValue vocabPolicy = training.value(QStringLiteral("label_vocab_policy"));
+        if (vocabPolicy.isString())
+            trainingOut.insert(QStringLiteral("labelVocabPolicy"), vocabPolicy.toString());
+        out.insert(QStringLiteral("training"), trainingOut);
+    }
+    return out;
+}
+
+QJsonObject experimentalShieldingMlRuntimeJson() {
+    QJsonObject out;
+    out.insert(QStringLiteral("available"), false);
+    out.insert(QStringLiteral("runtime"), QStringLiteral("missing"));
+
+    const QString modelPath =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
+    const QString manifestPath =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST");
+    const QString helperPath =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
+    if (!modelPath.isEmpty() || !manifestPath.isEmpty() || !helperPath.isEmpty()) {
+        const bool available = QFileInfo(modelPath).isFile()
+            && QFileInfo(manifestPath).isFile()
+            && QFileInfo(helperPath).isFile();
+        out.insert(QStringLiteral("available"), available);
+        out.insert(QStringLiteral("runtime"), QStringLiteral("development"));
+        if (QFileInfo(manifestPath).isFile())
+            out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(manifestPath));
+        return out;
+    }
+
+    const QDir mlDir = installedExperimentalShieldingMlDir();
+    QStringList missing;
+    for (const QString& fileName : experimentalShieldingMlRequiredFiles()) {
+        if (!fileExistsInDir(mlDir, fileName))
+            missing.append(fileName);
+    }
+    out.insert(QStringLiteral("available"), missing.isEmpty());
+    out.insert(QStringLiteral("runtime"), QStringLiteral("installed"));
+    if (!missing.isEmpty()) {
+        QJsonArray arr;
+        for (const QString& fileName : missing)
+            arr.append(fileName);
+        out.insert(QStringLiteral("missing"), arr);
+    }
+    const QString installedManifest = mlDir.filePath(QStringLiteral("manifest.json"));
+    if (QFileInfo(installedManifest).isFile())
+        out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(installedManifest));
+    return out;
 }
 
 QString fitModeToolTip() {
@@ -1064,6 +1159,7 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
             ? QString::fromLatin1(NameFor(scene_->cameraComposer()->mode().kind))
             : QStringLiteral("none");
     out[QStringLiteral("controls")]      = controls;
+    out[QStringLiteral("experimentalShieldingMl")] = experimentalShieldingMlRuntimeJson();
     return out;
 }
 
