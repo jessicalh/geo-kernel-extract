@@ -821,6 +821,9 @@ if(WIN32)
         set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/model.ts"
             CACHE FILEPATH "TorchScript model for Experimental Shielding ML" FORCE)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/model_no_mopac_no_tripeptide.ts"
+            CACHE FILEPATH "No-MOPAC fallback TorchScript model for Experimental Shielding ML" FORCE)
         set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/manifest.json"
             CACHE FILEPATH "Provenance manifest for Experimental Shielding ML" FORCE)
@@ -842,6 +845,9 @@ if(WIN32)
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
         "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
         CACHE FILEPATH "TorchScript model for Experimental Shielding ML")
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL
+        "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
+        CACHE FILEPATH "No-MOPAC fallback TorchScript model for Experimental Shielding ML")
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
         "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
         CACHE FILEPATH "Provenance manifest for Experimental Shielding ML")
@@ -855,6 +861,7 @@ if(WIN32)
     if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
         foreach(_ml_asset IN ITEMS
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}")
             if(NOT EXISTS "${_ml_asset}")
@@ -862,6 +869,7 @@ if(WIN32)
                     "Experimental Shielding ML packaging is required, but this asset is missing: ${_ml_asset}\n"
                     "Set H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT to a portable bundle directory, "
                     "or set H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL, "
+                    "H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL, "
                     "H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST, "
                     "H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER, and "
                     "H5READER_LIBTORCH_CPU_BIN_DIR explicitly.")
@@ -894,6 +902,7 @@ if(WIN32)
 
         install(FILES
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
             ${_h5reader_libtorch_cpu_dlls}
             DESTINATION "${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"

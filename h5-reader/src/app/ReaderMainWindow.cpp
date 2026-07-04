@@ -132,6 +132,10 @@ bool fileExistsInDir(const QDir& dir, const QString& fileName) {
     return QFileInfo(dir.filePath(fileName)).isFile();
 }
 
+QJsonValue jsonNull() {
+    return QJsonValue(QJsonValue::Null);
+}
+
 QDir installedExperimentalShieldingMlDir() {
     return QDir(QDir(QCoreApplication::applicationDirPath())
                     .filePath(QStringLiteral("ml/experimental_shielding_ml")));
@@ -140,6 +144,7 @@ QDir installedExperimentalShieldingMlDir() {
 QStringList experimentalShieldingMlRequiredFiles() {
     return {
         QStringLiteral("model.ts"),
+        QStringLiteral("model_no_mopac_no_tripeptide.ts"),
         QStringLiteral("manifest.json"),
         QStringLiteral("infer.exe"),
         QStringLiteral("c10.dll"),
@@ -162,6 +167,36 @@ bool installedExperimentalShieldingMlRuntimeAvailable() {
     return true;
 }
 
+QStringList experimentalShieldingMlDevMissingFiles(const QString& modelPath,
+                                                   const QString& manifestPath,
+                                                   const QString& helperPath) {
+    QStringList missing;
+    if (!QFileInfo(modelPath).isFile())
+        missing.append(QStringLiteral("model.ts"));
+    if (!QFileInfo(manifestPath).isFile())
+        missing.append(QStringLiteral("manifest.json"));
+    if (!QFileInfo(helperPath).isFile())
+        missing.append(QStringLiteral("infer.exe"));
+
+    const QDir modelDir = QFileInfo(modelPath).dir();
+    if (!fileExistsInDir(modelDir, QStringLiteral("model_no_mopac_no_tripeptide.ts")))
+        missing.append(QStringLiteral("model_no_mopac_no_tripeptide.ts"));
+
+    const QDir helperDir = QFileInfo(helperPath).dir();
+    for (const QString& fileName :
+         {QStringLiteral("c10.dll"),
+          QStringLiteral("torch.dll"),
+          QStringLiteral("torch_cpu.dll"),
+          QStringLiteral("torch_global_deps.dll"),
+          QStringLiteral("libiomp5md.dll"),
+          QStringLiteral("libiompstubs5md.dll"),
+          QStringLiteral("uv.dll")}) {
+        if (!fileExistsInDir(helperDir, fileName))
+            missing.append(fileName);
+    }
+    return missing;
+}
+
 bool devExperimentalShieldingMlRuntimeAvailable() {
     const QString modelPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
@@ -171,14 +206,55 @@ bool devExperimentalShieldingMlRuntimeAvailable() {
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
     if (modelPath.isEmpty() && manifestPath.isEmpty() && helperPath.isEmpty())
         return false;
-    return QFileInfo(modelPath).isFile()
-           && QFileInfo(manifestPath).isFile()
-           && QFileInfo(helperPath).isFile();
+    return experimentalShieldingMlDevMissingFiles(modelPath, manifestPath, helperPath).isEmpty();
 }
 
 bool experimentalShieldingMlRuntimeAvailable() {
     return devExperimentalShieldingMlRuntimeAvailable()
            || installedExperimentalShieldingMlRuntimeAvailable();
+}
+
+QJsonObject summarizeExperimentalShieldingMlTraining(const QJsonObject& training) {
+    QJsonObject out;
+    const QJsonValue fold = training.value(QStringLiteral("fold"));
+    if (fold.isString())
+        out.insert(QStringLiteral("fold"), fold.toString());
+    const QJsonValue claim = training.value(QStringLiteral("training_claim"));
+    if (claim.isString())
+        out.insert(QStringLiteral("claim"), claim.toString());
+    const QJsonValue bestEpoch = training.value(QStringLiteral("best_epoch"));
+    if (bestEpoch.isDouble())
+        out.insert(QStringLiteral("bestEpoch"), bestEpoch.toInt());
+    const QJsonValue bestVal = training.value(QStringLiteral("best_val"));
+    if (bestVal.isDouble())
+        out.insert(QStringLiteral("bestVal"), bestVal.toDouble());
+    const QJsonValue vocabPolicy = training.value(QStringLiteral("label_vocab_policy"));
+    if (vocabPolicy.isString())
+        out.insert(QStringLiteral("labelVocabPolicy"), vocabPolicy.toString());
+    const QJsonObject args = training.value(QStringLiteral("args")).toObject();
+    const QJsonValue inputPreset = args.value(QStringLiteral("input_preset"));
+    if (inputPreset.isString())
+        out.insert(QStringLiteral("inputPreset"), inputPreset.toString());
+    return out;
+}
+
+QJsonObject summarizeExperimentalShieldingMlModel(const QJsonObject& model) {
+    QJsonObject out;
+    const auto copyString = [&model, &out](const QString& key, const QString& outKey) {
+        const QJsonValue value = model.value(key);
+        if (value.isString())
+            out.insert(outKey, value.toString());
+    };
+    copyString(QStringLiteral("id"), QStringLiteral("id"));
+    copyString(QStringLiteral("label"), QStringLiteral("label"));
+    copyString(QStringLiteral("role"), QStringLiteral("role"));
+    copyString(QStringLiteral("model_file"), QStringLiteral("modelFile"));
+    copyString(QStringLiteral("input_preset"), QStringLiteral("inputPreset"));
+    copyString(QStringLiteral("selection"), QStringLiteral("selection"));
+    const QJsonObject training = model.value(QStringLiteral("training")).toObject();
+    if (!training.isEmpty())
+        out.insert(QStringLiteral("training"), summarizeExperimentalShieldingMlTraining(training));
+    return out;
 }
 
 QJsonObject readExperimentalShieldingMlManifestSummary(const QString& path) {
@@ -203,31 +279,116 @@ QJsonObject readExperimentalShieldingMlManifestSummary(const QString& path) {
     copyString("target", QStringLiteral("target"));
     const QJsonObject training = manifest.value(QStringLiteral("training")).toObject();
     if (!training.isEmpty()) {
-        QJsonObject trainingOut;
-        const QJsonValue fold = training.value(QStringLiteral("fold"));
-        if (fold.isString())
-            trainingOut.insert(QStringLiteral("fold"), fold.toString());
-        const QJsonValue claim = training.value(QStringLiteral("training_claim"));
-        if (claim.isString())
-            trainingOut.insert(QStringLiteral("claim"), claim.toString());
-        const QJsonValue bestEpoch = training.value(QStringLiteral("best_epoch"));
-        if (bestEpoch.isDouble())
-            trainingOut.insert(QStringLiteral("bestEpoch"), bestEpoch.toInt());
-        const QJsonValue bestVal = training.value(QStringLiteral("best_val"));
-        if (bestVal.isDouble())
-            trainingOut.insert(QStringLiteral("bestVal"), bestVal.toDouble());
-        const QJsonValue vocabPolicy = training.value(QStringLiteral("label_vocab_policy"));
-        if (vocabPolicy.isString())
-            trainingOut.insert(QStringLiteral("labelVocabPolicy"), vocabPolicy.toString());
-        out.insert(QStringLiteral("training"), trainingOut);
+        out.insert(QStringLiteral("training"), summarizeExperimentalShieldingMlTraining(training));
+    }
+    const QJsonArray models = manifest.value(QStringLiteral("models")).toArray();
+    if (!models.isEmpty()) {
+        QJsonArray outModels;
+        for (const QJsonValue& value : models) {
+            if (value.isObject())
+                outModels.append(summarizeExperimentalShieldingMlModel(value.toObject()));
+        }
+        out.insert(QStringLiteral("models"), outModels);
     }
     return out;
 }
 
-QJsonObject experimentalShieldingMlRuntimeJson() {
+bool anyExperimentalShieldingMlPathVisible(
+    const model::TrajectoryFieldAvailability* availability,
+    const QStringList& storagePaths) {
+    if (!availability)
+        return false;
+    for (const QString& storagePath : storagePaths) {
+        const auto* record = availability->recordForStoragePath(storagePath);
+        if (record && model::TrajectoryFieldAvailability::isVisibleState(record->state))
+            return true;
+    }
+    return false;
+}
+
+QJsonObject experimentalShieldingMlInputProfileJson(
+    const model::TrajectoryFieldAvailability* availability,
+    bool loaded) {
+    const QStringList mopacPaths{
+        QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series"),
+        QStringLiteral("/trajectory/mopac_mc_shielding_time_series"),
+        QStringLiteral("/trajectory/mopac_vs_ff14sb_reconciliation"),
+        QStringLiteral("/trajectory/mopac_charge_welford"),
+        QStringLiteral("/trajectory/mopac_bond_order_welford"),
+        QStringLiteral("mopac_coulomb_shielding"),
+        QStringLiteral("mopac_mc_shielding"),
+        QStringLiteral("mopac_mc_category_T2"),
+        QStringLiteral("mopac_charges"),
+        QStringLiteral("mopac_scalars"),
+        QStringLiteral("mopac_bond_orders"),
+        QStringLiteral("mopac_global"),
+        QStringLiteral("mopac_coulomb_E"),
+        QStringLiteral("mopac_coulomb_efg_backbone"),
+        QStringLiteral("mopac_coulomb_efg_aromatic"),
+        QStringLiteral("mopac_coulomb_scalars"),
+        QStringLiteral("mopac_mc_scalars"),
+    };
+    const QStringList tripeptidePaths{
+        QStringLiteral("/trajectory/tripeptide_bb_shielding_time_series"),
+        QStringLiteral("/trajectory/tripeptide_neighbor_shielding_time_series"),
+        QStringLiteral("/trajectory/tripeptide_bb_residual_vec_time_series"),
+        QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_prev_time_series"),
+        QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_next_time_series"),
+        QStringLiteral("/trajectory/tripeptide_bb_method_tag_time_series"),
+        QStringLiteral("tripeptide_bb_shielding"),
+        QStringLiteral("tripeptide_neighbor_shielding"),
+        QStringLiteral("tripeptide_bb_residual_vec"),
+        QStringLiteral("tripeptide_neighbor_residual_vec_prev"),
+        QStringLiteral("tripeptide_neighbor_residual_vec_next"),
+        QStringLiteral("tripeptide_bb_match_distance"),
+        QStringLiteral("tripeptide_bb_method_tag"),
+    };
+
+    QJsonObject profile;
+    profile.insert(QStringLiteral("loaded"), loaded);
+    profile.insert(QStringLiteral("mopacPresent"),
+                   loaded && anyExperimentalShieldingMlPathVisible(availability, mopacPaths));
+    profile.insert(QStringLiteral("tripeptidePresent"),
+                   loaded && anyExperimentalShieldingMlPathVisible(availability, tripeptidePaths));
+    return profile;
+}
+
+QJsonObject selectedExperimentalShieldingMlModelJson(const QJsonObject& inputProfile,
+                                                     bool runtimeAvailable) {
+    QJsonObject selected;
+    if (!runtimeAvailable) {
+        selected.insert(QStringLiteral("id"), jsonNull());
+        selected.insert(QStringLiteral("reason"), QStringLiteral("runtime_missing"));
+        return selected;
+    }
+    if (!inputProfile.value(QStringLiteral("loaded")).toBool()) {
+        selected.insert(QStringLiteral("id"), jsonNull());
+        selected.insert(QStringLiteral("reason"), QStringLiteral("no_loaded_run"));
+        return selected;
+    }
+    if (inputProfile.value(QStringLiteral("mopacPresent")).toBool()) {
+        selected.insert(QStringLiteral("id"), QStringLiteral("full"));
+        selected.insert(QStringLiteral("modelFile"), QStringLiteral("model.ts"));
+        selected.insert(QStringLiteral("inputPreset"), QStringLiteral("full"));
+        selected.insert(QStringLiteral("reason"), QStringLiteral("mopac_features_available"));
+        return selected;
+    }
+    selected.insert(QStringLiteral("id"), QStringLiteral("no_mopac_no_tripeptide"));
+    selected.insert(QStringLiteral("modelFile"), QStringLiteral("model_no_mopac_no_tripeptide.ts"));
+    selected.insert(QStringLiteral("inputPreset"), QStringLiteral("no_mopac_no_tripeptide"));
+    selected.insert(QStringLiteral("reason"), QStringLiteral("mopac_features_absent"));
+    return selected;
+}
+
+QJsonObject experimentalShieldingMlRuntimeJson(
+    const model::TrajectoryFieldAvailability* availability,
+    bool loaded) {
     QJsonObject out;
     out.insert(QStringLiteral("available"), false);
     out.insert(QStringLiteral("runtime"), QStringLiteral("missing"));
+    const QJsonObject inputProfile =
+        experimentalShieldingMlInputProfileJson(availability, loaded);
+    out.insert(QStringLiteral("inputProfile"), inputProfile);
 
     const QString modelPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
@@ -236,13 +397,21 @@ QJsonObject experimentalShieldingMlRuntimeJson() {
     const QString helperPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
     if (!modelPath.isEmpty() || !manifestPath.isEmpty() || !helperPath.isEmpty()) {
-        const bool available = QFileInfo(modelPath).isFile()
-            && QFileInfo(manifestPath).isFile()
-            && QFileInfo(helperPath).isFile();
+        const QStringList missing =
+            experimentalShieldingMlDevMissingFiles(modelPath, manifestPath, helperPath);
+        const bool available = missing.isEmpty();
         out.insert(QStringLiteral("available"), available);
         out.insert(QStringLiteral("runtime"), QStringLiteral("development"));
+        if (!missing.isEmpty()) {
+            QJsonArray arr;
+            for (const QString& fileName : missing)
+                arr.append(fileName);
+            out.insert(QStringLiteral("missing"), arr);
+        }
         if (QFileInfo(manifestPath).isFile())
             out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(manifestPath));
+        out.insert(QStringLiteral("selectedModel"),
+                   selectedExperimentalShieldingMlModelJson(inputProfile, available));
         return out;
     }
 
@@ -263,6 +432,8 @@ QJsonObject experimentalShieldingMlRuntimeJson() {
     const QString installedManifest = mlDir.filePath(QStringLiteral("manifest.json"));
     if (QFileInfo(installedManifest).isFile())
         out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(installedManifest));
+    out.insert(QStringLiteral("selectedModel"),
+               selectedExperimentalShieldingMlModelJson(inputProfile, missing.isEmpty()));
     return out;
 }
 
@@ -1159,7 +1330,8 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
             ? QString::fromLatin1(NameFor(scene_->cameraComposer()->mode().kind))
             : QStringLiteral("none");
     out[QStringLiteral("controls")]      = controls;
-    out[QStringLiteral("experimentalShieldingMl")] = experimentalShieldingMlRuntimeJson();
+    out[QStringLiteral("experimentalShieldingMl")] =
+        experimentalShieldingMlRuntimeJson(fieldAvailability_.get(), loaded);
     return out;
 }
 
