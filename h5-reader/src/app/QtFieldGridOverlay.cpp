@@ -267,6 +267,7 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
         rg.actorDeshielded->SetVisibility(0);
         return;
     }
+    ApplyActorStyling(ri, rg);
 
     const int dim = FIELD_GRID_DIM;
     const double extent = FIELD_GRID_EXTENT_A;

@@ -61,6 +61,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -218,12 +219,12 @@ struct GridSpec {
     double spacing = 1.0;                       // isotropic voxel edge (A)
     std::array<int, 3> dims = {0, 0, 0};        // POINT counts per axis
 
-    long pointCount() const {
-        return static_cast<long>(dims[0]) * dims[1] * dims[2];
+    std::int64_t pointCount() const {
+        return static_cast<std::int64_t>(dims[0]) * dims[1] * dims[2];
     }
-    long index(int i, int j, int k) const {
-        return static_cast<long>(i) + static_cast<long>(dims[0]) *
-               (static_cast<long>(j) + static_cast<long>(dims[1]) * k);
+    std::int64_t index(int i, int j, int k) const {
+        return static_cast<std::int64_t>(i) + static_cast<std::int64_t>(dims[0]) *
+               (static_cast<std::int64_t>(j) + static_cast<std::int64_t>(dims[1]) * k);
     }
     model::Vec3 pointAt(int i, int j, int k) const {
         return origin + spacing * model::Vec3(i, j, k);
@@ -280,7 +281,7 @@ inline DensityField evaluateDensity(const std::vector<model::Vec3>& pos,
                                     const model::Mat3& H, const GridSpec& grid) {
     DensityField f;
     f.grid = grid;
-    const long N = grid.pointCount();
+    const std::int64_t N = grid.pointCount();
     if (N <= 0 || pos.empty()) return f;
     f.values.assign(static_cast<std::size_t>(N), 0.0);
 

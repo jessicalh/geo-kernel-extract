@@ -123,6 +123,7 @@ private slots:
     // ---- DashboardPanelModel emission contracts -------------------------
 
     void testPanelModel_addDisplayRefEmitsChanges();
+    void testPanelModel_removeRowsKeepsFinalPanel();
     void testPanelModel_removeDisplayRefForSignalCleansAllPanels();
     void testPanelModel_clearPreservesOnePanelAndEmitsRefs();
     void testPanelModel_signalReferenceCountTracksCorrectly();
@@ -421,6 +422,21 @@ void DashboardModelTests::testPanelModel_addDisplayRefEmitsChanges() {
     // Adding the same ref again is rejected, no emission.
     QVERIFY(!panels.addDisplayRef(panelId, ref));
     QCOMPARE(refsChangedSpy.count(), 1);
+}
+
+void DashboardModelTests::testPanelModel_removeRowsKeepsFinalPanel() {
+    DashboardPanelModel panels;
+    QCOMPARE(panels.rowCount(), 1);
+    QVERIFY(!panels.removeRows(0, 1));
+    QCOMPARE(panels.rowCount(), 1);
+
+    panels.addPanel(QStringLiteral("second"));
+    QCOMPARE(panels.rowCount(), 2);
+    QVERIFY(!panels.removeRows(0, 2));
+    QCOMPARE(panels.rowCount(), 2);
+
+    QVERIFY(panels.removeRows(1, 1));
+    QCOMPARE(panels.rowCount(), 1);
 }
 
 void DashboardModelTests::testPanelModel_removeDisplayRefForSignalCleansAllPanels() {

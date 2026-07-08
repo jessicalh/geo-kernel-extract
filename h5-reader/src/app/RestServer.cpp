@@ -1377,6 +1377,16 @@ void RestServer::setContext(MoleculeScene* scene,
                             ReaderMainWindow* readerWindow,
                             model::TransformedConformation* transformed) {
     ASSERT_THREAD(this);
+    if (scene_ != scene) {
+        heroshotAtomTrack_.reset();
+        heroshotButterfly_.reset();
+        heroshotTrail_.reset();
+        heroshotAngleCollar_.reset();
+        heroshotMeasurementVisibleBefore_.reset();
+        heroshotMoleculeStyleBefore_.reset();
+        heroshotFieldRingBefore_.reset();
+        heroshotFieldRingWasSet_ = false;
+    }
     scene_ = scene;
     selection_ = selection;
     signalModel_ = signalModel;
