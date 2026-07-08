@@ -3,6 +3,7 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../model/QtFrame.h"
+#include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
 #include "../model/TrajectoryConformation.h"
 
@@ -155,6 +156,18 @@ unsigned char SsCharForDssp(model::DsspCode c) {
     }
 }
 
+model::QtResidue ResidueForAtomOrEmpty(const model::QtProtein& protein, std::size_t atomIndex) {
+    if (atomIndex >= protein.atomCount())
+        return {};
+    const auto& atom = protein.atom(atomIndex);
+    if (atom.residueIndex < 0)
+        return {};
+    const auto residueIndex = static_cast<std::size_t>(atom.residueIndex);
+    if (residueIndex >= protein.residueCount())
+        return {};
+    return protein.residue(residueIndex);
+}
+
 }  // namespace
 
 QtBackboneRibbonOverlay::QtBackboneRibbonOverlay(vtkSmartPointer<vtkRenderer> renderer, QObject* parent)
@@ -223,7 +236,7 @@ void QtBackboneRibbonOverlay::Build(const model::QtProtein& protein, model::Conf
     for (vtkIdType i = 0; i < nAtoms; ++i) {
         const size_t si = static_cast<size_t>(i);
         const auto& atom = protein.atom(si);
-        const auto& res = protein.residue(atom.residueIndex);
+        const auto res = ResidueForAtomOrEmpty(protein, si);
 
         atomTypes_->SetValue(i, protein.atomNames(si).amber.toStdString());
         atomType_->SetValue(i, static_cast<vtkIdType>(model::AtomicNumberForElement(atom.element)));
@@ -360,7 +373,7 @@ void QtBackboneRibbonOverlay::ApplyResidueColors() {
                 segments_.back().residues.clear();
         }
         const size_t si = static_cast<size_t>(i);
-        const auto& res = protein_->residue(protein_->atom(si).residueIndex);
+        const auto res = ResidueForAtomOrEmpty(*protein_, si);
         segments_.back().residues.push_back(res.aminoAcid);
         prevChainVal = ch;
         prevResiVal = ri;
