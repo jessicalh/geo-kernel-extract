@@ -28,6 +28,7 @@
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/DashboardLogging.h"
+#include "../diagnostics/ErrorBus.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/StructuredLogger.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -134,6 +135,31 @@ bool fileExistsInDir(const QDir& dir, const QString& fileName) {
 
 QJsonValue jsonNull() {
     return QJsonValue(QJsonValue::Null);
+}
+
+QString diagnosticSeverityName(h5reader::diagnostics::Severity severity) {
+    using h5reader::diagnostics::Severity;
+    switch (severity) {
+        case Severity::Info: return QStringLiteral("Info");
+        case Severity::Warning: return QStringLiteral("Warning");
+        case Severity::Error: return QStringLiteral("Error");
+        case Severity::Fatal: return QStringLiteral("Fatal");
+    }
+    return QStringLiteral("Unknown");
+}
+
+QString diagnosticSeverityStyle(h5reader::diagnostics::Severity severity) {
+    using h5reader::diagnostics::Severity;
+    switch (severity) {
+        case Severity::Info:
+            return QStringLiteral("color: #475569;");
+        case Severity::Warning:
+            return QStringLiteral("color: #7a4b00; font-weight: 600;");
+        case Severity::Error:
+        case Severity::Fatal:
+            return QStringLiteral("color: #9f1239; font-weight: 700;");
+    }
+    return QString();
 }
 
 QJsonArray stringListJson(const QStringList& values) {
@@ -475,6 +501,10 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
     buildUi();
     buildToolbar();
     buildStatusBar();
+    ACONNECT(h5reader::diagnostics::ErrorBus::Instance(),
+             &h5reader::diagnostics::ErrorBus::errorReported,
+             this,
+             &ReaderMainWindow::handleErrorBusReport);
     buildDocks();
 
     // Default size — wide enough for the playback + camera + transform +
@@ -1331,6 +1361,13 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     sel[QStringLiteral("count")] = static_cast<int>(selection_ ? selection_->count() : 0);
     sel[QStringLiteral("focus")] = (selection_ && selection_->hasFocus());
 
+    QJsonObject diagnostic;
+    diagnostic[QStringLiteral("present")] = !lastDiagnosticMessage_.isEmpty();
+    diagnostic[QStringLiteral("severity")] = lastDiagnosticSeverity_;
+    diagnostic[QStringLiteral("source")] = lastDiagnosticSource_;
+    diagnostic[QStringLiteral("message")] = lastDiagnosticMessage_;
+    diagnostic[QStringLiteral("values")] = lastDiagnosticValues_;
+
     QJsonObject out;
     out[QStringLiteral("loaded")]        = loaded;
     out[QStringLiteral("protein")]       = (loaded && loaded_) ? loaded_->proteinId : QString();
@@ -1344,6 +1381,7 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
             ? QString::fromLatin1(NameFor(scene_->cameraComposer()->mode().kind))
             : QStringLiteral("none");
     out[QStringLiteral("controls")]      = controls;
+    out[QStringLiteral("diagnostic")]    = diagnostic;
     out[QStringLiteral("experimentalShieldingMl")] =
         experimentalShieldingMlRuntimeJson(fieldAvailability_.get(), loaded);
     return out;
@@ -1889,6 +1927,33 @@ void ReaderMainWindow::resetDashboardStateForRunLoad() {
                .arg(dashboardStripDock_ && dashboardStripDock_->isVisible() ? 1 : 0);
 }
 
+void ReaderMainWindow::handleErrorBusReport(h5reader::diagnostics::Severity severity,
+                                            const QString& source,
+                                            const QString& message,
+                                            const QString& values) {
+    ASSERT_THREAD(this);
+    lastDiagnosticSeverity_ = diagnosticSeverityName(severity);
+    lastDiagnosticSource_ = source;
+    lastDiagnosticMessage_ = message;
+    lastDiagnosticValues_ = values;
+
+    QString body = message;
+    if (!source.isEmpty())
+        body = QStringLiteral("%1: %2").arg(source, message);
+    const QString display = QStringLiteral("%1: %2")
+        .arg(lastDiagnosticSeverity_, body);
+
+    if (diagnosticLabel_) {
+        diagnosticLabel_->setText(display);
+        diagnosticLabel_->setToolTip(values.isEmpty()
+            ? display
+            : QStringLiteral("%1\n%2").arg(display, values));
+        diagnosticLabel_->setStyleSheet(diagnosticSeverityStyle(severity));
+        diagnosticLabel_->setVisible(true);
+    }
+    statusBar()->showMessage(display, 10000);
+}
+
 void ReaderMainWindow::shutdown() {
     ASSERT_THREAD(this);
     if (shutdownDone_) return;
@@ -2270,8 +2335,13 @@ void ReaderMainWindow::buildStatusBar() {
     frameLabel_     = new QLabel(QStringLiteral("frame —"), this);
     timeLabel_      = new QLabel(QStringLiteral("t=— ps"), this);
 
+    diagnosticLabel_ = new QLabel(this);
+    diagnosticLabel_->setVisible(false);
+    diagnosticLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
     // Selection summary on the LEFT; identity/frame/time pinned on the right.
     statusBar()->addWidget(selectionLabel_);
+    statusBar()->addWidget(diagnosticLabel_, 1);
     statusBar()->addPermanentWidget(proteinLabel_);
     statusBar()->addPermanentWidget(frameLabel_);
     statusBar()->addPermanentWidget(timeLabel_);

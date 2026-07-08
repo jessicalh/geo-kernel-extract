@@ -33,8 +33,7 @@ foreach(_runtime_dir IN ITEMS
         "@H5READER_VCPKG_BIN_DIR@"
         "@H5READER_MSVC_RUNTIME_DIR@")
     if(NOT EXISTS "${_runtime_dir}")
-        message(WARNING "h5reader deploy runtime dir not found: ${_runtime_dir}")
-        continue()
+        message(FATAL_ERROR "h5reader deploy runtime dir not found: ${_runtime_dir}")
     endif()
     file(GLOB _runtime_dlls "${_runtime_dir}/*.dll")
     foreach(_dll IN LISTS _runtime_dlls)
