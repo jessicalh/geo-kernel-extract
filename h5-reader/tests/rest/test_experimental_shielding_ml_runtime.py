@@ -11,6 +11,22 @@ import pytest
 MODEL_ENV = "H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL"
 MANIFEST_ENV = "H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST"
 HELPER_ENV = "H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER"
+EXPECT_STALE_DEV_FALLBACK_ENV = "H5READER_EXPECT_STALE_DEV_ML_FALLBACK"
+
+
+REQUIRED_RUNTIME_FILES = (
+    "model.ts",
+    "model_no_mopac_no_tripeptide.ts",
+    "manifest.json",
+    "infer.exe",
+    "c10.dll",
+    "torch.dll",
+    "torch_cpu.dll",
+    "torch_global_deps.dll",
+    "libiomp5md.dll",
+    "libiompstubs5md.dll",
+    "uv.dll",
+)
 
 
 def _dev_runtime_present() -> bool:
@@ -19,30 +35,35 @@ def _dev_runtime_present() -> bool:
     helper = Path(os.environ.get(HELPER_ENV, ""))
     if not all(path.is_file() for path in (model, manifest, helper)):
         return False
-    required_near_helper = (
-        "c10.dll",
-        "torch.dll",
-        "torch_cpu.dll",
-        "torch_global_deps.dll",
-        "libiomp5md.dll",
-        "libiompstubs5md.dll",
-        "uv.dll",
-    )
     return model.with_name("model_no_mopac_no_tripeptide.ts").is_file() and all(
-        (helper.parent / name).is_file() for name in required_near_helper
+        (helper.parent / name).is_file()
+        for name in REQUIRED_RUNTIME_FILES
+        if name not in {"model.ts", "model_no_mopac_no_tripeptide.ts", "manifest.json", "infer.exe"}
     )
 
 
-@pytest.mark.skipif(
-    not _dev_runtime_present(),
-    reason="experimental shielding ML dev runtime env vars are not present",
-)
+def _installed_runtime_present() -> bool:
+    binary = Path(os.environ.get("H5READER_BINARY", ""))
+    if not binary.is_file():
+        return False
+    runtime = binary.parent / "ml" / "experimental_shielding_ml"
+    return all((runtime / name).is_file() for name in REQUIRED_RUNTIME_FILES)
+
+
+def _runtime_present() -> bool:
+    return _dev_runtime_present() or _installed_runtime_present()
+
+
+@pytest.mark.skipif(not _runtime_present(), reason="experimental shielding ML runtime is not present")
 def test_experimental_shielding_ml_runtime_manifest_is_reported(rest):
     state = rest.client.get("/ui/state").json()
     ml = state["experimentalShieldingMl"]
 
     assert ml["available"] is True
-    assert ml["runtime"] == "development"
+    assert ml["runtime"] in {"development", "installed"}
+    if os.environ.get(EXPECT_STALE_DEV_FALLBACK_ENV):
+        assert ml["runtime"] == "installed"
+        assert "model.ts" in ml["developmentMissing"]
 
     manifest = ml["manifest"]
     assert manifest["name"] == "Experimental Shielding ML"

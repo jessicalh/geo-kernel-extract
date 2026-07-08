@@ -136,6 +136,13 @@ QJsonValue jsonNull() {
     return QJsonValue(QJsonValue::Null);
 }
 
+QJsonArray stringListJson(const QStringList& values) {
+    QJsonArray out;
+    for (const QString& value : values)
+        out.append(value);
+    return out;
+}
+
 QDir installedExperimentalShieldingMlDir() {
     return QDir(QDir(QCoreApplication::applicationDirPath())
                     .filePath(QStringLiteral("ml/experimental_shielding_ml")));
@@ -396,23 +403,22 @@ QJsonObject experimentalShieldingMlRuntimeJson(
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST");
     const QString helperPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
-    if (!modelPath.isEmpty() || !manifestPath.isEmpty() || !helperPath.isEmpty()) {
-        const QStringList missing =
-            experimentalShieldingMlDevMissingFiles(modelPath, manifestPath, helperPath);
-        const bool available = missing.isEmpty();
-        out.insert(QStringLiteral("available"), available);
-        out.insert(QStringLiteral("runtime"), QStringLiteral("development"));
-        if (!missing.isEmpty()) {
-            QJsonArray arr;
-            for (const QString& fileName : missing)
-                arr.append(fileName);
-            out.insert(QStringLiteral("missing"), arr);
+    const bool devRuntimeRequested =
+        !modelPath.isEmpty() || !manifestPath.isEmpty() || !helperPath.isEmpty();
+    QStringList devMissing;
+    if (devRuntimeRequested) {
+        devMissing = experimentalShieldingMlDevMissingFiles(modelPath, manifestPath, helperPath);
+        if (devMissing.isEmpty()) {
+            out.insert(QStringLiteral("available"), true);
+            out.insert(QStringLiteral("runtime"), QStringLiteral("development"));
+            if (QFileInfo(manifestPath).isFile()) {
+                out.insert(QStringLiteral("manifest"),
+                           readExperimentalShieldingMlManifestSummary(manifestPath));
+            }
+            out.insert(QStringLiteral("selectedModel"),
+                       selectedExperimentalShieldingMlModelJson(inputProfile, true));
+            return out;
         }
-        if (QFileInfo(manifestPath).isFile())
-            out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(manifestPath));
-        out.insert(QStringLiteral("selectedModel"),
-                   selectedExperimentalShieldingMlModelJson(inputProfile, available));
-        return out;
     }
 
     const QDir mlDir = installedExperimentalShieldingMlDir();
@@ -421,14 +427,22 @@ QJsonObject experimentalShieldingMlRuntimeJson(
         if (!fileExistsInDir(mlDir, fileName))
             missing.append(fileName);
     }
+
+    if (!missing.isEmpty() && devRuntimeRequested) {
+        out.insert(QStringLiteral("runtime"), QStringLiteral("development"));
+        out.insert(QStringLiteral("missing"), stringListJson(devMissing));
+        out.insert(QStringLiteral("installedMissing"), stringListJson(missing));
+        out.insert(QStringLiteral("selectedModel"),
+                   selectedExperimentalShieldingMlModelJson(inputProfile, false));
+        return out;
+    }
+
     out.insert(QStringLiteral("available"), missing.isEmpty());
     out.insert(QStringLiteral("runtime"), QStringLiteral("installed"));
-    if (!missing.isEmpty()) {
-        QJsonArray arr;
-        for (const QString& fileName : missing)
-            arr.append(fileName);
-        out.insert(QStringLiteral("missing"), arr);
-    }
+    if (!missing.isEmpty())
+        out.insert(QStringLiteral("missing"), stringListJson(missing));
+    if (devRuntimeRequested)
+        out.insert(QStringLiteral("developmentMissing"), stringListJson(devMissing));
     const QString installedManifest = mlDir.filePath(QStringLiteral("manifest.json"));
     if (QFileInfo(installedManifest).isFile())
         out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(installedManifest));

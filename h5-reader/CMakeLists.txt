@@ -757,9 +757,15 @@ endif()
 # Requires Python3 + pytest + httpx + Pillow on PATH; H5READER_REST_FIXTURE
 # env var (or the default below) must point at a valid trajectory directory.
 if(BUILD_TESTING AND Python3_Interpreter_FOUND)
-    set(H5READER_REST_FIXTURE_DEFAULT
-        "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
-        CACHE PATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+    if(WIN32)
+        set(H5READER_REST_FIXTURE_DEFAULT
+            "C:/projects/reader-data/1p9j-calibration-with-dft/1p9j-calibration-dense-mopac-live-orca.LGS"
+            CACHE FILEPATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+    else()
+        set(H5READER_REST_FIXTURE_DEFAULT
+            "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
+            CACHE PATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+    endif()
     add_test(NAME h5reader_rest_smoke
              COMMAND ${Python3_EXECUTABLE} -m pytest
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest -v --tb=short)
@@ -776,6 +782,19 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         LABELS "rest;e2e"
         TIMEOUT 300
     )
+
+    if(WIN32)
+        add_test(NAME h5reader_rest_installed_ml_stale_dev_env
+                 COMMAND ${Python3_EXECUTABLE} -m pytest
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_experimental_shielding_ml_runtime.py
+                         -v --tb=short)
+        set_tests_properties(h5reader_rest_installed_ml_stale_dev_env PROPERTIES
+            ENVIRONMENT
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_EXPECT_STALE_DEV_ML_FALLBACK=1;H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=C:/h5reader-missing-experimental-ml/model.ts;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=C:/h5reader-missing-experimental-ml/manifest.json;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=C:/h5reader-missing-experimental-ml/infer.exe"
+            LABELS "rest;e2e;ml"
+            TIMEOUT 120
+        )
+    endif()
 
     set(H5READER_CHIGNOLIN_FIXTURE_DEFAULT
         "C:/projects/reader-data/chignolin-oneoff/chignolin_CLN025_5AWL_0.LGS"
@@ -899,6 +918,26 @@ if(WIN32)
             endif()
             list(APPEND _h5reader_libtorch_cpu_dlls "${_torch_dll}")
         endforeach()
+
+        set(_h5reader_experimental_shielding_ml_runtime_files
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}"
+            ${_h5reader_libtorch_cpu_dlls}
+        )
+
+        add_custom_target(h5reader_deploy_experimental_shielding_ml
+            COMMAND "${CMAKE_COMMAND}" -E make_directory
+                    "$<TARGET_FILE_DIR:h5reader>/${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    ${_h5reader_experimental_shielding_ml_runtime_files}
+                    "$<TARGET_FILE_DIR:h5reader>/${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
+            DEPENDS ${_h5reader_experimental_shielding_ml_runtime_files}
+            COMMENT "Deploying Experimental Shielding ML runtime next to h5reader"
+            VERBATIM
+        )
+        add_dependencies(h5reader h5reader_deploy_experimental_shielding_ml)
 
         install(FILES
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"

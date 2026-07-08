@@ -45,7 +45,7 @@ def _env_path(name: str) -> Path:
         pytest.skip(f"env {name} not set — REST suite needs an h5reader binary and a fixture trajectory")
     path = Path(value)
     if not path.exists():
-        pytest.skip(f"env {name}={value} does not exist on disk")
+        pytest.fail(f"env {name}={value} does not exist on disk")
     return path
 
 
@@ -170,14 +170,23 @@ def h5reader_session() -> Generator[RestSession, None, None]:
     session = RestSession(process=proc, port=port, base_url=base_url, client=client)
     yield session
 
-    # Teardown — graceful SIGTERM; SIGKILL if it lingers.
+    # Teardown: exercise /shutdown first; terminate/kill are fallbacks.
+    if proc.poll() is None:
+        try:
+            client.post("/shutdown", timeout=5.0)
+        except httpx.HTTPError:
+            pass
     client.close()
-    proc.terminate()
-    try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait(timeout=5)
+    if proc.poll() is None:
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
     try:
         log_handle.close()
     except Exception:
