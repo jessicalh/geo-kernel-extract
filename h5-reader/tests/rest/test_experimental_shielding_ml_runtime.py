@@ -54,14 +54,25 @@ def _runtime_present() -> bool:
     return _dev_runtime_present() or _installed_runtime_present()
 
 
-@pytest.mark.skipif(not _runtime_present(), reason="experimental shielding ML runtime is not present")
+def _expect_stale_dev_fallback() -> bool:
+    value = os.environ.get(EXPECT_STALE_DEV_FALLBACK_ENV, "")
+    return value.lower() not in {"", "0", "false", "no"}
+
+
+@pytest.mark.skipif(
+    not _expect_stale_dev_fallback() and not _runtime_present(),
+    reason="experimental shielding ML runtime is not present",
+)
 def test_experimental_shielding_ml_runtime_manifest_is_reported(rest):
+    if _expect_stale_dev_fallback() and not _installed_runtime_present():
+        pytest.fail("expected installed experimental shielding ML runtime next to H5READER_BINARY")
+
     state = rest.client.get("/ui/state").json()
     ml = state["experimentalShieldingMl"]
 
     assert ml["available"] is True
     assert ml["runtime"] in {"development", "installed"}
-    if os.environ.get(EXPECT_STALE_DEV_FALLBACK_ENV):
+    if _expect_stale_dev_fallback():
         assert ml["runtime"] == "installed"
         assert "model.ts" in ml["developmentMissing"]
 

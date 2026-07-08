@@ -12,6 +12,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 
 namespace h5reader::io {
@@ -139,6 +140,37 @@ bool ParseFortranOrder(const std::string& hdr) {
     if (f == std::string::npos)
         return true;
     return t < f;
+}
+
+bool ParseElementSize(const std::string& digits, int& esize) {
+    if (digits.empty())
+        return false;
+    int parsed = 0;
+    for (const char c : digits) {
+        if (!std::isdigit(static_cast<unsigned char>(c)))
+            return false;
+        const int digit = c - '0';
+        if (parsed > (std::numeric_limits<int>::max() - digit) / 10)
+            return false;
+        parsed = parsed * 10 + digit;
+    }
+    esize = parsed;
+    return true;
+}
+
+bool ShapeElementCount(const std::vector<std::size_t>& shape, std::size_t& out) {
+    std::size_t n = 1;
+    for (const std::size_t dim : shape) {
+        if (dim == 0) {
+            out = 0;
+            return true;
+        }
+        if (n > std::numeric_limits<std::size_t>::max() / dim)
+            return false;
+        n *= dim;
+    }
+    out = n;
+    return true;
 }
 
 }  // namespace
@@ -344,8 +376,8 @@ QtNpyReader::NumericArray QtNpyReader::ReadNumericArrayWidened(const QString& pa
                  j < hdr.descr_substring.size() && std::isdigit(static_cast<unsigned char>(hdr.descr_substring[j]));
                  ++j)
                 digits += hdr.descr_substring[j];
-            if (!digits.empty())
-                esize = std::stoi(digits);
+            if (!ParseElementSize(digits, esize))
+                esize = 0;
             break;
         }
     }
@@ -360,13 +392,28 @@ QtNpyReader::NumericArray QtNpyReader::ReadNumericArrayWidened(const QString& pa
         return r;
     }
 
-    std::size_t n = 1;
-    for (const std::size_t dim : r.shape) n *= dim;
+    std::size_t n = 0;
+    if (!ShapeElementCount(r.shape, n)) {
+        r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: shape product overflows in %1")
+                      .arg(path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
     const std::size_t raw = static_cast<std::size_t>(bytes.size()) - hdr.data_offset;
-    if (raw != n * static_cast<std::size_t>(esize)) {
+    const std::size_t elem_size = static_cast<std::size_t>(esize);
+    if (elem_size != 0 && n > std::numeric_limits<std::size_t>::max() / elem_size) {
+        r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: shape*esize overflows in %1")
+                      .arg(path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
+    const std::size_t expected_bytes = n * elem_size;
+    if (raw != expected_bytes) {
         r.error = QStringLiteral("QtNpyReader::ReadNumericArrayWidened: byte count %1 != product(shape)*esize %2 in %3")
                       .arg(raw)
-                      .arg(n * static_cast<std::size_t>(esize))
+                      .arg(expected_bytes)
                       .arg(path);
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
                                                 QStringLiteral("QtNpyReader"), r.error, path);
@@ -438,12 +485,32 @@ QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
     }
     r.descr = numeric.descr;
 
+    auto fitsInt = [](std::size_t v) {
+        return v <= static_cast<std::size_t>(std::numeric_limits<int>::max());
+    };
     if (numeric.shape.size() == 1) {
-        r.rows = numeric.shape[0];
+        if (!fitsInt(numeric.shape[0])) {
+            r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: row count %1 exceeds int range in %2")
+                          .arg(numeric.shape[0])
+                          .arg(path);
+            h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                    QStringLiteral("QtNpyReader"), r.error, path);
+            return r;
+        }
+        r.rows = static_cast<int>(numeric.shape[0]);
         r.cols = 1;
     } else if (numeric.shape.size() == 2) {
-        r.rows = numeric.shape[0];
-        r.cols = numeric.shape[1];
+        if (!fitsInt(numeric.shape[0]) || !fitsInt(numeric.shape[1])) {
+            r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: shape (%1,%2) exceeds int range in %3")
+                          .arg(numeric.shape[0])
+                          .arg(numeric.shape[1])
+                          .arg(path);
+            h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                    QStringLiteral("QtNpyReader"), r.error, path);
+            return r;
+        }
+        r.rows = static_cast<int>(numeric.shape[0]);
+        r.cols = static_cast<int>(numeric.shape[1]);
     } else {
         r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: rank %1 unsupported in %2")
                       .arg(numeric.shape.size())

@@ -527,6 +527,15 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
 bool ReaderMainWindow::loadRunPath(const QString& path) {
     ASSERT_THREAD(this);
     lastLoadError_.clear();
+    lastDiagnosticSeverity_.clear();
+    lastDiagnosticSource_.clear();
+    lastDiagnosticMessage_.clear();
+    lastDiagnosticValues_.clear();
+    if (diagnosticLabel_) {
+        diagnosticLabel_->clear();
+        diagnosticLabel_->setToolTip(QString());
+        diagnosticLabel_->setVisible(false);
+    }
     if (path.isEmpty()) {
         lastLoadError_ = QStringLiteral("No calcset path was provided.");
         return false;

@@ -969,10 +969,10 @@ if(WIN32)
 
     if(NOT H5READER_MSVC_RUNTIME_DIR)
         set(_h5reader_msvc_redist_dirs)
-        foreach(_h5reader_msvc_redist_root IN ITEMS
-                "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Redist/MSVC"
-                "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Redist/MSVC"
-                "C:/Program Files/Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC")
+        file(GLOB _h5reader_msvc_redist_roots
+            LIST_DIRECTORIES true
+            "C:/Program Files/Microsoft Visual Studio/*/*/VC/Redist/MSVC")
+        foreach(_h5reader_msvc_redist_root IN LISTS _h5reader_msvc_redist_roots)
             if(EXISTS "${_h5reader_msvc_redist_root}")
                 file(GLOB _h5reader_msvc_redist_candidates
                     LIST_DIRECTORIES true
@@ -988,6 +988,25 @@ if(WIN32)
                 "${_h5reader_msvc_redist_dir}"
                 CACHE PATH "MSVC runtime DLL directory")
         endif()
+    endif()
+
+    if(NOT H5READER_QT_DIR OR NOT EXISTS "${H5READER_QT_DIR}/bin/windeployqt.exe")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_QT_DIR with bin/windeployqt.exe; "
+            "set -DH5READER_QT_DIR=C:/Qt/6.10.2/msvc2022_64")
+    endif()
+    if(NOT H5READER_VTK_DIR OR NOT EXISTS "${H5READER_VTK_DIR}/bin")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_VTK_DIR with a bin directory; "
+            "set -DH5READER_VTK_DIR=C:/Projects/VTK")
+    endif()
+    if(NOT H5READER_VCPKG_BIN_DIR OR NOT EXISTS "${H5READER_VCPKG_BIN_DIR}")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_VCPKG_BIN_DIR; set it to the vcpkg x64-windows bin directory")
+    endif()
+    if(NOT H5READER_MSVC_RUNTIME_DIR OR NOT EXISTS "${H5READER_MSVC_RUNTIME_DIR}")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_MSVC_RUNTIME_DIR; set it to the MSVC x64 Microsoft.VC*.CRT directory")
     endif()
 
     configure_file(

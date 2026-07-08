@@ -109,6 +109,15 @@ model::CsaShape ShapeFromEfg(const QtEfg& efg) {
     return model::ComputeCsaShape(sym);
 }
 
+model::QtResidue ResidueOrEmpty(const model::QtProtein* protein, int residueIndex) {
+    if (!protein || residueIndex < 0)
+        return {};
+    const auto idx = static_cast<std::size_t>(residueIndex);
+    if (idx >= protein->residueCount())
+        return {};
+    return protein->residue(idx);
+}
+
 QString FmtSphericalSummary(const SphericalTensor& st, const QString& unit = QString()) {
     const model::CsaShape shape = ShapeFromSphericalTensor(st);
     QStringList parts;
@@ -394,6 +403,10 @@ void QtAtomInspectorDock::onSnapshotReady(std::size_t frame) {
 void QtAtomInspectorDock::clearSelection() {
     ASSERT_THREAD(this);
     hasSelection_ = false;
+    hasCsa_ = false;
+    hasOrient_ = false;
+    csaAtom_ = 0;
+    orientAtom_ = 0;
     tree_->clear();
     auto* hint = new QTreeWidgetItem(tree_);
     hint->setText(0, QStringLiteral("Double-click an atom in the viewport"));
@@ -487,7 +500,7 @@ void QtAtomInspectorDock::rebuild() {
 
     auto* title = new QTreeWidgetItem(tree_);
     const auto& atom = protein_->atom(atomIdx_);
-    const auto& res = atom.residueIndex >= 0 ? protein_->residue(atom.residueIndex) : model::QtResidue{};
+    const auto res = ResidueOrEmpty(protein_, atom.residueIndex);
     title->setText(
         0,
         QStringLiteral("Atom %1 — %2 %3 #%4")
@@ -522,7 +535,7 @@ void QtAtomInspectorDock::rebuild() {
 
 void QtAtomInspectorDock::populateIdentity(QTreeWidgetItem* parent) {
     const auto& atom = protein_->atom(atomIdx_);
-    const auto& res = atom.residueIndex >= 0 ? protein_->residue(atom.residueIndex) : model::QtResidue{};
+    const auto res = ResidueOrEmpty(protein_, atom.residueIndex);
 
     auto* g = AddKV(parent, QStringLiteral("Identity"), QString());
     g->setExpanded(true);
@@ -616,8 +629,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
 
         // Per-atom identity for the literature-constant lookups (Buckingham, sigma0).
         const auto& fa = protein_->atom(atomIdx_);
-        const auto& fres = fa.residueIndex >= 0 ? protein_->residue(fa.residueIndex)
-                                                : model::QtResidue{};
+        const auto fres = ResidueOrEmpty(protein_, fa.residueIndex);
         const std::string residueStd = model::IupacResidue3LetterFor(fres.aminoAcid);
         const std::string atomNameStd = protein_->atomNames(atomIdx_).amber.toStdString();
         const std::string frameKindStd =

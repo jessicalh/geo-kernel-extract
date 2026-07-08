@@ -113,33 +113,6 @@ const char* WindowsExceptionName(DWORD code) {
     }
 }
 
-bool IsLikelyFatalWindowsException(DWORD code) {
-    switch (code) {
-        case EXCEPTION_ACCESS_VIOLATION:
-        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-        case EXCEPTION_DATATYPE_MISALIGNMENT:
-        case EXCEPTION_FLT_DENORMAL_OPERAND:
-        case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-        case EXCEPTION_FLT_INEXACT_RESULT:
-        case EXCEPTION_FLT_INVALID_OPERATION:
-        case EXCEPTION_FLT_OVERFLOW:
-        case EXCEPTION_FLT_STACK_CHECK:
-        case EXCEPTION_FLT_UNDERFLOW:
-        case EXCEPTION_ILLEGAL_INSTRUCTION:
-        case EXCEPTION_IN_PAGE_ERROR:
-        case EXCEPTION_INT_DIVIDE_BY_ZERO:
-        case EXCEPTION_INT_OVERFLOW:
-        case EXCEPTION_INVALID_DISPOSITION:
-        case EXCEPTION_NONCONTINUABLE_EXCEPTION:
-        case EXCEPTION_PRIV_INSTRUCTION:
-        case EXCEPTION_STACK_OVERFLOW:
-        case EXCEPTION_FATAL_APP_EXIT:
-            return true;
-        default:
-            return false;
-    }
-}
-
 void BuildWindowsCrashPaths(char* txtPath, size_t txtCap,
                             char* dmpPath, size_t dmpCap) {
     SYSTEMTIME st;
@@ -178,11 +151,11 @@ bool WriteWindowsMiniDump(const wchar_t* dumpPath, EXCEPTION_POINTERS* ep) {
     exceptionInfo.ClientPointers = FALSE;
 
     const MINIDUMP_TYPE dumpType = static_cast<MINIDUMP_TYPE>(
-        MiniDumpWithFullMemory
+        MiniDumpWithDataSegs
         | MiniDumpWithHandleData
         | MiniDumpWithThreadInfo
         | MiniDumpWithProcessThreadData
-        | MiniDumpWithFullMemoryInfo
+        | MiniDumpWithIndirectlyReferencedMemory
         | MiniDumpWithTokenInformation);
 
     const BOOL ok = MiniDumpWriteDump(GetCurrentProcess(),
@@ -268,15 +241,6 @@ void WriteWindowsCrashReport(EXCEPTION_POINTERS* ep, const char* origin) {
                  txtPath,
                  dumpWritten ? dmpPath : "failed");
     std::fflush(stderr);
-}
-
-LONG WINAPI VectoredCrashHandler(EXCEPTION_POINTERS* ep) {
-    const DWORD code = (ep && ep->ExceptionRecord)
-        ? ep->ExceptionRecord->ExceptionCode
-        : 0;
-    if (IsLikelyFatalWindowsException(code))
-        WriteWindowsCrashReport(ep, "vectored exception");
-    return EXCEPTION_CONTINUE_SEARCH;
 }
 
 LONG WINAPI UnhandledCrashHandler(EXCEPTION_POINTERS* ep) {
@@ -407,10 +371,9 @@ void CrashHandler::Install() {
     sigaction(SIGFPE,  &sa, nullptr);
     sigaction(SIGABRT, &sa, nullptr);
 #elif defined(_WIN32)
-    // Use both hooks: the vectored handler catches fatal first-chance
-    // exceptions before CRT filters can interfere, while the unhandled
-    // filter covers exceptions that reach process termination.
-    AddVectoredExceptionHandler(1, &VectoredCrashHandler);
+    // Write a report only for genuinely unhandled exceptions. A vectored
+    // first-chance hook can consume the one-shot crash latch on handled driver
+    // or delay-load exceptions before the real terminating crash arrives.
     SetUnhandledExceptionFilter(&UnhandledCrashHandler);
 #endif
 }
