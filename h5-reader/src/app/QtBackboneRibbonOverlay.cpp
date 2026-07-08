@@ -303,8 +303,11 @@ void QtBackboneRibbonOverlay::UpdateInputArrays(int t) {
 
         const auto& atom = protein_->atom(si);
         model::DsspCode code = model::DsspCode::Unknown;
-        if (traj && atom.residueIndex >= 0)
-            code = traj->frame(tIndex).dsspCode(static_cast<size_t>(atom.residueIndex));
+        if (traj && atom.residueIndex >= 0) {
+            const auto residueIndex = static_cast<size_t>(atom.residueIndex);
+            if (residueIndex < protein_->residueCount())
+                code = traj->frame(tIndex).dsspCode(residueIndex);
+        }
         ss_->SetValue(i, SsCharForDssp(code));
         ssBegin_->SetValue(i, 0);
         ssEnd_->SetValue(i, 0);
