@@ -3,6 +3,7 @@
 #include "PdbFileReader.h"
 #include "GeometryResult.h"
 #include "DsspResult.h"
+#include "Dssp8TimeSeriesTrajectoryResult.h"
 #include "PhysicalConstants.h"
 #include "NpyWriter.h"
 #include "Residue.h"
@@ -13,6 +14,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <unistd.h>
 #include <vector>
 #include <cstdint>
@@ -94,6 +96,12 @@ void ExpectShapeAndDescr(const NpyArray& arr,
 }
 
 }  // namespace
+
+TEST(DsspResultHelpers, PpiiPredicateAndSs8Compatibility) {
+    EXPECT_TRUE(DsspIsPpii('P'));
+    EXPECT_FALSE(DsspIsPpii('C'));
+    EXPECT_EQ(Dssp8TimeSeriesTrajectoryResult::Ss8Code('P'), 7u);
+}
 
 
 class DsspResultTest : public ::testing::Test {
@@ -255,7 +263,7 @@ TEST_F(DsspResultTest, dssp_unobserved_residue_npy) {
     const fs::path output_dir = fs::temp_directory_path() /
         ("dssp_unobserved_" + std::to_string(::getpid()));
     fs::create_directories(output_dir);
-    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 5);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
 
     const size_t N = conf.AtomCount();
     const size_t obs_ai = protein->ResidueAt(0).atom_indices.front();
@@ -264,18 +272,21 @@ TEST_F(DsspResultTest, dssp_unobserved_residue_npy) {
     auto observed = ReadNpy(output_dir / "dssp_observed.npy");
     auto backbone = ReadNpy(output_dir / "dssp_backbone.npy");
     auto ss8 = ReadNpy(output_dir / "dssp_ss8.npy");
+    auto ppii = ReadNpy(output_dir / "dssp_ppii.npy");
     auto hb = ReadNpy(output_dir / "dssp_hbond_energy.npy");
     auto chi = ReadNpy(output_dir / "dssp_chi.npy");
 
     ExpectShapeAndDescr(observed, {N}, "|i1");
     ExpectShapeAndDescr(backbone, {N, 5}, "<f8");
     ExpectShapeAndDescr(ss8, {N, 8}, "<f8");
+    ExpectShapeAndDescr(ppii, {N}, "|i1");
     ExpectShapeAndDescr(hb, {N, 4}, "<f8");
     ExpectShapeAndDescr(chi, {N, 12}, "<f8");
 
     const int8_t* obs = DataAs<int8_t>(observed);
     const double* bb = DataAs<double>(backbone);
     const double* ss = DataAs<double>(ss8);
+    const int8_t* pp = DataAs<int8_t>(ppii);
     const double* hbe = DataAs<double>(hb);
     const double* ch = DataAs<double>(chi);
 
@@ -288,6 +299,7 @@ TEST_F(DsspResultTest, dssp_unobserved_residue_npy) {
     EXPECT_DOUBLE_EQ(ss[obs_ai * 8 + 0], 1.0);
     for (int c = 1; c < 8; ++c)
         EXPECT_DOUBLE_EQ(ss[obs_ai * 8 + c], 0.0);
+    EXPECT_EQ(pp[obs_ai], 0);
     EXPECT_DOUBLE_EQ(hbe[obs_ai * 4 + 0], -1.1);
     EXPECT_DOUBLE_EQ(hbe[obs_ai * 4 + 1], -2.2);
     EXPECT_DOUBLE_EQ(hbe[obs_ai * 4 + 2], -3.3);
@@ -301,10 +313,48 @@ TEST_F(DsspResultTest, dssp_unobserved_residue_npy) {
     EXPECT_DOUBLE_EQ(bb[miss_ai * 5 + 4], 0.0);
     for (int c = 0; c < 8; ++c)
         EXPECT_DOUBLE_EQ(ss[miss_ai * 8 + c], 0.0);
+    EXPECT_EQ(pp[miss_ai], -1);
     for (int c = 0; c < 4; ++c)
         EXPECT_TRUE(std::isnan(hbe[miss_ai * 4 + c]));
     for (int c = 0; c < 12; ++c)
         EXPECT_TRUE(std::isfinite(ch[miss_ai * 12 + c]));
+}
+
+TEST_F(DsspResultTest, dssp_ppii_npy_preserves_ss8_coil_compatibility) {
+    auto& conf = protein->Conformation();
+    std::vector<DsspResidue> residues(protein->ResidueCount());
+    ASSERT_GE(residues.size(), 2u);
+    ASSERT_FALSE(protein->ResidueAt(0).atom_indices.empty());
+    ASSERT_FALSE(protein->ResidueAt(1).atom_indices.empty());
+
+    residues[0].observed = true;
+    residues[0].secondary_structure = 'P';
+    residues[1].observed = false;
+    residues[1].secondary_structure = 'C';
+
+    auto dssp = DsspResult::CreateForTesting(std::move(residues));
+    const fs::path output_dir = fs::temp_directory_path() /
+        ("dssp_ppii_" + std::to_string(::getpid()));
+    fs::create_directories(output_dir);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
+
+    const size_t N = conf.AtomCount();
+    const size_t p_ai = protein->ResidueAt(0).atom_indices.front();
+    const size_t miss_ai = protein->ResidueAt(1).atom_indices.front();
+
+    auto ppii = ReadNpy(output_dir / "dssp_ppii.npy");
+    auto ss8 = ReadNpy(output_dir / "dssp_ss8.npy");
+    ExpectShapeAndDescr(ppii, {N}, "|i1");
+    ExpectShapeAndDescr(ss8, {N, 8}, "<f8");
+
+    const int8_t* pp = DataAs<int8_t>(ppii);
+    const double* ss = DataAs<double>(ss8);
+    EXPECT_EQ(pp[p_ai], 1);
+    EXPECT_EQ(pp[miss_ai], -1);
+    for (int c = 0; c < 8; ++c) {
+        EXPECT_DOUBLE_EQ(ss[p_ai * 8 + c], c == 7 ? 1.0 : 0.0);
+        EXPECT_DOUBLE_EQ(ss[miss_ai * 8 + c], 0.0);
+    }
 }
 
 
@@ -330,7 +380,7 @@ TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiPinnedToIndependentIupacGeometry) {
     const fs::path output_dir = fs::temp_directory_path() /
         ("dssp_backbone_iupac_" + std::to_string(::getpid()));
     fs::create_directories(output_dir);
-    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 5);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
 
     auto backbone = ReadNpy(output_dir / "dssp_backbone.npy");
     auto observed = ReadNpy(output_dir / "dssp_observed.npy");
@@ -413,8 +463,8 @@ TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiPinnedToIndependentIupacGeometry) {
     // individually instead (cf. test_coulomb_result / test_mopac_result).
     std::error_code ec;
     for (const char* f : {"dssp_observed.npy", "dssp_backbone.npy",
-                          "dssp_ss8.npy", "dssp_hbond_energy.npy",
-                          "dssp_chi.npy"}) {
+                          "dssp_ss8.npy", "dssp_ppii.npy",
+                          "dssp_hbond_energy.npy", "dssp_chi.npy"}) {
         fs::remove(output_dir / f, ec);
     }
     fs::remove(output_dir, ec);

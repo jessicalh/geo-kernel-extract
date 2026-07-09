@@ -26,10 +26,13 @@
 #include <highfive/H5Group.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
+#include <unistd.h>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -281,5 +284,67 @@ TEST(Dssp8TimeSeries, SyntheticAllAbsentSkipsGroup) {
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/dssp8_time_series"))
         << "All-absent run should skip group emission.";
+    fs::remove(h5_path);
+}
+
+
+TEST(Dssp8TimeSeries, SyntheticPpiiFrameThenSourceAbsent) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    const std::size_t N = tp.AtomCount();
+    const std::size_t R = tp.ProteinRef().ResidueCount();
+    ASSERT_GT(R, 0u);
+    auto tr = nmr::Dssp8TimeSeriesTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+
+    const std::size_t p_residue = 0;
+    {
+        auto conf = std::make_unique<nmr::ProteinConformation>(
+            &tp.ProteinRef(), positions, "synthetic PPII frame");
+        std::vector<nmr::DsspResidue> residues(R);
+        residues[p_residue].observed = true;
+        residues[p_residue].secondary_structure = 'P';
+        ASSERT_TRUE(conf->AttachResult(
+            nmr::DsspResult::CreateForTesting(std::move(residues))));
+        tr->Compute(*conf, tp, traj, 0, 0.0);
+    }
+    {
+        auto conf = std::make_unique<nmr::ProteinConformation>(
+            &tp.ProteinRef(), positions, "synthetic source-absent frame");
+        tr->Compute(*conf, tp, traj, 1, 1.0);
+    }
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("dssp8_ts_ppii_" + std::to_string(::getpid()) + ".h5")).string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate);
+      tr->WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    ASSERT_TRUE(reopen.exist("/trajectory/dssp8_time_series"));
+    auto grp = reopen.getGroup("/trajectory/dssp8_time_series");
+
+    std::vector<std::vector<std::uint8_t>> ss;
+    std::vector<std::vector<std::uint8_t>> ppii;
+    grp.getDataSet("ss8_code").read(ss);
+    grp.getDataSet("ppii_flag").read(ppii);
+    ASSERT_EQ(ss.size(), R);
+    ASSERT_EQ(ppii.size(), R);
+    ASSERT_EQ(ss[p_residue].size(), 2u);
+    ASSERT_EQ(ppii[p_residue].size(), 2u);
+
+    EXPECT_EQ(ss[p_residue][0], 7u);
+    EXPECT_EQ(ppii[p_residue][0], 1u);
+    EXPECT_EQ(ss[p_residue][1],
+              nmr::Dssp8TimeSeriesTrajectoryResult::kSSUnassigned);
+    EXPECT_EQ(ppii[p_residue][1],
+              nmr::Dssp8TimeSeriesTrajectoryResult::kSSUnassigned);
+
     fs::remove(h5_path);
 }

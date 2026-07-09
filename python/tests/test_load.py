@@ -563,6 +563,12 @@ class TestRingKernelGroups:
         N = geo.n_atoms
         assert geo.pi_quadrupole.per_type_T0.data.shape == (N, 8)
         assert geo.dispersion.per_type_T0.data.shape == (N, 8)
+        alias = geo.dispersion.aromatic_r6_proximity_per_type_T0
+        if alias is None:
+            pytest.skip(
+                "geo fixture predates aromatic_r6_proximity_per_type_T0.npy"
+            )
+        assert alias.data.shape == (N, 8)
         assert geo.pi_quadrupole.quad_scalar.shape[0] == \
             geo.ring_contributions.n_pairs
 

@@ -80,6 +80,7 @@
 #include "Types.h"
 #include "TripeptideDftTable.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -128,6 +129,13 @@ public:
 private:
     const ProteinConformation* conf_ = nullptr;
     std::vector<ResidueMatch>  residue_matches_;
+    std::vector<SphericalTensor> prev_shielding_;
+    std::vector<SphericalTensor> next_shielding_;
+    std::vector<std::uint8_t> prev_has_tensor_;
+    std::vector<std::uint8_t> next_has_tensor_;
+    int aaa_reference_calc_id_ = 0;
+    std::string aaa_reference_frame_type_;
+    std::uint8_t aaa_reference_method_tag_ = 0;
     int residues_any_       = 0;
     int atoms_accumulated_  = 0;
 };

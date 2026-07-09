@@ -1,8 +1,16 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <array>
+#include <iterator>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "DispersionResult.h"
 #include "GeometryResult.h"
@@ -15,6 +23,61 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+struct NpyPayload {
+    std::vector<size_t> shape;
+    std::vector<char> payload;
+};
+
+std::string Trim(std::string s) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                    [&](char c) { return !is_space(c); }));
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+                         [&](char c) { return !is_space(c); }).base(), s.end());
+    return s;
+}
+
+NpyPayload ReadNpyPayload(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyPayload out;
+    if (!in.is_open()) return out;
+
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    uint16_t header_len = 0;
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    std::string header(header_len, '\0');
+    in.read(header.data(), header_len);
+
+    auto shape_begin = header.find('(');
+    auto shape_end = header.find(')', shape_begin);
+    EXPECT_NE(shape_begin, std::string::npos);
+    EXPECT_NE(shape_end, std::string::npos);
+    if (shape_begin == std::string::npos || shape_end == std::string::npos)
+        return out;
+    std::stringstream ss(header.substr(shape_begin + 1,
+                                      shape_end - shape_begin - 1));
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        token = Trim(token);
+        if (!token.empty()) out.shape.push_back(static_cast<size_t>(std::stoull(token)));
+    }
+
+    out.payload.assign(std::istreambuf_iterator<char>(in),
+                       std::istreambuf_iterator<char>());
+    return out;
+}
+
+}  // namespace
 
 
 
@@ -220,6 +283,49 @@ TEST_F(DispProteinTest, PerTypeT0AccumulatesScalars) {
 
     std::cout << "  Checked per-type dispersion scalar sums on "
               << checked_atoms << " atoms\n";
+}
+
+
+TEST_F(DispProteinTest, AromaticR6ProximityAliasIsPayloadIdentical) {
+    auto& conf = protein->Conformation();
+    auto disp = DispersionResult::Compute(conf);
+    ASSERT_NE(disp, nullptr);
+    const std::string out_dir =
+        nmr::test::TestEnvironment::TempPath("dispersion_alias_out");
+    fs::create_directories(out_dir);
+    ASSERT_EQ(disp->WriteFeatures(conf, out_dir), 2);
+
+    const fs::path legacy_path =
+        fs::path(out_dir) / "disp_per_type_T0.npy";
+    const fs::path alias_path =
+        fs::path(out_dir) / "aromatic_r6_proximity_per_type_T0.npy";
+    ASSERT_TRUE(fs::exists(legacy_path));
+    ASSERT_TRUE(fs::exists(alias_path));
+
+    const auto legacy = ReadNpyPayload(legacy_path);
+    const auto alias = ReadNpyPayload(alias_path);
+    const size_t N = conf.AtomCount();
+    EXPECT_EQ(legacy.shape, (std::vector<size_t>{N, 8}));
+    EXPECT_EQ(alias.shape, (std::vector<size_t>{N, 8}));
+    ASSERT_EQ(legacy.payload.size(), alias.payload.size());
+
+    if (legacy.payload != alias.payload) {
+        const size_t n_double = legacy.payload.size() / sizeof(double);
+        for (size_t i = 0; i < n_double; ++i) {
+            double a = 0.0, b = 0.0;
+            std::memcpy(&a, legacy.payload.data() + i * sizeof(double),
+                        sizeof(double));
+            std::memcpy(&b, alias.payload.data() + i * sizeof(double),
+                        sizeof(double));
+            if (a != b) {
+                ADD_FAILURE()
+                    << "dispersion alias payload differs at element " << i
+                    << ": legacy=" << a << " alias=" << b;
+                break;
+            }
+        }
+    }
+    EXPECT_EQ(legacy.payload, alias.payload);
 }
 
 

@@ -1,6 +1,7 @@
 #pragma once
 //
-// DispersionResult: London dispersion scalar from ring vertices.
+// DispersionResult: unit-coefficient aromatic R^-6 proximity scalar
+// from ring vertices.
 //
 // For each aromatic ring within range of each atom, computes the clean
 // switched dispersion scalar by summing over ring vertex atoms:
@@ -9,7 +10,9 @@
 //
 // where d = r_atom - r_vertex, r = |d|, and S(r) is a smooth switching
 // function that tapers the kernel to zero at the vertex cutoff. The
-// The former unit-C6 rank-2 tensor output is intentionally absent.
+// value is not D3/D4 dispersion energy and carries no fitted C6/C8 or
+// damping coefficients. The former unit-C6 rank-2 tensor output is
+// intentionally absent.
 // Units: scalar in Angstrom^-6.
 //
 

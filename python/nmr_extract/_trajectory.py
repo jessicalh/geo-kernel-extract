@@ -1581,6 +1581,7 @@ class Dssp8TimeSeriesGroup:
     DihedralTimeSeriesGroup (IUPAC convention) and a future Sasa TR.
     """
     ss8_code: np.ndarray                   # (R, T) uint8
+    ppii_flag: np.ndarray                  # (R, T) uint8, 1=PPII, 0=observed non-PPII, 255=no observation
     hbond_acceptor_partner: np.ndarray     # (R, T, 2) int32
     hbond_acceptor_energy: np.ndarray      # (R, T, 2) float64
     hbond_donor_partner: np.ndarray        # (R, T, 2) int32
@@ -1607,6 +1608,7 @@ def _load_dssp8_time_series(f) -> Optional[Dssp8TimeSeriesGroup]:
         return str(_decode_attr(g.attrs.get(name, "")))
     return Dssp8TimeSeriesGroup(
         ss8_code=g["ss8_code"][:],
+        ppii_flag=g["ppii_flag"][:],
         hbond_acceptor_partner=g["hbond_acceptor_partner"][:],
         hbond_acceptor_energy=g["hbond_acceptor_energy"][:],
         hbond_donor_partner=g["hbond_donor_partner"][:],

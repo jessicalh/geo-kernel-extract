@@ -59,6 +59,8 @@ struct DsspResidue {
     HBondPartner donors[2];          // residues whose N-H donates to this C=O
 };
 
+inline bool DsspIsPpii(char ss) { return ss == 'P'; }
+
 
 class DsspResult : public ConformationResult {
 public:
@@ -70,6 +72,8 @@ public:
     // Factory: run DSSP on the conformation and return the result.
     // Returns nullptr on failure (writes diagnostic to stderr).
     static std::unique_ptr<DsspResult> Compute(ProteinConformation& conf);
+    static std::unique_ptr<DsspResult> CreateForTesting(
+        std::vector<DsspResidue> residues);
 
     // Physics query methods
     char SecondaryStructure(size_t residue_index) const;

@@ -32,12 +32,83 @@
 #include "TripeptideDftTable.h"
 #include "TripeptideNeighborShieldingResult.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <sstream>
 #include <string>
+#include <vector>
 
 using namespace nmr;
 namespace fs = std::filesystem;
+
+namespace {
+
+struct NpyArray {
+    std::vector<size_t> shape;
+    std::vector<char> bytes;
+};
+
+std::string Trim(std::string s) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                    [&](char c) { return !is_space(c); }));
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+                         [&](char c) { return !is_space(c); }).base(), s.end());
+    return s;
+}
+
+NpyArray ReadNpy(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyArray arr;
+    if (!in.is_open()) return arr;
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    uint16_t header_len = 0;
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    std::string header(header_len, '\0');
+    in.read(header.data(), header_len);
+    auto shape_begin = header.find('(');
+    auto shape_end = header.find(')', shape_begin);
+    EXPECT_NE(shape_begin, std::string::npos);
+    EXPECT_NE(shape_end, std::string::npos);
+    if (shape_begin == std::string::npos || shape_end == std::string::npos)
+        return arr;
+    std::stringstream ss(header.substr(shape_begin + 1,
+                                      shape_end - shape_begin - 1));
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        token = Trim(token);
+        if (!token.empty()) arr.shape.push_back(static_cast<size_t>(std::stoull(token)));
+    }
+    arr.bytes.assign(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+    return arr;
+}
+
+template <typename T>
+const T* DataAs(const NpyArray& arr) {
+    return reinterpret_cast<const T*>(arr.bytes.data());
+}
+
+bool RowHasFinite(const double* data, size_t row, size_t cols) {
+    for (size_t c = 0; c < cols; ++c) {
+        if (std::isfinite(data[row * cols + c])) return true;
+    }
+    return false;
+}
+
+}  // namespace
 
 
 class TripeptideNeighborShieldingTest : public ::testing::Test {
@@ -167,8 +238,54 @@ TEST_F(TripeptideNeighborShieldingTest, RunsOn1UbqPm6) {
         nmr::test::TestEnvironment::TempPath("tripeptide_neighbor_smoke_out");
     fs::create_directories(out_dir);
     int n_npy = tn->WriteFeatures(conf, out_dir);
-    EXPECT_EQ(n_npy, 3);
+    EXPECT_EQ(n_npy, 6);
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_shielding.npy"));
+    EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_shielding_prev.npy"));
+    EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_shielding_next.npy"));
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_residual_vec_prev.npy"));
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_residual_vec_next.npy"));
+    EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_reference.npy"));
+
+    auto sum_arr = ReadNpy(out_dir + "/tripeptide_neighbor_shielding.npy");
+    auto prev_arr = ReadNpy(out_dir + "/tripeptide_neighbor_shielding_prev.npy");
+    auto next_arr = ReadNpy(out_dir + "/tripeptide_neighbor_shielding_next.npy");
+    auto ref_arr = ReadNpy(out_dir + "/tripeptide_neighbor_reference.npy");
+    const std::vector<size_t> tensor_shape{conf.AtomCount(), 9};
+    ASSERT_EQ(sum_arr.shape, tensor_shape);
+    ASSERT_EQ(prev_arr.shape, tensor_shape);
+    ASSERT_EQ(next_arr.shape, tensor_shape);
+    ASSERT_EQ(ref_arr.shape, (std::vector<size_t>{1, 5}));
+
+    const double* sum = DataAs<double>(sum_arr);
+    const double* prev = DataAs<double>(prev_arr);
+    const double* next = DataAs<double>(next_arr);
+    const double* ref = DataAs<double>(ref_arr);
+    int n_prev_rows = 0, n_next_rows = 0, n_reconstructed = 0;
+    for (size_t i = 0; i < conf.AtomCount(); ++i) {
+        const bool has_prev = RowHasFinite(prev, i, 9);
+        const bool has_next = RowHasFinite(next, i, 9);
+        if (has_prev) ++n_prev_rows;
+        if (has_next) ++n_next_rows;
+        if (!has_prev && !has_next) {
+            for (int c = 0; c < 9; ++c)
+                EXPECT_TRUE(std::isnan(sum[i * 9 + c]));
+            continue;
+        }
+        ++n_reconstructed;
+        for (int c = 0; c < 9; ++c) {
+            const double expected =
+                (has_prev ? prev[i * 9 + c] : 0.0) +
+                (has_next ? next[i * 9 + c] : 0.0);
+            EXPECT_NEAR(sum[i * 9 + c], expected, 1e-9)
+                << "atom=" << i << " component=" << c;
+        }
+    }
+    EXPECT_GT(n_prev_rows, 100);
+    EXPECT_GT(n_next_rows, 100);
+    EXPECT_GT(n_reconstructed, 200);
+    EXPECT_GT(ref[0], 0.0);
+    EXPECT_DOUBLE_EQ(ref[1], 1.0);
+    EXPECT_DOUBLE_EQ(ref[2], -120.0);
+    EXPECT_DOUBLE_EQ(ref[3], 140.0);
+    EXPECT_DOUBLE_EQ(ref[4], 1.0);
 }

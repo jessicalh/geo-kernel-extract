@@ -106,6 +106,7 @@ TripeptideBackboneShieldingResult::Compute(
     const Protein& protein = conf.ProteinRef();
     const std::size_t N_res = protein.ResidueCount();
     result->residue_matches_.assign(N_res, ResidueMatch{});
+    result->matched_dft_atom_idx_by_atom_.assign(conf.AtomCount(), 0);
 
     double rmsd_sum = 0.0;
 
@@ -261,6 +262,8 @@ TripeptideBackboneShieldingResult::Compute(
             ca.tripeptide_bb_residual_vec        = a.residual_vec;
             ca.tripeptide_bb_has_match           = true;
             ca.tripeptide_bb_method_tag          = method_tag;
+            result->matched_dft_atom_idx_by_atom_[a.protein_atom_idx] =
+                a.dft_atom_idx;
 
             if (a.protein_atom_idx == res.CA) {
                 rm.ca_match_dist = a.residual_distance;
@@ -371,6 +374,33 @@ int TripeptideBackboneShieldingResult::WriteFeatures(
         NpyWriter::WriteInt8(
             output_dir + "/tripeptide_bb_method_tag.npy",
             data.data(), N);
+        ++written;
+    }
+
+    // tripeptide_bb_match_atoms.npy (N, 5) float64.
+    // Columns: residue_index, has_match, matched_dft_atom_idx,
+    // match_distance_A, method_tag.
+    {
+        std::vector<double> data(N * 5, kNaN);
+        const Protein& protein = conf.ProteinRef();
+        for (std::size_t i = 0; i < N; ++i) {
+            const auto& ca = conf.AtomAt(i);
+            data[i * 5 + 0] =
+                static_cast<double>(protein.AtomAt(i).residue_index);
+            data[i * 5 + 1] = ca.tripeptide_bb_has_match ? 1.0 : 0.0;
+            data[i * 5 + 2] =
+                (i < matched_dft_atom_idx_by_atom_.size())
+                    ? static_cast<double>(matched_dft_atom_idx_by_atom_[i])
+                    : 0.0;
+            if (ca.tripeptide_bb_has_match) {
+                data[i * 5 + 3] = ca.tripeptide_bb_match_distance;
+            }
+            data[i * 5 + 4] =
+                static_cast<double>(ca.tripeptide_bb_method_tag);
+        }
+        NpyWriter::WriteFloat64(
+            output_dir + "/tripeptide_bb_match_atoms.npy",
+            data.data(), N, 5);
         ++written;
     }
 

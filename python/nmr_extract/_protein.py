@@ -91,6 +91,7 @@ class PiQuadrupoleGroup:
 class DispersionGroup:
     """Dispersion scalar decomposition by ring type."""
     per_type_T0: PerRingTypeT0
+    aromatic_r6_proximity_per_type_T0: Optional[PerRingTypeT0] = None
 
 
 @dataclass(frozen=True)
@@ -1119,7 +1120,7 @@ class TripeptideGroup:
     ``[databases].tensorcs15`` in the runtime TOML).
 
     All fields are optional; the group is attached to a Protein only
-    when at least one of the seven NPY files is present on disk.
+    when at least one tripeptide NPY file is present on disk.
 
     Per-atom convention:
     - ``bb_shielding`` carries the tensor on backbone N/CA/C/O/H/HA and
@@ -1139,9 +1140,13 @@ class TripeptideGroup:
     bb_residual_vec: Optional[VectorField] = None
     bb_match_distance: Optional[np.ndarray] = None
     bb_method_tag: Optional[np.ndarray] = None
+    bb_match_atoms: Optional[np.ndarray] = None
     neighbor_shielding: Optional[ShieldingTensor] = None
+    neighbor_shielding_prev: Optional[ShieldingTensor] = None
+    neighbor_shielding_next: Optional[ShieldingTensor] = None
     neighbor_residual_vec_prev: Optional[VectorField] = None
     neighbor_residual_vec_next: Optional[VectorField] = None
+    neighbor_reference: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -1239,6 +1244,7 @@ class Protein:
     dssp: DsspScalars = None
     dssp_observed: np.ndarray = None
     dssp_ss8: np.ndarray = None
+    dssp_ppii: np.ndarray = None
     dssp_hbond_energy: np.ndarray = None
     dssp_chi: np.ndarray = None
     sasa: np.ndarray = None
@@ -1523,6 +1529,10 @@ def load(path: str | Path) -> Protein:
     )
     dispersion = DispersionGroup(
         per_type_T0=get("disp_per_type_T0"),
+        aromatic_r6_proximity_per_type_T0=(
+            get("aromatic_r6_proximity_per_type_T0")
+            if "aromatic_r6_proximity_per_type_T0" in available else None
+        ),
     )
     mcconnell = McConnellGroup(
         peptide_co_fixed=get("mc_peptide_co_fixed"),
@@ -1834,7 +1844,7 @@ def load(path: str | Path) -> Protein:
         )
 
     # Tripeptide DFT shielding (ProCS15 / Larsen 2015) — attached when
-    # any of the seven tripeptide NPYs is present. Individual fields
+    # any tripeptide NPY is present. Individual fields
     # are wrapped (or left None) based on per-stem availability so a
     # partial output (e.g., BB calculator ran but Neighbor did not) is
     # still consumable.
@@ -1844,9 +1854,13 @@ def load(path: str | Path) -> Protein:
         "tripeptide_bb_residual_vec",
         "tripeptide_bb_match_distance",
         "tripeptide_bb_method_tag",
+        "tripeptide_bb_match_atoms",
         "tripeptide_neighbor_shielding",
+        "tripeptide_neighbor_shielding_prev",
+        "tripeptide_neighbor_shielding_next",
         "tripeptide_neighbor_residual_vec_prev",
         "tripeptide_neighbor_residual_vec_next",
+        "tripeptide_neighbor_reference",
     }
     if any(stem in available for stem in tripeptide_stems):
         tripeptide = TripeptideGroup(
@@ -1858,12 +1872,20 @@ def load(path: str | Path) -> Protein:
                 if "tripeptide_bb_match_distance" in available else None,
             bb_method_tag=get("tripeptide_bb_method_tag")
                 if "tripeptide_bb_method_tag" in available else None,
+            bb_match_atoms=get("tripeptide_bb_match_atoms")
+                if "tripeptide_bb_match_atoms" in available else None,
             neighbor_shielding=get("tripeptide_neighbor_shielding")
                 if "tripeptide_neighbor_shielding" in available else None,
+            neighbor_shielding_prev=get("tripeptide_neighbor_shielding_prev")
+                if "tripeptide_neighbor_shielding_prev" in available else None,
+            neighbor_shielding_next=get("tripeptide_neighbor_shielding_next")
+                if "tripeptide_neighbor_shielding_next" in available else None,
             neighbor_residual_vec_prev=get("tripeptide_neighbor_residual_vec_prev")
                 if "tripeptide_neighbor_residual_vec_prev" in available else None,
             neighbor_residual_vec_next=get("tripeptide_neighbor_residual_vec_next")
                 if "tripeptide_neighbor_residual_vec_next" in available else None,
+            neighbor_reference=get("tripeptide_neighbor_reference")
+                if "tripeptide_neighbor_reference" in available else None,
         )
 
     # Larsen H-bond term shielding (Larsen 2015) — Phase 1 covers
@@ -1926,6 +1948,7 @@ def load(path: str | Path) -> Protein:
         dssp=get("dssp_backbone"),
         dssp_observed=get("dssp_observed"),
         dssp_ss8=get("dssp_ss8"),
+        dssp_ppii=get("dssp_ppii"),
         dssp_hbond_energy=get("dssp_hbond_energy"),
         dssp_chi=get("dssp_chi"),
         sasa=get("atom_sasa"),

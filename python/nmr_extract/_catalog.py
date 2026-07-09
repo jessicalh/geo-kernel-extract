@@ -226,7 +226,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
 
     # ── Dispersion (DispersionResult.cpp) ────────────────────────
-    ArraySpec("disp_per_type_T0", "dispersion", PerRingTypeT0,     8,    True,  "Dispersion scalar per ring type",
+    ArraySpec("disp_per_type_T0", "dispersion", PerRingTypeT0,     8,    True,  "Deprecated name for unit-coefficient aromatic R^-6 proximity per ring type; not D3/D4 energy",
+              irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion"),
+    ArraySpec("aromatic_r6_proximity_per_type_T0", "dispersion", PerRingTypeT0, 8, False, "Canonical name for unit-coefficient aromatic R^-6 proximity per ring type; not D3/D4 energy",
               irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion"),
 
     # ── McConnell (McConnellResult.cpp) ──────────────────────────
@@ -322,6 +324,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry, columns [phi_IUPAC_rad, psi_IUPAC_rad, sasa_A2, ss_helix, ss_sheet]: phi/psi are IUPAC-signed radians (-libdssp), SASA is A^2, helix/sheet are dimensionless flags; phi/psi/SASA are NaN for unobserved residues",
               units="radians_for_phi_psi; Angstrom^2_for_sasa; dimensionless_for_flags", mechanism="secondary_structure"),
     ArraySpec("dssp_ss8",         "dssp", np.ndarray,              8,    False, "DSSP 8-class SS one-hot (H/G/I/E/B/T/S/C)",
+              mechanism="secondary_structure"),
+    ArraySpec("dssp_ppii",        "dssp", np.ndarray,              None, False, "DSSP PPII flag: int8 1=PPII, 0=observed non-PPII, -1=no DSSP observation",
               mechanism="secondary_structure"),
     ArraySpec("dssp_hbond_energy","dssp", np.ndarray,              4,    False, "DSSP H-bond energies (acc0/acc1/don0/don1)",
               units="kcal/mol", mechanism="secondary_structure"),
@@ -561,12 +565,20 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="Å", mechanism="quantum_reference"),
     ArraySpec("tripeptide_bb_method_tag",         "tripeptide", np.ndarray,      None, False, "DFT method discriminator: 0=none, 1=OPBE Gaussian (Larsen), 2=PBE ORCA (project SER regen)",
               mechanism="quantum_reference"),
+    ArraySpec("tripeptide_bb_match_atoms",        "tripeptide", np.ndarray,      5,    False, "σ_BB^i atom-match metadata columns [residue_index, has_match, matched_dft_atom_idx, match_distance_A, method_tag]",
+              native_axis="atom", mechanism="quantum_reference"),
     ArraySpec("tripeptide_neighbor_shielding",    "tripeptide", ShieldingTensor, 9,    False, "Δσ_BB^{i±1} — neighbour correction at residue i from i±1 cap reads (Larsen 2015 Eq 3)",
               irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("tripeptide_neighbor_shielding_prev", "tripeptide", ShieldingTensor, 9,  False, "Δσ_BB^{i-1} prev-direction neighbour correction tensor before prev+next summation",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
+    ArraySpec("tripeptide_neighbor_shielding_next", "tripeptide", ShieldingTensor, 9,  False, "Δσ_BB^{i+1} next-direction neighbour correction tensor before prev+next summation",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
     ArraySpec("tripeptide_neighbor_residual_vec_prev", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i-1} match residual at the C-term ALA cap of (i-1)'s tripeptide; Vec3, NaN where i-1 direction had no contribution",
               irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
     ArraySpec("tripeptide_neighbor_residual_vec_next", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i+1} match residual at the N-term ALA cap of (i+1)'s tripeptide; Vec3, NaN where i+1 direction had no contribution",
               irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
+    ArraySpec("tripeptide_neighbor_reference",    "tripeptide", np.ndarray,      5,    False, "AAA reference metadata columns [aaa_calc_id, aaa_frame_type_code, aaa_phi_db_deg, aaa_psi_db_deg, any_mixed_method_flag]",
+              native_axis="protein", mechanism="quantum_reference"),
 
     # ────────────────────────────────────────────────────────────────
     # Larsen H-bond shielding contributions

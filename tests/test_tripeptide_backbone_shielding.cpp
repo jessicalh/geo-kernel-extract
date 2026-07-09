@@ -14,7 +14,8 @@
 //   - per-atom tensors are finite where has_match is true
 //   - frame_type discriminator: any SER residue should hit
 //     orca_input_orientation rows (project SER PBE regen)
-//   - WriteFeatures emits 3 NPYs
+//   - WriteFeatures emits the central tensor, residual, method tag,
+//     distance, and atom-match metadata NPYs
 //
 // Skipped if the tensorcs15 DSN is not configured (test machine
 // doesn't have the local DB), or if the Larsen archive PDB is not at
@@ -38,12 +39,76 @@
 #include "TripeptideBackboneShieldingResult.h"
 #include "TripeptideDftTable.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <sstream>
 #include <string>
+#include <vector>
 
 using namespace nmr;
 namespace fs = std::filesystem;
+
+namespace {
+
+struct NpyArray {
+    std::vector<size_t> shape;
+    std::vector<char> bytes;
+};
+
+std::string Trim(std::string s) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                    [&](char c) { return !is_space(c); }));
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+                         [&](char c) { return !is_space(c); }).base(), s.end());
+    return s;
+}
+
+NpyArray ReadNpy(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyArray arr;
+    if (!in.is_open()) return arr;
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    uint16_t header_len = 0;
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    std::string header(header_len, '\0');
+    in.read(header.data(), header_len);
+    auto shape_begin = header.find('(');
+    auto shape_end = header.find(')', shape_begin);
+    EXPECT_NE(shape_begin, std::string::npos);
+    EXPECT_NE(shape_end, std::string::npos);
+    if (shape_begin == std::string::npos || shape_end == std::string::npos)
+        return arr;
+    std::stringstream ss(header.substr(shape_begin + 1,
+                                      shape_end - shape_begin - 1));
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        token = Trim(token);
+        if (!token.empty()) arr.shape.push_back(static_cast<size_t>(std::stoull(token)));
+    }
+    arr.bytes.assign(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+    return arr;
+}
+
+template <typename T>
+const T* DataAs(const NpyArray& arr) {
+    return reinterpret_cast<const T*>(arr.bytes.data());
+}
+
+}  // namespace
 
 
 class TripeptideBackboneShieldingTest : public ::testing::Test {
@@ -148,11 +213,31 @@ TEST_F(TripeptideBackboneShieldingTest, RunsOn1UbqPm6) {
         nmr::test::TestEnvironment::TempPath("tripeptide_bb_smoke_out");
     fs::create_directories(out_dir);
     int n_npy = tbb->WriteFeatures(conf, out_dir);
-    EXPECT_EQ(n_npy, 4);
+    EXPECT_EQ(n_npy, 5);
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_bb_shielding.npy"));
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_bb_residual_vec.npy"));
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_bb_match_distance.npy"));
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_bb_method_tag.npy"));
+    EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_bb_match_atoms.npy"));
+
+    auto match_atoms = ReadNpy(out_dir + "/tripeptide_bb_match_atoms.npy");
+    ASSERT_EQ(match_atoms.shape,
+              (std::vector<size_t>{conf.AtomCount(), 5}));
+    const double* ma = DataAs<double>(match_atoms);
+    int n_match_atom_rows = 0;
+    for (size_t i = 0; i < conf.AtomCount(); ++i) {
+        const auto& ca = conf.AtomAt(i);
+        EXPECT_DOUBLE_EQ(ma[i * 5 + 0],
+                         static_cast<double>(protein->AtomAt(i).residue_index));
+        if (ca.tripeptide_bb_method_tag == 0) continue;
+        ++n_match_atom_rows;
+        EXPECT_DOUBLE_EQ(ma[i * 5 + 1], 1.0);
+        EXPECT_GT(ma[i * 5 + 2], 0.0);
+        EXPECT_TRUE(std::isfinite(ma[i * 5 + 3]));
+        EXPECT_DOUBLE_EQ(ma[i * 5 + 4],
+                         static_cast<double>(ca.tripeptide_bb_method_tag));
+    }
+    EXPECT_GT(n_match_atom_rows, 0);
 
     // Residual sanity (post-Kabsch). The 3-point N/CA/C Kabsch has a
     // mean ~0.5 Å fit residual (chi-grid coarseness on flanking

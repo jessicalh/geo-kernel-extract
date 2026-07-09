@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <unordered_map>
 
@@ -42,6 +43,13 @@ double DihedralDegrees(const Vec3& a, const Vec3& b,
 char ResidueOneLetterCode(AminoAcid type) {
     if (type == AminoAcid::Unknown) return 'X';
     return GetAminoAcidType(type).one_letter_code;
+}
+
+// frame_type → method tag enum (0 unknown, 1 OPBE, 2 ORCA-PBE).
+std::uint8_t MethodTagFromFrameType(const std::string& ft) {
+    if (ft == "gaussian_standard_orientation") return 1;
+    if (ft == "orca_input_orientation")        return 2;
+    return 0;
 }
 
 
@@ -144,10 +152,18 @@ TripeptideNeighborShieldingResult::Compute(
 
     auto result = std::make_unique<TripeptideNeighborShieldingResult>();
     result->conf_ = &conf;
+    result->aaa_reference_calc_id_ = aaa_ref.calc_id;
+    result->aaa_reference_frame_type_ = aaa_ref.frame_type;
+    result->aaa_reference_method_tag_ =
+        MethodTagFromFrameType(aaa_ref.frame_type);
 
     const Protein& protein = conf.ProteinRef();
     const std::size_t N_res = protein.ResidueCount();
     result->residue_matches_.assign(N_res, ResidueMatch{});
+    result->prev_shielding_.assign(conf.AtomCount(), SphericalTensor{});
+    result->next_shielding_.assign(conf.AtomCount(), SphericalTensor{});
+    result->prev_has_tensor_.assign(conf.AtomCount(), 0);
+    result->next_has_tensor_.assign(conf.AtomCount(), 0);
 
     // Reset per-atom accumulators.
     //
@@ -341,8 +357,18 @@ TripeptideNeighborShieldingResult::Compute(
             if (!have_prev && !have_next) continue;
 
             Mat3 sum = Mat3::Zero();
-            if (have_prev) sum += pit->second;
-            if (have_next) sum += nit->second;
+            if (have_prev) {
+                sum += pit->second;
+                result->prev_shielding_[ai] =
+                    SphericalTensor::Decompose(pit->second);
+                result->prev_has_tensor_[ai] = 1;
+            }
+            if (have_next) {
+                sum += nit->second;
+                result->next_shielding_[ai] =
+                    SphericalTensor::Decompose(nit->second);
+                result->next_has_tensor_[ai] = 1;
+            }
 
             ConformationAtom& ca = conf.MutableAtomAt(ai);
             ca.tripeptide_neighbor_shielding_tensor    = sum;
@@ -409,6 +435,26 @@ int TripeptideNeighborShieldingResult::WriteFeatures(
         ++written;
     }
 
+    auto emit_direction_shielding =
+        [&](const std::string& filename,
+            const std::vector<SphericalTensor>& src,
+            const std::vector<std::uint8_t>& has_tensor) {
+            std::vector<double> data(N * 9, kNaN);
+            for (std::size_t i = 0; i < N && i < src.size() &&
+                                    i < has_tensor.size(); ++i) {
+                if (has_tensor[i]) {
+                    src[i].PackFull9(&data[i * 9]);
+                }
+            }
+            NpyWriter::WriteFloat64(output_dir + "/" + filename,
+                                    data.data(), N, 9);
+            ++written;
+        };
+    emit_direction_shielding("tripeptide_neighbor_shielding_prev.npy",
+                             prev_shielding_, prev_has_tensor_);
+    emit_direction_shielding("tripeptide_neighbor_shielding_next.npy",
+                             next_shielding_, next_has_tensor_);
+
     // (N, 3) residual vec from i-1 direction. NaN where that direction
     // had no contribution (so downstream ML distinguishes absent
     // contribution from a coincidentally-zero residual). The
@@ -442,6 +488,42 @@ int TripeptideNeighborShieldingResult::WriteFeatures(
         NpyWriter::WriteFloat64(
             output_dir + "/tripeptide_neighbor_residual_vec_next.npy",
             data.data(), N, 3);
+        ++written;
+    }
+
+    // tripeptide_neighbor_reference.npy (1, 5) float64.
+    // Columns: aaa_calc_id, aaa_frame_type_code, aaa_phi_db_deg,
+    // aaa_psi_db_deg, any_mixed_method_flag.
+    {
+        double any_mixed_method = 0.0;
+        for (const auto& rm : residue_matches_) {
+            const bool prev_matched =
+                rm.prev_calc_id != 0 && rm.prev_n_atoms_matched > 0;
+            const bool next_matched =
+                rm.next_calc_id != 0 && rm.next_n_atoms_matched > 0;
+            const std::uint8_t prev_tag =
+                MethodTagFromFrameType(rm.prev_frame_type);
+            const std::uint8_t next_tag =
+                MethodTagFromFrameType(rm.next_frame_type);
+            if ((prev_matched && prev_tag != 0 &&
+                 prev_tag != aaa_reference_method_tag_) ||
+                (next_matched && next_tag != 0 &&
+                 next_tag != aaa_reference_method_tag_)) {
+                any_mixed_method = 1.0;
+                break;
+            }
+        }
+
+        const double data[5] = {
+            static_cast<double>(aaa_reference_calc_id_),
+            static_cast<double>(aaa_reference_method_tag_),
+            static_cast<double>(kPhiStd),
+            static_cast<double>(kPsiStd),
+            any_mixed_method,
+        };
+        NpyWriter::WriteFloat64(
+            output_dir + "/tripeptide_neighbor_reference.npy",
+            data, 1, 5);
         ++written;
     }
 

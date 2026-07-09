@@ -332,8 +332,13 @@ int DispersionResult::WriteFeatures(const ProteinConformation& conf,
         }
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/disp_per_type_T0.npy", per_type_T0.data(), N, kAromaticRingTypeCount);
-    return 1;
+    NpyWriter::WriteFloat64(
+        output_dir + "/disp_per_type_T0.npy",
+        per_type_T0.data(), N, kAromaticRingTypeCount);
+    NpyWriter::WriteFloat64(
+        output_dir + "/aromatic_r6_proximity_per_type_T0.npy",
+        per_type_T0.data(), N, kAromaticRingTypeCount);
+    return 2;
 }
 
 }  // namespace nmr

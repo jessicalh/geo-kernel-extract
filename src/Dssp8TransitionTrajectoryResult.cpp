@@ -150,7 +150,10 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
     grp.createAttribute("ss8_legend", std::string(
         "H=0 (alpha helix), G=1 (3_10 helix), I=2 (pi helix), "
         "E=3 (extended strand), B=4 (beta bridge), T=5 (turn), "
-        "S=6 (bend), C=7 (coil); 255 = no observation (dominant only)."));
+        "S=6 (bend), C=7 (coil); 255 = no observation (dominant only). "
+        "PPII ('P') is counted in C=7 for this eight-state transition "
+        "surface; read /trajectory/dssp8_time_series/ppii_flag for "
+        "explicit PPII occupancy."));
     grp.createAttribute("transition_matrix_layout", std::string(
         "M[ri, prev, curr] = count of consecutive observed-pair "
         "transitions (prev -> curr) at residue ri. Self-edges (prev == "

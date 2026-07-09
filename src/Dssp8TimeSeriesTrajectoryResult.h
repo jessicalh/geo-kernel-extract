@@ -22,6 +22,8 @@
 //   Per-residue per-frame (R, T):
 //     ss8_code             uint8   H=0, G=1, I=2, E=3, B=4, T=5,
 //                                  S=6, C=7; 255 = no observation
+//     ppii_flag            uint8   1=PPII, 0=observed non-PPII,
+//                                  255 = no observation
 //     hbond_acceptor_partner (R, T, 2) int32   partner residue index
 //                                              or -1 if no partner
 //     hbond_acceptor_energy  (R, T, 2) float64 kcal/mol; NaN if no partner
@@ -73,7 +75,7 @@ public:
 
     // SS char -> uint8 code. H/G/I/E/B/T/S/C → 0..7. Anything else
     // (DSSP returns ' ' for unassigned, mapped to 'C' upstream by
-    // DsspResult::Compute; 'C' itself for coil) maps to 7.
+    // DsspResult::Compute; 'C' itself for coil; 'P' for PPII) maps to 7.
     static std::uint8_t Ss8Code(char ss) {
         switch (ss) {
             case 'H': return 0;
@@ -134,6 +136,7 @@ public:
 private:
     // Per-residue per-frame growing buffers. R outer x T inner.
     std::vector<std::vector<std::uint8_t>>  ss8_code_;
+    std::vector<std::vector<std::uint8_t>>  ppii_flag_;
     std::vector<std::vector<std::array<std::int32_t, 2>>> hbond_acceptor_partner_;
     std::vector<std::vector<std::array<double, 2>>>       hbond_acceptor_energy_;
     std::vector<std::vector<std::array<std::int32_t, 2>>> hbond_donor_partner_;

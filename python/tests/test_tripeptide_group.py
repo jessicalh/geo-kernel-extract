@@ -1,7 +1,7 @@
 """SDK round-trip tests for TripeptideGroup.
 
 Verifies that:
-  - the catalog registers all 7 tripeptide_* NPYs,
+  - the catalog registers the tripeptide_* NPYs owned by this producer,
   - `nmr_extract.load()` attaches a TripeptideGroup when the NPYs are
     present, and
   - each field surfaces with the expected dtype / shape, including the
@@ -41,7 +41,7 @@ def _required_calculator_npys(out_dir, n_atoms):
 
 
 def _tripeptide_npys(out_dir, n_atoms):
-    """Write all seven tripeptide_* NPYs with deterministic synthetic
+    """Write the original seven tripeptide_* NPYs with deterministic synthetic
     values. Half the atoms are tagged as having a BB match; one
     direction (prev) is sparse so the NaN-fill convention is exercised."""
     # bb_shielding — first 16 atoms have a match (row of ones); rest NaN.
@@ -77,20 +77,46 @@ def _tripeptide_npys(out_dir, n_atoms):
     np.save(out_dir / "tripeptide_neighbor_residual_vec_next.npy", nxt)
 
 
+def _tripeptide_new_npys(out_dir, n_atoms):
+    """Write the four pure-emit arrays added after the original group."""
+    match_atoms = np.zeros((n_atoms, 5), dtype=np.float64)
+    match_atoms[:, 0] = np.arange(n_atoms) // 4
+    match_atoms[:16, 1] = 1
+    match_atoms[:16, 2] = np.arange(1, 17)
+    match_atoms[:16, 3] = 0.0374
+    match_atoms[:16, 4] = 1
+    np.save(out_dir / "tripeptide_bb_match_atoms.npy", match_atoms)
+
+    prev = np.full((n_atoms, 9), np.nan, dtype=np.float64)
+    prev[:8] = 0.25
+    np.save(out_dir / "tripeptide_neighbor_shielding_prev.npy", prev)
+
+    nxt = np.full((n_atoms, 9), np.nan, dtype=np.float64)
+    nxt[:16] = 0.75
+    np.save(out_dir / "tripeptide_neighbor_shielding_next.npy", nxt)
+
+    ref = np.array([[1234, 1, -120, 140, 1]], dtype=np.float64)
+    np.save(out_dir / "tripeptide_neighbor_reference.npy", ref)
+
+
 # ── Tests ────────────────────────────────────────────────────────────
 
 
 class TestTripeptideCatalog:
 
-    def test_all_seven_specs_registered(self):
+    def test_specs_registered(self):
         expected = {
             "tripeptide_bb_shielding",
             "tripeptide_bb_residual_vec",
             "tripeptide_bb_match_distance",
             "tripeptide_bb_method_tag",
+            "tripeptide_bb_match_atoms",
             "tripeptide_neighbor_shielding",
+            "tripeptide_neighbor_shielding_prev",
+            "tripeptide_neighbor_shielding_next",
             "tripeptide_neighbor_residual_vec_prev",
             "tripeptide_neighbor_residual_vec_next",
+            "tripeptide_neighbor_reference",
         }
         missing = expected - set(CATALOG.keys())
         assert not missing, f"Missing tripeptide specs: {missing}"
@@ -111,6 +137,15 @@ class TestTripeptideLoad:
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
         _tripeptide_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
+        return tmp_path
+
+    @pytest.fixture
+    def fake_extraction_new(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        _tripeptide_npys(tmp_path, N_ATOMS)
+        _tripeptide_new_npys(tmp_path, N_ATOMS)
         write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
         return tmp_path
 
@@ -163,6 +198,29 @@ class TestTripeptideLoad:
         # 16..31: no match in either direction.
         assert np.all(np.isnan(prev[16:]))
         assert np.all(np.isnan(nxt[16:]))
+
+    def test_original_seven_leave_new_fields_none(self, fake_extraction):
+        p = load(fake_extraction)
+        tp = p.tripeptide
+        assert tp.bb_match_atoms is None
+        assert tp.neighbor_shielding_prev is None
+        assert tp.neighbor_shielding_next is None
+        assert tp.neighbor_reference is None
+
+    def test_new_pure_emit_fields_load(self, fake_extraction_new):
+        p = load(fake_extraction_new)
+        tp = p.tripeptide
+        assert tp.bb_match_atoms.shape == (N_ATOMS, 5)
+        assert tp.neighbor_shielding_prev.data.shape == (N_ATOMS, 9)
+        assert tp.neighbor_shielding_next.data.shape == (N_ATOMS, 9)
+        assert tp.neighbor_reference.shape == (1, 5)
+        assert tp.bb_match_atoms[0, 2] == 1
+        assert np.all(np.isfinite(tp.neighbor_shielding_prev.data[:8]))
+        assert np.all(np.isnan(tp.neighbor_shielding_prev.data[8:]))
+        np.testing.assert_array_equal(
+            tp.neighbor_reference[0],
+            np.array([1234, 1, -120, 140, 1], dtype=np.float64),
+        )
 
 
 class TestTripeptideAbsent:

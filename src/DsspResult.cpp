@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -172,6 +173,13 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
     return result;
 }
 
+std::unique_ptr<DsspResult> DsspResult::CreateForTesting(
+        std::vector<DsspResidue> residues) {
+    auto result = std::make_unique<DsspResult>();
+    result->residues_ = std::move(residues);
+    return result;
+}
+
 
 char DsspResult::SecondaryStructure(size_t residue_index) const {
     if (residue_index >= residues_.size()) return 'C';
@@ -195,15 +203,16 @@ double DsspResult::SASA(size_t residue_index) const {
 
 
 // ============================================================================
-// WriteFeatures: 5 NPY files
+// WriteFeatures: 6 NPY files
 //
 // All per-atom, broadcast from per-residue via Protein atom→residue mapping.
 //
 // 1. dssp_observed.npy (N,) — residue was observed by DSSP
 // 2. dssp_backbone.npy (N, 5) — -phi, -psi, sasa, ss_helix, ss_sheet
 // 3. dssp_ss8.npy (N, 8) — full 8-class SS one-hot (H/G/I/E/B/T/S/C)
-// 4. dssp_hbond_energy.npy (N, 4) — H-bond energies (acc0/acc1/don0/don1)
-// 5. dssp_chi.npy (N, 12) — chi1-4 cos/sin/exists (4 angles × 3 cols)
+// 4. dssp_ppii.npy (N,) — explicit PPII flag (1/0/-1 sentinel)
+// 5. dssp_hbond_energy.npy (N, 4) — H-bond energies (acc0/acc1/don0/don1)
+// 6. dssp_chi.npy (N, 12) — chi1-4 cos/sin/exists (4 angles × 3 cols)
 // ============================================================================
 
 int DsspResult::WriteFeatures(const ProteinConformation& conf,
@@ -262,6 +271,21 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
                 ss8[i * 8 + ss_col(residues_[ri].secondary_structure)] = 1.0;
         }
         NpyWriter::WriteFloat64(output_dir + "/dssp_ss8.npy", ss8.data(), N, 8);
+        files_written++;
+    }
+
+    // dssp_ppii.npy — (N,) int8. 1=PPII, 0=observed non-PPII,
+    // -1=no DSSP observation for the parent residue.
+    {
+        std::vector<int8_t> ppii(N, -1);
+        for (size_t i = 0; i < N; ++i) {
+            size_t ri = protein.AtomAt(i).residue_index;
+            if (ri < residues_.size() && residues_[ri].observed) {
+                ppii[i] = DsspIsPpii(residues_[ri].secondary_structure)
+                    ? 1 : 0;
+            }
+        }
+        NpyWriter::WriteInt8(output_dir + "/dssp_ppii.npy", ppii.data(), N);
         files_written++;
     }
 

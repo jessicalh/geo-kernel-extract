@@ -46,6 +46,7 @@ Dssp8TimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     const std::size_t N = tp.AtomCount();
 
     r->ss8_code_.assign(R, {});
+    r->ppii_flag_.assign(R, {});
     r->hbond_acceptor_partner_.assign(R, {});
     r->hbond_acceptor_energy_.assign(R, {});
     r->hbond_donor_partner_.assign(R, {});
@@ -98,6 +99,8 @@ void Dssp8TimeSeriesTrajectoryResult::Compute(
             if (residue_observed) {
                 const auto& dr = dssp_residues[ri];
                 ss8_code_[ri].push_back(Ss8Code(dr.secondary_structure));
+                ppii_flag_[ri].push_back(
+                    DsspIsPpii(dr.secondary_structure) ? 1u : 0u);
                 hbond_acceptor_partner_[ri].push_back({
                     PartnerToInt32(dr.acceptors[0].residue_index, R),
                     PartnerToInt32(dr.acceptors[1].residue_index, R)});
@@ -116,6 +119,7 @@ void Dssp8TimeSeriesTrajectoryResult::Compute(
                 // this frame so consumers can distinguish "DSSP said
                 // coil" from "DSSP never wrote here."
                 ss8_code_[ri].push_back(kSSUnassigned);
+                ppii_flag_[ri].push_back(kSSUnassigned);
                 hbond_acceptor_partner_[ri].push_back({kNoPartner, kNoPartner});
                 hbond_acceptor_energy_[ri].push_back({kNaN, kNaN});
                 hbond_donor_partner_[ri].push_back({kNoPartner, kNoPartner});
@@ -128,6 +132,7 @@ void Dssp8TimeSeriesTrajectoryResult::Compute(
         // provenance.
         for (std::size_t ri = 0; ri < R; ++ri) {
             ss8_code_[ri].push_back(kSSUnassigned);
+            ppii_flag_[ri].push_back(kSSUnassigned);
             hbond_acceptor_partner_[ri].push_back({kNoPartner, kNoPartner});
             hbond_acceptor_energy_[ri].push_back({kNaN, kNaN});
             hbond_donor_partner_[ri].push_back({kNoPartner, kNoPartner});
@@ -190,7 +195,10 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("ss8_legend", std::string(
         "H=0 (alpha helix), G=1 (3_10 helix), I=2 (pi helix), "
         "E=3 (extended strand), B=4 (beta bridge), T=5 (turn), "
-        "S=6 (bend), C=7 (coil); 255 = no observation."));
+        "S=6 (bend), C=7 (coil); 255 = no observation. "
+        "PPII ('P') is not a ninth SS8 state; read ppii_flag where "
+        "1=PPII, 0=observed non-PPII, 255=no observation. Existing "
+        "PPII frames still map to C=7 in ss8_code for compatibility."));
     grp.createAttribute("ss8_unassigned_sentinel", std::uint8_t{kSSUnassigned});
     grp.createAttribute("hbond_partner_sentinel", std::string(
         "-1 (kNoPartner) = no partner at this slot. DSSP records up to "
@@ -243,6 +251,22 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
         const std::vector<std::size_t> dims = {R, T};
         HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<std::uint8_t>("ss8_code", space);
+        ds.write_raw(flat.data());
+        ds.createAttribute("units", std::string("category"));
+    }
+
+    // ── ppii_flag (R, T) uint8 ──────────────────────────────────────
+    {
+        std::vector<std::uint8_t> flat(R * T, kSSUnassigned);
+        for (std::size_t ri = 0; ri < R; ++ri) {
+            const auto& row = ppii_flag_[ri];
+            for (std::size_t f = 0; f < T && f < row.size(); ++f) {
+                flat[ri * T + f] = row[f];
+            }
+        }
+        const std::vector<std::size_t> dims = {R, T};
+        HighFive::DataSpace space(dims);
+        auto ds = grp.createDataSet<std::uint8_t>("ppii_flag", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("category"));
     }

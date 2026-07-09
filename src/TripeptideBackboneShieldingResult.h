@@ -115,6 +115,7 @@ private:
     const ProteinConformation* conf_ = nullptr;
 
     std::vector<ResidueMatch> residue_matches_;
+    std::vector<int> matched_dft_atom_idx_by_atom_;
 
     int    residues_attempted_   = 0;
     int    residues_matched_     = 0;
