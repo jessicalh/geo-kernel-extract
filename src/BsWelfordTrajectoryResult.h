@@ -77,14 +77,6 @@ public:
 
     size_t NumFrames() const { return n_frames_; }
 
-    // NPY output: bs_welford.npy (N, K) with K columns
-    // (t0_mean, t0_std, t0_min, t0_max,
-    //  t2mag_mean, t2mag_std, t2mag_min, t2mag_max,
-    //  t0_delta_mean, t0_delta_std,
-    //  n_frames).
-    int WriteFeatures(const TrajectoryProtein& tp,
-                      const std::string& output_dir) const override;
-
     // H5 group: /trajectory/bs_welford/ with per-column datasets.
     void WriteH5Group(const TrajectoryProtein& tp,
                       HighFive::File& file) const override;

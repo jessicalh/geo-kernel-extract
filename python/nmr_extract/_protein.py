@@ -1085,7 +1085,12 @@ class WaterPolarizationGroup:
 
     @property
     def coherence(self) -> np.ndarray:
-        """Dipole coherence ``|sum d_i| / n`` (N,)."""
+        """Legacy mean net dipole ``|sum d_i| / n`` in e_Angstrom (N,)."""
+        return self.data[:, 8]
+
+    @property
+    def mean_net_dipole_eA(self) -> np.ndarray:
+        """Mean net first-shell dipole ``|sum d_i| / n`` in e_Angstrom (N,)."""
         return self.data[:, 8]
 
     @property

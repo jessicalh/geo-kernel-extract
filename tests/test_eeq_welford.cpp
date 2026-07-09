@@ -151,6 +151,14 @@ TEST(EeqWelford, H5RoundTrip) {
     ASSERT_EQ(dims.size(), 1u);
     EXPECT_EQ(dims[0], tp.AtomCount());
 
+    const fs::path npy_dir = fs::temp_directory_path() /
+        ("eeq_welford_no_npy_" + std::to_string(::getpid()));
+    fs::remove_all(npy_dir);
+    ASSERT_TRUE(fs::create_directories(npy_dir));
+    EXPECT_EQ(tp.WriteFeatures(npy_dir.string()), 0);
+    EXPECT_FALSE(fs::exists(npy_dir / "eeq_welford.npy"));
+    fs::remove_all(npy_dir);
+
     fs::remove(h5_path);
 }
 

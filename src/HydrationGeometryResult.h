@@ -16,7 +16,7 @@
 //   6    Half-shell asymmetry (SASA-normal) — fraction of first-shell waters
 //        on the solvent-exposed side.
 //   7    Dipole alignment (SASA-normal) — cos(net dipole, surface normal).
-//   8    Dipole coherence (|sum d_i| / n) — ordered vs random.
+//   8    Mean net dipole (legacy name: dipole coherence; |sum d_i| / n).
 //   9    First-shell count — statistical weight.
 //
 // No KernelFilterSet — no geometric kernel is evaluated.  This calculator

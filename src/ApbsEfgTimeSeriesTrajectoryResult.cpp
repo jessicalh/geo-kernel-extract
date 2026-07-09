@@ -166,20 +166,21 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("parity",        std::string("2e"));
     grp.createAttribute("legacy_irrep_attrs_deprecated", true);
     grp.createAttribute("units",         std::string("V/Å^2"));
+    grp.createAttribute("source_result", std::string("ApbsFieldResult"));
+    grp.createAttribute("source_field",  std::string("apbs_efg_spherical"));
+    grp.createAttribute("operation", std::string(
+        "linearized_poisson_boltzmann_grid_hessian_traceless_t2"));
     grp.createAttribute("source", std::string(
-        "ApbsFieldResult.apbs_efg_spherical (SphericalTensor, T2 "
-        "components 0..4 only). APBS EFG = Hessian of φ from "
-        "linearised Poisson-Boltzmann solve (traceless projection "
-        "applied at source — ApbsFieldResult.cpp:262-272). T0+T1 "
-        "structurally zero by Hessian symmetry + Poisson "
-        "tracelessness; 5-component T2-only emission per the "
-        "2026-05-18 EFG schema rev (task #166)."));
+        "ApbsFieldResult.apbs_efg_spherical; APBS EFG is the "
+        "sign-aligned Hessian of the linearized Poisson-Boltzmann "
+        "potential, symmetrized and trace-projected at source; T2 "
+        "components 0..4 only; T0/T1 structurally zero by Hessian "
+        "symmetry/traceless projection."));
     grp.createAttribute("source_attached_policy", std::string(
-        "always_attached -- ApbsFieldResult is RequireConformationResult'd "
-        "in PerFrameExtractionSet (RunConfiguration.cpp:157). Compute's "
-        "HasResult<ApbsFieldResult>() gate is defensive and emits "
-        "NaN-fill + mask=0 on absent frames per canonical 'absent, "
-        "not faked' (OBJECT_MODEL.md Conditional-attach TR discipline)."));
+        "required_conformation_result -- production RunConfiguration "
+        "requires ApbsFieldResult for this trajectory result; Compute "
+        "defensively writes NaN-fill + mask=0 when the source is absent; "
+        "source_attached_per_frame records that gate."));
 
     // (N, T, 5) via explicit T2[k] component access. No reinterpret,
     // no struct-packing assumption. Atom-major:

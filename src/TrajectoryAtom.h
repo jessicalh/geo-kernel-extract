@@ -259,7 +259,8 @@ struct WaterFieldWelfordState {
 // Written by HydrationGeometryWelfordTrajectoryResult.
 // Source: per-atom water polarisation features from HydrationGeometryResult:
 // net dipole vector, surface normal, half-shell asymmetry, dipole alignment,
-// dipole coherence, first-shell count. The alignment/coherence/asymmetry
+// legacy mean net dipole, dimensionless dipole order parameter,
+// first-shell count. The alignment/order/asymmetry
 // trio IS the polarisation signal — calibration weight on these channels
 // is what we want to learn. Per-component Welford on Vec3 channels;
 // scalar Welford with delta variants on the polarisation scalars.
@@ -270,7 +271,8 @@ struct HydrationGeometryWelfordState {
 
     WelfordMoments                half_shell_asymmetry;
     WelfordMoments                dipole_alignment;  // cos(dipole, normal)
-    WelfordMoments                dipole_coherence;  // |Σdᵢ| / n
+    WelfordMoments                dipole_coherence;  // legacy mean net dipole |Σdᵢ| / n
+    WelfordMoments                dipole_order_parameter;  // |Σdᵢ| / Σ|dᵢ|
     WelfordMoments                shell_count;       // first-shell water O count
 
     // Delta variants on all four rotationally-invariant scalar channels
@@ -292,6 +294,12 @@ struct HydrationGeometryWelfordState {
     WelfordMoments dipole_coherence_delta_squared;
     WelfordMoments dipole_coherence_dxdt;
     double         dipole_coherence_rms_delta = 0.0;
+
+    WelfordMoments dipole_order_parameter_delta;
+    WelfordMoments dipole_order_parameter_abs_delta;
+    WelfordMoments dipole_order_parameter_delta_squared;
+    WelfordMoments dipole_order_parameter_dxdt;
+    double         dipole_order_parameter_rms_delta = 0.0;
 
     WelfordMoments half_shell_asymmetry_delta;
     WelfordMoments half_shell_asymmetry_abs_delta;

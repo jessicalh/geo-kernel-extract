@@ -498,7 +498,6 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
     nlohmann::ordered_json j;
     j["schema_version"]    = "1.0";
     j["extractor"]         = "nmr_extract";
-    j["extractor_version"] = "0.2.0";
     j["generated_at_utc"]  = Iso8601UtcNow();
     j["protein_id"]        = protein_id;
 

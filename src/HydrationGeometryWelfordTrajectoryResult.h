@@ -4,8 +4,8 @@
 // SASA-normal water polarisation features from HydrationGeometryResult.
 // Clones the WaterFieldWelford shape: per-component Welford on Vec3 channels,
 // scalar Welford + signed/abs/squared/dxdt delta variants on the four
-// rotationally-invariant polarisation scalars (alignment, coherence,
-// asymmetry, shell_count).
+// rotationally-invariant polarisation scalars (alignment, legacy mean
+// net dipole, dimensionless order parameter, asymmetry, shell_count).
 //
 // Channels (mirroring HydrationGeometryTimeSeries source fields):
 //
@@ -13,7 +13,8 @@
 //   surface_normal        Vec3 (unit vector)           per-component[3]
 //   half_shell_asymmetry  scalar (fraction)            full Welford + delta variants
 //   dipole_alignment      scalar (cos angle)           full Welford + delta variants
-//   dipole_coherence      scalar (e·Å, `|Σd|/n`)       full Welford + delta variants
+//   dipole_coherence      scalar (e·Å, legacy `|Σd|/n`) full Welford + delta variants
+//   dipole_order_parameter scalar ([0,1], `|Σd|/Σ|d|`) full Welford + delta variants
 //   shell_count           int (dimensionless)          full Welford + delta variants
 //
 // R6 codex 2026-05-18: dipole_coherence is NOT a dimensionless order
@@ -21,8 +22,8 @@
 // e·Å units. A true coherence (dimensionless [0,1]) would divide by
 // `Σ |d_i|` instead. Consumers can post-process if needed.
 //
-// Delta variants on: half_shell_asymmetry, dipole_alignment, dipole_coherence,
-// shell_count — these four scalars carry the polarisation dynamics question.
+// Delta variants on: half_shell_asymmetry, dipole_alignment,
+// dipole_coherence, dipole_order_parameter, shell_count.
 //
 // Emission:
 //
@@ -93,6 +94,7 @@ private:
     std::vector<double> prev_half_shell_asymmetry_;
     std::vector<double> prev_dipole_alignment_;
     std::vector<double> prev_dipole_coherence_;
+    std::vector<double> prev_dipole_order_parameter_;
     std::vector<double> prev_shell_count_;
     std::vector<bool>   prev_valid_;
     std::vector<double> prev_time_;

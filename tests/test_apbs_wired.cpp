@@ -3,8 +3,11 @@
 #include "PdbFileReader.h"
 #include "GeometryResult.h"
 #include "ChargeAssignmentResult.h"
+#include "ChargeSource.h"
+#include "ForceFieldChargeTable.h"
 #include "ApbsFieldResult.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 #include <filesystem>
 #include <cmath>
 
@@ -24,11 +27,9 @@ protected:
     std::unique_ptr<Protein> protein;
 };
 
-TEST_F(ApbsWiredTest, ApbsOrFallbackProducesNonZeroFields) {
+TEST_F(ApbsWiredTest, ApbsProducesNonZeroFieldsWhenSolverSucceeds) {
     // This test verifies the APBS bridge integration.
-    // If APBS succeeds: fields come from the Poisson-Boltzmann grid.
-    // If APBS fails: vacuum Coulomb fallback fires with a logged warning.
-    // Either way, fields must be non-zero.
+    // Fields come from the Poisson-Boltzmann grid and must be non-zero.
 
     auto& conf = protein->Conformation();
 
@@ -79,10 +80,9 @@ TEST_F(ApbsWiredTest, SphericalTensorRoundtrip) {
     }
 }
 
-TEST_F(ApbsWiredTest, FallbackWarnsOnFailure) {
-    // If APBS fails, we should still get valid results (vacuum Coulomb)
-    // and the warning should have been logged.
-    // We just verify the computation succeeds either way.
+TEST_F(ApbsWiredTest, FailureReturnsNullWithoutFallback) {
+    // With valid inputs the APBS computation should succeed. Solver failure
+    // returns nullptr; there is no vacuum-field fallback path.
     auto& conf = protein->Conformation();
 
     auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
@@ -90,4 +90,43 @@ TEST_F(ApbsWiredTest, FallbackWarnsOnFailure) {
     auto apbs = ApbsFieldResult::Compute(conf);
     ASSERT_NE(apbs, nullptr);
     ASSERT_TRUE(conf.AttachResult(std::move(apbs)));
+}
+
+TEST(ApbsWired, TruePlaceholderPbRadiusBlocksApbsBeforeSolve) {
+    Protein protein;
+
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t ri = protein.AddResidue(residue);
+
+    auto atom = Atom::Create(Element::C);
+    atom->pdb_atom_name = "CA";
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices = {ai};
+    protein.FinalizeConstruction({Vec3(0.0, 0.0, 0.0)});
+
+    std::vector<AtomChargeRadius> values(1);
+    values[0] = {0.1, kCompatibilityPlaceholderPbRadiusAngstrom,
+                 ChargeAssignmentStatus::PlaceholderPbRadius};
+    std::string error;
+    auto table = ForceFieldChargeTable::FromValues(
+        ForceField::Amber_ff14SB, ChargeModelKind::Preloaded, "placeholder-test",
+        std::move(values), 1, error);
+    ASSERT_NE(table, nullptr) << error;
+    protein.SetForceFieldCharges(std::move(table));
+
+    auto& conf = protein.AddCrystalConformation(
+        {Vec3(0.0, 0.0, 0.0)}, 0.0, 0.0, 0.0, "PLACEHOLDER");
+    PreloadedChargeSource source({}, ForceField::Amber_ff14SB);
+    auto charges = ChargeAssignmentResult::Compute(conf, source);
+    ASSERT_NE(charges, nullptr);
+    ASSERT_TRUE(conf.AttachResult(std::move(charges)));
+
+    auto apbs = ApbsFieldResult::Compute(conf);
+    EXPECT_EQ(apbs, nullptr);
+    EXPECT_EQ(protein.ForceFieldCharges().PlaceholderPbRadiusCount(), 1);
+    EXPECT_EQ(protein.ForceFieldCharges().DerivedMbondi2PbRadiusCount(), 0);
 }

@@ -667,6 +667,7 @@ add_library(nmr_shielding
     src/AmberLeapInput.cpp
     src/AmberPreparedChargeSource.cpp
     src/OrcaRunLoader.cpp
+    src/AppVersion.cpp
     src/CalcsetManifestEmitter.cpp
     src/SasaResult.cpp
     src/TrajectoryResult.cpp

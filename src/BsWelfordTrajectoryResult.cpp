@@ -7,7 +7,6 @@
 #include "ProteinConformation.h"
 #include "ConformationAtom.h"
 #include "Types.h"
-#include "NpyWriter.h"
 #include "OperationLog.h"
 
 #include <highfive/H5DataSpace.hpp>
@@ -175,39 +174,6 @@ void BsWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         "finalized across " + std::to_string(n_frames_) + " frames, " +
         std::to_string(N) + " atoms, mean_dt_ps=" +
         std::to_string(mean_dt_ps_));
-}
-
-
-// ── WriteFeatures (NPY) ──────────────────────────────────────────
-// bs_welford.npy (N, 11) kept unchanged from pre-Phase-2b for
-// backward compatibility with the existing SDK ArraySpec. The
-// expanded H5 schema is the canonical interface for new consumers.
-
-int BsWelfordTrajectoryResult::WriteFeatures(
-        const TrajectoryProtein& tp,
-        const std::string& output_dir) const {
-    const size_t N = tp.AtomCount();
-    constexpr size_t K = 11;
-
-    std::vector<double> data(N * K);
-    for (size_t i = 0; i < N; ++i) {
-        const BsWelfordState& w = tp.AtomAt(i).bs_welford;
-        data[i * K + 0]  = w.t0.mean;
-        data[i * K + 1]  = w.t0.std;
-        data[i * K + 2]  = w.t0.min;
-        data[i * K + 3]  = w.t0.max;
-        data[i * K + 4]  = w.t2magnitude.mean;
-        data[i * K + 5]  = w.t2magnitude.std;
-        data[i * K + 6]  = w.t2magnitude.min;
-        data[i * K + 7]  = w.t2magnitude.max;
-        data[i * K + 8]  = w.t0_delta.mean;
-        data[i * K + 9]  = w.t0_delta.std;
-        data[i * K + 10] = static_cast<double>(w.n_frames);
-    }
-
-    NpyWriter::WriteFloat64(output_dir + "/bs_welford.npy",
-                            data.data(), N, K);
-    return 1;
 }
 
 

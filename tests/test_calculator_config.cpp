@@ -49,7 +49,6 @@ TEST(CalculatorConfig, DefaultsMatchSpatialCutoffs) {
 TEST(CalculatorConfig, DefaultsMatchCalculatorConstants) {
     // From calculator .h / .cpp files
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff"),        10.0);
-    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("mopac_mcconnell_bond_anisotropy_cutoff"),  10.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("mcconnell_include_xh_sources"),             1.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("dispersion_vertex_distance_cutoff"),        5.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("dispersion_switching_onset_distance"),      4.3);
@@ -61,6 +60,12 @@ TEST(CalculatorConfig, DefaultsMatchCalculatorConstants) {
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("water_first_shell_cutoff"),                3.5);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("water_second_shell_cutoff"),               5.5);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hydration_ion_cutoff"),                   20.0);
+}
+
+TEST(CalculatorConfig, DeadMopacMcConnellCutoffKeyIsUnknown) {
+    EXPECT_DEATH(
+        CalculatorConfig::Get("mopac_mcconnell_bond_anisotropy_cutoff"),
+        "unknown parameter key");
 }
 
 TEST(CalculatorConfig, DefaultsMatchNoiseFloors) {

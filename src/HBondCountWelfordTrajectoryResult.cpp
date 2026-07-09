@@ -7,7 +7,6 @@
 #include "ProteinConformation.h"
 #include "ConformationAtom.h"
 #include "Types.h"
-#include "NpyWriter.h"
 #include "OperationLog.h"
 #include "CalculatorConfig.h"
 
@@ -163,33 +162,6 @@ void HBondCountWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         "finalized across " + std::to_string(n_frames_) + " frames, " +
         std::to_string(N) + " atoms, mean_dt_ps=" +
         std::to_string(mean_dt_ps_));
-}
-
-
-// ── WriteFeatures (NPY) ──────────────────────────────────────────
-// hbond_count_welford.npy (N, 7) kept unchanged from pre-Phase-2b.
-
-int HBondCountWelfordTrajectoryResult::WriteFeatures(
-        const TrajectoryProtein& tp,
-        const std::string& output_dir) const {
-    const size_t N = tp.AtomCount();
-    constexpr size_t K = 7;
-
-    std::vector<double> data(N * K);
-    for (size_t i = 0; i < N; ++i) {
-        const HBondCountWelfordState& w = tp.AtomAt(i).hbond_count_welford;
-        data[i * K + 0] = w.count.mean;
-        data[i * K + 1] = w.count.std;
-        data[i * K + 2] = w.count.min;
-        data[i * K + 3] = w.count.max;
-        data[i * K + 4] = w.count_delta.mean;
-        data[i * K + 5] = w.count_delta.std;
-        data[i * K + 6] = static_cast<double>(w.n_frames);
-    }
-
-    NpyWriter::WriteFloat64(output_dir + "/hbond_count_welford.npy",
-                            data.data(), N, K);
-    return 1;
 }
 
 

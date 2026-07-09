@@ -81,6 +81,7 @@ inline const char* ChargeModelKindName(ChargeModelKind kind) {
 // Per-atom charge and Poisson-Boltzmann radius from whatever source.
 enum class ChargeAssignmentStatus {
     Matched,
+    DerivedMbondi2PbRadius,
     PlaceholderPbRadius,
     Missing
 };

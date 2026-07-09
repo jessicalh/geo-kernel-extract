@@ -16,6 +16,8 @@
 // prev_valid_ invalidation across a gap remains a documented coverage gap.
 //
 
+#include <cstring>
+
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
 #include "GeometryResult.h"
@@ -149,14 +151,98 @@ TEST(HydrationGeometryWelford, H5RoundTrip) {
     auto grp = reopen.getGroup("/trajectory/hydration_geometry_welford");
 
     for (const std::string& base : {"half_shell_asymmetry", "dipole_alignment",
-                                     "dipole_coherence", "shell_count"}) {
+                                     "dipole_coherence", "mean_net_dipole_eA",
+                                     "dipole_order_parameter", "shell_count"}) {
         EXPECT_TRUE(grp.exist(base + "_delta_mean"))     << base;
         EXPECT_TRUE(grp.exist(base + "_abs_delta_mean")) << base;
         EXPECT_TRUE(grp.exist(base + "_dxdt_mean"))      << base;
         EXPECT_TRUE(grp.exist(base + "_rms_delta"))      << base;
     }
+    EXPECT_TRUE(grp.exist("mean_net_dipole_eA_mean"));
+    EXPECT_TRUE(grp.exist("dipole_order_parameter_mean"));
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
     EXPECT_TRUE(grp.exist("dxdt_n_per_atom"));
+
+    std::string polar_chans, alias_name, formula;
+    grp.getAttribute("polarisation_signal_channels").read(polar_chans);
+    grp.getAttribute("dipole_coherence_alias").read(alias_name);
+    grp.getAttribute("dipole_order_parameter_formula").read(formula);
+    EXPECT_EQ(polar_chans,
+              "dipole_alignment,dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,half_shell_asymmetry");
+    EXPECT_EQ(alias_name, "mean_net_dipole_eA");
+    EXPECT_EQ(formula, "|sum d_i| / sum |d_i|");
+
+    auto read_units = [&](const std::string& dataset) {
+        std::string units;
+        grp.getDataSet(dataset).getAttribute("units").read(units);
+        return units;
+    };
+    auto expect_double_alias = [&](const std::string& alias,
+                                   const std::string& source) {
+        ASSERT_TRUE(grp.exist(alias)) << alias;
+        ASSERT_TRUE(grp.exist(source)) << source;
+        std::vector<double> alias_values;
+        std::vector<double> source_values;
+        grp.getDataSet(alias).read(alias_values);
+        grp.getDataSet(source).read(source_values);
+        // Byte-identity is the spec's truth for an alias (the payload is a copy
+        // of the source) and is NaN-safe, unlike EXPECT_EQ's element-wise ==,
+        // which is false for the all-NaN dxdt/rms_delta channels even though the
+        // bits are identical. Compare raw payload bytes.
+        ASSERT_EQ(alias_values.size(), source_values.size())
+            << alias << " vs " << source;
+        EXPECT_EQ(0, std::memcmp(alias_values.data(), source_values.data(),
+                                 alias_values.size() * sizeof(double)))
+            << alias << " vs " << source << " (byte-identical payloads)";
+        std::string alias_of;
+        grp.getDataSet(alias).getAttribute("alias_of").read(alias_of);
+        EXPECT_EQ(alias_of, source);
+        EXPECT_EQ(read_units(alias), read_units(source));
+    };
+    auto expect_size_alias = [&](const std::string& alias,
+                                 const std::string& source) {
+        ASSERT_TRUE(grp.exist(alias)) << alias;
+        ASSERT_TRUE(grp.exist(source)) << source;
+        std::vector<std::size_t> alias_values;
+        std::vector<std::size_t> source_values;
+        grp.getDataSet(alias).read(alias_values);
+        grp.getDataSet(source).read(source_values);
+        EXPECT_EQ(alias_values, source_values) << alias << " vs " << source;
+        std::string alias_of;
+        grp.getDataSet(alias).getAttribute("alias_of").read(alias_of);
+        EXPECT_EQ(alias_of, source);
+        EXPECT_EQ(read_units(alias), read_units(source));
+    };
+
+    for (const std::string& prefix : {
+             "mean_net_dipole_eA",
+             "mean_net_dipole_eA_delta",
+             "mean_net_dipole_eA_abs_delta",
+             "mean_net_dipole_eA_delta_squared",
+             "mean_net_dipole_eA_dxdt"}) {
+        const std::string source = (prefix == "mean_net_dipole_eA")
+            ? "dipole_coherence"
+            : "dipole_coherence" + prefix.substr(std::string("mean_net_dipole_eA").size());
+        for (const std::string& suffix : {"_mean", "_m2", "_std", "_min", "_max"}) {
+            expect_double_alias(prefix + suffix, source + suffix);
+        }
+        expect_size_alias(prefix + "_min_frame", source + "_min_frame");
+        expect_size_alias(prefix + "_max_frame", source + "_max_frame");
+    }
+    expect_double_alias("mean_net_dipole_eA_rms_delta",
+                        "dipole_coherence_rms_delta");
+
+    EXPECT_EQ(read_units("dipole_order_parameter_mean"), "dimensionless");
+    EXPECT_EQ(read_units("dipole_order_parameter_m2"), "dimensionless^2");
+    EXPECT_EQ(read_units("dipole_order_parameter_delta_mean"), "dimensionless");
+    EXPECT_EQ(read_units("dipole_order_parameter_delta_m2"), "dimensionless^2");
+    EXPECT_EQ(read_units("dipole_order_parameter_abs_delta_mean"), "dimensionless");
+    EXPECT_EQ(read_units("dipole_order_parameter_abs_delta_m2"), "dimensionless^2");
+    EXPECT_EQ(read_units("dipole_order_parameter_delta_squared_mean"), "dimensionless^2");
+    EXPECT_EQ(read_units("dipole_order_parameter_delta_squared_m2"), "dimensionless^4");
+    EXPECT_EQ(read_units("dipole_order_parameter_dxdt_mean"), "dimensionless/ps");
+    EXPECT_EQ(read_units("dipole_order_parameter_dxdt_m2"), "dimensionless^2/ps^2");
+    EXPECT_EQ(read_units("dipole_order_parameter_rms_delta"), "dimensionless");
 
     fs::remove(h5_path);
 }
@@ -182,13 +268,16 @@ TEST(HydrationGeometryWelford, Integration1P9J) {
         const auto& w = tp.AtomAt(i).hydration_geometry_welford;
         EXPECT_TRUE(std::isfinite(w.dipole_alignment.mean));
         EXPECT_TRUE(std::isfinite(w.dipole_coherence.mean));
+        EXPECT_TRUE(std::isfinite(w.dipole_order_parameter.mean));
         EXPECT_TRUE(std::isfinite(w.shell_count.mean));
         EXPECT_EQ(w.n_frames, traj.FrameCount());
         EXPECT_EQ(w.dxdt_n, w.delta_n)
             << "atom " << i << ": dxdt_n != delta_n";
-        // alignment ∈ [-1, 1], coherence ∈ [0, 1] when computed
+        // alignment is a cos angle; order parameter is dimensionless [0, 1].
         EXPECT_GE(w.dipole_alignment.mean, -1.001);
         EXPECT_LE(w.dipole_alignment.mean,  1.001);
+        EXPECT_GE(w.dipole_order_parameter.mean, -0.001);
+        EXPECT_LE(w.dipole_order_parameter.mean,  1.001);
         if (std::abs(w.dipole_alignment.mean) > 1e-12) ++populated;
         max_abs_alignment = std::max(max_abs_alignment, std::abs(w.dipole_alignment.mean));
     }

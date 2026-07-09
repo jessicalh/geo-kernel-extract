@@ -341,6 +341,7 @@ bool Protein::PrepareForceFieldCharges(
     // and source_description_ at construction. ProteinBuildContext is
     // not the second authority on charge identity.
     SetForceFieldCharges(std::move(table));
+    force_field_charges_->MaterializeDerivedMbondi2PbRadii(*this);
     return true;
 }
 
@@ -410,6 +411,9 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
     for (size_t i = 0; i < atoms_.size(); ++i) {
         atoms_[i]->bond_indices = bonds->BondIndicesFor(i);
         atoms_[i]->parent_atom_index = bonds->HydrogenParentOf(i);
+    }
+    if (force_field_charges_) {
+        force_field_charges_->MaterializeDerivedMbondi2PbRadii(*this);
     }
 
     // Post-protonation second applicator pass: now that variant_index

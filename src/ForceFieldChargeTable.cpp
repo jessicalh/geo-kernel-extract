@@ -1,6 +1,10 @@
 #include "ForceFieldChargeTable.h"
+#include "Bond.h"
+#include "PhysicalConstants.h"
+#include "Protein.h"
 #include "ProteinConformation.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -54,6 +58,42 @@ double ForceFieldChargeTable::TotalCharge() const {
     return total;
 }
 
+int ForceFieldChargeTable::MaterializeDerivedMbondi2PbRadii(
+        const Protein& protein) {
+    int derived = 0;
+    const size_t n = std::min(values_.size(), protein.AtomCount());
+    for (size_t ai = 0; ai < n; ++ai) {
+        AtomChargeRadius& v = values_[ai];
+        if (v.status != ChargeAssignmentStatus::PlaceholderPbRadius) continue;
+
+        const Atom& atom = protein.AtomAt(ai);
+        bool h_bonded_to_nitrogen = false;
+        if (atom.element == Element::H) {
+            const size_t parent = atom.parent_atom_index;
+            if (parent != SIZE_MAX && parent < protein.AtomCount()) {
+                h_bonded_to_nitrogen =
+                    protein.AtomAt(parent).element == Element::N;
+            } else {
+                for (size_t bi : atom.bond_indices) {
+                    const Bond& b = protein.BondAt(bi);
+                    const size_t other =
+                        (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
+                    if (other < protein.AtomCount() &&
+                        protein.AtomAt(other).element == Element::N) {
+                        h_bonded_to_nitrogen = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        v.pb_radius = Mbondi2Radius(atom.element, h_bonded_to_nitrogen);
+        v.status = ChargeAssignmentStatus::DerivedMbondi2PbRadius;
+        ++derived;
+    }
+    return derived;
+}
+
 int ForceFieldChargeTable::AssignedCount() const {
     int assigned = 0;
     for (const auto& v : values_) {
@@ -70,12 +110,40 @@ int ForceFieldChargeTable::UnassignedCount() const {
     return unassigned;
 }
 
-int ForceFieldChargeTable::NonAuthoritativePbRadiusCount() const {
+int ForceFieldChargeTable::MatchedPbRadiusCount() const {
     int count = 0;
     for (const auto& v : values_) {
-        if (v.status != ChargeAssignmentStatus::Matched) ++count;
+        if (v.status == ChargeAssignmentStatus::Matched) ++count;
     }
     return count;
+}
+
+int ForceFieldChargeTable::DerivedMbondi2PbRadiusCount() const {
+    int count = 0;
+    for (const auto& v : values_) {
+        if (v.status == ChargeAssignmentStatus::DerivedMbondi2PbRadius) ++count;
+    }
+    return count;
+}
+
+int ForceFieldChargeTable::PlaceholderPbRadiusCount() const {
+    int count = 0;
+    for (const auto& v : values_) {
+        if (v.status == ChargeAssignmentStatus::PlaceholderPbRadius) ++count;
+    }
+    return count;
+}
+
+int ForceFieldChargeTable::MissingCount() const {
+    int count = 0;
+    for (const auto& v : values_) {
+        if (v.status == ChargeAssignmentStatus::Missing) ++count;
+    }
+    return count;
+}
+
+int ForceFieldChargeTable::NonAuthoritativePbRadiusCount() const {
+    return PlaceholderPbRadiusCount() + MissingCount();
 }
 
 }  // namespace nmr

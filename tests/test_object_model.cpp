@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "Protein.h"
+#include "ChargeSource.h"
 #include "ConformationResult.h"
+#include "ForceFieldChargeTable.h"
 #include "ProteinConformation.h"
 #include "PhysicalConstants.h"
 
@@ -154,6 +156,58 @@ TEST(ObjectModel, BackboneIndicesCached) {
     EXPECT_NE(ala.CA, Residue::NONE);
     EXPECT_NE(ala.C, Residue::NONE);
     EXPECT_NE(ala.O, Residue::NONE);
+}
+
+TEST(ObjectModel, PlaceholderPbRadiiMaterializeToDerivedMbondi2AfterFinalize) {
+    Protein protein;
+
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t ri = protein.AddResidue(residue);
+
+    auto n = Atom::Create(Element::N);
+    n->pdb_atom_name = "N";
+    n->residue_index = ri;
+    const size_t n_idx = protein.AddAtom(std::move(n));
+
+    auto h = Atom::Create(Element::H);
+    h->pdb_atom_name = "H";
+    h->residue_index = ri;
+    const size_t h_idx = protein.AddAtom(std::move(h));
+
+    protein.MutableResidueAt(ri).atom_indices = {n_idx, h_idx};
+
+    std::vector<AtomChargeRadius> values(2);
+    values[0] = {0.1, kCompatibilityPlaceholderPbRadiusAngstrom,
+                 ChargeAssignmentStatus::PlaceholderPbRadius};
+    values[1] = {0.2, kCompatibilityPlaceholderPbRadiusAngstrom,
+                 ChargeAssignmentStatus::PlaceholderPbRadius};
+
+    std::string error;
+    auto table = ForceFieldChargeTable::FromValues(
+        ForceField::Amber_ff14SB, ChargeModelKind::Preloaded, "test",
+        std::move(values), 2, error);
+    ASSERT_NE(table, nullptr) << error;
+    protein.SetForceFieldCharges(std::move(table));
+
+    protein.FinalizeConstruction({Vec3(0.0, 0.0, 0.0),
+                                  Vec3(1.01, 0.0, 0.0)});
+
+    const auto& charges = protein.ForceFieldCharges();
+    EXPECT_EQ(charges.MatchedPbRadiusCount(), 0);
+    EXPECT_EQ(charges.DerivedMbondi2PbRadiusCount(), 2);
+    EXPECT_EQ(charges.PlaceholderPbRadiusCount(), 0);
+    EXPECT_EQ(charges.MissingCount(), 0);
+    EXPECT_EQ(charges.NonAuthoritativePbRadiusCount(), 0);
+
+    EXPECT_TRUE(charges.PbRadiusAuthoritativeAt(0));
+    EXPECT_TRUE(charges.PbRadiusAuthoritativeAt(1));
+    EXPECT_DOUBLE_EQ(charges.PbRadiusAt(0), Mbondi2Radius(Element::N, false));
+    EXPECT_DOUBLE_EQ(charges.PbRadiusAt(1), Mbondi2Radius(Element::H, true));
+    EXPECT_DOUBLE_EQ(charges.PartialChargeAt(0), 0.1);
+    EXPECT_DOUBLE_EQ(charges.PartialChargeAt(1), 0.2);
 }
 
 TEST(ObjectModel, ResidueQueryMethods) {

@@ -53,13 +53,21 @@ public:
         return values_[atom_index].status == ChargeAssignmentStatus::Matched;
     }
     bool PbRadiusAuthoritativeAt(size_t atom_index) const {
-        return values_[atom_index].status == ChargeAssignmentStatus::Matched;
+        const auto status = values_[atom_index].status;
+        return status == ChargeAssignmentStatus::Matched ||
+               status == ChargeAssignmentStatus::DerivedMbondi2PbRadius;
     }
     const std::vector<AtomChargeRadius>& Values() const { return values_; }
+
+    int MaterializeDerivedMbondi2PbRadii(const Protein& protein);
 
     double TotalCharge() const;
     int AssignedCount() const;
     int UnassignedCount() const;
+    int MatchedPbRadiusCount() const;
+    int DerivedMbondi2PbRadiusCount() const;
+    int PlaceholderPbRadiusCount() const;
+    int MissingCount() const;
     int NonAuthoritativePbRadiusCount() const;
 
 private:

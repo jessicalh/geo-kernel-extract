@@ -319,8 +319,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── DSSP (DsspResult.cpp) ────────────────────────────────────
     ArraySpec("dssp_observed",    "dssp", np.ndarray,              None, False, "DSSP observation mask per atom: int8 1 when the parent residue mapped to a libdssp row, 0 otherwise",
               mechanism="secondary_structure"),
-    ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry: phi/psi = -libdssp radians, SASA, helix/sheet flags; phi/psi/SASA are NaN for unobserved residues",
-              units="radians", mechanism="secondary_structure"),
+    ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry, columns [phi_IUPAC_rad, psi_IUPAC_rad, sasa_A2, ss_helix, ss_sheet]: phi/psi are IUPAC-signed radians (-libdssp), SASA is A^2, helix/sheet are dimensionless flags; phi/psi/SASA are NaN for unobserved residues",
+              units="radians_for_phi_psi; Angstrom^2_for_sasa; dimensionless_for_flags", mechanism="secondary_structure"),
     ArraySpec("dssp_ss8",         "dssp", np.ndarray,              8,    False, "DSSP 8-class SS one-hot (H/G/I/E/B/T/S/C)",
               mechanism="secondary_structure"),
     ArraySpec("dssp_hbond_energy","dssp", np.ndarray,              4,    False, "DSSP H-bond energies (acc0/acc1/don0/don1)",
@@ -359,7 +359,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               mechanism="solvation"),
 
     # ── Hydration geometry — SASA-normal (HydrationGeometryResult.cpp) ─
-    ArraySpec("water_polarization", "water_polarization", np.ndarray, 10, False, "Water polarisation [dipole(3), normal(3), asym, align, coher, count]",
+    ArraySpec("water_polarization", "water_polarization", np.ndarray, 10, False, "Water polarisation [dipole(3), normal(3), asym, align, mean_net_dipole_eA legacy coherence, count]",
               mechanism="solvation"),
 
     # ── EEQ charges (EeqResult.cpp — Caldeweyher 2019) ─────────
@@ -533,9 +533,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="atom", mechanism="geometry"),
     ArraySpec("pyramidalization_center_type", "planar_geometry", np.ndarray, None, False, "Per-atom int8 PlanarGroupKind code: 0 None, 1 PeptideAmide, 2 SidechainAmide, 3 Guanidinium, 4 Imidazole, 5 Aromatic6Ring, 6 Aromatic5Ring, 7 Carboxylate, 8 AromaticHydroxyl, 9 AromaticOxide",
               native_axis="atom", mechanism="geometry"),
-    ArraySpec("omega_actual",      "planar_geometry", np.ndarray, None, False, "Per-residue ω (Cα-C-N-Cα to next), radians; NaN at C-term and X-Pro",
+    ArraySpec("omega_actual",      "planar_geometry", np.ndarray, None, False, "Per-residue ω (Cα-C-N-Cα to next), radians; NaN only when the covalent backbone successor omega is undefined",
               native_axis="residue", units="radians", mechanism="geometry"),
-    ArraySpec("omega_deviation",   "planar_geometry", np.ndarray, None, False, "Per-residue ω - π wrapped to (-π, π]; NaN where omega_actual is NaN",
+    ArraySpec("omega_deviation",   "planar_geometry", np.ndarray, None, False, "Per-residue WrapPi(ω - π) in [-π, π]; emitted for every well-defined covalent backbone successor including X→Pro; use omega_is_xpro to analyse X→Pro separately",
               native_axis="residue", units="radians", mechanism="geometry"),
     ArraySpec("aromatic_chi2",     "planar_geometry", np.ndarray, None, False, "Per-aromatic-ring χ₂ (parent residue, radians); ring-flip observable per Akke-Weininger 2023",
               native_axis="aromatic_ring", units="radians", mechanism="geometry"),
@@ -543,7 +543,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="saturated_ring", units="Å", mechanism="geometry"),
     ArraySpec("pucker_theta",      "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople phase angle (degrees, [0, 360))",
               native_axis="saturated_ring", units="degrees", mechanism="geometry"),
-    ArraySpec("omega_is_xpro",     "planar_geometry", np.ndarray, None, False, "Per-residue mask: 1 where the bond into i+1 is X→Pro (cis/trans isomerism is real signal there, not 'non-planar amide' deviation)",
+    ArraySpec("omega_is_xpro",     "planar_geometry", np.ndarray, None, False, "Per-residue mask: 1 where the covalent backbone successor is Pro; X→Pro cis/trans is real signal and is not NaN-filled",
               native_axis="residue", mechanism="geometry"),
 
     # ── Tripeptide DFT shielding ────────────────────────────────────

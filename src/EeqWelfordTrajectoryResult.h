@@ -41,9 +41,6 @@ public:
 
     size_t NumFrames() const { return n_frames_; }
 
-    int WriteFeatures(const TrajectoryProtein& tp,
-                      const std::string& output_dir) const override;
-
     void WriteH5Group(const TrajectoryProtein& tp,
                       HighFive::File& file) const override;
 

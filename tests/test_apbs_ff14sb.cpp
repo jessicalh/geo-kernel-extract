@@ -1,15 +1,61 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
-#include "PdbFileReader.h"
-#include "GeometryResult.h"
-#include "ChargeAssignmentResult.h"
 #include "ApbsFieldResult.h"
+#include "ChargeAssignmentResult.h"
+#include "ChargeSource.h"
+#include "ForceFieldChargeTable.h"
+#include "GeometryResult.h"
 #include "OperationLog.h"
+#include "PdbFileReader.h"
+#include "PhysicalConstants.h"
+#include "RunConfiguration.h"
+#include "Session.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
 #include <filesystem>
 #include <cmath>
 #include <numeric>
 
 using namespace nmr;
+
+namespace {
+
+constexpr const char* kTprFixtureProtein = "1P9J_5801";
+
+std::string TrrPathFor(const std::string& tpr_path) {
+    return std::filesystem::path(tpr_path).replace_extension(".trr").string();
+}
+
+std::string ProductionDirFor(const std::string& tpr_path) {
+    return std::filesystem::path(tpr_path).parent_path().string();
+}
+
+bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
+    return !fix.tpr_path.empty() &&
+           std::filesystem::exists(fix.tpr_path) &&
+           std::filesystem::exists(TrrPathFor(fix.tpr_path)) &&
+           std::filesystem::exists(fix.edr_path);
+}
+
+bool IsHydrogenOnNitrogen(const Protein& protein, size_t atom_index) {
+    const Atom& atom = protein.AtomAt(atom_index);
+    if (atom.element != Element::H) return false;
+    if (atom.parent_atom_index != SIZE_MAX) {
+        return protein.AtomAt(atom.parent_atom_index).element == Element::N;
+    }
+    for (const size_t bi : atom.bond_indices) {
+        const Bond& bond = protein.BondAt(bi);
+        const size_t other = (bond.atom_index_a == atom_index) ? bond.atom_index_b :
+                             (bond.atom_index_b == atom_index) ? bond.atom_index_a :
+                             SIZE_MAX;
+        if (other != SIZE_MAX && protein.AtomAt(other).element == Element::N) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
 
 
 
@@ -160,7 +206,7 @@ TEST_F(ApbsFF14SBTest, SphericalTensorRoundtripWithRealCharges) {
 
 
 // ---------------------------------------------------------------------------
-// Test 4: APBS with real charges differs from vacuum Coulomb
+// Test 4: APBS with real charges differs from direct Coulomb
 // (solvation screening changes field magnitude)
 // ---------------------------------------------------------------------------
 
@@ -226,14 +272,79 @@ TEST_F(ApbsFF14SBTest, DiffersFromVacuumCoulomb) {
         "=================================================\n",
         n_check, mean_apbs, mean_coulomb, differs, n_check);
 
-    // At least SOME atoms should show solvation screening effect.
-    // If APBS fell back to Coulomb, these would be identical.
-    // A genuine APBS solve with dielectric boundary should show differences
-    // for surface atoms. Even if fallback occurred, the test passes but
-    // prints a diagnostic.
+    // At least SOME atoms should show solvation screening effect. Identical
+    // APBS and direct Coulomb fields indicate an APBS test/setup problem.
     if (differs == 0) {
         fprintf(stderr,
             "WARNING: APBS and vacuum Coulomb fields are identical.\n"
-            "This may indicate APBS fell back to vacuum Coulomb.\n");
+            "This indicates an APBS test/setup problem.\n");
+    }
+}
+
+TEST(ApbsChargeProvenance, TprPlaceholderPbRadiiMaterializeBeforeProjection) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    const auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kTprFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    RunConfiguration config;
+    config.SetName("TprPbRadiusMaterialization");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs = true;
+    opts.skip_dssp = true;
+    config.SetStride(99999);
+
+    TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+
+    Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    Session session;
+    ASSERT_EQ(traj.Run(tp, config, session), kOk);
+    ASSERT_EQ(traj.FrameCount(), 1u);
+
+    const Protein& protein = tp.ProteinRef();
+    ASSERT_TRUE(protein.HasForceFieldCharges());
+    const ForceFieldChargeTable& table = protein.ForceFieldCharges();
+    EXPECT_GT(table.DerivedMbondi2PbRadiusCount(), 0);
+    EXPECT_EQ(table.PlaceholderPbRadiusCount(), 0);
+    EXPECT_EQ(table.MissingCount(), 0);
+    EXPECT_EQ(table.NonAuthoritativePbRadiusCount(), 0);
+
+    const ProteinConformation& conf = tp.CanonicalConformation();
+    ASSERT_TRUE(conf.HasResult<ChargeAssignmentResult>());
+
+    auto find_atom = [&](Element element, bool h_on_n_required) -> size_t {
+        for (size_t i = 0; i < protein.AtomCount(); ++i) {
+            const Atom& atom = protein.AtomAt(i);
+            if (atom.element != element) continue;
+            if (element == Element::H &&
+                IsHydrogenOnNitrogen(protein, i) != h_on_n_required) {
+                continue;
+            }
+            return i;
+        }
+        return SIZE_MAX;
+    };
+
+    const size_t amide_h = find_atom(Element::H, true);
+    const size_t non_amide_h = find_atom(Element::H, false);
+    const size_t oxygen = find_atom(Element::O, false);
+    ASSERT_NE(amide_h, SIZE_MAX);
+    ASSERT_NE(non_amide_h, SIZE_MAX);
+    ASSERT_NE(oxygen, SIZE_MAX);
+
+    for (const size_t ai : {amide_h, non_amide_h, oxygen}) {
+        const Atom& atom = protein.AtomAt(ai);
+        const bool h_on_n = IsHydrogenOnNitrogen(protein, ai);
+        const double expected = Mbondi2Radius(atom.element, h_on_n);
+        ASSERT_EQ(table.Values().at(ai).status,
+                  ChargeAssignmentStatus::DerivedMbondi2PbRadius)
+            << "atom " << ai;
+        EXPECT_DOUBLE_EQ(table.PbRadiusAt(ai), expected) << "atom " << ai;
+        EXPECT_DOUBLE_EQ(conf.AtomAt(ai).pb_radius, expected) << "atom " << ai;
+        EXPECT_DOUBLE_EQ(conf.AtomAt(ai).partial_charge,
+                         table.PartialChargeAt(ai)) << "atom " << ai;
+        EXPECT_TRUE(table.PbRadiusAuthoritativeAt(ai)) << "atom " << ai;
     }
 }

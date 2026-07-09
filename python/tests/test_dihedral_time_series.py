@@ -80,7 +80,10 @@ def _write_dihedral_time_series(f: h5py.File) -> dict:
     grp.attrs["chain_break_policy"] = (
         "BackboneConnected queries the LegacyAmber bond graph directly")
     grp.attrs["omega_deviation_policy"] = (
-        "WrapPi(omega - pi); emitted for X->Pro too")
+        "WrapPi(omega - pi) in [-pi, pi]. Emitted for every well-defined "
+        "covalent backbone successor including X->Pro. X->Pro is real "
+        "cis/trans signal; use omega_is_xpro for separate consumer "
+        "analysis. NaN only when omega is undefined.")
     grp.attrs["rama_region_legend"] = (
         "0=unassigned, 1=alphaR, 2=beta, 3=alphaL, 4=PPII, 5=other")
     grp.attrs["rama_region_boundaries"] = (
@@ -272,7 +275,17 @@ def test_dihedral_convention_attrs(tmp_path):
     assert "IUPAC" in g.angle_convention
     assert "DSSP" in g.angle_convention
     assert "bond graph" in g.chain_break_policy
-    assert "X->Pro" in g.omega_deviation_policy
+    assert g.omega_deviation_policy == (
+        "WrapPi(omega - pi) in [-pi, pi]. Emitted for every well-defined "
+        "covalent backbone successor including X->Pro. X->Pro is real "
+        "cis/trans signal; use omega_is_xpro for separate consumer "
+        "analysis. NaN only when omega is undefined.")
+    forbidden = [
+        "X-Pro NaN", "PlanarGeometryResult.cpp:", ".h:",
+        "header doc claims",
+    ]
+    for needle in forbidden:
+        assert needle not in g.omega_deviation_policy
     assert "alphaR" in g.rama_region_legend
     assert "Resolution order" in g.rama_region_boundaries
     assert "ring-flip" in g.chi_symmetry_caveats

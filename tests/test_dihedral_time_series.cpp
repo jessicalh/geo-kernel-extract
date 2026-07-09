@@ -236,13 +236,25 @@ TEST(DihedralTimeSeries, H5RoundTrip) {
     }
 
     // Convention pin attrs — both new ones added in cleanup pass.
-    std::string value_range, chunking_policy, source_policy;
+    std::string value_range, chunking_policy, source_policy, omega_policy;
     grp.getAttribute("value_range").read(value_range);
     grp.getAttribute("chunking_policy").read(chunking_policy);
     grp.getAttribute("source_attached_policy").read(source_policy);
+    grp.getAttribute("omega_deviation_policy").read(omega_policy);
     EXPECT_NE(value_range.find("[-pi, pi]"), std::string::npos);
     EXPECT_NE(chunking_policy.find("{R, min(T, 64)}"), std::string::npos);
     EXPECT_NE(source_policy.find("always_attached"), std::string::npos);
+    EXPECT_EQ(omega_policy,
+        "WrapPi(omega - pi) in [-pi, pi]. Emitted for every well-defined "
+        "covalent backbone successor including X->Pro. X->Pro is real "
+        "cis/trans signal; use omega_is_xpro for separate consumer "
+        "analysis. NaN only when omega is undefined.");
+    for (const char* forbidden : {
+            "X-Pro NaN", "PlanarGeometryResult.cpp:", ".h:",
+            "header doc claims"}) {
+        EXPECT_EQ(omega_policy.find(forbidden), std::string::npos)
+            << forbidden;
+    }
 
     fs::remove(h5_path);
 }

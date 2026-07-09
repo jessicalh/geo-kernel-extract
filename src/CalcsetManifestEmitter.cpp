@@ -1,4 +1,5 @@
 #include "CalcsetManifestEmitter.h"
+#include "AppVersion.h"
 
 #include <nlohmann/json.hpp>
 
@@ -7,7 +8,6 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -105,22 +105,6 @@ bool RequireFile(const fs::path& p, const char* label, std::string& error) {
     return true;
 }
 
-std::optional<std::string> ReadExtractorVersion(const fs::path& manifest_path) {
-    std::ifstream in(manifest_path);
-    if (!in) return std::nullopt;
-
-    try {
-        const auto j = nlohmann::ordered_json::parse(in);
-        if (j.contains("extractor_version") && j["extractor_version"].is_string()) {
-            const std::string v = j["extractor_version"].get<std::string>();
-            if (!v.empty()) return v;
-        }
-    } catch (...) {
-        return std::nullopt;
-    }
-    return std::nullopt;
-}
-
 nlohmann::ordered_json BaseManifest(
         const CalcsetManifestEmitter::Identity& identity,
         const std::string& kind) {
@@ -134,15 +118,13 @@ nlohmann::ordered_json BaseManifest(
 }
 
 void AddMetadata(nlohmann::ordered_json& j,
-                 const Timestamp& timestamp,
-                 const std::optional<std::string>& extractor_version) {
+                 const Timestamp& timestamp) {
     j["metadata"] = nlohmann::ordered_json{
         {"generated_at_utc", timestamp.iso_utc},
         {"lgs_writer", kLgsWriter},
+        {"app_version", AppVersion()},
+        {"app_version_scope", AppVersionScope()},
     };
-    if (extractor_version && !extractor_version->empty()) {
-        j["metadata"]["producer_extractor_version"] = *extractor_version;
-    }
 }
 
 CalcsetManifestEmitter::Result WriteJson(
@@ -344,7 +326,7 @@ CalcsetManifestEmitter::Result CalcsetManifestEmitter::WriteSinglePose(
         {"pose_dir", RelPath(root, pose_dir)},
         {"extraction_manifest", RelPath(root, extraction_manifest)},
     };
-    AddMetadata(j, timestamp, ReadExtractorVersion(extraction_manifest));
+    AddMetadata(j, timestamp);
 
     return WriteJson(root, identity, timestamp, j);
 }
@@ -406,7 +388,7 @@ CalcsetManifestEmitter::Result CalcsetManifestEmitter::WriteTrajectory(
     if (auto dft = BuildDftBlock(root)) {
         j["dft"] = *dft;
     }
-    AddMetadata(j, timestamp, ReadExtractorVersion(extraction_manifest));
+    AddMetadata(j, timestamp);
 
     return WriteJson(root, identity, timestamp, j);
 }
@@ -433,7 +415,7 @@ CalcsetManifestEmitter::Result CalcsetManifestEmitter::WriteMutantPair(
         {"wt_lgs", RelPath(root, wt_lgs)},
         {"ala_lgs", RelPath(root, ala_lgs)},
     };
-    AddMetadata(j, timestamp, std::nullopt);
+    AddMetadata(j, timestamp);
 
     return WriteJson(root, identity, timestamp, j);
 }

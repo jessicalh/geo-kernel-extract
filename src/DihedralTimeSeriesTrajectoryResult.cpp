@@ -396,21 +396,10 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "bond as PeptideCN; cyclic case not numerically validated on "
         "the current linear-only test fleet -- see Protein.h."));
     grp.createAttribute("omega_deviation_policy", std::string(
-        "WrapPi(omega - pi) in [-pi, pi]. Emitted for EVERY well-defined "
-        "peptide bond INCLUDING X->Pro bonds (cis/trans isomerism at "
-        "X-Pro is real signal, not a deviation -- use the omega_is_xpro "
-        "static mask to flag those rows for consumer-side interpretation). "
-        "Matches the PlanarGeometryResult.cpp:302-303 production impl. "
-        "PG's own header doc claims NaN-fill at X->Pro but the impl "
-        "emits the actual value; this TR aligns with PG impl. "
-        "Recommended consumer pattern for aggregate stats (X-Pro cis "
-        "lobe is bimodal and would otherwise leak into 'normal' tails): "
-        "  omega_dev_normal = omega_deviation[~omega_is_xpro[:, None]] "
-        "  omega_dev_xpro   = omega_deviation[omega_is_xpro[:, None]] "
-        "  # analyse the X-Pro distribution separately (~5% cis vs trans). "
-        "WrapPi uses std::remainder for bit-identical agreement with "
-        "PlanarGeometryResult.cpp::WrapPi (math-review MED-2 fix, "
-        "2026-05-19)."));
+        "WrapPi(omega - pi) in [-pi, pi]. Emitted for every well-defined "
+        "covalent backbone successor including X->Pro. X->Pro is real "
+        "cis/trans signal; use omega_is_xpro for separate consumer "
+        "analysis. NaN only when omega is undefined."));
     grp.createAttribute("rama_region_legend", std::string(
         "0=unassigned, 1=alphaR, 2=beta, 3=alphaL, 4=PPII, 5=other"));
     grp.createAttribute("rama_region_boundaries", std::string(

@@ -22,9 +22,11 @@ namespace nmr {
 
 class ProteinConformation;
 
-// NOTE: vestigial. The runtime cutoff comes from CalculatorConfig
-// "mopac_mcconnell_bond_anisotropy_cutoff"; this constant is referenced
-// only in comments/docs, never in the math path.
+// NOTE: vestigial. The unified McConnell BO channel uses
+// "mcconnell_bond_anisotropy_cutoff"; the old
+// "mopac_mcconnell_bond_anisotropy_cutoff" config key is intentionally
+// absent. This constant is referenced only in comments/docs, never in
+// the math path.
 constexpr double MOPAC_MCCONNELL_CUTOFF_A = 10.0;
 
 

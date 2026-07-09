@@ -9,7 +9,8 @@
 //   sasa_first_shell_count    uint32    first-shell water O count (statistical weight)
 //   sasa_half_shell_asymmetry scalar    fraction of waters on solvent-exposed side
 //   sasa_dipole_alignment     scalar    cos(net dipole, surface normal)
-//   sasa_dipole_coherence     scalar    |Σ d_i| / n
+//   sasa_dipole_coherence     scalar    legacy mean net dipole |Σd_i|/n, e·Å
+//   sasa_dipole_order_parameter scalar  |Σd_i| / Σ|d_i|, dimensionless
 //
 // The alignment / coherence / asymmetry trio IS the polarisation signal —
 // calibration weight on these channels is what we want to learn.
@@ -31,9 +32,10 @@
 //     first_shell_count         (N, T)     uint32   shell-occupancy count
 //     half_shell_asymmetry      (N, T)     float64  fraction
 //     dipole_alignment          (N, T)     float64  cos angle
-//     dipole_coherence          (N, T)     float64  e·Å (|Σd_i|/n_shell —
-//                                                   NOT [0,1] order param,
-//                                                   R6 codex 2026-05-18)
+//     dipole_coherence          (N, T)     float64  e·Å legacy name for
+//                                                   mean_net_dipole_eA
+//     mean_net_dipole_eA        (N, T)     float64  alias of dipole_coherence
+//     dipole_order_parameter    (N, T)     float64  |Σd_i| / Σ|d_i|
 //     frame_indices             (T,)       uint64
 //     frame_times               (T,)       float64  ps
 //     source_attached_per_frame (T,)       uint8    1=attached, 0=absent
@@ -47,7 +49,7 @@
 //       surface_normal_parity      = "1o"
 //       reference_frame            = "SASA_normal"
 //       polarisation_signal_channels =
-//           "dipole_alignment,dipole_coherence,half_shell_asymmetry"
+//           "dipole_alignment,dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,half_shell_asymmetry"
 //
 
 #include "TrajectoryResult.h"
@@ -98,6 +100,7 @@ private:
     std::vector<std::vector<double>>        half_shell_asymmetry_;
     std::vector<std::vector<double>>        dipole_alignment_;
     std::vector<std::vector<double>>        dipole_coherence_;
+    std::vector<std::vector<double>>        dipole_order_parameter_;
     std::vector<std::size_t>                frame_indices_;
     std::vector<double>                     frame_times_;
     std::vector<std::uint8_t>               source_attached_per_frame_;

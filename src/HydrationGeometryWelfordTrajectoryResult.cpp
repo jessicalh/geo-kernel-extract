@@ -34,6 +34,7 @@ HydrationGeometryWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
     r->prev_half_shell_asymmetry_.assign(N, 0.0);
     r->prev_dipole_alignment_.assign(N, 0.0);
     r->prev_dipole_coherence_.assign(N, 0.0);
+    r->prev_dipole_order_parameter_.assign(N, 0.0);
     r->prev_shell_count_.assign(N, 0.0);
     r->prev_valid_.assign(N, false);
     r->prev_time_.assign(N, 0.0);
@@ -81,10 +82,12 @@ void HydrationGeometryWelfordTrajectoryResult::Compute(
         const double hsa  = a.sasa_half_shell_asymmetry;
         const double dal  = a.sasa_dipole_alignment;
         const double dco  = a.sasa_dipole_coherence;
+        const double dop  = a.sasa_dipole_order_parameter;
         const double sct  = static_cast<double>(a.sasa_first_shell_count);
         WelfordUpdate(w.half_shell_asymmetry, hsa, n_new, frame_idx);
         WelfordUpdate(w.dipole_alignment,     dal, n_new, frame_idx);
         WelfordUpdate(w.dipole_coherence,     dco, n_new, frame_idx);
+        WelfordUpdate(w.dipole_order_parameter, dop, n_new, frame_idx);
         WelfordUpdate(w.shell_count,          sct, n_new, frame_idx);
 
         w.n_frames = n_new;
@@ -112,6 +115,10 @@ void HydrationGeometryWelfordTrajectoryResult::Compute(
                 w.dipole_coherence_delta,
                 w.dipole_coherence_abs_delta,
                 w.dipole_coherence_delta_squared);
+            upd(dop, prev_dipole_order_parameter_[i],
+                w.dipole_order_parameter_delta,
+                w.dipole_order_parameter_abs_delta,
+                w.dipole_order_parameter_delta_squared);
             upd(sct, prev_shell_count_[i],
                 w.shell_count_delta,
                 w.shell_count_abs_delta,
@@ -128,6 +135,8 @@ void HydrationGeometryWelfordTrajectoryResult::Compute(
                               (dal - prev_dipole_alignment_[i]) / dt, dxn, frame_idx);
                 WelfordUpdate(w.dipole_coherence_dxdt,
                               (dco - prev_dipole_coherence_[i]) / dt, dxn, frame_idx);
+                WelfordUpdate(w.dipole_order_parameter_dxdt,
+                              (dop - prev_dipole_order_parameter_[i]) / dt, dxn, frame_idx);
                 WelfordUpdate(w.shell_count_dxdt,
                               (sct - prev_shell_count_[i]) / dt, dxn, frame_idx);
                 w.dxdt_n = dxn;
@@ -136,6 +145,7 @@ void HydrationGeometryWelfordTrajectoryResult::Compute(
         prev_half_shell_asymmetry_[i] = hsa;
         prev_dipole_alignment_[i]     = dal;
         prev_dipole_coherence_[i]     = dco;
+        prev_dipole_order_parameter_[i] = dop;
         prev_shell_count_[i]          = sct;
         prev_time_[i]                 = time_ps;
         prev_valid_[i]                = true;
@@ -157,6 +167,7 @@ void HydrationGeometryWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.half_shell_asymmetry, w.n_frames);
         WelfordFinalize(w.dipole_alignment,     w.n_frames);
         WelfordFinalize(w.dipole_coherence,     w.n_frames);
+        WelfordFinalize(w.dipole_order_parameter, w.n_frames);
         WelfordFinalize(w.shell_count,          w.n_frames);
 
         auto fin = [&](WelfordMoments& d_, WelfordMoments& ad,
@@ -177,6 +188,10 @@ void HydrationGeometryWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         fin(w.dipole_coherence_delta, w.dipole_coherence_abs_delta,
             w.dipole_coherence_delta_squared, w.dipole_coherence_dxdt,
             w.dipole_coherence_rms_delta);
+        fin(w.dipole_order_parameter_delta, w.dipole_order_parameter_abs_delta,
+            w.dipole_order_parameter_delta_squared,
+            w.dipole_order_parameter_dxdt,
+            w.dipole_order_parameter_rms_delta);
         fin(w.shell_count_delta, w.shell_count_abs_delta,
             w.shell_count_delta_squared, w.shell_count_dxdt,
             w.shell_count_rms_delta);
@@ -243,10 +258,13 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("reference_frame",        std::string("SASA_normal"));
     grp.createAttribute("dipole_alignment_zero_sentinel",
         std::string("0.0 when |dipole_sum| < NEAR_ZERO_NORM "
-                    "(HydrationGeometryResult.cpp:106-108) — bimodal: "
+                    "or |surface_normal| < NEAR_ZERO_NORM; bimodal: "
                     "real zero alignment vs zero-magnitude denominator"));
     grp.createAttribute("polarisation_signal_channels",
-        std::string("dipole_alignment,dipole_coherence,half_shell_asymmetry"));
+        std::string("dipole_alignment,dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,half_shell_asymmetry"));
+    grp.createAttribute("dipole_coherence_alias", std::string("mean_net_dipole_eA"));
+    grp.createAttribute("dipole_order_parameter_formula",
+        std::string("|sum d_i| / sum |d_i|"));
     grp.createAttribute("units",                  std::string("mixed_see_per_dataset"));
 
     auto get_w = [&tp](std::size_t i) -> const HydrationGeometryWelfordState& {
@@ -256,7 +274,8 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       std::function<const WelfordMoments&(std::size_t)> get) {
+                       std::function<const WelfordMoments&(std::size_t)> get,
+                       const std::string& alias_of_prefix = std::string{}) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<std::size_t> minf(N), maxf(N);
         for (std::size_t i = 0; i < N; ++i) {
@@ -266,18 +285,28 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
             minf[i] = w.min_frame; maxf[i] = w.max_frame;
         }
         auto put = [&](const std::string& n_, const std::vector<double>& v,
-                       const std::string& u) {
-            auto ds = grp.createDataSet(n_, v); ds.createAttribute("units", u);
+                       const std::string& u, const std::string& suffix) {
+            auto ds = grp.createDataSet(n_, v);
+            ds.createAttribute("units", u);
+            if (!alias_of_prefix.empty()) {
+                ds.createAttribute("alias_of", alias_of_prefix + suffix);
+            }
         };
-        put(prefix + "_mean", mean, base_units);
-        put(prefix + "_m2",   m2,   m2_units);
-        put(prefix + "_std",  std_, base_units);
-        put(prefix + "_min",  min_, base_units);
-        put(prefix + "_max",  max_, base_units);
+        put(prefix + "_mean", mean, base_units, "_mean");
+        put(prefix + "_m2",   m2,   m2_units,   "_m2");
+        put(prefix + "_std",  std_, base_units, "_std");
+        put(prefix + "_min",  min_, base_units, "_min");
+        put(prefix + "_max",  max_, base_units, "_max");
         auto dminf = grp.createDataSet(prefix + "_min_frame", minf);
         dminf.createAttribute("units", std::string("frame_index"));
+        if (!alias_of_prefix.empty()) {
+            dminf.createAttribute("alias_of", alias_of_prefix + "_min_frame");
+        }
         auto dmaxf = grp.createDataSet(prefix + "_max_frame", maxf);
         dmaxf.createAttribute("units", std::string("frame_index"));
+        if (!alias_of_prefix.empty()) {
+            dmaxf.createAttribute("alias_of", alias_of_prefix + "_max_frame");
+        }
     };
 
     // Vec3 channels: per-component
@@ -307,8 +336,8 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     const std::string kFracSq = "fraction^2";
     const std::string kCos = "cos_angle";
     const std::string kCosSq = "cos_angle^2";
-    // dipole_coherence: source formula |Σ d_i|/n_shell is e·Å, not a
-    // [0,1] dimensionless order parameter.
+    const std::string kUnitSq = "dimensionless^2";
+    // dipole_coherence is the legacy name for mean net dipole.
     const std::string kOrd = "e_Angstrom";
     const std::string kOrdSq = "e^2_Angstrom^2";
     emit_1d("half_shell_asymmetry", kFrac, kFracSq,
@@ -323,14 +352,24 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
             [get_w](std::size_t i) -> const WelfordMoments& {
                 return get_w(i).dipole_coherence;
             });
+    emit_1d("mean_net_dipole_eA", kOrd, kOrdSq,
+            [get_w](std::size_t i) -> const WelfordMoments& {
+                return get_w(i).dipole_coherence;
+            },
+            "dipole_coherence");
+    emit_1d("dipole_order_parameter", kUnit, kUnitSq,
+            [get_w](std::size_t i) -> const WelfordMoments& {
+                return get_w(i).dipole_order_parameter;
+            });
     emit_1d("shell_count", kUnit, kUnit,
             [get_w](std::size_t i) -> const WelfordMoments& {
                 return get_w(i).shell_count;
             });
 
-    // Delta variants on the 4 primary scalars
+    // Delta variants on the primary scalar channels
     struct DeltaBundle {
         const char* base;
+        const char* alias_of_base;
         const std::string& base_units;
         const std::string& m2_units;
         const std::string& sq_units;
@@ -345,6 +384,7 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     };
     const std::string kFrac4   = "fraction^4";
     const std::string kCos4    = "cos_angle^4";
+    const std::string kUnit4   = "dimensionless^4";
     const std::string kOrd4    = "e^4_Angstrom^4";
     const std::string kFracRate = "fraction/ps";
     const std::string kFracRateSq = "fraction^2/ps^2";
@@ -352,28 +392,42 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     const std::string kCosRateSq = "cos_angle^2/ps^2";
     const std::string kOrdRate = "e_Angstrom/ps";
     const std::string kOrdRateSq = "e^2_Angstrom^2/ps^2";
+    const std::string kUnitRate = "dimensionless/ps";
+    const std::string kUnitRateSq = "dimensionless^2/ps^2";
     const std::string kCountRate = "count/ps";
     const std::string kCountRateSq = "count^2/ps^2";
     const std::vector<DeltaBundle> bundles = {
-        { "half_shell_asymmetry", kFrac, kFracSq, kFracSq, kFrac4, kFracRate, kFracRateSq,
+        { "half_shell_asymmetry", "", kFrac, kFracSq, kFracSq, kFrac4, kFracRate, kFracRateSq,
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.half_shell_asymmetry_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.half_shell_asymmetry_abs_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.half_shell_asymmetry_delta_squared; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.half_shell_asymmetry_dxdt; },
           [](const HydrationGeometryWelfordState& w) -> double { return w.half_shell_asymmetry_rms_delta; } },
-        { "dipole_alignment", kCos, kCosSq, kCosSq, kCos4, kCosRate, kCosRateSq,
+        { "dipole_alignment", "", kCos, kCosSq, kCosSq, kCos4, kCosRate, kCosRateSq,
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_alignment_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_alignment_abs_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_alignment_delta_squared; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_alignment_dxdt; },
           [](const HydrationGeometryWelfordState& w) -> double { return w.dipole_alignment_rms_delta; } },
-        { "dipole_coherence", kOrd, kOrdSq, kOrdSq, kOrd4, kOrdRate, kOrdRateSq,
+        { "dipole_coherence", "", kOrd, kOrdSq, kOrdSq, kOrd4, kOrdRate, kOrdRateSq,
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_abs_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_delta_squared; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_dxdt; },
           [](const HydrationGeometryWelfordState& w) -> double { return w.dipole_coherence_rms_delta; } },
-        { "shell_count", kUnit, kUnit, kUnit, kUnit, kCountRate, kCountRateSq,
+        { "mean_net_dipole_eA", "dipole_coherence", kOrd, kOrdSq, kOrdSq, kOrd4, kOrdRate, kOrdRateSq,
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_delta; },
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_abs_delta; },
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_delta_squared; },
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_coherence_dxdt; },
+          [](const HydrationGeometryWelfordState& w) -> double { return w.dipole_coherence_rms_delta; } },
+        { "dipole_order_parameter", "", kUnit, kUnitSq, kUnitSq, kUnit4, kUnitRate, kUnitRateSq,
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_order_parameter_delta; },
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_order_parameter_abs_delta; },
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_order_parameter_delta_squared; },
+          [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.dipole_order_parameter_dxdt; },
+          [](const HydrationGeometryWelfordState& w) -> double { return w.dipole_order_parameter_rms_delta; } },
+        { "shell_count", "", kUnit, kUnit, kUnit, kUnit, kCountRate, kCountRateSq,
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.shell_count_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.shell_count_abs_delta; },
           [](const HydrationGeometryWelfordState& w) -> const WelfordMoments& { return w.shell_count_delta_squared; },
@@ -382,18 +436,26 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     };
     for (const auto& b : bundles) {
         emit_1d(std::string(b.base) + "_delta",         b.base_units, b.m2_units,
-                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.d(get_w(i)); });
+                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.d(get_w(i)); },
+                std::string(b.alias_of_base).empty() ? std::string{} : std::string(b.alias_of_base) + "_delta");
         emit_1d(std::string(b.base) + "_abs_delta",     b.base_units, b.m2_units,
-                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.ad(get_w(i)); });
+                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.ad(get_w(i)); },
+                std::string(b.alias_of_base).empty() ? std::string{} : std::string(b.alias_of_base) + "_abs_delta");
         emit_1d(std::string(b.base) + "_delta_squared", b.sq_units,   b.sq_m2_units,
-                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.sd(get_w(i)); });
+                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.sd(get_w(i)); },
+                std::string(b.alias_of_base).empty() ? std::string{} : std::string(b.alias_of_base) + "_delta_squared");
         emit_1d(std::string(b.base) + "_dxdt",          b.rate_units, b.rate_m2_units,
-                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.dx(get_w(i)); });
+                [get_w, &b](std::size_t i) -> const WelfordMoments& { return b.dx(get_w(i)); },
+                std::string(b.alias_of_base).empty() ? std::string{} : std::string(b.alias_of_base) + "_dxdt");
 
         std::vector<double> rms(N);
         for (std::size_t i = 0; i < N; ++i) rms[i] = b.rms(get_w(i));
         auto rms_ds = grp.createDataSet(std::string(b.base) + "_rms_delta", rms);
         rms_ds.createAttribute("units", b.base_units);
+        if (!std::string(b.alias_of_base).empty()) {
+            rms_ds.createAttribute(
+                "alias_of", std::string(b.alias_of_base) + "_rms_delta");
+        }
     }
 
     // Provenance counters

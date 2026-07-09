@@ -34,6 +34,7 @@ HydrationGeometryTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp)
     r->half_shell_asymmetry_.assign(N, {});
     r->dipole_alignment_.assign(N, {});
     r->dipole_coherence_.assign(N, {});
+    r->dipole_order_parameter_.assign(N, {});
     return r;
 }
 
@@ -62,6 +63,7 @@ void HydrationGeometryTimeSeriesTrajectoryResult::Compute(
             half_shell_asymmetry_[i].push_back(a.sasa_half_shell_asymmetry);
             dipole_alignment_[i].push_back(a.sasa_dipole_alignment);
             dipole_coherence_[i].push_back(a.sasa_dipole_coherence);
+            dipole_order_parameter_[i].push_back(a.sasa_dipole_order_parameter);
         } else {
             dipole_vector_[i].push_back(Vec3::Zero());
             surface_normal_[i].push_back(Vec3::Zero());
@@ -69,6 +71,7 @@ void HydrationGeometryTimeSeriesTrajectoryResult::Compute(
             half_shell_asymmetry_[i].push_back(0.0);
             dipole_alignment_[i].push_back(0.0);
             dipole_coherence_[i].push_back(0.0);
+            dipole_order_parameter_[i].push_back(0.0);
         }
     }
     frame_indices_.push_back(frame_idx);
@@ -132,7 +135,10 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
     // frames — never aggregate cross-frame without checking this attr.
     grp.createAttribute("reference_frame",            std::string("SASA_normal"));
     grp.createAttribute("polarisation_signal_channels",
-        std::string("dipole_alignment,dipole_coherence,half_shell_asymmetry"));
+        std::string("dipole_alignment,dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,half_shell_asymmetry"));
+    grp.createAttribute("dipole_coherence_alias",     std::string("mean_net_dipole_eA"));
+    grp.createAttribute("dipole_order_parameter_formula",
+        std::string("|sum d_i| / sum |d_i|"));
 
     auto emit_vec3 = [&](const std::string& name,
                          const std::vector<std::vector<Vec3>>& src,
@@ -159,7 +165,8 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
 
     auto emit_scalar = [&](const std::string& name,
                            const std::vector<std::vector<double>>& src,
-                           const std::string& units) {
+                           const std::string& units,
+                           const std::string& alias_of = std::string{}) {
         std::vector<double> flat(N * T);
         for (std::size_t i = 0; i < N; ++i) {
             for (std::size_t t = 0; t < T; ++t) {
@@ -172,14 +179,17 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
+        if (!alias_of.empty()) ds.createAttribute("alias_of", alias_of);
     };
     emit_scalar("half_shell_asymmetry", half_shell_asymmetry_, "fraction");
     emit_scalar("dipole_alignment",     dipole_alignment_,     "cos_angle");
-    // dipole_coherence is not a dimensionless order parameter despite the
-    // name. HydrationGeometryResult computes `|Σ d_i| / n_shell`: numerator
-    // in e·Å, denominator dimensionless, result in e·Å. A [0,1]
-    // dimensionless coherence would divide by `Σ |d_i|` instead.
+    // dipole_coherence is the legacy name for mean net dipole, not the
+    // dimensionless order parameter.
     emit_scalar("dipole_coherence",     dipole_coherence_,     "e_Angstrom");
+    emit_scalar("mean_net_dipole_eA",   dipole_coherence_,     "e_Angstrom",
+                "dipole_coherence");
+    emit_scalar("dipole_order_parameter", dipole_order_parameter_,
+                "dimensionless");
 
     // Shell count uint32; absent sentinel like WaterFieldTS.
     {

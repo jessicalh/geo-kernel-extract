@@ -446,7 +446,8 @@ public:
     Vec3 water_surface_normal = Vec3::Zero();  // copy of sasa_normal for this block
     double sasa_half_shell_asymmetry = 0.0;    // exposed/total using SASA normal (not COM)
     double sasa_dipole_alignment = 0.0;        // cos(net dipole, SASA normal)
-    double sasa_dipole_coherence = 0.0;        // |Σ dᵢ| / n — ordered vs random
+    double sasa_dipole_coherence = 0.0;        // legacy mean net dipole |Σ dᵢ| / n, e_Angstrom
+    double sasa_dipole_order_parameter = 0.0;  // |Σ dᵢ| / Σ|dᵢ|, dimensionless [0, 1]
     int sasa_first_shell_count = 0;            // first-shell water O count
 
     // === EEQ charges (EeqResult — Caldeweyher 2019) ===

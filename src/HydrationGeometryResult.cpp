@@ -4,6 +4,7 @@
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace nmr {
@@ -58,6 +59,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
 
         // Accumulate first-shell water dipoles
         Vec3 dipole_sum = Vec3::Zero();
+        double dipole_norm_sum = 0.0;
         int n_exposed = 0;
         int n_buried = 0;
         int n_shell = 0;
@@ -78,7 +80,9 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
             ++n_shell;
 
             // Accumulate water dipole
-            dipole_sum += solvent.waters[wi].Dipole();
+            const Vec3 water_dipole = solvent.waters[wi].Dipole();
+            dipole_sum += water_dipole;
+            dipole_norm_sum += water_dipole.norm();
 
             // Half-shell: is this water on the exposed side (along surface normal)
             // or the buried side (against normal)?
@@ -130,14 +134,19 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         else
             atom.sasa_dipole_alignment = 0.0;
 
-        // Dipole coherence: |Σ dᵢ| / n
-        // Measures how ordered vs random the first-shell water dipoles are.
-        // Fully aligned → coherence ≈ magnitude of one water dipole.
-        // Random → coherence → 0 as n → ∞.
+        // Legacy mean net dipole: |Σ dᵢ| / n_shell, units e_Angstrom.
         atom.sasa_dipole_coherence =
             (n_shell > 0)
             ? dip_mag / static_cast<double>(n_shell)
             : 0.0;
+
+        // Dimensionless order parameter: |Σ dᵢ| / Σ|dᵢ|.
+        if (n_shell > 0 && dipole_norm_sum > near_zero) {
+            atom.sasa_dipole_order_parameter = std::clamp(
+                dip_mag / dipole_norm_sum, 0.0, 1.0);
+        } else {
+            atom.sasa_dipole_order_parameter = 0.0;
+        }
     }
 
     OperationLog::Info(LogCalcOther, "HydrationGeometryResult",

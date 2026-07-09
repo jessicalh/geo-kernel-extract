@@ -126,16 +126,26 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     const Protein& protein = conf.ProteinRef();
     const size_t n_atoms = conf.AtomCount();
     const auto& charge_result = conf.Result<ChargeAssignmentResult>();
-    const int non_authoritative_radii =
-        charge_result.ChargeTable().NonAuthoritativePbRadiusCount();
-    if (non_authoritative_radii > 0) {
-        OperationLog::Warn("ApbsFieldResult::Compute",
-            "APBS ran with " + std::to_string(non_authoritative_radii) +
-            " atoms on the flat 1.5 A placeholder PB radius "
-            "(kCompatibilityPlaceholderPbRadiusAngstrom; real per-element "
-            "ff14SB->PB radii are not yet wired). The PB dielectric boundary "
-            "is therefore placeholder-quality: this frame's apbs_E / apbs_efg "
-            "are fully populated and finite but NOT physically validated.");
+    const ForceFieldChargeTable& charge_table = charge_result.ChargeTable();
+    const int matched_radii = charge_table.MatchedPbRadiusCount();
+    const int derived_radii = charge_table.DerivedMbondi2PbRadiusCount();
+    const int placeholder_radii = charge_table.PlaceholderPbRadiusCount();
+    const int missing_radii = charge_table.MissingCount();
+    if (placeholder_radii + missing_radii > 0) {
+        OperationLog::Error("ApbsFieldResult::Compute",
+            "PB radius provenance blocks APBS: matched=" +
+            std::to_string(matched_radii) +
+            " derived_mbondi2=" + std::to_string(derived_radii) +
+            " placeholder=" + std::to_string(placeholder_radii) +
+            " missing=" + std::to_string(missing_radii));
+        return false;
+    }
+    if (derived_radii > 0) {
+        OperationLog::Info(LogAPBS, "ApbsFieldResult::Compute",
+            "PB radius provenance: matched=" +
+            std::to_string(matched_radii) +
+            " derived_mbondi2=" + std::to_string(derived_radii) +
+            " placeholder=0 missing=0");
     }
 
     // No atoms: the bbox below seeds from x_coords[0], and there is nothing to

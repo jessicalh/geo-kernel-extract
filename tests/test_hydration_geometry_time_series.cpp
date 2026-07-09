@@ -16,6 +16,7 @@
 #include "RunConfiguration.h"
 #include "SasaResult.h"
 #include "Session.h"
+#include "SolventEnvironment.h"
 #include "SpatialIndexResult.h"
 #include "TestEnvironment.h"
 #include "Trajectory.h"
@@ -32,6 +33,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -71,6 +73,83 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
 }
 
 }  // namespace
+
+TEST(HydrationGeometryResult, ConstructedAlignedWaterDipoles) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+
+    nmr::Protein protein;
+    nmr::Residue residue;
+    residue.type = nmr::AminoAcid::ALA;
+    residue.sequence_number = 1;
+    const size_t ri = protein.AddResidue(std::move(residue));
+    auto atom = nmr::Atom::Create(nmr::Element::C);
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+    auto& conf = protein.AddConformation({nmr::Vec3(0.0, 0.0, 0.0)},
+                                         "aligned water dipoles");
+    conf.MutableAtomAt(0).sasa_normal = nmr::Vec3(1.0, 0.0, 0.0);
+
+    nmr::SolventEnvironment solvent;
+    for (const nmr::Vec3& o : {nmr::Vec3(1.0, 0.0, 0.0),
+                               nmr::Vec3(1.0, 1.0, 0.0)}) {
+        nmr::WaterMolecule water;
+        water.O_pos = o;
+        water.H1_pos = o + nmr::Vec3(1.0, 0.0, 0.0);
+        water.H2_pos = o + nmr::Vec3(1.0, 0.0, 0.0);
+        water.O_charge = -0.834;
+        water.H_charge = 0.417;
+        solvent.waters.push_back(water);
+        solvent.water_O_positions.push_back(water.O_pos);
+    }
+
+    auto result = nmr::HydrationGeometryResult::Compute(conf, solvent);
+    ASSERT_NE(result, nullptr);
+    const auto& out = conf.AtomAt(0);
+    EXPECT_EQ(out.sasa_first_shell_count, 2);
+    EXPECT_NEAR(out.sasa_dipole_coherence, 0.834, 1e-12);
+    EXPECT_NEAR(out.sasa_dipole_order_parameter, 1.0, 1e-12);
+}
+
+TEST(HydrationGeometryResult, ConstructedCancellingWaterDipoles) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+
+    nmr::Protein protein;
+    nmr::Residue residue;
+    residue.type = nmr::AminoAcid::ALA;
+    residue.sequence_number = 1;
+    const size_t ri = protein.AddResidue(std::move(residue));
+    auto atom = nmr::Atom::Create(nmr::Element::C);
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+    auto& conf = protein.AddConformation({nmr::Vec3(0.0, 0.0, 0.0)},
+                                         "cancelling water dipoles");
+    conf.MutableAtomAt(0).sasa_normal = nmr::Vec3(1.0, 0.0, 0.0);
+
+    nmr::SolventEnvironment solvent;
+    const std::vector<std::pair<nmr::Vec3, nmr::Vec3>> waters = {
+        {nmr::Vec3(1.0, 0.0, 0.0), nmr::Vec3(1.0, 0.0, 0.0)},
+        {nmr::Vec3(1.0, 1.0, 0.0), nmr::Vec3(-1.0, 0.0, 0.0)},
+    };
+    for (const auto& entry : waters) {
+        nmr::WaterMolecule water;
+        water.O_pos = entry.first;
+        water.H1_pos = entry.first + entry.second;
+        water.H2_pos = entry.first + entry.second;
+        water.O_charge = -0.834;
+        water.H_charge = 0.417;
+        solvent.waters.push_back(water);
+        solvent.water_O_positions.push_back(water.O_pos);
+    }
+
+    auto result = nmr::HydrationGeometryResult::Compute(conf, solvent);
+    ASSERT_NE(result, nullptr);
+    const auto& out = conf.AtomAt(0);
+    EXPECT_EQ(out.sasa_first_shell_count, 2);
+    EXPECT_NEAR(out.sasa_dipole_coherence, 0.0, 1e-12);
+    EXPECT_NEAR(out.sasa_dipole_order_parameter, 0.0, 1e-12);
+}
 
 
 TEST(HydrationGeometryTimeSeries, Frame0Semantics) {
@@ -129,11 +208,15 @@ TEST(HydrationGeometryTimeSeries, H5RoundTrip) {
     ASSERT_TRUE(reopen.exist("/trajectory/hydration_geometry_time_series"));
     auto grp = reopen.getGroup("/trajectory/hydration_geometry_time_series");
 
-    std::string layout, polar_chans;
+    std::string layout, polar_chans, alias, formula;
     grp.getAttribute("dipole_vector_layout").read(layout);
     grp.getAttribute("polarisation_signal_channels").read(polar_chans);
+    grp.getAttribute("dipole_coherence_alias").read(alias);
+    grp.getAttribute("dipole_order_parameter_formula").read(formula);
     EXPECT_EQ(layout, "x,y,z");
-    EXPECT_EQ(polar_chans, "dipole_alignment,dipole_coherence,half_shell_asymmetry");
+    EXPECT_EQ(polar_chans, "dipole_alignment,dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,half_shell_asymmetry");
+    EXPECT_EQ(alias, "mean_net_dipole_eA");
+    EXPECT_EQ(formula, "|sum d_i| / sum |d_i|");
 
     const std::size_t N = tp.AtomCount();
     const std::size_t T = tr.NumFrames();
@@ -143,9 +226,23 @@ TEST(HydrationGeometryTimeSeries, H5RoundTrip) {
 
     EXPECT_TRUE(grp.exist("dipole_alignment"));
     EXPECT_TRUE(grp.exist("dipole_coherence"));
+    EXPECT_TRUE(grp.exist("mean_net_dipole_eA"));
+    EXPECT_TRUE(grp.exist("dipole_order_parameter"));
     EXPECT_TRUE(grp.exist("half_shell_asymmetry"));
     EXPECT_TRUE(grp.exist("first_shell_count"));
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
+
+    std::vector<std::vector<double>> coherence;
+    std::vector<std::vector<double>> mean_net;
+    grp.getDataSet("dipole_coherence").read(coherence);
+    grp.getDataSet("mean_net_dipole_eA").read(mean_net);
+    ASSERT_EQ(coherence.size(), mean_net.size());
+    for (std::size_t i = 0; i < coherence.size(); ++i) {
+        ASSERT_EQ(coherence[i].size(), mean_net[i].size());
+        for (std::size_t t = 0; t < coherence[i].size(); ++t) {
+            EXPECT_DOUBLE_EQ(coherence[i][t], mean_net[i][t]);
+        }
+    }
 
     fs::remove(h5_path);
 }
@@ -176,8 +273,11 @@ TEST(HydrationGeometryTimeSeries, Integration1P9J) {
     const std::size_t N = tp.AtomCount();
     const std::size_t T = tr.NumFrames();
     std::vector<std::vector<double>> alignment;
+    std::vector<std::vector<double>> order;
     grp.getDataSet("dipole_alignment").read(alignment);
+    grp.getDataSet("dipole_order_parameter").read(order);
     ASSERT_EQ(alignment.size(), N);
+    ASSERT_EQ(order.size(), N);
 
     std::size_t populated = 0;
     double max_abs_align = 0.0;
@@ -187,6 +287,9 @@ TEST(HydrationGeometryTimeSeries, Integration1P9J) {
             // alignment is cos angle ∈ [-1, 1]
             EXPECT_GE(alignment[i][t], -1.001);
             EXPECT_LE(alignment[i][t],  1.001);
+            EXPECT_TRUE(std::isfinite(order[i][t]));
+            EXPECT_GE(order[i][t], -0.001);
+            EXPECT_LE(order[i][t],  1.001);
             max_abs_align = std::max(max_abs_align, std::abs(alignment[i][t]));
         }
         if (std::abs(alignment[i][0]) > 1e-12) ++populated;

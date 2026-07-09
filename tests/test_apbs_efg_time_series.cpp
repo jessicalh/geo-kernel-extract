@@ -31,6 +31,8 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -143,7 +145,8 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 5u) << "T2-only emission per 2026-05-18 schema rev";
 
-    std::string basis, order, frame, t2_parity, export_note, layout, units, policy;
+    std::string basis, order, frame, t2_parity, export_note, layout, units;
+    std::string source_result, source_field, operation, source, policy;
     bool legacy_deprecated = false;
     grp.getAttribute("t2_basis").read(basis);
     grp.getAttribute("t2_component_order").read(order);
@@ -153,6 +156,10 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     grp.getAttribute("legacy_irrep_attrs_deprecated").read(legacy_deprecated);
     grp.getAttribute("irrep_layout").read(layout);
     grp.getAttribute("units").read(units);
+    grp.getAttribute("source_result").read(source_result);
+    grp.getAttribute("source_field").read(source_field);
+    grp.getAttribute("operation").read(operation);
+    grp.getAttribute("source").read(source);
     grp.getAttribute("source_attached_policy").read(policy);
     EXPECT_EQ(basis, "project_native_t2_isometric_real_tesseral_v1");
     EXPECT_EQ(order, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
@@ -162,7 +169,28 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     EXPECT_TRUE(legacy_deprecated);
     EXPECT_EQ(layout, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(units, "V/Å^2");
-    EXPECT_NE(policy.find("always_attached"), std::string::npos);
+    EXPECT_EQ(source_result, "ApbsFieldResult");
+    EXPECT_EQ(source_field, "apbs_efg_spherical");
+    EXPECT_EQ(operation, "linearized_poisson_boltzmann_grid_hessian_traceless_t2");
+    EXPECT_EQ(source,
+        "ApbsFieldResult.apbs_efg_spherical; APBS EFG is the "
+        "sign-aligned Hessian of the linearized Poisson-Boltzmann "
+        "potential, symmetrized and trace-projected at source; T2 "
+        "components 0..4 only; T0/T1 structurally zero by Hessian "
+        "symmetry/traceless projection.");
+    EXPECT_EQ(policy,
+        "required_conformation_result -- production RunConfiguration "
+        "requires ApbsFieldResult for this trajectory result; Compute "
+        "defensively writes NaN-fill + mask=0 when the source is absent; "
+        "source_attached_per_frame records that gate.");
+    const std::string combined = source + " " + policy;
+    EXPECT_EQ(combined.find(".cpp:"), std::string::npos);
+    EXPECT_EQ(combined.find("RunConfiguration.cpp"), std::string::npos);
+    EXPECT_EQ(combined.find("task #"), std::string::npos);
+    std::string lower = combined;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    EXPECT_EQ(lower.find("fallback"), std::string::npos);
 
     // Round-trip: read the (N, T, 5) flat data, check a known cell.
     std::vector<double> flat(N * kFrames * 5);

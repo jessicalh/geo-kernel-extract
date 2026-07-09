@@ -207,6 +207,14 @@ TEST(BsWelford, H5RoundTrip) {
     EXPECT_EQ(dims_t2[0], tp.AtomCount());
     EXPECT_EQ(dims_t2[1], 5u);
 
+    const fs::path npy_dir = fs::temp_directory_path() /
+        ("bs_welford_no_npy_" + std::to_string(::getpid()));
+    fs::remove_all(npy_dir);
+    ASSERT_TRUE(fs::create_directories(npy_dir));
+    EXPECT_EQ(tp.WriteFeatures(npy_dir.string()), 0);
+    EXPECT_FALSE(fs::exists(npy_dir / "bs_welford.npy"));
+    fs::remove_all(npy_dir);
+
     fs::remove(h5_path);
 }
 

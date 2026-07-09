@@ -35,6 +35,8 @@ normalizes the on-disk layout.
 
     # Welford H5 groups — written by *WelfordTrajectoryResult subclasses
     # (BS / HM / McConnell / Eeq / Sasa / HBondCount), 2026-05-17/18.
+    # Current rollups are H5-only; do not expect bs_welford.npy,
+    # eeq_welford.npy, or hbond_count_welford.npy from WriteFeatures.
     # Each group is Optional — None when the corresponding C++ TR was
     # not attached for the run that produced this trajectory.h5.
     traj.welford.bs.t0.mean                  # (N,) ppm_T_per_nA
@@ -306,7 +308,10 @@ class _TensorWelfordGroup:
 
 @dataclass(frozen=True)
 class BsWelfordGroup(_TensorWelfordGroup):
-    """Per-atom Biot-Savart Welford rollup from /trajectory/bs_welford/."""
+    """Per-atom Biot-Savart Welford rollup from /trajectory/bs_welford/.
+
+    H5-only in current producer builds; no bs_welford.npy is emitted.
+    """
 
 
 @dataclass(frozen=True)
@@ -398,7 +403,10 @@ def _load_scalar_welford_channels(grp, value_name: str) -> dict:
 
 @dataclass(frozen=True)
 class EeqWelfordGroup:
-    """Per-atom EEq charge Welford rollup from /trajectory/eeq_welford/."""
+    """Per-atom EEq charge Welford rollup from /trajectory/eeq_welford/.
+
+    H5-only in current producer builds; no eeq_welford.npy is emitted.
+    """
     charge: WelfordMoments
     charge_delta: WelfordMoments
     charge_abs_delta: WelfordMoments
@@ -477,6 +485,7 @@ class HBondCountWelfordGroup:
     Adds `occupancy_fraction` channel (dimensionless ∈ [0,1]) on top of
     the standard scalar shape, plus the `source_radius_A` group
     attribute (default 3.5 Å, the donor-acceptor counting cutoff).
+    H5-only in current producer builds; no hbond_count_welford.npy is emitted.
     """
     count: WelfordMoments
     count_delta: WelfordMoments
@@ -977,18 +986,17 @@ class HydrationGeometryTimeSeriesGroup:
     """Per-atom SASA-normal water polarisation timeline from
     /trajectory/hydration_geometry_time_series/.
 
-    Six channels: net water dipole vector + SASA outward normal + first-
-    shell water count + the polarisation-signal trio (alignment,
-    coherence, half_shell_asymmetry). The trio IS the polarisation
-    signal — calibration weight on these channels is what we want to
-    learn.
+    Channels: net water dipole vector + SASA outward normal + first-
+    shell water count + alignment, legacy mean net dipole, dimensionless
+    order parameter, and half_shell_asymmetry.
 
     Shape:
       dipole_vector, surface_normal  (N, T, 3)  float64
       first_shell_count               (N, T)    uint32 (sentinel
                                                  `0xFFFFFFFF` on
                                                  source-absent frames)
-      half_shell_asymmetry, dipole_alignment, dipole_coherence
+      half_shell_asymmetry, dipole_alignment, dipole_coherence,
+      mean_net_dipole_eA, dipole_order_parameter
                                       (N, T)    float64 (NaN on absent)
 
     "Absent, not faked" provenance: `source_attached_per_frame` is a
@@ -1001,11 +1009,10 @@ class HydrationGeometryTimeSeriesGroup:
     first_shell_count: np.ndarray     # (N, T) uint32 — sentinel on absent
     half_shell_asymmetry: np.ndarray  # (N, T)
     dipole_alignment: np.ndarray      # (N, T)  cos angle
-    # dipole_coherence: source formula `|Σ d_i| / n_shell` (e·Å in
-    # numerator, dimensionless in denominator) → e·Å, NOT a [0,1]
-    # dimensionless order parameter. The H5 dataset attr `units` is
-    # "e_Angstrom". R6 codex 2026-05-18.
+    # dipole_coherence is the legacy name for mean_net_dipole_eA.
     dipole_coherence: np.ndarray      # (N, T)  e·Å
+    mean_net_dipole_eA: np.ndarray    # (N, T)  e·Å alias of dipole_coherence
+    dipole_order_parameter: np.ndarray # (N, T) dimensionless [0, 1]
     count_absent_sentinel: int        # 0xFFFFFFFF
     frame_indices: np.ndarray
     frame_times: np.ndarray
@@ -1021,6 +1028,8 @@ class HydrationGeometryTimeSeriesGroup:
     # cross-frame without checking this attr.
     reference_frame: str              # "SASA_normal"
     polarisation_signal_channels: str
+    dipole_coherence_alias: str
+    dipole_order_parameter_formula: str
 
     @property
     def first_shell_count_float(self) -> np.ndarray:
@@ -1044,6 +1053,8 @@ def _load_hydration_geometry_time_series(f) -> Optional[HydrationGeometryTimeSer
         half_shell_asymmetry=g["half_shell_asymmetry"][:],
         dipole_alignment=g["dipole_alignment"][:],
         dipole_coherence=g["dipole_coherence"][:],
+        mean_net_dipole_eA=g["mean_net_dipole_eA"][:],
+        dipole_order_parameter=g["dipole_order_parameter"][:],
         count_absent_sentinel=sentinel,
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
@@ -1060,6 +1071,10 @@ def _load_hydration_geometry_time_series(f) -> Optional[HydrationGeometryTimeSer
         reference_frame=str(_decode_attr(g.attrs.get("reference_frame", ""))),
         polarisation_signal_channels=str(_decode_attr(
             g.attrs.get("polarisation_signal_channels", ""))),
+        dipole_coherence_alias=str(_decode_attr(
+            g.attrs.get("dipole_coherence_alias", ""))),
+        dipole_order_parameter_formula=str(_decode_attr(
+            g.attrs.get("dipole_order_parameter_formula", ""))),
     )
 
 
@@ -1083,6 +1098,8 @@ class HydrationGeometryWelfordGroup:
     half_shell_asymmetry: WelfordMoments
     dipole_alignment: WelfordMoments
     dipole_coherence: WelfordMoments
+    mean_net_dipole_eA: WelfordMoments
+    dipole_order_parameter: WelfordMoments
     shell_count: WelfordMoments
     # Delta variants on the 4 primary scalars
     half_shell_asymmetry_delta: WelfordMoments
@@ -1100,6 +1117,16 @@ class HydrationGeometryWelfordGroup:
     dipole_coherence_delta_squared: WelfordMoments
     dipole_coherence_dxdt: WelfordMoments
     dipole_coherence_rms_delta: np.ndarray
+    mean_net_dipole_eA_delta: WelfordMoments
+    mean_net_dipole_eA_abs_delta: WelfordMoments
+    mean_net_dipole_eA_delta_squared: WelfordMoments
+    mean_net_dipole_eA_dxdt: WelfordMoments
+    mean_net_dipole_eA_rms_delta: np.ndarray
+    dipole_order_parameter_delta: WelfordMoments
+    dipole_order_parameter_abs_delta: WelfordMoments
+    dipole_order_parameter_delta_squared: WelfordMoments
+    dipole_order_parameter_dxdt: WelfordMoments
+    dipole_order_parameter_rms_delta: np.ndarray
     shell_count_delta: WelfordMoments
     shell_count_abs_delta: WelfordMoments
     shell_count_delta_squared: WelfordMoments
@@ -1140,6 +1167,8 @@ def _load_hydration_geometry_welford(f) -> Optional[HydrationGeometryWelfordGrou
         half_shell_asymmetry=_read_moments(g, "half_shell_asymmetry"),
         dipole_alignment=_read_moments(g, "dipole_alignment"),
         dipole_coherence=_read_moments(g, "dipole_coherence"),
+        mean_net_dipole_eA=_read_moments(g, "mean_net_dipole_eA"),
+        dipole_order_parameter=_read_moments(g, "dipole_order_parameter"),
         shell_count=_read_moments(g, "shell_count"),
         half_shell_asymmetry_delta=_read_moments(g, "half_shell_asymmetry_delta"),
         half_shell_asymmetry_abs_delta=_read_moments(g, "half_shell_asymmetry_abs_delta"),
@@ -1156,6 +1185,16 @@ def _load_hydration_geometry_welford(f) -> Optional[HydrationGeometryWelfordGrou
         dipole_coherence_delta_squared=_read_moments(g, "dipole_coherence_delta_squared"),
         dipole_coherence_dxdt=_read_moments(g, "dipole_coherence_dxdt"),
         dipole_coherence_rms_delta=g["dipole_coherence_rms_delta"][:],
+        mean_net_dipole_eA_delta=_read_moments(g, "mean_net_dipole_eA_delta"),
+        mean_net_dipole_eA_abs_delta=_read_moments(g, "mean_net_dipole_eA_abs_delta"),
+        mean_net_dipole_eA_delta_squared=_read_moments(g, "mean_net_dipole_eA_delta_squared"),
+        mean_net_dipole_eA_dxdt=_read_moments(g, "mean_net_dipole_eA_dxdt"),
+        mean_net_dipole_eA_rms_delta=g["mean_net_dipole_eA_rms_delta"][:],
+        dipole_order_parameter_delta=_read_moments(g, "dipole_order_parameter_delta"),
+        dipole_order_parameter_abs_delta=_read_moments(g, "dipole_order_parameter_abs_delta"),
+        dipole_order_parameter_delta_squared=_read_moments(g, "dipole_order_parameter_delta_squared"),
+        dipole_order_parameter_dxdt=_read_moments(g, "dipole_order_parameter_dxdt"),
+        dipole_order_parameter_rms_delta=g["dipole_order_parameter_rms_delta"][:],
         shell_count_delta=_read_moments(g, "shell_count_delta"),
         shell_count_abs_delta=_read_moments(g, "shell_count_abs_delta"),
         shell_count_delta_squared=_read_moments(g, "shell_count_delta_squared"),
@@ -3034,7 +3073,9 @@ class EnergyAccess:
 class WelfordAccess:
     """Kernel-class Welford H5 groups (BS / HM / McConnell / Eeq / Sasa /
     HBondCount). These were the first Welford rollup TRs landed (Phase 2b,
-    2026-05-17) — kernel-level statistics with a uniform shape.
+    2026-05-17) — kernel-level statistics with a uniform shape. BS, Eeq,
+    and HBondCount are H5-only in current producer builds; their legacy NPY
+    rollup files are retired.
 
     Each field is None when the corresponding *WelfordTrajectoryResult
     was not attached during the C++ extraction run that produced this

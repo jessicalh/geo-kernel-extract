@@ -7,7 +7,6 @@
 #include "ProteinConformation.h"
 #include "ConformationAtom.h"
 #include "Types.h"
-#include "NpyWriter.h"
 #include "OperationLog.h"
 
 #include <highfive/H5DataSpace.hpp>
@@ -153,35 +152,6 @@ void EeqWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         "finalized across " + std::to_string(n_frames_) + " frames, " +
         std::to_string(N) + " atoms, mean_dt_ps=" +
         std::to_string(mean_dt_ps_));
-}
-
-
-// ── WriteFeatures (NPY) ──────────────────────────────────────────
-// eeq_welford.npy (N, 7) kept unchanged from pre-Phase-2b for backward
-// compatibility with the existing SDK ArraySpec. The expanded H5 schema
-// is the canonical interface for new consumers.
-
-int EeqWelfordTrajectoryResult::WriteFeatures(
-        const TrajectoryProtein& tp,
-        const std::string& output_dir) const {
-    const size_t N = tp.AtomCount();
-    constexpr size_t K = 7;
-
-    std::vector<double> data(N * K);
-    for (size_t i = 0; i < N; ++i) {
-        const EeqWelfordState& w = tp.AtomAt(i).eeq_welford;
-        data[i * K + 0] = w.charge.mean;
-        data[i * K + 1] = w.charge.std;
-        data[i * K + 2] = w.charge.min;
-        data[i * K + 3] = w.charge.max;
-        data[i * K + 4] = w.charge_delta.mean;
-        data[i * K + 5] = w.charge_delta.std;
-        data[i * K + 6] = static_cast<double>(w.n_frames);
-    }
-
-    NpyWriter::WriteFloat64(output_dir + "/eeq_welford.npy",
-                            data.data(), N, K);
-    return 1;
 }
 
 
