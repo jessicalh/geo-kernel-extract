@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <cmath>
 #include <cstdint>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
 
@@ -56,103 +57,107 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
         for (size_t i = 0; i < N; ++i)
             P += conf.AtomAt(i).ring_neighbours.size();
 
-        if (P > 0) {
-            const size_t C = 40;
-            std::vector<double> data(P * C, 0.0);
-            std::vector<double> bs_B(P * 3, 0.0);
-            std::vector<double> bs_B_cyl(P * 3, 0.0);
-            std::vector<double> hm_B(P * 3, 0.0);
-            std::vector<double> ring_dir(P * 3, 0.0);
-            std::vector<double> piquad_scalar(P, 0.0);
-            size_t row = 0;
-            for (size_t i = 0; i < N; ++i) {
-                for (const auto& rn : conf.AtomAt(i).ring_neighbours) {
-                    double* r = &data[row * C];
-                    r[0]  = static_cast<double>(i);
-                    r[1]  = static_cast<double>(rn.ring_index);
-                    r[2]  = static_cast<double>(rn.ring_type);
-                    r[3]  = rn.distance_to_center;
-                    r[4]  = rn.rho;
-                    r[5]  = rn.z;
-                    r[6]  = rn.theta;
+        const size_t C = 40;
+        std::vector<double> data(P * C, 0.0);
+        std::vector<double> bs_B(P * 3, 0.0);
+        std::vector<double> bs_B_cyl(P * 3, 0.0);
+        std::vector<double> hm_B(P * 3, 0.0);
+        std::vector<double> ring_dir(P * 3, 0.0);
+        std::vector<double> piquad_scalar(P, 0.0);
+        size_t row = 0;
+        for (size_t i = 0; i < N; ++i) {
+            for (const auto& rn : conf.AtomAt(i).ring_neighbours) {
+                double* r = &data[row * C];
+                r[0]  = static_cast<double>(i);
+                r[1]  = static_cast<double>(rn.ring_index);
+                r[2]  = static_cast<double>(rn.ring_type);
+                r[3]  = rn.distance_to_center;
+                r[4]  = rn.rho;
+                r[5]  = rn.z;
+                r[6]  = rn.theta;
 
-                    double cos_th = (rn.distance_to_center > 1e-12)
-                        ? rn.z / rn.distance_to_center : 0.0;
-                    double r3 = rn.distance_to_center * rn.distance_to_center
-                              * rn.distance_to_center;
-                    r[7]  = (r3 > 1e-30)
-                        ? (3.0 * cos_th * cos_th - 1.0) / r3 : 0.0;
-                    r[8]  = std::exp(-rn.distance_to_center / EXP_DECAY_LENGTH);
+                double cos_th = (rn.distance_to_center > 1e-12)
+                    ? rn.z / rn.distance_to_center : 0.0;
+                double r3 = rn.distance_to_center * rn.distance_to_center
+                          * rn.distance_to_center;
+                r[7]  = (r3 > 1e-30)
+                    ? (3.0 * cos_th * cos_th - 1.0) / r3 : 0.0;
+                r[8]  = std::exp(-rn.distance_to_center / EXP_DECAY_LENGTH);
 
-                    rn.G_spherical.PackFull9(r + 9);       // BS shielding kernel
-                    rn.hm_H_spherical.PackFull9(r + 18);   // HM raw integral (pure T2)
-                    rn.hm_G_spherical.PackFull9(r + 27);   // HM shielding kernel (T0+T1+T2)
-                    r[36] = rn.disp_scalar;
-                    r[37] = static_cast<double>(rn.disp_contacts);
-                    r[38] = rn.cos_phi;
-                    r[39] = rn.sin_phi;
+                rn.G_spherical.PackFull9(r + 9);       // BS shielding kernel
+                rn.hm_H_spherical.PackFull9(r + 18);   // HM raw integral (pure T2)
+                rn.hm_G_spherical.PackFull9(r + 27);   // HM shielding kernel (T0+T1+T2)
+                r[36] = rn.disp_scalar;
+                r[37] = static_cast<double>(rn.disp_contacts);
+                r[38] = rn.cos_phi;
+                r[39] = rn.sin_phi;
 
-                    bs_B[row*3+0] = rn.B_field.x();
-                    bs_B[row*3+1] = rn.B_field.y();
-                    bs_B[row*3+2] = rn.B_field.z();
+                bs_B[row*3+0] = rn.B_field.x();
+                bs_B[row*3+1] = rn.B_field.y();
+                bs_B[row*3+2] = rn.B_field.z();
 
-                    bs_B_cyl[row*3+0] = rn.B_cylindrical.x();
-                    bs_B_cyl[row*3+1] = rn.B_cylindrical.y();
-                    bs_B_cyl[row*3+2] = rn.B_cylindrical.z();
+                bs_B_cyl[row*3+0] = rn.B_cylindrical.x();
+                bs_B_cyl[row*3+1] = rn.B_cylindrical.y();
+                bs_B_cyl[row*3+2] = rn.B_cylindrical.z();
 
-                    hm_B[row*3+0] = rn.hm_B_field.x();
-                    hm_B[row*3+1] = rn.hm_B_field.y();
-                    hm_B[row*3+2] = rn.hm_B_field.z();
+                hm_B[row*3+0] = rn.hm_B_field.x();
+                hm_B[row*3+1] = rn.hm_B_field.y();
+                hm_B[row*3+2] = rn.hm_B_field.z();
 
-                    ring_dir[row*3+0] = rn.direction_to_center.x();
-                    ring_dir[row*3+1] = rn.direction_to_center.y();
-                    ring_dir[row*3+2] = rn.direction_to_center.z();
+                ring_dir[row*3+0] = rn.direction_to_center.x();
+                ring_dir[row*3+1] = rn.direction_to_center.y();
+                ring_dir[row*3+2] = rn.direction_to_center.z();
 
-                    piquad_scalar[row] = rn.quad_scalar;
-                    row++;
-                }
+                piquad_scalar[row] = rn.quad_scalar;
+                row++;
             }
-            NpyWriter::WriteFloat64(output_dir + "/ring_contributions.npy",
-                                    data.data(), P, C);
-            NpyWriter::WriteFloat64(output_dir + "/bs_ring_B_field.npy",
-                                    bs_B.data(), P, 3);
-            NpyWriter::WriteFloat64(output_dir + "/bs_ring_B_cylindrical.npy",
-                                    bs_B_cyl.data(), P, 3);
-            NpyWriter::WriteFloat64(output_dir + "/hm_ring_B_field.npy",
-                                    hm_B.data(), P, 3);
-            NpyWriter::WriteFloat64(output_dir + "/ring_direction_to_center.npy",
-                                    ring_dir.data(), P, 3);
-            NpyWriter::WriteFloat64(output_dir + "/piquad_quad_scalar.npy",
-                                    piquad_scalar.data(), P);
-            total += 6;
         }
+        NpyWriter::WriteFloat64(output_dir + "/ring_contributions.npy",
+                                data.data(), P, C);
+        NpyWriter::WriteFloat64(output_dir + "/bs_ring_B_field.npy",
+                                bs_B.data(), P, 3);
+        NpyWriter::WriteFloat64(output_dir + "/bs_ring_B_cylindrical.npy",
+                                bs_B_cyl.data(), P, 3);
+        NpyWriter::WriteFloat64(output_dir + "/hm_ring_B_field.npy",
+                                hm_B.data(), P, 3);
+        NpyWriter::WriteFloat64(output_dir + "/ring_direction_to_center.npy",
+                                ring_dir.data(), P, 3);
+        NpyWriter::WriteFloat64(output_dir + "/piquad_quad_scalar.npy",
+                                piquad_scalar.data(), P);
+        total += 6;
     }
 
     // Ring geometry reference table — shape (R, 10), one row per ring.
     {
         const size_t R = protein.RingCount();
-        if (R > 0 && R <= conf.ring_geometries.size()) {
-            const size_t G = 10;
-            std::vector<double> data(R * G, 0.0);
-            for (size_t ri = 0; ri < R; ++ri) {
-                const Ring& ring = protein.RingAt(ri);
-                const RingGeometry& geom = conf.ring_geometries[ri];
-                double* d = &data[ri * G];
-                d[0] = static_cast<double>(ri);
-                d[1] = static_cast<double>(ring.type_index);
-                d[2] = static_cast<double>(ring.parent_residue_index);
-                d[3] = geom.center.x();
-                d[4] = geom.center.y();
-                d[5] = geom.center.z();
-                d[6] = geom.normal.x();
-                d[7] = geom.normal.y();
-                d[8] = geom.normal.z();
-                d[9] = geom.radius;
-            }
-            NpyWriter::WriteFloat64(output_dir + "/ring_geometry.npy",
-                                    data.data(), R, G);
-            total++;
+        if (conf.ring_geometries.size() < R) {
+            const std::string msg =
+                "ConformationResult::WriteAllFeatures ring geometry underflow: "
+                "ring_geometries.size()=" + std::to_string(conf.ring_geometries.size()) +
+                " RingCount=" + std::to_string(R);
+            OperationLog::Error("ConformationResult::WriteAllFeatures", msg);
+            throw std::runtime_error(msg);
         }
+        const size_t G = 10;
+        std::vector<double> data(R * G, 0.0);
+        for (size_t ri = 0; ri < R; ++ri) {
+            const Ring& ring = protein.RingAt(ri);
+            const RingGeometry& geom = conf.ring_geometries[ri];
+            double* d = &data[ri * G];
+            d[0] = static_cast<double>(ri);
+            d[1] = static_cast<double>(ring.type_index);
+            d[2] = static_cast<double>(ring.parent_residue_index);
+            d[3] = geom.center.x();
+            d[4] = geom.center.y();
+            d[5] = geom.center.z();
+            d[6] = geom.normal.x();
+            d[7] = geom.normal.y();
+            d[8] = geom.normal.z();
+            d[9] = geom.radius;
+        }
+        NpyWriter::WriteFloat64(output_dir + "/ring_geometry.npy",
+                                data.data(), R, G);
+        total++;
     }
 
     // Walk the conformation's accumulated results. Each one writes its own.

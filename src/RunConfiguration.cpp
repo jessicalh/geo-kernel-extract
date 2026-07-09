@@ -8,6 +8,7 @@
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "EnrichmentResult.h"
+#include "PlanarGeometryResult.h"
 #include "DsspResult.h"
 #include "BiotSavartResult.h"
 #include "HaighMallionResult.h"
@@ -147,6 +148,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(GeometryResult));
     c.RequireConformationResult(typeid(SpatialIndexResult));
     c.RequireConformationResult(typeid(EnrichmentResult));
+    c.RequireConformationResult(typeid(PlanarGeometryResult));
     c.RequireConformationResult(typeid(DsspResult));
     c.RequireConformationResult(typeid(ChargeAssignmentResult));
     c.RequireConformationResult(typeid(ApbsFieldResult));

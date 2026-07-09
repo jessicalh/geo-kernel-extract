@@ -701,6 +701,10 @@ class WaterFieldTimeSeriesGroup:
       efg, efg_first          (N, T, 5)  float64  V/Angstrom²
                                          (real-spherical-tesseral T2 only)
       n_first, n_second       (N, T)     uint32   shell-occupancy count
+      efield_clamp_mask,
+      efield_first_clamp_mask (N, T)     uint8    0/1, 255 source absent
+      efield_clamp_scale,
+      efield_first_clamp_scale (N, T)    float64  applied clamp scale
 
     Water EFG carries no T0 (trace-zero by construction) and no T1
     (antisymmetric pseudovector vanishes for symmetric r⊗r contributions).
@@ -727,6 +731,11 @@ class WaterFieldTimeSeriesGroup:
     n_first: np.ndarray             # (N, T) uint32 — shell-occupancy
     n_second: np.ndarray            # (N, T) uint32
     count_absent_sentinel: int      # 0xFFFFFFFF — uint32 doesn't carry NaN
+    efield_clamp_mask: np.ndarray   # (N, T) uint8 — 0/1, absent sentinel
+    efield_clamp_scale: np.ndarray  # (N, T) float64
+    efield_first_clamp_mask: np.ndarray
+    efield_first_clamp_scale: np.ndarray
+    clamp_mask_absent_sentinel: int # 255 — uint8 source absent
     frame_indices: np.ndarray       # (T,)  uint64
     frame_times: np.ndarray         # (T,)  ps
     source_attached_per_frame: np.ndarray  # (T,) uint8 — 1=attached, 0=absent
@@ -772,6 +781,31 @@ def _load_water_field_time_series(f) -> Optional[WaterFieldTimeSeriesGroup]:
         sentinel = int(g["n_first"].attrs["absent_sentinel"])
     else:
         sentinel = 0xFFFFFFFF
+    source_attached = g["source_attached_per_frame"][:]
+    N, T = g["efield"].shape[:2]
+    if "efield_clamp_mask" in g:
+        clamp_sentinel = int(g["efield_clamp_mask"].attrs.get(
+            "absent_sentinel", 255))
+        efield_clamp_mask = g["efield_clamp_mask"][:]
+    else:
+        clamp_sentinel = 255
+        efield_clamp_mask = np.zeros((N, T), dtype=np.uint8)
+        efield_clamp_mask[:, source_attached == 0] = clamp_sentinel
+    if "efield_clamp_scale" in g:
+        efield_clamp_scale = g["efield_clamp_scale"][:]
+    else:
+        efield_clamp_scale = np.ones((N, T), dtype=np.float64)
+        efield_clamp_scale[:, source_attached == 0] = np.nan
+    if "efield_first_clamp_mask" in g:
+        efield_first_clamp_mask = g["efield_first_clamp_mask"][:]
+    else:
+        efield_first_clamp_mask = np.zeros((N, T), dtype=np.uint8)
+        efield_first_clamp_mask[:, source_attached == 0] = clamp_sentinel
+    if "efield_first_clamp_scale" in g:
+        efield_first_clamp_scale = g["efield_first_clamp_scale"][:]
+    else:
+        efield_first_clamp_scale = np.ones((N, T), dtype=np.float64)
+        efield_first_clamp_scale[:, source_attached == 0] = np.nan
     return WaterFieldTimeSeriesGroup(
         efield=g["efield"][:],
         efield_first=g["efield_first"][:],
@@ -780,9 +814,14 @@ def _load_water_field_time_series(f) -> Optional[WaterFieldTimeSeriesGroup]:
         n_first=g["n_first"][:],
         n_second=g["n_second"][:],
         count_absent_sentinel=sentinel,
+        efield_clamp_mask=efield_clamp_mask,
+        efield_clamp_scale=efield_clamp_scale,
+        efield_first_clamp_mask=efield_first_clamp_mask,
+        efield_first_clamp_scale=efield_first_clamp_scale,
+        clamp_mask_absent_sentinel=clamp_sentinel,
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
-        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_per_frame=source_attached,
         source_attached_count=int(g.attrs["source_attached_count"]),
         efield_layout=str(_decode_attr(g.attrs.get("efield_layout", ""))),
         efield_parity=str(_decode_attr(g.attrs.get("efield_parity", ""))),
@@ -1889,8 +1928,9 @@ class RmsdTrackingGroup:
 
     Reference: the first dispatched frame (trajectory frame 0 for a
     full run, window_start when windowed). That sample's RMSD is 0.0
-    by construction. Kabsch SVD: centroid + cross-covariance +
-    reflection-corrected rotation.
+    when the alignment set has at least three atoms; it is NaN when
+    n_atoms < 3 because Kabsch rotation is underdetermined. Kabsch SVD:
+    centroid + cross-covariance + reflection-corrected rotation.
 
     Pairs with TR12 RmsdSpikeSelectionTrajectoryResult (downstream
     detector reading rmsd[t] per frame for dual-threshold spike
@@ -1904,6 +1944,9 @@ class RmsdTrackingGroup:
     source_attached_per_frame: np.ndarray
     n_atoms: int                        # alignment set size
     n_frames: int
+    reference_frame_trr_index: int
+    insufficient_alignment_atoms: bool
+    insufficient_alignment_atoms_mask: np.ndarray
     alignment_method: str               # "kabsch_svd"
     atom_selection: str                 # "backbone_heavy_atoms_NCACO"
     reference_frame_origin: str         # "first_dispatched_frame"
@@ -2776,6 +2819,13 @@ def _load_rmsd_tracking(f) -> Optional[RmsdTrackingGroup]:
     def _attr(name: str) -> str:
         return str(_decode_attr(g.attrs.get(name, "")))
 
+    insufficient = bool(g.attrs.get("insufficient_alignment_atoms", False))
+    if "insufficient_alignment_atoms_mask" in g:
+        insufficient_mask = g["insufficient_alignment_atoms_mask"][:]
+    else:
+        insufficient_mask = np.array(
+            [1 if insufficient else 0], dtype=np.uint8)
+
     return RmsdTrackingGroup(
         rmsd=g["rmsd"][:],
         atom_indices=g["atom_indices"][:],
@@ -2784,6 +2834,9 @@ def _load_rmsd_tracking(f) -> Optional[RmsdTrackingGroup]:
         source_attached_per_frame=g["source_attached_per_frame"][:],
         n_atoms=int(g.attrs["n_atoms"]),
         n_frames=int(g.attrs["n_frames"]),
+        reference_frame_trr_index=int(g.attrs.get("reference_frame_trr_index", 0)),
+        insufficient_alignment_atoms=insufficient,
+        insufficient_alignment_atoms_mask=insufficient_mask,
         alignment_method=_attr("alignment_method"),
         atom_selection=_attr("atom_selection"),
         reference_frame_origin=_attr("reference_frame_origin"),

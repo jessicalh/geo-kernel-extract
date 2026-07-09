@@ -165,12 +165,15 @@ struct QtRmsdTracking {
     std::vector<uint64_t> frame_indices;
     std::vector<double> frame_times;
     std::vector<uint8_t> source_attached;
+    std::vector<uint8_t> insufficient_alignment_atoms_mask;
 
     QString units;
     QString result_name;
     QString alignment_method;        // "kabsch_svd"
     QString atom_selection;          // "backbone_heavy_atoms_NCACO"
     QString reference_frame_origin;  // "trajectory_frame_0"
+    uint64_t reference_frame_trr_index = 0;
+    bool insufficient_alignment_atoms = false;
 };
 
 
@@ -230,6 +233,8 @@ struct QtDihedralBinTransitions {
 //   - efield_first (N, T, 3) float64 — first-shell-only E-field
 //   - n_first      (N, T)    uint32  — first-shell water count
 //   - n_second     (N, T)    uint32  — second-shell water count
+//   - efield_clamp_mask / efield_first_clamp_mask (N, T) uint8
+//   - efield_clamp_scale / efield_first_clamp_scale (N, T) float64
 // Always-attached.
 // ──────────────────────────────────────────────────────────────────
 
@@ -243,12 +248,17 @@ struct QtWaterFieldTimeSeries {
     std::vector<double> efield_first;
     std::vector<uint32_t> n_first;  // (N*T,)
     std::vector<uint32_t> n_second;
+    std::vector<uint8_t> efield_clamp_mask;  // (N*T,)
+    std::vector<double> efield_clamp_scale;
+    std::vector<uint8_t> efield_first_clamp_mask;
+    std::vector<double> efield_first_clamp_scale;
 
     std::vector<uint64_t> frame_indices;
     std::vector<double> frame_times;
     std::vector<uint8_t> source_attached;
 
     QString result_name;
+    uint8_t clamp_mask_absent_sentinel = 255;
 
     bool sourceAttachedAt(std::size_t t) const {
         return source_attached.empty() || (t < source_attached.size() && source_attached[t] != 0);
@@ -256,6 +266,10 @@ struct QtWaterFieldTimeSeries {
     bool hasEfield() const { return efield.size() == n_atoms * n_frames * 3; }
     bool hasNFirst() const { return n_first.size() == n_atoms * n_frames; }
     bool hasNSecond() const { return n_second.size() == n_atoms * n_frames; }
+    bool hasEfieldClampMask() const { return efield_clamp_mask.size() == n_atoms * n_frames; }
+    bool hasEfieldClampScale() const { return efield_clamp_scale.size() == n_atoms * n_frames; }
+    bool hasEfieldFirstClampMask() const { return efield_first_clamp_mask.size() == n_atoms * n_frames; }
+    bool hasEfieldFirstClampScale() const { return efield_first_clamp_scale.size() == n_atoms * n_frames; }
 
     std::array<double, 5> efgAt(std::size_t atomIdx, std::size_t t) const {
         std::array<double, 5> out{};

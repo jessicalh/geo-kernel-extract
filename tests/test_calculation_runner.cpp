@@ -6,7 +6,9 @@
 //
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <filesystem>
+#include <typeindex>
 
 #include "OperationRunner.h"
 #include "PdbFileReader.h"
@@ -17,9 +19,21 @@
 #include "HBondResult.h"
 #include "OrcaShieldingResult.h"
 #include "MutationDeltaResult.h"
+#include "PlanarGeometryResult.h"
+#include "Protein.h"
+#include "RunConfiguration.h"
 
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+bool ContainsAttached(const RunResult& result, const std::string& name) {
+    return std::find(result.attached.begin(), result.attached.end(), name)
+        != result.attached.end();
+}
+
+}  // namespace
 
 
 
@@ -143,4 +157,32 @@ TEST(OperationRunnerTest, RunMutantComparison) {
 
     std::cout << "  MutantComparison: " << result.attached.size()
               << " results on WT\n";
+}
+
+
+// ============================================================================
+// PlanarGeometryResult is a hard production dependency
+// ============================================================================
+
+TEST(OperationRunnerTest, PlanarGeometryRequiredByRunConfig) {
+    const auto config = RunConfiguration::PerFrameExtractionSet();
+    EXPECT_TRUE(config.RequiresConformationResult(
+        std::type_index(typeid(PlanarGeometryResult))));
+}
+
+
+TEST(OperationRunnerTest, PlanarGeometryHardAttachFailureStopsRunner) {
+    Protein protein;
+    auto& conf = protein.AddConformation({}, "empty");
+
+    RunOptions opts;
+    auto result = OperationRunner::Run(conf, opts);
+
+    EXPECT_FALSE(result.Ok());
+    EXPECT_EQ(result.error, "PlanarGeometryResult computation returned null");
+    EXPECT_TRUE(ContainsAttached(result, "GeometryResult"));
+    EXPECT_TRUE(ContainsAttached(result, "SpatialIndexResult"));
+    EXPECT_TRUE(ContainsAttached(result, "EnrichmentResult"));
+    EXPECT_FALSE(ContainsAttached(result, "PlanarGeometryResult"));
+    EXPECT_FALSE(conf.HasResult<PlanarGeometryResult>());
 }

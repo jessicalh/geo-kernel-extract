@@ -10,10 +10,9 @@
 //
 // CROSS-RESULT READ (reader side): PlanarGeometryResult exposes the
 // per-frame pucker arrays + aromatic-ring χ₂ array. This TR copies
-// them into per-ring growing buffers. OperationRunner calls PG each frame;
-// PG attaches only if PlanarGeometryResult::Compute succeeds, which requires
-// the LegacyAmber AtomSemanticTable substrate. When PG never attached, the
-// H5 group is skipped per the 2026-05-15 conditional-attach discipline.
+// them into per-ring growing buffers. Production PerFrameExtractionSet
+// hard-requires PlanarGeometryResult; the source mask remains for
+// custom/synthetic configurations that bypass the production require set.
 //
 // Two axes (saturated and aromatic rings) -- these are DIFFERENT
 // counts indexed differently inside LegacyAmberTopology. Per-ring
@@ -49,8 +48,9 @@
 //                                DihedralTimeSeries chi[1] for the
 //                                parent residue."
 //   source                 = "PlanarGeometryResult"
-//   source_attached_policy = "conditional -- PG attaches when
-//                              PlanarGeometryResult::Compute succeeds."
+//   source_attached_policy = "production PerFrameExtractionSet
+//                              hard-requires PG; mask is defensive for
+//                              custom/synthetic configurations."
 //
 // NaN-fill: PG emits NaN for rings where the geometry was degenerate
 // (5-ring CP requires a well-defined ring plane). We pass NaN through
@@ -74,9 +74,10 @@ public:
         return "RingPuckerTimeSeriesTrajectoryResult";
     }
 
-    // No declared dependency: PlanarGeometryResult attaches when the
-    // LegacyAmber substrate is populated. We capture per-frame whether
-    // it was attached via the source_attached gate.
+    // No declared dependency: production PerFrameExtractionSet requires
+    // PlanarGeometryResult, while custom/synthetic configurations may
+    // omit it. We capture per-frame whether it was attached via the
+    // source_attached gate.
     std::vector<std::type_index> Dependencies() const override {
         return {};
     }

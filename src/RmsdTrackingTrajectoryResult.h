@@ -33,6 +33,7 @@
 //   frame_indices               (T,)   uint64
 //   frame_times                 (T,)   float64 ps
 //   source_attached_per_frame   (T,)   uint8 (all 1)
+//   insufficient_alignment_atoms_mask (1,) uint8
 //
 // Attrs:
 //   result_name             = "RmsdTrackingTrajectoryResult"
@@ -44,6 +45,8 @@
 //   reference_frame_origin  = "first_dispatched_frame"
 //   units                   = "Angstrom"
 //   source_attached_policy  = "always_attached"
+//   insufficient_alignment_atoms = bool (true when M < 3)
+//   min_alignment_atoms     = 3
 //
 // Pairs with:
 //   - TR12 RmsdSpikeSelectionTrajectoryResult, which CROSS-RESULT READs
@@ -84,6 +87,11 @@ public:
     static std::unique_ptr<RmsdTrackingTrajectoryResult> Create(
         const TrajectoryProtein& tp);
 
+    // Test-only bypass for constructing an alignment set without a
+    // TrajectoryProtein fixture.
+    static std::unique_ptr<RmsdTrackingTrajectoryResult>
+    CreateForTesting(std::vector<std::size_t> atom_indices);
+
     void Compute(const ProteinConformation& conf,
                  TrajectoryProtein& tp,
                  Trajectory& traj,
@@ -121,6 +129,7 @@ public:
     double RmsdAtSampleIndex(std::size_t sample_idx) const;
     std::size_t NumFrames() const { return n_frames_; }
     std::size_t NumAlignmentAtoms() const { return atom_indices_.size(); }
+    bool InsufficientAlignmentAtoms() const { return insufficient_alignment_atoms_; }
     const std::vector<double>& Rmsd() const { return rmsd_; }
 
 private:
@@ -134,6 +143,7 @@ private:
     // Compute call from frame-0 geometry.
     std::vector<Vec3> reference_positions_;
     bool reference_captured_ = false;
+    bool insufficient_alignment_atoms_ = false;
 
     // Per-frame Kabsch-aligned RMSD (Angstrom). Appended in Compute.
     std::vector<double>       rmsd_;

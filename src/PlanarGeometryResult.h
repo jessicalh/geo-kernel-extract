@@ -30,15 +30,14 @@
 //     C-terminus, missing backbone-cache atoms. Convention: ω in
 //     radians, deviation wrapped to [−π, π].
 //
-//   - **sp2 pyramidalization** — signed out-of-plane displacement of
-//     each atom whose AtomSemanticTable::planar_group != None from
-//     the plane of its three bonded neighbours. CHARMM/AMBER
-//     improper-dihedral convention: sign by the right-hand rule on
-//     the cross product of the first two sorted neighbour vectors
-//     relative to the neighbour centroid (neighbours are sorted
-//     ascending by atom index, so the sign is build-stable; see
-//     ThreeBondedNeighbours). Per-atom field on ConformationAtom
-//     (zero for non-planar atoms).
+//   - **sp2 pyramidalization** — non-negative out-of-plane
+//     displacement magnitude (Å) of each atom whose
+//     AtomSemanticTable::planar_group != None from the plane of its
+//     three bonded neighbours. NaN marks non-applicable or
+//     invalid/degenerate rows; ConformationAtom::pyramidalization_valid
+//     distinguishes real computed zero from absence, and
+//     ConformationAtom::pyramidalization_center_type carries the
+//     PlanarGroupKind code.
 //
 //   - **Aromatic χ₂** — per aromatic ring, the parent residue's χ₂
 //     dihedral (Cα–Cβ–Cγ–Cδ for PHE/TYR; Cα–Cβ–Cγ–Nδ1 for HIS;

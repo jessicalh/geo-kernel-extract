@@ -8,11 +8,12 @@
 #include <dssp.hpp>
 
 #include <fstream>
-#include <sstream>
 #include <filesystem>
 #include <map>
 #include <cstdio>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 
 namespace fs = std::filesystem;
 
@@ -194,38 +195,48 @@ double DsspResult::SASA(size_t residue_index) const {
 
 
 // ============================================================================
-// WriteFeatures: 4 NPY files
+// WriteFeatures: 5 NPY files
 //
 // All per-atom, broadcast from per-residue via Protein atom→residue mapping.
 //
-// 1. dssp_backbone.npy (N, 5) — phi, psi, sasa, ss_helix, ss_sheet
-// 2. dssp_ss8.npy (N, 8) — full 8-class SS one-hot (H/G/I/E/B/T/S/C)
-// 3. dssp_hbond_energy.npy (N, 4) — H-bond energies (acc0/acc1/don0/don1)
-// 4. dssp_chi.npy (N, 12) — chi1-4 cos/sin/exists (4 angles × 3 cols)
+// 1. dssp_observed.npy (N,) — residue was observed by DSSP
+// 2. dssp_backbone.npy (N, 5) — -phi, -psi, sasa, ss_helix, ss_sheet
+// 3. dssp_ss8.npy (N, 8) — full 8-class SS one-hot (H/G/I/E/B/T/S/C)
+// 4. dssp_hbond_energy.npy (N, 4) — H-bond energies (acc0/acc1/don0/don1)
+// 5. dssp_chi.npy (N, 12) — chi1-4 cos/sin/exists (4 angles × 3 cols)
 // ============================================================================
 
 int DsspResult::WriteFeatures(const ProteinConformation& conf,
                                const std::string& output_dir) const {
     const Protein& protein = conf.ProteinRef();
     const size_t N = conf.AtomCount();
+    const double kNaN = std::numeric_limits<double>::quiet_NaN();
 
     std::vector<double> data(N * 5, 0.0);
+    std::vector<int8_t> observed_mask(N, 0);
 
     for (size_t i = 0; i < N; ++i) {
         size_t ri = protein.AtomAt(i).residue_index;
-        if (ri < residues_.size()) {
+        const bool observed = (ri < residues_.size() && residues_[ri].observed);
+        observed_mask[i] = observed ? 1 : 0;
+        if (observed) {
             const auto& dr = residues_[ri];
-            data[i*5 + 0] = dr.phi;
-            data[i*5 + 1] = dr.psi;
+            data[i*5 + 0] = -dr.phi;
+            data[i*5 + 1] = -dr.psi;
             data[i*5 + 2] = dr.sasa;
             char ss = dr.secondary_structure;
             data[i*5 + 3] = (ss == 'H' || ss == 'G' || ss == 'I') ? 1.0 : 0.0;
             data[i*5 + 4] = (ss == 'E' || ss == 'B') ? 1.0 : 0.0;
+        } else {
+            data[i*5 + 0] = kNaN;
+            data[i*5 + 1] = kNaN;
+            data[i*5 + 2] = kNaN;
         }
     }
 
+    NpyWriter::WriteInt8(output_dir + "/dssp_observed.npy", observed_mask.data(), N);
     NpyWriter::WriteFloat64(output_dir + "/dssp_backbone.npy", data.data(), N, 5);
-    int files_written = 1;
+    int files_written = 2;
 
     // dssp_ss8.npy — (N, 8) float64, full 8-class one-hot
     // Column order: H(alpha), G(3_10), I(pi), E(strand), B(bridge), T(turn), S(bend), C(coil)
@@ -247,10 +258,8 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
         std::vector<double> ss8(N * 8, 0.0);
         for (size_t i = 0; i < N; ++i) {
             size_t ri = protein.AtomAt(i).residue_index;
-            if (ri < residues_.size())
+            if (ri < residues_.size() && residues_[ri].observed)
                 ss8[i * 8 + ss_col(residues_[ri].secondary_structure)] = 1.0;
-            else
-                ss8[i * 8 + 7] = 1.0; // default coil
         }
         NpyWriter::WriteFloat64(output_dir + "/dssp_ss8.npy", ss8.data(), N, 8);
         files_written++;
@@ -260,10 +269,10 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     // Columns: acceptor0_energy, acceptor1_energy, donor0_energy, donor1_energy
     // Units: kcal/mol. 0.0 if no H-bond partner.
     {
-        std::vector<double> hb(N * 4, 0.0);
+        std::vector<double> hb(N * 4, kNaN);
         for (size_t i = 0; i < N; ++i) {
             size_t ri = protein.AtomAt(i).residue_index;
-            if (ri < residues_.size()) {
+            if (ri < residues_.size() && residues_[ri].observed) {
                 const auto& dr = residues_[ri];
                 hb[i * 4 + 0] = dr.acceptors[0].energy;
                 hb[i * 4 + 1] = dr.acceptors[1].energy;

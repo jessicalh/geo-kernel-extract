@@ -61,6 +61,7 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
     config.RequireConformationResult(typeid(nmr::EnrichmentResult));
+    config.RequireConformationResult(typeid(nmr::PlanarGeometryResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
         -> std::unique_ptr<nmr::TrajectoryResult> {

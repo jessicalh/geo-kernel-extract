@@ -301,7 +301,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               mechanism="hbond_kernel"),
 
     # ── DSSP (DsspResult.cpp) ────────────────────────────────────
-    ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry",
+    ArraySpec("dssp_observed",    "dssp", np.ndarray,              None, False, "DSSP observation mask per atom: int8 1 when the parent residue mapped to a libdssp row, 0 otherwise",
+              mechanism="secondary_structure"),
+    ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry: phi/psi = -libdssp radians, SASA, helix/sheet flags; phi/psi/SASA are NaN for unobserved residues",
               units="radians", mechanism="secondary_structure"),
     ArraySpec("dssp_ss8",         "dssp", np.ndarray,              8,    False, "DSSP 8-class SS one-hot (H/G/I/E/B/T/S/C)",
               mechanism="secondary_structure"),
@@ -327,6 +329,14 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="solvation"),
     ArraySpec("water_shell_counts", "water_field", np.ndarray,     2,    False, "Water shell counts [n_first, n_second]",
               mechanism="solvation"),
+    ArraySpec("water_efield_clamp_mask", "water_field", np.ndarray, None, False, "Water total E-field clamp mask per atom: int8 0/1",
+              mechanism="solvation"),
+    ArraySpec("water_efield_clamp_scale", "water_field", np.ndarray, None, False, "Water total E-field clamp scale per atom",
+              units="dimensionless", mechanism="solvation"),
+    ArraySpec("water_efield_first_clamp_mask", "water_field", np.ndarray, None, False, "Water first-shell E-field clamp mask per atom: int8 0/1",
+              mechanism="solvation"),
+    ArraySpec("water_efield_first_clamp_scale", "water_field", np.ndarray, None, False, "Water first-shell E-field clamp scale per atom",
+              units="dimensionless", mechanism="solvation"),
 
     # ── Hydration shell (HydrationShellResult.cpp) ──────────────
     ArraySpec("hydration_shell",    "hydration",   np.ndarray,     4,    False, "Hydration geometry [asymmetry, dipole_cos, ion_dist, ion_charge]",
@@ -487,15 +497,20 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Planar geometry (PlanarGeometryResult.cpp) ───────────────────
     # Per Amendment 2026-05-08(a). Conformation-only quantities derived
     # from positions; runs whenever the substrate (LegacyAmber
-    # AtomSemanticTable) is populated. Six NPYs with three different
+    # AtomSemanticTable) is populated. Nine NPYs with three different
     # axes (per-atom, per-residue, per-ring) — the reader's wrapper
     # picks shape from the catalog cols field.
     #
-    # Conventions: pyramidalization sign by improper-dihedral right-
-    # hand rule; omega in radians; Cremer-Pople θ in degrees [0, 360).
+    # Conventions: pyramidalization is a non-negative magnitude with
+    # explicit valid/type arrays; omega in radians; Cremer-Pople θ in
+    # degrees [0, 360).
     # required=False because pre-2026-05-09 extractions don't carry them.
-    ArraySpec("pyramidalization",  "planar_geometry", np.ndarray, None, False, "Per-atom signed sp2 out-of-plane displacement (Å); 0 for non-planar atoms",
+    ArraySpec("pyramidalization",  "planar_geometry", np.ndarray, None, False, "Per-atom non-negative sp2 out-of-plane displacement magnitude (Å); NaN for non-applicable or invalid/degenerate rows; see pyramidalization_valid and pyramidalization_center_type",
               units="Å", mechanism="geometry"),
+    ArraySpec("pyramidalization_valid", "planar_geometry", np.ndarray, None, False, "Per-atom int8 mask: 1 when pyramidalization is a finite computed scalar, 0 for non-applicable or invalid/degenerate rows",
+              native_axis="atom", mechanism="geometry"),
+    ArraySpec("pyramidalization_center_type", "planar_geometry", np.ndarray, None, False, "Per-atom int8 PlanarGroupKind code: 0 None, 1 PeptideAmide, 2 SidechainAmide, 3 Guanidinium, 4 Imidazole, 5 Aromatic6Ring, 6 Aromatic5Ring, 7 Carboxylate, 8 AromaticHydroxyl, 9 AromaticOxide",
+              native_axis="atom", mechanism="geometry"),
     ArraySpec("omega_actual",      "planar_geometry", np.ndarray, None, False, "Per-residue ω (Cα-C-N-Cα to next), radians; NaN at C-term and X-Pro",
               native_axis="residue", units="radians", mechanism="geometry"),
     ArraySpec("omega_deviation",   "planar_geometry", np.ndarray, None, False, "Per-residue ω - π wrapped to (-π, π]; NaN where omega_actual is NaN",

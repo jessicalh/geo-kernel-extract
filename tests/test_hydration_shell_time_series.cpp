@@ -7,6 +7,7 @@
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
 #include "GeometryResult.h"
+#include "HydrationGeometryResult.h"
 #include "HydrationShellResult.h"
 #include "HydrationShellTimeSeriesTrajectoryResult.h"
 #include "OperationLog.h"
@@ -15,6 +16,7 @@
 #include "Residue.h"
 #include "RunConfiguration.h"
 #include "Session.h"
+#include "SolventEnvironment.h"
 #include "SpatialIndexResult.h"
 #include "TestEnvironment.h"
 #include "Trajectory.h"
@@ -31,6 +33,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -85,6 +88,68 @@ TEST(HydrationShellTimeSeries, Frame0Semantics) {
     EXPECT_EQ(traj.FrameCount(), 1u);
     const auto& tr = tp.Result<nmr::HydrationShellTimeSeriesTrajectoryResult>();
     EXPECT_EQ(tr.NumFrames(), 1u);
+}
+
+TEST(HydrationShellTimeSeries, hydration_coincident_water_guard) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+
+    nmr::Protein protein;
+    nmr::Residue residue;
+    residue.type = nmr::AminoAcid::ALA;
+    residue.sequence_number = 1;
+    const size_t ri = protein.AddResidue(std::move(residue));
+    for (nmr::Element element : {nmr::Element::C, nmr::Element::N}) {
+        auto atom = nmr::Atom::Create(element);
+        atom->residue_index = ri;
+        const size_t ai = protein.AddAtom(std::move(atom));
+        protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+    }
+
+    auto& conf = protein.AddConformation(
+        {nmr::Vec3(0.0, 0.0, 0.0), nmr::Vec3(10.0, 0.0, 0.0)},
+        "hydration coincident water");
+    conf.MutableAtomAt(0).sasa_normal = nmr::Vec3(1.0, 0.0, 0.0);
+
+    nmr::SolventEnvironment solvent;
+    nmr::WaterMolecule water;
+    water.O_pos = nmr::Vec3(0.0, 0.0, 0.0);
+    water.H1_pos = nmr::Vec3(0.1, 0.0, 0.0);
+    water.H2_pos = nmr::Vec3(0.0, 0.1, 0.0);
+    water.O_charge = -0.834;
+    water.H_charge = 0.417;
+    solvent.waters.push_back(water);
+    solvent.water_O_positions.push_back(water.O_pos);
+
+    auto shell = nmr::HydrationShellResult::Compute(conf, solvent);
+    ASSERT_NE(shell, nullptr);
+    auto geometry = nmr::HydrationGeometryResult::Compute(conf, solvent);
+    ASSERT_NE(geometry, nullptr);
+
+    const auto& atom0 = conf.AtomAt(0);
+    EXPECT_TRUE(std::isfinite(atom0.half_shell_asymmetry));
+    EXPECT_TRUE(std::isfinite(atom0.mean_water_dipole_cos));
+    EXPECT_TRUE(std::isfinite(atom0.sasa_half_shell_asymmetry));
+    EXPECT_TRUE(std::isfinite(atom0.sasa_dipole_alignment));
+    EXPECT_TRUE(std::isfinite(atom0.sasa_dipole_coherence));
+    EXPECT_EQ(atom0.sasa_first_shell_count, 0);
+
+    bool saw_shell_guard = false;
+    bool saw_geometry_guard = false;
+    auto has_rejected_one = [](const nmr::GeometryChoice& choice) {
+        for (const auto& number : choice.Numbers()) {
+            if (number.name == "waters_rejected" && number.value == 1.0)
+                return true;
+        }
+        return false;
+    };
+    for (const auto& choice : conf.geometry_choices) {
+        if (choice.Label() == "hydration shell singularity guard")
+            saw_shell_guard = has_rejected_one(choice);
+        if (choice.Label() == "hydration geometry singularity guard")
+            saw_geometry_guard = has_rejected_one(choice);
+    }
+    EXPECT_TRUE(saw_shell_guard);
+    EXPECT_TRUE(saw_geometry_guard);
 }
 
 

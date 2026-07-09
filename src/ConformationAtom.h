@@ -13,6 +13,7 @@
 #include "Types.h"
 #include <vector>
 #include <array>
+#include <cstdint>
 
 namespace nmr {
 
@@ -404,11 +405,13 @@ public:
     double aimnet2_charge_response_gradient_scalar = 0.0;
 
     // === Planar geometry (PlanarGeometryResult) ===
-    // Signed out-of-plane displacement (Å) at every atom whose
-    // AtomSemanticTable::planar_group != None; zero for non-planar
-    // atoms or atoms whose bond graph does not yield exactly three
-    // neighbours. Sign by improper-dihedral right-hand rule.
+    // Non-negative out-of-plane displacement magnitude (Å). NaN means
+    // non-applicable or invalid/degenerate; pyramidalization_valid
+    // disambiguates real zero from absence, and center_type stores the
+    // PlanarGroupKind enum value from the typed semantic substrate.
     double pyramidalization = 0.0;
+    std::int8_t pyramidalization_valid = 0;
+    std::int8_t pyramidalization_center_type = 0;
 
     // === Solvent-accessible surface area (SasaResult) ===
     double atom_sasa = 0.0;  // Shrake-Rupley SASA (A^2)
@@ -417,11 +420,15 @@ public:
     // === Explicit solvent fields (WaterFieldResult) ===
     // Electric field at this atom from water charges within cutoff (V/A)
     Vec3 water_efield = Vec3::Zero();
+    std::int8_t water_efield_clamp_mask = 0;
+    double water_efield_clamp_scale = 1.0;
     // Electric field gradient from water (V/A^2)
     Mat3 water_efg = Mat3::Zero();
     SphericalTensor water_efg_spherical;
     // First hydration shell (water O within 3.5A): E-field and EFG
     Vec3 water_efield_first = Vec3::Zero();
+    std::int8_t water_efield_first_clamp_mask = 0;
+    double water_efield_first_clamp_scale = 1.0;
     Mat3 water_efg_first = Mat3::Zero();
     SphericalTensor water_efg_first_spherical;
     // Shell counts

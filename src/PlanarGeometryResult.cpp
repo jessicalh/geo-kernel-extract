@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace nmr {
@@ -59,9 +60,10 @@ double WrapPi(double a) {
 
 // ─────────────────────────────────────────────────────────────────
 // Pyramidalization at atom A whose three bonded neighbours are at
-// positions B, C, D. Signed out-of-plane displacement of A from the
-// plane through B, C, D, with sign by the right-hand rule on
-// (B-centroid) × (C-centroid). Units: Å.
+// positions B, C, D. Out-of-plane displacement of A from the plane
+// through B, C, D. The caller stores the non-negative magnitude; the
+// sign is not emitted because the neighbour order is not a chemical
+// frame. Units: Å.
 //
 // The plane normal is constructed from (B-centroid) × (C-centroid)
 // where centroid is the centroid of (B, C, D). For a perfectly planar
@@ -72,7 +74,7 @@ double Pyramidalization(const Vec3& A, const Vec3& B,
     const Vec3 centroid = (B + C + D) / 3.0;
     const Vec3 normal = (B - centroid).cross(C - centroid);
     const double normal_norm = normal.norm();
-    if (normal_norm < 1e-12) return 0.0;  // degenerate plane (collinear)
+    if (normal_norm < 1e-12) return kNaN;  // degenerate plane (collinear)
     const Vec3 normal_hat = normal / normal_norm;
     return (A - centroid).dot(normal_hat);
 }
@@ -178,8 +180,7 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
 //
 // Returns true and fills neighbours[0..2] when the atom has exactly
 // three bonded neighbours; otherwise returns false and the calculator
-// emits 0.0 for this atom (legitimate for ring-edge sp2 atoms whose
-// bond graph degenerates in unusual structures).
+// emits NaN/valid=0 for this applicable-but-invalid atom.
 bool ThreeBondedNeighbours(const Protein& protein, size_t ai,
                             std::array<size_t, 3>& neighbours) {
     const Atom& a = protein.AtomAt(ai);
@@ -190,9 +191,9 @@ bool ThreeBondedNeighbours(const Protein& protein, size_t ai,
         neighbours[k] = (b.atom_index_a == ai) ? b.atom_index_b
                                                 : b.atom_index_a;
     }
-    // Sort by atom index so the pyramidalization sign is build-stable
-    // and portable across structures (bond order in `bond_indices` is
-    // not stable).
+    // Sort by atom index for deterministic plane construction only.
+    // The stored scalar is magnitude-only; this order no longer defines
+    // a physically interpreted sign.
     std::sort(neighbours.begin(), neighbours.end());
     return true;
 }
@@ -249,23 +250,33 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     // ──────────────────────────────────────────────────────────────
     // 1. Per-atom sp2 pyramidalization
     //
-    // Signed out-of-plane displacement (Å) at every atom whose
-    // typed planar_group != None. Atoms with planar_group == None
-    // emit 0.0. Atoms whose bond graph does not have exactly three
-    // neighbours (degenerate) also emit 0.0 — never a fail-loud case
-    // because the substrate already carries the chemistry decision.
+    // Non-negative out-of-plane displacement magnitude (Å) at every
+    // atom whose typed planar_group != None. NaN plus valid=0 separates
+    // non-applicable and invalid/degenerate rows from real computed
+    // zero.
     // ──────────────────────────────────────────────────────────────
-    int planar_atom_count = 0;
-    double max_abs_pyr = 0.0;
+    int planar_applicable_count = 0;
+    int planar_valid_count = 0;
+    int planar_invalid_count = 0;
+    double max_pyr = 0.0;
     for (size_t ai = 0; ai < N_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        ca.pyramidalization = 0.0;
+        ca.pyramidalization = kNaN;
+        ca.pyramidalization_valid = 0;
+        ca.pyramidalization_center_type = 0;
 
         const AtomSemanticTable& sem = topo.SemanticAt(ai);
         if (sem.planar_group == PlanarGroupKind::None) continue;
 
+        ca.pyramidalization_center_type =
+            static_cast<std::int8_t>(sem.planar_group);
+        ++planar_applicable_count;
+
         std::array<size_t, 3> nb;
-        if (!ThreeBondedNeighbours(protein, ai, nb)) continue;
+        if (!ThreeBondedNeighbours(protein, ai, nb)) {
+            ++planar_invalid_count;
+            continue;
+        }
 
         const Vec3 A = conf.PositionAt(ai);
         const Vec3 B = conf.PositionAt(nb[0]);
@@ -273,9 +284,14 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         const Vec3 D = conf.PositionAt(nb[2]);
 
         const double pyr = Pyramidalization(A, B, C, D);
-        ca.pyramidalization = pyr;
-        ++planar_atom_count;
-        if (std::abs(pyr) > max_abs_pyr) max_abs_pyr = std::abs(pyr);
+        if (!std::isfinite(pyr)) {
+            ++planar_invalid_count;
+            continue;
+        }
+        ca.pyramidalization = std::abs(pyr);
+        ca.pyramidalization_valid = 1;
+        ++planar_valid_count;
+        if (ca.pyramidalization > max_pyr) max_pyr = ca.pyramidalization;
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -400,8 +416,10 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     }
 
     OperationLog::Info(LogCalcOther, "PlanarGeometryResult::Compute",
-        "pyramidalization: " + std::to_string(planar_atom_count) +
-        " planar atoms, max |pyr|=" + std::to_string(max_abs_pyr) +
+        "pyramidalization applicable=" + std::to_string(planar_applicable_count) +
+        " valid=" + std::to_string(planar_valid_count) +
+        " invalid_or_degenerate=" + std::to_string(planar_invalid_count) +
+        " max_magnitude=" + std::to_string(max_pyr) +
         " A; omega valid=" + std::to_string(omega_valid) +
         "/" + std::to_string(N_res) +
         " (xpro=" + std::to_string(omega_xpro) + ")" +
@@ -420,7 +438,8 @@ int PlanarGeometryResult::WriteFeatures(
     const size_t N = conf.AtomCount();
     int written = 0;
 
-    // pyramidalization.npy (N,) float64 — per-atom signed out-of-plane Å
+    // pyramidalization.npy (N,) float64 — per-atom non-negative
+    // out-of-plane magnitude Å; NaN for non-applicable/invalid.
     {
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i) {
@@ -428,6 +447,29 @@ int PlanarGeometryResult::WriteFeatures(
         }
         NpyWriter::WriteFloat64(output_dir + "/pyramidalization.npy",
                                 data.data(), N);
+        written++;
+    }
+
+    // pyramidalization_valid.npy (N,) int8 — 1 iff scalar is a finite
+    // computed value. Real planar zero is valid=1.
+    {
+        std::vector<int8_t> data(N);
+        for (size_t i = 0; i < N; ++i) {
+            data[i] = conf.AtomAt(i).pyramidalization_valid;
+        }
+        NpyWriter::WriteInt8(output_dir + "/pyramidalization_valid.npy",
+                             data.data(), N);
+        written++;
+    }
+
+    // pyramidalization_center_type.npy (N,) int8 — PlanarGroupKind code.
+    {
+        std::vector<int8_t> data(N);
+        for (size_t i = 0; i < N; ++i) {
+            data[i] = conf.AtomAt(i).pyramidalization_center_type;
+        }
+        NpyWriter::WriteInt8(output_dir + "/pyramidalization_center_type.npy",
+                             data.data(), N);
         written++;
     }
 

@@ -33,18 +33,22 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
     const double first_shell_cutoff = CalculatorConfig::Get("water_first_shell_cutoff");
     const double first_sq = first_shell_cutoff * first_shell_cutoff;
     const double near_zero = CalculatorConfig::Get("near_zero_vector_norm_threshold");
+    const double singularity_guard = CalculatorConfig::Get("singularity_guard_distance");
+    const double guard_sq = singularity_guard * singularity_guard;
 
     GeometryChoiceBuilder choices(conf);
 
     // GeometryChoice: one summary record for the parameters used
     choices.Record(CalculatorId::HydrationGeometry, 0, "hydration_geometry_parameters",
-        [first_shell_cutoff, N, W](GeometryChoice& gc) {
+        [first_shell_cutoff, singularity_guard, N, W](GeometryChoice& gc) {
             AddNumber(gc, "first_shell_cutoff", first_shell_cutoff, "A");
+            AddNumber(gc, "singularity_guard_distance", singularity_guard, "A");
             AddNumber(gc, "n_atoms", static_cast<double>(N), "count");
             AddNumber(gc, "n_waters", static_cast<double>(W), "count");
             AddNumber(gc, "reference_frame", 0.0, "SASA_normal");
         });
 
+    size_t total_singularity_rejected = 0;
     for (size_t ai = 0; ai < N; ++ai) {
         auto& atom = conf.MutableAtomAt(ai);
 
@@ -57,6 +61,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         int n_exposed = 0;
         int n_buried = 0;
         int n_shell = 0;
+        int n_singularity_guard = 0;
 
         Vec3 pos_i = atom.Position();
 
@@ -64,6 +69,11 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
             Vec3 r = solvent.waters[wi].O_pos - pos_i;
             double d_sq = r.squaredNorm();
             if (d_sq > first_sq) continue;
+            if (d_sq < guard_sq) {
+                ++n_singularity_guard;
+                ++total_singularity_rejected;
+                continue;
+            }
 
             ++n_shell;
 
@@ -85,6 +95,19 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
                 // No meaningful normal: count all waters as exposed.
                 ++n_exposed;
             }
+        }
+
+        if (n_singularity_guard > 0) {
+            choices.Record(CalculatorId::HydrationGeometry, ai,
+                "hydration geometry singularity guard",
+                [&conf, ai, n_singularity_guard, singularity_guard](GeometryChoice& gc) {
+                    AddAtom(gc, &conf.AtomAt(ai), ai, EntityRole::Target,
+                            EntityOutcome::Triggered);
+                    AddNumber(gc, "waters_rejected",
+                              static_cast<double>(n_singularity_guard), "count");
+                    AddNumber(gc, "singularity_guard_distance",
+                              singularity_guard, "A");
+                });
         }
 
         atom.sasa_first_shell_count = n_shell;
@@ -120,7 +143,9 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
     OperationLog::Info(LogCalcOther, "HydrationGeometryResult",
         "computed water polarisation for " + std::to_string(N) + " atoms"
         " first_shell=" + std::to_string(first_shell_cutoff) + "A"
-        " ref=SASA_normal");
+        " ref=SASA_normal"
+        " singularity_rejected=" +
+        std::to_string(total_singularity_rejected));
 
     return result;
 }

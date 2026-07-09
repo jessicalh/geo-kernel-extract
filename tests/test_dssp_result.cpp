@@ -4,10 +4,96 @@
 #include "GeometryResult.h"
 #include "DsspResult.h"
 #include "PhysicalConstants.h"
+#include "NpyWriter.h"
+#include "Residue.h"
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <sstream>
+#include <string>
+#include <unistd.h>
+#include <vector>
+#include <cstdint>
 #include <cmath>
 
 using namespace nmr;
+namespace fs = std::filesystem;
+
+namespace {
+
+struct NpyArray {
+    std::string descr;
+    std::vector<size_t> shape;
+    std::vector<char> bytes;
+};
+
+std::string Trim(std::string s) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                    [&](char c) { return !is_space(c); }));
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+                         [&](char c) { return !is_space(c); }).base(), s.end());
+    return s;
+}
+
+NpyArray ReadNpy(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyArray arr;
+    if (!in.is_open()) return arr;
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    uint16_t header_len = 0;
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    std::string header(header_len, '\0');
+    in.read(header.data(), header_len);
+    const std::string descr_key = "'descr': '";
+    auto descr_pos = header.find(descr_key);
+    EXPECT_NE(descr_pos, std::string::npos);
+    if (descr_pos == std::string::npos) return arr;
+    descr_pos += descr_key.size();
+    auto descr_end = header.find('\'', descr_pos);
+    EXPECT_NE(descr_end, std::string::npos);
+    if (descr_end == std::string::npos) return arr;
+    arr.descr = header.substr(descr_pos, descr_end - descr_pos);
+    auto shape_begin = header.find('(');
+    auto shape_end = header.find(')', shape_begin);
+    EXPECT_NE(shape_begin, std::string::npos);
+    EXPECT_NE(shape_end, std::string::npos);
+    if (shape_begin == std::string::npos || shape_end == std::string::npos)
+        return arr;
+    std::stringstream ss(header.substr(shape_begin + 1,
+                                      shape_end - shape_begin - 1));
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        token = Trim(token);
+        if (!token.empty()) arr.shape.push_back(static_cast<size_t>(std::stoull(token)));
+    }
+    arr.bytes.assign(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+    return arr;
+}
+
+template <typename T>
+const T* DataAs(const NpyArray& arr) {
+    return reinterpret_cast<const T*>(arr.bytes.data());
+}
+
+void ExpectShapeAndDescr(const NpyArray& arr,
+                         const std::vector<size_t>& shape,
+                         const std::string& descr) {
+    EXPECT_EQ(arr.shape, shape);
+    EXPECT_EQ(arr.descr, descr);
+}
+
+}  // namespace
 
 
 class DsspResultTest : public ::testing::Test {
@@ -134,4 +220,89 @@ TEST_F(DsspResultTest, SomeSASANonZero) {
     }
     // Surface residues should have nonzero SASA
     EXPECT_GT(nonzero, 10);
+}
+
+TEST_F(DsspResultTest, dssp_unobserved_residue_npy) {
+    auto& conf = protein->Conformation();
+    auto dssp = DsspResult::Compute(conf);
+    ASSERT_NE(dssp, nullptr);
+
+    auto& residues = const_cast<std::vector<DsspResidue>&>(dssp->AllResidues());
+    ASSERT_GE(residues.size(), 2u);
+    ASSERT_FALSE(protein->ResidueAt(0).atom_indices.empty());
+    ASSERT_FALSE(protein->ResidueAt(1).atom_indices.empty());
+
+    residues[0].observed = true;
+    residues[0].secondary_structure = 'H';
+    residues[0].phi = 0.4;
+    residues[0].psi = -0.7;
+    residues[0].sasa = 12.5;
+    residues[0].acceptors[0].energy = -1.1;
+    residues[0].acceptors[1].energy = -2.2;
+    residues[0].donors[0].energy = -3.3;
+    residues[0].donors[1].energy = -4.4;
+
+    residues[1].observed = false;
+    residues[1].secondary_structure = 'C';
+    residues[1].phi = 1.2;
+    residues[1].psi = 2.3;
+    residues[1].sasa = 99.0;
+    residues[1].acceptors[0].energy = -9.0;
+    residues[1].acceptors[1].energy = -8.0;
+    residues[1].donors[0].energy = -7.0;
+    residues[1].donors[1].energy = -6.0;
+
+    const fs::path output_dir = fs::temp_directory_path() /
+        ("dssp_unobserved_" + std::to_string(::getpid()));
+    fs::create_directories(output_dir);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 5);
+
+    const size_t N = conf.AtomCount();
+    const size_t obs_ai = protein->ResidueAt(0).atom_indices.front();
+    const size_t miss_ai = protein->ResidueAt(1).atom_indices.front();
+
+    auto observed = ReadNpy(output_dir / "dssp_observed.npy");
+    auto backbone = ReadNpy(output_dir / "dssp_backbone.npy");
+    auto ss8 = ReadNpy(output_dir / "dssp_ss8.npy");
+    auto hb = ReadNpy(output_dir / "dssp_hbond_energy.npy");
+    auto chi = ReadNpy(output_dir / "dssp_chi.npy");
+
+    ExpectShapeAndDescr(observed, {N}, "|i1");
+    ExpectShapeAndDescr(backbone, {N, 5}, "<f8");
+    ExpectShapeAndDescr(ss8, {N, 8}, "<f8");
+    ExpectShapeAndDescr(hb, {N, 4}, "<f8");
+    ExpectShapeAndDescr(chi, {N, 12}, "<f8");
+
+    const int8_t* obs = DataAs<int8_t>(observed);
+    const double* bb = DataAs<double>(backbone);
+    const double* ss = DataAs<double>(ss8);
+    const double* hbe = DataAs<double>(hb);
+    const double* ch = DataAs<double>(chi);
+
+    EXPECT_EQ(obs[obs_ai], 1);
+    EXPECT_DOUBLE_EQ(bb[obs_ai * 5 + 0], -0.4);
+    EXPECT_DOUBLE_EQ(bb[obs_ai * 5 + 1], 0.7);
+    EXPECT_DOUBLE_EQ(bb[obs_ai * 5 + 2], 12.5);
+    EXPECT_DOUBLE_EQ(bb[obs_ai * 5 + 3], 1.0);
+    EXPECT_DOUBLE_EQ(bb[obs_ai * 5 + 4], 0.0);
+    EXPECT_DOUBLE_EQ(ss[obs_ai * 8 + 0], 1.0);
+    for (int c = 1; c < 8; ++c)
+        EXPECT_DOUBLE_EQ(ss[obs_ai * 8 + c], 0.0);
+    EXPECT_DOUBLE_EQ(hbe[obs_ai * 4 + 0], -1.1);
+    EXPECT_DOUBLE_EQ(hbe[obs_ai * 4 + 1], -2.2);
+    EXPECT_DOUBLE_EQ(hbe[obs_ai * 4 + 2], -3.3);
+    EXPECT_DOUBLE_EQ(hbe[obs_ai * 4 + 3], -4.4);
+
+    EXPECT_EQ(obs[miss_ai], 0);
+    EXPECT_TRUE(std::isnan(bb[miss_ai * 5 + 0]));
+    EXPECT_TRUE(std::isnan(bb[miss_ai * 5 + 1]));
+    EXPECT_TRUE(std::isnan(bb[miss_ai * 5 + 2]));
+    EXPECT_DOUBLE_EQ(bb[miss_ai * 5 + 3], 0.0);
+    EXPECT_DOUBLE_EQ(bb[miss_ai * 5 + 4], 0.0);
+    for (int c = 0; c < 8; ++c)
+        EXPECT_DOUBLE_EQ(ss[miss_ai * 8 + c], 0.0);
+    for (int c = 0; c < 4; ++c)
+        EXPECT_TRUE(std::isnan(hbe[miss_ai * 4 + c]));
+    for (int c = 0; c < 12; ++c)
+        EXPECT_TRUE(std::isfinite(ch[miss_ai * 12 + c]));
 }

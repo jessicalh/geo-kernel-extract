@@ -58,8 +58,9 @@ RingPuckerTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
 // ── Compute ──────────────────────────────────────────────────────────
 //
 // Per frame: if PlanarGeometryResult attached, copy per-ring pucker
-// (Q, θ) and per-aromatic-ring χ₂. Otherwise push NaN sentinels and
-// flag the frame as source-absent.
+// (Q, θ) and per-aromatic-ring χ₂. Production PerFrameExtractionSet
+// hard-requires PlanarGeometryResult; the source-absent path is kept
+// for custom/synthetic configurations.
 //
 // CROSS-RESULT READ (read-point): PG.PuckerQ() / PG.PuckerTheta() /
 // PG.AromaticChi2() are length-stable per-frame arrays sized by the
@@ -180,9 +181,9 @@ void RingPuckerTimeSeriesTrajectoryResult::WriteH5Group(
         "one frame."));
     grp.createAttribute("source", std::string("PlanarGeometryResult"));
     grp.createAttribute("source_attached_policy", std::string(
-        "conditional -- PlanarGeometryResult attaches when the "
-        "LegacyAmber substrate is populated (OperationRunner). "
-        "Reader contract: consult source_attached_per_frame; NaN "
+        "production PerFrameExtractionSet hard-requires "
+        "PlanarGeometryResult; source_attached_per_frame is retained "
+        "for custom/synthetic configurations. NaN "
         "values within attached frames indicate per-ring degenerate "
         "geometry (incomplete ring or collinear vertices)."));
     grp.createAttribute("saturated_ring_axis", std::string("saturated_ring_index"));

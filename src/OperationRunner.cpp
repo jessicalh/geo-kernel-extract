@@ -95,23 +95,8 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (!TimedAttach(conf, "EnrichmentResult", out, [&]{
             return EnrichmentResult::Compute(conf); })) return out;
 
-    // Planar geometry — DSSP-style soft attach. Compute returns
-    // nullptr on stub-fixture paths that don't populate substrate;
-    // we log and continue rather than aborting the pipeline. Mirrors
-    // the existing pattern for DSSP/MOPAC/APBS (calculators that can
-    // legitimately fail under specific input shapes), per the
-    // PATTERNS.md "Diagnostic error messages" rule.
-    {
-        OperationLog::Scope pgr_scope("PlanarGeometryResult");
-        auto pgr = PlanarGeometryResult::Compute(conf);
-        if (pgr) {
-            Attach(conf, std::move(pgr), "PlanarGeometryResult", out);
-        } else {
-            OperationLog::Error("OperationRunner",
-                "PlanarGeometryResult failed — pyramidalization, "
-                "omega, aromatic_chi2, and pucker NPYs will be absent.");
-        }
-    }
+    if (!TimedAttach(conf, "PlanarGeometryResult", out, [&]{
+            return PlanarGeometryResult::Compute(conf); })) return out;
 
     // DSSP
     if (!opts.skip_dssp) {

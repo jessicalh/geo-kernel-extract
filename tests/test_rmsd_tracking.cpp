@@ -8,6 +8,7 @@
 #include "CalculatorConfig.h"
 #include "OperationLog.h"
 #include "Protein.h"
+#include "ProteinConformation.h"
 #include "Residue.h"
 #include "RmsdTrackingTrajectoryResult.h"
 #include "RunConfiguration.h"
@@ -23,10 +24,12 @@
 #include <highfive/H5Group.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -180,6 +183,112 @@ TEST(RmsdTracking, H5RoundTrip) {
         EXPECT_TRUE(std::isfinite(rmsd[t])) << "non-finite RMSD at frame " << t;
         EXPECT_GE(rmsd[t], 0.0) << "negative RMSD at frame " << t;
     }
+}
+
+
+// ── Insufficient alignment set sentinel ─────────────────────────────
+
+TEST(RmsdTracking, InsufficientAlignmentAtomsSentinelAndH5) {
+    nmr::Protein protein;
+    nmr::ProteinConformation conf0(
+        &protein,
+        {nmr::Vec3(0.0, 0.0, 0.0), nmr::Vec3(1.0, 0.0, 0.0)},
+        "rmsd-insufficient-0");
+    nmr::ProteinConformation conf1(
+        &protein,
+        {nmr::Vec3(0.0, 0.0, 0.0), nmr::Vec3(2.0, 0.0, 0.0)},
+        "rmsd-insufficient-1");
+    nmr::TrajectoryProtein tp;
+    nmr::Trajectory traj("", "", "");
+
+    auto tr = nmr::RmsdTrackingTrajectoryResult::CreateForTesting({0, 1});
+    tr->Compute(conf0, tp, traj, 7, 1.25);
+    tr->Compute(conf1, tp, traj, 11, 2.50);
+
+    ASSERT_EQ(tr->NumFrames(), 2u);
+    EXPECT_TRUE(tr->InsufficientAlignmentAtoms());
+    EXPECT_TRUE(std::isnan(tr->RmsdAtSampleIndex(0)));
+    EXPECT_TRUE(std::isnan(tr->RmsdAtSampleIndex(1)));
+    EXPECT_TRUE(std::isnan(tr->LatestRmsd()));
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("rmsd_insufficient_" + std::to_string(::getpid()) + ".h5")).string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate);
+      tr->WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup("/trajectory/rmsd_tracking");
+
+    bool insufficient = false;
+    std::size_t min_alignment_atoms = 0;
+    std::size_t reference_frame = 0;
+    std::string convention;
+    grp.getAttribute("insufficient_alignment_atoms").read(insufficient);
+    grp.getAttribute("min_alignment_atoms").read(min_alignment_atoms);
+    grp.getAttribute("reference_frame_trr_index").read(reference_frame);
+    grp.getAttribute("rmsd_frame_0_convention").read(convention);
+    EXPECT_TRUE(insufficient);
+    EXPECT_EQ(min_alignment_atoms, 3u);
+    EXPECT_EQ(reference_frame, 7u);
+    EXPECT_NE(convention.find("NaN when n_atoms < 3"), std::string::npos);
+
+    std::vector<std::uint8_t> mask;
+    grp.getDataSet("insufficient_alignment_atoms_mask").read(mask);
+    ASSERT_EQ(mask.size(), 1u);
+    EXPECT_EQ(mask[0], 1u);
+
+    std::vector<double> rmsd;
+    grp.getDataSet("rmsd").read(rmsd);
+    ASSERT_EQ(rmsd.size(), 2u);
+    EXPECT_TRUE(std::isnan(rmsd[0]));
+    EXPECT_TRUE(std::isnan(rmsd[1]));
+
+    fs::remove(h5_path);
+}
+
+
+TEST(RmsdTracking, SufficientAlignmentAtomsKeepFrame0ZeroAndMaskClear) {
+    nmr::Protein protein;
+    nmr::ProteinConformation conf0(
+        &protein,
+        {nmr::Vec3(0.0, 0.0, 0.0),
+         nmr::Vec3(1.0, 0.0, 0.0),
+         nmr::Vec3(0.0, 1.0, 0.0)},
+        "rmsd-sufficient-0");
+    nmr::TrajectoryProtein tp;
+    nmr::Trajectory traj("", "", "");
+
+    auto tr = nmr::RmsdTrackingTrajectoryResult::CreateForTesting({0, 1, 2});
+    tr->Compute(conf0, tp, traj, 3, 0.75);
+
+    ASSERT_EQ(tr->NumFrames(), 1u);
+    EXPECT_FALSE(tr->InsufficientAlignmentAtoms());
+    EXPECT_DOUBLE_EQ(tr->RmsdAtSampleIndex(0), 0.0);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("rmsd_sufficient_" + std::to_string(::getpid()) + ".h5")).string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate);
+      tr->WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup("/trajectory/rmsd_tracking");
+
+    bool insufficient = true;
+    std::size_t reference_frame = 0;
+    grp.getAttribute("insufficient_alignment_atoms").read(insufficient);
+    grp.getAttribute("reference_frame_trr_index").read(reference_frame);
+    EXPECT_FALSE(insufficient);
+    EXPECT_EQ(reference_frame, 3u);
+
+    std::vector<std::uint8_t> mask;
+    grp.getDataSet("insufficient_alignment_atoms_mask").read(mask);
+    ASSERT_EQ(mask.size(), 1u);
+    EXPECT_EQ(mask[0], 0u);
+
+    std::vector<double> rmsd;
+    grp.getDataSet("rmsd").read(rmsd);
+    ASSERT_EQ(rmsd.size(), 1u);
+    EXPECT_DOUBLE_EQ(rmsd[0], 0.0);
+
+    fs::remove(h5_path);
 }
 
 

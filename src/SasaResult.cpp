@@ -8,6 +8,8 @@
 #include "PhysicalConstants.h"
 
 #include <cmath>
+#include <limits>
+#include <string>
 
 namespace nmr {
 
@@ -31,6 +33,28 @@ static std::vector<Vec3> FibonacciSphere(int point_count) {
 }
 
 
+static bool ValidateSasaPointCount(double raw, int& out, std::string& why) {
+    if (!std::isfinite(raw)) {
+        why = "not finite";
+        return false;
+    }
+    if (std::trunc(raw) != raw) {
+        why = "not integral";
+        return false;
+    }
+    if (raw < 1.0) {
+        why = "must be >= 1";
+        return false;
+    }
+    if (raw > static_cast<double>(std::numeric_limits<int>::max())) {
+        why = "exceeds int max";
+        return false;
+    }
+    out = static_cast<int>(raw);
+    return true;
+}
+
+
 std::vector<std::type_index> SasaResult::Dependencies() const {
     return { typeid(SpatialIndexResult) };
 }
@@ -46,15 +70,23 @@ std::unique_ptr<SasaResult> SasaResult::Compute(ProteinConformation& conf) {
     auto result = std::make_unique<SasaResult>();
     result->conf_ = &conf;
 
+    const double probe_radius = CalculatorConfig::Get("sasa_probe_radius");
+    const double n_points_raw = CalculatorConfig::Get("sasa_n_points");
+    int n_points = 0;
+    std::string bad_reason;
+    if (!ValidateSasaPointCount(n_points_raw, n_points, bad_reason)) {
+        OperationLog::Error("SasaResult::Compute",
+            "invalid sasa_n_points=" + std::to_string(n_points_raw) +
+            " (" + bad_reason + ")");
+        return nullptr;
+    }
+
     // Nothing to sample on an empty conformation (the per-atom loop below
     // would have no atoms to index).
     if (N == 0)
         return result;
 
     const auto& spatial = conf.Result<SpatialIndexResult>();
-
-    const double probe_radius = CalculatorConfig::Get("sasa_probe_radius");
-    const int n_points = static_cast<int>(CalculatorConfig::Get("sasa_n_points"));
 
     auto sphere_directions = FibonacciSphere(n_points);
 

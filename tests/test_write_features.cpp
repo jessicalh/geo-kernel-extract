@@ -18,6 +18,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 #include <unistd.h>
 
@@ -36,6 +37,8 @@
 #include "SpatialIndexResult.h"
 #include "ChargeSource.h"
 #include "OperationLog.h"
+#include "Protein.h"
+#include "Residue.h"
 
 namespace fs = std::filesystem;
 using namespace nmr;
@@ -411,6 +414,46 @@ TEST(WriteFeatures, UbqProtonatedReadback) {
         ("write_features_ubq_readback_" + std::to_string(::getpid()));
     fs::remove_all(out_dir);
     AssertCompleteEmitReadback(conf, result, out_dir);
+}
+
+TEST(WriteFeatures, zero_ring_write_all_features) {
+    Protein protein;
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t ri = protein.AddResidue(std::move(residue));
+
+    auto atom = Atom::Create(Element::C);
+    atom->pdb_atom_name = "C";
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+
+    auto& conf = protein.AddConformation({Vec3(0.0, 0.0, 0.0)},
+                                         "zero-ring direct fixture");
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("write_features_zero_ring_" + std::to_string(::getpid()));
+    fs::remove_all(out_dir);
+
+    const int arrays = ConformationResult::WriteAllFeatures(conf, out_dir.string());
+    EXPECT_EQ(arrays, 11);
+
+    auto ring_contrib = ReadNpy(out_dir / "ring_contributions.npy");
+    auto bs_b = ReadNpy(out_dir / "bs_ring_B_field.npy");
+    auto bs_b_cyl = ReadNpy(out_dir / "bs_ring_B_cylindrical.npy");
+    auto hm_b = ReadNpy(out_dir / "hm_ring_B_field.npy");
+    auto ring_dir = ReadNpy(out_dir / "ring_direction_to_center.npy");
+    auto piquad = ReadNpy(out_dir / "piquad_quad_scalar.npy");
+    auto ring_geom = ReadNpy(out_dir / "ring_geometry.npy");
+
+    ExpectShapeAndDescr(ring_contrib, {0, 40}, "<f8");
+    ExpectShapeAndDescr(bs_b, {0, 3}, "<f8");
+    ExpectShapeAndDescr(bs_b_cyl, {0, 3}, "<f8");
+    ExpectShapeAndDescr(hm_b, {0, 3}, "<f8");
+    ExpectShapeAndDescr(ring_dir, {0, 3}, "<f8");
+    ExpectShapeAndDescr(piquad, {0}, "<f8");
+    ExpectShapeAndDescr(ring_geom, {0, 10}, "<f8");
 }
 
 }  // namespace

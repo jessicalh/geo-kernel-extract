@@ -175,16 +175,15 @@ inline QtEfg UnpackEfg(const double* r) {
 // dssp_backbone (N×5) — per-atom, BROADCAST from the atom's residue (every
 // atom of a residue shares its residue's DSSP row). Writer DsspResult.cpp:
 // 214-224 (libdssp; Joosten 2011 / Kabsch & Sander 1983).
-//   phi, psi : backbone dihedrals, RADIANS, in libdssp's NEGATED-IUPAC sign
-//              convention (DsspResult.h:22-25) — negate for IUPAC φ/ψ.
+//   phi, psi : backbone dihedrals, RADIANS, written as -libdssp so this
+//              NPY is IUPAC-facing.
 //   sasa     : DSSP per-RESIDUE SASA (Å²). DISTINCT from atom_sasa (the
 //              Shrake-Rupley per-ATOM SASA in QtSasaGroup) — never conflate.
 //   ssHelix  : 1.0 if SS ∈ {H,G,I} (any helix) else 0.0  } binary collapse of
 //   ssSheet  : 1.0 if SS ∈ {E,B} (strand/bridge) else 0.0 } the 8-class (full
 //              8-class is dssp_ss8 / DsspSs8).
-// Residues DSSP did not map are written all-zero (looks like coil, φ=ψ=0); the
-// NPY does not carry DsspResidue.observed, so default-coil is indistinguishable
-// from real coil at this layer.
+// Residues DSSP did not map are marked in dssp_observed (0); their
+// phi/psi/sasa columns are NaN and helix/sheet flags are 0.
 struct DsspScalars {
     double phi = 0.0;
     double psi = 0.0;
@@ -199,7 +198,8 @@ struct DsspScalars {
 // dssp_ss8 (N×8) — per-atom one-hot of the DSSP 8-class SS, broadcast from
 // residue. Column index == DsspCode ordinal (DsspResult.cpp:234-255):
 // H=0,G=1,I=2,E=3,B=4,T=5,S=6,C=7 — identical to Types.h DsspCode, so the hot
-// column decodes straight to a DsspCode. Unmapped residue → coil (col 7).
+// column decodes straight to a DsspCode. Unmapped residues have all columns
+// zero; consult dssp_observed before interpreting absence as coil.
 struct DsspSs8 {
     std::array<double, 8> oneHot = {};
     static DsspSs8 FromRow(const double* r) {

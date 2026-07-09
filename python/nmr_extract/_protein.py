@@ -988,7 +988,8 @@ class PlanarGeometryGroup:
     Axes are intentionally kept explicit because the result mixes atom,
     residue, aromatic-ring, and saturated-ring quantities:
 
-    - ``pyramidalization`` is per atom, shape ``(N,)``.
+    - ``pyramidalization``, ``pyramidalization_valid``, and
+      ``pyramidalization_center_type`` are per atom, shape ``(N,)``.
     - ``omega_actual``, ``omega_deviation``, and ``omega_is_xpro`` are
       per residue, shape ``(R,)``.
     - ``aromatic_chi2`` is per aromatic ring.
@@ -1000,6 +1001,8 @@ class PlanarGeometryGroup:
     from the existing per-aromatic-ring ``RingGeometry`` table.
     """
     pyramidalization: Optional[np.ndarray] = None
+    pyramidalization_valid: Optional[np.ndarray] = None
+    pyramidalization_center_type: Optional[np.ndarray] = None
     omega_actual: Optional[np.ndarray] = None
     omega_deviation: Optional[np.ndarray] = None
     omega_is_xpro: Optional[np.ndarray] = None
@@ -1037,9 +1040,13 @@ class WaterFieldGroup:
     """Explicit water E-field and EFG from full-system trajectory."""
     efield: VectorField             # (N, 3) total water E-field
     efield_first: VectorField       # (N, 3) first-shell E-field
-    efg: EFGTensor                  # (N, 9) total water EFG
-    efg_first: EFGTensor            # (N, 9) first-shell EFG
+    efg: EFGTensor                  # (N, 5) total water EFG (T2 only)
+    efg_first: EFGTensor            # (N, 5) first-shell EFG (T2 only)
     shell_counts: np.ndarray        # (N, 2) [n_first, n_second]
+    efield_clamp_mask: Optional[np.ndarray] = None
+    efield_clamp_scale: Optional[np.ndarray] = None
+    efield_first_clamp_mask: Optional[np.ndarray] = None
+    efield_first_clamp_scale: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -1222,6 +1229,7 @@ class Protein:
     coulomb: CoulombGroup = None
     hbond: HBondGroup = None
     dssp: DsspScalars = None
+    dssp_observed: np.ndarray = None
     dssp_ss8: np.ndarray = None
     dssp_hbond_energy: np.ndarray = None
     dssp_chi: np.ndarray = None
@@ -1745,6 +1753,8 @@ def load(path: str | Path) -> Protein:
     planar_geometry = None
     planar_stems = {
         "pyramidalization",
+        "pyramidalization_valid",
+        "pyramidalization_center_type",
         "omega_actual",
         "omega_deviation",
         "omega_is_xpro",
@@ -1756,6 +1766,10 @@ def load(path: str | Path) -> Protein:
         planar_geometry = PlanarGeometryGroup(
             pyramidalization=get("pyramidalization")
                 if "pyramidalization" in available else None,
+            pyramidalization_valid=get("pyramidalization_valid")
+                if "pyramidalization_valid" in available else None,
+            pyramidalization_center_type=get("pyramidalization_center_type")
+                if "pyramidalization_center_type" in available else None,
             omega_actual=get("omega_actual")
                 if "omega_actual" in available else None,
             omega_deviation=get("omega_deviation")
@@ -1779,6 +1793,14 @@ def load(path: str | Path) -> Protein:
             efg=get("water_efg"),
             efg_first=get("water_efg_first"),
             shell_counts=get("water_shell_counts"),
+            efield_clamp_mask=get("water_efield_clamp_mask")
+                if "water_efield_clamp_mask" in available else None,
+            efield_clamp_scale=get("water_efield_clamp_scale")
+                if "water_efield_clamp_scale" in available else None,
+            efield_first_clamp_mask=get("water_efield_first_clamp_mask")
+                if "water_efield_first_clamp_mask" in available else None,
+            efield_first_clamp_scale=get("water_efield_first_clamp_scale")
+                if "water_efield_first_clamp_scale" in available else None,
         )
 
     # Hydration shell (trajectory path — optional)
@@ -1890,6 +1912,7 @@ def load(path: str | Path) -> Protein:
         coulomb=coulomb,
         hbond=hbond,
         dssp=get("dssp_backbone"),
+        dssp_observed=get("dssp_observed"),
         dssp_ss8=get("dssp_ss8"),
         dssp_hbond_energy=get("dssp_hbond_energy"),
         dssp_chi=get("dssp_chi"),

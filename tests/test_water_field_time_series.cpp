@@ -8,6 +8,7 @@
 #include "ConformationAtom.h"
 #include "GeometryResult.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -28,10 +29,14 @@
 #include <highfive/H5Group.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -70,6 +75,61 @@ nmr::RunConfiguration BuildWaterFieldConfig(unsigned stride) {
     return config;
 }
 
+nmr::ProteinConformation& BuildOneAtomWaterFixture(nmr::Protein& protein) {
+    nmr::Residue residue;
+    residue.type = nmr::AminoAcid::ALA;
+    residue.sequence_number = 1;
+    const size_t ri = protein.AddResidue(std::move(residue));
+    auto atom = nmr::Atom::Create(nmr::Element::C);
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+    return protein.AddConformation({nmr::Vec3(0.0, 0.0, 0.0)},
+                                   "one atom water field");
+}
+
+void RunWaterClampIndependenceInChild() {
+    const fs::path toml = fs::temp_directory_path() /
+        ("water_clamp_" + std::to_string(::getpid()) + ".toml");
+    {
+        std::ofstream out(toml);
+        out << "efield_magnitude_sanity_clamp = 1.0\n";
+    }
+    nmr::CalculatorConfig::Load(toml.string());
+    nmr::Protein protein;
+    auto& conf = BuildOneAtomWaterFixture(protein);
+
+    nmr::SolventEnvironment solvent;
+    nmr::WaterMolecule first;
+    first.O_pos = nmr::Vec3(2.0, 0.0, 0.0);
+    first.H1_pos = first.O_pos;
+    first.H2_pos = first.O_pos;
+    first.O_charge = 0.001;
+    first.H_charge = 0.0;
+    nmr::WaterMolecule outer;
+    outer.O_pos = nmr::Vec3(4.0, 0.0, 0.0);
+    outer.H1_pos = outer.O_pos;
+    outer.H2_pos = outer.O_pos;
+    outer.O_charge = 2.0;
+    outer.H_charge = 0.0;
+    solvent.waters = {first, outer};
+    solvent.water_O_positions = {first.O_pos, outer.O_pos};
+
+    auto result = nmr::WaterFieldResult::Compute(conf, solvent);
+    const auto& atom = conf.AtomAt(0);
+    const nmr::Vec3 expected_first =
+        (nmr::COULOMB_KE * 0.001 / 8.0) * nmr::Vec3(2.0, 0.0, 0.0);
+    const bool ok = result != nullptr
+        && atom.water_efield_clamp_mask == 1
+        && atom.water_efield_clamp_scale < 1.0
+        && std::abs(atom.water_efield.norm() - 1.0) < 1e-9
+        && atom.water_efield_first_clamp_mask == 0
+        && atom.water_efield_first_clamp_scale == 1.0
+        && (atom.water_efield_first - expected_first).norm() < 1e-12;
+    fs::remove(toml);
+    _exit(ok ? 0 : 1);
+}
+
 }  // namespace
 
 
@@ -105,6 +165,79 @@ TEST(WaterFieldTimeSeries, SyntheticAllAbsentSkipsGroup) {
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/water_field_time_series"))
         << "All-absent run should skip group emission entirely.";
+
+    fs::remove(h5_path);
+}
+
+TEST(WaterFieldTimeSeries, ClampIndependence) {
+    EXPECT_EXIT({ RunWaterClampIndependenceInChild(); },
+                ::testing::ExitedWithCode(0), "");
+}
+
+
+TEST(WaterFieldTimeSeries, ClampH5RoundTripMixedSource) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+    const std::size_t N = tp.AtomCount();
+    auto tr = nmr::WaterFieldTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    auto present = std::make_unique<nmr::ProteinConformation>(
+        &tp.ProteinRef(), positions, "synthetic present");
+    present->ForceAttachResultForTesting(std::make_unique<nmr::WaterFieldResult>());
+    tr->Compute(*present, tp, traj, 0, 0.0);
+
+    auto absent = std::make_unique<nmr::ProteinConformation>(
+        &tp.ProteinRef(), positions, "synthetic absent");
+    tr->Compute(*absent, tp, traj, 1, 1.0);
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("water_ts_clamp_mixed_" + std::to_string(::getpid()) + ".h5")).string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    ASSERT_TRUE(reopen.exist("/trajectory/water_field_time_series"));
+    auto grp = reopen.getGroup("/trajectory/water_field_time_series");
+
+    for (const std::string& name : {"efield_clamp_mask", "efield_clamp_scale",
+                                    "efield_first_clamp_mask",
+                                    "efield_first_clamp_scale"}) {
+        ASSERT_TRUE(grp.exist(name)) << name;
+        const auto dims = grp.getDataSet(name).getSpace().getDimensions();
+        ASSERT_EQ(dims.size(), 2u);
+        EXPECT_EQ(dims[0], N);
+        EXPECT_EQ(dims[1], 2u);
+    }
+    std::uint8_t absent_sentinel = 0;
+    grp.getDataSet("efield_clamp_mask")
+        .getAttribute("absent_sentinel").read(absent_sentinel);
+    EXPECT_EQ(absent_sentinel, 255u);
+
+    std::vector<std::vector<std::uint8_t>> total_mask;
+    std::vector<std::vector<std::uint8_t>> first_mask;
+    std::vector<std::vector<double>> total_scale;
+    std::vector<std::vector<double>> first_scale;
+    grp.getDataSet("efield_clamp_mask").read(total_mask);
+    grp.getDataSet("efield_first_clamp_mask").read(first_mask);
+    grp.getDataSet("efield_clamp_scale").read(total_scale);
+    grp.getDataSet("efield_first_clamp_scale").read(first_scale);
+    ASSERT_EQ(total_mask.size(), N);
+    for (std::size_t i = 0; i < N; ++i) {
+        EXPECT_EQ(total_mask[i][0], 0u);
+        EXPECT_EQ(first_mask[i][0], 0u);
+        EXPECT_DOUBLE_EQ(total_scale[i][0], 1.0);
+        EXPECT_DOUBLE_EQ(first_scale[i][0], 1.0);
+        EXPECT_EQ(total_mask[i][1], 255u);
+        EXPECT_EQ(first_mask[i][1], 255u);
+        EXPECT_TRUE(std::isnan(total_scale[i][1]));
+        EXPECT_TRUE(std::isnan(first_scale[i][1]));
+    }
 
     fs::remove(h5_path);
 }

@@ -34,6 +34,10 @@
 //     efg_first                 (N, T, 5)  float64  V/Angstrom^2
 //     n_first                   (N, T)     uint32   shell-occupancy count
 //     n_second                  (N, T)     uint32   shell-occupancy count
+//     efield_clamp_mask         (N, T)     uint8    0/1, 255 source absent
+//     efield_clamp_scale        (N, T)     float64  applied total-field scale
+//     efield_first_clamp_mask   (N, T)     uint8    0/1, 255 source absent
+//     efield_first_clamp_scale  (N, T)     float64  applied first-shell scale
 //     frame_indices             (T,)       uint64
 //     frame_times               (T,)       float64  ps
 //     source_attached_per_frame (T,)       uint8    provenance mask
@@ -108,6 +112,10 @@ private:
     std::vector<std::vector<SphericalTensor>>  efg_first_;
     std::vector<std::vector<std::uint32_t>>    n_first_;
     std::vector<std::vector<std::uint32_t>>    n_second_;
+    std::vector<std::vector<std::uint8_t>>     efield_clamp_mask_;
+    std::vector<std::vector<double>>           efield_clamp_scale_;
+    std::vector<std::vector<std::uint8_t>>     efield_first_clamp_mask_;
+    std::vector<std::vector<double>>           efield_first_clamp_scale_;
     std::vector<std::size_t>                   frame_indices_;
     std::vector<double>                        frame_times_;
     std::vector<std::uint8_t>                  source_attached_per_frame_;

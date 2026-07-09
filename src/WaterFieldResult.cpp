@@ -8,6 +8,7 @@
 #include "Types.h"
 
 #include <cmath>
+#include <cstdint>
 
 namespace nmr {
 
@@ -73,6 +74,10 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
     for (size_t ai = 0; ai < N; ++ai) {
         auto& atom = conf.MutableAtomAt(ai);
         Vec3 pos_i = atom.Position();
+        atom.water_efield_clamp_mask = 0;
+        atom.water_efield_clamp_scale = 1.0;
+        atom.water_efield_first_clamp_mask = 0;
+        atom.water_efield_first_clamp_scale = 1.0;
 
         Vec3 E_total = Vec3::Zero();
         Mat3 V_total = Mat3::Zero();
@@ -144,19 +149,38 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
         double trace_first = V_first.trace() / 3.0;
         V_first -= trace_first * Mat3::Identity();
 
-        // Clamp extreme E-field magnitudes (same pattern as CoulombResult)
-        double E_mag = E_total.norm();
-        if (E_mag > clamp_threshold) {
-            double scale = clamp_threshold / E_mag;
+        // Clamp extreme E-field magnitudes independently for total and
+        // first-shell signals. The first-shell field is its own feature,
+        // not a subcomponent to scale by the total-field clamp.
+        double E_total_mag = E_total.norm();
+        if (E_total_mag > clamp_threshold) {
+            double scale = clamp_threshold / E_total_mag;
 
             choices.Record(CalculatorId::WaterField, ai, "water E-field clamp",
-                [&conf, ai, E_mag, scale](GeometryChoice& gc) {
+                [&conf, ai, E_total_mag, scale](GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(ai), ai, EntityRole::Target, EntityOutcome::Triggered);
-                    AddNumber(gc, "actual_E_magnitude", E_mag, "V/A");
+                    AddNumber(gc, "actual_E_magnitude", E_total_mag, "V/A");
                     AddNumber(gc, "scale_factor", scale, "");
                 });
 
+            atom.water_efield_clamp_mask = 1;
+            atom.water_efield_clamp_scale = scale;
             E_total *= scale;
+        }
+
+        double E_first_mag = E_first.norm();
+        if (E_first_mag > clamp_threshold) {
+            double scale = clamp_threshold / E_first_mag;
+
+            choices.Record(CalculatorId::WaterField, ai, "water first-shell E-field clamp",
+                [&conf, ai, E_first_mag, scale](GeometryChoice& gc) {
+                    AddAtom(gc, &conf.AtomAt(ai), ai, EntityRole::Target, EntityOutcome::Triggered);
+                    AddNumber(gc, "actual_first_shell_E_magnitude", E_first_mag, "V/A");
+                    AddNumber(gc, "scale_factor", scale, "");
+                });
+
+            atom.water_efield_first_clamp_mask = 1;
+            atom.water_efield_first_clamp_scale = scale;
             E_first *= scale;
         }
 
@@ -253,6 +277,46 @@ int WaterFieldResult::WriteFeatures(
             data[i * 2 + 1] = static_cast<double>(a.water_n_second);
         }
         NpyWriter::WriteFloat64(output_dir + "/water_shell_counts.npy", data.data(), N, 2);
+        ++n_files;
+    }
+
+    // water_efield_clamp_mask: (N,) int8
+    {
+        std::vector<int8_t> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).water_efield_clamp_mask;
+        NpyWriter::WriteInt8(output_dir + "/water_efield_clamp_mask.npy",
+                             data.data(), N);
+        ++n_files;
+    }
+
+    // water_efield_clamp_scale: (N,) float64
+    {
+        std::vector<double> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).water_efield_clamp_scale;
+        NpyWriter::WriteFloat64(output_dir + "/water_efield_clamp_scale.npy",
+                                data.data(), N);
+        ++n_files;
+    }
+
+    // water_efield_first_clamp_mask: (N,) int8
+    {
+        std::vector<int8_t> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).water_efield_first_clamp_mask;
+        NpyWriter::WriteInt8(output_dir + "/water_efield_first_clamp_mask.npy",
+                             data.data(), N);
+        ++n_files;
+    }
+
+    // water_efield_first_clamp_scale: (N,) float64
+    {
+        std::vector<double> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).water_efield_first_clamp_scale;
+        NpyWriter::WriteFloat64(output_dir + "/water_efield_first_clamp_scale.npy",
+                                data.data(), N);
         ++n_files;
     }
 

@@ -35,6 +35,10 @@ WaterFieldTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     r->efg_first_.assign(N, {});
     r->n_first_.assign(N, {});
     r->n_second_.assign(N, {});
+    r->efield_clamp_mask_.assign(N, {});
+    r->efield_clamp_scale_.assign(N, {});
+    r->efield_first_clamp_mask_.assign(N, {});
+    r->efield_first_clamp_scale_.assign(N, {});
     return r;
 }
 
@@ -69,6 +73,13 @@ void WaterFieldTimeSeriesTrajectoryResult::Compute(
             efg_first_[i].push_back(a.water_efg_first_spherical);
             n_first_[i].push_back(static_cast<std::uint32_t>(a.water_n_first));
             n_second_[i].push_back(static_cast<std::uint32_t>(a.water_n_second));
+            efield_clamp_mask_[i].push_back(
+                static_cast<std::uint8_t>(a.water_efield_clamp_mask));
+            efield_clamp_scale_[i].push_back(a.water_efield_clamp_scale);
+            efield_first_clamp_mask_[i].push_back(
+                static_cast<std::uint8_t>(a.water_efield_first_clamp_mask));
+            efield_first_clamp_scale_[i].push_back(
+                a.water_efield_first_clamp_scale);
         } else {
             // Push zeros / defaults; WriteH5Group uses the mask to emit
             // NaN for floating datasets and a max-value sentinel for counts.
@@ -78,6 +89,10 @@ void WaterFieldTimeSeriesTrajectoryResult::Compute(
             efg_first_[i].push_back(SphericalTensor{});
             n_first_[i].push_back(0u);
             n_second_[i].push_back(0u);
+            efield_clamp_mask_[i].push_back(0u);
+            efield_clamp_scale_[i].push_back(1.0);
+            efield_first_clamp_mask_[i].push_back(0u);
+            efield_first_clamp_scale_[i].push_back(1.0);
         }
     }
     frame_indices_.push_back(frame_idx);
@@ -150,6 +165,11 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("efg_t1_structural_zero", true);
 
     grp.createAttribute("count_units",      std::string("dimensionless"));
+    grp.createAttribute("efield_clamp_threshold",
+                        CalculatorConfig::Get("efield_magnitude_sanity_clamp"));
+    grp.createAttribute("efield_clamp_units", std::string("V/Angstrom"));
+    grp.createAttribute("clamp_mask_absent_sentinel",
+                        static_cast<std::uint8_t>(255));
 
     // Cutoff radii — efield uses a sphere; n_first / n_second use
     // hydration-shell cutoffs (TIP3P standard). Read from CalculatorConfig so
@@ -238,6 +258,47 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
     };
     emit_count("n_first",  n_first_);
     emit_count("n_second", n_second_);
+
+    // Clamp provenance as (N, T). Source-absent frames use uint8 255
+    // on masks and NaN on scales.
+    auto emit_clamp_mask = [&](const std::string& name,
+                               const std::vector<std::vector<std::uint8_t>>& src) {
+        std::vector<std::uint8_t> flat(N * T);
+        constexpr std::uint8_t kAbsent = 255u;
+        for (std::size_t i = 0; i < N; ++i) {
+            for (std::size_t t = 0; t < T; ++t) {
+                flat[i * T + t] = source_attached_per_frame_[t]
+                                ? src[i][t]
+                                : kAbsent;
+            }
+        }
+        HighFive::DataSpace space({N, T});
+        auto ds = grp.createDataSet<std::uint8_t>(name, space);
+        ds.write_raw(flat.data());
+        ds.createAttribute("units", std::string("dimensionless"));
+        ds.createAttribute("absent_sentinel", kAbsent);
+        ds.createAttribute("meaning", std::string(
+            "0 source present unclamped, 1 source present clamped, 255 source absent"));
+    };
+    auto emit_clamp_scale = [&](const std::string& name,
+                                const std::vector<std::vector<double>>& src) {
+        std::vector<double> flat(N * T);
+        for (std::size_t i = 0; i < N; ++i) {
+            for (std::size_t t = 0; t < T; ++t) {
+                flat[i * T + t] = source_attached_per_frame_[t]
+                                ? src[i][t]
+                                : kNaN;
+            }
+        }
+        HighFive::DataSpace space({N, T});
+        auto ds = grp.createDataSet<double>(name, space);
+        ds.write_raw(flat.data());
+        ds.createAttribute("units", std::string("dimensionless"));
+    };
+    emit_clamp_mask("efield_clamp_mask", efield_clamp_mask_);
+    emit_clamp_scale("efield_clamp_scale", efield_clamp_scale_);
+    emit_clamp_mask("efield_first_clamp_mask", efield_first_clamp_mask_);
+    emit_clamp_scale("efield_first_clamp_scale", efield_first_clamp_scale_);
 
     auto fi_ds = grp.createDataSet("frame_indices", frame_indices_);
     fi_ds.createAttribute("units", std::string("frame_index"));

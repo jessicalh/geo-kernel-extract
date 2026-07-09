@@ -13,7 +13,6 @@
 #include "ConformationAtom.h"
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
-#include "OperationLog.h"
 #include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
@@ -83,11 +82,11 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
     ASSERT_NE(charges, nullptr) << "ff14SB charge loading failed";
     ASSERT_TRUE(conf.AttachResult(std::move(charges)));
 
-    auto aim = AIMNet2Result::Compute(conf, *model);
+    auto aim = AIMNet2Result::Compute(conf, *model, /*net_charge=*/0);
     ASSERT_NE(aim, nullptr) << "AIMNet2Result::Compute returned nullptr";
     ASSERT_TRUE(conf.AttachResult(std::move(aim)));
 
-    auto pol = AIMNet2ChargeResponseGradientResult::Compute(conf, *model);
+    auto pol = AIMNet2ChargeResponseGradientResult::Compute(conf, *model, /*net_charge=*/0);
     ASSERT_NE(pol, nullptr) << "AIMNet2ChargeResponseGradientResult returned nullptr";
     ASSERT_TRUE(conf.AttachResult(std::move(pol)));
 
@@ -162,11 +161,11 @@ TEST_F(AIMNet2ChargeResponseGradientTest, WriteFeaturesEmitsBothNpys) {
     ASSERT_NE(charges, nullptr);
     ASSERT_TRUE(conf.AttachResult(std::move(charges)));
 
-    auto aim = AIMNet2Result::Compute(conf, *model);
+    auto aim = AIMNet2Result::Compute(conf, *model, /*net_charge=*/0);
     ASSERT_NE(aim, nullptr);
     ASSERT_TRUE(conf.AttachResult(std::move(aim)));
 
-    auto pol = AIMNet2ChargeResponseGradientResult::Compute(conf, *model);
+    auto pol = AIMNet2ChargeResponseGradientResult::Compute(conf, *model, /*net_charge=*/0);
     ASSERT_NE(pol, nullptr);
     ASSERT_TRUE(conf.AttachResult(std::move(pol)));
 

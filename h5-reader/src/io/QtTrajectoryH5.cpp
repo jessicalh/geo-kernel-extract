@@ -1497,6 +1497,14 @@ void ReadWaterFieldTimeSeries(HighFive::File& file,
         ReadFlat<uint32_t>(grp.getDataSet("n_first"), buf->n_first, n_atoms * buf->n_frames);
     if (grp.exist("n_second"))
         ReadFlat<uint32_t>(grp.getDataSet("n_second"), buf->n_second, n_atoms * buf->n_frames);
+    if (grp.exist("efield_clamp_mask"))
+        ReadFlat<uint8_t>(grp.getDataSet("efield_clamp_mask"), buf->efield_clamp_mask, n_atoms * buf->n_frames);
+    if (grp.exist("efield_clamp_scale"))
+        ReadFlat<double>(grp.getDataSet("efield_clamp_scale"), buf->efield_clamp_scale, n_atoms * buf->n_frames);
+    if (grp.exist("efield_first_clamp_mask"))
+        ReadFlat<uint8_t>(grp.getDataSet("efield_first_clamp_mask"), buf->efield_first_clamp_mask, n_atoms * buf->n_frames);
+    if (grp.exist("efield_first_clamp_scale"))
+        ReadFlat<double>(grp.getDataSet("efield_first_clamp_scale"), buf->efield_first_clamp_scale, n_atoms * buf->n_frames);
     if (grp.exist("frame_indices"))
         grp.getDataSet("frame_indices").read(buf->frame_indices);
     if (grp.exist("frame_times"))
@@ -1504,6 +1512,7 @@ void ReadWaterFieldTimeSeries(HighFive::File& file,
     if (grp.exist("source_attached_per_frame"))
         grp.getDataSet("source_attached_per_frame").read(buf->source_attached);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
+    TryReadAttribute(grp, "clamp_mask_absent_sentinel", buf->clamp_mask_absent_sentinel);
     out = std::move(buf);
     } catch (const HighFive::Exception& e) {
         LogReadException(group_path, "HighFive", e);
@@ -2057,11 +2066,15 @@ void ReadRmsdTracking(HighFive::File& file, const char* group_path, std::unique_
         grp.getDataSet("frame_times").read(buf->frame_times);
     if (grp.exist("source_attached_per_frame"))
         grp.getDataSet("source_attached_per_frame").read(buf->source_attached);
+    if (grp.exist("insufficient_alignment_atoms_mask"))
+        grp.getDataSet("insufficient_alignment_atoms_mask").read(buf->insufficient_alignment_atoms_mask);
     TryReadAttributeQ(grp, "units", buf->units);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     TryReadAttributeQ(grp, "alignment_method", buf->alignment_method);
     TryReadAttributeQ(grp, "atom_selection", buf->atom_selection);
     TryReadAttributeQ(grp, "reference_frame_origin", buf->reference_frame_origin);
+    TryReadAttribute(grp, "reference_frame_trr_index", buf->reference_frame_trr_index);
+    TryReadAttribute(grp, "insufficient_alignment_atoms", buf->insufficient_alignment_atoms);
     out = std::move(buf);
     } catch (const HighFive::Exception& e) {
         LogReadException(group_path, "HighFive", e);

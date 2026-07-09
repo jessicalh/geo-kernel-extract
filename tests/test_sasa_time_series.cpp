@@ -30,9 +30,12 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -55,7 +58,70 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
+
+nmr::ProteinConformation& BuildOneAtomSasaFixture(nmr::Protein& protein) {
+    nmr::Residue residue;
+    residue.type = nmr::AminoAcid::ALA;
+    residue.sequence_number = 1;
+    const size_t ri = protein.AddResidue(std::move(residue));
+    auto atom = nmr::Atom::Create(nmr::Element::C);
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+    return protein.AddConformation({nmr::Vec3(0.0, 0.0, 0.0)},
+                                   "one atom sasa");
+}
+
+bool AttachGeometryAndSpatial(nmr::ProteinConformation& conf) {
+    auto geometry = nmr::GeometryResult::Compute(conf);
+    if (!geometry || !conf.AttachResult(std::move(geometry))) return false;
+    auto spatial = nmr::SpatialIndexResult::Compute(conf);
+    if (!spatial || !conf.AttachResult(std::move(spatial))) return false;
+    return true;
+}
+
+void RunBadSasaPointConfigInChild(const char* value) {
+    const fs::path toml = fs::temp_directory_path() /
+        ("sasa_bad_points_" + std::to_string(::getpid()) + ".toml");
+    {
+        std::ofstream out(toml);
+        out << "sasa_n_points = " << value << "\n";
+    }
+    nmr::CalculatorConfig::Load(toml.string());
+    nmr::Protein protein;
+    auto& conf = BuildOneAtomSasaFixture(protein);
+    if (!AttachGeometryAndSpatial(conf)) {
+        fs::remove(toml);
+        _exit(2);
+    }
+    auto sasa = nmr::SasaResult::Compute(conf);
+    fs::remove(toml);
+    _exit(sasa == nullptr ? 0 : 1);
+}
 }  // namespace
+
+
+TEST(SasaTimeSeries, sasa_n_points_validation) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    {
+        nmr::Protein protein;
+        auto& conf = BuildOneAtomSasaFixture(protein);
+        ASSERT_TRUE(AttachGeometryAndSpatial(conf));
+        auto sasa = nmr::SasaResult::Compute(conf);
+        ASSERT_NE(sasa, nullptr);
+        EXPECT_TRUE(std::isfinite(conf.AtomAt(0).atom_sasa));
+        EXPECT_GE(conf.AtomAt(0).atom_sasa, 0.0);
+    }
+
+    EXPECT_EXIT({ RunBadSasaPointConfigInChild("0"); },
+                ::testing::ExitedWithCode(0), "");
+    EXPECT_EXIT({ RunBadSasaPointConfigInChild("-1"); },
+                ::testing::ExitedWithCode(0), "");
+    EXPECT_EXIT({ RunBadSasaPointConfigInChild("92.5"); },
+                ::testing::ExitedWithCode(0), "");
+    EXPECT_EXIT({ RunBadSasaPointConfigInChild("nan"); },
+                ::testing::ExitedWithCode(0), "");
+}
 
 
 TEST(SasaTimeSeries, SyntheticFourFrames) {

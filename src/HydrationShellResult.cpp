@@ -35,14 +35,18 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
     const double first_shell_cutoff = CalculatorConfig::Get("water_first_shell_cutoff");
     const double ion_cutoff         = CalculatorConfig::Get("hydration_ion_cutoff");
     const double first_sq = first_shell_cutoff * first_shell_cutoff;
+    const double singularity_guard = CalculatorConfig::Get("singularity_guard_distance");
+    const double guard_sq = singularity_guard * singularity_guard;
+    const double near_zero = CalculatorConfig::Get("near_zero_vector_norm_threshold");
 
     GeometryChoiceBuilder choices(conf);
 
     // GeometryChoice: one summary record for the parameters used
     choices.Record(CalculatorId::HydrationShell, 0, "hydration_parameters",
-        [first_shell_cutoff, ion_cutoff, N, W](GeometryChoice& gc) {
+        [first_shell_cutoff, ion_cutoff, singularity_guard, N, W](GeometryChoice& gc) {
             AddNumber(gc, "first_shell_cutoff", first_shell_cutoff, "A");
             AddNumber(gc, "ion_cutoff", ion_cutoff, "A");
+            AddNumber(gc, "singularity_guard_distance", singularity_guard, "A");
             AddNumber(gc, "n_atoms", static_cast<double>(N), "count");
             AddNumber(gc, "n_waters", static_cast<double>(W), "count");
         });
@@ -53,6 +57,7 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
         protein_com += conf.AtomAt(i).Position();
     protein_com /= static_cast<double>(N);
 
+    size_t total_singularity_rejected = 0;
     for (size_t ai = 0; ai < N; ++ai) {
         auto& atom = conf.MutableAtomAt(ai);
         Vec3 pos_i = atom.Position();
@@ -65,11 +70,17 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
         int n_buried = 0;
         double dipole_cos_sum = 0.0;
         int dipole_count = 0;
+        int n_singularity_guard = 0;
 
         for (size_t wi = 0; wi < W; ++wi) {
             Vec3 r = solvent.waters[wi].O_pos - pos_i;
             double d_sq = r.squaredNorm();
             if (d_sq > first_sq) continue;
+            if (d_sq < guard_sq) {
+                ++n_singularity_guard;
+                ++total_singularity_rejected;
+                continue;
+            }
 
             double d = std::sqrt(d_sq);
             Vec3 r_hat = r / d;
@@ -84,10 +95,23 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
             // Water dipole orientation relative to atom→water vector
             Vec3 dipole = solvent.waters[wi].Dipole();
             double dip_mag = dipole.norm();
-            if (dip_mag > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
+            if (dip_mag > near_zero) {
                 dipole_cos_sum += dipole.dot(r_hat) / dip_mag;
                 ++dipole_count;
             }
+        }
+
+        if (n_singularity_guard > 0) {
+            choices.Record(CalculatorId::HydrationShell, ai,
+                "hydration shell singularity guard",
+                [&conf, ai, n_singularity_guard, singularity_guard](GeometryChoice& gc) {
+                    AddAtom(gc, &conf.AtomAt(ai), ai, EntityRole::Target,
+                            EntityOutcome::Triggered);
+                    AddNumber(gc, "waters_rejected",
+                              static_cast<double>(n_singularity_guard), "count");
+                    AddNumber(gc, "singularity_guard_distance",
+                              singularity_guard, "A");
+                });
         }
 
         int n_total_shell = n_exposed + n_buried;
@@ -119,7 +143,9 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
     OperationLog::Info(LogCalcOther, "HydrationShellResult",
         "computed hydration shell for " + std::to_string(N) + " atoms"
         " first_shell=" + std::to_string(first_shell_cutoff) + "A"
-        " ion_cutoff=" + std::to_string(ion_cutoff) + "A");
+        " ion_cutoff=" + std::to_string(ion_cutoff) + "A"
+        " singularity_rejected=" +
+        std::to_string(total_singularity_rejected));
 
     return result;
 }

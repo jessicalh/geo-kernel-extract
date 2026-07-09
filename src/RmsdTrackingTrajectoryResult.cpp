@@ -17,6 +17,7 @@
 #include <cmath>
 #include <limits>
 #include <typeinfo>
+#include <utility>
 
 namespace nmr {
 
@@ -116,6 +117,7 @@ RmsdTrackingTrajectoryResult::Create(const TrajectoryProtein& tp) {
         if (res.C  != Residue::NONE) r->atom_indices_.push_back(res.C);
         if (res.O  != Residue::NONE) r->atom_indices_.push_back(res.O);
     }
+    r->insufficient_alignment_atoms_ = (r->atom_indices_.size() < 3);
 
     OperationLog::Info(
         "RmsdTrackingTrajectoryResult::Create",
@@ -123,6 +125,15 @@ RmsdTrackingTrajectoryResult::Create(const TrajectoryProtein& tp) {
         " backbone heavy atoms (N/CA/C/O) across " +
         std::to_string(n_res) + " residues");
 
+    return r;
+}
+
+std::unique_ptr<RmsdTrackingTrajectoryResult>
+RmsdTrackingTrajectoryResult::CreateForTesting(
+        std::vector<std::size_t> atom_indices) {
+    auto r = std::make_unique<RmsdTrackingTrajectoryResult>();
+    r->atom_indices_ = std::move(atom_indices);
+    r->insufficient_alignment_atoms_ = (r->atom_indices_.size() < 3);
     return r;
 }
 
@@ -143,8 +154,11 @@ void RmsdTrackingTrajectoryResult::Compute(
             reference_positions_.push_back(conf.PositionAt(ai));
         }
         reference_captured_ = true;
-        // Sample-0 RMSD vs its own reference is 0 by definition.
-        rmsd_.push_back(0.0);
+        // Sample-0 RMSD vs its own reference is exactly 0 only when
+        // Kabsch has enough atoms to define a rotation.
+        rmsd_.push_back(insufficient_alignment_atoms_
+            ? std::numeric_limits<double>::quiet_NaN()
+            : 0.0);
     } else {
         std::vector<Vec3> current;
         current.reserve(M);
@@ -204,13 +218,16 @@ void RmsdTrackingTrajectoryResult::WriteH5Group(
     grp.createAttribute("reference_frame_trr_index",
         frame_indices_.empty() ? std::size_t{0} : frame_indices_[0]);
     grp.createAttribute("units", std::string("Angstrom"));
+    grp.createAttribute("insufficient_alignment_atoms",
+        insufficient_alignment_atoms_);
+    grp.createAttribute("min_alignment_atoms", std::size_t{3});
     grp.createAttribute("source_attached_policy",
         std::string("always_attached -- positions present at tp.Seed; "
                     "reference geometry captured at first Compute call "
                     "(first dispatched frame)"));
     grp.createAttribute("rmsd_frame_0_convention",
-        std::string("0.0 exactly -- first dispatched frame is its own "
-                    "reference"));
+        std::string("0.0 exactly when n_atoms >= 3; NaN when n_atoms < 3 "
+                    "because Kabsch rotation is underdetermined"));
 
     grp.createDataSet("rmsd", rmsd_);
 
@@ -226,6 +243,11 @@ void RmsdTrackingTrajectoryResult::WriteH5Group(
     grp.createDataSet("frame_times", frame_times_);
     grp.createDataSet("source_attached_per_frame",
                        source_attached_per_frame_);
+    std::vector<std::uint8_t> insufficient_mask{
+        static_cast<std::uint8_t>(insufficient_alignment_atoms_ ? 1u : 0u)
+    };
+    grp.createDataSet("insufficient_alignment_atoms_mask",
+                       insufficient_mask);
 }
 
 }  // namespace nmr
