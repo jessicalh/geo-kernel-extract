@@ -182,9 +182,20 @@ TEST_F(PlanarGeometryTest, ComputesPyramidalizationOmegaChi2Pucker) {
     const LegacyAmberTopology& topo = protein->LegacyAmber();
 
     // ── Pyramidalization sanity ──
+    // C19 invariant: pyramidalization is a magnitude-only out-of-plane
+    // displacement, defined only for an atom whose typed planar_group is
+    // set AND which has exactly three bonded neighbours (a three-point
+    // plane). Planar-group atoms of a different degree — aromatic/amide
+    // hydrogens, carboxylate/hydroxyl oxygens — are legitimately NaN /
+    // valid=0. We recompute the bonded-neighbour count straight from
+    // topology here so that validity is required to TRACK degree and
+    // every invalid planar atom is explained, never a silent NaN from a
+    // bug elsewhere. (The magnitude value itself is pinned analytically
+    // by PyramidalizationPinsAnalyticMagnitudeForMirroredDisplacements.)
     int planar_count = 0;
     int pyr_valid = 0;
     int pyr_invalid = 0;
+    int pyr_valid_expected = 0;  // planar atoms with exactly 3 bonded nbrs
     int pyr_above_thresh = 0;
     double max_abs_pyr = 0.0;
     size_t max_pyr_ai = 0;
@@ -197,6 +208,19 @@ TEST_F(PlanarGeometryTest, ComputesPyramidalizationOmegaChi2Pucker) {
             ++planar_count;
             EXPECT_EQ(ca.pyramidalization_center_type,
                       static_cast<int>(sem.planar_group));
+
+            const size_t n_bonded = protein->AtomAt(ai).bond_indices.size();
+            if (n_bonded == 3) {
+                ++pyr_valid_expected;
+                EXPECT_EQ(ca.pyramidalization_valid, 1)
+                    << "planar atom " << ai << " has exactly 3 bonded "
+                       "neighbours but pyramidalization is invalid";
+            } else {
+                EXPECT_EQ(ca.pyramidalization_valid, 0)
+                    << "planar atom " << ai << " has " << n_bonded
+                    << " bonded neighbours (!=3) but is marked valid";
+            }
+
             if (ca.pyramidalization_valid) {
                 ++pyr_valid;
                 EXPECT_TRUE(std::isfinite(pyr));
@@ -310,8 +334,13 @@ TEST_F(PlanarGeometryTest, ComputesPyramidalizationOmegaChi2Pucker) {
 
     EXPECT_GT(planar_count, 100)
         << "Expected many planar atoms in 1UBQ (peptide amides + aromatics)";
-    EXPECT_EQ(pyr_valid, planar_count)
-        << "All planar-atom pyramidalisation values must be valid in 1UBQ";
+    EXPECT_EQ(pyr_valid, pyr_valid_expected)
+        << "Valid pyramidalizations must be exactly the planar atoms with "
+           "three bonded neighbours (non-degenerate in a real crystal); "
+           "lower/higher-degree planar atoms are legitimately NaN/valid=0.";
+    EXPECT_GT(pyr_valid, 100)
+        << "Expected many 3-neighbour sp2 centres (peptide amides, "
+           "aromatic ring carbons) to yield valid magnitudes in 1UBQ";
     EXPECT_LT(max_abs_pyr, 0.5)
         << "Pyramidalisation magnitudes should be < 0.5 Å (loose smoke bound)";
     EXPECT_EQ(omega_valid_count, 75)

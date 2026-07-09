@@ -306,3 +306,116 @@ TEST_F(DsspResultTest, dssp_unobserved_residue_npy) {
     for (int c = 0; c < 12; ++c)
         EXPECT_TRUE(std::isfinite(ch[miss_ai * 12 + c]));
 }
+
+
+// Independent forcing function for the C2/B6 sign convention.
+//
+// dssp_backbone.npy columns 0,1 store IUPAC phi/psi, produced by the
+// writer as -libdssp (the value-move under test: the old writer stored
+// raw libdssp = negated IUPAC). The ledger's cited pin,
+// DihedralTimeSeries CrossResultConsistencyDsspPlanarGeometry, only runs
+// with the external gitignored MD trajectory fixture and SKIPS wherever
+// that fixture is absent. This test recomputes IUPAC phi/psi from the
+// 1UBQ backbone coordinates with an independent atan2 dihedral — the
+// standard math definition, evaluated straight from coordinates, NOT
+// through the libdssp/libcifpp code path — and asserts the written NPY
+// matches. The tolerance absorbs libdssp's algorithmic drift on the same
+// coordinates (~1e-3 rad) while a sign flip (O(pi)) fails loudly. Always
+// runs: the fixture is the in-tree 1UBQ PDB.
+TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiPinnedToIndependentIupacGeometry) {
+    auto& conf = protein->Conformation();
+    auto dssp = DsspResult::Compute(conf);
+    ASSERT_NE(dssp, nullptr);
+
+    const fs::path output_dir = fs::temp_directory_path() /
+        ("dssp_backbone_iupac_" + std::to_string(::getpid()));
+    fs::create_directories(output_dir);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 5);
+
+    auto backbone = ReadNpy(output_dir / "dssp_backbone.npy");
+    auto observed = ReadNpy(output_dir / "dssp_observed.npy");
+    const size_t N = conf.AtomCount();
+    ExpectShapeAndDescr(backbone, {N, 5}, "<f8");
+    ExpectShapeAndDescr(observed, {N}, "|i1");
+    const double* bb = DataAs<double>(backbone);
+    const int8_t* obs = DataAs<int8_t>(observed);
+
+    // Independent IUPAC dihedral: D(p1,p2,p3,p4) = atan2((n1 x b2hat).n2,
+    // n1.n2). Standard definition; deliberately re-derived here so the
+    // pin does not borrow the production result path.
+    auto dihedral = [](const Vec3& p1, const Vec3& p2,
+                       const Vec3& p3, const Vec3& p4) -> double {
+        const Vec3 b1 = p2 - p1;
+        const Vec3 b2 = p3 - p2;
+        const Vec3 b3 = p4 - p3;
+        const double b2n = b2.norm();
+        const Vec3 n1 = b1.cross(b2);
+        const Vec3 n2 = b2.cross(b3);
+        const Vec3 m1 = n1.cross(b2 / b2n);
+        return std::atan2(m1.dot(n2), n1.dot(n2));
+    };
+
+    constexpr double kTol = 0.05;       // >> libdssp drift, << sign flip
+    constexpr double kMinAngle = 0.3;   // only assert where a flip is stark
+    int phi_checked = 0, psi_checked = 0;
+
+    for (size_t ri = 1; ri + 1 < protein->ResidueCount(); ++ri) {
+        const Residue& prev = protein->ResidueAt(ri - 1);
+        const Residue& res  = protein->ResidueAt(ri);
+        const Residue& next = protein->ResidueAt(ri + 1);
+
+        // Same-chain adjacency; backbone atoms present.
+        if (res.chain_id != prev.chain_id || res.chain_id != next.chain_id)
+            continue;
+        if (prev.C == Residue::NONE || res.N == Residue::NONE ||
+            res.CA == Residue::NONE || res.C == Residue::NONE ||
+            next.N == Residue::NONE)
+            continue;
+
+        const size_t row = res.CA;  // dssp_backbone rows are per-atom
+        if (row >= N || obs[row] != 1) continue;
+        const double phi_npy = bb[row * 5 + 0];
+        const double psi_npy = bb[row * 5 + 1];
+        if (!std::isfinite(phi_npy) || !std::isfinite(psi_npy)) continue;
+
+        const double phi_geo = dihedral(
+            conf.PositionAt(prev.C), conf.PositionAt(res.N),
+            conf.PositionAt(res.CA), conf.PositionAt(res.C));
+        const double psi_geo = dihedral(
+            conf.PositionAt(res.N), conf.PositionAt(res.CA),
+            conf.PositionAt(res.C), conf.PositionAt(next.N));
+
+        if (std::isfinite(phi_geo) && std::abs(phi_geo) > kMinAngle) {
+            EXPECT_NEAR(phi_npy, phi_geo, kTol)
+                << "dssp_backbone phi (col 0) is not independent IUPAC "
+                   "geometry at residue " << ri
+                << " (a sign flip would land near " << -phi_geo << ")";
+            ++phi_checked;
+        }
+        if (std::isfinite(psi_geo) && std::abs(psi_geo) > kMinAngle) {
+            EXPECT_NEAR(psi_npy, psi_geo, kTol)
+                << "dssp_backbone psi (col 1) is not independent IUPAC "
+                   "geometry at residue " << ri
+                << " (a sign flip would land near " << -psi_geo << ")";
+            ++psi_checked;
+        }
+    }
+
+    // Guard against a silent skip-all: 1UBQ is a complete 76-residue
+    // crystal structure; the great majority of internal residues qualify.
+    EXPECT_GT(phi_checked, 30)
+        << "phi pin did not exercise — fixture/observed-mask regression?";
+    EXPECT_GT(psi_checked, 30)
+        << "psi pin did not exercise — fixture/observed-mask regression?";
+
+    // NB: std::filesystem::remove_all resolves into libtorch's bundled
+    // libstdc++ and faults in this process; the test tree removes files
+    // individually instead (cf. test_coulomb_result / test_mopac_result).
+    std::error_code ec;
+    for (const char* f : {"dssp_observed.npy", "dssp_backbone.npy",
+                          "dssp_ss8.npy", "dssp_hbond_energy.npy",
+                          "dssp_chi.npy"}) {
+        fs::remove(output_dir / f, ec);
+    }
+    fs::remove(output_dir, ec);
+}
