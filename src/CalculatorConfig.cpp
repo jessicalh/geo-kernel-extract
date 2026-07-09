@@ -24,6 +24,12 @@ void CalculatorConfig::InitDefaults() {
         defaults_[key] = {val, unit, desc};
     };
 
+    // Net-charge conditioning for the neural / EEQ charge models.
+    // 0 = condition AIMNet2 + EEQ on the real system net charge (like MOPAC);
+    // nonzero = force neutral (0 e) — the ablation knob for the net-charge
+    // sensitivity analysis (neutral vs real, per contributor).
+    add("charge_conditioning_neutral", 0.0, "", "1 = force neutral charge into AIMNet2/EEQ (ablation); 0 = real system net charge");
+
     // Ring current intensities (nA/T)
     // Giessner-Prettre & Pullman 1969; TRP indole perimeter estimated
     add("phe_benzene_ring_current_intensity",          -12.0,  "nA/T", "PHE benzene ring current");
@@ -96,7 +102,7 @@ void CalculatorConfig::InitDefaults() {
     add("apbs_ionic_strength_M",                   0.15, "M",    "APBS ionic strength (physiological)");
 
     // EEQ — Extended Electronegativity Equilibration (Caldeweyher et al. 2019)
-    add("eeq_total_charge",                         0.0, "e",    "EEQ net system charge (0 = neutral protein)");
+    // (net charge is passed to EeqResult::Compute, not a config key.)
     add("eeq_cn_steepness",                         7.5, "",     "EEQ coordination number error function steepness");
     add("eeq_cn_cutoff",                           25.0, "A",    "EEQ coordination number pair cutoff distance");
     add("eeq_charge_clamp",                         2.0, "e",    "EEQ per-atom charge magnitude clamp");

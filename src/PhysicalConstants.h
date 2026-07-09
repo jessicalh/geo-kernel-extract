@@ -161,6 +161,28 @@ inline double BondiVdwRadius(Element e) {
 
 
 // ============================================================================
+// mbondi2 Poisson-Boltzmann radii (Angstroms)
+//
+// Onufriev, Bashford & Case, Proteins 55, 383-394 (2004); AMBER
+// `set default PBRadii mbondi2`. Heavy-atom values pinned against a
+// leap-produced prmtop (O = 1.50, not Bondi's 1.52). Hydrogen = 1.2 A, except
+// hydrogen bonded to nitrogen = 1.3 A. (mbondi2 uses 1.2 for all other H,
+// including H-on-O, unlike mbondi's 0.8.) Matches AmberLeapInput's PBRadii
+// mbondi2 so the TPR path agrees with the prepared-prmtop path.
+// ============================================================================
+inline double Mbondi2Radius(Element e, bool h_bonded_to_nitrogen) {
+    switch (e) {
+        case Element::H: return h_bonded_to_nitrogen ? 1.30 : 1.20;
+        case Element::C: return 1.70;
+        case Element::N: return 1.55;
+        case Element::O: return 1.50;
+        case Element::S: return 1.80;
+        default:         return 1.50;  // leap mbondi2 default for unset elements
+    }
+}
+
+
+// ============================================================================
 // D4 EEQ element parameters (atomic units: Hartree, Bohr)
 //
 // probable source: Caldeweyher, Ehlert, Hansen, Neugebauer, Spicher,

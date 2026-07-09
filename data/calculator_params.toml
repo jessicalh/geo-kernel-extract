@@ -102,7 +102,7 @@ aimnet2_model_path = "models/aimnet2_wb97m_0.jpt"
 
 # EEQ — Extended Electronegativity Equilibration (Caldeweyher et al. 2019)
 # D4 geometry-dependent charges.  Pure C++/Eigen, no external binary.
-eeq_total_charge = 0
+# (net charge is passed to EeqResult::Compute by OperationRunner, not set here.)
 eeq_cn_steepness = 7.5
 eeq_cn_cutoff = 25.0
 eeq_charge_clamp = 2.0

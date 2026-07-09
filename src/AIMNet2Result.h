@@ -69,7 +69,8 @@ public:
     // Returns nullptr for checked failures — never silently degrades.
     static std::unique_ptr<AIMNet2Result> Compute(
         ProteinConformation& conf,
-        AIMNet2Model& model);
+        AIMNet2Model& model,
+        int net_charge);
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;

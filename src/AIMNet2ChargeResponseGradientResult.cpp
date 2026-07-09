@@ -31,7 +31,8 @@ std::vector<std::type_index> AIMNet2ChargeResponseGradientResult::Dependencies()
 std::unique_ptr<AIMNet2ChargeResponseGradientResult>
 AIMNet2ChargeResponseGradientResult::Compute(
         ProteinConformation& conf,
-        AIMNet2Model& model) {
+        AIMNet2Model& model,
+        int net_charge) {
 
     OperationLog::Scope scope("AIMNet2ChargeResponseGradientResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
@@ -102,8 +103,10 @@ AIMNet2ChargeResponseGradientResult::Compute(
         }
     }
 
-    // total system charge = 0 (neutral; required model input)
-    auto total_charge_cpu = torch::zeros({1}, torch::kFloat32);
+    // total system charge = the real system net charge (or 0 under the
+    // neutral-conditioning knob; see OperationRunner). Kept consistent with the
+    // main AIMNet2Result forward pass so the two agree on system charge.
+    auto total_charge_cpu = torch::full({1}, static_cast<float>(net_charge), torch::kFloat32);
     // single molecule: all atoms in batch 0
     auto mol_idx_cpu = torch::zeros({padded_atom_count}, torch::kInt64);
 

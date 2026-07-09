@@ -142,7 +142,8 @@ std::vector<std::type_index> AIMNet2Result::Dependencies() const {
 
 std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
         ProteinConformation& conf,
-        AIMNet2Model& model) {
+        AIMNet2Model& model,
+        int net_charge) {
 
     OperationLog::Scope scope("AIMNet2Result::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
@@ -229,8 +230,10 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
         }
     }
 
-    // charge: (1,) float32 — model charge input, fixed neutral here
-    auto charge_cpu = torch::zeros({1}, torch::kFloat32);
+    // charge: (1,) float32 — the real system net charge (or 0 under the
+    // neutral-conditioning knob; see OperationRunner). The model is trained to
+    // condition on total charge, so this is its intended input, not a hack.
+    auto charge_cpu = torch::full({1}, static_cast<float>(net_charge), torch::kFloat32);
 
     // mol_idx: (N+1,) int64 — all zeros (single molecule), sentinel = 0
     auto mol_idx_cpu = torch::zeros({N1}, torch::kInt64);

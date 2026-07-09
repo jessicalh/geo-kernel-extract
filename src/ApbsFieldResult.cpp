@@ -247,7 +247,12 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         Vec3 pos = conf.PositionAt(i);
 
         Vec3 E = ElectricFieldFromGrid(grid, pos);
-        Mat3 EFG = FieldGradientFromGrid(grid, pos);
+        // FieldGradientFromGrid returns the field gradient dE_i/dr_j = -d2(phi).
+        // The Coulomb-family EFG (MOPAC/FF/AIMNet) is the potential Hessian +d2(phi)
+        // = -dE/dr, which is also the standard nuclear-EFG convention. Negate to align:
+        // apbs_efg becomes sign-consistent with the family, and coulomb_EFG_solvent
+        // (= apbs_efg - EFG_total) becomes a like-for-like subtraction.
+        Mat3 EFG = -FieldGradientFromGrid(grid, pos);
 
         // finite-value guard (zero non-finite E + EFG)
         bool has_nan = false;

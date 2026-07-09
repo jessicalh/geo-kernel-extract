@@ -1145,33 +1145,60 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
     // This section has: index, element, charge, ?, s_pop, p_pop
     {
         auto pos = text.find("NET ATOMIC CHARGES AND DIPOLE CONTRIBUTIONS");
-        if (pos != std::string::npos) {
-            std::istringstream section(text.substr(pos));
-            std::string line;
-            // Skip header lines (title + blank + column headers)
-            std::getline(section, line);  // title
-            std::getline(section, line);  // blank or underline
-            std::getline(section, line);  // column headers
+        if (pos == std::string::npos) {
+            // MOPAC terminated normally (checked above) but printed no charge
+            // table. Fail instead of emitting the pre-filled zeros: OperationRunner
+            // treats a null MopacResult as "MOPAC absent" (like an abnormal
+            // termination), which is honest; zeros would corrupt charge + MOPAC EFG.
+            // Only reached with MOPAC ON (call gated on !skip_mopac).
+            result.error = "MOPAC output missing NET ATOMIC CHARGES block";
+            return result;
+        }
+        std::istringstream section(text.substr(pos));
+        std::string line;
+        // Skip header lines (title + blank + column headers)
+        std::getline(section, line);  // title
+        std::getline(section, line);  // blank or underline
+        std::getline(section, line);  // column headers
 
-            while (std::getline(section, line)) {
-                if (line.empty() || line.find("DIPOLE") != std::string::npos) break;
-                std::istringstream ss(line);
-                int idx;
-                std::string elem;
-                double charge, dummy, sp;
-                if (ss >> idx >> elem >> charge >> dummy >> sp) {
-                    size_t i = static_cast<size_t>(idx - 1);
-                    if (i < natoms) {
-                        result.charges[i] = charge;
-                        result.s_pop[i] = sp;
-                        // p-Pop is absent for hydrogen (only s orbital)
-                        double pp = 0.0;
-                        if (ss >> pp) {
-                            result.p_pop[i] = pp;
-                        }
+        std::vector<bool> seen(natoms, false);
+        size_t n_parsed = 0;
+        while (std::getline(section, line)) {
+            if (line.empty() || line.find("DIPOLE") != std::string::npos) break;
+            std::istringstream ss(line);
+            int idx;
+            std::string elem;
+            double charge, dummy, sp;
+            if (ss >> idx >> elem >> charge >> dummy >> sp) {
+                size_t i = static_cast<size_t>(idx - 1);
+                if (i < natoms) {
+                    if (seen[i]) {
+                        result.error = "MOPAC NET ATOMIC CHARGES duplicate index " +
+                                       std::to_string(idx);
+                        return result;
+                    }
+                    seen[i] = true;
+                    ++n_parsed;
+                    result.charges[i] = charge;
+                    result.s_pop[i] = sp;
+                    // p-Pop is absent for hydrogen (only s orbital)
+                    double pp = 0.0;
+                    if (ss >> pp) {
+                        result.p_pop[i] = pp;
                     }
                 }
             }
+        }
+        // Completeness backstop: parse path above is unchanged; if it yields fewer
+        // than natoms unique charges (missing tail, early page-break blank,
+        // mis-indexed rows), fail rather than keep the pre-filled zeros. Conservative
+        // on pagination — a paginated table that breaks early becomes "MOPAC absent",
+        // not silent-zeroed; sandbox-validate whether large proteins paginate this table.
+        if (n_parsed != natoms) {
+            result.error = "MOPAC NET ATOMIC CHARGES incomplete: parsed " +
+                           std::to_string(n_parsed) + " of " +
+                           std::to_string(natoms) + " atoms";
+            return result;
         }
     }
 

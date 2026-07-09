@@ -16,7 +16,7 @@ namespace nmr {
 // Caldeweyher et al. 2019, DOI: 10.1063/1.5090222.
 
 
-std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
+std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf, int net_charge) {
 
     const size_t N = conf.AtomCount();
     const Protein& protein = conf.ProteinRef();
@@ -31,7 +31,7 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
 
     // ── Configuration (TOML) ────────────────────────────────────────
 
-    const double Q_total      = CalculatorConfig::Get("eeq_total_charge");
+    const double Q_total      = net_charge;  // real system net charge (0 under the neutral-conditioning knob)
     const double cn_steepness = CalculatorConfig::Get("eeq_cn_steepness");
     const double cn_cutoff  = CalculatorConfig::Get("eeq_cn_cutoff");
     const double charge_clamp = CalculatorConfig::Get("eeq_charge_clamp");

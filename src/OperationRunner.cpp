@@ -192,8 +192,17 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     if (!TimedAttach(conf, "SasaResult", out, [&]{
             return SasaResult::Compute(conf); })) return out;
+
+    // Net-charge conditioning for the neural / EEQ charge models. Default = the
+    // real system charge (what MOPAC receives); the charge_conditioning_neutral
+    // knob forces 0 e so the net-charge factor can be ablated (neutral vs real)
+    // per contributor. MOPAC stays on the real charge as the reference.
+    const int charge_model_net_charge =
+        (CalculatorConfig::Get("charge_conditioning_neutral") != 0.0)
+            ? 0 : opts.net_charge;
+
     if (!TimedAttach(conf, "EeqResult", out, [&]{
-            return EeqResult::Compute(conf); })) return out;
+            return EeqResult::Compute(conf, charge_model_net_charge); })) return out;
 
     // AIMNet2: FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
     // ChargeResponseGradient runs unconditionally after AIMNet2Result;
@@ -202,10 +211,10 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     // Trajectory::Run's per-frame RunOptions.
     if (opts.aimnet2_model) {
         if (!TimedAttach(conf, "AIMNet2Result", out, [&]{
-                return AIMNet2Result::Compute(conf, *opts.aimnet2_model); })) return out;
+                return AIMNet2Result::Compute(conf, *opts.aimnet2_model, charge_model_net_charge); })) return out;
         if (!TimedAttach(conf, "AIMNet2ChargeResponseGradientResult", out, [&]{
                 return AIMNet2ChargeResponseGradientResult::Compute(
-                    conf, *opts.aimnet2_model); })) return out;
+                    conf, *opts.aimnet2_model, charge_model_net_charge); })) return out;
     }
 
     // Explicit solvent calculators: MUST succeed if solvent provided.

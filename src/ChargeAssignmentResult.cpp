@@ -1,6 +1,9 @@
 #include "ChargeAssignmentResult.h"
 #include "ChargeSource.h"
 #include "Protein.h"
+#include "Atom.h"
+#include "Bond.h"
+#include "PhysicalConstants.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 #include <cstdio>
@@ -47,11 +50,28 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
     result->charge_table_ = &table;
     result->source_ = table.SourceDescription();
 
-    // Projection only: prepared charges/PB radii live on Protein.
+    // Projection: prepared charges/PB radii live on Protein. For atoms carrying
+    // the flat placeholder PB radius (TPR path, which ships no real radii),
+    // substitute mbondi2 — the same set our leap/prmtop path uses — so APBS gets
+    // a physical dielectric boundary instead of the 1.5 A placeholder. mbondi2's
+    // hydrogen rule needs connectivity, which is live here on the built Protein.
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
         ca.partial_charge = table.PartialChargeAt(ai);
-        ca.pb_radius = table.PbRadiusAt(ai);
+        if (table.Values()[ai].status == ChargeAssignmentStatus::PlaceholderPbRadius) {
+            const Atom& atom = protein.AtomAt(ai);
+            bool h_on_n = false;
+            if (atom.element == Element::H) {
+                for (size_t bi : atom.bond_indices) {
+                    const Bond& b = protein.BondAt(bi);
+                    size_t other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
+                    if (protein.AtomAt(other).element == Element::N) { h_on_n = true; break; }
+                }
+            }
+            ca.pb_radius = Mbondi2Radius(atom.element, h_on_n);
+        } else {
+            ca.pb_radius = table.PbRadiusAt(ai);
+        }
     }
 
     result->total_charge_ = table.TotalCharge();

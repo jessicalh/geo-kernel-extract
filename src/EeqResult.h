@@ -27,8 +27,9 @@
 //   eeq_cn.npy       (N,) float64 — coordination number (intermediate,
 //                                   for traceability)
 //
-// Parameters (from TOML):
-//   eeq_total_charge — net system charge (default 0, neutral protein)
+// Net charge: Compute(conf, net_charge) receives the real system net charge
+// from OperationRunner (or 0 under the charge_conditioning_neutral knob) as the
+// Q_total constraint. No longer a TOML parameter.
 //
 // No KernelFilterSet — charge calculation, not field evaluation.
 // GeometryChoice: one summary record (parameters, charge statistics).
@@ -49,7 +50,7 @@ public:
         return {};
     }
 
-    static std::unique_ptr<EeqResult> Compute(ProteinConformation& conf);
+    static std::unique_ptr<EeqResult> Compute(ProteinConformation& conf, int net_charge);
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;
