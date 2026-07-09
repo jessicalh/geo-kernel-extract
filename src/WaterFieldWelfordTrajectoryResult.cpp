@@ -261,7 +261,17 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     // spherical-tesseral m=-2..+2. Water EFG T0 (trace) and T1 (antisym
     // pseudovector) are both structural zeros — not emitted at all.
     grp.createAttribute("irrep_layout_efield", std::string("v_x,v_y,v_z"));
+    grp.createAttribute("efg_t2_basis",
+        std::string("project_native_t2_isometric_real_tesseral_v1"));
+    grp.createAttribute("efg_t2_component_order",
+        std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("efg_t2_frame",  std::string("cartesian_xyz_emitted_frame"));
+    grp.createAttribute("efg_t2_parity", std::string("even"));
+    grp.createAttribute("efg_e3nn_export", std::string(
+        "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
+        "project_t2_to_e3nn() before using e3nn Irreps"));
     grp.createAttribute("irrep_layout_efg_t2", std::string("m-2,m-1,m0,m+1,m+2"));
+    grp.createAttribute("legacy_irrep_attrs_deprecated", true);
     // Group-level `units` describes the primary value channel (E-field).
     // Per-dataset `units` attributes are authoritative — the group holds
     // V/Å (E-field), V/Å² (EFG), and dimensionless (counts) datasets.

@@ -4,6 +4,14 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <cctype>
+#include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <unistd.h>
 
 #include "CoulombResult.h"
 #include "ChargeAssignmentResult.h"
@@ -19,6 +27,109 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+struct NpyArray {
+    std::string descr;
+    std::vector<size_t> shape;
+    std::vector<char> bytes;
+};
+
+std::string Trim(std::string s) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                    [&](char c) { return !is_space(c); }));
+    s.erase(std::find_if(s.rbegin(), s.rend(),
+                         [&](char c) { return !is_space(c); }).base(), s.end());
+    return s;
+}
+
+NpyArray ReadNpy(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyArray arr;
+    if (!in.is_open()) return arr;
+
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6)) << path;
+
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1) << path;
+    EXPECT_EQ(version[1], 0) << path;
+
+    uint16_t header_len = 0;
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    std::string header(header_len, '\0');
+    in.read(header.data(), header_len);
+
+    const std::string descr_key = "'descr': '";
+    auto descr_pos = header.find(descr_key);
+    if (descr_pos == std::string::npos) {
+        ADD_FAILURE() << header;
+        return arr;
+    }
+    descr_pos += descr_key.size();
+    auto descr_end = header.find('\'', descr_pos);
+    if (descr_end == std::string::npos) {
+        ADD_FAILURE() << header;
+        return arr;
+    }
+    arr.descr = header.substr(descr_pos, descr_end - descr_pos);
+
+    auto shape_key = header.find("'shape': (");
+    if (shape_key == std::string::npos) {
+        ADD_FAILURE() << header;
+        return arr;
+    }
+    auto shape_begin = header.find('(', shape_key);
+    auto shape_end = header.find(')', shape_begin);
+    if (shape_begin == std::string::npos || shape_end == std::string::npos) {
+        ADD_FAILURE() << header;
+        return arr;
+    }
+    std::stringstream ss(header.substr(shape_begin + 1,
+                                      shape_end - shape_begin - 1));
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        token = Trim(token);
+        if (!token.empty()) arr.shape.push_back(static_cast<size_t>(std::stoull(token)));
+    }
+
+    arr.bytes.assign(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+    return arr;
+}
+
+const double* Doubles(const NpyArray& arr) {
+    return reinterpret_cast<const double*>(arr.bytes.data());
+}
+
+void RemoveCoulombFeatureDir(const fs::path& out_dir) {
+    for (const char* name : {
+            "coulomb_efg.npy",
+            "coulomb_efg_t2.npy",
+            "coulomb_E.npy",
+            "coulomb_E_backbone.npy",
+            "coulomb_E_sidechain.npy",
+            "coulomb_E_aromatic.npy",
+            "coulomb_efg_backbone.npy",
+            "coulomb_efg_sidechain.npy",
+            "coulomb_efg_aromatic.npy",
+            "coulomb_scalars.npy",
+            "coulomb_aromatic_E_proj.npy",
+            "coulomb_aromatic_n_src.npy",
+        }) {
+        std::error_code ec;
+        fs::remove(out_dir / name, ec);
+    }
+    std::error_code ec;
+    fs::remove(out_dir, ec);
+}
+
+}  // namespace
 
 
 
@@ -358,6 +469,44 @@ TEST_F(CoulombProteinTest, T2IsNonZero) {
 
     std::cout << "  T2 nonzero: " << nonzero_t2
               << ", max |T2| = " << max_t2 << "\n";
+}
+
+TEST_F(CoulombProteinTest, WriteFeaturesKeepsFull9AndAddsT2Companion) {
+    auto& conf = protein->Conformation();
+    conf.AttachResult(CoulombResult::Compute(conf));
+    const auto& result = conf.Result<CoulombResult>();
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("coulomb_write_features_" + std::to_string(::getpid()));
+    RemoveCoulombFeatureDir(out_dir);
+    fs::create_directories(out_dir);
+
+    const int written = result.WriteFeatures(conf, out_dir.string());
+    EXPECT_EQ(written, 12);
+
+    auto full = ReadNpy(out_dir / "coulomb_efg.npy");
+    auto t2 = ReadNpy(out_dir / "coulomb_efg_t2.npy");
+    const size_t N = conf.AtomCount();
+    ASSERT_EQ(full.shape, (std::vector<size_t>{N, 9}));
+    ASSERT_EQ(t2.shape, (std::vector<size_t>{N, 5}));
+    EXPECT_EQ(full.descr, "<f8");
+    EXPECT_EQ(t2.descr, "<f8");
+
+    const double* full_data = Doubles(full);
+    const double* t2_data = Doubles(t2);
+    for (size_t i = 0; i < N; ++i) {
+        for (size_t c = 0; c < 4; ++c) {
+            EXPECT_NEAR(full_data[i*9 + c], 0.0, 1e-10)
+                << "Coulomb EFG full9 T0/T1 structural zero at atom "
+                << i << " col " << c;
+        }
+        for (size_t k = 0; k < 5; ++k) {
+            EXPECT_DOUBLE_EQ(t2_data[i*5 + k], full_data[i*9 + 4 + k])
+                << "coulomb_efg_t2 must mirror coulomb_efg columns 4:9";
+        }
+    }
+
+    RemoveCoulombFeatureDir(out_dir);
 }
 
 

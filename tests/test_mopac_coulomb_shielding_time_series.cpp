@@ -93,8 +93,11 @@ TEST(MopacCoulombShieldingTimeSeries, GroupSkippedWhenSourceNeverAttached) {
       tr->WriteH5Group(tp, file); }
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist(
+        "/trajectory/mopac_coulomb_efg_time_series"))
+        << "canonical group must NOT exist when source attached 0/T frames";
+    EXPECT_FALSE(reopen.exist(
         "/trajectory/mopac_coulomb_shielding_time_series"))
-        << "group must NOT exist when source attached 0/T frames";
+        << "legacy group must NOT exist when source attached 0/T frames";
 
     fs::remove(h5_path);
 }
@@ -150,22 +153,51 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
-    auto grp = reopen.getGroup("/trajectory/mopac_coulomb_shielding_time_series");
+    ASSERT_TRUE(reopen.exist("/trajectory/mopac_coulomb_efg_time_series"));
+    ASSERT_TRUE(reopen.exist("/trajectory/mopac_coulomb_shielding_time_series"));
+    auto grp = reopen.getGroup("/trajectory/mopac_coulomb_efg_time_series");
     auto ds = grp.getDataSet("t2");
     const auto dims = ds.getSpace().getDimensions();
     ASSERT_EQ(dims.size(), 3u);
     EXPECT_EQ(dims[1], T);
     EXPECT_EQ(dims[2], 5u) << "T2-only per plan + source comment";
 
-    std::string parity, layout, units;
-    grp.getAttribute("parity").read(parity);
+    std::string quantity, historical, recovery, basis, order, frame;
+    std::string t2_parity, export_note, layout, units, source, policy;
+    bool gamma_applied = true;
+    bool legacy_deprecated = false;
+    grp.getAttribute("quantity").read(quantity);
+    grp.getAttribute("historical_field_name").read(historical);
+    grp.getAttribute("gamma_applied").read(gamma_applied);
+    grp.getAttribute("shielding_recovery").read(recovery);
+    grp.getAttribute("t2_basis").read(basis);
+    grp.getAttribute("t2_component_order").read(order);
+    grp.getAttribute("t2_frame").read(frame);
+    grp.getAttribute("t2_parity").read(t2_parity);
+    grp.getAttribute("e3nn_export").read(export_note);
+    grp.getAttribute("legacy_irrep_attrs_deprecated").read(legacy_deprecated);
     grp.getAttribute("irrep_layout").read(layout);
     grp.getAttribute("units").read(units);
-    EXPECT_EQ(parity, "2e");
+    grp.getAttribute("source").read(source);
+    grp.getAttribute("source_attached_policy").read(policy);
+    EXPECT_EQ(quantity, "raw_efg_t2");
+    EXPECT_EQ(historical, "mopac_coulomb_shielding_contribution");
+    EXPECT_FALSE(gamma_applied);
+    EXPECT_EQ(recovery, "multiply by per-element gamma during calibration");
+    EXPECT_EQ(basis, "project_native_t2_isometric_real_tesseral_v1");
+    EXPECT_EQ(order, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(frame, "cartesian_xyz_emitted_frame");
+    EXPECT_EQ(t2_parity, "even");
+    EXPECT_NE(export_note.find("project_t2_to_e3nn"), std::string::npos);
+    EXPECT_TRUE(legacy_deprecated);
     EXPECT_EQ(layout, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(units, "V/Å^2")
         << "EFG kernel units — bare EFG before γ multiplication; "
            "decision 2026-05-21 per science/math adversarial review H1.";
+    EXPECT_EQ(source.find("MopacCoulombResult.cpp:"), std::string::npos);
+    EXPECT_EQ(source.find("ppm"), std::string::npos);
+    EXPECT_EQ(policy.find("OperationRunner.cpp:"), std::string::npos);
+    EXPECT_EQ(policy.find("ppm"), std::string::npos);
 
     const std::size_t N = dims[0];
     std::vector<double> flat(N * T * 5);
@@ -180,6 +212,20 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
            "Mulliken charges collapsed";
     std::cout << "  max|T2| = " << max_mag << " V/Å^2 (bare EFG, "
               << "pre-γ)" << std::endl;
+
+    auto legacy = reopen.getGroup("/trajectory/mopac_coulomb_shielding_time_series");
+    std::string alias_of;
+    bool legacy_name_deprecated = false;
+    legacy.getAttribute("alias_of").read(alias_of);
+    legacy.getAttribute("legacy_name_deprecated").read(legacy_name_deprecated);
+    EXPECT_EQ(alias_of, "/trajectory/mopac_coulomb_efg_time_series");
+    EXPECT_TRUE(legacy_name_deprecated);
+    auto legacy_ds = legacy.getDataSet("t2");
+    const auto legacy_dims = legacy_ds.getSpace().getDimensions();
+    EXPECT_EQ(legacy_dims, dims);
+    std::vector<double> legacy_flat(N * T * 5);
+    legacy_ds.read(legacy_flat.data());
+    EXPECT_EQ(legacy_flat, flat);
 
     fs::remove(h5_path);
 }

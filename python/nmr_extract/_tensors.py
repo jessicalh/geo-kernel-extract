@@ -1,23 +1,29 @@
-"""Tensor wrappers with e3nn Irreps.
+"""Tensor wrappers for project-native NMR tensor payloads.
 
 Every wrapper holds a numpy array and exposes:
   .data    → np.ndarray (always available)
   .torch() → torch.Tensor
-  .irreps  → e3nn.o3.Irreps instance
+
+Raw SphericalTensor/EFGTensor/T2 block payloads use the project basis defined
+by the C++ SphericalTensor implementation. They are not e3nn tensors until an
+explicit conversion method is called.
 
 SphericalTensor packing (9 components):
     [0]     T0   isotropic scalar       (L=0, even parity)
-    [1:4]   T1   antisymmetric pseudovector (L=1, even parity)
+    [1:4]   T1   Cartesian Levi-Civita dual x,y,z (L=1, even parity)
     [4:9]   T2   traceless symmetric    (L=2, even parity, m=-2..+2)
 
 Canonical PackFull9 layout string:
-    "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
+    "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 
-T2 component ordering matches e3nn: m = -2, -1, 0, +1, +2.
-Normalization is isometric (Frobenius-preserving), not orthonormal-on-sphere.
+T2 component ordering is m = -2, -1, 0, +1, +2 in the project real-tesseral
+isometric basis. Use project_t2_to_e3nn/project_full9_to_e3nn or wrapper
+.to_e3nn() methods before passing data to e3nn Irreps consumers.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -26,15 +32,62 @@ from e3nn.o3 import Irreps
 from ._types import N_RING_TYPES, N_BOND_CATEGORIES, RingType, BondCategory
 
 
-PACK_FULL9_IRREP_LAYOUT = "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
+PROJECT_FULL9_TENSOR_BASIS = "project_native_full9_spherical_tensor_v1"
+PROJECT_T2_TENSOR_BASIS = "project_native_t2_isometric_real_tesseral_v1"
+PROJECT_FULL9_COMPONENT_ORDER = (
+    "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+)
+PROJECT_T2_COMPONENT_ORDER = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+PROJECT_FULL9_TENSOR_FRAME = "conformation_cartesian_xyz"
+PROJECT_T2_TENSOR_FRAME = "conformation_cartesian_xyz"
+PROJECT_E3NN_EXPORT_NOTE = (
+    "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
+    "project_t2_to_e3nn() before using e3nn Irreps"
+)
+PACK_FULL9_IRREP_LAYOUT = PROJECT_FULL9_COMPONENT_ORDER
+
+PROJECT_T2_TO_E3NN = np.array([
+    [0.0, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, -0.5, 0.0, -np.sqrt(3.0) / 2.0],
+    [0.0, 1.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, np.sqrt(3.0) / 2.0, 0.0, -0.5],
+], dtype=np.float64)
+
+
+@dataclass(frozen=True)
+class E3nnTensor:
+    data: np.ndarray
+    irreps: Irreps
+
+    def torch(self) -> torch.Tensor:
+        return torch.from_numpy(self.data)
+
+
+def project_t2_to_e3nn(t2: np.ndarray) -> np.ndarray:
+    """Convert project-native T2 coordinates to e3nn ``2e`` coordinates."""
+    arr = np.asarray(t2)
+    if arr.shape[-1] != 5:
+        raise ValueError(f"project_t2_to_e3nn: last dim must be 5, got {arr.shape}")
+    return arr @ PROJECT_T2_TO_E3NN.T
+
+
+def project_full9_to_e3nn(full9: np.ndarray) -> np.ndarray:
+    """Convert only the T2 block of PackFull9 project tensors to e3nn."""
+    arr = np.asarray(full9)
+    if arr.shape[-1] != 9:
+        raise ValueError(f"project_full9_to_e3nn: last dim must be 9, got {arr.shape}")
+    out = np.array(arr, dtype=np.result_type(arr.dtype, np.float64), copy=True)
+    out[..., 4:9] = project_t2_to_e3nn(arr[..., 4:9])
+    return out
 
 
 class SphericalTensor:
-    """Irreducible spherical tensor: T0 (L=0) + T1 (L=1) + T2 (L=2).
+    """Project-native spherical tensor: T0 + Cartesian T1 + real-tesseral T2.
 
     Shape ``(*, 9)`` packed as ``[T0, T1[3], T2[5]]``.
 
-    T2 component ordering: m = -2, -1, 0, +1, +2 (matches e3nn).
+    T2 component ordering: m = -2, -1, 0, +1, +2 in the project basis.
     Normalization: isometric (Frobenius-preserving).
 
     Args:
@@ -42,7 +95,10 @@ class SphericalTensor:
     """
 
     __slots__ = ("_data",)
-    IRREPS = Irreps("1x0e + 1x1e + 1x2e")
+    TENSOR_BASIS = PROJECT_FULL9_TENSOR_BASIS
+    COMPONENT_ORDER = PROJECT_FULL9_COMPONENT_ORDER
+    TENSOR_FRAME = PROJECT_FULL9_TENSOR_FRAME
+    E3NN_EXPORT = PROJECT_E3NN_EXPORT_NOTE
 
     def __init__(self, data: np.ndarray):
         if data.shape[-1] != 9:
@@ -56,13 +112,33 @@ class SphericalTensor:
         return self._data
 
     @property
-    def irreps(self) -> Irreps:
-        """``Irreps("1x0e+1x1e+1x2e")``."""
-        return self.IRREPS
+    def tensor_basis(self) -> str:
+        return self.TENSOR_BASIS
+
+    @property
+    def component_order(self) -> str:
+        return self.COMPONENT_ORDER
+
+    @property
+    def tensor_frame(self) -> str:
+        return self.TENSOR_FRAME
+
+    @property
+    def e3nn_export(self) -> str:
+        return self.E3NN_EXPORT
 
     def torch(self) -> torch.Tensor:
         """Zero-copy conversion to ``torch.Tensor``."""
         return torch.from_numpy(self._data)
+
+    def to_e3nn(self) -> E3nnTensor:
+        return E3nnTensor(
+            project_full9_to_e3nn(self._data),
+            Irreps("1x0e + 1x1e + 1x2e"),
+        )
+
+    def to_e3nn_T2(self) -> E3nnTensor:
+        return E3nnTensor(project_t2_to_e3nn(self.T2), Irreps("1x2e"))
 
     @property
     def T0(self) -> np.ndarray:
@@ -95,7 +171,10 @@ class SphericalTensor:
         return self._data.shape[0]
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(shape={self._data.shape}, irreps='{self.IRREPS}')"
+        return (
+            f"{type(self).__name__}(shape={self._data.shape}, "
+            f"basis='{self.TENSOR_BASIS}')"
+        )
 
 
 class ShieldingTensor(SphericalTensor):
@@ -126,15 +205,19 @@ class EFGTensor:
     Re-typed from a 9-component SphericalTensor subclass to a standalone
     5-component class on 2026-05-18 (codex review R2 M1 expansion). The
     old shape emitted 4 always-zero channels per atom; the new shape
-    saves storage AND signals the physics correctly to e3nn / MACE /
-    NequIP downstream consumers via the ``1x2e`` Irreps declaration.
+    saves storage and signals the physics correctly as a raw project
+    T2 tensor. Call ``to_e3nn()`` before passing to e3nn / MACE /
+    NequIP downstream consumers.
 
     Args:
         data: numpy array with last dimension 5.
     """
 
     __slots__ = ("_data",)
-    IRREPS = Irreps("1x2e")
+    TENSOR_BASIS = PROJECT_T2_TENSOR_BASIS
+    COMPONENT_ORDER = PROJECT_T2_COMPONENT_ORDER
+    TENSOR_FRAME = PROJECT_T2_TENSOR_FRAME
+    E3NN_EXPORT = PROJECT_E3NN_EXPORT_NOTE
 
     def __init__(self, data: np.ndarray):
         if data.shape[-1] != 5:
@@ -161,13 +244,30 @@ class EFGTensor:
         return self._data
 
     @property
-    def irreps(self) -> Irreps:
-        """``Irreps("1x2e")`` — symmetric-traceless rank-2, parity-even."""
-        return self.IRREPS
+    def tensor_basis(self) -> str:
+        return self.TENSOR_BASIS
+
+    @property
+    def component_order(self) -> str:
+        return self.COMPONENT_ORDER
+
+    @property
+    def tensor_frame(self) -> str:
+        return self.TENSOR_FRAME
+
+    @property
+    def e3nn_export(self) -> str:
+        return self.E3NN_EXPORT
 
     def torch(self) -> torch.Tensor:
         """Zero-copy conversion to ``torch.Tensor``."""
         return torch.from_numpy(self._data)
+
+    def to_e3nn(self) -> E3nnTensor:
+        return E3nnTensor(project_t2_to_e3nn(self._data), Irreps("1x2e"))
+
+    def to_e3nn_T2(self) -> E3nnTensor:
+        return self.to_e3nn()
 
     @property
     def T2(self) -> np.ndarray:
@@ -184,7 +284,10 @@ class EFGTensor:
         return self._data.shape[0]
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(shape={self._data.shape}, irreps='{self.IRREPS}')"
+        return (
+            f"{type(self).__name__}(shape={self._data.shape}, "
+            f"basis='{self.TENSOR_BASIS}')"
+        )
 
 
 class VectorField:
@@ -329,14 +432,17 @@ class PerRingTypeT1:
 
 
 class PerRingTypeT2:
-    """T2 (L=2) contribution decomposed by ring type.
+    """Project-native T2 contribution decomposed by ring type.
 
     Shape ``(*, 40)`` = 8 ring types x 5 T2 components.
     Use :meth:`as_block` for ``(*, 8, 5)`` view.
     """
 
     __slots__ = ("_data",)
-    IRREPS = Irreps("8x2e")
+    TENSOR_BASIS = PROJECT_T2_TENSOR_BASIS
+    COMPONENT_ORDER = PROJECT_T2_COMPONENT_ORDER
+    TENSOR_FRAME = PROJECT_T2_TENSOR_FRAME
+    E3NN_EXPORT = PROJECT_E3NN_EXPORT_NOTE
 
     def __init__(self, data: np.ndarray):
         if data.shape[-1] != N_RING_TYPES * 5:
@@ -349,8 +455,20 @@ class PerRingTypeT2:
         return self._data
 
     @property
-    def irreps(self) -> Irreps:
-        return self.IRREPS
+    def tensor_basis(self) -> str:
+        return self.TENSOR_BASIS
+
+    @property
+    def component_order(self) -> str:
+        return self.COMPONENT_ORDER
+
+    @property
+    def tensor_frame(self) -> str:
+        return self.TENSOR_FRAME
+
+    @property
+    def e3nn_export(self) -> str:
+        return self.E3NN_EXPORT
 
     def for_type(self, rt: RingType) -> np.ndarray:
         i = int(rt)
@@ -364,22 +482,29 @@ class PerRingTypeT2:
         """Reshape to ``(N, 8, 5)``."""
         return self._data.reshape(*self._data.shape[:-1], N_RING_TYPES, 5)
 
+    def to_e3nn(self) -> E3nnTensor:
+        converted = project_t2_to_e3nn(self.as_block()).reshape(self._data.shape)
+        return E3nnTensor(converted, Irreps(f"{N_RING_TYPES}x2e"))
+
     def __repr__(self) -> str:
-        return f"PerRingTypeT2(shape={self._data.shape})"
+        return f"PerRingTypeT2(shape={self._data.shape}, basis='{self.TENSOR_BASIS}')"
 
 
 # ── Per-bond-category decomposition ─────────────────────────────────
 
 
 class PerBondCategoryT2:
-    """T2 (L=2) McConnell contribution decomposed by bond category.
+    """Project-native T2 McConnell contribution decomposed by bond category.
 
     Shape ``(*, 25)`` = 5 bond categories x 5 T2 components.
     Use :meth:`as_block` for ``(*, 5, 5)`` view.
     """
 
     __slots__ = ("_data",)
-    IRREPS = Irreps("5x2e")
+    TENSOR_BASIS = PROJECT_T2_TENSOR_BASIS
+    COMPONENT_ORDER = PROJECT_T2_COMPONENT_ORDER
+    TENSOR_FRAME = PROJECT_T2_TENSOR_FRAME
+    E3NN_EXPORT = PROJECT_E3NN_EXPORT_NOTE
 
     def __init__(self, data: np.ndarray):
         if data.shape[-1] != N_BOND_CATEGORIES * 5:
@@ -393,8 +518,20 @@ class PerBondCategoryT2:
         return self._data
 
     @property
-    def irreps(self) -> Irreps:
-        return self.IRREPS
+    def tensor_basis(self) -> str:
+        return self.TENSOR_BASIS
+
+    @property
+    def component_order(self) -> str:
+        return self.COMPONENT_ORDER
+
+    @property
+    def tensor_frame(self) -> str:
+        return self.TENSOR_FRAME
+
+    @property
+    def e3nn_export(self) -> str:
+        return self.E3NN_EXPORT
 
     def for_category(self, cat: BondCategory) -> np.ndarray:
         i = int(cat)
@@ -407,8 +544,12 @@ class PerBondCategoryT2:
     def as_block(self) -> np.ndarray:
         return self._data.reshape(*self._data.shape[:-1], N_BOND_CATEGORIES, 5)
 
+    def to_e3nn(self) -> E3nnTensor:
+        converted = project_t2_to_e3nn(self.as_block()).reshape(self._data.shape)
+        return E3nnTensor(converted, Irreps(f"{N_BOND_CATEGORIES}x2e"))
+
     def __repr__(self) -> str:
-        return f"PerBondCategoryT2(shape={self._data.shape})"
+        return f"PerBondCategoryT2(shape={self._data.shape}, basis='{self.TENSOR_BASIS}')"
 
 
 # ── Scalar feature types ────────────────────────────────────────────
@@ -818,6 +959,8 @@ class MopacAtomicOrbitalPopulations:
 
     __slots__ = ("_data",)
     COLUMNS = ("s", "px", "py", "pz", "x2_minus_y2", "xz", "z2", "yz", "xy")
+    diagnostic_frame_dependent = True
+    model_scalar_source = False
 
     def __init__(self, data: np.ndarray):
         if data.ndim != 2 or data.shape[1] != 9:
@@ -840,6 +983,37 @@ class MopacAtomicOrbitalPopulations:
     @property
     def d(self) -> np.ndarray:
         return self._data[:, 4:9]
+
+
+class MopacAtomicOrbitalPopulationTotals:
+    """``(N, 3)`` invariant shell totals from printed AO populations."""
+
+    __slots__ = ("_data",)
+    COLUMNS = ("s_total", "p_total", "d_total")
+    diagnostic_frame_dependent = False
+    model_scalar_source = True
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != 3:
+            raise ValueError(
+                f"MopacAtomicOrbitalPopulationTotals: expected (N, 3), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def s_total(self) -> np.ndarray:
+        return self._data[:, 0]
+
+    @property
+    def p_total(self) -> np.ndarray:
+        return self._data[:, 1]
+
+    @property
+    def d_total(self) -> np.ndarray:
+        return self._data[:, 2]
 
 
 class MopacPrintedBondOrders:
@@ -1050,6 +1224,8 @@ class DeltaAPBS:
     """
 
     __slots__ = ("_data",)
+    efg_structural_zero_components = ("T0", "T1_x", "T1_y", "T1_z")
+    tensor_basis = PROJECT_T2_TENSOR_BASIS
 
     def __init__(self, data: np.ndarray):
         if data.shape[-1] != 12:
@@ -1071,6 +1247,16 @@ class DeltaAPBS:
         path's backward-compat schema. Use `.T2` for the 5 nonzero
         components."""
         return SphericalTensor(self._data[..., 3:])
+
+    @property
+    def delta_efg_full9(self) -> "SphericalTensor":
+        """Alias for the legacy full-9 EFG envelope."""
+        return self.delta_efg
+
+    @property
+    def delta_efg_t2(self) -> EFGTensor:
+        """Physical APBS delta EFG T2 slice from columns 7:12."""
+        return EFGTensor(self._data[..., 7:12])
 
     def __repr__(self) -> str:
         return f"DeltaAPBS(shape={self._data.shape})"

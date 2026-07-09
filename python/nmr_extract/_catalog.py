@@ -11,7 +11,7 @@ src/ConformationResult.cpp.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 import numpy as np
@@ -35,6 +35,7 @@ from ._tensors import (
     MopacGlobal,
     MopacAtomPopulations,
     MopacAtomicOrbitalPopulations,
+    MopacAtomicOrbitalPopulationTotals,
     MopacUniqueBondOrders,
     MopacTopologyBondOrdersFull,
     BondOrders,
@@ -79,13 +80,11 @@ class ArraySpec:
       R / Python analysis must read this metadata column rather than infer axis
       from filename.
 
-    * ``irreps`` carries the e3nn-style irrep decomposition for
-      tensor-valued arrays: ``"0e + 1e + 2e"`` for a 9-component
-      SphericalTensor (T0 + T1 + T2), ``"1o"`` for a polar Vec3,
-      ``"1e"`` for an axial / magnetic / shielding-T1 Vec3,
-      ``"0e + 2e"`` for an EFG (symmetric traceless), ``""`` for
-      scalar / structured / categorical arrays where irreps do not
-      apply.
+    * ``irreps`` is legacy/non-authoritative for raw project-native
+      tensors. ``tensor_basis``, ``tensor_component_order``,
+      ``tensor_frame``, ``structural_zero_components``, and
+      ``e3nn_export`` describe the producer payload. Consumers that need
+      e3nn must call the explicit conversion APIs in ``_tensors.py``.
 
     * ``units`` carries the SI / NMR-standard unit string for
       consumers needing to compare values across calculators
@@ -130,18 +129,33 @@ class ArraySpec:
     tensor_rank: int = 0
     parity: str = "even"
     mechanism: str = "metadata"
+    tensor_basis: str = ""
+    tensor_component_order: str = ""
+    tensor_frame: str = ""
+    structural_zero_components: str = ""
+    e3nn_export: str = ""
 
 
 # fmt: off
 # Common metadata strings — name once, use across entries of the same physics.
 _SHIELD_IRREPS = "0e + 1e + 2e"
 _SHIELD_SIGN   = "σ_ab = -dB_a^sec/dB_{0,b}"
-_EFG_IRREPS    = "1x2e"      # T2 only — water/Coulomb/MOPAC/APBS/AIMNet2 EFG
-                              # all built from symmetric outer-product physics
-                              # (q·(3r⊗r/r⁵−I/r³) or ∇²φ). After explicit
-                              # traceless projection, T0 = trace = 0 AND
-                              # T1 = antisymmetric pseudovector = 0 are
-                              # both structural zeros. Schema rev 2026-05-18.
+_FULL9_BASIS = "project_native_full9_spherical_tensor_v1"
+_T2_BASIS = "project_native_t2_isometric_real_tesseral_v1"
+_FULL9_ORDER = "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+_T2_ORDER = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+_EFG_STRUCTURAL_ZEROS = "T0,T1_x,T1_y,T1_z"
+_E3NN_EXPORT = (
+    "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
+    "project_t2_to_e3nn() before using e3nn Irreps"
+)
+_T2_TENSOR_METADATA = dict(
+    tensor_basis=_T2_BASIS,
+    tensor_component_order=_T2_ORDER,
+    tensor_frame="conformation_cartesian_xyz",
+    structural_zero_components=_EFG_STRUCTURAL_ZEROS,
+    e3nn_export=_E3NN_EXPORT,
+)
 
 CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Identity (ConformationResult.cpp) ────────────────────────
@@ -271,6 +285,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # trajectory (--mopac), where it feeds the MOPAC-vs-FF14SB probe. ──
     ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG (full 9-pack; T0/T1 structural zeros)",
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+    ArraySpec("coulomb_efg_t2",         "coulomb", EFGTensor,       5,   False, "Coulomb bare total EFG T2-only companion copied from coulomb_efg columns 4:9",
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("coulomb_E",              "coulomb", VectorField,     3,   False, "Coulomb total E-field",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_E_backbone",     "coulomb", VectorField,     3,   False, "Coulomb E-field backbone",
@@ -280,11 +296,11 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("coulomb_E_aromatic",     "coulomb", VectorField,     3,   False, "Coulomb E-field aromatic",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       5,   False, "Coulomb EFG backbone (T2 only, symmetric-traceless)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("coulomb_efg_sidechain",  "coulomb", EFGTensor,       5,   False, "Coulomb EFG sidechain (T2 only, symmetric-traceless)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("coulomb_efg_aromatic",   "coulomb", EFGTensor,       5,   False, "Coulomb EFG aromatic (T2 only, symmetric-traceless)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("coulomb_scalars",        "coulomb", CoulombScalars,  4,   False, "Coulomb E-field scalars",
               mechanism="electrostatic_efg"),
     ArraySpec("coulomb_aromatic_E_proj", "coulomb", np.ndarray,     None, False, "Coulomb aromatic E-field projection along the primary bond direction",
@@ -324,9 +340,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("water_efield_first", "water_field", VectorField,    3,    False, "Water E-field first shell <3.5A (V/A)",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="solvation"),
     ArraySpec("water_efg",          "water_field", EFGTensor,      5,    False, "Water EFG total (T2 only, symmetric-traceless)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="solvation"),
+              units="V/A^2", tensor_rank=2, mechanism="solvation", **_T2_TENSOR_METADATA),
     ArraySpec("water_efg_first",    "water_field", EFGTensor,      5,    False, "Water EFG first shell (T2 only, symmetric-traceless)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="solvation"),
+              units="V/A^2", tensor_rank=2, mechanism="solvation", **_T2_TENSOR_METADATA),
     ArraySpec("water_shell_counts", "water_field", np.ndarray,     2,    False, "Water shell counts [n_first, n_second]",
               mechanism="solvation"),
     ArraySpec("water_efield_clamp_mask", "water_field", np.ndarray, None, False, "Water total E-field clamp mask per atom: int8 0/1",
@@ -372,7 +388,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mopac_global",     "mopac_core", MopacGlobal,       4,    False, "MOPAC graph-level scalars",
               native_axis="protein", mechanism="charges"),
     ArraySpec("mopac_atom_populations", "mopac_core", MopacAtomPopulations, 12, False, "MOPAC per-atom charge, density, shell populations, dipole contribution, and valencies", native_axis="atom", units="mixed", mechanism="charges"),
-    ArraySpec("mopac_atomic_orbital_populations", "mopac_core", MopacAtomicOrbitalPopulations, 9, False, "Printed MOPAC atomic-orbital electron populations s/px/py/pz/d", native_axis="atom", units="electron", mechanism="charges"),
+    ArraySpec("mopac_atomic_orbital_populations", "mopac_core", MopacAtomicOrbitalPopulations, 9, False, "Frame-dependent printed MOPAC atomic-orbital electron populations s/px/py/pz/d; diagnostic table, not model-facing invariant scalars", native_axis="atom", units="electron", mechanism="charges"),
+    ArraySpec("mopac_atomic_orbital_population_totals", "mopac_core", MopacAtomicOrbitalPopulationTotals, 3, False, "Invariant MOPAC AO shell totals [s_total,p_total,d_total] derived from printed atomic-orbital populations", native_axis="atom", units="electron", mechanism="charges"),
     ArraySpec("mopac_bond_valencies", "mopac_core", np.ndarray,   None, False, "MOPAC bond-order diagonal valencies, not recomputed", native_axis="atom", units="dimensionless", mechanism="charges"),
     ArraySpec("mopac_bond_orders_unique", "mopac_core", MopacUniqueBondOrders, 8, False, "Deterministic symmetric projection over printed MOPAC bond rows", native_axis="mopac_unique_pair", units="dimensionless", mechanism="charges"),
     ArraySpec("mopac_topology_bond_orders_full", "mopac_core", MopacTopologyBondOrdersFull, 8, False, "Topology-bond bridge with present flag and absence reason id", native_axis="bond", units="dimensionless", mechanism="charges"),
@@ -389,11 +406,11 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mopac_coulomb_E_aromatic",    "mopac_coulomb", VectorField,     3,  False, "MOPAC Coulomb E-field aromatic",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("mopac_coulomb_efg_backbone",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG backbone (T2 only)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("mopac_coulomb_efg_sidechain", "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG sidechain (T2 only)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("mopac_coulomb_efg_aromatic",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG aromatic (T2 only)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("mopac_coulomb_scalars",       "mopac_coulomb", CoulombScalars,  4,  False, "MOPAC Coulomb scalars",
               mechanism="electrostatic_efg"),
     ArraySpec("mopac_coulomb_shielding",     "mopac_coulomb_legacy", ShieldingTensor, 9, False, "Legacy name for MOPAC Coulomb bare total EFG", irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
@@ -408,7 +425,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("apbs_E",           "apbs", VectorField,             3,    False, "APBS solvated E-field",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("apbs_efg",         "apbs", EFGTensor,               5,    False, "APBS solvated EFG (T2 only, symmetric-traceless)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
 
     # ── Orca DFT (OrcaShieldingResult.cpp) ───────────────────────
     ArraySpec("orca_total",       "orca", ShieldingTensor,         9,    False, "Orca DFT total shielding",
@@ -424,8 +441,13 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Delta metadata + match info",
               native_axis="mutation_match_pair", mechanism="mutation_delta"),
-    ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "APBS delta E + EFG",
-              native_axis="mutation_match_pair", mechanism="mutation_delta"),
+    ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "APBS delta_E(3) + legacy full-9 EFG envelope; only columns 7:12 are physical EFG T2",
+              native_axis="mutation_match_pair", mechanism="mutation_delta",
+              tensor_basis=_T2_BASIS,
+              tensor_component_order="delta_E_x,delta_E_y,delta_E_z,T0_compat_zero,T1_x_compat_zero,T1_y_compat_zero,T1_z_compat_zero,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2",
+              tensor_frame="conformation_cartesian_xyz",
+              structural_zero_components=_EFG_STRUCTURAL_ZEROS,
+              e3nn_export="raw project tensor; call DeltaAPBS.delta_efg_t2.to_e3nn() before using e3nn Irreps"),
     ArraySpec("delta_ring_proximity",  "delta", DeltaRingProximity,    None, False, "Removed ring geometry (variable cols)",
               native_axis="mutation_match_pair", units="Å", mechanism="mutation_delta"),
     # DFT shielding component decomposition: WT side, mut side, deltas;
@@ -471,11 +493,11 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("aimnet2_aim",                 "aimnet2", AIMNet2AimEmbedding,       256,  True,  "AIMNet2 256-dim electronic embedding",
               mechanism="charges"),
     ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG total (T2 only)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG aromatic (T2 only)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG backbone (T2 only)",
-              irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
 
     # ── AIMNet2 charge-response gradient (AIMNet2ChargeResponseGradientResult.cpp)
     # Always-on after the --aimnet2 model is loaded (per the
@@ -614,3 +636,37 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="ring_membership", mechanism="topology"),
 ]}
 # fmt: on
+
+
+def _with_project_tensor_metadata(spec: ArraySpec) -> ArraySpec:
+    if spec.wrapper is ShieldingTensor:
+        structural_zeros = spec.structural_zero_components
+        if spec.stem in {
+            "coulomb_efg",
+            "mopac_coulomb_efg",
+            "mopac_coulomb_shielding",
+        }:
+            structural_zeros = _EFG_STRUCTURAL_ZEROS
+        return replace(
+            spec,
+            tensor_basis=spec.tensor_basis or _FULL9_BASIS,
+            tensor_component_order=spec.tensor_component_order or _FULL9_ORDER,
+            tensor_frame=spec.tensor_frame or "conformation_cartesian_xyz",
+            structural_zero_components=structural_zeros,
+            e3nn_export=spec.e3nn_export or _E3NN_EXPORT,
+        )
+    if spec.wrapper in (PerRingTypeT2, PerBondCategoryT2):
+        return replace(
+            spec,
+            tensor_basis=spec.tensor_basis or _T2_BASIS,
+            tensor_component_order=spec.tensor_component_order or _T2_ORDER,
+            tensor_frame=spec.tensor_frame or "conformation_cartesian_xyz",
+            e3nn_export=spec.e3nn_export or _E3NN_EXPORT,
+        )
+    return spec
+
+
+CATALOG = {
+    stem: _with_project_tensor_metadata(spec)
+    for stem, spec in CATALOG.items()
+}

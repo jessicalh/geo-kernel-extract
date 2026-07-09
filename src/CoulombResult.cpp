@@ -363,7 +363,7 @@ Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
 
 
 // ============================================================================
-// WriteFeatures: coulomb_efg (9), E-field (3), EFG decompositions,
+// WriteFeatures: coulomb_efg (9), coulomb_efg_t2 (5), E-field (3), EFG decompositions,
 // scalar features (magnitude, bond projection, backbone fraction).
 // ============================================================================
 
@@ -372,6 +372,7 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
     const size_t N = conf.AtomCount();
 
     std::vector<double> efg_total(N * 9);
+    std::vector<double> efg_total_t2(N * 5);
     std::vector<double> efield(N * 3);
     std::vector<double> efield_bb(N * 3);
     std::vector<double> efield_sc(N * 3);
@@ -388,6 +389,7 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
         ca.coulomb_shielding_contribution.PackFull9(&efg_total[i*9]);
+        ca.coulomb_shielding_contribution.PackT2(&efg_total_t2[i*5]);
 
         efield[i*3+0] = ca.coulomb_E_total.x();
         efield[i*3+1] = ca.coulomb_E_total.y();
@@ -418,6 +420,7 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
     }
 
     NpyWriter::WriteFloat64(output_dir + "/coulomb_efg.npy", efg_total.data(), N, 9);
+    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_t2.npy", efg_total_t2.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_E.npy", efield.data(), N, 3);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_E_backbone.npy", efield_bb.data(), N, 3);
     NpyWriter::WriteFloat64(output_dir + "/coulomb_E_sidechain.npy", efield_sc.data(), N, 3);
@@ -430,7 +433,7 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
                             aromatic_E_proj.data(), N);
     NpyWriter::WriteInt32(output_dir + "/coulomb_aromatic_n_src.npy",
                           aromatic_n_src.data(), N);
-    return 11;
+    return 12;
 }
 
 }  // namespace nmr

@@ -156,11 +156,21 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
     // so the antisymmetric pseudovector vanishes. Both T0 and T1 are STRUCTURAL zeros, not
     // numerical zeros from a particular run — so they are NOT emitted
     // (no kernel pollution / no consumer ambiguity).
+    grp.createAttribute("efg_t2_basis",
+        std::string("project_native_t2_isometric_real_tesseral_v1"));
+    grp.createAttribute("efg_t2_component_order",
+        std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("efg_t2_frame",  std::string("cartesian_xyz_emitted_frame"));
+    grp.createAttribute("efg_t2_parity", std::string("even"));
+    grp.createAttribute("efg_e3nn_export", std::string(
+        "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
+        "project_t2_to_e3nn() before using e3nn Irreps"));
     grp.createAttribute("efg_irrep_layout",
         std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("efg_units",        std::string("V/Angstrom^2"));
     grp.createAttribute("efg_parity",         std::string("2e"));
     grp.createAttribute("efg_normalization",  std::string("isometric_real_sph"));
+    grp.createAttribute("legacy_irrep_attrs_deprecated", true);
     grp.createAttribute("efg_t0_structural_zero", true);
     grp.createAttribute("efg_t1_structural_zero", true);
 

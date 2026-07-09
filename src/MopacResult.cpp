@@ -1714,6 +1714,28 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         ++written;
     }
 
+    // mopac_atomic_orbital_population_totals: (K, 3) [s_total, p_total, d_total].
+    {
+        constexpr size_t C = 3;
+        const size_t K = run_record_.atomic_orbital_populations.size();
+        std::vector<double> data(K * C, QuietNaN());
+        for (size_t i = 0; i < K; ++i) {
+            const auto& row = run_record_.atomic_orbital_populations[i];
+            data[i*C + 0] = row.populations[0];
+            data[i*C + 1] = row.populations[1]
+                          + row.populations[2]
+                          + row.populations[3];
+            data[i*C + 2] = row.populations[4]
+                          + row.populations[5]
+                          + row.populations[6]
+                          + row.populations[7]
+                          + row.populations[8];
+        }
+        NpyWriter::WriteFloat64(output_dir + "/mopac_atomic_orbital_population_totals.npy",
+                                data.empty() ? nullptr : data.data(), K, C);
+        ++written;
+    }
+
     // mopac_bond_valencies: (N,) — MOPAC diagonal valencies, not recomputed.
     {
         std::vector<double> data(N, QuietNaN());

@@ -201,6 +201,28 @@ TEST_F(MutationDeltaTest, DeltaShieldingFinite) {
     EXPECT_GT(checked, 400);
 }
 
+TEST_F(MutationDeltaTest, ApbsDeltaFull9CompatibilitySlotsAreStructuralZeros) {
+    auto& wt_conf = wt_.protein->Conformation();
+    auto delta = MutationDeltaResult::Compute(wt_conf, ala_.protein->Conformation());
+    ASSERT_NE(delta, nullptr);
+
+    int checked = 0;
+    double max_abs_t0_t1 = 0.0;
+    for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
+        if (!delta->HasMatch(ai)) continue;
+        const auto& m = delta->MatchedDataAt(ai);
+        if (!m.has_apbs_delta) continue;
+        const auto& st = m.delta_efg_spherical;
+        max_abs_t0_t1 = std::max(max_abs_t0_t1, std::abs(st.T0));
+        for (int k = 0; k < 3; ++k)
+            max_abs_t0_t1 = std::max(max_abs_t0_t1, std::abs(st.T1[k]));
+        ++checked;
+    }
+    EXPECT_GT(checked, 400);
+    EXPECT_LT(max_abs_t0_t1, 1e-10)
+        << "delta_apbs full9 compatibility T0/T1 slots must stay structural zeros";
+}
+
 
 TEST_F(MutationDeltaTest, RingProximityComputed) {
     auto& wt_conf = wt_.protein->Conformation();

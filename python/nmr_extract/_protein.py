@@ -36,6 +36,7 @@ from ._tensors import (
     MopacAtomPopulations,
     MopacAOTable,
     MopacAtomicOrbitalPopulations,
+    MopacAtomicOrbitalPopulationTotals,
     MopacPrintedBondOrders,
     MopacUniqueBondOrders,
     MopacTopologyBondOrdersFull,
@@ -211,6 +212,7 @@ class CoulombGroup:
     efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
     scalars: CoulombScalars
+    efg_t2: Optional[EFGTensor] = None
     aromatic_E_proj: Optional[np.ndarray] = None
     aromatic_n_src: Optional[np.ndarray] = None
 
@@ -263,6 +265,7 @@ class MopacFullGroup:
     atom_populations: Optional[MopacAtomPopulations] = None
     ao_table: Optional[MopacAOTable] = None
     atomic_orbital_populations: Optional[MopacAtomicOrbitalPopulations] = None
+    atomic_orbital_population_totals: Optional[MopacAtomicOrbitalPopulationTotals] = None
     mulliken_overlap_sparse: Optional[np.ndarray] = None
     bond_orders_printed: Optional[MopacPrintedBondOrders] = None
     bond_valencies: Optional[np.ndarray] = None
@@ -1550,6 +1553,7 @@ def load(path: str | Path) -> Protein:
         efg_sidechain=get("coulomb_efg_sidechain"),
         efg_aromatic=get("coulomb_efg_aromatic"),
         scalars=get("coulomb_scalars"),
+        efg_t2=get("coulomb_efg_t2"),
         aromatic_E_proj=get("coulomb_aromatic_E_proj"),
         aromatic_n_src=get("coulomb_aromatic_n_src"),
     )
@@ -1598,6 +1602,7 @@ def load(path: str | Path) -> Protein:
             "mopac_atom_populations",
             "mopac_ao_table",
             "mopac_atomic_orbital_populations",
+            "mopac_atomic_orbital_population_totals",
             "mopac_mulliken_overlap_sparse",
             "mopac_bond_orders_printed",
             "mopac_bond_valencies",
@@ -1621,6 +1626,8 @@ def load(path: str | Path) -> Protein:
                     if "mopac_ao_table" in available else None,
                 atomic_orbital_populations=get("mopac_atomic_orbital_populations")
                     if "mopac_atomic_orbital_populations" in available else None,
+                atomic_orbital_population_totals=get("mopac_atomic_orbital_population_totals")
+                    if "mopac_atomic_orbital_population_totals" in available else None,
                 mulliken_overlap_sparse=get("mopac_mulliken_overlap_sparse")
                     if "mopac_mulliken_overlap_sparse" in available else None,
                 bond_orders_printed=get("mopac_bond_orders_printed")

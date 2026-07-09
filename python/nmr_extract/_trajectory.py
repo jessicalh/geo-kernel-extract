@@ -62,6 +62,16 @@ from typing import Dict, List, Optional
 import numpy as np
 
 
+PROJECT_T2_BASIS = "project_native_t2_isometric_real_tesseral_v1"
+PROJECT_T2_COMPONENT_ORDER = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+PROJECT_T2_FRAME = "cartesian_xyz_emitted_frame"
+PROJECT_T2_PARITY = "even"
+PROJECT_E3NN_EXPORT = (
+    "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
+    "project_t2_to_e3nn() before using e3nn Irreps"
+)
+
+
 # ─── Legacy GromacsProtein rollup ──────────────────────────────────
 
 
@@ -743,8 +753,13 @@ class WaterFieldTimeSeriesGroup:
     # Layout strings (from H5 attrs)
     efield_layout: str              # "x,y,z"
     efield_parity: str              # "1o"
-    efg_irrep_layout: str           # "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-    efg_parity: str                 # "2e"
+    efg_t2_basis: str               # project_native_t2_isometric_real_tesseral_v1
+    efg_t2_component_order: str     # "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+    efg_t2_frame: str               # cartesian_xyz_emitted_frame
+    efg_t2_parity: str              # "even"
+    efg_e3nn_export: str
+    legacy_efg_irrep_layout: str
+    legacy_efg_parity: str
     efield_cutoff_A: float          # 15.0
     n_first_cutoff_A: float         # 3.5
     n_second_cutoff_A: float        # 5.5
@@ -825,8 +840,13 @@ def _load_water_field_time_series(f) -> Optional[WaterFieldTimeSeriesGroup]:
         source_attached_count=int(g.attrs["source_attached_count"]),
         efield_layout=str(_decode_attr(g.attrs.get("efield_layout", ""))),
         efield_parity=str(_decode_attr(g.attrs.get("efield_parity", ""))),
-        efg_irrep_layout=str(_decode_attr(g.attrs.get("efg_irrep_layout", ""))),
-        efg_parity=str(_decode_attr(g.attrs.get("efg_parity", ""))),
+        efg_t2_basis=str(_decode_attr(g.attrs.get("efg_t2_basis", ""))),
+        efg_t2_component_order=str(_decode_attr(g.attrs.get("efg_t2_component_order", ""))),
+        efg_t2_frame=str(_decode_attr(g.attrs.get("efg_t2_frame", ""))),
+        efg_t2_parity=str(_decode_attr(g.attrs.get("efg_t2_parity", ""))),
+        efg_e3nn_export=str(_decode_attr(g.attrs.get("efg_e3nn_export", ""))),
+        legacy_efg_irrep_layout=str(_decode_attr(g.attrs.get("efg_irrep_layout", ""))),
+        legacy_efg_parity=str(_decode_attr(g.attrs.get("efg_parity", ""))),
         efield_cutoff_A=float(g.attrs.get("efield_cutoff_A", float("nan"))),
         n_first_cutoff_A=float(g.attrs.get("n_first_cutoff_A", float("nan"))),
         n_second_cutoff_A=float(g.attrs.get("n_second_cutoff_A", float("nan"))),
@@ -891,6 +911,12 @@ class WaterFieldWelfordGroup:
     source_attached_count: int
     mean_dt_ps: float
     frame_index_range: tuple[int, int]
+    efg_t2_basis: str
+    efg_t2_component_order: str
+    efg_t2_frame: str
+    efg_t2_parity: str
+    efg_e3nn_export: str
+    legacy_irrep_layout_efg_t2: str
 
 
 def _load_water_field_welford(f) -> Optional[WaterFieldWelfordGroup]:
@@ -898,6 +924,8 @@ def _load_water_field_welford(f) -> Optional[WaterFieldWelfordGroup]:
     if path not in f:
         return None
     g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
     return WaterFieldWelfordGroup(
         efield_x=_read_moments(g, "efield_x"),
         efield_y=_read_moments(g, "efield_y"),
@@ -935,6 +963,12 @@ def _load_water_field_welford(f) -> Optional[WaterFieldWelfordGroup]:
         source_attached_count=int(g.attrs["source_attached_count"]),
         mean_dt_ps=_group_mean_dt_ps(g),
         frame_index_range=_group_frame_index_range(g),
+        efg_t2_basis=_attr("efg_t2_basis"),
+        efg_t2_component_order=_attr("efg_t2_component_order"),
+        efg_t2_frame=_attr("efg_t2_frame"),
+        efg_t2_parity=_attr("efg_t2_parity"),
+        efg_e3nn_export=_attr("efg_e3nn_export"),
+        legacy_irrep_layout_efg_t2=_attr("irrep_layout_efg_t2"),
     )
 
 
@@ -2272,9 +2306,14 @@ class ApbsEfgTimeSeriesGroup:
     source_attached_per_frame: np.ndarray   # (T,) uint8
     n_atoms: int
     n_frames: int
-    irrep_layout: str                       # "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-    normalization: str                      # "isometric_real_sph"
-    parity: str                             # "2e"
+    t2_basis: str
+    t2_component_order: str
+    t2_frame: str
+    t2_parity: str
+    e3nn_export: str
+    legacy_irrep_layout: str
+    normalization: str                      # legacy "isometric_real_sph"
+    legacy_parity: str
     units: str                              # "V/Å^2"
     source: str
     source_attached_policy: str
@@ -2294,9 +2333,14 @@ def _load_apbs_efg_time_series(f) -> Optional[ApbsEfgTimeSeriesGroup]:
         source_attached_per_frame=g["source_attached_per_frame"][:],
         n_atoms=int(g.attrs["n_atoms"]),
         n_frames=int(g.attrs["n_frames"]),
-        irrep_layout=_attr("irrep_layout"),
+        t2_basis=_attr("t2_basis"),
+        t2_component_order=_attr("t2_component_order"),
+        t2_frame=_attr("t2_frame"),
+        t2_parity=_attr("t2_parity"),
+        e3nn_export=_attr("e3nn_export"),
+        legacy_irrep_layout=_attr("irrep_layout"),
         normalization=_attr("normalization"),
-        parity=_attr("parity"),
+        legacy_parity=_attr("parity"),
         units=_attr("units"),
         source=_attr("source"),
         source_attached_policy=_attr("source_attached_policy"),
@@ -2495,12 +2539,12 @@ def _load_mopac_bond_order_welford(f) -> Optional[MopacBondOrderWelfordGroup]:
 
 
 @dataclass(frozen=True)
-class MopacCoulombShieldingTimeSeriesGroup:
+class MopacCoulombEfgTimeSeriesGroup:
     """Per-atom per-frame MOPAC Coulomb T2 EFG kernel time series
-    from /trajectory/mopac_coulomb_shielding_time_series/. TR7 of
+    from /trajectory/mopac_coulomb_efg_time_series/. TR7 of
     the 13-TR plan. T2-only (N, T, 5) emission — source field is
-    genuinely T2 per the MopacCoulombResult.cpp:251-254 comment
-    ("Pure T2 (EFG is traceless). gamma converts this to shielding.").
+    genuinely T2 even though its historical field name contains
+    "shielding_contribution".
 
       t2 (N, T, 5) float64 — T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2
             in V/Å² (bare EFG kernel, NO γ multiplication at
@@ -2520,22 +2564,39 @@ class MopacCoulombShieldingTimeSeriesGroup:
     n_atoms: int
     n_frames: int
     source_attached_count: int
-    irrep_layout: str
+    quantity: str
+    historical_field_name: str
+    gamma_applied: bool
+    shielding_recovery: str
+    t2_basis: str
+    t2_component_order: str
+    t2_frame: str
+    t2_parity: str
+    e3nn_export: str
+    legacy_irrep_layout: str
     normalization: str
-    parity: str
+    legacy_parity: str
     units: str
     source: str
     source_attached_policy: str
 
 
-def _load_mopac_coulomb_shielding_time_series(f) -> Optional[MopacCoulombShieldingTimeSeriesGroup]:
-    path = "/trajectory/mopac_coulomb_shielding_time_series"
-    if path not in f:
+MopacCoulombShieldingTimeSeriesGroup = MopacCoulombEfgTimeSeriesGroup
+
+
+def _load_mopac_coulomb_efg_time_series(f) -> Optional[MopacCoulombEfgTimeSeriesGroup]:
+    canonical_path = "/trajectory/mopac_coulomb_efg_time_series"
+    legacy_path = "/trajectory/mopac_coulomb_shielding_time_series"
+    if canonical_path in f:
+        path = canonical_path
+    elif legacy_path in f:
+        path = legacy_path
+    else:
         return None
     g = f[path]
     def _attr(name: str) -> str:
         return str(_decode_attr(g.attrs.get(name, "")))
-    return MopacCoulombShieldingTimeSeriesGroup(
+    return MopacCoulombEfgTimeSeriesGroup(
         t2=g["t2"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
@@ -2543,13 +2604,26 @@ def _load_mopac_coulomb_shielding_time_series(f) -> Optional[MopacCoulombShieldi
         n_atoms=int(g.attrs["n_atoms"]),
         n_frames=int(g.attrs["n_frames"]),
         source_attached_count=int(g.attrs["source_attached_count"]),
-        irrep_layout=_attr("irrep_layout"),
+        quantity=_attr("quantity"),
+        historical_field_name=_attr("historical_field_name"),
+        gamma_applied=bool(g.attrs.get("gamma_applied", False)),
+        shielding_recovery=_attr("shielding_recovery"),
+        t2_basis=_attr("t2_basis"),
+        t2_component_order=_attr("t2_component_order"),
+        t2_frame=_attr("t2_frame"),
+        t2_parity=_attr("t2_parity"),
+        e3nn_export=_attr("e3nn_export"),
+        legacy_irrep_layout=_attr("irrep_layout"),
         normalization=_attr("normalization"),
-        parity=_attr("parity"),
+        legacy_parity=_attr("parity"),
         units=_attr("units"),
         source=_attr("source"),
         source_attached_policy=_attr("source_attached_policy"),
     )
+
+
+def _load_mopac_coulomb_shielding_time_series(f) -> Optional[MopacCoulombEfgTimeSeriesGroup]:
+    return _load_mopac_coulomb_efg_time_series(f)
 
 
 @dataclass(frozen=True)
@@ -3353,10 +3427,12 @@ class TrajectoryData:
     # discipline as the charge Welford.
     mopac_bond_order_welford: Optional["MopacBondOrderWelfordGroup"] = None
 
-    # MOPAC Coulomb shielding contribution time series (TR #7; 2026-05-21).
-    # T2-only 5-component emission (source is genuinely traceless per the
-    # MopacCoulombResult.cpp:251 comment). Sparse cadence; group skipped
-    # when MopacCoulombResult never attached.
+    # MOPAC Coulomb EFG T2 time series (TR #7; 2026-05-21).
+    # T2-only 5-component emission. Sparse cadence; group skipped when
+    # MopacCoulombResult never attached.
+    mopac_coulomb_efg_time_series: Optional[
+        "MopacCoulombEfgTimeSeriesGroup"] = None
+    # Legacy field name assigned to the same object as the canonical field.
     mopac_coulomb_shielding_time_series: Optional[
         "MopacCoulombShieldingTimeSeriesGroup"] = None
 
@@ -3581,7 +3657,8 @@ def load_trajectory(path: str | Path,
         apbs_efg = _load_apbs_efg_time_series(f)
         mopac_charge_welford = _load_mopac_charge_welford(f)
         mopac_bond_order_welford = _load_mopac_bond_order_welford(f)
-        mopac_coulomb_shielding_time_series = _load_mopac_coulomb_shielding_time_series(f)
+        mopac_coulomb_efg_time_series = _load_mopac_coulomb_efg_time_series(f)
+        mopac_coulomb_shielding_time_series = mopac_coulomb_efg_time_series
         mopac_mc_shielding_time_series = _load_mopac_mc_shielding_time_series(f)
         mopac_vs_ff14sb_reconciliation = _load_mopac_vs_ff14sb_reconciliation(f)
         ring_neighbourhood_trajectory_stats = (
@@ -3619,6 +3696,7 @@ def load_trajectory(path: str | Path,
         apbs_efg=apbs_efg,
         mopac_charge_welford=mopac_charge_welford,
         mopac_bond_order_welford=mopac_bond_order_welford,
+        mopac_coulomb_efg_time_series=mopac_coulomb_efg_time_series,
         mopac_coulomb_shielding_time_series=mopac_coulomb_shielding_time_series,
         mopac_mc_shielding_time_series=mopac_mc_shielding_time_series,
         mopac_vs_ff14sb_reconciliation=mopac_vs_ff14sb_reconciliation,

@@ -4,12 +4,10 @@
     p = load("path/to/extraction")
 
     p.biot_savart.shielding.T2          # (N, 5)
-    p.biot_savart.shielding.irreps      # Irreps("1x0e + 1x1e + 1x2e")
+    p.biot_savart.shielding.to_e3nn().irreps
     p.biot_savart.shielding.torch()     # torch.Tensor (N, 9)
     p.ring_contributions.bs.T2          # (P, 5), per-ring
 """
-
-from e3nn.o3 import Irreps
 
 from ._protein import load, Protein
 from ._trajectory import (
@@ -52,6 +50,7 @@ from ._trajectory import (
     ApbsEfgTimeSeriesGroup,
     MopacChargeWelfordGroup,
     MopacBondOrderWelfordGroup,
+    MopacCoulombEfgTimeSeriesGroup,
     MopacCoulombShieldingTimeSeriesGroup,
     MopacMcConnellShieldingTimeSeriesGroup,
     MopacVsFf14SbReconciliationGroup,
@@ -66,6 +65,9 @@ from ._tensors import (
     SphericalTensor,
     ShieldingTensor,
     EFGTensor,
+    E3nnTensor,
+    project_t2_to_e3nn,
+    project_full9_to_e3nn,
     VectorField,
     MagneticVectorField,
     PerRingTypeT0,
@@ -79,6 +81,7 @@ from ._tensors import (
     MopacAtomPopulations,
     MopacAOTable,
     MopacAtomicOrbitalPopulations,
+    MopacAtomicOrbitalPopulationTotals,
     MopacPrintedBondOrders,
     MopacUniqueBondOrders,
     MopacTopologyBondOrdersFull,
@@ -110,12 +113,14 @@ from ._protein import (
 __all__ = [
     "load",
     "Protein",
-    "Irreps",
     "RingType",
     "BondCategory",
     "SphericalTensor",
     "ShieldingTensor",
     "EFGTensor",
+    "E3nnTensor",
+    "project_t2_to_e3nn",
+    "project_full9_to_e3nn",
     "VectorField",
     "MagneticVectorField",
     "PerRingTypeT0",
@@ -136,6 +141,7 @@ __all__ = [
     "MopacAtomPopulations",
     "MopacAOTable",
     "MopacAtomicOrbitalPopulations",
+    "MopacAtomicOrbitalPopulationTotals",
     "MopacPrintedBondOrders",
     "MopacUniqueBondOrders",
     "MopacTopologyBondOrdersFull",
@@ -194,6 +200,7 @@ __all__ = [
     "ApbsEfgTimeSeriesGroup",
     "MopacChargeWelfordGroup",
     "MopacBondOrderWelfordGroup",
+    "MopacCoulombEfgTimeSeriesGroup",
     "MopacCoulombShieldingTimeSeriesGroup",
     "MopacMcConnellShieldingTimeSeriesGroup",
     "MopacVsFf14SbReconciliationGroup",

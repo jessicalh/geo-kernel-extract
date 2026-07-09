@@ -123,11 +123,10 @@ void ApbsEfgTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 // symmetrization and trace projection applied at source, so T0 and T1
 // are structurally zero.
 //
-// The 5-component trailing axis is the e3nn real-spherical
-// (l=2, m=-2 ... m=+2) ordering matching SphericalTensor::T2 layout.
-// The (irrep_layout, normalization, parity, units) attrs pin the
-// convention for downstream Python consumers — parity "2e" because
-// the gradient of a polar vector is an even-parity rank-2 tensor.
+// The 5-component trailing axis is the project-native real-tesseral
+// (m=-2 ... m=+2) ordering matching SphericalTensor::T2 layout. The
+// primary t2_* attrs pin that convention; legacy irrep attrs remain only
+// as deprecated compatibility aliases.
 
 void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -152,10 +151,20 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
 
+    grp.createAttribute("t2_basis",
+        std::string("project_native_t2_isometric_real_tesseral_v1"));
+    grp.createAttribute("t2_component_order",
+        std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("t2_frame",      std::string("cartesian_xyz_emitted_frame"));
+    grp.createAttribute("t2_parity",     std::string("even"));
+    grp.createAttribute("e3nn_export", std::string(
+        "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
+        "project_t2_to_e3nn() before using e3nn Irreps"));
     grp.createAttribute("irrep_layout",
         std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
     grp.createAttribute("parity",        std::string("2e"));
+    grp.createAttribute("legacy_irrep_attrs_deprecated", true);
     grp.createAttribute("units",         std::string("V/Å^2"));
     grp.createAttribute("source", std::string(
         "ApbsFieldResult.apbs_efg_spherical (SphericalTensor, T2 "

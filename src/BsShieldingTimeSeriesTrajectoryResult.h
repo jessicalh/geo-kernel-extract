@@ -21,7 +21,7 @@
 //     frame_times    (T,)       float64
 //     attrs:
 //       result_name    = "BsShieldingTimeSeriesTrajectoryResult"
-//       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+//       irrep_layout   = "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
 //       parity         = "0e+1e+2e"
 //       units          = "ppm_T_per_nA"

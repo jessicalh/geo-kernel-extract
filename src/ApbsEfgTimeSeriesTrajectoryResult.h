@@ -29,9 +29,13 @@
 //     attrs:
 //       result_name             = "ApbsEfgTimeSeriesTrajectoryResult"
 //       n_atoms, n_frames, finalized
-//       irrep_layout            = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-//       normalization           = "isometric_real_sph"
-//       parity                  = "2e"
+//       t2_basis                = "project_native_t2_isometric_real_tesseral_v1"
+//       t2_component_order      = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+//       t2_frame                = "cartesian_xyz_emitted_frame"
+//       t2_parity               = "even"
+//       e3nn_export             = explicit conversion-note string
+//       irrep_layout/normalization/parity = deprecated legacy attrs
+//       legacy_irrep_attrs_deprecated = true
 //       units                   = "V/Å^2"
 //       source                  = "ApbsFieldResult.apbs_efg_spherical
 //                                   (SphericalTensor, T2 components 0..4)"
@@ -40,7 +44,7 @@
 //                                  frames per canonical 'absent, not
 //                                  faked'.
 //
-// Parity "2e": EFG is a rank-2 even-parity tensor derived from the
+// t2_parity "even": EFG is a rank-2 even-parity tensor derived from the
 // gradient of the polar E-field. T0 and T1 are structurally zero from
 // source symmetrization and trace projection in ApbsFieldResult.cpp;
 // only 5 T2 components are emitted.

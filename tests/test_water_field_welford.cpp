@@ -150,13 +150,20 @@ TEST(WaterFieldWelford, H5RoundTrip) {
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/water_field_welford");
 
-    std::string units, ef, et2;
+    std::string units, ef, et2_basis, et2_order, et2;
+    bool legacy_deprecated = false;
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout_efield").read(ef);
+    grp.getAttribute("efg_t2_basis").read(et2_basis);
+    grp.getAttribute("efg_t2_component_order").read(et2_order);
     grp.getAttribute("irrep_layout_efg_t2").read(et2);
+    grp.getAttribute("legacy_irrep_attrs_deprecated").read(legacy_deprecated);
     EXPECT_EQ(units, "V/Angstrom");
     EXPECT_EQ(ef, "v_x,v_y,v_z");
+    EXPECT_EQ(et2_basis, "project_native_t2_isometric_real_tesseral_v1");
+    EXPECT_EQ(et2_order, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(et2, "m-2,m-1,m0,m+1,m+2");
+    EXPECT_TRUE(legacy_deprecated);
 
     // efg_t1_* datasets must NOT be emitted (structurally zero).
     EXPECT_FALSE(grp.exist("efg_t1_mean"));

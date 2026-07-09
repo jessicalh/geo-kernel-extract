@@ -301,17 +301,27 @@ TEST(WaterFieldTimeSeries, H5RoundTrip) {
     ASSERT_TRUE(reopen.exist("/trajectory/water_field_time_series"));
     auto grp = reopen.getGroup("/trajectory/water_field_time_series");
 
-    std::string efield_units, efg_layout, count_units, efg_parity;
+    std::string efield_units, efg_basis, efg_order, efg_parity;
+    std::string efg_export, count_units, legacy_layout;
+    bool legacy_deprecated = false;
     grp.getAttribute("efield_units").read(efield_units);
-    grp.getAttribute("efg_irrep_layout").read(efg_layout);
-    grp.getAttribute("efg_parity").read(efg_parity);
+    grp.getAttribute("efg_t2_basis").read(efg_basis);
+    grp.getAttribute("efg_t2_component_order").read(efg_order);
+    grp.getAttribute("efg_t2_parity").read(efg_parity);
+    grp.getAttribute("efg_e3nn_export").read(efg_export);
+    grp.getAttribute("legacy_irrep_attrs_deprecated").read(legacy_deprecated);
+    grp.getAttribute("efg_irrep_layout").read(legacy_layout);
     grp.getAttribute("count_units").read(count_units);
     EXPECT_EQ(efield_units, "V/Angstrom");
     // Water EFG: T0 (trace) and T1 (antisym pseudovector) are both
     // structural zeros — only T2 (symmetric-traceless, 5 components)
-    // is emitted. Parity "2e" reflects T2 only.
-    EXPECT_EQ(efg_layout, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
-    EXPECT_EQ(efg_parity, "2e");
+    // is emitted.
+    EXPECT_EQ(efg_basis, "project_native_t2_isometric_real_tesseral_v1");
+    EXPECT_EQ(efg_order, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(efg_parity, "even");
+    EXPECT_NE(efg_export.find("project_t2_to_e3nn"), std::string::npos);
+    EXPECT_TRUE(legacy_deprecated);
+    EXPECT_EQ(legacy_layout, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(count_units, "dimensionless");
 
     bool t0_zero = false, t1_zero = false;

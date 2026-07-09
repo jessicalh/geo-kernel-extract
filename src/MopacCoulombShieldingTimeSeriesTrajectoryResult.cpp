@@ -112,7 +112,8 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         OperationLog::Warn(
             "MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group",
             "MopacCoulombResult attached on 0/" +
-            std::to_string(n_frames_) + " frames; skipping "
+            std::to_string(n_frames_) + " frames; skipping canonical "
+            "/trajectory/mopac_coulomb_efg_time_series/ and legacy "
             "/trajectory/mopac_coulomb_shielding_time_series/ per "
             "canonical 'absent, not faked' discipline.");
         return;
@@ -131,38 +132,6 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     const std::size_t N = buffer->AtomCount();
     const std::size_t T = buffer->StridePerAtom();
 
-    auto grp = file.createGroup(
-        "/trajectory/mopac_coulomb_shielding_time_series");
-
-    grp.createAttribute("result_name",            Name());
-    grp.createAttribute("n_atoms",                N);
-    grp.createAttribute("n_frames",               T);
-    grp.createAttribute("source_attached_count",  source_attached_count_);
-    grp.createAttribute("finalized",              finalized_);
-    grp.createAttribute("irrep_layout",
-        std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
-    grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("2e"));
-    grp.createAttribute("units",         std::string("V/Å^2"));
-    grp.createAttribute("source", std::string(
-        "MopacCoulombResult.mopac_coulomb_shielding_contribution "
-        "(SphericalTensor; T2-only per source comment 'Pure T2 (EFG "
-        "is traceless). gamma converts this to shielding.' at "
-        "MopacCoulombResult.cpp:252-254). The stored value is the "
-        "EFG_total kernel in V/Å² (Hessian of φ from MOPAC Mulliken "
-        "charges, traceless-projected at MopacCoulombResult.cpp:175-178). "
-        "NO γ multiplication is applied at extraction — despite the "
-        "historical field name 'shielding_contribution', the stored "
-        "quantity is the bare EFG kernel. Shielding is recovered at "
-        "calibration time by multiplying by per-element γ."));
-    grp.createAttribute("source_attached_policy", std::string(
-        "conditional -- MopacCoulombResult attaches sparsely per the "
-        "Mopac cadence (OperationRunner.cpp:183, TimedAttach not "
-        "RequireConformationResult). Compute's HasResult<MopacCoulombResult>() "
-        "gate emits NaN-fill + mask=0 on absent frames per canonical "
-        "'absent, not faked'. WriteH5Group skips the entire group "
-        "when source_attached_count==0."));
-
     // (N, T, 5) — T2 components only. Atom-major flat layout.
     std::vector<double> flat(N * T * 5);
     for (std::size_t i = 0; i < N; ++i) {
@@ -174,13 +143,76 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     }
     std::vector<std::size_t> dims = {N, T, std::size_t(5)};
     HighFive::DataSpace space(dims);
-    auto ds = grp.createDataSet<double>("t2", space);
-    ds.write_raw(flat.data());
 
-    grp.createDataSet("frame_indices",            frame_indices_);
-    grp.createDataSet("frame_times",              frame_times_)
-       .createAttribute("units", std::string("ps"));
-    grp.createDataSet("source_attached_per_frame", source_attached_per_frame_);
+    const std::string canonical_path =
+        "/trajectory/mopac_coulomb_efg_time_series";
+
+    auto write_group = [&](const std::string& path, bool legacy_alias) {
+        auto grp = file.createGroup(path);
+
+        grp.createAttribute("result_name",            Name());
+        grp.createAttribute("n_atoms",                N);
+        grp.createAttribute("n_frames",               T);
+        grp.createAttribute("source_attached_count",  source_attached_count_);
+        grp.createAttribute("finalized",              finalized_);
+        grp.createAttribute("quantity",               std::string("raw_efg_t2"));
+        grp.createAttribute("historical_field_name",
+            std::string("mopac_coulomb_shielding_contribution"));
+        grp.createAttribute("gamma_applied",          false);
+        grp.createAttribute("shielding_recovery",
+            std::string("multiply by per-element gamma during calibration"));
+        grp.createAttribute("t2_basis",
+            std::string("project_native_t2_isometric_real_tesseral_v1"));
+        grp.createAttribute("t2_component_order",
+            std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+        grp.createAttribute("t2_frame",
+            std::string("cartesian_xyz_emitted_frame"));
+        grp.createAttribute("t2_parity", std::string("even"));
+        grp.createAttribute("e3nn_export", std::string(
+            "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
+            "project_t2_to_e3nn() before using e3nn Irreps"));
+        grp.createAttribute("irrep_layout",
+            std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+        grp.createAttribute("normalization", std::string("isometric_real_sph"));
+        grp.createAttribute("parity",        std::string("2e"));
+        grp.createAttribute("legacy_irrep_attrs_deprecated", true);
+        grp.createAttribute("units",         std::string("V/Å^2"));
+        grp.createAttribute("source_result", std::string("MopacCoulombResult"));
+        grp.createAttribute("source_field",
+            std::string("ConformationAtom::mopac_coulomb_shielding_contribution"));
+        grp.createAttribute("source_operation",
+            std::string("mopac_mulliken_charge_coulomb_efg_total_traceless_projected_t2"));
+        grp.createAttribute("source_tensor",
+            std::string("SphericalTensor::PackT2(T2 only)"));
+        grp.createAttribute("source", std::string(
+            "MopacCoulombResult stores ConformationAtom::"
+            "mopac_coulomb_shielding_contribution as the raw "
+            "traceless-projected Coulomb EFG from MOPAC Mulliken charges. "
+            "This group writes SphericalTensor::PackT2(T2 only); gamma is "
+            "not applied at extraction."));
+        grp.createAttribute("source_attached_policy", std::string(
+            "conditional -- MopacCoulombResult attaches sparsely via "
+            "OperationRunner::Run TimedAttach(MopacCoulombResult), not "
+            "RequireConformationResult. Compute's HasResult<MopacCoulombResult>() "
+            "gate emits NaN-fill + mask=0 on absent frames per canonical "
+            "'absent, not faked'. WriteH5Group skips both canonical and "
+            "legacy groups when source_attached_count==0."));
+        if (legacy_alias) {
+            grp.createAttribute("alias_of", canonical_path);
+            grp.createAttribute("legacy_name_deprecated", true);
+        }
+
+        auto ds = grp.createDataSet<double>("t2", space);
+        ds.write_raw(flat.data());
+
+        grp.createDataSet("frame_indices",            frame_indices_);
+        grp.createDataSet("frame_times",              frame_times_)
+           .createAttribute("units", std::string("ps"));
+        grp.createDataSet("source_attached_per_frame", source_attached_per_frame_);
+    };
+
+    write_group(canonical_path, false);
+    write_group("/trajectory/mopac_coulomb_shielding_time_series", true);
 }
 
 }  // namespace nmr

@@ -137,7 +137,7 @@ void BsShieldingTimeSeriesTrajectoryResult::WriteH5Group(
 
     // Schema metadata.
     grp.createAttribute("irrep_layout",
-        std::string("T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+        std::string("T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
     grp.createAttribute("parity",        std::string("0e+1e+2e"));
     grp.createAttribute("units",         std::string("ppm_T_per_nA"));

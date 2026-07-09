@@ -23,15 +23,19 @@ from nmr_extract import (
     RingType,
     ShieldingTensor,
     EFGTensor,
+    E3nnTensor,
     VectorField,
     MagneticVectorField,
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
+    PerBondCategoryT2,
     McConnellNearFieldCounts,
     RingContributions,
     RingGeometry,
     CATALOG,
+    project_t2_to_e3nn,
+    project_full9_to_e3nn,
 )
 
 
@@ -151,13 +155,24 @@ class TestIrreps:
     def test_spherical_tensor(self, geo):
         st = geo.biot_savart.shielding
         assert isinstance(st, ShieldingTensor)
-        assert st.irreps == Irreps("1x0e + 1x1e + 1x2e")
-        assert st.irreps.dim == 9
+        assert not hasattr(st, "irreps")
+        assert st.tensor_basis == "project_native_full9_spherical_tensor_v1"
+        assert st.component_order == \
+            "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+        e3 = st.to_e3nn()
+        assert isinstance(e3, E3nnTensor)
+        assert e3.irreps == Irreps("1x0e + 1x1e + 1x2e")
+        assert e3.irreps.dim == 9
+        assert st.to_e3nn_T2().irreps == Irreps("1x2e")
 
     def test_efg_tensor(self, geo):
         efg = geo.coulomb.efg_backbone
         assert isinstance(efg, EFGTensor)
-        assert efg.irreps == Irreps("1x2e")
+        assert not hasattr(efg, "irreps")
+        assert efg.tensor_basis == "project_native_t2_isometric_real_tesseral_v1"
+        assert efg.component_order == "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+        assert efg.to_e3nn().irreps == Irreps("1x2e")
+        assert efg.to_e3nn_T2().irreps == Irreps("1x2e")
 
     def test_vector_field(self, geo):
         v = geo.coulomb.E
@@ -172,8 +187,11 @@ class TestIrreps:
     def test_per_ring_type_T2(self, geo):
         t2 = geo.biot_savart.per_type_T2
         assert isinstance(t2, PerRingTypeT2)
-        assert t2.irreps == Irreps("8x2e")
-        assert t2.irreps.dim == 40
+        assert not hasattr(t2, "irreps")
+        assert t2.tensor_basis == "project_native_t2_isometric_real_tesseral_v1"
+        assert t2.component_order == "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+        assert t2.to_e3nn().irreps == Irreps("8x2e")
+        assert t2.to_e3nn().irreps.dim == 40
 
     def test_per_ring_type_T1(self, geo):
         t1 = geo.biot_savart.per_type_T1
@@ -190,8 +208,9 @@ class TestIrreps:
         for name in MCCONNELL_CHANNELS:
             channel = getattr(geo.mcconnell, name)
             assert isinstance(channel, ShieldingTensor)
-            assert channel.irreps == Irreps("1x0e + 1x1e + 1x2e")
-            assert channel.irreps.dim == 9
+            assert not hasattr(channel, "irreps")
+            assert channel.to_e3nn().irreps == Irreps("1x0e + 1x1e + 1x2e")
+            assert channel.to_e3nn().irreps.dim == 9
 
 
 # ── Torch conversion ────────────────────────────────────────────────
@@ -500,6 +519,15 @@ class TestCoulomb:
     def test_efg_is_tensor(self, geo):
         assert isinstance(geo.coulomb.efg_backbone, EFGTensor)
         assert isinstance(geo.coulomb.efg_aromatic, EFGTensor)
+
+    def test_total_efg_t2_companion_when_fixture_reemitted(self, geo):
+        assert isinstance(geo.coulomb.efg, ShieldingTensor)
+        assert CATALOG["coulomb_efg_t2"].cols == 5
+        assert CATALOG["mopac_coulomb_efg"].cols == 9
+        if geo.coulomb.efg_t2 is None:
+            pytest.skip("geo fixture predates coulomb_efg_t2.npy")
+        assert isinstance(geo.coulomb.efg_t2, EFGTensor)
+        np.testing.assert_allclose(geo.coulomb.efg_t2.data, geo.coulomb.efg.T2)
 
 
 class TestHBond:

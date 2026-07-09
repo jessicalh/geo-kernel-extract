@@ -735,6 +735,9 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
         written++;
     }
 
+    // Compatibility envelope: columns 3..11 use PackFull9 for legacy delta_apbs
+    // consumers. APBS EFG is physically T2-only; T0 and T1 slots are structural
+    // zeros and the physical accessor is the T2 slice columns 7..11.
     // delta_apbs: (N, 12) — [delta_E(3), delta_EFG_spherical(9)]
     if (has_apbs_delta_) {
         std::vector<double> data(N * 12, 0.0);

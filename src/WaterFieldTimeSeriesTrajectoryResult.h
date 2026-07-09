@@ -44,8 +44,14 @@
 //     attrs:
 //       result_name, n_atoms, n_frames, source_attached_count, finalized
 //       efield_layout       = "x,y,z" / efield_parity = "1o"
-//       efg_irrep_layout    = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-//       efg_parity          = "2e" (water EFG: T0=0 trace + T1=0 antisym both structural)
+//       efg_t2_basis        = "project_native_t2_isometric_real_tesseral_v1"
+//       efg_t2_component_order = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+//       efg_t2_frame        = "cartesian_xyz_emitted_frame"
+//       efg_t2_parity       = "even"
+//       efg_e3nn_export     = explicit conversion-note string
+//       efg_irrep_layout/efg_parity/efg_normalization = deprecated legacy attrs
+//       legacy_irrep_attrs_deprecated = true
+//       water EFG: T0=0 trace + T1=0 antisym both structural
 //       efg_t0_structural_zero, efg_t1_structural_zero  (true)
 //       efg_units           = "V/Angstrom^2"
 //       count_units         = "dimensionless"

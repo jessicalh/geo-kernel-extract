@@ -10,6 +10,12 @@
 // separately for ML feature stratification — see LarsenContribDispatch
 // in LarsenHBondShieldingResult.h and Larsen Table 2.
 //
+// H5 attrs on /trajectory/larsen_hbond_1pHB_shielding_time_series:
+//   irrep_layout  = "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+//   normalization = "isometric_real_sph"
+//   parity        = "0e+1e+2e"
+//   units         = "ppm"
+//
 
 #include "DenseBuffer.h"
 #include "TrajectoryResult.h"

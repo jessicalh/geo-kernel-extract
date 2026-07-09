@@ -81,7 +81,7 @@ nmr::SphericalTensor MakeSyntheticT2(std::size_t i, std::size_t t) {
 // Drives Compute/Finalize/WriteH5Group directly without
 // Trajectory::Run. Verifies (a) DenseBuffer round-trip preserves
 // SphericalTensor T2 components exactly, (b) H5 shape is (N, T, 5)
-// not (N, T, 9), (c) attrs parity="2e" / irrep_layout = T2 only.
+// not (N, T, 9), (c) primary attrs describe the project-native T2 basis.
 
 TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
@@ -143,12 +143,23 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 5u) << "T2-only emission per 2026-05-18 schema rev";
 
-    std::string parity, layout, units, policy;
-    grp.getAttribute("parity").read(parity);
+    std::string basis, order, frame, t2_parity, export_note, layout, units, policy;
+    bool legacy_deprecated = false;
+    grp.getAttribute("t2_basis").read(basis);
+    grp.getAttribute("t2_component_order").read(order);
+    grp.getAttribute("t2_frame").read(frame);
+    grp.getAttribute("t2_parity").read(t2_parity);
+    grp.getAttribute("e3nn_export").read(export_note);
+    grp.getAttribute("legacy_irrep_attrs_deprecated").read(legacy_deprecated);
     grp.getAttribute("irrep_layout").read(layout);
     grp.getAttribute("units").read(units);
     grp.getAttribute("source_attached_policy").read(policy);
-    EXPECT_EQ(parity, "2e");
+    EXPECT_EQ(basis, "project_native_t2_isometric_real_tesseral_v1");
+    EXPECT_EQ(order, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(frame, "cartesian_xyz_emitted_frame");
+    EXPECT_EQ(t2_parity, "even");
+    EXPECT_NE(export_note.find("project_t2_to_e3nn"), std::string::npos);
+    EXPECT_TRUE(legacy_deprecated);
     EXPECT_EQ(layout, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(units, "V/Å^2");
     EXPECT_NE(policy.find("always_attached"), std::string::npos);

@@ -1203,6 +1203,7 @@ nmr_test(trajectory_scope_tests
         tests/test_apbs_efield_time_series.cpp
         tests/test_bonded_energy_time_series.cpp
         tests/test_bs_anomalous_atom_marker.cpp
+        tests/test_bs_shielding_time_series.cpp
         tests/test_bs_welford.cpp
         tests/test_dihedral_bin_transition.cpp
         tests/test_dihedral_time_series.cpp

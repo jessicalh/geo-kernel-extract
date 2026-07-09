@@ -76,6 +76,10 @@ def _write_water_field_time_series(f: h5py.File, n_atoms: int, n_frames: int,
     grp.attrs["efield_units"]         = "V/Angstrom"
     grp.attrs["efield_parity"]        = "1o"
     grp.attrs["efield_normalization"] = "cartesian"
+    grp.attrs["efg_t2_basis"]         = "project_native_t2_isometric_real_tesseral_v1"
+    grp.attrs["efg_t2_component_order"] = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+    grp.attrs["efg_t2_frame"]         = "cartesian_xyz_emitted_frame"
+    grp.attrs["efg_t2_parity"]        = "even"
     grp.attrs["efg_irrep_layout"]     = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
     grp.attrs["efg_units"]            = "V/Angstrom^2"
     grp.attrs["efg_parity"]           = "2e"
@@ -266,11 +270,13 @@ class TestWaterFieldTimeSeriesGroup:
         h5, ts_truth, _ = h5_with_water
         ts = load_trajectory(h5).water_field.time_series
         assert isinstance(ts, WaterFieldTimeSeriesGroup)
-        # T2-only EFG: shape (N, T, 5), parity 2e, layout "T2_m-2,...,T2_m+2"
+        # T2-only EFG: shape (N, T, 5), primary attrs plus legacy irrep attrs.
         assert ts.efg.shape         == (N_ATOMS, N_FRAMES, 5)
         assert ts.efg_first.shape   == (N_ATOMS, N_FRAMES, 5)
-        assert ts.efg_parity        == "2e"
-        assert ts.efg_irrep_layout  == "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+        assert ts.efg_t2_parity        == "even"
+        assert ts.efg_t2_component_order == "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+        assert ts.legacy_efg_parity        == "2e"
+        assert ts.legacy_efg_irrep_layout  == "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
         # E-field Vec3
         assert ts.efield.shape        == (N_ATOMS, N_FRAMES, 3)
         assert ts.efield_layout       == "x,y,z"

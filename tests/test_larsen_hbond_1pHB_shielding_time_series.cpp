@@ -317,13 +317,16 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 9u);
 
-    std::string parity, normalization, units;
+    std::string parity, normalization, units, layout;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
+    grp.getAttribute("irrep_layout").read(layout);
     EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(normalization, "isometric_real_sph");
     EXPECT_EQ(units, "ppm");
+    EXPECT_EQ(layout,
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
 
     fs::remove(h5_path);
 }

@@ -65,6 +65,7 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         "bs_shielding.npy", "hm_shielding.npy", "coulomb_efg.npy",
         "coulomb_E.npy", "coulomb_E_backbone.npy",
         "coulomb_E_sidechain.npy", "coulomb_E_aromatic.npy",
+        "coulomb_efg_t2.npy",
         "coulomb_efg_backbone.npy", "coulomb_efg_sidechain.npy",
         "coulomb_efg_aromatic.npy", "apbs_E.npy", "bs_total_B.npy",
         "mopac_charges.npy",
@@ -127,6 +128,16 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         arr = arrays[name]
         if arr.ndim != 2 or arr.shape[1] != 9:
             print(f"  FAIL: {name} shape={arr.shape}, expected (N, 9)")
+            errors += 1
+
+    if "coulomb_efg_t2.npy" in arrays:
+        t2 = arrays["coulomb_efg_t2.npy"]
+        if t2.ndim != 2 or t2.shape[1] != 5:
+            print(f"  FAIL: coulomb_efg_t2.npy shape={t2.shape}, expected (N, 5)")
+            errors += 1
+        if "coulomb_efg.npy" in arrays and not np.allclose(
+                arrays["coulomb_efg.npy"][:, 4:9], t2, equal_nan=True):
+            print("  FAIL: coulomb_efg_t2.npy does not match coulomb_efg.npy columns 4:9")
             errors += 1
 
     # Ring contributions sparse array
