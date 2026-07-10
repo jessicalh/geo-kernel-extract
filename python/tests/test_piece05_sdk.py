@@ -27,6 +27,8 @@ from _topology_fixture import (
 N_ATOMS = 4
 N_FRAMES = 3
 BASIS_ID = "splitmix64_0xA17E20260708_achlioptas_32x256_element_HCNOS"
+M7_SENTINEL_MAX_RANK = 17
+M7_SENTINEL_RANK3_POLICY = "legacy_sdk_probe"
 
 
 def _save(out_dir, stem: str, shape, dtype=np.float64) -> np.ndarray:
@@ -76,6 +78,9 @@ def test_piece05_catalog_contract():
     assert CATALOG["coulomb_efg_solvent"].wrapper is EFGTensor
     assert "reaction-field alias" in \
         CATALOG["coulomb_E_solvent"].description
+    aromatic_projection_doc = CATALOG["coulomb_aromatic_E_proj"].description
+    assert "parent-to-H projection" in aromatic_projection_doc
+    assert "NaN for non-H or parentless atoms" in aromatic_projection_doc
 
     assert CATALOG["eeq_chi_eff"].group == "eeq"
     assert CATALOG["eeq_hardness"].cols == 2
@@ -297,22 +302,33 @@ def _write_projection_group(f: h5py.File) -> None:
 
 
 def _write_mopac_coulomb_group(f: h5py.File) -> None:
-    g = f.create_group("/trajectory/mopac_coulomb_efg_time_series")
-    g.attrs["n_atoms"] = N_ATOMS
-    g.attrs["n_frames"] = N_FRAMES
-    g.attrs["source_attached_count"] = N_FRAMES
-    g.attrs["max_potential_derivative_rank"] = 2
-    g.attrs["higher_derivatives_present"] = False
-    g.attrs["rank3_policy"] = "not_emitted_no_local_frame"
-    g.create_dataset(
-        "t2", data=np.zeros((N_ATOMS, N_FRAMES, 5), dtype=np.float64))
-    g.create_dataset(
-        "frame_indices", data=np.arange(N_FRAMES, dtype=np.uint64))
-    g.create_dataset(
-        "frame_times", data=np.arange(N_FRAMES, dtype=np.float64) * 0.5)
-    g.create_dataset(
-        "source_attached_per_frame",
-        data=np.ones(N_FRAMES, dtype=np.uint8))
+    def write_group(path: str) -> h5py.Group:
+        g = f.create_group(path)
+        g.attrs["n_atoms"] = N_ATOMS
+        g.attrs["n_frames"] = N_FRAMES
+        g.attrs["source_attached_count"] = N_FRAMES
+        g.create_dataset(
+            "t2",
+            data=np.zeros((N_ATOMS, N_FRAMES, 5), dtype=np.float64))
+        g.create_dataset(
+            "frame_indices", data=np.arange(N_FRAMES, dtype=np.uint64))
+        g.create_dataset(
+            "frame_times", data=np.arange(N_FRAMES, dtype=np.float64) * 0.5)
+        g.create_dataset(
+            "source_attached_per_frame",
+            data=np.ones(N_FRAMES, dtype=np.uint8))
+        return g
+
+    # Mirror the C++ writer's two-group shape: canonical owns the payload;
+    # M7 derivative-policy attributes live only on the historical alias.
+    write_group("/trajectory/mopac_coulomb_efg_time_series")
+    legacy = write_group(
+        "/trajectory/mopac_coulomb_shielding_time_series")
+    # Deliberately non-default sentinels make it impossible for SDK defaults
+    # to masquerade as a successful read from the legacy group.
+    legacy.attrs["max_potential_derivative_rank"] = M7_SENTINEL_MAX_RANK
+    legacy.attrs["higher_derivatives_present"] = True
+    legacy.attrs["rank3_policy"] = M7_SENTINEL_RANK3_POLICY
 
 
 def test_trajectory_piece05_round_trip(tmp_path):
@@ -355,9 +371,10 @@ def test_trajectory_piece05_round_trip(tmp_path):
         np.full(N_ATOMS, N_FRAMES, dtype=np.uint64))
 
     mopac = traj.mopac_coulomb_efg_time_series
-    assert mopac.max_potential_derivative_rank == 2
-    assert mopac.higher_derivatives_present is False
-    assert mopac.rank3_policy == "not_emitted_no_local_frame"
+    assert mopac.max_potential_derivative_rank == M7_SENTINEL_MAX_RANK
+    assert mopac.higher_derivatives_present is True
+    assert mopac.rank3_policy == M7_SENTINEL_RANK3_POLICY
+    assert traj.mopac_coulomb_shielding_time_series is mopac
 
 
 def test_apbs_old_h5_compatibility_synthesizes_documented_defaults(tmp_path):

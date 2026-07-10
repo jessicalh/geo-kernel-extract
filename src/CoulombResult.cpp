@@ -374,6 +374,16 @@ Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
 int CoulombResult::WriteFeatures(const ProteinConformation& conf,
                                   const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
+    int files_written = 0;
+    auto record_write = [&](bool success, const std::string& filename) {
+        if (success) {
+            ++files_written;
+            return;
+        }
+        OperationLog::Error(
+            "CoulombResult::WriteFeatures",
+            "failed to write " + output_dir + "/" + filename);
+    };
 
     std::vector<double> efg_total(N * 9);
     std::vector<double> efg_total_t2(N * 5);
@@ -434,30 +444,69 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
         }
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg.npy", efg_total.data(), N, 9);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_t2.npy", efg_total_t2.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_E.npy", efield.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_E_backbone.npy", efield_bb.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_E_sidechain.npy", efield_sc.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_E_aromatic.npy", efield_aro.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_backbone.npy", efg_bb.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_sidechain.npy", efg_sc.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_aromatic.npy", efg_aro.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_scalars.npy", scalars.data(), N, 4);
-    NpyWriter::WriteFloat64(output_dir + "/coulomb_aromatic_E_proj.npy",
-                            aromatic_E_proj.data(), N);
-    NpyWriter::WriteInt32(output_dir + "/coulomb_aromatic_n_src.npy",
-                          aromatic_n_src.data(), N);
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_efg.npy",
+                                efg_total.data(), N, 9),
+        "coulomb_efg.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_t2.npy",
+                                efg_total_t2.data(), N, 5),
+        "coulomb_efg_t2.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_E.npy",
+                                efield.data(), N, 3),
+        "coulomb_E.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_E_backbone.npy",
+                                efield_bb.data(), N, 3),
+        "coulomb_E_backbone.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_E_sidechain.npy",
+                                efield_sc.data(), N, 3),
+        "coulomb_E_sidechain.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_E_aromatic.npy",
+                                efield_aro.data(), N, 3),
+        "coulomb_E_aromatic.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_backbone.npy",
+                                efg_bb.data(), N, 5),
+        "coulomb_efg_backbone.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_sidechain.npy",
+                                efg_sc.data(), N, 5),
+        "coulomb_efg_sidechain.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_aromatic.npy",
+                                efg_aro.data(), N, 5),
+        "coulomb_efg_aromatic.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_scalars.npy",
+                                scalars.data(), N, 4),
+        "coulomb_scalars.npy");
+    record_write(
+        NpyWriter::WriteFloat64(
+            output_dir + "/coulomb_aromatic_E_proj.npy",
+            aromatic_E_proj.data(), N),
+        "coulomb_aromatic_E_proj.npy");
+    record_write(
+        NpyWriter::WriteInt32(output_dir + "/coulomb_aromatic_n_src.npy",
+                              aromatic_n_src.data(), N),
+        "coulomb_aromatic_n_src.npy");
     if (has_apbs) {
-        NpyWriter::WriteFloat64(output_dir + "/coulomb_E_solvent.npy",
-                                solvent_E.data(), N, 3);
-        NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_solvent.npy",
-                                solvent_efg.data(), N, 5);
-        // The current codebase has 12 pre-existing Coulomb files (including
-        // coulomb_efg_t2.npy); preserve that tensor and add these two aliases.
-        return 14;
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/coulomb_E_solvent.npy",
+                                    solvent_E.data(), N, 3),
+            "coulomb_E_solvent.npy");
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_solvent.npy",
+                                    solvent_efg.data(), N, 5),
+            "coulomb_efg_solvent.npy");
     }
-    return 12;
+    // The current codebase has 12 pre-existing Coulomb files (including
+    // coulomb_efg_t2.npy) and two optional APBS aliases. Return only writes
+    // that actually reached disk; every failure is logged above.
+    return files_written;
 }
 
 }  // namespace nmr

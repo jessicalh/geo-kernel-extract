@@ -593,6 +593,16 @@ SphericalTensor ApbsFieldResult::FieldGradientSphericalAt(size_t atom_index) con
 int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
                                     const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
+    int files_written = 0;
+    auto record_write = [&](bool success, const std::string& filename) {
+        if (success) {
+            ++files_written;
+            return;
+        }
+        OperationLog::Error(
+            "ApbsFieldResult::WriteFeatures",
+            "failed to write " + output_dir + "/" + filename);
+    };
 
     OperationLog::Info(LogAPBS, "ApbsFieldResult::WriteFeatures",
         "reaction-field schema: grid_mode=single_manual dims=[" +
@@ -621,7 +631,10 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
             const Vec3& E = conf.AtomAt(i).apbs_efield;
             data[i*3+0] = E.x(); data[i*3+1] = E.y(); data[i*3+2] = E.z();
         }
-        NpyWriter::WriteFloat64(output_dir + "/apbs_E.npy", data.data(), N, 3);
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/apbs_E.npy",
+                                    data.data(), N, 3),
+            "apbs_E.npy");
     }
 
     // apbs_efg: (N, 5) — T2 only. The EFG is symmetrized + traceless-
@@ -631,7 +644,10 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         for (size_t i = 0; i < N; ++i) {
             conf.AtomAt(i).apbs_efg_spherical.PackT2(&data[i*5]);
         }
-        NpyWriter::WriteFloat64(output_dir + "/apbs_efg.npy", data.data(), N, 5);
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/apbs_efg.npy",
+                                    data.data(), N, 5),
+            "apbs_efg.npy");
     }
 
     // apbs_phi: (N,) — canonical reaction potential in V.
@@ -639,7 +655,10 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).apbs_phi;
-        NpyWriter::WriteFloat64(output_dir + "/apbs_phi.npy", data.data(), N);
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/apbs_phi.npy",
+                                    data.data(), N),
+            "apbs_phi.npy");
     }
 
     // Clamp audit for canonical reaction E only.
@@ -647,15 +666,19 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         std::vector<std::uint8_t> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).apbs_efield_clamp_mask;
-        NpyWriter::WriteUInt8(output_dir + "/apbs_E_clamp_mask.npy",
-                              data.data(), N);
+        record_write(
+            NpyWriter::WriteUInt8(output_dir + "/apbs_E_clamp_mask.npy",
+                                  data.data(), N),
+            "apbs_E_clamp_mask.npy");
     }
     {
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).apbs_efield_clamp_scale;
-        NpyWriter::WriteFloat64(output_dir + "/apbs_E_clamp_scale.npy",
-                                data.data(), N);
+        record_write(
+            NpyWriter::WriteFloat64(
+                output_dir + "/apbs_E_clamp_scale.npy", data.data(), N),
+            "apbs_E_clamp_scale.npy");
     }
 
     // Bitwise audit of finite sanitization performed during Compute:
@@ -664,9 +687,11 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         std::vector<std::uint8_t> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).apbs_nonfinite_sanitizer_mask;
-        NpyWriter::WriteUInt8(
-            output_dir + "/apbs_nonfinite_sanitizer_mask.npy",
-            data.data(), N);
+        record_write(
+            NpyWriter::WriteUInt8(
+                output_dir + "/apbs_nonfinite_sanitizer_mask.npy",
+                data.data(), N),
+            "apbs_nonfinite_sanitizer_mask.npy");
     }
 
     // Raw total-PB derivatives are diagnostics: finite-sanitized, unclamped.
@@ -678,9 +703,11 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
             data[i*3+1] = E.y();
             data[i*3+2] = E.z();
         }
-        NpyWriter::WriteFloat64(
-            output_dir + "/apbs_E_total_diagnostic.npy",
-            data.data(), N, 3);
+        record_write(
+            NpyWriter::WriteFloat64(
+                output_dir + "/apbs_E_total_diagnostic.npy",
+                data.data(), N, 3),
+            "apbs_E_total_diagnostic.npy");
     }
     {
         std::vector<double> data(N * 5);
@@ -688,12 +715,14 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
             conf.AtomAt(i).apbs_efg_total_diagnostic_spherical.PackT2(
                 &data[i*5]);
         }
-        NpyWriter::WriteFloat64(
-            output_dir + "/apbs_efg_total_diagnostic.npy",
-            data.data(), N, 5);
+        record_write(
+            NpyWriter::WriteFloat64(
+                output_dir + "/apbs_efg_total_diagnostic.npy",
+                data.data(), N, 5),
+            "apbs_efg_total_diagnostic.npy");
     }
 
-    return 8;
+    return files_written;
 }
 
 }  // namespace nmr

@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
@@ -25,6 +26,8 @@
 #include "ChargeAssignmentResult.h"
 #include "ConformationResult.h"
 #include "CoulombResult.h"
+#include "AIMNet2Result.h"
+#include "ApbsFieldResult.h"
 #include "EnrichmentResult.h"
 #include "HBondResult.h"
 #include "LarsenHBondShieldingResult.h"
@@ -37,8 +40,10 @@
 #include "SpatialIndexResult.h"
 #include "ChargeSource.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 #include "Protein.h"
 #include "Residue.h"
+#include "WaterFieldResult.h"
 
 namespace fs = std::filesystem;
 using namespace nmr;
@@ -454,6 +459,126 @@ TEST(WriteFeatures, zero_ring_write_all_features) {
     ExpectShapeAndDescr(ring_dir, {0, 3}, "<f8");
     ExpectShapeAndDescr(piquad, {0}, "<f8");
     ExpectShapeAndDescr(ring_geom, {0, 10}, "<f8");
+}
+
+TEST(WriteFeatures, WaterFieldStaticEfieldPayloadUsesTargetMinusSource) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+
+    Protein protein;
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t ri = protein.AddResidue(std::move(residue));
+
+    auto atom = Atom::Create(Element::C);
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+    auto& conf = protein.AddConformation({Vec3::Zero()},
+                                         "static water-field NPY fixture");
+
+    SolventEnvironment solvent;
+    WaterMolecule water;
+    const Vec3 source_offset(1.0, -2.0, 2.0);
+    water.O_pos = source_offset;
+    water.H1_pos = source_offset;
+    water.H2_pos = source_offset;
+    water.O_charge = 0.2;
+    water.H_charge = 0.0;
+    solvent.waters = {water};
+    solvent.water_O_positions = {water.O_pos};
+
+    auto result = WaterFieldResult::Compute(conf, solvent);
+    ASSERT_NE(result, nullptr);
+
+    // Independent point-charge truth.  The 3 A oxygen distance is inside
+    // the first-shell cutoff, so both frozen vector surfaces must contain
+    // the same signed target-minus-source field.
+    const Vec3 r = conf.PositionAt(0) - water.O_pos;
+    const double distance = r.norm();
+    const Vec3 expected = COULOMB_KE * water.O_charge * r /
+        (distance * distance * distance);
+
+    const auto nonce = std::chrono::steady_clock::now()
+                           .time_since_epoch().count();
+    const fs::path output_dir = fs::temp_directory_path() /
+        ("water_field_static_npy_" + std::to_string(::getpid()) + "_" +
+         std::to_string(nonce));
+    ASSERT_TRUE(fs::create_directory(output_dir));
+    ASSERT_EQ(result->WriteFeatures(conf, output_dir.string()), 9);
+
+    const auto total = ReadNpy(output_dir / "water_efield.npy");
+    const auto first = ReadNpy(output_dir / "water_efield_first.npy");
+    ExpectShapeAndDescr(total, {1, 3}, "<f8");
+    ExpectShapeAndDescr(first, {1, 3}, "<f8");
+    const double* total_values = DataAs<double>(total);
+    const double* first_values = DataAs<double>(first);
+    for (size_t component = 0; component < 3; ++component) {
+        EXPECT_NEAR(total_values[component], expected(component), 1e-12)
+            << "water_efield component " << component;
+        EXPECT_NEAR(first_values[component], expected(component), 1e-12)
+            << "water_efield_first component " << component;
+    }
+
+    for (const char* filename : {
+            "water_efield.npy", "water_efg.npy",
+            "water_efg_first.npy", "water_efield_first.npy",
+            "water_shell_counts.npy", "water_efield_clamp_mask.npy",
+            "water_efield_clamp_scale.npy",
+            "water_efield_first_clamp_mask.npy",
+            "water_efield_first_clamp_scale.npy"}) {
+        const std::string path = (output_dir / filename).string();
+        EXPECT_EQ(::unlink(path.c_str()), 0) << path;
+    }
+    const std::string directory = output_dir.string();
+    EXPECT_EQ(::rmdir(directory.c_str()), 0) << directory;
+}
+
+TEST(WriteFeatures, Piece05WritersReturnHonestCountsAndLogNpyFailures) {
+    Protein protein;
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t ri = protein.AddResidue(std::move(residue));
+    auto atom = Atom::Create(Element::C);
+    atom->residue_index = ri;
+    const size_t ai = protein.AddAtom(std::move(atom));
+    protein.MutableResidueAt(ri).atom_indices.push_back(ai);
+    auto& conf = protein.AddConformation({Vec3::Zero()},
+                                         "failed NPY write fixture");
+
+    const auto nonce = std::chrono::steady_clock::now()
+                           .time_since_epoch().count();
+    const fs::path missing_parent = fs::temp_directory_path() /
+        ("piece05_missing_npy_parent_" + std::to_string(::getpid()) + "_" +
+         std::to_string(nonce));
+    const fs::path output_dir = missing_parent / "never_created";
+    ASSERT_FALSE(fs::exists(missing_parent));
+
+    AIMNet2Result aimnet2;
+    ApbsFieldResult apbs;
+    CoulombResult coulomb;
+    conf.ForceAttachResultForTesting(std::make_unique<ApbsFieldResult>());
+
+    ::testing::internal::CaptureStderr();
+    EXPECT_EQ(aimnet2.WriteFeatures(conf, output_dir.string()), 0);
+    EXPECT_EQ(apbs.WriteFeatures(conf, output_dir.string()), 0);
+    // The forced APBS marker takes the 14-output path and therefore also
+    // forces both new Coulomb solvent-alias failures.
+    EXPECT_EQ(coulomb.WriteFeatures(conf, output_dir.string()), 0);
+    const std::string errors = ::testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(errors.find("AIMNet2Result::WriteFeatures"),
+              std::string::npos);
+    EXPECT_NE(errors.find("ApbsFieldResult::WriteFeatures"),
+              std::string::npos);
+    EXPECT_NE(errors.find("CoulombResult::WriteFeatures"),
+              std::string::npos);
+    EXPECT_NE(errors.find("coulomb_E_solvent.npy"), std::string::npos);
+    EXPECT_NE(errors.find("coulomb_efg_solvent.npy"), std::string::npos);
+    EXPECT_FALSE(fs::exists(missing_parent));
 }
 
 }  // namespace

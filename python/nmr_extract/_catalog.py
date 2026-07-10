@@ -305,7 +305,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("coulomb_scalars",        "coulomb", CoulombScalars,  4,   False, "Coulomb E-field scalars",
               mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_aromatic_E_proj", "coulomb", np.ndarray,     None, False, "Coulomb aromatic E-field projection along the primary bond direction",
+    ArraySpec("coulomb_aromatic_E_proj", "coulomb", np.ndarray,     None, False, "Coulomb aromatic E-field parent-to-H projection; NaN for non-H or parentless atoms",
               irreps="0e", units="V/A", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_aromatic_n_src",  "coulomb", np.ndarray,     None, False, "Count of sidechain aromatic source atoms contributing to the Coulomb aromatic field (int32)", units="count", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_E_solvent",       "coulomb", VectorField,     3,   False, "APBS reaction-field alias: canonical APBS E = total PB minus homogeneous-vacuum reference",

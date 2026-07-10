@@ -259,13 +259,25 @@ int EeqResult::WriteFeatures(
         const std::string& output_dir) const {
 
     const size_t N = conf.AtomCount();
+    int files_written = 0;
+    auto record_write = [&](bool success, const char* filename) {
+        if (success) {
+            ++files_written;
+        } else {
+            OperationLog::Error(
+                "EeqResult::WriteFeatures",
+                "failed to write " + output_dir + "/" + filename);
+        }
+    };
 
     // eeq_charges: (N,) — partial charges in elementary charges
     {
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).eeq_charge;
-        NpyWriter::WriteFloat64(output_dir + "/eeq_charges.npy", data.data(), N);
+        record_write(NpyWriter::WriteFloat64(
+                         output_dir + "/eeq_charges.npy", data.data(), N),
+                     "eeq_charges.npy");
     }
 
     // eeq_cn: (N,) — coordination number (intermediate, for traceability)
@@ -273,7 +285,9 @@ int EeqResult::WriteFeatures(
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).eeq_cn;
-        NpyWriter::WriteFloat64(output_dir + "/eeq_cn.npy", data.data(), N);
+        record_write(NpyWriter::WriteFloat64(
+                         output_dir + "/eeq_cn.npy", data.data(), N),
+                     "eeq_cn.npy");
     }
 
     // Pure read-back of diagnostics stored by Compute.
@@ -281,7 +295,9 @@ int EeqResult::WriteFeatures(
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).eeq_chi_eff;
-        NpyWriter::WriteFloat64(output_dir + "/eeq_chi_eff.npy", data.data(), N);
+        record_write(NpyWriter::WriteFloat64(
+                         output_dir + "/eeq_chi_eff.npy", data.data(), N),
+                     "eeq_chi_eff.npy");
     }
 
     {
@@ -290,11 +306,13 @@ int EeqResult::WriteFeatures(
             data[i*2+0] = conf.AtomAt(i).eeq_eta;
             data[i*2+1] = conf.AtomAt(i).eeq_self_hardness_diag;
         }
-        NpyWriter::WriteFloat64(output_dir + "/eeq_hardness.npy",
-                                data.data(), N, 2);
+        record_write(NpyWriter::WriteFloat64(
+                         output_dir + "/eeq_hardness.npy",
+                         data.data(), N, 2),
+                     "eeq_hardness.npy");
     }
 
-    return 4;
+    return files_written;
 }
 
 }  // namespace nmr

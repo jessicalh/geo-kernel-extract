@@ -33,6 +33,11 @@ MC_ARRAYS = [
     for channel in ["fixed", "bo"]
 ]
 
+# Static ring_contributions azimuths use CalculatorConfig's
+# near_zero_vector_norm_threshold, not the separate 0.1 A point-kernel
+# distance cutoff used by other calculators.
+RING_AZIMUTH_AXIS_THRESHOLD_A = 1.0e-10
+
 
 def load_npy_files(directory: Path) -> dict[str, np.ndarray]:
     """Load all .npy files in directory, return {name: array}."""
@@ -174,9 +179,9 @@ def validate_sdk_load(directory: Path, label: str) -> int:
     """
     try:
         from nmr_extract import load
-    except ImportError:
-        print(f"  [{label}] SKIP SDK validation — nmr_extract not installed")
-        return 0
+    except ImportError as exc:
+        print(f"  [{label}] FAIL: SDK validation unavailable — {exc}")
+        return 1
 
     errors = 0
     print(f"\n  [{label}] SDK load validation")
@@ -203,7 +208,7 @@ def validate_sdk_load(directory: Path, label: str) -> int:
 
         # cos²φ + sin²φ ≈ 1 for atoms not on the ring axis
         rho = rc.rho
-        off_axis = rho > 0.1
+        off_axis = rho > RING_AZIMUTH_AXIS_THRESHOLD_A
         if off_axis.sum() > 0:
             unit_check = cos_phi[off_axis]**2 + sin_phi[off_axis]**2
             max_err = np.abs(unit_check - 1.0).max()
@@ -215,7 +220,7 @@ def validate_sdk_load(directory: Path, label: str) -> int:
                       f"({off_axis.sum()}/{rc.n_pairs} off-axis pairs)")
 
         # On-axis atoms (rho ≈ 0) should have default (1, 0)
-        on_axis = rho <= 0.1
+        on_axis = rho <= RING_AZIMUTH_AXIS_THRESHOLD_A
         if on_axis.sum() > 0:
             if not np.allclose(cos_phi[on_axis], 1.0):
                 print(f"  FAIL: on-axis cos_phi not 1.0")

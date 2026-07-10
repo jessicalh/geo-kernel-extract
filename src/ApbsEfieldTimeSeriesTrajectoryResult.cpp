@@ -87,6 +87,24 @@ void ApbsEfieldTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
     if (finalized_) return;
     const std::size_t N = tp.AtomCount();
 
+    // Pre-validate every per-atom history length BEFORE any per-atom
+    // storage is released, so a malformed partial buffer is never adopted
+    // and no earlier atom's history is destroyed on a later mismatch.
+    // Mirrors ApbsEfgTimeSeriesTrajectoryResult::Finalize's prevalidate
+    // order (this loop previously validated and swap-released in one pass,
+    // so a late mismatch returned after earlier histories were freed).
+    for (std::size_t i = 0; i < N; ++i) {
+        if (per_atom_efield_[i].size() != n_frames_ ||
+            per_atom_clamp_mask_[i].size() != n_frames_ ||
+            per_atom_clamp_scale_[i].size() != n_frames_) {
+            OperationLog::Error(
+                "ApbsEfieldTimeSeriesTrajectoryResult::Finalize",
+                "per-atom APBS E/clamp history length mismatch at atom " +
+                std::to_string(i));
+            return;
+        }
+    }
+
     auto buffer = std::make_unique<DenseBuffer<Vec3>>(N, n_frames_);
     clamp_mask_flat_.assign(N * n_frames_, 0u);
     clamp_scale_flat_.assign(
@@ -96,16 +114,6 @@ void ApbsEfieldTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
         const auto& src = per_atom_efield_[i];
         const auto& mask_src = per_atom_clamp_mask_[i];
         const auto& scale_src = per_atom_clamp_scale_[i];
-        if (src.size() != n_frames_ || mask_src.size() != n_frames_ ||
-            scale_src.size() != n_frames_) {
-            OperationLog::Error(
-                "ApbsEfieldTimeSeriesTrajectoryResult::Finalize",
-                "per-atom APBS E/clamp history length mismatch at atom " +
-                std::to_string(i));
-            clamp_mask_flat_.clear();
-            clamp_scale_flat_.clear();
-            return;
-        }
         for (std::size_t f = 0; f < n_frames_; ++f) {
             buffer->At(i, f) = src[f];
             const std::size_t offset = i * n_frames_ + f;

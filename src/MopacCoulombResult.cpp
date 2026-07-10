@@ -350,25 +350,54 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
         scalars[i*4+3] = ca.mopac_coulomb_aromatic_E_magnitude;
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg.npy",
-                            efg_total.data(), N, 9);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E.npy",
-                            efield.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_backbone.npy",
-                            efield_bb.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_sidechain.npy",
-                            efield_sc.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_aromatic.npy",
-                            efield_aro.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_backbone.npy",
-                            efg_bb.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_sidechain.npy",
-                            efg_sc.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_aromatic.npy",
-                            efg_aro.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_scalars.npy",
-                            scalars.data(), N, 4);
-    return 9;
+    int files_written = 0;
+    auto record_write = [&](bool success, const std::string& filename) {
+        if (success) {
+            ++files_written;
+            return;
+        }
+        OperationLog::Error(
+            "MopacCoulombResult::WriteFeatures",
+            "failed to write " + output_dir + "/" + filename);
+    };
+
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg.npy",
+                                efg_total.data(), N, 9),
+        "mopac_coulomb_efg.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E.npy",
+                                efield.data(), N, 3),
+        "mopac_coulomb_E.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_backbone.npy",
+                                efield_bb.data(), N, 3),
+        "mopac_coulomb_E_backbone.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_sidechain.npy",
+                                efield_sc.data(), N, 3),
+        "mopac_coulomb_E_sidechain.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E_aromatic.npy",
+                                efield_aro.data(), N, 3),
+        "mopac_coulomb_E_aromatic.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_backbone.npy",
+                                efg_bb.data(), N, 5),
+        "mopac_coulomb_efg_backbone.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_sidechain.npy",
+                                efg_sc.data(), N, 5),
+        "mopac_coulomb_efg_sidechain.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_aromatic.npy",
+                                efg_aro.data(), N, 5),
+        "mopac_coulomb_efg_aromatic.npy");
+    record_write(
+        NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_scalars.npy",
+                                scalars.data(), N, 4),
+        "mopac_coulomb_scalars.npy");
+    return files_written;
 }
 
 }  // namespace nmr

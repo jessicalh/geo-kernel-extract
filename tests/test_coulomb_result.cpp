@@ -1,6 +1,7 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -130,6 +131,23 @@ void RemoveCoulombFeatureDir(const fs::path& out_dir) {
     }
     std::error_code ec;
     fs::remove(out_dir, ec);
+}
+
+void RemoveMopacCoulombFeatures(const fs::path& out_dir) {
+    for (const char* name : {
+            "mopac_coulomb_efg.npy",
+            "mopac_coulomb_E.npy",
+            "mopac_coulomb_E_backbone.npy",
+            "mopac_coulomb_E_sidechain.npy",
+            "mopac_coulomb_E_aromatic.npy",
+            "mopac_coulomb_efg_backbone.npy",
+            "mopac_coulomb_efg_sidechain.npy",
+            "mopac_coulomb_efg_aromatic.npy",
+            "mopac_coulomb_scalars.npy",
+        }) {
+        std::error_code ec;
+        fs::remove(out_dir / name, ec);
+    }
 }
 
 }  // namespace
@@ -296,6 +314,41 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
     EXPECT_DOUBLE_EQ(
         conf.AtomAt(2).mopac_coulomb_aromatic_E_magnitude,
         conf.AtomAt(2).mopac_coulomb_E_aromatic.norm());
+
+    // Cross the real static writers.  Column 1 is pinned directly to the
+    // point-charge formula above, not to the ConformationAtom fields that
+    // the writers read.  Heavy atoms must retain the changed-value NaN
+    // sentinel, while the parented H has the independently known +x value.
+    const auto nonce = std::chrono::steady_clock::now()
+                           .time_since_epoch().count();
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("coulomb_scalar_payload_" + std::to_string(::getpid()) + "_" +
+         std::to_string(nonce));
+    ASSERT_TRUE(fs::create_directory(out_dir));
+    ASSERT_EQ(conf.Result<CoulombResult>().WriteFeatures(
+                  conf, out_dir.string()), 12);
+    ASSERT_EQ(mopac_coulomb->WriteFeatures(conf, out_dir.string()), 9);
+
+    const auto coulomb_scalars = ReadNpy(out_dir / "coulomb_scalars.npy");
+    const auto mopac_scalars =
+        ReadNpy(out_dir / "mopac_coulomb_scalars.npy");
+    ASSERT_EQ(coulomb_scalars.descr, "<f8");
+    ASSERT_EQ(mopac_scalars.descr, "<f8");
+    ASSERT_EQ(coulomb_scalars.shape, (std::vector<size_t>{5u, 4u}));
+    ASSERT_EQ(mopac_scalars.shape, (std::vector<size_t>{5u, 4u}));
+    const double* coulomb_payload = Doubles(coulomb_scalars);
+    const double* mopac_payload = Doubles(mopac_scalars);
+    for (const size_t heavy : {0u, 1u, 3u, 4u}) {
+        EXPECT_TRUE(std::isnan(coulomb_payload[heavy*4 + 1]))
+            << "coulomb heavy atom " << heavy;
+        EXPECT_TRUE(std::isnan(mopac_payload[heavy*4 + 1]))
+            << "MOPAC Coulomb heavy atom " << heavy;
+    }
+    EXPECT_NEAR(coulomb_payload[2*4 + 1], E_x_expected, 1e-8);
+    EXPECT_NEAR(mopac_payload[2*4 + 1], E_x_expected, 1e-8);
+
+    RemoveMopacCoulombFeatures(out_dir);
+    RemoveCoulombFeatureDir(out_dir);
 
     // Verify EFG diagonal from atom 0 alone (d along x):
     // V_xx = ke * q * (3*1 - 1)/r^3 = ke * 0.5 * 2/27

@@ -8,6 +8,7 @@
 #include "CalculatorConfig.h"
 #include "PhysicalConstants.h"
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <cmath>
 #include <cstdio>
@@ -113,6 +114,37 @@ std::vector<double> ReadFloat64NpyPayload(
     return data;
 }
 
+std::vector<std::uint8_t> ReadUInt8NpyPayload(
+        const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return {};
+    const std::vector<unsigned char> bytes(
+        (std::istreambuf_iterator<char>(in)),
+        std::istreambuf_iterator<char>());
+    if (bytes.size() < 10 || std::memcmp(bytes.data(), "\x93NUMPY", 6) != 0)
+        return {};
+
+    size_t header_len = 0;
+    size_t payload_offset = 0;
+    if (bytes[6] == 1) {
+        header_len = static_cast<size_t>(bytes[8]) |
+                     (static_cast<size_t>(bytes[9]) << 8);
+        payload_offset = 10 + header_len;
+    } else if (bytes[6] == 2 || bytes[6] == 3) {
+        if (bytes.size() < 12) return {};
+        header_len = static_cast<size_t>(bytes[8]) |
+                     (static_cast<size_t>(bytes[9]) << 8) |
+                     (static_cast<size_t>(bytes[10]) << 16) |
+                     (static_cast<size_t>(bytes[11]) << 24);
+        payload_offset = 12 + header_len;
+    } else {
+        return {};
+    }
+    if (payload_offset > bytes.size()) return {};
+    return std::vector<std::uint8_t>(bytes.begin() + payload_offset,
+                                     bytes.end());
+}
+
 void RemoveApbsNpys(const std::filesystem::path& output_dir) {
     for (const char* filename : {
             "apbs_E.npy", "apbs_efg.npy", "apbs_phi.npy",
@@ -125,9 +157,14 @@ void RemoveApbsNpys(const std::filesystem::path& output_dir) {
 }
 
 void RunHomogeneousReferenceForcingFunctionInChild() {
+    const auto nonce = std::chrono::steady_clock::now()
+                           .time_since_epoch().count();
     const auto config_path = std::filesystem::temp_directory_path() /
         ("apbs_homogeneous_reference_" + std::to_string(::getpid()) +
-         ".toml");
+         "_" + std::to_string(nonce) + ".toml");
+    const auto output_dir = std::filesystem::temp_directory_path() /
+        ("apbs_homogeneous_reference_" + std::to_string(::getpid()) +
+         "_" + std::to_string(nonce));
     WriteApbsTestConfig(config_path, 1.0, 1.0, 0.0, 100.0);
     CalculatorConfig::Load(config_path.string());
 
@@ -157,9 +194,30 @@ void RunHomogeneousReferenceForcingFunctionInChild() {
             // homogeneous reference, the two deterministic grids must cancel.
             ok = ok && max_reaction < 1e-8
                     && max_total_diagnostic > 1e-8;
+
+            // Independently forced unclamped serialization: exact
+            // total-reference cancellation cannot cross the 100 V/A clamp.
+            // Read the actual NPY payloads so swapped/default mask or scale
+            // arrays cannot hide behind the in-memory checks above.
+            ok = ok && std::filesystem::create_directory(output_dir);
+            ok = ok && apbs->WriteFeatures(conf, output_dir.string()) == 8;
+            const auto emitted_mask = ReadUInt8NpyPayload(
+                output_dir / "apbs_E_clamp_mask.npy");
+            const auto emitted_scale = ReadFloat64NpyPayload(
+                output_dir / "apbs_E_clamp_scale.npy");
+            ok = ok && emitted_mask.size() == conf.AtomCount()
+                    && emitted_scale.size() == conf.AtomCount();
+            if (ok) {
+                for (size_t i = 0; i < conf.AtomCount(); ++i) {
+                    ok = ok && emitted_mask[i] == 0u
+                            && emitted_scale[i] == 1.0;
+                }
+            }
         }
     }
 
+    RemoveApbsNpys(output_dir);
+    std::filesystem::remove(output_dir);
     std::filesystem::remove(config_path);
     _exit(ok ? 0 : 1);
 }
@@ -169,11 +227,14 @@ void RunAnalyticSignAndClampForcingFunctionInChild() {
     constexpr double kChargeE = 500.0;
     constexpr double kDistanceA = 3.5;
     constexpr double kDielectric = 4.0;
+    const auto nonce = std::chrono::steady_clock::now()
+                           .time_since_epoch().count();
     const auto config_path = std::filesystem::temp_directory_path() /
         ("apbs_analytic_sign_clamp_" + std::to_string(::getpid()) +
-         ".toml");
+         "_" + std::to_string(nonce) + ".toml");
     const auto output_dir = std::filesystem::temp_directory_path() /
-        ("apbs_analytic_sign_clamp_" + std::to_string(::getpid()));
+        ("apbs_analytic_sign_clamp_" + std::to_string(::getpid()) +
+         "_" + std::to_string(nonce));
     WriteApbsTestConfig(config_path, kDielectric, kDielectric, 0.0,
                         kClampVPerA);
     CalculatorConfig::Load(config_path.string());
@@ -257,7 +318,7 @@ void RunAnalyticSignAndClampForcingFunctionInChild() {
                     atom.apbs_efg_total_diagnostic(0, 0),
                     expected_total_xx);
 
-            std::filesystem::create_directories(output_dir);
+            ok = ok && std::filesystem::create_directory(output_dir);
             ok = ok && apbs->WriteFeatures(conf, output_dir.string()) == 8;
             const auto emitted_E =
                 ReadFloat64NpyPayload(output_dir / "apbs_E.npy");
@@ -269,25 +330,48 @@ void RunAnalyticSignAndClampForcingFunctionInChild() {
                 output_dir / "apbs_E_total_diagnostic.npy");
             const auto emitted_total_efg = ReadFloat64NpyPayload(
                 output_dir / "apbs_efg_total_diagnostic.npy");
+            const auto emitted_clamp_mask = ReadUInt8NpyPayload(
+                output_dir / "apbs_E_clamp_mask.npy");
+            const auto emitted_clamp_scale = ReadFloat64NpyPayload(
+                output_dir / "apbs_E_clamp_scale.npy");
             ok = ok && emitted_E.size() == 6
                     && emitted_efg.size() == 10
                     && emitted_phi.size() == 2
                     && emitted_total_E.size() == 6
-                    && emitted_total_efg.size() == 10;
+                    && emitted_total_efg.size() == 10
+                    && emitted_clamp_mask.size() == 2
+                    && emitted_clamp_scale.size() == 2;
             if (ok) {
                 const size_t e = kProbe * 3;
                 const size_t t2 = kProbe * 5;
+                // First pin the serialization mapping exactly against every
+                // independently computed in-memory audit value.  This catches
+                // row swaps as well as an accidentally constant mask/scale.
+                for (size_t i = 0; i < conf.AtomCount(); ++i) {
+                    ok = ok
+                        && emitted_clamp_mask[i] ==
+                            conf.AtomAt(i).apbs_efield_clamp_mask
+                        && emitted_clamp_scale[i] ==
+                            conf.AtomAt(i).apbs_efield_clamp_scale;
+                }
                 // These are direct pins on the frozen payloads, derived from
                 // the continuum configuration above rather than from the
                 // in-memory writer source fields.
-                ok = emitted_E[e] < 0.0
+                ok = ok
+                    && emitted_E[e] < 0.0
                     && std::abs(emitted_E[e] + kClampVPerA) < 1e-10
                     && emitted_phi[kProbe] < 0.0
                     && emitted_efg[t2 + 2] > 0.0
                     && emitted_efg[t2 + 4] < 0.0
                     && emitted_total_E[e] > 0.0
                     && emitted_total_efg[t2 + 2] < 0.0
-                    && emitted_total_efg[t2 + 4] > 0.0;
+                    && emitted_total_efg[t2 + 4] > 0.0
+                    && emitted_clamp_mask[kProbe] == 1u
+                    && emitted_clamp_scale[kProbe] > 0.0
+                    && emitted_clamp_scale[kProbe] < 1.0
+                    && relative_close(
+                        emitted_clamp_scale[kProbe],
+                        kClampVPerA / std::abs(expected_reaction_E));
             }
         }
     }

@@ -895,15 +895,25 @@ int AIMNet2Result::WriteFeatures(
 
     const size_t N = conf.AtomCount();
     int files_written = 0;
+    auto record_write = [&](bool success, const std::string& filename) {
+        if (success) {
+            ++files_written;
+            return;
+        }
+        OperationLog::Error(
+            "AIMNet2Result::WriteFeatures",
+            "failed to write " + output_dir + "/" + filename);
+    };
 
     // aimnet2_charges.npy — (N,) float64
     {
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i)
             data[i] = conf.AtomAt(i).aimnet2_charge;
-        NpyWriter::WriteFloat64(output_dir + "/aimnet2_charges.npy",
-                                data.data(), N);
-        files_written++;
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/aimnet2_charges.npy",
+                                    data.data(), N),
+            "aimnet2_charges.npy");
     }
 
     // aimnet2_aim.npy — (N, AIMNET2_AIM_DIMS) float32 (native torch precision)
@@ -912,9 +922,10 @@ int AIMNet2Result::WriteFeatures(
         for (size_t i = 0; i < N; ++i)
             for (size_t d = 0; d < AIMNET2_AIM_DIMS; ++d)
                 data[i * AIMNET2_AIM_DIMS + d] = conf.AtomAt(i).aimnet2_aim[d];
-        NpyWriter::WriteFloat32(output_dir + "/aimnet2_aim.npy",
-                                data.data(), N, AIMNET2_AIM_DIMS);
-        files_written++;
+        record_write(
+            NpyWriter::WriteFloat32(output_dir + "/aimnet2_aim.npy",
+                                    data.data(), N, AIMNET2_AIM_DIMS),
+            "aimnet2_aim.npy");
     }
 
     // aimnet2_efg.npy — (N, 5) float64, T2 only. AIMNet2 EFG from same
@@ -927,16 +938,15 @@ int AIMNet2Result::WriteFeatures(
         for (size_t i = 0; i < N; ++i) {
             (conf.AtomAt(i).*member).PackT2(&data[i*5]);
         }
-        NpyWriter::WriteFloat64(output_dir + "/" + name, data.data(), N, 5);
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/" + name,
+                                    data.data(), N, 5),
+            name);
     };
     write_efg_t2("aimnet2_efg.npy",          &ConformationAtom::aimnet2_EFG_total_spherical);
-    ++files_written;
     write_efg_t2("aimnet2_efg_aromatic.npy", &ConformationAtom::aimnet2_EFG_aromatic_spherical);
-    ++files_written;
     write_efg_t2("aimnet2_efg_backbone.npy", &ConformationAtom::aimnet2_EFG_backbone_spherical);
-    ++files_written;
     write_efg_t2("aimnet2_efg_sidechain.npy", &ConformationAtom::aimnet2_EFG_sidechain_spherical);
-    ++files_written;
 
     auto write_vec3 = [&](const std::string& name,
                           Vec3 ConformationAtom::* member) {
@@ -947,17 +957,15 @@ int AIMNet2Result::WriteFeatures(
             data[i*3 + 1] = value.y();
             data[i*3 + 2] = value.z();
         }
-        NpyWriter::WriteFloat64(
-            output_dir + "/" + name, data.data(), N, 3);
+        record_write(
+            NpyWriter::WriteFloat64(
+                output_dir + "/" + name, data.data(), N, 3),
+            name);
     };
     write_vec3("aimnet2_E.npy", &ConformationAtom::aimnet2_E_total);
-    ++files_written;
     write_vec3("aimnet2_E_backbone.npy", &ConformationAtom::aimnet2_E_backbone);
-    ++files_written;
     write_vec3("aimnet2_E_sidechain.npy", &ConformationAtom::aimnet2_E_sidechain);
-    ++files_written;
     write_vec3("aimnet2_E_aromatic.npy", &ConformationAtom::aimnet2_E_aromatic);
-    ++files_written;
 
     auto write_scalar = [&](const std::string& name,
                             double ConformationAtom::* member) {
@@ -965,14 +973,15 @@ int AIMNet2Result::WriteFeatures(
         for (size_t i = 0; i < N; ++i) {
             data[i] = conf.AtomAt(i).*member;
         }
-        NpyWriter::WriteFloat64(output_dir + "/" + name, data.data(), N);
+        record_write(
+            NpyWriter::WriteFloat64(output_dir + "/" + name,
+                                    data.data(), N),
+            name);
     };
     write_scalar("aimnet2_energy_mlp.npy",
                  &ConformationAtom::aimnet2_energy_mlp);
-    ++files_written;
     write_scalar("aimnet2_energy_shifted_local.npy",
                  &ConformationAtom::aimnet2_energy_shifted_local);
-    ++files_written;
 
     {
         const std::array<double, 6> data = {
@@ -983,18 +992,17 @@ int AIMNet2Result::WriteFeatures(
             conditioned_net_charge_,
             neutral_conditioning_flag_,
         };
-        NpyWriter::WriteFloat64(
-            output_dir + "/aimnet2_energy_terms.npy",
-            data.data(), 1, data.size());
-        ++files_written;
+        record_write(
+            NpyWriter::WriteFloat64(
+                output_dir + "/aimnet2_energy_terms.npy",
+                data.data(), 1, data.size()),
+            "aimnet2_energy_terms.npy");
     }
 
     write_scalar("aimnet2_d3_e_disp_atom.npy",
                  &ConformationAtom::aimnet2_d3_e_disp_atom);
-    ++files_written;
     write_scalar("aimnet2_d3_cn.npy",
                  &ConformationAtom::aimnet2_d3_cn);
-    ++files_written;
 
     {
         std::vector<double> data(N * 3);
@@ -1004,10 +1012,11 @@ int AIMNet2Result::WriteFeatures(
             data[i*3 + 1] = stats[1];
             data[i*3 + 2] = stats[2];
         }
-        NpyWriter::WriteFloat64(
-            output_dir + "/aimnet2_d3_c6_stats.npy",
-            data.data(), N, 3);
-        ++files_written;
+        record_write(
+            NpyWriter::WriteFloat64(
+                output_dir + "/aimnet2_d3_c6_stats.npy",
+                data.data(), N, 3),
+            "aimnet2_d3_c6_stats.npy");
     }
 
     // Pure read-back of the projection born in Compute. In particular,
@@ -1020,10 +1029,11 @@ int AIMNet2Result::WriteFeatures(
                 data[i*kAimnet2AimProjectionDims + k] = projection[k];
             }
         }
-        NpyWriter::WriteFloat32(
-            output_dir + "/aimnet2_aim_projection.npy",
-            data.data(), N, kAimnet2AimProjectionDims);
-        ++files_written;
+        record_write(
+            NpyWriter::WriteFloat32(
+                output_dir + "/aimnet2_aim_projection.npy",
+                data.data(), N, kAimnet2AimProjectionDims),
+            "aimnet2_aim_projection.npy");
     }
 
     // Charge-response-gradient NPYs are written by

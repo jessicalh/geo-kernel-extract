@@ -416,11 +416,34 @@ TEST(AIMNet2AimProjectionWelford, AbsentSourceIsMaskedAndNeverZeroAccumulated) {
     EXPECT_EQ(dims[0], N);
     EXPECT_EQ(dims[1], nmr::AIMNET2_AIM_PROJECTION_DIMS);
 
-    std::vector<double> mean(
-        N * nmr::AIMNET2_AIM_PROJECTION_DIMS);
-    group.getDataSet("projection_mean").read(mean.data());
-    ASSERT_EQ(mean.size(), N * nmr::AIMNET2_AIM_PROJECTION_DIMS);
-    for (double value : mean) EXPECT_TRUE(std::isnan(value));
+    const std::size_t projection_value_count =
+        N * nmr::AIMNET2_AIM_PROJECTION_DIMS;
+    for (const char* dataset : {
+            "projection_mean", "projection_m2", "projection_std"}) {
+        std::vector<double> values(projection_value_count);
+        group.getDataSet(dataset).read(values.data());
+        ASSERT_EQ(values.size(), projection_value_count);
+        for (double value : values) {
+            EXPECT_TRUE(std::isnan(value)) << dataset;
+        }
+    }
+
+    // TrajectoryMoments deliberately uses self-describing extrema sentinels
+    // when no source sample was accumulated. Pin the real H5 payload so an
+    // accidental finite default (or swapped signs) cannot become an
+    // unobserved SDK surface.
+    std::vector<double> min_values(projection_value_count);
+    std::vector<double> max_values(projection_value_count);
+    group.getDataSet("projection_min").read(min_values.data());
+    group.getDataSet("projection_max").read(max_values.data());
+    for (std::size_t i = 0; i < projection_value_count; ++i) {
+        EXPECT_TRUE(std::isinf(min_values[i]));
+        EXPECT_FALSE(std::signbit(min_values[i]))
+            << "projection_min must be +inf at offset " << i;
+        EXPECT_TRUE(std::isinf(max_values[i]));
+        EXPECT_TRUE(std::signbit(max_values[i]))
+            << "projection_max must be -inf at offset " << i;
+    }
 
     std::vector<std::uint8_t> mask;
     group.getDataSet("source_attached_per_frame").read(mask);

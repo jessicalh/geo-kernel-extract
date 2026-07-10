@@ -31,6 +31,7 @@
 #include <highfive/H5Group.hpp>
 
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -43,10 +44,60 @@ namespace fs = std::filesystem;
 #ifndef NMR_TEST_DATA_DIR
 #error "NMR_TEST_DATA_DIR must be defined"
 #endif
+#ifndef NMR_TEST_PYTHON_EXECUTABLE
+#error "NMR_TEST_PYTHON_EXECUTABLE must be defined"
+#endif
+#ifndef NMR_TEST_PYTHONPATH
+#error "NMR_TEST_PYTHONPATH must be defined"
+#endif
 
 namespace {
 
 constexpr const char* kFixtureProtein = "1P9J_5801";
+constexpr int kM7SdkSentinelMaxRank = 17;
+constexpr const char* kM7SdkSentinelRank3Policy = "legacy_sdk_probe";
+
+std::string ShellQuote(const std::string& value) {
+    std::string quoted = "'";
+    for (const char c : value) {
+        if (c == '\'') {
+            quoted += "'\\''";
+        } else {
+            quoted += c;
+        }
+    }
+    quoted += "'";
+    return quoted;
+}
+
+int RunM7PythonSdkProbe(const std::string& h5_path) {
+    const std::string script = R"PY(
+import pathlib
+import sys
+
+import nmr_extract
+from nmr_extract import load_trajectory
+
+sdk_root = pathlib.Path(sys.argv[2]).resolve()
+module_path = pathlib.Path(nmr_extract.__file__).resolve()
+assert module_path.is_relative_to(sdk_root), (module_path, sdk_root)
+
+trajectory = load_trajectory(sys.argv[1])
+canonical = trajectory.mopac_coulomb_efg_time_series
+legacy = trajectory.mopac_coulomb_shielding_time_series
+assert canonical is legacy
+assert canonical.max_potential_derivative_rank == 17
+assert canonical.higher_derivatives_present is True
+assert canonical.rank3_policy == "legacy_sdk_probe"
+)PY";
+
+    const std::string command =
+        "PYTHONPATH=" + ShellQuote(NMR_TEST_PYTHONPATH) + " " +
+        ShellQuote(NMR_TEST_PYTHON_EXECUTABLE) + " -c " +
+        ShellQuote(script) + " " + ShellQuote(h5_path) + " " +
+        ShellQuote(NMR_TEST_PYTHONPATH);
+    return std::system(command.c_str());
+}
 
 std::string TrrPathFor(const std::string& p) {
     return fs::path(p).replace_extension(".trr").string();
@@ -134,27 +185,52 @@ TEST(MopacCoulombShieldingTimeSeries,
          ".h5")).string();
     {
         HighFive::File file(h5_path, HighFive::File::Truncate);
+        // load_trajectory needs the production root atom-count attribute;
+        // all other root/trajectory groups are optional to this focused SDK
+        // readback.
+        file.createAttribute("n_atoms", tp.AtomCount());
+        file.createAttribute(
+            "protein_id", std::string("m7-real-writer-sdk-probe"));
         tr->WriteH5Group(tp, file);
     }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
-    auto legacy = reopen.getGroup(
-        "/trajectory/mopac_coulomb_shielding_time_series");
-    int max_rank = 0;
-    bool higher_derivatives = true;
-    std::string rank3_policy;
-    legacy.getAttribute("max_potential_derivative_rank").read(max_rank);
-    legacy.getAttribute("higher_derivatives_present")
-        .read(higher_derivatives);
-    legacy.getAttribute("rank3_policy").read(rank3_policy);
-    EXPECT_EQ(max_rank, 2);
-    EXPECT_FALSE(higher_derivatives);
-    EXPECT_EQ(rank3_policy, "not_emitted_no_local_frame");
+    {
+        HighFive::File reopen(h5_path, HighFive::File::ReadWrite);
+        auto legacy = reopen.getGroup(
+            "/trajectory/mopac_coulomb_shielding_time_series");
+        int max_rank = 0;
+        bool higher_derivatives = true;
+        std::string rank3_policy;
+        legacy.getAttribute("max_potential_derivative_rank").read(max_rank);
+        legacy.getAttribute("higher_derivatives_present")
+            .read(higher_derivatives);
+        legacy.getAttribute("rank3_policy").read(rank3_policy);
+        EXPECT_EQ(max_rank, 2);
+        EXPECT_FALSE(higher_derivatives);
+        EXPECT_EQ(rank3_policy, "not_emitted_no_local_frame");
 
-    auto canonical = reopen.getGroup(
-        "/trajectory/mopac_coulomb_efg_time_series");
-    EXPECT_FALSE(canonical.hasAttribute("max_potential_derivative_rank"));
-    EXPECT_FALSE(canonical.hasAttribute("higher_derivatives_present"));
-    EXPECT_FALSE(canonical.hasAttribute("rank3_policy"));
+        auto canonical = reopen.getGroup(
+            "/trajectory/mopac_coulomb_efg_time_series");
+        EXPECT_FALSE(canonical.hasAttribute(
+            "max_potential_derivative_rank"));
+        EXPECT_FALSE(canonical.hasAttribute(
+            "higher_derivatives_present"));
+        EXPECT_FALSE(canonical.hasAttribute("rank3_policy"));
+
+        // The production values equal the SDK's documented old-H5 defaults.
+        // Replace only the already-written legacy attributes with distinctive
+        // sentinels so a consumer reading the wrong group cannot pass via
+        // defaults.  The writer placement and production values were checked
+        // independently immediately above.
+        legacy.getAttribute("max_potential_derivative_rank")
+            .write(kM7SdkSentinelMaxRank);
+        legacy.getAttribute("higher_derivatives_present").write(true);
+        legacy.getAttribute("rank3_policy")
+            .write(std::string(kM7SdkSentinelRank3Policy));
+    }
+
+    EXPECT_EQ(RunM7PythonSdkProbe(h5_path), 0)
+        << "Python SDK failed to recover M7 policy attributes from the "
+           "real C++ writer's legacy group";
 
     fs::remove(h5_path);
 }

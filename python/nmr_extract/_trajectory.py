@@ -2908,6 +2908,13 @@ def _load_mopac_coulomb_efg_time_series(f) -> Optional[MopacCoulombEfgTimeSeries
     else:
         return None
     g = f[path]
+    # The producer deliberately freezes the M7 derivative-policy contract on
+    # the historical shielding-named alias only.  Keep the canonical group as
+    # the payload authority, but source those three attributes from the group
+    # on which the writer actually emits them when both aliases are present.
+    derivative_policy_group = (
+        f[legacy_path] if legacy_path in f else g
+    )
     def _attr(name: str) -> str:
         return str(_decode_attr(g.attrs.get(name, "")))
     return MopacCoulombEfgTimeSeriesGroup(
@@ -2934,11 +2941,14 @@ def _load_mopac_coulomb_efg_time_series(f) -> Optional[MopacCoulombEfgTimeSeries
         source=_attr("source"),
         source_attached_policy=_attr("source_attached_policy"),
         max_potential_derivative_rank=int(
-            g.attrs.get("max_potential_derivative_rank", 2)),
+            derivative_policy_group.attrs.get(
+                "max_potential_derivative_rank", 2)),
         higher_derivatives_present=bool(
-            g.attrs.get("higher_derivatives_present", False)),
+            derivative_policy_group.attrs.get(
+                "higher_derivatives_present", False)),
         rank3_policy=(
-            _attr("rank3_policy") or "not_emitted_no_local_frame"),
+            str(_decode_attr(derivative_policy_group.attrs.get(
+                "rank3_policy", ""))) or "not_emitted_no_local_frame"),
     )
 
 

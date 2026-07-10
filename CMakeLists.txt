@@ -1271,6 +1271,10 @@ nmr_test(mopac_tests
         tests/test_mopac_vs_ff14sb_reconciliation.cpp
         tests/test_mutation_delta.cpp
 )
+target_compile_definitions(mopac_tests PRIVATE
+    NMR_TEST_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
+    NMR_TEST_PYTHONPATH="${CMAKE_SOURCE_DIR}/python"
+)
 
 
 # -- batch_tests -----------------------------------------------------------

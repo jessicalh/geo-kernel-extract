@@ -119,9 +119,17 @@ std::unique_ptr<EeqCoulombResult> EeqCoulombResult::Compute(
         int aromatic_sidechain_sources = 0;
 
         const auto neighbours = spatial.AtomsWithinRadius(pos_i, cutoff);
+        // AtomsWithinRadius includes the target itself.  Cutoff provenance
+        // describes candidate *sources*, so exclude self from the within
+        // count and compute the complementary beyond count over N-1 sources.
+        // This is intentionally independent of the later filters/charge
+        // floor: those thin the summed set, not the geometric radius set.
+        int sources_within_radius = 0;
+        for (size_t j : neighbours) {
+            if (j != i) ++sources_within_radius;
+        }
         const int sources_outside_radius =
-            static_cast<int>(n_atoms) - 1 -
-            static_cast<int>(neighbours.size());
+            static_cast<int>(n_atoms) - 1 - sources_within_radius;
 
         for (size_t j : neighbours) {
             KernelEvaluationContext ctx;
@@ -205,14 +213,15 @@ std::unique_ptr<EeqCoulombResult> EeqCoulombResult::Compute(
         }
 
         if (sources_outside_radius > 0) {
-            const int sources_within = static_cast<int>(neighbours.size());
             choices.Record(CalculatorId::EEQCoulomb, i, "EEQ Coulomb cutoff",
-                [&conf, i, sources_within, sources_outside_radius, cutoff]
+                [&conf, i, sources_within_radius, sources_outside_radius,
+                 cutoff]
                 (GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(i), i,
                             EntityRole::Target, EntityOutcome::Included);
                     AddNumber(gc, "sources_within_cutoff",
-                              static_cast<double>(sources_within), "count");
+                              static_cast<double>(sources_within_radius),
+                              "count");
                     AddNumber(gc, "sources_beyond_cutoff",
                               static_cast<double>(sources_outside_radius),
                               "count");
@@ -319,31 +328,62 @@ int EeqCoulombResult::WriteFeatures(
             atom.eeq_coulomb_aromatic_n_sidechain_atoms);
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_efg.npy",
-                            efg_total.data(), N, 9);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_E.npy",
-                            E.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_E_backbone.npy",
-                            E_backbone.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_E_sidechain.npy",
-                            E_sidechain.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_E_aromatic.npy",
-                            E_aromatic.data(), N, 3);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_efg_backbone.npy",
-                            efg_backbone.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_efg_sidechain.npy",
-                            efg_sidechain.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_efg_aromatic.npy",
-                            efg_aromatic.data(), N, 5);
-    NpyWriter::WriteFloat64(output_dir + "/eeq_coulomb_scalars.npy",
-                            scalars.data(), N, 4);
-    NpyWriter::WriteFloat64(
-        output_dir + "/eeq_coulomb_aromatic_E_proj.npy",
-        aromatic_projection.data(), N);
-    NpyWriter::WriteInt32(
-        output_dir + "/eeq_coulomb_aromatic_n_src.npy",
-        aromatic_source_count.data(), N);
-    return 11;
+    int files_written = 0;
+    auto record_write = [&](bool success, const char* filename) {
+        if (success) {
+            ++files_written;
+        } else {
+            OperationLog::Error(
+                "EeqCoulombResult::WriteFeatures",
+                "failed to write " + output_dir + "/" + filename);
+        }
+    };
+
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_efg.npy",
+                     efg_total.data(), N, 9),
+                 "eeq_coulomb_efg.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_E.npy",
+                     E.data(), N, 3),
+                 "eeq_coulomb_E.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_E_backbone.npy",
+                     E_backbone.data(), N, 3),
+                 "eeq_coulomb_E_backbone.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_E_sidechain.npy",
+                     E_sidechain.data(), N, 3),
+                 "eeq_coulomb_E_sidechain.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_E_aromatic.npy",
+                     E_aromatic.data(), N, 3),
+                 "eeq_coulomb_E_aromatic.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_efg_backbone.npy",
+                     efg_backbone.data(), N, 5),
+                 "eeq_coulomb_efg_backbone.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_efg_sidechain.npy",
+                     efg_sidechain.data(), N, 5),
+                 "eeq_coulomb_efg_sidechain.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_efg_aromatic.npy",
+                     efg_aromatic.data(), N, 5),
+                 "eeq_coulomb_efg_aromatic.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_scalars.npy",
+                     scalars.data(), N, 4),
+                 "eeq_coulomb_scalars.npy");
+    record_write(NpyWriter::WriteFloat64(
+                     output_dir + "/eeq_coulomb_aromatic_E_proj.npy",
+                     aromatic_projection.data(), N),
+                 "eeq_coulomb_aromatic_E_proj.npy");
+    record_write(NpyWriter::WriteInt32(
+                     output_dir + "/eeq_coulomb_aromatic_n_src.npy",
+                     aromatic_source_count.data(), N),
+                 "eeq_coulomb_aromatic_n_src.npy");
+    return files_written;
 }
 
 }  // namespace nmr
