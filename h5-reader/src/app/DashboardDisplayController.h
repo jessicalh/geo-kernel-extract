@@ -23,6 +23,7 @@ class Conformation;
 class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
+class ExperimentalShieldingMlStore;
 class QtProtein;
 class TrajectorySignalCatalog;
 }
@@ -124,6 +125,7 @@ public:
     void setPanelModel(model::DashboardPanelModel* panelModel);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
+    void setExperimentalShieldingMlStore(model::ExperimentalShieldingMlStore* store);
     void setVisualizationContext(const model::VisualizationContext& ctx);
     // The scene overlay draws the dashboard sphere/line reveals (a pinned strip
     // binding highlights its atoms in the scene). Optional -- null is fine.
@@ -170,6 +172,7 @@ private:
         model::SignalBinding binding;
         bool needsFrameSnapshot = false;
         bool needsDftFrame = false;
+        bool needsExperimentalMlFrame = false;
     };
 
     void buildGenericTracks(const model::DashboardSignal& signal,
@@ -234,6 +237,7 @@ private:
     void collectExpectedButEmpty();
     void updateStatusText();
     void extendToFrame(int frame);
+    void resampleExperimentalMlFrame(std::size_t frame);
     QColor colorForIndex(int index) const;
 
     const model::QtProtein* protein_ = nullptr;
@@ -243,6 +247,7 @@ private:
     QPointer<model::DashboardPanelModel> panelModel_;
     QPointer<model::AtomSelection> selection_;
     QPointer<model::DftShieldingStore> dftStore_;
+    QPointer<model::ExperimentalShieldingMlStore> experimentalMlStore_;
     QPointer<SceneRevealOverlay> sceneOverlay_;
     model::VisualizationContext visualizationContext_;
 

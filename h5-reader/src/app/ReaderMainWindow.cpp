@@ -38,6 +38,7 @@
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignalModel.h"
 #include "../model/DftShieldingStore.h"
+#include "../model/ExperimentalShieldingMlStore.h"
 #include "../model/QtProtein.h"
 #include "../model/TrajectoryConformation.h"
 #include "../model/QtBondVectorBuffers.h"
@@ -190,6 +191,61 @@ QStringList experimentalShieldingMlRequiredFiles() {
     };
 }
 
+QStringList experimentalShieldingMlRocmRequiredFiles() {
+    return {
+        QStringLiteral("infer.exe"),
+        QStringLiteral("c10.dll"),
+        QStringLiteral("c10_hip.dll"),
+        QStringLiteral("torch_cpu.dll"),
+        QStringLiteral("torch_hip.dll"),
+        QStringLiteral("caffe2_nvrtc.dll"),
+        QStringLiteral("aotriton_v2.dll"),
+        QStringLiteral("amdhip64_7.dll"),
+        QStringLiteral("amd_comgr0702.dll"),
+        QStringLiteral("hiprtc0702.dll"),
+        QStringLiteral("MIOpen.dll"),
+        QStringLiteral("rocblas.dll"),
+        QStringLiteral("libhipblaslt.dll"),
+    };
+}
+
+QStringList experimentalShieldingMlRocmMissing(const QDir& runtimeDir) {
+    QStringList missing;
+    for (const QString& fileName : experimentalShieldingMlRocmRequiredFiles()) {
+        if (!fileExistsInDir(runtimeDir, fileName))
+            missing.append(fileName);
+    }
+    for (const QString& directory :
+         {QStringLiteral("rocblas/library"), QStringLiteral("hipblaslt/library")}) {
+        if (!QDir(runtimeDir.filePath(directory)).exists())
+            missing.append(directory);
+    }
+    return missing;
+}
+
+bool experimentalShieldingMlRocmRuntimeAvailable(const QString& helperPath) {
+    return QFileInfo(helperPath).isFile()
+           && experimentalShieldingMlRocmMissing(QFileInfo(helperPath).dir()).isEmpty();
+}
+
+QString experimentalShieldingMlDevicePreference() {
+    const QString value =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE")
+            .trimmed()
+            .toLower();
+    if (value == QStringLiteral("cpu") || value == QStringLiteral("rocm"))
+        return value;
+    return QStringLiteral("auto");
+}
+
+QString developmentExperimentalShieldingMlRocmHelper(const QString& modelPath) {
+    const QString explicitPath =
+        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_HELPER");
+    if (!explicitPath.isEmpty())
+        return explicitPath;
+    return QFileInfo(modelPath).dir().filePath(QStringLiteral("rocm/infer.exe"));
+}
+
 bool installedExperimentalShieldingMlRuntimeAvailable() {
     const QDir mlDir = installedExperimentalShieldingMlDir();
     const QStringList requiredFiles = experimentalShieldingMlRequiredFiles();
@@ -197,7 +253,8 @@ bool installedExperimentalShieldingMlRuntimeAvailable() {
         if (!fileExistsInDir(mlDir, fileName))
             return false;
     }
-    return true;
+    return model::ExperimentalShieldingMlStore::ManifestHasInferenceSchema(
+        mlDir.filePath(QStringLiteral("manifest.json")));
 }
 
 QStringList experimentalShieldingMlDevMissingFiles(const QString& modelPath,
@@ -208,6 +265,8 @@ QStringList experimentalShieldingMlDevMissingFiles(const QString& modelPath,
         missing.append(QStringLiteral("model.ts"));
     if (!QFileInfo(manifestPath).isFile())
         missing.append(QStringLiteral("manifest.json"));
+    else if (!model::ExperimentalShieldingMlStore::ManifestHasInferenceSchema(manifestPath))
+        missing.append(QStringLiteral("manifest.inference_schema"));
     if (!QFileInfo(helperPath).isFile())
         missing.append(QStringLiteral("infer.exe"));
 
@@ -323,6 +382,11 @@ QJsonObject readExperimentalShieldingMlManifestSummary(const QString& path) {
         }
         out.insert(QStringLiteral("models"), outModels);
     }
+    const QJsonObject inferenceSchema =
+        manifest.value(QStringLiteral("inference_schema")).toObject();
+    if (!inferenceSchema.isEmpty())
+        out.insert(QStringLiteral("inferenceSchemaVersion"),
+                   inferenceSchema.value(QStringLiteral("version")).toInt());
     return out;
 }
 
@@ -413,6 +477,57 @@ QJsonObject selectedExperimentalShieldingMlModelJson(const QJsonObject& inputPro
     return selected;
 }
 
+struct ExperimentalShieldingMlRuntimePaths {
+    QString model;
+    QString manifest;
+    QString helper;
+    QString device;
+    QString fallbackHelper;
+    QString modelId;
+};
+
+std::optional<ExperimentalShieldingMlRuntimePaths>
+resolveExperimentalShieldingMlRuntime(const QJsonObject& inputProfile) {
+    QString model = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
+    QString manifest = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST");
+    QString cpuHelper = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
+    QString rocmHelper = developmentExperimentalShieldingMlRocmHelper(model);
+    if (!experimentalShieldingMlDevMissingFiles(model, manifest, cpuHelper).isEmpty()) {
+        const QDir installed = installedExperimentalShieldingMlDir();
+        if (!installedExperimentalShieldingMlRuntimeAvailable())
+            return std::nullopt;
+        model = installed.filePath(QStringLiteral("model.ts"));
+        manifest = installed.filePath(QStringLiteral("manifest.json"));
+        cpuHelper = installed.filePath(QStringLiteral("infer.exe"));
+        rocmHelper = installed.filePath(QStringLiteral("rocm/infer.exe"));
+    }
+
+    ExperimentalShieldingMlRuntimePaths paths;
+    paths.manifest = manifest;
+    const QString preference = experimentalShieldingMlDevicePreference();
+    const bool rocmAvailable = experimentalShieldingMlRocmRuntimeAvailable(rocmHelper);
+    if (preference == QStringLiteral("rocm") && !rocmAvailable)
+        return std::nullopt;
+    if (preference != QStringLiteral("cpu") && rocmAvailable) {
+        paths.helper = rocmHelper;
+        paths.device = QStringLiteral("rocm");
+        if (preference == QStringLiteral("auto"))
+            paths.fallbackHelper = cpuHelper;
+    } else {
+        paths.helper = cpuHelper;
+        paths.device = QStringLiteral("cpu");
+    }
+    if (inputProfile.value(QStringLiteral("mopacPresent")).toBool()) {
+        paths.model = model;
+        paths.modelId = QStringLiteral("full");
+    } else {
+        paths.model = QFileInfo(model).dir().filePath(
+            QStringLiteral("model_no_mopac_no_tripeptide.ts"));
+        paths.modelId = QStringLiteral("no_mopac_no_tripeptide");
+    }
+    return paths;
+}
+
 QJsonObject experimentalShieldingMlRuntimeJson(
     const model::TrajectoryFieldAvailability* availability,
     bool loaded) {
@@ -453,6 +568,11 @@ QJsonObject experimentalShieldingMlRuntimeJson(
         if (!fileExistsInDir(mlDir, fileName))
             missing.append(fileName);
     }
+    const QString installedManifest = mlDir.filePath(QStringLiteral("manifest.json"));
+    if (QFileInfo(installedManifest).isFile()
+        && !model::ExperimentalShieldingMlStore::ManifestHasInferenceSchema(installedManifest)) {
+        missing.append(QStringLiteral("manifest.inference_schema"));
+    }
 
     if (!missing.isEmpty() && devRuntimeRequested) {
         out.insert(QStringLiteral("runtime"), QStringLiteral("development"));
@@ -469,7 +589,6 @@ QJsonObject experimentalShieldingMlRuntimeJson(
         out.insert(QStringLiteral("missing"), stringListJson(missing));
     if (devRuntimeRequested)
         out.insert(QStringLiteral("developmentMissing"), stringListJson(devMissing));
-    const QString installedManifest = mlDir.filePath(QStringLiteral("manifest.json"));
     if (QFileInfo(installedManifest).isFile())
         out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(installedManifest));
     out.insert(QStringLiteral("selectedModel"),
@@ -905,6 +1024,28 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
             signalDisplayDialog_->setVisualizationContext(visualizationContext_);
     }
 
+    const QJsonObject experimentalMlInputProfile =
+        experimentalShieldingMlInputProfileJson(fieldAvailability_.get(), true);
+    if (const auto runtime = resolveExperimentalShieldingMlRuntime(experimentalMlInputProfile)) {
+        experimentalMlStore_ = new model::ExperimentalShieldingMlStore(
+            loaded_->protein.get(),
+            loaded_->conformation.get(),
+            runtime->model,
+            runtime->manifest,
+            runtime->helper,
+            runtime->device,
+            runtime->fallbackHelper,
+            runtime->modelId,
+            this);
+        if (experimentalMlStore_->isReady()) {
+            dashboardStripDock_->setExperimentalShieldingMlStore(experimentalMlStore_);
+            qCInfo(cWindow).noquote()
+                << QStringLiteral("Experimental Shielding ML store wired | model=%1 device=%2")
+                       .arg(runtime->modelId)
+                       .arg(runtime->device);
+        }
+    }
+
     // DFT shielding campaign (optional): make the frame-local source
     // available to descriptor-family samplers. The `.LGS` carries the
     // typed `dft.frames[]` map — frame_index → meta.json — so the store
@@ -1191,6 +1332,7 @@ void ReaderMainWindow::clearLoadedRun() {
         dashboardStripDock_->setSelectionController(nullptr);
         dashboardStripDock_->setTimeViewport(nullptr);
         dashboardStripDock_->setDftStore(nullptr);
+        dashboardStripDock_->setExperimentalShieldingMlStore(nullptr);
         dashboardStripDock_->setPanelModel(nullptr);
         dashboardStripDock_->setSignalModels(nullptr, nullptr);
         dashboardStripDock_->setContext(nullptr, nullptr);
@@ -1221,6 +1363,8 @@ void ReaderMainWindow::clearLoadedRun() {
 
     delete dftStore_;
     dftStore_ = nullptr;
+    delete experimentalMlStore_;
+    experimentalMlStore_ = nullptr;
     delete dashboardSelectionController_;
     dashboardSelectionController_ = nullptr;
     delete dashboardPanels_;
@@ -1391,8 +1535,33 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
             : QStringLiteral("none");
     out[QStringLiteral("controls")]      = controls;
     out[QStringLiteral("diagnostic")]    = diagnostic;
-    out[QStringLiteral("experimentalShieldingMl")] =
+    QJsonObject experimentalMl =
         experimentalShieldingMlRuntimeJson(fieldAvailability_.get(), loaded);
+    const QJsonObject experimentalMlInputProfile =
+        experimentalShieldingMlInputProfileJson(fieldAvailability_.get(), loaded);
+    const auto configuredExperimentalMl =
+        resolveExperimentalShieldingMlRuntime(experimentalMlInputProfile);
+    experimentalMl.insert(QStringLiteral("devicePreference"),
+                          experimentalShieldingMlDevicePreference());
+    experimentalMl.insert(
+        QStringLiteral("configuredDevice"),
+        configuredExperimentalMl ? QJsonValue(configuredExperimentalMl->device) : jsonNull());
+    experimentalMl.insert(
+        QStringLiteral("cpuFallbackConfigured"),
+        configuredExperimentalMl && !configuredExperimentalMl->fallbackHelper.isEmpty());
+    experimentalMl.insert(QStringLiteral("inferenceReady"),
+                          experimentalMlStore_ && experimentalMlStore_->isReady());
+    experimentalMl.insert(QStringLiteral("inferenceRunning"),
+                          experimentalMlStore_ && experimentalMlStore_->isRunning());
+    if (experimentalMlStore_) {
+        experimentalMl.insert(QStringLiteral("activeModelId"), experimentalMlStore_->modelId());
+        experimentalMl.insert(QStringLiteral("activeDevice"), experimentalMlStore_->device());
+        experimentalMl.insert(QStringLiteral("usingCpuFallback"),
+                              experimentalMlStore_->usingFallback());
+        if (!experimentalMlStore_->errorReason().isEmpty())
+            experimentalMl.insert(QStringLiteral("inferenceError"), experimentalMlStore_->errorReason());
+    }
+    out[QStringLiteral("experimentalShieldingMl")] = experimentalMl;
     return out;
 }
 

@@ -37,10 +37,8 @@ DftShieldingStore::DftShieldingStore(const QtProtein* protein,
 }
 
 DftShieldingStore::~DftShieldingStore() {
-    for (std::thread& thread : asyncThreads_) {
-        if (thread.joinable())
-            thread.join();
-    }
+    if (asyncThread_.joinable())
+        asyncThread_.join();
 }
 
 bool DftShieldingStore::hasJob(std::size_t originalIndex) const {
@@ -104,8 +102,10 @@ void DftShieldingStore::requestFrameAsync(std::size_t originalIndex) {
 
     const QString metaJson = it->second;
     const QtProtein* protein = protein_;
+    if (asyncThread_.joinable())
+        asyncThread_.join();
     asyncInFlight_.insert(originalIndex);
-    asyncThreads_.emplace_back([this, originalIndex, metaJson, protein]() {
+    asyncThread_ = std::thread([this, originalIndex, metaJson, protein]() {
         std::shared_ptr<const DftShieldingFrame> loaded =
             h5reader::io::DftShieldingLoader::LoadAndValidate(metaJson, protein);
         QMetaObject::invokeMethod(this,

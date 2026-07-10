@@ -43,4 +43,15 @@ void SignalBuffer::append(FrameSignalSample sample) {
         channel.append(std::nullopt);
 }
 
+void SignalBuffer::replace(std::size_t frame, FrameSignalSample sample) {
+    if (frame >= statuses.size() || frame >= gapReasons.size())
+        return;
+    statuses[frame] = sample.status;
+    gapReasons[frame] = sample.gapReason;
+    channel.replace(frame,
+                    sample.status == SampleStatus::Valid
+                        ? std::optional<double>(sample.value)
+                        : std::nullopt);
+}
+
 }  // namespace h5reader::model

@@ -268,9 +268,7 @@ bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& s
                || storagePath == QStringLiteral("selection_timeline")
                || storagePath == QStringLiteral("selection_counts");
     case SignalSourceKind::ExperimentalShieldingMl:
-        // Bundle presence is not enough: the reader still needs a graph builder
-        // plus a sampled output cache before this can produce per-frame values.
-        return false;
+        return true;
     }
     return false;
 }
@@ -1083,6 +1081,24 @@ void addOrcaDft(QVector<SignalDescriptor>& descriptors) {
 void addExperimentalShieldingMl(QVector<SignalDescriptor>& descriptors) {
     const UnitSpec shielding = unit(UnitDimension::MagneticShielding, "ppm", "ppm");
     add(descriptors,
+        makeDescriptor("ml:experimental_shielding_iso",
+                       "experimental_shielding_ml.iso",
+                       SignalSourceKind::ExperimentalShieldingMl,
+                       "Experimental Shielding ML",
+                       "experimental_shielding_ml",
+                       "Experimental ML isotropic shielding",
+                       SourceResidency::Derived,
+                       SignalAxis::Atom,
+                       SignalAxis::Atom,
+                       SignalValueShape::Scalar,
+                       shielding,
+                       scalarStripModes(),
+                       scalarStaticModes(),
+                       scalarChannels(shielding),
+                       "experimental_shielding_ml:iso",
+                       false,
+                       true));
+    add(descriptors,
         makeDescriptor("ml:experimental_shielding_t2",
                        "experimental_shielding_ml.t2",
                        SignalSourceKind::ExperimentalShieldingMl,
@@ -1099,9 +1115,7 @@ void addExperimentalShieldingMl(QVector<SignalDescriptor>& descriptors) {
                        efgChannels(shielding),
                        "experimental_shielding_ml:t2",
                        false,
-                       true,
-                       SampleStatus::Gap,
-                       GapReason::Pending));
+                       true));
     add(descriptors,
         makeDescriptor("ml:experimental_shielding_t2_norm",
                        "experimental_shielding_ml.t2_norm",
@@ -1119,9 +1133,7 @@ void addExperimentalShieldingMl(QVector<SignalDescriptor>& descriptors) {
                        scalarChannels(shielding),
                        "experimental_shielding_ml:t2_norm",
                        false,
-                       true,
-                       SampleStatus::Gap,
-                       GapReason::Pending));
+                       true));
 }
 
 void addTopology(QVector<SignalDescriptor>& descriptors) {

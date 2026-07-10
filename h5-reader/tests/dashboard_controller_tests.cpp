@@ -3,6 +3,7 @@
 #include "app/DashboardDisplayController.h"
 #include "model/Conformation.h"
 #include "model/DashboardSignalModel.h"
+#include "model/SignalTimeSeries.h"
 #include "model/TrajectorySignalCatalog.h"
 
 #include <QtTest>
@@ -56,6 +57,7 @@ class DashboardControllerTests : public QObject {
 private slots:
     void scrubDefersFrameSnapshotRequestsUntilRelease();
     void stripHistorySurvivesRebuildByLegacyModeId();
+    void replacingPendingSampleRecomputesValidityAndRange();
 };
 
 void DashboardControllerTests::scrubDefersFrameSnapshotRequestsUntilRelease() {
@@ -123,6 +125,29 @@ void DashboardControllerTests::stripHistorySurvivesRebuildByLegacyModeId() {
         QCOMPARE(after.seriesSparseness.at(i).samples,
                  before.seriesSparseness.at(i).samples);
     }
+}
+
+void DashboardControllerTests::replacingPendingSampleRecomputesValidityAndRange() {
+    model::SignalBuffer buffer;
+    buffer.append(model::FrameSignalSample::Valid(1.0));
+    buffer.append(model::FrameSignalSample::Valid(5.0));
+    buffer.append(model::FrameSignalSample::Gap(model::GapReason::Pending));
+
+    QVERIFY(buffer.channel.hasRange);
+    QCOMPARE(buffer.channel.yMin, 1.0);
+    QCOMPARE(buffer.channel.yMax, 5.0);
+
+    buffer.replace(1, model::FrameSignalSample::Gap(model::GapReason::FrameSourceAbsent));
+    QVERIFY(!buffer.isValidAt(1));
+    QCOMPARE(buffer.channel.yMin, 1.0);
+    QCOMPARE(buffer.channel.yMax, 1.0);
+
+    buffer.replace(2, model::FrameSignalSample::Valid(-2.0));
+    QVERIFY(buffer.isValidAt(2));
+    QCOMPARE(buffer.channel.yMin, -2.0);
+    QCOMPARE(buffer.channel.yMax, 1.0);
+    QCOMPARE(buffer.statuses[2], model::SampleStatus::Valid);
+    QCOMPARE(buffer.gapReasons[2], model::GapReason::None);
 }
 
 QTEST_GUILESS_MAIN(DashboardControllerTests)

@@ -60,6 +60,7 @@ class AtomSelection;
 class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
+class ExperimentalShieldingMlStore;
 class TrajectorySignalCatalog;
 class TrajectoryFieldAvailability;
 class TransformedConformation;
@@ -322,6 +323,7 @@ private:
     // only when the run has a dft/ campaign (located by convention from the run
     // path). Window-owned (Qt parent); the dock holds a QPointer to it.
     model::DftShieldingStore* dftStore_ = nullptr;
+    model::ExperimentalShieldingMlStore* experimentalMlStore_ = nullptr;
 
     // Optional REST test surface — constructed by startRestServer(), only
     // when h5reader is launched with --rest <port>. Window-owned.

@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <string>
 
 namespace h5reader::io {
@@ -51,7 +52,7 @@ Located LocateDescrValue(const std::string& hdr) {
         return out;
 
     const char open = hdr[i];
-    const char close = (open == '[') ? ']' : (open == '\'' || open == '"') ? open : 0;
+    const char close = (open == '[') ? ']' : (open == '\'' || open == '"') ? open : '\0';
     if (close == 0)
         return out;
 
@@ -84,62 +85,84 @@ Located LocateDescrValue(const std::string& hdr) {
 
 // Extract the `'shape': (R,)` or `'shape': (R, C)` tuple as a vector
 // of std::size_t. Returns empty on parse failure.
-std::vector<std::size_t> ParseShape(const std::string& hdr) {
-    std::vector<std::size_t> out;
+bool ParseShape(const std::string& hdr, std::vector<std::size_t>& out) {
+    out.clear();
     const std::size_t k = hdr.find("'shape'");
     if (k == std::string::npos)
-        return out;
+        return false;
     std::size_t lp = hdr.find('(', k);
     if (lp == std::string::npos)
-        return out;
+        return false;
     std::size_t rp = hdr.find(')', lp);
     if (rp == std::string::npos)
-        return out;
+        return false;
     std::string inside = hdr.substr(lp + 1, rp - lp - 1);
 
-    // Split by ',' and parse each token as an unsigned integer; skip
-    // empties (Python tuple `(N,)` has a trailing comma).
     std::size_t pos = 0;
-    while (pos < inside.size()) {
-        std::size_t comma = inside.find(',', pos);
-        std::string tok = (comma == std::string::npos) ? inside.substr(pos) : inside.substr(pos, comma - pos);
-        // Strip whitespace.
-        std::size_t lo = tok.find_first_not_of(" \t");
-        std::size_t hi = tok.find_last_not_of(" \t");
-        if (lo != std::string::npos && hi != std::string::npos) {
-            const std::string trimmed = tok.substr(lo, hi - lo + 1);
-            try {
-                out.push_back(std::stoull(trimmed));
-            } catch (...) {
-                // ignore; will fall through to validation
-            }
+    while (true) {
+        while (pos < inside.size()
+               && std::isspace(static_cast<unsigned char>(inside[pos]))) {
+            ++pos;
         }
-        if (comma == std::string::npos)
-            break;
-        pos = comma + 1;
+        if (pos == inside.size())
+            return !out.empty();
+        if (!std::isdigit(static_cast<unsigned char>(inside[pos])))
+            return false;
+
+        std::size_t value = 0;
+        while (pos < inside.size()
+               && std::isdigit(static_cast<unsigned char>(inside[pos]))) {
+            const std::size_t digit = static_cast<std::size_t>(inside[pos] - '0');
+            if (value > (std::numeric_limits<std::size_t>::max() - digit) / 10)
+                return false;
+            value = value * 10 + digit;
+            ++pos;
+        }
+        out.push_back(value);
+
+        while (pos < inside.size()
+               && std::isspace(static_cast<unsigned char>(inside[pos]))) {
+            ++pos;
+        }
+        if (pos == inside.size())
+            return true;
+        if (inside[pos] != ',')
+            return false;
+        ++pos;
+        std::size_t next = pos;
+        while (next < inside.size()
+               && std::isspace(static_cast<unsigned char>(inside[next]))) {
+            ++next;
+        }
+        if (next == inside.size())
+            return true;  // Python's one-element tuple: (N,)
+        if (inside[next] == ',')
+            return false;
+        pos = next;
     }
-    return out;
 }
 
-// Read the `'fortran_order': True/False` value. Defaults to False (the
-// writer always emits row-major) but parse what's actually in the file.
-bool ParseFortranOrder(const std::string& hdr) {
+// Read the required `'fortran_order': True/False` value. Missing or malformed
+// metadata is not equivalent to row-major: reject it at the file boundary.
+std::optional<bool> ParseFortranOrder(const std::string& hdr) {
     const std::size_t k = hdr.find("'fortran_order'");
     if (k == std::string::npos)
-        return false;
+        return std::nullopt;
     const std::size_t colon = hdr.find(':', k);
     if (colon == std::string::npos)
-        return false;
-    // Search the rest of the header for the next True/False token.
-    const std::size_t t = hdr.find("True", colon);
-    const std::size_t f = hdr.find("False", colon);
-    if (t == std::string::npos && f == std::string::npos)
-        return false;
-    if (t == std::string::npos)
-        return false;
-    if (f == std::string::npos)
+        return std::nullopt;
+    std::size_t pos = colon + 1;
+    while (pos < hdr.size() && std::isspace(static_cast<unsigned char>(hdr[pos])))
+        ++pos;
+    const auto endsToken = [&hdr](std::size_t end) {
+        return end == hdr.size() || std::isspace(static_cast<unsigned char>(hdr[end]))
+               || hdr[end] == ',' || hdr[end] == '}';
+    };
+    if (hdr.compare(pos, 4, "True") == 0 && endsToken(pos + 4))
         return true;
-    return t < f;
+    if (hdr.compare(pos, 5, "False") == 0 && endsToken(pos + 5))
+        return false;
+    return std::nullopt;
 }
 
 bool ParseElementSize(const std::string& digits, int& esize) {
@@ -247,7 +270,17 @@ QtNpyReader::ParsedHeader QtNpyReader::ParseHeader(const QByteArray& bytes, cons
     }
     h.descr_substring = hdr_str.substr(descr.value_begin, descr.value_end - descr.value_begin + 1);
 
-    h.fortran_order = ParseFortranOrder(hdr_str);
+    const std::optional<bool> fortranOrder = ParseFortranOrder(hdr_str);
+    if (!fortranOrder) {
+        h.error = QStringLiteral("QtNpyReader: 'fortran_order' parse failed in %1")
+                      .arg(path_for_diagnostics);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"),
+                                                h.error,
+                                                path_for_diagnostics);
+        return h;
+    }
+    h.fortran_order = *fortranOrder;
     if (h.fortran_order) {
         h.error = QStringLiteral("QtNpyReader: fortran_order=True not supported in %1").arg(path_for_diagnostics);
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
@@ -257,8 +290,7 @@ QtNpyReader::ParsedHeader QtNpyReader::ParseHeader(const QByteArray& bytes, cons
         return h;
     }
 
-    h.shape = ParseShape(hdr_str);
-    if (h.shape.empty()) {
+    if (!ParseShape(hdr_str, h.shape)) {
         h.error = QStringLiteral("QtNpyReader: 'shape' parse failed in %1").arg(path_for_diagnostics);
         h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
                                                 QStringLiteral("QtNpyReader"),

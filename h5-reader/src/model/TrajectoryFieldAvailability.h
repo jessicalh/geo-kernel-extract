@@ -180,9 +180,7 @@ public:
     static TrajectoryFieldAvailabilityRecord classifyExperimentalShieldingMl(bool available) {
         if (!available)
             return {TrajectoryFieldAvailabilityState::Absent, 0, 0};
-        // Runtime files alone do not give the reader a per-frame payload. Keep
-        // the descriptors quarantined until a graph builder + sample cache exist.
-        return {TrajectoryFieldAvailabilityState::NoFramePayload, 0, 0};
+        return {TrajectoryFieldAvailabilityState::Available, 1, 1};
     }
 
     // Classify a Topology-source descriptor from the loaded spine's table size.

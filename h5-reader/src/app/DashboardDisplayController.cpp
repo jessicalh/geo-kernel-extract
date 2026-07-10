@@ -13,6 +13,7 @@
 #include "../model/DashboardSignalModel.h"
 #include "../model/DisplayModeCapability.h"
 #include "../model/DftShieldingStore.h"
+#include "../model/ExperimentalShieldingMlStore.h"
 #include "../model/QtProtein.h"
 #include "../model/QtBondVectorBuffers.h"
 #include "../model/QtPerAtomChannelBuffers.h"
@@ -451,6 +452,7 @@ struct SamplePlan {
     std::function<model::FrameSignalSample(std::size_t frame)> sample;
     bool needsFrameSnapshot = false;
     bool needsDftFrame = false;
+    bool needsExperimentalMlFrame = false;
 };
 
 SamplePlan pendingPlan() {
@@ -1129,6 +1131,38 @@ SamplePlan dftPlan(const model::SignalDescriptor& descriptor,
     return plan;
 }
 
+SamplePlan experimentalMlPlan(
+    const model::SignalDescriptor& descriptor,
+    const model::ChannelDescriptor& channel,
+    const QString& displayModeId,
+    const model::SignalAnchor& anchor,
+    const model::QtProtein* protein,
+    const QPointer<model::ExperimentalShieldingMlStore>& store) {
+    const std::optional<std::size_t> atom = atomFromAnchor(anchor, protein);
+    if (!atom)
+        return pendingPlan();
+
+    model::ExperimentalShieldingMlScalar scalar =
+        model::ExperimentalShieldingMlScalar::T2Magnitude;
+    if (descriptor.conceptKey.endsWith(QStringLiteral(".iso"))) {
+        scalar = model::ExperimentalShieldingMlScalar::Isotropic;
+    } else if (componentForT2Sample(channel, displayModeId)
+               == model::StripComponent::TensorComponent) {
+        scalar = model::ExperimentalShieldingMlScalar::T2Component;
+    }
+
+    SamplePlan plan;
+    plan.needsExperimentalMlFrame = true;
+    plan.sample = [store, atom = *atom, scalar](std::size_t frame) {
+        if (!store || !store->isReady())
+            return model::FrameSignalSample::Gap(model::GapReason::SourceAbsent);
+        const std::optional<double> value = store->sample(frame, atom, scalar);
+        return value ? finiteSample(*value)
+                     : model::FrameSignalSample::Gap(model::GapReason::Pending);
+    };
+    return plan;
+}
+
 SamplePlan geometryPlan(const model::SignalDescriptor& descriptor,
                         const model::SignalAnchor& anchor,
                         const model::QtProtein* protein,
@@ -1243,10 +1277,11 @@ SamplePlan samplePlanFor(const model::DashboardSignal& signal,
                          const model::ChannelDescriptor& channel,
                          const QString& displayModeId,
                          const model::SignalAnchor& anchor,
-                         const model::QtProtein* protein,
-                         const QPointer<model::Conformation>& conformation,
-                         const QPointer<model::DftShieldingStore>& dftStore,
-                         const QPointer<model::AtomSelection>& selection) {
+                          const model::QtProtein* protein,
+                          const QPointer<model::Conformation>& conformation,
+                          const QPointer<model::DftShieldingStore>& dftStore,
+                          const QPointer<model::ExperimentalShieldingMlStore>& experimentalMlStore,
+                          const QPointer<model::AtomSelection>& selection) {
     (void)signal;
     switch (descriptor.sourceKind) {
     case model::SignalSourceKind::DenseH5Trajectory:
@@ -1262,7 +1297,12 @@ SamplePlan samplePlanFor(const model::DashboardSignal& signal,
     case model::SignalSourceKind::SelectionEvents:
         return selectionEventsPlan(descriptor, conformation, selection);
     case model::SignalSourceKind::ExperimentalShieldingMl:
-        return pendingPlan();
+        return experimentalMlPlan(descriptor,
+                                  channel,
+                                  displayModeId,
+                                  anchor,
+                                  protein,
+                                  experimentalMlStore);
     }
     return pendingPlan();
 }
@@ -1353,6 +1393,21 @@ void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
 void DashboardDisplayController::setDftStore(model::DftShieldingStore* store) {
     ASSERT_THREAD(this);
     dftStore_ = store;
+    rebuild();
+}
+
+void DashboardDisplayController::setExperimentalShieldingMlStore(
+    model::ExperimentalShieldingMlStore* store) {
+    ASSERT_THREAD(this);
+    if (experimentalMlStore_)
+        disconnect(experimentalMlStore_, nullptr, this, nullptr);
+    experimentalMlStore_ = store;
+    if (experimentalMlStore_) {
+        ACONNECT(experimentalMlStore_.data(),
+                 &model::ExperimentalShieldingMlStore::frameReady,
+                 this,
+                 &DashboardDisplayController::resampleExperimentalMlFrame);
+    }
     rebuild();
 }
 
@@ -2503,7 +2558,7 @@ void DashboardDisplayController::collectExpectedButEmpty() {
                 record.canonicalState = descriptorStateText;
                 record.storagePathState = storageStateText;
                 expectedButEmpty_.push_back(record);
-                qCWarning(diagnostics::cDash).noquote()
+                qCDebug(diagnostics::cDash).noquote()
                     << QStringLiteral(
                            "event=viz_expected_but_empty descriptor_id=%1 storage_path=%2 visualization_type=%3 canonical_state=%4 storage_path_state=%5")
                            .arg(record.descriptorId,
@@ -2594,10 +2649,12 @@ void DashboardDisplayController::buildGenericTracks(const model::DashboardSignal
                                             protein_,
                                             conformation_,
                                             dftStore_,
+                                            experimentalMlStore_,
                                             selection_);
             active.sample = std::move(plan.sample);
             active.needsFrameSnapshot = plan.needsFrameSnapshot;
             active.needsDftFrame = plan.needsDftFrame;
+            active.needsExperimentalMlFrame = plan.needsExperimentalMlFrame;
             active.hasBinding = bindingHasRevealTarget(reveal);
             active.binding = reveal;
             series.push_back(std::move(active));
@@ -2739,6 +2796,10 @@ void DashboardDisplayController::extendToFrame(int frame) {
     const bool needsDft = std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
         return series.needsDftFrame;
     });
+    const bool needsExperimentalMl =
+        std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
+            return series.needsExperimentalMlFrame;
+        });
 
     const long long startFrame = [&]() {
         long long start = frame;
@@ -2764,6 +2825,8 @@ void DashboardDisplayController::extendToFrame(int frame) {
             conformation_->requestSnapshot(sampleFrame);
         if (needsDft && conformation_ && dftStore_)
             dftStore_->requestFrame(conformation_->originalFrameIndex(sampleFrame));
+        if (needsExperimentalMl && experimentalMlStore_)
+            experimentalMlStore_->requestFrame(sampleFrame);
 
         for (ActiveSeries& series : series_) {
             if (series.buffer.lastFrame() >= f)
@@ -2773,6 +2836,23 @@ void DashboardDisplayController::extendToFrame(int frame) {
             else
                 series.buffer.append(model::FrameSignalSample::Gap(model::GapReason::Pending));
         }
+    }
+}
+
+void DashboardDisplayController::resampleExperimentalMlFrame(std::size_t frame) {
+    ASSERT_THREAD(this);
+    bool changed = false;
+    for (ActiveSeries& series : series_) {
+        if (!series.needsExperimentalMlFrame || frame >= series.buffer.channel.size()
+            || !series.sample) {
+            continue;
+        }
+        series.buffer.replace(frame, series.sample(frame));
+        changed = true;
+    }
+    if (changed) {
+        updateStatusText();
+        emit stripTracksChanged();
     }
 }
 

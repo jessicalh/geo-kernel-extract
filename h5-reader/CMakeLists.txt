@@ -141,6 +141,8 @@ qt_add_library(h5reader_core STATIC
     src/model/SphericalDecomposition.cpp
     src/model/DftShieldingStore.h
     src/model/DftShieldingStore.cpp
+    src/model/ExperimentalShieldingMlStore.h
+    src/model/ExperimentalShieldingMlStore.cpp
     src/model/AtomSelection.h
     src/model/AtomSelection.cpp
     src/model/QtFrame.h
@@ -583,6 +585,21 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     h5reader_apply_platform_target_settings(h5reader_io_tests)
     add_test(NAME h5reader_io_tests COMMAND h5reader_io_tests)
 
+    qt_add_executable(h5reader_npy_reader_tests
+        tests/npy_reader_tests.cpp
+        src/io/QtNpyReader.h
+        src/io/QtNpyReader.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_npy_reader_tests PRIVATE src)
+    target_link_libraries(h5reader_npy_reader_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    h5reader_apply_platform_target_settings(h5reader_npy_reader_tests)
+    add_test(NAME h5reader_npy_reader_tests COMMAND h5reader_npy_reader_tests)
+
     qt_add_executable(h5reader_app_tests
         tests/dashboard_controller_tests.cpp
         src/app/DashboardDisplayController.h
@@ -647,6 +664,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/DftShielding.h
         src/model/DftShieldingStore.h
         src/model/DftShieldingStore.cpp
+        src/model/ExperimentalShieldingMlStore.h
+        src/model/ExperimentalShieldingMlStore.cpp
         src/model/SphericalDecomposition.h
         src/model/SphericalDecomposition.cpp
         src/io/DftShieldingLoader.h
@@ -794,6 +813,17 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
             LABELS "rest;e2e;ml"
             TIMEOUT 120
         )
+
+        add_test(NAME h5reader_rest_ml_cpu_fallback
+                 COMMAND ${Python3_EXECUTABLE} -m pytest
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_experimental_shielding_ml_runtime.py
+                         -v --tb=short)
+        set_tests_properties(h5reader_rest_ml_cpu_fallback PROPERTIES
+            ENVIRONMENT
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};HIP_VISIBLE_DEVICES=-1;H5READER_EXPECT_ML_CPU_FALLBACK=1"
+            LABELS "rest;e2e;ml"
+            TIMEOUT 120
+        )
     endif()
 
     set(H5READER_CHIGNOLIN_FIXTURE_DEFAULT
@@ -825,6 +855,8 @@ if(WIN32)
         CACHE STRING "Install subdirectory for the Experimental Shielding ML runtime")
     option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML
         "Require and package the Experimental Shielding ML model/runtime" ON)
+    option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM
+        "Require and package the native ROCm Experimental Shielding ML runtime" ON)
 
     if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT
             AND DEFINED ENV{H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT})
@@ -835,6 +867,14 @@ if(WIN32)
         "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
         CACHE PATH
         "Directory containing the Experimental Shielding ML bundle")
+    if(H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT
+            AND NOT H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/rocm")
+    endif()
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT
+        "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT}"
+        CACHE PATH "Directory containing the native ROCm inference runtime")
 
     if(H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT)
         set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
@@ -902,6 +942,32 @@ if(WIN32)
                 "H5READER_LIBTORCH_CPU_BIN_DIR explicitly.")
         endif()
 
+        if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM)
+            foreach(_rocm_asset IN ITEMS
+                    infer.exe
+                    c10.dll
+                    c10_hip.dll
+                    torch_cpu.dll
+                    torch_hip.dll
+                    caffe2_nvrtc.dll
+                    aotriton_v2.dll
+                    amdhip64_7.dll
+                    amd_comgr0702.dll
+                    hiprtc0702.dll
+                    MIOpen.dll
+                    rocblas.dll
+                    libhipblaslt.dll
+                    rocblas/library/TensileLibrary_lazy_gfx1151.dat
+                    hipblaslt/library)
+                if(NOT EXISTS
+                        "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT}/${_rocm_asset}")
+                    message(FATAL_ERROR
+                        "ROCm Experimental Shielding ML packaging is required, but this asset is missing: "
+                        "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT}/${_rocm_asset}")
+                endif()
+            endforeach()
+        endif()
+
         set(_h5reader_libtorch_cpu_dlls)
         foreach(_torch_dll_name IN ITEMS
                 c10.dll
@@ -939,6 +1005,30 @@ if(WIN32)
         )
         add_dependencies(h5reader h5reader_deploy_experimental_shielding_ml)
 
+        if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM)
+            file(GLOB_RECURSE _h5reader_rocm_runtime_assets
+                CONFIGURE_DEPENDS
+                LIST_DIRECTORIES false
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT}/*")
+            set(_h5reader_rocm_runtime_stamp
+                "${CMAKE_CURRENT_BINARY_DIR}/h5reader_experimental_shielding_ml_rocm.stamp")
+            add_custom_command(
+                OUTPUT "${_h5reader_rocm_runtime_stamp}"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory
+                        "$<TARGET_FILE_DIR:h5reader>/${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}/rocm"
+                COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                        "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT}"
+                        "$<TARGET_FILE_DIR:h5reader>/${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}/rocm"
+                COMMAND "${CMAKE_COMMAND}" -E touch "${_h5reader_rocm_runtime_stamp}"
+                DEPENDS
+                    ${_h5reader_rocm_runtime_assets}
+                COMMENT "Deploying native ROCm Experimental Shielding ML runtime"
+                VERBATIM)
+            add_custom_target(h5reader_deploy_experimental_shielding_ml_rocm
+                DEPENDS "${_h5reader_rocm_runtime_stamp}")
+            add_dependencies(h5reader h5reader_deploy_experimental_shielding_ml_rocm)
+        endif()
+
         install(FILES
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
@@ -952,6 +1042,12 @@ if(WIN32)
             DESTINATION "${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
             COMPONENT Runtime
         )
+        if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM)
+            install(DIRECTORY
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_ROOT}/"
+                DESTINATION "${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}/rocm"
+                COMPONENT Runtime)
+        endif()
     endif()
 
     if(NOT H5READER_VCPKG_BIN_DIR)
@@ -1009,6 +1105,17 @@ if(WIN32)
             "Windows packaging requires H5READER_MSVC_RUNTIME_DIR; set it to the MSVC x64 Microsoft.VC*.CRT directory")
     endif()
 
+    # CTest is part of the supported Windows build, so tests must locate the
+    # same Qt/VTK/vcpkg runtime DLLs without relying on a caller-maintained PATH.
+    get_property(_h5reader_windows_tests DIRECTORY PROPERTY TESTS)
+    foreach(_h5reader_test IN LISTS _h5reader_windows_tests)
+        set_property(TEST "${_h5reader_test}" APPEND PROPERTY
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${H5READER_QT_DIR}/bin"
+                "PATH=path_list_prepend:${H5READER_VTK_DIR}/bin"
+                "PATH=path_list_prepend:${H5READER_VCPKG_BIN_DIR}")
+    endforeach()
+
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallWindowsRuntimeDeps.cmake.in"
         "${CMAKE_CURRENT_BINARY_DIR}/InstallWindowsRuntimeDeps.cmake"
@@ -1021,8 +1128,13 @@ endif()
 set(CPACK_PACKAGE_NAME "h5reader")
 set(CPACK_PACKAGE_VENDOR "h5reader")
 set(CPACK_PACKAGE_VERSION "0.5.0")
-set(CPACK_PACKAGE_FILE_NAME
-    "h5reader-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+if(WIN32)
+    # Keep NSIS staging paths below legacy MAX_PATH: ROCm kernel filenames are long.
+    set(CPACK_PACKAGE_FILE_NAME "h5reader-${CPACK_PACKAGE_VERSION}-win64")
+else()
+    set(CPACK_PACKAGE_FILE_NAME
+        "h5reader-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "h5reader")
 set(CPACK_MONOLITHIC_INSTALL ON)
 
