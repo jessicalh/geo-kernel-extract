@@ -246,7 +246,7 @@ const nmr::NamedNumber* FindNumber(const nmr::GeometryChoice& choice,
 
 }  // namespace
 
-TEST(EeqDiagnostics, StoredValuesMatchIndependentD4Formulas) {
+TEST(EeqDiagnostics, StoredValuesMatchIndependentProjectLocalFormulas) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto protein = MakeEeqFixture();
     auto& conf = protein->Conformation();
@@ -256,7 +256,8 @@ TEST(EeqDiagnostics, StoredValuesMatchIndependentD4Formulas) {
     ASSERT_TRUE(conf.AttachResult(std::move(eeq)));
 
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        const auto params = nmr::D4EeqParamsFor(protein->AtomAt(i).element);
+        const auto params =
+            nmr::ProjectLocalEeqParamsFor(protein->AtomAt(i).element);
         const auto& atom = conf.AtomAt(i);
         const double expected_chi_eff = params.chi + params.kappa *
             std::sqrt(atom.eeq_cn + 1e-14);
@@ -303,7 +304,8 @@ TEST(EeqDiagnostics, StoredValuesMatchIndependentD4Formulas) {
     const double* chi_data = DataAs<double>(chi);
     const double* hardness_data = DataAs<double>(hardness);
     for (size_t i = 0; i < N; ++i) {
-        const auto params = nmr::D4EeqParamsFor(protein->AtomAt(i).element);
+        const auto params =
+            nmr::ProjectLocalEeqParamsFor(protein->AtomAt(i).element);
         const double expected_chi = params.chi + params.kappa *
             std::sqrt(conf.AtomAt(i).eeq_cn + 1e-14);
         const double expected_diag = params.gam +
@@ -314,6 +316,122 @@ TEST(EeqDiagnostics, StoredValuesMatchIndependentD4Formulas) {
         EXPECT_DOUBLE_EQ(hardness_data[i*2], params.gam);
         EXPECT_DOUBLE_EQ(hardness_data[i*2 + 1], expected_diag);
     }
+    RemoveDirectoryContents(output_dir);
+}
+
+TEST(EeqDiagnostics,
+     LargeNetChargePreservesConstraintAndReportsThresholdWithoutMutation) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto protein = MakeEeqFixture();
+    auto& conf = protein->Conformation();
+
+    // Independent forcing function: if every atom satisfied |q_i| <= t,
+    // then |sum(q_i)| <= N*t.  This requested integer charge violates that
+    // bound for the configured diagnostic threshold, so at least one
+    // threshold record must exist regardless of how the EEQ solver
+    // distributes charge among atoms.
+    constexpr int kNetCharge = 30;
+    const double threshold =
+        nmr::CalculatorConfig::Get("eeq_charge_clamp");
+    ASSERT_GT(std::abs(static_cast<double>(kNetCharge)),
+              static_cast<double>(conf.AtomCount()) * threshold);
+
+    auto eeq = nmr::EeqResult::Compute(conf, kNetCharge);
+    ASSERT_NE(eeq, nullptr);
+    ASSERT_TRUE(conf.AttachResult(std::move(eeq)));
+
+    double stored_sum = 0.0;
+    for (size_t i = 0; i < conf.AtomCount(); ++i) {
+        ASSERT_TRUE(std::isfinite(conf.AtomAt(i).eeq_charge));
+        stored_sum += conf.AtomAt(i).eeq_charge;
+    }
+    EXPECT_NEAR(stored_sum, static_cast<double>(kNetCharge), 1e-10);
+
+    const nmr::GeometryChoice* parameter_choice = nullptr;
+    const nmr::GeometryChoice* statistics_choice = nullptr;
+    size_t threshold_choice_count = 0;
+    for (const auto& choice : conf.geometry_choices) {
+        if (choice.Calculator() != nmr::CalculatorId::EEQ) continue;
+
+        EXPECT_NE(choice.Label(), "eeq charge clamp");
+        if (choice.Label() == "eeq_parameters") {
+            parameter_choice = &choice;
+            continue;
+        }
+        if (choice.Label() == "eeq_charge_statistics") {
+            statistics_choice = &choice;
+            continue;
+        }
+        if (choice.Label() != "eeq charge threshold") continue;
+
+        ++threshold_choice_count;
+        ASSERT_LT(choice.GroupKey(), conf.AtomCount());
+        const auto* charge = FindNumber(choice, "charge");
+        const auto* recorded_threshold = FindNumber(choice, "threshold");
+        const auto* cn = FindNumber(choice, "coordination_number");
+        ASSERT_NE(charge, nullptr);
+        ASSERT_NE(recorded_threshold, nullptr);
+        ASSERT_NE(cn, nullptr);
+        EXPECT_EQ(FindNumber(choice, "clamped_charge"), nullptr);
+        EXPECT_EQ(FindNumber(choice, "original_charge"), nullptr);
+        EXPECT_DOUBLE_EQ(charge->value,
+                         conf.AtomAt(choice.GroupKey()).eeq_charge);
+        EXPECT_DOUBLE_EQ(recorded_threshold->value, threshold);
+        EXPECT_GT(std::abs(charge->value), recorded_threshold->value);
+        EXPECT_TRUE(std::isfinite(cn->value));
+
+        ASSERT_EQ(choice.Entities().size(), 1u);
+        EXPECT_EQ(choice.Entities()[0].atom_index, choice.GroupKey());
+        EXPECT_EQ(choice.Entities()[0].outcome,
+                  nmr::EntityOutcome::Triggered);
+    }
+
+    ASSERT_GT(threshold_choice_count, 0u);
+    ASSERT_NE(parameter_choice, nullptr);
+    const auto* parameter_threshold =
+        FindNumber(*parameter_choice, "charge_threshold");
+    const auto* method = FindNumber(*parameter_choice, "method");
+    ASSERT_NE(parameter_threshold, nullptr);
+    ASSERT_NE(method, nullptr);
+    EXPECT_EQ(FindNumber(*parameter_choice, "charge_clamp"), nullptr);
+    EXPECT_DOUBLE_EQ(parameter_threshold->value, threshold);
+    EXPECT_EQ(method->unit, "nmr_extract_qeq_ohnoklopman_cn_v1");
+
+    ASSERT_NE(statistics_choice, nullptr);
+    const auto* reported_sum =
+        FindNumber(*statistics_choice, "charge_sum");
+    const auto* n_threshold_exceeded =
+        FindNumber(*statistics_choice, "n_threshold_exceeded");
+    ASSERT_NE(reported_sum, nullptr);
+    ASSERT_NE(n_threshold_exceeded, nullptr);
+    EXPECT_EQ(FindNumber(*statistics_choice, "n_clamped"), nullptr);
+    EXPECT_NEAR(reported_sum->value,
+                static_cast<double>(kNetCharge), 1e-10);
+    EXPECT_DOUBLE_EQ(n_threshold_exceeded->value,
+                     static_cast<double>(threshold_choice_count));
+    EXPECT_GT(n_threshold_exceeded->value, 0.0);
+
+    const fs::path output_dir = fs::temp_directory_path() /
+        ("eeq_charge_constraint_" + std::to_string(::getpid()));
+    RemoveDirectoryContents(output_dir);
+    ASSERT_TRUE(fs::create_directories(output_dir));
+    ASSERT_EQ(conf.Result<nmr::EeqResult>().WriteFeatures(
+                  conf, output_dir.string()), 4);
+
+    const auto emitted = ReadNpy(output_dir / "eeq_charges.npy");
+    ASSERT_EQ(emitted.descr, "<f8");
+    ASSERT_EQ(emitted.shape,
+              (std::vector<size_t>{conf.AtomCount()}));
+    ASSERT_EQ(emitted.bytes.size(),
+              conf.AtomCount() * sizeof(double));
+    const double* emitted_charge = DataAs<double>(emitted);
+    double emitted_sum = 0.0;
+    for (size_t i = 0; i < conf.AtomCount(); ++i) {
+        EXPECT_DOUBLE_EQ(emitted_charge[i], conf.AtomAt(i).eeq_charge);
+        emitted_sum += emitted_charge[i];
+    }
+    EXPECT_NEAR(emitted_sum, stored_sum, 1e-10);
+    EXPECT_NEAR(emitted_sum, static_cast<double>(kNetCharge), 1e-10);
     RemoveDirectoryContents(output_dir);
 }
 

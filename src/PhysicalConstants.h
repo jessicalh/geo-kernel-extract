@@ -181,13 +181,9 @@ inline double Mbondi2Radius(Element e, bool h_bonded_to_nitrogen) {
 
 
 // ============================================================================
-// D4 EEQ element parameters (atomic units: Hartree, Bohr)
+// Project-local QEq/EEQ-style element parameters (atomic units: Hartree, Bohr)
 //
-// probable source: Caldeweyher, Ehlert, Hansen, Neugebauer, Spicher,
-// Bannwarth & Grimme, J. Chem. Phys. 150, 154122 (2019).
-// DOI: 10.1063/1.5090222.
-//
-// Project-local EEQ parameter table consumed by EeqResult.
+// project-local QEq/EEQ-style charge-equilibration model with error-function coordination number, CN-dependent electronegativity shift, Gaussian self term, and Ohno-Klopman off-diagonal kernel; parameters are in-repo/project-local and are not a validated dftd4/multicharge port.
 //
 // chi   — electronegativity [Hartree]
 // gam   — chemical hardness (Hubbard U) [Hartree]
@@ -196,7 +192,7 @@ inline double Mbondi2Radius(Element e, bool h_bonded_to_nitrogen) {
 // rad   — Gaussian charge width for diagonal correction [Bohr]
 // ============================================================================
 
-struct D4EeqParams {
+struct ProjectLocalEeqParams {
     double chi;
     double gam;
     double kappa;
@@ -204,7 +200,7 @@ struct D4EeqParams {
     double rad;
 };
 
-inline D4EeqParams D4EeqParamsFor(Element e) {
+inline ProjectLocalEeqParams ProjectLocalEeqParamsFor(Element e) {
     switch (e) {
         //                      chi           gam          kappa         rcov      rad
         case Element::H:  return {-0.35015861, 0.47259288, -0.19793756, 0.80628, 1.61478};

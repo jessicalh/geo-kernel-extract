@@ -1,7 +1,8 @@
 #pragma once
 //
 // EeqCoulombResult: vacuum Coulomb E and EFG fields evaluated from the
-// geometry-dependent D4 EEQ charges stored by EeqResult.
+// geometry-dependent project-local QEq/EEQ charges stored by EeqResult
+// (project-local model, not a validated dftd4/multicharge port — see EeqResult.h).
 //
 // This is a normal ConformationResult calculator: Compute is the sole writer
 // of its ConformationAtom fields and WriteFeatures is pure read-back.  It uses

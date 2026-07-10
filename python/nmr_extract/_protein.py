@@ -1138,7 +1138,10 @@ class WaterPolarizationGroup:
 
 @dataclass(frozen=True)
 class EeqGroup:
-    """EEQ geometry-dependent charges (Caldeweyher et al. 2019)."""
+    """Project-local QEq/EEQ-style geometry-dependent charges.
+
+    project-local QEq/EEQ-style charge-equilibration model with error-function coordination number, CN-dependent electronegativity shift, Gaussian self term, and Ohno-Klopman off-diagonal kernel; parameters are in-repo/project-local and are not a validated dftd4/multicharge port.
+    """
     charges: np.ndarray             # (N,) partial charges (elementary charges)
     cn: np.ndarray                  # (N,) coordination number
     chi_eff: Optional[np.ndarray] = None
@@ -1904,7 +1907,8 @@ def load(path: str | Path) -> Protein:
     if "water_polarization" in available:
         water_polarization = WaterPolarizationGroup(data=get("water_polarization"))
 
-    # EEQ charges (Caldeweyher 2019 — optional)
+    # project-local QEq/EEQ-style charge-equilibration model with error-function coordination number, CN-dependent electronegativity shift, Gaussian self term, and Ohno-Klopman off-diagonal kernel; parameters are in-repo/project-local and are not a validated dftd4/multicharge port.
+    # Optional: attach the group only when the producer emitted EEQ arrays.
     eeq = None
     if "eeq_charges" in available:
         eeq_coulomb = None

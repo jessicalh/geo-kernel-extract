@@ -248,4 +248,47 @@ TEST(StringBarrier, GeneratedTablesContainOnlyTypedEnumIdentifiers) {
         << violation_msg;
 }
 
+
+// ============================================================================
+// EEQ provenance -- retired D4/Caldeweyher claims absent from the exact
+// producer surfaces named by C16.  Keep this list deliberately closed: a
+// repository-wide grep would hit unrelated archived/data content and would
+// weaken the test's ownership boundary.
+// ============================================================================
+
+TEST(EeqProvenance, RetiredClaimsAbsentFromEightLiveProducerSurfaces) {
+    constexpr std::array<const char*, 8> live_files = {
+        "src/EeqResult.h",
+        "src/EeqResult.cpp",
+        "src/PhysicalConstants.h",
+        "src/CalculatorConfig.cpp",
+        "data/calculator_params.toml",
+        "src/ConformationAtom.h",
+        "python/nmr_extract/_catalog.py",
+        "python/nmr_extract/_protein.py",
+    };
+    constexpr std::array<const char*, 5> retired_claims = {
+        "D4_EEQ_Caldeweyher_2019",
+        "D4EeqParams",
+        "D4EeqParamsFor",
+        "Caldeweyher",
+        "D4 EEQ",
+    };
+    static_assert(live_files.size() == 8);
+
+    for (const char* relative_path : live_files) {
+        const fs::path path = fs::path(SourceRoot()) / relative_path;
+        std::ifstream input(path);
+        ASSERT_TRUE(input.is_open()) << "cannot open scoped EEQ surface "
+                                     << path;
+        std::ostringstream contents;
+        contents << input.rdbuf();
+        for (const char* retired : retired_claims) {
+            EXPECT_EQ(contents.str().find(retired), std::string::npos)
+                << "retired EEQ provenance '" << retired
+                << "' remains in " << relative_path;
+        }
+    }
+}
+
 }  // namespace

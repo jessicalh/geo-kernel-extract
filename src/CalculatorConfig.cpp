@@ -99,11 +99,11 @@ void CalculatorConfig::InitDefaults() {
     add("apbs_temperature_K",                    298.15, "K",    "APBS PB-solve temperature");
     add("apbs_ionic_strength_M",                   0.15, "M",    "APBS ionic strength (physiological)");
 
-    // EEQ — Extended Electronegativity Equilibration (Caldeweyher et al. 2019)
-    // (net charge is passed to EeqResult::Compute, not a config key.)
+    // project-local QEq/EEQ-style charge-equilibration model with error-function coordination number, CN-dependent electronegativity shift, Gaussian self term, and Ohno-Klopman off-diagonal kernel; parameters are in-repo/project-local and are not a validated dftd4/multicharge port.
+    // Net charge is passed to EeqResult::Compute, not a config key.
     add("eeq_cn_steepness",                         7.5, "",     "EEQ coordination number error function steepness");
     add("eeq_cn_cutoff",                           25.0, "A",    "EEQ coordination number pair cutoff distance");
-    add("eeq_charge_clamp",                         2.0, "e",    "EEQ per-atom charge magnitude clamp");
+    add("eeq_charge_clamp",                         2.0, "e",    "EEQ per-atom charge magnitude diagnostic threshold");
 
     // Dynamics-observable TRs (KernelDynamics / Reorientational /
     // DihedralAutocorrelation): autocorrelation lag count. Physical lag

@@ -370,14 +370,15 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("water_polarization", "water_polarization", np.ndarray, 10, False, "Water polarisation [dipole(3), normal(3), asym, align, mean_net_dipole_eA legacy coherence, count]",
               mechanism="solvation"),
 
-    # ── EEQ charges (EeqResult.cpp — Caldeweyher 2019) ─────────
-    ArraySpec("eeq_charges",        "eeq",         np.ndarray,     None, False, "EEQ geometry-dependent charges (e)",
+    # ── Project-local QEq/EEQ-style charges (EeqResult.cpp) ──────
+    # project-local QEq/EEQ-style charge-equilibration model with error-function coordination number, CN-dependent electronegativity shift, Gaussian self term, and Ohno-Klopman off-diagonal kernel; parameters are in-repo/project-local and are not a validated dftd4/multicharge port.
+    ArraySpec("eeq_charges",        "eeq",         np.ndarray,     None, False, "Project-local QEq/EEQ-style geometry-dependent charges (e)",
               units="e", mechanism="charges"),
     ArraySpec("eeq_cn",             "eeq",         np.ndarray,     None, False, "EEQ coordination number",
               mechanism="charges"),
-    ArraySpec("eeq_chi_eff",        "eeq",         np.ndarray,     None, False, "D4 EEQ CN-shifted effective electronegativity in atomic units",
+    ArraySpec("eeq_chi_eff",        "eeq",         np.ndarray,     None, False, "Project-local QEq/EEQ-style CN-shifted effective electronegativity in atomic units",
               units="Hartree", mechanism="charges"),
-    ArraySpec("eeq_hardness",       "eeq",         np.ndarray,     2,    False, "D4 EEQ hardness diagnostics [eta, self_hardness_diagonal] in atomic units",
+    ArraySpec("eeq_hardness",       "eeq",         np.ndarray,     2,    False, "Project-local QEq/EEQ-style hardness diagnostics [eta, self_hardness_diagonal] in atomic units",
               units="Hartree", mechanism="charges"),
 
     # EEQ-charge Coulomb fields (EeqCoulombResult.cpp). This is the FF

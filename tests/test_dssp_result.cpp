@@ -1,11 +1,13 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
+#include "Atom.h"
 #include "PdbFileReader.h"
 #include "GeometryResult.h"
 #include "DsspResult.h"
 #include "Dssp8TimeSeriesTrajectoryResult.h"
 #include "PhysicalConstants.h"
 #include "NpyWriter.h"
+#include "Protein.h"
 #include "Residue.h"
 #include <algorithm>
 #include <cctype>
@@ -95,12 +97,101 @@ void ExpectShapeAndDescr(const NpyArray& arr,
     EXPECT_EQ(arr.descr, descr);
 }
 
+// Two residues carrying the B15 analytic chi fixtures. Residue 0 is +60°;
+// residue 1 is the y-reflected -60° case, translated away so topology
+// perception cannot connect the fixtures. Empty atom names intentionally
+// use Protein's supported substrate-free calculator-fixture path.
+std::unique_ptr<Protein> BuildFixedChiSignFixture() {
+    auto protein = std::make_unique<Protein>();
+    std::vector<Vec3> positions;
+
+    auto add_residue = [&](double x_offset, double d_y) {
+        Residue residue;
+        residue.type = AminoAcid::Unknown;
+        residue.chain_id = "A";
+        residue.sequence_number =
+            static_cast<int>(protein->ResidueCount()) + 1;
+        const size_t ri = protein->AddResidue(std::move(residue));
+
+        const std::vector<Vec3> coords = {
+            Vec3(x_offset + 1.0, 0.0, 0.0),
+            Vec3(x_offset + 0.0, 0.0, 0.0),
+            Vec3(x_offset + 0.0, 0.0, 1.0),
+            Vec3(x_offset + 0.5, d_y, 1.0),
+        };
+        size_t chi_atoms[4] = {};
+        for (size_t k = 0; k < coords.size(); ++k) {
+            auto atom = Atom::Create(Element::C);
+            atom->residue_index = ri;
+            chi_atoms[k] = protein->AddAtom(std::move(atom));
+            protein->MutableResidueAt(ri).atom_indices.push_back(chi_atoms[k]);
+            positions.push_back(coords[k]);
+        }
+        for (size_t k = 0; k < 4; ++k) {
+            protein->MutableResidueAt(ri).chi[0].a[k] = chi_atoms[k];
+        }
+    };
+
+    const double root3_over_2 = std::sqrt(3.0) / 2.0;
+    add_residue(/*x_offset=*/0.0, /*d_y=*/-root3_over_2);  // +60°
+    add_residue(/*x_offset=*/10.0, /*d_y=*/root3_over_2);  // -60°
+
+    protein->FinalizeConstruction(positions);
+    protein->AddConformation(std::move(positions), "fixed chi signs");
+    return protein;
+}
+
 }  // namespace
 
 TEST(DsspResultHelpers, PpiiPredicateAndSs8Compatibility) {
     EXPECT_TRUE(DsspIsPpii('P'));
     EXPECT_FALSE(DsspIsPpii('C'));
     EXPECT_EQ(Dssp8TimeSeriesTrajectoryResult::Ss8Code('P'), 7u);
+}
+
+TEST(DsspResultHelpers,
+     ChiNpyMatchesCanonicalFixedCoordinateSignsAndShape) {
+    auto protein = BuildFixedChiSignFixture();
+    auto dssp = DsspResult::CreateForTesting(
+        std::vector<DsspResidue>(protein->ResidueCount()));
+    const auto& conf = protein->Conformation();
+
+    const fs::path output_dir = fs::temp_directory_path() /
+        ("dssp_chi_sign_" + std::to_string(::getpid()));
+    fs::create_directories(output_dir);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
+
+    const auto chi = ReadNpy(output_dir / "dssp_chi.npy");
+    ExpectShapeAndDescr(chi, {conf.AtomCount(), 12}, "<f8");
+    ASSERT_EQ(chi.bytes.size(), conf.AtomCount() * 12 * sizeof(double));
+    const double* values = DataAs<double>(chi);
+
+    const double expected_cos = 0.5;
+    const double expected_sin = std::sqrt(3.0) / 2.0;
+    for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
+        const double sign = (ri == 0) ? 1.0 : -1.0;
+        for (size_t ai : protein->ResidueAt(ri).atom_indices) {
+            EXPECT_NEAR(values[ai * 12 + 0], expected_cos, 1e-12);
+            EXPECT_NEAR(values[ai * 12 + 1], sign * expected_sin, 1e-12);
+            EXPECT_DOUBLE_EQ(values[ai * 12 + 2], 1.0);
+            for (int k = 1; k < 4; ++k) {
+                EXPECT_DOUBLE_EQ(values[ai * 12 + k * 3 + 0], 0.0);
+                EXPECT_DOUBLE_EQ(values[ai * 12 + k * 3 + 1], 0.0);
+                EXPECT_DOUBLE_EQ(values[ai * 12 + k * 3 + 2], 0.0);
+            }
+        }
+    }
+
+    // The same analytic coordinates are pinned to ±60° in both
+    // tripeptide test files. This independently checks DSSP's unchanged
+    // cos/sin/exists writer and catches either a sign or column regression.
+    std::error_code ec;
+    for (const char* f : {"dssp_observed.npy", "dssp_backbone.npy",
+                          "dssp_ss8.npy", "dssp_ppii.npy",
+                          "dssp_hbond_energy.npy", "dssp_chi.npy"}) {
+        fs::remove(output_dir / f, ec);
+    }
+    fs::remove(output_dir, ec);
 }
 
 

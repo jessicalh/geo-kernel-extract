@@ -477,7 +477,8 @@ public:
     double sasa_dipole_order_parameter = 0.0;  // |Σ dᵢ| / Σ|dᵢ|, dimensionless [0, 1]
     int sasa_first_shell_count = 0;            // first-shell water O count
 
-    // === EEQ charges (EeqResult — Caldeweyher 2019) ===
+    // === EEQ charges (EeqResult) ===
+    // project-local QEq/EEQ-style charge-equilibration model with error-function coordination number, CN-dependent electronegativity shift, Gaussian self term, and Ohno-Klopman off-diagonal kernel; parameters are in-repo/project-local and are not a validated dftd4/multicharge port.
     double eeq_charge = 0.0;  // geometry-dependent partial charge (elementary charges)
     double eeq_cn = 0.0;      // coordination number used to compute eeq_charge
     double eeq_chi_eff = 0.0; // CN-shifted electronegativity (atomic units)

@@ -1,26 +1,24 @@
 #pragma once
 //
-// EeqResult: geometry-dependent partial charges from extended
-// electronegativity equilibration (Caldeweyher et al. 2019).
+// EeqResult: geometry-dependent partial charges from a project-local
+// QEq/EEQ-style charge-equilibration model.
+//
+// project-local QEq/EEQ-style charge-equilibration model with error-function coordination number, CN-dependent electronegativity shift, Gaussian self term, and Ohno-Klopman off-diagonal kernel; parameters are in-repo/project-local and are not a validated dftd4/multicharge port.
 //
 // Solves the quadratic EEQ system
 //   E(q) = Σ χ_effᵢqᵢ + ½Σ Aᵢᵢqᵢ² + Σ_{i<j} qᵢqⱼγ(Rᵢⱼ)
 // subject to Σqᵢ = Q_total (net-charge constraint).
 //
-// Uses D4 parameters: element-specific electronegativity (χ), chemical
-// hardness (η), CN-dependent EN shift (κ), Gaussian charge radius, and
-// covalent radius (r_cov).
-// Coordination number computed via error function counting (Caldeweyher 2019).
+// Uses project-local parameters: element-specific electronegativity (χ),
+// chemical hardness (η), CN-dependent EN shift (κ), Gaussian charge radius,
+// and covalent radius (r_cov).
+// Coordination number is computed via error-function counting.
 // Coulomb interaction via Ohno-Klopman kernel (Ohno 1964, Klopman 1964):
 //   γ(R) = 1/√(R² + 1/(ηᵢ·ηⱼ))
 //
 // Pure C++ with Eigen.  No external binary, no CUDA dependency.
 // One N×N linear solve per frame via Cholesky with block elimination
 // for the net-charge constraint.
-//
-// Reference: Caldeweyher, Ehlert, Hansen, Neugebauer, Spicher,
-// Bannwarth & Grimme, J. Chem. Phys. 150, 154122 (2019).
-// DOI: 10.1063/1.5090222.
 //
 // Output:
 //   eeq_charges.npy  (N,) float64 — partial charges (elementary charges)

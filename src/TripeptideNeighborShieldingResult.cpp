@@ -20,24 +20,44 @@
 
 namespace nmr {
 
+// Exposed in a named (external-linkage) per-file namespace SOLELY so the
+// fixed-coordinate ±60° forcing test can pin THIS production helper directly
+// rather than a copy of it (vet finding 2026-07). This is NOT a shared
+// utility: each tripeptide result keeps its own file-local helper (the
+// backbone result uses a distinct namespace); nothing is extracted to a
+// common header — the trajectory-code reason extraction is blocked still holds.
+namespace tripeptide_neighbor_dihedral {
+
+// Dihedral in degrees. atan2 returns [-180, 180].
+double DihedralDegrees(const Vec3& a, const Vec3& b,
+                       const Vec3& c, const Vec3& d) {
+    const Vec3 b1 = b - a;
+    const Vec3 b2 = c - b;
+    const Vec3 b3 = d - c;
+    const double b2n = b2.norm();
+    if (b2n < 1e-10) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const Vec3 n1 = b1.cross(b2);
+    const Vec3 n2 = b2.cross(b3);
+    if (n1.norm() < 1e-10 || n2.norm() < 1e-10) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const Vec3 m1 = n1.cross(b2 / b2n);
+    const double x = n1.dot(n2);
+    const double y = m1.dot(n2);
+    return std::atan2(y, x) * 180.0 / M_PI;
+}
+
+}  // namespace tripeptide_neighbor_dihedral
+
 namespace {
+
+using tripeptide_neighbor_dihedral::DihedralDegrees;
 
 // AAA reference standard angles per Larsen 2015 Eq 3.
 constexpr int kPhiStd = -120;
 constexpr int kPsiStd =  140;
-
-
-double DihedralDegrees(const Vec3& a, const Vec3& b,
-                        const Vec3& c, const Vec3& d) {
-    const Vec3 b1 = b - a;
-    const Vec3 b2 = c - b;
-    const Vec3 b3 = d - c;
-    const Vec3 n1 = b1.cross(b2);
-    const Vec3 n2 = b2.cross(b3);
-    const double x = n1.dot(n2);
-    const double y = n1.cross(n2).dot(b2.normalized());
-    return std::atan2(y, x) * 180.0 / M_PI;
-}
 
 
 char ResidueOneLetterCode(AminoAcid type) {

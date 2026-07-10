@@ -46,6 +46,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -110,6 +111,43 @@ const T* DataAs(const NpyArray& arr) {
 
 }  // namespace
 
+// Forward-declare the file-local PRODUCTION dihedral helper (named per-file
+// namespace, external linkage) so the fixed-coordinate ±60° test below pins
+// production DIRECTLY, not a copy of it (vet finding 2026-07). A production
+// sign regression now fails this non-skippable test.
+namespace nmr { namespace tripeptide_backbone_dihedral {
+double DihedralDegrees(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
+} }  // namespace nmr::tripeptide_backbone_dihedral
+
+
+TEST(TripeptideBackboneDihedral,
+     CanonicalFixedCoordinatesPinSignAndDegenerateNaN) {
+    // Calls the PRODUCTION helper directly (not a copy), so a production sign
+    // regression fails this non-skippable test (vet finding 2026-07).
+    using nmr::tripeptide_backbone_dihedral::DihedralDegrees;
+    const Vec3 a(1.0, 0.0, 0.0);
+    const Vec3 b(0.0, 0.0, 0.0);
+    const Vec3 c(0.0, 0.0, 1.0);
+    const double root3_over_2 = std::sqrt(3.0) / 2.0;
+
+    // Analytic ±60° fixtures. The former tripeptide triple product gives the
+    // opposite signs, so a sign regression fails here.
+    EXPECT_NEAR(DihedralDegrees(a, b, c, Vec3(0.5, -root3_over_2, 1.0)),
+                60.0, 1e-12);
+    EXPECT_NEAR(DihedralDegrees(a, b, c, Vec3(0.5, root3_over_2, 1.0)),
+                -60.0, 1e-12);
+
+    // Zero central bond and collinear plane-defining triples are undefined,
+    // matching the trajectory convention.
+    EXPECT_TRUE(std::isnan(DihedralDegrees(a, b, b, Vec3(0.0, 1.0, 0.0))));
+    EXPECT_TRUE(std::isnan(DihedralDegrees(
+        Vec3(0.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0),
+        Vec3(2.0, 0.0, 0.0), Vec3(2.0, 1.0, 0.0))));
+    EXPECT_TRUE(std::isnan(DihedralDegrees(
+        Vec3(0.0, 1.0, 0.0), Vec3(0.0, 0.0, 0.0),
+        Vec3(1.0, 0.0, 0.0), Vec3(2.0, 0.0, 0.0))));
+}
+
 
 class TripeptideBackboneShieldingTest : public ::testing::Test {
 protected:
@@ -172,6 +210,40 @@ TEST_F(TripeptideBackboneShieldingTest, RunsOn1UbqPm6) {
     // construction. ~0.5 Å is the empirical rough upper bound; if mean
     // exceeds 1 Å something is structurally wrong with the alignment.
     EXPECT_LT(tbb->MeanBackboneRmsd(), 1.0);
+
+    // Exercise the production file-local helper through Compute. The
+    // result keeps the actual protein phi/psi before its DB lookup; compare
+    // those retained values with the independent coordinate oracle above.
+    // The old (n1 x n2).b2hat formula flips every non-zero sign.
+    int n_dihedrals_pinned = 0;
+    for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
+        const auto prev_idx = protein->BackbonePredecessor(ri);
+        const auto next_idx = protein->BackboneSuccessor(ri);
+        if (!prev_idx || !next_idx) continue;
+        const Residue& prev = protein->ResidueAt(*prev_idx);
+        const Residue& res = protein->ResidueAt(ri);
+        const Residue& next = protein->ResidueAt(*next_idx);
+        if (prev.C == Residue::NONE || res.N == Residue::NONE ||
+            res.CA == Residue::NONE || res.C == Residue::NONE ||
+            next.N == Residue::NONE) {
+            continue;
+        }
+
+        const double phi = nmr::tripeptide_backbone_dihedral::DihedralDegrees(
+            conf.PositionAt(prev.C), conf.PositionAt(res.N),
+            conf.PositionAt(res.CA), conf.PositionAt(res.C));
+        const double psi = nmr::tripeptide_backbone_dihedral::DihedralDegrees(
+            conf.PositionAt(res.N), conf.PositionAt(res.CA),
+            conf.PositionAt(res.C), conf.PositionAt(next.N));
+        ASSERT_TRUE(std::isfinite(phi));
+        ASSERT_TRUE(std::isfinite(psi));
+        const auto& match = tbb->ResidueMatches()[ri];
+        EXPECT_NEAR(match.phi_actual, phi, 1e-10) << "residue " << ri;
+        EXPECT_NEAR(match.psi_actual, psi, 1e-10) << "residue " << ri;
+        n_dihedrals_pinned += 2;
+    }
+    EXPECT_GT(n_dihedrals_pinned, 100)
+        << "1UBQ should exercise both file-local backbone dihedral paths";
 
     // Spot check: every matched atom has finite tensor.
     int n_finite = 0, n_total = 0;

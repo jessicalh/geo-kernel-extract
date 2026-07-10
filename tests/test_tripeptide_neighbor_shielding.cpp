@@ -39,6 +39,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -110,6 +111,41 @@ bool RowHasFinite(const double* data, size_t row, size_t cols) {
 
 }  // namespace
 
+// Forward-declare the file-local PRODUCTION dihedral helper (named per-file
+// namespace, external linkage) so the fixed-coordinate ±60° test below pins
+// production DIRECTLY, not a copy of it (vet finding 2026-07). A production
+// sign regression now fails this non-skippable test.
+namespace nmr { namespace tripeptide_neighbor_dihedral {
+double DihedralDegrees(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
+} }  // namespace nmr::tripeptide_neighbor_dihedral
+
+
+TEST(TripeptideNeighborDihedral,
+     CanonicalFixedCoordinatesPinSignAndDegenerateNaN) {
+    // Calls the PRODUCTION helper directly (not a copy), so a production sign
+    // regression fails this non-skippable test (vet finding 2026-07).
+    using nmr::tripeptide_neighbor_dihedral::DihedralDegrees;
+    const Vec3 a(1.0, 0.0, 0.0);
+    const Vec3 b(0.0, 0.0, 0.0);
+    const Vec3 c(0.0, 0.0, 1.0);
+    const double root3_over_2 = std::sqrt(3.0) / 2.0;
+
+    // Analytic fixtures distinguish the canonical trajectory convention
+    // from the former sign-reversed tripeptide triple product.
+    EXPECT_NEAR(DihedralDegrees(a, b, c, Vec3(0.5, -root3_over_2, 1.0)),
+                60.0, 1e-12);
+    EXPECT_NEAR(DihedralDegrees(a, b, c, Vec3(0.5, root3_over_2, 1.0)),
+                -60.0, 1e-12);
+
+    EXPECT_TRUE(std::isnan(DihedralDegrees(a, b, b, Vec3(0.0, 1.0, 0.0))));
+    EXPECT_TRUE(std::isnan(DihedralDegrees(
+        Vec3(0.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0),
+        Vec3(2.0, 0.0, 0.0), Vec3(2.0, 1.0, 0.0))));
+    EXPECT_TRUE(std::isnan(DihedralDegrees(
+        Vec3(0.0, 1.0, 0.0), Vec3(0.0, 0.0, 0.0),
+        Vec3(1.0, 0.0, 0.0), Vec3(2.0, 0.0, 0.0))));
+}
+
 
 class TripeptideNeighborShieldingTest : public ::testing::Test {
 protected:
@@ -162,6 +198,62 @@ TEST_F(TripeptideNeighborShieldingTest, RunsOn1UbqPm6) {
     EXPECT_GT(tn->AtomsAccumulated(), 200)
         << "expected >200 per-atom Δσ accumulations; got "
         << tn->AtomsAccumulated();
+
+    // Exercise the production file-local helper through the DB row it
+    // selected. ALA has no chi axes, so independently computed canonical
+    // phi/psi identify one unambiguous 2-degree-grid row. The former
+    // sign-reversed helper selects the opposite-angle row and a different
+    // calc_id.
+    auto query_ala_from_geometry = [&](size_t neighbor_index) {
+        TripeptideDftRecord miss;
+        const auto prev_idx = protein->BackbonePredecessor(neighbor_index);
+        const auto next_idx = protein->BackboneSuccessor(neighbor_index);
+        if (!prev_idx || !next_idx) return miss;
+        const Residue& prev = protein->ResidueAt(*prev_idx);
+        const Residue& neighbor = protein->ResidueAt(neighbor_index);
+        const Residue& next = protein->ResidueAt(*next_idx);
+        if (prev.C == Residue::NONE || neighbor.N == Residue::NONE ||
+            neighbor.CA == Residue::NONE || neighbor.C == Residue::NONE ||
+            next.N == Residue::NONE) {
+            return miss;
+        }
+        const double phi = nmr::tripeptide_neighbor_dihedral::DihedralDegrees(
+            conf.PositionAt(prev.C), conf.PositionAt(neighbor.N),
+            conf.PositionAt(neighbor.CA), conf.PositionAt(neighbor.C));
+        const double psi = nmr::tripeptide_neighbor_dihedral::DihedralDegrees(
+            conf.PositionAt(neighbor.N), conf.PositionAt(neighbor.CA),
+            conf.PositionAt(neighbor.C), conf.PositionAt(next.N));
+        return session.TripeptideDftTablePtr()->QueryNearest(
+            'A', phi, psi, 0.0, 0.0, 0.0, 0.0,
+            /*n_chi_axes=*/0, /*his_variant_hint=*/-1);
+    };
+
+    int n_ala_dihedral_queries_pinned = 0;
+    for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
+        const auto& match = tn->ResidueMatches()[ri];
+        if (const auto prev_idx = protein->BackbonePredecessor(ri);
+            prev_idx && protein->ResidueAt(*prev_idx).type == AminoAcid::ALA &&
+            match.prev_calc_id != 0) {
+            const auto expected = query_ala_from_geometry(*prev_idx);
+            ASSERT_TRUE(expected.IsHit());
+            ASSERT_TRUE(expected.larsen.has_value());
+            EXPECT_EQ(match.prev_calc_id, expected.calc_id)
+                << "i-1 ALA neighbor at residue " << ri;
+            ++n_ala_dihedral_queries_pinned;
+        }
+        if (const auto next_idx = protein->BackboneSuccessor(ri);
+            next_idx && protein->ResidueAt(*next_idx).type == AminoAcid::ALA &&
+            match.next_calc_id != 0) {
+            const auto expected = query_ala_from_geometry(*next_idx);
+            ASSERT_TRUE(expected.IsHit());
+            ASSERT_TRUE(expected.larsen.has_value());
+            EXPECT_EQ(match.next_calc_id, expected.calc_id)
+                << "i+1 ALA neighbor at residue " << ri;
+            ++n_ala_dihedral_queries_pinned;
+        }
+    }
+    EXPECT_GT(n_ala_dihedral_queries_pinned, 0)
+        << "1UBQ should exercise an ALA neighbor DB lookup";
 
     // Frame_type discriminator: SER residues as i-1 or i+1 neighbors
     // should produce ResidueMatch entries with frame_type ==
