@@ -94,14 +94,18 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
             print(f"  FAIL: {name} shape[0]={arr.shape[0]} != atom count {N}")
             errors += 1
 
-    # Check for NaN/Inf in all float arrays
+    # Inf is never a valid static feature. NaN, however, is an explicit
+    # sentinel in several columns (for example H-only bond projections and
+    # unavailable quantum-population entries). Its exact placement is checked
+    # against the committed golden below; a blanket rejection here would make
+    # those sentinel columns unverifiable.
     for name, arr in arrays.items():
         if arr.dtype.kind == "f":
             nan_count = np.isnan(arr).sum()
             inf_count = np.isinf(arr).sum()
             if nan_count > 0:
-                print(f"  FAIL: {name} has {nan_count} NaN values")
-                errors += 1
+                print(f"  SENTINEL: {name} has {nan_count} NaN values "
+                      "(pattern checked by golden)")
             if inf_count > 0:
                 print(f"  FAIL: {name} has {inf_count} Inf values")
                 errors += 1
@@ -308,7 +312,7 @@ def validate_log(log_path: Path) -> int:
 
 
 def binary_compare(run_dir: Path, blessed_dir: Path) -> int:
-    """Compare all .npy files between two directories. Returns diff count."""
+    """Tolerance-compare complete NPY sets, including NaN sentinels."""
     run_files = {p.name for p in run_dir.glob("*.npy")}
     blessed_files = {p.name for p in blessed_dir.glob("*.npy")}
 
@@ -320,7 +324,22 @@ def binary_compare(run_dir: Path, blessed_dir: Path) -> int:
         print(f"  FAIL: missing from run: {missing}")
         errors += len(missing)
     if new:
-        print(f"  NEW files (not in blessed): {new}")
+        print(f"  FAIL: missing required committed baselines: {new}")
+        errors += len(new)
+
+    default_rtol = 1.0e-5
+    default_atol = 1.0e-8
+    per_array: dict[str, dict[str, float]] = {}
+    policy_path = blessed_dir.parent / "bless_policy.toml"
+    if policy_path.exists():
+        import tomllib
+        with policy_path.open("rb") as stream:
+            policy = tomllib.load(stream)
+        default_rtol = float(policy.get("default", {}).get(
+            "rtol", default_rtol))
+        default_atol = float(policy.get("default", {}).get(
+            "atol", default_atol))
+        per_array = policy.get("arrays", {})
 
     common = run_files & blessed_files
     identical = 0
@@ -333,15 +352,39 @@ def binary_compare(run_dir: Path, blessed_dir: Path) -> int:
             different.append((name, f"shape {a.shape} vs {b.shape}"))
         elif a.dtype != b.dtype:
             different.append((name, f"dtype {a.dtype} vs {b.dtype}"))
-        elif not np.array_equal(a, b):
-            if a.dtype.kind == "f":
-                max_diff = np.abs(a - b).max()
-                different.append((name, f"max delta = {max_diff:.2e}"))
+        elif a.dtype.kind != "f":
+            if np.array_equal(a, b):
+                identical += 1
             else:
-                n_diff = (a != b).sum()
+                n_diff = int((a != b).sum())
                 different.append((name, f"{n_diff} values differ"))
         else:
-            identical += 1
+            array_key = name.removesuffix(".npy")
+            override = per_array.get(array_key, {})
+            rtol = float(override.get("rtol", default_rtol))
+            atol = float(override.get("atol", default_atol))
+
+            nan_mismatch = np.isnan(a) != np.isnan(b)
+            inf_mismatch = ((np.isinf(a) != np.isinf(b)) |
+                            (np.isinf(a) & np.isinf(b) & (a != b)))
+            finite = np.isfinite(a) & np.isfinite(b)
+            finite_mismatch = np.zeros(a.shape, dtype=bool)
+            finite_mismatch[finite] = (
+                np.abs(a[finite] - b[finite]) >
+                atol + rtol * np.abs(b[finite]))
+            mismatch = nan_mismatch | inf_mismatch | finite_mismatch
+            n_diff = int(mismatch.sum())
+            if n_diff == 0:
+                identical += 1
+            else:
+                finite_delta = np.abs(a[finite] - b[finite])
+                max_diff = (float(finite_delta.max())
+                            if finite_delta.size else float("inf"))
+                nonfinite_diff = int((nan_mismatch | inf_mismatch).sum())
+                different.append((name,
+                    f"{n_diff} values exceed rtol={rtol:.0e} "
+                    f"atol={atol:.0e}; {nonfinite_diff} nonfinite "
+                    f"mismatches; max finite delta={max_diff:.2e}"))
 
     print(f"\n  Binary comparison: {identical} identical, "
           f"{len(different)} different")
@@ -398,6 +441,9 @@ def main():
             blessed = blessed_base / label
             if blessed.exists():
                 total_errors += binary_compare(sub, blessed)
+            else:
+                print(f"  FAIL: blessed directory not found: {blessed}")
+                total_errors += 1
 
         sys.exit(1 if total_errors > 0 else 0)
 
@@ -425,7 +471,8 @@ def main():
         if blessed.exists():
             total_errors += binary_compare(run_dir, blessed)
         else:
-            print(f"Blessed directory not found: {blessed}")
+            print(f"FAIL: blessed directory not found: {blessed}")
+            total_errors += 1
 
     sys.exit(1 if total_errors > 0 else 0)
 

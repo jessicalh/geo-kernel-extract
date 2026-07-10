@@ -772,6 +772,9 @@ class WaterFieldTimeSeriesGroup:
     efield_cutoff_A: float          # 15.0
     n_first_cutoff_A: float         # 3.5
     n_second_cutoff_A: float        # 5.5
+    max_potential_derivative_rank: int = 2
+    higher_derivatives_present: bool = False
+    rank3_policy: str = "not_emitted_no_local_frame"
 
     @property
     def n_first_float(self) -> np.ndarray:
@@ -859,6 +862,12 @@ def _load_water_field_time_series(f) -> Optional[WaterFieldTimeSeriesGroup]:
         efield_cutoff_A=float(g.attrs.get("efield_cutoff_A", float("nan"))),
         n_first_cutoff_A=float(g.attrs.get("n_first_cutoff_A", float("nan"))),
         n_second_cutoff_A=float(g.attrs.get("n_second_cutoff_A", float("nan"))),
+        max_potential_derivative_rank=int(
+            g.attrs.get("max_potential_derivative_rank", 2)),
+        higher_derivatives_present=bool(
+            g.attrs.get("higher_derivatives_present", False)),
+        rank3_policy=str(_decode_attr(g.attrs.get(
+            "rank3_policy", "not_emitted_no_local_frame"))),
     )
 
 
@@ -2170,8 +2179,75 @@ def _load_aimnet2_embedding_time_series(
 
 
 @dataclass(frozen=True)
+class AIMNet2AimProjectionWelfordGroup:
+    """Per-atom Welford statistics for the committed 32-d AIM projection.
+
+    This is an unoriented feature-vector projection, not a spherical tensor.
+    The ``basis_id`` pins the element-specific committed projection table.
+    """
+    projection_mean: np.ndarray
+    projection_m2: np.ndarray
+    projection_std: np.ndarray
+    projection_min: np.ndarray
+    projection_max: np.ndarray
+    projection_min_frame: np.ndarray
+    projection_max_frame: np.ndarray
+    n_frames_per_atom: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    source_attached_count: int
+    projection_dim: int
+    basis_id: str
+    units: str
+    irrep_layout: str
+    parity: str
+    source: str
+    source_attached_policy: str
+    finalized: bool
+
+
+def _load_aimnet2_aim_projection_welford(
+        f) -> Optional[AIMNet2AimProjectionWelfordGroup]:
+    path = "/trajectory/aimnet2_aim_projection_welford"
+    if path not in f:
+        return None
+    g = f[path]
+
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+
+    return AIMNet2AimProjectionWelfordGroup(
+        projection_mean=g["projection_mean"][:],
+        projection_m2=g["projection_m2"][:],
+        projection_std=g["projection_std"][:],
+        projection_min=g["projection_min"][:],
+        projection_max=g["projection_max"][:],
+        projection_min_frame=g["projection_min_frame"][:],
+        projection_max_frame=g["projection_max_frame"][:],
+        n_frames_per_atom=g["n_frames_per_atom"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        projection_dim=int(g.attrs["projection_dim"]),
+        basis_id=_attr("basis_id"),
+        units=_attr("units"),
+        irrep_layout=_attr("irrep_layout"),
+        parity=_attr("parity"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+        finalized=bool(g.attrs.get("finalized", False)),
+    )
+
+
+@dataclass(frozen=True)
 class AIMNet2ChargeResponseGradientTimeSeriesGroup:
-    """Per-atom per-frame charge-polarisation gradient from
+    """Per-atom AIMNet2 charge-response proxy/diagnostic from
     /trajectory/aimnet2_charge_response_gradient_time_series/.
 
     Two emissions (both required for downstream analysis per
@@ -2182,7 +2258,8 @@ class AIMNet2ChargeResponseGradientTimeSeriesGroup:
       charge_response_gradient_scalar  (N, T)    float64  — L2 norm of vector, e²/Å
 
     Source: AIMNet2ChargeResponseGradientResult (torch autograd backward through
-    the AIMNet2 charge head); always-attached.
+    the AIMNet2 charge head); always-attached. This is NOT Buckingham
+    polarizability and NOT an atom-resolved charge Jacobian.
     """
     charge_response_gradient_vector: np.ndarray       # (N, T, 3) float64
     charge_response_gradient_scalar: np.ndarray       # (N, T) float64
@@ -2322,8 +2399,137 @@ def _load_aimnet2_charge_response_gradient_welford(
 
 
 @dataclass(frozen=True)
+class ApbsEfieldTimeSeriesGroup:
+    """Per-atom APBS canonical reaction E-field trajectory.
+
+    ``xyz`` is total-PB minus the homogeneous-vacuum reference. Clamp
+    provenance is row-aligned with it; source-absent frames are identified by
+    ``source_attached_per_frame`` and are NaN-filled by the producer.
+    """
+    xyz: np.ndarray
+    clamp_mask: np.ndarray
+    clamp_scale: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    apbs_grid_dims_per_frame: np.ndarray
+    apbs_grid_lengths_A_per_frame: np.ndarray
+    apbs_grid_origin_A_per_frame: np.ndarray
+    apbs_grid_spacing_A_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    irrep_layout: str
+    normalization: str
+    parity: str
+    units: str
+    source: str
+    source_attached_policy: str
+    field_quantity: str
+    reference_dielectric: float
+    reference_ionic_strength_M: float
+    reference_mobile_ion_count: int
+    reference_subtracts: str
+    diagnostic_total_unclamped: bool
+    apbs_grid_mode: str
+    apbs_manual_grid_padding_A: float
+    apbs_manual_grid_min_dim_A: float
+    apbs_temperature_K: float
+    apbs_thermal_voltage_V: float
+    efield_clamp_units: str
+    efield_clamp_threshold: float
+    max_potential_derivative_rank: int
+    higher_derivatives_present: bool
+    rank3_policy: str
+
+
+def _load_apbs_efield_time_series(f) -> Optional[ApbsEfieldTimeSeriesGroup]:
+    path = "/trajectory/apbs_efield_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    xyz = g["xyz"][:]
+    frame_times = g["frame_times"][:]
+    n_frames = frame_times.shape[0]
+    source_attached = (
+        g["source_attached_per_frame"][:]
+        if "source_attached_per_frame" in g
+        else np.ones(n_frames, dtype=np.uint8)
+    )
+    clamp_mask = (
+        g["clamp_mask"][:]
+        if "clamp_mask" in g
+        else np.zeros(xyz.shape[:2], dtype=np.uint8)
+    )
+    clamp_scale = (
+        g["clamp_scale"][:]
+        if "clamp_scale" in g
+        else np.ones(xyz.shape[:2], dtype=np.float64)
+    )
+
+    def _attr(name: str, default="") -> str:
+        return str(_decode_attr(g.attrs.get(name, default)))
+
+    def _grid(name: str, dtype):
+        return (g[name][:] if name in g
+                else np.empty((0, 3), dtype=dtype))
+
+    return ApbsEfieldTimeSeriesGroup(
+        xyz=xyz,
+        clamp_mask=clamp_mask,
+        clamp_scale=clamp_scale,
+        frame_indices=g["frame_indices"][:],
+        frame_times=frame_times,
+        source_attached_per_frame=source_attached,
+        apbs_grid_dims_per_frame=_grid(
+            "apbs_grid_dims_per_frame", np.uint64),
+        apbs_grid_lengths_A_per_frame=_grid(
+            "apbs_grid_lengths_A_per_frame", np.float64),
+        apbs_grid_origin_A_per_frame=_grid(
+            "apbs_grid_origin_A_per_frame", np.float64),
+        apbs_grid_spacing_A_per_frame=_grid(
+            "apbs_grid_spacing_A_per_frame", np.float64),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        irrep_layout=_attr("irrep_layout"),
+        normalization=_attr("normalization"),
+        parity=_attr("parity"),
+        units=_attr("units"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+        field_quantity=_attr("field_quantity"),
+        reference_dielectric=float(
+            g.attrs.get("reference_dielectric", np.nan)),
+        reference_ionic_strength_M=float(
+            g.attrs.get("reference_ionic_strength_M", np.nan)),
+        reference_mobile_ion_count=int(
+            g.attrs.get("reference_mobile_ion_count", 0)),
+        reference_subtracts=_attr("reference_subtracts"),
+        diagnostic_total_unclamped=bool(
+            g.attrs.get("diagnostic_total_unclamped", False)),
+        apbs_grid_mode=_attr("apbs_grid_mode"),
+        apbs_manual_grid_padding_A=float(
+            g.attrs.get("apbs_manual_grid_padding_A", np.nan)),
+        apbs_manual_grid_min_dim_A=float(
+            g.attrs.get("apbs_manual_grid_min_dim_A", np.nan)),
+        apbs_temperature_K=float(
+            g.attrs.get("apbs_temperature_K", np.nan)),
+        apbs_thermal_voltage_V=float(
+            g.attrs.get("apbs_thermal_voltage_V", np.nan)),
+        efield_clamp_units=_attr("efield_clamp_units"),
+        efield_clamp_threshold=float(
+            g.attrs.get("efield_clamp_threshold", np.nan)),
+        max_potential_derivative_rank=int(
+            g.attrs.get("max_potential_derivative_rank", 2)),
+        higher_derivatives_present=bool(
+            g.attrs.get("higher_derivatives_present", False)),
+        rank3_policy=_attr(
+            "rank3_policy", "not_emitted_no_local_frame"),
+    )
+
+
+@dataclass(frozen=True)
 class ApbsEfgTimeSeriesGroup:
-    """Per-atom per-frame APBS electric field gradient time series from
+    """Per-atom APBS canonical reaction EFG time series from
     /trajectory/apbs_efg_time_series/.
 
     T2-only emission per the 2026-05-18 EFG schema rev (task #166): APBS
@@ -2358,6 +2564,24 @@ class ApbsEfgTimeSeriesGroup:
     units: str                              # "V/Å^2"
     source: str
     source_attached_policy: str
+    apbs_grid_dims_per_frame: np.ndarray
+    apbs_grid_lengths_A_per_frame: np.ndarray
+    apbs_grid_origin_A_per_frame: np.ndarray
+    apbs_grid_spacing_A_per_frame: np.ndarray
+    field_quantity: str = ""
+    reference_dielectric: float = np.nan
+    reference_ionic_strength_M: float = np.nan
+    reference_mobile_ion_count: int = 0
+    reference_subtracts: str = ""
+    diagnostic_total_unclamped: bool = False
+    apbs_grid_mode: str = ""
+    apbs_manual_grid_padding_A: float = np.nan
+    apbs_manual_grid_min_dim_A: float = np.nan
+    apbs_temperature_K: float = np.nan
+    apbs_thermal_voltage_V: float = np.nan
+    max_potential_derivative_rank: int = 2
+    higher_derivatives_present: bool = False
+    rank3_policy: str = "not_emitted_no_local_frame"
 
 
 def _load_apbs_efg_time_series(f) -> Optional[ApbsEfgTimeSeriesGroup]:
@@ -2365,13 +2589,26 @@ def _load_apbs_efg_time_series(f) -> Optional[ApbsEfgTimeSeriesGroup]:
     if path not in f:
         return None
     g = f[path]
+
     def _attr(name: str) -> str:
         return str(_decode_attr(g.attrs.get(name, "")))
+
+    t2 = g["t2"][:]
+    frame_times = g["frame_times"][:]
+    n_frames = frame_times.shape[0]
+
+    def _grid(name: str, dtype):
+        return (g[name][:] if name in g
+                else np.empty((0, 3), dtype=dtype))
+
     return ApbsEfgTimeSeriesGroup(
-        t2=g["t2"][:],
+        t2=t2,
         frame_indices=g["frame_indices"][:],
-        frame_times=g["frame_times"][:],
-        source_attached_per_frame=g["source_attached_per_frame"][:],
+        frame_times=frame_times,
+        source_attached_per_frame=(
+            g["source_attached_per_frame"][:]
+            if "source_attached_per_frame" in g
+            else np.ones(n_frames, dtype=np.uint8)),
         n_atoms=int(g.attrs["n_atoms"]),
         n_frames=int(g.attrs["n_frames"]),
         t2_basis=_attr("t2_basis"),
@@ -2385,6 +2622,39 @@ def _load_apbs_efg_time_series(f) -> Optional[ApbsEfgTimeSeriesGroup]:
         units=_attr("units"),
         source=_attr("source"),
         source_attached_policy=_attr("source_attached_policy"),
+        apbs_grid_dims_per_frame=_grid(
+            "apbs_grid_dims_per_frame", np.uint64),
+        apbs_grid_lengths_A_per_frame=_grid(
+            "apbs_grid_lengths_A_per_frame", np.float64),
+        apbs_grid_origin_A_per_frame=_grid(
+            "apbs_grid_origin_A_per_frame", np.float64),
+        apbs_grid_spacing_A_per_frame=_grid(
+            "apbs_grid_spacing_A_per_frame", np.float64),
+        field_quantity=_attr("field_quantity"),
+        reference_dielectric=float(
+            g.attrs.get("reference_dielectric", np.nan)),
+        reference_ionic_strength_M=float(
+            g.attrs.get("reference_ionic_strength_M", np.nan)),
+        reference_mobile_ion_count=int(
+            g.attrs.get("reference_mobile_ion_count", 0)),
+        reference_subtracts=_attr("reference_subtracts"),
+        diagnostic_total_unclamped=bool(
+            g.attrs.get("diagnostic_total_unclamped", False)),
+        apbs_grid_mode=_attr("apbs_grid_mode"),
+        apbs_manual_grid_padding_A=float(
+            g.attrs.get("apbs_manual_grid_padding_A", np.nan)),
+        apbs_manual_grid_min_dim_A=float(
+            g.attrs.get("apbs_manual_grid_min_dim_A", np.nan)),
+        apbs_temperature_K=float(
+            g.attrs.get("apbs_temperature_K", np.nan)),
+        apbs_thermal_voltage_V=float(
+            g.attrs.get("apbs_thermal_voltage_V", np.nan)),
+        max_potential_derivative_rank=int(
+            g.attrs.get("max_potential_derivative_rank", 2)),
+        higher_derivatives_present=bool(
+            g.attrs.get("higher_derivatives_present", False)),
+        rank3_policy=(
+            _attr("rank3_policy") or "not_emitted_no_local_frame"),
     )
 
 
@@ -2620,6 +2890,9 @@ class MopacCoulombEfgTimeSeriesGroup:
     units: str
     source: str
     source_attached_policy: str
+    max_potential_derivative_rank: int = 2
+    higher_derivatives_present: bool = False
+    rank3_policy: str = "not_emitted_no_local_frame"
 
 
 MopacCoulombShieldingTimeSeriesGroup = MopacCoulombEfgTimeSeriesGroup
@@ -2660,6 +2933,12 @@ def _load_mopac_coulomb_efg_time_series(f) -> Optional[MopacCoulombEfgTimeSeries
         units=_attr("units"),
         source=_attr("source"),
         source_attached_policy=_attr("source_attached_policy"),
+        max_potential_derivative_rank=int(
+            g.attrs.get("max_potential_derivative_rank", 2)),
+        higher_derivatives_present=bool(
+            g.attrs.get("higher_derivatives_present", False)),
+        rank3_policy=(
+            _attr("rank3_policy") or "not_emitted_no_local_frame"),
     )
 
 
@@ -3446,16 +3725,16 @@ class TrajectoryData:
     # Per-residue Karplus ³J observables (2026-05-19).
     j_coupling: Optional[JCouplingTimeSeriesGroup] = None
 
-    # AIMNet2 fleet TR trio (2026-05-20): per-atom embedding (256-dim),
-    # charge-response gradient (Vec3 + scalar), charge-response gradient
-    # Welford.
+    # AIMNet2 fleet TRs: raw embedding, committed-projection Welford,
+    # charge-response proxy/diagnostic timeline, and its Welford rollup.
     aimnet2_embedding: Optional["AIMNet2EmbeddingTimeSeriesGroup"] = None
+    aimnet2_aim_projection_welford: Optional[
+        "AIMNet2AimProjectionWelfordGroup"] = None
     aimnet2_charge_response_gradient: Optional["AIMNet2ChargeResponseGradientTimeSeriesGroup"] = None
     aimnet2_charge_response_gradient_welford: Optional["AIMNet2ChargeResponseGradientWelfordGroup"] = None
 
-    # APBS solvated EFG TS (TR #4 of the 13-TR plan; 2026-05-21). T2-only
-    # 5-component emission; sibling of apbs_efield TS (Vec3, V/Å) sharing
-    # the same source calc ApbsFieldResult.
+    # APBS canonical reaction E/EFG trajectory groups.
+    apbs_efield: Optional["ApbsEfieldTimeSeriesGroup"] = None
     apbs_efg: Optional["ApbsEfgTimeSeriesGroup"] = None
 
     # MOPAC Mulliken charge per-atom Welford rollup (TR #5; 2026-05-21).
@@ -3695,8 +3974,11 @@ def load_trajectory(path: str | Path,
             _load_aimnet2_embedding_time_series(f)
             if load_optional_large else None
         )
+        aimnet2_aim_projection_welford = (
+            _load_aimnet2_aim_projection_welford(f))
         aimnet2_charge_response_gradient = _load_aimnet2_charge_response_gradient_time_series(f)
         aimnet2_charge_response_gradient_welford = _load_aimnet2_charge_response_gradient_welford(f)
+        apbs_efield = _load_apbs_efield_time_series(f)
         apbs_efg = _load_apbs_efg_time_series(f)
         mopac_charge_welford = _load_mopac_charge_welford(f)
         mopac_bond_order_welford = _load_mopac_bond_order_welford(f)
@@ -3734,8 +4016,10 @@ def load_trajectory(path: str | Path,
         j_coupling=j_coupling,
         aimnet2_embedding=aimnet2_embedding,
         aimnet2_embedding_in_h5=aimnet2_embedding_in_h5,
+        aimnet2_aim_projection_welford=aimnet2_aim_projection_welford,
         aimnet2_charge_response_gradient=aimnet2_charge_response_gradient,
         aimnet2_charge_response_gradient_welford=aimnet2_charge_response_gradient_welford,
+        apbs_efield=apbs_efield,
         apbs_efg=apbs_efg,
         mopac_charge_welford=mopac_charge_welford,
         mopac_bond_order_welford=mopac_bond_order_welford,

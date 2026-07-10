@@ -18,14 +18,13 @@
  *   EFG (derived by caller): kT/(e*Å²)
  *
  * Self-potential note:
- *   The returned grid includes each atom's own Coulomb potential.
+ *   A total-PB solve includes each atom's own Coulomb potential.
  *   At atom positions, ∇²φ_self = -(q/ε)δ(r-r_i), which the grid
  *   discretizes into a large finite Laplacian.  When computing the EFG
- *   tensor (∂²φ/∂x_i∂x_j) at atom positions, callers MUST apply a
- *   traceless projection (subtract trace/3 from diagonal) to remove
- *   this self-interaction artifact.  The external-source EFG is
- *   guaranteed traceless by Laplace's equation.
- *   See FieldGradientFromGrid in ApbsFieldResult.cpp for the C++ implementation.
+ *   tensor (∂²φ/∂x_i∂x_j) at atom positions, callers deriving a raw-total
+ *   diagnostic apply the project's symmetrize/traceless projection. The
+ *   canonical caller subtracts an identical homogeneous-vacuum reference
+ *   grid before differentiation.
  */
 
 #ifndef APBS_BRIDGE_H
@@ -49,6 +48,23 @@ typedef struct {
     char   error_msg[512];  /* error message if return != OK */
 } ApbsGridResult;
 
+/* Complete, explicit physics and manual-grid input for one solve. */
+typedef struct {
+    int grid_nx;
+    int grid_ny;
+    int grid_nz;
+    double grid_len_x;
+    double grid_len_y;
+    double grid_len_z;
+    double pdie;
+    double sdie;
+    double temperature;
+    int mobile_ion_count;
+    const double* mobile_ion_conc_M;
+    const double* mobile_ion_radius_A;
+    const double* mobile_ion_charge_e;
+} ApbsSolveParams;
+
 /*
  * Solve the linearized Poisson-Boltzmann equation.
  *
@@ -64,13 +80,7 @@ int apbs_solve(
     const double* z,            /* z coordinates, Angstroms */
     const double* charges,      /* partial charges, elementary charges */
     const double* radii,        /* atomic radii, Angstroms */
-    double pdie,                /* protein interior dielectric */
-    double sdie,                /* solvent dielectric */
-    double temperature,         /* Kelvin */
-    double ionic_strength,      /* molar */
-    int grid_nx, int grid_ny, int grid_nz,  /* grid dimensions */
-    double fine_x, double fine_y, double fine_z,  /* fine grid lengths, Ang */
-    double coarse_x, double coarse_y, double coarse_z,  /* coarse grid, Ang */
+    const ApbsSolveParams* params,
     ApbsGridResult* result
 );
 

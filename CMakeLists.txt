@@ -687,6 +687,7 @@ add_library(nmr_shielding
     src/SasaTimeSeriesTrajectoryResult.cpp
     src/AIMNet2ChargeTimeSeriesTrajectoryResult.cpp
     src/AIMNet2EmbeddingTimeSeriesTrajectoryResult.cpp
+    src/AIMNet2AimProjectionWelfordTrajectoryResult.cpp
     src/AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.cpp
     src/AIMNet2ChargeResponseGradientWelfordTrajectoryResult.cpp
     src/ApbsEfieldTimeSeriesTrajectoryResult.cpp
@@ -747,6 +748,7 @@ add_library(nmr_shielding
     src/RmsdSpikeSelectionTrajectoryResult.cpp
     src/DftPoseCoordinatorTrajectoryResult.cpp
     src/EeqResult.cpp
+    src/EeqCoulombResult.cpp
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
     src/McConnellResult.cpp
@@ -774,6 +776,7 @@ add_library(nmr_shielding
     src/ReduceProtonation.cpp
     src/CalculatorConfig.cpp
     src/AIMNet2Result.cpp
+    src/generated/AIMNet2AimProjection.cpp
     src/AIMNet2ChargeResponseGradientResult.cpp
     src/PlanarGeometryResult.cpp
     src/BondedEnergyResult.cpp
@@ -1156,6 +1159,7 @@ nmr_test(conformation_scope_tests
         tests/test_category_info_projection.cpp
         tests/test_cli_parse.cpp
         tests/test_coulomb_result.cpp
+        tests/test_eeq_coulomb.cpp
         tests/test_demo_result.cpp
         tests/test_dispersion_result.cpp
         tests/test_dssp_result.cpp
@@ -1287,6 +1291,7 @@ nmr_test(smoke_tests
     LABELS smoke
     SOURCES
         tests/BlessCompare.cpp
+        tests/test_bless_compare.cpp
         tests/test_smoke.cpp
 )
 

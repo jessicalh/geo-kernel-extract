@@ -36,7 +36,7 @@ TEST(CalculatorConfig, DefaultsMatchSpatialCutoffs) {
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("singularity_guard_distance"),             MIN_DISTANCE);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hbond_counting_radius"),                  HBOND_COUNT_RADIUS);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hbond_dipolar_max_distance"),             HBOND_MAX_DIST);
-    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("efield_magnitude_sanity_clamp"),          APBS_SANITY_LIMIT);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("efield_magnitude_sanity_clamp"),          100.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hbond_sequential_exclusion_residues"),
                      static_cast<double>(SEQUENTIAL_EXCLUSION_THRESHOLD));
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("near_zero_vector_norm_threshold"),        NEAR_ZERO_NORM);
@@ -60,6 +60,18 @@ TEST(CalculatorConfig, DefaultsMatchCalculatorConstants) {
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("water_first_shell_cutoff"),                3.5);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("water_second_shell_cutoff"),               5.5);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hydration_ion_cutoff"),                   20.0);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("apbs_grid_dim"),                         161.0);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("apbs_manual_grid_padding_A"),             70.0);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("apbs_manual_grid_min_dim_A"),             70.0);
+}
+
+TEST(CalculatorConfig, RetiredApbsFocusingKeysAreUnknown) {
+    EXPECT_DEATH(CalculatorConfig::Get("apbs_fine_padding_A"),
+                 "unknown parameter key");
+    EXPECT_DEATH(CalculatorConfig::Get("apbs_fine_min_dim_A"),
+                 "unknown parameter key");
+    EXPECT_DEATH(CalculatorConfig::Get("apbs_coarse_padding_A"),
+                 "unknown parameter key");
 }
 
 TEST(CalculatorConfig, DeadMopacMcConnellCutoffKeyIsUnknown) {
@@ -90,6 +102,8 @@ TEST(CalculatorConfig, TomlRoundTrip) {
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("ring_current_spatial_cutoff"), 15.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("near_field_exclusion_ratio"), 0.5);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("biot_savart_wire_axis_guard"), 1e-70);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("apbs_manual_grid_padding_A"), 70.0);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("apbs_manual_grid_min_dim_A"), 70.0);
 
     // Validate should find no unknown keys
     auto unknown = CalculatorConfig::Validate();

@@ -13,7 +13,7 @@
 //   3. Captures the operation log to log.jsonl in the same directory
 //   4. Validates the log: no errors, expected calculators present
 //   5. Validates the NPY output: file count, non-zero sizes, header sanity
-//   6. Binary-compares to blessed baseline (if available)
+//   6. Compares the complete emitted NPY set to a required blessed baseline
 //
 // This is the test you run when you change an extractor, add a parameter,
 // or touch the pipeline. If it passes, the system still produces the same
@@ -237,13 +237,11 @@ protected:
         ValidateNpy(out_dir, min_npy_files);
 
         // ---- Phase 5: Binary comparison to blessed baseline ----
-        if (!blessed_dir.empty() && fs::exists(blessed_dir)) {
+        if (!blessed_dir.empty() && fs::is_directory(blessed_dir)) {
             BinaryCompare(out_dir, blessed_dir);
         } else {
-            std::cout << "  [" << label << "] No blessed baseline at "
-                      << blessed_dir << " — skipping binary comparison.\n"
-                      << "  To bless this run:\n"
-                      << "    cp -r " << out_dir << " " << blessed_dir << "\n";
+            ADD_FAILURE() << "Required blessed baseline directory is missing: "
+                          << blessed_dir;
         }
 
         std::cout << "  [" << label << "] Output: " << out_dir << "\n";
@@ -328,15 +326,20 @@ private:
         auto run_files = NpyFiles(run_dir);
         auto blessed_files = NpyFiles(blessed_dir);
 
-        // Check for missing files in either direction
+        EXPECT_FALSE(blessed_files.empty())
+            << "Required blessed baseline contains no NPY files: "
+            << blessed_dir;
+
+        // The emitted and blessed filename sets are a bidirectional contract.
+        // A newly emitted array without a committed baseline is a failure, not
+        // an informational re-blessing prompt.
         for (const auto& f : blessed_files) {
             EXPECT_TRUE(run_files.count(f))
                 << "Missing from run: " << f << " (present in blessed)";
         }
         for (const auto& f : run_files) {
-            if (!blessed_files.count(f)) {
-                std::cout << "  NEW file (not in blessed): " << f << "\n";
-            }
+            EXPECT_TRUE(blessed_files.count(f))
+                << "Missing required committed baseline: " << f;
         }
 
         std::string policy_path;
@@ -437,9 +440,8 @@ TEST_F(SmokeTest, NoDft) {
     blessed = std::string(NMR_TEST_DATA_DIR) + "/../golden/blessed/nodft";
 #endif
 
-    // Expect: foundation (4) + MOPAC + APBS + 6 ring calculators + Coulomb
-    //         + MopacCoulomb + MopacMcConnell + HBond + AIMNet2 = ~18
-    // NPY: 45+ arrays (no orca_*.npy; +5 aimnet2_*.npy)
+    // Expect the full static producer stack without ORCA shielding. AIMNet2
+    // now contributes 17 arrays, including energy/D3/field/projection outputs.
     RunSmoke("nodft", conf, opts, 14, 40, blessed);
 }
 

@@ -18,6 +18,7 @@
 //
 
 #include "AtomEvent.h"
+#include "ConformationAtom.h"  // AIMNET2_AIM_PROJECTION_DIMS
 #include "RecordBag.h"
 #include "TrajectoryMoments.h"  // WelfordMoments
 
@@ -333,6 +334,16 @@ struct AIMNet2ChargeResponseGradientWelfordState {
     std::size_t                   n_frames = 0;
 };
 
+// Written by AIMNet2AimProjectionWelfordTrajectoryResult.
+// Source: ConformationAtom::aimnet2_aim_projection, which is born once in
+// AIMNet2Result::Compute from the committed per-element basis. The trajectory
+// reducer reads that stored field; it never sees the raw 256-d aim embedding
+// and never performs projection arithmetic.
+struct AIMNet2AimProjectionWelfordState {
+    std::array<WelfordMoments, AIMNET2_AIM_PROJECTION_DIMS> projection;
+    std::size_t n_frames = 0;
+};
+
 // Written by MopacChargeWelfordTrajectoryResult (TR5 of the 13-TR plan).
 // Source: ConformationAtom.mopac_charge (double, Mulliken charge, units e).
 // MopacResult attaches sparsely via TimedAttach in OperationRunner —
@@ -458,6 +469,7 @@ public:
     HydrationGeometryWelfordState hydration_geometry_welford;
     HydrationShellWelfordState    hydration_shell_welford;
     AIMNet2ChargeResponseGradientWelfordState aimnet2_charge_response_gradient_welford;
+    AIMNet2AimProjectionWelfordState aimnet2_aim_projection_welford;
     MopacChargeWelfordState       mopac_charge_welford;
 
     // Pattern C — per-atom event bag.

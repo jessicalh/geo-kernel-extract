@@ -3,8 +3,8 @@
 // RunConfiguration: typed description of a trajectory-run shape.
 // See OBJECT_MODEL.md (trajectory-scope). Two named static shapes:
 // PerFrameExtractionSet and FullFatFrameExtraction (the latter is the
-// former with MOPAC-family trajectory results and vacuum Coulomb
-// enabled). Each encodes per-frame RunOptions, the list of results to
+// former with MOPAC-family trajectory results additionally enabled;
+// vacuum Coulomb belongs to both). Each encodes per-frame RunOptions, the list of results to
 // build (attach order = dispatch order), the required ConformationResult
 // types (validated at Trajectory::Run Phase 4), stride, and mandatory
 // session resources.

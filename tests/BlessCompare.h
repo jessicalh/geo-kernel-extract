@@ -58,7 +58,7 @@ struct BlessResult {
 };
 
 // Compare two NPY files under the given policy. Both files must exist.
-// Supported dtypes: <f8, <f4, <i4, <i8 (the set NpyWriter emits).
+// Supported dtypes: <f8, <f4, <i4, <i8, |i1, |u1.
 BlessResult CompareNpy(const std::string& run_path,
                        const std::string& blessed_path,
                        const BlessPolicy& policy);

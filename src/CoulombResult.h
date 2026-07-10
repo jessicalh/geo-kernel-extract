@@ -4,8 +4,10 @@
 //
 // For each atom, computes the electric field E and electric field gradient
 // tensor V from partial charges within the configured cutoff. Decomposes by source:
-// backbone, sidechain, aromatic. Computes solvent contribution as
-// APBS - vacuum total (if ApbsFieldResult is present).
+// backbone, sidechain, aromatic. When ApbsFieldResult is present, the
+// solvent fields are direct aliases of its canonical APBS reaction field
+// (total PB minus the homogeneous-vacuum reference). They are not subjected
+// to a second subtraction here.
 //
 // The EFG tensor V_ab = sum_j q_j * K_ab(r_ij) uses the same dipolar
 // kernel as McConnell:
@@ -44,6 +46,9 @@ class ProteinConformation;
 // tensor" that unifies E and V. coulomb_shielding_contribution stores the
 // T2 (Decompose(EFG)) only; the T0 from E via Buckingham is not a pure
 // geometric kernel and is applied at calibration.
+//
+// The emitted potential-derivative hierarchy stops at rank 2 (E and EFG).
+// Rank 3 is not emitted because there is no canonical local frame for it.
 
 class CoulombResult : public ConformationResult {
 public:

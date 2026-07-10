@@ -40,6 +40,48 @@ std::string TopolTopPathForFixture(const std::string& tpr_path) {
 
 using namespace nmr;
 
+TEST(FullSystemReaderBoundary, FourSiteWaterFailsBeforeProteinClassification) {
+    using nmr::detail::MoltypeBoundaryClass;
+    using nmr::detail::MoltypeSiteSignature;
+
+    const std::vector<MoltypeSiteSignature> tip4p = {
+        {8, -1.04, false},
+        {1,  0.52, false},
+        {1,  0.52, false},
+        {0,  0.00, true},
+    };
+    EXPECT_EQ(nmr::detail::ClassifyMoltypeBoundary(1, tip4p),
+              MoltypeBoundaryClass::UnsupportedVirtualSiteWater);
+
+    const std::string diagnostic =
+        nmr::detail::UnsupportedVirtualSiteWaterDiagnostic("TIP4P", tip4p);
+    EXPECT_NE(diagnostic.find("TIP4P"), std::string::npos);
+    EXPECT_NE(diagnostic.find("atoms=4"), std::string::npos);
+    EXPECT_NE(diagnostic.find("atomic_numbers=[8,1,1,0]"),
+              std::string::npos);
+    EXPECT_NE(diagnostic.find("charges=[-1.04,0.52,0.52,0]"),
+              std::string::npos);
+    EXPECT_NE(diagnostic.find(
+        "unsupported virtual-site water model; virtual-site "
+        "reconstruction is not implemented"), std::string::npos);
+
+    // The detector is intentionally not an arbitrary four-atom catch-all.
+    const std::vector<MoltypeSiteSignature> protein_fragment = {
+        {6, 0.1, false}, {7, -0.2, false},
+        {1, 0.05, false}, {1, 0.05, false},
+    };
+    EXPECT_EQ(nmr::detail::ClassifyMoltypeBoundary(1, protein_fragment),
+              MoltypeBoundaryClass::ProteinOrOther);
+    EXPECT_EQ(nmr::detail::ClassifyMoltypeBoundary(2, tip4p),
+              MoltypeBoundaryClass::ProteinOrOther);
+
+    const std::vector<MoltypeSiteSignature> three_site = {
+        {8, -0.834, false}, {1, 0.417, false}, {1, 0.417, false},
+    };
+    EXPECT_EQ(nmr::detail::ClassifyMoltypeBoundary(1, three_site),
+              MoltypeBoundaryClass::ThreeSiteWater);
+}
+
 class AmberTrajectoryFixtureTest : public ::testing::Test {
 protected:
     void SetUp() override {

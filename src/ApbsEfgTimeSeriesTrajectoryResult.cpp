@@ -67,6 +67,23 @@ void ApbsEfgTimeSeriesTrajectoryResult::Compute(
         per_atom_efg_[i].push_back(
             source_present ? conf.AtomAt(i).apbs_efg_spherical : nan_tensor);
     }
+    if (source_present) {
+        const auto& apbs = conf.Result<ApbsFieldResult>();
+        grid_dims_per_frame_.push_back(apbs.GridDims());
+        grid_lengths_A_per_frame_.push_back(apbs.GridLengthsA());
+        grid_origin_A_per_frame_.push_back(apbs.GridOriginA());
+        grid_spacing_A_per_frame_.push_back(apbs.GridSpacingA());
+        apbs_manual_grid_padding_A_ = apbs.ManualGridPaddingA();
+        apbs_manual_grid_min_dim_A_ = apbs.ManualGridMinDimA();
+        apbs_temperature_K_ = apbs.TemperatureK();
+        apbs_thermal_voltage_V_ = apbs.ThermalVoltageV();
+    } else {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        grid_dims_per_frame_.push_back({0, 0, 0});
+        grid_lengths_A_per_frame_.push_back({nan, nan, nan});
+        grid_origin_A_per_frame_.push_back({nan, nan, nan});
+        grid_spacing_A_per_frame_.push_back({nan, nan, nan});
+    }
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);
     source_attached_per_frame_.push_back(source_present ? 1u : 0u);
@@ -79,21 +96,30 @@ void ApbsEfgTimeSeriesTrajectoryResult::Compute(
 // Transfer growing per-atom buffers into a contiguous atom-major
 // DenseBuffer<SphericalTensor> owned by TrajectoryProtein.
 //
-// Idempotent via bounds-check (see feedback_bounds_check_over_state_flag):
-// after the first Finalize swaps per_atom_efg_[i] to empty, src.size()
-// is 0, the per-atom skip kicks in, atoms_written remains 0, we return
-// without re-Adopting.
+// Idempotent after the first successful ownership transfer. History lengths
+// are validated before any per-atom storage is released, so a malformed
+// partial buffer is never adopted.
 
 void ApbsEfgTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
                                                   Trajectory& traj) {
     (void)traj;
+    if (finalized_) return;
     const std::size_t N = tp.AtomCount();
+
+    for (std::size_t i = 0; i < N; ++i) {
+        if (per_atom_efg_[i].size() != n_frames_) {
+            OperationLog::Error(
+                "ApbsEfgTimeSeriesTrajectoryResult::Finalize",
+                "per-atom APBS EFG history length mismatch at atom " +
+                std::to_string(i));
+            return;
+        }
+    }
 
     auto buffer = std::make_unique<DenseBuffer<SphericalTensor>>(N, n_frames_);
     std::size_t atoms_written = 0;
     for (std::size_t i = 0; i < N; ++i) {
         const auto& src = per_atom_efg_[i];
-        if (src.size() != n_frames_) continue;
         for (std::size_t f = 0; f < n_frames_; ++f) {
             buffer->At(i, f) = src[f];
         }
@@ -143,6 +169,16 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
 
     const std::size_t N = buffer->AtomCount();
     const std::size_t T = buffer->StridePerAtom();
+    if (source_attached_per_frame_.size() != T ||
+        grid_dims_per_frame_.size() != T ||
+        grid_lengths_A_per_frame_.size() != T ||
+        grid_origin_A_per_frame_.size() != T ||
+        grid_spacing_A_per_frame_.size() != T) {
+        OperationLog::Error(
+            "ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group",
+            "APBS EFG history/metadata shape mismatch; group not emitted");
+        return;
+    }
 
     auto grp = file.createGroup("/trajectory/apbs_efg_time_series");
 
@@ -171,16 +207,34 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("operation", std::string(
         "linearized_poisson_boltzmann_grid_hessian_traceless_t2"));
     grp.createAttribute("source", std::string(
-        "ApbsFieldResult.apbs_efg_spherical; APBS EFG is the "
-        "sign-aligned Hessian of the linearized Poisson-Boltzmann "
-        "potential, symmetrized and trace-projected at source; T2 "
-        "components 0..4 only; T0/T1 structurally zero by Hessian "
-        "symmetry/traceless projection."));
+        "ApbsFieldResult.apbs_efg_spherical; canonical APBS reaction "
+        "EFG (total PB minus homogeneous-vacuum reference), sign-aligned "
+        "potential Hessian, symmetrized and trace-projected at source; "
+        "T2 components 0..4 only."));
     grp.createAttribute("source_attached_policy", std::string(
         "required_conformation_result -- production RunConfiguration "
         "requires ApbsFieldResult for this trajectory result; Compute "
         "defensively writes NaN-fill + mask=0 when the source is absent; "
         "source_attached_per_frame records that gate."));
+    grp.createAttribute("field_quantity", std::string(
+        "reaction_field_total_minus_homogeneous_vacuum_reference"));
+    grp.createAttribute("reference_dielectric", 1.0);
+    grp.createAttribute("reference_ionic_strength_M", 0.0);
+    grp.createAttribute("reference_mobile_ion_count", 0);
+    grp.createAttribute("reference_subtracts",
+                        std::string("all_solute_charges"));
+    grp.createAttribute("diagnostic_total_unclamped", true);
+    grp.createAttribute("apbs_grid_mode", std::string("single_manual"));
+    grp.createAttribute("apbs_manual_grid_padding_A",
+                        apbs_manual_grid_padding_A_);
+    grp.createAttribute("apbs_manual_grid_min_dim_A",
+                        apbs_manual_grid_min_dim_A_);
+    grp.createAttribute("apbs_temperature_K", apbs_temperature_K_);
+    grp.createAttribute("apbs_thermal_voltage_V", apbs_thermal_voltage_V_);
+    grp.createAttribute("max_potential_derivative_rank", 2);
+    grp.createAttribute("higher_derivatives_present", false);
+    grp.createAttribute("rank3_policy",
+                        std::string("not_emitted_no_local_frame"));
 
     // (N, T, 5) via explicit T2[k] component access. No reinterpret,
     // no struct-packing assumption. Atom-major:
@@ -198,6 +252,33 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("t2", space);
     ds.write_raw(flat.data());
+
+    auto write_grid_u64 = [&](const std::string& name,
+            const std::vector<std::array<std::uint64_t, 3>>& rows) {
+        std::vector<std::uint64_t> values(T * 3);
+        for (std::size_t t = 0; t < T; ++t)
+            for (std::size_t d = 0; d < 3; ++d)
+                values[t * 3 + d] = rows[t][d];
+        HighFive::DataSpace grid_space({T, std::size_t(3)});
+        auto grid_ds = grp.createDataSet<std::uint64_t>(name, grid_space);
+        grid_ds.write_raw(values.data());
+    };
+    auto write_grid_f64 = [&](const std::string& name,
+            const std::vector<std::array<double, 3>>& rows) {
+        std::vector<double> values(T * 3);
+        for (std::size_t t = 0; t < T; ++t)
+            for (std::size_t d = 0; d < 3; ++d)
+                values[t * 3 + d] = rows[t][d];
+        HighFive::DataSpace grid_space({T, std::size_t(3)});
+        auto grid_ds = grp.createDataSet<double>(name, grid_space);
+        grid_ds.write_raw(values.data());
+    };
+    write_grid_u64("apbs_grid_dims_per_frame", grid_dims_per_frame_);
+    write_grid_f64("apbs_grid_lengths_A_per_frame",
+                   grid_lengths_A_per_frame_);
+    write_grid_f64("apbs_grid_origin_A_per_frame", grid_origin_A_per_frame_);
+    write_grid_f64("apbs_grid_spacing_A_per_frame",
+                   grid_spacing_A_per_frame_);
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_)

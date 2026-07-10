@@ -128,11 +128,9 @@ calibration/*/
 # MOPAC/APBS solver output
 *.mc
 
-# Smoke test output. Timestamped runs are generated. Existing tracked blessed
-# baselines remain tracked; new blessed files under this ignored tree require
-# an explicit `git add -f`.
+# Smoke test output is generated. Blessed baselines are intentionally tracked:
+# a new emitted array must be visible to git and committed with its change.
 tests/golden/smoke/
-tests/golden/blessed/
 
 # Build artifacts (CMake fetch)
 _deps/
@@ -233,15 +231,6 @@ doc/searchresults1/
 baseline_features/**/extraction_manifest.json
 baseline_features/**/mopac_full/
 
-# Golden baseline: oversized high-dim arrays excluded (>100MB GitHub hard limit + repo bloat).
-# Covered by shape/presence + the catalog, NOT byte-comparison.
-tests/golden/blessed/**/mopac_mulliken_overlap_sparse.npy
-tests/golden/blessed/**/mopac_mo_coefficients.npy
-tests/golden/blessed/**/mopac_overlap_packed.npy
-tests/golden/blessed/**/mopac_density_packed.npy
-tests/golden/blessed/**/mc_bond_neighbors.npy
-tests/golden/blessed/**/spatial_neighbors.npy
-
 # Docs are not release-ready yet -- keep local, do not distribute.
 *.md
 *.pdf
@@ -252,6 +241,18 @@ nmrstats.Rcheck/
 lit-map/
 h5-reader/analysis/
 *.npy
+
+# The global scratch-NPY rule must not hide regression baselines. New blessed
+# arrays are reviewable repository data. The longstanding oversized arrays
+# remain schema/presence tested because each is unsuitable for git storage.
+!tests/golden/blessed/**/*.npy
+tests/golden/blessed/**/mopac_mulliken_overlap_sparse.npy
+tests/golden/blessed/**/mopac_mo_coefficients.npy
+tests/golden/blessed/**/mopac_overlap_packed.npy
+tests/golden/blessed/**/mopac_density_packed.npy
+tests/golden/blessed/**/mc_bond_neighbors.npy
+tests/golden/blessed/**/spatial_neighbors.npy
+
 # stray MATLAB MCP-tool log written at the repo root
 matlab_mcp_server.log
 

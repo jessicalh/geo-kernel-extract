@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace nmr {
@@ -80,21 +81,20 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         }
     }
 
-    // primary bond direction (for E_bond_proj). H: parent heavy atom -> H.
-    // Heavy: first bond (arbitrary but consistent).
+    // Primary bond direction for the H-only E_bond_proj contract.
     std::vector<Vec3> primary_bond_dir(n_atoms, Vec3::Zero());
+    std::vector<bool> has_primary_bond_dir(n_atoms, false);
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         const Atom& atom = protein.AtomAt(ai);
-        if (atom.element == Element::H && atom.parent_atom_index != SIZE_MAX) {
+        if (atom.element == Element::H &&
+            atom.parent_atom_index != SIZE_MAX &&
+            atom.parent_atom_index < n_atoms) {
             Vec3 parent_to_hydrogen = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
             double len = parent_to_hydrogen.norm();
-            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = parent_to_hydrogen / len;
-        } else if (!atom.bond_indices.empty()) {
-            const Bond& b = protein.BondAt(atom.bond_indices[0]);
-            size_t other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
-            Vec3 atom_to_bond_neighbor = conf.PositionAt(other) - conf.PositionAt(ai);
-            double len = atom_to_bond_neighbor.norm();
-            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = atom_to_bond_neighbor / len;
+            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
+                primary_bond_dir[ai] = parent_to_hydrogen / len;
+                has_primary_bond_dir[ai] = true;
+            }
         }
     }
 
@@ -284,7 +284,9 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         // bond projection
         ca.coulomb_E_magnitude = E_total.norm();
         // E projected along primary bond direction (for Buckingham E_z)
-        ca.coulomb_E_bond_proj = E_total.dot(primary_bond_dir[i]);
+        ca.coulomb_E_bond_proj = has_primary_bond_dir[i]
+            ? E_total.dot(primary_bond_dir[i])
+            : std::numeric_limits<double>::quiet_NaN();
 
         // backbone alignment
         // Backbone projection: component of E_backbone along E_total direction.
@@ -300,15 +302,17 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
         // aromatic scalars
         ca.aromatic_E_magnitude = E_aromatic.norm();
-        ca.aromatic_E_bond_proj = E_aromatic.dot(primary_bond_dir[i]);
+        ca.aromatic_E_bond_proj = has_primary_bond_dir[i]
+            ? E_aromatic.dot(primary_bond_dir[i])
+            : std::numeric_limits<double>::quiet_NaN();
         ca.aromatic_n_sidechain_atoms = n_sidechain_aromatic_sources;
 
-        // Solvent contribution: APBS (solvated) minus vacuum Coulomb.
-        // Only meaningful if ApbsFieldResult is present.
-        // Both are in V/A, so this is a proper subtraction.
+        // APBS already stores total-PB minus homogeneous-vacuum reaction
+        // fields.  These are aliases, not another subtraction.
         if (conf.HasResult<ApbsFieldResult>()) {
-            ca.coulomb_E_solvent = ca.apbs_efield - E_total;
-            ca.coulomb_EFG_solvent = ca.apbs_efg - EFG_total;
+            ca.coulomb_E_solvent = ca.apbs_efield;
+            ca.coulomb_EFG_solvent = ca.apbs_efg;
+            ca.coulomb_EFG_solvent_spherical = ca.apbs_efg_spherical;
         }
 
         // T2 only; Buckingham T0 not included here (see CoulombResult.h).
@@ -385,6 +389,9 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
     std::vector<double> scalars(N * 4);
     std::vector<double> aromatic_E_proj(N);
     std::vector<int32_t> aromatic_n_src(N);
+    const bool has_apbs = conf.HasResult<ApbsFieldResult>();
+    std::vector<double> solvent_E(has_apbs ? N * 3 : 0);
+    std::vector<double> solvent_efg(has_apbs ? N * 5 : 0);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
@@ -417,6 +424,14 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
         scalars[i*4+3] = ca.aromatic_E_magnitude;
         aromatic_E_proj[i] = ca.aromatic_E_bond_proj;
         aromatic_n_src[i] = static_cast<int32_t>(ca.aromatic_n_sidechain_atoms);
+
+        if (has_apbs) {
+            solvent_E[i*3+0] = ca.coulomb_E_solvent.x();
+            solvent_E[i*3+1] = ca.coulomb_E_solvent.y();
+            solvent_E[i*3+2] = ca.coulomb_E_solvent.z();
+            ca.coulomb_EFG_solvent_spherical.PackT2(
+                &solvent_efg[i*5]);
+        }
     }
 
     NpyWriter::WriteFloat64(output_dir + "/coulomb_efg.npy", efg_total.data(), N, 9);
@@ -433,6 +448,15 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
                             aromatic_E_proj.data(), N);
     NpyWriter::WriteInt32(output_dir + "/coulomb_aromatic_n_src.npy",
                           aromatic_n_src.data(), N);
+    if (has_apbs) {
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_E_solvent.npy",
+                                solvent_E.data(), N, 3);
+        NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_solvent.npy",
+                                solvent_efg.data(), N, 5);
+        // The current codebase has 12 pre-existing Coulomb files (including
+        // coulomb_efg_t2.npy); preserve that tensor and add these two aliases.
+        return 14;
+    }
     return 12;
 }
 

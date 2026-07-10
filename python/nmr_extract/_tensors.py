@@ -663,7 +663,12 @@ class McConnellScalars:
 
 
 class CoulombScalars:
-    """(*, 4) Coulomb E-field summary.  Units: V/A."""
+    """(*, 4) Coulomb E-field summary. Units: V/A.
+
+    ``E_bond_proj`` is defined only for hydrogens with a valid typed
+    parent atom. It is NaN for non-hydrogen atoms and for parentless
+    hydrogens.
+    """
 
     __slots__ = ("_data",)
 
@@ -682,6 +687,7 @@ class CoulombScalars:
 
     @property
     def E_bond_proj(self) -> np.ndarray:
+        """Parent-to-H projection for supported H atoms; NaN otherwise."""
         return self._data[..., 1]
 
     @property
@@ -1340,13 +1346,14 @@ class AIMNet2AimEmbedding:
 
 
 class AIMNet2ChargeResponseGradient:
-    """(N, 3) per-atom charge-polarisation gradient via autograd.
+    """(N, 3) AIMNet2 charge-response proxy/diagnostic via autograd.
 
     The vector field is dL/d(r_i) where L = sum_j q_j^2 over
     non-sentinel atoms (the L2-of-charges objective; sum(q) is
     constant under AIMNet2's charge-conservation projection so its
-    gradient is ~0). Sum-of-squared-charges sensitivity to atomic
-    coordinates — NOT a Buckingham polarisability α = ∂μ/∂E.
+    gradient is ~0). It is a sum-of-squared-charges sensitivity to
+    atomic coordinates, NOT a Buckingham polarizability α = ∂μ/∂E
+    and NOT an atom-resolved charge Jacobian.
 
     Companion scalar is the L2 norm of the vector, stored separately
     in `aimnet2_charge_response_gradient_scalar.npy`.

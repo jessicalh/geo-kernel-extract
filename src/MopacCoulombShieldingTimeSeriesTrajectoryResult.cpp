@@ -177,6 +177,10 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         grp.createAttribute("parity",        std::string("2e"));
         grp.createAttribute("legacy_irrep_attrs_deprecated", true);
         grp.createAttribute("units",         std::string("V/Å^2"));
+        grp.createAttribute("max_potential_derivative_rank", 2);
+        grp.createAttribute("higher_derivatives_present", false);
+        grp.createAttribute("rank3_policy",
+            std::string("not_emitted_no_local_frame"));
         grp.createAttribute("source_result", std::string("MopacCoulombResult"));
         grp.createAttribute("source_field",
             std::string("ConformationAtom::mopac_coulomb_shielding_contribution"));

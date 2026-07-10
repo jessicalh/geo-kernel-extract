@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include "CoulombResult.h"
+#include "MopacCoulombResult.h"
 #include "ChargeAssignmentResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
@@ -121,6 +122,8 @@ void RemoveCoulombFeatureDir(const fs::path& out_dir) {
             "coulomb_scalars.npy",
             "coulomb_aromatic_E_proj.npy",
             "coulomb_aromatic_n_src.npy",
+            "coulomb_E_solvent.npy",
+            "coulomb_efg_solvent.npy",
         }) {
         std::error_code ec;
         fs::remove(out_dir / name, ec);
@@ -169,40 +172,67 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
     auto a0 = Atom::Create(Element::C);
     auto a1 = Atom::Create(Element::N);
     auto a2 = Atom::Create(Element::H);
+    auto a3 = Atom::Create(Element::O);
+    auto a4 = Atom::Create(Element::O);
     a0->residue_index = 0;
     a1->residue_index = 0;
     a2->residue_index = 0;
+    a3->residue_index = 0;
+    a4->residue_index = 0;
+    a2->parent_atom_index = 0;
 
     protein->AddAtom(std::move(a0));
     protein->AddAtom(std::move(a1));
     protein->AddAtom(std::move(a2));
+    protein->AddAtom(std::move(a3));
+    protein->AddAtom(std::move(a4));
 
     Residue res;
     res.type = AminoAcid::ALA;
     res.sequence_number = 1;
     res.chain_id = "A";
-    res.atom_indices = {0, 1, 2};
+    res.atom_indices = {0, 1, 2, 3, 4};
     protein->AddResidue(res);
 
     std::vector<Vec3> positions = {
         Vec3(0.0, 0.0, 0.0),   // atom 0: source, q = +0.5
         Vec3(0.0, 3.0, 0.0),   // atom 1: source, q = -0.3
-        Vec3(3.0, 0.0, 0.0)    // atom 2: observer, q = 0
+        Vec3(3.0, 0.0, 0.0),   // atom 2: observer, q = 0
+        Vec3(-1.2, 0.0, 0.0),  // atom 3: bonded zero-charge neighbour
+        Vec3(0.0, 1.2, 0.0)    // atom 4: bonded zero-charge neighbour
     };
 
     protein->FinalizeConstruction(positions);
+    // Synthetic topology has no semantic parent inference; set the explicit
+    // H parent after finalization, which is the authority that may rebuild
+    // parent indices.
+    protein->MutableAtomAt(2).parent_atom_index = 0;
+    // C11 forcing: atom 0 is a heavy target with multiple bonds. Reverse its
+    // topology order so any "first bond" projection would change, while the
+    // correct H-only contract remains NaN and order-independent.
+    ASSERT_GE(protein->AtomAt(0).bond_indices.size(), 2u);
+    std::reverse(protein->MutableAtomAt(0).bond_indices.begin(),
+                 protein->MutableAtomAt(0).bond_indices.end());
     auto& conf = protein->AddCrystalConformation(positions, 0, 0, 0, "test");
 
     // Attach dependencies
     conf.AttachResult(GeometryResult::Compute(conf));
 
-    // ChargeAssignmentResult: stub first, then overwrite with known values.
-    // Stub assigns uniform 0.1; we overwrite AFTER attachment.
-    conf.AttachResult(ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str()));
+    // Typed dependency marker; source charges below are this analytical
+    // fixture's independent authority, not a force-field table lookup.
+    conf.ForceAttachResultForTesting(
+        std::make_unique<ChargeAssignmentResult>());
 
     conf.MutableAtomAt(0).partial_charge = 0.5;
     conf.MutableAtomAt(1).partial_charge = -0.3;
     conf.MutableAtomAt(2).partial_charge = 0.0;
+    conf.MutableAtomAt(3).partial_charge = 0.0;
+    conf.MutableAtomAt(4).partial_charge = 0.0;
+    conf.MutableAtomAt(0).mopac_charge = 0.5;
+    conf.MutableAtomAt(1).mopac_charge = -0.3;
+    conf.MutableAtomAt(2).mopac_charge = 0.0;
+    conf.MutableAtomAt(3).mopac_charge = 0.0;
+    conf.MutableAtomAt(4).mopac_charge = 0.0;
 
     conf.AttachResult(SpatialIndexResult::Compute(conf));
 
@@ -243,6 +273,29 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
         << "E_y should match analytical value";
     EXPECT_NEAR(ca.coulomb_E_total(2), 0.0, 1e-10)
         << "E_z should be zero (all atoms in xy plane)";
+
+    // C11 source-of-truth check: projections have chemical meaning only for
+    // H with a parent. Heavy atoms are NaN irrespective of their topology;
+    // the H projection is parent-to-H dot E (the +x direction here).
+    EXPECT_TRUE(std::isnan(conf.AtomAt(0).coulomb_E_bond_proj));
+    EXPECT_TRUE(std::isnan(conf.AtomAt(1).coulomb_E_bond_proj));
+    EXPECT_TRUE(std::isnan(conf.AtomAt(0).aromatic_E_bond_proj));
+    EXPECT_TRUE(std::isnan(conf.AtomAt(1).aromatic_E_bond_proj));
+    EXPECT_NEAR(ca.coulomb_E_bond_proj, ca.coulomb_E_total.x(), 1e-12);
+    EXPECT_NEAR(ca.aromatic_E_bond_proj, ca.coulomb_E_aromatic.x(), 1e-12);
+
+    // The MOPAC calculator has the same C11 H-only projection contract.
+    // Its dependency is deliberately bypassed here because the charge values
+    // above are the independent test fixture source of truth.
+    auto mopac_coulomb = MopacCoulombResult::Compute(conf);
+    ASSERT_NE(mopac_coulomb, nullptr);
+    EXPECT_TRUE(std::isnan(conf.AtomAt(0).mopac_coulomb_E_bond_proj));
+    EXPECT_TRUE(std::isnan(conf.AtomAt(1).mopac_coulomb_E_bond_proj));
+    EXPECT_NEAR(conf.AtomAt(2).mopac_coulomb_E_bond_proj,
+                conf.AtomAt(2).mopac_coulomb_E_total.x(), 1e-12);
+    EXPECT_DOUBLE_EQ(
+        conf.AtomAt(2).mopac_coulomb_aromatic_E_magnitude,
+        conf.AtomAt(2).mopac_coulomb_E_aromatic.norm());
 
     // Verify EFG diagonal from atom 0 alone (d along x):
     // V_xx = ke * q * (3*1 - 1)/r^3 = ke * 0.5 * 2/27
@@ -564,8 +617,8 @@ TEST(CoulombOrcaTest, RunOnProtonatedProtein) {
 
 
 // ============================================================================
-// APBS comparison: if both Coulomb and APBS are present, verify that the
-// solvent contribution (APBS - vacuum) is physically reasonable.
+// APBS comparison: the Coulomb solvent surface is an exact read-back alias
+// of the independently computed canonical APBS reaction field.
 // ============================================================================
 
 TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
@@ -585,7 +638,7 @@ TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
     if (!apbs) GTEST_SKIP() << "APBS failed";
     conf.AttachResult(std::move(apbs));
 
-    // Then Coulomb (will compute solvent = APBS - vacuum)
+    // Then Coulomb (will copy the already-defined APBS reaction field)
     conf.AttachResult(CoulombResult::Compute(conf));
 
     int has_solvent = 0;
@@ -593,6 +646,27 @@ TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
     int count = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& ca = conf.AtomAt(ai);
+        for (int d = 0; d < 3; ++d) {
+            EXPECT_DOUBLE_EQ(ca.coulomb_E_solvent(d), ca.apbs_efield(d));
+        }
+        for (int r_i = 0; r_i < 3; ++r_i) {
+            for (int c_i = 0; c_i < 3; ++c_i) {
+                EXPECT_DOUBLE_EQ(ca.coulomb_EFG_solvent(r_i, c_i),
+                                 ca.apbs_efg(r_i, c_i));
+            }
+        }
+        EXPECT_DOUBLE_EQ(ca.coulomb_EFG_solvent_spherical.T0,
+                         ca.apbs_efg_spherical.T0);
+        for (int component = 0; component < 3; ++component) {
+            EXPECT_DOUBLE_EQ(
+                ca.coulomb_EFG_solvent_spherical.T1[component],
+                ca.apbs_efg_spherical.T1[component]);
+        }
+        for (int component = 0; component < 5; ++component) {
+            EXPECT_DOUBLE_EQ(
+                ca.coulomb_EFG_solvent_spherical.T2[component],
+                ca.apbs_efg_spherical.T2[component]);
+        }
         double solv_mag = ca.coulomb_E_solvent.norm();
         double vac_mag = ca.coulomb_E_magnitude;
         if (solv_mag > 1e-10) has_solvent++;

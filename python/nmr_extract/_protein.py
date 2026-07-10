@@ -216,6 +216,24 @@ class CoulombGroup:
     efg_t2: Optional[EFGTensor] = None
     aromatic_E_proj: Optional[np.ndarray] = None
     aromatic_n_src: Optional[np.ndarray] = None
+    E_solvent: Optional[VectorField] = None
+    efg_solvent: Optional[EFGTensor] = None
+
+
+@dataclass(frozen=True)
+class EeqCoulombGroup:
+    """Coulomb E-field and bare EFG decompositions from EEQ charges."""
+    efg: ShieldingTensor
+    E: VectorField
+    E_backbone: VectorField
+    E_sidechain: VectorField
+    E_aromatic: VectorField
+    efg_backbone: EFGTensor
+    efg_sidechain: EFGTensor
+    efg_aromatic: EFGTensor
+    scalars: CoulombScalars
+    aromatic_E_proj: Optional[np.ndarray] = None
+    aromatic_n_src: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -311,6 +329,11 @@ class MopacGroup:
 class APBSGroup:
     E: VectorField
     efg: EFGTensor
+    phi: Optional[np.ndarray] = None
+    E_clamp_mask: Optional[np.ndarray] = None
+    E_clamp_scale: Optional[np.ndarray] = None
+    E_total_diagnostic: Optional[VectorField] = None
+    efg_total_diagnostic: Optional[EFGTensor] = None
 
 
 @dataclass(frozen=True)
@@ -975,6 +998,18 @@ class AIMNet2Group:
     efg: EFGTensor
     efg_aromatic: EFGTensor
     efg_backbone: EFGTensor
+    efg_sidechain: EFGTensor
+    E: VectorField
+    E_backbone: VectorField
+    E_sidechain: VectorField
+    E_aromatic: VectorField
+    energy_mlp: np.ndarray
+    energy_shifted_local: np.ndarray
+    energy_terms: np.ndarray
+    d3_e_disp_atom: np.ndarray
+    d3_cn: np.ndarray
+    d3_c6_stats: np.ndarray
+    aim_projection: np.ndarray
     # ChargeResponseGradient fields are present only when the extraction
     # was run with AIMNet2 model loaded after the 2026-05-09 always-on
     # promotion of AIMNet2ChargeResponseGradientResult. Old outputs leave
@@ -1105,6 +1140,9 @@ class EeqGroup:
     """EEQ geometry-dependent charges (Caldeweyher et al. 2019)."""
     charges: np.ndarray             # (N,) partial charges (elementary charges)
     cn: np.ndarray                  # (N,) coordination number
+    chi_eff: Optional[np.ndarray] = None
+    hardness: Optional[np.ndarray] = None
+    coulomb: Optional[EeqCoulombGroup] = None
 
 
 @dataclass(frozen=True)
@@ -1571,6 +1609,10 @@ def load(path: str | Path) -> Protein:
         efg_t2=get("coulomb_efg_t2"),
         aromatic_E_proj=get("coulomb_aromatic_E_proj"),
         aromatic_n_src=get("coulomb_aromatic_n_src"),
+        E_solvent=get("coulomb_E_solvent")
+            if "coulomb_E_solvent" in available else None,
+        efg_solvent=get("coulomb_efg_solvent")
+            if "coulomb_efg_solvent" in available else None,
     )
     hbond = HBondGroup(
         scalars=get("hbond_scalars"),
@@ -1698,7 +1740,19 @@ def load(path: str | Path) -> Protein:
     # APBS (optional)
     apbs = None
     if "apbs_E" in available:
-        apbs = APBSGroup(E=get("apbs_E"), efg=get("apbs_efg"))
+        apbs = APBSGroup(
+            E=get("apbs_E"),
+            efg=get("apbs_efg"),
+            phi=get("apbs_phi") if "apbs_phi" in available else None,
+            E_clamp_mask=get("apbs_E_clamp_mask")
+                if "apbs_E_clamp_mask" in available else None,
+            E_clamp_scale=get("apbs_E_clamp_scale")
+                if "apbs_E_clamp_scale" in available else None,
+            E_total_diagnostic=get("apbs_E_total_diagnostic")
+                if "apbs_E_total_diagnostic" in available else None,
+            efg_total_diagnostic=get("apbs_efg_total_diagnostic")
+                if "apbs_efg_total_diagnostic" in available else None,
+        )
 
     # Orca DFT (optional)
     orca = None
@@ -1764,6 +1818,18 @@ def load(path: str | Path) -> Protein:
             efg=get("aimnet2_efg"),
             efg_aromatic=get("aimnet2_efg_aromatic"),
             efg_backbone=get("aimnet2_efg_backbone"),
+            efg_sidechain=get("aimnet2_efg_sidechain"),
+            E=get("aimnet2_E"),
+            E_backbone=get("aimnet2_E_backbone"),
+            E_sidechain=get("aimnet2_E_sidechain"),
+            E_aromatic=get("aimnet2_E_aromatic"),
+            energy_mlp=get("aimnet2_energy_mlp"),
+            energy_shifted_local=get("aimnet2_energy_shifted_local"),
+            energy_terms=get("aimnet2_energy_terms"),
+            d3_e_disp_atom=get("aimnet2_d3_e_disp_atom"),
+            d3_cn=get("aimnet2_d3_cn"),
+            d3_c6_stats=get("aimnet2_d3_c6_stats"),
+            aim_projection=get("aimnet2_aim_projection"),
             charge_response_gradient=get("aimnet2_charge_response_gradient")
                 if "aimnet2_charge_response_gradient" in available else None,
             charge_response_gradient_scalar=get("aimnet2_charge_response_gradient_scalar")
@@ -1838,9 +1904,29 @@ def load(path: str | Path) -> Protein:
     # EEQ charges (Caldeweyher 2019 — optional)
     eeq = None
     if "eeq_charges" in available:
+        eeq_coulomb = None
+        if "eeq_coulomb_efg" in available:
+            eeq_coulomb = EeqCoulombGroup(
+                efg=get("eeq_coulomb_efg"),
+                E=get("eeq_coulomb_E"),
+                E_backbone=get("eeq_coulomb_E_backbone"),
+                E_sidechain=get("eeq_coulomb_E_sidechain"),
+                E_aromatic=get("eeq_coulomb_E_aromatic"),
+                efg_backbone=get("eeq_coulomb_efg_backbone"),
+                efg_sidechain=get("eeq_coulomb_efg_sidechain"),
+                efg_aromatic=get("eeq_coulomb_efg_aromatic"),
+                scalars=get("eeq_coulomb_scalars"),
+                aromatic_E_proj=get("eeq_coulomb_aromatic_E_proj")
+                    if "eeq_coulomb_aromatic_E_proj" in available else None,
+                aromatic_n_src=get("eeq_coulomb_aromatic_n_src")
+                    if "eeq_coulomb_aromatic_n_src" in available else None,
+            )
         eeq = EeqGroup(
             charges=get("eeq_charges"),
             cn=get("eeq_cn"),
+            chi_eff=get("eeq_chi_eff") if "eeq_chi_eff" in available else None,
+            hardness=get("eeq_hardness") if "eeq_hardness" in available else None,
+            coulomb=eeq_coulomb,
         )
 
     # Tripeptide DFT shielding (ProCS15 / Larsen 2015) — attached when

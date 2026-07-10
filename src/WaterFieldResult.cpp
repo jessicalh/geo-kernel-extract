@@ -68,6 +68,7 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
     // For each protein atom, sum E-field from nearby water charges.
     // Water molecule has 3 charge sites: O (q_O), H1 (q_H), H2 (q_H).
     //
+    // r_ij = target_i - source_j, matching CoulombResult.
     // E_i = COULOMB_KE * Σ_j q_j * r_ij / |r_ij|³   (V/A)
     // V_ij = COULOMB_KE * q_j * (3 r_ij r_ij^T / |r_ij|⁵  -  I / |r_ij|³)  (V/A²)
 
@@ -91,7 +92,7 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
             const auto& water = solvent.waters[wi];
 
             // Quick distance check on oxygen
-            Vec3 r_O = water.O_pos - pos_i;
+            Vec3 r_O = pos_i - water.O_pos;
             double d_O_sq = r_O.squaredNorm();
             if (d_O_sq > cutoff_sq) {
                 continue;
@@ -107,7 +108,7 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
 
             // Sum contribution from all 3 charge sites
             auto add_charge = [&](const Vec3& q_pos, double q) {
-                Vec3 r = q_pos - pos_i;
+                Vec3 r = pos_i - q_pos;
                 double r2 = r.squaredNorm();
                 double r_mag = std::sqrt(r2);
 

@@ -142,7 +142,7 @@ def write_required_sdk_npys(
         dtype = np.float64
         if stem in {"element", "residue_index", "residue_type"}:
             dtype = np.int32
-        elif stem == "aimnet2_aim":
+        elif stem in {"aimnet2_aim", "aimnet2_aim_projection"}:
             dtype = np.float32
 
         data = np.zeros(shape, dtype=dtype)

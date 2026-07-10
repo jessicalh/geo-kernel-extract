@@ -14,8 +14,12 @@ extern "C" {
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <vector>
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <vector>
 
 namespace nmr {
 
@@ -122,7 +126,112 @@ static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
 // APBS solve path: calls the C bridge, extracts E-field and EFG per atom
 // ============================================================================
 
-static bool ComputeViaApbs(ProteinConformation& conf) {
+static Vec3 SanitizeApbsVector(Vec3 value,
+                               std::size_t atom_index,
+                               const char* field_name,
+                               std::uint8_t mask_bit,
+                               std::uint8_t& sanitizer_mask) {
+    for (int d = 0; d < 3; ++d) {
+        if (!std::isfinite(value(d))) {
+            sanitizer_mask |= mask_bit;
+            OperationLog::Warn("ApbsFieldResult::Compute",
+                std::string("non-finite ") + field_name +
+                " at atom " + std::to_string(atom_index) +
+                "; applying established APBS whole-vector zero sanitizer");
+            return Vec3::Zero();
+        }
+    }
+    return value;
+}
+
+static Mat3 SanitizeApbsMatrix(Mat3 value,
+                               std::size_t atom_index,
+                               const char* field_name,
+                               std::uint8_t mask_bit,
+                               std::uint8_t& sanitizer_mask) {
+    int replaced = 0;
+    for (int a = 0; a < 3; ++a) {
+        for (int b = 0; b < 3; ++b) {
+            if (!std::isfinite(value(a, b))) {
+                value(a, b) = 0.0;
+                ++replaced;
+            }
+        }
+    }
+    if (replaced != 0) {
+        sanitizer_mask |= mask_bit;
+        OperationLog::Warn("ApbsFieldResult::Compute",
+            std::string("non-finite ") + field_name +
+            " entries at atom " + std::to_string(atom_index) +
+            "; replaced " + std::to_string(replaced) +
+            " entries with zero under established APBS matrix sanitizer");
+    }
+    return value;
+}
+
+static bool SameApbsGridGeometry(const ApbsGridResult& total,
+                                 const ApbsGridResult& reference,
+                                 std::string& reason) {
+    for (int d = 0; d < 3; ++d) {
+        if (total.dims[d] <= 1 || reference.dims[d] <= 1) {
+            reason = "invalid returned grid dimension on axis " +
+                     std::to_string(d);
+            return false;
+        }
+        if (total.dims[d] != reference.dims[d]) {
+            reason = "dimension mismatch on axis " + std::to_string(d) +
+                     ": total=" + std::to_string(total.dims[d]) +
+                     " reference=" + std::to_string(reference.dims[d]);
+            return false;
+        }
+        if (!std::isfinite(total.origin[d]) ||
+            !std::isfinite(reference.origin[d]) ||
+            std::abs(total.origin[d] - reference.origin[d]) > 1e-12) {
+            reason = "origin mismatch/nonfinite on axis " + std::to_string(d);
+            return false;
+        }
+        if (!std::isfinite(total.spacing[d]) ||
+            !std::isfinite(reference.spacing[d]) ||
+            std::abs(total.spacing[d] - reference.spacing[d]) > 1e-12) {
+            reason = "spacing mismatch/nonfinite on axis " + std::to_string(d);
+            return false;
+        }
+    }
+    if (total.n_points != reference.n_points) {
+        reason = "point-count mismatch: total=" +
+                 std::to_string(total.n_points) + " reference=" +
+                 std::to_string(reference.n_points);
+        return false;
+    }
+    if (total.n_points <= 0 || !total.data || !reference.data) {
+        reason = "successful solve returned empty grid data";
+        return false;
+    }
+    const std::uint64_t expected_points =
+        static_cast<std::uint64_t>(total.dims[0]) *
+        static_cast<std::uint64_t>(total.dims[1]) *
+        static_cast<std::uint64_t>(total.dims[2]);
+    if (expected_points != static_cast<std::uint64_t>(total.n_points)) {
+        reason = "returned point count does not equal dimensions product";
+        return false;
+    }
+    return true;
+}
+
+static GridCache CacheGrid(const ApbsGridResult& source) {
+    GridCache grid;
+    grid.origin = Vec3(source.origin[0], source.origin[1], source.origin[2]);
+    grid.spacing = Vec3(source.spacing[0], source.spacing[1], source.spacing[2]);
+    grid.dims[0] = source.dims[0];
+    grid.dims[1] = source.dims[1];
+    grid.dims[2] = source.dims[2];
+    grid.data.assign(source.data, source.data + source.n_points);
+    grid.valid = true;
+    return grid;
+}
+
+bool ApbsFieldResult::ComputeViaApbs(ProteinConformation& conf,
+                                     ApbsFieldResult& result) {
     const Protein& protein = conf.ProteinRef();
     const size_t n_atoms = conf.AtomCount();
     const auto& charge_result = conf.Result<ChargeAssignmentResult>();
@@ -158,27 +267,40 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
 
     for (size_t i = 0; i < n_atoms; ++i) {
         Vec3 pos = conf.PositionAt(i);
+        if (!pos.allFinite()) {
+            OperationLog::Error("ApbsFieldResult::Compute",
+                "non-finite position at atom " + std::to_string(i));
+            return false;
+        }
         x_coords[i] = pos.x();
         y_coords[i] = pos.y();
         z_coords[i] = pos.z();
         charges[i] = conf.AtomAt(i).partial_charge;
+        if (!std::isfinite(charges[i])) {
+            OperationLog::Error("ApbsFieldResult::Compute",
+                "non-finite partial charge at atom " + std::to_string(i));
+            return false;
+        }
 
         double r = conf.AtomAt(i).pb_radius;
-        if (r <= 0.0) {
+        if (!std::isfinite(r) || r <= 0.0) {
             OperationLog::Error("ApbsFieldResult::Compute",
-                "missing PB radius for atom " + std::to_string(i) +
+                "invalid PB radius for atom " + std::to_string(i) +
                 " (" + protein.AtomAt(i).pdb_atom_name + ")");
             return false;
         }
         radii[i] = r;
     }
 
-    // Grid sizing follows the configured APBS padding conventions.
-    // fine_dims:   extent + configured fine padding (default 40 A total),
-    //              with configured minimum dimension per axis.
-    // coarse_dims: fine + configured coarse padding (default 30 A).
-    // grid_dim:    configured points per axis (default 161).
-    int grid_dim = static_cast<int>(CalculatorConfig::Get("apbs_grid_dim"));
+    // One honest manual grid: bbox extent + configured total padding,
+    // floored by the configured minimum length on each axis.
+    const int grid_dim =
+        static_cast<int>(CalculatorConfig::Get("apbs_grid_dim"));
+    if (grid_dim <= 1) {
+        OperationLog::Error("ApbsFieldResult::Compute",
+            "apbs_grid_dim must be greater than one");
+        return false;
+    }
 
     Vec3 bbox_min(x_coords[0], y_coords[0], z_coords[0]);
     Vec3 bbox_max = bbox_min;
@@ -189,129 +311,231 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     }
     Vec3 extent = bbox_max - bbox_min;
 
-    const double fine_padding   = CalculatorConfig::Get("apbs_fine_padding_A");
-    const double fine_min_dim    = CalculatorConfig::Get("apbs_fine_min_dim_A");
-    const double coarse_padding  = CalculatorConfig::Get("apbs_coarse_padding_A");
-    double fine_dims[3], coarse_dims[3];
+    const double manual_padding =
+        CalculatorConfig::Get("apbs_manual_grid_padding_A");
+    const double manual_min_dim =
+        CalculatorConfig::Get("apbs_manual_grid_min_dim_A");
+    if (!std::isfinite(manual_padding) || manual_padding < 0.0 ||
+        !std::isfinite(manual_min_dim) || manual_min_dim <= 0.0) {
+        OperationLog::Error("ApbsFieldResult::Compute",
+            "invalid APBS manual-grid padding or minimum dimension");
+        return false;
+    }
+    std::array<double, 3> grid_lengths{};
     for (int d = 0; d < 3; ++d) {
-        fine_dims[d]   = std::max(extent(d) + fine_padding, fine_min_dim);
-        coarse_dims[d] = fine_dims[d] + coarse_padding;
+        grid_lengths[static_cast<std::size_t>(d)] =
+            std::max(extent(d) + manual_padding, manual_min_dim);
     }
 
     // Standard PB parameters
-    double pdie = CalculatorConfig::Get("apbs_protein_dielectric");   // protein interior dielectric
-    double sdie = CalculatorConfig::Get("apbs_solvent_dielectric");   // solvent dielectric (water, 25C)
-    double temperature = CalculatorConfig::Get("apbs_temperature_K"); // Kelvin
-    double ionic_strength = CalculatorConfig::Get("apbs_ionic_strength_M"); // molar (physiological)
+    const double pdie = CalculatorConfig::Get("apbs_protein_dielectric");
+    const double sdie = CalculatorConfig::Get("apbs_solvent_dielectric");
+    const double temperature = CalculatorConfig::Get("apbs_temperature_K");
+    const double ionic_strength =
+        CalculatorConfig::Get("apbs_ionic_strength_M");
+    const double thermal_voltage = ApbsThermalVoltage(temperature);
+    const double efield_clamp =
+        CalculatorConfig::Get("efield_magnitude_sanity_clamp");
+    if (!std::isfinite(pdie) || pdie <= 0.0 ||
+        !std::isfinite(sdie) || sdie <= 0.0 ||
+        !std::isfinite(temperature) || temperature <= 0.0 ||
+        !std::isfinite(ionic_strength) || ionic_strength < 0.0 ||
+        !std::isfinite(thermal_voltage) || thermal_voltage <= 0.0 ||
+        !std::isfinite(efield_clamp) || efield_clamp < 0.0) {
+        OperationLog::Error("ApbsFieldResult::Compute",
+            "invalid APBS dielectric, temperature, ionic strength, or clamp");
+        return false;
+    }
 
     OperationLog::Log(OperationLog::Level::Info, LogAPBS,
         "ApbsFieldResult",
         "APBS solve: " + std::to_string(n_atoms) + " atoms, " +
         "grid=" + std::to_string(grid_dim) + "^3, " +
-        "fine=[" + std::to_string(fine_dims[0]) + "," +
-        std::to_string(fine_dims[1]) + "," +
-        std::to_string(fine_dims[2]) + "]A, " +
+        "manual_lengths=[" + std::to_string(grid_lengths[0]) + "," +
+        std::to_string(grid_lengths[1]) + "," +
+        std::to_string(grid_lengths[2]) + "]A, " +
         "pdie=" + std::to_string(pdie) + " sdie=" + std::to_string(sdie));
 
-    // Call the C bridge
-    ApbsGridResult apbs_grid;
+    std::array<double, 2> ion_concentrations = {
+        ionic_strength, ionic_strength};
+    std::array<double, 2> ion_radii = {0.95, 1.81};
+    std::array<double, 2> ion_charges = {1.0, -1.0};
+
+    const ApbsSolveParams total_params = {
+        grid_dim, grid_dim, grid_dim,
+        grid_lengths[0], grid_lengths[1], grid_lengths[2],
+        pdie, sdie, temperature,
+        2,
+        ion_concentrations.data(), ion_radii.data(), ion_charges.data()};
+
+    ApbsSolveParams reference_params = total_params;
+    reference_params.pdie = 1.0;
+    reference_params.sdie = 1.0;
+    reference_params.mobile_ion_count = 0;
+    reference_params.mobile_ion_conc_M = nullptr;
+    reference_params.mobile_ion_radius_A = nullptr;
+    reference_params.mobile_ion_charge_e = nullptr;
+
+    ApbsGridResult total_grid{};
     int rc = apbs_solve(
         static_cast<int>(n_atoms),
         x_coords.data(), y_coords.data(), z_coords.data(),
         charges.data(), radii.data(),
-        pdie, sdie,
-        temperature,
-        ionic_strength,
-        grid_dim, grid_dim, grid_dim,
-        fine_dims[0], fine_dims[1], fine_dims[2],
-        coarse_dims[0], coarse_dims[1], coarse_dims[2],
-        &apbs_grid
-    );
+        &total_params, &total_grid);
 
     if (rc != APBS_BRIDGE_OK) {
-        std::string msg = "APBS solve failed: " + std::string(apbs_grid.error_msg);
+        const std::string msg = "APBS total-PB solve failed: " +
+            std::string(total_grid.error_msg);
         OperationLog::Warn("ApbsFieldResult::Compute", msg);
-        apbs_free_grid(&apbs_grid);
+        apbs_free_grid(&total_grid);
         return false;
     }
 
-    // Cache the grid for field/gradient extraction
-    GridCache grid;
-    grid.origin = Vec3(apbs_grid.origin[0], apbs_grid.origin[1], apbs_grid.origin[2]);
-    grid.spacing = Vec3(apbs_grid.spacing[0], apbs_grid.spacing[1], apbs_grid.spacing[2]);
-    grid.dims[0] = apbs_grid.dims[0];
-    grid.dims[1] = apbs_grid.dims[1];
-    grid.dims[2] = apbs_grid.dims[2];
-    grid.data.assign(apbs_grid.data, apbs_grid.data + apbs_grid.n_points);
-    grid.valid = true;
+    ApbsGridResult reference_grid{};
+    rc = apbs_solve(
+        static_cast<int>(n_atoms),
+        x_coords.data(), y_coords.data(), z_coords.data(),
+        charges.data(), radii.data(),
+        &reference_params, &reference_grid);
+
+    if (rc != APBS_BRIDGE_OK) {
+        const std::string msg =
+            "APBS homogeneous-vacuum reference solve failed: " +
+            std::string(reference_grid.error_msg);
+        OperationLog::Warn("ApbsFieldResult::Compute", msg);
+        apbs_free_grid(&total_grid);
+        apbs_free_grid(&reference_grid);
+        return false;
+    }
+
+    std::string geometry_mismatch;
+    if (!SameApbsGridGeometry(total_grid, reference_grid,
+                              geometry_mismatch)) {
+        OperationLog::Error("ApbsFieldResult::Compute",
+            "APBS total/reference grid geometry mismatch: " +
+            geometry_mismatch);
+        apbs_free_grid(&total_grid);
+        apbs_free_grid(&reference_grid);
+        return false;
+    }
+
+    GridCache total_cache = CacheGrid(total_grid);
+    GridCache reaction_cache = total_cache;
+    for (int k = 0; k < total_grid.n_points; ++k) {
+        reaction_cache.data[static_cast<std::size_t>(k)] =
+            total_grid.data[k] - reference_grid.data[k];
+    }
+
+    result.grid_dims_ = {
+        static_cast<std::uint64_t>(total_grid.dims[0]),
+        static_cast<std::uint64_t>(total_grid.dims[1]),
+        static_cast<std::uint64_t>(total_grid.dims[2])};
+    result.grid_lengths_A_ = grid_lengths;
+    result.grid_origin_A_ = {
+        total_grid.origin[0], total_grid.origin[1], total_grid.origin[2]};
+    result.grid_spacing_A_ = {
+        total_grid.spacing[0], total_grid.spacing[1], total_grid.spacing[2]};
+    result.manual_grid_padding_A_ = manual_padding;
+    result.manual_grid_min_dim_A_ = manual_min_dim;
+    result.temperature_K_ = temperature;
+    result.thermal_voltage_V_ = thermal_voltage;
+    result.efield_clamp_threshold_ = efield_clamp;
 
     OperationLog::Log(OperationLog::Level::Info, LogAPBS,
         "ApbsFieldResult",
-        "Grid cached: " + std::to_string(apbs_grid.n_points) + " points, " +
-        "spacing=" + std::to_string(grid.spacing(0)) + "A");
+        "matched total/reference manual grid: dims=[" +
+        std::to_string(total_grid.dims[0]) + "," +
+        std::to_string(total_grid.dims[1]) + "," +
+        std::to_string(total_grid.dims[2]) + "] origin_A=[" +
+        std::to_string(total_grid.origin[0]) + "," +
+        std::to_string(total_grid.origin[1]) + "," +
+        std::to_string(total_grid.origin[2]) + "] spacing_A=[" +
+        std::to_string(total_grid.spacing[0]) + "," +
+        std::to_string(total_grid.spacing[1]) + "," +
+        std::to_string(total_grid.spacing[2]) + "]");
 
-    apbs_free_grid(&apbs_grid);
+    apbs_free_grid(&total_grid);
+    apbs_free_grid(&reference_grid);
 
-    // Extract per-atom E-field and EFG from the potential grid
+    // Compute every per-atom value here. WriteFeatures is pure read-back.
+    std::vector<Vec3> reaction_E(n_atoms);
+    std::vector<Mat3> reaction_EFG(n_atoms);
+    std::vector<double> reaction_phi(n_atoms);
+    std::vector<std::uint8_t> clamp_mask(n_atoms, 0);
+    std::vector<double> clamp_scale(n_atoms, 1.0);
+    std::vector<std::uint8_t> nonfinite_sanitizer_mask(n_atoms, 0);
+    std::vector<Vec3> total_E(n_atoms);
+    std::vector<Mat3> total_EFG(n_atoms);
+
     for (size_t i = 0; i < n_atoms; ++i) {
-        Vec3 pos = conf.PositionAt(i);
+        const Vec3 pos = conf.PositionAt(i);
 
-        Vec3 E = ElectricFieldFromGrid(grid, pos);
+        Vec3 E = ElectricFieldFromGrid(reaction_cache, pos) * thermal_voltage;
         // FieldGradientFromGrid returns the field gradient dE_i/dr_j = -d2(phi).
         // The Coulomb-family EFG (MOPAC/FF/AIMNet) is the potential Hessian +d2(phi)
-        // = -dE/dr, which is also the standard nuclear-EFG convention. Negate to align:
-        // apbs_efg becomes sign-consistent with the family, and coulomb_EFG_solvent
-        // (= apbs_efg - EFG_total) becomes a like-for-like subtraction.
-        Mat3 EFG = -FieldGradientFromGrid(grid, pos);
+        // = -dE/dr, the standard nuclear-EFG convention.
+        Mat3 EFG =
+            -FieldGradientFromGrid(reaction_cache, pos) * thermal_voltage;
+        Vec3 E_total =
+            ElectricFieldFromGrid(total_cache, pos) * thermal_voltage;
+        Mat3 EFG_total =
+            -FieldGradientFromGrid(total_cache, pos) * thermal_voltage;
 
-        // finite-value guard (zero non-finite E + EFG)
-        bool has_nan = false;
-        for (int d = 0; d < 3; ++d) {
-            if (std::isnan(E(d)) || std::isinf(E(d))) { has_nan = true; break; }
-        }
-        if (has_nan) {
-            E = Vec3::Zero();
-            EFG = Mat3::Zero();
-        } else {
-            // field magnitude cap: a finite-value guard on E only. EFG is
-            // left to the traceless projection and its own finite-value guard;
-            // coupling the rescale would invent a physical relationship that
-            // is not in the code or the PB model.
-            //
-            // Intentionally NOT the shared efield_magnitude_sanity_clamp
-            // config key (used by CoulombResult / WaterFieldResult /
-            // MopacCoulombResult): that key is in V/A, but here E is still in
-            // APBS-native kT/(e*A) units — the KT_OVER_E_298K conversion is
-            // below. The same number means different physical magnitudes in
-            // the two unit systems, so this guard keeps its own constant.
-            // (Whether APBS should instead clamp post-conversion in V/A to
-            // truly match the siblings is a physics/blessing question, not a
-            // config-plumbing one.)
-            double E_mag = E.norm();
-            if (E_mag > APBS_SANITY_LIMIT) {
-                E *= APBS_SANITY_LIMIT / E_mag;
-            }
+        E = SanitizeApbsVector(
+            E, i, "canonical reaction E-field", 1u << 0,
+            nonfinite_sanitizer_mask[i]);
+        EFG = SanitizeApbsMatrix(
+            EFG, i, "canonical reaction EFG", 1u << 1,
+            nonfinite_sanitizer_mask[i]);
+        E_total = SanitizeApbsVector(
+            E_total, i, "raw total-PB diagnostic E-field", 1u << 2,
+            nonfinite_sanitizer_mask[i]);
+        EFG_total = SanitizeApbsMatrix(
+            EFG_total, i, "raw total-PB diagnostic EFG", 1u << 3,
+            nonfinite_sanitizer_mask[i]);
+
+        const double phi =
+            reaction_cache.Interpolate(pos) * thermal_voltage;
+        if (!std::isfinite(phi)) {
+            OperationLog::Error("ApbsFieldResult::Compute",
+                "non-finite reaction potential at atom " +
+                std::to_string(i) +
+                "; refusing to attach APBS result (no silent zero sanitizer)");
+            return false;
         }
 
-        for (int a = 0; a < 3; ++a)
-            for (int b = 0; b < 3; ++b)
-                if (std::isnan(EFG(a,b)) || std::isinf(EFG(a,b)))
-                    EFG(a,b) = 0.0;
+        const double original_norm = E.norm();
+        if (original_norm > efield_clamp) {
+            clamp_scale[i] = efield_clamp / original_norm;
+            E *= clamp_scale[i];
+            clamp_mask[i] = 1;
+        }
 
-        // kT/(e*A) -> V/A ; kT/(e*A^2) -> V/A^2  (comparable to CoulombResult)
-        E *= KT_OVER_E_298K;
-        EFG *= KT_OVER_E_298K;
+        reaction_E[i] = E;
+        reaction_EFG[i] = EFG;
+        reaction_phi[i] = phi;
+        total_E[i] = E_total;
+        total_EFG[i] = EFG_total;
+    }
 
-        // store Mat3 + T2
+    for (size_t i = 0; i < n_atoms; ++i) {
         auto& ca = conf.MutableAtomAt(i);
-        ca.apbs_efield = E;
-        ca.apbs_efg = EFG;
-        ca.apbs_efg_spherical = SphericalTensor::Decompose(EFG);
+        ca.apbs_efield = reaction_E[i];
+        ca.apbs_efg = reaction_EFG[i];
+        ca.apbs_efg_spherical = SphericalTensor::Decompose(reaction_EFG[i]);
+        ca.apbs_phi = reaction_phi[i];
+        ca.apbs_efield_clamp_mask = clamp_mask[i];
+        ca.apbs_efield_clamp_scale = clamp_scale[i];
+        ca.apbs_nonfinite_sanitizer_mask = nonfinite_sanitizer_mask[i];
+        ca.apbs_efield_total_diagnostic = total_E[i];
+        ca.apbs_efg_total_diagnostic = total_EFG[i];
+        ca.apbs_efg_total_diagnostic_spherical =
+            SphericalTensor::Decompose(total_EFG[i]);
     }
 
     OperationLog::Log(OperationLog::Level::Info, LogAPBS,
         "ApbsFieldResult::Compute",
-        "APBS complete: E-field and EFG extracted for " +
+        "APBS complete: reaction potential/E/EFG and total diagnostics for " +
         std::to_string(n_atoms) + " atoms");
 
     return true;
@@ -336,7 +560,7 @@ std::unique_ptr<ApbsFieldResult> ApbsFieldResult::Compute(
     result->conf_ = &conf;
 
     // Run the APBS Poisson-Boltzmann solve.
-    bool apbs_ok = ComputeViaApbs(conf);
+    bool apbs_ok = ApbsFieldResult::ComputeViaApbs(conf, *result);
 
     if (!apbs_ok) {
         OperationLog::Error("ApbsFieldResult::Compute",
@@ -362,13 +586,33 @@ SphericalTensor ApbsFieldResult::FieldGradientSphericalAt(size_t atom_index) con
 
 
 // ============================================================================
-// Feature export: apbs_E (N,3), apbs_efg (N,5) — T2 only (T0+T1 structural
-// zeros). T2 components emitted inline below.
+// Feature export is pure read-back from ConformationAtom fields populated by
+// ComputeViaApbs. No APBS quantity is re-derived here.
 // ============================================================================
 
 int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
                                     const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
+
+    OperationLog::Info(LogAPBS, "ApbsFieldResult::WriteFeatures",
+        "reaction-field schema: grid_mode=single_manual dims=[" +
+        std::to_string(grid_dims_[0]) + "," +
+        std::to_string(grid_dims_[1]) + "," +
+        std::to_string(grid_dims_[2]) + "] lengths_A=[" +
+        std::to_string(grid_lengths_A_[0]) + "," +
+        std::to_string(grid_lengths_A_[1]) + "," +
+        std::to_string(grid_lengths_A_[2]) + "] origin_A=[" +
+        std::to_string(grid_origin_A_[0]) + "," +
+        std::to_string(grid_origin_A_[1]) + "," +
+        std::to_string(grid_origin_A_[2]) + "] spacing_A=[" +
+        std::to_string(grid_spacing_A_[0]) + "," +
+        std::to_string(grid_spacing_A_[1]) + "," +
+        std::to_string(grid_spacing_A_[2]) + "] padding_A=" +
+        std::to_string(manual_grid_padding_A_) + " min_dim_A=" +
+        std::to_string(manual_grid_min_dim_A_) + " temperature_K=" +
+        std::to_string(temperature_K_) + " thermal_voltage_V=" +
+        std::to_string(thermal_voltage_V_) + " efield_clamp_V_per_A=" +
+        std::to_string(efield_clamp_threshold_));
 
     // apbs_E: (N, 3) — solvated Poisson-Boltzmann E-field in V/A
     {
@@ -390,7 +634,55 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         NpyWriter::WriteFloat64(output_dir + "/apbs_efg.npy", data.data(), N, 5);
     }
 
-    return 2;
+    // apbs_phi: (N,) — canonical reaction potential in V.
+    {
+        std::vector<double> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).apbs_phi;
+        NpyWriter::WriteFloat64(output_dir + "/apbs_phi.npy", data.data(), N);
+    }
+
+    // Clamp audit for canonical reaction E only.
+    {
+        std::vector<std::uint8_t> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).apbs_efield_clamp_mask;
+        NpyWriter::WriteUInt8(output_dir + "/apbs_E_clamp_mask.npy",
+                              data.data(), N);
+    }
+    {
+        std::vector<double> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).apbs_efield_clamp_scale;
+        NpyWriter::WriteFloat64(output_dir + "/apbs_E_clamp_scale.npy",
+                                data.data(), N);
+    }
+
+    // Raw total-PB derivatives are diagnostics: finite-sanitized, unclamped.
+    {
+        std::vector<double> data(N * 3);
+        for (size_t i = 0; i < N; ++i) {
+            const Vec3& E = conf.AtomAt(i).apbs_efield_total_diagnostic;
+            data[i*3+0] = E.x();
+            data[i*3+1] = E.y();
+            data[i*3+2] = E.z();
+        }
+        NpyWriter::WriteFloat64(
+            output_dir + "/apbs_E_total_diagnostic.npy",
+            data.data(), N, 3);
+    }
+    {
+        std::vector<double> data(N * 5);
+        for (size_t i = 0; i < N; ++i) {
+            conf.AtomAt(i).apbs_efg_total_diagnostic_spherical.PackT2(
+                &data[i*5]);
+        }
+        NpyWriter::WriteFloat64(
+            output_dir + "/apbs_efg_total_diagnostic.npy",
+            data.data(), N, 5);
+    }
+
+    return 7;
 }
 
 }  // namespace nmr

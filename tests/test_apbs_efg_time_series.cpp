@@ -173,11 +173,10 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(source_field, "apbs_efg_spherical");
     EXPECT_EQ(operation, "linearized_poisson_boltzmann_grid_hessian_traceless_t2");
     EXPECT_EQ(source,
-        "ApbsFieldResult.apbs_efg_spherical; APBS EFG is the "
-        "sign-aligned Hessian of the linearized Poisson-Boltzmann "
-        "potential, symmetrized and trace-projected at source; T2 "
-        "components 0..4 only; T0/T1 structurally zero by Hessian "
-        "symmetry/traceless projection.");
+        "ApbsFieldResult.apbs_efg_spherical; canonical APBS reaction "
+        "EFG (total PB minus homogeneous-vacuum reference), sign-aligned "
+        "potential Hessian, symmetrized and trace-projected at source; "
+        "T2 components 0..4 only.");
     EXPECT_EQ(policy,
         "required_conformation_result -- production RunConfiguration "
         "requires ApbsFieldResult for this trajectory result; Compute "
@@ -209,6 +208,29 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     std::vector<std::uint8_t> mask(kFrames);
     mask_ds.read(mask.data());
     for (auto m : mask) EXPECT_EQ(m, 1u);
+
+    for (const std::string& name : {
+            "apbs_grid_dims_per_frame", "apbs_grid_lengths_A_per_frame",
+            "apbs_grid_origin_A_per_frame", "apbs_grid_spacing_A_per_frame"}) {
+        EXPECT_EQ(grp.getDataSet(name).getSpace().getDimensions(),
+                  (std::vector<std::size_t>{kFrames, 3u}));
+    }
+    std::string field_quantity, grid_mode, reference_subtracts, rank3_policy;
+    grp.getAttribute("field_quantity").read(field_quantity);
+    grp.getAttribute("apbs_grid_mode").read(grid_mode);
+    grp.getAttribute("reference_subtracts").read(reference_subtracts);
+    grp.getAttribute("rank3_policy").read(rank3_policy);
+    EXPECT_EQ(field_quantity,
+              "reaction_field_total_minus_homogeneous_vacuum_reference");
+    EXPECT_EQ(grid_mode, "single_manual");
+    EXPECT_EQ(reference_subtracts, "all_solute_charges");
+    EXPECT_EQ(rank3_policy, "not_emitted_no_local_frame");
+    int max_rank = 0;
+    bool higher_present = true;
+    grp.getAttribute("max_potential_derivative_rank").read(max_rank);
+    grp.getAttribute("higher_derivatives_present").read(higher_present);
+    EXPECT_EQ(max_rank, 2);
+    EXPECT_FALSE(higher_present);
 
     fs::remove(h5_path);
 }
@@ -266,6 +288,14 @@ TEST(ApbsEfgTimeSeries, SourceAbsentNanFillAndMaskZero) {
     std::vector<std::uint8_t> mask(kFrames);
     mask_ds.read(mask.data());
     for (auto m : mask) EXPECT_EQ(m, 0u);
+
+    std::vector<std::uint64_t> grid_dims(kFrames * 3);
+    std::vector<double> grid_lengths(kFrames * 3);
+    grp.getDataSet("apbs_grid_dims_per_frame").read(grid_dims.data());
+    grp.getDataSet("apbs_grid_lengths_A_per_frame").read(
+        grid_lengths.data());
+    for (const auto value : grid_dims) EXPECT_EQ(value, 0u);
+    for (const auto value : grid_lengths) EXPECT_TRUE(std::isnan(value));
     fs::remove(h5_path);
 }
 
@@ -351,9 +381,8 @@ TEST(ApbsEfgTimeSeries, FinalizeIdempotency) {
 // DenseBuffer materialises, (b) every T2 component is finite,
 // (c) at least one atom has |T2| > 0.01 V/Å² (calc is firing —
 // catches the "all zeros" failure mode), (d) all values are within
-// a generous physical sanity limit (T2 components are V/Å², so
-// bounded by APBS_SANITY_LIMIT_EFG ~ 100 V/Å² as a loose bound;
-// log don't assert per feedback_log_overages_dont_assert).
+// a generous logged physical scale (T2 components are V/Å² and are not
+// magnitude-clamped; log overages rather than asserting on them).
 
 TEST(ApbsEfgTimeSeries, Integration1P9J) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
@@ -412,4 +441,32 @@ TEST(ApbsEfgTimeSeries, Integration1P9J) {
     // Mask should be all-1 (ApbsFieldResult is Require'd).
     auto& tr = tp.Result<nmr::ApbsEfgTimeSeriesTrajectoryResult>();
     EXPECT_EQ(tr.NumFrames(), T);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("apbs_efg_ts_integration_" + std::to_string(::getpid()) + ".h5"))
+        .string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate);
+      tr.WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup("/trajectory/apbs_efg_time_series");
+    double temperature = 0.0;
+    double thermal_voltage = 0.0;
+    double padding = 0.0;
+    double min_dim = 0.0;
+    grp.getAttribute("apbs_temperature_K").read(temperature);
+    grp.getAttribute("apbs_thermal_voltage_V").read(thermal_voltage);
+    grp.getAttribute("apbs_manual_grid_padding_A").read(padding);
+    grp.getAttribute("apbs_manual_grid_min_dim_A").read(min_dim);
+    EXPECT_DOUBLE_EQ(temperature,
+        nmr::CalculatorConfig::Get("apbs_temperature_K"));
+    EXPECT_DOUBLE_EQ(thermal_voltage,
+        nmr::ApbsThermalVoltage(temperature));
+    EXPECT_DOUBLE_EQ(padding,
+        nmr::CalculatorConfig::Get("apbs_manual_grid_padding_A"));
+    EXPECT_DOUBLE_EQ(min_dim,
+        nmr::CalculatorConfig::Get("apbs_manual_grid_min_dim_A"));
+    EXPECT_EQ(grp.getDataSet("apbs_grid_dims_per_frame")
+                  .getSpace().getDimensions(),
+              (std::vector<std::size_t>{T, 3u}));
+    fs::remove(h5_path);
 }

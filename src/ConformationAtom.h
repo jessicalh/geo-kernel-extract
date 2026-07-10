@@ -21,6 +21,7 @@ namespace nmr {
 // Defined here (not AIMNet2Result.h) because ConformationAtom needs it
 // for the array extent, and ConformationAtom.h must not include torch headers.
 static constexpr size_t AIMNET2_AIM_DIMS = 256;
+static constexpr size_t AIMNET2_AIM_PROJECTION_DIMS = 32;
 
 class ProteinConformation;
 
@@ -198,6 +199,7 @@ public:
     SphericalTensor coulomb_EFG_aromatic_spherical;
     Vec3 coulomb_E_solvent = Vec3::Zero();
     Mat3 coulomb_EFG_solvent = Mat3::Zero();
+    SphericalTensor coulomb_EFG_solvent_spherical;
     double coulomb_E_magnitude = 0.0;
     double coulomb_E_bond_proj = 0.0;
     double coulomb_E_backbone_frac = 0.0;  // projection of E_bb along E_total dir (V/A)
@@ -224,14 +226,25 @@ public:
     double mopac_coulomb_E_magnitude = 0.0;
     double mopac_coulomb_E_bond_proj = 0.0;
     double mopac_coulomb_E_backbone_frac = 0.0;
+    double mopac_coulomb_aromatic_E_magnitude = 0.0;
     SphericalTensor mopac_coulomb_shielding_contribution;
 
-    // === APBS solvated fields (ApbsFieldResult) ===
-    // Units: V/A (E-field), V/A^2 (EFG). Converted from APBS kT/(e*A)
-    // by KT_OVER_E_298K. Same units as CoulombResult for direct comparison.
+    // === APBS reaction fields (ApbsFieldResult) ===
+    // Canonical fields are total PB minus the homogeneous-vacuum reference.
+    // Units: V/A (E-field), V/A^2 (EFG), using the configured temperature.
     Vec3 apbs_efield = Vec3::Zero();
     Mat3 apbs_efg = Mat3::Zero();
     SphericalTensor apbs_efg_spherical;
+    double apbs_phi = 0.0;  // reaction potential, V
+    std::uint8_t apbs_efield_clamp_mask = 0;
+    double apbs_efield_clamp_scale = 1.0;
+    // Bit mask for the retained legacy APBS nonfinite sanitizers:
+    // bit 0 reaction E, bit 1 reaction EFG, bit 2 total E, bit 3 total EFG.
+    // Every set bit is accompanied by an OperationLog warning.
+    std::uint8_t apbs_nonfinite_sanitizer_mask = 0;
+    Vec3 apbs_efield_total_diagnostic = Vec3::Zero();
+    Mat3 apbs_efg_total_diagnostic = Mat3::Zero();
+    SphericalTensor apbs_efg_total_diagnostic_spherical;
 
     // === H-bond properties (HBondResult) ===
     double hbond_nearest_dist = 0.0;
@@ -389,11 +402,25 @@ public:
     // Learned electronic structure embedding (256 dims, geometry-dependent).
     // float32: native torch precision. No upshift to double.
     std::array<float, AIMNET2_AIM_DIMS> aimnet2_aim = {};
-    // Coulomb EFG from AIMNet2 charges — same kernel as CoulombResult
+    // Fixed, committed element-specific projection of aimnet2_aim. Written
+    // once by AIMNet2Result::Compute; every emitter only reads this field.
+    std::array<float, AIMNET2_AIM_PROJECTION_DIMS> aimnet2_aim_projection = {};
+    double aimnet2_energy_mlp = 0.0;
+    double aimnet2_energy_shifted_local = 0.0;
+    double aimnet2_d3_e_disp_atom = 0.0;
+    double aimnet2_d3_cn = 0.0;
+    std::array<double, 3> aimnet2_d3_c6_stats = {};
+    // Coulomb E/EFG from AIMNet2 charges — same kernel as CoulombResult.
+    Vec3 aimnet2_E_total = Vec3::Zero();
+    Vec3 aimnet2_E_backbone = Vec3::Zero();
+    Vec3 aimnet2_E_sidechain = Vec3::Zero();
+    Vec3 aimnet2_E_aromatic = Vec3::Zero();
     Mat3 aimnet2_EFG_total = Mat3::Zero();
     SphericalTensor aimnet2_EFG_total_spherical;
     Mat3 aimnet2_EFG_backbone = Mat3::Zero();
     SphericalTensor aimnet2_EFG_backbone_spherical;
+    Mat3 aimnet2_EFG_sidechain = Mat3::Zero();
+    SphericalTensor aimnet2_EFG_sidechain_spherical;
     Mat3 aimnet2_EFG_aromatic = Mat3::Zero();
     SphericalTensor aimnet2_EFG_aromatic_spherical;
     SphericalTensor aimnet2_shielding_contribution;
@@ -453,6 +480,30 @@ public:
     // === EEQ charges (EeqResult — Caldeweyher 2019) ===
     double eeq_charge = 0.0;  // geometry-dependent partial charge (elementary charges)
     double eeq_cn = 0.0;      // coordination number used to compute eeq_charge
+    double eeq_chi_eff = 0.0; // CN-shifted electronegativity (atomic units)
+    double eeq_eta = 0.0;     // element chemical hardness (atomic units)
+    double eeq_self_hardness_diag = 0.0; // eta + Gaussian self term
+
+    // === EEQ-charge Coulomb fields (EeqCoulombResult) ===
+    Vec3 eeq_coulomb_E_total = Vec3::Zero();
+    Vec3 eeq_coulomb_E_backbone = Vec3::Zero();
+    Vec3 eeq_coulomb_E_sidechain = Vec3::Zero();
+    Vec3 eeq_coulomb_E_aromatic = Vec3::Zero();
+    Mat3 eeq_coulomb_EFG_total = Mat3::Zero();
+    SphericalTensor eeq_coulomb_EFG_total_spherical;
+    Mat3 eeq_coulomb_EFG_backbone = Mat3::Zero();
+    SphericalTensor eeq_coulomb_EFG_backbone_spherical;
+    Mat3 eeq_coulomb_EFG_sidechain = Mat3::Zero();
+    SphericalTensor eeq_coulomb_EFG_sidechain_spherical;
+    Mat3 eeq_coulomb_EFG_aromatic = Mat3::Zero();
+    SphericalTensor eeq_coulomb_EFG_aromatic_spherical;
+    double eeq_coulomb_E_magnitude = 0.0;
+    double eeq_coulomb_E_bond_proj = 0.0;
+    double eeq_coulomb_E_backbone_frac = 0.0;
+    double eeq_coulomb_aromatic_E_magnitude = 0.0;
+    double eeq_coulomb_aromatic_E_bond_proj = 0.0;
+    int eeq_coulomb_aromatic_n_sidechain_atoms = 0;
+    SphericalTensor eeq_coulomb_shielding_contribution;
 
     // === DemoResult fields (Pass 0) ===
     double demo_nearest_ring_distance = 0.0;

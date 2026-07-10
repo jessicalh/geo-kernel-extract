@@ -282,9 +282,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mc_category_T2",   "mcconnell_legacy", PerBondCategoryT2,  25,   False,  "Legacy McConnell T2 per old bond category", irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_scalars",       "mcconnell_legacy", McConnellScalars,   6,    False,  "Legacy McConnell scalar sums + distances", mechanism="bond_anisotropy"),
 
-    # ── Coulomb (CoulombResult.cpp) — optional; retired from production
-    # (APBS is canonical), so present only in the FullFatFrameExtraction
-    # trajectory (--mopac), where it feeds the MOPAC-vs-FF14SB probe. ──
+    # ── Coulomb (CoulombResult.cpp) — emitted alongside canonical APBS
+    # in production. It supplies the vacuum field plus direct aliases of the
+    # APBS reaction field, and also feeds the MOPAC-vs-FF14SB probe. ──
     ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG (full 9-pack; T0/T1 structural zeros)",
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_t2",         "coulomb", EFGTensor,       5,   False, "Coulomb bare total EFG T2-only companion copied from coulomb_efg columns 4:9",
@@ -308,6 +308,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("coulomb_aromatic_E_proj", "coulomb", np.ndarray,     None, False, "Coulomb aromatic E-field projection along the primary bond direction",
               irreps="0e", units="V/A", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_aromatic_n_src",  "coulomb", np.ndarray,     None, False, "Count of sidechain aromatic source atoms contributing to the Coulomb aromatic field (int32)", units="count", mechanism="electrostatic_efg"),
+    ArraySpec("coulomb_E_solvent",       "coulomb", VectorField,     3,   False, "APBS reaction-field alias: canonical APBS E = total PB minus homogeneous-vacuum reference",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("coulomb_efg_solvent",     "coulomb", EFGTensor,       5,   False, "APBS reaction-field alias: canonical APBS EFG T2 = total PB minus homogeneous-vacuum reference",
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("coulomb_shielding",      "coulomb_legacy", ShieldingTensor, 9, False, "Legacy name for Coulomb bare total EFG", irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
@@ -371,6 +375,35 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="e", mechanism="charges"),
     ArraySpec("eeq_cn",             "eeq",         np.ndarray,     None, False, "EEQ coordination number",
               mechanism="charges"),
+    ArraySpec("eeq_chi_eff",        "eeq",         np.ndarray,     None, False, "D4 EEQ CN-shifted effective electronegativity in atomic units",
+              units="Hartree", mechanism="charges"),
+    ArraySpec("eeq_hardness",       "eeq",         np.ndarray,     2,    False, "D4 EEQ hardness diagnostics [eta, self_hardness_diagonal] in atomic units",
+              units="Hartree", mechanism="charges"),
+
+    # EEQ-charge Coulomb fields (EeqCoulombResult.cpp). This is the FF
+    # Coulomb shape family evaluated with geometry-dependent EEQ charges.
+    ArraySpec("eeq_coulomb_efg",           "eeq_coulomb", ShieldingTensor, 9, False, "EEQ-charge Coulomb bare total EFG (full 9-pack; T0/T1 structural zeros)",
+              irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_E",             "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb total E-field",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_E_backbone",    "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb E-field backbone",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_E_sidechain",   "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb E-field sidechain",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_E_aromatic",    "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb E-field aromatic",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_efg_backbone",  "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge Coulomb EFG backbone (T2 only)",
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
+    ArraySpec("eeq_coulomb_efg_sidechain", "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge Coulomb EFG sidechain (T2 only)",
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
+    ArraySpec("eeq_coulomb_efg_aromatic",  "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge Coulomb EFG aromatic (T2 only)",
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
+    ArraySpec("eeq_coulomb_scalars",       "eeq_coulomb", CoulombScalars, 4, False, "EEQ-charge Coulomb scalars [E_magnitude, H-only E_bond_proj, E_backbone_frac, aromatic_E_magnitude]",
+              mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_aromatic_E_proj", "eeq_coulomb", np.ndarray, None, False, "EEQ-charge Coulomb aromatic E-field parent-to-H projection; NaN for non-H or parentless atoms",
+              irreps="0e", units="V/A", mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_aromatic_n_src", "eeq_coulomb", np.ndarray, None, False, "Count of sidechain aromatic source atoms contributing to the EEQ-charge Coulomb aromatic field (int32)",
+              units="count", mechanism="electrostatic_efg"),
 
     # ── GROMACS energy (GromacsEnergyResult.cpp) ────────────────
     ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,     43,   False, "Per-frame energy (43 cols: electrostatic 3, bonded 6, VdW 3, thermo 8, box 3, virial 9, pressure tensor 9, T_group 2)",
@@ -426,9 +459,19 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mopac_mc_scalars",      "mopac_mcconnell_legacy", McConnellScalars,  6,  False, "Legacy MOPAC McConnell scalars", mechanism="bond_anisotropy"),
 
     # ── APBS (ApbsFieldResult.cpp) ───────────────────────────────
-    ArraySpec("apbs_E",           "apbs", VectorField,             3,    False, "APBS solvated E-field",
+    ArraySpec("apbs_E",           "apbs", VectorField,             3,    False, "APBS canonical reaction E-field: total PB minus homogeneous-vacuum reference",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("apbs_efg",         "apbs", EFGTensor,               5,    False, "APBS solvated EFG (T2 only, symmetric-traceless)",
+    ArraySpec("apbs_efg",         "apbs", EFGTensor,               5,    False, "APBS canonical reaction EFG: total PB minus homogeneous-vacuum reference (T2 only, symmetric-traceless)",
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
+    ArraySpec("apbs_phi",         "apbs", np.ndarray,              None, False, "APBS canonical reaction potential: total PB minus homogeneous-vacuum reference",
+              units="V", mechanism="electrostatic_efg"),
+    ArraySpec("apbs_E_clamp_mask", "apbs", np.ndarray,             None, False, "APBS canonical reaction E-field clamp mask (uint8 0/1)",
+              units="dimensionless", mechanism="electrostatic_efg"),
+    ArraySpec("apbs_E_clamp_scale", "apbs", np.ndarray,            None, False, "Scale applied to canonical APBS reaction E; 1.0 when unclamped",
+              units="dimensionless", mechanism="electrostatic_efg"),
+    ArraySpec("apbs_E_total_diagnostic", "apbs", VectorField,      3,    False, "APBS raw total-PB E-field diagnostic, finite-sanitized and unclamped",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("apbs_efg_total_diagnostic", "apbs", EFGTensor,      5,    False, "APBS raw total-PB EFG diagnostic T2, finite-sanitized and unclamped",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
 
     # ── Orca DFT (OrcaShieldingResult.cpp) ───────────────────────
@@ -502,6 +545,30 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG backbone (T2 only)",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
+    ArraySpec("aimnet2_efg_sidechain",       "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG sidechain (T2 only)",
+              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
+    ArraySpec("aimnet2_E",                   "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived total E-field",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("aimnet2_E_backbone",          "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived E-field backbone",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("aimnet2_E_sidechain",         "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived E-field sidechain",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("aimnet2_E_aromatic",          "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived E-field aromatic",
+              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
+    ArraySpec("aimnet2_energy_mlp",          "aimnet2", np.ndarray,                None, True, "AIMNet2 per-atom energy after the energy_mlp head",
+              units="eV", mechanism="charges"),
+    ArraySpec("aimnet2_energy_shifted_local", "aimnet2", np.ndarray,               None, True, "AIMNet2 per-atom shifted local energy after the atomic_shift head",
+              units="eV", mechanism="charges"),
+    ArraySpec("aimnet2_energy_terms",        "aimnet2", np.ndarray,                6,    True, "AIMNet2 protein-level energy terms [local_sum, e_lrcoulomb, e_dftd3, total, conditioned_net_charge, neutral_conditioning_flag]",
+              native_axis="protein", units="mixed:eV[0:4],e[4],dimensionless[5]", mechanism="charges"),
+    ArraySpec("aimnet2_d3_e_disp_atom",      "aimnet2", np.ndarray,                None, True, "AIMNet2 D3 per-atom dispersion-energy increment",
+              units="eV", mechanism="charges"),
+    ArraySpec("aimnet2_d3_cn",               "aimnet2", np.ndarray,                None, True, "AIMNet2 D3 coordination number",
+              units="dimensionless", mechanism="charges"),
+    ArraySpec("aimnet2_d3_c6_stats",         "aimnet2", np.ndarray,                3,    True, "AIMNet2 D3 C6 statistics [sum, mean, max] over valid long-range neighbours",
+              units="Hartree*bohr^6", mechanism="charges"),
+    ArraySpec("aimnet2_aim_projection",      "aimnet2", np.ndarray,                32,   True, "AIMNet2 fixed 32-d projection of raw aim; basis splitmix64_0xA17E20260708_achlioptas_32x256_element_HCNOS",
+              units="dimensionless", mechanism="charges"),
 
     # ── AIMNet2 charge-response gradient (AIMNet2ChargeResponseGradientResult.cpp)
     # Always-on after the --aimnet2 model is loaded (per the
@@ -515,9 +582,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # them; new outputs always do when AIMNet2 is loaded. Renamed from
     # "polarisability" 2026-05-20 (commit 58594f5) — the emission is
     # ∂(Σq²)/∂r, NOT a Buckingham α = ∂μ/∂E.
-    ArraySpec("aimnet2_charge_response_gradient",        "aimnet2", AIMNet2ChargeResponseGradient, 3,    False, "AIMNet2 per-atom charge-response gradient (d(sum q_j^2)/d(r_i))",
+    ArraySpec("aimnet2_charge_response_gradient",        "aimnet2", AIMNet2ChargeResponseGradient, 3,    False, "AIMNet2 charge-response proxy/diagnostic: d(sum q_j^2)/dR_i; NOT Buckingham polarizability",
               irreps="1o", units="e^2/Å", tensor_rank=1, parity="odd", mechanism="charges"),
-    ArraySpec("aimnet2_charge_response_gradient_scalar", "aimnet2", np.ndarray,            None, False, "AIMNet2 per-atom charge-response gradient scalar (L2 norm of vector)",
+    ArraySpec("aimnet2_charge_response_gradient_scalar", "aimnet2", np.ndarray,            None, False, "AIMNet2 charge-response proxy/diagnostic scalar: L2 norm of d(sum q_j^2)/dR_i; NOT Buckingham polarizability",
               units="e^2/Å", mechanism="charges"),
 
     # ── Planar geometry (PlanarGeometryResult.cpp) ───────────────────

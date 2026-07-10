@@ -654,14 +654,14 @@ class TestCatalog:
 
     def test_required_count(self):
         required = [s for s in CATALOG.values() if s.required]
-        assert len(required) >= 27  # Coulomb is optional (FullFat trajectory only)
+        assert len(required) >= 27  # Static catalog entries remain absence-compatible.
 
     def test_every_spec_has_description(self):
         for stem, spec in CATALOG.items():
             assert spec.description, f"{stem} has no description"
 
     def test_aimnet2_specs_registered(self):
-        """All 5 AIMNet2 NPY files are in the catalog."""
+        """The original AIMNet2 NPY files remain in the expanded catalog."""
         expected = {
             "aimnet2_charges", "aimnet2_aim", "aimnet2_efg",
             "aimnet2_efg_aromatic", "aimnet2_efg_backbone",

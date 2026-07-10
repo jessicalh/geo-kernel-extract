@@ -108,6 +108,11 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(
         "Gradient of L = sum_j q_j^2 (AIMNet2 Hirshfeld charges, e^2) "
         "with respect to atomic coordinates (e^2/Å). Both emitted "
         "for downstream convenience per feedback_methods_accumulate."));
+    grp.createAttribute("physics_description", std::string(
+        "AIMNet2 charge-response proxy/diagnostic: d(sum_j q_j^2)/dR_i. "
+        "This is NOT an atom-resolved charge Jacobian and NOT Buckingham "
+        "polarisability (alpha_ab = d(mu_a)/d(E_b)); its connection to NMR "
+        "shielding is exploratory."));
     grp.createAttribute("source_attached_policy", std::string("always_attached"));
 
     // Flat (N, T, 3) double for vector + (N, T) double for scalar.

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
@@ -36,7 +37,8 @@ const char* VerdictName(BlessVerdict v) {
 // header_len, raw column-major-or-row-major data.
 //
 // We only consume what NpyWriter writes: fortran_order=False, shapes as
-// (n,) or (rows, cols) or (rows, d1, d2, ...). dtype one of <f8 <f4 <i4 <i8.
+// (n,) or (rows, cols) or (rows, d1, d2, ...). dtype one of
+// <f8, <f4, <i4, <i8, |i1, or |u1.
 // Header parsing is deliberately tiny — this is a file format we author.
 // ============================================================================
 
@@ -187,6 +189,24 @@ static NpyArray ReadNpy(const std::string& path) {
             return out;
         }
         for (size_t i = 0; i < n; ++i) out.as_double[i] = static_cast<double>(buf[i]);
+    } else if (out.descr == "|i1") {
+        std::vector<int8_t> buf(n);
+        in.read(reinterpret_cast<char*>(buf.data()),
+                static_cast<std::streamsize>(n * sizeof(int8_t)));
+        if (in.gcount() != static_cast<std::streamsize>(n * sizeof(int8_t))) {
+            out.error = "short read on |i1 data";
+            return out;
+        }
+        for (size_t i = 0; i < n; ++i) out.as_double[i] = buf[i];
+    } else if (out.descr == "|u1") {
+        std::vector<uint8_t> buf(n);
+        in.read(reinterpret_cast<char*>(buf.data()),
+                static_cast<std::streamsize>(n * sizeof(uint8_t)));
+        if (in.gcount() != static_cast<std::streamsize>(n * sizeof(uint8_t))) {
+            out.error = "short read on |u1 data";
+            return out;
+        }
+        for (size_t i = 0; i < n; ++i) out.as_double[i] = buf[i];
     } else {
         out.error = "unsupported dtype " + out.descr;
         return out;
@@ -271,7 +291,11 @@ BlessResult CompareNpy(const std::string& run_path,
     // not a bit-identical-zero pass).
     auto count_nonzero = [](const std::vector<double>& v) {
         size_t c = 0;
-        for (double x : v) if (std::fabs(x) > 0.0) ++c;
+        // Non-finite values are sentinels or errors, not evidence that a
+        // calculator produced a non-zero finite signal.
+        for (double x : v) {
+            if (std::isfinite(x) && std::fabs(x) > 0.0) ++c;
+        }
         return c;
     };
     size_t run_nz     = count_nonzero(run.as_double);
@@ -301,15 +325,37 @@ BlessResult CompareNpy(const std::string& run_path,
     double max_abs_diff = 0.0;
     double max_rel_diff = 0.0;
     size_t max_idx = 0;
+    size_t nonfinite_mismatches = 0;
     for (size_t i = 0; i < n; ++i) {
-        double d = std::fabs(run.as_double[i] - blessed.as_double[i]);
-        double thresh = policy.atol + policy.rtol * std::fabs(blessed.as_double[i]);
+        const double run_value = run.as_double[i];
+        const double blessed_value = blessed.as_double[i];
+
+        // NaN is an explicit sentinel in several emitted columns. It agrees
+        // only with NaN; it must never compare equal to a finite value merely
+        // because arithmetic with NaN makes `d > threshold` false. Likewise,
+        // infinities agree only when their signs match exactly.
+        if (std::isnan(run_value) && std::isnan(blessed_value)) continue;
+        if (std::isinf(run_value) && std::isinf(blessed_value)
+            && run_value == blessed_value) {
+            continue;
+        }
+        if (!std::isfinite(run_value) || !std::isfinite(blessed_value)) {
+            ++exceeded;
+            ++nonfinite_mismatches;
+            max_abs_diff = std::numeric_limits<double>::infinity();
+            max_rel_diff = std::numeric_limits<double>::infinity();
+            max_idx = i;
+            continue;
+        }
+
+        double d = std::fabs(run_value - blessed_value);
+        double thresh = policy.atol + policy.rtol * std::fabs(blessed_value);
         if (d > thresh) ++exceeded;
         if (d > max_abs_diff) {
             max_abs_diff = d;
             max_idx = i;
         }
-        double denom = std::fabs(blessed.as_double[i]);
+        double denom = std::fabs(blessed_value);
         double rel = denom > 0.0 ? d / denom : 0.0;
         if (rel > max_rel_diff) max_rel_diff = rel;
     }
@@ -328,10 +374,10 @@ BlessResult CompareNpy(const std::string& run_path,
     out.verdict = BlessVerdict::Drifted;
     char buf[384];
     std::snprintf(buf, sizeof(buf),
-        "%zu of %zu elements exceed tolerance "
+        "%zu of %zu elements exceed tolerance (%zu non-finite mismatches) "
         "(rtol=%.0e atol=%.0e); max |Δ|=%.3e at index [%zu]; "
         "max |Δ|/|val|=%.3e; run_nz_frac=%.3f blessed_nz_frac=%.3f",
-        exceeded, n, policy.rtol, policy.atol,
+        exceeded, n, nonfinite_mismatches, policy.rtol, policy.atol,
         max_abs_diff, max_idx, max_rel_diff,
         run_nz_frac, blessed_nz_frac);
     out.diagnostic = buf;

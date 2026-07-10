@@ -16,10 +16,12 @@
 #include "gromacs/topology/forcefieldparameters.h"
 #include "gromacs/topology/idef.h"
 #include "gromacs/topology/ifunc.h"
+#include "gromacs/topology/topology_enums.h"
 #include "gromacs/mdtypes/state.h"
 #include "gromacs/mdtypes/inputrec.h"
 
 #include <cstring>
+#include <sstream>
 #include <set>
 #include <string>
 
@@ -45,6 +47,66 @@ struct TprData {
     gmx_mtop_t mtop;
     PbcType    pbc_type = PbcType::Unset;
 };
+
+MoltypeBoundaryClass ClassifyMoltypeBoundary(
+        std::size_t residue_count,
+        const std::vector<MoltypeSiteSignature>& sites) {
+    int n_O = 0;
+    int n_H = 0;
+    int n_virtual_or_dummy = 0;
+    int n_other = 0;
+    for (const auto& site : sites) {
+        if (site.atomic_number == 0 || site.is_virtual) {
+            ++n_virtual_or_dummy;
+        } else if (site.atomic_number == 8) {
+            ++n_O;
+        } else if (site.atomic_number == 1) {
+            ++n_H;
+        } else {
+            ++n_other;
+        }
+    }
+
+    // Priority is load-bearing: this is evaluated before the generic
+    // leading-block => protein case in ReadTopology.
+    if (residue_count == 1 && sites.size() == 4 &&
+        n_O == 1 && n_H == 2 && n_virtual_or_dummy == 1 && n_other == 0) {
+        return MoltypeBoundaryClass::UnsupportedVirtualSiteWater;
+    }
+    if (residue_count == 1 && sites.size() == 3 &&
+        n_O == 1 && n_H == 2 && n_virtual_or_dummy == 0 && n_other == 0) {
+        return MoltypeBoundaryClass::ThreeSiteWater;
+    }
+    if (residue_count == 1 && sites.size() == 1) {
+        return MoltypeBoundaryClass::Ion;
+    }
+    return MoltypeBoundaryClass::ProteinOrOther;
+}
+
+std::string UnsupportedVirtualSiteWaterDiagnostic(
+        const std::string& moltype_name,
+        const std::vector<MoltypeSiteSignature>& sites) {
+    std::ostringstream atomic_numbers;
+    std::ostringstream charges;
+    atomic_numbers << '[';
+    charges << '[';
+    for (std::size_t i = 0; i < sites.size(); ++i) {
+        if (i != 0) {
+            atomic_numbers << ',';
+            charges << ',';
+        }
+        atomic_numbers << sites[i].atomic_number;
+        charges << sites[i].charge;
+    }
+    atomic_numbers << ']';
+    charges << ']';
+    return "Moltype '" + moltype_name +
+           "' (atoms=" + std::to_string(sites.size()) +
+           ", atomic_numbers=" + atomic_numbers.str() +
+           ", charges=" + charges.str() +
+           ") is an unsupported virtual-site water model; "
+           "virtual-site reconstruction is not implemented.";
+}
 }  // namespace detail
 
 
@@ -109,20 +171,33 @@ static int DetectHisVariantFromAtoms(const t_atoms& atoms,
 // (atom counts, residue counts, atomic numbers) from gmx_moltype_t.
 
 // Water moltype: 3 atoms, exactly one O and two H by atomic number,
-// one residue. TIP3P / SPC / OPC all match (3-site models). TIP4P
-// and 4-site models would need an explicit accommodation; we don't
-// currently use them and would want to know if a TPR appeared with
-// one rather than have it slip through.
-static bool IsWaterMoltype(const gmx_moltype_t& mt) {
-    if (mt.atoms.nr != 3 || mt.atoms.nres != 1) return false;
-    int n_O = 0, n_H = 0, n_other = 0;
-    for (int i = 0; i < 3; ++i) {
-        const int z = mt.atoms.atom[i].atomnumber;
-        if      (z == 8) ++n_O;
-        else if (z == 1) ++n_H;
-        else             ++n_other;
+// one residue. This intentionally recognizes only 3-site models.
+// Four-site TIP4P/OPC-family models require virtual-site reconstruction
+// and are rejected explicitly by the boundary check below.
+static std::vector<detail::MoltypeSiteSignature> MoltypeSignature(
+        const gmx_moltype_t& mt) {
+    std::vector<detail::MoltypeSiteSignature> sites;
+    sites.reserve(static_cast<std::size_t>(mt.atoms.nr));
+    for (int i = 0; i < mt.atoms.nr; ++i) {
+        const auto& atom = mt.atoms.atom[i];
+        sites.push_back({
+            atom.atomnumber,
+            static_cast<double>(atom.q),
+            atom.ptype == ParticleType::VSite,
+        });
     }
-    return n_O == 1 && n_H == 2 && n_other == 0;
+    return sites;
+}
+
+static detail::MoltypeBoundaryClass ClassifyMoltype(
+        const gmx_moltype_t& mt) {
+    return detail::ClassifyMoltypeBoundary(
+        static_cast<std::size_t>(mt.atoms.nres), MoltypeSignature(mt));
+}
+
+static bool IsWaterMoltype(const gmx_moltype_t& mt) {
+    return ClassifyMoltype(mt) ==
+           detail::MoltypeBoundaryClass::ThreeSiteWater;
 }
 
 // Ion moltype: a single atom in a single residue. Atomic number and
@@ -131,7 +206,7 @@ static bool IsWaterMoltype(const gmx_moltype_t& mt) {
 // fleets are Na+, Cl-, K+, Mg2+, Ca2+, Zn2+, but the typed-int rule
 // covers any single-atom moltype that is not water-shaped.
 static bool IsIonMoltype(const gmx_moltype_t& mt) {
-    return mt.atoms.nr == 1 && mt.atoms.nres == 1;
+    return ClassifyMoltype(mt) == detail::MoltypeBoundaryClass::Ion;
 }
 
 
@@ -198,8 +273,22 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
         const size_t atoms_per_mol = mt.atoms.nr;
         const size_t total_in_block = atoms_per_mol * molblock.nmol;
 
-        const bool is_water = IsWaterMoltype(mt);
-        const bool is_ion   = IsIonMoltype(mt);
+        // This boundary check is intentionally before *all* protein
+        // classification.  Four-site waters belong to the solvent model;
+        // until virtual-site reconstruction exists they must fail here,
+        // never enter topo_.protein_count.
+        const auto boundary_class = ClassifyMoltype(mt);
+        if (boundary_class ==
+            detail::MoltypeBoundaryClass::UnsupportedVirtualSiteWater) {
+            error_ = detail::UnsupportedVirtualSiteWaterDiagnostic(
+                std::string(*mt.name), MoltypeSignature(mt));
+            return false;
+        }
+
+        const bool is_water = boundary_class ==
+            detail::MoltypeBoundaryClass::ThreeSiteWater;
+        const bool is_ion = boundary_class ==
+            detail::MoltypeBoundaryClass::Ion;
 
         if (!past_protein && !is_water && !is_ion) {
             // Leading non-solvent block: protein (possibly chain-split).

@@ -50,11 +50,9 @@ struct RunOptions {
     // Skip APBS Poisson-Boltzmann.
     bool skip_apbs = false;
 
-    // Skip vacuum Coulomb EFG (home-rolled, O(N*k)).
-    // Retired from production: APBS is the canonical electrostatics, so
-    // every single-frame mode and PerFrameExtractionSet set this true.
-    // The only consumer that sets it false is FullFatFrameExtraction,
-    // where CoulombResult feeds the MOPAC-vs-FF14SB reconciliation probe.
+    // Skip vacuum Coulomb EFG (home-rolled, O(N*k)). Production trajectory
+    // shapes keep it enabled alongside canonical APBS so the reaction-field
+    // aliases and cross-source probes are present.
     bool skip_coulomb = false;
 
     // AIMNet2: loaded model for neural network charges + EFG.

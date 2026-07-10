@@ -180,6 +180,10 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("efield_clamp_units", std::string("V/Angstrom"));
     grp.createAttribute("clamp_mask_absent_sentinel",
                         static_cast<std::uint8_t>(255));
+    grp.createAttribute("max_potential_derivative_rank", 2);
+    grp.createAttribute("higher_derivatives_present", false);
+    grp.createAttribute("rank3_policy",
+                        std::string("not_emitted_no_local_frame"));
 
     // Cutoff radii — efield uses a sphere; n_first / n_second use
     // hydration-shell cutoffs (TIP3P standard). Read from CalculatorConfig so

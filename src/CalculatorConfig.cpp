@@ -90,11 +90,10 @@ void CalculatorConfig::InitDefaults() {
 
     add("hydration_ion_cutoff",                    20.0, "A",    "nearest-ion search distance");
 
-    // APBS Poisson-Boltzmann grid sizing + solve conditions (mg-auto convention)
+    // APBS Poisson-Boltzmann single-manual-grid sizing + solve conditions.
     add("apbs_grid_dim",                          161.0, "",     "APBS grid points per axis (~0.3-0.5A spacing)");
-    add("apbs_fine_padding_A",                     40.0, "A",    "APBS fine grid padding added to bbox extent (20A per side)");
-    add("apbs_fine_min_dim_A",                     40.0, "A",    "APBS fine grid minimum dimension per axis");
-    add("apbs_coarse_padding_A",                   30.0, "A",    "APBS coarse grid padding over fine (boundary condition accuracy)");
+    add("apbs_manual_grid_padding_A",              70.0, "A",    "APBS manual-grid padding added to bbox extent");
+    add("apbs_manual_grid_min_dim_A",              70.0, "A",    "APBS manual-grid minimum dimension per axis");
     add("apbs_protein_dielectric",                  4.0, "",     "APBS protein interior dielectric (pdie)");
     add("apbs_solvent_dielectric",                78.54, "",     "APBS solvent dielectric (sdie, water 25C)");
     add("apbs_temperature_K",                    298.15, "K",    "APBS PB-solve temperature");

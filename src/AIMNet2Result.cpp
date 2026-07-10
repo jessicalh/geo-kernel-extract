@@ -9,13 +9,126 @@
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "SpatialIndexResult.h"
+#include "generated/AIMNet2AimProjection.h"
 
 #include <torch/script.h>
 #include <torch/cuda.h>
+
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <random>
+#include <stdexcept>
 
 namespace nmr {
+
+namespace {
+
+// Exact constants used by scripts/extract_aimnet_extra_20260704.py.
+constexpr double kAimnet2BohrPerAngstrom = 1.8897261258369282;
+constexpr double kAimnet2HartreeToEv = 13.605693012183622;
+
+c10::Dict<std::string, torch::Tensor> CloneTensorDict(
+        const c10::impl::GenericDict& input) {
+    c10::Dict<std::string, torch::Tensor> out;
+    for (const auto& item : input) {
+        if (item.value().isTensor()) {
+            out.insert(item.key().toStringRef(),
+                       item.value().toTensor().clone());
+        }
+    }
+    return out;
+}
+
+c10::Dict<std::string, torch::Tensor> TensorDictFromIValue(
+        const c10::IValue& value) {
+    c10::Dict<std::string, torch::Tensor> out;
+    const auto generic = value.toGenericDict();
+    for (const auto& item : generic) {
+        if (item.value().isTensor()) {
+            out.insert(item.key().toStringRef(), item.value().toTensor());
+        }
+    }
+    return out;
+}
+
+bool RunOutputHead(torch::jit::Module& outputs,
+                   const char* head_name,
+                   c10::Dict<std::string, torch::Tensor>& dict) {
+    try {
+        auto head = outputs.attr(head_name).toModule();
+        dict = TensorDictFromIValue(head.forward({dict}));
+        return true;
+    } catch (const c10::Error& e) {
+        OperationLog::Error(
+            "AIMNet2Result::Compute",
+            std::string("AIMNet2 output head failed: ") + head_name +
+            " — " + e.what());
+    } catch (const std::exception& e) {
+        OperationLog::Error(
+            "AIMNet2Result::Compute",
+            std::string("AIMNet2 output head failed: ") + head_name +
+            " — " + e.what());
+    }
+    return false;
+}
+
+double TensorScalar(const torch::Tensor& tensor) {
+    return tensor.reshape({-1}).select(0, 0)
+        .to(torch::kCPU, torch::kFloat64).item<double>();
+}
+
+torch::Tensor Dftd3AttrAsTensor(torch::jit::Module& dftd3,
+                                const char* name,
+                                const torch::Device& device) {
+    const c10::IValue value = dftd3.attr(name);
+    if (value.isTensor()) return value.toTensor().to(device);
+    if (value.isDouble()) {
+        return torch::tensor(
+            value.toDouble(),
+            torch::TensorOptions().dtype(torch::kFloat32).device(device));
+    }
+    if (value.isInt()) {
+        return torch::tensor(
+            static_cast<double>(value.toInt()),
+            torch::TensorOptions().dtype(torch::kFloat32).device(device));
+    }
+    throw std::runtime_error(std::string("D3 attribute is not numeric: ") +
+                             name);
+}
+
+std::size_t ProjectionElementSlot(Element element) {
+    switch (element) {
+        case Element::H:
+            return static_cast<std::size_t>(
+                Aimnet2AimProjectionElementSlot::H);
+        case Element::C:
+            return static_cast<std::size_t>(
+                Aimnet2AimProjectionElementSlot::C);
+        case Element::N:
+            return static_cast<std::size_t>(
+                Aimnet2AimProjectionElementSlot::N);
+        case Element::O:
+            return static_cast<std::size_t>(
+                Aimnet2AimProjectionElementSlot::O);
+        case Element::S:
+            return static_cast<std::size_t>(
+                Aimnet2AimProjectionElementSlot::S);
+        case Element::Unknown:
+            break;
+    }
+    throw std::runtime_error("unsupported element in AIMNet2 projection");
+}
+
+bool TensorPrefixIsFinite(const torch::Tensor& tensor,
+                          std::int64_t rows) {
+    return torch::isfinite(tensor.narrow(0, 0, rows)).all()
+        .to(torch::kCPU).item<bool>();
+}
+
+}  // namespace
 
 // ============================================================================
 // EFG packing note
@@ -274,12 +387,252 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     // Forward pass
     auto output = model.module.forward({input_dict});
 
+    const auto output_dict = output.toGenericDict();
+
     // ------------------------------------------------------------------
-    // 4. Extract charges from output
+    // 4. Replay the model's output heads in their trained order.
+    //
+    // The full forward output is cloned for the mutable head chain. D3's
+    // private diagnostic method intentionally receives the untouched full
+    // output dictionary, matching the recovery script. Every per-atom value
+    // is widened/stored here; emission is a pure read-back.
     // ------------------------------------------------------------------
-    auto output_dict = output.toGenericDict();
+    try {
+        auto outputs = model.module.attr("outputs").toModule();
+        auto dftd3 = outputs.attr("dftd3").toModule();
+        auto energy_dict = CloneTensorDict(output_dict);
+
+        if (!RunOutputHead(outputs, "energy_mlp", energy_dict)) {
+            return nullptr;
+        }
+        if (!energy_dict.contains("energy")) {
+            OperationLog::Error("AIMNet2Result::Compute",
+                "energy_mlp output did not contain 'energy'");
+            return nullptr;
+        }
+        const auto energy_mlp = energy_dict.at("energy").clone();
+
+        if (!RunOutputHead(outputs, "atomic_shift", energy_dict)) {
+            return nullptr;
+        }
+        if (!energy_dict.contains("energy")) {
+            OperationLog::Error("AIMNet2Result::Compute",
+                "atomic_shift output did not contain 'energy'");
+            return nullptr;
+        }
+        const auto energy_shifted_local = energy_dict.at("energy").clone();
+
+        if (!RunOutputHead(outputs, "atomic_sum", energy_dict)) {
+            return nullptr;
+        }
+        const double local_sum = TensorScalar(energy_dict.at("energy"));
+
+        if (!RunOutputHead(outputs, "lrcoulomb", energy_dict)) {
+            return nullptr;
+        }
+        const double energy_after_lrcoulomb =
+            TensorScalar(energy_dict.at("energy"));
+
+        if (!RunOutputHead(outputs, "dftd3", energy_dict)) {
+            return nullptr;
+        }
+        const double final_energy = TensorScalar(energy_dict.at("energy"));
+
+        if (energy_mlp.dim() != 1 || energy_shifted_local.dim() != 1 ||
+            energy_mlp.size(0) < N1 ||
+            energy_shifted_local.size(0) < N1 ||
+            !TensorPrefixIsFinite(energy_mlp, static_cast<std::int64_t>(N)) ||
+            !TensorPrefixIsFinite(energy_shifted_local,
+                                  static_cast<std::int64_t>(N)) ||
+            !std::isfinite(local_sum) ||
+            !std::isfinite(energy_after_lrcoulomb) ||
+            !std::isfinite(final_energy)) {
+            OperationLog::Error("AIMNet2Result::Compute",
+                "non-finite or malformed AIMNet2 energy-head output; "
+                "result not attached");
+            return nullptr;
+        }
+
+        result_ptr->energy_local_sum_ = local_sum;
+        result_ptr->energy_lrcoulomb_ = energy_after_lrcoulomb - local_sum;
+        result_ptr->energy_dftd3_ = final_energy - energy_after_lrcoulomb;
+        result_ptr->energy_total_ = final_energy;
+        result_ptr->conditioned_net_charge_ = static_cast<double>(net_charge);
+        result_ptr->neutral_conditioning_flag_ =
+            CalculatorConfig::Get("charge_conditioning_neutral") != 0.0
+                ? 1.0 : 0.0;
+
+        const auto energy_mlp_cpu = energy_mlp
+            .narrow(0, 0, static_cast<std::int64_t>(N))
+            .to(torch::kCPU, torch::kFloat64).contiguous();
+        const auto energy_shifted_cpu = energy_shifted_local
+            .narrow(0, 0, static_cast<std::int64_t>(N))
+            .to(torch::kCPU, torch::kFloat64).contiguous();
+        const auto energy_mlp_acc = energy_mlp_cpu.accessor<double, 1>();
+        const auto energy_shifted_acc =
+            energy_shifted_cpu.accessor<double, 1>();
+        for (std::size_t i = 0; i < N; ++i) {
+            auto& atom = conf.MutableAtomAt(i);
+            atom.aimnet2_energy_mlp =
+                energy_mlp_acc[static_cast<std::int64_t>(i)];
+            atom.aimnet2_energy_shifted_local =
+                energy_shifted_acc[static_cast<std::int64_t>(i)];
+        }
+
+        // D3 diagnostics. _calc_c6ij consumes the untouched full model
+        // output, exactly as the recovery script does.
+        const auto c6_value = dftd3.get_method("_calc_c6ij")({output_dict});
+        const auto c6_tuple = c6_value.toTuple();
+        if (!c6_tuple || c6_tuple->elements().size() != 2) {
+            OperationLog::Error("AIMNet2Result::Compute",
+                "DFTD3._calc_c6ij returned an unexpected value");
+            return nullptr;
+        }
+        const auto c6ij = c6_tuple->elements()[0].toTensor();
+        const auto d_bohr = c6_tuple->elements()[1].toTensor();
+        const auto device = c6ij.device();
+        const auto dtype = c6ij.scalar_type();
+
+        const auto numbers = output_dict.at("numbers").toTensor()
+            .to(device, torch::kLong);
+        const auto nb_lr = output_dict.at("nbmat_lr").toTensor()
+            .to(device, torch::kLong);
+        const auto nb_flat = nb_lr.reshape({-1});
+        const auto mask_lr = torch::logical_not(
+            output_dict.at("nb_pad_mask_lr").toTensor()
+                .to(device, torch::kBool));
+
+        const auto d_bohr_cn = output_dict.at("d_ij_lr").toTensor()
+            .to(device, dtype) * kAimnet2BohrPerAngstrom;
+        const auto rcov = Dftd3AttrAsTensor(dftd3, "rcov", device)
+            .to(dtype);
+        const auto cnmax = Dftd3AttrAsTensor(dftd3, "cnmax", device)
+            .to(dtype);
+        const auto r4r2 = Dftd3AttrAsTensor(dftd3, "r4r2", device)
+            .to(dtype);
+        const auto k1 = Dftd3AttrAsTensor(dftd3, "k1", device)
+            .to(dtype);
+        const auto a1 = Dftd3AttrAsTensor(dftd3, "a1", device)
+            .to(dtype);
+        const auto a2 = Dftd3AttrAsTensor(dftd3, "a2", device)
+            .to(dtype);
+        const auto s6 = Dftd3AttrAsTensor(dftd3, "s6", device)
+            .to(dtype);
+        const auto s8 = Dftd3AttrAsTensor(dftd3, "s8", device)
+            .to(dtype);
+
+        const auto rcov_i = rcov.index_select(0, numbers);
+        const auto rcov_j = rcov_i.index_select(0, nb_flat)
+            .reshape(nb_lr.sizes());
+        const auto cn_raw = torch::sum(
+            1.0 / (torch::exp(
+                ((rcov_i.unsqueeze(1) + rcov_j) / d_bohr_cn - 1.0) * k1)
+                + 1.0),
+            1);
+        const auto cn = torch::minimum(
+            cn_raw, cnmax.index_select(0, numbers));
+
+        const auto r4r2_i = r4r2.index_select(0, numbers);
+        const auto r4r2_j = r4r2_i.index_select(0, nb_flat)
+            .reshape(nb_lr.sizes());
+        const auto rrij = 3.0 * r4r2_i.unsqueeze(1) * r4r2_j;
+        const auto r0ij = a1 * torch::sqrt(rrij) + a2;
+        const auto eij = c6ij * (
+            s6 / (torch::pow(d_bohr, 6) + torch::pow(r0ij, 6)) +
+            s8 * rrij /
+                (torch::pow(d_bohr, 8) + torch::pow(r0ij, 8)));
+        const auto e_disp_atom =
+            -kAimnet2HartreeToEv * torch::sum(eij, 1);
+
+        const auto valid_counts = torch::sum(mask_lr.to(dtype), 1);
+        const auto c6_zeroed = torch::where(
+            mask_lr, c6ij, torch::zeros_like(c6ij));
+        const auto c6_sum = torch::sum(c6_zeroed, 1);
+        const auto c6_mean = torch::where(
+            valid_counts > 0.0,
+            c6_sum / torch::where(valid_counts > 0.0,
+                                  valid_counts,
+                                  torch::ones_like(valid_counts)),
+            torch::zeros_like(c6_sum));
+        const auto c6_masked = torch::where(
+            mask_lr, c6ij,
+            torch::full_like(c6ij,
+                -std::numeric_limits<double>::infinity()));
+        auto c6_max = std::get<0>(torch::max(c6_masked, 1));
+        c6_max = torch::where(valid_counts > 0.0,
+                              c6_max,
+                              torch::zeros_like(c6_sum));
+        const auto c6_stats = torch::stack({c6_sum, c6_mean, c6_max}, 1);
+
+        const double d3_sum = TensorScalar(e_disp_atom.sum());
+        const double d3_increment = result_ptr->energy_dftd3_;
+        const double d3_tolerance = std::max(
+            1.0e-5,
+            1.0e-6 * std::max(1.0, std::abs(d3_increment)));
+        if (!std::isfinite(d3_sum) ||
+            std::abs(d3_sum - d3_increment) > d3_tolerance) {
+            OperationLog::Error("AIMNet2Result::Compute",
+                "D3 atom-energy sum mismatch: sum=" +
+                std::to_string(d3_sum) + " increment=" +
+                std::to_string(d3_increment) + " tolerance=" +
+                std::to_string(d3_tolerance));
+            return nullptr;
+        }
+
+        if (!TensorPrefixIsFinite(e_disp_atom,
+                                  static_cast<std::int64_t>(N)) ||
+            !TensorPrefixIsFinite(cn, static_cast<std::int64_t>(N)) ||
+            !TensorPrefixIsFinite(c6_stats,
+                                  static_cast<std::int64_t>(N))) {
+            OperationLog::Error("AIMNet2Result::Compute",
+                "non-finite AIMNet2 D3 diagnostic; result not attached");
+            return nullptr;
+        }
+
+        const auto e_disp_cpu = e_disp_atom
+            .narrow(0, 0, static_cast<std::int64_t>(N))
+            .to(torch::kCPU, torch::kFloat64).contiguous();
+        const auto cn_cpu = cn.narrow(0, 0, static_cast<std::int64_t>(N))
+            .to(torch::kCPU, torch::kFloat64).contiguous();
+        const auto c6_cpu = c6_stats
+            .narrow(0, 0, static_cast<std::int64_t>(N))
+            .to(torch::kCPU, torch::kFloat64).contiguous();
+        const auto e_disp_acc = e_disp_cpu.accessor<double, 1>();
+        const auto cn_acc = cn_cpu.accessor<double, 1>();
+        const auto c6_acc = c6_cpu.accessor<double, 2>();
+        for (std::size_t i = 0; i < N; ++i) {
+            const auto row = static_cast<std::int64_t>(i);
+            auto& atom = conf.MutableAtomAt(i);
+            atom.aimnet2_d3_e_disp_atom = e_disp_acc[row];
+            atom.aimnet2_d3_cn = cn_acc[row];
+            atom.aimnet2_d3_c6_stats = {
+                c6_acc[row][0], c6_acc[row][1], c6_acc[row][2]
+            };
+        }
+    } catch (const c10::Error& e) {
+        OperationLog::Error("AIMNet2Result::Compute",
+            "AIMNet2 output-head extraction failed: " +
+            std::string(e.what()));
+        return nullptr;
+    } catch (const std::exception& e) {
+        OperationLog::Error("AIMNet2Result::Compute",
+            "AIMNet2 output-head extraction failed: " +
+            std::string(e.what()));
+        return nullptr;
+    }
+
+    // ------------------------------------------------------------------
+    // 5. Extract charges from output
+    // ------------------------------------------------------------------
     auto charges_gpu = output_dict.at("charges").toTensor();
-    auto charges_cpu_tensor = charges_gpu.to(torch::kCPU, torch::kFloat64);
+    if (charges_gpu.dim() != 1 || charges_gpu.size(0) < N1 ||
+        !TensorPrefixIsFinite(charges_gpu, static_cast<std::int64_t>(N))) {
+        OperationLog::Error("AIMNet2Result::Compute",
+            "non-finite or malformed AIMNet2 charge output; result not attached");
+        return nullptr;
+    }
+    auto charges_cpu_tensor = charges_gpu
+        .to(torch::kCPU, torch::kFloat64).contiguous();
     auto charges_acc = charges_cpu_tensor.accessor<double, 1>();
 
     // Store charges on ConformationAtom (first N elements, skip sentinel)
@@ -288,7 +641,7 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     }
 
     // ------------------------------------------------------------------
-    // 5. Extract aim embedding — HARD FAIL if missing
+    // 6. Extract aim embedding and store its committed projection.
     // ------------------------------------------------------------------
     if (!output_dict.contains("aim")) {
         OperationLog::Error("AIMNet2Result::Compute",
@@ -301,9 +654,13 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     {
         auto aim_gpu = output_dict.at("aim").toTensor();
         auto aim_cpu = aim_gpu.to(torch::kCPU, torch::kFloat32);
-        auto aim_acc = aim_cpu.accessor<float, 2>();
 
-        int64_t model_dims = aim_cpu.size(1);
+        if (aim_cpu.dim() != 2 || aim_cpu.size(0) < N1) {
+            OperationLog::Error("AIMNet2Result::Compute",
+                "aim embedding has malformed shape; expected (N+1, 256)");
+            return nullptr;
+        }
+        const int64_t model_dims = aim_cpu.size(1);
         if (model_dims != static_cast<int64_t>(AIMNET2_AIM_DIMS)) {
             OperationLog::Error("AIMNet2Result::Compute",
                 "aim embedding has " + std::to_string(model_dims) +
@@ -311,39 +668,81 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
                 ". Model architecture mismatch.");
             return nullptr;
         }
+        auto aim_acc = aim_cpu.accessor<float, 2>();
 
         for (size_t i = 0; i < N; ++i) {
+            auto& atom = conf.MutableAtomAt(i);
             for (size_t d = 0; d < AIMNET2_AIM_DIMS; ++d) {
-                conf.MutableAtomAt(i).aimnet2_aim[d] = aim_acc[i][d];
+                const float value = aim_acc[i][d];
+                if (!std::isfinite(value)) {
+                    OperationLog::Error("AIMNet2Result::Compute",
+                        "non-finite aim embedding at atom " +
+                        std::to_string(i) + ", dim " + std::to_string(d) +
+                        "; result not attached");
+                    return nullptr;
+                }
+                atom.aimnet2_aim[d] = value;
+            }
+
+            // The projection is born here exactly once and becomes an
+            // AIMNet2Result-owned ConformationAtom field. Neither
+            // WriteFeatures nor trajectory statistics re-derive it.
+            const std::size_t slot = ProjectionElementSlot(
+                protein.AtomAt(i).element);
+            for (std::size_t k = 0;
+                 k < kAimnet2AimProjectionDims; ++k) {
+                double projected = 0.0;
+                for (std::size_t d = 0; d < AIMNET2_AIM_DIMS; ++d) {
+                    projected += static_cast<double>(
+                        kAimnet2AimProjectionBasis[slot][k][d]) *
+                        static_cast<double>(atom.aimnet2_aim[d]);
+                }
+                if (!std::isfinite(projected)) {
+                    OperationLog::Error("AIMNet2Result::Compute",
+                        "non-finite aim projection at atom " +
+                        std::to_string(i) + ", component " +
+                        std::to_string(k) + "; result not attached");
+                    return nullptr;
+                }
+                atom.aimnet2_aim_projection[k] =
+                    static_cast<float>(projected);
             }
         }
     }
 
     // ------------------------------------------------------------------
-    // 6. Charge-response gradient is a separate Result
+    // 7. Charge-response gradient is a separate Result
     // ------------------------------------------------------------------
     // AIMNet2ChargeResponseGradientResult performs its own grad-tracking
     // forward/backward pass after AIMNet2Result attaches.
 
     // ------------------------------------------------------------------
-    // 7. Coulomb EFG from AIMNet2 charges
+    // 8. Coulomb E/EFG from AIMNet2 charges
     // ------------------------------------------------------------------
-    ComputeCoulombEFG(conf, CalculatorConfig::Get("aimnet2_coulomb_efg_cutoff"));
+    if (!ComputeCoulombEFG(
+            conf, CalculatorConfig::Get("aimnet2_coulomb_efg_cutoff"))) {
+        return nullptr;
+    }
 
     OperationLog::Info(LogCalcOther, "AIMNet2Result::Compute",
         std::to_string(N) + " atoms, charges range [" +
-        std::to_string(charges_cpu_tensor.min().item<double>()) + ", " +
-        std::to_string(charges_cpu_tensor.max().item<double>()) + "], aim embedding extracted");
+        std::to_string(charges_cpu_tensor
+            .narrow(0, 0, static_cast<std::int64_t>(N))
+            .min().item<double>()) + ", " +
+        std::to_string(charges_cpu_tensor
+            .narrow(0, 0, static_cast<std::int64_t>(N))
+            .max().item<double>()) +
+        "], energy/D3 diagnostics and aim projection extracted");
 
     return result_ptr;
 }
 
 
 // ============================================================================
-// Coulomb EFG from AIMNet2 charges
+// Coulomb E/EFG from AIMNet2 charges
 // ============================================================================
 
-void AIMNet2Result::ComputeCoulombEFG(
+bool AIMNet2Result::ComputeCoulombEFG(
         ProteinConformation& conf,
         double cutoff) {
 
@@ -381,12 +780,18 @@ void AIMNet2Result::ComputeCoulombEFG(
         }
     }
 
-    // Coulomb EFG sum with AIMNet2 charges
+    // Coulomb E/EFG sum with AIMNet2 charges.
+    // Sign convention: r = target - source and E = k q r / |r|^3.
     for (size_t i = 0; i < N; ++i) {
         Vec3 pos_i = conf.PositionAt(i);
 
+        Vec3 E_total = Vec3::Zero();
+        Vec3 E_backbone = Vec3::Zero();
+        Vec3 E_sidechain = Vec3::Zero();
+        Vec3 E_aromatic = Vec3::Zero();
         Mat3 EFG_total = Mat3::Zero();
         Mat3 EFG_backbone = Mat3::Zero();
+        Mat3 EFG_sidechain = Mat3::Zero();
         Mat3 EFG_aromatic = Mat3::Zero();
 
         auto neighbours = spatial.AtomsWithinRadius(pos_i, cutoff);
@@ -403,39 +808,75 @@ void AIMNet2Result::ComputeCoulombEFG(
             double r3 = r_mag * r_mag * r_mag;
             double r5 = r3 * r_mag * r_mag;
 
+            const Vec3 E_j = q_j * r / r3;
             // V_ab = q_j * (3 r_a r_b / r^5 - delta_ab / r^3)
-            Mat3 V_j = q_j * (3.0 * r * r.transpose() / r5
-                              - Mat3::Identity() / r3);
+            const Mat3 V_j = q_j * (3.0 * r * r.transpose() / r5
+                                    - Mat3::Identity() / r3);
 
+            E_total += E_j;
             EFG_total += V_j;
 
             if (is_aromatic[j]) {
+                E_aromatic += E_j;
                 EFG_aromatic += V_j;
             } else if (is_backbone[j]) {
+                E_backbone += E_j;
                 EFG_backbone += V_j;
+            } else {
+                E_sidechain += E_j;
+                EFG_sidechain += V_j;
             }
         }
 
         // Apply Coulomb constant and traceless projection
+        E_total       *= COULOMB_KE;
+        E_backbone    *= COULOMB_KE;
+        E_sidechain   *= COULOMB_KE;
+        E_aromatic    *= COULOMB_KE;
         EFG_total    *= COULOMB_KE;
         EFG_backbone *= COULOMB_KE;
+        EFG_sidechain *= COULOMB_KE;
         EFG_aromatic *= COULOMB_KE;
 
         EFG_total    -= (EFG_total.trace() / 3.0) * Mat3::Identity();
         EFG_backbone -= (EFG_backbone.trace() / 3.0) * Mat3::Identity();
+        EFG_sidechain -= (EFG_sidechain.trace() / 3.0) * Mat3::Identity();
         EFG_aromatic -= (EFG_aromatic.trace() / 3.0) * Mat3::Identity();
 
+        // AIMNet2 is a hard-failure calculator. A non-finite model charge
+        // or coordinate must make the result absent (and therefore masked by
+        // trajectory consumers), never be silently rewritten to zero. This
+        // check deliberately does not sanitize the pre-existing EFG fields.
+        if (!E_total.allFinite() || !E_backbone.allFinite() ||
+            !E_sidechain.allFinite() || !E_aromatic.allFinite() ||
+            !EFG_total.allFinite() || !EFG_backbone.allFinite() ||
+            !EFG_sidechain.allFinite() || !EFG_aromatic.allFinite()) {
+            OperationLog::Error("AIMNet2Result::ComputeCoulombEFG",
+                "non-finite Coulomb E/EFG at target atom " +
+                std::to_string(i) + "; AIMNet2Result will not attach");
+            return false;
+        }
+
         auto& ca = conf.MutableAtomAt(i);
+        ca.aimnet2_E_total = E_total;
+        ca.aimnet2_E_backbone = E_backbone;
+        ca.aimnet2_E_sidechain = E_sidechain;
+        ca.aimnet2_E_aromatic = E_aromatic;
         ca.aimnet2_EFG_total = EFG_total;
         ca.aimnet2_EFG_total_spherical = SphericalTensor::Decompose(EFG_total);
         ca.aimnet2_EFG_backbone = EFG_backbone;
         ca.aimnet2_EFG_backbone_spherical = SphericalTensor::Decompose(EFG_backbone);
+        ca.aimnet2_EFG_sidechain = EFG_sidechain;
+        ca.aimnet2_EFG_sidechain_spherical =
+            SphericalTensor::Decompose(EFG_sidechain);
         ca.aimnet2_EFG_aromatic = EFG_aromatic;
         ca.aimnet2_EFG_aromatic_spherical = SphericalTensor::Decompose(EFG_aromatic);
 
         // Total shielding contribution = full 9-component SphericalTensor
         ca.aimnet2_shielding_contribution = ca.aimnet2_EFG_total_spherical;
     }
+
+    return true;
 }
 
 
@@ -494,6 +935,96 @@ int AIMNet2Result::WriteFeatures(
     ++files_written;
     write_efg_t2("aimnet2_efg_backbone.npy", &ConformationAtom::aimnet2_EFG_backbone_spherical);
     ++files_written;
+    write_efg_t2("aimnet2_efg_sidechain.npy", &ConformationAtom::aimnet2_EFG_sidechain_spherical);
+    ++files_written;
+
+    auto write_vec3 = [&](const std::string& name,
+                          Vec3 ConformationAtom::* member) {
+        std::vector<double> data(N * 3);
+        for (size_t i = 0; i < N; ++i) {
+            const Vec3& value = conf.AtomAt(i).*member;
+            data[i*3 + 0] = value.x();
+            data[i*3 + 1] = value.y();
+            data[i*3 + 2] = value.z();
+        }
+        NpyWriter::WriteFloat64(
+            output_dir + "/" + name, data.data(), N, 3);
+    };
+    write_vec3("aimnet2_E.npy", &ConformationAtom::aimnet2_E_total);
+    ++files_written;
+    write_vec3("aimnet2_E_backbone.npy", &ConformationAtom::aimnet2_E_backbone);
+    ++files_written;
+    write_vec3("aimnet2_E_sidechain.npy", &ConformationAtom::aimnet2_E_sidechain);
+    ++files_written;
+    write_vec3("aimnet2_E_aromatic.npy", &ConformationAtom::aimnet2_E_aromatic);
+    ++files_written;
+
+    auto write_scalar = [&](const std::string& name,
+                            double ConformationAtom::* member) {
+        std::vector<double> data(N);
+        for (size_t i = 0; i < N; ++i) {
+            data[i] = conf.AtomAt(i).*member;
+        }
+        NpyWriter::WriteFloat64(output_dir + "/" + name, data.data(), N);
+    };
+    write_scalar("aimnet2_energy_mlp.npy",
+                 &ConformationAtom::aimnet2_energy_mlp);
+    ++files_written;
+    write_scalar("aimnet2_energy_shifted_local.npy",
+                 &ConformationAtom::aimnet2_energy_shifted_local);
+    ++files_written;
+
+    {
+        const std::array<double, 6> data = {
+            energy_local_sum_,
+            energy_lrcoulomb_,
+            energy_dftd3_,
+            energy_total_,
+            conditioned_net_charge_,
+            neutral_conditioning_flag_,
+        };
+        NpyWriter::WriteFloat64(
+            output_dir + "/aimnet2_energy_terms.npy",
+            data.data(), 1, data.size());
+        ++files_written;
+    }
+
+    write_scalar("aimnet2_d3_e_disp_atom.npy",
+                 &ConformationAtom::aimnet2_d3_e_disp_atom);
+    ++files_written;
+    write_scalar("aimnet2_d3_cn.npy",
+                 &ConformationAtom::aimnet2_d3_cn);
+    ++files_written;
+
+    {
+        std::vector<double> data(N * 3);
+        for (size_t i = 0; i < N; ++i) {
+            const auto& stats = conf.AtomAt(i).aimnet2_d3_c6_stats;
+            data[i*3 + 0] = stats[0];
+            data[i*3 + 1] = stats[1];
+            data[i*3 + 2] = stats[2];
+        }
+        NpyWriter::WriteFloat64(
+            output_dir + "/aimnet2_d3_c6_stats.npy",
+            data.data(), N, 3);
+        ++files_written;
+    }
+
+    // Pure read-back of the projection born in Compute. In particular,
+    // this writer never reads aimnet2_aim or the committed basis table.
+    {
+        std::vector<float> data(N * kAimnet2AimProjectionDims);
+        for (size_t i = 0; i < N; ++i) {
+            const auto& projection = conf.AtomAt(i).aimnet2_aim_projection;
+            for (size_t k = 0; k < kAimnet2AimProjectionDims; ++k) {
+                data[i*kAimnet2AimProjectionDims + k] = projection[k];
+            }
+        }
+        NpyWriter::WriteFloat32(
+            output_dir + "/aimnet2_aim_projection.npy",
+            data.data(), N, kAimnet2AimProjectionDims);
+        ++files_written;
+    }
 
     // Charge-response-gradient NPYs are written by
     // AIMNet2ChargeResponseGradientResult.

@@ -2,9 +2,11 @@
 //
 // AIMNet2Result: AIMNet2 neural network charge calculator via libtorch.
 //
-// Produces per-atom Hirshfeld charges, aim embedding, and
-// Coulomb EFG tensor from AIMNet2 charges. Decomposes EFG by source
-// (backbone, aromatic) using the same kernel as CoulombResult.
+// Produces per-atom Hirshfeld charges, raw aim embedding, its committed
+// element-conditioned projection, output-head energy diagnostics, D3
+// diagnostics, and Coulomb E/EFG tensors from AIMNet2 charges. The field
+// tensors are decomposed by source (backbone, sidechain, aromatic) using
+// the same sign convention and kernel as CoulombResult.
 //
 // Married to AIMNet2 — no abstract interface, no factory pattern.
 // The .jpt model is loaded once and shared across all conformations.
@@ -64,7 +66,8 @@ public:
 
     std::vector<std::type_index> Dependencies() const override;
 
-    // Factory: compute AIMNet2 charges, aim embedding, and Coulomb EFG.
+    // Factory: compute every AIMNet2-owned ConformationAtom field once.
+    // WriteFeatures and trajectory reducers are read-back only.
     // model is the shared loaded model (created once at startup).
     // Returns nullptr for checked failures — never silently degrades.
     static std::unique_ptr<AIMNet2Result> Compute(
@@ -74,6 +77,13 @@ public:
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;
+
+    double EnergyLocalSum() const { return energy_local_sum_; }
+    double EnergyLongRangeCoulomb() const { return energy_lrcoulomb_; }
+    double EnergyDftD3() const { return energy_dftd3_; }
+    double EnergyTotal() const { return energy_total_; }
+    double ConditionedNetCharge() const { return conditioned_net_charge_; }
+    double NeutralConditioningFlag() const { return neutral_conditioning_flag_; }
 
     // Build the padded symmetric neighbour matrix for AIMNet2.
     // Returns (N+1, max_nb) int32 tensor, sentinel = N.
@@ -88,9 +98,19 @@ public:
 private:
     const ProteinConformation* conf_ = nullptr;
 
-    // Compute Coulomb EFG from AIMNet2 charges, decomposed by source.
-    // Same dipolar kernel as CoulombResult.
-    static void ComputeCoulombEFG(
+    // Protein-level one-molecule diagnostics. Per-atom products live on
+    // ConformationAtom under the calculator's one-writer discipline.
+    double energy_local_sum_ = 0.0;
+    double energy_lrcoulomb_ = 0.0;
+    double energy_dftd3_ = 0.0;
+    double energy_total_ = 0.0;
+    double conditioned_net_charge_ = 0.0;
+    double neutral_conditioning_flag_ = 0.0;
+
+    // Compute Coulomb E/EFG from AIMNet2 charges, decomposed by source.
+    // Same sign and dipolar kernel as CoulombResult. Returns false after
+    // logging if a non-finite model product would poison the result.
+    static bool ComputeCoulombEFG(
         ProteinConformation& conf,
         double cutoff);
 };

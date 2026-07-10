@@ -368,8 +368,17 @@ enum class CalculatorId {
     PiQuadrupole, RingSusceptibility, Dispersion, HBond,
     APBS, Orca, Mopac, MopacCoulomb, MopacMcConnell, AIMNet2, SASA,
     WaterField, HydrationShell, HydrationGeometry, EEQ, PlanarGeometry,
-    LarsenHBond
+    LarsenHBond,
+    EEQCoulomb
 };
+
+// CalculatorId is persisted in GeometryChoice records. It is append-only:
+// pin the pre-existing tail so adding a calculator can never silently shift
+// values already present in frozen data.
+static_assert(static_cast<int>(CalculatorId::EEQ) == 18);
+static_assert(static_cast<int>(CalculatorId::PlanarGeometry) == 19);
+static_assert(static_cast<int>(CalculatorId::LarsenHBond) == 20);
+static_assert(static_cast<int>(CalculatorId::EEQCoulomb) == 21);
 
 
 // ============================================================================

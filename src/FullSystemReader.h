@@ -31,7 +31,32 @@
 namespace nmr {
 
 struct BuildResult;                   // forward — defined in BuildResult.h
-namespace detail { struct TprData; }  // opaque — holds gmx_mtop_t, defined in .cpp
+namespace detail {
+struct TprData;  // opaque — holds gmx_mtop_t, defined in .cpp
+
+// Testable, name-independent representation of the GROMACS moltype boundary.
+// It exists only at the TPR translation seam; core protein code never sees it.
+struct MoltypeSiteSignature {
+    int atomic_number = 0;
+    double charge = 0.0;
+    bool is_virtual = false;
+};
+
+enum class MoltypeBoundaryClass {
+    UnsupportedVirtualSiteWater,
+    ThreeSiteWater,
+    Ion,
+    ProteinOrOther,
+};
+
+MoltypeBoundaryClass ClassifyMoltypeBoundary(
+    std::size_t residue_count,
+    const std::vector<MoltypeSiteSignature>& sites);
+
+std::string UnsupportedVirtualSiteWaterDiagnostic(
+    const std::string& moltype_name,
+    const std::vector<MoltypeSiteSignature>& sites);
+}  // namespace detail
 
 // Topology layout extracted from TPR.
 struct SystemTopology {

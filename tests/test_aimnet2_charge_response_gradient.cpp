@@ -9,23 +9,90 @@
 
 #include "AIMNet2ChargeResponseGradientResult.h"
 #include "AIMNet2Result.h"
+#include "CalculatorConfig.h"
 #include "ChargeAssignmentResult.h"
 #include "ConformationAtom.h"
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
 #include "PdbFileReader.h"
+#include "PhysicalConstants.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "SpatialIndexResult.h"
+#include "generated/AIMNet2AimProjection.h"
 
 #include <torch/cuda.h>
 
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 
 using namespace nmr;
 namespace fs = std::filesystem;
+
+namespace {
+
+float ExpectedProjectionWeight(std::uint64_t element_slot,
+                               std::uint64_t component,
+                               std::uint64_t input_dim) {
+    std::uint64_t x = 0xA17E20260708ULL ^ (element_slot << 40) ^
+                      (component << 24) ^ input_dim;
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    const std::uint64_t u = x ^ (x >> 31);
+    constexpr float scale = static_cast<float>(
+        0.306186217847897235151236163473);  // sqrt(3/32)
+    if (u % 6u == 0u) return scale;
+    if (u % 6u == 1u) return -scale;
+    return 0.0f;
+}
+
+}  // namespace
+
+
+TEST(AIMNet2AimProjectionBasis, LiteralTableMatchesPinnedProvenance) {
+    static_assert(kAimnet2AimProjectionDims == 32);
+    static_assert(AIMNET2_AIM_DIMS == 256);
+
+    constexpr float kScale = 0x1.3988e2p-2f;
+    std::size_t positive = 0;
+    std::size_t negative = 0;
+    std::size_t zero = 0;
+    for (std::size_t e = 0; e < kAimnet2AimProjectionElementSlots; ++e) {
+        for (std::size_t k = 0; k < kAimnet2AimProjectionDims; ++k) {
+            for (std::size_t d = 0; d < AIMNET2_AIM_DIMS; ++d) {
+                const float value = kAimnet2AimProjectionBasis[e][k][d];
+                EXPECT_FLOAT_EQ(value, ExpectedProjectionWeight(e, k, d))
+                    << "basis mismatch at [" << e << "][" << k
+                    << "][" << d << "]";
+                if (value > 0.0f) {
+                    ++positive;
+                    EXPECT_FLOAT_EQ(value, kScale);
+                } else if (value < 0.0f) {
+                    ++negative;
+                    EXPECT_FLOAT_EQ(value, -kScale);
+                } else {
+                    ++zero;
+                }
+            }
+        }
+    }
+    EXPECT_EQ(positive, 6813u);
+    EXPECT_EQ(negative, 6791u);
+    EXPECT_EQ(zero, 27356u);
+
+    // Pinned cells were produced independently from the binding offline
+    // SplitMix64 recipe; they catch axis transposition as well as sign drift.
+    EXPECT_FLOAT_EQ(kAimnet2AimProjectionBasis[0][0][0], kScale);
+    EXPECT_FLOAT_EQ(kAimnet2AimProjectionBasis[0][0][1], 0.0f);
+    EXPECT_FLOAT_EQ(kAimnet2AimProjectionBasis[2][17][93], -kScale);
+    EXPECT_FLOAT_EQ(kAimnet2AimProjectionBasis[4][31][255], -kScale);
+    EXPECT_EQ(kAimnet2AimProjectionBasisId,
+              "splitmix64_0xA17E20260708_achlioptas_32x256_element_HCNOS");
+}
 
 
 class AIMNet2ChargeResponseGradientTest : public ::testing::Test {
@@ -64,6 +131,7 @@ protected:
 
 TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseGradient) {
     auto& conf = protein->Conformation();
+    constexpr int kConditionedNetCharge = -2;
 
     auto geo = GeometryResult::Compute(conf);
     ASSERT_NE(geo, nullptr);
@@ -82,11 +150,102 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
     ASSERT_NE(charges, nullptr) << "ff14SB charge loading failed";
     ASSERT_TRUE(conf.AttachResult(std::move(charges)));
 
-    auto aim = AIMNet2Result::Compute(conf, *model, /*net_charge=*/0);
+    auto aim = AIMNet2Result::Compute(
+        conf, *model, /*net_charge=*/kConditionedNetCharge);
     ASSERT_NE(aim, nullptr) << "AIMNet2Result::Compute returned nullptr";
     ASSERT_TRUE(conf.AttachResult(std::move(aim)));
 
-    auto pol = AIMNet2ChargeResponseGradientResult::Compute(conf, *model, /*net_charge=*/0);
+    // Independent forcing functions for the new AIMNet2 products.
+    const auto& aim_result = conf.Result<AIMNet2Result>();
+    EXPECT_NEAR(aim_result.EnergyTotal(),
+                aim_result.EnergyLocalSum() +
+                    aim_result.EnergyLongRangeCoulomb() +
+                    aim_result.EnergyDftD3(),
+                1.0e-8);
+    EXPECT_DOUBLE_EQ(aim_result.ConditionedNetCharge(),
+                     static_cast<double>(kConditionedNetCharge));
+    EXPECT_DOUBLE_EQ(
+        aim_result.NeutralConditioningFlag(),
+        CalculatorConfig::Get("charge_conditioning_neutral") != 0.0
+            ? 1.0 : 0.0);
+
+    double shifted_local_sum = 0.0;
+    double d3_atom_sum = 0.0;
+    for (size_t i = 0; i < conf.AtomCount(); ++i) {
+        const auto& ca = conf.AtomAt(i);
+        shifted_local_sum += ca.aimnet2_energy_shifted_local;
+        d3_atom_sum += ca.aimnet2_d3_e_disp_atom;
+        EXPECT_TRUE(std::isfinite(ca.aimnet2_energy_mlp));
+        EXPECT_TRUE(std::isfinite(ca.aimnet2_energy_shifted_local));
+        EXPECT_TRUE(std::isfinite(ca.aimnet2_d3_cn));
+        for (double value : ca.aimnet2_d3_c6_stats) {
+            EXPECT_TRUE(std::isfinite(value));
+        }
+
+        EXPECT_LT((ca.aimnet2_E_total -
+                   (ca.aimnet2_E_backbone + ca.aimnet2_E_sidechain +
+                    ca.aimnet2_E_aromatic)).norm(),
+                  1.0e-9);
+        EXPECT_LT((ca.aimnet2_EFG_total -
+                   (ca.aimnet2_EFG_backbone + ca.aimnet2_EFG_sidechain +
+                    ca.aimnet2_EFG_aromatic)).norm(),
+                  1.0e-9);
+
+        const Element element = conf.ProteinRef().AtomAt(i).element;
+        std::size_t slot = 0;
+        switch (element) {
+            case Element::H: slot = 0; break;
+            case Element::C: slot = 1; break;
+            case Element::N: slot = 2; break;
+            case Element::O: slot = 3; break;
+            case Element::S: slot = 4; break;
+            case Element::Unknown: FAIL() << "guarded AIMNet2 element"; break;
+        }
+        for (std::size_t k = 0; k < kAimnet2AimProjectionDims; ++k) {
+            double expected = 0.0;
+            for (std::size_t d = 0; d < AIMNET2_AIM_DIMS; ++d) {
+                expected += static_cast<double>(
+                    kAimnet2AimProjectionBasis[slot][k][d]) *
+                    static_cast<double>(ca.aimnet2_aim[d]);
+            }
+            EXPECT_FLOAT_EQ(ca.aimnet2_aim_projection[k],
+                            static_cast<float>(expected));
+        }
+    }
+    const double d3_tolerance = std::max(
+        1.0e-5,
+        1.0e-6 * std::max(1.0, std::abs(aim_result.EnergyDftD3())));
+    EXPECT_NEAR(shifted_local_sum, aim_result.EnergyLocalSum(), 1.0e-7);
+    EXPECT_NEAR(d3_atom_sum, aim_result.EnergyDftD3(), d3_tolerance);
+
+    // Brute-force Coulomb source of truth (independent of SpatialIndexResult)
+    // pins the rank-1 sign convention r = target - source.
+    const double cutoff =
+        CalculatorConfig::Get("aimnet2_coulomb_efg_cutoff");
+    const double charge_floor =
+        CalculatorConfig::Get("coulomb_charge_noise_floor");
+    const double singularity_guard =
+        CalculatorConfig::Get("singularity_guard_distance");
+    for (std::size_t target :
+         {std::size_t(0), conf.AtomCount() / 2, conf.AtomCount() - 1}) {
+        Vec3 expected_E = Vec3::Zero();
+        for (std::size_t source = 0; source < conf.AtomCount(); ++source) {
+            if (source == target) continue;
+            const double q = conf.AtomAt(source).aimnet2_charge;
+            if (std::abs(q) < charge_floor) continue;
+            const Vec3 r = conf.PositionAt(target) - conf.PositionAt(source);
+            const double distance = r.norm();
+            if (distance > cutoff || distance < singularity_guard) continue;
+            expected_E += COULOMB_KE * q * r /
+                (distance * distance * distance);
+        }
+        const Vec3 actual_E = conf.AtomAt(target).aimnet2_E_total;
+        EXPECT_LT((actual_E - expected_E).norm(),
+                  1.0e-9 * std::max(1.0, expected_E.norm()));
+    }
+
+    auto pol = AIMNet2ChargeResponseGradientResult::Compute(
+        conf, *model, /*net_charge=*/kConditionedNetCharge);
     ASSERT_NE(pol, nullptr) << "AIMNet2ChargeResponseGradientResult returned nullptr";
     ASSERT_TRUE(conf.AttachResult(std::move(pol)));
 
@@ -172,6 +331,37 @@ TEST_F(AIMNet2ChargeResponseGradientTest, WriteFeaturesEmitsBothNpys) {
     const fs::path output_dir = fs::temp_directory_path() /
         "aimnet2_charge_response_gradient_test_writefeatures";
     fs::create_directories(output_dir);
+
+    // Hardened calculator-language invariant: projection is born in Compute
+    // and WriteFeatures reads it back. Destroy the raw embedding after
+    // Compute; the emitted projection must retain the stored value.
+    const float stored_projection_0 =
+        conf.AtomAt(0).aimnet2_aim_projection[0];
+    conf.MutableAtomAt(0).aimnet2_aim.fill(12345.0f);
+
+    const auto& aim_result = conf.Result<AIMNet2Result>();
+    const int aim_written = aim_result.WriteFeatures(conf, output_dir.string());
+    EXPECT_EQ(aim_written, 17);
+    const fs::path projection_path =
+        output_dir / "aimnet2_aim_projection.npy";
+    ASSERT_TRUE(fs::exists(projection_path));
+    {
+        std::ifstream input(projection_path, std::ios::binary);
+        ASSERT_TRUE(input.good());
+        char prefix[8] = {};
+        input.read(prefix, sizeof(prefix));
+        ASSERT_EQ(input.gcount(), static_cast<std::streamsize>(sizeof(prefix)));
+        std::uint16_t header_length = 0;
+        input.read(reinterpret_cast<char*>(&header_length),
+                   sizeof(header_length));
+        input.seekg(static_cast<std::streamoff>(header_length),
+                    std::ios::cur);
+        float emitted_projection_0 = 0.0f;
+        input.read(reinterpret_cast<char*>(&emitted_projection_0),
+                   sizeof(emitted_projection_0));
+        ASSERT_TRUE(input.good());
+        EXPECT_FLOAT_EQ(emitted_projection_0, stored_projection_0);
+    }
 
     const auto& result = conf.Result<AIMNet2ChargeResponseGradientResult>();
     int written = result.WriteFeatures(conf, output_dir.string());

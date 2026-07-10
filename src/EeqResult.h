@@ -26,6 +26,8 @@
 //   eeq_charges.npy  (N,) float64 — partial charges (elementary charges)
 //   eeq_cn.npy       (N,) float64 — coordination number (intermediate,
 //                                   for traceability)
+//   eeq_chi_eff.npy  (N,) float64 — CN-conditioned electronegativity
+//   eeq_hardness.npy (N,2) float64 — [eta, A_ii] in atomic units
 //
 // Net charge: Compute(conf, net_charge) receives the real system net charge
 // from OperationRunner (or 0 under the charge_conditioning_neutral knob) as the

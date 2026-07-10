@@ -1,7 +1,7 @@
 #pragma once
 //
 // ApbsEfgTimeSeriesTrajectoryResult: per-atom per-frame time series of
-// the APBS solvated electric field gradient
+// the canonical APBS reaction electric field gradient
 // (ConformationAtom::apbs_efg_spherical, T2 SphericalTensor, V/Å²).
 // Tensor TS sibling of ApbsEfieldTimeSeriesTrajectoryResult (Vec3 TS
 // for the E-field) — same source ConformationResult (ApbsFieldResult),
@@ -16,7 +16,7 @@
 // OBJECT_MODEL.md "Conditional-attach TR discipline" subsection
 // (2026-05-19; all-1 + source_attached_policy="always_attached").
 //
-// Emission (T2-only — APBS EFG is the symmetrized, trace-projected
+// Emission (T2-only — APBS reaction EFG is the symmetrized, trace-projected
 // gradient of E; T0 and T1 are structurally zero after the source
 // symmetrization and trace projection):
 //
@@ -54,8 +54,10 @@
 #include "TrajectoryResult.h"
 #include "Types.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -97,6 +99,18 @@ private:
     // ApbsFieldResult is RequireConformationResult'd; the gate is
     // defensive against non-PerFrameExtractionSet configurations.
     std::vector<std::uint8_t> source_attached_per_frame_;
+    std::vector<std::array<std::uint64_t, 3>> grid_dims_per_frame_;
+    std::vector<std::array<double, 3>> grid_lengths_A_per_frame_;
+    std::vector<std::array<double, 3>> grid_origin_A_per_frame_;
+    std::vector<std::array<double, 3>> grid_spacing_A_per_frame_;
+    double apbs_manual_grid_padding_A_ =
+        std::numeric_limits<double>::quiet_NaN();
+    double apbs_manual_grid_min_dim_A_ =
+        std::numeric_limits<double>::quiet_NaN();
+    double apbs_temperature_K_ =
+        std::numeric_limits<double>::quiet_NaN();
+    double apbs_thermal_voltage_V_ =
+        std::numeric_limits<double>::quiet_NaN();
     std::size_t n_frames_ = 0;
     bool finalized_ = false;
 };

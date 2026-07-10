@@ -1,0 +1,9 @@
+[default]
+rtol = 1.0e-5
+atol = 1.0e-8
+min_nonzero_fraction = 0.05
+
+# Backpropagated AIMNet2 diagnostic proxy. CUDA/libtorch reductions vary at
+# sub-micro absolute scale between otherwise equivalent runs.
+[arrays.aimnet2_charge_response_gradient]
+atol = 1.0e-6

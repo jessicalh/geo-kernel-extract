@@ -34,6 +34,7 @@
 #include "HydrationShellResult.h"
 #include "HydrationGeometryResult.h"
 #include "EeqResult.h"
+#include "EeqCoulombResult.h"
 #include "OperationLog.h"
 
 namespace nmr {
@@ -188,6 +189,8 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     if (!TimedAttach(conf, "EeqResult", out, [&]{
             return EeqResult::Compute(conf, charge_model_net_charge); })) return out;
+    if (!TimedAttach(conf, "EeqCoulombResult", out, [&]{
+            return EeqCoulombResult::Compute(conf); })) return out;
 
     // AIMNet2: FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
     // ChargeResponseGradient runs unconditionally after AIMNet2Result;

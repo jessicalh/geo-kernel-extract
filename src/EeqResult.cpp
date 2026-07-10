@@ -192,6 +192,9 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf, int net
     for (size_t i = 0; i < N; ++i) {
         auto& atom = conf.MutableAtomAt(i);
         atom.eeq_cn = cn(i);
+        atom.eeq_chi_eff = chi_eff(i);
+        atom.eeq_eta = params[i].gam;
+        atom.eeq_self_hardness_diag = A(i, i);
 
         double qi = charges(i);
         if (std::abs(qi) > charge_clamp) {
@@ -273,7 +276,25 @@ int EeqResult::WriteFeatures(
         NpyWriter::WriteFloat64(output_dir + "/eeq_cn.npy", data.data(), N);
     }
 
-    return 2;
+    // Pure read-back of diagnostics stored by Compute.
+    {
+        std::vector<double> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).eeq_chi_eff;
+        NpyWriter::WriteFloat64(output_dir + "/eeq_chi_eff.npy", data.data(), N);
+    }
+
+    {
+        std::vector<double> data(N * 2);
+        for (size_t i = 0; i < N; ++i) {
+            data[i*2+0] = conf.AtomAt(i).eeq_eta;
+            data[i*2+1] = conf.AtomAt(i).eeq_self_hardness_diag;
+        }
+        NpyWriter::WriteFloat64(output_dir + "/eeq_hardness.npy",
+                                data.data(), N, 2);
+    }
+
+    return 4;
 }
 
 }  // namespace nmr

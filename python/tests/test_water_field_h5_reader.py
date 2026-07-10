@@ -90,6 +90,9 @@ def _write_water_field_time_series(f: h5py.File, n_atoms: int, n_frames: int,
     grp.attrs["efield_cutoff_A"]      = 15.0
     grp.attrs["n_first_cutoff_A"]     = 3.5
     grp.attrs["n_second_cutoff_A"]    = 5.5
+    grp.attrs["max_potential_derivative_rank"] = 2
+    grp.attrs["higher_derivatives_present"] = False
+    grp.attrs["rank3_policy"] = "not_emitted_no_local_frame"
 
     rng = np.random.default_rng(13)
     efield       = rng.normal(0, 1, (n_atoms, n_frames, 3)).astype(np.float64)
@@ -299,6 +302,13 @@ class TestWaterFieldTimeSeriesGroup:
         assert ts.efield_cutoff_A   == 15.0
         assert ts.n_first_cutoff_A  == 3.5
         assert ts.n_second_cutoff_A == 5.5
+
+    def test_derivative_rank_policy_attrs(self, h5_with_water):
+        h5, _, _ = h5_with_water
+        ts = load_trajectory(h5).water_field.time_series
+        assert ts.max_potential_derivative_rank == 2
+        assert ts.higher_derivatives_present is False
+        assert ts.rank3_policy == "not_emitted_no_local_frame"
 
     def test_source_attached_provenance(self, h5_with_water):
         h5, _, _ = h5_with_water

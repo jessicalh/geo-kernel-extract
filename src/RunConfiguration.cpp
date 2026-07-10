@@ -21,6 +21,8 @@
 #include "DispersionResult.h"
 #include "HBondResult.h"
 #include "EeqResult.h"
+#include "EeqCoulombResult.h"
+#include "CoulombResult.h"
 #include "AIMNet2Result.h"
 #include "WaterFieldResult.h"
 #include "HydrationShellResult.h"
@@ -62,6 +64,7 @@
 #include "SasaTimeSeriesTrajectoryResult.h"
 #include "AIMNet2ChargeTimeSeriesTrajectoryResult.h"
 #include "AIMNet2EmbeddingTimeSeriesTrajectoryResult.h"
+#include "AIMNet2AimProjectionWelfordTrajectoryResult.h"
 #include "AIMNet2ChargeResponseGradientResult.h"
 #include "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.h"
 #include "AIMNet2ChargeResponseGradientWelfordTrajectoryResult.h"
@@ -123,8 +126,9 @@ void Produces(RunConfiguration& c) {
 // ── PerFrameExtractionSet ────────────────────────────────────────
 //
 // Production canonical trajectory shape. Full classical stack + APBS +
-// AIMNet2 every dispatched frame. MOPAC skipped (FullFat only);
-// vacuum Coulomb skipped because APBS is the active electrostatic field.
+// AIMNet2 every dispatched frame. MOPAC is skipped (FullFat only). FF
+// Coulomb remains enabled alongside APBS: it provides the vacuum field and
+// the Coulomb-prefixed direct aliases of APBS's canonical reaction field.
 //
 // Stride is intentionally NOT set here: it defaults to 1 (every frame)
 // and is the caller's single knob (CLI --stride → SetStride). A buried
@@ -137,7 +141,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
 
     c.per_frame_opts_.skip_mopac   = true;   // sparse-frame only
     c.per_frame_opts_.skip_apbs    = false;
-    c.per_frame_opts_.skip_coulomb = true;   // APBS supersedes
+    c.per_frame_opts_.skip_coulomb = false;
     c.per_frame_opts_.skip_dssp    = false;
 
     // Mandatory per frame; Phase 4 returns kConfigRequiresAimnet2
@@ -161,6 +165,8 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(HBondResult));
     c.RequireConformationResult(typeid(SasaResult));
     c.RequireConformationResult(typeid(EeqResult));
+    c.RequireConformationResult(typeid(EeqCoulombResult));
+    c.RequireConformationResult(typeid(CoulombResult));
     c.RequireConformationResult(typeid(AIMNet2Result));
     c.RequireConformationResult(typeid(AIMNet2ChargeResponseGradientResult));
     c.RequireConformationResult(typeid(WaterFieldResult));
@@ -198,6 +204,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     // ── AIMNet2 (charge, embedding, charge-response gradient) ──
     Produces<AIMNet2ChargeTimeSeriesTrajectoryResult,
              AIMNet2EmbeddingTimeSeriesTrajectoryResult,
+             AIMNet2AimProjectionWelfordTrajectoryResult,
              AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult,
              AIMNet2ChargeResponseGradientWelfordTrajectoryResult>(c);
 
@@ -207,9 +214,9 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
 
     // The MOPAC family (MopacCoulomb / MopacMcConnell shielding, charge
     // and bond-order Welford, the MOPAC-vs-FF14SB reconciliation) is NOT
-    // here: PerFrameExtractionSet skips MOPAC and vacuum Coulomb, so those
-    // source calcs never attach per frame and the TRs would be dead-code.
-    // They live in FullFatFrameExtraction, which enables both. Decision
+    // here: PerFrameExtractionSet skips MOPAC, so MOPAC source calcs never
+    // attach per frame and those TRs would be dead-code. They live in
+    // FullFatFrameExtraction. Decision
     // 2026-05-21 per science + math adversarial review H3.
 
     // ── Tripeptide backbone + neighbor (ProCS15) shielding + residuals ──
@@ -287,8 +294,9 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
 
 // ── FullFatFrameExtraction ───────────────────────────────────────
 //
-// PerFrameExtractionSet with MOPAC and vacuum Coulomb enabled. MOPAC runs
-// on every dispatched frame (the single --stride governs the cadence);
+// PerFrameExtractionSet with MOPAC additionally enabled. Vacuum Coulomb is
+// already a production source inherited from PerFrameExtractionSet. MOPAC
+// runs on every dispatched frame (the single --stride governs the cadence);
 // there is no separate MOPAC stride.
 //
 // MOPAC-family ConformationResult sources attach conditionally inside
@@ -300,16 +308,14 @@ RunConfiguration RunConfiguration::FullFatFrameExtraction() {
     RunConfiguration c = PerFrameExtractionSet();
     c.SetName("FullFatFrameExtraction");
 
-    // Both MOPAC AND vacuum Coulomb attach here — required for the
-    // MOPAC-family TRs (TR5-TR9 of the 13-TR plan) and for TR9's
-    // cross-source MopacCoulomb-vs-Coulomb reconciliation. APBS
-    // stays on (inherited from PerFrameExtractionSet) for the
-    // hybrid APBS-Mopac calibration probe.
+    // MOPAC attaches here. Vacuum Coulomb and APBS both stay on (inherited
+    // from PerFrameExtractionSet) for the cross-source reconciliation and
+    // hybrid APBS-MOPAC calibration probes.
     c.per_frame_opts_.skip_mopac   = false;
     c.per_frame_opts_.skip_coulomb = false;
 
-    // ── MOPAC family ── only meaningful once skip_mopac and skip_coulomb
-    // are false (above), so these live here rather than in
+    // ── MOPAC family ── only meaningful once skip_mopac is false
+    // (with production Coulomb inherited above), so these live here rather than in
     // PerFrameExtractionSet. MopacVsFf14SbReconciliation is the cross-
     // source MopacCoulomb-vs-FF14SB-Coulomb probe (TR9).
     Produces<MopacChargeWelfordTrajectoryResult,

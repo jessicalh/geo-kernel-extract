@@ -118,7 +118,7 @@ void RunWaterClampIndependenceInChild() {
     auto result = nmr::WaterFieldResult::Compute(conf, solvent);
     const auto& atom = conf.AtomAt(0);
     const nmr::Vec3 expected_first =
-        (nmr::COULOMB_KE * 0.001 / 8.0) * nmr::Vec3(2.0, 0.0, 0.0);
+        (nmr::COULOMB_KE * 0.001 / 8.0) * nmr::Vec3(-2.0, 0.0, 0.0);
     const bool ok = result != nullptr
         && atom.water_efield_clamp_mask == 1
         && atom.water_efield_clamp_scale < 1.0
@@ -172,6 +172,37 @@ TEST(WaterFieldTimeSeries, SyntheticAllAbsentSkipsGroup) {
 TEST(WaterFieldTimeSeries, ClampIndependence) {
     EXPECT_EXIT({ RunWaterClampIndependenceInChild(); },
                 ::testing::ExitedWithCode(0), "");
+}
+
+TEST(WaterFieldResult, UsesTargetMinusSourceCoulombConvention) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::Protein protein;
+    auto& conf = BuildOneAtomWaterFixture(protein);
+
+    nmr::SolventEnvironment solvent;
+    nmr::WaterMolecule water;
+    water.O_pos = nmr::Vec3(2.0, 0.0, 0.0);
+    water.H1_pos = water.O_pos;
+    water.H2_pos = water.O_pos;
+    water.O_charge = 0.5;
+    water.H_charge = 0.0;
+    solvent.waters = {water};
+    solvent.water_O_positions = {water.O_pos};
+
+    ASSERT_NE(nmr::WaterFieldResult::Compute(conf, solvent), nullptr);
+    const auto& atom = conf.AtomAt(0);
+    const nmr::Vec3 r = conf.PositionAt(0) - water.O_pos;
+    const double rmag = r.norm();
+    const double r3 = rmag * rmag * rmag;
+    const double r5 = r3 * rmag * rmag;
+    const nmr::Vec3 expected_E =
+        nmr::COULOMB_KE * water.O_charge * r / r3;
+    const nmr::Mat3 expected_EFG = nmr::COULOMB_KE * water.O_charge *
+        (3.0 * r * r.transpose() / r5 - nmr::Mat3::Identity() / r3);
+
+    EXPECT_LT((atom.water_efield - expected_E).norm(), 1e-12);
+    EXPECT_LT((atom.water_efg - expected_EFG).norm(), 1e-12);
+    EXPECT_LT(std::abs(atom.water_efg.trace()), 1e-12);
 }
 
 
@@ -329,6 +360,16 @@ TEST(WaterFieldTimeSeries, H5RoundTrip) {
     grp.getAttribute("efg_t1_structural_zero").read(t1_zero);
     EXPECT_TRUE(t0_zero);
     EXPECT_TRUE(t1_zero);
+
+    int max_rank = 0;
+    bool higher = true;
+    std::string rank3_policy;
+    grp.getAttribute("max_potential_derivative_rank").read(max_rank);
+    grp.getAttribute("higher_derivatives_present").read(higher);
+    grp.getAttribute("rank3_policy").read(rank3_policy);
+    EXPECT_EQ(max_rank, 2);
+    EXPECT_FALSE(higher);
+    EXPECT_EQ(rank3_policy, "not_emitted_no_local_frame");
 
     // Shapes
     const std::size_t N = tp.AtomCount();

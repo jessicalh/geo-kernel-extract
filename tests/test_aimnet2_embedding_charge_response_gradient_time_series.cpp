@@ -10,6 +10,7 @@
 //
 
 #include "AIMNet2EmbeddingTimeSeriesTrajectoryResult.h"
+#include "AIMNet2AimProjectionWelfordTrajectoryResult.h"
 #include "AIMNet2ChargeResponseGradientResult.h"
 #include "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.h"
 #include "AIMNet2ChargeResponseGradientWelfordTrajectoryResult.h"
@@ -37,6 +38,7 @@
 #include <highfive/H5Group.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -258,9 +260,10 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
 
     // Attr checks. Vec3 metadata follows existing TR convention:
     // layout + normalization + parity emitted as separate attrs.
-    std::string source, policy, uv, us, ilv, norm_v, plv, ils, pls;
+    std::string source, policy, physics, uv, us, ilv, norm_v, plv, ils, pls;
     grp.getAttribute("source").read(source);
     grp.getAttribute("source_attached_policy").read(policy);
+    grp.getAttribute("physics_description").read(physics);
     grp.getAttribute("units_vector").read(uv);
     grp.getAttribute("units_scalar").read(us);
     grp.getAttribute("irrep_layout_vector").read(ilv);
@@ -269,6 +272,8 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
     grp.getAttribute("irrep_layout_scalar").read(ils);
     grp.getAttribute("parity_scalar").read(pls);
     EXPECT_NE(source.find("AIMNet2ChargeResponseGradientResult"), std::string::npos);
+    EXPECT_NE(physics.find("proxy/diagnostic"), std::string::npos);
+    EXPECT_NE(physics.find("NOT Buckingham"), std::string::npos);
     EXPECT_EQ(policy, "always_attached");
     EXPECT_EQ(uv, "e^2/Å");
     EXPECT_EQ(us, "e^2/Å");
@@ -360,6 +365,88 @@ TEST(AIMNet2ChargeResponseGradientWelford, SyntheticThreeFramesSkipsGroupOnAbsen
 }
 
 
+TEST(AIMNet2AimProjectionWelford, AbsentSourceIsMaskedAndNeverZeroAccumulated) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    const std::size_t N = tp.AtomCount();
+    auto tr = nmr::AIMNet2AimProjectionWelfordTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
+                         fix.tpr_path,
+                         fix.edr_path);
+
+    constexpr std::size_t kFrames = 3;
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    for (std::size_t frame = 0; frame < kFrames; ++frame) {
+        auto conf = std::make_unique<nmr::ProteinConformation>(
+            &tp.ProteinRef(), positions, "source-absent synthetic frame");
+        // Deliberately populate both raw and projected fields without
+        // attaching AIMNet2Result. The HasResult gate must ignore them.
+        for (std::size_t i = 0; i < N; ++i) {
+            conf->MutableAtomAt(i).aimnet2_aim.fill(42.0f);
+            conf->MutableAtomAt(i).aimnet2_aim_projection.fill(7.0f);
+        }
+        tr->Compute(*conf, tp, traj, frame, static_cast<double>(frame));
+    }
+    tr->Finalize(tp, traj);
+    EXPECT_EQ(tr->NumFrames(), kFrames);
+    EXPECT_EQ(tr->SourceAttachedCount(), 0u);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("aimnet2_projection_welford_absent_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    ASSERT_TRUE(reopen.exist(
+        "/trajectory/aimnet2_aim_projection_welford"));
+    auto group = reopen.getGroup(
+        "/trajectory/aimnet2_aim_projection_welford");
+
+    const auto dims = group.getDataSet("projection_mean")
+        .getSpace().getDimensions();
+    ASSERT_EQ(dims.size(), 2u);
+    EXPECT_EQ(dims[0], N);
+    EXPECT_EQ(dims[1], nmr::AIMNET2_AIM_PROJECTION_DIMS);
+
+    std::vector<double> mean(
+        N * nmr::AIMNET2_AIM_PROJECTION_DIMS);
+    group.getDataSet("projection_mean").read(mean.data());
+    ASSERT_EQ(mean.size(), N * nmr::AIMNET2_AIM_PROJECTION_DIMS);
+    for (double value : mean) EXPECT_TRUE(std::isnan(value));
+
+    std::vector<std::uint8_t> mask;
+    group.getDataSet("source_attached_per_frame").read(mask);
+    ASSERT_EQ(mask.size(), kFrames);
+    for (std::uint8_t value : mask) EXPECT_EQ(value, 0u);
+
+    std::vector<std::uint64_t> n_per_atom;
+    group.getDataSet("n_frames_per_atom").read(n_per_atom);
+    ASSERT_EQ(n_per_atom.size(), N);
+    for (std::uint64_t value : n_per_atom) EXPECT_EQ(value, 0u);
+
+    std::string basis_id, policy, layout, parity;
+    group.getAttribute("basis_id").read(basis_id);
+    group.getAttribute("source_attached_policy").read(policy);
+    group.getAttribute("irrep_layout").read(layout);
+    group.getAttribute("parity").read(parity);
+    EXPECT_EQ(basis_id,
+        "splitmix64_0xA17E20260708_achlioptas_32x256_element_HCNOS");
+    EXPECT_EQ(policy, "always_attached_with_skip_on_absent_source");
+    EXPECT_EQ(layout, "feature_vector");
+    EXPECT_EQ(parity, "0e");
+
+    fs::remove(h5_path);
+}
+
+
 // ============================================================================
 // INTEGRATION: real AIMNet2 CRG kernel through Trajectory::Run, multi-frame.
 // Codex F4 2026-05-20 — exercises the actual Welford accumulation path
@@ -400,6 +487,12 @@ TEST(AIMNet2ChargeResponseGradientWelford, Integration1P9J) {
             -> std::unique_ptr<nmr::TrajectoryResult> {
                 return nmr::AIMNet2ChargeResponseGradientWelfordTrajectoryResult::Create(tp_in);
             });
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp_in)
+            -> std::unique_ptr<nmr::TrajectoryResult> {
+                return nmr::AIMNet2AimProjectionWelfordTrajectoryResult::Create(
+                    tp_in);
+            });
     config.SetStride(500);
 
     nmr::TrajectoryProtein tp;
@@ -432,15 +525,52 @@ TEST(AIMNet2ChargeResponseGradientWelford, Integration1P9J) {
         << "Most atoms should have nonzero charge-response gradient L2 norm";
     EXPECT_GT(max_abs_mean, 1e-6) << "Welford accumulation at noise floor";
 
-    // H5 write-back coverage is provided by the synthetic-skip test
-    // (covers attr/dataset layout when source is absent) + the per-atom
-    // state check above (covers the live accumulation path on real data
-    // through Trajectory::Run). Direct H5 readback from this test would
-    // require capturing the run-attached TR by type_index from
-    // TrajectoryProtein, which the existing API doesn't expose for this
-    // result family — that surface is added in a later commit if a
-    // downstream integration test needs to round-trip H5 from the
-    // production accumulation path.
+    // Stored-projection Welford: every attached AIMNet2 frame contributes
+    // once per atom; all 32 components remain finite. This is the A8
+    // production VET and exercises the actual Compute-owned field path.
+    const auto& projection_tr =
+        tp.Result<nmr::AIMNet2AimProjectionWelfordTrajectoryResult>();
+    EXPECT_EQ(projection_tr.NumFrames(), F);
+    EXPECT_EQ(projection_tr.SourceAttachedCount(), F);
+    for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
+        const auto& state =
+            tp.AtomAt(i).aimnet2_aim_projection_welford;
+        EXPECT_EQ(state.n_frames, F);
+        for (const auto& moments : state.projection) {
+            EXPECT_TRUE(std::isfinite(moments.mean));
+            EXPECT_TRUE(std::isfinite(moments.m2));
+            EXPECT_TRUE(std::isfinite(moments.std));
+            EXPECT_TRUE(std::isfinite(moments.min));
+            EXPECT_TRUE(std::isfinite(moments.max));
+        }
+    }
+
+    const std::string projection_h5 = (fs::temp_directory_path() /
+        ("aimnet2_projection_welford_integration_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(projection_h5, HighFive::File::Truncate);
+        projection_tr.WriteH5Group(tp, file);
+    }
+    {
+        HighFive::File file(projection_h5, HighFive::File::ReadOnly);
+        auto group = file.getGroup(
+            "/trajectory/aimnet2_aim_projection_welford");
+        const auto dims = group.getDataSet("projection_mean")
+            .getSpace().getDimensions();
+        ASSERT_EQ(dims.size(), 2u);
+        EXPECT_EQ(dims[0], tp.AtomCount());
+        EXPECT_EQ(dims[1], nmr::AIMNET2_AIM_PROJECTION_DIMS);
+        std::vector<std::uint8_t> mask;
+        group.getDataSet("source_attached_per_frame").read(mask);
+        ASSERT_EQ(mask.size(), F);
+        for (std::uint8_t attached : mask) EXPECT_EQ(attached, 1u);
+    }
+    fs::remove(projection_h5);
+
+    // CRG H5 layout remains covered by its synthetic source-absence test;
+    // the live CRG state is checked above. The new projection result is
+    // exercised both live and through H5 read-back in this test.
     std::cout << "AIMNet2ChargeResponseGradientWelford max|grad_x|="
               << max_abs_mean << " e²/Å, populated=" << populated
               << "/" << tp.AtomCount() << "\n";

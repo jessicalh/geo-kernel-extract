@@ -38,6 +38,10 @@
 // reads atom positions directly from ProteinConformation).
 // Requires: SolventEnvironment (passed to Compute).
 //
+// Potential-derivative scope: this calculator emits rank-1 E and rank-2
+// EFG only. Rank-3 derivatives/local multipoles are intentionally absent
+// because no canonical local frame is defined for them pre-freeze.
+//
 
 #include "ConformationResult.h"
 #include "SpatialIndexResult.h"

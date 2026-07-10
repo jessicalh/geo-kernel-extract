@@ -74,6 +74,23 @@ public:
                                : std::vector<size_t>{rows, cols});
     }
 
+    // Write unsigned-byte masks without changing their sentinel/value range.
+    static bool WriteUInt8(const std::string& path,
+                           const std::uint8_t* data,
+                           size_t count) {
+        return Write(path, "|u1", data, count * sizeof(std::uint8_t),
+                     {count});
+    }
+
+    static bool WriteUInt8(const std::string& path,
+                           const std::uint8_t* data,
+                           size_t rows, size_t cols) {
+        return Write(path, "|u1", data,
+                     rows * cols * sizeof(std::uint8_t),
+                     cols == 1 ? std::vector<size_t>{rows}
+                               : std::vector<size_t>{rows, cols});
+    }
+
 private:
     static bool Write(const std::string& path,
                       const char* descr,

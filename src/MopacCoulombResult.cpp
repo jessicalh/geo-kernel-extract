@@ -10,6 +10,7 @@
 #include "OperationLog.h"
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace nmr {
@@ -85,18 +86,18 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
     // ------------------------------------------------------------------
 
     std::vector<Vec3> primary_bond_dir(n_atoms, Vec3::Zero());
+    std::vector<bool> has_primary_bond_dir(n_atoms, false);
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         const Atom& atom = protein.AtomAt(ai);
-        if (atom.element == Element::H && atom.parent_atom_index != SIZE_MAX) {
+        if (atom.element == Element::H &&
+            atom.parent_atom_index != SIZE_MAX &&
+            atom.parent_atom_index < n_atoms) {
             Vec3 d = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
             double len = d.norm();
-            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
-        } else if (!atom.bond_indices.empty()) {
-            const Bond& b = protein.BondAt(atom.bond_indices[0]);
-            size_t other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
-            Vec3 d = conf.PositionAt(other) - conf.PositionAt(ai);
-            double len = d.norm();
-            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
+            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
+                primary_bond_dir[ai] = d / len;
+                has_primary_bond_dir[ai] = true;
+            }
         }
     }
 
@@ -245,8 +246,11 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         ca.mopac_coulomb_EFG_aromatic_spherical = SphericalTensor::Decompose(EFG_aromatic);
 
         ca.mopac_coulomb_E_magnitude = E_total.norm();
+        ca.mopac_coulomb_aromatic_E_magnitude = E_aromatic.norm();
 
-        ca.mopac_coulomb_E_bond_proj = E_total.dot(primary_bond_dir[i]);
+        ca.mopac_coulomb_E_bond_proj = has_primary_bond_dir[i]
+            ? E_total.dot(primary_bond_dir[i])
+            : std::numeric_limits<double>::quiet_NaN();
 
         if (ca.mopac_coulomb_E_magnitude > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
             Vec3 E_hat = E_total / ca.mopac_coulomb_E_magnitude;
@@ -343,7 +347,7 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
         scalars[i*4+0] = ca.mopac_coulomb_E_magnitude;
         scalars[i*4+1] = ca.mopac_coulomb_E_bond_proj;
         scalars[i*4+2] = ca.mopac_coulomb_E_backbone_frac;
-        scalars[i*4+3] = ca.mopac_coulomb_E_aromatic.norm();
+        scalars[i*4+3] = ca.mopac_coulomb_aromatic_E_magnitude;
     }
 
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg.npy",
