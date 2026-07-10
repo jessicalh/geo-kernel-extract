@@ -14,7 +14,7 @@
 // subtracted in APBS-native units before the canonical potential, E-field,
 // and EFG are extracted.
 //
-// No fallback. If APBS fails, Compute() returns nullptr. Solvated fields
+// No fallback. If APBS fails, Compute() returns nullptr. Reaction fields
 // require a working PB solver — substituting vacuum Coulomb would silently
 // produce a different physical quantity in different units.
 //

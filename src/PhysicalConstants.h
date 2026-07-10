@@ -103,11 +103,6 @@ constexpr double PACKING_RADIUS = 8.0;          // Angstroms -- for heavy atom c
 // Constitution: H-bond thresholds
 constexpr double HBOND_COUNT_RADIUS = 3.5;      // Angstroms
 constexpr double HBOND_MAX_DIST = 50.0;         // Angstroms
-// Historical pre-conversion APBS clamp retained only for regression-test
-// archaeology. Production APBS output uses the configured post-conversion
-// `efield_magnitude_sanity_clamp` in V/A.
-constexpr double OBSOLETE_APBS_NATIVE_SANITY_LIMIT_TEST_ONLY = 100.0;
-
 // Note: dispersion distance thresholds (R_SWITCH=4.3A, R_CUT=5.0A) are
 // defined in DispersionResult.cpp with full physics documentation.
 // They are NOT global constants because they are specific to the

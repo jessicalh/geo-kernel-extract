@@ -7,6 +7,7 @@
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
 #include "GeometryResult.h"
+#include "GromacsFrameHandler.h"
 #include "OperationLog.h"
 #include "PhysicalConstants.h"
 #include "Protein.h"
@@ -22,6 +23,7 @@
 #include "Types.h"
 #include "WaterFieldResult.h"
 #include "WaterFieldTimeSeriesTrajectoryResult.h"
+#include "WaterFieldWelfordTrajectoryResult.h"
 
 #include <gtest/gtest.h>
 #include <highfive/H5DataSet.hpp>
@@ -29,6 +31,7 @@
 #include <highfive/H5Group.hpp>
 
 #include <cmath>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -203,6 +206,137 @@ TEST(WaterFieldResult, UsesTargetMinusSourceCoulombConvention) {
     EXPECT_LT((atom.water_efield - expected_E).norm(), 1e-12);
     EXPECT_LT((atom.water_efg - expected_EFG).norm(), 1e-12);
     EXPECT_LT(std::abs(atom.water_efg.trace()), 1e-12);
+}
+
+
+TEST(WaterFieldTrajectoryOutputs,
+     AnalyticPositiveChargePinsSignedComponentsAndExtrema) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    nmr::GromacsFrameHandler handler(tp);
+    ASSERT_TRUE(handler.Open(TrrPathFor(fix.tpr_path), fix.tpr_path))
+        << handler.error();
+    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
+    const std::vector<nmr::Vec3> positions = handler.ProteinPositions();
+    tp.Seed(positions, handler.Time());
+    ASSERT_GT(tp.AtomCount(), 0u);
+
+    auto series = nmr::WaterFieldTimeSeriesTrajectoryResult::Create(tp);
+    auto welford = nmr::WaterFieldWelfordTrajectoryResult::Create(tp);
+    ASSERT_NE(series, nullptr);
+    ASSERT_NE(welford, nullptr);
+    nmr::Trajectory traj("", "", "");
+
+    constexpr std::array<double, 3> charges = {0.1, 0.2, 0.3};
+    constexpr std::array<std::size_t, 3> frame_indices = {11u, 23u, 47u};
+    constexpr std::array<double, 3> times_ps = {0.0, 1.0, 2.0};
+    const nmr::Vec3 source_offset(1.0, -2.0, 2.0);
+    const nmr::Vec3 r = -source_offset;  // target - source
+    constexpr double r_cubed = 27.0;
+    std::array<nmr::Vec3, 3> expected;
+
+    for (std::size_t frame = 0; frame < charges.size(); ++frame) {
+        auto conf = tp.TickConformation(positions);
+        ASSERT_TRUE(conf->AttachResult(nmr::GeometryResult::Compute(*conf)));
+        ASSERT_TRUE(conf->AttachResult(
+            nmr::SpatialIndexResult::Compute(*conf)));
+
+        nmr::SolventEnvironment solvent;
+        nmr::WaterMolecule water;
+        water.O_pos = conf->PositionAt(0) + source_offset;
+        water.H1_pos = water.O_pos;
+        water.H2_pos = water.O_pos;
+        water.O_charge = charges[frame];
+        water.H_charge = 0.0;
+        solvent.waters = {water};
+        solvent.water_O_positions = {water.O_pos};
+        expected[frame] = nmr::COULOMB_KE * charges[frame] * r / r_cubed;
+
+        auto field = nmr::WaterFieldResult::Compute(*conf, solvent);
+        ASSERT_NE(field, nullptr);
+        ASSERT_TRUE(conf->AttachResult(std::move(field)));
+        series->Compute(*conf, tp, traj, frame_indices[frame],
+                        times_ps[frame]);
+        welford->Compute(*conf, tp, traj, frame_indices[frame],
+                         times_ps[frame]);
+    }
+    series->Finalize(tp, traj);
+    welford->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("water_signed_components_" + std::to_string(::getpid()) +
+         ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        series->WriteH5Group(tp, file);
+        welford->WriteH5Group(tp, file);
+    }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+
+    auto series_group =
+        reopen.getGroup("/trajectory/water_field_time_series");
+    for (const std::string& dataset : {"efield", "efield_first"}) {
+        std::vector<std::vector<std::vector<double>>> values;
+        series_group.getDataSet(dataset).read(values);
+        ASSERT_EQ(values.size(), tp.AtomCount());
+        ASSERT_EQ(values[0].size(), charges.size());
+        for (std::size_t frame = 0; frame < charges.size(); ++frame) {
+            ASSERT_EQ(values[0][frame].size(), 3u);
+            for (std::size_t component = 0; component < 3; ++component) {
+                EXPECT_NEAR(values[0][frame][component],
+                            expected[frame](component), 1e-12)
+                    << dataset << " frame=" << frame
+                    << " component=" << component;
+            }
+        }
+    }
+
+    auto welford_group =
+        reopen.getGroup("/trajectory/water_field_welford");
+    const std::array<const char*, 3> axes = {"x", "y", "z"};
+    for (const std::string& family : {"efield_", "efield_first_"}) {
+        for (std::size_t component = 0; component < 3; ++component) {
+            const std::string prefix = family + axes[component];
+            auto read_value = [&](const std::string& suffix) {
+                std::vector<double> values;
+                welford_group.getDataSet(prefix + suffix).read(values);
+                EXPECT_EQ(values.size(), tp.AtomCount());
+                return values.at(0);
+            };
+            auto read_frame = [&](const std::string& suffix) {
+                std::vector<std::size_t> values;
+                welford_group.getDataSet(prefix + suffix).read(values);
+                EXPECT_EQ(values.size(), tp.AtomCount());
+                return values.at(0);
+            };
+
+            const double first = expected[0](component);
+            const double last = expected[2](component);
+            EXPECT_NEAR(read_value("_mean"), expected[1](component),
+                        1e-12);
+            if (first < last) {
+                EXPECT_NEAR(read_value("_min"), first, 1e-12);
+                EXPECT_NEAR(read_value("_max"), last, 1e-12);
+                EXPECT_EQ(read_frame("_min_frame"), frame_indices.front());
+                EXPECT_EQ(read_frame("_max_frame"), frame_indices.back());
+            } else {
+                EXPECT_NEAR(read_value("_min"), last, 1e-12);
+                EXPECT_NEAR(read_value("_max"), first, 1e-12);
+                EXPECT_EQ(read_frame("_min_frame"), frame_indices.back());
+                EXPECT_EQ(read_frame("_max_frame"), frame_indices.front());
+            }
+        }
+    }
+
+    // m2/std and magnitude channels are deliberately not sign-pinned:
+    // each is invariant under the global E -> -E error this fixture targets.
+    fs::remove(h5_path);
 }
 
 

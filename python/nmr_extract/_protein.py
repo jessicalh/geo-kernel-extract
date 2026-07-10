@@ -332,6 +332,7 @@ class APBSGroup:
     phi: Optional[np.ndarray] = None
     E_clamp_mask: Optional[np.ndarray] = None
     E_clamp_scale: Optional[np.ndarray] = None
+    nonfinite_sanitizer_mask: Optional[np.ndarray] = None
     E_total_diagnostic: Optional[VectorField] = None
     efg_total_diagnostic: Optional[EFGTensor] = None
 
@@ -1748,6 +1749,8 @@ def load(path: str | Path) -> Protein:
                 if "apbs_E_clamp_mask" in available else None,
             E_clamp_scale=get("apbs_E_clamp_scale")
                 if "apbs_E_clamp_scale" in available else None,
+            nonfinite_sanitizer_mask=get("apbs_nonfinite_sanitizer_mask")
+                if "apbs_nonfinite_sanitizer_mask" in available else None,
             E_total_diagnostic=get("apbs_E_total_diagnostic")
                 if "apbs_E_total_diagnostic" in available else None,
             efg_total_diagnostic=get("apbs_efg_total_diagnostic")

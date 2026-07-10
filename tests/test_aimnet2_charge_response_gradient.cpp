@@ -11,11 +11,13 @@
 #include "AIMNet2Result.h"
 #include "CalculatorConfig.h"
 #include "ChargeAssignmentResult.h"
+#include "ChargeSource.h"
 #include "ConformationAtom.h"
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
 #include "PdbFileReader.h"
 #include "PhysicalConstants.h"
+#include "OperationRunner.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "SpatialIndexResult.h"
@@ -131,29 +133,29 @@ protected:
 
 TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseGradient) {
     auto& conf = protein->Conformation();
-    constexpr int kConditionedNetCharge = -2;
+    constexpr int kInputNetCharge = -2;
+    ParamFileChargeSource charge_source(
+        test::TestEnvironment::Ff14sbParams());
+    RunOptions options;
+    options.charge_source = &charge_source;
+    options.net_charge = kInputNetCharge;
+    options.skip_dssp = true;
+    options.skip_mopac = true;
+    options.skip_apbs = true;
+    options.skip_coulomb = true;
+    options.aimnet2_model = model.get();
 
-    auto geo = GeometryResult::Compute(conf);
-    ASSERT_NE(geo, nullptr);
-    ASSERT_TRUE(conf.AttachResult(std::move(geo)));
-
-    auto spatial = SpatialIndexResult::Compute(conf);
-    ASSERT_NE(spatial, nullptr);
-    ASSERT_TRUE(conf.AttachResult(std::move(spatial)));
-
-    auto enrich = EnrichmentResult::Compute(conf);
-    ASSERT_NE(enrich, nullptr);
-    ASSERT_TRUE(conf.AttachResult(std::move(enrich)));
-
-    auto charges = ChargeAssignmentResult::Compute(
-        conf, test::TestEnvironment::Ff14sbParams());
-    ASSERT_NE(charges, nullptr) << "ff14SB charge loading failed";
-    ASSERT_TRUE(conf.AttachResult(std::move(charges)));
-
-    auto aim = AIMNet2Result::Compute(
-        conf, *model, /*net_charge=*/kConditionedNetCharge);
-    ASSERT_NE(aim, nullptr) << "AIMNet2Result::Compute returned nullptr";
-    ASSERT_TRUE(conf.AttachResult(std::move(aim)));
+    // A5 forcing: enter through the real producer order so the
+    // charge_conditioning_neutral policy, not a direct calculator argument,
+    // determines what both AIMNet2 calculators receive.
+    const RunResult run = OperationRunner::Run(conf, options);
+    ASSERT_TRUE(run.Ok()) << run.error;
+    ASSERT_TRUE(conf.HasResult<ChargeAssignmentResult>());
+    ASSERT_TRUE(conf.HasResult<AIMNet2Result>());
+    ASSERT_TRUE(conf.HasResult<AIMNet2ChargeResponseGradientResult>());
+    const int expected_conditioned_charge =
+        CalculatorConfig::Get("charge_conditioning_neutral") != 0.0
+            ? 0 : kInputNetCharge;
 
     // Independent forcing functions for the new AIMNet2 products.
     const auto& aim_result = conf.Result<AIMNet2Result>();
@@ -163,7 +165,7 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
                     aim_result.EnergyDftD3(),
                 1.0e-8);
     EXPECT_DOUBLE_EQ(aim_result.ConditionedNetCharge(),
-                     static_cast<double>(kConditionedNetCharge));
+                     static_cast<double>(expected_conditioned_charge));
     EXPECT_DOUBLE_EQ(
         aim_result.NeutralConditioningFlag(),
         CalculatorConfig::Get("charge_conditioning_neutral") != 0.0
@@ -171,10 +173,12 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
 
     double shifted_local_sum = 0.0;
     double d3_atom_sum = 0.0;
+    double aim_charge_sum = 0.0;
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
         const auto& ca = conf.AtomAt(i);
         shifted_local_sum += ca.aimnet2_energy_shifted_local;
         d3_atom_sum += ca.aimnet2_d3_e_disp_atom;
+        aim_charge_sum += ca.aimnet2_charge;
         EXPECT_TRUE(std::isfinite(ca.aimnet2_energy_mlp));
         EXPECT_TRUE(std::isfinite(ca.aimnet2_energy_shifted_local));
         EXPECT_TRUE(std::isfinite(ca.aimnet2_d3_cn));
@@ -217,6 +221,8 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
         1.0e-6 * std::max(1.0, std::abs(aim_result.EnergyDftD3())));
     EXPECT_NEAR(shifted_local_sum, aim_result.EnergyLocalSum(), 1.0e-7);
     EXPECT_NEAR(d3_atom_sum, aim_result.EnergyDftD3(), d3_tolerance);
+    EXPECT_NEAR(aim_charge_sum,
+                static_cast<double>(expected_conditioned_charge), 1.0e-5);
 
     // Brute-force Coulomb source of truth (independent of SpatialIndexResult)
     // pins the rank-1 sign convention r = target - source.
@@ -243,11 +249,6 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
         EXPECT_LT((actual_E - expected_E).norm(),
                   1.0e-9 * std::max(1.0, expected_E.norm()));
     }
-
-    auto pol = AIMNet2ChargeResponseGradientResult::Compute(
-        conf, *model, /*net_charge=*/kConditionedNetCharge);
-    ASSERT_NE(pol, nullptr) << "AIMNet2ChargeResponseGradientResult returned nullptr";
-    ASSERT_TRUE(conf.AttachResult(std::move(pol)));
 
     const size_t N = conf.AtomCount();
     ASSERT_GT(N, 0u);

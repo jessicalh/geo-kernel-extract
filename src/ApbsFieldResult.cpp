@@ -564,7 +564,7 @@ std::unique_ptr<ApbsFieldResult> ApbsFieldResult::Compute(
 
     if (!apbs_ok) {
         OperationLog::Error("ApbsFieldResult::Compute",
-            "APBS failed. No fallback — solvated fields require a working PB solver.");
+            "APBS failed. No fallback — reaction fields require a working PB solver.");
         return nullptr;
     }
 
@@ -614,7 +614,7 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         std::to_string(thermal_voltage_V_) + " efield_clamp_V_per_A=" +
         std::to_string(efield_clamp_threshold_));
 
-    // apbs_E: (N, 3) — solvated Poisson-Boltzmann E-field in V/A
+    // apbs_E: (N, 3) — canonical reaction Poisson-Boltzmann E-field in V/A
     {
         std::vector<double> data(N * 3);
         for (size_t i = 0; i < N; ++i) {
@@ -658,6 +658,17 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
                                 data.data(), N);
     }
 
+    // Bitwise audit of finite sanitization performed during Compute:
+    // bit 0 reaction E, bit 1 reaction EFG, bit 2 total E, bit 3 total EFG.
+    {
+        std::vector<std::uint8_t> data(N);
+        for (size_t i = 0; i < N; ++i)
+            data[i] = conf.AtomAt(i).apbs_nonfinite_sanitizer_mask;
+        NpyWriter::WriteUInt8(
+            output_dir + "/apbs_nonfinite_sanitizer_mask.npy",
+            data.data(), N);
+    }
+
     // Raw total-PB derivatives are diagnostics: finite-sanitized, unclamped.
     {
         std::vector<double> data(N * 3);
@@ -682,7 +693,7 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
             data.data(), N, 5);
     }
 
-    return 7;
+    return 8;
 }
 
 }  // namespace nmr

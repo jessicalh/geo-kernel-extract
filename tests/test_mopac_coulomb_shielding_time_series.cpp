@@ -35,6 +35,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -98,6 +99,62 @@ TEST(MopacCoulombShieldingTimeSeries, GroupSkippedWhenSourceNeverAttached) {
     EXPECT_FALSE(reopen.exist(
         "/trajectory/mopac_coulomb_shielding_time_series"))
         << "legacy group must NOT exist when source attached 0/T frames";
+
+    fs::remove(h5_path);
+}
+
+
+TEST(MopacCoulombShieldingTimeSeries,
+     DerivativePolicyAttributesRoundTripOnNamedLegacyGroupOnly) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    ASSERT_GT(tp.AtomCount(), 0u);
+    auto tr =
+        nmr::MopacCoulombShieldingTimeSeriesTrajectoryResult::Create(tp);
+    ASSERT_NE(tr, nullptr);
+
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    nmr::ProteinConformation conf(
+        &tp.ProteinRef(), positions, "M7 real-writer attribute fixture");
+    conf.MutableAtomAt(0).mopac_coulomb_shielding_contribution.T2[0] = 1.0;
+    conf.ForceAttachResultForTesting(
+        std::make_unique<nmr::MopacCoulombResult>());
+    nmr::Trajectory dummy("", "", "");
+    tr->Compute(conf, tp, dummy, 7u, 1.25);
+    tr->Finalize(tp, dummy);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("mopac_coulomb_m7_writer_" + std::to_string(::getpid()) +
+         ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto legacy = reopen.getGroup(
+        "/trajectory/mopac_coulomb_shielding_time_series");
+    int max_rank = 0;
+    bool higher_derivatives = true;
+    std::string rank3_policy;
+    legacy.getAttribute("max_potential_derivative_rank").read(max_rank);
+    legacy.getAttribute("higher_derivatives_present")
+        .read(higher_derivatives);
+    legacy.getAttribute("rank3_policy").read(rank3_policy);
+    EXPECT_EQ(max_rank, 2);
+    EXPECT_FALSE(higher_derivatives);
+    EXPECT_EQ(rank3_policy, "not_emitted_no_local_frame");
+
+    auto canonical = reopen.getGroup(
+        "/trajectory/mopac_coulomb_efg_time_series");
+    EXPECT_FALSE(canonical.hasAttribute("max_potential_derivative_rank"));
+    EXPECT_FALSE(canonical.hasAttribute("higher_derivatives_present"));
+    EXPECT_FALSE(canonical.hasAttribute("rank3_policy"));
 
     fs::remove(h5_path);
 }

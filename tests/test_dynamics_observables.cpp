@@ -23,6 +23,7 @@
 #include "KernelCoherenceTrajectoryResult.h"
 #include "KernelDynamicsTrajectoryResult.h"
 #include "OperationLog.h"
+#include "ProteinConformation.h"
 #include "ReorientationalDynamicsTrajectoryResult.h"
 #include "RunConfiguration.h"
 #include "Session.h"
@@ -40,6 +41,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -288,6 +290,110 @@ TEST(DynamicsObservables, H5RoundTripAndContent) {
 
     nmr::OperationLog::Info("DynamicsObservablesTest::H5RoundTripAndContent",
         "verified reorientational + iRED + dihedral groups on 1P9J fixture");
+    std::error_code ec;
+    fs::remove(h5_path, ec);
+}
+
+
+// ── APBS reaction-field channel: independent synthetic value pin ─────
+
+TEST(DynamicsObservables,
+     KernelApbsChannelUsesCanonicalReactionTensorForEveryObservable) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    auto kd = nmr::KernelDynamicsTrajectoryResult::Create(tp);
+    auto kc = nmr::KernelCoherenceTrajectoryResult::Create(tp);
+    ASSERT_NE(kd, nullptr);
+    ASSERT_NE(kc, nullptr);
+    ASSERT_GT(tp.AtomCount(), 0u);
+
+    // Canonical reaction |T2| and raw total-PB |T2| deliberately encode
+    // different sequences.  The bs_T0 sequence is exactly anti-correlated
+    // with the canonical one, supplying a hand-checkable coherence truth.
+    constexpr double reaction_t2[] = {1.0, 2.0, 3.0, 4.0};
+    constexpr double total_t2[] = {1.0, 4.0, 2.0, 8.0};
+    constexpr double bs_t0[] = {4.0, 3.0, 2.0, 1.0};
+    constexpr double times_ps[] = {0.0, 2.0, 4.0, 6.0};
+    const std::vector<nmr::Vec3> positions(tp.AtomCount(),
+                                           nmr::Vec3::Zero());
+    nmr::Trajectory dummy("", "", "");
+    for (std::size_t frame = 0; frame < 4; ++frame) {
+        nmr::ProteinConformation conf(
+            &tp.ProteinRef(), positions, "kernel APBS reaction pin");
+        auto& atom = conf.MutableAtomAt(0);
+        atom.apbs_efg_spherical.T2[0] = reaction_t2[frame];
+        atom.apbs_efg_total_diagnostic_spherical.T2[0] = total_t2[frame];
+        atom.bs_shielding_contribution.T0 = bs_t0[frame];
+        kd->Compute(conf, tp, dummy, frame, times_ps[frame]);
+        kc->Compute(conf, tp, dummy, frame, times_ps[frame]);
+    }
+    kd->Finalize(tp, dummy);
+    kc->Finalize(tp, dummy);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("kernel_apbs_reaction_pin_" + std::to_string(::getpid()) +
+         ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        kd->WriteH5Group(tp, file);
+        kc->WriteH5Group(tp, file);
+    }
+    HighFive::File f(h5_path, HighFive::File::ReadOnly);
+    auto dynamics = f.getGroup("/trajectory/kernel_dynamics");
+    std::size_t n_lags = 0;
+    dynamics.getAttribute("n_lags").read(n_lags);
+    ASSERT_EQ(n_lags, 120u);
+    std::vector<std::string> dynamics_names;
+    dynamics.getDataSet("channel_names").read(dynamics_names);
+    ASSERT_EQ(dynamics_names.size(),
+              nmr::KernelDynamicsTrajectoryResult::N_CHANNELS);
+    ASSERT_EQ(dynamics_names[6], "apbs_absT2");
+
+    std::vector<std::vector<std::vector<double>>> acf;
+    std::vector<std::vector<std::vector<double>>> spectrum;
+    std::vector<std::vector<double>> decay;
+    std::vector<std::vector<double>> peak;
+    std::vector<std::vector<double>> centroid;
+    dynamics.getDataSet("acf").read(acf);
+    dynamics.getDataSet("power_spectrum").read(spectrum);
+    dynamics.getDataSet("decay_time_ps").read(decay);
+    dynamics.getDataSet("peak_freq_per_ps").read(peak);
+    dynamics.getDataSet("spectral_centroid_per_ps").read(centroid);
+    ASSERT_GT(acf.size(), 0u);
+    ASSERT_EQ(acf[0][6].size(), 120u);
+
+    // Literal results derived independently from [1,2,3,4], a full-range
+    // mean of 2.5, biased lag denominator 4, a Parzen window, and dt=2 ps.
+    EXPECT_NEAR(acf[0][6][0], 1.0, 1e-12);
+    EXPECT_NEAR(acf[0][6][1], 0.25, 1e-12);
+    EXPECT_NEAR(acf[0][6][2], -0.30, 1e-12);
+    EXPECT_NEAR(acf[0][6][3], -0.45, 1e-12);
+    EXPECT_NEAR(acf[0][6][4], 0.0, 1e-12);
+    ASSERT_GT(spectrum[0][6].size(), 42u);
+    EXPECT_NEAR(spectrum[0][6][0], 0.010168402777777974, 1e-12);
+    EXPECT_NEAR(spectrum[0][6][42], 12.32332006913764, 1e-10);
+    EXPECT_NEAR(decay[0][6], 2.5, 1e-12);
+    EXPECT_NEAR(peak[0][6], 0.0875, 1e-12);
+    EXPECT_NEAR(centroid[0][6], 0.10472885606479934, 1e-12);
+
+    auto coherence = f.getGroup("/trajectory/kernel_coherence");
+    std::vector<std::string> coherence_names;
+    coherence.getDataSet("channel_names").read(coherence_names);
+    ASSERT_EQ(coherence_names.size(),
+              nmr::KernelCoherenceTrajectoryResult::N_CHANNELS);
+    ASSERT_EQ(coherence_names[6], "apbs_absT2");
+    std::vector<std::vector<std::vector<double>>> correlation;
+    coherence.getDataSet("correlation_matrix").read(correlation);
+    ASSERT_GT(correlation.size(), 0u);
+    EXPECT_NEAR(correlation[0][0][6], -1.0, 1e-12);
+    EXPECT_NEAR(correlation[0][6][0], -1.0, 1e-12);
+
     std::error_code ec;
     fs::remove(h5_path, ec);
 }

@@ -145,6 +145,9 @@ def test_catalog_tensor_metadata_and_water_doc_shape():
 
     assert CATALOG["coulomb_efg"].cols == 9
     assert CATALOG["coulomb_efg"].structural_zero_components == "T0,T1_x,T1_y,T1_z"
+    assert CATALOG["eeq_coulomb_efg"].cols == 9
+    assert CATALOG["eeq_coulomb_efg"].structural_zero_components == \
+        "T0,T1_x,T1_y,T1_z"
     assert CATALOG["coulomb_efg_t2"].cols == 5
     assert CATALOG["coulomb_efg_t2"].wrapper is EFGTensor
     assert CATALOG["mopac_coulomb_efg"].cols == 9

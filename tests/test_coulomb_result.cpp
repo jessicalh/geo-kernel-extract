@@ -641,6 +641,37 @@ TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
     // Then Coulomb (will copy the already-defined APBS reaction field)
     conf.AttachResult(CoulombResult::Compute(conf));
 
+    // A11 frozen-surface forcing: cross the two independent writers and pin
+    // the actual NPY descriptors, shapes, and payload bytes.  An in-memory
+    // equality alone would not catch one alias being emitted from a stale
+    // total-PB field.
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("coulomb_apbs_alias_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    EXPECT_EQ(conf.Result<ApbsFieldResult>().WriteFeatures(
+                  conf, out_dir.string()), 8);
+    EXPECT_EQ(conf.Result<CoulombResult>().WriteFeatures(
+                  conf, out_dir.string()), 14);
+
+    const auto apbs_E = ReadNpy(out_dir / "apbs_E.npy");
+    const auto coulomb_E = ReadNpy(out_dir / "coulomb_E_solvent.npy");
+    EXPECT_EQ(apbs_E.descr, "<f8");
+    EXPECT_EQ(coulomb_E.descr, apbs_E.descr);
+    EXPECT_EQ(apbs_E.shape,
+              (std::vector<size_t>{conf.AtomCount(), 3u}));
+    EXPECT_EQ(coulomb_E.shape, apbs_E.shape);
+    EXPECT_EQ(coulomb_E.bytes, apbs_E.bytes);
+
+    const auto apbs_efg = ReadNpy(out_dir / "apbs_efg.npy");
+    const auto coulomb_efg =
+        ReadNpy(out_dir / "coulomb_efg_solvent.npy");
+    EXPECT_EQ(apbs_efg.descr, "<f8");
+    EXPECT_EQ(coulomb_efg.descr, apbs_efg.descr);
+    EXPECT_EQ(apbs_efg.shape,
+              (std::vector<size_t>{conf.AtomCount(), 5u}));
+    EXPECT_EQ(coulomb_efg.shape, apbs_efg.shape);
+    EXPECT_EQ(coulomb_efg.bytes, apbs_efg.bytes);
+
     int has_solvent = 0;
     double mean_ratio = 0;
     int count = 0;
@@ -686,4 +717,14 @@ TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
     // contribution should be non-zero for most atoms
     EXPECT_GT(has_solvent, static_cast<int>(conf.AtomCount() / 2))
         << "Most atoms should have non-zero solvent contribution";
+    for (const char* name : {
+            "apbs_E.npy", "apbs_efg.npy", "apbs_phi.npy",
+            "apbs_E_clamp_mask.npy", "apbs_E_clamp_scale.npy",
+            "apbs_nonfinite_sanitizer_mask.npy",
+            "apbs_E_total_diagnostic.npy",
+            "apbs_efg_total_diagnostic.npy"}) {
+        std::error_code ec;
+        fs::remove(out_dir / name, ec);
+    }
+    RemoveCoulombFeatureDir(out_dir);
 }

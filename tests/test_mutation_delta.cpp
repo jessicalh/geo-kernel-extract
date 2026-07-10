@@ -2,7 +2,11 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <cmath>
+#include <cstring>
+#include <fstream>
 #include <iostream>
+#include <iterator>
+#include <unistd.h>
 
 #include "MutationDeltaResult.h"
 #include "OrcaRunLoader.h"
@@ -20,6 +24,36 @@
 
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+std::vector<double> ReadFloat64Npy(const fs::path& path,
+                                   size_t expected_values) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    if (!in) return {};
+    char magic[6] = {};
+    char version[2] = {};
+    std::uint16_t header_len = 0;
+    in.read(magic, 6);
+    in.read(version, 2);
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    std::string header(header_len, '\0');
+    in.read(header.data(), static_cast<std::streamsize>(header_len));
+    EXPECT_NE(header.find("'descr': '<f8'"), std::string::npos);
+    std::vector<char> bytes{std::istreambuf_iterator<char>(in),
+                            std::istreambuf_iterator<char>()};
+    EXPECT_EQ(bytes.size(), expected_values * sizeof(double));
+    if (bytes.size() != expected_values * sizeof(double)) return {};
+    std::vector<double> values(expected_values);
+    std::memcpy(values.data(), bytes.data(), bytes.size());
+    return values;
+}
+
+}  // namespace
 
 
 
@@ -201,9 +235,45 @@ TEST_F(MutationDeltaTest, DeltaShieldingFinite) {
     EXPECT_GT(checked, 400);
 }
 
-TEST_F(MutationDeltaTest, ApbsDeltaFull9CompatibilitySlotsAreStructuralZeros) {
+TEST_F(MutationDeltaTest,
+       ApbsDeltaPayloadUsesCanonicalReactionFieldsAndStructuralZeros) {
     auto& wt_conf = wt_.protein->Conformation();
-    auto delta = MutationDeltaResult::Compute(wt_conf, ala_.protein->Conformation());
+    auto& ala_conf = ala_.protein->Conformation();
+
+    auto mapping = MutationDeltaResult::Compute(wt_conf, ala_conf);
+    ASSERT_NE(mapping, nullptr);
+    size_t pinned_wt = SIZE_MAX;
+    for (size_t wi = 0; wi < wt_conf.AtomCount(); ++wi) {
+        if (mapping->HasMatch(wi)) {
+            pinned_wt = wi;
+            break;
+        }
+    }
+    ASSERT_NE(pinned_wt, SIZE_MAX);
+    const size_t pinned_mut = mapping->MutantAtomFor(pinned_wt);
+    ASSERT_LT(pinned_mut, ala_conf.AtomCount());
+
+    // Independent sentinels pin WT-minus-mutant sign and, critically, the
+    // canonical reaction fields rather than the deliberately different raw
+    // total-PB diagnostics.
+    auto& wt_atom = wt_conf.MutableAtomAt(pinned_wt);
+    auto& mut_atom = ala_conf.MutableAtomAt(pinned_mut);
+    wt_atom.apbs_efield = Vec3(1.0, -2.0, 3.0);
+    mut_atom.apbs_efield = Vec3(-4.0, 5.0, -6.0);
+    wt_atom.apbs_efg = Mat3::Zero();
+    wt_atom.apbs_efg.diagonal() << 1.0, 2.0, -3.0;
+    mut_atom.apbs_efg = Mat3::Zero();
+    mut_atom.apbs_efg.diagonal() << -4.0, 5.0, -1.0;
+    wt_atom.apbs_efield_total_diagnostic = Vec3(101.0, 102.0, 103.0);
+    mut_atom.apbs_efield_total_diagnostic = Vec3(-201.0, -202.0, -203.0);
+    wt_atom.apbs_efg_total_diagnostic = 100.0 * Mat3::Identity();
+    mut_atom.apbs_efg_total_diagnostic = -200.0 * Mat3::Identity();
+    wt_atom.apbs_efg_total_diagnostic_spherical =
+        SphericalTensor::Decompose(wt_atom.apbs_efg_total_diagnostic);
+    mut_atom.apbs_efg_total_diagnostic_spherical =
+        SphericalTensor::Decompose(mut_atom.apbs_efg_total_diagnostic);
+
+    auto delta = MutationDeltaResult::Compute(wt_conf, ala_conf);
     ASSERT_NE(delta, nullptr);
 
     int checked = 0;
@@ -221,6 +291,38 @@ TEST_F(MutationDeltaTest, ApbsDeltaFull9CompatibilitySlotsAreStructuralZeros) {
     EXPECT_GT(checked, 400);
     EXPECT_LT(max_abs_t0_t1, 1e-10)
         << "delta_apbs full9 compatibility T0/T1 slots must stay structural zeros";
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mutation_delta_apbs_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    delta->WriteFeatures(wt_conf, out_dir.string());
+    const auto payload = ReadFloat64Npy(
+        out_dir / "delta_apbs.npy", wt_conf.AtomCount() * 12);
+    ASSERT_EQ(payload.size(), wt_conf.AtomCount() * 12);
+    const size_t base = pinned_wt * 12;
+    const std::array<double, 12> expected = {
+        5.0, -7.0, 9.0,
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, -std::sqrt(6.0), 0.0, 4.0 * std::sqrt(2.0)};
+    for (size_t column = 0; column < expected.size(); ++column) {
+        EXPECT_NEAR(payload[base + column], expected[column], 1e-12)
+            << "delta_apbs column " << column;
+    }
+    for (const char* name : {
+            "delta_shielding.npy",
+            "wt_shielding_diamagnetic.npy",
+            "wt_shielding_paramagnetic.npy",
+            "mut_shielding_diamagnetic.npy",
+            "mut_shielding_paramagnetic.npy",
+            "delta_shielding_diamagnetic.npy",
+            "delta_shielding_paramagnetic.npy",
+            "delta_scalars.npy", "delta_apbs.npy",
+            "delta_ring_proximity.npy"}) {
+        std::error_code ec;
+        fs::remove(out_dir / name, ec);
+    }
+    std::error_code ec;
+    fs::remove(out_dir, ec);
 }
 
 

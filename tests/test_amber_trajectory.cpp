@@ -41,6 +41,13 @@ std::string TopolTopPathForFixture(const std::string& tpr_path) {
 using namespace nmr;
 
 TEST(FullSystemReaderBoundary, FourSiteWaterFailsBeforeProteinClassification) {
+    // M17 FIXTURE LIMITATION (INTENTIONAL AND LOUD): the committed test data
+    // contains no real TIP4P/OPC four-site TPR.  This remains the typed
+    // synthetic boundary test; no fake TPR fixture has been fabricated.
+    RecordProperty(
+        "fixture_limitation",
+        "No real TIP4P/OPC four-site TPR exists in test data; typed "
+        "synthetic boundary coverage only, and no fixture was fabricated.");
     using nmr::detail::MoltypeBoundaryClass;
     using nmr::detail::MoltypeSiteSignature;
 

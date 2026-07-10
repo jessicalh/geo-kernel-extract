@@ -62,6 +62,7 @@ def test_piece05_catalog_contract():
         "apbs_phi": None,
         "apbs_E_clamp_mask": None,
         "apbs_E_clamp_scale": None,
+        "apbs_nonfinite_sanitizer_mask": None,
         "apbs_E_total_diagnostic": 3,
         "apbs_efg_total_diagnostic": 5,
     }
@@ -108,6 +109,7 @@ def test_static_loader_wires_piece05_groups(tmp_path):
     _save(tmp_path, "apbs_phi", (N_ATOMS,))
     _save(tmp_path, "apbs_E_clamp_mask", (N_ATOMS,), np.uint8)
     _save(tmp_path, "apbs_E_clamp_scale", (N_ATOMS,))
+    _save(tmp_path, "apbs_nonfinite_sanitizer_mask", (N_ATOMS,), np.uint8)
     _save(tmp_path, "apbs_E_total_diagnostic", (N_ATOMS, 3))
     _save(tmp_path, "apbs_efg_total_diagnostic", (N_ATOMS, 5))
 
@@ -142,6 +144,7 @@ def test_static_loader_wires_piece05_groups(tmp_path):
     assert isinstance(protein.apbs.efg, EFGTensor)
     assert protein.apbs.phi.shape == (N_ATOMS,)
     assert protein.apbs.E_clamp_mask.dtype == np.uint8
+    assert protein.apbs.nonfinite_sanitizer_mask.dtype == np.uint8
     assert isinstance(protein.apbs.E_total_diagnostic, VectorField)
     assert isinstance(protein.apbs.efg_total_diagnostic, EFGTensor)
 

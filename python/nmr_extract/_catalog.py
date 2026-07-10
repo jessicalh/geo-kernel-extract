@@ -469,6 +469,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="dimensionless", mechanism="electrostatic_efg"),
     ArraySpec("apbs_E_clamp_scale", "apbs", np.ndarray,            None, False, "Scale applied to canonical APBS reaction E; 1.0 when unclamped",
               units="dimensionless", mechanism="electrostatic_efg"),
+    ArraySpec("apbs_nonfinite_sanitizer_mask", "apbs", np.ndarray, None, False, "APBS finite-sanitizer bit mask per atom: bit0 reaction E, bit1 reaction EFG, bit2 total E, bit3 total EFG",
+              units="dimensionless", mechanism="electrostatic_efg"),
     ArraySpec("apbs_E_total_diagnostic", "apbs", VectorField,      3,    False, "APBS raw total-PB E-field diagnostic, finite-sanitized and unclamped",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("apbs_efg_total_diagnostic", "apbs", EFGTensor,      5,    False, "APBS raw total-PB EFG diagnostic T2, finite-sanitized and unclamped",
@@ -722,6 +724,7 @@ def _with_project_tensor_metadata(spec: ArraySpec) -> ArraySpec:
         structural_zeros = spec.structural_zero_components
         if spec.stem in {
             "coulomb_efg",
+            "eeq_coulomb_efg",
             "mopac_coulomb_efg",
             "mopac_coulomb_shielding",
         }:
