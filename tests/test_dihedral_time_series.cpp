@@ -13,6 +13,7 @@
 #include "DsspResult.h"
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
+#include "LocalBackboneGeometryTrajectoryResult.h"
 #include "OperationLog.h"
 #include "PlanarGeometryResult.h"
 #include "Protein.h"
@@ -31,6 +32,7 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -76,6 +78,22 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
     return config;
 }
 
+nmr::RunConfiguration BuildLocalBackboneConfig(unsigned stride) {
+    nmr::RunConfiguration config;
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true;
+    opts.skip_dssp = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp_in)
+        -> std::unique_ptr<nmr::TrajectoryResult> {
+        return nmr::LocalBackboneGeometryTrajectoryResult::Create(tp_in);
+    });
+    config.SetStride(stride);
+    return config;
+}
+
 // Heavier config: enables DSSP + Enrichment so PlanarGeometryResult
 // attaches. Used by the cross-result-consistency test which validates
 // our independently-computed phi/psi/omega against DsspResult and
@@ -99,6 +117,192 @@ nmr::RunConfiguration BuildConfigWithCrossResults(unsigned stride) {
 }
 
 }  // namespace
+
+// Named per-file PRODUCTION seams from
+// LocalBackboneGeometryTrajectoryResult.cpp. The non-skipping analytic tests
+// below call these exact kernels rather than reimplementing production math.
+namespace nmr {
+namespace local_backbone_geometry {
+double BondAngleRadians(const Vec3&, const Vec3&, const Vec3&);
+Vec3 IdealCbPosition(const Vec3&, const Vec3&, const Vec3&);
+Vec3 CbDeviationVector(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
+double CbDeviation(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
+}  // namespace local_backbone_geometry
+}  // namespace nmr
+
+
+TEST(LocalBackboneGeometry, ProductionBondAngleKernelPinsAnalyticAndDegenerateCases) {
+    using nmr::local_backbone_geometry::BondAngleRadians;
+    const nmr::Vec3 vertex(0.0, 0.0, 0.0);
+
+    EXPECT_NEAR(BondAngleRadians(nmr::Vec3(2.0, 0.0, 0.0),
+                                vertex,
+                                nmr::Vec3(0.0, 3.0, 0.0)),
+                M_PI / 2.0,
+                1e-15);
+    EXPECT_NEAR(BondAngleRadians(nmr::Vec3(2.0, 0.0, 0.0),
+                                vertex,
+                                nmr::Vec3(-4.0, 0.0, 0.0)),
+                M_PI,
+                1e-15);
+    EXPECT_TRUE(std::isnan(BondAngleRadians(vertex, vertex, nmr::Vec3(0.0, 1.0, 0.0))));
+}
+
+
+TEST(LocalBackboneGeometry, ProductionIdealCbKernelPinsResidualVectorNormAndDegeneracy) {
+    using nmr::local_backbone_geometry::CbDeviation;
+    using nmr::local_backbone_geometry::CbDeviationVector;
+    using nmr::local_backbone_geometry::IdealCbPosition;
+
+    const nmr::Vec3 ca(0.0, 0.0, 0.0);
+    const nmr::Vec3 n(1.0, 0.0, 0.0);
+    const nmr::Vec3 c(0.0, 1.0, 0.0);
+    const nmr::Vec3 ideal = IdealCbPosition(n, ca, c);
+    EXPECT_NEAR(ideal.x(), 0.56802827, 1e-15);
+    EXPECT_NEAR(ideal.y(), -0.54067466, 1e-15);
+    EXPECT_NEAR(ideal.z(), 0.58273431, 1e-15);
+
+    const nmr::Vec3 expected_residual(0.1, -0.2, 0.3);
+    const nmr::Vec3 observed = ideal + expected_residual;
+    const nmr::Vec3 residual = CbDeviationVector(n, ca, c, observed);
+    EXPECT_NEAR((residual - expected_residual).norm(), 0.0, 1e-15);
+    EXPECT_NEAR(CbDeviation(n, ca, c, observed), expected_residual.norm(), 1e-15);
+
+    // Collinear N-CA-C cannot define the chiral frame: both scalar and
+    // vector channels must carry the identical NaN validity gate.
+    const nmr::Vec3 collinear_c(2.0, 0.0, 0.0);
+    const nmr::Vec3 invalid = CbDeviationVector(n, ca, collinear_c, observed);
+    EXPECT_TRUE(std::isnan(invalid.x()));
+    EXPECT_TRUE(std::isnan(invalid.y()));
+    EXPECT_TRUE(std::isnan(invalid.z()));
+    EXPECT_TRUE(std::isnan(CbDeviation(n, ca, collinear_c, observed)));
+}
+
+
+TEST(LocalBackboneGeometry, H5RoundTripPinsFrozenSchemaMasksAndDispatchedFrameMetadata) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    // One dispatched frame is sufficient for an exact boundary read-back;
+    // the non-skipping tests above freeze the production numerical kernels.
+    auto config = BuildLocalBackboneConfig(99999);
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Session session;
+    ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
+
+    const auto& result = tp.Result<nmr::LocalBackboneGeometryTrajectoryResult>();
+    const std::size_t R = tp.ProteinRef().ResidueCount();
+    const std::size_t T = result.NumFrames();
+    ASSERT_EQ(T, 1u);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("local_backbone_geometry_" + std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        result.WriteH5Group(tp, file);
+    }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    ASSERT_TRUE(reopen.exist("/trajectory/local_backbone_geometry"));
+    auto group = reopen.getGroup("/trajectory/local_backbone_geometry");
+
+    for (const char* name : {"tau_N_CA_C", "angle_N_CA_CB", "angle_CB_CA_C",
+                             "angle_Cprev_N_CA", "angle_CA_C_Nnext", "cb_deviation"}) {
+        ASSERT_TRUE(group.exist(name)) << name;
+        const auto dims = group.getDataSet(name).getSpace().getDimensions();
+        ASSERT_EQ(dims.size(), 2u) << name;
+        EXPECT_EQ(dims[0], R) << name;
+        EXPECT_EQ(dims[1], T) << name;
+    }
+    {
+        const auto dims = group.getDataSet("cb_local_vector").getSpace().getDimensions();
+        ASSERT_EQ(dims.size(), 3u);
+        EXPECT_EQ(dims[0], R);
+        EXPECT_EQ(dims[1], T);
+        EXPECT_EQ(dims[2], 3u);
+    }
+
+    for (const char* name : {"has_N_CA_C", "has_CB", "has_prev_C", "has_next_N",
+                             "is_glycine", "is_proline"}) {
+        ASSERT_TRUE(group.exist(name)) << name;
+        const auto dims = group.getDataSet(name).getSpace().getDimensions();
+        ASSERT_EQ(dims.size(), 1u) << name;
+        EXPECT_EQ(dims[0], R) << name;
+    }
+
+    std::vector<std::size_t> frame_indices;
+    std::vector<double> frame_times;
+    std::vector<std::uint8_t> attached;
+    group.getDataSet("frame_indices").read(frame_indices);
+    group.getDataSet("frame_times").read(frame_times);
+    group.getDataSet("source_attached_per_frame").read(attached);
+    EXPECT_EQ(frame_indices, traj.FrameIndices());
+    EXPECT_EQ(frame_times, traj.FrameTimes());
+    ASSERT_EQ(attached.size(), T);
+    EXPECT_TRUE(std::all_of(attached.begin(), attached.end(), [](std::uint8_t v) { return v == 1u; }));
+    std::size_t source_attached_count = 0;
+    group.getAttribute("source_attached_count").read(source_attached_count);
+    EXPECT_EQ(source_attached_count, T);
+
+    std::vector<std::uint8_t> has_n_ca_c, has_cb, has_prev_c, has_next_n, is_gly, is_pro;
+    group.getDataSet("has_N_CA_C").read(has_n_ca_c);
+    group.getDataSet("has_CB").read(has_cb);
+    group.getDataSet("has_prev_C").read(has_prev_c);
+    group.getDataSet("has_next_N").read(has_next_n);
+    group.getDataSet("is_glycine").read(is_gly);
+    group.getDataSet("is_proline").read(is_pro);
+    for (std::size_t ri = 0; ri < R; ++ri) {
+        const nmr::Residue& residue = tp.ProteinRef().ResidueAt(ri);
+        EXPECT_EQ(has_n_ca_c[ri],
+                  residue.N != nmr::Residue::NONE && residue.CA != nmr::Residue::NONE
+                          && residue.C != nmr::Residue::NONE
+                      ? 1u : 0u);
+        EXPECT_EQ(has_cb[ri], residue.CB != nmr::Residue::NONE ? 1u : 0u);
+        EXPECT_EQ(has_prev_c[ri], tp.ProteinRef().BackbonePredecessor(ri).has_value() ? 1u : 0u);
+        EXPECT_EQ(has_next_n[ri], tp.ProteinRef().BackboneSuccessor(ri).has_value() ? 1u : 0u);
+        EXPECT_EQ(is_gly[ri], residue.type == nmr::AminoAcid::GLY ? 1u : 0u);
+        EXPECT_EQ(is_pro[ri], residue.type == nmr::AminoAcid::PRO ? 1u : 0u);
+    }
+
+    std::vector<double> tau(R * T), cb_deviation(R * T), cb_vector(R * T * 3);
+    group.getDataSet("tau_N_CA_C").read(tau.data());
+    group.getDataSet("cb_deviation").read(cb_deviation.data());
+    group.getDataSet("cb_local_vector").read(cb_vector.data());
+    const auto& conf = tp.CanonicalConformation();
+    std::size_t finite_tau_count = 0;
+    std::size_t finite_cb_count = 0;
+    for (std::size_t ri = 0; ri < R; ++ri) {
+        const nmr::Residue& residue = tp.ProteinRef().ResidueAt(ri);
+        if (has_n_ca_c[ri]) {
+            const nmr::Vec3 u = conf.PositionAt(residue.N) - conf.PositionAt(residue.CA);
+            const nmr::Vec3 v = conf.PositionAt(residue.C) - conf.PositionAt(residue.CA);
+            const double expected = std::acos(std::clamp(u.dot(v) / (u.norm() * v.norm()), -1.0, 1.0));
+            EXPECT_NEAR(tau[ri * T], expected, 1e-12);
+            ++finite_tau_count;
+        }
+        const std::size_t base = (ri * T) * 3;
+        const nmr::Vec3 residual(cb_vector[base], cb_vector[base + 1], cb_vector[base + 2]);
+        if (std::isfinite(cb_deviation[ri * T])) {
+            EXPECT_TRUE(residual.allFinite());
+            EXPECT_NEAR(residual.norm(), cb_deviation[ri * T], 1e-12);
+            ++finite_cb_count;
+        } else {
+            EXPECT_FALSE(residual.allFinite());
+        }
+    }
+    EXPECT_GT(finite_tau_count, 0u);
+    EXPECT_GT(finite_cb_count, 0u);
+
+    std::string vector_definition;
+    group.getAttribute("cb_local_vector_definition").read(vector_definition);
+    EXPECT_NE(vector_definition.find("observed_CB-ideal_CB"), std::string::npos);
+    EXPECT_NE(vector_definition.find("global Cartesian"), std::string::npos);
+    fs::remove(h5_path);
+}
 
 
 // ── Frame 0 smoke ────────────────────────────────────────────────────

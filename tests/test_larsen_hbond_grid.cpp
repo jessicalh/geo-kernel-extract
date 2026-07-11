@@ -249,6 +249,10 @@ TEST_F(LarsenHBondGridTest, ImputedCornersAreReported) {
                     LarsenHBondGeometry{r, th, rho});
                 if (!rec.IsHit()) continue;
                 ++n_total;
+                EXPECT_EQ(rec.any_corner_imputed,
+                          rec.imputed_corner_count > 0);
+                EXPECT_GE(rec.imputed_corner_count, 0);
+                EXPECT_LE(rec.imputed_corner_count, 8);
                 if (rec.any_corner_imputed) ++n_imputed;
             }
         }
@@ -258,6 +262,36 @@ TEST_F(LarsenHBondGridTest, ImputedCornersAreReported) {
         << "ALA donor archive should have some imputed cells; "
            "none reported across " << n_total << " queries — "
            "validity_mask wiring may be broken.";
+}
+
+
+// Durable production-linked forcing gate for C34. This test does not need
+// external Larsen archives: it calls the exact production corner counter
+// used by QueryNearest against a hand-authored 2x2x2 validity cube.
+TEST(LarsenHBondGridDetail, CountsAllEightInterpolationCorners) {
+    LarsenHBondDenseGrid grid;
+    grid.Nr = 2;
+    grid.Ntheta = 2;
+    grid.Nrho = 2;
+    grid.has_validity_mask = true;
+    // Flat order (r, theta, rho). Exactly corners 0, 3, and 6 are imputed.
+    grid.validity_mask = {0, 1, 1, 0, 1, 1, 0, 1};
+
+    EXPECT_EQ(larsen_hbond_grid_detail::CountImputedCorners(
+                  grid, 0, 0, 0, 1, 1, 1),
+              3);
+
+    grid.validity_mask.assign(8, 1);
+    EXPECT_EQ(larsen_hbond_grid_detail::CountImputedCorners(
+                  grid, 0, 0, 0, 1, 1, 1),
+              0);
+
+    // Archives without a mask must report zero irrespective of storage.
+    grid.has_validity_mask = false;
+    grid.validity_mask.assign(8, 0);
+    EXPECT_EQ(larsen_hbond_grid_detail::CountImputedCorners(
+                  grid, 0, 0, 0, 1, 1, 1),
+              0);
 }
 
 

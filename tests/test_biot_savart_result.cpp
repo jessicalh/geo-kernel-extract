@@ -4,16 +4,37 @@
 #include <iostream>
 
 #include "BiotSavartResult.h"
+#include "DispersionResult.h"
+#include "HaighMallionResult.h"
+#include "PiQuadrupoleResult.h"
+#include "RingSusceptibilityResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
+#include "CalculatorConfig.h"
 #include "Protein.h"
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
 #include "PhysicalConstants.h"
 
 #include <filesystem>
+#include <set>
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+std::vector<Vec3> RegularHexagon(double radius) {
+    std::vector<Vec3> vertices;
+    const double pi = std::acos(-1.0);
+    for (int i = 0; i < 6; ++i) {
+        const double angle = 2.0 * pi * static_cast<double>(i) / 6.0;
+        vertices.emplace_back(radius * std::cos(angle),
+                              radius * std::sin(angle), 0.0);
+    }
+    return vertices;
+}
+
+}  // namespace
 
 
 
@@ -41,6 +62,186 @@ TEST(BiotSavartAnalytical, WireSegmentDirection) {
     // We cannot call the static functions directly, so we verify through
     // the full pipeline with a known protein.
     SUCCEED() << "Wire segment tested through full protein pipeline below";
+}
+
+
+TEST(BiotSavartAnalytical, FiniteWireGuardAcceptsPointAboveRingFace) {
+    const std::vector<Vec3> vertices = RegularHexagon(1.4);
+    const Vec3 normal(0.0, 0.0, 1.0);
+    const double lobe_offset = 0.64;
+    const Vec3 point(0.0, 0.0, 0.5);  // center distance < ring radius
+
+    const double minimum_wire_distance =
+        biot_savart_detail::MinimumDistanceToJohnsonBoveyWireLoops(
+            vertices, normal, lobe_offset, point);
+    const double guard =
+        CalculatorConfig::Get("biot_savart_wire_endpoint_guard") /
+        ANGSTROMS_TO_METRES;
+
+    EXPECT_LT(point.norm(), 1.4);
+    EXPECT_GT(minimum_wire_distance, guard);
+
+    // Execute the production current-loop kernel, not a test-side formula.
+    const Vec3 field = biot_savart_detail::JohnsonBoveyField(
+        vertices, normal, lobe_offset, 1.0, point);
+    EXPECT_TRUE(field.allFinite());
+    EXPECT_GT(field.norm(), 0.0);
+
+    // A point exactly on a segment endpoint is the true singular row guard.
+    const Vec3 endpoint = vertices[0] + lobe_offset * normal;
+    EXPECT_DOUBLE_EQ(
+        biot_savart_detail::MinimumDistanceToJohnsonBoveyWireLoops(
+            vertices, normal, lobe_offset, endpoint),
+        0.0);
+}
+
+
+TEST(RingNearFieldProduction, CenterInsideRadiusIsAcceptedByAllFiveCalculators) {
+    // Move a topology-unrelated atom to a controlled point above a real ring,
+    // then execute each complete production Compute path.  This freezes the
+    // row-selection contract as well as the exported numerical helpers: a
+    // reintroduced center/diameter filter would suppress one or more payloads.
+    auto loaded = BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(loaded.Ok()) << loaded.error;
+    Protein& protein = *loaded.protein;
+    auto& source_conf = protein.Conformation();
+    ASSERT_TRUE(source_conf.AttachResult(GeometryResult::Compute(source_conf)));
+    ASSERT_GT(protein.RingCount(), 0u);
+
+    constexpr size_t ring_index = 0;
+    const Ring& ring = protein.RingAt(ring_index);
+    const RingGeometry source_geometry =
+        source_conf.ring_geometries[ring_index];
+
+    std::set<size_t> topology_excluded;
+    for (size_t vertex_index : ring.atom_indices) {
+        topology_excluded.insert(vertex_index);
+        for (size_t bond_index : protein.AtomAt(vertex_index).bond_indices) {
+            const Bond& bond = protein.BondAt(bond_index);
+            topology_excluded.insert(bond.atom_index_a);
+            topology_excluded.insert(bond.atom_index_b);
+        }
+    }
+
+    size_t target_index = protein.AtomCount();
+    for (size_t ai = 0; ai < protein.AtomCount(); ++ai) {
+        if (!topology_excluded.count(ai)) {
+            target_index = ai;
+            break;
+        }
+    }
+    ASSERT_LT(target_index, protein.AtomCount());
+
+    std::vector<Vec3> positions = source_conf.Positions();
+    positions[target_index] = source_geometry.center
+        + 0.5 * source_geometry.normal.normalized();
+    auto& probe = protein.AddConformation(
+        std::move(positions), "ring-near-field-production-probe");
+    ASSERT_TRUE(probe.AttachResult(GeometryResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(SpatialIndexResult::Compute(probe)));
+    ASSERT_LT((probe.PositionAt(target_index)
+               - probe.ring_geometries[ring_index].center).norm(),
+              probe.ring_geometries[ring_index].radius);
+
+    ASSERT_TRUE(probe.AttachResult(BiotSavartResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(HaighMallionResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(PiQuadrupoleResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(
+        RingSusceptibilityResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(DispersionResult::Compute(probe)));
+
+    const RingNeighbourhood* row = nullptr;
+    for (const RingNeighbourhood& candidate :
+         probe.AtomAt(target_index).ring_neighbours) {
+        if (candidate.ring_index == ring_index) {
+            row = &candidate;
+            break;
+        }
+    }
+    ASSERT_NE(row, nullptr);
+    EXPECT_GT(row->G_tensor.norm(), 0.0);
+    EXPECT_GT(row->hm_G_tensor.norm(), 0.0);
+    EXPECT_NE(row->quad_scalar, 0.0);
+    EXPECT_NE(row->chi_scalar, 0.0);
+    EXPECT_GT(row->disp_scalar, 0.0);
+    EXPECT_GT(row->disp_contacts, 0);
+}
+
+
+TEST(BiotSavartAnalytical, TrpPerimeterIsDiagnosticOnlyPolicy) {
+    EXPECT_TRUE(biot_savart_detail::ContributesToCanonicalTotals(
+        RingTypeIndex::TrpBenzene));
+    EXPECT_TRUE(biot_savart_detail::ContributesToCanonicalTotals(
+        RingTypeIndex::TrpPyrrole));
+    EXPECT_FALSE(biot_savart_detail::ContributesToCanonicalTotals(
+        RingTypeIndex::TrpPerimeter));
+    EXPECT_FALSE(haigh_mallion_detail::ContributesToCanonicalTotals(
+        RingTypeIndex::TrpPerimeter));
+}
+
+
+TEST(RingCurrentTrpProduction, CanonicalTotalsExcludeVisibleTrpPerimeter) {
+    const fs::path fixture =
+        fs::path(nmr::test::TestEnvironment::UbqProtonated()).parent_path() /
+        "illustrative_peptides/trp_cage_1l2y_model1.pdb";
+    ASSERT_TRUE(fs::is_regular_file(fixture)) << fixture;
+
+    auto loaded = BuildFromProtonatedPdb(fixture.string());
+    ASSERT_TRUE(loaded.Ok()) << loaded.error;
+    auto& conf = loaded.protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(BiotSavartResult::Compute(conf)));
+
+    size_t perimeter_rows = 0;
+    size_t nonzero_perimeter_bs_rows = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        const auto& atom = conf.AtomAt(ai);
+        Mat3 expected_G = Mat3::Zero();
+        Vec3 expected_B = Vec3::Zero();
+        for (const RingNeighbourhood& row : atom.ring_neighbours) {
+            if (row.ring_type == RingTypeIndex::TrpPerimeter) {
+                ++perimeter_rows;
+                if (row.G_tensor.norm() > 0.0) ++nonzero_perimeter_bs_rows;
+                continue;
+            }
+            expected_G += row.G_tensor;
+            expected_B += row.B_field;
+        }
+        EXPECT_LT((atom.total_G_tensor - expected_G).norm(), 1e-12);
+        EXPECT_LT((atom.total_B_field - expected_B).norm(), 1e-24);
+        EXPECT_DOUBLE_EQ(
+            atom.per_type_G_T0_sum[
+                static_cast<int>(RingTypeIndex::TrpPerimeter)],
+            0.0);
+    }
+    EXPECT_GT(perimeter_rows, 0u);
+    EXPECT_GT(nonzero_perimeter_bs_rows, 0u)
+        << "TRP9 must remain visible as a computed sparse diagnostic";
+
+    ASSERT_TRUE(conf.AttachResult(HaighMallionResult::Compute(conf)));
+    size_t nonzero_perimeter_hm_rows = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        const auto& atom = conf.AtomAt(ai);
+        Mat3 expected_G = Mat3::Zero();
+        for (const RingNeighbourhood& row : atom.ring_neighbours) {
+            if (row.ring_type == RingTypeIndex::TrpPerimeter) {
+                if (row.hm_G_tensor.norm() > 0.0) ++nonzero_perimeter_hm_rows;
+                continue;
+            }
+            expected_G += row.hm_G_tensor;
+        }
+        EXPECT_LT((atom.hm_shielding_contribution.Reconstruct() - expected_G)
+                      .norm(),
+                  1e-12);
+        EXPECT_DOUBLE_EQ(
+            atom.per_type_hm_T0_sum[
+                static_cast<int>(RingTypeIndex::TrpPerimeter)],
+            0.0);
+    }
+    EXPECT_GT(nonzero_perimeter_hm_rows, 0u)
+        << "TRP9 HM kernel must remain visible only in sparse diagnostics";
 }
 
 

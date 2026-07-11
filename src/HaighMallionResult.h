@@ -37,6 +37,7 @@
 //
 
 #include "ConformationResult.h"
+#include "Ring.h"
 #include "Types.h"
 
 #include <vector>
@@ -46,6 +47,25 @@
 namespace nmr {
 
 class ProteinConformation;
+
+// Production geometry/kernel helpers.  Tests call these exact functions so
+// the finite-surface guard cannot be validated against a re-derived copy.
+namespace haigh_mallion_detail {
+
+double PointToTriangleDistance(const Vec3& point,
+                               const Vec3& triangle_a,
+                               const Vec3& triangle_b,
+                               const Vec3& triangle_c);
+
+double MinimumDistanceToFanSurface(const Vec3& point,
+                                   const RingGeometry& geom);
+
+Mat3 ComputeSurfaceIntegralH(const Vec3& point,
+                             const RingGeometry& geom);
+
+bool ContributesToCanonicalTotals(RingTypeIndex ring_type);
+
+}  // namespace haigh_mallion_detail
 
 class HaighMallionResult : public ConformationResult {
 public:

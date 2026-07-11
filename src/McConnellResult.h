@@ -4,7 +4,7 @@
 //
 // For each source bond within the configured cutoff (default 10 A), computes
 // A = D(r) Qhat, where D(r) = (3 n n^T - I)/r^3 and
-// Qhat = u u^T - I/3. Accumulates seven source categories in two channels:
+// Qhat = u u^T - I/3. Accumulates ten source categories in two channels:
 // fixed source strength and MOPAC Wiberg bond-order strength.
 //
 // Emit surface: mc_<category>_<fixed|bo>.npy, one packed (N,9) array per
@@ -22,6 +22,26 @@
 namespace nmr {
 
 class ProteinConformation;
+class Protein;
+struct Bond;
+
+// Production source classification surface.  McConnellResult owns these
+// rules; the named per-file namespace gives the forcing tests a direct link
+// to the exact code used by Compute() without copying the chemistry logic.
+namespace mcconnell_result_detail {
+bool IsXHBond(const Protein& protein, const Bond& bond);
+McConnellSourceCategory SourceCategory(const Protein& protein,
+                                       const Bond& bond);
+struct ChannelResponses {
+    Mat3 fixed = Mat3::Zero();
+    Mat3 bond_order = Mat3::Zero();
+    Mat3 rhombic_audit = Mat3::Zero();
+};
+ChannelResponses SelectChannelResponses(McConnellSourceCategory category,
+                                        const Mat3& axial_response,
+                                        const Mat3& rhombic_response,
+                                        double bond_order);
+}  // namespace mcconnell_result_detail
 
 inline constexpr const char* kMcConnellPackFull9IrrepLayout =
     "0e,1e_x,1e_y,1e_z,2e_m-2..+2";

@@ -32,21 +32,22 @@ std::vector<std::type_index> HBondResult::Dependencies() const {
 //   - acceptor residue (C=O accepts)
 //
 // We resolve this to atoms:
-//   - donor_N: the backbone N of the donor residue
+//   - donor_N: the backbone N metadata endpoint of the donor residue
+//   - donor_H: the explicit backbone H used as the physical source point
 //   - acceptor_O: the backbone O of the acceptor residue
-//   - h_hat: unit direction from donor N to acceptor O
-//   - midpoint: midpoint of N...O (the source point for the dipolar field)
-//   - distance: |N...O| distance
+//   - h_hat: unit direction from donor H to acceptor O
+//   - distance: |H...O| source extent
 // ============================================================================
 
 struct ResolvedHBond {
     size_t donor_N = SIZE_MAX;
+    size_t donor_H = SIZE_MAX;
     size_t acceptor_O = SIZE_MAX;
     size_t donor_residue = SIZE_MAX;
     size_t acceptor_residue = SIZE_MAX;
-    Vec3 midpoint = Vec3::Zero();
-    Vec3 h_hat = Vec3::Zero();        // donor N → acceptor O direction
-    double distance = 0.0;            // N...O distance
+    Vec3 source_point = Vec3::Zero();
+    Vec3 h_hat = Vec3::Zero();        // donor H → acceptor O direction
+    double distance = 0.0;            // H...O distance
     int sequence_separation = 0;
 };
 
@@ -57,21 +58,17 @@ struct ResolvedHBond {
 // computed or emitted.
 // ============================================================================
 
-struct HBondKernelResult {
-    double f = 0.0;
-    double distance = 0.0;
-};
+namespace hbond_result_detail {
 
-
-static HBondKernelResult ComputeHBondKernel(
+KernelResult ComputeKernel(
         const Vec3& atom_pos,
-        const Vec3& hbond_midpoint,
+        const Vec3& donor_h_pos,
         const Vec3& h_hat) {
 
-    HBondKernelResult result;
+    KernelResult result;
 
-    // Field direction from the H-bond midpoint to the atom.
-    Vec3 d = atom_pos - hbond_midpoint;
+    // Field direction from the explicit donor H source point to the atom.
+    Vec3 d = atom_pos - donor_h_pos;
     double r = d.norm();
 
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
@@ -86,6 +83,8 @@ static HBondKernelResult ComputeHBondKernel(
 
     return result;
 }
+
+}  // namespace hbond_result_detail
 
 
 // ============================================================================
@@ -116,13 +115,13 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
     //
     // DSSP provides up to 2 acceptor partners and 2 donor partners per
     // residue. Each partner is a residue index. We resolve to backbone
-    // N (donor) and O (acceptor) atoms.
+    // N/H (donor) and O (acceptor) atoms.
     //
     // Skip H-bonds where:
     //   - partner residue index is SIZE_MAX (no partner)
-    //   - backbone N or O atoms are not present
+    //   - backbone N, donor H, or acceptor O atoms are not present
     //   - sequence separation below hbond_sequential_exclusion_residues
-    //   - N...O distance outside the configured H-bond source range
+    //   - H...O distance outside the configured H-bond source range
     // ------------------------------------------------------------------
 
     std::vector<ResolvedHBond> hbonds;
@@ -142,6 +141,15 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 
             const Residue& acc_res = protein.ResidueAt(acceptor_residue_idx);
             if (res.N == Residue::NONE || acc_res.O == Residue::NONE) continue;
+            if (res.H == Residue::NONE) {
+                choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
+                    [ri, acceptor_residue_idx](GeometryChoice& gc) {
+                        AddNumber(gc, "donor_residue", static_cast<double>(ri), "index");
+                        AddNumber(gc, "acceptor_residue", static_cast<double>(acceptor_residue_idx), "index");
+                        AddNumber(gc, "rejection", 1.0, "missing_explicit_donor_H");
+                    });
+                continue;
+            }
 
             // sequence exclusion
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(acceptor_residue_idx));
@@ -161,12 +169,12 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             if (seen.count(key)) continue;
             seen.insert(key);
 
-            Vec3 N_pos = conf.PositionAt(res.N);
+            Vec3 H_pos = conf.PositionAt(res.H);
             Vec3 O_pos = conf.PositionAt(acc_res.O);
-            Vec3 d = O_pos - N_pos;
+            Vec3 d = O_pos - H_pos;
             double dist = d.norm();
 
-            // source distance gate (singular or beyond max N...O)
+            // source distance gate (singular or beyond max H...O)
             if (dist < CalculatorConfig::Get("singularity_guard_distance") || dist > CalculatorConfig::Get("hbond_dipolar_max_distance")) {
                 // record: distance reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
@@ -181,10 +189,11 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 
             ResolvedHBond hb;
             hb.donor_N = res.N;
+            hb.donor_H = res.H;
             hb.acceptor_O = acc_res.O;
             hb.donor_residue = ri;
             hb.acceptor_residue = acceptor_residue_idx;
-            hb.midpoint = 0.5 * (N_pos + O_pos);
+            hb.source_point = H_pos;
             hb.h_hat = d / dist;
             hb.distance = dist;
             hb.sequence_separation = seq_sep;
@@ -198,6 +207,15 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 
             const Residue& don_res = protein.ResidueAt(donor_residue_idx);
             if (don_res.N == Residue::NONE || res.O == Residue::NONE) continue;
+            if (don_res.H == Residue::NONE) {
+                choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
+                    [donor_residue_idx, ri](GeometryChoice& gc) {
+                        AddNumber(gc, "donor_residue", static_cast<double>(donor_residue_idx), "index");
+                        AddNumber(gc, "acceptor_residue", static_cast<double>(ri), "index");
+                        AddNumber(gc, "rejection", 1.0, "missing_explicit_donor_H");
+                    });
+                continue;
+            }
 
             // sequence exclusion
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(donor_residue_idx));
@@ -217,12 +235,12 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             if (seen.count(key)) continue;
             seen.insert(key);
 
-            Vec3 N_pos = conf.PositionAt(don_res.N);
+            Vec3 H_pos = conf.PositionAt(don_res.H);
             Vec3 O_pos = conf.PositionAt(res.O);
-            Vec3 d = O_pos - N_pos;
+            Vec3 d = O_pos - H_pos;
             double dist = d.norm();
 
-            // source distance gate (singular or beyond max N...O)
+            // source distance gate (singular or beyond max H...O)
             if (dist < CalculatorConfig::Get("singularity_guard_distance") || dist > CalculatorConfig::Get("hbond_dipolar_max_distance")) {
                 // record: distance reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
@@ -237,10 +255,11 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 
             ResolvedHBond hb;
             hb.donor_N = don_res.N;
+            hb.donor_H = don_res.H;
             hb.acceptor_O = res.O;
             hb.donor_residue = donor_residue_idx;
             hb.acceptor_residue = ri;
-            hb.midpoint = 0.5 * (N_pos + O_pos);
+            hb.source_point = H_pos;
             hb.h_hat = d / dist;
             hb.distance = dist;
             hb.sequence_separation = seq_sep;
@@ -261,16 +280,17 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
     // ------------------------------------------------------------------
     // Step 2: Build the filter set for H-bond kernel evaluations.
     //
-    // MinDistanceFilter: singularity guard near the H-bond midpoint.
-    // SelfSourceFilter: atom cannot be a field point for an H-bond
-    //   where it is the donor N or acceptor O.
-    // DipolarNearFieldFilter: point-source model invalid when field
-    //   point is inside the N...O source distribution.
+    // MinDistanceFilter: singularity guard near the donor H source point.
+// SelfSourceFilter: atom cannot be a field point for an H-bond
+    //   where it is the donor H or acceptor O.
+// DipolarNearFieldFilter: point-source model invalid when field
+    //   point is inside the H...O source distribution.
     // ------------------------------------------------------------------
 
     KernelFilterSet filters;
     filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
+    filters.Add(std::make_unique<SequentialExclusionFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
 
     OperationLog::Info(LogCalcOther, "HBondResult::Compute",
@@ -300,15 +320,16 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             const auto& hb = hbonds[hi];
 
             // kernel geometry (computed first so filters can read distance/extent)
-            HBondKernelResult kernel = ComputeHBondKernel(
-                atom_pos, hb.midpoint, hb.h_hat);
+            hbond_result_detail::KernelResult kernel =
+                hbond_result_detail::ComputeKernel(
+                    atom_pos, hb.source_point, hb.h_hat);
 
             // Build evaluation context from already-computed geometry
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
-            ctx.source_extent = hb.distance;  // N...O distance
+            ctx.source_extent = hb.distance;  // H...O distance
             ctx.atom_index = ai;
-            ctx.source_atom_a = hb.donor_N;
+            ctx.source_atom_a = hb.donor_H;
             ctx.source_atom_b = hb.acceptor_O;
 
             // endpoint sequence gap (min to either donor/acceptor residue)
@@ -324,6 +345,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
                     [&](GeometryChoice& gc) {
                         AddAtom(gc, &conf.AtomAt(hb.donor_N), hb.donor_N,
                                 EntityRole::Context, EntityOutcome::Included);
+                        AddAtom(gc, &conf.AtomAt(hb.donor_H), hb.donor_H,
+                                EntityRole::Source, EntityOutcome::Included);
                         AddAtom(gc, &conf.AtomAt(hb.acceptor_O), hb.acceptor_O,
                                 EntityRole::Context, EntityOutcome::Included);
                         AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
@@ -360,11 +383,12 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         if (nearest_hb_idx != SIZE_MAX) {
             const auto& nearest_hb = hbonds[nearest_hb_idx];
             ca.hbond_nearest_dist = nearest_dist;
-            ca.hbond_nearest_dir = (atom_pos - nearest_hb.midpoint).normalized();
+            ca.hbond_nearest_dir =
+                (atom_pos - nearest_hb.source_point).normalized();
             ca.hbond_is_backbone = true;  // all DSSP H-bonds are backbone
 
-            // 1/r3 to the NEAREST bond's midpoint (atom-to-midpoint r, distinct
-            // from the N...O source extent.
+            // 1/r3 to the nearest donor-H source point (distinct from the
+            // H...O source extent).
             ca.hbond_inv_d3 = 1.0 / (nearest_dist * nearest_dist * nearest_dist);
         }
 

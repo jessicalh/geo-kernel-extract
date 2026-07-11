@@ -1,6 +1,7 @@
 #include "MolecularGraphResult.h"
 #include "Protein.h"
 #include "OperationLog.h"
+#include "NpyWriter.h"
 #include <queue>
 #include <set>
 #include <cmath>
@@ -13,33 +14,42 @@ namespace nmr {
 // Returns -1 for atoms not reachable from any source.
 // ============================================================================
 
-static std::vector<int> BfsFromSet(
+struct BfsResult {
+    std::vector<int> distance;
+    std::vector<int> nearest_source;
+};
+
+static BfsResult BfsFromSet(
         const std::set<size_t>& sources,
         const Protein& protein) {
-    std::vector<int> dist(protein.AtomCount(), -1);
+    BfsResult result;
+    result.distance.assign(protein.AtomCount(), -1);
+    result.nearest_source.assign(protein.AtomCount(), -1);
     std::queue<size_t> queue;
 
     for (size_t s : sources) {
-        dist[s] = 0;
+        result.distance[s] = 0;
+        result.nearest_source[s] = static_cast<int>(s);
         queue.push(s);
     }
 
     while (!queue.empty()) {
         size_t current = queue.front();
         queue.pop();
-        int d = dist[current];
+        int d = result.distance[current];
 
         for (size_t bi : protein.AtomAt(current).bond_indices) {
             const Bond& bond = protein.BondAt(bi);
             size_t other = (bond.atom_index_a == current)
                 ? bond.atom_index_b : bond.atom_index_a;
-            if (dist[other] < 0) {
-                dist[other] = d + 1;
+            if (result.distance[other] < 0) {
+                result.distance[other] = d + 1;
+                result.nearest_source[other] = result.nearest_source[current];
                 queue.push(other);
             }
         }
     }
-    return dist;
+    return result;
 }
 
 
@@ -85,9 +95,9 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
     // ---------------------------------------------------------------
     // Multi-source BFS: distance to nearest aromatic ring atom, N, O
     // ---------------------------------------------------------------
-    std::vector<int> dist_ring = BfsFromSet(ring_atoms, protein);
-    std::vector<int> dist_N = BfsFromSet(nitrogen_atoms, protein);
-    std::vector<int> dist_O = BfsFromSet(oxygen_atoms, protein);
+    const BfsResult ring_bfs = BfsFromSet(ring_atoms, protein);
+    const BfsResult nitrogen_bfs = BfsFromSet(nitrogen_atoms, protein);
+    const BfsResult oxygen_bfs = BfsFromSet(oxygen_atoms, protein);
 
     // ---------------------------------------------------------------
     // Build pi-like bond set: aromatic, double, and peptide bonds.
@@ -110,16 +120,19 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
         const Atom& identity = protein.AtomAt(ai);
 
         // Graph distances from BFS
-        ca.graph_dist_ring = dist_ring[ai];
-        ca.graph_dist_N = dist_N[ai];
-        ca.graph_dist_O = dist_O[ai];
+        ca.graph_dist_ring = ring_bfs.distance[ai];
+        ca.graph_dist_N = nitrogen_bfs.distance[ai];
+        ca.graph_dist_O = oxygen_bfs.distance[ai];
 
         // bfs_to_nearest_ring_atom: same as graph_dist_ring.
-        ca.bfs_to_nearest_ring_atom = dist_ring[ai];
+        ca.bfs_to_nearest_ring_atom = ring_bfs.distance[ai];
+        ca.nearest_ring_atom_index = ring_bfs.nearest_source[ai];
 
         // bfs_decay: exp(-d / DECAY_LENGTH), 0 if unreachable
-        if (dist_ring[ai] >= 0) {
-            ca.bfs_decay = std::exp(-static_cast<double>(dist_ring[ai]) / BFS_DECAY_LENGTH);
+        if (ring_bfs.distance[ai] >= 0) {
+            ca.bfs_decay = std::exp(
+                -static_cast<double>(ring_bfs.distance[ai]) /
+                BFS_DECAY_LENGTH);
         } else {
             ca.bfs_decay = 0.0;
         }
@@ -210,6 +223,45 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
         " unreachable_from_ring=" + std::to_string(unreachable));
 
     return result;
+}
+
+int MolecularGraphResult::WriteFeatures(const ProteinConformation& conf,
+                                        const std::string& output_dir) const {
+    const size_t N = conf.AtomCount();
+    std::vector<int32_t> integer_data(N * 6, 0);
+    std::vector<double> float_data(N * 3, 0.0);
+    std::vector<double> compatibility(N * 9, 0.0);
+    for (size_t i = 0; i < N; ++i) {
+        const ConformationAtom& atom = conf.AtomAt(i);
+        integer_data[i*6 + 0] = atom.graph_dist_ring;
+        integer_data[i*6 + 1] = atom.graph_dist_N;
+        integer_data[i*6 + 2] = atom.graph_dist_O;
+        integer_data[i*6 + 3] = atom.n_pi_bonds_3;
+        integer_data[i*6 + 4] = atom.is_conjugated ? 1 : 0;
+        integer_data[i*6 + 5] = atom.nearest_ring_atom_index;
+        float_data[i*3 + 0] = atom.eneg_sum_1;
+        float_data[i*3 + 1] = atom.eneg_sum_2;
+        float_data[i*3 + 2] = atom.bfs_decay;
+
+        compatibility[i*9 + 0] = atom.graph_dist_ring;
+        compatibility[i*9 + 1] = atom.graph_dist_N;
+        compatibility[i*9 + 2] = atom.graph_dist_O;
+        compatibility[i*9 + 3] = atom.eneg_sum_1;
+        compatibility[i*9 + 4] = atom.eneg_sum_2;
+        compatibility[i*9 + 5] = atom.n_pi_bonds_3;
+        compatibility[i*9 + 6] = atom.is_conjugated ? 1.0 : 0.0;
+        compatibility[i*9 + 7] = atom.nearest_ring_atom_index;
+        compatibility[i*9 + 8] = atom.bfs_decay;
+    }
+
+    int written = 0;
+    if (NpyWriter::WriteInt32(output_dir + "/molecular_graph_int.npy",
+                              integer_data.data(), N, 6)) ++written;
+    if (NpyWriter::WriteFloat64(output_dir + "/molecular_graph_float.npy",
+                                float_data.data(), N, 3)) ++written;
+    if (NpyWriter::WriteFloat64(output_dir + "/molecular_graph.npy",
+                                compatibility.data(), N, 9)) ++written;
+    return written;
 }
 
 }  // namespace nmr

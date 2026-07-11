@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "EnrichmentResult.h"
+#include "MolecularGraphResult.h"
 #include "DsspResult.h"
 #include "ChargeAssignmentResult.h"
 #include "MopacResult.h"
@@ -13,8 +14,10 @@
 #include "BiotSavartResult.h"
 #include "HaighMallionResult.h"
 #include "McConnellResult.h"
+#include "SidechainCarbonylAnisotropyResult.h"
 #include "RingSusceptibilityResult.h"
 #include "PiQuadrupoleResult.h"
+#include "PiQuadrupoleLocalTensorResult.h"
 #include "DispersionResult.h"
 #include "CoulombResult.h"
 #include "HBondResult.h"
@@ -23,6 +26,7 @@
 #include "AIMNet2Result.h"
 #include "TripeptideBackboneShieldingResult.h"
 #include "LarsenHBondShieldingResult.h"
+#include "LarsenSidechainDonorAuditResult.h"
 #include "TripeptideNeighborShieldingResult.h"
 #include "AIMNet2ChargeResponseGradientResult.h"
 #include "PlanarGeometryResult.h"
@@ -31,6 +35,7 @@
 #include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
 #include "WaterFieldResult.h"
+#include "WaterHBondGeometryResult.h"
 #include "HydrationShellResult.h"
 #include "HydrationGeometryResult.h"
 #include "EeqResult.h"
@@ -93,6 +98,8 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
             return GeometryResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "SpatialIndexResult", out, [&]{
             return SpatialIndexResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "MolecularGraphResult", out, [&]{
+            return MolecularGraphResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "EnrichmentResult", out, [&]{
             return EnrichmentResult::Compute(conf); })) return out;
 
@@ -152,10 +159,14 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
             return HaighMallionResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "McConnellResult", out, [&]{
             return McConnellResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "SidechainCarbonylAnisotropyResult", out, [&]{
+            return SidechainCarbonylAnisotropyResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "RingSusceptibilityResult", out, [&]{
             return RingSusceptibilityResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "PiQuadrupoleResult", out, [&]{
             return PiQuadrupoleResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "PiQuadrupoleLocalTensorResult", out, [&]{
+            return PiQuadrupoleLocalTensorResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "DispersionResult", out, [&]{
             return DispersionResult::Compute(conf); })) return out;
 
@@ -209,6 +220,9 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (opts.solvent && !opts.solvent->Empty()) {
         if (!TimedAttach(conf, "WaterFieldResult", out, [&]{
                 return WaterFieldResult::Compute(conf, *opts.solvent); })) return out;
+        if (!TimedAttach(conf, "WaterHBondGeometryResult", out, [&]{
+                return WaterHBondGeometryResult::Compute(
+                    conf, *opts.solvent); })) return out;
         if (!TimedAttach(conf, "HydrationShellResult", out, [&]{
                 return HydrationShellResult::Compute(conf, *opts.solvent); })) return out;
         if (!TimedAttach(conf, "HydrationGeometryResult", out, [&]{
@@ -263,6 +277,9 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
         if (!TimedAttach(conf, "LarsenHBondShieldingResult", out, [&]{
                 return LarsenHBondShieldingResult::Compute(
                     conf, *opts.larsen_hbond_grid); })) return out;
+        if (!TimedAttach(conf, "LarsenSidechainDonorAuditResult", out, [&]{
+                return LarsenSidechainDonorAuditResult::Compute(conf); }))
+            return out;
     }
 
     // --- Tier 2: DFT comparison (optional) ---

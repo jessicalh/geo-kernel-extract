@@ -21,6 +21,15 @@ namespace nmr {
 
 class CalculatorConfig {
 public:
+    struct ResolvedParameter {
+        double value = 0.0;
+        std::string unit;
+        std::string description;
+        // Exactly "toml" when an extraction-time override supplied the
+        // value, otherwise "default" for the compiled literature value.
+        std::string source;
+    };
+
     // Load parameter overrides from a TOML file.
     // Empty path → defaults only (no file read).
     static void Load(const std::string& path = "");
@@ -28,6 +37,11 @@ public:
     // Get a numeric parameter value. Returns override if loaded, else default.
     // Aborts on unknown key (programming error).
     static double Get(const std::string& key);
+
+    // Resolve a numeric parameter together with the provenance of the value
+    // used for this extraction.  This is the manifest-facing counterpart to
+    // Get(); it has the same unknown-key programming-error contract.
+    static ResolvedParameter GetResolved(const std::string& key);
 
     // Get a string value from the config file (e.g. model paths).
     // Returns defaultVal if the key was not set.

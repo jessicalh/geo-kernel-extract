@@ -87,6 +87,83 @@ double SyntheticWaterTerm(std::size_t atom_i, std::size_t frame_t) {
 }  // namespace
 
 
+TEST(LarsenHBondWaterTermTimeSeries,
+     FixtureIndependentProductionH5Contract) {
+    constexpr std::size_t kAtoms = 2;
+    constexpr std::size_t kFrames = 2;
+    nmr::TrajectoryProtein tp;
+    auto result =
+        nmr::LarsenHBondWaterTermTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Protein empty_protein;
+    nmr::ProteinConformation empty_conf(
+        &empty_protein, std::vector<nmr::Vec3>{}, "A22 H5 contract");
+    nmr::Trajectory trajectory(fs::path{}, fs::path{}, fs::path{});
+
+    result->Compute(empty_conf, tp, trajectory, 11, 1.25);
+    result->ForceSourcePresentForTesting(true);
+    result->Compute(empty_conf, tp, trajectory, 19, 2.5);
+
+    auto buffer = std::make_unique<nmr::DenseBuffer<double>>(
+        kAtoms, kFrames);
+    for (std::size_t atom = 0; atom < kAtoms; ++atom) {
+        for (std::size_t frame = 0; frame < kFrames; ++frame) {
+            buffer->At(atom, frame) = SyntheticWaterTerm(atom, frame);
+        }
+    }
+    tp.AdoptDenseBuffer<double>(
+        std::move(buffer),
+        std::type_index(typeid(
+            nmr::LarsenHBondWaterTermTimeSeriesTrajectoryResult)));
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("larsen_hbond_water_a22_contract_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        result->WriteH5Group(tp, file);
+    }
+
+    HighFive::File file(h5_path, HighFive::File::ReadOnly);
+    auto group = file.getGroup(
+        "/trajectory/larsen_hbond_water_term_time_series");
+    std::uint64_t source_count = 0;
+    std::string source_policy, atom_axis, frame_axis;
+    auto source_count_attr = group.getAttribute("source_attached_count");
+    source_count_attr.read(source_count);
+    group.getAttribute("source_attached_policy").read(source_policy);
+    group.getAttribute("atom_axis").read(atom_axis);
+    group.getAttribute("frame_axis").read(frame_axis);
+    EXPECT_EQ(source_count_attr.getDataType().getSize(),
+              sizeof(std::uint64_t));
+    EXPECT_EQ(source_policy, "conditional_larsen_grid_source");
+    EXPECT_EQ(atom_axis, "protein_atom_index");
+    EXPECT_EQ(frame_axis, "trajectory_frame_row");
+
+    auto water_term = group.getDataSet("water_term");
+    EXPECT_EQ(water_term.getSpace().getDimensions(),
+              (std::vector<std::size_t>{kAtoms, kFrames}));
+    std::vector<double> flat(kAtoms * kFrames);
+    water_term.read(flat.data());
+    EXPECT_TRUE(std::isnan(flat[0]));
+    EXPECT_TRUE(std::isnan(flat[2]));
+    EXPECT_DOUBLE_EQ(flat[1], SyntheticWaterTerm(0, 1));
+    EXPECT_DOUBLE_EQ(flat[3], SyntheticWaterTerm(1, 1));
+
+    std::vector<std::size_t> frame_indices(kFrames);
+    std::vector<double> frame_times(kFrames);
+    std::vector<std::uint8_t> source_mask(kFrames);
+    group.getDataSet("frame_indices").read(frame_indices.data());
+    group.getDataSet("frame_times").read(frame_times.data());
+    group.getDataSet("source_attached_per_frame").read(source_mask.data());
+    EXPECT_EQ(frame_indices, (std::vector<std::size_t>{11, 19}));
+    EXPECT_EQ(frame_times, (std::vector<double>{1.25, 2.5}));
+    EXPECT_EQ(source_mask, (std::vector<std::uint8_t>{0, 1}));
+    EXPECT_EQ(source_count,
+              static_cast<std::uint64_t>(source_mask[0] + source_mask[1]));
+    fs::remove(h5_path);
+}
+
+
 TEST(LarsenHBondWaterTermTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();

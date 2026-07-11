@@ -3,6 +3,7 @@
 #include "Bond.h"
 #include "ConformationAtom.h"
 #include "GeometryChoice.h"
+#include "LarsenHBondGeometryCommon.h"
 #include "LarsenHBondGrid.h"
 #include "LegacyAmberTopology.h"
 #include "NpyWriter.h"
@@ -44,209 +45,6 @@ constexpr double kSpatialCutoff_A = 4.2;
 constexpr double kThetaMinDeg     = 90.0;
 constexpr double kThetaMaxDeg     = 180.0;
 
-
-// IsHydroxylOxygen: walk to bonded H atoms; return true if any is
-// labelled HydroxylOH_Aliphatic (SER OG, THR OG1) or HydroxylOH_Aromatic
-// (TYR OH). Identifies hydroxyl acceptor Os in a substrate-typed way
-// (no string traversal on atom names). Also returns the bonded H atom
-// index via out-param (becomes the "third atom" for the H-bond dihedral
-// when the O is acted on as an acceptor — Larsen's HOMe acceptor model
-// uses Hα..O-H as the dihedral reference).
-bool IsHydroxylOxygen(const Protein& protein,
-                      std::size_t O_idx,
-                      std::size_t& bonded_H_out) {
-    bonded_H_out = Residue::NONE;
-    const auto& o_atom = protein.AtomAt(O_idx);
-    if (o_atom.element != Element::O) return false;
-    const auto& topo = protein.LegacyAmber();
-    for (std::size_t bi : o_atom.bond_indices) {
-        const Bond& b = protein.BondAt(bi);
-        std::size_t other = (b.atom_index_a == O_idx) ? b.atom_index_b : b.atom_index_a;
-        if (protein.AtomAt(other).element != Element::H) continue;
-        PolarHKind k = topo.SemanticAt(other).polar_h;
-        if (k == PolarHKind::HydroxylOH_Aliphatic ||
-            k == PolarHKind::HydroxylOH_Aromatic) {
-            bonded_H_out = other;
-            return true;
-        }
-    }
-    return false;
-}
-
-
-// AcceptorTriple — resolved (O, C, third) for the dihedral plus
-// optional i+1 residue for the Larsen 2° term routing. Built by
-// ClassifyAcceptor below; one shape across all 4 acceptor classes.
-struct AcceptorTriple {
-    HBondAcceptorClass class_;
-    std::size_t O_idx;
-    std::size_t C_idx;
-    std::size_t third_idx;
-    std::size_t i_plus_1_residue_idx;  // SIZE_MAX = not applicable
-};
-
-
-// ClassifyAcceptor: given an acceptor candidate O atom, decide its
-// chemistry class and resolve the frame anchors. Returns nullopt if
-// the atom does not qualify as any Larsen acceptor class.
-//
-// Class dispatch (substrate-typed):
-//   BackboneCarbonyl       — res.O carbonyl O; C = res.C; third = N(j+1)
-//                            (no third if at C-terminus → the pair is
-//                            skipped because ρ cannot be computed).
-//   SidechainCarbonyl      — Asn OD1 / Gln OE1 (PlanarGroupKind::SidechainAmide
-//                            + Element::O); C = the sidechain carbonyl C;
-//                            third = the sidechain amide N.
-//   HydroxylOxygen         — Ser OG / Thr OG1 / Tyr OH (bond-walk for a
-//                            HydroxylOH_* polar H); C = the bonded
-//                            heavy atom; third = the bonded hydroxyl H.
-//   CarboxylateOxygen      — Asp OD1/OD2 / Glu OE1/OE2 / C-term carboxylate
-//                            O (PlanarGroupKind::Carboxylate + Element::O);
-//                            C = the carboxylate C; third = the OTHER
-//                            carboxylate O on the same C.
-//
-// SidechainCarbonyl uses the NMA acceptor grid as a documented
-// approximation (Larsen did not separately scan sidechain primary amide
-// acceptors). 2° term is NOT routed for SidechainCarbonyl because the
-// i+1 residue mapping doesn't exist outside backbone.
-std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
-                                                std::size_t O_idx) {
-    const auto& sem = protein.LegacyAmber().SemanticAt(O_idx);
-    if (sem.element != Element::O) return std::nullopt;
-
-    AcceptorTriple t{};
-    t.O_idx = O_idx;
-    t.i_plus_1_residue_idx = SIZE_MAX;
-
-    // (1) CarboxylateOxygen: substrate flag (PlanarGroupKind::Carboxylate
-    //     on element O). Checked FIRST because C-terminus Os carry BOTH
-    //     BackboneRole::CarbonylOxygen AND PlanarGroupKind::Carboxylate
-    //     (the terminal -COO⁻ adopts carboxylate chemistry). The acetate
-    //     grid is what Larsen scanned for that chemistry; routing to
-    //     BackboneCarbonyl instead would query the wrong DFT grid.
-    //     Internal backbone Os are PlanarGroupKind::PeptideAmide so they
-    //     fall through. third = the OTHER carboxylate O on the same C.
-    if (sem.IsSidechainCarboxylateOxygen()) {
-        t.class_ = HBondAcceptorClass::CarboxylateOxygen;
-        const auto& o_atom = protein.AtomAt(O_idx);
-        std::size_t bonded_C = Residue::NONE;
-        for (std::size_t bi : o_atom.bond_indices) {
-            const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == O_idx) ?
-                                 b.atom_index_b : b.atom_index_a;
-            if (protein.AtomAt(other).element == Element::C) {
-                bonded_C = other;
-                break;
-            }
-        }
-        if (bonded_C == Residue::NONE) return std::nullopt;
-        t.C_idx = bonded_C;
-        std::size_t other_O = Residue::NONE;
-        for (std::size_t bi : protein.AtomAt(bonded_C).bond_indices) {
-            const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == bonded_C) ?
-                                 b.atom_index_b : b.atom_index_a;
-            if (other == O_idx) continue;
-            const auto& other_sem = protein.LegacyAmber().SemanticAt(other);
-            if (other_sem.element == Element::O &&
-                other_sem.planar_group == PlanarGroupKind::Carboxylate) {
-                other_O = other;
-                break;
-            }
-        }
-        if (other_O == Residue::NONE) return std::nullopt;
-        t.third_idx = other_O;
-        return t;
-    }
-
-    // (2) BackboneCarbonyl: substrate flag, residue-cached C, i+1 from
-    //     the backbone successor's N.
-    if (sem.IsBackboneCarbonylOxygen()) {
-        t.class_ = HBondAcceptorClass::BackboneCarbonyl;
-        const auto& o_atom = protein.AtomAt(O_idx);
-        const Residue& res_j = protein.ResidueAt(o_atom.residue_index);
-        if (res_j.C == Residue::NONE) return std::nullopt;
-        t.C_idx = res_j.C;
-        // i+1 third: backbone successor's N, looked up via the canonical
-        // Protein::BackboneSuccessor bond-graph walk. Wrap-correct for
-        // cyclic peptides; cleanly handles ACE/NME caps and antibody
-        // insertion codes.
-        if (auto next_idx = protein.BackboneSuccessor(o_atom.residue_index);
-            next_idx) {
-            const Residue& next_res = protein.ResidueAt(*next_idx);
-            t.third_idx = next_res.N;
-            t.i_plus_1_residue_idx = *next_idx;
-        } else {
-            // C-terminus or non-bonded chain boundary: 2° term skipped.
-            t.third_idx = Residue::NONE;
-        }
-        return t;
-    }
-
-    // (3) SidechainCarbonyl: substrate flag plus locate the bonded C
-    //     (carbonyl) and the sidechain amide N.
-    if (sem.IsSidechainAmideOxygen()) {
-        t.class_ = HBondAcceptorClass::SidechainCarbonyl;
-        const auto& o_atom = protein.AtomAt(O_idx);
-        std::size_t bonded_C = Residue::NONE;
-        for (std::size_t bi : o_atom.bond_indices) {
-            const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == O_idx) ?
-                                 b.atom_index_b : b.atom_index_a;
-            if (protein.AtomAt(other).element == Element::C) {
-                bonded_C = other;
-                break;
-            }
-        }
-        if (bonded_C == Residue::NONE) return std::nullopt;
-        t.C_idx = bonded_C;
-        // third = the sidechain amide N bonded to the carbonyl C
-        // (same SidechainAmide planar group).
-        std::size_t amide_N = Residue::NONE;
-        for (std::size_t bi : protein.AtomAt(bonded_C).bond_indices) {
-            const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == bonded_C) ?
-                                 b.atom_index_b : b.atom_index_a;
-            if (other == O_idx) continue;
-            const auto& other_sem = protein.LegacyAmber().SemanticAt(other);
-            if (other_sem.element == Element::N &&
-                other_sem.planar_group == PlanarGroupKind::SidechainAmide) {
-                amide_N = other;
-                break;
-            }
-        }
-        if (amide_N == Residue::NONE) return std::nullopt;
-        t.third_idx = amide_N;
-        return t;
-    }
-
-    // (4) HydroxylOxygen: bond-walk discovers the hydroxyl H; the
-    //     bonded heavy atom is the "acceptor C"; the hydroxyl H is
-    //     "third".
-    {
-        std::size_t hydroxyl_H = Residue::NONE;
-        if (IsHydroxylOxygen(protein, O_idx, hydroxyl_H)) {
-            t.class_ = HBondAcceptorClass::HydroxylOxygen;
-            const auto& o_atom = protein.AtomAt(O_idx);
-            std::size_t bonded_C = Residue::NONE;
-            for (std::size_t bi : o_atom.bond_indices) {
-                const Bond& b = protein.BondAt(bi);
-                std::size_t other = (b.atom_index_a == O_idx) ?
-                                     b.atom_index_b : b.atom_index_a;
-                if (protein.AtomAt(other).element == Element::C) {
-                    bonded_C = other;
-                    break;
-                }
-            }
-            if (bonded_C == Residue::NONE) return std::nullopt;
-            t.C_idx = bonded_C;
-            t.third_idx = hydroxyl_H;
-            return t;
-        }
-    }
-
-    return std::nullopt;
-}
 
 // Apply a per-class contribution to a target atom's per-class Mat3 field.
 void AccumulateContribution(
@@ -365,6 +163,60 @@ std::vector<std::size_t> TargetAtomIndices(
 }  // namespace
 
 
+void larsen_hbond_shielding_detail::RecordTable2Contribution(
+        LarsenHBondShieldingResult::PairRecord& pair,
+        LarsenContribDispatch::TargetAtom target,
+        LarsenContribDispatch::Term term,
+        const Mat3& contribution_lab) {
+    const std::uint32_t target_bit =
+        std::uint32_t{1} << static_cast<unsigned>(target);
+    const double isotropic = contribution_lab.trace() / 3.0;
+
+    double* term_iso = nullptr;
+    std::uint32_t* term_mask = nullptr;
+    using Term = LarsenContribDispatch::Term;
+    switch (term) {
+        case Term::Primary_HB:
+            term_iso = &pair.iso_1pHB;
+            term_mask = &pair.target_mask_1pHB;
+            break;
+        case Term::Secondary_HB:
+            term_iso = &pair.iso_2pHB;
+            term_mask = &pair.target_mask_2pHB;
+            break;
+        case Term::Primary_HaB:
+            term_iso = &pair.iso_1pHaB;
+            term_mask = &pair.target_mask_1pHaB;
+            break;
+        case Term::Secondary_HaB:
+            term_iso = &pair.iso_2pHaB;
+            term_mask = &pair.target_mask_2pHaB;
+            break;
+        case Term::RingCurrent:
+        case Term::Water:
+        case Term::Count:
+            return;
+    }
+
+    if (!std::isfinite(*term_iso)) *term_iso = 0.0;
+    *term_iso += isotropic;
+    *term_mask |= target_bit;
+}
+
+
+void larsen_hbond_shielding_detail::RecordDiagnosticCbContribution(
+        LarsenHBondShieldingResult::PairRecord& pair,
+        const Mat3& contribution_lab) {
+    if (!std::isfinite(pair.iso_diagnostic_CB)) {
+        pair.iso_diagnostic_CB = 0.0;
+    }
+    pair.iso_diagnostic_CB += contribution_lab.trace() / 3.0;
+    pair.target_mask_diagnostic_CB |=
+        std::uint32_t{1} << static_cast<unsigned>(
+            LarsenContribDispatch::TargetAtom::CB);
+}
+
+
 // ============================================================================
 // Dependencies
 // ============================================================================
@@ -410,6 +262,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
 
     auto result_ptr = std::make_unique<LarsenHBondShieldingResult>();
     result_ptr->conf_ = &conf;
+    result_ptr->imputed_pair_count_by_atom_.assign(n_atoms, 0);
+    result_ptr->sidechain_carbonyl_pair_count_by_atom_.assign(n_atoms, 0);
 
     GeometryChoiceBuilder choices(conf);
     std::size_t resolution_key = 0;
@@ -453,7 +307,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         return protein.BackbonePredecessor(d_ri);
     };
 
-    // PairResult — tri-state disposition for one donor/acceptor candidate.
+    // PairResult — disposition for one donor/acceptor candidate.
     //
     // The outer sweep uses these to (a) increment n_pairs_grid_skipped
     // exactly once per non-Success case and (b) decide whether the amide
@@ -466,6 +320,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         Success,                // Tensors accumulated.
     };
 
+    using AcceptorTriple = larsen_hbond_geometry::AcceptorTriple;
+
     // Process one donor → acceptor pair. Resolves donor frame (per
     // donor class), classifies acceptor, computes geometry, queries
     // grid, dispatches per Larsen 2015 Table 2.
@@ -476,6 +332,28 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             std::size_t donor_third_idx,
             std::size_t donor_residue_idx,
             const AcceptorTriple& acc) -> PairResult {
+
+        PairRecord pair;
+        pair.donor_atom_idx = donor_H_idx;
+        pair.acceptor_atom_idx = acc.O_idx;
+        pair.donor_residue_idx = donor_residue_idx;
+        pair.acceptor_residue_idx =
+            protein.AtomAt(acc.O_idx).residue_index;
+        pair.donor_class = donor_class;
+        pair.acceptor_class = acc.class_;
+        pair.donor_anchor_atom_idx = donor_anchor_idx;
+        pair.donor_third_atom_idx = donor_third_idx;
+        pair.acceptor_C_atom_idx = acc.C_idx;
+        pair.acceptor_third_atom_idx = acc.third_idx;
+
+        auto finish = [&](PairResult disposition) {
+            pair.disposition = static_cast<PairDisposition>(disposition);
+            result_ptr->pairs_.push_back(pair);
+            if (disposition == PairResult::Success) {
+                ++result_ptr->successful_pairs_;
+            }
+            return disposition;
+        };
 
         // Skip degenerate (donor H == any frame anchor) configurations.
         if (donor_anchor_idx == Residue::NONE ||
@@ -502,7 +380,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                         static_cast<double>(acc_thd), "atom_idx");
                     AddNumber(gc, "rejection", 1.0, "missing_frame_anchor");
                 });
-            return PairResult::MissingFrameAtoms;
+            return finish(PairResult::MissingFrameAtoms);
         }
 
         Vec3 donor_H_pos    = conf.PositionAt(donor_H_idx);
@@ -514,6 +392,10 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
 
         LarsenHBondGeometry geom = ComputeLarsenHBondGeometry(
             donor_H_pos, accept_O_pos, accept_C_pos, accept_thd_pos);
+        pair.r_angstrom = geom.r_angstrom;
+        pair.theta_deg = geom.theta_deg;
+        pair.rho_deg = geom.rho_deg;
+        pair.frame_valid = true;
 
         if (geom.theta_deg < kThetaMinDeg || geom.theta_deg > kThetaMaxDeg) {
             choices.Record(CalculatorId::LarsenHBond, resolution_key++,
@@ -524,7 +406,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     AddNumber(gc, "theta_deg", geom.theta_deg, "degrees");
                     AddNumber(gc, "rejection", 1.0, "theta_out_of_range");
                 });
-            return PairResult::ThetaOutOfRange;
+            return finish(PairResult::ThetaOutOfRange);
         }
 
         LarsenHBondRecord rec = grid.QueryNearest(
@@ -542,8 +424,24 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     AddNumber(gc, "rho_deg",    geom.rho_deg, "degrees");
                     AddNumber(gc, "rejection",  1.0, "grid_miss");
                 });
-            return PairResult::GridMiss;
+            return finish(PairResult::GridMiss);
         }
+
+        // A successful row has finite, explicit zeroes for terms that do
+        // not apply. Each actual tensor write below adds its own trace/3
+        // through the production audit helper.
+        // Pair geometry is the raw protein geometry. QueryNearest wraps rho
+        // for its periodic axis internally; do not replace the audit value
+        // with that compatibility-normalized coordinate.
+        pair.iso_1pHB = 0.0;
+        pair.iso_2pHB = 0.0;
+        pair.iso_1pHaB = 0.0;
+        pair.iso_2pHaB = 0.0;
+        pair.iso_diagnostic_CB = 0.0;
+        pair.iso_table2_total = 0.0;
+        pair.isotropic_total = 0.0;
+        pair.any_corner_imputed = rec.any_corner_imputed;
+        pair.imputed_corner_count = rec.imputed_corner_count;
 
         Mat3 R_protein = ComputeLarsenDonorFrame(
             donor_H_pos, donor_anchor, donor_third);
@@ -585,6 +483,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             for (std::size_t target_ai : targets) {
                 conf.MutableAtomAt(target_ai).larsen_hbond_diagnostic_CB +=
                     sigma_lab;
+                larsen_hbond_shielding_detail::
+                    RecordDiagnosticCbContribution(pair, sigma_lab);
                 diagnostic_contributors.insert(target_ai);
             }
         }
@@ -605,6 +505,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             for (std::size_t target_ai : targets) {
                 AccumulateContribution(
                     conf.MutableAtomAt(target_ai), primary_term, sigma_lab);
+                larsen_hbond_shielding_detail::RecordTable2Contribution(
+                    pair, dr_readout.target, primary_term, sigma_lab);
                 table2_contributors.insert(target_ai);
             }
         }
@@ -646,6 +548,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                 for (std::size_t target_ai : targets) {
                     AccumulateContribution(
                         conf.MutableAtomAt(target_ai), secondary_term, sigma_lab);
+                    larsen_hbond_shielding_detail::RecordTable2Contribution(
+                        pair, ac_readout.target, secondary_term, sigma_lab);
                     table2_contributors.insert(target_ai);
                 }
             }
@@ -660,7 +564,13 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         for (std::size_t ai : table2_contributors) {
             ConformationAtom& a = conf.MutableAtomAt(ai);
             a.larsen_hbond_n_pairs += 1;
-            if (rec.any_corner_imputed) a.larsen_hbond_any_corner_imputed = true;
+            if (rec.any_corner_imputed) {
+                a.larsen_hbond_any_corner_imputed = true;
+                ++result_ptr->imputed_pair_count_by_atom_[ai];
+            }
+            if (acc.class_ == HBondAcceptorClass::SidechainCarbonyl) {
+                ++result_ptr->sidechain_carbonyl_pair_count_by_atom_[ai];
+            }
         }
         for (std::size_t ai : diagnostic_contributors) {
             if (table2_contributors.count(ai)) continue;
@@ -695,20 +605,10 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     rec.any_corner_imputed ? 1.0 : 0.0, "bool");
             });
 
-        PairRecord pr;
-        pr.donor_atom_idx       = donor_H_idx;
-        pr.acceptor_atom_idx    = acc.O_idx;
-        pr.donor_residue_idx    = donor_residue_idx;
-        pr.acceptor_residue_idx = protein.AtomAt(acc.O_idx).residue_index;
-        pr.donor_class          = donor_class;
-        pr.acceptor_class       = acc.class_;
-        pr.r_angstrom           = rec.r_angstrom;
-        pr.theta_deg            = rec.theta_deg;
-        pr.rho_deg              = rec.rho_deg;
-        pr.isotropic_total      = (rec.donor_HN.trace() / 3.0);
-        pr.any_corner_imputed   = rec.any_corner_imputed;
-        result_ptr->pairs_.push_back(pr);
-        return PairResult::Success;
+        pair.iso_table2_total = pair.iso_1pHB + pair.iso_2pHB
+                              + pair.iso_1pHaB + pair.iso_2pHaB;
+        pair.isotropic_total = pair.iso_table2_total;
+        return finish(PairResult::Success);
     };
 
     // ------------------------------------------------------------------
@@ -746,10 +646,10 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                         AddNumber(gc, "rejection", 1.0,
                             "no_preceding_C_in_bond_graph");
                     });
-                continue;
+            } else {
+                const Residue& prev_res = protein.ResidueAt(*prev_idx);
+                donor_third_idx = prev_res.C;
             }
-            const Residue& prev_res = protein.ResidueAt(*prev_idx);
-            donor_third_idx = prev_res.C;
         } else if (sem.IsAnyAlphaHydrogen()) {
             donor_class = HBondDonorClass::AlphaHydrogen;
             donor_anchor_idx = res.CA;
@@ -757,9 +657,6 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         } else {
             continue;  // not a donor candidate
         }
-        if (donor_anchor_idx == Residue::NONE ||
-            donor_third_idx  == Residue::NONE) continue;
-
         Vec3 donor_pos = conf.PositionAt(ai);
         auto candidate_atoms =
             spatial.AtomsWithinRadius(donor_pos, kSpatialCutoff_A);
@@ -781,7 +678,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                 continue;
             }
 
-            auto classified = ClassifyAcceptor(protein, o_idx);
+            auto classified =
+                larsen_hbond_geometry::ClassifyAcceptor(protein, o_idx);
             if (!classified.has_value()) continue;
 
             // Carboxylate symmetry: ASP/GLU/C-term carboxylate Os come in
@@ -881,8 +779,11 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     result_ptr->pairs_grid_skipped_ = n_pairs_grid_skipped;
 
     OperationLog::Info(LogCalcOther, "LarsenHBondShieldingResult::Compute",
-        "pairs_grid_included=" + std::to_string(result_ptr->pairs_.size())
+        "pairs_grid_included=" +
+            std::to_string(result_ptr->successful_pairs_)
         + " pairs_grid_skipped=" + std::to_string(n_pairs_grid_skipped)
+        + " pair_diagnostic_rows=" +
+            std::to_string(result_ptr->pairs_.size())
         + " atoms_with_contribution=" + std::to_string(result_ptr->atoms_with_contribution_)
         + " amide_hs_with_water_term=" + std::to_string(result_ptr->amide_hs_unbound_));
 
@@ -891,9 +792,9 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
 
 
 // ============================================================================
-// WriteFeatures — emits SphericalTensor-packed per-class shieldings.
-// Emits 8 NPYs: total + 4 per-class shieldings + CB diagnostic
-// + water term + pair count. Packing is T0 (1) + T1 (3) + T2 (5) = 9
+// WriteFeatures — emits SphericalTensor-packed per-class shieldings plus
+// the raw per-pair audit tables and the two approximation/imputation counts.
+// Packing is T0 (1) + T1 (3) + T2 (5) = 9
 // columns per atom, matching the HBondResult convention. The Mat3
 // runtime fields stay on ConformationAtom (Pattern 11) but NPY emission
 // uses the spherical decomposition — same information, different layout
@@ -915,6 +816,8 @@ int LarsenHBondShieldingResult::WriteFeatures(
     std::vector<double> sh_CB    (N * 9, std::nan(""));
     std::vector<double> water    (N,     std::nan(""));
     std::vector<std::int32_t> n_pairs(N, 0);
+    std::vector<std::int32_t> imputed_pair_count(N, 0);
+    std::vector<std::int32_t> sidechain_carbonyl_pair_count(N, 0);
     std::vector<std::int8_t> corner_imputed(N, 0);
 
     for (std::size_t i = 0; i < N; ++i) {
@@ -927,7 +830,79 @@ int LarsenHBondShieldingResult::WriteFeatures(
         a.larsen_hbond_diagnostic_CB_spherical.PackFull9(&sh_CB    [i * 9]);
         water[i]   = a.larsen_hbond_water_term;
         n_pairs[i] = a.larsen_hbond_n_pairs;
+        if (i < imputed_pair_count_by_atom_.size()) {
+            imputed_pair_count[i] = imputed_pair_count_by_atom_[i];
+        }
+        if (i < sidechain_carbonyl_pair_count_by_atom_.size()) {
+            sidechain_carbonyl_pair_count[i] =
+                sidechain_carbonyl_pair_count_by_atom_[i];
+        }
         corner_imputed[i] = a.larsen_hbond_any_corner_imputed ? 1 : 0;
+    }
+
+    auto npy_index = [](std::size_t index) -> std::int32_t {
+        if (index == SIZE_MAX ||
+            index > static_cast<std::size_t>(
+                std::numeric_limits<std::int32_t>::max())) {
+            return -1;
+        }
+        return static_cast<std::int32_t>(index);
+    };
+
+    const std::size_t P = pairs_.size();
+    std::vector<std::int32_t> pair_index(P * 16, 0);
+    std::vector<double> pair_geometry(P * 6,
+        std::numeric_limits<double>::quiet_NaN());
+    std::vector<double> pair_isotropic(P * 6,
+        std::numeric_limits<double>::quiet_NaN());
+    std::vector<double> pair_compat(P * 28,
+        std::numeric_limits<double>::quiet_NaN());
+
+    for (std::size_t row = 0; row < P; ++row) {
+        const PairRecord& pair = pairs_[row];
+        std::int32_t* idx = &pair_index[row * 16];
+        idx[0] = npy_index(pair.donor_atom_idx);
+        idx[1] = npy_index(pair.acceptor_atom_idx);
+        idx[2] = npy_index(pair.donor_residue_idx);
+        idx[3] = npy_index(pair.acceptor_residue_idx);
+        idx[4] = static_cast<std::int32_t>(pair.donor_class);
+        idx[5] = static_cast<std::int32_t>(pair.acceptor_class);
+        idx[6] = static_cast<std::int32_t>(pair.disposition);
+        idx[7] = npy_index(pair.donor_anchor_atom_idx);
+        idx[8] = npy_index(pair.donor_third_atom_idx);
+        idx[9] = npy_index(pair.acceptor_C_atom_idx);
+        idx[10] = npy_index(pair.acceptor_third_atom_idx);
+        idx[11] = static_cast<std::int32_t>(pair.target_mask_1pHB);
+        idx[12] = static_cast<std::int32_t>(pair.target_mask_2pHB);
+        idx[13] = static_cast<std::int32_t>(pair.target_mask_1pHaB);
+        idx[14] = static_cast<std::int32_t>(pair.target_mask_2pHaB);
+        idx[15] =
+            static_cast<std::int32_t>(pair.target_mask_diagnostic_CB);
+
+        double* geometry = &pair_geometry[row * 6];
+        geometry[0] = pair.r_angstrom;
+        geometry[1] = pair.theta_deg;
+        geometry[2] = pair.rho_deg;
+        geometry[3] = pair.any_corner_imputed ? 1.0 : 0.0;
+        geometry[4] = static_cast<double>(pair.imputed_corner_count);
+        geometry[5] = pair.frame_valid ? 1.0 : 0.0;
+
+        double* isotropic = &pair_isotropic[row * 6];
+        isotropic[0] = pair.iso_1pHB;
+        isotropic[1] = pair.iso_2pHB;
+        isotropic[2] = pair.iso_1pHaB;
+        isotropic[3] = pair.iso_2pHaB;
+        isotropic[4] = pair.iso_diagnostic_CB;
+        isotropic[5] = pair.iso_table2_total;
+
+        double* compat = &pair_compat[row * 28];
+        for (int col = 0; col < 16; ++col) {
+            compat[col] = static_cast<double>(idx[col]);
+        }
+        for (int col = 0; col < 6; ++col) {
+            compat[16 + col] = geometry[col];
+            compat[22 + col] = isotropic[col];
+        }
     }
 
     fs::path dir(output_dir);
@@ -948,8 +923,26 @@ int LarsenHBondShieldingResult::WriteFeatures(
                             water.data(), N, 1); ++n_written;
     NpyWriter::WriteInt32((dir / "larsen_hbond_count.npy").string(),
                           n_pairs.data(), N); ++n_written;
+    NpyWriter::WriteInt32(
+        (dir / "larsen_imputed_pair_count.npy").string(),
+        imputed_pair_count.data(), N); ++n_written;
+    NpyWriter::WriteInt32(
+        (dir / "larsen_sidechain_carbonyl_pair_count.npy").string(),
+        sidechain_carbonyl_pair_count.data(), N); ++n_written;
     NpyWriter::WriteInt8((dir / "larsen_corner_imputed.npy").string(),
                          corner_imputed.data(), N); ++n_written;
+    NpyWriter::WriteInt32(
+        (dir / "larsen_hbond_pairs_index.npy").string(),
+        pair_index.data(), P, 16); ++n_written;
+    NpyWriter::WriteFloat64(
+        (dir / "larsen_hbond_pairs_geometry.npy").string(),
+        pair_geometry.data(), P, 6); ++n_written;
+    NpyWriter::WriteFloat64(
+        (dir / "larsen_hbond_pairs_isotropic.npy").string(),
+        pair_isotropic.data(), P, 6); ++n_written;
+    NpyWriter::WriteFloat64(
+        (dir / "larsen_hbond_pairs.npy").string(),
+        pair_compat.data(), P, 28); ++n_written;
     return n_written;
 }
 

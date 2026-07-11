@@ -16,6 +16,21 @@ namespace nmr {
 // Bondi vdW radii: see PhysicalConstants.h (BondiVdwRadius). Bondi 1964.
 static double BondiRadius(Element el) { return BondiVdwRadius(el); }
 
+namespace sasa_result_detail {
+
+double NormalizedSasaFraction(Element element, double sasa_A2,
+                              double probe_radius_A) {
+    const double expanded_radius =
+        BondiVdwRadius(element) + probe_radius_A;
+    const double denominator =
+        4.0 * PI * expanded_radius * expanded_radius;
+    if (!(denominator > 0.0) || !std::isfinite(denominator))
+        return std::numeric_limits<double>::quiet_NaN();
+    return sasa_A2 / denominator;
+}
+
+}  // namespace sasa_result_detail
+
 
 // Fibonacci lattice on unit sphere (Gonzalez 2010).
 static std::vector<Vec3> FibonacciSphere(int point_count) {
@@ -191,7 +206,21 @@ int SasaResult::WriteFeatures(const ProteinConformation& conf,
     }
     NpyWriter::WriteFloat64(output_dir + "/sasa_normal.npy", normal_data.data(), N, 3);
 
-    return 2;
+    // Normalized accessible fraction, reconstructed from the same Bondi +
+    // probe sphere used by Compute.  Keep atom_sasa as the area-valued
+    // compatibility channel and emit this as a separate raw diagnostic.
+    const Protein& protein = conf.ProteinRef();
+    const double probe_radius = CalculatorConfig::Get("sasa_probe_radius");
+    std::vector<double> fraction_data(N);
+    for (size_t i = 0; i < N; ++i) {
+        fraction_data[i] = sasa_result_detail::NormalizedSasaFraction(
+            protein.AtomAt(i).element, conf.AtomAt(i).atom_sasa,
+            probe_radius);
+    }
+    NpyWriter::WriteFloat64(output_dir + "/atom_sasa_fraction.npy",
+                            fraction_data.data(), N);
+
+    return 3;
 }
 
 }  // namespace nmr

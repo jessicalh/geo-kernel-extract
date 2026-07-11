@@ -18,6 +18,22 @@ namespace nmr {
 
 class ProteinConformation;
 
+namespace pi_quadrupole_detail {
+
+struct KernelResult {
+    double scalar = 0.0;
+    double distance = 0.0;
+    Vec3 direction = Vec3::Zero();
+    bool valid = false;
+};
+
+// Exact production point-center kernel used by PiQuadrupoleResult::Compute.
+KernelResult ComputeKernel(const Vec3& atom_pos,
+                           const Vec3& ring_center,
+                           const Vec3& ring_normal);
+
+}  // namespace pi_quadrupole_detail
+
 class PiQuadrupoleResult : public ConformationResult {
 public:
     std::string Name() const override { return "PiQuadrupoleResult"; }

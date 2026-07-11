@@ -316,7 +316,7 @@ TEST_F(MutationDeltaTest,
             "mut_shielding_paramagnetic.npy",
             "delta_shielding_diamagnetic.npy",
             "delta_shielding_paramagnetic.npy",
-            "delta_scalars.npy", "delta_apbs.npy",
+            "delta_scalars.npy", "delta_graph.npy", "delta_apbs.npy",
             "delta_ring_proximity.npy"}) {
         std::error_code ec;
         fs::remove(out_dir / name, ec);

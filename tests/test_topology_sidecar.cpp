@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "TestEnvironment.h"
 #include "TopologySidecar.h"
 #include "Protein.h"
@@ -293,6 +295,9 @@ TEST_F(TopologySidecarTest, ManifestAxisSizesExactlyMatchProtein) {
     EXPECT_EQ(static_cast<int>(protein_->LegacyAmber().AromaticRingCount() +
                                   protein_->LegacyAmber().SaturatedRingCount()),
               ExtractAxisSize(j, "ring"));
+    const auto aromatic = protein_->LegacyAmber().AromaticRingCount();
+    EXPECT_EQ(static_cast<int>(aromatic * (aromatic > 0 ? aromatic - 1 : 0) / 2),
+              ExtractAxisSize(j, "ring_pair"));
 
     // ring_membership axis size must match the sum of per-ring vertex counts.
     std::size_t expected_membership = 0;
@@ -360,6 +365,80 @@ TEST_F(TopologySidecarTest, ResiduesAxisCountMatchesTopology) {
     const auto bytes = ReadFileBytes(dir_ / "residues.npy");
     const std::size_t rows = ReadNpyRowCount(bytes);
     EXPECT_EQ(protein_->ResidueCount(), rows);
+}
+
+// Durable, fixture-independent freeze gate for the producer-side calibration
+// and provisional-constant contract (M10/M12).  This exercises the actual
+// TopologySidecar writer on a valid zero-atom topology rather than rebuilding
+// its JSON formula in the test.
+TEST(TopologySidecarManifestContract, EmitsResolvedRingScalingAndStatuses) {
+    Protein protein;
+    protein.FinalizeConstruction({});
+
+    const fs::path dir = fs::temp_directory_path() /
+        ("topology_manifest_contract_" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    ASSERT_EQ(5, TopologySidecar::WriteFeatures(
+        protein, dir.string(), "manifest-contract"));
+
+    std::ifstream in(dir / "extraction_manifest.json");
+    ASSERT_TRUE(in.is_open());
+    const nlohmann::ordered_json manifest =
+        nlohmann::ordered_json::parse(in);
+
+    const auto& ring = manifest.at("feature_metadata").at("ring_current");
+    EXPECT_EQ(ring.at("ring_type_order"),
+              nlohmann::ordered_json({"PheBenzene", "TyrPhenol",
+                                      "TrpBenzene", "TrpPyrrole",
+                                      "TrpPerimeter", "HisImidazole",
+                                      "HidImidazole", "HieImidazole"}));
+    EXPECT_EQ(ring.at("resolved_intensity_nA_per_T"),
+              nlohmann::ordered_json({-12.0, -11.28, -12.48, -6.72,
+                                      -19.2, -5.16, -5.16, -5.16}));
+    EXPECT_EQ(ring.at("resolved_jb_lobe_offset_A"),
+              nlohmann::ordered_json({0.64, 0.64, 0.64, 0.52,
+                                      0.60, 0.50, 0.50, 0.50}));
+    ASSERT_EQ(ring.at("resolved_intensity_source").size(), 8u);
+    for (const auto& source : ring.at("resolved_intensity_source")) {
+        EXPECT_TRUE(source == "default" || source == "toml");
+    }
+
+    const auto& intensity_constants =
+        ring.at("constants").at("ring_current_intensity");
+    ASSERT_EQ(intensity_constants.size(), 8u);
+    EXPECT_EQ(intensity_constants.at(4).at("status"), "estimated");
+    EXPECT_EQ(intensity_constants.at(4).at("literature_status"),
+              "good_enough");
+    EXPECT_EQ(intensity_constants.at(6).at("status"), "good_enough");
+    EXPECT_EQ(intensity_constants.at(7).at("status"), "good_enough");
+    EXPECT_EQ(intensity_constants.at(4).at("ring_type"), "TrpPerimeter");
+
+    const auto& pi = manifest.at("feature_metadata")
+                         .at("pi_quadrupole").at("physical_prefactor");
+    EXPECT_DOUBLE_EQ(pi.at("value").get<double>(), 1.0);
+    EXPECT_EQ(pi.at("status"), "deferred_learnable");
+    EXPECT_EQ(pi.at("affected_ring_types").size(), 8u);
+
+    const auto& larsen =
+        manifest.at("feature_metadata").at("larsen_hbond");
+    EXPECT_EQ(larsen.at("imputed_policy"), "emitted_unmasked");
+    EXPECT_EQ(larsen.at("acceptor_archive_approximations")
+                  .at("SidechainCarbonyl"),
+              "BackboneCarbonyl/NMA archive approximation");
+    EXPECT_NE(manifest.at("axis_alignment").at("larsen_hbond_pair")
+                  .get<std::string>().find("larsen_hbond_pairs_index.npy"),
+              std::string::npos);
+    EXPECT_NE(manifest.at("axis_alignment").at("atom")
+                  .get<std::string>().find("separate larsen_hbond_pair axis"),
+              std::string::npos);
+
+    std::error_code ec;
+    fs::remove(dir / "residues.npy", ec);
+    fs::remove(dir / "bonds.npy", ec);
+    fs::remove(dir / "rings.npy", ec);
+    fs::remove(dir / "ring_membership.npy", ec);
+    fs::remove(dir / "extraction_manifest.json", ec);
+    fs::remove(dir, ec);
 }
 
 }  // namespace

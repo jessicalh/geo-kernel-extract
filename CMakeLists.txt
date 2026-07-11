@@ -728,6 +728,7 @@ add_library(nmr_shielding
     src/FramePdbEmitter.cpp
     src/FullSystemReader.cpp
     src/WaterFieldResult.cpp
+    src/WaterHBondGeometryResult.cpp
     src/WaterFieldTimeSeriesTrajectoryResult.cpp
     src/WaterFieldWelfordTrajectoryResult.cpp
     src/HydrationShellResult.cpp
@@ -737,6 +738,7 @@ add_library(nmr_shielding
     src/HydrationShellTimeSeriesTrajectoryResult.cpp
     src/HydrationShellWelfordTrajectoryResult.cpp
     src/DihedralTimeSeriesTrajectoryResult.cpp
+    src/LocalBackboneGeometryTrajectoryResult.cpp
     src/DihedralAutocorrelationTrajectoryResult.cpp
     src/DihedralBinTransitionTrajectoryResult.cpp
     src/Dssp8TimeSeriesTrajectoryResult.cpp
@@ -752,12 +754,15 @@ add_library(nmr_shielding
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
     src/McConnellResult.cpp
+    src/SidechainCarbonylAnisotropyResult.cpp
     src/CoulombResult.cpp
     src/RingSusceptibilityResult.cpp
     src/HBondResult.cpp
+    src/RingNeighbourGeometry.cpp
     src/BiotSavartResult.cpp
     src/HaighMallionResult.cpp
     src/PiQuadrupoleResult.cpp
+    src/PiQuadrupoleLocalTensorResult.cpp
     src/DispersionResult.cpp
     src/KernelEvaluationFilter.cpp
     src/MopacResult.cpp
@@ -786,7 +791,9 @@ add_library(nmr_shielding
     src/TripeptideNeighborShieldingResult.cpp
     src/LarsenResidue.cpp
     src/LarsenHBondGrid.cpp
+    src/LarsenHBondGeometryCommon.cpp
     src/LarsenHBondShieldingResult.cpp
+    src/LarsenSidechainDonorAuditResult.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC
@@ -1179,6 +1186,7 @@ nmr_test(conformation_scope_tests
         tests/test_pipeline_and_sample.cpp
         tests/test_planar_geometry_result.cpp
         tests/test_protonation_detection.cpp
+        tests/test_raw_diagnostic_emission.cpp
         tests/test_ring_susceptibility_result.cpp
         tests/test_topology_sidecar.cpp
         tests/test_traversal_dump.cpp

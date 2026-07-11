@@ -179,6 +179,35 @@ TEST(DispAnalytical, SwitchingFunctionProperties) {
 }
 
 
+TEST(DispAnalytical, VertexKernelAcceptsPointInsideRingCenterRadius) {
+    RingGeometry geom;
+    geom.center = Vec3::Zero();
+    geom.normal = Vec3(0.0, 0.0, 1.0);
+    geom.radius = 1.4;
+    const double pi = std::acos(-1.0);
+    for (int i = 0; i < 6; ++i) {
+        const double angle = 2.0 * pi * static_cast<double>(i) / 6.0;
+        geom.vertices.emplace_back(geom.radius * std::cos(angle),
+                                   geom.radius * std::sin(angle), 0.0);
+    }
+
+    const Vec3 point(0.0, 0.0, 0.5);
+    ASSERT_LT((point - geom.center).norm(), geom.radius);
+    const auto vertices =
+        dispersion_detail::ComputeRingVertices(point, geom);
+    ASSERT_EQ(vertices.size(), geom.vertices.size());
+
+    double scalar_sum = 0.0;
+    for (const auto& vertex : vertices) {
+        EXPECT_TRUE(vertex.valid)
+            << "finite vertex distance, not center distance, owns validity";
+        EXPECT_TRUE(std::isfinite(vertex.scalar));
+        scalar_sum += vertex.scalar;
+    }
+    EXPECT_GT(scalar_sum, 0.0);
+}
+
+
 // ============================================================================
 // Full protein test on 1UBQ
 // ============================================================================

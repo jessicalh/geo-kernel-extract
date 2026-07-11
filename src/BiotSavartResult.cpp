@@ -6,10 +6,13 @@
 #include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
 #include "GeometryChoice.h"
+#include "RingNeighbourGeometry.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <set>
 
 namespace nmr {
@@ -20,6 +23,52 @@ std::vector<std::type_index> BiotSavartResult::Dependencies() const {
         std::type_index(typeid(SpatialIndexResult)),
         std::type_index(typeid(GeometryResult))
     };
+}
+
+
+namespace biot_savart_detail {
+
+double PointToSegmentDistance(const Vec3& point,
+                              const Vec3& segment_a,
+                              const Vec3& segment_b) {
+    const Vec3 segment = segment_b - segment_a;
+    const double length_sq = segment.squaredNorm();
+    if (length_sq <= std::numeric_limits<double>::epsilon()) {
+        return (point - segment_a).norm();
+    }
+    const double t = std::clamp(
+        (point - segment_a).dot(segment) / length_sq, 0.0, 1.0);
+    return (point - (segment_a + t * segment)).norm();
+}
+
+
+double MinimumDistanceToJohnsonBoveyWireLoops(
+        const std::vector<Vec3>& vertices,
+        const Vec3& normal,
+        double lobe_offset_ang,
+        const Vec3& point_ang) {
+    if (vertices.size() < 2) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    const Vec3 offset = normal * lobe_offset_ang;
+    double minimum = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        const size_t j = (i + 1) % vertices.size();
+        minimum = std::min(minimum, PointToSegmentDistance(
+            point_ang, vertices[i] + offset, vertices[j] + offset));
+        minimum = std::min(minimum, PointToSegmentDistance(
+            point_ang, vertices[i] - offset, vertices[j] - offset));
+    }
+    return minimum;
+}
+
+
+bool ContributesToCanonicalTotals(RingTypeIndex ring_type) {
+    // TRP9 is a diagnostic representation of the same indole pi system
+    // already represented by TRP6 + TRP5.  Retain its sparse kernel row,
+    // but never fold it into the canonical current sum a third time.
+    return ring_type != RingTypeIndex::TrpPerimeter;
 }
 
 
@@ -77,7 +126,7 @@ static Vec3 WireSegmentField(
 // Converts to SI at the boundary, computes in pure SI, returns B in Tesla.
 // ============================================================================
 
-static Vec3 JohnsonBoveyField(
+Vec3 JohnsonBoveyField(
         const std::vector<Vec3>& vertices,
         const Vec3& normal,
         double lobe_offset_ang,
@@ -113,6 +162,8 @@ static Vec3 JohnsonBoveyField(
     return B;  // Tesla
 }
 
+}  // namespace biot_savart_detail
+
 
 // ============================================================================
 // BiotSavartResult::Compute
@@ -146,10 +197,9 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
         return result_ptr;
     }
 
-    // Atom-ring filters: near-field validity + ring/bonded exclusion.
+    // Ring topology exclusion.  Numerical near-field validity is measured
+    // against the actual two offset wire loops below, not a center sphere.
     KernelFilterSet filters;
-    filters.Add(std::make_unique<MinDistanceFilter>());
-    filters.Add(std::make_unique<DipolarNearFieldFilter>());
     filters.Add(std::make_unique<RingBondedExclusionFilter>(protein));
 
     OperationLog::Info(LogCalcBiotSavart, "BiotSavartResult::Compute",
@@ -193,7 +243,8 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                         AddNumber(gc, "intensity", ring.Intensity(), "nA·T⁻¹");
                         AddNumber(gc, "lobe_offset", ring.JohnsonBoveyLobeOffset(), "A");
                         SetSampler(gc, [verts_copy, normal_copy, lobe_copy](Vec3 pt) -> SphericalTensor {
-                            Vec3 B = JohnsonBoveyField(verts_copy, normal_copy, lobe_copy, 1.0, pt);
+                            Vec3 B = biot_savart_detail::JohnsonBoveyField(
+                                verts_copy, normal_copy, lobe_copy, 1.0, pt);
                             // G_ab = -n_b B_a PPM_FACTOR (see header sign convention).
                             Mat3 G;
                             for (int a = 0; a < 3; ++a)
@@ -206,15 +257,40 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
 
             double distance = (atom_pos - geom.center).norm();
 
-            // Apply filter: source extent = ring diameter (2 * radius)
+            const double minimum_wire_distance =
+                biot_savart_detail::MinimumDistanceToJohnsonBoveyWireLoops(
+                    geom.vertices, geom.normal,
+                    ring.JohnsonBoveyLobeOffset(), atom_pos);
+            const double wire_distance_guard =
+                CalculatorConfig::Get("biot_savart_wire_endpoint_guard") /
+                ANGSTROMS_TO_METRES;
+            if (minimum_wire_distance <= wire_distance_guard) {
+                choices.Record(CalculatorId::BiotSavart, ri,
+                    "wire singularity exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source,
+                                EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target,
+                                EntityOutcome::Excluded,
+                                "johnson_bovey_wire_distance_guard");
+                        AddNumber(gc, "minimum_wire_distance",
+                                  minimum_wire_distance, "A");
+                        AddNumber(gc, "wire_distance_guard",
+                                  wire_distance_guard, "A");
+                    });
+                continue;
+            }
+
+            // Apply the typed through-bond exclusion after the physical
+            // wire-distance guard.  No center-distance source extent exists
+            // for the finite wire kernel.
             KernelEvaluationContext ctx;
             ctx.distance = distance;
-            ctx.source_extent = 2.0 * geom.radius;
+            ctx.source_extent = 0.0;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
-                // Provenance: record this atom-ring pair as filter-excluded.
-                choices.Record(CalculatorId::BiotSavart, ri, "near-field exclusion",
+                choices.Record(CalculatorId::BiotSavart, ri, "topology exclusion",
                     [&](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
                         AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
@@ -227,7 +303,7 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
 
             // Unit-current B-field (I = 1 nA).
             // The geometric kernel is independent of intensity.
-            Vec3 B = JohnsonBoveyField(
+            Vec3 B = biot_savart_detail::JohnsonBoveyField(
                 geom.vertices, geom.normal,
                 ring.JohnsonBoveyLobeOffset(), 1.0, atom_pos);
 
@@ -238,53 +314,9 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 for (int b = 0; b < 3; ++b)
                     G(a, b) = -geom.normal(b) * B(a) * PPM_FACTOR;
 
-            // Ring-neighbour features: find-or-create per-(atom,ring) record.
-            RingNeighbourhood* rn = nullptr;
-            for (auto& existing : ca.ring_neighbours) {
-                if (existing.ring_index == ri) {
-                    rn = &existing;
-                    break;
-                }
-            }
-            if (!rn) {
-                RingNeighbourhood new_rn;
-                new_rn.ring_index = ri;
-                new_rn.ring_type = ring.type_index;
-                new_rn.distance_to_center = distance;
-
-                Vec3 center_to_atom = atom_pos - geom.center;
-                new_rn.direction_to_center = center_to_atom.normalized();
-
-                // Target position in ring frame (axial z, radial rho, polar theta).
-                double z = center_to_atom.dot(geom.normal);
-                Vec3 d_plane = center_to_atom - z * geom.normal;
-                double rho = d_plane.norm();
-                // polar angle from the ring axis, folded to [0, pi/2] via abs(z)
-                double theta = std::atan2(rho, std::abs(z));
-                new_rn.z = z;
-                new_rn.rho = rho;
-                new_rn.theta = theta;
-
-                // Azimuthal angle: in-plane angle from center→vertex0.
-                // Encodes position relative to ring frame — distinguishes
-                // nitrogen side from carbon side on asymmetric rings (HIE, TRP).
-                Vec3 ref = geom.vertices[0] - geom.center;
-                Vec3 ref_plane = ref - ref.dot(geom.normal) * geom.normal;
-                double ref_norm = ref_plane.norm();
-                // Same near-zero-norm degeneracy guard as the B-field
-                // projection block below.
-                const double rho_guard =
-                    CalculatorConfig::Get("near_zero_vector_norm_threshold");
-                if (rho > rho_guard && ref_norm > rho_guard) {
-                    Vec3 d_hat = d_plane / rho;
-                    Vec3 ref_hat = ref_plane / ref_norm;
-                    new_rn.cos_phi = d_hat.dot(ref_hat);
-                    new_rn.sin_phi = d_hat.cross(ref_hat).dot(geom.normal);
-                }
-
-                ca.ring_neighbours.push_back(new_rn);
-                rn = &ca.ring_neighbours.back();
-            }
+            RingNeighbourhood& rn_ref = EnsureRingNeighbourGeometry(
+                ca, geom, ring, ri, atom_pos);
+            RingNeighbourhood* rn = &rn_ref;
 
             // Store BS results on RingNeighbourhood
             rn->G_tensor = G;
@@ -304,21 +336,19 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 0.0,                   // B_phi is not stored by this summary
                 B.dot(geom.normal));   // B_z
 
-            // Accumulate totals
-            G_total += G;
-            B_total += B;
+            if (biot_savart_detail::ContributesToCanonicalTotals(
+                    ring.type_index)) {
+                G_total += G;
+                B_total += B;
 
-            // Per-type T0, T1 and T2 sums
-            // NOTE: 8 = RingTypeIndex count; a ring whose type index >= 8 is
-            // silently dropped here. Keep in sync with the enum (and the
-            // per-type array widths + catalog) if a ring type is added.
-            int ti = ring.TypeIndexAsInt();
-            if (ti >= 0 && ti < 8) {
-                ca.per_type_G_T0_sum[ti] += rn->G_spherical.T0;
-                for (int c = 0; c < 3; ++c)
-                    ca.per_type_G_T1_sum[ti][c] += rn->G_spherical.T1[c];
-                for (int c = 0; c < 5; ++c)
-                    ca.per_type_G_T2_sum[ti][c] += rn->G_spherical.T2[c];
+                const int ti = ring.TypeIndexAsInt();
+                if (ti >= 0 && ti < kAromaticRingTypeCount) {
+                    ca.per_type_G_T0_sum[ti] += rn->G_spherical.T0;
+                    for (int c = 0; c < 3; ++c)
+                        ca.per_type_G_T1_sum[ti][c] += rn->G_spherical.T1[c];
+                    for (int c = 0; c < 5; ++c)
+                        ca.per_type_G_T2_sum[ti][c] += rn->G_spherical.T2[c];
+                }
             }
 
             total_pairs++;
@@ -378,24 +408,31 @@ Vec3 BiotSavartResult::SampleBFieldAt(Vec3 point) const {
     const Protein& protein = conf_->ProteinRef();
     const size_t n_rings = protein.RingCount();
 
-    const double singularity_guard = CalculatorConfig::Get("singularity_guard_distance");
     const double ring_cutoff = CalculatorConfig::Get("ring_current_spatial_cutoff");
 
     Vec3 B_total = Vec3::Zero();
 
     for (size_t ri = 0; ri < n_rings; ++ri) {
         const Ring& ring = protein.RingAt(ri);
+        if (!biot_savart_detail::ContributesToCanonicalTotals(
+                ring.type_index)) continue;
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
-        // Grid acceptance: singularity guard + inside-source guard + distance
+        // Grid acceptance uses the actual offset-wire distance plus the far
         // cutoff (no per-atom/topology filters; grid points are not atoms).
         double distance = (point - geom.center).norm();
-        if (distance < singularity_guard) continue;
-        if (distance < geom.radius) continue;
         if (distance > ring_cutoff) continue;
+        const double minimum_wire_distance =
+            biot_savart_detail::MinimumDistanceToJohnsonBoveyWireLoops(
+                geom.vertices, geom.normal,
+                ring.JohnsonBoveyLobeOffset(), point);
+        const double wire_distance_guard =
+            CalculatorConfig::Get("biot_savart_wire_endpoint_guard") /
+            ANGSTROMS_TO_METRES;
+        if (minimum_wire_distance <= wire_distance_guard) continue;
 
-        B_total += JohnsonBoveyField(
+        B_total += biot_savart_detail::JohnsonBoveyField(
             geom.vertices, geom.normal,
             ring.JohnsonBoveyLobeOffset(), 1.0, point);
     }
@@ -409,24 +446,31 @@ SphericalTensor BiotSavartResult::SampleKernelAt(Vec3 point) const {
     const Protein& protein = conf_->ProteinRef();
     const size_t n_rings = protein.RingCount();
 
-    const double singularity_guard = CalculatorConfig::Get("singularity_guard_distance");
     const double ring_cutoff = CalculatorConfig::Get("ring_current_spatial_cutoff");
 
     Mat3 G_total = Mat3::Zero();
 
     for (size_t ri = 0; ri < n_rings; ++ri) {
         const Ring& ring = protein.RingAt(ri);
+        if (!biot_savart_detail::ContributesToCanonicalTotals(
+                ring.type_index)) continue;
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
-        // Grid acceptance: singularity guard + inside-source guard + distance
+        // Grid acceptance uses the actual offset-wire distance plus the far
         // cutoff (no per-atom/topology filters; grid points are not atoms).
         double distance = (point - geom.center).norm();
-        if (distance < singularity_guard) continue;
-        if (distance < geom.radius) continue;
         if (distance > ring_cutoff) continue;
+        const double minimum_wire_distance =
+            biot_savart_detail::MinimumDistanceToJohnsonBoveyWireLoops(
+                geom.vertices, geom.normal,
+                ring.JohnsonBoveyLobeOffset(), point);
+        const double wire_distance_guard =
+            CalculatorConfig::Get("biot_savart_wire_endpoint_guard") /
+            ANGSTROMS_TO_METRES;
+        if (minimum_wire_distance <= wire_distance_guard) continue;
 
-        Vec3 B = JohnsonBoveyField(
+        Vec3 B = biot_savart_detail::JohnsonBoveyField(
             geom.vertices, geom.normal,
             ring.JohnsonBoveyLobeOffset(), 1.0, point);
 

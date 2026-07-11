@@ -27,7 +27,7 @@ trp_indole_perimeter_jb_lobe_offset = 0.60
 # Spatial cutoffs — define the reach of each geometric kernel (Angstroms)
 ring_current_spatial_cutoff = 15.0
 mcconnell_bond_anisotropy_cutoff = 10.0
-# X-H source-bond ablation scaffold: 1 = include C-H/N-H/O-H source bonds,
+# X-H source-bond ablation scaffold: 1 = include C-H/N-H/O-H/S-H source bonds,
 # 0 = drop them from McConnell source accumulation.
 mcconnell_include_xh_sources = 1.0
 coulomb_efield_cutoff = 20.0

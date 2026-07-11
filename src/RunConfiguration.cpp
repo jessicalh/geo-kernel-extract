@@ -96,6 +96,7 @@
 #include "DihedralAutocorrelationTrajectoryResult.h"
 #include "BondLengthStatsTrajectoryResult.h"
 #include "PositionsTimeSeriesTrajectoryResult.h"
+#include "LocalBackboneGeometryTrajectoryResult.h"
 
 #include <type_traits>
 #include <typeindex>
@@ -257,6 +258,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     // ── Geometry + energy bookkeeping ──
     Produces<BondLengthStatsTrajectoryResult,
              PositionsTimeSeriesTrajectoryResult,
+             LocalBackboneGeometryTrajectoryResult,
              GromacsEnergyTimeSeriesTrajectoryResult,
              BondedEnergyTimeSeriesTrajectoryResult>(c);
 

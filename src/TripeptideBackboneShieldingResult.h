@@ -49,10 +49,11 @@
 //
 
 #include "ConformationResult.h"
-#include "Types.h"
 #include "TripeptideDftTable.h"
+#include "Types.h"
 
 #include <array>
+#include <limits>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -65,43 +66,49 @@ class ProteinConformation;
 
 class TripeptideBackboneShieldingResult : public ConformationResult {
 public:
-    std::string Name() const override {
-        return "TripeptideBackboneShieldingResult";
-    }
+    std::string Name() const override { return "TripeptideBackboneShieldingResult"; }
 
     std::vector<std::type_index> Dependencies() const override;
 
     // Factory. Returns nullptr only on hard structural errors (zero
     // atoms, table not connected); per-residue misses are handled
     // internally with has_match=false and NaN in emitted NPY arrays.
-    static std::unique_ptr<TripeptideBackboneShieldingResult> Compute(
-        ProteinConformation& conf,
-        const TripeptideDftTable& table);
+    static std::unique_ptr<TripeptideBackboneShieldingResult>
+    Compute(ProteinConformation& conf, const TripeptideDftTable& table);
 
-    int WriteFeatures(const ProteinConformation& conf,
-                      const std::string& output_dir) const override;
+    int WriteFeatures(const ProteinConformation& conf, const std::string& output_dir) const override;
 
     // ── Per-residue diagnostics (length = ResidueCount()) ───────────
 
     struct ResidueMatch {
+        TripeptideMatchStatus status = TripeptideMatchStatus::Miss;
         int    calc_id        = 0;        // 0 = miss
-        double backbone_rmsd  = 0.0;      // Å, post-Kabsch
-        double ca_match_dist  = 0.0;      // Å, CA matched-atom distance
+        double backbone_rmsd = std::numeric_limits<double>::quiet_NaN();
+        double ca_match_dist = std::numeric_limits<double>::quiet_NaN();
         std::string frame_type;            // discriminator from DB row
         // Actual (protein) angles
-        double phi_actual = 0.0, psi_actual = 0.0;
-        double chi_actual[4] = {0.0, 0.0, 0.0, 0.0};
-        // DB-grid-rounded angles
+        double phi_actual = std::numeric_limits<double>::quiet_NaN();
+        double psi_actual = std::numeric_limits<double>::quiet_NaN();
+        double chi_actual[4] = {std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::quiet_NaN()};
+        // Query-target and selected DB grid angles.
+        int target_phi_grid = 0, target_psi_grid = 0;
+        int target_chi_grid[4] = {0, 0, 0, 0};
         int phi_db = 0, psi_db = 0;
         int chi_db[4] = {0, 0, 0, 0};
         // Atom-mapping stats
         int n_atoms_matched   = 0;
+        int natural_chi_axes = 0;
         int n_chi_axes_used   = 0;        // 0..4 — how deep the lookup went
+        double dropped_chi_distance_deg = std::numeric_limits<double>::quiet_NaN();
+        int residue_type_code = 0;
+        // Frozen output code: 0=not HIS/unavailable, 1=HIP, 2=HID, 3=HIE.
+        int his_variant_hint = 0;
     };
 
-    const std::vector<ResidueMatch>& ResidueMatches() const {
-        return residue_matches_;
-    }
+    const std::vector<ResidueMatch>& ResidueMatches() const { return residue_matches_; }
 
     // Aggregate stats over the matched residues.
     int ResiduesAttempted() const { return residues_attempted_; }

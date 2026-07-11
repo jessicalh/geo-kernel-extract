@@ -6,6 +6,7 @@
 #include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
 #include "GeometryChoice.h"
+#include "RingNeighbourGeometry.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -29,26 +30,24 @@ std::vector<std::type_index> PiQuadrupoleResult::Dependencies() const {
 // to a learnable parameter.
 // ============================================================================
 
-struct PiQuadKernelResult {
-    double scalar = 0.0;       // (3 cos^2 theta - 1) / r^4
-    double distance = 0.0;
-    Vec3 direction = Vec3::Zero();
-};
+namespace pi_quadrupole_detail {
 
-
-static PiQuadKernelResult ComputePiQuadKernel(
+KernelResult ComputeKernel(
         const Vec3& atom_pos,
         const Vec3& ring_center,
         const Vec3& ring_normal) {
 
-    PiQuadKernelResult result;
+    KernelResult result;
 
     Vec3 d = atom_pos - ring_center;
     double r = d.norm();
-
-    if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
-
     result.distance = r;
+
+    if (!std::isfinite(r) ||
+        r <= CalculatorConfig::Get("singularity_guard_distance")) {
+        return result;
+    }
+
     result.direction = d / r;
 
     double r2 = r * r;
@@ -57,9 +56,12 @@ static PiQuadKernelResult ComputePiQuadKernel(
 
     // Buckingham A-term kernel: (3 cos^2 theta - 1) / r^4  (feeds pq_per_type_T0)
     result.scalar = (3.0 * cos_theta * cos_theta - 1.0) / (r2 * r2);
+    result.valid = true;
 
     return result;
 }
+
+}  // namespace pi_quadrupole_detail
 
 
 // ============================================================================
@@ -87,14 +89,10 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
         return result_ptr;
     }
 
-    // Filter set: DipolarNearFieldFilter with source_extent = ring diameter,
-    // plus RingBondedExclusionFilter for topological exclusion. The
-    // quadrupole approximation is less accurate than the dipolar one
-    // at close range (higher multipole → larger convergence radius),
-    // making the topology check especially important here.
+    // Point-center singularity is handled by the exact kernel distance;
+    // topology separately excludes ring vertices/bonded neighbours.  A ring
+    // diameter is not a valid exclusion sphere for this point kernel.
     KernelFilterSet filters;
-    filters.Add(std::make_unique<MinDistanceFilter>());
-    filters.Add(std::make_unique<DipolarNearFieldFilter>());
     filters.Add(std::make_unique<RingBondedExclusionFilter>(protein));
 
     OperationLog::Info(LogCalcOther, "PiQuadrupoleResult::Compute",
@@ -114,13 +112,32 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
-            PiQuadKernelResult kernel = ComputePiQuadKernel(
+            pi_quadrupole_detail::KernelResult kernel =
+                pi_quadrupole_detail::ComputeKernel(
                 atom_pos, geom.center, geom.normal);
 
-            // Apply filter: source extent = ring diameter
+            if (!kernel.valid) {
+                choices.Record(CalculatorId::PiQuadrupole, ri,
+                    "center singularity exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source,
+                                EntityOutcome::Included);
+                        AddAtom(gc, &conf_atom, ai, EntityRole::Target,
+                                EntityOutcome::Excluded,
+                                "center_singularity_guard");
+                        AddNumber(gc, "distance", kernel.distance, "A");
+                        AddNumber(gc, "distance_guard",
+                                  CalculatorConfig::Get(
+                                      "singularity_guard_distance"), "A");
+                    });
+                continue;
+            }
+
+            // Topological exclusion only; point-center kernels have no
+            // source diameter in the filter context.
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
-            ctx.source_extent = 2.0 * geom.radius;
+            ctx.source_extent = 0.0;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
@@ -136,32 +153,9 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
                 continue;
             }
 
-            // shared ring-neighbour geometry (consumed by other ring calculators)
-            RingNeighbourhood* rn = nullptr;
-            for (auto& existing : conf_atom.ring_neighbours) {
-                if (existing.ring_index == ri) {
-                    rn = &existing;
-                    break;
-                }
-            }
-            if (!rn) {
-                RingNeighbourhood new_rn;
-                new_rn.ring_index = ri;
-                new_rn.ring_type = ring.type_index;
-                new_rn.distance_to_center = kernel.distance;
-                new_rn.direction_to_center = kernel.direction;
-
-                // ring-frame cylindrical coordinates (z along normal, rho in plane)
-                Vec3 d_vec = atom_pos - geom.center;
-                double z = d_vec.dot(geom.normal);
-                Vec3 d_plane = d_vec - z * geom.normal;
-                new_rn.z = z;
-                new_rn.rho = d_plane.norm();
-                new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));  // theta folded to [0, pi/2] via |z| — quadrupole is symmetric across the ring plane
-
-                conf_atom.ring_neighbours.push_back(new_rn);
-                rn = &conf_atom.ring_neighbours.back();
-            }
+            RingNeighbourhood& rn_ref = EnsureRingNeighbourGeometry(
+                conf_atom, geom, ring, ri, atom_pos);
+            RingNeighbourhood* rn = &rn_ref;
 
             // Store only the scalar rescue.
             rn->quad_scalar = kernel.scalar;
@@ -200,7 +194,10 @@ int PiQuadrupoleResult::WriteFeatures(const ProteinConformation& conf,
     }
 
     NpyWriter::WriteFloat64(output_dir + "/pq_per_type_T0.npy", per_type_T0.data(), N, 8);
-    return 1;
+    NpyWriter::WriteFloat64(
+        output_dir + "/piquad_axial_scalar_per_type_T0.npy",
+        per_type_T0.data(), N, 8);
+    return 2;
 }
 
 }  // namespace nmr

@@ -1,13 +1,19 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cmath>
+#include <cctype>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <iterator>
 #include <cstdio>
+#include <sstream>
 
 #include "McConnellResult.h"
 #include "MopacResult.h"
+#include "SidechainCarbonylAnisotropyResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "Protein.h"
@@ -89,6 +95,182 @@ std::unique_ptr<Protein> BuildSyntheticPeptideCOProtein(
     protein->FinalizeConstruction(positions);
     protein->AddCrystalConformation(positions, 0, 0, 0, "synthetic_peptide_co");
     return protein;
+}
+
+std::unique_ptr<Protein> BuildSyntheticXHCategoryProtein() {
+    auto protein = std::make_unique<Protein>();
+    for (int ri = 0; ri < 3; ++ri) {
+        Residue res;
+        res.type = AminoAcid::Unknown;
+        res.sequence_number = ri + 1;
+        res.chain_id = "A";
+        protein->AddResidue(std::move(res));
+    }
+
+    std::vector<Vec3> positions;
+    auto add = [&](size_t ri, Element element, Vec3 pos) {
+        auto atom = Atom::Create(element);
+        atom->residue_index = ri;
+        const size_t ai = protein->AddAtom(std::move(atom));
+        protein->MutableResidueAt(ri).atom_indices.push_back(ai);
+        positions.push_back(pos);
+        return ai;
+    };
+
+    const size_t backbone_n = add(0, Element::N, Vec3(0.0, 0.0, 0.0));
+    add(0, Element::H, Vec3(1.0, 0.0, 0.0));
+    add(1, Element::C, Vec3(10.0, 0.0, 0.0));
+    add(1, Element::H, Vec3(11.0, 0.0, 0.0));
+    add(2, Element::S, Vec3(20.0, 0.0, 0.0));
+    add(2, Element::H, Vec3(21.3, 0.0, 0.0));
+    protein->MutableResidueAt(0).N = backbone_n;
+
+    protein->FinalizeConstruction(positions);
+    return protein;
+}
+
+std::unique_ptr<Protein> BuildSyntheticSidechainCOProtein() {
+    auto protein = std::make_unique<Protein>();
+    std::vector<Vec3> positions;
+
+    auto add_residue = [&](AminoAcid type, int sequence_number) {
+        Residue residue;
+        residue.type = type;
+        residue.sequence_number = sequence_number;
+        residue.chain_id = "A";
+        return protein->AddResidue(std::move(residue));
+    };
+    auto add_atom = [&](std::size_t residue_index, const char* name,
+                        Element element, const Vec3& position) {
+        auto atom = Atom::Create(element);
+        atom->pdb_atom_name = name;
+        atom->residue_index = residue_index;
+        const std::size_t atom_index = protein->AddAtom(std::move(atom));
+        protein->MutableResidueAt(residue_index).atom_indices.push_back(
+            atom_index);
+        positions.push_back(position);
+        return atom_index;
+    };
+
+    // ASN primary amide: one typed SidechainCO source.  The amide N is the
+    // second same-planar-group atom that fixes the local plane.
+    const std::size_t asn = add_residue(AminoAcid::ASN, 1);
+    add_atom(asn, "CG", Element::C, Vec3(0.0, 0.0, 0.0));
+    add_atom(asn, "OD1", Element::O, Vec3(1.23, 0.0, 0.0));
+    add_atom(asn, "ND2", Element::N, Vec3(-0.60, 1.05, 0.0));
+
+    // ASP carboxylate: two typed SidechainCO sources, each using the other
+    // oxygen as its deterministic in-plane reference.
+    const std::size_t asp = add_residue(AminoAcid::ASP, 2);
+    add_atom(asp, "CG", Element::C, Vec3(5.0, 0.0, 0.0));
+    add_atom(asp, "OD1", Element::O, Vec3(6.25, 0.0, 0.0));
+    add_atom(asp, "OD2", Element::O, Vec3(4.375, 1.08253175, 0.0));
+
+    // A real peptide C=O in the same synthetic topology is a negative
+    // control: source enumeration must exclude it by typed BondCategory.
+    const std::size_t ala = add_residue(AminoAcid::ALA, 3);
+    const std::size_t ala_n =
+        add_atom(ala, "N", Element::N, Vec3(12.0, 1.35, 0.0));
+    const std::size_t ala_c =
+        add_atom(ala, "C", Element::C, Vec3(12.0, 0.0, 0.0));
+    const std::size_t ala_o =
+        add_atom(ala, "O", Element::O, Vec3(13.20, 0.0, 0.0));
+    protein->MutableResidueAt(ala).N = ala_n;
+    protein->MutableResidueAt(ala).C = ala_c;
+    protein->MutableResidueAt(ala).O = ala_o;
+
+    protein->FinalizeConstruction(positions);
+    protein->AddCrystalConformation(
+        positions, 0.0, 0.0, 0.0, "synthetic_sidechain_co");
+    return protein;
+}
+
+template<typename T>
+struct NpyArray {
+    std::vector<std::size_t> shape;
+    std::vector<T> values;
+};
+
+std::string TrimNpyToken(std::string token) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    token.erase(token.begin(),
+                std::find_if(token.begin(), token.end(),
+                             [&](char c) { return !is_space(c); }));
+    token.erase(std::find_if(token.rbegin(), token.rend(),
+                             [&](char c) { return !is_space(c); }).base(),
+                token.end());
+    return token;
+}
+
+template<typename T>
+NpyArray<T> ReadNpy(const fs::path& path, const char* dtype) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyArray<T> result;
+    if (!in.is_open()) return result;
+
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    std::uint16_t header_length = 0;
+    in.read(reinterpret_cast<char*>(&header_length), sizeof(header_length));
+    std::string header(header_length, '\0');
+    in.read(header.data(), header_length);
+    EXPECT_NE(header.find(std::string("'descr': '") + dtype + "'"),
+              std::string::npos);
+
+    const std::size_t shape_begin = header.find('(');
+    const std::size_t shape_end = header.find(')', shape_begin);
+    EXPECT_NE(shape_begin, std::string::npos);
+    EXPECT_NE(shape_end, std::string::npos);
+    if (shape_begin == std::string::npos || shape_end == std::string::npos)
+        return result;
+
+    std::stringstream shape_stream(
+        header.substr(shape_begin + 1, shape_end - shape_begin - 1));
+    std::string token;
+    std::size_t value_count = 1;
+    while (std::getline(shape_stream, token, ',')) {
+        token = TrimNpyToken(std::move(token));
+        if (token.empty()) continue;
+        const std::size_t extent = static_cast<std::size_t>(
+            std::stoull(token));
+        result.shape.push_back(extent);
+        value_count *= extent;
+    }
+    if (result.shape.empty()) value_count = 0;
+    result.values.resize(value_count);
+    if (value_count > 0) {
+        in.read(reinterpret_cast<char*>(result.values.data()),
+                static_cast<std::streamsize>(value_count * sizeof(T)));
+    }
+    return result;
+}
+
+fs::path SidechainCOTempDir(const char* stem) {
+    const fs::path dir = fs::temp_directory_path() /
+        (std::string(stem) + "_" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    return dir;
+}
+
+void RemoveSidechainCOOutputs(const fs::path& dir) {
+    constexpr std::array<const char*, 6> files = {
+        "sidechain_co_source_bonds.npy",
+        "sidechain_co_frame.npy",
+        "sidechain_co_frame_quality.npy",
+        "sidechain_co_fixed_T2.npy",
+        "sidechain_co_bo_T2.npy",
+        "sidechain_co_scalar_audit.npy",
+    };
+    for (const char* file : files) {
+        std::remove((dir / file).string().c_str());
+    }
+    ::rmdir(dir.string().c_str());
 }
 
 size_t FirstBondWithCategory(const Protein& protein, BondCategory category) {
@@ -509,6 +691,291 @@ TEST(McConnellImplementationChecks, PeptideCORhombicContributionNonZeroAndTracel
         conf.AtomAt(3).mcconnell_peptide_co_rhombic.Reconstruct();
     EXPECT_GT(MaxAbs(actual), 1e-6);
     EXPECT_LT(MaxAbs(actual - expected_delta), 1e-12);
+
+    // C33: the canonical fixed PeptideCO channel now contains the full
+    // rhombic response.  The separately emitted audit remains exactly the
+    // unweighted rhombic-minus-axial delta.
+    const auto axial = McConnellResult::ComputePairKernel(
+        conf.PositionAt(3), conf.bond_midpoints[co_bond],
+        conf.bond_directions[co_bond]);
+    const auto rhombic = McConnellResult::ComputePeptideCORhombicPairKernel(
+        conf, co_bond, conf.PositionAt(3));
+    const size_t cat = static_cast<size_t>(McConnellSourceCategory::PeptideCO);
+    const Mat3 fixed = conf.AtomAt(3)
+        .mcconnell_source_tensors[cat]
+                                   [static_cast<size_t>(McConnellChannel::Fixed)]
+        .Reconstruct();
+    EXPECT_LT(MaxAbs(fixed - rhombic.response), 1e-12);
+    EXPECT_LT(MaxAbs(fixed - (axial.response + actual)), 1e-12);
+
+    // The same production selector owns the BO channel.  Pin a non-unit BO
+    // so an axial-only regression cannot hide behind fixed-channel coverage.
+    const auto channels = mcconnell_result_detail::SelectChannelResponses(
+        McConnellSourceCategory::PeptideCO,
+        axial.response, rhombic.response, 1.75);
+    EXPECT_LT(MaxAbs(channels.fixed - rhombic.response), 1e-12);
+    EXPECT_LT(MaxAbs(channels.bond_order - 1.75 * rhombic.response), 1e-12);
+    EXPECT_LT(MaxAbs(channels.rhombic_audit - actual), 1e-12);
+}
+
+
+TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
+    auto protein = BuildSyntheticXHCategoryProtein();
+    ASSERT_EQ(protein->BondCount(), 3u);
+
+    std::array<McConnellSourceCategory, 3> categories{};
+    for (size_t bi = 0; bi < protein->BondCount(); ++bi) {
+        ASSERT_TRUE(mcconnell_result_detail::IsXHBond(
+            *protein, protein->BondAt(bi)));
+        categories[bi] = mcconnell_result_detail::SourceCategory(
+            *protein, protein->BondAt(bi));
+    }
+
+    // Bonds are emitted in atom-pair order by CovalentTopology::Resolve.
+    EXPECT_EQ(categories[0], McConnellSourceCategory::BackboneXH);
+    EXPECT_EQ(categories[1], McConnellSourceCategory::SidechainXH);
+    EXPECT_EQ(categories[2], McConnellSourceCategory::SH);
+    EXPECT_STREQ(McConnellSourceCategoryStem(categories[0]), "backbone_xh");
+    EXPECT_STREQ(McConnellSourceCategoryStem(categories[1]), "sidechain_xh");
+    EXPECT_STREQ(McConnellSourceCategoryStem(categories[2]), "s_h");
+}
+
+
+TEST(SidechainCarbonylAnisotropyProduction,
+     TypedSourcesFramesAndNoMopacReadBack) {
+    using namespace sidechain_carbonyl_anisotropy_detail;
+
+    auto protein = BuildSyntheticSidechainCOProtein();
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    std::vector<SourceBond> expected_sources;
+    std::size_t peptide_co_count = 0;
+    for (std::size_t bond_index = 0;
+         bond_index < protein->BondCount(); ++bond_index) {
+        const Bond& bond = protein->BondAt(bond_index);
+        if (bond.category == BondCategory::PeptideCO) ++peptide_co_count;
+        if (bond.category == BondCategory::SidechainCO) {
+            expected_sources.push_back(
+                ClassifySourceBond(*protein, bond_index));
+        }
+    }
+    ASSERT_EQ(peptide_co_count, 1u);
+    ASSERT_EQ(expected_sources.size(), 3u);
+
+    std::size_t amide_sources = 0;
+    std::size_t carboxylate_sources = 0;
+    for (const SourceBond& source : expected_sources) {
+        EXPECT_TRUE(source.source_valid);
+        EXPECT_EQ(source.bond_category, BondCategory::SidechainCO);
+        EXPECT_NE(source.plane_reference_atom, SIZE_MAX);
+        if (source.oxygen_semantic_class ==
+            OxygenSemanticClass::SidechainAmide) {
+            ++amide_sources;
+            EXPECT_EQ(source.planar_group_kind,
+                      PlanarGroupKind::SidechainAmide);
+        } else if (source.oxygen_semantic_class ==
+                   OxygenSemanticClass::SidechainCarboxylate) {
+            ++carboxylate_sources;
+            EXPECT_EQ(source.planar_group_kind,
+                      PlanarGroupKind::Carboxylate);
+        }
+
+        const SourceFrame frame = BuildSourceFrame(conf, source);
+        EXPECT_TRUE(frame.frame_valid);
+        EXPECT_TRUE(frame.origin.allFinite());
+        EXPECT_NEAR(frame.x_axis.norm(), 1.0, 1e-14);
+        EXPECT_NEAR(frame.y_axis.norm(), 1.0, 1e-14);
+        EXPECT_NEAR(frame.z_axis.norm(), 1.0, 1e-14);
+        EXPECT_NEAR(frame.x_axis.dot(frame.y_axis), 0.0, 1e-14);
+        EXPECT_NEAR(frame.x_axis.dot(frame.z_axis), 0.0, 1e-14);
+        EXPECT_NEAR(frame.y_axis.dot(frame.z_axis), 0.0, 1e-14);
+        EXPECT_NEAR(frame.z_axis.cross(frame.x_axis).dot(frame.y_axis),
+                    1.0, 1e-14);
+        const Vec3 expected_x =
+            (conf.PositionAt(source.oxygen_atom) -
+             conf.PositionAt(source.carbon_atom)).normalized();
+        EXPECT_NEAR(frame.x_axis.dot(expected_x), 1.0, 1e-14);
+        EXPECT_LT(frame.orthogonality_error, 1e-14);
+        EXPECT_GT(frame.normal_norm, 0.0);
+    }
+    EXPECT_EQ(amide_sources, 1u);
+    EXPECT_EQ(carboxylate_sources, 2u);
+
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(
+        SidechainCarbonylAnisotropyResult::Compute(conf)));
+
+    const fs::path output_dir =
+        SidechainCOTempDir("sidechain_co_no_mopac");
+    ASSERT_EQ(conf.Result<SidechainCarbonylAnisotropyResult>()
+                  .WriteFeatures(conf, output_dir.string()),
+              6);
+
+    const auto source_rows = ReadNpy<std::int32_t>(
+        output_dir / "sidechain_co_source_bonds.npy", "<i4");
+    const auto frame_rows = ReadNpy<double>(
+        output_dir / "sidechain_co_frame.npy", "<f8");
+    const auto quality_rows = ReadNpy<double>(
+        output_dir / "sidechain_co_frame_quality.npy", "<f8");
+    const auto fixed_rows = ReadNpy<double>(
+        output_dir / "sidechain_co_fixed_T2.npy", "<f8");
+    const auto bo_rows = ReadNpy<double>(
+        output_dir / "sidechain_co_bo_T2.npy", "<f8");
+    const auto audit_rows = ReadNpy<double>(
+        output_dir / "sidechain_co_scalar_audit.npy", "<f8");
+
+    const std::size_t Q = expected_sources.size();
+    const std::size_t N = conf.AtomCount();
+    ASSERT_EQ(source_rows.shape, (std::vector<std::size_t>{Q, 8}));
+    ASSERT_EQ(frame_rows.shape, (std::vector<std::size_t>{Q, 12}));
+    ASSERT_EQ(quality_rows.shape, (std::vector<std::size_t>{Q, 4}));
+    ASSERT_EQ(fixed_rows.shape, (std::vector<std::size_t>{N, 9}));
+    ASSERT_EQ(bo_rows.shape, (std::vector<std::size_t>{N, 9}));
+    ASSERT_EQ(audit_rows.shape, (std::vector<std::size_t>{N, 4}));
+
+    for (std::size_t row = 0; row < Q; ++row) {
+        const SourceBond& source = expected_sources[row];
+        EXPECT_EQ(source_rows.values[row * 8 + 0],
+                  static_cast<std::int32_t>(source.bond_index));
+        EXPECT_EQ(source_rows.values[row * 8 + 1],
+                  static_cast<std::int32_t>(source.carbon_atom));
+        EXPECT_EQ(source_rows.values[row * 8 + 2],
+                  static_cast<std::int32_t>(source.oxygen_atom));
+        EXPECT_EQ(source_rows.values[row * 8 + 3],
+                  static_cast<std::int32_t>(source.residue_index));
+        EXPECT_EQ(source_rows.values[row * 8 + 4],
+                  static_cast<std::int32_t>(BondCategory::SidechainCO));
+        EXPECT_NE(source_rows.values[row * 8 + 4],
+                  static_cast<std::int32_t>(BondCategory::PeptideCO));
+        EXPECT_EQ(source_rows.values[row * 8 + 5],
+                  static_cast<std::int32_t>(source.planar_group_kind));
+        EXPECT_EQ(source_rows.values[row * 8 + 6],
+                  static_cast<std::int32_t>(
+                      source.oxygen_semantic_class));
+        EXPECT_EQ(source_rows.values[row * 8 + 7], 1);
+
+        const SourceFrame production_frame =
+            BuildSourceFrame(conf, source);
+        const std::array<double, 12> packed_frame = {
+            production_frame.origin.x(), production_frame.origin.y(),
+            production_frame.origin.z(), production_frame.x_axis.x(),
+            production_frame.x_axis.y(), production_frame.x_axis.z(),
+            production_frame.y_axis.x(), production_frame.y_axis.y(),
+            production_frame.y_axis.z(), production_frame.z_axis.x(),
+            production_frame.z_axis.y(), production_frame.z_axis.z(),
+        };
+        for (std::size_t component = 0; component < 12; ++component) {
+            EXPECT_DOUBLE_EQ(frame_rows.values[row * 12 + component],
+                             packed_frame[component]);
+        }
+        EXPECT_DOUBLE_EQ(quality_rows.values[row * 4 + 0],
+                         production_frame.bond_length);
+        EXPECT_DOUBLE_EQ(quality_rows.values[row * 4 + 1],
+                         production_frame.orthogonality_error);
+        EXPECT_DOUBLE_EQ(quality_rows.values[row * 4 + 2],
+                         production_frame.normal_norm);
+        EXPECT_DOUBLE_EQ(quality_rows.values[row * 4 + 3], 1.0);
+    }
+
+    bool any_nonzero_fixed = false;
+    const std::size_t sidechain_category = static_cast<std::size_t>(
+        McConnellSourceCategory::SidechainCO);
+    const std::size_t fixed_channel = static_cast<std::size_t>(
+        McConnellChannel::Fixed);
+    for (std::size_t atom_index = 0; atom_index < N; ++atom_index) {
+        std::array<double, 9> expected_fixed{};
+        const SphericalTensor& tensor = conf.AtomAt(atom_index)
+            .mcconnell_source_tensors[sidechain_category][fixed_channel];
+        tensor.PackFull9(expected_fixed.data());
+        for (std::size_t component = 0; component < 9; ++component) {
+            EXPECT_DOUBLE_EQ(fixed_rows.values[atom_index * 9 + component],
+                             expected_fixed[component]);
+            EXPECT_TRUE(std::isnan(
+                bo_rows.values[atom_index * 9 + component]));
+            any_nonzero_fixed = any_nonzero_fixed ||
+                std::abs(expected_fixed[component]) > 0.0;
+        }
+
+        std::size_t expected_count = 0;
+        double expected_nearest = std::numeric_limits<double>::infinity();
+        for (const BondNeighbourhood& neighbour :
+             conf.AtomAt(atom_index).bond_neighbours) {
+            if (neighbour.bond_category != BondCategory::SidechainCO)
+                continue;
+            ++expected_count;
+            expected_nearest = std::min(
+                expected_nearest, neighbour.distance_to_midpoint);
+        }
+        EXPECT_DOUBLE_EQ(audit_rows.values[atom_index * 4 + 0],
+                         tensor.T2Magnitude());
+        EXPECT_TRUE(std::isnan(audit_rows.values[atom_index * 4 + 1]));
+        EXPECT_DOUBLE_EQ(audit_rows.values[atom_index * 4 + 2],
+                         static_cast<double>(expected_count));
+        if (expected_count > 0) {
+            EXPECT_DOUBLE_EQ(audit_rows.values[atom_index * 4 + 3],
+                             expected_nearest);
+        } else {
+            EXPECT_TRUE(std::isnan(
+                audit_rows.values[atom_index * 4 + 3]));
+        }
+    }
+    EXPECT_TRUE(any_nonzero_fixed);
+
+    RemoveSidechainCOOutputs(output_dir);
+}
+
+
+TEST(SidechainCarbonylAnisotropyProduction,
+     MopacPresenceMakesBondOrderRowsFinite) {
+    auto protein = BuildSyntheticSidechainCOProtein();
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    // A MopacResult is attached through the explicit test hook.  Its empty
+    // topology-order table represents finite zero Wiberg weights; importantly,
+    // the production presence branch must emit zeros rather than absence NaNs.
+    conf.ForceAttachResultForTesting(std::make_unique<MopacResult>());
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(
+        SidechainCarbonylAnisotropyResult::Compute(conf)));
+
+    const fs::path output_dir =
+        SidechainCOTempDir("sidechain_co_with_mopac");
+    ASSERT_EQ(conf.Result<SidechainCarbonylAnisotropyResult>()
+                  .WriteFeatures(conf, output_dir.string()),
+              6);
+    const auto bo_rows = ReadNpy<double>(
+        output_dir / "sidechain_co_bo_T2.npy", "<f8");
+    const auto audit_rows = ReadNpy<double>(
+        output_dir / "sidechain_co_scalar_audit.npy", "<f8");
+    ASSERT_EQ(bo_rows.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 9}));
+    ASSERT_EQ(audit_rows.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 4}));
+    for (double value : bo_rows.values) {
+        EXPECT_TRUE(std::isfinite(value));
+        EXPECT_DOUBLE_EQ(value, 0.0);
+    }
+    for (std::size_t atom_index = 0;
+         atom_index < conf.AtomCount(); ++atom_index) {
+        EXPECT_TRUE(std::isfinite(audit_rows.values[atom_index * 4 + 1]));
+        EXPECT_DOUBLE_EQ(audit_rows.values[atom_index * 4 + 1], 0.0);
+    }
+
+    // Pin the upstream production weighting used by the copied BO channel
+    // with a non-unit value; no test-side McConnell formula is re-derived.
+    const Mat3 axial = (Mat3() <<
+        1.0, 0.2, 0.0,
+        0.0, -0.5, 0.1,
+        0.0, 0.0, -0.5).finished();
+    const auto weighted = mcconnell_result_detail::SelectChannelResponses(
+        McConnellSourceCategory::SidechainCO, axial, Mat3::Zero(), 1.75);
+    EXPECT_LT(MaxAbs(weighted.bond_order - 1.75 * axial), 1e-14);
+
+    RemoveSidechainCOOutputs(output_dir);
 }
 
 
@@ -620,7 +1087,7 @@ TEST_F(McConnellProteinTest, NearFieldAuditCountsAreReported) {
 }
 
 
-TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyArraysAndManifest) {
+TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentySixArraysAndManifest) {
     auto& conf = protein->Conformation();
     conf.AttachResult(McConnellResult::Compute(conf));
 
@@ -628,7 +1095,7 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyArraysAndManifest) {
         ("mcconnell_features_" + std::to_string(::getpid()));
     fs::create_directories(out_dir);
     const auto& mc = conf.Result<McConnellResult>();
-    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 20);
+    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 26);
 
     for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
         const auto cat = static_cast<McConnellSourceCategory>(c);
@@ -649,7 +1116,7 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyArraysAndManifest) {
     const fs::path manifest = out_dir / "extraction_manifest.json";
     ASSERT_TRUE(fs::exists(manifest));
     const std::string text = ReadText(manifest);
-    EXPECT_NE(text.find("\"source_model\": \"unit susceptibility shape; axial scale learned; peptide C=O rhombic scale pinned\""),
+    EXPECT_NE(text.find("\"source_model\": \"unit susceptibility shape; axial scale learned; peptide C=O fixed/BO responses use the full pinned rhombic shape\""),
               std::string::npos);
     EXPECT_NE(text.find("\"bo_source\": \"MOPAC Wiberg bond order\""),
               std::string::npos);

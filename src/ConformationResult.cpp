@@ -10,10 +10,42 @@
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
 namespace nmr {
+
+namespace conformation_result_detail {
+
+std::array<double, 13> PackRingPairGeometryRow(
+        size_t ring_a, size_t ring_b,
+        size_t residue_a, size_t residue_b,
+        int type_a, int type_b,
+        const RingGeometry& geometry_a,
+        const RingGeometry& geometry_b,
+        bool is_fused) {
+    const Vec3 delta = geometry_b.center - geometry_a.center;
+    const double delta_a = delta.dot(geometry_a.normal);
+    const double delta_b = delta.dot(geometry_b.normal);
+    return {
+        static_cast<double>(ring_a),
+        static_cast<double>(ring_b),
+        static_cast<double>(residue_a),
+        static_cast<double>(residue_b),
+        static_cast<double>(type_a),
+        static_cast<double>(type_b),
+        delta.norm(),
+        geometry_a.normal.dot(geometry_b.normal),
+        geometry_a.normal.cross(geometry_b.normal).norm(),
+        delta_a,
+        delta_b,
+        std::sqrt(std::max(0.0, delta.squaredNorm() - delta_a * delta_a)),
+        is_fused ? 1.0 : 0.0,
+    };
+}
+
+}  // namespace conformation_result_detail
 
 int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                                           const std::string& output_dir) {
@@ -157,6 +189,30 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
         }
         NpyWriter::WriteFloat64(output_dir + "/ring_geometry.npy",
                                 data.data(), R, G);
+        total++;
+    }
+
+    // Ring-pair geometry — one row per GeometryResult-created i<j pair.
+    // Always emit, including the zero-row (0,13) case.
+    {
+        constexpr size_t C = 13;
+        const size_t P = conf.ring_pairs.size();
+        std::vector<double> data(P * C);
+        for (size_t pi = 0; pi < P; ++pi) {
+            const auto& pair = conf.ring_pairs[pi];
+            const Ring& ring_a = protein.RingAt(pair.ring_a);
+            const Ring& ring_b = protein.RingAt(pair.ring_b);
+            const auto row = conformation_result_detail::PackRingPairGeometryRow(
+                pair.ring_a, pair.ring_b,
+                ring_a.parent_residue_index, ring_b.parent_residue_index,
+                static_cast<int>(ring_a.type_index),
+                static_cast<int>(ring_b.type_index),
+                conf.ring_geometries.at(pair.ring_a),
+                conf.ring_geometries.at(pair.ring_b), pair.is_fused);
+            std::copy(row.begin(), row.end(), data.begin() + pi * C);
+        }
+        NpyWriter::WriteFloat64(output_dir + "/ring_pair_geometry.npy",
+                                data.data(), P, C);
         total++;
     }
 

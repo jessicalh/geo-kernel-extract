@@ -35,6 +35,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -74,6 +75,20 @@ struct TripeptideDftRecord {
     int phi = 0, psi = 0;
     int chi1 = 0, chi2 = 0, chi3 = 0, chi4 = 0;
 
+    // Query/fallback provenance. These describe the exact lookup attempt
+    // that selected this row. `natural_chi_axes` is the residue's full
+    // tensorcs15 chi depth; `n_chi_axes_used` is the shallower depth kept
+    // in the SQL equality filter for this attempt. Target grids retain all
+    // natural chi axes, including axes omitted from that equality filter.
+    // `dropped_chi_distance_deg` is the circular Euclidean distance over
+    // those omitted axes. It is 0 when none were omitted and NaN on a miss.
+    int natural_chi_axes = 0;
+    int n_chi_axes_used = 0;
+    double dropped_chi_distance_deg = std::numeric_limits<double>::quiet_NaN();
+    int target_phi_grid_deg = 0;
+    int target_psi_grid_deg = 0;
+    std::array<int, 4> target_chi_grid_deg = {};
+
     // DFT method discriminator. Stashed per record so downstream
     // calibration code can route SER (orca_input_orientation, PBE) and
     // the rest (gaussian_standard_orientation, OPBE) separately.
@@ -93,6 +108,18 @@ struct TripeptideDftRecord {
 
     // True iff calc_id != 0 (i.e. the query found a row).
     bool IsHit() const { return calc_id != 0; }
+};
+
+
+// Frozen tripeptide diagnostic status codes. Both tripeptide calculators
+// store this typed value and emit its exact underlying integer in their
+// single residue-diagnostics tables.
+enum class TripeptideMatchStatus : std::uint8_t {
+    Miss = 0,
+    Ok = 1,
+    UnsupportedHid = 2,
+    UnsupportedHie = 3,
+    PerceptionFailed = 4,
 };
 
 
@@ -134,11 +161,13 @@ public:
     // should pass the protein residue's `protonation_variant_index`
     // so perception locks onto the matching variant and does not
     // silently mis-assign HD1/HE2 atoms.
-    TripeptideDftRecord QueryNearest(
-        char residue_letter,
-        double phi, double psi,
-        double chi1 = 0.0, double chi2 = 0.0,
-        double chi3 = 0.0, double chi4 = 0.0,
+    TripeptideDftRecord QueryNearest(char residue_letter,
+                                     double phi,
+                                     double psi,
+                                     double chi1 = 0.0,
+                                     double chi2 = 0.0,
+                                     double chi3 = 0.0,
+                                     double chi4 = 0.0,
         int    n_chi_axes        = -1,
         int    his_variant_hint  = -1) const;
 

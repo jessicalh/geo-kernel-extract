@@ -36,6 +36,7 @@ from ._trajectory import (
     HydrationShellTimeSeriesGroup,
     HydrationShellWelfordGroup,
     DihedralTimeSeriesGroup,
+    LocalBackboneGeometryGroup,
     DihedralBinTransitionGroup,
     Dssp8Access,
     Dssp8TimeSeriesGroup,
@@ -61,6 +62,9 @@ from ._trajectory import (
     ReorientationalDynamicsGroup,
     IRedOrderParameterGroup,
     DihedralAutocorrelationGroup,
+    LarsenHBondTensorTimeSeries,
+    LarsenHBondScalarTimeSeries,
+    LarsenHBondTrajectoryGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -92,7 +96,7 @@ from ._tensors import (
     AIMNet2AimEmbedding,
     AIMNet2ChargeResponseGradient,
 )
-from ._ring import RingContributions, RingGeometry
+from ._ring import RingContributions, RingGeometry, RingPairGeometry
 from ._catalog import CATALOG, ArraySpec
 from ._protein import (
     AIMNet2Group,
@@ -110,6 +114,9 @@ from ._protein import (
     ExtractionManifest,
     TripeptideGroup,
     LarsenHBondGroup,
+    LarsenHBondPairs,
+    LarsenSidechainDonorAuditGroup,
+    SidechainCarbonylAnisotropyGroup,
 )
 
 __all__ = [
@@ -132,6 +139,7 @@ __all__ = [
     "McConnellNearFieldCounts",
     "RingContributions",
     "RingGeometry",
+    "RingPairGeometry",
     "CATALOG",
     "ArraySpec",
     "AIMNet2Charges",
@@ -163,6 +171,9 @@ __all__ = [
     "ExtractionManifest",
     "TripeptideGroup",
     "LarsenHBondGroup",
+    "LarsenHBondPairs",
+    "LarsenSidechainDonorAuditGroup",
+    "SidechainCarbonylAnisotropyGroup",
     "load_trajectory",
     "TrajectoryData",
     "TrajectoryRollup",
@@ -188,6 +199,7 @@ __all__ = [
     "HydrationShellTimeSeriesGroup",
     "HydrationShellWelfordGroup",
     "DihedralTimeSeriesGroup",
+    "LocalBackboneGeometryGroup",
     "DihedralBinTransitionGroup",
     "Dssp8Access",
     "Dssp8TimeSeriesGroup",
@@ -213,4 +225,7 @@ __all__ = [
     "ReorientationalDynamicsGroup",
     "IRedOrderParameterGroup",
     "DihedralAutocorrelationGroup",
+    "LarsenHBondTensorTimeSeries",
+    "LarsenHBondScalarTimeSeries",
+    "LarsenHBondTrajectoryGroup",
 ]

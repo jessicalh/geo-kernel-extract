@@ -98,6 +98,25 @@ def _tripeptide_new_npys(out_dir, n_atoms):
     ref = np.array([[1234, 1, -120, 140, 1]], dtype=np.float64)
     np.save(out_dir / "tripeptide_neighbor_reference.npy", ref)
 
+    n_residues = n_atoms // 4
+    bb_diag = np.full((n_residues, 28), np.nan, dtype=np.float64)
+    bb_diag[:, 0] = 0  # finite calc-id sentinel
+    bb_diag[:, 1] = 0  # miss
+    bb_diag[0, 1] = 2  # unsupported HID
+    bb_diag[1, 1] = 3  # unsupported HIE
+    bb_diag[2, 1] = 1  # matched HIP
+    bb_diag[2, 2] = 1
+    np.save(out_dir / "tripeptide_bb_diagnostics.npy", bb_diag)
+
+    neighbor_diag = np.full((n_residues, 59), np.nan, dtype=np.float64)
+    neighbor_diag[:, 0] = 0
+    neighbor_diag[:, 28] = 0
+    neighbor_diag[0, 0] = 2
+    neighbor_diag[1, 28] = 3
+    neighbor_diag[2, 0] = 1
+    neighbor_diag[2, 58] = 1
+    np.save(out_dir / "tripeptide_neighbor_diagnostics.npy", neighbor_diag)
+
 
 # ── Tests ────────────────────────────────────────────────────────────
 
@@ -117,6 +136,8 @@ class TestTripeptideCatalog:
             "tripeptide_neighbor_residual_vec_prev",
             "tripeptide_neighbor_residual_vec_next",
             "tripeptide_neighbor_reference",
+            "tripeptide_bb_diagnostics",
+            "tripeptide_neighbor_diagnostics",
         }
         missing = expected - set(CATALOG.keys())
         assert not missing, f"Missing tripeptide specs: {missing}"
@@ -214,6 +235,11 @@ class TestTripeptideLoad:
         assert tp.neighbor_shielding_prev.data.shape == (N_ATOMS, 9)
         assert tp.neighbor_shielding_next.data.shape == (N_ATOMS, 9)
         assert tp.neighbor_reference.shape == (1, 5)
+        assert tp.bb_diagnostics.shape == (N_ATOMS // 4, 28)
+        assert tp.neighbor_diagnostics.shape == (N_ATOMS // 4, 59)
+        np.testing.assert_array_equal(tp.bb_diagnostics[:3, 1], [2, 3, 1])
+        assert tp.neighbor_diagnostics[0, 0] == 2
+        assert tp.neighbor_diagnostics[1, 28] == 3
         assert tp.bb_match_atoms[0, 2] == 1
         assert np.all(np.isfinite(tp.neighbor_shielding_prev.data[:8]))
         assert np.all(np.isnan(tp.neighbor_shielding_prev.data[8:]))

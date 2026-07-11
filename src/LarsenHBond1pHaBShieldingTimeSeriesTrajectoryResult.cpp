@@ -11,6 +11,7 @@
 #include <highfive/H5Group.hpp>
 
 #include <limits>
+#include <cstdint>
 #include <typeinfo>
 
 namespace nmr {
@@ -127,9 +128,15 @@ void LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_atoms",     N);
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
+    grp.createAttribute("source_attached_count",
+        static_cast<std::uint64_t>(source_present_count));
+    grp.createAttribute("source_attached_policy",
+        std::string("conditional_larsen_grid_source"));
+    grp.createAttribute("atom_axis", std::string("protein_atom_index"));
+    grp.createAttribute("frame_axis", std::string("trajectory_frame_row"));
 
     grp.createAttribute("irrep_layout",
-        std::string("T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+        std::string("PackFull9: [T0, T1_cartesian_xyz, T2_real_tesseral_m-2..m+2]"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
     grp.createAttribute("parity",        std::string("0e+1e+2e"));
     grp.createAttribute("units",         std::string("ppm"));

@@ -17,6 +17,22 @@ namespace nmr {
 
 class ProteinConformation;
 
+namespace ring_susceptibility_detail {
+
+struct KernelResult {
+    double scalar = 0.0;
+    double distance = 0.0;
+    Vec3 direction = Vec3::Zero();
+    bool valid = false;
+};
+
+// Exact production point-center susceptibility kernel.
+KernelResult ComputeKernel(const Vec3& atom_pos,
+                           const Vec3& ring_center,
+                           const Vec3& ring_normal);
+
+}  // namespace ring_susceptibility_detail
+
 class RingSusceptibilityResult : public ConformationResult {
 public:
     std::string Name() const override { return "RingSusceptibilityResult"; }

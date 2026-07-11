@@ -42,6 +42,31 @@ namespace nmr {
 
 class ProteinConformation;
 
+// Production kernel helpers with external linkage so numerical and
+// inclusion-policy tests exercise the exact code used by Compute/Sample.
+// Kept in this file's named namespace; these are not shared approximations.
+namespace biot_savart_detail {
+
+double PointToSegmentDistance(const Vec3& point,
+                              const Vec3& segment_a,
+                              const Vec3& segment_b);
+
+double MinimumDistanceToJohnsonBoveyWireLoops(
+    const std::vector<Vec3>& vertices,
+    const Vec3& normal,
+    double lobe_offset_ang,
+    const Vec3& point_ang);
+
+Vec3 JohnsonBoveyField(const std::vector<Vec3>& vertices,
+                       const Vec3& normal,
+                       double lobe_offset_ang,
+                       double current_nanoamperes,
+                       const Vec3& point_ang);
+
+bool ContributesToCanonicalTotals(RingTypeIndex ring_type);
+
+}  // namespace biot_savart_detail
+
 class BiotSavartResult : public ConformationResult {
 public:
     std::string Name() const override { return "BiotSavartResult"; }

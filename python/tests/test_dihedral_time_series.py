@@ -27,6 +27,7 @@ import pytest
 from nmr_extract import (
     load_trajectory,
     DihedralTimeSeriesGroup,
+    LocalBackboneGeometryGroup,
 )
 
 
@@ -318,3 +319,145 @@ def test_dihedral_frame_metadata(tmp_path):
                                   expected["source_attached"])
     # source_attached_per_frame should be trivially all-1
     assert (g.source_attached_per_frame == 1).all()
+
+
+def _write_local_backbone_geometry(f: h5py.File) -> dict:
+    """Synthetic mirror of the A25 production H5 group."""
+    grp = f.create_group("/trajectory/local_backbone_geometry")
+    grp.attrs["result_name"] = "LocalBackboneGeometryTrajectoryResult"
+    grp.attrs["n_residues"] = np.uint64(N_RESIDUES)
+    grp.attrs["n_frames"] = np.uint64(N_FRAMES)
+    grp.attrs["source_attached_count"] = np.uint64(N_FRAMES)
+    grp.attrs["finalized"] = True
+    grp.attrs["angle_units"] = "radians"
+    grp.attrs["length_units"] = "Angstrom"
+    grp.attrs["residue_axis"] = "protein_residue_index"
+    grp.attrs["source_attached_policy"] = (
+        "always_attached -- positions and invariant typed topology are "
+        "present for every dispatched frame")
+    grp.attrs["adjacency_policy"] = (
+        "Protein::BackbonePredecessor/BackboneSuccessor peptide-bond "
+        "graph; never residue-index arithmetic")
+    grp.attrs["ideal_cb_formula"] = (
+        "n=N-CA; c=C-CA; ideal_CB=CA-0.58273431*cross(c,n)+"
+        "0.56802827*n-0.54067466*c")
+    grp.attrs["cb_deviation_definition"] = (
+        "norm(observed_CB-ideal_CB); NaN if N,CA,C,CB is absent or the "
+        "N-CA-C frame is degenerate")
+    grp.attrs["cb_local_vector_definition"] = (
+        "observed_CB-ideal_CB in global Cartesian xyz Angstrom; norm "
+        "equals cb_deviation; identical NaN gate")
+
+    tau = np.fromfunction(
+        lambda ri, ti: 1.7 + 0.01 * ri + 0.001 * ti,
+        (N_RESIDUES, N_FRAMES), dtype=np.float64)
+    n_ca_cb = tau + 0.1
+    cb_ca_c = tau + 0.2
+    cprev_n_ca = tau + 0.3
+    ca_c_nnext = tau + 0.4
+    cprev_n_ca[0, :] = np.nan
+    ca_c_nnext[-1, :] = np.nan
+
+    cb_vector = np.empty((N_RESIDUES, N_FRAMES, 3), dtype=np.float64)
+    for ri in range(N_RESIDUES):
+        for ti in range(N_FRAMES):
+            cb_vector[ri, ti] = (
+                0.01 * (ri + 1), -0.02 * (ti + 1), 0.03 * (ri + ti + 1))
+    # Residue 0 is glycine/no-CB: vector and norm carry the same NaN gate.
+    cb_vector[0, :, :] = np.nan
+    cb_deviation = np.linalg.norm(cb_vector, axis=2)
+
+    datasets = {
+        "tau_N_CA_C": tau,
+        "angle_N_CA_CB": n_ca_cb,
+        "angle_CB_CA_C": cb_ca_c,
+        "angle_Cprev_N_CA": cprev_n_ca,
+        "angle_CA_C_Nnext": ca_c_nnext,
+        "cb_deviation": cb_deviation,
+        "cb_local_vector": cb_vector,
+    }
+    for name, values in datasets.items():
+        grp.create_dataset(name, data=values)
+
+    masks = {
+        "has_N_CA_C": np.ones(N_RESIDUES, dtype=np.uint8),
+        "has_CB": np.array([0, 1, 1, 1], dtype=np.uint8),
+        "has_prev_C": np.array([0, 1, 1, 1], dtype=np.uint8),
+        "has_next_N": np.array([1, 1, 1, 0], dtype=np.uint8),
+        "is_glycine": np.array([1, 0, 0, 0], dtype=np.uint8),
+        "is_proline": np.array([0, 0, 1, 0], dtype=np.uint8),
+    }
+    for name, values in masks.items():
+        grp.create_dataset(name, data=values)
+
+    frame_indices = np.arange(10, 10 + 2 * N_FRAMES, 2, dtype=np.uint64)
+    frame_times = np.arange(N_FRAMES, dtype=np.float64) * 2.5
+    source_attached = np.ones(N_FRAMES, dtype=np.uint8)
+    grp.create_dataset("frame_indices", data=frame_indices)
+    grp.create_dataset("frame_times", data=frame_times)
+    grp.create_dataset("source_attached_per_frame", data=source_attached)
+
+    return {
+        **datasets,
+        **masks,
+        "frame_indices": frame_indices,
+        "frame_times": frame_times,
+        "source_attached_per_frame": source_attached,
+    }
+
+
+def test_local_backbone_geometry_synthetic_h5_read_back(tmp_path):
+    """A25 fixture-independent read-back through the public loader."""
+    h5_path = tmp_path / "trajectory.h5"
+    with h5py.File(h5_path, "w") as f:
+        _write_required_traj_root(f)
+        expected = _write_local_backbone_geometry(f)
+
+    traj = load_trajectory(h5_path)
+    group = traj.local_backbone_geometry
+    assert isinstance(group, LocalBackboneGeometryGroup)
+
+    for name in (
+            "tau_N_CA_C", "angle_N_CA_CB", "angle_CB_CA_C",
+            "angle_Cprev_N_CA", "angle_CA_C_Nnext", "cb_deviation"):
+        actual = getattr(group, name)
+        assert actual.shape == (N_RESIDUES, N_FRAMES)
+        assert actual.dtype == np.float64
+        np.testing.assert_array_equal(actual, expected[name])
+    assert group.cb_local_vector.shape == (N_RESIDUES, N_FRAMES, 3)
+    assert group.cb_local_vector.dtype == np.float64
+    np.testing.assert_array_equal(
+        group.cb_local_vector, expected["cb_local_vector"])
+
+    for name in (
+            "has_N_CA_C", "has_CB", "has_prev_C", "has_next_N",
+            "is_glycine", "is_proline"):
+        actual = getattr(group, name)
+        assert actual.shape == (N_RESIDUES,)
+        assert actual.dtype == np.uint8
+        np.testing.assert_array_equal(actual, expected[name])
+
+    finite = np.isfinite(group.cb_deviation)
+    np.testing.assert_allclose(
+        np.linalg.norm(group.cb_local_vector[finite], axis=1),
+        group.cb_deviation[finite])
+    assert np.isnan(group.cb_local_vector[~finite]).all()
+
+    np.testing.assert_array_equal(
+        group.frame_indices, expected["frame_indices"])
+    np.testing.assert_array_equal(group.frame_times, expected["frame_times"])
+    np.testing.assert_array_equal(
+        group.source_attached_per_frame,
+        expected["source_attached_per_frame"])
+    assert group.source_attached_count == N_FRAMES
+    assert group.n_residues == N_RESIDUES
+    assert group.n_frames == N_FRAMES
+    assert group.finalized is True
+    assert group.angle_units == "radians"
+    assert group.length_units == "Angstrom"
+    assert group.residue_axis == "protein_residue_index"
+    assert "always_attached" in group.source_attached_policy
+    assert "BackbonePredecessor/BackboneSuccessor" in group.adjacency_policy
+    assert "0.58273431" in group.ideal_cb_formula
+    assert "norm(observed_CB-ideal_CB)" in group.cb_deviation_definition
+    assert "global Cartesian" in group.cb_local_vector_definition

@@ -20,6 +20,7 @@
 #include <vector>
 #include <typeindex>
 #include <limits>
+#include <array>
 
 namespace nmr {
 
@@ -114,6 +115,7 @@ struct MatchedAtomData {
     // Graph deltas
     int delta_graph_dist_ring = 0;  // WT - mutant (positive = was closer in WT)
     double delta_bfs_decay = 0.0;
+    int delta_is_conjugated = 0;
     bool has_graph_delta = false;
 
     // Ring proximity to removed rings (cylindrical coords in ring frame)
@@ -121,6 +123,15 @@ struct MatchedAtomData {
     size_t nearest_removed_ring = SIZE_MAX;   // index into removed_ring_proximity
     double nearest_removed_ring_dist = 99.0;
 };
+
+namespace mutation_delta_detail {
+
+// Production packer for one delta_graph.npy row.  Exposed from this file's
+// named namespace so the freeze gate executes the writer's exact schema.
+std::array<double, 5> PackDeltaGraphRow(
+    bool matched, const MatchedAtomData* data);
+
+}  // namespace mutation_delta_detail
 
 
 // Aggregate summary statistics

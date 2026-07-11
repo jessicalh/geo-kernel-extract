@@ -111,9 +111,25 @@ std::unique_ptr<SpatialIndexResult> SpatialIndexResult::Compute(
 
 int SpatialIndexResult::WriteFeatures(const ProteinConformation& conf,
                                       const std::string& output_dir) const {
-    (void)conf;
-    (void)output_dir;
-    return 0;
+    size_t P = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai)
+        P += conf.AtomAt(ai).spatial_neighbours.size();
+
+    std::vector<double> rows;
+    rows.reserve(P * 6);
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        for (const AtomNeighbour& neighbour :
+             conf.AtomAt(ai).spatial_neighbours) {
+            rows.push_back(static_cast<double>(ai));
+            rows.push_back(static_cast<double>(neighbour.atom_index));
+            rows.push_back(neighbour.direction.x());
+            rows.push_back(neighbour.direction.y());
+            rows.push_back(neighbour.direction.z());
+            rows.push_back(neighbour.distance);
+        }
+    }
+    return NpyWriter::WriteFloat64(output_dir + "/spatial_neighbors.npy",
+                                   rows.data(), P, 6) ? 1 : 0;
 }
 
 

@@ -101,6 +101,7 @@ def write_required_sdk_npys(
     n_rediscover_source_rows: int = 0,
     n_rediscover_aggregated_rows: int = 0,
     n_rediscover_target_rows: int = 0,
+    n_sidechain_co_sources: int = 0,
 ) -> None:
     """Write all required non-topology NPYs from ``nmr_extract.CATALOG``.
 
@@ -124,6 +125,7 @@ def write_required_sdk_npys(
         "ring": n_aromatic_rings + n_saturated_rings,
         "ring_membership": n_ring_membership,
         "ring_contribution_pair": n_ring_contribution_pairs,
+        "ring_pair": n_aromatic_rings * (n_aromatic_rings - 1) // 2,
         "mutation_match_pair": n_mutation_match_pairs,
         "protein": 1,
         "rediscover_source_row": n_rediscover_source_rows,
@@ -131,6 +133,7 @@ def write_required_sdk_npys(
         "rediscover_target_row": n_rediscover_target_rows,
         "mopac_bond_neighbor_pair": 0,
         "mopac_unique_pair": 0,
+        "sidechain_co_source": n_sidechain_co_sources,
     }
 
     for stem, spec in CATALOG.items():
@@ -140,7 +143,10 @@ def write_required_sdk_npys(
         rows = axis_rows[spec.native_axis]
         shape = (rows,) if spec.cols is None else (rows, spec.cols)
         dtype = np.float64
-        if stem in {"element", "residue_index", "residue_type"}:
+        if stem in {
+            "element", "residue_index", "residue_type",
+            "sidechain_co_source_bonds",
+        }:
             dtype = np.int32
         elif stem in {"aimnet2_aim", "aimnet2_aim_projection"}:
             dtype = np.float32
@@ -150,6 +156,11 @@ def write_required_sdk_npys(
             data[...] = 6
         elif stem == "residue_index":
             data = _distributed_residue_index(n_atoms, n_residues)
+        elif stem == "ring_pair_geometry" and rows:
+            data[:, :2] = np.asarray(
+                [(a, b) for a in range(n_aromatic_rings)
+                        for b in range(a + 1, n_aromatic_rings)],
+                dtype=np.float64)
 
         np.save(out_dir / f"{stem}.npy", data)
 
@@ -236,6 +247,7 @@ def write_minimal_topology_sidecar(
             "aromatic_ring": n_aromatic_rings,
             "saturated_ring": n_saturated_rings,
             "ring": n_aromatic_rings + n_saturated_rings,
+            "ring_pair": n_aromatic_rings * (n_aromatic_rings - 1) // 2,
             "ring_membership": 0,
         },
         "axis_alignment": {

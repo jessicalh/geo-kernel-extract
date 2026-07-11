@@ -6,6 +6,7 @@
 #include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
 #include "GeometryChoice.h"
+#include "RingNeighbourGeometry.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -70,18 +71,12 @@ static double DispersionSwitchingFunction(double r) {
 // or emitted.
 // ============================================================================
 
-struct DispVertexResult {
-    double scalar = 0.0;
-    bool valid = false;
-};
+namespace dispersion_detail {
 
+VertexResult ComputeVertex(double r) {
 
-static DispVertexResult ComputeDispVertex(
-        const Vec3& atom_pos,
-        const Vec3& vertex_pos,
-        double r) {
-
-    DispVertexResult result;
+    VertexResult result;
+    result.distance = r;
 
     // singularity guard: skip coincident / near-coincident points
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
@@ -99,6 +94,20 @@ static DispVertexResult ComputeDispVertex(
     result.valid = true;
     return result;
 }
+
+
+std::vector<VertexResult> ComputeRingVertices(
+        const Vec3& atom_pos,
+        const RingGeometry& geom) {
+    std::vector<VertexResult> results;
+    results.reserve(geom.vertices.size());
+    for (const Vec3& vertex : geom.vertices) {
+        results.push_back(ComputeVertex((atom_pos - vertex).norm()));
+    }
+    return results;
+}
+
+}  // namespace dispersion_detail
 
 
 // ============================================================================
@@ -152,15 +161,8 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
         return result_ptr;
     }
 
-    // Ring near-field filter (DipolarNearFieldFilter, source_extent = ring
-    // diameter): the discrete vertex sum is invalid when the field point is
-    // inside the ring.
-    KernelFilterSet filters;
-    filters.Add(std::make_unique<DipolarNearFieldFilter>());
-
     OperationLog::Info(LogCalcOther, "DispersionResult::Compute",
-        "filter set: " + filters.Describe() +
-        " | vertex range: [MIN_DISTANCE=" + std::to_string(CalculatorConfig::Get("singularity_guard_distance")) +
+        "vertex range: [MIN_DISTANCE=" + std::to_string(CalculatorConfig::Get("singularity_guard_distance")) +
         ", R_CUT=" + std::to_string(CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) +
         "] A, switch onset=" + std::to_string(CalculatorConfig::Get("dispersion_switching_onset_distance")) + " A" +
         " | through-bond vertex exclusion: yes");
@@ -190,24 +192,6 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
             if (geom.vertices.empty()) continue;
 
             double dist_to_center = (atom_pos - geom.center).norm();
-
-            // Ring-level filter
-            KernelEvaluationContext ctx;
-            ctx.distance = dist_to_center;
-            ctx.source_extent = 2.0 * geom.radius;  // ring diameter (A)
-            ctx.atom_index = ai;
-            // reject near-field atom
-            if (!filters.AcceptAll(ctx)) {
-                choices.Record(CalculatorId::Dispersion, ri, "near-field exclusion",
-                    [&](GeometryChoice& gc) {
-                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
-                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
-                                filters.LastRejectorName());
-                        AddNumber(gc, "distance", dist_to_center, "A");
-                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
-                    });
-                continue;
-            }
 
             // reject bonded atom: skip this ring entirely if the field atom is
             // bonded to any vertex (part of, or immediately adjacent to, the
@@ -239,11 +223,11 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
             double s_ring = 0.0;
             int contacts = 0;
 
-            for (size_t vi = 0; vi < ring.atom_indices.size(); ++vi) {
-                Vec3 vpos = geom.vertices[vi];
-                double r = (atom_pos - vpos).norm();
-
-                DispVertexResult vertex_result = ComputeDispVertex(atom_pos, vpos, r);
+            const std::vector<dispersion_detail::VertexResult>
+                vertex_results =
+                    dispersion_detail::ComputeRingVertices(atom_pos, geom);
+            for (const auto& vertex_result : vertex_results) {
+                const double r = vertex_result.distance;
                 if (!vertex_result.valid) {
                     // switching floor: vertex tapered below noise floor
                     if (r > CalculatorConfig::Get("dispersion_switching_onset_distance") && r < CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) {
@@ -264,33 +248,9 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
 
             if (contacts == 0) continue;
 
-            // locate or create the ring-neighbourhood record
-            RingNeighbourhood* ring_neighbour = nullptr;
-            for (auto& existing : ca.ring_neighbours) {
-                if (existing.ring_index == ri) {
-                    ring_neighbour = &existing;
-                    break;
-                }
-            }
-            if (!ring_neighbour) {
-                RingNeighbourhood new_rn;
-                new_rn.ring_index = ri;
-                new_rn.ring_type = ring.type_index;
-                new_rn.distance_to_center = dist_to_center;
-                Vec3 center_to_atom = atom_pos - geom.center;
-                if (center_to_atom.norm() > CalculatorConfig::Get("near_zero_vector_norm_threshold"))
-                    new_rn.direction_to_center = center_to_atom.normalized();
-
-                // ring-frame coordinates (z along normal, rho in plane, theta polar)
-                double z = center_to_atom.dot(geom.normal);
-                Vec3 d_plane = center_to_atom - z * geom.normal;
-                new_rn.z = z;
-                new_rn.rho = d_plane.norm();
-                new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));
-
-                ca.ring_neighbours.push_back(new_rn);
-                ring_neighbour = &ca.ring_neighbours.back();
-            }
+            RingNeighbourhood& ring_neighbour_ref =
+                EnsureRingNeighbourGeometry(ca, geom, ring, ri, atom_pos);
+            RingNeighbourhood* ring_neighbour = &ring_neighbour_ref;
 
             // Store only the clean scalar/contact rescue.
             ring_neighbour->disp_scalar = s_ring;
@@ -311,7 +271,6 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
         "atom_ring_pairs=" + std::to_string(total_pairs) +
         " vertex_contacts=" + std::to_string(total_contacts) +
         " bonded_exclusions=" + std::to_string(bonded_exclusions) +
-        " rejected={" + filters.ReportRejections() + "}" +
         " atoms=" + std::to_string(n_atoms) +
         " rings=" + std::to_string(n_rings));
 

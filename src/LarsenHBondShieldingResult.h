@@ -54,6 +54,7 @@
 #include "Types.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -139,8 +140,17 @@ public:
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;
 
-    // ── Per-pair diagnostic record (kept on the result for future
-    // ── per-pair NPY emission and adversarial review).
+    enum class PairDisposition : std::uint8_t {
+        MissingFrameAtoms = 0,
+        ThetaOutOfRange = 1,
+        GridMiss = 2,
+        Success = 3,
+    };
+
+    // Per-pair raw diagnostic record. One row is retained for every
+    // processed donor/acceptor candidate after typed acceptor
+    // classification (including explicit misses), then emitted in split
+    // integer/geometry/isotropic arrays by WriteFeatures.
     struct PairRecord {
         std::size_t        donor_atom_idx = 0;   // donor H atom
         std::size_t        acceptor_atom_idx = 0;  // acceptor O atom
@@ -148,11 +158,40 @@ public:
         std::size_t        acceptor_residue_idx = 0;
         HBondDonorClass    donor_class    = HBondDonorClass::AmideHydrogen;
         HBondAcceptorClass acceptor_class = HBondAcceptorClass::BackboneCarbonyl;
-        double             r_angstrom = 0.0;
-        double             theta_deg  = 0.0;
-        double             rho_deg    = 0.0;
-        double             isotropic_total = 0.0;
+        PairDisposition    disposition = PairDisposition::MissingFrameAtoms;
+
+        std::size_t donor_anchor_atom_idx = SIZE_MAX;
+        std::size_t donor_third_atom_idx = SIZE_MAX;
+        std::size_t acceptor_C_atom_idx = SIZE_MAX;
+        std::size_t acceptor_third_atom_idx = SIZE_MAX;
+
+        double r_angstrom = std::numeric_limits<double>::quiet_NaN();
+        double theta_deg  = std::numeric_limits<double>::quiet_NaN();
+        double rho_deg    = std::numeric_limits<double>::quiet_NaN();
+        bool frame_valid = false;
+
+        std::uint32_t target_mask_1pHB = 0;
+        std::uint32_t target_mask_2pHB = 0;
+        std::uint32_t target_mask_1pHaB = 0;
+        std::uint32_t target_mask_2pHaB = 0;
+        std::uint32_t target_mask_diagnostic_CB = 0;
+
+        double iso_1pHB = std::numeric_limits<double>::quiet_NaN();
+        double iso_2pHB = std::numeric_limits<double>::quiet_NaN();
+        double iso_1pHaB = std::numeric_limits<double>::quiet_NaN();
+        double iso_2pHaB = std::numeric_limits<double>::quiet_NaN();
+        double iso_diagnostic_CB =
+            std::numeric_limits<double>::quiet_NaN();
+        double iso_table2_total =
+            std::numeric_limits<double>::quiet_NaN();
+
+        // Backward C++ diagnostic name, now corrected to the exact
+        // Table-2 total instead of donor_HN as a proxy.
+        double isotropic_total =
+            std::numeric_limits<double>::quiet_NaN();
+
         bool               any_corner_imputed = false;
+        int                imputed_corner_count = 0;
     };
     const std::vector<PairRecord>& Pairs() const { return pairs_; }
 
@@ -168,7 +207,7 @@ public:
     // Δσ_w = 2.07 ppm term — gated on "ZERO geometric H-bond
     // candidates found." A grid-skipped pair does NOT trigger spurious
     // water-term assignment.
-    int    PairsFound()             const { return static_cast<int>(pairs_.size()); }
+    int    PairsFound()             const { return successful_pairs_; }
     int    PairsGridSkipped()       const { return pairs_grid_skipped_; }
     int    AtomsWithContribution()  const { return atoms_with_contribution_; }
     int    AmideHsUnboundWithWater() const { return amide_hs_unbound_; }
@@ -177,10 +216,32 @@ private:
     const ProteinConformation* conf_ = nullptr;
 
     std::vector<PairRecord> pairs_;
+    std::vector<std::int32_t> imputed_pair_count_by_atom_;
+    std::vector<std::int32_t> sidechain_carbonyl_pair_count_by_atom_;
+    int successful_pairs_ = 0;
     int atoms_with_contribution_ = 0;
     int amide_hs_unbound_ = 0;
     int pairs_grid_skipped_ = 0;
 };
+
+
+// Production-linked audit helpers. They are intentionally local to this
+// result's named namespace (not a shared tensor utility): Compute calls these
+// at the exact sites where a tensor is added to an atom, and forcing tests can
+// therefore pin the production accounting directly.
+namespace larsen_hbond_shielding_detail {
+
+void RecordTable2Contribution(
+    LarsenHBondShieldingResult::PairRecord& pair,
+    LarsenContribDispatch::TargetAtom target,
+    LarsenContribDispatch::Term term,
+    const Mat3& contribution_lab);
+
+void RecordDiagnosticCbContribution(
+    LarsenHBondShieldingResult::PairRecord& pair,
+    const Mat3& contribution_lab);
+
+}  // namespace larsen_hbond_shielding_detail
 
 
 }  // namespace nmr

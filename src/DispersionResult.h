@@ -17,6 +17,7 @@
 //
 
 #include "ConformationResult.h"
+#include "Ring.h"
 #include "Types.h"
 
 #include <vector>
@@ -25,6 +26,24 @@
 namespace nmr {
 
 class ProteinConformation;
+
+namespace dispersion_detail {
+
+struct VertexResult {
+    double scalar = 0.0;
+    double distance = 0.0;
+    bool valid = false;
+};
+
+VertexResult ComputeVertex(double distance);
+
+// Exact production per-vertex evaluation for a finite ring.  In particular,
+// it intentionally has no center-distance exclusion.
+std::vector<VertexResult> ComputeRingVertices(
+    const Vec3& atom_pos,
+    const RingGeometry& geom);
+
+}  // namespace dispersion_detail
 
 class DispersionResult : public ConformationResult {
 public:

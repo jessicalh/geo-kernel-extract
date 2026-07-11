@@ -6,11 +6,14 @@
 #include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
 #include "GeometryChoice.h"
+#include "RingNeighbourGeometry.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
+#include <algorithm>
 #include <cmath>
 #include <array>
+#include <limits>
 #include <set>
 
 namespace nmr {
@@ -156,7 +159,103 @@ static void AccumulateAdaptiveTriangleIntegral(
 // Returns H_ab (symmetric, traceless, units Angstrom^-1).
 // ============================================================================
 
-static Mat3 ComputeSurfaceIntegralH(
+namespace haigh_mallion_detail {
+
+namespace {
+
+double PointToSegmentDistance(const Vec3& point,
+                              const Vec3& segment_a,
+                              const Vec3& segment_b) {
+    const Vec3 segment = segment_b - segment_a;
+    const double length_sq = segment.squaredNorm();
+    if (length_sq <= std::numeric_limits<double>::epsilon()) {
+        return (point - segment_a).norm();
+    }
+    const double t = std::clamp(
+        (point - segment_a).dot(segment) / length_sq, 0.0, 1.0);
+    return (point - (segment_a + t * segment)).norm();
+}
+
+}  // namespace
+
+
+double PointToTriangleDistance(const Vec3& point,
+                               const Vec3& triangle_a,
+                               const Vec3& triangle_b,
+                               const Vec3& triangle_c) {
+    const Vec3 ab = triangle_b - triangle_a;
+    const Vec3 ac = triangle_c - triangle_a;
+
+    // Degenerate fan triangles do not define a surface.  Their segment
+    // boundary still gives a finite, conservative distance.
+    if (ab.cross(ac).squaredNorm() <=
+        std::numeric_limits<double>::epsilon()) {
+        return std::min({
+            PointToSegmentDistance(point, triangle_a, triangle_b),
+            PointToSegmentDistance(point, triangle_b, triangle_c),
+            PointToSegmentDistance(point, triangle_c, triangle_a)});
+    }
+
+    const Vec3 ap = point - triangle_a;
+    const double d1 = ab.dot(ap);
+    const double d2 = ac.dot(ap);
+    if (d1 <= 0.0 && d2 <= 0.0) return ap.norm();
+
+    const Vec3 bp = point - triangle_b;
+    const double d3 = ab.dot(bp);
+    const double d4 = ac.dot(bp);
+    if (d3 >= 0.0 && d4 <= d3) return bp.norm();
+
+    const double vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0) {
+        const double v = d1 / (d1 - d3);
+        return (point - (triangle_a + v * ab)).norm();
+    }
+
+    const Vec3 cp = point - triangle_c;
+    const double d5 = ab.dot(cp);
+    const double d6 = ac.dot(cp);
+    if (d6 >= 0.0 && d5 <= d6) return cp.norm();
+
+    const double vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0) {
+        const double w = d2 / (d2 - d6);
+        return (point - (triangle_a + w * ac)).norm();
+    }
+
+    const double va = d3 * d6 - d5 * d4;
+    if (va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0) {
+        const Vec3 bc = triangle_c - triangle_b;
+        const double w = (d4 - d3) /
+                         ((d4 - d3) + (d5 - d6));
+        return (point - (triangle_b + w * bc)).norm();
+    }
+
+    const double denom = 1.0 / (va + vb + vc);
+    const double v = vb * denom;
+    const double w = vc * denom;
+    const Vec3 closest = triangle_a + v * ab + w * ac;
+    return (point - closest).norm();
+}
+
+
+double MinimumDistanceToFanSurface(const Vec3& point,
+                                   const RingGeometry& geom) {
+    if (geom.vertices.size() < 3) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    double minimum = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < geom.vertices.size(); ++i) {
+        const size_t j = (i + 1) % geom.vertices.size();
+        minimum = std::min(minimum, PointToTriangleDistance(
+            point, geom.center, geom.vertices[i], geom.vertices[j]));
+    }
+    return minimum;
+}
+
+
+Mat3 ComputeSurfaceIntegralH(
         const Vec3& point,
         const RingGeometry& geom) {
 
@@ -175,6 +274,13 @@ static Mat3 ComputeSurfaceIntegralH(
 
     return H;
 }
+
+
+bool ContributesToCanonicalTotals(RingTypeIndex ring_type) {
+    return ring_type != RingTypeIndex::TrpPerimeter;
+}
+
+}  // namespace haigh_mallion_detail
 
 
 // ============================================================================
@@ -209,11 +315,9 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
         return result_ptr;
     }
 
-    // Filter set: DipolarNearFieldFilter with source_extent = ring diameter,
-    // plus RingBondedExclusionFilter for topological exclusion.
+    // Topological exclusion is separate from the finite-surface singularity
+    // guard applied against the actual fan triangles below.
     KernelFilterSet filters;
-    filters.Add(std::make_unique<MinDistanceFilter>());
-    filters.Add(std::make_unique<DipolarNearFieldFilter>());
     filters.Add(std::make_unique<RingBondedExclusionFilter>(protein));
 
     OperationLog::Info(LogCalcHaighMal, "HaighMallionResult::Compute",
@@ -247,15 +351,38 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
 
             double distance = (atom_pos - geom.center).norm();
 
-            // near-field / bonded pair filters
+            const double minimum_surface_distance =
+                haigh_mallion_detail::MinimumDistanceToFanSurface(
+                    atom_pos, geom);
+            const double surface_guard =
+                CalculatorConfig::Get("singularity_guard_distance");
+            if (minimum_surface_distance <= surface_guard) {
+                choices.Record(CalculatorId::HaighMallion, ri,
+                    "surface singularity exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source,
+                                EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target,
+                                EntityOutcome::Excluded,
+                                "fan_surface_distance_guard");
+                        AddNumber(gc, "minimum_surface_distance",
+                                  minimum_surface_distance, "A");
+                        AddNumber(gc, "surface_distance_guard",
+                                  surface_guard, "A");
+                    });
+                continue;
+            }
+
+            // Through-bond topology filter.  The surface kernel has no
+            // center-distance source extent.
             KernelEvaluationContext ctx;
             ctx.distance = distance;
-            ctx.source_extent = 2.0 * geom.radius;
+            ctx.source_extent = 0.0;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
                 // ---- GeometryChoice: near-field exclusion ----
-                choices.Record(CalculatorId::HaighMallion, ri, "near-field exclusion",
+                choices.Record(CalculatorId::HaighMallion, ri, "topology exclusion",
                     [&](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
                         AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
@@ -280,7 +407,8 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
 
             // --- physics ---
             // Step 1: Raw surface integral H_ab (symmetric, traceless, A^-1)
-            Mat3 H = ComputeSurfaceIntegralH(atom_pos, geom);
+            Mat3 H = haigh_mallion_detail::ComputeSurfaceIntegralH(
+                atom_pos, geom);
 
             // Step 2: Effective B-field V = H . n
             Vec3 effective_field = H * geom.normal;
@@ -295,35 +423,9 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
                 for (int b = 0; b < 3; ++b)
                     G(a, b) = -geom.normal(b) * effective_field(a);
 
-            // locate or create the per-ring record for this atom
-            RingNeighbourhood* rn = nullptr;
-            for (auto& existing : ca.ring_neighbours) {
-                if (existing.ring_index == ri) {
-                    rn = &existing;
-                    break;
-                }
-            }
-            if (!rn) {
-                RingNeighbourhood new_rn;
-                new_rn.ring_index = ri;
-                new_rn.ring_type = ring.type_index;
-                new_rn.distance_to_center = distance;
-
-                // ring-frame coordinates: z along normal, theta unsigned (folds both faces)
-                Vec3 atom_from_center = atom_pos - geom.center;
-                new_rn.direction_to_center = atom_from_center.normalized();
-
-                double z = atom_from_center.dot(geom.normal);
-                Vec3 d_plane = atom_from_center - z * geom.normal;
-                double in_plane_radius = d_plane.norm();
-                double theta = std::atan2(in_plane_radius, std::abs(z));
-                new_rn.z = z;
-                new_rn.rho = in_plane_radius;
-                new_rn.theta = theta;
-
-                ca.ring_neighbours.push_back(new_rn);
-                rn = &ca.ring_neighbours.back();
-            }
+            RingNeighbourhood& rn_ref = EnsureRingNeighbourGeometry(
+                ca, geom, ring, ri, atom_pos);
+            RingNeighbourhood* rn = &rn_ref;
 
             // Store HM results on RingNeighbourhood
             // raw surface integral H
@@ -334,18 +436,18 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             rn->hm_G_tensor = G;                                  // full shielding kernel (rank-1)
             rn->hm_G_spherical = SphericalTensor::Decompose(G);   // Decompose(G): T0, T1, T2
 
-            // Accumulate the full shielding kernel G
-            G_total += G;
+            if (haigh_mallion_detail::ContributesToCanonicalTotals(
+                    ring.type_index)) {
+                G_total += G;
 
-            // Per-type T0, T1 and T2 sums (from the stored shielding kernel G)
-            int ti = ring.TypeIndexAsInt();
-            // aromatic ring types only (index 8 = saturated Pro; see kAromaticRingTypeCount)
-            if (ti >= 0 && ti < 8) {
-                ca.per_type_hm_T0_sum[ti] += rn->hm_G_spherical.T0;
-                for (int c = 0; c < 3; ++c)
-                    ca.per_type_hm_T1_sum[ti][c] += rn->hm_G_spherical.T1[c];
-                for (int c = 0; c < 5; ++c)
-                    ca.per_type_hm_T2_sum[ti][c] += rn->hm_G_spherical.T2[c];
+                const int ti = ring.TypeIndexAsInt();
+                if (ti >= 0 && ti < kAromaticRingTypeCount) {
+                    ca.per_type_hm_T0_sum[ti] += rn->hm_G_spherical.T0;
+                    for (int c = 0; c < 3; ++c)
+                        ca.per_type_hm_T1_sum[ti][c] += rn->hm_G_spherical.T1[c];
+                    for (int c = 0; c < 5; ++c)
+                        ca.per_type_hm_T2_sum[ti][c] += rn->hm_G_spherical.T2[c];
+                }
             }
 
             total_pairs++;
@@ -378,15 +480,18 @@ SphericalTensor HaighMallionResult::SampleKernelAt(Vec3 point) const {
     Mat3 G_total = Mat3::Zero();
 
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
+        const Ring& ring = protein.RingAt(ri);
+        if (!haigh_mallion_detail::ContributesToCanonicalTotals(
+                ring.type_index)) continue;
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
         double distance = (point - geom.center).norm();
-        if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
-        if (distance < geom.radius) continue;
         if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
+        if (haigh_mallion_detail::MinimumDistanceToFanSurface(point, geom)
+            <= CalculatorConfig::Get("singularity_guard_distance")) continue;
 
-        Mat3 H = ComputeSurfaceIntegralH(point, geom);
+        Mat3 H = haigh_mallion_detail::ComputeSurfaceIntegralH(point, geom);
         Vec3 effective_field = H * geom.normal;
 
         // outer product -> rank-1 shielding kernel: G_ab = -n_b * V_a

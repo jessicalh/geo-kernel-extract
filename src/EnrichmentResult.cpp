@@ -1,5 +1,6 @@
 #include "EnrichmentResult.h"
 #include "Protein.h"
+#include "LegacyAmberTopology.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 #include <cstdint>
@@ -243,6 +244,19 @@ int EnrichmentResult::WriteFeatures(const ProteinConformation& conf,
     std::vector<int32_t> hybridisation(N, 0);
     constexpr size_t kFlagCols = 8;
     std::vector<int8_t> flags(N * kFlagCols, 0);
+    std::vector<uint8_t> parent_is_sp2(N, 0);
+    std::vector<uint8_t> polar_h_kind(N, 0);
+    std::vector<uint8_t> planar_group_kind(N, 0);
+    std::vector<int8_t> formal_charge(N, 0);
+    std::vector<uint8_t> ring_position(N, 0);
+    std::vector<uint8_t> locant(N, 0);
+    std::vector<uint8_t> donor_class(N, 0);
+    std::vector<uint8_t> acceptor_class(N, 0);
+    std::vector<uint8_t> hybridisation_class(N, 3);  // 3=unassigned
+
+    const Protein& protein = conf.ProteinRef();
+    const LegacyAmberTopology& topology = protein.LegacyAmber();
+    const bool has_semantics = topology.HasAtomSemantic();
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
@@ -256,6 +270,61 @@ int EnrichmentResult::WriteFeatures(const ProteinConformation& conf,
         flags[i*kFlagCols + 5] = ca.is_hbond_donor ? 1 : 0;
         flags[i*kFlagCols + 6] = ca.is_hbond_acceptor ? 1 : 0;
         flags[i*kFlagCols + 7] = ca.is_on_aromatic_residue ? 1 : 0;
+        parent_is_sp2[i] = ca.parent_is_sp2 ? 1 : 0;
+
+        if (!has_semantics) continue;
+        const AtomSemanticTable& sem = topology.SemanticAt(i);
+        polar_h_kind[i] = static_cast<uint8_t>(sem.polar_h);
+        planar_group_kind[i] = static_cast<uint8_t>(sem.planar_group);
+        formal_charge[i] = sem.formal_charge;
+        // The frozen one-byte ring-position projection is the canonical
+        // primary slot, matching CategoryInfoProjection.  Secondary and
+        // tertiary memberships remain losslessly available in category-info.
+        ring_position[i] =
+            static_cast<uint8_t>(sem.ring_position.primary.position);
+        locant[i] = static_cast<uint8_t>(sem.locant);
+
+        // Donor class is the typed PolarHKind itself: zero is not a donor;
+        // non-zero values retain the chemically specific donor taxonomy.
+        donor_class[i] = static_cast<uint8_t>(sem.polar_h);
+
+        // Acceptor convenience projection (0 none, 1 backbone carbonyl,
+        // 2 sidechain amide carbonyl, 3 carboxylate, 4 hydroxyl/oxide,
+        // 5 unprotonated ring N, 6 neutral other N/O/S).
+        if (sem.formal_charge <= 0) {
+            if (sem.IsBackboneCarbonylOxygen()) {
+                acceptor_class[i] = 1;
+            } else if (sem.IsSidechainAmideOxygen()) {
+                acceptor_class[i] = 2;
+            } else if (sem.IsSidechainCarboxylateOxygen()) {
+                acceptor_class[i] = 3;
+            } else if (sem.element == Element::O &&
+                       (sem.planar_group == PlanarGroupKind::AromaticHydroxyl ||
+                        sem.planar_group == PlanarGroupKind::AromaticOxide ||
+                        sem.planar_group == PlanarGroupKind::None)) {
+                acceptor_class[i] = 4;
+            } else if (sem.element == Element::N &&
+                       sem.ring_position.primary.position ==
+                           RingPositionLabel::Heteroatom_NoH) {
+                acceptor_class[i] = 5;
+            } else if ((sem.element == Element::N &&
+                        sem.planar_group == PlanarGroupKind::None) ||
+                       sem.element == Element::S) {
+                acceptor_class[i] = 6;
+            }
+        }
+
+        // Hybridisation convenience projection (0 sp, 1 sp2, 2 sp3,
+        // 3 unassigned), preserving the existing Hybridisation numbering.
+        if (sem.element != Element::H && sem.element != Element::Unknown) {
+            const bool semantic_sp2 = sem.aromatic ||
+                sem.planar_group != PlanarGroupKind::None ||
+                (sem.ring_position.primary.IsPopulated() &&
+                 sem.ring_position.primary.planar);
+            hybridisation_class[i] = semantic_sp2
+                ? static_cast<uint8_t>(Hybridisation::sp2)
+                : static_cast<uint8_t>(Hybridisation::sp3);
+        }
     }
 
     int written = 0;
@@ -265,6 +334,25 @@ int EnrichmentResult::WriteFeatures(const ProteinConformation& conf,
                               hybridisation.data(), N)) ++written;
     if (NpyWriter::WriteInt8(output_dir + "/enrichment_flags.npy",
                              flags.data(), N, kFlagCols)) ++written;
+    if (NpyWriter::WriteUInt8(output_dir + "/enrichment_parent_is_sp2.npy",
+                              parent_is_sp2.data(), N)) ++written;
+    if (NpyWriter::WriteUInt8(output_dir + "/semantic_polar_h_kind.npy",
+                              polar_h_kind.data(), N)) ++written;
+    if (NpyWriter::WriteUInt8(output_dir + "/semantic_planar_group_kind.npy",
+                              planar_group_kind.data(), N)) ++written;
+    if (NpyWriter::WriteInt8(output_dir + "/semantic_formal_charge.npy",
+                             formal_charge.data(), N)) ++written;
+    if (NpyWriter::WriteUInt8(output_dir + "/semantic_ring_position.npy",
+                              ring_position.data(), N)) ++written;
+    if (NpyWriter::WriteUInt8(output_dir + "/semantic_locant.npy",
+                              locant.data(), N)) ++written;
+    if (NpyWriter::WriteUInt8(output_dir + "/enrichment_donor_class.npy",
+                              donor_class.data(), N)) ++written;
+    if (NpyWriter::WriteUInt8(output_dir + "/enrichment_acceptor_class.npy",
+                              acceptor_class.data(), N)) ++written;
+    if (NpyWriter::WriteUInt8(
+            output_dir + "/enrichment_hybridisation_class.npy",
+            hybridisation_class.data(), N)) ++written;
     return written;
 }
 

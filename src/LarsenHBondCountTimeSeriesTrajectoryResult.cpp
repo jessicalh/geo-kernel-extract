@@ -12,6 +12,7 @@
 
 #include <limits>
 #include <typeinfo>
+#include <cstdint>
 
 namespace nmr {
 
@@ -129,6 +130,12 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_atoms",     N);
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
+    grp.createAttribute("source_attached_count",
+        static_cast<std::uint64_t>(source_present_count));
+    grp.createAttribute("source_attached_policy",
+        std::string("conditional_larsen_grid_source"));
+    grp.createAttribute("atom_axis", std::string("protein_atom_index"));
+    grp.createAttribute("frame_axis", std::string("trajectory_frame_row"));
 
     grp.createAttribute("units", std::string("pairs"));
     grp.createAttribute("dtype", std::string("int32"));

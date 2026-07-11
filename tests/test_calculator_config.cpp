@@ -17,6 +17,18 @@ TEST(CalculatorConfig, DefaultsMatchRingIntensities) {
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hid_imidazole_ring_current_intensity"),        -5.16);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hie_imidazole_ring_current_intensity"),        -5.16);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("trp_indole_perimeter_ring_current_intensity"), -19.2);
+
+    const auto resolved = CalculatorConfig::GetResolved(
+        "phe_benzene_ring_current_intensity");
+    EXPECT_DOUBLE_EQ(resolved.value, -12.0);
+    EXPECT_EQ(resolved.unit, "nA/T");
+    EXPECT_EQ(resolved.source, "toml");
+    EXPECT_NE(resolved.description.find("PHE benzene"), std::string::npos);
+
+    const auto compiled_only = CalculatorConfig::GetResolved(
+        "charge_conditioning_neutral");
+    EXPECT_DOUBLE_EQ(compiled_only.value, 0.0);
+    EXPECT_EQ(compiled_only.source, "default");
 }
 
 TEST(CalculatorConfig, DefaultsMatchRingLobeOffsets) {
@@ -104,6 +116,12 @@ TEST(CalculatorConfig, TomlRoundTrip) {
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("biot_savart_wire_axis_guard"), 1e-70);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("apbs_manual_grid_padding_A"), 70.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("apbs_manual_grid_min_dim_A"), 70.0);
+
+    const auto resolved = CalculatorConfig::GetResolved(
+        "trp_indole_perimeter_jb_lobe_offset");
+    EXPECT_DOUBLE_EQ(resolved.value, 0.60);
+    EXPECT_EQ(resolved.unit, "A");
+    EXPECT_EQ(resolved.source, "toml");
 
     // Validate should find no unknown keys
     auto unknown = CalculatorConfig::Validate();

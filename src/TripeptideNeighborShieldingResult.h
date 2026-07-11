@@ -77,10 +77,12 @@
 //
 
 #include "ConformationResult.h"
-#include "Types.h"
 #include "TripeptideDftTable.h"
+#include "Types.h"
 
+#include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -93,35 +95,59 @@ class ProteinConformation;
 
 class TripeptideNeighborShieldingResult : public ConformationResult {
 public:
-    std::string Name() const override {
-        return "TripeptideNeighborShieldingResult";
-    }
+    std::string Name() const override { return "TripeptideNeighborShieldingResult"; }
 
     std::vector<std::type_index> Dependencies() const override;
 
-    static std::unique_ptr<TripeptideNeighborShieldingResult> Compute(
-        ProteinConformation& conf,
-        const TripeptideDftTable& table);
+    static std::unique_ptr<TripeptideNeighborShieldingResult>
+    Compute(ProteinConformation& conf, const TripeptideDftTable& table);
 
-    int WriteFeatures(const ProteinConformation& conf,
-                      const std::string& output_dir) const override;
+    int WriteFeatures(const ProteinConformation& conf, const std::string& output_dir) const override;
 
-    // Per-residue diagnostics (length = ResidueCount()).
+    // One direction's complete residue-level fallback/censor record.
+    struct SideMatch {
+        TripeptideMatchStatus status = TripeptideMatchStatus::Miss;
+        int calc_id = 0;
+        int neighbor_residue_index = -1;
+        int neighbor_residue_type_code = 0;
+        double backbone_rmsd = std::numeric_limits<double>::quiet_NaN();
+        std::string frame_type;
+        int n_atoms_matched = 0;
+        int natural_chi_axes = 0;
+        int n_chi_axes_used = 0;
+        double dropped_chi_distance_deg = std::numeric_limits<double>::quiet_NaN();
+        double phi_actual = std::numeric_limits<double>::quiet_NaN();
+        double psi_actual = std::numeric_limits<double>::quiet_NaN();
+        double chi_actual[4] = {std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::quiet_NaN()};
+        int target_phi_grid = 0, target_psi_grid = 0;
+        int target_chi_grid[4] = {0, 0, 0, 0};
+        int phi_db = 0, psi_db = 0;
+        int chi_db[4] = {0, 0, 0, 0};
+        // Frozen output code: 0=not HIS/unavailable, 1=HIP, 2=HID, 3=HIE.
+        int his_variant_hint = 0;
+    };
+
+    // Per-central-residue diagnostics (length = ResidueCount()).
     struct ResidueMatch {
-        // i-1 contribution
-        int    prev_calc_id        = 0;       // 0 = miss
-        double prev_backbone_rmsd  = 0.0;     // Å
+        SideMatch prev;
+        SideMatch next;
+
+        // Compatibility mirrors retained for existing C++ callers. The
+        // canonical diagnostic owner is `prev`/`next`; Compute refreshes
+        // these mirrors once after both directions finish.
+        int prev_calc_id = 0;
+        double prev_backbone_rmsd = 0.0;
         std::string prev_frame_type;
         int    prev_n_atoms_matched = 0;
-        // i+1 contribution
         int    next_calc_id        = 0;
         double next_backbone_rmsd  = 0.0;
         std::string next_frame_type;
         int    next_n_atoms_matched = 0;
     };
-    const std::vector<ResidueMatch>& ResidueMatches() const {
-        return residue_matches_;
-    }
+    const std::vector<ResidueMatch>& ResidueMatches() const { return residue_matches_; }
 
     int ResiduesWithAnyNeighbor() const { return residues_any_; }
     int AtomsAccumulated()        const { return atoms_accumulated_; }

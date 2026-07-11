@@ -1497,6 +1497,55 @@ class DihedralTimeSeriesGroup:
 
 
 @dataclass(frozen=True)
+class LocalBackboneGeometryGroup:
+    """Residue-local backbone valence geometry timelines from
+    ``/trajectory/local_backbone_geometry``.
+
+    Every time-dependent array uses the dispatched-frame axis ``T`` from
+    the extractor's single trajectory window/stride policy. Angles are in
+    radians. ``cb_local_vector`` is the global-Cartesian residual
+    ``observed_CB - ideal_CB`` in Angstrom, and its norm is exactly
+    ``cb_deviation`` wherever finite. Both share the same NaN gate when an
+    N/CA/C/CB atom is absent or the N-CA-C frame is degenerate.
+
+    ``has_prev_C`` and ``has_next_N`` come from the typed peptide-bond graph
+    (``Protein::BackbonePredecessor`` / ``BackboneSuccessor``), not residue
+    index arithmetic.
+    """
+    tau_N_CA_C: np.ndarray       # (R, T) float64 radians
+    angle_N_CA_CB: np.ndarray    # (R, T) float64 radians
+    angle_CB_CA_C: np.ndarray    # (R, T) float64 radians
+    angle_Cprev_N_CA: np.ndarray # (R, T) float64 radians
+    angle_CA_C_Nnext: np.ndarray # (R, T) float64 radians
+    cb_deviation: np.ndarray     # (R, T) float64 Angstrom
+    cb_local_vector: np.ndarray  # (R, T, 3) float64 global xyz Angstrom
+
+    has_N_CA_C: np.ndarray       # (R,) uint8
+    has_CB: np.ndarray           # (R,) uint8
+    has_prev_C: np.ndarray       # (R,) uint8
+    has_next_N: np.ndarray       # (R,) uint8
+    is_glycine: np.ndarray       # (R,) uint8
+    is_proline: np.ndarray       # (R,) uint8
+
+    frame_indices: np.ndarray              # (T,) uint
+    frame_times: np.ndarray                # (T,) float64 ps
+    source_attached_per_frame: np.ndarray  # (T,) uint8, always one
+    source_attached_count: int
+    n_residues: int
+    n_frames: int
+    finalized: bool
+
+    angle_units: str
+    length_units: str
+    residue_axis: str
+    source_attached_policy: str
+    adjacency_policy: str
+    ideal_cb_formula: str
+    cb_deviation_definition: str
+    cb_local_vector_definition: str
+
+
+@dataclass(frozen=True)
 class DihedralBinTransitionGroup:
     """Per-residue rotamer + Rama-region transition statistics from
     /trajectory/dihedral_bin_transition/. AV companion to
@@ -3169,6 +3218,110 @@ def _load_dihedral_bin_transition(f) -> Optional[DihedralBinTransitionGroup]:
     )
 
 
+@dataclass(frozen=True)
+class LarsenHBondTensorTimeSeries:
+    """One Larsen shielding-term timeline from an ``(N,T,9)`` group."""
+    xyz: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    source_attached_policy: str
+    atom_axis: str
+    frame_axis: str
+    irrep_layout: str
+
+
+@dataclass(frozen=True)
+class LarsenHBondScalarTimeSeries:
+    """One Larsen scalar/count timeline from an ``(N,T)`` group."""
+    values: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    source_attached_policy: str
+    atom_axis: str
+    frame_axis: str
+
+
+@dataclass(frozen=True)
+class LarsenHBondTrajectoryGroup:
+    """All six producer-owned Larsen H-bond trajectory timelines."""
+    hbond_1pHB: Optional[LarsenHBondTensorTimeSeries] = None
+    hbond_2pHB: Optional[LarsenHBondTensorTimeSeries] = None
+    hbond_1pHaB: Optional[LarsenHBondTensorTimeSeries] = None
+    hbond_2pHaB: Optional[LarsenHBondTensorTimeSeries] = None
+    water_term: Optional[LarsenHBondScalarTimeSeries] = None
+    count: Optional[LarsenHBondScalarTimeSeries] = None
+
+
+def _load_larsen_tensor_time_series(
+        f, path: str) -> Optional[LarsenHBondTensorTimeSeries]:
+    if path not in f:
+        return None
+    g = f[path]
+    mask = g["source_attached_per_frame"][:]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return LarsenHBondTensorTimeSeries(
+        xyz=g["xyz"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=mask,
+        source_attached_count=int(
+            g.attrs.get("source_attached_count", np.asarray(mask).sum())),
+        source_attached_policy=_attr("source_attached_policy"),
+        atom_axis=_attr("atom_axis"),
+        frame_axis=_attr("frame_axis"),
+        irrep_layout=_attr("irrep_layout"),
+    )
+
+
+def _load_larsen_scalar_time_series(
+        f, path: str, dataset: str) -> Optional[LarsenHBondScalarTimeSeries]:
+    if path not in f:
+        return None
+    g = f[path]
+    mask = g["source_attached_per_frame"][:]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return LarsenHBondScalarTimeSeries(
+        values=g[dataset][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=mask,
+        source_attached_count=int(
+            g.attrs.get("source_attached_count", np.asarray(mask).sum())),
+        source_attached_policy=_attr("source_attached_policy"),
+        atom_axis=_attr("atom_axis"),
+        frame_axis=_attr("frame_axis"),
+    )
+
+
+def _load_larsen_hbond_trajectory(
+        f) -> Optional[LarsenHBondTrajectoryGroup]:
+    group = LarsenHBondTrajectoryGroup(
+        hbond_1pHB=_load_larsen_tensor_time_series(
+            f, "/trajectory/larsen_hbond_1pHB_shielding_time_series"),
+        hbond_2pHB=_load_larsen_tensor_time_series(
+            f, "/trajectory/larsen_hbond_2pHB_shielding_time_series"),
+        hbond_1pHaB=_load_larsen_tensor_time_series(
+            f, "/trajectory/larsen_hbond_1pHaB_shielding_time_series"),
+        hbond_2pHaB=_load_larsen_tensor_time_series(
+            f, "/trajectory/larsen_hbond_2pHaB_shielding_time_series"),
+        water_term=_load_larsen_scalar_time_series(
+            f, "/trajectory/larsen_hbond_water_term_time_series",
+            "water_term"),
+        count=_load_larsen_scalar_time_series(
+            f, "/trajectory/larsen_hbond_count_time_series", "count"),
+    )
+    return group if any(value is not None for value in (
+        group.hbond_1pHB, group.hbond_2pHB,
+        group.hbond_1pHaB, group.hbond_2pHaB,
+        group.water_term, group.count)) else None
+
+
 def _load_selections(f) -> Dict[str, List[SelectionRecordPy]]:
     """Walk /trajectory/selections/<kind>/* and return dict
     kind_name -> [SelectionRecordPy, ...]. Empty dict if no selections
@@ -3329,6 +3482,50 @@ def _load_dihedral_time_series(f) -> Optional[DihedralTimeSeriesGroup]:
         residue_terminal_state_legend=_attr("residue_terminal_state_legend"),
         source_attached_policy=_attr("source_attached_policy"),
         chunking_policy=_attr("chunking_policy"),
+    )
+
+
+def _load_local_backbone_geometry(
+        f) -> Optional[LocalBackboneGeometryGroup]:
+    path = "/trajectory/local_backbone_geometry"
+    if path not in f:
+        return None
+    g = f[path]
+
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+
+    return LocalBackboneGeometryGroup(
+        tau_N_CA_C=g["tau_N_CA_C"][:],
+        angle_N_CA_CB=g["angle_N_CA_CB"][:],
+        angle_CB_CA_C=g["angle_CB_CA_C"][:],
+        angle_Cprev_N_CA=g["angle_Cprev_N_CA"][:],
+        angle_CA_C_Nnext=g["angle_CA_C_Nnext"][:],
+        cb_deviation=g["cb_deviation"][:],
+        cb_local_vector=g["cb_local_vector"][:],
+        has_N_CA_C=g["has_N_CA_C"][:],
+        has_CB=g["has_CB"][:],
+        has_prev_C=g["has_prev_C"][:],
+        has_next_N=g["has_next_N"][:],
+        is_glycine=g["is_glycine"][:],
+        is_proline=g["is_proline"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs.get(
+            "source_attached_count",
+            np.asarray(g["source_attached_per_frame"][:]).sum())),
+        n_residues=int(g.attrs.get("n_residues", g["tau_N_CA_C"].shape[0])),
+        n_frames=int(g.attrs.get("n_frames", g["tau_N_CA_C"].shape[1])),
+        finalized=bool(g.attrs.get("finalized", False)),
+        angle_units=_attr("angle_units"),
+        length_units=_attr("length_units"),
+        residue_axis=_attr("residue_axis"),
+        source_attached_policy=_attr("source_attached_policy"),
+        adjacency_policy=_attr("adjacency_policy"),
+        ideal_cb_formula=_attr("ideal_cb_formula"),
+        cb_deviation_definition=_attr("cb_deviation_definition"),
+        cb_local_vector_definition=_attr("cb_local_vector_definition"),
     )
 
 
@@ -3716,11 +3913,19 @@ class TrajectoryData:
     hydration_shell: HydrationShellAccess = field(
         default_factory=HydrationShellAccess)
 
+    # Larsen/ProCS15 four tensor terms plus water and pair-count timelines.
+    larsen_hbond: Optional[LarsenHBondTrajectoryGroup] = None
+
     # Per-residue dihedral timeline (first (R, T) TR — 2026-05-19).
     # None when the C++ TR didn't run for the extraction that produced
     # this trajectory.h5. Movie-target consumer: broadcasts to atom axis
     # via `dihedrals.residue_index_per_atom` at render time.
     dihedrals: Optional[DihedralTimeSeriesGroup] = None
+
+    # Residue-local valence angles and C-beta ideal-position residuals.
+    # H5 trajectory scope only; None when the A25 trajectory result did not
+    # run for this extraction.
+    local_backbone_geometry: Optional[LocalBackboneGeometryGroup] = None
 
     # Per-residue rotamer + Rama-region transition statistics (AV
     # companion to dihedrals; 2026-05-19).
@@ -3964,9 +4169,11 @@ def load_trajectory(path: str | Path,
             time_series=_load_hydration_shell_time_series(f),
             welford=_load_hydration_shell_welford(f),
         )
+        larsen_hbond = _load_larsen_hbond_trajectory(f)
 
         # Per-residue dihedral timeline (first (R, T) TR — 2026-05-19)
         dihedrals = _load_dihedral_time_series(f)
+        local_backbone_geometry = _load_local_backbone_geometry(f)
         dihedral_bin_transitions = _load_dihedral_bin_transition(f)
         dssp8 = Dssp8Access(
             time_series=_load_dssp8_time_series(f),
@@ -4019,7 +4226,9 @@ def load_trajectory(path: str | Path,
         water_field=water_field,
         hydration_geometry=hydration_geometry,
         hydration_shell=hydration_shell,
+        larsen_hbond=larsen_hbond,
         dihedrals=dihedrals,
+        local_backbone_geometry=local_backbone_geometry,
         dihedral_bin_transitions=dihedral_bin_transitions,
         dssp8=dssp8,
         ring_pucker=ring_pucker,

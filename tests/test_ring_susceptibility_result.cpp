@@ -1,12 +1,19 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 
 #include "RingSusceptibilityResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
+#include "CalculatorConfig.h"
 #include "Protein.h"
+#include "ProteinConformation.h"
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
 #include "PhysicalConstants.h"
@@ -15,11 +22,84 @@
 namespace fs = std::filesystem;
 using namespace nmr;
 
+namespace {
+
+struct NpyDoubleArray {
+    std::vector<size_t> shape;
+    std::vector<double> values;
+};
+
+std::string Trim(std::string value) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    value.erase(value.begin(),
+                std::find_if(value.begin(), value.end(),
+                             [&](char c) { return !is_space(c); }));
+    value.erase(std::find_if(value.rbegin(), value.rend(),
+                             [&](char c) { return !is_space(c); }).base(),
+                value.end());
+    return value;
+}
+
+NpyDoubleArray ReadFloat64Npy(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyDoubleArray out;
+    if (!in.is_open()) return out;
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    std::uint16_t header_length = 0;
+    in.read(reinterpret_cast<char*>(&header_length), sizeof(header_length));
+    std::string header(header_length, '\0');
+    in.read(header.data(), header_length);
+    const auto begin = header.find('(');
+    const auto end = header.find(')', begin);
+    EXPECT_NE(begin, std::string::npos);
+    EXPECT_NE(end, std::string::npos);
+    if (begin == std::string::npos || end == std::string::npos) return out;
+    std::stringstream stream(header.substr(begin + 1, end - begin - 1));
+    std::string token;
+    size_t count = 1;
+    while (std::getline(stream, token, ',')) {
+        token = Trim(token);
+        if (token.empty()) continue;
+        const size_t extent = static_cast<size_t>(std::stoull(token));
+        out.shape.push_back(extent);
+        count *= extent;
+    }
+    if (out.shape.empty()) count = 0;
+    out.values.resize(count);
+    if (count > 0) {
+        in.read(reinterpret_cast<char*>(out.values.data()),
+                static_cast<std::streamsize>(count * sizeof(double)));
+    }
+    return out;
+}
+
+}  // namespace
+
 
 
 // ============================================================================
 // Analytical test: verify the kept scalar rescue.
 // ============================================================================
+
+TEST(RingChiAnalytical, PointCenterKernelAcceptsInsideFiniteRingRadius) {
+    const auto kernel = ring_susceptibility_detail::ComputeKernel(
+        Vec3(0.0, 0.0, 0.5), Vec3::Zero(), Vec3(0.0, 0.0, 1.0));
+    EXPECT_TRUE(kernel.valid);
+    EXPECT_DOUBLE_EQ(kernel.distance, 0.5);
+    EXPECT_TRUE(std::isfinite(kernel.scalar));
+    EXPECT_NE(kernel.scalar, 0.0);
+
+    const auto singular = ring_susceptibility_detail::ComputeKernel(
+        Vec3(0.0, 0.0,
+             CalculatorConfig::Get("singularity_guard_distance")),
+        Vec3::Zero(), Vec3(0.0, 0.0, 1.0));
+    EXPECT_FALSE(singular.valid);
+}
 
 TEST(RingChiAnalytical, ScalarMatchesRingContributionColumn7Formula) {
     if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated())) GTEST_SKIP() << "1UBQ not found";
@@ -71,6 +151,56 @@ TEST(RingChiAnalytical, ScalarMatchesRingContributionColumn7Formula) {
 
     std::cout << "  Verified ring-chi scalar rescue on " << checked
               << " ring-atom pairs, max |col7-f| = " << max_diff << "\n";
+}
+
+
+TEST(RingChiEmission, SparseAndPerTypeArraysReadBackInFinalRowOrder) {
+    Protein protein;
+    ProteinConformation conf(
+        &protein, {Vec3::Zero()}, "ringchi-write-readback");
+    auto& rows = conf.MutableAtomAt(0).ring_neighbours;
+    rows.emplace_back();
+    rows.back().ring_index = 4;
+    rows.back().ring_type = RingTypeIndex::HisImidazole;
+    rows.back().chi_scalar = -0.125;
+    rows.emplace_back();
+    rows.back().ring_index = 1;
+    rows.back().ring_type = RingTypeIndex::PheBenzene;
+    rows.back().chi_scalar = 0.75;
+
+    RingSusceptibilityResult result;
+    const fs::path output_dir =
+        nmr::test::TestEnvironment::TempPath("ringchi_emit_readback");
+    fs::create_directories(output_dir);
+    ASSERT_EQ(result.WriteFeatures(conf, output_dir.string()), 2);
+
+    const auto sparse = ReadFloat64Npy(output_dir / "ringchi_scalar.npy");
+    const auto dense =
+        ReadFloat64Npy(output_dir / "ringchi_per_type_T0.npy");
+    EXPECT_EQ(sparse.shape, (std::vector<size_t>{2}));
+    ASSERT_EQ(sparse.values.size(), 2u);
+    EXPECT_DOUBLE_EQ(sparse.values[0], -0.125);
+    EXPECT_DOUBLE_EQ(sparse.values[1], 0.75);
+    EXPECT_EQ(dense.shape, (std::vector<size_t>{1, 8}));
+    ASSERT_EQ(dense.values.size(), 8u);
+    EXPECT_DOUBLE_EQ(
+        dense.values[static_cast<int>(RingTypeIndex::HisImidazole)],
+        -0.125);
+    EXPECT_DOUBLE_EQ(
+        dense.values[static_cast<int>(RingTypeIndex::PheBenzene)],
+        0.75);
+
+    ProteinConformation empty_conf(
+        &protein, {Vec3::Zero()}, "ringchi-zero-row-readback");
+    const fs::path empty_dir =
+        nmr::test::TestEnvironment::TempPath("ringchi_emit_zero_rows");
+    fs::create_directories(empty_dir);
+    ASSERT_EQ(result.WriteFeatures(empty_conf, empty_dir.string()), 2);
+    EXPECT_EQ(ReadFloat64Npy(empty_dir / "ringchi_scalar.npy").shape,
+              (std::vector<size_t>{0}));
+    EXPECT_EQ(ReadFloat64Npy(
+                  empty_dir / "ringchi_per_type_T0.npy").shape,
+              (std::vector<size_t>{1, 8}));
 }
 
 
@@ -156,6 +286,33 @@ TEST_F(RingChiProteinTest, ScalarIsPopulated) {
 
     std::cout << "  Scalar nonzero: " << nonzero_scalar
               << ", max |scalar| = " << max_scalar << "\n";
+}
+
+
+TEST_F(RingChiProteinTest, AzimuthIsPopulatedWithoutBiotSavart) {
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(RingSusceptibilityResult::Compute(conf)));
+
+    size_t checked = 0;
+    size_t non_default = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        for (const RingNeighbourhood& row : conf.AtomAt(ai).ring_neighbours) {
+            if (row.rho <= CalculatorConfig::Get(
+                    "near_zero_vector_norm_threshold")) continue;
+            EXPECT_TRUE(std::isfinite(row.cos_phi));
+            EXPECT_TRUE(std::isfinite(row.sin_phi));
+            EXPECT_NEAR(row.cos_phi * row.cos_phi +
+                            row.sin_phi * row.sin_phi,
+                        1.0, 1e-12);
+            if (std::abs(row.cos_phi - 1.0) > 1e-8 ||
+                std::abs(row.sin_phi) > 1e-8) {
+                ++non_default;
+            }
+            ++checked;
+        }
+    }
+    EXPECT_GT(checked, 0u);
+    EXPECT_GT(non_default, 0u);
 }
 
 

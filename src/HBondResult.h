@@ -9,7 +9,7 @@
 // H-bond identification comes from DsspResult, which provides
 // backbone H-bond partners via the Kabsch-Sander energy criterion.
 // The H-bond direction h_hat is computed from the actual atomic
-// positions (donor N → acceptor O for backbone H-bonds).
+// positions (donor H → acceptor O for backbone H-bonds).
 //
 // The former McConnell-form rank-2 H-bond kernel tensor output is
 // intentionally absent.
@@ -24,6 +24,23 @@
 namespace nmr {
 
 class ProteinConformation;
+
+// Production kernel surface used by HBondResult::Compute and by the
+// independent geometry forcing tests.  This stays in the result's named
+// namespace (rather than a shared utility): HBondResult owns the convention
+// that the source point is the explicit donor H and the axis is H→O.
+namespace hbond_result_detail {
+
+struct KernelResult {
+    double f = 0.0;
+    double distance = 0.0;
+};
+
+KernelResult ComputeKernel(const Vec3& atom_pos,
+                           const Vec3& donor_h_pos,
+                           const Vec3& h_to_o_hat);
+
+}  // namespace hbond_result_detail
 
 class HBondResult : public ConformationResult {
 public:

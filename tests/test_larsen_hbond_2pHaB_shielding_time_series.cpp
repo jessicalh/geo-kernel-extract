@@ -89,6 +89,86 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 }  // namespace
 
 
+TEST(LarsenHBond2pHaBShieldingTimeSeries,
+     FixtureIndependentProductionH5Contract) {
+    constexpr std::size_t kAtoms = 2;
+    constexpr std::size_t kFrames = 2;
+    nmr::TrajectoryProtein tp;
+    auto result =
+        nmr::LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Protein empty_protein;
+    nmr::ProteinConformation empty_conf(
+        &empty_protein, std::vector<nmr::Vec3>{}, "A22 H5 contract");
+    nmr::Trajectory trajectory(fs::path{}, fs::path{}, fs::path{});
+
+    result->Compute(empty_conf, tp, trajectory, 11, 1.25);
+    result->ForceSourcePresentForTesting(true);
+    result->Compute(empty_conf, tp, trajectory, 19, 2.5);
+
+    auto buffer = std::make_unique<nmr::DenseBuffer<nmr::SphericalTensor>>(
+        kAtoms, kFrames);
+    for (std::size_t atom = 0; atom < kAtoms; ++atom) {
+        for (std::size_t frame = 0; frame < kFrames; ++frame) {
+            buffer->At(atom, frame) = SyntheticTensor(atom, frame);
+        }
+    }
+    tp.AdoptDenseBuffer<nmr::SphericalTensor>(
+        std::move(buffer),
+        std::type_index(typeid(
+            nmr::LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult)));
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("larsen_hbond_2pHaB_a22_contract_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        result->WriteH5Group(tp, file);
+    }
+
+    HighFive::File file(h5_path, HighFive::File::ReadOnly);
+    auto group = file.getGroup(
+        "/trajectory/larsen_hbond_2pHaB_shielding_time_series");
+    std::uint64_t source_count = 0;
+    std::string source_policy, atom_axis, frame_axis, irrep_layout;
+    auto source_count_attr = group.getAttribute("source_attached_count");
+    source_count_attr.read(source_count);
+    group.getAttribute("source_attached_policy").read(source_policy);
+    group.getAttribute("atom_axis").read(atom_axis);
+    group.getAttribute("frame_axis").read(frame_axis);
+    group.getAttribute("irrep_layout").read(irrep_layout);
+    EXPECT_EQ(source_count_attr.getDataType().getSize(),
+              sizeof(std::uint64_t));
+    EXPECT_EQ(source_policy, "conditional_larsen_grid_source");
+    EXPECT_EQ(atom_axis, "protein_atom_index");
+    EXPECT_EQ(frame_axis, "trajectory_frame_row");
+    EXPECT_EQ(irrep_layout,
+        "PackFull9: [T0, T1_cartesian_xyz, T2_real_tesseral_m-2..m+2]");
+
+    auto xyz = group.getDataSet("xyz");
+    EXPECT_EQ(xyz.getSpace().getDimensions(),
+              (std::vector<std::size_t>{kAtoms, kFrames, 9}));
+    std::vector<double> flat(kAtoms * kFrames * 9);
+    xyz.read(flat.data());
+    EXPECT_TRUE(std::isnan(flat[0]));
+    double expected[9] = {};
+    SyntheticTensor(1, 1).PackFull9(expected);
+    EXPECT_DOUBLE_EQ(flat[(1 * kFrames + 1) * 9], expected[0]);
+
+    std::vector<std::size_t> frame_indices(kFrames);
+    std::vector<double> frame_times(kFrames);
+    std::vector<std::uint8_t> source_mask(kFrames);
+    group.getDataSet("frame_indices").read(frame_indices.data());
+    group.getDataSet("frame_times").read(frame_times.data());
+    group.getDataSet("source_attached_per_frame").read(source_mask.data());
+    EXPECT_EQ(frame_indices, (std::vector<std::size_t>{11, 19}));
+    EXPECT_EQ(frame_times, (std::vector<double>{1.25, 2.5}));
+    EXPECT_EQ(source_mask, (std::vector<std::uint8_t>{0, 1}));
+    EXPECT_EQ(source_count,
+              static_cast<std::uint64_t>(source_mask[0] + source_mask[1]));
+    fs::remove(h5_path);
+}
+
+
 TEST(LarsenHBond2pHaBShieldingTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();

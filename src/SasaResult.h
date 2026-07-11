@@ -25,6 +25,15 @@
 
 namespace nmr {
 
+namespace sasa_result_detail {
+
+// Production normalization used by WriteFeatures.  External linkage keeps
+// the freeze-gate test pinned to the emitted-value implementation.
+double NormalizedSasaFraction(Element element, double sasa_A2,
+                              double probe_radius_A);
+
+}  // namespace sasa_result_detail
+
 class SasaResult : public ConformationResult {
 public:
     std::string Name() const override { return "SasaResult"; }

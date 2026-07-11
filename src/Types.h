@@ -161,7 +161,10 @@ enum class McConnellSourceCategory {
     SidechainCO = 3,
     SidechainOther = 4,
     Disulfide = 5,
-    AromaticZeroed = 6
+    AromaticZeroed = 6,
+    BackboneXH = 7,
+    SidechainXH = 8,
+    SH = 9
 };
 
 enum class McConnellChannel {
@@ -169,7 +172,7 @@ enum class McConnellChannel {
     BondOrder = 1
 };
 
-inline constexpr std::size_t kMcConnellSourceCategoryCount = 7;
+inline constexpr std::size_t kMcConnellSourceCategoryCount = 10;
 inline constexpr std::size_t kMcConnellChannelCount = 2;
 
 inline const char* McConnellSourceCategoryStem(McConnellSourceCategory cat) {
@@ -181,6 +184,9 @@ inline const char* McConnellSourceCategoryStem(McConnellSourceCategory cat) {
         case McConnellSourceCategory::SidechainOther:  return "sidechain_other";
         case McConnellSourceCategory::Disulfide:       return "disulfide";
         case McConnellSourceCategory::AromaticZeroed:  return "aromatic_zeroed";
+        case McConnellSourceCategory::BackboneXH:      return "backbone_xh";
+        case McConnellSourceCategory::SidechainXH:     return "sidechain_xh";
+        case McConnellSourceCategory::SH:              return "s_h";
     }
     return "unknown";
 }

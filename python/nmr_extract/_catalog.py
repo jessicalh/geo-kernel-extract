@@ -46,7 +46,7 @@ from ._tensors import (
     AIMNet2AimEmbedding,
     AIMNet2ChargeResponseGradient,
 )
-from ._ring import RingContributions, RingGeometry
+from ._ring import RingContributions, RingGeometry, RingPairGeometry
 
 
 ALLOWED_NATIVE_AXES = frozenset({
@@ -62,6 +62,12 @@ ALLOWED_NATIVE_AXES = frozenset({
     "protein",
     "mopac_bond_neighbor_pair",
     "mopac_unique_pair",
+    "atom_neighbor_pair",
+    "ring_pair",
+    "larsen_hbond_pair",
+    "larsen_sidechain_donor_pair",
+    "protein_water_hbond_pair",
+    "sidechain_co_source",
 })
 
 
@@ -76,7 +82,8 @@ class ArraySpec:
       indexed along: ``atom`` / ``residue`` / ``aromatic_ring`` /
       ``saturated_ring`` / ``ring`` / ``ring_contribution_pair`` /
       ``bond`` / ``ring_membership`` / ``mutation_match_pair`` /
-      ``protein``.
+      ``larsen_hbond_pair`` / ``protein`` (plus the other sparse axes in
+      ``ALLOWED_NATIVE_AXES``).
       R / Python analysis must read this metadata column rather than infer axis
       from filename.
 
@@ -134,6 +141,9 @@ class ArraySpec:
     tensor_frame: str = ""
     structural_zero_components: str = ""
     e3nn_export: str = ""
+    # Producer-side physical scaling contract for geometry-only kernels.
+    # Empty when an array is already in its final physical units.
+    scaling_contract: str = ""
 
 
 # fmt: off
@@ -148,6 +158,12 @@ _EFG_STRUCTURAL_ZEROS = "T0,T1_x,T1_y,T1_z"
 _E3NN_EXPORT = (
     "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
     "project_t2_to_e3nn() before using e3nn Irreps"
+)
+_BS_INTENSITY_SCALING = (
+    "unit-current geometry kernel; multiply each per-ring-type channel by "
+    "extraction_manifest.json::feature_metadata.ring_current."
+    "resolved_intensity_nA_per_T in the declared ring_type_order and sum "
+    "over ring type to obtain physical ppm shielding"
 )
 _T2_TENSOR_METADATA = dict(
     tensor_basis=_T2_BASIS,
@@ -174,6 +190,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="ring_contribution_pair", irreps="1o", tensor_rank=1, parity="odd", mechanism="geometry"),
     ArraySpec("ring_geometry",    "identity",   RingGeometry,      10,   True,  "Per-ring geometry reference",
               native_axis="aromatic_ring", units="Å", mechanism="topology"),
+    ArraySpec("ring_pair_geometry", "identity", RingPairGeometry, 13, True, "All i<j aromatic-ring pair geometry [ring/residue/type ids, center distance, normal relations, signed normal offsets, in-plane slip, fused flag]",
+              native_axis="ring_pair", units="mixed_index_A_dimensionless", mechanism="geometry"),
 
     # ── Enrichment (EnrichmentResult.cpp) ───────────────────────────
     ArraySpec("enrichment_role",          "enrichment", np.ndarray, None, False, "AtomRole enum per atom (int32)",
@@ -181,6 +199,36 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("enrichment_hybridisation", "enrichment", np.ndarray, None, False, "Hybridisation enum per atom (int32)",
               mechanism="topology"),
     ArraySpec("enrichment_flags",         "enrichment", np.ndarray, 8,    False, "Enrichment boolean flags as int8 columns: is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H, is_hbond_donor, is_hbond_acceptor, is_on_aromatic_residue",
+              mechanism="topology"),
+    ArraySpec("enrichment_parent_is_sp2", "enrichment", np.ndarray, None, False, "Per-atom uint8 flag: hydrogen parent is typed sp2/aromatic",
+              mechanism="topology"),
+    ArraySpec("semantic_polar_h_kind",     "enrichment", np.ndarray, None, False, "Raw typed PolarHKind enum per atom (uint8)",
+              mechanism="topology"),
+    ArraySpec("semantic_planar_group_kind","enrichment", np.ndarray, None, False, "Raw typed PlanarGroupKind enum per atom (uint8)",
+              mechanism="topology"),
+    ArraySpec("semantic_formal_charge",    "enrichment", np.ndarray, None, False, "Raw typed formal charge per atom (int8)",
+              mechanism="topology"),
+    ArraySpec("semantic_ring_position",    "enrichment", np.ndarray, None, False, "Raw canonical primary RingPositionLabel per atom (uint8); complete secondary/tertiary membership remains in atoms_category_info",
+              mechanism="topology"),
+    ArraySpec("semantic_locant",           "enrichment", np.ndarray, None, False, "Raw typed Locant enum per atom (uint8)",
+              mechanism="topology"),
+    ArraySpec("enrichment_donor_class",    "enrichment", np.ndarray, None, False, "Typed donor class per atom: exact PolarHKind projection (uint8)",
+              mechanism="topology"),
+    ArraySpec("enrichment_acceptor_class", "enrichment", np.ndarray, None, False, "Typed acceptor projection: 0 none, 1 backbone carbonyl, 2 sidechain amide carbonyl, 3 carboxylate, 4 hydroxyl/oxide, 5 unprotonated ring N, 6 neutral other N/O/S",
+              mechanism="topology"),
+    ArraySpec("enrichment_hybridisation_class", "enrichment", np.ndarray, None, False, "Semantic hybridisation projection using Hybridisation numeric codes: 0 sp, 1 sp2, 2 sp3, 3 unassigned",
+              mechanism="topology"),
+
+    # ── Spatial index (SpatialIndexResult.cpp) ────────────────────
+    ArraySpec("spatial_neighbors", "spatial_index", np.ndarray, 6, False, "Directed per-atom neighbour rows [atom_i, atom_j, unit_dx, unit_dy, unit_dz, distance_A], no self rows, 15 A cutoff",
+              native_axis="atom_neighbor_pair", units="mixed_index_unit_vector_A", mechanism="geometry"),
+
+    # ── Molecular graph (MolecularGraphResult.cpp) ────────────────
+    ArraySpec("molecular_graph_int", "molecular_graph", np.ndarray, 6, False, "Raw graph integers [distance_to_ring, distance_to_N, distance_to_O, pi_bonds_within_3, is_conjugated, nearest_ring_atom_index]",
+              mechanism="topology"),
+    ArraySpec("molecular_graph_float", "molecular_graph", np.ndarray, 3, False, "Graph floating features [electronegativity_sum_1, electronegativity_sum_2, exp(-ring_graph_distance/4)]",
+              mechanism="topology"),
+    ArraySpec("molecular_graph", "molecular_graph", np.ndarray, 9, False, "Compatibility graph table combining molecular_graph_int and molecular_graph_float",
               mechanism="topology"),
 
     # ── Force-field charge assignment (ChargeAssignmentResult.cpp) ──
@@ -191,13 +239,14 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── Biot-Savart (BiotSavartResult.cpp) ───────────────────────
     ArraySpec("bs_shielding",     "biot_savart", ShieldingTensor,  9,    True,  "BS ring current shielding",
-              irreps=_SHIELD_IRREPS, units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+              irreps=_SHIELD_IRREPS, units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current",
+              scaling_contract="unscaled compatibility sum; use bs_per_type channels with the manifest-resolved intensity vector for physical ppm"),
     ArraySpec("bs_per_type_T0",   "biot_savart", PerRingTypeT0,    8,    True,  "BS isotropic per ring type",
-              irreps="0e", units="ppm_T_per_nA", mechanism="ring_current"),
+              irreps="0e", units="ppm_T_per_nA", mechanism="ring_current", scaling_contract=_BS_INTENSITY_SCALING),
     ArraySpec("bs_per_type_T1",   "biot_savart", PerRingTypeT1,    24,   True,  "BS T1 per ring type",
-              irreps="1e", units="ppm_T_per_nA", tensor_rank=1, parity="even", mechanism="ring_current"),
+              irreps="1e", units="ppm_T_per_nA", tensor_rank=1, parity="even", mechanism="ring_current", scaling_contract=_BS_INTENSITY_SCALING),
     ArraySpec("bs_per_type_T2",   "biot_savart", PerRingTypeT2,    40,   True,  "BS T2 per ring type",
-              irreps="2e", units="ppm_T_per_nA", tensor_rank=2, mechanism="ring_current"),
+              irreps="2e", units="ppm_T_per_nA", tensor_rank=2, mechanism="ring_current", scaling_contract=_BS_INTENSITY_SCALING),
     ArraySpec("bs_total_B",       "biot_savart", MagneticVectorField, 3, True,  "BS total B-field vector",
               irreps="1e", units="T", tensor_rank=1, parity="even", mechanism="ring_current"),
     ArraySpec("bs_ring_B_field",  "biot_savart", MagneticVectorField, 3, True,  "BS per-(atom,ring) B-field vector",
@@ -222,8 +271,29 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Pi-Quadrupole (PiQuadrupoleResult.cpp) ───────────────────
     ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "PQ Buckingham A-term scalar per ring type",
               irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
+    ArraySpec("piquad_axial_scalar_per_type_T0", "pi_quadrupole", PerRingTypeT0, 8, True, "Geometry-only axial pi-quadrupole scalar; aromatic rings only; not full quadrupole anisotropy",
+              irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
     ArraySpec("piquad_quad_scalar", "pi_quadrupole", np.ndarray, None, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: real computed RingNeighbourhood.quad_scalar, not the derived geometry scalar in ring_contributions column 7",
               native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
+    ArraySpec("piquad_local_tensor", "pi_quadrupole", ShieldingTensor, 9, True, "Raw symmetric-traceless pi-quadrupole geometry tensor in the deterministic ring-local frame",
+              native_axis="ring_contribution_pair", irreps="2e", units="Angstrom^-5", tensor_rank=2, mechanism="ring_efg",
+              tensor_basis=_FULL9_BASIS, tensor_component_order=_FULL9_ORDER, tensor_frame="ring_local_vertex0_gauge", structural_zero_components="T0,T1_x,T1_y,T1_z", e3nn_export=_E3NN_EXPORT),
+    ArraySpec("piquad_local_T2", "pi_quadrupole", np.ndarray, 5, True, "T2 convenience view of piquad_local_tensor in project-native real tesseral order",
+              native_axis="ring_contribution_pair", irreps="2e", units="Angstrom^-5", tensor_rank=2, mechanism="ring_efg",
+              tensor_basis=_T2_BASIS, tensor_component_order=_T2_ORDER,
+              tensor_frame="ring_local_vertex0_gauge",
+              structural_zero_components=_EFG_STRUCTURAL_ZEROS,
+              e3nn_export=_E3NN_EXPORT),
+    ArraySpec("piquad_local_frame", "pi_quadrupole", np.ndarray, 9, True, "Deterministic ring-local frame columns [x_axis,y_axis,z_axis], vertex-0 gauge; NaN when invalid",
+              native_axis="ring_contribution_pair", mechanism="geometry"),
+    ArraySpec("piquad_local_geometry", "pi_quadrupole", np.ndarray, 8, True, "Row-aligned local tensor provenance [atom, ring, type, distance_A, cos_theta, existing_axial_scalar, frame_valid, aromatic_only]",
+              native_axis="ring_contribution_pair", units="mixed_index_A_dimensionless", mechanism="ring_efg"),
+
+    # ── Ring susceptibility (RingSusceptibilityResult.cpp) ────────
+    ArraySpec("ringchi_scalar", "ring_susceptibility", np.ndarray, None, True, "Sparse computed ring-susceptibility geometry scalar aligned to ring_contributions",
+              native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-3", mechanism="ring_current"),
+    ArraySpec("ringchi_per_type_T0", "ring_susceptibility", PerRingTypeT0, 8, True, "Dense per-atom ring-susceptibility scalar grouped by aromatic RingTypeIndex",
+              irreps="0e", units="Angstrom^-3", mechanism="ring_current"),
 
     # ── Dispersion (DispersionResult.cpp) ────────────────────────
     ArraySpec("disp_per_type_T0", "dispersion", PerRingTypeT0,     8,    True,  "Deprecated name for unit-coefficient aromatic R^-6 proximity per ring type; not D3/D4 energy",
@@ -266,6 +336,18 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_aromatic_zeroed_bo",    "mcconnell", ShieldingTensor, 9, True, "McConnell aromatic Wiberg BO response zeroed to avoid BS/HM double-count",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_backbone_xh_fixed",      "mcconnell", ShieldingTensor, 9, True, "McConnell backbone C/N/O-H fixed source response, classified from typed heavy-atom semantics",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_backbone_xh_bo",         "mcconnell", ShieldingTensor, 9, True, "McConnell backbone C/N/O-H Wiberg BO response",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_sidechain_xh_fixed",     "mcconnell", ShieldingTensor, 9, True, "McConnell sidechain C/N/O-H fixed source response, classified from typed heavy-atom semantics",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_sidechain_xh_bo",        "mcconnell", ShieldingTensor, 9, True, "McConnell sidechain C/N/O-H Wiberg BO response",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_s_h_fixed",              "mcconnell", ShieldingTensor, 9, True, "McConnell S-H fixed source response",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_s_h_bo",                 "mcconnell", ShieldingTensor, 9, True, "McConnell S-H Wiberg BO response",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_nearfield_counts",      "mcconnell", McConnellNearFieldCounts, 2, False, "McConnell near-field accepted/rejected source-target pair counts below 3 A", units="count", mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_co_dir",        "mcconnell", VectorField, 3, False, "Nearest accepted peptide C=O source direction per atom from ConformationAtom::dir_nearest_CO",
               irreps="1o", units="", tensor_rank=1, parity="odd", mechanism="bond_anisotropy"),
@@ -275,6 +357,24 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_cn_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C-N response per atom from ConformationAtom::T2_CN_nearest, packed [T0, T1x, T1y, T1z, T2_m-2..+2]",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+
+    # Typed side-chain carbonyl inventory + the canonical McConnell
+    # SidechainCO response projected onto atom rows.  The source tables use a
+    # filtered axis because peptide carbonyls and other bond categories are
+    # deliberately absent rather than represented as placeholder rows.
+    ArraySpec("sidechain_co_source_bonds", "sidechain_carbonyl_anisotropy", np.ndarray, 8, True, "Typed side-chain C=O source rows [bond_index, carbon_atom, oxygen_atom, residue_index, BondCategory, PlanarGroupKind, oxygen_semantic_class, source_valid]",
+              native_axis="sidechain_co_source", mechanism="bond_anisotropy"),
+    ArraySpec("sidechain_co_frame", "sidechain_carbonyl_anisotropy", np.ndarray, 12, True, "Side-chain C=O local source frame [bond_midpoint_A, carbon_to_oxygen_x, in_plane_y, plane_normal_z]",
+              native_axis="sidechain_co_source", units="mixed_A_dimensionless", mechanism="bond_anisotropy"),
+    ArraySpec("sidechain_co_frame_quality", "sidechain_carbonyl_anisotropy", np.ndarray, 4, True, "Side-chain C=O frame audit [bond_length_A, orthogonality_error, raw_normal_norm_A2, frame_valid]",
+              native_axis="sidechain_co_source", units="mixed", mechanism="bond_anisotropy"),
+    ArraySpec("sidechain_co_fixed_T2", "sidechain_carbonyl_anisotropy", ShieldingTensor, 9, True, "Canonical fixed-strength McConnell SidechainCO response, full project-native SphericalTensor pack",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("sidechain_co_bo_T2", "sidechain_carbonyl_anisotropy", ShieldingTensor, 9, True, "MOPAC bond-order-weighted McConnell SidechainCO response, full project-native SphericalTensor pack; NaN rows when MOPAC is absent",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("sidechain_co_scalar_audit", "sidechain_carbonyl_anisotropy", np.ndarray, 4, True, "Per-atom audit [fixed_T2_norm, bo_T2_norm, accepted_sidechain_CO_source_count, nearest_sidechain_CO_midpoint_distance_A]",
+              native_axis="atom", units="mixed", mechanism="bond_anisotropy"),
+
     # Legacy McConnell arrays retained as optional/deprecated wrappers for
     # reading old extraction directories; new C++ emits the 15 tensor arrays above.
     ArraySpec("mc_shielding",     "mcconnell_legacy", ShieldingTensor,    9,    False,  "Legacy McConnell aggregate shielding", irreps=_SHIELD_IRREPS, units="Angstrom^-3",
@@ -341,10 +441,18 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="Å^2", mechanism="solvation"),
     ArraySpec("sasa_normal",      "sasa", VectorField,             3,    False, "SASA outward surface normal (unit vector)",
               irreps="1o", tensor_rank=1, parity="odd", mechanism="solvation"),
+    ArraySpec("atom_sasa_fraction", "sasa", np.ndarray,            None, False, "Normalized per-atom Shrake-Rupley exposure fraction, atom_sasa / (4*pi*(Bondi_vdW + probe)^2)",
+              mechanism="solvation"),
 
     # ── Explicit water (WaterFieldResult.cpp) ───────────────────
     ArraySpec("water_efield",       "water_field", VectorField,    3,    False, "Water E-field total (V/A)",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="solvation"),
+    ArraySpec("water_hbond_candidates", "water_hbond_geometry", np.ndarray, 16, False, "Raw protein-water H-bond candidates [protein atom/residue, water, mode, typed protein role, O/H/heavy distances, D-H...A angle, water O/H coordinates, pass flag]",
+              native_axis="protein_water_hbond_pair", units="mixed_ids_A_degrees", mechanism="hbond_kernel"),
+    ArraySpec("water_hbond_counts", "water_hbond_geometry", np.ndarray, 6, False, "Per-protein-atom water H-bond counts [water-donor candidates/pass, protein-donor candidates/pass, nearest water index, nearest passing mode]",
+              mechanism="hbond_kernel"),
+    ArraySpec("water_hbond_nearest", "water_hbond_geometry", np.ndarray, 8, False, "Per-protein-atom nearest candidate [water-O distance, H-acceptor distance, angle, mode, water index, pass, candidate count, pass count]",
+              units="mixed_A_degrees", mechanism="hbond_kernel"),
     ArraySpec("water_efield_first", "water_field", VectorField,    3,    False, "Water E-field first shell <3.5A (V/A)",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="solvation"),
     ArraySpec("water_efg",          "water_field", EFGTensor,      5,    False, "Water EFG total (T2 only, symmetric-traceless)",
@@ -490,6 +598,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Delta metadata + match info",
+              native_axis="mutation_match_pair", mechanism="mutation_delta"),
+    ArraySpec("delta_graph",           "delta", np.ndarray,             5,    False, "Graph deltas [matched, has_graph_delta, delta_graph_dist_ring, delta_bfs_decay, delta_is_conjugated]",
               native_axis="mutation_match_pair", mechanism="mutation_delta"),
     ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "APBS delta_E(3) + legacy full-9 EFG envelope; only columns 7:12 are physical EFG T2",
               native_axis="mutation_match_pair", mechanism="mutation_delta",
@@ -649,6 +759,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
     ArraySpec("tripeptide_neighbor_reference",    "tripeptide", np.ndarray,      5,    False, "AAA reference metadata columns [aaa_calc_id, aaa_frame_type_code, aaa_phi_db_deg, aaa_psi_db_deg, any_mixed_method_flag]",
               native_axis="protein", mechanism="quantum_reference"),
+    ArraySpec("tripeptide_bb_diagnostics", "tripeptide", np.ndarray, 28, False, "Per-residue central tripeptide lookup diagnostics including exact status (0 miss, 1 ok, 2 unsupported HID, 3 unsupported HIE, 4 perception failed), natural/used chi depth, dropped-chi distance, actual/target/database angles, residue and HIS variant",
+              native_axis="residue", units="mixed_ids_A_degrees", mechanism="quantum_reference"),
+    ArraySpec("tripeptide_neighbor_diagnostics", "tripeptide", np.ndarray, 59, False, "Per-central-residue previous/next tripeptide lookup diagnostics (28 columns each) plus AAA frame, mixed-method, and any-match flags; status codes 0 miss, 1 ok, 2 unsupported HID, 3 unsupported HIE, 4 perception failed",
+              native_axis="residue", units="mixed_ids_A_degrees", mechanism="quantum_reference"),
 
     # ────────────────────────────────────────────────────────────────
     # Larsen H-bond shielding contributions
@@ -701,6 +815,20 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms with NO geometric H-bond candidate (θ ≥ 90° in 4.2 Å); proxies the NMA+water complex Larsen scanned for solvent-exposed amides", units="ppm", mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_count",                      "larsen_hbond", np.ndarray,      None, False, "Per-atom count of H-bond pairs that contributed under any of the four Table 2 classes; metadata, NOT a feature.", mechanism="hbond_grid"),
     ArraySpec("larsen_corner_imputed",                   "larsen_hbond", np.ndarray,      None, False, "Per-atom int8 flag: 1 iff any Larsen H-bond grid lookup corner serving this atom was imputed", mechanism="hbond_grid"),
+    ArraySpec("larsen_imputed_pair_count",               "larsen_hbond", np.ndarray,      None, False, "Per-atom count of Table2 shielding pairs with at least one imputed interpolation corner; imputed_policy=emitted_unmasked", mechanism="hbond_grid"),
+    ArraySpec("larsen_sidechain_carbonyl_pair_count",    "larsen_hbond", np.ndarray,      None, False, "Per-atom count of contributing SidechainCarbonyl acceptor pairs; SidechainCarbonyl uses BackboneCarbonyl/NMA archive approximation", mechanism="hbond_grid"),
+    ArraySpec("larsen_hbond_pairs_index",                "larsen_hbond", np.ndarray,      16, False, "Raw per-candidate Larsen integer provenance [donor_atom, acceptor_atom, donor_residue, acceptor_residue, donor_class, acceptor_class, disposition, donor_anchor_atom, donor_third_atom, acceptor_C_atom, acceptor_third_atom, target_mask_1pHB, target_mask_2pHB, target_mask_1pHaB, target_mask_2pHaB, target_mask_diagnostic_CB]; disposition 0=missing_frame_atoms, 1=theta_out_of_range, 2=grid_miss, 3=success",
+              native_axis="larsen_hbond_pair", mechanism="hbond_grid"),
+    ArraySpec("larsen_hbond_pairs_geometry",             "larsen_hbond", np.ndarray,       6, False, "Per-candidate geometry [r_A, theta_deg, rho_deg, any_corner_imputed, imputed_corner_count, frame_valid]; imputed_policy=emitted_unmasked",
+              native_axis="larsen_hbond_pair", units="mixed_A_degrees", mechanism="hbond_grid"),
+    ArraySpec("larsen_hbond_pairs_isotropic",            "larsen_hbond", np.ndarray,       6, False, "Per-candidate isotropic terms [1pHB,2pHB,1pHaB,2pHaB,diagnostic_CB,Table2_total] ppm",
+              native_axis="larsen_hbond_pair", units="ppm", mechanism="hbond_grid"),
+    ArraySpec("larsen_hbond_pairs",                      "larsen_hbond", np.ndarray,      28, False, "Compatibility Larsen pair table: 16 index + 6 geometry + 6 isotropic columns",
+              native_axis="larsen_hbond_pair", units="mixed", mechanism="hbond_grid"),
+    ArraySpec("larsen_sidechain_donor_atoms", "larsen_sidechain_donor_audit", np.ndarray, 6, False, "Per-atom audit [is_sidechain_polar_H, PolarHKind, parent, residue, acceptor_candidates_3p5A, geometry_pass_count]",
+              mechanism="hbond_grid"),
+    ArraySpec("larsen_sidechain_donor_candidates", "larsen_sidechain_donor_audit", np.ndarray, 13, False, "Raw sidechain polar-H donor candidate geometry; audit-only, modeled_by_larsen_table2 is always false",
+              native_axis="larsen_sidechain_donor_pair", units="mixed_ids_A_degrees", mechanism="hbond_grid"),
 
     # ────────────────────────────────────────────────────────────────
     # Topology sidecar (TopologySidecar.cpp) — additive 2026-05-13.

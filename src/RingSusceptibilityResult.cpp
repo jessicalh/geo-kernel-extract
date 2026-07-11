@@ -6,6 +6,8 @@
 #include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
 #include "GeometryChoice.h"
+#include "RingNeighbourGeometry.h"
+#include "NpyWriter.h"
 #include "OperationLog.h"
 
 #include <cmath>
@@ -33,27 +35,24 @@ std::vector<std::type_index> RingSusceptibilityResult::Dependencies() const {
 // or emitted; this result now preserves only the clean scalar rescue.
 // ============================================================================
 
-struct RingChiKernelResult {
-    double scalar_kernel = 0.0;               // ring susceptibility scalar f
-    double distance = 0.0;
-    Vec3 direction = Vec3::Zero();   // unit vector from ring center to atom
-};
+namespace ring_susceptibility_detail {
 
-
-static RingChiKernelResult ComputeRingChiKernel(
+KernelResult ComputeKernel(
         const Vec3& atom_pos,
         const Vec3& ring_center,
         const Vec3& ring_normal) {
 
-    RingChiKernelResult result;
+    KernelResult result;
 
     // ring→atom displacement
     Vec3 ring_to_atom = atom_pos - ring_center;
     double r = ring_to_atom.norm();
-
-    if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
-
     result.distance = r;
+
+    if (!std::isfinite(r) ||
+        r <= CalculatorConfig::Get("singularity_guard_distance")) {
+        return result;
+    }
 
     double r3 = r * r * r;
     Vec3 d_hat = ring_to_atom / r;
@@ -62,10 +61,13 @@ static RingChiKernelResult ComputeRingChiKernel(
     double cos_theta = d_hat.dot(ring_normal);
 
     // Ring susceptibility scalar: (3 cos²θ - 1) / r³
-    result.scalar_kernel = (3.0 * cos_theta * cos_theta - 1.0) / r3;
+    result.scalar = (3.0 * cos_theta * cos_theta - 1.0) / r3;
+    result.valid = true;
 
     return result;
 }
+
+}  // namespace ring_susceptibility_detail
 
 
 // ============================================================================
@@ -93,14 +95,9 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
         return result_ptr;
     }
 
-    // Filter set: DipolarNearFieldFilter with source_extent = ring diameter,
-    // plus RingBondedExclusionFilter for topological exclusion of ring
-    // vertices and their bonded neighbours. The distance filter catches
-    // close ring atoms by geometry, and the topology check excludes ring
-    // vertices and their bonded neighbours directly.
+    // Point-center singularity is handled by the kernel itself.  The only
+    // generic ring filter is the typed through-bond topology exclusion.
     KernelFilterSet filters;
-    filters.Add(std::make_unique<MinDistanceFilter>());
-    filters.Add(std::make_unique<DipolarNearFieldFilter>());
     filters.Add(std::make_unique<RingBondedExclusionFilter>(protein));
 
     OperationLog::Info(LogCalcOther, "RingSusceptibilityResult::Compute",
@@ -121,13 +118,31 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
-            RingChiKernelResult kernel = ComputeRingChiKernel(
+            ring_susceptibility_detail::KernelResult kernel =
+                ring_susceptibility_detail::ComputeKernel(
                 atom_pos, geom.center, geom.normal);
 
-            // filter pair: source extent = ring diameter (2 * radius)
+            if (!kernel.valid) {
+                choices.Record(CalculatorId::RingSusceptibility, ri,
+                    "center singularity exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source,
+                                EntityOutcome::Included);
+                        AddAtom(gc, &atom, ai, EntityRole::Target,
+                                EntityOutcome::Excluded,
+                                "center_singularity_guard");
+                        AddNumber(gc, "distance", kernel.distance, "A");
+                        AddNumber(gc, "distance_guard",
+                                  CalculatorConfig::Get(
+                                      "singularity_guard_distance"), "A");
+                    });
+                continue;
+            }
+
+            // Point-center kernels have no ring-diameter source extent.
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
-            ctx.source_extent = 2.0 * geom.radius;
+            ctx.source_extent = 0.0;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
@@ -143,42 +158,13 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
                 continue;
             }
 
-            // Attach per-ring feature record to this atom (not kernel math).
-            // The ring_neighbours vector may already have an entry from
-            // another calculator (BiotSavart). Find by ring index.
-            RingNeighbourhood* neighbour = nullptr;
-            for (auto& existing : atom.ring_neighbours) {
-                if (existing.ring_index == ri) {
-                    neighbour = &existing;
-                    break;
-                }
-            }
-            if (!neighbour) {
-                RingNeighbourhood new_neighbour;
-                new_neighbour.ring_index = ri;
-                new_neighbour.ring_type = ring.type_index;
-                new_neighbour.distance_to_center = kernel.distance;
-                // contract: unit vector pointing center→atom (see RingChiKernelResult::direction)
-                new_neighbour.direction_to_center = kernel.direction;
-
-                // Ring-frame coordinates: z along normal, rho in-plane,
-                // theta = polar angle from normal (hemisphere-folded).
-                Vec3 atom_offset = atom_pos - geom.center;
-                double z = atom_offset.dot(geom.normal);
-                Vec3 d_plane = atom_offset - z * geom.normal;
-                double rho = d_plane.norm();
-                double theta = std::atan2(rho, std::abs(z));
-                new_neighbour.z = z;
-                new_neighbour.rho = rho;
-                new_neighbour.theta = theta;
-
-                atom.ring_neighbours.push_back(new_neighbour);
-                neighbour = &atom.ring_neighbours.back();
-            }
+            RingNeighbourhood& neighbour_ref = EnsureRingNeighbourGeometry(
+                atom, geom, ring, ri, atom_pos);
+            RingNeighbourhood* neighbour = &neighbour_ref;
 
             // Store only the scalar rescue. The manufactured rank-2
             // ring-chi tensor family was removed.
-            neighbour->chi_scalar = kernel.scalar_kernel;
+            neighbour->chi_scalar = kernel.scalar;
 
             total_pairs++;
         }
@@ -196,9 +182,35 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
 
 int RingSusceptibilityResult::WriteFeatures(const ProteinConformation& conf,
                                              const std::string& output_dir) const {
-    (void)conf;
-    (void)output_dir;
-    return 0;
+    const size_t N = conf.AtomCount();
+    size_t P = 0;
+    for (size_t ai = 0; ai < N; ++ai) {
+        P += conf.AtomAt(ai).ring_neighbours.size();
+    }
+
+    std::vector<double> sparse(P, 0.0);
+    std::vector<double> per_type(
+        N * static_cast<size_t>(kAromaticRingTypeCount), 0.0);
+
+    size_t row = 0;
+    for (size_t ai = 0; ai < N; ++ai) {
+        for (const RingNeighbourhood& neighbour :
+             conf.AtomAt(ai).ring_neighbours) {
+            sparse[row++] = neighbour.chi_scalar;
+            const int ti = static_cast<int>(neighbour.ring_type);
+            if (ti >= 0 && ti < kAromaticRingTypeCount) {
+                per_type[ai * kAromaticRingTypeCount +
+                         static_cast<size_t>(ti)] += neighbour.chi_scalar;
+            }
+        }
+    }
+
+    NpyWriter::WriteFloat64(
+        output_dir + "/ringchi_scalar.npy", sparse.data(), P);
+    NpyWriter::WriteFloat64(
+        output_dir + "/ringchi_per_type_T0.npy", per_type.data(), N,
+        kAromaticRingTypeCount);
+    return 2;
 }
 
 }  // namespace nmr

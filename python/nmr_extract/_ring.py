@@ -103,6 +103,15 @@ class RingContributions:
         return self._data[:, 7]
 
     @property
+    def ring_chi_scalar(self) -> np.ndarray:
+        """Preferred geometry-scalar alias for legacy column 7.
+
+        The separately emitted ``ringchi_scalar.npy`` carries the exact
+        production RingSusceptibilityResult payload.
+        """
+        return self._data[:, 7]
+
+    @property
     def exp_decay(self) -> np.ndarray:
         return self._data[:, 8]
 
@@ -208,3 +217,47 @@ class RingGeometry:
 
     def __repr__(self) -> str:
         return f"RingGeometry(n_rings={self.n_rings})"
+
+
+class RingPairGeometry:
+    """All ``i < j`` aromatic-ring geometry rows, shape ``(P, 13)``."""
+
+    __slots__ = ("_data",)
+    COLS = 13
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim != 2 or data.shape[1] != self.COLS:
+            raise ValueError(
+                f"RingPairGeometry: expected (P, {self.COLS}), got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def ring_a(self) -> np.ndarray:
+        return self._data[:, 0].astype(np.intp)
+
+    @property
+    def ring_b(self) -> np.ndarray:
+        return self._data[:, 1].astype(np.intp)
+
+    @property
+    def center_distance(self) -> np.ndarray:
+        return self._data[:, 6]
+
+    @property
+    def normal_dot(self) -> np.ndarray:
+        return self._data[:, 7]
+
+    @property
+    def normal_cross_magnitude(self) -> np.ndarray:
+        return self._data[:, 8]
+
+    @property
+    def is_fused(self) -> np.ndarray:
+        return self._data[:, 12] != 0
+
+    def __repr__(self) -> str:
+        return f"RingPairGeometry(n_pairs={self._data.shape[0]})"

@@ -14,6 +14,10 @@
 //     frame_times    (T,)       float64
 //     attrs:
 //       result_name = "LarsenHBondCountTimeSeriesTrajectoryResult"
+//       source_attached_count  = uint64 count of present-source frames
+//       source_attached_policy = "conditional_larsen_grid_source"
+//       atom_axis    = "protein_atom_index"
+//       frame_axis   = "trajectory_frame_row"
 //       units       = "pairs"
 //       dtype       = "int32"
 //       description = "Per-atom H-bond pair count (sum over 1°HB, 2°HB, 1°HαB, 2°HαB)"
@@ -62,13 +66,12 @@ public:
 
     std::size_t NumFrames() const { return n_frames_; }
 
-    // Test-only: bypass the per-frame `conf.HasResult<SourceCalc>()`
-    // check inside Compute. Call BEFORE the first Compute. Use ONLY
-    // in synthetic unit tests that don't go through Trajectory::Run /
-    // OperationRunner (the production path that attaches the source
-    // ConformationResult). Production code never calls this.
-    void ForceSourcePresentForTesting() {
-        force_source_present_for_testing_ = true;
+    // Test-only: override the source-present state for subsequent frames.
+    // May be toggled between synthetic Compute calls to exercise mixed
+    // absent/present provenance without an external trajectory or grid.
+    // Production code never calls this.
+    void ForceSourcePresentForTesting(bool present = true) {
+        force_source_present_for_testing_ = present;
     }
 
 private:

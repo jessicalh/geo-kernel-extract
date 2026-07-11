@@ -15,10 +15,27 @@
 #include <vector>
 #include <typeindex>
 #include <memory>
+#include <array>
 
 namespace nmr {
 
 class ProteinConformation;
+struct RingGeometry;
+
+namespace conformation_result_detail {
+
+// Production row packer for ring_pair_geometry.npy.  Kept with this emitter
+// (not a shared utility) so the forcing test executes the exact definitions
+// used on disk.
+std::array<double, 13> PackRingPairGeometryRow(
+    size_t ring_a, size_t ring_b,
+    size_t residue_a, size_t residue_b,
+    int type_a, int type_b,
+    const RingGeometry& geometry_a,
+    const RingGeometry& geometry_b,
+    bool is_fused);
+
+}  // namespace conformation_result_detail
 
 class ConformationResult {
 public:

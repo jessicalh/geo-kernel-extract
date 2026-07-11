@@ -49,7 +49,7 @@ from ._tensors import (
     AIMNet2AimEmbedding,
     AIMNet2ChargeResponseGradient,
 )
-from ._ring import RingContributions, RingGeometry
+from ._ring import RingContributions, RingGeometry, RingPairGeometry
 from ._catalog import CATALOG
 
 
@@ -85,6 +85,30 @@ class PiQuadrupoleGroup:
     """Pi-quadrupole with row-aligned per-ring scalar diagnostics."""
     per_type_T0: PerRingTypeT0
     quad_scalar: Optional[np.ndarray] = None
+    axial_scalar_per_type_T0: Optional[PerRingTypeT0] = None
+    local_tensor: Optional[ShieldingTensor] = None
+    local_T2: Optional[np.ndarray] = None
+    local_frame: Optional[np.ndarray] = None
+    local_geometry: Optional[np.ndarray] = None
+
+    @property
+    def pq_per_type_T0(self) -> PerRingTypeT0:
+        """Backward-compatible name for the axial geometry scalar."""
+        return self.per_type_T0
+
+    @property
+    def piquad_axial_scalar_per_type_T0(self) -> PerRingTypeT0:
+        """Preferred honest name, with fallback for pre-alias extractions."""
+        return (self.axial_scalar_per_type_T0
+                if self.axial_scalar_per_type_T0 is not None
+                else self.per_type_T0)
+
+
+@dataclass(frozen=True)
+class RingSusceptibilityGroup:
+    """Computed ring-susceptibility scalar, sparse and per-type dense."""
+    scalar: np.ndarray
+    per_type_T0: PerRingTypeT0
 
 
 @dataclass(frozen=True)
@@ -100,6 +124,15 @@ class EnrichmentGroup:
     role: np.ndarray
     hybridisation: np.ndarray
     flags: np.ndarray
+    parent_is_sp2: Optional[np.ndarray] = None
+    polar_h_kind: Optional[np.ndarray] = None
+    planar_group_kind: Optional[np.ndarray] = None
+    formal_charge: Optional[np.ndarray] = None
+    ring_position: Optional[np.ndarray] = None
+    locant: Optional[np.ndarray] = None
+    donor_class: Optional[np.ndarray] = None
+    acceptor_class: Optional[np.ndarray] = None
+    hybridisation_class: Optional[np.ndarray] = None
 
     @property
     def is_backbone(self) -> np.ndarray:
@@ -148,6 +181,14 @@ class SpatialIndexGroup:
 
 
 @dataclass(frozen=True)
+class MolecularGraphGroup:
+    """Per-atom typed through-bond graph features."""
+    integer: np.ndarray
+    floating: np.ndarray
+    compatibility: np.ndarray
+
+
+@dataclass(frozen=True)
 class McConnellGroup:
     """Two-channel McConnell source response by source category.
 
@@ -169,6 +210,12 @@ class McConnellGroup:
     disulfide_bo: ShieldingTensor
     aromatic_zeroed_fixed: ShieldingTensor
     aromatic_zeroed_bo: ShieldingTensor
+    backbone_xh_fixed: ShieldingTensor
+    backbone_xh_bo: ShieldingTensor
+    sidechain_xh_fixed: ShieldingTensor
+    sidechain_xh_bo: ShieldingTensor
+    s_h_fixed: ShieldingTensor
+    s_h_bo: ShieldingTensor
     nearfield_counts: Optional[McConnellNearFieldCounts] = None
     nearest_co_dir: Optional[VectorField] = None
     nearest_co_midpoint: Optional[VectorField] = None
@@ -186,6 +233,9 @@ class McConnellGroup:
             "sidechain_other": self.sidechain_other_fixed,
             "disulfide": self.disulfide_fixed,
             "aromatic_zeroed": self.aromatic_zeroed_fixed,
+            "backbone_xh": self.backbone_xh_fixed,
+            "sidechain_xh": self.sidechain_xh_fixed,
+            "s_h": self.s_h_fixed,
         }
 
     @property
@@ -198,7 +248,21 @@ class McConnellGroup:
             "sidechain_other": self.sidechain_other_bo,
             "disulfide": self.disulfide_bo,
             "aromatic_zeroed": self.aromatic_zeroed_bo,
+            "backbone_xh": self.backbone_xh_bo,
+            "sidechain_xh": self.sidechain_xh_bo,
+            "s_h": self.s_h_bo,
         }
+
+
+@dataclass(frozen=True)
+class SidechainCarbonylAnisotropyGroup:
+    """Typed side-chain C=O sources, local frames, and tensor audits."""
+    source_bonds: np.ndarray
+    frame: np.ndarray
+    frame_quality: np.ndarray
+    fixed_T2: ShieldingTensor
+    bo_T2: ShieldingTensor
+    scalar_audit: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -362,6 +426,7 @@ class DeltaGroup:
     scalars: DeltaScalars
     apbs: Optional[DeltaAPBS]
     ring_proximity: DeltaRingProximity
+    graph: Optional[np.ndarray] = None
 
     # WT side
     wt_shielding_diamagnetic: Optional[ShieldingTensor] = None
@@ -1090,6 +1155,14 @@ class WaterFieldGroup:
 
 
 @dataclass(frozen=True)
+class WaterHBondGeometryGroup:
+    """Raw explicit-water H-bond candidates and per-atom summaries."""
+    candidates: np.ndarray
+    counts: np.ndarray
+    nearest: np.ndarray
+
+
+@dataclass(frozen=True)
 class HydrationGroup:
     """Per-atom hydration shell geometry."""
     data: np.ndarray                # (N, 4) [asymmetry, dipole_cos, ion_dist, ion_charge]
@@ -1189,6 +1262,25 @@ class TripeptideGroup:
     neighbor_residual_vec_prev: Optional[VectorField] = None
     neighbor_residual_vec_next: Optional[VectorField] = None
     neighbor_reference: Optional[np.ndarray] = None
+    bb_diagnostics: Optional[np.ndarray] = None
+    neighbor_diagnostics: Optional[np.ndarray] = None
+
+
+@dataclass(frozen=True)
+class LarsenHBondPairs:
+    """Split raw Larsen pair provenance plus the compatibility view.
+
+    ``index`` columns are donor/acceptor atoms, residues, classes,
+    disposition, six frame atoms, then five target masks. Dispositions are
+    0=missing frame, 1=theta miss, 2=grid miss, 3=success. ``geometry`` is
+    ``[r, theta, rho, any_imputed, imputed_corner_count, frame_valid]``;
+    ``isotropic`` is the four Table-2 terms, diagnostic C-beta, and their
+    scientific Table-2 total. ``compatibility`` concatenates 16+6+6 columns.
+    """
+    index: np.ndarray
+    geometry: np.ndarray
+    isotropic: np.ndarray
+    compatibility: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -1207,10 +1299,10 @@ class LarsenHBondGroup:
     Per-atom-type differences are themselves thesis-reportable. See
     ``feedback_methods_accumulate`` memory entry.
 
-    Phase 1 (landed) covers amide-H donor / backbone-O acceptor only.
-    Phase 2 adds Hα donors (via spatial search) and sidechain
-    acceptors. The Phase 1 fields are populated; the Phase 2 fields
-    (1pHaB / 2pHaB) are present-but-zero until Phase 2 lands.
+    The producer covers both backbone amide-H and Hα donors via spatial
+    enumeration, with backbone carbonyl, sidechain carbonyl, hydroxyl, and
+    carboxylate acceptor classes. SidechainCarbonyl is explicitly surfaced as
+    the frozen BackboneCarbonyl/NMA archive approximation.
 
     Per-atom convention:
 
@@ -1224,11 +1316,8 @@ class LarsenHBondGroup:
     - ``diagnostic_CB`` should be near-zero in production (Larsen Table
       2 says Cβ gets no HB term; non-zero would signal a pipeline bug
       in the parser/loader/rotation path).
-    - ``water_term`` is 2.07 ppm isotropic on amide Hs that DSSP saw as
-      solvent-exposed. A C-term-acceptor H-bond that our grid path
-      couldn't process is NOT spuriously assigned the water term —
-      the DSSP-paired bookkeeping is separate from the grid-paired
-      bookkeeping (codex M2).
+    - ``water_term`` is 2.07 ppm isotropic on amide Hs with zero geometric
+      H-bond candidates under the Larsen 4.2 Å / theta >= 90 degree gate.
     - ``count`` counts H-bond pairs that contributed to this atom under
       any of the four Table 2 classes — the diagnostic CB does NOT
       increment it.
@@ -1242,6 +1331,32 @@ class LarsenHBondGroup:
     water_term: Optional[np.ndarray] = None
     count: Optional[np.ndarray] = None
     corner_imputed: Optional[np.ndarray] = None
+    imputed_pair_count: Optional[np.ndarray] = None
+    sidechain_carbonyl_pair_count: Optional[np.ndarray] = None
+    pairs: Optional[LarsenHBondPairs] = None
+
+    @property
+    def pairs_index(self) -> Optional[np.ndarray]:
+        return None if self.pairs is None else self.pairs.index
+
+    @property
+    def pairs_geometry(self) -> Optional[np.ndarray]:
+        return None if self.pairs is None else self.pairs.geometry
+
+    @property
+    def pairs_isotropic(self) -> Optional[np.ndarray]:
+        return None if self.pairs is None else self.pairs.isotropic
+
+    @property
+    def pairs_compatibility(self) -> Optional[np.ndarray]:
+        return None if self.pairs is None else self.pairs.compatibility
+
+
+@dataclass(frozen=True)
+class LarsenSidechainDonorAuditGroup:
+    """Audit-only sidechain polar-H donors omitted by Larsen Table 2."""
+    atoms: np.ndarray
+    candidates: np.ndarray
 
 
 # ── Top-level protein container ─────────────────────────────────────
@@ -1267,20 +1382,25 @@ class Protein:
     biot_savart: BiotSavartGroup
     haigh_mallion: HaighMallionGroup
     pi_quadrupole: PiQuadrupoleGroup
+    ring_susceptibility: Optional[RingSusceptibilityGroup]
     dispersion: DispersionGroup
 
     # Per-ring sparse data
     ring_contributions: RingContributions = None
     ring_direction_to_center: Optional[VectorField] = None
     ring_geometry: RingGeometry = None
+    ring_pair_geometry: RingPairGeometry = None
 
     # Foundation calculators
     enrichment: Optional[EnrichmentGroup] = None
     charge_assignment: Optional[ChargeAssignmentGroup] = None
     spatial_index: Optional[SpatialIndexGroup] = None
+    molecular_graph: Optional[MolecularGraphGroup] = None
 
     # Bond calculators
     mcconnell: McConnellGroup = None
+    sidechain_carbonyl_anisotropy: Optional[
+        SidechainCarbonylAnisotropyGroup] = None
     coulomb: CoulombGroup = None
     hbond: HBondGroup = None
     dssp: DsspScalars = None
@@ -1291,6 +1411,7 @@ class Protein:
     dssp_chi: np.ndarray = None
     sasa: np.ndarray = None
     sasa_normal: Optional[VectorField] = None  # (N, 3) outward surface normal
+    sasa_fraction: Optional[np.ndarray] = None
 
     # Optional calculator groups
     mopac: Optional[MopacGroup] = None
@@ -1310,6 +1431,7 @@ class Protein:
 
     # Explicit solvent (trajectory path only)
     water_field: Optional[WaterFieldGroup] = None
+    water_hbond_geometry: Optional[WaterHBondGeometryGroup] = None
     hydration: Optional[HydrationGroup] = None
     water_polarization: Optional[WaterPolarizationGroup] = None
     gromacs_energy: Optional[np.ndarray] = None
@@ -1322,6 +1444,13 @@ class Protein:
     # the extractor was run with the tensorcs15 Postgres DSN configured.
     tripeptide: Optional[TripeptideGroup] = None
     larsen_hbond: Optional[LarsenHBondGroup] = None
+    larsen_sidechain_donor_audit: Optional[
+        LarsenSidechainDonorAuditGroup] = None
+
+    @property
+    def relative_sasa(self) -> Optional[np.ndarray]:
+        """Alias for the producer-emitted normalized SASA fraction."""
+        return self.sasa_fraction
 
 
 # ── Loader ──────────────────────────────────────────────────────────
@@ -1568,6 +1697,15 @@ def load(path: str | Path) -> Protein:
     pi_quadrupole = PiQuadrupoleGroup(
         per_type_T0=get("pq_per_type_T0"),
         quad_scalar=get("piquad_quad_scalar"),
+        axial_scalar_per_type_T0=get("piquad_axial_scalar_per_type_T0"),
+        local_tensor=get("piquad_local_tensor"),
+        local_T2=get("piquad_local_T2"),
+        local_frame=get("piquad_local_frame"),
+        local_geometry=get("piquad_local_geometry"),
+    )
+    ring_susceptibility = RingSusceptibilityGroup(
+        scalar=get("ringchi_scalar"),
+        per_type_T0=get("ringchi_per_type_T0"),
     )
     dispersion = DispersionGroup(
         per_type_T0=get("disp_per_type_T0"),
@@ -1592,6 +1730,12 @@ def load(path: str | Path) -> Protein:
         disulfide_bo=get("mc_disulfide_bo"),
         aromatic_zeroed_fixed=get("mc_aromatic_zeroed_fixed"),
         aromatic_zeroed_bo=get("mc_aromatic_zeroed_bo"),
+        backbone_xh_fixed=get("mc_backbone_xh_fixed"),
+        backbone_xh_bo=get("mc_backbone_xh_bo"),
+        sidechain_xh_fixed=get("mc_sidechain_xh_fixed"),
+        sidechain_xh_bo=get("mc_sidechain_xh_bo"),
+        s_h_fixed=get("mc_s_h_fixed"),
+        s_h_bo=get("mc_s_h_bo"),
         nearfield_counts=get("mc_nearfield_counts"),
         nearest_co_dir=get("mc_nearest_co_dir"),
         nearest_co_midpoint=get("mc_nearest_co_midpoint"),
@@ -1600,6 +1744,16 @@ def load(path: str | Path) -> Protein:
         bond_neighbors=get("mc_bond_neighbors")
             if "mc_bond_neighbors" in available else None,
     )
+    sidechain_carbonyl_anisotropy = None
+    if "sidechain_co_source_bonds" in available:
+        sidechain_carbonyl_anisotropy = SidechainCarbonylAnisotropyGroup(
+            source_bonds=get("sidechain_co_source_bonds"),
+            frame=get("sidechain_co_frame"),
+            frame_quality=get("sidechain_co_frame_quality"),
+            fixed_T2=get("sidechain_co_fixed_T2"),
+            bo_T2=get("sidechain_co_bo_T2"),
+            scalar_audit=get("sidechain_co_scalar_audit"),
+        )
     coulomb = CoulombGroup(
         efg=get("coulomb_efg", get("coulomb_shielding")),
         E=get("coulomb_E"),
@@ -1630,6 +1784,24 @@ def load(path: str | Path) -> Protein:
             role=get("enrichment_role"),
             hybridisation=get("enrichment_hybridisation"),
             flags=get("enrichment_flags"),
+            parent_is_sp2=get("enrichment_parent_is_sp2")
+                if "enrichment_parent_is_sp2" in available else None,
+            polar_h_kind=get("semantic_polar_h_kind")
+                if "semantic_polar_h_kind" in available else None,
+            planar_group_kind=get("semantic_planar_group_kind")
+                if "semantic_planar_group_kind" in available else None,
+            formal_charge=get("semantic_formal_charge")
+                if "semantic_formal_charge" in available else None,
+            ring_position=get("semantic_ring_position")
+                if "semantic_ring_position" in available else None,
+            locant=get("semantic_locant")
+                if "semantic_locant" in available else None,
+            donor_class=get("enrichment_donor_class")
+                if "enrichment_donor_class" in available else None,
+            acceptor_class=get("enrichment_acceptor_class")
+                if "enrichment_acceptor_class" in available else None,
+            hybridisation_class=get("enrichment_hybridisation_class")
+                if "enrichment_hybridisation_class" in available else None,
         )
 
     charge_assignment = None
@@ -1642,6 +1814,14 @@ def load(path: str | Path) -> Protein:
     spatial_index = None
     if "spatial_neighbors" in available:
         spatial_index = SpatialIndexGroup(neighbors=get("spatial_neighbors"))
+
+    molecular_graph = None
+    if "molecular_graph_int" in available:
+        molecular_graph = MolecularGraphGroup(
+            integer=get("molecular_graph_int"),
+            floating=get("molecular_graph_float"),
+            compatibility=get("molecular_graph"),
+        )
 
     # MOPAC (optional)
     mopac = None
@@ -1777,6 +1957,7 @@ def load(path: str | Path) -> Protein:
             scalars=get("delta_scalars"),
             apbs=get("delta_apbs"),
             ring_proximity=get("delta_ring_proximity"),
+            graph=get("delta_graph"),
             wt_shielding_diamagnetic=get("wt_shielding_diamagnetic"),
             wt_shielding_paramagnetic=get("wt_shielding_paramagnetic"),
             mut_shielding_diamagnetic=get("mut_shielding_diamagnetic"),
@@ -1813,6 +1994,22 @@ def load(path: str | Path) -> Protein:
     )
     _validate_topology_invariants(
         topology_group, n_atoms, protein_id, available.get("residue_index"))
+    pair_geometry_raw = np.asarray(available["ring_pair_geometry"])
+    n_aromatic = int((topology_group.rings.ring_kind == 0).sum())
+    expected_pairs = n_aromatic * (n_aromatic - 1) // 2
+    if pair_geometry_raw.shape != (expected_pairs, 13):
+        raise ValueError(
+            f"{protein_id}: ring_pair_geometry.npy has shape "
+            f"{pair_geometry_raw.shape}; expected ({expected_pairs}, 13)")
+    if expected_pairs:
+        expected_ab = np.array(
+            [(a, b) for a in range(n_aromatic)
+                    for b in range(a + 1, n_aromatic)], dtype=np.intp)
+        actual_ab = pair_geometry_raw[:, :2].astype(np.intp)
+        if not np.array_equal(actual_ab, expected_ab):
+            raise ValueError(
+                f"{protein_id}: ring_pair_geometry.npy rows must be "
+                "lexicographic i<j over the aromatic-ring axis")
 
     # AIMNet2 production arrays are required by the catalog; this guard keeps
     # legacy/pre-contract extractions from constructing a partial group.
@@ -1897,6 +2094,14 @@ def load(path: str | Path) -> Protein:
                 if "water_efield_first_clamp_scale" in available else None,
         )
 
+    water_hbond_geometry = None
+    if "water_hbond_candidates" in available:
+        water_hbond_geometry = WaterHBondGeometryGroup(
+            candidates=get("water_hbond_candidates"),
+            counts=get("water_hbond_counts"),
+            nearest=get("water_hbond_nearest"),
+        )
+
     # Hydration shell (trajectory path — optional)
     hydration = None
     if "hydration_shell" in available:
@@ -1954,6 +2159,8 @@ def load(path: str | Path) -> Protein:
         "tripeptide_neighbor_residual_vec_prev",
         "tripeptide_neighbor_residual_vec_next",
         "tripeptide_neighbor_reference",
+        "tripeptide_bb_diagnostics",
+        "tripeptide_neighbor_diagnostics",
     }
     if any(stem in available for stem in tripeptide_stems):
         tripeptide = TripeptideGroup(
@@ -1979,11 +2186,15 @@ def load(path: str | Path) -> Protein:
                 if "tripeptide_neighbor_residual_vec_next" in available else None,
             neighbor_reference=get("tripeptide_neighbor_reference")
                 if "tripeptide_neighbor_reference" in available else None,
+            bb_diagnostics=get("tripeptide_bb_diagnostics")
+                if "tripeptide_bb_diagnostics" in available else None,
+            neighbor_diagnostics=get("tripeptide_neighbor_diagnostics")
+                if "tripeptide_neighbor_diagnostics" in available else None,
         )
 
-    # Larsen H-bond term shielding (Larsen 2015) — Phase 1 covers
-    # amide-H / backbone-O subset; Phase 2 adds Hα + sidechain. Group
-    # attached if any larsen_hbond_* NPY is present.
+    # Larsen H-bond term shielding (Larsen 2015): spatial enumeration of
+    # backbone amide-H and Halpha donors against all typed acceptor classes.
+    # Group attached if any larsen_hbond_* NPY is present.
     larsen_hbond = None
     larsen_hbond_stems = {
         "larsen_hbond_shielding",
@@ -1995,6 +2206,12 @@ def load(path: str | Path) -> Protein:
         "larsen_hbond_water_term",
         "larsen_hbond_count",
         "larsen_corner_imputed",
+        "larsen_imputed_pair_count",
+        "larsen_sidechain_carbonyl_pair_count",
+        "larsen_hbond_pairs_index",
+        "larsen_hbond_pairs_geometry",
+        "larsen_hbond_pairs_isotropic",
+        "larsen_hbond_pairs",
     }
     if any(stem in available for stem in larsen_hbond_stems):
         larsen_hbond = LarsenHBondGroup(
@@ -2016,6 +2233,24 @@ def load(path: str | Path) -> Protein:
                 if "larsen_hbond_count" in available else None,
             corner_imputed=get("larsen_corner_imputed")
                 if "larsen_corner_imputed" in available else None,
+            imputed_pair_count=get("larsen_imputed_pair_count")
+                if "larsen_imputed_pair_count" in available else None,
+            sidechain_carbonyl_pair_count=get(
+                "larsen_sidechain_carbonyl_pair_count")
+                if "larsen_sidechain_carbonyl_pair_count" in available else None,
+            pairs=LarsenHBondPairs(
+                index=get("larsen_hbond_pairs_index"),
+                geometry=get("larsen_hbond_pairs_geometry"),
+                isotropic=get("larsen_hbond_pairs_isotropic"),
+                compatibility=get("larsen_hbond_pairs"),
+            ) if "larsen_hbond_pairs_index" in available else None,
+        )
+
+    larsen_sidechain_donor_audit = None
+    if "larsen_sidechain_donor_atoms" in available:
+        larsen_sidechain_donor_audit = LarsenSidechainDonorAuditGroup(
+            atoms=get("larsen_sidechain_donor_atoms"),
+            candidates=get("larsen_sidechain_donor_candidates"),
         )
 
     return Protein(
@@ -2028,14 +2263,18 @@ def load(path: str | Path) -> Protein:
         biot_savart=biot_savart,
         haigh_mallion=haigh_mallion,
         pi_quadrupole=pi_quadrupole,
+        ring_susceptibility=ring_susceptibility,
         dispersion=dispersion,
         ring_contributions=get("ring_contributions"),
         ring_direction_to_center=get("ring_direction_to_center"),
         ring_geometry=get("ring_geometry"),
+        ring_pair_geometry=get("ring_pair_geometry"),
         enrichment=enrichment,
         charge_assignment=charge_assignment,
         spatial_index=spatial_index,
+        molecular_graph=molecular_graph,
         mcconnell=mcconnell,
+        sidechain_carbonyl_anisotropy=sidechain_carbonyl_anisotropy,
         coulomb=coulomb,
         hbond=hbond,
         dssp=get("dssp_backbone"),
@@ -2046,6 +2285,7 @@ def load(path: str | Path) -> Protein:
         dssp_chi=get("dssp_chi"),
         sasa=get("atom_sasa"),
         sasa_normal=get("sasa_normal"),
+        sasa_fraction=get("atom_sasa_fraction"),
         mopac=mopac,
         apbs=apbs,
         orca=orca,
@@ -2053,6 +2293,7 @@ def load(path: str | Path) -> Protein:
         aimnet2=aimnet2,
         planar_geometry=planar_geometry,
         water_field=water_field,
+        water_hbond_geometry=water_hbond_geometry,
         hydration=hydration,
         water_polarization=water_polarization,
         gromacs_energy=get("gromacs_energy"),
@@ -2062,4 +2303,5 @@ def load(path: str | Path) -> Protein:
         topology=topology_group,
         tripeptide=tripeptide,
         larsen_hbond=larsen_hbond,
+        larsen_sidechain_donor_audit=larsen_sidechain_donor_audit,
     )

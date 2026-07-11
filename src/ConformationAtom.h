@@ -138,7 +138,7 @@ public:
     SphericalTensor bs_shielding_contribution;
 
     // === Bond anisotropy totals (McConnellResult) ===
-    // Forward surface: 7 source categories x {fixed, MOPAC bond-order}
+    // Forward surface: 10 source categories x {fixed, MOPAC bond-order}
     // channels, each packed as a full even SphericalTensor.
     std::array<std::array<SphericalTensor, kMcConnellChannelCount>,
                kMcConnellSourceCategoryCount> mcconnell_source_tensors = {};
@@ -271,6 +271,7 @@ public:
     int n_pi_bonds_3 = 0;
     bool is_conjugated = false;
     int bfs_to_nearest_ring_atom = -1;
+    int nearest_ring_atom_index = -1;
     double bfs_decay = 0.0;
 
     // === ORCA DFT shielding (OrcaShieldingResult) ===

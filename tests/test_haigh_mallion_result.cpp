@@ -7,6 +7,7 @@
 #include "BiotSavartResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
+#include "CalculatorConfig.h"
 #include "Protein.h"
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
@@ -15,6 +16,49 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+RingGeometry RegularHexagonGeometry(double radius) {
+    RingGeometry geom;
+    geom.center = Vec3::Zero();
+    geom.normal = Vec3(0.0, 0.0, 1.0);
+    geom.radius = radius;
+    const double pi = std::acos(-1.0);
+    for (int i = 0; i < 6; ++i) {
+        const double angle = 2.0 * pi * static_cast<double>(i) / 6.0;
+        geom.vertices.emplace_back(radius * std::cos(angle),
+                                   radius * std::sin(angle), 0.0);
+    }
+    return geom;
+}
+
+}  // namespace
+
+
+TEST(HaighMallionAnalytical, FiniteSurfaceGuardAcceptsPointAboveRingFace) {
+    const RingGeometry geom = RegularHexagonGeometry(1.4);
+    const Vec3 point(0.0, 0.0, 0.5);  // center distance < radius
+
+    const double surface_distance =
+        haigh_mallion_detail::MinimumDistanceToFanSurface(point, geom);
+    EXPECT_NEAR(surface_distance, 0.5, 1e-14);
+    EXPECT_LT(point.norm(), geom.radius);
+    EXPECT_GT(surface_distance,
+              CalculatorConfig::Get("singularity_guard_distance"));
+
+    // Production quadrature executes and remains finite above the face.
+    const Mat3 H =
+        haigh_mallion_detail::ComputeSurfaceIntegralH(point, geom);
+    EXPECT_TRUE(H.allFinite());
+    EXPECT_GT(H.norm(), 0.0);
+
+    // The actual fan surface, not the center sphere, is the singular set.
+    EXPECT_NEAR(
+        haigh_mallion_detail::MinimumDistanceToFanSurface(
+            Vec3::Zero(), geom),
+        0.0, 1e-14);
+}
 
 
 

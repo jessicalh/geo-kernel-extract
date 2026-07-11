@@ -15,6 +15,7 @@
 #include "Types.h"
 
 #include <chrono>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -37,6 +38,123 @@ namespace nmr {
 // ============================================================================
 
 namespace {
+
+// Ring-current producer contract.  These arrays deliberately follow the
+// aromatic prefix of RingTypeIndex exactly; the saturated PRO ring is outside
+// kAromaticRingTypeCount and never contributes to the aromatic BS/HM payloads.
+nlohmann::ordered_json RingCurrentFeatureMetadata() {
+    struct RingParameterKeys {
+        const char* type;
+        const char* intensity;
+        const char* lobe_offset;
+        const char* status;
+        const char* literature_status;
+        const char* literature_source;
+    };
+    constexpr std::array<RingParameterKeys, kAromaticRingTypeCount> keys{{
+        {"PheBenzene", "phe_benzene_ring_current_intensity",
+         "phe_benzene_jb_lobe_offset", "cited", "cited",
+         "Giessner-Prettre/Pullman ring intensity; Johnson-Bovey lobe offset"},
+        {"TyrPhenol", "tyr_phenol_ring_current_intensity",
+         "tyr_phenol_jb_lobe_offset", "cited", "cited",
+         "Giessner-Prettre/Pullman ring intensity; Johnson-Bovey lobe offset"},
+        {"TrpBenzene", "trp_benzene_ring_current_intensity",
+         "trp_benzene_jb_lobe_offset", "cited", "cited",
+         "Giessner-Prettre/Pullman ring intensity; Johnson-Bovey lobe offset"},
+        {"TrpPyrrole", "trp_pyrrole_ring_current_intensity",
+         "trp_pyrrole_jb_lobe_offset", "cited", "cited",
+         "Giessner-Prettre/Pullman ring intensity; Johnson-Bovey lobe offset"},
+        {"TrpPerimeter", "trp_indole_perimeter_ring_current_intensity",
+         "trp_indole_perimeter_jb_lobe_offset", "estimated", "good_enough",
+         "indole-perimeter values estimated from component rings"},
+        {"HisImidazole", "his_imidazole_ring_current_intensity",
+         "his_imidazole_jb_lobe_offset", "cited", "cited",
+         "Giessner-Prettre/Pullman ring intensity; Johnson-Bovey lobe offset"},
+        {"HidImidazole", "hid_imidazole_ring_current_intensity",
+         "hid_imidazole_jb_lobe_offset", "good_enough", "good_enough",
+         "HID reuses the calibrated histidine/imidazole values"},
+        {"HieImidazole", "hie_imidazole_ring_current_intensity",
+         "hie_imidazole_jb_lobe_offset", "good_enough", "good_enough",
+         "HIE reuses the calibrated histidine/imidazole values"},
+    }};
+
+    nlohmann::ordered_json ring_type_order = nlohmann::ordered_json::array();
+    nlohmann::ordered_json intensities = nlohmann::ordered_json::array();
+    nlohmann::ordered_json intensity_sources = nlohmann::ordered_json::array();
+    nlohmann::ordered_json lobe_offsets = nlohmann::ordered_json::array();
+    nlohmann::ordered_json lobe_sources = nlohmann::ordered_json::array();
+    nlohmann::ordered_json intensity_constants = nlohmann::ordered_json::array();
+    nlohmann::ordered_json lobe_constants = nlohmann::ordered_json::array();
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+        const auto intensity = CalculatorConfig::GetResolved(keys[i].intensity);
+        const auto lobe = CalculatorConfig::GetResolved(keys[i].lobe_offset);
+        ring_type_order.push_back(keys[i].type);
+        intensities.push_back(intensity.value);
+        intensity_sources.push_back(intensity.source);
+        lobe_offsets.push_back(lobe.value);
+        lobe_sources.push_back(lobe.source);
+
+        intensity_constants.push_back(nlohmann::ordered_json{
+            {"ring_type", keys[i].type},
+            {"ring_type_index", i},
+            {"config_key", keys[i].intensity},
+            {"value", intensity.value},
+            {"unit", intensity.unit},
+            {"value_source", intensity.source},
+            {"status", keys[i].status},
+            {"literature_status", keys[i].literature_status},
+            {"source", keys[i].literature_source},
+        });
+        lobe_constants.push_back(nlohmann::ordered_json{
+            {"ring_type", keys[i].type},
+            {"ring_type_index", i},
+            {"config_key", keys[i].lobe_offset},
+            {"value", lobe.value},
+            {"unit", lobe.unit},
+            {"value_source", lobe.source},
+            {"status", keys[i].status},
+            {"literature_status", keys[i].literature_status},
+            {"source", keys[i].literature_source},
+        });
+    }
+
+    return nlohmann::ordered_json{
+        {"kernel_contract",
+         "BS per-type arrays are unit-current geometry kernels; multiply "
+         "each ring-type channel by resolved_intensity_nA_per_T and sum "
+         "over ring type to obtain physical ppm shielding"},
+        {"ring_type_axis", "aromatic prefix of RingTypeIndex (indices 0..7)"},
+        {"ring_type_order", ring_type_order},
+        {"resolved_intensity_nA_per_T", intensities},
+        {"resolved_intensity_source", intensity_sources},
+        {"resolved_jb_lobe_offset_A", lobe_offsets},
+        {"resolved_jb_lobe_offset_source", lobe_sources},
+        {"constants", nlohmann::ordered_json{
+            {"ring_current_intensity", intensity_constants},
+            {"johnson_bovey_lobe_offset", lobe_constants},
+        }},
+    };
+}
+
+nlohmann::ordered_json PiQuadrupoleFeatureMetadata() {
+    nlohmann::ordered_json affected = nlohmann::ordered_json::array();
+    for (int ti = 0; ti < kAromaticRingTypeCount; ++ti) {
+        affected.push_back(RingTypeCode(static_cast<RingTypeIndex>(ti)));
+    }
+    return nlohmann::ordered_json{
+        {"payload_contract",
+         "geometry-only axial scalar and local A^-5 tensor; no physical "
+         "quadrupole prefactor is applied by the producer"},
+        {"physical_prefactor", nlohmann::ordered_json{
+            {"value", 1.0},
+            {"unit", "learnable_multiplier_not_applied"},
+            {"status", "deferred_learnable"},
+            {"source", "project decision: defer physical pi-quadrupole scale to the learned model"},
+            {"affected_ring_types", affected},
+        }},
+    };
+}
 
 // ── NPY 1.0 writer ────────────────────────────────────────────────
 //
@@ -547,6 +665,8 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
         {"aromatic_ring",   aromatic_ring_count},
         {"saturated_ring",  saturated_ring_count},
         {"ring",            aromatic_ring_count + saturated_ring_count},
+        {"ring_pair",       aromatic_ring_count *
+                             (aromatic_ring_count > 0 ? aromatic_ring_count - 1 : 0) / 2},
         {"ring_membership", ring_membership_count},
     };
 
@@ -557,7 +677,9 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
             "element.row[i] == residue_index.row[i] == atom_index i. "
             "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
             "mc_<category>_<fixed|bo>, coulomb_efg, hbond_scalars, "
-            "larsen_hbond_*, tripeptide_*, etc.) follow the same convention."},
+            "per-atom Larsen outputs, tripeptide_*, etc.) follow the same "
+            "convention. Larsen larsen_hbond_pairs* tables are explicitly "
+            "on the separate larsen_hbond_pair axis."},
         {"residue",
             "residues.npy is the canonical residue axis. "
             "residue_type.npy / residue_index.npy in the identity block are atom-axis "
@@ -576,12 +698,33 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
         {"ring_contribution_pair",
             "ring_contributions.npy is per (atom, aromatic_ring) "
             "pair. The ring_index column references the aromatic-ring axis."},
+        {"larsen_hbond_pair",
+            "larsen_hbond_pairs_index.npy, "
+            "larsen_hbond_pairs_geometry.npy, "
+            "larsen_hbond_pairs_isotropic.npy, and "
+            "larsen_hbond_pairs.npy share one row per processed "
+            "Larsen donor/acceptor candidate."},
+        {"ring_pair",
+            "ring_pair_geometry.npy is one row per aromatic-ring pair in "
+            "lexicographic i<j order; ring_a and ring_b reference the "
+            "aromatic-ring axis."},
         {"ring_membership",
             "ring_membership.npy is per (ring, ring-vertex-atom) pair. "
             "ring_id references rings.npy; atom_index references the atom axis."},
     };
 
     j["feature_metadata"] = nlohmann::ordered_json{
+        {"ring_current", RingCurrentFeatureMetadata()},
+        {"pi_quadrupole", PiQuadrupoleFeatureMetadata()},
+        {"larsen_hbond", nlohmann::ordered_json{
+            {"imputed_policy", "emitted_unmasked"},
+            {"imputed_pair_provenance",
+             "larsen_hbond_pairs_geometry columns 3-4 expose any-corner and exact imputed-corner count; shielding is preserved without masking or downweighting"},
+            {"acceptor_archive_approximations", nlohmann::ordered_json{
+                {"SidechainCarbonyl",
+                 "BackboneCarbonyl/NMA archive approximation"},
+            }},
+        }},
         {"mcconnell", McConnellResult::FeatureMetadata(
             CalculatorConfig::Get("mcconnell_include_xh_sources") != 0.0)}
     };

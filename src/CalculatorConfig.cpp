@@ -198,20 +198,30 @@ void CalculatorConfig::Load(const std::string& path) {
 
 
 double CalculatorConfig::Get(const std::string& key) {
+    return GetResolved(key).value;
+}
+
+
+CalculatorConfig::ResolvedParameter CalculatorConfig::GetResolved(
+        const std::string& key) {
     if (!defaults_initialised_) InitDefaults();
 
     auto ov = overrides_.find(key);
-    if (ov != overrides_.end()) return ov->second;
-
     auto df = defaults_.find(key);
-    if (df != defaults_.end()) return df->second.value;
+    if (df != defaults_.end()) {
+        return ResolvedParameter{
+            ov != overrides_.end() ? ov->second : df->second.value,
+            df->second.unit,
+            df->second.description,
+            ov != overrides_.end() ? "toml" : "default"};
+    }
 
     // Unknown key = programming error
     fprintf(stderr,
-        "FATAL: CalculatorConfig::Get(\"%s\") — unknown parameter key.\n",
+        "FATAL: CalculatorConfig::GetResolved(\"%s\") — unknown parameter key.\n",
         key.c_str());
     std::abort();
-    return 0.0;  // unreachable
+    return {};  // unreachable
 }
 
 

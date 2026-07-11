@@ -14,7 +14,7 @@
 //     CHOSE not to include in ProCS15); non-zero is the methodology
 //     statement, not a pipeline bug.
 //   - Δσ_w water-term gate is geometric (no candidate O in range).
-//   - WriteFeatures emits 9 NPYs.
+//   - WriteFeatures emits the per-atom and raw pair-audit NPYs.
 //
 // Per-cell Larsen Table 2 dispatch unit tests cover LarsenContribDispatch
 // directly (no fixture needed).
@@ -30,6 +30,7 @@
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
 #include "LarsenHBondGrid.h"
+#include "LarsenSidechainDonorAuditResult.h"
 #include "LarsenHBondShieldingResult.h"
 #include "OperationLog.h"
 #include "PdbFileReader.h"
@@ -40,17 +41,163 @@
 #include "Session.h"
 #include "SpatialIndexResult.h"
 
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+#include <highfive/H5File.hpp>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 using namespace nmr;
 namespace fs = std::filesystem;
+
+namespace {
+
+fs::path MakeUniqueTempDirectory(const std::string& prefix) {
+    static std::atomic<unsigned long long> sequence{0};
+    const auto tick = std::chrono::steady_clock::now()
+                          .time_since_epoch()
+                          .count();
+    const fs::path dir = fs::temp_directory_path() /
+        (prefix + "_" + std::to_string(tick) + "_" +
+         std::to_string(sequence.fetch_add(1)));
+    fs::create_directories(dir);
+    return dir;
+}
+
+void RemoveFlatTempDirectory(
+    const fs::path& dir,
+    std::initializer_list<const char*> file_names) {
+    for (const char* file_name : file_names) {
+        const std::string path = (dir / file_name).string();
+        EXPECT_EQ(std::remove(path.c_str()), 0) << path;
+    }
+    const std::string path = dir.string();
+    EXPECT_EQ(std::remove(path.c_str()), 0) << path;
+}
+
+struct RawNpy {
+    std::string header;
+    std::vector<char> payload;
+};
+
+template <typename T>
+T PayloadValue(const RawNpy& npy, std::size_t element_index) {
+    T value{};
+    const std::size_t byte_offset = element_index * sizeof(T);
+    EXPECT_LE(byte_offset + sizeof(T), npy.payload.size());
+    if (byte_offset + sizeof(T) <= npy.payload.size()) {
+        std::memcpy(&value, npy.payload.data() + byte_offset, sizeof(T));
+    }
+    return value;
+}
+
+RawNpy ReadRawNpy(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    std::uint16_t header_len = 0;
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    RawNpy out;
+    out.header.resize(header_len);
+    in.read(out.header.data(), header_len);
+    out.payload.assign(std::istreambuf_iterator<char>(in),
+                       std::istreambuf_iterator<char>());
+    return out;
+}
+
+std::vector<float> ConstantTensorGrid(float base) {
+    constexpr std::size_t kGridCells = 2 * 2 * 2;
+    std::vector<float> values(kGridCells * 9, 0.0f);
+    for (std::size_t cell = 0; cell < kGridCells; ++cell) {
+        values[cell * 9 + 0] = base;
+        values[cell * 9 + 4] = base * 2.0f;
+        values[cell * 9 + 8] = base * 3.0f;
+    }
+    return values;
+}
+
+void WriteTensorDataset(HighFive::File& file,
+                        const std::string& name,
+                        float base) {
+    const HighFive::DataSpace space{2, 2, 2, 3, 3};
+    auto dataset = file.createDataSet<float>(name, space);
+    const std::vector<float> values = ConstantTensorGrid(base);
+    dataset.write_raw(values.data());
+}
+
+// Creates all six schema-valid archives with a tiny regular grid. Every
+// successful query interpolates the production tensors above and sees
+// exactly one imputed corner, making C34 deterministic without an external
+// database or GTEST_SKIP gate.
+fs::path WriteSyntheticLarsenGridDirectory(const std::string& tag) {
+    const fs::path dir =
+        MakeUniqueTempDirectory("nmr_larsen_synthetic_" + tag);
+
+    const std::vector<double> theta_axis = {90.0, 180.0};
+    const std::vector<double> rho_axis = {-180.0, 0.0};
+    const std::vector<std::uint8_t> validity = {0, 1, 1, 1, 1, 1, 1, 1};
+    const char* stems[6] = {
+        "NMANMA", "NMACOH", "NMACOO",
+        "ALANMA", "ALACOH", "ALACOO",
+    };
+
+    for (int archive = 0; archive < 6; ++archive) {
+        HighFive::File file(
+            (dir / (std::string(stems[archive]) + "_dense.h5")).string(),
+            HighFive::File::Overwrite);
+        const std::vector<double> r_axis = archive < 3
+            ? std::vector<double>{1.5, 3.0}
+            : std::vector<double>{1.8, 4.0};
+        file.createDataSet("r_axis", r_axis);
+        file.createDataSet("theta_axis", theta_axis);
+        file.createDataSet("rho_axis", rho_axis);
+
+        float base = static_cast<float>(archive + 1);
+        WriteTensorDataset(file, "donor_N",  base + 0.1f);
+        WriteTensorDataset(file, "donor_CA", base + 0.2f);
+        WriteTensorDataset(file, "donor_C",  base + 0.3f);
+        WriteTensorDataset(file, "donor_HA", base + 0.4f);
+        WriteTensorDataset(file, "donor_HN", base + 0.5f);
+        const bool ala_donor = archive >= 3;
+        if (ala_donor) WriteTensorDataset(file, "donor_CB", base + 0.6f);
+
+        const bool nma_acceptor = archive == 0 || archive == 3;
+        if (nma_acceptor) {
+            WriteTensorDataset(file, "acceptor_N",  base + 0.7f);
+            WriteTensorDataset(file, "acceptor_HN", base + 0.8f);
+            WriteTensorDataset(file, "acceptor_CA", base + 0.9f);
+            WriteTensorDataset(file, "acceptor_C",  base + 1.0f);
+            WriteTensorDataset(file, "acceptor_HA", base + 1.1f);
+        }
+
+        auto mask = file.createDataSet<std::uint8_t>(
+            "validity_mask", HighFive::DataSpace{2, 2, 2});
+        mask.write_raw(validity.data());
+    }
+    return dir;
+}
+
+}  // namespace
 
 
 // ---------------------------------------------------------------------------
@@ -104,6 +251,442 @@ TEST(LarsenContribDispatchTest, Table2Cells) {
     EXPECT_TRUE(LarsenContribDispatch::Applies(TA::HN, Term::Secondary_HaB));
     EXPECT_TRUE(LarsenContribDispatch::Applies(TA::HN, Term::RingCurrent));
     EXPECT_TRUE(LarsenContribDispatch::Applies(TA::HN, Term::Water));
+}
+
+
+// Production-linked forcing function for the A23 value bug. The test calls
+// the exact audit helper used at every production tensor-write site and
+// compares it with the independent physical invariant isotropic = trace/3.
+TEST(LarsenHBondPairAudit, TermAwareIsotropicAccountingUsesAppliedTensors) {
+    using TA = LarsenContribDispatch::TargetAtom;
+    using Term = LarsenContribDispatch::Term;
+
+    LarsenHBondShieldingResult::PairRecord pair;
+    pair.iso_1pHB = pair.iso_2pHB = 0.0;
+    pair.iso_1pHaB = pair.iso_2pHaB = 0.0;
+    pair.iso_diagnostic_CB = 0.0;
+    Mat3 primary = Mat3::Zero();
+    primary.diagonal() << 3.0, 6.0, 12.0;      // isotropic 7
+    Mat3 secondary = Mat3::Zero();
+    secondary.diagonal() << -3.0, 0.0, 6.0;    // isotropic 1
+    Mat3 alpha = Mat3::Zero();
+    alpha.diagonal() << 9.0, 12.0, 15.0;       // isotropic 12
+    Mat3 diagnostic = Mat3::Zero();
+    diagnostic.diagonal() << 30.0, 0.0, 0.0;   // isotropic 10
+
+    larsen_hbond_shielding_detail::RecordTable2Contribution(
+        pair, TA::HN, Term::Primary_HB, primary);
+    // A second actual target write under the same term must accumulate,
+    // not overwrite (the GLY HA2/HA3 fan-out is this shape).
+    larsen_hbond_shielding_detail::RecordTable2Contribution(
+        pair, TA::HA, Term::Primary_HB, secondary);
+    larsen_hbond_shielding_detail::RecordTable2Contribution(
+        pair, TA::N, Term::Secondary_HaB, alpha);
+    larsen_hbond_shielding_detail::RecordDiagnosticCbContribution(
+        pair, diagnostic);
+
+    EXPECT_DOUBLE_EQ(pair.iso_1pHB,
+                     primary.trace() / 3.0 + secondary.trace() / 3.0);
+    EXPECT_DOUBLE_EQ(pair.iso_2pHB, 0.0);
+    EXPECT_DOUBLE_EQ(pair.iso_1pHaB, 0.0);
+    EXPECT_DOUBLE_EQ(pair.iso_2pHaB, alpha.trace() / 3.0);
+    EXPECT_DOUBLE_EQ(pair.iso_diagnostic_CB,
+                     diagnostic.trace() / 3.0);
+    EXPECT_NE(pair.target_mask_1pHB & (1u << static_cast<unsigned>(TA::HN)), 0u);
+    EXPECT_NE(pair.target_mask_1pHB & (1u << static_cast<unsigned>(TA::HA)), 0u);
+    EXPECT_NE(pair.target_mask_2pHaB & (1u << static_cast<unsigned>(TA::N)), 0u);
+    EXPECT_EQ(pair.target_mask_diagnostic_CB,
+              1u << static_cast<unsigned>(TA::CB));
+}
+
+
+// Bare-checkout, end-to-end freeze gate for A23/C34/C35. It runs the
+// production grid loader, production spatial enumeration/dispatch, and the
+// production NPY writer against committed 1UBQ coordinates plus tiny H5
+// grids created by the test. No configured database and no GTEST_SKIP.
+TEST(LarsenHBondPairAudit, SyntheticGridEmitsAuditablePairTables) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    std::unique_ptr<Protein> protein = std::move(build.protein);
+    ProteinConformation& conf = protein->Conformation();
+
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    const fs::path grid_dir =
+        WriteSyntheticLarsenGridDirectory("pair_audit");
+    LarsenHBondGrid grid(grid_dir.string());
+    auto result = LarsenHBondShieldingResult::Compute(conf, grid);
+    ASSERT_NE(result, nullptr);
+
+    EXPECT_EQ(result->Pairs().size(),
+              static_cast<std::size_t>(result->PairsFound() +
+                                       result->PairsGridSkipped()));
+    ASSERT_GT(result->PairsFound(), 0);
+
+    int n_success = 0;
+    int n_missing_frame = 0;
+    int n_theta_miss = 0;
+    int n_grid_miss = 0;
+    int n_sidechain_carbonyl_success = 0;
+    double pair_1pHB = 0.0;
+    double pair_2pHB = 0.0;
+    double pair_1pHaB = 0.0;
+    double pair_2pHaB = 0.0;
+    double pair_cb = 0.0;
+    for (const auto& pair : result->Pairs()) {
+        using Disp = LarsenHBondShieldingResult::PairDisposition;
+        switch (pair.disposition) {
+            case Disp::MissingFrameAtoms:
+                ++n_missing_frame;
+                EXPECT_FALSE(pair.frame_valid);
+                EXPECT_TRUE(std::isnan(pair.r_angstrom));
+                EXPECT_TRUE(std::isnan(pair.theta_deg));
+                EXPECT_TRUE(std::isnan(pair.rho_deg));
+                EXPECT_TRUE(std::isnan(pair.iso_1pHB));
+                EXPECT_TRUE(std::isnan(pair.iso_2pHB));
+                EXPECT_TRUE(std::isnan(pair.iso_1pHaB));
+                EXPECT_TRUE(std::isnan(pair.iso_2pHaB));
+                EXPECT_TRUE(std::isnan(pair.iso_diagnostic_CB));
+                EXPECT_TRUE(std::isnan(pair.iso_table2_total));
+                EXPECT_FALSE(pair.any_corner_imputed);
+                EXPECT_EQ(pair.imputed_corner_count, 0);
+                break;
+            case Disp::ThetaOutOfRange:
+                ++n_theta_miss;
+                EXPECT_TRUE(pair.frame_valid);
+                EXPECT_TRUE(std::isfinite(pair.r_angstrom));
+                EXPECT_TRUE(std::isnan(pair.iso_table2_total));
+                break;
+            case Disp::GridMiss:
+                ++n_grid_miss;
+                EXPECT_TRUE(pair.frame_valid);
+                EXPECT_TRUE(std::isfinite(pair.theta_deg));
+                EXPECT_TRUE(std::isnan(pair.iso_table2_total));
+                break;
+            case Disp::Success:
+                ++n_success;
+                EXPECT_TRUE(pair.frame_valid);
+                EXPECT_EQ(pair.imputed_corner_count, 1);
+                EXPECT_TRUE(pair.any_corner_imputed);
+                EXPECT_NEAR(pair.iso_table2_total,
+                            pair.iso_1pHB + pair.iso_2pHB +
+                            pair.iso_1pHaB + pair.iso_2pHaB,
+                            1e-12);
+                EXPECT_DOUBLE_EQ(pair.isotropic_total,
+                                 pair.iso_table2_total);
+                pair_1pHB += pair.iso_1pHB;
+                pair_2pHB += pair.iso_2pHB;
+                pair_1pHaB += pair.iso_1pHaB;
+                pair_2pHaB += pair.iso_2pHaB;
+                pair_cb += pair.iso_diagnostic_CB;
+                if (pair.acceptor_class ==
+                    HBondAcceptorClass::SidechainCarbonyl) {
+                    ++n_sidechain_carbonyl_success;
+                }
+                break;
+        }
+    }
+    EXPECT_EQ(n_success, result->PairsFound());
+    EXPECT_GT(n_missing_frame, 0);
+    EXPECT_GT(n_theta_miss, 0);
+    EXPECT_GT(n_grid_miss, 0);
+    EXPECT_GT(n_sidechain_carbonyl_success, 0)
+        << "committed 1UBQ should exercise ASN/GLN acceptor approximation";
+
+    // Independent conservation oracle: pair-level trace sums must equal
+    // traces of the tensors actually accumulated on the atom axis.
+    double atom_1pHB = 0.0;
+    double atom_2pHB = 0.0;
+    double atom_1pHaB = 0.0;
+    double atom_2pHaB = 0.0;
+    double atom_cb = 0.0;
+    for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
+        const ConformationAtom& atom = conf.AtomAt(i);
+        atom_1pHB += atom.larsen_hbond_1pHB_tensor.trace() / 3.0;
+        atom_2pHB += atom.larsen_hbond_2pHB_tensor.trace() / 3.0;
+        atom_1pHaB += atom.larsen_hbond_1pHaB_tensor.trace() / 3.0;
+        atom_2pHaB += atom.larsen_hbond_2pHaB_tensor.trace() / 3.0;
+        atom_cb += atom.larsen_hbond_diagnostic_CB.trace() / 3.0;
+    }
+    EXPECT_NEAR(pair_1pHB, atom_1pHB, 1e-8);
+    EXPECT_NEAR(pair_2pHB, atom_2pHB, 1e-8);
+    EXPECT_NEAR(pair_1pHaB, atom_1pHaB, 1e-8);
+    EXPECT_NEAR(pair_2pHaB, atom_2pHaB, 1e-8);
+    EXPECT_NEAR(pair_cb, atom_cb, 1e-8);
+
+    const fs::path out =
+        MakeUniqueTempDirectory("nmr_larsen_pair_audit_output");
+    EXPECT_EQ(result->WriteFeatures(conf, out.string()), 15);
+
+    const std::size_t P = result->Pairs().size();
+    const RawNpy index = ReadRawNpy(out / "larsen_hbond_pairs_index.npy");
+    const RawNpy geometry =
+        ReadRawNpy(out / "larsen_hbond_pairs_geometry.npy");
+    const RawNpy isotropic =
+        ReadRawNpy(out / "larsen_hbond_pairs_isotropic.npy");
+    const RawNpy compat = ReadRawNpy(out / "larsen_hbond_pairs.npy");
+    EXPECT_NE(index.header.find("'descr': '<i4'"), std::string::npos);
+    EXPECT_NE(index.header.find("'shape': (" + std::to_string(P) +
+                                ",16)"), std::string::npos);
+    EXPECT_EQ(index.payload.size(), P * 16 * sizeof(std::int32_t));
+    EXPECT_NE(geometry.header.find("'shape': (" + std::to_string(P) +
+                                   ",6)"), std::string::npos);
+    EXPECT_EQ(geometry.payload.size(), P * 6 * sizeof(double));
+    EXPECT_EQ(isotropic.payload.size(), P * 6 * sizeof(double));
+    EXPECT_NE(compat.header.find("'shape': (" + std::to_string(P) +
+                                 ",28)"), std::string::npos);
+    EXPECT_EQ(compat.payload.size(), P * 28 * sizeof(double));
+
+    // A23 read-back: pin every field family to the production-owned row,
+    // rather than accepting correctly shaped but empty/reordered tables.
+    const auto success_it = std::find_if(
+        result->Pairs().begin(), result->Pairs().end(),
+        [](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.disposition ==
+                LarsenHBondShieldingResult::PairDisposition::Success;
+        });
+    ASSERT_NE(success_it, result->Pairs().end());
+    const std::size_t success_row = static_cast<std::size_t>(
+        std::distance(result->Pairs().begin(), success_it));
+    const auto& expected_pair = *success_it;
+    EXPECT_EQ(PayloadValue<std::int32_t>(index, success_row * 16 + 0),
+              static_cast<std::int32_t>(expected_pair.donor_atom_idx));
+    EXPECT_EQ(PayloadValue<std::int32_t>(index, success_row * 16 + 1),
+              static_cast<std::int32_t>(expected_pair.acceptor_atom_idx));
+    EXPECT_EQ(PayloadValue<std::int32_t>(index, success_row * 16 + 4),
+              static_cast<std::int32_t>(expected_pair.donor_class));
+    EXPECT_EQ(PayloadValue<std::int32_t>(index, success_row * 16 + 5),
+              static_cast<std::int32_t>(expected_pair.acceptor_class));
+    EXPECT_EQ(PayloadValue<std::int32_t>(index, success_row * 16 + 6), 3);
+    EXPECT_EQ(PayloadValue<std::int32_t>(index, success_row * 16 + 11),
+              static_cast<std::int32_t>(expected_pair.target_mask_1pHB));
+    EXPECT_EQ(PayloadValue<std::int32_t>(index, success_row * 16 + 15),
+              static_cast<std::int32_t>(
+                  expected_pair.target_mask_diagnostic_CB));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(geometry, success_row * 6 + 0),
+                     expected_pair.r_angstrom);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(geometry, success_row * 6 + 1),
+                     expected_pair.theta_deg);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(geometry, success_row * 6 + 2),
+                     expected_pair.rho_deg);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(geometry, success_row * 6 + 3), 1.0);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(geometry, success_row * 6 + 4), 1.0);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(geometry, success_row * 6 + 5), 1.0);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(isotropic, success_row * 6 + 0),
+                     expected_pair.iso_1pHB);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(isotropic, success_row * 6 + 1),
+                     expected_pair.iso_2pHB);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(isotropic, success_row * 6 + 2),
+                     expected_pair.iso_1pHaB);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(isotropic, success_row * 6 + 3),
+                     expected_pair.iso_2pHaB);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(isotropic, success_row * 6 + 4),
+                     expected_pair.iso_diagnostic_CB);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(isotropic, success_row * 6 + 5),
+                     expected_pair.iso_table2_total);
+    for (std::size_t col = 0; col < 16; ++col) {
+        EXPECT_DOUBLE_EQ(
+            PayloadValue<double>(compat, success_row * 28 + col),
+            static_cast<double>(PayloadValue<std::int32_t>(
+                index, success_row * 16 + col)));
+    }
+    for (std::size_t col = 0; col < 6; ++col) {
+        EXPECT_DOUBLE_EQ(
+            PayloadValue<double>(compat, success_row * 28 + 16 + col),
+            PayloadValue<double>(geometry, success_row * 6 + col));
+        EXPECT_DOUBLE_EQ(
+            PayloadValue<double>(compat, success_row * 28 + 22 + col),
+            PayloadValue<double>(isotropic, success_row * 6 + col));
+    }
+
+    const RawNpy imputed =
+        ReadRawNpy(out / "larsen_imputed_pair_count.npy");
+    const RawNpy sidechain = ReadRawNpy(
+        out / "larsen_sidechain_carbonyl_pair_count.npy");
+    ASSERT_EQ(imputed.payload.size(),
+              conf.AtomCount() * sizeof(std::int32_t));
+    ASSERT_EQ(sidechain.payload.size(),
+              conf.AtomCount() * sizeof(std::int32_t));
+    std::int64_t sidechain_sum = 0;
+    for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
+        std::int32_t imputed_value = 0;
+        std::int32_t sidechain_value = 0;
+        std::memcpy(&imputed_value,
+                    imputed.payload.data() + i * sizeof(std::int32_t),
+                    sizeof(std::int32_t));
+        std::memcpy(&sidechain_value,
+                    sidechain.payload.data() + i * sizeof(std::int32_t),
+                    sizeof(std::int32_t));
+        // Every synthetic successful lookup has one imputed corner, and
+        // diagnostics-only CB writes must not increment this count.
+        EXPECT_EQ(imputed_value, conf.AtomAt(i).larsen_hbond_n_pairs);
+        sidechain_sum += sidechain_value;
+    }
+    EXPECT_GT(sidechain_sum, 0);
+
+    RemoveFlatTempDirectory(out, {
+        "larsen_hbond_shielding.npy",
+        "larsen_hbond_1pHB_shielding.npy",
+        "larsen_hbond_2pHB_shielding.npy",
+        "larsen_hbond_1pHaB_shielding.npy",
+        "larsen_hbond_2pHaB_shielding.npy",
+        "larsen_hbond_diagnostic_CB_shielding.npy",
+        "larsen_hbond_water_term.npy",
+        "larsen_hbond_count.npy",
+        "larsen_imputed_pair_count.npy",
+        "larsen_sidechain_carbonyl_pair_count.npy",
+        "larsen_corner_imputed.npy",
+        "larsen_hbond_pairs_index.npy",
+        "larsen_hbond_pairs_geometry.npy",
+        "larsen_hbond_pairs_isotropic.npy",
+        "larsen_hbond_pairs.npy",
+    });
+    RemoveFlatTempDirectory(grid_dir, {
+        "NMANMA_dense.h5", "NMACOH_dense.h5", "NMACOO_dense.h5",
+        "ALANMA_dense.h5", "ALACOH_dense.h5", "ALACOO_dense.h5",
+    });
+}
+
+
+TEST(LarsenSidechainDonorAudit, EmitsTypedUnsupportedDonorsWithoutShielding) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    std::unique_ptr<Protein> protein = std::move(build.protein);
+    ProteinConformation& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    auto audit = LarsenSidechainDonorAuditResult::Compute(conf);
+    ASSERT_NE(audit, nullptr);
+    ASSERT_EQ(audit->DonorAtoms().size(), conf.AtomCount());
+
+    const LegacyAmberTopology& topology = protein->LegacyAmber();
+    int n_donors = 0;
+    int n_geometry_pass = 0;
+    std::int64_t candidate_count_from_atoms = 0;
+    std::set<PolarHKind> seen_kinds;
+    for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
+        const auto& row = audit->DonorAtoms()[i];
+        candidate_count_from_atoms += row.n_acceptor_candidates_3p5A;
+        n_geometry_pass += row.n_geometry_pass;
+        if (!row.is_sidechain_polar_h) continue;
+        ++n_donors;
+        ASSERT_GE(row.parent_atom, 0);
+        const std::size_t parent = static_cast<std::size_t>(row.parent_atom);
+        EXPECT_FALSE(topology.SemanticAt(parent).IsBackbone());
+        EXPECT_TRUE(topology.SemanticAt(i).IsPolarH());
+        seen_kinds.insert(topology.SemanticAt(i).polar_h);
+    }
+    EXPECT_GT(n_donors, 0);
+    EXPECT_EQ(candidate_count_from_atoms,
+              static_cast<std::int64_t>(audit->Candidates().size()));
+    EXPECT_GT(audit->Candidates().size(), 0u);
+    EXPECT_GT(n_geometry_pass, 0);
+    EXPECT_TRUE(seen_kinds.count(PolarHKind::HydroxylOH_Aliphatic) > 0);
+    EXPECT_TRUE(seen_kinds.count(PolarHKind::HydroxylOH_Aromatic) > 0);
+    EXPECT_TRUE(seen_kinds.count(PolarHKind::AmmoniumNH) > 0);
+    EXPECT_TRUE(seen_kinds.count(PolarHKind::GuanidiniumNH) > 0);
+
+    for (const auto& row : audit->Candidates()) {
+        EXPECT_LE(row.parent_acceptor_distance_A, 3.5 + 1e-12);
+        EXPECT_FALSE(row.modeled_by_larsen_table2);
+        EXPECT_EQ(protein->AtomAt(row.acceptor_atom).element, Element::O);
+        EXPECT_FALSE(topology.SemanticAt(row.parent_atom).IsBackbone());
+    }
+
+    // The audit has no writer fields on ConformationAtom and must not
+    // extend unsupported donor classes into Larsen's scientific tensor.
+    for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
+        EXPECT_DOUBLE_EQ(conf.AtomAt(i).larsen_hbond_shielding_tensor.norm(),
+                         0.0);
+        EXPECT_EQ(conf.AtomAt(i).larsen_hbond_n_pairs, 0);
+    }
+
+    const fs::path out =
+        MakeUniqueTempDirectory("nmr_larsen_sidechain_donor_audit_output");
+    EXPECT_EQ(audit->WriteFeatures(conf, out.string()), 2);
+    const RawNpy atoms =
+        ReadRawNpy(out / "larsen_sidechain_donor_atoms.npy");
+    const RawNpy candidates =
+        ReadRawNpy(out / "larsen_sidechain_donor_candidates.npy");
+    EXPECT_NE(atoms.header.find("'descr': '<i4'"), std::string::npos);
+    EXPECT_NE(atoms.header.find("'shape': (" +
+                                std::to_string(conf.AtomCount()) +
+                                ",6)"), std::string::npos);
+    EXPECT_EQ(atoms.payload.size(), conf.AtomCount() * 6 * sizeof(std::int32_t));
+    EXPECT_NE(candidates.header.find("'shape': (" +
+                                     std::to_string(audit->Candidates().size()) +
+                                     ",13)"), std::string::npos);
+    ASSERT_EQ(candidates.payload.size(),
+              audit->Candidates().size() * 13 * sizeof(double));
+    for (std::size_t row = 0; row < audit->Candidates().size(); ++row) {
+        double modeled = 1.0;
+        std::memcpy(&modeled,
+                    candidates.payload.data() +
+                        (row * 13 + 12) * sizeof(double),
+                    sizeof(double));
+        EXPECT_DOUBLE_EQ(modeled, 0.0);
+    }
+
+    // A24 read-back: a typed donor row and its first raw candidate must
+    // survive the writer with their identities, geometry, and audit-only
+    // modeled flag intact.
+    const auto donor_it = std::find_if(
+        audit->DonorAtoms().begin(), audit->DonorAtoms().end(),
+        [](const LarsenSidechainDonorAuditResult::DonorAtomRecord& row) {
+            return row.is_sidechain_polar_h != 0;
+        });
+    ASSERT_NE(donor_it, audit->DonorAtoms().end());
+    const std::size_t donor_row = static_cast<std::size_t>(
+        std::distance(audit->DonorAtoms().begin(), donor_it));
+    EXPECT_EQ(PayloadValue<std::int32_t>(atoms, donor_row * 6 + 0), 1);
+    EXPECT_EQ(PayloadValue<std::int32_t>(atoms, donor_row * 6 + 1),
+              donor_it->polar_h_kind);
+    EXPECT_EQ(PayloadValue<std::int32_t>(atoms, donor_row * 6 + 2),
+              donor_it->parent_atom);
+    EXPECT_EQ(PayloadValue<std::int32_t>(atoms, donor_row * 6 + 3),
+              donor_it->residue_index);
+    EXPECT_EQ(PayloadValue<std::int32_t>(atoms, donor_row * 6 + 4),
+              donor_it->n_acceptor_candidates_3p5A);
+    EXPECT_EQ(PayloadValue<std::int32_t>(atoms, donor_row * 6 + 5),
+              donor_it->n_geometry_pass);
+
+    ASSERT_FALSE(audit->Candidates().empty());
+    const auto& expected_candidate = audit->Candidates().front();
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 0),
+                     static_cast<double>(expected_candidate.donor_atom));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 2),
+                     static_cast<double>(expected_candidate.polar_h_kind));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 3),
+                     static_cast<double>(expected_candidate.parent_atom));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 4),
+                     static_cast<double>(expected_candidate.acceptor_atom));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 6),
+                     static_cast<double>(expected_candidate.acceptor_class));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 7),
+                     expected_candidate.h_acceptor_distance_A);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 8),
+                     expected_candidate.parent_acceptor_distance_A);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 9),
+                     expected_candidate.angle_parent_h_acceptor_deg);
+    if (std::isnan(expected_candidate.rho_deg)) {
+        EXPECT_TRUE(std::isnan(PayloadValue<double>(candidates, 10)));
+    } else {
+        EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 10),
+                         expected_candidate.rho_deg);
+    }
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 11),
+                     expected_candidate.passes_geometry ? 1.0 : 0.0);
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(candidates, 12), 0.0);
+    RemoveFlatTempDirectory(out, {
+        "larsen_sidechain_donor_atoms.npy",
+        "larsen_sidechain_donor_candidates.npy",
+    });
 }
 
 
@@ -248,12 +831,12 @@ TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
     EXPECT_EQ(n_amide_with_water, result->AmideHsUnboundWithWater())
         << "atom-level water-term count should match result aggregate";
 
-    // WriteFeatures emits 9 NPYs (spherical-packed per Pattern 11 + 6,
-    // plus the int8 corner-imputation flag).
+    // WriteFeatures emits per-atom tensors/counts plus split and
+    // compatibility pair-audit tables.
     fs::path tmp = fs::temp_directory_path() / "larsen_hbond_phase1_out";
     fs::create_directories(tmp);
     int n_written = result->WriteFeatures(conf, tmp.string());
-    EXPECT_EQ(n_written, 9);
+    EXPECT_EQ(n_written, 15);
     for (const std::string& stem : {
         "larsen_hbond_shielding",
         "larsen_hbond_1pHB_shielding",
@@ -263,7 +846,13 @@ TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
         "larsen_hbond_diagnostic_CB_shielding",
         "larsen_hbond_water_term",
         "larsen_hbond_count",
+        "larsen_imputed_pair_count",
+        "larsen_sidechain_carbonyl_pair_count",
         "larsen_corner_imputed",
+        "larsen_hbond_pairs_index",
+        "larsen_hbond_pairs_geometry",
+        "larsen_hbond_pairs_isotropic",
+        "larsen_hbond_pairs",
     }) {
         fs::path p = tmp / (stem + ".npy");
         EXPECT_TRUE(fs::exists(p)) << "missing " << p.string();

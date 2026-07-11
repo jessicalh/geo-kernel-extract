@@ -126,9 +126,10 @@
 // (approximate — a dense cell whose nearest nominal is valid but
 // whose cubic-spline stencil includes imputed nominals is still
 // marked valid). Per-query, the `any_corner_imputed` field on
-// `LarsenHBondRecord` is true iff any of the 8 trilinear corner
-// cells is an imputed bin under this nearest-nominal definition when
-// a mask is present.
+// `LarsenHBondRecord::imputed_corner_count` is the number (0..8) of
+// trilinear corner cells that are imputed under this nearest-nominal
+// definition when a mask is present. `any_corner_imputed` is the
+// compatibility alias `imputed_corner_count > 0`.
 //
 //
 // Tensor rotation contract (CRITICAL for the calculator):
@@ -281,11 +282,12 @@ struct LarsenHBondRecord {
     double theta_deg  = 0.0;
     double rho_deg    = 0.0;
 
-    // For archives with a validity mask, true iff any of the 8
-    // trilinear corner cells was an imputed bin. False when the archive
-    // has no mask. See the validity-mask narrative in the file header
-    // for the nearest-nominal definition; the calculator may log +
-    // downweight or skip these.
+    // For archives with a validity mask, the exact number of the eight
+    // trilinear corners that were imputed. Zero when the archive has no
+    // mask. The bool is retained as a compatibility alias and is always
+    // set to (imputed_corner_count > 0). Shielding remains emitted and
+    // unmasked; these fields preserve the provenance needed to audit it.
+    int imputed_corner_count = 0;
     bool any_corner_imputed = false;
 
     bool is_hit = false;
@@ -361,9 +363,10 @@ public:
     // compute step; trilinear is sufficient at the dense-grid
     // resolution (5×/2×/3× denser than the original DFT scan).
     //
-    // The record's `any_corner_imputed` flag is set if any of the 8
-    // corner cells came from nearest-neighbour fill at parse time, or
-    // false if the archive has no validity mask.
+    // The record's `imputed_corner_count` reports how many of the 8
+    // corner cells came from nearest-neighbour fill at parse time (zero
+    // if the archive has no validity mask). `any_corner_imputed` is its
+    // bool compatibility alias.
     LarsenHBondRecord QueryNearest(
         HBondDonorClass    donor_class,
         HBondAcceptorClass acceptor_class,
@@ -391,6 +394,17 @@ private:
     // File name for a (donor, acceptor) pair.
     static const char* ArchiveStem(int idx);
 };
+
+
+// Production-linked detail surface for the exact eight-corner validity-mask
+// count.  This stays in this file's named namespace (not a shared utility)
+// so tests can pin the production function directly without reimplementing
+// the corner enumeration.
+namespace larsen_hbond_grid_detail {
+int CountImputedCorners(const LarsenHBondDenseGrid& grid,
+                        int ir, int itheta, int irho,
+                        int ir_next, int itheta_next, int irho_next);
+}  // namespace larsen_hbond_grid_detail
 
 
 }  // namespace nmr

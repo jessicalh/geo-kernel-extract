@@ -182,6 +182,7 @@ TEST(OperationRunnerTest, PlanarGeometryHardAttachFailureStopsRunner) {
     EXPECT_EQ(result.error, "PlanarGeometryResult computation returned null");
     EXPECT_TRUE(ContainsAttached(result, "GeometryResult"));
     EXPECT_TRUE(ContainsAttached(result, "SpatialIndexResult"));
+    EXPECT_TRUE(ContainsAttached(result, "MolecularGraphResult"));
     EXPECT_TRUE(ContainsAttached(result, "EnrichmentResult"));
     EXPECT_FALSE(ContainsAttached(result, "PlanarGeometryResult"));
     EXPECT_FALSE(conf.HasResult<PlanarGeometryResult>());

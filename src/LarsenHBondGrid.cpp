@@ -255,29 +255,6 @@ Mat3 TrilinearMat3(const std::vector<float>& flat,
 }
 
 
-// imputed-corner check: true if any of the 8 trilinear corners is
-// masked 0 (validity_mask == 0). Returns false if the grid has no mask.
-bool AnyCornerImputed(const LarsenHBondDenseGrid& g,
-                      int ir, int ith, int irho,
-                      int ir_next, int ith_next, int irho_next) {
-    if (!g.has_validity_mask) return false;
-    auto idx = [&](int i_r, int i_th, int i_rho) -> std::size_t {
-        return static_cast<std::size_t>(i_r) * g.Ntheta * g.Nrho
-             + static_cast<std::size_t>(i_th) * g.Nrho
-             + static_cast<std::size_t>(i_rho);
-    };
-    int rs[2] = {ir, ir_next};
-    int ths[2] = {ith, ith_next};
-    int rhos[2] = {irho, irho_next};
-    for (int a = 0; a < 2; ++a)
-        for (int b = 0; b < 2; ++b)
-            for (int c = 0; c < 2; ++c)
-                if (g.validity_mask[idx(rs[a], ths[b], rhos[c])] == 0)
-                    return true;
-    return false;
-}
-
-
 // For a regular ascending axis, return (idx, frac) such that
 // axis[idx] + frac * (axis[idx+1] - axis[idx]) == value, with frac in
 // [0, 1) when value is in range. Returns idx=-1 when strictly out-of-range
@@ -355,6 +332,38 @@ double WrapRho(double rho_deg) {
 
 
 }  // namespace
+
+
+int larsen_hbond_grid_detail::CountImputedCorners(
+        const LarsenHBondDenseGrid& grid,
+        int ir, int itheta, int irho,
+        int ir_next, int itheta_next, int irho_next) {
+    if (!grid.has_validity_mask) return 0;
+
+    auto mask_index = [&](int i_r, int i_theta,
+                          int i_rho) -> std::size_t {
+        return static_cast<std::size_t>(i_r) *
+                   grid.Ntheta * grid.Nrho
+             + static_cast<std::size_t>(i_theta) * grid.Nrho
+             + static_cast<std::size_t>(i_rho);
+    };
+
+    const int rs[2] = {ir, ir_next};
+    const int thetas[2] = {itheta, itheta_next};
+    const int rhos[2] = {irho, irho_next};
+    int count = 0;
+    for (int a = 0; a < 2; ++a) {
+        for (int b = 0; b < 2; ++b) {
+            for (int c = 0; c < 2; ++c) {
+                if (grid.validity_mask[
+                        mask_index(rs[a], thetas[b], rhos[c])] == 0) {
+                    ++count;
+                }
+            }
+        }
+    }
+    return count;
+}
 
 
 // -----------------------------------------------------------------------------
@@ -564,8 +573,10 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
     // r/θ remain the input geometry values; ρ is the wrapped canonical
     // form set at the top of this function.
 
-    rec.any_corner_imputed = AnyCornerImputed(
+    rec.imputed_corner_count =
+        larsen_hbond_grid_detail::CountImputedCorners(
         g, lr.idx, lth.idx, lrho.idx, lr.idx_next, lth.idx_next, lrho.idx_next);
+    rec.any_corner_imputed = rec.imputed_corner_count > 0;
 
     rec.is_hit = true;
     return rec;

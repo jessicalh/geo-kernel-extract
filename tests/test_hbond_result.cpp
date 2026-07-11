@@ -23,6 +23,108 @@
 namespace fs = std::filesystem;
 using namespace nmr;
 
+namespace {
+
+struct SyntheticHBondFixture {
+    std::unique_ptr<Protein> protein;
+    size_t donor_n = SIZE_MAX;
+    size_t donor_h = SIZE_MAX;
+    size_t acceptor_o = SIZE_MAX;
+    size_t local_target = SIZE_MAX;
+    size_t remote_target = SIZE_MAX;
+};
+
+SyntheticHBondFixture BuildNonCollinearExplicitHydrogenFixture() {
+    SyntheticHBondFixture f;
+    f.protein = std::make_unique<Protein>();
+
+    // Seven residue slots give the remote control a minimum sequence
+    // separation of three from the donor/acceptor endpoints.  Atom names are
+    // intentionally empty: this is a geometry-kernel fixture, so the typed
+    // semantic substrate's documented stub path applies.
+    for (int ri = 0; ri < 7; ++ri) {
+        Residue r;
+        r.type = AminoAcid::Unknown;
+        r.sequence_number = ri + 1;
+        r.chain_id = "A";
+        f.protein->AddResidue(std::move(r));
+    }
+
+    std::vector<Vec3> positions;
+    auto add_atom = [&](size_t residue, Element element, const Vec3& pos) {
+        auto atom = Atom::Create(element);
+        atom->residue_index = residue;
+        const size_t ai = f.protein->AddAtom(std::move(atom));
+        f.protein->MutableResidueAt(residue).atom_indices.push_back(ai);
+        positions.push_back(pos);
+        return ai;
+    };
+
+    // Deliberately non-collinear N-H...O: the old N...O-midpoint proxy
+    // cannot accidentally agree with the explicit-H production geometry.
+    f.donor_n = add_atom(0, Element::N, Vec3(0.0, 0.0, 0.0));
+    f.donor_h = add_atom(0, Element::H, Vec3(1.0, 0.0, 0.0));
+    f.local_target = add_atom(1, Element::C, Vec3(3.0, 1.0, 0.0));
+    f.acceptor_o = add_atom(3, Element::O, Vec3(1.0, 2.0, 0.0));
+    f.remote_target = add_atom(6, Element::C, Vec3(2.0, 2.0, 0.0));
+
+    auto& donor = f.protein->MutableResidueAt(0);
+    donor.N = f.donor_n;
+    donor.H = f.donor_h;
+    f.protein->MutableResidueAt(3).O = f.acceptor_o;
+
+    f.protein->FinalizeConstruction(positions);
+    f.protein->AddConformation(std::move(positions), "explicit-H forcing fixture");
+    return f;
+}
+
+}  // namespace
+
+
+TEST(HBondGeometryKernel, UsesExplicitHydrogenAndAppliesTargetSequenceFilter) {
+    auto f = BuildNonCollinearExplicitHydrogenFixture();
+    auto& conf = f.protein->Conformation();
+
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    std::vector<DsspResidue> residues(f.protein->ResidueCount());
+    residues[0].observed = true;
+    residues[0].acceptors[0].residue_index = 3;
+    ASSERT_TRUE(conf.AttachResult(DsspResult::CreateForTesting(std::move(residues))));
+
+    auto hbond = HBondResult::Compute(conf);
+    ASSERT_NE(hbond, nullptr);
+    EXPECT_EQ(hbond->HBondCount(), 1u);
+    ASSERT_TRUE(conf.AttachResult(std::move(hbond)));
+
+    // Blessed values for donor H=(1,0,0), acceptor O=(1,2,0), and remote
+    // target=(2,2,0).  These numbers are pinned independently, rather than
+    // recomputing the production formula in the test.
+    const auto& remote = conf.AtomAt(f.remote_target);
+    EXPECT_NEAR(remote.hbond_nearest_dist, 2.236067977499790, 1e-12);
+    EXPECT_NEAR(remote.hbond_inv_d3, 0.089442719099992, 1e-12);
+    EXPECT_NEAR(remote.hbond_mcconnell_scalar, 0.125219806739988, 1e-12);
+    EXPECT_NEAR(remote.hbond_nearest_dir.x(), 0.447213595499958, 1e-12);
+    EXPECT_NEAR(remote.hbond_nearest_dir.y(), 0.894427190999916, 1e-12);
+    EXPECT_NEAR(remote.hbond_nearest_dir.z(), 0.0, 1e-12);
+
+    // Residue 1 is within the configured two-residue endpoint exclusion.
+    // It is geometrically valid, so a zero here specifically freezes the
+    // production SequentialExclusionFilter wiring (C18).
+    const auto& local = conf.AtomAt(f.local_target);
+    EXPECT_EQ(local.hbond_count_within_3_5A, 0);
+    EXPECT_DOUBLE_EQ(local.hbond_mcconnell_scalar, 0.0);
+    EXPECT_DOUBLE_EQ(local.hbond_inv_d3, 0.0);
+
+    // Directly pin the production helper's explicit-H convention too.  It
+    // has external linkage in HBondResult's per-file named namespace.
+    const auto kernel = hbond_result_detail::ComputeKernel(
+        Vec3(2.0, 2.0, 0.0), Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0));
+    EXPECT_NEAR(kernel.distance, 2.236067977499790, 1e-12);
+    EXPECT_NEAR(kernel.f, 0.125219806739988, 1e-12);
+}
+
 
 
 // ============================================================================

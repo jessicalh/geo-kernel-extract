@@ -6,6 +6,11 @@
 // ppm, protein lab frame). One of four per-class Larsen TRs cloned
 // from TripeptideBackboneShieldingTimeSeriesTrajectoryResult — see
 // LarsenContribDispatch in LarsenHBondShieldingResult.h.
+// H5 contract: source_attached_count (uint64),
+// source_attached_policy="conditional_larsen_grid_source",
+// atom_axis="protein_atom_index", frame_axis="trajectory_frame_row", and
+// irrep_layout="PackFull9: [T0, T1_cartesian_xyz,
+// T2_real_tesseral_m-2..m+2]".
 //
 
 #include "DenseBuffer.h"
@@ -46,13 +51,12 @@ public:
 
     std::size_t NumFrames() const { return n_frames_; }
 
-    // Test-only: bypass the per-frame `conf.HasResult<SourceCalc>()`
-    // check inside Compute. Call BEFORE the first Compute. Use ONLY
-    // in synthetic unit tests that don't go through Trajectory::Run /
-    // OperationRunner (the production path that attaches the source
-    // ConformationResult). Production code never calls this.
-    void ForceSourcePresentForTesting() {
-        force_source_present_for_testing_ = true;
+    // Test-only: override the source-present state for subsequent frames.
+    // May be toggled between synthetic Compute calls to exercise mixed
+    // absent/present provenance without an external trajectory or grid.
+    // Production code never calls this.
+    void ForceSourcePresentForTesting(bool present = true) {
+        force_source_present_for_testing_ = present;
     }
 
 private:

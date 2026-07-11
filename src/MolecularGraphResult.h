@@ -34,6 +34,9 @@ public:
     // Factory: compute BFS distances and through-bond features
     static std::unique_ptr<MolecularGraphResult> Compute(ProteinConformation& conf);
 
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
+
 private:
     ProteinConformation* conf_ = nullptr;
 };

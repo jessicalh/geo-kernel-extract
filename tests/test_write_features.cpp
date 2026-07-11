@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
@@ -439,10 +440,19 @@ TEST(WriteFeatures, zero_ring_write_all_features) {
                                          "zero-ring direct fixture");
     const fs::path out_dir = fs::temp_directory_path() /
         ("write_features_zero_ring_" + std::to_string(::getpid()));
-    fs::remove_all(out_dir);
+    const std::array<const char*, 12> zero_ring_files{{
+        "pos.npy", "element.npy", "residue_index.npy", "residue_type.npy",
+        "ring_contributions.npy", "bs_ring_B_field.npy",
+        "bs_ring_B_cylindrical.npy", "hm_ring_B_field.npy",
+        "ring_direction_to_center.npy", "piquad_quad_scalar.npy",
+        "ring_geometry.npy", "ring_pair_geometry.npy"}};
+    std::error_code cleanup_ec;
+    for (const char* name : zero_ring_files)
+        fs::remove(out_dir / name, cleanup_ec);
+    fs::remove(out_dir, cleanup_ec);
 
     const int arrays = ConformationResult::WriteAllFeatures(conf, out_dir.string());
-    EXPECT_EQ(arrays, 11);
+    EXPECT_EQ(arrays, 12);
 
     auto ring_contrib = ReadNpy(out_dir / "ring_contributions.npy");
     auto bs_b = ReadNpy(out_dir / "bs_ring_B_field.npy");
@@ -451,14 +461,19 @@ TEST(WriteFeatures, zero_ring_write_all_features) {
     auto ring_dir = ReadNpy(out_dir / "ring_direction_to_center.npy");
     auto piquad = ReadNpy(out_dir / "piquad_quad_scalar.npy");
     auto ring_geom = ReadNpy(out_dir / "ring_geometry.npy");
+    auto ring_pairs = ReadNpy(out_dir / "ring_pair_geometry.npy");
 
     ExpectShapeAndDescr(ring_contrib, {0, 40}, "<f8");
+    ExpectShapeAndDescr(ring_pairs, {0, 13}, "<f8");
     ExpectShapeAndDescr(bs_b, {0, 3}, "<f8");
     ExpectShapeAndDescr(bs_b_cyl, {0, 3}, "<f8");
     ExpectShapeAndDescr(hm_b, {0, 3}, "<f8");
     ExpectShapeAndDescr(ring_dir, {0, 3}, "<f8");
     ExpectShapeAndDescr(piquad, {0}, "<f8");
     ExpectShapeAndDescr(ring_geom, {0, 10}, "<f8");
+    for (const char* name : zero_ring_files)
+        fs::remove(out_dir / name, cleanup_ec);
+    fs::remove(out_dir, cleanup_ec);
 }
 
 TEST(WriteFeatures, WaterFieldStaticEfieldPayloadUsesTargetMinusSource) {

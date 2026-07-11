@@ -4,22 +4,98 @@
 #include <iostream>
 
 #include "PiQuadrupoleResult.h"
+#include "PiQuadrupoleLocalTensorResult.h"
+#include "RingNeighbourGeometry.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "ChargeAssignmentResult.h"
 #include "ChargeSource.h"
+#include "CalculatorConfig.h"
 #include "Protein.h"
+#include "ProteinConformation.h"
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
 #include "PhysicalConstants.h"
 
 #include <iomanip>
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <cstring>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <array>
+#include <sstream>
 
 #include <filesystem>
 namespace fs = std::filesystem;
 using namespace nmr;
+
+namespace {
+
+struct NpyDoubleArray {
+    std::vector<size_t> shape;
+    std::vector<double> values;
+};
+
+std::string Trim(std::string value) {
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    value.erase(value.begin(),
+                std::find_if(value.begin(), value.end(),
+                             [&](char c) { return !is_space(c); }));
+    value.erase(std::find_if(value.rbegin(), value.rend(),
+                             [&](char c) { return !is_space(c); }).base(),
+                value.end());
+    return value;
+}
+
+NpyDoubleArray ReadFloat64Npy(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    NpyDoubleArray out;
+    if (!in.is_open()) return out;
+
+    char magic[6] = {};
+    in.read(magic, 6);
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    char version[2] = {};
+    in.read(version, 2);
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    std::uint16_t header_length = 0;
+    in.read(reinterpret_cast<char*>(&header_length), sizeof(header_length));
+    std::string header(header_length, '\0');
+    in.read(header.data(), header_length);
+    EXPECT_NE(header.find("'<f8'"), std::string::npos);
+
+    const auto begin = header.find('(');
+    const auto end = header.find(')', begin);
+    EXPECT_NE(begin, std::string::npos);
+    EXPECT_NE(end, std::string::npos);
+    if (begin == std::string::npos || end == std::string::npos) return out;
+    std::stringstream shape_stream(
+        header.substr(begin + 1, end - begin - 1));
+    std::string token;
+    size_t value_count = 1;
+    while (std::getline(shape_stream, token, ',')) {
+        token = Trim(token);
+        if (token.empty()) continue;
+        const size_t extent = static_cast<size_t>(std::stoull(token));
+        out.shape.push_back(extent);
+        value_count *= extent;
+    }
+    if (out.shape.empty()) value_count = 0;
+    out.values.resize(value_count);
+    if (value_count > 0) {
+        in.read(reinterpret_cast<char*>(out.values.data()),
+                static_cast<std::streamsize>(value_count * sizeof(double)));
+    }
+    EXPECT_TRUE(in.good() || in.eof());
+    return out;
+}
+
+}  // namespace
 
 
 
@@ -99,6 +175,64 @@ TEST(PiQuadAnalytical, ScalarMatchesFormula) {
     // The scalar should match (3cos^2 theta - 1)/r^4
     // This is the Buckingham A-term source (E-field from quadrupole)
     EXPECT_NEAR(expected, (3.0 * 9.0 / 14.0 - 1.0) / r4, 1e-10);
+}
+
+
+TEST(PiQuadAnalytical, PointCenterKernelAcceptsInsideFiniteRingRadius) {
+    // The point-center kernel has no finite-ring diameter exclusion.  This
+    // calls the exact production function used by Compute().
+    const auto kernel = pi_quadrupole_detail::ComputeKernel(
+        Vec3(0.0, 0.0, 0.5), Vec3::Zero(), Vec3(0.0, 0.0, 1.0));
+    EXPECT_TRUE(kernel.valid);
+    EXPECT_DOUBLE_EQ(kernel.distance, 0.5);
+    EXPECT_TRUE(std::isfinite(kernel.scalar));
+    EXPECT_NE(kernel.scalar, 0.0);
+
+    const auto singular = pi_quadrupole_detail::ComputeKernel(
+        Vec3(0.0, 0.0,
+             CalculatorConfig::Get("singularity_guard_distance")),
+        Vec3::Zero(), Vec3(0.0, 0.0, 1.0));
+    EXPECT_FALSE(singular.valid) << "distance must be strictly above guard";
+}
+
+
+TEST(RingNeighbourGeometryProduction, CanonicalAzimuthAndPayloadOwnership) {
+    Protein protein;
+    ProteinConformation conf(
+        &protein, {Vec3(0.0, 1.0, 1.0)}, "ring-geometry-unit");
+    auto ring = CreateRing(RingTypeIndex::PheBenzene);
+
+    RingGeometry geom;
+    geom.center = Vec3::Zero();
+    geom.normal = Vec3(0.0, 0.0, 1.0);
+    geom.radius = 1.0;
+    geom.vertices = {
+        Vec3(1.0, 0.0, 0.0),
+        Vec3(0.0, 1.0, 0.0),
+        Vec3(-1.0, 0.0, 0.0),
+    };
+
+    auto& atom = conf.MutableAtomAt(0);
+    RingNeighbourhood& first = EnsureRingNeighbourGeometry(
+        atom, geom, *ring, 7, conf.PositionAt(0));
+    EXPECT_NEAR(first.cos_phi, 0.0, 1e-14);
+    EXPECT_NEAR(first.sin_phi, -1.0, 1e-14);
+    EXPECT_NEAR(first.rho, 1.0, 1e-14);
+    EXPECT_NEAR(first.z, 1.0, 1e-14);
+
+    // Calculator-owned payload must survive every shared-geometry refresh.
+    first.quad_scalar = 3.25;
+    first.chi_scalar = -2.5;
+    first.disp_contacts = 4;
+    RingNeighbourhood& second = EnsureRingNeighbourGeometry(
+        atom, geom, *ring, 7, Vec3(1.0, 0.0, 2.0));
+    EXPECT_EQ(&first, &second);
+    EXPECT_EQ(atom.ring_neighbours.size(), 1u);
+    EXPECT_DOUBLE_EQ(second.quad_scalar, 3.25);
+    EXPECT_DOUBLE_EQ(second.chi_scalar, -2.5);
+    EXPECT_EQ(second.disp_contacts, 4);
+    EXPECT_NEAR(second.cos_phi, 1.0, 1e-14);
+    EXPECT_NEAR(second.sin_phi, 0.0, 1e-14);
 }
 
 
@@ -256,14 +390,18 @@ TEST(PiQuadAnalytical, FiniteDifferenceVerification) {
         Vec3(7, 0, 0),       // far in-plane
     };
 
-    Vec3 n_tilted = Vec3(1, 1, 1).normalized();
-
     double max_rel_err = 0.0;
     int checked = 0;
 
-    auto check = [&](const Vec3& d, const Vec3& normal, const char* label) {
-        Mat3 G_analytical = HandComputeG(d, normal);
-        Mat3 V_numerical = NumericalEFG(d, normal, h);
+    auto check = [&](const Vec3& d, const char* label) {
+        // This is the production tensor function used by the emitter.  The
+        // independent forcing source is a finite-difference Hessian of the
+        // quadrupole potential below, not a second copy of the G formula.
+        const auto production =
+            pi_quadrupole_local_tensor_detail::ComputeLocalTensor(d);
+        ASSERT_TRUE(production.valid);
+        const Mat3& G_analytical = production.tensor;
+        Mat3 V_numerical = NumericalEFG(d, n, h);
 
         // V_numerical should equal -G/2 (with Theta=1)
         Mat3 expected = -0.5 * G_analytical;
@@ -297,8 +435,7 @@ TEST(PiQuadAnalytical, FiniteDifferenceVerification) {
     };
 
     for (const Vec3& d : positions) {
-        check(d, n, "z-normal");
-        check(d, n_tilted, "tilted-normal");
+        check(d, "local-z-normal");
     }
 
     std::cout << "  Finite-difference verification: " << checked
@@ -442,6 +579,225 @@ TEST_F(PiQuadProteinTest, PerTypeT0AccumulatesScalars) {
 
     std::cout << "  Checked per-type pi-quad scalar sums on "
               << checked_atoms << " atoms\n";
+}
+
+
+TEST_F(PiQuadProteinTest, AzimuthIsPopulatedWithoutBiotSavart) {
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(PiQuadrupoleResult::Compute(conf)));
+
+    size_t checked = 0;
+    size_t non_default = 0;
+    size_t total_rows = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        for (const RingNeighbourhood& row : conf.AtomAt(ai).ring_neighbours) {
+            ++total_rows;
+            if (row.rho <= CalculatorConfig::Get(
+                    "near_zero_vector_norm_threshold")) continue;
+            EXPECT_TRUE(std::isfinite(row.cos_phi));
+            EXPECT_TRUE(std::isfinite(row.sin_phi));
+            EXPECT_NEAR(row.cos_phi * row.cos_phi +
+                            row.sin_phi * row.sin_phi,
+                        1.0, 1e-12);
+            if (std::abs(row.cos_phi - 1.0) > 1e-8 ||
+                std::abs(row.sin_phi) > 1e-8) {
+                ++non_default;
+            }
+            ++checked;
+        }
+    }
+    EXPECT_GT(checked, 0u);
+    EXPECT_GT(non_default, 0u)
+        << "PQ-only rows must use the canonical ring gauge, not defaults";
+
+    const fs::path output_dir =
+        nmr::test::TestEnvironment::TempPath("piquad_only_azimuth_emit");
+    ASSERT_GT(ConformationResult::WriteAllFeatures(
+                  conf, output_dir.string()),
+              0);
+    const auto emitted =
+        ReadFloat64Npy(output_dir / "ring_contributions.npy");
+    EXPECT_EQ(emitted.shape, (std::vector<size_t>{total_rows, 40}));
+    ASSERT_EQ(emitted.values.size(), total_rows * 40);
+
+    size_t emitted_row = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        for (const RingNeighbourhood& row : conf.AtomAt(ai).ring_neighbours) {
+            EXPECT_DOUBLE_EQ(emitted.values[emitted_row * 40 + 38],
+                             row.cos_phi);
+            EXPECT_DOUBLE_EQ(emitted.values[emitted_row * 40 + 39],
+                             row.sin_phi);
+            ++emitted_row;
+        }
+    }
+    EXPECT_EQ(emitted_row, total_rows);
+}
+
+
+TEST_F(PiQuadProteinTest, AxialAliasAndLocalTensorReadBack) {
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(PiQuadrupoleResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(
+        PiQuadrupoleLocalTensorResult::Compute(conf)));
+
+    const fs::path output_dir =
+        nmr::test::TestEnvironment::TempPath("piquad_local_tensor_out");
+    fs::create_directories(output_dir);
+
+    ASSERT_EQ(conf.Result<PiQuadrupoleResult>().WriteFeatures(
+                  conf, output_dir.string()),
+              2);
+    ASSERT_EQ(conf.Result<PiQuadrupoleLocalTensorResult>().WriteFeatures(
+                  conf, output_dir.string()),
+              4);
+    ASSERT_GT(ConformationResult::WriteAllFeatures(
+                  conf, output_dir.string()),
+              0);
+
+    const auto legacy = ReadFloat64Npy(output_dir / "pq_per_type_T0.npy");
+    const auto alias = ReadFloat64Npy(
+        output_dir / "piquad_axial_scalar_per_type_T0.npy");
+    EXPECT_EQ(legacy.shape, (std::vector<size_t>{conf.AtomCount(), 8}));
+    EXPECT_EQ(alias.shape, legacy.shape);
+    EXPECT_EQ(alias.values, legacy.values);
+
+    size_t P = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        P += conf.AtomAt(ai).ring_neighbours.size();
+    }
+    const auto full = ReadFloat64Npy(
+        output_dir / "piquad_local_tensor.npy");
+    const auto t2 = ReadFloat64Npy(output_dir / "piquad_local_T2.npy");
+    const auto frame = ReadFloat64Npy(
+        output_dir / "piquad_local_frame.npy");
+    const auto geometry = ReadFloat64Npy(
+        output_dir / "piquad_local_geometry.npy");
+    const auto legacy_sparse = ReadFloat64Npy(
+        output_dir / "piquad_quad_scalar.npy");
+    EXPECT_EQ(full.shape, (std::vector<size_t>{P, 9}));
+    EXPECT_EQ(t2.shape, (std::vector<size_t>{P, 5}));
+    EXPECT_EQ(frame.shape, (std::vector<size_t>{P, 9}));
+    EXPECT_EQ(geometry.shape, (std::vector<size_t>{P, 8}));
+    EXPECT_EQ(legacy_sparse.shape, (std::vector<size_t>{P}));
+    ASSERT_EQ(legacy_sparse.values.size(), P);
+
+    size_t row = 0;
+    size_t valid_rows = 0;
+    size_t numerical_oracle_rows = 0;
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        for (const RingNeighbourhood& neighbour :
+             conf.AtomAt(ai).ring_neighbours) {
+            EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 0],
+                             static_cast<double>(ai));
+            EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 1],
+                             static_cast<double>(neighbour.ring_index));
+            EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 2],
+                             static_cast<double>(neighbour.ring_type));
+            EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 5],
+                             neighbour.quad_scalar);
+            EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 5],
+                             legacy_sparse.values[row]);
+            EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 7], 1.0);
+            if (geometry.values[row * 8 + 6] == 1.0) {
+                ++valid_rows;
+                EXPECT_NEAR(full.values[row * 9 + 0], 0.0, 1e-12);
+                EXPECT_NEAR(full.values[row * 9 + 1], 0.0, 1e-12);
+                EXPECT_NEAR(full.values[row * 9 + 2], 0.0, 1e-12);
+                EXPECT_NEAR(full.values[row * 9 + 3], 0.0, 1e-12);
+                for (size_t component = 0; component < 5; ++component) {
+                    EXPECT_DOUBLE_EQ(t2.values[row * 5 + component],
+                                     full.values[row * 9 + 4 + component]);
+                }
+                for (size_t component = 0; component < 9; ++component) {
+                    EXPECT_TRUE(std::isfinite(
+                        frame.values[row * 9 + component]));
+                }
+
+                const Vec3 x_axis(
+                    frame.values[row * 9 + 0],
+                    frame.values[row * 9 + 1],
+                    frame.values[row * 9 + 2]);
+                const Vec3 y_axis(
+                    frame.values[row * 9 + 3],
+                    frame.values[row * 9 + 4],
+                    frame.values[row * 9 + 5]);
+                const Vec3 z_axis(
+                    frame.values[row * 9 + 6],
+                    frame.values[row * 9 + 7],
+                    frame.values[row * 9 + 8]);
+                EXPECT_NEAR(x_axis.norm(), 1.0, 1e-12);
+                EXPECT_NEAR(y_axis.norm(), 1.0, 1e-12);
+                EXPECT_NEAR(z_axis.norm(), 1.0, 1e-12);
+                EXPECT_NEAR(x_axis.dot(y_axis), 0.0, 1e-12);
+                EXPECT_NEAR(x_axis.dot(z_axis), 0.0, 1e-12);
+                EXPECT_NEAR(y_axis.dot(z_axis), 0.0, 1e-12);
+                EXPECT_NEAR(z_axis.cross(x_axis).dot(y_axis), 1.0,
+                            1e-12);
+
+                const RingGeometry& geom =
+                    conf.ring_geometries[neighbour.ring_index];
+                const Vec3 expected_z = geom.normal.normalized();
+                const Vec3 reference = geom.vertices[0] - geom.center;
+                const Vec3 reference_plane =
+                    reference - reference.dot(expected_z) * expected_z;
+                const Vec3 expected_x = reference_plane.normalized();
+                EXPECT_NEAR(z_axis.dot(expected_z), 1.0, 1e-12);
+                EXPECT_NEAR(x_axis.dot(expected_x), 1.0, 1e-12);
+
+                // End-to-end numerical oracle for emitted values: form the
+                // local displacement from the emitted frame, differentiate
+                // the independent quadrupole potential, and compare its
+                // Hessian with the on-disk project-basis tensor.
+                if (numerical_oracle_rows < 32) {
+                    const Vec3 d_global = conf.PositionAt(ai) - geom.center;
+                    const Vec3 d_local(
+                        d_global.dot(x_axis),
+                        d_global.dot(y_axis),
+                        d_global.dot(z_axis));
+                    const Mat3 numerical_efg = NumericalEFG(
+                        d_local, Vec3(0.0, 0.0, 1.0), 1e-5);
+                    const SphericalTensor expected_spherical =
+                        SphericalTensor::Decompose(-2.0 * numerical_efg);
+                    std::array<double, 9> expected_full{};
+                    expected_spherical.PackFull9(expected_full.data());
+                    const double scale = std::max(
+                        1.0, numerical_efg.cwiseAbs().maxCoeff() * 2.0);
+                    const double tolerance = scale * 2e-4;
+                    for (size_t component = 0; component < 9; ++component) {
+                        EXPECT_NEAR(full.values[row * 9 + component],
+                                    expected_full[component], tolerance);
+                    }
+                    ++numerical_oracle_rows;
+                }
+            }
+            ++row;
+        }
+    }
+    EXPECT_EQ(row, P);
+    EXPECT_GT(valid_rows, 0u);
+    EXPECT_GT(numerical_oracle_rows, 0u);
+}
+
+
+TEST(PiQuadEmission, LocalTensorArraysKeepZeroRowAlignment) {
+    Protein protein;
+    ProteinConformation conf(
+        &protein, {Vec3::Zero()}, "zero-ring-neighbour-rows");
+    PiQuadrupoleLocalTensorResult result;
+    const fs::path output_dir =
+        nmr::test::TestEnvironment::TempPath("piquad_local_zero_rows");
+    fs::create_directories(output_dir);
+    ASSERT_EQ(result.WriteFeatures(conf, output_dir.string()), 4);
+
+    EXPECT_EQ(ReadFloat64Npy(output_dir / "piquad_local_tensor.npy").shape,
+              (std::vector<size_t>{0, 9}));
+    EXPECT_EQ(ReadFloat64Npy(output_dir / "piquad_local_T2.npy").shape,
+              (std::vector<size_t>{0, 5}));
+    EXPECT_EQ(ReadFloat64Npy(output_dir / "piquad_local_frame.npy").shape,
+              (std::vector<size_t>{0, 9}));
+    EXPECT_EQ(ReadFloat64Npy(
+                  output_dir / "piquad_local_geometry.npy").shape,
+              (std::vector<size_t>{0, 8}));
 }
 
 

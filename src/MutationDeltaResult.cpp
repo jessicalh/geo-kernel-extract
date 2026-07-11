@@ -22,6 +22,24 @@
 
 namespace nmr {
 
+namespace mutation_delta_detail {
+
+std::array<double, 5> PackDeltaGraphRow(
+        bool matched, const MatchedAtomData* data) {
+    if (!matched || data == nullptr) return {0.0, 0.0, 0.0, 0.0, 0.0};
+    return {
+        1.0,
+        data->has_graph_delta ? 1.0 : 0.0,
+        data->has_graph_delta
+            ? static_cast<double>(data->delta_graph_dist_ring) : 0.0,
+        data->has_graph_delta ? data->delta_bfs_decay : 0.0,
+        data->has_graph_delta
+            ? static_cast<double>(data->delta_is_conjugated) : 0.0,
+    };
+}
+
+}  // namespace mutation_delta_detail
+
 const Mat3 MutationDeltaResult::zero_mat3_ = Mat3::Zero();
 const SphericalTensor MutationDeltaResult::zero_spherical_ = {};
 const MatchedAtomData MutationDeltaResult::empty_match_ = {};
@@ -511,6 +529,9 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
         if (has_graph) {
             data.delta_graph_dist_ring = wt_ca.graph_dist_ring - mut_ca.graph_dist_ring;
             data.delta_bfs_decay = wt_ca.bfs_decay - mut_ca.bfs_decay;
+            data.delta_is_conjugated =
+                static_cast<int>(wt_ca.is_conjugated) -
+                static_cast<int>(mut_ca.is_conjugated);
             data.has_graph_delta = true;
         }
 
@@ -732,6 +753,22 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
             }
         }
         NpyWriter::WriteFloat64(output_dir + "/delta_scalars.npy", data.data(), N, 6);
+        written++;
+    }
+
+    // Graph-topology deltas stay in their own additive table so the frozen
+    // six-column delta_scalars compatibility layout remains unchanged.
+    {
+        std::vector<double> data(N * 5, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            const MatchedAtomData* match = HasMatch(i)
+                ? &matched_atoms_[wt_to_matched_[i]] : nullptr;
+            const auto row = mutation_delta_detail::PackDeltaGraphRow(
+                match != nullptr, match);
+            std::copy(row.begin(), row.end(), data.begin() + i * 5);
+        }
+        NpyWriter::WriteFloat64(output_dir + "/delta_graph.npy",
+                                data.data(), N, 5);
         written++;
     }
 

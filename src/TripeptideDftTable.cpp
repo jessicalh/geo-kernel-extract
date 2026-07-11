@@ -9,7 +9,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -54,9 +58,9 @@ std::vector<GeometryEntry> ParseGeometryJson(const std::string& json_text) {
             out.push_back(std::move(g));
         }
     } catch (const std::exception& e) {
-        OperationLog::Error("TripeptideDftTable::ParseGeometryJson",
-            std::string("malformed or incomplete geometry JSONB: ") + e.what() +
-            " — aborting; downstream sees no atoms");
+        OperationLog::Error(
+            "TripeptideDftTable::ParseGeometryJson",
+            std::string("malformed or incomplete geometry JSONB: ") + e.what() + " — aborting; downstream sees no atoms");
         return {};
     }
     return out;
@@ -111,9 +115,9 @@ std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
             out.push_back(std::move(te));
         }
     } catch (const std::exception& e) {
-        OperationLog::Error("TripeptideDftTable::ParseTensorJson",
-            std::string("malformed or incomplete tensor JSONB: ") + e.what() +
-            " — aborting; downstream sees no atoms");
+        OperationLog::Error(
+            "TripeptideDftTable::ParseTensorJson",
+            std::string("malformed or incomplete tensor JSONB: ") + e.what() + " — aborting; downstream sees no atoms");
         return {};
     }
     return out;
@@ -124,11 +128,13 @@ std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
 // for the 20° grid (the grid points are -180, -160, …, 160). The 2°
 // ALA-baseline grid keeps 180 as-is: it's a real grid point.
 int RoundToGrid(double angle, int grid_spacing) {
-    int rounded = static_cast<int>(std::round(angle / grid_spacing)) *
-                  grid_spacing;
-    while (rounded >  180) rounded -= 360;
-    while (rounded < -180) rounded += 360;
-    if (rounded == 180 && grid_spacing != 2) rounded = -180;
+    int rounded = static_cast<int>(std::round(angle / grid_spacing)) * grid_spacing;
+    while (rounded > 180)
+        rounded -= 360;
+    while (rounded < -180)
+        rounded += 360;
+    if (rounded == 180 && grid_spacing != 2)
+        rounded = -180;
     return rounded;
 }
 
@@ -145,13 +151,33 @@ int RoundToGrid(double angle, int grid_spacing) {
 //   4 chi: K, R
 int ChiAngleCountForResidue(char letter) {
     switch (letter) {
-        case 'A': case 'G': case 'P':                   return 0;
-        case 'S': case 'T': case 'C': case 'V':         return 1;
-        case 'L': case 'I': case 'N': case 'D':
-        case 'H': case 'F': case 'Y': case 'W':         return 2;
-        case 'E': case 'M': case 'Q':                   return 3;
-        case 'K': case 'R':                             return 4;
-        default:                                        return 0;
+    case 'A':
+    case 'G':
+    case 'P':
+        return 0;
+    case 'S':
+    case 'T':
+    case 'C':
+    case 'V':
+        return 1;
+    case 'L':
+    case 'I':
+    case 'N':
+    case 'D':
+    case 'H':
+    case 'F':
+    case 'Y':
+    case 'W':
+        return 2;
+    case 'E':
+    case 'M':
+    case 'Q':
+        return 3;
+    case 'K':
+    case 'R':
+        return 4;
+    default:
+        return 0;
     }
 }
 
@@ -171,17 +197,13 @@ int ChiAngleCountForResidue(char letter) {
 // arrays, we cross-check that the tensor's element matches the
 // geometry's element. A divergence means the JSON layer is producing
 // inconsistent records — fail loud rather than silently mis-assigning.
-std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
-        const std::vector<GeometryEntry>& geom,
-        const std::vector<TensorEntry>&   tens) {
+std::vector<TripeptideDftAtom>
+MergeGeometryAndTensors(const std::vector<GeometryEntry>& geom, const std::vector<TensorEntry>& tens) {
     std::vector<TripeptideDftAtom> out;
     if (geom.size() != tens.size()) {
-        OperationLog::Warn(
-            "TripeptideDftTable::MergeGeometryAndTensors",
-            "geometry/tensor count mismatch: geom=" +
-                std::to_string(geom.size()) +
-                " tensor=" + std::to_string(tens.size()) +
-                " — proceeding with set intersection");
+        OperationLog::Warn("TripeptideDftTable::MergeGeometryAndTensors",
+                           "geometry/tensor count mismatch: geom=" + std::to_string(geom.size())
+                               + " tensor=" + std::to_string(tens.size()) + " — proceeding with set intersection");
     }
 
     // Build atom_idx → TensorEntry map. Duplicate atom_idx in tensors
@@ -191,11 +213,9 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
     for (const TensorEntry& t : tens) {
         auto [it, inserted] = tens_by_idx.emplace(t.atom_idx, &t);
         if (!inserted) {
-            OperationLog::Error(
-                "TripeptideDftTable::MergeGeometryAndTensors",
-                "duplicate atom_idx in tensors JSONB: " +
-                std::to_string(t.atom_idx) +
-                " — silent corruption risk; aborting merge");
+            OperationLog::Error("TripeptideDftTable::MergeGeometryAndTensors",
+                                "duplicate atom_idx in tensors JSONB: " + std::to_string(t.atom_idx)
+                                    + " — silent corruption risk; aborting merge");
             return {};  // empty result; downstream sees rec.atoms.empty()
         }
     }
@@ -204,19 +224,15 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
     std::unordered_set<int> seen_geom_idx;
     for (const GeometryEntry& g : geom) {
         if (!seen_geom_idx.insert(g.atom_idx).second) {
-            OperationLog::Error(
-                "TripeptideDftTable::MergeGeometryAndTensors",
-                "duplicate atom_idx in geometry JSONB: " +
-                std::to_string(g.atom_idx) +
-                " — silent corruption risk; aborting merge");
+            OperationLog::Error("TripeptideDftTable::MergeGeometryAndTensors",
+                                "duplicate atom_idx in geometry JSONB: " + std::to_string(g.atom_idx)
+                                    + " — silent corruption risk; aborting merge");
             return {};
         }
         auto it = tens_by_idx.find(g.atom_idx);
         if (it == tens_by_idx.end()) {
-            OperationLog::Warn(
-                "TripeptideDftTable::MergeGeometryAndTensors",
-                "geometry atom_idx=" + std::to_string(g.atom_idx) +
-                " has no matching tensor row; skipping");
+            OperationLog::Warn("TripeptideDftTable::MergeGeometryAndTensors",
+                               "geometry atom_idx=" + std::to_string(g.atom_idx) + " has no matching tensor row; skipping");
             continue;
         }
         const TensorEntry& t = *it->second;
@@ -225,12 +241,11 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
         // agreement means the JSON payloads disagree about chemistry
         // for this atom — a serious upstream bug we want to surface.
         if (g.element != t.element) {
-            OperationLog::Error(
-                "TripeptideDftTable::MergeGeometryAndTensors",
-                "element mismatch at atom_idx=" + std::to_string(g.atom_idx) +
-                ": geometry=" + std::to_string(static_cast<int>(g.element)) +
-                " tensor=" + std::to_string(static_cast<int>(t.element)) +
-                " — silent corruption risk; aborting merge");
+            OperationLog::Error("TripeptideDftTable::MergeGeometryAndTensors",
+                                "element mismatch at atom_idx=" + std::to_string(g.atom_idx)
+                                    + ": geometry=" + std::to_string(static_cast<int>(g.element))
+                                    + " tensor=" + std::to_string(static_cast<int>(t.element))
+                                    + " — silent corruption risk; aborting merge");
             return {};
         }
 
@@ -248,6 +263,62 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
 }
 
 }  // anonymous namespace
+
+
+// Production-owned omitted-chi scoring helpers. External linkage in this
+// per-file named namespace lets the durable forcing test execute the exact
+// code used to build QueryNearest's SQL rather than a re-derived copy.
+// This deliberately remains local to TripeptideDftTable.cpp; it is not a
+// shared utility/header surface.
+namespace tripeptide_dft_query {
+
+double CircularDeltaDegrees(double lhs_deg, double rhs_deg) {
+    double delta = std::fmod(std::abs(lhs_deg - rhs_deg), 360.0);
+    if (delta < 0.0)
+        delta += 360.0;
+    return std::min(delta, 360.0 - delta);
+}
+
+double DroppedChiSquaredDistance(const std::array<int, 4>& db_chi_deg,
+                                 const std::array<int, 4>& target_chi_deg,
+                                 int natural_chi_axes,
+                                 int n_chi_axes_used) {
+    const int natural = std::clamp(natural_chi_axes, 0, 4);
+    const int used = std::clamp(n_chi_axes_used, 0, natural);
+    double score = 0.0;
+    for (int k = used; k < natural; ++k) {
+        const double delta = CircularDeltaDegrees(static_cast<double>(db_chi_deg[k]), static_cast<double>(target_chi_deg[k]));
+        score += delta * delta;
+    }
+    return score;
+}
+
+std::string OmittedChiScoreSql(int natural_chi_axes, int n_chi_axes_used, const std::array<int, 4>& target_chi_deg) {
+    const int natural = std::clamp(natural_chi_axes, 0, 4);
+    const int used = std::clamp(n_chi_axes_used, 0, natural);
+    if (used == natural)
+        return "0.0";
+
+    std::ostringstream score;
+    bool first = true;
+    for (int k = used; k < natural; ++k) {
+        const std::string column = "chi" + std::to_string(k + 1);
+        const std::string target = std::to_string(target_chi_deg[k]);
+        const std::string abs_delta = "ABS(" + column + " - (" + target + "))";
+        const std::string circular_delta = "LEAST(" + abs_delta + ", 360.0 - " + abs_delta + ")";
+        if (!first)
+            score << " + ";
+        score << "(" << circular_delta << " * " << circular_delta << ")";
+        first = false;
+    }
+    return score.str();
+}
+
+std::string NearestOrderBySql() {
+    return "ORDER BY dropped_chi_score ASC, calc_id ASC LIMIT 1";
+}
+
+}  // namespace tripeptide_dft_query
 
 
 // ============================================================================
@@ -270,28 +341,30 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
 // silent password leakage.
 static std::string RedactDsnForLog(const std::string& dsn) {
     static const std::set<std::string> kSensitive = {
-        "password", "passfile",
+        "password",
+        "passfile",
     };
 
     char* err = nullptr;
     PQconninfoOption* opts = PQconninfoParse(dsn.c_str(), &err);
     if (!opts) {
         std::string msg = err ? err : "unknown libpq parse error";
-        if (err) PQfreemem(err);
+        if (err)
+            PQfreemem(err);
         return "<dsn redaction failed: " + msg + ">";
     }
 
     std::string out;
     for (PQconninfoOption* o = opts; o->keyword; ++o) {
-        if (!o->val) continue;
+        if (!o->val)
+            continue;
         // libpq sets `val` to NULL for unset options. We only include
         // those the user provided. Output key in lowercase canonical
         // form; libpq emits all known options lowercased already.
         std::string key = o->keyword;
-        const std::string val = kSensitive.count(key)
-            ? std::string("<redacted>")
-            : std::string(o->val);
-        if (!out.empty()) out += ' ';
+        const std::string val = kSensitive.count(key) ? std::string("<redacted>") : std::string(o->val);
+        if (!out.empty())
+            out += ' ';
         out += key + "='" + val + "'";
     }
     PQconninfoFree(opts);
@@ -305,16 +378,17 @@ TripeptideDftTable::TripeptideDftTable(const std::string& conn_str) {
         std::string err = PQerrorMessage(conn_);
         PQfinish(conn_);
         conn_ = nullptr;
-        throw std::runtime_error(
-            "TripeptideDftTable: connection failed: " + err);
+        throw std::runtime_error("TripeptideDftTable: connection failed: " + err);
     }
-    OperationLog::Info(LogCalcOther, "TripeptideDftTable",
+    OperationLog::Info(LogCalcOther,
+                       "TripeptideDftTable",
         "connected to tensorcs15 (conn_str=\"" + RedactDsnForLog(conn_str) + "\")");
 }
 
 
 TripeptideDftTable::~TripeptideDftTable() {
-    if (conn_) PQfinish(conn_);
+    if (conn_)
+        PQfinish(conn_);
 }
 
 
@@ -327,24 +401,23 @@ bool TripeptideDftTable::IsConnected() const {
 // QueryNearest
 // ============================================================================
 
-TripeptideDftRecord TripeptideDftTable::QueryNearest(
-        char residue_letter,
-        double phi, double psi,
-        double chi1, double chi2,
-        double chi3, double chi4,
+TripeptideDftRecord TripeptideDftTable::QueryNearest(char residue_letter,
+                                                     double phi,
+                                                     double psi,
+                                                     double chi1,
+                                                     double chi2,
+                                                     double chi3,
+                                                     double chi4,
         int n_chi_axes,
         int his_variant_hint) const {
-
     TripeptideDftRecord entry;
     if (!conn_) {
-        throw std::runtime_error(
-            "TripeptideDftTable::QueryNearest: not connected");
+        throw std::runtime_error("TripeptideDftTable::QueryNearest: not connected");
     }
 
     // Grid: 2° for AAA baseline, 20° for everything else.
     const int grid = (residue_letter == 'A') ? 2 : 20;
-    const std::string tripeptide =
-        std::string("A") + residue_letter + "A";
+    const std::string tripeptide = std::string("A") + residue_letter + "A";
     const int g_phi = RoundToGrid(phi, grid);
     const int g_psi = RoundToGrid(psi, grid);
 
@@ -352,57 +425,64 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
     // exact depth (capped to the residue's natural depth so we never
     // include more chi columns than the residue table holds).
     const int natural_n_chi = ChiAngleCountForResidue(residue_letter);
-    int n_chi = (n_chi_axes < 0)
-                    ? natural_n_chi
-                    : std::min(n_chi_axes, natural_n_chi);
-    if (n_chi < 0) n_chi = 0;
-    const int g_chi1 = (n_chi >= 1) ? RoundToGrid(chi1, 20) : 0;
-    const int g_chi2 = (n_chi >= 2) ? RoundToGrid(chi2, 20) : 0;
-    const int g_chi3 = (n_chi >= 3) ? RoundToGrid(chi3, 20) : 0;
-    const int g_chi4 = (n_chi >= 4) ? RoundToGrid(chi4, 20) : 0;
+    int n_chi = (n_chi_axes < 0) ? natural_n_chi : std::min(n_chi_axes, natural_n_chi);
+    if (n_chi < 0)
+        n_chi = 0;
+    const std::array<double, 4> chi_actual = {chi1, chi2, chi3, chi4};
+    std::array<int, 4> g_chi = {};
+    for (int k = 0; k < natural_n_chi; ++k) {
+        g_chi[k] = RoundToGrid(chi_actual[k], 20);
+    }
+
+    // Query provenance is populated before touching the database so a miss
+    // still carries its attempted target grids. The dropped-chi distance
+    // remains NaN until a row is selected.
+    entry.natural_chi_axes = natural_n_chi;
+    entry.n_chi_axes_used = n_chi;
+    entry.target_phi_grid_deg = g_phi;
+    entry.target_psi_grid_deg = g_psi;
+    entry.target_chi_grid_deg = g_chi;
 
     // Build the WHERE clause one chi axis at a time so we can fall
     // back from the deepest match. Caller-side fallback (re-run with
     // fewer axes) is handled per-residue by the calculator; here we
     // do the single attempt at the requested depth.
-    std::string where = "tripeptide='" + tripeptide + "' AND phi=" +
-                        std::to_string(g_phi) + " AND psi=" +
-                        std::to_string(g_psi);
-    if (n_chi >= 1) where += " AND chi1=" + std::to_string(g_chi1);
-    if (n_chi >= 2) where += " AND chi2=" + std::to_string(g_chi2);
-    if (n_chi >= 3) where += " AND chi3=" + std::to_string(g_chi3);
-    if (n_chi >= 4) where += " AND chi4=" + std::to_string(g_chi4);
+    std::string where =
+        "tripeptide='" + tripeptide + "' AND phi=" + std::to_string(g_phi) + " AND psi=" + std::to_string(g_psi);
+    if (n_chi >= 1)
+        where += " AND chi1=" + std::to_string(g_chi[0]);
+    if (n_chi >= 2)
+        where += " AND chi2=" + std::to_string(g_chi[1]);
+    if (n_chi >= 3)
+        where += " AND chi3=" + std::to_string(g_chi[2]);
+    if (n_chi >= 4)
+        where += " AND chi4=" + std::to_string(g_chi[3]);
 
-    // ORDER BY calc_id ASC: when the chi-fallback drops axes from the
-    // WHERE clause, multiple rows can match (different chi values at
-    // the dropped depths). Without a deterministic ordering, the row
-    // returned depends on the PostgreSQL planner's row-emission order
-    // — i.e., session-arbitrary and not stable across replays. calc_id
-    // is the cheapest stable key (single index lookup); using a chi-
-    // distance metric would be geometrically nicer but bake into a hot
-    // path the calculators call thousands of times per protein.
-    const std::string query =
-        "SELECT calc_id, tripeptide, phi, psi, chi1, chi2, chi3, chi4, "
-        "n_atoms, frame_type, geometry::text, tensors::text "
-        "FROM raw_dft_calculations WHERE " + where +
-        " ORDER BY calc_id ASC LIMIT 1";
+    // When fallback omits natural chi axes from equality matching, choose
+    // the row nearest to the omitted target geometry using circular
+    // angular distance. calc_id remains only the deterministic final
+    // tie-break. With no omitted axes the score is 0 and selection is
+    // bit-identical to the prior calc_id ordering.
+    const std::string dropped_chi_score_sql = tripeptide_dft_query::OmittedChiScoreSql(natural_n_chi, n_chi, g_chi);
+    const std::string query = "SELECT calc_id, tripeptide, phi, psi, chi1, chi2, chi3, chi4, "
+                              "n_atoms, frame_type, geometry::text, tensors::text, "
+                              + dropped_chi_score_sql
+                              + " AS dropped_chi_score "
+                                "FROM raw_dft_calculations WHERE "
+                              + where + " " + tripeptide_dft_query::NearestOrderBySql();
 
     PGresult* res = PQexec(conn_, query.c_str());
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::string err = PQerrorMessage(conn_);
         PQclear(res);
-        throw std::runtime_error(
-            "TripeptideDftTable::QueryNearest: " + err);
+        throw std::runtime_error("TripeptideDftTable::QueryNearest: " + err);
     }
 
     if (PQntuples(res) == 0) {
         PQclear(res);
-        OperationLog::Warn(
-            "TripeptideDftTable::QueryNearest",
-            "no match for " + tripeptide +
-                " phi=" + std::to_string(g_phi) +
-                " psi=" + std::to_string(g_psi) +
-                " n_chi=" + std::to_string(n_chi));
+        OperationLog::Warn("TripeptideDftTable::QueryNearest",
+                           "no match for " + tripeptide + " phi=" + std::to_string(g_phi) + " psi=" + std::to_string(g_psi)
+                               + " n_chi=" + std::to_string(n_chi));
         return entry;
     }
 
@@ -415,8 +495,26 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
     entry.chi3 = PQgetisnull(res, 0, 6) ? 0 : std::stoi(PQgetvalue(res, 0, 6));
     entry.chi4 = PQgetisnull(res, 0, 7) ? 0 : std::stoi(PQgetvalue(res, 0, 7));
     entry.n_atoms = std::stoi(PQgetvalue(res, 0, 8));
-    entry.frame_type =
-        PQgetisnull(res, 0, 9) ? "" : PQgetvalue(res, 0, 9);
+    entry.frame_type = PQgetisnull(res, 0, 9) ? "" : PQgetvalue(res, 0, 9);
+
+    const double dropped_chi_score = PQgetisnull(res, 0, 12) ? std::numeric_limits<double>::quiet_NaN()
+                                                             : std::stod(PQgetvalue(res, 0, 12));
+    if (std::isfinite(dropped_chi_score)) {
+        entry.dropped_chi_distance_deg = std::sqrt(std::max(0.0, dropped_chi_score));
+
+        // Independent in-process audit of the SQL score using the selected
+        // row. This helper is also the non-skipping production-linked test
+        // seam. A disagreement means SQL/C++ circular conventions drifted.
+        const std::array<int, 4> selected_chi = {entry.chi1, entry.chi2, entry.chi3, entry.chi4};
+        const double cpp_score = tripeptide_dft_query::DroppedChiSquaredDistance(selected_chi, g_chi, natural_n_chi, n_chi);
+        if (std::abs(cpp_score - dropped_chi_score) > 1e-9) {
+            OperationLog::Error("TripeptideDftTable::QueryNearest",
+                                "SQL/C++ omitted-chi score mismatch for calc_id=" + std::to_string(entry.calc_id)
+                                    + " sql=" + std::to_string(dropped_chi_score) + " cpp=" + std::to_string(cpp_score));
+            PQclear(res);
+            throw std::runtime_error("TripeptideDftTable::QueryNearest: omitted-chi score mismatch");
+        }
+    }
 
     const std::string geom_json = PQgetvalue(res, 0, 10);
     const std::string tens_json = PQgetvalue(res, 0, 11);
@@ -431,26 +529,20 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
     AminoAcid expected_central = AminoAcid::Unknown;
     for (const auto& t : AllAminoAcidTypes()) {
         if (t.one_letter_code == residue_letter) {
-            expected_central = t.index; break;
+            expected_central = t.index;
+            break;
         }
     }
-    entry.larsen = PerceiveLarsenTripeptide(entry, expected_central,
-                                              his_variant_hint);
+    entry.larsen = PerceiveLarsenTripeptide(entry, expected_central, his_variant_hint);
     const std::string perception_tag = entry.larsen.has_value() ? "ok" : "FAILED";
 
     OperationLog::Info(LogCalcOther,
         "TripeptideDftTable::QueryNearest",
-        entry.tripeptide +
-            " phi=" + std::to_string(entry.phi) +
-            " psi=" + std::to_string(entry.psi) +
-            " chi1=" + std::to_string(entry.chi1) +
-            " chi2=" + std::to_string(entry.chi2) +
-            " chi3=" + std::to_string(entry.chi3) +
-            " chi4=" + std::to_string(entry.chi4) +
-            " calc_id=" + std::to_string(entry.calc_id) +
-            " frame_type=" + entry.frame_type +
-            " atoms=" + std::to_string(entry.atoms.size()) +
-            " perception=" + perception_tag);
+                       entry.tripeptide + " phi=" + std::to_string(entry.phi) + " psi=" + std::to_string(entry.psi)
+                           + " chi1=" + std::to_string(entry.chi1) + " chi2=" + std::to_string(entry.chi2)
+                           + " chi3=" + std::to_string(entry.chi3) + " chi4=" + std::to_string(entry.chi4)
+                           + " calc_id=" + std::to_string(entry.calc_id) + " frame_type=" + entry.frame_type
+                           + " atoms=" + std::to_string(entry.atoms.size()) + " perception=" + perception_tag);
 
     // Perception self-logs its specific failure reason via
     // OperationLog::Warn("PerceiveLarsenTripeptide", ...) at the
