@@ -3,8 +3,12 @@
 #include <cmath>
 #include <iostream>
 
+#include "BiotSavartResult.h"
+#include "DispersionResult.h"
+#include "HaighMallionResult.h"
 #include "PiQuadrupoleResult.h"
 #include "PiQuadrupoleLocalTensorResult.h"
+#include "RingSusceptibilityResult.h"
 #include "RingNeighbourGeometry.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
@@ -26,7 +30,9 @@
 #include <iterator>
 #include <map>
 #include <array>
+#include <set>
 #include <sstream>
+#include <stdexcept>
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -93,6 +99,20 @@ NpyDoubleArray ReadFloat64Npy(const fs::path& path) {
     }
     EXPECT_TRUE(in.good() || in.eof());
     return out;
+}
+
+void ExpectSameIncludingNaN(const NpyDoubleArray& expected,
+                            const NpyDoubleArray& actual) {
+    ASSERT_EQ(actual.shape, expected.shape);
+    ASSERT_EQ(actual.values.size(), expected.values.size());
+    for (size_t i = 0; i < expected.values.size(); ++i) {
+        if (std::isnan(expected.values[i])) {
+            EXPECT_TRUE(std::isnan(actual.values[i])) << "value " << i;
+        } else {
+            EXPECT_DOUBLE_EQ(actual.values[i], expected.values[i])
+                << "value " << i;
+        }
+    }
 }
 
 }  // namespace
@@ -193,6 +213,24 @@ TEST(PiQuadAnalytical, PointCenterKernelAcceptsInsideFiniteRingRadius) {
              CalculatorConfig::Get("singularity_guard_distance")),
         Vec3::Zero(), Vec3(0.0, 0.0, 1.0));
     EXPECT_FALSE(singular.valid) << "distance must be strictly above guard";
+}
+
+
+TEST(PiQuadLocalTensorContract, DependsOnEveryRingRowProducer) {
+    const PiQuadrupoleLocalTensorResult result;
+    const auto dependencies = result.Dependencies();
+    auto has_dependency = [&](std::type_index type) {
+        return std::find(dependencies.begin(), dependencies.end(), type) !=
+               dependencies.end();
+    };
+
+    EXPECT_EQ(dependencies.size(), 6u);
+    EXPECT_TRUE(has_dependency(typeid(GeometryResult)));
+    EXPECT_TRUE(has_dependency(typeid(BiotSavartResult)));
+    EXPECT_TRUE(has_dependency(typeid(HaighMallionResult)));
+    EXPECT_TRUE(has_dependency(typeid(RingSusceptibilityResult)));
+    EXPECT_TRUE(has_dependency(typeid(PiQuadrupoleResult)));
+    EXPECT_TRUE(has_dependency(typeid(DispersionResult)));
 }
 
 
@@ -534,9 +572,10 @@ TEST(PiQuadAnalytical, MagnitudeAgainstBenzeneQuadrupole) {
 class PiQuadProteinTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated())) GTEST_SKIP() << "1UBQ not found";
+        ASSERT_TRUE(fs::exists(nmr::test::TestEnvironment::UbqProtonated()))
+            << "checked-in 1UBQ fixture not found";
         auto r = BuildFromProtonatedPdb(nmr::test::TestEnvironment::UbqProtonated());
-        if (!r.Ok()) GTEST_SKIP() << "Failed to load 1UBQ";
+        ASSERT_TRUE(r.Ok()) << "Failed to load checked-in 1UBQ: " << r.error;
         protein = std::move(r.protein);
 
         auto& conf = protein->Conformation();
@@ -636,7 +675,12 @@ TEST_F(PiQuadProteinTest, AzimuthIsPopulatedWithoutBiotSavart) {
 
 TEST_F(PiQuadProteinTest, AxialAliasAndLocalTensorReadBack) {
     auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(BiotSavartResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(HaighMallionResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(
+        RingSusceptibilityResult::Compute(conf)));
     ASSERT_TRUE(conf.AttachResult(PiQuadrupoleResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(DispersionResult::Compute(conf)));
     ASSERT_TRUE(conf.AttachResult(
         PiQuadrupoleLocalTensorResult::Compute(conf)));
 
@@ -687,6 +731,7 @@ TEST_F(PiQuadProteinTest, AxialAliasAndLocalTensorReadBack) {
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const RingNeighbourhood& neighbour :
              conf.AtomAt(ai).ring_neighbours) {
+            EXPECT_TRUE(neighbour.piquad_local_evaluated);
             EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 0],
                              static_cast<double>(ai));
             EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 1],
@@ -698,6 +743,9 @@ TEST_F(PiQuadProteinTest, AxialAliasAndLocalTensorReadBack) {
             EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 5],
                              legacy_sparse.values[row]);
             EXPECT_DOUBLE_EQ(geometry.values[row * 8 + 7], 1.0);
+            EXPECT_DOUBLE_EQ(
+                geometry.values[row * 8 + 6],
+                neighbour.piquad_local_valid ? 1.0 : 0.0);
             if (geometry.values[row * 8 + 6] == 1.0) {
                 ++valid_rows;
                 EXPECT_NEAR(full.values[row * 9 + 0], 0.0, 1e-12);
@@ -776,6 +824,198 @@ TEST_F(PiQuadProteinTest, AxialAliasAndLocalTensorReadBack) {
     EXPECT_EQ(row, P);
     EXPECT_GT(valid_rows, 0u);
     EXPECT_GT(numerical_oracle_rows, 0u);
+
+    // WriteFeatures must serialize the Compute-time payload, not consult
+    // live ring geometry or repeat any scientific calculation.  Removing
+    // that geometry after the independent oracle above must leave all four
+    // emitted arrays bit-identical (with NaNs compared as sentinels).
+    conf.ring_geometries.clear();
+    const fs::path readback_dir =
+        nmr::test::TestEnvironment::TempPath(
+            "piquad_local_tensor_pure_readback");
+    fs::create_directories(readback_dir);
+    ASSERT_EQ(conf.Result<PiQuadrupoleLocalTensorResult>().WriteFeatures(
+                  conf, readback_dir.string()),
+              4);
+    ExpectSameIncludingNaN(
+        full, ReadFloat64Npy(readback_dir / "piquad_local_tensor.npy"));
+    ExpectSameIncludingNaN(
+        t2, ReadFloat64Npy(readback_dir / "piquad_local_T2.npy"));
+    ExpectSameIncludingNaN(
+        frame, ReadFloat64Npy(readback_dir / "piquad_local_frame.npy"));
+    ExpectSameIncludingNaN(
+        geometry,
+        ReadFloat64Npy(readback_dir / "piquad_local_geometry.npy"));
+}
+
+
+TEST(PiQuadLocalTensorProduction,
+     ComputesFinalUnionIncludingRowCreatedByLaterDispersion) {
+    // This fixture is checked in.  Do not skip: the test must force the
+    // production row creators in a bare checkout.
+    ASSERT_TRUE(fs::exists(nmr::test::TestEnvironment::UbqProtonated()));
+    auto loaded = BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(loaded.Ok()) << loaded.error;
+    Protein& protein = *loaded.protein;
+    auto& source_conf = protein.Conformation();
+    ASSERT_TRUE(source_conf.AttachResult(
+        GeometryResult::Compute(source_conf)));
+    ASSERT_GT(protein.RingCount(), 0u);
+
+    constexpr size_t ring_index = 0;
+    const Ring& ring = protein.RingAt(ring_index);
+    const RingGeometry source_geometry =
+        source_conf.ring_geometries[ring_index];
+
+    // Select an atom that the typed ring-bonded exclusion does not reject.
+    std::set<size_t> topology_excluded;
+    for (size_t vertex_index : ring.atom_indices) {
+        topology_excluded.insert(vertex_index);
+        for (size_t bond_index :
+             protein.AtomAt(vertex_index).bond_indices) {
+            const Bond& bond = protein.BondAt(bond_index);
+            topology_excluded.insert(bond.atom_index_a);
+            topology_excluded.insert(bond.atom_index_b);
+        }
+    }
+
+    size_t target_index = protein.AtomCount();
+    for (size_t ai = 0; ai < protein.AtomCount(); ++ai) {
+        if (!topology_excluded.count(ai)) {
+            target_index = ai;
+            break;
+        }
+    }
+    ASSERT_LT(target_index, protein.AtomCount());
+
+    // Pi's point-center guard rejects this pair, while Dispersion's finite
+    // vertex kernel accepts it.  That makes Dispersion create a genuinely
+    // later row in the shared union rather than merely update a Pi row.
+    const double singularity_guard =
+        CalculatorConfig::Get("singularity_guard_distance");
+    std::vector<Vec3> positions = source_conf.Positions();
+    positions[target_index] = source_geometry.center +
+        0.5 * singularity_guard * source_geometry.normal.normalized();
+    auto& probe = protein.AddConformation(
+        std::move(positions), "piquad-final-row-union-probe");
+    ASSERT_TRUE(probe.AttachResult(GeometryResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(SpatialIndexResult::Compute(probe)));
+
+    auto find_target_row = [&]() -> const RingNeighbourhood* {
+        for (const RingNeighbourhood& candidate :
+             probe.AtomAt(target_index).ring_neighbours) {
+            if (candidate.ring_index == ring_index) return &candidate;
+        }
+        return nullptr;
+    };
+
+    ASSERT_TRUE(probe.AttachResult(PiQuadrupoleResult::Compute(probe)));
+    EXPECT_EQ(find_target_row(), nullptr)
+        << "Pi must reject the controlled center-guard pair";
+
+    ASSERT_TRUE(probe.AttachResult(DispersionResult::Compute(probe)));
+    const RingNeighbourhood* late_row = find_target_row();
+    ASSERT_NE(late_row, nullptr)
+        << "Dispersion must append the pair missing from Pi's row set";
+    EXPECT_DOUBLE_EQ(late_row->quad_scalar, 0.0);
+    EXPECT_GT(late_row->disp_contacts, 0);
+    EXPECT_GT(late_row->disp_scalar, 0.0);
+
+    // Geometry + Pi + Dispersion is not a final row set: the dependency
+    // graph must reject attachment until every possible row producer exists.
+    EXPECT_FALSE(probe.AttachResult(
+        std::make_unique<PiQuadrupoleLocalTensorResult>()));
+
+    ASSERT_TRUE(probe.AttachResult(BiotSavartResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(HaighMallionResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(
+        RingSusceptibilityResult::Compute(probe)));
+    ASSERT_TRUE(probe.AttachResult(
+        PiQuadrupoleLocalTensorResult::Compute(probe)));
+
+    late_row = find_target_row();
+    ASSERT_NE(late_row, nullptr);
+    EXPECT_TRUE(late_row->piquad_local_evaluated);
+    EXPECT_FALSE(late_row->piquad_local_valid);
+    EXPECT_DOUBLE_EQ(late_row->quad_scalar, 0.0);
+    EXPECT_GT(late_row->disp_contacts, 0);
+    EXPECT_LT(late_row->piquad_local_distance, singularity_guard);
+    EXPECT_NEAR(std::abs(late_row->piquad_local_cos_theta), 1.0, 1e-12);
+    for (int a = 0; a < 3; ++a) {
+        EXPECT_TRUE(std::isnan(late_row->piquad_local_x_axis(a)));
+        EXPECT_TRUE(std::isnan(late_row->piquad_local_y_axis(a)));
+        EXPECT_TRUE(std::isnan(late_row->piquad_local_z_axis(a)));
+        for (int b = 0; b < 3; ++b) {
+            EXPECT_TRUE(std::isnan(
+                late_row->piquad_local_tensor(a, b)));
+        }
+    }
+
+    size_t P = 0;
+    for (size_t ai = 0; ai < probe.AtomCount(); ++ai) {
+        for (const RingNeighbourhood& row :
+             probe.AtomAt(ai).ring_neighbours) {
+            EXPECT_TRUE(row.piquad_local_evaluated);
+            ++P;
+        }
+    }
+    ASSERT_GT(P, 0u);
+
+    const fs::path output_dir =
+        nmr::test::TestEnvironment::TempPath(
+            "piquad_final_row_union_out");
+    ASSERT_GT(ConformationResult::WriteAllFeatures(
+                  probe, output_dir.string()),
+              0);
+    const auto ring_contributions =
+        ReadFloat64Npy(output_dir / "ring_contributions.npy");
+    const auto full =
+        ReadFloat64Npy(output_dir / "piquad_local_tensor.npy");
+    const auto t2 =
+        ReadFloat64Npy(output_dir / "piquad_local_T2.npy");
+    const auto frame =
+        ReadFloat64Npy(output_dir / "piquad_local_frame.npy");
+    const auto geometry =
+        ReadFloat64Npy(output_dir / "piquad_local_geometry.npy");
+    EXPECT_EQ(ring_contributions.shape,
+              (std::vector<size_t>{P, 40}));
+    EXPECT_EQ(full.shape, (std::vector<size_t>{P, 9}));
+    EXPECT_EQ(t2.shape, (std::vector<size_t>{P, 5}));
+    EXPECT_EQ(frame.shape, (std::vector<size_t>{P, 9}));
+    EXPECT_EQ(geometry.shape, (std::vector<size_t>{P, 8}));
+
+    size_t emitted_late_row = P;
+    for (size_t row = 0; row < P; ++row) {
+        if (geometry.values[row * 8 + 0] ==
+                static_cast<double>(target_index) &&
+            geometry.values[row * 8 + 1] ==
+                static_cast<double>(ring_index)) {
+            emitted_late_row = row;
+            break;
+        }
+    }
+    ASSERT_LT(emitted_late_row, P);
+    EXPECT_DOUBLE_EQ(geometry.values[emitted_late_row * 8 + 5], 0.0);
+    EXPECT_DOUBLE_EQ(geometry.values[emitted_late_row * 8 + 6], 0.0);
+    for (size_t component = 0; component < 9; ++component) {
+        EXPECT_TRUE(std::isnan(
+            full.values[emitted_late_row * 9 + component]));
+        EXPECT_TRUE(std::isnan(
+            frame.values[emitted_late_row * 9 + component]));
+    }
+    for (size_t component = 0; component < 5; ++component) {
+        EXPECT_TRUE(std::isnan(
+            t2.values[emitted_late_row * 5 + component]));
+    }
+
+    // If any future calculator appends after Pi-local Compute, emission must
+    // stop loudly rather than serialize an uncomputed/default tensor row.
+    probe.MutableAtomAt(target_index).ring_neighbours.emplace_back();
+    EXPECT_THROW(
+        probe.Result<PiQuadrupoleLocalTensorResult>().WriteFeatures(
+            probe, output_dir.string()),
+        std::runtime_error);
 }
 
 

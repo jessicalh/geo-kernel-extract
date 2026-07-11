@@ -21,11 +21,14 @@
 //     frame_indices  (T,)       uint64
 //     frame_times    (T,)       float64
 //     attrs:
-//       result_name    = "McConnellShieldingTimeSeriesTrajectoryResult"
-//       irrep_layout   = "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
-//       normalization  = "isometric_real_sph"
-//       parity         = "0e+1e+2e"
-//       units          = "Angstrom^-3"
+//       result_name             = "McConnellShieldingTimeSeriesTrajectoryResult"
+//       tensor_basis            = "project_native_full9_spherical_tensor_v1"
+//       tensor_component_order  = "T0,T1_x,T1_y,T1_z,T2_m-2,...,T2_m+2"
+//       tensor_frame            = "conformation_cartesian_xyz"
+//       tensor_parity           = "even"
+//       e3nn_export             = "explicit project-basis ... conversion required"
+//       normalization           = "isometric_real_sph"
+//       units                   = "Angstrom^-3"
 //
 
 #include "DenseBuffer.h"

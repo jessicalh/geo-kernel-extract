@@ -331,6 +331,42 @@ def _write_mopac_coulomb_group(f: h5py.File) -> None:
     legacy.attrs["rank3_policy"] = M7_SENTINEL_RANK3_POLICY
 
 
+def _write_mopac_mc_group(f: h5py.File, *, legacy: bool) -> None:
+    g = f.create_group("/trajectory/mopac_mc_shielding_time_series")
+    g.attrs["n_atoms"] = N_ATOMS
+    g.attrs["n_frames"] = N_FRAMES
+    g.attrs["source_attached_count"] = N_FRAMES
+    g.attrs["normalization"] = "isometric_real_sph"
+    g.attrs["units"] = "Angstrom^-3"
+    g.attrs["source"] = \
+        "MopacMcConnellResult.mopac_mc_shielding_contribution"
+    g.attrs["source_attached_policy"] = "conditional"
+    if legacy:
+        g.attrs["irrep_layout"] = \
+            "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
+        g.attrs["parity"] = "0e+1e+2e"
+    else:
+        g.attrs["tensor_basis"] = \
+            "project_native_full9_spherical_tensor_v1"
+        g.attrs["tensor_component_order"] = \
+            "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+        g.attrs["tensor_frame"] = "conformation_cartesian_xyz"
+        g.attrs["tensor_parity"] = "even"
+        g.attrs["e3nn_export"] = \
+            "raw project tensor; call to_e3nn()/to_e3nn_T2() or " \
+            "project_t2_to_e3nn() before using e3nn Irreps"
+    g.create_dataset(
+        "xyz",
+        data=np.zeros((N_ATOMS, N_FRAMES, 9), dtype=np.float64))
+    g.create_dataset(
+        "frame_indices", data=np.arange(N_FRAMES, dtype=np.uint64))
+    g.create_dataset(
+        "frame_times", data=np.arange(N_FRAMES, dtype=np.float64) * 0.5)
+    g.create_dataset(
+        "source_attached_per_frame",
+        data=np.ones(N_FRAMES, dtype=np.uint8))
+
+
 def test_trajectory_piece05_round_trip(tmp_path):
     h5 = tmp_path / "piece05.h5"
     with h5py.File(h5, "w") as f:
@@ -410,6 +446,44 @@ def test_apbs_old_h5_compatibility_synthesizes_documented_defaults(tmp_path):
     assert efg.apbs_grid_origin_A_per_frame.shape == (0, 3)
     assert np.isnan(efg.apbs_thermal_voltage_V)
     assert efg.higher_derivatives_present is False
+
+
+def test_mopac_mc_project_metadata_round_trip(tmp_path):
+    h5 = tmp_path / "mopac_mc_project_metadata.h5"
+    with h5py.File(h5, "w") as f:
+        _write_trajectory_root(f)
+        _write_mopac_mc_group(f, legacy=False)
+
+    group = load_trajectory(h5).mopac_mc_shielding_time_series
+    assert group.xyz.shape == (N_ATOMS, N_FRAMES, 9)
+    assert group.tensor_basis == \
+        "project_native_full9_spherical_tensor_v1"
+    assert group.tensor_component_order == \
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+    assert group.tensor_frame == "conformation_cartesian_xyz"
+    assert group.tensor_parity == "even"
+    assert "before using e3nn Irreps" in group.e3nn_export
+    assert group.legacy_irrep_layout == ""
+    assert group.legacy_parity == ""
+
+
+def test_mopac_mc_legacy_metadata_gets_honest_authoritative_defaults(tmp_path):
+    h5 = tmp_path / "mopac_mc_legacy_metadata.h5"
+    with h5py.File(h5, "w") as f:
+        _write_trajectory_root(f)
+        _write_mopac_mc_group(f, legacy=True)
+
+    group = load_trajectory(h5).mopac_mc_shielding_time_series
+    assert group.tensor_basis == \
+        "project_native_full9_spherical_tensor_v1"
+    assert group.tensor_component_order == \
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+    assert group.tensor_frame == "conformation_cartesian_xyz"
+    assert group.tensor_parity == "even"
+    assert "before using e3nn Irreps" in group.e3nn_export
+    assert group.legacy_irrep_layout == \
+        "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
+    assert group.legacy_parity == "0e+1e+2e"
 
 
 def test_charge_response_labels_are_unambiguous():

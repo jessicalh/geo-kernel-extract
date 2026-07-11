@@ -288,15 +288,24 @@ TEST(McConnellShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 9u);
 
-    std::string parity, units, layout, normalization;
-    grp.getAttribute("parity").read(parity);
+    std::string basis, order, frame, tensor_parity, e3nn_export;
+    std::string units, normalization;
+    grp.getAttribute("tensor_basis").read(basis);
+    grp.getAttribute("tensor_component_order").read(order);
+    grp.getAttribute("tensor_frame").read(frame);
+    grp.getAttribute("tensor_parity").read(tensor_parity);
+    grp.getAttribute("e3nn_export").read(e3nn_export);
     grp.getAttribute("units").read(units);
     grp.getAttribute("normalization").read(normalization);
-    grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "0e+1e+2e");
+    EXPECT_EQ(basis, nmr::kMcConnellPackFull9TensorBasis);
+    EXPECT_EQ(order, nmr::kMcConnellPackFull9ComponentOrder);
+    EXPECT_EQ(frame, nmr::kMcConnellPackFull9TensorFrame);
+    EXPECT_EQ(tensor_parity, "even");
+    EXPECT_EQ(e3nn_export, nmr::kMcConnellPackFull9E3nnExport);
+    EXPECT_FALSE(grp.hasAttribute("irrep_layout"));
+    EXPECT_FALSE(grp.hasAttribute("parity"));
     EXPECT_EQ(units, "Angstrom^-3");
     EXPECT_EQ(normalization, "isometric_real_sph");
-    EXPECT_EQ(layout, nmr::kMcConnellPackFull9IrrepLayout);
 
     fs::remove(h5_path);
 }

@@ -12,7 +12,9 @@
 #include <sstream>
 
 #include "McConnellResult.h"
+#include "CalculatorConfig.h"
 #include "MopacResult.h"
+#include "MopacMcConnellResult.h"
 #include "SidechainCarbonylAnisotropyResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
@@ -126,6 +128,8 @@ std::unique_ptr<Protein> BuildSyntheticXHCategoryProtein() {
     protein->MutableResidueAt(0).N = backbone_n;
 
     protein->FinalizeConstruction(positions);
+    protein->AddCrystalConformation(
+        positions, 0.0, 0.0, 0.0, "synthetic_xh_categories");
     return protein;
 }
 
@@ -269,6 +273,32 @@ void RemoveSidechainCOOutputs(const fs::path& dir) {
     };
     for (const char* file : files) {
         std::remove((dir / file).string().c_str());
+    }
+    ::rmdir(dir.string().c_str());
+}
+
+void RemoveMcConnellOutputs(const fs::path& dir) {
+    for (size_t category = 0;
+         category < kMcConnellSourceCategoryCount; ++category) {
+        const auto cat = static_cast<McConnellSourceCategory>(category);
+        for (size_t channel = 0; channel < kMcConnellChannelCount;
+             ++channel) {
+            const auto ch = static_cast<McConnellChannel>(channel);
+            const std::string filename = std::string("mc_") +
+                McConnellSourceCategoryStem(cat) + "_" +
+                McConnellChannelStem(ch) + ".npy";
+            std::remove((dir / filename).string().c_str());
+        }
+    }
+    for (const char* filename : {
+            "mc_peptide_co_rhombic.npy",
+            "mc_nearfield_counts.npy",
+            "mc_nearest_co_dir.npy",
+            "mc_nearest_co_midpoint.npy",
+            "mc_nearest_co_T2.npy",
+            "mc_nearest_cn_T2.npy",
+            "extraction_manifest.json"}) {
+        std::remove((dir / filename).string().c_str());
     }
     ::rmdir(dir.string().c_str());
 }
@@ -719,6 +749,77 @@ TEST(McConnellImplementationChecks, PeptideCORhombicContributionNonZeroAndTracel
 }
 
 
+TEST(McConnellImplementationChecks,
+     PeptideCORhombicBondOrderChannelCallsRealMopacAndProductionCompute) {
+    auto protein = BuildSyntheticPeptideCOProtein();
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    const size_t co_bond =
+        FirstBondWithCategory(*protein, BondCategory::PeptideCO);
+    ASSERT_NE(co_bond, SIZE_MAX);
+
+    // No synthetic bond-order seeding: run the real upstream producer, then
+    // feed its topology-parallel BO into the full McConnell Compute path.
+    auto mopac = MopacResult::Compute(conf, 0, 1);
+    ASSERT_NE(mopac, nullptr) << "real MOPAC calculation failed";
+    const double bond_order = mopac->TopologyBondOrder(co_bond);
+    EXPECT_GT(bond_order,
+              CalculatorConfig::Get("mopac_bond_order_noise_floor"));
+    ASSERT_TRUE(conf.AttachResult(std::move(mopac)));
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+
+    constexpr size_t target = 3;
+    const Mat3 rhombic =
+        McConnellResult::ComputePeptideCORhombicPairKernel(
+            conf, co_bond, conf.PositionAt(target)).response;
+    const size_t category =
+        static_cast<size_t>(McConnellSourceCategory::PeptideCO);
+    const size_t channel =
+        static_cast<size_t>(McConnellChannel::BondOrder);
+    const Mat3 production = conf.AtomAt(target)
+        .mcconnell_source_tensors[category][channel].Reconstruct();
+    EXPECT_GT(MaxAbs(production), 1e-8);
+    EXPECT_LT(MaxAbs(production - bond_order * rhombic), 1e-11);
+
+    Mat3 bo_category_sum = Mat3::Zero();
+    for (size_t source_category = 0;
+         source_category < kMcConnellSourceCategoryCount;
+         ++source_category) {
+        bo_category_sum += conf.AtomAt(target)
+            .mcconnell_source_tensors[source_category][channel]
+            .Reconstruct();
+    }
+    EXPECT_GT(MaxAbs(bo_category_sum), 1e-8);
+    EXPECT_LT(MaxAbs(
+        bo_category_sum - conf.AtomAt(target)
+            .mopac_mc_shielding_contribution.Reconstruct()),
+        1e-11)
+        << "the compatibility/trajectory source must be the full BO sum";
+    ASSERT_TRUE(conf.AttachResult(MopacMcConnellResult::Compute(conf)));
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mcconnell_real_mopac_bo_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
+                  conf, out_dir.string()),
+              26);
+    const auto emitted = ReadNpy<double>(
+        out_dir / "mc_peptide_co_bo.npy", "<f8");
+    ASSERT_EQ(emitted.shape,
+              (std::vector<size_t>{conf.AtomCount(), 9}));
+    std::array<double, 9> expected{};
+    SphericalTensor::Decompose(bond_order * rhombic)
+        .PackFull9(expected.data());
+    for (size_t component = 0; component < expected.size(); ++component) {
+        EXPECT_NEAR(emitted.values[target * 9 + component],
+                    expected[component], 1e-11);
+    }
+    RemoveMcConnellOutputs(out_dir);
+}
+
+
 TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
     auto protein = BuildSyntheticXHCategoryProtein();
     ASSERT_EQ(protein->BondCount(), 3u);
@@ -738,6 +839,88 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
     EXPECT_STREQ(McConnellSourceCategoryStem(categories[0]), "backbone_xh");
     EXPECT_STREQ(McConnellSourceCategoryStem(categories[1]), "sidechain_xh");
     EXPECT_STREQ(McConnellSourceCategoryStem(categories[2]), "s_h");
+
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+
+    const size_t fixed = static_cast<size_t>(McConnellChannel::Fixed);
+    const size_t backbone_xh =
+        static_cast<size_t>(McConnellSourceCategory::BackboneXH);
+    const size_t sidechain_xh =
+        static_cast<size_t>(McConnellSourceCategory::SidechainXH);
+    const size_t sh = static_cast<size_t>(McConnellSourceCategory::SH);
+    const size_t backbone_other =
+        static_cast<size_t>(McConnellSourceCategory::BackboneOther);
+    const size_t sidechain_other =
+        static_cast<size_t>(McConnellSourceCategory::SidechainOther);
+
+    std::array<bool, 3> dedicated_nonzero{{false, false, false}};
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        const auto& atom = conf.AtomAt(ai);
+        dedicated_nonzero[0] = dedicated_nonzero[0] ||
+            !SphericalAllZero(
+                atom.mcconnell_source_tensors[backbone_xh][fixed]);
+        dedicated_nonzero[1] = dedicated_nonzero[1] ||
+            !SphericalAllZero(
+                atom.mcconnell_source_tensors[sidechain_xh][fixed]);
+        dedicated_nonzero[2] = dedicated_nonzero[2] ||
+            !SphericalAllZero(atom.mcconnell_source_tensors[sh][fixed]);
+
+        EXPECT_TRUE(SphericalAllZero(
+            atom.mcconnell_source_tensors[backbone_other][fixed]));
+        EXPECT_TRUE(SphericalAllZero(
+            atom.mcconnell_source_tensors[sidechain_other][fixed]));
+
+        Mat3 category_sum = Mat3::Zero();
+        for (size_t category = 0;
+             category < kMcConnellSourceCategoryCount; ++category) {
+            category_sum += atom.mcconnell_source_tensors[category][fixed]
+                                .Reconstruct();
+        }
+        EXPECT_LT(MaxAbs(category_sum -
+                         atom.mc_shielding_contribution.Reconstruct()),
+                  1e-14);
+    }
+    EXPECT_EQ(dedicated_nonzero,
+              (std::array<bool, 3>{{true, true, true}}));
+
+    // Independent analytic oracle for atom 2.  It is an endpoint of the
+    // sidechain C-H source (self-excluded), the S-H midpoint lies beyond the
+    // 10 A cutoff, and the backbone N-H source lies on +x with midpoint 0.5.
+    // Therefore its entire fixed response is the single N-H D(r)Qhat term:
+    // diag(4/3,1/3,1/3) / 9.5^3.
+    const double r3 = 9.5 * 9.5 * 9.5;
+    Mat3 expected = Mat3::Zero();
+    expected(0, 0) = (4.0 / 3.0) / r3;
+    expected(1, 1) = (1.0 / 3.0) / r3;
+    expected(2, 2) = (1.0 / 3.0) / r3;
+    const Mat3 production = conf.AtomAt(2)
+        .mcconnell_source_tensors[backbone_xh][fixed].Reconstruct();
+    EXPECT_LT(MaxAbs(production - expected), 1e-14);
+    EXPECT_LT(MaxAbs(conf.AtomAt(2).T2_backbone_total.Reconstruct() -
+                     expected),
+              1e-14);
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mcconnell_xh_production_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
+                  conf, out_dir.string()),
+              26);
+    const auto emitted = ReadNpy<double>(
+        out_dir / "mc_backbone_xh_fixed.npy", "<f8");
+    ASSERT_EQ(emitted.shape,
+              (std::vector<size_t>{conf.AtomCount(), 9}));
+    std::array<double, 9> expected_packed{};
+    SphericalTensor::Decompose(expected).PackFull9(expected_packed.data());
+    for (size_t component = 0; component < expected_packed.size();
+         ++component) {
+        EXPECT_NEAR(emitted.values[2 * 9 + component],
+                    expected_packed[component], 1e-14);
+    }
+    RemoveMcConnellOutputs(out_dir);
 }
 
 
@@ -928,16 +1111,28 @@ TEST(SidechainCarbonylAnisotropyProduction,
 
 
 TEST(SidechainCarbonylAnisotropyProduction,
-     MopacPresenceMakesBondOrderRowsFinite) {
+     RealMopacMakesBondOrderRowsFiniteAndNonzero) {
     auto protein = BuildSyntheticSidechainCOProtein();
     auto& conf = protein->Conformation();
     ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
     ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
 
-    // A MopacResult is attached through the explicit test hook.  Its empty
-    // topology-order table represents finite zero Wiberg weights; importantly,
-    // the production presence branch must emit zeros rather than absence NaNs.
-    conf.ForceAttachResultForTesting(std::make_unique<MopacResult>());
+    auto mopac = MopacResult::Compute(conf, 0, 1);
+    ASSERT_NE(mopac, nullptr) << "real MOPAC calculation failed";
+    bool any_sidechain_co_bo = false;
+    for (size_t bond_index = 0; bond_index < protein->BondCount();
+         ++bond_index) {
+        if (protein->BondAt(bond_index).category !=
+            BondCategory::SidechainCO) {
+            continue;
+        }
+        any_sidechain_co_bo = any_sidechain_co_bo ||
+            mopac->TopologyBondOrder(bond_index) >=
+                CalculatorConfig::Get("mopac_bond_order_noise_floor");
+    }
+    ASSERT_TRUE(any_sidechain_co_bo)
+        << "real MOPAC must produce at least one retained SidechainCO BO";
+    ASSERT_TRUE(conf.AttachResult(std::move(mopac)));
     ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
     ASSERT_TRUE(conf.AttachResult(
         SidechainCarbonylAnisotropyResult::Compute(conf)));
@@ -955,25 +1150,30 @@ TEST(SidechainCarbonylAnisotropyProduction,
               (std::vector<std::size_t>{conf.AtomCount(), 9}));
     ASSERT_EQ(audit_rows.shape,
               (std::vector<std::size_t>{conf.AtomCount(), 4}));
-    for (double value : bo_rows.values) {
-        EXPECT_TRUE(std::isfinite(value));
-        EXPECT_DOUBLE_EQ(value, 0.0);
-    }
+    const size_t category =
+        static_cast<size_t>(McConnellSourceCategory::SidechainCO);
+    const size_t channel =
+        static_cast<size_t>(McConnellChannel::BondOrder);
+    bool any_nonzero_emitted = false;
     for (std::size_t atom_index = 0;
          atom_index < conf.AtomCount(); ++atom_index) {
+        std::array<double, 9> expected{};
+        const SphericalTensor& production = conf.AtomAt(atom_index)
+            .mcconnell_source_tensors[category][channel];
+        production.PackFull9(expected.data());
+        for (size_t component = 0; component < expected.size();
+             ++component) {
+            const double emitted = bo_rows.values[atom_index * 9 + component];
+            EXPECT_TRUE(std::isfinite(emitted));
+            EXPECT_DOUBLE_EQ(emitted, expected[component]);
+            any_nonzero_emitted = any_nonzero_emitted ||
+                std::abs(emitted) > 1e-15;
+        }
         EXPECT_TRUE(std::isfinite(audit_rows.values[atom_index * 4 + 1]));
-        EXPECT_DOUBLE_EQ(audit_rows.values[atom_index * 4 + 1], 0.0);
+        EXPECT_DOUBLE_EQ(audit_rows.values[atom_index * 4 + 1],
+                         production.T2Magnitude());
     }
-
-    // Pin the upstream production weighting used by the copied BO channel
-    // with a non-unit value; no test-side McConnell formula is re-derived.
-    const Mat3 axial = (Mat3() <<
-        1.0, 0.2, 0.0,
-        0.0, -0.5, 0.1,
-        0.0, 0.0, -0.5).finished();
-    const auto weighted = mcconnell_result_detail::SelectChannelResponses(
-        McConnellSourceCategory::SidechainCO, axial, Mat3::Zero(), 1.75);
-    EXPECT_LT(MaxAbs(weighted.bond_order - 1.75 * axial), 1e-14);
+    EXPECT_TRUE(any_nonzero_emitted);
 
     RemoveSidechainCOOutputs(output_dir);
 }
@@ -1122,8 +1322,21 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentySixArraysAndManifest) {
               std::string::npos);
     EXPECT_NE(text.find("\"aromatic_zeroed_when_ring_active\": true"),
               std::string::npos);
-    EXPECT_NE(text.find("\"irrep_layout\": \"0e,1e_x,1e_y,1e_z,2e_m-2..+2\""),
-              std::string::npos);
+    EXPECT_NE(text.find(
+        "\"tensor_basis\": \"project_native_full9_spherical_tensor_v1\""),
+        std::string::npos);
+    EXPECT_NE(text.find(
+        "\"tensor_component_order\": \"T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2\""),
+        std::string::npos);
+    EXPECT_NE(text.find(
+        "\"tensor_frame\": \"conformation_cartesian_xyz\""),
+        std::string::npos);
+    EXPECT_NE(text.find(
+        "\"e3nn_export\": \"explicit project-basis to e3nn conversion required before use\""),
+        std::string::npos);
+    EXPECT_EQ(text.find("0e,1e_x,1e_y,1e_z,2e_m-2..+2"),
+              std::string::npos)
+        << "project-basis full9 arrays must never be advertised as e3nn irreps";
     EXPECT_NE(text.find("\"units\": \"Angstrom^-3\""),
               std::string::npos);
     EXPECT_NE(text.find("\"rhombic_status\": \"peptide_co_pinned_present\""),

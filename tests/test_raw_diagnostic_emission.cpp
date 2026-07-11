@@ -1,3 +1,4 @@
+#include "TestEnvironment.h"
 #include <gtest/gtest.h>
 
 #include "CalculatorConfig.h"
@@ -7,6 +8,7 @@
 #include "MolecularGraphResult.h"
 #include "MutationDeltaResult.h"
 #include "NpyWriter.h"
+#include "OrcaRunLoader.h"
 #include "PhysicalConstants.h"
 #include "Protein.h"
 #include "Ring.h"
@@ -21,7 +23,10 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
+#include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <unistd.h>
 
@@ -115,16 +120,52 @@ std::unique_ptr<Protein> BuildAspCarboxylateProtein() {
     return protein;
 }
 
+std::unique_ptr<Protein> BuildAlaHydrogenProtein() {
+    auto protein = std::make_unique<Protein>();
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t ri = protein->AddResidue(residue);
+
+    const std::array<std::tuple<const char*, Element, Vec3>, 8> atoms{{
+        {"N",   Element::N, Vec3(0.0, 0.0, 0.0)},
+        {"H",   Element::H, Vec3(1.0, 0.0, 0.0)},
+        {"CA",  Element::C, Vec3(0.0, -1.45, 0.0)},
+        {"HA",  Element::H, Vec3(0.0, -1.45, 1.09)},
+        {"C",   Element::C, Vec3(-1.30, -2.10, 0.0)},
+        {"O",   Element::O, Vec3(-2.40, -1.70, 0.0)},
+        {"CB",  Element::C, Vec3(1.20, -2.20, 0.0)},
+        {"HB1", Element::H, Vec3(2.10, -1.60, 0.0)},
+    }};
+    std::vector<Vec3> positions;
+    positions.reserve(atoms.size());
+    for (const auto& [name, element, position] : atoms) {
+        auto atom = Atom::Create(element);
+        atom->pdb_atom_name = name;
+        atom->residue_index = ri;
+        const size_t ai = protein->AddAtom(std::move(atom));
+        protein->MutableResidueAt(ri).atom_indices.push_back(ai);
+        positions.push_back(position);
+    }
+    protein->FinalizeConstruction(positions);
+    protein->AddConformation(positions, "typed-ala-hydrogens");
+    return protein;
+}
+
 TEST(RawDiagnosticEmission, SasaFractionUsesProductionWriter) {
     auto protein = BuildUnnamedProtein({Element::C}, {Vec3::Zero()});
     auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+    auto sasa = SasaResult::Compute(conf);
+    ASSERT_NE(sasa, nullptr);
     const double probe = CalculatorConfig::Get("sasa_probe_radius");
     const double radius = BondiVdwRadius(Element::C) + probe;
-    conf.MutableAtomAt(0).atom_sasa = 4.0 * PI * radius * radius;
+    EXPECT_NEAR(sasa->AtomSASA(0), 4.0 * PI * radius * radius, 1e-12);
 
     const fs::path dir = TempDir("sasa_fraction_emit");
-    SasaResult production_writer;
-    ASSERT_EQ(production_writer.WriteFeatures(conf, dir.string()), 3);
+    ASSERT_EQ(sasa->WriteFeatures(conf, dir.string()), 3);
     const auto fraction = ReadNpyPayload<double>(
         dir / "atom_sasa_fraction.npy", "<f8", "'shape': (1,)");
     ASSERT_EQ(fraction.size(), 1u);
@@ -196,78 +237,100 @@ TEST(RawDiagnosticEmission, SpatialRowsReadBackExactProductionNeighbours) {
     RemoveFilesAndDir(dir, {"spatial_neighbors.npy"});
 }
 
-TEST(RawDiagnosticEmission, MolecularGraphWriterPreservesRawFields) {
-    auto protein = BuildUnnamedProtein(
-        {Element::C, Element::N},
-        {Vec3(0.0, 0.0, 0.0), Vec3(3.0, 0.0, 0.0)});
-    auto& conf = protein->Conformation();
-    auto& a = conf.MutableAtomAt(0);
-    a.graph_dist_ring = 2;
-    a.graph_dist_N = 1;
-    a.graph_dist_O = -1;
-    a.n_pi_bonds_3 = 4;
-    a.is_conjugated = true;
-    a.nearest_ring_atom_index = 17;
-    a.eneg_sum_1 = 3.04;
-    a.eneg_sum_2 = 5.55;
-    a.bfs_decay = 0.6065306597126334;
+TEST(RawDiagnosticEmission, MolecularGraphWriterUsesProductionCompute) {
+    const fs::path fixture = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(fixture)) << fixture;
+    auto loaded = BuildFromProtonatedPdb(fixture.string());
+    ASSERT_TRUE(loaded.Ok()) << loaded.error;
+    auto& protein = *loaded.protein;
+    auto& conf = protein.Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+    auto graph = MolecularGraphResult::Compute(conf);
+    ASSERT_NE(graph, nullptr);
+    ASSERT_GT(protein.RingCount(), 0u);
+
+    std::set<size_t> ring_atoms;
+    for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
+        for (size_t ai : protein.RingAt(ri).atom_indices) {
+            ring_atoms.insert(ai);
+        }
+    }
+    const size_t ring_atom = *ring_atoms.begin();
+    size_t bonded_non_ring = SIZE_MAX;
+    for (size_t bond_index : protein.AtomAt(ring_atom).bond_indices) {
+        const Bond& bond = protein.BondAt(bond_index);
+        const size_t other = bond.atom_index_a == ring_atom
+            ? bond.atom_index_b : bond.atom_index_a;
+        if (!ring_atoms.count(other)) {
+            bonded_non_ring = other;
+            break;
+        }
+    }
+    ASSERT_NE(bonded_non_ring, SIZE_MAX);
+
+    const ConformationAtom& source = conf.AtomAt(ring_atom);
+    EXPECT_EQ(source.graph_dist_ring, 0);
+    EXPECT_EQ(source.nearest_ring_atom_index,
+              static_cast<int>(ring_atom));
+    EXPECT_DOUBLE_EQ(source.bfs_decay, 1.0);
+    EXPECT_TRUE(source.is_conjugated);
+    EXPECT_GT(source.n_pi_bonds_3, 0);
+
+    const ConformationAtom& one_bond = conf.AtomAt(bonded_non_ring);
+    EXPECT_EQ(one_bond.graph_dist_ring, 1);
+    EXPECT_NEAR(one_bond.bfs_decay,
+                std::exp(-1.0 / BFS_DECAY_LENGTH), 1e-15);
+
+    double independent_eneg_sum_1 = 0.0;
+    for (size_t bond_index : protein.AtomAt(ring_atom).bond_indices) {
+        const Bond& bond = protein.BondAt(bond_index);
+        const size_t other = bond.atom_index_a == ring_atom
+            ? bond.atom_index_b : bond.atom_index_a;
+        independent_eneg_sum_1 += protein.AtomAt(other).Electronegativity();
+    }
+    EXPECT_DOUBLE_EQ(source.eneg_sum_1, independent_eneg_sum_1);
 
     const fs::path dir = TempDir("molecular_graph_emit");
-    MolecularGraphResult production_writer;
-    ASSERT_EQ(production_writer.WriteFeatures(conf, dir.string()), 3);
+    ASSERT_EQ(graph->WriteFeatures(conf, dir.string()), 3);
+    const std::string n_rows = std::to_string(conf.AtomCount());
     const auto integer = ReadNpyPayload<int32_t>(
-        dir / "molecular_graph_int.npy", "<i4", "'shape': (2,6)");
+        dir / "molecular_graph_int.npy", "<i4",
+        "'shape': (" + n_rows + ",6)");
     const auto floating = ReadNpyPayload<double>(
-        dir / "molecular_graph_float.npy", "<f8", "'shape': (2,3)");
+        dir / "molecular_graph_float.npy", "<f8",
+        "'shape': (" + n_rows + ",3)");
     const auto compatibility = ReadNpyPayload<double>(
-        dir / "molecular_graph.npy", "<f8", "'shape': (2,9)");
-    ASSERT_EQ(integer.size(), 12u);
-    ASSERT_EQ(floating.size(), 6u);
-    ASSERT_EQ(compatibility.size(), 18u);
-    EXPECT_EQ(integer[0], 2);
-    EXPECT_EQ(integer[1], 1);
-    EXPECT_EQ(integer[2], -1);
-    EXPECT_EQ(integer[3], 4);
-    EXPECT_EQ(integer[4], 1);
-    EXPECT_EQ(integer[5], 17);
-    EXPECT_DOUBLE_EQ(floating[0], 3.04);
-    EXPECT_DOUBLE_EQ(floating[1], 5.55);
-    EXPECT_DOUBLE_EQ(floating[2], 0.6065306597126334);
-    EXPECT_DOUBLE_EQ(compatibility[7], 17.0);
+        dir / "molecular_graph.npy", "<f8",
+        "'shape': (" + n_rows + ",9)");
+    const size_t N = conf.AtomCount();
+    ASSERT_EQ(integer.size(), N * 6);
+    ASSERT_EQ(floating.size(), N * 3);
+    ASSERT_EQ(compatibility.size(), N * 9);
+    EXPECT_EQ(integer[ring_atom*6 + 0], 0);
+    EXPECT_EQ(integer[ring_atom*6 + 3], source.n_pi_bonds_3);
+    EXPECT_EQ(integer[ring_atom*6 + 4], 1);
+    EXPECT_EQ(integer[ring_atom*6 + 5], static_cast<int>(ring_atom));
+    EXPECT_DOUBLE_EQ(floating[ring_atom*3 + 0], independent_eneg_sum_1);
+    EXPECT_DOUBLE_EQ(floating[ring_atom*3 + 2], 1.0);
+    EXPECT_EQ(integer[bonded_non_ring*6 + 0], 1);
+    EXPECT_NEAR(floating[bonded_non_ring*3 + 2],
+                std::exp(-1.0 / BFS_DECAY_LENGTH), 1e-15);
+    EXPECT_DOUBLE_EQ(compatibility[ring_atom*9 + 7],
+                     static_cast<double>(ring_atom));
 
     RemoveFilesAndDir(dir, {"molecular_graph_int.npy",
                             "molecular_graph_float.npy",
                             "molecular_graph.npy"});
 }
 
-TEST(RawDiagnosticEmission, MutationGraphRowUsesProductionSchema) {
-    MatchedAtomData data;
-    data.has_graph_delta = true;
-    data.delta_graph_dist_ring = -4;
-    data.delta_bfs_decay = 0.375;
-    data.delta_is_conjugated = 1;
-    const auto row = mutation_delta_detail::PackDeltaGraphRow(true, &data);
-    EXPECT_EQ(row[0], 1.0);
-    EXPECT_EQ(row[1], 1.0);
-    EXPECT_EQ(row[2], -4.0);
-    EXPECT_DOUBLE_EQ(row[3], 0.375);
-    EXPECT_EQ(row[4], 1.0);
-
-    const auto unmatched =
-        mutation_delta_detail::PackDeltaGraphRow(false, nullptr);
-    EXPECT_EQ(unmatched, (std::array<double, 5>{0, 0, 0, 0, 0}));
-}
-
-TEST(RawDiagnosticEmission, EnrichmentRawSemanticsAndSp2FlagReadBack) {
+TEST(RawDiagnosticEmission, EnrichmentRawSemanticsReadBack) {
     auto protein = BuildAspCarboxylateProtein();
     ASSERT_TRUE(protein->LegacyAmber().HasAtomSemantic());
     auto& conf = protein->Conformation();
     auto enrichment = EnrichmentResult::Compute(conf);
     ASSERT_NE(enrichment, nullptr);
 
-    // A31 is an emit-only finding: pin the stored bit independently of the
-    // chemistry classifier, then ensure the production writer preserves it.
-    conf.MutableAtomAt(0).parent_is_sp2 = true;
     const fs::path dir = TempDir("enrichment_semantic_emit");
     ASSERT_EQ(enrichment->WriteFeatures(conf, dir.string()), 12);
 
@@ -288,7 +351,7 @@ TEST(RawDiagnosticEmission, EnrichmentRawSemanticsAndSp2FlagReadBack) {
     const auto hybrid = ReadNpyPayload<uint8_t>(
         dir / "enrichment_hybridisation_class.npy", "|u1", "'shape': (3,)");
     ASSERT_EQ(parent.size(), 3u);
-    EXPECT_EQ(parent[0], 1u);
+    EXPECT_EQ(parent[0], 0u);
 
     for (size_t i = 0; i < 3; ++i) {
         const AtomSemanticTable& sem = protein->LegacyAmber().SemanticAt(i);
@@ -317,7 +380,44 @@ TEST(RawDiagnosticEmission, EnrichmentRawSemanticsAndSp2FlagReadBack) {
         "enrichment_hybridisation_class.npy"});
 }
 
+TEST(RawDiagnosticEmission, EnrichmentParentSp2CallsProductionCompute) {
+    auto protein = BuildAlaHydrogenProtein();
+    auto& conf = protein->Conformation();
+    auto enrichment = EnrichmentResult::Compute(conf);
+    ASSERT_NE(enrichment, nullptr);
+
+    // The named fixture resolves parents through the covalent topology:
+    // backbone H -> peptide N (sp2), while HA/HB1 -> aliphatic C (sp3).
+    ASSERT_EQ(protein->AtomAt(1).parent_atom_index, 0u);
+    ASSERT_EQ(protein->AtomAt(3).parent_atom_index, 2u);
+    ASSERT_EQ(protein->AtomAt(7).parent_atom_index, 6u);
+    EXPECT_TRUE(conf.AtomAt(1).parent_is_sp2);
+    EXPECT_FALSE(conf.AtomAt(3).parent_is_sp2);
+    EXPECT_FALSE(conf.AtomAt(7).parent_is_sp2);
+
+    const fs::path dir = TempDir("enrichment_parent_sp2_production");
+    ASSERT_EQ(enrichment->WriteFeatures(conf, dir.string()), 12);
+    const auto parent = ReadNpyPayload<uint8_t>(
+        dir / "enrichment_parent_is_sp2.npy", "|u1", "'shape': (8,)");
+    ASSERT_EQ(parent.size(), 8u);
+    EXPECT_EQ(parent[1], 1u);
+    EXPECT_EQ(parent[3], 0u);
+    EXPECT_EQ(parent[7], 0u);
+
+    RemoveFilesAndDir(dir, {
+        "enrichment_role.npy", "enrichment_hybridisation.npy",
+        "enrichment_flags.npy", "enrichment_parent_is_sp2.npy",
+        "semantic_polar_h_kind.npy", "semantic_planar_group_kind.npy",
+        "semantic_formal_charge.npy", "semantic_ring_position.npy",
+        "semantic_locant.npy", "enrichment_donor_class.npy",
+        "enrichment_acceptor_class.npy",
+        "enrichment_hybridisation_class.npy"});
+}
+
 TEST(RawDiagnosticEmission, WaterHBondGeometryUsesProductionKernelAndWriter) {
+    static_assert(
+        water_hbond_geometry_detail::kCandidateHeavyDistance_A == 3.5,
+        "A27 raw-candidate shell is a frozen producer contract");
     const auto ideal = water_hbond_geometry_detail::EvaluateGeometry(
         Vec3(0.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0),
         Vec3(2.0, 0.0, 0.0));
@@ -366,6 +466,100 @@ TEST(RawDiagnosticEmission, WaterHBondGeometryUsesProductionKernelAndWriter) {
     RemoveFilesAndDir(dir, {"water_hbond_candidates.npy",
                             "water_hbond_counts.npy",
                             "water_hbond_nearest.npy"});
+}
+
+TEST(RawDiagnosticEmission,
+     WaterHBondGeometryProteinDonorUsesFrozenBoundaryAndZeroRows) {
+    auto protein = BuildAlaHydrogenProtein();
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(protein->LegacyAmber().SemanticAt(1).IsPolarH());
+    ASSERT_EQ(protein->AtomAt(1).parent_atom_index, 0u);
+
+    SolventEnvironment solvent;
+    WaterMolecule boundary;
+    boundary.O_pos = Vec3(3.5, 0.0, 0.0);  // exactly 3.5 A from donor N
+    boundary.H1_pos = boundary.O_pos + Vec3(0.7, 0.4, 0.0);
+    boundary.H2_pos = boundary.O_pos + Vec3(-0.7, 0.4, 0.0);
+    solvent.waters.push_back(boundary);
+    solvent.water_O_positions.push_back(boundary.O_pos);
+
+    WaterMolecule outside = boundary;
+    outside.O_pos = Vec3(
+        std::nextafter(
+            water_hbond_geometry_detail::kCandidateHeavyDistance_A,
+            std::numeric_limits<double>::infinity()),
+        0.0, 0.0);
+    outside.H1_pos = outside.O_pos + Vec3(0.7, 0.4, 0.0);
+    outside.H2_pos = outside.O_pos + Vec3(-0.7, 0.4, 0.0);
+    solvent.waters.push_back(outside);
+    solvent.water_O_positions.push_back(outside.O_pos);
+
+    auto result = WaterHBondGeometryResult::Compute(conf, solvent);
+    ASSERT_NE(result, nullptr);
+    const fs::path dir = TempDir("water_hbond_protein_donor_boundary");
+    ASSERT_EQ(result->WriteFeatures(conf, dir.string()), 3);
+
+    const auto candidates = ReadNpyPayload<double>(
+        dir / "water_hbond_candidates.npy", "<f8", "'shape': (1,16)");
+    ASSERT_EQ(candidates.size(), 16u);
+    EXPECT_EQ(candidates[0], 1.0);  // backbone amide H
+    EXPECT_EQ(candidates[2], 0.0);  // exact-boundary water; outside omitted
+    EXPECT_EQ(candidates[3], 2.0);  // protein donates to water
+    EXPECT_GT(candidates[4], 0.0);  // typed PolarHKind, not a name rule
+    EXPECT_DOUBLE_EQ(candidates[5], 2.5);  // H...water-O
+    EXPECT_DOUBLE_EQ(candidates[6], 2.5);
+    EXPECT_DOUBLE_EQ(candidates[7], 3.5);  // donor-heavy...water-O
+    EXPECT_DOUBLE_EQ(candidates[8], 180.0);
+    EXPECT_TRUE(std::isnan(candidates[12]));
+    EXPECT_TRUE(std::isnan(candidates[13]));
+    EXPECT_TRUE(std::isnan(candidates[14]));
+    EXPECT_EQ(candidates[15], 1.0);
+
+    const auto counts = ReadNpyPayload<int32_t>(
+        dir / "water_hbond_counts.npy", "<i4", "'shape': (8,6)");
+    ASSERT_EQ(counts.size(), 48u);
+    EXPECT_EQ(counts[1*6 + 0], 0);
+    EXPECT_EQ(counts[1*6 + 1], 0);
+    EXPECT_EQ(counts[1*6 + 2], 1);
+    EXPECT_EQ(counts[1*6 + 3], 1);
+    EXPECT_EQ(counts[1*6 + 4], 0);
+    EXPECT_EQ(counts[1*6 + 5], 2);
+
+    RemoveFilesAndDir(dir, {"water_hbond_candidates.npy",
+                            "water_hbond_counts.npy",
+                            "water_hbond_nearest.npy"});
+
+    SolventEnvironment empty_solvent;
+    auto empty = WaterHBondGeometryResult::Compute(conf, empty_solvent);
+    ASSERT_NE(empty, nullptr);
+    const fs::path empty_dir = TempDir("water_hbond_zero_candidates");
+    ASSERT_EQ(empty->WriteFeatures(conf, empty_dir.string()), 3);
+    const auto empty_candidates = ReadNpyPayload<double>(
+        empty_dir / "water_hbond_candidates.npy", "<f8",
+        "'shape': (0,16)");
+    EXPECT_TRUE(empty_candidates.empty());
+    const auto empty_counts = ReadNpyPayload<int32_t>(
+        empty_dir / "water_hbond_counts.npy", "<i4", "'shape': (8,6)");
+    ASSERT_EQ(empty_counts.size(), 48u);
+    for (size_t ai = 0; ai < 8; ++ai) {
+        EXPECT_EQ(empty_counts[ai*6 + 0], 0);
+        EXPECT_EQ(empty_counts[ai*6 + 1], 0);
+        EXPECT_EQ(empty_counts[ai*6 + 2], 0);
+        EXPECT_EQ(empty_counts[ai*6 + 3], 0);
+        EXPECT_EQ(empty_counts[ai*6 + 4], -1);
+        EXPECT_EQ(empty_counts[ai*6 + 5], 0);
+    }
+    const auto empty_nearest = ReadNpyPayload<double>(
+        empty_dir / "water_hbond_nearest.npy", "<f8", "'shape': (8,8)");
+    ASSERT_EQ(empty_nearest.size(), 64u);
+    for (size_t ai = 0; ai < 8; ++ai) {
+        EXPECT_TRUE(std::isnan(empty_nearest[ai*8 + 0]));
+        EXPECT_EQ(empty_nearest[ai*8 + 6], 0.0);
+        EXPECT_EQ(empty_nearest[ai*8 + 7], 0.0);
+    }
+    RemoveFilesAndDir(empty_dir, {"water_hbond_candidates.npy",
+                                  "water_hbond_counts.npy",
+                                  "water_hbond_nearest.npy"});
 }
 
 }  // namespace

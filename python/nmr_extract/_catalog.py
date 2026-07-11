@@ -271,7 +271,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Pi-Quadrupole (PiQuadrupoleResult.cpp) ───────────────────
     ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "PQ Buckingham A-term scalar per ring type",
               irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
-    ArraySpec("piquad_axial_scalar_per_type_T0", "pi_quadrupole", PerRingTypeT0, 8, True, "Geometry-only axial pi-quadrupole scalar; aromatic rings only; not full quadrupole anisotropy",
+    ArraySpec("piquad_axial_scalar_per_type_T0", "pi_quadrupole", PerRingTypeT0, 8, False, "Preferred additive alias of pq_per_type_T0; optional so pre-alias extractions load through the legacy required name",
               irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
     ArraySpec("piquad_quad_scalar", "pi_quadrupole", np.ndarray, None, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: real computed RingNeighbourhood.quad_scalar, not the derived geometry scalar in ring_contributions column 7",
               native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
@@ -302,9 +302,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion"),
 
     # ── McConnell (McConnellResult.cpp) ──────────────────────────
-    # Forward schema: packed SphericalTensor
-    # [0e,1e_x,1e_y,1e_z,2e_m-2..+2] per source category and
-    # source-strength channel. Source model metadata
+    # Forward schema: project-native packed SphericalTensor
+    # [T0,T1_x,T1_y,T1_z,T2_m-2..+2] per source category and
+    # source-strength channel. This is not an e3nn basis; source metadata
     # lives in extraction_manifest.json::feature_metadata.mcconnell.
     ArraySpec("mc_peptide_co_fixed",      "mcconnell", ShieldingTensor, 9, True, "McConnell peptide C=O fixed source response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
@@ -376,7 +376,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="atom", units="mixed", mechanism="bond_anisotropy"),
 
     # Legacy McConnell arrays retained as optional/deprecated wrappers for
-    # reading old extraction directories; new C++ emits the 15 tensor arrays above.
+    # reading old extraction directories; new C++ emits 20 category/channel
+    # tensors plus the PeptideCO rhombic audit tensor above.
     ArraySpec("mc_shielding",     "mcconnell_legacy", ShieldingTensor,    9,    False,  "Legacy McConnell aggregate shielding", irreps=_SHIELD_IRREPS, units="Angstrom^-3",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_category_T2",   "mcconnell_legacy", PerBondCategoryT2,  25,   False,  "Legacy McConnell T2 per old bond category", irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
@@ -812,14 +813,14 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("larsen_hbond_2pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HαB per Larsen 2015 Table 2 — secondary Hα donor contribution. N/Cα/Hα/HN apply to acceptor residue j+1; C' applies to acceptor's OWN residue j",
               irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_diagnostic_CB_shielding",    "larsen_hbond", ShieldingTensor, 9, False, "Cβ diagnostic — Larsen Table 2 says Cβ gets NO contribution; emitted as parser→loader→frame-rotation reality check. NOT a feature.", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_grid"),
-    ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms with NO geometric H-bond candidate (θ ≥ 90° in 4.2 Å); proxies the NMA+water complex Larsen scanned for solvent-exposed amides", units="ppm", mechanism="hbond_grid"),
+    ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms with NO valid, symmetry-selected geometric H-bond candidate (θ ≥ 90° in 4.2 Å); finite valid grid misses still confirm an H-bond, while invalid frames and filtered carboxylate siblings do not", units="ppm", mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_count",                      "larsen_hbond", np.ndarray,      None, False, "Per-atom count of H-bond pairs that contributed under any of the four Table 2 classes; metadata, NOT a feature.", mechanism="hbond_grid"),
     ArraySpec("larsen_corner_imputed",                   "larsen_hbond", np.ndarray,      None, False, "Per-atom int8 flag: 1 iff any Larsen H-bond grid lookup corner serving this atom was imputed", mechanism="hbond_grid"),
     ArraySpec("larsen_imputed_pair_count",               "larsen_hbond", np.ndarray,      None, False, "Per-atom count of Table2 shielding pairs with at least one imputed interpolation corner; imputed_policy=emitted_unmasked", mechanism="hbond_grid"),
     ArraySpec("larsen_sidechain_carbonyl_pair_count",    "larsen_hbond", np.ndarray,      None, False, "Per-atom count of contributing SidechainCarbonyl acceptor pairs; SidechainCarbonyl uses BackboneCarbonyl/NMA archive approximation", mechanism="hbond_grid"),
-    ArraySpec("larsen_hbond_pairs_index",                "larsen_hbond", np.ndarray,      16, False, "Raw per-candidate Larsen integer provenance [donor_atom, acceptor_atom, donor_residue, acceptor_residue, donor_class, acceptor_class, disposition, donor_anchor_atom, donor_third_atom, acceptor_C_atom, acceptor_third_atom, target_mask_1pHB, target_mask_2pHB, target_mask_1pHaB, target_mask_2pHaB, target_mask_diagnostic_CB]; disposition 0=missing_frame_atoms, 1=theta_out_of_range, 2=grid_miss, 3=success",
+    ArraySpec("larsen_hbond_pairs_index",                "larsen_hbond", np.ndarray,      16, False, "Raw per-candidate Larsen integer provenance [donor_atom, acceptor_atom, donor_residue, acceptor_residue, donor_class, acceptor_class, disposition, donor_anchor_atom, donor_third_atom, acceptor_C_atom, acceptor_third_atom, target_mask_1pHB, target_mask_2pHB, target_mask_1pHaB, target_mask_2pHaB, target_mask_diagnostic_CB]; disposition 0=missing_frame_atoms, 1=theta_out_of_range, 2=grid_miss, 3=success, 4=invalid_frame, 5=carboxylate_symmetry_filtered",
               native_axis="larsen_hbond_pair", mechanism="hbond_grid"),
-    ArraySpec("larsen_hbond_pairs_geometry",             "larsen_hbond", np.ndarray,       6, False, "Per-candidate geometry [r_A, theta_deg, rho_deg, any_corner_imputed, imputed_corner_count, frame_valid]; imputed_policy=emitted_unmasked",
+    ArraySpec("larsen_hbond_pairs_geometry",             "larsen_hbond", np.ndarray,       6, False, "Per-candidate geometry [r_A, theta_deg, rho_deg, any_corner_imputed, imputed_corner_count, frame_valid]; frame_valid requires finite query geometry and a non-degenerate donor rotation frame; imputed_policy=emitted_unmasked",
               native_axis="larsen_hbond_pair", units="mixed_A_degrees", mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_pairs_isotropic",            "larsen_hbond", np.ndarray,       6, False, "Per-candidate isotropic terms [1pHB,2pHB,1pHaB,2pHaB,diagnostic_CB,Table2_total] ppm",
               native_axis="larsen_hbond_pair", units="ppm", mechanism="hbond_grid"),

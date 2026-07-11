@@ -68,6 +68,12 @@ PROJECT_T2_BASIS = "project_native_t2_isometric_real_tesseral_v1"
 PROJECT_T2_COMPONENT_ORDER = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 PROJECT_T2_FRAME = "cartesian_xyz_emitted_frame"
 PROJECT_T2_PARITY = "even"
+PROJECT_FULL9_BASIS = "project_native_full9_spherical_tensor_v1"
+PROJECT_FULL9_COMPONENT_ORDER = (
+    "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+)
+PROJECT_FULL9_FRAME = "conformation_cartesian_xyz"
+PROJECT_FULL9_PARITY = "even"
 PROJECT_E3NN_EXPORT = (
     "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
     "project_t2_to_e3nn() before using e3nn Irreps"
@@ -3017,9 +3023,11 @@ class MopacMcConnellShieldingTimeSeriesGroup:
     kernel can have nonzero T0 (PCS scalar) and T1 (even antisymmetric
     pseudovector) parts in practice.
 
-      xyz (N, T, 9) float64 — 0e, 1e_x, 1e_y, 1e_z, 2e_m-2..+2
+      xyz (N, T, 9) float64 — project-native component order
+            T0,T1_x,T1_y,T1_z,T2_m-2..+2
             in Å⁻³ (bare bond-order-weighted D(r)Qhat kernel; NO
-            Δχ × γ multiplication at extraction).
+            Δχ × γ multiplication at extraction). This is not an e3nn
+            basis and requires explicit conversion before e3nn use.
       T0 = trace(DQhat)/3 = n^T Qhat n/r^3 for a traceless source.
       T1 = even antisymmetric McConnell pseudovector.
       T2 = symmetric traceless McConnell tensor branch.
@@ -3034,9 +3042,14 @@ class MopacMcConnellShieldingTimeSeriesGroup:
     n_atoms: int
     n_frames: int
     source_attached_count: int
-    irrep_layout: str
+    tensor_basis: str
+    tensor_component_order: str
+    tensor_frame: str
+    tensor_parity: str
+    e3nn_export: str
+    legacy_irrep_layout: str
+    legacy_parity: str
     normalization: str
-    parity: str
     units: str
     source: str
     source_attached_policy: str
@@ -3057,9 +3070,19 @@ def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingT
         n_atoms=int(g.attrs["n_atoms"]),
         n_frames=int(g.attrs["n_frames"]),
         source_attached_count=int(g.attrs["source_attached_count"]),
-        irrep_layout=_attr("irrep_layout"),
+        # The payload packing did not change in Piece 07.  Legacy H5 files
+        # therefore receive authoritative project-native defaults even
+        # though their old producer advertised misleading e3nn-like labels.
+        tensor_basis=_attr("tensor_basis") or PROJECT_FULL9_BASIS,
+        tensor_component_order=(
+            _attr("tensor_component_order") or
+            PROJECT_FULL9_COMPONENT_ORDER),
+        tensor_frame=_attr("tensor_frame") or PROJECT_FULL9_FRAME,
+        tensor_parity=_attr("tensor_parity") or PROJECT_FULL9_PARITY,
+        e3nn_export=_attr("e3nn_export") or PROJECT_E3NN_EXPORT,
+        legacy_irrep_layout=_attr("irrep_layout"),
+        legacy_parity=_attr("parity"),
         normalization=_attr("normalization"),
-        parity=_attr("parity"),
         units=_attr("units"),
         source=_attr("source"),
         source_attached_policy=_attr("source_attached_policy"),

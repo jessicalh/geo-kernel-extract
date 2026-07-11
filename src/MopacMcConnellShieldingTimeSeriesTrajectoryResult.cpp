@@ -141,10 +141,16 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",               T);
     grp.createAttribute("source_attached_count",  source_attached_count_);
     grp.createAttribute("finalized",              finalized_);
-    grp.createAttribute("irrep_layout",
-        std::string(kMcConnellPackFull9IrrepLayout));
+    grp.createAttribute("tensor_basis",
+        std::string(kMcConnellPackFull9TensorBasis));
+    grp.createAttribute("tensor_component_order",
+        std::string(kMcConnellPackFull9ComponentOrder));
+    grp.createAttribute("tensor_frame",
+        std::string(kMcConnellPackFull9TensorFrame));
+    grp.createAttribute("tensor_parity", std::string("even"));
+    grp.createAttribute("e3nn_export",
+        std::string(kMcConnellPackFull9E3nnExport));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("0e+1e+2e"));
     grp.createAttribute("units",         std::string("Angstrom^-3"));
     grp.createAttribute("source", std::string(
         "MopacMcConnellResult.mopac_mc_shielding_contribution "
@@ -168,7 +174,7 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "when source_attached_count==0."));
 
     // (N, T, 9) — full SphericalTensor (T0 + T1[3] + T2[5]).
-    // Atom-major: [atom_0_frame_0_(0e,1e_x,1e_y,1e_z,2e_m-2..+2),
+    // Atom-major: [atom_0_frame_0_(T0,T1_x,T1_y,T1_z,T2_m-2..+2),
     //              atom_0_frame_1_..., atom_1_frame_0_..., ...].
     std::vector<double> flat(N * T * 9);
     for (std::size_t i = 0; i < N; ++i) {

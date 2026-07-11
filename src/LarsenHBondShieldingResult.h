@@ -130,9 +130,9 @@ public:
     std::vector<std::type_index> Dependencies() const override;
 
     // Factory. Returns nullptr only on hard structural errors (zero
-    // atoms, grid not loaded). Per-pair classification failures are
-    // skipped; geometric/grid dispositions are logged via
-    // GeometryChoiceBuilder.
+    // atoms, grid not loaded). Every typed acceptor candidate gets an
+    // auditable PairRecord; geometric/grid/filter dispositions are logged
+    // via GeometryChoiceBuilder.
     static std::unique_ptr<LarsenHBondShieldingResult> Compute(
         ProteinConformation& conf,
         const LarsenHBondGrid& grid);
@@ -145,11 +145,14 @@ public:
         ThetaOutOfRange = 1,
         GridMiss = 2,
         Success = 3,
+        InvalidFrame = 4,
+        CarboxylateSymmetryFiltered = 5,
     };
 
     // Per-pair raw diagnostic record. One row is retained for every
-    // processed donor/acceptor candidate after typed acceptor
-    // classification (including explicit misses), then emitted in split
+    // donor/acceptor candidate after typed acceptor classification,
+    // including the non-selected sibling of a symmetric carboxylate pair
+    // and every explicit geometry/grid miss. Rows are emitted in split
     // integer/geometry/isotropic arrays by WriteFeatures.
     struct PairRecord {
         std::size_t        donor_atom_idx = 0;   // donor H atom
@@ -199,14 +202,14 @@ public:
     //
     // PairsFound counts pairs the grid path successfully processed
     // (geometry computed, grid hit, tensors accumulated).
-    // PairsGridSkipped counts classified spatial candidates the grid
-    // path SKIPPED (missing frame anchor, out-of-range θ, grid miss).
-    // The two together sum to the processed candidate count after
-    // classification and carboxylate symmetry filtering.
+    // PairsGridSkipped counts every classified spatial candidate that did
+    // not contribute (missing/invalid frame, out-of-range θ, finite grid
+    // miss, or non-selected carboxylate sibling). The two together sum to
+    // the complete post-classification diagnostic row count.
     // AmideHsUnboundWithWater counts amide Hs that received the
-    // Δσ_w = 2.07 ppm term — gated on "ZERO geometric H-bond
-    // candidates found." A grid-skipped pair does NOT trigger spurious
-    // water-term assignment.
+    // Δσ_w = 2.07 ppm term — gated on "ZERO valid geometric H-bond
+    // candidates found." A finite valid GridMiss still suppresses water;
+    // missing/invalid frames and symmetry-filtered siblings do not.
     int    PairsFound()             const { return successful_pairs_; }
     int    PairsGridSkipped()       const { return pairs_grid_skipped_; }
     int    AtomsWithContribution()  const { return atoms_with_contribution_; }

@@ -454,12 +454,66 @@ TEST_F(MutationDeltaTest, GraphDeltaAvailable) {
         // don't exist, so graph_dist_ring is large. Delta should be negative
         // (WT was closer to rings).
         int large_delta = 0;
+        int nonzero_graph_delta = 0;
         for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
             if (!delta->HasMatch(ai)) continue;
-            int dd = delta->MatchedDataAt(ai).delta_graph_dist_ring;
+            const auto& production = delta->MatchedDataAt(ai);
+            int dd = production.delta_graph_dist_ring;
             if (std::abs(dd) > 3) large_delta++;
+            if (dd != 0 || std::abs(production.delta_bfs_decay) > 1e-15 ||
+                production.delta_is_conjugated != 0) {
+                ++nonzero_graph_delta;
+            }
         }
         std::cout << "  Atoms with |graph delta| > 3: " << large_delta << "\n";
+        EXPECT_GT(large_delta, 0)
+            << "aromatic-to-ALA production graphs must change long-range "
+               "ring distance for at least one matched atom";
+        EXPECT_GT(nonzero_graph_delta, 0);
+
+        const fs::path out_dir = fs::temp_directory_path() /
+            ("mutation_delta_graph_production_" +
+             std::to_string(::getpid()));
+        fs::create_directories(out_dir);
+        ASSERT_GT(delta->WriteFeatures(wt_conf, out_dir.string()), 0);
+        const auto emitted = ReadFloat64Npy(
+            out_dir / "delta_graph.npy", wt_conf.AtomCount() * 5);
+        ASSERT_EQ(emitted.size(), wt_conf.AtomCount() * 5);
+
+        for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
+            const size_t row = ai * 5;
+            if (!delta->HasMatch(ai)) {
+                for (size_t column = 0; column < 5; ++column) {
+                    EXPECT_DOUBLE_EQ(emitted[row + column], 0.0);
+                }
+                continue;
+            }
+            const auto& production = delta->MatchedDataAt(ai);
+            EXPECT_DOUBLE_EQ(emitted[row + 0], 1.0);
+            EXPECT_DOUBLE_EQ(emitted[row + 1],
+                             production.has_graph_delta ? 1.0 : 0.0);
+            EXPECT_DOUBLE_EQ(emitted[row + 2],
+                             static_cast<double>(
+                                 production.delta_graph_dist_ring));
+            EXPECT_DOUBLE_EQ(emitted[row + 3],
+                             production.delta_bfs_decay);
+            EXPECT_DOUBLE_EQ(emitted[row + 4],
+                             static_cast<double>(
+                                 production.delta_is_conjugated));
+        }
+        for (const char* name : {
+                "delta_shielding.npy",
+                "wt_shielding_diamagnetic.npy",
+                "wt_shielding_paramagnetic.npy",
+                "mut_shielding_diamagnetic.npy",
+                "mut_shielding_paramagnetic.npy",
+                "delta_shielding_diamagnetic.npy",
+                "delta_shielding_paramagnetic.npy",
+                "delta_scalars.npy", "delta_graph.npy", "delta_apbs.npy",
+                "delta_ring_proximity.npy"}) {
+            std::remove((out_dir / name).string().c_str());
+        }
+        ::rmdir(out_dir.string().c_str());
     }
 }
 

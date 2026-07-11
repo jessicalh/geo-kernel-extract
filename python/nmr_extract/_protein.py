@@ -192,8 +192,9 @@ class MolecularGraphGroup:
 class McConnellGroup:
     """Two-channel McConnell source response by source category.
 
-    Each field is a packed SphericalTensor view over one ``mc_<cat>_<ch>.npy``
-    array with component order ``0e,1e_x,1e_y,1e_z,2e_m-2..+2``.
+    Each field is a project-native packed SphericalTensor view over one
+    ``mc_<cat>_<ch>.npy`` array with component order
+    ``T0,T1_x,T1_y,T1_z,T2_m-2..+2``. Convert explicitly before e3nn use.
     """
     peptide_co_fixed: ShieldingTensor
     peptide_co_bo: ShieldingTensor
@@ -1272,8 +1273,12 @@ class LarsenHBondPairs:
 
     ``index`` columns are donor/acceptor atoms, residues, classes,
     disposition, six frame atoms, then five target masks. Dispositions are
-    0=missing frame, 1=theta miss, 2=grid miss, 3=success. ``geometry`` is
+    0=missing frame, 1=theta miss, 2=finite valid grid miss, 3=success,
+    4=invalid/nonfinite frame, and 5=carboxylate symmetry-filtered sibling.
+    ``geometry`` is
     ``[r, theta, rho, any_imputed, imputed_corner_count, frame_valid]``;
+    ``frame_valid`` certifies both finite query geometry and a real,
+    non-degenerate donor rotation frame (never an identity fallback).
     ``isotropic`` is the four Table-2 terms, diagnostic C-beta, and their
     scientific Table-2 total. ``compatibility`` concatenates 16+6+6 columns.
     """

@@ -470,7 +470,7 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
 // ============================================================================
 // SampleKernelAt: evaluate HM kernel at arbitrary 3D point.
 // Same kernel as Compute(); grid-point exclusions differ (no bonded/atom
-// filters; skips points within `radius` of the ring center, 3D distance).
+// filters); the singularity guard measures distance to the actual fan surface.
 // ============================================================================
 
 SphericalTensor HaighMallionResult::SampleKernelAt(Vec3 point) const {

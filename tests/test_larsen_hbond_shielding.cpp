@@ -149,7 +149,9 @@ void WriteTensorDataset(HighFive::File& file,
 // successful query interpolates the production tensors above and sees
 // exactly one imputed corner, making C34 deterministic without an external
 // database or GTEST_SKIP gate.
-fs::path WriteSyntheticLarsenGridDirectory(const std::string& tag) {
+fs::path WriteSyntheticLarsenGridDirectory(
+    const std::string& tag,
+    bool force_all_grid_miss = false) {
     const fs::path dir =
         MakeUniqueTempDirectory("nmr_larsen_synthetic_" + tag);
 
@@ -165,9 +167,11 @@ fs::path WriteSyntheticLarsenGridDirectory(const std::string& tag) {
         HighFive::File file(
             (dir / (std::string(stems[archive]) + "_dense.h5")).string(),
             HighFive::File::Overwrite);
-        const std::vector<double> r_axis = archive < 3
-            ? std::vector<double>{1.5, 3.0}
-            : std::vector<double>{1.8, 4.0};
+        const std::vector<double> r_axis = force_all_grid_miss
+            ? std::vector<double>{0.05, 0.10}
+            : (archive < 3
+                ? std::vector<double>{1.5, 3.0}
+                : std::vector<double>{1.8, 4.0});
         file.createDataSet("r_axis", r_axis);
         file.createDataSet("theta_axis", theta_axis);
         file.createDataSet("rho_axis", rho_axis);
@@ -330,6 +334,8 @@ TEST(LarsenHBondPairAudit, SyntheticGridEmitsAuditablePairTables) {
     int n_missing_frame = 0;
     int n_theta_miss = 0;
     int n_grid_miss = 0;
+    int n_invalid_frame = 0;
+    int n_carboxylate_symmetry_filtered = 0;
     int n_sidechain_carbonyl_success = 0;
     double pair_1pHB = 0.0;
     double pair_2pHB = 0.0;
@@ -387,12 +393,62 @@ TEST(LarsenHBondPairAudit, SyntheticGridEmitsAuditablePairTables) {
                     ++n_sidechain_carbonyl_success;
                 }
                 break;
+            case Disp::InvalidFrame:
+                ++n_invalid_frame;
+                EXPECT_FALSE(pair.frame_valid);
+                EXPECT_TRUE(std::isnan(pair.iso_table2_total));
+                EXPECT_FALSE(pair.any_corner_imputed);
+                EXPECT_EQ(pair.imputed_corner_count, 0);
+                break;
+            case Disp::CarboxylateSymmetryFiltered:
+                ++n_carboxylate_symmetry_filtered;
+                EXPECT_EQ(pair.acceptor_class,
+                          HBondAcceptorClass::CarboxylateOxygen);
+                EXPECT_TRUE(pair.frame_valid);
+                EXPECT_TRUE(std::isfinite(pair.r_angstrom));
+                EXPECT_TRUE(std::isfinite(pair.theta_deg));
+                EXPECT_TRUE(std::isfinite(pair.rho_deg));
+                EXPECT_EQ(pair.target_mask_1pHB, 0u);
+                EXPECT_EQ(pair.target_mask_2pHB, 0u);
+                EXPECT_EQ(pair.target_mask_1pHaB, 0u);
+                EXPECT_EQ(pair.target_mask_2pHaB, 0u);
+                EXPECT_EQ(pair.target_mask_diagnostic_CB, 0u);
+                EXPECT_TRUE(std::isnan(pair.iso_table2_total));
+                EXPECT_FALSE(pair.any_corner_imputed);
+                EXPECT_EQ(pair.imputed_corner_count, 0);
+                break;
         }
     }
     EXPECT_EQ(n_success, result->PairsFound());
-    EXPECT_GT(n_missing_frame, 0);
+    EXPECT_EQ(n_missing_frame, 0)
+        << "committed 1UBQ fixture has no classified missing-anchor row";
     EXPECT_GT(n_theta_miss, 0);
     EXPECT_GT(n_grid_miss, 0);
+    EXPECT_EQ(n_invalid_frame, 0)
+        << "unmodified committed coordinates should have valid frames";
+    EXPECT_GT(n_carboxylate_symmetry_filtered, 0)
+        << "all classified carboxylate sibling attempts must be retained";
+    for (const auto& filtered : result->Pairs()) {
+        if (filtered.disposition !=
+            LarsenHBondShieldingResult::PairDisposition::
+                CarboxylateSymmetryFiltered) {
+            continue;
+        }
+        const auto selected = std::find_if(
+            result->Pairs().begin(), result->Pairs().end(),
+            [&](const LarsenHBondShieldingResult::PairRecord& candidate) {
+                return candidate.donor_atom_idx == filtered.donor_atom_idx &&
+                       candidate.acceptor_C_atom_idx ==
+                           filtered.acceptor_C_atom_idx &&
+                       candidate.acceptor_atom_idx ==
+                           filtered.acceptor_third_atom_idx &&
+                       candidate.disposition !=
+                           LarsenHBondShieldingResult::PairDisposition::
+                               CarboxylateSymmetryFiltered;
+            });
+        EXPECT_NE(selected, result->Pairs().end())
+            << "filtered carboxylate row must accompany the selected sibling";
+    }
     EXPECT_GT(n_sidechain_carbonyl_success, 0)
         << "committed 1UBQ should exercise ASN/GLN acceptor approximation";
 
@@ -502,6 +558,27 @@ TEST(LarsenHBondPairAudit, SyntheticGridEmitsAuditablePairTables) {
             PayloadValue<double>(isotropic, success_row * 6 + col));
     }
 
+    const auto filtered_it = std::find_if(
+        result->Pairs().begin(), result->Pairs().end(),
+        [](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.disposition ==
+                LarsenHBondShieldingResult::PairDisposition::
+                    CarboxylateSymmetryFiltered;
+        });
+    ASSERT_NE(filtered_it, result->Pairs().end());
+    const std::size_t filtered_row = static_cast<std::size_t>(
+        std::distance(result->Pairs().begin(), filtered_it));
+    EXPECT_EQ(PayloadValue<std::int32_t>(
+                  index, filtered_row * 16 + 6),
+              static_cast<std::int32_t>(
+                  LarsenHBondShieldingResult::PairDisposition::
+                      CarboxylateSymmetryFiltered));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(
+                         geometry, filtered_row * 6 + 5),
+                     1.0);
+    EXPECT_TRUE(std::isnan(PayloadValue<double>(
+        isotropic, filtered_row * 6 + 5)));
+
     const RawNpy imputed =
         ReadRawNpy(out / "larsen_imputed_pair_count.npy");
     const RawNpy sidechain = ReadRawNpy(
@@ -544,6 +621,283 @@ TEST(LarsenHBondPairAudit, SyntheticGridEmitsAuditablePairTables) {
         "larsen_hbond_pairs_isotropic.npy",
         "larsen_hbond_pairs.npy",
     });
+    RemoveFlatTempDirectory(grid_dir, {
+        "NMANMA_dense.h5", "NMACOH_dense.h5", "NMACOO_dense.h5",
+        "ALANMA_dense.h5", "ALACOH_dense.h5", "ALACOO_dense.h5",
+    });
+}
+
+
+// A finite, non-degenerate candidate remains a confirmed geometric H-bond
+// even when its distance lies outside the archive axis. This production
+// forcing grid puts every real H...O distance outside the r axis, isolating
+// GridMiss from Success while pinning the historical water-gate behavior.
+TEST(LarsenHBondPairAudit, FiniteGridMissStillSuppressesWaterTerm) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    std::unique_ptr<Protein> protein = std::move(build.protein);
+    ProteinConformation& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    const fs::path grid_dir =
+        WriteSyntheticLarsenGridDirectory("finite_grid_miss", true);
+    LarsenHBondGrid grid(grid_dir.string());
+    auto result = LarsenHBondShieldingResult::Compute(conf, grid);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->PairsFound(), 0);
+
+    const auto amide_grid_miss = std::find_if(
+        result->Pairs().begin(), result->Pairs().end(),
+        [](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.donor_class == HBondDonorClass::AmideHydrogen &&
+                   pair.disposition ==
+                       LarsenHBondShieldingResult::PairDisposition::GridMiss;
+        });
+    ASSERT_NE(amide_grid_miss, result->Pairs().end());
+    EXPECT_TRUE(amide_grid_miss->frame_valid);
+    EXPECT_TRUE(std::isfinite(amide_grid_miss->r_angstrom));
+    EXPECT_TRUE(std::isfinite(amide_grid_miss->theta_deg));
+    EXPECT_TRUE(std::isfinite(amide_grid_miss->rho_deg));
+    EXPECT_GE(amide_grid_miss->theta_deg, 90.0);
+    EXPECT_LE(amide_grid_miss->theta_deg, 180.0);
+    EXPECT_DOUBLE_EQ(
+        conf.AtomAt(amide_grid_miss->donor_atom_idx)
+            .larsen_hbond_water_term,
+        0.0);
+
+    RemoveFlatTempDirectory(grid_dir, {
+        "NMANMA_dense.h5", "NMACOH_dense.h5", "NMACOO_dense.h5",
+        "ALANMA_dense.h5", "ALACOH_dense.h5", "ALACOO_dense.h5",
+    });
+}
+
+
+// Production-calling forcing gate for the malformed-frame/water interaction.
+// Start from a real successful amide-H pair, collapse only that donor's N-H
+// frame, and rerun the full calculator. The H...O candidate geometry remains
+// spatially present, so an identity fallback would still hit the grid and
+// suppress water; the correct path records InvalidFrame, applies no pair, and
+// preserves Larsen's 2.07 ppm unbound-amide term.
+TEST(LarsenHBondPairAudit,
+     DegenerateDonorFrameIsRejectedAndDoesNotSuppressWater) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    std::unique_ptr<Protein> protein = std::move(build.protein);
+    ProteinConformation& baseline_conf = protein->Conformation();
+    ASSERT_TRUE(baseline_conf.AttachResult(
+        GeometryResult::Compute(baseline_conf)));
+    ASSERT_TRUE(baseline_conf.AttachResult(
+        SpatialIndexResult::Compute(baseline_conf)));
+
+    const fs::path grid_dir =
+        WriteSyntheticLarsenGridDirectory("invalid_frame");
+    LarsenHBondGrid grid(grid_dir.string());
+    auto baseline =
+        LarsenHBondShieldingResult::Compute(baseline_conf, grid);
+    ASSERT_NE(baseline, nullptr);
+
+    const auto successful_amide = std::find_if(
+        baseline->Pairs().begin(), baseline->Pairs().end(),
+        [](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.donor_class == HBondDonorClass::AmideHydrogen &&
+                   pair.disposition ==
+                       LarsenHBondShieldingResult::PairDisposition::Success;
+        });
+    ASSERT_NE(successful_amide, baseline->Pairs().end());
+    const std::size_t donor_h = successful_amide->donor_atom_idx;
+    const std::size_t donor_residue =
+        protein->AtomAt(donor_h).residue_index;
+    const std::size_t donor_n = protein->ResidueAt(donor_residue).N;
+    ASSERT_NE(donor_n, Residue::NONE);
+    EXPECT_DOUBLE_EQ(
+        baseline_conf.AtomAt(donor_h).larsen_hbond_water_term, 0.0);
+
+    std::vector<Vec3> positions = baseline_conf.Positions();
+    positions[donor_n] = positions[donor_h];
+    DerivedConformation& invalid_conf = protein->AddDerived(
+        baseline_conf, "forced degenerate Larsen donor frame",
+        std::move(positions));
+    ASSERT_TRUE(invalid_conf.AttachResult(
+        GeometryResult::Compute(invalid_conf)));
+    ASSERT_TRUE(invalid_conf.AttachResult(
+        SpatialIndexResult::Compute(invalid_conf)));
+
+    ::testing::internal::CaptureStderr();
+    auto invalid = LarsenHBondShieldingResult::Compute(invalid_conf, grid);
+    const std::string warning =
+        ::testing::internal::GetCapturedStderr();
+    ASSERT_NE(invalid, nullptr);
+
+    int donor_rows = 0;
+    int invalid_rows = 0;
+    std::size_t first_invalid_row = SIZE_MAX;
+    for (std::size_t row = 0; row < invalid->Pairs().size(); ++row) {
+        const auto& pair = invalid->Pairs()[row];
+        if (pair.donor_atom_idx != donor_h) continue;
+        ++donor_rows;
+        if (pair.disposition ==
+            LarsenHBondShieldingResult::PairDisposition::InvalidFrame) {
+            ++invalid_rows;
+            if (first_invalid_row == SIZE_MAX) first_invalid_row = row;
+            EXPECT_FALSE(pair.frame_valid);
+            EXPECT_TRUE(std::isnan(pair.iso_1pHB));
+            EXPECT_TRUE(std::isnan(pair.iso_2pHB));
+            EXPECT_TRUE(std::isnan(pair.iso_1pHaB));
+            EXPECT_TRUE(std::isnan(pair.iso_2pHaB));
+            EXPECT_TRUE(std::isnan(pair.iso_table2_total));
+        } else {
+            EXPECT_EQ(pair.disposition,
+                      LarsenHBondShieldingResult::PairDisposition::
+                          MissingFrameAtoms);
+        }
+    }
+    EXPECT_GT(donor_rows, 0);
+    EXPECT_GT(invalid_rows, 0);
+    ASSERT_NE(first_invalid_row, SIZE_MAX);
+    EXPECT_DOUBLE_EQ(
+        invalid_conf.AtomAt(donor_h).larsen_hbond_water_term, 2.07);
+    EXPECT_NE(warning.find("invalid donor frame"), std::string::npos)
+        << warning;
+    EXPECT_NE(warning.find("invalid Larsen pair frame"),
+              std::string::npos) << warning;
+
+    const fs::path out =
+        MakeUniqueTempDirectory("nmr_larsen_invalid_frame_output");
+    EXPECT_EQ(invalid->WriteFeatures(invalid_conf, out.string()), 15);
+    const RawNpy index =
+        ReadRawNpy(out / "larsen_hbond_pairs_index.npy");
+    const RawNpy geometry =
+        ReadRawNpy(out / "larsen_hbond_pairs_geometry.npy");
+    const RawNpy isotropic =
+        ReadRawNpy(out / "larsen_hbond_pairs_isotropic.npy");
+    const RawNpy water =
+        ReadRawNpy(out / "larsen_hbond_water_term.npy");
+    EXPECT_EQ(PayloadValue<std::int32_t>(
+                  index, first_invalid_row * 16 + 6),
+              static_cast<std::int32_t>(
+                  LarsenHBondShieldingResult::PairDisposition::InvalidFrame));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(
+                         geometry, first_invalid_row * 6 + 5),
+                     0.0);
+    EXPECT_TRUE(std::isnan(PayloadValue<double>(
+        isotropic, first_invalid_row * 6 + 5)));
+    EXPECT_DOUBLE_EQ(PayloadValue<double>(water, donor_h), 2.07);
+
+    RemoveFlatTempDirectory(out, {
+        "larsen_hbond_shielding.npy",
+        "larsen_hbond_1pHB_shielding.npy",
+        "larsen_hbond_2pHB_shielding.npy",
+        "larsen_hbond_1pHaB_shielding.npy",
+        "larsen_hbond_2pHaB_shielding.npy",
+        "larsen_hbond_diagnostic_CB_shielding.npy",
+        "larsen_hbond_water_term.npy",
+        "larsen_hbond_count.npy",
+        "larsen_imputed_pair_count.npy",
+        "larsen_sidechain_carbonyl_pair_count.npy",
+        "larsen_corner_imputed.npy",
+        "larsen_hbond_pairs_index.npy",
+        "larsen_hbond_pairs_geometry.npy",
+        "larsen_hbond_pairs_isotropic.npy",
+        "larsen_hbond_pairs.npy",
+    });
+
+    RemoveFlatTempDirectory(grid_dir, {
+        "NMANMA_dense.h5", "NMACOH_dense.h5", "NMACOO_dense.h5",
+        "ALANMA_dense.h5", "ALACOH_dense.h5", "ALACOO_dense.h5",
+    });
+}
+
+
+TEST(LarsenHBondPairAudit,
+     NonFiniteDerivedGeometryIsRejectedAndDoesNotSuppressWater) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    std::unique_ptr<Protein> protein = std::move(build.protein);
+    ProteinConformation& baseline_conf = protein->Conformation();
+    ASSERT_TRUE(baseline_conf.AttachResult(
+        GeometryResult::Compute(baseline_conf)));
+    ASSERT_TRUE(baseline_conf.AttachResult(
+        SpatialIndexResult::Compute(baseline_conf)));
+
+    const fs::path grid_dir =
+        WriteSyntheticLarsenGridDirectory("nonfinite_geometry");
+    LarsenHBondGrid grid(grid_dir.string());
+    auto baseline =
+        LarsenHBondShieldingResult::Compute(baseline_conf, grid);
+    ASSERT_NE(baseline, nullptr);
+
+    // Choose a real successful amide donor, then invalidate the acceptor
+    // C position for every selected geometric partner of that donor. Theta
+    // misses and symmetry-filtered siblings are not water-gating partners.
+    const auto successful_amide = std::find_if(
+        baseline->Pairs().begin(), baseline->Pairs().end(),
+        [](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.donor_class == HBondDonorClass::AmideHydrogen &&
+                   pair.disposition ==
+                       LarsenHBondShieldingResult::PairDisposition::Success;
+        });
+    ASSERT_NE(successful_amide, baseline->Pairs().end());
+    const std::size_t donor_h = successful_amide->donor_atom_idx;
+    EXPECT_DOUBLE_EQ(
+        baseline_conf.AtomAt(donor_h).larsen_hbond_water_term, 0.0);
+
+    std::vector<Vec3> positions = baseline_conf.Positions();
+    int confirmed_before = 0;
+    for (const auto& pair : baseline->Pairs()) {
+        if (pair.donor_atom_idx != donor_h) continue;
+        if (pair.disposition !=
+                LarsenHBondShieldingResult::PairDisposition::Success &&
+            pair.disposition !=
+                LarsenHBondShieldingResult::PairDisposition::GridMiss) {
+            continue;
+        }
+        ASSERT_NE(pair.acceptor_C_atom_idx, SIZE_MAX);
+        ASSERT_NE(pair.acceptor_atom_idx, SIZE_MAX);
+        positions[pair.acceptor_C_atom_idx] =
+            positions[pair.acceptor_atom_idx];
+        ++confirmed_before;
+    }
+    ASSERT_GT(confirmed_before, 0);
+    DerivedConformation& invalid_conf = protein->AddDerived(
+        baseline_conf, "forced invalid Larsen H-O-C geometry",
+        std::move(positions));
+    ASSERT_TRUE(invalid_conf.AttachResult(
+        GeometryResult::Compute(invalid_conf)));
+    ASSERT_TRUE(invalid_conf.AttachResult(
+        SpatialIndexResult::Compute(invalid_conf)));
+
+    ::testing::internal::CaptureStderr();
+    auto invalid = LarsenHBondShieldingResult::Compute(invalid_conf, grid);
+    const std::string warning =
+        ::testing::internal::GetCapturedStderr();
+    ASSERT_NE(invalid, nullptr);
+
+    const auto invalid_pair = std::find_if(
+        invalid->Pairs().begin(), invalid->Pairs().end(),
+        [&](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.donor_atom_idx == donor_h &&
+                   pair.acceptor_atom_idx ==
+                       successful_amide->acceptor_atom_idx;
+        });
+    ASSERT_NE(invalid_pair, invalid->Pairs().end());
+    EXPECT_EQ(invalid_pair->disposition,
+              LarsenHBondShieldingResult::PairDisposition::InvalidFrame);
+    EXPECT_FALSE(invalid_pair->frame_valid);
+    EXPECT_TRUE(std::isnan(invalid_pair->theta_deg));
+    EXPECT_TRUE(std::isnan(invalid_pair->rho_deg));
+    EXPECT_TRUE(std::isnan(invalid_pair->iso_table2_total));
+    EXPECT_DOUBLE_EQ(
+        invalid_conf.AtomAt(donor_h).larsen_hbond_water_term, 2.07);
+    EXPECT_NE(warning.find("geometry_finite=0"), std::string::npos)
+        << warning;
+
     RemoveFlatTempDirectory(grid_dir, {
         "NMANMA_dense.h5", "NMACOH_dense.h5", "NMACOO_dense.h5",
         "ALANMA_dense.h5", "ALACOH_dense.h5", "ALACOO_dense.h5",

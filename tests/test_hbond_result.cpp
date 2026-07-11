@@ -1,5 +1,6 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <iomanip>
@@ -38,21 +39,25 @@ SyntheticHBondFixture BuildNonCollinearExplicitHydrogenFixture() {
     SyntheticHBondFixture f;
     f.protein = std::make_unique<Protein>();
 
-    // Seven residue slots give the remote control a minimum sequence
-    // separation of three from the donor/acceptor endpoints.  Atom names are
-    // intentionally empty: this is a geometry-kernel fixture, so the typed
-    // semantic substrate's documented stub path applies.
-    for (int ri = 0; ri < 7; ++ri) {
+    // Residue-vector order deliberately crosses a chain boundary at 1 -> 2.
+    // The donor is the final residue of chain A and the acceptor is the first
+    // residue of chain B, so their storage indices differ by one even though
+    // there is no peptide path between them.  Residue 0 is a real peptide
+    // predecessor of the donor; residue 3 is a disconnected control.
+    const std::array<const char*, 4> chains{{"A", "A", "B", "C"}};
+    for (int ri = 0; ri < 4; ++ri) {
         Residue r;
-        r.type = AminoAcid::Unknown;
+        r.type = AminoAcid::ALA;
         r.sequence_number = ri + 1;
-        r.chain_id = "A";
+        r.chain_id = chains[static_cast<size_t>(ri)];
         f.protein->AddResidue(std::move(r));
     }
 
     std::vector<Vec3> positions;
-    auto add_atom = [&](size_t residue, Element element, const Vec3& pos) {
+    auto add_atom = [&](size_t residue, const char* name, Element element,
+                        const Vec3& pos) {
         auto atom = Atom::Create(element);
+        atom->pdb_atom_name = name;
         atom->residue_index = residue;
         const size_t ai = f.protein->AddAtom(std::move(atom));
         f.protein->MutableResidueAt(residue).atom_indices.push_back(ai);
@@ -60,18 +65,17 @@ SyntheticHBondFixture BuildNonCollinearExplicitHydrogenFixture() {
         return ai;
     };
 
-    // Deliberately non-collinear N-H...O: the old N...O-midpoint proxy
-    // cannot accidentally agree with the explicit-H production geometry.
-    f.donor_n = add_atom(0, Element::N, Vec3(0.0, 0.0, 0.0));
-    f.donor_h = add_atom(0, Element::H, Vec3(1.0, 0.0, 0.0));
-    f.local_target = add_atom(1, Element::C, Vec3(3.0, 1.0, 0.0));
-    f.acceptor_o = add_atom(3, Element::O, Vec3(1.0, 2.0, 0.0));
-    f.remote_target = add_atom(6, Element::C, Vec3(2.0, 2.0, 0.0));
-
-    auto& donor = f.protein->MutableResidueAt(0);
-    donor.N = f.donor_n;
-    donor.H = f.donor_h;
-    f.protein->MutableResidueAt(3).O = f.acceptor_o;
+    // C(0)-N(1) is a real PeptideCN edge.  The H-bond itself spans the
+    // A/B chain boundary (residue 1 -> residue 2), and is deliberately
+    // non-collinear in N-H...O so the explicit-H source convention remains
+    // independently pinned by the same fixture.
+    f.local_target = add_atom(
+        0, "C", Element::C, Vec3(-1.33, 0.0, 0.0));
+    f.donor_n = add_atom(1, "N", Element::N, Vec3(0.0, 0.0, 0.0));
+    f.donor_h = add_atom(1, "H", Element::H, Vec3(1.0, 0.0, 0.0));
+    f.acceptor_o = add_atom(2, "O", Element::O, Vec3(1.0, 2.0, 0.0));
+    f.remote_target = add_atom(
+        3, "C", Element::C, Vec3(2.0, 2.0, 0.0));
 
     f.protein->FinalizeConstruction(positions);
     f.protein->AddConformation(std::move(positions), "explicit-H forcing fixture");
@@ -89,13 +93,26 @@ TEST(HBondGeometryKernel, UsesExplicitHydrogenAndAppliesTargetSequenceFilter) {
     ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
 
     std::vector<DsspResidue> residues(f.protein->ResidueCount());
-    residues[0].observed = true;
-    residues[0].acceptors[0].residue_index = 3;
+    residues[1].observed = true;
+    residues[1].acceptors[0].residue_index = 2;
     ASSERT_TRUE(conf.AttachResult(DsspResult::CreateForTesting(std::move(residues))));
+
+    // The graph, not vector adjacency, owns all three answers.
+    EXPECT_EQ(hbond_result_detail::BackboneResidueSeparation(
+                  *f.protein, 1, 2),
+              -1) << "adjacent residue slots on different chains are disconnected";
+    EXPECT_EQ(hbond_result_detail::BackboneResidueSeparation(
+                  *f.protein, 0, 1),
+              1) << "the explicit C(0)-N(1) peptide bond is one step";
+    EXPECT_EQ(hbond_result_detail::BackboneResidueSeparation(
+                  *f.protein, 3, 1),
+              -1);
 
     auto hbond = HBondResult::Compute(conf);
     ASSERT_NE(hbond, nullptr);
-    EXPECT_EQ(hbond->HBondCount(), 1u);
+    EXPECT_EQ(hbond->HBondCount(), 1u)
+        << "cross-chain H-bond must not be discarded because its residue "
+           "storage indices are adjacent";
     ASSERT_TRUE(conf.AttachResult(std::move(hbond)));
 
     // Blessed values for donor H=(1,0,0), acceptor O=(1,2,0), and remote
@@ -109,7 +126,8 @@ TEST(HBondGeometryKernel, UsesExplicitHydrogenAndAppliesTargetSequenceFilter) {
     EXPECT_NEAR(remote.hbond_nearest_dir.y(), 0.894427190999916, 1e-12);
     EXPECT_NEAR(remote.hbond_nearest_dir.z(), 0.0, 1e-12);
 
-    // Residue 1 is within the configured two-residue endpoint exclusion.
+    // Residue 0 is the donor's true peptide predecessor and therefore lies
+    // within the configured two-residue endpoint exclusion.
     // It is geometrically valid, so a zero here specifically freezes the
     // production SequentialExclusionFilter wiring (C18).
     const auto& local = conf.AtomAt(f.local_target);

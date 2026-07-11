@@ -9,8 +9,11 @@
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <optional>
+#include <queue>
 #include <set>
 
 namespace nmr {
@@ -59,6 +62,47 @@ struct ResolvedHBond {
 // ============================================================================
 
 namespace hbond_result_detail {
+
+int BackboneResidueSeparation(const Protein& protein,
+                              size_t residue_a,
+                              size_t residue_b) {
+    const size_t residue_count = protein.ResidueCount();
+    if (residue_a >= residue_count || residue_b >= residue_count) return -1;
+    if (residue_a == residue_b) return 0;
+
+    std::vector<int> distance(residue_count, -1);
+    std::queue<size_t> frontier;
+    distance[residue_a] = 0;
+    frontier.push(residue_a);
+
+    while (!frontier.empty()) {
+        const size_t current = frontier.front();
+        frontier.pop();
+
+        const std::optional<size_t> neighbours[2] = {
+            protein.BackbonePredecessor(current),
+            protein.BackboneSuccessor(current),
+        };
+        for (const auto& neighbour : neighbours) {
+            if (!neighbour || *neighbour >= residue_count) continue;
+            if (distance[*neighbour] >= 0) continue;
+            distance[*neighbour] = distance[current] + 1;
+            if (*neighbour == residue_b) return distance[*neighbour];
+            frontier.push(*neighbour);
+        }
+    }
+    return -1;
+}
+
+namespace {
+
+int MinimumKnownSeparation(int a, int b) {
+    if (a < 0) return b;
+    if (b < 0) return a;
+    return std::min(a, b);
+}
+
+}  // namespace
 
 KernelResult ComputeKernel(
         const Vec3& atom_pos,
@@ -152,8 +196,12 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             }
 
             // sequence exclusion
-            int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(acceptor_residue_idx));
-            if (seq_sep < static_cast<int>(CalculatorConfig::Get("hbond_sequential_exclusion_residues"))) {
+            const int seq_sep =
+                hbond_result_detail::BackboneResidueSeparation(
+                    protein, ri, acceptor_residue_idx);
+            if (seq_sep >= 0 &&
+                seq_sep < static_cast<int>(CalculatorConfig::Get(
+                    "hbond_sequential_exclusion_residues"))) {
                 // record: seq-sep reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
                     [ri, acceptor_residue_idx, seq_sep](GeometryChoice& gc) {
@@ -218,8 +266,12 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             }
 
             // sequence exclusion
-            int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(donor_residue_idx));
-            if (seq_sep < static_cast<int>(CalculatorConfig::Get("hbond_sequential_exclusion_residues"))) {
+            const int seq_sep =
+                hbond_result_detail::BackboneResidueSeparation(
+                    protein, donor_residue_idx, ri);
+            if (seq_sep >= 0 &&
+                seq_sep < static_cast<int>(CalculatorConfig::Get(
+                    "hbond_sequential_exclusion_residues"))) {
                 // record: seq-sep reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
                     [ri, donor_residue_idx, seq_sep](GeometryChoice& gc) {
@@ -333,11 +385,15 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             ctx.source_atom_b = hb.acceptor_O;
 
             // endpoint sequence gap (min to either donor/acceptor residue)
-            int sep_don = std::abs(static_cast<int>(ai_res)
-                                 - static_cast<int>(hb.donor_residue));
-            int sep_acc = std::abs(static_cast<int>(ai_res)
-                                 - static_cast<int>(hb.acceptor_residue));
-            ctx.sequence_separation = std::min(sep_don, sep_acc);
+            const int sep_don =
+                hbond_result_detail::BackboneResidueSeparation(
+                    protein, ai_res, hb.donor_residue);
+            const int sep_acc =
+                hbond_result_detail::BackboneResidueSeparation(
+                    protein, ai_res, hb.acceptor_residue);
+            ctx.sequence_separation =
+                hbond_result_detail::MinimumKnownSeparation(
+                    sep_don, sep_acc);
 
             if (!filters.AcceptAll(ctx)) {
                 // ---- GeometryChoice: filter exclusion ----

@@ -61,11 +61,18 @@ TEST_F(LarsenResidueWlAmbiguityTest, IleCg1AndCg2AreChemistryDistinct) {
     const TripeptideDftTable* table = session.TripeptideDftTablePtr();
     ASSERT_NE(table, nullptr);
 
+    // Pin a clean full-chi record. The required Piece-07 omitted-chi
+    // nearest-pose ordering selects malformed external row 529686 at a
+    // zero-chi fallback target; this test owns WL identity, not fallback
+    // row selection or database repair.
     TripeptideDftRecord rec = table->QueryNearest(
         'I', /*phi=*/-180.0, /*psi=*/-180.0,
-        /*chi1=*/0.0, /*chi2=*/0.0, /*chi3=*/0.0, /*chi4=*/0.0,
-        /*n_chi_axes=*/0);
+        /*chi1=*/60.0, /*chi2=*/140.0, /*chi3=*/0.0, /*chi4=*/0.0,
+        /*n_chi_axes=*/2);
     ASSERT_TRUE(rec.IsHit()) << "no ILE row at phi=-180,psi=-180";
+    ASSERT_EQ(rec.calc_id, 514994)
+        << "clean AIA WL fixture changed; do not silently fall through "
+           "malformed omitted-chi rows";
     ASSERT_TRUE(rec.larsen.has_value());
 
     const LarsenResidue& cen = rec.larsen->central;
@@ -148,12 +155,10 @@ TEST_F(LarsenResidueWlAmbiguityTest, PheCdAndCeAreGraphAutomorphic) {
 }
 
 
-// `QueryNearest` adds `ORDER BY calc_id ASC LIMIT 1` to the chi-fallback
-// SQL. Without the ORDER BY, the row returned depends on the planner's
-// emission order — i.e., session-arbitrary. This test verifies that
-// when the chi-fallback drops to a depth that admits multiple rows
-// (n_chi=0 against a 4-chi residue like ARG), the chosen calc_id is
-// stable across consecutive queries.
+// `QueryNearest` orders chi-fallback candidates by omitted-chi circular
+// distance and then calc_id. Without that deterministic ORDER BY, the row
+// returned depends on planner emission order. This test verifies stability
+// when a fallback depth admits multiple rows.
 TEST_F(LarsenResidueWlAmbiguityTest, ChiFallbackIsDeterministic) {
     const TripeptideDftTable* table = session.TripeptideDftTablePtr();
     ASSERT_NE(table, nullptr);
@@ -175,13 +180,7 @@ TEST_F(LarsenResidueWlAmbiguityTest, ChiFallbackIsDeterministic) {
     ASSERT_TRUE(rec2.IsHit()) << "no ARA row at phi=-180,psi=-180 on re-query";
     EXPECT_EQ(rec1.calc_id, rec2.calc_id)
         << "chi-fallback returned different rows across two consecutive "
-           "calls at the same grid point — `ORDER BY calc_id ASC` was "
-           "expected to make this deterministic. Got calc_id=" <<
+           "calls at the same grid point — omitted-chi score plus calc_id "
+           "ordering must be deterministic. Got calc_id=" <<
            rec1.calc_id << " then " << rec2.calc_id;
-    // Also sanity check that ORDER BY calc_id ASC is the lowest:
-    // re-query under the same conditions and assert the chosen
-    // calc_id is the minimum across the visible set. We can't easily
-    // enumerate the full match set without raw SQL access, so the
-    // determinism check above is the load-bearing assertion. The
-    // lowest-calc_id property is a side-effect.
 }

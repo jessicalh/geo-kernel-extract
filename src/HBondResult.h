@@ -24,6 +24,7 @@
 namespace nmr {
 
 class ProteinConformation;
+class Protein;
 
 // Production kernel surface used by HBondResult::Compute and by the
 // independent geometry forcing tests.  This stays in the result's named
@@ -39,6 +40,15 @@ struct KernelResult {
 KernelResult ComputeKernel(const Vec3& atom_pos,
                            const Vec3& donor_h_pos,
                            const Vec3& h_to_o_hat);
+
+// Shortest peptide-backbone distance between two residue identities.
+// Returns -1 when the residues are in disconnected backbone components
+// (different chains, a loader gap, or otherwise no PeptideCN path).
+// This is deliberately bond-graph driven: residue-vector offsets and
+// sequence-number arithmetic are not peptide topology.
+int BackboneResidueSeparation(const Protein& protein,
+                              std::size_t residue_a,
+                              std::size_t residue_b);
 
 }  // namespace hbond_result_detail
 

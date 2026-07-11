@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -335,7 +336,11 @@ TEST(LarsenHBondGridHelpers, DonorFrameIsOrthonormalAndAxesCorrect) {
     Vec3 H(1.0, 0.0, 0.0);
     Vec3 anchor(0.0, 0.0, 0.0);    // → z axis goes anchor→H = +x
     Vec3 third(0.0, 1.0, 0.0);     // in xy-plane, off z-axis
-    Mat3 R = ComputeLarsenDonorFrame(H, anchor, third);
+    const LarsenDonorFrame frame =
+        ComputeLarsenDonorFrame(H, anchor, third);
+    ASSERT_TRUE(frame.valid);
+    EXPECT_EQ(frame.failure, LarsenDonorFrameFailure::None);
+    const Mat3& R = frame.rotation;
 
     // R should be orthonormal: R * R.T = I.
     Mat3 RRT = R * R.transpose();
@@ -367,23 +372,41 @@ TEST(LarsenHBondGridHelpers, DonorFrameIsOrthonormalAndAxesCorrect) {
 }
 
 
-// Degenerate ComputeLarsenDonorFrame inputs return identity (with a
-// logged warning) rather than NaN-poisoning the result.
-TEST(LarsenHBondGridHelpers, DonorFrameDegenerateReturnsIdentity) {
+// Degenerate/non-finite donor frames are explicit invalid results. An
+// identity fallback would look numerically safe while rotating every
+// canonical tensor into the wrong lab frame.
+TEST(LarsenHBondGridHelpers, DonorFrameDegenerateIsInvalidNotIdentity) {
     Vec3 H(1.0, 0.0, 0.0);
     Vec3 anchor_same(1.0, 0.0, 0.0);   // coincident with H
     Vec3 third(0.0, 1.0, 0.0);
-    Mat3 R1 = ComputeLarsenDonorFrame(H, anchor_same, third);
-    EXPECT_NEAR((R1 - Mat3::Identity()).norm(), 0.0, 1e-12);
+    LarsenDonorFrame f1 =
+        ComputeLarsenDonorFrame(H, anchor_same, third);
+    EXPECT_FALSE(f1.valid);
+    EXPECT_EQ(f1.failure, LarsenDonorFrameFailure::CoincidentAnchor);
+    EXPECT_FALSE(f1.rotation.allFinite());
 
     Vec3 anchor(0.0, 0.0, 0.0);
     Vec3 third_same(1.0, 0.0, 0.0);    // coincident with H
-    Mat3 R2 = ComputeLarsenDonorFrame(H, anchor, third_same);
-    EXPECT_NEAR((R2 - Mat3::Identity()).norm(), 0.0, 1e-12);
+    LarsenDonorFrame f2 =
+        ComputeLarsenDonorFrame(H, anchor, third_same);
+    EXPECT_FALSE(f2.valid);
+    EXPECT_EQ(f2.failure, LarsenDonorFrameFailure::CoincidentThird);
+    EXPECT_FALSE(f2.rotation.allFinite());
 
     Vec3 third_collinear(2.0, 0.0, 0.0);  // on the anchor→H line
-    Mat3 R3 = ComputeLarsenDonorFrame(H, anchor, third_collinear);
-    EXPECT_NEAR((R3 - Mat3::Identity()).norm(), 0.0, 1e-12);
+    LarsenDonorFrame f3 =
+        ComputeLarsenDonorFrame(H, anchor, third_collinear);
+    EXPECT_FALSE(f3.valid);
+    EXPECT_EQ(f3.failure, LarsenDonorFrameFailure::CollinearThird);
+    EXPECT_FALSE(f3.rotation.allFinite());
+
+    Vec3 nonfinite = H;
+    nonfinite.x() = std::numeric_limits<double>::quiet_NaN();
+    LarsenDonorFrame f4 =
+        ComputeLarsenDonorFrame(nonfinite, anchor, third);
+    EXPECT_FALSE(f4.valid);
+    EXPECT_EQ(f4.failure, LarsenDonorFrameFailure::NonFiniteInput);
+    EXPECT_FALSE(f4.rotation.allFinite());
 }
 
 
@@ -400,6 +423,36 @@ TEST(LarsenHBondGridHelpers, GeometryComputesCorrectAngleRange) {
     auto g = ComputeLarsenHBondGeometry(H, O, C_bent, third_bent);
     EXPECT_NEAR(g.r_angstrom, 1.0, 1e-10);
     EXPECT_NEAR(g.theta_deg, 90.0, 1e-6);
+}
+
+
+TEST(LarsenHBondGridHelpers, DegenerateGeometryIsExplicitlyNonFinite) {
+    const Vec3 H(0.0, 0.0, 0.0);
+    const Vec3 O(0.0, 0.0, 0.0);  // zero H...O vector
+    const Vec3 C(1.0, 0.0, 0.0);
+    const Vec3 third(1.0, 1.0, 0.0);
+    const LarsenHBondGeometry coincident_ho =
+        ComputeLarsenHBondGeometry(H, O, C, third);
+    EXPECT_FALSE(coincident_ho.IsFinite());
+    EXPECT_TRUE(std::isnan(coincident_ho.theta_deg));
+    EXPECT_TRUE(std::isnan(coincident_ho.rho_deg));
+
+    const LarsenHBondGeometry coincident_oc =
+        ComputeLarsenHBondGeometry(H, C, C, third);
+    EXPECT_FALSE(coincident_oc.IsFinite());
+    EXPECT_TRUE(std::isnan(coincident_oc.theta_deg));
+    EXPECT_TRUE(std::isnan(coincident_oc.rho_deg));
+
+    const Vec3 O_linear(1.0, 0.0, 0.0);
+    const Vec3 C_linear(2.0, 0.0, 0.0);
+    const Vec3 third_linear(3.0, 0.0, 0.0);
+    const LarsenHBondGeometry collapsed_dihedral =
+        ComputeLarsenHBondGeometry(
+            H, O_linear, C_linear, third_linear);
+    EXPECT_TRUE(std::isfinite(collapsed_dihedral.r_angstrom));
+    EXPECT_TRUE(std::isfinite(collapsed_dihedral.theta_deg));
+    EXPECT_TRUE(std::isnan(collapsed_dihedral.rho_deg));
+    EXPECT_FALSE(collapsed_dihedral.IsFinite());
 }
 
 

@@ -44,6 +44,20 @@ struct RingNeighbourhood {
     Mat3 hm_G_tensor = Mat3::Zero();            // full shielding kernel G = -n ⊗ V (rank-1)
     SphericalTensor hm_G_spherical;             // Decompose(G) — T0, T1, T2 all non-zero
     double quad_scalar = 0.0;
+    // PiQuadrupoleLocalTensorResult-owned companion payload.  The raw
+    // tensor and its decomposition are expressed in the deterministic
+    // ring-local frame whose axes are stored alongside them.  `evaluated`
+    // distinguishes a geometrically invalid row (evaluated=true,
+    // valid=false, NaN payload) from a row appended after that result ran.
+    Mat3 piquad_local_tensor = Mat3::Zero();
+    SphericalTensor piquad_local_spherical;
+    Vec3 piquad_local_x_axis = Vec3::Zero();
+    Vec3 piquad_local_y_axis = Vec3::Zero();
+    Vec3 piquad_local_z_axis = Vec3::Zero();
+    double piquad_local_distance = 0.0;
+    double piquad_local_cos_theta = 0.0;
+    bool piquad_local_evaluated = false;
+    bool piquad_local_valid = false;
     double chi_scalar = 0.0;
     double disp_scalar = 0.0;
     int disp_contacts = 0;

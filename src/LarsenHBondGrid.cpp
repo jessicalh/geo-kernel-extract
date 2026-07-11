@@ -34,6 +34,12 @@ const char* const kArchiveStems[6] = {
 // Axis-bound tolerance for FP round-trip noise (1e-9 of an axis step).
 constexpr double kAxisBoundTolerance = 1e-9;
 
+// Numerical validity threshold for the canonical donor frame and for
+// genuinely zero-length geometry vectors. This preserves the historical
+// Larsen frame guard while making failure explicit instead of substituting
+// an identity rotation.
+constexpr double kTinyGeometryVector = 1e-9;
+
 
 // Read a 5D float32 (Nr × Ntheta × Nrho × 3 × 3) dataset into a flat
 // std::vector<float> (row-major). Returns empty vector if the dataset
@@ -377,13 +383,32 @@ LarsenHBondGeometry ComputeLarsenHBondGeometry(
     const Vec3& acceptor_third_pos) {
 
     LarsenHBondGeometry geom;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    geom.theta_deg = nan;
+    geom.rho_deg = nan;
+
     Vec3 H_to_O = acceptor_O_pos - donor_H_pos;
     geom.r_angstrom = H_to_O.norm();
+
+    if (!donor_H_pos.allFinite() || !acceptor_O_pos.allFinite() ||
+        !acceptor_C_pos.allFinite() || !acceptor_third_pos.allFinite() ||
+        !std::isfinite(geom.r_angstrom) ||
+        geom.r_angstrom <= kTinyGeometryVector) {
+        return geom;
+    }
 
     // theta at acceptor O: angle between (O→H) and (O→C).
     Vec3 O_to_H = donor_H_pos - acceptor_O_pos;
     Vec3 O_to_C = acceptor_C_pos - acceptor_O_pos;
-    double cos_theta = O_to_H.dot(O_to_C) / (O_to_H.norm() * O_to_C.norm());
+    const double O_to_H_norm = O_to_H.norm();
+    const double O_to_C_norm = O_to_C.norm();
+    if (!std::isfinite(O_to_H_norm) || !std::isfinite(O_to_C_norm) ||
+        O_to_H_norm <= kTinyGeometryVector ||
+        O_to_C_norm <= kTinyGeometryVector) {
+        return geom;
+    }
+    double cos_theta =
+        O_to_H.dot(O_to_C) / (O_to_H_norm * O_to_C_norm);
     cos_theta = std::clamp(cos_theta, -1.0, 1.0);
     geom.theta_deg = std::acos(cos_theta) * (180.0 / M_PI);
 
@@ -391,8 +416,25 @@ LarsenHBondGeometry ComputeLarsenHBondGeometry(
     // atan2(cross(n1, O_to_C_norm) · n2, n1 · n2). The three bond
     // vectors H→O, O→C, C→third (H_to_O and O_to_C reuse the θ block).
     Vec3 C_to_third = acceptor_third_pos - acceptor_C_pos;
+    const double C_to_third_norm = C_to_third.norm();
+    if (!std::isfinite(C_to_third_norm) ||
+        C_to_third_norm <= kTinyGeometryVector) {
+        geom.rho_deg = nan;
+        return geom;
+    }
     Vec3 n1 = H_to_O.cross(O_to_C);             // n1 ⟂ plane(H,O,C)
     Vec3 n2 = O_to_C.cross(C_to_third);         // n2 ⟂ plane(O,C,third)
+    const double n1_scale = O_to_H_norm * O_to_C_norm;
+    const double n2_scale = O_to_C_norm * C_to_third_norm;
+    if (!n1.allFinite() || !n2.allFinite() ||
+        n1.norm() <= kTinyGeometryVector * n1_scale ||
+        n2.norm() <= kTinyGeometryVector * n2_scale) {
+        // A dihedral is undefined when either supporting plane collapses.
+        // Keep theta (which is independently meaningful) but leave rho NaN
+        // so the caller cannot certify/query a fabricated frame.
+        geom.rho_deg = nan;
+        return geom;
+    }
     Vec3 m1 = n1.cross(O_to_C.normalized());    // m1 = n1 × O_to_Ĉ
     double x = n1.dot(n2);
     double y = m1.dot(n2);
@@ -402,19 +444,31 @@ LarsenHBondGeometry ComputeLarsenHBondGeometry(
 }
 
 
-Mat3 ComputeLarsenDonorFrame(
+LarsenDonorFrame ComputeLarsenDonorFrame(
     const Vec3& donor_H_pos,
     const Vec3& donor_anchor_pos,
     const Vec3& donor_third_pos) {
 
-    constexpr double kTinyVec = 1e-9;
+    LarsenDonorFrame frame;
+    auto fail = [&](LarsenDonorFrameFailure failure,
+                    const char* detail) -> LarsenDonorFrame {
+        frame.failure = failure;
+        OperationLog::Warn("ComputeLarsenDonorFrame", detail);
+        return frame;
+    };
+
+    if (!donor_H_pos.allFinite() || !donor_anchor_pos.allFinite() ||
+        !donor_third_pos.allFinite()) {
+        return fail(LarsenDonorFrameFailure::NonFiniteInput,
+            "invalid donor frame: non-finite input coordinate");
+    }
 
     // z = normalize(donor_H − donor_anchor). Bail on coincident atoms.
     Vec3 z_raw = donor_H_pos - donor_anchor_pos;
-    if (z_raw.norm() < kTinyVec) {
-        OperationLog::Warn("ComputeLarsenDonorFrame",
-            "donor_H and donor_anchor coincide; returning identity rotation");
-        return Mat3::Identity();
+    const double z_norm = z_raw.norm();
+    if (!std::isfinite(z_norm) || z_norm < kTinyGeometryVector) {
+        return fail(LarsenDonorFrameFailure::CoincidentAnchor,
+            "invalid donor frame: donor_H and donor_anchor coincide");
     }
     Vec3 z = z_raw.normalized();
 
@@ -422,16 +476,17 @@ Mat3 ComputeLarsenDonorFrame(
     // Bail if third is coincident with H or lies on the anchor→H line
     // (the orthogonal component is then zero).
     Vec3 third_to_H = donor_H_pos - donor_third_pos;
-    if (third_to_H.norm() < kTinyVec) {
-        OperationLog::Warn("ComputeLarsenDonorFrame",
-            "donor_H and donor_third coincide; returning identity rotation");
-        return Mat3::Identity();
+    const double third_to_H_norm = third_to_H.norm();
+    if (!std::isfinite(third_to_H_norm) ||
+        third_to_H_norm < kTinyGeometryVector) {
+        return fail(LarsenDonorFrameFailure::CoincidentThird,
+            "invalid donor frame: donor_H and donor_third coincide");
     }
     Vec3 x_raw = third_to_H - (third_to_H.dot(z)) * z;
-    if (x_raw.norm() < kTinyVec) {
-        OperationLog::Warn("ComputeLarsenDonorFrame",
-            "donor_third on the anchor→H line; returning identity rotation");
-        return Mat3::Identity();
+    const double x_norm = x_raw.norm();
+    if (!std::isfinite(x_norm) || x_norm < kTinyGeometryVector) {
+        return fail(LarsenDonorFrameFailure::CollinearThird,
+            "invalid donor frame: donor_third lies on the anchor-to-H line");
     }
     Vec3 x = x_raw.normalized();
     Vec3 y = z.cross(x);
@@ -442,7 +497,15 @@ Mat3 ComputeLarsenDonorFrame(
     R.row(0) = x;
     R.row(1) = y;
     R.row(2) = z;
-    return R;
+    if (!R.allFinite()) {
+        return fail(LarsenDonorFrameFailure::NonFiniteBasis,
+            "invalid donor frame: computed basis is non-finite");
+    }
+
+    frame.rotation = R;
+    frame.failure = LarsenDonorFrameFailure::None;
+    frame.valid = true;
+    return frame;
 }
 
 

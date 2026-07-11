@@ -86,6 +86,7 @@ def _larsen_hbond_npys(out_dir, n_atoms):
 
     pair_index = np.zeros((2, 16), dtype=np.int32)
     pair_index[:, 5] = [0, 1]
+    pair_index[:, 6] = [3, 5]
     pair_geometry = np.zeros((2, 6), dtype=np.float64)
     pair_geometry[:, 3:5] = [[1, 2], [0, 0]]
     pair_geometry[:, 5] = 1
@@ -212,6 +213,8 @@ class TestLarsenHBondLoad:
         assert pairs.compatibility.shape == (2, 28)
         assert pairs.geometry[0, 4] == 2
         assert pairs.isotropic[0, 5] == pairs.isotropic[0, :4].sum()
+        assert pairs.index[0, 6] == 3  # success
+        assert pairs.index[1, 6] == 5  # carboxylate symmetry-filtered
         assert p.larsen_hbond.imputed_pair_count[0] == 1
         assert p.larsen_hbond.sidechain_carbonyl_pair_count[1] == 1
         assert p.larsen_sidechain_donor_audit.atoms.shape == (N_ATOMS, 6)

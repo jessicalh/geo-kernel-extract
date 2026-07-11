@@ -283,14 +283,18 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     std::vector<bool> amide_h_geometric_paired(n_atoms, false);
 
     // n_pairs_grid_skipped counts every processed candidate that the
-    // grid path could not turn into contributions. Three exclusive
-    // disposition classes increment it:
+    // grid path could not turn into contributions. Every non-success
+    // disposition increments it exactly once:
     //   • MissingFrameAtoms  — classification ok, but a frame anchor
     //                           is None (e.g. chain boundary).
     //   • ThetaOutOfRange    — θ < 90° or > 180°. NOT an H-bond.
     //   • GridMiss           — θ in range, but r outside the grid's
     //                           r-axis bounds. H-bond confirmed; just
     //                           outside Larsen's scan range.
+    //   • InvalidFrame       — coordinate/frame geometry is malformed.
+    //                           This is NOT a confirmed H-bond.
+    //   • CarboxylateSymmetryFiltered — classified farther sibling;
+    //                           retained for audit but not evaluated.
     // Mass conservation: processed_candidates == pairs_found
     //                                      + n_pairs_grid_skipped.
     int n_pairs_grid_skipped = 0;
@@ -315,10 +319,15 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     // Success and GridMiss confirm θ ≥ 90°, so only those gate water).
     enum class PairResult : std::uint8_t {
         MissingFrameAtoms = 0,  // Structural; θ never computed.
-        ThetaOutOfRange,        // Geometry computed; θ < 90° or > 180°.
-        GridMiss,               // θ ok; r outside grid's r-axis bounds.
-        Success,                // Tensors accumulated.
+        ThetaOutOfRange = 1,    // Geometry computed; θ < 90° or > 180°.
+        GridMiss = 2,           // θ ok; r outside grid's r-axis bounds.
+        Success = 3,            // Tensors accumulated.
+        InvalidFrame = 4,       // Non-finite/degenerate geometry or donor frame.
+        CarboxylateSymmetryFiltered = 5,  // Diagnostic-only farther COO sibling.
     };
+    static_assert(
+        static_cast<int>(PairResult::CarboxylateSymmetryFiltered) ==
+        static_cast<int>(PairDisposition::CarboxylateSymmetryFiltered));
 
     using AcceptorTriple = larsen_hbond_geometry::AcceptorTriple;
 
@@ -331,7 +340,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             std::size_t donor_anchor_idx,
             std::size_t donor_third_idx,
             std::size_t donor_residue_idx,
-            const AcceptorTriple& acc) -> PairResult {
+            const AcceptorTriple& acc,
+            bool selected_carboxylate_representative) -> PairResult {
 
         PairRecord pair;
         pair.donor_atom_idx = donor_H_idx;
@@ -395,7 +405,61 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         pair.r_angstrom = geom.r_angstrom;
         pair.theta_deg = geom.theta_deg;
         pair.rho_deg = geom.rho_deg;
-        pair.frame_valid = true;
+
+        const LarsenDonorFrame donor_frame = ComputeLarsenDonorFrame(
+            donor_H_pos, donor_anchor, donor_third);
+        pair.frame_valid = geom.IsFinite() && donor_frame.valid;
+        if (!pair.frame_valid) {
+            OperationLog::Warn(
+                "LarsenHBondShieldingResult::Compute",
+                "invalid Larsen pair frame: donor_atom=" +
+                    std::to_string(donor_H_idx) +
+                    " acceptor_atom=" + std::to_string(acc.O_idx) +
+                    " geometry_finite=" +
+                    std::to_string(geom.IsFinite() ? 1 : 0) +
+                    " donor_frame_failure=" + std::to_string(
+                        static_cast<int>(donor_frame.failure)));
+            choices.Record(CalculatorId::LarsenHBond, resolution_key++,
+                "invalid Larsen pair frame",
+                [geom, donor_class, ac_class = acc.class_, donor_frame]
+                (GeometryChoice& gc) {
+                    AddNumber(gc, "donor_class",
+                        static_cast<double>(donor_class), "enum");
+                    AddNumber(gc, "acceptor_class",
+                        static_cast<double>(ac_class), "enum");
+                    AddNumber(gc, "r_angstrom", geom.r_angstrom, "A");
+                    AddNumber(gc, "theta_deg", geom.theta_deg, "degrees");
+                    AddNumber(gc, "rho_deg", geom.rho_deg, "degrees");
+                    AddNumber(gc, "geometry_finite",
+                        geom.IsFinite() ? 1.0 : 0.0, "bool");
+                    AddNumber(gc, "donor_frame_failure",
+                        static_cast<double>(donor_frame.failure), "enum");
+                    AddNumber(gc, "rejection", 1.0, "invalid_frame");
+                });
+            return finish(PairResult::InvalidFrame);
+        }
+
+        // Preserve the physical one-oxygen acetate selection, but retain
+        // the classified farther sibling as an explicit diagnostic row.
+        // No grid query, tensor rotation, count, or water-gate decision is
+        // made from this row.
+        if (!selected_carboxylate_representative) {
+            choices.Record(CalculatorId::LarsenHBond, resolution_key++,
+                "carboxylate symmetry sibling filtered",
+                [donor_H_idx, acceptor_O_idx = acc.O_idx, geom]
+                (GeometryChoice& gc) {
+                    AddNumber(gc, "donor_atom",
+                        static_cast<double>(donor_H_idx), "atom_idx");
+                    AddNumber(gc, "acceptor_O",
+                        static_cast<double>(acceptor_O_idx), "atom_idx");
+                    AddNumber(gc, "r_angstrom", geom.r_angstrom, "A");
+                    AddNumber(gc, "theta_deg", geom.theta_deg, "degrees");
+                    AddNumber(gc, "rho_deg", geom.rho_deg, "degrees");
+                    AddNumber(gc, "rejection", 1.0,
+                        "carboxylate_symmetry_filtered");
+                });
+            return finish(PairResult::CarboxylateSymmetryFiltered);
+        }
 
         if (geom.theta_deg < kThetaMinDeg || geom.theta_deg > kThetaMaxDeg) {
             choices.Record(CalculatorId::LarsenHBond, resolution_key++,
@@ -443,8 +507,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         pair.any_corner_imputed = rec.any_corner_imputed;
         pair.imputed_corner_count = rec.imputed_corner_count;
 
-        Mat3 R_protein = ComputeLarsenDonorFrame(
-            donor_H_pos, donor_anchor, donor_third);
+        const Mat3& R_protein = donor_frame.rotation;
 
         // Pick the Table 2 Term names per donor class (primary +
         // secondary). HB terms apply when donor is amide H; HαB terms
@@ -687,12 +750,13 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             // Os iterate as independent spatial candidates. Larsen
             // scanned the acetate grid with one O fixed as the
             // H-bond acceptor — only the closer-to-donor O is the real
-            // H-bond. Skip the further sibling here so the closer one
-            // processes in its own iteration (codex finding F3,
-            // 2026-05-12). Tie-break by atom index when equidistant so
-            // exactly one of the two processes. The closer-to-donor O
-            // is also the one whose `third` (the OTHER O on the same C)
-            // points consistently with Larsen's reference geometry.
+            // H-bond. The further sibling remains a diagnostic attempt,
+            // but it must not enter the grid/tensor/water-gate physics.
+            // Tie-break by atom index when equidistant so exactly one O
+            // is selected. The closer-to-donor O is also the one whose
+            // `third` (the OTHER O on the same C) points consistently
+            // with Larsen's reference geometry.
+            bool selected_carboxylate_representative = true;
             if (classified->class_ == HBondAcceptorClass::CarboxylateOxygen) {
                 const double d_self =
                     (conf.PositionAt(o_idx) - donor_pos).norm();
@@ -700,13 +764,14 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     (conf.PositionAt(classified->third_idx) - donor_pos).norm();
                 if (d_sib < d_self ||
                     (d_sib == d_self && classified->third_idx < o_idx)) {
-                    continue;
+                    selected_carboxylate_representative = false;
                 }
             }
 
             PairResult r = process_pair(
                 donor_class, ai, donor_anchor_idx, donor_third_idx,
-                atom.residue_index, *classified);
+                atom.residue_index, *classified,
+                selected_carboxylate_representative);
 
             // Mass-conservation increments + water-term gate. Both
             // Success and GridMiss confirm θ ≥ 90° — only those count
@@ -722,6 +787,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     break;
                 case PairResult::ThetaOutOfRange:
                 case PairResult::MissingFrameAtoms:
+                case PairResult::InvalidFrame:
+                case PairResult::CarboxylateSymmetryFiltered:
                     ++n_pairs_grid_skipped;
                     break;
             }

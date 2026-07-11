@@ -37,6 +37,11 @@ from nmr_extract import (
     project_t2_to_e3nn,
     project_full9_to_e3nn,
 )
+from nmr_extract._protein import PiQuadrupoleGroup
+from _topology_fixture import (
+    write_minimal_topology_sidecar,
+    write_required_sdk_npys,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +70,9 @@ MCCONNELL_CATEGORIES = (
     "sidechain_other",
     "disulfide",
     "aromatic_zeroed",
+    "backbone_xh",
+    "sidechain_xh",
+    "s_h",
 )
 MCCONNELL_CHANNELS = tuple(
     f"{category}_{channel}"
@@ -84,6 +92,55 @@ RETIRED_NPY_STEMS = {
     "pq_shielding",
     "ringchi_shielding",
 }
+
+
+def test_pi_quadrupole_dense_aliases_are_axis_correct_and_backward_compatible(
+        tmp_path):
+    """A18's two names are N x 8 arrays, not sparse P-row properties."""
+    legacy = PerRingTypeT0(np.arange(8, dtype=np.float64)[None, :])
+    preferred = PerRingTypeT0(
+        np.arange(8, dtype=np.float64)[None, :] + 100.0)
+
+    group = PiQuadrupoleGroup(
+        per_type_T0=legacy,
+        axial_scalar_per_type_T0=preferred,
+    )
+    assert group.pq_per_type_T0 is legacy
+    assert group.piquad_axial_scalar_per_type_T0 is preferred
+
+    pre_alias = PiQuadrupoleGroup(
+        per_type_T0=legacy,
+        axial_scalar_per_type_T0=None,
+    )
+    assert pre_alias.piquad_axial_scalar_per_type_T0 is legacy
+
+    # Exercise the real top-level required-file gate, not only direct group
+    # construction: a pre-alias extraction has the legacy required payload
+    # but no additive preferred-name duplicate and must still load.
+    write_required_sdk_npys(tmp_path, n_atoms=1, n_residues=1)
+    write_minimal_topology_sidecar(tmp_path, n_atoms=1, n_residues=1)
+    preferred_path = tmp_path / "piquad_axial_scalar_per_type_T0.npy"
+    assert not preferred_path.exists()
+    loaded = load(tmp_path)
+    assert loaded.pi_quadrupole.axial_scalar_per_type_T0 is None
+    np.testing.assert_array_equal(
+        loaded.pi_quadrupole.piquad_axial_scalar_per_type_T0.data,
+        loaded.pi_quadrupole.pq_per_type_T0.data,
+    )
+
+
+def test_mcconnell_all_ten_category_views_load_from_current_contract(
+        tmp_path):
+    write_required_sdk_npys(tmp_path, n_atoms=1, n_residues=1)
+    write_minimal_topology_sidecar(tmp_path, n_atoms=1, n_residues=1)
+    mc = load(tmp_path).mcconnell
+    assert set(mc.fixed) == set(MCCONNELL_CATEGORIES)
+    assert set(mc.bo) == set(MCCONNELL_CATEGORIES)
+    assert len(mc.fixed) == len(MCCONNELL_CATEGORIES) == 10
+    assert len(mc.bo) == len(MCCONNELL_CATEGORIES) == 10
+    for category in MCCONNELL_CATEGORIES:
+        assert mc.fixed[category] is getattr(mc, f"{category}_fixed")
+        assert mc.bo[category] is getattr(mc, f"{category}_bo")
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
@@ -340,8 +397,8 @@ class TestMcConnellChannels:
         mc = geo.mcconnell
         assert set(mc.fixed) == set(MCCONNELL_CATEGORIES)
         assert set(mc.bo) == set(MCCONNELL_CATEGORIES)
-        assert len(mc.fixed) == 7
-        assert len(mc.bo) == 7
+        assert len(mc.fixed) == len(MCCONNELL_CATEGORIES) == 10
+        assert len(mc.bo) == len(MCCONNELL_CATEGORIES) == 10
         for category in MCCONNELL_CATEGORIES:
             assert mc.fixed[category] is getattr(mc, f"{category}_fixed")
             assert mc.bo[category] is getattr(mc, f"{category}_bo")

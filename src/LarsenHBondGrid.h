@@ -93,8 +93,9 @@
 //   y-axis   = cross(z, x)
 //
 // The free function `ComputeLarsenDonorFrame(h_pos, anchor_pos,
-// third_pos)` builds this rotation matrix on the C++ side; the parser
-// uses the same frame definition to keep the tensor basis consistent.
+// third_pos)` builds and validates this rotation matrix on the C++ side;
+// the parser uses the same frame definition to keep the tensor basis
+// consistent.
 //
 // Per-archive readout atoms (in the canonical frame above):
 //   ALA donor: donor {N, CA, CB, C, HA, HN}
@@ -133,13 +134,14 @@
 //
 //
 // Tensor rotation contract (CRITICAL for the calculator):
-// (canonical donor frame defined above; R = ComputeLarsenDonorFrame)
+// (canonical donor frame defined above;
+//  frame = ComputeLarsenDonorFrame, R = frame.rotation when frame.valid)
 //
 //   Grid tensors are stored such that
 //     σ_canonical_stored = R_log · σ_log · R_logᵀ
 //   where R_log = ComputeLarsenDonorFrame applied to the log-frame
 //   donor atoms. At runtime, the calculator computes
-//     R_protein = ComputeLarsenDonorFrame(H_p, anchor_p, third_p)
+//     R_protein = ComputeLarsenDonorFrame(H_p, anchor_p, third_p).rotation
 //   from protein-side atom positions and recovers the protein-lab-
 //   frame tensor via
 //     σ_lab = R_proteinᵀ · σ_canonical · R_protein.
@@ -150,7 +152,9 @@
 #include "Types.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -188,6 +192,12 @@ struct LarsenHBondGeometry {
     double theta_deg  = 0.0;   // angle(donor_H, acceptor_O, acceptor_C), deg.
     double rho_deg    = 0.0;   // dihedral(donor_H, acceptor_O, acceptor_C,
                                // acceptor_third), IUPAC sign, [−180, 180].
+
+    bool IsFinite() const {
+        return std::isfinite(r_angstrom) &&
+               std::isfinite(theta_deg) &&
+               std::isfinite(rho_deg);
+    }
 };
 
 
@@ -203,23 +213,41 @@ LarsenHBondGeometry ComputeLarsenHBondGeometry(
     const Vec3& acceptor_third_pos);
 
 
-// Compute the canonical-donor-frame rotation matrix R such that
+// Compute the canonical-donor-frame rotation result containing R such that
 //     v_canonical = R * (v_log − donor_H_pos)
-// (the canonical frame is centered at donor_H; this function returns
-// only the rotation, not the translation). See the file header for
-// the canonical-frame definition.
+// (the canonical frame is centered at donor_H; the result contains only
+// the rotation and its validity, not the translation). See the file header
+// for the canonical-frame definition.
 //
 // Caller plugs in the three protein atom positions according to the
 // per-class mapping table in the file header (Hα/Cα/N for ALA donor;
 // HN/N/C'(i−1) for NMA donor — note the PRECEDING residue's carbonyl C
 // for the amide-H case, NOT this residue's CA).
 //
-// Returns Mat3::Identity if any of the three reference vectors is
-// degenerate (donor_H coincident with donor_anchor or donor_third, or
-// donor_third on the donor_anchor → donor_H line). Logs a warning via
-// OperationLog::Warn. Real protein geometry should never trigger this
-// — it's a guard against misconfigured callers.
-Mat3 ComputeLarsenDonorFrame(
+// Invalid input is explicit: no identity-frame fallback is returned.
+// `valid` is false and `rotation` stays NaN when any coordinate is
+// non-finite or a reference vector is degenerate (donor_H coincident with
+// donor_anchor or donor_third, or donor_third on the donor_anchor → donor_H
+// line). The helper logs the precise failure via OperationLog::Warn. A caller
+// must gate tensor rotation on `valid`; treating identity as a valid physical
+// frame silently rotates canonical-grid tensors into the wrong lab frame.
+enum class LarsenDonorFrameFailure : std::uint8_t {
+    None = 0,
+    NonFiniteInput = 1,
+    CoincidentAnchor = 2,
+    CoincidentThird = 3,
+    CollinearThird = 4,
+    NonFiniteBasis = 5,
+};
+
+struct LarsenDonorFrame {
+    Mat3 rotation = Mat3::Constant(
+        std::numeric_limits<double>::quiet_NaN());
+    LarsenDonorFrameFailure failure = LarsenDonorFrameFailure::None;
+    bool valid = false;
+};
+
+LarsenDonorFrame ComputeLarsenDonorFrame(
     const Vec3& donor_H_pos,
     const Vec3& donor_anchor_pos,
     const Vec3& donor_third_pos);
@@ -228,8 +256,8 @@ Mat3 ComputeLarsenDonorFrame(
 // Transform a tensor returned by QueryNearest from the CANONICAL DONOR
 // FRAME (in which grid tensors are stored) into the protein lab frame.
 //
-// `R_protein` is the rotation matrix returned by ComputeLarsenDonorFrame
-// applied to the protein-side atom positions. The grid tensors satisfy
+// `R_protein` is the validated `LarsenDonorFrame::rotation` computed from
+// the protein-side atom positions. The grid tensors satisfy
 //   σ_canonical = R_log · σ_log · R_logᵀ
 // at parse time, so the corresponding lab-frame tensor is
 //   σ_lab = R_proteinᵀ · σ_canonical · R_protein.

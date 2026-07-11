@@ -158,12 +158,20 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     EXPECT_EQ(dims[2], 9u)
         << "9-component emission per 'if not traceless write both'";
 
-    std::string parity, layout, units;
-    grp.getAttribute("parity").read(parity);
-    grp.getAttribute("irrep_layout").read(layout);
+    std::string basis, order, frame, tensor_parity, e3nn_export, units;
+    grp.getAttribute("tensor_basis").read(basis);
+    grp.getAttribute("tensor_component_order").read(order);
+    grp.getAttribute("tensor_frame").read(frame);
+    grp.getAttribute("tensor_parity").read(tensor_parity);
+    grp.getAttribute("e3nn_export").read(e3nn_export);
     grp.getAttribute("units").read(units);
-    EXPECT_EQ(parity, "0e+1e+2e");
-    EXPECT_EQ(layout, nmr::kMcConnellPackFull9IrrepLayout);
+    EXPECT_EQ(basis, nmr::kMcConnellPackFull9TensorBasis);
+    EXPECT_EQ(order, nmr::kMcConnellPackFull9ComponentOrder);
+    EXPECT_EQ(frame, nmr::kMcConnellPackFull9TensorFrame);
+    EXPECT_EQ(tensor_parity, "even");
+    EXPECT_EQ(e3nn_export, nmr::kMcConnellPackFull9E3nnExport);
+    EXPECT_FALSE(grp.hasAttribute("irrep_layout"));
+    EXPECT_FALSE(grp.hasAttribute("parity"));
     EXPECT_EQ(units, "Angstrom^-3")
         << "bare McConnell kernel bo·D(r)Qhat, no Δχ × γ multiplication "
            "at extraction; decision 2026-05-21 per science/math review H1.";

@@ -165,10 +165,10 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
             return RingSusceptibilityResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "PiQuadrupoleResult", out, [&]{
             return PiQuadrupoleResult::Compute(conf); })) return out;
-    if (!TimedAttach(conf, "PiQuadrupoleLocalTensorResult", out, [&]{
-            return PiQuadrupoleLocalTensorResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "DispersionResult", out, [&]{
             return DispersionResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "PiQuadrupoleLocalTensorResult", out, [&]{
+            return PiQuadrupoleLocalTensorResult::Compute(conf); })) return out;
 
     if (conf.HasResult<ChargeAssignmentResult>() && !opts.skip_coulomb) {
         if (!TimedAttach(conf, "CoulombResult", out, [&]{

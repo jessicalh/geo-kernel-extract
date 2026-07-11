@@ -43,8 +43,17 @@ ChannelResponses SelectChannelResponses(McConnellSourceCategory category,
                                         double bond_order);
 }  // namespace mcconnell_result_detail
 
-inline constexpr const char* kMcConnellPackFull9IrrepLayout =
-    "0e,1e_x,1e_y,1e_z,2e_m-2..+2";
+// SphericalTensor::PackFull9 is the project's native Cartesian/tesseral
+// decomposition, not an e3nn irrep tensor.  Producers must publish these
+// honest labels and require an explicit basis conversion before e3nn use.
+inline constexpr const char* kMcConnellPackFull9TensorBasis =
+    "project_native_full9_spherical_tensor_v1";
+inline constexpr const char* kMcConnellPackFull9ComponentOrder =
+    "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2";
+inline constexpr const char* kMcConnellPackFull9TensorFrame =
+    "conformation_cartesian_xyz";
+inline constexpr const char* kMcConnellPackFull9E3nnExport =
+    "explicit project-basis to e3nn conversion required before use";
 
 // NOTE: vestigial. The runtime cutoff comes from CalculatorConfig
 // "mcconnell_bond_anisotropy_cutoff"; this constant is referenced only

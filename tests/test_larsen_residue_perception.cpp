@@ -40,12 +40,11 @@ namespace {
 
 // The (tripeptide, frame_type, central_letter) test matrix. One row
 // per DB (tripeptide, frame_type) combination. We probe each combo
-// at (phi=-180, psi=-180) with n_chi_axes=0 — verified via psql to
-// exist for all 20 (tripeptide, frame_type) pairs (COUNT(DISTINCT
-// tripeptide) = 20 at that grid point). QueryNearest does an exact
-// SQL match rounded to grid, so picking a point that always exists
-// keeps the test deterministic regardless of which chi values are
-// physically meaningful for each residue.
+// at (phi=-180, psi=-180). Most rows use n_chi_axes=0; ILE and LEU
+// deliberately pin clean full-chi fixtures. Piece 07's required omitted-chi
+// nearest-pose ordering correctly exposes malformed AIA/ALA rows, so a
+// perception-only test must not conflate those external-row defects with the
+// LarsenResidue algorithm it is intended to exercise.
 struct Combo {
     const char* tripeptide;
     const char* frame_type;
@@ -116,13 +115,27 @@ TEST_F(LarsenResiduePerceptionTest, AllCombinationsPerceiveCleanly) {
         const AminoAcid aa = LetterToAa(c.letter);
         ASSERT_NE(aa, AminoAcid::Unknown) << "unknown letter " << c.letter;
 
-        // phi=-180, psi=-180, n_chi_axes=0 → drop all chi from
-        // WHERE clause. Verified via psql that all 20 (tripeptide,
-        // frame_type) pairs have at least one row at this grid point.
-        TripeptideDftRecord rec = table->QueryNearest(
-            c.letter, /*phi=*/-180.0, /*psi=*/-180.0,
-            /*chi1=*/0.0, /*chi2=*/0.0, /*chi3=*/0.0, /*chi4=*/0.0,
-            /*n_chi_axes=*/0);
+        TripeptideDftRecord rec;
+        if (c.letter == 'I' || c.letter == 'L') {
+            const double chi1 = 60.0;
+            const double chi2 = c.letter == 'I' ? 140.0 : -40.0;
+            const int expected_calc_id =
+                c.letter == 'I' ? 514994 : 786416;
+            rec = table->QueryNearest(
+                c.letter, /*phi=*/-180.0, /*psi=*/-180.0,
+                chi1, chi2,
+                /*chi3=*/0.0, /*chi4=*/0.0,
+                /*n_chi_axes=*/2);
+            EXPECT_EQ(rec.calc_id, expected_calc_id)
+                << "clean perception fixture changed; do not silently "
+                   "fall through malformed omitted-chi rows";
+        } else {
+            rec = table->QueryNearest(
+                c.letter, /*phi=*/-180.0, /*psi=*/-180.0,
+                /*chi1=*/0.0, /*chi2=*/0.0,
+                /*chi3=*/0.0, /*chi4=*/0.0,
+                /*n_chi_axes=*/0);
+        }
         if (!rec.IsHit()) {
             ++n_skipped_db_miss;
             ADD_FAILURE() << c.tripeptide

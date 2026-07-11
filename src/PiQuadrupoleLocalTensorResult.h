@@ -3,8 +3,9 @@
 // Raw local-frame geometric pi-quadrupole tensor companion.
 //
 // PiQuadrupoleResult preserves the historical axial A-term scalar.  This
-// result emits the full symmetric/traceless geometry tensor in a deterministic
-// ring-local frame without changing that scalar channel.
+// result computes and stores the full symmetric/traceless geometry tensor on
+// each final RingNeighbourhood row in a deterministic ring-local frame,
+// without changing that scalar channel.  WriteFeatures is pure read-back.
 //
 
 #include "ConformationResult.h"

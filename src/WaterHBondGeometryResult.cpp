@@ -82,8 +82,8 @@ WaterHBondGeometryResult::Compute(ProteinConformation& conf,
         return result;
     }
 
-    const double candidate_cutoff =
-        CalculatorConfig::Get("water_first_shell_cutoff");
+    constexpr double candidate_cutoff =
+        water_hbond_geometry_detail::kCandidateHeavyDistance_A;
 
     auto register_candidate = [&](Candidate candidate) {
         const size_t ai = candidate.protein_atom;

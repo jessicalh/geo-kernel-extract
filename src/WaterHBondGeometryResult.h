@@ -20,6 +20,11 @@ struct AtomSemanticTable;
 
 namespace water_hbond_geometry_detail {
 
+// Frozen A27 candidate-shell contract.  This is intentionally independent
+// of the mutable hydration/field first-shell configuration: changing those
+// calculators must never change which raw H-bond attempts are preserved.
+inline constexpr double kCandidateHeavyDistance_A = 3.5;
+
 struct GeometryEvaluation {
     double donor_heavy_acceptor_distance_A = 0.0;
     double h_acceptor_distance_A = 0.0;

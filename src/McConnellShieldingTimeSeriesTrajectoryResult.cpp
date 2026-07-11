@@ -99,10 +99,16 @@ void McConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
 
-    grp.createAttribute("irrep_layout",
-        std::string(kMcConnellPackFull9IrrepLayout));
+    grp.createAttribute("tensor_basis",
+        std::string(kMcConnellPackFull9TensorBasis));
+    grp.createAttribute("tensor_component_order",
+        std::string(kMcConnellPackFull9ComponentOrder));
+    grp.createAttribute("tensor_frame",
+        std::string(kMcConnellPackFull9TensorFrame));
+    grp.createAttribute("tensor_parity", std::string("even"));
+    grp.createAttribute("e3nn_export",
+        std::string(kMcConnellPackFull9E3nnExport));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("0e+1e+2e"));
     grp.createAttribute("units",         std::string("Angstrom^-3"));
 
     std::vector<double> flat(N * T * 9);
