@@ -469,6 +469,72 @@ TEST(RawDiagnosticEmission, WaterHBondGeometryUsesProductionKernelAndWriter) {
 }
 
 TEST(RawDiagnosticEmission,
+     WaterHBondNearestPassModeUsesFartherPassingCandidate) {
+    auto protein = BuildAspCarboxylateProtein();
+    auto& conf = protein->Conformation();
+
+    SolventEnvironment solvent;
+    WaterMolecule nearer_failing;
+    nearer_failing.O_pos = Vec3(3.0, 0.0, 0.0);
+    nearer_failing.H1_pos = Vec3(3.0, 1.0, 0.0);
+    nearer_failing.H2_pos = Vec3(3.8, -0.6, 0.0);
+    nearer_failing.O_charge = -0.834;
+    nearer_failing.H_charge = 0.417;
+    solvent.waters.push_back(nearer_failing);
+    solvent.water_O_positions.push_back(nearer_failing.O_pos);
+
+    WaterMolecule farther_passing;
+    farther_passing.O_pos = Vec3(4.0, 0.0, 0.0);
+    farther_passing.H1_pos = Vec3(3.0, 0.0, 0.0);
+    farther_passing.H2_pos = Vec3(4.5, 0.8, 0.0);
+    farther_passing.O_charge = -0.834;
+    farther_passing.H_charge = 0.417;
+    solvent.waters.push_back(farther_passing);
+    solvent.water_O_positions.push_back(farther_passing.O_pos);
+
+    auto result = WaterHBondGeometryResult::Compute(conf, solvent);
+    ASSERT_NE(result, nullptr);
+    const fs::path dir = TempDir("water_hbond_nearest_pass_mode");
+    ASSERT_EQ(result->WriteFeatures(conf, dir.string()), 3);
+
+    const auto candidates = ReadNpyPayload<double>(
+        dir / "water_hbond_candidates.npy", "<f8", "'shape': (2,16)");
+    ASSERT_EQ(candidates.size(), 32u);
+    EXPECT_EQ(candidates[0*16 + 0], 1.0);  // typed OD1 acceptor
+    EXPECT_EQ(candidates[0*16 + 2], 0.0);  // nearer water
+    EXPECT_DOUBLE_EQ(candidates[0*16 + 5], 1.75);
+    EXPECT_LT(candidates[0*16 + 8], 120.0);
+    EXPECT_EQ(candidates[0*16 + 15], 0.0);  // fails angle
+    EXPECT_EQ(candidates[1*16 + 0], 1.0);
+    EXPECT_EQ(candidates[1*16 + 2], 1.0);  // farther water
+    EXPECT_DOUBLE_EQ(candidates[1*16 + 5], 2.75);
+    EXPECT_DOUBLE_EQ(candidates[1*16 + 8], 180.0);
+    EXPECT_EQ(candidates[1*16 + 15], 1.0);  // passes geometry
+
+    const auto counts = ReadNpyPayload<int32_t>(
+        dir / "water_hbond_counts.npy", "<i4", "'shape': (3,6)");
+    ASSERT_EQ(counts.size(), 18u);
+    EXPECT_EQ(counts[1*6 + 0], 2);  // water-donor candidates
+    EXPECT_EQ(counts[1*6 + 1], 1);  // water-donor passes
+    EXPECT_EQ(counts[1*6 + 4], 0);  // overall-nearest water still index 0
+    EXPECT_EQ(counts[1*6 + 5], 1);  // nearest passing mode: water donates
+
+    const auto nearest = ReadNpyPayload<double>(
+        dir / "water_hbond_nearest.npy", "<f8", "'shape': (3,8)");
+    ASSERT_EQ(nearest.size(), 24u);
+    EXPECT_DOUBLE_EQ(nearest[1*8 + 0], 1.75);
+    EXPECT_EQ(nearest[1*8 + 3], 1.0);
+    EXPECT_EQ(nearest[1*8 + 4], 0.0);
+    EXPECT_EQ(nearest[1*8 + 5], 0.0);  // overall nearest still fails
+    EXPECT_EQ(nearest[1*8 + 6], 2.0);
+    EXPECT_EQ(nearest[1*8 + 7], 1.0);
+
+    RemoveFilesAndDir(dir, {"water_hbond_candidates.npy",
+                            "water_hbond_counts.npy",
+                            "water_hbond_nearest.npy"});
+}
+
+TEST(RawDiagnosticEmission,
      WaterHBondGeometryProteinDonorUsesFrozenBoundaryAndZeroRows) {
     auto protein = BuildAlaHydrogenProtein();
     auto& conf = protein->Conformation();

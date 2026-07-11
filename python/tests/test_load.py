@@ -94,6 +94,13 @@ RETIRED_NPY_STEMS = {
 }
 
 
+def test_hbond_nearest_direction_catalog_names_explicit_donor_h_source():
+    description = CATALOG["hbond_nearest_dir"].description
+    assert "explicit donor H source point" in description
+    assert "target atom" in description
+    assert "midpoint" not in description
+
+
 def test_pi_quadrupole_dense_aliases_are_axis_correct_and_backward_compatible(
         tmp_path):
     """A18's two names are N x 8 arrays, not sparse P-row properties."""

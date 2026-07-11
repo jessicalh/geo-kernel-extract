@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import h5py
 import numpy as np
+import pytest
 
 from nmr_extract import (
     AIMNet2AimProjectionWelfordGroup,
@@ -353,8 +354,7 @@ def _write_mopac_mc_group(f: h5py.File, *, legacy: bool) -> None:
         g.attrs["tensor_frame"] = "conformation_cartesian_xyz"
         g.attrs["tensor_parity"] = "even"
         g.attrs["e3nn_export"] = \
-            "raw project tensor; call to_e3nn()/to_e3nn_T2() or " \
-            "project_t2_to_e3nn() before using e3nn Irreps"
+            "explicit project-basis to e3nn conversion required before use"
     g.create_dataset(
         "xyz",
         data=np.zeros((N_ATOMS, N_FRAMES, 9), dtype=np.float64))
@@ -462,9 +462,14 @@ def test_mopac_mc_project_metadata_round_trip(tmp_path):
         "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
     assert group.tensor_frame == "conformation_cartesian_xyz"
     assert group.tensor_parity == "even"
-    assert "before using e3nn Irreps" in group.e3nn_export
+    assert group.e3nn_export == \
+        "explicit project-basis to e3nn conversion required before use"
     assert group.legacy_irrep_layout == ""
     assert group.legacy_parity == ""
+    with pytest.warns(DeprecationWarning, match="legacy_irrep_layout"):
+        assert group.irrep_layout == ""
+    with pytest.warns(DeprecationWarning, match="legacy_parity"):
+        assert group.parity == ""
 
 
 def test_mopac_mc_legacy_metadata_gets_honest_authoritative_defaults(tmp_path):
@@ -480,10 +485,16 @@ def test_mopac_mc_legacy_metadata_gets_honest_authoritative_defaults(tmp_path):
         "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
     assert group.tensor_frame == "conformation_cartesian_xyz"
     assert group.tensor_parity == "even"
-    assert "before using e3nn Irreps" in group.e3nn_export
+    assert "project_full9_to_e3nn(xyz)" in group.e3nn_export
+    assert "project_t2_to_e3nn" not in group.e3nn_export
+    assert "to_e3nn()" not in group.e3nn_export
     assert group.legacy_irrep_layout == \
         "0e,1e_x,1e_y,1e_z,2e_m-2..+2"
     assert group.legacy_parity == "0e+1e+2e"
+    with pytest.warns(DeprecationWarning, match="legacy_irrep_layout"):
+        assert group.irrep_layout == group.legacy_irrep_layout
+    with pytest.warns(DeprecationWarning, match="legacy_parity"):
+        assert group.parity == group.legacy_parity
 
 
 def test_charge_response_labels_are_unambiguous():

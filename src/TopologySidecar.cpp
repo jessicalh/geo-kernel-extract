@@ -703,7 +703,10 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
             "larsen_hbond_pairs_geometry.npy, "
             "larsen_hbond_pairs_isotropic.npy, and "
             "larsen_hbond_pairs.npy share one row per processed "
-            "Larsen donor/acceptor candidate."},
+            "Larsen donor/acceptor candidate. The index-table disposition "
+            "column uses 0=missing_frame_atoms, 1=theta_out_of_range, "
+            "2=grid_miss, 3=success, 4=invalid_frame, and "
+            "5=carboxylate_symmetry_filtered."},
         {"ring_pair",
             "ring_pair_geometry.npy is one row per aromatic-ring pair in "
             "lexicographic i<j order; ring_a and ring_b reference the "

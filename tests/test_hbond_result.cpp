@@ -1,11 +1,20 @@
 #include "TestEnvironment.h"
 #include <gtest/gtest.h>
 #include <array>
+#include <cstdint>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <vector>
+#include <unistd.h>
+
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5File.hpp>
+#include <highfive/H5Group.hpp>
 
 #include "HBondResult.h"
+#include "HBondCountWelfordTrajectoryResult.h"
 #include "McConnellResult.h"
 #include "CoulombResult.h"
 #include "RingSusceptibilityResult.h"
@@ -19,6 +28,8 @@
 #include "MutationDeltaResult.h"
 #include "OperationLog.h"
 #include "PhysicalConstants.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -82,6 +93,38 @@ SyntheticHBondFixture BuildNonCollinearExplicitHydrogenFixture() {
     return f;
 }
 
+template <typename T>
+std::vector<T> ReadNpyPayload(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    if (!in.is_open()) return {};
+
+    char magic[6] = {};
+    in.read(magic, sizeof(magic));
+    EXPECT_EQ(std::string(magic, sizeof(magic)),
+              std::string("\x93NUMPY", sizeof(magic)));
+    char version[2] = {};
+    in.read(version, sizeof(version));
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    std::uint16_t header_length = 0;
+    in.read(reinterpret_cast<char*>(&header_length), sizeof(header_length));
+    in.seekg(header_length, std::ios::cur);
+
+    const std::streampos payload_begin = in.tellg();
+    in.seekg(0, std::ios::end);
+    const std::streamoff payload_bytes = in.tellg() - payload_begin;
+    EXPECT_EQ(payload_bytes % static_cast<std::streamoff>(sizeof(T)), 0);
+    in.seekg(payload_begin);
+
+    std::vector<T> values(
+        static_cast<size_t>(payload_bytes / sizeof(T)));
+    if (!values.empty()) {
+        in.read(reinterpret_cast<char*>(values.data()), payload_bytes);
+    }
+    return values;
+}
+
 }  // namespace
 
 
@@ -119,6 +162,8 @@ TEST(HBondGeometryKernel, UsesExplicitHydrogenAndAppliesTargetSequenceFilter) {
     // target=(2,2,0).  These numbers are pinned independently, rather than
     // recomputing the production formula in the test.
     const auto& remote = conf.AtomAt(f.remote_target);
+    EXPECT_EQ(remote.hbond_count_within_3_5A, 1)
+        << "the disconnected-chain H-bond is inside the 3.5 A count shell";
     EXPECT_NEAR(remote.hbond_nearest_dist, 2.236067977499790, 1e-12);
     EXPECT_NEAR(remote.hbond_inv_d3, 0.089442719099992, 1e-12);
     EXPECT_NEAR(remote.hbond_mcconnell_scalar, 0.125219806739988, 1e-12);
@@ -141,6 +186,203 @@ TEST(HBondGeometryKernel, UsesExplicitHydrogenAndAppliesTargetSequenceFilter) {
         Vec3(2.0, 2.0, 0.0), Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0));
     EXPECT_NEAR(kernel.distance, 2.236067977499790, 1e-12);
     EXPECT_NEAR(kernel.f, 0.125219806739988, 1e-12);
+
+    // Pin the changed producer arrays, not merely their in-memory source.
+    // The expected count/flags come from the independently constructed
+    // chain graph and DSSP pair above; WriteFeatures is pure read-back.
+    const fs::path output_dir = fs::temp_directory_path() /
+        ("hbond_multichain_forcing_" + std::to_string(::getpid()));
+    ASSERT_TRUE(fs::create_directories(output_dir));
+    ASSERT_EQ(conf.Result<HBondResult>().WriteFeatures(
+                  conf, output_dir.string()),
+              3);
+    const auto scalars = ReadNpyPayload<double>(
+        output_dir / "hbond_scalars.npy");
+    const auto flags = ReadNpyPayload<std::int8_t>(
+        output_dir / "hbond_flags.npy");
+    ASSERT_EQ(scalars.size(), conf.AtomCount() * 4);
+    ASSERT_EQ(flags.size(), conf.AtomCount() * 3);
+    EXPECT_DOUBLE_EQ(scalars[f.remote_target * 4 + 2], 1.0);
+    EXPECT_DOUBLE_EQ(scalars[f.local_target * 4 + 2], 0.0);
+    EXPECT_EQ(flags[f.remote_target * 3 + 0], 1);
+    EXPECT_EQ(flags[f.donor_n * 3 + 1], 1);
+    EXPECT_EQ(flags[f.acceptor_o * 3 + 2], 1);
+    EXPECT_EQ(flags[f.local_target * 3 + 0], 0);
+    EXPECT_EQ(flags[f.local_target * 3 + 1], 0);
+    EXPECT_EQ(flags[f.local_target * 3 + 2], 0);
+    // Avoid std::filesystem::remove_all: libtorch exports a broken copy of
+    // that symbol in this test executable.  This is the established cleanup
+    // pattern used by the other producer-emission tests.
+    std::error_code ec;
+    fs::remove(output_dir / "hbond_scalars.npy", ec);
+    fs::remove(output_dir / "hbond_flags.npy", ec);
+    fs::remove(output_dir / "hbond_nearest_dir.npy", ec);
+    fs::remove(output_dir, ec);
+}
+
+
+TEST(HBondGeometryKernel,
+     CrossChainProductionCountFeedsProductionWelfordConsumer) {
+    auto f = BuildNonCollinearExplicitHydrogenFixture();
+    ProteinConformation* conf = &f.protein->Conformation();
+
+    // A second, independently computed frame moves only the disconnected
+    // target outside the count shell.  The cross-chain DSSP pair remains
+    // accepted, giving the Welford consumer the exact sequence [1, 0].
+    std::vector<Vec3> far_positions = conf->Positions();
+    far_positions[f.remote_target] = Vec3(20.0, 20.0, 0.0);
+    auto far_conf = std::make_unique<ProteinConformation>(
+        f.protein.get(), std::move(far_positions),
+        "cross-chain target outside count shell");
+
+    ASSERT_TRUE(conf->AttachResult(GeometryResult::Compute(*conf)));
+    ASSERT_TRUE(conf->AttachResult(SpatialIndexResult::Compute(*conf)));
+    std::vector<DsspResidue> residues(f.protein->ResidueCount());
+    residues[1].observed = true;
+    residues[1].acceptors[0].residue_index = 2;
+    ASSERT_TRUE(conf->AttachResult(
+        DsspResult::CreateForTesting(std::move(residues))));
+    ASSERT_TRUE(conf->AttachResult(HBondResult::Compute(*conf)));
+    ASSERT_EQ(conf->AtomAt(f.remote_target).hbond_count_within_3_5A, 1);
+
+    ASSERT_TRUE(far_conf->AttachResult(GeometryResult::Compute(*far_conf)));
+    ASSERT_TRUE(far_conf->AttachResult(
+        SpatialIndexResult::Compute(*far_conf)));
+    std::vector<DsspResidue> far_residues(f.protein->ResidueCount());
+    far_residues[1].observed = true;
+    far_residues[1].acceptors[0].residue_index = 2;
+    ASSERT_TRUE(far_conf->AttachResult(
+        DsspResult::CreateForTesting(std::move(far_residues))));
+    ASSERT_TRUE(far_conf->AttachResult(HBondResult::Compute(*far_conf)));
+    ASSERT_EQ(far_conf->AtomAt(f.remote_target).hbond_count_within_3_5A, 0);
+
+    // The synthetic Protein is already finalized and owns the production
+    // HBondResult. Seat that same object in a trajectory buffer without an
+    // external TPR/TRR dependency, then dispatch the real Welford Compute.
+    auto tp = TrajectoryProtein::CreateForTesting(std::move(f.protein));
+    ASSERT_NE(tp, nullptr);
+    ASSERT_TRUE(tp->AttachResult(
+        HBondCountWelfordTrajectoryResult::Create(*tp)));
+    Trajectory trajectory(fs::path{}, fs::path{}, fs::path{});
+    tp->DispatchCompute(*conf, trajectory, 17, 4.0);
+    tp->DispatchCompute(*far_conf, trajectory, 18, 5.0);
+    tp->FinalizeAllResults(trajectory);
+
+    const auto& remote =
+        tp->AtomAt(f.remote_target).hbond_count_welford;
+    EXPECT_EQ(remote.n_frames, 2u);
+    EXPECT_DOUBLE_EQ(remote.count.mean, 0.5);
+    EXPECT_DOUBLE_EQ(remote.count.m2, 0.5);
+    EXPECT_DOUBLE_EQ(remote.count.std, std::sqrt(0.5));
+    EXPECT_DOUBLE_EQ(remote.count.min, 0.0);
+    EXPECT_DOUBLE_EQ(remote.count.max, 1.0);
+    EXPECT_EQ(remote.count.min_frame, 18u);
+    EXPECT_EQ(remote.count.max_frame, 17u);
+    EXPECT_DOUBLE_EQ(remote.occupancy_fraction.mean, 0.5);
+    EXPECT_DOUBLE_EQ(remote.count_delta.mean, -1.0);
+    EXPECT_DOUBLE_EQ(remote.count_abs_delta.mean, 1.0);
+    EXPECT_DOUBLE_EQ(remote.count_delta_squared.mean, 1.0);
+    EXPECT_DOUBLE_EQ(remote.count_dxdt.mean, -1.0);
+    EXPECT_DOUBLE_EQ(remote.count_rms_delta, 1.0);
+    EXPECT_EQ(remote.delta_n, 1u);
+    EXPECT_EQ(remote.dxdt_n, 1u);
+
+    const auto& local =
+        tp->AtomAt(f.local_target).hbond_count_welford;
+    EXPECT_EQ(local.n_frames, 2u);
+    EXPECT_DOUBLE_EQ(local.count.mean, 0.0);
+    EXPECT_DOUBLE_EQ(local.count.std, 0.0);
+    EXPECT_DOUBLE_EQ(local.occupancy_fraction.mean, 0.0);
+    EXPECT_DOUBLE_EQ(local.count_delta.mean, 0.0);
+
+    // Pin the emitted consumer contract, including canonical datasets and
+    // the legacy aliases that downstream SDKs still expose.
+    const fs::path h5_path = fs::temp_directory_path() /
+        ("hbond_multichain_welford_" + std::to_string(::getpid()) + ".h5");
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+        tp->WriteH5(file);
+    }
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::ReadOnly);
+        ASSERT_TRUE(file.exist("/trajectory/hbond_count_welford"));
+        auto group = file.getGroup("/trajectory/hbond_count_welford");
+
+        bool finalized = false;
+        size_t n_frames = 0;
+        group.getAttribute("finalized").read(finalized);
+        group.getAttribute("n_frames").read(n_frames);
+        EXPECT_TRUE(finalized);
+        EXPECT_EQ(n_frames, 2u);
+
+        auto read_double = [&](const char* name) {
+            std::vector<double> values;
+            group.getDataSet(name).read(values);
+            EXPECT_EQ(values.size(), tp->AtomCount()) << name;
+            return values;
+        };
+        auto read_size = [&](const char* name) {
+            std::vector<size_t> values;
+            group.getDataSet(name).read(values);
+            EXPECT_EQ(values.size(), tp->AtomCount()) << name;
+            return values;
+        };
+
+        const auto count_mean = read_double("count_mean");
+        const auto count_m2 = read_double("count_m2");
+        const auto count_std = read_double("count_std");
+        const auto count_min = read_double("count_min");
+        const auto count_max = read_double("count_max");
+        const auto count_min_frame = read_size("count_min_frame");
+        const auto count_max_frame = read_size("count_max_frame");
+        const auto occupancy_mean =
+            read_double("occupancy_fraction_mean");
+        const auto delta_mean = read_double("count_delta_mean");
+        const auto abs_delta_mean =
+            read_double("count_abs_delta_mean");
+        const auto delta_squared_mean =
+            read_double("count_delta_squared_mean");
+        const auto dxdt_mean = read_double("count_dxdt_mean");
+        const auto rms_delta = read_double("rms_delta");
+        const auto n_frames_per_atom = read_size("n_frames_per_atom");
+        const auto delta_n_per_atom = read_size("delta_n_per_atom");
+        const auto dxdt_n_per_atom = read_size("dxdt_n_per_atom");
+        const auto legacy_mean = read_double("mean");
+        const auto legacy_std = read_double("std");
+        const auto legacy_min = read_double("min");
+        const auto legacy_max = read_double("max");
+        const auto legacy_delta_mean = read_double("delta_mean");
+
+        const size_t ri = f.remote_target;
+        EXPECT_DOUBLE_EQ(count_mean[ri], 0.5);
+        EXPECT_DOUBLE_EQ(count_m2[ri], 0.5);
+        EXPECT_DOUBLE_EQ(count_std[ri], std::sqrt(0.5));
+        EXPECT_DOUBLE_EQ(count_min[ri], 0.0);
+        EXPECT_DOUBLE_EQ(count_max[ri], 1.0);
+        EXPECT_EQ(count_min_frame[ri], 18u);
+        EXPECT_EQ(count_max_frame[ri], 17u);
+        EXPECT_DOUBLE_EQ(occupancy_mean[ri], 0.5);
+        EXPECT_DOUBLE_EQ(delta_mean[ri], -1.0);
+        EXPECT_DOUBLE_EQ(abs_delta_mean[ri], 1.0);
+        EXPECT_DOUBLE_EQ(delta_squared_mean[ri], 1.0);
+        EXPECT_DOUBLE_EQ(dxdt_mean[ri], -1.0);
+        EXPECT_DOUBLE_EQ(rms_delta[ri], 1.0);
+        EXPECT_EQ(n_frames_per_atom[ri], 2u);
+        EXPECT_EQ(delta_n_per_atom[ri], 1u);
+        EXPECT_EQ(dxdt_n_per_atom[ri], 1u);
+        EXPECT_DOUBLE_EQ(legacy_mean[ri], count_mean[ri]);
+        EXPECT_DOUBLE_EQ(legacy_std[ri], count_std[ri]);
+        EXPECT_DOUBLE_EQ(legacy_min[ri], count_min[ri]);
+        EXPECT_DOUBLE_EQ(legacy_max[ri], count_max[ri]);
+        EXPECT_DOUBLE_EQ(legacy_delta_mean[ri], delta_mean[ri]);
+
+        const size_t li = f.local_target;
+        EXPECT_DOUBLE_EQ(count_mean[li], 0.0);
+        EXPECT_DOUBLE_EQ(occupancy_mean[li], 0.0);
+        EXPECT_DOUBLE_EQ(delta_mean[li], 0.0);
+    }
+    std::error_code ec;
+    fs::remove(h5_path, ec);
 }
 
 

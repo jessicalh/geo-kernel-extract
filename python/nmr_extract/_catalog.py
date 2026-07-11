@@ -418,7 +418,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
     ArraySpec("hbond_scalars",    "hbond", HBondScalars,           4,    True,  "H-bond scalars (nearest_dist, 1/r^3, count, McConnell angular scalar Σ)",
               mechanism="hbond_kernel"),
-    ArraySpec("hbond_nearest_dir", "hbond", VectorField,            3,    False, "Nearest accepted H-bond direction per atom from H-bond midpoint to target atom",
+    ArraySpec("hbond_nearest_dir", "hbond", VectorField,            3,    False, "Nearest accepted H-bond direction per atom from the explicit donor H source point to the target atom",
               irreps="1o", tensor_rank=1, parity="odd", mechanism="hbond_kernel"),
     ArraySpec("hbond_flags", "hbond", np.ndarray,                   3,    False, "H-bond boolean flags as int8 columns: hbond_is_backbone, hbond_is_donor, hbond_is_acceptor",
               mechanism="hbond_kernel"),

@@ -17,6 +17,22 @@ TrajectoryProtein::TrajectoryProtein() = default;
 TrajectoryProtein::~TrajectoryProtein() = default;
 
 
+std::unique_ptr<TrajectoryProtein> TrajectoryProtein::CreateForTesting(
+        std::unique_ptr<Protein> protein) {
+    if (!protein || !protein->HasTopology() ||
+        protein->ConformationCount() == 0 ||
+        protein->Conformation().AtomCount() != protein->AtomCount()) {
+        return nullptr;
+    }
+
+    auto tp = std::make_unique<TrajectoryProtein>();
+    tp->protein_ = std::move(protein);
+    tp->protein_id_ = "synthetic_test_protein";
+    tp->InitTrajectoryAtoms();
+    return tp;
+}
+
+
 // ── BuildFromTrajectory ──────────────────────────────────────────
 //
 // Single TPR parse: atom ranges, bonded parameters, stored topology

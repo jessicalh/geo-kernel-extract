@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -425,9 +426,21 @@ TEST(TopologySidecarManifestContract, EmitsResolvedRingScalingAndStatuses) {
     EXPECT_EQ(larsen.at("acceptor_archive_approximations")
                   .at("SidechainCarbonyl"),
               "BackboneCarbonyl/NMA archive approximation");
-    EXPECT_NE(manifest.at("axis_alignment").at("larsen_hbond_pair")
-                  .get<std::string>().find("larsen_hbond_pairs_index.npy"),
+    const std::string larsen_pair_axis =
+        manifest.at("axis_alignment").at("larsen_hbond_pair")
+            .get<std::string>();
+    EXPECT_NE(larsen_pair_axis.find("larsen_hbond_pairs_index.npy"),
               std::string::npos);
+    for (const char* disposition : std::array{
+             "0=missing_frame_atoms",
+             "1=theta_out_of_range",
+             "2=grid_miss",
+             "3=success",
+             "4=invalid_frame",
+             "5=carboxylate_symmetry_filtered"}) {
+        EXPECT_NE(larsen_pair_axis.find(disposition), std::string::npos)
+            << disposition;
+    }
     EXPECT_NE(manifest.at("axis_alignment").at("atom")
                   .get<std::string>().find("separate larsen_hbond_pair axis"),
               std::string::npos);

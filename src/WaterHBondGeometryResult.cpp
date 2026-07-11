@@ -75,6 +75,10 @@ WaterHBondGeometryResult::Compute(ProteinConformation& conf,
     const double nan = std::numeric_limits<double>::quiet_NaN();
     result->nearest_.assign(
         N, std::array<double, 8>{nan,nan,nan,0.0,-1.0,0.0,0.0,0.0});
+    // counts[:,5] summarizes the nearest passing candidate, independently
+    // of nearest_ / counts[:,4], which retain the overall nearest candidate.
+    std::vector<double> nearest_passing_water_O_distance_A(
+        N, std::numeric_limits<double>::infinity());
 
     if (!topology.HasAtomSemantic()) {
         OperationLog::Warn("WaterHBondGeometryResult",
@@ -96,6 +100,13 @@ WaterHBondGeometryResult::Compute(ProteinConformation& conf,
         auto& nearest = result->nearest_[ai];
         nearest[6] += 1.0;
         if (candidate.geometry.passes_geometry) nearest[7] += 1.0;
+        if (candidate.geometry.passes_geometry &&
+            candidate.water_O_distance_A <
+                nearest_passing_water_O_distance_A[ai]) {
+            nearest_passing_water_O_distance_A[ai] =
+                candidate.water_O_distance_A;
+            count[5] = candidate.mode;
+        }
         if (!std::isfinite(nearest[0]) ||
             candidate.water_O_distance_A < nearest[0]) {
             nearest[0] = candidate.water_O_distance_A;
@@ -105,8 +116,6 @@ WaterHBondGeometryResult::Compute(ProteinConformation& conf,
             nearest[4] = static_cast<double>(candidate.water_index);
             nearest[5] = candidate.geometry.passes_geometry ? 1.0 : 0.0;
             count[4] = static_cast<std::int32_t>(candidate.water_index);
-            count[5] = candidate.geometry.passes_geometry
-                ? candidate.mode : 0;
         }
         result->candidates_.push_back(std::move(candidate));
     };

@@ -143,6 +143,32 @@ const RingNeighbourhood* FindRingRow(const ProteinConformation& conf,
     return nullptr;
 }
 
+
+SphericalTensor PhysicalTrpTensorFromAllPerTypeSlots(
+        const std::array<double, kAromaticRingTypeCount>& per_type_T0,
+        const std::array<std::array<double, 3>, kAromaticRingTypeCount>&
+            per_type_T1,
+        const std::array<std::array<double, 5>, kAromaticRingTypeCount>&
+            per_type_T2,
+        const std::array<double, kAromaticRingTypeCount>& intensities) {
+    constexpr std::array<RingTypeIndex, 3> trp_types = {
+        RingTypeIndex::TrpBenzene,
+        RingTypeIndex::TrpPyrrole,
+        RingTypeIndex::TrpPerimeter,
+    };
+
+    SphericalTensor physical;
+    for (RingTypeIndex type : trp_types) {
+        const int ti = static_cast<int>(type);
+        physical.T0 += intensities[ti] * per_type_T0[ti];
+        for (int c = 0; c < 3; ++c)
+            physical.T1[c] += intensities[ti] * per_type_T1[ti][c];
+        for (int c = 0; c < 5; ++c)
+            physical.T2[c] += intensities[ti] * per_type_T2[ti][c];
+    }
+    return physical;
+}
+
 }  // namespace
 
 
@@ -469,54 +495,160 @@ TEST(RingCurrentTrpProduction, CanonicalTotalsExcludeVisibleTrpPerimeter) {
     ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
     ASSERT_TRUE(conf.AttachResult(BiotSavartResult::Compute(conf)));
 
+    std::array<double, kAromaticRingTypeCount> intensities = {};
+    std::array<bool, kAromaticRingTypeCount> intensity_seen = {};
+    for (size_t ri = 0; ri < loaded.protein->RingCount(); ++ri) {
+        const Ring& ring = loaded.protein->RingAt(ri);
+        const int ti = ring.TypeIndexAsInt();
+        if (ti < 0 || ti >= kAromaticRingTypeCount) continue;
+        if (intensity_seen[ti]) {
+            EXPECT_DOUBLE_EQ(intensities[ti], ring.Intensity());
+        } else {
+            intensities[ti] = ring.Intensity();
+            intensity_seen[ti] = true;
+        }
+    }
+    ASSERT_TRUE(intensity_seen[static_cast<int>(RingTypeIndex::TrpBenzene)]);
+    ASSERT_TRUE(intensity_seen[static_cast<int>(RingTypeIndex::TrpPyrrole)]);
+    ASSERT_TRUE(intensity_seen[static_cast<int>(RingTypeIndex::TrpPerimeter)]);
+
     size_t perimeter_rows = 0;
     size_t nonzero_perimeter_bs_rows = 0;
+    bool nonzero_perimeter_bs_T1 = false;
+    bool nonzero_perimeter_bs_T2 = false;
+    size_t nonzero_canonical_bs_trp_atoms = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& atom = conf.AtomAt(ai);
         Mat3 expected_G = Mat3::Zero();
         Vec3 expected_B = Vec3::Zero();
+        Mat3 expected_trp_ppm = Mat3::Zero();
         for (const RingNeighbourhood& row : atom.ring_neighbours) {
             if (row.ring_type == RingTypeIndex::TrpPerimeter) {
                 ++perimeter_rows;
                 if (row.G_tensor.norm() > 0.0) ++nonzero_perimeter_bs_rows;
+                nonzero_perimeter_bs_T1 =
+                    nonzero_perimeter_bs_T1 ||
+                    std::any_of(row.G_spherical.T1.begin(),
+                                row.G_spherical.T1.end(),
+                                [](double value) { return value != 0.0; });
+                nonzero_perimeter_bs_T2 =
+                    nonzero_perimeter_bs_T2 ||
+                    std::any_of(row.G_spherical.T2.begin(),
+                                row.G_spherical.T2.end(),
+                                [](double value) { return value != 0.0; });
                 continue;
             }
             expected_G += row.G_tensor;
             expected_B += row.B_field;
+            if (row.ring_type == RingTypeIndex::TrpBenzene ||
+                row.ring_type == RingTypeIndex::TrpPyrrole) {
+                expected_trp_ppm +=
+                    loaded.protein->RingAt(row.ring_index).Intensity() *
+                    row.G_tensor;
+            }
         }
         EXPECT_LT((atom.total_G_tensor - expected_G).norm(), 1e-12);
         EXPECT_LT((atom.total_B_field - expected_B).norm(), 1e-24);
+        if (expected_trp_ppm.norm() > 0.0) ++nonzero_canonical_bs_trp_atoms;
+
+        // Model the manifest consumer contract by scaling all three visible
+        // TRP slots.  Its result must equal the independent sparse-row oracle
+        // containing only the canonical TRP6 and TRP5 component rings.
+        const Mat3 reconstructed_trp_ppm =
+            PhysicalTrpTensorFromAllPerTypeSlots(
+                atom.per_type_G_T0_sum,
+                atom.per_type_G_T1_sum,
+                atom.per_type_G_T2_sum,
+                intensities).Reconstruct();
+        EXPECT_LT((reconstructed_trp_ppm - expected_trp_ppm).norm(), 1e-12)
+            << "atom=" << ai;
+
+        const int trp9 = static_cast<int>(RingTypeIndex::TrpPerimeter);
         EXPECT_DOUBLE_EQ(
-            atom.per_type_G_T0_sum[
-                static_cast<int>(RingTypeIndex::TrpPerimeter)],
+            atom.per_type_G_T0_sum[trp9],
             0.0);
+        for (int c = 0; c < 3; ++c)
+            EXPECT_DOUBLE_EQ(atom.per_type_G_T1_sum[trp9][c], 0.0)
+                << "atom=" << ai << " component=" << c;
+        for (int c = 0; c < 5; ++c)
+            EXPECT_DOUBLE_EQ(atom.per_type_G_T2_sum[trp9][c], 0.0)
+                << "atom=" << ai << " component=" << c;
     }
     EXPECT_GT(perimeter_rows, 0u);
     EXPECT_GT(nonzero_perimeter_bs_rows, 0u)
         << "TRP9 must remain visible as a computed sparse diagnostic";
+    EXPECT_TRUE(nonzero_perimeter_bs_T1)
+        << "fixture must force the excluded BS TRP9 T1 drift";
+    EXPECT_TRUE(nonzero_perimeter_bs_T2)
+        << "fixture must force the excluded BS TRP9 T2 drift";
+    EXPECT_GT(nonzero_canonical_bs_trp_atoms, 0u)
+        << "fixture must force the canonical BS TRP6+TRP5 reconstruction";
 
     ASSERT_TRUE(conf.AttachResult(HaighMallionResult::Compute(conf)));
     size_t nonzero_perimeter_hm_rows = 0;
+    bool nonzero_perimeter_hm_T1 = false;
+    bool nonzero_perimeter_hm_T2 = false;
+    size_t nonzero_canonical_hm_trp_atoms = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& atom = conf.AtomAt(ai);
         Mat3 expected_G = Mat3::Zero();
+        Mat3 expected_trp_ppm = Mat3::Zero();
         for (const RingNeighbourhood& row : atom.ring_neighbours) {
             if (row.ring_type == RingTypeIndex::TrpPerimeter) {
                 if (row.hm_G_tensor.norm() > 0.0) ++nonzero_perimeter_hm_rows;
+                nonzero_perimeter_hm_T1 =
+                    nonzero_perimeter_hm_T1 ||
+                    std::any_of(row.hm_G_spherical.T1.begin(),
+                                row.hm_G_spherical.T1.end(),
+                                [](double value) { return value != 0.0; });
+                nonzero_perimeter_hm_T2 =
+                    nonzero_perimeter_hm_T2 ||
+                    std::any_of(row.hm_G_spherical.T2.begin(),
+                                row.hm_G_spherical.T2.end(),
+                                [](double value) { return value != 0.0; });
                 continue;
             }
             expected_G += row.hm_G_tensor;
+            if (row.ring_type == RingTypeIndex::TrpBenzene ||
+                row.ring_type == RingTypeIndex::TrpPyrrole) {
+                expected_trp_ppm +=
+                    loaded.protein->RingAt(row.ring_index).Intensity() *
+                    row.hm_G_tensor;
+            }
         }
         EXPECT_LT((atom.hm_shielding_contribution.Reconstruct() - expected_G)
                       .norm(),
                   1e-12);
+        if (expected_trp_ppm.norm() > 0.0) ++nonzero_canonical_hm_trp_atoms;
+
+        const Mat3 reconstructed_trp_ppm =
+            PhysicalTrpTensorFromAllPerTypeSlots(
+                atom.per_type_hm_T0_sum,
+                atom.per_type_hm_T1_sum,
+                atom.per_type_hm_T2_sum,
+                intensities).Reconstruct();
+        EXPECT_LT((reconstructed_trp_ppm - expected_trp_ppm).norm(), 1e-12)
+            << "atom=" << ai;
+
+        const int trp9 = static_cast<int>(RingTypeIndex::TrpPerimeter);
         EXPECT_DOUBLE_EQ(
-            atom.per_type_hm_T0_sum[
-                static_cast<int>(RingTypeIndex::TrpPerimeter)],
+            atom.per_type_hm_T0_sum[trp9],
             0.0);
+        for (int c = 0; c < 3; ++c)
+            EXPECT_DOUBLE_EQ(atom.per_type_hm_T1_sum[trp9][c], 0.0)
+                << "atom=" << ai << " component=" << c;
+        for (int c = 0; c < 5; ++c)
+            EXPECT_DOUBLE_EQ(atom.per_type_hm_T2_sum[trp9][c], 0.0)
+                << "atom=" << ai << " component=" << c;
     }
     EXPECT_GT(nonzero_perimeter_hm_rows, 0u)
         << "TRP9 HM kernel must remain visible only in sparse diagnostics";
+    EXPECT_TRUE(nonzero_perimeter_hm_T1)
+        << "fixture must force the excluded HM TRP9 T1 drift";
+    EXPECT_TRUE(nonzero_perimeter_hm_T2)
+        << "fixture must force the excluded HM TRP9 T2 drift";
+    EXPECT_GT(nonzero_canonical_hm_trp_atoms, 0u)
+        << "fixture must force the canonical HM TRP6+TRP5 reconstruction";
 }
 
 

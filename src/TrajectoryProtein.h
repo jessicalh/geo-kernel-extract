@@ -40,6 +40,16 @@ public:
     TrajectoryProtein(const TrajectoryProtein&) = delete;
     TrajectoryProtein& operator=(const TrajectoryProtein&) = delete;
 
+    // Test-only: seat an already-finalized Protein (including its canonical
+    // conformation) and allocate the index-parallel TrajectoryAtom buffer.
+    // Production trajectory construction must use BuildFromTrajectory + Seed;
+    // this seam exists for bare-checkout forcing tests of TrajectoryResult
+    // consumers whose source ConformationResult was computed on a synthetic
+    // typed Protein. Returns null unless topology and an index-parallel
+    // canonical conformation exist.
+    static std::unique_ptr<TrajectoryProtein> CreateForTesting(
+        std::unique_ptr<Protein> protein);
+
     // ── Build ────────────────────────────────────────────────────
 
     // Parse production.tpr from dir_path; build Protein + charges + bonded

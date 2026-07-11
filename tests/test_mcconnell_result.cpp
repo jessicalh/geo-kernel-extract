@@ -843,9 +843,22 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
     auto& conf = protein->Conformation();
     ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
     ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    // Exercise the BO redistribution through the real upstream producer.
+    // No bond-order state is seeded in this test.
+    auto mopac = MopacResult::Compute(conf, 0, 1);
+    ASSERT_NE(mopac, nullptr) << "real MOPAC calculation failed";
+    std::array<double, 3> bond_orders{};
+    for (size_t bi = 0; bi < bond_orders.size(); ++bi) {
+        bond_orders[bi] = mopac->TopologyBondOrder(bi);
+        EXPECT_GT(bond_orders[bi],
+                  CalculatorConfig::Get("mopac_bond_order_noise_floor"));
+    }
+    ASSERT_TRUE(conf.AttachResult(std::move(mopac)));
     ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
 
     const size_t fixed = static_cast<size_t>(McConnellChannel::Fixed);
+    const size_t bo = static_cast<size_t>(McConnellChannel::BondOrder);
     const size_t backbone_xh =
         static_cast<size_t>(McConnellSourceCategory::BackboneXH);
     const size_t sidechain_xh =
@@ -857,6 +870,7 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
         static_cast<size_t>(McConnellSourceCategory::SidechainOther);
 
     std::array<bool, 3> dedicated_nonzero{{false, false, false}};
+    std::array<bool, 3> dedicated_bo_nonzero{{false, false, false}};
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& atom = conf.AtomAt(ai);
         dedicated_nonzero[0] = dedicated_nonzero[0] ||
@@ -867,11 +881,23 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
                 atom.mcconnell_source_tensors[sidechain_xh][fixed]);
         dedicated_nonzero[2] = dedicated_nonzero[2] ||
             !SphericalAllZero(atom.mcconnell_source_tensors[sh][fixed]);
+        dedicated_bo_nonzero[0] = dedicated_bo_nonzero[0] ||
+            !SphericalAllZero(
+                atom.mcconnell_source_tensors[backbone_xh][bo]);
+        dedicated_bo_nonzero[1] = dedicated_bo_nonzero[1] ||
+            !SphericalAllZero(
+                atom.mcconnell_source_tensors[sidechain_xh][bo]);
+        dedicated_bo_nonzero[2] = dedicated_bo_nonzero[2] ||
+            !SphericalAllZero(atom.mcconnell_source_tensors[sh][bo]);
 
         EXPECT_TRUE(SphericalAllZero(
             atom.mcconnell_source_tensors[backbone_other][fixed]));
         EXPECT_TRUE(SphericalAllZero(
             atom.mcconnell_source_tensors[sidechain_other][fixed]));
+        EXPECT_TRUE(SphericalAllZero(
+            atom.mcconnell_source_tensors[backbone_other][bo]));
+        EXPECT_TRUE(SphericalAllZero(
+            atom.mcconnell_source_tensors[sidechain_other][bo]));
 
         Mat3 category_sum = Mat3::Zero();
         for (size_t category = 0;
@@ -882,8 +908,21 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
         EXPECT_LT(MaxAbs(category_sum -
                          atom.mc_shielding_contribution.Reconstruct()),
                   1e-14);
+
+        Mat3 bo_category_sum = Mat3::Zero();
+        for (size_t category = 0;
+             category < kMcConnellSourceCategoryCount; ++category) {
+            bo_category_sum += atom.mcconnell_source_tensors[category][bo]
+                                   .Reconstruct();
+        }
+        EXPECT_LT(MaxAbs(
+            bo_category_sum -
+            atom.mopac_mc_shielding_contribution.Reconstruct()),
+            1e-12);
     }
     EXPECT_EQ(dedicated_nonzero,
+              (std::array<bool, 3>{{true, true, true}}));
+    EXPECT_EQ(dedicated_bo_nonzero,
               (std::array<bool, 3>{{true, true, true}}));
 
     // Independent analytic oracle for atom 2.  It is an endpoint of the
@@ -903,6 +942,38 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
                      expected),
               1e-14);
 
+    // Independent BO-channel redistribution oracle.  Each selected target
+    // is a self-excluded endpoint of its own X-H bond and sees exactly one
+    // other X-H source inside the 10 A cutoff.  All three sources/targets
+    // are collinear, so D(r)Qhat = diag(4/3,1/3,1/3)/r^3, scaled by the
+    // real MOPAC Wiberg order of that source bond.
+    auto expected_collinear_bo = [](double bond_order, double distance) {
+        const double r3 = distance * distance * distance;
+        Mat3 result = Mat3::Zero();
+        result(0, 0) = bond_order * (4.0 / 3.0) / r3;
+        result(1, 1) = bond_order * (1.0 / 3.0) / r3;
+        result(2, 2) = bond_order * (1.0 / 3.0) / r3;
+        return result;
+    };
+    const Mat3 expected_backbone_bo =
+        expected_collinear_bo(bond_orders[0], 9.5);
+    const Mat3 expected_sidechain_bo =
+        expected_collinear_bo(bond_orders[1], 9.5);
+    const Mat3 expected_sh_bo =
+        expected_collinear_bo(bond_orders[2], 9.65);
+    EXPECT_LT(MaxAbs(
+        conf.AtomAt(2).mcconnell_source_tensors[backbone_xh][bo]
+            .Reconstruct() - expected_backbone_bo),
+        1e-12);
+    EXPECT_LT(MaxAbs(
+        conf.AtomAt(1).mcconnell_source_tensors[sidechain_xh][bo]
+            .Reconstruct() - expected_sidechain_bo),
+        1e-12);
+    EXPECT_LT(MaxAbs(
+        conf.AtomAt(3).mcconnell_source_tensors[sh][bo]
+            .Reconstruct() - expected_sh_bo),
+        1e-12);
+
     const fs::path out_dir = fs::temp_directory_path() /
         ("mcconnell_xh_production_" + std::to_string(::getpid()));
     fs::create_directories(out_dir);
@@ -911,14 +982,43 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
               26);
     const auto emitted = ReadNpy<double>(
         out_dir / "mc_backbone_xh_fixed.npy", "<f8");
+    const auto emitted_backbone_bo = ReadNpy<double>(
+        out_dir / "mc_backbone_xh_bo.npy", "<f8");
+    const auto emitted_sidechain_bo = ReadNpy<double>(
+        out_dir / "mc_sidechain_xh_bo.npy", "<f8");
+    const auto emitted_sh_bo = ReadNpy<double>(
+        out_dir / "mc_s_h_bo.npy", "<f8");
+    const auto emitted_old_sidechain_bo = ReadNpy<double>(
+        out_dir / "mc_sidechain_other_bo.npy", "<f8");
     ASSERT_EQ(emitted.shape,
               (std::vector<size_t>{conf.AtomCount(), 9}));
+    ASSERT_EQ(emitted_backbone_bo.shape, emitted.shape);
+    ASSERT_EQ(emitted_sidechain_bo.shape, emitted.shape);
+    ASSERT_EQ(emitted_sh_bo.shape, emitted.shape);
+    ASSERT_EQ(emitted_old_sidechain_bo.shape, emitted.shape);
     std::array<double, 9> expected_packed{};
     SphericalTensor::Decompose(expected).PackFull9(expected_packed.data());
     for (size_t component = 0; component < expected_packed.size();
          ++component) {
         EXPECT_NEAR(emitted.values[2 * 9 + component],
                     expected_packed[component], 1e-14);
+    }
+    auto expect_emitted_tensor = [&](const NpyArray<double>& array,
+                                     size_t atom_index,
+                                     const Mat3& expected_tensor) {
+        std::array<double, 9> packed{};
+        SphericalTensor::Decompose(expected_tensor).PackFull9(packed.data());
+        for (size_t component = 0; component < packed.size(); ++component) {
+            EXPECT_NEAR(array.values[atom_index * 9 + component],
+                        packed[component], 1e-12);
+        }
+    };
+    expect_emitted_tensor(emitted_backbone_bo, 2, expected_backbone_bo);
+    expect_emitted_tensor(emitted_sidechain_bo, 1, expected_sidechain_bo);
+    expect_emitted_tensor(emitted_sh_bo, 3, expected_sh_bo);
+    for (double value : emitted_old_sidechain_bo.values) {
+        EXPECT_DOUBLE_EQ(value, 0.0)
+            << "X-H BO response must not remain in SidechainOther";
     }
     RemoveMcConnellOutputs(out_dir);
 }

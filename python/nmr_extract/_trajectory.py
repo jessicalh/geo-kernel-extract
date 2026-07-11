@@ -58,6 +58,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import json
+import warnings
 
 from typing import Dict, List, Optional
 
@@ -74,9 +75,9 @@ PROJECT_FULL9_COMPONENT_ORDER = (
 )
 PROJECT_FULL9_FRAME = "conformation_cartesian_xyz"
 PROJECT_FULL9_PARITY = "even"
-PROJECT_E3NN_EXPORT = (
-    "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
-    "project_t2_to_e3nn() before using e3nn Irreps"
+PROJECT_FULL9_E3NN_EXPORT = (
+    "raw project full9 ndarray; call project_full9_to_e3nn(xyz) "
+    "before using e3nn Irreps"
 )
 
 
@@ -3054,6 +3055,35 @@ class MopacMcConnellShieldingTimeSeriesGroup:
     source: str
     source_attached_policy: str
 
+    @property
+    def irrep_layout(self) -> str:
+        """Deprecated compatibility alias for legacy producer metadata.
+
+        This value is not an authoritative e3nn layout.  New code must use
+        ``tensor_basis``, ``tensor_component_order``, and ``tensor_frame``;
+        the explicitly named storage owner is ``legacy_irrep_layout``.
+        """
+        warnings.warn(
+            "irrep_layout is deprecated legacy producer metadata; use "
+            "tensor_basis/tensor_component_order/tensor_frame, and read "
+            "legacy_irrep_layout only when auditing old files",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.legacy_irrep_layout
+
+    @property
+    def parity(self) -> str:
+        """Deprecated compatibility alias for legacy producer metadata."""
+        warnings.warn(
+            "parity is deprecated legacy producer metadata; use "
+            "tensor_parity, and read legacy_parity only when auditing old "
+            "files",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.legacy_parity
+
 
 def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingTimeSeriesGroup]:
     path = "/trajectory/mopac_mc_shielding_time_series"
@@ -3079,7 +3109,7 @@ def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingT
             PROJECT_FULL9_COMPONENT_ORDER),
         tensor_frame=_attr("tensor_frame") or PROJECT_FULL9_FRAME,
         tensor_parity=_attr("tensor_parity") or PROJECT_FULL9_PARITY,
-        e3nn_export=_attr("e3nn_export") or PROJECT_E3NN_EXPORT,
+        e3nn_export=_attr("e3nn_export") or PROJECT_FULL9_E3NN_EXPORT,
         legacy_irrep_layout=_attr("irrep_layout"),
         legacy_parity=_attr("parity"),
         normalization=_attr("normalization"),
