@@ -1437,7 +1437,21 @@ _set_contract(
     validity=(
         "sparse rows are atom/ring identity-aligned; azimuth cols38:40 are "
         "NaN for an invalid vertex-0 gauge; tensor blocks otherwise use producer zeros"
-    ), irreps="", parity="mixed")
+    ), irreps="", parity="mixed", tensor_rank=0,
+    tensor_basis=(
+        "mixed row; tensor blocks cols9:18,18:27,27:36 each use "
+        + _FULL9_BASIS
+    ),
+    tensor_component_order=(
+        "within each tensor block cols9:18,18:27,27:36: " + _FULL9_ORDER
+    ),
+    tensor_frame=(
+        "tensor blocks cols9:36 conformation_cartesian_xyz; other columns "
+        "intrinsic identifiers/scalars"
+    ),
+    structural_zero_components=(
+        "cols18:22 (HM symmetric-traceless H: T0,T1_x,T1_y,T1_z)"
+    ), e3nn_export="")
 _set_contract(
     ("bs_ring_B_cylindrical",), coordinate_frame="ring_cylindrical_components",
     transformation=(
