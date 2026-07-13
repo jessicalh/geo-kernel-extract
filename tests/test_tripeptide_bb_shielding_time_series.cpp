@@ -59,6 +59,7 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -127,6 +128,14 @@ nmr::SphericalTensor SyntheticTensor(size_t atom_i, size_t frame_t) {
     return s;
 }
 
+constexpr size_t kMatchedZeroAtom = 0;
+constexpr size_t kUnmatchedAtom = 1;
+
+nmr::SphericalTensor SyntheticStoredTensor(size_t atom_i, size_t frame_t) {
+    if (atom_i == kMatchedZeroAtom) return nmr::SphericalTensor{};
+    return SyntheticTensor(atom_i, frame_t);
+}
+
 
 bool SphericalEqual(const nmr::SphericalTensor& a,
                     const nmr::SphericalTensor& b,
@@ -148,25 +157,22 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 //
 // Drives Compute / Finalize / WriteH5Group with hand-crafted per-atom inputs
 // and asserts exact bit-equality on round-trip. Skips Trajectory::Run
-// orchestration; uses the fleet_amber fixture only for TrajectoryProtein
-// AtomCount plumbing. Exact equality is appropriate here because synthetic
-// inputs have no numerical noise — round-trip is the contract.
+// orchestration and uses the committed protonated 1UBQ topology through the
+// explicit TrajectoryProtein test seam. Exact equality is appropriate here
+// because synthetic inputs have no numerical noise — round-trip is the contract.
 // ============================================================================
 
 TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
-    nmr::test::TestEnvironment::Load();
-
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix))
-        GTEST_SKIP() << "fleet_amber " << kFixtureProtein
-                     << " fixture not on disk";
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
     const size_t Ntp = tp.AtomCount();
-    ASSERT_GT(Ntp, 0u);
+    ASSERT_GE(Ntp, 2u);
 
     auto tr = nmr::TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
     // Synthetic path bypasses OperationRunner so the real source calc
@@ -176,8 +182,7 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
 
     // Trajectory exists only to satisfy the Compute signature; TR::Compute
     // marks traj as (void) and reads only ConformationAtom.
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
-                         fix.tpr_path, fix.edr_path);
+    nmr::Trajectory traj({}, {}, {});
 
     constexpr size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
@@ -187,8 +192,10 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &protein_ref, positions, "synthetic frame");
         for (size_t i = 0; i < Ntp; ++i) {
-            conf->MutableAtomAt(i).tripeptide_bb_shielding_spherical =
-                SyntheticTensor(i, t);
+            auto& atom = conf->MutableAtomAt(i);
+            atom.tripeptide_bb_shielding_spherical =
+                SyntheticStoredTensor(i, t);
+            atom.tripeptide_bb_has_match = i != kUnmatchedAtom;
         }
         tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
     }
@@ -205,7 +212,7 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
 
     for (size_t i : {size_t(0), Ntp / 2, Ntp - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
-            const auto expected = SyntheticTensor(i, t);
+            const auto expected = SyntheticStoredTensor(i, t);
             const auto& got = buf->At(i, t);
             EXPECT_TRUE(SphericalEqual(got, expected, 1e-12))
                 << "buffer mismatch at atom " << i << " frame " << t;
@@ -237,10 +244,10 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
     // Spot-check one cell readback: atom Ntp/2, frame 2, all 9 components.
     std::vector<double> flat(Ntp * kFrames * 9);
     ds.read(flat.data());
-    const size_t i = Ntp / 2;
+    const size_t i = Ntp > 2 ? size_t(2) : kMatchedZeroAtom;
     const size_t t = 2;
     const size_t base = (i * kFrames + t) * 9;
-    const auto expected = SyntheticTensor(i, t);
+    const auto expected = SyntheticStoredTensor(i, t);
     EXPECT_DOUBLE_EQ(flat[base + 0], expected.T0);
     EXPECT_DOUBLE_EQ(flat[base + 1], expected.T1[0]);
     EXPECT_DOUBLE_EQ(flat[base + 2], expected.T1[1]);
@@ -250,6 +257,16 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
     EXPECT_DOUBLE_EQ(flat[base + 6], expected.T2[2]);
     EXPECT_DOUBLE_EQ(flat[base + 7], expected.T2[3]);
     EXPECT_DOUBLE_EQ(flat[base + 8], expected.T2[4]);
+
+    // Applicability is atom-local: a matched physical zero must remain a
+    // finite zero, while an unmatched atom is unavailable even if its
+    // captured payload contains finite values.
+    const size_t matched_zero_base = kMatchedZeroAtom * kFrames * 9;
+    const size_t unmatched_base = kUnmatchedAtom * kFrames * 9;
+    for (size_t k = 0; k < 9; ++k) {
+        EXPECT_DOUBLE_EQ(flat[matched_zero_base + k], 0.0);
+        EXPECT_TRUE(std::isnan(flat[unmatched_base + k]));
+    }
 
     fs::remove(h5_path);
 }
