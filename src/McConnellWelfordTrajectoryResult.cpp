@@ -239,6 +239,18 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("frame_index_range", frame_index_range_);
     grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
+    grp.createAttribute("irrep_metadata_scope", std::string(
+        "only assembled component means carry directional irrep metadata"));
+    grp.createAttribute("directional_mean_transformation", std::string(
+        "t0_mean is invariant; assembled t1_mean is axial: a'=det(R) R a; "
+        "assembled t2_mean is even rank-2: T'=R T R^T"));
+    grp.createAttribute("componentwise_statistic_transformation", std::string(
+        "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+        "irrep transformation law"));
+    grp.createAttribute("zero_count_sentinel_validity", std::string(
+        "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,max=-inf,"
+        "min_frame=0,max_frame=0 are invalid sentinels; n_frames_per_atom "
+        "gates validity"));
     // Group-level `units` describes the primary value channel. Per-
     // dataset `units` attributes are authoritative for each individual
     // dataset (e.g. *_m2 is squared, *_delta_squared_* is squared,
