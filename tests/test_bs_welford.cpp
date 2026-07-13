@@ -19,6 +19,7 @@
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
 #include "OperationLog.h"
+#include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -144,6 +145,99 @@ TEST(BsWelford, FinalizeIdempotency) {
 }
 
 
+TEST(BsWelford, H5DirectionalMetadataZeroCountSynthetic) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    ASSERT_GT(tp.AtomCount(), 1u);
+
+    auto tr = nmr::BsWelfordTrajectoryResult::Create(tp);
+    nmr::Trajectory traj({}, {}, {});
+    tr->Compute(tp.CanonicalConformation(), tp, traj, 7, 2.5);
+    tp.MutableAtomAt(0).bs_welford = {};
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("bs_welford_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+    {
+    HighFive::File file(h5_path, HighFive::File::ReadOnly);
+    auto grp = file.getGroup("/trajectory/bs_welford");
+
+    std::string irrep_scope, mean_law, component_law, zero_count_validity;
+    grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
+    grp.getAttribute("directional_mean_transformation").read(mean_law);
+    grp.getAttribute("componentwise_statistic_transformation").read(component_law);
+    grp.getAttribute("zero_count_sentinel_validity").read(zero_count_validity);
+    EXPECT_EQ(irrep_scope,
+              "only assembled component means carry directional irrep metadata");
+    EXPECT_EQ(mean_law,
+              "t0_mean is invariant; assembled t1_mean is axial: "
+              "a'=det(R) R a; assembled t2_mean is even rank-2: T'=R T R^T");
+    EXPECT_EQ(component_law,
+              "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+              "irrep transformation law");
+    EXPECT_EQ(zero_count_validity,
+              "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,"
+              "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
+              "n_frames_per_atom gates validity");
+
+    std::vector<std::size_t> counts;
+    grp.getDataSet("n_frames_per_atom").read(counts);
+    ASSERT_EQ(counts.size(), tp.AtomCount());
+    EXPECT_EQ(counts[0], 0u);
+    for (std::size_t i = 1; i < counts.size(); ++i) EXPECT_EQ(counts[i], 1u);
+
+    auto expect_zero_count_components = [&](const std::string& prefix,
+                                             std::size_t width) {
+        const std::size_t size = tp.AtomCount() * width;
+        std::vector<double> mean(size), m2(size), stddev(size), min(size),
+                            max(size);
+        std::vector<std::size_t> min_frame(size), max_frame(size);
+        grp.getDataSet(prefix + "_mean").read(mean.data());
+        grp.getDataSet(prefix + "_m2").read(m2.data());
+        grp.getDataSet(prefix + "_std").read(stddev.data());
+        grp.getDataSet(prefix + "_min").read(min.data());
+        grp.getDataSet(prefix + "_max").read(max.data());
+        grp.getDataSet(prefix + "_min_frame").read(min_frame.data());
+        grp.getDataSet(prefix + "_max_frame").read(max_frame.data());
+        ASSERT_GE(mean.size(), 2 * width);
+        for (std::size_t k = 0; k < width; ++k) {
+            EXPECT_TRUE(std::isnan(mean[k]));
+            EXPECT_TRUE(std::isnan(m2[k]));
+            EXPECT_TRUE(std::isnan(stddev[k]));
+            EXPECT_TRUE(std::isinf(min[k]) && min[k] > 0.0);
+            EXPECT_TRUE(std::isinf(max[k]) && max[k] < 0.0);
+            EXPECT_EQ(min_frame[k], 0u);
+            EXPECT_EQ(max_frame[k], 0u);
+
+            const std::size_t valid = width + k;
+            EXPECT_DOUBLE_EQ(mean[valid], 0.0);
+            EXPECT_DOUBLE_EQ(m2[valid], 0.0);
+            EXPECT_DOUBLE_EQ(stddev[valid], 0.0);
+            EXPECT_DOUBLE_EQ(min[valid], 0.0);
+            EXPECT_DOUBLE_EQ(max[valid], 0.0);
+            EXPECT_EQ(min_frame[valid], 7u);
+            EXPECT_EQ(max_frame[valid], 7u);
+        }
+    };
+    expect_zero_count_components("t1", 3);
+    expect_zero_count_components("t2", 5);
+
+    }
+    fs::remove(h5_path);
+}
+
+
 // ============================================================================
 // DISCIPLINE: H5 round-trip — schema attributes + dataset shape survive.
 // ============================================================================
@@ -191,6 +285,24 @@ TEST(BsWelford, H5RoundTrip) {
     std::string irrep_t1;
     grp.getAttribute("irrep_layout_t1").read(irrep_t1);
     EXPECT_EQ(irrep_t1, "v_x,v_y,v_z");
+
+    std::string irrep_scope, mean_law, component_law, zero_count_validity;
+    grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
+    grp.getAttribute("directional_mean_transformation").read(mean_law);
+    grp.getAttribute("componentwise_statistic_transformation").read(component_law);
+    grp.getAttribute("zero_count_sentinel_validity").read(zero_count_validity);
+    EXPECT_EQ(irrep_scope,
+              "only assembled component means carry directional irrep metadata");
+    EXPECT_EQ(mean_law,
+              "t0_mean is invariant; assembled t1_mean is axial: "
+              "a'=det(R) R a; assembled t2_mean is even rank-2: T'=R T R^T");
+    EXPECT_EQ(component_law,
+              "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+              "irrep transformation law");
+    EXPECT_EQ(zero_count_validity,
+              "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,"
+              "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
+              "n_frames_per_atom gates validity");
 
     const auto dims_t0 = grp.getDataSet("t0_mean").getSpace().getDimensions();
     ASSERT_EQ(dims_t0.size(), 1u);
