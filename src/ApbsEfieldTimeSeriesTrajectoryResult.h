@@ -22,10 +22,14 @@
 //       normalization  = "cartesian"
 //       parity         = "1o"
 //       units          = "V/Angstrom"
+//       directional_metadata_scope = xyz only; APBS grid diagnostics carry
+//                                    dataset-local lab-axis/NC contracts
 //       n_atoms, n_frames, finalized
 //
 // Parity "1o": E-field is a polar (true) vector, parity-odd under
-// inversion. Same parity convention as PositionsTimeSeries.
+// inversion. Same parity convention as PositionsTimeSeries.  The APBS grid
+// diagnostics are axis-aligned to the fixed laboratory axes and are not
+// three-vector irreps under arbitrary orthogonal transforms.
 //
 
 #include "DenseBuffer.h"

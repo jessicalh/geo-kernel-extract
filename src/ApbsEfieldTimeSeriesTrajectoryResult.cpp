@@ -179,6 +179,9 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("normalization", std::string("cartesian"));
     grp.createAttribute("parity",        std::string("1o"));
     grp.createAttribute("units",         std::string("V/Angstrom"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "irrep_layout,normalization,parity,units describe xyz only; "
+        "apbs_grid_*_per_frame datasets carry per-dataset lab-axis contracts"));
     grp.createAttribute("source_result", std::string("ApbsFieldResult"));
     grp.createAttribute("source_field", std::string("apbs_efield"));
     grp.createAttribute("source", std::string(
@@ -225,6 +228,11 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("xyz", space);
     ds.write_raw(flat.data());
+    ds.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    ds.createAttribute("transformation",
+        std::string("polar_vector: v'=R v; translation invariant"));
+    ds.createAttribute("parity", std::string("1o"));
 
     HighFive::DataSpace scalar_space({N, T});
     auto clamp_mask_ds =
@@ -243,9 +251,18 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
         HighFive::DataSpace grid_space({T, std::size_t(3)});
         auto grid_ds = grp.createDataSet<std::uint64_t>(name, grid_space);
         grid_ds.write_raw(values.data());
+        grid_ds.createAttribute("component_order", std::string("x,y,z"));
+        grid_ds.createAttribute("units", std::string("grid_points"));
+        grid_ds.createAttribute("coordinate_frame",
+            std::string("apbs_lab_axis_aligned_grid_xyz"));
+        grid_ds.createAttribute("parity", std::string("mixed"));
+        grid_ds.createAttribute("transformation", std::string(
+            "lab-axis grid point counts; translation invariant; no closed "
+            "O(3) transformation law under arbitrary orthogonal transforms"));
     };
     auto write_grid_f64 = [&](const std::string& name,
-            const std::vector<std::array<double, 3>>& rows) {
+            const std::vector<std::array<double, 3>>& rows,
+            const std::string& transformation) {
         std::vector<double> values(T * 3);
         for (std::size_t t = 0; t < T; ++t)
             for (std::size_t d = 0; d < 3; ++d)
@@ -253,13 +270,27 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
         HighFive::DataSpace grid_space({T, std::size_t(3)});
         auto grid_ds = grp.createDataSet<double>(name, grid_space);
         grid_ds.write_raw(values.data());
+        grid_ds.createAttribute("component_order", std::string("x,y,z"));
+        grid_ds.createAttribute("units", std::string("Angstrom"));
+        grid_ds.createAttribute("coordinate_frame",
+            std::string("apbs_lab_axis_aligned_grid_xyz"));
+        grid_ds.createAttribute("parity", std::string("mixed"));
+        grid_ds.createAttribute("transformation", transformation);
     };
     write_grid_u64("apbs_grid_dims_per_frame", grid_dims_per_frame_);
     write_grid_f64("apbs_grid_lengths_A_per_frame",
-                   grid_lengths_A_per_frame_);
-    write_grid_f64("apbs_grid_origin_A_per_frame", grid_origin_A_per_frame_);
+                   grid_lengths_A_per_frame_,
+                   "lab-axis grid extents; translation invariant; no closed "
+                   "O(3) transformation law under arbitrary orthogonal transforms");
+    write_grid_f64("apbs_grid_origin_A_per_frame", grid_origin_A_per_frame_,
+                   "lab-axis grid origin; o'=o+t under pure translations; no "
+                   "affine-position/O(3) law under arbitrary orthogonal "
+                   "transforms because grid axes remain lab-fixed");
     write_grid_f64("apbs_grid_spacing_A_per_frame",
-                   grid_spacing_A_per_frame_);
+                   grid_spacing_A_per_frame_,
+                   "lab-axis grid step lengths; translation invariant; no "
+                   "closed O(3) transformation law under arbitrary orthogonal "
+                   "transforms");
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times", frame_times_)
