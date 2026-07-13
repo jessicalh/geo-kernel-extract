@@ -168,6 +168,8 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         grp.createAttribute("t2_frame",
             std::string("cartesian_xyz_emitted_frame"));
         grp.createAttribute("t2_parity", std::string("even"));
+        grp.createAttribute("efg_t0_structural_zero", true);
+        grp.createAttribute("efg_t1_structural_zero", true);
         grp.createAttribute("e3nn_export", std::string(
             "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
             "project_t2_to_e3nn() before using e3nn Irreps"));

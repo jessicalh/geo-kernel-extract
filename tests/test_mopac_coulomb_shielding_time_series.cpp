@@ -15,6 +15,7 @@
 #include "ConformationAtom.h"
 #include "DenseBuffer.h"
 #include "OperationLog.h"
+#include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -159,12 +160,13 @@ TEST(MopacCoulombShieldingTimeSeries,
      DerivativePolicyAttributesRoundTripOnNamedLegacyGroupOnly) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
     ASSERT_GT(tp.AtomCount(), 0u);
     auto tr =
         nmr::MopacCoulombShieldingTimeSeriesTrajectoryResult::Create(tp);
@@ -210,6 +212,22 @@ TEST(MopacCoulombShieldingTimeSeries,
 
         auto canonical = reopen.getGroup(
             "/trajectory/mopac_coulomb_efg_time_series");
+        bool canonical_t0_structural_zero = false;
+        bool canonical_t1_structural_zero = false;
+        bool legacy_t0_structural_zero = false;
+        bool legacy_t1_structural_zero = false;
+        canonical.getAttribute("efg_t0_structural_zero")
+            .read(canonical_t0_structural_zero);
+        canonical.getAttribute("efg_t1_structural_zero")
+            .read(canonical_t1_structural_zero);
+        legacy.getAttribute("efg_t0_structural_zero")
+            .read(legacy_t0_structural_zero);
+        legacy.getAttribute("efg_t1_structural_zero")
+            .read(legacy_t1_structural_zero);
+        EXPECT_TRUE(canonical_t0_structural_zero);
+        EXPECT_TRUE(canonical_t1_structural_zero);
+        EXPECT_TRUE(legacy_t0_structural_zero);
+        EXPECT_TRUE(legacy_t1_structural_zero);
         EXPECT_FALSE(canonical.hasAttribute(
             "max_potential_derivative_rank"));
         EXPECT_FALSE(canonical.hasAttribute(
