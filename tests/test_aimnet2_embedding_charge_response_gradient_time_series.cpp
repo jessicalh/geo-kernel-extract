@@ -365,6 +365,109 @@ TEST(AIMNet2ChargeResponseGradientWelford, SyntheticThreeFramesSkipsGroupOnAbsen
 }
 
 
+TEST(AIMNet2ChargeResponseGradientWelford,
+     H5DirectionalMetadataZeroCountSynthetic) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    ASSERT_GT(tp.AtomCount(), 1u);
+
+    auto tr =
+        nmr::AIMNet2ChargeResponseGradientWelfordTrajectoryResult::Create(tp);
+    nmr::Trajectory traj({}, {}, {});
+    auto conf = tp.TickConformation(tp.CanonicalConformation().Positions());
+    conf->ForceAttachResultForTesting(
+        std::make_unique<nmr::AIMNet2ChargeResponseGradientResult>());
+    tr->Compute(*conf, tp, traj, 7, 2.5);
+    tp.MutableAtomAt(0).aimnet2_charge_response_gradient_welford = {};
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("aimnet2_charge_response_gradient_welford_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+    {
+        HighFive::File file(h5_path, HighFive::File::ReadOnly);
+        auto grp = file.getGroup(
+            "/trajectory/aimnet2_charge_response_gradient_welford");
+
+        std::string irrep_scope, mean_law, component_law;
+        std::string zero_count_validity;
+        grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
+        grp.getAttribute("directional_mean_transformation").read(mean_law);
+        grp.getAttribute("componentwise_statistic_transformation")
+            .read(component_law);
+        grp.getAttribute("zero_count_sentinel_validity")
+            .read(zero_count_validity);
+        EXPECT_EQ(irrep_scope,
+                  "only assembled component means carry directional irrep metadata");
+        EXPECT_EQ(mean_law,
+                  "vector_mean is polar: v'=R v; scalar_mean is "
+                  "rotation-invariant");
+        EXPECT_EQ(component_law,
+                  "componentwise m2,std,min,max,min_frame,max_frame have no "
+                  "closed irrep transformation law");
+        EXPECT_EQ(zero_count_validity,
+                  "when n_per_atom=0, mean,m2,std are NaN and min=+inf,"
+                  "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
+                  "n_per_atom gates validity");
+
+        std::vector<std::uint64_t> counts;
+        grp.getDataSet("n_per_atom").read(counts);
+        ASSERT_EQ(counts.size(), tp.AtomCount());
+        EXPECT_EQ(counts[0], 0u);
+        for (std::size_t i = 1; i < counts.size(); ++i) {
+            EXPECT_EQ(counts[i], 1u);
+        }
+
+        auto expect_count_gated_zero = [&](const std::string& prefix,
+                                            std::size_t width) {
+            const std::size_t size = tp.AtomCount() * width;
+            std::vector<double> mean(size), m2(size), stddev(size), min(size),
+                                max(size);
+            std::vector<std::uint64_t> min_frame(size), max_frame(size);
+            grp.getDataSet(prefix + "_mean").read(mean.data());
+            grp.getDataSet(prefix + "_m2").read(m2.data());
+            grp.getDataSet(prefix + "_std").read(stddev.data());
+            grp.getDataSet(prefix + "_min").read(min.data());
+            grp.getDataSet(prefix + "_max").read(max.data());
+            grp.getDataSet(prefix + "_min_frame").read(min_frame.data());
+            grp.getDataSet(prefix + "_max_frame").read(max_frame.data());
+            ASSERT_GE(mean.size(), 2 * width);
+            for (std::size_t k = 0; k < width; ++k) {
+                EXPECT_TRUE(std::isnan(mean[k]));
+                EXPECT_TRUE(std::isnan(m2[k]));
+                EXPECT_TRUE(std::isnan(stddev[k]));
+                EXPECT_TRUE(std::isinf(min[k]) && min[k] > 0.0);
+                EXPECT_TRUE(std::isinf(max[k]) && max[k] < 0.0);
+                EXPECT_EQ(min_frame[k], 0u);
+                EXPECT_EQ(max_frame[k], 0u);
+
+                const std::size_t valid = width + k;
+                EXPECT_DOUBLE_EQ(mean[valid], 0.0);
+                EXPECT_DOUBLE_EQ(m2[valid], 0.0);
+                EXPECT_DOUBLE_EQ(stddev[valid], 0.0);
+                EXPECT_DOUBLE_EQ(min[valid], 0.0);
+                EXPECT_DOUBLE_EQ(max[valid], 0.0);
+                EXPECT_EQ(min_frame[valid], 7u);
+                EXPECT_EQ(max_frame[valid], 7u);
+            }
+        };
+        expect_count_gated_zero("vector", 3);
+        expect_count_gated_zero("scalar", 1);
+    }
+    fs::remove(h5_path);
+}
+
+
 TEST(AIMNet2AimProjectionWelford, AbsentSourceIsMaskedAndNeverZeroAccumulated) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
@@ -548,6 +651,41 @@ TEST(AIMNet2ChargeResponseGradientWelford, Integration1P9J) {
         << "Most atoms should have nonzero charge-response gradient L2 norm";
     EXPECT_GT(max_abs_mean, 1e-6) << "Welford accumulation at noise floor";
 
+    const auto& gradient_tr =
+        tp.Result<nmr::AIMNet2ChargeResponseGradientWelfordTrajectoryResult>();
+    const std::string gradient_h5 = (fs::temp_directory_path() /
+        ("aimnet2_charge_response_gradient_welford_integration_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(gradient_h5, HighFive::File::Truncate);
+        gradient_tr.WriteH5Group(tp, file);
+    }
+    {
+        HighFive::File file(gradient_h5, HighFive::File::ReadOnly);
+        auto group = file.getGroup(
+            "/trajectory/aimnet2_charge_response_gradient_welford");
+        std::string irrep_scope, mean_law, component_law, zero_count_validity;
+        group.getAttribute("irrep_metadata_scope").read(irrep_scope);
+        group.getAttribute("directional_mean_transformation").read(mean_law);
+        group.getAttribute("componentwise_statistic_transformation")
+            .read(component_law);
+        group.getAttribute("zero_count_sentinel_validity")
+            .read(zero_count_validity);
+        EXPECT_EQ(irrep_scope,
+                  "only assembled component means carry directional irrep metadata");
+        EXPECT_EQ(mean_law,
+                  "vector_mean is polar: v'=R v; scalar_mean is "
+                  "rotation-invariant");
+        EXPECT_EQ(component_law,
+                  "componentwise m2,std,min,max,min_frame,max_frame have no "
+                  "closed irrep transformation law");
+        EXPECT_EQ(zero_count_validity,
+                  "when n_per_atom=0, mean,m2,std are NaN and min=+inf,"
+                  "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
+                  "n_per_atom gates validity");
+    }
+    fs::remove(gradient_h5);
+
     // Stored-projection Welford: every attached AIMNet2 frame contributes
     // once per atom; all 32 components remain finite. This is the A8
     // production VET and exercises the actual Compute-owned field path.
@@ -591,9 +729,8 @@ TEST(AIMNet2ChargeResponseGradientWelford, Integration1P9J) {
     }
     fs::remove(projection_h5);
 
-    // CRG H5 layout remains covered by its synthetic source-absence test;
-    // the live CRG state is checked above. The new projection result is
-    // exercised both live and through H5 read-back in this test.
+    // Both the CRG metadata contract and the projection payload are exercised
+    // through their production H5 writers above.
     std::cout << "AIMNet2ChargeResponseGradientWelford max|grad_x|="
               << max_abs_mean << " e²/Å, populated=" << populated
               << "/" << tp.AtomCount() << "\n";
