@@ -110,6 +110,24 @@ static std::set<std::string> NpyFiles(const std::string& dir) {
 }
 
 
+// These arrays are intentionally excluded from tests/golden/blessed because
+// they are too large for repository storage (see the matching exact-name
+// entries in .gitignore). RunSmoke still validates each one whenever emitted;
+// the unconditional directional spatial-neighbour payload is also required by
+// exact name below. Only the byte-for-byte blessed comparison is omitted.
+static bool IsOversizedPresenceOnlyNpy(const std::string& filename) {
+    static const std::set<std::string> kNames = {
+        "mopac_mulliken_overlap_sparse.npy",
+        "mopac_mo_coefficients.npy",
+        "mopac_overlap_packed.npy",
+        "mopac_density_packed.npy",
+        "mc_bond_neighbors.npy",
+        "spatial_neighbors.npy",
+    };
+    return kNames.count(filename) != 0;
+}
+
+
 // Read first 10 bytes of a .npy file and verify magic.
 static bool VerifyNpyMagic(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
@@ -330,17 +348,29 @@ private:
             << "Required blessed baseline contains no NPY files: "
             << blessed_dir;
 
-        // The emitted and blessed filename sets are a bidirectional contract.
-        // A newly emitted array without a committed baseline is a failure, not
-        // an informational re-blessing prompt.
+        // The emitted and blessed filename sets are a bidirectional contract,
+        // except for the exact oversized presence-only set above. A newly
+        // emitted ordinary array without a committed baseline is a failure,
+        // not an informational re-blessing prompt.
         for (const auto& f : blessed_files) {
+            if (IsOversizedPresenceOnlyNpy(f)) continue;
             EXPECT_TRUE(run_files.count(f))
                 << "Missing from run: " << f << " (present in blessed)";
         }
         for (const auto& f : run_files) {
+            if (IsOversizedPresenceOnlyNpy(f)) continue;
             EXPECT_TRUE(blessed_files.count(f))
                 << "Missing required committed baseline: " << f;
         }
+
+        // SpatialIndexResult is unconditional in both ordinary smoke modes,
+        // so its deliberately unblessed directional payload still has an
+        // exact-name presence contract. ValidateNpy above has already checked
+        // its nonzero size and NPY header. The other presence-only names are
+        // conditional MOPAC diagnostics and are validated whenever emitted.
+        EXPECT_TRUE(run_files.count("spatial_neighbors.npy"))
+            << "Missing required oversized directional output: "
+               "spatial_neighbors.npy";
 
         std::string policy_path;
 #ifdef NMR_TEST_DATA_DIR
@@ -352,6 +382,7 @@ private:
             zero_out = 0, structural = 0, read_failed = 0;
 
         for (const auto& f : blessed_files) {
+            if (IsOversizedPresenceOnlyNpy(f)) continue;
             if (!run_files.count(f)) continue;
             std::string a = run_dir + "/" + f;
             std::string b = blessed_dir + "/" + f;
