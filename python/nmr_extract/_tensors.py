@@ -290,8 +290,51 @@ class EFGTensor:
         )
 
 
+class PositionField:
+    """Cartesian positions with an affine SE(3) transformation law.
+
+    Shape ``(*, 3)``.  Positions obey ``p' = R p + t`` and deliberately do
+    not expose an e3nn irrep: treating them as a translation-free ``1o``
+    vector field is a contract error.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.shape[-1] != 3:
+            raise ValueError(
+                f"PositionField: last dim must be 3, got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    def torch(self) -> torch.Tensor:
+        return torch.from_numpy(self._data)
+
+    @property
+    def x(self) -> np.ndarray:
+        return self._data[..., 0]
+
+    @property
+    def y(self) -> np.ndarray:
+        return self._data[..., 1]
+
+    @property
+    def z(self) -> np.ndarray:
+        return self._data[..., 2]
+
+    @property
+    def n_atoms(self) -> int:
+        return self._data.shape[0]
+
+    def __repr__(self) -> str:
+        return f"PositionField(shape={self._data.shape}, law=\"p'=R p+t\")"
+
+
 class VectorField:
-    """3D vector field (positions, E-fields, B-fields).
+    """3D polar vector field.
 
     Shape ``(*, 3)``.  Cartesian (x, y, z) components.
 
