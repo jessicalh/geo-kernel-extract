@@ -1118,7 +1118,8 @@ _set_contract(
         "L-amino-acid lookup/proper-Kabsch alignment has no improper-transform "
         "contract against the unchanged chiral DFT source"
     ),
-    validity="NaN where tripeptide_bb_method_tag.npy is zero")
+    validity="NaN where tripeptide_bb_method_tag.npy is zero",
+    parity="mixed")
 _set_contract(
     ("tripeptide_bb_match_atoms",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
@@ -1129,14 +1130,15 @@ _set_contract(
     validity=(
         "column1 is has_match; unmatched col2 DFT index uses legacy zero, "
         "col3 distance is NaN, and col4 method tag is zero"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("tripeptide_bb_method_tag",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "proper-rotation invariant lookup/method outcome; no improper-transform "
         "contract for the chiral typed lookup/proper-Kabsch alignment"
     ),
-    validity="zero means no matched DFT source; 1/2 identify the matched method")
+    validity="zero means no matched DFT source; 1/2 identify the matched method",
+    parity="mixed")
 _set_contract(
     ("tripeptide_neighbor_reference",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
@@ -1144,7 +1146,8 @@ _set_contract(
         "any-mixed-method is lookup-outcome-dependent and has no improper-transform "
         "contract for the chiral neighbor lookup"
     ),
-    validity="protein-level row; NaN reference angles mean the AAA source is unavailable")
+    validity="protein-level row; NaN reference angles mean the AAA source is unavailable",
+    parity="mixed")
 _set_contract(
     ("sasa_normal",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
@@ -1404,7 +1407,7 @@ _set_contract(
     validity=(
         "sparse rows are atom/ring identity-aligned; azimuth cols38:40 are "
         "NaN for an invalid vertex-0 gauge; tensor blocks otherwise use producer zeros"
-    ))
+    ), irreps="", parity="mixed")
 _set_contract(
     ("bs_ring_B_cylindrical",), coordinate_frame="ring_cylindrical_components",
     transformation=(
@@ -1423,28 +1426,32 @@ _set_contract(
         "mixed blocks: cols0:3 invariant ids; cols3:6 affine position "
         "p'=R p+t; cols6:9 axial normal a'=det(R)R a; col9 invariant radius"
     ),
-    validity="degenerate ring geometry can carry a zero normal; no explicit geometry-valid mask")
+    validity="degenerate ring geometry can carry a zero normal; no explicit geometry-valid mask",
+    parity="mixed")
 _set_contract(
     ("ring_pair_geometry",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "mixed intrinsic scalars: cols0:9,11:13 invariant; signed normal "
         "offsets cols9:11 are pseudoscalars s'=det(R)s; translation invariant"
     ),
-    validity="one deterministic i<j row per aromatic-ring pair; no separate validity mask")
+    validity="one deterministic i<j row per aromatic-ring pair; no separate validity mask",
+    parity="mixed")
 _set_contract(
     ("spatial_neighbors",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "mixed sparse row: cols0:2 invariant atom ids; cols2:5 polar unit "
         "vector v'=R v; col5 invariant distance; translation invariant"
     ),
-    validity="zero-distance/self rows are omitted; retained row identities are deterministic")
+    validity="zero-distance/self rows are omitted; retained row identities are deterministic",
+    parity="mixed")
 _set_contract(
     ("hbond_pairs_geometry",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "mixed sparse row: cols0:2 invariant distance/angle; cols2:5 polar "
         "H-to-O unit vector v'=R v; translation invariant"
     ),
-    validity="hbond_pairs_angle_valid.npy applies to the angle column")
+    validity="hbond_pairs_angle_valid.npy applies to the angle column",
+    parity="mixed")
 _set_contract(
     ("cb_residual_vector",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
@@ -1452,7 +1459,8 @@ _set_contract(
         "construction mixes bond vectors with a cross product and therefore "
         "has no single improper-transform parity"
     ),
-    validity="cb_residual_vector_valid.npy; invalid/non-applicable rows are NaN")
+    validity="cb_residual_vector_valid.npy; invalid/non-applicable rows are NaN",
+    irreps="", parity="mixed")
 
 _set_contract(
     ("piquad_local_tensor", "piquad_local_T2"),
@@ -1476,7 +1484,7 @@ _set_contract(
     validity=(
         "all nine components are NaN unless the combined tensor evaluation "
         "succeeds; piquad_local_geometry.npy column 6 is the combined validity"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("piquad_local_geometry",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
@@ -1487,7 +1495,7 @@ _set_contract(
         "column 6 is combined tensor-evaluation validity; distance is computed "
         "before frame construction and cos_theta before vertex-0 frame "
         "construction, so either may remain finite when column 6 is zero"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("sidechain_co_frame",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
@@ -1498,7 +1506,7 @@ _set_contract(
         "origin cols0:3 are assigned before frame validation and may remain "
         "finite on an invalid row; axes cols3:12 are NaN when invalid; "
         "sidechain_co_frame_quality.npy column 3 is frame_valid"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("water_polarization",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
@@ -1508,14 +1516,15 @@ _set_contract(
     validity=(
         "whole result absent without solvent; no-shell dipole/scalars use "
         "physical zero; copied SASA normal inherits its zero/finite-grid semantics"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("water_hbond_candidates",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "mixed sparse row: cols0:9,15 invariant; cols9:12 water-O affine "
         "position p'=R p+t; cols12:15 selected-water-H affine position"
     ),
-    validity="selected-H position cols12:15 are NaN in mode 2 where water is the acceptor")
+    validity="selected-H position cols12:15 are NaN in mode 2 where water is the acceptor",
+    parity="mixed")
 
 _set_contract(
     ("delta_apbs",), coordinate_frame=_CARTESIAN_FRAME,
@@ -1523,14 +1532,16 @@ _set_contract(
         "mixed WT-atom row: cols0:3 polar delta-E; cols3:7 compatibility "
         "structural zeros (T0/T1); cols7:12 native T2 even-rank2"
     ),
-    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask")
+    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask",
+    parity="mixed")
 _set_contract(
     ("delta_ring_proximity",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "repeated 6-column removed-ring blocks: distance/rho/factor/decay "
         "invariant; z pseudoscalar; theta maps to pi-theta under an improper transform"
     ),
-    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask")
+    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask",
+    parity="mixed")
 
 
 # External-frame mixed diagnostics.
@@ -1541,7 +1552,8 @@ _set_contract(
         "dipole polar vector. For a charged system the dipole is origin- and "
         "translation-dependent according to the MOPAC source convention"
     ),
-    validity="missing parsed MOPAC dipole block currently serializes zero without an availability mask")
+    validity="missing parsed MOPAC dipole block currently serializes zero without an availability mask",
+    parity="mixed")
 _set_contract(
     ("mopac_atom_populations",), coordinate_frame="mopac_output_cartesian_xyz",
     transformation=(
@@ -1551,7 +1563,7 @@ _set_contract(
     validity=(
         "live parser never populates dipole cols6:10, so they serialize NaN; "
         "no per-column availability mask"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("mopac_atomic_orbital_populations",),
     coordinate_frame="mopac_output_atomic_orbital_axes",
@@ -1559,7 +1571,8 @@ _set_contract(
         "frame-dependent diagonal s/px/py/pz/d populations are not a closed "
         "O(3) representation; omitted AO density coherences prevent rotation"
     ),
-    validity="parsed K-row diagnostic; missing printed cells are NaN and atom identity is not serialized")
+    validity="parsed K-row diagnostic; missing printed cells are NaN and atom identity is not serialized",
+    parity="mixed")
 _set_contract(
     ("mopac_atomic_orbital_population_totals",),
     coordinate_frame=_INTRINSIC_FRAME,
@@ -1577,33 +1590,27 @@ _set_contract(
         "mixed: cols0:16 kJ/mol; col16 K; col17 bar; col18 nm^3; "
         "col19 kg/m^3; cols20:23 nm; cols23:32 kJ/mol virial; "
         "cols32:41 bar; cols41:43 K"
-    ))
+    ), parity="mixed")
 
 
-# Reflection-sensitive scalar/diagnostic channels.  They are invariant under
-# proper rotations and translations but cannot inherit the default scalar-even
-# claim under O(3).
+# Reflection-sensitive scalar/diagnostic channels.  Each entry states whether
+# its production rerun is O(3)-invariant or has an improper-transform law.
 _set_contract(
     ("dssp_backbone",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "mixed atom-broadcast row: phi/psi cols0:2 are signed dihedral "
         "pseudoscalars (wrapped sign reversal); col2 SASA is invariant; "
-        "helix/sheet cols3:5 are proper-rotation invariant libdssp categories "
-        "with no homogeneous improper-transform law"
+        "helix/sheet cols3:5 are O(3)-invariant libdssp categories"
     ),
     validity="phi/psi/SASA NaN for an unobserved DSSP residue; dssp_observed.npy is the mask",
     parity="mixed")
 _set_contract(
     ("dssp_ss8",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation=(
-        "proper-rotation invariant libdssp eight-class one-hot; no "
-        "homogeneous improper-transform law because reflection reverses "
-        "protein chirality and signed torsion regions"
-    ),
+    transformation="rotation_invariant libdssp eight-class one-hot under O(3)",
     validity=(
         "all-zero row for an unobserved DSSP residue; dssp_observed.npy is "
         "the observation mask"
-    ), parity="mixed")
+    ), parity="even")
 _set_contract(
     ("dssp_ppii",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
@@ -1664,7 +1671,8 @@ _set_contract(
 _set_contract(
     ("pucker_theta",), coordinate_frame=_INTRINSIC_FRAME,
     transformation="oriented Cremer-Pople phase: theta'=(theta+180 degrees) mod 360 under an improper transform",
-    validity="NaN for non-five-membered rings or sub-amplitude/plane degeneracy")
+    validity="NaN for non-five-membered rings or sub-amplitude/plane degeneracy",
+    parity="mixed")
 
 _set_contract(
     ("tripeptide_bb_diagnostics",), coordinate_frame=_INTRINSIC_FRAME,
@@ -1673,14 +1681,16 @@ _set_contract(
         "and14:18 reverse sign (with wrapping) under an improper transform; "
         "lookup outcomes remain chirality-conditioned"
     ),
-    validity="NaN fields are governed by the embedded status/has-match columns 1/2")
+    validity="NaN fields are governed by the embedded status/has-match columns 1/2",
+    parity="mixed")
 _set_contract(
     ("tripeptide_neighbor_diagnostics",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "two 28-column side blocks: actual phi/psi at base+11:13 and actual "
         "chi at base+15:19 are signed; lookup outcomes are chirality-conditioned"
     ),
-    validity="NaN fields are governed by each side block's status/has-match columns")
+    validity="NaN fields are governed by each side block's status/has-match columns",
+    parity="mixed")
 
 _set_contract(
     ("larsen_hbond_pairs_geometry",), coordinate_frame=_INTRINSIC_FRAME,
@@ -1692,14 +1702,15 @@ _set_contract(
         "col5 is donor-frame validity; r/theta/rho cols0:3 are computed before "
         "donor-frame validation and may remain finite when col5 is zero; "
         "imputed provenance is cols3:5"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("larsen_hbond_pairs_isotropic",), coordinate_frame="larsen_signed_rho_grid",
     transformation=(
         "proper-rotation invariant grid values; no improper-transform parity "
         "because lookup is conditioned on signed rho"
     ),
-    validity="NaN for non-successful pair dispositions; imputed successful values are emitted unmasked")
+    validity="NaN for non-successful pair dispositions; imputed successful values are emitted unmasked",
+    parity="mixed")
 _set_contract(
     ("larsen_hbond_count", "larsen_corner_imputed",
      "larsen_imputed_pair_count", "larsen_sidechain_carbonyl_pair_count"),
@@ -1709,7 +1720,8 @@ _set_contract(
         "law because reflection changes the signed-rho grid query and may change "
         "success, grid-miss, or corner-imputation disposition"
     ),
-    validity="per-atom lookup provenance; zero is a real no-contribution/no-imputation count")
+    validity="per-atom lookup provenance; zero is a real no-contribution/no-imputation count",
+    parity="mixed")
 _set_contract(
     ("larsen_hbond_pairs_index",),
     coordinate_frame="larsen_signed_rho_grid",
@@ -1719,7 +1731,8 @@ _set_contract(
         "but col6 disposition has no improper-transform law because the reflected "
         "signed-rho lookup can change query validity/success"
     ),
-    validity="col6 disposition is the authoritative row-status code")
+    validity="col6 disposition is the authoritative row-status code",
+    parity="mixed")
 _set_contract(
     ("larsen_hbond_pairs",), coordinate_frame="mixed_larsen_pair_contract",
     transformation=(
@@ -1731,14 +1744,15 @@ _set_contract(
         "disposition is col6 and frame_valid is col21; geometry cols16:19 may "
         "remain finite when the donor frame is invalid, while unavailable "
         "lookup isotropics are NaN"
-    ))
+    ), parity="mixed")
 _set_contract(
     ("larsen_sidechain_donor_candidates",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "mixed audit row: col10 signed rho is a wrapped pseudoscalar; other "
         "geometry values are proper-rotation/translation invariants"
     ),
-    validity="rho is NaN when acceptor frame atoms are unavailable; audit-only and never modeled by Table 2")
+    validity="rho is NaN when acceptor frame atoms are unavailable; audit-only and never modeled by Table 2",
+    parity="mixed")
 
 
 del _stem
