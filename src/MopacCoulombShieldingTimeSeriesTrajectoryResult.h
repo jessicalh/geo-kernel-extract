@@ -42,7 +42,9 @@
 //       gamma_applied           = false
 //       t2_basis                = "project_native_t2_isometric_real_tesseral_v1"
 //       t2_component_order      = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-//       t2_frame                = "cartesian_xyz_emitted_frame"
+//       t2_frame                = "conformation_cartesian_xyz"
+//       t2_transformation       = "native isometric real-tesseral T2 of an
+//                                  even-rank-2 Cartesian tensor: T'=R T R^T"
 //       t2_parity               = "even"
 //       efg_t0_structural_zero  = true
 //       efg_t1_structural_zero  = true

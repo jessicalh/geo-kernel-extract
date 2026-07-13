@@ -166,7 +166,10 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         grp.createAttribute("t2_component_order",
             std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
         grp.createAttribute("t2_frame",
-            std::string("cartesian_xyz_emitted_frame"));
+            std::string("conformation_cartesian_xyz"));
+        grp.createAttribute("t2_transformation", std::string(
+            "native isometric real-tesseral T2 of an even-rank-2 "
+            "Cartesian tensor: T'=R T R^T"));
         grp.createAttribute("t2_parity", std::string("even"));
         grp.createAttribute("efg_t0_structural_zero", true);
         grp.createAttribute("efg_t1_structural_zero", true);

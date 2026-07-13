@@ -216,6 +216,10 @@ TEST(MopacCoulombShieldingTimeSeries,
         bool canonical_t1_structural_zero = false;
         bool legacy_t0_structural_zero = false;
         bool legacy_t1_structural_zero = false;
+        std::string canonical_t2_frame;
+        std::string canonical_t2_transformation;
+        std::string legacy_t2_frame;
+        std::string legacy_t2_transformation;
         canonical.getAttribute("efg_t0_structural_zero")
             .read(canonical_t0_structural_zero);
         canonical.getAttribute("efg_t1_structural_zero")
@@ -224,10 +228,27 @@ TEST(MopacCoulombShieldingTimeSeries,
             .read(legacy_t0_structural_zero);
         legacy.getAttribute("efg_t1_structural_zero")
             .read(legacy_t1_structural_zero);
+        canonical.getAttribute("t2_frame").read(canonical_t2_frame);
+        canonical.getAttribute("t2_transformation")
+            .read(canonical_t2_transformation);
+        legacy.getAttribute("t2_frame").read(legacy_t2_frame);
+        legacy.getAttribute("t2_transformation")
+            .read(legacy_t2_transformation);
         EXPECT_TRUE(canonical_t0_structural_zero);
         EXPECT_TRUE(canonical_t1_structural_zero);
         EXPECT_TRUE(legacy_t0_structural_zero);
         EXPECT_TRUE(legacy_t1_structural_zero);
+        constexpr const char* kExpectedT2Frame =
+            "conformation_cartesian_xyz";
+        constexpr const char* kExpectedT2Transformation =
+            "native isometric real-tesseral T2 of an even-rank-2 "
+            "Cartesian tensor: T'=R T R^T";
+        EXPECT_EQ(canonical_t2_frame, kExpectedT2Frame);
+        EXPECT_EQ(legacy_t2_frame, kExpectedT2Frame);
+        EXPECT_EQ(canonical_t2_transformation,
+                  kExpectedT2Transformation);
+        EXPECT_EQ(legacy_t2_transformation,
+                  kExpectedT2Transformation);
         EXPECT_FALSE(canonical.hasAttribute(
             "max_potential_derivative_rank"));
         EXPECT_FALSE(canonical.hasAttribute(
@@ -314,6 +335,7 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     EXPECT_EQ(dims[2], 5u) << "T2-only per plan + source comment";
 
     std::string quantity, historical, recovery, basis, order, frame;
+    std::string t2_transformation;
     std::string t2_parity, export_note, layout, units, source, policy;
     bool gamma_applied = true;
     bool legacy_deprecated = false;
@@ -324,6 +346,7 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     grp.getAttribute("t2_basis").read(basis);
     grp.getAttribute("t2_component_order").read(order);
     grp.getAttribute("t2_frame").read(frame);
+    grp.getAttribute("t2_transformation").read(t2_transformation);
     grp.getAttribute("t2_parity").read(t2_parity);
     grp.getAttribute("e3nn_export").read(export_note);
     grp.getAttribute("legacy_irrep_attrs_deprecated").read(legacy_deprecated);
@@ -337,7 +360,10 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     EXPECT_EQ(recovery, "multiply by per-element gamma during calibration");
     EXPECT_EQ(basis, "project_native_t2_isometric_real_tesseral_v1");
     EXPECT_EQ(order, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
-    EXPECT_EQ(frame, "cartesian_xyz_emitted_frame");
+    EXPECT_EQ(frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(t2_transformation,
+              "native isometric real-tesseral T2 of an even-rank-2 "
+              "Cartesian tensor: T'=R T R^T");
     EXPECT_EQ(t2_parity, "even");
     EXPECT_NE(export_note.find("project_t2_to_e3nn"), std::string::npos);
     EXPECT_TRUE(legacy_deprecated);
