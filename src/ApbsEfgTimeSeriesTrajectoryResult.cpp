@@ -278,10 +278,10 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         grid_ds.createAttribute("units", std::string("grid_points"));
         grid_ds.createAttribute("coordinate_frame",
             std::string("apbs_lab_axis_aligned_grid_xyz"));
-        grid_ds.createAttribute("parity", std::string("mixed"));
+        grid_ds.createAttribute("parity", std::string("even"));
         grid_ds.createAttribute("transformation", std::string(
-            "lab-axis grid point counts; translation invariant; no closed "
-            "O(3) transformation law under arbitrary orthogonal transforms"));
+            "configured cubic grid point counts (n,n,n); invariant under "
+            "proper/improper orthogonal transforms and translations"));
     };
     auto write_grid_f64 = [&](const std::string& name,
             const std::vector<std::array<double, 3>>& rows,

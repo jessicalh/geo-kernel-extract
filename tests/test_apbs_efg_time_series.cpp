@@ -239,6 +239,7 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     }
     const auto expect_grid_contract = [&](const std::string& name,
             const std::string& expected_units,
+            const std::string& expected_parity,
             const std::string& expected_transformation) {
         auto grid = grp.getDataSet(name);
         std::string order, grid_units, grid_frame, grid_parity, transformation;
@@ -250,20 +251,20 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
         EXPECT_EQ(order, "x,y,z");
         EXPECT_EQ(grid_units, expected_units);
         EXPECT_EQ(grid_frame, "apbs_lab_axis_aligned_grid_xyz");
-        EXPECT_EQ(grid_parity, "mixed");
+        EXPECT_EQ(grid_parity, expected_parity);
         EXPECT_EQ(transformation, expected_transformation);
     };
-    expect_grid_contract("apbs_grid_dims_per_frame", "grid_points",
-        "lab-axis grid point counts; translation invariant; no closed O(3) "
-        "transformation law under arbitrary orthogonal transforms");
-    expect_grid_contract("apbs_grid_lengths_A_per_frame", "Angstrom",
+    expect_grid_contract("apbs_grid_dims_per_frame", "grid_points", "even",
+        "configured cubic grid point counts (n,n,n); invariant under "
+        "proper/improper orthogonal transforms and translations");
+    expect_grid_contract("apbs_grid_lengths_A_per_frame", "Angstrom", "mixed",
         "lab-axis grid extents; translation invariant; no closed O(3) "
         "transformation law under arbitrary orthogonal transforms");
-    expect_grid_contract("apbs_grid_origin_A_per_frame", "Angstrom",
+    expect_grid_contract("apbs_grid_origin_A_per_frame", "Angstrom", "mixed",
         "lab-axis grid origin; o'=o+t under pure translations; no "
         "affine-position/O(3) law under arbitrary orthogonal transforms "
         "because grid axes remain lab-fixed");
-    expect_grid_contract("apbs_grid_spacing_A_per_frame", "Angstrom",
+    expect_grid_contract("apbs_grid_spacing_A_per_frame", "Angstrom", "mixed",
         "lab-axis grid step lengths; translation invariant; no closed O(3) "
         "transformation law under arbitrary orthogonal transforms");
     std::string field_quantity, grid_mode, reference_subtracts, rank3_policy;
