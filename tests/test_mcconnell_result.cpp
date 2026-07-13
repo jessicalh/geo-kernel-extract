@@ -1024,6 +1024,52 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
 }
 
 
+TEST(McConnellImplementationChecks,
+     NearestSourceNpyRowsAreNanWhenNoAcceptedCoOrCnExists) {
+    auto protein = BuildSyntheticXHCategoryProtein();
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+
+    for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
+        ASSERT_EQ(conf.AtomAt(i).nearest_CO_dist, NO_DATA_SENTINEL);
+        ASSERT_EQ(conf.AtomAt(i).nearest_CN_dist, NO_DATA_SENTINEL);
+    }
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mcconnell_missing_nearest_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
+                  conf, out_dir.string()),
+              26);
+
+    const auto co_dir = ReadNpy<double>(
+        out_dir / "mc_nearest_co_dir.npy", "<f8");
+    const auto co_midpoint = ReadNpy<double>(
+        out_dir / "mc_nearest_co_midpoint.npy", "<f8");
+    const auto co_tensor = ReadNpy<double>(
+        out_dir / "mc_nearest_co_T2.npy", "<f8");
+    const auto cn_tensor = ReadNpy<double>(
+        out_dir / "mc_nearest_cn_T2.npy", "<f8");
+    ASSERT_EQ(co_dir.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 3}));
+    ASSERT_EQ(co_midpoint.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 3}));
+    ASSERT_EQ(co_tensor.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 9}));
+    ASSERT_EQ(cn_tensor.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 9}));
+    for (const auto* array : {&co_dir, &co_midpoint, &co_tensor, &cn_tensor}) {
+        for (double value : array->values) {
+            EXPECT_TRUE(std::isnan(value));
+        }
+    }
+
+    RemoveMcConnellOutputs(out_dir);
+}
+
+
 TEST(SidechainCarbonylAnisotropyProduction,
      TypedSourcesFramesAndNoMopacReadBack) {
     using namespace sidechain_carbonyl_anisotropy_detail;
