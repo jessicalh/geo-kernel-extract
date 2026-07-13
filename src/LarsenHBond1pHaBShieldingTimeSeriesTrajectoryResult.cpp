@@ -138,7 +138,12 @@ void LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("irrep_layout",
         std::string("PackFull9: [T0, T1_cartesian_xyz, T2_real_tesseral_m-2..m+2]"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("0e+1e+2e"));
+    grp.createAttribute("parity",        std::string("mixed"));
+    grp.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("transformation", std::string(
+        "even_rank2 under proper rotations: T'=R T R^T; signed-rho DFT-grid "
+        "lookup is chirality-conditioned and has no improper-transform contract"));
     grp.createAttribute("units",         std::string("ppm"));
 
     // Flat (N, T, 9). NaN-fill rows where the source-present flag is
