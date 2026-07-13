@@ -220,7 +220,7 @@ class McConnellGroup:
     s_h_bo: ShieldingTensor
     nearfield_counts: Optional[McConnellNearFieldCounts] = None
     nearest_co_dir: Optional[VectorField] = None
-    nearest_co_midpoint: Optional[VectorField] = None
+    nearest_co_midpoint: Optional[PositionField] = None
     nearest_co_T2: Optional[ShieldingTensor] = None
     nearest_cn_T2: Optional[ShieldingTensor] = None
     bond_neighbors: Optional[np.ndarray] = None
