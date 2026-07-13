@@ -255,6 +255,18 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("frame_index_range",      frame_index_range_);
     grp.createAttribute("irrep_layout_dipole",    std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_normal",    std::string("v_x,v_y,v_z"));
+    grp.createAttribute("irrep_metadata_scope", std::string(
+        "only assembled component means carry directional irrep metadata"));
+    grp.createAttribute("directional_mean_transformation", std::string(
+        "assembled dipole_vector_{x,y,z}_mean and surface_normal_{x,y,z}_mean "
+        "are polar: v'=R v"));
+    grp.createAttribute("componentwise_statistic_transformation", std::string(
+        "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+        "irrep transformation law"));
+    grp.createAttribute("zero_count_sentinel_validity", std::string(
+        "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,max=-inf,"
+        "min_frame=0,max_frame=0 are invalid sentinels; n_frames_per_atom "
+        "gates validity"));
     grp.createAttribute("reference_frame",        std::string("SASA_normal"));
     grp.createAttribute("dipole_alignment_zero_sentinel",
         std::string("0.0 when |dipole_sum| < NEAR_ZERO_NORM "
