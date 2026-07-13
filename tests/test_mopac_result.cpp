@@ -1,362 +1,327 @@
-#include "TestEnvironment.h"
 #include <gtest/gtest.h>
-#include "PdbFileReader.h"
+
+#include "Atom.h"
+#include "ChargeAssignmentResult.h"
+#include "ChargeSource.h"
 #include "MopacResult.h"
-#include "RuntimeEnvironment.h"
-#include <filesystem>
-#include <cmath>
+#include "OperationRunner.h"
+#include "Protein.h"
+#include "Residue.h"
+
 #include <algorithm>
-#include <cctype>
-#include <cstdint>
-#include <fstream>
-#include <iterator>
-#include <sstream>
+#include <array>
+#include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <memory>
 #include <string>
 #include <unistd.h>
 #include <vector>
 
 using namespace nmr;
+namespace fs = std::filesystem;
 
 namespace {
 
-struct NpyArray {
-    std::string descr;
-    std::vector<size_t> shape;
-    std::vector<char> bytes;
-};
+std::unique_ptr<Protein> BuildUnnamedMolecule(
+        const std::vector<Element>& elements,
+        const std::vector<Vec3>& positions,
+        const std::string& description) {
+    auto protein = std::make_unique<Protein>();
 
-std::string Trim(std::string s) {
-    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
-    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
-                                    [&](char c) { return !is_space(c); }));
-    s.erase(std::find_if(s.rbegin(), s.rend(),
-                         [&](char c) { return !is_space(c); }).base(), s.end());
-    return s;
+    Residue residue;
+    residue.type = AminoAcid::Unknown;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    protein->AddResidue(std::move(residue));
+
+    for (Element element : elements) {
+        auto atom = Atom::Create(element);
+        atom->residue_index = 0;
+        const size_t atom_index = protein->AddAtom(std::move(atom));
+        protein->MutableResidueAt(0).atom_indices.push_back(atom_index);
+    }
+
+    protein->FinalizeConstruction(positions);
+    protein->AddConformation(positions, description);
+    return protein;
+}
+std::unique_ptr<Protein> BuildWater() {
+    return BuildUnnamedMolecule(
+        {Element::O, Element::H, Element::H},
+        {
+            Vec3(0.0, 0.0, 0.0),
+            Vec3(0.9572, 0.0, 0.0),
+            Vec3(-0.2399872, 0.927297, 0.0),
+        },
+        "direct MOPAC water probe");
 }
 
-NpyArray ReadNpy(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    EXPECT_TRUE(in.is_open()) << path;
-    NpyArray arr;
-    if (!in.is_open()) return arr;
-
-    char magic[6] = {};
-    in.read(magic, 6);
-    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6)) << path;
-
-    char version[2] = {};
-    in.read(version, 2);
-    EXPECT_EQ(version[0], 1) << path;
-    EXPECT_EQ(version[1], 0) << path;
-
-    uint16_t header_len = 0;
-    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
-    std::string header(header_len, '\0');
-    in.read(header.data(), header_len);
-
-    const std::string descr_key = "'descr': '";
-    auto descr_pos = header.find(descr_key);
-    if (descr_pos == std::string::npos) {
-        ADD_FAILURE() << header;
-        return arr;
-    }
-    descr_pos += descr_key.size();
-    auto descr_end = header.find('\'', descr_pos);
-    if (descr_end == std::string::npos) {
-        ADD_FAILURE() << header;
-        return arr;
-    }
-    arr.descr = header.substr(descr_pos, descr_end - descr_pos);
-
-    auto shape_key = header.find("'shape': (");
-    if (shape_key == std::string::npos) {
-        ADD_FAILURE() << header;
-        return arr;
-    }
-    auto shape_begin = header.find('(', shape_key);
-    auto shape_end = header.find(')', shape_begin);
-    if (shape_begin == std::string::npos || shape_end == std::string::npos) {
-        ADD_FAILURE() << header;
-        return arr;
-    }
-    std::stringstream ss(header.substr(shape_begin + 1,
-                                      shape_end - shape_begin - 1));
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        token = Trim(token);
-        if (!token.empty()) arr.shape.push_back(static_cast<size_t>(std::stoull(token)));
-    }
-
-    arr.bytes.assign(std::istreambuf_iterator<char>(in),
-                     std::istreambuf_iterator<char>());
-    return arr;
+std::unique_ptr<Protein> BuildDissociatedHydrogen() {
+    return BuildUnnamedMolecule(
+        {Element::H, Element::H},
+        {Vec3(0.0, 0.0, 0.0), Vec3(100.0, 0.0, 0.0)},
+        "libmopac crash-containment probe");
 }
 
-const double* Doubles(const NpyArray& arr) {
-    return reinterpret_cast<const double*>(arr.bytes.data());
-}
+std::unique_ptr<Protein> BuildRunnerFixture() {
+    auto protein = std::make_unique<Protein>();
 
-void ExpectDoubleEqOrNan(double actual, double expected) {
-    if (std::isnan(expected)) {
-        EXPECT_TRUE(std::isnan(actual));
-    } else {
-        EXPECT_DOUBLE_EQ(actual, expected);
-    }
-}
+    auto atom_n = Atom::Create(Element::N);
+    auto atom_c = Atom::Create(Element::C);
+    auto atom_o = Atom::Create(Element::O);
+    auto atom_h = Atom::Create(Element::H);
+    atom_n->pdb_atom_name = "N";
+    atom_c->pdb_atom_name = "C";
+    atom_o->pdb_atom_name = "O";
+    atom_h->pdb_atom_name = "H";
+    atom_n->residue_index = 0;
+    atom_c->residue_index = 0;
+    atom_o->residue_index = 0;
+    atom_h->residue_index = 0;
+    protein->AddAtom(std::move(atom_n));
+    protein->AddAtom(std::move(atom_c));
+    protein->AddAtom(std::move(atom_o));
+    protein->AddAtom(std::move(atom_h));
 
-void CleanupMopacWriteFeaturesDir(const std::filesystem::path& out_dir) {
-    static const char* files[] = {
-        "mopac_charges.npy",
-        "mopac_scalars.npy",
-        "mopac_bond_orders.npy",
-        "mopac_bond_neighbors.npy",
-        "mopac_global.npy",
-        "mopac_atom_populations.npy",
-        "mopac_atomic_orbital_populations.npy",
-        "mopac_atomic_orbital_population_totals.npy",
-        "mopac_bond_valencies.npy",
-        "mopac_bond_orders_unique.npy",
-        "mopac_topology_bond_orders_full.npy",
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    residue.atom_indices = {0, 1, 2, 3};
+    residue.N = 0;
+    residue.C = 1;
+    residue.O = 2;
+    residue.H = 3;
+    protein->AddResidue(std::move(residue));
+
+    const std::vector<Vec3> positions = {
+        Vec3(0.0, 1.45, 0.0),
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(1.2, 0.0, 0.0),
+        Vec3(0.6, 3.0, 0.0),
     };
-    std::error_code ec;
-    for (const char* file : files) {
-        std::filesystem::remove(out_dir / file, ec);
-        ec.clear();
-    }
-    std::filesystem::remove(out_dir, ec);
+    protein->FinalizeConstruction(positions);
+    protein->AddConformation(positions, "requested MOPAC hard-abort probe");
+    return protein;
 }
+
+bool ContainsAttached(const RunResult& result, const std::string& name) {
+    return std::find(result.attached.begin(), result.attached.end(), name)
+        != result.attached.end();
+}
+
+std::string ShellQuote(const std::string& value) {
+    std::string quoted = "'";
+    for (char c : value) {
+        if (c == '\'') quoted += "'\\''";
+        else quoted += c;
+    }
+    quoted += "'";
+    return quoted;
+}
+
+struct TemporaryDirectory {
+    fs::path path;
+
+    static void Remove(const fs::path& directory) {
+        std::error_code error;
+        if (fs::exists(directory, error)) {
+            for (const auto& entry : fs::directory_iterator(directory)) {
+                fs::remove(entry.path(), error);
+                error.clear();
+            }
+            fs::remove(directory, error);
+        }
+    }
+
+    explicit TemporaryDirectory(const std::string& label) {
+        path = fs::temp_directory_path() /
+            (label + "_" + std::to_string(::getpid()));
+        Remove(path);
+        std::error_code error;
+        fs::create_directories(path, error);
+        EXPECT_FALSE(error) << error.message();
+    }
+
+    ~TemporaryDirectory() {
+        Remove(path);
+    }
+};
 
 }  // namespace
 
-
-class MopacResultTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        if (!std::filesystem::exists(nmr::test::TestEnvironment::UbqProtonated())) {
-            GTEST_SKIP() << "1UBQ PDB not found";
-        }
-        auto r = BuildFromProtonatedPdb(nmr::test::TestEnvironment::UbqProtonated());
-        if (!r.Ok()) GTEST_SKIP() << r.error;
-        protein = std::move(r.protein);
-
-        RuntimeEnvironment::Load();
-    }
-    std::unique_ptr<Protein> protein;
-};
-
-
-TEST_F(MopacResultTest, ComputeOnFullProtein) {
+TEST(MopacDirectApi, WaterProbeMatchesProductionAndConsumedSurface) {
+    auto protein = BuildWater();
     auto& conf = protein->Conformation();
+    ASSERT_EQ(protein->BondCount(), 2u);
 
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr) << "MOPAC computation failed";
+    std::string error;
+    auto result = MopacResult::Compute(conf, 0, 1, &error);
+    ASSERT_NE(result, nullptr) << error;
+    EXPECT_TRUE(error.empty());
+    EXPECT_TRUE(result->Dependencies().empty());
 
-    // Verify charges are non-zero and reasonable
-    bool any_nonzero = false;
-    for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        double q = result->ChargeAt(i);
-        EXPECT_FALSE(std::isnan(q)) << "NaN charge at atom " << i;
-        EXPECT_GT(q, -3.0) << "Charge too negative at atom " << i;
-        EXPECT_LT(q, 3.0) << "Charge too positive at atom " << i;
-        if (std::abs(q) > 1e-6) any_nonzero = true;
-    }
-    EXPECT_TRUE(any_nonzero) << "All MOPAC charges are zero";
-
-    // Heat of formation should be a large negative number for a protein
-    EXPECT_LT(result->HeatOfFormation(), 0.0)
-        << "Heat of formation should be negative for a protein";
-}
-
-
-TEST_F(MopacResultTest, BondOrdersReasonable) {
-    auto& conf = protein->Conformation();
-
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr);
-
-    const auto& orders = result->AllBondOrders();
-    EXPECT_GT(orders.size(), 0u) << "No bond orders reported";
-
-    for (const auto& bo : orders) {
-        EXPECT_GE(bo.wiberg_order, 0.01)
-            << "Bond order below threshold between "
-            << bo.atom_a << " and " << bo.atom_b;
-        EXPECT_LE(bo.wiberg_order, 4.0)
-            << "Bond order too high between "
-            << bo.atom_a << " and " << bo.atom_b;
-    }
-}
-
-
-TEST_F(MopacResultTest, ChargesStoredOnConformationAtom) {
-    auto& conf = protein->Conformation();
-
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr);
-
-    for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        double ca_charge = conf.AtomAt(i).mopac_charge;
-        double result_charge = result->ChargeAt(i);
-        EXPECT_DOUBLE_EQ(ca_charge, result_charge)
-            << "Charge mismatch at atom " << i;
-    }
-}
-
-
-TEST_F(MopacResultTest, OrbitalPopulationsPresent) {
-    auto& conf = protein->Conformation();
-
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr);
-
-    // Heavy atoms should have non-zero s and p populations
-    bool any_spop = false;
-    bool any_ppop = false;
-    for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        if (conf.AtomAt(i).mopac_s_pop > 0.1) any_spop = true;
-        if (conf.AtomAt(i).mopac_p_pop > 0.1) any_ppop = true;
-    }
-    EXPECT_TRUE(any_spop) << "No atom has significant s-orbital population";
-    EXPECT_TRUE(any_ppop) << "No atom has significant p-orbital population";
-}
-
-TEST_F(MopacResultTest, AtomicOrbitalPopulationTotalsWrittenFromSyntheticRow) {
-    auto& conf = protein->Conformation();
-
-    MopacResult result;
-    auto& record = const_cast<MopacRunRecord&>(result.RunRecord());
-    MopacAtomicOrbitalPopulation row;
-    row.atom_index = 0;
-    row.element = "C";
-    row.populations = {
-        1.0, 0.1, 0.2, 0.3, 0.01, 0.02, 0.03, 0.04, 0.05
+    // The consumed surface preserves the numeric values recovered from the
+    // legacy fixed-precision text fields. The exact API values are emitted in
+    // explicit full-precision arrays and checked against the independent
+    // mopac_feature_probe.py archive in the schema test below.
+    constexpr std::array<double, 3> expected_charges = {
+        -0.648152,
+        0.324018,
+        0.324134,
     };
-    record.atomic_orbital_populations.push_back(row);
-
-    const auto out_dir = std::filesystem::temp_directory_path() /
-        ("mopac_synthetic_ao_population_totals_" + std::to_string(::getpid()));
-    CleanupMopacWriteFeaturesDir(out_dir);
-    std::filesystem::create_directories(out_dir);
-
-    result.WriteFeatures(conf, out_dir.string());
-
-    auto raw = ReadNpy(out_dir / "mopac_atomic_orbital_populations.npy");
-    auto totals = ReadNpy(out_dir / "mopac_atomic_orbital_population_totals.npy");
-    ASSERT_EQ(raw.shape, (std::vector<size_t>{1, 9}));
-    ASSERT_EQ(totals.shape, (std::vector<size_t>{1, 3}));
-
-    const double* raw_data = Doubles(raw);
-    const double* totals_data = Doubles(totals);
-    const double expected_raw[] = {
-        1.0, 0.1, 0.2, 0.3, 0.01, 0.02, 0.03, 0.04, 0.05
+    constexpr std::array<double, 3> expected_s = {
+        1.81616,
+        0.67598,
+        0.67587,
     };
-    for (size_t c = 0; c < 9; ++c) {
-        EXPECT_DOUBLE_EQ(raw_data[c], expected_raw[c]);
-    }
-    EXPECT_DOUBLE_EQ(totals_data[0], 1.0);
-    EXPECT_DOUBLE_EQ(totals_data[1], 0.6);
-    EXPECT_DOUBLE_EQ(totals_data[2], 0.15);
+    constexpr std::array<double, 3> expected_p = {
+        4.83199,
+        0.0,
+        0.0,
+    };
+    constexpr std::array<double, 3> expected_api_valencies = {
+        1.788263447550035,
+        0.8950121991514495,
+        0.8949370367721683,
+    };
+    constexpr std::array<double, 3> expected_consumed_valencies = {
+        1.788,
+        0.894,
+        0.894,
+    };
 
-    CleanupMopacWriteFeaturesDir(out_dir);
-}
+    for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+        EXPECT_NEAR(result->ChargeAt(atom), expected_charges[atom], 1e-12);
+        EXPECT_NEAR(result->SPopAt(atom), expected_s[atom], 1e-12);
+        EXPECT_NEAR(result->PPopAt(atom), expected_p[atom], 1e-12);
+        EXPECT_NEAR(result->ValencyAt(atom),
+                    expected_consumed_valencies[atom], 1e-12);
 
-TEST_F(MopacResultTest, AtomicOrbitalPopulationTotalsWrittenFromRawRows) {
-    auto& conf = protein->Conformation();
-
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr);
-
-    const auto& rows = result->AtomicOrbitalPopulations();
-    ASSERT_GT(rows.size(), 0u) << "No printed AO population rows parsed";
-
-    const auto out_dir = std::filesystem::temp_directory_path() /
-        ("mopac_ao_population_totals_" + std::to_string(::getpid()));
-    CleanupMopacWriteFeaturesDir(out_dir);
-    std::filesystem::create_directories(out_dir);
-
-    result->WriteFeatures(conf, out_dir.string());
-
-    auto raw = ReadNpy(out_dir / "mopac_atomic_orbital_populations.npy");
-    auto totals = ReadNpy(out_dir / "mopac_atomic_orbital_population_totals.npy");
-    ASSERT_EQ(raw.shape, (std::vector<size_t>{rows.size(), 9}));
-    ASSERT_EQ(totals.shape, (std::vector<size_t>{rows.size(), 3}));
-
-    const double* raw_data = Doubles(raw);
-    const double* totals_data = Doubles(totals);
-    for (size_t i = 0; i < rows.size(); ++i) {
-        for (size_t c = 0; c < 9; ++c) {
-            ExpectDoubleEqOrNan(raw_data[i*9 + c], rows[i].populations[c]);
-        }
-        ExpectDoubleEqOrNan(totals_data[i*3 + 0], raw_data[i*9 + 0]);
-        ExpectDoubleEqOrNan(totals_data[i*3 + 1],
-                            raw_data[i*9 + 1] + raw_data[i*9 + 2] + raw_data[i*9 + 3]);
-        ExpectDoubleEqOrNan(totals_data[i*3 + 2],
-                            raw_data[i*9 + 4] + raw_data[i*9 + 5] + raw_data[i*9 + 6] +
-                            raw_data[i*9 + 7] + raw_data[i*9 + 8]);
-    }
-
-    CleanupMopacWriteFeaturesDir(out_dir);
-}
-
-
-TEST_F(MopacResultTest, BondOrderAtomPairLookup) {
-    auto& conf = protein->Conformation();
-
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr);
-
-    // Pick a covalent bond from the topology and verify its MOPAC bond order
-    if (protein->BondCount() > 0) {
-        const Bond& bond = protein->BondAt(0);
-        double topo_order = result->TopologyBondOrder(0);
-        double pair_order = result->BondOrder(bond.atom_index_a, bond.atom_index_b);
-
-        // Both paths should agree
-        EXPECT_DOUBLE_EQ(topo_order, pair_order)
-            << "Topology vs pair lookup mismatch for bond 0";
-
-        // Covalent bonds should have meaningful bond orders
-        // (most covalent bonds > 0.5, but some may be weak)
-        if (topo_order > 0.0) {
-            EXPECT_GT(topo_order, 0.1)
-                << "Covalent bond has suspiciously low MOPAC bond order";
+        const auto& stored = conf.AtomAt(atom);
+        EXPECT_DOUBLE_EQ(stored.mopac_charge, result->ChargeAt(atom));
+        EXPECT_DOUBLE_EQ(stored.mopac_s_pop, result->SPopAt(atom));
+        EXPECT_DOUBLE_EQ(stored.mopac_p_pop, result->PPopAt(atom));
+        EXPECT_DOUBLE_EQ(stored.mopac_valency, result->ValencyAt(atom));
+        for (size_t i = 1; i < stored.mopac_bond_neighbours.size(); ++i) {
+            EXPECT_GE(stored.mopac_bond_neighbours[i - 1].wiberg_order,
+                      stored.mopac_bond_neighbours[i].wiberg_order);
         }
     }
 
-    // BondOrder for a non-existent pair should return 0
-    EXPECT_DOUBLE_EQ(result->BondOrder(0, conf.AtomCount() + 100), 0.0);
+    // The distinct libmopac CSC-diagonal valencies are retained separately
+    // and checked by WaterEmitsCompleteLoadableSchema against the probe.
+    EXPECT_NE(expected_api_valencies[0], expected_consumed_valencies[0]);
+
+    EXPECT_DOUBLE_EQ(result->BondOrder(0, 1), 0.894);
+    EXPECT_DOUBLE_EQ(result->BondOrder(0, 2), 0.894);
+    EXPECT_DOUBLE_EQ(result->BondOrder(1, 2), 0.0);
+    EXPECT_EQ(result->AllBondOrders().size(), 4u);
+    for (size_t bond = 0; bond < protein->BondCount(); ++bond) {
+        const Bond& topology_bond = protein->BondAt(bond);
+        EXPECT_DOUBLE_EQ(
+            result->TopologyBondOrder(bond),
+            result->BondOrder(topology_bond.atom_index_a,
+                              topology_bond.atom_index_b));
+    }
+
+    EXPECT_DOUBLE_EQ(result->HeatOfFormation(), -57.79012);
+    const Vec3 dipole = result->Dipole();
+    EXPECT_DOUBLE_EQ(dipole.x(), 1.314);
+    EXPECT_DOUBLE_EQ(dipole.y(), 1.699);
+    EXPECT_DOUBLE_EQ(dipole.z(), 0.0);
 }
 
+TEST(MopacDirectApi, WaterEmitsCompleteLoadableSchema) {
+    auto protein = BuildWater();
+    auto& conf = protein->Conformation();
+    std::string error;
+    auto result = MopacResult::Compute(conf, 0, 1, &error);
+    ASSERT_NE(result, nullptr) << error;
 
-TEST_F(MopacResultTest, ValencyReasonable) {
+    TemporaryDirectory output("mopac_direct_npy");
+    ASSERT_EQ(result->WriteFeatures(conf, output.path.string()), 50);
+
+    const fs::path probe_archive = output.path / "water_probe_reference.npz";
+    const std::string probe_command =
+        "OMP_NUM_THREADS=1 OMP_STACKSIZE=2G " +
+        ShellQuote(NMR_MOPAC_PROBE_ENV) + " " +
+        ShellQuote(NMR_TEST_PYTHON_EXECUTABLE) + " " +
+        ShellQuote(NMR_MOPAC_PROBE_SCRIPT) + " " +
+        ShellQuote(NMR_MOPAC_PROBE_INPUT) +
+        " --library " + ShellQuote(NMR_MOPAC_PROBE_LIBRARY) +
+        " --electronic-features --output " +
+        ShellQuote(probe_archive.string());
+    ASSERT_EQ(std::system(probe_command.c_str()), 0) << probe_command;
+
+    const std::string validation_command =
+        "PYTHONPATH=" + ShellQuote(NMR_TEST_PYTHONPATH) + " " +
+        ShellQuote(NMR_TEST_PYTHON_EXECUTABLE) + " " +
+        ShellQuote(NMR_MOPAC_NPY_VALIDATOR) + " " +
+        ShellQuote(output.path.string()) + " " +
+        ShellQuote(probe_archive.string()) + " " +
+        ShellQuote(NMR_MOPAC_PROBE_INPUT);
+    EXPECT_EQ(std::system(validation_command.c_str()), 0)
+        << validation_command;
+}
+
+TEST(MopacDirectApi, DissociatedHydrogenCrashIsContained) {
+    auto protein = BuildDissociatedHydrogen();
     auto& conf = protein->Conformation();
 
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr);
+    std::string error;
+    auto result = MopacResult::Compute(conf, 0, 1, &error);
+    EXPECT_EQ(result, nullptr);
+    EXPECT_NE(error.find("MOPAC worker terminated by signal 6"),
+              std::string::npos) << error;
 
-    for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        double val = result->ValencyAt(i);
-        EXPECT_GE(val, 0.0) << "Negative valency at atom " << i;
-        // Carbon typically ~4, oxygen ~2, hydrogen ~1, nitrogen ~3
-        EXPECT_LT(val, 6.0) << "Valency too high at atom " << i
-            << " (" << val << ")";
+    // The extractor process is still alive and no partial calculator-owned
+    // state was committed after the worker's real SIGABRT.
+    for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+        const auto& stored = conf.AtomAt(atom);
+        EXPECT_DOUBLE_EQ(stored.mopac_charge, 0.0);
+        EXPECT_DOUBLE_EQ(stored.mopac_s_pop, 0.0);
+        EXPECT_DOUBLE_EQ(stored.mopac_p_pop, 0.0);
+        EXPECT_DOUBLE_EQ(stored.mopac_valency, 0.0);
+        EXPECT_TRUE(stored.mopac_bond_neighbours.empty());
     }
 }
 
-
-TEST_F(MopacResultTest, MopacBondNeighboursSorted) {
+TEST(MopacDirectApi, RequestedFailureHardAbortsOperationRunner) {
+    auto protein = BuildRunnerFixture();
     auto& conf = protein->Conformation();
 
-    auto result = MopacResult::Compute(conf, 0);
-    ASSERT_NE(result, nullptr);
+    std::vector<AtomChargeRadius> charges(4);
+    for (auto& charge : charges) {
+        charge.partial_charge = 25.0;
+        charge.pb_radius = 1.5;
+        charge.status = ChargeAssignmentStatus::Matched;
+    }
+    PreloadedChargeSource source(
+        std::move(charges), ForceField::Amber_ff14SB);
 
-    // Verify that bond neighbours are sorted descending by wiberg_order
-    for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        const auto& nbs = conf.AtomAt(i).mopac_bond_neighbours;
-        for (size_t j = 1; j < nbs.size(); ++j) {
-            EXPECT_GE(nbs[j-1].wiberg_order, nbs[j].wiberg_order)
-                << "Bond neighbours not sorted at atom " << i
-                << " indices " << (j-1) << "," << j;
-        }
+    RunOptions options;
+    options.charge_source = &source;
+    options.net_charge = 100;
+    options.skip_dssp = true;
+    options.skip_apbs = true;
+    options.skip_coulomb = true;
+
+    const RunResult run = OperationRunner::Run(conf, options);
+    EXPECT_FALSE(run.Ok());
+    EXPECT_NE(run.error.find("PM7/MOZYME/1SCF failed"), std::string::npos)
+        << run.error;
+    EXPECT_NE(run.error.find("CHECK"), std::string::npos) << run.error;
+    EXPECT_TRUE(ContainsAttached(run, "ChargeAssignmentResult"));
+    EXPECT_FALSE(ContainsAttached(run, "MopacResult"));
+    EXPECT_FALSE(ContainsAttached(run, "BiotSavartResult"));
+    EXPECT_TRUE(conf.HasResult<ChargeAssignmentResult>());
+    EXPECT_FALSE(conf.HasResult<MopacResult>());
+
+    for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+        const auto& stored = conf.AtomAt(atom);
+        EXPECT_DOUBLE_EQ(stored.mopac_charge, 0.0);
+        EXPECT_TRUE(stored.mopac_bond_neighbours.empty());
     }
 }

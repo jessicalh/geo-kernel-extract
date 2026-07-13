@@ -132,9 +132,10 @@ TEST(MopacChargeWelford, GroupSkippedWhenSourceNeverAttached) {
 // Verifies via tp.AtomAt(i).mopac_charge_welford that:
 //   - n_frames matches source_attached_count
 //   - mean is finite
-//   - the protein's total charge ≈ 0 (Mulliken neutrality sanity)
+//   - the protein's total charge ≈ 0 (Coulson neutrality sanity)
 //
-// Skips if MOPAC binary unavailable or runtime config disables it.
+// Skips if the pinned diskless-MOPAC worker is unavailable or runtime config
+// disables MOPAC.
 
 TEST(MopacChargeWelford, Integration1P9J) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
@@ -201,13 +202,13 @@ TEST(MopacChargeWelford, Integration1P9J) {
         }
     }
     EXPECT_EQ(n_finite, N);
-    // Mulliken charge total should be ≈ 0 (protein has net charge from
+    // Coulson charge total should be ≈ 0 (protein has net charge from
     // CYS-CYS / charged residues, but Σq_i over the whole protein
-    // matches the system net charge ± Mulliken-partition rounding;
+    // matches the system net charge ± Coulson-partition rounding;
     // 1P9J net charge is 0 per the AMBER prep, so Σq ≈ 0).
     EXPECT_LT(std::abs(total_mean_q), 2.0)
         << "Σ ⟨q⟩_i over protein = " << total_mean_q
-        << " e; Mulliken charge neutrality sanity (1P9J net charge 0)";
+        << " e; Coulson charge neutrality sanity (1P9J net charge 0)";
     std::cout << "  Σ ⟨q⟩_i = " << total_mean_q << " e" << std::endl;
 }
 
