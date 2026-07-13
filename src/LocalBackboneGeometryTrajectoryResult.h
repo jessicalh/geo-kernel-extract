@@ -13,9 +13,11 @@
 //     angle_CB_CA_C       (R,T)   radians
 //     angle_Cprev_N_CA    (R,T)   radians
 //     angle_CA_C_Nnext    (R,T)   radians
-//     cb_deviation        (R,T)   Angstrom
+//     cb_deviation        (R,T)   Angstrom; invariant under proper rotations,
+//                                  chirality-conditioned under reflections
 //     cb_local_vector     (R,T,3) Angstrom, observed_CB - ideal_CB in
-//                                  global Cartesian coordinates
+//                                  global Cartesian coordinates; polar only
+//                                  under proper rotations
 //
 // Static masks are topology-derived once at Create. Backbone adjacency is
 // exclusively Protein::BackbonePredecessor/BackboneSuccessor; residue-index

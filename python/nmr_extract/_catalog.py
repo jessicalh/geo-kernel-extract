@@ -1497,6 +1497,14 @@ _set_contract(
     validity="hbond_pairs_angle_valid.npy applies to the angle column",
     parity="mixed")
 _set_contract(
+    ("cb_deviation",), coordinate_frame="intrinsic_chiral_lookup",
+    transformation=(
+        "rotation-invariant under proper rotations; ideal-L-CB construction "
+        "is chirality-conditioned and has no improper-transform contract"
+    ),
+    validity="cb_deviation_valid.npy; invalid/non-applicable rows are NaN",
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
     ("cb_residual_vector",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "polar displacement under proper rotations: v'=R v; the ideal-L-CB "
