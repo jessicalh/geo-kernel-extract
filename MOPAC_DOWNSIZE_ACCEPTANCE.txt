@@ -1,0 +1,632 @@
+ACCEPTANCE RECORD - MOPAC DOWNSIZE, PIECE 10
+Date: 2026-07-13
+Branch: prefreeze-10-mopac
+Baseline: eb31dba
+
+SUMMARY
+
+The MOPAC binary/text path has been removed. MopacResult now performs the
+same PM7/MOZYME/1SCF single point through the pinned diskless mozyme_scf API,
+validates and stores the complete returned payload during Compute, and emits
+50 MOPAC arrays by pure read-back in WriteFeatures. Requested MOPAC failure is
+a clean hard abort. A real libmopac SIGABRT is contained in a small, fresh
+worker process. ORCA and JAWS are unchanged.
+
+Attributed implementation commits:
+
+  16ddd17  Replace MOPAC text parsing with pinned mozyme_scf worker
+  284fcd1  Publish complete direct MOPAC NPY schema and provenance
+  25f0c26  Validate direct MOPAC schema and refresh smoke baselines
+
+
+FILES CHANGED / REMOVED
+
+Build and C++ producer:
+
+  CMakeLists.txt
+  src/ConformationAtom.h
+  src/MopacResult.h
+  src/MopacResult.cpp
+  src/MopacWorkerMain.cpp                         (new)
+  src/MopacWorkerProtocol.h                       (new)
+  src/MopacWorkerProtocol.cpp                     (new)
+  src/NpyWriter.h
+  src/OperationRunner.cpp
+  src/RuntimeEnvironment.h
+  src/RuntimeEnvironment.cpp
+  src/MopacCoulombResult.h
+  src/MopacCoulombResult.cpp
+  src/MopacBondOrderWelfordTrajectoryResult.h
+  src/MopacBondOrderWelfordTrajectoryResult.cpp
+  src/MopacChargeWelfordTrajectoryResult.h
+  src/MopacChargeWelfordTrajectoryResult.cpp
+  src/MopacCoulombShieldingTimeSeriesTrajectoryResult.h
+  src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp
+  src/MopacVsFf14SbReconciliationTrajectoryResult.h
+  src/TrajectoryAtom.h
+
+Python schema, provenance, and SDK:
+
+  python/nmr_extract/__init__.py
+  python/nmr_extract/_catalog.py
+  python/nmr_extract/_protein.py
+  python/nmr_extract/_tensors.py
+  python/nmr_extract/_trajectory.py
+
+Tests and fixtures:
+
+  python/tests/test_mopac_direct_group.py           (new)
+  tests/data/mopac/water_probe.mop                 (new)
+  tests/validate_mopac_npy.py                      (new)
+  tests/test_mcconnell_result.cpp
+  tests/test_mopac_charge_welford.cpp
+  tests/test_mopac_coulomb_shielding_time_series.cpp
+  tests/test_mopac_result.cpp
+
+Blessed regression data:
+
+  tests/golden/blessed/nodft/mopac_bond_orders_unique.npy
+  tests/golden/blessed/nodft/mopac_topology_bond_orders_full.npy
+  tests/golden/blessed/withdft/mopac_bond_orders_unique.npy
+  tests/golden/blessed/withdft/mopac_topology_bond_orders_full.npy
+
+  In each of tests/golden/blessed/{nodft,withdft}, the 39 direct arrays
+  numbered 12 through 50 below were added.
+
+No file was deleted as a separate filesystem object. The following were
+removed in place, with no build flag, fallback, or dead reference copy:
+
+  - the MOPAC-binary subprocess path;
+  - the .mop input writer;
+  - the .out/.aux readers and all text parsers;
+  - raw-artifact capture and accessors;
+  - the 14-type MopacRunRecord family and helpers;
+  - runtime configuration of a MOPAC executable.
+
+CMakeLists.txt is the only tracked producer-integration file outside src/,
+python/nmr_extract/, and test paths. It is necessary to enforce the exact
+header/library checksum pin, build and install the crash-contained worker,
+set its RPATH, make the extractor depend on it, and wire the production probe
+test. No h5-reader/, generated source, testpaths.toml, ORCA, or JAWS file was
+changed.
+
+
+CALCULATOR CONTRACT AND CALL CONFIGURATION
+
+MopacResult has no Dependencies() entry. In the existing fixed
+OperationRunner order it remains gated by an attached
+ChargeAssignmentResult, from which the runner supplies the exact topology
+net charge. Dependencies remain an attach-time typed guardrail, not an
+orchestration mechanism.
+
+Compute materializes every direct and compatibility field on MopacResult and
+sets only MopacResult-owned ConformationAtom fields. WriteFeatures does no
+scientific computation or reconciliation; it only packs and writes stored
+values. MopacCoulombResult and the McConnell bond-order channel continue to
+read the typed ConformationAtom MOPAC surface. No other calculator's
+scientific result is aggregated or projected by MopacResult.
+
+The worker zero-initializes mopac_system, mozyme_state, and mopac_properties.
+Zero-initialized state.numat=0 selects the Lewis-guess start. It invokes only:
+
+  mozyme_scf(&system, &state, &properties)
+
+The exact system configuration is:
+
+  model=0                    PM7
+  charge=<exact topology charge>
+  spin=0
+  epsilon=1.0
+  natom_move=0               single point, no geometry optimization
+  nlattice=0
+  nlattice_move=0
+  pressure=0.0
+  tolerance=1.0
+  max_time=7200 seconds
+
+Coordinates are quantized in memory to the legacy writer's eight decimal
+places so the physical input is unchanged without creating a .mop file.
+There is no conventional-SCF substitution, convergence loosening, geometry
+optimization, STATIC request, or polarizability calculation.
+
+After a returned call, RAII always invokes destroy_mopac_properties and
+destroy_mozyme_state. The returned data is copied and validated before any
+ConformationAtom MOPAC field is committed.
+
+
+COMPLETE 50-ARRAY EMIT INVENTORY
+
+Notation:
+
+  P = struct mopac_properties
+  S = struct mozyme_state
+  T = typed Protein topology
+  N = atoms; B = topology bonds; C = retained compact pairs
+  U = API-unique a<b sparse pairs; E = directed CSC entries
+  W = P.ao_max_orbitals; O/V = occupied/virtual LMO counts
+
+All floating arrays are float64 and all integer arrays are int32. Index
+normalizations are stated explicitly; otherwise values are copied exactly.
+
+Compatibility arrays retained from the previous schema:
+
+  1. mopac_charges, shape (N)
+     Source: P.charge, projected through the legacy F15.6 print precision.
+
+  2. mopac_scalars, shape (N,4)
+     Source: P.charge; s/p sums from the diagonal of P.atom_ao_density,
+     interpreted with P.ao_orbitals and S.iorbs; compact valency from
+     P.bond_index/P.bond_atom/P.bond_order after reproducing MOPAC's compact
+     row ordering, first-six selection, F6.3 formatting, and >0.01 parser
+     threshold. Atoms without p AOs carry mathematical zero as before.
+
+  3. mopac_bond_orders, shape (C,3)
+     Source: P.bond_index/P.bond_atom/P.bond_order. Reproduces the Fortran
+     selection ordering, first six entries per atom, F6.3 projection, strict
+     >0.01 retention, and unordered-pair maximum. Its native axis is the
+     distinct mopac_compact_pair axis, not the API-U axis.
+
+  4. mopac_bond_neighbors, shape (2C,4)
+     Source: the same compact P CSC projection plus typed T bond indices;
+     directed read-back sorted by decreasing order within source atom.
+
+  5. mopac_global, shape (4)
+     Source: P.heat at five decimal places and P.dipole xyz at three.
+
+  6. mopac_atom_populations, shape (N,12)
+     Source: P.charge; trace/s/p/d of P.atom_ao_density; live AO widths from
+     P.ao_orbitals/S.iorbs; the diagonal and compact valencies from P CSC.
+     The text-only f-shell and per-atom-dipole columns remain explicit NaN.
+
+  7. mopac_atomic_orbital_populations, shape (N,9)
+     Source: diagonal P.atom_ao_density in MOPAC s/px/py/pz/d order,
+     projected through legacy F10.5 only through each live AO width.
+     Non-existent per-atom AOs are explicit NaN.
+
+  8. mopac_atomic_orbital_population_totals, shape (N,3)
+     Source: sums of the individually F10.5-projected values in array 7,
+     preserving the previous printed-table arithmetic and NaN masks.
+
+  9. mopac_bond_valencies, shape (N)
+     Source: diagonal entries of P.bond_order's CSC matrix, projected to
+     three decimal places.
+
+ 10. mopac_bond_orders_unique, shape (U,8)
+     Source: symmetric a<b entries from P.bond_index/P.bond_atom/
+     P.bond_order. Each direction is first F6.3-projected, then max/mean are
+     formed; T supplies the topology bond index. Text-only ALLBONDS count and
+     printed-entry-index columns 4, 5, and 6 are NaN.
+
+ 11. mopac_topology_bond_orders_full, shape (B,8)
+     Source: T bonds joined to the API-U P CSC projection. Missing sparse API
+     pairs are explicit, the unique-pair index is on the API-U basis, and the
+     text-only printed-entry-count column 7 is NaN.
+
+Direct struct data and lossless interpretation arrays:
+
+ 12. mopac_charges_full_precision, shape (N)
+     Exact source: P.charge.
+
+ 13. mopac_bond_orders_full_precision, shape (U,3)
+     Exact source: a<b atom indices from P.bond_index/P.bond_atom and the
+     corresponding untouched off-diagonal P.bond_order values.
+
+ 14. mopac_bond_valencies_full_precision, shape (N)
+     Exact source: diagonal P.bond_order values.
+
+ 15. mopac_heat_kcal_mol, shape (1)
+     Exact source: P.heat.
+
+ 16. mopac_dipole_debye, shape (3)
+     Exact source: P.dipole.
+
+ 17. mopac_dipole_point_charge_debye, shape (3)
+     Exact source: P.dipole_point_charge.
+
+ 18. mopac_dipole_hybridization_debye, shape (3)
+     Exact source: P.dipole_hybridization.
+
+ 19. mopac_bond_index, shape (N+1), int32
+     Exact source: P.bond_index.
+
+ 20. mopac_bond_atom, shape (E), int32
+     Exact source: P.bond_atom.
+
+ 21. mopac_bond_order, shape (E)
+     Exact source: complete directed P.bond_order, including diagonals.
+
+ 22. mopac_ao_max_orbitals, shape (1), int32
+     Exact source: P.ao_max_orbitals.
+
+ 23. mopac_ao_orbitals_per_atom, shape (N), int32
+     Exact source: S.iorbs, checked elementwise equal to P.ao_orbitals so
+     both populated API views are represented without duplicate information.
+
+ 24. mopac_atom_ao_density, shape (N,W,W)
+     Exact source: P.atom_ao_density; only Fortran-to-C layout conversion is
+     applied. MOPAC's global-W zero padding is retained.
+
+ 25. mopac_atomic_orbital_populations_full_precision, shape (N,W)
+     Exact source: diagonal of P.atom_ao_density, including global-W zero
+     padding. This explicit alias meets the mopac2 direct-quantity table while
+     array 7 retains the previous NPY stem and print semantics.
+
+ 26. mopac_bond_ao_density_directed, shape (E,W,W)
+     Exact source: complete P.bond_ao_density; only Fortran-to-C layout
+     conversion is applied.
+
+ 27. mopac_bond_density_pairs, shape (U,2), int32
+     Lossless a<b pair indices derived from P.bond_index/P.bond_atom.
+
+ 28. mopac_bond_ao_density, shape (U,W,W)
+     Exact a<b blocks selected losslessly from P.bond_ao_density.
+
+ 29. mopac_atom_electron_population, shape (N)
+     Trace of each exact P.atom_ao_density block.
+
+ 30. mopac_atom_s_population, shape (N)
+     AO-0 diagonal of P.atom_ao_density.
+
+ 31. mopac_atom_p_population, shape (N)
+     px/py/pz diagonal sum of P.atom_ao_density; mathematical zero when no p
+     shell exists.
+
+ 32. mopac_atom_d_population, shape (N)
+     Five-d-AO diagonal sum of P.atom_ao_density; mathematical zero when no d
+     shell exists.
+
+ 33. mopac_lewis_bond_count, shape (N), int32
+     Exact source: S.nbonds.
+
+ 34. mopac_lewis_bond_atoms, shape (N,9), int32
+     Source: S.ibonds, losslessly normalized from one-based/zero-unused to
+     zero-based/-1-unused using S.nbonds.
+
+ 35. mopac_lmo_energy_levels, shape (O+V)
+     Exact source: P.lmo_energy, occupied then virtual.
+
+ 36. mopac_lmo_occupied_atom_counts, shape (O), int32
+     Exact source: S.ncf.
+
+ 37. mopac_lmo_occupied_atoms, shape (sum S.ncf), int32
+     Live S.icocc slices selected by P.lmo_occupied_atom_offset and S.ncf,
+     normalized to zero-based indices.
+
+ 38. mopac_lmo_occupied_coefficients, shape (sum live occupied AO widths)
+     Live S.cocc slices selected by P.lmo_occupied_coefficient_offset and
+     interpreted with S.ncf/S.icocc/S.iorbs.
+
+ 39. mopac_lmo_virtual_atom_counts, shape (V), int32
+     Exact source: S.nce.
+
+ 40. mopac_lmo_virtual_atoms, shape (sum S.nce), int32
+     Live S.icvir slices selected by P.lmo_virtual_atom_offset and S.nce,
+     normalized to zero-based indices.
+
+ 41. mopac_lmo_virtual_coefficients, shape (sum live virtual AO widths)
+     Live S.cvir slices selected by P.lmo_virtual_coefficient_offset and
+     interpreted with S.nce/S.icvir/S.iorbs.
+
+ 42. mopac_lmo_occupied_atom_offsets_native, shape (O), int32
+     Exact source: P.lmo_occupied_atom_offset.
+
+ 43. mopac_lmo_virtual_atom_offsets_native, shape (V), int32
+     Exact source: P.lmo_virtual_atom_offset.
+
+ 44. mopac_lmo_occupied_coefficient_offsets_native, shape (O), int32
+     Exact source: P.lmo_occupied_coefficient_offset.
+
+ 45. mopac_lmo_virtual_coefficient_offsets_native, shape (V), int32
+     Exact source: P.lmo_virtual_coefficient_offset.
+
+ 46. mopac_lmo_occupied_atom_storage_native, shape (S.icocc_dim), int32
+     Exact full one-based source: S.icocc.
+
+ 47. mopac_lmo_virtual_atom_storage_native, shape (S.icvir_dim), int32
+     Exact full one-based source: S.icvir.
+
+ 48. mopac_lmo_occupied_coefficient_storage_native, shape (S.cocc_dim)
+     Exact full source: S.cocc.
+
+ 49. mopac_lmo_virtual_coefficient_storage_native, shape (S.cvir_dim)
+     Exact full source: S.cvir.
+
+ 50. mopac_mozyme_state_dimensions, shape (7), int32
+     Exact source: S.numat, S.noccupied, S.nvirtual, S.icocc_dim,
+     S.icvir_dim, S.cocc_dim, S.cvir_dim.
+
+
+STRUCTURAL N/A FIELDS
+
+These mopac_properties fields are structurally unavailable for the requested
+non-periodic, no-motion SCF and are documented in _catalog.py rather than
+emitted as misleading zeros:
+
+  P.coord_update, P.coord_deriv        zero length because natom_move=0
+  P.freq, P.disp                       unavailable; no vibration calculation
+  P.lattice_update, P.lattice_deriv    zero length because nlattice_move=0
+  P.stress                             unavailable because nlattice=0
+
+P.nerror and P.error_msg are control-plane fields. Any nonzero nerror aborts
+before emission. Legacy columns lacking a struct source are NaN, never
+defensive zeros.
+
+
+PREVIOUS EMIT MET / TEXT-ONLY DATA RETIRED
+
+All eleven pre-existing mopac_*.npy filenames remain.
+
+The production 1UBQ comparison reproduced these nine arrays exactly,
+including shape, row ordering, values, and NaN masks:
+
+  mopac_charges
+  mopac_scalars
+  mopac_bond_orders
+  mopac_bond_neighbors
+  mopac_global
+  mopac_atom_populations
+  mopac_atomic_orbital_populations
+  mopac_atomic_orbital_population_totals
+  mopac_bond_valencies
+
+On the WithDft smoke fixture, mopac_scalars and mopac_atom_populations differ
+from the old text baseline by at most one final printed unit (1.0e-5), which
+is the documented text-precision agreement of the direct struct values. All
+consumed charge and bond-order surfaces retain their old decimal semantics;
+downstream Coulomb/McConnell arrays were identical or at floating round-off.
+
+The two struct-limited arrays are met where the API can provide data:
+
+  mopac_bond_orders_unique
+    The old ALLBONDS text table contained entries down to about 0.001, while
+    the mozyme_scf CSC struct retains entries above 0.01. The 1UBQ row count
+    is therefore 5374 old versus 1897 API-U; the WithDft count is 2486 versus
+    925. Every retained row reproduces old columns 0:4 at text precision.
+    Printed count/entry-index columns 4, 5, and 6 have no struct source and
+    are NaN; column 7 retains the typed topology bond index.
+
+  mopac_topology_bond_orders_full
+    All B topology rows remain. Old struct/topology-sourced columns 0 through
+    4 and 6 are retained; column 5 now indexes the API-U row basis and column
+    7, the old printed entry count, is NaN.
+
+No complete previous NPY was retired. The following text-only material and
+Python raw-artifact surfaces were retired because no struct source exists:
+
+  raw .out/.aux bytes, paths, sizes, and hashes;
+  raw output sections, generic printed tables, AUX records, and parsed text
+    matrix blocks;
+  printed-entry counts and row indices;
+  input-line records and printed AO basis labels;
+  printed f-shell and per-atom-dipole fields;
+  scalar-term text rows;
+  MO printed metadata and bonding-contribution sections;
+  mopac_global_terms, mopac_dipole_components, mopac_ao_table,
+    mopac_mulliken_overlap_sparse, mopac_bond_orders_printed,
+    mopac_mo_meta, mopac_mo_coefficients, mopac_density_packed,
+    mopac_overlap_packed, and mopac_full raw sidecars;
+  generated .mop/.out/.aux/.arc/.den/HTML/PDB MOPAC artifacts.
+
+The checked-in tests/data/mopac/water_probe.mop is only a prepared forcing
+fixture. Remaining _nmr.out handling belongs to ORCA and was not changed.
+
+
+FAILURE POLICY AND CRASH CONTAINMENT
+
+If P.nerror != 0, all error_msg entries are copied into a worker failure
+record. A missing required pointer, non-finite or dimensionally invalid data,
+malformed/truncated protocol, nonzero worker status, or worker signal is also
+a hard failure.
+
+OperationRunner then sets RunResult.error and returns immediately. MopacResult
+is not attached, no downstream requested-MOPAC result is computed, and the
+normal success-output/.lgs path cannot run. skip_mopac remains a valid
+extraction. No requested failure is converted to zeros or partial data.
+
+The mopac2 mini-MOPAC was tested on dissociated H2. It corrupts its heap and
+terminates with SIGABRT rather than returning nerror. MopacResult therefore
+uses posix_spawn to run only mozyme_scf and struct copying in a fresh
+nmr_mopac_worker, communicating over a versioned, bounded socket protocol.
+The child disables core dumps. The parent reports signal 6 as a normal error
+and remains alive; no partial MOPAC field is attached.
+
+
+PINNED LIBRARY AND ORCA/JAWS ISOLATION
+
+Header:
+
+  /shared/2026Thesis/mopac2/include/mopac.h
+  SHA-256 146d513163f5adbaeff6064bd629345b955524ea758246f3413f8e7c5b332fe5
+
+Library:
+
+  /shared/2026Thesis/mopac2/local/lib/libmopac.so.2
+  SHA-256 91f21dcc1c03486be489f233ca7a8568fdab57b60c7520060b896b5a48498cbc
+  generic Release MOPAC 23.2.5
+  commit 052691223d19935a89f0fe18cd12301bd83e4201
+
+CMake refuses a missing or checksum-mismatched header/library. Only
+nmr_mopac_worker links libmopac; nmr_extract and libnmr_shielding do not.
+The Linux worker has non-overridable DT_RPATH:
+
+  /shared/2026Thesis/mopac2/local/lib:
+  /shared/2026Thesis/mopac2/local/lib64:
+  /usr/lib/x86_64-linux-gnu
+
+MopacResult additionally replaces the child PATH and LD_LIBRARY_PATH with the
+pinned prefix plus system directories and removes inherited LD_LIBRARY_PATH,
+LD_PRELOAD, LD_AUDIT, LIBRARY_PATH, CPATH, CMake/pkg-config discovery paths,
+and inherited OpenMP settings before adding the requested OpenMP settings.
+The worker uses dladdr+realpath and refuses any loaded libmopac other than the
+pinned object.
+
+Proof commands and results:
+
+  sha256sum /shared/2026Thesis/mopac2/include/mopac.h \
+             /shared/2026Thesis/mopac2/local/lib/libmopac.so.2
+    -> the two hashes above.
+
+  readelf -d build-piece10/nmr_mopac_worker
+    -> NEEDED libmopac.so.2 and the exact DT_RPATH above.
+
+  LD_LIBRARY_PATH=/opt/orca/lib ldd build-piece10/nmr_mopac_worker
+    -> libmopac from mopac2/local; libstdc++, libgcc, BLAS, LAPACK,
+       gfortran, libgomp, libc, libm, and libmvec from /usr or /lib;
+       no dependency from /opt/orca/lib.
+
+  ldd build-piece10/nmr_extract | rg -i 'mopac'
+    -> no MOPAC dependency in the main extractor. The parent's existing
+       non-MOPAC dependency environment is deliberately not rewritten.
+
+  nm -D --undefined-only build-piece10/nmr_mopac_worker
+    -> the only MOPAC API symbols are mozyme_scf,
+       destroy_mopac_properties, and destroy_mozyme_state.
+
+  LD_LIBRARY_PATH=/opt/orca/lib ./build-piece10/mopac_tests \
+      --gtest_filter='MopacDirectApi.*'
+    -> all four tests pass, including the real call and crash case.
+
+No system/conda/native MOPAC, old binary, run_mopac_from_input, or STATIC
+entry point remains. ORCA and JAWS code, configuration, libraries, and data
+were untouched.
+
+
+PRODUCTION/PROBE CONSISTENCY
+
+MopacDirectApi.WaterEmitsCompleteLoadableSchema calls production
+MopacResult::Compute and WriteFeatures on tests/data/mopac/water_probe.mop.
+It then invokes the authoritative mopac2 mopac_feature_probe.py on the same
+input and pinned library. tests/validate_mopac_npy.py loads exactly 50 files
+using numpy.load(..., allow_pickle=False), checks every dtype, shape, catalog
+column count, index relationship, and N/A mask, then compares direct floats
+at rtol=0/atol=1e-12 and integer fields exactly.
+
+Pinned water results:
+
+  charges:
+    -0.6481523853995341
+     0.3240182106742622
+     0.3241341747298975
+
+  CSC valencies:
+    1.788263447550035
+    0.8950121991514495
+    0.8949370367721683
+
+  unique O-H Wiberg orders:
+    0.8941693043878478
+    0.8940941420085942
+
+  heat: -57.79011922141217 kcal/mol
+  dipole: [1.313778525459614,
+           1.6987678419003842,
+           0.00005064050067329224] Debye
+
+The exact production arrays agree with the probe to the stated tolerances;
+the consumed compatibility values agree with legacy printed precision.
+
+
+BUILD AND TEST COMMANDS / RESULTS
+
+Fresh configure:
+
+  cmake -S . -B build-piece10 -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DNMR_PROFILE=local \
+    -DNMR_ENABLE_LTO=ON \
+    -DNMR_ENABLE_NATIVE_ARCH=ON \
+    -DNMR_FETCH_GTEST=ON \
+    -DNMR_GROMACS_ROOT=/home/jessica/gromacs/build/gromacs-2026 \
+    -DNMR_TORCH_CMAKE_PREFIX_PATH=/home/jessica/.local/lib/python3.12/site-packages/torch/share/cmake \
+    -DNMR_NVRTC_LIB_DIR=/home/jessica/.local/lib/python3.12/site-packages/nvidia/cu13/lib \
+    -DNMR_OPENBABEL_ROOT=/usr \
+    -DNMR_SYSTEM_LIBRARY_DIR=/usr/lib/x86_64-linux-gnu \
+    -DREDUCE_SRC=/home/jessica/builds/reduce-src \
+    -DREDUCE_LIB=/home/jessica/builds/reduce-src/build/reduce_src/libreducelib.a \
+    -DREDUCE_LIBPDB=/home/jessica/builds/reduce-src/build/libpdb/libpdb++.a \
+    -DREDUCE_TOOLCLASSES=/home/jessica/builds/reduce-src/build/toolclasses/libtoolclasses.a \
+    -DREDUCE_HET_DICT=/home/jessica/builds/reduce-src/reduce_wwPDB_het_dict.txt
+
+  Result: configure passed and printed the exact pinned MOPAC artifact.
+
+  cmake --build build-piece10 -j2
+
+  Result: 315/315 build steps passed. The final DT_RPATH hardening relink also
+  passed.
+
+Focused direct path, probe, schema, crash, and hard-abort:
+
+  LD_LIBRARY_PATH=/opt/orca/lib OMP_NUM_THREADS=1 OMP_STACKSIZE=2G \
+    ./build-piece10/mopac_tests --gtest_filter='MopacDirectApi.*' \
+    --gtest_brief=1
+
+  Result: 4/4 passed in 2.716 seconds.
+
+Python SDK/catalog suite:
+
+  PYTHONPATH=python pytest -q python/tests
+
+  Result: 170 passed, 95 skipped in 2.28 seconds.
+
+Two-mode smoke before the link-only hardening:
+
+  OMP_NUM_THREADS=1 OMP_STACKSIZE=2G ./build-piece10/smoke_tests \
+    --gtest_filter='SmokeTest.NoDft:SmokeTest.WithDft' --gtest_brief=1
+
+  Result: 2/2 passed in 30.521 seconds. WithDft reported 242 byte-identical,
+  12 within-tolerance, zero drifted, zero structural mismatch, zero read
+  failures. Both logs reported MopacResult wrote 50 arrays.
+
+Full fresh CTest suite:
+
+  ctest --test-dir build-piece10 --output-on-failure -j2
+
+  Result: 807/809 passed in 395.99 seconds. The only failures were the two
+  declared baseline/environmental missing-fixture cases:
+
+    #533 AmberTrajectoryFixtureTest.FixturesPathsResolveToRealFiles_1P9J
+    #534 AmberTrajectoryFixtureTest.FixturesPathsResolveToRealFiles_1Z9B
+
+  Both SmokeTest.NoDft and SmokeTest.WithDft passed inside this full run.
+  All 37 MOPAC-label tests passed or skipped only for the missing optional
+  trajectory fixtures. No AIMNet drift failure occurred in that run.
+
+Post-link-hardening smoke rerun:
+
+  WithDft passed. NoDft's MOPAC output remained accepted, but the unrelated
+  declared environmental AIMNet GPU drift appeared in one
+  aimnet2_charge_response_gradient_scalar element: absolute delta 6.092e-7.
+  The AIMNet golden was not changed. This is the pre-existing nondeterministic
+  GPU red named in the brief, not a MOPAC regression.
+
+  git diff --check
+
+  Result: passed.
+
+
+TEST-SCOPE DISCLOSURES
+
+The consumed-surface intent of "MopacCoulomb / MopacMcConnell tests pass
+unchanged" is met: consumer production code and scientific assertions were
+not weakened, and no fake bond-order state was seeded. One deliberately
+disconnected three-X-H category fixture in tests/test_mcconnell_result.cpp
+had its direct production-MOPAC charge corrected from 0 to -2. Neutral spin-0
+MOZYME correctly rejects that under-valenced Lewis guess; -2 is the synthetic
+fixture's closed-shell state. This is the only consumer-test input change.
+
+The longstanding oversized spatial_neighbors.npy blessed files are
+intentionally gitignored. They were materialized locally from the production
+smoke runs so the bidirectional smoke contract could execute; they are not a
+piece-10 tracked change and no SpatialIndex producer was changed.
+
+
+UNMET REQUIREMENTS
+
+No functional MOPAC requirement is known unmet. The final direct-AO naming
+conflict between the old NPY stem and DIRECT_MOPAC_FEATURES.md is resolved by
+the explicit full-precision alias (array 25), and compact C rows have their
+own axis rather than falsely claiming API-U alignment.
+
+The two absent trajectory fixtures and nondeterministic AIMNet GPU drift are
+the declared baseline/environmental exceptions above. They were neither
+masked nor re-blessed.
