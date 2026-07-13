@@ -272,6 +272,19 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
         "project_t2_to_e3nn() before using e3nn Irreps"));
     grp.createAttribute("irrep_layout_efg_t2", std::string("m-2,m-1,m0,m+1,m+2"));
     grp.createAttribute("legacy_irrep_attrs_deprecated", true);
+    grp.createAttribute("irrep_metadata_scope", std::string(
+        "only assembled component means carry directional irrep metadata"));
+    grp.createAttribute("directional_mean_transformation", std::string(
+        "assembled efield_{x,y,z}_mean and efield_first_{x,y,z}_mean are "
+        "polar: v'=R v; assembled efg_t2_mean and efg_first_t2_mean are "
+        "even rank-2: T'=R T R^T"));
+    grp.createAttribute("componentwise_statistic_transformation", std::string(
+        "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+        "irrep transformation law"));
+    grp.createAttribute("zero_count_sentinel_validity", std::string(
+        "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,max=-inf,"
+        "min_frame=0,max_frame=0 are invalid sentinels; n_frames_per_atom "
+        "gates validity"));
     // Group-level `units` describes the primary value channel (E-field).
     // Per-dataset `units` attributes are authoritative — the group holds
     // V/Å (E-field), V/Å² (EFG), and dimensionless (counts) datasets.
