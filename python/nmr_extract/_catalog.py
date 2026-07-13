@@ -1507,6 +1507,18 @@ _set_contract(
     irreps="", parity="mixed", wrapper=np.ndarray)
 
 _set_contract(
+    ("piquad_quad_scalar",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "rotation_invariant scalar under proper and improper transforms: "
+        "q' = q for q=(3*cos(theta)^2-1)/r^4; translation invariant"
+    ),
+    validity=(
+        "row-aligned with ring_contributions.npy; no dedicated validity mask; "
+        "zero is ambiguous between the physical magic-angle value and the "
+        "legacy/default value for a row not accepted by PiQuadrupoleResult"
+    ))
+
+_set_contract(
     ("piquad_local_tensor", "piquad_local_T2"),
     coordinate_frame="ring_local_vertex0_gauge",
     transformation=(
