@@ -14,9 +14,15 @@
 //
 // Output:
 //   atom_sasa.npy    — (N,) float64, SASA in Angstroms^2 per atom
+//   atom_sasa_fraction.npy — (N,) float64, normalized exposed fraction
 //   sasa_normal.npy  — (N, 3) float64, outward surface normal (unit vector)
 //                      Average direction of non-occluded Fibonacci test points.
 //                      Zero for fully buried atoms (SASA == 0).
+//
+// The continuum area/fraction are rotation-invariant and the continuum normal
+// is polar.  The live finite Fibonacci stencil is fixed in lab Cartesian axes,
+// however, so all three serialized estimates are only approximately O(3)
+// covariant within the recorded finite-sampling envelope.
 //
 
 #include "ConformationResult.h"

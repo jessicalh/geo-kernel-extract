@@ -1149,15 +1149,28 @@ _set_contract(
     validity="protein-level row; NaN reference angles mean the AAA source is unavailable",
     parity="mixed")
 _set_contract(
+    ("atom_sasa", "atom_sasa_fraction"),
+    coordinate_frame="lab_fixed_fibonacci_sampling_grid",
+    transformation=(
+        "continuum rotation-invariant scalar; live finite lab-fixed Fibonacci "
+        "estimator has no exact O(3) law and is only approximately invariant "
+        "within the recorded covariance-test envelope"
+    ),
+    validity=(
+        "whole SasaResult is absent when sasa_n_points is invalid; ordinary "
+        "supported-element rows are finite and have no per-row validity mask"
+    ), irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
     ("sasa_normal",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "outward_polar_vector: v'=R v in the continuum limit; finite fixed "
-        "Fibonacci sampling is only approximately rotation-covariant"
+        "lab-axis Fibonacci sampling has no exact O(3) law and is only "
+        "approximately rotation-covariant within the recorded test envelope"
     ),
     validity=(
         "zero for fully buried atoms or near-cancelling exposed samples; no "
         "separate normal-validity mask"
-    ))
+    ), irreps="", parity="mixed", wrapper=np.ndarray, e3nn_export="")
 _set_contract(
     ("bs_total_B", "bs_ring_B_field", "hm_ring_B_field"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=_AXIAL_VECTOR,
