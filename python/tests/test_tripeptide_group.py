@@ -150,6 +150,16 @@ class TestTripeptideCatalog:
                     "(needs tensorcs15 DSN) so must be optional"
                 )
 
+    def test_backbone_chiral_outputs_do_not_claim_o3_wrappers(self):
+        for stem in (
+            "tripeptide_bb_shielding", "tripeptide_bb_residual_vec",
+        ):
+            spec = CATALOG[stem]
+            assert spec.wrapper is np.ndarray
+            assert spec.parity == "mixed"
+            assert not spec.irreps
+            assert not spec.e3nn_export
+
 
 class TestTripeptideLoad:
 
@@ -179,8 +189,10 @@ class TestTripeptideLoad:
         p = load(fake_extraction)
         tp = p.tripeptide
         assert tp.bb_shielding is not None
-        # Wrapped as ShieldingTensor; underlying numpy is .data.
-        data = tp.bb_shielding.data
+        # Proper-only chiral lookup: retain the serialized PackFull9 array
+        # without advertising an O(3) tensor wrapper.
+        data = tp.bb_shielding
+        assert isinstance(data, np.ndarray)
         assert data.shape == (N_ATOMS, 9)
         # First 16 atoms = 1.0, remainder = NaN (matched / unmatched).
         assert np.all(data[:16] == 1.0)

@@ -1240,12 +1240,16 @@ class TripeptideGroup:
     when at least one tripeptide NPY file is present on disk.
 
     Per-atom convention:
-    - ``bb_shielding`` carries the tensor on backbone N/CA/C/O/H/HA and
-      central-residue sidechain atoms, NaN-filled elsewhere.
+    - ``bb_shielding`` carries the raw nine-column PackFull9 tensor on
+      backbone N/CA/C/O/H/HA and central-residue sidechain atoms, NaN-filled
+      elsewhere.  Its chiral DFT lookup has a proper-rotation contract only,
+      so it is deliberately exposed as an ndarray rather than an O(3) tensor
+      wrapper.
     - ``neighbor_shielding`` carries the summed Δσ_{i-1} + Δσ_{i+1}.
     - ``bb_residual_vec`` is the central-residue match residual
-      (aligned_dft - protein_position) as a Vec3, NaN where the residue
-      had no central match.
+      (aligned_dft - protein_position) as raw Cartesian xyz, NaN where the
+      residue had no central match.  The chiral lookup likewise precludes a
+      single improper-transform parity.
     - ``neighbor_residual_vec_prev/_next`` carry the per-direction cap
       residuals. NaN distinguishes "the i-1 (or i+1) direction did not
       contribute" from a coincidentally-zero residual.
@@ -1253,8 +1257,8 @@ class TripeptideGroup:
       (1=OPBE Gaussian per Larsen, 2=PBE ORCA per the SER regen). 0
       means no match.
     """
-    bb_shielding: Optional[ShieldingTensor] = None
-    bb_residual_vec: Optional[VectorField] = None
+    bb_shielding: Optional[np.ndarray] = None
+    bb_residual_vec: Optional[np.ndarray] = None
     bb_match_distance: Optional[np.ndarray] = None
     bb_method_tag: Optional[np.ndarray] = None
     bb_match_atoms: Optional[np.ndarray] = None

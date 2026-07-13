@@ -1360,6 +1360,14 @@ _set_contract(
     ),
     validity="NaN where the corresponding typed DFT match/direction is absent")
 
+# The central lookup is only covariant for proper rotations because the DFT
+# source is chiral.  Raw arrays preserve the PackFull9/xyz payload without
+# advertising an O(3) wrapper or e3nn parity that the calculator cannot obey.
+for _stem in ("tripeptide_bb_shielding", "tripeptide_bb_residual_vec"):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
+        e3nn_export="")
+
 _LARSEN_TENSORS = (
     "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
     "larsen_hbond_2pHB_shielding", "larsen_hbond_1pHaB_shielding",
