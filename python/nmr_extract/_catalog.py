@@ -1460,7 +1460,7 @@ _set_contract(
         "has no single improper-transform parity"
     ),
     validity="cb_residual_vector_valid.npy; invalid/non-applicable rows are NaN",
-    irreps="", parity="mixed")
+    irreps="", parity="mixed", wrapper=np.ndarray)
 
 _set_contract(
     ("piquad_local_tensor", "piquad_local_T2"),
