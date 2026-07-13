@@ -32,15 +32,11 @@ from ._tensors import (
     DsspScalars,
     MopacScalars,
     MopacGlobal,
-    MopacDipoleComponents,
     MopacAtomPopulations,
-    MopacAOTable,
     MopacAtomicOrbitalPopulations,
     MopacAtomicOrbitalPopulationTotals,
-    MopacPrintedBondOrders,
     MopacUniqueBondOrders,
     MopacTopologyBondOrdersFull,
-    MopacMOMeta,
     BondOrders,
     DeltaScalars,
     DeltaAPBS,
@@ -336,30 +332,54 @@ class MopacCoreGroup:
 
 
 @dataclass(frozen=True)
-class MopacFullSidecar:
-    """Full MOPAC sidecar manifest and raw-artifact directory."""
-    path: Path
-    manifest: dict
-
-
-@dataclass(frozen=True)
 class MopacFullGroup:
-    global_terms: Optional[np.ndarray] = None
-    dipole_components: Optional[MopacDipoleComponents] = None
+    """Complete diskless libmopac result and compatibility projections."""
+
+    charges_full_precision: Optional[np.ndarray] = None
+    bond_orders_full_precision: Optional[BondOrders] = None
+    bond_valencies_full_precision: Optional[np.ndarray] = None
     atom_populations: Optional[MopacAtomPopulations] = None
-    ao_table: Optional[MopacAOTable] = None
     atomic_orbital_populations: Optional[MopacAtomicOrbitalPopulations] = None
     atomic_orbital_population_totals: Optional[MopacAtomicOrbitalPopulationTotals] = None
-    mulliken_overlap_sparse: Optional[np.ndarray] = None
-    bond_orders_printed: Optional[MopacPrintedBondOrders] = None
     bond_valencies: Optional[np.ndarray] = None
     bond_orders_unique: Optional[MopacUniqueBondOrders] = None
     topology_bond_orders_full: Optional[MopacTopologyBondOrdersFull] = None
-    mo_meta: Optional[MopacMOMeta] = None
-    mo_coefficients: Optional[np.ndarray] = None
-    density_packed: Optional[np.ndarray] = None
-    overlap_packed: Optional[np.ndarray] = None
-    sidecar: Optional[MopacFullSidecar] = None
+    heat_kcal_mol: Optional[np.ndarray] = None
+    dipole_debye: Optional[np.ndarray] = None
+    dipole_point_charge_debye: Optional[np.ndarray] = None
+    dipole_hybridization_debye: Optional[np.ndarray] = None
+    bond_index: Optional[np.ndarray] = None
+    bond_atom: Optional[np.ndarray] = None
+    bond_order: Optional[np.ndarray] = None
+    ao_max_orbitals: Optional[np.ndarray] = None
+    ao_orbitals_per_atom: Optional[np.ndarray] = None
+    atom_ao_density: Optional[np.ndarray] = None
+    atomic_orbital_populations_full_precision: Optional[np.ndarray] = None
+    bond_ao_density_directed: Optional[np.ndarray] = None
+    bond_density_pairs: Optional[np.ndarray] = None
+    bond_ao_density: Optional[np.ndarray] = None
+    atom_electron_population: Optional[np.ndarray] = None
+    atom_s_population: Optional[np.ndarray] = None
+    atom_p_population: Optional[np.ndarray] = None
+    atom_d_population: Optional[np.ndarray] = None
+    lewis_bond_count: Optional[np.ndarray] = None
+    lewis_bond_atoms: Optional[np.ndarray] = None
+    lmo_energy_levels: Optional[np.ndarray] = None
+    lmo_occupied_atom_counts: Optional[np.ndarray] = None
+    lmo_occupied_atoms: Optional[np.ndarray] = None
+    lmo_occupied_coefficients: Optional[np.ndarray] = None
+    lmo_virtual_atom_counts: Optional[np.ndarray] = None
+    lmo_virtual_atoms: Optional[np.ndarray] = None
+    lmo_virtual_coefficients: Optional[np.ndarray] = None
+    lmo_occupied_atom_offsets_native: Optional[np.ndarray] = None
+    lmo_virtual_atom_offsets_native: Optional[np.ndarray] = None
+    lmo_occupied_coefficient_offsets_native: Optional[np.ndarray] = None
+    lmo_virtual_coefficient_offsets_native: Optional[np.ndarray] = None
+    lmo_occupied_atom_storage_native: Optional[np.ndarray] = None
+    lmo_virtual_atom_storage_native: Optional[np.ndarray] = None
+    lmo_occupied_coefficient_storage_native: Optional[np.ndarray] = None
+    lmo_virtual_coefficient_storage_native: Optional[np.ndarray] = None
+    mozyme_state_dimensions: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -1831,68 +1851,105 @@ def load(path: str | Path) -> Protein:
     # MOPAC (optional)
     mopac = None
     if "mopac_charges" in available:
-        import json
-        mopac_sidecar = None
-        mopac_sidecar_path = path / "mopac_full" / "extraction_manifest.json"
-        if not mopac_sidecar_path.exists():
-            mopac_sidecar_path = path / "mopac_full" / "mopac_full.proposed.json"
-        if mopac_sidecar_path.exists():
-            with open(mopac_sidecar_path) as f:
-                mopac_sidecar = MopacFullSidecar(
-                    path=mopac_sidecar_path,
-                    manifest=json.load(f),
-                )
         mopac_full_stems = {
-            "mopac_global_terms",
-            "mopac_dipole_components",
+            "mopac_charges_full_precision",
+            "mopac_bond_orders_full_precision",
+            "mopac_bond_valencies_full_precision",
             "mopac_atom_populations",
-            "mopac_ao_table",
             "mopac_atomic_orbital_populations",
             "mopac_atomic_orbital_population_totals",
-            "mopac_mulliken_overlap_sparse",
-            "mopac_bond_orders_printed",
             "mopac_bond_valencies",
             "mopac_bond_orders_unique",
             "mopac_topology_bond_orders_full",
-            "mopac_mo_meta",
-            "mopac_mo_coefficients",
-            "mopac_density_packed",
-            "mopac_overlap_packed",
+            "mopac_heat_kcal_mol",
+            "mopac_dipole_debye",
+            "mopac_dipole_point_charge_debye",
+            "mopac_dipole_hybridization_debye",
+            "mopac_bond_index",
+            "mopac_bond_atom",
+            "mopac_bond_order",
+            "mopac_ao_max_orbitals",
+            "mopac_ao_orbitals_per_atom",
+            "mopac_atom_ao_density",
+            "mopac_atomic_orbital_populations_full_precision",
+            "mopac_bond_ao_density_directed",
+            "mopac_bond_density_pairs",
+            "mopac_bond_ao_density",
+            "mopac_atom_electron_population",
+            "mopac_atom_s_population",
+            "mopac_atom_p_population",
+            "mopac_atom_d_population",
+            "mopac_lewis_bond_count",
+            "mopac_lewis_bond_atoms",
+            "mopac_lmo_energy_levels",
+            "mopac_lmo_occupied_atom_counts",
+            "mopac_lmo_occupied_atoms",
+            "mopac_lmo_occupied_coefficients",
+            "mopac_lmo_virtual_atom_counts",
+            "mopac_lmo_virtual_atoms",
+            "mopac_lmo_virtual_coefficients",
+            "mopac_lmo_occupied_atom_offsets_native",
+            "mopac_lmo_virtual_atom_offsets_native",
+            "mopac_lmo_occupied_coefficient_offsets_native",
+            "mopac_lmo_virtual_coefficient_offsets_native",
+            "mopac_lmo_occupied_atom_storage_native",
+            "mopac_lmo_virtual_atom_storage_native",
+            "mopac_lmo_occupied_coefficient_storage_native",
+            "mopac_lmo_virtual_coefficient_storage_native",
+            "mopac_mozyme_state_dimensions",
         }
         mopac_full = None
-        if mopac_sidecar is not None or any(stem in available for stem in mopac_full_stems):
+        if any(stem in available for stem in mopac_full_stems):
+            def mopac_optional(stem: str):
+                return get(stem) if stem in available else None
+
             mopac_full = MopacFullGroup(
-                global_terms=get("mopac_global_terms")
-                    if "mopac_global_terms" in available else None,
-                dipole_components=get("mopac_dipole_components")
-                    if "mopac_dipole_components" in available else None,
-                atom_populations=get("mopac_atom_populations")
-                    if "mopac_atom_populations" in available else None,
-                ao_table=get("mopac_ao_table")
-                    if "mopac_ao_table" in available else None,
-                atomic_orbital_populations=get("mopac_atomic_orbital_populations")
-                    if "mopac_atomic_orbital_populations" in available else None,
-                atomic_orbital_population_totals=get("mopac_atomic_orbital_population_totals")
-                    if "mopac_atomic_orbital_population_totals" in available else None,
-                mulliken_overlap_sparse=get("mopac_mulliken_overlap_sparse")
-                    if "mopac_mulliken_overlap_sparse" in available else None,
-                bond_orders_printed=get("mopac_bond_orders_printed")
-                    if "mopac_bond_orders_printed" in available else None,
-                bond_valencies=get("mopac_bond_valencies")
-                    if "mopac_bond_valencies" in available else None,
-                bond_orders_unique=get("mopac_bond_orders_unique")
-                    if "mopac_bond_orders_unique" in available else None,
-                topology_bond_orders_full=get("mopac_topology_bond_orders_full")
-                    if "mopac_topology_bond_orders_full" in available else None,
-                mo_meta=get("mopac_mo_meta")
-                    if "mopac_mo_meta" in available else None,
-                mo_coefficients=get("mopac_mo_coefficients")
-                    if "mopac_mo_coefficients" in available else None,
-                density_packed=get("mopac_density_packed")
-                    if "mopac_density_packed" in available else None,
-                overlap_packed=get("mopac_overlap_packed")
-                    if "mopac_overlap_packed" in available else None,
-                sidecar=mopac_sidecar,
+                charges_full_precision=mopac_optional("mopac_charges_full_precision"),
+                bond_orders_full_precision=mopac_optional("mopac_bond_orders_full_precision"),
+                bond_valencies_full_precision=mopac_optional("mopac_bond_valencies_full_precision"),
+                atom_populations=mopac_optional("mopac_atom_populations"),
+                atomic_orbital_populations=mopac_optional("mopac_atomic_orbital_populations"),
+                atomic_orbital_population_totals=mopac_optional("mopac_atomic_orbital_population_totals"),
+                bond_valencies=mopac_optional("mopac_bond_valencies"),
+                bond_orders_unique=mopac_optional("mopac_bond_orders_unique"),
+                topology_bond_orders_full=mopac_optional("mopac_topology_bond_orders_full"),
+                heat_kcal_mol=mopac_optional("mopac_heat_kcal_mol"),
+                dipole_debye=mopac_optional("mopac_dipole_debye"),
+                dipole_point_charge_debye=mopac_optional("mopac_dipole_point_charge_debye"),
+                dipole_hybridization_debye=mopac_optional("mopac_dipole_hybridization_debye"),
+                bond_index=mopac_optional("mopac_bond_index"),
+                bond_atom=mopac_optional("mopac_bond_atom"),
+                bond_order=mopac_optional("mopac_bond_order"),
+                ao_max_orbitals=mopac_optional("mopac_ao_max_orbitals"),
+                ao_orbitals_per_atom=mopac_optional("mopac_ao_orbitals_per_atom"),
+                atom_ao_density=mopac_optional("mopac_atom_ao_density"),
+                atomic_orbital_populations_full_precision=mopac_optional(
+                    "mopac_atomic_orbital_populations_full_precision"),
+                bond_ao_density_directed=mopac_optional("mopac_bond_ao_density_directed"),
+                bond_density_pairs=mopac_optional("mopac_bond_density_pairs"),
+                bond_ao_density=mopac_optional("mopac_bond_ao_density"),
+                atom_electron_population=mopac_optional("mopac_atom_electron_population"),
+                atom_s_population=mopac_optional("mopac_atom_s_population"),
+                atom_p_population=mopac_optional("mopac_atom_p_population"),
+                atom_d_population=mopac_optional("mopac_atom_d_population"),
+                lewis_bond_count=mopac_optional("mopac_lewis_bond_count"),
+                lewis_bond_atoms=mopac_optional("mopac_lewis_bond_atoms"),
+                lmo_energy_levels=mopac_optional("mopac_lmo_energy_levels"),
+                lmo_occupied_atom_counts=mopac_optional("mopac_lmo_occupied_atom_counts"),
+                lmo_occupied_atoms=mopac_optional("mopac_lmo_occupied_atoms"),
+                lmo_occupied_coefficients=mopac_optional("mopac_lmo_occupied_coefficients"),
+                lmo_virtual_atom_counts=mopac_optional("mopac_lmo_virtual_atom_counts"),
+                lmo_virtual_atoms=mopac_optional("mopac_lmo_virtual_atoms"),
+                lmo_virtual_coefficients=mopac_optional("mopac_lmo_virtual_coefficients"),
+                lmo_occupied_atom_offsets_native=mopac_optional("mopac_lmo_occupied_atom_offsets_native"),
+                lmo_virtual_atom_offsets_native=mopac_optional("mopac_lmo_virtual_atom_offsets_native"),
+                lmo_occupied_coefficient_offsets_native=mopac_optional("mopac_lmo_occupied_coefficient_offsets_native"),
+                lmo_virtual_coefficient_offsets_native=mopac_optional("mopac_lmo_virtual_coefficient_offsets_native"),
+                lmo_occupied_atom_storage_native=mopac_optional("mopac_lmo_occupied_atom_storage_native"),
+                lmo_virtual_atom_storage_native=mopac_optional("mopac_lmo_virtual_atom_storage_native"),
+                lmo_occupied_coefficient_storage_native=mopac_optional("mopac_lmo_occupied_coefficient_storage_native"),
+                lmo_virtual_coefficient_storage_native=mopac_optional("mopac_lmo_virtual_coefficient_storage_native"),
+                mozyme_state_dimensions=mopac_optional("mopac_mozyme_state_dimensions"),
             )
         legacy_mopac_mcconnell = None
         if "mopac_mc_shielding" in available:
