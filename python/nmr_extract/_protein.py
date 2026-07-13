@@ -1245,14 +1245,18 @@ class TripeptideGroup:
       elsewhere.  Its chiral DFT lookup has a proper-rotation contract only,
       so it is deliberately exposed as an ndarray rather than an O(3) tensor
       wrapper.
-    - ``neighbor_shielding`` carries the summed Δσ_{i-1} + Δσ_{i+1}.
+    - ``neighbor_shielding`` carries the summed Δσ_{i-1} + Δσ_{i+1} as
+      raw nine-column PackFull9 data.  The chiral lookup has a
+      proper-rotation contract only, so all three neighbour tensors are
+      deliberately exposed as ndarrays rather than O(3) tensor wrappers.
     - ``bb_residual_vec`` is the central-residue match residual
       (aligned_dft - protein_position) as raw Cartesian xyz, NaN where the
       residue had no central match.  The chiral lookup likewise precludes a
       single improper-transform parity.
     - ``neighbor_residual_vec_prev/_next`` carry the per-direction cap
-      residuals. NaN distinguishes "the i-1 (or i+1) direction did not
-      contribute" from a coincidentally-zero residual.
+      residuals as raw Cartesian xyz. NaN distinguishes "the i-1 (or i+1)
+      direction did not contribute" from a coincidentally-zero residual;
+      their chiral lookup has no single improper-transform parity.
     - ``bb_method_tag`` encodes the DFT engine that produced the row
       (1=OPBE Gaussian per Larsen, 2=PBE ORCA per the SER regen). 0
       means no match.
@@ -1262,11 +1266,11 @@ class TripeptideGroup:
     bb_match_distance: Optional[np.ndarray] = None
     bb_method_tag: Optional[np.ndarray] = None
     bb_match_atoms: Optional[np.ndarray] = None
-    neighbor_shielding: Optional[ShieldingTensor] = None
-    neighbor_shielding_prev: Optional[ShieldingTensor] = None
-    neighbor_shielding_next: Optional[ShieldingTensor] = None
-    neighbor_residual_vec_prev: Optional[VectorField] = None
-    neighbor_residual_vec_next: Optional[VectorField] = None
+    neighbor_shielding: Optional[np.ndarray] = None
+    neighbor_shielding_prev: Optional[np.ndarray] = None
+    neighbor_shielding_next: Optional[np.ndarray] = None
+    neighbor_residual_vec_prev: Optional[np.ndarray] = None
+    neighbor_residual_vec_next: Optional[np.ndarray] = None
     neighbor_reference: Optional[np.ndarray] = None
     bb_diagnostics: Optional[np.ndarray] = None
     neighbor_diagnostics: Optional[np.ndarray] = None

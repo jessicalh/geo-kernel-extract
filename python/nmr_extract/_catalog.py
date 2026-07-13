@@ -1368,6 +1368,20 @@ for _stem in ("tripeptide_bb_shielding", "tripeptide_bb_residual_vec"):
         CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
         e3nn_export="")
 
+# The neighbour lookup uses the same chiral DFT source and proper-Kabsch
+# alignment.  Preserve its raw PackFull9/xyz values, but do not attach a
+# homogeneous O(3) parity or e3nn export contract.
+for _stem in (
+    "tripeptide_neighbor_shielding",
+    "tripeptide_neighbor_shielding_prev",
+    "tripeptide_neighbor_shielding_next",
+    "tripeptide_neighbor_residual_vec_prev",
+    "tripeptide_neighbor_residual_vec_next",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
+        e3nn_export="")
+
 _LARSEN_TENSORS = (
     "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
     "larsen_hbond_2pHB_shielding", "larsen_hbond_1pHaB_shielding",
