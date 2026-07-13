@@ -17,7 +17,8 @@
 //               recorded during Compute for WriteH5Group provenance.
 //   WriteH5Group — retrieve the buffer via tp.GetDenseBuffer<T>,
 //               emit /trajectory/positions/{xyz,frame_indices,
-//               frame_times} with shape attributes.
+//               frame_times}. The xyz dataset carries the explicit
+//               conformation-Cartesian affine-position contract.
 //
 // Reads positions directly from ProteinConformation per frame; no
 // per-frame ConformationResult dependency.
