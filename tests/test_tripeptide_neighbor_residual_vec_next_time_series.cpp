@@ -87,13 +87,13 @@ bool Vec3Equal(const nmr::Vec3& a, const nmr::Vec3& b, double tol) {
 TEST(TripeptideNeighborResidualVecNextTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix))
-        GTEST_SKIP() << "fixture not on disk";
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
     const size_t Ntp = tp.AtomCount();
     ASSERT_GT(Ntp, 0u);
 
@@ -104,8 +104,7 @@ TEST(TripeptideNeighborResidualVecNextTimeSeries, SyntheticFourFrames) {
     // skip-on-absent gate doesn't fire.
     tr->ForceSourcePresentForTesting();
 
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
-                         fix.tpr_path, fix.edr_path);
+    nmr::Trajectory traj({}, {}, {});
 
     constexpr size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
@@ -159,6 +158,17 @@ TEST(TripeptideNeighborResidualVecNextTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[0], Ntp);
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 3u);
+
+    std::string parity, coordinate_frame, transformation;
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract");
 
     std::vector<double> flat(Ntp * kFrames * 3);
     ds.read(flat.data());
@@ -334,14 +344,22 @@ TEST(TripeptideNeighborResidualVecNextTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[2], 3u);
 
     std::string parity, normalization, units, layout;
+    std::string coordinate_frame, transformation;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "1o");
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
     EXPECT_EQ(normalization, "cartesian");
     EXPECT_EQ(units, "angstrom");
     EXPECT_EQ(layout, "x,y,z");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract");
 
     fs::remove(h5_path);
 }
