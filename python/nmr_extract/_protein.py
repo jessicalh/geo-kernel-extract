@@ -20,6 +20,7 @@ from ._tensors import (
     EFGTensor,
     VectorField,
     MagneticVectorField,
+    PositionField,
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
@@ -1378,7 +1379,7 @@ class Protein:
     n_atoms: int
 
     # Identity
-    pos: VectorField
+    pos: PositionField
     element: np.ndarray
     residue_type: np.ndarray
     residue_index: np.ndarray
