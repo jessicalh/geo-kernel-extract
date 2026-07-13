@@ -4,6 +4,7 @@
 //
 
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
+#include "PdbFileReader.h"
 #include "ProteinConformation.h"
 #include "TestEnvironment.h"
 #include "Trajectory.h"
@@ -51,15 +52,16 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
 TEST(BsShieldingTimeSeries, H5LayoutUsesCartesianT1Labels) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
 
     auto tr = nmr::BsShieldingTimeSeriesTrajectoryResult::Create(tp);
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Trajectory traj({}, {}, {});
     std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
     auto conf = std::make_unique<nmr::ProteinConformation>(
         &tp.ProteinRef(), positions, "synthetic bs metadata frame");
@@ -79,10 +81,41 @@ TEST(BsShieldingTimeSeries, H5LayoutUsesCartesianT1Labels) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 9u);
 
-    std::string layout;
+    std::string layout, parity, basis, order, frame, tensor_parity;
+    std::string transformation, t1_semantics, structural_zeros;
+    std::string e3nn_export, normalization_scope;
+    bool t1_structural_zero = true;
     grp.getAttribute("irrep_layout").read(layout);
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("tensor_basis").read(basis);
+    grp.getAttribute("tensor_component_order").read(order);
+    grp.getAttribute("tensor_frame").read(frame);
+    grp.getAttribute("tensor_parity").read(tensor_parity);
+    grp.getAttribute("tensor_transformation").read(transformation);
+    grp.getAttribute("tensor_t1_semantics").read(t1_semantics);
+    grp.getAttribute("tensor_t1_structural_zero").read(t1_structural_zero);
+    grp.getAttribute("tensor_structural_zero_components").read(structural_zeros);
+    grp.getAttribute("e3nn_export").read(e3nn_export);
+    grp.getAttribute("normalization_scope").read(normalization_scope);
     EXPECT_EQ(layout,
         "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(parity, "0e+1e+2e");
+    EXPECT_EQ(basis, "project_native_full9_spherical_tensor_v1");
+    EXPECT_EQ(order,
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(tensor_parity, "even");
+    EXPECT_EQ(transformation, "even_rank2: T'=R T R^T");
+    EXPECT_EQ(t1_semantics,
+        "Cartesian Levi-Civita dual x,y,z (not real-Y1m); axial "
+        "a'=det(R) R a; generically nonzero");
+    EXPECT_FALSE(t1_structural_zero);
+    EXPECT_EQ(structural_zeros, "none");
+    EXPECT_EQ(e3nn_export,
+        "explicit project-basis to e3nn conversion required before use");
+    EXPECT_EQ(normalization_scope,
+        "T2 uses isometric real-tesseral normalization; T1 is Cartesian "
+        "Levi-Civita dual");
 
     fs::remove(h5_path);
 }

@@ -140,6 +140,26 @@ void BsShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         std::string("T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
     grp.createAttribute("parity",        std::string("0e+1e+2e"));
+    grp.createAttribute("tensor_basis",
+        std::string("project_native_full9_spherical_tensor_v1"));
+    grp.createAttribute("tensor_component_order", std::string(
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("tensor_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("tensor_parity", std::string("even"));
+    grp.createAttribute("tensor_transformation",
+        std::string("even_rank2: T'=R T R^T"));
+    grp.createAttribute("tensor_t1_semantics", std::string(
+        "Cartesian Levi-Civita dual x,y,z (not real-Y1m); axial "
+        "a'=det(R) R a; generically nonzero"));
+    grp.createAttribute("tensor_t1_structural_zero", false);
+    grp.createAttribute("tensor_structural_zero_components",
+        std::string("none"));
+    grp.createAttribute("e3nn_export", std::string(
+        "explicit project-basis to e3nn conversion required before use"));
+    grp.createAttribute("normalization_scope", std::string(
+        "T2 uses isometric real-tesseral normalization; T1 is Cartesian "
+        "Levi-Civita dual"));
     grp.createAttribute("units",         std::string("ppm_T_per_nA"));
 
     // Flat (N, T, 9) via explicit component access. No reinterpret,
