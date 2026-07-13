@@ -87,7 +87,7 @@ class PiQuadrupoleGroup:
     per_type_T0: PerRingTypeT0
     quad_scalar: Optional[np.ndarray] = None
     axial_scalar_per_type_T0: Optional[PerRingTypeT0] = None
-    local_tensor: Optional[ShieldingTensor] = None
+    local_tensor: Optional[np.ndarray] = None
     local_T2: Optional[np.ndarray] = None
     local_frame: Optional[np.ndarray] = None
     local_geometry: Optional[np.ndarray] = None
