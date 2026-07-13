@@ -10,7 +10,10 @@
 // source_attached_policy="conditional_larsen_grid_source",
 // atom_axis="protein_atom_index", frame_axis="trajectory_frame_row", and
 // irrep_layout="PackFull9: [T0, T1_cartesian_xyz,
-// T2_real_tesseral_m-2..m+2]".
+// T2_real_tesseral_m-2..m+2]", parity="mixed",
+// coordinate_frame="conformation_cartesian_xyz", and an explicit
+// proper-rotation-only transformation law.  The signed-rho DFT-grid lookup
+// is chirality-conditioned, so no improper-transform parity is claimed.
 //
 
 #include "DenseBuffer.h"
