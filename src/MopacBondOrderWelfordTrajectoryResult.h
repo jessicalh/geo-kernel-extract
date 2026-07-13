@@ -21,17 +21,15 @@
 // skips /trajectory/mopac_bond_order_welford/ entirely.
 //
 // Source: MopacResult.TopologyBondOrders() — std::vector<double>
-// parallel to protein.Bonds(). MopacResult sets bond order to 0.0
-// (exact) for bonds MOPAC didn't report (NOT NaN). NOTE: the
-// MopacResult parser itself filters at `bo > 0.01`, so any Wiberg
-// order in (0.0, 0.01] is
-// dropped at the parser and arrives here as the 0.0 sentinel —
-// indistinguishable from "MOPAC didn't print this bond at all".
+// parallel to protein.Bonds(). These values reproduce the legacy compact
+// table: at most six bonds per atom, F6.3 order, retained only when the
+// parsed value is >0.01. MopacResult sets bond order to 0.0 for bonds absent
+// from that compatibility projection (NOT NaN), so any other API pair
+// arrives here as the 0.0 sentinel.
 // For typical MD this fuses two cases:
 //   (1) MOZYME-merged interior bond (MOPAC genuinely didn't report),
-//   (2) Transient bond at extension/breaking with Wiberg order
-//       below the 0.01 parser threshold (MOPAC printed a small
-//       value, the parser dropped it).
+//   (2) Transient bond at extension/breaking omitted by the compact
+//       first-six/F6.3/>0.01 compatibility rule.
 // Both contribute to `bo == 0.0` here. The Welford treats the
 // fused event as "no observation"; for production-stable bonds
 // (case 1 only) this is what the sentinel-aware design wants,

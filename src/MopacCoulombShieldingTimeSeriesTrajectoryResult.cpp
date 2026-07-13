@@ -181,13 +181,14 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         grp.createAttribute("source_field",
             std::string("ConformationAtom::mopac_coulomb_shielding_contribution"));
         grp.createAttribute("source_operation",
-            std::string("mopac_mulliken_charge_coulomb_efg_total_traceless_projected_t2"));
+            std::string("mopac_coulson_charge_coulomb_efg_total_traceless_projected_t2"));
         grp.createAttribute("source_tensor",
             std::string("SphericalTensor::PackT2(T2 only)"));
         grp.createAttribute("source", std::string(
             "MopacCoulombResult stores ConformationAtom::"
             "mopac_coulomb_shielding_contribution as the raw "
-            "traceless-projected Coulomb EFG from MOPAC Mulliken charges. "
+            "traceless-projected Coulomb EFG from the legacy F15.6 "
+            "projection of MOPAC Coulson charges. "
             "This group writes SphericalTensor::PackT2(T2 only); gamma is "
             "not applied at extraction."));
         grp.createAttribute("source_attached_policy", std::string(

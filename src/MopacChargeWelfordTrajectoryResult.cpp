@@ -123,7 +123,8 @@ void MopacChargeWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("finalized",              finalized_);
     grp.createAttribute("units",                  std::string("e"));
     grp.createAttribute("source", std::string(
-        "MopacResult.mopac_charge (Mulliken charge from PM7+MOZYME, "
+        "MopacResult.mopac_charge (legacy F15.6 projection of the Coulson "
+        "charge from PM7+MOZYME, "
         "units e). Per-atom Welford rollup; emits canonical row "
         "mean + std + m2 + min/max + min_frame/max_frame + n_per_atom. "
         "Minimum-viable v0 — no delta variants."));

@@ -1,30 +1,26 @@
 #pragma once
 //
-// MopacResult: PM7+MOZYME semiempirical calculation (MOPAC).
+// MopacResult: diskless PM7/MOZYME single-point calculation.
 //
-// Provides per-atom Mulliken charges, orbital populations (s, p),
-// Wiberg bond orders (continuous, conformation-dependent), heat of
-// formation, and dipole moment.
+// Compute calls the pinned libmopac mozyme_scf API in a crash-contained
+// worker process, copies the complete direct electronic result, and stores
+// the calculator-owned ConformationAtom fields. WriteFeatures only reads
+// that stored result back to NPY.
 //
-// Dependencies: none.
+// Dependencies: none. OperationRunner charge-gates this calculator in its
+// fixed sequence after ChargeAssignmentResult has attached.
 //
-// Runs the MOPAC binary as a subprocess (RuntimeEnvironment::Mopac()):
-// writes a .mop input to RuntimeEnvironment::TempFilePath, MOPAC writes
-// the .out alongside it, and we parse the .out text. The in-process
-// run_mopac_from_input() is deliberately not used — it leaves Fortran
-// I/O buffers unflushed, so the .out is incomplete when read.
-//
+
 
 #include "ConformationResult.h"
 #include "ProteinConformation.h"
 #include "Types.h"
+
 #include <array>
 #include <cstdint>
-#include <limits>
-#include <map>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 namespace nmr {
 
@@ -34,302 +30,140 @@ struct MopacBondOrder {
     double wiberg_order = 0.0;
 };
 
-struct MopacRawArtifact {
-    std::string filename;
-    std::string extension;
-    std::vector<unsigned char> bytes;
-    bool is_text = false;
-    std::uint64_t size_bytes = 0;
-    std::string sha256;
-};
-
-struct MopacTextSection {
-    std::string id;
-    std::string label;
-    std::size_t start_byte = 0;
-    std::size_t end_byte = 0;
-    std::size_t start_line = 0;
-    std::size_t end_line = 0;
-    std::vector<std::string> heading_lines;
-    std::vector<std::string> raw_lines;
-    std::string parser_status;
-};
-
-struct MopacGenericTable {
-    std::string id;
-    std::string section_id;
-    std::string axis;
-    std::string label;
-    std::vector<std::string> column_labels;
-    std::vector<std::string> units;
-    std::vector<std::string> row_labels;
-    std::vector<std::vector<std::string>> original_strings;
-    std::vector<std::vector<double>> numeric_values;
-    std::vector<std::string> parse_warnings;
-};
-
-struct MopacAuxRecord {
-    std::string key;
-    std::string unit;
-    std::size_t declared_count = 0;
-    std::size_t source_line = 0;
-    std::vector<std::string> values;
-    std::vector<double> numeric_values;
-    std::vector<std::string> raw_lines;
-};
-
-struct MopacInputAtomLine {
-    std::size_t atom_index = 0;
-    std::string element;
-    Vec3 position = Vec3::Zero();
-    int x_flag = 0;
-    int y_flag = 0;
-    int z_flag = 0;
-    std::string raw_line;
-};
-
-struct MopacAtomPopulation {
-    std::size_t atom_index = 0;
-    std::string element;
-    double net_charge = std::numeric_limits<double>::quiet_NaN();
-    double electron_density = std::numeric_limits<double>::quiet_NaN();
-    double s_population = std::numeric_limits<double>::quiet_NaN();
-    double p_population = std::numeric_limits<double>::quiet_NaN();
-    double d_population = std::numeric_limits<double>::quiet_NaN();
-    double f_population = std::numeric_limits<double>::quiet_NaN();
-    double dipole_x = std::numeric_limits<double>::quiet_NaN();
-    double dipole_y = std::numeric_limits<double>::quiet_NaN();
-    double dipole_z = std::numeric_limits<double>::quiet_NaN();
-    double dipole_total = std::numeric_limits<double>::quiet_NaN();
-    double mopac_valency = std::numeric_limits<double>::quiet_NaN();
-    double project_valency = std::numeric_limits<double>::quiet_NaN();
-    std::vector<std::string> column_labels;
-    std::vector<std::string> original_cells;
-};
-
-struct MopacAOBasisFunction {
-    std::size_t ao_index = 0;
-    std::size_t atom_index = 0;
-    std::string symmetry_type;
-    double zeta = std::numeric_limits<double>::quiet_NaN();
-    int principal_quantum_number = -1;
-    double population = std::numeric_limits<double>::quiet_NaN();
-};
-
-struct MopacAtomicOrbitalPopulation {
-    std::size_t atom_index = 0;
-    std::string element;
-    std::array<double, 9> populations = {
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN()
-    };
-    std::vector<std::string> column_labels;
-    std::vector<std::string> original_cells;
-};
-
-struct MopacDipoleRow {
-    std::string label;
-    double x = std::numeric_limits<double>::quiet_NaN();
-    double y = std::numeric_limits<double>::quiet_NaN();
-    double z = std::numeric_limits<double>::quiet_NaN();
-    double total = std::numeric_limits<double>::quiet_NaN();
-    std::string units = "Debye";
-    std::string raw_line;
-};
-
-struct MopacScalarTerm {
-    std::string label;
-    double value = std::numeric_limits<double>::quiet_NaN();
-    std::string unit;
-    std::string source;
-    std::string original_string;
-};
-
-struct MopacPrintedBondEntry {
-    std::size_t printed_entry_index = 0;
-    std::size_t row_order = 0;
-    std::size_t row_atom = 0;
-    std::string row_element;
-    double row_valency = std::numeric_limits<double>::quiet_NaN();
-    std::size_t neighbour_atom = 0;
-    std::string neighbour_element;
-    double order = std::numeric_limits<double>::quiet_NaN();
-    std::size_t source_line = 0;
-    std::string raw_line;
-};
-
-struct MopacUniqueBondOrder {
-    std::size_t atom_a = 0;
-    std::size_t atom_b = 0;
-    double max_order = std::numeric_limits<double>::quiet_NaN();
-    double mean_order = std::numeric_limits<double>::quiet_NaN();
-    std::vector<std::size_t> printed_entry_indices;
-    std::size_t topology_bond_index = SIZE_MAX;
-};
-
-struct MopacTopologyBondOrderRecord {
-    std::size_t bond_index = 0;
-    std::size_t atom_a = 0;
-    std::size_t atom_b = 0;
-    double order = std::numeric_limits<double>::quiet_NaN();
-    bool present = false;
-    std::size_t unique_pair_index = SIZE_MAX;
-    std::string absence_reason;
-    std::size_t printed_entry_count = 0;
-};
-
-struct MopacMolecularOrbital {
-    std::size_t orbital_index = 0;
-    double energy = std::numeric_limits<double>::quiet_NaN();
-    double occupation = std::numeric_limits<double>::quiet_NaN();
-    double bonding_contribution = std::numeric_limits<double>::quiet_NaN();
-    std::string label;
-};
-
-struct MopacMatrixBlock {
-    std::string name;
-    std::string unit;
-    std::string storage;
-    std::size_t rows = 0;
-    std::size_t cols = 0;
-    std::vector<double> values;
-    std::vector<std::string> original_strings;
-};
-
-struct MopacRunRecord {
-    std::string schema_version = "mopac-full-capture-1.0";
-    std::string sidecar_format_status =
-        "manifest-only; bulk numeric capture is authoritative in sibling NPY files";
-    std::string mopac_binary;
-    std::string temp_stem;
-    std::string keyword_line;
-    std::string title_line;
-    std::string comment_line;
-    int net_charge = 0;
-    int threads = 0;
-    std::size_t atom_count = 0;
-    std::string method;
-    std::string version;
-    std::string run_date;
-    std::string empirical_formula;
-    std::string point_group;
-    std::string termination_status;
-    std::vector<std::string> warnings;
-    std::vector<std::string> errors;
-    std::vector<std::string> convergence_records;
-    std::vector<std::string> timing_records;
-    std::vector<MopacInputAtomLine> input_atoms;
-    std::vector<MopacRawArtifact> artifacts;
-    std::vector<MopacTextSection> sections;
-    std::vector<MopacGenericTable> tables;
-    std::vector<MopacAuxRecord> aux_records;
-    std::map<std::string, std::size_t> aux_record_index;
-    std::vector<MopacAtomPopulation> atom_populations;
-    std::vector<MopacAOBasisFunction> ao_basis;
-    std::vector<MopacAtomicOrbitalPopulation> atomic_orbital_populations;
-    std::vector<MopacDipoleRow> dipole_rows;
-    std::vector<MopacScalarTerm> scalar_terms;
-    std::vector<MopacPrintedBondEntry> printed_bond_entries;
-    std::vector<MopacUniqueBondOrder> unique_bond_orders;
-    std::vector<MopacTopologyBondOrderRecord> topology_bond_records;
-    std::vector<MopacMolecularOrbital> molecular_orbitals;
-    std::vector<MopacMatrixBlock> matrix_blocks;
-};
-
 class MopacResult : public ConformationResult {
 public:
     std::string Name() const override { return "MopacResult"; }
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
-    // Factory: run PM7+MOZYME on the conformation atoms.
-    // net_charge: total charge of the system.
-    // threads: OpenMP threads for MOZYME. 0 = auto (hardware_concurrency * 3/4).
-    // Returns nullptr on failure (logged via OperationLog).
+    // Run PM7/MOZYME/1SCF at the supplied exact topology charge.
+    // threads=0 selects the established 3/4-hardware policy. On failure,
+    // returns null and, when supplied, fills error_out with the libmopac or
+    // worker-process diagnostic.
     static std::unique_ptr<MopacResult> Compute(
         ProteinConformation& conf,
         int net_charge = 0,
-        int threads = 0);
+        int threads = 0,
+        std::string* error_out = nullptr);
 
-    // --- Per-atom queries (O(1)) ---
     double ChargeAt(size_t atom_index) const;
     double SPopAt(size_t atom_index) const;
     double PPopAt(size_t atom_index) const;
     double ValencyAt(size_t atom_index) const;
 
-    // --- Bond order queries ---
-
-    // O(1) lookup by atom pair. Returns 0.0 if no MOPAC bond.
-    // Symmetric: BondOrder(a,b) == BondOrder(b,a).
+    // Symmetric O(1) compatibility lookup. This reproduces the legacy
+    // compact text-table parser (Fortran ordering, first six fields, F6.3,
+    // parsed value >0.01). Zero means the pair was not visible there; the
+    // complete direct sparse matrix remains in the direct NPY arrays.
     double BondOrder(size_t atom_a, size_t atom_b) const;
-
-    // O(1) lookup by topology bond index (parallel to protein.Bonds()).
-    // Returns 0.0 if MOPAC did not report that bond pair.
     double TopologyBondOrder(size_t bond_index) const;
-    const std::vector<double>& TopologyBondOrders() const { return topology_bond_orders_; }
+    const std::vector<double>& TopologyBondOrders() const {
+        return topology_bond_orders_;
+    }
+    const std::vector<MopacBondOrder>& AllBondOrders() const {
+        return bond_orders_;
+    }
 
-    // Full bond order list (all pairs MOPAC reported).
-    const std::vector<MopacBondOrder>& AllBondOrders() const { return bond_orders_; }
+    double HeatOfFormation() const {
+        return compatibility_heat_of_formation_;
+    }
+    Vec3 Dipole() const { return compatibility_dipole_; }
 
-    // --- Molecule-level ---
-    double HeatOfFormation() const { return heat_of_formation_; }
-    Vec3 Dipole() const { return dipole_; }
-
-    // --- Full-run capture accessors ---
-    const MopacRunRecord& RunRecord() const { return run_record_; }
-    const std::vector<MopacRawArtifact>& RawArtifacts() const { return run_record_.artifacts; }
-    const std::vector<MopacTextSection>& OutputSections() const { return run_record_.sections; }
-    const std::vector<MopacGenericTable>& ParsedTables() const { return run_record_.tables; }
-    const std::vector<MopacAuxRecord>& AuxRecords() const { return run_record_.aux_records; }
-    const std::vector<MopacAtomPopulation>& AtomPopulations() const { return run_record_.atom_populations; }
-    const std::vector<MopacAOBasisFunction>& AOBasis() const { return run_record_.ao_basis; }
-    const std::vector<MopacAtomicOrbitalPopulation>& AtomicOrbitalPopulations() const { return run_record_.atomic_orbital_populations; }
-    const std::vector<MopacDipoleRow>& DipoleRows() const { return run_record_.dipole_rows; }
-    const std::vector<MopacScalarTerm>& ScalarTerms() const { return run_record_.scalar_terms; }
-    const std::vector<MopacPrintedBondEntry>& PrintedBondEntries() const { return run_record_.printed_bond_entries; }
-    const std::vector<MopacUniqueBondOrder>& UniqueBondOrders() const { return run_record_.unique_bond_orders; }
-    const std::vector<MopacTopologyBondOrderRecord>& TopologyBondRecords() const { return run_record_.topology_bond_records; }
-    const std::vector<MopacMolecularOrbital>& MolecularOrbitals() const { return run_record_.molecular_orbitals; }
-    const std::vector<MopacMatrixBlock>& MatrixBlocks() const { return run_record_.matrix_blocks; }
-
-    const MopacAtomPopulation* AtomPopulationAt(size_t atom_index) const;
-    const MopacAOBasisFunction* AOBasisAt(size_t ao_index) const;
-    const MopacAuxRecord* AuxRecordByKey(const std::string& key) const;
-
-    // --- Feature output ---
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;
 
 private:
-    // Per-atom (parallel to conf.AtomCount())
+    struct UniqueBond {
+        std::int32_t atom_a = 0;
+        std::int32_t atom_b = 0;
+        double order = 0.0;       // a<b CSC entry: probe/archive convention
+        double max_order = 0.0;   // exact maximum of directed API entries
+        double mean_order = 0.0;
+        double compatibility_max_order = 0.0;
+        double compatibility_mean_order = 0.0;
+        std::int32_t topology_bond_index = -1;
+        std::int32_t directed_entry = -1;
+    };
+
+    // Per-atom direct quantities. These retain the exact libmopac doubles;
+    // the separately stored compatibility projection below reproduces the
+    // decimal fields read from the legacy MOPAC text tables.
     std::vector<double> charges_;
+    std::vector<double> electron_populations_;
     std::vector<double> s_pop_;
     std::vector<double> p_pop_;
-    std::vector<double> valencies_;
+    std::vector<double> d_pop_;
+    std::vector<double> valencies_;          // MOPAC CSC diagonal
+    std::vector<double> compatibility_charges_;
+    std::vector<double> compatibility_electron_populations_;
+    std::vector<double> compatibility_s_pop_;
+    std::vector<double> compatibility_p_pop_;
+    std::vector<double> compatibility_d_pop_;
+    std::vector<double> compatibility_valencies_;
+    std::vector<double> compatibility_project_valencies_;
+    std::vector<double> compatibility_atomic_orbital_populations_;
+    std::vector<double> compatibility_atomic_orbital_population_totals_;
 
-    // Bond orders: full list + O(1) lookup
-    std::vector<MopacBondOrder> bond_orders_;
-    std::unordered_map<uint64_t, double> bond_order_map_;  // key: min(a,b)<<32 | max(a,b)
-
-    // Parallel to protein.Bonds() for topology bridge
+    // Sparse Wiberg matrix and its compatibility/query projections.
+    std::vector<std::int32_t> bond_index_;
+    std::vector<std::int32_t> bond_atom_;
+    std::vector<double> bond_order_;
+    std::vector<MopacBondOrder> bond_orders_;  // exact directed API entries
+    std::vector<UniqueBond> unique_bonds_;
+    // Legacy compact-table projection: unordered-pair maximum after MOPAC's
+    // first-six/F6.3/>0.01 printed-row selection. This is intentionally
+    // distinct from the complete API sparse pair set above.
+    std::unordered_map<std::uint64_t, double> bond_order_map_;
     std::vector<double> topology_bond_orders_;
+    std::vector<std::int32_t> topology_unique_pair_index_;
 
-    // Molecule-level
+    // Molecular direct quantities.
     double heat_of_formation_ = 0.0;
     Vec3 dipole_ = Vec3::Zero();
-    MopacRunRecord run_record_;
+    Vec3 dipole_point_charge_ = Vec3::Zero();
+    Vec3 dipole_hybridization_ = Vec3::Zero();
+    double compatibility_heat_of_formation_ = 0.0;
+    Vec3 compatibility_dipole_ = Vec3::Zero();
 
-    // Hash key for atom pair (symmetric)
-    static uint64_t PairKey(size_t a, size_t b) {
-        size_t lo = (a < b) ? a : b;
-        size_t hi = (a < b) ? b : a;
-        return (static_cast<uint64_t>(lo) << 32) | static_cast<uint64_t>(hi);
+    // AO density blocks. Stored in emitted C order: atom/entry, AO row,
+    // AO column. The raw directed bond blocks remain parallel to the CSC
+    // arrays; unique_bond_ao_density_ is the probe-compatible a<b view.
+    std::int32_t ao_max_orbitals_ = 0;
+    std::vector<std::int32_t> ao_orbitals_;
+    std::vector<double> atom_ao_density_;
+    std::vector<double> bond_ao_density_directed_;
+    std::vector<double> unique_bond_ao_density_;
+    std::vector<double> atomic_orbital_populations_;
+
+    // MOZYME Lewis structure.
+    std::vector<std::int32_t> lewis_bond_count_;
+    std::vector<std::int32_t> lewis_bond_atoms_;
+
+    // Probe-compatible packed live LMO views.
+    std::vector<std::int32_t> lmo_occupied_atom_counts_;
+    std::vector<std::int32_t> lmo_occupied_atoms_;
+    std::vector<double> lmo_occupied_coefficients_;
+    std::vector<std::int32_t> lmo_virtual_atom_counts_;
+    std::vector<std::int32_t> lmo_virtual_atoms_;
+    std::vector<double> lmo_virtual_coefficients_;
+    std::vector<double> lmo_energy_levels_;
+
+    // Exact noncompact native state storage and the libmopac offsets that
+    // interpret its live slices.
+    std::vector<std::int32_t> lmo_occupied_atom_offsets_native_;
+    std::vector<std::int32_t> lmo_virtual_atom_offsets_native_;
+    std::vector<std::int32_t> lmo_occupied_coefficient_offsets_native_;
+    std::vector<std::int32_t> lmo_virtual_coefficient_offsets_native_;
+    std::vector<std::int32_t> lmo_occupied_atom_storage_native_;
+    std::vector<std::int32_t> lmo_virtual_atom_storage_native_;
+    std::vector<double> lmo_occupied_coefficient_storage_native_;
+    std::vector<double> lmo_virtual_coefficient_storage_native_;
+    std::array<std::int32_t, 7> mozyme_state_dimensions_{};
+
+    static std::uint64_t PairKey(size_t a, size_t b) {
+        const size_t lo = (a < b) ? a : b;
+        const size_t hi = (a < b) ? b : a;
+        return (static_cast<std::uint64_t>(lo) << 32) |
+               static_cast<std::uint64_t>(hi);
     }
 };
 

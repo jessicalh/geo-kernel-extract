@@ -18,7 +18,8 @@
 //
 // SOURCE STRUCTURE: MopacCoulombResult stores
 // `SphericalTensor::Decompose(EFG_total)`, where EFG_total is the
-// trace-projected dipolar EFG from MOPAC Mulliken charges. T0 and T1
+// trace-projected dipolar EFG from the legacy F15.6 projection of MOPAC
+// Coulson charges. T0 and T1
 // are structurally zero, so (N, T, 5) emission is information-preserving.
 //
 // CONDITIONAL SOURCE: MopacCoulombResult attaches via TimedAttach, not

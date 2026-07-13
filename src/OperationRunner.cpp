@@ -132,13 +132,19 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (conf.HasResult<ChargeAssignmentResult>()) {
         if (!opts.skip_mopac) {
             OperationLog::Scope mopac_scope("MopacResult");
-            auto mopac = MopacResult::Compute(conf, opts.net_charge);
+            std::string mopac_error;
+            auto mopac = MopacResult::Compute(
+                conf, opts.net_charge, 0, &mopac_error);
             if (mopac) {
-                Attach(conf, std::move(mopac), "MopacResult", out);
+                if (!Attach(conf, std::move(mopac), "MopacResult", out)) {
+                    return out;
+                }
             } else {
-                OperationLog::Error("OperationRunner",
-                    "MOPAC failed (atoms=" +
-                    std::to_string(conf.AtomCount()) + ")");
+                out.error = mopac_error.empty()
+                    ? "MopacResult computation returned null"
+                    : mopac_error;
+                OperationLog::Error("OperationRunner", out.error);
+                return out;
             }
         }
 

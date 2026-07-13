@@ -13,12 +13,10 @@
 // exactly what the program thinks its environment is.
 //
 // Live surface:
-//   mopac         — MOPAC binary path for MopacResult subprocess calls
 //   ff14sb_params — BuildFromPdb charge assignment
 //   tleap          — AmberPreparedChargeSource runtime topology generation
 //                    (resolved from TOML / AMBERHOME / PATH)
-//   tmpdir         — temp files for MOPAC and AmberPreparedChargeSource
-//                    work directories
+//   tmpdir         — AmberPreparedChargeSource work directories
 //   bmrb_atom_nom  — data/bmrb_atom_nom.tbl path; consumed by
 //                    CategoryInfoProjection at session start. Empty =
 //                    no atom_nom.tbl-driven names; projection emits AMBER
@@ -36,7 +34,9 @@
 //                    Empty = Session leaves the grid unloaded, so
 //                    OperationRunner skips LarsenHBondShieldingResult.
 //
-// MOPAC and tleap are binary paths used for subprocess invocation.
+// tleap is a binary path used for subprocess invocation. MOPAC runs in the
+// separately linked, pinned nmr_mopac_worker and has no runtime binary-path
+// setting.
 //
 
 #include <string>
@@ -54,7 +54,6 @@ public:
 
     // --- Live accessors ---
 
-    static const std::string& Mopac();
     static const std::string& Tleap();
     static const std::string& Ff14sbParams();
     static const std::string& TmpDir();
@@ -62,8 +61,7 @@ public:
     static const std::string& TensorCs15Dsn();
     static const std::string& LarsenHBondGridDir();
 
-    // Verify required runtime files exist. Returns list of missing
-    // (name + path) entries for MOPAC and ff14sb_params.
+    // Verify required runtime files exist. Returns missing name/path entries.
     static std::vector<std::string> Verify();
 
     // Generate a temp file path: tmpdir/guid_proteinName_suffix
@@ -77,7 +75,6 @@ public:
     static bool RequireLoaded();
 
 private:
-    static std::string mopac_;
     static std::string tleap_;
     static std::string ff14sb_params_;
     static std::string tmpDir_;
