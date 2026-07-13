@@ -17,10 +17,8 @@
 // No-match contract:
 //   The ConformationAtom field defaults to Vec3::Zero() and is only
 //   written for atoms with `tripeptide_bb_has_match == true`. This TR
-//   captures whatever is on the field; it does NOT NaN-fill unmatched
-//   atoms. Downstream consumers pair this time series with the
-//   sibling TripeptideBackboneMethodTagTimeSeries (uint8_t, 0 = no
-//   match) as the per-frame match discriminator.
+//   captures the match bit with the vector and NaN-fills unmatched H5
+//   xyz rows. A matched residual that is physically zero remains zero.
 //
 // Emission shape:
 //
@@ -68,9 +66,9 @@ public:
     // No trajectory-scope dependencies; the underlying ConformationResult
     // (TripeptideBackboneShieldingResult) is conditionally attached when
     // the [databases].tensorcs15 DSN is configured. This TR captures
-    // whatever is in tripeptide_bb_residual_vec each frame —
-    // Vec3::Zero() if the calc did not attach or the atom had no
-    // DFT match.
+    // the per-atom residual and `tripeptide_bb_has_match` applicability
+    // state each frame. H5 rows are NaN when the source did not attach
+    // or the atom had no DFT match.
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
     static std::unique_ptr<TripeptideBackboneResidualVecTimeSeriesTrajectoryResult>
@@ -102,6 +100,10 @@ private:
     // Per-atom growing buffers of Vec3. Flattened into an atom-major
     // DenseBuffer<Vec3> at Finalize.
     std::vector<std::vector<Vec3>> per_atom_residual_;
+    // Internal atom-by-frame applicability, captured from
+    // ConformationAtom::tripeptide_bb_has_match. It is intentionally not
+    // emitted as a new H5 dataset; it only controls NaN filling of xyz.
+    std::vector<std::vector<std::uint8_t>> per_atom_has_match_;
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 
