@@ -241,6 +241,17 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 9u);
 
+    std::string parity, coordinate_frame, transformation;
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "even_rank2 under proper rotations: T'=R T R^T; typed tripeptide "
+        "lookup/Kabsch alignment is L-amino-acid chirality-conditioned and "
+        "has no improper-transform contract");
+
     // Spot-check one cell readback: atom Ntp/2, frame 2, all 9 components.
     std::vector<double> flat(Ntp * kFrames * 9);
     ds.read(flat.data());
@@ -404,8 +415,7 @@ TEST(TripeptideBackboneShieldingTimeSeries, FinalizeIdempotency) {
 //
 // Reads the /trajectory/tripeptide_bb_shielding_time_series/ group
 // back via HighFive and confirms the xyz dataset has shape
-// (N, T, 9) and the irrep/normalization/parity attributes carry the
-// canonical e3nn-consumable values.
+// (N, T, 9) and the metadata records the chiral source's proper-only law.
 // ============================================================================
 
 TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
@@ -474,16 +484,24 @@ TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);     // single-frame run
     EXPECT_EQ(dims[2], 9u);
 
-    // Attribute parity: this is a magnetic-kernel shielding TR
-    // (parity 0e+1e+2e, same as BS).
+    // The packed component layout is retained, but the chiral DFT lookup has
+    // no O(3) parity and must not be advertised as e3nn-consumable.
     std::string parity, normalization, units, layout;
+    std::string coordinate_frame, transformation;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "0e+1e+2e");
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
     EXPECT_EQ(normalization, "isometric_real_sph");
     EXPECT_EQ(units, "ppm");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "even_rank2 under proper rotations: T'=R T R^T; typed tripeptide "
+        "lookup/Kabsch alignment is L-amino-acid chirality-conditioned and "
+        "has no improper-transform contract");
     EXPECT_EQ(layout,
         "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
 

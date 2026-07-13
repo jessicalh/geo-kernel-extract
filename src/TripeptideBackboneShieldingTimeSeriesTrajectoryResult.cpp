@@ -129,8 +129,8 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Finalize(
 //   index 7: T2_{+1}
 //   index 8: T2_{+2}
 //
-// The payload order above is explicit; group attributes also record
-// normalization, parity, units, and the emitted irrep_layout string.
+// The payload order above is explicit; group attributes also record the
+// proper-rotation-only transformation scope of the chiral lookup.
 
 void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -178,7 +178,13 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("irrep_layout",
         std::string("T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("0e+1e+2e"));
+    grp.createAttribute("parity",        std::string("mixed"));
+    grp.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("transformation", std::string(
+        "even_rank2 under proper rotations: T'=R T R^T; typed tripeptide "
+        "lookup/Kabsch alignment is L-amino-acid chirality-conditioned and "
+        "has no improper-transform contract"));
     grp.createAttribute("units",         std::string("ppm"));
 
     // Flat (N, T, 9) via explicit component access. NaN-fill rows where
