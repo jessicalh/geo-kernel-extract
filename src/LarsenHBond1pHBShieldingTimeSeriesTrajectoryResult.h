@@ -17,8 +17,14 @@
 //   frame_axis             = "trajectory_frame_row"
 //   irrep_layout  = "PackFull9: [T0, T1_cartesian_xyz, T2_real_tesseral_m-2..m+2]"
 //   normalization = "isometric_real_sph"
-//   parity        = "0e+1e+2e"
+//   parity        = "mixed"
+//   coordinate_frame = "conformation_cartesian_xyz"
+//   transformation = "even_rank2 under proper rotations: ..."
 //   units         = "ppm"
+//
+// The signed-rho DFT-grid lookup is chirality-conditioned.  Its packed
+// shielding tensor obeys T'=R T R^T under proper rotations, but no
+// improper-transform parity is claimed.
 //
 
 #include "DenseBuffer.h"
