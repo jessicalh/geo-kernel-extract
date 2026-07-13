@@ -114,6 +114,7 @@ public:
     std::vector<double> bond_lengths;
     std::vector<Vec3> bond_directions;
     std::vector<Vec3> bond_midpoints;
+    std::vector<std::uint8_t> bond_geometry_valid;
 
     // Global geometry (set by GeometryResult)
     Vec3 bounding_min = Vec3::Zero();

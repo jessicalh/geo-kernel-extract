@@ -1,4 +1,7 @@
 #include "GeometryResult.h"
+#include "NpyWriter.h"
+
+#include <cstdint>
 #include <limits>
 #include <cmath>
 
@@ -19,11 +22,16 @@ std::unique_ptr<GeometryResult> GeometryResult::Compute(ProteinConformation& con
     conf.bond_lengths.resize(protein.BondCount());
     conf.bond_directions.resize(protein.BondCount());
     conf.bond_midpoints.resize(protein.BondCount());
+    conf.bond_geometry_valid.resize(protein.BondCount());
     for (size_t bi = 0; bi < protein.BondCount(); ++bi) {
         const Bond& bond = protein.BondAt(bi);
         conf.bond_lengths[bi] = bond.Length(positions);
         conf.bond_directions[bi] = bond.Direction(positions);
         conf.bond_midpoints[bi] = bond.Midpoint(positions);
+        conf.bond_geometry_valid[bi] =
+            std::isfinite(conf.bond_lengths[bi]) &&
+            conf.bond_lengths[bi] > 1e-15 &&
+            conf.bond_directions[bi].allFinite();
     }
 
     if (!positions.empty()) {
@@ -75,6 +83,26 @@ std::unique_ptr<GeometryResult> GeometryResult::Compute(ProteinConformation& con
     }
 
     return result;
+}
+
+
+int GeometryResult::WriteFeatures(const ProteinConformation& conf,
+                                  const std::string& output_dir) const {
+    const std::size_t B = conf.bond_lengths.size();
+    NpyWriter::WriteFloat64(output_dir + "/bond_length.npy",
+                            conf.bond_lengths.data(), B);
+
+    std::vector<double> direction(B * 3);
+    for (std::size_t bi = 0; bi < B; ++bi) {
+        direction[bi * 3 + 0] = conf.bond_directions[bi].x();
+        direction[bi * 3 + 1] = conf.bond_directions[bi].y();
+        direction[bi * 3 + 2] = conf.bond_directions[bi].z();
+    }
+    NpyWriter::WriteFloat64(output_dir + "/bond_direction.npy",
+                            direction.data(), B, 3);
+    NpyWriter::WriteUInt8(output_dir + "/bond_geometry_valid.npy",
+                          conf.bond_geometry_valid.data(), B);
+    return 3;
 }
 
 

@@ -686,7 +686,7 @@ TEST_F(PlanarGeometryTest, WriteFeaturesEmitsAllNineNpys) {
 
     const auto& result = conf.Result<PlanarGeometryResult>();
     int written = result.WriteFeatures(conf, output_dir.string());
-    EXPECT_EQ(written, 9);
+    EXPECT_EQ(written, 12);
 
     for (const char* stem : {"pyramidalization", "omega_actual",
                               "pyramidalization_valid",

@@ -28,6 +28,7 @@
 
 #include "ConformationResult.h"
 #include "ProteinConformation.h"
+#include <cstdint>
 #include <vector>
 
 namespace nmr {
@@ -85,7 +86,16 @@ public:
     const std::vector<DsspResidue>& AllResidues() const { return residues_; }
 
 private:
+    void PopulateCanonicalTorsions(const ProteinConformation* conf);
+
     std::vector<DsspResidue> residues_;
+
+    // Residue-major matrices, six columns in canonical order:
+    // phi, psi, chi1, chi2, chi3, chi4.
+    std::vector<double> torsion_angle_;
+    std::vector<double> torsion_sin_;
+    std::vector<double> torsion_cos_;
+    std::vector<std::uint8_t> torsion_valid_;
 };
 
 }  // namespace nmr

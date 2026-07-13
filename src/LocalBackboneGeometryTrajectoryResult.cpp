@@ -1,5 +1,6 @@
 #include "LocalBackboneGeometryTrajectoryResult.h"
 
+#include "LocalBackboneGeometryResult.h"
 #include "OperationLog.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
@@ -12,95 +13,10 @@
 #include <highfive/H5Group.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 #include <string>
 
 namespace nmr {
-
-// Production geometry kernels have external linkage in this per-file named
-// namespace so fixture-independent forcing tests execute the exact functions
-// used by Compute. They remain local to this result rather than becoming a
-// shared geometry utility/header family.
-namespace local_backbone_geometry {
-
-namespace {
-
-constexpr double kNearZero = 1e-12;
-
-Vec3 NanVec3() {
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    return Vec3(nan, nan, nan);
-}
-
-bool Finite(const Vec3& v) {
-    return v.allFinite();
-}
-
-}  // namespace
-
-double BondAngleRadians(const Vec3& endpoint_a,
-                        const Vec3& vertex,
-                        const Vec3& endpoint_b) {
-    const Vec3 u = endpoint_a - vertex;
-    const Vec3 v = endpoint_b - vertex;
-    if (!Finite(u) || !Finite(v))
-        return std::numeric_limits<double>::quiet_NaN();
-    const double un = u.norm();
-    const double vn = v.norm();
-    if (un <= kNearZero || vn <= kNearZero)
-        return std::numeric_limits<double>::quiet_NaN();
-    const double cosine = std::clamp(u.dot(v) / (un * vn), -1.0, 1.0);
-    return std::acos(cosine);
-}
-
-Vec3 IdealCbPosition(const Vec3& n_pos,
-                     const Vec3& ca_pos,
-                     const Vec3& c_pos) {
-    if (!Finite(n_pos) || !Finite(ca_pos) || !Finite(c_pos))
-        return NanVec3();
-
-    const Vec3 n = n_pos - ca_pos;
-    const Vec3 c = c_pos - ca_pos;
-    const double nn = n.norm();
-    const double cn = c.norm();
-    if (nn <= kNearZero || cn <= kNearZero)
-        return NanVec3();
-
-    const Vec3 cross_cn = c.cross(n);
-    // Relative collinearity gate: a zero/near-zero N-CA-C plane cannot
-    // define the chiral ideal-CB construction.
-    if (cross_cn.norm() <= kNearZero * nn * cn)
-        return NanVec3();
-
-    return ca_pos - 0.58273431 * cross_cn
-                  + 0.56802827 * n
-                  - 0.54067466 * c;
-}
-
-Vec3 CbDeviationVector(const Vec3& n_pos,
-                       const Vec3& ca_pos,
-                       const Vec3& c_pos,
-                       const Vec3& observed_cb) {
-    if (!Finite(observed_cb))
-        return NanVec3();
-    const Vec3 ideal = IdealCbPosition(n_pos, ca_pos, c_pos);
-    if (!Finite(ideal))
-        return NanVec3();
-    return observed_cb - ideal;
-}
-
-double CbDeviation(const Vec3& n_pos,
-                   const Vec3& ca_pos,
-                   const Vec3& c_pos,
-                   const Vec3& observed_cb) {
-    const Vec3 residual = CbDeviationVector(n_pos, ca_pos, c_pos, observed_cb);
-    return Finite(residual)
-        ? residual.norm()
-        : std::numeric_limits<double>::quiet_NaN();
-}
-
-}  // namespace local_backbone_geometry
 
 namespace {
 
@@ -165,63 +81,14 @@ void LocalBackboneGeometryTrajectoryResult::Compute(
     const std::size_t R = protein.ResidueCount();
 
     for (std::size_t ri = 0; ri < R; ++ri) {
-        const Residue& residue = protein.ResidueAt(ri);
-        const auto prev_idx = protein.BackbonePredecessor(ri);
-        const auto next_idx = protein.BackboneSuccessor(ri);
-
-        double tau = kNaN;
-        double angle_n_ca_cb = kNaN;
-        double angle_cb_ca_c = kNaN;
-        double angle_cprev_n_ca = kNaN;
-        double angle_ca_c_nnext = kNaN;
-        double cb_deviation = kNaN;
-        Vec3 cb_local_vector(kNaN, kNaN, kNaN);
-
-        if (HasAtom(residue.N) && HasAtom(residue.CA) && HasAtom(residue.C)) {
-            const Vec3& n = conf.PositionAt(residue.N);
-            const Vec3& ca = conf.PositionAt(residue.CA);
-            const Vec3& c = conf.PositionAt(residue.C);
-            tau = local_backbone_geometry::BondAngleRadians(n, ca, c);
-
-            if (HasAtom(residue.CB)) {
-                const Vec3& cb = conf.PositionAt(residue.CB);
-                angle_n_ca_cb = local_backbone_geometry::BondAngleRadians(n, ca, cb);
-                angle_cb_ca_c = local_backbone_geometry::BondAngleRadians(cb, ca, c);
-                cb_local_vector = local_backbone_geometry::CbDeviationVector(n, ca, c, cb);
-                if (cb_local_vector.allFinite())
-                    cb_deviation = cb_local_vector.norm();
-            }
-        } else {
-            // The two CB valence angles need only their own three atoms, so
-            // preserve them even when the other backbone endpoint is absent.
-            if (HasAtom(residue.N) && HasAtom(residue.CA) && HasAtom(residue.CB)) {
-                angle_n_ca_cb = local_backbone_geometry::BondAngleRadians(
-                    conf.PositionAt(residue.N), conf.PositionAt(residue.CA), conf.PositionAt(residue.CB));
-            }
-            if (HasAtom(residue.CB) && HasAtom(residue.CA) && HasAtom(residue.C)) {
-                angle_cb_ca_c = local_backbone_geometry::BondAngleRadians(
-                    conf.PositionAt(residue.CB), conf.PositionAt(residue.CA), conf.PositionAt(residue.C));
-            }
-        }
-
-        if (prev_idx && HasAtom(residue.N) && HasAtom(residue.CA)) {
-            const Residue& prev = protein.ResidueAt(*prev_idx);
-            angle_cprev_n_ca = local_backbone_geometry::BondAngleRadians(
-                conf.PositionAt(prev.C), conf.PositionAt(residue.N), conf.PositionAt(residue.CA));
-        }
-        if (next_idx && HasAtom(residue.CA) && HasAtom(residue.C)) {
-            const Residue& next = protein.ResidueAt(*next_idx);
-            angle_ca_c_nnext = local_backbone_geometry::BondAngleRadians(
-                conf.PositionAt(residue.CA), conf.PositionAt(residue.C), conf.PositionAt(next.N));
-        }
-
-        tau_n_ca_c_[ri].push_back(tau);
-        angle_n_ca_cb_[ri].push_back(angle_n_ca_cb);
-        angle_cb_ca_c_[ri].push_back(angle_cb_ca_c);
-        angle_cprev_n_ca_[ri].push_back(angle_cprev_n_ca);
-        angle_ca_c_nnext_[ri].push_back(angle_ca_c_nnext);
-        cb_deviation_[ri].push_back(cb_deviation);
-        cb_local_vector_[ri].push_back(cb_local_vector);
+        const auto m = local_backbone_geometry::MeasureResidue(conf, ri);
+        tau_n_ca_c_[ri].push_back(m.tau_n_ca_c);
+        angle_n_ca_cb_[ri].push_back(m.angle_n_ca_cb);
+        angle_cb_ca_c_[ri].push_back(m.angle_cb_ca_c);
+        angle_cprev_n_ca_[ri].push_back(m.angle_cprev_n_ca);
+        angle_ca_c_nnext_[ri].push_back(m.angle_ca_c_nnext);
+        cb_deviation_[ri].push_back(m.cb_deviation);
+        cb_local_vector_[ri].push_back(m.cb_residual_vector);
     }
 
     frame_indices_.push_back(frame_idx);

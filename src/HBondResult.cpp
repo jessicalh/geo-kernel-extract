@@ -15,6 +15,7 @@
 #include <optional>
 #include <queue>
 #include <set>
+#include <limits>
 
 namespace nmr {
 
@@ -24,35 +25,6 @@ std::vector<std::type_index> HBondResult::Dependencies() const {
         std::type_index(typeid(SpatialIndexResult))
     };
 }
-
-
-// ============================================================================
-// An identified H-bond from DSSP, resolved to atom positions.
-//
-// DSSP identifies backbone H-bonds by the Kabsch-Sander energy criterion
-// between residue pairs. Each H-bond has:
-//   - donor residue (N-H donates)
-//   - acceptor residue (C=O accepts)
-//
-// We resolve this to atoms:
-//   - donor_N: the backbone N metadata endpoint of the donor residue
-//   - donor_H: the explicit backbone H used as the physical source point
-//   - acceptor_O: the backbone O of the acceptor residue
-//   - h_hat: unit direction from donor H to acceptor O
-//   - distance: |H...O| source extent
-// ============================================================================
-
-struct ResolvedHBond {
-    size_t donor_N = SIZE_MAX;
-    size_t donor_H = SIZE_MAX;
-    size_t acceptor_O = SIZE_MAX;
-    size_t donor_residue = SIZE_MAX;
-    size_t acceptor_residue = SIZE_MAX;
-    Vec3 source_point = Vec3::Zero();
-    Vec3 h_hat = Vec3::Zero();        // donor H → acceptor O direction
-    double distance = 0.0;            // H...O distance
-    int sequence_separation = 0;
-};
 
 
 // ============================================================================
@@ -131,6 +103,28 @@ KernelResult ComputeKernel(
 }  // namespace hbond_result_detail
 
 
+namespace {
+
+double DonorNhoAngle(const Vec3& n_pos, const Vec3& h_pos,
+                     const Vec3& o_pos, std::uint8_t* valid) {
+    *valid = 0u;
+    const Vec3 h_to_n = n_pos - h_pos;
+    const Vec3 h_to_o = o_pos - h_pos;
+    if (!h_to_n.allFinite() || !h_to_o.allFinite())
+        return std::numeric_limits<double>::quiet_NaN();
+    const double hn = h_to_n.norm();
+    const double ho = h_to_o.norm();
+    if (hn <= 1e-12 || ho <= 1e-12)
+        return std::numeric_limits<double>::quiet_NaN();
+    const double cosine = std::clamp(h_to_n.dot(h_to_o) / (hn * ho),
+                                     -1.0, 1.0);
+    *valid = 1u;
+    return std::acos(cosine);
+}
+
+}  // namespace
+
+
 // ============================================================================
 // HBondResult::Compute
 // ============================================================================
@@ -168,7 +162,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
     //   - H...O distance outside the configured H-bond source range
     // ------------------------------------------------------------------
 
-    std::vector<ResolvedHBond> hbonds;
+    auto& hbonds = result_ptr->resolved_hbonds_;
 
     // Use a set to deduplicate: (donor_N, acceptor_O) pairs
     std::set<std::pair<size_t, size_t>> seen;
@@ -244,6 +238,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             hb.source_point = H_pos;
             hb.h_hat = d / dist;
             hb.distance = dist;
+            hb.n_h_o_angle = DonorNhoAngle(
+                conf.PositionAt(res.N), H_pos, O_pos, &hb.angle_valid);
             hb.sequence_separation = seq_sep;
             hbonds.push_back(hb);
         }
@@ -314,6 +310,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             hb.source_point = H_pos;
             hb.h_hat = d / dist;
             hb.distance = dist;
+            hb.n_h_o_angle = DonorNhoAngle(
+                conf.PositionAt(don_res.N), H_pos, O_pos, &hb.angle_valid);
             hb.sequence_separation = seq_sep;
             hbonds.push_back(hb);
         }
@@ -494,7 +492,37 @@ int HBondResult::WriteFeatures(const ProteinConformation& conf,
                             nearest_dir.data(), N, 3);
     NpyWriter::WriteInt8(output_dir + "/hbond_flags.npy",
                          flags.data(), N, 3);
-    return 3;
+
+    // Accepted DSSP backbone H bonds, retained verbatim from Compute.
+    // Index and geometry tables share the hbond-pair row axis.
+    const std::size_t H = resolved_hbonds_.size();
+    std::vector<std::int32_t> pair_index(H * 6);
+    std::vector<double> pair_geometry(H * 5);
+    std::vector<std::uint8_t> angle_valid(H);
+    for (std::size_t hi = 0; hi < H; ++hi) {
+        const auto& hb = resolved_hbonds_[hi];
+        pair_index[hi * 6 + 0] = static_cast<std::int32_t>(hb.donor_residue);
+        pair_index[hi * 6 + 1] = static_cast<std::int32_t>(hb.donor_N);
+        pair_index[hi * 6 + 2] = static_cast<std::int32_t>(hb.donor_H);
+        pair_index[hi * 6 + 3] = static_cast<std::int32_t>(hb.acceptor_residue);
+        pair_index[hi * 6 + 4] = static_cast<std::int32_t>(hb.acceptor_O);
+        pair_index[hi * 6 + 5] = static_cast<std::int32_t>(
+            hb.sequence_separation);
+
+        pair_geometry[hi * 5 + 0] = hb.distance;
+        pair_geometry[hi * 5 + 1] = hb.n_h_o_angle;
+        pair_geometry[hi * 5 + 2] = hb.h_hat.x();
+        pair_geometry[hi * 5 + 3] = hb.h_hat.y();
+        pair_geometry[hi * 5 + 4] = hb.h_hat.z();
+        angle_valid[hi] = hb.angle_valid;
+    }
+    NpyWriter::WriteInt32(output_dir + "/hbond_pairs_index.npy",
+                          pair_index.data(), H, 6);
+    NpyWriter::WriteFloat64(output_dir + "/hbond_pairs_geometry.npy",
+                            pair_geometry.data(), H, 5);
+    NpyWriter::WriteUInt8(output_dir + "/hbond_pairs_angle_valid.npy",
+                          angle_valid.data(), H);
+    return 6;
 }
 
 }  // namespace nmr

@@ -16,6 +16,9 @@ public:
 
     static std::unique_ptr<GeometryResult> Compute(ProteinConformation& conf);
 
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
+
     const RingGeometry& RingGeometryAt(size_t ring_index) const;
     double BondLengthAt(size_t bond_index) const;
     Vec3 BondMidpointAt(size_t bond_index) const;

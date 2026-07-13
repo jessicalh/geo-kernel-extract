@@ -6,6 +6,7 @@
 // configurations. Include full types so type_index values are valid at
 // factory call time.
 #include "GeometryResult.h"
+#include "LocalBackboneGeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "EnrichmentResult.h"
 #include "PlanarGeometryResult.h"
@@ -151,6 +152,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
 
     // Required ConformationResult set for Phase 4 validation.
     c.RequireConformationResult(typeid(GeometryResult));
+    c.RequireConformationResult(typeid(LocalBackboneGeometryResult));
     c.RequireConformationResult(typeid(SpatialIndexResult));
     c.RequireConformationResult(typeid(EnrichmentResult));
     c.RequireConformationResult(typeid(PlanarGeometryResult));

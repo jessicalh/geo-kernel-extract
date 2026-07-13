@@ -159,7 +159,7 @@ TEST(DsspResultHelpers,
     const fs::path output_dir = fs::temp_directory_path() /
         ("dssp_chi_sign_" + std::to_string(::getpid()));
     fs::create_directories(output_dir);
-    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 11);
 
     const auto chi = ReadNpy(output_dir / "dssp_chi.npy");
     ExpectShapeAndDescr(chi, {conf.AtomCount(), 12}, "<f8");
@@ -354,7 +354,7 @@ TEST_F(DsspResultTest, dssp_unobserved_residue_npy) {
     const fs::path output_dir = fs::temp_directory_path() /
         ("dssp_unobserved_" + std::to_string(::getpid()));
     fs::create_directories(output_dir);
-    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 11);
 
     const size_t N = conf.AtomCount();
     const size_t obs_ai = protein->ResidueAt(0).atom_indices.front();
@@ -427,7 +427,7 @@ TEST_F(DsspResultTest, dssp_ppii_npy_preserves_ss8_coil_compatibility) {
     const fs::path output_dir = fs::temp_directory_path() /
         ("dssp_ppii_" + std::to_string(::getpid()));
     fs::create_directories(output_dir);
-    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 11);
 
     const size_t N = conf.AtomCount();
     const size_t p_ai = protein->ResidueAt(0).atom_indices.front();
@@ -471,7 +471,7 @@ TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiPinnedToIndependentIupacGeometry) {
     const fs::path output_dir = fs::temp_directory_path() /
         ("dssp_backbone_iupac_" + std::to_string(::getpid()));
     fs::create_directories(output_dir);
-    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 6);
+    ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 11);
 
     auto backbone = ReadNpy(output_dir / "dssp_backbone.npy");
     auto observed = ReadNpy(output_dir / "dssp_observed.npy");

@@ -115,6 +115,9 @@ private:
     std::vector<double>  omega_actual_;
     std::vector<double>  omega_deviation_;
     std::vector<uint8_t> omega_is_xpro_;   // 1 if successor is Pro, else 0
+    std::vector<double>  omega_sin_;
+    std::vector<double>  omega_cos_;
+    std::vector<uint8_t> omega_valid_;
 
     // Per aromatic ring: indexed by LegacyAmberTopology::AromaticRingAt
     // index. NaN if parent residue has no χ₂ defined. Length =

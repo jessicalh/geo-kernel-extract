@@ -655,6 +655,7 @@ add_library(nmr_shielding
     src/ProteinConformation.cpp
     src/PdbFileReader.cpp
     src/GeometryResult.cpp
+    src/LocalBackboneGeometryResult.cpp
     src/DemoResult.cpp
     src/NamingRegistry.cpp
     src/DsspResult.cpp
@@ -1207,6 +1208,7 @@ nmr_test(trajectory_scope_tests
     LABELS trajectory
     LINK highfive
     SOURCES
+        src/NpyLocalGeometryAcceptanceTest.cpp
         tests/TestConfig.cpp
         tests/test_aimnet2_charge_time_series.cpp
         tests/test_aimnet2_embedding_charge_response_gradient_time_series.cpp
@@ -1257,6 +1259,11 @@ nmr_test(trajectory_scope_tests
         tests/test_trajectory_window.cpp
         tests/test_water_field_time_series.cpp
         tests/test_water_field_welford.cpp
+)
+target_compile_definitions(trajectory_scope_tests PRIVATE
+    NMR_LOCAL_GEOMETRY_ACCEPTANCE_SCRIPT="${CMAKE_SOURCE_DIR}/src/npy_local_geometry_acceptance.py"
+    NMR_LOCAL_GEOMETRY_TRAJECTORY_FIXTURE="${CMAKE_SOURCE_DIR}/data/test_fixtures/npy_local_geometry"
+    NMR_TEST_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
 )
 
 

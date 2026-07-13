@@ -2,6 +2,7 @@
 #include "Protein.h"
 #include "PhysicalConstants.h"
 #include "NpyWriter.h"
+#include "OperationLog.h"
 
 #include <cif++.hpp>
 #include <cif++/pdb/pdb2cif.hpp>
@@ -14,11 +15,43 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 namespace fs = std::filesystem;
 
 namespace nmr {
+
+namespace {
+
+constexpr std::size_t kCanonicalTorsionCount = 6;
+constexpr double kTorsionBondNearZero = 1e-12;
+constexpr double kTorsionNormalNearZero = 1e-10;
+
+double GuardedIupacDihedral(const Vec3& p0, const Vec3& p1,
+                            const Vec3& p2, const Vec3& p3) {
+    if (!p0.allFinite() || !p1.allFinite() ||
+        !p2.allFinite() || !p3.allFinite()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const Vec3 b1 = p1 - p0;
+    const Vec3 b2 = p2 - p1;
+    const Vec3 b3 = p3 - p2;
+    const Vec3 n1 = b1.cross(b2);
+    const Vec3 n2 = b2.cross(b3);
+    const double b2_norm = b2.norm();
+    const double n1_norm = n1.norm();
+    const double n2_norm = n2.norm();
+    if (b2_norm <= kTorsionBondNearZero ||
+        n1_norm <= kTorsionNormalNearZero ||
+        n2_norm <= kTorsionNormalNearZero) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const Vec3 m1 = n1.cross(b2 / b2_norm);
+    return std::atan2(m1.dot(n2), n1.dot(n2));
+}
+
+}  // namespace
 
 // ============================================================================
 // Write a minimal PDB from our Protein + Conformation for cif++ to read.
@@ -170,6 +203,7 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
         return nullptr;
     }
 
+    result->PopulateCanonicalTorsions(&conf);
     return result;
 }
 
@@ -177,7 +211,51 @@ std::unique_ptr<DsspResult> DsspResult::CreateForTesting(
         std::vector<DsspResidue> residues) {
     auto result = std::make_unique<DsspResult>();
     result->residues_ = std::move(residues);
+    result->PopulateCanonicalTorsions(nullptr);
     return result;
+}
+
+
+void DsspResult::PopulateCanonicalTorsions(
+        const ProteinConformation* conf) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const std::size_t R = residues_.size();
+    torsion_angle_.assign(R * kCanonicalTorsionCount, nan);
+    torsion_sin_.assign(R * kCanonicalTorsionCount, nan);
+    torsion_cos_.assign(R * kCanonicalTorsionCount, nan);
+    torsion_valid_.assign(R * kCanonicalTorsionCount, 0u);
+
+    auto store = [&](std::size_t ri, std::size_t column, double angle) {
+        if (!std::isfinite(angle)) return;
+        const std::size_t offset = ri * kCanonicalTorsionCount + column;
+        torsion_angle_[offset] = angle;
+        torsion_sin_[offset] = std::sin(angle);
+        torsion_cos_[offset] = std::cos(angle);
+        torsion_valid_[offset] = 1u;
+    };
+
+    for (std::size_t ri = 0; ri < R; ++ri) {
+        const DsspResidue& dr = residues_[ri];
+        if (dr.observed) {
+            // libdssp reports the negated-IUPAC convention and uses 360
+            // degrees (2*pi after conversion) for an undefined terminus.
+            if (std::isfinite(dr.phi) && std::abs(dr.phi) <= PI + 1e-6)
+                store(ri, 0, -dr.phi);
+            if (std::isfinite(dr.psi) && std::abs(dr.psi) <= PI + 1e-6)
+                store(ri, 1, -dr.psi);
+        }
+
+        if (!conf || ri >= conf->ProteinRef().ResidueCount()) continue;
+        const Residue& residue = conf->ProteinRef().ResidueAt(ri);
+        for (std::size_t chi = 0; chi < 4; ++chi) {
+            if (!residue.chi[chi].Valid()) continue;
+            const auto& a = residue.chi[chi].a;
+            const double angle = GuardedIupacDihedral(
+                conf->PositionAt(a[0]), conf->PositionAt(a[1]),
+                conf->PositionAt(a[2]), conf->PositionAt(a[3]));
+            store(ri, 2 + chi, angle);
+        }
+    }
 }
 
 
@@ -203,7 +281,7 @@ double DsspResult::SASA(size_t residue_index) const {
 
 
 // ============================================================================
-// WriteFeatures: 6 NPY files
+// WriteFeatures: 11 NPY files
 //
 // All per-atom, broadcast from per-residue via Protein atom→residue mapping.
 //
@@ -213,6 +291,8 @@ double DsspResult::SASA(size_t residue_index) const {
 // 4. dssp_ppii.npy (N,) — explicit PPII flag (1/0/-1 sentinel)
 // 5. dssp_hbond_energy.npy (N, 4) — H-bond energies (acc0/acc1/don0/don1)
 // 6. dssp_chi.npy (N, 12) — chi1-4 cos/sin/exists (4 angles × 3 cols)
+// 7-10. dssp_torsion_{angle,sin,cos,valid}.npy (R, 6)
+// 11. dssp_hbond_partner_residue_index.npy (N, 4)
 // ============================================================================
 
 int DsspResult::WriteFeatures(const ProteinConformation& conf,
@@ -220,6 +300,17 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     const Protein& protein = conf.ProteinRef();
     const size_t N = conf.AtomCount();
     const double kNaN = std::numeric_limits<double>::quiet_NaN();
+    const std::size_t expected_torsion_size =
+        protein.ResidueCount() * kCanonicalTorsionCount;
+    if (torsion_angle_.size() != expected_torsion_size ||
+        torsion_sin_.size() != expected_torsion_size ||
+        torsion_cos_.size() != expected_torsion_size ||
+        torsion_valid_.size() != expected_torsion_size) {
+        const std::string message =
+            "DsspResult::WriteFeatures canonical torsion buffer size mismatch";
+        OperationLog::Error("DsspResult::WriteFeatures", message);
+        throw std::runtime_error(message);
+    }
 
     std::vector<double> data(N * 5, 0.0);
     std::vector<int8_t> observed_mask(N, 0);
@@ -352,6 +443,52 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
             }
         }
         NpyWriter::WriteFloat64(output_dir + "/dssp_chi.npy", chi_data.data(), N, 12);
+        files_written++;
+    }
+
+    // Canonical residue-axis torsions.  Columns are
+    // phi, psi, chi1, chi2, chi3, chi4.  Every undefined numeric entry is
+    // NaN and its uint8 validity entry is zero.
+    {
+        const std::size_t R = protein.ResidueCount();
+        NpyWriter::WriteFloat64(output_dir + "/dssp_torsion_angle.npy",
+                                torsion_angle_.data(), R,
+                                kCanonicalTorsionCount);
+        NpyWriter::WriteFloat64(output_dir + "/dssp_torsion_sin.npy",
+                                torsion_sin_.data(), R,
+                                kCanonicalTorsionCount);
+        NpyWriter::WriteFloat64(output_dir + "/dssp_torsion_cos.npy",
+                                torsion_cos_.data(), R,
+                                kCanonicalTorsionCount);
+        NpyWriter::WriteUInt8(output_dir + "/dssp_torsion_valid.npy",
+                              torsion_valid_.data(), R,
+                              kCanonicalTorsionCount);
+        files_written += 4;
+    }
+
+    // Partner rows are atom-broadcast exactly like dssp_hbond_energy.npy;
+    // the four columns retain the same acceptor0/acceptor1/donor0/donor1
+    // slot order.  -1 is the explicit no-partner sentinel.
+    {
+        std::vector<std::int32_t> partner(N * 4, -1);
+        for (std::size_t i = 0; i < N; ++i) {
+            const std::size_t ri = protein.AtomAt(i).residue_index;
+            if (ri >= residues_.size() || !residues_[ri].observed) continue;
+            const DsspResidue& dr = residues_[ri];
+            const std::size_t ids[4] = {
+                dr.acceptors[0].residue_index,
+                dr.acceptors[1].residue_index,
+                dr.donors[0].residue_index,
+                dr.donors[1].residue_index,
+            };
+            for (std::size_t slot = 0; slot < 4; ++slot) {
+                if (ids[slot] != SIZE_MAX && ids[slot] < protein.ResidueCount())
+                    partner[i * 4 + slot] = static_cast<std::int32_t>(ids[slot]);
+            }
+        }
+        NpyWriter::WriteInt32(
+            output_dir + "/dssp_hbond_partner_residue_index.npy",
+            partner.data(), N, 4);
         files_written++;
     }
 

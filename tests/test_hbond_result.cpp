@@ -195,7 +195,7 @@ TEST(HBondGeometryKernel, UsesExplicitHydrogenAndAppliesTargetSequenceFilter) {
     ASSERT_TRUE(fs::create_directories(output_dir));
     ASSERT_EQ(conf.Result<HBondResult>().WriteFeatures(
                   conf, output_dir.string()),
-              3);
+              6);
     const auto scalars = ReadNpyPayload<double>(
         output_dir / "hbond_scalars.npy");
     const auto flags = ReadNpyPayload<std::int8_t>(

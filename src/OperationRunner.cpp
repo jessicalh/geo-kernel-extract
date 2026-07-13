@@ -2,6 +2,7 @@
 #include "Protein.h"
 
 #include "GeometryResult.h"
+#include "LocalBackboneGeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "EnrichmentResult.h"
 #include "MolecularGraphResult.h"
@@ -96,6 +97,8 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     if (!TimedAttach(conf, "GeometryResult", out, [&]{
             return GeometryResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "LocalBackboneGeometryResult", out, [&]{
+            return LocalBackboneGeometryResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "SpatialIndexResult", out, [&]{
             return SpatialIndexResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "MolecularGraphResult", out, [&]{

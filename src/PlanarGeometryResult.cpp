@@ -49,6 +49,25 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
 }
 
 
+// Canonical torsion projection needs an explicit undefined state. Keep the
+// legacy helper above unchanged because it also owns aromatic_chi2.npy.
+double GuardedCanonicalDihedral(const Vec3& p1, const Vec3& p2,
+                                const Vec3& p3, const Vec3& p4) {
+    if (!p1.allFinite() || !p2.allFinite() ||
+        !p3.allFinite() || !p4.allFinite()) return kNaN;
+    const Vec3 b1 = p2 - p1;
+    const Vec3 b2 = p3 - p2;
+    const Vec3 b3 = p4 - p3;
+    const Vec3 n1 = b1.cross(b2);
+    const Vec3 n2 = b2.cross(b3);
+    const double b2_norm = b2.norm();
+    if (b2_norm < 1e-12 || n1.norm() < 1e-12 || n2.norm() < 1e-12)
+        return kNaN;
+    const Vec3 m1 = n1.cross(b2 / b2_norm);
+    return std::atan2(m1.dot(n2), n1.dot(n2));
+}
+
+
 // Wrap to [-π, π] via std::remainder (single-call, IEEE round-half-to-
 // even at ±π). Matches DihedralTimeSeriesTrajectoryResult::WrapPi
 // bit-identically so omega_deviation agrees across the two producers.
@@ -325,6 +344,9 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     result_ptr->omega_actual_.assign(N_res, kNaN);
     result_ptr->omega_deviation_.assign(N_res, kNaN);
     result_ptr->omega_is_xpro_.assign(N_res, 0);
+    result_ptr->omega_sin_.assign(N_res, kNaN);
+    result_ptr->omega_cos_.assign(N_res, kNaN);
+    result_ptr->omega_valid_.assign(N_res, 0);
     int omega_valid = 0;
     int omega_xpro = 0;
     for (size_t ri = 0; ri < N_res; ++ri) {
@@ -336,18 +358,24 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         if (res_i.CA    == Residue::NONE) continue;
         if (res_next.CA == Residue::NONE) continue;
 
-        const double omega = Dihedral(
+        const double omega = GuardedCanonicalDihedral(
             conf.PositionAt(res_i.CA),
             conf.PositionAt(res_i.C),
             conf.PositionAt(res_next.N),
             conf.PositionAt(res_next.CA));
 
-        result_ptr->omega_actual_[ri] = omega;
-        result_ptr->omega_deviation_[ri] = WrapPi(omega - M_PI);
         if (res_next.type == AminoAcid::PRO) {
             result_ptr->omega_is_xpro_[ri] = 1;
             ++omega_xpro;
         }
+
+        if (!std::isfinite(omega)) continue;
+
+        result_ptr->omega_actual_[ri] = omega;
+        result_ptr->omega_deviation_[ri] = WrapPi(omega - M_PI);
+        result_ptr->omega_sin_[ri] = std::sin(omega);
+        result_ptr->omega_cos_[ri] = std::cos(omega);
+        result_ptr->omega_valid_[ri] = 1;
         ++omega_valid;
     }
 
@@ -523,6 +551,25 @@ int PlanarGeometryResult::WriteFeatures(
         NpyWriter::WriteInt8(output_dir + "/omega_is_xpro.npy",
                              reinterpret_cast<const int8_t*>(v.data()),
                              v.size());
+        written++;
+    }
+
+
+    // Canonical circular projection and explicit validity for omega.
+    // omega_actual.npy above remains the raw signed IUPAC angle.
+    {
+        NpyWriter::WriteFloat64(output_dir + "/omega_sin.npy",
+                                omega_sin_.data(), omega_sin_.size());
+        written++;
+    }
+    {
+        NpyWriter::WriteFloat64(output_dir + "/omega_cos.npy",
+                                omega_cos_.data(), omega_cos_.size());
+        written++;
+    }
+    {
+        NpyWriter::WriteUInt8(output_dir + "/omega_valid.npy",
+                              omega_valid_.data(), omega_valid_.size());
         written++;
     }
 

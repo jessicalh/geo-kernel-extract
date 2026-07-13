@@ -65,6 +65,7 @@ ALLOWED_NATIVE_AXES = frozenset({
     "atom_neighbor_pair",
     "ring_pair",
     "larsen_hbond_pair",
+    "hbond_pair",
     "larsen_sidechain_donor_pair",
     "protein_water_hbond_pair",
     "sidechain_co_source",
@@ -192,6 +193,43 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="aromatic_ring", units="Å", mechanism="topology"),
     ArraySpec("ring_pair_geometry", "identity", RingPairGeometry, 13, True, "All i<j aromatic-ring pair geometry [ring/residue/type ids, center distance, normal relations, signed normal offsets, in-plane slip, fused flag]",
               native_axis="ring_pair", units="mixed_index_A_dimensionless", mechanism="geometry"),
+
+    # ── Covalent/local geometry (GeometryResult and
+    #    LocalBackboneGeometryResult) ─────────────────────────────
+    ArraySpec("bond_length", "geometry", np.ndarray, None, False, "Per-topology-bond length in bonds.npy row order",
+              native_axis="bond", units="Å", mechanism="geometry"),
+    ArraySpec("bond_direction", "geometry", VectorField, 3, False, "Unit vector from bonds.atom_index_a to bonds.atom_index_b in conformation Cartesian xyz",
+              native_axis="bond", irreps="1o", tensor_rank=1, parity="odd", mechanism="geometry"),
+    ArraySpec("bond_geometry_valid", "geometry", np.ndarray, None, False, "Per-bond uint8 validity: finite non-zero bond vector",
+              native_axis="bond", mechanism="geometry"),
+    ArraySpec("tau_N_CA_C", "local_backbone_geometry", np.ndarray, None, False, "Residue-local N-CA-C valence angle",
+              native_axis="residue", units="radians", mechanism="geometry"),
+    ArraySpec("tau_N_CA_C_valid", "local_backbone_geometry", np.ndarray, None, False, "uint8 validity for tau_N_CA_C",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("angle_N_CA_CB", "local_backbone_geometry", np.ndarray, None, False, "Residue-local N-CA-CB valence angle",
+              native_axis="residue", units="radians", mechanism="geometry"),
+    ArraySpec("angle_N_CA_CB_valid", "local_backbone_geometry", np.ndarray, None, False, "uint8 validity for angle_N_CA_CB",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("angle_CB_CA_C", "local_backbone_geometry", np.ndarray, None, False, "Residue-local CB-CA-C valence angle",
+              native_axis="residue", units="radians", mechanism="geometry"),
+    ArraySpec("angle_CB_CA_C_valid", "local_backbone_geometry", np.ndarray, None, False, "uint8 validity for angle_CB_CA_C",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("angle_Cprev_N_CA", "local_backbone_geometry", np.ndarray, None, False, "Covalent-backbone predecessor C to N-CA valence angle",
+              native_axis="residue", units="radians", mechanism="geometry"),
+    ArraySpec("angle_Cprev_N_CA_valid", "local_backbone_geometry", np.ndarray, None, False, "uint8 validity for angle_Cprev_N_CA",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("angle_CA_C_Nnext", "local_backbone_geometry", np.ndarray, None, False, "CA-C to covalent-backbone successor N valence angle",
+              native_axis="residue", units="radians", mechanism="geometry"),
+    ArraySpec("angle_CA_C_Nnext_valid", "local_backbone_geometry", np.ndarray, None, False, "uint8 validity for angle_CA_C_Nnext",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("cb_deviation", "local_backbone_geometry", np.ndarray, None, False, "Magnitude of observed_CB - established ideal_CB",
+              native_axis="residue", units="Å", mechanism="geometry"),
+    ArraySpec("cb_deviation_valid", "local_backbone_geometry", np.ndarray, None, False, "uint8 validity for cb_deviation",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("cb_residual_vector", "local_backbone_geometry", VectorField, 3, False, "observed_CB - established ideal_CB in conformation Cartesian xyz (not a local frame)",
+              native_axis="residue", irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="geometry"),
+    ArraySpec("cb_residual_vector_valid", "local_backbone_geometry", np.ndarray, None, False, "uint8 validity for all three cb_residual_vector components",
+              native_axis="residue", mechanism="geometry"),
 
     # ── Enrichment (EnrichmentResult.cpp) ───────────────────────────
     ArraySpec("enrichment_role",          "enrichment", np.ndarray, None, False, "AtomRole enum per atom (int32)",
@@ -422,6 +460,12 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1o", tensor_rank=1, parity="odd", mechanism="hbond_kernel"),
     ArraySpec("hbond_flags", "hbond", np.ndarray,                   3,    False, "H-bond boolean flags as int8 columns: hbond_is_backbone, hbond_is_donor, hbond_is_acceptor",
               mechanism="hbond_kernel"),
+    ArraySpec("hbond_pairs_index", "hbond", np.ndarray,             6,    False, "Accepted backbone H-bond rows [donor_residue, donor_N_atom, donor_H_atom, acceptor_residue, acceptor_O_atom, backbone_sequence_separation]",
+              native_axis="hbond_pair", mechanism="hbond_kernel"),
+    ArraySpec("hbond_pairs_geometry", "hbond", np.ndarray,          5,    False, "Row-aligned accepted backbone H-bond geometry [H_O_distance_A, N_H_O_angle_rad_at_H, H_to_O_unit_x, H_to_O_unit_y, H_to_O_unit_z]",
+              native_axis="hbond_pair", units="mixed_A_radians_dimensionless", mechanism="hbond_kernel"),
+    ArraySpec("hbond_pairs_angle_valid", "hbond", np.ndarray,    None,    False, "Row-aligned uint8 validity for the N-H...O angle",
+              native_axis="hbond_pair", mechanism="hbond_kernel"),
 
     # ── DSSP (DsspResult.cpp) ────────────────────────────────────
     ArraySpec("dssp_observed",    "dssp", np.ndarray,              None, False, "DSSP observation mask per atom: int8 1 when the parent residue mapped to a libdssp row, 0 otherwise",
@@ -436,6 +480,16 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="kcal/mol", mechanism="secondary_structure"),
     ArraySpec("dssp_chi",         "dssp", np.ndarray,              12,   False, "Chi1-4 cos/sin/exists (4 x 3 cols)",
               mechanism="secondary_structure"),
+    ArraySpec("dssp_torsion_angle", "dssp", np.ndarray,             6,   False, "Residue-axis signed IUPAC torsion angles [phi, psi, chi1, chi2, chi3, chi4]; undefined entries are NaN",
+              native_axis="residue", units="radians", mechanism="secondary_structure"),
+    ArraySpec("dssp_torsion_sin", "dssp", np.ndarray,               6,   False, "Sine of [phi, psi, chi1, chi2, chi3, chi4]; undefined entries are NaN",
+              native_axis="residue", mechanism="secondary_structure"),
+    ArraySpec("dssp_torsion_cos", "dssp", np.ndarray,               6,   False, "Cosine of [phi, psi, chi1, chi2, chi3, chi4]; undefined entries are NaN",
+              native_axis="residue", mechanism="secondary_structure"),
+    ArraySpec("dssp_torsion_valid", "dssp", np.ndarray,             6,   False, "Residue-axis uint8 validity for [phi, psi, chi1, chi2, chi3, chi4]",
+              native_axis="residue", mechanism="secondary_structure"),
+    ArraySpec("dssp_hbond_partner_residue_index", "dssp", np.ndarray, 4, False, "Atom-broadcast DSSP H-bond partner residue indices in energy-slot order [acceptor0, acceptor1, donor0, donor1]; -1 means no partner",
+              native_axis="atom", mechanism="secondary_structure"),
 
     # ── SASA (SasaResult.cpp) ───────────────────────────────────
     ArraySpec("atom_sasa",        "sasa", np.ndarray,              None, False, "Per-atom Shrake-Rupley SASA (A^2)",
@@ -704,7 +758,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Planar geometry (PlanarGeometryResult.cpp) ───────────────────
     # Per Amendment 2026-05-08(a). Conformation-only quantities derived
     # from positions; runs whenever the substrate (LegacyAmber
-    # AtomSemanticTable) is populated. Nine NPYs with three different
+    # AtomSemanticTable) is populated. Twelve NPYs with three different
     # axes (per-atom, per-residue, per-ring) — the reader's wrapper
     # picks shape from the catalog cols field.
     #
@@ -729,6 +783,12 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("pucker_theta",      "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople phase angle (degrees, [0, 360))",
               native_axis="saturated_ring", units="degrees", mechanism="geometry"),
     ArraySpec("omega_is_xpro",     "planar_geometry", np.ndarray, None, False, "Per-residue mask: 1 where the covalent backbone successor is Pro; X→Pro cis/trans is real signal and is not NaN-filled",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("omega_sin",         "planar_geometry", np.ndarray, None, False, "Sine of the signed IUPAC peptide omega angle; NaN when undefined",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("omega_cos",         "planar_geometry", np.ndarray, None, False, "Cosine of the signed IUPAC peptide omega angle; NaN when undefined",
+              native_axis="residue", mechanism="geometry"),
+    ArraySpec("omega_valid",       "planar_geometry", np.ndarray, None, False, "Per-residue uint8 validity for omega_actual/omega_sin/omega_cos",
               native_axis="residue", mechanism="geometry"),
 
     # ── Tripeptide DFT shielding ────────────────────────────────────

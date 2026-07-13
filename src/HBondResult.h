@@ -4,7 +4,8 @@
 //
 // For each atom, accumulates the angular scalar from DSSP-resolved
 // backbone H-bonds that pass the filter set and records nearest
-// H-bond geometry.
+// H-bond geometry. Accepted unique backbone pairs are retained for sparse
+// NPY emission with their typed atom identities and source geometry.
 //
 // H-bond identification comes from DsspResult, which provides
 // backbone H-bond partners via the Kabsch-Sander energy criterion.
@@ -18,6 +19,7 @@
 #include "ConformationResult.h"
 #include "Types.h"
 
+#include <cstdint>
 #include <vector>
 #include <typeindex>
 
@@ -69,9 +71,24 @@ public:
                       const std::string& output_dir) const override;
 
 private:
+    struct ResolvedHBond {
+        size_t donor_N = SIZE_MAX;
+        size_t donor_H = SIZE_MAX;
+        size_t acceptor_O = SIZE_MAX;
+        size_t donor_residue = SIZE_MAX;
+        size_t acceptor_residue = SIZE_MAX;
+        Vec3 source_point = Vec3::Zero();
+        Vec3 h_hat = Vec3::Zero();
+        double distance = 0.0;
+        double n_h_o_angle = 0.0;
+        std::uint8_t angle_valid = 0;
+        int sequence_separation = 0;
+    };
+
     const ProteinConformation* conf_ = nullptr;
 
     size_t hbond_count_ = 0;
+    std::vector<ResolvedHBond> resolved_hbonds_;
 };
 
 }  // namespace nmr
