@@ -1305,7 +1305,10 @@ class LarsenHBondGroup:
     2° on each of HB / HαB) plus a water-term offset Δσ_w on amide H
     atoms with no H-bond partner. Tensors are ppm in the protein lab
     frame (rotated from the canonical donor frame at calculator time)
-    and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols).
+    and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols).  The signed-rho
+    grid lookup is chiral and has a proper-rotation contract only, so these
+    packed tensors are deliberately exposed as raw ndarrays rather than O(3)
+    tensor wrappers.
 
     Methods accumulate side-by-side with the scalar-geometry ``HBondGroup``
     — both calculators cover overlapping physics (amide-H / backbone-O
@@ -1336,12 +1339,12 @@ class LarsenHBondGroup:
       any of the four Table 2 classes — the diagnostic CB does NOT
       increment it.
     """
-    shielding: Optional[ShieldingTensor] = None
-    pHB_1: Optional[ShieldingTensor] = None
-    pHB_2: Optional[ShieldingTensor] = None
-    pHaB_1: Optional[ShieldingTensor] = None
-    pHaB_2: Optional[ShieldingTensor] = None
-    diagnostic_CB: Optional[ShieldingTensor] = None
+    shielding: Optional[np.ndarray] = None
+    pHB_1: Optional[np.ndarray] = None
+    pHB_2: Optional[np.ndarray] = None
+    pHaB_1: Optional[np.ndarray] = None
+    pHaB_2: Optional[np.ndarray] = None
+    diagnostic_CB: Optional[np.ndarray] = None
     water_term: Optional[np.ndarray] = None
     count: Optional[np.ndarray] = None
     corner_imputed: Optional[np.ndarray] = None
