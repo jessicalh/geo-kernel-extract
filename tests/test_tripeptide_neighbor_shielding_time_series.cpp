@@ -198,6 +198,17 @@ TEST(TripeptideNeighborShieldingTimeSeries, H5AtomApplicability) {
         EXPECT_TRUE(std::isnan(flat[9 + k]));
     }
 
+    std::string parity, coordinate_frame, transformation;
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "even_rank2 under proper rotations: T'=R T R^T; typed tripeptide "
+        "lookup/Kabsch alignment is L-amino-acid chirality-conditioned and "
+        "has no improper-transform contract");
+
     fs::remove(h5_path);
 }
 
@@ -299,8 +310,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, FinalizeIdempotency) {
 // ============================================================================
 // H5 round-trip. Writes the H5 group via WriteH5Group, reads back, and
 // checks: group exists at the expected path; xyz dataset has shape
-// (N, T, 9); irrep_layout / normalization / parity / units attributes
-// pinned to the expected strings.
+// (N, T, 9); layout plus proper-only transformation metadata are pinned.
 // ============================================================================
 
 TEST(TripeptideNeighborShieldingTimeSeries, H5RoundTrip) {
@@ -351,15 +361,23 @@ TEST(TripeptideNeighborShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[2], 9u);
 
     std::string irrep_layout, normalization, parity, units;
+    std::string coordinate_frame, transformation;
     grp.getAttribute("irrep_layout").read(irrep_layout);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
     EXPECT_EQ(irrep_layout,
         "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(normalization, "isometric_real_sph");
-    EXPECT_EQ(parity,        "0e+1e+2e");
+    EXPECT_EQ(parity,        "mixed");
     EXPECT_EQ(units,         "ppm");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "even_rank2 under proper rotations: T'=R T R^T; typed tripeptide "
+        "lookup/Kabsch alignment is L-amino-acid chirality-conditioned and "
+        "has no improper-transform contract");
 
     fs::remove(h5_path);
 }
