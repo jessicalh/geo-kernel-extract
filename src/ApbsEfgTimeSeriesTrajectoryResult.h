@@ -33,6 +33,8 @@
 //       t2_component_order      = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       t2_frame                = "cartesian_xyz_emitted_frame"
 //       t2_parity               = "even"
+//       efg_t0_structural_zero  = true
+//       efg_t1_structural_zero  = true
 //       e3nn_export             = explicit conversion-note string
 //       irrep_layout/normalization/parity = deprecated legacy attrs
 //       legacy_irrep_attrs_deprecated = true
@@ -48,6 +50,8 @@
 // gradient of the polar E-field. T0 and T1 are structurally zero from
 // source symmetrization and trace projection in ApbsFieldResult.cpp;
 // only 5 T2 components are emitted.
+// Group tensor/irrep attributes apply only to t2; lab-axis APBS grid
+// diagnostics carry dataset-local mixed/non-covariant contracts.
 //
 
 #include "DenseBuffer.h"

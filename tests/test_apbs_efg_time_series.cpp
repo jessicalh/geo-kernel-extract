@@ -88,15 +88,16 @@ nmr::SphericalTensor MakeSyntheticT2(std::size_t i, std::size_t t) {
 TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
     const size_t N = tp.AtomCount();
     auto tr = nmr::ApbsEfgTimeSeriesTrajectoryResult::Create(tp);
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Trajectory traj({}, {}, {});
 
     constexpr size_t kFrames = 4;
     std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
@@ -146,8 +147,12 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[2], 5u) << "T2-only emission per 2026-05-18 schema rev";
 
     std::string basis, order, frame, t2_parity, export_note, layout, units;
+    std::string directional_scope, t2_coordinate_frame, t2_transformation;
+    std::string t2_dataset_parity;
     std::string source_result, source_field, operation, source, policy;
     bool legacy_deprecated = false;
+    bool t0_structural_zero = false;
+    bool t1_structural_zero = false;
     grp.getAttribute("t2_basis").read(basis);
     grp.getAttribute("t2_component_order").read(order);
     grp.getAttribute("t2_frame").read(frame);
@@ -161,6 +166,12 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     grp.getAttribute("operation").read(operation);
     grp.getAttribute("source").read(source);
     grp.getAttribute("source_attached_policy").read(policy);
+    grp.getAttribute("directional_metadata_scope").read(directional_scope);
+    grp.getAttribute("efg_t0_structural_zero").read(t0_structural_zero);
+    grp.getAttribute("efg_t1_structural_zero").read(t1_structural_zero);
+    ds.getAttribute("coordinate_frame").read(t2_coordinate_frame);
+    ds.getAttribute("transformation").read(t2_transformation);
+    ds.getAttribute("parity").read(t2_dataset_parity);
     EXPECT_EQ(basis, "project_native_t2_isometric_real_tesseral_v1");
     EXPECT_EQ(order, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
     EXPECT_EQ(frame, "cartesian_xyz_emitted_frame");
@@ -182,6 +193,17 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
         "requires ApbsFieldResult for this trajectory result; Compute "
         "defensively writes NaN-fill + mask=0 when the source is absent; "
         "source_attached_per_frame records that gate.");
+    EXPECT_EQ(directional_scope,
+        "t2_basis,t2_component_order,t2_frame,t2_parity,e3nn_export,"
+        "irrep_layout,normalization,parity,units describe t2 only; "
+        "apbs_grid_*_per_frame datasets carry per-dataset lab-axis contracts");
+    EXPECT_TRUE(t0_structural_zero);
+    EXPECT_TRUE(t1_structural_zero);
+    EXPECT_EQ(t2_coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(t2_transformation,
+        "even_rank2: T'=R T R^T; emitted values are project-native T2 "
+        "coefficients");
+    EXPECT_EQ(t2_dataset_parity, "2e");
     const std::string combined = source + " " + policy;
     EXPECT_EQ(combined.find(".cpp:"), std::string::npos);
     EXPECT_EQ(combined.find("RunConfiguration.cpp"), std::string::npos);
@@ -215,6 +237,35 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
         EXPECT_EQ(grp.getDataSet(name).getSpace().getDimensions(),
                   (std::vector<std::size_t>{kFrames, 3u}));
     }
+    const auto expect_grid_contract = [&](const std::string& name,
+            const std::string& expected_units,
+            const std::string& expected_transformation) {
+        auto grid = grp.getDataSet(name);
+        std::string order, grid_units, grid_frame, grid_parity, transformation;
+        grid.getAttribute("component_order").read(order);
+        grid.getAttribute("units").read(grid_units);
+        grid.getAttribute("coordinate_frame").read(grid_frame);
+        grid.getAttribute("parity").read(grid_parity);
+        grid.getAttribute("transformation").read(transformation);
+        EXPECT_EQ(order, "x,y,z");
+        EXPECT_EQ(grid_units, expected_units);
+        EXPECT_EQ(grid_frame, "apbs_lab_axis_aligned_grid_xyz");
+        EXPECT_EQ(grid_parity, "mixed");
+        EXPECT_EQ(transformation, expected_transformation);
+    };
+    expect_grid_contract("apbs_grid_dims_per_frame", "grid_points",
+        "lab-axis grid point counts; translation invariant; no closed O(3) "
+        "transformation law under arbitrary orthogonal transforms");
+    expect_grid_contract("apbs_grid_lengths_A_per_frame", "Angstrom",
+        "lab-axis grid extents; translation invariant; no closed O(3) "
+        "transformation law under arbitrary orthogonal transforms");
+    expect_grid_contract("apbs_grid_origin_A_per_frame", "Angstrom",
+        "lab-axis grid origin; o'=o+t under pure translations; no "
+        "affine-position/O(3) law under arbitrary orthogonal transforms "
+        "because grid axes remain lab-fixed");
+    expect_grid_contract("apbs_grid_spacing_A_per_frame", "Angstrom",
+        "lab-axis grid step lengths; translation invariant; no closed O(3) "
+        "transformation law under arbitrary orthogonal transforms");
     std::string field_quantity, grid_mode, reference_subtracts, rank3_policy;
     grp.getAttribute("field_quantity").read(field_quantity);
     grp.getAttribute("apbs_grid_mode").read(grid_mode);
