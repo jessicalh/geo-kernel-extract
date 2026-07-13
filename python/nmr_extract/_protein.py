@@ -71,7 +71,7 @@ class BiotSavartGroup(RingKernelGroup):
     """Biot-Savart with additional B-field and ring counts."""
     total_B: MagneticVectorField = None
     ring_B_field: MagneticVectorField = None
-    ring_B_cylindrical: MagneticVectorField = None
+    ring_B_cylindrical: Optional[np.ndarray] = None
     ring_counts: RingCounts = None
 
 
