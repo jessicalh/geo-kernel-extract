@@ -221,6 +221,17 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 3u);
 
+    std::string parity, coordinate_frame, transformation;
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract");
+
     // Spot-check one cell readback: atom Ntp/2, frame 2, all 3 components.
     std::vector<double> flat(Ntp * kFrames * 3);
     ds.read(flat.data());
@@ -425,16 +436,24 @@ TEST(TripeptideBackboneResidualVecTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 3u);
 
-    // Attribute triple: cartesian xyz layout, polar vector (1o), in Å.
+    // Cartesian layout plus the chiral lookup's proper-only vector law.
     std::string parity, normalization, units, layout;
+    std::string coordinate_frame, transformation;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "1o");
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
     EXPECT_EQ(normalization, "cartesian");
     EXPECT_EQ(units, "angstrom");
     EXPECT_EQ(layout, "x,y,z");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract");
 
     fs::remove(h5_path);
 }

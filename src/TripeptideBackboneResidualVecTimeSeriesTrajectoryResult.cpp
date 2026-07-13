@@ -123,10 +123,8 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Finalize(
 // The three Cartesian doubles per atom per frame are x, y, z in the
 // protein's lab frame — same frame as ConformationAtom positions.
 // The (irrep_layout="x,y,z", normalization="cartesian") attribute
-// pair tells downstream e3nn consumers to apply the Cartesian →
-// real-spherical change of basis themselves (rather than the
-// SphericalTensor TRs which emit pre-decomposed
-// (T0, T1_x/y/z, T2_m)).
+// pair records component layout only; the chiral lookup has no O(3)
+// export contract.
 
 void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -170,12 +168,17 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
 
-    // e3nn-consumable metadata. Cartesian xyz layout, polar vector
-    // (parity 1o), units Å. The "angstrom" string keeps the H5
-    // attribute byte-clean (ASCII); downstream consumers map it to Å.
+    // Cartesian xyz layout with an SO(3)-only polar-vector law. The
+    // "angstrom" string keeps the H5 attribute byte-clean (ASCII).
     grp.createAttribute("irrep_layout",  std::string("x,y,z"));
     grp.createAttribute("normalization", std::string("cartesian"));
-    grp.createAttribute("parity",        std::string("1o"));
+    grp.createAttribute("parity",        std::string("mixed"));
+    grp.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("transformation", std::string(
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract"));
     grp.createAttribute("units",         std::string("angstrom"));
 
     // Flat (N, T, 3) via explicit component access. NaN-fill rows where

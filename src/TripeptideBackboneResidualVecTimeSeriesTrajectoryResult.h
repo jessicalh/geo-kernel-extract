@@ -30,17 +30,17 @@
 //       result_name    = "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult"
 //       irrep_layout   = "x,y,z"
 //       normalization  = "cartesian"
-//       parity         = "1o"
+//       parity         = "mixed"
+//       coordinate_frame = "conformation_cartesian_xyz"
+//       transformation = "polar_vector under proper rotations: ..."
 //       units          = "angstrom"
 //       n_atoms, n_frames, finalized
 //
-// Why parity "1o": the residual is a polar 3-vector (spatial
-// displacement in the protein's lab frame), behaves under rotation
-// and inversion like positions and the electric field. Cartesian
-// layout: the three doubles are literally x, y, z in the protein's
-// lab frame, not the e3nn real-spherical (m=-1, m=0, m=+1) ordering;
-// the attribute pair (irrep_layout="x,y,z", normalization="cartesian")
-// pins this for downstream consumers.
+// The residual is a polar displacement under proper rotations.  Its typed
+// lookup/proper-Kabsch alignment is conditioned on an unchanged chiral
+// L-amino-acid DFT source, so no improper-transform parity is claimed.
+// The three doubles are literal Cartesian x,y,z components in the
+// conformation frame, not real-spherical m ordering.
 //
 
 #include "DenseBuffer.h"
