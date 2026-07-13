@@ -20,6 +20,9 @@
 //       irrep_layout   = "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
 //       parity         = "0e+1e+2e"
+//       tensor_basis   = "project_native_full9_spherical_tensor_v1"
+//       tensor_frame   = "conformation_cartesian_xyz"
+//       tensor_transformation = "even_rank2: T'=R T R^T"
 //       units          = "Angstrom^-1"
 //       n_atoms, n_frames, finalized
 //
@@ -29,6 +32,8 @@
 // PPM_FACTOR multiplication, unlike BS), so the field on
 // ConformationAtom is in Å⁻¹, not ppm. See OBJECT_MODEL.md "Contract
 // drift" 2026-05-16.
+// Machine metadata states explicitly that T1 is the Cartesian
+// Levi-Civita dual, not a real-Y1m channel, and is generically nonzero.
 //
 
 #include "DenseBuffer.h"
