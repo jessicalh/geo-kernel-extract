@@ -25,6 +25,7 @@
 #include "EnrichmentResult.h"
 
 #include "ConformationAtom.h"
+#include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -51,8 +52,10 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -133,6 +136,70 @@ std::size_t FindChainACentralCaIndex(const nmr::Protein& prot,
 }
 
 }  // namespace
+
+
+// ============================================================================
+// Atom-local applicability at the serialized boundary. The source is forced
+// present because this synthetic test bypasses OperationRunner. Atom 0 is a
+// matched physical zero; atom 1 carries a nonzero in-memory payload but is
+// explicitly unmatched. H5 must preserve the first and NaN-fill the second.
+// ============================================================================
+
+TEST(TripeptideNeighborShieldingTimeSeries, H5AtomApplicability) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    const std::size_t N = tp.AtomCount();
+    ASSERT_GE(N, 2u);
+
+    auto ts =
+        nmr::TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Create(tp);
+    ts->ForceSourcePresentForTesting();
+    nmr::Trajectory traj({}, {}, {});
+
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    nmr::ProteinConformation conf(
+        &tp.ProteinRef(), positions, "synthetic applicability frame");
+    auto& matched_zero = conf.MutableAtomAt(0);
+    matched_zero.tripeptide_neighbor_shielding_spherical =
+        nmr::SphericalTensor{};
+    matched_zero.tripeptide_neighbor_has_match = true;
+
+    auto& unmatched = conf.MutableAtomAt(1);
+    unmatched.tripeptide_neighbor_shielding_spherical.T0 = 17.0;
+    unmatched.tripeptide_neighbor_shielding_spherical.T1[0] = 18.0;
+    unmatched.tripeptide_neighbor_shielding_spherical.T2[0] = 19.0;
+    unmatched.tripeptide_neighbor_has_match = false;
+
+    ts->Compute(conf, tp, traj, 0, 0.0);
+    ts->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("tripeptide_neighbor_ts_applicability_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        ts->WriteH5Group(tp, file);
+    }
+
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup(
+        "/trajectory/tripeptide_neighbor_shielding_time_series");
+    auto ds = grp.getDataSet("xyz");
+    std::vector<double> flat(N * 9);
+    ds.read(flat.data());
+    for (std::size_t k = 0; k < 9; ++k) {
+        EXPECT_DOUBLE_EQ(flat[k], 0.0);
+        EXPECT_TRUE(std::isnan(flat[9 + k]));
+    }
+
+    fs::remove(h5_path);
+}
 
 
 // ============================================================================

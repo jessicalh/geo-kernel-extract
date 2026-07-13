@@ -61,8 +61,9 @@ public:
     // No trajectory-scope dependencies; the underlying ConformationResult
     // (TripeptideNeighborShieldingResult) is conditionally attached when
     // the [databases].tensorcs15 table is configured. This TR captures
-    // whatever is in tripeptide_neighbor_shielding_spherical each frame —
-    // zero-default SphericalTensor if the calc did not attach.
+    // the per-atom tensor and `tripeptide_neighbor_has_match`
+    // applicability state each frame. H5 rows are NaN when the source did
+    // not attach or the atom had no neighboring tripeptide contribution.
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
     static std::unique_ptr<TripeptideNeighborShieldingTimeSeriesTrajectoryResult> Create(
@@ -94,6 +95,10 @@ private:
     // Per-atom growing buffers of SphericalTensor. Flattened into an
     // atom-major DenseBuffer<SphericalTensor> at Finalize.
     std::vector<std::vector<SphericalTensor>> per_atom_shielding_;
+    // Internal atom-by-frame applicability, captured from
+    // ConformationAtom::tripeptide_neighbor_has_match. It is intentionally
+    // not emitted as a new H5 dataset; it only controls NaN filling of xyz.
+    std::vector<std::vector<std::uint8_t>> per_atom_has_match_;
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 

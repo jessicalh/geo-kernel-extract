@@ -21,6 +21,8 @@ TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Create(const TrajectoryPr
     auto r = std::make_unique<TripeptideNeighborShieldingTimeSeriesTrajectoryResult>();
     r->per_atom_shielding_.assign(tp.AtomCount(),
                                   std::vector<SphericalTensor>{});
+    r->per_atom_has_match_.assign(tp.AtomCount(),
+                                  std::vector<std::uint8_t>{});
     return r;
 }
 
@@ -38,16 +40,20 @@ void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Compute(
         std::size_t frame_idx,
         double time_ps) {
     (void)tp; (void)traj;
-    // Per-frame source-present provenance — see analogous block in
-    // TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Compute.
+    // Record both frame-level source presence and atom-level contribution
+    // applicability. The latter distinguishes an unmatched zero-default
+    // tensor from a matched contribution whose physical sum is zero.
     const bool source_attached = force_source_present_for_testing_
         || conf.HasResult<TripeptideNeighborShieldingResult>();
     source_present_per_frame_.push_back(source_attached ? 1u : 0u);
 
     const std::size_t N = conf.AtomCount();
     for (std::size_t i = 0; i < N; ++i) {
+        const ConformationAtom& atom = conf.AtomAt(i);
         per_atom_shielding_[i].push_back(
-            conf.AtomAt(i).tripeptide_neighbor_shielding_spherical);
+            atom.tripeptide_neighbor_shielding_spherical);
+        per_atom_has_match_[i].push_back(
+            atom.tripeptide_neighbor_has_match ? 1u : 0u);
     }
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);
@@ -167,15 +173,19 @@ void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("units",         std::string("ppm"));
 
     // Flat (N, T, 9) via explicit component access. NaN-fill rows where
-    // the source-present flag is 0 so readers can isfinite/isnan
-    // discriminate "no measurement" from "real measurement = 0."
+    // the source is absent or this atom had no neighboring tripeptide
+    // contribution, preserving a matched physical zero as zero.
     constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
     std::vector<double> flat(N * T * 9);
     for (std::size_t i = 0; i < N; ++i) {
         for (std::size_t t = 0; t < T; ++t) {
             const std::size_t base = (i * T + t) * 9;
+            const bool atom_matched = i < per_atom_has_match_.size()
+                && t < per_atom_has_match_[i].size()
+                && per_atom_has_match_[i][t] != 0;
             if (t >= source_present_per_frame_.size()
-                || source_present_per_frame_[t] == 0) {
+                || source_present_per_frame_[t] == 0
+                || !atom_matched) {
                 for (std::size_t k = 0; k < 9; ++k) flat[base + k] = kNaN;
                 continue;
             }
