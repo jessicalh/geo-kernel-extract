@@ -13,7 +13,7 @@
 //   3. Make the configured work directory, or a RuntimeEnvironment temp path.
 //   4. Generate input PDB from typed Protein state via
 //      amber_leap::GenerateAmberPdb (handles AMBER residue naming for
-//      HID/HIE/HIP, CYX from typed disulfide detection, ASH/GLH/CYM/LYN
+//      HID/HIE/HIP, resolved CYX, ASH/GLH/CYM/LYN
 //      variant naming, and ACE/NME caps under
 //      UseCappedFragmentsForUnsupportedTerminalVariants).
 //   5. Generate LEaP script via amber_leap::GenerateLeapScript.
@@ -69,10 +69,9 @@ public:
     // populates the cached ResidueAmberMapping.
     std::string GeneratedPdb(const ProteinConformation& conf) const;
 
-    // Generated LEaP script body for the given paths. Disulfide
-    // bond pairs are derived from the cached ResidueAmberMapping;
-    // call GeneratedPdb first or via LoadCharges so the mapping
-    // exists.
+    // Generated LEaP script body for the given paths. Finalized disulfide
+    // topology is projected through the cached ResidueAmberMapping; call
+    // GeneratedPdb first or via LoadCharges so the mapping exists.
     std::string GeneratedLeapScript(const std::string& pdb_path,
                                      const std::string& prmtop_path,
                                      const std::string& inpcrd_path) const;
@@ -87,12 +86,11 @@ private:
     AmberFlatTableCoverageVerdict reason_;
     AmberSourceConfig config_;
     mutable amber_leap::ResidueAmberMapping residue_mapping_;
-    mutable std::vector<std::pair<size_t, size_t>>
-        disulfide_extractor_pairs_;
     mutable bool mapping_built_ = false;
 
     // 1-based PRMTOP residue indices for each disulfide pair, derived
-    // from disulfide_extractor_pairs_ projected through residue_mapping_.
+    // from finalized BondCategory::Disulfide topology projected through
+    // residue_mapping_.
     std::vector<std::pair<size_t, size_t>>
         DisulfidePairs1Based() const;
 };

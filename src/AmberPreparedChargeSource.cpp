@@ -74,7 +74,6 @@ std::string AmberPreparedChargeSource::GeneratedPdb(
     std::ostringstream pdb_out;
     amber_leap::GenerateAmberPdb(protein_, conf, policy_, reason_,
                                   pdb_out, residue_mapping_);
-    disulfide_extractor_pairs_ = amber_leap::DetectDisulfides(protein_, conf);
     mapping_built_ = true;
     return pdb_out.str();
 }
@@ -117,7 +116,8 @@ AmberPreparedChargeSource::DisulfidePairs1Based() const {
     }
 
     std::vector<std::pair<size_t, size_t>> pairs;
-    for (const auto& ext_pair : disulfide_extractor_pairs_) {
+    for (const auto& ext_pair :
+         amber_leap::DisulfideResiduePairs(protein_)) {
         auto ita = ext_to_prmtop_1based.find(ext_pair.first);
         auto itb = ext_to_prmtop_1based.find(ext_pair.second);
         if (ita == ext_to_prmtop_1based.end() ||
@@ -312,7 +312,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
     const std::string inpcrd_path  = work_dir + "/prep.inpcrd";
     const std::string log_path     = work_dir + "/tleap.log";
 
-    // 1. Generate PDB + populate residue_mapping_ + disulfide_extractor_pairs_.
+    // 1. Generate PDB + populate residue_mapping_.
     {
         std::ofstream pdb_out(pdb_path);
         if (!pdb_out) {

@@ -1,16 +1,18 @@
 #include "AmberLeapInput.h"
 #include "AminoAcidType.h"
 #include "Atom.h"
+#include "Bond.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
 #include "Types.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <ostream>
 #include <set>
-#include <unordered_map>
 
 namespace nmr {
 namespace amber_leap {
@@ -21,11 +23,7 @@ namespace {
 // Mirrors the lookup-name choice in ParamFileChargeSource so the same
 // triple (terminal_state, ff_resname, atom_name) drives both the verdict
 // and the generated PDB.
-std::string AmberResidueNameFor(const Residue& res, bool is_disulfide_cys) {
-    if (res.type == AminoAcid::CYS && is_disulfide_cys) {
-        return "CYX";
-    }
-
+std::string AmberResidueNameFor(const Residue& res) {
     if (res.protonation_variant_index < 0) {
         if (res.type == AminoAcid::HIS) return "HIE";
         return ThreeLetterCodeForAminoAcid(res.type);
@@ -232,15 +230,6 @@ void GenerateAmberPdb(const Protein& protein,
     map_out.extractor_index_for_prmtop_residue.reserve(
         protein.ResidueCount() + 8);
 
-    // Disulfide detection by direct SG-SG distance check on typed CYS
-    // residues; it does not depend on CovalentTopology's bond perception.
-    std::set<size_t> cyx_residues;
-    auto disulfide_pairs = DetectDisulfides(protein, conf);
-    for (const auto& pair : disulfide_pairs) {
-        cyx_residues.insert(pair.first);
-        cyx_residues.insert(pair.second);
-    }
-
     // Capping plan — which residues get ACE / NME inserts
     // around them under UseCappedFragmentsForUnsupportedTerminalVariants.
     const CappingPlan capping = BuildCappingPlan(protein, policy, verdict);
@@ -273,9 +262,7 @@ void GenerateAmberPdb(const Protein& protein,
                 ResidueAmberMapping::NONE_FOR_CAP);
         }
 
-        const bool is_disulfide_cys = cyx_residues.count(ri) > 0;
-        const std::string ambr_name =
-            AmberResidueNameFor(res, is_disulfide_cys);
+        const std::string ambr_name = AmberResidueNameFor(res);
 
         for (size_t ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
@@ -311,38 +298,28 @@ void GenerateAmberPdb(const Protein& protein,
 }
 
 
-std::vector<std::pair<size_t, size_t>> DetectDisulfides(
-        const Protein& protein,
-        const ProteinConformation& conf,
-        double max_ss_distance_angstroms) {
-    // Collect SG atom index for every CYS residue (typed: residue.type
-    // and atom.pdb_atom_name == "SG").
-    std::vector<std::pair<size_t, size_t>> cys_sg;  // (residue_index, atom_index)
-    cys_sg.reserve(64);
-    for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
-        const Residue& res = protein.ResidueAt(ri);
-        if (res.type != AminoAcid::CYS) continue;
-        for (size_t ai : res.atom_indices) {
-            const Atom& atom = protein.AtomAt(ai);
-            if (atom.pdb_atom_name == "SG" && atom.element == Element::S) {
-                cys_sg.emplace_back(ri, ai);
-                break;
-            }
-        }
-    }
-
-    const double max_sq = max_ss_distance_angstroms * max_ss_distance_angstroms;
+std::vector<std::pair<size_t, size_t>> DisulfideResiduePairs(
+        const Protein& protein) {
     std::vector<std::pair<size_t, size_t>> pairs;
-    for (size_t i = 0; i < cys_sg.size(); ++i) {
-        for (size_t j = i + 1; j < cys_sg.size(); ++j) {
-            const Vec3 pa = conf.PositionAt(cys_sg[i].second);
-            const Vec3 pb = conf.PositionAt(cys_sg[j].second);
-            const double sq = (pa - pb).squaredNorm();
-            if (sq <= max_sq) {
-                pairs.emplace_back(cys_sg[i].first, cys_sg[j].first);
-            }
+    for (const Bond& bond : protein.LegacyAmber().BondList()) {
+        if (bond.category != BondCategory::Disulfide) continue;
+
+        const size_t residue_a =
+            protein.AtomAt(bond.atom_index_a).residue_index;
+        const size_t residue_b =
+            protein.AtomAt(bond.atom_index_b).residue_index;
+        if (residue_a == residue_b) {
+            std::fprintf(
+                stderr,
+                "FATAL: DisulfideResiduePairs: BondCategory::Disulfide "
+                "bond %zu-%zu has both endpoints in residue %zu.\n",
+                bond.atom_index_a, bond.atom_index_b, residue_a);
+            std::abort();
         }
+        pairs.emplace_back(std::min(residue_a, residue_b),
+                           std::max(residue_a, residue_b));
     }
+    std::sort(pairs.begin(), pairs.end());
     return pairs;
 }
 
