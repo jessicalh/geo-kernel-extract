@@ -1824,8 +1824,10 @@ _set_contract(
 _set_contract(
     ("larsen_hbond_pairs_geometry",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
-        "mixed proper-rotation invariants; col2 signed rho is a wrapped "
-        "pseudoscalar and changes sign under an improper transform"
+        "mixed row: cols0:2 r/theta are exact O(3) invariants; col2 signed "
+        "rho is a wrapped pseudoscalar and changes sign under an improper "
+        "transform; cols3:5 imputation provenance has no improper-transform "
+        "law; col5 frame_valid is exactly O(3)-invariant"
     ),
     validity=(
         "col5 is donor-frame validity; r/theta/rho cols0:3 are computed before "
@@ -1886,9 +1888,10 @@ _set_contract(
 _set_contract(
     ("larsen_hbond_pairs",), coordinate_frame="mixed_larsen_pair_contract",
     transformation=(
-        "compatibility table: col18 signed-rho pseudoscalar; cols22:28 are "
-        "signed-rho-conditioned isotropic values with no improper parity; "
-        "remaining geometry/index columns are proper-rotation invariants"
+        "compatibility table: cols0:16 index and cols16:18 r/theta are exact "
+        "O(3) invariants; col18 signed-rho pseudoscalar; cols19:21 imputation "
+        "provenance and cols22:28 signed-rho-conditioned isotropic values "
+        "have no improper parity; col21 frame_valid is exactly O(3)-invariant"
     ),
     validity=(
         "disposition is col6 and frame_valid is col21; geometry cols16:19 may "
@@ -1898,8 +1901,9 @@ _set_contract(
 _set_contract(
     ("larsen_sidechain_donor_candidates",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
-        "mixed audit row: col10 signed rho is a wrapped pseudoscalar; other "
-        "geometry values are proper-rotation/translation invariants"
+        "mixed audit row: cols0:10 identity/distance/angle and cols11:13 "
+        "status are exact O(3) invariants; col10 signed rho is a wrapped "
+        "pseudoscalar and changes sign under an improper transform"
     ),
     validity="rho is NaN when acceptor frame atoms are unavailable; audit-only and never modeled by Table 2",
     parity="mixed")
