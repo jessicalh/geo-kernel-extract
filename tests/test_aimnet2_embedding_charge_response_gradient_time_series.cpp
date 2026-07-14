@@ -298,6 +298,101 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
 }
 
 
+TEST(AIMNet2ChargeResponseGradientTimeSeries,
+     DirectionalMetadataAndAbsentMaskSerializedH5) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    ASSERT_GT(tp.AtomCount(), 0u);
+
+    auto result =
+        nmr::AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Create(
+            tp);
+    ASSERT_NE(result, nullptr);
+    nmr::Trajectory dummy("", "", "");
+
+    auto present = tp.TickConformation(
+        tp.CanonicalConformation().Positions());
+    const nmr::Vec3 expected_vector(1.25, -2.5, 3.75);
+    present->MutableAtomAt(0).aimnet2_charge_response_gradient_vector =
+        expected_vector;
+    present->MutableAtomAt(0).aimnet2_charge_response_gradient_scalar =
+        expected_vector.norm();
+    present->ForceAttachResultForTesting(
+        std::make_unique<nmr::AIMNet2ChargeResponseGradientResult>());
+    result->Compute(*present, tp, dummy, 13u, 2.0);
+
+    auto absent = tp.TickConformation(
+        tp.CanonicalConformation().Positions());
+    result->Compute(*absent, tp, dummy, 29u, 4.0);
+    result->Finalize(tp, dummy);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("aimnet2_gradient_ts_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        result->WriteH5Group(tp, file);
+    }
+    {
+        HighFive::File file(h5_path, HighFive::File::ReadOnly);
+        auto grp = file.getGroup(
+            "/trajectory/aimnet2_charge_response_gradient_time_series");
+
+        std::string vector_frame;
+        std::string vector_transformation;
+        std::string scope;
+        std::string vector_layout;
+        std::string vector_parity;
+        std::string scalar_layout;
+        std::string scalar_parity;
+        grp.getAttribute("vector_coordinate_frame").read(vector_frame);
+        grp.getAttribute("vector_transformation")
+            .read(vector_transformation);
+        grp.getAttribute("directional_metadata_scope").read(scope);
+        grp.getAttribute("irrep_layout_vector").read(vector_layout);
+        grp.getAttribute("parity_vector").read(vector_parity);
+        grp.getAttribute("irrep_layout_scalar").read(scalar_layout);
+        grp.getAttribute("parity_scalar").read(scalar_parity);
+
+        EXPECT_EQ(vector_frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(vector_transformation, "polar vector: v'=R v");
+        EXPECT_EQ(scope,
+            "charge_response_gradient_vector payload only; scalar norm, "
+            "frame indices/times, and source mask are invariant");
+        EXPECT_EQ(vector_layout, "x,y,z");
+        EXPECT_EQ(vector_parity, "1o");
+        EXPECT_EQ(scalar_layout, "T0");
+        EXPECT_EQ(scalar_parity, "0e");
+
+        std::vector<std::uint8_t> source_mask;
+        grp.getDataSet("source_attached_per_frame").read(source_mask);
+        ASSERT_EQ(source_mask, (std::vector<std::uint8_t>{1u, 0u}));
+
+        std::vector<double> vectors(tp.AtomCount() * 2u * 3u);
+        std::vector<double> scalars(tp.AtomCount() * 2u);
+        grp.getDataSet("charge_response_gradient_vector")
+            .read(vectors.data());
+        grp.getDataSet("charge_response_gradient_scalar")
+            .read(scalars.data());
+        EXPECT_DOUBLE_EQ(vectors[0], expected_vector.x());
+        EXPECT_DOUBLE_EQ(vectors[1], expected_vector.y());
+        EXPECT_DOUBLE_EQ(vectors[2], expected_vector.z());
+        EXPECT_DOUBLE_EQ(scalars[0], expected_vector.norm());
+        EXPECT_TRUE(std::isnan(vectors[3]));
+        EXPECT_TRUE(std::isnan(vectors[4]));
+        EXPECT_TRUE(std::isnan(vectors[5]));
+        EXPECT_TRUE(std::isnan(scalars[1]));
+    }
+    EXPECT_TRUE(fs::remove(h5_path));
+}
+
+
 TEST(AIMNet2ChargeResponseGradientTimeSeries, FinalizeIdempotency) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
