@@ -143,12 +143,20 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",         T);
     grp.createAttribute("source_attached_count", source_attached_count);
     grp.createAttribute("finalized",        finalized_);
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "efield/efield_first and efg/efg_first tensor payloads only; "
+        "counts, clamp provenance, frame indices/times, and source masks "
+        "are invariant metadata"));
     grp.createAttribute("efield_layout",    std::string("x,y,z"));
     grp.createAttribute("efield_units",     std::string("V/Angstrom"));
     // E-field is a polar (true) vector — parity-odd under inversion.
     // Matches ApbsEfieldTimeSeries / PositionsTimeSeries convention.
     grp.createAttribute("efield_parity",        std::string("1o"));
     grp.createAttribute("efield_normalization", std::string("cartesian"));
+    grp.createAttribute("efield_coordinate_frame",
+                        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("efield_transformation",
+                        std::string("polar vector: v'=R v"));
 
     // Water EFG layout: T2-only, 5 real-spherical-tesseral components.
     // T0 = 0 after WaterFieldResult's traceless projection.
@@ -160,7 +168,11 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
         std::string("project_native_t2_isometric_real_tesseral_v1"));
     grp.createAttribute("efg_t2_component_order",
         std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
-    grp.createAttribute("efg_t2_frame",  std::string("cartesian_xyz_emitted_frame"));
+    grp.createAttribute("efg_t2_frame",
+                        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("efg_t2_transformation", std::string(
+        "native isometric real-tesseral T2 of an even-rank-2 Cartesian "
+        "tensor: T'=R T R^T"));
     grp.createAttribute("efg_t2_parity", std::string("even"));
     grp.createAttribute("efg_e3nn_export", std::string(
         "raw project tensor; call to_e3nn()/to_e3nn_T2() or "

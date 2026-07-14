@@ -9,6 +9,7 @@
 #include "GeometryResult.h"
 #include "GromacsFrameHandler.h"
 #include "OperationLog.h"
+#include "PdbFileReader.h"
 #include "PhysicalConstants.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
@@ -206,6 +207,82 @@ TEST(WaterFieldResult, UsesTargetMinusSourceCoulombConvention) {
     EXPECT_LT((atom.water_efield - expected_E).norm(), 1e-12);
     EXPECT_LT((atom.water_efg - expected_EFG).norm(), 1e-12);
     EXPECT_LT(std::abs(atom.water_efg.trace()), 1e-12);
+}
+
+
+TEST(WaterFieldTimeSeries, DirectionalMetadataSerializedH5) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+
+    auto result = nmr::WaterFieldTimeSeriesTrajectoryResult::Create(tp);
+    ASSERT_NE(result, nullptr);
+    result->ForceSourcePresentForTesting();
+    auto conf = tp.TickConformation(tp.CanonicalConformation().Positions());
+    nmr::Trajectory dummy("", "", "");
+    result->Compute(*conf, tp, dummy, 19u, 3.5);
+    result->Finalize(tp, dummy);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("water_field_ts_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        result->WriteH5Group(tp, file);
+    }
+    {
+        HighFive::File file(h5_path, HighFive::File::ReadOnly);
+        auto grp = file.getGroup("/trajectory/water_field_time_series");
+        for (const std::string& dataset : {
+                 "efield", "efield_first", "efg", "efg_first"}) {
+            EXPECT_TRUE(grp.exist(dataset)) << dataset;
+        }
+
+        std::string scope;
+        std::string efield_frame;
+        std::string efield_transformation;
+        std::string efield_parity;
+        std::string efg_frame;
+        std::string efg_transformation;
+        std::string efg_parity;
+        grp.getAttribute("directional_metadata_scope").read(scope);
+        grp.getAttribute("efield_coordinate_frame").read(efield_frame);
+        grp.getAttribute("efield_transformation")
+            .read(efield_transformation);
+        grp.getAttribute("efield_parity").read(efield_parity);
+        grp.getAttribute("efg_t2_frame").read(efg_frame);
+        grp.getAttribute("efg_t2_transformation")
+            .read(efg_transformation);
+        grp.getAttribute("efg_t2_parity").read(efg_parity);
+
+        EXPECT_EQ(scope,
+            "efield/efield_first and efg/efg_first tensor payloads only; "
+            "counts, clamp provenance, frame indices/times, and source "
+            "masks are invariant metadata");
+        EXPECT_EQ(efield_frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(efield_transformation, "polar vector: v'=R v");
+        EXPECT_EQ(efield_parity, "1o");
+        EXPECT_EQ(efg_frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(efg_transformation,
+            "native isometric real-tesseral T2 of an even-rank-2 "
+            "Cartesian tensor: T'=R T R^T");
+        EXPECT_EQ(efg_parity, "even");
+
+        bool t0_structural_zero = false;
+        bool t1_structural_zero = false;
+        grp.getAttribute("efg_t0_structural_zero")
+            .read(t0_structural_zero);
+        grp.getAttribute("efg_t1_structural_zero")
+            .read(t1_structural_zero);
+        EXPECT_TRUE(t0_structural_zero);
+        EXPECT_TRUE(t1_structural_zero);
+    }
+    EXPECT_TRUE(fs::remove(h5_path));
 }
 
 

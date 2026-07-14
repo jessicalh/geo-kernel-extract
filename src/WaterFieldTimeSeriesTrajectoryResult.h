@@ -43,10 +43,17 @@
 //     source_attached_per_frame (T,)       uint8    provenance mask
 //     attrs:
 //       result_name, n_atoms, n_frames, source_attached_count, finalized
+//       directional_metadata_scope = "efield/efield_first and efg/efg_first
+//          tensor payloads only; counts, clamp provenance, frame
+//          indices/times, and source masks are invariant metadata"
 //       efield_layout       = "x,y,z" / efield_parity = "1o"
+//       efield_coordinate_frame = "conformation_cartesian_xyz"
+//       efield_transformation = "polar vector: v'=R v"
 //       efg_t2_basis        = "project_native_t2_isometric_real_tesseral_v1"
 //       efg_t2_component_order = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-//       efg_t2_frame        = "cartesian_xyz_emitted_frame"
+//       efg_t2_frame        = "conformation_cartesian_xyz"
+//       efg_t2_transformation = "native isometric real-tesseral T2 of an
+//          even-rank-2 Cartesian tensor: T'=R T R^T"
 //       efg_t2_parity       = "even"
 //       efg_e3nn_export     = explicit conversion-note string
 //       efg_irrep_layout/efg_parity/efg_normalization = deprecated legacy attrs
