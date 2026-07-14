@@ -2179,6 +2179,17 @@ _set_contract(
     ),
     validity="rho is NaN when acceptor frame atoms are unavailable; audit-only and never modeled by Table 2",
     parity="mixed")
+_set_contract(
+    ("larsen_sidechain_donor_atoms",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant per-atom typed donor identity, parent/residue "
+        "identity and distance/angle-gated candidate/pass counts"
+    ),
+    validity=(
+        "column0 identifies a typed sidechain polar H; remaining identity "
+        "and count fields use the producer's non-donor sentinels"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
 
 
 del _stem
