@@ -246,9 +246,9 @@ private:
     std::vector<std::uint8_t> j_cprime_cgamma_exists_;
     std::vector<std::uint8_t> j_halpha_hbeta_exists_;
 
-    // Per-residue Hbeta atom-index caches (resolved at Create time
-    // by walking residue atoms and matching pdb_atom_name). NONE for
-    // residues without that Hbeta.
+    // Per-residue Hbeta atom-index caches (resolved at Create time from
+    // typed AtomSemanticTable rows + the covalent Cbeta parent graph).
+    // NONE for residues without that Hbeta observable.
     std::vector<std::size_t> hb2_index_;
     std::vector<std::size_t> hb3_index_;
 
