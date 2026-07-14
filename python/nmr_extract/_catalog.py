@@ -1094,6 +1094,20 @@ _set_contract(
         "reaction field also has apbs_E_clamp_mask.npy and apbs_E_clamp_scale.npy"
     ))
 _set_contract(
+    ("apbs_phi",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation-invariant electrostatic potential; the live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law and "
+        "is only approximately invariant within the recorded 1.2e-3 V "
+        "covariance-test envelope"
+    ),
+    validity=(
+        "whole ApbsFieldResult is absent if APBS fails or any reaction "
+        "potential is non-finite; potential rows have no zero sanitizer"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
     ("water_efield", "water_efield_first"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
     validity="whole WaterFieldResult is absent without solvent; clamp provenance is emitted separately")
