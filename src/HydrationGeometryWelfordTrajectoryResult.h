@@ -48,14 +48,21 @@
 //            surface_normal_parity = "mixed"
 //            surface_normal_transformation = continuum-polar with the live
 //                finite lab-fixed Fibonacci/no-exact-O(3) qualifier
-//            directional_metadata_scope = exactly 42 vector-component paths
+//            scalar_statistic_transformation = all 72 normal-derived scalar
+//                statistic paths inherit that finite-grid qualifier
+//            directional_metadata_scope = exactly 114 paths: 42 vector
+//                component statistics + 72 normal-derived scalar statistics
 //
 // The three per-source channels are independently accumulated Cartesian
 // x/y/z components, not SphericalTensor T1 components.  Reassembling the
 // three dipole component means yields an exact polar vector.  Reassembling
 // the three surface-normal means yields a continuum-polar vector that still
 // inherits SasaResult's finite lab-fixed Fibonacci approximation.  No
-// componentwise m2/std/min/max/extremum dataset is a covariant vector.
+// componentwise m2/std/min/max/extremum dataset is a covariant vector.  Every
+// Welford/delta descendant of half_shell_asymmetry and dipole_alignment also
+// inherits the surface normal's finite-grid approximation; only the dipole
+// magnitude/coherence/net-dipole/order and count/provenance families are
+// exact rotation invariants outside the 114-path directional scope.
 //
 // Dependencies: HydrationGeometryResult — REQUIRED by PerFrameExtractionSet
 // but conditionally attached by OperationRunner when solvent is loaded.

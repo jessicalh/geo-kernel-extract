@@ -77,11 +77,31 @@ constexpr const char* kDirectionalMeanTransformation =
     "continuum limit, but the live upstream finite lab-fixed Fibonacci "
     "estimator has no exact O(3) law and is only approximately "
     "rotation-covariant within the recorded test envelope";
+constexpr const char* kScalarStatisticTransformation =
+    "for B in {half_shell_asymmetry,dipole_alignment}: "
+    "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+    "B_{delta,abs_delta,delta_squared,dxdt}_"
+    "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta are "
+    "continuum rotation invariants that inherit the live upstream finite "
+    "lab-fixed Fibonacci estimator: no exact O(3) law and only approximate "
+    "rotation covariance within the recorded test envelope";
 constexpr const char* kDirectionalMetadataScope =
-    "42 vector-component paths only: "
+    "114 directional-or-finite-grid-qualified paths: "
+    "42 vector-component paths "
     "dipole_vector_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame} and "
     "surface_normal_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame}; "
-    "excludes invariant/continuum-invariant scalar statistics, "
+    "plus 72 scalar paths for B in "
+    "{half_shell_asymmetry,dipole_alignment}: "
+    "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+    "B_{delta,abs_delta,delta_squared,dxdt}_"
+    "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta; "
+    "excludes exact rotation-invariant dipole_magnitude_"
+    "{mean,m2,std,min,max,min_frame,max_frame} and, for E in "
+    "{dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,"
+    "shell_count}, E_{mean,m2,std,min,max,min_frame,max_frame}, "
+    "E_{delta,abs_delta,delta_squared,dxdt}_"
+    "{mean,m2,std,min,max,min_frame,max_frame}, and E_rms_delta; also "
+    "excludes "
     "n_frames_per_atom,delta_n_per_atom,dxdt_n_per_atom,"
     "source_attached_per_frame and group provenance";
 
@@ -189,7 +209,7 @@ TEST(HydrationGeometryWelford, H5DirectionalMetadataZeroCountSynthetic) {
 
         std::string dipole_frame, dipole_parity, dipole_law;
         std::string normal_frame, normal_parity, normal_law;
-        std::string component_semantics, directional_scope;
+        std::string component_semantics, scalar_law, directional_scope;
         std::string irrep_scope, mean_law, component_law;
         std::string zero_count_validity;
         grp.getAttribute("dipole_vector_coordinate_frame")
@@ -202,6 +222,8 @@ TEST(HydrationGeometryWelford, H5DirectionalMetadataZeroCountSynthetic) {
         grp.getAttribute("surface_normal_transformation").read(normal_law);
         grp.getAttribute("source_component_semantics")
             .read(component_semantics);
+        grp.getAttribute("scalar_statistic_transformation")
+            .read(scalar_law);
         grp.getAttribute("directional_metadata_scope")
             .read(directional_scope);
         grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
@@ -217,6 +239,7 @@ TEST(HydrationGeometryWelford, H5DirectionalMetadataZeroCountSynthetic) {
         EXPECT_EQ(normal_parity, "mixed");
         EXPECT_EQ(normal_law, kSurfaceNormalTransformation);
         EXPECT_EQ(component_semantics, kSourceComponentSemantics);
+        EXPECT_EQ(scalar_law, kScalarStatisticTransformation);
         EXPECT_EQ(directional_scope, kDirectionalMetadataScope);
         EXPECT_EQ(irrep_scope, kIrrepMetadataScope);
         EXPECT_EQ(mean_law, kDirectionalMeanTransformation);

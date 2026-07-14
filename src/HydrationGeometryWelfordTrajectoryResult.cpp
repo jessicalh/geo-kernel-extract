@@ -285,11 +285,31 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("componentwise_statistic_transformation", std::string(
         "componentwise m2,std,min,max,min_frame,max_frame have no closed "
         "irrep transformation law"));
+    grp.createAttribute("scalar_statistic_transformation", std::string(
+        "for B in {half_shell_asymmetry,dipole_alignment}: "
+        "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "B_{delta,abs_delta,delta_squared,dxdt}_"
+        "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta are "
+        "continuum rotation invariants that inherit the live upstream "
+        "finite lab-fixed Fibonacci estimator: no exact O(3) law and only "
+        "approximate rotation covariance within the recorded test envelope"));
     grp.createAttribute("directional_metadata_scope", std::string(
-        "42 vector-component paths only: "
+        "114 directional-or-finite-grid-qualified paths: "
+        "42 vector-component paths "
         "dipole_vector_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame} "
         "and surface_normal_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame}; "
-        "excludes invariant/continuum-invariant scalar statistics, "
+        "plus 72 scalar paths for B in "
+        "{half_shell_asymmetry,dipole_alignment}: "
+        "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "B_{delta,abs_delta,delta_squared,dxdt}_"
+        "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta; "
+        "excludes exact rotation-invariant dipole_magnitude_"
+        "{mean,m2,std,min,max,min_frame,max_frame} and, for E in "
+        "{dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,"
+        "shell_count}, E_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "E_{delta,abs_delta,delta_squared,dxdt}_"
+        "{mean,m2,std,min,max,min_frame,max_frame}, and E_rms_delta; also "
+        "excludes "
         "n_frames_per_atom,delta_n_per_atom,dxdt_n_per_atom,"
         "source_attached_per_frame and group provenance"));
     grp.createAttribute("zero_count_sentinel_validity", std::string(
