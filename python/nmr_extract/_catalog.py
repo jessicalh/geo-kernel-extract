@@ -1533,9 +1533,16 @@ _set_contract(
     ("ring_geometry",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "mixed blocks: cols0:3 invariant ids; cols3:6 affine position "
-        "p'=R p+t; cols6:9 axial normal a'=det(R)R a; col9 invariant radius"
+        "p'=R p+t; cols6:9 axial normal a'=det(R)R a for an ordinary "
+        "nondegenerate ring; col9 invariant radius. A collinear/collapsed "
+        ">=3-member ring has an underdetermined SVD normal with no closed law"
     ),
-    validity="degenerate ring geometry can carry a zero normal; no explicit geometry-valid mask",
+    validity=(
+        "no explicit normal-valid mask; Ring::ComputeGeometry unconditionally "
+        "uses SVD V.col(2) for >=3 vertices, so collinear/collapsed geometry "
+        "can carry a lab-basis-dependent unit normal; zero is only the "
+        "<3-member/default case"
+    ),
     parity="mixed")
 _set_contract(
     ("ring_pair_geometry",), coordinate_frame=_INTRINSIC_FRAME,
