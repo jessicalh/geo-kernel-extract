@@ -1725,17 +1725,31 @@ _set_contract(
 # Reflection-sensitive scalar/diagnostic channels.  Each entry states whether
 # its production rerun is O(3)-invariant or has an improper-transform law.
 _set_contract(
+    ("dssp_observed",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant atom-broadcast "
+        "libdssp residue-observation mask for a fixed typed topology"
+    ),
+    validity="int8 1 means observed/mapped; 0 means every DSSP payload for the atom is unavailable")
+_set_contract(
     ("dssp_backbone",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "mixed atom-broadcast row: phi/psi cols0:2 are signed dihedral "
-        "pseudoscalars (wrapped sign reversal); col2 SASA is invariant; "
-        "helix/sheet cols3:5 are O(3)-invariant libdssp categories"
+        "pseudoscalars (wrapped sign reversal); col2 SASA and helix/sheet "
+        "cols3:5 have physical O(3)-invariant laws. The live temporary PDB "
+        "rounds coordinates to 0.001 Angstrom, so transformed production "
+        "reruns can show bounded scalar drift or cross a category boundary"
     ),
     validity="phi/psi/SASA NaN for an unobserved DSSP residue; dssp_observed.npy is the mask",
     parity="mixed")
 _set_contract(
     ("dssp_ss8",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation="rotation_invariant libdssp eight-class one-hot under O(3)",
+    transformation=(
+        "physical O(3)-invariant libdssp eight-class one-hot after the PPII-"
+        "to-coil collapse; transformed production reruns can cross a category "
+        "boundary because the temporary PDB rounds coordinates to 0.001 "
+        "Angstrom"
+    ),
     validity=(
         "all-zero row for an unobserved DSSP residue; dssp_observed.npy is "
         "the observation mask"
@@ -1745,7 +1759,8 @@ _set_contract(
     transformation=(
         "proper-rotation invariant chirality-conditioned categorical flag; "
         "no homogeneous improper-transform law because reflection reverses "
-        "the signed phi/psi region used by libdssp's PPII classifier"
+        "the signed phi/psi region used by libdssp's PPII classifier; 0.001-"
+        "Angstrom temporary-PDB rounding can affect a boundary value"
     ),
     validity="int8 -1 means no DSSP observation; otherwise 0/1 is the recomputed class",
     parity="mixed")
@@ -1771,6 +1786,38 @@ _set_contract(
     ("dssp_torsion_cos",), coordinate_frame=_INTRINSIC_FRAME,
     transformation="rotation_invariant cosines of signed dihedrals",
     validity="NaN where undefined; dssp_torsion_valid.npy is the elementwise mask")
+_set_contract(
+    ("dssp_torsion_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant elementwise "
+        "availability mask for ordinary nondegenerate torsions"
+    ),
+    validity="uint8 1 means the corresponding angle/sine/cosine is finite; 0 means NaN")
+_set_contract(
+    ("dssp_hbond_energy",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "continuum rotation/translation/reflection-invariant DSSP "
+        "electrostatic H-bond energies; transformed production reruns use a "
+        "5e-3 kcal/mol absolute envelope because the temporary PDB rounds "
+        "coordinates to 0.001 Angstrom"
+    ),
+    validity=(
+        "dssp_observed.npy is the observation mask; use the corresponding "
+        "dssp_hbond_partner_residue_index.npy slot to distinguish a mapped "
+        "partner from the legacy zero no-partner value"
+    ))
+_set_contract(
+    ("dssp_hbond_partner_residue_index",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "continuum O(3)-invariant residue identity of the distance-derived "
+        "DSSP H-bond partner; a transformed production rerun can select a "
+        "different boundary partner after 0.001-Angstrom temporary-PDB "
+        "rounding"
+    ),
+    validity=(
+        "nonnegative values are protein residue indices; -1 means no mapped "
+        "partner or no DSSP observation; dssp_observed.npy is the observation mask"
+    ))
 _set_contract(
     ("omega_actual", "omega_deviation"), coordinate_frame=_INTRINSIC_FRAME,
     transformation="signed_dihedral_pseudoscalar with canonical wrapping under improper transforms",
