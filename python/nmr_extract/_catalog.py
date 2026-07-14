@@ -1060,6 +1060,39 @@ _set_contract(
     transformation=_POLAR_VECTOR,
     validity="hbond_flags.npy column 0 identifies an accepted nearest source; otherwise zero")
 _set_contract(
+    ("hbond_flags",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant int8 atom classifications for fixed typed "
+        "topology and accepted-pair set; translation invariant"
+    ),
+    validity=(
+        "columns are is_backbone,is_donor,is_acceptor; column 0 gates the "
+        "legacy zero in hbond_nearest_dir.npy"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("hbond_pairs_index",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant sparse donor/acceptor residue and atom identity "
+        "for a fixed accepted-pair set; deterministic row order"
+    ),
+    validity=(
+        "row identity for hbond_pairs_geometry.npy and "
+        "hbond_pairs_angle_valid.npy; zero rows means no accepted pair"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("hbond_pairs_angle_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 angle-availability mask, row-aligned with "
+        "hbond_pairs_index.npy"
+    ),
+    validity=(
+        "1 iff the N-H...O angle in hbond_pairs_geometry.npy is valid; "
+        "distance and direction columns have their own producer semantics"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("cb_deviation_valid", "cb_residual_vector_valid"),
     coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
