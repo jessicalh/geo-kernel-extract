@@ -488,7 +488,43 @@ void ReorientationalDynamicsTrajectoryResult::WriteH5Group(
         HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<double>("bond_orientation_tensor", space);
         ds.write_raw(orient_tensor_.data());
-        ds.createAttribute("layout", std::string("(vector, 3, 3) body-frame <u (x) u>"));
+        ds.createAttribute("layout", std::string(
+            "(vector, 3, 3) reference-conformation Cartesian <u (x) u>; "
+            "last two axes are raw matrix rows then columns"));
+        ds.createAttribute("tensor_basis",
+            std::string("cartesian_matrix_row_major"));
+        ds.createAttribute("tensor_component_order", std::string(
+            "XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"));
+        ds.createAttribute("tensor_frame",
+            std::string("reference_conformation_cartesian_xyz"));
+        ds.createAttribute("coordinate_frame",
+            std::string("reference_conformation_cartesian_xyz"));
+        ds.createAttribute("tensor_parity", std::string("even"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("irrep_layout", std::string("0e+2e"));
+        ds.createAttribute("tensor_transformation", std::string(
+            "for a jointly transformed first-dispatched reference and every "
+            "current conformation, p'=R p+t and T'=R T R^T for any "
+            "orthogonal R; components are not rotation-invariant local-frame "
+            "coefficients"));
+        ds.createAttribute("tensor_symmetry", std::string("symmetric"));
+        ds.createAttribute("tensor_trace", std::string(
+            "trace=1 for every finite physical row because each sample is a "
+            "unit-vector outer product"));
+        ds.createAttribute("tensor_t0_structural_zero", false);
+        ds.createAttribute("tensor_t0_semantics", std::string(
+            "project SphericalTensor T0=trace(T)/3=1/3; fixed nonzero signal"));
+        ds.createAttribute("tensor_t1_structural_zero", true);
+        ds.createAttribute("tensor_t1_semantics", std::string(
+            "project Cartesian Levi-Civita dual "
+            "(T_yz-T_zy,T_zx-T_xz,T_xy-T_yx)/2; zero by symmetry"));
+        ds.createAttribute("tensor_t2_structural_zero", false);
+        ds.createAttribute("tensor_structural_zero_components",
+            std::string("T1 only"));
+        ds.createAttribute("e3nn_export", std::string(
+            "decompose the raw Cartesian matrix into project-native T0/T1/T2; "
+            "T1 is structural zero and native T2 requires the explicit "
+            "project-to-e3nn basis conversion"));
     }
 
     // 15N relaxation observables (NH rows finite; CaHa/CO rows NaN).
