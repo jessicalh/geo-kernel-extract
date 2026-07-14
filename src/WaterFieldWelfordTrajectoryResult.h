@@ -47,7 +47,22 @@
 //     attrs: result_name, n_frames, source_attached_count, finalized,
 //            ddof, mean_dt_ps (attached-subset), frame_index_range
 //            (attached-subset), irrep_layout_efield, irrep_layout_efg_t2,
-//            efg_t0_structural_zero=true, efg_t1_structural_zero=true
+//            efield_coordinate_frame="conformation_cartesian_xyz",
+//            efield_parity="1o", efield_normalization="cartesian",
+//            efield_mean_transformation names the two assembled polar means,
+//            efg_t2_basis="project_native_t2_isometric_real_tesseral_v1",
+//            efg_t2_component_order="T2_m-2,...,T2_m+2",
+//            efg_t2_frame="conformation_cartesian_xyz",
+//            efg_t2_normalization="isometric_real_sph",
+//            efg_t2_parity="even", efg_t2_mean_transformation names the two
+//            assembled even-rank-2 means, efg_t0_structural_zero=true,
+//            efg_t1_structural_zero=true, directional_metadata_scope names
+//            exactly the 56 directional-statistic dataset paths
+//
+// Reassembling efield_{x,y,z}_mean or efield_first_{x,y,z}_mean yields a
+// polar vector in the conformation Cartesian frame. Reassembling either
+// native-T2 mean yields an even-rank-2 tensor in that same frame. Componentwise
+// m2/std/min/max/extremum-index datasets have no closed vector or T2 law.
 //
 // Dependencies: WaterFieldResult — REQUIRED by PerFrameExtractionSet but
 // conditionally attached by OperationRunner: if `opts.solvent` is null
