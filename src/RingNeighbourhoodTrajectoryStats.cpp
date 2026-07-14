@@ -318,6 +318,28 @@ void RingNeighbourhoodTrajectoryStats::WriteH5Group(
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("geometry", space);
     ds.write_raw(flat.data());
+    ds.createAttribute("coordinate_frame",
+        std::string("mixed_intrinsic_oriented_ring_cylindrical_coordinates"));
+    ds.createAttribute("parity", std::string("mixed"));
+    ds.createAttribute("column_coordinate_frames", std::string(
+        "distance=intrinsic_atom_to_ring_center;"
+        "rho=intrinsic_ring_plane_radius;"
+        "z=oriented_ring_normal_projection;"
+        "in_plane_angle=intrinsic_vertex0_oriented_ring_azimuth"));
+    ds.createAttribute("column_irrep_layout", std::string(
+        "distance=0e;rho=0e;z=0o;in_plane_angle=0e_periodic"));
+    ds.createAttribute("column_parity", std::string(
+        "distance=even;rho=even;z=odd;in_plane_angle=even"));
+    ds.createAttribute("column_transformation", std::string(
+        "for an orthogonal R and any translation: distance'=distance, "
+        "rho'=rho, z'=det(R) z, and in_plane_angle'=in_plane_angle modulo "
+        "2*pi; the cross-product-derived ring normal is axial, while the "
+        "vertex-0 direction and normal-cross-vertex-0 direction both form "
+        "polar in-plane axes"));
+    ds.createAttribute("validity", std::string(
+        "all four columns are NaN for unused ring slots; within live slots "
+        "distance/rho/z are finite and in_plane_angle is NaN only at the "
+        "documented ring-axis or vertex-0 gauge singularity"));
 
     // Static: ring_membership_per_atom (N, R) int32, -1 sentinel.
     // This is the per-atom counterpart to TopologySidecar's per-vertex
