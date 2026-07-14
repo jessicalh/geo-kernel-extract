@@ -1088,7 +1088,13 @@ _set_contract(
     ))
 _set_contract(
     ("apbs_E", "apbs_E_total_diagnostic"),
-    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "continuum polar_vector: v'=R v; translation invariant. The live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law; "
+        "transformed production reruns use the recorded 1.8e-2 V/A absolute "
+        "+ 5e-2 relative finite-grid envelope"
+    ),
     validity=(
         "apbs_nonfinite_sanitizer_mask.npy bits 0/2 respectively; canonical "
         "reaction field also has apbs_E_clamp_mask.npy and apbs_E_clamp_scale.npy"
@@ -1362,6 +1368,13 @@ for _stem in (
     )
 CATALOG["apbs_efg"] = replace(
     CATALOG["apbs_efg"],
+    transformation=(
+        "continuum even_rank2_native_T2: reconstruct Cartesian T, apply "
+        "T'=R T R^T, then decompose in project-native T2 basis. The live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law; "
+        "transformed production reruns use the recorded 4e-2 V/A^2 absolute "
+        "+ 5e-2 relative finite-grid envelope"
+    ),
     validity=(
         "symmetric-traceless reaction EFG (T0/T1 structural zeros); "
         "apbs_nonfinite_sanitizer_mask.npy bit1 identifies sanitized rows"
@@ -1369,6 +1382,13 @@ CATALOG["apbs_efg"] = replace(
 )
 CATALOG["apbs_efg_total_diagnostic"] = replace(
     CATALOG["apbs_efg_total_diagnostic"],
+    transformation=(
+        "continuum even_rank2_native_T2: reconstruct Cartesian T, apply "
+        "T'=R T R^T, then decompose in project-native T2 basis. The live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law; "
+        "transformed production reruns use the recorded 4e-2 V/A^2 absolute "
+        "+ 5e-2 relative finite-grid envelope"
+    ),
     validity=(
         "symmetric-traceless total diagnostic EFG (T0/T1 structural zeros); "
         "apbs_nonfinite_sanitizer_mask.npy bit3 identifies sanitized rows"
