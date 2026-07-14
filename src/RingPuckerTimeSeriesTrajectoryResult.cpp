@@ -227,6 +227,31 @@ void RingPuckerTimeSeriesTrajectoryResult::WriteH5Group(
     if (S > 0) {
         emit_sat_2d("pucker_Q",     pucker_Q_,     "Angstrom");
         emit_sat_2d("pucker_theta", pucker_theta_, "degrees");
+
+        auto q_ds = grp.getDataSet("pucker_Q");
+        q_ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_cremer_pople_5ring"));
+        q_ds.createAttribute("irrep_layout", std::string("0e"));
+        q_ds.createAttribute("parity", std::string("even"));
+        q_ds.createAttribute("transformation", std::string(
+            "exact O(3)- and translation-invariant pucker amplitude: Q'=Q"));
+        q_ds.createAttribute("validity", std::string(
+            "source_attached_per_frame gates source absence; NaN marks an "
+            "incomplete ring or degenerate mean-plane construction"));
+
+        auto theta_ds = grp.getDataSet("pucker_theta");
+        theta_ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_oriented_cremer_pople_5ring_phase"));
+        theta_ds.createAttribute("irrep_layout",
+            std::string("none_periodic_phase_with_improper_offset"));
+        theta_ds.createAttribute("parity", std::string("mixed"));
+        theta_ds.createAttribute("transformation", std::string(
+            "translation/proper-rotation invariant phase; under an improper "
+            "orthogonal transform theta'=(theta+180 degrees) mod 360"));
+        theta_ds.createAttribute("validity", std::string(
+            "source_attached_per_frame gates source absence; NaN marks an "
+            "incomplete/degenerate ring or pucker_Q < 1e-6 Angstrom; compare "
+            "finite values with circular differences"));
     }
 
     // ── Per-aromatic-ring per-frame (A, T) float64 ───────────────────
@@ -243,6 +268,17 @@ void RingPuckerTimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<double>("aromatic_chi2", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("radians"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_signed_dihedral"));
+        ds.createAttribute("irrep_layout", std::string("0o"));
+        ds.createAttribute("parity", std::string("odd"));
+        ds.createAttribute("transformation", std::string(
+            "wrapped signed-dihedral pseudoscalar: chi2'=det(R) chi2 "
+            "modulo 2pi; translation invariant"));
+        ds.createAttribute("validity", std::string(
+            "source_attached_per_frame gates source absence; NaN marks an "
+            "unavailable or geometrically degenerate parent-residue chi2; "
+            "compare finite values with circular differences"));
     }
 
     OperationLog::Info(LogCalcOther,
