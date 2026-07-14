@@ -1059,6 +1059,18 @@ _set_contract(
     ("hbond_nearest_dir",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=_POLAR_VECTOR,
     validity="hbond_flags.npy column 0 identifies an accepted nearest source; otherwise zero")
+_set_contract(
+    ("cb_deviation_valid", "cb_residual_vector_valid"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 availability for the corresponding "
+        "chiral-L-CB output; translation invariant"
+    ),
+    validity=(
+        "1 iff the corresponding cb_deviation.npy scalar or all three "
+        "cb_residual_vector.npy components are finite; 0 gates their NaNs"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
 
 _set_contract(
     ("coulomb_E", "coulomb_E_backbone", "coulomb_E_sidechain",
