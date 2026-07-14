@@ -89,6 +89,12 @@
 //     (boundaries written into the `rama_region_boundaries` attr); proper
 //     re-binning against Lovell-Richardson maps is left to downstream.
 //
+// Directional contract (also recorded on the datasets): phi, psi, omega,
+// omega_deviation, and every chi component are wrapped 0o pseudoscalars,
+// angle'=det(R) angle modulo 2pi.  rama_region is invariant under proper
+// rotations but is a chirality-conditioned category with no fixed improper
+// transform map.
+//
 // Chi symmetry caveats (consumer responsibility; group attr documents):
 //   - PHE χ₂ (CD1↔CD2 ring flip) — mod-π
 //   - TYR χ₂ (CD1↔CD2 ring flip) — mod-π

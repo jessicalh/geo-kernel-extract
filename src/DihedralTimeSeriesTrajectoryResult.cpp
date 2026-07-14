@@ -503,6 +503,16 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<double>(name, space, props);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_signed_dihedral"));
+        ds.createAttribute("irrep_layout", std::string("0o"));
+        ds.createAttribute("parity", std::string("odd"));
+        ds.createAttribute("transformation", std::string(
+            "wrapped_signed_dihedral_pseudoscalar: angle'=det(R) angle "
+            "modulo 2pi; translation invariant"));
+        ds.createAttribute("validity", std::string(
+            "NaN where terminal, topologically undefined, or geometrically "
+            "degenerate; compare values with circular differences"));
     };
 
     auto emit_2d_u8 = [&](const std::string& name,
@@ -521,6 +531,15 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<std::uint8_t>(name, space, props);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_ramachandran_category"));
+        ds.createAttribute("parity", std::string("mixed"));
+        ds.createAttribute("transformation", std::string(
+            "proper-rotation invariant category; reflection negates phi/psi "
+            "before chirality-conditioned binning, so there is no fixed "
+            "improper-transform category map"));
+        ds.createAttribute("validity", std::string(
+            "category 0 means unassigned because phi or psi is unavailable"));
     };
 
     // ── Per-residue per-frame (R, T) ─────────────────────────────────
@@ -553,6 +572,15 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("radians"));
         ds.createAttribute("axis_3", std::string("chi_index_0_to_3"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_signed_dihedral"));
+        ds.createAttribute("irrep_layout", std::string("4x0o"));
+        ds.createAttribute("parity", std::string("odd"));
+        ds.createAttribute("transformation", std::string(
+            "each chi component is a wrapped signed-dihedral "
+            "pseudoscalar: chi'=det(R) chi modulo 2pi; translation invariant"));
+        ds.createAttribute("validity", std::string(
+            "NaN where chi_exists is zero or per-frame geometry is degenerate"));
     }
 
     // ── Per-residue static (R,) and (R, 4) ───────────────────────────
