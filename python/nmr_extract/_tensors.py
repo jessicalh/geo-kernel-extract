@@ -819,7 +819,13 @@ class DsspScalars:
 
 
 class MopacScalars:
-    """``(*, 4)`` MOPAC per-atom: charge, s_pop, p_pop, valency."""
+    """``(*, 4)`` legacy MOPAC printed-format per-atom projection.
+
+    Columns are charge (six decimals), s and p populations (five decimals),
+    and the sum of retained three-decimal orders from the reconstructed
+    first-six compact bond row. The values are reconstructed from libmopac
+    structs; this wrapper does not expose the separate full-precision arrays.
+    """
 
     __slots__ = ("_data",)
 
@@ -846,7 +852,7 @@ class MopacScalars:
 
     @property
     def valency(self) -> np.ndarray:
-        """Sum of Wiberg bond orders (QM coordination number)."""
+        """Legacy sum of first-six/F6.3/>0.01 compact Wiberg orders."""
         return self._data[..., 3]
 
     def __repr__(self) -> str:
@@ -854,7 +860,12 @@ class MopacScalars:
 
 
 class MopacGlobal:
-    """(4,) graph-level MOPAC scalars: [hof, dipole_x, dipole_y, dipole_z]."""
+    """``(4,)`` legacy printed MOPAC graph projection.
+
+    The heat of formation is represented at five decimal places and the three
+    dipole components at three. Full-precision struct values are available in
+    the direct MOPAC group.
+    """
 
     __slots__ = ("_data",)
 
@@ -885,36 +896,16 @@ class MopacGlobal:
                 f"|dipole|={self.dipole_magnitude:.2f} D)")
 
 
-class MopacDipoleComponents:
-    """``(3, 4)`` MOPAC dipole rows: POINT-CHG., HYBRID, SUM x/y/z/total."""
-
-    __slots__ = ("_data",)
-    ROWS = ("POINT-CHG.", "HYBRID", "SUM")
-
-    def __init__(self, data: np.ndarray):
-        if data.shape != (3, 4):
-            raise ValueError(f"MopacDipoleComponents: expected (3, 4), got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def point_charge(self) -> np.ndarray:
-        return self._data[0]
-
-    @property
-    def hybrid(self) -> np.ndarray:
-        return self._data[1]
-
-    @property
-    def sum(self) -> np.ndarray:
-        return self._data[2]
-
-
 class MopacAtomPopulations:
-    """``(N, 12)`` atom-axis MOPAC charge/population/valency projection."""
+    """``(N, 12)`` legacy printed-format population projection.
+
+    Columns 0:5 are charge/electron-trace/s/p/d at 6/4/5/5/5 decimal
+    places. p and d are NaN when their shells are not live. Column 10 is the
+    three-decimal CSC-diagonal valency; column 11 is the sum of retained
+    first-six/F6.3 compact bond orders. The legacy f-population column 5 and
+    per-atom-dipole columns 6:10 have no struct source and are explicit NaN.
+    All populated values are reconstructed from libmopac structs.
+    """
 
     __slots__ = ("_data",)
 
@@ -933,6 +924,7 @@ class MopacAtomPopulations:
 
     @property
     def electron_density(self) -> np.ndarray:
+        """Atomic electron population (AO-density trace)."""
         return self._data[:, 1]
 
     @property
@@ -964,47 +956,14 @@ class MopacAtomPopulations:
         return self._data[:, 11]
 
 
-class MopacAOTable:
-    """``(NAO, 7)`` AO metadata projection."""
-
-    __slots__ = ("_data",)
-
-    def __init__(self, data: np.ndarray):
-        if data.ndim != 2 or data.shape[1] != 7:
-            raise ValueError(f"MopacAOTable: expected (NAO, 7), got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def ao_index(self) -> np.ndarray:
-        return self._data[:, 0].astype(np.intp)
-
-    @property
-    def atom_index(self) -> np.ndarray:
-        return self._data[:, 1].astype(np.intp)
-
-    @property
-    def ao_type_id(self) -> np.ndarray:
-        return self._data[:, 2].astype(np.intp)
-
-    @property
-    def zeta(self) -> np.ndarray:
-        return self._data[:, 3]
-
-    @property
-    def principal_quantum_number(self) -> np.ndarray:
-        return self._data[:, 4].astype(np.intp)
-
-    @property
-    def population(self) -> np.ndarray:
-        return self._data[:, 5]
-
-
 class MopacAtomicOrbitalPopulations:
-    """``(N, 9)`` printed atomic-orbital electron populations."""
+    """``(N, 9)`` legacy F10.5 AO-population projection.
+
+    Values are reconstructed from the libmopac atom-AO-density diagonal and
+    quantized to five decimal places. Only each atom's live AO width is
+    populated; non-existent per-atom AO columns are NaN rather than defensive
+    zeros. The direct MOPAC group retains the untouched padded density blocks.
+    """
 
     __slots__ = ("_data",)
     COLUMNS = ("s", "px", "py", "pz", "x2_minus_y2", "xz", "z2", "yz", "xy")
@@ -1035,7 +994,14 @@ class MopacAtomicOrbitalPopulations:
 
 
 class MopacAtomicOrbitalPopulationTotals:
-    """``(N, 3)`` invariant shell totals from printed AO populations."""
+    """``(N, 3)`` legacy AO-table-derived shell totals [s, p, d].
+
+    Each AO diagonal is first projected through its F10.5 printed value and
+    those projected entries are then summed, exactly matching the old parser;
+    this is distinct from independently projecting the finished shell sum.
+    p/d are NaN where the corresponding shell is not live; untouched
+    all-finite sums are available in the direct MOPAC group.
+    """
 
     __slots__ = ("_data",)
     COLUMNS = ("s_total", "p_total", "d_total")
@@ -1065,35 +1031,16 @@ class MopacAtomicOrbitalPopulationTotals:
         return self._data[:, 2]
 
 
-class MopacPrintedBondOrders:
-    """``(K, 9)`` directed MOPAC bond-order entries exactly as printed."""
-
-    __slots__ = ("_data",)
-
-    def __init__(self, data: np.ndarray):
-        if data.ndim != 2 or data.shape[1] != 9:
-            raise ValueError(f"MopacPrintedBondOrders: expected (K, 9), got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def row_atom(self) -> np.ndarray:
-        return self._data[:, 2].astype(np.intp)
-
-    @property
-    def neighbour_atom(self) -> np.ndarray:
-        return self._data[:, 5].astype(np.intp)
-
-    @property
-    def order(self) -> np.ndarray:
-        return self._data[:, 7]
-
-
 class MopacUniqueBondOrders:
-    """``(U, 8)`` deterministic symmetric projection over printed rows."""
+    """``(U, 8)`` legacy-compatible API-unique Wiberg projection.
+
+    The a<b row set is the complete sparse API pair set, independent of the
+    first-six compact table. Each symmetric CSC entry is first projected
+    through F6.3 and max/mean are then formed as in the old parser. Columns 4, 5, and 6
+    are NaN because the former ALLBONDS printed-entry count/indices have no
+    struct source; column 7 is the topology-bond index in this API-unique row
+    basis.
+    """
 
     __slots__ = ("_data",)
 
@@ -1122,9 +1069,20 @@ class MopacUniqueBondOrders:
     def mean_order(self) -> np.ndarray:
         return self._data[:, 3]
 
+    @property
+    def topology_bond_index(self) -> np.ndarray:
+        return self._data[:, 7]
+
 
 class MopacTopologyBondOrdersFull:
-    """``(B, 8)`` topology-bond bridge with presence and absence state."""
+    """``(B, 8)`` legacy-compatible topology/API-pair bridge.
+
+    Present orders are reconstructed from the sparse CSC pair and quantized to
+    three decimals; unique-pair indices use the complete API-unique row basis,
+    not the first-six compact subset. The final ALLBONDS printed-entry-count
+    column is text-only and always NaN. API absence includes Wiberg values
+    omitted at MOPAC's 0.01 sparse threshold.
+    """
 
     __slots__ = ("_data",)
 
@@ -1144,33 +1102,6 @@ class MopacTopologyBondOrdersFull:
     @property
     def present(self) -> np.ndarray:
         return self._data[:, 4].astype(bool)
-
-
-class MopacMOMeta:
-    """``(NMO, 5)`` MO/LMO energy, occupation, bonding contribution, label id."""
-
-    __slots__ = ("_data",)
-
-    def __init__(self, data: np.ndarray):
-        if data.ndim != 2 or data.shape[1] != 5:
-            raise ValueError(f"MopacMOMeta: expected (NMO, 5), got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def energy(self) -> np.ndarray:
-        return self._data[:, 1]
-
-    @property
-    def occupation(self) -> np.ndarray:
-        return self._data[:, 2]
-
-    @property
-    def bonding_contribution(self) -> np.ndarray:
-        return self._data[:, 3]
 
 
 class BondOrders:
@@ -1247,7 +1178,7 @@ class DeltaScalars:
 
     @property
     def delta_mopac_charge(self) -> np.ndarray:
-        """MOPAC Mulliken charge delta (0 if no MOPAC)."""
+        """MOPAC Coulson charge delta (0 if no MOPAC)."""
         return self._data[..., 4]
 
     @property

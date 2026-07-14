@@ -14,6 +14,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <limits>
 
 namespace nmr {
 
@@ -26,6 +27,16 @@ public:
         return Write(path, "<f8", data, rows * cols * sizeof(double),
                      cols == 1 ? std::vector<size_t>{rows}
                                : std::vector<size_t>{rows, cols});
+    }
+
+    // Write an arbitrary-rank float64 array. The caller supplies data in
+    // C-contiguous order matching shape.
+    static bool WriteFloat64(const std::string& path,
+                             const double* data,
+                             const std::vector<size_t>& shape) {
+        size_t count = 0;
+        if (!ElementCount(shape, count)) return false;
+        return Write(path, "<f8", data, count * sizeof(double), shape);
     }
 
     // Write a 2D array of float32. cols=1 writes as 1D shape (rows,).
@@ -53,6 +64,16 @@ public:
         return Write(path, "<i4", data, rows * cols * sizeof(int32_t),
                      cols == 1 ? std::vector<size_t>{rows}
                                : std::vector<size_t>{rows, cols});
+    }
+
+    // Write an arbitrary-rank int32 array. The caller supplies data in
+    // C-contiguous order matching shape.
+    static bool WriteInt32(const std::string& path,
+                           const int32_t* data,
+                           const std::vector<size_t>& shape) {
+        size_t count = 0;
+        if (!ElementCount(shape, count)) return false;
+        return Write(path, "<i4", data, count * sizeof(int32_t), shape);
     }
 
     // Write a 1D array of int8. Useful for boolean masks where int32
@@ -92,6 +113,20 @@ public:
     }
 
 private:
+    static bool ElementCount(const std::vector<size_t>& shape,
+                             size_t& count) {
+        if (shape.empty()) return false;
+        count = 1;
+        for (size_t extent : shape) {
+            if (extent != 0 &&
+                count > std::numeric_limits<size_t>::max() / extent) {
+                return false;
+            }
+            count *= extent;
+        }
+        return true;
+    }
+
     static bool Write(const std::string& path,
                       const char* descr,
                       const void* data,

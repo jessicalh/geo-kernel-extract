@@ -28,8 +28,9 @@ std::vector<std::type_index> MopacCoulombResult::Dependencies() const {
 // MopacCoulombResult::Compute
 //
 // Same kernel as CoulombResult — same dipolar EFG, same Coulomb constant,
-// same decomposition — but reading mopac_charge (PM7 Mulliken, conformation-
-// dependent) instead of force-field partial_charge.
+// same decomposition — but reading mopac_charge (the legacy F15.6
+// projection of the PM7 Coulson charge, conformation-dependent) instead of
+// force-field partial_charge.
 //
 // E_a(i) = ke * sum_{j!=i} q_mopac_j * (r_i - r_j)_a / |r_i - r_j|^3
 // V_ab(i) = ke * sum_{j!=i} q_mopac_j * [3(r_i-r_j)_a(r_i-r_j)_b/|r_i-r_j|^5
@@ -40,7 +41,8 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         ProteinConformation& conf) {
 
     // Near-verbatim copy of CoulombResult::Compute. Differs only in:
-    //   - charge source: mopac_charge (PM7 Mulliken) vs force-field partial_charge
+    //   - charge source: mopac_charge (legacy F15.6 PM7 Coulson projection)
+    //                    vs force-field partial_charge
     //   - source set: all pairs (full N^2) vs AtomsWithinRadius cutoff
     //   - no APBS solvent subtraction, no aromatic-source diagnostic count
     OperationLog::Scope scope("MopacCoulombResult::Compute",

@@ -7,8 +7,9 @@
 //   V_ab(i) = ke * sum_{j!=i} q_j * [3 (r_i-r_j)_a (r_i-r_j)_b / |r_i-r_j|^5
 //                                     - delta_ab / |r_i-r_j|^3]
 //
-// Different charge source: reads mopac_charge (PM7 Mulliken, conformation-
-// dependent) instead of force-field partial_charge.
+// Different charge source: reads mopac_charge (legacy F15.6 projection of
+// the PM7 Coulson charge, conformation-dependent) instead of force-field
+// partial_charge.
 // The T2 angular pattern differs because MOPAC charges respond to the
 // local electronic environment. The model learns gamma_mopac.
 //

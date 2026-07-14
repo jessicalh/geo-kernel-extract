@@ -345,7 +345,8 @@ struct AIMNet2AimProjectionWelfordState {
 };
 
 // Written by MopacChargeWelfordTrajectoryResult (TR5 of the 13-TR plan).
-// Source: ConformationAtom.mopac_charge (double, Mulliken charge, units e).
+// Source: ConformationAtom.mopac_charge (double, legacy F15.6 projection of
+// the Coulson charge, units e).
 // MopacResult attaches sparsely via TimedAttach in OperationRunner —
 // per-frame HasResult<MopacResult>() gate skips updates on frames
 // where MOPAC didn't run (the "absent, not faked" canonical pattern).
@@ -353,7 +354,7 @@ struct AIMNet2AimProjectionWelfordState {
 // delta variants only if a calibration finding asks for them
 // (mirrors the AIMNet2ChargeResponseGradientWelford v0 precedent).
 struct MopacChargeWelfordState {
-    WelfordMoments charge;     // units e — Mulliken charge
+    WelfordMoments charge;     // units e — legacy F15.6 Coulson projection
     std::size_t    n_frames = 0;
 };
 

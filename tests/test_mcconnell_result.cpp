@@ -980,7 +980,10 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
 
     // Exercise the BO redistribution through the real upstream producer.
     // No bond-order state is seeded in this test.
-    auto mopac = MopacResult::Compute(conf, 0, 1);
+    // The three disconnected X-H fragments are a deliberately synthetic
+    // category probe. Their closed-shell electronic state is -2; neutral
+    // spin-0 MOZYME correctly rejects the under-valenced Lewis guess.
+    auto mopac = MopacResult::Compute(conf, -2, 1);
     ASSERT_NE(mopac, nullptr) << "real MOPAC calculation failed";
     std::array<double, 3> bond_orders{};
     for (size_t bi = 0; bi < bond_orders.size(); ++bi) {

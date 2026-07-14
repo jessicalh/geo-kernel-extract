@@ -25,7 +25,8 @@
 //
 // PHYSICS RATIONALE: both source calcs produce a T2 EFG kernel from
 // per-atom Coulomb-summed Hessian-of-φ contributions, with charges
-// derived from different methods — MOPAC PM7+MOZYME Mulliken vs
+// derived from different methods — the legacy F15.6 projection of MOPAC
+// PM7+MOZYME Coulson charges vs
 // FF14SB parameterised partial charges. cos(T2_MOPAC, T2_FF14SB)
 // measures the orientational agreement between the two methods at
 // each atom each frame. Per-atom-per-frame so calibration can

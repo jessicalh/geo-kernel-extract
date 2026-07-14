@@ -1,8 +1,9 @@
 #pragma once
 //
 // MopacChargeWelfordTrajectoryResult: AV (always-valid) per-atom
-// Welford rollup of MOPAC Mulliken charges (ConformationAtom.mopac_charge,
-// units e — elementary charges). TR5 of the 13-TR plan; canonical
+// Welford rollup of MOPAC Coulson charges (ConformationAtom.mopac_charge,
+// legacy F15.6 compatibility projection, units e — elementary charges).
+// TR5 of the 13-TR plan; canonical
 // sparse-Welford-scalar template (the bond-order companion TR6
 // clones this shape against the bond axis).
 //
@@ -45,7 +46,8 @@
 //   result_name             = "MopacChargeWelfordTrajectoryResult"
 //   n_atoms, n_frames, source_attached_count, finalized
 //   units                   = "e" (elementary charge)
-//   source                  describes MopacResult.mopac_charge (Mulliken)
+//   source                  describes MopacResult.mopac_charge (legacy
+//                           F15.6 Coulson-charge projection)
 //   source_attached_policy  = "conditional -- MopacResult attaches
 //                              only on dispatched frames where MOPAC
 //                              is enabled and Compute succeeds

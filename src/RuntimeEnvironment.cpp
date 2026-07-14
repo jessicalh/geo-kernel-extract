@@ -14,7 +14,6 @@ namespace fs = std::filesystem;
 namespace nmr {
 
 // Static members
-std::string RuntimeEnvironment::mopac_;
 std::string RuntimeEnvironment::tleap_;
 std::string RuntimeEnvironment::ff14sb_params_;
 std::string RuntimeEnvironment::tmpDir_;
@@ -102,7 +101,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         }
     }
 
-    std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir,
+    std::string toml_tleap, toml_ff14sb, toml_tmpdir,
                 toml_bmrb_atom_nom, toml_tensorcs15_dsn,
                 toml_larsen_hbond_grid_dir;
 
@@ -141,8 +140,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             trim(val);
 
             if (current_section.empty()) {
-                if      (key == "mopac")         toml_mopac = val;
-                else if (key == "tleap")         toml_tleap = val;
+                if      (key == "tleap")         toml_tleap = val;
                 else if (key == "ff14sb_params") toml_ff14sb = val;
                 else if (key == "tmpdir")        toml_tmpdir = val;
                 else if (key == "bmrb_atom_nom") toml_bmrb_atom_nom = val;
@@ -157,26 +155,11 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             "no TOML config at " + path + " — using env vars and PATH only");
     }
 
-    // --- Resolve mopac: TOML → env → PATH ---
-    // No machine-specific default: a non-PATH install sets `mopac` in
-    // ~/.nmr_tools.toml or NMR_MOPAC. Empty here is a loud skip downstream.
-    mopac_.clear();
-    if (!toml_mopac.empty() && fs::exists(toml_mopac)) {
-        mopac_ = toml_mopac;
-    }
-    if (mopac_.empty()) {
-        const char* env_mopac = std::getenv("NMR_MOPAC");
-        if (env_mopac && fs::exists(env_mopac)) mopac_ = env_mopac;
-    }
-    if (mopac_.empty()) {
-        mopac_ = ResolveBinary("", "mopac");
-    }
-
     // --- Resolve tleap: TOML → env → AMBERHOME/bin/tleap → PATH ---
     // Only accept a TOML path that actually exists, so a stale (nonempty but
     // missing) config value falls through to AMBERHOME/PATH instead of pinning
     // tleap_ to a dead path and skipping the later fallbacks (matches how
-    // ResolveBinary treats a stale mopac path).
+    // ResolveBinary treats a stale configured path).
     tleap_.clear();
     if (!toml_tleap.empty() && fs::exists(toml_tleap)) {
         tleap_ = toml_tleap;
@@ -271,8 +254,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     };
 
     OperationLog::Info("RuntimeEnvironment::Load",
-        "mopac=" + status(mopac_) +
-        " tleap=" + status(tleap_) +
+        "tleap=" + status(tleap_) +
         " ff14sb_params=" + status(ff14sb_params_) +
         " tmpdir=" + status(tmpDir_) +
         " bmrb_atom_nom=" + status(bmrb_atom_nom_) +
@@ -289,7 +271,6 @@ std::vector<std::string> RuntimeEnvironment::Verify() {
         if (val.empty() || !fs::exists(val))
             missing.push_back(name + " (" + (val.empty() ? "<not set>" : val) + ")");
     };
-    check("mopac", mopac_);
     check("ff14sb_params", ff14sb_params_);
     return missing;
 }
@@ -302,7 +283,6 @@ std::string RuntimeEnvironment::TempFilePath(const std::string& proteinName,
 }
 
 
-const std::string& RuntimeEnvironment::Mopac()          { RequireLoaded(); return mopac_; }
 const std::string& RuntimeEnvironment::Tleap()          { RequireLoaded(); return tleap_; }
 const std::string& RuntimeEnvironment::Ff14sbParams()  { RequireLoaded(); return ff14sb_params_; }
 const std::string& RuntimeEnvironment::TmpDir()        { RequireLoaded(); return tmpDir_; }

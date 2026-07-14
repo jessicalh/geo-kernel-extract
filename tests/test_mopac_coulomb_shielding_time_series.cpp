@@ -386,7 +386,7 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     }
     EXPECT_GT(max_mag, 0.0)
         << "Mopac Coulomb shielding all zero — calc not firing or "
-           "Mulliken charges collapsed";
+           "Coulson charges collapsed";
     std::cout << "  max|T2| = " << max_mag << " V/Å^2 (bare EFG, "
               << "pre-γ)" << std::endl;
 

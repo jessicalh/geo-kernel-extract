@@ -163,8 +163,9 @@ void MopacBondOrderWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("units",                 std::string("dimensionless"));
     grp.createAttribute("bond_axis",             std::string("bonds.npy"));
     grp.createAttribute("source", std::string(
-        "MopacResult.TopologyBondOrders() (Wiberg bond orders from "
-        "PM7+MOZYME, parallel to protein.Bonds() == bonds.npy axis). "
+        "MopacResult.TopologyBondOrders() (legacy compact-table projection "
+        "of PM7+MOZYME Wiberg bond orders: first six per atom, F6.3, >0.01; "
+        "parallel to protein.Bonds() == bonds.npy axis). "
         "Per-bond Welford rollup with sentinel-aware accumulation: "
         "the order Welford updates ONLY on frames where the bond was "
         "reported (bo != 0.0); the order_present_fraction "

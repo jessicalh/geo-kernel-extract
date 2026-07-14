@@ -2716,7 +2716,8 @@ def _load_apbs_efg_time_series(f) -> Optional[ApbsEfgTimeSeriesGroup]:
 
 @dataclass(frozen=True)
 class MopacChargeWelfordGroup:
-    """Per-atom Welford rollup of MOPAC Mulliken charges from
+    """Per-atom Welford rollup of the legacy six-decimal projection of
+    MOPAC Coulson charges from
     /trajectory/mopac_charge_welford/. TR5 of the 13-TR plan;
     canonical sparse-Welford-scalar.
 
@@ -2745,7 +2746,8 @@ class MopacChargeWelfordGroup:
       charge_max_frame (N,) uint64 — frame index of max
       n_per_atom  (N,) uint64 — per-atom sample count
 
-    Source: MopacResult.mopac_charge (Mulliken, PM7+MOZYME).
+    Source: MopacResult.mopac_charge (F15.6 projection of the Coulson charge,
+    PM7+MOZYME). The untouched struct values are separate NPY features.
     """
     charge_mean: np.ndarray
     charge_std: np.ndarray
@@ -2796,7 +2798,8 @@ def _load_mopac_charge_welford(f) -> Optional[MopacChargeWelfordGroup]:
 
 @dataclass(frozen=True)
 class MopacBondOrderWelfordGroup:
-    """Per-bond Welford rollup of MOPAC Wiberg bond orders from
+    """Per-bond Welford rollup of the legacy compact-table projection of
+    MOPAC Wiberg bond orders (first six per atom, F6.3, >0.01) from
     /trajectory/mopac_bond_order_welford/. TR6 of the 13-TR plan.
     Bond axis parallel to `bonds.npy` from the TopologySidecar
     (== protein.Bonds() index order).
@@ -4005,7 +4008,7 @@ class TrajectoryData:
     apbs_efield: Optional["ApbsEfieldTimeSeriesGroup"] = None
     apbs_efg: Optional["ApbsEfgTimeSeriesGroup"] = None
 
-    # MOPAC Mulliken charge per-atom Welford rollup (TR #5; 2026-05-21).
+    # MOPAC Coulson charge per-atom Welford rollup (TR #5; 2026-05-21).
     # Sparse-cadence source (MopacResult TimedAttach not Require).
     # Group is skipped entirely when MOPAC never ran — readers must
     # tolerate KeyError on /trajectory/mopac_charge_welford as "MOPAC

@@ -114,11 +114,11 @@ public:
     double pb_radius = 0.0;
 
     // === MOPAC semiempirical results (MopacResult) ===
-    double mopac_charge = 0.0;            // Mulliken charge (elementary charges)
+    double mopac_charge = 0.0;            // Coulson charge, legacy F15.6 projection (e)
     double mopac_s_pop = 0.0;             // s-orbital population
     double mopac_p_pop = 0.0;             // p-orbital population
-    double mopac_valency = 0.0;           // sum of Wiberg bond orders (CSC diagonal)
-    std::vector<MopacBondNeighbour> mopac_bond_neighbours;  // sorted descending by order
+    double mopac_valency = 0.0;           // sum of legacy compact-row Wiberg orders
+    std::vector<MopacBondNeighbour> mopac_bond_neighbours;  // legacy compact rows, F6.3 order
 
     // === Spatial neighbourhood (SpatialIndexResult) ===
     std::vector<AtomNeighbour> spatial_neighbours;
