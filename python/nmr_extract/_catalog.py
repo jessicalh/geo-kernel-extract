@@ -1117,6 +1117,18 @@ _set_contract(
     coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
     validity="AIMNet2 calculation is required as a whole; no manufactured per-row fallback")
 _set_contract(
+    ("aimnet2_charge_response_gradient_scalar",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant scalar: per-atom "
+        "Euclidean norm of the polar charge-response gradient"
+    ),
+    validity=(
+        "whole AIMNet2 charge-response-gradient result is absent if the "
+        "model/gradient calculation is unavailable; no manufactured zero"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("tripeptide_bb_residual_vec", "tripeptide_neighbor_residual_vec_prev",
      "tripeptide_neighbor_residual_vec_next"),
     coordinate_frame=_CARTESIAN_FRAME,
