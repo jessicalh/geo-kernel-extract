@@ -1950,6 +1950,17 @@ _set_contract(
     validity="NaN when the parent residue has no valid chi2 atom quartet",
     irreps="0o", parity="odd")
 _set_contract(
+    ("omega_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 availability for the corresponding "
+        "signed peptide omega; translation invariant"
+    ),
+    validity=(
+        "1 iff omega_actual.npy, omega_sin.npy and omega_cos.npy are finite "
+        "for the residue; 0 gates their NaNs"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("pucker_Q",), coordinate_frame=_INTRINSIC_FRAME,
     transformation="rotation_invariant Cremer-Pople amplitude",
     validity=(
