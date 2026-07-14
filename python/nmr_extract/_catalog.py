@@ -1061,7 +1061,13 @@ _set_contract(
     ))
 _set_contract(
     ("coulomb_E_solvent",),
-    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "continuum polar_vector APBS alias: v'=R v; translation invariant. "
+        "The live axis-aligned finite-difference APBS source has no exact "
+        "O(3) law; transformed production reruns use the recorded 1.8e-2 "
+        "V/A absolute + 5e-2 relative finite-grid envelope"
+    ),
     validity=(
         "optional clamped APBS reaction-field alias; absent without APBS; "
         "consult apbs_nonfinite_sanitizer_mask.npy plus "
@@ -1338,6 +1344,13 @@ for _stem in (
     )
 CATALOG["coulomb_efg_solvent"] = replace(
     CATALOG["coulomb_efg_solvent"],
+    transformation=(
+        "continuum even_rank2_native_T2 APBS alias: reconstruct Cartesian T, "
+        "apply T'=R T R^T, then decompose in project-native T2 basis. The "
+        "live finite-difference APBS source has no exact O(3) law; transformed "
+        "production reruns use the recorded 4e-2 V/A^2 absolute + 5e-2 "
+        "relative finite-grid envelope"
+    ),
     validity=(
         "symmetric-traceless APBS reaction-field alias (T0/T1 structural "
         "zeros); absent without APBS; sanitizer provenance is "
