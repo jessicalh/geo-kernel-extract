@@ -232,7 +232,11 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
     ds.createAttribute("coordinate_frame",
         std::string("conformation_cartesian_xyz"));
     ds.createAttribute("transformation",
-        std::string("polar_vector: v'=R v; translation invariant"));
+        std::string(
+            "continuum polar_vector: v'=R v; translation invariant. The "
+            "live axis-aligned finite-difference APBS solve has no exact "
+            "O(3) law; transformed production reruns use the recorded "
+            "1.8e-2 V/Angstrom absolute + 5e-2 relative finite-grid envelope"));
     ds.createAttribute("parity", std::string("1o"));
 
     HighFive::DataSpace scalar_space({N, T});
