@@ -10,6 +10,7 @@
 #include "SasaWelfordTrajectoryResult.h"
 #include "TestConfig.h"
 #include "OperationLog.h"
+#include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -149,6 +150,62 @@ TEST(SasaWelford, H5RoundTrip) {
     ASSERT_EQ(dims.size(), 1u);
     EXPECT_EQ(dims[0], tp.AtomCount());
 
+    fs::remove(h5_path);
+}
+
+
+TEST(SasaWelford, FiniteGridDirectionalMetadataWithoutFleetFixture) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    auto tr = nmr::SasaWelfordTrajectoryResult::Create(tp);
+    ASSERT_NE(tr, nullptr);
+    nmr::Trajectory dummy("", "", "");
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    for (std::size_t frame = 0; frame < 2; ++frame) {
+        nmr::ProteinConformation conf(
+            &tp.ProteinRef(), positions, "synthetic SASA Welford metadata frame");
+        for (std::size_t atom = 0; atom < tp.AtomCount(); ++atom)
+            conf.MutableAtomAt(atom).atom_sasa = 0.25 * atom + frame;
+        tr->Compute(conf, tp, dummy, 20u + frame, 0.5 * frame);
+    }
+    tr->Finalize(tp, dummy);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("sasa_welford_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup("/trajectory/sasa_welford");
+    std::string layout, parity, frame, transformation, statistic, scope;
+    grp.getAttribute("source_irrep_layout").read(layout);
+    grp.getAttribute("source_parity").read(parity);
+    grp.getAttribute("source_coordinate_frame").read(frame);
+    grp.getAttribute("source_transformation").read(transformation);
+    grp.getAttribute("statistic_transformation").read(statistic);
+    grp.getAttribute("directional_metadata_scope").read(scope);
+    EXPECT_EQ(layout, "raw_scalar_no_exact_o3_irrep");
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(frame, "lab_fixed_fibonacci_sampling_grid");
+    EXPECT_EQ(transformation,
+              "continuum rotation-invariant scalar; live finite lab-fixed Fibonacci "
+              "estimator has no exact O(3) law and is only approximately invariant "
+              "within the recorded covariance-test envelope");
+    EXPECT_EQ(statistic,
+              "all value and Welford statistic channels inherit the sampled SASA "
+              "source's finite-grid orientation dependence; they have no exact O(3) law");
+    EXPECT_EQ(scope,
+              "sasa value/statistic datasets and legacy value/statistic aliases only; "
+              "frame/count provenance is invariant metadata");
     fs::remove(h5_path);
 }
 

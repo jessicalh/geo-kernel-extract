@@ -9,6 +9,10 @@
 // stats. Both consume the same source field.
 //
 // SasaResult is unconditionally attached in `PerFrameExtractionSet`.
+// The continuum source is a scalar, but the live finite Fibonacci stencil is
+// lab-fixed and only approximately rotation-invariant. H5 metadata therefore
+// labels the source and every derived statistic as having no exact O(3) law;
+// frame/count provenance remains invariant metadata.
 //
 
 #include "TrajectoryResult.h"
