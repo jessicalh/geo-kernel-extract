@@ -144,7 +144,9 @@ def test_catalog_tensor_metadata_and_water_doc_shape():
     assert "(N, 9)" not in inspect.getsource(WaterFieldGroup)
 
     assert CATALOG["coulomb_efg"].cols == 9
-    assert CATALOG["coulomb_efg"].structural_zero_components == "T0,T1_x,T1_y,T1_z"
+    assert CATALOG["coulomb_efg"].structural_zero_components == (
+        "T1_x,T1_y,T1_z; T0 only for finite pre-sanitizer analytic source")
+    assert "no exact O(3) law" in CATALOG["coulomb_efg"].transformation
     assert CATALOG["eeq_coulomb_efg"].cols == 9
     assert CATALOG["eeq_coulomb_efg"].structural_zero_components == \
         "T0,T1_x,T1_y,T1_z"

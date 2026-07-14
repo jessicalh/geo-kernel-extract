@@ -19,6 +19,7 @@ from ._tensors import (
     ShieldingTensor,
     EFGTensor,
     VectorField,
+    QualifiedVectorField,
     MagneticVectorField,
     PositionField,
     PerRingTypeT0,
@@ -55,7 +56,11 @@ from ._catalog import CATALOG
 
 @dataclass(frozen=True)
 class RingKernelGroup:
-    """Shielding + per-type decomposition for a ring current calculator."""
+    """Packed ring-current kernel plus its per-type decomposition.
+
+    The wrapper name does not imply ppm: consult each array's catalog units
+    and ``scaling_contract`` before treating a native kernel as shielding.
+    """
     shielding: ShieldingTensor
     per_type_T0: PerRingTypeT0
     per_type_T2: PerRingTypeT2
@@ -73,13 +78,21 @@ class BiotSavartGroup(RingKernelGroup):
 
 @dataclass(frozen=True)
 class HaighMallionGroup(RingKernelGroup):
-    """Haigh-Mallion with per-ring effective B-field diagnostics."""
+    """Unscaled Å⁻¹ Haigh-Mallion kernels and effective-field diagnostics.
+
+    The producer applies no ring-current intensity or ppm conversion; the
+    physical/model scale is downstream.
+    """
     ring_B_field: MagneticVectorField = None
 
 
 @dataclass(frozen=True)
 class PiQuadrupoleGroup:
-    """Pi-quadrupole with row-aligned per-ring scalar diagnostics."""
+    """Geometry-only pi-quadrupole kernels; physical scale is learnable.
+
+    The producer applies no quadrupole prefactor. ``local_tensor`` and
+    ``local_T2`` are raw project-basis geometry tensors, not e3nn tensors.
+    """
     per_type_T0: PerRingTypeT0
     quad_scalar: Optional[np.ndarray] = None
     axial_scalar_per_type_T0: Optional[PerRingTypeT0] = None
@@ -103,7 +116,11 @@ class PiQuadrupoleGroup:
 
 @dataclass(frozen=True)
 class RingSusceptibilityGroup:
-    """Computed ring-susceptibility scalar, sparse and per-type dense."""
+    """Ring-susceptibility geometry scalar on union ring-neighbour rows.
+
+    A sparse zero has no dedicated calculator mask and is ambiguous between
+    a physical zero and a row not accepted by RingSusceptibilityResult.
+    """
     scalar: np.ndarray
     per_type_T0: PerRingTypeT0
 
@@ -117,7 +134,13 @@ class DispersionGroup:
 
 @dataclass(frozen=True)
 class EnrichmentGroup:
-    """Per-atom enrichment classifications from EnrichmentResult."""
+    """Per-atom enrichment classifications from EnrichmentResult.
+
+    ``parent_is_sp2`` is a compatibility heuristic (aromatic parent or cached
+    backbone C/N), not a general typed-hybridisation query. Flag column 6,
+    exposed by ``is_hbond_acceptor``, is only the coarse producer predicate
+    "element is N or O"; use ``acceptor_class`` for typed chemistry.
+    """
     role: np.ndarray
     hybridisation: np.ndarray
     flags: np.ndarray
@@ -157,6 +180,7 @@ class EnrichmentGroup:
 
     @property
     def is_hbond_acceptor(self) -> np.ndarray:
+        """Coarse N/O candidate flag, not a chemically typed acceptor mask."""
         return self.flags[:, 6] != 0
 
     @property
@@ -166,7 +190,11 @@ class EnrichmentGroup:
 
 @dataclass(frozen=True)
 class ChargeAssignmentGroup:
-    """Force-field charge assignment projected onto atom rows."""
+    """Configured typed ChargeSource table projected onto atom rows.
+
+    The source may be a parameter file, AMBER/runtime-tleap prmtop, or a
+    caller-preloaded table; this group does not imply a single force field.
+    """
     partial_charge: np.ndarray
     pb_radius: np.ndarray
 
@@ -188,6 +216,10 @@ class MolecularGraphGroup:
 @dataclass(frozen=True)
 class McConnellGroup:
     """Two-channel McConnell source response by source category.
+
+    Values are unscaled Å⁻³ unit-susceptibility geometry responses, not ppm.
+    The physical response scale is downstream; the extraction manifest pins
+    peptide-C=O shape ratios but declares the axial magnitude learned.
 
     Each field is a project-native packed SphericalTensor view over one
     ``mc_<cat>_<ch>.npy`` array with component order
@@ -265,12 +297,16 @@ class SidechainCarbonylAnisotropyGroup:
 
 @dataclass(frozen=True)
 class CoulombGroup:
-    """Coulomb E-field and bare EFG decompositions."""
+    """Coulomb E-field and bare EFG decompositions.
+
+    E-field wrappers expose only a conditional polar irrep because the
+    producer's unmasked non-finite sanitizer has no exact rerun law.
+    """
     efg: ShieldingTensor
-    E: VectorField
-    E_backbone: VectorField
-    E_sidechain: VectorField
-    E_aromatic: VectorField
+    E: QualifiedVectorField
+    E_backbone: QualifiedVectorField
+    E_sidechain: QualifiedVectorField
+    E_aromatic: QualifiedVectorField
     efg_backbone: EFGTensor
     efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
@@ -278,7 +314,7 @@ class CoulombGroup:
     efg_t2: Optional[EFGTensor] = None
     aromatic_E_proj: Optional[np.ndarray] = None
     aromatic_n_src: Optional[np.ndarray] = None
-    E_solvent: Optional[VectorField] = None
+    E_solvent: Optional[QualifiedVectorField] = None
     efg_solvent: Optional[EFGTensor] = None
 
 
@@ -325,6 +361,7 @@ class HBondGroup:
 
 @dataclass(frozen=True)
 class MopacCoreGroup:
+    """Legacy-quantized compatibility projection of diskless libmopac data."""
     charges: np.ndarray
     scalars: MopacScalars
     bond_orders: BondOrders
@@ -334,7 +371,18 @@ class MopacCoreGroup:
 
 @dataclass(frozen=True)
 class MopacFullGroup:
-    """Complete diskless libmopac result and compatibility projections."""
+    """Additional direct libmopac arrays and compatibility diagnostics.
+
+    This is not every field of the API structs: control-plane failures and
+    structural-N/A job outputs are intentionally not scientific NPYs. Core
+    compatibility charge/bond/global arrays live in sibling ``MopacCoreGroup``.
+    Field-level ``Optional`` annotations preserve loading of older/partial SDK
+    schemas; they are not current scientific absence states. A successful
+    current ``MopacResult::WriteFeatures`` attempts the complete declared
+    core/direct family, while worker/API/dimension/non-finite failure prevents
+    the whole MopacResult from attaching rather than selectively zero-filling
+    or omitting one direct feature.
+    """
 
     charges_full_precision: Optional[np.ndarray] = None
     bond_orders_full_precision: Optional[BondOrders] = None
@@ -385,11 +433,16 @@ class MopacFullGroup:
 
 @dataclass(frozen=True)
 class MopacCoulombGroup:
+    """All-pairs fields from legacy F15.6 diskless-libmopac Coulson charges.
+
+    Cartesian E has a polar law only for fixed charges on a non-exceptional
+    sanitizer path; independently rerun MOZYME values are not exact.
+    """
     efg: ShieldingTensor
-    E: VectorField
-    E_backbone: VectorField
-    E_sidechain: VectorField
-    E_aromatic: VectorField
+    E: QualifiedVectorField
+    E_backbone: QualifiedVectorField
+    E_sidechain: QualifiedVectorField
+    E_aromatic: QualifiedVectorField
     efg_backbone: EFGTensor
     efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
@@ -397,29 +450,22 @@ class MopacCoulombGroup:
 
 
 @dataclass(frozen=True)
-class MopacMcConnellGroup:
-    shielding: ShieldingTensor
-    category_T2: PerBondCategoryT2
-    scalars: McConnellScalars
-
-
-@dataclass(frozen=True)
 class MopacGroup:
     core: MopacCoreGroup
     coulomb: MopacCoulombGroup
-    mcconnell: Optional[MopacMcConnellGroup] = None
     full: Optional[MopacFullGroup] = None
 
 
 @dataclass(frozen=True)
 class APBSGroup:
-    E: VectorField
+    """Finite-grid APBS outputs; vector covariance is approximate/qualified."""
+    E: QualifiedVectorField
     efg: EFGTensor
     phi: Optional[np.ndarray] = None
     E_clamp_mask: Optional[np.ndarray] = None
     E_clamp_scale: Optional[np.ndarray] = None
     nonfinite_sanitizer_mask: Optional[np.ndarray] = None
-    E_total_diagnostic: Optional[VectorField] = None
+    E_total_diagnostic: Optional[QualifiedVectorField] = None
     efg_total_diagnostic: Optional[EFGTensor] = None
 
 
@@ -1081,16 +1127,25 @@ class TopologyGroup:
 
 @dataclass(frozen=True)
 class AIMNet2Group:
+    """Static outputs from the caller-selected AIMNet2 TorchScript model.
+
+    ``aim`` and ``aim_projection`` are opaque learned-channel arrays, not
+    Cartesian/e3nn tensors. The E/EFG fields have their stated polar/rank-2
+    laws only conditional on the loaded model emitting scalar charges under a
+    rigid transform; the producer checks the model interface and finiteness,
+    not arbitrary-``.jpt`` equivariance. See each :data:`CATALOG` entry for
+    exact units, source partitions, basis conversion and absence rules.
+    """
     charges: AIMNet2Charges
     aim: AIMNet2AimEmbedding
     efg: EFGTensor
     efg_aromatic: EFGTensor
     efg_backbone: EFGTensor
     efg_sidechain: EFGTensor
-    E: VectorField
-    E_backbone: VectorField
-    E_sidechain: VectorField
-    E_aromatic: VectorField
+    E: QualifiedVectorField
+    E_backbone: QualifiedVectorField
+    E_sidechain: QualifiedVectorField
+    E_aromatic: QualifiedVectorField
     energy_mlp: np.ndarray
     energy_shifted_local: np.ndarray
     energy_terms: np.ndarray
@@ -1098,10 +1153,9 @@ class AIMNet2Group:
     d3_cn: np.ndarray
     d3_c6_stats: np.ndarray
     aim_projection: np.ndarray
-    # ChargeResponseGradient fields are present only when the extraction
-    # was run with AIMNet2 model loaded after the 2026-05-09 always-on
-    # promotion of AIMNet2ChargeResponseGradientResult. Old outputs leave
-    # these as None. Field renamed from `polarisability` to
+    # Current successful CLI extractions compute these in a separate Result
+    # after the main AIMNet2 Result. They remain Optional in the reader for
+    # pre-2026-05-09 files. Field renamed from `polarisability` to
     # `charge_response_gradient` 2026-05-20 (commit 58594f5) — the
     # emission is ∂(Σq²)/∂r, NOT a Buckingham α tensor.
     charge_response_gradient: Optional[AIMNet2ChargeResponseGradient] = None
@@ -1186,7 +1240,12 @@ class WaterHBondGeometryGroup:
 
 @dataclass(frozen=True)
 class HydrationGroup:
-    """Per-atom hydration shell geometry."""
+    """Per-atom explicit-solvent hydration shell geometry.
+
+    Columns are exposed-water fraction, mean dipole cosine, nearest-ion
+    distance (Å), and charge (e). No shell gives ``0,0``; no ion inside the
+    configured cutoff gives ``+inf,0``.
+    """
     data: np.ndarray                # (N, 4) [asymmetry, dipole_cos, ion_dist, ion_charge]
 
 
@@ -1420,7 +1479,15 @@ class Protein:
     hydration: Optional[HydrationGroup] = None
     water_polarization: Optional[WaterPolarizationGroup] = None
     gromacs_energy: Optional[np.ndarray] = None
-    bonded_energy: Optional[np.ndarray] = None  # (N,7) per-atom GROMACS bonded terms
+    # (N,7) equal-share local BondedParameters evaluation; not an EDR
+    # per-atom decomposition.
+    bonded_energy: Optional[np.ndarray] = None
+
+    # Optional legacy NPY projections from TrajectoryProtein::WriteFeatures.
+    # Rich trajectory consumers should prefer trajectory.h5.
+    hm_welford: Optional[np.ndarray] = None       # (N,11), scalar rollup
+    mc_welford: Optional[np.ndarray] = None       # (N,11), scalar rollup
+    sasa_welford: Optional[np.ndarray] = None     # (N,7), finite-grid rollup
 
     # Geometry-dependent charges
     eeq: Optional[EeqGroup] = None
@@ -1908,13 +1975,6 @@ def load(path: str | Path) -> Protein:
                 lmo_virtual_coefficient_storage_native=mopac_optional("mopac_lmo_virtual_coefficient_storage_native"),
                 mozyme_state_dimensions=mopac_optional("mopac_mozyme_state_dimensions"),
             )
-        legacy_mopac_mcconnell = None
-        if "mopac_mc_shielding" in available:
-            legacy_mopac_mcconnell = MopacMcConnellGroup(
-                shielding=get("mopac_mc_shielding"),
-                category_T2=get("mopac_mc_category_T2"),
-                scalars=get("mopac_mc_scalars"),
-            )
         mopac = MopacGroup(
             core=MopacCoreGroup(
                 charges=get("mopac_charges"),
@@ -1925,8 +1985,7 @@ def load(path: str | Path) -> Protein:
                     if "mopac_bond_neighbors" in available else None,
             ),
             coulomb=MopacCoulombGroup(
-                efg=get("mopac_coulomb_efg",
-                        get("mopac_coulomb_shielding")),
+                efg=get("mopac_coulomb_efg"),
                 E=get("mopac_coulomb_E"),
                 E_backbone=get("mopac_coulomb_E_backbone"),
                 E_sidechain=get("mopac_coulomb_E_sidechain"),
@@ -1936,7 +1995,6 @@ def load(path: str | Path) -> Protein:
                 efg_aromatic=get("mopac_coulomb_efg_aromatic"),
                 scalars=get("mopac_coulomb_scalars"),
             ),
-            mcconnell=legacy_mopac_mcconnell,
             full=mopac_full,
         )
 
@@ -2266,6 +2324,9 @@ def load(path: str | Path) -> Protein:
         water_polarization=water_polarization,
         gromacs_energy=get("gromacs_energy"),
         bonded_energy=get("bonded_energy"),
+        hm_welford=get("hm_welford"),
+        mc_welford=get("mc_welford"),
+        sasa_welford=get("sasa_welford"),
         eeq=eeq,
         category_info=category_info,
         topology=topology_group,

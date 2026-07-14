@@ -26,6 +26,7 @@ from nmr_extract import (
     E3nnTensor,
     PositionField,
     VectorField,
+    QualifiedVectorField,
     MagneticVectorField,
     PerRingTypeT0,
     PerRingTypeT1,
@@ -241,8 +242,10 @@ class TestIrreps:
 
     def test_vector_field(self, geo):
         v = geo.coulomb.E
+        assert isinstance(v, QualifiedVectorField)
         assert isinstance(v, VectorField)
-        assert v.irreps == Irreps("1x1o")
+        assert v.irreps is None
+        assert v.conditional_irreps == Irreps("1x1o")
 
     def test_per_ring_type_T0(self, geo):
         t0 = geo.biot_savart.per_type_T0
@@ -521,15 +524,19 @@ class TestBiotSavart:
 
     def test_ring_B_fields_are_sparse_magnetic_vectors(self, geo):
         n_pairs = len(geo.ring_contributions.atom_index)
-        for field in [geo.biot_savart.ring_B_field, geo.biot_savart.ring_B_cylindrical]:
-            assert isinstance(field, MagneticVectorField)
-            assert field.irreps == Irreps("1x1e")
-            assert field.data.shape == (n_pairs, 3)
+        field = geo.biot_savart.ring_B_field
+        assert isinstance(field, MagneticVectorField)
+        assert field.irreps == Irreps("1x1e")
+        assert field.data.shape == (n_pairs, 3)
+
+        cylindrical = geo.biot_savart.ring_B_cylindrical
+        assert isinstance(cylindrical, np.ndarray)
+        assert cylindrical.shape == (n_pairs, 3)
 
     def test_ring_B_fields_row_align_with_contributions(self, geo):
         n_pairs = len(geo.ring_contributions.atom_index)
         assert len(geo.biot_savart.ring_B_field.data) == n_pairs
-        assert len(geo.biot_savart.ring_B_cylindrical.data) == n_pairs
+        assert len(geo.biot_savart.ring_B_cylindrical) == n_pairs
 
 
 class TestHaighMallion:

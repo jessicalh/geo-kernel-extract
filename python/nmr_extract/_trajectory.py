@@ -35,8 +35,10 @@ normalizes the on-disk layout.
 
     # Welford H5 groups — written by *WelfordTrajectoryResult subclasses
     # (BS / HM / McConnell / Eeq / Sasa / HBondCount), 2026-05-17/18.
-    # Current rollups are H5-only; do not expect bs_welford.npy,
-    # eeq_welford.npy, or hbond_count_welford.npy from WriteFeatures.
+    # BS / EEq / HBond-count rollups are H5-only. HM / McConnell / SASA
+    # also have legacy scalar-summary NPY projections (hm_welford.npy,
+    # mc_welford.npy, sasa_welford.npy) when TrajectoryProtein's public
+    # WriteFeatures path is invoked; the production trajectory CLI writes H5.
     # Each group is Optional — None when the corresponding C++ TR was
     # not attached for the run that produced this trajectory.h5.
     traj.welford.bs.t0.mean                  # (N,) ppm_T_per_nA
@@ -210,6 +212,16 @@ class WelfordMoments:
 
     Per-dataset units for `min_frame` / `max_frame` are always
     `"frame_index"` and not stored separately.
+
+    Directional warning: componentwise Welford operations do not preserve an
+    irrep in general. For tensor groups, only the assembled component vector
+    in ``mean`` has the source sample's transform law. Componentwise ``m2``,
+    ``std``, ``min`` and ``max`` are statistics in the emitted Cartesian or
+    project-native component frame; they are not themselves closed 1e/2e
+    features. ``min_frame`` and ``max_frame`` are componentwise arg-extrema.
+    At zero sample count the producer sets mean/m2/std to NaN while min/max
+    retain +infinity/-infinity initialization sentinels; none denotes a
+    physical zero observation.
     """
     mean: np.ndarray
     m2: np.ndarray
@@ -283,7 +295,16 @@ def _group_frame_index_range(grp) -> tuple[int, int]:
 
 @dataclass(frozen=True)
 class _TensorWelfordGroup:
-    """Common shape for BS / HM / McConnell Welford rollups."""
+    """Common shape for BS / HM / McConnell Welford rollups.
+
+    For ``t1.mean`` the final axis is the Cartesian Levi-Civita dual of the
+    antisymmetric tensor, ``a'=det(R) R a`` (axial 1e); it is not a real-Y1m
+    basis. For ``t2.mean`` the final axis is the project's isometric real-
+    tesseral T2 basis and represents an even rank-2 tensor only after its five
+    components are kept together; convert explicitly before e3nn use. The
+    other componentwise statistics inherit no closed irrep law, as documented
+    on :class:`WelfordMoments`.
+    """
     # Scalar channels
     t0: WelfordMoments               # (N,)
     t2magnitude: WelfordMoments      # (N,)
@@ -323,12 +344,30 @@ class BsWelfordGroup(_TensorWelfordGroup):
 
 @dataclass(frozen=True)
 class HmWelfordGroup(_TensorWelfordGroup):
-    """Per-atom Haigh-Mallion Welford rollup from /trajectory/hm_welford/."""
+    """Per-atom Haigh-Mallion Welford rollup from /trajectory/hm_welford/.
+
+    These statistics summarize the unscaled Å⁻¹ surface-integral geometry
+    kernel; they are not ppm shielding statistics.
+
+    The H5 group is the full tensor-statistics surface. The separate legacy
+    ``hm_welford.npy`` projection contains per-atom summaries of scalar T0,
+    the scalar norm ``|T2|``, and the scalar T0 frame delta, plus the T0
+    sample count; it contains no directional T1/T2 components.
+    """
 
 
 @dataclass(frozen=True)
 class McConnellWelfordGroup(_TensorWelfordGroup):
-    """Per-atom McConnell Welford rollup from /trajectory/mc_welford/."""
+    """Per-atom McConnell Welford rollup from /trajectory/mc_welford/.
+
+    These statistics summarize the unscaled Å⁻³ unit-susceptibility geometry
+    response; they are not ppm shielding statistics.
+
+    The H5 group is the full tensor-statistics surface. The separate legacy
+    ``mc_welford.npy`` projection contains per-atom summaries of scalar T0,
+    the scalar norm ``|T2|``, and the scalar T0 frame delta, plus the T0
+    sample count; it contains no directional T1/T2 components.
+    """
 
 
 def _load_tensor_welford(f, h5_path: str):
@@ -450,7 +489,14 @@ def _load_eeq_welford(f) -> Optional[EeqWelfordGroup]:
 
 @dataclass(frozen=True)
 class SasaWelfordGroup:
-    """Per-atom SASA Welford rollup from /trajectory/sasa_welford/."""
+    """Per-atom SASA Welford rollup from /trajectory/sasa_welford/.
+
+    ``sasa_welford.npy`` is the legacy per-atom scalar summary written by the
+    public NPY path. Its samples come from the producer's fixed finite
+    Fibonacci-sphere point set, so columns derived from those samples are not
+    claimed to be exactly O(3)-invariant under an arbitrary coordinate rerun;
+    the sample counts are invariant bookkeeping.
+    """
     sasa: WelfordMoments
     sasa_delta: WelfordMoments
     sasa_abs_delta: WelfordMoments
@@ -1569,8 +1615,8 @@ class DihedralBinTransitionGroup:
       0=g+ (0 < chi < 120°), 1=trans (|chi| ≥ 120°), 2=g-
       (-120° < chi ≤ 0°), 255=unassigned (chi not defined for this AA
       or per-frame geometry degenerate). chi == 0 exactly lands in g-
-      (rare in MD). Note: ChiRotamerSelectionTrajectoryResult (in the
-      slated-for-removal ScanForDftPointSet config) uses a DIFFERENT
+      (rare in MD). Note: the active
+      ChiRotamerSelectionTrajectoryResult uses a DIFFERENT
       strict-`>` convention that puts ±120° in gauche; this group
       uses the Lovell-Richardson trans-inclusive convention. The two
       are documented-divergent.
@@ -1819,36 +1865,44 @@ class JCouplingTimeSeriesGroup:
     """Per-residue per-frame Karplus ³J observables from
     /trajectory/j_coupling_time_series/.
 
-    Nine datasets across eight channel families (R, T) float64 in Hz;
-    thin Karplus transform of the persisted phi/chi1 timeline. NaN
+    Nine datasets across eight channel families (R, T) float64 in Hz.
+    The producer computes them directly from positions plus cached/typed atom
+    indices; it does not consume a persisted dihedral timeline. NaN
     within frames indicates the channel is structurally absent for this
     residue (PRO has no HN; GLY has no Cβ; GLY/ALA have no chi1;
     SER/CYS/THR have non-carbon chi1 terminal so J(N,Cγ) / J(C',Cγ)
     NaN; N-terminus has no C'(prev) so J(Hα,C') NaN; ALA's methyl Cβ
     is deliberately excluded from J(Hα,Hβ)).
 
-      J_HN_Halpha          ³J(HN, Hα) via H-N-CA-HA dihedral; phi
-                           observable. Vuister & Bax 1993 JACS 115:7772
+      J_HN_Halpha          ³J(HN, Hα), evaluated from canonical phi with
+                           +π/3 phase. H-N-CA-HA is the documented nominal
+                           coupling path, not the dihedral passed to Karplus.
+                           Vuister & Bax 1993 JACS 115:7772
                            (DOI 10.1021/ja00070a024).
-      J_HN_Halpha_Vogeli   Same atomic dihedral, alternate Karplus
+      J_HN_Halpha_Vogeli   Same canonical phi +π/3 input, alternate Karplus
                            parametrization. Vögeli, Ying, Grishaev &
                            Bax 2007 JACS 129:9377 (DOI 10.1021/
                            ja070324o), Table 1 "rigid" row. Methods-
                            accumulate alternate (both channels stay).
-      J_HN_Cbeta           ³J(HN, Cβ) via H-N-CA-CB dihedral; orthogonal
-                           phi observable. Wang & Bax 1996 JACS 118:2483
+      J_HN_Cbeta           ³J(HN, Cβ), evaluated from canonical phi with
+                           -π/3 phase. H-N-CA-CB is the documented nominal
+                           coupling path, not the input dihedral. Wang & Bax
+                           1996 JACS 118:2483
                            NMR/X-ray refined fit row 3 (DOI 10.1021/
                            ja9535524).
-      J_HN_Cprime          ³J(HN, C') via H-N-CA-C dihedral; phi
-                           observable. Wang & Bax 1996 Table 1 ROW 4
+      J_HN_Cprime          ³J(HN, C'), evaluated from canonical phi with
+                           zero phase; H-N-CA-C is the documented nominal
+                           coupling path. Wang & Bax 1996 Table 1 ROW 4
                            (θ=0°, NMR/X-ray refined fit, A=4.32,
                            B=+0.84, C=0.00). B is POSITIVE; J can be
                            slightly negative (~-0.04 Hz minimum).
                            Row-mapping fixed 2026-05-20 per codex F1:
                            prior bundle attributed row 2 values
                            (3.75, +2.19, 1.28) to this channel.
-      J_Halpha_Cprime      ³J(Hα, C') via HA-CA-N-C'(prev) dihedral;
-                           phi observable. The 3-bond path crosses
+      J_Halpha_Cprime      ³J(Hα, C'), evaluated from canonical phi with
+                           +π/3 phase. HA-CA-N-C'(prev) is the documented
+                           nominal coupling path, not the input dihedral.
+                           The 3-bond path crosses
                            the peptide bond at the previous residue's
                            C'; rotation is around the N-CA axis (phi
                            axis), per Vuister teaching lecture sect
@@ -1870,12 +1924,13 @@ class JCouplingTimeSeriesGroup:
                            value (1.74, -0.57, 0.25) was wrong).
       J_Halpha_Hbeta2      ³J(Hα, Hβ2) via HA-CA-CB-HB2; chi1 rotamer.
                            Pérez 2001 Table 2 consensus row. Methylene
-                           pro-R/pro-S assignment follows IUPAC HB2/HB3
-                           atom-name convention. Ile/Val/Thr methine
-                           Hβ emitted in this slot.
-      J_Halpha_Hbeta3      As J_Halpha_Hbeta2 but for HB3; for the
-                           prochiral methylene pair. Ile/Val/Thr methine
-                           Hβ mirrored in this slot (same value).
+                           Position2/Position3 identity comes from the typed
+                           AtomSemanticTable plus the covalent Cβ parent, not
+                           an atom-name string. A single typed non-methyl
+                           methine Hβ is emitted in this slot.
+      J_Halpha_Hbeta3      As J_Halpha_Hbeta2 but for typed Position3 of the
+                           prochiral methylene pair. A single typed non-methyl
+                           methine Hβ is mirrored in this slot (same value).
                            Gly/Ala: NaN (no methylene Hβ).
 
     Karplus form (post-codex-F6 + project-sign repair, 2026-05-20):
@@ -1897,6 +1952,16 @@ class JCouplingTimeSeriesGroup:
       This is the same sign convention used by DihedralTimeSeries
       (`phi_DSSP = -phi_IUPAC`). The LiteratureAnchoredProbeOn1UBQ
       test is the executable guard for the project-sign mapping.
+
+    Coordinate-transform law:
+      ``J_HN_Halpha``, ``J_HN_Halpha_Vogeli``, ``J_HN_Cbeta`` and
+      ``J_Halpha_Cprime`` are translation- and proper-rotation-invariant.
+      They are not homogeneous O(3) scalars: reflection negates the signed
+      phi but leaves the fixed nonzero phase unchanged. ``J_HN_Cprime`` and
+      the four zero-phase chi channels (``J_N_Cgamma``,
+      ``J_Cprime_Cgamma``, ``J_Halpha_Hbeta2/3``) are exact even scalars
+      (0e), because cos is even. NaN means a zero structural-existence mask
+      or degenerate per-frame dihedral geometry; it is never a physical zero.
 
     Coefficients per channel (byte-verified 2026-05-19):
       J_HN_Halpha          A=6.51,  B=-1.76, C=1.60 (range [1.48, 9.87])
@@ -1953,8 +2018,9 @@ class JCouplingTimeSeriesGroup:
     pro-S resolution should compute directly from the per-atom indices.
 
     Source: positions + Residue backbone-cache (H, N, CA, HA, CB, C) +
-    chi1 atom indices + per-residue Hβ atoms (looked up by IUPAC name)
-    + C'(prev) (resolved via Protein::BackbonePredecessor bond-graph
+    chi1 atom indices + per-residue Hβ identity from AtomSemanticTable
+    (Locant::Beta, DiastereotopicIndex, PseudoatomKind) and the covalent
+    Cβ parent + C'(prev) (resolved via Protein::BackbonePredecessor bond-graph
     query, NOT ri-1 / chain_id-equality which is a banned adjacency
     anti-pattern). No source ConformationResult dependency (positions
     present from tp.Seed; source_attached_per_frame trivially all-1
@@ -2188,11 +2254,15 @@ class AIMNet2EmbeddingTimeSeriesGroup:
     """Per-atom per-frame 256-dim AIMNet2 'aim' embedding from
     /trajectory/aimnet2_embedding_time_series/.
 
-    The embedding is a learned feature vector with no spherical-tensor
-    structure (`irrep_layout = "feature_vector"`, `parity = "0e"`).
+    The embedding is an opaque learned-channel vector with no producer-
+    guaranteed Cartesian, spherical-tensor, parity, or e3nn law. The stored
+    ``irrep_layout="feature_vector"`` and ``parity="0e"`` attributes are
+    legacy labels, not authority to rotate the 256-channel axis.
     Storage: (N, T, 256) float32. Large at fleet scale (~3.6 GB/protein
     uncompressed); `optional_large` attr lets consumers skip.
-    Source: AIMNet2Result; always-attached policy.
+    Source: the caller-selected TorchScript model through AIMNet2Result. The
+    source mask is authoritative; model/interface/non-finite failure is never
+    replaced by a zero embedding.
     """
     embedding: np.ndarray                # (N, T, 256) float32
     frame_indices: np.ndarray
@@ -2238,8 +2308,11 @@ def _load_aimnet2_embedding_time_series(
 class AIMNet2AimProjectionWelfordGroup:
     """Per-atom Welford statistics for the committed 32-d AIM projection.
 
-    This is an unoriented feature-vector projection, not a spherical tensor.
-    The ``basis_id`` pins the element-specific committed projection table.
+    This is a componentwise statistical rollup of opaque learned channels,
+    not a scalar irrep or spherical tensor. The ``basis_id`` pins the element-
+    specific committed projection table. Neither the projection channel axis
+    nor componentwise std/M2/min/max has a producer-certified O(3) law; the
+    stored ``irrep_layout``/``parity`` attributes are legacy metadata.
     """
     projection_mean: np.ndarray
     projection_m2: np.ndarray
@@ -2314,8 +2387,12 @@ class AIMNet2ChargeResponseGradientTimeSeriesGroup:
       charge_response_gradient_scalar  (N, T)    float64  — L2 norm of vector, e²/Å
 
     Source: AIMNet2ChargeResponseGradientResult (torch autograd backward through
-    the AIMNet2 charge head); always-attached. This is NOT Buckingham
-    polarizability and NOT an atom-resolved charge Jacobian.
+    the loaded model's charge head). This is NOT Buckingham polarizability and
+    NOT an atom-resolved charge Jacobian. If ``sum_j q_j^2`` is an O(3)-scalar,
+    the vector is conditionally polar and its norm invariant; the producer
+    accepts a caller-selected ``.jpt`` and does not certify that property.
+    Accordingly the stored ``1o``/``0e`` H5 attributes are conditional legacy
+    labels. Missing/failed source frames are NaN with mask=0, never zero-filled.
     """
     charge_response_gradient_vector: np.ndarray       # (N, T, 3) float64
     charge_response_gradient_scalar: np.ndarray       # (N, T) float64
@@ -2377,6 +2454,14 @@ class AIMNet2ChargeResponseGradientWelfordGroup:
     HydrationGeometryWelfordTrajectoryResult is available if calibration
     finds dynamics worth tracking. Group is skipped entirely when
     source_attached_count == 0.
+
+    All vector statistics are accumulated independently by Cartesian
+    component. Even if a conforming loaded model makes the instantaneous
+    gradient a polar vector, only its componentwise mean retains that
+    conditional linear law; componentwise std/M2/min/max are not a closed
+    vector irrep. The producer does not certify arbitrary ``.jpt`` covariance,
+    and the stored vector/scalar parity attributes are conditional legacy
+    metadata rather than an unconditional learning contract.
     """
     # Vector channel — (N, 3) float64 — e²/Å (frame extrema are frame indices)
     vector_mean: np.ndarray
@@ -2721,12 +2806,13 @@ class MopacChargeWelfordGroup:
     /trajectory/mopac_charge_welford/. TR5 of the 13-TR plan;
     canonical sparse-Welford-scalar.
 
-    MopacResult attaches conditionally (OperationRunner Attach, not
-    Require) when MOPAC is enabled and Compute succeeds. There is no
-    MOPAC-specific cadence: in trajectory mode, attached samples ride
-    the same dispatched frames selected by --stride and any dispatch
-    window. The TR gates on conf.HasResult<MopacResult>() each frame;
-    absent frames skip the Welford update and record mask=0. When MOPAC
+    MopacResult is attached when a charge source is configured and MOPAC is
+    not skipped. There is no MOPAC-specific cadence: attached samples ride
+    the same dispatched frames selected by --stride and any dispatch window.
+    A libmopac failure aborts that OperationRunner run; it is not converted to
+    a fake zero result. The TR nevertheless gates on
+    conf.HasResult<MopacResult>() each frame so disabled/unattached frames
+    skip the Welford update and record mask=0. When MOPAC
     never ran (source_attached_count == 0), the
     H5 group is skipped entirely — readers must tolerate KeyError
     on /trajectory/mopac_charge_welford and treat it as "MOPAC
@@ -2746,8 +2832,12 @@ class MopacChargeWelfordGroup:
       charge_max_frame (N,) uint64 — frame index of max
       n_per_atom  (N,) uint64 — per-atom sample count
 
-    Source: MopacResult.mopac_charge (F15.6 projection of the Coulson charge,
-    PM7+MOZYME). The untouched struct values are separate NPY features.
+    Source: ``MopacResult.mopac_charge``, a compatibility F15.6 decimal
+    projection materialized from the Coulson-charge binary64 value returned
+    by the pinned diskless ``libmopac`` ``mozyme_scf`` PM7/MOZYME/1SCF API in
+    a crash-contained worker. No MOPAC text output is parsed. The unquantized
+    API values are separate full-precision NPY features; "full precision"
+    means no compatibility decimal quantization, not physical exactness.
     """
     charge_mean: np.ndarray
     charge_std: np.ndarray
@@ -2799,19 +2889,24 @@ def _load_mopac_charge_welford(f) -> Optional[MopacChargeWelfordGroup]:
 @dataclass(frozen=True)
 class MopacBondOrderWelfordGroup:
     """Per-bond Welford rollup of the legacy compact-table projection of
-    MOPAC Wiberg bond orders (first six per atom, F6.3, >0.01) from
+    MOPAC Wiberg bond orders (first six per atom, F6.3, strict >0.01) from
     /trajectory/mopac_bond_order_welford/. TR6 of the 13-TR plan.
     Bond axis parallel to `bonds.npy` from the TopologySidecar
     (== protein.Bonds() index order).
 
-    Same sparse-cadence "absent, not faked" gate as TR5: when MOPAC
+    Same source-mask "absent, not faked" gate as TR5: when MOPAC
     never ran, the H5 group is skipped entirely (KeyError on
     /trajectory/mopac_bond_order_welford = "MOPAC disabled").
 
     SENTINEL-AWARE WELFORD (per feedback_conditional_welford_for_sentinels,
     R6 codex 2026-05-18; landed 2026-05-21 per math/science adversarial
-    review M6/M4): MopacResult sets bond order to exactly 0.0 for
-    bonds it didn't report (NOT NaN). Naive accumulation biases the
+    review M6/M4): the compatibility topology lookup returns exactly 0.0
+    (NOT NaN) when a bond is absent from that compact projection. Absence can
+    result from omission by the direct libmopac sparse API, compatibility
+    first-six selection, or a retained value whose F6.3 projection does not
+    pass the strict ``>0.01`` comparison; it does not prove a physical Wiberg
+    order of zero.
+    Naive accumulation biases the
     running mean toward 0 for intermittently-reported bonds. This
     TR accumulates the order Welford ONLY on frames where the bond
     was reported (bo != 0.0), and emits a companion
@@ -2841,6 +2936,12 @@ class MopacBondOrderWelfordGroup:
       order_present_fraction_max_frame (B,) uint64
       n_total_per_bond (B,) uint64  — divisor for present_fraction Welford
                                        = source_attached_count
+
+    Source: the diskless pinned libmopac ``mozyme_scf`` sparse API, reduced
+    by ``MopacResult`` to the legacy compact-table compatibility projection;
+    no text table is parsed. Disabled/unattached frames use mask=0 and do not
+    update either Welford block, and a group with zero attached frames is
+    absent rather than populated with zeros.
     """
     order_mean: np.ndarray
     order_std: np.ndarray
@@ -2912,9 +3013,8 @@ def _load_mopac_bond_order_welford(f) -> Optional[MopacBondOrderWelfordGroup]:
 class MopacCoulombEfgTimeSeriesGroup:
     """Per-atom per-frame MOPAC Coulomb T2 EFG kernel time series
     from /trajectory/mopac_coulomb_efg_time_series/. TR7 of
-    the 13-TR plan. T2-only (N, T, 5) emission — source field is
-    genuinely T2 even though its historical field name contains
-    "shielding_contribution".
+    the 13-TR plan. This is the T2 projection only, (N, T, 5), even though
+    its historical field name contains "shielding_contribution".
 
       t2 (N, T, 5) float64 — T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2
             in V/Å² (bare EFG kernel, NO γ multiplication at
@@ -2923,9 +3023,20 @@ class MopacCoulombEfgTimeSeriesGroup:
             bare EFG — γ × T2 → ppm-shielding is applied at
             calibration time).
 
-    Source: MopacCoulombResult.mopac_coulomb_shielding_contribution
-    (TimedAttach sparse — same "absent, not faked" group-skip
-    discipline as Mopac charge/bond-order Welfords).
+    Source: ``MopacCoulombResult``'s all-pairs Coulomb EFG using the legacy
+    F15.6 compatibility projection of diskless-libmopac Coulson charges, not
+    the unquantized full-precision charge array. It is traceless and symmetric
+    for finite analytic rows. The producer then projects traceless and applies
+    an elementwise NaN/Inf-to-zero sanitizer; on an exceptional non-finite row
+    that sanitizer is not rotation-covariant and can reintroduce T0. This H5
+    surface packs only the resulting project-native T2 branch, so it must not
+    be used as evidence that the discarded full tensor was exactly traceless.
+    Conditional on the same scalar charges, a finite analytic tensor has the
+    even-rank-2 rotation law. A transformed production run reruns MOZYME and
+    does not promise the same charges or exact numerical covariance. The five
+    values require explicit project-to-e3nn conversion. Missing source frames
+    are NaN with mask=0, and the whole group is absent if no source frame
+    attached.
     """
     t2: np.ndarray
     frame_indices: np.ndarray
@@ -3033,11 +3144,21 @@ class MopacMcConnellShieldingTimeSeriesGroup:
             Δχ × γ multiplication at extraction). This is not an e3nn
             basis and requires explicit conversion before e3nn use.
       T0 = trace(DQhat)/3 = n^T Qhat n/r^3 for a traceless source.
-      T1 = even antisymmetric McConnell pseudovector.
+      T1 = Cartesian Levi-Civita dual of the antisymmetric branch, an axial
+           1e vector ``a'=det(R) R a``; it is not a real-Y1m vector.
       T2 = symmetric traceless McConnell tensor branch.
 
-    Source: MopacMcConnellResult.mopac_mc_shielding_contribution
-    (TimedAttach sparse — same group-skip discipline as TR5/TR6/TR7).
+    Source: the bond-order channel computed by the unified
+    ``McConnellResult`` from ``MopacResult::TopologyBondOrder`` and stored in
+    ``ConformationAtom::mopac_mc_shielding_contribution``.
+    ``MopacMcConnellResult`` performs no tensor calculation; it is a
+    compatibility/dependency gate for this trajectory surface. A missing or
+    below-floor compatibility bond order is a structural zero for that BO
+    source contribution, whereas a missing result frame is NaN with mask=0;
+    the whole group is absent when no source frame attached. Conditional on
+    fixed scalar Wiberg weights, the packed response has the stated rank-2
+    law; an independently rotated production run reruns MOZYME and is not
+    promised identical weights/support or exact covariance.
     """
     xyz: np.ndarray
     frame_indices: np.ndarray
@@ -3124,17 +3245,18 @@ def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingT
 
 @dataclass(frozen=True)
 class MopacVsFf14SbReconciliationGroup:
-    """Per-atom per-frame SIGNED cos(MOPAC Coulomb T2, FF14SB Coulomb T2)
+    """Per-atom per-frame signed cos(MOPAC Coulomb T2, configured-charge T2)
     from /trajectory/mopac_vs_ff14sb_reconciliation/. TR9 of the
-    13-TR plan; new cross-source pattern.
+    13-TR plan. The path/class retain the historical ``ff14sb`` label, but
+    the second source is whatever typed ``ChargeSource`` populated
+    ``CoulombResult``; it is not guaranteed to be FF14SB.
 
     cos_t2 ∈ [-1, 1] measures the SIGNED orientational agreement
-    between MOPAC PM7+MOZYME-derived and FF14SB-parameterised
+    between MOPAC PM7+MOZYME-derived and configured-charge
     charge-driven Coulomb T2 EFG kernels, in the T2 5-vector
     subspace, per atom per frame. cos = +1: aligned. cos = -1:
-    opposite-polarisation (chemistry-distinctive disagreement,
-    e.g. a sign flip at SER OG or ARG NH2 where MOPAC PM7 and
-    FF14SB qualitatively differ on charge). cos = 0: orthogonal.
+    opposite-polarisation (chemistry-distinctive disagreement between the
+    sources). cos = 0: orthogonal.
     The ridge MUST see the SIGNED cos to expose sign disagreement
     (decision 2026-05-21 per science adversarial review M1; prior
     |cos| in [0, 1] silently squashed this signal).
@@ -4009,20 +4131,21 @@ class TrajectoryData:
     apbs_efg: Optional["ApbsEfgTimeSeriesGroup"] = None
 
     # MOPAC Coulson charge per-atom Welford rollup (TR #5; 2026-05-21).
-    # Sparse-cadence source (MopacResult TimedAttach not Require).
+    # Same dispatch cadence as the frame; source mask is zero when disabled
+    # or unattached (a libmopac Compute failure aborts rather than faking data).
     # Group is skipped entirely when MOPAC never ran — readers must
     # tolerate KeyError on /trajectory/mopac_charge_welford as "MOPAC
     # disabled for this run."
     mopac_charge_welford: Optional["MopacChargeWelfordGroup"] = None
 
     # MOPAC Wiberg bond order per-bond Welford rollup (TR #6; 2026-05-21).
-    # Bond axis == bonds.npy. Same sparse cadence + group-absent
-    # discipline as the charge Welford.
+    # Bond axis == bonds.npy. Same source-mask + group-absent discipline as
+    # the charge Welford.
     mopac_bond_order_welford: Optional["MopacBondOrderWelfordGroup"] = None
 
     # MOPAC Coulomb EFG T2 time series (TR #7; 2026-05-21).
-    # T2-only 5-component emission. Sparse cadence; group skipped when
-    # MopacCoulombResult never attached.
+    # T2-only 5-component projection; group skipped when MopacCoulombResult
+    # never attached.
     mopac_coulomb_efg_time_series: Optional[
         "MopacCoulombEfgTimeSeriesGroup"] = None
     # Legacy field name assigned to the same object as the canonical field.
@@ -4031,17 +4154,14 @@ class TrajectoryData:
 
     # MOPAC McConnell bond-anisotropy shielding contribution TS
     # (TR #8; 2026-05-21). UNLIKE TR7 the source is NOT traceless —
-    # emits all 9 components (T0+T1+T2). Sparse cadence; group
+    # emits all 9 components (T0+T1+T2). Group
     # skipped when MopacMcConnellResult never attached.
     mopac_mc_shielding_time_series: Optional[
         "MopacMcConnellShieldingTimeSeriesGroup"] = None
 
-    # MOPAC vs FF14SB charge-source reconciliation (TR #9; 2026-05-21).
-    # Per-atom-per-frame SIGNED cos(MOPAC_T2, FF14SB_T2) ∈ [-1, 1].
-    # cos = -1 exposes the chemistry-distinctive sign disagreement
-    # (e.g. SER OG or ARG NH2 where MOPAC PM7 and FF14SB qualitatively
-    # differ on charge); the earlier |cos| ∈ [0, 1] form was retired
-    # 2026-05-21 because it silently squashed that signal.
+    # MOPAC vs configured ChargeSource reconciliation (TR #9; historical
+    # path name retains ff14sb). Per-atom-per-frame signed cosine in [-1, 1];
+    # it is not guaranteed that the configured CoulombResult uses FF14SB.
     # Cross-source gate: requires BOTH MopacCoulombResult AND
     # CoulombResult attached per frame; group skipped if no frame
     # had both.

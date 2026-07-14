@@ -16,6 +16,7 @@ from nmr_extract import (
     EFGTensor,
     ShieldingTensor,
     VectorField,
+    QualifiedVectorField,
     load,
     load_trajectory,
 )
@@ -75,7 +76,7 @@ def test_piece05_catalog_contract():
     assert "reaction" in CATALOG["apbs_E"].description.lower()
     assert "reaction" in CATALOG["apbs_efg"].description.lower()
 
-    assert CATALOG["coulomb_E_solvent"].wrapper is VectorField
+    assert CATALOG["coulomb_E_solvent"].wrapper is QualifiedVectorField
     assert CATALOG["coulomb_efg_solvent"].wrapper is EFGTensor
     assert "reaction-field alias" in \
         CATALOG["coulomb_E_solvent"].description

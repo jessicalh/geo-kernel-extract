@@ -7,7 +7,7 @@ Verifies that:
     present, and
   - each field surfaces with the expected dtype / shape.
 
-Mirrors test_tripeptide_group.py.
+Uses a synthetic optional-calculator round trip.
 """
 
 import numpy as np
