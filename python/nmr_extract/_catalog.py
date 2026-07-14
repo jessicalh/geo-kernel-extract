@@ -1782,6 +1782,28 @@ _set_contract(
         "sidechain_co_frame_quality.npy column 3 is frame_valid"
     ), parity="mixed")
 _set_contract(
+    ("sidechain_co_source_bonds",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant sparse typed bond/atom/residue identity and "
+        "semantic-class row; deterministic source order"
+    ),
+    validity=(
+        "column7 is source_valid; the row axis is shared with "
+        "sidechain_co_frame.npy and sidechain_co_frame_quality.npy"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("sidechain_co_frame_quality",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant bond length, orthogonality error, raw normal "
+        "norm and frame-valid flag, row-aligned with sidechain_co_source_bonds.npy"
+    ),
+    validity=(
+        "column3 is frame_valid and gates the axes in sidechain_co_frame.npy; "
+        "earlier quality columns may remain finite on an invalid frame"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("water_polarization",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "mixed row: cols0:3 net-water-dipole polar vector; cols3:6 outward "
