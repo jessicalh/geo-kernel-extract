@@ -1024,6 +1024,17 @@ _set_contract(
     transformation=_POLAR_VECTOR,
     validity="bond_geometry_valid.npy; invalid/zero-length bonds serialize zero")
 _set_contract(
+    ("bond_geometry_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 validity for the row-aligned bond "
+        "direction; translation invariant"
+    ),
+    validity=(
+        "1 iff the bond displacement is finite and nonzero; 0 gates the "
+        "legacy zero in bond_direction.npy"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("ring_direction_to_center",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=_POLAR_VECTOR,
     validity=(
