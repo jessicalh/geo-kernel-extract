@@ -1680,7 +1680,9 @@ _set_contract(
     ("water_polarization",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
         "mixed row: cols0:3 net-water-dipole polar vector; cols3:6 outward "
-        "SASA polar normal; cols6:10 invariant scalars"
+        "SASA normal is continuum polar but live finite-grid non-covariant; "
+        "cols6:8 are continuum invariant but inherit the live finite-grid "
+        "normal; cols8:10 are exact O(3)-invariant scalars"
     ),
     validity=(
         "whole result absent without solvent; no-shell dipole/scalars use "
