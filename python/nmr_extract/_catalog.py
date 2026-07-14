@@ -1801,6 +1801,28 @@ _set_contract(
     ),
     validity="selected-H position cols12:15 are NaN in mode 2 where water is the acceptor",
     parity="mixed")
+_set_contract(
+    ("water_hbond_counts",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant per-protein-atom candidate/pass counts, nearest "
+        "water identity and nearest passing mode for a fixed candidate set"
+    ),
+    validity=(
+        "columns0:4 are candidate/pass counts and nearest-water index; "
+        "column5 is nearest passing mode; producer sentinels distinguish no candidate"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("water_hbond_nearest",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant mixed scalar/identity row: distances, angle, "
+        "mode, water identity, pass flag and candidate/pass counts"
+    ),
+    validity=(
+        "nearest-candidate fields use the producer's no-candidate sentinels; "
+        "candidate/pass counts in columns6 and7 expose row availability"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
 
 _set_contract(
     ("delta_apbs",), coordinate_frame=_CARTESIAN_FRAME,
