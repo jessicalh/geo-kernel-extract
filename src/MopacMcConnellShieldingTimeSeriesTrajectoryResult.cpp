@@ -147,10 +147,25 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         std::string(kMcConnellPackFull9ComponentOrder));
     grp.createAttribute("tensor_frame",
         std::string(kMcConnellPackFull9TensorFrame));
+    grp.createAttribute("coordinate_frame",
+        std::string(kMcConnellPackFull9TensorFrame));
+    grp.createAttribute("parity", std::string("0e+1e+2e"));
     grp.createAttribute("tensor_parity", std::string("even"));
+    grp.createAttribute("tensor_transformation",
+        std::string("even_rank2: T'=R T R^T"));
+    grp.createAttribute("tensor_t1_semantics", std::string(
+        "Cartesian Levi-Civita dual x,y,z (not real-Y1m): "
+        "a=((T_yz-T_zy)/2,(T_zx-T_xz)/2,(T_xy-T_yx)/2); "
+        "axial a'=det(R) R a; generically nonzero"));
+    grp.createAttribute("tensor_t1_structural_zero", false);
+    grp.createAttribute("tensor_structural_zero_components",
+        std::string("none"));
     grp.createAttribute("e3nn_export",
         std::string(kMcConnellPackFull9E3nnExport));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
+    grp.createAttribute("normalization_scope", std::string(
+        "xyz tensor payload: T2 uses isometric real-tesseral "
+        "normalization; T1 uses the tensor_t1_semantics convention"));
     grp.createAttribute("units",         std::string("Angstrom^-3"));
     grp.createAttribute("source", std::string(
         "MopacMcConnellResult.mopac_mc_shielding_contribution "
