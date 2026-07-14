@@ -59,6 +59,31 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr const char* kFixtureProtein = "1P9J_5801";
+constexpr const char* kSurfaceNormalTransformation =
+    "outward polar vector: v'=R v in the continuum limit; live upstream "
+    "finite lab-fixed Fibonacci estimator has no exact O(3) law and is "
+    "only approximately rotation-covariant within the recorded test envelope";
+constexpr const char* kSourceComponentSemantics =
+    "dipole_vector and surface_normal are independently accumulated "
+    "Cartesian x,y,z source components; they are not SphericalTensor T1 "
+    "components";
+constexpr const char* kIrrepMetadataScope =
+    "only assembled dipole component means carry exact irrep metadata; "
+    "assembled surface-normal means carry only the declared "
+    "continuum/finite-grid approximate directional law";
+constexpr const char* kDirectionalMeanTransformation =
+    "assembled dipole_vector_{x,y,z}_mean: polar vector v'=R v; assembled "
+    "surface_normal_{x,y,z}_mean: outward polar vector v'=R v in the "
+    "continuum limit, but the live upstream finite lab-fixed Fibonacci "
+    "estimator has no exact O(3) law and is only approximately "
+    "rotation-covariant within the recorded test envelope";
+constexpr const char* kDirectionalMetadataScope =
+    "42 vector-component paths only: "
+    "dipole_vector_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame} and "
+    "surface_normal_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame}; "
+    "excludes invariant/continuum-invariant scalar statistics, "
+    "n_frames_per_atom,delta_n_per_atom,dxdt_n_per_atom,"
+    "source_attached_per_frame and group provenance";
 
 std::string TrrPathFor(const std::string& p) {
     return fs::path(p).replace_extension(".trr").string();
@@ -162,19 +187,39 @@ TEST(HydrationGeometryWelford, H5DirectionalMetadataZeroCountSynthetic) {
         auto grp = file.getGroup(
             "/trajectory/hydration_geometry_welford");
 
+        std::string dipole_frame, dipole_parity, dipole_law;
+        std::string normal_frame, normal_parity, normal_law;
+        std::string component_semantics, directional_scope;
         std::string irrep_scope, mean_law, component_law;
         std::string zero_count_validity;
+        grp.getAttribute("dipole_vector_coordinate_frame")
+            .read(dipole_frame);
+        grp.getAttribute("dipole_vector_parity").read(dipole_parity);
+        grp.getAttribute("dipole_vector_transformation").read(dipole_law);
+        grp.getAttribute("surface_normal_coordinate_frame")
+            .read(normal_frame);
+        grp.getAttribute("surface_normal_parity").read(normal_parity);
+        grp.getAttribute("surface_normal_transformation").read(normal_law);
+        grp.getAttribute("source_component_semantics")
+            .read(component_semantics);
+        grp.getAttribute("directional_metadata_scope")
+            .read(directional_scope);
         grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
         grp.getAttribute("directional_mean_transformation").read(mean_law);
         grp.getAttribute("componentwise_statistic_transformation")
             .read(component_law);
         grp.getAttribute("zero_count_sentinel_validity")
             .read(zero_count_validity);
-        EXPECT_EQ(irrep_scope,
-                  "only assembled component means carry directional irrep metadata");
-        EXPECT_EQ(mean_law,
-                  "assembled dipole_vector_{x,y,z}_mean and "
-                  "surface_normal_{x,y,z}_mean are polar: v'=R v");
+        EXPECT_EQ(dipole_frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(dipole_parity, "1o");
+        EXPECT_EQ(dipole_law, "polar vector: v'=R v");
+        EXPECT_EQ(normal_frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(normal_parity, "mixed");
+        EXPECT_EQ(normal_law, kSurfaceNormalTransformation);
+        EXPECT_EQ(component_semantics, kSourceComponentSemantics);
+        EXPECT_EQ(directional_scope, kDirectionalMetadataScope);
+        EXPECT_EQ(irrep_scope, kIrrepMetadataScope);
+        EXPECT_EQ(mean_law, kDirectionalMeanTransformation);
         EXPECT_EQ(component_law,
                   "componentwise m2,std,min,max,min_frame,max_frame have no "
                   "closed irrep transformation law");
@@ -275,11 +320,8 @@ TEST(HydrationGeometryWelford, H5RoundTrip) {
     grp.getAttribute("directional_mean_transformation").read(mean_law);
     grp.getAttribute("componentwise_statistic_transformation").read(component_law);
     grp.getAttribute("zero_count_sentinel_validity").read(zero_count_validity);
-    EXPECT_EQ(irrep_scope,
-              "only assembled component means carry directional irrep metadata");
-    EXPECT_EQ(mean_law,
-              "assembled dipole_vector_{x,y,z}_mean and "
-              "surface_normal_{x,y,z}_mean are polar: v'=R v");
+    EXPECT_EQ(irrep_scope, kIrrepMetadataScope);
+    EXPECT_EQ(mean_law, kDirectionalMeanTransformation);
     EXPECT_EQ(component_law,
               "componentwise m2,std,min,max,min_frame,max_frame have no closed "
               "irrep transformation law");

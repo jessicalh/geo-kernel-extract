@@ -3,9 +3,10 @@
 // HydrationGeometryWelfordTrajectoryResult: per-atom Welford rollup of the
 // SASA-normal water polarisation features from HydrationGeometryResult.
 // Clones the WaterFieldWelford shape: per-component Welford on Vec3 channels,
-// scalar Welford + signed/abs/squared/dxdt delta variants on the four
-// rotationally-invariant polarisation scalars (alignment, legacy mean
-// net dipole, dimensionless order parameter, asymmetry, shell_count).
+// scalar Welford + signed/abs/squared/dxdt delta variants on the
+// polarisation scalars.  Dipole magnitude/coherence/order and shell count
+// are exact rotation invariants; alignment and asymmetry are continuum
+// invariants that inherit the live finite SASA-stencil approximation.
 //
 // Channels (mirroring HydrationGeometryTimeSeries source fields):
 //
@@ -40,6 +41,21 @@
 //     attrs: result_name, n_frames, source_attached_count, finalized,
 //            ddof, mean_dt_ps (attached-subset), frame_index_range
 //            (attached-subset), irrep_layout_dipole, irrep_layout_normal
+//            dipole_vector_coordinate_frame = "conformation_cartesian_xyz"
+//            dipole_vector_parity = "1o"
+//            dipole_vector_transformation = "polar vector: v'=R v"
+//            surface_normal_coordinate_frame = "conformation_cartesian_xyz"
+//            surface_normal_parity = "mixed"
+//            surface_normal_transformation = continuum-polar with the live
+//                finite lab-fixed Fibonacci/no-exact-O(3) qualifier
+//            directional_metadata_scope = exactly 42 vector-component paths
+//
+// The three per-source channels are independently accumulated Cartesian
+// x/y/z components, not SphericalTensor T1 components.  Reassembling the
+// three dipole component means yields an exact polar vector.  Reassembling
+// the three surface-normal means yields a continuum-polar vector that still
+// inherits SasaResult's finite lab-fixed Fibonacci approximation.  No
+// componentwise m2/std/min/max/extremum dataset is a covariant vector.
 //
 // Dependencies: HydrationGeometryResult — REQUIRED by PerFrameExtractionSet
 // but conditionally attached by OperationRunner when solvent is loaded.
