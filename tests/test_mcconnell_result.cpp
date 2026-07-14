@@ -1621,32 +1621,24 @@ TEST(MopacExternalDirectionalFreeze,
             }
         }
 
-        const auto& ao_rows =
-            conf.Result<MopacResult>().AtomicOrbitalPopulations();
-        ASSERT_GT(ao_rows.size(), 0u)
-            << "real MOPAC emitted no typed AO population rows";
+        // Piece 10 (libmopac) removed the typed
+        // MopacResult::AtomicOrbitalPopulations() accessor this block
+        // cross-checked the emitted AO NPYs against. Value correctness vs
+        // the full-precision/probe oracle + NaN semantics now live in
+        // tests/validate_mopac_npy.py; here we verify directly from the
+        // emitted arrays the invariant 10 owns — [s,p,d] shell totals equal
+        // the shell-sums of the 9 diagonal populations, NaN-aware. (cf. the
+        // test_mopac_result.cpp merge resolution.)
         ASSERT_EQ(ao_npys[frame].shape,
-                  (std::vector<std::size_t>{ao_rows.size(), 9u}));
+                  (std::vector<std::size_t>{conf.AtomCount(), 9u}));
         ASSERT_EQ(ao_total_npys[frame].shape,
-                  (std::vector<std::size_t>{ao_rows.size(), 3u}));
-        for (std::size_t row = 0; row < ao_rows.size(); ++row) {
-            for (std::size_t component = 0; component < 9; ++component) {
-                const double emitted =
-                    ao_npys[frame].values[row * 9u + component];
-                const double source = ao_rows[row].populations[component];
-                if (std::isnan(source)) EXPECT_TRUE(std::isnan(emitted));
-                else EXPECT_DOUBLE_EQ(emitted, source);
-            }
+                  (std::vector<std::size_t>{conf.AtomCount(), 3u}));
+        for (std::size_t row = 0; row < conf.AtomCount(); ++row) {
+            const double* pop = &ao_npys[frame].values[row * 9u];
             const std::array<double, 3> expected_totals{{
-                ao_rows[row].populations[0],
-                ao_rows[row].populations[1] +
-                    ao_rows[row].populations[2] +
-                    ao_rows[row].populations[3],
-                ao_rows[row].populations[4] +
-                    ao_rows[row].populations[5] +
-                    ao_rows[row].populations[6] +
-                    ao_rows[row].populations[7] +
-                    ao_rows[row].populations[8],
+                pop[0],
+                pop[1] + pop[2] + pop[3],
+                pop[4] + pop[5] + pop[6] + pop[7] + pop[8],
             }};
             for (std::size_t shell = 0; shell < 3; ++shell) {
                 const double emitted =
