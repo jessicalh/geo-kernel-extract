@@ -46,10 +46,11 @@
 //                                  frames per canonical 'absent, not
 //                                  faked'.
 //
-// t2_parity "even": EFG is a rank-2 even-parity tensor derived from the
-// gradient of the polar E-field. T0 and T1 are structurally zero from
-// source symmetrization and trace projection in ApbsFieldResult.cpp;
-// only 5 T2 components are emitted.
+// t2_parity "even": EFG is physically a rank-2 even-parity tensor derived
+// from the polar E-field. T0 and T1 are structurally zero from source
+// symmetrization and trace projection in ApbsFieldResult.cpp; only 5 T2
+// components are emitted. The live finite-difference solve is approximately,
+// not exactly, covariant within its recorded production-rerun envelope.
 // Group tensor/irrep attributes apply only to t2; lab-axis APBS grid
 // diagnostics carry dataset-local mixed/non-covariant contracts.
 //

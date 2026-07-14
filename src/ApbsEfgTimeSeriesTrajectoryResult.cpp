@@ -261,8 +261,10 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
     ds.createAttribute("coordinate_frame",
         std::string("conformation_cartesian_xyz"));
     ds.createAttribute("transformation", std::string(
-        "even_rank2: T'=R T R^T; emitted values are project-native T2 "
-        "coefficients"));
+        "continuum even_rank2: T'=R T R^T; emitted values are project-native "
+        "T2 coefficients. The live axis-aligned finite-difference APBS solve "
+        "has no exact O(3) law; transformed production reruns use the recorded "
+        "4e-2 V/Angstrom^2 absolute + 5e-2 relative finite-grid envelope"));
     ds.createAttribute("parity", std::string("2e"));
 
     auto write_grid_u64 = [&](const std::string& name,
