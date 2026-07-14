@@ -27,13 +27,17 @@
 //       frame_axis      = "trajectory_frame_row"
 //       irrep_layout   = "T0"
 //       parity         = "0e"
+//       coordinate_frame = "intrinsic_geometric_hbond_gate"
+//       transformation = exact rotation/translation/reflection-invariant scalar
 //       units          = "ppm"
 //       description    = (Larsen water-term semantics)
 //       n_atoms, n_frames, finalized
 //
 // Why parity "0e": this is an isotropic L0 shielding contribution
 // (Larsen NMA-water complex value). A scalar in ppm, l=0 even
-// parity — directly consumable as an e3nn L0 input.
+// parity — directly consumable as an e3nn L0 input.  Its production gate
+// depends only on topology, distance, and theta; signed rho changes neither
+// the geometric paired/unpaired decision nor this water term.
 //
 
 #include "DenseBuffer.h"

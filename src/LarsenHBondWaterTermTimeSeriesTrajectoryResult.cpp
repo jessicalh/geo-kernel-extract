@@ -146,6 +146,15 @@ void LarsenHBondWaterTermTimeSeriesTrajectoryResult::WriteH5Group(
     // L0 scalar metadata for e3nn-consumable downstream.
     grp.createAttribute("irrep_layout", std::string("T0"));
     grp.createAttribute("parity",       std::string("0e"));
+    grp.createAttribute("coordinate_frame",
+        std::string("intrinsic_geometric_hbond_gate"));
+    grp.createAttribute("transformation", std::string(
+        "exact rotation/translation/reflection-invariant scalar: topology, "
+        "distance, and theta gate geometric pairing; periodic rho does not "
+        "change whether the water term is applied"));
+    grp.createAttribute("validity", std::string(
+        "2.07 ppm on geometrically unpaired amide H atoms and physical zero "
+        "elsewhere; source_attached_per_frame records calculator availability"));
     grp.createAttribute("units",        std::string("ppm"));
     grp.createAttribute("description",
         std::string("Larsen Δσ_w water term — 2.07 ppm isotropic on amide H "
