@@ -23,6 +23,14 @@
 //       normalization  = "isometric_real_sph"
 //       parity         = "mixed"
 //       coordinate_frame = "conformation_cartesian_xyz"
+//       tensor_basis   = "project_native_full9_spherical_tensor_v1"
+//       tensor_component_order = "T0,T1_x,T1_y,T1_z,T2_m-2,...,T2_m+2"
+//       tensor_frame   = "conformation_cartesian_xyz"
+//       tensor_t1_semantics = "Cartesian Levi-Civita dual ..."
+//       tensor_t1_structural_zero = false
+//       tensor_structural_zero_components = "none"
+//       e3nn_export    = "explicit project-basis ... conversion required"
+//       normalization_scope = "xyz tensor payload: T2 uses ..."
 //       transformation = "even_rank2 under proper rotations: ..."
 //       units          = "ppm"
 //       n_atoms, n_frames, finalized
@@ -30,6 +38,9 @@
 // The packed tensor obeys T'=R T R^T under proper rotations.  Its typed
 // lookup/proper-Kabsch alignment is conditioned on an unchanged chiral
 // L-amino-acid DFT source, so no improper-transform parity is claimed.
+// The T1 entries are the exact Cartesian Levi-Civita dual
+// ((T_yz-T_zy)/2, (T_zx-T_xz)/2, (T_xy-T_yx)/2), not real-Y1m, and are
+// generically nonzero. T2 alone uses the isometric real-tesseral basis.
 //
 
 #include "DenseBuffer.h"
