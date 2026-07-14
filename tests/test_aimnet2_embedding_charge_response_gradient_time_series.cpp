@@ -494,12 +494,14 @@ TEST(AIMNet2ChargeResponseGradientWelford,
         auto grp = file.getGroup(
             "/trajectory/aimnet2_charge_response_gradient_welford");
 
-        std::string irrep_scope, mean_law, component_law;
+        std::string irrep_scope, mean_law, component_law, frame, scope;
         std::string zero_count_validity;
         grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
         grp.getAttribute("directional_mean_transformation").read(mean_law);
         grp.getAttribute("componentwise_statistic_transformation")
             .read(component_law);
+        grp.getAttribute("vector_coordinate_frame").read(frame);
+        grp.getAttribute("directional_metadata_scope").read(scope);
         grp.getAttribute("zero_count_sentinel_validity")
             .read(zero_count_validity);
         EXPECT_EQ(irrep_scope,
@@ -510,6 +512,12 @@ TEST(AIMNet2ChargeResponseGradientWelford,
         EXPECT_EQ(component_law,
                   "componentwise m2,std,min,max,min_frame,max_frame have no "
                   "closed irrep transformation law");
+        EXPECT_EQ(frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(scope,
+                  "vector_mean is an assembled polar mean; vector_m2,vector_std,"
+                  "vector_min,vector_max,vector_min_frame,vector_max_frame are "
+                  "componentwise statistics with no closed irrep law; scalar_* datasets, "
+                  "n_per_atom, frame/source provenance, and group metadata are invariant");
         EXPECT_EQ(zero_count_validity,
                   "when n_per_atom=0, mean,m2,std are NaN and min=+inf,"
                   "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
@@ -760,10 +768,13 @@ TEST(AIMNet2ChargeResponseGradientWelford, Integration1P9J) {
         auto group = file.getGroup(
             "/trajectory/aimnet2_charge_response_gradient_welford");
         std::string irrep_scope, mean_law, component_law, zero_count_validity;
+        std::string frame, scope;
         group.getAttribute("irrep_metadata_scope").read(irrep_scope);
         group.getAttribute("directional_mean_transformation").read(mean_law);
         group.getAttribute("componentwise_statistic_transformation")
             .read(component_law);
+        group.getAttribute("vector_coordinate_frame").read(frame);
+        group.getAttribute("directional_metadata_scope").read(scope);
         group.getAttribute("zero_count_sentinel_validity")
             .read(zero_count_validity);
         EXPECT_EQ(irrep_scope,
@@ -774,6 +785,12 @@ TEST(AIMNet2ChargeResponseGradientWelford, Integration1P9J) {
         EXPECT_EQ(component_law,
                   "componentwise m2,std,min,max,min_frame,max_frame have no "
                   "closed irrep transformation law");
+        EXPECT_EQ(frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(scope,
+                  "vector_mean is an assembled polar mean; vector_m2,vector_std,"
+                  "vector_min,vector_max,vector_min_frame,vector_max_frame are "
+                  "componentwise statistics with no closed irrep law; scalar_* datasets, "
+                  "n_per_atom, frame/source provenance, and group metadata are invariant");
         EXPECT_EQ(zero_count_validity,
                   "when n_per_atom=0, mean,m2,std are NaN and min=+inf,"
                   "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "

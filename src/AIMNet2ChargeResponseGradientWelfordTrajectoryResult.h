@@ -50,10 +50,14 @@
 //   irrep_layout_vector     = "x,y,z"
 //   normalization_vector    = "cartesian"
 //   parity_vector           = "1o"
+//   vector_coordinate_frame = "conformation_cartesian_xyz"
 //   irrep_layout_scalar     = "T0"
 //   parity_scalar           = "0e"
 //   source                  describes the AIMNet2ChargeResponseGradientResult vector/scalar fields
 //   source_attached_policy  = "always_attached" with HasResult gate
+//   directional_metadata_scope names the assembled polar vector_mean and the
+//       six componentwise non-irrep statistics separately from invariant
+//       scalar/count/frame/source provenance
 //
 // Minimum-viable design (no delta variants in v0; mean/std/m2/min/max
 // canonical row only). Delta-variant pattern from
