@@ -173,6 +173,16 @@ void GromacsEnergyTimeSeriesTrajectoryResult::WriteH5Group(
     emit_scalar("box_x",         "nm",     &GromacsEnergy::box_x);
     emit_scalar("box_y",         "nm",     &GromacsEnergy::box_y);
     emit_scalar("box_z",         "nm",     &GromacsEnergy::box_z);
+    for (const char* name : {"box_x", "box_y", "box_z"}) {
+        auto ds = grp.getDataSet(name);
+        ds.createAttribute("coordinate_frame",
+            std::string("gromacs_simulation_box_axes"));
+        ds.createAttribute("parity", std::string("mixed"));
+        ds.createAttribute("transformation", std::string(
+            "axis-tied diagonal cell diagnostic with no closed O(3) law "
+            "for a general box because off-diagonal lattice vectors are "
+            "not retained; an isotropic cubic box is invariant"));
+    }
 
     // ── Per-group temperatures ────────────────────────────────────
     emit_scalar("T_protein",     "K",      &GromacsEnergy::T_protein);
@@ -200,6 +210,25 @@ void GromacsEnergyTimeSeriesTrajectoryResult::WriteH5Group(
         ds.createAttribute("units", units);
         ds.createAttribute("tensor_layout",
             std::string("XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"));
+        ds.createAttribute("tensor_basis",
+            std::string("cartesian_matrix_row_major"));
+        ds.createAttribute("tensor_component_order",
+            std::string("XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"));
+        ds.createAttribute("tensor_frame",
+            std::string("gromacs_simulation_cartesian_xyz"));
+        ds.createAttribute("coordinate_frame",
+            std::string("gromacs_simulation_cartesian_xyz"));
+        ds.createAttribute("tensor_parity", std::string("even"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("tensor_transformation",
+            std::string("even_rank2: T'=R T R^T"));
+        ds.createAttribute("transformation",
+            std::string("even_rank2: T'=R T R^T"));
+        ds.createAttribute("structural_zero_components",
+            std::string("none"));
+        ds.createAttribute("e3nn_export", std::string(
+            "decompose the row-major Cartesian matrix into project-native "
+            "T0/T1/T2 before explicit conversion to e3nn"));
     };
 
     emit_tensor("virial",          "kJ/mol", &GromacsEnergy::vir);
