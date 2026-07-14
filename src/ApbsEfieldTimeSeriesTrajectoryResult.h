@@ -22,8 +22,9 @@
 //       normalization  = "cartesian"
 //       parity         = "1o"
 //       units          = "V/Angstrom"
-//       directional_metadata_scope = xyz only; APBS grid diagnostics carry
-//                                    dataset-local lab-axis/NC contracts
+//       directional_metadata_scope = xyz only; clamp diagnostics and APBS
+//                                    grid diagnostics carry dataset-local
+//                                    scalar/lab-axis contracts
 //       n_atoms, n_frames, finalized
 //
 // Parity "1o": E-field is a polar (true) vector, parity-odd under

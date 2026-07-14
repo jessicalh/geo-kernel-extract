@@ -181,7 +181,8 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("units",         std::string("V/Angstrom"));
     grp.createAttribute("directional_metadata_scope", std::string(
         "irrep_layout,normalization,parity,units describe xyz only; "
-        "apbs_grid_*_per_frame datasets carry per-dataset lab-axis contracts"));
+        "clamp_* and apbs_grid_*_per_frame datasets carry per-dataset "
+        "scalar/lab-axis contracts"));
     grp.createAttribute("source_result", std::string("ApbsFieldResult"));
     grp.createAttribute("source_field", std::string("apbs_efield"));
     grp.createAttribute("source", std::string(
@@ -238,9 +239,33 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
     auto clamp_mask_ds =
         grp.createDataSet<std::uint8_t>("clamp_mask", scalar_space);
     clamp_mask_ds.write_raw(clamp_mask_flat_.data());
+    clamp_mask_ds.createAttribute("units", std::string("dimensionless"));
+    clamp_mask_ds.createAttribute("coordinate_frame", std::string(
+        "lab_fixed_apbs_finite_difference_grid"));
+    clamp_mask_ds.createAttribute("parity", std::string("mixed"));
+    clamp_mask_ds.createAttribute("transformation", std::string(
+        "continuum rotation/translation/reflection-invariant scalar "
+        "threshold diagnostic derived from |E|; the live axis-aligned "
+        "finite-difference APBS solve has no exact O(3) law"));
+    clamp_mask_ds.createAttribute("validity", std::string(
+        "uint8 0/1; 1 iff the canonical reaction E-field row was "
+        "magnitude-clamped; absent-source frames use 0 and must be "
+        "interpreted with source_attached_per_frame"));
     auto clamp_scale_ds =
         grp.createDataSet<double>("clamp_scale", scalar_space);
     clamp_scale_ds.write_raw(clamp_scale_flat_.data());
+    clamp_scale_ds.createAttribute("units", std::string("dimensionless"));
+    clamp_scale_ds.createAttribute("coordinate_frame", std::string(
+        "lab_fixed_apbs_finite_difference_grid"));
+    clamp_scale_ds.createAttribute("parity", std::string("mixed"));
+    clamp_scale_ds.createAttribute("transformation", std::string(
+        "continuum rotation/translation/reflection-invariant scalar "
+        "derived from |E| and the configured clamp threshold; the live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law"));
+    clamp_scale_ds.createAttribute("validity", std::string(
+        "finite in (0,1] when source is attached; 1 when unclamped; "
+        "absent-source frames are NaN and must be interpreted with "
+        "source_attached_per_frame"));
 
     auto write_grid_u64 = [&](const std::string& name,
             const std::vector<std::array<std::uint64_t, 3>>& rows) {
