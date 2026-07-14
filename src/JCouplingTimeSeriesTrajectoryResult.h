@@ -177,6 +177,12 @@
 // rendering. The atom-axis broadcast via residue_index_per_atom is
 // the SDK consumer pattern.
 //
+// Directional contract: J_HN_Cprime and the four zero-explicit-offset
+// chi-derived channels are exact 0e scalars because cos(-theta)=cos(theta).
+// J_HN_Halpha, J_HN_Halpha_Vogeli, J_HN_Cbeta, and J_Halpha_Cprime retain a
+// fixed +/-pi/3 phase offset; they are proper-rotation invariant but have no
+// homogeneous improper-transform law when the signed dihedral reverses.
+//
 
 #include "TrajectoryResult.h"
 

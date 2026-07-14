@@ -594,7 +594,8 @@ void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
 
     // ── Helper: emit (R, T) flat float64 dataset, NaN-fill ───────────
     auto emit_2d_f64 = [&](const std::string& name,
-                            const std::vector<std::vector<double>>& src) {
+                            const std::vector<std::vector<double>>& src,
+                            bool reflection_invariant) {
         std::vector<double> flat(R * T, kNaN);
         for (std::size_t ri = 0; ri < R; ++ri) {
             const auto& row = src[ri];
@@ -607,17 +608,39 @@ void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("Hz"));
+        if (reflection_invariant) {
+            ds.createAttribute("coordinate_frame",
+                std::string("intrinsic_karplus_scalar"));
+            ds.createAttribute("irrep_layout", std::string("0e"));
+            ds.createAttribute("parity", std::string("even"));
+            ds.createAttribute("transformation", std::string(
+                "exact rotation/translation/reflection-invariant Karplus "
+                "scalar: explicit phase offset is zero and cos(-theta)="
+                "cos(theta)"));
+        } else {
+            ds.createAttribute("coordinate_frame", std::string(
+                "intrinsic_signed_dihedral_with_fixed_phase_offset"));
+            ds.createAttribute("parity", std::string("mixed"));
+            ds.createAttribute("transformation", std::string(
+                "translation/proper-rotation invariant Karplus scalar; "
+                "reflection negates the signed dihedral but not the fixed "
+                "+/-pi/3 project phase offset, so there is no homogeneous "
+                "improper-transform law"));
+        }
+        ds.createAttribute("validity", std::string(
+            "NaN when the channel's structural-existence mask is zero or "
+            "the per-frame dihedral geometry is degenerate"));
     };
 
-    emit_2d_f64("J_HN_Halpha",        j_hn_halpha_);
-    emit_2d_f64("J_HN_Halpha_Vogeli", j_hn_halpha_vogeli_);
-    emit_2d_f64("J_HN_Cbeta",         j_hn_cbeta_);
-    emit_2d_f64("J_HN_Cprime",        j_hn_cprime_);
-    emit_2d_f64("J_Halpha_Cprime",    j_halpha_cprime_);
-    emit_2d_f64("J_N_Cgamma",         j_n_cgamma_);
-    emit_2d_f64("J_Cprime_Cgamma",    j_cprime_cgamma_);
-    emit_2d_f64("J_Halpha_Hbeta2",    j_halpha_hbeta2_);
-    emit_2d_f64("J_Halpha_Hbeta3",    j_halpha_hbeta3_);
+    emit_2d_f64("J_HN_Halpha",        j_hn_halpha_, false);
+    emit_2d_f64("J_HN_Halpha_Vogeli", j_hn_halpha_vogeli_, false);
+    emit_2d_f64("J_HN_Cbeta",         j_hn_cbeta_, false);
+    emit_2d_f64("J_HN_Cprime",        j_hn_cprime_, true);
+    emit_2d_f64("J_Halpha_Cprime",    j_halpha_cprime_, false);
+    emit_2d_f64("J_N_Cgamma",         j_n_cgamma_, true);
+    emit_2d_f64("J_Cprime_Cgamma",    j_cprime_cgamma_, true);
+    emit_2d_f64("J_Halpha_Hbeta2",    j_halpha_hbeta2_, true);
+    emit_2d_f64("J_Halpha_Hbeta3",    j_halpha_hbeta3_, true);
 
     // ── Static per-residue masks (R,) ────────────────────────────────
     grp.createDataSet("J_HN_Halpha_exists", j_hn_halpha_exists_)
