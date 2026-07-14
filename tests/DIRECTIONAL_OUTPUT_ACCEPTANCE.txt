@@ -5,9 +5,9 @@ name-complete: every orientation-sensitive/static contract name registered by
 python/tests/test_topology_sidecar.py is present on its own line, followed by
 the directional trajectory H5 surface.
 
-The live catalog has 280 entries: the exact 191-name set with a nonempty
+The live catalog has 306 entries: the exact 178-name set with a nonempty
 directional or load-bearing companion transformation contract equals both the
-pinned test set and the 191 standalone static rows below.  The remaining 89
+pinned test set and the 178 standalone static rows below.  The remaining 128
 entries were source-audited as invariant/non-directional science, topology or
 availability data; no vector, tensor, position, normal or signed geometry is
 left unclassified.
@@ -38,12 +38,12 @@ the serialized payload.  H5-PASS means the transformed owner result was
 finalized, written and read at the H5 boundary.  GAP means the exact serialized
 name/path does not yet have the required transformed-input boundary proof.
 
-The static reader gate is name-complete: every one of the 191 exact rows below
+The static reader gate is name-complete: every one of the 178 exact rows below
 is opened with numpy.load(..., allow_pickle=False), either in NPY-E2E when the
 ordinary production extraction emits it or in the named optional/external
 owner proof.  The owner-specific closure includes AIMNet2, APBS and its
-Coulomb aliases, Coulomb/MOPAC-Coulomb, ORCA/mutation, Gromacs, Larsen,
-tripeptide and MOPAC parser outputs; it does not substitute for their separate
+Coulomb aliases, Coulomb/MOPAC-Coulomb, ORCA/mutation, Gromacs, Larsen and
+MOPAC parser outputs; it does not substitute for their separate
 physics oracles.
 
 The static NPY machine contract includes metadata correction 6bfe6c7: every
@@ -224,22 +224,6 @@ delta_shielding_paramagnetic.npy | MutationDeltaResult | WT-atom(N,9) ppm | T in
 delta_apbs.npy | MutationDeltaResult | WT-atom(N,12): cols0:3 P, cols3:7 structural-zero T0/T1 compatibility, cols7:12 T2 | unmatched zero gated by delta_scalars.npy col0 | DC-OR PASS owner-NPY when APBS attached; dedicated structural-zero writer test PASS
 delta_ring_proximity.npy | MutationDeltaResult | WT-atom repeated 6-blocks: z PS, theta'=pi-theta, remaining fields invariant | unmatched zero gated by delta_scalars.npy col0 | DC-OR PASS owner-NPY
 
-Tripeptide lookup/Kabsch outputs
---------------------------------
-tripeptide_bb_shielding.npy | TripeptideBackboneShieldingResult | atom(N,9) ppm | T proper-only; chiral source has no improper counterpart | unmatched all-NaN | DC-TR PASS owner-NPY
-tripeptide_bb_residual_vec.npy | TripeptideBackboneShieldingResult | atom(N,3) A | P proper-only | unmatched all-NaN | DC-TR PASS owner-NPY
-tripeptide_bb_match_distance.npy | TripeptideBackboneShieldingResult | atom(N) A | proper invariant lookup residual | NaN when method tag zero | DC-TR PASS owner-NPY
-tripeptide_bb_match_atoms.npy | TripeptideBackboneShieldingResult | atom(N,5) | proper invariant lookup provenance; no improper lookup law | col1 match mask; unmatched index zero/distance NaN/tag zero | DC-TR PASS owner-NPY
-tripeptide_bb_method_tag.npy | TripeptideBackboneShieldingResult | atom(N) | proper invariant lookup outcome; no improper law | zero unmatched, 1/2 method | DC-TR PASS owner-NPY
-tripeptide_bb_diagnostics.npy | TripeptideBackboneShieldingResult | residue(R,28), actual signed torsions PS under reflection, lookup fields chirality-conditioned | status/has-match govern NaNs | DC-TR PASS owner-NPY for proper transforms; improper source unavailable
-tripeptide_neighbor_shielding.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | T proper-only | unmatched all-NaN | TripeptideNeighborDirectionalCovariance PASS owner-NPY
-tripeptide_neighbor_shielding_prev.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | T proper-only | unmatched all-NaN | same transformed owner-NPY test PASS
-tripeptide_neighbor_shielding_next.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | T proper-only | unmatched all-NaN | same transformed owner-NPY test PASS
-tripeptide_neighbor_residual_vec_prev.npy | TripeptideNeighborShieldingResult | atom(N,3) A | P proper-only | unmatched all-NaN | same transformed owner-NPY test PASS
-tripeptide_neighbor_residual_vec_next.npy | TripeptideNeighborShieldingResult | atom(N,3) A | P proper-only | unmatched all-NaN | same transformed owner-NPY test PASS
-tripeptide_neighbor_diagnostics.npy | TripeptideNeighborShieldingResult | residue(R,59), actual signed torsions PS; lookup fields chirality-conditioned | per-side status/match governs NaNs | same transformed owner-NPY test PASS for proper transforms
-tripeptide_neighbor_reference.npy | TripeptideNeighborShieldingResult | protein(5), proper invariant source-reference/method outcome | NaN reference angles when AAA source unavailable | same transformed owner-NPY test PASS
-
 Larsen signed-rho lookup outputs
 --------------------------------
 larsen_hbond_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | T proper-only; signed-rho chiral grid has no improper source law | no pair physical zero; optional grid absent; imputation unmasked | DC-LA PASS owner-NPY
@@ -324,12 +308,6 @@ Raw time-series and mixed trajectory datasets
 /trajectory/aimnet2_charge_response_gradient_time_series/charge_response_gradient_scalar | AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult | (N,T) exact S/0e L2 vector norm | absent frames NaN/source mask | DC-AI H5-PASS, observed max error 1.31909e-5
 /trajectory/local_backbone_geometry/cb_deviation | LocalBackboneGeometryTrajectoryResult | (R,T) proper-invariant chiral-L-CB norm; no improper law | invalid/non-applicable NaN | DCT-LB exact H5-PASS, seed 0xCB10CA1B20260713, proper 2e-11 abs + 2e-12 rel; improper changes are nonvacuous
 /trajectory/local_backbone_geometry/cb_local_vector | LocalBackboneGeometryTrajectoryResult | (R,T,3) global-xyz P proper-only despite legacy name | invalid/non-applicable NaN | DCT-LB H5-PASS, seed 0xCB10CA1B20260713, proper 2e-11 abs + 2e-12 rel; improper rerun refutes false polar law
-/trajectory/tripeptide_bb_shielding_time_series/xyz | TripeptideBackboneShieldingTimeSeriesTrajectoryResult | (N,T,9) T proper-only | absent/unmatched frames/rows NaN after d40bbc0 | DC-TR H5-PASS, seed 0x5452495045505449, 8e-8 abs + 2e-10 rel
-/trajectory/tripeptide_neighbor_shielding_time_series/xyz | TripeptideNeighborShieldingTimeSeriesTrajectoryResult | (N,T,9) T proper-only | absent/unmatched NaN after d0dd4ea | DC-TN H5-PASS, seed 0x5452494E45494748, 8e-8 abs + 2e-10 rel
-/trajectory/tripeptide_bb_residual_vec_time_series/xyz | TripeptideBackboneResidualVecTimeSeriesTrajectoryResult | (N,T,3) P proper-only | absent/unmatched NaN after 0c5eb2b | DC-TR H5-PASS, same seed/tolerance
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/xyz | TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult | (N,T,3) P proper-only | absent/unmatched NaN | DC-TN H5-PASS, same seed/tolerance
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/xyz | TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult | (N,T,3) P proper-only | absent/unmatched NaN | DC-TN H5-PASS, same seed/tolerance
-/trajectory/tripeptide_bb_method_tag_time_series/method_tag | TripeptideBackboneMethodTagTimeSeriesTrajectoryResult | (N,T) proper-invariant chiral lookup outcome, no improper law | 0 no-match; group absent when source never attached | DC-TR H5-PASS, exact method identity
 /trajectory/larsen_hbond_1pHB_shielding_time_series/xyz | LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult | (N,T,9) T proper-only | absent frames NaN; empty category zero in attached frame | DC-LA H5-PASS, seed 0x4c415253454e4842, 4e-9 abs + 4e-11 rel
 /trajectory/larsen_hbond_2pHB_shielding_time_series/xyz | LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult | (N,T,9) T proper-only | same validity | DC-LA H5-PASS, same seed/tolerance
 /trajectory/larsen_hbond_1pHaB_shielding_time_series/xyz | LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult | (N,T,9) T proper-only | same validity | DC-LA H5-PASS, same seed/tolerance
@@ -748,24 +726,6 @@ they are not additional directional representations.
 /trajectory/local_backbone_geometry/frame_indices | exact frame-index provenance | DCT-LB H5-PASS
 /trajectory/local_backbone_geometry/frame_times | exact time provenance | DCT-LB H5-PASS
 /trajectory/local_backbone_geometry/source_attached_per_frame | exact source mask | DCT-LB H5-PASS
-/trajectory/tripeptide_bb_shielding_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_shielding_time_series/frame_times | exact time provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_shielding_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
-/trajectory/tripeptide_neighbor_shielding_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_shielding_time_series/frame_times | exact time provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_shielding_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
-/trajectory/tripeptide_bb_residual_vec_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_residual_vec_time_series/frame_times | exact time provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_residual_vec_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/frame_times | exact time provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/frame_times | exact time provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
-/trajectory/tripeptide_bb_method_tag_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_method_tag_time_series/frame_times | exact time provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_method_tag_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
 /trajectory/larsen_hbond_1pHB_shielding_time_series/frame_indices | exact frame-index provenance | DC-LA H5-PASS
 /trajectory/larsen_hbond_1pHB_shielding_time_series/frame_times | exact time provenance | DC-LA H5-PASS
 /trajectory/larsen_hbond_1pHB_shielding_time_series/source_attached_per_frame | exact source mask | DC-LA H5-PASS
@@ -981,22 +941,7 @@ These are not aggregate caveats; each names the affected serialized output.
     improper-transform law.  DCT-LB proves the proper law and nonvacuously
     refutes a false reflected polar/invariant law; the limitation is the
     chiral construction, not a missing metadata or serialization test.
-11. TripeptideBackboneShieldingResult: tripeptide_bb_shielding.npy,
-    tripeptide_bb_residual_vec.npy, tripeptide_bb_match_distance.npy,
-    tripeptide_bb_match_atoms.npy, tripeptide_bb_method_tag.npy and
-    tripeptide_bb_diagnostics.npy; TripeptideNeighborShieldingResult:
-    tripeptide_neighbor_shielding.npy,
-    tripeptide_neighbor_shielding_prev.npy,
-    tripeptide_neighbor_shielding_next.npy,
-    tripeptide_neighbor_residual_vec_prev.npy,
-    tripeptide_neighbor_residual_vec_next.npy,
-    tripeptide_neighbor_diagnostics.npy and
-    tripeptide_neighbor_reference.npy; plus the six exact tripeptide H5 paths
-    listed above — the unchanged chiral tensorcs15 source supplies an SO(3)
-    lookup/Kabsch contract only.  DC-TR/DC-TN rerun and serialize every named
-    owner output under proper transforms; an improper tensor law would require
-    a reflected DFT source and is deliberately not invented.
-12. LarsenHBondShieldingResult: larsen_hbond_shielding.npy,
+11. LarsenHBondShieldingResult: larsen_hbond_shielding.npy,
     larsen_hbond_1pHB_shielding.npy, larsen_hbond_2pHB_shielding.npy,
     larsen_hbond_1pHaB_shielding.npy, larsen_hbond_2pHaB_shielding.npy,
     larsen_hbond_diagnostic_CB_shielding.npy,
@@ -1012,12 +957,12 @@ These are not aggregate caveats; each names the affected serialized output.
     larsen_sidechain_donor_candidates.npy col10.  Pair-index/count/
     sidechain-count/water-term outputs are exact O(3) invariants closed by
     DC-LI and are not part of this limitation.
-13. ConformationResult/Ring::ComputeGeometry: ring_geometry.npy — DC-GR and
+12. ConformationResult/Ring::ComputeGeometry: ring_geometry.npy — DC-GR and
     NPY-E2E prove ordinary nondegenerate rings.  A collinear/collapsed
     >=3-member ring receives unconditional SVD V.col(2), an underdetermined
     potentially lab-basis-dependent unit normal with no normal-valid mask;
     zero is only the <3/default case.
-14. DsspResult: dssp_backbone.npy, dssp_ss8.npy, dssp_ppii.npy,
+13. DsspResult: dssp_backbone.npy, dssp_ss8.npy, dssp_ppii.npy,
     dssp_hbond_energy.npy and dssp_hbond_partner_residue_index.npy;
     Dssp8TimeSeriesTrajectoryResult:
     /trajectory/dssp8_time_series/ss8_code,
@@ -1039,9 +984,9 @@ Closed machine-metadata audit (not unresolved)
 ----------------------------------------------
 The former owner-H5 gaps for positions, APBS clamp/grid diagnostics, Gromacs
 boxes/tensors, local-backbone CB values, dihedral/DSSP/ring categorical
-geometry, reorientation, all tripeptide streams, all Larsen streams and the
+geometry, reorientation, all Larsen streams and the
 BS/HM/Mc/Water/Hydration/AIMNet Welford groups are closed by narrow owner-local
-commits.  Proper-only tripeptide/Larsen PackFull9 streams retain parity=mixed
+commits.  Proper-only Larsen PackFull9 streams retain parity=mixed
 while publishing the project full9 basis and Cartesian Levi-Civita T1
 semantics; no reflected-source law was invented.
 Static APBS clamp/sanitizer and DSSP companion/boundary contracts, plus Larsen
@@ -1063,20 +1008,6 @@ exact name.
 e228ecc | McConnellResult | mc_nearest_co_dir.npy,
 mc_nearest_co_midpoint.npy, mc_nearest_co_T2.npy, mc_nearest_cn_T2.npy |
 unmatched nearest-source rows remain NaN instead of manufactured zero.
-
-d40bbc0,16609dd,b2b41bd | TripeptideBackboneShieldingTimeSeriesTrajectoryResult |
-/trajectory/tripeptide_bb_shielding_time_series/xyz | NaN-fill unmatched rows;
-proper-only mixed law; Full9 basis and nonstructural Cartesian T1 semantics.
-0c5eb2b,f82c837 | TripeptideBackboneResidualVecTimeSeriesTrajectoryResult |
-/trajectory/tripeptide_bb_residual_vec_time_series/xyz | NaN-fill unmatched
-rows and replace false O(3) claim with the proper-only polar law.
-d0dd4ea,d8ce3b3,24ce286 | TripeptideNeighborShieldingTimeSeriesTrajectoryResult |
-/trajectory/tripeptide_neighbor_shielding_time_series/xyz | NaN-fill unmatched
-rows; proper-only mixed law; Full9 basis/T1 semantics.
-a2cef3f | TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult |
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/xyz | proper-only
-polar law.  5a20c06 | TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult |
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/xyz | same.
 
 e10a53e,2398d53 | BsWelfordTrajectoryResult |
 /trajectory/bs_welford/{t1,t2}_{S} | directional law restricted to assembled
@@ -1105,14 +1036,12 @@ by that commit in the STATIC / PER-POSE NPY LEDGER above |
 add coordinate_frame/transformation/validity, affine-position and native-T2
 contracts without changing a calculator body.
 6bfe6c7 | catalog-only cross-owner classification audit |
-{tripeptide_bb_match_distance,tripeptide_bb_match_atoms,
-tripeptide_bb_method_tag,tripeptide_neighbor_reference,ring_contributions,
-ring_geometry,ring_pair_geometry,spatial_neighbors,hbond_pairs_geometry,
+{ring_contributions,ring_geometry,ring_pair_geometry,spatial_neighbors,
+hbond_pairs_geometry,
 cb_residual_vector,piquad_local_frame,piquad_local_geometry,sidechain_co_frame,
 water_polarization,water_hbond_candidates,delta_apbs,delta_ring_proximity,
 mopac_global,mopac_atom_populations,mopac_atomic_orbital_populations,
 gromacs_energy,dssp_backbone,dssp_ss8,pucker_theta,
-tripeptide_bb_diagnostics,tripeptide_neighbor_diagnostics,
 larsen_hbond_pairs_geometry,larsen_hbond_pairs_isotropic,larsen_hbond_count,
 larsen_corner_imputed,larsen_imputed_pair_count,
 larsen_sidechain_carbonyl_pair_count,larsen_hbond_pairs_index,
@@ -1124,12 +1053,7 @@ default/homogeneous parity by explicit mixed/raw contracts.
 656354a | BiotSavart SDK | bs_ring_B_cylindrical.npy | raw mixed local array.
 d1a7006 | PiQuadrupole SDK | piquad_local_tensor.npy | raw ring-local array.
 ff67bb7 | LocalBackbone catalog | cb_residual_vector.npy | remove false O(3)
-VectorField/e3nn contract.  28e0790 | TripeptideBackbone catalog |
-tripeptide_bb_shielding.npy,tripeptide_bb_residual_vec.npy | proper-only raw.
-2cb9406 | TripeptideNeighbor catalog | tripeptide_neighbor_shielding.npy,
-tripeptide_neighbor_shielding_prev.npy,tripeptide_neighbor_shielding_next.npy,
-tripeptide_neighbor_residual_vec_prev.npy,
-tripeptide_neighbor_residual_vec_next.npy | proper-only raw.
+VectorField/e3nn contract.
 2b8a739 | LarsenHBond catalog | larsen_hbond_shielding.npy,
 larsen_hbond_1pHB_shielding.npy,larsen_hbond_2pHB_shielding.npy,
 larsen_hbond_1pHaB_shielding.npy,larsen_hbond_2pHaB_shielding.npy,
@@ -1201,9 +1125,7 @@ apbs_E_total_diagnostic.npy,apbs_efg.npy,apbs_efg_total_diagnostic.npy,
 apbs_E_clamp_mask.npy,apbs_E_clamp_scale.npy | continuum physical laws,
 finite-grid qualifications, clamp validity.  9eea0e4 | CoulombResult catalog |
 coulomb_E_solvent.npy,coulomb_efg_solvent.npy | inherit the APBS-alias
-finite-grid contract.  9bdd934 | TripeptideBackboneMethodTag owner |
-/trajectory/tripeptide_bb_method_tag_time_series/method_tag | proper-only
-lookup/category law.
+finite-grid contract.
 cffeebd,e971e3d | LarsenHBond/LarsenSidechainDonorAudit catalog |
 larsen_hbond_count.npy,larsen_sidechain_carbonyl_pair_count.npy,
 larsen_hbond_water_term.npy,larsen_corner_imputed.npy,
@@ -1330,9 +1252,9 @@ build/conformation_scope_tests --gtest_filter='DsspResultTest.DirectionalSignedG
   signed fields retain their named laws, and SASA max 3.7555 A^2 is within
   the explicit 4.0 A^2 PDB/libdssp envelope.
 
-build/conformation_scope_tests --gtest_filter='MopacCoulombDirectionalCovariance.RerunsProductionKernelOnTransformedCoordinatesAndFixedCharges:TripeptideBackboneDirectionalCovariance.ProductionLookupAndKabschRerunAfterProperRigidTransform:TripeptideNeighborDirectionalCovariance.ProductionLookupRerunAndAllSerializedOutputsUnderProperRigidTransform:LarsenHBondDirectionalCovariance.SyntheticGridRerunsProductionLookupAfterProperRigidTransform'
+build/conformation_scope_tests --gtest_filter='MopacCoulombDirectionalCovariance.RerunsProductionKernelOnTransformedCoordinatesAndFixedCharges:LarsenHBondDirectionalCovariance.SyntheticGridRerunsProductionLookupAfterProperRigidTransform'
   RESULT: PASS — exact transformed owner NPY plus MOPAC-Coulomb canonical/
-  legacy, tripeptide BB/neighbor and four Larsen tensor/count raw H5 datasets
+  legacy and four Larsen tensor/count raw H5 datasets
   were finalized and re-read with the proof-ID tolerances.
 
 build/conformation_scope_tests --gtest_filter='ApbsFieldResultStandalone.DirectionalFieldsRerunProductionSolveOnO3TransformedInput'

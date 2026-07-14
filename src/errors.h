@@ -20,7 +20,6 @@ enum ErrorCode : std::int32_t {
     kSessionAimnet2LoadFailed    = 0x0002,
     kSessionCalculatorConfigBad  = 0x0003,
     kSessionValidationFailed     = 0x0004,
-    kSessionTripeptideDbLoadFailed = 0x0005,
     kSessionLarsenHBondGridLoadFailed = 0x0006,
 
     kTprReadFailed               = 0x0010,

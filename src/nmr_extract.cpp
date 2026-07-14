@@ -59,7 +59,6 @@ RunOptions MakeBaseOpts(const Session& session, bool mopac) {
     opts.skip_apbs            = false;  // APBS is the canonical electrostatics — always on.
     opts.skip_coulomb         = true;   // Single-pose base omits optional Coulomb aliases.
     opts.aimnet2_model        = session.Aimnet2Model();
-    opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
     return opts;
 }
@@ -504,10 +503,6 @@ static int RunExtract(int argc, char* argv[]) {
     }
 
     if (session.LoadAimnet2Model(common.aimnet2_model_path.string()) != kOk) {
-        std::fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
-        return 1;
-    }
-    if (session.LoadTripeptideDftTable() != kOk) {
         std::fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
         return 1;
     }

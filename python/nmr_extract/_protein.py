@@ -1245,58 +1245,6 @@ class EeqGroup:
 
 
 @dataclass(frozen=True)
-class TripeptideGroup:
-    """ProCS15 (Larsen 2015) tripeptide DFT shielding lookup.
-
-    σ_BB^i (the central-residue backbone-shielding tensor) and
-    Δσ_BB^{i±1} (the cap-side neighbour correction per Larsen Eq 3) are
-    emitted by the C++ ``TripeptideBackboneShieldingResult`` and
-    ``TripeptideNeighborShieldingResult`` calculators when the
-    extraction is run against a host that has the ``tensorcs15``
-    PostgreSQL replica available (DSN configured under
-    ``[databases].tensorcs15`` in the runtime TOML).
-
-    All fields are optional; the group is attached to a Protein only
-    when at least one tripeptide NPY file is present on disk.
-
-    Per-atom convention:
-    - ``bb_shielding`` carries the raw nine-column PackFull9 tensor on
-      backbone N/CA/C/O/H/HA and central-residue sidechain atoms, NaN-filled
-      elsewhere.  Its chiral DFT lookup has a proper-rotation contract only,
-      so it is deliberately exposed as an ndarray rather than an O(3) tensor
-      wrapper.
-    - ``neighbor_shielding`` carries the summed Δσ_{i-1} + Δσ_{i+1} as
-      raw nine-column PackFull9 data.  The chiral lookup has a
-      proper-rotation contract only, so all three neighbour tensors are
-      deliberately exposed as ndarrays rather than O(3) tensor wrappers.
-    - ``bb_residual_vec`` is the central-residue match residual
-      (aligned_dft - protein_position) as raw Cartesian xyz, NaN where the
-      residue had no central match.  The chiral lookup likewise precludes a
-      single improper-transform parity.
-    - ``neighbor_residual_vec_prev/_next`` carry the per-direction cap
-      residuals as raw Cartesian xyz. NaN distinguishes "the i-1 (or i+1)
-      direction did not contribute" from a coincidentally-zero residual;
-      their chiral lookup has no single improper-transform parity.
-    - ``bb_method_tag`` encodes the DFT engine that produced the row
-      (1=OPBE Gaussian per Larsen, 2=PBE ORCA per the SER regen). 0
-      means no match.
-    """
-    bb_shielding: Optional[np.ndarray] = None
-    bb_residual_vec: Optional[np.ndarray] = None
-    bb_match_distance: Optional[np.ndarray] = None
-    bb_method_tag: Optional[np.ndarray] = None
-    bb_match_atoms: Optional[np.ndarray] = None
-    neighbor_shielding: Optional[np.ndarray] = None
-    neighbor_shielding_prev: Optional[np.ndarray] = None
-    neighbor_shielding_next: Optional[np.ndarray] = None
-    neighbor_residual_vec_prev: Optional[np.ndarray] = None
-    neighbor_residual_vec_next: Optional[np.ndarray] = None
-    neighbor_reference: Optional[np.ndarray] = None
-    bb_diagnostics: Optional[np.ndarray] = None
-    neighbor_diagnostics: Optional[np.ndarray] = None
-
-
-@dataclass(frozen=True)
 class LarsenHBondPairs:
     """Split raw Larsen pair provenance plus the compatibility view.
 
@@ -1477,9 +1425,6 @@ class Protein:
     # Geometry-dependent charges
     eeq: Optional[EeqGroup] = None
 
-    # Tripeptide DFT shielding (ProCS15 / Larsen 2015) — emitted when
-    # the extractor was run with the tensorcs15 Postgres DSN configured.
-    tripeptide: Optional[TripeptideGroup] = None
     larsen_hbond: Optional[LarsenHBondGroup] = None
     larsen_sidechain_donor_audit: Optional[
         LarsenSidechainDonorAuditGroup] = None
@@ -2215,57 +2160,6 @@ def load(path: str | Path) -> Protein:
             coulomb=eeq_coulomb,
         )
 
-    # Tripeptide DFT shielding (ProCS15 / Larsen 2015) — attached when
-    # any tripeptide NPY is present. Individual fields
-    # are wrapped (or left None) based on per-stem availability so a
-    # partial output (e.g., BB calculator ran but Neighbor did not) is
-    # still consumable.
-    tripeptide = None
-    tripeptide_stems = {
-        "tripeptide_bb_shielding",
-        "tripeptide_bb_residual_vec",
-        "tripeptide_bb_match_distance",
-        "tripeptide_bb_method_tag",
-        "tripeptide_bb_match_atoms",
-        "tripeptide_neighbor_shielding",
-        "tripeptide_neighbor_shielding_prev",
-        "tripeptide_neighbor_shielding_next",
-        "tripeptide_neighbor_residual_vec_prev",
-        "tripeptide_neighbor_residual_vec_next",
-        "tripeptide_neighbor_reference",
-        "tripeptide_bb_diagnostics",
-        "tripeptide_neighbor_diagnostics",
-    }
-    if any(stem in available for stem in tripeptide_stems):
-        tripeptide = TripeptideGroup(
-            bb_shielding=get("tripeptide_bb_shielding")
-                if "tripeptide_bb_shielding" in available else None,
-            bb_residual_vec=get("tripeptide_bb_residual_vec")
-                if "tripeptide_bb_residual_vec" in available else None,
-            bb_match_distance=get("tripeptide_bb_match_distance")
-                if "tripeptide_bb_match_distance" in available else None,
-            bb_method_tag=get("tripeptide_bb_method_tag")
-                if "tripeptide_bb_method_tag" in available else None,
-            bb_match_atoms=get("tripeptide_bb_match_atoms")
-                if "tripeptide_bb_match_atoms" in available else None,
-            neighbor_shielding=get("tripeptide_neighbor_shielding")
-                if "tripeptide_neighbor_shielding" in available else None,
-            neighbor_shielding_prev=get("tripeptide_neighbor_shielding_prev")
-                if "tripeptide_neighbor_shielding_prev" in available else None,
-            neighbor_shielding_next=get("tripeptide_neighbor_shielding_next")
-                if "tripeptide_neighbor_shielding_next" in available else None,
-            neighbor_residual_vec_prev=get("tripeptide_neighbor_residual_vec_prev")
-                if "tripeptide_neighbor_residual_vec_prev" in available else None,
-            neighbor_residual_vec_next=get("tripeptide_neighbor_residual_vec_next")
-                if "tripeptide_neighbor_residual_vec_next" in available else None,
-            neighbor_reference=get("tripeptide_neighbor_reference")
-                if "tripeptide_neighbor_reference" in available else None,
-            bb_diagnostics=get("tripeptide_bb_diagnostics")
-                if "tripeptide_bb_diagnostics" in available else None,
-            neighbor_diagnostics=get("tripeptide_neighbor_diagnostics")
-                if "tripeptide_neighbor_diagnostics" in available else None,
-        )
-
     # Larsen H-bond term shielding (Larsen 2015): spatial enumeration of
     # backbone amide-H and Halpha donors against all typed acceptor classes.
     # Group attached if any larsen_hbond_* NPY is present.
@@ -2375,7 +2269,6 @@ def load(path: str | Path) -> Protein:
         eeq=eeq,
         category_info=category_info,
         topology=topology_group,
-        tripeptide=tripeptide,
         larsen_hbond=larsen_hbond,
         larsen_sidechain_donor_audit=larsen_sidechain_donor_audit,
     )

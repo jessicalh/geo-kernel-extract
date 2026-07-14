@@ -29,10 +29,6 @@ struct AIMNet2Model;  // defined in AIMNet2Result.h; forward-declared
                       // here to avoid pulling torch into every header
                       // that sees Session.
 
-class TripeptideDftTable;  // defined in TripeptideDftTable.h;
-                           // forward-declared so consumers don't need
-                           // libpq-fe.h transitively.
-
 class LarsenHBondGrid;     // defined in LarsenHBondGrid.h;
                            // forward-declared so consumers don't need
                            // HighFive headers transitively.
@@ -60,13 +56,6 @@ public:
     // Pass the resolved path (CLI + fallback from TOML).
     Status LoadAimnet2Model(const std::string& path);
 
-    // Optional. Open a libpq connection to the local tensorcs15 replica
-    // and own the TripeptideDftTable for the Session lifetime. The DSN
-    // (libpq kv-pair string) comes from RuntimeEnvironment::TensorCs15Dsn.
-    // Empty DSN → kOk with table left null; OperationRunner skips the
-    // tripeptide calculators when no table pointer is supplied.
-    Status LoadTripeptideDftTable();
-
     // Optional. Load the 6 dense Larsen H-bond DFT grids (HDF5) and
     // own the LarsenHBondGrid for the Session lifetime. The directory
     // comes from RuntimeEnvironment::LarsenHBondGridDir. Empty dir →
@@ -80,15 +69,6 @@ public:
     // those is initialisation and lifetime discipline, not per-call routing.
     AIMNet2Model* Aimnet2Model() const { return aimnet2_model_.get(); }
     bool HasAimnet2Model() const { return aimnet2_model_ != nullptr; }
-
-    // Tripeptide DFT table accessor. Const because calculators only
-    // read; the table internally serialises libpq access.
-    const TripeptideDftTable* TripeptideDftTablePtr() const {
-        return tripeptide_dft_table_.get();
-    }
-    bool HasTripeptideDftTable() const {
-        return tripeptide_dft_table_ != nullptr;
-    }
 
     // Larsen H-bond grid accessor. Read-only after load.
     const LarsenHBondGrid* LarsenHBondGridPtr() const {
@@ -104,7 +84,6 @@ public:
 
 private:
     std::unique_ptr<AIMNet2Model> aimnet2_model_;
-    std::unique_ptr<TripeptideDftTable> tripeptide_dft_table_;
     std::unique_ptr<LarsenHBondGrid> larsen_hbond_grid_;
     std::string last_error_;
 };

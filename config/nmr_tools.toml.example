@@ -13,11 +13,6 @@ tmpdir = "/tmp/nmr_shielding"
 bmrb_atom_nom = "/opt/nmr-shielding/share/nmr-shielding/data/bmrb_atom_nom.tbl"
 larsen_hbond_grids = "/opt/nmr-shielding/share/nmr-shielding/data/larsen_hbond_grids"
 
-[databases]
-# Prefer local peer/socket auth or a service file. Avoid password-bearing DSNs
-# in process arguments or logs.
-tensorcs15 = "host=/var/run/postgresql dbname=tensorcs15 user=nmr_shielding"
-
 [logging]
 channels = "0xffffffff"
 # file = "/var/log/nmr-shielding/nmr_extract.jsonl"

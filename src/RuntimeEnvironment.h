@@ -21,12 +21,6 @@
 //                    CategoryInfoProjection at session start. Empty =
 //                    no atom_nom.tbl-driven names; projection emits AMBER
 //                    names as lookup fallbacks.
-//   tensorcs15_dsn — libpq connection string for the local tensorcs15
-//                    Postgres replica (ProCS15 tripeptide DFT data).
-//                    Read from [databases].tensorcs15 in the TOML.
-//                    Consumed by Session::LoadTripeptideDftTable.
-//                    Empty = Session leaves the table unloaded, so
-//                    OperationRunner skips tripeptide DFT calculators.
 //   larsen_hbond_grids — directory holding the 6 dense.h5 grids
 //                    produced by scripts/larsen_hbond_grid_parse/.
 //                    Read from top-level `larsen_hbond_grids` key in
@@ -58,7 +52,6 @@ public:
     static const std::string& Ff14sbParams();
     static const std::string& TmpDir();
     static const std::string& BmrbAtomNom();
-    static const std::string& TensorCs15Dsn();
     static const std::string& LarsenHBondGridDir();
 
     // Verify required runtime files exist. Returns missing name/path entries.
@@ -79,7 +72,6 @@ private:
     static std::string ff14sb_params_;
     static std::string tmpDir_;
     static std::string bmrb_atom_nom_;
-    static std::string tensorcs15_dsn_;
     static std::string larsen_hbond_grid_dir_;
     static std::string processGuid_;
     static bool loaded_;

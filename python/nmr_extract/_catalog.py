@@ -975,40 +975,6 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("omega_valid",       "planar_geometry", np.ndarray, None, False, "Per-residue uint8 validity for omega_actual/omega_sin/omega_cos",
               native_axis="residue", mechanism="geometry"),
 
-    # ── Tripeptide DFT shielding ────────────────────────────────────
-    # ProCS15 (Larsen 2015) tripeptide DFT lookup. σ_BB^i emitted on
-    # backbone N/CA/C/O/H/HA and central-residue sidechain atoms per
-    # the typed-identity-matched LarsenResidue model. Δσ_BB^{i±1}
-    # neighbor correction emitted at the central residue's atoms per
-    # Larsen Eq 3 cap-side reading. required=False because the
-    # tensorcs15 DB is not available on every host.
-    ArraySpec("tripeptide_bb_shielding",          "tripeptide", ShieldingTensor, 9,    False, "σ_BB^i — Mat3 (ppm) from typed-identity match against Larsen 2015 AXA tripeptide DFT row",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("tripeptide_bb_residual_vec",       "tripeptide", VectorField,     3,    False, "σ_BB^i match residual: aligned_dft - protein position; Vec3 ML feature (magnitude + direction)",
-              irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
-    ArraySpec("tripeptide_bb_match_distance",     "tripeptide", np.ndarray,      None, False, "σ_BB^i match distance (Å) — magnitude of residual_vec",
-              units="Å", mechanism="quantum_reference"),
-    ArraySpec("tripeptide_bb_method_tag",         "tripeptide", np.ndarray,      None, False, "DFT method discriminator: 0=none, 1=OPBE Gaussian (Larsen), 2=PBE ORCA (project SER regen)",
-              mechanism="quantum_reference"),
-    ArraySpec("tripeptide_bb_match_atoms",        "tripeptide", np.ndarray,      5,    False, "σ_BB^i atom-match metadata columns [residue_index, has_match, matched_dft_atom_idx, match_distance_A, method_tag]",
-              native_axis="atom", mechanism="quantum_reference"),
-    ArraySpec("tripeptide_neighbor_shielding",    "tripeptide", ShieldingTensor, 9,    False, "Δσ_BB^{i±1} — neighbour correction at residue i from i±1 cap reads (Larsen 2015 Eq 3)",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("tripeptide_neighbor_shielding_prev", "tripeptide", ShieldingTensor, 9,  False, "Δσ_BB^{i-1} prev-direction neighbour correction tensor before prev+next summation",
-              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("tripeptide_neighbor_shielding_next", "tripeptide", ShieldingTensor, 9,  False, "Δσ_BB^{i+1} next-direction neighbour correction tensor before prev+next summation",
-              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
-    ArraySpec("tripeptide_neighbor_residual_vec_prev", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i-1} match residual at the C-term ALA cap of (i-1)'s tripeptide; Vec3, NaN where i-1 direction had no contribution",
-              irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
-    ArraySpec("tripeptide_neighbor_residual_vec_next", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i+1} match residual at the N-term ALA cap of (i+1)'s tripeptide; Vec3, NaN where i+1 direction had no contribution",
-              irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="quantum_reference"),
-    ArraySpec("tripeptide_neighbor_reference",    "tripeptide", np.ndarray,      5,    False, "AAA reference metadata columns [aaa_calc_id, aaa_frame_type_code, aaa_phi_db_deg, aaa_psi_db_deg, any_mixed_method_flag]",
-              native_axis="protein", mechanism="quantum_reference"),
-    ArraySpec("tripeptide_bb_diagnostics", "tripeptide", np.ndarray, 28, False, "Per-residue central tripeptide lookup diagnostics including exact status (0 miss, 1 ok, 2 unsupported HID, 3 unsupported HIE, 4 perception failed), natural/used chi depth, dropped-chi distance, actual/target/database angles, residue and HIS variant",
-              native_axis="residue", units="mixed_ids_A_degrees", mechanism="quantum_reference"),
-    ArraySpec("tripeptide_neighbor_diagnostics", "tripeptide", np.ndarray, 59, False, "Per-central-residue previous/next tripeptide lookup diagnostics (28 columns each) plus AAA frame, mixed-method, and any-match flags; status codes 0 miss, 1 ok, 2 unsupported HID, 3 unsupported HIE, 4 perception failed",
-              native_axis="residue", units="mixed_ids_A_degrees", mechanism="quantum_reference"),
-
     # ────────────────────────────────────────────────────────────────
     # Larsen H-bond shielding contributions
     # (src/LarsenHBondShieldingResult.cpp). Direct DFT-grid lookup
@@ -1436,52 +1402,6 @@ _set_contract(
     ),
     irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
-    ("tripeptide_bb_residual_vec", "tripeptide_neighbor_residual_vec_prev",
-     "tripeptide_neighbor_residual_vec_next"),
-    coordinate_frame=_CARTESIAN_FRAME,
-    transformation=(
-        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
-        "L-amino-acid chirality-conditioned and has no improper-transform contract"
-    ),
-    validity="NaN where the corresponding typed DFT match/direction is absent")
-_set_contract(
-    ("tripeptide_bb_match_distance",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation=(
-        "residual magnitude invariant under proper rotations; typed "
-        "L-amino-acid lookup/proper-Kabsch alignment has no improper-transform "
-        "contract against the unchanged chiral DFT source"
-    ),
-    validity="NaN where tripeptide_bb_method_tag.npy is zero",
-    parity="mixed")
-_set_contract(
-    ("tripeptide_bb_match_atoms",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation=(
-        "all lookup-derived columns are invariant under proper rotations; "
-        "the chiral lookup/proper-Kabsch match outcome (cols1:5) has no "
-        "improper-transform contract against the unchanged DFT source"
-    ),
-    validity=(
-        "column1 is has_match; unmatched col2 DFT index uses legacy zero, "
-        "col3 distance is NaN, and col4 method tag is zero"
-    ), parity="mixed")
-_set_contract(
-    ("tripeptide_bb_method_tag",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation=(
-        "proper-rotation invariant lookup/method outcome; no improper-transform "
-        "contract for the chiral typed lookup/proper-Kabsch alignment"
-    ),
-    validity="zero means no matched DFT source; 1/2 identify the matched method",
-    parity="mixed")
-_set_contract(
-    ("tripeptide_neighbor_reference",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation=(
-        "AAA source-reference cols0:4 are proper-rotation invariant; col4 "
-        "any-mixed-method is lookup-outcome-dependent and has no improper-transform "
-        "contract for the chiral neighbor lookup"
-    ),
-    validity="protein-level row; NaN reference angles mean the AAA source is unavailable",
-    parity="mixed")
-_set_contract(
     ("atom_sasa", "atom_sasa_fraction"),
     coordinate_frame="lab_fixed_fibonacci_sampling_grid",
     transformation=(
@@ -1712,42 +1632,6 @@ _set_contract(
     ),
     validity="whole optional ORCA result absent when the parsed shielding source is unavailable",
     tensor_frame="orca_output_cartesian_xyz")
-
-_TRIPEPTIDE_TENSORS = (
-    "tripeptide_bb_shielding", "tripeptide_neighbor_shielding",
-    "tripeptide_neighbor_shielding_prev",
-    "tripeptide_neighbor_shielding_next",
-)
-_set_contract(
-    _TRIPEPTIDE_TENSORS, coordinate_frame=_CARTESIAN_FRAME,
-    transformation=(
-        "even_rank2 under proper rotations: T'=R T R^T; typed tripeptide "
-        "lookup/Kabsch alignment is L-amino-acid chirality-conditioned and has "
-        "no improper-transform contract"
-    ),
-    validity="NaN where the corresponding typed DFT match/direction is absent")
-
-# The central lookup is only covariant for proper rotations because the DFT
-# source is chiral.  Raw arrays preserve the PackFull9/xyz payload without
-# advertising an O(3) wrapper or e3nn parity that the calculator cannot obey.
-for _stem in ("tripeptide_bb_shielding", "tripeptide_bb_residual_vec"):
-    CATALOG[_stem] = replace(
-        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
-        e3nn_export="")
-
-# The neighbour lookup uses the same chiral DFT source and proper-Kabsch
-# alignment.  Preserve its raw PackFull9/xyz values, but do not attach a
-# homogeneous O(3) parity or e3nn export contract.
-for _stem in (
-    "tripeptide_neighbor_shielding",
-    "tripeptide_neighbor_shielding_prev",
-    "tripeptide_neighbor_shielding_next",
-    "tripeptide_neighbor_residual_vec_prev",
-    "tripeptide_neighbor_residual_vec_next",
-):
-    CATALOG[_stem] = replace(
-        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
-        e3nn_export="")
 
 _LARSEN_TENSORS = (
     "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
@@ -2237,24 +2121,6 @@ _set_contract(
     ("pucker_theta",), coordinate_frame=_INTRINSIC_FRAME,
     transformation="oriented Cremer-Pople phase: theta'=(theta+180 degrees) mod 360 under an improper transform",
     validity="NaN for non-five-membered rings or sub-amplitude/plane degeneracy",
-    parity="mixed")
-
-_set_contract(
-    ("tripeptide_bb_diagnostics",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation=(
-        "mixed proper-rotation invariants with signed actual torsions: cols10:12 "
-        "and14:18 reverse sign (with wrapping) under an improper transform; "
-        "lookup outcomes remain chirality-conditioned"
-    ),
-    validity="NaN fields are governed by the embedded status/has-match columns 1/2",
-    parity="mixed")
-_set_contract(
-    ("tripeptide_neighbor_diagnostics",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation=(
-        "two 28-column side blocks: actual phi/psi at base+11:13 and actual "
-        "chi at base+15:19 are signed; lookup outcomes are chirality-conditioned"
-    ),
-    validity="NaN fields are governed by each side block's status/has-match columns",
     parity="mixed")
 
 _set_contract(

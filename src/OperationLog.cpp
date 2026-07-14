@@ -105,7 +105,7 @@ static std::string BuildJson(OperationLog::Level level,
     j["op"]     = operation;
     j["detail"] = detail;
     // error_handler_t::replace: logging must never throw. detail/operation
-    // carry non-guaranteed-UTF-8 bytes (file paths, PQerrorMessage, e.what())
+    // carry non-guaranteed-UTF-8 bytes (file paths, subprocess output, e.what())
     // and the default strict dump() throws type_error.316 on a bad byte —
     // an exception out of a logging call, often on an error path. replace
     // substitutes U+FFFD instead. The old hand escaper copied raw bytes and

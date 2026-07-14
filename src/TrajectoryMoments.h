@@ -84,7 +84,7 @@ inline void WelfordUpdate(WelfordMoments& w,
 // min / max fields are already self-describing via ±infinity sentinels
 // (set at default construction) and are not touched here. This matches
 // the NaN-fill discipline used elsewhere in trajectory-scope output
-// (Tripeptide / Larsen Vec3 emitters NaN-fill source-absent atoms).
+// (conditional-source emitters NaN-fill source-absent atoms).
 //
 // Single-sample case (n == 1): std is conventionally 0 (no variance
 // from one sample). Mean / m2 are honest values from the one update.

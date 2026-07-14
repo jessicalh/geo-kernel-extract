@@ -9,11 +9,11 @@ fixed sequence, and the trajectory TimeSeries/Welford consumers.  Names are
 serialized names, not proposed aliases.  "T1" always means the project's
 Cartesian Levi-Civita dual, not a real-Y1m vector.
 
-The live catalog contains 280 array specifications.  Exactly 191 carry an
+The live catalog contains 306 array specifications.  Exactly 178 carry an
 explicit directional or load-bearing companion transformation contract;
 python/tests/test_topology_sidecar.py and the static ledger below are
-set-identical to those 191 names, with one standalone row per name.  The other
-89 entries were inspected as invariant identity/topology, scalar science,
+set-identical to those 178 names, with one standalone row per name.  The other
+128 entries were inspected as invariant identity/topology, scalar science,
 energy/charge/distance, tensor-norm, or non-directional availability data;
 none is an unclassified vector, tensor, position, normal, or signed geometry.
 
@@ -146,20 +146,6 @@ DC-OR : MutationDeltaTest.OrcaAndMutationDirectionalSourcesRerunUnderProperAndIm
         OrcaShieldingResult and MutationDeltaResult reruns.  Tensor abs 2e-9,
         rel 3e-12; vector abs 2e-10, rel 3e-12; geometry abs 2e-8; EFG
         structural-zero bound 2e-9; owning NPY bytes are checked.
-DC-TR : TripeptideBackboneDirectionalCovariance.ProductionLookupAndKabschRerunAfterProperRigidTransform
-        Seed 0x5452495045505449, proper+translation; configured tensorcs15
-        lookup, Kabsch fit, production calculator and owning NPY writer rerun.
-        Tensor/vector abs 8e-8, rel 2e-10; scalar abs 8e-8.  The chiral source
-        table has no reflected counterpart, so no improper-source claim.  The
-        exact shielding, residual-vector and method-tag H5 datasets are also
-        finalized and re-read with applicability NaNs and masks pinned.
-DC-TN : TripeptideNeighborDirectionalCovariance.ProductionLookupRerunAndAllSerializedOutputsUnderProperRigidTransform
-        Seed 0x5452494E45494748, proper+translation; configured tensorcs15
-        lookup and every neighbor tensor/residual/provenance/diagnostic NPY are
-        rerun and re-read.  Tensor/vector abs 8e-8, rel 2e-10.  The chiral
-        source table has no reflected counterpart, so no improper-source claim.
-        The exact shielding and previous/next residual-vector H5 datasets are
-        finalized and re-read, including unmatched-row NaNs and masks.
 DC-LA : LarsenHBondDirectionalCovariance.SyntheticGridRerunsProductionLookupAfterProperRigidTransform
         Seed 0x4c415253454e4842, proper+translation; production lookup and
         all fifteen owning NPY files rerun and re-read against a deterministic
@@ -302,7 +288,7 @@ SER   : NpyLocalGeometryAcceptance.StaticAndTrajectoryProductionPaths reruns
         PASS in the final rebuilt 868-test registry.
         Optional/external owner proofs apply the same NumPy reader gate to
         every name not emitted by that ordinary dry extraction, so the exact
-        191-name static ledger has complete allow_pickle=False coverage.
+        178-name static ledger has complete allow_pickle=False coverage.
 STATIC / PER-POSE NPY OUTPUTS
 =============================
 
@@ -547,23 +533,6 @@ orca_diamagnetic.npy | atom (N,9) | ppm | imported ORCA diamagnetic shielding in
 orca_paramagnetic.npy | atom (N,9) | ppm | imported ORCA paramagnetic shielding in ORCA output Cartesian frame | T, generic T0/T1/T2 | none | whole result absent/fail-loud when requested source cannot load | DC-OR,SER
 
 
-TripeptideBackboneShieldingResult / TripeptideNeighborShieldingResult
--------------------------------------------------------------------
-tripeptide_bb_shielding.npy | TripeptideBackboneShieldingResult | atom(N,9) ppm | fitted DFT tensor in conformation Cartesian xyz; T proper-only, generic irreps | unmatched all-NaN; method/match companions | DC-TR owner-NPY; unchanged chiral source has no improper counterpart
-tripeptide_neighbor_shielding.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | summed fitted DFT tensor in conformation Cartesian xyz; T proper-only | unmatched all-NaN; no direct tensor-valid mask | DC-TN owner-NPY; same improper-source caveat
-tripeptide_neighbor_shielding_prev.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | previous-neighbor fitted tensor; T proper-only | unmatched all-NaN | DC-TN owner-NPY
-tripeptide_neighbor_shielding_next.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | next-neighbor fitted tensor; T proper-only | unmatched all-NaN | DC-TN owner-NPY
-tripeptide_bb_residual_vec.npy | TripeptideBackboneShieldingResult | atom(N,3) Angstrom | fitted-position residual in conformation Cartesian xyz; P proper-only | unmatched all-NaN; method/match companions | DC-TR owner-NPY; unchanged chiral source has no improper counterpart
-tripeptide_neighbor_residual_vec_prev.npy | TripeptideNeighborShieldingResult | atom(N,3) Angstrom | previous-neighbor fitted-position residual; P proper-only | unmatched all-NaN | DC-TN owner-NPY
-tripeptide_neighbor_residual_vec_next.npy | TripeptideNeighborShieldingResult | atom(N,3) Angstrom | next-neighbor fitted-position residual; P proper-only | unmatched all-NaN | DC-TN owner-NPY
-tripeptide_bb_match_distance.npy | atom (N) | Angstrom | norm of fitted-position residual | S under proper rotations | n/a | NaN where method tag is zero | DC-TR,SER
-tripeptide_bb_match_atoms.npy | atom (N,5) | mixed ids/distance/status | lookup-derived atom match and residual audit | S under proper rotations; chiral lookup outcome has no unchanged-source improper law | n/a | has_match/method columns plus NaN distance | DC-TR,SER
-tripeptide_bb_method_tag.npy | atom (N) | categorical | selected lookup/Kabsch method | invariant under proper rotations only | n/a | zero means no match | DC-TR,SER
-tripeptide_neighbor_reference.npy | protein (1,5) | mixed ids/degrees/status | AAA reference calc id, method tag, reference phi/psi, mixed-method flag | S under proper rotations; no unchanged-source improper lookup law | n/a | whole row is lookup provenance, not an atom table | DC-TN
-tripeptide_bb_diagnostics.npy | residue (R,28) | mixed | actual/database phi/psi/chi fields include signed dihedrals | actual and database signed-angle columns are PS only if both conformation and reference source are reflected; with the unchanged chiral table they are invariant only under proper rotations; ids/distances/status S | n/a | status column distinguishes miss | DC-TR,SER
-tripeptide_neighbor_diagnostics.npy | residue (R,59) | mixed | two directional lookup diagnostic blocks | same signed-angle/chiral-source contract; other fields S under proper rotations | n/a | per-block status/any-match | DC-TN
-
-
 LarsenHBondShieldingResult / LarsenSidechainDonorAuditResult
 ------------------------------------------------------------
 larsen_hbond_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | canonical-grid shielding rotated through donor frame; T proper-only, generic irreps | physical no-pair zero; optional grid absent; imputation unmasked | DC-LA,SER; no unchanged-grid improper claim
@@ -672,12 +641,6 @@ Raw time-series datasets (their owning per-frame calculator must be rerun)
 /trajectory/aimnet2_charge_response_gradient_time_series/charge_response_gradient_scalar | (N,T) | exact S/0e L2 norm of vector | DC-AI exact transformed H5 PASS; observed max error 1.31909e-5
 /trajectory/local_backbone_geometry/cb_deviation | (R,T) | S under proper rotations; fixed-sign ideal-L-CB construction has no improper-transform contract | invalid/non-applicable NaN | DCT-LB exact H5 PASS under proper SO(3), abs 2e-11, rel 2e-12; improper rows are required to change nonvacuously
 /trajectory/local_backbone_geometry/cb_local_vector | (R,T,3) | P in global conformation xyz despite name | DCT-LB exact H5 PASS under proper SO(3), abs 2e-11, rel 2e-12; improper rerun refutes false polar law
-/trajectory/tripeptide_bb_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-TR exact transformed H5 PASS; abs 8e-8, rel 2e-10
-/trajectory/tripeptide_neighbor_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-TN exact transformed H5 PASS; abs 8e-8, rel 2e-10
-/trajectory/tripeptide_bb_residual_vec_time_series/xyz | (N,T,3) | P under SO(3) source contract | DC-TR exact transformed H5 PASS; abs 8e-8, rel 2e-10
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/xyz | (N,T,3) | P under SO(3) source contract | DC-TN exact transformed H5 PASS; abs 8e-8, rel 2e-10
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/xyz | (N,T,3) | P under SO(3) source contract | DC-TN exact transformed H5 PASS; abs 8e-8, rel 2e-10
-/trajectory/tripeptide_bb_method_tag_time_series/method_tag | (N,T) | categorical lookup/Kabsch method, invariant under proper rigid transforms; the unchanged chiral lookup table supplies no homogeneous improper law | 0 means no match; group is absent when source was never attached | DC-TR exact transformed H5 PASS
 /trajectory/larsen_hbond_1pHB_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-LA exact transformed H5 PASS; abs 4e-9, rel 4e-11
 /trajectory/larsen_hbond_2pHB_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-LA exact transformed H5 PASS; abs 4e-9, rel 4e-11
 /trajectory/larsen_hbond_1pHaB_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-LA exact transformed H5 PASS; abs 4e-9, rel 4e-11
@@ -735,12 +698,6 @@ Source-availability discipline for raw H5
 Groups with optional sources carry source_attached_per_frame and generally
 NaN-fill absent frames or suppress the group if no frame has the source.
 Exceptions that must remain visible in acceptance:
-* tripeptide BB source absent for a frame and unmatched atoms within an
-  attached frame are both NaN after the owner-local time-series correction;
-  BB method tag remains the sibling applicability field.
-* tripeptide neighbor tensor/residual rows are NaN where the corresponding
-  direction or sum did not match after the owner-local correction; the raw
-  tensor group still has no separate validity dataset.
 * water/APBS/MOPAC optional groups correctly distinguish globally absent source.
 
 
@@ -1109,24 +1066,6 @@ they are not additional directional representations.
 /trajectory/local_backbone_geometry/frame_indices | exact frame-index provenance | DCT-LB H5-PASS
 /trajectory/local_backbone_geometry/frame_times | exact time provenance | DCT-LB H5-PASS
 /trajectory/local_backbone_geometry/source_attached_per_frame | exact source mask | DCT-LB H5-PASS
-/trajectory/tripeptide_bb_shielding_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_shielding_time_series/frame_times | exact time provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_shielding_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
-/trajectory/tripeptide_neighbor_shielding_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_shielding_time_series/frame_times | exact time provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_shielding_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
-/trajectory/tripeptide_bb_residual_vec_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_residual_vec_time_series/frame_times | exact time provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_residual_vec_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/frame_times | exact time provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/frame_times | exact time provenance | DC-TN H5-PASS
-/trajectory/tripeptide_neighbor_residual_vec_next_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
-/trajectory/tripeptide_bb_method_tag_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_method_tag_time_series/frame_times | exact time provenance | DC-TR H5-PASS
-/trajectory/tripeptide_bb_method_tag_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
 /trajectory/larsen_hbond_1pHB_shielding_time_series/frame_indices | exact frame-index provenance | DC-LA H5-PASS
 /trajectory/larsen_hbond_1pHB_shielding_time_series/frame_times | exact time provenance | DC-LA H5-PASS
 /trajectory/larsen_hbond_1pHB_shielding_time_series/source_attached_per_frame | exact source mask | DC-LA H5-PASS
@@ -1225,26 +1164,15 @@ Unresolved/high-risk contract items (do not silently aggregate away)
    remain an explicit NC contract, not a test gap.
 3. GromacsEnergyResult + gromacs_energy.npy: box diagonal lengths are not
    closed under arbitrary rotation; virial/pressure symmetry is not enforced.
-4. TripeptideBackboneShieldingResult + tripeptide_bb_shielding.npy,
-   tripeptide_bb_residual_vec.npy, tripeptide_bb_match_distance.npy,
-   tripeptide_bb_match_atoms.npy, tripeptide_bb_method_tag.npy and
-   tripeptide_bb_diagnostics.npy; TripeptideNeighborShieldingResult +
-   tripeptide_neighbor_shielding.npy,
-   tripeptide_neighbor_shielding_prev.npy,
-   tripeptide_neighbor_shielding_next.npy,
-   tripeptide_neighbor_residual_vec_prev.npy,
-   tripeptide_neighbor_residual_vec_next.npy,
-   tripeptide_neighbor_diagnostics.npy and
-   tripeptide_neighbor_reference.npy have an SO(3), not O(3), source contract:
-   improper covariance requires a reflected DFT source.  LarsenHBondShieldingResult
-   + larsen_hbond_shielding.npy, larsen_hbond_1pHB_shielding.npy,
+4. LarsenHBondShieldingResult + larsen_hbond_shielding.npy,
+   larsen_hbond_1pHB_shielding.npy,
    larsen_hbond_2pHB_shielding.npy, larsen_hbond_1pHaB_shielding.npy,
    larsen_hbond_2pHaB_shielding.npy,
    larsen_hbond_diagnostic_CB_shielding.npy,
    larsen_hbond_pairs_isotropic.npy, larsen_corner_imputed.npy,
    larsen_imputed_pair_count.npy and the signed-grid/imputation columns of
    larsen_hbond_pairs_geometry.npy (cols3:5) and larsen_hbond_pairs.npy
-   (cols19:21 and22:28) have the analogous unchanged-grid improper limitation.
+   (cols19:21 and22:28) have the unchanged-grid improper limitation.
    This does not apply to raw H-O-C-third rho: DC-LI proves col2/col18 wrapped
    pseudoscalar parity, and DC-LSI proves
    larsen_sidechain_donor_candidates.npy col10 independently.  The exact
@@ -1348,8 +1276,8 @@ Resolved contract defects in this pass
   DCT-SA reaches all 42 exact H5 value paths and sasa_welford.npy.
 * Owner-local H5 metadata commits close the former raw-path gaps for positions,
   APBS grid diagnostics, Gromacs boxes/tensors, local-backbone CB quantities,
-  dihedral/DSSP/ring categorical geometry, reorientation, tripeptide and
-  Larsen outputs.  The six proper-only tripeptide/Larsen PackFull9 streams now
+  dihedral/DSSP/ring categorical geometry, reorientation and Larsen outputs.
+  The six proper-only Larsen PackFull9 streams now
   state the project full9 basis/T1 semantics while retaining parity=mixed;
   no improper-source tensor parity was invented.
 * Larsen count, sidechain-carbonyl count, pair-index and water-term outputs now

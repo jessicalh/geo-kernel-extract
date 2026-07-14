@@ -178,14 +178,14 @@ function(nmr_fail_on_portability_errors)
 endfunction()
 
 nmr_cache_from_env(NMR_SYSTEM_LIBRARY_DIR NMR_SYSTEM_LIBRARY_DIR PATH
-    "System library directory to prepend to RUNPATH / LD_LIBRARY_PATH for libpq/OpenSSL consistency")
+    "System library directory to prepend to producer RUNPATH / LD_LIBRARY_PATH")
 if(NOT NMR_SYSTEM_LIBRARY_DIR)
     if(CMAKE_LIBRARY_ARCHITECTURE AND EXISTS "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
         set(NMR_SYSTEM_LIBRARY_DIR "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
-            CACHE PATH "System library directory to prepend to RUNPATH / LD_LIBRARY_PATH for libpq/OpenSSL consistency" FORCE)
+            CACHE PATH "System library directory to prepend to producer RUNPATH / LD_LIBRARY_PATH" FORCE)
     elseif(EXISTS "/usr/lib/x86_64-linux-gnu")
         set(NMR_SYSTEM_LIBRARY_DIR "/usr/lib/x86_64-linux-gnu"
-            CACHE PATH "System library directory to prepend to RUNPATH / LD_LIBRARY_PATH for libpq/OpenSSL consistency" FORCE)
+            CACHE PATH "System library directory to prepend to producer RUNPATH / LD_LIBRARY_PATH" FORCE)
     endif()
 endif()
 option(NMR_INSTALL_RPATH_USE_ORIGIN
@@ -197,16 +197,10 @@ option(NMR_INSTALL_RPATH_USE_LINK_PATH
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH "${NMR_INSTALL_RPATH_USE_LINK_PATH}")
 
 # ============================================================================
-# RUNPATH: prepend the selected system library directory so the system libpq +
-# libssl + libcrypto trio resolves consistently. Other linked libs
-# (libmopac, libreducelib, libgromacs_mpi, libtorch, libnvrtc, ...)
-# bring their own dependency lib dirs along as RUNPATH entries
-# automatically; without this prepend the loader can pick libpq/libssl
-# from one dependency environment but libcrypto from the host system,
-# and the load fails. We
-# don't USE OpenSSL — libpq's NEEDED entries pull libssl/libcrypto
-# at process startup regardless of runtime config — but the two
-# halves of the SSL pair must come from the same install.
+# RUNPATH: prepend the selected system library directory for producer
+# dependencies. Other linked libs (libmopac, libreducelib, libgromacs_mpi,
+# libtorch, libnvrtc, ...) bring their own dependency directories along as
+# RUNPATH entries automatically.
 if(NMR_SYSTEM_LIBRARY_DIR)
     list(PREPEND CMAKE_BUILD_RPATH "${NMR_SYSTEM_LIBRARY_DIR}")
     list(APPEND CMAKE_INSTALL_RPATH "${NMR_SYSTEM_LIBRARY_DIR}")
@@ -230,41 +224,6 @@ if(NMR_DSSP_ROOT)
 endif()
 find_package(dssp QUIET)  # brings cifpp::cifpp with mm module
 
-# PostgreSQL libpq — required for TripeptideDftTable (ProCS15 tripeptide
-# DFT data lookup against the local tensorcs15 replica). The DSN is
-# read from ~/.nmr_tools.toml [databases].tensorcs15. No DSN configured
-# means TripeptideBackboneShieldingResult skips at Compute time;
-# linking is unconditional so the calculator code is always present.
-# PostgreSQL libpq — explicitly resolved so libpq, libssl, and libcrypto
-# come from one installation. We do NOT use find_package here because
-# dependency environments can provide a libpq that pulls a different
-# OpenSSL pair than the host linker resolves by default.
-nmr_cache_from_env(PostgreSQL_LIBRARY NMR_POSTGRESQL_LIBRARY FILEPATH
-    "libpq shared library")
-nmr_cache_from_env(PostgreSQL_INCLUDE_DIR NMR_POSTGRESQL_INCLUDE_DIR PATH
-    "libpq include directory containing libpq-fe.h")
-find_library(PostgreSQL_LIBRARY
-    NAMES pq
-    PATHS "${NMR_SYSTEM_LIBRARY_DIR}"
-    DOC "libpq shared library")
-find_path(PostgreSQL_INCLUDE_DIR
-    NAMES libpq-fe.h
-    PATH_SUFFIXES postgresql
-    DOC "libpq include directory containing libpq-fe.h")
-if(NOT PostgreSQL_LIBRARY OR NOT EXISTS "${PostgreSQL_LIBRARY}")
-    message(FATAL_ERROR "libpq not found. Set PostgreSQL_LIBRARY or "
-                        "NMR_POSTGRESQL_LIBRARY to the desired libpq.so.")
-endif()
-if(NOT PostgreSQL_INCLUDE_DIR OR NOT EXISTS "${PostgreSQL_INCLUDE_DIR}/libpq-fe.h")
-    message(FATAL_ERROR "libpq headers not found. Set PostgreSQL_INCLUDE_DIR "
-                        "or NMR_POSTGRESQL_INCLUDE_DIR to the directory "
-                        "containing libpq-fe.h.")
-endif()
-add_library(PostgreSQL::PostgreSQL UNKNOWN IMPORTED)
-set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
-    IMPORTED_LOCATION "${PostgreSQL_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${PostgreSQL_INCLUDE_DIR}")
-message(STATUS "PostgreSQL libpq: ${PostgreSQL_LIBRARY}")
 if(NOT dssp_FOUND)
     # Manual fallback for machines without dssp cmake config (Ubuntu 22.04).
     # Requires libdssp + dssp.hpp, cifpp from apt or another CMAKE_PREFIX_PATH.
@@ -629,8 +588,6 @@ if(FETK_PUNC)
 endif()
 target_link_libraries(apbs_bridge PRIVATE ${APBS_LIBS})
 
-nmr_require_portable_paths("PostgreSQL"
-    "${PostgreSQL_LIBRARY}" "${PostgreSQL_INCLUDE_DIR}")
 nmr_require_portable_paths("DSSP"
     "${NMR_DSSP_ROOT}" "${DSSP_LIB}" "${DSSP_INCLUDE}")
 nmr_require_portable_paths("OpenBabel"
@@ -721,12 +678,6 @@ add_library(nmr_shielding
     src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp
     src/MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp
     src/MopacVsFf14SbReconciliationTrajectoryResult.cpp
-    src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
-    src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
-    src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
-    src/TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult.cpp
-    src/TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult.cpp
-    src/TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.cpp
     src/LarsenHBondWaterTermTimeSeriesTrajectoryResult.cpp
     src/LarsenHBondCountTimeSeriesTrajectoryResult.cpp
     src/LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.cpp
@@ -810,11 +761,6 @@ add_library(nmr_shielding
     src/AIMNet2ChargeResponseGradientResult.cpp
     src/PlanarGeometryResult.cpp
     src/BondedEnergyResult.cpp
-    src/TripeptideDftTable.cpp
-    src/TripeptidePoseAssembler.cpp
-    src/TripeptideBackboneShieldingResult.cpp
-    src/TripeptideNeighborShieldingResult.cpp
-    src/LarsenResidue.cpp
     src/LarsenHBondGrid.cpp
     src/LarsenHBondGeometryCommon.cpp
     src/LarsenHBondShieldingResult.cpp
@@ -881,7 +827,6 @@ target_link_libraries(nmr_shielding PUBLIC
     ${REDUCE_LIB}
     ${REDUCE_LIBPDB}
     ${REDUCE_TOOLCLASSES}
-    PostgreSQL::PostgreSQL
     apbs_bridge
     extern_headers
     highfive
@@ -934,10 +879,6 @@ install(PROGRAMS
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
     RENAME nmr-shielding-doctor)
 install(PROGRAMS
-        scripts/tensorcs15-check.py
-    DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    RENAME nmr-tensorcs15-check)
-install(PROGRAMS
         scripts/run_with_cuda_env.sh
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
     RENAME nmr-run-with-cuda-env)
@@ -955,11 +896,6 @@ install(DIRECTORY
 install(FILES
         config/nmr_tools.toml.example
     DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/nmr-shielding")
-install(FILES
-        config/tensorcs15.manifest.toml
-    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/nmr-shielding")
-
-
 # ============================================================================
 # Tests
 #
@@ -1062,14 +998,7 @@ message(STATUS "Tests: bundled cu13 lib dir = ${NMR_NVRTC_LIB_DIR}")
 
 # Test environment string. Two prepends to LD_LIBRARY_PATH, in order:
 #
-#  1. NMR_SYSTEM_LIBRARY_DIR so the selected libpq + libssl + libcrypto
-#     trio resolves consistently. The binary's RUNPATH can include
-#     dependency lib dirs (for libreducelib, etc.), and without
-#     this prepend the loader can pick libpq/libssl from one environment
-#     but libcrypto from the host system -- load fails. We don't USE OpenSSL (DSN is a
-#     Unix socket) but libpq's NEEDED entries pull libssl/libcrypto at
-#     process startup regardless. Prepending the selected system library
-#     directory forces both halves of the SSL pair to the same install.
+#  1. NMR_SYSTEM_LIBRARY_DIR for producer runtime dependencies.
 #
 #  2. cu13 lib so libnvrtc.so.13's dlopen of libnvrtc-builtins.so.13.0
 #     succeeds at AIMNet2 inference time.
@@ -1103,8 +1032,8 @@ set(NMR_TEST_ENVIRONMENT "LD_LIBRARY_PATH=${_nmr_test_ld_library_path}")
 #   - gets NMR_TEST_DATA_DIR + tests/ on the include path;
 #   - links nmr_shielding + GTest::gtest + LINK;
 #   - is discovered via gtest_discover_tests in DISCOVERY_MODE PRE_TEST with
-#     ENVIRONMENT = NMR_TEST_ENVIRONMENT (the libssl + cu13 LD_LIBRARY_PATH
-#     that AIMNet2's torch runtime needs at test invocation).
+#     ENVIRONMENT = NMR_TEST_ENVIRONMENT (the system + cu13 LD_LIBRARY_PATH
+#     that producer dependencies need at test invocation).
 #
 # When LINK contains "highfive", NMR_HDF5_INCLUDE_DIR is prepended to
 # the include path so HighFive picks up headers matching the selected
@@ -1208,10 +1137,6 @@ nmr_test(conformation_scope_tests
         tests/test_hbond_result.cpp
         tests/test_larsen_hbond_grid.cpp
         tests/test_larsen_hbond_shielding.cpp
-        tests/test_larsen_residue_against_source_log.cpp
-        tests/test_larsen_residue_perception.cpp
-        tests/test_larsen_residue_ser_sidechain.cpp
-        tests/test_larsen_residue_wl_ambiguity.cpp
         tests/test_mcconnell_result.cpp
         tests/test_pdb_loading.cpp
         tests/test_pi_quadrupole_result.cpp
@@ -1222,8 +1147,6 @@ nmr_test(conformation_scope_tests
         tests/test_ring_susceptibility_result.cpp
         tests/test_topology_sidecar.cpp
         tests/test_traversal_dump.cpp
-        tests/test_tripeptide_backbone_shielding.cpp
-        tests/test_tripeptide_neighbor_shielding.cpp
         tests/test_two_conformations.cpp
         tests/test_write_features.cpp
         tests/topology/test_legacy_amber_semantic_integration.cpp
@@ -1286,12 +1209,6 @@ nmr_test(trajectory_scope_tests
         tests/test_rmsd_tracking.cpp
         tests/test_sasa_time_series.cpp
         tests/test_sasa_welford.cpp
-        tests/test_tripeptide_bb_method_tag_time_series.cpp
-        tests/test_tripeptide_bb_residual_vec_time_series.cpp
-        tests/test_tripeptide_bb_shielding_time_series.cpp
-        tests/test_tripeptide_neighbor_residual_vec_next_time_series.cpp
-        tests/test_tripeptide_neighbor_residual_vec_prev_time_series.cpp
-        tests/test_tripeptide_neighbor_shielding_time_series.cpp
         tests/test_trajectory_window.cpp
         tests/test_water_field_time_series.cpp
         tests/test_water_field_welford.cpp

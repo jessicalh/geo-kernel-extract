@@ -50,7 +50,6 @@
 #include "JCouplingTimeSeriesTrajectoryResult.h"
 #include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
-#include "TripeptideNeighborShieldingResult.h"
 
 // Concrete TrajectoryResults populating the canonical configurations.
 #include "BsWelfordTrajectoryResult.h"
@@ -76,12 +75,6 @@
 #include "MopacCoulombShieldingTimeSeriesTrajectoryResult.h"
 #include "MopacMcConnellShieldingTimeSeriesTrajectoryResult.h"
 #include "MopacVsFf14SbReconciliationTrajectoryResult.h"
-#include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
-#include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
-#include "TripeptideNeighborShieldingTimeSeriesTrajectoryResult.h"
-#include "TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult.h"
-#include "TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult.h"
-#include "TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.h"
 #include "LarsenHBondWaterTermTimeSeriesTrajectoryResult.h"
 #include "LarsenHBondCountTimeSeriesTrajectoryResult.h"
 #include "LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.h"
@@ -178,14 +171,6 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(GromacsFramePullResult));
     c.RequireConformationResult(typeid(GromacsEnergyResult));
     c.RequireConformationResult(typeid(BondedEnergyResult));
-    // Note: TripeptideBackbone/NeighborShieldingResult are NOT required
-    // here. They are conditionally attached by OperationRunner when the
-    // tensorcs15 DSN is configured (project precondition). The
-    // corresponding TimeSeries TRs capture whatever is in the source
-    // ConformationAtom field — zero SphericalTensor if the calc didn't
-    // run. Dep checks for always-present-when-DSN-configured deps would
-    // be cruft that breaks fleet runs that legitimately lack DSN.
-
     // Attach order is dispatch order — the argument order below is
     // load-bearing. BsWelford comes first so downstream TRs that
     // cross-read its fields (BsAnomalousAtomMarker) see fresh values.
@@ -221,14 +206,6 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     // attach per frame and those TRs would be dead-code. They live in
     // FullFatFrameExtraction. Decision
     // 2026-05-21 per science + math adversarial review H3.
-
-    // ── Tripeptide backbone + neighbor (ProCS15) shielding + residuals ──
-    Produces<TripeptideBackboneShieldingTimeSeriesTrajectoryResult,
-             TripeptideBackboneResidualVecTimeSeriesTrajectoryResult,
-             TripeptideNeighborShieldingTimeSeriesTrajectoryResult,
-             TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult,
-             TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult,
-             TripeptideBackboneMethodTagTimeSeriesTrajectoryResult>(c);
 
     // ── Larsen H-bond family (water term, count, 1°/2° HB + HαB) ──
     Produces<LarsenHBondWaterTermTimeSeriesTrajectoryResult,
