@@ -1220,6 +1220,41 @@ _set_contract(
     coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
     validity="whole WaterFieldResult is absent without solvent; clamp provenance is emitted separately")
 _set_contract(
+    ("water_shell_counts",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant first/second-shell water counts derived from "
+        "protein-water distances; translation invariant"
+    ),
+    validity=(
+        "columns are n_first,n_second; zero is the physical empty-shell "
+        "count; whole WaterFieldResult is absent without solvent"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("water_efield_clamp_mask", "water_efield_first_clamp_mask"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant int8 threshold diagnostic derived from the "
+        "corresponding water E-field magnitude; translation invariant"
+    ),
+    validity=(
+        "0/1; 1 iff the corresponding total/first-shell E row was clamped; "
+        "whole WaterFieldResult is absent without solvent"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("water_efield_clamp_scale", "water_efield_first_clamp_scale"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant scalar scale derived from the corresponding "
+        "water E-field magnitude and configured threshold; translation invariant"
+    ),
+    validity=(
+        "finite in (0,1] when the result exists; 1 means unclamped; whole "
+        "WaterFieldResult is absent without solvent"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("aimnet2_E", "aimnet2_E_backbone", "aimnet2_E_sidechain",
      "aimnet2_E_aromatic", "aimnet2_charge_response_gradient"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
