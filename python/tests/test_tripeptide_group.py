@@ -150,6 +150,30 @@ class TestTripeptideCatalog:
                     "(needs tensorcs15 DSN) so must be optional"
                 )
 
+    def test_backbone_chiral_outputs_do_not_claim_o3_wrappers(self):
+        for stem in (
+            "tripeptide_bb_shielding", "tripeptide_bb_residual_vec",
+        ):
+            spec = CATALOG[stem]
+            assert spec.wrapper is np.ndarray
+            assert spec.parity == "mixed"
+            assert not spec.irreps
+            assert not spec.e3nn_export
+
+    def test_neighbor_chiral_outputs_do_not_claim_o3_wrappers(self):
+        for stem in (
+            "tripeptide_neighbor_shielding",
+            "tripeptide_neighbor_shielding_prev",
+            "tripeptide_neighbor_shielding_next",
+            "tripeptide_neighbor_residual_vec_prev",
+            "tripeptide_neighbor_residual_vec_next",
+        ):
+            spec = CATALOG[stem]
+            assert spec.wrapper is np.ndarray
+            assert spec.parity == "mixed"
+            assert not spec.irreps
+            assert not spec.e3nn_export
+
 
 class TestTripeptideLoad:
 
@@ -179,8 +203,10 @@ class TestTripeptideLoad:
         p = load(fake_extraction)
         tp = p.tripeptide
         assert tp.bb_shielding is not None
-        # Wrapped as ShieldingTensor; underlying numpy is .data.
-        data = tp.bb_shielding.data
+        # Proper-only chiral lookup: retain the serialized PackFull9 array
+        # without advertising an O(3) tensor wrapper.
+        data = tp.bb_shielding
+        assert isinstance(data, np.ndarray)
         assert data.shape == (N_ATOMS, 9)
         # First 16 atoms = 1.0, remainder = NaN (matched / unmatched).
         assert np.all(data[:16] == 1.0)
@@ -203,8 +229,8 @@ class TestTripeptideLoad:
         next finite."""
         p = load(fake_extraction)
         tp = p.tripeptide
-        prev = tp.neighbor_residual_vec_prev.data
-        nxt = tp.neighbor_residual_vec_next.data
+        prev = tp.neighbor_residual_vec_prev
+        nxt = tp.neighbor_residual_vec_next
         assert prev.shape == (N_ATOMS, 3)
         assert nxt.shape == (N_ATOMS, 3)
 
@@ -232,8 +258,8 @@ class TestTripeptideLoad:
         p = load(fake_extraction_new)
         tp = p.tripeptide
         assert tp.bb_match_atoms.shape == (N_ATOMS, 5)
-        assert tp.neighbor_shielding_prev.data.shape == (N_ATOMS, 9)
-        assert tp.neighbor_shielding_next.data.shape == (N_ATOMS, 9)
+        assert tp.neighbor_shielding_prev.shape == (N_ATOMS, 9)
+        assert tp.neighbor_shielding_next.shape == (N_ATOMS, 9)
         assert tp.neighbor_reference.shape == (1, 5)
         assert tp.bb_diagnostics.shape == (N_ATOMS // 4, 28)
         assert tp.neighbor_diagnostics.shape == (N_ATOMS // 4, 59)
@@ -241,8 +267,8 @@ class TestTripeptideLoad:
         assert tp.neighbor_diagnostics[0, 0] == 2
         assert tp.neighbor_diagnostics[1, 28] == 3
         assert tp.bb_match_atoms[0, 2] == 1
-        assert np.all(np.isfinite(tp.neighbor_shielding_prev.data[:8]))
-        assert np.all(np.isnan(tp.neighbor_shielding_prev.data[8:]))
+        assert np.all(np.isfinite(tp.neighbor_shielding_prev[:8]))
+        assert np.all(np.isnan(tp.neighbor_shielding_prev[8:]))
         np.testing.assert_array_equal(
             tp.neighbor_reference[0],
             np.array([1234, 1, -120, 140, 1], dtype=np.float64),

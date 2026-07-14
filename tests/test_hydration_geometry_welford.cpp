@@ -24,6 +24,7 @@
 #include "HydrationGeometryResult.h"
 #include "HydrationGeometryWelfordTrajectoryResult.h"
 #include "OperationLog.h"
+#include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -58,6 +59,51 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr const char* kFixtureProtein = "1P9J_5801";
+constexpr const char* kSurfaceNormalTransformation =
+    "outward polar vector: v'=R v in the continuum limit; live upstream "
+    "finite lab-fixed Fibonacci estimator has no exact O(3) law and is "
+    "only approximately rotation-covariant within the recorded test envelope";
+constexpr const char* kSourceComponentSemantics =
+    "dipole_vector and surface_normal are independently accumulated "
+    "Cartesian x,y,z source components; they are not SphericalTensor T1 "
+    "components";
+constexpr const char* kIrrepMetadataScope =
+    "only assembled dipole component means carry exact irrep metadata; "
+    "assembled surface-normal means carry only the declared "
+    "continuum/finite-grid approximate directional law";
+constexpr const char* kDirectionalMeanTransformation =
+    "assembled dipole_vector_{x,y,z}_mean: polar vector v'=R v; assembled "
+    "surface_normal_{x,y,z}_mean: outward polar vector v'=R v in the "
+    "continuum limit, but the live upstream finite lab-fixed Fibonacci "
+    "estimator has no exact O(3) law and is only approximately "
+    "rotation-covariant within the recorded test envelope";
+constexpr const char* kScalarStatisticTransformation =
+    "for B in {half_shell_asymmetry,dipole_alignment}: "
+    "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+    "B_{delta,abs_delta,delta_squared,dxdt}_"
+    "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta are "
+    "continuum rotation invariants that inherit the live upstream finite "
+    "lab-fixed Fibonacci estimator: no exact O(3) law and only approximate "
+    "rotation covariance within the recorded test envelope";
+constexpr const char* kDirectionalMetadataScope =
+    "114 directional-or-finite-grid-qualified paths: "
+    "42 vector-component paths "
+    "dipole_vector_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame} and "
+    "surface_normal_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame}; "
+    "plus 72 scalar paths for B in "
+    "{half_shell_asymmetry,dipole_alignment}: "
+    "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+    "B_{delta,abs_delta,delta_squared,dxdt}_"
+    "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta; "
+    "excludes exact rotation-invariant dipole_magnitude_"
+    "{mean,m2,std,min,max,min_frame,max_frame} and, for E in "
+    "{dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,"
+    "shell_count}, E_{mean,m2,std,min,max,min_frame,max_frame}, "
+    "E_{delta,abs_delta,delta_squared,dxdt}_"
+    "{mean,m2,std,min,max,min_frame,max_frame}, and E_rms_delta; also "
+    "excludes "
+    "n_frames_per_atom,delta_n_per_atom,dxdt_n_per_atom,"
+    "source_attached_per_frame and group provenance";
 
 std::string TrrPathFor(const std::string& p) {
     return fs::path(p).replace_extension(".trr").string();
@@ -130,6 +176,126 @@ TEST(HydrationGeometryWelford, FinalizeIdempotency) {
 }
 
 
+TEST(HydrationGeometryWelford, H5DirectionalMetadataZeroCountSynthetic) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    ASSERT_GT(tp.AtomCount(), 1u);
+
+    auto tr = nmr::HydrationGeometryWelfordTrajectoryResult::Create(tp);
+    tr->ForceSourcePresentForTesting();
+    nmr::Trajectory traj({}, {}, {});
+    auto conf = tp.TickConformation(tp.CanonicalConformation().Positions());
+    tr->Compute(*conf, tp, traj, 7, 2.5);
+    tp.MutableAtomAt(0).hydration_geometry_welford = {};
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("hydration_geometry_welford_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+    {
+        HighFive::File file(h5_path, HighFive::File::ReadOnly);
+        auto grp = file.getGroup(
+            "/trajectory/hydration_geometry_welford");
+
+        std::string dipole_frame, dipole_parity, dipole_law;
+        std::string normal_frame, normal_parity, normal_law;
+        std::string component_semantics, scalar_law, directional_scope;
+        std::string irrep_scope, mean_law, component_law;
+        std::string zero_count_validity;
+        grp.getAttribute("dipole_vector_coordinate_frame")
+            .read(dipole_frame);
+        grp.getAttribute("dipole_vector_parity").read(dipole_parity);
+        grp.getAttribute("dipole_vector_transformation").read(dipole_law);
+        grp.getAttribute("surface_normal_coordinate_frame")
+            .read(normal_frame);
+        grp.getAttribute("surface_normal_parity").read(normal_parity);
+        grp.getAttribute("surface_normal_transformation").read(normal_law);
+        grp.getAttribute("source_component_semantics")
+            .read(component_semantics);
+        grp.getAttribute("scalar_statistic_transformation")
+            .read(scalar_law);
+        grp.getAttribute("directional_metadata_scope")
+            .read(directional_scope);
+        grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
+        grp.getAttribute("directional_mean_transformation").read(mean_law);
+        grp.getAttribute("componentwise_statistic_transformation")
+            .read(component_law);
+        grp.getAttribute("zero_count_sentinel_validity")
+            .read(zero_count_validity);
+        EXPECT_EQ(dipole_frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(dipole_parity, "1o");
+        EXPECT_EQ(dipole_law, "polar vector: v'=R v");
+        EXPECT_EQ(normal_frame, "conformation_cartesian_xyz");
+        EXPECT_EQ(normal_parity, "mixed");
+        EXPECT_EQ(normal_law, kSurfaceNormalTransformation);
+        EXPECT_EQ(component_semantics, kSourceComponentSemantics);
+        EXPECT_EQ(scalar_law, kScalarStatisticTransformation);
+        EXPECT_EQ(directional_scope, kDirectionalMetadataScope);
+        EXPECT_EQ(irrep_scope, kIrrepMetadataScope);
+        EXPECT_EQ(mean_law, kDirectionalMeanTransformation);
+        EXPECT_EQ(component_law,
+                  "componentwise m2,std,min,max,min_frame,max_frame have no "
+                  "closed irrep transformation law");
+        EXPECT_EQ(zero_count_validity,
+                  "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,"
+                  "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
+                  "n_frames_per_atom gates validity");
+
+        std::vector<std::size_t> counts;
+        grp.getDataSet("n_frames_per_atom").read(counts);
+        ASSERT_EQ(counts.size(), tp.AtomCount());
+        EXPECT_EQ(counts[0], 0u);
+        for (std::size_t i = 1; i < counts.size(); ++i) {
+            EXPECT_EQ(counts[i], 1u);
+        }
+
+        auto expect_count_gated_zero = [&](const std::string& prefix) {
+            std::vector<double> mean, m2, stddev, min, max;
+            std::vector<std::size_t> min_frame, max_frame;
+            grp.getDataSet(prefix + "_mean").read(mean);
+            grp.getDataSet(prefix + "_m2").read(m2);
+            grp.getDataSet(prefix + "_std").read(stddev);
+            grp.getDataSet(prefix + "_min").read(min);
+            grp.getDataSet(prefix + "_max").read(max);
+            grp.getDataSet(prefix + "_min_frame").read(min_frame);
+            grp.getDataSet(prefix + "_max_frame").read(max_frame);
+            ASSERT_GE(mean.size(), 2u);
+            EXPECT_TRUE(std::isnan(mean[0]));
+            EXPECT_TRUE(std::isnan(m2[0]));
+            EXPECT_TRUE(std::isnan(stddev[0]));
+            EXPECT_TRUE(std::isinf(min[0]) && min[0] > 0.0);
+            EXPECT_TRUE(std::isinf(max[0]) && max[0] < 0.0);
+            EXPECT_EQ(min_frame[0], 0u);
+            EXPECT_EQ(max_frame[0], 0u);
+
+            EXPECT_DOUBLE_EQ(mean[1], 0.0);
+            EXPECT_DOUBLE_EQ(m2[1], 0.0);
+            EXPECT_DOUBLE_EQ(stddev[1], 0.0);
+            EXPECT_DOUBLE_EQ(min[1], 0.0);
+            EXPECT_DOUBLE_EQ(max[1], 0.0);
+            EXPECT_EQ(min_frame[1], 7u);
+            EXPECT_EQ(max_frame[1], 7u);
+        };
+        for (const std::string& prefix : {
+                 "dipole_vector_x", "dipole_vector_y", "dipole_vector_z",
+                 "surface_normal_x", "surface_normal_y", "surface_normal_z"}) {
+            expect_count_gated_zero(prefix);
+        }
+    }
+    fs::remove(h5_path);
+}
+
+
 TEST(HydrationGeometryWelford, H5RoundTrip) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
@@ -171,6 +337,21 @@ TEST(HydrationGeometryWelford, H5RoundTrip) {
               "dipole_alignment,dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,half_shell_asymmetry");
     EXPECT_EQ(alias_name, "mean_net_dipole_eA");
     EXPECT_EQ(formula, "|sum d_i| / sum |d_i|");
+
+    std::string irrep_scope, mean_law, component_law, zero_count_validity;
+    grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
+    grp.getAttribute("directional_mean_transformation").read(mean_law);
+    grp.getAttribute("componentwise_statistic_transformation").read(component_law);
+    grp.getAttribute("zero_count_sentinel_validity").read(zero_count_validity);
+    EXPECT_EQ(irrep_scope, kIrrepMetadataScope);
+    EXPECT_EQ(mean_law, kDirectionalMeanTransformation);
+    EXPECT_EQ(component_law,
+              "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+              "irrep transformation law");
+    EXPECT_EQ(zero_count_validity,
+              "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,"
+              "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
+              "n_frames_per_atom gates validity");
 
     auto read_units = [&](const std::string& dataset) {
         std::string units;

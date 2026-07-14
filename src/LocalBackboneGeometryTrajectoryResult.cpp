@@ -167,6 +167,17 @@ void LocalBackboneGeometryTrajectoryResult::WriteH5Group(
     emit_f64_2d("angle_Cprev_N_CA", angle_cprev_n_ca_, "radians");
     emit_f64_2d("angle_CA_C_Nnext", angle_ca_c_nnext_, "radians");
     emit_f64_2d("cb_deviation", cb_deviation_, "Angstrom");
+    {
+        auto dataset = group.getDataSet("cb_deviation");
+        dataset.createAttribute("coordinate_frame",
+                                std::string("intrinsic_chiral_lookup"));
+        dataset.createAttribute("transformation", std::string(
+            "rotation-invariant under proper rotations; ideal-L-CB construction "
+            "is chirality-conditioned and has no improper-transform contract"));
+        dataset.createAttribute("parity", std::string("mixed"));
+        dataset.createAttribute("validity", std::string(
+            "NaN if N,CA,C,CB is absent or the N-CA-C frame is degenerate"));
+    }
 
     {
         std::vector<double> flat(R * T * 3, kNaN);
@@ -184,6 +195,15 @@ void LocalBackboneGeometryTrajectoryResult::WriteH5Group(
         dataset.write_raw(flat.data());
         dataset.createAttribute("units", std::string("Angstrom"));
         dataset.createAttribute("axis_3", std::string("global_cartesian_x_y_z"));
+        dataset.createAttribute("coordinate_frame",
+                                std::string("conformation_cartesian_xyz"));
+        dataset.createAttribute("transformation", std::string(
+            "polar displacement under proper rotations: v'=R v; the ideal-L-CB "
+            "construction mixes bond vectors with a cross product and therefore "
+            "has no single improper-transform parity"));
+        dataset.createAttribute("parity", std::string("mixed"));
+        dataset.createAttribute("validity", std::string(
+            "NaN if N,CA,C,CB is absent or the N-CA-C frame is degenerate"));
     }
 
     auto emit_mask = [&](const std::string& name,

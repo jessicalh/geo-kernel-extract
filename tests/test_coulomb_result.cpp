@@ -8,7 +8,9 @@
 #include <cctype>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <iterator>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -16,6 +18,8 @@
 
 #include "CoulombResult.h"
 #include "MopacCoulombResult.h"
+#include "MopacCoulombShieldingTimeSeriesTrajectoryResult.h"
+#include "MopacResult.h"
 #include "ChargeAssignmentResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
@@ -25,10 +29,23 @@
 #include "OrcaRunLoader.h"
 #include "ChargeSource.h"
 #include "PhysicalConstants.h"
+#include "DirectionalTestHelpers.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
+
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5File.hpp>
 
 #include <filesystem>
 namespace fs = std::filesystem;
 using namespace nmr;
+
+#ifndef NMR_TEST_PYTHON_EXECUTABLE
+#error "NMR_TEST_PYTHON_EXECUTABLE must be defined"
+#endif
+#ifndef NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT
+#error "NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT must be defined"
+#endif
 
 namespace {
 
@@ -109,6 +126,23 @@ const double* Doubles(const NpyArray& arr) {
     return reinterpret_cast<const double*>(arr.bytes.data());
 }
 
+template <typename T>
+std::vector<T> ReadH5Flat(const fs::path& path,
+                          const std::string& dataset,
+                          std::vector<std::size_t>* dimensions = nullptr) {
+    HighFive::File file(path.string(), HighFive::File::ReadOnly);
+    auto data_set = file.getDataSet(dataset);
+    const std::vector<std::size_t> dims =
+        data_set.getSpace().getDimensions();
+    if (dimensions) *dimensions = dims;
+    const std::size_t count = std::accumulate(
+        dims.begin(), dims.end(), std::size_t{1},
+        std::multiplies<std::size_t>());
+    std::vector<T> values(count);
+    if (!values.empty()) data_set.read(values.data());
+    return values;
+}
+
 void RemoveCoulombFeatureDir(const fs::path& out_dir) {
     for (const char* name : {
             "coulomb_efg.npy",
@@ -151,6 +185,406 @@ void RemoveMopacCoulombFeatures(const fs::path& out_dir) {
 }
 
 }  // namespace
+
+
+TEST(MopacCoulombDirectionalCovariance,
+     RerunsProductionKernelOnTransformedCoordinatesAndFixedCharges) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto protein = std::move(build.protein);
+    ProteinConformation& original = protein->Conformation();
+
+    auto attach_and_compute = [](ProteinConformation& conf) {
+        ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+        conf.ForceAttachResultForTesting(std::make_unique<MopacResult>());
+        for (size_t i = 0; i < conf.AtomCount(); ++i) {
+            // Deterministic injected QM-charge source.  This deliberately
+            // avoids the external MOPAC executable while the owning
+            // production Coulomb kernel is rerun in full.
+            conf.MutableAtomAt(i).mopac_charge =
+                0.02 * std::sin(0.731 * static_cast<double>(i + 1)) +
+                0.01 * std::cos(0.419 * static_cast<double>(i + 3));
+        }
+        ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+        auto result = MopacCoulombResult::Compute(conf);
+        ASSERT_NE(result, nullptr);
+        ASSERT_TRUE(conf.AttachResult(std::move(result)));
+    };
+    attach_and_compute(original);
+
+    const auto nonce = std::chrono::steady_clock::now()
+                           .time_since_epoch().count();
+    const fs::path output_root = fs::temp_directory_path() /
+        ("mopac_coulomb_directional_" + std::to_string(::getpid()) + "_" +
+         std::to_string(nonce));
+    const fs::path original_dir = output_root / "original";
+    ASSERT_TRUE(fs::create_directories(original_dir));
+    ASSERT_EQ(original.Result<MopacCoulombResult>().WriteFeatures(
+                  original, original_dir.string()), 9);
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  {original_dir / "mopac_coulomb_efg.npy",
+                   original_dir / "mopac_coulomb_E.npy",
+                   original_dir / "mopac_coulomb_E_backbone.npy",
+                   original_dir / "mopac_coulomb_E_sidechain.npy",
+                   original_dir / "mopac_coulomb_E_aromatic.npy",
+                   original_dir / "mopac_coulomb_efg_backbone.npy",
+                   original_dir / "mopac_coulomb_efg_sidechain.npy",
+                   original_dir / "mopac_coulomb_efg_aromatic.npy",
+                   original_dir / "mopac_coulomb_scalars.npy"}),
+              0);
+
+    constexpr double kVectorAbsTolerance = 2.0e-9;
+    constexpr double kVectorRelTolerance = 2.0e-11;
+    constexpr double kTensorAbsTolerance = 3.0e-9;
+    constexpr double kTensorRelTolerance = 3.0e-11;
+    constexpr double kStructuralZeroTolerance = 2.0e-10;
+
+    bool saw_backbone = false;
+    bool saw_sidechain = false;
+    bool saw_aromatic = false;
+    for (size_t i = 0; i < original.AtomCount(); ++i) {
+        saw_backbone |= original.AtomAt(i).mopac_coulomb_E_backbone.norm() > 1e-12;
+        saw_sidechain |= original.AtomAt(i).mopac_coulomb_E_sidechain.norm() > 1e-12;
+        saw_aromatic |= original.AtomAt(i).mopac_coulomb_E_aromatic.norm() > 1e-12;
+    }
+    ASSERT_TRUE(saw_backbone);
+    ASSERT_TRUE(saw_sidechain);
+    ASSERT_TRUE(saw_aromatic);
+
+    using nmr::test::directional::EvenRank2;
+    using nmr::test::directional::Near;
+    using nmr::test::directional::NearMatrix;
+    using nmr::test::directional::NearVector;
+    using nmr::test::directional::Polar;
+    using nmr::test::directional::RotateNativeT2;
+    using nmr::test::directional::SeededTransform;
+
+    const std::array<const char*, 4> vector_npys{{
+        "mopac_coulomb_E.npy",
+        "mopac_coulomb_E_backbone.npy",
+        "mopac_coulomb_E_sidechain.npy",
+        "mopac_coulomb_E_aromatic.npy",
+    }};
+    const std::array<const char*, 3> native_t2_npys{{
+        "mopac_coulomb_efg_backbone.npy",
+        "mopac_coulomb_efg_sidechain.npy",
+        "mopac_coulomb_efg_aromatic.npy",
+    }};
+    std::array<NpyArray, 4> serialized_vectors_0;
+    for (std::size_t i = 0; i < vector_npys.size(); ++i) {
+        serialized_vectors_0[i] = ReadNpy(original_dir / vector_npys[i]);
+        ASSERT_EQ(serialized_vectors_0[i].descr, "<f8");
+        ASSERT_EQ(serialized_vectors_0[i].shape,
+                  (std::vector<size_t>{original.AtomCount(), 3u}));
+    }
+    const NpyArray serialized_full9_0 =
+        ReadNpy(original_dir / "mopac_coulomb_efg.npy");
+    ASSERT_EQ(serialized_full9_0.descr, "<f8");
+    ASSERT_EQ(serialized_full9_0.shape,
+              (std::vector<size_t>{original.AtomCount(), 9u}));
+    std::array<NpyArray, 3> serialized_t2_0;
+    for (std::size_t i = 0; i < native_t2_npys.size(); ++i) {
+        serialized_t2_0[i] = ReadNpy(original_dir / native_t2_npys[i]);
+        ASSERT_EQ(serialized_t2_0[i].descr, "<f8");
+        ASSERT_EQ(serialized_t2_0[i].shape,
+                  (std::vector<size_t>{original.AtomCount(), 5u}));
+    }
+
+    std::array<nmr::test::directional::OrthogonalTransform, 2> transforms;
+    for (const bool improper : {false, true}) {
+        const auto transform =
+            SeededTransform(0x4d4f504143434f55ULL, improper);
+        transforms[improper ? 1u : 0u] = transform;
+        ProteinConformation& moved = protein->AddConformation(
+            nmr::test::directional::Positions(transform,
+                                              original.Positions()),
+            improper ? "MOPAC Coulomb improper rerun" :
+                       "MOPAC Coulomb proper rerun");
+        attach_and_compute(moved);
+
+        const fs::path moved_dir = output_root /
+            (improper ? "improper" : "proper");
+        ASSERT_TRUE(fs::create_directories(moved_dir));
+        ASSERT_EQ(moved.Result<MopacCoulombResult>().WriteFeatures(
+                      moved, moved_dir.string()), 9);
+        ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                      NMR_TEST_PYTHON_EXECUTABLE,
+                      NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                      {moved_dir / "mopac_coulomb_efg.npy",
+                       moved_dir / "mopac_coulomb_E.npy",
+                       moved_dir / "mopac_coulomb_E_backbone.npy",
+                       moved_dir / "mopac_coulomb_E_sidechain.npy",
+                       moved_dir / "mopac_coulomb_E_aromatic.npy",
+                       moved_dir / "mopac_coulomb_efg_backbone.npy",
+                       moved_dir / "mopac_coulomb_efg_sidechain.npy",
+                       moved_dir / "mopac_coulomb_efg_aromatic.npy",
+                       moved_dir / "mopac_coulomb_scalars.npy"}),
+                  0);
+        std::array<NpyArray, 4> serialized_vectors_1;
+        for (std::size_t i = 0; i < vector_npys.size(); ++i)
+            serialized_vectors_1[i] = ReadNpy(moved_dir / vector_npys[i]);
+        const NpyArray serialized_full9_1 =
+            ReadNpy(moved_dir / "mopac_coulomb_efg.npy");
+        std::array<NpyArray, 3> serialized_t2_1;
+        for (std::size_t i = 0; i < native_t2_npys.size(); ++i)
+            serialized_t2_1[i] = ReadNpy(moved_dir / native_t2_npys[i]);
+
+        for (size_t i = 0; i < original.AtomCount(); ++i) {
+            const auto& a = original.AtomAt(i);
+            const auto& b = moved.AtomAt(i);
+            for (const auto& pair : {
+                     std::pair{&a.mopac_coulomb_E_total,
+                               &b.mopac_coulomb_E_total},
+                     std::pair{&a.mopac_coulomb_E_backbone,
+                               &b.mopac_coulomb_E_backbone},
+                     std::pair{&a.mopac_coulomb_E_sidechain,
+                               &b.mopac_coulomb_E_sidechain},
+                     std::pair{&a.mopac_coulomb_E_aromatic,
+                               &b.mopac_coulomb_E_aromatic}}) {
+                EXPECT_TRUE(NearVector(*pair.second, Polar(transform, *pair.first),
+                                       kVectorAbsTolerance,
+                                       kVectorRelTolerance))
+                    << "atom=" << i << " improper=" << improper;
+            }
+
+            for (const auto& pair : {
+                     std::pair{&a.mopac_coulomb_EFG_total,
+                               &b.mopac_coulomb_EFG_total},
+                     std::pair{&a.mopac_coulomb_EFG_backbone,
+                               &b.mopac_coulomb_EFG_backbone},
+                     std::pair{&a.mopac_coulomb_EFG_sidechain,
+                               &b.mopac_coulomb_EFG_sidechain},
+                     std::pair{&a.mopac_coulomb_EFG_aromatic,
+                               &b.mopac_coulomb_EFG_aromatic}}) {
+                EXPECT_TRUE(NearMatrix(*pair.second,
+                                       EvenRank2(transform, *pair.first),
+                                       kTensorAbsTolerance,
+                                       kTensorRelTolerance))
+                    << "atom=" << i << " improper=" << improper;
+            }
+
+            for (const auto& pair : {
+                     std::pair{&a.mopac_coulomb_EFG_total_spherical,
+                               &b.mopac_coulomb_EFG_total_spherical},
+                     std::pair{&a.mopac_coulomb_EFG_backbone_spherical,
+                               &b.mopac_coulomb_EFG_backbone_spherical},
+                     std::pair{&a.mopac_coulomb_EFG_sidechain_spherical,
+                               &b.mopac_coulomb_EFG_sidechain_spherical},
+                     std::pair{&a.mopac_coulomb_EFG_aromatic_spherical,
+                               &b.mopac_coulomb_EFG_aromatic_spherical}}) {
+                const SphericalTensor expected =
+                    RotateNativeT2(transform, *pair.first);
+                EXPECT_NEAR(pair.second->T0, 0.0,
+                            kStructuralZeroTolerance);
+                for (double component : pair.second->T1) {
+                    EXPECT_NEAR(component, 0.0,
+                                kStructuralZeroTolerance);
+                }
+                for (size_t component = 0; component < 5; ++component) {
+                    EXPECT_TRUE(Near(pair.second->T2[component],
+                                     expected.T2[component],
+                                     kTensorAbsTolerance,
+                                     kTensorRelTolerance))
+                        << "atom=" << i << " T2=" << component
+                        << " improper=" << improper;
+                }
+            }
+
+            EXPECT_TRUE(Near(b.mopac_coulomb_E_magnitude,
+                             a.mopac_coulomb_E_magnitude,
+                             kVectorAbsTolerance, kVectorRelTolerance));
+            EXPECT_TRUE(Near(b.mopac_coulomb_aromatic_E_magnitude,
+                             a.mopac_coulomb_aromatic_E_magnitude,
+                             kVectorAbsTolerance, kVectorRelTolerance));
+            if (std::isnan(a.mopac_coulomb_E_bond_proj)) {
+                EXPECT_TRUE(std::isnan(b.mopac_coulomb_E_bond_proj));
+            } else {
+                EXPECT_TRUE(Near(b.mopac_coulomb_E_bond_proj,
+                                 a.mopac_coulomb_E_bond_proj,
+                                 kVectorAbsTolerance,
+                                 kVectorRelTolerance));
+            }
+            EXPECT_TRUE(Near(b.mopac_coulomb_E_backbone_frac,
+                             a.mopac_coulomb_E_backbone_frac,
+                             kVectorAbsTolerance, kVectorRelTolerance));
+
+            for (std::size_t channel = 0; channel < vector_npys.size();
+                 ++channel) {
+                const double* source = Doubles(serialized_vectors_0[channel]);
+                const double* emitted = Doubles(serialized_vectors_1[channel]);
+                const Vec3 source_vector(source[i * 3], source[i * 3 + 1],
+                                         source[i * 3 + 2]);
+                const Vec3 emitted_vector(emitted[i * 3], emitted[i * 3 + 1],
+                                          emitted[i * 3 + 2]);
+                EXPECT_TRUE(NearVector(emitted_vector,
+                                       Polar(transform, source_vector),
+                                       kVectorAbsTolerance,
+                                       kVectorRelTolerance))
+                    << "serialized " << vector_npys[channel]
+                    << " atom=" << i << " improper=" << improper;
+            }
+
+            const double* source_full9 = Doubles(serialized_full9_0) + i * 9;
+            const double* emitted_full9 = Doubles(serialized_full9_1) + i * 9;
+            SphericalTensor source_tensor;
+            source_tensor.T0 = source_full9[0];
+            for (std::size_t component = 0; component < 3; ++component)
+                source_tensor.T1[component] = source_full9[component + 1];
+            for (std::size_t component = 0; component < 5; ++component)
+                source_tensor.T2[component] = source_full9[component + 4];
+            SphericalTensor emitted_tensor;
+            emitted_tensor.T0 = emitted_full9[0];
+            for (std::size_t component = 0; component < 3; ++component)
+                emitted_tensor.T1[component] = emitted_full9[component + 1];
+            for (std::size_t component = 0; component < 5; ++component)
+                emitted_tensor.T2[component] = emitted_full9[component + 4];
+            EXPECT_TRUE(NearMatrix(
+                emitted_tensor.Reconstruct(),
+                EvenRank2(transform, source_tensor.Reconstruct()),
+                kTensorAbsTolerance, kTensorRelTolerance))
+                << "serialized mopac_coulomb_efg.npy atom=" << i
+                << " improper=" << improper;
+            EXPECT_NEAR(emitted_tensor.T0, 0.0,
+                        kStructuralZeroTolerance);
+            for (double component : emitted_tensor.T1)
+                EXPECT_NEAR(component, 0.0, kStructuralZeroTolerance);
+
+            for (std::size_t channel = 0; channel < native_t2_npys.size();
+                 ++channel) {
+                const double* source = Doubles(serialized_t2_0[channel]) + i * 5;
+                const double* emitted = Doubles(serialized_t2_1[channel]) + i * 5;
+                SphericalTensor source_t2;
+                for (std::size_t component = 0; component < 5; ++component)
+                    source_t2.T2[component] = source[component];
+                const SphericalTensor expected =
+                    RotateNativeT2(transform, source_t2);
+                for (std::size_t component = 0; component < 5; ++component) {
+                    EXPECT_TRUE(Near(emitted[component],
+                                     expected.T2[component],
+                                     kTensorAbsTolerance,
+                                     kTensorRelTolerance))
+                        << "serialized " << native_t2_npys[channel]
+                        << " atom=" << i << " T2=" << component
+                        << " improper=" << improper;
+                }
+            }
+        }
+    }
+
+    // Feed the same real owner-calculator reruns through the production raw
+    // trajectory writer.  The source, proper, and improper frames share one
+    // exact H5 payload; expected T2 values are formed by native-T2 ->
+    // Cartesian -> Q T Q^T -> native-T2, never by editing emitted output.
+    auto trajectory_protein =
+        TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(trajectory_protein, nullptr);
+    auto time_series =
+        MopacCoulombShieldingTimeSeriesTrajectoryResult::Create(
+            *trajectory_protein);
+    ASSERT_NE(time_series, nullptr);
+    Trajectory dummy("", "", "");
+    for (std::size_t frame = 0; frame < 3; ++frame) {
+        time_series->Compute(
+            trajectory_protein->ProteinRef().ConformationAt(frame),
+            *trajectory_protein, dummy, 31u + frame, 0.5 * frame);
+    }
+    time_series->Finalize(*trajectory_protein, dummy);
+    const fs::path h5_path = output_root / "mopac_coulomb_directional.h5";
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+        time_series->WriteH5Group(*trajectory_protein, file);
+    }
+    std::vector<std::size_t> h5_dims;
+    const std::vector<double> h5_t2 = ReadH5Flat<double>(
+        h5_path, "/trajectory/mopac_coulomb_efg_time_series/t2",
+        &h5_dims);
+    const std::vector<double> legacy_h5_t2 = ReadH5Flat<double>(
+        h5_path, "/trajectory/mopac_coulomb_shielding_time_series/t2");
+    std::vector<std::size_t> canonical_frame_index_dims;
+    std::vector<std::size_t> canonical_frame_time_dims;
+    const std::vector<std::uint64_t> canonical_frame_indices =
+        ReadH5Flat<std::uint64_t>(
+            h5_path,
+            "/trajectory/mopac_coulomb_efg_time_series/frame_indices",
+            &canonical_frame_index_dims);
+    const std::vector<double> canonical_frame_times = ReadH5Flat<double>(
+        h5_path,
+        "/trajectory/mopac_coulomb_efg_time_series/frame_times",
+        &canonical_frame_time_dims);
+    const std::vector<std::uint8_t> canonical_source_mask =
+        ReadH5Flat<std::uint8_t>(
+            h5_path,
+            "/trajectory/mopac_coulomb_efg_time_series/"
+            "source_attached_per_frame");
+    std::vector<std::size_t> legacy_frame_index_dims;
+    std::vector<std::size_t> legacy_frame_time_dims;
+    const std::vector<std::uint64_t> legacy_frame_indices =
+        ReadH5Flat<std::uint64_t>(
+            h5_path,
+            "/trajectory/mopac_coulomb_shielding_time_series/frame_indices",
+            &legacy_frame_index_dims);
+    const std::vector<double> legacy_frame_times = ReadH5Flat<double>(
+        h5_path,
+        "/trajectory/mopac_coulomb_shielding_time_series/frame_times",
+        &legacy_frame_time_dims);
+    const std::vector<std::uint8_t> legacy_source_mask =
+        ReadH5Flat<std::uint8_t>(
+            h5_path,
+            "/trajectory/mopac_coulomb_shielding_time_series/"
+            "source_attached_per_frame");
+    ASSERT_EQ(h5_dims,
+              (std::vector<std::size_t>{
+                  trajectory_protein->AtomCount(), 3u, 5u}));
+    ASSERT_EQ(legacy_h5_t2, h5_t2);
+    EXPECT_EQ(canonical_frame_index_dims,
+              (std::vector<std::size_t>{3u}));
+    EXPECT_EQ(canonical_frame_time_dims, canonical_frame_index_dims);
+    EXPECT_EQ(canonical_frame_indices,
+              (std::vector<std::uint64_t>{31u, 32u, 33u}));
+    EXPECT_EQ(canonical_frame_times,
+              (std::vector<double>{0.0, 0.5, 1.0}));
+    EXPECT_EQ(canonical_source_mask,
+              (std::vector<std::uint8_t>{1u, 1u, 1u}));
+    EXPECT_EQ(legacy_frame_index_dims, canonical_frame_index_dims);
+    EXPECT_EQ(legacy_frame_time_dims, canonical_frame_time_dims);
+    EXPECT_EQ(legacy_frame_indices, canonical_frame_indices);
+    EXPECT_EQ(legacy_frame_times, canonical_frame_times);
+    EXPECT_EQ(legacy_source_mask, canonical_source_mask);
+    for (std::size_t atom = 0;
+         atom < trajectory_protein->AtomCount(); ++atom) {
+        SphericalTensor source;
+        for (std::size_t component = 0; component < 5; ++component) {
+            source.T2[component] =
+                h5_t2[(atom * 3u) * 5u + component];
+        }
+        for (std::size_t frame = 1; frame < 3; ++frame) {
+            const SphericalTensor expected = RotateNativeT2(
+                transforms[frame - 1u], source);
+            for (std::size_t component = 0; component < 5; ++component) {
+                EXPECT_TRUE(Near(
+                    h5_t2[(atom * 3u + frame) * 5u + component],
+                    expected.T2[component], kTensorAbsTolerance,
+                    kTensorRelTolerance))
+                    << "/trajectory/mopac_coulomb_efg_time_series/t2"
+                    << " atom=" << atom << " frame=" << frame
+                    << " component=" << component;
+            }
+        }
+    }
+    EXPECT_TRUE(fs::remove(h5_path));
+
+    for (const char* subdir : {"original", "proper", "improper"}) {
+        const fs::path path = output_root / subdir;
+        RemoveMopacCoulombFeatures(path);
+        EXPECT_TRUE(fs::remove(path));
+    }
+    EXPECT_TRUE(fs::remove(output_root));
+}
 
 
 
@@ -589,6 +1023,22 @@ TEST_F(CoulombProteinTest, WriteFeaturesKeepsFull9AndAddsT2Companion) {
 
     const int written = result.WriteFeatures(conf, out_dir.string());
     EXPECT_EQ(written, 12);
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  {out_dir / "coulomb_efg.npy",
+                   out_dir / "coulomb_efg_t2.npy",
+                   out_dir / "coulomb_E.npy",
+                   out_dir / "coulomb_E_backbone.npy",
+                   out_dir / "coulomb_E_sidechain.npy",
+                   out_dir / "coulomb_E_aromatic.npy",
+                   out_dir / "coulomb_efg_backbone.npy",
+                   out_dir / "coulomb_efg_sidechain.npy",
+                   out_dir / "coulomb_efg_aromatic.npy",
+                   out_dir / "coulomb_scalars.npy",
+                   out_dir / "coulomb_aromatic_E_proj.npy",
+                   out_dir / "coulomb_aromatic_n_src.npy"}),
+              0);
 
     auto full = ReadNpy(out_dir / "coulomb_efg.npy");
     auto t2 = ReadNpy(out_dir / "coulomb_efg_t2.npy");

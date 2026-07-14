@@ -131,7 +131,13 @@ void TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult::WriteH5Group(
 
     grp.createAttribute("irrep_layout",  std::string("x,y,z"));
     grp.createAttribute("normalization", std::string("cartesian"));
-    grp.createAttribute("parity",        std::string("1o"));
+    grp.createAttribute("parity",        std::string("mixed"));
+    grp.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("transformation", std::string(
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract"));
     grp.createAttribute("units",         std::string("angstrom"));
 
     // Flat (N, T, 3) via explicit component access. NaN values from

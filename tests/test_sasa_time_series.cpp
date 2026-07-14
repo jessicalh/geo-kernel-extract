@@ -165,6 +165,58 @@ TEST(SasaTimeSeries, SyntheticFourFrames) {
 }
 
 
+TEST(SasaTimeSeries, FiniteGridDirectionalMetadataWithoutFleetFixture) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    ASSERT_GT(tp.AtomCount(), 0u);
+
+    auto tr = nmr::SasaTimeSeriesTrajectoryResult::Create(tp);
+    ASSERT_NE(tr, nullptr);
+    nmr::Trajectory dummy("", "", "");
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    nmr::ProteinConformation conf(
+        &tp.ProteinRef(), positions, "synthetic SASA metadata frame");
+    for (std::size_t atom = 0; atom < tp.AtomCount(); ++atom)
+        conf.MutableAtomAt(atom).atom_sasa = 0.25 * atom;
+    tr->Compute(conf, tp, dummy, 9u, 1.5);
+    tr->Finalize(tp, dummy);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("sasa_ts_directional_metadata_" + std::to_string(::getpid()) +
+         ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup("/trajectory/sasa_time_series");
+    std::string layout, parity, frame, transformation, scope, units;
+    grp.getAttribute("irrep_layout").read(layout);
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("coordinate_frame").read(frame);
+    grp.getAttribute("transformation").read(transformation);
+    grp.getAttribute("directional_metadata_scope").read(scope);
+    grp.getDataSet("sasa").getAttribute("units").read(units);
+    EXPECT_EQ(layout, "raw_scalar_no_exact_o3_irrep");
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(frame, "lab_fixed_fibonacci_sampling_grid");
+    EXPECT_EQ(transformation,
+              "continuum rotation-invariant scalar; live finite lab-fixed Fibonacci "
+              "estimator has no exact O(3) law and is only approximately invariant "
+              "within the recorded covariance-test envelope");
+    EXPECT_EQ(scope, "sasa dataset only");
+    EXPECT_EQ(units, "Angstrom^2");
+    fs::remove(h5_path);
+}
+
+
 TEST(SasaTimeSeries, Frame0Semantics) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
@@ -266,9 +318,9 @@ TEST(SasaTimeSeries, H5RoundTrip) {
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "0e");
+    EXPECT_EQ(parity, "mixed");
     EXPECT_EQ(units, "Angstrom^2");
-    EXPECT_EQ(layout, "T0");
+    EXPECT_EQ(layout, "raw_scalar_no_exact_o3_irrep");
     fs::remove(h5_path);
 }
 

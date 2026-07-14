@@ -228,6 +228,12 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
         "PerFrameRunOptions::skip_dssp == false. Reader contract: "
         "consult source_attached_per_frame mask before downstream stats; "
         "absent frames have ss8_code=255, partner=-1, energy=NaN."));
+    grp.createAttribute("dssp_coordinate_serialization", std::string(
+        "DsspResult writes a temporary PDB with coordinates rounded to "
+        "0.001 Angstrom (%8.3f) before cif++/libdssp. Physical O(3) laws "
+        "below are continuum laws; transformed production reruns can cross "
+        "a libdssp decision boundary or show bounded continuous-value drift "
+        "because of this serialization."));
     grp.createAttribute("residue_axis", std::string("protein_residue_index"));
     grp.createAttribute("atom_axis",    std::string("protein_atom_index"));
 
@@ -236,8 +242,20 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
        .createAttribute("units", std::string("frame_index"));
     grp.createDataSet("frame_times",   frame_times_)
        .createAttribute("units", std::string("ps"));
-    grp.createDataSet("source_attached_per_frame", source_attached_per_frame_)
-       .createAttribute("units", std::string("dimensionless"));
+    {
+        auto ds = grp.createDataSet(
+            "source_attached_per_frame", source_attached_per_frame_);
+        ds.createAttribute("units", std::string("dimensionless"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_source_availability"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "exact rotation/translation/reflection-invariant source-"
+            "attachment mask"));
+        ds.createAttribute("validity", std::string(
+            "1 means DsspResult attached for this frame; 0 means all "
+            "per-residue payloads in that frame carry unavailable sentinels"));
+    }
 
     // ── ss8_code (R, T) uint8 ────────────────────────────────────────
     {
@@ -253,6 +271,19 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<std::uint8_t>("ss8_code", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("category"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_dssp8_category"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "physical O(3)-invariant H/G/I/E/B/T/S/C category after the "
+            "explicit libdssp PPII-to-coil collapse; translation invariant. "
+            "A transformed production rerun may change a boundary category "
+            "when 0.001-A temporary-PDB rounding crosses a libdssp decision "
+            "threshold; that is serialization sensitivity, not parity"));
+        ds.createAttribute("validity", std::string(
+            "255 means no DSSP observation for this residue/frame; "
+            "source_attached_per_frame gates whole-frame availability and "
+            "ss8_code != 255 is the per-residue observation mask"));
     }
 
     // ── ppii_flag (R, T) uint8 ──────────────────────────────────────
@@ -269,6 +300,18 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<std::uint8_t>("ppii_flag", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("category"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_signed_dssp_chirality_category"));
+        ds.createAttribute("parity", std::string("mixed"));
+        ds.createAttribute("transformation", std::string(
+            "translation/proper-rotation invariant PPII category; reflection "
+            "negates the signed phi/psi geometry used by libdssp, so the "
+            "chirality-conditioned predicate has no fixed improper-transform "
+            "map. The 0.001-A temporary-PDB rounding can affect values at a "
+            "classification boundary"));
+        ds.createAttribute("validity", std::string(
+            "1=PPII, 0=observed non-PPII, 255=no DSSP observation; "
+            "source_attached_per_frame gates whole-frame availability"));
     }
 
     // ── Helpers for the four 2-slot (R, T, 2) datasets ───────────────
@@ -288,6 +331,17 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<std::int32_t>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("residue_index"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_protein_residue_identity"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "O(3)-invariant residue identity of the distance-derived DSSP "
+            "hydrogen-bond partner; translation invariant"));
+        ds.createAttribute("validity", std::string(
+            "nonnegative values are protein residue indices; -1 means no "
+            "mapped partner or no DSSP observation. Use ss8_code != 255 for "
+            "the per-residue observation mask and source_attached_per_frame "
+            "for whole-frame availability"));
     };
     auto emit_energy = [&](const std::string& name,
                             const std::vector<std::vector<
@@ -305,6 +359,21 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("kcal/mol"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_dssp_hbond_energy"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "continuum rotation/translation/reflection-invariant DSSP "
+            "electrostatic H-bond energy scalar; transformed production "
+            "reruns use an absolute 5e-3 kcal/mol envelope because the "
+            "temporary PDB rounds coordinates to 0.001 Angstrom"));
+        ds.createAttribute("covariance_tolerance", std::string(
+            "absolute 5e-3 kcal/mol at the serialized DsspResult/libdssp "
+            "boundary; recorded forcing-transform maximum 4e-3 kcal/mol"));
+        ds.createAttribute("validity", std::string(
+            "finite only for a mapped partner on an observed residue; NaN "
+            "means no mapped partner or no DSSP observation. Partner >= 0 "
+            "and ss8_code != 255 are the corresponding validity gates"));
     };
 
     emit_partner("hbond_acceptor_partner", hbond_acceptor_partner_);
@@ -313,8 +382,20 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
     emit_energy ("hbond_donor_energy",     hbond_donor_energy_);
 
     // ── Per-atom lookup (N,) ─────────────────────────────────────────
-    grp.createDataSet("residue_index_per_atom", residue_index_per_atom_)
-       .createAttribute("units", std::string("residue_index"));
+    {
+        auto ds = grp.createDataSet(
+            "residue_index_per_atom", residue_index_per_atom_);
+        ds.createAttribute("units", std::string("residue_index"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_topology_lookup"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "exact rotation/translation/reflection-invariant atom-to-"
+            "residue topology lookup"));
+        ds.createAttribute("validity", std::string(
+            "ordinary typed proteins populate every atom row with a "
+            "nonnegative protein residue index"));
+    }
 
     OperationLog::Info(LogCalcOther,
         "Dssp8TimeSeriesTrajectoryResult::WriteH5Group",

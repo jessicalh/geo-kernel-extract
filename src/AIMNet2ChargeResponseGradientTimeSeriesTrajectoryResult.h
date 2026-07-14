@@ -36,8 +36,13 @@
 //       irrep_layout_vector     = "x,y,z"      (Cartesian component order)
 //       normalization_vector    = "cartesian"
 //       parity_vector           = "1o"         (odd parity, rank-1)
+//       vector_coordinate_frame = "conformation_cartesian_xyz"
+//       vector_transformation   = "polar vector: v'=R v"
 //       irrep_layout_scalar     = "T0"         (rank-0 invariant)
 //       parity_scalar           = "0e"
+//       directional_metadata_scope = "charge_response_gradient_vector
+//          payload only; scalar norm, frame indices/times, and source mask
+//          are invariant"
 //       source                  describes the AIMNet2ChargeResponseGradientResult vector/scalar fields
 //       source_attached_policy  = "always_attached" — but Compute's
 //                                  HasResult gate emits NaN-fill +

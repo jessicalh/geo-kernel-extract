@@ -44,6 +44,16 @@
 // ss8_transition_count and ss8_transition_matrix (no-transition
 // frames bump occupancy only).
 //
+// Directional contract: ss8_transition_count, ss8_dominant,
+// ss8_occupancy, and ss8_transition_matrix are intrinsic O(3)-invariant
+// category statistics after the same explicit PPII ('P') -> coil ('C'=7)
+// collapse as Dssp8TimeSeriesTrajectoryResult. DsspResult reaches libdssp
+// through a temporary PDB rounded to 0.001 A, so a transformed production
+// rerun can cross a libdssp classification boundary even though the physical
+// continuum statistic is invariant. n_frames_observed is an exact invariant
+// companion because it counts mapped/observed rows, not SS labels. Dataset
+// attrs emitted by WriteH5Group state these laws and validity gates.
+//
 
 #include "TrajectoryResult.h"
 

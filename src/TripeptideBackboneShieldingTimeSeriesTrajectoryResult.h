@@ -21,14 +21,26 @@
 //       result_name    = "TripeptideBackboneShieldingTimeSeriesTrajectoryResult"
 //       irrep_layout   = "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
-//       parity         = "0e+1e+2e"
+//       parity         = "mixed"
+//       coordinate_frame = "conformation_cartesian_xyz"
+//       tensor_basis   = "project_native_full9_spherical_tensor_v1"
+//       tensor_component_order = "T0,T1_x,T1_y,T1_z,T2_m-2,...,T2_m+2"
+//       tensor_frame   = "conformation_cartesian_xyz"
+//       tensor_t1_semantics = "Cartesian Levi-Civita dual ..."
+//       tensor_t1_structural_zero = false
+//       tensor_structural_zero_components = "none"
+//       e3nn_export    = "explicit project-basis ... conversion required"
+//       normalization_scope = "xyz tensor payload: T2 uses ..."
+//       transformation = "even_rank2 under proper rotations: ..."
 //       units          = "ppm"
 //       n_atoms, n_frames, finalized
 //
-// Why parity "0e+1e+2e": the tripeptide DFT tensor σ_BB^i is a
-// rank-2 magnetic-shielding tensor (same shape and parity as the
-// Biot-Savart kernel). Both magnetic-kernel shielding TRs share this
-// parity.
+// The packed tensor obeys T'=R T R^T under proper rotations.  Its typed
+// lookup/proper-Kabsch alignment is conditioned on an unchanged chiral
+// L-amino-acid DFT source, so no improper-transform parity is claimed.
+// The T1 entries are the exact Cartesian Levi-Civita dual
+// ((T_yz-T_zy)/2, (T_zx-T_xz)/2, (T_xy-T_yx)/2), not real-Y1m, and are
+// generically nonzero. T2 alone uses the isometric real-tesseral basis.
 //
 
 #include "DenseBuffer.h"
@@ -54,8 +66,9 @@ public:
     // No trajectory-scope dependencies; the underlying ConformationResult
     // (TripeptideBackboneShieldingResult) is conditionally attached when
     // the [databases].tensorcs15 table is configured. This TR captures
-    // whatever is in tripeptide_bb_shielding_spherical each frame —
-    // zero-default SphericalTensor if the calc did not attach.
+    // the per-atom tensor and `tripeptide_bb_has_match` applicability
+    // state each frame. H5 rows are NaN when the source did not attach
+    // or the atom had no DFT match.
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
     static std::unique_ptr<TripeptideBackboneShieldingTimeSeriesTrajectoryResult>
@@ -87,6 +100,10 @@ private:
     // Per-atom growing buffers of SphericalTensor. Flattened into an
     // atom-major DenseBuffer<SphericalTensor> at Finalize.
     std::vector<std::vector<SphericalTensor>> per_atom_shielding_;
+    // Internal atom-by-frame applicability, captured from
+    // ConformationAtom::tripeptide_bb_has_match. It is intentionally not
+    // emitted as a new H5 dataset; it only controls NaN filling of xyz.
+    std::vector<std::vector<std::uint8_t>> per_atom_has_match_;
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 

@@ -143,6 +143,16 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group(
         std::string("Per-atom H-bond pair count: sum over 1°HB + 2°HB + "
                     "1°HαB + 2°HαB contributions this frame "
                     "(LarsenContribDispatch / Larsen Table 2)."));
+    grp.createAttribute("coordinate_frame",
+        std::string("intrinsic_pair_count"));
+    grp.createAttribute("parity", std::string("even"));
+    grp.createAttribute("transformation", std::string(
+        "exact rotation/translation/reflection-invariant count: topology, "
+        "distance, and theta gate pair success; periodic rho only selects "
+        "tensor values and imputation provenance"));
+    grp.createAttribute("validity", std::string(
+        "physical zero means no contributing pair; "
+        "source_attached_per_frame records calculator availability"));
 
     std::vector<int> flat(N * T);
     for (std::size_t i = 0; i < N; ++i) {

@@ -24,6 +24,7 @@ from nmr_extract import (
     ShieldingTensor,
     EFGTensor,
     E3nnTensor,
+    PositionField,
     VectorField,
     MagneticVectorField,
     PerRingTypeT0,
@@ -202,9 +203,9 @@ class TestIdentity:
         valid = {1, 6, 7, 8, 16}
         assert set(geo.element.tolist()).issubset(valid)
 
-    def test_pos_is_vectorfield(self, geo):
-        assert isinstance(geo.pos, VectorField)
-        assert geo.pos.irreps == Irreps("1x1o")
+    def test_pos_is_affine_positionfield(self, geo):
+        assert isinstance(geo.pos, PositionField)
+        assert not hasattr(geo.pos, "irreps")
 
     def test_large_protein(self, geo):
         """1Q8K has 4876 atoms — this is a real fleet protein."""

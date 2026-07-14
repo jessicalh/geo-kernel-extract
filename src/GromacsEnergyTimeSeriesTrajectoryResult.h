@@ -45,6 +45,13 @@
 //     attrs: result_name, n_frames, finalized, units = "kJ/mol"
 //            tensor_layout = "XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"
 //
+// Directional dataset contracts:
+//   box_x/box_y/box_z are axis-tied simulation-cell diagnostics.  A general
+//   cell has no closed O(3) law because this schema retains only three
+//   diagonal lengths (an isotropic cubic cell is the invariant special case).
+//   virial/pressure_tensor are full row-major Cartesian even-rank-2 tensors:
+//   T'=R T R^T, with no structural-zero components assumed.
+//
 // Dependencies: GromacsEnergyResult — REQUIRED by PerFrameExtractionSet
 // but conditionally attached by OperationRunner: if the .edr energy file
 // is missing or `Trajectory::EnergyAtTime` returns null for a frame,

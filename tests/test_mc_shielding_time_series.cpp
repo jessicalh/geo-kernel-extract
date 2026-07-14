@@ -37,6 +37,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -100,6 +101,98 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 }
 
 }  // namespace
+
+
+TEST(McConnellShieldingTimeSeries,
+     H5DirectionalMetadataIsExactWithoutFleetFixture) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    ASSERT_GT(tp.AtomCount(), 0u);
+
+    auto tr = nmr::McConnellShieldingTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Trajectory traj({}, {}, {});
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    auto conf = std::make_unique<nmr::ProteinConformation>(
+        &tp.ProteinRef(), positions, "synthetic McConnell metadata frame");
+    const nmr::SphericalTensor expected = SyntheticTensor(0, 0);
+    conf->MutableAtomAt(0).mc_shielding_contribution = expected;
+
+    tr->Compute(*conf, tp, traj, 0, 0.0);
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("mc_shielding_ts_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup("/trajectory/mc_shielding_time_series");
+    auto ds = grp.getDataSet("xyz");
+    EXPECT_EQ(ds.getSpace().getDimensions(),
+              (std::vector<std::size_t>{tp.AtomCount(), 1u, 9u}));
+
+    std::string basis;
+    std::string order;
+    std::string tensor_frame;
+    std::string coordinate_frame;
+    std::string parity;
+    std::string tensor_parity;
+    std::string transformation;
+    std::string t1_semantics;
+    std::string structural_zero_components;
+    std::string normalization_scope;
+    bool t1_structural_zero = true;
+    grp.getAttribute("tensor_basis").read(basis);
+    grp.getAttribute("tensor_component_order").read(order);
+    grp.getAttribute("tensor_frame").read(tensor_frame);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("tensor_parity").read(tensor_parity);
+    grp.getAttribute("tensor_transformation").read(transformation);
+    grp.getAttribute("tensor_t1_semantics").read(t1_semantics);
+    grp.getAttribute("tensor_t1_structural_zero").read(
+        t1_structural_zero);
+    grp.getAttribute("tensor_structural_zero_components").read(
+        structural_zero_components);
+    grp.getAttribute("normalization_scope").read(normalization_scope);
+
+    EXPECT_EQ(basis, nmr::kMcConnellPackFull9TensorBasis);
+    EXPECT_EQ(order, nmr::kMcConnellPackFull9ComponentOrder);
+    EXPECT_EQ(tensor_frame, nmr::kMcConnellPackFull9TensorFrame);
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(parity, "0e+1e+2e");
+    EXPECT_EQ(tensor_parity, "even");
+    EXPECT_EQ(transformation, "even_rank2: T'=R T R^T");
+    EXPECT_EQ(t1_semantics,
+        "Cartesian Levi-Civita dual x,y,z (not real-Y1m): "
+        "a=((T_yz-T_zy)/2,(T_zx-T_xz)/2,(T_xy-T_yx)/2); "
+        "axial a'=det(R) R a; generically nonzero");
+    EXPECT_FALSE(t1_structural_zero);
+    EXPECT_EQ(structural_zero_components, "none");
+    EXPECT_EQ(normalization_scope,
+        "xyz tensor payload: T2 uses isometric real-tesseral "
+        "normalization; T1 uses the tensor_t1_semantics convention");
+
+    std::vector<double> flat(tp.AtomCount() * 9u);
+    ds.read(flat.data());
+    double expected_pack[9]{};
+    expected.PackFull9(expected_pack);
+    for (std::size_t k = 0; k < 9u; ++k)
+        EXPECT_DOUBLE_EQ(flat[k], expected_pack[k]);
+
+    fs::remove(h5_path);
+}
 
 
 TEST(McConnellShieldingTimeSeries, SyntheticFourFrames) {
@@ -288,11 +381,14 @@ TEST(McConnellShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 9u);
 
-    std::string basis, order, frame, tensor_parity, e3nn_export;
+    std::string basis, order, frame, coordinate_frame, parity;
+    std::string tensor_parity, e3nn_export;
     std::string units, normalization;
     grp.getAttribute("tensor_basis").read(basis);
     grp.getAttribute("tensor_component_order").read(order);
     grp.getAttribute("tensor_frame").read(frame);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("parity").read(parity);
     grp.getAttribute("tensor_parity").read(tensor_parity);
     grp.getAttribute("e3nn_export").read(e3nn_export);
     grp.getAttribute("units").read(units);
@@ -300,10 +396,11 @@ TEST(McConnellShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(basis, nmr::kMcConnellPackFull9TensorBasis);
     EXPECT_EQ(order, nmr::kMcConnellPackFull9ComponentOrder);
     EXPECT_EQ(frame, nmr::kMcConnellPackFull9TensorFrame);
+    EXPECT_EQ(coordinate_frame, nmr::kMcConnellPackFull9TensorFrame);
+    EXPECT_EQ(parity, "0e+1e+2e");
     EXPECT_EQ(tensor_parity, "even");
     EXPECT_EQ(e3nn_export, nmr::kMcConnellPackFull9E3nnExport);
     EXPECT_FALSE(grp.hasAttribute("irrep_layout"));
-    EXPECT_FALSE(grp.hasAttribute("parity"));
     EXPECT_EQ(units, "Angstrom^-3");
     EXPECT_EQ(normalization, "isometric_real_sph");
 

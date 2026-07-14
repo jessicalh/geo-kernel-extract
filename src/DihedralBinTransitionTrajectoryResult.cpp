@@ -456,6 +456,35 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
         "source_attached_per_frame", source_attached_per_frame_);
     ds_attached.createAttribute("units", std::string("dimensionless"));
 
+    // The bins are computed from signed dihedrals. Proper rigid transforms
+    // preserve every bin, but reflection does not induce one global
+    // permutation on the coarse Rama/rotamer categories (the chi==0 endpoint
+    // is itself fixed while generic g- maps to g+). Keep the category and
+    // transition payloads explicitly mixed rather than labelling their counts
+    // as ordinary invariant scalars.
+    for (const char* name : {
+             "backbone_transition_count", "backbone_dominant_region",
+             "backbone_bin_occupancy", "chi_transition_count",
+             "chi_dominant_rotamer", "chi_rotamer_occupancy"}) {
+        auto ds = grp.getDataSet(name);
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_signed_dihedral_bins"));
+        ds.createAttribute("parity", std::string("mixed"));
+        ds.createAttribute("transformation", std::string(
+            "translation/proper-rotation invariant bin statistic; signed "
+            "dihedral reflection can merge or split coarse bins, so there "
+            "is no global improper-transform map"));
+    }
+    for (const char* name : {"n_frames_observed",
+                             "chi_n_frames_observed"}) {
+        auto ds = grp.getDataSet(name);
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_observation_count"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "exact rotation/translation/reflection-invariant finiteness count"));
+    }
+
     OperationLog::Info(LogCalcOther,
         "DihedralBinTransitionTrajectoryResult::WriteH5Group",
         "wrote /trajectory/dihedral_bin_transition with " +

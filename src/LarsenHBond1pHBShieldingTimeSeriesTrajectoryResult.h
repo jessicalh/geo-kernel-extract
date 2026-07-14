@@ -17,8 +17,24 @@
 //   frame_axis             = "trajectory_frame_row"
 //   irrep_layout  = "PackFull9: [T0, T1_cartesian_xyz, T2_real_tesseral_m-2..m+2]"
 //   normalization = "isometric_real_sph"
-//   parity        = "0e+1e+2e"
+//   parity        = "mixed"
+//   coordinate_frame = "conformation_cartesian_xyz"
+//   tensor_basis  = "project_native_full9_spherical_tensor_v1"
+//   tensor_component_order = "T0,T1_x,T1_y,T1_z,T2_m-2,...,T2_m+2"
+//   tensor_frame  = "conformation_cartesian_xyz"
+//   tensor_t1_semantics = exact Cartesian Levi-Civita dual
+//   tensor_t1_structural_zero = false
+//   tensor_structural_zero_components = "none"
+//   e3nn_export   = explicit project-basis conversion required
+//   normalization_scope = T2 real-tesseral; T1 Levi-Civita convention
+//   transformation = "even_rank2 under proper rotations: ..."
 //   units         = "ppm"
+//
+// The signed-rho DFT-grid lookup is chirality-conditioned.  Its packed
+// shielding tensor obeys T'=R T R^T under proper rotations, but no
+// improper-transform parity is claimed.
+// T1 is a=((T_yz-T_zy)/2,(T_zx-T_xz)/2,(T_xy-T_yx)/2), an axial
+// Cartesian Levi-Civita dual (not real-Y1m), and is generically nonzero.
 //
 
 #include "DenseBuffer.h"

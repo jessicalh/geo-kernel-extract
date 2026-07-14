@@ -22,10 +22,16 @@
 //       normalization  = "cartesian"
 //       parity         = "1o"
 //       units          = "V/Angstrom"
+//       directional_metadata_scope = xyz only; clamp diagnostics and APBS
+//                                    grid diagnostics carry dataset-local
+//                                    scalar/lab-axis contracts
 //       n_atoms, n_frames, finalized
 //
 // Parity "1o": E-field is a polar (true) vector, parity-odd under
-// inversion. Same parity convention as PositionsTimeSeries.
+// inversion. Same parity convention as PositionsTimeSeries.  The APBS grid
+// diagnostics are axis-aligned to the fixed laboratory axes.  The physical
+// field has the polar continuum law, but the live finite-difference solve is
+// only approximately covariant within its recorded production-rerun envelope.
 //
 
 #include "DenseBuffer.h"

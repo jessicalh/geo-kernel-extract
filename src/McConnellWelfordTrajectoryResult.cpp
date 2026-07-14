@@ -239,6 +239,72 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("frame_index_range", frame_index_range_);
     grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
+    grp.createAttribute("parity",         std::string("0e+1e+2e"));
+    // Source-sample tensor convention.  These attributes describe the
+    // per-frame SphericalTensor components accumulated by this writer; the
+    // directional law closes only for the assembled component means below.
+    grp.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("source_tensor_basis",
+        std::string("project_native_full9_spherical_tensor_v1"));
+    grp.createAttribute("source_tensor_component_order", std::string(
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("source_tensor_parity", std::string("even"));
+    grp.createAttribute("source_tensor_transformation",
+        std::string("even_rank2: T'=R T R^T"));
+    grp.createAttribute("source_tensor_structural_zero_components",
+        std::string("none"));
+    grp.createAttribute("t1_basis",
+        std::string("project_native_cartesian_levi_civita_dual_xyz_v1"));
+    grp.createAttribute("t1_component_order",
+        std::string("T1_x,T1_y,T1_z"));
+    grp.createAttribute("t1_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("t1_parity", std::string("even"));
+    grp.createAttribute("t1_transformation",
+        std::string("axial_vector: a'=det(R) R a"));
+    grp.createAttribute("t1_semantics", std::string(
+        "Cartesian Levi-Civita dual x,y,z (not real-Y1m): "
+        "a=((T_yz-T_zy)/2,(T_zx-T_xz)/2,(T_xy-T_yx)/2); "
+        "axial a'=det(R) R a; generically nonzero"));
+    grp.createAttribute("t1_structural_zero", false);
+    grp.createAttribute("t2_basis",
+        std::string("project_native_t2_isometric_real_tesseral_v1"));
+    grp.createAttribute("t2_component_order",
+        std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("t2_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("t2_parity", std::string("even"));
+    grp.createAttribute("t2_transformation",
+        std::string("even_rank2: T'=R T R^T"));
+    grp.createAttribute("t2_structural_zero", false);
+    grp.createAttribute("normalization", std::string("isometric_real_sph"));
+    grp.createAttribute("normalization_scope", std::string(
+        "t2_* source components use Frobenius-isometric real-tesseral "
+        "normalization; t1_* source components use the t1_semantics "
+        "Cartesian Levi-Civita convention"));
+    grp.createAttribute("e3nn_export", std::string(
+        "raw project tensor; call project_t2_to_e3nn() for assembled "
+        "t2_mean before using e3nn Irreps; assembled t1_mean is Cartesian "
+        "Levi-Civita 1e"));
+    grp.createAttribute("irrep_metadata_scope", std::string(
+        "only assembled component means carry directional irrep metadata"));
+    grp.createAttribute("directional_mean_transformation", std::string(
+        "t0_mean is invariant; assembled t1_mean is axial: a'=det(R) R a; "
+        "assembled t2_mean is even rank-2: T'=R T R^T"));
+    grp.createAttribute("componentwise_statistic_transformation", std::string(
+        "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+        "irrep transformation law"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "t1_mean,t1_m2,t1_std,t1_min,t1_max,t1_min_frame,t1_max_frame,"
+        "t2_mean,t2_m2,t2_std,t2_min,t2_max,t2_min_frame,t2_max_frame; "
+        "only t1_mean and t2_mean obey the declared directional laws; all "
+        "other named paths are componentwise statistics with no closed "
+        "irrep transformation law"));
+    grp.createAttribute("zero_count_sentinel_validity", std::string(
+        "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,max=-inf,"
+        "min_frame=0,max_frame=0 are invalid sentinels; n_frames_per_atom "
+        "gates validity"));
     // Group-level `units` describes the primary value channel. Per-
     // dataset `units` attributes are authoritative for each individual
     // dataset (e.g. *_m2 is squared, *_delta_squared_* is squared,

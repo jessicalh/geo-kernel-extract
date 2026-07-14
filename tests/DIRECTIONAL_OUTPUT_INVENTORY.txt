@@ -1,0 +1,1397 @@
+DIRECTIONAL OUTPUT INVENTORY — PRE-FREEZE PASS
+================================================
+
+Scope and authority
+-------------------
+This inventory was derived from the live Compute bodies, ConformationAtom
+ownership banners, ConformationResult::WriteAllFeatures, OperationRunner's
+fixed sequence, and the trajectory TimeSeries/Welford consumers.  Names are
+serialized names, not proposed aliases.  "T1" always means the project's
+Cartesian Levi-Civita dual, not a real-Y1m vector.
+
+The live catalog contains 280 array specifications.  Exactly 191 carry an
+explicit directional or load-bearing companion transformation contract;
+python/tests/test_topology_sidecar.py and the static ledger below are
+set-identical to those 191 names, with one standalone row per name.  The other
+89 entries were inspected as invariant identity/topology, scalar science,
+energy/charge/distance, tensor-norm, or non-directional availability data;
+none is an unclassified vector, tensor, position, normal, or signed geometry.
+
+Transformation symbols
+----------------------
+Q  : an arbitrary orthogonal 3x3 matrix, det(Q)=+1 proper or -1 improper
+t  : translation
+P  : polar vector,             v' = Q v                         (1o)
+A  : axial vector,             a' = det(Q) Q a                  (1e)
+X  : position,                 p' = Q p + t                     (affine)
+T  : ordinary even rank two,   T' = Q T Q^T                     (0e+1e+2e)
+S  : rotation-invariant scalar
+PS : pseudoscalar,             s' = det(Q) s
+ST : symmetric/traceless T; project PackFull9 T0 and T1 are structural zero
+L  : calculator-defined local-frame quantity; its frame law is stated inline
+
+For every ordinary T tensor, PackFull9 is
+  [T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2].
+T0 is invariant, T1 is AXIAL under improper Q, and native T2 is the isometric
+five-component real-tesseral project basis.  "T1 structural zero" means the
+Cartesian tensor is symmetric; "T0 structural zero" means it is traceless.
+
+Covariance test IDs and recorded tolerances
+-------------------------------------------
+DC-GR : DirectionalCovariance.GeometrySpatialRingBsHmPiQuadrupoleAndMcConnellRerunO3
+        Seeds 0xD1AEC710, proper+improper, translated; production Compute rerun.
+        Geometry abs 2e-11, rel 2e-12; analytic kernels abs 2e-12, rel 2e-10;
+        HM adaptive quadrature abs 2e-11, rel 8e-9.
+DC-PL : DirectionalCovariance.PlanarSignedGeometryRerunO3
+        Seed 0x91A4A2; proper+improper+translation; angular 2e-11 rad,
+        pucker phase 2e-9 degree.
+DC-EL : DirectionalCovariance.CoulombAndEeqCoulombRerunO3WithNativeT2
+        Seed 0xE1EC7A05; proper+improper+translation; production Compute rerun;
+        abs 2e-9, rel 2e-10; EFG structural-zero abs 2e-9.
+DC-WH : DirectionalCovariance.WaterFieldAndHydrationGeometryRerunO3WithTransformedSolvent
+        Seed 0x50A7E17; protein and every water site transformed; real Compute rerun.
+DC-HB : DirectionalCovariance.HBondDirectionsRerunO3
+        Seed 0xAB01D5; explicit-H/DSSP forcing fixture; real Compute rerun.
+DC-SA : DirectionalCovariance.SasaRerunO3BoundedByRecordedFibonacciDiscretizationError
+        Seed 0x5A5A2026; real Compute rerun.  Finite lab-fixed 92-point Fibonacci
+        quadrature is not exactly O(3)-closed; recorded 4.0 A^2 (three sample
+        cells on this fixture) and 0.15 unit-normal bounds are stated in the
+        test and are not machine-precision claims.
+DC-LB : DirectionalCovariance.LocalBackboneCbResidualVectorRerunProperWithSerializedMask
+        Seed 0xCBA11BAC; proper+translation only; real Compute and NPY writer;
+        geometry abs 2e-11, rel 2e-12. Improper chirality is not claimed.
+DC-SC : DirectionalCovariance.SidechainCarbonylFrameAndFixedTensorRerunO3Serialized
+        Seed 0x51DEC0A2; proper+improper+translation; real Geometry/McConnell/
+        SidechainCarbonyl Compute and NPY writers; geometry abs 2e-11,
+        rel 2e-12; fixed tensor abs 2e-12, rel 2e-10.
+DC-PI : DirectionalCovariance.PiQuadrupoleLocalMixedParityRerunO3Serialized
+        Seed 0x91A0CA11; proper+improper+translation; every declared owner
+        dependency and PiQuadrupoleLocalTensor Compute rerun; NPY rows checked;
+        geometry abs 2e-11, rel 2e-12; tensor abs 2e-12, rel 2e-10.
+DC-WB : DirectionalCovariance.WaterHBondCandidateAbsolutePositionsRerunO3Serialized
+        Seed 0xA27B0D11; protein and all water sites transformed; real Compute
+        and NPY writer; geometry abs 2e-11, rel 2e-12. Collinear acos endpoint
+        observed error 8.5377363e-7 degree, with named 2e-6 degree bound.
+DC-DS : DsspResultTest.DirectionalSignedGeometryAndPpiiRerunProductionLibdsspOnO3
+        Seed 0xD55A2026, proper+improper+translation; production libdssp is
+        rerun through PDB serialization and every owning NPY is re-read.
+        Signed-torsion bound 5e-2 rad records coordinate-formatting/libdssp
+        drift; serialized SASA uses the named 4.0 A^2 PDB/libdssp envelope
+        (observed O(3) maximum 3.755500793 A^2).  dssp_ss8.npy and the
+        helix/sheet flags in dssp_backbone.npy were exact on this forcing
+        fixture under proper and improper reruns because the ordinary SS8
+        surface collapses PPII P to coil C.  Their physical continuum law is
+        O(3)-invariant, but the producer contract still allows a 0.001-A PDB
+        rounding boundary crossing.  dssp_ppii.npy deliberately retains the
+        reflection-sensitive distinction and has no homogeneous improper law.
+        The atom-broadcast H-bond energy/partner arrays and observation/
+        torsion-valid masks are also re-read; energies use 5e-3 kcal/mol.
+DC-AP : ApbsFieldResultStandalone.DirectionalFieldsRerunProductionSolveOnO3TransformedInput
+        Seeds 0xA9B5F13C (generic reference orientation) and 0xA9B5F13D
+        (proper+improper); production APBS solve and owning NPY writer rerun.
+        At the finite-distance neutral probe on the 161^3 cubic forcing grid,
+        recorded maxima are E abs 0.0146388 V/A (relative 0.278660), EFG abs
+        0.033567 V/A^2 (relative 0.356559), and phi abs 9.24672e-4 V.  Enforced
+        bounds are E abs 1.8e-2 + rel 5e-2, EFG abs 4.0e-2 + rel 5e-2, and phi
+        abs 1.2e-3.  The deposited charge's singular self-stencil and the
+        default axis-wise bounding-box domain are explicitly outside this
+        finite-grid covariance claim.  The same owner reruns are finalized,
+        written and re-read at /trajectory/apbs_efield_time_series/xyz and
+        /trajectory/apbs_efg_time_series/t2; clamp_mask, clamp_scale, both
+        source masks and all six lab-axis grid-provenance datasets are checked
+        at the H5 boundary.  The unclamped transformed probe keeps mask=0 and
+        scale=1 exactly; a separate analytic production forcing test pins the
+        nontrivial clamped scale formula and serialized payload.
+DC-AI : AIMNet2ChargeResponseGradientTest.DirectionalOutputsRerunProductionModelOnO3TransformedInput
+        Seed 0xA1E7C0A2, proper+improper+translation; OperationRunner reruns
+        the production CUDA TorchScript model and the owning writers.  Bounds:
+        charge abs 1e-5; vector abs 1e-4 + rel 2e-5; tensor abs 3e-4 + rel
+        2e-5.  Recorded maxima are charge 2.07126e-6, vector L2 3.58545e-5,
+        tensor Frobenius 9.89809e-5, gradient scalar 1.31909e-5.  The raw
+        gradient-vector time series and one-frame Welford vector_mean are
+        finalized and re-read from their exact H5 datasets with the same
+        bounds; the scalar companion, counts and source masks are pinned.
+DC-MC : MopacCoulombDirectionalCovariance.RerunsProductionKernelOnTransformedCoordinatesAndFixedCharges
+        Seed 0x4d4f504143434f55, proper+improper+translation; the owning
+        production kernel is rerun with a deterministic fixed scalar charge
+        source.  Vector abs 2e-9/rel 2e-11; tensor abs 3e-9/rel 3e-11;
+        EFG structural-zero bound 2e-10.  Both the canonical
+        /trajectory/mopac_coulomb_efg_time_series/t2 and legacy
+        /trajectory/mopac_coulomb_shielding_time_series/t2 aliases are
+        finalized and re-read from the same three-frame H5 payload.  This is
+        a kernel covariance test, not a rerun of the external MOPAC executable.
+DC-MX : MopacExternalDirectionalFreeze.RealExecutableRerunO3NpyH5AndNonClosedAoDiagnostics
+        Seed 0x4D4F5041434F3355, proper+improper+translation; the configured
+        PM7+MOZYME executable is rerun on the checked-in protonated 1UBQ
+        TYR59-ASN60-ILE61 window (54 atoms, typed ASN SidechainCO).  All ten
+        mc_*_bo.npy names, sidechain_co_bo_T2.npy, mopac_global.npy, both AO
+        population arrays and /trajectory/mopac_mc_shielding_time_series/xyz
+        are serialized and re-read.  Production MOZYME has deterministic
+        localized-orbital SCF axis/origin sensitivity: enforced envelopes are
+        BO abs 6e-3, tensor abs 3e-3+rel 1.5e-2, neutral dipole abs 0.3 D+rel
+        1e-2, heat abs 1e-2 kcal/mol and shell total abs 7e-3 electron.
+        Recorded maxima are BO 0.004, tensor Frobenius 0.00161322 (aggregate
+        H5 0.00234259), dipole L2 0.258904 D, heat 0.0072 kcal/mol and shell
+        total 0.00543 electron.  Exact H5 serialization error is zero.  Raw
+        AO diagonals change by 0.35461 electron and reject a false polar
+        px/py/pz law by at least 1.8938 electron: NC is proven, not hidden.
+        Exactly seven finite-nonzero BO categories on this fixture are peptide_co,
+        peptide_cn, backbone_other, sidechain_co, sidechain_other,
+        backbone_xh and sidechain_xh.  Exactly two categories, disulfide and
+        s_h, are zero because the fixture has no such source; aromatic_zeroed
+        is the tenth category and its required policy zero.
+DC-OR : MutationDeltaTest.OrcaAndMutationDirectionalSourcesRerunUnderProperAndImproperO3
+        Seed 0x4f5243414d555441, proper+improper+translation; imported ORCA
+        source coordinates and tensors are transformed before production
+        OrcaShieldingResult and MutationDeltaResult reruns.  Tensor abs 2e-9,
+        rel 3e-12; vector abs 2e-10, rel 3e-12; geometry abs 2e-8; EFG
+        structural-zero bound 2e-9; owning NPY bytes are checked.
+DC-TR : TripeptideBackboneDirectionalCovariance.ProductionLookupAndKabschRerunAfterProperRigidTransform
+        Seed 0x5452495045505449, proper+translation; configured tensorcs15
+        lookup, Kabsch fit, production calculator and owning NPY writer rerun.
+        Tensor/vector abs 8e-8, rel 2e-10; scalar abs 8e-8.  The chiral source
+        table has no reflected counterpart, so no improper-source claim.  The
+        exact shielding, residual-vector and method-tag H5 datasets are also
+        finalized and re-read with applicability NaNs and masks pinned.
+DC-TN : TripeptideNeighborDirectionalCovariance.ProductionLookupRerunAndAllSerializedOutputsUnderProperRigidTransform
+        Seed 0x5452494E45494748, proper+translation; configured tensorcs15
+        lookup and every neighbor tensor/residual/provenance/diagnostic NPY are
+        rerun and re-read.  Tensor/vector abs 8e-8, rel 2e-10.  The chiral
+        source table has no reflected counterpart, so no improper-source claim.
+        The exact shielding and previous/next residual-vector H5 datasets are
+        finalized and re-read, including unmatched-row NaNs and masks.
+DC-LA : LarsenHBondDirectionalCovariance.SyntheticGridRerunsProductionLookupAfterProperRigidTransform
+        Seed 0x4c415253454e4842, proper+translation; production lookup and
+        all fifteen owning NPY files rerun and re-read against a deterministic
+        synthetic grid.
+        Tensor abs 4e-9, rel 4e-11; geometry abs 3e-10.  The chiral grid has
+        no reflected counterpart, so no improper-source claim.  All four
+        component shielding time series plus the applied-pair count are
+        finalized and re-read from their exact H5 datasets.
+DC-LI : LarsenHBondDirectionalCovariance.PairGateAndWaterOutputsAreExactUnderImproperProductionRerun
+        Seed 0x4c415253454e4f33; production Geometry, SpatialIndex and Larsen
+        owners rerun after an improper transform with the deterministic grid.
+        larsen_hbond_count.npy, larsen_sidechain_carbonyl_pair_count.npy,
+        larsen_hbond_water_term.npy and larsen_hbond_pairs_index.npy are exact
+        serialized identities.  The raw H-O-C-third rho in
+        larsen_hbond_pairs_geometry.npy col2 and larsen_hbond_pairs.npy col18
+        is required to reverse sign modulo 360 degrees; r/theta, frame-valid,
+        sparse identity and split-table NaN masks are pinned without imposing
+        an improper law on signed-grid isotropics/imputation.  Nonzero rho and
+        positive pair/sidechain counts make the proof nonvacuous.  The exact
+        count and water-term H5 paths are finalized/re-read.
+DC-LS : LarsenSidechainDonorDirectionalCovariance.ProductionRerunAndSerializedCandidatesUnderProperRigidTransform
+        Seed 0x4C415253454E5343, proper+translation; the sidechain-donor audit
+        owner and larsen_sidechain_donor_candidates.npy are rerun and re-read.
+        Geometry abs 3e-10.
+DC-LSI: LarsenSidechainDonorDirectionalCovariance.SignedRhoFlipsUnderImproperProductionRerunAndSerializedReadback
+        Seed 0x4C415253454E5344, improper+translation; the coordinate-only
+        audit owner is rerun.  Candidate identity, distances, angle and status
+        are invariant; the H-O-C-third rho col10 reverses sign modulo 360
+        degrees in memory and in the owning NPY.  Geometry abs 3e-10 and a
+        finite nonzero rho row is required.
+DC-GM : GromacsEnergyDirectionalCovariance.ProductionRerunAndExactNpyH5UnderO3
+        Seed 0x47524f4d41435345, proper+improper+translation; transformed
+        external tensor payload is passed back through production Compute.
+        Tensor abs 3e-13, rel 3e-14.  Exact (1,43) NPY and virial, pressure,
+        isotropic-box, scalar and mask H5 datasets are re-read.  Only an
+        isotropic box is O(3)-closed; the three stored general box diagonals
+        are not.
+DC-T2 : DirectionalCovariance.NativeT2BasisRoundTripUsesCartesianQtQt
+        Seed 0x725B4515; native-T2 reconstruct -> Q T Q^T -> decompose.
+DCT-POS : DirectionalTrajectoryCovariance.PositionsTimeSeriesRerunO3SerializedH5
+          Seed 0xB051710; proper+improper+translation; production Compute,
+          Finalize and H5 writer; position-vector error bound 2e-12 Angstrom.
+DCT-REO : DirectionalTrajectoryCovariance.ReorientationalBodyTensorRerunO3SerializedH5
+          Seed 0xAE071E17; six internally perturbed frames, proper+improper;
+          real Kabsch/Finalize/H5 path; body tensor abs 8e-11, rel 2e-10;
+          TCF abs 8e-11.
+DCT-KW : DirectionalTrajectoryCovariance.KernelOwnerWelfordAssembledMeansRerunO3SerializedH5
+          Seed 0x0E1F04D; three frames; real BS/HM/Mc owner reruns feed their
+          Welford results. Mean bounds: BS/Mc abs 3e-12, rel 3e-10; HM abs
+          3e-11, rel 1e-8. Component m2/std/min/max/frame extrema are explicitly
+          asserted to have no closed irrep law and are not covariance-tested.
+          The same three owner reruns also feed and re-read the exact raw
+          BS/HM/Mc PackFull9 time-series H5 datasets with those bounds.
+DCT-WW : DirectionalTrajectoryCovariance.WaterHydrationOwnerWelfordAssembledMeansRerunO3SerializedH5
+          Seed 0x0A7E2F1E; transformed solvent and real WaterField/HydrationGeometry
+          owner reruns feed Welford. Water mean abs 2e-9, rel 2e-10; hydration
+          mean abs 2e-11, rel 2e-12. Component nonlinear statistics are out of
+          directional-mean scope by explicit asserted metadata.  The four raw
+          water E/T2 streams, two raw hydration polar-vector streams and five
+          raw hydration scalar/alias streams are finalized and re-read at the
+          exact H5 paths with masks/provenance.
+          The hydration owner-copy portion injects the deterministically
+          transformed upstream surface normal after running SasaResult, so it
+          isolates HydrationGeometry; the real finite-grid SasaResult rerun is
+          independently proved by DC-SA and DCT-SA, not by a claimed exact
+          Sasa-to-Hydration chain.
+DCT-LB : DirectionalTrajectoryCovariance.LocalBackboneCbResidualRerunProperAndImproperSerializedH5
+         Seed 0xCB10CA1B20260713; production LocalBackboneGeometry trajectory
+         owner rerun and exact cb_local_vector H5 read-back.  Proper SO(3)
+         polar-vector abs 2e-11, rel 2e-12.  The improper rerun explicitly
+         refutes a false polar law from the fixed-sign chiral cross product;
+         finite/NaN applicability, masks and frame provenance are pinned.
+DCT-SA : DirectionalTrajectoryCovariance.SasaFiniteGridTimeSeriesAndWelfordRerunO3SerializedH5AndNpy
+         Seed 0x5A5A2026; Geometry, SpatialIndex and Sasa production owners
+         are rerun on four moving frames under proper and improper transforms.
+         The lab-fixed 92-point Fibonacci estimator is deliberately not called
+         invariant: observed maximum area change is 5.82314686990609 A^2
+         (five oxygen-sphere samples), inside the recorded 6 A^2 envelope.
+         /trajectory/sasa_time_series/sasa, every one of the 42 SASA Welford
+         value/statistic H5 paths, and sasa_welford.npy are reconstructed from
+         source-coordinate reruns and re-read; orientation dependence is
+         required to be nonzero, while the NPY frame-count column is exact.
+DCT-JC : JCouplingTimeSeries.DirectionalKarplusRerunO3AndSerializedH5
+         Seed 0x4A434F55504C494E, proper+improper+translation; all nine
+         production Karplus channels are rerun, independently recomputed from
+         transformed coordinates, and re-read from exact H5 datasets.  Absolute
+         tolerance 3e-11.  PASS.
+DCT-DSSPTS : Dssp8TimeSeries.DirectionalCategoricalRerunProductionDsspO3SerializedH5
+             Seed 0x4453535038545301, proper+improper+translation; production
+             libdssp rerun through its PDB boundary.  ss8_code is exact under
+             all O(3) because P and C share code 7.  ppii_flag is exact for the
+             proper rerun; the improper rerun proves both changed and unchanged
+             observed rows, refuting invariant and global-complement laws.
+             Source masks and H-bond companions are re-read; energy abs
+             tolerance 5e-3 kcal/mol.  The source mask, both partner tables,
+             both energy tables and atom-to-residue lookup are exact-name
+             serialized checks.  PASS.
+DCT-DSSPTR : Dssp8Transition.DirectionalEightStateCollapseRerunProductionDsspO3SerializedH5
+             Seed 0x4453535038545201, proper+improper+translation; production
+             libdssp reruns on two source frames (original plus deterministic
+             carbonyl-displaced geometry) feed transition collapse/finalization.
+             The source sum(ss8_transition_count) is asserted >0 and exactly
+             equals the matrix sum, so this is not a one-frame/zero-transition
+             proof.  Exact count/dominant/occupancy/matrix H5 datasets are
+             invariant and re-read for both proper and improper inputs;
+             n_frames_observed and source_attached_per_frame are also exact.
+             PASS.
+DCT-DB : DihedralBinTransition.DirectionalCategoricalRerunO3SerializedH5
+         Seed 0x444948454452414C, proper+improper+translation; transformed
+         coordinate dihedrals feed the production bin/rotamer transition owner,
+         and exact category/count H5 datasets and masks are re-read.  Companion
+         forcing tests make both transition-count claims nonvacuous:
+         BackboneTransitionCountImproperMergeRerunSerializedH5 reads central
+         backbone count source/proper=1 and improper=0; and
+         ChiTransitionCountExactZeroEndpointRerunSerializedH5 reads chi1 count
+         source/proper=1 and improper=0.  PASS.
+DCT-DI : DihedralTimeSeries.DirectionalSignedAnglesRerunProductionKernelO3SerializedH5
+         Seed 0x4449484544525453, proper+improper+translation; the production
+         signed-dihedral owner is rerun and exact phi/psi/omega/
+         omega_deviation/chi/rama_region H5 datasets are re-read.  Wrapped-
+         angle abs tolerance 2e-11 rad; masks/provenance are exact.  PASS.
+DCT-RP : RingPuckerTimeSeries.DirectionalPhasesRerunPlanarOwnerO3SerializedH5
+         Seed 0x5055434B45525453, proper+improper+translation; production
+         PlanarGeometry reruns feed the ring-pucker owner.  Exact Q/theta/
+         aromatic-chi2 H5 datasets and masks are re-read; scalar/phase abs
+         tolerance 2e-10 in each dataset's native unit (Angstrom, degree or
+         radian).  PASS.
+DCT-RN : RingNeighbourhoodTrajectoryStats.DirectionalGeometryRerunProductionOwnersO3SerializedH5
+         Seed 0x52494E474E454947, proper+improper+translation; production
+         Geometry and Spatial owners are rerun, then exact geometry,
+         membership, padding, mask and frame-provenance H5 datasets are
+         re-read.  Geometry abs tolerance 3e-11.  PASS.
+SER   : NpyLocalGeometryAcceptance.StaticAndTrajectoryProductionPaths reruns
+        OperationRunner on a static conformation and a freshly transformed
+        conformation, then repeats the same WriteAllFeatures path through one
+        real FrameNpyEmitter trajectory frame.  The Python boundary reads the
+        exact emitted files with numpy.load(..., allow_pickle=False), checks
+        row identity, masks/NaNs and structural zeros, and recomputes expected
+        laws from source coordinates rather than rotating an output in place.
+        PASS in the final rebuilt 868-test registry.
+        Optional/external owner proofs apply the same NumPy reader gate to
+        every name not emitted by that ordinary dry extraction, so the exact
+        191-name static ledger has complete allow_pickle=False coverage.
+STATIC / PER-POSE NPY OUTPUTS
+=============================
+
+ConformationResult central identity and ring projection
+-------------------------------------------------------
+pos.npy | atom (N,3) | Angstrom | atomic coordinate | X in conformation Cartesian xyz | no zeros | always present | DC-GR,SER
+
+ring_geometry.npy | aromatic_ring (R,10) | mixed ids/Angstrom/unit | columns 3:6 ring centroid, 6:9 SVD/cross-oriented plane normal; remaining columns ids/radius | cols3:6 X; cols6:9 A for an ordinary nondegenerate ring; radius S | no representation-theoretic zeros | one row per topology aromatic ring; Ring::ComputeGeometry unconditionally accepts SVD V.col(2) for every >=3-member ring, so a collinear/collapsed ring receives an underdetermined, potentially lab-basis-dependent unit normal with no validity mask; zero is only the <3/default case | DC-GR,SER prove ordinary nondegenerate rings only
+
+ring_pair_geometry.npy | ring_pair (R choose 2,13) | mixed | columns 9,10 are center displacement dotted with each oriented normal | cols9,10 PS; distance, normal dot, cross magnitude, slip and fused flag S | no tensor zeros | exact i<j sparse identity | DC-GR derives the serialized signed columns from production centers/normals; SER
+
+ring_contributions.npy | atom_ring_pair (P,40) | mixed | [atom,ring,type,distance,rho,z,theta,quad,decay,BS-G(9),HM-H(9),HM-G(9),dispersion(2),azimuth cos/sin] | z col5 PS; theta col6 is S because production uses atan2(rho,abs(z)); cols9:18 T; cols18:27 ST; cols27:36 T; other physical scalars S | HM-H T0/T1 structural zero; no other ordinary tensor zero | sparse rows come from ring_neighbours; row identity must remain atom+ring stable | DC-GR,SER
+
+bs_ring_B_field.npy | atom_ring_pair (P,3) | tesla | Johnson-Bovey line-current B | A, conformation xyz | none | sparse ring row | DC-GR,SER
+
+bs_ring_B_cylindrical.npy | atom_ring_pair (P,3) | tesla | [B dot rho_hat, hard zero, B dot oriented ring normal] | NOT a Cartesian vector: col0 PS, col1 structural zero, col2 S | col1 exactly zero | sparse ring row; rho-axis degeneracy follows owning ring row; catalog uses mixed ndarray metadata, not a vector wrapper | DC-GR,SER
+
+hm_ring_B_field.npy | atom_ring_pair (P,3) | Angstrom^-1 | H times oriented ring normal | A, conformation xyz | none | sparse ring row | DC-GR,SER
+
+ring_direction_to_center.npy | atom_ring_pair (P,3) | unit | production field is (atom-center)/distance despite filename wording | P, conformation xyz | zero only for invalid/singular row | sparse ring row | DC-GR,SER
+
+piquad_quad_scalar.npy | atom_ring_pair (P) | Angstrom^-4 | (3 cos^2(theta)-1)/r^4 | S | n/a | sparse ring row | DC-GR,SER
+
+
+GeometryResult
+--------------
+bond_direction.npy | topology_bond (B,3) | unit | (atom_b-atom_a)/length | P, conformation xyz | invalid row zero | bond_geometry_valid.npy is the explicit validity mask | DC-GR,SER
+
+
+SpatialIndexResult
+------------------
+spatial_neighbors.npy | directed_atom_pair (P,6) | mixed ids/unit/Angstrom | cols2:5 are (neighbor-target)/distance; col5 distance | cols2:5 P; col5 S | none | no self; 15-A cutoff; pair identity must be stable away from cutoff | DC-GR,SER; intentionally oversized/presence-only in smoke: 1326b65 requires this unconditional directional array by exact name, validates nonzero size and NPY header, and exempts bytewise blessing exactly as .gitignore requires; temporary 35/11 MB diagnostics were removed and are not deliverables
+
+
+LocalBackboneGeometryResult
+---------------------------
+cb_deviation.npy | residue (R) | Angstrom | norm of observed CB minus the fixed-sign ideal-L-CB construction | S under proper rotations; no improper-transform contract because the construction is chirality-conditioned | n/a | invalid rows NaN plus cb_deviation_valid.npy | DC-LB owner-NPY and SER serialized reconstruction; DCT-LB H5 sibling
+cb_residual_vector.npy | residue (R,3) | Angstrom | observed CB minus ideal tetrahedral CB | intended P in conformation xyz | invalid rows NaN | cb_residual_vector_valid.npy | DC-LB proper-only: improper reflection remains a known chirality/enantiomer caveat because ideal-CB construction contains a cross product
+
+
+PlanarGeometryResult
+--------------------
+omega_actual.npy | residue (R) | rad | CA-C-N-CA signed dihedral | PS | n/a | NaN plus omega_valid.npy; omega_is_xpro.npy tags X-Pro | DC-PL,SER
+omega_deviation.npy | residue (R) | rad | WrapPi(omega-pi) | PS | n/a | same mask | DC-PL,SER
+omega_sin.npy | residue (R) | dimensionless | sin(omega) | PS | n/a | same mask | DC-PL,SER
+omega_cos.npy | residue (R) | dimensionless | cos(omega) | exact S/0e invariant companion of signed omega | n/a | NaN plus omega_valid.npy | DC-PL,SER
+aromatic_chi2.npy | aromatic_ring (R) | rad | signed residue chi2 | PS | n/a | NaN if chi2 unavailable | DC-PL,SER
+pucker_Q.npy | saturated_ring (R) | Angstrom | Cremer-Pople five-ring amplitude | exact S/0e | n/a | NaN for unavailable ring; can be finite when phase is degenerate | DC-PL,SER
+pucker_theta.npy | saturated_ring (R) | degree [0,360) | Cremer-Pople five-ring phase | improper Q shifts phase by 180 degrees modulo 360; not a 0e scalar | n/a | NaN for unavailable/degenerate ring | DC-PL,SER
+(pyramidalization.npy is invariant and is listed here only to prevent accidental directional classification.)
+
+
+DsspResult
+----------
+dssp_observed.npy | atom (N) | int8 mask | libdssp residue-row observation broadcast to atoms | exact S/O(3)-invariant for fixed typed topology | n/a | 1 observed/mapped, 0 makes the atom's DSSP payload unavailable | DC-DS owner-NPY exact identity
+dssp_backbone.npy | atom (N,5) | mixed | cols0 and 1 are phi/psi signed dihedrals, col2 SASA, and zero-based half-open cols3:5 are the two libdssp helix/sheet categories | cols0 and 1 PS; col2 and cols3:5 have continuum S/O(3) laws, but the live 0.001-A temporary-PDB boundary can produce bounded drift or a category-boundary crossing | n/a | dssp_observed.npy maps availability | DC-DS,SER; current forcing flags exact, SASA 4.0 A^2 bound
+dssp_ss8.npy | atom (N,8) | one-hot category | libdssp H/G/I/E/B/T/S/C assignment, with PPII P deliberately collapsed into coil C | physical S/O(3)-invariant category; a transformed serialized rerun can cross a libdssp category boundary after 0.001-A PDB rounding | n/a | all-zero row when unobserved; dssp_observed.npy | DC-DS current forcing exact under proper+improper; catalog parity even
+dssp_chi.npy | atom (N,12) | mixed | per-chi cos,sin,exists triplets | sin columns PS; cos/exists S | n/a | explicit exists columns | DC-DS,SER
+dssp_torsion_angle.npy | residue (R,6) | rad | phi,psi,chi1..4 | PS | n/a | dssp_torsion_valid.npy | DC-DS,SER
+dssp_torsion_sin.npy | residue (R,6) | dimensionless | sine of signed torsions | PS | n/a | dssp_torsion_valid.npy | DC-DS,SER
+dssp_ppii.npy | atom (N) | int8 categorical | libdssp PPII class | continuum proper-invariant category, but a serialized rerun can cross its 0.001-A boundary; reflected signed phi/psi may also change class, so there is no homogeneous improper law | n/a | dssp_observed.npy | DC-DS current forcing owner-NPY; SER, not a universal byte-exact law
+dssp_torsion_cos.npy | residue (R,6) | dimensionless | cosine of signed torsions | S | n/a | dssp_torsion_valid.npy | DC-DS,SER; libdssp phi/psi columns share the 5e-2 serialized bound
+dssp_torsion_valid.npy | residue (R,6) | uint8 mask | elementwise torsion availability | exact S/O(3)-invariant for ordinary nondegenerate fixed topology | n/a | 1 finite angle/sin/cos, 0 corresponding NaNs | DC-DS owner-NPY exact identity
+dssp_hbond_energy.npy | atom (N,4) | kcal/mol | atom-broadcast libdssp acceptor0/1 and donor0/1 energies | continuum S/0e; live 0.001-A temporary-PDB boundary uses 5e-3 kcal/mol | n/a | dssp_observed.npy; companion partner slot distinguishes mapped partner from legacy zero no-partner value | DC-DS owner-NPY, current observed max within 5e-3
+dssp_hbond_partner_residue_index.npy | atom (N,4) | int32 residue ids | acceptor0/1 and donor0/1 partner identity | continuum S/O(3)-invariant identity; a boundary partner can change after 0.001-A PDB rounding | n/a | -1 no mapped partner/unobserved; dssp_observed.npy | DC-DS current forcing exact owner-NPY
+
+
+BiotSavartResult
+----------------
+bs_shielding.npy | atom (N,9) | dimensionless kernel | G_ab=-B_a n_b ppm factor | T | generic T0,T1,T2; T1 is axial and is NOT zero | physical empty sum is zero | DC-GR,SER
+bs_per_type_T1.npy | atom (N,8x3) | dimensionless | per-ring-type Levi-Civita dual of G | A per 3-column block | not structural zero | physical empty category zero | DC-GR,SER
+bs_per_type_T2.npy | atom (N,8x5) | dimensionless | per-ring-type symmetric-traceless part of G | 2e per 5-column block | not structural zero | physical empty category zero | DC-GR,DC-T2,SER
+bs_total_B.npy | atom (N,3) | tesla | sum of Biot-Savart magnetic B | A | none | physical empty sum zero | DC-GR,SER
+(bs_per_type_T0.npy and bs_ring_counts.npy are invariant.)
+
+
+HaighMallionResult
+------------------
+hm_shielding.npy | atom (N,9) | Angstrom^-1 kernel | H is symmetric/traceless; V=H n; G=-V n^T | T | G has generic T0,T1,T2; T1 nonzero and axial | physical empty sum zero | DC-GR,SER
+hm_per_type_T1.npy | atom (N,8x3) | Angstrom^-1 | per-type dual of G | A | not structural zero | physical empty category zero | DC-GR,SER
+hm_per_type_T2.npy | atom (N,8x5) | Angstrom^-1 | per-type T2 of G | 2e | not structural zero | physical empty category zero | DC-GR,DC-T2,SER
+(hm_per_type_T0.npy is invariant; per-ring raw H and V/G live in central ring_contributions/hm_ring_B_field.)
+
+
+McConnellResult
+---------------
+Each non-policy-zero row below is an atom (N,9), Angstrom^-3 PackFull9 tensor
+in conformation Cartesian xyz.  Its D(r) Qhat construction is an ordinary
+even-rank-2 law T; the product is generally nonsymmetric/nontraceless, so
+T0,T1,T2 can all signal and T1 is axial.
+mc_peptide_co_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_peptide_co_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
+mc_peptide_cn_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_peptide_cn_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
+mc_backbone_other_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_backbone_other_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
+mc_sidechain_co_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_sidechain_co_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
+mc_sidechain_other_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_sidechain_other_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
+mc_disulfide_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_disulfide_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX exact zero-on-fixture only, no finite disulfide source
+mc_aromatic_zeroed_fixed.npy | McConnellResult | atom(N,9) | all nine components structural policy zero | intentional BS/HM double-count suppression | DC-GR,SER
+mc_aromatic_zeroed_bo.npy | McConnellResult | atom(N,9) | all nine components structural policy zero | intentional BS/HM double-count suppression | DC-GR,SER; DC-MX external-MOPAC policy-zero
+mc_backbone_xh_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_backbone_xh_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
+mc_sidechain_xh_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_sidechain_xh_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
+mc_s_h_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
+mc_s_h_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX exact zero-on-fixture only, no finite S-H source
+
+mc_peptide_co_rhombic.npy | atom (N,9) | Angstrom^-3 | unweighted rhombic-minus-axial PeptideCO audit response | T; generic irreps | none | zero if no valid PeptideCO plane/source | DC-GR,SER
+mc_nearest_co_dir.npy | atom (N,3) | unit | nearest CO midpoint -> target atom | P | none | unmatched row is NaN; finite only when nearest_CO_dist is not NO_DATA_SENTINEL | DC-GR,SER
+mc_nearest_co_midpoint.npy | atom (N,3) | Angstrom | nearest CO midpoint | X, not a VectorField | none | unmatched row is NaN; catalog uses the affine PositionField contract | DC-GR,SER
+mc_nearest_co_T2.npy | atom (N,9) | Angstrom^-3 | full nearest CO DQ response despite name | T, generic T0/T1/T2 | none | unmatched row is NaN | DC-GR,SER
+mc_nearest_cn_T2.npy | atom (N,9) | Angstrom^-3 | full nearest CN DQ response despite name | T, generic T0/T1/T2 | none | unmatched row is NaN | DC-GR,SER
+
+
+SidechainCarbonylAnisotropyResult
+--------------------------------
+sidechain_co_frame.npy | sidechain_CO_source (S,12) | Angstrom/unit | [origin=C/O midpoint, x=C->O, y=z cross x, z=plane cross-product normal] | cols0:3 X; x/y P; z A | invalid axes are NaN, never a world axis; the midpoint may remain finite because it is assigned before frame validation | source_bonds/source_valid and frame_quality frame_valid columns | DC-SC,SER
+sidechain_co_fixed_T2.npy | atom (N,9) | Angstrom^-3 | sidechain carbonyl DQ response; filename says T2 but payload is PackFull9 | T, generic T0/T1/T2 | none | physical empty sum zero | DC-SC
+sidechain_co_bo_T2.npy | atom (N,9) | Angstrom^-3 | BO-weighted sidechain carbonyl DQ | T, generic T0/T1/T2 | none | NaN when BO source unavailable (correct explicit unavailability) | DC-MX real external MOPAC transformed rerun/NPY PASS within recorded MOZYME envelope
+
+
+PiQuadrupoleLocalTensorResult
+-----------------------------
+piquad_local_frame.npy | atom_ring_pair (P,9) | unit | ring-local axes [x=vertex0 radial,y=z cross x,z=oriented ring normal] | x,y P; z A | invalid row NaN/valid false, never a fabricated axis | piquad_local_geometry col6 valid | DC-PI
+piquad_local_tensor.npy | atom_ring_pair (P,9) | local units | symmetric/traceless tensor expressed in mixed-parity ring-local frame | L: under improper Q, local components obey S T S with S=diag(1,1,det(Q)); NOT global Q T Q^T | T0/T1 structural zero | combined tensor-evaluation validity is piquad_local_geometry col6; catalog uses mixed ndarray metadata and suppresses global e3nn export | DC-PI,SER
+piquad_local_T2.npy | atom_ring_pair (P,5) | local units | native T2 of same local tensor | same L law and ring-local basis | omitted T0/T1 are structural zero | same combined validity and mixed ndarray metadata | DC-PI,SER
+piquad_local_geometry.npy | atom_ring_pair (P,8) | mixed | col4 cos_theta=polar displacement dot axial normal | col4 PS; distance/quad/flags S | n/a | col6 is combined frame+nonsingular tensor-evaluation validity; distance/cos may remain finite on invalid tensor rows | DC-PI,SER
+
+
+CoulombResult (force-field charges)
+-----------------------------------
+coulomb_E.npy | atom (N,3) | V/Angstrom | sum q r/r^3 | P | none | producer currently sanitizes nonfinite to zero without a validity mask (freeze risk) | DC-EL,SER
+coulomb_E_backbone.npy | atom (N,3) | V/Angstrom | classified partial E | P | none | same sanitizer caveat | DC-EL,SER
+coulomb_E_sidechain.npy | atom (N,3) | V/Angstrom | classified partial E | P | none | same | DC-EL,SER
+coulomb_E_aromatic.npy | atom (N,3) | V/Angstrom | classified partial E | P | none | same | DC-EL,SER
+coulomb_efg.npy | atom (N,9) | V/Angstrom^2 | sum q(3rr^T/r^5-I/r^3), explicit traceless projection | ST | T0,T1 structural zero | same sanitizer caveat | DC-EL,DC-T2,SER
+coulomb_efg_t2.npy | atom (N,5) | V/Angstrom^2 | native T2 companion of total EFG | 2e | omitted T0/T1 structural zero | same | DC-EL,DC-T2,SER
+coulomb_efg_backbone.npy | atom (N,5) | V/Angstrom^2 | partial EFG native T2 | 2e | omitted T0/T1 structural zero | same | DC-EL,DC-T2,SER
+coulomb_efg_sidechain.npy | atom (N,5) | V/Angstrom^2 | partial EFG native T2 | 2e | omitted T0/T1 structural zero | same | DC-EL,DC-T2,SER
+coulomb_efg_aromatic.npy | atom (N,5) | V/Angstrom^2 | partial EFG native T2 | 2e | omitted T0/T1 structural zero | same | DC-EL,DC-T2,SER
+coulomb_E_solvent.npy | atom (N,3) | V/Angstrom | APBS reaction-field alias | continuum P; live axis-aligned APBS finite grid is NC | none | emitted only when ApbsFieldResult attached; byte identity with apbs_E.npy is pinned by CoulombApbsComparison.SolventContributionIsReasonable | DC-AP exact-name alias NPY read-back within the recorded finite-grid bound
+coulomb_efg_solvent.npy | atom (N,5) | V/Angstrom^2 | APBS reaction EFG alias | continuum 2e; live finite grid is NC | omitted T0/T1 structural zero | conditional APBS; byte identity with apbs_efg.npy is pinned by the same alias test | DC-AP exact-name alias NPY read-back within the recorded finite-grid bound
+
+
+MopacCoulombResult
+------------------
+mopac_coulomb_E.npy | atom (N,3) | V/Angstrom | MOPAC-charge q r/r^3 | P in conformation Cartesian xyz | none | producer sanitizes nonfinite to zero without mask | DC-MC exact-name NPY PASS with fixed scalar charge source; not an external MOPAC executable rerun
+mopac_coulomb_E_backbone.npy | atom (N,3) | V/Angstrom | backbone partial MOPAC-charge q r/r^3 | P in conformation Cartesian xyz | none | same sanitizer caveat | DC-MC exact-name NPY PASS
+mopac_coulomb_E_sidechain.npy | atom (N,3) | V/Angstrom | sidechain partial MOPAC-charge q r/r^3 | P in conformation Cartesian xyz | none | same sanitizer caveat | DC-MC exact-name NPY PASS
+mopac_coulomb_E_aromatic.npy | atom (N,3) | V/Angstrom | aromatic partial MOPAC-charge q r/r^3 | P in conformation Cartesian xyz | none | same sanitizer caveat | DC-MC exact-name NPY PASS
+mopac_coulomb_efg.npy | atom (N,9) | V/Angstrom^2 | MOPAC-charge EFG | ST | T0,T1 structural zero | same sanitizer caveat | DC-MC,DC-T2 exact-name NPY PASS
+mopac_coulomb_efg_backbone.npy | atom (N,5) | V/Angstrom^2 | backbone partial native T2 in conformation Cartesian xyz | 2e | omitted T0/T1 structural zero | same sanitizer caveat | DC-MC,DC-T2 exact-name NPY PASS
+mopac_coulomb_efg_sidechain.npy | atom (N,5) | V/Angstrom^2 | sidechain partial native T2 in conformation Cartesian xyz | 2e | omitted T0/T1 structural zero | same sanitizer caveat | DC-MC,DC-T2 exact-name NPY PASS
+mopac_coulomb_efg_aromatic.npy | atom (N,5) | V/Angstrom^2 | aromatic partial native T2 in conformation Cartesian xyz | 2e | omitted T0/T1 structural zero | same sanitizer caveat | DC-MC,DC-T2 exact-name NPY PASS
+
+
+EeqCoulombResult
+----------------
+eeq_coulomb_E.npy | atom (N,3) | V/Angstrom | EEQ-charge q r/r^3 | P in conformation Cartesian xyz | none | nonfinite source fails Compute rather than fabricating zero | DC-EL,SER
+eeq_coulomb_E_backbone.npy | atom (N,3) | V/Angstrom | backbone partial EEQ-charge field | P in conformation Cartesian xyz | none | nonfinite source fails Compute | DC-EL,SER
+eeq_coulomb_E_sidechain.npy | atom (N,3) | V/Angstrom | sidechain partial EEQ-charge field | P in conformation Cartesian xyz | none | nonfinite source fails Compute | DC-EL,SER
+eeq_coulomb_E_aromatic.npy | atom (N,3) | V/Angstrom | aromatic partial EEQ-charge field | P in conformation Cartesian xyz | none | nonfinite source fails Compute | DC-EL,SER
+eeq_coulomb_efg.npy | atom (N,9) | V/Angstrom^2 | EEQ-charge EFG | ST | T0,T1 structural zero | fail-loud | DC-EL,DC-T2,SER
+eeq_coulomb_efg_backbone.npy | atom (N,5) | V/Angstrom^2 | backbone partial native T2 in conformation Cartesian xyz | 2e | omitted T0/T1 structural zero | fail-loud | DC-EL,DC-T2,SER
+eeq_coulomb_efg_sidechain.npy | atom (N,5) | V/Angstrom^2 | sidechain partial native T2 in conformation Cartesian xyz | 2e | omitted T0/T1 structural zero | fail-loud | DC-EL,DC-T2,SER
+eeq_coulomb_efg_aromatic.npy | atom (N,5) | V/Angstrom^2 | aromatic partial native T2 in conformation Cartesian xyz | 2e | omitted T0/T1 structural zero | fail-loud | DC-EL,DC-T2,SER
+
+
+ApbsFieldResult
+---------------
+apbs_E.npy | atom (N,3) | V/Angstrom | negative gradient of reaction potential | continuum P; live axis-aligned finite-difference grid is NC | none | clamp mask/scale and nonfinite-sanitizer bit mask emitted; interpolation OOB currently returns zero | DC-AP,SER; finite-distance neutral probe and cubic forcing domain only
+apbs_E_total_diagnostic.npy | atom (N,3) | V/Angstrom | diagnostic total-field gradient | continuum P; live finite grid is NC | none | same masks | DC-AP,SER
+apbs_efg.npy | atom (N,5) | V/Angstrom^2 | symmetrized/traceless reaction Hessian | continuum 2e; live finite grid is NC | omitted T0/T1 structural zero | same | DC-AP,DC-T2,SER
+apbs_efg_total_diagnostic.npy | atom (N,5) | V/Angstrom^2 | diagnostic total Hessian | continuum 2e; live finite grid is NC | omitted T0/T1 structural zero | same | DC-AP,DC-T2,SER
+apbs_phi.npy | atom (N) | V | canonical reaction electrostatic potential | continuum S, but the live axis-aligned finite-difference solve has no exact O(3) law; approximately invariant only inside the recorded 1.2e-3 V finite-grid envelope | n/a | whole result absent on APBS failure or nonfinite potential; no zero sanitizer | DC-AP exact owner-NPY read-back
+apbs_E_clamp_mask.npy | atom (N) | uint8 | threshold result derived from canonical reaction-field magnitude | continuum S/0e, but the live axis-aligned finite-difference solve is finite-grid NC and can cross the clamp threshold | n/a | 1 iff the row was clamped, 0 otherwise; whole result absent on APBS failure | DC-AP transformed owner-NPY read-back (ordinary probe exact 0); analytic clamped forcing pins nontrivial 1
+apbs_E_clamp_scale.npy | atom (N) | dimensionless | multiplicative scale derived from canonical |E| and configured threshold | continuum S/0e, but the live finite-difference solve has no exact O(3) law | n/a | finite (0,1] when result exists; 1 unclamped; whole result absent on APBS failure | DC-AP transformed owner-NPY/H5 read-back (ordinary probe exact 1); analytic clamped forcing pins threshold/|E| and 0<scale<1
+apbs_nonfinite_sanitizer_mask.npy | atom (N) | uint8 bit field | finite-value outcome for reaction E/EFG and total-diagnostic E/EFG | continuum finite diagnostic, but the live axis-aligned finite-grid outcome is NC | n/a | bits0:3 mark sanitized reaction-E/reaction-EFG/total-E/total-EFG; zero means no sanitizer fired; whole result absent on APBS failure | DC-AP allow_pickle=False owner-NPY read-back and current neutral-probe exact 0 under proper+improper reruns; static writer sentinel pins exact 0x05/0x0a bit payloads
+
+
+AIMNet2Result and AIMNet2ChargeResponseGradientResult
+----------------------------------------------------
+aimnet2_E.npy | atom (N,3) | model field units | AIMNet2 charges inserted in Coulomb q r/r^3 | P in conformation Cartesian xyz | none | model failure fail-loud | DC-AI,SER
+aimnet2_E_backbone.npy | atom (N,3) | model field units | backbone partial AIMNet2-charge field | P in conformation Cartesian xyz | none | model failure fail-loud | DC-AI,SER
+aimnet2_E_sidechain.npy | atom (N,3) | model field units | sidechain partial AIMNet2-charge field | P in conformation Cartesian xyz | none | model failure fail-loud | DC-AI,SER
+aimnet2_E_aromatic.npy | atom (N,3) | model field units | aromatic partial AIMNet2-charge field | P in conformation Cartesian xyz | none | model failure fail-loud | DC-AI,SER
+aimnet2_efg.npy | atom (N,5) | model EFG units | symmetric/traceless Coulomb EFG native T2 | 2e in conformation Cartesian xyz | omitted T0/T1 structural zero | model failure fail-loud | DC-AI,DC-T2,SER
+aimnet2_efg_backbone.npy | atom (N,5) | model EFG units | backbone partial symmetric/traceless EFG native T2 | 2e in conformation Cartesian xyz | omitted T0/T1 structural zero | model failure fail-loud | DC-AI,DC-T2,SER
+aimnet2_efg_sidechain.npy | atom (N,5) | model EFG units | sidechain partial symmetric/traceless EFG native T2 | 2e in conformation Cartesian xyz | omitted T0/T1 structural zero | model failure fail-loud | DC-AI,DC-T2,SER
+aimnet2_efg_aromatic.npy | atom (N,5) | model EFG units | aromatic partial symmetric/traceless EFG native T2 | 2e in conformation Cartesian xyz | omitted T0/T1 structural zero | model failure fail-loud | DC-AI,DC-T2,SER
+aimnet2_charge_response_gradient.npy | atom (N,3) | model gradient units | autograd d(sum q_j^2)/d r_i | P | none | model failure fail-loud | DC-AI,SER
+aimnet2_charge_response_gradient_scalar.npy | atom (N) | model gradient units | L2 norm of aimnet2_charge_response_gradient | exact S/0e under O(3) | n/a | model failure fail-loud; finite whenever the vector is finite | DC-AI exact owner-NPY read-back, observed maximum error 1.31909e-5
+
+
+HBondResult
+-----------
+hbond_nearest_dir.npy | atom (N,3) | unit | explicit donor-H source -> target atom | P | unmatched row zero | no dedicated validity mask; nearest distance/count/flags must be consulted | DC-HB,SER
+hbond_pairs_geometry.npy | accepted_hbond (H,5) | mixed Angstrom/rad/unit | cols2:5 donor-H -> acceptor-O h_hat | cols2:5 P; distance/angle S | none | hbond_pairs_angle_valid.npy covers angle only; row identity in hbond_pairs_index.npy | DC-HB pins the same production direction via atom features; SER
+
+
+SasaResult
+----------
+atom_sasa.npy | atom (N) | Angstrom^2 | exposed Bondi-plus-probe sphere area from the live 92-point lab-fixed Fibonacci estimator | continuum S, but the finite estimator has no exact O(3) law and is only approximately invariant | n/a | ordinary supported-element rows finite; no per-row validity mask | DC-SA,SER; finite-grid 4.0 A^2 static bound
+atom_sasa_fraction.npy | atom (N) | fraction | atom_sasa divided by 4*pi*(Bondi_vdW+probe)^2 | same finite-grid mixed/approximately invariant law as atom_sasa | n/a | same owner availability; denominator reconstructed from element and configured probe | DC-SA,SER independently reconstructs from serialized atom_sasa and element
+sasa_normal.npy | atom (N,3) | unit | normalized sum of exposed radial Fibonacci directions | P by the actual Compute body; it is NOT a cross-product axial normal | buried/cancelling row zero | no normal-valid mask; atom_sasa/fraction do not distinguish an undefined normal | DC-SA,SER; finite lab-fixed grid gives named discretization error
+
+
+WaterFieldResult
+----------------
+water_efield.npy | atom (N,3) | V/Angstrom | explicit water-charge q r/r^3 | P | none | result absent when solvent absent; clamp mask+scale emitted | DC-WH,SER
+water_efield_first.npy | atom (N,3) | V/Angstrom | first-shell subset E | P | physical empty shell zero | separate first-shell clamp mask+scale | DC-WH,SER
+water_efg.npy | atom (N,5) | V/Angstrom^2 | water-charge symmetric/traceless EFG | 2e | omitted T0/T1 structural zero | result absent without solvent | DC-WH,DC-T2,SER
+water_efg_first.npy | atom (N,5) | V/Angstrom^2 | first-shell EFG | 2e | omitted T0/T1 structural zero | physical empty shell zero | DC-WH,DC-T2,SER
+
+
+WaterHBondGeometryResult
+------------------------
+water_hbond_candidates.npy | protein_water_candidate (P,16) | mixed | cols9:12 water O absolute position; cols12:15 chosen water H absolute position | both X | mode-2 water-acceptor rows deliberately have H position NaN | result absent without solvent; counts/nearest tables give candidate availability | DC-WB,SER
+
+
+HydrationGeometryResult
+-----------------------
+water_polarization.npy | atom (N,10) | mixed | cols0:3 sum of first-shell molecular dipoles; cols3:6 copied SASA radial-sum normal | cols0:3 P; cols3:6 continuum P/live finite-grid NC; cols6:8 continuum S but live values inherit the NC normal; cols8:10 exact O(3)-invariant scalars | no meaningful normal/dipole produces zero and zero alignment, without a vector-valid mask | result absent without solvent | DC-WH reruns the real owner with a deterministically transformed injected SASA normal; DC-SA separately reruns SasaResult, so no exact end-to-end finite-grid law is claimed
+
+
+MopacResult
+-----------
+mopac_global.npy | protein (4) | mixed kcal/mol/debye | cols1:4 parsed molecular dipole | P only for a neutral system; for total charge q_tot, p'=Qp+q_tot*t (origin dependent); the live parser currently leaves the whole dipole as legacy zero when the block is absent | none | result absent on MOPAC failure; no dipole-block availability mask | DC-MX real executable/NPY PASS only within recorded 0.3 D+1e-2 MOZYME numerical envelope
+mopac_atom_populations.npy | atom (N,12) | mixed | cols6:9 intended per-atom dipole contribution, col9 dipole magnitude | intended P in cols6:9 and S in col9, but current parser never assigns cols6:10 | cols6:10 are NaN, correctly unavailable | DC-MX exact NPY confirms every intended dipole cell remains unavailable NaN; no finite directional claim
+mopac_atomic_orbital_populations.npy | atomic_orbital_row (K,9) | electrons | s,px,py,pz,d diagonal populations in MOPAC lab axes | orientation dependent but NOT a closed vector/tensor because off-diagonal density terms are absent | no structural zeros | unavailable rows NaN | DC-MX exact real-executable NPY proves NC (raw change 0.35461 e; false-polar residual >=1.8938 e); AO row identity still absent
+mopac_atomic_orbital_population_totals.npy | atomic_orbital_row (K,3) | electrons | [s total,p total,d total] summed over complete shells | S under axis rotations even though the printed component table is not closed | n/a | rows align to mopac_atomic_orbital_populations | DC-MX exact NPY, bounded MOZYME shell-total drift max 0.00543 e/limit 0.007 e
+
+
+OrcaShieldingResult
+-------------------
+orca_total.npy | atom (N,9) | ppm | imported ORCA total shielding in ORCA output Cartesian frame | T, generic T0/T1/T2 | none | whole result absent/fail-loud when requested source cannot load | DC-OR,SER: source coordinates and tensors are transformed, not protein coordinates alone
+orca_diamagnetic.npy | atom (N,9) | ppm | imported ORCA diamagnetic shielding in ORCA output Cartesian frame | T, generic T0/T1/T2 | none | whole result absent/fail-loud when requested source cannot load | DC-OR,SER
+orca_paramagnetic.npy | atom (N,9) | ppm | imported ORCA paramagnetic shielding in ORCA output Cartesian frame | T, generic T0/T1/T2 | none | whole result absent/fail-loud when requested source cannot load | DC-OR,SER
+
+
+TripeptideBackboneShieldingResult / TripeptideNeighborShieldingResult
+-------------------------------------------------------------------
+tripeptide_bb_shielding.npy | TripeptideBackboneShieldingResult | atom(N,9) ppm | fitted DFT tensor in conformation Cartesian xyz; T proper-only, generic irreps | unmatched all-NaN; method/match companions | DC-TR owner-NPY; unchanged chiral source has no improper counterpart
+tripeptide_neighbor_shielding.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | summed fitted DFT tensor in conformation Cartesian xyz; T proper-only | unmatched all-NaN; no direct tensor-valid mask | DC-TN owner-NPY; same improper-source caveat
+tripeptide_neighbor_shielding_prev.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | previous-neighbor fitted tensor; T proper-only | unmatched all-NaN | DC-TN owner-NPY
+tripeptide_neighbor_shielding_next.npy | TripeptideNeighborShieldingResult | atom(N,9) ppm | next-neighbor fitted tensor; T proper-only | unmatched all-NaN | DC-TN owner-NPY
+tripeptide_bb_residual_vec.npy | TripeptideBackboneShieldingResult | atom(N,3) Angstrom | fitted-position residual in conformation Cartesian xyz; P proper-only | unmatched all-NaN; method/match companions | DC-TR owner-NPY; unchanged chiral source has no improper counterpart
+tripeptide_neighbor_residual_vec_prev.npy | TripeptideNeighborShieldingResult | atom(N,3) Angstrom | previous-neighbor fitted-position residual; P proper-only | unmatched all-NaN | DC-TN owner-NPY
+tripeptide_neighbor_residual_vec_next.npy | TripeptideNeighborShieldingResult | atom(N,3) Angstrom | next-neighbor fitted-position residual; P proper-only | unmatched all-NaN | DC-TN owner-NPY
+tripeptide_bb_match_distance.npy | atom (N) | Angstrom | norm of fitted-position residual | S under proper rotations | n/a | NaN where method tag is zero | DC-TR,SER
+tripeptide_bb_match_atoms.npy | atom (N,5) | mixed ids/distance/status | lookup-derived atom match and residual audit | S under proper rotations; chiral lookup outcome has no unchanged-source improper law | n/a | has_match/method columns plus NaN distance | DC-TR,SER
+tripeptide_bb_method_tag.npy | atom (N) | categorical | selected lookup/Kabsch method | invariant under proper rotations only | n/a | zero means no match | DC-TR,SER
+tripeptide_neighbor_reference.npy | protein (1,5) | mixed ids/degrees/status | AAA reference calc id, method tag, reference phi/psi, mixed-method flag | S under proper rotations; no unchanged-source improper lookup law | n/a | whole row is lookup provenance, not an atom table | DC-TN
+tripeptide_bb_diagnostics.npy | residue (R,28) | mixed | actual/database phi/psi/chi fields include signed dihedrals | actual and database signed-angle columns are PS only if both conformation and reference source are reflected; with the unchanged chiral table they are invariant only under proper rotations; ids/distances/status S | n/a | status column distinguishes miss | DC-TR,SER
+tripeptide_neighbor_diagnostics.npy | residue (R,59) | mixed | two directional lookup diagnostic blocks | same signed-angle/chiral-source contract; other fields S under proper rotations | n/a | per-block status/any-match | DC-TN
+
+
+LarsenHBondShieldingResult / LarsenSidechainDonorAuditResult
+------------------------------------------------------------
+larsen_hbond_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | canonical-grid shielding rotated through donor frame; T proper-only, generic irreps | physical no-pair zero; optional grid absent; imputation unmasked | DC-LA,SER; no unchanged-grid improper claim
+larsen_hbond_1pHB_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | first primary H-bond tensor; T proper-only | physical empty category zero; pair tables carry disposition/frame validity | DC-LA,SER
+larsen_hbond_2pHB_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | second primary H-bond tensor; T proper-only | physical empty category zero; pair tables carry disposition/frame validity | DC-LA,SER
+larsen_hbond_1pHaB_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | first alpha-H-bond tensor; T proper-only | physical empty category zero; pair tables carry disposition/frame validity | DC-LA,SER
+larsen_hbond_2pHaB_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | second alpha-H-bond tensor; T proper-only | physical empty category zero; pair tables carry disposition/frame validity | DC-LA,SER
+larsen_hbond_diagnostic_CB_shielding.npy | LarsenHBondShieldingResult | atom(N,9) ppm | diagnostic-CB audit tensor; T proper-only, not a structural-zero promise | physical no-pair zero; pair tables carry disposition/frame validity | DC-LA,SER
+larsen_hbond_pairs_geometry.npy | candidate_pair (P,6) | mixed Angstrom/degree | col2 rho is the signed H-O-C-third acceptor-plane dihedral | cols0:2 r/theta and col5 frame_valid are exact O(3) invariants; col2 rho is a wrapped PS under an improper coordinate transform; cols3:5 imputation provenance has no unchanged-grid improper law | n/a | frame_valid/disposition in paired index table | DC-LA proper + DC-LI improper owner-NPY; nonzero rho required
+larsen_hbond_pairs_isotropic.npy | candidate_pair (P,6) | ppm | six applied isotropic lookup terms | S under proper rerun; lookup outcome has no unchanged-grid improper law | n/a | pair index/geometry carries disposition and validity | DC-LA
+larsen_hbond_pairs_index.npy | candidate_pair (P,16) | ids/categories/masks | exact sparse row identity, disposition and target masks | exact S/O(3)-invariant: topology, distance and theta determine pair success; signed rho changes tensor values/imputation provenance, not success | n/a | col6 disposition is authoritative; geometry col5 carries frame validity | DC-LA/DC-LI owner-NPY identity; catalog contract cffeebd
+larsen_hbond_count.npy | atom (N) | count | number of successful applied pairs | exact S/0e under O(3): topology, distance and theta gate membership; periodic rho only selects values/imputation | n/a | physical zero means no applied pair | DC-LA/DC-LI owner-NPY identity; catalog contract cffeebd
+larsen_hbond_water_term.npy | atom (N) | ppm | isotropic 2.07-ppm term on geometrically unpaired amide H atoms | exact S/0e under O(3): its gate uses topology, distance and theta, not signed rho | n/a | physical zero elsewhere; whole optional owner absent without Larsen grid source | DC-LA/DC-LI owner-NPY identity; exact time-series sibling below
+larsen_corner_imputed.npy | atom (N) | flag | any applied pair used an imputed grid corner | S under proper rerun; chiral-grid conditioned | n/a | explicit boolean | DC-LA
+larsen_imputed_pair_count.npy | atom (N) | count | applied imputed-pair count | S under proper rerun; chiral-grid conditioned | n/a | physical zero | DC-LA
+larsen_sidechain_carbonyl_pair_count.npy | atom (N) | count | successful sidechain-carbonyl pair count | exact S/0e under O(3) by the same topology/distance/theta success gate | n/a | physical zero | DC-LA/DC-LI owner-NPY identity; catalog contract cffeebd
+larsen_hbond_pairs.npy | candidate_pair (P,28) | mixed | compatibility concatenation; column18 is the same H-O-C-third rho | cols0:16 identity and cols16:18 r/theta exact O(3); col18 wrapped PS; col21 frame-valid exact; cols19:21 imputation and cols22:28 signed-grid isotropics have no improper law | n/a | embedded disposition/frame flag; split-table identity/NaN masks exact | DC-LA proper + DC-LI improper owner-NPY
+larsen_sidechain_donor_candidates.npy | sidechain_donor_pair (P,13) | mixed | col10 rho is the signed H-O-C-third acceptor-plane dihedral | cols0:10 identity/distance/angle and cols11:13 status exact O(3); col10 wrapped PS under improper coordinate reflection | n/a | rho NaN without acceptor frame; audit-only | DC-LS proper + DC-LSI improper owner-NPY
+
+
+MutationDeltaResult
+-------------------
+delta_shielding.npy | MutationDeltaResult | WT atom (N,9) ppm | ORCA WT/mut total shielding difference in shared Cartesian source frame | T, generic irreps | unmatched compatibility-zero row gated by delta_scalars.npy col0 | DC-OR,SER
+wt_shielding_diamagnetic.npy | MutationDeltaResult | WT atom (N,9) ppm | WT ORCA diamagnetic shielding in shared Cartesian source frame | T, generic irreps | unmatched compatibility-zero row gated by delta_scalars.npy col0 | DC-OR,SER
+wt_shielding_paramagnetic.npy | MutationDeltaResult | WT atom (N,9) ppm | WT ORCA paramagnetic shielding in shared Cartesian source frame | T, generic irreps | unmatched compatibility-zero row gated by delta_scalars.npy col0 | DC-OR,SER
+mut_shielding_diamagnetic.npy | MutationDeltaResult | WT atom (N,9) ppm | matched-mutant ORCA diamagnetic shielding in shared Cartesian source frame | T, generic irreps | unmatched compatibility-zero row gated by delta_scalars.npy col0 | DC-OR,SER
+mut_shielding_paramagnetic.npy | MutationDeltaResult | WT atom (N,9) ppm | matched-mutant ORCA paramagnetic shielding in shared Cartesian source frame | T, generic irreps | unmatched compatibility-zero row gated by delta_scalars.npy col0 | DC-OR,SER
+delta_shielding_diamagnetic.npy | MutationDeltaResult | WT atom (N,9) ppm | diamagnetic shielding difference in shared Cartesian source frame | T, generic irreps | unmatched compatibility-zero row gated by delta_scalars.npy col0 | DC-OR,SER
+delta_shielding_paramagnetic.npy | MutationDeltaResult | WT atom (N,9) ppm | paramagnetic shielding difference in shared Cartesian source frame | T, generic irreps | unmatched compatibility-zero row gated by delta_scalars.npy col0 | DC-OR,SER
+delta_apbs.npy | WT atom (N,12) | mixed V/A,V/A^2 | cols0:3 delta E; cols3:12 PackFull9 delta EFG | cols0:3 P; cols3:12 ST | EFG T0/T1 structural zero | emitted only with both APBS deltas; unmatched zero plus match flag elsewhere | DC-OR covers transformed injected APBS source and NPY bytes; DC-AP covers production APBS owner
+delta_ring_proximity.npy | WT atom (N,removed_rings*6) | mixed | each ring block [distance,z,rho,theta,factor,decay] | z PS; theta maps pi-theta; others S | n/a | unmatched rows zero plus match flag elsewhere | DC-OR,SER
+
+
+GromacsEnergyResult
+-------------------
+gromacs_energy.npy | protein/frame (1,43) | mixed | cols20:23 Box-X/Y/Z; cols23:32 virial; cols32:41 pressure tensor | virial/pressure are ordinary, not necessarily symmetric, rank-2 tensors T'=Q T Q^T when the external EDR payload is transformed consistently; box diagonal lengths are orientation dependent but not closed under arbitrary Q | virial/pressure T1 is structural zero only if the input payload is symmetric; producer copies unsymmetrized payload | result absent without EDR row | DC-GM uses deliberately nonsymmetric tensors plus an isotropic box; general box contract unresolved
+
+
+Directional validity, sparse-identity, and provenance companions
+----------------------------------------------------------------
+bond_geometry_valid.npy | GeometryResult | bond(B) uint8 | exact S/O(3)-invariant direction-validity mask | 1 finite nonzero displacement; 0 gates bond_direction.npy legacy zero | DC-GR owner-NPY exact; NPY-E2E
+cb_deviation_valid.npy | LocalBackboneGeometryResult | residue(R) uint8 | exact S/O(3)-invariant availability | 1 finite cb_deviation.npy, 0 corresponding NaN | DC-LB owner-NPY exact; NPY-E2E
+cb_residual_vector_valid.npy | LocalBackboneGeometryResult | residue(R) uint8 | exact S/O(3)-invariant availability | 1 all three vector components finite, 0 corresponding NaN triplet | DC-LB owner-NPY exact; NPY-E2E
+hbond_flags.npy | HBondResult | atom(N,3) int8 | exact S/O(3)-invariant typed/accepted-pair flags for the fixed pair set | col0 gates hbond_nearest_dir.npy legacy zero | DC-HB owner-NPY exact; NPY-E2E
+hbond_pairs_index.npy | HBondResult | pair(H,6) int32 | exact S/O(3)-invariant sparse donor/acceptor identity and sequence separation | shared row identity for pair geometry and angle mask | DC-HB owner-NPY exact; NPY-E2E
+hbond_pairs_angle_valid.npy | HBondResult | pair(H) uint8 | exact S/O(3)-invariant angle-validity mask | 1 finite N-H...O angle; distance/direction retain their own semantics | DC-HB owner-NPY exact; NPY-E2E
+omega_valid.npy | PlanarGeometryResult | residue(R) uint8 | exact S/O(3)-invariant signed-omega availability | 1 gates finite omega_actual/sin/cos; 0 gates their NaNs | DC-PL owner-NPY exact; NPY-E2E
+sidechain_co_source_bonds.npy | SidechainCarbonylAnisotropyResult | source(S,8) int32 | exact S/O(3)-invariant sparse typed bond/atom/residue/class identity | col7 source_valid; shared row identity for frame/quality | DC-SC owner-NPY exact
+sidechain_co_frame_quality.npy | SidechainCarbonylAnisotropyResult | source(S,4) | exact S/O(3)-invariant length/orthogonality/raw-normal-norm/frame-valid row | col3 gates frame axes; earlier diagnostics may remain finite | DC-SC owner-NPY exact
+water_shell_counts.npy | WaterFieldResult | atom(N,2) | exact S/O(3)-invariant distance-shell counts | physical zero empty shell; whole result absent without solvent | DC-WH owner-NPY exact, nonempty shell required; NPY-E2E
+water_efield_clamp_mask.npy | WaterFieldResult | atom(N) int8 | exact S/O(3)-invariant total-field magnitude-threshold diagnostic | 1 clamped, 0 unclamped; absent with owner | DC-WH owner-NPY exact; separate nontrivial production forcing
+water_efield_clamp_scale.npy | WaterFieldResult | atom(N) | exact S/O(3)-invariant total-field magnitude-derived scale | finite (0,1], 1 unclamped; absent with owner | DC-WH owner-NPY exact; separate nontrivial production forcing
+water_efield_first_clamp_mask.npy | WaterFieldResult | atom(N) int8 | exact S/O(3)-invariant first-shell threshold diagnostic | 1 clamped, 0 unclamped; absent with owner | DC-WH owner-NPY exact; separate production forcing
+water_efield_first_clamp_scale.npy | WaterFieldResult | atom(N) | exact S/O(3)-invariant first-shell magnitude-derived scale | finite (0,1], 1 unclamped; absent with owner | DC-WH owner-NPY exact; separate production forcing
+water_hbond_counts.npy | WaterHBondGeometryResult | atom(N,6) int32 | exact S/O(3)-invariant candidate/pass counts, nearest-water identity and mode | producer sentinels distinguish no candidate | DC-WB owner-NPY exact; NPY-E2E
+water_hbond_nearest.npy | WaterHBondGeometryResult | atom(N,8) | exact S/O(3)-invariant distances/angle/mode/water-id/pass/count row | cols6/7 expose candidate/pass availability | DC-WB owner-NPY exact; NPY-E2E
+delta_scalars.npy | MutationDeltaResult | WT-atom(N,6) | exact S/O(3)-invariant joint-WT/mutant row: match mask, T0/ring-distance/charge/match-distance scalars | col0 match mask; unmatched compatibility-zero row | DC-OR owner-NPY exact
+delta_graph.npy | MutationDeltaResult | WT-atom(N,5) | exact S/O(3)-invariant match/graph-source masks and graph deltas | cols0/1 gate compatibility zeros | DC-OR owner-NPY exact; dedicated graph production test
+larsen_sidechain_donor_atoms.npy | LarsenSidechainDonorAuditResult | atom(N,6) int32 | exact S/O(3)-invariant typed donor/parent/residue identity and gated counts | col0 donor-kind applicability; producer non-donor sentinels | DC-LS + DC-LSI owner-NPY byte-exact
+
+Per-frame NPY boundary
+----------------------
+FrameNpyEmitter::OnFrame calls the same ConformationResult::WriteAllFeatures as
+static extraction.  Therefore every static name above is also the exact name
+under frame_NNNNNN/.  Serialization acceptance must check at least one static
+directory and one frame directory with numpy.load(..., allow_pickle=False),
+including NaNs, masks, structural zeros, and sparse atom/ring/bond row identity.
+
+
+TRAJECTORY H5 DIRECTIONAL SIBLINGS
+==================================
+
+Raw time-series datasets (their owning per-frame calculator must be rerun)
+---------------------------------------------------------------------------
+/trajectory/positions/xyz | (N,T,3) | X | PositionsTimeSeries | DCT-POS
+/trajectory/bs_shielding_time_series/xyz | (N,T,9) | T | BS | DCT-KW exact transformed H5 PASS; abs 3e-12, rel 3e-10
+/trajectory/hm_shielding_time_series/xyz | (N,T,9) | T | HM | DCT-KW exact transformed H5 PASS; abs 3e-11, rel 1e-8
+/trajectory/mc_shielding_time_series/xyz | (N,T,9) | T | McConnell fixed aggregate | DCT-KW exact transformed H5 PASS; abs 3e-12, rel 3e-10
+/trajectory/mopac_mc_shielding_time_series/xyz | (N,T,9) | T | MOPAC BO McConnell | DC-MX real external MOPAC three-frame H5 PASS; exact serialization error zero, O(3) max Frobenius 0.00234259 within recorded MOZYME envelope
+/trajectory/mopac_coulomb_efg_time_series/t2 | (N,T,5) | 2e, T0/T1 zero | DC-MC exact transformed H5 PASS; fixed scalar charge source, abs 3e-9, rel 3e-11
+/trajectory/mopac_coulomb_shielding_time_series/t2 | legacy alias of preceding dataset | DC-MC exact byte-identical transformed H5 PASS
+/trajectory/apbs_efield_time_series/xyz | (N,T,3) | continuum P; live finite grid NC | DC-AP transformed H5 PASS within recorded finite-grid bounds and caveats
+/trajectory/apbs_efield_time_series/clamp_mask | (N,T) uint8 | continuum S/0e threshold diagnostic; live axis-aligned APBS finite-grid NC | absent-source frame uses 0 and source_attached_per_frame is required | DC-AP exact transformed owner-H5 read-back and exact dataset-local mixed-parity metadata
+/trajectory/apbs_efield_time_series/clamp_scale | (N,T) | continuum S/0e magnitude-derived scale; live finite-grid NC | finite (0,1] with attached source, 1 unclamped, NaN absent source | DC-AP exact transformed owner-H5 read-back and exact dataset-local mixed-parity metadata
+/trajectory/apbs_efg_time_series/t2 | (N,T,5) | continuum 2e, T0/T1 zero; live finite grid NC | DC-AP transformed H5 PASS within recorded finite-grid bounds
+/trajectory/apbs_efield_time_series/apbs_grid_lengths_A_per_frame | (T,3) | three lab-axis-aligned grid extents, not a Cartesian vector and not closed under arbitrary Q; default APBS bounding-box axes remain fixed while the molecule rotates | absent source frame NaN | DC-AP exact transformed-owner H5 provenance PASS; NC caveat remains
+/trajectory/apbs_efield_time_series/apbs_grid_origin_A_per_frame | (T,3) | lab-axis-aligned grid origin diagnostic; not X because the APBS grid basis is not rotated with Q, hence no general p'=Qp+t law | absent source frame NaN | DC-AP exact transformed-owner H5 provenance PASS; NC caveat remains
+/trajectory/apbs_efield_time_series/apbs_grid_spacing_A_per_frame | (T,3) | lab-axis grid step lengths, not a vector and not O(3)-closed | absent source frame NaN | DC-AP exact transformed-owner H5 provenance PASS; NC caveat remains
+/trajectory/apbs_efg_time_series/apbs_grid_lengths_A_per_frame | (T,3) | same axis-aligned/non-closed grid-extent diagnostic copied by the EFG owner | absent source frame NaN | DC-AP exact transformed-owner H5 provenance PASS; NC caveat remains
+/trajectory/apbs_efg_time_series/apbs_grid_origin_A_per_frame | (T,3) | same axis-aligned/non-affine grid-origin diagnostic copied by the EFG owner | absent source frame NaN | DC-AP exact transformed-owner H5 provenance PASS; NC caveat remains
+/trajectory/apbs_efg_time_series/apbs_grid_spacing_A_per_frame | (T,3) | same axis-aligned/non-closed grid-step diagnostic copied by the EFG owner | absent source frame NaN | DC-AP exact transformed-owner H5 provenance PASS; NC caveat remains
+(The two apbs_grid_dims_per_frame datasets are deliberately excluded: they are integer discretization/control metadata, not an O(3) representation.)
+/trajectory/water_field_time_series/efield | (N,T,3) | P | DCT-WW exact transformed H5 PASS; abs 2e-9, rel 2e-10
+/trajectory/water_field_time_series/efield_first | (N,T,3) | P | DCT-WW exact transformed H5 PASS; abs 2e-9, rel 2e-10
+/trajectory/water_field_time_series/efg | (N,T,5) | 2e, T0/T1 zero | DCT-WW exact transformed native-T2 H5 PASS; abs 2e-9, rel 2e-10
+/trajectory/water_field_time_series/efg_first | (N,T,5) | 2e, T0/T1 zero | DCT-WW exact transformed native-T2 H5 PASS; abs 2e-9, rel 2e-10
+/trajectory/sasa_time_series/sasa | (N,T) | continuum S but live finite lab-fixed grid is orientation-dependent/NC, not exactly invariant | DCT-SA exact H5 read-back; every transformed sample within 6 A^2, observed nonzero dependence required
+/trajectory/hydration_geometry_time_series/dipole_vector | (N,T,3) | P | DCT-WW exact transformed H5 PASS; abs 2e-11, rel 2e-12
+/trajectory/hydration_geometry_time_series/surface_normal | (N,T,3) | continuum P by actual SASA body; live finite-grid source is only approximately covariant | DCT-WW exact transformed owner-copy H5 PASS after injecting the transformed upstream normal; abs 2e-11, rel 2e-12; DC-SA/DCT-SA independently test the real SASA owner
+/trajectory/hydration_geometry_time_series/half_shell_asymmetry | (N,T) | continuum S but inherits the finite-grid surface-normal approximation and has no exact O(3) law | DCT-WW owner-copy H5 PASS after transformed-normal injection; abs 2e-11, rel 2e-12; real upstream SASA independently DC-SA/DCT-SA
+/trajectory/hydration_geometry_time_series/dipole_alignment | (N,T) | continuum S but inherits the finite-grid surface-normal approximation and has no exact O(3) law | DCT-WW owner-copy H5 PASS under the same isolated HydrationGeometry chain; abs 2e-11, rel 2e-12
+/trajectory/hydration_geometry_time_series/dipole_coherence | (N,T) | exact S/0e mean net first-shell dipole magnitude | DCT-WW exact owner-copy H5 PASS; abs 2e-11, rel 2e-12
+/trajectory/hydration_geometry_time_series/mean_net_dipole_eA | (N,T) | exact S/0e byte-value alias of dipole_coherence | DCT-WW exact owner-copy H5 PASS
+/trajectory/hydration_geometry_time_series/dipole_order_parameter | (N,T) | exact S/0e norm(sum d_i)/sum norm(d_i) | DCT-WW exact owner-copy H5 PASS; abs 2e-11, rel 2e-12
+/trajectory/aimnet2_charge_response_gradient_time_series/charge_response_gradient_vector | (N,T,3) | P | DC-AI exact transformed H5 PASS; abs 1e-4, rel 2e-5
+/trajectory/aimnet2_charge_response_gradient_time_series/charge_response_gradient_scalar | (N,T) | exact S/0e L2 norm of vector | DC-AI exact transformed H5 PASS; observed max error 1.31909e-5
+/trajectory/local_backbone_geometry/cb_deviation | (R,T) | S under proper rotations; fixed-sign ideal-L-CB construction has no improper-transform contract | invalid/non-applicable NaN | DCT-LB exact H5 PASS under proper SO(3), abs 2e-11, rel 2e-12; improper rows are required to change nonvacuously
+/trajectory/local_backbone_geometry/cb_local_vector | (R,T,3) | P in global conformation xyz despite name | DCT-LB exact H5 PASS under proper SO(3), abs 2e-11, rel 2e-12; improper rerun refutes false polar law
+/trajectory/tripeptide_bb_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-TR exact transformed H5 PASS; abs 8e-8, rel 2e-10
+/trajectory/tripeptide_neighbor_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-TN exact transformed H5 PASS; abs 8e-8, rel 2e-10
+/trajectory/tripeptide_bb_residual_vec_time_series/xyz | (N,T,3) | P under SO(3) source contract | DC-TR exact transformed H5 PASS; abs 8e-8, rel 2e-10
+/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/xyz | (N,T,3) | P under SO(3) source contract | DC-TN exact transformed H5 PASS; abs 8e-8, rel 2e-10
+/trajectory/tripeptide_neighbor_residual_vec_next_time_series/xyz | (N,T,3) | P under SO(3) source contract | DC-TN exact transformed H5 PASS; abs 8e-8, rel 2e-10
+/trajectory/tripeptide_bb_method_tag_time_series/method_tag | (N,T) | categorical lookup/Kabsch method, invariant under proper rigid transforms; the unchanged chiral lookup table supplies no homogeneous improper law | 0 means no match; group is absent when source was never attached | DC-TR exact transformed H5 PASS
+/trajectory/larsen_hbond_1pHB_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-LA exact transformed H5 PASS; abs 4e-9, rel 4e-11
+/trajectory/larsen_hbond_2pHB_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-LA exact transformed H5 PASS; abs 4e-9, rel 4e-11
+/trajectory/larsen_hbond_1pHaB_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-LA exact transformed H5 PASS; abs 4e-9, rel 4e-11
+/trajectory/larsen_hbond_2pHaB_shielding_time_series/xyz | (N,T,9) | T under SO(3) source contract | DC-LA exact transformed H5 PASS; abs 4e-9, rel 4e-11
+/trajectory/larsen_hbond_count_time_series/count | (N,T) | exact S/0e under O(3): pair success is gated by topology, distance and theta; periodic signed rho selects values/imputation but not membership | physical zero is no applied pair; group absent when source was never attached | DC-LA proper and DC-LI improper exact transformed H5 PASS; machine law in 40b140e
+/trajectory/larsen_hbond_water_term_time_series/water_term | (N,T) | exact S/0e under O(3): 2.07-ppm geometric unpaired-H gate uses topology, distance and theta, not signed rho | physical zero elsewhere; absent frame NaN/source mask; group absent when source never attached | DC-LI exact improper transformed H5 PASS; machine law in edc0979
+/trajectory/gromacs_energy_time_series/virial | (T,9) | T when external tensor payload is transformed | DC-GM exact transformed NPY/H5 PASS; abs 3e-13, rel 3e-14
+/trajectory/gromacs_energy_time_series/pressure_tensor | (T,9) | T when external tensor payload is transformed | DC-GM exact transformed NPY/H5 PASS; abs 3e-13, rel 3e-14
+/trajectory/gromacs_energy_time_series/box_x | (T) | lab-x diagonal length of external box, axis-tied and not closed under arbitrary Q without the full cell matrix | unavailable source frame NaN/source_attached_per_frame | DC-GM exact transformed H5 PASS for isotropic fixture; general-cell NC remains explicit
+/trajectory/gromacs_energy_time_series/box_y | (T) | lab-y diagonal length of external box, same non-closed law | unavailable source frame NaN/source_attached_per_frame | DC-GM exact transformed H5 PASS for isotropic fixture; general-cell NC remains explicit
+/trajectory/gromacs_energy_time_series/box_z | (T) | lab-z diagonal length of external box, same non-closed law | unavailable source frame NaN/source_attached_per_frame | DC-GM exact transformed H5 PASS for isotropic fixture; general-cell NC remains explicit
+/trajectory/dssp8_time_series/ss8_code | (R,T) | physical S/O(3)-invariant libdssp H/G/I/E/B/T/S/C code after PPII-to-coil collapse; a serialized transformed rerun can cross a 0.001-A PDB rounding boundary | 255 means no observation; source_attached_per_frame; group absent when source never attached | DCT-DSSPTS current forcing exact proper+improper transformed H5 PASS; not a universal byte-exact claim
+/trajectory/dssp8_time_series/ppii_flag | (R,T) | libdssp PPII category; invariant under proper rigid transforms, but no homogeneous improper law for a reflected chiral protein | 255 means no observation; source_attached_per_frame; group absent when source never attached | DCT-DSSPTS exact transformed H5 PASS; H-bond companion abs 5e-3 kcal/mol
+/trajectory/dssp8_time_series/source_attached_per_frame | (T) | exact S/O(3)-invariant source-availability mask | DCT-DSSPTS exact H5 PASS
+/trajectory/dssp8_time_series/hbond_acceptor_partner | (R,T,2) | continuum S/O(3)-invariant DSSP acceptor-partner identity; production can select a boundary partner after 0.001-A PDB rounding | -1 no mapped partner/unobserved | DCT-DSSPTS current forcing exact H5 PASS
+/trajectory/dssp8_time_series/hbond_donor_partner | (R,T,2) | continuum S/O(3)-invariant DSSP donor-partner identity with the same serialized-boundary caveat | -1 no mapped partner/unobserved | DCT-DSSPTS current forcing exact H5 PASS
+/trajectory/dssp8_time_series/hbond_acceptor_energy | (R,T,2) | continuum S/0e; 0.001-A PDB quantization gives recorded 5e-3 kcal/mol envelope | NaN no mapped partner/unobserved | DCT-DSSPTS H5 PASS; observed max 4e-3 kcal/mol
+/trajectory/dssp8_time_series/hbond_donor_energy | (R,T,2) | continuum S/0e with same PDB-quantization envelope | NaN no mapped partner/unobserved | DCT-DSSPTS H5 PASS; observed max 4e-3 kcal/mol
+/trajectory/dssp8_time_series/residue_index_per_atom | (N) | exact S/O(3)-invariant atom-to-residue topology lookup | DCT-DSSPTS exact H5 PASS
+/trajectory/dssp8_transition/ss8_transition_count | (R) | physical S/O(3)-invariant transition count derived from collapsed SS8; serialized category-boundary crossings can alter it | physical zero means no counted transition; group absent when source never attached | DCT-DSSPTR current forcing exact proper+improper H5 PASS; two source frames assert sum(count)>0
+/trajectory/dssp8_transition/ss8_dominant | (R) | physical S/O(3)-invariant dominant collapsed-SS8 category with the 0.001-A boundary caveat | 255 means no observation | DCT-DSSPTR current forcing exact transformed H5 PASS
+/trajectory/dssp8_transition/ss8_occupancy | (R,8) | physical S/O(3)-invariant collapsed-SS8 category counts with the 0.001-A boundary caveat | physical zero counts | DCT-DSSPTR current forcing exact transformed H5 PASS
+/trajectory/dssp8_transition/ss8_transition_matrix | (R,8,8) | physical S/O(3)-invariant collapsed-SS8 transition counts with the 0.001-A boundary caveat | diagonal is an exact policy zero because self-edges are excluded, not an irrep structural zero | DCT-DSSPTR current forcing exact transformed H5 PASS; matrix sum equals nonzero count sum
+/trajectory/dssp8_transition/n_frames_observed | (R) | exact S/O(3)-invariant mapped-observation count for fixed typed topology | physical zero means no observation | DCT-DSSPTR exact H5 PASS
+/trajectory/dssp8_transition/source_attached_per_frame | (T) | exact S/O(3)-invariant source-availability mask | DCT-DSSPTR exact H5 PASS
+/trajectory/dihedral_time_series/phi | (R,T) | PS | DCT-DI exact transformed H5 PASS; abs 2e-11 rad
+/trajectory/dihedral_time_series/psi | (R,T) | PS | DCT-DI exact transformed H5 PASS; abs 2e-11 rad
+/trajectory/dihedral_time_series/omega | (R,T) | PS | DCT-DI exact transformed H5 PASS; abs 2e-11 rad
+/trajectory/dihedral_time_series/omega_deviation | (R,T) | PS | DCT-DI exact transformed H5 PASS; abs 2e-11 rad
+/trajectory/dihedral_time_series/chi | (R,T,4) | PS | DCT-DI exact transformed H5 PASS; abs 2e-11 rad
+/trajectory/dihedral_time_series/rama_region | category changes under reflection; not an O(3)-invariant scalar | DCT-DI exact transformed H5 PASS for proper identity and explicit improper no-law outcome
+/trajectory/dihedral_bin_transition/backbone_transition_count | (R) | proper invariant; reflection negates phi/psi, but the alphaR/beta/alphaL/PPII/other bins are asymmetric and do not admit a fixed permutation, so the count has no general improper law | DCT-DB exact forcing H5 PASS; central residue source/proper=1 and improper=0
+/trajectory/dihedral_bin_transition/backbone_dominant_region | (R) | proper-invariant category; no fixed improper category map because reflected backbone bins are not a permutation | 0 is unassigned | DCT-DB exact transformed H5 PASS
+/trajectory/dihedral_bin_transition/backbone_bin_occupancy | (R,6) | proper-invariant occupancy; no fixed improper permutation on its asymmetric bin axis | bin 0 counts unassigned frames | DCT-DB exact transformed H5 PASS
+/trajectory/dihedral_bin_transition/chi_dominant_rotamer | (R,4) | under reflection, ordinary non-boundary chi values permute g+ <-> g-, while trans and unassigned stay fixed; exact chi=0 remains g- by the live endpoint convention, so this is not a globally homogeneous irrep law | 255 means no observation | DCT-DB exact transformed H5 PASS
+/trajectory/dihedral_bin_transition/chi_rotamer_occupancy | (R,4,3) | last axis follows the same reflected g+ <-> g-, trans-fixed permutation away from the exact-zero endpoint; proper invariant | physical zero counts | DCT-DB exact transformed H5 PASS
+/trajectory/dihedral_bin_transition/chi_transition_count | (R,4) | proper invariant, but no global improper law: the exact chi=0 g- endpoint makes reflection merge a source g-->g+ transition | physical zero means no counted transition | DCT-DB exact endpoint-forcing H5 PASS; chi1 source/proper=1 and improper=0
+/trajectory/j_coupling_time_series/J_HN_Halpha | (R,T) | Karplus of phi+pi/3; proper invariant, but the fixed chiral phase offset means J(-phi) is generally neither +J(phi) nor -J(phi), so no improper scalar parity | NaN plus J_HN_Halpha_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_HN_Halpha_Vogeli | (R,T) | alternate Karplus coefficients at phi+pi/3; same proper-only/no-improper-law contract | NaN plus J_HN_Halpha_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_HN_Cbeta | (R,T) | Karplus of phi-pi/3; proper invariant, fixed chiral offset and no improper scalar parity | NaN plus J_HN_Cbeta_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_Halpha_Cprime | (R,T) | Karplus of phi+pi/3; proper invariant, fixed chiral offset and no improper scalar parity | NaN plus J_Halpha_Cprime_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_HN_Cprime | (R,T) | zero-offset Karplus of signed phi; S/even under improper Q because cos(-phi)=cos(phi) | NaN plus J_HN_Cprime_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_N_Cgamma | (R,T) | zero-offset Karplus of signed chi1 atomic dihedral; S/even under improper Q | NaN plus J_N_Cgamma_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_Cprime_Cgamma | (R,T) | zero-offset Karplus of signed sidechain atomic dihedral; S/even under improper Q | NaN plus J_Cprime_Cgamma_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_Halpha_Hbeta2 | (R,T) | zero-offset Karplus of signed Halpha-CA-CB-Hbeta2 dihedral; S/even under improper Q | NaN plus J_Halpha_Hbeta_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/j_coupling_time_series/J_Halpha_Hbeta3 | (R,T) | zero-offset Karplus of signed Halpha-CA-CB-Hbeta3 dihedral; S/even under improper Q | NaN plus J_Halpha_Hbeta_exists | DCT-JC exact transformed H5 PASS; abs 3e-11 Hz
+/trajectory/ring_pucker_time_series/pucker_theta | (ring,T), improper phase +180 degree | DCT-RP exact transformed H5 PASS; abs 2e-10 degree
+/trajectory/ring_pucker_time_series/aromatic_chi2 | (ring,T), PS | DCT-RP exact transformed H5 PASS; circular abs 2e-10 rad
+/trajectory/ring_pucker_time_series/pucker_Q | (saturated_ring,T), exact S/0e pucker amplitude | DCT-RP exact transformed H5 PASS; abs 2e-10 Angstrom
+/trajectory/ring_neighbourhood_trajectory_stats/geometry | (N,T,R,4) [distance,rho,z,in_plane_angle] | z PS; remaining channels S | DCT-RN exact transformed H5 PASS; abs 3e-11 with membership/padding/masks pinned
+/trajectory/reorientational_dynamics/bond_orientation_tensor | (V,3,3) | reference_conformation_cartesian_xyz mean <u outer u>, law T'=Q T Q^T; symmetric so Cartesian Levi-Civita T1 is structural zero; trace=1 makes project T0 exactly 1/3 | DCT-REO exact H5 shape/frame/metadata and covariance PASS
+
+Source-availability discipline for raw H5
+-----------------------------------------
+Groups with optional sources carry source_attached_per_frame and generally
+NaN-fill absent frames or suppress the group if no frame has the source.
+Exceptions that must remain visible in acceptance:
+* tripeptide BB source absent for a frame and unmatched atoms within an
+  attached frame are both NaN after the owner-local time-series correction;
+  BB method tag remains the sibling applicability field.
+* tripeptide neighbor tensor/residual rows are NaN where the corresponding
+  direction or sum did not match after the owner-local correction; the raw
+  tensor group still has no separate validity dataset.
+* water/APBS/MOPAC optional groups correctly distinguish globally absent source.
+
+
+Welford datasets: means transform; component statistics do not
+------------------------------------------------------------
+This distinction is mandatory.  A blanket parity attribute on a Welford group
+must never be read as applying to every dataset.
+
+SASA finite-grid time statistics are a separate case: neither their means nor
+their nonlinear statistics are exact scalars for the live lab-fixed grid.
+Every value below is continuum-invariant but finite-grid orientation-dependent
+(NC), and DCT-SA proves nonzero dependence after production reruns while
+reconstructing each serialized statistic from /trajectory/sasa_time_series/sasa:
+/trajectory/sasa_welford/sasa_mean | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_m2 | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_std | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_min | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_max | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_min_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_max_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_delta_mean | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_m2 | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_std | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_min | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_max | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_min_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_delta_max_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_abs_delta_mean | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_abs_delta_m2 | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_abs_delta_std | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_abs_delta_min | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_abs_delta_max | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_abs_delta_min_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_abs_delta_max_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_delta_squared_mean | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_squared_m2 | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_squared_std | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_squared_min | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_squared_max | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_delta_squared_min_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_delta_squared_max_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_dxdt_mean | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_dxdt_m2 | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_dxdt_std | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_dxdt_min | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_dxdt_max | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/sasa_dxdt_min_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/sasa_dxdt_max_frame | finite-grid-dependent extremum index | DCT-SA
+/trajectory/sasa_welford/rms_delta | finite-grid NC | DCT-SA
+/trajectory/sasa_welford/mean | legacy alias of sasa_mean; finite-grid NC | DCT-SA
+/trajectory/sasa_welford/std | legacy alias of sasa_std; finite-grid NC | DCT-SA
+/trajectory/sasa_welford/min | legacy alias of sasa_min; finite-grid NC | DCT-SA
+/trajectory/sasa_welford/max | legacy alias of sasa_max; finite-grid NC | DCT-SA
+/trajectory/sasa_welford/delta_mean | legacy alias of sasa_delta_mean; finite-grid NC | DCT-SA
+/trajectory/sasa_welford/delta_std | legacy alias of sasa_delta_std; finite-grid NC | DCT-SA
+sasa_welford.npy | atom (N,7) | cols0:6 are the six finite-grid-dependent aliases listed above; col6 is exact frame count | mixed/NC row, never an exact scalar embedding | DCT-SA serialized NPY read with numpy.load(..., allow_pickle=False), all six value columns nonvacuously orientation-dependent and count exact
+
+BS Welford (owner BsWelfordTrajectoryResult; DCT-KW H5-PASS; metadata test PASS)
+--------------------------------------------------------------------------------
+/trajectory/bs_welford/t1_mean | assembled A mean | <=3e-12 abs + 3e-10 rel
+/trajectory/bs_welford/t1_m2 | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t1_std | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t1_min | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t1_max | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t1_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/bs_welford/t1_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/bs_welford/t2_mean | assembled T2 mean; no structural zero beyond omitted non-T2 irreps | <=3e-12 abs + 3e-10 rel
+/trajectory/bs_welford/t2_m2 | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t2_std | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t2_min | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t2_max | NC component statistic | explicit metadata PASS
+/trajectory/bs_welford/t2_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/bs_welford/t2_max_frame | NC component-extremum index | explicit metadata PASS
+
+HM Welford (owner HmWelfordTrajectoryResult; DCT-KW H5-PASS; metadata test PASS)
+--------------------------------------------------------------------------------
+/trajectory/hm_welford/t1_mean | assembled A mean | <=3e-11 abs + 1e-8 rel
+/trajectory/hm_welford/t1_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t1_std | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t1_min | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t1_max | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t1_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hm_welford/t1_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hm_welford/t2_mean | assembled T2 mean; no structural zero beyond omitted non-T2 irreps | <=3e-11 abs + 1e-8 rel
+/trajectory/hm_welford/t2_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t2_std | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t2_min | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t2_max | NC component statistic | explicit metadata PASS
+/trajectory/hm_welford/t2_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hm_welford/t2_max_frame | NC component-extremum index | explicit metadata PASS
+
+McConnell Welford (owner McConnellWelfordTrajectoryResult; DCT-KW H5-PASS; metadata test PASS)
+------------------------------------------------------------------------------------------------
+/trajectory/mc_welford/t1_mean | assembled A mean | <=3e-12 abs + 3e-10 rel
+/trajectory/mc_welford/t1_m2 | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t1_std | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t1_min | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t1_max | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t1_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/mc_welford/t1_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/mc_welford/t2_mean | assembled T2 mean; no structural zero beyond omitted non-T2 irreps | <=3e-12 abs + 3e-10 rel
+/trajectory/mc_welford/t2_m2 | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t2_std | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t2_min | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t2_max | NC component statistic | explicit metadata PASS
+/trajectory/mc_welford/t2_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/mc_welford/t2_max_frame | NC component-extremum index | explicit metadata PASS
+
+Water-field Welford (owner WaterFieldWelfordTrajectoryResult; DCT-WW H5-PASS; metadata test PASS)
+-------------------------------------------------------------------------------------------------
+/trajectory/water_field_welford/efield_x_mean | with y/z means, assembled P | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efield_x_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_x_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_x_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_x_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_x_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_x_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_y_mean | with x/z means, assembled P | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efield_y_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_y_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_y_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_y_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_y_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_y_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_z_mean | with x/y means, assembled P | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efield_z_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_z_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_z_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_z_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_z_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_z_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_x_mean | with y/z means, assembled P | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efield_first_x_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_x_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_x_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_x_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_x_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_x_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_y_mean | with x/z means, assembled P | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efield_first_y_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_y_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_y_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_y_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_y_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_y_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_z_mean | with x/y means, assembled P | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efield_first_z_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_z_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_z_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_z_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_z_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efield_first_z_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efg_t2_mean | assembled native T2; source SZ(T0/T1) | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efg_t2_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_t2_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_t2_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_t2_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_t2_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efg_t2_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efg_first_t2_mean | assembled native T2; source SZ(T0/T1) | <=2e-9 abs + 2e-10 rel
+/trajectory/water_field_welford/efg_first_t2_m2 | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_first_t2_std | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_first_t2_min | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_first_t2_max | NC component statistic | explicit metadata PASS
+/trajectory/water_field_welford/efg_first_t2_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/water_field_welford/efg_first_t2_max_frame | NC component-extremum index | explicit metadata PASS
+
+Hydration-geometry Welford (owner HydrationGeometryWelfordTrajectoryResult; DCT-WW H5-PASS; metadata test PASS)
+----------------------------------------------------------------------------------------------------------------
+/trajectory/hydration_geometry_welford/dipole_vector_x_mean | with y/z means, assembled P | <=2e-11 abs + 2e-12 rel
+/trajectory/hydration_geometry_welford/dipole_vector_x_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_x_std | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_x_min | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_x_max | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_x_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_x_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_y_mean | with x/z means, assembled P | <=2e-11 abs + 2e-12 rel
+/trajectory/hydration_geometry_welford/dipole_vector_y_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_y_std | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_y_min | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_y_max | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_y_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_y_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_z_mean | with x/y means, assembled P | <=2e-11 abs + 2e-12 rel
+/trajectory/hydration_geometry_welford/dipole_vector_z_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_z_std | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_z_min | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_z_max | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_z_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/dipole_vector_z_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_x_mean | with y/z means, assembled continuum P; finite-grid approximate | <=2e-11 owner-copy bound after transformed source
+/trajectory/hydration_geometry_welford/surface_normal_x_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_x_std | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_x_min | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_x_max | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_x_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_x_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_y_mean | with x/z means, assembled continuum P; finite-grid approximate | <=2e-11 owner-copy bound
+/trajectory/hydration_geometry_welford/surface_normal_y_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_y_std | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_y_min | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_y_max | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_y_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_y_max_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_z_mean | with x/y means, assembled continuum P; finite-grid approximate | <=2e-11 owner-copy bound
+/trajectory/hydration_geometry_welford/surface_normal_z_m2 | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_z_std | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_z_min | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_z_max | NC component statistic | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_z_min_frame | NC component-extremum index | explicit metadata PASS
+/trajectory/hydration_geometry_welford/surface_normal_z_max_frame | NC component-extremum index | explicit metadata PASS
+
+The static hm_welford.npy and mc_welford.npy projections contain only scalar
+T0/T2 magnitudes/deltas and are rotation invariant.  sasa_welford.npy is
+explicitly accounted above as finite-grid NC.  There is no static
+bs_welford.npy writer in the live tree.
+
+The following 72 exact HydrationGeometry Welford descendants are continuum
+rotation-invariant scalars but inherit the live finite-grid SASA normal and
+therefore have no exact O(3) law.  DCT-WW reruns the real HydrationGeometry
+owner with a deterministically transformed injected upstream normal and
+re-reads the exact raw scalar samples; the Welford owner emits these descendants
+under the explicit finite-grid-qualified scalar-statistic metadata.  DC-SA and
+DCT-SA independently rerun the upstream SasaResult:
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_abs_delta_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_abs_delta_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_abs_delta_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_abs_delta_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_abs_delta_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_abs_delta_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_abs_delta_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_squared_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_squared_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_squared_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_squared_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_squared_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_squared_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_delta_squared_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_dxdt_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_dxdt_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_dxdt_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_dxdt_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_dxdt_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_dxdt_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_dxdt_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/half_shell_asymmetry_rms_delta | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_abs_delta_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_abs_delta_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_abs_delta_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_abs_delta_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_abs_delta_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_abs_delta_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_abs_delta_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_squared_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_squared_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_squared_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_squared_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_squared_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_squared_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_delta_squared_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_dxdt_mean | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_dxdt_m2 | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_dxdt_std | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_dxdt_min | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_dxdt_max | continuum S; finite-grid NC
+/trajectory/hydration_geometry_welford/dipole_alignment_dxdt_min_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_dxdt_max_frame | finite-grid-dependent extremum index
+/trajectory/hydration_geometry_welford/dipole_alignment_rms_delta | continuum S; finite-grid NC
+
+AIMNet charge-response-gradient Welford (owner AIMNet2ChargeResponseGradientWelfordTrajectoryResult; DC-AI H5-PASS; owner metadata test PASS)
+------------------------------------------------------------------------------------------------------------------------------------------
+/trajectory/aimnet2_charge_response_gradient_welford/vector_mean | assembled P mean | DC-AI H5-PASS, seed 0xA1E7C0A2, 1e-4 abs + 2e-5 rel
+/trajectory/aimnet2_charge_response_gradient_welford/vector_m2 | NC component statistic | explicit metadata/zero-count H5 PASS
+/trajectory/aimnet2_charge_response_gradient_welford/vector_std | NC component statistic | explicit metadata/zero-count H5 PASS
+/trajectory/aimnet2_charge_response_gradient_welford/vector_min | NC component statistic | explicit metadata/zero-count H5 PASS
+/trajectory/aimnet2_charge_response_gradient_welford/vector_max | NC component statistic | explicit metadata/zero-count H5 PASS
+/trajectory/aimnet2_charge_response_gradient_welford/vector_min_frame | NC component-extremum index | explicit metadata/zero-count H5 PASS
+/trajectory/aimnet2_charge_response_gradient_welford/vector_max_frame | NC component-extremum index | explicit metadata/zero-count H5 PASS
+/trajectory/aimnet2_charge_response_gradient_welford/n_per_atom | exact S/O(3)-invariant per-row sample count and validity gate | DC-AI exact H5 PASS; zero gates the documented NaN/inf/frame-index sentinels
+
+
+H5 validity / identity / frame-provenance companion ledger
+----------------------------------------------------------
+Every path below is required to interpret or align a directional owner payload.
+Except the APBS grid-dimension controls explicitly marked NC, these are exact
+O(3)-invariant masks, identities, counts, indices or acquisition provenance;
+they are not additional directional representations.
+
+/trajectory/positions/frame_indices | exact frame-index provenance | DCT-POS H5-PASS
+/trajectory/positions/frame_times | exact time provenance | DCT-POS H5-PASS
+/trajectory/bs_shielding_time_series/frame_indices | exact frame-index provenance | DCT-KW H5-PASS
+/trajectory/bs_shielding_time_series/frame_times | exact time provenance | DCT-KW H5-PASS
+/trajectory/hm_shielding_time_series/frame_indices | exact frame-index provenance | DCT-KW H5-PASS
+/trajectory/hm_shielding_time_series/frame_times | exact time provenance | DCT-KW H5-PASS
+/trajectory/mc_shielding_time_series/frame_indices | exact frame-index provenance | DCT-KW H5-PASS
+/trajectory/mc_shielding_time_series/frame_times | exact time provenance | DCT-KW H5-PASS
+/trajectory/mopac_mc_shielding_time_series/frame_indices | exact frame-index provenance | DC-MX H5-PASS
+/trajectory/mopac_mc_shielding_time_series/frame_times | exact time provenance | DC-MX H5-PASS
+/trajectory/mopac_mc_shielding_time_series/source_attached_per_frame | exact source mask | DC-MX H5-PASS
+/trajectory/mopac_coulomb_efg_time_series/frame_indices | exact frame-index provenance | DC-MC H5-PASS
+/trajectory/mopac_coulomb_efg_time_series/frame_times | exact time provenance | DC-MC H5-PASS
+/trajectory/mopac_coulomb_efg_time_series/source_attached_per_frame | exact source mask | DC-MC H5-PASS
+/trajectory/mopac_coulomb_shielding_time_series/frame_indices | exact legacy-alias frame provenance | DC-MC H5-PASS
+/trajectory/mopac_coulomb_shielding_time_series/frame_times | exact legacy-alias time provenance | DC-MC H5-PASS
+/trajectory/mopac_coulomb_shielding_time_series/source_attached_per_frame | exact legacy-alias source mask | DC-MC H5-PASS
+/trajectory/apbs_efield_time_series/apbs_grid_dims_per_frame | exact O(3)-invariant integer control/provenance: configured cubic (n,n,n) point counts, not a directional representation | DC-AP H5 provenance PASS
+/trajectory/apbs_efield_time_series/frame_indices | exact frame-index provenance | DC-AP H5-PASS
+/trajectory/apbs_efield_time_series/frame_times | exact time provenance | DC-AP H5-PASS
+/trajectory/apbs_efield_time_series/source_attached_per_frame | exact source mask | DC-AP H5-PASS
+/trajectory/apbs_efg_time_series/apbs_grid_dims_per_frame | exact O(3)-invariant copied integer control/provenance: configured cubic (n,n,n) point counts, not a directional representation | DC-AP H5 provenance PASS
+/trajectory/apbs_efg_time_series/frame_indices | exact frame-index provenance | DC-AP H5-PASS
+/trajectory/apbs_efg_time_series/frame_times | exact time provenance | DC-AP H5-PASS
+/trajectory/apbs_efg_time_series/source_attached_per_frame | exact source mask | DC-AP H5-PASS
+/trajectory/water_field_time_series/n_first | exact first-shell count | DCT-WW H5-PASS
+/trajectory/water_field_time_series/n_second | exact second-shell count | DCT-WW H5-PASS
+/trajectory/water_field_time_series/efield_clamp_mask | exact total-field clamp mask | DCT-WW H5-PASS
+/trajectory/water_field_time_series/efield_clamp_scale | exact total-field clamp scale | DCT-WW H5-PASS
+/trajectory/water_field_time_series/efield_first_clamp_mask | exact first-shell clamp mask | DCT-WW H5-PASS
+/trajectory/water_field_time_series/efield_first_clamp_scale | exact first-shell clamp scale | DCT-WW H5-PASS
+/trajectory/water_field_time_series/frame_indices | exact frame-index provenance | DCT-WW H5-PASS
+/trajectory/water_field_time_series/frame_times | exact time provenance | DCT-WW H5-PASS
+/trajectory/water_field_time_series/source_attached_per_frame | exact source mask | DCT-WW H5-PASS
+/trajectory/sasa_time_series/frame_indices | exact frame-index provenance | DCT-SA H5-PASS
+/trajectory/sasa_time_series/frame_times | exact time provenance | DCT-SA H5-PASS
+/trajectory/hydration_geometry_time_series/first_shell_count | exact first-shell count | DCT-WW H5-PASS
+/trajectory/hydration_geometry_time_series/frame_indices | exact frame-index provenance | DCT-WW H5-PASS
+/trajectory/hydration_geometry_time_series/frame_times | exact time provenance | DCT-WW H5-PASS
+/trajectory/hydration_geometry_time_series/source_attached_per_frame | exact source mask | DCT-WW H5-PASS
+/trajectory/aimnet2_charge_response_gradient_time_series/frame_indices | exact frame-index provenance | DC-AI H5-PASS
+/trajectory/aimnet2_charge_response_gradient_time_series/frame_times | exact time provenance | DC-AI H5-PASS
+/trajectory/aimnet2_charge_response_gradient_time_series/source_attached_per_frame | exact source mask | DC-AI H5-PASS
+/trajectory/local_backbone_geometry/has_N_CA_C | exact backbone-availability mask | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/has_CB | exact C-beta availability mask | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/has_prev_C | exact predecessor availability mask | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/has_next_N | exact successor availability mask | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/is_glycine | exact residue-class flag | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/is_proline | exact residue-class flag | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/frame_indices | exact frame-index provenance | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/frame_times | exact time provenance | DCT-LB H5-PASS
+/trajectory/local_backbone_geometry/source_attached_per_frame | exact source mask | DCT-LB H5-PASS
+/trajectory/tripeptide_bb_shielding_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
+/trajectory/tripeptide_bb_shielding_time_series/frame_times | exact time provenance | DC-TR H5-PASS
+/trajectory/tripeptide_bb_shielding_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
+/trajectory/tripeptide_neighbor_shielding_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
+/trajectory/tripeptide_neighbor_shielding_time_series/frame_times | exact time provenance | DC-TN H5-PASS
+/trajectory/tripeptide_neighbor_shielding_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
+/trajectory/tripeptide_bb_residual_vec_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
+/trajectory/tripeptide_bb_residual_vec_time_series/frame_times | exact time provenance | DC-TR H5-PASS
+/trajectory/tripeptide_bb_residual_vec_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
+/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
+/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/frame_times | exact time provenance | DC-TN H5-PASS
+/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
+/trajectory/tripeptide_neighbor_residual_vec_next_time_series/frame_indices | exact frame-index provenance | DC-TN H5-PASS
+/trajectory/tripeptide_neighbor_residual_vec_next_time_series/frame_times | exact time provenance | DC-TN H5-PASS
+/trajectory/tripeptide_neighbor_residual_vec_next_time_series/source_attached_per_frame | exact source mask | DC-TN H5-PASS
+/trajectory/tripeptide_bb_method_tag_time_series/frame_indices | exact frame-index provenance | DC-TR H5-PASS
+/trajectory/tripeptide_bb_method_tag_time_series/frame_times | exact time provenance | DC-TR H5-PASS
+/trajectory/tripeptide_bb_method_tag_time_series/source_attached_per_frame | exact source mask | DC-TR H5-PASS
+/trajectory/larsen_hbond_1pHB_shielding_time_series/frame_indices | exact frame-index provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_1pHB_shielding_time_series/frame_times | exact time provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_1pHB_shielding_time_series/source_attached_per_frame | exact source mask | DC-LA H5-PASS
+/trajectory/larsen_hbond_2pHB_shielding_time_series/frame_indices | exact frame-index provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_2pHB_shielding_time_series/frame_times | exact time provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_2pHB_shielding_time_series/source_attached_per_frame | exact source mask | DC-LA H5-PASS
+/trajectory/larsen_hbond_1pHaB_shielding_time_series/frame_indices | exact frame-index provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_1pHaB_shielding_time_series/frame_times | exact time provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_1pHaB_shielding_time_series/source_attached_per_frame | exact source mask | DC-LA H5-PASS
+/trajectory/larsen_hbond_2pHaB_shielding_time_series/frame_indices | exact frame-index provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_2pHaB_shielding_time_series/frame_times | exact time provenance | DC-LA H5-PASS
+/trajectory/larsen_hbond_2pHaB_shielding_time_series/source_attached_per_frame | exact source mask | DC-LA H5-PASS
+/trajectory/larsen_hbond_count_time_series/frame_indices | exact frame-index provenance | DC-LA/DC-LI H5-PASS
+/trajectory/larsen_hbond_count_time_series/frame_times | exact time provenance | DC-LA/DC-LI H5-PASS
+/trajectory/larsen_hbond_count_time_series/source_attached_per_frame | exact source mask | DC-LA/DC-LI H5-PASS
+/trajectory/larsen_hbond_water_term_time_series/frame_indices | exact frame-index provenance | DC-LI H5-PASS
+/trajectory/larsen_hbond_water_term_time_series/frame_times | exact time provenance | DC-LI H5-PASS
+/trajectory/larsen_hbond_water_term_time_series/source_attached_per_frame | exact source mask | DC-LI H5-PASS
+/trajectory/gromacs_energy_time_series/frame_indices | exact frame-index provenance | DC-GM H5-PASS
+/trajectory/gromacs_energy_time_series/frame_times | exact requested-time provenance | DC-GM H5-PASS
+/trajectory/gromacs_energy_time_series/energy_frame_times_ps | exact matched-EDR-time provenance | DC-GM H5-PASS
+/trajectory/gromacs_energy_time_series/source_attached_per_frame | exact source mask | DC-GM H5-PASS
+/trajectory/dssp8_time_series/frame_indices | exact frame-index provenance | DCT-DSSPTS H5-PASS
+/trajectory/dssp8_time_series/frame_times | exact time provenance | DCT-DSSPTS H5-PASS
+/trajectory/dssp8_transition/frame_indices | exact frame-index provenance | DCT-DSSPTR H5-PASS
+/trajectory/dssp8_transition/frame_times | exact time provenance | DCT-DSSPTR H5-PASS
+/trajectory/dihedral_time_series/frame_indices | exact frame-index provenance | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/frame_times | exact time provenance | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/source_attached_per_frame | exact source mask | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/chi_exists | exact per-chi availability mask | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/omega_is_xpro | exact X-Pro classification | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/is_glycine | exact residue-class flag | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/is_proline | exact residue-class flag | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/is_pre_proline | exact residue-class flag | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/residue_terminal_state | exact terminal-state identity | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/chain_id_per_residue | exact chain identity | DCT-DI H5-PASS
+/trajectory/dihedral_time_series/residue_index_per_atom | exact atom-to-residue lookup | DCT-DI H5-PASS
+/trajectory/dihedral_bin_transition/frame_indices | exact frame-index provenance | DCT-DB H5-PASS
+/trajectory/dihedral_bin_transition/frame_times | exact time provenance | DCT-DB H5-PASS
+/trajectory/dihedral_bin_transition/source_attached_per_frame | exact source mask | DCT-DB H5-PASS
+/trajectory/dihedral_bin_transition/n_frames_observed | exact backbone observation count | DCT-DB H5-PASS
+/trajectory/dihedral_bin_transition/chi_n_frames_observed | exact chi observation count | DCT-DB H5-PASS
+/trajectory/j_coupling_time_series/frame_indices | exact frame-index provenance | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/frame_times | exact time provenance | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/source_attached_per_frame | exact source mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_HN_Halpha_exists | exact channel-availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_HN_Cbeta_exists | exact channel-availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_HN_Cprime_exists | exact channel-availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_Halpha_Cprime_exists | exact channel-availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_chi1_exists | exact chi1 availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_N_Cgamma_exists | exact channel-availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_Cprime_Cgamma_exists | exact channel-availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/J_Halpha_Hbeta_exists | exact channel-availability mask | DCT-JC H5-PASS
+/trajectory/j_coupling_time_series/residue_index_per_atom | exact atom-to-residue lookup | DCT-JC H5-PASS
+/trajectory/ring_pucker_time_series/frame_indices | exact frame-index provenance | DCT-RP H5-PASS
+/trajectory/ring_pucker_time_series/frame_times | exact time provenance | DCT-RP H5-PASS
+/trajectory/ring_pucker_time_series/source_attached_per_frame | exact source mask | DCT-RP H5-PASS
+/trajectory/ring_pucker_time_series/saturated_parent_residue_index | exact ring-to-residue identity | DCT-RP H5-PASS
+/trajectory/ring_pucker_time_series/aromatic_parent_residue_index | exact ring-to-residue identity | DCT-RP H5-PASS
+/trajectory/ring_neighbourhood_trajectory_stats/frame_indices | exact frame-index provenance | DCT-RN H5-PASS
+/trajectory/ring_neighbourhood_trajectory_stats/frame_times | exact time provenance | DCT-RN H5-PASS
+/trajectory/ring_neighbourhood_trajectory_stats/source_attached_per_frame | exact source mask | DCT-RN H5-PASS
+/trajectory/ring_neighbourhood_trajectory_stats/ring_membership_per_atom | exact sparse atom/ring identity | DCT-RN H5-PASS
+/trajectory/reorientational_dynamics/vector_kind | exact vector-definition identity | DCT-REO H5-PASS
+/trajectory/reorientational_dynamics/owning_atom | exact owning-atom identity | DCT-REO H5-PASS
+/trajectory/reorientational_dynamics/tail_atom | exact tail-atom identity | DCT-REO H5-PASS
+/trajectory/reorientational_dynamics/head_atom | exact head-atom identity | DCT-REO H5-PASS
+/trajectory/reorientational_dynamics/residue_index | exact residue identity | DCT-REO H5-PASS
+/trajectory/aimnet2_charge_response_gradient_welford/frame_indices | exact frame-index provenance | DC-AI H5-PASS
+/trajectory/aimnet2_charge_response_gradient_welford/frame_times | exact time provenance | DC-AI H5-PASS
+/trajectory/aimnet2_charge_response_gradient_welford/source_attached_per_frame | exact source mask | DC-AI H5-PASS
+/trajectory/bs_welford/n_frames_per_atom | exact per-row sample count | DCT-KW H5-PASS
+/trajectory/hm_welford/n_frames_per_atom | exact per-row sample count | DCT-KW H5-PASS
+/trajectory/mc_welford/n_frames_per_atom | exact per-row sample count | DCT-KW H5-PASS
+/trajectory/water_field_welford/n_frames_per_atom | exact per-row sample count | DCT-WW H5-PASS
+/trajectory/water_field_welford/source_attached_per_frame | exact source mask | DCT-WW H5-PASS
+/trajectory/hydration_geometry_welford/n_frames_per_atom | exact per-row sample count | DCT-WW H5-PASS
+/trajectory/hydration_geometry_welford/delta_n_per_atom | exact delta sample count | DCT-WW H5-PASS
+/trajectory/hydration_geometry_welford/dxdt_n_per_atom | exact derivative sample count | DCT-WW H5-PASS
+/trajectory/hydration_geometry_welford/source_attached_per_frame | exact source mask | DCT-WW H5-PASS
+/trajectory/sasa_welford/n_frames_per_atom | exact per-row sample count | DCT-SA H5-PASS
+/trajectory/sasa_welford/delta_n_per_atom | exact delta sample count | DCT-SA H5-PASS
+/trajectory/sasa_welford/dxdt_n_per_atom | exact derivative sample count | DCT-SA H5-PASS
+
+Unresolved/high-risk contract items (do not silently aggregate away)
+--------------------------------------------------------------------
+1. SasaResult + atom_sasa.npy, atom_sasa_fraction.npy and sasa_normal.npy;
+   SasaTimeSeriesTrajectoryResult + /trajectory/sasa_time_series/sasa; and
+   SasaWelfordTrajectoryResult + the 42 exact H5 value paths named above and
+   sasa_welford.npy: the live finite lab-fixed Fibonacci grid is only
+   approximately rotation covariant/invariant.  The normal is a polar radial
+   sum, never an axial cross-product normal; it also lacks a validity mask.
+2. MopacResult + mopac_atomic_orbital_populations.npy: DC-MX proves the
+   lab-axis diagonal populations are orientation dependent but not a closed
+   representation; omitted coherences and absent serialized AO-row identity
+   remain an explicit NC contract, not a test gap.
+3. GromacsEnergyResult + gromacs_energy.npy: box diagonal lengths are not
+   closed under arbitrary rotation; virial/pressure symmetry is not enforced.
+4. TripeptideBackboneShieldingResult + tripeptide_bb_shielding.npy,
+   tripeptide_bb_residual_vec.npy, tripeptide_bb_match_distance.npy,
+   tripeptide_bb_match_atoms.npy, tripeptide_bb_method_tag.npy and
+   tripeptide_bb_diagnostics.npy; TripeptideNeighborShieldingResult +
+   tripeptide_neighbor_shielding.npy,
+   tripeptide_neighbor_shielding_prev.npy,
+   tripeptide_neighbor_shielding_next.npy,
+   tripeptide_neighbor_residual_vec_prev.npy,
+   tripeptide_neighbor_residual_vec_next.npy,
+   tripeptide_neighbor_diagnostics.npy and
+   tripeptide_neighbor_reference.npy have an SO(3), not O(3), source contract:
+   improper covariance requires a reflected DFT source.  LarsenHBondShieldingResult
+   + larsen_hbond_shielding.npy, larsen_hbond_1pHB_shielding.npy,
+   larsen_hbond_2pHB_shielding.npy, larsen_hbond_1pHaB_shielding.npy,
+   larsen_hbond_2pHaB_shielding.npy,
+   larsen_hbond_diagnostic_CB_shielding.npy,
+   larsen_hbond_pairs_isotropic.npy, larsen_corner_imputed.npy,
+   larsen_imputed_pair_count.npy and the signed-grid/imputation columns of
+   larsen_hbond_pairs_geometry.npy (cols3:5) and larsen_hbond_pairs.npy
+   (cols19:21 and22:28) have the analogous unchanged-grid improper limitation.
+   This does not apply to raw H-O-C-third rho: DC-LI proves col2/col18 wrapped
+   pseudoscalar parity, and DC-LSI proves
+   larsen_sidechain_donor_candidates.npy col10 independently.  The exact
+   proper-only shielding H5 paths are named above.
+5. CoulombResult + coulomb_E.npy, coulomb_E_backbone.npy,
+   coulomb_E_sidechain.npy, coulomb_E_aromatic.npy, coulomb_efg.npy,
+   coulomb_efg_t2.npy, coulomb_efg_backbone.npy,
+   coulomb_efg_sidechain.npy and coulomb_efg_aromatic.npy; and
+   MopacCoulombResult + mopac_coulomb_E.npy,
+   mopac_coulomb_E_backbone.npy, mopac_coulomb_E_sidechain.npy,
+   mopac_coulomb_E_aromatic.npy, mopac_coulomb_efg.npy,
+   mopac_coulomb_efg_backbone.npy, mopac_coulomb_efg_sidechain.npy and
+   mopac_coulomb_efg_aromatic.npy: nonfinite sanitizers manufacture zero
+   without an availability mask; this is not a physical zero.
+6. ApbsFieldResult + apbs_E.npy, apbs_E_total_diagnostic.npy, apbs_efg.npy,
+   apbs_efg_total_diagnostic.npy, apbs_phi.npy, apbs_E_clamp_mask.npy,
+   apbs_E_clamp_scale.npy and apbs_nonfinite_sanitizer_mask.npy;
+   CoulombResult + coulomb_E_solvent.npy and coulomb_efg_solvent.npy;
+   ApbsEfieldTimeSeriesTrajectoryResult +
+   /trajectory/apbs_efield_time_series/xyz,
+   /trajectory/apbs_efield_time_series/clamp_mask and
+   /trajectory/apbs_efield_time_series/clamp_scale; and
+   ApbsEfgTimeSeriesTrajectoryResult +
+   /trajectory/apbs_efg_time_series/t2: a Cartesian deposited-charge self-stencil is
+   not a converged directional observation and the default axis-wise bounding
+   box changes its numerical domain under rotation.  DC-AP therefore records a
+   finite-distance neutral-probe bound on a cubic forcing domain, not exact O(3).
+7. MopacResult + mopac_global.npy/mopac_atom_populations.npy: DC-MX now reruns
+   the true executable and re-reads the NPY.  The neutral global dipole follows
+   the polar law only within the recorded 0.258904 D PM7+MOZYME numerical
+   residual (0.3 D+1e-2 envelope); the live parser still leaves per-atom
+   dipole cols6:10 NaN and may leave a missing global block as zero without an
+   availability mask.  Charged-system dipoles remain origin dependent.
+8. SidechainCarbonylAnisotropyResult + sidechain_co_bo_T2.npy and
+   McConnellResult + mc_peptide_co_bo.npy, mc_peptide_cn_bo.npy,
+   mc_backbone_other_bo.npy, mc_sidechain_co_bo.npy,
+   mc_sidechain_other_bo.npy, mc_disulfide_bo.npy, mc_backbone_xh_bo.npy,
+   mc_sidechain_xh_bo.npy and mc_s_h_bo.npy now pass transformed
+   external-MOPAC NPY/H5 read-back in DC-MX within the recorded MOZYME
+   envelope.  Source absence is NaN for the typed sidechain array but remains
+   legacy zero without a mask in the broad McConnell channels; numerical O(3)
+   residuals are not hidden.
+9. BS/HM/Mc/Water/Hydration-vector/AIMNet componentwise Welford
+   std/m2/min/max/extrema have no homogeneous vector or tensor law.  Their
+   owner groups scope directional metadata to assembled means only; consumers
+   must not extend it to nonlinear component statistics.  SASA and Hydration
+   derived-scalar statistics are separately NC because of the finite grid.
+10. LocalBackboneGeometryResult + cb_deviation.npy/cb_residual_vector.npy and
+    LocalBackboneGeometryTrajectoryResult +
+    /trajectory/local_backbone_geometry/cb_deviation and
+    /trajectory/local_backbone_geometry/cb_local_vector are proper-only
+    chiral-L-CB quantities.  Their fixed-sign cross-product construction has
+    no single improper-transform law; metadata and nonvacuous tests now say so.
+11. ConformationResult/Ring::ComputeGeometry + ring_geometry.npy: DC-GR/SER
+    prove the ordinary nondegenerate-ring axial normal only.  For a collinear
+    or collapsed >=3-member ring, the unconditional SVD V.col(2) is
+    underdetermined and can be lab-basis-dependent; there is no normal-valid
+    mask.  Zero is only the <3/default case, not the general degeneracy signal.
+12. HydrationGeometryResult + water_polarization.npy and
+    HydrationGeometryTimeSeriesTrajectoryResult +
+    /trajectory/hydration_geometry_time_series/dipole_vector and
+    /trajectory/hydration_geometry_time_series/surface_normal: a no-shell dipole
+    or no-meaningful copied SASA radial normal is serialized as a zero vector
+    without a vector-valid mask.  The hydration vector-Welford paths named
+    above inherit that ambiguity in addition to their component-statistic NC
+    law.  Whole-result solvent absence remains distinct and explicit.
+13. DsspResult + dssp_backbone.npy, dssp_ss8.npy, dssp_ppii.npy,
+    dssp_hbond_energy.npy and dssp_hbond_partner_residue_index.npy;
+    Dssp8TimeSeriesTrajectoryResult +
+    /trajectory/dssp8_time_series/ss8_code,
+    /trajectory/dssp8_time_series/ppii_flag,
+    /trajectory/dssp8_time_series/hbond_acceptor_partner,
+    /trajectory/dssp8_time_series/hbond_donor_partner,
+    /trajectory/dssp8_time_series/hbond_acceptor_energy and
+    /trajectory/dssp8_time_series/hbond_donor_energy; and
+    Dssp8TransitionTrajectoryResult +
+    /trajectory/dssp8_transition/ss8_transition_count,
+    /trajectory/dssp8_transition/ss8_dominant,
+    /trajectory/dssp8_transition/ss8_occupancy and
+    /trajectory/dssp8_transition/ss8_transition_matrix: physical continuum
+    laws are stated, but the production temporary PDB rounds coordinates to
+    0.001 A.  A transformed rerun can drift or cross a libdssp decision
+    boundary; current forcing-fixture byte identity is not a universal exact
+    serialized law.
+
+Resolved contract defects in this pass
+--------------------------------------
+* ConformationResult + bs_ring_B_cylindrical.npy now declares its true mixed
+  PS/zero/S law and uses ndarray metadata; it is not advertised as axial.
+* PiQuadrupoleLocalTensorResult + piquad_local_tensor.npy/piquad_local_T2.npy
+  now declare their ring-local mixed-parity law and suppress global e3nn export.
+* McConnellResult + mc_nearest_co_dir.npy/mc_nearest_co_midpoint.npy/
+  mc_nearest_co_T2.npy/mc_nearest_cn_T2.npy now emit NaN on unmatched rows;
+  the midpoint uses an affine PositionField contract.
+* Position payloads pos.npy and water_hbond_candidates.npy explicitly declare
+  p'=R p+t, rather than a translation-free vector law.
+* All six directional Welford owners explicitly restrict irrep metadata to
+  assembled means and label component statistics non-homogeneous.
+* SasaResult, SasaTimeSeriesTrajectoryResult and SasaWelfordTrajectoryResult
+  now publish the finite lab-grid law instead of a false exact scalar law;
+  DCT-SA reaches all 42 exact H5 value paths and sasa_welford.npy.
+* Owner-local H5 metadata commits close the former raw-path gaps for positions,
+  APBS grid diagnostics, Gromacs boxes/tensors, local-backbone CB quantities,
+  dihedral/DSSP/ring categorical geometry, reorientation, tripeptide and
+  Larsen outputs.  The six proper-only tripeptide/Larsen PackFull9 streams now
+  state the project full9 basis/T1 semantics while retaining parity=mixed;
+  no improper-source tensor parity was invented.
+* Larsen count, sidechain-carbonyl count, pair-index and water-term outputs now
+  state their exact O(3)-invariant gates separately from signed-rho tensor and
+  imputation outputs; both count and water time-series owners carry the same
+  machine-readable distinction.
+* Larsen raw H-O-C-third rho is no longer conflated with the chiral lookup
+  values: larsen_hbond_pairs_geometry.npy col2, larsen_hbond_pairs.npy col18
+  and larsen_sidechain_donor_candidates.npy col10 have nonvacuous improper
+  production-rerun and serialized wrapped-sign proofs.
+* ApbsFieldResult + apbs_E_clamp_mask.npy/apbs_E_clamp_scale.npy and
+  ApbsEfieldTimeSeriesTrajectoryResult +
+  /trajectory/apbs_efield_time_series/clamp_mask and
+  /trajectory/apbs_efield_time_series/clamp_scale now publish their continuum
+  scalar/finite-grid-NC law, validity and exact owner serialization.
+* DsspResult static observation, torsion-valid, H-bond energy and partner NPYs
+  now have explicit catalog contracts; dssp_ss8.npy and the other libdssp
+  outputs distinguish physical O(3) laws from the 0.001-A serialized boundary.
+* Catalog metadata commit 6bfe6c7 marks the nonhomogeneous mixed rows already
+  named above as parity=mixed, clears false global irreps for
+  ring_contributions.npy and cb_residual_vector.npy, and corrects
+  dssp_ss8.npy to even with a physical O(3)-invariant law while retaining
+  dssp_backbone.npy as a mixed signed/scalar/category row.  The later DSSP
+  owner correction makes the 0.001-A serialized-boundary caveat explicit.
+  The exact mixed-stem set and transformation strings are pinned by
+  python/tests/test_topology_sidecar.py.
+* Owner catalog commits ae24cfc, ef9c9ad, 3dac5bb, 4539462, 52059a6,
+  38aaf64, 4bc5595, cd8cadd and c272139 declare the exact validity,
+  sparse-row identity, count, clamp, match and donor-provenance companions
+  listed by name in the static companion ledger.  They add no scientific
+  assembler and do not alter calculator values; they prevent unavailable or
+  compatibility-zero rows from being mistaken for physical directional zero.
+
+Final smoke/full-suite verification state
+-----------------------------------------
+The authoritative final sequential run discovered 868 tests and completed in
+1473.36 s: 599 passed, 266 skipped and exactly the three pre-declared
+baseline/environmental reds failed.  #558 lacks the 1P9J tpr/xtc/edr fixture;
+#559 lacks the 1Z9B fixture; #861 SmokeTest.NoDft saw the known AIMNet2
+charge-response-gradient scalar GPU drift, max |delta|=3.725e-7 at one of 1231
+elements.  SmokeTest.WithDft passed in 22.96 s.  Every covariance, parity,
+metadata, T2 and serialized-boundary test added or extended by
+this pass succeeded; the sole serialized smoke mismatch is that declared GPU
+drift.  The complete Python suite separately passed 306 tests and skipped 95
+in 2.20 s.

@@ -346,18 +346,33 @@ void AssertCompleteEmitReadback(ProteinConformation& conf,
         const double* cnt = DataAs<double>(cn_t2);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
-            ExpectDoubleEqOrNan(cod[i*3 + 0], ca.dir_nearest_CO.x());
-            ExpectDoubleEqOrNan(cod[i*3 + 1], ca.dir_nearest_CO.y());
-            ExpectDoubleEqOrNan(cod[i*3 + 2], ca.dir_nearest_CO.z());
-            ExpectDoubleEqOrNan(com[i*3 + 0], ca.nearest_CO_midpoint.x());
-            ExpectDoubleEqOrNan(com[i*3 + 1], ca.nearest_CO_midpoint.y());
-            ExpectDoubleEqOrNan(com[i*3 + 2], ca.nearest_CO_midpoint.z());
-            double co_pack[9], cn_pack[9];
-            ca.T2_CO_nearest.PackFull9(co_pack);
-            ca.T2_CN_nearest.PackFull9(cn_pack);
-            for (int c = 0; c < 9; ++c) {
-                ExpectDoubleEqOrNan(cot[i*9 + c], co_pack[c]);
-                ExpectDoubleEqOrNan(cnt[i*9 + c], cn_pack[c]);
+            if (ca.nearest_CO_dist >= NO_DATA_SENTINEL) {
+                for (int c = 0; c < 3; ++c) {
+                    EXPECT_TRUE(std::isnan(cod[i*3 + c]));
+                    EXPECT_TRUE(std::isnan(com[i*3 + c]));
+                }
+                for (int c = 0; c < 9; ++c)
+                    EXPECT_TRUE(std::isnan(cot[i*9 + c]));
+            } else {
+                ExpectDoubleEqOrNan(cod[i*3 + 0], ca.dir_nearest_CO.x());
+                ExpectDoubleEqOrNan(cod[i*3 + 1], ca.dir_nearest_CO.y());
+                ExpectDoubleEqOrNan(cod[i*3 + 2], ca.dir_nearest_CO.z());
+                ExpectDoubleEqOrNan(com[i*3 + 0], ca.nearest_CO_midpoint.x());
+                ExpectDoubleEqOrNan(com[i*3 + 1], ca.nearest_CO_midpoint.y());
+                ExpectDoubleEqOrNan(com[i*3 + 2], ca.nearest_CO_midpoint.z());
+                double co_pack[9];
+                ca.T2_CO_nearest.PackFull9(co_pack);
+                for (int c = 0; c < 9; ++c)
+                    ExpectDoubleEqOrNan(cot[i*9 + c], co_pack[c]);
+            }
+            if (ca.nearest_CN_dist >= NO_DATA_SENTINEL) {
+                for (int c = 0; c < 9; ++c)
+                    EXPECT_TRUE(std::isnan(cnt[i*9 + c]));
+            } else {
+                double cn_pack[9];
+                ca.T2_CN_nearest.PackFull9(cn_pack);
+                for (int c = 0; c < 9; ++c)
+                    ExpectDoubleEqOrNan(cnt[i*9 + c], cn_pack[c]);
             }
         }
 
@@ -796,18 +811,33 @@ TEST(WriteFeatures, A0A7C5FAR6OrcaReadback) {
         const double* cnt = DataAs<double>(cn_t2);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
-            ExpectDoubleEqOrNan(cod[i*3 + 0], ca.dir_nearest_CO.x());
-            ExpectDoubleEqOrNan(cod[i*3 + 1], ca.dir_nearest_CO.y());
-            ExpectDoubleEqOrNan(cod[i*3 + 2], ca.dir_nearest_CO.z());
-            ExpectDoubleEqOrNan(com[i*3 + 0], ca.nearest_CO_midpoint.x());
-            ExpectDoubleEqOrNan(com[i*3 + 1], ca.nearest_CO_midpoint.y());
-            ExpectDoubleEqOrNan(com[i*3 + 2], ca.nearest_CO_midpoint.z());
-            double co_pack[9], cn_pack[9];
-            ca.T2_CO_nearest.PackFull9(co_pack);
-            ca.T2_CN_nearest.PackFull9(cn_pack);
-            for (int c = 0; c < 9; ++c) {
-                ExpectDoubleEqOrNan(cot[i*9 + c], co_pack[c]);
-                ExpectDoubleEqOrNan(cnt[i*9 + c], cn_pack[c]);
+            if (ca.nearest_CO_dist >= NO_DATA_SENTINEL) {
+                for (int c = 0; c < 3; ++c) {
+                    EXPECT_TRUE(std::isnan(cod[i*3 + c]));
+                    EXPECT_TRUE(std::isnan(com[i*3 + c]));
+                }
+                for (int c = 0; c < 9; ++c)
+                    EXPECT_TRUE(std::isnan(cot[i*9 + c]));
+            } else {
+                ExpectDoubleEqOrNan(cod[i*3 + 0], ca.dir_nearest_CO.x());
+                ExpectDoubleEqOrNan(cod[i*3 + 1], ca.dir_nearest_CO.y());
+                ExpectDoubleEqOrNan(cod[i*3 + 2], ca.dir_nearest_CO.z());
+                ExpectDoubleEqOrNan(com[i*3 + 0], ca.nearest_CO_midpoint.x());
+                ExpectDoubleEqOrNan(com[i*3 + 1], ca.nearest_CO_midpoint.y());
+                ExpectDoubleEqOrNan(com[i*3 + 2], ca.nearest_CO_midpoint.z());
+                double co_pack[9];
+                ca.T2_CO_nearest.PackFull9(co_pack);
+                for (int c = 0; c < 9; ++c)
+                    ExpectDoubleEqOrNan(cot[i*9 + c], co_pack[c]);
+            }
+            if (ca.nearest_CN_dist >= NO_DATA_SENTINEL) {
+                for (int c = 0; c < 9; ++c)
+                    EXPECT_TRUE(std::isnan(cnt[i*9 + c]));
+            } else {
+                double cn_pack[9];
+                ca.T2_CN_nearest.PackFull9(cn_pack);
+                for (int c = 0; c < 9; ++c)
+                    ExpectDoubleEqOrNan(cnt[i*9 + c], cn_pack[c]);
             }
         }
 

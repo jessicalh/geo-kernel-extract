@@ -20,6 +20,7 @@ from ._tensors import (
     EFGTensor,
     VectorField,
     MagneticVectorField,
+    PositionField,
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
@@ -70,7 +71,7 @@ class BiotSavartGroup(RingKernelGroup):
     """Biot-Savart with additional B-field and ring counts."""
     total_B: MagneticVectorField = None
     ring_B_field: MagneticVectorField = None
-    ring_B_cylindrical: MagneticVectorField = None
+    ring_B_cylindrical: Optional[np.ndarray] = None
     ring_counts: RingCounts = None
 
 
@@ -86,7 +87,7 @@ class PiQuadrupoleGroup:
     per_type_T0: PerRingTypeT0
     quad_scalar: Optional[np.ndarray] = None
     axial_scalar_per_type_T0: Optional[PerRingTypeT0] = None
-    local_tensor: Optional[ShieldingTensor] = None
+    local_tensor: Optional[np.ndarray] = None
     local_T2: Optional[np.ndarray] = None
     local_frame: Optional[np.ndarray] = None
     local_geometry: Optional[np.ndarray] = None
@@ -219,7 +220,7 @@ class McConnellGroup:
     s_h_bo: ShieldingTensor
     nearfield_counts: Optional[McConnellNearFieldCounts] = None
     nearest_co_dir: Optional[VectorField] = None
-    nearest_co_midpoint: Optional[VectorField] = None
+    nearest_co_midpoint: Optional[PositionField] = None
     nearest_co_T2: Optional[ShieldingTensor] = None
     nearest_cn_T2: Optional[ShieldingTensor] = None
     bond_neighbors: Optional[np.ndarray] = None
@@ -1239,29 +1240,37 @@ class TripeptideGroup:
     when at least one tripeptide NPY file is present on disk.
 
     Per-atom convention:
-    - ``bb_shielding`` carries the tensor on backbone N/CA/C/O/H/HA and
-      central-residue sidechain atoms, NaN-filled elsewhere.
-    - ``neighbor_shielding`` carries the summed Δσ_{i-1} + Δσ_{i+1}.
+    - ``bb_shielding`` carries the raw nine-column PackFull9 tensor on
+      backbone N/CA/C/O/H/HA and central-residue sidechain atoms, NaN-filled
+      elsewhere.  Its chiral DFT lookup has a proper-rotation contract only,
+      so it is deliberately exposed as an ndarray rather than an O(3) tensor
+      wrapper.
+    - ``neighbor_shielding`` carries the summed Δσ_{i-1} + Δσ_{i+1} as
+      raw nine-column PackFull9 data.  The chiral lookup has a
+      proper-rotation contract only, so all three neighbour tensors are
+      deliberately exposed as ndarrays rather than O(3) tensor wrappers.
     - ``bb_residual_vec`` is the central-residue match residual
-      (aligned_dft - protein_position) as a Vec3, NaN where the residue
-      had no central match.
+      (aligned_dft - protein_position) as raw Cartesian xyz, NaN where the
+      residue had no central match.  The chiral lookup likewise precludes a
+      single improper-transform parity.
     - ``neighbor_residual_vec_prev/_next`` carry the per-direction cap
-      residuals. NaN distinguishes "the i-1 (or i+1) direction did not
-      contribute" from a coincidentally-zero residual.
+      residuals as raw Cartesian xyz. NaN distinguishes "the i-1 (or i+1)
+      direction did not contribute" from a coincidentally-zero residual;
+      their chiral lookup has no single improper-transform parity.
     - ``bb_method_tag`` encodes the DFT engine that produced the row
       (1=OPBE Gaussian per Larsen, 2=PBE ORCA per the SER regen). 0
       means no match.
     """
-    bb_shielding: Optional[ShieldingTensor] = None
-    bb_residual_vec: Optional[VectorField] = None
+    bb_shielding: Optional[np.ndarray] = None
+    bb_residual_vec: Optional[np.ndarray] = None
     bb_match_distance: Optional[np.ndarray] = None
     bb_method_tag: Optional[np.ndarray] = None
     bb_match_atoms: Optional[np.ndarray] = None
-    neighbor_shielding: Optional[ShieldingTensor] = None
-    neighbor_shielding_prev: Optional[ShieldingTensor] = None
-    neighbor_shielding_next: Optional[ShieldingTensor] = None
-    neighbor_residual_vec_prev: Optional[VectorField] = None
-    neighbor_residual_vec_next: Optional[VectorField] = None
+    neighbor_shielding: Optional[np.ndarray] = None
+    neighbor_shielding_prev: Optional[np.ndarray] = None
+    neighbor_shielding_next: Optional[np.ndarray] = None
+    neighbor_residual_vec_prev: Optional[np.ndarray] = None
+    neighbor_residual_vec_next: Optional[np.ndarray] = None
     neighbor_reference: Optional[np.ndarray] = None
     bb_diagnostics: Optional[np.ndarray] = None
     neighbor_diagnostics: Optional[np.ndarray] = None
@@ -1296,7 +1305,10 @@ class LarsenHBondGroup:
     2° on each of HB / HαB) plus a water-term offset Δσ_w on amide H
     atoms with no H-bond partner. Tensors are ppm in the protein lab
     frame (rotated from the canonical donor frame at calculator time)
-    and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols).
+    and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols).  The signed-rho
+    grid lookup is chiral and has a proper-rotation contract only, so these
+    packed tensors are deliberately exposed as raw ndarrays rather than O(3)
+    tensor wrappers.
 
     Methods accumulate side-by-side with the scalar-geometry ``HBondGroup``
     — both calculators cover overlapping physics (amide-H / backbone-O
@@ -1327,12 +1339,12 @@ class LarsenHBondGroup:
       any of the four Table 2 classes — the diagnostic CB does NOT
       increment it.
     """
-    shielding: Optional[ShieldingTensor] = None
-    pHB_1: Optional[ShieldingTensor] = None
-    pHB_2: Optional[ShieldingTensor] = None
-    pHaB_1: Optional[ShieldingTensor] = None
-    pHaB_2: Optional[ShieldingTensor] = None
-    diagnostic_CB: Optional[ShieldingTensor] = None
+    shielding: Optional[np.ndarray] = None
+    pHB_1: Optional[np.ndarray] = None
+    pHB_2: Optional[np.ndarray] = None
+    pHaB_1: Optional[np.ndarray] = None
+    pHaB_2: Optional[np.ndarray] = None
+    diagnostic_CB: Optional[np.ndarray] = None
     water_term: Optional[np.ndarray] = None
     count: Optional[np.ndarray] = None
     corner_imputed: Optional[np.ndarray] = None
@@ -1378,7 +1390,7 @@ class Protein:
     n_atoms: int
 
     # Identity
-    pos: VectorField
+    pos: PositionField
     element: np.ndarray
     residue_type: np.ndarray
     residue_index: np.ndarray

@@ -179,6 +179,10 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("normalization", std::string("cartesian"));
     grp.createAttribute("parity",        std::string("1o"));
     grp.createAttribute("units",         std::string("V/Angstrom"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "irrep_layout,normalization,parity,units describe xyz only; "
+        "clamp_* and apbs_grid_*_per_frame datasets carry per-dataset "
+        "scalar/lab-axis contracts"));
     grp.createAttribute("source_result", std::string("ApbsFieldResult"));
     grp.createAttribute("source_field", std::string("apbs_efield"));
     grp.createAttribute("source", std::string(
@@ -225,14 +229,47 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("xyz", space);
     ds.write_raw(flat.data());
+    ds.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    ds.createAttribute("transformation",
+        std::string(
+            "continuum polar_vector: v'=R v; translation invariant. The "
+            "live axis-aligned finite-difference APBS solve has no exact "
+            "O(3) law; transformed production reruns use the recorded "
+            "1.8e-2 V/Angstrom absolute + 5e-2 relative finite-grid envelope"));
+    ds.createAttribute("parity", std::string("1o"));
 
     HighFive::DataSpace scalar_space({N, T});
     auto clamp_mask_ds =
         grp.createDataSet<std::uint8_t>("clamp_mask", scalar_space);
     clamp_mask_ds.write_raw(clamp_mask_flat_.data());
+    clamp_mask_ds.createAttribute("units", std::string("dimensionless"));
+    clamp_mask_ds.createAttribute("coordinate_frame", std::string(
+        "lab_fixed_apbs_finite_difference_grid"));
+    clamp_mask_ds.createAttribute("parity", std::string("mixed"));
+    clamp_mask_ds.createAttribute("transformation", std::string(
+        "continuum rotation/translation/reflection-invariant scalar "
+        "threshold diagnostic derived from |E|; the live axis-aligned "
+        "finite-difference APBS solve has no exact O(3) law"));
+    clamp_mask_ds.createAttribute("validity", std::string(
+        "uint8 0/1; 1 iff the canonical reaction E-field row was "
+        "magnitude-clamped; absent-source frames use 0 and must be "
+        "interpreted with source_attached_per_frame"));
     auto clamp_scale_ds =
         grp.createDataSet<double>("clamp_scale", scalar_space);
     clamp_scale_ds.write_raw(clamp_scale_flat_.data());
+    clamp_scale_ds.createAttribute("units", std::string("dimensionless"));
+    clamp_scale_ds.createAttribute("coordinate_frame", std::string(
+        "lab_fixed_apbs_finite_difference_grid"));
+    clamp_scale_ds.createAttribute("parity", std::string("mixed"));
+    clamp_scale_ds.createAttribute("transformation", std::string(
+        "continuum rotation/translation/reflection-invariant scalar "
+        "derived from |E| and the configured clamp threshold; the live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law"));
+    clamp_scale_ds.createAttribute("validity", std::string(
+        "finite in (0,1] when source is attached; 1 when unclamped; "
+        "absent-source frames are NaN and must be interpreted with "
+        "source_attached_per_frame"));
 
     auto write_grid_u64 = [&](const std::string& name,
             const std::vector<std::array<std::uint64_t, 3>>& rows) {
@@ -243,9 +280,18 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
         HighFive::DataSpace grid_space({T, std::size_t(3)});
         auto grid_ds = grp.createDataSet<std::uint64_t>(name, grid_space);
         grid_ds.write_raw(values.data());
+        grid_ds.createAttribute("component_order", std::string("x,y,z"));
+        grid_ds.createAttribute("units", std::string("grid_points"));
+        grid_ds.createAttribute("coordinate_frame",
+            std::string("apbs_lab_axis_aligned_grid_xyz"));
+        grid_ds.createAttribute("parity", std::string("even"));
+        grid_ds.createAttribute("transformation", std::string(
+            "configured cubic grid point counts (n,n,n); invariant under "
+            "proper/improper orthogonal transforms and translations"));
     };
     auto write_grid_f64 = [&](const std::string& name,
-            const std::vector<std::array<double, 3>>& rows) {
+            const std::vector<std::array<double, 3>>& rows,
+            const std::string& transformation) {
         std::vector<double> values(T * 3);
         for (std::size_t t = 0; t < T; ++t)
             for (std::size_t d = 0; d < 3; ++d)
@@ -253,13 +299,27 @@ void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
         HighFive::DataSpace grid_space({T, std::size_t(3)});
         auto grid_ds = grp.createDataSet<double>(name, grid_space);
         grid_ds.write_raw(values.data());
+        grid_ds.createAttribute("component_order", std::string("x,y,z"));
+        grid_ds.createAttribute("units", std::string("Angstrom"));
+        grid_ds.createAttribute("coordinate_frame",
+            std::string("apbs_lab_axis_aligned_grid_xyz"));
+        grid_ds.createAttribute("parity", std::string("mixed"));
+        grid_ds.createAttribute("transformation", transformation);
     };
     write_grid_u64("apbs_grid_dims_per_frame", grid_dims_per_frame_);
     write_grid_f64("apbs_grid_lengths_A_per_frame",
-                   grid_lengths_A_per_frame_);
-    write_grid_f64("apbs_grid_origin_A_per_frame", grid_origin_A_per_frame_);
+                   grid_lengths_A_per_frame_,
+                   "lab-axis grid extents; translation invariant; no closed "
+                   "O(3) transformation law under arbitrary orthogonal transforms");
+    write_grid_f64("apbs_grid_origin_A_per_frame", grid_origin_A_per_frame_,
+                   "lab-axis grid origin; o'=o+t under pure translations; no "
+                   "affine-position/O(3) law under arbitrary orthogonal "
+                   "transforms because grid axes remain lab-fixed");
     write_grid_f64("apbs_grid_spacing_A_per_frame",
-                   grid_spacing_A_per_frame_);
+                   grid_spacing_A_per_frame_,
+                   "lab-axis grid step lengths; translation invariant; no "
+                   "closed O(3) transformation law under arbitrary orthogonal "
+                   "transforms");
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times", frame_times_)

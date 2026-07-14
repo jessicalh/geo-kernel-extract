@@ -100,8 +100,15 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("irrep_layout_vector",    std::string("x,y,z"));
     grp.createAttribute("normalization_vector",   std::string("cartesian"));
     grp.createAttribute("parity_vector",          std::string("1o"));
+    grp.createAttribute("vector_coordinate_frame",
+                        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("vector_transformation",
+                        std::string("polar vector: v'=R v"));
     grp.createAttribute("irrep_layout_scalar",    std::string("T0"));
     grp.createAttribute("parity_scalar",          std::string("0e"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "charge_response_gradient_vector payload only; scalar norm, frame "
+        "indices/times, and source mask are invariant"));
     grp.createAttribute("source",                 std::string(
         "AIMNet2ChargeResponseGradientResult.{aimnet2_charge_response_gradient_vector (Vec3), "
         "aimnet2_charge_response_gradient_scalar (double, L2 norm of vector)}. "

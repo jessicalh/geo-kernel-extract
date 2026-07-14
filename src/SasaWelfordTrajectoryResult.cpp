@@ -227,6 +227,21 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("mean_dt_ps",        mean_dt_ps_);
     grp.createAttribute("frame_index_range", frame_index_range_);
     grp.createAttribute("units",             std::string("Angstrom^2"));
+    grp.createAttribute("source_irrep_layout",
+                        std::string("raw_scalar_no_exact_o3_irrep"));
+    grp.createAttribute("source_parity", std::string("mixed"));
+    grp.createAttribute("source_coordinate_frame",
+                        std::string("lab_fixed_fibonacci_sampling_grid"));
+    grp.createAttribute("source_transformation", std::string(
+        "continuum rotation-invariant scalar; live finite lab-fixed Fibonacci "
+        "estimator has no exact O(3) law and is only approximately invariant "
+        "within the recorded covariance-test envelope"));
+    grp.createAttribute("statistic_transformation", std::string(
+        "all value and Welford statistic channels inherit the sampled SASA "
+        "source's finite-grid orientation dependence; they have no exact O(3) law"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "sasa value/statistic datasets and legacy value/statistic aliases only; "
+        "frame/count provenance is invariant metadata"));
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
     // base_units is the unit of the underlying samples; m2_units is the unit

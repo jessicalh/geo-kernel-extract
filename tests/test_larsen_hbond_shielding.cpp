@@ -29,6 +29,12 @@
 #include "DsspResult.h"
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
+#include "LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult.h"
+#include "LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.h"
+#include "LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult.h"
+#include "LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult.h"
+#include "LarsenHBondCountTimeSeriesTrajectoryResult.h"
+#include "LarsenHBondWaterTermTimeSeriesTrajectoryResult.h"
 #include "LarsenHBondGrid.h"
 #include "LarsenSidechainDonorAuditResult.h"
 #include "LarsenHBondShieldingResult.h"
@@ -40,12 +46,16 @@
 #include "RuntimeEnvironment.h"
 #include "Session.h"
 #include "SpatialIndexResult.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
+#include "DirectionalTestHelpers.h"
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -54,15 +64,24 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <set>
 #include <string>
 #include <vector>
 
 using namespace nmr;
 namespace fs = std::filesystem;
+
+#ifndef NMR_TEST_PYTHON_EXECUTABLE
+#error "NMR_TEST_PYTHON_EXECUTABLE must be defined"
+#endif
+#ifndef NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT
+#error "NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT must be defined"
+#endif
 
 namespace {
 
@@ -103,6 +122,127 @@ T PayloadValue(const RawNpy& npy, std::size_t element_index) {
         std::memcpy(&value, npy.payload.data() + byte_offset, sizeof(T));
     }
     return value;
+}
+
+SphericalTensor UnpackPayloadFull9(const RawNpy& npy,
+                                   std::size_t row) {
+    SphericalTensor tensor;
+    tensor.T0 = PayloadValue<double>(npy, row * 9);
+    for (std::size_t component = 0; component < 3; ++component) {
+        tensor.T1[component] =
+            PayloadValue<double>(npy, row * 9 + 1 + component);
+    }
+    for (std::size_t component = 0; component < 5; ++component) {
+        tensor.T2[component] =
+            PayloadValue<double>(npy, row * 9 + 4 + component);
+    }
+    return tensor;
+}
+
+void ExpectSameOrNaN(double actual, double expected, double tolerance,
+                     const std::string& context) {
+    if (std::isnan(expected)) {
+        EXPECT_TRUE(std::isnan(actual)) << context;
+    } else {
+        EXPECT_TRUE(std::isfinite(actual)) << context;
+        EXPECT_NEAR(actual, expected, tolerance) << context;
+    }
+}
+
+void ExpectWrappedOppositeOrNaN(double actual, double source,
+                                double tolerance,
+                                const std::string& context) {
+    if (std::isnan(source)) {
+        EXPECT_TRUE(std::isnan(actual)) << context;
+    } else {
+        EXPECT_TRUE(std::isfinite(actual)) << context;
+        EXPECT_NEAR(std::remainder(actual + source, 360.0), 0.0,
+                    tolerance) << context;
+    }
+}
+
+template <typename T>
+std::vector<T> ReadH5Flat(const fs::path& path,
+                          const std::string& dataset,
+                          std::vector<std::size_t>* dimensions = nullptr) {
+    HighFive::File file(path.string(), HighFive::File::ReadOnly);
+    auto data_set = file.getDataSet(dataset);
+    const auto dims = data_set.getSpace().getDimensions();
+    if (dimensions) *dimensions = dims;
+    const std::size_t count = std::accumulate(
+        dims.begin(), dims.end(), std::size_t{1},
+        std::multiplies<std::size_t>());
+    std::vector<T> values(count);
+    if (!values.empty()) data_set.read(values.data());
+    return values;
+}
+
+SphericalTensor UnpackFull9(const double* values) {
+    SphericalTensor tensor;
+    tensor.T0 = values[0];
+    for (std::size_t component = 0; component < 3; ++component)
+        tensor.T1[component] = values[1 + component];
+    for (std::size_t component = 0; component < 5; ++component)
+        tensor.T2[component] = values[4 + component];
+    return tensor;
+}
+
+void ExpectRawFull9TrajectoryMetadata(
+    const fs::path& path, const std::string& group_path,
+    const std::string& expected_transformation) {
+    HighFive::File file(path.string(), HighFive::File::ReadOnly);
+    auto group = file.getGroup(group_path);
+    std::string parity;
+    std::string coordinate_frame;
+    std::string tensor_basis;
+    std::string tensor_component_order;
+    std::string tensor_frame;
+    std::string tensor_t1_semantics;
+    std::string tensor_structural_zero_components;
+    std::string e3nn_export;
+    std::string normalization_scope;
+    std::string transformation;
+    bool tensor_t1_structural_zero = true;
+    group.getAttribute("parity").read(parity);
+    group.getAttribute("coordinate_frame").read(coordinate_frame);
+    group.getAttribute("tensor_basis").read(tensor_basis);
+    group.getAttribute("tensor_component_order").read(
+        tensor_component_order);
+    group.getAttribute("tensor_frame").read(tensor_frame);
+    group.getAttribute("tensor_t1_semantics").read(tensor_t1_semantics);
+    group.getAttribute("tensor_t1_structural_zero").read(
+        tensor_t1_structural_zero);
+    group.getAttribute("tensor_structural_zero_components").read(
+        tensor_structural_zero_components);
+    group.getAttribute("e3nn_export").read(e3nn_export);
+    group.getAttribute("normalization_scope").read(normalization_scope);
+    group.getAttribute("transformation").read(transformation);
+
+    EXPECT_EQ(parity, "mixed") << group_path;
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz")
+        << group_path;
+    EXPECT_EQ(tensor_basis,
+              "project_native_full9_spherical_tensor_v1")
+        << group_path;
+    EXPECT_EQ(tensor_component_order,
+              "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2")
+        << group_path;
+    EXPECT_EQ(tensor_frame, "conformation_cartesian_xyz") << group_path;
+    EXPECT_EQ(tensor_t1_semantics,
+              "Cartesian Levi-Civita dual x,y,z (not real-Y1m): "
+              "a=((T_yz-T_zy)/2,(T_zx-T_xz)/2,(T_xy-T_yx)/2); "
+              "axial a'=det(R) R a; generically nonzero")
+        << group_path;
+    EXPECT_FALSE(tensor_t1_structural_zero) << group_path;
+    EXPECT_EQ(tensor_structural_zero_components, "none") << group_path;
+    EXPECT_EQ(e3nn_export,
+              "explicit project-basis to e3nn conversion required before use")
+        << group_path;
+    EXPECT_EQ(normalization_scope,
+              "xyz tensor payload: T2 uses isometric real-tesseral "
+              "normalization; T1 uses the tensor_t1_semantics convention")
+        << group_path;
+    EXPECT_EQ(transformation, expected_transformation) << group_path;
 }
 
 RawNpy ReadRawNpy(const fs::path& path) {
@@ -628,6 +768,825 @@ TEST(LarsenHBondPairAudit, SyntheticGridEmitsAuditablePairTables) {
 }
 
 
+TEST(LarsenHBondDirectionalCovariance,
+     SyntheticGridRerunsProductionLookupAfterProperRigidTransform) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto protein = std::move(build.protein);
+    ProteinConformation& original = protein->Conformation();
+    ASSERT_TRUE(original.AttachResult(GeometryResult::Compute(original)));
+    ASSERT_TRUE(original.AttachResult(SpatialIndexResult::Compute(original)));
+
+    const fs::path grid_dir =
+        WriteSyntheticLarsenGridDirectory("directional_covariance");
+    LarsenHBondGrid grid(grid_dir.string());
+    auto original_result =
+        LarsenHBondShieldingResult::Compute(original, grid);
+    ASSERT_NE(original_result, nullptr);
+    ASSERT_GT(original_result->PairsFound(), 0);
+
+    // Larsen's source grids encode a chiral molecular convention (not its
+    // mirror-image database).  The physically supported global covariance
+    // check is therefore SO(3), not a source-free O(3) mirror lookup.
+    const auto transform = nmr::test::directional::SeededTransform(
+        0x4c415253454e4842ULL, false);
+    ProteinConformation& moved = protein->AddConformation(
+        nmr::test::directional::Positions(transform,
+                                          original.Positions()),
+        "Larsen proper covariance rerun");
+    ASSERT_TRUE(moved.AttachResult(GeometryResult::Compute(moved)));
+    ASSERT_TRUE(moved.AttachResult(SpatialIndexResult::Compute(moved)));
+    auto moved_result = LarsenHBondShieldingResult::Compute(moved, grid);
+    ASSERT_NE(moved_result, nullptr);
+
+    ASSERT_EQ(moved_result->Pairs().size(),
+              original_result->Pairs().size());
+    EXPECT_EQ(moved_result->PairsFound(), original_result->PairsFound());
+    EXPECT_EQ(moved_result->PairsGridSkipped(),
+              original_result->PairsGridSkipped());
+    EXPECT_EQ(moved_result->AtomsWithContribution(),
+              original_result->AtomsWithContribution());
+    EXPECT_EQ(moved_result->AmideHsUnboundWithWater(),
+              original_result->AmideHsUnboundWithWater());
+
+    constexpr double kTensorAbsTolerance = 4.0e-9;
+    constexpr double kTensorRelTolerance = 4.0e-11;
+    constexpr double kGeometryTolerance = 3.0e-10;
+
+    for (size_t pair_index = 0;
+         pair_index < original_result->Pairs().size(); ++pair_index) {
+        const auto& a = original_result->Pairs()[pair_index];
+        const auto& b = moved_result->Pairs()[pair_index];
+        EXPECT_EQ(b.donor_atom_idx, a.donor_atom_idx);
+        EXPECT_EQ(b.acceptor_atom_idx, a.acceptor_atom_idx);
+        EXPECT_EQ(b.disposition, a.disposition);
+        EXPECT_EQ(b.frame_valid, a.frame_valid);
+        auto expect_same_or_nan = [&](double actual, double expected,
+                                      const char* label) {
+            if (std::isnan(expected)) {
+                EXPECT_TRUE(std::isnan(actual))
+                    << label << " pair=" << pair_index;
+            } else {
+                EXPECT_NEAR(actual, expected, kGeometryTolerance)
+                    << label << " pair=" << pair_index;
+            }
+        };
+        expect_same_or_nan(b.r_angstrom, a.r_angstrom, "r");
+        expect_same_or_nan(b.theta_deg, a.theta_deg, "theta");
+        expect_same_or_nan(b.rho_deg, a.rho_deg, "rho");
+        expect_same_or_nan(b.iso_1pHB, a.iso_1pHB, "iso_1pHB");
+        expect_same_or_nan(b.iso_2pHB, a.iso_2pHB, "iso_2pHB");
+        expect_same_or_nan(b.iso_1pHaB, a.iso_1pHaB, "iso_1pHaB");
+        expect_same_or_nan(b.iso_2pHaB, a.iso_2pHaB, "iso_2pHaB");
+        expect_same_or_nan(b.iso_diagnostic_CB, a.iso_diagnostic_CB,
+                           "iso_CB");
+        expect_same_or_nan(b.iso_table2_total, a.iso_table2_total,
+                           "iso_total");
+    }
+
+    using MatrixMember = Mat3 ConformationAtom::*;
+    struct TensorOutput {
+        const char* name;
+        MatrixMember matrix;
+    };
+    const std::array<TensorOutput, 6> tensor_outputs{{
+        {"larsen_hbond_shielding.npy",
+         &ConformationAtom::larsen_hbond_shielding_tensor},
+        {"larsen_hbond_1pHB_shielding.npy",
+         &ConformationAtom::larsen_hbond_1pHB_tensor},
+        {"larsen_hbond_2pHB_shielding.npy",
+         &ConformationAtom::larsen_hbond_2pHB_tensor},
+        {"larsen_hbond_1pHaB_shielding.npy",
+         &ConformationAtom::larsen_hbond_1pHaB_tensor},
+        {"larsen_hbond_2pHaB_shielding.npy",
+         &ConformationAtom::larsen_hbond_2pHaB_tensor},
+        {"larsen_hbond_diagnostic_CB_shielding.npy",
+         &ConformationAtom::larsen_hbond_diagnostic_CB},
+    }};
+    for (size_t atom_index = 0; atom_index < original.AtomCount();
+         ++atom_index) {
+        const auto& a = original.AtomAt(atom_index);
+        const auto& b = moved.AtomAt(atom_index);
+        for (const auto& output : tensor_outputs) {
+            EXPECT_TRUE(nmr::test::directional::NearMatrix(
+                b.*(output.matrix),
+                nmr::test::directional::EvenRank2(
+                    transform, a.*(output.matrix)),
+                kTensorAbsTolerance, kTensorRelTolerance))
+                << output.name << " atom=" << atom_index;
+        }
+        EXPECT_DOUBLE_EQ(b.larsen_hbond_water_term,
+                         a.larsen_hbond_water_term);
+        EXPECT_EQ(b.larsen_hbond_n_pairs, a.larsen_hbond_n_pairs);
+        EXPECT_EQ(b.larsen_hbond_any_corner_imputed,
+                  a.larsen_hbond_any_corner_imputed);
+    }
+
+    const fs::path original_out_dir = MakeUniqueTempDirectory(
+        "nmr_larsen_directional_covariance_original");
+    const fs::path moved_out_dir = MakeUniqueTempDirectory(
+        "nmr_larsen_directional_covariance_moved");
+    ASSERT_EQ(original_result->WriteFeatures(
+                  original, original_out_dir.string()), 15);
+    ASSERT_EQ(moved_result->WriteFeatures(moved, moved_out_dir.string()),
+              15);
+    auto all_larsen_feature_paths = [](const fs::path& dir) {
+        return std::vector<fs::path>{
+            dir / "larsen_hbond_shielding.npy",
+            dir / "larsen_hbond_1pHB_shielding.npy",
+            dir / "larsen_hbond_2pHB_shielding.npy",
+            dir / "larsen_hbond_1pHaB_shielding.npy",
+            dir / "larsen_hbond_2pHaB_shielding.npy",
+            dir / "larsen_hbond_diagnostic_CB_shielding.npy",
+            dir / "larsen_hbond_water_term.npy",
+            dir / "larsen_hbond_count.npy",
+            dir / "larsen_imputed_pair_count.npy",
+            dir / "larsen_sidechain_carbonyl_pair_count.npy",
+            dir / "larsen_corner_imputed.npy",
+            dir / "larsen_hbond_pairs_index.npy",
+            dir / "larsen_hbond_pairs_geometry.npy",
+            dir / "larsen_hbond_pairs_isotropic.npy",
+            dir / "larsen_hbond_pairs.npy",
+        };
+    };
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  all_larsen_feature_paths(original_out_dir)),
+              0);
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  all_larsen_feature_paths(moved_out_dir)),
+              0);
+    for (const auto& output : tensor_outputs) {
+        const RawNpy source = ReadRawNpy(original_out_dir / output.name);
+        const RawNpy npy = ReadRawNpy(moved_out_dir / output.name);
+        ASSERT_NE(source.header.find("'<f8'"), std::string::npos);
+        ASSERT_NE(npy.header.find("'<f8'"), std::string::npos);
+        ASSERT_EQ(source.payload.size(),
+                  original.AtomCount() * 9 * sizeof(double));
+        ASSERT_EQ(npy.payload.size(), source.payload.size());
+        for (size_t atom_index = 0; atom_index < moved.AtomCount();
+             ++atom_index) {
+            const SphericalTensor source_tensor =
+                UnpackPayloadFull9(source, atom_index);
+            const SphericalTensor actual_tensor =
+                UnpackPayloadFull9(npy, atom_index);
+            EXPECT_TRUE(nmr::test::directional::NearMatrix(
+                actual_tensor.Reconstruct(),
+                nmr::test::directional::EvenRank2(
+                    transform, source_tensor.Reconstruct()),
+                kTensorAbsTolerance, kTensorRelTolerance))
+                << output.name << " atom=" << atom_index;
+            EXPECT_NEAR(actual_tensor.T0, source_tensor.T0,
+                        kTensorAbsTolerance)
+                << output.name << " atom=" << atom_index << " T0";
+            EXPECT_TRUE(nmr::test::directional::NearVector(
+                nmr::test::directional::T1Vector(actual_tensor),
+                nmr::test::directional::Axial(
+                    transform,
+                    nmr::test::directional::T1Vector(source_tensor)),
+                kTensorAbsTolerance, kTensorRelTolerance))
+                << output.name << " atom=" << atom_index << " T1";
+            const SphericalTensor expected_t2 =
+                nmr::test::directional::RotateNativeT2(
+                    transform, source_tensor);
+            for (size_t component = 0; component < 5; ++component) {
+                EXPECT_NEAR(actual_tensor.T2[component],
+                            expected_t2.T2[component],
+                            kTensorAbsTolerance)
+                    << output.name << " atom=" << atom_index
+                    << " native_T2_component=" << component;
+            }
+        }
+    }
+
+    // Every non-tensor production NPY is scalar/categorical under this
+    // proper transform.  Compare both serialized payloads, including NaN
+    // identity for unavailable pair geometry.  This accounts for all 15
+    // exact writer names rather than treating the six tensor files as an
+    // aggregate proxy.
+    for (const char* name : {
+             "larsen_hbond_water_term.npy",
+             "larsen_hbond_pairs_geometry.npy",
+             "larsen_hbond_pairs_isotropic.npy",
+             "larsen_hbond_pairs.npy"}) {
+        const RawNpy source = ReadRawNpy(original_out_dir / name);
+        const RawNpy actual = ReadRawNpy(moved_out_dir / name);
+        ASSERT_NE(source.header.find("'<f8'"), std::string::npos)
+            << name;
+        ASSERT_NE(actual.header.find("'<f8'"), std::string::npos)
+            << name;
+        ASSERT_EQ(actual.payload.size(), source.payload.size()) << name;
+        ASSERT_EQ(source.payload.size() % sizeof(double), 0U) << name;
+        const std::size_t count = source.payload.size() / sizeof(double);
+        for (std::size_t component = 0; component < count; ++component) {
+            ExpectSameOrNaN(PayloadValue<double>(actual, component),
+                            PayloadValue<double>(source, component),
+                            kGeometryTolerance,
+                            std::string(name) + " component=" +
+                                std::to_string(component));
+        }
+    }
+    for (const char* name : {
+             "larsen_hbond_count.npy",
+             "larsen_imputed_pair_count.npy",
+             "larsen_sidechain_carbonyl_pair_count.npy",
+             "larsen_corner_imputed.npy",
+             "larsen_hbond_pairs_index.npy"}) {
+        const RawNpy source = ReadRawNpy(original_out_dir / name);
+        const RawNpy actual = ReadRawNpy(moved_out_dir / name);
+        EXPECT_EQ(actual.payload, source.payload) << name;
+    }
+
+    // Serialize the four component tensor streams and count stream from the
+    // exact trajectory owners.  Both frames come from attached production
+    // LarsenHBondShieldingResult reruns; no aggregate time-series owner is
+    // invented because none exists.
+    ASSERT_TRUE(original.AttachResult(std::move(original_result)));
+    ASSERT_TRUE(moved.AttachResult(std::move(moved_result)));
+    auto trajectory_protein =
+        TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(trajectory_protein, nullptr);
+    auto one_hb_ts =
+        LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult::Create(
+            *trajectory_protein);
+    auto two_hb_ts =
+        LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult::Create(
+            *trajectory_protein);
+    auto one_hab_ts =
+        LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult::Create(
+            *trajectory_protein);
+    auto two_hab_ts =
+        LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult::Create(
+            *trajectory_protein);
+    auto count_ts = LarsenHBondCountTimeSeriesTrajectoryResult::Create(
+        *trajectory_protein);
+    ASSERT_NE(one_hb_ts, nullptr);
+    ASSERT_NE(two_hb_ts, nullptr);
+    ASSERT_NE(one_hab_ts, nullptr);
+    ASSERT_NE(two_hab_ts, nullptr);
+    ASSERT_NE(count_ts, nullptr);
+    const std::array<TrajectoryResult*, 5> trajectory_results{{
+        one_hb_ts.get(), two_hb_ts.get(), one_hab_ts.get(),
+        two_hab_ts.get(), count_ts.get(),
+    }};
+    Trajectory dummy("", "", "");
+    for (TrajectoryResult* result : trajectory_results) {
+        result->Compute(original, *trajectory_protein, dummy, 53, 5.25);
+        result->Compute(moved, *trajectory_protein, dummy, 59, 6.75);
+        result->Finalize(*trajectory_protein, dummy);
+    }
+    const fs::path h5_path = nmr::test::TestEnvironment::TempPath(
+        "larsen_hbond_directional_raw.h5");
+    (void)std::remove(h5_path.string().c_str());
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+        for (TrajectoryResult* result : trajectory_results)
+            result->WriteH5Group(*trajectory_protein, file);
+    }
+
+    const std::array<std::string, 4> tensor_groups{{
+        "/trajectory/larsen_hbond_1pHB_shielding_time_series",
+        "/trajectory/larsen_hbond_2pHB_shielding_time_series",
+        "/trajectory/larsen_hbond_1pHaB_shielding_time_series",
+        "/trajectory/larsen_hbond_2pHaB_shielding_time_series",
+    }};
+    const std::size_t atom_count = original.AtomCount();
+    int finite_h5_tensor_rows = 0;
+    for (const std::string& group : tensor_groups) {
+        // Each group-level contract applies to both serialized frames below:
+        // source and the independently transformed production rerun.
+        ExpectRawFull9TrajectoryMetadata(
+            h5_path, group,
+            "even_rank2 under proper rotations: T'=R T R^T; signed-rho "
+            "DFT-grid lookup is chirality-conditioned and has no "
+            "improper-transform contract");
+        const std::string path = group + "/xyz";
+        std::vector<std::size_t> dimensions;
+        const auto values = ReadH5Flat<double>(
+            h5_path, path, &dimensions);
+        EXPECT_EQ(dimensions,
+                  (std::vector<std::size_t>{atom_count, 2u, 9u}))
+            << path;
+        ASSERT_EQ(values.size(), atom_count * 2 * 9) << path;
+        EXPECT_EQ(ReadH5Flat<std::size_t>(
+                      h5_path, group + "/frame_indices"),
+                  (std::vector<std::size_t>{53u, 59u})) << group;
+        EXPECT_EQ(ReadH5Flat<double>(h5_path, group + "/frame_times"),
+                  (std::vector<double>{5.25, 6.75})) << group;
+        EXPECT_EQ(ReadH5Flat<std::uint8_t>(
+                      h5_path, group + "/source_attached_per_frame"),
+                  (std::vector<std::uint8_t>{1u, 1u})) << group;
+        for (std::size_t atom_index = 0; atom_index < atom_count;
+             ++atom_index) {
+            const std::size_t source_base = (atom_index * 2) * 9;
+            const std::size_t moved_base = (atom_index * 2 + 1) * 9;
+            bool finite = false;
+            for (std::size_t component = 0; component < 9; ++component) {
+                EXPECT_EQ(std::isnan(values[moved_base + component]),
+                          std::isnan(values[source_base + component]))
+                    << path << " atom=" << atom_index
+                    << " component=" << component;
+                finite = finite ||
+                    std::isfinite(values[source_base + component]);
+            }
+            if (!finite) {
+                for (std::size_t component = 0; component < 9;
+                     ++component) {
+                    EXPECT_TRUE(std::isnan(values[source_base + component]))
+                        << path << " atom=" << atom_index;
+                    EXPECT_TRUE(std::isnan(values[moved_base + component]))
+                        << path << " moved atom=" << atom_index;
+                }
+                continue;
+            }
+            ++finite_h5_tensor_rows;
+            for (std::size_t component = 0; component < 9; ++component) {
+                ASSERT_TRUE(std::isfinite(values[source_base + component]))
+                    << path << " atom=" << atom_index;
+                ASSERT_TRUE(std::isfinite(values[moved_base + component]))
+                    << path << " moved atom=" << atom_index;
+            }
+            const SphericalTensor source_tensor =
+                UnpackFull9(values.data() + source_base);
+            const SphericalTensor actual_tensor =
+                UnpackFull9(values.data() + moved_base);
+            EXPECT_TRUE(nmr::test::directional::NearMatrix(
+                actual_tensor.Reconstruct(),
+                nmr::test::directional::EvenRank2(
+                    transform, source_tensor.Reconstruct()),
+                kTensorAbsTolerance, kTensorRelTolerance))
+                << path << " atom=" << atom_index;
+            EXPECT_NEAR(actual_tensor.T0, source_tensor.T0,
+                        kTensorAbsTolerance)
+                << path << " atom=" << atom_index << " T0";
+            EXPECT_TRUE(nmr::test::directional::NearVector(
+                nmr::test::directional::T1Vector(actual_tensor),
+                nmr::test::directional::Axial(
+                    transform,
+                    nmr::test::directional::T1Vector(source_tensor)),
+                kTensorAbsTolerance, kTensorRelTolerance))
+                << path << " atom=" << atom_index << " T1";
+            const SphericalTensor expected_t2 =
+                nmr::test::directional::RotateNativeT2(
+                    transform, source_tensor);
+            for (std::size_t component = 0; component < 5; ++component) {
+                EXPECT_NEAR(actual_tensor.T2[component],
+                            expected_t2.T2[component],
+                            kTensorAbsTolerance)
+                    << path << " atom=" << atom_index
+                    << " native_T2_component=" << component;
+            }
+        }
+    }
+    EXPECT_GT(finite_h5_tensor_rows, 0);
+
+    const std::string count_group =
+        "/trajectory/larsen_hbond_count_time_series";
+    std::vector<std::size_t> count_dimensions;
+    const auto h5_counts = ReadH5Flat<int>(
+        h5_path, count_group + "/count", &count_dimensions);
+    EXPECT_EQ(count_dimensions,
+              (std::vector<std::size_t>{atom_count, 2u}));
+    ASSERT_EQ(h5_counts.size(), atom_count * 2);
+    EXPECT_EQ(ReadH5Flat<std::size_t>(
+                  h5_path, count_group + "/frame_indices"),
+              (std::vector<std::size_t>{53u, 59u}));
+    EXPECT_EQ(ReadH5Flat<double>(h5_path, count_group + "/frame_times"),
+              (std::vector<double>{5.25, 6.75}));
+    EXPECT_EQ(ReadH5Flat<std::uint8_t>(
+                  h5_path,
+                  count_group + "/source_attached_per_frame"),
+              (std::vector<std::uint8_t>{1u, 1u}));
+    int positive_count_rows = 0;
+    for (std::size_t atom_index = 0; atom_index < atom_count;
+         ++atom_index) {
+        EXPECT_EQ(h5_counts[atom_index * 2],
+                  original.AtomAt(atom_index).larsen_hbond_n_pairs)
+            << count_group << " atom=" << atom_index << " source";
+        EXPECT_EQ(h5_counts[atom_index * 2 + 1],
+                  moved.AtomAt(atom_index).larsen_hbond_n_pairs)
+            << count_group << " atom=" << atom_index << " moved";
+        EXPECT_EQ(h5_counts[atom_index * 2 + 1],
+                  h5_counts[atom_index * 2])
+            << count_group << " atom=" << atom_index << " identity";
+        positive_count_rows += h5_counts[atom_index * 2] > 0 ? 1 : 0;
+    }
+    EXPECT_GT(positive_count_rows, 0);
+    EXPECT_EQ(std::remove(h5_path.string().c_str()), 0) << h5_path;
+
+    const std::array<const char*, 15> all_output_names{{
+        "larsen_hbond_shielding.npy",
+        "larsen_hbond_1pHB_shielding.npy",
+        "larsen_hbond_2pHB_shielding.npy",
+        "larsen_hbond_1pHaB_shielding.npy",
+        "larsen_hbond_2pHaB_shielding.npy",
+        "larsen_hbond_diagnostic_CB_shielding.npy",
+        "larsen_hbond_water_term.npy",
+        "larsen_hbond_count.npy",
+        "larsen_imputed_pair_count.npy",
+        "larsen_sidechain_carbonyl_pair_count.npy",
+        "larsen_corner_imputed.npy",
+        "larsen_hbond_pairs_index.npy",
+        "larsen_hbond_pairs_geometry.npy",
+        "larsen_hbond_pairs_isotropic.npy",
+        "larsen_hbond_pairs.npy",
+    }};
+    for (const fs::path& dir : {original_out_dir, moved_out_dir}) {
+        for (const char* name : all_output_names) {
+            EXPECT_EQ(std::remove((dir / name).string().c_str()), 0)
+                << name;
+        }
+        EXPECT_EQ(std::remove(dir.string().c_str()), 0) << dir;
+    }
+    for (const auto& entry : fs::directory_iterator(grid_dir)) {
+        EXPECT_EQ(std::remove(entry.path().string().c_str()), 0)
+            << entry.path();
+    }
+    EXPECT_EQ(std::remove(grid_dir.string().c_str()), 0) << grid_dir;
+}
+
+
+TEST(LarsenHBondDirectionalCovariance,
+     PairGateAndWaterOutputsAreExactUnderImproperProductionRerun) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto protein = std::move(build.protein);
+    ProteinConformation& original = protein->Conformation();
+    ASSERT_TRUE(original.AttachResult(GeometryResult::Compute(original)));
+    ASSERT_TRUE(original.AttachResult(SpatialIndexResult::Compute(original)));
+
+    const fs::path grid_dir =
+        WriteSyntheticLarsenGridDirectory("directional_improper_gate");
+    LarsenHBondGrid grid(grid_dir.string());
+    auto original_result =
+        LarsenHBondShieldingResult::Compute(original, grid);
+    ASSERT_NE(original_result, nullptr);
+    ASSERT_GT(original_result->PairsFound(), 0);
+
+    constexpr std::uint64_t kTransformSeed = 0x4c415253454e4f33ULL;
+    const auto transform = nmr::test::directional::SeededTransform(
+        kTransformSeed, true);
+    ProteinConformation& reflected = protein->AddConformation(
+        nmr::test::directional::Positions(transform, original.Positions()),
+        "Larsen improper pair-gate rerun");
+    ASSERT_TRUE(reflected.AttachResult(GeometryResult::Compute(reflected)));
+    ASSERT_TRUE(reflected.AttachResult(
+        SpatialIndexResult::Compute(reflected)));
+    auto reflected_result =
+        LarsenHBondShieldingResult::Compute(reflected, grid);
+    ASSERT_NE(reflected_result, nullptr);
+
+    // QueryNearest's rho axis is periodic.  Rho selects tensor values and
+    // validity-mask corners, but a hit/miss is gated only by finite geometry,
+    // r and theta.  Therefore the exact pair identity/disposition and the
+    // topology-dispatched contributor counts survive reflection even though
+    // the shielding tensors and imputation provenance have no O(3) law.
+    ASSERT_EQ(reflected_result->Pairs().size(),
+              original_result->Pairs().size());
+    EXPECT_EQ(reflected_result->PairsFound(),
+              original_result->PairsFound());
+    EXPECT_EQ(reflected_result->PairsGridSkipped(),
+              original_result->PairsGridSkipped());
+    EXPECT_EQ(reflected_result->AmideHsUnboundWithWater(),
+              original_result->AmideHsUnboundWithWater());
+    constexpr double kGeometryTolerance = 3.0e-10;
+    std::size_t finite_nonzero_rho_rows = 0;
+    for (std::size_t pair_index = 0;
+         pair_index < original_result->Pairs().size(); ++pair_index) {
+        const auto& source = original_result->Pairs()[pair_index];
+        const auto& actual = reflected_result->Pairs()[pair_index];
+        EXPECT_EQ(actual.donor_atom_idx, source.donor_atom_idx);
+        EXPECT_EQ(actual.acceptor_atom_idx, source.acceptor_atom_idx);
+        EXPECT_EQ(actual.disposition, source.disposition);
+        EXPECT_EQ(actual.target_mask_1pHB, source.target_mask_1pHB);
+        EXPECT_EQ(actual.target_mask_2pHB, source.target_mask_2pHB);
+        EXPECT_EQ(actual.target_mask_1pHaB, source.target_mask_1pHaB);
+        EXPECT_EQ(actual.target_mask_2pHaB, source.target_mask_2pHaB);
+        EXPECT_EQ(actual.target_mask_diagnostic_CB,
+                  source.target_mask_diagnostic_CB);
+        EXPECT_EQ(actual.frame_valid, source.frame_valid);
+        ExpectSameOrNaN(actual.r_angstrom, source.r_angstrom,
+                        kGeometryTolerance,
+                        "improper Larsen r pair=" +
+                            std::to_string(pair_index));
+        ExpectSameOrNaN(actual.theta_deg, source.theta_deg,
+                        kGeometryTolerance,
+                        "improper Larsen theta pair=" +
+                            std::to_string(pair_index));
+        ExpectWrappedOppositeOrNaN(
+            actual.rho_deg, source.rho_deg, kGeometryTolerance,
+            "improper Larsen signed rho pair=" +
+                std::to_string(pair_index));
+        if (std::isfinite(source.rho_deg) &&
+            std::abs(std::remainder(source.rho_deg, 360.0)) >
+                kGeometryTolerance) {
+            ++finite_nonzero_rho_rows;
+        }
+    }
+    EXPECT_GT(finite_nonzero_rho_rows, 0u)
+        << "improper rho forcing must be non-vacuous";
+
+    const fs::path original_dir = MakeUniqueTempDirectory(
+        "nmr_larsen_improper_gate_original");
+    const fs::path reflected_dir = MakeUniqueTempDirectory(
+        "nmr_larsen_improper_gate_reflected");
+    ASSERT_EQ(original_result->WriteFeatures(
+                  original, original_dir.string()), 15);
+    ASSERT_EQ(reflected_result->WriteFeatures(
+                  reflected, reflected_dir.string()), 15);
+
+    const std::array<const char*, 4> exact_static_names{{
+        "larsen_hbond_count.npy",
+        "larsen_sidechain_carbonyl_pair_count.npy",
+        "larsen_hbond_water_term.npy",
+        "larsen_hbond_pairs_index.npy",
+    }};
+    for (const char* name : exact_static_names) {
+        const RawNpy source = ReadRawNpy(original_dir / name);
+        const RawNpy actual = ReadRawNpy(reflected_dir / name);
+        EXPECT_EQ(actual.header, source.header) << name;
+        EXPECT_EQ(actual.payload, source.payload) << name;
+    }
+
+    // The raw H-O-C-third dihedral is geometric and therefore has a real
+    // pseudoscalar law even though the downstream chiral lookup values and
+    // imputation corners do not.  Read the owning serialized sparse tables,
+    // preserve exact row identity/NaN masks, and do not impose a law on the
+    // signed-rho-conditioned fields.
+    const RawNpy source_index = ReadRawNpy(
+        original_dir / "larsen_hbond_pairs_index.npy");
+    const RawNpy actual_index = ReadRawNpy(
+        reflected_dir / "larsen_hbond_pairs_index.npy");
+    const RawNpy source_geometry = ReadRawNpy(
+        original_dir / "larsen_hbond_pairs_geometry.npy");
+    const RawNpy actual_geometry = ReadRawNpy(
+        reflected_dir / "larsen_hbond_pairs_geometry.npy");
+    const RawNpy source_isotropic = ReadRawNpy(
+        original_dir / "larsen_hbond_pairs_isotropic.npy");
+    const RawNpy actual_isotropic = ReadRawNpy(
+        reflected_dir / "larsen_hbond_pairs_isotropic.npy");
+    const RawNpy source_compat = ReadRawNpy(
+        original_dir / "larsen_hbond_pairs.npy");
+    const RawNpy actual_compat = ReadRawNpy(
+        reflected_dir / "larsen_hbond_pairs.npy");
+    const std::size_t pair_count = original_result->Pairs().size();
+    ASSERT_EQ(source_index.payload.size(),
+              pair_count * 16u * sizeof(std::int32_t));
+    ASSERT_EQ(actual_index.payload, source_index.payload);
+    ASSERT_EQ(source_geometry.payload.size(),
+              pair_count * 6u * sizeof(double));
+    ASSERT_EQ(actual_geometry.payload.size(), source_geometry.payload.size());
+    ASSERT_EQ(source_isotropic.payload.size(),
+              pair_count * 6u * sizeof(double));
+    ASSERT_EQ(actual_isotropic.payload.size(), source_isotropic.payload.size());
+    ASSERT_EQ(source_compat.payload.size(),
+              pair_count * 28u * sizeof(double));
+    ASSERT_EQ(actual_compat.payload.size(), source_compat.payload.size());
+
+    std::size_t serialized_nonzero_rho_rows = 0;
+    for (std::size_t row = 0; row < pair_count; ++row) {
+        ExpectSameOrNaN(PayloadValue<double>(actual_geometry, row * 6u),
+                        PayloadValue<double>(source_geometry, row * 6u),
+                        kGeometryTolerance,
+                        "larsen_hbond_pairs_geometry.npy r row=" +
+                            std::to_string(row));
+        ExpectSameOrNaN(
+            PayloadValue<double>(actual_geometry, row * 6u + 1u),
+            PayloadValue<double>(source_geometry, row * 6u + 1u),
+            kGeometryTolerance,
+            "larsen_hbond_pairs_geometry.npy theta row=" +
+                std::to_string(row));
+        const double source_rho =
+            PayloadValue<double>(source_geometry, row * 6u + 2u);
+        const double actual_rho =
+            PayloadValue<double>(actual_geometry, row * 6u + 2u);
+        ExpectWrappedOppositeOrNaN(
+            actual_rho, source_rho, kGeometryTolerance,
+            "larsen_hbond_pairs_geometry.npy rho row=" +
+                std::to_string(row));
+        if (std::isfinite(source_rho) &&
+            std::abs(std::remainder(source_rho, 360.0)) >
+                kGeometryTolerance) {
+            ++serialized_nonzero_rho_rows;
+        }
+        EXPECT_DOUBLE_EQ(
+            PayloadValue<double>(actual_geometry, row * 6u + 5u),
+            PayloadValue<double>(source_geometry, row * 6u + 5u))
+            << "frame_valid row=" << row;
+
+        for (const RawNpy* geometry : {&source_geometry, &actual_geometry}) {
+            const double any_imputed =
+                PayloadValue<double>(*geometry, row * 6u + 3u);
+            const double corner_count =
+                PayloadValue<double>(*geometry, row * 6u + 4u);
+            const double frame_valid =
+                PayloadValue<double>(*geometry, row * 6u + 5u);
+            EXPECT_TRUE(any_imputed == 0.0 || any_imputed == 1.0)
+                << "any_corner_imputed row=" << row;
+            EXPECT_GE(corner_count, 0.0) << row;
+            EXPECT_LE(corner_count, 8.0) << row;
+            EXPECT_EQ(corner_count, std::floor(corner_count)) << row;
+            EXPECT_TRUE(frame_valid == 0.0 || frame_valid == 1.0) << row;
+        }
+
+        for (std::size_t column = 0; column < 16u; ++column) {
+            const double source_value =
+                PayloadValue<double>(source_compat, row * 28u + column);
+            const double actual_value =
+                PayloadValue<double>(actual_compat, row * 28u + column);
+            EXPECT_DOUBLE_EQ(actual_value, source_value)
+                << "larsen_hbond_pairs.npy index row=" << row
+                << " col=" << column;
+            EXPECT_DOUBLE_EQ(
+                source_value,
+                static_cast<double>(PayloadValue<std::int32_t>(
+                    source_index, row * 16u + column)))
+                << "split index identity row=" << row << " col=" << column;
+        }
+        for (std::size_t column = 0; column < 6u; ++column) {
+            for (const auto& run : {
+                     std::pair<const RawNpy*, const RawNpy*>{
+                         &source_compat, &source_geometry},
+                     std::pair<const RawNpy*, const RawNpy*>{
+                         &actual_compat, &actual_geometry}}) {
+                ExpectSameOrNaN(
+                    PayloadValue<double>(*run.first,
+                                         row * 28u + 16u + column),
+                    PayloadValue<double>(*run.second,
+                                         row * 6u + column),
+                    0.0,
+                    "compat geometry split identity row=" +
+                        std::to_string(row) + " col=" +
+                        std::to_string(column));
+            }
+            for (const auto& run : {
+                     std::pair<const RawNpy*, const RawNpy*>{
+                         &source_compat, &source_isotropic},
+                     std::pair<const RawNpy*, const RawNpy*>{
+                         &actual_compat, &actual_isotropic}}) {
+                ExpectSameOrNaN(
+                    PayloadValue<double>(*run.first,
+                                         row * 28u + 22u + column),
+                    PayloadValue<double>(*run.second,
+                                         row * 6u + column),
+                    0.0,
+                    "compat isotropic split identity row=" +
+                        std::to_string(row) + " col=" +
+                        std::to_string(column));
+            }
+        }
+        ExpectSameOrNaN(
+            PayloadValue<double>(actual_compat, row * 28u + 16u),
+            PayloadValue<double>(source_compat, row * 28u + 16u),
+            kGeometryTolerance, "compat r row=" + std::to_string(row));
+        ExpectSameOrNaN(
+            PayloadValue<double>(actual_compat, row * 28u + 17u),
+            PayloadValue<double>(source_compat, row * 28u + 17u),
+            kGeometryTolerance, "compat theta row=" + std::to_string(row));
+        ExpectWrappedOppositeOrNaN(
+            PayloadValue<double>(actual_compat, row * 28u + 18u),
+            PayloadValue<double>(source_compat, row * 28u + 18u),
+            kGeometryTolerance, "compat rho row=" + std::to_string(row));
+        EXPECT_DOUBLE_EQ(
+            PayloadValue<double>(actual_compat, row * 28u + 21u),
+            PayloadValue<double>(source_compat, row * 28u + 21u))
+            << "compat frame_valid row=" << row;
+
+        const auto disposition = static_cast<
+            LarsenHBondShieldingResult::PairDisposition>(
+                PayloadValue<std::int32_t>(source_index, row * 16u + 6u));
+        for (const RawNpy* isotropic :
+             {&source_isotropic, &actual_isotropic}) {
+            for (std::size_t column = 0; column < 6u; ++column) {
+                const double value =
+                    PayloadValue<double>(*isotropic, row * 6u + column);
+                if (disposition ==
+                    LarsenHBondShieldingResult::PairDisposition::Success) {
+                    EXPECT_TRUE(std::isfinite(value))
+                        << "successful isotropic row=" << row
+                        << " col=" << column;
+                } else {
+                    EXPECT_TRUE(std::isnan(value))
+                        << "unavailable isotropic row=" << row
+                        << " col=" << column;
+                }
+            }
+        }
+    }
+    EXPECT_GT(serialized_nonzero_rho_rows, 0u)
+        << "serialized improper rho proof must be non-vacuous";
+
+    const RawNpy count_npy = ReadRawNpy(
+        original_dir / "larsen_hbond_count.npy");
+    const RawNpy sidechain_count_npy = ReadRawNpy(
+        original_dir / "larsen_sidechain_carbonyl_pair_count.npy");
+    std::size_t positive_count_rows = 0;
+    std::int64_t sidechain_count_sum = 0;
+    for (std::size_t atom = 0; atom < original.AtomCount(); ++atom) {
+        if (PayloadValue<std::int32_t>(count_npy, atom) > 0)
+            ++positive_count_rows;
+        sidechain_count_sum +=
+            PayloadValue<std::int32_t>(sidechain_count_npy, atom);
+    }
+    EXPECT_GT(positive_count_rows, 0u);
+    EXPECT_GT(sidechain_count_sum, 0);
+
+    ASSERT_TRUE(original.AttachResult(std::move(original_result)));
+    ASSERT_TRUE(reflected.AttachResult(std::move(reflected_result)));
+    auto trajectory_protein =
+        TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(trajectory_protein, nullptr);
+    auto count_ts = LarsenHBondCountTimeSeriesTrajectoryResult::Create(
+        *trajectory_protein);
+    auto water_ts = LarsenHBondWaterTermTimeSeriesTrajectoryResult::Create(
+        *trajectory_protein);
+    ASSERT_NE(count_ts, nullptr);
+    ASSERT_NE(water_ts, nullptr);
+    Trajectory dummy("", "", "");
+    for (TrajectoryResult* result :
+         {static_cast<TrajectoryResult*>(count_ts.get()),
+          static_cast<TrajectoryResult*>(water_ts.get())}) {
+        result->Compute(original, *trajectory_protein, dummy, 71, 8.25);
+        result->Compute(reflected, *trajectory_protein, dummy, 79, 9.75);
+        result->Finalize(*trajectory_protein, dummy);
+    }
+    const fs::path h5_path = nmr::test::TestEnvironment::TempPath(
+        "larsen_hbond_improper_gate.h5");
+    (void)std::remove(h5_path.string().c_str());
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+        count_ts->WriteH5Group(*trajectory_protein, file);
+        water_ts->WriteH5Group(*trajectory_protein, file);
+    }
+    const std::string count_path =
+        "/trajectory/larsen_hbond_count_time_series/count";
+    const std::string water_path =
+        "/trajectory/larsen_hbond_water_term_time_series/water_term";
+    const auto counts = ReadH5Flat<int>(h5_path, count_path);
+    const auto water = ReadH5Flat<double>(h5_path, water_path);
+    ASSERT_EQ(counts.size(), original.AtomCount() * 2u);
+    ASSERT_EQ(water.size(), original.AtomCount() * 2u);
+    for (std::size_t atom = 0; atom < original.AtomCount(); ++atom) {
+        EXPECT_EQ(counts[atom * 2u + 1u], counts[atom * 2u])
+            << count_path << " atom=" << atom;
+        EXPECT_DOUBLE_EQ(water[atom * 2u + 1u], water[atom * 2u])
+            << water_path << " atom=" << atom;
+    }
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::ReadOnly);
+        for (const std::string& group : {
+                 std::string("/trajectory/larsen_hbond_count_time_series"),
+                 std::string("/trajectory/larsen_hbond_water_term_time_series")}) {
+            std::string frame;
+            std::string law;
+            file.getGroup(group).getAttribute("coordinate_frame").read(frame);
+            file.getGroup(group).getAttribute("transformation").read(law);
+            EXPECT_NE(frame.find("intrinsic"), std::string::npos) << group;
+            EXPECT_NE(law.find("reflection-invariant"),
+                      std::string::npos) << group;
+        }
+    }
+    EXPECT_EQ(std::remove(h5_path.string().c_str()), 0) << h5_path;
+
+    const std::array<const char*, 15> all_output_names{{
+        "larsen_hbond_shielding.npy",
+        "larsen_hbond_1pHB_shielding.npy",
+        "larsen_hbond_2pHB_shielding.npy",
+        "larsen_hbond_1pHaB_shielding.npy",
+        "larsen_hbond_2pHaB_shielding.npy",
+        "larsen_hbond_diagnostic_CB_shielding.npy",
+        "larsen_hbond_water_term.npy",
+        "larsen_hbond_count.npy",
+        "larsen_imputed_pair_count.npy",
+        "larsen_sidechain_carbonyl_pair_count.npy",
+        "larsen_corner_imputed.npy",
+        "larsen_hbond_pairs_index.npy",
+        "larsen_hbond_pairs_geometry.npy",
+        "larsen_hbond_pairs_isotropic.npy",
+        "larsen_hbond_pairs.npy",
+    }};
+    for (const fs::path& directory : {original_dir, reflected_dir}) {
+        for (const char* name : all_output_names) {
+            EXPECT_EQ(std::remove((directory / name).string().c_str()), 0)
+                << name;
+        }
+        EXPECT_EQ(std::remove(directory.string().c_str()), 0) << directory;
+    }
+    for (const auto& entry : fs::directory_iterator(grid_dir)) {
+        EXPECT_EQ(std::remove(entry.path().string().c_str()), 0)
+            << entry.path();
+    }
+    EXPECT_EQ(std::remove(grid_dir.string().c_str()), 0) << grid_dir;
+}
+
+
 // A finite, non-degenerate candidate remains a confirmed geometric H-bond
 // even when its distance lies outside the archive axis. This production
 // forcing grid puts every real H...O distance outside the r axis, isolating
@@ -1041,6 +2000,296 @@ TEST(LarsenSidechainDonorAudit, EmitsTypedUnsupportedDonorsWithoutShielding) {
         "larsen_sidechain_donor_atoms.npy",
         "larsen_sidechain_donor_candidates.npy",
     });
+}
+
+
+TEST(LarsenSidechainDonorDirectionalCovariance,
+     ProductionRerunAndSerializedCandidatesUnderProperRigidTransform) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto protein = std::move(build.protein);
+
+    ProteinConformation& original = protein->Conformation();
+    ASSERT_TRUE(original.AttachResult(GeometryResult::Compute(original)));
+    ASSERT_TRUE(original.AttachResult(SpatialIndexResult::Compute(original)));
+    auto original_result =
+        LarsenSidechainDonorAuditResult::Compute(original);
+    ASSERT_NE(original_result, nullptr);
+    ASSERT_GT(original_result->Candidates().size(), 0U);
+
+    constexpr std::uint64_t kTransformSeed = 0x4C415253454E5343ULL;
+    const auto transform = nmr::test::directional::SeededTransform(
+        kTransformSeed, false);
+    ProteinConformation& moved = protein->AddConformation(
+        nmr::test::directional::Positions(transform,
+                                          original.Positions()),
+        "Larsen sidechain donor audit proper covariance rerun");
+    ASSERT_TRUE(moved.AttachResult(GeometryResult::Compute(moved)));
+    ASSERT_TRUE(moved.AttachResult(SpatialIndexResult::Compute(moved)));
+    auto moved_result = LarsenSidechainDonorAuditResult::Compute(moved);
+    ASSERT_NE(moved_result, nullptr);
+
+    constexpr double kGeometryTolerance = 3.0e-10;
+    ASSERT_EQ(moved_result->DonorAtoms().size(),
+              original_result->DonorAtoms().size());
+    ASSERT_EQ(moved_result->Candidates().size(),
+              original_result->Candidates().size());
+    for (std::size_t row = 0;
+         row < original_result->Candidates().size(); ++row) {
+        const auto& source = original_result->Candidates()[row];
+        const auto& actual = moved_result->Candidates()[row];
+        EXPECT_EQ(actual.donor_atom, source.donor_atom) << row;
+        EXPECT_EQ(actual.donor_residue, source.donor_residue) << row;
+        EXPECT_EQ(actual.polar_h_kind, source.polar_h_kind) << row;
+        EXPECT_EQ(actual.parent_atom, source.parent_atom) << row;
+        EXPECT_EQ(actual.acceptor_atom, source.acceptor_atom) << row;
+        EXPECT_EQ(actual.acceptor_residue, source.acceptor_residue) << row;
+        EXPECT_EQ(actual.acceptor_class, source.acceptor_class) << row;
+        EXPECT_EQ(actual.passes_geometry, source.passes_geometry) << row;
+        EXPECT_EQ(actual.modeled_by_larsen_table2,
+                  source.modeled_by_larsen_table2) << row;
+        ExpectSameOrNaN(actual.h_acceptor_distance_A,
+                        source.h_acceptor_distance_A,
+                        kGeometryTolerance,
+                        "sidechain H-acceptor distance row=" +
+                            std::to_string(row));
+        ExpectSameOrNaN(actual.parent_acceptor_distance_A,
+                        source.parent_acceptor_distance_A,
+                        kGeometryTolerance,
+                        "sidechain parent-acceptor distance row=" +
+                            std::to_string(row));
+        ExpectSameOrNaN(actual.angle_parent_h_acceptor_deg,
+                        source.angle_parent_h_acceptor_deg,
+                        kGeometryTolerance,
+                        "sidechain donor angle row=" +
+                            std::to_string(row));
+        ExpectSameOrNaN(actual.rho_deg, source.rho_deg,
+                        kGeometryTolerance,
+                        "sidechain signed rho row=" +
+                            std::to_string(row));
+    }
+
+    const fs::path original_out = MakeUniqueTempDirectory(
+        "nmr_larsen_sidechain_directional_original");
+    const fs::path moved_out = MakeUniqueTempDirectory(
+        "nmr_larsen_sidechain_directional_moved");
+    ASSERT_EQ(original_result->WriteFeatures(
+                  original, original_out.string()), 2);
+    ASSERT_EQ(moved_result->WriteFeatures(moved, moved_out.string()), 2);
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  {original_out / "larsen_sidechain_donor_atoms.npy",
+                   original_out /
+                       "larsen_sidechain_donor_candidates.npy"}),
+              0);
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  {moved_out / "larsen_sidechain_donor_atoms.npy",
+                   moved_out / "larsen_sidechain_donor_candidates.npy"}),
+              0);
+
+    const RawNpy source_atoms = ReadRawNpy(
+        original_out / "larsen_sidechain_donor_atoms.npy");
+    const RawNpy actual_atoms = ReadRawNpy(
+        moved_out / "larsen_sidechain_donor_atoms.npy");
+    EXPECT_EQ(actual_atoms.payload, source_atoms.payload)
+        << "larsen_sidechain_donor_atoms.npy";
+
+    const RawNpy source_candidates = ReadRawNpy(
+        original_out / "larsen_sidechain_donor_candidates.npy");
+    const RawNpy actual_candidates = ReadRawNpy(
+        moved_out / "larsen_sidechain_donor_candidates.npy");
+    ASSERT_EQ(actual_candidates.payload.size(),
+              source_candidates.payload.size());
+    ASSERT_EQ(source_candidates.payload.size() % sizeof(double), 0U);
+    const std::size_t serialized_components =
+        source_candidates.payload.size() / sizeof(double);
+    for (std::size_t component = 0;
+         component < serialized_components; ++component) {
+        ExpectSameOrNaN(
+            PayloadValue<double>(actual_candidates, component),
+            PayloadValue<double>(source_candidates, component),
+            kGeometryTolerance,
+            "larsen_sidechain_donor_candidates.npy component=" +
+                std::to_string(component));
+    }
+
+    for (const fs::path& dir : {original_out, moved_out}) {
+        EXPECT_EQ(std::remove(
+                      (dir / "larsen_sidechain_donor_atoms.npy")
+                          .string().c_str()), 0);
+        EXPECT_EQ(std::remove(
+                      (dir / "larsen_sidechain_donor_candidates.npy")
+                          .string().c_str()), 0);
+        EXPECT_EQ(std::remove(dir.string().c_str()), 0) << dir;
+    }
+}
+
+
+TEST(LarsenSidechainDonorDirectionalCovariance,
+     SignedRhoFlipsUnderImproperProductionRerunAndSerializedReadback) {
+    const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto protein = std::move(build.protein);
+
+    ProteinConformation& original = protein->Conformation();
+    ASSERT_TRUE(original.AttachResult(GeometryResult::Compute(original)));
+    ASSERT_TRUE(original.AttachResult(SpatialIndexResult::Compute(original)));
+    auto original_result =
+        LarsenSidechainDonorAuditResult::Compute(original);
+    ASSERT_NE(original_result, nullptr);
+    ASSERT_GT(original_result->Candidates().size(), 0u);
+
+    constexpr std::uint64_t kTransformSeed = 0x4C415253454E5344ULL;
+    const auto transform = nmr::test::directional::SeededTransform(
+        kTransformSeed, true);
+    ProteinConformation& reflected = protein->AddConformation(
+        nmr::test::directional::Positions(transform, original.Positions()),
+        "Larsen sidechain donor audit improper covariance rerun");
+    ASSERT_TRUE(reflected.AttachResult(GeometryResult::Compute(reflected)));
+    ASSERT_TRUE(reflected.AttachResult(
+        SpatialIndexResult::Compute(reflected)));
+    auto reflected_result =
+        LarsenSidechainDonorAuditResult::Compute(reflected);
+    ASSERT_NE(reflected_result, nullptr);
+
+    constexpr double kGeometryTolerance = 3.0e-10;
+    ASSERT_EQ(reflected_result->DonorAtoms().size(),
+              original_result->DonorAtoms().size());
+    ASSERT_EQ(reflected_result->Candidates().size(),
+              original_result->Candidates().size());
+    std::size_t finite_nonzero_rho_rows = 0;
+    for (std::size_t row = 0;
+         row < original_result->Candidates().size(); ++row) {
+        const auto& source = original_result->Candidates()[row];
+        const auto& actual = reflected_result->Candidates()[row];
+        EXPECT_EQ(actual.donor_atom, source.donor_atom) << row;
+        EXPECT_EQ(actual.donor_residue, source.donor_residue) << row;
+        EXPECT_EQ(actual.polar_h_kind, source.polar_h_kind) << row;
+        EXPECT_EQ(actual.parent_atom, source.parent_atom) << row;
+        EXPECT_EQ(actual.acceptor_atom, source.acceptor_atom) << row;
+        EXPECT_EQ(actual.acceptor_residue, source.acceptor_residue) << row;
+        EXPECT_EQ(actual.acceptor_class, source.acceptor_class) << row;
+        EXPECT_EQ(actual.passes_geometry, source.passes_geometry) << row;
+        EXPECT_EQ(actual.modeled_by_larsen_table2,
+                  source.modeled_by_larsen_table2) << row;
+        ExpectSameOrNaN(
+            actual.h_acceptor_distance_A, source.h_acceptor_distance_A,
+            kGeometryTolerance,
+            "sidechain improper H-acceptor distance row=" +
+                std::to_string(row));
+        ExpectSameOrNaN(
+            actual.parent_acceptor_distance_A,
+            source.parent_acceptor_distance_A, kGeometryTolerance,
+            "sidechain improper parent-acceptor distance row=" +
+                std::to_string(row));
+        ExpectSameOrNaN(
+            actual.angle_parent_h_acceptor_deg,
+            source.angle_parent_h_acceptor_deg, kGeometryTolerance,
+            "sidechain improper donor angle row=" +
+                std::to_string(row));
+        ExpectWrappedOppositeOrNaN(
+            actual.rho_deg, source.rho_deg, kGeometryTolerance,
+            "sidechain improper signed rho row=" +
+                std::to_string(row));
+        if (std::isfinite(source.rho_deg) &&
+            std::abs(std::remainder(source.rho_deg, 360.0)) >
+                kGeometryTolerance) {
+            ++finite_nonzero_rho_rows;
+        }
+    }
+    EXPECT_GT(finite_nonzero_rho_rows, 0u)
+        << "sidechain improper rho forcing must be non-vacuous";
+
+    const fs::path original_out = MakeUniqueTempDirectory(
+        "nmr_larsen_sidechain_improper_original");
+    const fs::path reflected_out = MakeUniqueTempDirectory(
+        "nmr_larsen_sidechain_improper_reflected");
+    ASSERT_EQ(original_result->WriteFeatures(
+                  original, original_out.string()), 2);
+    ASSERT_EQ(reflected_result->WriteFeatures(
+                  reflected, reflected_out.string()), 2);
+
+    const RawNpy source_atoms = ReadRawNpy(
+        original_out / "larsen_sidechain_donor_atoms.npy");
+    const RawNpy actual_atoms = ReadRawNpy(
+        reflected_out / "larsen_sidechain_donor_atoms.npy");
+    EXPECT_EQ(actual_atoms.header, source_atoms.header);
+    EXPECT_EQ(actual_atoms.payload, source_atoms.payload)
+        << "larsen_sidechain_donor_atoms.npy";
+
+    const RawNpy source_candidates = ReadRawNpy(
+        original_out / "larsen_sidechain_donor_candidates.npy");
+    const RawNpy actual_candidates = ReadRawNpy(
+        reflected_out / "larsen_sidechain_donor_candidates.npy");
+    const std::size_t candidate_count =
+        original_result->Candidates().size();
+    ASSERT_EQ(source_candidates.payload.size(),
+              candidate_count * 13u * sizeof(double));
+    ASSERT_EQ(actual_candidates.payload.size(),
+              source_candidates.payload.size());
+    std::size_t serialized_nonzero_rho_rows = 0;
+    for (std::size_t row = 0; row < candidate_count; ++row) {
+        for (std::size_t column = 0; column < 7u; ++column) {
+            EXPECT_DOUBLE_EQ(
+                PayloadValue<double>(actual_candidates,
+                                     row * 13u + column),
+                PayloadValue<double>(source_candidates,
+                                     row * 13u + column))
+                << "candidate identity row=" << row
+                << " col=" << column;
+        }
+        for (std::size_t column = 7u; column < 10u; ++column) {
+            ExpectSameOrNaN(
+                PayloadValue<double>(actual_candidates,
+                                     row * 13u + column),
+                PayloadValue<double>(source_candidates,
+                                     row * 13u + column),
+                kGeometryTolerance,
+                "candidate invariant geometry row=" +
+                    std::to_string(row) + " col=" +
+                    std::to_string(column));
+        }
+        const double source_rho = PayloadValue<double>(
+            source_candidates, row * 13u + 10u);
+        const double actual_rho = PayloadValue<double>(
+            actual_candidates, row * 13u + 10u);
+        ExpectWrappedOppositeOrNaN(
+            actual_rho, source_rho, kGeometryTolerance,
+            "larsen_sidechain_donor_candidates.npy rho row=" +
+                std::to_string(row));
+        if (std::isfinite(source_rho) &&
+            std::abs(std::remainder(source_rho, 360.0)) >
+                kGeometryTolerance) {
+            ++serialized_nonzero_rho_rows;
+        }
+        EXPECT_DOUBLE_EQ(
+            PayloadValue<double>(actual_candidates, row * 13u + 11u),
+            PayloadValue<double>(source_candidates, row * 13u + 11u))
+            << "passes_geometry row=" << row;
+        EXPECT_DOUBLE_EQ(
+            PayloadValue<double>(actual_candidates, row * 13u + 12u),
+            PayloadValue<double>(source_candidates, row * 13u + 12u))
+            << "modeled_by_larsen_table2 row=" << row;
+    }
+    EXPECT_GT(serialized_nonzero_rho_rows, 0u)
+        << "serialized sidechain improper rho proof must be non-vacuous";
+
+    for (const fs::path& dir : {original_out, reflected_out}) {
+        EXPECT_EQ(std::remove(
+                      (dir / "larsen_sidechain_donor_atoms.npy")
+                          .string().c_str()), 0);
+        EXPECT_EQ(std::remove(
+                      (dir / "larsen_sidechain_donor_candidates.npy")
+                          .string().c_str()), 0);
+        EXPECT_EQ(std::remove(dir.string().c_str()), 0) << dir;
+    }
 }
 
 

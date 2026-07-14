@@ -153,12 +153,18 @@ TEST(LarsenHBond1pHBShieldingTimeSeries,
     std::string atom_axis;
     std::string frame_axis;
     std::string irrep_layout;
+    std::string parity;
+    std::string coordinate_frame;
+    std::string transformation;
     auto source_count_attr = group.getAttribute("source_attached_count");
     source_count_attr.read(source_count);
     group.getAttribute("source_attached_policy").read(source_policy);
     group.getAttribute("atom_axis").read(atom_axis);
     group.getAttribute("frame_axis").read(frame_axis);
     group.getAttribute("irrep_layout").read(irrep_layout);
+    group.getAttribute("parity").read(parity);
+    group.getAttribute("coordinate_frame").read(coordinate_frame);
+    group.getAttribute("transformation").read(transformation);
     EXPECT_EQ(source_count_attr.getDataType().getSize(),
               sizeof(std::uint64_t));
     EXPECT_EQ(source_count, 1u);
@@ -167,6 +173,11 @@ TEST(LarsenHBond1pHBShieldingTimeSeries,
     EXPECT_EQ(frame_axis, "trajectory_frame_row");
     EXPECT_EQ(irrep_layout,
         "PackFull9: [T0, T1_cartesian_xyz, T2_real_tesseral_m-2..m+2]");
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "even_rank2 under proper rotations: T'=R T R^T; signed-rho DFT-grid "
+        "lookup is chirality-conditioned and has no improper-transform contract");
 
     auto xyz = group.getDataSet("xyz");
     EXPECT_EQ(xyz.getSpace().getDimensions(),
@@ -418,6 +429,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
 
     std::string parity, normalization, units, layout;
     std::string source_policy, atom_axis, frame_axis;
+    std::string coordinate_frame, transformation;
     std::uint64_t source_count = 0;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
@@ -427,7 +439,9 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
     grp.getAttribute("source_attached_policy").read(source_policy);
     grp.getAttribute("atom_axis").read(atom_axis);
     grp.getAttribute("frame_axis").read(frame_axis);
-    EXPECT_EQ(parity, "0e+1e+2e");
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
     EXPECT_EQ(normalization, "isometric_real_sph");
     EXPECT_EQ(units, "ppm");
     EXPECT_EQ(layout,
@@ -436,6 +450,10 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(source_policy, "conditional_larsen_grid_source");
     EXPECT_EQ(atom_axis, "protein_atom_index");
     EXPECT_EQ(frame_axis, "trajectory_frame_row");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "even_rank2 under proper rotations: T'=R T R^T; signed-rho DFT-grid "
+        "lookup is chirality-conditioned and has no improper-transform contract");
 
     fs::remove(h5_path);
 }

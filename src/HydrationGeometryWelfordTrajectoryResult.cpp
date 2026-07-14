@@ -255,6 +255,67 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("frame_index_range",      frame_index_range_);
     grp.createAttribute("irrep_layout_dipole",    std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_normal",    std::string("v_x,v_y,v_z"));
+    grp.createAttribute("dipole_vector_coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("dipole_vector_parity", std::string("1o"));
+    grp.createAttribute("dipole_vector_transformation",
+        std::string("polar vector: v'=R v"));
+    grp.createAttribute("surface_normal_coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("surface_normal_parity", std::string("mixed"));
+    grp.createAttribute("surface_normal_transformation", std::string(
+        "outward polar vector: v'=R v in the continuum limit; live "
+        "upstream finite lab-fixed Fibonacci estimator has no exact O(3) "
+        "law and is only approximately rotation-covariant within the "
+        "recorded test envelope"));
+    grp.createAttribute("source_component_semantics", std::string(
+        "dipole_vector and surface_normal are independently accumulated "
+        "Cartesian x,y,z source components; they are not SphericalTensor "
+        "T1 components"));
+    grp.createAttribute("irrep_metadata_scope", std::string(
+        "only assembled dipole component means carry exact irrep metadata; "
+        "assembled surface-normal means carry only the declared "
+        "continuum/finite-grid approximate directional law"));
+    grp.createAttribute("directional_mean_transformation", std::string(
+        "assembled dipole_vector_{x,y,z}_mean: polar vector v'=R v; "
+        "assembled surface_normal_{x,y,z}_mean: outward polar vector "
+        "v'=R v in the continuum limit, but the live upstream finite "
+        "lab-fixed Fibonacci estimator has no exact O(3) law and is only "
+        "approximately rotation-covariant within the recorded test envelope"));
+    grp.createAttribute("componentwise_statistic_transformation", std::string(
+        "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+        "irrep transformation law"));
+    grp.createAttribute("scalar_statistic_transformation", std::string(
+        "for B in {half_shell_asymmetry,dipole_alignment}: "
+        "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "B_{delta,abs_delta,delta_squared,dxdt}_"
+        "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta are "
+        "continuum rotation invariants that inherit the live upstream "
+        "finite lab-fixed Fibonacci estimator: no exact O(3) law and only "
+        "approximate rotation covariance within the recorded test envelope"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "114 directional-or-finite-grid-qualified paths: "
+        "42 vector-component paths "
+        "dipole_vector_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame} "
+        "and surface_normal_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame}; "
+        "plus 72 scalar paths for B in "
+        "{half_shell_asymmetry,dipole_alignment}: "
+        "B_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "B_{delta,abs_delta,delta_squared,dxdt}_"
+        "{mean,m2,std,min,max,min_frame,max_frame}, and B_rms_delta; "
+        "excludes exact rotation-invariant dipole_magnitude_"
+        "{mean,m2,std,min,max,min_frame,max_frame} and, for E in "
+        "{dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,"
+        "shell_count}, E_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "E_{delta,abs_delta,delta_squared,dxdt}_"
+        "{mean,m2,std,min,max,min_frame,max_frame}, and E_rms_delta; also "
+        "excludes "
+        "n_frames_per_atom,delta_n_per_atom,dxdt_n_per_atom,"
+        "source_attached_per_frame and group provenance"));
+    grp.createAttribute("zero_count_sentinel_validity", std::string(
+        "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,max=-inf,"
+        "min_frame=0,max_frame=0 are invalid sentinels; n_frames_per_atom "
+        "gates validity"));
     grp.createAttribute("reference_frame",        std::string("SASA_normal"));
     grp.createAttribute("dipole_alignment_zero_sentinel",
         std::string("0.0 when |dipole_sum| < NEAR_ZERO_NORM "

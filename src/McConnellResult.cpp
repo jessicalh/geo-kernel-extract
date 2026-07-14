@@ -885,20 +885,31 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
     }
 
     {
-        std::vector<double> nearest_co_dir(N * 3, 0.0);
-        std::vector<double> nearest_co_midpoint(N * 3, 0.0);
-        std::vector<double> nearest_co_T2(N * kCols, 0.0);
-        std::vector<double> nearest_cn_T2(N * kCols, 0.0);
+        // These four arrays describe a selected nearest source, not an
+        // additive contribution. With no accepted source, zero would be a
+        // physically meaningful direction/midpoint/tensor and therefore
+        // cannot serve as an absence sentinel. The owning distance fields
+        // are set to NO_DATA_SENTINEL by Compute; mirror that applicability
+        // decision at the serialized boundary with NaN rows.
+        constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+        std::vector<double> nearest_co_dir(N * 3, kNaN);
+        std::vector<double> nearest_co_midpoint(N * 3, kNaN);
+        std::vector<double> nearest_co_T2(N * kCols, kNaN);
+        std::vector<double> nearest_cn_T2(N * kCols, kNaN);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
-            nearest_co_dir[i*3 + 0] = ca.dir_nearest_CO.x();
-            nearest_co_dir[i*3 + 1] = ca.dir_nearest_CO.y();
-            nearest_co_dir[i*3 + 2] = ca.dir_nearest_CO.z();
-            nearest_co_midpoint[i*3 + 0] = ca.nearest_CO_midpoint.x();
-            nearest_co_midpoint[i*3 + 1] = ca.nearest_CO_midpoint.y();
-            nearest_co_midpoint[i*3 + 2] = ca.nearest_CO_midpoint.z();
-            ca.T2_CO_nearest.PackFull9(&nearest_co_T2[i * kCols]);
-            ca.T2_CN_nearest.PackFull9(&nearest_cn_T2[i * kCols]);
+            if (ca.nearest_CO_dist < NO_DATA_SENTINEL) {
+                nearest_co_dir[i*3 + 0] = ca.dir_nearest_CO.x();
+                nearest_co_dir[i*3 + 1] = ca.dir_nearest_CO.y();
+                nearest_co_dir[i*3 + 2] = ca.dir_nearest_CO.z();
+                nearest_co_midpoint[i*3 + 0] = ca.nearest_CO_midpoint.x();
+                nearest_co_midpoint[i*3 + 1] = ca.nearest_CO_midpoint.y();
+                nearest_co_midpoint[i*3 + 2] = ca.nearest_CO_midpoint.z();
+                ca.T2_CO_nearest.PackFull9(&nearest_co_T2[i * kCols]);
+            }
+            if (ca.nearest_CN_dist < NO_DATA_SENTINEL) {
+                ca.T2_CN_nearest.PackFull9(&nearest_cn_T2[i * kCols]);
+            }
         }
         if (NpyWriter::WriteFloat64(output_dir + "/mc_nearest_co_dir.npy",
                                     nearest_co_dir.data(), N, 3)) {

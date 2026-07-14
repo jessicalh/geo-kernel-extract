@@ -93,9 +93,18 @@ void SasaTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
 
-    grp.createAttribute("irrep_layout", std::string("T0"));
-    grp.createAttribute("parity",       std::string("0e"));
+    grp.createAttribute("irrep_layout",
+                        std::string("raw_scalar_no_exact_o3_irrep"));
+    grp.createAttribute("parity",       std::string("mixed"));
     grp.createAttribute("units",        std::string("Angstrom^2"));
+    grp.createAttribute("coordinate_frame",
+                        std::string("lab_fixed_fibonacci_sampling_grid"));
+    grp.createAttribute("transformation", std::string(
+        "continuum rotation-invariant scalar; live finite lab-fixed Fibonacci "
+        "estimator has no exact O(3) law and is only approximately invariant "
+        "within the recorded covariance-test envelope"));
+    grp.createAttribute("directional_metadata_scope",
+                        std::string("sasa dataset only"));
 
     // Flat (N, T) — atom-major.
     std::vector<double> flat(N * T);
@@ -108,6 +117,7 @@ void SasaTimeSeriesTrajectoryResult::WriteH5Group(
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("sasa", space);
     ds.write_raw(flat.data());
+    ds.createAttribute("units", std::string("Angstrom^2"));
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_);

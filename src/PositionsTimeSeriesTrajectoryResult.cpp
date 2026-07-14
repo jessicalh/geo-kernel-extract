@@ -86,6 +86,11 @@ void PositionsTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 //
 // /trajectory/positions/
 //   xyz              (N, T, 3) float64  — atom-major positions in Å
+//     dataset attrs: physical_class=cartesian_position,
+//                    coordinate_frame=conformation_cartesian_xyz,
+//                    parity=odd,
+//                    transformation="affine_position: p'=R p+t",
+//                    units=Angstrom
 //   frame_indices    (T,)      uint64   — original XTC indices
 //   frame_times      (T,)      float64  — simulation times in ps
 //   result_name      attr      string
@@ -141,6 +146,13 @@ void PositionsTimeSeriesTrajectoryResult::WriteH5Group(
     std::vector<std::size_t> dims = {N, T, std::size_t(3)};
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("xyz", space);
+    ds.createAttribute("physical_class", std::string("cartesian_position"));
+    ds.createAttribute("coordinate_frame",
+                       std::string("conformation_cartesian_xyz"));
+    ds.createAttribute("parity", std::string("odd"));
+    ds.createAttribute("transformation",
+                       std::string("affine_position: p'=R p+t"));
+    ds.createAttribute("units", std::string("Angstrom"));
     ds.write_raw(flat.data());
 
     grp.createDataSet("frame_indices", frame_indices_);

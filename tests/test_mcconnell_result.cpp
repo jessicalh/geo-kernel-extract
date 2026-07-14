@@ -15,6 +15,7 @@
 #include "CalculatorConfig.h"
 #include "MopacResult.h"
 #include "MopacMcConnellResult.h"
+#include "MopacMcConnellShieldingTimeSeriesTrajectoryResult.h"
 #include "SidechainCarbonylAnisotropyResult.h"
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
@@ -22,9 +23,14 @@
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
 #include "PhysicalConstants.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
+#include "DirectionalTestHelpers.h"
 
 #include <filesystem>
 #include <Eigen/Geometry>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5File.hpp>
 #include <unistd.h>
 namespace fs = std::filesystem;
 using namespace nmr;
@@ -189,6 +195,78 @@ std::unique_ptr<Protein> BuildSyntheticSidechainCOProtein() {
     return protein;
 }
 
+// A chemically much less pathological external-MOPAC forcing fixture than
+// the disconnected nine-atom classification fixture above.  Clone the
+// neutral TYR59-ASN60-ILE61 window from the checked-in protonated 1UBQ input;
+// it retains a typed ASN sidechain carbonyl and two real peptide links while
+// keeping each PM7+MOZYME rerun small.
+std::unique_ptr<Protein> BuildProtonatedAsnWindowProtein() {
+    auto loaded = BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    if (!loaded.Ok()) return nullptr;
+
+    const Protein& source = *loaded.protein;
+    const ProteinConformation& source_conf = source.Conformation();
+    auto protein = std::make_unique<Protein>();
+    std::vector<Vec3> positions;
+
+    for (std::size_t source_residue_index = 0;
+         source_residue_index < source.ResidueCount();
+         ++source_residue_index) {
+        const Residue& source_residue =
+            source.ResidueAt(source_residue_index);
+        if (source_residue.chain_id != "A" ||
+            source_residue.sequence_number < 59 ||
+            source_residue.sequence_number > 61) {
+            continue;
+        }
+
+        Residue residue;
+        residue.type = source_residue.type;
+        residue.sequence_number = source_residue.sequence_number;
+        residue.chain_id = source_residue.chain_id;
+        residue.insertion_code = source_residue.insertion_code;
+        residue.protonation_variant_index =
+            source_residue.protonation_variant_index;
+        residue.protonation_state_resolved =
+            source_residue.protonation_state_resolved;
+        residue.terminal_state = ResidueTerminalState::Internal;
+        const std::size_t residue_index =
+            protein->AddResidue(std::move(residue));
+
+        for (std::size_t source_atom_index :
+             source_residue.atom_indices) {
+            const Atom& source_atom = source.AtomAt(source_atom_index);
+            auto atom = Atom::Create(source_atom.element);
+            atom->pdb_atom_name = source_atom.pdb_atom_name;
+            atom->residue_index = residue_index;
+            const std::size_t atom_index =
+                protein->AddAtom(std::move(atom));
+            Residue& added_residue =
+                protein->MutableResidueAt(residue_index);
+            added_residue.atom_indices.push_back(atom_index);
+            if (source_atom.pdb_atom_name == "N") added_residue.N = atom_index;
+            else if (source_atom.pdb_atom_name == "CA") added_residue.CA = atom_index;
+            else if (source_atom.pdb_atom_name == "C") added_residue.C = atom_index;
+            else if (source_atom.pdb_atom_name == "O") added_residue.O = atom_index;
+            else if (source_atom.pdb_atom_name == "H") added_residue.H = atom_index;
+            else if (source_atom.pdb_atom_name == "HA" ||
+                     source_atom.pdb_atom_name == "HA2") {
+                added_residue.HA = atom_index;
+            } else if (source_atom.pdb_atom_name == "CB") {
+                added_residue.CB = atom_index;
+            }
+            positions.push_back(source_conf.PositionAt(source_atom_index));
+        }
+    }
+
+    if (protein->ResidueCount() != 3 || positions.empty()) return nullptr;
+    protein->FinalizeConstruction(positions);
+    protein->AddCrystalConformation(
+        positions, 0.0, 0.0, 0.0, "1UBQ_TYR59_ASN60_ILE61_window");
+    return protein;
+}
+
 template<typename T>
 struct NpyArray {
     std::vector<std::size_t> shape;
@@ -253,6 +331,62 @@ NpyArray<T> ReadNpy(const fs::path& path, const char* dtype) {
                 static_cast<std::streamsize>(value_count * sizeof(T)));
     }
     return result;
+}
+
+template<typename T>
+std::vector<T> ReadH5Flat(const fs::path& path,
+                          const std::string& dataset,
+                          std::vector<std::size_t>* dimensions = nullptr) {
+    HighFive::File file(path.string(), HighFive::File::ReadOnly);
+    auto data_set = file.getDataSet(dataset);
+    const std::vector<std::size_t> dims =
+        data_set.getSpace().getDimensions();
+    if (dimensions) *dimensions = dims;
+    std::size_t count = 1;
+    for (std::size_t extent : dims) count *= extent;
+    std::vector<T> values(count);
+    if (!values.empty()) data_set.read(values.data());
+    return values;
+}
+
+SphericalTensor UnpackFull9(const double* values) {
+    SphericalTensor tensor;
+    tensor.T0 = values[0];
+    for (std::size_t component = 0; component < 3; ++component)
+        tensor.T1[component] = values[component + 1];
+    for (std::size_t component = 0; component < 5; ++component)
+        tensor.T2[component] = values[component + 4];
+    return tensor;
+}
+
+double MaxFiniteDifference(const std::vector<double>& lhs,
+                           const std::vector<double>& rhs) {
+    EXPECT_EQ(lhs.size(), rhs.size());
+    double maximum = 0.0;
+    for (std::size_t i = 0; i < std::min(lhs.size(), rhs.size()); ++i) {
+        if (std::isnan(lhs[i]) && std::isnan(rhs[i])) continue;
+        EXPECT_TRUE(std::isfinite(lhs[i])) << "lhs[" << i << "]";
+        EXPECT_TRUE(std::isfinite(rhs[i])) << "rhs[" << i << "]";
+        if (std::isfinite(lhs[i]) && std::isfinite(rhs[i]))
+            maximum = std::max(maximum, std::abs(lhs[i] - rhs[i]));
+    }
+    return maximum;
+}
+
+void RemoveTempTree(const fs::path& root) {
+    if (!fs::exists(root)) return;
+    std::vector<fs::path> directories;
+    for (const auto& entry : fs::recursive_directory_iterator(root)) {
+        if (entry.is_directory()) directories.push_back(entry.path());
+        else std::remove(entry.path().string().c_str());
+    }
+    std::sort(directories.begin(), directories.end(),
+              [](const fs::path& lhs, const fs::path& rhs) {
+                  return lhs.native().size() > rhs.native().size();
+              });
+    for (const fs::path& directory : directories)
+        ::rmdir(directory.string().c_str());
+    ::rmdir(root.string().c_str());
 }
 
 fs::path SidechainCOTempDir(const char* stem) {
@@ -1024,6 +1158,52 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
 }
 
 
+TEST(McConnellImplementationChecks,
+     NearestSourceNpyRowsAreNanWhenNoAcceptedCoOrCnExists) {
+    auto protein = BuildSyntheticXHCategoryProtein();
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+
+    for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
+        ASSERT_EQ(conf.AtomAt(i).nearest_CO_dist, NO_DATA_SENTINEL);
+        ASSERT_EQ(conf.AtomAt(i).nearest_CN_dist, NO_DATA_SENTINEL);
+    }
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mcconnell_missing_nearest_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
+                  conf, out_dir.string()),
+              26);
+
+    const auto co_dir = ReadNpy<double>(
+        out_dir / "mc_nearest_co_dir.npy", "<f8");
+    const auto co_midpoint = ReadNpy<double>(
+        out_dir / "mc_nearest_co_midpoint.npy", "<f8");
+    const auto co_tensor = ReadNpy<double>(
+        out_dir / "mc_nearest_co_T2.npy", "<f8");
+    const auto cn_tensor = ReadNpy<double>(
+        out_dir / "mc_nearest_cn_T2.npy", "<f8");
+    ASSERT_EQ(co_dir.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 3}));
+    ASSERT_EQ(co_midpoint.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 3}));
+    ASSERT_EQ(co_tensor.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 9}));
+    ASSERT_EQ(cn_tensor.shape,
+              (std::vector<std::size_t>{conf.AtomCount(), 9}));
+    for (const auto* array : {&co_dir, &co_midpoint, &co_tensor, &cn_tensor}) {
+        for (double value : array->values) {
+            EXPECT_TRUE(std::isnan(value));
+        }
+    }
+
+    RemoveMcConnellOutputs(out_dir);
+}
+
+
 TEST(SidechainCarbonylAnisotropyProduction,
      TypedSourcesFramesAndNoMopacReadBack) {
     using namespace sidechain_carbonyl_anisotropy_detail;
@@ -1276,6 +1456,539 @@ TEST(SidechainCarbonylAnisotropyProduction,
     EXPECT_TRUE(any_nonzero_emitted);
 
     RemoveSidechainCOOutputs(output_dir);
+}
+
+
+TEST(MopacExternalDirectionalFreeze,
+     RealExecutableRerunO3NpyH5AndNonClosedAoDiagnostics) {
+    using nmr::test::directional::Axial;
+    using nmr::test::directional::EvenRank2;
+    using nmr::test::directional::Near;
+    using nmr::test::directional::NearMatrix;
+    using nmr::test::directional::NearVector;
+    using nmr::test::directional::Polar;
+    using nmr::test::directional::Position;
+    using nmr::test::directional::Positions;
+    using nmr::test::directional::RotateNativeT2;
+    using nmr::test::directional::SeededTransform;
+    using nmr::test::directional::T1Vector;
+
+    // Recorded forcing seed and tolerances.  The transformed reruns on this
+    // protonated 54-atom peptide window establish that production PM7+MOZYME
+    // has deterministic axis/origin sensitivity in its localized-orbital
+    // SCF, beyond printed decimal quantisation.  The explicit envelopes below
+    // name and retain that external-source numerical limitation; exact
+    // NPY/H5 serialization and owner geometry still use bitwise/near-roundoff
+    // checks.
+    constexpr std::uint64_t kSeed = 0x4D4F5041434F3355ULL;
+    constexpr double kBondOrderAbsTolerance = 6.0e-3;
+    constexpr double kTensorAbsTolerance = 3.0e-3;
+    constexpr double kTensorRelTolerance = 1.5e-2;
+    constexpr double kDipoleAbsToleranceDebye = 3.0e-1;
+    constexpr double kDipoleRelTolerance = 1.0e-2;
+    constexpr double kHeatAbsToleranceKcalMol = 1.0e-2;
+    constexpr double kAOShellAbsToleranceElectron = 7.0e-3;
+    constexpr double kGeometryAbsTolerance = 3.0e-11;
+
+    const auto proper = SeededTransform(kSeed, false);
+    const auto improper = SeededTransform(kSeed, true);
+    const std::array<nmr::test::directional::OrthogonalTransform, 2>
+        transforms{{proper, improper}};
+
+    auto protein = BuildProtonatedAsnWindowProtein();
+    ASSERT_NE(protein, nullptr)
+        << "could not build checked-in protonated ASN forcing window";
+    ASSERT_GT(protein->AtomCount(), 9u);
+    ASSERT_NE(FirstBondWithCategory(*protein, BondCategory::SidechainCO),
+              SIZE_MAX);
+    const std::vector<Vec3> source_positions =
+        protein->Conformation().Positions();
+    protein->AddConformation(
+        Positions(proper, source_positions),
+        "real MOPAC proper transformed-input rerun");
+    protein->AddConformation(
+        Positions(improper, source_positions),
+        "real MOPAC improper transformed-input rerun");
+
+    const fs::path output_root = fs::temp_directory_path() /
+        ("mopac_external_directional_freeze_" +
+         std::to_string(::getpid()));
+    RemoveTempTree(output_root);
+    fs::create_directories(output_root);
+
+    std::array<std::vector<double>, 3> topology_bond_orders;
+    std::array<Vec3, 3> molecular_dipoles;
+    std::array<double, 3> heats{};
+    std::array<NpyArray<double>, 3> global_npys;
+    std::array<NpyArray<double>, 3> atom_population_npys;
+    std::array<NpyArray<double>, 3> ao_npys;
+    std::array<NpyArray<double>, 3> ao_total_npys;
+    std::array<NpyArray<double>, 3> sidechain_bo_npys;
+    std::array<NpyArray<double>, 3> sidechain_frame_npys;
+    std::array<NpyArray<double>, 3> sidechain_quality_npys;
+
+    std::array<std::string, kMcConnellSourceCategoryCount>
+        bo_filenames{};
+    for (std::size_t category = 0;
+         category < kMcConnellSourceCategoryCount; ++category) {
+        bo_filenames[category] = std::string("mc_") +
+            McConnellSourceCategoryStem(
+                static_cast<McConnellSourceCategory>(category)) +
+            "_bo.npy";
+    }
+    std::array<std::array<NpyArray<double>,
+                          kMcConnellSourceCategoryCount>, 3>
+        category_bo_npys;
+
+    for (std::size_t frame = 0; frame < 3; ++frame) {
+        ProteinConformation& conf = protein->ConformationAt(frame);
+        ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+        ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+        auto mopac = MopacResult::Compute(conf, 0, 1);
+        ASSERT_NE(mopac, nullptr)
+            << "configured real MOPAC failed on transformed frame " << frame;
+        topology_bond_orders[frame].reserve(protein->BondCount());
+        for (std::size_t bond = 0; bond < protein->BondCount(); ++bond)
+            topology_bond_orders[frame].push_back(
+                mopac->TopologyBondOrder(bond));
+        molecular_dipoles[frame] = mopac->Dipole();
+        heats[frame] = mopac->HeatOfFormation();
+        ASSERT_TRUE(conf.AttachResult(std::move(mopac)));
+        ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+        ASSERT_TRUE(conf.AttachResult(MopacMcConnellResult::Compute(conf)));
+        ASSERT_TRUE(conf.AttachResult(
+            SidechainCarbonylAnisotropyResult::Compute(conf)));
+
+        const fs::path output_dir = output_root /
+            (frame == 0 ? "original" :
+             frame == 1 ? "proper" : "improper");
+        fs::create_directories(output_dir);
+        EXPECT_GT(conf.Result<MopacResult>().WriteFeatures(
+                      conf, output_dir.string()),
+                  0);
+        EXPECT_EQ(conf.Result<McConnellResult>().WriteFeatures(
+                      conf, output_dir.string()),
+                  26);
+        EXPECT_EQ(conf.Result<SidechainCarbonylAnisotropyResult>()
+                      .WriteFeatures(conf, output_dir.string()),
+                  6);
+
+        global_npys[frame] = ReadNpy<double>(
+            output_dir / "mopac_global.npy", "<f8");
+        atom_population_npys[frame] = ReadNpy<double>(
+            output_dir / "mopac_atom_populations.npy", "<f8");
+        ao_npys[frame] = ReadNpy<double>(
+            output_dir / "mopac_atomic_orbital_populations.npy", "<f8");
+        ao_total_npys[frame] = ReadNpy<double>(
+            output_dir / "mopac_atomic_orbital_population_totals.npy",
+            "<f8");
+        sidechain_bo_npys[frame] = ReadNpy<double>(
+            output_dir / "sidechain_co_bo_T2.npy", "<f8");
+        sidechain_frame_npys[frame] = ReadNpy<double>(
+            output_dir / "sidechain_co_frame.npy", "<f8");
+        sidechain_quality_npys[frame] = ReadNpy<double>(
+            output_dir / "sidechain_co_frame_quality.npy", "<f8");
+        for (std::size_t category = 0;
+             category < kMcConnellSourceCategoryCount; ++category) {
+            category_bo_npys[frame][category] = ReadNpy<double>(
+                output_dir / bo_filenames[category], "<f8");
+        }
+
+        ASSERT_EQ(global_npys[frame].shape,
+                  (std::vector<std::size_t>{4u}));
+        EXPECT_DOUBLE_EQ(global_npys[frame].values[0], heats[frame]);
+        EXPECT_DOUBLE_EQ(global_npys[frame].values[1],
+                         molecular_dipoles[frame].x());
+        EXPECT_DOUBLE_EQ(global_npys[frame].values[2],
+                         molecular_dipoles[frame].y());
+        EXPECT_DOUBLE_EQ(global_npys[frame].values[3],
+                         molecular_dipoles[frame].z());
+
+        // The live producer does not populate the intended per-atom dipole
+        // contribution columns.  Their serialized NaNs are unavailability,
+        // never a manufactured zero or a directional observation.
+        ASSERT_EQ(atom_population_npys[frame].shape,
+                  (std::vector<std::size_t>{conf.AtomCount(), 12u}));
+        for (std::size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+            for (std::size_t component = 6; component <= 9; ++component) {
+                EXPECT_TRUE(std::isnan(
+                    atom_population_npys[frame]
+                        .values[atom * 12u + component]));
+            }
+        }
+
+        const auto& ao_rows =
+            conf.Result<MopacResult>().AtomicOrbitalPopulations();
+        ASSERT_GT(ao_rows.size(), 0u)
+            << "real MOPAC emitted no typed AO population rows";
+        ASSERT_EQ(ao_npys[frame].shape,
+                  (std::vector<std::size_t>{ao_rows.size(), 9u}));
+        ASSERT_EQ(ao_total_npys[frame].shape,
+                  (std::vector<std::size_t>{ao_rows.size(), 3u}));
+        for (std::size_t row = 0; row < ao_rows.size(); ++row) {
+            for (std::size_t component = 0; component < 9; ++component) {
+                const double emitted =
+                    ao_npys[frame].values[row * 9u + component];
+                const double source = ao_rows[row].populations[component];
+                if (std::isnan(source)) EXPECT_TRUE(std::isnan(emitted));
+                else EXPECT_DOUBLE_EQ(emitted, source);
+            }
+            const std::array<double, 3> expected_totals{{
+                ao_rows[row].populations[0],
+                ao_rows[row].populations[1] +
+                    ao_rows[row].populations[2] +
+                    ao_rows[row].populations[3],
+                ao_rows[row].populations[4] +
+                    ao_rows[row].populations[5] +
+                    ao_rows[row].populations[6] +
+                    ao_rows[row].populations[7] +
+                    ao_rows[row].populations[8],
+            }};
+            for (std::size_t shell = 0; shell < 3; ++shell) {
+                const double emitted =
+                    ao_total_npys[frame].values[row * 3u + shell];
+                if (std::isnan(expected_totals[shell]))
+                    EXPECT_TRUE(std::isnan(emitted));
+                else
+                    EXPECT_DOUBLE_EQ(emitted, expected_totals[shell]);
+            }
+        }
+
+        ASSERT_EQ(sidechain_bo_npys[frame].shape,
+                  (std::vector<std::size_t>{conf.AtomCount(), 9u}));
+        const std::size_t sidechain_category = static_cast<std::size_t>(
+            McConnellSourceCategory::SidechainCO);
+        ASSERT_EQ(category_bo_npys[frame][sidechain_category].shape,
+                  sidechain_bo_npys[frame].shape);
+        EXPECT_EQ(category_bo_npys[frame][sidechain_category].values,
+                  sidechain_bo_npys[frame].values)
+            << "typed sidechain owner must serialize the same production "
+               "BO tensor as mc_sidechain_co_bo.npy";
+    }
+
+    double max_bond_order_error = 0.0;
+    double max_tensor_error = 0.0;
+    double max_t0_error = 0.0;
+    double max_t1_error = 0.0;
+    double max_t2_error = 0.0;
+    double max_t1_signal = 0.0;
+    bool any_nonzero_sidechain_bo = false;
+    std::array<bool, kMcConnellSourceCategoryCount>
+        category_has_nonzero_signal{};
+    for (std::size_t moved_frame = 1; moved_frame < 3; ++moved_frame) {
+        const auto& transform = transforms[moved_frame - 1u];
+        for (std::size_t bond = 0; bond < protein->BondCount(); ++bond) {
+            const double error = std::abs(
+                topology_bond_orders[moved_frame][bond] -
+                topology_bond_orders[0][bond]);
+            max_bond_order_error = std::max(max_bond_order_error, error);
+            EXPECT_LE(error, kBondOrderAbsTolerance)
+                << "MOPAC Wiberg order bond=" << bond
+                << " frame=" << moved_frame;
+        }
+
+        for (std::size_t category = 0;
+             category < kMcConnellSourceCategoryCount; ++category) {
+            const auto& source = category_bo_npys[0][category];
+            const auto& moved = category_bo_npys[moved_frame][category];
+            ASSERT_EQ(source.shape,
+                      (std::vector<std::size_t>{protein->AtomCount(), 9u}));
+            ASSERT_EQ(moved.shape, source.shape);
+            for (std::size_t atom = 0; atom < protein->AtomCount(); ++atom) {
+                const SphericalTensor source_tensor =
+                    UnpackFull9(&source.values[atom * 9u]);
+                const SphericalTensor moved_tensor =
+                    UnpackFull9(&moved.values[atom * 9u]);
+                for (std::size_t component = 0; component < 9;
+                     ++component) {
+                    category_has_nonzero_signal[category] =
+                        category_has_nonzero_signal[category] ||
+                        std::abs(source.values[atom * 9u + component]) >
+                            1.0e-12;
+                }
+                const Mat3 expected_matrix =
+                    EvenRank2(transform, source_tensor.Reconstruct());
+                const double matrix_error =
+                    (moved_tensor.Reconstruct() - expected_matrix).norm();
+                max_tensor_error = std::max(max_tensor_error, matrix_error);
+                EXPECT_TRUE(NearMatrix(
+                    moved_tensor.Reconstruct(), expected_matrix,
+                    kTensorAbsTolerance, kTensorRelTolerance))
+                    << bo_filenames[category] << " atom=" << atom
+                    << " moved_frame=" << moved_frame;
+
+                max_t0_error = std::max(
+                    max_t0_error,
+                    std::abs(moved_tensor.T0 - source_tensor.T0));
+                EXPECT_TRUE(Near(moved_tensor.T0, source_tensor.T0,
+                                 kTensorAbsTolerance,
+                                 kTensorRelTolerance));
+
+                const Vec3 expected_t1 = Axial(
+                    transform, T1Vector(source_tensor));
+                max_t1_error = std::max(
+                    max_t1_error,
+                    (T1Vector(moved_tensor) - expected_t1).norm());
+                max_t1_signal = std::max(
+                    max_t1_signal, T1Vector(source_tensor).norm());
+                EXPECT_TRUE(NearVector(
+                    T1Vector(moved_tensor), expected_t1,
+                    kTensorAbsTolerance, kTensorRelTolerance));
+
+                const SphericalTensor expected_t2 =
+                    RotateNativeT2(transform, source_tensor);
+                for (std::size_t component = 0; component < 5;
+                     ++component) {
+                    max_t2_error = std::max(
+                        max_t2_error,
+                        std::abs(moved_tensor.T2[component] -
+                                 expected_t2.T2[component]));
+                    EXPECT_TRUE(Near(
+                        moved_tensor.T2[component],
+                        expected_t2.T2[component],
+                        kTensorAbsTolerance, kTensorRelTolerance))
+                        << bo_filenames[category] << " atom=" << atom
+                        << " native_T2=" << component
+                        << " moved_frame=" << moved_frame;
+                }
+
+                if (category == static_cast<std::size_t>(
+                                    McConnellSourceCategory::SidechainCO)) {
+                    for (std::size_t component = 0; component < 9;
+                         ++component) {
+                        any_nonzero_sidechain_bo =
+                            any_nonzero_sidechain_bo ||
+                            std::abs(source.values[atom * 9u + component]) >
+                                1.0e-12;
+                    }
+                }
+            }
+        }
+
+        // Sidechain source-frame parity comes from the owning cross-product
+        // body: origin is a position, x/y are polar, and z is axial.
+        const auto& source_frames = sidechain_frame_npys[0];
+        const auto& moved_frames = sidechain_frame_npys[moved_frame];
+        ASSERT_EQ(source_frames.shape, moved_frames.shape);
+        ASSERT_EQ(source_frames.shape.size(), 2u);
+        ASSERT_EQ(source_frames.shape[1], 12u);
+        for (std::size_t row = 0; row < source_frames.shape[0]; ++row) {
+            const double* s = &source_frames.values[row * 12u];
+            const double* m = &moved_frames.values[row * 12u];
+            EXPECT_TRUE(NearVector(Vec3(m[0], m[1], m[2]),
+                                   Position(transform,
+                                            Vec3(s[0], s[1], s[2])),
+                                   kGeometryAbsTolerance, 0.0));
+            EXPECT_TRUE(NearVector(Vec3(m[3], m[4], m[5]),
+                                   Polar(transform,
+                                         Vec3(s[3], s[4], s[5])),
+                                   kGeometryAbsTolerance, 0.0));
+            EXPECT_TRUE(NearVector(Vec3(m[6], m[7], m[8]),
+                                   Polar(transform,
+                                         Vec3(s[6], s[7], s[8])),
+                                   kGeometryAbsTolerance, 0.0));
+            EXPECT_TRUE(NearVector(Vec3(m[9], m[10], m[11]),
+                                   Axial(transform,
+                                         Vec3(s[9], s[10], s[11])),
+                                   kGeometryAbsTolerance, 0.0));
+        }
+        ASSERT_EQ(sidechain_quality_npys[moved_frame].shape,
+                  sidechain_quality_npys[0].shape);
+        EXPECT_LE(MaxFiniteDifference(
+                      sidechain_quality_npys[moved_frame].values,
+                      sidechain_quality_npys[0].values),
+                  kGeometryAbsTolerance);
+    }
+    EXPECT_TRUE(any_nonzero_sidechain_bo)
+        << "sidechain_co_bo_T2.npy must force a finite nonzero external BO";
+    EXPECT_GT(max_t1_signal, 1.0e-10)
+        << "fixture must exercise the axial T1 branch of nonsymmetric DQ";
+
+    // The molecule is neutral (net_charge=0), so the molecular dipole is a
+    // polar vector and is translation invariant.  A charged calculation
+    // would instead obey p' = Qp + q_total*t and is outside this assertion.
+    ASSERT_GT(molecular_dipoles[0].norm(), 5.0e-2)
+        << "mopac_global.npy dipole parser did not produce a finite signal";
+    double max_dipole_error = 0.0;
+    double max_heat_error = 0.0;
+    for (std::size_t moved_frame = 1; moved_frame < 3; ++moved_frame) {
+        const Vec3 expected = Polar(
+            transforms[moved_frame - 1u], molecular_dipoles[0]);
+        max_dipole_error = std::max(
+            max_dipole_error,
+            (molecular_dipoles[moved_frame] - expected).norm());
+        EXPECT_TRUE(NearVector(
+            molecular_dipoles[moved_frame], expected,
+            kDipoleAbsToleranceDebye, kDipoleRelTolerance));
+        max_heat_error = std::max(
+            max_heat_error, std::abs(heats[moved_frame] - heats[0]));
+        EXPECT_NEAR(heats[moved_frame], heats[0],
+                    kHeatAbsToleranceKcalMol);
+    }
+
+    // Printed AO populations are diagonal lab-axis occupations, not vector
+    // components.  Their p/d shell traces are closed scalars; the nine raw
+    // cells are not O(3)-closed because the omitted off-diagonal density
+    // coherences are required to rotate the diagonal.  The external rerun
+    // must therefore show orientation dependence without assigning a false
+    // vector/tensor law to mopac_atomic_orbital_populations.npy.
+    double max_ao_raw_change = 0.0;
+    double max_ao_shell_error = 0.0;
+    double min_false_polar_error = std::numeric_limits<double>::infinity();
+    for (std::size_t moved_frame = 1; moved_frame < 3; ++moved_frame) {
+        ASSERT_EQ(ao_npys[moved_frame].shape, ao_npys[0].shape);
+        ASSERT_EQ(ao_total_npys[moved_frame].shape,
+                  ao_total_npys[0].shape);
+        max_ao_raw_change = std::max(
+            max_ao_raw_change,
+            MaxFiniteDifference(ao_npys[moved_frame].values,
+                                ao_npys[0].values));
+        max_ao_shell_error = std::max(
+            max_ao_shell_error,
+            MaxFiniteDifference(ao_total_npys[moved_frame].values,
+                                ao_total_npys[0].values));
+
+        const std::size_t rows = ao_npys[0].shape[0];
+        for (std::size_t row = 0; row < rows; ++row) {
+            const Vec3 source_p(
+                ao_npys[0].values[row * 9u + 1u],
+                ao_npys[0].values[row * 9u + 2u],
+                ao_npys[0].values[row * 9u + 3u]);
+            const Vec3 moved_p(
+                ao_npys[moved_frame].values[row * 9u + 1u],
+                ao_npys[moved_frame].values[row * 9u + 2u],
+                ao_npys[moved_frame].values[row * 9u + 3u]);
+            if (!source_p.allFinite() || !moved_p.allFinite()) continue;
+            min_false_polar_error = std::min(
+                min_false_polar_error,
+                (moved_p - Polar(transforms[moved_frame - 1u],
+                                 source_p)).norm());
+        }
+    }
+    EXPECT_GT(max_ao_raw_change, 1.0e-4)
+        << "fixture must demonstrate lab-axis AO orientation dependence";
+    EXPECT_LE(max_ao_shell_error, kAOShellAbsToleranceElectron)
+        << "only [s_total,p_total,d_total] is the closed companion";
+    EXPECT_GT(min_false_polar_error, 1.0e-2)
+        << "px/py/pz occupations must not be mislabeled as a polar vector";
+
+    // Feed the three independently rerun owner stacks into the real sparse
+    // trajectory source and validate the exact serialized H5 payload.
+    auto trajectory_protein =
+        TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(trajectory_protein, nullptr);
+    auto time_series =
+        MopacMcConnellShieldingTimeSeriesTrajectoryResult::Create(
+            *trajectory_protein);
+    ASSERT_NE(time_series, nullptr);
+    Trajectory dummy("", "", "");
+    for (std::size_t frame = 0; frame < 3; ++frame) {
+        time_series->Compute(
+            trajectory_protein->ProteinRef().ConformationAt(frame),
+            *trajectory_protein, dummy, 700u + frame, 0.25 * frame);
+    }
+    time_series->Finalize(*trajectory_protein, dummy);
+    const fs::path h5_path = output_root / "mopac_mc_directional.h5";
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+        time_series->WriteH5Group(*trajectory_protein, file);
+    }
+
+    const std::string h5_group =
+        "/trajectory/mopac_mc_shielding_time_series/";
+    std::vector<std::size_t> h5_dimensions;
+    const std::vector<double> h5_xyz = ReadH5Flat<double>(
+        h5_path, h5_group + "xyz", &h5_dimensions);
+    ASSERT_EQ(h5_dimensions,
+              (std::vector<std::size_t>{
+                  trajectory_protein->AtomCount(), 3u, 9u}));
+    EXPECT_EQ(ReadH5Flat<std::uint8_t>(
+                  h5_path, h5_group + "source_attached_per_frame"),
+              (std::vector<std::uint8_t>{1u, 1u, 1u}));
+    EXPECT_EQ(ReadH5Flat<std::uint64_t>(
+                  h5_path, h5_group + "frame_indices"),
+              (std::vector<std::uint64_t>{700u, 701u, 702u}));
+    EXPECT_EQ(ReadH5Flat<double>(h5_path, h5_group + "frame_times"),
+              (std::vector<double>{0.0, 0.25, 0.5}));
+
+    double max_h5_exact_error = 0.0;
+    double max_h5_covariance_error = 0.0;
+    for (std::size_t atom = 0;
+         atom < trajectory_protein->AtomCount(); ++atom) {
+        std::array<double, 9> source_pack{};
+        trajectory_protein->ProteinRef().ConformationAt(0)
+            .AtomAt(atom).mopac_mc_shielding_contribution
+            .PackFull9(source_pack.data());
+        const SphericalTensor source_tensor =
+            UnpackFull9(source_pack.data());
+        for (std::size_t frame = 0; frame < 3; ++frame) {
+            std::array<double, 9> expected_pack{};
+            trajectory_protein->ProteinRef().ConformationAt(frame)
+                .AtomAt(atom).mopac_mc_shielding_contribution
+                .PackFull9(expected_pack.data());
+            const std::size_t base = (atom * 3u + frame) * 9u;
+            for (std::size_t component = 0; component < 9; ++component) {
+                max_h5_exact_error = std::max(
+                    max_h5_exact_error,
+                    std::abs(h5_xyz[base + component] -
+                             expected_pack[component]));
+                EXPECT_DOUBLE_EQ(h5_xyz[base + component],
+                                 expected_pack[component]);
+            }
+            if (frame > 0) {
+                const Mat3 expected = EvenRank2(
+                    transforms[frame - 1u],
+                    source_tensor.Reconstruct());
+                const SphericalTensor emitted =
+                    UnpackFull9(&h5_xyz[base]);
+                max_h5_covariance_error = std::max(
+                    max_h5_covariance_error,
+                    (emitted.Reconstruct() - expected).norm());
+                EXPECT_TRUE(NearMatrix(
+                    emitted.Reconstruct(), expected,
+                    kTensorAbsTolerance, kTensorRelTolerance));
+            }
+        }
+    }
+
+    std::string nonzero_categories;
+    std::string zero_categories;
+    for (std::size_t category = 0;
+         category < kMcConnellSourceCategoryCount; ++category) {
+        std::string& destination = category_has_nonzero_signal[category]
+            ? nonzero_categories : zero_categories;
+        if (!destination.empty()) destination += ',';
+        destination += McConnellSourceCategoryStem(
+            static_cast<McConnellSourceCategory>(category));
+    }
+
+    std::cout
+        << "MOPAC external O(3) seed=0x" << std::hex << kSeed << std::dec
+        << " max_BO_abs=" << max_bond_order_error
+        << " tol_BO_abs=" << kBondOrderAbsTolerance
+        << " max_tensor_Frobenius=" << max_tensor_error
+        << " tensor_abs=" << kTensorAbsTolerance
+        << " tensor_rel=" << kTensorRelTolerance
+        << " max_T0_abs=" << max_t0_error
+        << " max_T1_L2=" << max_t1_error
+        << " max_native_T2_abs=" << max_t2_error
+        << " max_dipole_L2_D=" << max_dipole_error
+        << " dipole_abs_D=" << kDipoleAbsToleranceDebye
+        << " dipole_rel=" << kDipoleRelTolerance
+        << " max_heat_abs_kcal_mol=" << max_heat_error
+        << " heat_abs=" << kHeatAbsToleranceKcalMol
+        << " max_AO_raw_change_e=" << max_ao_raw_change
+        << " max_AO_shell_abs_e=" << max_ao_shell_error
+        << " AO_shell_abs=" << kAOShellAbsToleranceElectron
+        << " min_false_polar_L2_e=" << min_false_polar_error
+        << " max_H5_exact_abs=" << max_h5_exact_error
+        << " max_H5_cov_Frobenius=" << max_h5_covariance_error
+        << " nonzero_BO_categories=" << nonzero_categories
+        << " zero_BO_categories=" << zero_categories
+        << std::endl;
+
+    RemoveTempTree(output_root);
 }
 
 

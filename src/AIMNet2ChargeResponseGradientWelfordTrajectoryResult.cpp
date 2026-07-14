@@ -128,8 +128,26 @@ void AIMNet2ChargeResponseGradientWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("irrep_layout_vector",    std::string("x,y,z"));
     grp.createAttribute("normalization_vector",   std::string("cartesian"));
     grp.createAttribute("parity_vector",          std::string("1o"));
+    grp.createAttribute("vector_coordinate_frame",
+                        std::string("conformation_cartesian_xyz"));
     grp.createAttribute("irrep_layout_scalar",    std::string("T0"));
     grp.createAttribute("parity_scalar",          std::string("0e"));
+    grp.createAttribute("irrep_metadata_scope", std::string(
+        "only assembled component means carry directional irrep metadata"));
+    grp.createAttribute("directional_mean_transformation", std::string(
+        "vector_mean is polar: v'=R v; scalar_mean is rotation-invariant"));
+    grp.createAttribute("componentwise_statistic_transformation", std::string(
+        "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+        "irrep transformation law"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "vector_mean is an assembled polar mean; vector_m2,vector_std,"
+        "vector_min,vector_max,vector_min_frame,vector_max_frame are "
+        "componentwise statistics with no closed irrep law; scalar_* datasets, "
+        "n_per_atom, frame/source provenance, and group metadata are invariant"));
+    grp.createAttribute("zero_count_sentinel_validity", std::string(
+        "when n_per_atom=0, mean,m2,std are NaN and min=+inf,max=-inf,"
+        "min_frame=0,max_frame=0 are invalid sentinels; n_per_atom gates "
+        "validity"));
     grp.createAttribute("source", std::string(
         "AIMNet2ChargeResponseGradientResult.{aimnet2_charge_response_gradient_vector "
         "(Vec3), aimnet2_charge_response_gradient_scalar (double)}. Per-atom "

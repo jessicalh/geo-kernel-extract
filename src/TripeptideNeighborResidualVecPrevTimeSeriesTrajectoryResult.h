@@ -27,9 +27,15 @@
 //       result_name    = "TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult"
 //       irrep_layout   = "x,y,z"
 //       normalization  = "cartesian"
-//       parity         = "1o"
+//       parity         = "mixed"
+//       coordinate_frame = "conformation_cartesian_xyz"
+//       transformation = "polar_vector under proper rotations: ..."
 //       units          = "angstrom"
 //       n_atoms, n_frames, finalized
+//
+// The residual is polar under proper rotations, but its typed lookup and
+// proper-Kabsch alignment use an unchanged chiral L-amino-acid DFT source.
+// It therefore has no homogeneous improper-transform parity.
 //
 
 #include "DenseBuffer.h"

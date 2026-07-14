@@ -150,6 +150,21 @@ class TestLarsenHBondCatalog:
                     "must be optional"
                 )
 
+    def test_chiral_outputs_do_not_claim_o3_wrappers(self):
+        for stem in (
+            "larsen_hbond_shielding",
+            "larsen_hbond_1pHB_shielding",
+            "larsen_hbond_2pHB_shielding",
+            "larsen_hbond_1pHaB_shielding",
+            "larsen_hbond_2pHaB_shielding",
+            "larsen_hbond_diagnostic_CB_shielding",
+        ):
+            spec = CATALOG[stem]
+            assert spec.wrapper is np.ndarray
+            assert spec.parity == "mixed"
+            assert not spec.irreps
+            assert not spec.e3nn_export
+
 
 class TestLarsenHBondLoad:
 
@@ -170,7 +185,8 @@ class TestLarsenHBondLoad:
         p = load(fake_extraction)
         lh = p.larsen_hbond
         assert lh.shielding is not None
-        data = lh.shielding.data
+        data = lh.shielding
+        assert isinstance(data, np.ndarray)
         assert data.shape == (N_ATOMS, 9)
         # First 8 atoms = 1.0 (received contributions), rest NaN.
         assert np.all(data[:8] == 1.0)
@@ -182,9 +198,9 @@ class TestLarsenHBondLoad:
         assert lh.pHB_1 is not None
         assert lh.pHB_2 is not None
         # 1pHB + 2pHB should sum to total in the contributing region.
-        a = lh.pHB_1.data[:8]
-        b = lh.pHB_2.data[:8]
-        total = lh.shielding.data[:8]
+        a = lh.pHB_1[:8]
+        b = lh.pHB_2[:8]
+        total = lh.shielding[:8]
         np.testing.assert_allclose(a + b, total, rtol=1e-12)
 
     def test_water_term_isolated_to_solvent_exposed(self, fake_extraction):

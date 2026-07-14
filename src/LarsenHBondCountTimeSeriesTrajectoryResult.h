@@ -21,11 +21,15 @@
 //       units       = "pairs"
 //       dtype       = "int32"
 //       description = "Per-atom H-bond pair count (sum over 1°HB, 2°HB, 1°HαB, 2°HαB)"
+//       coordinate_frame = "intrinsic_pair_count"
+//       parity      = "even"
+//       transformation = exact rotation/translation/reflection-invariant count
 //       n_atoms, n_frames, finalized
 //
-// No parity/irrep_layout attrs: this is a discrete count, not a
-// tensor irrep. Downstream ML consumers may pair it with the per-class
-// shielding TRs to feature-engineer "pair density per donor class."
+// No irrep_layout attr: this is a discrete count, not a tensor payload.
+// The explicit even transformation contract follows from the production
+// gate: topology, distance, and theta select successful pairs; periodic rho
+// selects tensor values and imputation corners but cannot change success.
 //
 
 #include "DenseBuffer.h"

@@ -10,6 +10,7 @@
 #include "HydrationGeometryResult.h"
 #include "HydrationGeometryTimeSeriesTrajectoryResult.h"
 #include "OperationLog.h"
+#include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -33,6 +34,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -45,6 +47,20 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr const char* kFixtureProtein = "1P9J_5801";
+constexpr const char* kSurfaceNormalTransformation =
+    "outward polar vector: v'=R v in the continuum limit; live upstream "
+    "finite lab-fixed Fibonacci estimator has no exact O(3) law and is "
+    "only approximately rotation-covariant within the recorded test envelope";
+constexpr const char* kScalarTransformation =
+    "half_shell_asymmetry,dipole_alignment: continuum rotation invariants "
+    "inheriting the finite lab-fixed Fibonacci surface-normal approximation; "
+    "dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,"
+    "first_shell_count: exact rotation invariants";
+constexpr const char* kDirectionalMetadataScope =
+    "dipole_vector,surface_normal,half_shell_asymmetry,dipole_alignment,"
+    "dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,"
+    "first_shell_count; excludes frame_indices,frame_times,"
+    "source_attached_per_frame and group provenance";
 
 std::string TrrPathFor(const std::string& p) {
     return fs::path(p).replace_extension(".trr").string();
@@ -73,6 +89,99 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
 }
 
 }  // namespace
+
+
+TEST(HydrationGeometryTimeSeries,
+     H5DirectionalMetadataIsExactWithoutFleetFixture) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
+    ASSERT_GT(tp.AtomCount(), 0u);
+
+    auto tr = nmr::HydrationGeometryTimeSeriesTrajectoryResult::Create(tp);
+    tr->ForceSourcePresentForTesting();
+    nmr::Trajectory traj({}, {}, {});
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    auto conf = std::make_unique<nmr::ProteinConformation>(
+        &tp.ProteinRef(), positions,
+        "synthetic hydration geometry metadata frame");
+    auto& atom = conf->MutableAtomAt(0);
+    atom.water_dipole_vector = nmr::Vec3(1.25, -2.5, 3.75);
+    atom.water_surface_normal = nmr::Vec3(-0.25, 0.5, 0.75);
+    atom.sasa_half_shell_asymmetry = 0.6;
+    atom.sasa_dipole_alignment = -0.4;
+    atom.sasa_dipole_coherence = 0.8;
+    atom.sasa_dipole_order_parameter = 0.3;
+    atom.sasa_first_shell_count = 7;
+
+    tr->Compute(*conf, tp, traj, 0, 0.0);
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("hydration_geometry_ts_directional_metadata_" +
+         std::to_string(::getpid()) + ".h5")).string();
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        tr->WriteH5Group(tp, file);
+    }
+
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup(
+        "/trajectory/hydration_geometry_time_series");
+    std::string dipole_layout;
+    std::string dipole_frame;
+    std::string dipole_parity;
+    std::string dipole_transformation;
+    std::string normal_layout;
+    std::string normal_frame;
+    std::string normal_parity;
+    std::string normal_transformation;
+    std::string scalar_transformation;
+    std::string metadata_scope;
+    grp.getAttribute("dipole_vector_layout").read(dipole_layout);
+    grp.getAttribute("dipole_vector_coordinate_frame").read(dipole_frame);
+    grp.getAttribute("dipole_vector_parity").read(dipole_parity);
+    grp.getAttribute("dipole_vector_transformation").read(
+        dipole_transformation);
+    grp.getAttribute("surface_normal_layout").read(normal_layout);
+    grp.getAttribute("surface_normal_coordinate_frame").read(normal_frame);
+    grp.getAttribute("surface_normal_parity").read(normal_parity);
+    grp.getAttribute("surface_normal_transformation").read(
+        normal_transformation);
+    grp.getAttribute("scalar_transformation").read(scalar_transformation);
+    grp.getAttribute("directional_metadata_scope").read(metadata_scope);
+
+    EXPECT_EQ(dipole_layout, "x,y,z");
+    EXPECT_EQ(dipole_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(dipole_parity, "1o");
+    EXPECT_EQ(dipole_transformation, "polar vector: v'=R v");
+    EXPECT_EQ(normal_layout, "x,y,z");
+    EXPECT_EQ(normal_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(normal_parity, "mixed");
+    EXPECT_EQ(normal_transformation, kSurfaceNormalTransformation);
+    EXPECT_EQ(scalar_transformation, kScalarTransformation);
+    EXPECT_EQ(metadata_scope, kDirectionalMetadataScope);
+
+    std::vector<double> dipole(tp.AtomCount() * 3u);
+    std::vector<double> normal(tp.AtomCount() * 3u);
+    grp.getDataSet("dipole_vector").read(dipole.data());
+    grp.getDataSet("surface_normal").read(normal.data());
+    EXPECT_DOUBLE_EQ(dipole[0], 1.25);
+    EXPECT_DOUBLE_EQ(dipole[1], -2.5);
+    EXPECT_DOUBLE_EQ(dipole[2], 3.75);
+    EXPECT_DOUBLE_EQ(normal[0], -0.25);
+    EXPECT_DOUBLE_EQ(normal[1], 0.5);
+    EXPECT_DOUBLE_EQ(normal[2], 0.75);
+
+    fs::remove(h5_path);
+}
 
 TEST(HydrationGeometryResult, ConstructedAlignedWaterDipoles) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();

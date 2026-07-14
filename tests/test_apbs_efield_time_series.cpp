@@ -62,14 +62,16 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
 TEST(ApbsEfieldTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
     const size_t N = tp.AtomCount();
     auto tr = nmr::ApbsEfieldTimeSeriesTrajectoryResult::Create(tp);
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Trajectory traj({}, {}, {});
 
     constexpr size_t kFrames = 4;
     std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
@@ -115,11 +117,27 @@ TEST(ApbsEfieldTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[0], N);
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 3u);
-    std::string parity, layout;
+    std::string parity, layout, directional_scope;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("irrep_layout").read(layout);
+    grp.getAttribute("directional_metadata_scope").read(directional_scope);
     EXPECT_EQ(parity, "1o");
     EXPECT_EQ(layout, "x,y,z");
+    EXPECT_EQ(directional_scope,
+        "irrep_layout,normalization,parity,units describe xyz only; "
+        "clamp_* and apbs_grid_*_per_frame datasets carry per-dataset "
+        "scalar/lab-axis contracts");
+    std::string xyz_frame, xyz_transformation, xyz_parity;
+    ds.getAttribute("coordinate_frame").read(xyz_frame);
+    ds.getAttribute("transformation").read(xyz_transformation);
+    ds.getAttribute("parity").read(xyz_parity);
+    EXPECT_EQ(xyz_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(xyz_transformation,
+              "continuum polar_vector: v'=R v; translation invariant. The "
+              "live axis-aligned finite-difference APBS solve has no exact "
+              "O(3) law; transformed production reruns use the recorded "
+              "1.8e-2 V/Angstrom absolute + 5e-2 relative finite-grid envelope");
+    EXPECT_EQ(xyz_parity, "1o");
 
     auto source_ds = grp.getDataSet("source_attached_per_frame");
     std::vector<std::uint8_t> source_mask(kFrames);
@@ -147,6 +165,36 @@ TEST(ApbsEfieldTimeSeries, SyntheticFourFrames) {
         EXPECT_EQ(grp.getDataSet(name).getSpace().getDimensions(),
                   (std::vector<std::size_t>{kFrames, 3u}));
     }
+    const auto expect_grid_contract = [&](const std::string& name,
+            const std::string& expected_units,
+            const std::string& expected_parity,
+            const std::string& expected_transformation) {
+        auto grid = grp.getDataSet(name);
+        std::string order, grid_units, frame, grid_parity, transformation;
+        grid.getAttribute("component_order").read(order);
+        grid.getAttribute("units").read(grid_units);
+        grid.getAttribute("coordinate_frame").read(frame);
+        grid.getAttribute("parity").read(grid_parity);
+        grid.getAttribute("transformation").read(transformation);
+        EXPECT_EQ(order, "x,y,z");
+        EXPECT_EQ(grid_units, expected_units);
+        EXPECT_EQ(frame, "apbs_lab_axis_aligned_grid_xyz");
+        EXPECT_EQ(grid_parity, expected_parity);
+        EXPECT_EQ(transformation, expected_transformation);
+    };
+    expect_grid_contract("apbs_grid_dims_per_frame", "grid_points", "even",
+        "configured cubic grid point counts (n,n,n); invariant under "
+        "proper/improper orthogonal transforms and translations");
+    expect_grid_contract("apbs_grid_lengths_A_per_frame", "Angstrom", "mixed",
+        "lab-axis grid extents; translation invariant; no closed O(3) "
+        "transformation law under arbitrary orthogonal transforms");
+    expect_grid_contract("apbs_grid_origin_A_per_frame", "Angstrom", "mixed",
+        "lab-axis grid origin; o'=o+t under pure translations; no "
+        "affine-position/O(3) law under arbitrary orthogonal transforms "
+        "because grid axes remain lab-fixed");
+    expect_grid_contract("apbs_grid_spacing_A_per_frame", "Angstrom", "mixed",
+        "lab-axis grid step lengths; translation invariant; no closed O(3) "
+        "transformation law under arbitrary orthogonal transforms");
     std::string field_quantity, grid_mode, reference_subtracts,
                 clamp_units, rank3_policy;
     grp.getAttribute("field_quantity").read(field_quantity);

@@ -50,6 +50,20 @@
 //     PerFrameRunOptions::skip_dssp is false; consult
 //     source_attached_per_frame mask before downstream stats.
 //
+// Directional contract:
+//   - ss8_code is an intrinsic O(3)-invariant category after the explicit
+//     libdssp PPII ('P') -> coil ('C'=7) collapse. DsspResult reaches
+//     libdssp through a temporary PDB rounded to 0.001 A, so a transformed
+//     production rerun can still cross a libdssp classification boundary.
+//   - ppii_flag retains libdssp's signed-phi/psi PPII predicate: it is
+//     translation/proper-rotation invariant but has no fixed reflection map.
+//   - H-bond partner residue identities and continuum H-bond energies are
+//     intrinsic O(3) invariants. At the serialized production boundary the
+//     recorded energy comparison envelope is 5e-3 kcal/mol, caused by that
+//     same 0.001-A coordinate quantization.
+// Dataset attrs emitted by WriteH5Group state these laws and the sentinel /
+// validity gates explicitly.
+//
 // AV-pattern caveat: this TR is FO (per-frame buffers accumulated
 // during Compute, flattened at WriteH5Group). DSSP transitions /
 // occupancy stats live in the AV companion

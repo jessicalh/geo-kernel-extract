@@ -143,6 +143,16 @@ void TripeptideBackboneMethodTagTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("legend",
         std::string("0=no_match, 1=opbe_6-31g(d,p)_gaussian, "
                     "2=pbe_6-31g(d,p)_orca_ser"));
+    grp.createAttribute("coordinate_frame",
+        std::string("intrinsic_typed_tripeptide_lookup"));
+    grp.createAttribute("parity", std::string("mixed"));
+    grp.createAttribute("transformation", std::string(
+        "proper-rotation invariant categorical lookup outcome; the typed "
+        "lookup/proper-Kabsch alignment is L-amino-acid "
+        "chirality-conditioned and has no improper-transform contract"));
+    grp.createAttribute("validity", std::string(
+        "method_tag=0 means no matched DFT source; "
+        "source_attached_per_frame separately records calculator presence"));
 
     // Flat (N, T) uint8 — already contiguous in DenseBuffer's storage,
     // but we still build a fresh vector via At() to avoid coupling to

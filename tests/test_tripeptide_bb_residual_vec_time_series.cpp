@@ -114,6 +114,14 @@ nmr::Vec3 SyntheticVec3(size_t atom_i, size_t frame_t) {
     return nmr::Vec3(base, base + 0.1, base + 0.2);
 }
 
+constexpr size_t kMatchedZeroAtom = 0;
+constexpr size_t kUnmatchedAtom = 1;
+
+nmr::Vec3 SyntheticStoredVec3(size_t atom_i, size_t frame_t) {
+    if (atom_i == kMatchedZeroAtom) return nmr::Vec3::Zero();
+    return SyntheticVec3(atom_i, frame_t);
+}
+
 
 bool Vec3Equal(const nmr::Vec3& a, const nmr::Vec3& b, double tol) {
     return std::abs(a.x() - b.x()) <= tol
@@ -130,25 +138,22 @@ bool Vec3Equal(const nmr::Vec3& a, const nmr::Vec3& b, double tol) {
 //
 // Drives Compute / Finalize / WriteH5Group with hand-crafted per-atom
 // inputs and asserts exact bit-equality on round-trip. Skips
-// Trajectory::Run orchestration; uses the fleet_amber fixture only
-// for TrajectoryProtein AtomCount plumbing. Exact equality is
-// appropriate here because synthetic inputs have no numerical noise.
+// Trajectory::Run orchestration and uses the committed protonated 1UBQ
+// topology through the explicit TrajectoryProtein test seam. Exact equality
+// is appropriate here because synthetic inputs have no numerical noise.
 // ============================================================================
 
 TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
-    nmr::test::TestEnvironment::Load();
-
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix))
-        GTEST_SKIP() << "fleet_amber " << kFixtureProtein
-                     << " fixture not on disk";
-
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
+    auto build = nmr::BuildFromProtonatedPdb(
+        nmr::test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(build.protein));
+    ASSERT_NE(tp_owner, nullptr);
+    auto& tp = *tp_owner;
     const size_t Ntp = tp.AtomCount();
-    ASSERT_GT(Ntp, 0u);
+    ASSERT_GE(Ntp, 2u);
 
     auto tr =
         nmr::TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Create(tp);
@@ -159,8 +164,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
 
     // Trajectory exists only to satisfy the Compute signature; TR::Compute
     // marks traj as (void) and reads only ConformationAtom.
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
-                         fix.tpr_path, fix.edr_path);
+    nmr::Trajectory traj({}, {}, {});
 
     constexpr size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
@@ -170,8 +174,9 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &protein_ref, positions, "synthetic frame");
         for (size_t i = 0; i < Ntp; ++i) {
-            conf->MutableAtomAt(i).tripeptide_bb_residual_vec =
-                SyntheticVec3(i, t);
+            auto& atom = conf->MutableAtomAt(i);
+            atom.tripeptide_bb_residual_vec = SyntheticStoredVec3(i, t);
+            atom.tripeptide_bb_has_match = i != kUnmatchedAtom;
         }
         tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
     }
@@ -187,7 +192,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
 
     for (size_t i : {size_t(0), Ntp / 2, Ntp - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
-            const auto expected = SyntheticVec3(i, t);
+            const auto expected = SyntheticStoredVec3(i, t);
             const auto& got = buf->At(i, t);
             EXPECT_TRUE(Vec3Equal(got, expected, 1e-12))
                 << "buffer mismatch at atom " << i << " frame " << t;
@@ -216,16 +221,36 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 3u);
 
+    std::string parity, coordinate_frame, transformation;
+    grp.getAttribute("parity").read(parity);
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract");
+
     // Spot-check one cell readback: atom Ntp/2, frame 2, all 3 components.
     std::vector<double> flat(Ntp * kFrames * 3);
     ds.read(flat.data());
-    const size_t i = Ntp / 2;
+    const size_t i = Ntp > 2 ? size_t(2) : kMatchedZeroAtom;
     const size_t t = 2;
     const size_t base = (i * kFrames + t) * 3;
-    const auto expected = SyntheticVec3(i, t);
+    const auto expected = SyntheticStoredVec3(i, t);
     EXPECT_DOUBLE_EQ(flat[base + 0], expected.x());
     EXPECT_DOUBLE_EQ(flat[base + 1], expected.y());
     EXPECT_DOUBLE_EQ(flat[base + 2], expected.z());
+
+    // A matched zero displacement is physical and stays zero; an
+    // unmatched atom is unavailable and must serialize as NaN.
+    const size_t matched_zero_base = kMatchedZeroAtom * kFrames * 3;
+    const size_t unmatched_base = kUnmatchedAtom * kFrames * 3;
+    for (size_t k = 0; k < 3; ++k) {
+        EXPECT_DOUBLE_EQ(flat[matched_zero_base + k], 0.0);
+        EXPECT_TRUE(std::isnan(flat[unmatched_base + k]));
+    }
 
     fs::remove(h5_path);
 }
@@ -411,16 +436,24 @@ TEST(TripeptideBackboneResidualVecTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 3u);
 
-    // Attribute triple: cartesian xyz layout, polar vector (1o), in Å.
+    // Cartesian layout plus the chiral lookup's proper-only vector law.
     std::string parity, normalization, units, layout;
+    std::string coordinate_frame, transformation;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
-    EXPECT_EQ(parity, "1o");
+    grp.getAttribute("coordinate_frame").read(coordinate_frame);
+    grp.getAttribute("transformation").read(transformation);
+    EXPECT_EQ(parity, "mixed");
     EXPECT_EQ(normalization, "cartesian");
     EXPECT_EQ(units, "angstrom");
     EXPECT_EQ(layout, "x,y,z");
+    EXPECT_EQ(coordinate_frame, "conformation_cartesian_xyz");
+    EXPECT_EQ(transformation,
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform "
+        "contract");
 
     fs::remove(h5_path);
 }

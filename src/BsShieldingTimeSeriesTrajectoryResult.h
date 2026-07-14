@@ -24,6 +24,9 @@
 //       irrep_layout   = "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
 //       parity         = "0e+1e+2e"
+//       tensor_basis   = "project_native_full9_spherical_tensor_v1"
+//       tensor_frame   = "conformation_cartesian_xyz"
+//       tensor_transformation = "even_rank2: T'=R T R^T"
 //       units          = "ppm_T_per_nA"
 //       n_atoms, n_frames, finalized
 //
@@ -32,6 +35,8 @@
 // so the rank-1 part is axial/even (1e) in the e3nn Irreps convention.
 // Pure EFG emitters with structural T0/T1 zeros emit only T2 with even
 // parity.
+// Machine metadata states explicitly that T1 is the Cartesian
+// Levi-Civita dual, not a real-Y1m channel, and is generically nonzero.
 //
 
 #include "DenseBuffer.h"

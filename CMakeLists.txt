@@ -1171,6 +1171,7 @@ nmr_test(conformation_scope_tests
         tests/test_demo_result.cpp
         tests/test_dispersion_result.cpp
         tests/test_dssp_result.cpp
+        tests/test_directional_covariance.cpp
         tests/test_foundation_results.cpp
         tests/test_geometry_result.cpp
         tests/test_haigh_mallion_result.cpp
@@ -1197,6 +1198,10 @@ nmr_test(conformation_scope_tests
         tests/test_write_features.cpp
         tests/topology/test_legacy_amber_semantic_integration.cpp
 )
+target_compile_definitions(conformation_scope_tests PRIVATE
+    NMR_TEST_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
+    NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT="${CMAKE_SOURCE_DIR}/tests/npy_allow_pickle_false.py"
+)
 
 
 # -- trajectory_scope_tests ------------------------------------------------
@@ -1222,6 +1227,7 @@ nmr_test(trajectory_scope_tests
         tests/test_bs_welford.cpp
         tests/test_dihedral_bin_transition.cpp
         tests/test_dihedral_time_series.cpp
+        tests/test_directional_trajectory_covariance.cpp
         tests/test_dynamics_observables.cpp
         tests/test_dssp8_time_series.cpp
         tests/test_dssp8_transition.cpp
@@ -1264,6 +1270,7 @@ target_compile_definitions(trajectory_scope_tests PRIVATE
     NMR_LOCAL_GEOMETRY_ACCEPTANCE_SCRIPT="${CMAKE_SOURCE_DIR}/src/npy_local_geometry_acceptance.py"
     NMR_LOCAL_GEOMETRY_TRAJECTORY_FIXTURE="${CMAKE_SOURCE_DIR}/data/test_fixtures/npy_local_geometry"
     NMR_TEST_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
+    NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT="${CMAKE_SOURCE_DIR}/tests/npy_allow_pickle_false.py"
 )
 
 
@@ -1288,6 +1295,7 @@ nmr_test(mopac_tests
 )
 target_compile_definitions(mopac_tests PRIVATE
     NMR_TEST_PYTHON_EXECUTABLE="${Python3_EXECUTABLE}"
+    NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT="${CMAKE_SOURCE_DIR}/tests/npy_allow_pickle_false.py"
     NMR_TEST_PYTHONPATH="${CMAKE_SOURCE_DIR}/python"
 )
 

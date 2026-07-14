@@ -61,6 +61,12 @@
 // resolution order, chi rotamer bin endpoints). Documented as group
 // attrs so consumers see the same vocabulary across both groups.
 //
+// Directional contract: the six bin/category/transition payloads are exact
+// under translations and proper rotations, but have no single improper-
+// transform map because signed-dihedral reflection can merge or split coarse
+// bins (including the chi==0 endpoint convention). n_frames_observed and
+// chi_n_frames_observed are exact O(3)-invariant finiteness counts.
+//
 // Source-attached gate: positions always present at tp.Seed time;
 // source_attached_per_frame emitted as all-1 for SDK uniformity
 // (OBJECT_MODEL.md "Conditional-attach TR discipline").

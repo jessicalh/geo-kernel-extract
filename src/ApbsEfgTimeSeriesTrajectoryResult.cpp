@@ -193,6 +193,8 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("t2_frame",      std::string("cartesian_xyz_emitted_frame"));
     grp.createAttribute("t2_parity",     std::string("even"));
+    grp.createAttribute("efg_t0_structural_zero", true);
+    grp.createAttribute("efg_t1_structural_zero", true);
     grp.createAttribute("e3nn_export", std::string(
         "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
         "project_t2_to_e3nn() before using e3nn Irreps"));
@@ -202,6 +204,10 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("parity",        std::string("2e"));
     grp.createAttribute("legacy_irrep_attrs_deprecated", true);
     grp.createAttribute("units",         std::string("V/Å^2"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "t2_basis,t2_component_order,t2_frame,t2_parity,e3nn_export,"
+        "irrep_layout,normalization,parity,units describe t2 only; "
+        "apbs_grid_*_per_frame datasets carry per-dataset lab-axis contracts"));
     grp.createAttribute("source_result", std::string("ApbsFieldResult"));
     grp.createAttribute("source_field",  std::string("apbs_efg_spherical"));
     grp.createAttribute("operation", std::string(
@@ -252,6 +258,14 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("t2", space);
     ds.write_raw(flat.data());
+    ds.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    ds.createAttribute("transformation", std::string(
+        "continuum even_rank2: T'=R T R^T; emitted values are project-native "
+        "T2 coefficients. The live axis-aligned finite-difference APBS solve "
+        "has no exact O(3) law; transformed production reruns use the recorded "
+        "4e-2 V/Angstrom^2 absolute + 5e-2 relative finite-grid envelope"));
+    ds.createAttribute("parity", std::string("2e"));
 
     auto write_grid_u64 = [&](const std::string& name,
             const std::vector<std::array<std::uint64_t, 3>>& rows) {
@@ -262,9 +276,18 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         HighFive::DataSpace grid_space({T, std::size_t(3)});
         auto grid_ds = grp.createDataSet<std::uint64_t>(name, grid_space);
         grid_ds.write_raw(values.data());
+        grid_ds.createAttribute("component_order", std::string("x,y,z"));
+        grid_ds.createAttribute("units", std::string("grid_points"));
+        grid_ds.createAttribute("coordinate_frame",
+            std::string("apbs_lab_axis_aligned_grid_xyz"));
+        grid_ds.createAttribute("parity", std::string("even"));
+        grid_ds.createAttribute("transformation", std::string(
+            "configured cubic grid point counts (n,n,n); invariant under "
+            "proper/improper orthogonal transforms and translations"));
     };
     auto write_grid_f64 = [&](const std::string& name,
-            const std::vector<std::array<double, 3>>& rows) {
+            const std::vector<std::array<double, 3>>& rows,
+            const std::string& transformation) {
         std::vector<double> values(T * 3);
         for (std::size_t t = 0; t < T; ++t)
             for (std::size_t d = 0; d < 3; ++d)
@@ -272,13 +295,27 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         HighFive::DataSpace grid_space({T, std::size_t(3)});
         auto grid_ds = grp.createDataSet<double>(name, grid_space);
         grid_ds.write_raw(values.data());
+        grid_ds.createAttribute("component_order", std::string("x,y,z"));
+        grid_ds.createAttribute("units", std::string("Angstrom"));
+        grid_ds.createAttribute("coordinate_frame",
+            std::string("apbs_lab_axis_aligned_grid_xyz"));
+        grid_ds.createAttribute("parity", std::string("mixed"));
+        grid_ds.createAttribute("transformation", transformation);
     };
     write_grid_u64("apbs_grid_dims_per_frame", grid_dims_per_frame_);
     write_grid_f64("apbs_grid_lengths_A_per_frame",
-                   grid_lengths_A_per_frame_);
-    write_grid_f64("apbs_grid_origin_A_per_frame", grid_origin_A_per_frame_);
+                   grid_lengths_A_per_frame_,
+                   "lab-axis grid extents; translation invariant; no closed "
+                   "O(3) transformation law under arbitrary orthogonal transforms");
+    write_grid_f64("apbs_grid_origin_A_per_frame", grid_origin_A_per_frame_,
+                   "lab-axis grid origin; o'=o+t under pure translations; no "
+                   "affine-position/O(3) law under arbitrary orthogonal "
+                   "transforms because grid axes remain lab-fixed");
     write_grid_f64("apbs_grid_spacing_A_per_frame",
-                   grid_spacing_A_per_frame_);
+                   grid_spacing_A_per_frame_,
+                   "lab-axis grid step lengths; translation invariant; no "
+                   "closed O(3) transformation law under arbitrary orthogonal "
+                   "transforms");
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_)

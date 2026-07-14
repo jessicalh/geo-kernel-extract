@@ -261,17 +261,53 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     // spherical-tesseral m=-2..+2. Water EFG T0 (trace) and T1 (antisym
     // pseudovector) are both structural zeros — not emitted at all.
     grp.createAttribute("irrep_layout_efield", std::string("v_x,v_y,v_z"));
+    grp.createAttribute("efield_coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("efield_normalization", std::string("cartesian"));
+    grp.createAttribute("efield_parity", std::string("1o"));
+    grp.createAttribute("efield_mean_transformation", std::string(
+        "assembled efield_{x,y,z}_mean and efield_first_{x,y,z}_mean "
+        "are polar-vector means: v'=R v"));
     grp.createAttribute("efg_t2_basis",
         std::string("project_native_t2_isometric_real_tesseral_v1"));
     grp.createAttribute("efg_t2_component_order",
         std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
-    grp.createAttribute("efg_t2_frame",  std::string("cartesian_xyz_emitted_frame"));
+    grp.createAttribute("efg_t2_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("efg_t2_normalization",
+        std::string("isometric_real_sph"));
     grp.createAttribute("efg_t2_parity", std::string("even"));
+    grp.createAttribute("efg_t2_mean_transformation", std::string(
+        "assembled efg_t2_mean and efg_first_t2_mean are native isometric "
+        "real-tesseral T2 means of even-rank-2 Cartesian tensors: "
+        "T'=R T R^T"));
     grp.createAttribute("efg_e3nn_export", std::string(
         "raw project tensor; call to_e3nn()/to_e3nn_T2() or "
         "project_t2_to_e3nn() before using e3nn Irreps"));
     grp.createAttribute("irrep_layout_efg_t2", std::string("m-2,m-1,m0,m+1,m+2"));
     grp.createAttribute("legacy_irrep_attrs_deprecated", true);
+    grp.createAttribute("irrep_metadata_scope", std::string(
+        "only assembled component means carry directional irrep metadata"));
+    grp.createAttribute("directional_mean_transformation", std::string(
+        "assembled efield_{x,y,z}_mean and efield_first_{x,y,z}_mean are "
+        "polar: v'=R v; assembled efg_t2_mean and efg_first_t2_mean are "
+        "even rank-2: T'=R T R^T"));
+    grp.createAttribute("componentwise_statistic_transformation", std::string(
+        "componentwise m2,std,min,max,min_frame,max_frame have no closed "
+        "irrep transformation law"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "56 directional-statistic dataset paths only: "
+        "efield_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "efield_first_{x,y,z}_{mean,m2,std,min,max,min_frame,max_frame}, "
+        "efg_t2_{mean,m2,std,min,max,min_frame,max_frame}, and "
+        "efg_first_t2_{mean,m2,std,min,max,min_frame,max_frame}; only "
+        "assembled means have the declared closed transformation laws; "
+        "magnitudes, counts, delta/rate channels, frame/source provenance, "
+        "and group metadata are rotation-invariant or non-directional"));
+    grp.createAttribute("zero_count_sentinel_validity", std::string(
+        "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,max=-inf,"
+        "min_frame=0,max_frame=0 are invalid sentinels; n_frames_per_atom "
+        "gates validity"));
     // Group-level `units` describes the primary value channel (E-field).
     // Per-dataset `units` attributes are authoritative — the group holds
     // V/Å (E-field), V/Å² (EFG), and dimensionless (counts) datasets.

@@ -42,13 +42,26 @@
 //       tensor_basis            = "project_native_full9_spherical_tensor_v1"
 //       tensor_component_order  = "T0,T1_x,T1_y,T1_z,T2_m-2,...,T2_m+2"
 //       tensor_frame            = "conformation_cartesian_xyz"
+//       coordinate_frame        = "conformation_cartesian_xyz"
+//       parity                  = "0e+1e+2e"
 //       tensor_parity           = "even"
+//       tensor_transformation   = "even_rank2: T'=R T R^T"
+//       tensor_t1_semantics     = "Cartesian Levi-Civita dual ..."
+//       tensor_t1_structural_zero = false
+//       tensor_structural_zero_components = "none"
 //       e3nn_export             = "explicit project-basis ... conversion required"
 //       normalization           = "isometric_real_sph"
+//       normalization_scope     = "xyz tensor payload: T2 uses ..."
 //       units                   = "Angstrom^-3"  (bare kernel, pre-Δχ)
 //       source                  = "MopacMcConnellResult.mopac_mc_shielding_contribution
 //                                  (unscaled BO channel from D(r)Qhat)"
 //       source_attached_policy  = "conditional -- TimedAttach ..."
+//
+// The Wiberg bond order is a scalar weight on the same D(r)Qhat kernel as
+// McConnellShieldingTimeSeriesTrajectoryResult.  Therefore the weighted
+// sum transforms as T' = R T R^T under every orthogonal R.  Its generally
+// nonzero antisymmetric T1 is the Cartesian Levi-Civita dual from
+// SphericalTensor::Decompose (an axial 1e vector), not a real-Y1m vector.
 //
 
 #include "DenseBuffer.h"

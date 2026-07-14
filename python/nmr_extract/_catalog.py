@@ -19,6 +19,7 @@ import numpy as np
 from ._tensors import (
     ShieldingTensor,
     EFGTensor,
+    PositionField,
     VectorField,
     MagneticVectorField,
     PerRingTypeT0,
@@ -69,6 +70,7 @@ ALLOWED_NATIVE_AXES = frozenset({
     "larsen_sidechain_donor_pair",
     "protein_water_hbond_pair",
     "sidechain_co_source",
+    "mopac_atomic_orbital_row",
 })
 
 
@@ -107,9 +109,22 @@ class ArraySpec:
     * ``tensor_rank`` is the rank of one row's tensor representation:
       0 (scalar / vector-of-scalars), 1 (Vec3), 2 (Mat3 / SphericalTensor).
 
-    * ``parity`` is ``"even"`` / ``"odd"`` under spatial inversion;
+    * ``parity`` is ``"even"`` / ``"odd"`` under spatial inversion, or
+      ``"mixed"`` when a serialized payload has no single homogeneous
+      improper-transform law (including mixed columns and categorical
+      outcomes conditioned on chirality);
       shieldings (rank 2 even), axial B fields, and most scalars are
-      even. Polar vector fields like E are odd.
+      even. Polar vector fields like E are odd. ``mixed`` is reserved for a
+      single serialized payload whose columns/local components have genuinely
+      different improper-transform laws and therefore cannot truthfully carry
+      one homogeneous parity.
+
+    * ``coordinate_frame`` names the frame in which serialized components
+      are expressed. ``transformation`` is the authoritative physical law,
+      including affine positions and column-level laws for mixed tables.
+      ``validity`` names masks, NaN rules, physical-zero rules, and known
+      legacy missing-value sentinels. These fields deliberately complement,
+      rather than reinterpret, the legacy ``irreps`` / ``parity`` fields.
 
     * ``mechanism`` is a thesis-narrative grouping over physics:
       ``ring_current`` / ``ring_efg`` / ``ring_dispersion`` /
@@ -145,6 +160,11 @@ class ArraySpec:
     # Producer-side physical scaling contract for geometry-only kernels.
     # Empty when an array is already in its final physical units.
     scaling_contract: str = ""
+    # Directional-output freeze contract. Empty only for arrays whose scalar
+    # or categorical behaviour needs no directional qualification.
+    coordinate_frame: str = ""
+    transformation: str = ""
+    validity: str = ""
 
 
 # fmt: off
@@ -176,8 +196,8 @@ _T2_TENSOR_METADATA = dict(
 
 CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Identity (ConformationResult.cpp) ────────────────────────
-    ArraySpec("pos",              "identity",   VectorField,       3,    True,  "Atom positions (A)",
-              native_axis="atom", irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="topology"),
+    ArraySpec("pos",              "identity",   PositionField,     3,    True,  "Atom positions (A)",
+              native_axis="atom", units="Å", parity="odd", mechanism="topology"),
     ArraySpec("element",          "identity",   np.ndarray,        None, True,  "Atomic number (int32)",
               native_axis="atom", mechanism="topology"),
     ArraySpec("residue_index",    "identity",   np.ndarray,        None, True,  "Residue index (int32)",
@@ -324,7 +344,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               e3nn_export=_E3NN_EXPORT),
     ArraySpec("piquad_local_frame", "pi_quadrupole", np.ndarray, 9, True, "Deterministic ring-local frame columns [x_axis,y_axis,z_axis], vertex-0 gauge; NaN when invalid",
               native_axis="ring_contribution_pair", mechanism="geometry"),
-    ArraySpec("piquad_local_geometry", "pi_quadrupole", np.ndarray, 8, True, "Row-aligned local tensor provenance [atom, ring, type, distance_A, cos_theta, existing_axial_scalar, frame_valid, aromatic_only]",
+    ArraySpec("piquad_local_geometry", "pi_quadrupole", np.ndarray, 8, True, "Row-aligned local tensor provenance [atom, ring, type, distance_A, cos_theta, existing_axial_scalar, tensor_valid, aromatic_only]",
               native_axis="ring_contribution_pair", units="mixed_index_A_dimensionless", mechanism="ring_efg"),
 
     # ── Ring susceptibility (RingSusceptibilityResult.cpp) ────────
@@ -389,8 +409,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mc_nearfield_counts",      "mcconnell", McConnellNearFieldCounts, 2, False, "McConnell near-field accepted/rejected source-target pair counts below 3 A", units="count", mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_co_dir",        "mcconnell", VectorField, 3, False, "Nearest accepted peptide C=O source direction per atom from ConformationAtom::dir_nearest_CO",
               irreps="1o", units="", tensor_rank=1, parity="odd", mechanism="bond_anisotropy"),
-    ArraySpec("mc_nearest_co_midpoint",   "mcconnell", VectorField, 3, False, "Nearest accepted peptide C=O source midpoint per atom from ConformationAtom::nearest_CO_midpoint",
-              irreps="1o", units="Å", tensor_rank=1, parity="odd", mechanism="bond_anisotropy"),
+    ArraySpec("mc_nearest_co_midpoint",   "mcconnell", PositionField, 3, False, "Nearest accepted peptide C=O source midpoint per atom from ConformationAtom::nearest_CO_midpoint",
+              units="Å", parity="odd", mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_co_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C=O response per atom from ConformationAtom::T2_CO_nearest, packed [T0, T1x, T1y, T1z, T2_m-2..+2]",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_cn_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C-N response per atom from ConformationAtom::T2_CN_nearest, packed [T0, T1x, T1y, T1z, T2_m-2..+2]",
@@ -942,3 +962,1234 @@ CATALOG = {
     stem: _with_project_tensor_metadata(spec)
     for stem, spec in CATALOG.items()
 }
+
+
+# Directional-output freeze contract.  Keep this additive table separate from
+# the historical declarations above: wrappers, legacy irreps, and loader
+# compatibility stay untouched while the serialized physical law is explicit.
+_CARTESIAN_FRAME = "conformation_cartesian_xyz"
+_INTRINSIC_FRAME = "intrinsic_geometry"
+_POLAR_VECTOR = "polar_vector: v'=R v"
+_AXIAL_VECTOR = "axial_vector: a'=det(R) R a"
+_AFFINE_POSITION = "cartesian_position: p'=R p+t"
+_EVEN_RANK2 = "even_rank2: T'=R T R^T"
+_NATIVE_T2 = (
+    "even_rank2_native_T2: reconstruct Cartesian T, apply T'=R T R^T, "
+    "then decompose in project-native T2 basis"
+)
+
+
+def _set_contract(stems, *, coordinate_frame, transformation, validity,
+                  **metadata):
+    """Apply one exact producer contract to existing catalog entries."""
+    for stem in stems:
+        if stem not in CATALOG:
+            raise RuntimeError(
+                f"directional contract references unknown NPY stem {stem!r}")
+        CATALOG[stem] = replace(
+            CATALOG[stem],
+            coordinate_frame=coordinate_frame,
+            transformation=transformation,
+            validity=validity,
+            **metadata,
+        )
+
+
+# Writers serialize every MutationDeltaResult table on the WT atom axis, not
+# on a compact matched-pair axis.  MOPAC AO rows are likewise their own parsed
+# row axis: the writer does not guarantee K == atom_count.
+for _stem in (
+    "delta_shielding", "delta_scalars", "delta_graph", "delta_apbs",
+    "delta_ring_proximity", "wt_shielding_diamagnetic",
+    "wt_shielding_paramagnetic", "mut_shielding_diamagnetic",
+    "mut_shielding_paramagnetic", "delta_shielding_diamagnetic",
+    "delta_shielding_paramagnetic",
+):
+    CATALOG[_stem] = replace(CATALOG[_stem], native_axis="atom")
+for _stem in (
+    "mopac_atomic_orbital_populations",
+    "mopac_atomic_orbital_population_totals",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem], native_axis="mopac_atomic_orbital_row")
+
+
+# Cartesian positions and homogeneous vectors.
+_set_contract(
+    ("pos",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_AFFINE_POSITION,
+    validity="one row per atom; no separate position-validity mask")
+_set_contract(
+    ("bond_direction",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_POLAR_VECTOR,
+    validity="bond_geometry_valid.npy; invalid/zero-length bonds serialize zero")
+_set_contract(
+    ("bond_geometry_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 validity for the row-aligned bond "
+        "direction; translation invariant"
+    ),
+    validity=(
+        "1 iff the bond displacement is finite and nonzero; 0 gates the "
+        "legacy zero in bond_direction.npy"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("ring_direction_to_center",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_POLAR_VECTOR,
+    validity=(
+        "row-aligned with ring_contributions.npy; center-to-atom unit vector "
+        "despite the legacy stem; coincident center serializes zero without a mask"
+    ))
+_set_contract(
+    ("mc_nearest_co_dir",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_POLAR_VECTOR,
+    validity=(
+        "NaN triplet when nearest_CO_dist is NO_DATA_SENTINEL; finite only for "
+        "an accepted peptide C=O source"
+    ))
+_set_contract(
+    ("mc_nearest_co_midpoint",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_AFFINE_POSITION,
+    validity=(
+        "NaN triplet when nearest_CO_dist is NO_DATA_SENTINEL; finite only for "
+        "an accepted peptide C=O source"
+    ))
+_set_contract(
+    ("hbond_nearest_dir",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_POLAR_VECTOR,
+    validity="hbond_flags.npy column 0 identifies an accepted nearest source; otherwise zero")
+_set_contract(
+    ("hbond_flags",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant int8 atom classifications for fixed typed "
+        "topology and accepted-pair set; translation invariant"
+    ),
+    validity=(
+        "columns are is_backbone,is_donor,is_acceptor; column 0 gates the "
+        "legacy zero in hbond_nearest_dir.npy"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("hbond_pairs_index",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant sparse donor/acceptor residue and atom identity "
+        "for a fixed accepted-pair set; deterministic row order"
+    ),
+    validity=(
+        "row identity for hbond_pairs_geometry.npy and "
+        "hbond_pairs_angle_valid.npy; zero rows means no accepted pair"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("hbond_pairs_angle_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 angle-availability mask, row-aligned with "
+        "hbond_pairs_index.npy"
+    ),
+    validity=(
+        "1 iff the N-H...O angle in hbond_pairs_geometry.npy is valid; "
+        "distance and direction columns have their own producer semantics"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("cb_deviation_valid", "cb_residual_vector_valid"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 availability for the corresponding "
+        "chiral-L-CB output; translation invariant"
+    ),
+    validity=(
+        "1 iff the corresponding cb_deviation.npy scalar or all three "
+        "cb_residual_vector.npy components are finite; 0 gates their NaNs"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("coulomb_E", "coulomb_E_backbone", "coulomb_E_sidechain",
+     "coulomb_E_aromatic"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    validity=(
+        "force-field Coulomb producer replaces non-finite values with zero; "
+        "no sanitizer mask (legacy unavailable/zero ambiguity); all four "
+        "vectors are jointly scaled when total-E exceeds the configured clamp, "
+        "with provenance only in GeometryChoice"
+    ))
+_set_contract(
+    ("coulomb_E_solvent",),
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "continuum polar_vector APBS alias: v'=R v; translation invariant. "
+        "The live axis-aligned finite-difference APBS source has no exact "
+        "O(3) law; transformed production reruns use the recorded 1.8e-2 "
+        "V/A absolute + 5e-2 relative finite-grid envelope"
+    ),
+    validity=(
+        "optional clamped APBS reaction-field alias; absent without APBS; "
+        "consult apbs_nonfinite_sanitizer_mask.npy plus "
+        "apbs_E_clamp_mask.npy/apbs_E_clamp_scale.npy when present"
+    ))
+_set_contract(
+    ("mopac_coulomb_E", "mopac_coulomb_E_backbone",
+     "mopac_coulomb_E_sidechain", "mopac_coulomb_E_aromatic"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    validity=(
+        "MOPAC-charge Coulomb producer replaces non-finite values with zero; "
+        "no sanitizer mask (legacy unavailable/zero ambiguity); all four "
+        "vectors are jointly scaled when total-E exceeds the configured clamp, "
+        "with provenance only in GeometryChoice"
+    ))
+_set_contract(
+    ("eeq_coulomb_E", "eeq_coulomb_E_backbone",
+     "eeq_coulomb_E_sidechain", "eeq_coulomb_E_aromatic"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    validity=(
+        "whole EEQ Coulomb result is absent if a non-finite field is produced; "
+        "all four vectors are jointly scaled when total-E exceeds the "
+        "configured clamp, with provenance only in GeometryChoice"
+    ))
+_set_contract(
+    ("apbs_E", "apbs_E_total_diagnostic"),
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "continuum polar_vector: v'=R v; translation invariant. The live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law; "
+        "transformed production reruns use the recorded 1.8e-2 V/A absolute "
+        "+ 5e-2 relative finite-grid envelope"
+    ),
+    validity=(
+        "apbs_nonfinite_sanitizer_mask.npy bits 0/2 respectively; canonical "
+        "reaction field also has apbs_E_clamp_mask.npy and apbs_E_clamp_scale.npy"
+    ))
+_set_contract(
+    ("apbs_phi",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation-invariant electrostatic potential; the live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law and "
+        "is only approximately invariant within the recorded 1.2e-3 V "
+        "covariance-test envelope"
+    ),
+    validity=(
+        "whole ApbsFieldResult is absent if APBS fails or any reaction "
+        "potential is non-finite; potential rows have no zero sanitizer"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("apbs_E_clamp_mask",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation/translation/reflection-invariant scalar "
+        "threshold diagnostic derived from |E|; the live axis-aligned "
+        "finite-difference APBS solve has no exact O(3) law"
+    ),
+    validity=(
+        "uint8 0/1; 1 iff the canonical reaction E-field row was "
+        "magnitude-clamped; whole ApbsFieldResult is absent if APBS fails"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("apbs_E_clamp_scale",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation/translation/reflection-invariant scalar derived "
+        "from |E| and the configured clamp threshold; the live axis-aligned "
+        "finite-difference APBS solve has no exact O(3) law"
+    ),
+    validity=(
+        "finite in (0,1] when the APBS result exists; 1 when unclamped; "
+        "whole ApbsFieldResult is absent if APBS fails"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("apbs_nonfinite_sanitizer_mask",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation/translation/reflection-invariant finite-value "
+        "diagnostic; the live axis-aligned finite-difference APBS solve has "
+        "no exact O(3) outcome law"
+    ),
+    validity=(
+        "uint8 bit field: bit0 reaction E, bit1 reaction EFG, bit2 total E, "
+        "bit3 total EFG; a set bit means that derivative was sanitized, while "
+        "zero means no sanitizer fired; whole result is absent if APBS fails"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("water_efield", "water_efield_first"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    validity="whole WaterFieldResult is absent without solvent; clamp provenance is emitted separately")
+_set_contract(
+    ("water_shell_counts",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant first/second-shell water counts derived from "
+        "protein-water distances; translation invariant"
+    ),
+    validity=(
+        "columns are n_first,n_second; zero is the physical empty-shell "
+        "count; whole WaterFieldResult is absent without solvent"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("water_efield_clamp_mask", "water_efield_first_clamp_mask"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant int8 threshold diagnostic derived from the "
+        "corresponding water E-field magnitude; translation invariant"
+    ),
+    validity=(
+        "0/1; 1 iff the corresponding total/first-shell E row was clamped; "
+        "whole WaterFieldResult is absent without solvent"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("water_efield_clamp_scale", "water_efield_first_clamp_scale"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant scalar scale derived from the corresponding "
+        "water E-field magnitude and configured threshold; translation invariant"
+    ),
+    validity=(
+        "finite in (0,1] when the result exists; 1 means unclamped; whole "
+        "WaterFieldResult is absent without solvent"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("aimnet2_E", "aimnet2_E_backbone", "aimnet2_E_sidechain",
+     "aimnet2_E_aromatic", "aimnet2_charge_response_gradient"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    validity="AIMNet2 calculation is required as a whole; no manufactured per-row fallback")
+_set_contract(
+    ("aimnet2_charge_response_gradient_scalar",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant scalar: per-atom "
+        "Euclidean norm of the polar charge-response gradient"
+    ),
+    validity=(
+        "whole AIMNet2 charge-response-gradient result is absent if the "
+        "model/gradient calculation is unavailable; no manufactured zero"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("tripeptide_bb_residual_vec", "tripeptide_neighbor_residual_vec_prev",
+     "tripeptide_neighbor_residual_vec_next"),
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "polar_vector under proper rotations: v'=R v; lookup/alignment is "
+        "L-amino-acid chirality-conditioned and has no improper-transform contract"
+    ),
+    validity="NaN where the corresponding typed DFT match/direction is absent")
+_set_contract(
+    ("tripeptide_bb_match_distance",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "residual magnitude invariant under proper rotations; typed "
+        "L-amino-acid lookup/proper-Kabsch alignment has no improper-transform "
+        "contract against the unchanged chiral DFT source"
+    ),
+    validity="NaN where tripeptide_bb_method_tag.npy is zero",
+    parity="mixed")
+_set_contract(
+    ("tripeptide_bb_match_atoms",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "all lookup-derived columns are invariant under proper rotations; "
+        "the chiral lookup/proper-Kabsch match outcome (cols1:5) has no "
+        "improper-transform contract against the unchanged DFT source"
+    ),
+    validity=(
+        "column1 is has_match; unmatched col2 DFT index uses legacy zero, "
+        "col3 distance is NaN, and col4 method tag is zero"
+    ), parity="mixed")
+_set_contract(
+    ("tripeptide_bb_method_tag",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "proper-rotation invariant lookup/method outcome; no improper-transform "
+        "contract for the chiral typed lookup/proper-Kabsch alignment"
+    ),
+    validity="zero means no matched DFT source; 1/2 identify the matched method",
+    parity="mixed")
+_set_contract(
+    ("tripeptide_neighbor_reference",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "AAA source-reference cols0:4 are proper-rotation invariant; col4 "
+        "any-mixed-method is lookup-outcome-dependent and has no improper-transform "
+        "contract for the chiral neighbor lookup"
+    ),
+    validity="protein-level row; NaN reference angles mean the AAA source is unavailable",
+    parity="mixed")
+_set_contract(
+    ("atom_sasa", "atom_sasa_fraction"),
+    coordinate_frame="lab_fixed_fibonacci_sampling_grid",
+    transformation=(
+        "continuum rotation-invariant scalar; live finite lab-fixed Fibonacci "
+        "estimator has no exact O(3) law and is only approximately invariant "
+        "within the recorded covariance-test envelope"
+    ),
+    validity=(
+        "whole SasaResult is absent when sasa_n_points is invalid; ordinary "
+        "supported-element rows are finite and have no per-row validity mask"
+    ), irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("sasa_normal",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "outward_polar_vector: v'=R v in the continuum limit; finite fixed "
+        "lab-axis Fibonacci sampling has no exact O(3) law and is only "
+        "approximately rotation-covariant within the recorded test envelope"
+    ),
+    validity=(
+        "zero for fully buried atoms or near-cancelling exposed samples; no "
+        "separate normal-validity mask"
+    ), irreps="", parity="mixed", wrapper=np.ndarray, e3nn_export="")
+_set_contract(
+    ("bs_total_B", "bs_ring_B_field", "hm_ring_B_field"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_AXIAL_VECTOR,
+    validity=(
+        "dense totals use physical zero when no accepted source; sparse ring "
+        "fields are row-aligned with ring_contributions.npy"
+    ))
+
+
+# Full Cartesian rank-2 tensors and project-native T2 projections.
+_set_contract(
+    ("bs_shielding", "hm_shielding"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_EVEN_RANK2,
+    validity="physical zero when no accepted aromatic-ring source")
+_set_contract(
+    ("bs_per_type_T1", "hm_per_type_T1"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_AXIAL_VECTOR,
+    validity=(
+        "eight contiguous Cartesian Levi-Civita-dual T1 blocks in RingTypeIndex "
+        "order; zero block means no accepted source of that type"
+    ))
+_set_contract(
+    ("bs_per_type_T2", "hm_per_type_T2"),
+    coordinate_frame=_CARTESIAN_FRAME, transformation=_NATIVE_T2,
+    validity=(
+        "eight contiguous native-T2 blocks in RingTypeIndex order; omitted "
+        "T0/T1 are separate signals, not structural zeros"
+    ))
+
+_MCCONNELL_FULL9 = (
+    "mc_peptide_co_fixed", "mc_peptide_co_bo", "mc_peptide_co_rhombic",
+    "mc_peptide_cn_fixed", "mc_peptide_cn_bo",
+    "mc_backbone_other_fixed", "mc_backbone_other_bo",
+    "mc_sidechain_co_fixed", "mc_sidechain_co_bo",
+    "mc_sidechain_other_fixed", "mc_sidechain_other_bo",
+    "mc_disulfide_fixed", "mc_disulfide_bo",
+    "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
+    "mc_backbone_xh_fixed", "mc_backbone_xh_bo",
+    "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo",
+    "mc_s_h_fixed", "mc_s_h_bo", "mc_nearest_co_T2",
+    "mc_nearest_cn_T2", "sidechain_co_fixed_T2", "sidechain_co_bo_T2",
+)
+_set_contract(
+    _MCCONNELL_FULL9, coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_EVEN_RANK2,
+    validity=(
+        "fixed channels use physical zero for no accepted source; legacy BO "
+        "channels in McConnellResult use zero when MOPAC is unavailable; "
+        "sidechain_co_bo_T2 instead uses NaN when MOPAC is unavailable; "
+        "nearest CO/CN tensors use NaN when the corresponding nearest distance "
+        "is NO_DATA_SENTINEL"
+    ))
+for _stem in ("mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo"):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        structural_zero_components=(
+            "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+        ),
+    )
+
+_set_contract(
+    ("coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_EVEN_RANK2,
+    validity=(
+        "T0/T1 structural zeros; non-finite producer values become zero "
+        "without a sanitizer mask"
+    ))
+_set_contract(
+    ("mopac_coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_EVEN_RANK2,
+    validity=(
+        "T0/T1 structural zeros; non-finite producer values become zero "
+        "without a sanitizer mask"
+    ))
+_set_contract(
+    ("eeq_coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_EVEN_RANK2,
+    validity="T0/T1 structural zeros; whole result absent on non-finite output")
+
+_EFG_T2 = (
+    "coulomb_efg_t2", "coulomb_efg_backbone", "coulomb_efg_sidechain",
+    "coulomb_efg_aromatic", "coulomb_efg_solvent",
+    "mopac_coulomb_efg_backbone", "mopac_coulomb_efg_sidechain",
+    "mopac_coulomb_efg_aromatic", "eeq_coulomb_efg_backbone",
+    "eeq_coulomb_efg_sidechain", "eeq_coulomb_efg_aromatic",
+    "apbs_efg", "apbs_efg_total_diagnostic", "water_efg",
+    "water_efg_first", "aimnet2_efg", "aimnet2_efg_aromatic",
+    "aimnet2_efg_backbone", "aimnet2_efg_sidechain",
+)
+_set_contract(
+    _EFG_T2, coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_NATIVE_T2,
+    validity=(
+        "symmetric-traceless source: T0 and Cartesian-Levi-Civita T1 are "
+        "structural zeros; calculator-specific absence/clamp/sanitizer arrays apply"
+    ))
+for _stem in (
+    "coulomb_efg_t2", "coulomb_efg_backbone",
+    "coulomb_efg_sidechain", "coulomb_efg_aromatic",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        validity=(
+            "symmetric-traceless source (T0/T1 structural zeros); non-finite "
+            "force-field producer values become zero without a sanitizer mask"
+        ),
+    )
+CATALOG["coulomb_efg_solvent"] = replace(
+    CATALOG["coulomb_efg_solvent"],
+    transformation=(
+        "continuum even_rank2_native_T2 APBS alias: reconstruct Cartesian T, "
+        "apply T'=R T R^T, then decompose in project-native T2 basis. The "
+        "live finite-difference APBS source has no exact O(3) law; transformed "
+        "production reruns use the recorded 4e-2 V/A^2 absolute + 5e-2 "
+        "relative finite-grid envelope"
+    ),
+    validity=(
+        "symmetric-traceless APBS reaction-field alias (T0/T1 structural "
+        "zeros); absent without APBS; sanitizer provenance is "
+        "apbs_nonfinite_sanitizer_mask.npy bit1"
+    ),
+)
+for _stem in (
+    "mopac_coulomb_efg_backbone", "mopac_coulomb_efg_sidechain",
+    "mopac_coulomb_efg_aromatic",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        validity=(
+            "symmetric-traceless source (T0/T1 structural zeros); non-finite "
+            "MOPAC-charge producer values become zero without a sanitizer mask"
+        ),
+    )
+for _stem in (
+    "eeq_coulomb_efg_backbone", "eeq_coulomb_efg_sidechain",
+    "eeq_coulomb_efg_aromatic",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        validity=(
+            "symmetric-traceless source (T0/T1 structural zeros); whole EEQ "
+            "Coulomb result is absent if any output is non-finite"
+        ),
+    )
+CATALOG["apbs_efg"] = replace(
+    CATALOG["apbs_efg"],
+    transformation=(
+        "continuum even_rank2_native_T2: reconstruct Cartesian T, apply "
+        "T'=R T R^T, then decompose in project-native T2 basis. The live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law; "
+        "transformed production reruns use the recorded 4e-2 V/A^2 absolute "
+        "+ 5e-2 relative finite-grid envelope"
+    ),
+    validity=(
+        "symmetric-traceless reaction EFG (T0/T1 structural zeros); "
+        "apbs_nonfinite_sanitizer_mask.npy bit1 identifies sanitized rows"
+    ),
+)
+CATALOG["apbs_efg_total_diagnostic"] = replace(
+    CATALOG["apbs_efg_total_diagnostic"],
+    transformation=(
+        "continuum even_rank2_native_T2: reconstruct Cartesian T, apply "
+        "T'=R T R^T, then decompose in project-native T2 basis. The live "
+        "axis-aligned finite-difference APBS solve has no exact O(3) law; "
+        "transformed production reruns use the recorded 4e-2 V/A^2 absolute "
+        "+ 5e-2 relative finite-grid envelope"
+    ),
+    validity=(
+        "symmetric-traceless total diagnostic EFG (T0/T1 structural zeros); "
+        "apbs_nonfinite_sanitizer_mask.npy bit3 identifies sanitized rows"
+    ),
+)
+CATALOG["water_efg"] = replace(
+    CATALOG["water_efg"],
+    validity=(
+        "symmetric-traceless water EFG (T0/T1 structural zeros); whole "
+        "WaterFieldResult is absent when solvent is unavailable"
+    ),
+)
+CATALOG["water_efg_first"] = replace(
+    CATALOG["water_efg_first"],
+    validity=(
+        "symmetric-traceless first-shell EFG (T0/T1 structural zeros); "
+        "physical zero when no water lies in the first shell; whole result "
+        "is absent when solvent is unavailable"
+    ),
+)
+for _stem in (
+    "aimnet2_efg", "aimnet2_efg_aromatic",
+    "aimnet2_efg_backbone", "aimnet2_efg_sidechain",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        validity=(
+            "symmetric-traceless source (T0/T1 structural zeros); AIMNet2 "
+            "model/result is required as a whole with no per-row fallback"
+        ),
+    )
+
+_set_contract(
+    ("orca_total", "orca_diamagnetic", "orca_paramagnetic"),
+    coordinate_frame="orca_output_cartesian_xyz",
+    transformation=(
+        "even_rank2 in ORCA output frame: T'=R T R^T; parser-only producer "
+        "does not validate or rotate ORCA coordinates into the conformation frame"
+    ),
+    validity="whole optional ORCA result absent when the parsed shielding source is unavailable",
+    tensor_frame="orca_output_cartesian_xyz")
+
+_TRIPEPTIDE_TENSORS = (
+    "tripeptide_bb_shielding", "tripeptide_neighbor_shielding",
+    "tripeptide_neighbor_shielding_prev",
+    "tripeptide_neighbor_shielding_next",
+)
+_set_contract(
+    _TRIPEPTIDE_TENSORS, coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "even_rank2 under proper rotations: T'=R T R^T; typed tripeptide "
+        "lookup/Kabsch alignment is L-amino-acid chirality-conditioned and has "
+        "no improper-transform contract"
+    ),
+    validity="NaN where the corresponding typed DFT match/direction is absent")
+
+# The central lookup is only covariant for proper rotations because the DFT
+# source is chiral.  Raw arrays preserve the PackFull9/xyz payload without
+# advertising an O(3) wrapper or e3nn parity that the calculator cannot obey.
+for _stem in ("tripeptide_bb_shielding", "tripeptide_bb_residual_vec"):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
+        e3nn_export="")
+
+# The neighbour lookup uses the same chiral DFT source and proper-Kabsch
+# alignment.  Preserve its raw PackFull9/xyz values, but do not attach a
+# homogeneous O(3) parity or e3nn export contract.
+for _stem in (
+    "tripeptide_neighbor_shielding",
+    "tripeptide_neighbor_shielding_prev",
+    "tripeptide_neighbor_shielding_next",
+    "tripeptide_neighbor_residual_vec_prev",
+    "tripeptide_neighbor_residual_vec_next",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
+        e3nn_export="")
+
+_LARSEN_TENSORS = (
+    "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
+    "larsen_hbond_2pHB_shielding", "larsen_hbond_1pHaB_shielding",
+    "larsen_hbond_2pHaB_shielding",
+    "larsen_hbond_diagnostic_CB_shielding",
+)
+_set_contract(
+    _LARSEN_TENSORS, coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "even_rank2 under proper rotations: T'=R T R^T; signed-rho DFT-grid "
+        "lookup is chirality-conditioned and has no improper-transform contract"
+    ),
+    validity=(
+        "physical zero for no contributing pair; whole optional group absent "
+        "without Larsen grids; imputed corners are emitted unmasked"
+    ))
+
+# Signed-rho grid lookup is chiral and therefore has only an SO(3) contract.
+# Keep the packed tensor representation explicit, but expose it as raw data so
+# neither the SDK nor e3nn metadata invents an unsupported improper law.
+for _stem in _LARSEN_TENSORS:
+    CATALOG[_stem] = replace(
+        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
+        e3nn_export="")
+
+_MUTATION_TENSORS = (
+    "delta_shielding", "wt_shielding_diamagnetic",
+    "wt_shielding_paramagnetic", "mut_shielding_diamagnetic",
+    "mut_shielding_paramagnetic", "delta_shielding_diamagnetic",
+    "delta_shielding_paramagnetic",
+)
+_set_contract(
+    _MUTATION_TENSORS,
+    coordinate_frame="shared_wt_mut_orca_cartesian_xyz",
+    transformation=(
+        "even_rank2 only when WT and mutant ORCA tensors share one Cartesian "
+        "frame: T'=R T R^T; MutationDeltaResult performs no frame alignment"
+    ),
+    validity="WT-atom rows; unmatched atoms serialize zero and delta_scalars.npy column 0 is the match mask",
+    tensor_frame="shared_wt_mut_orca_cartesian_xyz")
+
+
+# Local-frame and mixed-column payloads.
+_set_contract(
+    ("ring_contributions",), coordinate_frame="mixed_intrinsic_and_conformation_cartesian_xyz",
+    transformation=(
+        "mixed blocks: cols0:5,6:9,36:40 invariant; col5 pseudoscalar "
+        "z'=det(R)z; col6 is the acute atan2(rho,abs(z)) angle and remains "
+        "invariant; cols9:18 BS full even-rank2; cols18:27 HM symmetric-"
+        "traceless even-rank2 with structural-zero T0/T1; cols27:36 HM full "
+        "even-rank2; translation invariant"
+    ),
+    validity=(
+        "sparse rows are atom/ring identity-aligned; azimuth cols38:40 are "
+        "NaN for an invalid vertex-0 gauge; tensor blocks otherwise use producer zeros"
+    ), irreps="", parity="mixed", tensor_rank=0,
+    tensor_basis=(
+        "mixed row; tensor blocks cols9:18,18:27,27:36 each use "
+        + _FULL9_BASIS
+    ),
+    tensor_component_order=(
+        "within each tensor block cols9:18,18:27,27:36: " + _FULL9_ORDER
+    ),
+    tensor_frame=(
+        "tensor blocks cols9:36 conformation_cartesian_xyz; other columns "
+        "intrinsic identifiers/scalars"
+    ),
+    structural_zero_components=(
+        "cols18:22 (HM symmetric-traceless H: T0,T1_x,T1_y,T1_z)"
+    ), e3nn_export="")
+_set_contract(
+    ("bs_ring_B_cylindrical",), coordinate_frame="ring_cylindrical_components",
+    transformation=(
+        "local components [B_rho,structural_zero_B_phi,B_z]: invariant under "
+        "proper rotations; under improper transforms B_rho is pseudoscalar, "
+        "B_phi remains structural zero, and B_z is invariant"
+    ),
+    validity=(
+        "row-aligned with ring_contributions.npy; B_phi is structural zero; "
+        "rho-axis degeneracy serializes B_rho=0 without a separate mask"
+    ), structural_zero_components="B_phi", irreps="", parity="mixed",
+    tensor_rank=0, wrapper=np.ndarray)
+_set_contract(
+    ("ring_geometry",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed blocks: cols0:3 invariant ids; cols3:6 affine position "
+        "p'=R p+t; cols6:9 axial normal a'=det(R)R a for an ordinary "
+        "nondegenerate ring; col9 invariant radius. A collinear/collapsed "
+        ">=3-member ring has an underdetermined SVD normal with no closed law"
+    ),
+    validity=(
+        "no explicit normal-valid mask; Ring::ComputeGeometry unconditionally "
+        "uses SVD V.col(2) for >=3 vertices, so collinear/collapsed geometry "
+        "can carry a lab-basis-dependent unit normal; zero is only the "
+        "<3-member/default case"
+    ),
+    parity="mixed")
+_set_contract(
+    ("ring_pair_geometry",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "mixed intrinsic scalars: cols0:9,11:13 invariant; signed normal "
+        "offsets cols9:11 are pseudoscalars s'=det(R)s; translation invariant"
+    ),
+    validity="one deterministic i<j row per aromatic-ring pair; no separate validity mask",
+    parity="mixed")
+_set_contract(
+    ("spatial_neighbors",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed sparse row: cols0:2 invariant atom ids; cols2:5 polar unit "
+        "vector v'=R v; col5 invariant distance; translation invariant"
+    ),
+    validity="zero-distance/self rows are omitted; retained row identities are deterministic",
+    parity="mixed")
+_set_contract(
+    ("hbond_pairs_geometry",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed sparse row: cols0:2 invariant distance/angle; cols2:5 polar "
+        "H-to-O unit vector v'=R v; translation invariant"
+    ),
+    validity="hbond_pairs_angle_valid.npy applies to the angle column",
+    parity="mixed")
+_set_contract(
+    ("cb_deviation",), coordinate_frame="intrinsic_chiral_lookup",
+    transformation=(
+        "rotation-invariant under proper rotations; ideal-L-CB construction "
+        "is chirality-conditioned and has no improper-transform contract"
+    ),
+    validity="cb_deviation_valid.npy; invalid/non-applicable rows are NaN",
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("cb_residual_vector",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "polar displacement under proper rotations: v'=R v; the ideal-L-CB "
+        "construction mixes bond vectors with a cross product and therefore "
+        "has no single improper-transform parity"
+    ),
+    validity="cb_residual_vector_valid.npy; invalid/non-applicable rows are NaN",
+    irreps="", parity="mixed", wrapper=np.ndarray)
+
+_set_contract(
+    ("piquad_quad_scalar",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "rotation_invariant scalar under proper and improper transforms: "
+        "q' = q for q=(3*cos(theta)^2-1)/r^4; translation invariant"
+    ),
+    validity=(
+        "row-aligned with ring_contributions.npy; no dedicated validity mask; "
+        "zero is ambiguous between the physical magic-angle value and the "
+        "legacy/default value for a row not accepted by PiQuadrupoleResult"
+    ))
+
+_set_contract(
+    ("piquad_local_tensor", "piquad_local_T2"),
+    coordinate_frame="ring_local_vertex0_gauge",
+    transformation=(
+        "ring-local symmetric-traceless even-rank2: coefficients are invariant "
+        "under a global proper rotation rerun; under an improper transform the "
+        "local Cartesian matrix obeys T_local'=P T_local P with P=diag(1,1,-1)"
+    ),
+    validity=(
+        "NaN for invalid local frame/singular evaluation; "
+        "piquad_local_geometry.npy column 6 is combined tensor-evaluation "
+        "validity (valid frame and nonsingular distance)"
+    ), irreps="", parity="mixed", e3nn_export="", wrapper=np.ndarray)
+_set_contract(
+    ("piquad_local_frame",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed basis columns [x,y,z]: x and y are polar v'=R v; z is axial "
+        "a'=det(R)R a; vertex-0 gauge"
+    ),
+    validity=(
+        "all nine components are NaN unless the combined tensor evaluation "
+        "succeeds; piquad_local_geometry.npy column 6 is the combined validity"
+    ), parity="mixed")
+_set_contract(
+    ("piquad_local_geometry",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "mixed row: ids/distance/axial scalar/flags invariant; col4 cos_theta "
+        "is pseudoscalar s'=det(R)s; translation invariant"
+    ),
+    validity=(
+        "column 6 is combined tensor-evaluation validity; distance is computed "
+        "before frame construction and cos_theta before vertex-0 frame "
+        "construction, so either may remain finite when column 6 is zero"
+    ), parity="mixed")
+_set_contract(
+    ("sidechain_co_frame",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed frame [origin,x,y,z]: cols0:3 affine position p'=R p+t; "
+        "x/y polar; z cross-product axial"
+    ),
+    validity=(
+        "origin cols0:3 are assigned before frame validation and may remain "
+        "finite on an invalid row; axes cols3:12 are NaN when invalid; "
+        "sidechain_co_frame_quality.npy column 3 is frame_valid"
+    ), parity="mixed")
+_set_contract(
+    ("sidechain_co_source_bonds",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant sparse typed bond/atom/residue identity and "
+        "semantic-class row; deterministic source order"
+    ),
+    validity=(
+        "column7 is source_valid; the row axis is shared with "
+        "sidechain_co_frame.npy and sidechain_co_frame_quality.npy"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("sidechain_co_frame_quality",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant bond length, orthogonality error, raw normal "
+        "norm and frame-valid flag, row-aligned with sidechain_co_source_bonds.npy"
+    ),
+    validity=(
+        "column3 is frame_valid and gates the axes in sidechain_co_frame.npy; "
+        "earlier quality columns may remain finite on an invalid frame"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("water_polarization",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed row: cols0:3 net-water-dipole polar vector; cols3:6 outward "
+        "SASA normal is continuum polar but live finite-grid non-covariant; "
+        "cols6:8 are continuum invariant but inherit the live finite-grid "
+        "normal; cols8:10 are exact O(3)-invariant scalars"
+    ),
+    validity=(
+        "whole result absent without solvent; no-shell dipole/scalars use "
+        "physical zero; copied SASA normal inherits its zero/finite-grid semantics"
+    ), parity="mixed")
+_set_contract(
+    ("water_hbond_candidates",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed sparse row: cols0:9,15 invariant; cols9:12 water-O affine "
+        "position p'=R p+t; cols12:15 selected-water-H affine position"
+    ),
+    validity="selected-H position cols12:15 are NaN in mode 2 where water is the acceptor",
+    parity="mixed")
+_set_contract(
+    ("water_hbond_counts",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant per-protein-atom candidate/pass counts, nearest "
+        "water identity and nearest passing mode for a fixed candidate set"
+    ),
+    validity=(
+        "columns0:4 are candidate/pass counts and nearest-water index; "
+        "column5 is nearest passing mode; producer sentinels distinguish no candidate"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("water_hbond_nearest",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant mixed scalar/identity row: distances, angle, "
+        "mode, water identity, pass flag and candidate/pass counts"
+    ),
+    validity=(
+        "nearest-candidate fields use the producer's no-candidate sentinels; "
+        "candidate/pass counts in columns6 and7 expose row availability"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("delta_apbs",), coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "mixed WT-atom row: cols0:3 polar delta-E; cols3:7 compatibility "
+        "structural zeros (T0/T1); cols7:12 native T2 even-rank2"
+    ),
+    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask",
+    parity="mixed")
+_set_contract(
+    ("delta_scalars",), coordinate_frame="shared_wt_mut_intrinsic",
+    transformation=(
+        "exact O(3)-invariant WT-atom row under a joint rigid transform of "
+        "WT and mutant: match mask, shielding T0 delta, removed-ring distance, "
+        "charge deltas and typed-match distance"
+    ),
+    validity=(
+        "column0 is the match mask for every delta payload; unmatched rows "
+        "are legacy all-zero compatibility rows"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("delta_graph",), coordinate_frame="shared_wt_mut_intrinsic",
+    transformation=(
+        "exact O(3)-invariant WT-atom graph row: match mask, graph-source "
+        "mask, ring-distance delta, BFS decay delta and conjugation delta"
+    ),
+    validity=(
+        "column0 is matched and column1 is has_graph_delta; unmatched or "
+        "graph-unavailable fields use documented compatibility zeros"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("delta_ring_proximity",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "repeated 6-column removed-ring blocks: distance/rho/factor/decay "
+        "invariant; z pseudoscalar; theta maps to pi-theta under an improper transform"
+    ),
+    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask",
+    parity="mixed")
+
+
+# External-frame mixed diagnostics.
+_set_contract(
+    ("mopac_global",), coordinate_frame="mopac_output_cartesian_xyz",
+    transformation=(
+        "mixed graph row: col0 heat of formation invariant; cols1:4 molecular "
+        "dipole polar vector. For a charged system the dipole is origin- and "
+        "translation-dependent according to the MOPAC source convention"
+    ),
+    validity="missing parsed MOPAC dipole block currently serializes zero without an availability mask",
+    parity="mixed")
+_set_contract(
+    ("mopac_atom_populations",), coordinate_frame="mopac_output_cartesian_xyz",
+    transformation=(
+        "mixed atom row: intended cols6:9 per-atom polar dipole components; "
+        "other columns are scalar populations/valencies"
+    ),
+    validity=(
+        "live parser never populates dipole cols6:10, so they serialize NaN; "
+        "no per-column availability mask"
+    ), parity="mixed")
+_set_contract(
+    ("mopac_atomic_orbital_populations",),
+    coordinate_frame="mopac_output_atomic_orbital_axes",
+    transformation=(
+        "frame-dependent diagonal s/px/py/pz/d populations are not a closed "
+        "O(3) representation; omitted AO density coherences prevent rotation"
+    ),
+    validity="parsed K-row diagnostic; missing printed cells are NaN and atom identity is not serialized",
+    parity="mixed")
+_set_contract(
+    ("mopac_atomic_orbital_population_totals",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation="rotation_invariant shell totals [s_total,p_total,d_total]",
+    validity="parsed K-row diagnostic; NaN propagates from missing printed AO populations")
+_set_contract(
+    ("gromacs_energy",), coordinate_frame="gromacs_simulation_cartesian_xyz",
+    transformation=(
+        "mixed graph row: cols0:23 and41:43 scalar diagnostics; cols23:32 "
+        "virial and cols32:41 pressure are full even-rank2 row-major tensors "
+        "T'=R T R^T; box lengths cols20:23 are axis-tied cell diagnostics"
+    ),
+    validity="external EDR data are not recomputed from conformation coordinates; unavailable EDR terms are NaN",
+    units=(
+        "mixed: cols0:16 kJ/mol; col16 K; col17 bar; col18 nm^3; "
+        "col19 kg/m^3; cols20:23 nm; cols23:32 kJ/mol virial; "
+        "cols32:41 bar; cols41:43 K"
+    ), parity="mixed")
+
+
+# Reflection-sensitive scalar/diagnostic channels.  Each entry states whether
+# its production rerun is O(3)-invariant or has an improper-transform law.
+_set_contract(
+    ("dssp_observed",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant atom-broadcast "
+        "libdssp residue-observation mask for a fixed typed topology"
+    ),
+    validity="int8 1 means observed/mapped; 0 means every DSSP payload for the atom is unavailable")
+_set_contract(
+    ("dssp_backbone",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "mixed atom-broadcast row: phi/psi cols0:2 are signed dihedral "
+        "pseudoscalars (wrapped sign reversal); col2 SASA and helix/sheet "
+        "cols3:5 have physical O(3)-invariant laws. The live temporary PDB "
+        "rounds coordinates to 0.001 Angstrom, so transformed production "
+        "reruns can show bounded scalar drift or cross a category boundary"
+    ),
+    validity="phi/psi/SASA NaN for an unobserved DSSP residue; dssp_observed.npy is the mask",
+    parity="mixed")
+_set_contract(
+    ("dssp_ss8",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "physical O(3)-invariant libdssp eight-class one-hot after the PPII-"
+        "to-coil collapse; transformed production reruns can cross a category "
+        "boundary because the temporary PDB rounds coordinates to 0.001 "
+        "Angstrom"
+    ),
+    validity=(
+        "all-zero row for an unobserved DSSP residue; dssp_observed.npy is "
+        "the observation mask"
+    ), parity="even")
+_set_contract(
+    ("dssp_ppii",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "proper-rotation invariant chirality-conditioned categorical flag; "
+        "no homogeneous improper-transform law because reflection reverses "
+        "the signed phi/psi region used by libdssp's PPII classifier; 0.001-"
+        "Angstrom temporary-PDB rounding can affect a boundary value"
+    ),
+    validity="int8 -1 means no DSSP observation; otherwise 0/1 is the recomputed class",
+    parity="mixed")
+_set_contract(
+    ("dssp_chi",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "four [cos,sin,exists] blocks: cos/exists invariant; sin is "
+        "pseudoscalar and changes sign under an improper transform"
+    ),
+    validity="undefined chi blocks serialize [0,0,0]; exists is the block-local mask",
+    parity="mixed")
+_set_contract(
+    ("dssp_torsion_angle",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="signed_dihedral_pseudoscalars: angle'=det(R) angle with canonical wrapping",
+    validity="NaN where undefined; dssp_torsion_valid.npy is the elementwise mask",
+    irreps="0o", parity="odd")
+_set_contract(
+    ("dssp_torsion_sin",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="pseudoscalar_sines: sin'=det(R) sin",
+    validity="NaN where undefined; dssp_torsion_valid.npy is the elementwise mask",
+    irreps="0o", parity="odd")
+_set_contract(
+    ("dssp_torsion_cos",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="rotation_invariant cosines of signed dihedrals",
+    validity="NaN where undefined; dssp_torsion_valid.npy is the elementwise mask")
+_set_contract(
+    ("dssp_torsion_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant elementwise "
+        "availability mask for ordinary nondegenerate torsions"
+    ),
+    validity="uint8 1 means the corresponding angle/sine/cosine is finite; 0 means NaN")
+_set_contract(
+    ("dssp_hbond_energy",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "continuum rotation/translation/reflection-invariant DSSP "
+        "electrostatic H-bond energies; transformed production reruns use a "
+        "5e-3 kcal/mol absolute envelope because the temporary PDB rounds "
+        "coordinates to 0.001 Angstrom"
+    ),
+    validity=(
+        "dssp_observed.npy is the observation mask; use the corresponding "
+        "dssp_hbond_partner_residue_index.npy slot to distinguish a mapped "
+        "partner from the legacy zero no-partner value"
+    ))
+_set_contract(
+    ("dssp_hbond_partner_residue_index",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "continuum O(3)-invariant residue identity of the distance-derived "
+        "DSSP H-bond partner; a transformed production rerun can select a "
+        "different boundary partner after 0.001-Angstrom temporary-PDB "
+        "rounding"
+    ),
+    validity=(
+        "nonnegative values are protein residue indices; -1 means no mapped "
+        "partner or no DSSP observation; dssp_observed.npy is the observation mask"
+    ))
+_set_contract(
+    ("omega_actual", "omega_deviation"), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="signed_dihedral_pseudoscalar with canonical wrapping under improper transforms",
+    validity="NaN where undefined; omega_valid.npy is the mask",
+    irreps="0o", parity="odd")
+_set_contract(
+    ("omega_sin",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="pseudoscalar_sine: sin'=det(R) sin",
+    validity="NaN where undefined; omega_valid.npy is the mask",
+    irreps="0o", parity="odd")
+_set_contract(
+    ("omega_cos",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="rotation_invariant cosine of signed omega",
+    validity="NaN where undefined; omega_valid.npy is the mask")
+_set_contract(
+    ("aromatic_chi2",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="signed_dihedral_pseudoscalar with canonical wrapping under improper transforms",
+    validity="NaN when the parent residue has no valid chi2 atom quartet",
+    irreps="0o", parity="odd")
+_set_contract(
+    ("omega_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 availability for the corresponding "
+        "signed peptide omega; translation invariant"
+    ),
+    validity=(
+        "1 iff omega_actual.npy, omega_sin.npy and omega_cos.npy are finite "
+        "for the residue; 0 gates their NaNs"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("pucker_Q",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="rotation_invariant Cremer-Pople amplitude",
+    validity=(
+        "NaN for non-five-membered rings or mean-plane failure; Q remains "
+        "finite (including Q=0) when only the oriented phase is degenerate"
+    ))
+_set_contract(
+    ("pucker_theta",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="oriented Cremer-Pople phase: theta'=(theta+180 degrees) mod 360 under an improper transform",
+    validity="NaN for non-five-membered rings or sub-amplitude/plane degeneracy",
+    parity="mixed")
+
+_set_contract(
+    ("tripeptide_bb_diagnostics",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "mixed proper-rotation invariants with signed actual torsions: cols10:12 "
+        "and14:18 reverse sign (with wrapping) under an improper transform; "
+        "lookup outcomes remain chirality-conditioned"
+    ),
+    validity="NaN fields are governed by the embedded status/has-match columns 1/2",
+    parity="mixed")
+_set_contract(
+    ("tripeptide_neighbor_diagnostics",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "two 28-column side blocks: actual phi/psi at base+11:13 and actual "
+        "chi at base+15:19 are signed; lookup outcomes are chirality-conditioned"
+    ),
+    validity="NaN fields are governed by each side block's status/has-match columns",
+    parity="mixed")
+
+_set_contract(
+    ("larsen_hbond_pairs_geometry",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "mixed row: cols0:2 r/theta are exact O(3) invariants; col2 signed "
+        "rho is a wrapped pseudoscalar and changes sign under an improper "
+        "transform; cols3:5 imputation provenance has no improper-transform "
+        "law; col5 frame_valid is exactly O(3)-invariant"
+    ),
+    validity=(
+        "col5 is donor-frame validity; r/theta/rho cols0:3 are computed before "
+        "donor-frame validation and may remain finite when col5 is zero; "
+        "imputed provenance is cols3:5"
+    ), parity="mixed")
+_set_contract(
+    ("larsen_hbond_pairs_isotropic",), coordinate_frame="larsen_signed_rho_grid",
+    transformation=(
+        "proper-rotation invariant grid values; no improper-transform parity "
+        "because lookup is conditioned on signed rho"
+    ),
+    validity="NaN for non-successful pair dispositions; imputed successful values are emitted unmasked",
+    parity="mixed")
+_set_contract(
+    ("larsen_hbond_count", "larsen_sidechain_carbonyl_pair_count"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant count: successful "
+        "pair membership is gated by topology, distance, and theta; rho is "
+        "periodic and only selects tensor values and imputation provenance"
+    ),
+    validity="per-atom count; zero is a real no-contribution count",
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("larsen_hbond_water_term",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant scalar: the water "
+        "gate uses only topology, distance, and theta; both successful and "
+        "out-of-r-grid geometric pairs suppress the term"
+    ),
+    validity=(
+        "2.07 ppm on geometrically unpaired amide H atoms and physical zero "
+        "elsewhere; whole optional group absent without Larsen grids"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("larsen_corner_imputed", "larsen_imputed_pair_count"),
+    coordinate_frame="larsen_signed_rho_grid",
+    transformation=(
+        "proper-rotation invariant imputation provenance; no improper-transform "
+        "law because reflection changes which signed-rho validity-mask corners "
+        "serve the otherwise successful periodic query"
+    ),
+    validity="per-atom imputation provenance; zero is a real no-imputation count",
+    parity="mixed")
+_set_contract(
+    ("larsen_hbond_pairs_index",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "all integer identity, class, disposition, anchor, and target-mask "
+        "columns are exactly rotation/translation/reflection invariant; rho is "
+        "periodic and affects tensor values/imputation provenance, not success"
+    ),
+    validity="col6 disposition is the authoritative row-status code",
+    parity="even")
+_set_contract(
+    ("larsen_hbond_pairs",), coordinate_frame="mixed_larsen_pair_contract",
+    transformation=(
+        "compatibility table: cols0:16 index and cols16:18 r/theta are exact "
+        "O(3) invariants; col18 signed-rho pseudoscalar; cols19:21 imputation "
+        "provenance and cols22:28 signed-rho-conditioned isotropic values "
+        "have no improper parity; col21 frame_valid is exactly O(3)-invariant"
+    ),
+    validity=(
+        "disposition is col6 and frame_valid is col21; geometry cols16:19 may "
+        "remain finite when the donor frame is invalid, while unavailable "
+        "lookup isotropics are NaN"
+    ), parity="mixed")
+_set_contract(
+    ("larsen_sidechain_donor_candidates",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "mixed audit row: cols0:10 identity/distance/angle and cols11:13 "
+        "status are exact O(3) invariants; col10 signed rho is a wrapped "
+        "pseudoscalar and changes sign under an improper transform"
+    ),
+    validity="rho is NaN when acceptor frame atoms are unavailable; audit-only and never modeled by Table 2",
+    parity="mixed")
+_set_contract(
+    ("larsen_sidechain_donor_atoms",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant per-atom typed donor identity, parent/residue "
+        "identity and distance/angle-gated candidate/pass counts"
+    ),
+    validity=(
+        "column0 identifies a typed sidechain polar H; remaining identity "
+        "and count fields use the producer's non-donor sentinels"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+
+
+del _stem

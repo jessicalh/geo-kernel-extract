@@ -9,6 +9,7 @@ and parsed ``manifest`` attributes, and that the catalog declares
 
 from __future__ import annotations
 
+from dataclasses import asdict
 import json
 from pathlib import Path
 
@@ -17,6 +18,7 @@ import pytest
 
 from nmr_extract import (
     CATALOG,
+    PositionField,
     Residues,
     Bonds,
     Rings,
@@ -39,6 +41,99 @@ from _topology_fixture import (
 N_ATOMS = 16
 
 
+_DIRECTIONAL_STEMS = {
+    # Identity, sparse geometry, local frames, and positions.
+    "pos", "ring_contributions", "ring_direction_to_center",
+    "ring_geometry", "ring_pair_geometry", "bond_direction",
+    "bond_geometry_valid", "cb_deviation", "cb_deviation_valid",
+    "cb_residual_vector", "cb_residual_vector_valid", "spatial_neighbors",
+    "hbond_nearest_dir", "hbond_flags", "hbond_pairs_geometry",
+    "hbond_pairs_index", "hbond_pairs_angle_valid",
+    "atom_sasa", "atom_sasa_fraction",
+    "sasa_normal", "water_polarization",
+    "water_hbond_candidates", "water_hbond_counts", "water_hbond_nearest",
+    "sidechain_co_frame", "sidechain_co_source_bonds",
+    "sidechain_co_frame_quality",
+    "piquad_local_tensor", "piquad_local_T2", "piquad_local_frame",
+    "piquad_local_geometry", "piquad_quad_scalar",
+    # Ring-current vectors/tensors.
+    "bs_shielding", "bs_per_type_T1", "bs_per_type_T2", "bs_total_B",
+    "bs_ring_B_field", "bs_ring_B_cylindrical", "hm_shielding",
+    "hm_per_type_T1", "hm_per_type_T2", "hm_ring_B_field",
+    # McConnell and typed side-chain carbonyl outputs.
+    "mc_peptide_co_fixed", "mc_peptide_co_bo", "mc_peptide_co_rhombic",
+    "mc_peptide_cn_fixed", "mc_peptide_cn_bo",
+    "mc_backbone_other_fixed", "mc_backbone_other_bo",
+    "mc_sidechain_co_fixed", "mc_sidechain_co_bo",
+    "mc_sidechain_other_fixed", "mc_sidechain_other_bo",
+    "mc_disulfide_fixed", "mc_disulfide_bo",
+    "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
+    "mc_backbone_xh_fixed", "mc_backbone_xh_bo",
+    "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo",
+    "mc_s_h_fixed", "mc_s_h_bo", "mc_nearest_co_dir",
+    "mc_nearest_co_midpoint", "mc_nearest_co_T2", "mc_nearest_cn_T2",
+    "sidechain_co_fixed_T2", "sidechain_co_bo_T2",
+    # Coulomb/APBS/water/AIMNet2 vectors and EFGs.
+    "coulomb_efg", "coulomb_efg_t2", "coulomb_E",
+    "coulomb_E_backbone", "coulomb_E_sidechain", "coulomb_E_aromatic",
+    "coulomb_efg_backbone", "coulomb_efg_sidechain",
+    "coulomb_efg_aromatic", "coulomb_E_solvent", "coulomb_efg_solvent",
+    "mopac_coulomb_efg", "mopac_coulomb_E",
+    "mopac_coulomb_E_backbone", "mopac_coulomb_E_sidechain",
+    "mopac_coulomb_E_aromatic", "mopac_coulomb_efg_backbone",
+    "mopac_coulomb_efg_sidechain", "mopac_coulomb_efg_aromatic",
+    "eeq_coulomb_efg", "eeq_coulomb_E", "eeq_coulomb_E_backbone",
+    "eeq_coulomb_E_sidechain", "eeq_coulomb_E_aromatic",
+    "eeq_coulomb_efg_backbone", "eeq_coulomb_efg_sidechain",
+    "eeq_coulomb_efg_aromatic", "apbs_E", "apbs_efg", "apbs_phi",
+    "apbs_E_clamp_mask", "apbs_E_clamp_scale",
+    "apbs_nonfinite_sanitizer_mask",
+    "apbs_E_total_diagnostic", "apbs_efg_total_diagnostic",
+    "water_efield", "water_efield_first", "water_efg",
+    "water_efg_first", "water_shell_counts", "water_efield_clamp_mask",
+    "water_efield_clamp_scale", "water_efield_first_clamp_mask",
+    "water_efield_first_clamp_scale", "aimnet2_E", "aimnet2_E_backbone",
+    "aimnet2_E_sidechain", "aimnet2_E_aromatic", "aimnet2_efg",
+    "aimnet2_efg_aromatic", "aimnet2_efg_backbone",
+    "aimnet2_efg_sidechain", "aimnet2_charge_response_gradient",
+    "aimnet2_charge_response_gradient_scalar",
+    # External quantum/reference and mutation tensors.
+    "orca_total", "orca_diamagnetic", "orca_paramagnetic",
+    "tripeptide_bb_shielding", "tripeptide_bb_residual_vec",
+    "tripeptide_bb_match_distance", "tripeptide_bb_match_atoms",
+    "tripeptide_bb_method_tag", "tripeptide_neighbor_reference",
+    "tripeptide_neighbor_shielding", "tripeptide_neighbor_shielding_prev",
+    "tripeptide_neighbor_shielding_next",
+    "tripeptide_neighbor_residual_vec_prev",
+    "tripeptide_neighbor_residual_vec_next",
+    "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
+    "larsen_hbond_2pHB_shielding", "larsen_hbond_1pHaB_shielding",
+    "larsen_hbond_2pHaB_shielding",
+    "larsen_hbond_diagnostic_CB_shielding", "delta_shielding",
+    "wt_shielding_diamagnetic", "wt_shielding_paramagnetic",
+    "mut_shielding_diamagnetic", "mut_shielding_paramagnetic",
+    "delta_shielding_diamagnetic", "delta_shielding_paramagnetic",
+    "delta_apbs", "delta_ring_proximity", "delta_scalars", "delta_graph",
+    # External-frame and reflection-sensitive diagnostics.
+    "mopac_global", "mopac_atom_populations",
+    "mopac_atomic_orbital_populations",
+    "mopac_atomic_orbital_population_totals", "gromacs_energy",
+    "dssp_observed", "dssp_backbone", "dssp_ss8", "dssp_ppii",
+    "dssp_hbond_energy", "dssp_hbond_partner_residue_index", "dssp_chi",
+    "dssp_torsion_angle", "dssp_torsion_sin", "dssp_torsion_cos",
+    "dssp_torsion_valid", "omega_actual", "omega_valid",
+    "omega_deviation", "omega_sin", "omega_cos", "aromatic_chi2",
+    "pucker_Q", "pucker_theta", "tripeptide_bb_diagnostics",
+    "tripeptide_neighbor_diagnostics", "larsen_hbond_pairs_geometry",
+    "larsen_hbond_pairs_isotropic", "larsen_hbond_pairs_index",
+    "larsen_hbond_count", "larsen_hbond_water_term",
+    "larsen_corner_imputed",
+    "larsen_imputed_pair_count", "larsen_sidechain_carbonyl_pair_count",
+    "larsen_hbond_pairs",
+    "larsen_sidechain_donor_candidates", "larsen_sidechain_donor_atoms",
+}
+
+
 # ── Catalog metadata invariants ────────────────────────────────────
 
 
@@ -54,8 +149,72 @@ class TestCatalogMetadata:
         assert not bad, f"Entries missing mechanism: {bad}"
 
     def test_every_entry_has_valid_parity(self):
-        bad = [k for k, s in CATALOG.items() if s.parity not in ("even", "odd")]
+        bad = [
+            k for k, s in CATALOG.items()
+            if s.parity not in ("even", "odd", "mixed")
+        ]
         assert not bad, f"Entries with invalid parity: {bad}"
+        assert {
+            k for k, s in CATALOG.items() if s.parity == "mixed"
+        } == {
+            "atom_sasa",
+            "atom_sasa_fraction",
+            "apbs_E_clamp_mask",
+            "apbs_E_clamp_scale",
+            "apbs_nonfinite_sanitizer_mask",
+            "apbs_phi",
+            "bs_ring_B_cylindrical",
+            "cb_deviation",
+            "cb_residual_vector",
+            "delta_apbs",
+            "delta_ring_proximity",
+            "dssp_backbone",
+            "dssp_chi",
+            "dssp_ppii",
+            "gromacs_energy",
+            "hbond_pairs_geometry",
+            "larsen_corner_imputed",
+            "larsen_hbond_pairs",
+            "larsen_hbond_pairs_geometry",
+            "larsen_hbond_pairs_isotropic",
+            "larsen_hbond_shielding",
+            "larsen_hbond_1pHB_shielding",
+            "larsen_hbond_2pHB_shielding",
+            "larsen_hbond_1pHaB_shielding",
+            "larsen_hbond_2pHaB_shielding",
+            "larsen_hbond_diagnostic_CB_shielding",
+            "larsen_imputed_pair_count",
+            "larsen_sidechain_donor_candidates",
+            "mopac_atom_populations",
+            "mopac_atomic_orbital_populations",
+            "mopac_global",
+            "piquad_local_tensor",
+            "piquad_local_T2",
+            "piquad_local_frame",
+            "piquad_local_geometry",
+            "pucker_theta",
+            "ring_contributions",
+            "ring_geometry",
+            "ring_pair_geometry",
+            "sasa_normal",
+            "sidechain_co_frame",
+            "spatial_neighbors",
+            "tripeptide_bb_diagnostics",
+            "tripeptide_bb_residual_vec",
+            "tripeptide_bb_shielding",
+            "tripeptide_bb_match_atoms",
+            "tripeptide_bb_match_distance",
+            "tripeptide_bb_method_tag",
+            "tripeptide_neighbor_diagnostics",
+            "tripeptide_neighbor_reference",
+            "tripeptide_neighbor_residual_vec_prev",
+            "tripeptide_neighbor_residual_vec_next",
+            "tripeptide_neighbor_shielding",
+            "tripeptide_neighbor_shielding_prev",
+            "tripeptide_neighbor_shielding_next",
+            "water_hbond_candidates",
+            "water_polarization",
+        }
 
     def test_tensor_rank_is_in_0_1_2(self):
         bad = [k for k, s in CATALOG.items() if s.tensor_rank not in (0, 1, 2)]
@@ -84,6 +243,359 @@ class TestCatalogMetadata:
             ):
                 assert spec.sign_convention, (
                     f"shielding entry {stem!r} missing sign_convention")
+
+    def test_every_inventoried_directional_name_has_explicit_contract(self):
+        missing_names = _DIRECTIONAL_STEMS - CATALOG.keys()
+        assert not missing_names, f"Directional NPYs absent from catalog: {missing_names}"
+
+        missing_fields = {
+            stem: tuple(
+                field for field in
+                ("coordinate_frame", "transformation", "validity")
+                if not getattr(CATALOG[stem], field)
+            )
+            for stem in sorted(_DIRECTIONAL_STEMS)
+        }
+        missing_fields = {
+            stem: fields for stem, fields in missing_fields.items() if fields
+        }
+        assert not missing_fields, (
+            f"Directional NPYs missing freeze-contract fields: {missing_fields}")
+
+    @pytest.mark.parametrize("stem", [
+        "bond_direction", "ring_direction_to_center", "mc_nearest_co_dir",
+        "hbond_nearest_dir", "coulomb_E", "coulomb_E_backbone",
+        "coulomb_E_sidechain", "coulomb_E_aromatic",
+        "mopac_coulomb_E", "mopac_coulomb_E_backbone",
+        "mopac_coulomb_E_sidechain", "mopac_coulomb_E_aromatic",
+        "eeq_coulomb_E", "eeq_coulomb_E_backbone",
+        "eeq_coulomb_E_sidechain", "eeq_coulomb_E_aromatic",
+        "water_efield", "water_efield_first",
+        "aimnet2_E", "aimnet2_E_backbone", "aimnet2_E_sidechain",
+        "aimnet2_E_aromatic", "aimnet2_charge_response_gradient",
+    ])
+    def test_exact_global_polar_vector_law(self, stem):
+        spec = CATALOG[stem]
+        assert spec.coordinate_frame == "conformation_cartesian_xyz"
+        assert spec.transformation == "polar_vector: v'=R v"
+
+    @pytest.mark.parametrize("stem", [
+        "apbs_E_clamp_mask", "apbs_E_clamp_scale",
+    ])
+    def test_apbs_clamp_diagnostics_declare_finite_grid_scalar_law(
+            self, stem):
+        spec = CATALOG[stem]
+        assert spec.coordinate_frame == (
+            "lab_fixed_apbs_finite_difference_grid")
+        assert spec.irreps == ""
+        assert spec.parity == "mixed"
+        assert spec.tensor_rank == 0
+        assert "continuum rotation/translation/reflection-invariant scalar" in (
+            spec.transformation)
+        assert "no exact O(3) law" in spec.transformation
+        assert "ApbsFieldResult is absent if APBS fails" in spec.validity
+
+    def test_apbs_sanitizer_declares_finite_grid_outcome_law(self):
+        spec = CATALOG["apbs_nonfinite_sanitizer_mask"]
+        assert spec.coordinate_frame == (
+            "lab_fixed_apbs_finite_difference_grid")
+        assert spec.irreps == ""
+        assert spec.parity == "mixed"
+        assert spec.tensor_rank == 0
+        assert (
+            "continuum rotation/translation/reflection-invariant "
+            "finite-value diagnostic"
+        ) in spec.transformation
+        assert "no exact O(3) outcome law" in spec.transformation
+        assert "bit0 reaction E" in spec.validity
+        assert "bit3 total EFG" in spec.validity
+        assert "zero means no sanitizer fired" in spec.validity
+
+    def test_hydration_contract_separates_sampled_normal_descendants(self):
+        spec = CATALOG["water_polarization"]
+        assert "cols0:3 net-water-dipole polar vector" in spec.transformation
+        assert "cols3:6 outward SASA normal is continuum polar" in (
+            spec.transformation)
+        assert "cols6:8 are continuum invariant" in spec.transformation
+        assert "live finite-grid normal" in spec.transformation
+        assert "cols8:10 are exact O(3)-invariant scalars" in (
+            spec.transformation)
+
+    @pytest.mark.parametrize("stem,fragment", [
+        ("bond_geometry_valid", "row-aligned bond direction"),
+        ("cb_deviation_valid", "chiral-L-CB output"),
+        ("cb_residual_vector_valid", "chiral-L-CB output"),
+        ("hbond_flags", "atom classifications"),
+        ("hbond_pairs_index", "sparse donor/acceptor"),
+        ("hbond_pairs_angle_valid", "angle-availability mask"),
+        ("omega_valid", "signed peptide omega"),
+        ("sidechain_co_source_bonds", "sparse typed bond/atom/residue"),
+        ("sidechain_co_frame_quality", "raw normal norm"),
+        ("water_shell_counts", "first/second-shell water counts"),
+        ("water_efield_clamp_mask", "threshold diagnostic"),
+        ("water_efield_clamp_scale", "scalar scale"),
+        ("water_efield_first_clamp_mask", "threshold diagnostic"),
+        ("water_efield_first_clamp_scale", "scalar scale"),
+        ("water_hbond_counts", "candidate/pass counts"),
+        ("water_hbond_nearest", "mixed scalar/identity row"),
+        ("delta_scalars", "joint rigid transform of WT and mutant"),
+        ("delta_graph", "graph row"),
+        ("larsen_sidechain_donor_atoms", "typed donor identity"),
+    ])
+    def test_directional_companions_declare_exact_invariant_law(
+            self, stem, fragment):
+        spec = CATALOG[stem]
+        expected_frame = (
+            "shared_wt_mut_intrinsic"
+            if stem in {"delta_scalars", "delta_graph"}
+            else "intrinsic_geometry"
+        )
+        assert spec.coordinate_frame == expected_frame
+        assert spec.irreps == "0e"
+        assert spec.parity == "even"
+        assert spec.tensor_rank == 0
+        assert "exact O(3)-invariant" in spec.transformation
+        assert fragment in spec.transformation
+        assert spec.validity
+
+    @pytest.mark.parametrize("stem", [
+        "bs_total_B", "bs_ring_B_field", "hm_ring_B_field",
+        "bs_per_type_T1", "hm_per_type_T1",
+    ])
+    def test_exact_global_axial_vector_law(self, stem):
+        spec = CATALOG[stem]
+        assert spec.coordinate_frame == "conformation_cartesian_xyz"
+        assert spec.transformation == "axial_vector: a'=det(R) R a"
+
+    @pytest.mark.parametrize("stem", [
+        "bs_shielding", "hm_shielding", "mc_peptide_co_fixed",
+        "mc_peptide_co_bo", "mc_peptide_co_rhombic", "mc_peptide_cn_fixed",
+        "mc_peptide_cn_bo", "mc_backbone_other_fixed",
+        "mc_backbone_other_bo", "mc_sidechain_co_fixed",
+        "mc_sidechain_co_bo", "mc_sidechain_other_fixed",
+        "mc_sidechain_other_bo", "mc_disulfide_fixed", "mc_disulfide_bo",
+        "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
+        "mc_backbone_xh_fixed", "mc_backbone_xh_bo",
+        "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo", "mc_s_h_fixed",
+        "mc_s_h_bo", "mc_nearest_co_T2", "mc_nearest_cn_T2",
+        "sidechain_co_fixed_T2", "sidechain_co_bo_T2", "coulomb_efg",
+        "mopac_coulomb_efg", "eeq_coulomb_efg",
+    ])
+    def test_exact_global_full_rank2_law(self, stem):
+        spec = CATALOG[stem]
+        assert spec.coordinate_frame == "conformation_cartesian_xyz"
+        assert spec.transformation == "even_rank2: T'=R T R^T"
+
+    @pytest.mark.parametrize("stem", [
+        "bs_per_type_T2", "hm_per_type_T2", "coulomb_efg_t2",
+        "coulomb_efg_backbone", "coulomb_efg_sidechain",
+        "coulomb_efg_aromatic",
+        "mopac_coulomb_efg_backbone", "mopac_coulomb_efg_sidechain",
+        "mopac_coulomb_efg_aromatic", "eeq_coulomb_efg_backbone",
+        "eeq_coulomb_efg_sidechain", "eeq_coulomb_efg_aromatic",
+        "water_efg",
+        "water_efg_first", "aimnet2_efg", "aimnet2_efg_aromatic",
+        "aimnet2_efg_backbone", "aimnet2_efg_sidechain",
+    ])
+    def test_exact_global_native_t2_law(self, stem):
+        spec = CATALOG[stem]
+        assert spec.coordinate_frame == "conformation_cartesian_xyz"
+        assert spec.transformation == (
+            "even_rank2_native_T2: reconstruct Cartesian T, apply "
+            "T'=R T R^T, then decompose in project-native T2 basis"
+        )
+
+    @pytest.mark.parametrize("stem", [
+        "apbs_E", "apbs_E_total_diagnostic", "coulomb_E_solvent",
+        "apbs_efg", "apbs_efg_total_diagnostic", "coulomb_efg_solvent",
+    ])
+    def test_apbs_finite_grid_physical_laws_are_qualified(self, stem):
+        spec = CATALOG[stem]
+        assert spec.coordinate_frame == "conformation_cartesian_xyz"
+        assert spec.transformation.startswith("continuum ")
+        assert "no exact O(3) law" in spec.transformation
+        assert "finite-grid envelope" in spec.transformation
+
+    def test_exact_affine_and_local_component_contracts(self):
+        assert CATALOG["pos"].transformation == "cartesian_position: p'=R p+t"
+        assert CATALOG["pos"].wrapper is PositionField
+        assert CATALOG["mc_nearest_co_midpoint"].transformation == (
+            "cartesian_position: p'=R p+t")
+        assert CATALOG["mc_nearest_co_midpoint"].wrapper is PositionField
+        assert CATALOG["bs_ring_B_cylindrical"].coordinate_frame == (
+            "ring_cylindrical_components")
+        assert CATALOG["bs_ring_B_cylindrical"].structural_zero_components == (
+            "B_phi")
+        assert CATALOG["bs_ring_B_cylindrical"].wrapper is np.ndarray
+        assert not CATALOG["bs_ring_B_cylindrical"].irreps
+        assert CATALOG["piquad_local_tensor"].coordinate_frame == (
+            "ring_local_vertex0_gauge")
+        assert CATALOG["piquad_local_T2"].coordinate_frame == (
+            "ring_local_vertex0_gauge")
+        assert "coefficients are invariant under a global proper rotation" in (
+            CATALOG["piquad_local_T2"].transformation)
+        assert not CATALOG["piquad_local_tensor"].irreps
+        assert not CATALOG["piquad_local_tensor"].e3nn_export
+        assert CATALOG["piquad_local_tensor"].wrapper is np.ndarray
+        assert "col6 is the acute" in CATALOG["ring_contributions"].transformation
+        assert "combined tensor-evaluation validity" in (
+            CATALOG["piquad_local_geometry"].validity)
+        ring_geometry = CATALOG["ring_geometry"]
+        assert "ordinary nondegenerate ring" in ring_geometry.transformation
+        assert "underdetermined SVD normal" in ring_geometry.transformation
+        assert "lab-basis-dependent unit normal" in ring_geometry.validity
+        ring = CATALOG["ring_contributions"]
+        assert ring.tensor_rank == 0
+        assert "cols9:18,18:27,27:36" in ring.tensor_basis
+        assert "T0,T1_x,T1_y,T1_z" in ring.tensor_component_order
+        assert "cols18:22" in ring.structural_zero_components
+        assert not ring.e3nn_export
+        scalar = CATALOG["piquad_quad_scalar"]
+        assert scalar.coordinate_frame == "intrinsic_geometry"
+        assert scalar.transformation.startswith("rotation_invariant scalar")
+        assert "no dedicated validity mask" in scalar.validity
+
+    @pytest.mark.parametrize("stem", [
+        "tripeptide_bb_shielding", "tripeptide_neighbor_shielding",
+        "tripeptide_neighbor_shielding_prev",
+        "tripeptide_neighbor_shielding_next",
+        "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
+        "larsen_hbond_2pHB_shielding", "larsen_hbond_1pHaB_shielding",
+        "larsen_hbond_2pHaB_shielding",
+        "larsen_hbond_diagnostic_CB_shielding",
+    ])
+    def test_chiral_source_proper_only_tensors_do_not_claim_o3_irreps(
+            self, stem):
+        spec = CATALOG[stem]
+        assert "under proper rotations" in spec.transformation
+        assert "no improper-transform contract" in spec.transformation
+        assert spec.parity == "mixed"
+        assert not spec.irreps
+        assert not spec.e3nn_export
+
+    @pytest.mark.parametrize("stem", [
+        "tripeptide_bb_residual_vec",
+        "tripeptide_neighbor_residual_vec_prev",
+        "tripeptide_neighbor_residual_vec_next",
+    ])
+    def test_chiral_source_proper_only_vectors_do_not_claim_o3_irreps(
+            self, stem):
+        spec = CATALOG[stem]
+        assert "under proper rotations" in spec.transformation
+        assert "no improper-transform contract" in spec.transformation
+        assert spec.parity == "mixed"
+        assert not spec.irreps
+
+    def test_ideal_l_cb_outputs_have_only_a_proper_rotation_contract(self):
+        deviation = CATALOG["cb_deviation"]
+        assert deviation.coordinate_frame == "intrinsic_chiral_lookup"
+        assert deviation.transformation.startswith(
+            "rotation-invariant under proper rotations")
+        assert "no improper-transform contract" in deviation.transformation
+        assert deviation.parity == "mixed"
+        assert deviation.tensor_rank == 0
+        assert not deviation.irreps
+
+        residual = CATALOG["cb_residual_vector"]
+        assert residual.coordinate_frame == "conformation_cartesian_xyz"
+        assert residual.transformation.startswith(
+            "polar displacement under proper rotations")
+        assert "no single improper-transform parity" in residual.transformation
+        assert residual.parity == "mixed"
+        assert not residual.irreps
+
+    @pytest.mark.parametrize(
+        "stem", ["atom_sasa", "atom_sasa_fraction", "sasa_normal"])
+    def test_finite_sasa_stencil_does_not_claim_exact_o3_irreps(self, stem):
+        spec = CATALOG[stem]
+        assert "finite" in spec.transformation
+        assert "no exact O(3) law" in spec.transformation
+        assert "recorded" in spec.transformation
+        assert spec.parity == "mixed"
+        assert not spec.irreps
+        assert not spec.e3nn_export
+
+    def test_exact_mixed_block_contracts(self):
+        expected_fragments = {
+            "ring_contributions": "col5 pseudoscalar",
+            "ring_geometry": "cols3:6 affine position",
+            "ring_pair_geometry": "cols9:11 are pseudoscalars",
+            "spatial_neighbors": "cols2:5 polar unit vector",
+            "hbond_pairs_geometry": "cols2:5 polar H-to-O unit vector",
+            "piquad_local_frame": "x and y are polar",
+            "piquad_local_geometry": "col4 cos_theta is pseudoscalar",
+            "sidechain_co_frame": "cols0:3 affine position",
+            "water_polarization": "cols0:3 net-water-dipole polar vector",
+            "water_hbond_candidates": "cols9:12 water-O affine position",
+            "delta_apbs": "cols0:3 polar delta-E",
+            "delta_ring_proximity": "z pseudoscalar",
+            "mopac_global": "cols1:4 molecular dipole polar vector",
+            "mopac_atom_populations": "intended cols6:9 per-atom polar dipole",
+            "gromacs_energy": "cols23:32 virial and cols32:41 pressure",
+            "dssp_backbone": "phi/psi cols0:2 are signed dihedral",
+            "dssp_ss8": "physical O(3)-invariant libdssp eight-class one-hot",
+            "dssp_chi": "cos/exists invariant; sin is pseudoscalar",
+            "tripeptide_bb_diagnostics": "cols10:12 and14:18 reverse sign",
+            "tripeptide_neighbor_diagnostics": "base+11:13",
+            "larsen_hbond_pairs_geometry": "col2 signed rho",
+            "larsen_hbond_pairs": "col18 signed-rho pseudoscalar",
+            "larsen_sidechain_donor_candidates": "col10 signed rho",
+        }
+        for stem, fragment in expected_fragments.items():
+            assert fragment in CATALOG[stem].transformation, stem
+
+    def test_dssp_static_boundary_and_companion_contracts_are_explicit(self):
+        for stem in ("dssp_backbone", "dssp_ss8", "dssp_ppii"):
+            assert "0.001" in CATALOG[stem].transformation, stem
+            assert "PDB" in CATALOG[stem].transformation, stem
+        energy = CATALOG["dssp_hbond_energy"]
+        assert "5e-3 kcal/mol" in energy.transformation
+        assert "dssp_hbond_partner_residue_index.npy" in energy.validity
+        partner = CATALOG["dssp_hbond_partner_residue_index"]
+        assert "different boundary partner" in partner.transformation
+        assert "-1 means no mapped partner" in partner.validity
+        for stem in ("dssp_observed", "dssp_torsion_valid"):
+            assert CATALOG[stem].parity == "even"
+            assert "exact rotation/translation/reflection-invariant" in (
+                CATALOG[stem].transformation)
+
+    @pytest.mark.parametrize("stem", [
+        "dssp_torsion_angle", "dssp_torsion_sin", "omega_actual",
+        "omega_deviation", "omega_sin", "aromatic_chi2",
+    ])
+    def test_homogeneous_signed_geometry_is_explicitly_0o(self, stem):
+        spec = CATALOG[stem]
+        assert spec.irreps == "0o"
+        assert spec.parity == "odd"
+
+    def test_mutation_and_mopac_row_axes_are_the_serialized_axes(self):
+        mutation_stems = {
+            "delta_shielding", "delta_scalars", "delta_graph", "delta_apbs",
+            "delta_ring_proximity", "wt_shielding_diamagnetic",
+            "wt_shielding_paramagnetic", "mut_shielding_diamagnetic",
+            "mut_shielding_paramagnetic", "delta_shielding_diamagnetic",
+            "delta_shielding_paramagnetic",
+        }
+        assert all(CATALOG[stem].native_axis == "atom"
+                   for stem in mutation_stems)
+        assert CATALOG["mopac_atomic_orbital_populations"].native_axis == (
+            "mopac_atomic_orbital_row")
+        assert CATALOG[
+            "mopac_atomic_orbital_population_totals"].native_axis == (
+                "mopac_atomic_orbital_row")
+
+    def test_directional_array_specs_asdict_json_round_trip(self):
+        for stem in sorted(_DIRECTIONAL_STEMS):
+            payload = asdict(CATALOG[stem])
+            # `wrapper` is the one pre-existing non-JSON dataclass member;
+            # encode its stable producer class name while exercising every
+            # metadata field, including the three freeze-contract additions.
+            payload["wrapper"] = payload["wrapper"].__name__
+            decoded = json.loads(json.dumps(payload, allow_nan=False))
+            assert decoded["stem"] == stem
+            assert decoded["coordinate_frame"] == CATALOG[stem].coordinate_frame
+            assert decoded["transformation"] == CATALOG[stem].transformation
+            assert decoded["validity"] == CATALOG[stem].validity
 
 
 # ── TopologyGroup load + wrappers ──────────────────────────────────

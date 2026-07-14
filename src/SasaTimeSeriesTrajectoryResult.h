@@ -15,10 +15,18 @@
 //     frame_times    (T,)       float64
 //     attrs:
 //       result_name    = "SasaTimeSeriesTrajectoryResult"
-//       irrep_layout   = "T0"
-//       parity         = "0e"
+//       irrep_layout   = "raw_scalar_no_exact_o3_irrep"
+//       parity         = "mixed"
 //       units          = "Angstrom^2"
+//       coordinate_frame = "lab_fixed_fibonacci_sampling_grid"
+//       transformation = continuum scalar law qualified by the live finite,
+//                        lab-fixed Fibonacci estimator's recorded envelope
+//       directional_metadata_scope = "sasa dataset only"
 //       n_atoms, n_frames, finalized
+//
+// The physical continuum SASA is rotation-invariant.  SasaResult's finite
+// sampling directions are fixed in lab axes, so this captured estimator has
+// no exact O(3) irrep at finite point count.
 //
 
 #include "DenseBuffer.h"

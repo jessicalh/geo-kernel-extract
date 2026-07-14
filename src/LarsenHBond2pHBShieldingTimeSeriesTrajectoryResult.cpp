@@ -138,7 +138,30 @@ void LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("irrep_layout",
         std::string("PackFull9: [T0, T1_cartesian_xyz, T2_real_tesseral_m-2..m+2]"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
-    grp.createAttribute("parity",        std::string("0e+1e+2e"));
+    grp.createAttribute("parity",        std::string("mixed"));
+    grp.createAttribute("coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("tensor_basis",
+        std::string("project_native_full9_spherical_tensor_v1"));
+    grp.createAttribute("tensor_component_order", std::string(
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
+    grp.createAttribute("tensor_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("tensor_t1_semantics", std::string(
+        "Cartesian Levi-Civita dual x,y,z (not real-Y1m): "
+        "a=((T_yz-T_zy)/2,(T_zx-T_xz)/2,(T_xy-T_yx)/2); "
+        "axial a'=det(R) R a; generically nonzero"));
+    grp.createAttribute("tensor_t1_structural_zero", false);
+    grp.createAttribute("tensor_structural_zero_components",
+        std::string("none"));
+    grp.createAttribute("e3nn_export", std::string(
+        "explicit project-basis to e3nn conversion required before use"));
+    grp.createAttribute("normalization_scope", std::string(
+        "xyz tensor payload: T2 uses isometric real-tesseral "
+        "normalization; T1 uses the tensor_t1_semantics convention"));
+    grp.createAttribute("transformation", std::string(
+        "even_rank2 under proper rotations: T'=R T R^T; signed-rho DFT-grid "
+        "lookup is chirality-conditioned and has no improper-transform contract"));
     grp.createAttribute("units",         std::string("ppm"));
 
     // Flat (N, T, 9). NaN-fill rows where the source-present flag is
