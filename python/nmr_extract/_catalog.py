@@ -1855,6 +1855,29 @@ _set_contract(
     validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask",
     parity="mixed")
 _set_contract(
+    ("delta_scalars",), coordinate_frame="shared_wt_mut_intrinsic",
+    transformation=(
+        "exact O(3)-invariant WT-atom row under a joint rigid transform of "
+        "WT and mutant: match mask, shielding T0 delta, removed-ring distance, "
+        "charge deltas and typed-match distance"
+    ),
+    validity=(
+        "column0 is the match mask for every delta payload; unmatched rows "
+        "are legacy all-zero compatibility rows"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("delta_graph",), coordinate_frame="shared_wt_mut_intrinsic",
+    transformation=(
+        "exact O(3)-invariant WT-atom graph row: match mask, graph-source "
+        "mask, ring-distance delta, BFS decay delta and conjugation delta"
+    ),
+    validity=(
+        "column0 is matched and column1 is has_graph_delta; unmatched or "
+        "graph-unavailable fields use documented compatibility zeros"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("delta_ring_proximity",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
         "repeated 6-column removed-ring blocks: distance/rho/factor/decay "
