@@ -119,6 +119,10 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("finalized",                  finalized_);
     grp.createAttribute("dipole_vector_layout",       std::string("x,y,z"));
     grp.createAttribute("dipole_vector_parity",       std::string("1o"));
+    grp.createAttribute("dipole_vector_coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("dipole_vector_transformation",
+        std::string("polar vector: v'=R v"));
     // Units: Water::Dipole() returns H_charge·(H_pos − O_pos) summed over
     // both H atoms; charges in e, positions in Å → result is e·Å. Convert
     // to Debye via 1 e·Å = 4.80320 D if needed downstream. Values are the
@@ -126,7 +130,26 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
     // to Debye.
     grp.createAttribute("dipole_vector_units",        std::string("e_Angstrom"));
     grp.createAttribute("surface_normal_layout",      std::string("x,y,z"));
-    grp.createAttribute("surface_normal_parity",      std::string("1o"));
+    grp.createAttribute("surface_normal_parity",      std::string("mixed"));
+    grp.createAttribute("surface_normal_coordinate_frame",
+        std::string("conformation_cartesian_xyz"));
+    grp.createAttribute("surface_normal_transformation", std::string(
+        "outward polar vector: v'=R v in the continuum limit; live "
+        "upstream finite lab-fixed Fibonacci estimator has no exact O(3) "
+        "law and is only approximately rotation-covariant within the "
+        "recorded test envelope"));
+    grp.createAttribute("scalar_transformation", std::string(
+        "half_shell_asymmetry,dipole_alignment: continuum rotation "
+        "invariants inheriting the finite lab-fixed Fibonacci "
+        "surface-normal approximation; "
+        "dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,"
+        "first_shell_count: exact rotation invariants"));
+    grp.createAttribute("directional_metadata_scope", std::string(
+        "dipole_vector,surface_normal,half_shell_asymmetry,"
+        "dipole_alignment,dipole_coherence,mean_net_dipole_eA,"
+        "dipole_order_parameter,first_shell_count; excludes "
+        "frame_indices,frame_times,source_attached_per_frame and group "
+        "provenance"));
     // Reference-frame disambiguation: HydrationGeometry uses the SASA
     // outward surface normal as the reference vector for cos-alignment
     // and half-shell asymmetry; the sibling HydrationShell TR uses COM.

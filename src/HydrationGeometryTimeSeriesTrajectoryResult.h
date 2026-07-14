@@ -43,13 +43,30 @@
 //       result_name, n_atoms, n_frames, source_attached_count, finalized
 //       dipole_vector_layout       = "x,y,z"
 //       dipole_vector_parity       = "1o"   (polar vector)
+//       dipole_vector_coordinate_frame = "conformation_cartesian_xyz"
+//       dipole_vector_transformation = "polar vector: v'=R v"
 //       dipole_vector_units        = "e_Angstrom" (raw H_charge·Δr sum;
 //                                                 ×4.80320 → Debye)
 //       surface_normal_layout      = "x,y,z"
-//       surface_normal_parity      = "1o"
+//       surface_normal_parity      = "mixed"
+//       surface_normal_coordinate_frame = "conformation_cartesian_xyz"
+//       surface_normal_transformation = "outward polar vector ... in the
+//                                        continuum limit; ... finite ...
+//                                        estimator has no exact O(3) law"
+//       scalar_transformation      = continuum-approximate vs exact scalar
+//                                    invariants, named by dataset
+//       directional_metadata_scope = both vectors and all six scalar payloads;
+//                                    excludes frame/source provenance
 //       reference_frame            = "SASA_normal"
 //       polarisation_signal_channels =
 //           "dipole_alignment,dipole_coherence,mean_net_dipole_eA,dipole_order_parameter,half_shell_asymmetry"
+//
+// WaterMolecule::Dipole is a charge-weighted sum of H-O displacements, so
+// dipole_vector is an exact translation-invariant polar vector.  The outward
+// normal would also be polar in the continuum, but the live SasaResult uses a
+// finite Fibonacci stencil fixed in lab Cartesian axes.  Therefore its raw
+// samples, and scalars projected onto it, carry only the recorded approximate
+// covariance envelope and must not advertise an exact O(3) parity.
 //
 
 #include "TrajectoryResult.h"
