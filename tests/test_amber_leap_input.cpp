@@ -63,10 +63,18 @@ std::unique_ptr<Protein> BuildOneResidueProtein(
     return protein;
 }
 
-// Build a minimal two-CYS protein with the SG atoms placed close enough
-// to register as a disulfide via DetectDisulfides (typed SG-SG distance).
-// No CovalentTopology / OpenBabel involvement — that is the whole point.
-std::unique_ptr<Protein> BuildTwoCysWithSgDistance(double sg_distance) {
+enum class DisulfideAuthority {
+    None,
+    Zero,
+    Pair,
+};
+
+// Build a minimal finalized two-CYS protein. Geometry supplies the
+// non-trajectory default, while Zero/Pair exercise the upstream-authority
+// override in Protein::FinalizeConstruction.
+std::unique_ptr<Protein> BuildTwoCysTopology(
+        double sg_distance,
+        DisulfideAuthority authority = DisulfideAuthority::None) {
     auto protein = std::make_unique<Protein>();
 
     auto add_cys = [&](int seq, const std::string& chain_id) {
@@ -82,31 +90,36 @@ std::unique_ptr<Protein> BuildTwoCysWithSgDistance(double sg_distance) {
     size_t r0 = add_cys(1, "A");
     size_t r1 = add_cys(2, "A");
 
-    // Place atoms with arbitrary coords; the only ones that matter for
-    // DetectDisulfides are the two SG atoms.
     std::vector<Vec3> positions;
-    auto add_atoms = [&](size_t residue_index,
-                          const Vec3& offset) {
-        const AminoAcidType& aa_type = GetAminoAcidType(AminoAcid::CYS);
-        for (const auto& templ : aa_type.atoms) {
-            auto atom = Atom::Create(templ.element);
-            atom->pdb_atom_name = templ.name;
-            atom->residue_index = residue_index;
-            size_t ai = protein->AddAtom(std::move(atom));
-            protein->MutableResidueAt(residue_index).atom_indices.push_back(ai);
-            // Position SG atoms specifically; everything else far away
-            // so it doesn't accidentally match anything.
-            if (std::string(templ.name) == "SG") {
-                positions.push_back(offset);
-            } else {
-                positions.push_back(offset + Vec3(100.0, 0.0, 0.0));
-            }
-        }
+    auto add_sg = [&](size_t residue_index, const Vec3& position) {
+        auto atom = Atom::Create(Element::S);
+        atom->pdb_atom_name = "SG";
+        atom->residue_index = residue_index;
+        const size_t ai = protein->AddAtom(std::move(atom));
+        protein->MutableResidueAt(residue_index).atom_indices.push_back(ai);
+        positions.push_back(position);
+        return ai;
     };
 
-    add_atoms(r0, Vec3(0.0, 0.0, 0.0));
-    add_atoms(r1, Vec3(sg_distance, 0.0, 0.0));
-    protein->AddConformation(std::move(positions), "two-cys-typed-sg-test");
+    const size_t sg0 = add_sg(r0, Vec3(0.0, 0.0, 0.0));
+    const size_t sg1 = add_sg(r1, Vec3(sg_distance, 0.0, 0.0));
+
+    LegacyAmberInvariants invariants;
+    if (authority != DisulfideAuthority::None) {
+        invariants.has_disulfide_authority = true;
+    }
+    if (authority == DisulfideAuthority::Pair) {
+        DisulfidePair pair;
+        pair.residue_a = r0;
+        pair.residue_b = r1;
+        pair.atom_index_sg_a = sg0;
+        pair.atom_index_sg_b = sg1;
+        invariants.disulfide_pairs.push_back(pair);
+    }
+
+    protein->FinalizeConstruction(positions, std::move(invariants));
+    protein->AddConformation(std::move(positions),
+                            "two-cys-finalized-topology-test");
     return protein;
 }
 
@@ -182,30 +195,39 @@ TEST_F(AmberLeapInputTest, GeneratedPdbAshFromAspVariantZero) {
     EXPECT_EQ(pdb.find("ASP"), std::string::npos) << pdb;
 }
 
-TEST_F(AmberLeapInputTest, DetectDisulfidesFindsPairAtBondingDistance) {
-    auto protein = BuildTwoCysWithSgDistance(2.05);  // typical S-S bond
-    auto pairs = amber_leap::DetectDisulfides(*protein, protein->Conformation());
+TEST_F(AmberLeapInputTest, DisulfideResiduePairsReadsFinalizedTopology) {
+    auto protein = BuildTwoCysTopology(2.05);  // geometric loader default
+    auto pairs = amber_leap::DisulfideResiduePairs(*protein);
     ASSERT_EQ(pairs.size(), 1u);
     EXPECT_EQ(pairs[0].first, 0u);
     EXPECT_EQ(pairs[0].second, 1u);
 }
 
-TEST_F(AmberLeapInputTest, DetectDisulfidesIgnoresPairAtVdwContact) {
-    auto protein = BuildTwoCysWithSgDistance(3.6);  // non-bonded vdW contact
-    auto pairs = amber_leap::DetectDisulfides(*protein, protein->Conformation());
+TEST_F(AmberLeapInputTest, DisulfideResiduePairsHonorsAuthoritativeZero) {
+    auto protein = BuildTwoCysTopology(
+        2.05, DisulfideAuthority::Zero);  // close, but authority says none
+    auto pairs = amber_leap::DisulfideResiduePairs(*protein);
     EXPECT_EQ(pairs.size(), 0u);
 }
 
+TEST_F(AmberLeapInputTest, DisulfideResiduePairsHonorsAuthoritativePair) {
+    auto protein = BuildTwoCysTopology(
+        8.0, DisulfideAuthority::Pair);  // far, but authority records a bond
+    auto pairs = amber_leap::DisulfideResiduePairs(*protein);
+    ASSERT_EQ(pairs.size(), 1u);
+    EXPECT_EQ(pairs[0].first, 0u);
+    EXPECT_EQ(pairs[0].second, 1u);
+}
+
 TEST_F(AmberLeapInputTest, GeneratedPdbDisulfidesEmitCYX) {
-    auto protein = BuildTwoCysWithSgDistance(2.05);
+    auto protein = BuildTwoCysTopology(2.05);
     AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
 
-    // Both CYS residues should be emitted as CYX. Each CYS has multiple
-    // atoms so CYX appears once per atom line of each residue.
-    EXPECT_GT(CountSubstring(pdb, "CYX"), 2u) << pdb;
+    // Finalization resolved both CYS residues to the CYX variant.
+    EXPECT_EQ(CountSubstring(pdb, "CYX"), 2u) << pdb;
     EXPECT_EQ(CountSubstring(pdb, " CYS "), 0u) << pdb;
 }
 
@@ -507,15 +529,18 @@ TEST_F(AmberLeapInputTest, ResidueAmberMappingNoCapsIsIdentity) {
 // GenerateLeapScript tests
 // ============================================================================
 
-TEST_F(AmberLeapInputTest, GeneratedLeapScriptNoDisulfidesHasFiveLines) {
-    auto protein = BuildOneResidueProtein(AminoAcid::ALA, -1);
+TEST_F(AmberLeapInputTest,
+       GeneratedLeapScriptHonorsAuthoritativeZero) {
+    auto protein = BuildTwoCysTopology(2.05, DisulfideAuthority::Zero);
     AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
-    (void)src.GeneratedPdb(protein->Conformation());  // populate mapping
+    const std::string pdb = src.GeneratedPdb(protein->Conformation());
     const std::string script = src.GeneratedLeapScript(
         "/tmp/in.pdb", "/tmp/out.prmtop", "/tmp/out.inpcrd");
 
+    EXPECT_EQ(CountSubstring(pdb, "CYX"), 0u) << pdb;
+    EXPECT_EQ(CountSubstring(pdb, " CYS "), 2u) << pdb;
     EXPECT_NE(script.find("source leaprc.protein.ff14SB\n"),
               std::string::npos);
     EXPECT_NE(script.find("set default PBRadii mbondi2\n"),
@@ -528,15 +553,18 @@ TEST_F(AmberLeapInputTest, GeneratedLeapScriptNoDisulfidesHasFiveLines) {
     EXPECT_EQ(CountSubstring(script, "\nbond mol."), 0u);
 }
 
-TEST_F(AmberLeapInputTest, GeneratedLeapScriptWithDisulfideEmitsBondLine) {
-    auto protein = BuildTwoCysWithSgDistance(2.05);
+TEST_F(AmberLeapInputTest,
+       GeneratedLeapScriptHonorsAuthoritativePair) {
+    auto protein = BuildTwoCysTopology(8.0, DisulfideAuthority::Pair);
     AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
-    (void)src.GeneratedPdb(protein->Conformation());
+    const std::string pdb = src.GeneratedPdb(protein->Conformation());
     const std::string script = src.GeneratedLeapScript(
         "/tmp/in.pdb", "/tmp/out.prmtop", "/tmp/out.inpcrd");
 
+    EXPECT_EQ(CountSubstring(pdb, "CYX"), 2u) << pdb;
+    EXPECT_EQ(CountSubstring(pdb, " CYS "), 0u) << pdb;
     // Expect "bond mol.1.SG mol.2.SG" — 1-based PRMTOP residue indices.
     EXPECT_NE(script.find("bond mol.1.SG mol.2.SG\n"),
               std::string::npos) << script;

@@ -28,6 +28,7 @@
 #include "RuntimeEnvironment.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <vector>
 
@@ -35,19 +36,45 @@ using namespace nmr;
 
 namespace {
 
-void AppendResidueAtomsFromAaType(Protein& protein,
-                                   AminoAcid aa,
-                                   size_t residue_index,
-                                   std::vector<Vec3>& positions_out) {
-    const AminoAcidType& aa_type = GetAminoAcidType(aa);
-    for (const auto& templ : aa_type.atoms) {
+size_t AppendFinalizableAlaAtoms(Protein& protein,
+                                size_t residue_index,
+                                std::vector<Vec3>& positions_out) {
+    // Coordinates are residue 28 of the protonated 1UBQ fixture, in the
+    // canonical AminoAcidType ALA atom order. Keeping real local geometry
+    // lets this full-pipeline failure fixture cross the topology boundary
+    // before its outbound name is deliberately corrupted.
+    const std::vector<Vec3> positions = {
+        Vec3(37.499, 25.743, 14.571),  // N
+        Vec3(38.794, 25.761, 13.880),  // CA
+        Vec3(38.728, 26.591, 12.611),  // C
+        Vec3(39.704, 27.346, 12.277),  // O
+        Vec3(37.122, 24.970, 14.592),  // H
+        Vec3(39.434, 26.174, 14.481),  // HA
+        Vec3(39.285, 24.336, 13.566),  // CB
+        Vec3(40.140, 24.381, 13.111),  // HB1
+        Vec3(39.385, 23.838, 14.393),  // HB2
+        Vec3(38.639, 23.889, 12.996),  // HB3
+    };
+
+    const AminoAcidType& aa_type = GetAminoAcidType(AminoAcid::ALA);
+    if (aa_type.atoms.size() != positions.size()) {
+        std::abort();
+    }
+
+    size_t cb_atom_index = 0;
+    for (size_t i = 0; i < aa_type.atoms.size(); ++i) {
+        const auto& templ = aa_type.atoms[i];
         auto atom = Atom::Create(templ.element);
         atom->pdb_atom_name = templ.name;
         atom->residue_index = residue_index;
-        size_t ai = protein.AddAtom(std::move(atom));
+        const size_t ai = protein.AddAtom(std::move(atom));
         protein.MutableResidueAt(residue_index).atom_indices.push_back(ai);
-        positions_out.push_back(Vec3(0.0, 0.0, 0.0));
+        positions_out.push_back(positions[i]);
+        if (std::string(templ.name) == "CB") {
+            cb_atom_index = ai;
+        }
     }
+    return cb_atom_index;
 }
 
 AmberFlatTableCoverageVerdict FakeUnsupportedVerdict() {
@@ -97,17 +124,14 @@ TEST_F(AmberPreparedChargeIntegrationTest, LoadChargesFailsLoudlyOnInvalidPdbInp
     size_t ri = protein->AddResidue(res);
 
     std::vector<Vec3> positions;
-    AppendResidueAtomsFromAaType(*protein, AminoAcid::ALA, ri, positions);
-
-    // Inject a stray atom not in the ALA template.
-    auto stray = Atom::Create(Element::C);
-    stray->pdb_atom_name = "ZZZZ";
-    stray->residue_index = ri;
-    size_t stray_ai = protein->AddAtom(std::move(stray));
-    protein->MutableResidueAt(ri).atom_indices.push_back(stray_ai);
-    positions.push_back(Vec3(0.0, 0.0, 0.0));
-
+    const size_t cb_ai = AppendFinalizableAlaAtoms(*protein, ri, positions);
+    protein->FinalizeConstruction(positions);
     protein->AddConformation(std::move(positions), "stray-atom-test");
+
+    // Corrupt one outbound atom name only after the Protein has crossed
+    // the topology boundary. LoadCharges must still surface tleap's named
+    // failure rather than silently producing zero-charge rows.
+    protein->MutableAtomAt(cb_ai).pdb_atom_name = "ZZZZ";
 
     AmberPreparedChargeSource src(*protein, MakeCfg().preparation_policy,
                                   FakeUnsupportedVerdict(), MakeCfg());

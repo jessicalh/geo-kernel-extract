@@ -7,15 +7,15 @@
 // These functions are the testable boundary for AmberPreparedChargeSource:
 //   GenerateAmberPdb       — typed PDB generator (residue naming derives
 //                            from protonation_variant_index;
-//                            disulfide-CYS detected via DetectDisulfides
-//                            and emitted as CYX; ACE/NME caps inserted
+//                            resolved CYX residues stay CYX; ACE/NME caps
+//                            inserted
 //                            under UseCappedFragmentsForUnsupportedTerminalVariants
 //                            for unsupported terminal variants).
 //   GenerateLeapScript     — leaprc.protein.ff14SB + mbondi2 +
 //                            loadPdb + bond mol.<ri>.SG mol.<rj>.SG +
 //                            saveamberparm. Pure function on its inputs.
-//   DetectDisulfides       — typed pairwise SG-SG distance check on CYS
-//                            residues.
+//   DisulfideResiduePairs  — residue-pair projection of the finalized
+//                            BondCategory::Disulfide topology.
 //   ResidueAmberMapping    — extractor↔PRMTOP residue index map; cap
 //                            residues marked NONE_FOR_CAP.
 //
@@ -52,25 +52,17 @@ struct LeapScriptInputs {
     std::string prmtop_path;
     std::string inpcrd_path;
     // 1-based PRMTOP residue indices for SG-SG bonds. Built by the
-    // caller from DetectDisulfides + the ResidueAmberMapping.
+    // caller from DisulfideResiduePairs + the ResidueAmberMapping.
     std::vector<std::pair<size_t, size_t>> disulfide_residue_pairs_1based;
 };
 
 
-// Detect inter-CYS disulfide bonds by direct SG-SG distance check on the
-// typed CYS residues. Returns extractor residue index pairs (0-based,
-// each with a < b).
-//
-// Any pair of CYS residues whose SG atoms are within
-// `max_ss_distance_angstroms` of each other (default 2.5 Å) is renamed
-// CYX and bonded explicitly in the LEaP script. It does not depend on
-// CovalentTopology::Resolve or any external bond-perception library;
-// AmberPreparedChargeSource is methodologically self-contained for
-// AMBER charge preparation.
-std::vector<std::pair<size_t, size_t>> DetectDisulfides(
-    const Protein& protein,
-    const ProteinConformation& conf,
-    double max_ss_distance_angstroms = 2.5);
+// Project finalized BondCategory::Disulfide bonds onto extractor residue
+// index pairs (0-based, each with a < b). The Protein topology is the
+// sole authority: this query performs no atom-name or coordinate-based
+// chemistry perception.
+std::vector<std::pair<size_t, size_t>> DisulfideResiduePairs(
+    const Protein& protein);
 
 
 // Emits a PDB body suitable for `loadPdb` in tleap.
@@ -79,8 +71,7 @@ std::vector<std::pair<size_t, size_t>> DetectDisulfides(
 // AMBER unit name derived from typed state:
 //   - HIS variant 0/1/2 → HID/HIE/HIP
 //   - HIS no variant → HIE
-//   - CYS in a Disulfide bond → CYX (overrides any other variant)
-//   - CYS variant 1 → CYM
+//   - CYS variant 0 → CYX; CYS variant 1 → CYM
 //   - ASP variant 0 → ASH; GLU variant 0 → GLH; LYS variant 0 → LYN
 //   - others → canonical three-letter
 //
