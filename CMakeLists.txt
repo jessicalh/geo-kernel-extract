@@ -222,9 +222,6 @@ set(CMAKE_BUILD_RPATH_USE_ORIGIN OFF)
 
 find_package(Eigen3 REQUIRED)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
-find_package(OpenMP REQUIRED COMPONENTS CXX)
-find_package(BLAS REQUIRED)
-find_package(LAPACK REQUIRED)
 
 nmr_cache_from_env(NMR_DSSP_ROOT NMR_DSSP_ROOT PATH
     "DSSP installation root; optional hint before find_package(dssp)")
@@ -415,12 +412,6 @@ set(MOPAC_INCLUDE "/shared/2026Thesis/mopac2/include")
 set(MOPAC_LIB "${NMR_MOPAC_PREFIX}/lib/libmopac.so.2")
 set(NMR_MOPAC_LIBRARY_DIR "${NMR_MOPAC_PREFIX}/lib")
 set(NMR_MOPAC_LIBRARY_DIR64 "${NMR_MOPAC_PREFIX}/lib64")
-list(PREPEND CMAKE_BUILD_RPATH
-    "${NMR_MOPAC_LIBRARY_DIR}"
-    "${NMR_MOPAC_LIBRARY_DIR64}")
-list(PREPEND CMAKE_INSTALL_RPATH
-    "${NMR_MOPAC_LIBRARY_DIR}"
-    "${NMR_MOPAC_LIBRARY_DIR64}")
 set(NMR_MOPAC_LIBRARY_SHA256
     "91f21dcc1c03486be489f233ca7a8568fdab57b60c7520060b896b5a48498cbc")
 set(NMR_MOPAC_HEADER_SHA256
@@ -441,14 +432,35 @@ add_library(nmr_pinned_mopac SHARED IMPORTED GLOBAL)
 set_target_properties(nmr_pinned_mopac PROPERTIES
     IMPORTED_LOCATION "${MOPAC_LIB}"
     INTERFACE_INCLUDE_DIRECTORIES "${MOPAC_INCLUDE}")
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Preserve the thesis-freeze precedence under an inherited ORCA loader
-    # path. nmr_shielding is static, so this must propagate to its consumers.
-    target_link_options(nmr_pinned_mopac INTERFACE
-        "LINKER:--disable-new-dtags")
-endif()
 message(STATUS
     "MOPAC: pinned generic Release 23.2.5 commit 052691223d19935a89f0fe18cd12301bd83e4201: ${MOPAC_LIB}")
+
+# Fresh executable boundary for the one allowed mozyme_scf call. The main
+# extractor deliberately does not load libmopac into its address space.
+add_executable(nmr_mopac_worker
+    src/MopacWorkerMain.cpp
+    src/MopacWorkerProtocol.cpp
+)
+target_include_directories(nmr_mopac_worker PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${MOPAC_INCLUDE}
+)
+target_link_libraries(nmr_mopac_worker PRIVATE
+    nmr_pinned_mopac
+    ${CMAKE_DL_LIBS}
+)
+set_target_properties(nmr_mopac_worker PROPERTIES
+    BUILD_RPATH "${NMR_MOPAC_LIBRARY_DIR};${NMR_MOPAC_LIBRARY_DIR64};${NMR_SYSTEM_LIBRARY_DIR}"
+    INSTALL_RPATH "${NMR_MOPAC_LIBRARY_DIR};${NMR_MOPAC_LIBRARY_DIR64};${NMR_SYSTEM_LIBRARY_DIR}"
+    BUILD_WITH_INSTALL_RPATH TRUE
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # This freeze pin must win even when the parent shell exports ORCA's
+    # loader path. The spawn environment is also replaced at runtime; DT_RPATH
+    # makes the executable itself enforce the same isolation before main().
+    target_link_options(nmr_mopac_worker PRIVATE
+        "LINKER:--disable-new-dtags")
+endif()
 
 # ============================================================================
 # Header-only external libraries
@@ -778,6 +790,7 @@ add_library(nmr_shielding
     src/DispersionResult.cpp
     src/KernelEvaluationFilter.cpp
     src/MopacResult.cpp
+    src/MopacWorkerProtocol.cpp
     src/MopacCoulombResult.cpp
     src/MopacMcConnellResult.cpp
     src/SpatialIndexResult.cpp
@@ -869,21 +882,15 @@ target_link_libraries(nmr_shielding PUBLIC
     ${REDUCE_LIBPDB}
     ${REDUCE_TOOLCLASSES}
     PostgreSQL::PostgreSQL
-    nmr_pinned_mopac
-    # Keep libmopac's declared LAPACK/BLAS implementation ahead of
-    # libtorch_cpu's bundled MKL symbols. Otherwise ELF interposition changes
-    # the direct MOPAC result bytes even though the same libmopac is called.
-    "-Wl,--no-as-needed"
-    ${LAPACK_LIBRARIES}
-    ${BLAS_LIBRARIES}
-    "-Wl,--as-needed"
-    ${OpenMP_CXX_LIBRARIES}
-    ${CMAKE_DL_LIBS}
     apbs_bridge
     extern_headers
     highfive
     xdrfile
     ${TORCH_LIBRARIES}
+)
+add_dependencies(nmr_shielding nmr_mopac_worker)
+target_compile_definitions(nmr_shielding PRIVATE
+    NMR_MOPAC_WORKER_BUILD_PATH="$<TARGET_FILE:nmr_mopac_worker>"
 )
 
 # Match HDF5 headers to the selected HDF5 library for every TU in the
@@ -920,7 +927,7 @@ add_custom_target(nmr_shielding_doctor
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Run lightweight nmr-shielding producer installability checks")
 
-install(TARGETS nmr_extract
+install(TARGETS nmr_extract nmr_mopac_worker
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(PROGRAMS
         scripts/nmr-shielding-doctor.sh
@@ -1067,8 +1074,9 @@ message(STATUS "Tests: bundled cu13 lib dir = ${NMR_NVRTC_LIB_DIR}")
 #  2. cu13 lib so libnvrtc.so.13's dlopen of libnvrtc-builtins.so.13.0
 #     succeeds at AIMNet2 inference time.
 #
-# The in-process MOPAC link has a pinned DT_RPATH ahead of this inherited
-# loader path, and MopacResult verifies the resolved object before calling it.
+# MOPAC is absent here by design. MopacResult gives nmr_mopac_worker a
+# replacement loader path containing only the pinned prefix and system
+# libraries, so the inherited ORCA environment cannot enter that process.
 #
 # $ENV{LD_LIBRARY_PATH} captures the configure-time shell's existing
 # path (orca, system cuda); we don't displace it.
@@ -1294,7 +1302,7 @@ target_compile_definitions(trajectory_scope_tests PRIVATE
 # (charge welford, bond order welford, coulomb / mcconnell shielding TS,
 # ff14SB reconciliation) + full_pipeline + mutation_delta. Kept isolated
 # so day-to-day ctest can select the MOPAC fixture family independently;
-# the pinned in-process dependency is checked fail-loud at configure.
+# the pinned worker dependency is checked fail-loud at configure.
 nmr_test(mopac_tests
     LABELS mopac
     LINK highfive
@@ -1316,10 +1324,6 @@ target_compile_definitions(mopac_tests PRIVATE
     NMR_MOPAC_PROBE_SCRIPT="/shared/2026Thesis/mopac2/benchmarks/mopac_feature_probe.py"
     NMR_MOPAC_PROBE_INPUT="${CMAKE_SOURCE_DIR}/tests/data/mopac/water_probe.mop"
     NMR_MOPAC_PROBE_LIBRARY="${MOPAC_LIB}"
-    # This former worker-containment test deliberately feeds libmopac a
-    # dissociated H2 input that SIGABRTs. In-process production accepts that
-    # process abort, so the obsolete containment contract must not execute.
-    DissociatedHydrogenCrashIsContained=DISABLED_DissociatedHydrogenCrashIsContained
 )
 
 
