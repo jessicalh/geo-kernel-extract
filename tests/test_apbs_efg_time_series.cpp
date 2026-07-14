@@ -201,8 +201,10 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     EXPECT_TRUE(t1_structural_zero);
     EXPECT_EQ(t2_coordinate_frame, "conformation_cartesian_xyz");
     EXPECT_EQ(t2_transformation,
-        "even_rank2: T'=R T R^T; emitted values are project-native T2 "
-        "coefficients");
+        "continuum even_rank2: T'=R T R^T; emitted values are project-native "
+        "T2 coefficients. The live axis-aligned finite-difference APBS solve "
+        "has no exact O(3) law; transformed production reruns use the recorded "
+        "4e-2 V/Angstrom^2 absolute + 5e-2 relative finite-grid envelope");
     EXPECT_EQ(t2_dataset_parity, "2e");
     const std::string combined = source + " " + policy;
     EXPECT_EQ(combined.find(".cpp:"), std::string::npos);

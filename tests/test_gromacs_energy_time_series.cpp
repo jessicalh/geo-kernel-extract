@@ -19,23 +19,37 @@
 #include "Trajectory.h"
 #include "TrajectoryProtein.h"
 #include "Types.h"
+#include "DirectionalTestHelpers.h"
 
 #include <gtest/gtest.h>
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
 
 #ifndef NMR_TEST_DATA_DIR
 #error "NMR_TEST_DATA_DIR must be defined"
+#endif
+#ifndef NMR_TEST_PYTHON_EXECUTABLE
+#error "NMR_TEST_PYTHON_EXECUTABLE must be defined"
+#endif
+#ifndef NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT
+#error "NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT must be defined"
 #endif
 
 namespace {
@@ -52,7 +66,479 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
+
+std::unique_ptr<nmr::Protein> MakeDirectionalProtein(
+        const std::vector<nmr::Vec3>& positions) {
+    auto protein = std::make_unique<nmr::Protein>();
+    nmr::Residue residue;
+    residue.type = nmr::AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t residue_index = protein->AddResidue(std::move(residue));
+    auto atom = nmr::Atom::Create(nmr::Element::C);
+    atom->residue_index = residue_index;
+    const size_t atom_index = protein->AddAtom(std::move(atom));
+    protein->MutableResidueAt(residue_index).atom_indices.push_back(atom_index);
+    protein->FinalizeConstruction(positions);
+    protein->AddConformation(positions, "GROMACS external tensor source");
+    return protein;
+}
+
+// GromacsEnergy::vir/pres and both serialized forms are explicitly row-major:
+// XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ.  Do not use Eigen::Map here: Mat3's default
+// column-major storage would transpose a genuinely nonsymmetric source and
+// let a test accidentally bless the wrong external-source layout.
+nmr::Mat3 LoadRowMajor(const double* values) {
+    nmr::Mat3 matrix;
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            matrix(row, col) = values[3 * row + col];
+        }
+    }
+    return matrix;
+}
+
+void StoreRowMajor(const nmr::Mat3& matrix, double* values) {
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            values[3 * row + col] = matrix(row, col);
+        }
+    }
+}
+
+struct DoubleNpy {
+    std::vector<std::size_t> shape;
+    std::vector<double> values;
+};
+
+std::string Trim(std::string value) {
+    const auto is_space = [](unsigned char c) {
+        return std::isspace(c) != 0;
+    };
+    value.erase(value.begin(),
+                std::find_if(value.begin(), value.end(),
+                             [&](char c) { return !is_space(c); }));
+    value.erase(std::find_if(value.rbegin(), value.rend(),
+                             [&](char c) { return !is_space(c); }).base(),
+                value.end());
+    return value;
+}
+
+DoubleNpy ReadFloat64Npy(const fs::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    EXPECT_TRUE(input.is_open()) << path;
+    DoubleNpy array;
+    if (!input.is_open()) return array;
+
+    char magic[6] = {};
+    input.read(magic, sizeof(magic));
+    EXPECT_EQ(std::string(magic, sizeof(magic)),
+              std::string("\x93NUMPY", sizeof(magic))) << path;
+    std::uint8_t major = 0;
+    std::uint8_t minor = 0;
+    input.read(reinterpret_cast<char*>(&major), sizeof(major));
+    input.read(reinterpret_cast<char*>(&minor), sizeof(minor));
+    EXPECT_EQ(major, 1u) << path;
+    EXPECT_EQ(minor, 0u) << path;
+    std::uint16_t header_length = 0;
+    input.read(reinterpret_cast<char*>(&header_length), sizeof(header_length));
+    std::string header(header_length, '\0');
+    input.read(header.data(), static_cast<std::streamsize>(header.size()));
+    EXPECT_NE(header.find("'descr': '<f8'"), std::string::npos) << header;
+    EXPECT_NE(header.find("'fortran_order': False"), std::string::npos)
+        << header;
+
+    const auto shape_key = header.find("'shape': (");
+    if (shape_key == std::string::npos) {
+        ADD_FAILURE() << header;
+        return array;
+    }
+    const auto shape_begin = header.find('(', shape_key);
+    const auto shape_end = header.find(')', shape_begin);
+    if (shape_begin == std::string::npos || shape_end == std::string::npos) {
+        ADD_FAILURE() << header;
+        return array;
+    }
+    std::stringstream shape_stream(
+        header.substr(shape_begin + 1, shape_end - shape_begin - 1));
+    std::string token;
+    std::size_t count = 1;
+    while (std::getline(shape_stream, token, ',')) {
+        token = Trim(token);
+        if (!token.empty()) {
+            const auto dimension =
+                static_cast<std::size_t>(std::stoull(token));
+            array.shape.push_back(dimension);
+            count *= dimension;
+        }
+    }
+    array.values.resize(count);
+    input.read(reinterpret_cast<char*>(array.values.data()),
+               static_cast<std::streamsize>(count * sizeof(double)));
+    EXPECT_EQ(input.gcount(),
+              static_cast<std::streamsize>(count * sizeof(double))) << path;
+    return array;
+}
+
+fs::path FreshDirectionalDirectory(const std::string& suffix) {
+    const fs::path path = fs::temp_directory_path() /
+        ("gromacs_directional_" + std::to_string(::getpid()) + "_" + suffix);
+    std::error_code ec;
+    fs::remove(path / "gromacs_energy.npy", ec);
+    ec.clear();
+    fs::remove(path / "gromacs_energy.h5", ec);
+    ec.clear();
+    fs::remove(path, ec);
+    ec.clear();
+    EXPECT_TRUE(fs::create_directories(path, ec)) << ec.message();
+    return path;
+}
+
+void RemoveDirectionalDirectory(const fs::path& path) {
+    std::error_code ec;
+    EXPECT_TRUE(fs::remove(path / "gromacs_energy.npy", ec)) << ec.message();
+    ec.clear();
+    EXPECT_TRUE(fs::remove(path / "gromacs_energy.h5", ec)) << ec.message();
+    ec.clear();
+    EXPECT_TRUE(fs::remove(path, ec)) << ec.message();
+}
+
+std::vector<double> ExpectedNpyRow(const nmr::GromacsEnergy& energy) {
+    return {
+        energy.coulomb_sr, energy.coulomb_recip, energy.coulomb_14,
+        energy.bond, energy.angle, energy.urey_bradley,
+        energy.proper_dih, energy.improper_dih, energy.cmap_dih,
+        energy.lj_sr, energy.lj_14, energy.disper_corr,
+        energy.potential, energy.kinetic, energy.total_energy,
+        energy.enthalpy, energy.temperature, energy.pressure,
+        energy.volume, energy.density,
+        energy.box_x, energy.box_y, energy.box_z,
+        energy.vir[0], energy.vir[1], energy.vir[2],
+        energy.vir[3], energy.vir[4], energy.vir[5],
+        energy.vir[6], energy.vir[7], energy.vir[8],
+        energy.pres[0], energy.pres[1], energy.pres[2],
+        energy.pres[3], energy.pres[4], energy.pres[5],
+        energy.pres[6], energy.pres[7], energy.pres[8],
+        energy.T_protein, energy.T_non_protein,
+    };
+}
 }  // namespace
+
+
+TEST(GromacsEnergyDirectionalCovariance,
+     ProductionRerunAndExactNpyH5UnderO3) {
+    const std::vector<nmr::Vec3> positions{nmr::Vec3(0.31, -1.7, 2.4)};
+    auto original_protein = MakeDirectionalProtein(positions);
+    nmr::ProteinConformation& original = original_protein->Conformation();
+
+    nmr::GromacsEnergy source;
+    source.time_ps = 12.5;
+    source.coulomb_sr = -113.0;
+    source.coulomb_recip = -29.0;
+    source.coulomb_14 = 4.0;
+    source.bond = 5.0;
+    source.angle = 6.0;
+    source.urey_bradley = 7.0;
+    source.proper_dih = 8.0;
+    source.improper_dih = 9.0;
+    source.cmap_dih = 10.0;
+    source.lj_sr = -41.0;
+    source.lj_14 = -3.0;
+    source.disper_corr = -2.0;
+    source.potential = -139.0;
+    source.kinetic = 51.0;
+    source.total_energy = -88.0;
+    source.enthalpy = -87.5;
+    source.temperature = 301.25;
+    source.pressure = 1.07;
+    source.volume = 125.0;
+    source.density = 998.0;
+    // Only diagonal box lengths are retained by this source schema; an
+    // isotropic cell is the O(3)-closed case.  A general triclinic cell
+    // cannot be reconstructed from these three scalars.
+    source.box_x = source.box_y = source.box_z = 5.0;
+    source.T_protein = 300.5;
+    source.T_non_protein = 301.7;
+
+    // Deliberately nonsymmetric.  A transposed row/column-major load cannot
+    // hide behind the usual symmetric-stress special case.
+    nmr::Mat3 virial;
+    virial << 8.0, -1.5,  0.7,
+              2.4,  5.0,  2.1,
+             -0.8,  3.2,  3.0;
+    nmr::Mat3 pressure;
+    pressure << 1.2,  0.11, -0.07,
+               -0.31, 0.9,   0.04,
+                0.26, 0.18,  1.1;
+    ASSERT_GT((virial - virial.transpose()).norm(), 1.0);
+    ASSERT_GT((pressure - pressure.transpose()).norm(), 0.1);
+    StoreRowMajor(virial, source.vir);
+    StoreRowMajor(pressure, source.pres);
+
+    auto original_result =
+        nmr::GromacsEnergyResult::Compute(original, source);
+    ASSERT_NE(original_result, nullptr);
+
+    constexpr std::uint64_t kTransformSeed = 0x47524f4d41435345ULL;
+    constexpr double kTensorAbsTolerance = 3.0e-13;
+    constexpr double kTensorRelTolerance = 3.0e-14;
+    nmr::Trajectory dummy("", "", "");
+    ASSERT_TRUE(original.AttachResult(std::move(original_result)));
+    auto original_tp = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(original_protein));
+    ASSERT_NE(original_tp, nullptr);
+    auto original_trajectory_result =
+        nmr::GromacsEnergyTimeSeriesTrajectoryResult::Create(*original_tp);
+    ASSERT_NE(original_trajectory_result, nullptr);
+    original_trajectory_result->Compute(
+        original, *original_tp, dummy, 19, 4.5);
+    original_trajectory_result->Finalize(*original_tp, dummy);
+    const fs::path source_h5_path = fs::temp_directory_path() /
+        ("gromacs_directional_" + std::to_string(::getpid()) +
+         "_source.h5");
+    fs::remove(source_h5_path);
+    {
+        HighFive::File file(
+            source_h5_path.string(), HighFive::File::Truncate);
+        original_trajectory_result->WriteH5Group(*original_tp, file);
+    }
+    std::vector<std::size_t> source_frame_indices;
+    std::vector<double> source_frame_times;
+    {
+        HighFive::File file(
+            source_h5_path.string(), HighFive::File::ReadOnly);
+        const auto group = file.getGroup(
+            "/trajectory/gromacs_energy_time_series");
+        group.getDataSet("frame_indices").read(source_frame_indices);
+        group.getDataSet("frame_times").read(source_frame_times);
+    }
+    ASSERT_EQ(source_frame_indices, (std::vector<std::size_t>{19u}));
+    ASSERT_EQ(source_frame_times, (std::vector<double>{4.5}));
+    for (const bool improper : {false, true}) {
+        const auto transform = nmr::test::directional::SeededTransform(
+            kTransformSeed, improper);
+        const auto moved_positions =
+            nmr::test::directional::Positions(transform, positions);
+        auto moved_tp = nmr::TrajectoryProtein::CreateForTesting(
+            MakeDirectionalProtein(moved_positions));
+        ASSERT_NE(moved_tp, nullptr);
+        auto moved = moved_tp->TickConformation(moved_positions);
+        ASSERT_NE(moved, nullptr);
+
+        nmr::GromacsEnergy moved_source = source;
+        const nmr::Mat3 expected_virial =
+            nmr::test::directional::EvenRank2(transform, virial);
+        const nmr::Mat3 expected_pressure =
+            nmr::test::directional::EvenRank2(transform, pressure);
+        StoreRowMajor(expected_virial, moved_source.vir);
+        StoreRowMajor(expected_pressure, moved_source.pres);
+
+        auto moved_result =
+            nmr::GromacsEnergyResult::Compute(*moved, moved_source);
+        ASSERT_NE(moved_result, nullptr);
+        const auto& emitted = moved_result->Energy();
+        const nmr::Mat3 emitted_virial = LoadRowMajor(emitted.vir);
+        const nmr::Mat3 emitted_pressure = LoadRowMajor(emitted.pres);
+        EXPECT_TRUE(nmr::test::directional::NearMatrix(
+            emitted_virial, expected_virial,
+            kTensorAbsTolerance, kTensorRelTolerance));
+        EXPECT_TRUE(nmr::test::directional::NearMatrix(
+            emitted_pressure, expected_pressure,
+            kTensorAbsTolerance, kTensorRelTolerance));
+
+        // Representative scalar channels and the isotropic box remain
+        // rotation/translation invariant when the source is transformed
+        // consistently before the owning Compute() call.
+        EXPECT_DOUBLE_EQ(emitted.coulomb_sr, source.coulomb_sr);
+        EXPECT_DOUBLE_EQ(emitted.total_energy, source.total_energy);
+        EXPECT_DOUBLE_EQ(emitted.temperature, source.temperature);
+        EXPECT_DOUBLE_EQ(emitted.volume, source.volume);
+        EXPECT_DOUBLE_EQ(emitted.box_x, source.box_x);
+        EXPECT_DOUBLE_EQ(emitted.box_y, source.box_y);
+        EXPECT_DOUBLE_EQ(emitted.box_z, source.box_z);
+        EXPECT_DOUBLE_EQ(emitted.T_protein, source.T_protein);
+        EXPECT_DOUBLE_EQ(emitted.T_non_protein, source.T_non_protein);
+
+        // Static serialization boundary: production writer, exact filename,
+        // exact (1,43) shape and explicit row-major tensor reconstruction.
+        const fs::path output_dir = FreshDirectionalDirectory(
+            improper ? "improper" : "proper");
+        ASSERT_EQ(moved_result->WriteFeatures(*moved, output_dir.string()), 1);
+        ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                      NMR_TEST_PYTHON_EXECUTABLE,
+                      NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                      {output_dir / "gromacs_energy.npy"}),
+                  0);
+        const DoubleNpy npy =
+            ReadFloat64Npy(output_dir / "gromacs_energy.npy");
+        ASSERT_EQ(npy.shape,
+                  (std::vector<std::size_t>{1u, 43u}));
+        const auto expected_row = ExpectedNpyRow(moved_source);
+        ASSERT_EQ(npy.values.size(), expected_row.size());
+        for (std::size_t column = 0; column < expected_row.size(); ++column) {
+            SCOPED_TRACE("gromacs_energy.npy column=" +
+                         std::to_string(column));
+            EXPECT_DOUBLE_EQ(npy.values[column], expected_row[column]);
+        }
+        EXPECT_TRUE(nmr::test::directional::NearMatrix(
+            LoadRowMajor(npy.values.data() + 23), expected_virial,
+            kTensorAbsTolerance, kTensorRelTolerance));
+        EXPECT_TRUE(nmr::test::directional::NearMatrix(
+            LoadRowMajor(npy.values.data() + 32), expected_pressure,
+            kTensorAbsTolerance, kTensorRelTolerance));
+        // All non-tensor columns, including isotropic Box-X/Y/Z, remain
+        // exact invariants under both proper and improper transforms.
+        const auto source_row = ExpectedNpyRow(source);
+        for (std::size_t column = 0; column < 23; ++column) {
+            EXPECT_DOUBLE_EQ(npy.values[column], source_row[column])
+                << "gromacs_energy.npy invariant column=" << column;
+        }
+        EXPECT_DOUBLE_EQ(npy.values[41], source_row[41]);
+        EXPECT_DOUBLE_EQ(npy.values[42], source_row[42]);
+
+        // Attach the freshly rerun production result and exercise the real
+        // trajectory rollup/H5 writer on the transformed input.
+        ASSERT_TRUE(moved->AttachResult(std::move(moved_result)));
+        auto trajectory_result =
+            nmr::GromacsEnergyTimeSeriesTrajectoryResult::Create(*moved_tp);
+        ASSERT_NE(trajectory_result, nullptr);
+        trajectory_result->Compute(*moved, *moved_tp, dummy, 19, 4.5);
+        trajectory_result->Finalize(*moved_tp, dummy);
+        const fs::path h5_path = output_dir / "gromacs_energy.h5";
+        {
+            HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+            trajectory_result->WriteH5Group(*moved_tp, file);
+        }
+        {
+            HighFive::File h5(h5_path.string(), HighFive::File::ReadOnly);
+            auto group = h5.getGroup(
+                "/trajectory/gromacs_energy_time_series");
+            std::vector<std::vector<double>> h5_virial;
+            std::vector<std::vector<double>> h5_pressure;
+            group.getDataSet("virial").read(h5_virial);
+            group.getDataSet("pressure_tensor").read(h5_pressure);
+            ASSERT_EQ(h5_virial.size(), 1u);
+            ASSERT_EQ(h5_pressure.size(), 1u);
+            ASSERT_EQ(h5_virial[0].size(), 9u);
+            ASSERT_EQ(h5_pressure[0].size(), 9u);
+            EXPECT_TRUE(nmr::test::directional::NearMatrix(
+                LoadRowMajor(h5_virial[0].data()), expected_virial,
+                kTensorAbsTolerance, kTensorRelTolerance));
+            EXPECT_TRUE(nmr::test::directional::NearMatrix(
+                LoadRowMajor(h5_pressure[0].data()), expected_pressure,
+                kTensorAbsTolerance, kTensorRelTolerance));
+            std::vector<double> box_x;
+            std::vector<double> box_y;
+            std::vector<double> box_z;
+            group.getDataSet("box_x").read(box_x);
+            group.getDataSet("box_y").read(box_y);
+            group.getDataSet("box_z").read(box_z);
+            ASSERT_EQ(box_x.size(), 1u);
+            ASSERT_EQ(box_y.size(), 1u);
+            ASSERT_EQ(box_z.size(), 1u);
+            EXPECT_DOUBLE_EQ(box_x[0], source.box_x);
+            EXPECT_DOUBLE_EQ(box_y[0], source.box_y);
+            EXPECT_DOUBLE_EQ(box_z[0], source.box_z);
+            for (const char* name : {"box_x", "box_y", "box_z"}) {
+                auto dataset = group.getDataSet(name);
+                std::string frame;
+                std::string parity;
+                std::string law;
+                dataset.getAttribute("coordinate_frame").read(frame);
+                dataset.getAttribute("parity").read(parity);
+                dataset.getAttribute("transformation").read(law);
+                EXPECT_EQ(frame, "gromacs_simulation_box_axes") << name;
+                EXPECT_EQ(parity, "mixed") << name;
+                EXPECT_NE(law.find("no closed O(3) law"),
+                          std::string::npos) << name;
+            }
+            for (const char* name : {"virial", "pressure_tensor"}) {
+                auto dataset = group.getDataSet(name);
+                std::string basis;
+                std::string order;
+                std::string frame;
+                std::string parity;
+                std::string law;
+                std::string alias_frame;
+                std::string alias_parity;
+                std::string alias_law;
+                std::string structural_zeros;
+                std::string e3nn_export;
+                dataset.getAttribute("tensor_basis").read(basis);
+                dataset.getAttribute("tensor_component_order").read(order);
+                dataset.getAttribute("tensor_frame").read(frame);
+                dataset.getAttribute("tensor_parity").read(parity);
+                dataset.getAttribute("tensor_transformation").read(law);
+                dataset.getAttribute("coordinate_frame").read(alias_frame);
+                dataset.getAttribute("parity").read(alias_parity);
+                dataset.getAttribute("transformation").read(alias_law);
+                dataset.getAttribute("structural_zero_components").read(
+                    structural_zeros);
+                dataset.getAttribute("e3nn_export").read(e3nn_export);
+                EXPECT_EQ(basis, "cartesian_matrix_row_major") << name;
+                EXPECT_EQ(order, "XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ") << name;
+                EXPECT_EQ(frame, "gromacs_simulation_cartesian_xyz") << name;
+                EXPECT_EQ(parity, "even") << name;
+                EXPECT_EQ(law, "even_rank2: T'=R T R^T") << name;
+                EXPECT_EQ(alias_frame, frame) << name;
+                EXPECT_EQ(alias_parity, parity) << name;
+                EXPECT_EQ(alias_law, law) << name;
+                EXPECT_EQ(structural_zeros, "none") << name;
+                EXPECT_EQ(
+                    e3nn_export,
+                    "decompose the row-major Cartesian matrix into "
+                    "project-native T0/T1/T2 before explicit conversion "
+                    "to e3nn") << name;
+            }
+            const std::vector<std::pair<const char*, double>>
+                scalar_invariants = {
+                    {"coulomb_sr", source.coulomb_sr},
+                    {"coulomb_recip", source.coulomb_recip},
+                    {"coulomb_14", source.coulomb_14},
+                    {"bond", source.bond},
+                    {"angle", source.angle},
+                    {"urey_bradley", source.urey_bradley},
+                    {"proper_dih", source.proper_dih},
+                    {"improper_dih", source.improper_dih},
+                    {"cmap_dih", source.cmap_dih},
+                    {"lj_sr", source.lj_sr},
+                    {"lj_14", source.lj_14},
+                    {"disper_corr", source.disper_corr},
+                    {"potential", source.potential},
+                    {"kinetic", source.kinetic},
+                    {"total_energy", source.total_energy},
+                    {"enthalpy", source.enthalpy},
+                    {"temperature", source.temperature},
+                    {"pressure", source.pressure},
+                    {"volume", source.volume},
+                    {"density", source.density},
+                    {"box_x", source.box_x},
+                    {"box_y", source.box_y},
+                    {"box_z", source.box_z},
+                    {"T_protein", source.T_protein},
+                    {"T_non_protein", source.T_non_protein},
+                    {"energy_frame_times_ps", source.time_ps},
+                };
+            for (const auto& [name, expected] : scalar_invariants) {
+                std::vector<double> values;
+                group.getDataSet(name).read(values);
+                ASSERT_EQ(values.size(), 1u) << name;
+                EXPECT_DOUBLE_EQ(values[0], expected) << name;
+            }
+            std::vector<std::uint8_t> attached;
+            group.getDataSet("source_attached_per_frame").read(attached);
+            EXPECT_EQ(attached, (std::vector<std::uint8_t>{1u}));
+            std::vector<std::size_t> frame_indices;
+            std::vector<double> frame_times;
+            group.getDataSet("frame_indices").read(frame_indices);
+            group.getDataSet("frame_times").read(frame_times);
+            EXPECT_EQ(frame_indices, source_frame_indices);
+            EXPECT_EQ(frame_times, source_frame_times);
+        }
+        RemoveDirectionalDirectory(output_dir);
+    }
+    EXPECT_TRUE(fs::remove(source_h5_path));
+}
 
 
 // ============================================================================

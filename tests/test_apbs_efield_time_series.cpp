@@ -125,14 +125,18 @@ TEST(ApbsEfieldTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(layout, "x,y,z");
     EXPECT_EQ(directional_scope,
         "irrep_layout,normalization,parity,units describe xyz only; "
-        "apbs_grid_*_per_frame datasets carry per-dataset lab-axis contracts");
+        "clamp_* and apbs_grid_*_per_frame datasets carry per-dataset "
+        "scalar/lab-axis contracts");
     std::string xyz_frame, xyz_transformation, xyz_parity;
     ds.getAttribute("coordinate_frame").read(xyz_frame);
     ds.getAttribute("transformation").read(xyz_transformation);
     ds.getAttribute("parity").read(xyz_parity);
     EXPECT_EQ(xyz_frame, "conformation_cartesian_xyz");
     EXPECT_EQ(xyz_transformation,
-              "polar_vector: v'=R v; translation invariant");
+              "continuum polar_vector: v'=R v; translation invariant. The "
+              "live axis-aligned finite-difference APBS solve has no exact "
+              "O(3) law; transformed production reruns use the recorded "
+              "1.8e-2 V/Angstrom absolute + 5e-2 relative finite-grid envelope");
     EXPECT_EQ(xyz_parity, "1o");
 
     auto source_ds = grp.getDataSet("source_attached_per_frame");

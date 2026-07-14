@@ -3,6 +3,7 @@
 #include "PdbFileReader.h"
 #include "MopacResult.h"
 #include "RuntimeEnvironment.h"
+#include "DirectionalTestHelpers.h"
 #include <filesystem>
 #include <cmath>
 #include <algorithm>
@@ -16,6 +17,13 @@
 #include <vector>
 
 using namespace nmr;
+
+#ifndef NMR_TEST_PYTHON_EXECUTABLE
+#error "NMR_TEST_PYTHON_EXECUTABLE must be defined"
+#endif
+#ifndef NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT
+#error "NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT must be defined"
+#endif
 
 namespace {
 
@@ -239,6 +247,13 @@ TEST_F(MopacResultTest, AtomicOrbitalPopulationTotalsWrittenFromSyntheticRow) {
     std::filesystem::create_directories(out_dir);
 
     result.WriteFeatures(conf, out_dir.string());
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  {out_dir / "mopac_global.npy",
+                   out_dir / "mopac_atom_populations.npy",
+                   out_dir / "mopac_atomic_orbital_populations.npy"}),
+              0);
 
     auto raw = ReadNpy(out_dir / "mopac_atomic_orbital_populations.npy");
     auto totals = ReadNpy(out_dir / "mopac_atomic_orbital_population_totals.npy");

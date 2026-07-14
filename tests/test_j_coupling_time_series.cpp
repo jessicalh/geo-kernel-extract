@@ -7,6 +7,7 @@
 
 #include "AminoAcidType.h"
 #include "CalculatorConfig.h"
+#include "DirectionalTestHelpers.h"
 #include "GeometryResult.h"
 #include "JCouplingTimeSeriesTrajectoryResult.h"
 #include "OperationLog.h"
@@ -29,12 +30,14 @@
 #include <highfive/H5Group.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -76,7 +79,381 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
     return config;
 }
 
+template <typename T>
+std::vector<T> ReadH5Flat(const std::string& path,
+                          const std::string& dataset,
+                          std::vector<std::size_t>* dimensions = nullptr) {
+    HighFive::File file(path, HighFive::File::ReadOnly);
+    auto data_set = file.getDataSet(dataset);
+    const auto dims = data_set.getSpace().getDimensions();
+    if (dimensions) *dimensions = dims;
+    const std::size_t count = std::accumulate(
+        dims.begin(), dims.end(), std::size_t{1},
+        std::multiplies<std::size_t>());
+    std::vector<T> values(count);
+    if (!values.empty()) data_set.read(values.data());
+    return values;
+}
+
+std::string FreshH5Path(const std::string& stem) {
+    const std::string path = nmr::test::TestEnvironment::TempPath(stem);
+    (void)std::remove(path.c_str());
+    return path;
+}
+
+double IndependentSignedDihedral(const nmr::Vec3& p1,
+                                 const nmr::Vec3& p2,
+                                 const nmr::Vec3& p3,
+                                 const nmr::Vec3& p4) {
+    const nmr::Vec3 b1 = p2 - p1;
+    const nmr::Vec3 b2 = p3 - p2;
+    const nmr::Vec3 b3 = p4 - p3;
+    if (b2.norm() < 1.0e-10) return std::nan("");
+    const nmr::Vec3 n1 = b1.cross(b2);
+    const nmr::Vec3 n2 = b2.cross(b3);
+    if (n1.norm() < 1.0e-10 || n2.norm() < 1.0e-10)
+        return std::nan("");
+    const nmr::Vec3 m1 = n1.cross(b2.normalized());
+    return std::atan2(m1.dot(n2), n1.dot(n2));
+}
+
+double IndependentKarplus(double A, double B, double C, double theta) {
+    if (!std::isfinite(theta)) return std::nan("");
+    const double c = std::cos(theta);
+    return A * c * c + B * c + C;
+}
+
+struct JChannel {
+    const char* name;
+    enum class Geometry {
+        Phi,
+        NCgamma,
+        CprimeCgamma,
+        HalphaHbeta2,
+        HalphaHbeta3,
+    } geometry;
+    double A;
+    double B;
+    double C;
+    double offset;
+    bool reflection_invariant;
+};
+
+const std::array<JChannel, 9> kJChannels{{
+    {"J_HN_Halpha", JChannel::Geometry::Phi,
+     nmr::KARPLUS_HN_HA_A, nmr::KARPLUS_HN_HA_B,
+     nmr::KARPLUS_HN_HA_C, nmr::KARPLUS_HN_HA_THETA, false},
+    {"J_HN_Halpha_Vogeli", JChannel::Geometry::Phi,
+     nmr::KARPLUS_HN_HA_VOGELI_A, nmr::KARPLUS_HN_HA_VOGELI_B,
+     nmr::KARPLUS_HN_HA_VOGELI_C,
+     nmr::KARPLUS_HN_HA_VOGELI_THETA, false},
+    {"J_HN_Cbeta", JChannel::Geometry::Phi,
+     nmr::KARPLUS_HN_CB_A, nmr::KARPLUS_HN_CB_B,
+     nmr::KARPLUS_HN_CB_C, nmr::KARPLUS_HN_CB_THETA, false},
+    {"J_HN_Cprime", JChannel::Geometry::Phi,
+     nmr::KARPLUS_HN_CP_A, nmr::KARPLUS_HN_CP_B,
+     nmr::KARPLUS_HN_CP_C, nmr::KARPLUS_HN_CP_THETA, true},
+    {"J_Halpha_Cprime", JChannel::Geometry::Phi,
+     nmr::KARPLUS_HA_CP_A, nmr::KARPLUS_HA_CP_B,
+     nmr::KARPLUS_HA_CP_C, nmr::KARPLUS_HA_CP_THETA, false},
+    {"J_N_Cgamma", JChannel::Geometry::NCgamma,
+     nmr::KARPLUS_N_CG_A, nmr::KARPLUS_N_CG_B,
+     nmr::KARPLUS_N_CG_C, 0.0, true},
+    {"J_Cprime_Cgamma", JChannel::Geometry::CprimeCgamma,
+     nmr::KARPLUS_CP_CG_A, nmr::KARPLUS_CP_CG_B,
+     nmr::KARPLUS_CP_CG_C, 0.0, true},
+    {"J_Halpha_Hbeta2", JChannel::Geometry::HalphaHbeta2,
+     nmr::KARPLUS_HA_HB_A, nmr::KARPLUS_HA_HB_B,
+     nmr::KARPLUS_HA_HB_C, 0.0, true},
+    {"J_Halpha_Hbeta3", JChannel::Geometry::HalphaHbeta3,
+     nmr::KARPLUS_HA_HB_A, nmr::KARPLUS_HA_HB_B,
+     nmr::KARPLUS_HA_HB_C, 0.0, true},
+}};
+
+double IndependentJForFiniteSerializedValue(
+        const JChannel& channel,
+        const nmr::Protein& protein,
+        const nmr::ProteinConformation& conf,
+        std::size_t residue_index) {
+    const auto& residue = protein.ResidueAt(residue_index);
+    double angle = std::nan("");
+    switch (channel.geometry) {
+    case JChannel::Geometry::Phi: {
+        const auto previous = protein.BackbonePredecessor(residue_index);
+        if (!previous) return std::nan("");
+        const auto& prev_residue = protein.ResidueAt(*previous);
+        if (prev_residue.C == nmr::Residue::NONE ||
+            residue.N == nmr::Residue::NONE ||
+            residue.CA == nmr::Residue::NONE ||
+            residue.C == nmr::Residue::NONE)
+            return std::nan("");
+        angle = IndependentSignedDihedral(
+            conf.PositionAt(prev_residue.C), conf.PositionAt(residue.N),
+            conf.PositionAt(residue.CA), conf.PositionAt(residue.C));
+        break;
+    }
+    case JChannel::Geometry::NCgamma: {
+        if (!residue.chi[0].Valid()) return std::nan("");
+        const auto& chi = residue.chi[0];
+        angle = IndependentSignedDihedral(
+            conf.PositionAt(chi.a[0]), conf.PositionAt(chi.a[1]),
+            conf.PositionAt(chi.a[2]), conf.PositionAt(chi.a[3]));
+        break;
+    }
+    case JChannel::Geometry::CprimeCgamma: {
+        if (!residue.chi[0].Valid() ||
+            residue.C == nmr::Residue::NONE ||
+            residue.CA == nmr::Residue::NONE)
+            return std::nan("");
+        const auto& chi = residue.chi[0];
+        angle = IndependentSignedDihedral(
+            conf.PositionAt(residue.C), conf.PositionAt(residue.CA),
+            conf.PositionAt(chi.a[2]), conf.PositionAt(chi.a[3]));
+        break;
+    }
+    case JChannel::Geometry::HalphaHbeta2:
+    case JChannel::Geometry::HalphaHbeta3: {
+        if (residue.HA == nmr::Residue::NONE ||
+            residue.CA == nmr::Residue::NONE ||
+            residue.CB == nmr::Residue::NONE)
+            return std::nan("");
+        std::size_t single_hb = nmr::Residue::NONE;
+        std::size_t hb2 = nmr::Residue::NONE;
+        std::size_t hb3 = nmr::Residue::NONE;
+        std::size_t hb1_count = 0;
+        for (const std::size_t atom_index : residue.atom_indices) {
+            const auto& name = protein.AtomAt(atom_index).pdb_atom_name;
+            if (name == "HB") single_hb = atom_index;
+            else if (name == "HB1") ++hb1_count;
+            else if (name == "HB2") hb2 = atom_index;
+            else if (name == "HB3") hb3 = atom_index;
+        }
+        std::size_t selected = nmr::Residue::NONE;
+        if (single_hb != nmr::Residue::NONE &&
+            hb2 == nmr::Residue::NONE && hb3 == nmr::Residue::NONE) {
+            selected = single_hb;
+        } else if (hb1_count == 0 && hb2 != nmr::Residue::NONE &&
+                   hb3 != nmr::Residue::NONE) {
+            selected = channel.geometry == JChannel::Geometry::HalphaHbeta2
+                ? hb2 : hb3;
+        }
+        if (selected == nmr::Residue::NONE) return std::nan("");
+        angle = IndependentSignedDihedral(
+            conf.PositionAt(residue.HA), conf.PositionAt(residue.CA),
+            conf.PositionAt(residue.CB), conf.PositionAt(selected));
+        break;
+    }
+    }
+    return IndependentKarplus(
+        channel.A, channel.B, channel.C, angle + channel.offset);
+}
+
+void ExpectSameIncludingNaN(const std::vector<double>& actual,
+                            const std::vector<double>& expected,
+                            double abs_tolerance,
+                            const std::string& name) {
+    ASSERT_EQ(actual.size(), expected.size()) << name;
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        SCOPED_TRACE(name + " index=" + std::to_string(index));
+        if (std::isnan(expected[index])) {
+            EXPECT_TRUE(std::isnan(actual[index]));
+        } else {
+            ASSERT_TRUE(std::isfinite(actual[index]));
+            EXPECT_NEAR(actual[index], expected[index], abs_tolerance);
+        }
+    }
+}
+
 }  // namespace
+
+
+TEST(JCouplingTimeSeries,
+     DirectionalKarplusRerunO3AndSerializedH5) {
+    using nmr::test::directional::Positions;
+    using nmr::test::directional::SeededTransform;
+
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    const std::string pdb = nmr::test::TestEnvironment::UbqProtonated();
+    if (pdb.empty() || !fs::exists(pdb))
+        GTEST_SKIP() << "1UBQ protonated fixture unavailable";
+
+    auto source_loaded = nmr::BuildFromProtonatedPdb(pdb);
+    ASSERT_TRUE(source_loaded.Ok()) << source_loaded.error;
+    auto source_tp = nmr::TrajectoryProtein::CreateForTesting(
+        std::move(source_loaded.protein));
+    ASSERT_NE(source_tp, nullptr);
+    auto source_result =
+        nmr::JCouplingTimeSeriesTrajectoryResult::Create(*source_tp);
+    ASSERT_NE(source_result, nullptr);
+    nmr::Trajectory dummy("", "", "");
+    source_result->Compute(source_tp->CanonicalConformation(), *source_tp,
+                           dummy, 41, 2.75);
+    source_result->Finalize(*source_tp, dummy);
+    const std::string source_path =
+        FreshH5Path("j_coupling_directional_source.h5");
+    {
+        HighFive::File file(source_path, HighFive::File::Truncate);
+        source_result->WriteH5Group(*source_tp, file);
+    }
+
+    const std::size_t residue_count = source_tp->ProteinRef().ResidueCount();
+    const std::string group = "/trajectory/j_coupling_time_series/";
+    {
+        HighFive::File file(source_path, HighFive::File::ReadOnly);
+        for (const auto& channel : kJChannels) {
+            auto dataset = file.getDataSet(group + channel.name);
+            std::string frame;
+            std::string parity;
+            std::string law;
+            dataset.getAttribute("coordinate_frame").read(frame);
+            dataset.getAttribute("parity").read(parity);
+            dataset.getAttribute("transformation").read(law);
+            if (channel.reflection_invariant) {
+                EXPECT_EQ(frame, "intrinsic_karplus_scalar")
+                    << channel.name;
+                EXPECT_EQ(parity, "even") << channel.name;
+                EXPECT_NE(law.find("reflection-invariant"),
+                          std::string::npos) << channel.name;
+            } else {
+                EXPECT_EQ(frame,
+                          "intrinsic_signed_dihedral_with_fixed_phase_offset")
+                    << channel.name;
+                EXPECT_EQ(parity, "mixed") << channel.name;
+                EXPECT_NE(law.find("no homogeneous improper-transform law"),
+                          std::string::npos) << channel.name;
+            }
+        }
+    }
+    std::array<std::vector<double>, kJChannels.size()> source_values;
+    for (std::size_t ci = 0; ci < kJChannels.size(); ++ci) {
+        std::vector<std::size_t> dims;
+        source_values[ci] = ReadH5Flat<double>(
+            source_path, group + kJChannels[ci].name, &dims);
+        ASSERT_EQ(dims, (std::vector<std::size_t>{residue_count, 1u}))
+            << kJChannels[ci].name;
+    }
+
+    // The transform seed and tolerance are freeze-recorded. The tolerance is
+    // set by double-precision cross products/atan2 after a translated O(3)
+    // rerun; no scientific approximation enters this calculator.
+    constexpr std::uint64_t kTransformSeed = 0x4A434F55504C494EULL;
+    constexpr double kKarplusAbsTolerance = 3.0e-11;
+    std::array<std::size_t, kJChannels.size()> improper_changes{};
+
+    for (const bool improper : {false, true}) {
+        auto moved_loaded = nmr::BuildFromProtonatedPdb(pdb);
+        ASSERT_TRUE(moved_loaded.Ok()) << moved_loaded.error;
+        auto moved_tp = nmr::TrajectoryProtein::CreateForTesting(
+            std::move(moved_loaded.protein));
+        ASSERT_NE(moved_tp, nullptr);
+        ASSERT_EQ(moved_tp->AtomCount(), source_tp->AtomCount());
+        ASSERT_EQ(moved_tp->ProteinRef().ResidueCount(), residue_count);
+        const auto transform = SeededTransform(kTransformSeed, improper);
+        auto moved_conf = moved_tp->TickConformation(
+            Positions(transform,
+                      source_tp->CanonicalConformation().Positions()));
+        auto moved_result =
+            nmr::JCouplingTimeSeriesTrajectoryResult::Create(*moved_tp);
+        ASSERT_NE(moved_result, nullptr);
+        moved_result->Compute(*moved_conf, *moved_tp, dummy, 41, 2.75);
+        moved_result->Finalize(*moved_tp, dummy);
+        const std::string moved_path = FreshH5Path(
+            improper ? "j_coupling_directional_improper.h5" :
+                       "j_coupling_directional_proper.h5");
+        {
+            HighFive::File file(moved_path, HighFive::File::Truncate);
+            moved_result->WriteH5Group(*moved_tp, file);
+        }
+
+        for (std::size_t ci = 0; ci < kJChannels.size(); ++ci) {
+            const auto& channel = kJChannels[ci];
+            std::vector<std::size_t> dims;
+            const auto moved_values = ReadH5Flat<double>(
+                moved_path, group + channel.name, &dims);
+            ASSERT_EQ(dims,
+                      (std::vector<std::size_t>{residue_count, 1u}))
+                << channel.name;
+
+            // Independently reconstruct every finite serialized value from
+            // the transformed coordinates. This is deliberately a fresh
+            // coordinate-level Karplus calculation, not a transformed copy
+            // of the source output.
+            std::size_t finite_count = 0;
+            for (std::size_t ri = 0; ri < residue_count; ++ri) {
+                SCOPED_TRACE(std::string(channel.name) +
+                             " residue=" + std::to_string(ri) +
+                             (improper ? " improper" : " proper"));
+                if (!std::isfinite(moved_values[ri])) {
+                    EXPECT_TRUE(std::isnan(moved_values[ri]));
+                    continue;
+                }
+                ++finite_count;
+                const double expected =
+                    IndependentJForFiniteSerializedValue(
+                        channel, moved_tp->ProteinRef(), *moved_conf, ri);
+                ASSERT_TRUE(std::isfinite(expected));
+                EXPECT_NEAR(moved_values[ri], expected,
+                            kKarplusAbsTolerance);
+            }
+            EXPECT_GT(finite_count, 0u) << channel.name;
+
+            if (!improper || channel.reflection_invariant) {
+                ExpectSameIncludingNaN(
+                    moved_values, source_values[ci],
+                    kKarplusAbsTolerance, channel.name);
+            } else {
+                for (std::size_t ri = 0; ri < residue_count; ++ri) {
+                    if (std::isfinite(source_values[ci][ri]) &&
+                        std::isfinite(moved_values[ri]) &&
+                        std::abs(moved_values[ri] - source_values[ci][ri]) >
+                            1.0e-6) {
+                        ++improper_changes[ci];
+                    }
+                }
+            }
+        }
+
+        // Topology/mask/provenance arrays are coordinate-independent and
+        // must retain exact row identity at the serialized boundary.
+        for (const char* name : {
+                 "J_HN_Halpha_exists", "J_HN_Cbeta_exists",
+                 "J_HN_Cprime_exists", "J_Halpha_Cprime_exists",
+                 "J_chi1_exists", "J_N_Cgamma_exists",
+                 "J_Cprime_Cgamma_exists", "J_Halpha_Hbeta_exists",
+                 "source_attached_per_frame"}) {
+            EXPECT_EQ(ReadH5Flat<std::uint8_t>(moved_path, group + name),
+                      ReadH5Flat<std::uint8_t>(source_path, group + name))
+                << name;
+        }
+        EXPECT_EQ(ReadH5Flat<std::int32_t>(
+                      moved_path, group + "residue_index_per_atom"),
+                  ReadH5Flat<std::int32_t>(
+                      source_path, group + "residue_index_per_atom"));
+        EXPECT_EQ(ReadH5Flat<std::size_t>(
+                      moved_path, group + "frame_indices"),
+                  ReadH5Flat<std::size_t>(
+                      source_path, group + "frame_indices"));
+        ExpectSameIncludingNaN(
+            ReadH5Flat<double>(moved_path, group + "frame_times"),
+            ReadH5Flat<double>(source_path, group + "frame_times"),
+            0.0, "frame_times");
+
+        EXPECT_EQ(std::remove(moved_path.c_str()), 0);
+    }
+
+    // A reflection negates every signed dihedral. For offset L=0,
+    // cos(-theta)=cos(theta), so J is invariant (checked above for
+    // J_HN_Cprime and all four chi-derived datasets). With fixed
+    // L=+/-pi/3, cos(-theta+L) is not cos(theta+L) in general. Each of
+    // the four affected serialized channels must therefore demonstrate a
+    // real change, preventing an accidental scalar-even metadata claim.
+    for (std::size_t ci = 0; ci < kJChannels.size(); ++ci) {
+        if (!kJChannels[ci].reflection_invariant) {
+            EXPECT_GT(improper_changes[ci], 0u) << kJChannels[ci].name;
+        }
+    }
+    EXPECT_EQ(std::remove(source_path.c_str()), 0);
+}
 
 
 TEST(JCouplingTimeSeries, Frame0Semantics) {

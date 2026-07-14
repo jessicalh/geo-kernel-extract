@@ -2,8 +2,10 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <unistd.h>
@@ -21,9 +23,17 @@
 #include "MopacResult.h"
 #include "MolecularGraphResult.h"
 #include "ProtonationDetectionResult.h"
+#include "DirectionalTestHelpers.h"
 
 namespace fs = std::filesystem;
 using namespace nmr;
+
+#ifndef NMR_TEST_PYTHON_EXECUTABLE
+#error "NMR_TEST_PYTHON_EXECUTABLE must be defined"
+#endif
+#ifndef NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT
+#error "NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT must be defined"
+#endif
 
 namespace {
 
@@ -51,6 +61,69 @@ std::vector<double> ReadFloat64Npy(const fs::path& path,
     std::vector<double> values(expected_values);
     std::memcpy(values.data(), bytes.data(), bytes.size());
     return values;
+}
+
+void WriteOrcaTensorMatrix(std::ofstream& out, const Mat3& tensor) {
+    for (int row = 0; row < 3; ++row) {
+        out << ' ' << tensor(row, 0) << ' ' << tensor(row, 1) << ' '
+            << tensor(row, 2) << '\n';
+    }
+}
+
+fs::path WriteTransformedOrcaSource(
+        const ProteinConformation& source,
+        const nmr::test::directional::OrthogonalTransform& transform,
+        const std::string& tag) {
+    const fs::path path = fs::temp_directory_path() /
+        ("directional_orca_" + tag + "_" + std::to_string(::getpid()) +
+         ".out");
+    std::ofstream out(path);
+    EXPECT_TRUE(out.is_open()) << path;
+    out << std::setprecision(17);
+    out << "CHEMICAL SHIELDINGS (ppm)\n";
+    for (size_t i = 0; i < source.AtomCount(); ++i) {
+        const auto& atom = source.ProteinRef().AtomAt(i);
+        const auto& ca = source.AtomAt(i);
+        out << " Nucleus " << i << SymbolForElement(atom.element) << " :\n";
+        out << "Diamagnetic contribution to the shielding tensor (ppm) :\n";
+        WriteOrcaTensorMatrix(out, nmr::test::directional::EvenRank2(
+            transform, ca.orca_shielding_diamagnetic));
+        out << "Paramagnetic contribution to the shielding tensor (ppm):\n";
+        WriteOrcaTensorMatrix(out, nmr::test::directional::EvenRank2(
+            transform, ca.orca_shielding_paramagnetic));
+        out << "Total shielding tensor (ppm):\n";
+        WriteOrcaTensorMatrix(out, nmr::test::directional::EvenRank2(
+            transform, ca.orca_shielding_total));
+    }
+    return path;
+}
+
+void CopyTransformedMutationInputs(
+        ProteinConformation& destination,
+        const ProteinConformation& source,
+        const nmr::test::directional::OrthogonalTransform& transform,
+        bool include_apbs) {
+    ASSERT_EQ(destination.AtomCount(), source.AtomCount());
+    for (size_t i = 0; i < source.AtomCount(); ++i) {
+        auto& dst = destination.MutableAtomAt(i);
+        const auto& src = source.AtomAt(i);
+        dst.partial_charge = src.partial_charge;
+        dst.mopac_charge = src.mopac_charge;
+        dst.role = src.role;
+        dst.is_backbone = src.is_backbone;
+        if (include_apbs) {
+            dst.apbs_efield =
+                nmr::test::directional::Polar(transform, src.apbs_efield);
+            dst.apbs_efg = nmr::test::directional::EvenRank2(
+                transform, src.apbs_efg);
+            dst.apbs_efg_spherical =
+                SphericalTensor::Decompose(dst.apbs_efg);
+        }
+    }
+    if (include_apbs) {
+        destination.ForceAttachResultForTesting(
+            std::make_unique<ApbsFieldResult>());
+    }
 }
 
 }  // namespace
@@ -144,6 +217,365 @@ TEST_F(MutationDeltaTest, ComputeSucceeds) {
     auto delta = MutationDeltaResult::Compute(wt_conf, ala_conf);
     ASSERT_NE(delta, nullptr);
     ASSERT_TRUE(wt_conf.AttachResult(std::move(delta)));
+}
+
+
+TEST_F(MutationDeltaTest,
+       OrcaAndMutationDirectionalSourcesRerunUnderProperAndImproperO3) {
+    auto& wt_original = wt_.protein->Conformation();
+    auto& mut_original = ala_.protein->Conformation();
+    auto baseline = MutationDeltaResult::Compute(wt_original, mut_original);
+    ASSERT_NE(baseline, nullptr);
+    ASSERT_GT(baseline->MatchedAtomCount(), 0u);
+
+    const bool include_apbs =
+        wt_original.HasResult<ApbsFieldResult>() &&
+        mut_original.HasResult<ApbsFieldResult>();
+    ASSERT_TRUE(include_apbs)
+        << "delta_apbs.npy covariance proof requires both canonical APBS "
+           "sources; do not silently downgrade this exact-name check";
+
+    constexpr double kTensorAbsTolerance = 2.0e-9;
+    constexpr double kTensorRelTolerance = 3.0e-12;
+    constexpr double kVectorAbsTolerance = 2.0e-10;
+    constexpr double kVectorRelTolerance = 3.0e-12;
+    constexpr double kGeometryAbsTolerance = 2.0e-8;
+    constexpr double kStructuralZeroTolerance = 2.0e-9;
+
+    using MatrixMember = Mat3 MatchedAtomData::*;
+    struct ShieldingArray {
+        const char* name;
+        MatrixMember matrix;
+    };
+    const std::array<ShieldingArray, 7> mutation_shielding_arrays{{
+        {"delta_shielding.npy", &MatchedAtomData::delta_shielding},
+        {"wt_shielding_diamagnetic.npy",
+         &MatchedAtomData::wt_shielding_diamagnetic},
+        {"wt_shielding_paramagnetic.npy",
+         &MatchedAtomData::wt_shielding_paramagnetic},
+        {"mut_shielding_diamagnetic.npy",
+         &MatchedAtomData::mut_shielding_diamagnetic},
+        {"mut_shielding_paramagnetic.npy",
+         &MatchedAtomData::mut_shielding_paramagnetic},
+        {"delta_shielding_diamagnetic.npy",
+         &MatchedAtomData::delta_shielding_diamagnetic},
+        {"delta_shielding_paramagnetic.npy",
+         &MatchedAtomData::delta_shielding_paramagnetic},
+    }};
+
+    auto expect_full_tensor = [&](const Mat3& actual,
+                                  const Mat3& source,
+                                  const SphericalTensor& actual_spherical,
+                                  const SphericalTensor& source_spherical,
+                                  const auto& transform,
+                                  size_t atom_index,
+                                  const char* label) {
+        const Mat3 expected =
+            nmr::test::directional::EvenRank2(transform, source);
+        EXPECT_TRUE(nmr::test::directional::NearMatrix(
+            actual, expected, kTensorAbsTolerance, kTensorRelTolerance))
+            << label << " atom=" << atom_index;
+        EXPECT_TRUE(nmr::test::directional::Near(
+            actual_spherical.T0, source_spherical.T0,
+            kTensorAbsTolerance, kTensorRelTolerance))
+            << label << " T0 atom=" << atom_index;
+        EXPECT_TRUE(nmr::test::directional::NearVector(
+            nmr::test::directional::T1Vector(actual_spherical),
+            nmr::test::directional::Axial(
+                transform,
+                nmr::test::directional::T1Vector(source_spherical)),
+            kTensorAbsTolerance, kTensorRelTolerance))
+            << label << " T1 atom=" << atom_index;
+        const SphericalTensor expected_t2 =
+            nmr::test::directional::RotateNativeT2(
+                transform, source_spherical);
+        for (size_t component = 0; component < 5; ++component) {
+            EXPECT_TRUE(nmr::test::directional::Near(
+                actual_spherical.T2[component],
+                expected_t2.T2[component],
+                kTensorAbsTolerance, kTensorRelTolerance))
+                << label << " T2=" << component << " atom=" << atom_index;
+        }
+    };
+
+    for (const bool improper : {false, true}) {
+        const auto transform = nmr::test::directional::SeededTransform(
+            0x4f5243414d555441ULL, improper);
+        ProteinConformation& wt_moved = wt_.protein->AddConformation(
+            nmr::test::directional::Positions(transform,
+                                              wt_original.Positions()),
+            improper ? "mutation WT improper" : "mutation WT proper");
+        ProteinConformation& mut_moved = ala_.protein->AddConformation(
+            nmr::test::directional::Positions(transform,
+                                              mut_original.Positions()),
+            improper ? "mutation mutant improper" :
+                       "mutation mutant proper");
+
+        CopyTransformedMutationInputs(
+            wt_moved, wt_original, transform, include_apbs);
+        CopyTransformedMutationInputs(
+            mut_moved, mut_original, transform, include_apbs);
+        ASSERT_TRUE(wt_moved.AttachResult(GeometryResult::Compute(wt_moved)));
+        ASSERT_TRUE(mut_moved.AttachResult(GeometryResult::Compute(mut_moved)));
+
+        const std::string suffix = improper ? "improper" : "proper";
+        const fs::path wt_orca_source = WriteTransformedOrcaSource(
+            wt_original, transform, "wt_" + suffix);
+        const fs::path mut_orca_source = WriteTransformedOrcaSource(
+            mut_original, transform, "mut_" + suffix);
+        auto wt_orca = OrcaShieldingResult::Compute(
+            wt_moved, wt_orca_source.string());
+        auto mut_orca = OrcaShieldingResult::Compute(
+            mut_moved, mut_orca_source.string());
+        ASSERT_NE(wt_orca, nullptr);
+        ASSERT_NE(mut_orca, nullptr);
+        ASSERT_TRUE(wt_moved.AttachResult(std::move(wt_orca)));
+        ASSERT_TRUE(mut_moved.AttachResult(std::move(mut_orca)));
+
+        for (size_t i = 0; i < wt_original.AtomCount(); ++i) {
+            const auto& a = wt_original.AtomAt(i);
+            const auto& b = wt_moved.AtomAt(i);
+            expect_full_tensor(
+                b.orca_shielding_total, a.orca_shielding_total,
+                b.orca_shielding_total_spherical,
+                a.orca_shielding_total_spherical,
+                transform, i, "orca_total.npy");
+            expect_full_tensor(
+                b.orca_shielding_diamagnetic,
+                a.orca_shielding_diamagnetic,
+                b.orca_shielding_diamagnetic_spherical,
+                a.orca_shielding_diamagnetic_spherical,
+                transform, i, "orca_diamagnetic.npy");
+            expect_full_tensor(
+                b.orca_shielding_paramagnetic,
+                a.orca_shielding_paramagnetic,
+                b.orca_shielding_paramagnetic_spherical,
+                a.orca_shielding_paramagnetic_spherical,
+                transform, i, "orca_paramagnetic.npy");
+        }
+
+        auto moved = MutationDeltaResult::Compute(wt_moved, mut_moved);
+        ASSERT_NE(moved, nullptr);
+        ASSERT_EQ(moved->MatchedAtomCount(), baseline->MatchedAtomCount());
+        for (size_t i = 0; i < wt_original.AtomCount(); ++i) {
+            ASSERT_EQ(moved->HasMatch(i), baseline->HasMatch(i));
+            if (!baseline->HasMatch(i)) continue;
+            const auto& a = baseline->MatchedDataAt(i);
+            const auto& b = moved->MatchedDataAt(i);
+            ASSERT_EQ(b.mut_index, a.mut_index);
+            EXPECT_NEAR(b.match_distance, a.match_distance,
+                        kGeometryAbsTolerance);
+
+            for (const auto& spec : mutation_shielding_arrays) {
+                const Mat3& source = a.*(spec.matrix);
+                const Mat3& actual = b.*(spec.matrix);
+                EXPECT_TRUE(nmr::test::directional::NearMatrix(
+                    actual,
+                    nmr::test::directional::EvenRank2(transform, source),
+                    kTensorAbsTolerance, kTensorRelTolerance))
+                    << spec.name << " atom=" << i;
+            }
+
+            if (include_apbs) {
+                EXPECT_TRUE(nmr::test::directional::NearVector(
+                    b.delta_efield,
+                    nmr::test::directional::Polar(
+                        transform, a.delta_efield),
+                    kVectorAbsTolerance, kVectorRelTolerance))
+                    << "delta_apbs.npy E atom=" << i;
+                EXPECT_TRUE(nmr::test::directional::NearMatrix(
+                    b.delta_efg,
+                    nmr::test::directional::EvenRank2(
+                        transform, a.delta_efg),
+                    kTensorAbsTolerance, kTensorRelTolerance))
+                    << "delta_apbs.npy EFG atom=" << i;
+                EXPECT_NEAR(b.delta_efg_spherical.T0, 0.0,
+                            kStructuralZeroTolerance);
+                for (double component : b.delta_efg_spherical.T1) {
+                    EXPECT_NEAR(component, 0.0,
+                                kStructuralZeroTolerance);
+                }
+                const auto expected_t2 =
+                    nmr::test::directional::RotateNativeT2(
+                        transform, a.delta_efg_spherical);
+                for (size_t component = 0; component < 5; ++component) {
+                    EXPECT_TRUE(nmr::test::directional::Near(
+                        b.delta_efg_spherical.T2[component],
+                        expected_t2.T2[component],
+                        kTensorAbsTolerance, kTensorRelTolerance));
+                }
+            }
+
+            ASSERT_EQ(b.removed_ring_proximity.size(),
+                      a.removed_ring_proximity.size());
+            for (size_t ring = 0;
+                 ring < a.removed_ring_proximity.size(); ++ring) {
+                const auto& ar = a.removed_ring_proximity[ring];
+                const auto& br = b.removed_ring_proximity[ring];
+                EXPECT_NEAR(br.distance, ar.distance,
+                            kGeometryAbsTolerance);
+                EXPECT_NEAR(br.z,
+                            transform.Determinant() * ar.z,
+                            kGeometryAbsTolerance);
+                EXPECT_NEAR(br.rho, ar.rho, kGeometryAbsTolerance);
+                EXPECT_NEAR(br.theta,
+                            std::atan2(ar.rho,
+                                       transform.Determinant() * ar.z),
+                            kGeometryAbsTolerance);
+                EXPECT_NEAR(br.mcconnell_factor, ar.mcconnell_factor,
+                            kGeometryAbsTolerance);
+                EXPECT_NEAR(br.exp_decay, ar.exp_decay,
+                            kGeometryAbsTolerance);
+            }
+        }
+
+        const fs::path out_dir = fs::temp_directory_path() /
+            ("directional_mutation_" + suffix + "_" +
+             std::to_string(::getpid()));
+        fs::create_directories(out_dir);
+        ASSERT_EQ(wt_moved.Result<OrcaShieldingResult>().WriteFeatures(
+                      wt_moved, out_dir.string()), 3);
+        for (const auto& spec : {
+                 std::pair{"orca_total.npy",
+                           &ConformationAtom::orca_shielding_total},
+                 std::pair{"orca_diamagnetic.npy",
+                           &ConformationAtom::orca_shielding_diamagnetic},
+                 std::pair{"orca_paramagnetic.npy",
+                           &ConformationAtom::orca_shielding_paramagnetic}}) {
+            const auto values = ReadFloat64Npy(
+                out_dir / spec.first, wt_moved.AtomCount() * 9);
+            ASSERT_EQ(values.size(), wt_moved.AtomCount() * 9);
+            for (size_t i = 0; i < wt_moved.AtomCount(); ++i) {
+                double expected[9] = {};
+                SphericalTensor::Decompose(
+                    wt_moved.AtomAt(i).*(spec.second)).PackFull9(expected);
+                for (size_t c = 0; c < 9; ++c) {
+                    EXPECT_NEAR(values[i * 9 + c], expected[c],
+                                kTensorAbsTolerance)
+                        << spec.first << " atom=" << i << " column=" << c;
+                }
+            }
+        }
+
+        ASSERT_GT(moved->WriteFeatures(wt_moved, out_dir.string()), 0);
+        ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                      NMR_TEST_PYTHON_EXECUTABLE,
+                      NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                      {out_dir / "orca_total.npy",
+                       out_dir / "orca_diamagnetic.npy",
+                       out_dir / "orca_paramagnetic.npy",
+                       out_dir / "delta_shielding.npy",
+                       out_dir / "wt_shielding_diamagnetic.npy",
+                       out_dir / "wt_shielding_paramagnetic.npy",
+                       out_dir / "mut_shielding_diamagnetic.npy",
+                       out_dir / "mut_shielding_paramagnetic.npy",
+                       out_dir / "delta_shielding_diamagnetic.npy",
+                       out_dir / "delta_shielding_paramagnetic.npy",
+                       out_dir / "delta_apbs.npy",
+                       out_dir / "delta_ring_proximity.npy"}),
+                  0);
+        for (const auto& spec : mutation_shielding_arrays) {
+            const auto values = ReadFloat64Npy(
+                out_dir / spec.name, wt_moved.AtomCount() * 9);
+            ASSERT_EQ(values.size(), wt_moved.AtomCount() * 9);
+            for (size_t i = 0; i < wt_moved.AtomCount(); ++i) {
+                double expected[9] = {};
+                if (baseline->HasMatch(i)) {
+                    const Mat3 transformed =
+                        nmr::test::directional::EvenRank2(
+                            transform,
+                            baseline->MatchedDataAt(i).*(spec.matrix));
+                    SphericalTensor::Decompose(transformed)
+                        .PackFull9(expected);
+                }
+                for (size_t c = 0; c < 9; ++c) {
+                    EXPECT_NEAR(values[i * 9 + c], expected[c],
+                                kTensorAbsTolerance)
+                        << spec.name << " atom=" << i << " column=" << c;
+                }
+            }
+        }
+
+        if (include_apbs) {
+            const auto values = ReadFloat64Npy(
+                out_dir / "delta_apbs.npy", wt_moved.AtomCount() * 12);
+            ASSERT_EQ(values.size(), wt_moved.AtomCount() * 12);
+            for (size_t i = 0; i < wt_moved.AtomCount(); ++i) {
+                double expected[12] = {};
+                if (baseline->HasMatch(i)) {
+                    const auto& base = baseline->MatchedDataAt(i);
+                    const Vec3 e = nmr::test::directional::Polar(
+                        transform, base.delta_efield);
+                    expected[0] = e.x();
+                    expected[1] = e.y();
+                    expected[2] = e.z();
+                    SphericalTensor::Decompose(
+                        nmr::test::directional::EvenRank2(
+                            transform, base.delta_efg))
+                        .PackFull9(expected + 3);
+                }
+                for (size_t c = 0; c < 12; ++c) {
+                    EXPECT_NEAR(values[i * 12 + c], expected[c],
+                                kTensorAbsTolerance)
+                        << "delta_apbs.npy atom=" << i
+                        << " column=" << c;
+                }
+            }
+        }
+
+        size_t removed_rings = 0;
+        for (size_t i = 0; i < wt_original.AtomCount(); ++i) {
+            if (baseline->HasMatch(i)) {
+                removed_rings = baseline->MatchedDataAt(i)
+                                    .removed_ring_proximity.size();
+                break;
+            }
+        }
+        ASSERT_GT(removed_rings, 0u);
+        const size_t ring_columns = removed_rings * 6;
+        const auto ring_values = ReadFloat64Npy(
+            out_dir / "delta_ring_proximity.npy",
+            wt_moved.AtomCount() * ring_columns);
+        ASSERT_EQ(ring_values.size(),
+                  wt_moved.AtomCount() * ring_columns);
+        for (size_t i = 0; i < wt_moved.AtomCount(); ++i) {
+            if (!baseline->HasMatch(i)) {
+                for (size_t c = 0; c < ring_columns; ++c) {
+                    EXPECT_DOUBLE_EQ(ring_values[i * ring_columns + c], 0.0);
+                }
+                continue;
+            }
+            const auto& base = baseline->MatchedDataAt(i);
+            ASSERT_EQ(base.removed_ring_proximity.size(), removed_rings);
+            for (size_t ring = 0; ring < removed_rings; ++ring) {
+                const auto& rp = base.removed_ring_proximity[ring];
+                const double expected[6] = {
+                    rp.distance,
+                    transform.Determinant() * rp.z,
+                    rp.rho,
+                    std::atan2(rp.rho,
+                               transform.Determinant() * rp.z),
+                    rp.mcconnell_factor,
+                    rp.exp_decay,
+                };
+                for (size_t c = 0; c < 6; ++c) {
+                    EXPECT_NEAR(
+                        ring_values[i * ring_columns + ring * 6 + c],
+                        expected[c], kGeometryAbsTolerance)
+                        << "delta_ring_proximity.npy atom=" << i
+                        << " ring=" << ring << " column=" << c;
+                }
+            }
+        }
+
+        for (const auto& entry : fs::directory_iterator(out_dir)) {
+            EXPECT_EQ(std::remove(entry.path().string().c_str()), 0)
+                << entry.path();
+        }
+        EXPECT_EQ(std::remove(out_dir.string().c_str()), 0) << out_dir;
+        fs::remove(wt_orca_source);
+        fs::remove(mut_orca_source);
+    }
 }
 
 

@@ -24,6 +24,8 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <Eigen/Geometry>
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -224,6 +226,26 @@ fs::path FreshRoot() {
          "_" + std::to_string(stamp));
     fs::create_directories(root);
     return root;
+}
+
+nmr::Mat3 DirectionalAcceptanceRotation() {
+    // Fixed independently chosen proper transform. The Python serialized-
+    // boundary oracle constructs the same Rodrigues rotation from these
+    // recorded constants.
+    return Eigen::AngleAxisd(
+        0.731,
+        nmr::Vec3(0.37, -0.61, 0.704).normalized()).toRotationMatrix();
+}
+
+std::vector<nmr::Vec3> DirectionalAcceptanceTransform(
+        const nmr::ProteinConformation& conf) {
+    const nmr::Mat3 rotation = DirectionalAcceptanceRotation();
+    const nmr::Vec3 translation(3.25, -1.75, 2.5);
+    std::vector<nmr::Vec3> transformed;
+    transformed.reserve(conf.AtomCount());
+    for (const nmr::Vec3& position : conf.Positions())
+        transformed.push_back(rotation * position + translation);
+    return transformed;
 }
 
 void RemoveTempTree(const fs::path& root) {
@@ -517,6 +539,25 @@ TEST(NpyLocalGeometryAcceptance, StaticAndTrajectoryProductionPaths) {
         static_conf.Result<nmr::HBondResult>().HBondCount());
     CheckStaticTorsionAndPartnerOracles(static_conf, static_dir);
 
+    // Rerun the complete reduced production stack on transformed INPUT.
+    // This is deliberately not an algebra-only rotation of emitted values:
+    // every owning calculator reconstructs its output from Qx+t.
+    nmr::ProteinConformation transformed_conf(
+        &static_conf.ProteinRef(),
+        DirectionalAcceptanceTransform(static_conf),
+        "directional acceptance proper rotation + translation");
+    const auto transformed_run = nmr::OperationRunner::Run(
+        transformed_conf, static_options);
+    ASSERT_TRUE(transformed_run.Ok()) << transformed_run.error;
+    const fs::path transformed_dir = root / "static_transformed";
+    fs::create_directories(transformed_dir);
+    ASSERT_EQ(nmr::CategoryInfoProjection::WriteFeatures(
+                  transformed_conf.ProteinRef(), transformed_dir.string()), 1);
+    ASSERT_EQ(nmr::TopologySidecar::WriteFeatures(
+                  transformed_conf.ProteinRef(), transformed_dir.string()), 5);
+    ASSERT_GT(nmr::ConformationResult::WriteAllFeatures(
+                  transformed_conf, transformed_dir.string()), 0);
+
     // Ordinary trajectory production loader -> Trajectory::Run ->
     // OperationRunner -> FrameNpyEmitter.  The committed fixture is one
     // complete frame, so there is no skip or cadence shortcut.
@@ -579,7 +620,8 @@ TEST(NpyLocalGeometryAcceptance, StaticAndTrajectoryProductionPaths) {
     const std::string command =
         ShellQuote(NMR_TEST_PYTHON_EXECUTABLE) + " " +
         ShellQuote(NMR_LOCAL_GEOMETRY_ACCEPTANCE_SCRIPT) + " " +
-        ShellQuote(static_dir) + " " + ShellQuote(frame_dir);
+        ShellQuote(static_dir) + " " + ShellQuote(transformed_dir) + " " +
+        ShellQuote(frame_dir);
     EXPECT_EQ(std::system(command.c_str()), 0) << command;
 
     nmr::FrameNpyEmitter::Reset();

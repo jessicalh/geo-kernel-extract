@@ -5,9 +5,12 @@
 // AIMNet2ChargeResponseGradientResult and verify gradients + WriteFeatures.
 
 #include "TestEnvironment.h"
+#include "DirectionalTestHelpers.h"
 #include <gtest/gtest.h>
 
 #include "AIMNet2ChargeResponseGradientResult.h"
+#include "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.h"
+#include "AIMNet2ChargeResponseGradientWelfordTrajectoryResult.h"
 #include "AIMNet2Result.h"
 #include "CalculatorConfig.h"
 #include "ChargeAssignmentResult.h"
@@ -22,9 +25,12 @@
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "SpatialIndexResult.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
 #include "generated/AIMNet2AimProjection.h"
 
 #include <torch/cuda.h>
+#include <highfive/H5File.hpp>
 
 #include <algorithm>
 #include <array>
@@ -41,6 +47,13 @@
 #include <unistd.h>
 #include <vector>
 
+#ifndef NMR_TEST_PYTHON_EXECUTABLE
+#error "NMR_TEST_PYTHON_EXECUTABLE must be defined"
+#endif
+#ifndef NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT
+#error "NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT must be defined"
+#endif
+
 using namespace nmr;
 namespace fs = std::filesystem;
 
@@ -51,6 +64,59 @@ struct NpyArray {
     std::vector<std::size_t> shape;
     std::vector<char> bytes;
 };
+
+template <typename T>
+std::vector<T> ReadAimH5Flat(
+        const fs::path& path,
+        const std::string& dataset,
+        std::vector<std::size_t>* dimensions = nullptr) {
+    HighFive::File file(path.string(), HighFive::File::ReadOnly);
+    auto data_set = file.getDataSet(dataset);
+    const auto dims = data_set.getSpace().getDimensions();
+    if (dimensions) *dimensions = dims;
+    std::size_t count = 1;
+    for (const std::size_t dim : dims) count *= dim;
+    std::vector<T> values(count);
+    if (!values.empty()) data_set.read(values.data());
+    return values;
+}
+
+bool WriteAimGradientTrajectoryFrame(
+        const ProteinConformation& source,
+        const fs::path& path,
+        std::size_t frame_index,
+        double time_ps) {
+    auto storage_build = BuildFromProtonatedPdb(
+        test::TestEnvironment::UbqProtonated());
+    if (!storage_build.Ok()) return false;
+    auto storage = TrajectoryProtein::CreateForTesting(
+        std::move(storage_build.protein));
+    if (!storage || storage->AtomCount() != source.AtomCount()) return false;
+
+    auto time_series =
+        AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Create(
+            *storage);
+    auto welford =
+        AIMNet2ChargeResponseGradientWelfordTrajectoryResult::Create(
+            *storage);
+    if (!time_series || !welford ||
+        !storage->AttachResult(std::move(time_series)) ||
+        !storage->AttachResult(std::move(welford))) {
+        return false;
+    }
+
+    Trajectory dummy("", "", "");
+    storage->DispatchCompute(source, dummy, frame_index, time_ps);
+    storage->FinalizeAllResults(dummy);
+    HighFive::File file(path.string(), HighFive::File::Truncate);
+    storage->WriteH5(file);
+    return file.exist(
+               "/trajectory/aimnet2_charge_response_gradient_time_series/"
+               "charge_response_gradient_vector") &&
+           file.exist(
+               "/trajectory/aimnet2_charge_response_gradient_welford/"
+               "vector_mean");
+}
 
 std::string Trim(std::string value) {
     auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
@@ -691,6 +757,512 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
         << "Maximum gradient norm is suspiciously small";
     EXPECT_LT(max_consistency_diff, 1e-9)
         << "Scalar field does not match L2 norm of vector field";
+}
+
+
+TEST_F(AIMNet2ChargeResponseGradientTest,
+       DirectionalOutputsRerunProductionModelOnO3TransformedInput) {
+    using nmr::test::directional::EvenRank2;
+    using nmr::test::directional::Near;
+    using nmr::test::directional::NearMatrix;
+    using nmr::test::directional::NearVector;
+    using nmr::test::directional::Polar;
+    using nmr::test::directional::Positions;
+    using nmr::test::directional::SeededTransform;
+
+    test::TestEnvironment::LoadCalculatorConfig();
+    ParamFileChargeSource charge_source(test::TestEnvironment::Ff14sbParams());
+    RunOptions options;
+    options.charge_source = &charge_source;
+    options.net_charge = -2;
+    options.skip_dssp = true;
+    options.skip_mopac = true;
+    options.skip_apbs = true;
+    options.skip_coulomb = true;
+    options.aimnet2_model = model.get();
+
+    auto& original = protein->Conformation();
+    const RunResult original_run = OperationRunner::Run(original, options);
+    ASSERT_TRUE(original_run.Ok()) << original_run.error;
+    ASSERT_TRUE(original.HasResult<AIMNet2Result>());
+    ASSERT_TRUE(original.HasResult<AIMNet2ChargeResponseGradientResult>());
+
+    // The TorchScript model evaluates coordinates in float32 on CUDA.  The
+    // physics is O(3)-covariant, while independently rerunning the GPU model
+    // introduces a small charge drift which propagates into the double-
+    // precision Coulomb E/EFG kernel.  On the committed CUDA model and seed,
+    // the recorded maxima are charge=2.07126e-6, vector L2=3.58545e-5,
+    // tensor Frobenius=9.89809e-5, and gradient scalar=1.32087e-5.
+    // The explicit bounds below leave a small backend-roundoff margin without
+    // treating the float32 GPU result as a double-precision analytic kernel.
+    constexpr double kChargeAbs = 1.0e-5;
+    constexpr double kVectorAbs = 1.0e-4;
+    constexpr double kVectorRel = 2.0e-5;
+    constexpr double kTensorAbs = 3.0e-4;
+    constexpr double kTensorRel = 2.0e-5;
+
+    struct VectorChannel {
+        const char* npy;
+        Vec3 ConformationAtom::* member;
+    };
+    const VectorChannel vector_channels[] = {
+        {"aimnet2_E", &ConformationAtom::aimnet2_E_total},
+        {"aimnet2_E_backbone", &ConformationAtom::aimnet2_E_backbone},
+        {"aimnet2_E_sidechain", &ConformationAtom::aimnet2_E_sidechain},
+        {"aimnet2_E_aromatic", &ConformationAtom::aimnet2_E_aromatic},
+        {"aimnet2_charge_response_gradient",
+         &ConformationAtom::aimnet2_charge_response_gradient_vector},
+    };
+    struct TensorChannel {
+        const char* npy;
+        Mat3 ConformationAtom::* member;
+        SphericalTensor ConformationAtom::* spherical;
+    };
+    const TensorChannel tensor_channels[] = {
+        {"aimnet2_efg", &ConformationAtom::aimnet2_EFG_total,
+         &ConformationAtom::aimnet2_EFG_total_spherical},
+        {"aimnet2_efg_backbone", &ConformationAtom::aimnet2_EFG_backbone,
+         &ConformationAtom::aimnet2_EFG_backbone_spherical},
+        {"aimnet2_efg_sidechain", &ConformationAtom::aimnet2_EFG_sidechain,
+         &ConformationAtom::aimnet2_EFG_sidechain_spherical},
+        {"aimnet2_efg_aromatic", &ConformationAtom::aimnet2_EFG_aromatic,
+         &ConformationAtom::aimnet2_EFG_aromatic_spherical},
+    };
+
+    const fs::path output_root = fs::temp_directory_path() /
+        ("aimnet2_directional_npy_" + std::to_string(::getpid()));
+    RemoveDirectoryContents(output_root / "original");
+    RemoveDirectoryContents(output_root / "proper");
+    RemoveDirectoryContents(output_root / "improper");
+    RemoveDirectoryContents(output_root);
+    const fs::path original_dir = output_root / "original";
+    ASSERT_TRUE(fs::create_directories(original_dir));
+    ASSERT_EQ(original.Result<AIMNet2Result>().WriteFeatures(
+                  original, original_dir.string()), 17);
+    ASSERT_EQ(original.Result<AIMNet2ChargeResponseGradientResult>()
+                  .WriteFeatures(original, original_dir.string()), 2);
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  {original_dir / "aimnet2_charge_response_gradient.npy",
+                   original_dir /
+                       "aimnet2_charge_response_gradient_scalar.npy",
+                   original_dir / "aimnet2_E.npy",
+                   original_dir / "aimnet2_E_backbone.npy",
+                   original_dir / "aimnet2_E_sidechain.npy",
+                   original_dir / "aimnet2_E_aromatic.npy",
+                   original_dir / "aimnet2_efg.npy",
+                   original_dir / "aimnet2_efg_backbone.npy",
+                   original_dir / "aimnet2_efg_sidechain.npy",
+                   original_dir / "aimnet2_efg_aromatic.npy"}),
+              0);
+
+    std::array<NpyArray, std::size(vector_channels)> serialized_vectors_0;
+    for (std::size_t channel_index = 0;
+         channel_index < std::size(vector_channels); ++channel_index) {
+        serialized_vectors_0[channel_index] = ReadNpy(
+            original_dir /
+            (std::string(vector_channels[channel_index].npy) + ".npy"));
+        ASSERT_EQ(serialized_vectors_0[channel_index].descr, "<f8");
+        ASSERT_EQ(serialized_vectors_0[channel_index].shape,
+                  (std::vector<std::size_t>{original.AtomCount(), 3u}));
+    }
+    std::array<NpyArray, std::size(tensor_channels)> serialized_tensors_0;
+    for (std::size_t channel_index = 0;
+         channel_index < std::size(tensor_channels); ++channel_index) {
+        serialized_tensors_0[channel_index] = ReadNpy(
+            original_dir /
+            (std::string(tensor_channels[channel_index].npy) + ".npy"));
+        ASSERT_EQ(serialized_tensors_0[channel_index].descr, "<f8");
+        ASSERT_EQ(serialized_tensors_0[channel_index].shape,
+                  (std::vector<std::size_t>{original.AtomCount(), 5u}));
+    }
+    const NpyArray serialized_charges_0 =
+        ReadNpy(original_dir / "aimnet2_charges.npy");
+    const NpyArray serialized_gradient_scalar_0 = ReadNpy(
+        original_dir / "aimnet2_charge_response_gradient_scalar.npy");
+    ASSERT_EQ(serialized_charges_0.shape,
+              (std::vector<std::size_t>{original.AtomCount()}));
+    ASSERT_EQ(serialized_gradient_scalar_0.shape,
+              (std::vector<std::size_t>{original.AtomCount()}));
+
+    // The real OperationRunner owners above feed the production raw and
+    // Welford trajectory consumers.  Each source/moved conformation gets a
+    // fresh one-frame TrajectoryProtein so vector_mean is independently
+    // finalized; component std/extrema deliberately receive no irrep claim.
+    const fs::path original_h5 = original_dir / "aimnet2_directional.h5";
+    ASSERT_TRUE(WriteAimGradientTrajectoryFrame(
+        original, original_h5, /*frame_index=*/83u, /*time_ps=*/5.75));
+    std::vector<std::size_t> raw_vector_dims_0;
+    std::vector<std::size_t> raw_scalar_dims_0;
+    std::vector<std::size_t> raw_mask_dims_0;
+    std::vector<std::size_t> mean_dims_0;
+    std::vector<std::size_t> welford_mask_dims_0;
+    std::vector<std::size_t> count_dims_0;
+    const auto raw_vector_0 = ReadAimH5Flat<double>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_time_series/"
+        "charge_response_gradient_vector",
+        &raw_vector_dims_0);
+    const auto raw_scalar_0 = ReadAimH5Flat<double>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_time_series/"
+        "charge_response_gradient_scalar",
+        &raw_scalar_dims_0);
+    const auto raw_mask_0 = ReadAimH5Flat<std::uint8_t>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_time_series/"
+        "source_attached_per_frame",
+        &raw_mask_dims_0);
+    const auto vector_mean_0 = ReadAimH5Flat<double>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_welford/vector_mean",
+        &mean_dims_0);
+    const auto welford_mask_0 = ReadAimH5Flat<std::uint8_t>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_welford/"
+        "source_attached_per_frame",
+        &welford_mask_dims_0);
+    const auto n_per_atom_0 = ReadAimH5Flat<std::uint64_t>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_welford/n_per_atom",
+        &count_dims_0);
+    const auto raw_frame_indices_0 = ReadAimH5Flat<std::size_t>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_time_series/"
+        "frame_indices");
+    const auto raw_frame_times_0 = ReadAimH5Flat<double>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_time_series/"
+        "frame_times");
+    const auto welford_frame_indices_0 = ReadAimH5Flat<std::size_t>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_welford/"
+        "frame_indices");
+    const auto welford_frame_times_0 = ReadAimH5Flat<double>(
+        original_h5,
+        "/trajectory/aimnet2_charge_response_gradient_welford/"
+        "frame_times");
+    ASSERT_EQ(raw_vector_dims_0, (std::vector<std::size_t>{
+        original.AtomCount(), 1u, 3u}));
+    ASSERT_EQ(raw_scalar_dims_0, (std::vector<std::size_t>{
+        original.AtomCount(), 1u}));
+    ASSERT_EQ(raw_mask_dims_0, (std::vector<std::size_t>{1u}));
+    ASSERT_EQ(mean_dims_0, (std::vector<std::size_t>{
+        original.AtomCount(), 3u}));
+    ASSERT_EQ(welford_mask_dims_0, raw_mask_dims_0);
+    ASSERT_EQ(count_dims_0,
+              (std::vector<std::size_t>{original.AtomCount()}));
+    ASSERT_EQ(raw_mask_0, (std::vector<std::uint8_t>{1u}));
+    ASSERT_EQ(welford_mask_0, raw_mask_0);
+    ASSERT_EQ(raw_frame_indices_0, (std::vector<std::size_t>{83u}));
+    ASSERT_EQ(raw_frame_times_0, (std::vector<double>{5.75}));
+    ASSERT_EQ(welford_frame_indices_0, raw_frame_indices_0);
+    ASSERT_EQ(welford_frame_times_0, raw_frame_times_0);
+    const std::size_t gradient_channel = std::size(vector_channels) - 1u;
+    const double* serialized_gradient_vector_0 =
+        DataAs<double>(serialized_vectors_0[gradient_channel]);
+    const double* serialized_gradient_scalar_data_0 =
+        DataAs<double>(serialized_gradient_scalar_0);
+    for (std::size_t atom = 0; atom < original.AtomCount(); ++atom) {
+        ASSERT_EQ(n_per_atom_0[atom], 1u);
+        EXPECT_DOUBLE_EQ(raw_scalar_0[atom],
+                         serialized_gradient_scalar_data_0[atom]);
+        for (std::size_t component = 0; component < 3; ++component) {
+            const std::size_t offset = atom * 3 + component;
+            EXPECT_DOUBLE_EQ(raw_vector_0[offset],
+                             serialized_gradient_vector_0[offset]);
+            EXPECT_DOUBLE_EQ(vector_mean_0[offset], raw_vector_0[offset]);
+        }
+    }
+
+    double max_charge_error = 0.0;
+    double max_vector_error = 0.0;
+    double max_tensor_error = 0.0;
+    double max_gradient_scalar_error = 0.0;
+    for (const bool improper : {false, true}) {
+        const auto transform = SeededTransform(0xA1E7C0A2ULL, improper);
+        auto& moved = protein->AddConformation(
+            Positions(transform, original.Positions()),
+            improper ? "AIMNet2 directional improper rerun"
+                     : "AIMNet2 directional proper rerun");
+        const RunResult moved_run = OperationRunner::Run(moved, options);
+        ASSERT_TRUE(moved_run.Ok()) << moved_run.error;
+        ASSERT_TRUE(moved.HasResult<AIMNet2Result>());
+        ASSERT_TRUE(moved.HasResult<AIMNet2ChargeResponseGradientResult>());
+
+        const fs::path moved_dir = output_root /
+            (improper ? "improper" : "proper");
+        ASSERT_TRUE(fs::create_directories(moved_dir));
+        ASSERT_EQ(moved.Result<AIMNet2Result>().WriteFeatures(
+                      moved, moved_dir.string()), 17);
+        ASSERT_EQ(moved.Result<AIMNet2ChargeResponseGradientResult>()
+                      .WriteFeatures(moved, moved_dir.string()), 2);
+        ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                      NMR_TEST_PYTHON_EXECUTABLE,
+                      NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                      {moved_dir /
+                           "aimnet2_charge_response_gradient.npy",
+                       moved_dir /
+                           "aimnet2_charge_response_gradient_scalar.npy",
+                       moved_dir / "aimnet2_E.npy",
+                       moved_dir / "aimnet2_E_backbone.npy",
+                       moved_dir / "aimnet2_E_sidechain.npy",
+                       moved_dir / "aimnet2_E_aromatic.npy",
+                       moved_dir / "aimnet2_efg.npy",
+                       moved_dir / "aimnet2_efg_backbone.npy",
+                       moved_dir / "aimnet2_efg_sidechain.npy",
+                       moved_dir / "aimnet2_efg_aromatic.npy"}),
+                  0);
+
+        std::array<NpyArray, std::size(vector_channels)> serialized_vectors_1;
+        for (std::size_t channel_index = 0;
+             channel_index < std::size(vector_channels); ++channel_index) {
+            serialized_vectors_1[channel_index] = ReadNpy(
+                moved_dir /
+                (std::string(vector_channels[channel_index].npy) + ".npy"));
+            ASSERT_EQ(serialized_vectors_1[channel_index].shape,
+                      serialized_vectors_0[channel_index].shape);
+        }
+        std::array<NpyArray, std::size(tensor_channels)> serialized_tensors_1;
+        for (std::size_t channel_index = 0;
+             channel_index < std::size(tensor_channels); ++channel_index) {
+            serialized_tensors_1[channel_index] = ReadNpy(
+                moved_dir /
+                (std::string(tensor_channels[channel_index].npy) + ".npy"));
+            ASSERT_EQ(serialized_tensors_1[channel_index].shape,
+                      serialized_tensors_0[channel_index].shape);
+        }
+        const NpyArray serialized_charges_1 =
+            ReadNpy(moved_dir / "aimnet2_charges.npy");
+        const NpyArray serialized_gradient_scalar_1 = ReadNpy(
+            moved_dir / "aimnet2_charge_response_gradient_scalar.npy");
+        ASSERT_EQ(serialized_charges_1.shape, serialized_charges_0.shape);
+        ASSERT_EQ(serialized_gradient_scalar_1.shape,
+                  serialized_gradient_scalar_0.shape);
+
+        const fs::path moved_h5 = moved_dir / "aimnet2_directional.h5";
+        ASSERT_TRUE(WriteAimGradientTrajectoryFrame(
+            moved, moved_h5, /*frame_index=*/83u, /*time_ps=*/5.75));
+        std::vector<std::size_t> raw_vector_dims_1;
+        std::vector<std::size_t> raw_scalar_dims_1;
+        std::vector<std::size_t> raw_mask_dims_1;
+        std::vector<std::size_t> mean_dims_1;
+        std::vector<std::size_t> welford_mask_dims_1;
+        std::vector<std::size_t> count_dims_1;
+        const auto raw_vector_1 = ReadAimH5Flat<double>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_time_series/"
+            "charge_response_gradient_vector",
+            &raw_vector_dims_1);
+        const auto raw_scalar_1 = ReadAimH5Flat<double>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_time_series/"
+            "charge_response_gradient_scalar",
+            &raw_scalar_dims_1);
+        const auto raw_mask_1 = ReadAimH5Flat<std::uint8_t>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_time_series/"
+            "source_attached_per_frame",
+            &raw_mask_dims_1);
+        const auto vector_mean_1 = ReadAimH5Flat<double>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_welford/"
+            "vector_mean",
+            &mean_dims_1);
+        const auto welford_mask_1 = ReadAimH5Flat<std::uint8_t>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_welford/"
+            "source_attached_per_frame",
+            &welford_mask_dims_1);
+        const auto n_per_atom_1 = ReadAimH5Flat<std::uint64_t>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_welford/"
+            "n_per_atom",
+            &count_dims_1);
+        const auto raw_frame_indices_1 = ReadAimH5Flat<std::size_t>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_time_series/"
+            "frame_indices");
+        const auto raw_frame_times_1 = ReadAimH5Flat<double>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_time_series/"
+            "frame_times");
+        const auto welford_frame_indices_1 = ReadAimH5Flat<std::size_t>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_welford/"
+            "frame_indices");
+        const auto welford_frame_times_1 = ReadAimH5Flat<double>(
+            moved_h5,
+            "/trajectory/aimnet2_charge_response_gradient_welford/"
+            "frame_times");
+        ASSERT_EQ(raw_vector_dims_1, raw_vector_dims_0);
+        ASSERT_EQ(raw_scalar_dims_1, raw_scalar_dims_0);
+        ASSERT_EQ(raw_mask_dims_1, raw_mask_dims_0);
+        ASSERT_EQ(mean_dims_1, mean_dims_0);
+        ASSERT_EQ(welford_mask_dims_1, welford_mask_dims_0);
+        ASSERT_EQ(count_dims_1, count_dims_0);
+        ASSERT_EQ(raw_mask_1, (std::vector<std::uint8_t>{1u}));
+        ASSERT_EQ(welford_mask_1, raw_mask_1);
+        ASSERT_EQ(raw_frame_indices_1, raw_frame_indices_0);
+        ASSERT_EQ(raw_frame_times_1, raw_frame_times_0);
+        ASSERT_EQ(welford_frame_indices_1, welford_frame_indices_0);
+        ASSERT_EQ(welford_frame_times_1, welford_frame_times_0);
+
+        for (std::size_t atom = 0; atom < original.AtomCount(); ++atom) {
+            const auto& a = original.AtomAt(atom);
+            const auto& b = moved.AtomAt(atom);
+            const double charge_error =
+                std::abs(b.aimnet2_charge - a.aimnet2_charge);
+            max_charge_error = std::max(max_charge_error, charge_error);
+            EXPECT_TRUE(Near(b.aimnet2_charge, a.aimnet2_charge,
+                             kChargeAbs, 0.0));
+            EXPECT_TRUE(Near(DataAs<double>(serialized_charges_1)[atom],
+                             DataAs<double>(serialized_charges_0)[atom],
+                             kChargeAbs, 0.0));
+
+            for (std::size_t channel_index = 0;
+                 channel_index < std::size(vector_channels); ++channel_index) {
+                const auto& channel = vector_channels[channel_index];
+                const Vec3 expected = Polar(transform, a.*(channel.member));
+                const Vec3 actual = b.*(channel.member);
+                max_vector_error = std::max(
+                    max_vector_error, (actual - expected).norm());
+                EXPECT_TRUE(NearVector(actual, expected,
+                                       kVectorAbs, kVectorRel))
+                    << channel.npy << ".npy atom=" << atom
+                    << " improper=" << improper;
+
+                const double* source =
+                    DataAs<double>(serialized_vectors_0[channel_index]);
+                const double* emitted =
+                    DataAs<double>(serialized_vectors_1[channel_index]);
+                const Vec3 serialized_source(
+                    source[atom * 3], source[atom * 3 + 1],
+                    source[atom * 3 + 2]);
+                const Vec3 serialized_actual(
+                    emitted[atom * 3], emitted[atom * 3 + 1],
+                    emitted[atom * 3 + 2]);
+                EXPECT_TRUE(NearVector(
+                    serialized_actual, Polar(transform, serialized_source),
+                    kVectorAbs, kVectorRel))
+                    << "serialized " << channel.npy << ".npy atom=" << atom
+                    << " improper=" << improper;
+                for (int component = 0; component < 3; ++component) {
+                    EXPECT_DOUBLE_EQ(serialized_actual(component),
+                                     actual(component));
+                }
+            }
+
+            for (std::size_t channel_index = 0;
+                 channel_index < std::size(tensor_channels); ++channel_index) {
+                const auto& channel = tensor_channels[channel_index];
+                const Mat3 expected = EvenRank2(transform, a.*(channel.member));
+                const Mat3 actual = b.*(channel.member);
+                max_tensor_error = std::max(
+                    max_tensor_error, (actual - expected).norm());
+                EXPECT_TRUE(NearMatrix(actual, expected,
+                                       kTensorAbs, kTensorRel))
+                    << channel.npy << ".npy atom=" << atom
+                    << " improper=" << improper;
+                const SphericalTensor& spherical = b.*(channel.spherical);
+                EXPECT_NEAR(spherical.T0, 0.0, 2.0e-10)
+                    << channel.npy << ".npy T0 structural zero";
+                for (double t1 : spherical.T1) {
+                    EXPECT_NEAR(t1, 0.0, 2.0e-10)
+                        << channel.npy << ".npy T1 structural zero";
+                }
+
+                const double* source =
+                    DataAs<double>(serialized_tensors_0[channel_index]);
+                const double* emitted =
+                    DataAs<double>(serialized_tensors_1[channel_index]);
+                SphericalTensor serialized_source;
+                for (std::size_t component = 0; component < 5; ++component) {
+                    serialized_source.T2[component] =
+                        source[atom * 5 + component];
+                }
+                const SphericalTensor serialized_expected =
+                    nmr::test::directional::RotateNativeT2(
+                        transform, serialized_source);
+                for (std::size_t component = 0; component < 5; ++component) {
+                    EXPECT_TRUE(Near(
+                        emitted[atom * 5 + component],
+                        serialized_expected.T2[component],
+                        kTensorAbs, kTensorRel))
+                        << "serialized " << channel.npy << ".npy atom="
+                        << atom << " component=" << component
+                        << " improper=" << improper;
+                    EXPECT_DOUBLE_EQ(
+                        emitted[atom * 5 + component],
+                        spherical.T2[component]);
+                }
+            }
+
+            const double scalar_error = std::abs(
+                b.aimnet2_charge_response_gradient_scalar -
+                a.aimnet2_charge_response_gradient_scalar);
+            max_gradient_scalar_error = std::max(
+                max_gradient_scalar_error, scalar_error);
+            EXPECT_TRUE(Near(
+                b.aimnet2_charge_response_gradient_scalar,
+                a.aimnet2_charge_response_gradient_scalar,
+                kVectorAbs, kVectorRel));
+            EXPECT_TRUE(Near(
+                DataAs<double>(serialized_gradient_scalar_1)[atom],
+                DataAs<double>(serialized_gradient_scalar_0)[atom],
+                kVectorAbs, kVectorRel));
+
+            ASSERT_EQ(n_per_atom_1[atom], 1u);
+            EXPECT_TRUE(Near(raw_scalar_1[atom], raw_scalar_0[atom],
+                             kVectorAbs, kVectorRel));
+            const Vec3 raw_source(
+                raw_vector_0[atom * 3],
+                raw_vector_0[atom * 3 + 1],
+                raw_vector_0[atom * 3 + 2]);
+            const Vec3 raw_emitted(
+                raw_vector_1[atom * 3],
+                raw_vector_1[atom * 3 + 1],
+                raw_vector_1[atom * 3 + 2]);
+            const Vec3 mean_source(
+                vector_mean_0[atom * 3],
+                vector_mean_0[atom * 3 + 1],
+                vector_mean_0[atom * 3 + 2]);
+            const Vec3 mean_emitted(
+                vector_mean_1[atom * 3],
+                vector_mean_1[atom * 3 + 1],
+                vector_mean_1[atom * 3 + 2]);
+            EXPECT_TRUE(NearVector(raw_emitted,
+                                   Polar(transform, raw_source),
+                                   kVectorAbs, kVectorRel))
+                << "/trajectory/aimnet2_charge_response_gradient_time_series/"
+                   "charge_response_gradient_vector atom=" << atom
+                << " improper=" << improper;
+            EXPECT_TRUE(NearVector(mean_emitted,
+                                   Polar(transform, mean_source),
+                                   kVectorAbs, kVectorRel))
+                << "/trajectory/aimnet2_charge_response_gradient_welford/"
+                   "vector_mean atom=" << atom
+                << " improper=" << improper;
+            for (std::size_t component = 0; component < 3; ++component) {
+                const std::size_t offset = atom * 3 + component;
+                EXPECT_DOUBLE_EQ(raw_vector_1[offset],
+                                 vector_mean_1[offset]);
+                EXPECT_DOUBLE_EQ(
+                    raw_vector_1[offset],
+                    (b.aimnet2_charge_response_gradient_vector)(component));
+            }
+        }
+    }
+
+    std::cerr << "AIMNet2 directional rerun maxima: charge="
+              << max_charge_error << " vector_L2=" << max_vector_error
+              << " tensor_Frobenius=" << max_tensor_error
+              << " gradient_scalar=" << max_gradient_scalar_error << "\n";
+    RemoveDirectoryContents(output_root / "original");
+    RemoveDirectoryContents(output_root / "proper");
+    RemoveDirectoryContents(output_root / "improper");
+    RemoveDirectoryContents(output_root);
 }
 
 

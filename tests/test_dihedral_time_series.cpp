@@ -10,12 +10,14 @@
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
 #include "DihedralTimeSeriesTrajectoryResult.h"
+#include "DirectionalTestHelpers.h"
 #include "DsspResult.h"
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
 #include "LocalBackboneGeometryTrajectoryResult.h"
 #include "OperationLog.h"
 #include "PlanarGeometryResult.h"
+#include "PdbFileReader.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -35,9 +37,11 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -60,6 +64,22 @@ std::string ProductionDirFor(const std::string& p) {
 bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
+}
+
+template <typename T>
+std::vector<T> ReadH5Flat(const std::string& path,
+                          const std::string& dataset,
+                          std::vector<std::size_t>* dimensions = nullptr) {
+    HighFive::File file(path, HighFive::File::ReadOnly);
+    auto data_set = file.getDataSet(dataset);
+    const auto dims = data_set.getSpace().getDimensions();
+    if (dimensions) *dimensions = dims;
+    const std::size_t count = std::accumulate(
+        dims.begin(), dims.end(), std::size_t{1},
+        std::multiplies<std::size_t>());
+    std::vector<T> values(count);
+    if (!values.empty()) data_set.read(values.data());
+    return values;
 }
 nmr::RunConfiguration BuildConfig(unsigned stride) {
     nmr::RunConfiguration config;
@@ -129,6 +149,171 @@ Vec3 CbDeviationVector(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
 double CbDeviation(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
 }  // namespace local_backbone_geometry
 }  // namespace nmr
+
+
+TEST(DihedralTimeSeries,
+     DirectionalSignedAnglesRerunProductionKernelO3SerializedH5) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    const std::string pdb = nmr::test::TestEnvironment::UbqProtonated();
+    if (pdb.empty() || !fs::exists(pdb))
+        GTEST_SKIP() << "1UBQ protonated fixture unavailable";
+    auto build = nmr::BuildFromProtonatedPdb(pdb);
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto protein = std::move(build.protein);
+    const std::vector<nmr::Vec3> source_positions =
+        protein->Conformation().Positions();
+    const auto proper = nmr::test::directional::SeededTransform(
+        0x4449484544525453ULL, false);
+    const auto improper = nmr::test::directional::SeededTransform(
+        0x4449484544525453ULL, true);
+    protein->AddConformation(
+        nmr::test::directional::Positions(proper, source_positions),
+        "dihedral TS proper production rerun");
+    protein->AddConformation(
+        nmr::test::directional::Positions(improper, source_positions),
+        "dihedral TS improper production rerun");
+
+    auto tp = nmr::TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(tp, nullptr);
+    auto result = nmr::DihedralTimeSeriesTrajectoryResult::Create(*tp);
+    ASSERT_NE(result, nullptr);
+    nmr::Trajectory dummy("", "", "");
+    for (std::size_t frame = 0; frame < 3; ++frame) {
+        result->Compute(tp->ProteinRef().ConformationAt(frame), *tp, dummy,
+                        41u + frame, 0.25 * frame);
+    }
+    result->Finalize(*tp, dummy);
+
+    const std::string h5_path =
+        nmr::test::TestEnvironment::TempPath(
+            "dihedral_directional_covariance.h5");
+    fs::remove(h5_path);
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        result->WriteH5Group(*tp, file);
+    }
+
+    constexpr double kAngleAbsTolerance = 2.0e-11;
+    const std::string group = "/trajectory/dihedral_time_series/";
+    const std::size_t residues = tp->ProteinRef().ResidueCount();
+    {
+        HighFive::File file(h5_path, HighFive::File::ReadOnly);
+        for (const char* name : {"phi", "psi", "omega",
+                                 "omega_deviation", "chi"}) {
+            auto dataset = file.getDataSet(group + name);
+            std::string frame;
+            std::string parity;
+            std::string law;
+            dataset.getAttribute("coordinate_frame").read(frame);
+            dataset.getAttribute("parity").read(parity);
+            dataset.getAttribute("transformation").read(law);
+            EXPECT_EQ(frame, "intrinsic_signed_dihedral") << name;
+            EXPECT_EQ(parity, "odd") << name;
+            EXPECT_NE(law.find("pseudoscalar"), std::string::npos)
+                << name;
+        }
+        auto rama_dataset = file.getDataSet(group + "rama_region");
+        std::string rama_frame;
+        std::string rama_parity;
+        std::string rama_law;
+        rama_dataset.getAttribute("coordinate_frame").read(rama_frame);
+        rama_dataset.getAttribute("parity").read(rama_parity);
+        rama_dataset.getAttribute("transformation").read(rama_law);
+        EXPECT_EQ(rama_frame, "intrinsic_ramachandran_category");
+        EXPECT_EQ(rama_parity, "mixed");
+        EXPECT_NE(rama_law.find("no fixed improper-transform"),
+                  std::string::npos);
+    }
+    std::size_t signed_checked = 0;
+    auto check_signed = [&](const char* name) {
+        std::vector<std::size_t> dims;
+        const auto values = ReadH5Flat<double>(
+            h5_path, group + name, &dims);
+        ASSERT_EQ(dims,
+                  (std::vector<std::size_t>{residues, 3u})) << name;
+        for (std::size_t residue = 0; residue < residues; ++residue) {
+            const double source = values[residue * 3u];
+            const double moved_proper = values[residue * 3u + 1u];
+            const double moved_improper = values[residue * 3u + 2u];
+            if (std::isnan(source)) {
+                EXPECT_TRUE(std::isnan(moved_proper)) << name << residue;
+                EXPECT_TRUE(std::isnan(moved_improper)) << name << residue;
+                continue;
+            }
+            EXPECT_NEAR(
+                nmr::test::directional::CircularDifference(
+                    moved_proper, source),
+                0.0, kAngleAbsTolerance)
+                << group << name << " residue=" << residue;
+            EXPECT_NEAR(
+                nmr::test::directional::CircularDifference(
+                    moved_improper, -source),
+                0.0, kAngleAbsTolerance)
+                << group << name << " residue=" << residue;
+            ++signed_checked;
+        }
+    };
+    check_signed("phi");
+    check_signed("psi");
+    check_signed("omega");
+    check_signed("omega_deviation");
+
+    std::vector<std::size_t> chi_dims;
+    const auto chi = ReadH5Flat<double>(h5_path, group + "chi", &chi_dims);
+    ASSERT_EQ(chi_dims,
+              (std::vector<std::size_t>{residues, 3u, 4u}));
+    for (std::size_t residue = 0; residue < residues; ++residue) {
+        for (std::size_t component = 0; component < 4; ++component) {
+            const double source = chi[(residue * 3u) * 4u + component];
+            const double moved_proper =
+                chi[(residue * 3u + 1u) * 4u + component];
+            const double moved_improper =
+                chi[(residue * 3u + 2u) * 4u + component];
+            if (std::isnan(source)) {
+                EXPECT_TRUE(std::isnan(moved_proper));
+                EXPECT_TRUE(std::isnan(moved_improper));
+                continue;
+            }
+            EXPECT_NEAR(
+                nmr::test::directional::CircularDifference(
+                    moved_proper, source),
+                0.0, kAngleAbsTolerance);
+            EXPECT_NEAR(
+                nmr::test::directional::CircularDifference(
+                    moved_improper, -source),
+                0.0, kAngleAbsTolerance);
+            ++signed_checked;
+        }
+    }
+    EXPECT_GT(signed_checked, 200u);
+
+    // Ramachandran regions are chirality-conditioned categories, not even
+    // scalars.  Proper reruns are exact; reflection must exercise both
+    // changed and unchanged rows rather than being assigned a fake parity.
+    const auto rama = ReadH5Flat<std::uint8_t>(
+        h5_path, group + "rama_region");
+    ASSERT_EQ(rama.size(), residues * 3u);
+    std::size_t rama_changed = 0;
+    std::size_t rama_unchanged = 0;
+    for (std::size_t residue = 0; residue < residues; ++residue) {
+        EXPECT_EQ(rama[residue * 3u + 1u], rama[residue * 3u]);
+        if (rama[residue * 3u + 2u] == rama[residue * 3u])
+            ++rama_unchanged;
+        else
+            ++rama_changed;
+    }
+    EXPECT_GT(rama_changed, 0u);
+    EXPECT_GT(rama_unchanged, 0u);
+    EXPECT_EQ(ReadH5Flat<std::uint8_t>(
+                  h5_path, group + "source_attached_per_frame"),
+              (std::vector<std::uint8_t>{1u, 1u, 1u}));
+    EXPECT_EQ(ReadH5Flat<std::size_t>(
+                  h5_path, group + "frame_indices"),
+              (std::vector<std::size_t>{41u, 42u, 43u}));
+    EXPECT_EQ(ReadH5Flat<double>(h5_path, group + "frame_times"),
+              (std::vector<double>{0.0, 0.25, 0.5}));
+    EXPECT_TRUE(fs::remove(h5_path));
+}
 
 
 TEST(LocalBackboneGeometry, ProductionBondAngleKernelPinsAnalyticAndDegenerateCases) {

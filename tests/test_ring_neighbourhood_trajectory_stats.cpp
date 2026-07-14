@@ -9,11 +9,13 @@
 
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
+#include "DirectionalTestHelpers.h"
 #include "EnrichmentResult.h"
 #include "GeometryResult.h"
 #include "OperationLog.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
+#include "PdbFileReader.h"
 #include "Residue.h"
 #include "Ring.h"
 #include "RingNeighbourhoodTrajectoryStats.h"
@@ -33,8 +35,10 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <set>
 #include <string>
 #include <vector>
@@ -59,6 +63,63 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
+
+template <typename T>
+std::vector<T> ReadH5Flat(const std::string& path,
+                          const std::string& dataset,
+                          std::vector<std::size_t>* dimensions = nullptr) {
+    HighFive::File file(path, HighFive::File::ReadOnly);
+    auto data_set = file.getDataSet(dataset);
+    const auto dims = data_set.getSpace().getDimensions();
+    if (dimensions) *dimensions = dims;
+    const std::size_t count = std::accumulate(
+        dims.begin(), dims.end(), std::size_t{1},
+        std::multiplies<std::size_t>());
+    std::vector<T> values(count);
+    if (!values.empty()) data_set.read(values.data());
+    return values;
+}
+
+void ExpectDirectionalGeometryMetadata(const std::string& path) {
+    HighFive::File file(path, HighFive::File::ReadOnly);
+    const std::string dataset_path =
+        "/trajectory/ring_neighbourhood_trajectory_stats/geometry";
+    auto dataset = file.getDataSet(dataset_path);
+    auto expect_string = [&](const char* name, const std::string& expected) {
+        std::string actual;
+        dataset.getAttribute(name).read(actual);
+        EXPECT_EQ(actual, expected) << dataset_path << " @" << name;
+    };
+    expect_string(
+        "coordinate_frame",
+        "mixed_intrinsic_oriented_ring_cylindrical_coordinates");
+    expect_string("parity", "mixed");
+    expect_string(
+        "column_coordinate_frames",
+        "distance=intrinsic_atom_to_ring_center;"
+        "rho=intrinsic_ring_plane_radius;"
+        "z=oriented_ring_normal_projection;"
+        "in_plane_angle=intrinsic_vertex0_oriented_ring_azimuth");
+    expect_string(
+        "column_irrep_layout",
+        "distance=0e;rho=0e;z=0o;in_plane_angle=0e_periodic");
+    expect_string(
+        "column_parity",
+        "distance=even;rho=even;z=odd;in_plane_angle=even");
+    expect_string(
+        "column_transformation",
+        "for an orthogonal R and any translation: distance'=distance, "
+        "rho'=rho, z'=det(R) z, and in_plane_angle'=in_plane_angle modulo "
+        "2*pi; the cross-product-derived ring normal is axial, while the "
+        "vertex-0 direction and normal-cross-vertex-0 direction both form "
+        "polar in-plane axes");
+    expect_string(
+        "validity",
+        "all four columns are NaN for unused ring slots; within live slots "
+        "distance/rho/z are finite and in_plane_angle is NaN only at the "
+        "documented ring-axis or vertex-0 gauge singularity");
+}
+
 nmr::RunConfiguration BuildConfig(unsigned stride) {
     nmr::RunConfiguration config;
     auto& opts = config.MutablePerFrameRunOptions();
@@ -80,6 +141,139 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
 }
 
 }  // namespace
+
+
+TEST(RingNeighbourhoodTrajectoryStats,
+     DirectionalGeometryRerunProductionOwnersO3SerializedH5) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    const std::string pdb = nmr::test::TestEnvironment::UbqProtonated();
+    if (pdb.empty() || !fs::exists(pdb))
+        GTEST_SKIP() << "1UBQ protonated fixture unavailable";
+    auto build = nmr::BuildFromProtonatedPdb(pdb);
+    ASSERT_TRUE(build.Ok()) << build.error;
+    auto protein = std::move(build.protein);
+    auto attach_owners = [](nmr::ProteinConformation& conf) {
+        auto geometry = nmr::GeometryResult::Compute(conf);
+        ASSERT_NE(geometry, nullptr);
+        ASSERT_TRUE(conf.AttachResult(std::move(geometry)));
+        auto spatial = nmr::SpatialIndexResult::Compute(conf);
+        ASSERT_NE(spatial, nullptr);
+        ASSERT_TRUE(conf.AttachResult(std::move(spatial)));
+    };
+    auto& original = protein->Conformation();
+    attach_owners(original);
+    const auto proper = nmr::test::directional::SeededTransform(
+        0x52494E474E454947ULL, false);
+    const auto improper = nmr::test::directional::SeededTransform(
+        0x52494E474E454947ULL, true);
+    auto& moved_proper = protein->AddConformation(
+        nmr::test::directional::Positions(proper, original.Positions()),
+        "ring-neighbourhood proper owner rerun");
+    attach_owners(moved_proper);
+    auto& moved_improper = protein->AddConformation(
+        nmr::test::directional::Positions(improper, original.Positions()),
+        "ring-neighbourhood improper owner rerun");
+    attach_owners(moved_improper);
+
+    auto tp = nmr::TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(tp, nullptr);
+    auto result = nmr::RingNeighbourhoodTrajectoryStats::Create(*tp);
+    ASSERT_NE(result, nullptr);
+    nmr::Trajectory dummy("", "", "");
+    for (std::size_t frame = 0; frame < 3; ++frame) {
+        result->Compute(tp->ProteinRef().ConformationAt(frame), *tp, dummy,
+                        61u + frame, 0.75 * frame);
+    }
+    result->Finalize(*tp, dummy);
+    ASSERT_GT(result->RPerAtomMax(), 0u);
+
+    const std::string h5_path =
+        nmr::test::TestEnvironment::TempPath(
+            "ring_neighbourhood_directional_covariance.h5");
+    fs::remove(h5_path);
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        result->WriteH5Group(*tp, file);
+    }
+    // One serialized dataset contains the independently computed source,
+    // proper-transform, and improper-transform frames. Pin its column-level
+    // contract at that same production boundary.
+    ExpectDirectionalGeometryMetadata(h5_path);
+    const std::string group =
+        "/trajectory/ring_neighbourhood_trajectory_stats/";
+    std::vector<std::size_t> dims;
+    const auto geometry = ReadH5Flat<double>(
+        h5_path, group + "geometry", &dims);
+    const std::size_t atoms = tp->AtomCount();
+    const std::size_t slots = result->RPerAtomMax();
+    ASSERT_EQ(dims,
+              (std::vector<std::size_t>{atoms, 3u, slots, 4u}));
+    std::vector<std::size_t> membership_dims;
+    const auto membership = ReadH5Flat<std::int32_t>(
+        h5_path, group + "ring_membership_per_atom", &membership_dims);
+    ASSERT_EQ(membership_dims,
+              (std::vector<std::size_t>{atoms, slots}));
+
+    constexpr double kGeometryAbsTolerance = 3.0e-11;
+    std::size_t live_rows = 0;
+    auto at = [&](std::size_t atom, std::size_t frame,
+                  std::size_t slot, std::size_t channel) {
+        return geometry[
+            (((atom * 3u + frame) * slots + slot) * 4u) + channel];
+    };
+    for (std::size_t atom = 0; atom < atoms; ++atom) {
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            const bool live = membership[atom * slots + slot] >= 0;
+            if (!live) {
+                for (std::size_t frame = 0; frame < 3; ++frame)
+                    for (std::size_t channel = 0; channel < 4; ++channel)
+                        EXPECT_TRUE(std::isnan(
+                            at(atom, frame, slot, channel)));
+                continue;
+            }
+            ++live_rows;
+            // distance, rho, and vertex-0-gauge azimuth are invariant;
+            // signed normal offset z is a pseudoscalar.
+            for (std::size_t channel : {0u, 1u}) {
+                EXPECT_NEAR(at(atom, 1u, slot, channel),
+                            at(atom, 0u, slot, channel),
+                            kGeometryAbsTolerance);
+                EXPECT_NEAR(at(atom, 2u, slot, channel),
+                            at(atom, 0u, slot, channel),
+                            kGeometryAbsTolerance);
+            }
+            EXPECT_NEAR(at(atom, 1u, slot, 2u),
+                        at(atom, 0u, slot, 2u),
+                        kGeometryAbsTolerance);
+            EXPECT_NEAR(at(atom, 2u, slot, 2u),
+                        -at(atom, 0u, slot, 2u),
+                        kGeometryAbsTolerance);
+            const double source_angle = at(atom, 0u, slot, 3u);
+            if (std::isnan(source_angle)) {
+                EXPECT_TRUE(std::isnan(at(atom, 1u, slot, 3u)));
+                EXPECT_TRUE(std::isnan(at(atom, 2u, slot, 3u)));
+            } else {
+                EXPECT_NEAR(
+                    nmr::test::directional::CircularDifference(
+                        at(atom, 1u, slot, 3u), source_angle),
+                    0.0, kGeometryAbsTolerance);
+                EXPECT_NEAR(
+                    nmr::test::directional::CircularDifference(
+                        at(atom, 2u, slot, 3u), source_angle),
+                    0.0, kGeometryAbsTolerance);
+            }
+        }
+    }
+    EXPECT_GT(live_rows, 0u);
+    EXPECT_EQ(ReadH5Flat<std::uint8_t>(
+                  h5_path, group + "source_attached_per_frame"),
+              (std::vector<std::uint8_t>{1u, 1u, 1u}));
+    EXPECT_EQ(ReadH5Flat<std::size_t>(h5_path, group + "frame_indices"),
+              (std::vector<std::size_t>{61u, 62u, 63u}));
+    EXPECT_EQ(ReadH5Flat<double>(h5_path, group + "frame_times"),
+              (std::vector<double>{0.0, 0.75, 1.5}));
+    EXPECT_TRUE(fs::remove(h5_path));
+}
 
 
 // ── Frame 0 smoke ───────────────────────────────────────────────────

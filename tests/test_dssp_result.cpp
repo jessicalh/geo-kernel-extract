@@ -1,4 +1,5 @@
 #include "TestEnvironment.h"
+#include "DirectionalTestHelpers.h"
 #include <gtest/gtest.h>
 #include "Atom.h"
 #include "PdbFileReader.h"
@@ -95,6 +96,19 @@ void ExpectShapeAndDescr(const NpyArray& arr,
                          const std::string& descr) {
     EXPECT_EQ(arr.shape, shape);
     EXPECT_EQ(arr.descr, descr);
+}
+
+void RemoveDsspOutput(const fs::path& output_dir) {
+    std::error_code ec;
+    for (const char* filename : {
+             "dssp_observed.npy", "dssp_backbone.npy", "dssp_ss8.npy",
+             "dssp_ppii.npy", "dssp_hbond_energy.npy", "dssp_chi.npy",
+             "dssp_torsion_angle.npy", "dssp_torsion_sin.npy",
+             "dssp_torsion_cos.npy", "dssp_torsion_valid.npy",
+             "dssp_hbond_partner_residue_index.npy"}) {
+        fs::remove(output_dir / filename, ec);
+    }
+    fs::remove(output_dir, ec);
 }
 
 // Two residues carrying the B15 analytic chi fixtures. Residue 0 is +60°;
@@ -213,6 +227,295 @@ TEST_F(DsspResultTest, ComputeSucceeds) {
     auto dssp = DsspResult::Compute(conf);
     ASSERT_NE(dssp, nullptr);
     ASSERT_TRUE(conf.AttachResult(std::move(dssp)));
+}
+
+TEST_F(DsspResultTest,
+       DirectionalSignedGeometryAndPpiiRerunProductionLibdsspOnO3) {
+    using nmr::test::directional::Positions;
+    using nmr::test::directional::SeededTransform;
+
+    auto& original = protein->Conformation();
+    auto original_result = DsspResult::Compute(original);
+    ASSERT_NE(original_result, nullptr);
+    ASSERT_TRUE(original.AttachResult(std::move(original_result)));
+    const fs::path root = fs::temp_directory_path() /
+        ("dssp_directional_" + std::to_string(::getpid()));
+    RemoveDsspOutput(root / "original");
+    RemoveDsspOutput(root / "proper");
+    RemoveDsspOutput(root / "improper");
+    std::error_code ec;
+    fs::remove(root, ec);
+    const fs::path original_dir = root / "original";
+    ASSERT_TRUE(fs::create_directories(original_dir));
+    ASSERT_EQ(original.Result<DsspResult>().WriteFeatures(
+                  original, original_dir.string()), 11);
+    const NpyArray original_observed =
+        ReadNpy(original_dir / "dssp_observed.npy");
+    const NpyArray original_ppii = ReadNpy(original_dir / "dssp_ppii.npy");
+    const NpyArray original_torsion =
+        ReadNpy(original_dir / "dssp_torsion_angle.npy");
+    const NpyArray original_valid =
+        ReadNpy(original_dir / "dssp_torsion_valid.npy");
+    const NpyArray original_backbone =
+        ReadNpy(original_dir / "dssp_backbone.npy");
+    const NpyArray original_ss8 = ReadNpy(original_dir / "dssp_ss8.npy");
+    const NpyArray original_chi = ReadNpy(original_dir / "dssp_chi.npy");
+    const NpyArray original_sin =
+        ReadNpy(original_dir / "dssp_torsion_sin.npy");
+    const NpyArray original_cos =
+        ReadNpy(original_dir / "dssp_torsion_cos.npy");
+    const NpyArray original_hbond_energy =
+        ReadNpy(original_dir / "dssp_hbond_energy.npy");
+    const NpyArray original_hbond_partner = ReadNpy(
+        original_dir / "dssp_hbond_partner_residue_index.npy");
+    ExpectShapeAndDescr(original_observed, {original.AtomCount()}, "|i1");
+    ExpectShapeAndDescr(original_ppii, {original.AtomCount()}, "|i1");
+    ExpectShapeAndDescr(
+        original_torsion, {protein->ResidueCount(), 6}, "<f8");
+    ExpectShapeAndDescr(
+        original_valid, {protein->ResidueCount(), 6}, "|u1");
+    ExpectShapeAndDescr(
+        original_backbone, {original.AtomCount(), 5}, "<f8");
+    ExpectShapeAndDescr(original_ss8, {original.AtomCount(), 8}, "<f8");
+    ExpectShapeAndDescr(original_chi, {original.AtomCount(), 12}, "<f8");
+    ExpectShapeAndDescr(
+        original_sin, {protein->ResidueCount(), 6}, "<f8");
+    ExpectShapeAndDescr(
+        original_cos, {protein->ResidueCount(), 6}, "<f8");
+    ExpectShapeAndDescr(
+        original_hbond_energy, {original.AtomCount(), 4}, "<f8");
+    ExpectShapeAndDescr(
+        original_hbond_partner, {original.AtomCount(), 4}, "<i4");
+
+    const int8_t* observed_0 = DataAs<int8_t>(original_observed);
+    const int8_t* ppii_0 = DataAs<int8_t>(original_ppii);
+    const double* torsion_0 = DataAs<double>(original_torsion);
+    const std::uint8_t* valid_0 = DataAs<std::uint8_t>(original_valid);
+    const double* backbone_0 = DataAs<double>(original_backbone);
+    const double* ss8_0 = DataAs<double>(original_ss8);
+    const double* chi_0 = DataAs<double>(original_chi);
+    const double* sin_0 = DataAs<double>(original_sin);
+    const double* cos_0 = DataAs<double>(original_cos);
+    const double* hbond_energy_0 = DataAs<double>(original_hbond_energy);
+    const std::int32_t* hbond_partner_0 =
+        DataAs<std::int32_t>(original_hbond_partner);
+    std::size_t original_ppii_count = 0;
+    for (std::size_t atom = 0; atom < original.AtomCount(); ++atom)
+        original_ppii_count += ppii_0[atom] == 1 ? 1u : 0u;
+    ASSERT_GT(original_ppii_count, 0u)
+        << "1UBQ no longer exercises libdssp's PPII class";
+
+    // DsspResult reruns libdssp through its PDB interchange path.  The rigidly
+    // transformed coordinates are rounded to 0.001 A there, and libdssp's
+    // solvent-accessible-surface calculation amplifies that quantization.
+    // For seed 0xD55A2026 the recorded proper-rotation maximum is 3.755501 A^2;
+    // 4.0 A^2 is the explicit serialization/discretization bound.  This is
+    // separate from the signed torsion and exact categorical assertions.
+    constexpr double kLibdsspSasaAbsToleranceA2 = 4.0;
+    double max_o3_sasa_error_A2 = 0.0;
+
+    for (const bool improper : {false, true}) {
+        const auto transform =
+            SeededTransform(0xD55A2026ULL, improper);
+        auto& moved = protein->AddConformation(
+            Positions(transform, original.Positions()),
+            improper ? "DSSP improper rerun" : "DSSP proper rerun");
+        auto moved_result = DsspResult::Compute(moved);
+        ASSERT_NE(moved_result, nullptr);
+        ASSERT_TRUE(moved.AttachResult(std::move(moved_result)));
+        const fs::path moved_dir = root /
+            (improper ? "improper" : "proper");
+        ASSERT_TRUE(fs::create_directories(moved_dir));
+        ASSERT_EQ(moved.Result<DsspResult>().WriteFeatures(
+                      moved, moved_dir.string()), 11);
+        const NpyArray moved_observed =
+            ReadNpy(moved_dir / "dssp_observed.npy");
+        const NpyArray moved_ppii = ReadNpy(moved_dir / "dssp_ppii.npy");
+        const NpyArray moved_torsion =
+            ReadNpy(moved_dir / "dssp_torsion_angle.npy");
+        const NpyArray moved_valid =
+            ReadNpy(moved_dir / "dssp_torsion_valid.npy");
+        const NpyArray moved_backbone =
+            ReadNpy(moved_dir / "dssp_backbone.npy");
+        const NpyArray moved_ss8 = ReadNpy(moved_dir / "dssp_ss8.npy");
+        const NpyArray moved_chi = ReadNpy(moved_dir / "dssp_chi.npy");
+        const NpyArray moved_sin =
+            ReadNpy(moved_dir / "dssp_torsion_sin.npy");
+        const NpyArray moved_cos =
+            ReadNpy(moved_dir / "dssp_torsion_cos.npy");
+        const NpyArray moved_hbond_energy =
+            ReadNpy(moved_dir / "dssp_hbond_energy.npy");
+        const NpyArray moved_hbond_partner = ReadNpy(
+            moved_dir / "dssp_hbond_partner_residue_index.npy");
+        ASSERT_EQ(moved_observed.shape, original_observed.shape);
+        ASSERT_EQ(moved_ppii.shape, original_ppii.shape);
+        ASSERT_EQ(moved_torsion.shape, original_torsion.shape);
+        ASSERT_EQ(moved_valid.shape, original_valid.shape);
+        ASSERT_EQ(moved_backbone.shape, original_backbone.shape);
+        ASSERT_EQ(moved_ss8.shape, original_ss8.shape);
+        ASSERT_EQ(moved_chi.shape, original_chi.shape);
+        ASSERT_EQ(moved_sin.shape, original_sin.shape);
+        ASSERT_EQ(moved_cos.shape, original_cos.shape);
+        ASSERT_EQ(moved_hbond_energy.shape, original_hbond_energy.shape);
+        ASSERT_EQ(moved_hbond_partner.shape, original_hbond_partner.shape);
+        const int8_t* observed_1 = DataAs<int8_t>(moved_observed);
+        const int8_t* ppii_1 = DataAs<int8_t>(moved_ppii);
+        const double* torsion_1 = DataAs<double>(moved_torsion);
+        const std::uint8_t* valid_1 = DataAs<std::uint8_t>(moved_valid);
+        const double* backbone_1 = DataAs<double>(moved_backbone);
+        const double* ss8_1 = DataAs<double>(moved_ss8);
+        const double* chi_1 = DataAs<double>(moved_chi);
+        const double* sin_1 = DataAs<double>(moved_sin);
+        const double* cos_1 = DataAs<double>(moved_cos);
+        const double* hbond_energy_1 = DataAs<double>(moved_hbond_energy);
+        const std::int32_t* hbond_partner_1 =
+            DataAs<std::int32_t>(moved_hbond_partner);
+
+        std::size_t ppii_changes = 0;
+        for (std::size_t atom = 0; atom < original.AtomCount(); ++atom) {
+            EXPECT_EQ(observed_1[atom], observed_0[atom])
+                << "dssp_observed.npy atom=" << atom;
+            if (improper) {
+                ppii_changes += ppii_1[atom] != ppii_0[atom] ? 1u : 0u;
+            } else {
+                EXPECT_EQ(ppii_1[atom], ppii_0[atom])
+                    << "dssp_ppii.npy atom=" << atom;
+            }
+            double source_ss8_sum = 0.0;
+            double moved_ss8_sum = 0.0;
+            for (std::size_t column = 0; column < 8; ++column) {
+                const double source_value = ss8_0[atom * 8 + column];
+                const double moved_value = ss8_1[atom * 8 + column];
+                EXPECT_TRUE(source_value == 0.0 || source_value == 1.0);
+                EXPECT_TRUE(moved_value == 0.0 || moved_value == 1.0);
+                source_ss8_sum += source_value;
+                moved_ss8_sum += moved_value;
+                // The ordinary eight-state surface collapses libdssp's
+                // reflection-sensitive P extension into coil.  Its emitted
+                // one-hot category is therefore exactly invariant for both
+                // proper and improper rigid transforms.
+                EXPECT_DOUBLE_EQ(moved_value, source_value)
+                    << "dssp_ss8.npy atom=" << atom
+                    << " column=" << column;
+            }
+            EXPECT_TRUE(source_ss8_sum == 0.0 || source_ss8_sum == 1.0);
+            EXPECT_TRUE(moved_ss8_sum == 0.0 || moved_ss8_sum == 1.0);
+            // dssp_backbone.npy columns 2:5 are the serialized scalar SASA
+            // and categorical helix/sheet flags.  SASA is invariant up to
+            // the recorded PDB/libdssp quantization envelope; the flags are
+            // exact after the PPII-to-coil collapse under all O(3).
+            if (std::isnan(backbone_0[atom * 5 + 2])) {
+                EXPECT_TRUE(std::isnan(backbone_1[atom * 5 + 2]));
+            } else {
+                max_o3_sasa_error_A2 = std::max(
+                    max_o3_sasa_error_A2,
+                    std::abs(backbone_1[atom * 5 + 2] -
+                             backbone_0[atom * 5 + 2]));
+                EXPECT_NEAR(backbone_1[atom * 5 + 2],
+                            backbone_0[atom * 5 + 2],
+                            kLibdsspSasaAbsToleranceA2);
+            }
+            EXPECT_DOUBLE_EQ(backbone_1[atom * 5 + 3],
+                             backbone_0[atom * 5 + 3]);
+            EXPECT_DOUBLE_EQ(backbone_1[atom * 5 + 4],
+                             backbone_0[atom * 5 + 4]);
+
+            // Static partner identities and their energy slots are checked
+            // together.  Their physical law is invariant, while the
+            // production libdssp boundary has the same explicitly recorded
+            // 0.001-A quantization envelope as the trajectory owner.
+            for (std::size_t slot = 0; slot < 4; ++slot) {
+                const std::size_t offset = atom * 4 + slot;
+                EXPECT_EQ(hbond_partner_1[offset], hbond_partner_0[offset])
+                    << "dssp_hbond_partner_residue_index.npy atom=" << atom
+                    << " slot=" << slot;
+                if (std::isnan(hbond_energy_0[offset])) {
+                    EXPECT_TRUE(std::isnan(hbond_energy_1[offset]))
+                        << "dssp_hbond_energy.npy atom=" << atom
+                        << " slot=" << slot;
+                } else {
+                    EXPECT_NEAR(hbond_energy_1[offset],
+                                hbond_energy_0[offset], 5.0e-3)
+                        << "dssp_hbond_energy.npy atom=" << atom
+                        << " slot=" << slot;
+                    if (hbond_partner_0[offset] < 0)
+                        EXPECT_DOUBLE_EQ(hbond_energy_0[offset], 0.0);
+                }
+            }
+        }
+        if (improper) {
+            EXPECT_GT(ppii_changes, 0u)
+                << "dssp_ppii.npy was incorrectly treated as reflection-even";
+        }
+
+        std::size_t signed_angles_checked = 0;
+        for (std::size_t i = 0;
+             i < protein->ResidueCount() * 6; ++i) {
+            EXPECT_EQ(valid_1[i], valid_0[i]);
+            if (!valid_0[i]) continue;
+            const double expected = improper ? -torsion_0[i] : torsion_0[i];
+            EXPECT_NEAR(
+                nmr::test::directional::CircularDifference(
+                    torsion_1[i], expected),
+                0.0, 5.0e-2)
+                << "dssp_torsion_angle.npy flat_component=" << i;
+            ++signed_angles_checked;
+
+            const double expected_sin = improper ? -sin_0[i] : sin_0[i];
+            EXPECT_NEAR(sin_1[i], expected_sin, 5.0e-2)
+                << "dssp_torsion_sin.npy flat_component=" << i;
+            EXPECT_NEAR(cos_1[i], cos_0[i], 5.0e-2)
+                << "dssp_torsion_cos.npy flat_component=" << i;
+        }
+        EXPECT_GT(signed_angles_checked, 100u);
+
+        // The atom-broadcast DSSP backbone table owns the same signed phi/psi
+        // information in columns 0:2.  Check its serialized payload directly;
+        // columns 2:5 were checked independently above because their scalar
+        // and collapsed-category laws differ from these signed angles.
+        for (std::size_t atom = 0; atom < original.AtomCount(); ++atom) {
+            for (std::size_t column = 0; column < 2; ++column) {
+                const double source = backbone_0[atom * 5 + column];
+                const double emitted = backbone_1[atom * 5 + column];
+                if (std::isnan(source)) {
+                    EXPECT_TRUE(std::isnan(emitted));
+                } else {
+                    EXPECT_NEAR(
+                        nmr::test::directional::CircularDifference(
+                            emitted, improper ? -source : source),
+                        0.0, 5.0e-2)
+                        << "dssp_backbone.npy atom=" << atom
+                        << " column=" << column;
+                }
+            }
+        }
+
+        // dssp_chi.npy is computed by the owning writer from the transformed
+        // conformation coordinates: cos/exists are invariant and sin is a
+        // pseudoscalar.  Missing chis retain the exact zero/zero/zero row.
+        for (std::size_t atom = 0; atom < original.AtomCount(); ++atom) {
+            for (std::size_t chi = 0; chi < 4; ++chi) {
+                const std::size_t base = atom * 12 + chi * 3;
+                EXPECT_NEAR(chi_1[base], chi_0[base], 2.0e-11)
+                    << "dssp_chi.npy cos atom=" << atom << " chi=" << chi;
+                EXPECT_NEAR(chi_1[base + 1],
+                            improper ? -chi_0[base + 1] : chi_0[base + 1],
+                            2.0e-11)
+                    << "dssp_chi.npy sin atom=" << atom << " chi=" << chi;
+                EXPECT_DOUBLE_EQ(chi_1[base + 2], chi_0[base + 2])
+                    << "dssp_chi.npy exists atom=" << atom << " chi=" << chi;
+            }
+        }
+    }
+
+    std::cerr << "DSSP O(3)-rerun serialized SASA max_abs_A2="
+              << max_o3_sasa_error_A2
+              << " tolerance_A2=" << kLibdsspSasaAbsToleranceA2 << '\n';
+
+    RemoveDsspOutput(root / "original");
+    RemoveDsspOutput(root / "proper");
+    RemoveDsspOutput(root / "improper");
+    fs::remove(root, ec);
 }
 
 TEST_F(DsspResultTest, HasSecondaryStructure) {
