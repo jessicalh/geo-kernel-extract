@@ -1803,27 +1803,48 @@ _set_contract(
     validity="NaN for non-successful pair dispositions; imputed successful values are emitted unmasked",
     parity="mixed")
 _set_contract(
-    ("larsen_hbond_count", "larsen_corner_imputed",
-     "larsen_imputed_pair_count", "larsen_sidechain_carbonyl_pair_count"),
+    ("larsen_hbond_count", "larsen_sidechain_carbonyl_pair_count"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant count: successful "
+        "pair membership is gated by topology, distance, and theta; rho is "
+        "periodic and only selects tensor values and imputation provenance"
+    ),
+    validity="per-atom count; zero is a real no-contribution count",
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("larsen_hbond_water_term",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact rotation/translation/reflection-invariant scalar: the water "
+        "gate uses only topology, distance, and theta; both successful and "
+        "out-of-r-grid geometric pairs suppress the term"
+    ),
+    validity=(
+        "2.07 ppm on geometrically unpaired amide H atoms and physical zero "
+        "elsewhere; whole optional group absent without Larsen grids"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("larsen_corner_imputed", "larsen_imputed_pair_count"),
     coordinate_frame="larsen_signed_rho_grid",
     transformation=(
-        "proper-rotation invariant lookup provenance/count; no improper-transform "
-        "law because reflection changes the signed-rho grid query and may change "
-        "success, grid-miss, or corner-imputation disposition"
+        "proper-rotation invariant imputation provenance; no improper-transform "
+        "law because reflection changes which signed-rho validity-mask corners "
+        "serve the otherwise successful periodic query"
     ),
-    validity="per-atom lookup provenance; zero is a real no-contribution/no-imputation count",
+    validity="per-atom imputation provenance; zero is a real no-imputation count",
     parity="mixed")
 _set_contract(
     ("larsen_hbond_pairs_index",),
-    coordinate_frame="larsen_signed_rho_grid",
+    coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
-        "mixed integer provenance invariant under proper rotations; identity, "
-        "class, atom, and target-mask columns remain invariant under reflection, "
-        "but col6 disposition has no improper-transform law because the reflected "
-        "signed-rho lookup can change query validity/success"
+        "all integer identity, class, disposition, anchor, and target-mask "
+        "columns are exactly rotation/translation/reflection invariant; rho is "
+        "periodic and affects tensor values/imputation provenance, not success"
     ),
     validity="col6 disposition is the authoritative row-status code",
-    parity="mixed")
+    parity="even")
 _set_contract(
     ("larsen_hbond_pairs",), coordinate_frame="mixed_larsen_pair_contract",
     transformation=(
