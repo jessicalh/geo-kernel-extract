@@ -1146,6 +1146,20 @@ _set_contract(
     ),
     irreps="", parity="mixed", tensor_rank=0)
 _set_contract(
+    ("apbs_nonfinite_sanitizer_mask",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation/translation/reflection-invariant finite-value "
+        "diagnostic; the live axis-aligned finite-difference APBS solve has "
+        "no exact O(3) outcome law"
+    ),
+    validity=(
+        "uint8 bit field: bit0 reaction E, bit1 reaction EFG, bit2 total E, "
+        "bit3 total EFG; a set bit means that derivative was sanitized, while "
+        "zero means no sanitizer fired; whole result is absent if APBS fails"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
     ("water_efield", "water_efield_first"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
     validity="whole WaterFieldResult is absent without solvent; clamp provenance is emitted separately")
