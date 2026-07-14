@@ -68,6 +68,8 @@ std::unique_ptr<JCouplingTimeSeriesTrajectoryResult>
 JCouplingTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     auto r = std::make_unique<JCouplingTimeSeriesTrajectoryResult>();
     const Protein& protein = tp.ProteinRef();
+    const LegacyAmberTopology& topology = protein.LegacyAmber();
+    const bool has_atom_semantic = topology.HasAtomSemantic();
     const std::size_t R = protein.ResidueCount();
     const std::size_t N = tp.AtomCount();
 
@@ -151,43 +153,60 @@ JCouplingTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
             r->j_halpha_cprime_exists_[ri] = 1u;
         }
 
-        // Hbeta lookup: walk this residue's atoms by pdb_atom_name.
-        // Most residues: prochiral methylene pair HB2 + HB3.
-        // Ile/Val/Thr: single Hbeta methine ("HB"); emit it in BOTH
-        // slots so the mask + downstream consumer is uniform.
-        // Ala: methyl HB1/HB2/HB3; deliberately leave HB2 + HB3 caches
-        // as NONE so both channels NaN-fill (the methyl 3J is not the
-        // same chemical observable as the methylene 3J).
-        // Gly: no Cbeta; leave NONE.
-        if (res.CB != Residue::NONE && res.HA != Residue::NONE &&
+        // Hbeta admission is entirely substrate-driven. Restrict to
+        // typed beta hydrogens whose covalent-topology parent is the
+        // residue's typed Cbeta cache, then use the semantic row to
+        // distinguish the three chemistries:
+        //   - Position2/Position3: prochiral methylene pair;
+        //   - None + non-M: single methine Hbeta (Ile/Val/Thr), mirrored
+        //     into both slots so the downstream mask stays uniform;
+        //   - PseudoatomKind::M: methyl Hbeta (Ala), deliberately excluded
+        //     because its 3J is not the methylene observable.
+        // Gly has no typed Cbeta and therefore leaves both slots NONE.
+        if (has_atom_semantic && res.CB != Residue::NONE &&
+            res.HA != Residue::NONE &&
             res.CA != Residue::NONE) {
             std::size_t single_hb = Residue::NONE;
             std::size_t hb2 = Residue::NONE;
             std::size_t hb3 = Residue::NONE;
-            std::size_t ala_methyl_count = 0;
+            bool has_methyl_hbeta = false;
             for (std::size_t ai : res.atom_indices) {
-                const std::string& name = protein.AtomAt(ai).pdb_atom_name;
-                if      (name == "HB")  single_hb = ai;
-                else if (name == "HB2") hb2 = ai;
-                else if (name == "HB3") hb3 = ai;
-                else if (name == "HB1") ++ala_methyl_count;
+                const AtomSemanticTable& sem = topology.SemanticAt(ai);
+                if (sem.element != Element::H ||
+                    sem.locant != Locant::Beta ||
+                    topology.HydrogenParentOf(ai) != res.CB) {
+                    continue;
+                }
+                if (sem.pseudoatom.kind == PseudoatomKind::M) {
+                    has_methyl_hbeta = true;
+                    continue;
+                }
+                switch (sem.di_index) {
+                    case DiastereotopicIndex::None:
+                        single_hb = ai;
+                        break;
+                    case DiastereotopicIndex::Position2:
+                        hb2 = ai;
+                        break;
+                    case DiastereotopicIndex::Position3:
+                        hb3 = ai;
+                        break;
+                }
             }
-            // Ile/Val/Thr methine path: a single "HB" atom and no
-            // HB1/HB2/HB3 methylene names. Mirror to both slots so
-            // mask is uniform.
-            if (single_hb != Residue::NONE &&
+            // Methine path: mirror the single typed Hbeta to both slots.
+            if (!has_methyl_hbeta && single_hb != Residue::NONE &&
                 hb2 == Residue::NONE && hb3 == Residue::NONE) {
                 r->hb2_index_[ri] = single_hb;
                 r->hb3_index_[ri] = single_hb;
-            } else if (ala_methyl_count == 0 &&
+            } else if (!has_methyl_hbeta &&
                        hb2 != Residue::NONE && hb3 != Residue::NONE) {
                 // Prochiral methylene Hbeta pair (Ser/Cys/Asp/Asn/...
                 // also Phe/Tyr/Trp/His/Leu/Met/Glu/Gln/Arg/Lys/Pro).
                 r->hb2_index_[ri] = hb2;
                 r->hb3_index_[ri] = hb3;
             }
-            // Ala (3 methyl HBs): leave both slots NONE so the channel
-            // emits NaN; documented in the H5 attr.
+            // Ala's typed methyl Hbetas were excluded above, leaving both
+            // slots NONE so the channel emits NaN as documented.
         }
         if (r->hb2_index_[ri] != Residue::NONE ||
             r->hb3_index_[ri] != Residue::NONE) {
@@ -576,8 +595,9 @@ void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("source", std::string(
         "positions + Residue backbone-cache (H, N, CA, HA, CB, C) + "
         "C(prev) from Protein::BackbonePredecessor + Residue.chi[0] "
-        "(chi1 atom indices from AminoAcidType.chi_angles) + Hbeta "
-        "atom-name lookup. No source ConformationResult dependency; "
+        "(chi1 atom indices from AminoAcidType.chi_angles) + typed Hbeta "
+        "AtomSemanticTable identity and Cbeta parent bond graph. No source "
+        "ConformationResult dependency; "
         "positions always present at tp.Seed time."));
     grp.createAttribute("source_attached_policy", std::string(
         "always_attached -- source_attached_per_frame trivially all-1 "
