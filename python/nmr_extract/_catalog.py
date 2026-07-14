@@ -1108,6 +1108,32 @@ _set_contract(
     ),
     irreps="", parity="mixed", tensor_rank=0)
 _set_contract(
+    ("apbs_E_clamp_mask",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation/translation/reflection-invariant scalar "
+        "threshold diagnostic derived from |E|; the live axis-aligned "
+        "finite-difference APBS solve has no exact O(3) law"
+    ),
+    validity=(
+        "uint8 0/1; 1 iff the canonical reaction E-field row was "
+        "magnitude-clamped; whole ApbsFieldResult is absent if APBS fails"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("apbs_E_clamp_scale",),
+    coordinate_frame="lab_fixed_apbs_finite_difference_grid",
+    transformation=(
+        "continuum rotation/translation/reflection-invariant scalar derived "
+        "from |E| and the configured clamp threshold; the live axis-aligned "
+        "finite-difference APBS solve has no exact O(3) law"
+    ),
+    validity=(
+        "finite in (0,1] when the APBS result exists; 1 when unclamped; "
+        "whole ApbsFieldResult is absent if APBS fails"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
     ("water_efield", "water_efield_first"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
     validity="whole WaterFieldResult is absent without solvent; clamp provenance is emitted separately")
