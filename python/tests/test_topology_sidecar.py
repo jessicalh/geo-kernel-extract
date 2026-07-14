@@ -99,13 +99,6 @@ _DIRECTIONAL_STEMS = {
     "aimnet2_charge_response_gradient_scalar",
     # External quantum/reference and mutation tensors.
     "orca_total", "orca_diamagnetic", "orca_paramagnetic",
-    "tripeptide_bb_shielding", "tripeptide_bb_residual_vec",
-    "tripeptide_bb_match_distance", "tripeptide_bb_match_atoms",
-    "tripeptide_bb_method_tag", "tripeptide_neighbor_reference",
-    "tripeptide_neighbor_shielding", "tripeptide_neighbor_shielding_prev",
-    "tripeptide_neighbor_shielding_next",
-    "tripeptide_neighbor_residual_vec_prev",
-    "tripeptide_neighbor_residual_vec_next",
     "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
     "larsen_hbond_2pHB_shielding", "larsen_hbond_1pHaB_shielding",
     "larsen_hbond_2pHaB_shielding",
@@ -123,8 +116,7 @@ _DIRECTIONAL_STEMS = {
     "dssp_torsion_angle", "dssp_torsion_sin", "dssp_torsion_cos",
     "dssp_torsion_valid", "omega_actual", "omega_valid",
     "omega_deviation", "omega_sin", "omega_cos", "aromatic_chi2",
-    "pucker_Q", "pucker_theta", "tripeptide_bb_diagnostics",
-    "tripeptide_neighbor_diagnostics", "larsen_hbond_pairs_geometry",
+    "pucker_Q", "pucker_theta", "larsen_hbond_pairs_geometry",
     "larsen_hbond_pairs_isotropic", "larsen_hbond_pairs_index",
     "larsen_hbond_count", "larsen_hbond_water_term",
     "larsen_corner_imputed",
@@ -199,19 +191,6 @@ class TestCatalogMetadata:
             "sasa_normal",
             "sidechain_co_frame",
             "spatial_neighbors",
-            "tripeptide_bb_diagnostics",
-            "tripeptide_bb_residual_vec",
-            "tripeptide_bb_shielding",
-            "tripeptide_bb_match_atoms",
-            "tripeptide_bb_match_distance",
-            "tripeptide_bb_method_tag",
-            "tripeptide_neighbor_diagnostics",
-            "tripeptide_neighbor_reference",
-            "tripeptide_neighbor_residual_vec_prev",
-            "tripeptide_neighbor_residual_vec_next",
-            "tripeptide_neighbor_shielding",
-            "tripeptide_neighbor_shielding_prev",
-            "tripeptide_neighbor_shielding_next",
             "water_hbond_candidates",
             "water_polarization",
         }
@@ -456,9 +435,6 @@ class TestCatalogMetadata:
         assert "no dedicated validity mask" in scalar.validity
 
     @pytest.mark.parametrize("stem", [
-        "tripeptide_bb_shielding", "tripeptide_neighbor_shielding",
-        "tripeptide_neighbor_shielding_prev",
-        "tripeptide_neighbor_shielding_next",
         "larsen_hbond_shielding", "larsen_hbond_1pHB_shielding",
         "larsen_hbond_2pHB_shielding", "larsen_hbond_1pHaB_shielding",
         "larsen_hbond_2pHaB_shielding",
@@ -472,19 +448,6 @@ class TestCatalogMetadata:
         assert spec.parity == "mixed"
         assert not spec.irreps
         assert not spec.e3nn_export
-
-    @pytest.mark.parametrize("stem", [
-        "tripeptide_bb_residual_vec",
-        "tripeptide_neighbor_residual_vec_prev",
-        "tripeptide_neighbor_residual_vec_next",
-    ])
-    def test_chiral_source_proper_only_vectors_do_not_claim_o3_irreps(
-            self, stem):
-        spec = CATALOG[stem]
-        assert "under proper rotations" in spec.transformation
-        assert "no improper-transform contract" in spec.transformation
-        assert spec.parity == "mixed"
-        assert not spec.irreps
 
     def test_ideal_l_cb_outputs_have_only_a_proper_rotation_contract(self):
         deviation = CATALOG["cb_deviation"]
@@ -535,8 +498,6 @@ class TestCatalogMetadata:
             "dssp_backbone": "phi/psi cols0:2 are signed dihedral",
             "dssp_ss8": "physical O(3)-invariant libdssp eight-class one-hot",
             "dssp_chi": "cos/exists invariant; sin is pseudoscalar",
-            "tripeptide_bb_diagnostics": "cols10:12 and14:18 reverse sign",
-            "tripeptide_neighbor_diagnostics": "base+11:13",
             "larsen_hbond_pairs_geometry": "col2 signed rho",
             "larsen_hbond_pairs": "col18 signed-rho pseudoscalar",
             "larsen_sidechain_donor_candidates": "col10 signed rho",

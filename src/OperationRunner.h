@@ -32,7 +32,6 @@ class Protein;
 struct AIMNet2Model;  // forward declaration (AIMNet2Result.h)
 struct BondedParameters;  // forward declaration (BondedEnergyResult.h)
 struct GromacsEnergy;     // forward declaration (GromacsEnergyResult.h)
-class  TripeptideDftTable; // forward declaration (TripeptideDftTable.h)
 class  LarsenHBondGrid;    // forward declaration (LarsenHBondGrid.h)
 
 struct RunOptions {
@@ -89,19 +88,11 @@ struct RunOptions {
     // DFT: load ORCA shielding tensors after calculators.
     std::string orca_nmr_path;
 
-    // Tripeptide DFT lookup table (ProCS15 tensorcs15 replica).
-    // Null = skip tripeptide backbone + neighbor shielding results.
-    // When set, OperationRunner::Run attaches both
-    // TripeptideBackboneShieldingResult and
-    // TripeptideNeighborShieldingResult. Owned by Session for the
-    // process lifetime; borrowed here per run.
-    const TripeptideDftTable* tripeptide_dft_table = nullptr;
-
     // LarsenHBondGrid pointer. Borrowed; Session owns.
     // Null = skip LarsenHBondShieldingResult.
-    // When set, OperationRunner::Run attaches the calculator after the
-    // tripeptide block. Methods accumulate side-by-side with the
-    // scalar-geometry HBondResult (feedback_methods_accumulate).
+    // When set, OperationRunner::Run attaches the calculator. Methods
+    // accumulate side-by-side with the scalar-geometry HBondResult
+    // (feedback_methods_accumulate).
     const LarsenHBondGrid* larsen_hbond_grid = nullptr;
 };
 
@@ -122,7 +113,7 @@ public:
     //             DSSP, Charges.
     // Calculator stack: classical shielding, Sasa, Eeq, optional
     //             MOPAC/APBS/Coulomb/HBond/AIMNet2, solvent, GROMACS,
-    //             tripeptide, and Larsen resources.
+    //             and Larsen resources.
     // DFT comparison: ORCA shielding tensors if orca_nmr_path is provided.
     // =================================================================
 

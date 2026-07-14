@@ -25,10 +25,8 @@
 #include "OrcaShieldingResult.h"
 #include "MutationDeltaResult.h"
 #include "AIMNet2Result.h"
-#include "TripeptideBackboneShieldingResult.h"
 #include "LarsenHBondShieldingResult.h"
 #include "LarsenSidechainDonorAuditResult.h"
-#include "TripeptideNeighborShieldingResult.h"
 #include "AIMNet2ChargeResponseGradientResult.h"
 #include "PlanarGeometryResult.h"
 #include "SasaResult.h"
@@ -258,22 +256,6 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (opts.bonded_params) {
         if (!TimedAttach(conf, "BondedEnergyResult", out, [&]{
                 return BondedEnergyResult::Compute(conf, *opts.bonded_params); })) return out;
-    }
-
-    // Tripeptide DFT shielding: ProCS15 tensorcs15 backbone σ_BB^i +
-    // Larsen-2015-Eq.3 neighbour correction Δσ_BB^{i±1}. Always-on
-    // when the table is loaded (Session populates from
-    // ~/.nmr_tools.toml [databases].tensorcs15). Per-residue
-    // perception failures inside the calculator are logged via
-    // OperationLog::Warn but do not abort the run; misses degrade
-    // gracefully (per-atom tripeptide_bb_has_match=false stays default).
-    if (opts.tripeptide_dft_table) {
-        if (!TimedAttach(conf, "TripeptideBackboneShieldingResult", out, [&]{
-                return TripeptideBackboneShieldingResult::Compute(
-                    conf, *opts.tripeptide_dft_table); })) return out;
-        if (!TimedAttach(conf, "TripeptideNeighborShieldingResult", out, [&]{
-                return TripeptideNeighborShieldingResult::Compute(
-                    conf, *opts.tripeptide_dft_table); })) return out;
     }
 
     // LarsenHBondShieldingResult: Larsen 2015 ProCS15 H-bond terms via

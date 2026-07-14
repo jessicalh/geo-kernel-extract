@@ -196,9 +196,9 @@ TEST(DsspResultHelpers,
         }
     }
 
-    // The same analytic coordinates are pinned to ±60° in both
-    // tripeptide test files. This independently checks DSSP's unchanged
-    // cos/sin/exists writer and catches either a sign or column regression.
+    // The analytic coordinates are pinned to ±60°. This independently
+    // checks DSSP's unchanged cos/sin/exists writer and catches either a
+    // sign or column regression.
     std::error_code ec;
     for (const char* f : {"dssp_observed.npy", "dssp_backbone.npy",
                           "dssp_ss8.npy", "dssp_ppii.npy",

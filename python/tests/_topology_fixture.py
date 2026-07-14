@@ -2,8 +2,8 @@
 SDK's strict ``load()`` now requires.
 
 Mirrors the schema declared in ``src/TopologySidecar.cpp``. Used by
-``test_larsen_hbond_group.py``, ``test_tripeptide_group.py``, and any
-future test that constructs a synthetic extraction directory.
+``test_larsen_hbond_group.py`` and any future test that constructs a
+synthetic extraction directory.
 
 The minimal sidecar is valid but empty: zero bonds, zero rings,
 zero ring memberships. That matches the codex first-pass validation

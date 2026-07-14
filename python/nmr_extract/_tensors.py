@@ -181,7 +181,7 @@ class ShieldingTensor(SphericalTensor):
     """Shielding contribution tensor.  Same structure as :class:`SphericalTensor`.
 
     Per-instance units are declared by the corresponding catalog entry
-    (``ArraySpec.units``). DFT-derived shielding (orca_*, tripeptide_*,
+    (``ArraySpec.units``). DFT-derived shielding (orca_*,
     larsen_hbond_*_shielding) is in ppm. Classical-kernel-derived
     shielding (bs_*, hm_*, mc_*, pq_*, disp_*, hbond_*, ringchi_*,
     coulomb_efg) is in the kernel's native unit (ppm·T/nA, Å⁻¹,

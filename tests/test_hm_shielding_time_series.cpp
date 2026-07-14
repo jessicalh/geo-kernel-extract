@@ -2,9 +2,8 @@
 // test_hm_shielding_time_series: discipline + integration tests for
 // HmShieldingTimeSeriesTrajectoryResult.
 //
-// Mirrors test_tripeptide_bb_shielding_time_series.cpp but the source
-// (HaighMallionResult) is unconditionally attached in
-// PerFrameExtractionSet — no source-attached gate, no DSN gating.
+// HaighMallionResult is unconditionally attached in
+// PerFrameExtractionSet, so this result needs no source-attached gate.
 //
 
 // Nanoflann-using headers must come before GROMACS headers to keep

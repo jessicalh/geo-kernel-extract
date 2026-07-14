@@ -207,8 +207,7 @@ references-meta/
 # locally; not producer material. Untracked from git 2026-05-29.
 doc-discrepancies/
 
-# Regenerable topology dumps (e.g. tripeptide_orderings_dump.json, produced
-# from the gotham DB by scripts/dump_tripeptide_orderings.py). Derived data.
+# Regenerable topology dumps. Derived data.
 data/topology/
 
 # PDB Chemical Component Dictionary — reference data, freely

@@ -18,7 +18,6 @@ std::string RuntimeEnvironment::tleap_;
 std::string RuntimeEnvironment::ff14sb_params_;
 std::string RuntimeEnvironment::tmpDir_;
 std::string RuntimeEnvironment::bmrb_atom_nom_;
-std::string RuntimeEnvironment::tensorcs15_dsn_;
 std::string RuntimeEnvironment::larsen_hbond_grid_dir_;
 std::string RuntimeEnvironment::processGuid_;
 bool RuntimeEnvironment::loaded_ = false;
@@ -102,8 +101,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     }
 
     std::string toml_tleap, toml_ff14sb, toml_tmpdir,
-                toml_bmrb_atom_nom, toml_tensorcs15_dsn,
-                toml_larsen_hbond_grid_dir;
+                toml_bmrb_atom_nom, toml_larsen_hbond_grid_dir;
 
     if (!path.empty() && fs::exists(path)) {
         std::ifstream in(path);
@@ -145,8 +143,6 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
                 else if (key == "tmpdir")        toml_tmpdir = val;
                 else if (key == "bmrb_atom_nom") toml_bmrb_atom_nom = val;
                 else if (key == "larsen_hbond_grids") toml_larsen_hbond_grid_dir = val;
-            } else if (current_section == "databases") {
-                if (key == "tensorcs15") toml_tensorcs15_dsn = val;
             }
         }
         OperationLog::Info("RuntimeEnvironment::Load", "read " + path);
@@ -216,17 +212,6 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (env && fs::exists(env)) bmrb_atom_nom_ = env;
     }
 
-    // tensorcs15 connection string: TOML → env var → empty. Empty is
-    // OK; Session::LoadTripeptideDftTable will skip and OperationRunner
-    // will not call the tripeptide calculators. The DSN is a libpq
-    // kv-pair string, not a path, so we don't fs::exists-check it.
-    if (!toml_tensorcs15_dsn.empty()) {
-        tensorcs15_dsn_ = toml_tensorcs15_dsn;
-    } else {
-        const char* env = std::getenv("NMR_TENSORCS15_DSN");
-        if (env) tensorcs15_dsn_ = env;
-    }
-
     // larsen_hbond_grids directory: TOML → env var → empty. Empty is
     // OK; Session::LoadLarsenHBondGrid will skip. Fs-check the path
     // and only adopt it when it exists (mirrors bmrb_atom_nom).
@@ -248,17 +233,11 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (v.empty()) return "<not set>";
         return v;
     };
-    auto secret_status = [](const std::string& v) -> std::string {
-        if (v.empty()) return "<not set>";
-        return "<configured>";
-    };
-
     OperationLog::Info("RuntimeEnvironment::Load",
         "tleap=" + status(tleap_) +
         " ff14sb_params=" + status(ff14sb_params_) +
         " tmpdir=" + status(tmpDir_) +
         " bmrb_atom_nom=" + status(bmrb_atom_nom_) +
-        " tensorcs15_dsn=" + secret_status(tensorcs15_dsn_) +
         " larsen_hbond_grids=" + status(larsen_hbond_grid_dir_) +
         " guid=" + processGuid_);
 }
@@ -287,7 +266,6 @@ const std::string& RuntimeEnvironment::Tleap()          { RequireLoaded(); retur
 const std::string& RuntimeEnvironment::Ff14sbParams()  { RequireLoaded(); return ff14sb_params_; }
 const std::string& RuntimeEnvironment::TmpDir()        { RequireLoaded(); return tmpDir_; }
 const std::string& RuntimeEnvironment::BmrbAtomNom()   { RequireLoaded(); return bmrb_atom_nom_; }
-const std::string& RuntimeEnvironment::TensorCs15Dsn() { RequireLoaded(); return tensorcs15_dsn_; }
 const std::string& RuntimeEnvironment::LarsenHBondGridDir() { RequireLoaded(); return larsen_hbond_grid_dir_; }
 
 }  // namespace nmr

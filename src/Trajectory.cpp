@@ -222,14 +222,6 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     base_opts.charge_source = tp.Charges();
     if (tp.HasBondedParams()) base_opts.bonded_params = &tp.BondedParams();
     base_opts.aimnet2_model = session.Aimnet2Model();
-    // Tripeptide DFT lookup table: per-frame compute is wired here so
-    // each frame's ConformationAtom carries the tripeptide BB / Neighbor
-    // shielding tensors. The neighbour Δσ_BB^{i±1} side has a paired
-    // TimeSeries TrajectoryResult
-    // (TripeptideNeighborShieldingTimeSeriesTrajectoryResult) emitted by
-    // PerFrameExtractionSet; the BB σ_BB^i side currently lands on the
-    // per-frame ConformationAtom only.
-    base_opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     base_opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
 
     // =========================================================

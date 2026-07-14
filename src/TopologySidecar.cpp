@@ -677,7 +677,7 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
             "element.row[i] == residue_index.row[i] == atom_index i. "
             "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
             "mc_<category>_<fixed|bo>, coulomb_efg, hbond_scalars, "
-            "per-atom Larsen outputs, tripeptide_*, etc.) follow the same "
+            "per-atom Larsen outputs, etc.) follow the same "
             "convention. Larsen larsen_hbond_pairs* tables are explicitly "
             "on the separate larsen_hbond_pair axis."},
         {"residue",
