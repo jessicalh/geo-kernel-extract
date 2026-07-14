@@ -24,11 +24,15 @@
 //       units       = "categorical"
 //       dtype       = "uint8"
 //       legend      = "0=no_match, 1=opbe_6-31g(d,p)_gaussian, 2=pbe_6-31g(d,p)_orca_ser"
+//       coordinate_frame = "intrinsic_typed_tripeptide_lookup"
+//       parity      = "mixed"
+//       transformation = proper-rotation invariant categorical lookup;
+//                        no improper-transform law for the chiral source
 //       n_atoms, n_frames, finalized
 //
-// No parity/irrep_layout attributes: this is a discrete categorical,
-// not a tensor irrep. Downstream consumers read the legend attribute
-// to interpret the integer values.
+// There is no irrep_layout attribute because this is a discrete categorical,
+// not a tensor irrep.  Its explicit mixed-parity contract records that the
+// typed source lookup is conditioned on L-amino-acid chirality.
 //
 
 #include "DenseBuffer.h"
