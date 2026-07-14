@@ -34,9 +34,8 @@
 //                    Empty = Session leaves the grid unloaded, so
 //                    OperationRunner skips LarsenHBondShieldingResult.
 //
-// tleap is a binary path used for subprocess invocation. MOPAC runs in the
-// separately linked, pinned nmr_mopac_worker and has no runtime binary-path
-// setting.
+// tleap is a binary path used for subprocess invocation. MOPAC calls the
+// directly linked, pinned libmopac and has no runtime binary-path setting.
 //
 
 #include <string>

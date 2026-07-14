@@ -2,10 +2,10 @@
 //
 // MopacResult: diskless PM7/MOZYME single-point calculation.
 //
-// Compute calls the pinned libmopac mozyme_scf API in a crash-contained
-// worker process, copies the complete direct electronic result, and stores
-// the calculator-owned ConformationAtom fields. WriteFeatures only reads
-// that stored result back to NPY.
+// Compute calls the pinned libmopac mozyme_scf API in-process, copies the
+// complete direct electronic result, and stores the calculator-owned
+// ConformationAtom fields. WriteFeatures only reads that stored result back
+// to NPY.
 //
 // Dependencies: none. OperationRunner charge-gates this calculator in its
 // fixed sequence after ChargeAssignmentResult has attached.
@@ -37,8 +37,8 @@ public:
 
     // Run PM7/MOZYME/1SCF at the supplied exact topology charge.
     // threads=0 selects the established 3/4-hardware policy. On failure,
-    // returns null and, when supplied, fills error_out with the libmopac or
-    // worker-process diagnostic.
+    // returns null and, when supplied, fills error_out with the libmopac
+    // diagnostic.
     static std::unique_ptr<MopacResult> Compute(
         ProteinConformation& conf,
         int net_charge = 0,

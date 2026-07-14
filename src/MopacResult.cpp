@@ -1,18 +1,19 @@
 #include "MopacResult.h"
 
-#include "MopacWorkerProtocol.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 #include "Protein.h"
+
+#include <mopac.h>
+#include <omp.h>
 
 #include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
-#include <exception>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -21,22 +22,51 @@
 #include <utility>
 #include <vector>
 
+#include <dlfcn.h>
 #include <limits.h>
-#include <signal.h>
-#include <spawn.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-extern char** environ;
-
-#ifndef NMR_MOPAC_WORKER_BUILD_PATH
-#define NMR_MOPAC_WORKER_BUILD_PATH ""
-#endif
 
 namespace nmr {
 namespace {
+
+constexpr double kMopacTolerance = 1.0;
+constexpr int kMopacMaxTimeSeconds = 7200;
+constexpr const char* kPinnedMopacLibrary =
+    "/shared/2026Thesis/mopac2/local/lib/libmopac.so.2";
+
+struct MozymeOutput {
+    std::int32_t natom = 0;
+    std::int32_t ao_max_orbitals = 0;
+    std::array<std::int32_t, 7> state_dimensions{};
+
+    double heat = 0.0;
+    std::array<double, 3> dipole{};
+    std::array<double, 3> dipole_point_charge{};
+    std::array<double, 3> dipole_hybridization{};
+
+    std::vector<double> charge;
+    std::vector<std::int32_t> bond_index;
+    std::vector<std::int32_t> bond_atom;
+    std::vector<double> bond_order;
+    std::vector<std::int32_t> ao_orbitals;
+    std::vector<double> atom_ao_density_fortran;
+    std::vector<double> bond_ao_density_fortran;
+
+    std::vector<std::int32_t> nbonds;
+    std::vector<std::int32_t> ibonds_fortran;
+    std::vector<std::int32_t> iorbs;
+    std::vector<std::int32_t> ncf;
+    std::vector<std::int32_t> nce;
+    std::vector<std::int32_t> icocc;
+    std::vector<std::int32_t> icvir;
+    std::vector<double> cocc;
+    std::vector<double> cvir;
+
+    std::vector<double> lmo_energy;
+    std::vector<std::int32_t> occupied_atom_offsets;
+    std::vector<std::int32_t> virtual_atom_offsets;
+    std::vector<std::int32_t> occupied_coefficient_offsets;
+    std::vector<std::int32_t> virtual_coefficient_offsets;
+};
 
 double QuietNaN() {
     return std::numeric_limits<double>::quiet_NaN();
@@ -77,237 +107,91 @@ bool QuantizeLegacyCoordinate(double value, double& quantized) {
            std::isfinite(quantized);
 }
 
-std::string MopacWorkerExecutable() {
-    char executable[PATH_MAX + 1] = {};
-    const ssize_t length =
-        ::readlink("/proc/self/exe", executable, PATH_MAX);
-    if (length > 0 && length <= PATH_MAX) {
-        executable[length] = '\0';
-        std::string sibling(executable);
-        const size_t slash = sibling.find_last_of('/');
-        if (slash != std::string::npos) {
-            sibling.resize(slash + 1);
-            sibling += "nmr_mopac_worker";
-            if (::access(sibling.c_str(), X_OK) == 0) return sibling;
-        }
-    }
-
-    const std::string build_path = NMR_MOPAC_WORKER_BUILD_PATH;
-    if (!build_path.empty() && ::access(build_path.c_str(), X_OK) == 0) {
-        return build_path;
-    }
-    return {};
-}
-
-std::vector<std::string> MopacWorkerEnvironment(int threads) {
-    std::vector<std::string> environment;
-    for (char** entry = ::environ; entry && *entry; ++entry) {
-        const std::string value(*entry);
-        if (value.rfind("PATH=", 0) == 0 ||
-            value.rfind("LD_LIBRARY_PATH=", 0) == 0 ||
-            value.rfind("LD_PRELOAD=", 0) == 0 ||
-            value.rfind("LD_AUDIT=", 0) == 0 ||
-            value.rfind("LIBRARY_PATH=", 0) == 0 ||
-            value.rfind("CPATH=", 0) == 0 ||
-            value.rfind("CMAKE_PREFIX_PATH=", 0) == 0 ||
-            value.rfind("CMAKE_LIBRARY_PATH=", 0) == 0 ||
-            value.rfind("CMAKE_INCLUDE_PATH=", 0) == 0 ||
-            value.rfind("PKG_CONFIG_PATH=", 0) == 0 ||
-            value.rfind("OMP_STACKSIZE=", 0) == 0 ||
-            value.rfind("OMP_NUM_THREADS=", 0) == 0) {
-            continue;
-        }
-        environment.push_back(value);
-    }
-    environment.emplace_back(
-        "PATH=/shared/2026Thesis/mopac2/local/bin:"
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-    environment.emplace_back(
-        "LD_LIBRARY_PATH=/shared/2026Thesis/mopac2/local/lib:"
-        "/shared/2026Thesis/mopac2/local/lib64:"
-        "/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib64:/lib64");
-    environment.emplace_back("OMP_STACKSIZE=2G");
-    environment.emplace_back("OMP_NUM_THREADS=" + std::to_string(threads));
-    return environment;
-}
-
-struct SpawnedWorkerGuard {
-    pid_t pid = -1;
-    int socket = -1;
-
-    ~SpawnedWorkerGuard() {
-        if (socket >= 0) ::close(socket);
-        if (pid > 0) {
-            ::kill(pid, SIGKILL);
-            int status = 0;
-            while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-            }
-        }
-    }
-};
-
-bool RunMozymeIsolated(const std::vector<std::int32_t>& atoms,
-                       const std::vector<double>& coordinates,
-                       int net_charge,
-                       int threads,
-                       mopac_worker::Output& data,
-                       std::string& error) {
-    const std::string worker_path = MopacWorkerExecutable();
-    if (worker_path.empty()) {
-        error = "cannot locate the required nmr_mopac_worker beside the "
-                "extractor or at its build path";
+bool VerifyPinnedMopac(std::string& error) {
+    Dl_info loaded{};
+    if (::dladdr(reinterpret_cast<const void*>(&mozyme_scf), &loaded) == 0 ||
+        !loaded.dli_fname) {
+        error = "cannot identify the loaded libmopac object";
         return false;
     }
 
-    int sockets[2] = {-1, -1};
-    if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) != 0) {
-        error = "cannot create MOPAC worker socket: " +
-                std::string(std::strerror(errno));
+    std::array<char, PATH_MAX> loaded_real{};
+    std::array<char, PATH_MAX> pinned_real{};
+    if (!::realpath(loaded.dli_fname, loaded_real.data()) ||
+        !::realpath(kPinnedMopacLibrary, pinned_real.data())) {
+        error = "cannot resolve the loaded and pinned libmopac paths";
         return false;
     }
-
-    posix_spawn_file_actions_t actions;
-    posix_spawnattr_t attributes;
-    int spawn_error = ::posix_spawn_file_actions_init(&actions);
-    if (spawn_error != 0) {
-        ::close(sockets[0]);
-        ::close(sockets[1]);
-        error = "cannot initialize MOPAC worker spawn: " +
-                std::string(std::strerror(spawn_error));
-        return false;
-    }
-    spawn_error = ::posix_spawnattr_init(&attributes);
-    if (spawn_error != 0) {
-        ::posix_spawn_file_actions_destroy(&actions);
-        ::close(sockets[0]);
-        ::close(sockets[1]);
-        error = "cannot initialize MOPAC worker attributes: " +
-                std::string(std::strerror(spawn_error));
-        return false;
-    }
-
-    auto destroy_spawn_objects = [&] {
-        ::posix_spawn_file_actions_destroy(&actions);
-        ::posix_spawnattr_destroy(&attributes);
-    };
-
-    if ((spawn_error = ::posix_spawn_file_actions_adddup2(
-             &actions, sockets[1], STDIN_FILENO)) == 0 &&
-        (spawn_error = ::posix_spawn_file_actions_adddup2(
-             &actions, sockets[1], STDOUT_FILENO)) == 0 &&
-        (spawn_error = ::posix_spawn_file_actions_addclose(
-             &actions, sockets[0])) == 0 &&
-        (spawn_error = ::posix_spawn_file_actions_addclose(
-             &actions, sockets[1])) == 0) {
-        sigset_t empty_mask;
-        sigset_t default_signals;
-        ::sigemptyset(&empty_mask);
-        ::sigemptyset(&default_signals);
-        ::sigaddset(&default_signals, SIGABRT);
-        ::sigaddset(&default_signals, SIGBUS);
-        ::sigaddset(&default_signals, SIGFPE);
-        ::sigaddset(&default_signals, SIGILL);
-        ::sigaddset(&default_signals, SIGSEGV);
-        spawn_error = ::posix_spawnattr_setsigmask(&attributes, &empty_mask);
-        if (spawn_error == 0) {
-            spawn_error = ::posix_spawnattr_setsigdefault(
-                &attributes, &default_signals);
-        }
-        if (spawn_error == 0) {
-            spawn_error = ::posix_spawnattr_setflags(
-                &attributes, POSIX_SPAWN_SETSIGMASK |
-                             POSIX_SPAWN_SETSIGDEF);
-        }
-    }
-
-    pid_t child = -1;
-    if (spawn_error == 0) {
-        std::vector<std::string> environment =
-            MopacWorkerEnvironment(threads);
-        std::vector<char*> envp;
-        envp.reserve(environment.size() + 1);
-        for (std::string& value : environment) envp.push_back(value.data());
-        envp.push_back(nullptr);
-        char* argv[] = {const_cast<char*>(worker_path.c_str()), nullptr};
-        spawn_error = ::posix_spawn(
-            &child, worker_path.c_str(), &actions, &attributes,
-            argv, envp.data());
-    }
-    destroy_spawn_objects();
-    ::close(sockets[1]);
-
-    if (spawn_error != 0) {
-        ::close(sockets[0]);
-        error = "cannot exec MOPAC worker " + worker_path + ": " +
-                std::string(std::strerror(spawn_error));
-        return false;
-    }
-
-    SpawnedWorkerGuard guard{child, sockets[0]};
-    mopac_worker::Input input;
-    input.net_charge = static_cast<std::int32_t>(net_charge);
-    input.atoms = atoms;
-    input.coordinates = coordinates;
-
-    const bool input_ok = mopac_worker::WriteInput(guard.socket, input);
-    ::shutdown(guard.socket, SHUT_WR);
-
-    std::string child_error;
-    std::string protocol_error;
-    bool protocol_ok = false;
-    try {
-        protocol_ok = mopac_worker::ReadOutput(
-            guard.socket, atoms.size(), data,
-            child_error, protocol_error);
-    } catch (const std::exception& ex) {
-        protocol_error =
-            std::string("cannot receive MOPAC worker payload: ") +
-            ex.what();
-    } catch (...) {
-        protocol_error =
-            "cannot receive MOPAC worker payload: unknown exception";
-    }
-
-    ::close(guard.socket);
-    guard.socket = -1;
-    int wait_status = 0;
-    pid_t waited = -1;
-    do {
-        waited = ::waitpid(child, &wait_status, 0);
-    } while (waited < 0 && errno == EINTR);
-    guard.pid = -1;
-
-    if (waited < 0) {
-        error = "cannot wait for MOPAC worker: " +
-                std::string(std::strerror(errno));
-        return false;
-    }
-    if (WIFSIGNALED(wait_status)) {
-        error = "MOPAC worker terminated by signal " +
-                std::to_string(WTERMSIG(wait_status));
-        return false;
-    }
-    if (!protocol_ok) {
-        error = protocol_error;
-        if (WIFEXITED(wait_status)) {
-            error += " (exit " + std::to_string(WEXITSTATUS(wait_status)) + ")";
-        }
-        return false;
-    }
-    if (!child_error.empty()) {
-        error = child_error;
-        return false;
-    }
-    if (!input_ok) {
-        error = "cannot send the complete MOPAC worker input";
-        return false;
-    }
-    if (!WIFEXITED(wait_status) || WEXITSTATUS(wait_status) != 0) {
-        error = "MOPAC worker exited non-zero after a success payload";
+    if (std::string(loaded_real.data()) != std::string(pinned_real.data())) {
+        error = "refusing non-pinned libmopac object: " +
+                std::string(loaded_real.data());
         return false;
     }
     return true;
 }
+
+bool CheckedProduct(std::initializer_list<size_t> factors, size_t& value) {
+    value = 1;
+    for (size_t factor : factors) {
+        if (factor != 0 &&
+            value > std::numeric_limits<size_t>::max() / factor) {
+            return false;
+        }
+        value *= factor;
+    }
+    return true;
+}
+
+template <typename Out, typename In>
+bool CopyApiArray(const In* pointer, size_t count, const char* label,
+                  std::vector<Out>& output, std::string& error) {
+    if (count == 0) {
+        output.clear();
+        return true;
+    }
+    if (!pointer) {
+        error = std::string("libmopac omitted requested ") + label;
+        return false;
+    }
+    output.resize(count);
+    for (size_t i = 0; i < count; ++i) {
+        output[i] = static_cast<Out>(pointer[i]);
+    }
+    return true;
+}
+
+std::string MopacErrorText(const mopac_properties& properties) {
+    if (properties.nerror <= 0 || !properties.error_msg) {
+        return "libmopac API error count " +
+               std::to_string(properties.nerror);
+    }
+    std::string result;
+    for (int i = 0; i < properties.nerror; ++i) {
+        if (!result.empty()) result += "; ";
+        result += properties.error_msg[i] ? properties.error_msg[i]
+                                          : "<null libmopac error>";
+    }
+    return result;
+}
+
+struct MopacAllocationGuard {
+    mopac_properties* properties = nullptr;
+    mozyme_state* state = nullptr;
+    ~MopacAllocationGuard() {
+        if (properties) destroy_mopac_properties(properties);
+        if (state) destroy_mozyme_state(state);
+    }
+};
+
+struct OpenMpThreadGuard {
+    int previous_threads = 1;
+
+    explicit OpenMpThreadGuard(int threads)
+        : previous_threads(omp_get_max_threads()) {
+        omp_set_num_threads(threads);
+    }
+    ~OpenMpThreadGuard() { omp_set_num_threads(previous_threads); }
+};
 
 }  // namespace
 
@@ -365,11 +249,159 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
         std::to_string(natoms) + " charge=" + std::to_string(net_charge) +
         " threads=" + std::to_string(threads));
 
-    mopac_worker::Output api;
-    std::string worker_error;
-    if (!RunMozymeIsolated(atoms, coordinates, net_charge, threads, api,
-                           worker_error)) {
-        return fail(worker_error);
+    std::string api_error;
+    if (!VerifyPinnedMopac(api_error)) return fail(api_error);
+
+    MozymeOutput api;
+    {
+        std::vector<int> mopac_atoms(atoms.begin(), atoms.end());
+
+        mopac_system system{};
+        system.natom = static_cast<int>(mopac_atoms.size());
+        system.natom_move = 0;
+        system.charge = net_charge;
+        system.spin = 0;
+        system.model = 0;  // PM7
+        system.epsilon = 1.0;
+        system.atom = mopac_atoms.data();
+        system.coord = coordinates.data();
+        system.nlattice = 0;
+        system.nlattice_move = 0;
+        system.pressure = 0.0;
+        system.lattice = nullptr;
+        system.tolerance = kMopacTolerance;
+        system.max_time = kMopacMaxTimeSeconds;
+
+        mozyme_state state{};       // numat=0: Lewis-structure initial guess
+        mopac_properties properties{};
+        OpenMpThreadGuard thread_guard(threads);
+        mozyme_scf(&system, &state, &properties);
+        MopacAllocationGuard allocation_guard{&properties, &state};
+
+        if (properties.nerror != 0) {
+            return fail(MopacErrorText(properties));
+        }
+
+        const size_t natom = mopac_atoms.size();
+        if (state.numat != static_cast<int>(natom)) {
+            return fail("libmopac returned MOZYME numat=" +
+                        std::to_string(state.numat) + " for " +
+                        std::to_string(natom) + " input atoms");
+        }
+        if (properties.ao_max_orbitals <= 0 ||
+            properties.ao_max_orbitals > 64) {
+            return fail("libmopac returned invalid ao_max_orbitals=" +
+                        std::to_string(properties.ao_max_orbitals));
+        }
+        if (state.noccupied < 0 || state.nvirtual < 0 ||
+            state.icocc_dim < 0 || state.icvir_dim < 0 ||
+            state.cocc_dim < 0 || state.cvir_dim < 0) {
+            return fail("libmopac returned a negative MOZYME state dimension");
+        }
+
+        api.natom = static_cast<std::int32_t>(natom);
+        api.ao_max_orbitals = properties.ao_max_orbitals;
+        api.state_dimensions = {
+            state.numat, state.noccupied, state.nvirtual,
+            state.icocc_dim, state.icvir_dim, state.cocc_dim, state.cvir_dim
+        };
+        api.heat = properties.heat;
+        std::copy_n(properties.dipole, 3, api.dipole.begin());
+        std::copy_n(properties.dipole_point_charge, 3,
+                    api.dipole_point_charge.begin());
+        std::copy_n(properties.dipole_hybridization, 3,
+                    api.dipole_hybridization.begin());
+
+        if (!CopyApiArray(properties.charge, natom, "atomic charges",
+                          api.charge, api_error) ||
+            !CopyApiArray(properties.bond_index, natom + 1,
+                          "bond_index", api.bond_index, api_error)) {
+            return fail(api_error);
+        }
+        if (api.bond_index.empty() || api.bond_index.front() != 0) {
+            return fail("libmopac returned an invalid CSC bond_index origin");
+        }
+        for (size_t i = 1; i < api.bond_index.size(); ++i) {
+            if (api.bond_index[i] < api.bond_index[i - 1]) {
+                return fail(
+                    "libmopac returned non-monotonic CSC bond_index");
+            }
+        }
+        const std::int32_t entry_count_i32 = api.bond_index.back();
+        if (entry_count_i32 < 0 ||
+            static_cast<std::uint64_t>(entry_count_i32) >
+                static_cast<std::uint64_t>(natom) * natom) {
+            return fail("libmopac returned an invalid CSC entry count");
+        }
+        const size_t entry_count = static_cast<size_t>(entry_count_i32);
+        const size_t width = static_cast<size_t>(api.ao_max_orbitals);
+        size_t atom_density_count = 0;
+        size_t bond_density_count = 0;
+        if (!CheckedProduct({natom, width, width}, atom_density_count) ||
+            !CheckedProduct({entry_count, width, width},
+                            bond_density_count)) {
+            return fail("libmopac AO-density dimensions overflow size_t");
+        }
+
+        const size_t occupied = static_cast<size_t>(state.noccupied);
+        const size_t virtual_count = static_cast<size_t>(state.nvirtual);
+        if (occupied > std::numeric_limits<size_t>::max() - virtual_count) {
+            return fail("libmopac LMO count overflows size_t");
+        }
+        const size_t lmo_count = occupied + virtual_count;
+        size_t orbital_capacity = 0;
+        if (!CheckedProduct({natom, width}, orbital_capacity) ||
+            lmo_count > orbital_capacity) {
+            return fail("libmopac returned impossible LMO dimensions");
+        }
+
+        if (!CopyApiArray(properties.bond_atom, entry_count, "bond_atom",
+                          api.bond_atom, api_error) ||
+            !CopyApiArray(properties.bond_order, entry_count, "bond_order",
+                          api.bond_order, api_error) ||
+            !CopyApiArray(properties.ao_orbitals, natom, "ao_orbitals",
+                          api.ao_orbitals, api_error) ||
+            !CopyApiArray(properties.atom_ao_density, atom_density_count,
+                          "atom_ao_density", api.atom_ao_density_fortran,
+                          api_error) ||
+            !CopyApiArray(properties.bond_ao_density, bond_density_count,
+                          "bond_ao_density", api.bond_ao_density_fortran,
+                          api_error) ||
+            !CopyApiArray(state.nbonds, natom, "MOZYME nbonds",
+                          api.nbonds, api_error) ||
+            !CopyApiArray(state.ibonds, 9 * natom, "MOZYME ibonds",
+                          api.ibonds_fortran, api_error) ||
+            !CopyApiArray(state.iorbs, natom, "MOZYME iorbs",
+                          api.iorbs, api_error) ||
+            !CopyApiArray(state.ncf, occupied, "MOZYME ncf",
+                          api.ncf, api_error) ||
+            !CopyApiArray(state.nce, virtual_count, "MOZYME nce",
+                          api.nce, api_error) ||
+            !CopyApiArray(state.icocc, static_cast<size_t>(state.icocc_dim),
+                          "MOZYME icocc", api.icocc, api_error) ||
+            !CopyApiArray(state.icvir, static_cast<size_t>(state.icvir_dim),
+                          "MOZYME icvir", api.icvir, api_error) ||
+            !CopyApiArray(state.cocc, static_cast<size_t>(state.cocc_dim),
+                          "MOZYME cocc", api.cocc, api_error) ||
+            !CopyApiArray(state.cvir, static_cast<size_t>(state.cvir_dim),
+                          "MOZYME cvir", api.cvir, api_error) ||
+            !CopyApiArray(properties.lmo_energy, lmo_count, "LMO energies",
+                          api.lmo_energy, api_error) ||
+            !CopyApiArray(properties.lmo_occupied_atom_offset, occupied,
+                          "occupied-LMO atom offsets",
+                          api.occupied_atom_offsets, api_error) ||
+            !CopyApiArray(properties.lmo_virtual_atom_offset, virtual_count,
+                          "virtual-LMO atom offsets",
+                          api.virtual_atom_offsets, api_error) ||
+            !CopyApiArray(properties.lmo_occupied_coefficient_offset,
+                          occupied, "occupied-LMO coefficient offsets",
+                          api.occupied_coefficient_offsets, api_error) ||
+            !CopyApiArray(properties.lmo_virtual_coefficient_offset,
+                          virtual_count,
+                          "virtual-LMO coefficient offsets",
+                          api.virtual_coefficient_offsets, api_error)) {
+            return fail(api_error);
+        }
     }
 
     auto result = std::make_unique<MopacResult>();
@@ -815,7 +847,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
                 coefficient_offsets[lmo];
             if (count_i32 < 0 || atom_offset_i32 < 0 ||
                 coefficient_offset_i32 < 0) {
-                worker_error = std::string(label) +
+                api_error = std::string(label) +
                     " LMO has a negative count/offset";
                 return false;
             }
@@ -825,7 +857,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
                 static_cast<size_t>(coefficient_offset_i32);
             if (atom_offset > native_atoms.size() ||
                 count > native_atoms.size() - atom_offset) {
-                worker_error = std::string(label) +
+                api_error = std::string(label) +
                     " LMO atom offset is outside native storage";
                 return false;
             }
@@ -835,7 +867,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
                     native_atoms[atom_offset + j];
                 if (native_atom <= 0 ||
                     static_cast<size_t>(native_atom) > natoms) {
-                    worker_error = std::string(label) +
+                    api_error = std::string(label) +
                         " LMO atom index is outside the molecule";
                     return false;
                 }
@@ -844,7 +876,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
                     static_cast<size_t>(result->ao_orbitals_[atom]);
                 if (coefficient_count >
                     std::numeric_limits<size_t>::max() - ao_count) {
-                    worker_error = std::string(label) +
+                    api_error = std::string(label) +
                         " LMO coefficient count overflow";
                     return false;
                 }
@@ -854,7 +886,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
             if (coefficient_offset > native_coefficients.size() ||
                 coefficient_count >
                     native_coefficients.size() - coefficient_offset) {
-                worker_error = std::string(label) +
+                api_error = std::string(label) +
                     " LMO coefficient offset is outside native storage";
                 return false;
             }
@@ -881,7 +913,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
                    result->lmo_virtual_coefficient_storage_native_,
                    result->lmo_virtual_atoms_,
                    result->lmo_virtual_coefficients_)) {
-        return fail(worker_error);
+        return fail(api_error);
     }
 
     std::vector<std::vector<MopacBondNeighbour>> neighbours(natoms);
