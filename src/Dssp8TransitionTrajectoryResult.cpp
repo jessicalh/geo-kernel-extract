@@ -180,6 +180,12 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
         "PerFrameRunOptions::skip_dssp == false. Reader contract: "
         "consult source_attached_per_frame; n_frames_observed[ri] "
         "captures the per-residue effective sample size."));
+    grp.createAttribute("dssp_coordinate_serialization", std::string(
+        "DsspResult writes a temporary PDB with coordinates rounded to "
+        "0.001 Angstrom (%8.3f) before cif++/libdssp. The SS8 statistics "
+        "have an O(3)-invariant continuum law, but a transformed production "
+        "rerun can cross a libdssp category boundary because of this "
+        "serialization."));
     grp.createAttribute("residue_axis", std::string("protein_residue_index"));
 
     // ── Per-frame (T,) ───────────────────────────────────────────────
@@ -187,16 +193,67 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
        .createAttribute("units", std::string("frame_index"));
     grp.createDataSet("frame_times",   frame_times_)
        .createAttribute("units", std::string("ps"));
-    grp.createDataSet("source_attached_per_frame", source_attached_per_frame_)
-       .createAttribute("units", std::string("dimensionless"));
+    {
+        auto ds = grp.createDataSet(
+            "source_attached_per_frame", source_attached_per_frame_);
+        ds.createAttribute("units", std::string("dimensionless"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_source_availability"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "exact rotation/translation/reflection-invariant source-"
+            "attachment mask"));
+        ds.createAttribute("validity", std::string(
+            "1 means DsspResult attached for this frame; 0 breaks every "
+            "residue's transition chain and contributes no occupancy"));
+    }
 
     // ── Per-residue stats (R,) ───────────────────────────────────────
-    grp.createDataSet("ss8_transition_count", ss8_transition_count_)
-       .createAttribute("units", std::string("transitions"));
-    grp.createDataSet("ss8_dominant", ss8_dominant_)
-       .createAttribute("units", std::string("category"));
-    grp.createDataSet("n_frames_observed", n_frames_observed_)
-       .createAttribute("units", std::string("frame_count"));
+    auto attach_ss8_stat_contract = [&](HighFive::DataSet& ds,
+                                         const std::string& validity) {
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_dssp8_category_statistics"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "physical O(3)-invariant H/G/I/E/B/T/S/C statistic after the "
+            "explicit libdssp PPII-to-coil collapse; translation invariant. "
+            "A transformed production rerun may change the statistic when "
+            "0.001-A temporary-PDB rounding crosses a libdssp classification "
+            "boundary; that is serialization sensitivity, not parity"));
+        ds.createAttribute("validity", validity);
+    };
+    {
+        auto ds = grp.createDataSet(
+            "ss8_transition_count", ss8_transition_count_);
+        ds.createAttribute("units", std::string("transitions"));
+        attach_ss8_stat_contract(ds, std::string(
+            "physical uint32 count of changes between consecutive observed "
+            "SS8 labels; zero is a valid no-transition value. Source-absent "
+            "or unmapped frames contribute nothing and break the chain"));
+    }
+    {
+        auto ds = grp.createDataSet("ss8_dominant", ss8_dominant_);
+        ds.createAttribute("units", std::string("category"));
+        attach_ss8_stat_contract(ds, std::string(
+            "255 iff n_frames_observed is zero; otherwise 0..7 is the "
+            "highest-occupancy SS8 code, with ties resolved to the lowest "
+            "numeric code"));
+    }
+    {
+        auto ds = grp.createDataSet(
+            "n_frames_observed", n_frames_observed_);
+        ds.createAttribute("units", std::string("frame_count"));
+        ds.createAttribute("coordinate_frame",
+            std::string("intrinsic_observation_count"));
+        ds.createAttribute("parity", std::string("even"));
+        ds.createAttribute("transformation", std::string(
+            "exact rotation/translation/reflection-invariant count of mapped "
+            "DSSP residue rows for a fixed typed topology; independent of "
+            "the SS8 category value"));
+        ds.createAttribute("validity", std::string(
+            "every uint32 entry is a physical count; zero means no mapped "
+            "DSSP observation for that residue in any attached frame"));
+    }
 
     // ── ss8_occupancy (R, 8) uint32 ──────────────────────────────────
     {
@@ -211,6 +268,9 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
         auto ds = grp.createDataSet<std::uint32_t>("ss8_occupancy", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("frame_count"));
+        attach_ss8_stat_contract(ds, std::string(
+            "every uint32 entry is a physical per-state frame count; sum "
+            "over the state axis equals n_frames_observed for that residue"));
     }
 
     // ── ss8_transition_matrix (R, 8, 8) uint32 ───────────────────────
@@ -232,6 +292,13 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
         ds.createAttribute("units", std::string("transitions"));
         ds.createAttribute("axis_2_label", std::string("prev_ss"));
         ds.createAttribute("axis_3_label", std::string("curr_ss"));
+        attach_ss8_stat_contract(ds, std::string(
+            "every uint32 entry is a physical consecutive-observed-pair "
+            "transition count; diagonal entries are structural zeros because "
+            "self-edges are excluded, not unavailable values"));
+        ds.createAttribute("structural_zero_entries", std::string(
+            "all [ri,state,state] diagonal entries are identically zero by "
+            "the transition-owner self-edge exclusion policy"));
     }
 
     OperationLog::Info(LogCalcOther,
