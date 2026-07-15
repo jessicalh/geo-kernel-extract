@@ -128,7 +128,8 @@ WaterHBondGeometryResult::Compute(ProteinConformation& conf,
         if (acceptor_class == 0) continue;
         const Vec3 acceptor = conf.PositionAt(ai);
         for (size_t wi = 0; wi < solvent.waters.size(); ++wi) {
-            const WaterMolecule& water = solvent.waters[wi];
+            const WaterMolecule water = solvent.WaterAtNearestImage(
+                solvent.waters[wi], acceptor);
             if ((water.O_pos - acceptor).norm() > candidate_cutoff) continue;
             const Vec3 chosen_h =
                 (water.H1_pos - acceptor).squaredNorm() <=
@@ -158,7 +159,8 @@ WaterHBondGeometryResult::Compute(ProteinConformation& conf,
         const Vec3 donor_h = conf.PositionAt(ai);
         const Vec3 donor_heavy = conf.PositionAt(parent);
         for (size_t wi = 0; wi < solvent.waters.size(); ++wi) {
-            const WaterMolecule& water = solvent.waters[wi];
+            const WaterMolecule water = solvent.WaterAtNearestImage(
+                solvent.waters[wi], donor_heavy);
             if ((water.O_pos - donor_heavy).norm() > candidate_cutoff)
                 continue;
             Candidate row;

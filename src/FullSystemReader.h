@@ -6,13 +6,13 @@
 // The TPR contains the topology for ALL atoms (protein, water, ions).
 // The full-system trajectory contains positions for ALL atoms at each frame.
 // This reader:
-//   1. Reads the TPR once — extracts atom ranges, bonded interaction
-//      parameters, and everything needed to build the Protein object
+//   1. Reads the TPR — extracts atom ranges, bonded interaction parameters,
+//      everything needed to build the Protein object, and retains separate
+//      protein-only/full-system topology owners for PBC wholing
 //   2. Splits full-system coordinate frames: protein → Vec3, solvent → SolventEnvironment
 //
-// Single parse: ReadTopology() parses the TPR once and populates
-// SystemTopology + BondedParameters + stored protein topology data.
-// Everything downstream uses stored results — no re-reads.
+// ReadTopology() populates SystemTopology + BondedParameters and stores both
+// topology owners. Everything downstream uses those stored results.
 //
 // Coordinates are in Angstroms (converted from nm).
 //
@@ -88,10 +88,9 @@ public:
     FullSystemReader(const FullSystemReader&) = delete;
     FullSystemReader& operator=(const FullSystemReader&) = delete;
 
-    // Read the TPR once. Populates SystemTopology (atom ranges),
-    // BondedParameters (interaction lists + CMAP grids), and stores
-    // parsed topology for BuildProtein(). Single parse — everything
-    // downstream uses stored results.
+    // Read the TPR. Populates SystemTopology (atom ranges), BondedParameters
+    // (interaction lists + CMAP grids), and stores parsed topology for
+    // BuildProtein plus independent protein/full-system PBC wholers.
     // Returns false on error (check error()).
     bool ReadTopology(const std::string& tpr_path);
 
@@ -100,7 +99,8 @@ public:
     // protein_positions will have protein_count entries.
     bool ExtractFrame(const std::vector<float>& full_frame_xyz,
                       std::vector<Vec3>& protein_positions,
-                      SolventEnvironment& solvent) const;
+                      SolventEnvironment& solvent,
+                      const Eigen::Matrix3d* box_matrix = nullptr) const;
 
     // Bonded interaction parameters extracted during ReadTopology().
     // Bond, angle, UB, proper dihedral, improper dihedral, and CMAP
@@ -149,6 +149,13 @@ public:
     // wrong, or the captured pbcType was unset.
     bool MakeProteinWhole(std::vector<float>& protein_coords,
                           const float box_in[3][3]) const;
+
+    // Make every molecule in a full-system frame whole using a separately
+    // retained full TPR topology. The existing protein-only wholer remains
+    // the authority for emitted protein coordinates; this pass supplies only
+    // whole solvent coordinates to ExtractFrame.
+    bool MakeSystemWhole(std::vector<float>& full_system_coords,
+                         const float box_in[3][3]) const;
 
     const SystemTopology& Topology() const { return topo_; }
     const std::string& error() const { return error_; }

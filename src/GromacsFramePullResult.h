@@ -67,6 +67,9 @@ public:
     const Eigen::Matrix3d& BoxMatrix() const { return box_matrix_; }
     bool HasBoxMatrix() const { return !box_matrix_.isZero(); }
 
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
+
 private:
     std::vector<Vec3> velocities_;
     Eigen::Matrix3d box_matrix_ = Eigen::Matrix3d::Zero();

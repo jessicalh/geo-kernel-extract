@@ -701,6 +701,7 @@ add_library(nmr_shielding
     src/FrameNpyEmitter.cpp
     src/FramePdbEmitter.cpp
     src/FullSystemReader.cpp
+    src/SolventEnvironment.cpp
     src/WaterFieldResult.cpp
     src/WaterHBondGeometryResult.cpp
     src/WaterFieldTimeSeriesTrajectoryResult.cpp

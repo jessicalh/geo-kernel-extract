@@ -24,27 +24,31 @@
 #include <sstream>
 #include <set>
 #include <string>
+#include <type_traits>
 
 namespace nmr {
 
+static_assert(std::is_same_v<real, float>,
+              "pbc_whole.h requires single-precision GROMACS (GMX_DOUBLE=0)");
+
 // ── Opaque stored parse ─────────────────────────────────────────
-// Holds the parsed gmx_mtop_t so downstream methods (BondedParams,
-// BuildProtein, MakeProteinWhole) use the same parse. Defined here,
+// Holds the parsed gmx_mtop_t owners used downstream. Defined here,
 // not in the header, so GROMACS includes stay in the .cpp.
 //
 // After ReadTopology completes, `mtop` is the protein-only topology:
 // the original full-system mtop is trimmed in place at the end of
 // the parse so only the leading protein molblocks remain and natoms
 // equals topo_.protein_count. This single trimmed mtop serves
-// BuildProtein, the bonded-params extraction (which already ran on
-// the full one before the trim), and MakeProteinWhole (which passes
-// it to do_pbc_mtop). gmx_mtop_t is not copyable, so an in-place
-// trim is the only way to keep one parsed instance.
+// BuildProtein and MakeProteinWhole. `full_mtop` is the separately parsed,
+// untrimmed owner used only by MakeSystemWhole for solvent extraction.
+// gmx_mtop_t is neither copyable nor movable, so the two wholers cannot
+// share one parsed instance.
 // `pbc_type` is captured from the TPR's t_inputrec at parse time.
 
 namespace detail {
 struct TprData {
     gmx_mtop_t mtop;
+    gmx_mtop_t full_mtop;
     PbcType    pbc_type = PbcType::Unset;
 };
 
@@ -212,10 +216,11 @@ static bool IsIonMoltype(const gmx_moltype_t& mt) {
 
 // ── ReadTopology ────────────────────────────────────────────────
 //
-// Single TPR parse. Populates:
+// TPR translation. Populates:
 //   1. SystemTopology (atom ranges, water/ion charges)
 //   2. BondedParameters (interaction lists, CMAP grids)
-//   3. Stored gmx_mtop_t for BuildProtein()
+//   3. Stored protein-only gmx_mtop_t for BuildProtein/MakeProteinWhole
+//   4. Stored full-system gmx_mtop_t for MakeSystemWhole
 
 bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
     OperationLog::Scope scope("FullSystemReader::ReadTopology", tpr_path);
@@ -227,6 +232,15 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
     t_state state;
     read_tpx_state(tpr_path.c_str(), tpx.bIr ? &ir : nullptr,
                    &state, tpx.bTop ? &tpr_->mtop : nullptr);
+
+    // Keep a second, full-system parse for the solvent wholer. The original
+    // mtop below is still trimmed exactly as before and remains the sole
+    // topology used by MakeProteinWhole and BuildProtein. gmx_mtop_t is
+    // neither copyable nor movable, so the two independent do_pbc_mtop paths
+    // require two parsed owners.
+    t_state full_state;
+    read_tpx_state(tpr_path.c_str(), nullptr, &full_state,
+                   tpx.bTop ? &tpr_->full_mtop : nullptr);
 
     const auto& mtop = tpr_->mtop;
     topo_.total_atoms = mtop.natoms;
@@ -635,11 +649,11 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
         }
     }
 
-    // Trim the parsed mtop in place to the protein-only slice.
-    // gmx_mtop_t is not copyable, so this is the single canonical
-    // mtop from this point on. BuildProtein and MakeProteinWhole
-    // both consume it; do_pbc_mtop walks only the protein bond
-    // graph because solvent/ion molblocks are no longer present.
+    // Trim the original parsed mtop in place to the protein-only slice.
+    // BuildProtein and MakeProteinWhole both consume this owner;
+    // do_pbc_mtop walks only the protein bond graph because solvent/ion
+    // molblocks are no longer present. full_mtop remains untrimmed for the
+    // independent solvent-wholing pass.
     tpr_->mtop.molblock.resize(n_protein_molblocks);
     tpr_->mtop.natoms = static_cast<int>(topo_.protein_count);
     tpr_->mtop.finalize();
@@ -653,7 +667,8 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
 bool FullSystemReader::ExtractFrame(
         const std::vector<float>& xyz,
         std::vector<Vec3>& protein_positions,
-        SolventEnvironment& solvent) const {
+        SolventEnvironment& solvent,
+        const Eigen::Matrix3d* box_matrix) const {
 
     size_t n_total = xyz.size() / 3;
     if (n_total < topo_.total_atoms) {
@@ -666,6 +681,10 @@ bool FullSystemReader::ExtractFrame(
             static_cast<double>(xyz[idx * 3 + 1]) * ANGSTROM_PER_NANOMETRE,
             static_cast<double>(xyz[idx * 3 + 2]) * ANGSTROM_PER_NANOMETRE);
     };
+
+    if (box_matrix && tpr_) {
+        solvent.SetPeriodicCell(*box_matrix, tpr_->pbc_type);
+    }
 
     protein_positions.resize(topo_.protein_count);
     for (size_t i = 0; i < topo_.protein_count; ++i)
@@ -681,6 +700,15 @@ bool FullSystemReader::ExtractFrame(
         mol.H2_pos    = pos(base + 2);
         mol.O_charge  = topo_.water_O_charge;
         mol.H_charge  = topo_.water_H_charge;
+        if (solvent.HasPeriodicCell()) {
+            // do_pbc_mtop is the validated molecule wholer. Its graph shift
+            // accepts trajectory-style neighbouring images; pbc_dx_d closes
+            // the same H-O invariant for arbitrary lattice-image counts.
+            mol.H1_pos = mol.O_pos + solvent.MinimumImageDisplacement(
+                mol.H1_pos, mol.O_pos);
+            mol.H2_pos = mol.O_pos + solvent.MinimumImageDisplacement(
+                mol.H2_pos, mol.O_pos);
+        }
         solvent.water_O_positions[w] = mol.O_pos;
     }
 
@@ -729,6 +757,35 @@ bool FullSystemReader::MakeProteinWhole(
         for (int j = 0; j < DIM; ++j)
             frame_box[i][j] = box_in[i][j];
     do_pbc_mtop(tpr_->pbc_type, frame_box, &tpr_->mtop, rvecs);
+    return true;
+}
+
+
+bool FullSystemReader::MakeSystemWhole(
+        std::vector<float>& full_system_coords,
+        const float box_in[3][3]) const {
+    if (!tpr_) {
+        return false;
+    }
+    if (full_system_coords.size() != topo_.total_atoms * 3) {
+        OperationLog::Error("FullSystemReader::MakeSystemWhole",
+            "buffer size " + std::to_string(full_system_coords.size()) +
+            " != 3 * total_atoms " +
+            std::to_string(topo_.total_atoms));
+        return false;
+    }
+    if (tpr_->pbc_type == PbcType::Unset) {
+        OperationLog::Error("FullSystemReader::MakeSystemWhole",
+            "pbc_type unset (TPR did not carry an inputrec)");
+        return false;
+    }
+
+    auto* rvecs = reinterpret_cast<rvec*>(full_system_coords.data());
+    matrix frame_box;
+    for (int i = 0; i < DIM; ++i)
+        for (int j = 0; j < DIM; ++j)
+            frame_box[i][j] = box_in[i][j];
+    do_pbc_mtop(tpr_->pbc_type, frame_box, &tpr_->full_mtop, rvecs);
     return true;
 }
 
