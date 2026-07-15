@@ -677,7 +677,6 @@ add_library(nmr_shielding
     src/MopacBondOrderWelfordTrajectoryResult.cpp
     src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp
     src/MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp
-    src/MopacVsFf14SbReconciliationTrajectoryResult.cpp
     src/LarsenHBondWaterTermTimeSeriesTrajectoryResult.cpp
     src/LarsenHBondCountTimeSeriesTrajectoryResult.cpp
     src/LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.cpp
@@ -1223,8 +1222,8 @@ target_compile_definitions(trajectory_scope_tests PRIVATE
 
 # -- mopac_tests -----------------------------------------------------------
 # MOPAC ConfResult (diskless PM7/MOZYME) + MOPAC-dependent TRs
-# (charge welford, bond order welford, coulomb / mcconnell shielding TS,
-# ff14SB reconciliation) + full_pipeline + mutation_delta. Kept isolated
+# (charge welford, bond order welford, coulomb / mcconnell shielding TS)
+# + full_pipeline + mutation_delta. Kept isolated
 # so day-to-day ctest can select the MOPAC fixture family independently;
 # the pinned worker dependency is checked fail-loud at configure.
 nmr_test(mopac_tests
@@ -1237,7 +1236,6 @@ nmr_test(mopac_tests
         tests/test_mopac_coulomb_shielding_time_series.cpp
         tests/test_mopac_mc_shielding_time_series.cpp
         tests/test_mopac_result.cpp
-        tests/test_mopac_vs_ff14sb_reconciliation.cpp
         tests/test_mutation_delta.cpp
 )
 target_compile_definitions(mopac_tests PRIVATE

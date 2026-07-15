@@ -114,10 +114,6 @@ relaxation_field_tesla = 14.1
 near_zero_vector_norm_threshold = 1e-10
 coulomb_charge_noise_floor = 1e-15
 mopac_bond_order_noise_floor = 1e-6
-# Floor on |T2(EFG)| for cosine-similarity well-definedness (TR9
-# MopacVsFf14SbReconciliation, V/Å²). Calibrated to the EFG signal
-# scale; below this the cosine divisor is dominated by FP noise.
-coulomb_efg_t2_magnitude_floor = 1e-3
 biot_savart_wire_endpoint_guard = 1e-25
 biot_savart_wire_axis_guard = 1e-70
 haigh_mallion_triangle_area_guard = 1e-20

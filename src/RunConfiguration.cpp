@@ -74,7 +74,6 @@
 #include "MopacBondOrderWelfordTrajectoryResult.h"
 #include "MopacCoulombShieldingTimeSeriesTrajectoryResult.h"
 #include "MopacMcConnellShieldingTimeSeriesTrajectoryResult.h"
-#include "MopacVsFf14SbReconciliationTrajectoryResult.h"
 #include "LarsenHBondWaterTermTimeSeriesTrajectoryResult.h"
 #include "LarsenHBondCountTimeSeriesTrajectoryResult.h"
 #include "LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.h"
@@ -201,8 +200,8 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
              ApbsEfgTimeSeriesTrajectoryResult>(c);
 
     // The MOPAC family (MopacCoulomb / MopacMcConnell shielding, charge
-    // and bond-order Welford, the MOPAC-vs-FF14SB reconciliation) is NOT
-    // here: PerFrameExtractionSet skips MOPAC, so MOPAC source calcs never
+    // and bond-order Welford) is NOT here: PerFrameExtractionSet skips
+    // MOPAC, so MOPAC source calcs never
     // attach per frame and those TRs would be dead-code. They live in
     // FullFatFrameExtraction. Decision
     // 2026-05-21 per science + math adversarial review H3.
@@ -290,20 +289,16 @@ RunConfiguration RunConfiguration::FullFatFrameExtraction() {
     c.SetName("FullFatFrameExtraction");
 
     // MOPAC attaches here. Vacuum Coulomb and APBS both stay on (inherited
-    // from PerFrameExtractionSet) for the cross-source reconciliation and
-    // hybrid APBS-MOPAC calibration probes.
+    // from PerFrameExtractionSet) for hybrid APBS-MOPAC calibration probes.
     c.per_frame_opts_.skip_mopac   = false;
     c.per_frame_opts_.skip_coulomb = false;
 
-    // ── MOPAC family ── only meaningful once skip_mopac is false
-    // (with production Coulomb inherited above), so these live here rather than in
-    // PerFrameExtractionSet. MopacVsFf14SbReconciliation is the cross-
-    // source MopacCoulomb-vs-FF14SB-Coulomb probe (TR9).
+    // ── MOPAC family ── only meaningful once skip_mopac is false,
+    // so these live here rather than in PerFrameExtractionSet.
     Produces<MopacChargeWelfordTrajectoryResult,
              MopacBondOrderWelfordTrajectoryResult,
              MopacCoulombShieldingTimeSeriesTrajectoryResult,
-             MopacMcConnellShieldingTimeSeriesTrajectoryResult,
-             MopacVsFf14SbReconciliationTrajectoryResult>(c);
+             MopacMcConnellShieldingTimeSeriesTrajectoryResult>(c);
 
     return c;
 }
