@@ -121,8 +121,7 @@ void Produces(RunConfiguration& c) {
 //
 // Production canonical trajectory shape. Full classical stack + APBS +
 // AIMNet2 every dispatched frame. MOPAC is skipped (FullFat only). FF
-// Coulomb remains enabled alongside APBS: it provides the vacuum field and
-// the Coulomb-prefixed direct aliases of APBS's canonical reaction field.
+// Coulomb remains enabled alongside APBS as the independent vacuum field.
 //
 // Stride is intentionally NOT set here: it defaults to 1 (every frame)
 // and is the caller's single knob (CLI --stride → SetStride). A buried

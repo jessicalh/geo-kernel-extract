@@ -2,14 +2,11 @@
 #include "DirectionalTestHelpers.h"
 #include <gtest/gtest.h>
 #include "PdbFileReader.h"
-#include "GeometryResult.h"
 #include "ChargeAssignmentResult.h"
 #include "ChargeSource.h"
 #include "ApbsFieldResult.h"
 #include "ApbsEfieldTimeSeriesTrajectoryResult.h"
 #include "ApbsEfgTimeSeriesTrajectoryResult.h"
-#include "CoulombResult.h"
-#include "SpatialIndexResult.h"
 #include "CalculatorConfig.h"
 #include "PhysicalConstants.h"
 #include "Trajectory.h"
@@ -348,19 +345,6 @@ void RemoveApbsNpys(const std::filesystem::path& output_dir) {
     }
 }
 
-void RemoveCoulombNpys(const std::filesystem::path& output_dir) {
-    for (const char* filename : {
-            "coulomb_efg.npy", "coulomb_efg_t2.npy", "coulomb_E.npy",
-            "coulomb_E_backbone.npy", "coulomb_E_sidechain.npy",
-            "coulomb_E_aromatic.npy", "coulomb_efg_backbone.npy",
-            "coulomb_efg_sidechain.npy", "coulomb_efg_aromatic.npy",
-            "coulomb_scalars.npy", "coulomb_aromatic_E_proj.npy",
-            "coulomb_aromatic_n_src.npy", "coulomb_E_solvent.npy",
-            "coulomb_efg_solvent.npy"}) {
-        std::filesystem::remove(output_dir / filename);
-    }
-}
-
 void RunHomogeneousReferenceForcingFunctionInChild() {
     const auto nonce = std::chrono::steady_clock::now()
                            .time_since_epoch().count();
@@ -466,19 +450,11 @@ void RunDirectionalCovarianceForcingFunctionInChild(
     auto original_result = ok ? ApbsFieldResult::Compute(original) : nullptr;
     ok = ok && original_result != nullptr;
     if (ok) ok = original.AttachResult(std::move(original_result));
-    if (ok) ok = original.AttachResult(GeometryResult::Compute(original));
-    if (ok) ok = original.AttachResult(SpatialIndexResult::Compute(original));
-    auto original_coulomb = ok ? CoulombResult::Compute(original) : nullptr;
-    ok = ok && original_coulomb != nullptr;
-    if (ok) ok = original.AttachResult(std::move(original_coulomb));
-
     const auto original_dir = output_root / "original";
     ok = ok && std::filesystem::create_directories(original_dir);
     if (ok) {
         ok = original.Result<ApbsFieldResult>().WriteFeatures(
-                 original, original_dir.string()) == 8
-            && original.Result<CoulombResult>().WriteFeatures(
-                 original, original_dir.string()) == 14;
+                 original, original_dir.string()) == 8;
     }
     if (ok) {
         ok = nmr::test::directional::RunNumpyAllowPickleFalse(
@@ -491,9 +467,7 @@ void RunDirectionalCovarianceForcingFunctionInChild(
                   original_dir / "apbs_E_clamp_scale.npy",
                   original_dir / "apbs_nonfinite_sanitizer_mask.npy",
                   original_dir / "apbs_E_total_diagnostic.npy",
-                  original_dir / "apbs_efg_total_diagnostic.npy",
-                  original_dir / "coulomb_E_solvent.npy",
-                  original_dir / "coulomb_efg_solvent.npy"}) == 0;
+                  original_dir / "apbs_efg_total_diagnostic.npy"}) == 0;
     }
     const auto original_E = ReadFloat64NpyPayload(
         original_dir / "apbs_E.npy");
@@ -511,10 +485,6 @@ void RunDirectionalCovarianceForcingFunctionInChild(
         original_dir / "apbs_E_clamp_mask.npy");
     const auto original_clamp_scale = ReadFloat64NpyPayload(
         original_dir / "apbs_E_clamp_scale.npy");
-    const auto original_solvent_E = ReadFloat64NpyPayload(
-        original_dir / "coulomb_E_solvent.npy");
-    const auto original_solvent_efg = ReadFloat64NpyPayload(
-        original_dir / "coulomb_efg_solvent.npy");
     ok = ok && original_E.size() == original.AtomCount() * 3
             && original_E_total.size() == original.AtomCount() * 3
             && original_efg.size() == original.AtomCount() * 5
@@ -522,9 +492,7 @@ void RunDirectionalCovarianceForcingFunctionInChild(
             && original_phi.size() == original.AtomCount()
             && original_sanitizer.size() == original.AtomCount()
             && original_clamp.size() == original.AtomCount()
-            && original_clamp_scale.size() == original.AtomCount()
-            && original_solvent_E == original_E
-            && original_solvent_efg == original_efg;
+            && original_clamp_scale.size() == original.AtomCount();
 
     // Feed the same attached production owner into the real trajectory
     // accumulators and cross the exact H5 boundary.  APBS grid diagnostics
@@ -619,11 +587,6 @@ void RunDirectionalCovarianceForcingFunctionInChild(
         auto moved_result = ok ? ApbsFieldResult::Compute(moved) : nullptr;
         ok = ok && moved_result != nullptr;
         if (ok) ok = moved.AttachResult(std::move(moved_result));
-        if (ok) ok = moved.AttachResult(GeometryResult::Compute(moved));
-        if (ok) ok = moved.AttachResult(SpatialIndexResult::Compute(moved));
-        auto moved_coulomb = ok ? CoulombResult::Compute(moved) : nullptr;
-        ok = ok && moved_coulomb != nullptr;
-        if (ok) ok = moved.AttachResult(std::move(moved_coulomb));
         if (!ok) break;
 
         const auto moved_dir = output_root /
@@ -631,9 +594,7 @@ void RunDirectionalCovarianceForcingFunctionInChild(
         ok = ok && std::filesystem::create_directories(moved_dir);
         if (ok) {
             ok = moved.Result<ApbsFieldResult>().WriteFeatures(
-                     moved, moved_dir.string()) == 8
-                && moved.Result<CoulombResult>().WriteFeatures(
-                     moved, moved_dir.string()) == 14;
+                     moved, moved_dir.string()) == 8;
         }
         if (ok) {
             ok = nmr::test::directional::RunNumpyAllowPickleFalse(
@@ -646,9 +607,7 @@ void RunDirectionalCovarianceForcingFunctionInChild(
                       moved_dir / "apbs_E_clamp_scale.npy",
                       moved_dir / "apbs_nonfinite_sanitizer_mask.npy",
                       moved_dir / "apbs_E_total_diagnostic.npy",
-                      moved_dir / "apbs_efg_total_diagnostic.npy",
-                      moved_dir / "coulomb_E_solvent.npy",
-                      moved_dir / "coulomb_efg_solvent.npy"}) == 0;
+                      moved_dir / "apbs_efg_total_diagnostic.npy"}) == 0;
         }
         const auto moved_E = ReadFloat64NpyPayload(
             moved_dir / "apbs_E.npy");
@@ -666,10 +625,6 @@ void RunDirectionalCovarianceForcingFunctionInChild(
             moved_dir / "apbs_E_clamp_mask.npy");
         const auto moved_clamp_scale = ReadFloat64NpyPayload(
             moved_dir / "apbs_E_clamp_scale.npy");
-        const auto moved_solvent_E = ReadFloat64NpyPayload(
-            moved_dir / "coulomb_E_solvent.npy");
-        const auto moved_solvent_efg = ReadFloat64NpyPayload(
-            moved_dir / "coulomb_efg_solvent.npy");
         ok = ok && moved_E.size() == original_E.size()
                 && moved_E_total.size() == original_E_total.size()
                 && moved_efg.size() == original_efg.size()
@@ -677,9 +632,7 @@ void RunDirectionalCovarianceForcingFunctionInChild(
                 && moved_phi.size() == original_phi.size()
                 && moved_sanitizer.size() == original_sanitizer.size()
                 && moved_clamp.size() == original_clamp.size()
-                && moved_clamp_scale.size() == original_clamp_scale.size()
-                && moved_solvent_E == moved_E
-                && moved_solvent_efg == moved_efg;
+                && moved_clamp_scale.size() == original_clamp_scale.size();
         if (!ok) break;
 
         const auto moved_h5 = moved_dir / "apbs_directional.h5";
@@ -819,17 +772,6 @@ void RunDirectionalCovarianceForcingFunctionInChild(
                 moved_E_total[atom * 3 + 2]);
             ok = ok && (serialized_E1 - Polar(transform, serialized_E0)).norm()
                            <= kVectorAbs + kVectorRel * serialized_E0.norm();
-            const Vec3 serialized_solvent_E0(
-                original_solvent_E[atom * 3],
-                original_solvent_E[atom * 3 + 1],
-                original_solvent_E[atom * 3 + 2]);
-            const Vec3 serialized_solvent_E1(
-                moved_solvent_E[atom * 3], moved_solvent_E[atom * 3 + 1],
-                moved_solvent_E[atom * 3 + 2]);
-            ok = ok && (serialized_solvent_E1 -
-                        Polar(transform, serialized_solvent_E0)).norm()
-                           <= kVectorAbs +
-                              kVectorRel * serialized_solvent_E0.norm();
             ok = ok && (serialized_total_E1 -
                         Polar(transform, serialized_total_E0)).norm()
                            <= kVectorAbs +
@@ -864,21 +806,6 @@ void RunDirectionalCovarianceForcingFunctionInChild(
                 for (std::size_t component = 0; component < 5; ++component) {
                     ok = ok && std::abs(
                         (*pair.second)[atom * 5 + component] -
-                        expected.T2[component]) <=
-                        kTensorAbs + kTensorRel *
-                            std::abs(expected.T2[component]);
-                }
-            }
-            {
-                SphericalTensor source;
-                for (std::size_t component = 0; component < 5; ++component)
-                    source.T2[component] =
-                        original_solvent_efg[atom * 5 + component];
-                const SphericalTensor expected =
-                    RotateNativeT2(transform, source);
-                for (std::size_t component = 0; component < 5; ++component) {
-                    ok = ok && std::abs(
-                        moved_solvent_efg[atom * 5 + component] -
                         expected.T2[component]) <=
                         kTensorAbs + kTensorRel *
                             std::abs(expected.T2[component]);
@@ -924,7 +851,6 @@ void RunDirectionalCovarianceForcingFunctionInChild(
     for (const char* subdir : {"original", "proper", "improper"}) {
         const auto path = output_root / subdir;
         RemoveApbsNpys(path);
-        RemoveCoulombNpys(path);
         std::filesystem::remove(path / "apbs_directional.h5");
         std::filesystem::remove(path);
     }

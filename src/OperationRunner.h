@@ -50,8 +50,8 @@ struct RunOptions {
     bool skip_apbs = false;
 
     // Skip vacuum Coulomb EFG (home-rolled, O(N*k)). Production trajectory
-    // shapes keep it enabled alongside canonical APBS so the reaction-field
-    // aliases and cross-source probes are present.
+    // shapes keep it enabled alongside canonical APBS as an independent
+    // cross-source probe.
     bool skip_coulomb = false;
 
     // AIMNet2: loaded model for neural network charges + EFG.

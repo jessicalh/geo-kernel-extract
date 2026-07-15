@@ -75,10 +75,8 @@ def test_piece05_catalog_contract():
     assert "reaction" in CATALOG["apbs_E"].description.lower()
     assert "reaction" in CATALOG["apbs_efg"].description.lower()
 
-    assert CATALOG["coulomb_E_solvent"].wrapper is VectorField
-    assert CATALOG["coulomb_efg_solvent"].wrapper is EFGTensor
-    assert "reaction-field alias" in \
-        CATALOG["coulomb_E_solvent"].description
+    assert "coulomb_E_solvent" not in CATALOG
+    assert "coulomb_efg_solvent" not in CATALOG
     aromatic_projection_doc = CATALOG["coulomb_aromatic_E_proj"].description
     assert "parent-to-H projection" in aromatic_projection_doc
     assert "NaN for non-H or parentless atoms" in aromatic_projection_doc
@@ -107,9 +105,7 @@ def test_static_loader_wires_piece05_groups(tmp_path):
     write_required_sdk_npys(tmp_path, N_ATOMS, n_residues=1)
     write_minimal_topology_sidecar(tmp_path, N_ATOMS, n_residues=1)
 
-    # Optional Coulomb/APBS surfaces.
-    _save(tmp_path, "coulomb_E_solvent", (N_ATOMS, 3))
-    _save(tmp_path, "coulomb_efg_solvent", (N_ATOMS, 5))
+    # Optional canonical APBS surfaces.
     _save(tmp_path, "apbs_E", (N_ATOMS, 3))
     _save(tmp_path, "apbs_efg", (N_ATOMS, 5))
     _save(tmp_path, "apbs_phi", (N_ATOMS,))
@@ -144,8 +140,8 @@ def test_static_loader_wires_piece05_groups(tmp_path):
 
     protein = load(tmp_path)
 
-    assert isinstance(protein.coulomb.E_solvent, VectorField)
-    assert isinstance(protein.coulomb.efg_solvent, EFGTensor)
+    assert not hasattr(protein.coulomb, "E_solvent")
+    assert not hasattr(protein.coulomb, "efg_solvent")
     assert isinstance(protein.apbs.E, VectorField)
     assert isinstance(protein.apbs.efg, EFGTensor)
     assert protein.apbs.phi.shape == (N_ATOMS,)

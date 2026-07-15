@@ -38,11 +38,11 @@ the serialized payload.  H5-PASS means the transformed owner result was
 finalized, written and read at the H5 boundary.  GAP means the exact serialized
 name/path does not yet have the required transformed-input boundary proof.
 
-The static reader gate is name-complete: every one of the 178 exact rows below
+The static reader gate is name-complete: every one of the 177 exact rows below
 is opened with numpy.load(..., allow_pickle=False), either in NPY-E2E when the
 ordinary production extraction emits it or in the named optional/external
-owner proof.  The owner-specific closure includes AIMNet2, APBS and its
-Coulomb aliases, Coulomb/MOPAC-Coulomb, ORCA/mutation, Gromacs, Larsen and
+owner proof.  The owner-specific closure includes AIMNet2, APBS,
+Coulomb/MOPAC-Coulomb, ORCA/mutation, Gromacs, Larsen and
 MOPAC parser outputs; it does not substitute for their separate
 physics oracles.
 
@@ -161,8 +161,6 @@ coulomb_efg_t2.npy | CoulombResult | atom(N,5) V/A^2 | T2, omitted T0/T1 structu
 coulomb_efg_backbone.npy | CoulombResult | atom(N,5) V/A^2 | T2, omitted T0/T1 structural zero | same legacy sanitizer | DC-EL/DC-T2 PASS owner-NPY
 coulomb_efg_sidechain.npy | CoulombResult | atom(N,5) V/A^2 | T2, omitted T0/T1 structural zero | same legacy sanitizer | DC-EL/DC-T2 PASS owner-NPY
 coulomb_efg_aromatic.npy | CoulombResult | atom(N,5) V/A^2 | T2, omitted T0/T1 structural zero | same legacy sanitizer | DC-EL/DC-T2 PASS owner-NPY
-coulomb_E_solvent.npy | CoulombResult APBS alias | atom(N,3) V/A | continuum P; live axis-aligned APBS finite grid is NC | conditional APBS; APBS sanitizer/clamp masks apply | DC-AP exact alias NPY read-back within the recorded finite-grid bound
-coulomb_efg_solvent.npy | CoulombResult APBS alias | atom(N,5) V/A^2 | continuum T2 with omitted T0/T1 structural zero; live finite grid is NC | conditional APBS; sanitizer bit1 | DC-AP/DC-T2 exact alias NPY read-back within the recorded finite-grid bound
 eeq_coulomb_E.npy | EeqCoulombResult | atom(N,3) V/A | P | whole result absent on nonfinite; joint clamp | DC-EL PASS; NPY-E2E PASS
 eeq_coulomb_E_backbone.npy | EeqCoulombResult | atom(N,3) V/A | P | same fail-loud/clamp contract | DC-EL PASS; NPY-E2E PASS
 eeq_coulomb_E_sidechain.npy | EeqCoulombResult | atom(N,3) V/A | P | same fail-loud/clamp contract | DC-EL PASS; NPY-E2E PASS
@@ -262,6 +260,7 @@ water_efield_first_clamp_scale.npy | WaterFieldResult | atom(N) | exact S/O(3)-i
 water_hbond_counts.npy | WaterHBondGeometryResult | atom(N,6) int32 | exact S/O(3)-invariant candidate/pass counts, nearest-water identity and mode | producer sentinels distinguish no candidate | DC-WB owner-NPY exact; NPY-E2E
 water_hbond_nearest.npy | WaterHBondGeometryResult | atom(N,8) | exact S/O(3)-invariant distances/angle/mode/water-id/pass/count row | cols6/7 expose candidate/pass availability | DC-WB owner-NPY exact; NPY-E2E
 delta_scalars.npy | MutationDeltaResult | WT-atom(N,6) | exact S/O(3)-invariant joint-WT/mutant row: match mask, T0/ring-distance/charge/match-distance scalars | col0 match mask; unmatched compatibility-zero row | DC-OR owner-NPY exact
+mutation_atom_map.npy | MutationDeltaResult | WT-atom(N) int32 | exact typed WT-to-mutant atom identity | -1 unmatched; nonnegative rows index the separately emitted ala/ atom axis | MutationDeltaTest.EmittedAtomMapJoinsSeparateAlaCalcsetAndReconstructsDeltas PASS owner-NPY join
 delta_graph.npy | MutationDeltaResult | WT-atom(N,5) | exact S/O(3)-invariant match/graph-source masks and graph deltas | cols0/1 gate compatibility zeros | DC-OR owner-NPY exact; dedicated graph production test
 larsen_sidechain_donor_atoms.npy | LarsenSidechainDonorAuditResult | atom(N,6) int32 | exact S/O(3)-invariant typed donor/parent/residue identity and gated counts | col0 donor-kind applicability; producer non-donor sentinels | DC-LS + DC-LSI owner-NPY byte-exact
 
@@ -847,8 +846,7 @@ These are not aggregate caveats; each names the affected serialized output.
 1. ApbsFieldResult: apbs_E.npy, apbs_E_total_diagnostic.npy, apbs_efg.npy,
    apbs_efg_total_diagnostic.npy, apbs_phi.npy, apbs_E_clamp_mask.npy,
    apbs_E_clamp_scale.npy and apbs_nonfinite_sanitizer_mask.npy;
-   CoulombResult APBS aliases coulomb_E_solvent.npy and
-   coulomb_efg_solvent.npy; ApbsEfieldTimeSeriesTrajectoryResult:
+   ApbsEfieldTimeSeriesTrajectoryResult:
    /trajectory/apbs_efield_time_series/xyz,
    /trajectory/apbs_efield_time_series/clamp_mask and
    /trajectory/apbs_efield_time_series/clamp_scale; and
@@ -1123,9 +1121,7 @@ vector plus invariant norm, explicitly scoped.
 2703c83,88e44b0,6773887 | ApbsFieldResult catalog | apbs_phi.npy,apbs_E.npy,
 apbs_E_total_diagnostic.npy,apbs_efg.npy,apbs_efg_total_diagnostic.npy,
 apbs_E_clamp_mask.npy,apbs_E_clamp_scale.npy | continuum physical laws,
-finite-grid qualifications, clamp validity.  9eea0e4 | CoulombResult catalog |
-coulomb_E_solvent.npy,coulomb_efg_solvent.npy | inherit the APBS-alias
-finite-grid contract.
+finite-grid qualifications, clamp validity.
 cffeebd,e971e3d | LarsenHBond/LarsenSidechainDonorAudit catalog |
 larsen_hbond_count.npy,larsen_sidechain_carbonyl_pair_count.npy,
 larsen_hbond_water_term.npy,larsen_corner_imputed.npy,

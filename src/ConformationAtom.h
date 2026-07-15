@@ -213,9 +213,6 @@ public:
     SphericalTensor coulomb_EFG_sidechain_spherical;
     Mat3 coulomb_EFG_aromatic = Mat3::Zero();
     SphericalTensor coulomb_EFG_aromatic_spherical;
-    Vec3 coulomb_E_solvent = Vec3::Zero();
-    Mat3 coulomb_EFG_solvent = Mat3::Zero();
-    SphericalTensor coulomb_EFG_solvent_spherical;
     double coulomb_E_magnitude = 0.0;
     double coulomb_E_bond_proj = 0.0;
     double coulomb_E_backbone_frac = 0.0;  // projection of E_bb along E_total dir (V/A)

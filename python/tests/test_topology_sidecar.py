@@ -84,7 +84,7 @@ _DIRECTIONAL_STEMS = {
     "coulomb_efg", "coulomb_efg_t2", "coulomb_E",
     "coulomb_E_backbone", "coulomb_E_sidechain", "coulomb_E_aromatic",
     "coulomb_efg_backbone", "coulomb_efg_sidechain",
-    "coulomb_efg_aromatic", "coulomb_E_solvent", "coulomb_efg_solvent",
+    "coulomb_efg_aromatic",
     "mopac_coulomb_efg", "mopac_coulomb_E",
     "mopac_coulomb_E_backbone", "mopac_coulomb_E_sidechain",
     "mopac_coulomb_E_aromatic", "mopac_coulomb_efg_backbone",
@@ -116,6 +116,7 @@ _DIRECTIONAL_STEMS = {
     "mut_shielding_diamagnetic", "mut_shielding_paramagnetic",
     "delta_shielding_diamagnetic", "delta_shielding_paramagnetic",
     "delta_apbs", "delta_ring_proximity", "delta_scalars", "delta_graph",
+    "mutation_atom_map",
     # External-frame and reflection-sensitive diagnostics.
     "mopac_global", "mopac_atom_populations",
     "mopac_atomic_orbital_populations",
@@ -488,8 +489,8 @@ class TestCatalogMetadata:
         assert spec.structural_zero_components == "T0,T1_x,T1_y,T1_z"
 
     @pytest.mark.parametrize("stem", [
-        "apbs_E", "apbs_E_total_diagnostic", "coulomb_E_solvent",
-        "apbs_efg", "apbs_efg_total_diagnostic", "coulomb_efg_solvent",
+        "apbs_E", "apbs_E_total_diagnostic",
+        "apbs_efg", "apbs_efg_total_diagnostic",
     ])
     def test_apbs_finite_grid_physical_laws_are_qualified(self, stem):
         spec = CATALOG[stem]
@@ -637,7 +638,8 @@ class TestCatalogMetadata:
 
     def test_mutation_and_mopac_row_axes_are_the_serialized_axes(self):
         mutation_stems = {
-            "delta_shielding", "delta_scalars", "delta_graph", "delta_apbs",
+            "delta_shielding", "delta_scalars", "mutation_atom_map",
+            "delta_graph", "delta_apbs",
             "delta_ring_proximity", "wt_shielding_diamagnetic",
             "wt_shielding_paramagnetic", "mut_shielding_diamagnetic",
             "mut_shielding_paramagnetic", "delta_shielding_diamagnetic",
