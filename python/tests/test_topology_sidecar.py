@@ -675,6 +675,110 @@ def _required_calculator_npys(out_dir, n_atoms):
     write_required_sdk_npys(out_dir, n_atoms)
 
 
+def test_trajectory_frame_loads_parent_invariants_and_full_manifest(tmp_path):
+    n_atoms = 8
+    n_residues = 2
+    n_bonds = 3
+    n_aromatic_rings = 2
+    n_saturated_rings = 1
+    npys_dir = tmp_path / "npys"
+    frame_dir = npys_dir / "frame_000123"
+
+    write_required_sdk_npys(
+        frame_dir,
+        n_atoms=n_atoms,
+        n_residues=n_residues,
+        n_bonds=n_bonds,
+        n_aromatic_rings=n_aromatic_rings,
+        n_saturated_rings=n_saturated_rings,
+    )
+    write_minimal_topology_sidecar(
+        npys_dir,
+        n_atoms=n_atoms,
+        n_residues=n_residues,
+        n_bonds=n_bonds,
+        n_aromatic_rings=n_aromatic_rings,
+        n_saturated_rings=n_saturated_rings,
+        protein_id="parent_full_manifest",
+    )
+
+    frame_pos = (
+        np.arange(n_atoms * 3, dtype=np.float64).reshape(n_atoms, 3) + 0.125
+    )
+    np.save(frame_dir / "pos.npy", frame_pos)
+
+    category_info = np.zeros(
+        n_atoms,
+        dtype=[("atom_index", "<i4"), ("parent_marker", "<i4")],
+    )
+    category_info["atom_index"] = np.arange(n_atoms, dtype=np.int32)
+    category_info["parent_marker"] = 2718
+    np.save(npys_dir / "atoms_category_info.npy", category_info)
+
+    child_manifest = {
+        "schema_version": "1.0",
+        "extractor": "nmr_extract",
+        "feature_metadata": {
+            "mcconnell": {"manifest_owner": "frame_child"},
+        },
+    }
+    (frame_dir / "extraction_manifest.json").write_text(
+        json.dumps(child_manifest)
+    )
+
+    assert not (npys_dir / "pos.npy").exists()
+    assert not (frame_dir / "atoms_category_info.npy").exists()
+    for stem in ("residues", "bonds", "rings", "ring_membership"):
+        assert not (frame_dir / f"{stem}.npy").exists()
+    assert "axis_sizes" not in child_manifest
+
+    protein = load(frame_dir)
+
+    parent_manifest = json.loads(
+        (npys_dir / "extraction_manifest.json").read_text()
+    )
+    parent_category_info = np.load(
+        npys_dir / "atoms_category_info.npy", allow_pickle=False
+    )
+
+    np.testing.assert_array_equal(protein.pos.data, frame_pos)
+    assert protein.n_atoms == parent_manifest["axis_sizes"]["atom"]
+    assert protein.category_info.n_atoms == len(parent_category_info)
+    np.testing.assert_array_equal(
+        protein.category_info.data, parent_category_info
+    )
+    for stem in ("residues", "bonds", "rings", "ring_membership"):
+        parent_table = np.load(npys_dir / f"{stem}.npy", allow_pickle=False)
+        typed_table = getattr(protein.topology, stem)
+        assert len(typed_table) == len(parent_table)
+        np.testing.assert_array_equal(typed_table.data, parent_table)
+    assert protein.topology.manifest.data == parent_manifest
+    assert protein.topology.manifest.protein_id == "parent_full_manifest"
+
+
+def test_self_contained_numeric_frame_directory_remains_flat(tmp_path):
+    flat_dir = tmp_path / "frame_000123"
+    write_minimal_topology_sidecar(
+        tmp_path,
+        n_atoms=4,
+        n_residues=1,
+        protein_id="parent_manifest_must_not_replace_child",
+    )
+    write_required_sdk_npys(flat_dir, n_atoms=4, n_residues=1)
+    write_minimal_topology_sidecar(
+        flat_dir,
+        n_atoms=4,
+        n_residues=1,
+        protein_id="self_contained_manifest",
+    )
+
+    protein = load(flat_dir)
+
+    assert protein.n_atoms == 4
+    assert protein.topology.residues.n_residues == 1
+    assert protein.topology.manifest.protein_id == "self_contained_manifest"
+
+
 class TestTopologyLoad:
 
     @pytest.fixture

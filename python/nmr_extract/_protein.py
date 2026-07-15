@@ -1760,16 +1760,40 @@ def _validate_topology_invariants(tg: TopologyGroup, n_atoms: int,
 def load(path: str | Path) -> Protein:
     """Load an extraction directory into a fully typed Protein.
 
+    FrameNpyEmitter frame directories are combined with the invariant Protein
+    records and full topology manifest in their parent directory.
     Validates every file against the catalog. Warns on unregistered files
     (forward-compatible). Errors on missing required files.
     """
     path = Path(path)
     protein_id = path.name
+    frame_suffix = path.name[6:] if path.name.startswith("frame_") else ""
+    invariant_path = (
+        path.parent
+        if (
+            len(frame_suffix) >= 6
+            and frame_suffix.isdigit()
+            and not (path / "residues.npy").is_file()
+            and (path.parent / "residues.npy").is_file()
+        )
+        else path
+    )
 
     # Load all NPY files
     available: dict[str, np.ndarray] = {}
     for npy in path.glob("*.npy"):
         available[npy.stem] = np.load(npy)
+    if invariant_path != path:
+        for stem in (
+            "atoms_category_info",
+            "residues",
+            "bonds",
+            "rings",
+            "ring_membership",
+        ):
+            npy = invariant_path / f"{stem}.npy"
+            if npy.is_file():
+                available[stem] = np.load(npy)
 
     # Warn on unregistered (don't error — forward-compatible)
     unregistered = set(available.keys()) - set(CATALOG.keys())
@@ -2188,7 +2212,7 @@ def load(path: str | Path) -> Protein:
     # ring_membership.npy are required NPYs (declared in CATALOG);
     # the missing-required check above already failed if any were
     # absent. extraction_manifest.json is required separately.
-    manifest_path = path / "extraction_manifest.json"
+    manifest_path = invariant_path / "extraction_manifest.json"
     if not manifest_path.exists():
         raise FileNotFoundError(
             f"Required topology sidecar extraction_manifest.json missing for {protein_id}")
