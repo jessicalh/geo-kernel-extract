@@ -612,7 +612,7 @@ class TestHBond:
 class TestDssp:
 
     def test_shape(self, geo):
-        assert geo.dssp.data.shape == (geo.n_atoms, 5)
+        assert geo.dssp.backbone.data.shape == (geo.n_atoms, 5)
 
 
 class TestRingKernelGroups:

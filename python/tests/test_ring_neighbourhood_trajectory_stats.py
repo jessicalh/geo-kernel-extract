@@ -53,8 +53,11 @@ def _write_required_traj_root(f: h5py.File) -> None:
     pos.attrs["result_name"] = "PositionsTimeSeriesTrajectoryResult"
     pos.attrs["finalized"]   = True
     pos.create_dataset("xyz",
-                       data=np.zeros((N_ATOMS * N_FRAMES, 3),
+                       data=np.zeros((N_ATOMS, N_FRAMES, 3),
                                       dtype=np.float64))
+    pos.create_dataset("frame_indices",
+                       data=np.arange(N_FRAMES, dtype=np.uint64))
+    pos.create_dataset("frame_times", data=times)
 
 
 def _write_ring_neighbourhood(f: h5py.File) -> dict:

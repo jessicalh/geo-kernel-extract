@@ -211,6 +211,33 @@ class MolecularGraphGroup:
 
 
 @dataclass(frozen=True)
+class GeometryGroup:
+    """Per-topology-bond geometry from GeometryResult."""
+    bond_length: Optional[np.ndarray]
+    bond_direction: Optional[VectorField]
+    bond_geometry_valid: Optional[np.ndarray]
+
+
+@dataclass(frozen=True)
+class LocalBackboneGeometryNpyGroup:
+    """Residue-local valence geometry from LocalBackboneGeometryResult."""
+    tau_N_CA_C: Optional[np.ndarray]
+    tau_N_CA_C_valid: Optional[np.ndarray]
+    angle_N_CA_CB: Optional[np.ndarray]
+    angle_N_CA_CB_valid: Optional[np.ndarray]
+    angle_CB_CA_C: Optional[np.ndarray]
+    angle_CB_CA_C_valid: Optional[np.ndarray]
+    angle_Cprev_N_CA: Optional[np.ndarray]
+    angle_Cprev_N_CA_valid: Optional[np.ndarray]
+    angle_CA_C_Nnext: Optional[np.ndarray]
+    angle_CA_C_Nnext_valid: Optional[np.ndarray]
+    cb_deviation: Optional[np.ndarray]
+    cb_deviation_valid: Optional[np.ndarray]
+    cb_residual_vector: Optional[np.ndarray]
+    cb_residual_vector_valid: Optional[np.ndarray]
+
+
+@dataclass(frozen=True)
 class McConnellGroup:
     """Two-channel McConnell source response by source category.
 
@@ -335,6 +362,9 @@ class HBondGroup:
     scalars: HBondScalars
     nearest_dir: Optional[VectorField] = None
     flags: Optional[np.ndarray] = None
+    pairs_index: Optional[np.ndarray] = None
+    pairs_geometry: Optional[np.ndarray] = None
+    pairs_angle_valid: Optional[np.ndarray] = None
 
     @property
     def is_backbone(self) -> Optional[np.ndarray]:
@@ -353,6 +383,22 @@ class HBondGroup:
         if self.flags is None:
             return None
         return self.flags[:, 2] != 0
+
+
+@dataclass(frozen=True)
+class DsspGroup:
+    """All conformation-scope outputs written by DsspResult."""
+    backbone: DsspScalars
+    observed: Optional[np.ndarray]
+    ss8: Optional[np.ndarray]
+    ppii: Optional[np.ndarray]
+    hbond_energy: Optional[np.ndarray]
+    chi: Optional[np.ndarray]
+    torsion_angle: Optional[np.ndarray]
+    torsion_sin: Optional[np.ndarray]
+    torsion_cos: Optional[np.ndarray]
+    torsion_valid: Optional[np.ndarray]
+    hbond_partner_residue_index: Optional[np.ndarray]
 
 
 @dataclass(frozen=True)
@@ -1182,6 +1228,9 @@ class PlanarGeometryGroup:
     omega_actual: Optional[np.ndarray] = None
     omega_deviation: Optional[np.ndarray] = None
     omega_is_xpro: Optional[np.ndarray] = None
+    omega_sin: Optional[np.ndarray] = None
+    omega_cos: Optional[np.ndarray] = None
+    omega_valid: Optional[np.ndarray] = None
     aromatic_chi2: Optional[np.ndarray] = None
     pucker_Q: Optional[np.ndarray] = None
     pucker_theta: Optional[np.ndarray] = None
@@ -1435,6 +1484,8 @@ class Protein:
     charge_assignment: Optional[ChargeAssignmentGroup] = None
     spatial_index: Optional[SpatialIndexGroup] = None
     molecular_graph: Optional[MolecularGraphGroup] = None
+    geometry: Optional[GeometryGroup] = None
+    local_backbone_geometry: Optional[LocalBackboneGeometryNpyGroup] = None
 
     # Bond calculators
     mcconnell: McConnellGroup = None
@@ -1442,12 +1493,7 @@ class Protein:
         SidechainCarbonylAnisotropyGroup] = None
     coulomb: CoulombGroup = None
     hbond: HBondGroup = None
-    dssp: DsspScalars = None
-    dssp_observed: np.ndarray = None
-    dssp_ss8: np.ndarray = None
-    dssp_ppii: np.ndarray = None
-    dssp_hbond_energy: np.ndarray = None
-    dssp_chi: np.ndarray = None
+    dssp: Optional[DsspGroup] = None
     sasa: np.ndarray = None
     sasa_normal: Optional[VectorField] = None  # (N, 3) outward surface normal
     sasa_fraction: Optional[np.ndarray] = None
@@ -1820,6 +1866,45 @@ def load(path: str | Path) -> Protein:
         scalars=get("hbond_scalars"),
         nearest_dir=get("hbond_nearest_dir"),
         flags=get("hbond_flags"),
+        pairs_index=get("hbond_pairs_index"),
+        pairs_geometry=get("hbond_pairs_geometry"),
+        pairs_angle_valid=get("hbond_pairs_angle_valid"),
+    )
+
+    geometry = GeometryGroup(
+        bond_length=get("bond_length"),
+        bond_direction=get("bond_direction"),
+        bond_geometry_valid=get("bond_geometry_valid"),
+    )
+    local_backbone_geometry = LocalBackboneGeometryNpyGroup(
+        tau_N_CA_C=get("tau_N_CA_C"),
+        tau_N_CA_C_valid=get("tau_N_CA_C_valid"),
+        angle_N_CA_CB=get("angle_N_CA_CB"),
+        angle_N_CA_CB_valid=get("angle_N_CA_CB_valid"),
+        angle_CB_CA_C=get("angle_CB_CA_C"),
+        angle_CB_CA_C_valid=get("angle_CB_CA_C_valid"),
+        angle_Cprev_N_CA=get("angle_Cprev_N_CA"),
+        angle_Cprev_N_CA_valid=get("angle_Cprev_N_CA_valid"),
+        angle_CA_C_Nnext=get("angle_CA_C_Nnext"),
+        angle_CA_C_Nnext_valid=get("angle_CA_C_Nnext_valid"),
+        cb_deviation=get("cb_deviation"),
+        cb_deviation_valid=get("cb_deviation_valid"),
+        cb_residual_vector=get("cb_residual_vector"),
+        cb_residual_vector_valid=get("cb_residual_vector_valid"),
+    )
+    dssp = DsspGroup(
+        backbone=get("dssp_backbone"),
+        observed=get("dssp_observed"),
+        ss8=get("dssp_ss8"),
+        ppii=get("dssp_ppii"),
+        hbond_energy=get("dssp_hbond_energy"),
+        chi=get("dssp_chi"),
+        torsion_angle=get("dssp_torsion_angle"),
+        torsion_sin=get("dssp_torsion_sin"),
+        torsion_cos=get("dssp_torsion_cos"),
+        torsion_valid=get("dssp_torsion_valid"),
+        hbond_partner_residue_index=get(
+            "dssp_hbond_partner_residue_index"),
     )
 
     enrichment = None
@@ -2121,6 +2206,9 @@ def load(path: str | Path) -> Protein:
         "omega_actual",
         "omega_deviation",
         "omega_is_xpro",
+        "omega_sin",
+        "omega_cos",
+        "omega_valid",
         "aromatic_chi2",
         "pucker_Q",
         "pucker_theta",
@@ -2139,6 +2227,12 @@ def load(path: str | Path) -> Protein:
                 if "omega_deviation" in available else None,
             omega_is_xpro=get("omega_is_xpro")
                 if "omega_is_xpro" in available else None,
+            omega_sin=get("omega_sin")
+                if "omega_sin" in available else None,
+            omega_cos=get("omega_cos")
+                if "omega_cos" in available else None,
+            omega_valid=get("omega_valid")
+                if "omega_valid" in available else None,
             aromatic_chi2=get("aromatic_chi2")
                 if "aromatic_chi2" in available else None,
             pucker_Q=get("pucker_Q")
@@ -2294,16 +2388,13 @@ def load(path: str | Path) -> Protein:
         charge_assignment=charge_assignment,
         spatial_index=spatial_index,
         molecular_graph=molecular_graph,
+        geometry=geometry,
+        local_backbone_geometry=local_backbone_geometry,
         mcconnell=mcconnell,
         sidechain_carbonyl_anisotropy=sidechain_carbonyl_anisotropy,
         coulomb=coulomb,
         hbond=hbond,
-        dssp=get("dssp_backbone"),
-        dssp_observed=get("dssp_observed"),
-        dssp_ss8=get("dssp_ss8"),
-        dssp_ppii=get("dssp_ppii"),
-        dssp_hbond_energy=get("dssp_hbond_energy"),
-        dssp_chi=get("dssp_chi"),
+        dssp=dssp,
         sasa=get("atom_sasa"),
         sasa_normal=get("sasa_normal"),
         sasa_fraction=get("atom_sasa_fraction"),

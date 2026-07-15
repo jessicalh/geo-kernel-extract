@@ -1,37 +1,19 @@
-"""Trajectory data reader — loads either H5 schema produced by the C++ extractor.
+"""Trajectory data reader for the current C++ extractor H5 schema.
 
     from nmr_extract import load_trajectory
     traj = load_trajectory("output/trajectory.h5")
 
-    traj.positions          # (T, N, 3) float64 — normalized regardless of source schema
+    traj.positions          # (T, N, 3) float64
     traj.frame_times        # (T,) float64 — time in ps
+    traj.frame_indices      # (T,) uint64 — original trajectory indices
     traj.n_atoms            # int
     traj.n_frames           # int
 
-Schema tolerance: the reader auto-detects which schema the H5 file uses
-and adapts. Codex 2026-05-18 caught the production-output incompatibility:
-
-  - **Analysis schema (current `TrajectoryProtein::WriteH5`)**: root
-    attrs `{protein_id, n_atoms, finalized}` only. Frame metadata at
-    `/trajectory/frames/{time_ps, original_index}` (+ `n_frames` group
-    attr). Positions atom-major at `/trajectory/positions/xyz`. No
-    `/rollup` group — analysis mode replaces the legacy rollup with the
-    six Welford H5 groups below. `traj.rollup is None`.
-  - **Legacy ensemble (`GromacsProtein::WriteH5`)**: root attrs include
-    `n_frames`, `positions_shape_T/N`. Positions frame-major at
-    `/positions`. Frame times at `/frame_times`. Rollup at `/rollup/`.
-    `traj.rollup` is a `TrajectoryRollup`.
-
-Both schemas: positions are returned as `(T, N, 3)` after the reader
-normalizes the on-disk layout.
-
-    # Legacy rollup (Optional — only present in ensemble H5 files)
-    if traj.rollup is not None:
-        traj.rollup.bs_T0.mean  # (N,) ring current isotropic mean
-
-    # Bonds: per-bond length statistics (legacy ensemble path only)
-    if traj.bonds is not None:
-        traj.bonds.length_mean
+The current schema is written by `Trajectory::WriteH5`,
+`TrajectoryProtein::WriteH5`, and each attached TrajectoryResult's own
+`WriteH5Group`. Positions are normalized to `(T, N, 3)` at the longstanding
+top-level field; `positions_time_series.xyz` also exposes the owning result's
+native atom-major dataset without changing its layout.
 
     # Welford H5 groups — written by *WelfordTrajectoryResult subclasses
     # (BS / HM / McConnell / Eeq / Sasa / HBondCount), 2026-05-17/18.
@@ -81,81 +63,6 @@ PROJECT_FULL9_E3NN_EXPORT = (
     "raw project full9 ndarray; call project_full9_to_e3nn(xyz) "
     "before using e3nn Irreps"
 )
-
-
-# ─── Legacy GromacsProtein rollup ──────────────────────────────────
-
-
-@dataclass(frozen=True)
-class WelfordColumn:
-    """Mean and std for one accumulated quantity across all atoms."""
-    name: str
-    mean: np.ndarray    # (N,)
-    std: np.ndarray     # (N,)
-
-
-class TrajectoryRollup:
-    """Named access to per-atom Welford statistics.
-
-    Access by attribute: rollup.bs_T0.mean, rollup.aimnet2_charge.std
-    Access by index: rollup[0].mean (same as rollup.bs_T0.mean)
-    """
-
-    def __init__(self, names: list[str],
-                 means: np.ndarray, stds: np.ndarray):
-        self._names = names
-        self._means = means   # (N, K)
-        self._stds = stds     # (N, K)
-        self._by_name: dict[str, int] = {n: i for i, n in enumerate(names)}
-
-    @property
-    def names(self) -> list[str]:
-        return list(self._names)
-
-    @property
-    def n_columns(self) -> int:
-        return len(self._names)
-
-    def __getattr__(self, name: str) -> WelfordColumn:
-        if name.startswith("_"):
-            raise AttributeError(name)
-        if name not in self._by_name:
-            raise AttributeError(
-                f"No rollup column '{name}'. "
-                f"Available: {', '.join(self._names[:10])}...")
-        k = self._by_name[name]
-        return WelfordColumn(
-            name=name,
-            mean=self._means[:, k],
-            std=self._stds[:, k],
-        )
-
-    def __getitem__(self, k: int) -> WelfordColumn:
-        return WelfordColumn(
-            name=self._names[k],
-            mean=self._means[:, k],
-            std=self._stds[:, k],
-        )
-
-    def as_block(self, columns: Optional[list[str]] = None) -> np.ndarray:
-        """Return (N, K) mean array for selected columns (default: all)."""
-        if columns is None:
-            return self._means.copy()
-        idxs = [self._by_name[c] for c in columns]
-        return self._means[:, idxs]
-
-
-@dataclass(frozen=True)
-class BondRollup:
-    """Per-bond length statistics across trajectory frames."""
-    atom_a: np.ndarray       # (B,) uint64
-    atom_b: np.ndarray       # (B,) uint64
-    length_mean: np.ndarray  # (B,) float64
-    length_std: np.ndarray   # (B,) float64
-
-    @property
-    def n_bonds(self) -> int:
-        return len(self.atom_a)
 
 
 # ─── SelectionBag records (2026-05-21, codex round 1 HIGH #4) ──────
@@ -272,6 +179,407 @@ def _decode_attr(value):
     if isinstance(value, bytes):
         return value.decode()
     return value
+
+
+@dataclass(frozen=True)
+class TrajectoryAtomsGroup:
+    """Identity datasets written unconditionally under ``/atoms``."""
+    element: np.ndarray
+    residue_index: np.ndarray
+    pdb_atom_name: np.ndarray
+
+
+def _load_trajectory_atoms(f) -> Optional[TrajectoryAtomsGroup]:
+    if "/atoms" not in f:
+        return None
+    g = f["/atoms"]
+    return TrajectoryAtomsGroup(
+        element=g["element"][:],
+        residue_index=g["residue_index"][:],
+        pdb_atom_name=g["pdb_atom_name"][:],
+    )
+
+
+@dataclass(frozen=True)
+class PositionsTimeSeriesGroup:
+    """Native atom-major output of PositionsTimeSeriesTrajectoryResult."""
+    xyz: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_frames: int
+    finalized: bool
+    physical_class: str
+    coordinate_frame: str
+    parity: str
+    transformation: str
+    units: str
+
+
+def _load_positions_time_series(f) -> Optional[PositionsTimeSeriesGroup]:
+    path = "/trajectory/positions"
+    if path not in f:
+        return None
+    g = f[path]
+    ds = g["xyz"]
+    return PositionsTimeSeriesGroup(
+        xyz=ds[:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        result_name=str(_decode_attr(g.attrs.get("result_name", ""))),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        physical_class=str(_decode_attr(ds.attrs.get("physical_class", ""))),
+        coordinate_frame=str(_decode_attr(ds.attrs.get("coordinate_frame", ""))),
+        parity=str(_decode_attr(ds.attrs.get("parity", ""))),
+        transformation=str(_decode_attr(ds.attrs.get("transformation", ""))),
+        units=str(_decode_attr(ds.attrs.get("units", ""))),
+    )
+
+
+@dataclass(frozen=True)
+class BsShieldingTimeSeriesGroup:
+    """BiotSavartResult full-nine-component trajectory output."""
+    xyz: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_frames: int
+    finalized: bool
+    irrep_layout: str
+    normalization: str
+    parity: str
+    tensor_basis: str
+    tensor_component_order: str
+    tensor_frame: str
+    tensor_parity: str
+    tensor_transformation: str
+    tensor_t1_semantics: str
+    tensor_t1_structural_zero: bool
+    tensor_structural_zero_components: str
+    e3nn_export: str
+    normalization_scope: str
+    units: str
+
+
+def _load_bs_shielding_time_series(
+        f) -> Optional[BsShieldingTimeSeriesGroup]:
+    path = "/trajectory/bs_shielding_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    attr = lambda name: str(_decode_attr(g.attrs.get(name, "")))
+    return BsShieldingTimeSeriesGroup(
+        xyz=g["xyz"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        result_name=attr("result_name"),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        irrep_layout=attr("irrep_layout"),
+        normalization=attr("normalization"),
+        parity=attr("parity"),
+        tensor_basis=attr("tensor_basis"),
+        tensor_component_order=attr("tensor_component_order"),
+        tensor_frame=attr("tensor_frame"),
+        tensor_parity=attr("tensor_parity"),
+        tensor_transformation=attr("tensor_transformation"),
+        tensor_t1_semantics=attr("tensor_t1_semantics"),
+        tensor_t1_structural_zero=bool(
+            g.attrs.get("tensor_t1_structural_zero", False)),
+        tensor_structural_zero_components=attr(
+            "tensor_structural_zero_components"),
+        e3nn_export=attr("e3nn_export"),
+        normalization_scope=attr("normalization_scope"),
+        units=attr("units"),
+    )
+
+
+@dataclass(frozen=True)
+class HmShieldingTimeSeriesGroup:
+    """HaighMallionResult full-nine-component trajectory output."""
+    xyz: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_frames: int
+    finalized: bool
+    irrep_layout: str
+    normalization: str
+    parity: str
+    tensor_basis: str
+    tensor_component_order: str
+    tensor_frame: str
+    tensor_parity: str
+    tensor_transformation: str
+    tensor_t1_semantics: str
+    tensor_t1_structural_zero: bool
+    tensor_structural_zero_components: str
+    e3nn_export: str
+    normalization_scope: str
+    units: str
+
+
+def _load_hm_shielding_time_series(
+        f) -> Optional[HmShieldingTimeSeriesGroup]:
+    path = "/trajectory/hm_shielding_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    attr = lambda name: str(_decode_attr(g.attrs.get(name, "")))
+    return HmShieldingTimeSeriesGroup(
+        xyz=g["xyz"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        result_name=attr("result_name"),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        irrep_layout=attr("irrep_layout"),
+        normalization=attr("normalization"),
+        parity=attr("parity"),
+        tensor_basis=attr("tensor_basis"),
+        tensor_component_order=attr("tensor_component_order"),
+        tensor_frame=attr("tensor_frame"),
+        tensor_parity=attr("tensor_parity"),
+        tensor_transformation=attr("tensor_transformation"),
+        tensor_t1_semantics=attr("tensor_t1_semantics"),
+        tensor_t1_structural_zero=bool(
+            g.attrs.get("tensor_t1_structural_zero", False)),
+        tensor_structural_zero_components=attr(
+            "tensor_structural_zero_components"),
+        e3nn_export=attr("e3nn_export"),
+        normalization_scope=attr("normalization_scope"),
+        units=attr("units"),
+    )
+
+
+@dataclass(frozen=True)
+class McConnellShieldingTimeSeriesGroup:
+    """McConnellResult full-nine-component trajectory output."""
+    xyz: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_frames: int
+    finalized: bool
+    tensor_basis: str
+    tensor_component_order: str
+    tensor_frame: str
+    coordinate_frame: str
+    parity: str
+    tensor_parity: str
+    tensor_transformation: str
+    tensor_t1_semantics: str
+    tensor_t1_structural_zero: bool
+    tensor_structural_zero_components: str
+    e3nn_export: str
+    normalization: str
+    normalization_scope: str
+    units: str
+
+
+def _load_mc_shielding_time_series(
+        f) -> Optional[McConnellShieldingTimeSeriesGroup]:
+    path = "/trajectory/mc_shielding_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    attr = lambda name: str(_decode_attr(g.attrs.get(name, "")))
+    return McConnellShieldingTimeSeriesGroup(
+        xyz=g["xyz"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        result_name=attr("result_name"),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        tensor_basis=attr("tensor_basis"),
+        tensor_component_order=attr("tensor_component_order"),
+        tensor_frame=attr("tensor_frame"),
+        coordinate_frame=attr("coordinate_frame"),
+        parity=attr("parity"),
+        tensor_parity=attr("tensor_parity"),
+        tensor_transformation=attr("tensor_transformation"),
+        tensor_t1_semantics=attr("tensor_t1_semantics"),
+        tensor_t1_structural_zero=bool(
+            g.attrs.get("tensor_t1_structural_zero", False)),
+        tensor_structural_zero_components=attr(
+            "tensor_structural_zero_components"),
+        e3nn_export=attr("e3nn_export"),
+        normalization=attr("normalization"),
+        normalization_scope=attr("normalization_scope"),
+        units=attr("units"),
+    )
+
+
+@dataclass(frozen=True)
+class AIMNet2ChargeTimeSeriesGroup:
+    """Per-atom AIMNet2 charge trajectory."""
+    charge: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_frames: int
+    finalized: bool
+    irrep_layout: str
+    parity: str
+    units: str
+
+
+def _load_aimnet2_charge_time_series(
+        f) -> Optional[AIMNet2ChargeTimeSeriesGroup]:
+    path = "/trajectory/aimnet2_charge_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    attr = lambda name: str(_decode_attr(g.attrs.get(name, "")))
+    return AIMNet2ChargeTimeSeriesGroup(
+        charge=g["charge"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        result_name=attr("result_name"),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        irrep_layout=attr("irrep_layout"),
+        parity=attr("parity"),
+        units=attr("units"),
+    )
+
+
+@dataclass(frozen=True)
+class SasaTimeSeriesGroup:
+    """Per-atom SasaResult trajectory output."""
+    sasa: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_frames: int
+    finalized: bool
+    irrep_layout: str
+    parity: str
+    units: str
+    coordinate_frame: str
+    transformation: str
+    directional_metadata_scope: str
+    sasa_units: str
+
+
+def _load_sasa_time_series(f) -> Optional[SasaTimeSeriesGroup]:
+    path = "/trajectory/sasa_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    ds = g["sasa"]
+    attr = lambda name: str(_decode_attr(g.attrs.get(name, "")))
+    return SasaTimeSeriesGroup(
+        sasa=ds[:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        result_name=attr("result_name"),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        irrep_layout=attr("irrep_layout"),
+        parity=attr("parity"),
+        units=attr("units"),
+        coordinate_frame=attr("coordinate_frame"),
+        transformation=attr("transformation"),
+        directional_metadata_scope=attr("directional_metadata_scope"),
+        sasa_units=str(_decode_attr(ds.attrs.get("units", ""))),
+    )
+
+
+@dataclass(frozen=True)
+class BondLengthStatsGroup:
+    """Per-bond statistics from BondLengthStatsTrajectoryResult."""
+    length_mean: np.ndarray
+    length_std: np.ndarray
+    length_min: np.ndarray
+    length_max: np.ndarray
+    length_delta_mean: np.ndarray
+    length_delta_std: np.ndarray
+    atom_a: np.ndarray
+    atom_b: np.ndarray
+    order: np.ndarray
+    category: np.ndarray
+    result_name: str
+    n_bonds: int
+    n_frames: int
+    finalized: bool
+    units: str
+
+
+def _load_bond_length_stats(f) -> Optional[BondLengthStatsGroup]:
+    path = "/trajectory/bond_length_stats"
+    if path not in f:
+        return None
+    g = f[path]
+    return BondLengthStatsGroup(
+        length_mean=g["length_mean"][:],
+        length_std=g["length_std"][:],
+        length_min=g["length_min"][:],
+        length_max=g["length_max"][:],
+        length_delta_mean=g["length_delta_mean"][:],
+        length_delta_std=g["length_delta_std"][:],
+        atom_a=g["atom_a"][:],
+        atom_b=g["atom_b"][:],
+        order=g["order"][:],
+        category=g["category"][:],
+        result_name=str(_decode_attr(g.attrs.get("result_name", ""))),
+        n_bonds=int(g.attrs["n_bonds"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        units=str(_decode_attr(g.attrs.get("units", ""))),
+    )
+
+
+@dataclass(frozen=True)
+class BsT0AutocorrelationGroup:
+    """Biot-Savart T0 autocorrelation emitted by its trajectory result."""
+    rho: np.ndarray
+    lag_frames: np.ndarray
+    lag_times_ps: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_lags: int
+    n_frames: int
+    finalized: bool
+    sample_interval_ps: float
+    units: str
+    estimator: str
+    mean_convention: str
+
+
+def _load_bs_t0_autocorrelation(
+        f) -> Optional[BsT0AutocorrelationGroup]:
+    path = "/trajectory/bs_t0_autocorrelation"
+    if path not in f:
+        return None
+    g = f[path]
+    return BsT0AutocorrelationGroup(
+        rho=g["rho"][:],
+        lag_frames=g["lag_frames"][:],
+        lag_times_ps=g["lag_times_ps"][:],
+        result_name=str(_decode_attr(g.attrs.get("result_name", ""))),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_lags=int(g.attrs["n_lags"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs.get("finalized", False)),
+        sample_interval_ps=float(g.attrs["sample_interval_ps"]),
+        units=str(_decode_attr(g.attrs.get("units", ""))),
+        estimator=str(_decode_attr(g.attrs.get("estimator", ""))),
+        mean_convention=str(_decode_attr(g.attrs.get("mean_convention", ""))),
+    )
 
 
 def _group_units(grp) -> str:
@@ -4031,38 +4339,43 @@ class TrajectoryData:
     This is the training data for the waveform model, the analysis
     data for the ridge, and the movie data for VTK.
 
-    Two H5 schemas exist:
-    - **Analysis (current)** written by `TrajectoryProtein::WriteH5` +
-      per-TR `WriteH5Group(file)`. Root attrs `{protein_id, n_atoms,
-      finalized}`. Frame metadata under `/trajectory/frames/`. Positions
-      under `/trajectory/positions/xyz` (atom-major). Each attached TR
-      writes its own `/trajectory/<group>/`. No `/rollup` group.
-    - **Legacy ensemble** written by `GromacsProtein::WriteH5` (old
-      ensemble accumulation path). Root attrs include `n_frames` /
-      `positions_shape_{T,N}`. Positions at `/positions` (frame-major).
-      Frame times at `/frame_times`. Legacy rollup at `/rollup/`.
-
-    `load_trajectory` detects which schema is present and adapts; the
-    fields below normalize on the analysis schema's representation
-    (positions in `(T, N, 3)` regardless of source). Fields absent in
-    a given schema are `None` or empty arrays — check `traj.rollup is
-    not None` before using the legacy rollup.
+    The H5 is written by the current `Trajectory`, `TrajectoryProtein`,
+    and attached `TrajectoryResult` objects. Each result group remains a
+    separate SDK field; no cross-result joins or reductions are performed.
     """
     protein_id: str
     n_atoms: int
     n_frames: int
+    finalized: bool
 
     # Per-frame positions: (T, N, 3) for VTK movies + waveform input
     positions: np.ndarray       # (T, N, 3) float64
     frame_times: np.ndarray     # (T,) float64
+    frame_indices: np.ndarray   # (T,) original trajectory indices
 
-    # Per-atom rollup statistics (legacy GromacsProtein columns). None
-    # for analysis-schema H5 files — those replace the rollup notion
-    # with the Welford H5 groups below.
-    rollup: Optional[TrajectoryRollup] = None
+    # Trajectory::WriteH5 provenance attributes.
+    xtc_path: str
+    tpr_path: str
+    edr_path: str
+    configuration: str
+    window_mode: str
+    window_start: int
+    window_len: int
 
-    # Per-bond rollup statistics (legacy ensemble path only).
-    bonds: Optional[BondRollup] = None
+    # Unconditional identity and native position-result surfaces.
+    atoms: Optional[TrajectoryAtomsGroup] = None
+    positions_time_series: Optional[PositionsTimeSeriesGroup] = None
+
+    # Previously unread live trajectory-result groups.
+    bs_shielding_time_series: Optional[BsShieldingTimeSeriesGroup] = None
+    hm_shielding_time_series: Optional[HmShieldingTimeSeriesGroup] = None
+    mc_shielding_time_series: Optional[
+        McConnellShieldingTimeSeriesGroup] = None
+    aimnet2_charge_time_series: Optional[
+        AIMNet2ChargeTimeSeriesGroup] = None
+    sasa_time_series: Optional[SasaTimeSeriesGroup] = None
+    bond_length_stats: Optional[BondLengthStatsGroup] = None
+    bs_t0_autocorrelation: Optional[BsT0AutocorrelationGroup] = None
 
     # Welford H5 groups (Phase 2b/C, 2026-05-17/18). Always present;
     # individual fields are None when the corresponding TR didn't run.
@@ -4201,81 +4514,32 @@ class TrajectoryData:
     aimnet2_embedding_in_h5: bool = False
 
 
-def _read_frame_metadata(f, n_atoms_hint: int):
-    """Return (n_frames, frame_times) from either H5 schema.
-
-    Analysis schema (current C++ TrajectoryProtein): `/trajectory/frames/`
-    group with `n_frames` group-attr + `time_ps` dataset.
-    Legacy schema (GromacsProtein ensemble): root attr `n_frames` +
-    `/frame_times` dataset.
-    Returns `(0, empty array)` when neither is present (e.g., bare H5
-    fixture used for testing one specific group in isolation).
-    """
-    if "trajectory" in f and "frames" in f["trajectory"]:
-        frames_grp = f["/trajectory/frames"]
-        n_frames = int(frames_grp.attrs.get("n_frames", 0))
-        if "time_ps" in frames_grp:
-            return n_frames, frames_grp["time_ps"][:]
-        return n_frames, np.array([], dtype=np.float64)
-    if "n_frames" in f.attrs and "frame_times" in f:
-        return int(f.attrs["n_frames"]), f["frame_times"][:]
-    return 0, np.array([], dtype=np.float64)
+def _read_frame_metadata(f):
+    """Read the current Trajectory::WriteH5 frame record."""
+    frames_grp = f["/trajectory/frames"]
+    return (
+        int(frames_grp.attrs["n_frames"]),
+        frames_grp["time_ps"][:],
+        frames_grp["original_index"][:],
+    )
 
 
 def _read_positions(f, n_atoms_hint: int, n_frames_hint: int) -> np.ndarray:
-    """Return (T, N, 3) positions from either H5 schema.
-
-    Analysis schema: `/trajectory/positions/xyz` written atom-major as
-    `(N*T, 3)` by `PositionsTimeSeriesTrajectoryResult::WriteH5Group`.
-    Legacy schema: `/positions` written frame-major as `(T*N, 3)` by
-    `GromacsProtein::WriteH5`. Both normalized to `(T, N, 3)` here.
-    """
-    if "trajectory" in f and "positions" in f["trajectory"] \
-            and "xyz" in f["/trajectory/positions"]:
-        pos_grp = f["/trajectory/positions"]
-        N = int(pos_grp.attrs.get("n_atoms", n_atoms_hint))
-        T = int(pos_grp.attrs.get("n_frames", n_frames_hint))
-        pos_raw = pos_grp["xyz"][:]
-        # Atom-major (N*T, 3) → (N, T, 3) → (T, N, 3)
-        return pos_raw.reshape(N, T, 3).transpose(1, 0, 2)
-    if "positions" in f:
-        pos_raw = f["positions"][:]
-        T = int(f.attrs.get("positions_shape_T", n_frames_hint))
-        N = int(f.attrs.get("positions_shape_N", n_atoms_hint))
-        return pos_raw.reshape(T, N, 3)
-    return np.empty((0, n_atoms_hint, 3), dtype=np.float64)
-
-
-def _read_legacy_rollup(f) -> Optional[TrajectoryRollup]:
-    """Return legacy `/rollup/` TrajectoryRollup or None.
-
-    Only present in GromacsProtein ensemble H5 files. Analysis H5 files
-    written by the current TrajectoryProtein writer replace this notion
-    with the per-TR Welford groups; for those, return None and let the
-    caller use `traj.welford.<kind>` instead.
-    """
-    if "rollup" not in f or "mean" not in f["rollup"]:
-        return None
-    means = f["rollup/mean"][:]
-    stds = f["rollup/std"][:]
-    names_raw = f["rollup/names"][:]
-    names = [_decode_attr(n) for n in names_raw]
-    return TrajectoryRollup(names, means, stds)
+    """Return the live positions result normalized to ``(T, N, 3)``."""
+    pos_grp = f["/trajectory/positions"]
+    N = int(pos_grp.attrs.get("n_atoms", n_atoms_hint))
+    T = int(pos_grp.attrs.get("n_frames", n_frames_hint))
+    pos_raw = pos_grp["xyz"][:]
+    return pos_raw.reshape(N, T, 3).transpose(1, 0, 2)
 
 
 def load_trajectory(path: str | Path,
                     load_optional_large: bool = False) -> TrajectoryData:
     """Load a trajectory H5 master file.
 
-    Supports both H5 schemas (see `TrajectoryData` docstring):
-    - Analysis (current `TrajectoryProtein` + per-TR `WriteH5Group`)
-    - Legacy ensemble (`GromacsProtein::WriteH5`)
-
-    Schema detection is automatic; fields absent in one schema are
-    `None` or empty in the returned `TrajectoryData`. The six Welford
-    H5 groups are loaded independently of which schema's frame
-    metadata is present — they live at `/trajectory/<kind>_welford/`
-    in both.
+    Reads the current `Trajectory` + `TrajectoryProtein` + per-result H5
+    schema. Each optional result group is `None` only when that result did
+    not write its group.
 
     `load_optional_large=False` (default) skips datasets that declare
     `optional_large=true` (currently only the AIMNet2 embedding TS at
@@ -4291,21 +4555,32 @@ def load_trajectory(path: str | Path,
         raise FileNotFoundError(f"Trajectory H5 not found: {path}")
 
     with h5py.File(path, "r") as f:
-        protein_id = _decode_attr(f.attrs.get("protein_id", path.stem))
+        protein_id = str(_decode_attr(f.attrs.get("protein_id", path.stem)))
         n_atoms = int(f.attrs["n_atoms"])
+        finalized = bool(f.attrs["finalized"])
+        trajectory = f["/trajectory"]
+        xtc_path = str(_decode_attr(trajectory.attrs.get("xtc_path", "")))
+        tpr_path = str(_decode_attr(trajectory.attrs.get("tpr_path", "")))
+        edr_path = str(_decode_attr(trajectory.attrs.get("edr_path", "")))
+        configuration = str(_decode_attr(
+            trajectory.attrs.get("configuration", "")))
+        window_mode = str(_decode_attr(
+            trajectory.attrs.get("window_mode", "")))
+        window_start = int(trajectory.attrs.get("window_start", 0))
+        window_len = int(trajectory.attrs.get("window_len", 0))
 
-        n_frames, frame_times = _read_frame_metadata(f, n_atoms)
+        n_frames, frame_times, frame_indices = _read_frame_metadata(f)
         positions = _read_positions(f, n_atoms, n_frames)
-        rollup = _read_legacy_rollup(f)
+        atoms = _load_trajectory_atoms(f)
+        positions_time_series = _load_positions_time_series(f)
 
-        bonds = None
-        if "bonds" in f:
-            bonds = BondRollup(
-                atom_a=f["bonds/atom_a"][:],
-                atom_b=f["bonds/atom_b"][:],
-                length_mean=f["bonds/length_mean"][:],
-                length_std=f["bonds/length_std"][:],
-            )
+        bs_shielding_time_series = _load_bs_shielding_time_series(f)
+        hm_shielding_time_series = _load_hm_shielding_time_series(f)
+        mc_shielding_time_series = _load_mc_shielding_time_series(f)
+        aimnet2_charge_time_series = _load_aimnet2_charge_time_series(f)
+        sasa_time_series = _load_sasa_time_series(f)
+        bond_length_stats = _load_bond_length_stats(f)
+        bs_t0_autocorrelation = _load_bs_t0_autocorrelation(f)
 
         # Welford H5 groups (each Optional — missing group → None)
         welford = WelfordAccess(
@@ -4388,10 +4663,26 @@ def load_trajectory(path: str | Path,
         protein_id=protein_id,
         n_atoms=n_atoms,
         n_frames=n_frames,
+        finalized=finalized,
         positions=positions,
         frame_times=frame_times,
-        rollup=rollup,
-        bonds=bonds,
+        frame_indices=frame_indices,
+        xtc_path=xtc_path,
+        tpr_path=tpr_path,
+        edr_path=edr_path,
+        configuration=configuration,
+        window_mode=window_mode,
+        window_start=window_start,
+        window_len=window_len,
+        atoms=atoms,
+        positions_time_series=positions_time_series,
+        bs_shielding_time_series=bs_shielding_time_series,
+        hm_shielding_time_series=hm_shielding_time_series,
+        mc_shielding_time_series=mc_shielding_time_series,
+        aimnet2_charge_time_series=aimnet2_charge_time_series,
+        sasa_time_series=sasa_time_series,
+        bond_length_stats=bond_length_stats,
+        bs_t0_autocorrelation=bs_t0_autocorrelation,
         welford=welford,
         energy=energy,
         water_field=water_field,
