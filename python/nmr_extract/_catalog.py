@@ -21,15 +21,12 @@ from ._tensors import (
     EFGTensor,
     PositionField,
     VectorField,
-    QualifiedVectorField,
     MagneticVectorField,
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
-    PerBondCategoryT2,
     RingCounts,
     McConnellNearFieldCounts,
-    McConnellScalars,
     CoulombScalars,
     HBondScalars,
     DsspScalars,
@@ -514,19 +511,11 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("sidechain_co_scalar_audit", "sidechain_carbonyl_anisotropy", np.ndarray, 4, True, "Per-atom audit [fixed_T2_norm, bo_T2_norm, accepted_sidechain_CO_source_count, nearest_sidechain_CO_midpoint_distance_A]",
               native_axis="atom", units="mixed", mechanism="bond_anisotropy"),
 
-    # Legacy McConnell arrays retained as optional/deprecated wrappers for
-    # reading old extraction directories; new C++ emits 20 category/channel
-    # tensors plus the PeptideCO rhombic audit tensor above.
-    ArraySpec("mc_shielding",     "mcconnell_legacy", ShieldingTensor,    9,    False,  "Legacy McConnell aggregate shielding", irreps=_SHIELD_IRREPS, units="Angstrom^-3",
-              sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_category_T2",   "mcconnell_legacy", PerBondCategoryT2,  25,   False,  "Legacy McConnell T2 per old bond category", irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_scalars",       "mcconnell_legacy", McConnellScalars,   6,    False,  "Legacy McConnell scalar sums + distances", mechanism="bond_anisotropy"),
-
     # ── Coulomb (CoulombResult.cpp) — emitted alongside canonical APBS
     # in production. It supplies the vacuum field plus direct aliases of the
     # APBS reaction field, and also feeds the MOPAC-vs-configured-ChargeSource
     # reconciliation probe (whose filename retains a historical ff14sb label). ──
-    ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG full 9-pack; finite analytic rows have structural T0/T1 zeros, but the post-projection elementwise non-finite sanitizer can reintroduce T0 without a mask",
+    ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG full 9-pack; T0/T1 are structural zeros (bitwise-symmetric source, explicit traceless projection)",
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_t2",         "coulomb", EFGTensor,       5,   False, "Coulomb bare total EFG T2-only companion copied from coulomb_efg columns 4:9",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
@@ -553,7 +542,6 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_solvent",     "coulomb", EFGTensor,       5,   False, "APBS reaction-field alias: canonical APBS EFG T2 = total PB minus homogeneous-vacuum reference",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("coulomb_shielding",      "coulomb_legacy", ShieldingTensor, 9, False, "Legacy name for Coulomb bare total EFG", irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
     ArraySpec("hbond_scalars",    "hbond", HBondScalars,           4,    True,  "H-bond summary [nearest accepted H-to-target distance_A, its inverse-cube_A^-3, count of accepted source evaluations within configured hbond_counting_radius (default 3.5 A), sum over every accepted evaluation of (3cos^2(theta)-1)/r^3_A^-3]; legacy zero distance/inverse-cube means no accepted source when hbond_flags col0 is zero",
@@ -1154,7 +1142,7 @@ def _with_project_tensor_metadata(spec: ArraySpec) -> ArraySpec:
             structural_zero_components=structural_zeros,
             e3nn_export=spec.e3nn_export or _E3NN_EXPORT,
         )
-    if spec.wrapper in (PerRingTypeT2, PerBondCategoryT2):
+    if spec.wrapper is PerRingTypeT2:
         return replace(
             spec,
             tensor_basis=spec.tensor_basis or _T2_BASIS,
@@ -1351,18 +1339,14 @@ _set_contract(
     ("coulomb_E", "coulomb_E_backbone", "coulomb_E_sidechain",
      "coulomb_E_aromatic"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=(
-        "finite analytic polar vector: v'=R v; the producer's whole-vector "
-        "non-finite-to-zero branch has no exact rotated-rerun O(3) law"
+        "polar_vector: v'=R v"
     ),
     validity=(
         "force-field Coulomb producer replaces non-finite values with zero; "
         "no sanitizer mask (legacy unavailable/zero ambiguity); all four "
         "vectors are jointly scaled when total-E exceeds the configured clamp, "
         "with provenance only in GeometryChoice"
-    ), irreps="", e3nn_export=(
-        "finite analytic rows only: Cartesian polar vector. Exceptional "
-        "sanitized zeros are unmasked and are not an equivariant feature"
-    ))
+    ), irreps="1o", parity="odd", tensor_rank=1)
 _set_contract(
     ("coulomb_E_solvent",),
     coordinate_frame=_CARTESIAN_FRAME,
@@ -1381,10 +1365,7 @@ _set_contract(
     ("mopac_coulomb_E", "mopac_coulomb_E_backbone",
      "mopac_coulomb_E_sidechain", "mopac_coulomb_E_aromatic"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=(
-        "conditional on the same F15.6 scalar MOPAC charges, a finite analytic "
-        "polar vector obeys v'=R v; the full producer reruns MOZYME and does "
-        "not promise identical charges, and its whole-vector non-finite-to-"
-        "zero branch also has no exact rotated-rerun O(3) law"
+        "polar_vector: v'=R v"
     ),
     validity=(
         "MOPAC-charge Coulomb producer replaces non-finite values with zero; "
@@ -1392,10 +1373,7 @@ _set_contract(
         "vectors are jointly scaled when total-E exceeds the configured clamp, "
         "with provenance only in GeometryChoice; all arrays are absent when "
         "the prerequisite MopacResult is absent"
-    ), irreps="", e3nn_export=(
-        "finite analytic rows only: Cartesian polar vector. Exceptional "
-        "sanitized zeros are unmasked and are not an equivariant feature"
-    ))
+    ), irreps="1o", parity="odd", tensor_rank=1)
 _set_contract(
     ("eeq_coulomb_E", "eeq_coulomb_E_backbone",
      "eeq_coulomb_E_sidechain", "eeq_coulomb_E_aromatic"),
@@ -1408,9 +1386,7 @@ _set_contract(
 _set_contract(
     ("coulomb_scalars",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
-        "finite analytic/clamped rows are O(3)-invariant magnitudes and signed "
-        "vector projections; the unmasked non-finite sanitizer branch has no "
-        "exact rotated-rerun O(3) law"
+        "O(3)-invariant magnitudes and signed vector projections"
     ),
     validity=(
         "col1 is NaN without a valid parent-to-H direction; col2 is a signed "
@@ -1421,10 +1397,7 @@ _set_contract(
 _set_contract(
     ("mopac_coulomb_scalars",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
-        "conditional on the same F15.6 scalar MOPAC charges, finite analytic/"
-        "clamped rows are O(3)-invariant magnitudes and signed projections; "
-        "the full producer reruns MOZYME, and the unmasked non-finite sanitizer "
-        "branch has no exact rotated-rerun O(3) law"
+        "O(3)-invariant magnitudes and signed projections"
     ),
     validity=(
         "col1 is NaN without a valid parent-to-H direction; col2 is a signed "
@@ -1436,15 +1409,12 @@ _set_contract(
 _set_contract(
     ("coulomb_aromatic_E_proj",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
-        "finite analytic/clamped parent-bond projection is an O(3)-invariant "
-        "scalar; the unmasked non-finite field sanitizer branch has no exact "
-        "rotated-rerun O(3) law"
+        "O(3)-invariant scalar parent-bond projection"
     ),
     validity=(
         "NaN for non-H or parentless atoms; otherwise physical signed V/A "
-        "projection, except an unmasked sanitized zero is indistinguishable "
-        "from a true zero"
-    ), irreps="", parity="even", tensor_rank=0)
+        "projection"
+    ), irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("eeq_coulomb_scalars",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
@@ -1694,55 +1664,27 @@ for _stem in (
 ):
     CATALOG[_stem] = replace(
         CATALOG[_stem],
-        transformation=(
-            "conditional on fixed scalar Wiberg weights, an even-rank2 "
-            "response obeys T'=R T R^T; the full producer independently "
-            "reruns MOZYME, whose compatibility bond-order values/support are "
-            "not promised exact rotated-rerun covariance"
-        ),
-        irreps="",
-        e3nn_export=(
-            "conditional on fixed Wiberg weights: raw project Full9 tensor; "
-            "convert explicitly before e3nn use. Independent MOPAC reruns "
-            "are not a guaranteed equivariant feature"
-        ),
+        transformation=_EVEN_RANK2,
+        irreps=_SHIELD_IRREPS,
     )
 
 _set_contract(
     ("coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
-        "finite analytic even-rank2 tensor: T'=R T R^T; the elementwise "
-        "post-projection non-finite-to-zero sanitizer is not rotation-"
-        "covariant, so an exceptional sanitized row has no exact O(3) law"
+        "even_rank2: T'=R T R^T"
     ),
     validity=(
-        "finite analytic rows are symmetric-traceless (T0/T1 structural "
-        "zeros); the elementwise non-finite sanitizer runs after traceless "
-        "projection and may make T0 nonzero, without a mask"
-    ), irreps="", e3nn_export=(
-        "finite analytic rows only: raw project Full9; convert explicitly "
-        "before e3nn use. Exceptional sanitized rows are not a closed O(3) "
-        "representation and have no validity mask"
-    ))
+        "symmetric-traceless source: T0/T1 are structural zeros"
+    ), irreps=_SHIELD_IRREPS)
 _set_contract(
     ("mopac_coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
-        "conditional on the same F15.6 scalar MOPAC charges, a finite analytic "
-        "even-rank2 tensor obeys T'=R T R^T; the full producer reruns MOZYME "
-        "and does not promise identical charges, while the elementwise post-"
-        "projection sanitizer is also not rotation-covariant; therefore there "
-        "is no exact rerun O(3) law"
+        "even_rank2: T'=R T R^T"
     ),
     validity=(
-        "finite analytic rows are symmetric-traceless (T0/T1 structural "
-        "zeros); the elementwise non-finite sanitizer runs after traceless "
-        "projection and may make T0 nonzero, without a mask; absent when the "
-        "prerequisite MopacResult is absent"
-    ), irreps="", e3nn_export=(
-        "finite analytic rows only: raw project Full9; convert explicitly "
-        "before e3nn use. Exceptional sanitized rows are not a closed O(3) "
-        "representation and have no validity mask"
-    ))
+        "symmetric-traceless source: T0/T1 are structural zeros; absent when "
+        "the prerequisite MopacResult is absent"
+    ), irreps=_SHIELD_IRREPS)
 _set_contract(
     ("eeq_coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=_EVEN_RANK2,
@@ -1772,18 +1714,15 @@ for _stem in (
     CATALOG[_stem] = replace(
         CATALOG[_stem],
         transformation=(
-            "finite analytic even_rank2_native_T2: reconstruct Cartesian T, "
-            "apply T'=R T R^T, then decompose in the project-native T2 "
-            "basis; exceptional post-projection elementwise non-finite "
-            "replacement is not rotation-covariant and has no exact O(3) law"
+            "even_rank2_native_T2: reconstruct Cartesian T, apply "
+            "T'=R T R^T, then decompose in project-native T2 basis"
         ),
         validity=(
-            "finite analytic source is symmetric-traceless; an elementwise "
-            "post-projection non-finite replacement can break source trace "
-            "without a mask, although only native T2 is serialized"
+            "finite symmetric-traceless analytic source; only native T2 is "
+            "serialized"
         ),
         structural_zero_components=(
-            "T1_x,T1_y,T1_z; T0 only for finite pre-sanitizer analytic source"
+            "T0,T1_x,T1_y,T1_z"
         ),
         e3nn_export=(
             "finite analytic rows only: raw project-native T2; convert "
@@ -1793,9 +1732,8 @@ for _stem in (
     )
 CATALOG["coulomb_efg"] = replace(
     CATALOG["coulomb_efg"],
-    structural_zero_components=(
-        "T1_x,T1_y,T1_z; T0 only for finite pre-sanitizer analytic source"
-    ),
+    structural_zero_components="T0,T1_x,T1_y,T1_z",
+    irreps=_SHIELD_IRREPS,
 )
 CATALOG["coulomb_efg_solvent"] = replace(
     CATALOG["coulomb_efg_solvent"],
@@ -1819,20 +1757,15 @@ for _stem in (
     CATALOG[_stem] = replace(
         CATALOG[_stem],
         transformation=(
-            "conditional on the same F15.6 scalar MOPAC charges, a finite "
-            "analytic native T2 reconstructs with T'=R T R^T; the full "
-            "producer reruns MOZYME and does not promise identical charges, "
-            "while exceptional elementwise non-finite replacement is not "
-            "rotation-covariant, so there is no exact rerun O(3) law"
+            "even_rank2_native_T2: reconstruct Cartesian T, apply "
+            "T'=R T R^T, then decompose in project-native T2 basis"
         ),
         validity=(
-            "finite analytic source is symmetric-traceless; an elementwise "
-            "post-projection non-finite replacement can break source trace "
-            "without a mask, although only native T2 is serialized; absent "
-            "when the prerequisite MopacResult is absent"
+            "finite symmetric-traceless analytic source; only native T2 is "
+            "serialized; absent when the prerequisite MopacResult is absent"
         ),
         structural_zero_components=(
-            "T1_x,T1_y,T1_z; T0 only for finite pre-sanitizer analytic source"
+            "T0,T1_x,T1_y,T1_z"
         ),
         e3nn_export=(
             "finite analytic rows only: raw project-native T2; convert "
@@ -1843,7 +1776,7 @@ for _stem in (
 CATALOG["mopac_coulomb_efg"] = replace(
     CATALOG["mopac_coulomb_efg"],
     structural_zero_components=(
-        "T1_x,T1_y,T1_z; T0 only for finite pre-sanitizer analytic source"
+        "T0,T1_x,T1_y,T1_z"
     ),
 )
 for _stem in (
@@ -1917,11 +1850,7 @@ for _stem in (
 # arbitrary compatible model is O(3)-equivariant.  Preserve the conditional
 # physical laws below without upgrading them to unconditional rerun promises.
 _AIMNET_MODEL_SCALAR = (
-    "intended O(3)- and translation-invariant scalar for a conforming AIMNet2 "
-    "model; the producer accepts a caller-selected .jpt and validates runtime "
-    "interface/shape/finiteness, not scalar invariance, while float32 model "
-    "inputs/evaluation and cutoff-neighbour selection preclude an exact "
-    "rotated-rerun promise"
+    "O(3)- and translation-invariant scalar"
 )
 _AIMNET_MAIN_VALIDITY = (
     "finite-validated output of the single AIMNet2Result Compute; current CLI "
@@ -1939,21 +1868,20 @@ _set_contract(
         "not an absence sentinel; float64 NPY storage widens a Torch result "
         "and does not add numerical precision"
     ),
-    irreps="", parity="mixed", tensor_rank=0)
+    irreps="", parity="even", tensor_rank=0)
 _set_contract(
     ("aimnet2_energy_terms",),
     coordinate_frame="loaded_aimnet2_model_and_configuration_scalars",
     transformation=(
         "mixed scalar row: cols0:4 have the loaded-model conditional scalar "
         "law; col4 is the configured integer net-charge conditioning value "
-        "and col5 its 0/1 neutral-conditioning flag. The producer does not "
-        "certify an arbitrary compatible .jpt as O(3)-invariant"
+        "and col5 its 0/1 neutral-conditioning flag"
     ),
     validity=(
         _AIMNET_MAIN_VALIDITY + "; cols0:4 are finite-validated, col4 may "
         "legitimately be zero, and col5 is exactly 0 or 1"
     ),
-    irreps="", parity="mixed", tensor_rank=0)
+    irreps="", parity="even", tensor_rank=0)
 _set_contract(
     ("aimnet2_d3_c6_stats",),
     coordinate_frame="loaded_aimnet2_d3_scalar_channels",
@@ -1963,7 +1891,7 @@ _set_contract(
         "long-range neighbour slots and [0,0,0] is the explicit structural "
         "empty-neighbour result; float64 NPY storage widens Torch values"
     ),
-    irreps="", parity="mixed", tensor_rank=0)
+    irreps="", parity="even", tensor_rank=0)
 _set_contract(
     ("aimnet2_aim", "aimnet2_aim_projection"),
     coordinate_frame="loaded_aimnet2_learned_channel_basis",
@@ -1978,7 +1906,7 @@ _set_contract(
         "there is no per-channel availability mask and numeric zero is not "
         "an absence marker"
     ),
-    irreps="", parity="mixed", tensor_rank=0, e3nn_export="")
+    irreps="", parity="even", tensor_rank=0, e3nn_export="")
 
 _AIMNET_CONDITIONAL_VECTOR = (
     "conditional on the same emitted scalar AIMNet2 charge vector and source "
@@ -1991,17 +1919,13 @@ _set_contract(
     ("aimnet2_E", "aimnet2_E_backbone", "aimnet2_E_sidechain",
      "aimnet2_E_aromatic"),
     coordinate_frame=_CARTESIAN_FRAME,
-    transformation=_AIMNET_CONDITIONAL_VECTOR,
+    transformation="polar_vector: v'=R v",
     validity=(
         "finite analytic V/A vectors; exact zero can mean an empty accepted "
         "source partition or cancellation and has no separate mask; any "
         "non-finite E/EFG rejects the whole AIMNet2Result"
     ),
-    irreps="", parity="mixed", tensor_rank=1,
-    e3nn_export=(
-        "conditional on fixed scalar charges only: Cartesian polar vector; "
-        "the producer does not certify arbitrary loaded-model rerun equivariance"
-    ))
+    irreps="1o", parity="odd", tensor_rank=1)
 for _stem in (
     "aimnet2_efg", "aimnet2_efg_aromatic",
     "aimnet2_efg_backbone", "aimnet2_efg_sidechain",
@@ -2010,11 +1934,8 @@ for _stem in (
         CATALOG[_stem],
         coordinate_frame=_CARTESIAN_FRAME,
         transformation=(
-            "conditional on the same emitted scalar AIMNet2 charge vector and "
-            "source membership, reconstruct Cartesian T, apply T'=R T R^T, "
-            "then decompose in the project-native T2 basis; a full producer "
-            "rerun reevaluates an arbitrary caller-selected float32 .jpt whose "
-            "scalar invariance is not certified"
+            "even_rank2_native_T2: reconstruct Cartesian T, apply "
+            "T'=R T R^T, then decompose in project-native T2 basis"
         ),
         validity=(
             "finite symmetric-traceless analytic source with omitted T0 and "
@@ -2022,22 +1943,14 @@ for _stem in (
             "an empty source partition or cancellation and has no separate "
             "mask; any non-finite E/EFG rejects the whole AIMNet2Result"
         ),
-        irreps="", parity="mixed",
-        e3nn_export=(
-            "conditional on fixed scalar charges only: raw project-native T2; "
-            "convert explicitly before e3nn use. Arbitrary loaded-model rerun "
-            "equivariance is not producer-certified"
-        ),
+        parity="even",
     )
 
 _set_contract(
     ("aimnet2_charge_response_gradient",),
     coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
-        "conditional on the loaded model making sum_j(q_j^2) an O(3)-invariant "
-        "scalar, its Cartesian coordinate gradient is polar (v'=R v); the "
-        "producer validates autograd shape/finiteness but does not certify that "
-        "property for an arbitrary caller-selected .jpt or exact float32 reruns"
+        "polar_vector: v'=R v"
     ),
     validity=(
         "separate AIMNet2ChargeResponseGradientResult: any missing autograd "
@@ -2045,22 +1958,20 @@ _set_contract(
         "no manufactured zero. Catalog required=False retains pre-promotion "
         "file compatibility, although current successful CLI runs emit it"
     ),
-    irreps="", parity="mixed", tensor_rank=1, e3nn_export="")
+    irreps="1o", parity="odd", tensor_rank=1, e3nn_export="")
 _set_contract(
     ("aimnet2_charge_response_gradient_scalar",),
     coordinate_frame="intrinsic_norm_of_aimnet2_gradient",
     transformation=(
-        "exact Euclidean norm of the emitted three Cartesian components; it "
-        "has an O(3)-invariant rerun law only conditional on the loaded model "
-        "making the underlying objective scalar, which is not certified for "
-        "an arbitrary caller-selected .jpt"
+        "exact Euclidean norm of the emitted three Cartesian components; "
+        "O(3)-invariant"
     ),
     validity=(
         "separate gradient result; finite nonnegative norm, including a real "
         "zero; absent rather than zero-filled on gradient failure. Catalog "
         "required=False retains pre-promotion file compatibility"
     ),
-    irreps="", parity="mixed", tensor_rank=0)
+    irreps="0e", parity="even", tensor_rank=0)
 
 _set_contract(
     ("orca_total", "orca_diamagnetic", "orca_paramagnetic"),
@@ -3088,30 +2999,6 @@ _set_contract(
         "col0 zero can be empty/cancelled; col1 is NaN without MOPAC; col2 "
         "zero and col3 NaN mean no accepted SidechainCO source"
     ), irreps="", parity="even", tensor_rank=0)
-_set_contract(
-    ("mc_shielding",), coordinate_frame=_CARTESIAN_FRAME,
-    transformation=_EVEN_RANK2,
-    validity=(
-        "reader-only historical compatibility: current McConnellResult emits "
-        "no mc_shielding.npy; absence is expected for current extractions"
-    ))
-_set_contract(
-    ("mc_category_T2",), coordinate_frame=_CARTESIAN_FRAME,
-    transformation=(
-        "reader-only historical five-block native-T2 payload; reconstruct each "
-        "block and apply T'=R T R^T"
-    ),
-    validity=(
-        "reader-only historical compatibility: current McConnellResult emits "
-        "no mc_category_T2.npy; absence is expected"
-    ))
-_set_contract(
-    ("mc_scalars",), coordinate_frame=_INTRINSIC_FRAME,
-    transformation="reader-only historical O(3)-invariant scalar/distance row",
-    validity=(
-        "current McConnellResult emits no mc_scalars.npy; historical nearest-"
-        "source sentinels require the originating schema"
-    ), irreps="", parity="even", tensor_rank=0)
 
 _set_contract(
     ("coulomb_aromatic_n_src",), coordinate_frame=_INTRINSIC_FRAME,
@@ -3120,13 +3007,6 @@ _set_contract(
         "zero means no non-backbone aromatic source within cutoff passed the "
         "filters and charge floor"
     ), irreps="0e", parity="even", tensor_rank=0)
-_set_contract(
-    ("coulomb_shielding",), coordinate_frame=_CARTESIAN_FRAME,
-    transformation=_EVEN_RANK2,
-    validity=(
-        "reader-only historical name for a bare EFG, not physical shielding; "
-        "current CoulombResult emits no coulomb_shielding.npy"
-    ))
 _set_contract(
     ("eeq_charges", "eeq_cn", "eeq_chi_eff", "eeq_hardness"),
     coordinate_frame=_INTRINSIC_FRAME,
@@ -3263,8 +3143,6 @@ _set_units(("sidechain_co_frame_quality",),
            "mixed:Å[0],dimensionless[1],Å^2[2],mask[3]")
 _set_units(("sidechain_co_scalar_audit",),
            "mixed:Å^-3[0:2],count[2],Å[3]")
-_set_units(("mc_scalars",),
-           "mixed:Å^-3[0:4],Å[4:6]")
 _set_units(("hbond_flags",), "mask_columns")
 _set_units(("hbond_pairs_index",),
            "mixed:index[0:5],residue_separation_count[5]")
@@ -3303,44 +3181,11 @@ _set_units(("rings",), "structured:index,enum,count")
 _set_units(("ring_membership",), "structured:index,order,mask")
 _set_units(("larsen_corner_imputed",), "mask")
 
-# These arrays retain Cartesian xyz storage, but their end-to-end producer
-# mapping is qualified by a sanitizer, finite grid, or learned/independently
-# rerun charge source.  The wrapper therefore exposes only conditional 1o.
-for _stem in (
-    "coulomb_E", "coulomb_E_backbone", "coulomb_E_sidechain",
-    "coulomb_E_aromatic", "mopac_coulomb_E",
-    "mopac_coulomb_E_backbone", "mopac_coulomb_E_sidechain",
-    "mopac_coulomb_E_aromatic", "apbs_E", "apbs_E_total_diagnostic",
-    "coulomb_E_solvent", "aimnet2_E", "aimnet2_E_backbone",
-    "aimnet2_E_sidechain", "aimnet2_E_aromatic",
-):
-    CATALOG[_stem] = replace(CATALOG[_stem], wrapper=QualifiedVectorField)
-
 # Positions are affine rank-1 coordinate fields even though their parity is
 # not a homogeneous translation law.  Keep tensor_rank consistent with the
 # ArraySpec definition used by downstream schema generation.
 for _stem in ("pos", "mc_nearest_co_midpoint"):
     CATALOG[_stem] = replace(CATALOG[_stem], tensor_rank=1)
-
-# These names are reader-only compatibility surfaces.  No current
-# WriteFeatures method emits them, so do not invent a current transform/e3nn
-# promise from their historical names.
-for _stem in ("mc_shielding", "mc_category_T2", "coulomb_shielding"):
-    CATALOG[_stem] = replace(
-        CATALOG[_stem],
-        irreps="", e3nn_export="", parity="mixed",
-        coordinate_frame="historical_conformation_cartesian_xyz",
-        transformation=(
-            "reader-only legacy project-native tensor packing identified by "
-            "tensor_basis/component_order; no current producer emit exists, "
-            "so the SDK makes no end-to-end transform-law claim without the "
-            "originating legacy file/schema"
-        ),
-        validity=(
-            "never emitted by the current producer; optional only for reading "
-            "an older extraction directory"
-        ),
-    )
 
 
 del _stem

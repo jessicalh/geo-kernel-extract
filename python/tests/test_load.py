@@ -26,12 +26,10 @@ from nmr_extract import (
     E3nnTensor,
     PositionField,
     VectorField,
-    QualifiedVectorField,
     MagneticVectorField,
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
-    PerBondCategoryT2,
     McConnellNearFieldCounts,
     RingContributions,
     RingGeometry,
@@ -242,10 +240,8 @@ class TestIrreps:
 
     def test_vector_field(self, geo):
         v = geo.coulomb.E
-        assert isinstance(v, QualifiedVectorField)
         assert isinstance(v, VectorField)
-        assert v.irreps is None
-        assert v.conditional_irreps == Irreps("1x1o")
+        assert v.irreps == Irreps("1x1o")
 
     def test_per_ring_type_T0(self, geo):
         t0 = geo.biot_savart.per_type_T0

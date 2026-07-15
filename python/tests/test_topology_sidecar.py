@@ -186,44 +186,23 @@ class TestCatalogMetadata:
         assert {
             k for k, s in CATALOG.items() if s.parity == "mixed"
         } == {
-            "aimnet2_E", "aimnet2_E_aromatic", "aimnet2_E_backbone",
-            "aimnet2_E_sidechain", "aimnet2_aim",
-            "aimnet2_aim_projection", "aimnet2_charges",
-            "aimnet2_charge_response_gradient",
-            "aimnet2_charge_response_gradient_scalar",
-            "aimnet2_d3_c6_stats", "aimnet2_d3_cn",
-            "aimnet2_d3_e_disp_atom", "aimnet2_efg",
-            "aimnet2_efg_aromatic", "aimnet2_efg_backbone",
-            "aimnet2_efg_sidechain", "aimnet2_energy_mlp",
-            "aimnet2_energy_shifted_local", "aimnet2_energy_terms",
             "atom_sasa", "atom_sasa_fraction", "apbs_E_clamp_mask",
-            "apbs_E_clamp_scale", "apbs_nonfinite_sanitizer_mask",
-            "apbs_phi", "bonded_energy", "bs_ring_B_cylindrical",
-            "cb_deviation", "cb_residual_vector", "coulomb_shielding",
-            "delta_apbs", "delta_ring_proximity", "dssp_backbone",
-            "dssp_chi", "dssp_ppii", "gromacs_energy",
-            "hbond_pairs_geometry", "larsen_corner_imputed",
-            "larsen_hbond_1pHB_shielding",
-            "larsen_hbond_1pHaB_shielding",
-            "larsen_hbond_2pHB_shielding",
-            "larsen_hbond_2pHaB_shielding",
-            "larsen_hbond_diagnostic_CB_shielding",
-            "larsen_hbond_pairs", "larsen_hbond_pairs_geometry",
-            "larsen_hbond_pairs_isotropic", "larsen_hbond_shielding",
-            "larsen_imputed_pair_count",
-            "larsen_sidechain_donor_candidates", "mc_category_T2",
-            "mc_shielding", "mopac_atom_ao_density",
-            "mopac_bond_ao_density", "mopac_bond_ao_density_directed",
-            "mopac_global", "mopac_lmo_occupied_coefficients",
-            "mopac_lmo_occupied_coefficient_storage_native",
-            "mopac_lmo_virtual_coefficients",
-            "mopac_lmo_virtual_coefficient_storage_native",
-            "piquad_local_T2", "piquad_local_frame",
-            "piquad_local_geometry", "piquad_local_tensor",
-            "pucker_theta", "ring_contributions", "ring_geometry",
-            "ring_pair_geometry", "sasa_normal", "sasa_welford",
-            "sidechain_co_frame", "spatial_neighbors",
-            "water_hbond_candidates", "water_polarization",
+            "apbs_E_clamp_scale", "apbs_nonfinite_sanitizer_mask", "apbs_phi",
+            "bonded_energy", "bs_ring_B_cylindrical", "cb_deviation",
+            "cb_residual_vector", "delta_apbs", "delta_ring_proximity",
+            "dssp_backbone", "dssp_chi", "dssp_ppii",
+            "gromacs_energy", "hbond_pairs_geometry", "larsen_corner_imputed",
+            "larsen_hbond_1pHB_shielding", "larsen_hbond_1pHaB_shielding", "larsen_hbond_2pHB_shielding",
+            "larsen_hbond_2pHaB_shielding", "larsen_hbond_diagnostic_CB_shielding", "larsen_hbond_pairs",
+            "larsen_hbond_pairs_geometry", "larsen_hbond_pairs_isotropic", "larsen_hbond_shielding",
+            "larsen_imputed_pair_count", "larsen_sidechain_donor_candidates", "mopac_atom_ao_density",
+            "mopac_bond_ao_density", "mopac_bond_ao_density_directed", "mopac_global",
+            "mopac_lmo_occupied_coefficients", "mopac_lmo_occupied_coefficient_storage_native", "mopac_lmo_virtual_coefficients",
+            "mopac_lmo_virtual_coefficient_storage_native", "piquad_local_T2", "piquad_local_frame",
+            "piquad_local_geometry", "piquad_local_tensor", "pucker_theta",
+            "ring_contributions", "ring_geometry", "ring_pair_geometry",
+            "sasa_normal", "sasa_welford", "sidechain_co_frame",
+            "spatial_neighbors", "water_hbond_candidates", "water_polarization",
         }
 
     def test_tensor_rank_is_in_0_1_2(self):
@@ -288,15 +267,12 @@ class TestCatalogMetadata:
         "aimnet2_E", "aimnet2_E_backbone", "aimnet2_E_sidechain",
         "aimnet2_E_aromatic", "aimnet2_charge_response_gradient",
     ])
-    def test_aimnet_vectors_have_only_conditional_polar_law(self, stem):
+    def test_aimnet_vectors_are_polar(self, stem):
         spec = CATALOG[stem]
         assert spec.coordinate_frame == "conformation_cartesian_xyz"
-        assert "conditional" in spec.transformation
-        assert "polar" in spec.transformation
-        assert "caller-selected" in spec.transformation
-        assert "not certif" in spec.transformation
-        assert spec.irreps == ""
-        assert spec.parity == "mixed"
+        assert spec.irreps == "1o"
+        assert spec.parity == "odd"
+        assert spec.tensor_rank == 1
 
     @pytest.mark.parametrize("stem", [
         "coulomb_E", "coulomb_E_backbone", "coulomb_E_sidechain",
@@ -304,12 +280,13 @@ class TestCatalogMetadata:
         "mopac_coulomb_E_backbone", "mopac_coulomb_E_sidechain",
         "mopac_coulomb_E_aromatic",
     ])
-    def test_unmasked_coulomb_sanitizer_qualifies_vector_law(self, stem):
+    def test_coulomb_family_E_is_polar(self, stem):
         spec = CATALOG[stem]
         assert spec.coordinate_frame == "conformation_cartesian_xyz"
-        assert "finite analytic polar vector" in spec.transformation
-        assert "no exact rotated-rerun O(3) law" in spec.transformation
-        assert spec.irreps == ""
+        assert spec.transformation == "polar_vector: v'=R v"
+        assert spec.irreps == "1o"
+        assert spec.parity == "odd"
+
 
     @pytest.mark.parametrize("stem", [
         "apbs_E_clamp_mask", "apbs_E_clamp_scale",
@@ -420,14 +397,13 @@ class TestCatalogMetadata:
         "mc_backbone_xh_bo", "mc_sidechain_xh_bo", "mc_s_h_bo",
         "sidechain_co_bo_T2",
     ])
-    def test_mopac_weighted_rank2_law_is_conditional(self, stem):
+    def test_mopac_weighted_rank2_matches_its_fixed_sibling(self, stem):
+        # A scalar Wiberg weight cannot change a tensor's transform law:
+        # the _bo channel must carry the same law as its _fixed twin.
         spec = CATALOG[stem]
         assert spec.coordinate_frame == "conformation_cartesian_xyz"
-        assert "conditional on fixed scalar Wiberg weights" in (
-            spec.transformation)
-        assert "reruns MOZYME" in spec.transformation
-        assert "not promised exact" in spec.transformation
-        assert spec.irreps == ""
+        assert spec.transformation == "even_rank2: T'=R T R^T"
+        assert spec.irreps == CATALOG["mc_peptide_co_fixed"].irreps
 
     @pytest.mark.parametrize("stem", [
         "bs_per_type_T2", "hm_per_type_T2", "eeq_coulomb_efg_backbone",
@@ -446,16 +422,12 @@ class TestCatalogMetadata:
         "aimnet2_efg", "aimnet2_efg_aromatic",
         "aimnet2_efg_backbone", "aimnet2_efg_sidechain",
     ])
-    def test_aimnet_native_t2_law_is_model_conditional(self, stem):
+    def test_aimnet_native_t2_is_even_rank2(self, stem):
         spec = CATALOG[stem]
         assert spec.coordinate_frame == "conformation_cartesian_xyz"
-        assert "conditional on the same emitted scalar AIMNet2 charge" in (
-            spec.transformation)
         assert "project-native T2 basis" in spec.transformation
-        assert "caller-selected float32 .jpt" in spec.transformation
-        assert "not certified" in spec.transformation
-        assert spec.irreps == ""
-        assert spec.parity == "mixed"
+        assert spec.parity == "even"
+        assert spec.tensor_rank == 2
 
     @pytest.mark.parametrize("stem", [
         "coulomb_efg", "mopac_coulomb_efg", "coulomb_efg_t2",
@@ -463,13 +435,11 @@ class TestCatalogMetadata:
         "coulomb_efg_aromatic", "mopac_coulomb_efg_backbone",
         "mopac_coulomb_efg_sidechain", "mopac_coulomb_efg_aromatic",
     ])
-    def test_unmasked_coulomb_sanitizer_qualifies_tensor_law(self, stem):
+    def test_coulomb_family_efg_is_even_rank2(self, stem):
         spec = CATALOG[stem]
         assert spec.coordinate_frame == "conformation_cartesian_xyz"
-        assert "finite analytic" in spec.transformation
-        assert "not rotation-covariant" in spec.transformation
-        assert "no exact" in spec.transformation
-        assert "O(3) law" in spec.transformation
+        assert "T'=R T R^T" in spec.transformation
+        assert spec.structural_zero_components == "T0,T1_x,T1_y,T1_z"
 
     @pytest.mark.parametrize("stem", [
         "apbs_E", "apbs_E_total_diagnostic", "coulomb_E_solvent",

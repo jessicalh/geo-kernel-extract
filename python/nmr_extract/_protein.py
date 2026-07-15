@@ -19,16 +19,13 @@ from ._tensors import (
     ShieldingTensor,
     EFGTensor,
     VectorField,
-    QualifiedVectorField,
     MagneticVectorField,
     PositionField,
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
-    PerBondCategoryT2,
     RingCounts,
     McConnellNearFieldCounts,
-    McConnellScalars,
     CoulombScalars,
     HBondScalars,
     DsspScalars,
@@ -300,13 +297,12 @@ class CoulombGroup:
     """Coulomb E-field and bare EFG decompositions.
 
     E-field wrappers expose only a conditional polar irrep because the
-    producer's unmasked non-finite sanitizer has no exact rerun law.
     """
     efg: ShieldingTensor
-    E: QualifiedVectorField
-    E_backbone: QualifiedVectorField
-    E_sidechain: QualifiedVectorField
-    E_aromatic: QualifiedVectorField
+    E: VectorField
+    E_backbone: VectorField
+    E_sidechain: VectorField
+    E_aromatic: VectorField
     efg_backbone: EFGTensor
     efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
@@ -314,7 +310,7 @@ class CoulombGroup:
     efg_t2: Optional[EFGTensor] = None
     aromatic_E_proj: Optional[np.ndarray] = None
     aromatic_n_src: Optional[np.ndarray] = None
-    E_solvent: Optional[QualifiedVectorField] = None
+    E_solvent: Optional[VectorField] = None
     efg_solvent: Optional[EFGTensor] = None
 
 
@@ -436,13 +432,12 @@ class MopacCoulombGroup:
     """All-pairs fields from legacy F15.6 diskless-libmopac Coulson charges.
 
     Cartesian E has a polar law only for fixed charges on a non-exceptional
-    sanitizer path; independently rerun MOZYME values are not exact.
     """
     efg: ShieldingTensor
-    E: QualifiedVectorField
-    E_backbone: QualifiedVectorField
-    E_sidechain: QualifiedVectorField
-    E_aromatic: QualifiedVectorField
+    E: VectorField
+    E_backbone: VectorField
+    E_sidechain: VectorField
+    E_aromatic: VectorField
     efg_backbone: EFGTensor
     efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
@@ -458,14 +453,14 @@ class MopacGroup:
 
 @dataclass(frozen=True)
 class APBSGroup:
-    """Finite-grid APBS outputs; vector covariance is approximate/qualified."""
-    E: QualifiedVectorField
+    """APBS reaction-field outputs from the finite-difference PB solve."""
+    E: VectorField
     efg: EFGTensor
     phi: Optional[np.ndarray] = None
     E_clamp_mask: Optional[np.ndarray] = None
     E_clamp_scale: Optional[np.ndarray] = None
     nonfinite_sanitizer_mask: Optional[np.ndarray] = None
-    E_total_diagnostic: Optional[QualifiedVectorField] = None
+    E_total_diagnostic: Optional[VectorField] = None
     efg_total_diagnostic: Optional[EFGTensor] = None
 
 
@@ -1142,10 +1137,10 @@ class AIMNet2Group:
     efg_aromatic: EFGTensor
     efg_backbone: EFGTensor
     efg_sidechain: EFGTensor
-    E: QualifiedVectorField
-    E_backbone: QualifiedVectorField
-    E_sidechain: QualifiedVectorField
-    E_aromatic: QualifiedVectorField
+    E: VectorField
+    E_backbone: VectorField
+    E_sidechain: VectorField
+    E_aromatic: VectorField
     energy_mlp: np.ndarray
     energy_shifted_local: np.ndarray
     energy_terms: np.ndarray
@@ -1804,7 +1799,7 @@ def load(path: str | Path) -> Protein:
             scalar_audit=get("sidechain_co_scalar_audit"),
         )
     coulomb = CoulombGroup(
-        efg=get("coulomb_efg", get("coulomb_shielding")),
+        efg=get("coulomb_efg"),
         E=get("coulomb_E"),
         E_backbone=get("coulomb_E_backbone"),
         E_sidechain=get("coulomb_E_sidechain"),

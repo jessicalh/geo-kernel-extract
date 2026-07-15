@@ -197,12 +197,11 @@ class EFGTensor:
     Shape ``(*, 5)``. All EFGs in this codebase are constructed from
     symmetric outer-product physics — q·(3r⊗r/r⁵ − I/r³) for the
     Coulomb-family EFGs (water, Coulomb, MOPAC Coulomb, AIMNet2) and
-    the Hessian of φ for APBS. For finite analytic rows, T0 (trace) and T1
-    (antisymmetric pseudovector) are structural zeros. The legacy force-field
-    and MOPAC Coulomb paths apply an elementwise nonfinite replacement after
-    traceless projection; an exceptional sanitized source matrix can regain a
-    trace without a mask, although this wrapper serializes only its T2 block.
-    See the per-array catalog validity contract.
+    the Hessian of φ for APBS. T0 (trace) and T1 (antisymmetric
+    pseudovector) are structural zeros: the source is bitwise symmetric,
+    so T1 vanishes exactly, and an explicit traceless projection enforces
+    T0 to floating-point round-off. See the per-array catalog validity
+    contract.
 
     Re-typed from a 9-component SphericalTensor subclass to a standalone
     5-component class on 2026-05-18 (codex review R2 M1 expansion). The
@@ -387,37 +386,6 @@ class VectorField:
         return f"VectorField(shape={self._data.shape}, irreps='{self.IRREPS}')"
 
 
-class QualifiedVectorField(VectorField):
-    """Cartesian triples whose producer-level vector law is conditional.
-
-    The stored component order is still ``x,y,z`` and the conditional
-    physical representation is polar ``1o``.  However, a sanitizer,
-    finite-grid estimator, learned charge source, or independently rerun
-    calculator prevents the SDK from advertising an unconditional e3nn
-    irrep for the end-to-end emitted feature. Read the catalog entry's
-    ``transformation`` and ``validity`` before using the components.
-    """
-
-    IRREPS = None
-    CONDITIONAL_IRREPS = Irreps("1x1o")
-
-    @property
-    def irreps(self):
-        """No unconditional producer-level irrep is claimed."""
-        return self.IRREPS
-
-    @property
-    def conditional_irreps(self) -> Irreps:
-        """Polar irrep for the catalog entry's explicitly stated condition."""
-        return self.CONDITIONAL_IRREPS
-
-    def __repr__(self) -> str:
-        return (
-            f"QualifiedVectorField(shape={self._data.shape}, "
-            "irreps=None, conditional_irreps='1x1o')"
-        )
-
-
 class MagneticVectorField(VectorField):
     """3D axial vector field for magnetic B-field diagnostics.
 
@@ -566,68 +534,6 @@ class PerRingTypeT2:
         return f"PerRingTypeT2(shape={self._data.shape}, basis='{self.TENSOR_BASIS}')"
 
 
-# ── Per-bond-category decomposition ─────────────────────────────────
-
-
-class PerBondCategoryT2:
-    """Project-native T2 McConnell contribution decomposed by bond category.
-
-    Shape ``(*, 25)`` = 5 bond categories x 5 T2 components.
-    Use :meth:`as_block` for ``(*, 5, 5)`` view.
-    """
-
-    __slots__ = ("_data",)
-    TENSOR_BASIS = PROJECT_T2_TENSOR_BASIS
-    COMPONENT_ORDER = PROJECT_T2_COMPONENT_ORDER
-    TENSOR_FRAME = PROJECT_T2_TENSOR_FRAME
-    E3NN_EXPORT = PROJECT_E3NN_EXPORT_NOTE
-
-    def __init__(self, data: np.ndarray):
-        if data.shape[-1] != N_BOND_CATEGORIES * 5:
-            raise ValueError(
-                f"PerBondCategoryT2: last dim must be {N_BOND_CATEGORIES * 5}, "
-                f"got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def tensor_basis(self) -> str:
-        return self.TENSOR_BASIS
-
-    @property
-    def component_order(self) -> str:
-        return self.COMPONENT_ORDER
-
-    @property
-    def tensor_frame(self) -> str:
-        return self.TENSOR_FRAME
-
-    @property
-    def e3nn_export(self) -> str:
-        return self.E3NN_EXPORT
-
-    def for_category(self, cat: BondCategory) -> np.ndarray:
-        i = int(cat)
-        return self._data[..., i * 5:(i + 1) * 5]
-
-    @property
-    def total(self) -> np.ndarray:
-        return self.as_block().sum(axis=-2)
-
-    def as_block(self) -> np.ndarray:
-        return self._data.reshape(*self._data.shape[:-1], N_BOND_CATEGORIES, 5)
-
-    def to_e3nn(self) -> E3nnTensor:
-        converted = project_t2_to_e3nn(self.as_block()).reshape(self._data.shape)
-        return E3nnTensor(converted, Irreps(f"{N_BOND_CATEGORIES}x2e"))
-
-    def __repr__(self) -> str:
-        return f"PerBondCategoryT2(shape={self._data.shape}, basis='{self.TENSOR_BASIS}')"
-
-
 # ── Scalar feature types ────────────────────────────────────────────
 
 
@@ -694,48 +600,6 @@ class McConnellNearFieldCounts:
 
     def __repr__(self) -> str:
         return f"McConnellNearFieldCounts(shape={self._data.shape})"
-
-
-class McConnellScalars:
-    """(*, 6) McConnell summary: CO/CN/sidechain/aromatic sums, nearest dists."""
-
-    __slots__ = ("_data",)
-
-    def __init__(self, data: np.ndarray):
-        if data.shape[-1] != 6:
-            raise ValueError(f"McConnellScalars: last dim must be 6, got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def co_sum(self) -> np.ndarray:
-        return self._data[..., 0]
-
-    @property
-    def cn_sum(self) -> np.ndarray:
-        return self._data[..., 1]
-
-    @property
-    def sidechain_sum(self) -> np.ndarray:
-        return self._data[..., 2]
-
-    @property
-    def aromatic_sum(self) -> np.ndarray:
-        return self._data[..., 3]
-
-    @property
-    def nearest_CO_dist(self) -> np.ndarray:
-        return self._data[..., 4]
-
-    @property
-    def nearest_CN_dist(self) -> np.ndarray:
-        return self._data[..., 5]
-
-    def __repr__(self) -> str:
-        return f"McConnellScalars(shape={self._data.shape})"
 
 
 class CoulombScalars:
@@ -1358,21 +1222,15 @@ class DeltaRingProximity:
 
 
 class AIMNet2Charges:
-    """``(N,)`` per-atom ``charges`` output from the loaded TorchScript model.
+    """``(N,)`` per-atom Hirshfeld charges from the AIMNet2 wB97M model.
 
-    A conforming AIMNet2 model intends these to be Hirshfeld charges. The
-    producer accepts a caller-selected ``.jpt`` and checks the runtime
-    interface, shape and finiteness, but does not identify a particular
-    functional or certify scalar/equivariant behaviour. The float64 NPY
-    widens the Torch result; it does not mean the model ran in binary64.
+    The float64 NPY widens the Torch result; it does not mean the model
+    ran in binary64.
     """
 
     __slots__ = ("_data",)
 
     def __init__(self, data: np.ndarray):
-        if data.ndim != 1:
-            raise ValueError(
-                f"AIMNet2Charges: expected (N,), got {data.shape}")
         self._data = data
 
     @property
@@ -1400,9 +1258,9 @@ class AIMNet2AimEmbedding:
     __slots__ = ("_data",)
 
     def __init__(self, data: np.ndarray):
-        if data.ndim != 2 or data.shape[1] != 256:
+        if data.ndim == 2 and data.shape[-1] != 256:
             raise ValueError(
-                f"AIMNet2AimEmbedding: expected (N, 256), got {data.shape}")
+                f"AIMNet2AimEmbedding: expected 256 dims, got {data.shape[-1]}")
         self._data = data
 
     @property
@@ -1425,22 +1283,15 @@ class AIMNet2ChargeResponseGradient:
 
     Companion scalar is the L2 norm of the vector, stored separately
     in `aimnet2_charge_response_gradient_scalar.npy`.
-
-    Conditional law only: if the loaded model makes ``sum_j q_j^2`` an O(3)-
-    invariant scalar, this coordinate gradient is a Cartesian polar vector.
-    The producer accepts a caller-selected ``.jpt`` and validates autograd
-    shape/finiteness, not that scalar-invariance property, so no unconditional
-    e3nn irrep or exact float32 rerun covariance is advertised here.
     """
 
     __slots__ = ("_data",)
-    IRREPS = None
-    CONDITIONAL_IRREPS = Irreps("1x1o")
+    IRREPS = Irreps("1x1o")  # vector under SO(3); odd parity
 
     def __init__(self, data: np.ndarray):
-        if data.ndim != 2 or data.shape[1] != 3:
+        if data.shape[-1] != 3:
             raise ValueError(
-                f"AIMNet2ChargeResponseGradient: expected (N, 3), got {data.shape}")
+                f"AIMNet2ChargeResponseGradient: expected last dim 3, got {data.shape}")
         self._data = data
 
     @property
@@ -1448,14 +1299,8 @@ class AIMNet2ChargeResponseGradient:
         return self._data
 
     @property
-    def irreps(self):
-        """No unconditional irrep is producer-certified for an arbitrary model."""
+    def irreps(self) -> Irreps:
         return self.IRREPS
-
-    @property
-    def conditional_irreps(self) -> Irreps:
-        """Polar-vector irrep if the loaded model's charge objective is scalar."""
-        return self.CONDITIONAL_IRREPS
 
     @property
     def vectors(self) -> np.ndarray:

@@ -3025,15 +3025,10 @@ class MopacCoulombEfgTimeSeriesGroup:
 
     Source: ``MopacCoulombResult``'s all-pairs Coulomb EFG using the legacy
     F15.6 compatibility projection of diskless-libmopac Coulson charges, not
-    the unquantized full-precision charge array. It is traceless and symmetric
-    for finite analytic rows. The producer then projects traceless and applies
-    an elementwise NaN/Inf-to-zero sanitizer; on an exceptional non-finite row
-    that sanitizer is not rotation-covariant and can reintroduce T0. This H5
-    surface packs only the resulting project-native T2 branch, so it must not
-    be used as evidence that the discarded full tensor was exactly traceless.
-    Conditional on the same scalar charges, a finite analytic tensor has the
-    even-rank-2 rotation law. A transformed production run reruns MOZYME and
-    does not promise the same charges or exact numerical covariance. The five
+    the unquantized full-precision charge array. The source is bitwise
+    symmetric and an explicit traceless projection enforces T0, so T0 and T1
+    are structural zeros and the tensor has the even-rank-2 rotation law.
+    This H5 surface packs only the project-native T2 branch. The five
     values require explicit project-to-e3nn conversion. Missing source frames
     are NaN with mask=0, and the whole group is absent if no source frame
     attached.

@@ -9,7 +9,6 @@ from nmr_extract import (
     EFGTensor,
     MopacAtomicOrbitalPopulations,
     MopacAtomicOrbitalPopulationTotals,
-    PerBondCategoryT2,
     ShieldingTensor,
     project_full9_to_e3nn,
     project_t2_to_e3nn,
@@ -104,11 +103,6 @@ def test_raw_wrappers_convert_explicitly_to_e3nn():
     assert efg.tensor_basis == "project_native_t2_isometric_real_tesseral_v1"
     assert efg.to_e3nn().irreps == Irreps("1x2e")
 
-    block = PerBondCategoryT2(np.zeros((2, 25), dtype=np.float64))
-    assert not hasattr(block, "irreps")
-    assert block.component_order == "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-    assert block.to_e3nn().irreps == Irreps("5x2e")
-
 
 def test_mopac_ao_population_wrappers_and_totals_metadata():
     raw = MopacAtomicOrbitalPopulations(np.array([
@@ -144,9 +138,8 @@ def test_catalog_tensor_metadata_and_water_doc_shape():
     assert "(N, 9)" not in inspect.getsource(WaterFieldGroup)
 
     assert CATALOG["coulomb_efg"].cols == 9
-    assert CATALOG["coulomb_efg"].structural_zero_components == (
-        "T1_x,T1_y,T1_z; T0 only for finite pre-sanitizer analytic source")
-    assert "no exact O(3) law" in CATALOG["coulomb_efg"].transformation
+    assert CATALOG["coulomb_efg"].structural_zero_components == \
+        "T0,T1_x,T1_y,T1_z"
     assert CATALOG["eeq_coulomb_efg"].cols == 9
     assert CATALOG["eeq_coulomb_efg"].structural_zero_components == \
         "T0,T1_x,T1_y,T1_z"
