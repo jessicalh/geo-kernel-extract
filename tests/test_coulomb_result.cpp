@@ -29,6 +29,7 @@
 #include "OrcaRunLoader.h"
 #include "ChargeSource.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "DirectionalTestHelpers.h"
 #include "Trajectory.h"
 #include "TrajectoryProtein.h"
@@ -126,6 +127,90 @@ const double* Doubles(const NpyArray& arr) {
     return reinterpret_cast<const double*>(arr.bytes.data());
 }
 
+const std::int32_t* Int32s(const NpyArray& arr) {
+    return reinterpret_cast<const std::int32_t*>(arr.bytes.data());
+}
+
+const std::uint8_t* UInt8s(const NpyArray& arr) {
+    return reinterpret_cast<const std::uint8_t*>(arr.bytes.data());
+}
+
+struct ExpectedMopacCoulombDiagnostic {
+    double aromatic_projection = std::numeric_limits<double>::quiet_NaN();
+    std::int32_t aromatic_source_count = 0;
+    std::uint8_t clamp_mask = 0;
+    double clamp_scale = 1.0;
+};
+
+std::vector<ExpectedMopacCoulombDiagnostic>
+ComputeExpectedMopacCoulombDiagnostics(const ProteinConformation& conf) {
+    const Protein& protein = conf.ProteinRef();
+    const size_t N = conf.AtomCount();
+    std::vector<bool> is_backbone(N, false);
+    std::vector<bool> is_aromatic(N, false);
+    for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
+        const Residue& residue = protein.ResidueAt(ri);
+        for (size_t atom : {residue.N, residue.CA, residue.C, residue.O,
+                            residue.H, residue.HA, residue.CB}) {
+            if (atom != Residue::NONE && atom < N) is_backbone[atom] = true;
+        }
+    }
+    for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
+        for (size_t atom : protein.RingAt(ri).atom_indices) {
+            if (atom < N) is_aromatic[atom] = true;
+        }
+    }
+
+    const double min_distance =
+        CalculatorConfig::Get("singularity_guard_distance");
+    const double charge_floor =
+        CalculatorConfig::Get("coulomb_charge_noise_floor");
+    const double clamp =
+        CalculatorConfig::Get("efield_magnitude_sanity_clamp");
+    std::vector<ExpectedMopacCoulombDiagnostic> expected(N);
+    for (size_t i = 0; i < N; ++i) {
+        Vec3 total = Vec3::Zero();
+        Vec3 aromatic = Vec3::Zero();
+        for (size_t j = 0; j < N; ++j) {
+            if (i == j) continue;
+            const Vec3 displacement = conf.PositionAt(i) - conf.PositionAt(j);
+            const double distance = displacement.norm();
+            if (distance < min_distance) continue;
+            const double charge = conf.AtomAt(j).mopac_charge;
+            if (std::abs(charge) < charge_floor) continue;
+            const Vec3 field = charge * displacement /
+                (distance * distance * distance);
+            total += field;
+            if (is_aromatic[j]) {
+                aromatic += field;
+                if (!is_backbone[j]) ++expected[i].aromatic_source_count;
+            }
+        }
+        total *= COULOMB_KE;
+        aromatic *= COULOMB_KE;
+        const double raw_magnitude = total.norm();
+        if (raw_magnitude > clamp) {
+            expected[i].clamp_mask = 1;
+            expected[i].clamp_scale = clamp / raw_magnitude;
+            aromatic *= expected[i].clamp_scale;
+        }
+
+        const Atom& target = protein.AtomAt(i);
+        if (target.element == Element::H &&
+            target.parent_atom_index != SIZE_MAX &&
+            target.parent_atom_index < N) {
+            const Vec3 bond = conf.PositionAt(i) -
+                conf.PositionAt(target.parent_atom_index);
+            const double length = bond.norm();
+            if (length > CalculatorConfig::Get(
+                    "near_zero_vector_norm_threshold")) {
+                expected[i].aromatic_projection = aromatic.dot(bond / length);
+            }
+        }
+    }
+    return expected;
+}
+
 template <typename T>
 std::vector<T> ReadH5Flat(const fs::path& path,
                           const std::string& dataset,
@@ -178,6 +263,10 @@ void RemoveMopacCoulombFeatures(const fs::path& out_dir) {
             "mopac_coulomb_efg_sidechain.npy",
             "mopac_coulomb_efg_aromatic.npy",
             "mopac_coulomb_scalars.npy",
+            "mopac_coulomb_aromatic_E_proj.npy",
+            "mopac_coulomb_aromatic_n_src.npy",
+            "mopac_coulomb_E_clamp_mask.npy",
+            "mopac_coulomb_E_clamp_scale.npy",
         }) {
         std::error_code ec;
         fs::remove(out_dir / name, ec);
@@ -223,7 +312,7 @@ TEST(MopacCoulombDirectionalCovariance,
     const fs::path original_dir = output_root / "original";
     ASSERT_TRUE(fs::create_directories(original_dir));
     ASSERT_EQ(original.Result<MopacCoulombResult>().WriteFeatures(
-                  original, original_dir.string()), 9);
+                  original, original_dir.string()), 13);
     ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
                   NMR_TEST_PYTHON_EXECUTABLE,
                   NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
@@ -235,7 +324,11 @@ TEST(MopacCoulombDirectionalCovariance,
                    original_dir / "mopac_coulomb_efg_backbone.npy",
                    original_dir / "mopac_coulomb_efg_sidechain.npy",
                    original_dir / "mopac_coulomb_efg_aromatic.npy",
-                   original_dir / "mopac_coulomb_scalars.npy"}),
+                   original_dir / "mopac_coulomb_scalars.npy",
+                   original_dir / "mopac_coulomb_aromatic_E_proj.npy",
+                   original_dir / "mopac_coulomb_aromatic_n_src.npy",
+                   original_dir / "mopac_coulomb_E_clamp_mask.npy",
+                   original_dir / "mopac_coulomb_E_clamp_scale.npy"}),
               0);
 
     constexpr double kVectorAbsTolerance = 2.0e-9;
@@ -255,6 +348,57 @@ TEST(MopacCoulombDirectionalCovariance,
     ASSERT_TRUE(saw_backbone);
     ASSERT_TRUE(saw_sidechain);
     ASSERT_TRUE(saw_aromatic);
+
+    const auto expected_diagnostics =
+        ComputeExpectedMopacCoulombDiagnostics(original);
+    const NpyArray aromatic_projection = ReadNpy(
+        original_dir / "mopac_coulomb_aromatic_E_proj.npy");
+    const NpyArray aromatic_source_count = ReadNpy(
+        original_dir / "mopac_coulomb_aromatic_n_src.npy");
+    const NpyArray clamp_mask = ReadNpy(
+        original_dir / "mopac_coulomb_E_clamp_mask.npy");
+    const NpyArray clamp_scale = ReadNpy(
+        original_dir / "mopac_coulomb_E_clamp_scale.npy");
+    ASSERT_EQ(aromatic_projection.descr, "<f8");
+    ASSERT_EQ(aromatic_source_count.descr, "<i4");
+    ASSERT_EQ(clamp_mask.descr, "|u1");
+    ASSERT_EQ(clamp_scale.descr, "<f8");
+    ASSERT_EQ(aromatic_projection.shape,
+              (std::vector<size_t>{original.AtomCount()}));
+    ASSERT_EQ(aromatic_source_count.shape,
+              (std::vector<size_t>{original.AtomCount()}));
+    ASSERT_EQ(clamp_mask.shape,
+              (std::vector<size_t>{original.AtomCount()}));
+    ASSERT_EQ(clamp_scale.shape,
+              (std::vector<size_t>{original.AtomCount()}));
+    bool saw_nonzero_signed_projection = false;
+    for (size_t i = 0; i < original.AtomCount(); ++i) {
+        const auto& expected = expected_diagnostics[i];
+        const auto& atom = original.AtomAt(i);
+        if (std::isnan(expected.aromatic_projection)) {
+            EXPECT_TRUE(std::isnan(
+                atom.mopac_coulomb_aromatic_E_bond_proj));
+            EXPECT_TRUE(std::isnan(Doubles(aromatic_projection)[i]));
+        } else {
+            EXPECT_NEAR(atom.mopac_coulomb_aromatic_E_bond_proj,
+                        expected.aromatic_projection, 2e-11);
+            EXPECT_NEAR(Doubles(aromatic_projection)[i],
+                        expected.aromatic_projection, 2e-11);
+            saw_nonzero_signed_projection |=
+                std::abs(expected.aromatic_projection) > 1e-10;
+        }
+        EXPECT_EQ(atom.mopac_coulomb_aromatic_n_sidechain_atoms,
+                  expected.aromatic_source_count);
+        EXPECT_EQ(Int32s(aromatic_source_count)[i],
+                  expected.aromatic_source_count);
+        EXPECT_EQ(atom.mopac_coulomb_efield_clamp_mask,
+                  expected.clamp_mask);
+        EXPECT_EQ(UInt8s(clamp_mask)[i], expected.clamp_mask);
+        EXPECT_NEAR(atom.mopac_coulomb_efield_clamp_scale,
+                    expected.clamp_scale, 2e-14);
+        EXPECT_NEAR(Doubles(clamp_scale)[i], expected.clamp_scale, 2e-14);
+    }
+    EXPECT_TRUE(saw_nonzero_signed_projection);
 
     using nmr::test::directional::EvenRank2;
     using nmr::test::directional::Near;
@@ -311,7 +455,7 @@ TEST(MopacCoulombDirectionalCovariance,
             (improper ? "improper" : "proper");
         ASSERT_TRUE(fs::create_directories(moved_dir));
         ASSERT_EQ(moved.Result<MopacCoulombResult>().WriteFeatures(
-                      moved, moved_dir.string()), 9);
+                      moved, moved_dir.string()), 13);
         ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
                       NMR_TEST_PYTHON_EXECUTABLE,
                       NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
@@ -323,7 +467,11 @@ TEST(MopacCoulombDirectionalCovariance,
                        moved_dir / "mopac_coulomb_efg_backbone.npy",
                        moved_dir / "mopac_coulomb_efg_sidechain.npy",
                        moved_dir / "mopac_coulomb_efg_aromatic.npy",
-                       moved_dir / "mopac_coulomb_scalars.npy"}),
+                       moved_dir / "mopac_coulomb_scalars.npy",
+                       moved_dir / "mopac_coulomb_aromatic_E_proj.npy",
+                       moved_dir / "mopac_coulomb_aromatic_n_src.npy",
+                       moved_dir / "mopac_coulomb_E_clamp_mask.npy",
+                       moved_dir / "mopac_coulomb_E_clamp_scale.npy"}),
                   0);
         std::array<NpyArray, 4> serialized_vectors_1;
         for (std::size_t i = 0; i < vector_npys.size(); ++i)
@@ -761,7 +909,7 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
     ASSERT_TRUE(fs::create_directory(out_dir));
     ASSERT_EQ(conf.Result<CoulombResult>().WriteFeatures(
                   conf, out_dir.string()), 12);
-    ASSERT_EQ(mopac_coulomb->WriteFeatures(conf, out_dir.string()), 9);
+    ASSERT_EQ(mopac_coulomb->WriteFeatures(conf, out_dir.string()), 13);
 
     const auto coulomb_scalars = ReadNpy(out_dir / "coulomb_scalars.npy");
     const auto mopac_scalars =
@@ -798,6 +946,71 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
               << "    EFG trace = " << trace << "\n"
               << "    EFG T2 magnitude = "
               << ca.coulomb_EFG_total_spherical.T2Magnitude() << "\n";
+}
+
+
+TEST(MopacCoulombEmitSurface,
+     ForcedClampMaskAndScaleReachTheirStaticArrays) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    auto protein = std::make_unique<Protein>();
+    auto source = Atom::Create(Element::C);
+    auto target = Atom::Create(Element::H);
+    source->residue_index = 0;
+    target->residue_index = 0;
+    protein->AddAtom(std::move(source));
+    protein->AddAtom(std::move(target));
+    Residue residue;
+    residue.type = AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    residue.atom_indices = {0, 1};
+    residue.C = 0;
+    residue.H = 1;
+    protein->AddResidue(residue);
+    const std::vector<Vec3> positions = {
+        Vec3(0.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0)};
+    protein->FinalizeConstruction(positions);
+    protein->MutableAtomAt(1).parent_atom_index = 0;
+    auto& conf = protein->AddCrystalConformation(
+        positions, 0.0, 0.0, 0.0, "forced MOPAC Coulomb clamp");
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+    conf.MutableAtomAt(0).mopac_charge = 1000.0;
+    conf.MutableAtomAt(1).mopac_charge = 0.0;
+
+    auto result = MopacCoulombResult::Compute(conf);
+    ASSERT_NE(result, nullptr);
+    const auto expected = ComputeExpectedMopacCoulombDiagnostics(conf);
+    const double clamp =
+        CalculatorConfig::Get("efield_magnitude_sanity_clamp");
+    const double raw_magnitude = COULOMB_KE * 1000.0;
+    ASSERT_EQ(expected[1].clamp_mask, 1u);
+    EXPECT_NEAR(expected[1].clamp_scale, clamp / raw_magnitude, 1e-15);
+    EXPECT_EQ(conf.AtomAt(1).mopac_coulomb_efield_clamp_mask, 1u);
+    EXPECT_NEAR(conf.AtomAt(1).mopac_coulomb_efield_clamp_scale,
+                clamp / raw_magnitude, 1e-15);
+    EXPECT_NEAR(conf.AtomAt(1).mopac_coulomb_E_total.norm(), clamp, 1e-12);
+    EXPECT_EQ(conf.AtomAt(0).mopac_coulomb_efield_clamp_mask, 0u);
+    EXPECT_DOUBLE_EQ(conf.AtomAt(0).mopac_coulomb_efield_clamp_scale, 1.0);
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mopac_coulomb_clamp_emit_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    ASSERT_EQ(result->WriteFeatures(conf, out_dir.string()), 13);
+    const NpyArray mask = ReadNpy(
+        out_dir / "mopac_coulomb_E_clamp_mask.npy");
+    const NpyArray scale = ReadNpy(
+        out_dir / "mopac_coulomb_E_clamp_scale.npy");
+    ASSERT_EQ(mask.descr, "|u1");
+    ASSERT_EQ(scale.descr, "<f8");
+    ASSERT_EQ(mask.shape, (std::vector<size_t>{2u}));
+    ASSERT_EQ(scale.shape, (std::vector<size_t>{2u}));
+    EXPECT_EQ(UInt8s(mask)[1], expected[1].clamp_mask);
+    EXPECT_NEAR(Doubles(scale)[1], expected[1].clamp_scale, 1e-15);
+
+    RemoveMopacCoulombFeatures(out_dir);
+    std::error_code ec;
+    fs::remove(out_dir, ec);
 }
 
 

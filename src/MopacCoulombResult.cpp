@@ -44,7 +44,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
     //   - charge source: mopac_charge (legacy F15.6 PM7 Coulson projection)
     //                    vs force-field partial_charge
     //   - source set: all pairs (full N^2) vs AtomsWithinRadius cutoff
-    //   - no APBS solvent subtraction, no aromatic-source diagnostic count
+    //   - no APBS solvent subtraction
     OperationLog::Scope scope("MopacCoulombResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
@@ -127,6 +127,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         Mat3 EFG_aromatic = Mat3::Zero();
 
         int charge_floor_skipped = 0;
+        int n_sidechain_aromatic_sources = 0;
 
         for (size_t j = 0; j < n_atoms; ++j) {
             KernelEvaluationContext ctx;
@@ -158,6 +159,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
             if (is_aromatic_atom[j]) {
                 E_aromatic += E_j;
                 EFG_aromatic += V_j;
+                if (!is_backbone[j]) ++n_sidechain_aromatic_sources;
             } else if (is_backbone[j]) {
                 E_backbone += E_j;
                 EFG_backbone += V_j;
@@ -207,22 +209,26 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         sanitise_mat(EFG_aromatic);
 
         // Clamp extreme E-field magnitudes
-        double E_mag = E_total.norm();
+        const double E_mag = E_total.norm();
+        std::uint8_t clamp_mask = 0;
+        double clamp_scale = 1.0;
         if (E_mag > CalculatorConfig::Get("efield_magnitude_sanity_clamp")) {
-            double scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
+            clamp_mask = 1;
+            clamp_scale =
+                CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
 
             // ---- GeometryChoice: E-field clamp ----
             choices.Record(CalculatorId::MopacCoulomb, i, "mopac E-field clamp",
-                [&conf, i, E_mag, scale](GeometryChoice& gc) {
+                [&conf, i, E_mag, clamp_scale](GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Triggered);
                     AddNumber(gc, "actual_E_magnitude", E_mag, "V/A");
-                    AddNumber(gc, "scale_factor", scale, "");
+                    AddNumber(gc, "scale_factor", clamp_scale, "");
                 });
 
-            E_total     *= scale;
-            E_backbone  *= scale;
-            E_sidechain *= scale;
-            E_aromatic  *= scale;
+            E_total     *= clamp_scale;
+            E_backbone  *= clamp_scale;
+            E_sidechain *= clamp_scale;
+            E_aromatic  *= clamp_scale;
         }
 
         // ------------------------------------------------------------------
@@ -249,6 +255,13 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
 
         ca.mopac_coulomb_E_magnitude = E_total.norm();
         ca.mopac_coulomb_aromatic_E_magnitude = E_aromatic.norm();
+        ca.mopac_coulomb_aromatic_E_bond_proj = has_primary_bond_dir[i]
+            ? E_aromatic.dot(primary_bond_dir[i])
+            : std::numeric_limits<double>::quiet_NaN();
+        ca.mopac_coulomb_aromatic_n_sidechain_atoms =
+            n_sidechain_aromatic_sources;
+        ca.mopac_coulomb_efield_clamp_mask = clamp_mask;
+        ca.mopac_coulomb_efield_clamp_scale = clamp_scale;
 
         ca.mopac_coulomb_E_bond_proj = has_primary_bond_dir[i]
             ? E_total.dot(primary_bond_dir[i])
@@ -303,7 +316,8 @@ SphericalTensor MopacCoulombResult::EFGSphericalAt(size_t atom_index) const {
 
 // ============================================================================
 // WriteFeatures: mopac_coulomb_efg (9), E-field (3),
-// EFG decompositions, scalar features.
+// EFG decompositions, scalar features, aromatic projection/source count,
+// and clamp provenance.
 // ============================================================================
 
 int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
@@ -321,6 +335,10 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
     std::vector<double> efg_sc(N * 5);
     std::vector<double> efg_aro(N * 5);
     std::vector<double> scalars(N * 4);
+    std::vector<double> aromatic_E_proj(N);
+    std::vector<int32_t> aromatic_n_src(N);
+    std::vector<std::uint8_t> clamp_mask(N);
+    std::vector<double> clamp_scale(N);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
@@ -350,6 +368,11 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
         scalars[i*4+1] = ca.mopac_coulomb_E_bond_proj;
         scalars[i*4+2] = ca.mopac_coulomb_E_backbone_frac;
         scalars[i*4+3] = ca.mopac_coulomb_aromatic_E_magnitude;
+        aromatic_E_proj[i] = ca.mopac_coulomb_aromatic_E_bond_proj;
+        aromatic_n_src[i] = static_cast<int32_t>(
+            ca.mopac_coulomb_aromatic_n_sidechain_atoms);
+        clamp_mask[i] = ca.mopac_coulomb_efield_clamp_mask;
+        clamp_scale[i] = ca.mopac_coulomb_efield_clamp_scale;
     }
 
     int files_written = 0;
@@ -399,6 +422,26 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
         NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_scalars.npy",
                                 scalars.data(), N, 4),
         "mopac_coulomb_scalars.npy");
+    record_write(
+        NpyWriter::WriteFloat64(
+            output_dir + "/mopac_coulomb_aromatic_E_proj.npy",
+            aromatic_E_proj.data(), N),
+        "mopac_coulomb_aromatic_E_proj.npy");
+    record_write(
+        NpyWriter::WriteInt32(
+            output_dir + "/mopac_coulomb_aromatic_n_src.npy",
+            aromatic_n_src.data(), N),
+        "mopac_coulomb_aromatic_n_src.npy");
+    record_write(
+        NpyWriter::WriteUInt8(
+            output_dir + "/mopac_coulomb_E_clamp_mask.npy",
+            clamp_mask.data(), N),
+        "mopac_coulomb_E_clamp_mask.npy");
+    record_write(
+        NpyWriter::WriteFloat64(
+            output_dir + "/mopac_coulomb_E_clamp_scale.npy",
+            clamp_scale.data(), N),
+        "mopac_coulomb_E_clamp_scale.npy");
     return files_written;
 }
 

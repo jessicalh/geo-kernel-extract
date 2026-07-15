@@ -431,6 +431,21 @@ void RemoveMcConnellOutputs(const fs::path& dir) {
             "mc_nearest_co_midpoint.npy",
             "mc_nearest_co_T2.npy",
             "mc_nearest_cn_T2.npy",
+            "mc_nearest_co_bond_index.npy",
+            "mc_nearest_cn_bond_index.npy",
+            "mopac_mc_co_sum.npy",
+            "mopac_mc_cn_sum.npy",
+            "mopac_mc_sidechain_sum.npy",
+            "mopac_mc_aromatic_sum.npy",
+            "mopac_mc_co_nearest.npy",
+            "mopac_mc_nearest_co_dist.npy",
+            "mopac_mc_nearest_cn_dist.npy",
+            "mopac_mc_nearest_co_T2.npy",
+            "mopac_mc_nearest_cn_T2.npy",
+            "mopac_mc_backbone_total.npy",
+            "mopac_mc_sidechain_total.npy",
+            "mopac_mc_aromatic_total.npy",
+            "mopac_mc_shielding.npy",
             "extraction_manifest.json"}) {
         std::remove((dir / filename).string().c_str());
     }
@@ -916,6 +931,8 @@ TEST(McConnellImplementationChecks,
         .mcconnell_source_tensors[category][channel].Reconstruct();
     EXPECT_GT(MaxAbs(production), 1e-8);
     EXPECT_LT(MaxAbs(production - bond_order * rhombic), 1e-11);
+    EXPECT_EQ(conf.AtomAt(target).nearest_CO_bond_index, co_bond);
+    EXPECT_EQ(conf.AtomAt(target).nearest_CN_bond_index, SIZE_MAX);
 
     Mat3 bo_category_sum = Mat3::Zero();
     for (size_t source_category = 0;
@@ -938,7 +955,10 @@ TEST(McConnellImplementationChecks,
     fs::create_directories(out_dir);
     ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
                   conf, out_dir.string()),
-              26);
+              28);
+    ASSERT_EQ(conf.Result<MopacMcConnellResult>().WriteFeatures(
+                  conf, out_dir.string()),
+              13);
     const auto emitted = ReadNpy<double>(
         out_dir / "mc_peptide_co_bo.npy", "<f8");
     ASSERT_EQ(emitted.shape,
@@ -949,6 +969,143 @@ TEST(McConnellImplementationChecks,
     for (size_t component = 0; component < expected.size(); ++component) {
         EXPECT_NEAR(emitted.values[target * 9 + component],
                     expected[component], 1e-11);
+    }
+
+    const auto emitted_co_bond_index = ReadNpy<int32_t>(
+        out_dir / "mc_nearest_co_bond_index.npy", "<i4");
+    const auto emitted_cn_bond_index = ReadNpy<int32_t>(
+        out_dir / "mc_nearest_cn_bond_index.npy", "<i4");
+    ASSERT_EQ(emitted_co_bond_index.shape,
+              (std::vector<size_t>{conf.AtomCount()}));
+    ASSERT_EQ(emitted_cn_bond_index.shape,
+              (std::vector<size_t>{conf.AtomCount()}));
+    for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+        const auto& ca = conf.AtomAt(atom);
+        const int32_t expected_co = ca.nearest_CO_bond_index == SIZE_MAX
+            ? -1 : static_cast<int32_t>(ca.nearest_CO_bond_index);
+        const int32_t expected_cn = ca.nearest_CN_bond_index == SIZE_MAX
+            ? -1 : static_cast<int32_t>(ca.nearest_CN_bond_index);
+        EXPECT_EQ(emitted_co_bond_index.values[atom], expected_co);
+        EXPECT_EQ(emitted_cn_bond_index.values[atom], expected_cn);
+    }
+    EXPECT_EQ(emitted_co_bond_index.values[target],
+              static_cast<int32_t>(co_bond));
+    EXPECT_EQ(emitted_cn_bond_index.values[target], -1);
+    EXPECT_NE(std::find(emitted_co_bond_index.values.begin(),
+                        emitted_co_bond_index.values.end(), -1),
+              emitted_co_bond_index.values.end());
+    EXPECT_NE(std::find(emitted_cn_bond_index.values.begin(),
+                        emitted_cn_bond_index.values.end(), -1),
+              emitted_cn_bond_index.values.end());
+
+    auto expect_scalar_readback = [&](const char* stem, auto field) {
+        const auto array = ReadNpy<double>(
+            out_dir / (std::string(stem) + ".npy"), "<f8");
+        ASSERT_EQ(array.shape,
+                  (std::vector<size_t>{conf.AtomCount()}));
+        for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+            const double expected_value = field(conf.AtomAt(atom));
+            if (std::isnan(expected_value)) {
+                EXPECT_TRUE(std::isnan(array.values[atom])) << stem;
+            } else {
+                EXPECT_DOUBLE_EQ(array.values[atom], expected_value) << stem;
+            }
+        }
+    };
+    expect_scalar_readback("mopac_mc_co_sum",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_co_sum; });
+    expect_scalar_readback("mopac_mc_cn_sum",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_cn_sum; });
+    expect_scalar_readback("mopac_mc_sidechain_sum",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_sidechain_sum;
+        });
+    expect_scalar_readback("mopac_mc_aromatic_sum",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_aromatic_sum; });
+    expect_scalar_readback("mopac_mc_co_nearest",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_co_nearest; });
+    expect_scalar_readback("mopac_mc_nearest_co_dist",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CO_dist;
+        });
+    expect_scalar_readback("mopac_mc_nearest_cn_dist",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CN_dist;
+        });
+
+    auto expect_tensor_readback = [&](const char* stem, auto field,
+                                      auto available) {
+        const auto array = ReadNpy<double>(
+            out_dir / (std::string(stem) + ".npy"), "<f8");
+        ASSERT_EQ(array.shape,
+                  (std::vector<size_t>{conf.AtomCount(), 9u}));
+        for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+            if (!available(conf.AtomAt(atom))) {
+                for (size_t component = 0; component < 9; ++component) {
+                    EXPECT_TRUE(std::isnan(
+                        array.values[atom * 9 + component])) << stem;
+                }
+                continue;
+            }
+            std::array<double, 9> packed{};
+            field(conf.AtomAt(atom)).PackFull9(packed.data());
+            for (size_t component = 0; component < packed.size(); ++component) {
+                EXPECT_DOUBLE_EQ(array.values[atom * 9 + component],
+                                 packed[component]) << stem;
+            }
+        }
+    };
+    const auto always = [](const ConformationAtom&) { return true; };
+    expect_tensor_readback("mopac_mc_nearest_co_T2",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_CO_nearest;
+        },
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CO_dist < NO_DATA_SENTINEL;
+        });
+    expect_tensor_readback("mopac_mc_nearest_cn_T2",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_CN_nearest;
+        },
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CN_dist < NO_DATA_SENTINEL;
+        });
+    expect_tensor_readback("mopac_mc_backbone_total",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_backbone_total;
+        }, always);
+    expect_tensor_readback("mopac_mc_sidechain_total",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_sidechain_total;
+        }, always);
+    expect_tensor_readback("mopac_mc_aromatic_total",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_aromatic_total;
+        }, always);
+    expect_tensor_readback("mopac_mc_shielding",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_shielding_contribution;
+        }, always);
+
+    // Geometry owns the nearest source; this fixture has one C=O. Pin its
+    // distance and the scalar/Full9 MOPAC weighting to the production kernel
+    // and real bond order, not to the fields the writer reads.
+    const auto nearest_kernel = McConnellResult::ComputePairKernel(
+        conf.PositionAt(target), conf.bond_midpoints[co_bond],
+        conf.bond_directions[co_bond]);
+    EXPECT_NEAR(conf.AtomAt(target).mopac_mc_nearest_CO_dist,
+                nearest_kernel.distance, 1e-14);
+    EXPECT_NEAR(conf.AtomAt(target).mopac_mc_co_nearest,
+                bond_order * nearest_kernel.pcs_scalar, 1e-14);
+    const auto emitted_nearest_co = ReadNpy<double>(
+        out_dir / "mopac_mc_nearest_co_T2.npy", "<f8");
+    std::array<double, 9> expected_nearest{};
+    SphericalTensor::Decompose(bond_order * nearest_kernel.response)
+        .PackFull9(expected_nearest.data());
+    for (size_t component = 0; component < expected_nearest.size();
+         ++component) {
+        EXPECT_NEAR(emitted_nearest_co.values[target * 9 + component],
+                    expected_nearest[component], 1e-11);
     }
     RemoveMcConnellOutputs(out_dir);
 }
@@ -1116,7 +1273,7 @@ TEST(McConnellImplementationChecks, XHBondsUseDedicatedProductionCategories) {
     fs::create_directories(out_dir);
     ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
                   conf, out_dir.string()),
-              26);
+              28);
     const auto emitted = ReadNpy<double>(
         out_dir / "mc_backbone_xh_fixed.npy", "<f8");
     const auto emitted_backbone_bo = ReadNpy<double>(
@@ -1179,7 +1336,7 @@ TEST(McConnellImplementationChecks,
     fs::create_directories(out_dir);
     ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
                   conf, out_dir.string()),
-              26);
+              28);
 
     const auto co_dir = ReadNpy<double>(
         out_dir / "mc_nearest_co_dir.npy", "<f8");
@@ -1189,6 +1346,10 @@ TEST(McConnellImplementationChecks,
         out_dir / "mc_nearest_co_T2.npy", "<f8");
     const auto cn_tensor = ReadNpy<double>(
         out_dir / "mc_nearest_cn_T2.npy", "<f8");
+    const auto co_bond_index = ReadNpy<int32_t>(
+        out_dir / "mc_nearest_co_bond_index.npy", "<i4");
+    const auto cn_bond_index = ReadNpy<int32_t>(
+        out_dir / "mc_nearest_cn_bond_index.npy", "<i4");
     ASSERT_EQ(co_dir.shape,
               (std::vector<std::size_t>{conf.AtomCount(), 3}));
     ASSERT_EQ(co_midpoint.shape,
@@ -1197,9 +1358,18 @@ TEST(McConnellImplementationChecks,
               (std::vector<std::size_t>{conf.AtomCount(), 9}));
     ASSERT_EQ(cn_tensor.shape,
               (std::vector<std::size_t>{conf.AtomCount(), 9}));
+    ASSERT_EQ(co_bond_index.shape,
+              (std::vector<std::size_t>{conf.AtomCount()}));
+    ASSERT_EQ(cn_bond_index.shape,
+              (std::vector<std::size_t>{conf.AtomCount()}));
     for (const auto* array : {&co_dir, &co_midpoint, &co_tensor, &cn_tensor}) {
         for (double value : array->values) {
             EXPECT_TRUE(std::isnan(value));
+        }
+    }
+    for (const auto* array : {&co_bond_index, &cn_bond_index}) {
+        for (int32_t value : array->values) {
+            EXPECT_EQ(value, -1);
         }
     }
 
@@ -1572,7 +1742,7 @@ TEST(MopacExternalDirectionalFreeze,
                   0);
         EXPECT_EQ(conf.Result<McConnellResult>().WriteFeatures(
                       conf, output_dir.string()),
-                  26);
+                  28);
         EXPECT_EQ(conf.Result<SidechainCarbonylAnisotropyResult>()
                       .WriteFeatures(conf, output_dir.string()),
                   6);
@@ -2095,7 +2265,7 @@ TEST_F(McConnellProteinTest, NearFieldAuditCountsAreReported) {
 }
 
 
-TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentySixArraysAndManifest) {
+TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyEightArraysAndManifest) {
     auto& conf = protein->Conformation();
     conf.AttachResult(McConnellResult::Compute(conf));
 
@@ -2103,7 +2273,7 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentySixArraysAndManifest) {
         ("mcconnell_features_" + std::to_string(::getpid()));
     fs::create_directories(out_dir);
     const auto& mc = conf.Result<McConnellResult>();
-    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 26);
+    EXPECT_EQ(mc.WriteFeatures(conf, out_dir.string()), 28);
 
     for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
         const auto cat = static_cast<McConnellSourceCategory>(c);
@@ -2120,6 +2290,8 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentySixArraysAndManifest) {
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_co_midpoint.npy"));
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_co_T2.npy"));
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_cn_T2.npy"));
+    EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_co_bond_index.npy"));
+    EXPECT_TRUE(fs::exists(out_dir / "mc_nearest_cn_bond_index.npy"));
 
     const fs::path manifest = out_dir / "extraction_manifest.json";
     ASSERT_TRUE(fs::exists(manifest));
@@ -2155,41 +2327,52 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentySixArraysAndManifest) {
               std::string::npos);
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearfield_counts.npy"));
 
-    for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
-        const auto cat = static_cast<McConnellSourceCategory>(c);
-        for (size_t h = 0; h < kMcConnellChannelCount; ++h) {
-            const auto channel = static_cast<McConnellChannel>(h);
-            const fs::path p = out_dir / (
-                std::string("mc_") + McConnellSourceCategoryStem(cat) +
-                "_" + McConnellChannelStem(channel) + ".npy");
-            std::remove(p.string().c_str());
-        }
-    }
-    std::remove((out_dir / "mc_peptide_co_rhombic.npy").string().c_str());
-    std::remove((out_dir / "mc_nearfield_counts.npy").string().c_str());
-    std::remove(manifest.string().c_str());
-    ::rmdir(out_dir.string().c_str());
+    RemoveMcConnellOutputs(out_dir);
 }
 
 
-TEST_F(McConnellProteinTest, NearestCOTrackingWorks) {
+TEST_F(McConnellProteinTest, NearestBondTrackingWorks) {
     auto& conf = protein->Conformation();
     conf.AttachResult(McConnellResult::Compute(conf));
 
     int has_co = 0;
+    int has_cn = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double d = conf.AtomAt(ai).nearest_CO_dist;
-        if (d < NO_DATA_SENTINEL) {
+        const auto& atom = conf.AtomAt(ai);
+        if (atom.nearest_CO_dist < NO_DATA_SENTINEL) {
             has_co++;
-            EXPECT_GT(d, 0.0);
-            EXPECT_LT(d, MCCONNELL_CUTOFF_A);
+            EXPECT_GT(atom.nearest_CO_dist, 0.0);
+            EXPECT_LT(atom.nearest_CO_dist, MCCONNELL_CUTOFF_A);
+            ASSERT_LT(atom.nearest_CO_bond_index, protein->BondCount());
+            EXPECT_EQ(mcconnell_result_detail::SourceCategory(
+                          *protein,
+                          protein->BondAt(atom.nearest_CO_bond_index)),
+                      McConnellSourceCategory::PeptideCO);
+        } else {
+            EXPECT_EQ(atom.nearest_CO_bond_index, SIZE_MAX);
+        }
+        if (atom.nearest_CN_dist < NO_DATA_SENTINEL) {
+            has_cn++;
+            EXPECT_GT(atom.nearest_CN_dist, 0.0);
+            EXPECT_LT(atom.nearest_CN_dist, MCCONNELL_CUTOFF_A);
+            ASSERT_LT(atom.nearest_CN_bond_index, protein->BondCount());
+            EXPECT_EQ(mcconnell_result_detail::SourceCategory(
+                          *protein,
+                          protein->BondAt(atom.nearest_CN_bond_index)),
+                      McConnellSourceCategory::PeptideCN);
+        } else {
+            EXPECT_EQ(atom.nearest_CN_bond_index, SIZE_MAX);
         }
     }
 
     EXPECT_GT(has_co, static_cast<int>(conf.AtomCount() / 2))
         << "Most atoms should have a nearest CO bond within range";
+    EXPECT_GT(has_cn, static_cast<int>(conf.AtomCount() / 2))
+        << "Most atoms should have a nearest CN bond within range";
 
     std::cout << "  Atoms with nearest CO: " << has_co
+              << " / " << conf.AtomCount()
+              << "; nearest CN: " << has_cn
               << " / " << conf.AtomCount() << "\n";
 }
 

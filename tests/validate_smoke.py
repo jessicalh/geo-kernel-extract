@@ -80,6 +80,18 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         "mopac_coulomb_efg_backbone.npy",
         "mopac_coulomb_efg_sidechain.npy",
         "mopac_coulomb_efg_aromatic.npy",
+        "mopac_coulomb_aromatic_E_proj.npy",
+        "mopac_coulomb_aromatic_n_src.npy",
+        "mopac_coulomb_E_clamp_mask.npy",
+        "mopac_coulomb_E_clamp_scale.npy",
+        "mopac_mc_co_sum.npy", "mopac_mc_cn_sum.npy",
+        "mopac_mc_sidechain_sum.npy", "mopac_mc_aromatic_sum.npy",
+        "mopac_mc_co_nearest.npy", "mopac_mc_nearest_co_dist.npy",
+        "mopac_mc_nearest_cn_dist.npy", "mopac_mc_nearest_co_T2.npy",
+        "mopac_mc_nearest_cn_T2.npy", "mopac_mc_backbone_total.npy",
+        "mopac_mc_sidechain_total.npy", "mopac_mc_aromatic_total.npy",
+        "mopac_mc_shielding.npy",
+        "mc_nearest_co_bond_index.npy", "mc_nearest_cn_bond_index.npy",
         # Trajectory-path arrays (optional — present only with --trajectory)
         "water_efield.npy", "water_efg.npy",
         "water_efield_first.npy", "water_efg_first.npy",
@@ -130,6 +142,9 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
     tensor_files = [
         "bs_shielding.npy", "hm_shielding.npy",
         "coulomb_efg.npy", "mopac_coulomb_efg.npy",
+        "mopac_mc_nearest_co_T2.npy", "mopac_mc_nearest_cn_T2.npy",
+        "mopac_mc_backbone_total.npy", "mopac_mc_sidechain_total.npy",
+        "mopac_mc_aromatic_total.npy", "mopac_mc_shielding.npy",
     ] + MC_ARRAYS
     for name in tensor_files:
         if name not in arrays:

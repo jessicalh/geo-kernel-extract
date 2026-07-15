@@ -174,6 +174,8 @@ public:
     Vec3 nearest_CO_midpoint = Vec3::Zero();
     double nearest_CO_dist = 0.0;
     double nearest_CN_dist = 0.0;
+    size_t nearest_CO_bond_index = SIZE_MAX;
+    size_t nearest_CN_bond_index = SIZE_MAX;
     SphericalTensor T2_CO_nearest;
     SphericalTensor T2_CN_nearest;
     SphericalTensor T2_backbone_total;
@@ -241,6 +243,10 @@ public:
     double mopac_coulomb_E_bond_proj = 0.0;
     double mopac_coulomb_E_backbone_frac = 0.0;
     double mopac_coulomb_aromatic_E_magnitude = 0.0;
+    double mopac_coulomb_aromatic_E_bond_proj = 0.0;
+    int mopac_coulomb_aromatic_n_sidechain_atoms = 0;
+    std::uint8_t mopac_coulomb_efield_clamp_mask = 0;
+    double mopac_coulomb_efield_clamp_scale = 1.0;
     SphericalTensor mopac_coulomb_shielding_contribution;
 
     // === APBS reaction fields (ApbsFieldResult) ===

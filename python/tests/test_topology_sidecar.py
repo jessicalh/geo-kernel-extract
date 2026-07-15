@@ -72,6 +72,13 @@ _DIRECTIONAL_STEMS = {
     "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo",
     "mc_s_h_fixed", "mc_s_h_bo", "mc_nearest_co_dir",
     "mc_nearest_co_midpoint", "mc_nearest_co_T2", "mc_nearest_cn_T2",
+    "mc_nearest_co_bond_index", "mc_nearest_cn_bond_index",
+    "mopac_mc_co_sum", "mopac_mc_cn_sum", "mopac_mc_sidechain_sum",
+    "mopac_mc_aromatic_sum", "mopac_mc_co_nearest",
+    "mopac_mc_nearest_co_dist", "mopac_mc_nearest_cn_dist",
+    "mopac_mc_nearest_co_T2", "mopac_mc_nearest_cn_T2",
+    "mopac_mc_backbone_total", "mopac_mc_sidechain_total",
+    "mopac_mc_aromatic_total", "mopac_mc_shielding",
     "sidechain_co_fixed_T2", "sidechain_co_bo_T2",
     # Coulomb/APBS/water/AIMNet2 vectors and EFGs.
     "coulomb_efg", "coulomb_efg_t2", "coulomb_E",
@@ -82,6 +89,8 @@ _DIRECTIONAL_STEMS = {
     "mopac_coulomb_E_backbone", "mopac_coulomb_E_sidechain",
     "mopac_coulomb_E_aromatic", "mopac_coulomb_efg_backbone",
     "mopac_coulomb_efg_sidechain", "mopac_coulomb_efg_aromatic",
+    "mopac_coulomb_aromatic_E_proj", "mopac_coulomb_aromatic_n_src",
+    "mopac_coulomb_E_clamp_mask", "mopac_coulomb_E_clamp_scale",
     "eeq_coulomb_efg", "eeq_coulomb_E", "eeq_coulomb_E_backbone",
     "eeq_coulomb_E_sidechain", "eeq_coulomb_E_aromatic",
     "eeq_coulomb_efg_backbone", "eeq_coulomb_efg_sidechain",
@@ -287,6 +296,40 @@ class TestCatalogMetadata:
         assert spec.irreps == "1o"
         assert spec.parity == "odd"
 
+    @pytest.mark.parametrize("stem", [
+        "mopac_coulomb_aromatic_E_proj",
+        "mopac_coulomb_aromatic_n_src",
+        "mopac_coulomb_E_clamp_mask",
+        "mopac_coulomb_E_clamp_scale",
+        "mopac_mc_co_sum", "mopac_mc_cn_sum",
+        "mopac_mc_sidechain_sum", "mopac_mc_aromatic_sum",
+        "mopac_mc_co_nearest", "mopac_mc_nearest_co_dist",
+        "mopac_mc_nearest_cn_dist",
+    ])
+    def test_new_mopac_scalar_surfaces_are_intrinsic(self, stem):
+        spec = CATALOG[stem]
+        assert spec.coordinate_frame == "intrinsic_geometry"
+        assert spec.irreps == "0e"
+        assert spec.parity == "even"
+        assert spec.tensor_rank == 0
+        assert "O(3)-invariant" in spec.transformation
+
+    @pytest.mark.parametrize("stem", [
+        "mc_nearest_co_bond_index", "mc_nearest_cn_bond_index",
+    ])
+    def test_mcconnell_nearest_bond_indices_are_geometry_owned(self, stem):
+        spec = CATALOG[stem]
+        assert spec.group == "mcconnell"
+        assert spec.coordinate_frame == "intrinsic_geometry"
+        assert spec.units == "index"
+        assert spec.irreps == "0e"
+        assert spec.parity == "even"
+        assert spec.tensor_rank == 0
+        assert "solely by accepted source-midpoint geometry" in (
+            spec.transformation)
+        assert "-1 means no accepted source" in spec.validity
+        assert "mopac_topology_bond_orders_full.npy" in spec.validity
+
 
     @pytest.mark.parametrize("stem", [
         "apbs_E_clamp_mask", "apbs_E_clamp_scale",
@@ -384,6 +427,9 @@ class TestCatalogMetadata:
         "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
         "mc_backbone_xh_fixed", "mc_sidechain_xh_fixed", "mc_s_h_fixed",
         "mc_nearest_co_T2", "mc_nearest_cn_T2",
+        "mopac_mc_nearest_co_T2", "mopac_mc_nearest_cn_T2",
+        "mopac_mc_backbone_total", "mopac_mc_sidechain_total",
+        "mopac_mc_aromatic_total", "mopac_mc_shielding",
         "sidechain_co_fixed_T2", "eeq_coulomb_efg",
     ])
     def test_exact_global_full_rank2_law(self, stem):

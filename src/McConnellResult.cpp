@@ -501,6 +501,8 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         McConnellPairKernel best_cn_kernel;
         double best_co_bo = 0.0;
         double best_cn_bo = 0.0;
+        size_t best_co_bond_index = SIZE_MAX;
+        size_t best_cn_bond_index = SIZE_MAX;
         std::size_t atom_near_accepted_lt3 = 0;
         std::size_t atom_near_rejected_lt3 = 0;
 
@@ -593,11 +595,13 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                 best_co_direction = kernel.direction;
                 best_co_kernel = kernel;
                 best_co_bo = bo;
+                best_co_bond_index = bi;
             } else if (cat == McConnellSourceCategory::PeptideCN &&
                        kernel.distance < best_cn_dist) {
                 best_cn_dist = kernel.distance;
                 best_cn_kernel = kernel;
                 best_cn_bo = bo;
+                best_cn_bond_index = bi;
             }
 
             ++total_pairs;
@@ -650,6 +654,8 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         ca.nearest_CO_midpoint = best_co_midpoint;
         ca.nearest_CO_dist = best_co_dist;
         ca.nearest_CN_dist = best_cn_dist;
+        ca.nearest_CO_bond_index = best_co_bond_index;
+        ca.nearest_CN_bond_index = best_cn_bond_index;
 
         if (best_co_dist < NO_DATA_SENTINEL) {
             const double dir_norm = best_co_direction.norm();
@@ -885,17 +891,19 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
     }
 
     {
-        // These four arrays describe a selected nearest source, not an
+        // These six arrays describe a selected nearest source, not an
         // additive contribution. With no accepted source, zero would be a
         // physically meaningful direction/midpoint/tensor and therefore
         // cannot serve as an absence sentinel. The owning distance fields
         // are set to NO_DATA_SENTINEL by Compute; mirror that applicability
-        // decision at the serialized boundary with NaN rows.
+        // decision at the serialized boundary with NaN rows and -1 indices.
         constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
         std::vector<double> nearest_co_dir(N * 3, kNaN);
         std::vector<double> nearest_co_midpoint(N * 3, kNaN);
         std::vector<double> nearest_co_T2(N * kCols, kNaN);
         std::vector<double> nearest_cn_T2(N * kCols, kNaN);
+        std::vector<int32_t> nearest_co_bond_index(N, -1);
+        std::vector<int32_t> nearest_cn_bond_index(N, -1);
         for (size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
             if (ca.nearest_CO_dist < NO_DATA_SENTINEL) {
@@ -906,9 +914,13 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
                 nearest_co_midpoint[i*3 + 1] = ca.nearest_CO_midpoint.y();
                 nearest_co_midpoint[i*3 + 2] = ca.nearest_CO_midpoint.z();
                 ca.T2_CO_nearest.PackFull9(&nearest_co_T2[i * kCols]);
+                nearest_co_bond_index[i] =
+                    static_cast<int32_t>(ca.nearest_CO_bond_index);
             }
             if (ca.nearest_CN_dist < NO_DATA_SENTINEL) {
                 ca.T2_CN_nearest.PackFull9(&nearest_cn_T2[i * kCols]);
+                nearest_cn_bond_index[i] =
+                    static_cast<int32_t>(ca.nearest_CN_bond_index);
             }
         }
         if (NpyWriter::WriteFloat64(output_dir + "/mc_nearest_co_dir.npy",
@@ -925,6 +937,16 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
         }
         if (NpyWriter::WriteFloat64(output_dir + "/mc_nearest_cn_T2.npy",
                                     nearest_cn_T2.data(), N, kCols)) {
+            ++written;
+        }
+        if (NpyWriter::WriteInt32(
+                output_dir + "/mc_nearest_co_bond_index.npy",
+                nearest_co_bond_index.data(), N)) {
+            ++written;
+        }
+        if (NpyWriter::WriteInt32(
+                output_dir + "/mc_nearest_cn_bond_index.npy",
+                nearest_cn_bond_index.data(), N)) {
             ++written;
         }
     }

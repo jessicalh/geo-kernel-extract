@@ -31,6 +31,7 @@ from nmr_extract import (
     PerRingTypeT1,
     PerRingTypeT2,
     McConnellNearFieldCounts,
+    MopacMcConnellGroup,
     RingContributions,
     RingGeometry,
     CATALOG,
@@ -92,6 +93,104 @@ RETIRED_NPY_STEMS = {
     "pq_shielding",
     "ringchi_shielding",
 }
+
+
+def test_mopac_emit_surface_reaches_loaded_protein(tmp_path):
+    """Every new static MOPAC datum survives catalog wrapping and assembly."""
+    n_atoms = 3
+    write_required_sdk_npys(tmp_path, n_atoms=n_atoms, n_residues=1)
+    write_minimal_topology_sidecar(tmp_path, n_atoms=n_atoms, n_residues=1)
+
+    np.save(tmp_path / "mopac_charges.npy",
+            np.asarray([0.11, -0.22, 0.33], dtype=np.float64))
+    np.save(tmp_path / "mopac_scalars.npy",
+            np.arange(n_atoms * 4, dtype=np.float64).reshape(n_atoms, 4))
+    np.save(tmp_path / "mopac_bond_orders.npy",
+            np.empty((0, 3), dtype=np.float64))
+    np.save(tmp_path / "mopac_global.npy",
+            np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float64))
+
+    for stem, cols in {
+        "mopac_coulomb_efg": 9,
+        "mopac_coulomb_E": 3,
+        "mopac_coulomb_E_backbone": 3,
+        "mopac_coulomb_E_sidechain": 3,
+        "mopac_coulomb_E_aromatic": 3,
+        "mopac_coulomb_efg_backbone": 5,
+        "mopac_coulomb_efg_sidechain": 5,
+        "mopac_coulomb_efg_aromatic": 5,
+        "mopac_coulomb_scalars": 4,
+    }.items():
+        np.save(tmp_path / f"{stem}.npy",
+                np.zeros((n_atoms, cols), dtype=np.float64))
+
+    aromatic_projection = np.asarray([-7.5, 0.25, 9.0], dtype=np.float64)
+    aromatic_count = np.asarray([6, 0, 4], dtype=np.int32)
+    clamp_mask = np.asarray([1, 0, 1], dtype=np.uint8)
+    clamp_scale = np.asarray([0.125, 1.0, 0.5], dtype=np.float64)
+    np.save(tmp_path / "mopac_coulomb_aromatic_E_proj.npy",
+            aromatic_projection)
+    np.save(tmp_path / "mopac_coulomb_aromatic_n_src.npy", aromatic_count)
+    np.save(tmp_path / "mopac_coulomb_E_clamp_mask.npy", clamp_mask)
+    np.save(tmp_path / "mopac_coulomb_E_clamp_scale.npy", clamp_scale)
+
+    scalar_stems = (
+        "mopac_mc_co_sum", "mopac_mc_cn_sum",
+        "mopac_mc_sidechain_sum", "mopac_mc_aromatic_sum",
+        "mopac_mc_co_nearest", "mopac_mc_nearest_co_dist",
+        "mopac_mc_nearest_cn_dist",
+    )
+    scalar_payloads = {}
+    for index, stem in enumerate(scalar_stems, start=1):
+        payload = np.arange(n_atoms, dtype=np.float64) + index * 10.0
+        scalar_payloads[stem] = payload
+        np.save(tmp_path / f"{stem}.npy", payload)
+
+    tensor_stems = (
+        "mopac_mc_nearest_co_T2", "mopac_mc_nearest_cn_T2",
+        "mopac_mc_backbone_total", "mopac_mc_sidechain_total",
+        "mopac_mc_aromatic_total", "mopac_mc_shielding",
+    )
+    tensor_payloads = {}
+    for index, stem in enumerate(tensor_stems, start=1):
+        payload = (np.arange(n_atoms * 9, dtype=np.float64)
+                   .reshape(n_atoms, 9) + index * 100.0)
+        tensor_payloads[stem] = payload
+        np.save(tmp_path / f"{stem}.npy", payload)
+
+    nearest_co_bond_index = np.asarray([0, -1, 1], dtype=np.int32)
+    nearest_cn_bond_index = np.asarray([-1, 0, 1], dtype=np.int32)
+    np.save(tmp_path / "mc_nearest_co_bond_index.npy",
+            nearest_co_bond_index)
+    np.save(tmp_path / "mc_nearest_cn_bond_index.npy",
+            nearest_cn_bond_index)
+
+    protein = load(tmp_path)
+    assert protein.mopac is not None
+    np.testing.assert_array_equal(
+        protein.mopac.coulomb.aromatic_E_proj, aromatic_projection)
+    np.testing.assert_array_equal(
+        protein.mopac.coulomb.aromatic_n_src, aromatic_count)
+    np.testing.assert_array_equal(
+        protein.mopac.coulomb.E_clamp_mask, clamp_mask)
+    np.testing.assert_array_equal(
+        protein.mopac.coulomb.E_clamp_scale, clamp_scale)
+    np.testing.assert_array_equal(
+        protein.mcconnell.nearest_co_bond_index, nearest_co_bond_index)
+    np.testing.assert_array_equal(
+        protein.mcconnell.nearest_cn_bond_index, nearest_cn_bond_index)
+
+    mc = protein.mopac.mcconnell
+    assert isinstance(mc, MopacMcConnellGroup)
+    for stem in scalar_stems:
+        attribute = stem.removeprefix("mopac_mc_")
+        np.testing.assert_array_equal(
+            getattr(mc, attribute), scalar_payloads[stem])
+    for stem in tensor_stems:
+        attribute = stem.removeprefix("mopac_mc_")
+        wrapped = getattr(mc, attribute)
+        assert isinstance(wrapped, ShieldingTensor)
+        np.testing.assert_array_equal(wrapped.data, tensor_payloads[stem])
 
 
 def test_hbond_nearest_direction_catalog_names_explicit_donor_h_source():

@@ -110,6 +110,7 @@ from ._protein import (
     WaterPolarizationGroup,
     EeqGroup,
     MopacFullGroup,
+    MopacMcConnellGroup,
     CategoryInfo,
     TopologyGroup,
     Residues,
@@ -236,4 +237,5 @@ __all__ = [
     "LarsenHBondTensorTimeSeries",
     "LarsenHBondScalarTimeSeries",
     "LarsenHBondTrajectoryGroup",
+    "MopacMcConnellGroup",
 ]
