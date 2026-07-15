@@ -1,6 +1,8 @@
 """Per-ring sparse contributions and ring geometry reference.
 
-ring_contributions.npy — (P, 40) one row per (atom, ring) pair:
+ring_contributions.npy — (P, 40) one row per union (atom, aromatic-ring)
+neighbour row. Different calculators can contribute different subsets; an
+untouched calculator block is its default zero and has no block-specific mask:
     [0]     atom_index
     [1]     ring_index
     [2]     ring_type           RingTypeIndex 0-7
@@ -19,7 +21,7 @@ ring_contributions.npy — (P, 40) one row per (atom, ring) pair:
     [38]    cos_phi             azimuthal angle cosine (relative to vertex 0)
     [39]    sin_phi             azimuthal angle sine (relative to vertex 0)
 
-ring_geometry.npy — (R, 10) one row per ring:
+ring_geometry.npy — (R, 10) one row per aromatic ring:
     [0]     ring_index
     [1]     ring_type
     [2]     residue_index
@@ -37,11 +39,12 @@ from ._tensors import SphericalTensor
 
 
 class RingContributions:
-    """Sparse per-(atom, ring) pair contributions.
+    """Sparse union of per-(atom, aromatic-ring) neighbour rows.
 
-    Shape ``(P, 40)`` where P = number of evaluated (atom, ring) pairs.
-    Each row carries geometry, retained ring current kernels as
-    :class:`SphericalTensor` views, dispersion scalars, and azimuthal angle.
+    Shape ``(P, 40)``. Each row carries shared geometry plus calculator-owned
+    ring-current/dispersion blocks. The axis is a union: a calculator may not
+    have accepted a row that another calculator created, and its untouched
+    zero is therefore absence-or-physical-zero without a per-calculator mask.
 
     Use :meth:`for_atom` and :meth:`for_ring_type` to filter rows.
 
@@ -106,8 +109,9 @@ class RingContributions:
     def ring_chi_scalar(self) -> np.ndarray:
         """Preferred geometry-scalar alias for legacy column 7.
 
-        The separately emitted ``ringchi_scalar.npy`` carries the exact
-        production RingSusceptibilityResult payload.
+        The separately emitted ``ringchi_scalar.npy`` carries the production
+        RingSusceptibilityResult field on the same union axis, but its default
+        zero is likewise ambiguous when that calculator did not accept a row.
         """
         return self._data[:, 7]
 
@@ -165,9 +169,9 @@ class RingContributions:
 
 
 class RingGeometry:
-    """Per-ring geometry reference table.
+    """Per-aromatic-ring geometry reference table.
 
-    Shape ``(R, 10)`` where R = number of rings in the protein.
+    Shape ``(R, 10)`` where R is ``Protein::RingCount()`` (aromatic only).
     One row per ring: index, type, residue, center, normal, radius.
 
     Args:

@@ -18,6 +18,21 @@ def test_larsen_six_group_loader_and_source_count(tmp_path):
     with h5py.File(path, "w") as f:
         f.attrs["protein_id"] = "synthetic"
         f.attrs["n_atoms"] = 2
+        f.attrs["finalized"] = True
+        trajectory = f.create_group("trajectory")
+        frames = trajectory.create_group("frames")
+        frames.attrs["n_frames"] = 3
+        frames.create_dataset("time_ps", data=frame_times)
+        frames.create_dataset("original_index", data=frame_indices)
+        positions = trajectory.create_group("positions")
+        positions.attrs["n_atoms"] = 2
+        positions.attrs["n_frames"] = 3
+        positions.attrs["result_name"] = \
+            "PositionsTimeSeriesTrajectoryResult"
+        positions.attrs["finalized"] = True
+        positions.create_dataset("xyz", data=np.zeros((2, 3, 3)))
+        positions.create_dataset("frame_indices", data=frame_indices)
+        positions.create_dataset("frame_times", data=frame_times)
         for name in tensor_paths:
             g = f.create_group(f"trajectory/{name}")
             g.create_dataset("xyz", data=np.zeros((2, 3, 9)))

@@ -54,8 +54,11 @@ def _write_required_traj_root(f: h5py.File, n_atoms: int, n_frames: int) -> None
     pos.attrs["n_frames"]    = n_frames
     pos.attrs["result_name"] = "PositionsTimeSeriesTrajectoryResult"
     pos.attrs["finalized"]   = True
-    flat = np.zeros((n_atoms * n_frames, 3), dtype=np.float64)
-    pos.create_dataset("xyz", data=flat)
+    pos.create_dataset(
+        "xyz", data=np.zeros((n_atoms, n_frames, 3), dtype=np.float64))
+    pos.create_dataset("frame_indices",
+                       data=np.arange(n_frames, dtype=np.uint64))
+    pos.create_dataset("frame_times", data=times)
 
 
 def _write_water_field_time_series(f: h5py.File, n_atoms: int, n_frames: int,

@@ -30,7 +30,6 @@ from nmr_extract import (
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
-    PerBondCategoryT2,
     McConnellNearFieldCounts,
     RingContributions,
     RingGeometry,
@@ -521,15 +520,19 @@ class TestBiotSavart:
 
     def test_ring_B_fields_are_sparse_magnetic_vectors(self, geo):
         n_pairs = len(geo.ring_contributions.atom_index)
-        for field in [geo.biot_savart.ring_B_field, geo.biot_savart.ring_B_cylindrical]:
-            assert isinstance(field, MagneticVectorField)
-            assert field.irreps == Irreps("1x1e")
-            assert field.data.shape == (n_pairs, 3)
+        field = geo.biot_savart.ring_B_field
+        assert isinstance(field, MagneticVectorField)
+        assert field.irreps == Irreps("1x1e")
+        assert field.data.shape == (n_pairs, 3)
+
+        cylindrical = geo.biot_savart.ring_B_cylindrical
+        assert isinstance(cylindrical, np.ndarray)
+        assert cylindrical.shape == (n_pairs, 3)
 
     def test_ring_B_fields_row_align_with_contributions(self, geo):
         n_pairs = len(geo.ring_contributions.atom_index)
         assert len(geo.biot_savart.ring_B_field.data) == n_pairs
-        assert len(geo.biot_savart.ring_B_cylindrical.data) == n_pairs
+        assert len(geo.biot_savart.ring_B_cylindrical) == n_pairs
 
 
 class TestHaighMallion:
@@ -609,7 +612,7 @@ class TestHBond:
 class TestDssp:
 
     def test_shape(self, geo):
-        assert geo.dssp.data.shape == (geo.n_atoms, 5)
+        assert geo.dssp.backbone.data.shape == (geo.n_atoms, 5)
 
 
 class TestRingKernelGroups:

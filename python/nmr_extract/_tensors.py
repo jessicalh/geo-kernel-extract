@@ -183,10 +183,10 @@ class ShieldingTensor(SphericalTensor):
     Per-instance units are declared by the corresponding catalog entry
     (``ArraySpec.units``). DFT-derived shielding (orca_*,
     larsen_hbond_*_shielding) is in ppm. Classical-kernel-derived
-    shielding (bs_*, hm_*, mc_*, pq_*, disp_*, hbond_*, ringchi_*,
-    coulomb_efg) is in the kernel's native unit (ppm·T/nA, Å⁻¹,
-    Å⁻³, Å⁻⁵, Å⁻⁶, V/Å²) — calibration multiplies by the relevant
-    parameter to map to ppm. See OBJECT_MODEL.md drift-table section.
+    payloads use their catalog-declared native units (for example ppm·T/nA,
+    Å⁻¹, Å⁻³, Å⁻⁵, or V/Å²). Some are geometry-only kernels with a deferred
+    scale, not physical shielding in final units; consult
+    ``ArraySpec.scaling_contract`` rather than inferring from this wrapper.
     """
     pass
 
@@ -197,10 +197,11 @@ class EFGTensor:
     Shape ``(*, 5)``. All EFGs in this codebase are constructed from
     symmetric outer-product physics — q·(3r⊗r/r⁵ − I/r³) for the
     Coulomb-family EFGs (water, Coulomb, MOPAC Coulomb, AIMNet2) and
-    the Hessian of φ for APBS. After the explicit traceless projection
-    each calculator performs, both T0 (trace) and T1 (antisymmetric
-    pseudovector) are structural zeros. Only the symmetric-traceless
-    T2 (5 real-spherical-tesseral components m=-2..+2) carries signal.
+    the Hessian of φ for APBS. T0 (trace) and T1 (antisymmetric
+    pseudovector) are structural zeros: the source is bitwise symmetric,
+    so T1 vanishes exactly, and an explicit traceless projection enforces
+    T0 to floating-point round-off. See the per-array catalog validity
+    contract.
 
     Re-typed from a 9-component SphericalTensor subclass to a standalone
     5-component class on 2026-05-18 (codex review R2 M1 expansion). The
@@ -228,7 +229,7 @@ class EFGTensor:
                     f"looks like the pre-2026-05-18 9-component "
                     f"(T0+T1+T2) packing. Schema rev intentionally drops "
                     f"the structurally-zero T0 (trace) and T1 (antisymmetric "
-                    f"pseudovector) channels for all EFG calculators. To "
+                    f"pseudovector) channels for finite analytic EFG rows. To "
                     f"migrate older NPYs in place: `T2 = old[..., 4:9]` "
                     f"and load that. To re-extract: run with current build "
                     f"of WaterFieldResult / CoulombResult / MopacCoulombResult "
@@ -533,68 +534,6 @@ class PerRingTypeT2:
         return f"PerRingTypeT2(shape={self._data.shape}, basis='{self.TENSOR_BASIS}')"
 
 
-# ── Per-bond-category decomposition ─────────────────────────────────
-
-
-class PerBondCategoryT2:
-    """Project-native T2 McConnell contribution decomposed by bond category.
-
-    Shape ``(*, 25)`` = 5 bond categories x 5 T2 components.
-    Use :meth:`as_block` for ``(*, 5, 5)`` view.
-    """
-
-    __slots__ = ("_data",)
-    TENSOR_BASIS = PROJECT_T2_TENSOR_BASIS
-    COMPONENT_ORDER = PROJECT_T2_COMPONENT_ORDER
-    TENSOR_FRAME = PROJECT_T2_TENSOR_FRAME
-    E3NN_EXPORT = PROJECT_E3NN_EXPORT_NOTE
-
-    def __init__(self, data: np.ndarray):
-        if data.shape[-1] != N_BOND_CATEGORIES * 5:
-            raise ValueError(
-                f"PerBondCategoryT2: last dim must be {N_BOND_CATEGORIES * 5}, "
-                f"got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def tensor_basis(self) -> str:
-        return self.TENSOR_BASIS
-
-    @property
-    def component_order(self) -> str:
-        return self.COMPONENT_ORDER
-
-    @property
-    def tensor_frame(self) -> str:
-        return self.TENSOR_FRAME
-
-    @property
-    def e3nn_export(self) -> str:
-        return self.E3NN_EXPORT
-
-    def for_category(self, cat: BondCategory) -> np.ndarray:
-        i = int(cat)
-        return self._data[..., i * 5:(i + 1) * 5]
-
-    @property
-    def total(self) -> np.ndarray:
-        return self.as_block().sum(axis=-2)
-
-    def as_block(self) -> np.ndarray:
-        return self._data.reshape(*self._data.shape[:-1], N_BOND_CATEGORIES, 5)
-
-    def to_e3nn(self) -> E3nnTensor:
-        converted = project_t2_to_e3nn(self.as_block()).reshape(self._data.shape)
-        return E3nnTensor(converted, Irreps(f"{N_BOND_CATEGORIES}x2e"))
-
-    def __repr__(self) -> str:
-        return f"PerBondCategoryT2(shape={self._data.shape}, basis='{self.TENSOR_BASIS}')"
-
-
 # ── Scalar feature types ────────────────────────────────────────────
 
 
@@ -663,54 +602,14 @@ class McConnellNearFieldCounts:
         return f"McConnellNearFieldCounts(shape={self._data.shape})"
 
 
-class McConnellScalars:
-    """(*, 6) McConnell summary: CO/CN/sidechain/aromatic sums, nearest dists."""
-
-    __slots__ = ("_data",)
-
-    def __init__(self, data: np.ndarray):
-        if data.shape[-1] != 6:
-            raise ValueError(f"McConnellScalars: last dim must be 6, got {data.shape}")
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def co_sum(self) -> np.ndarray:
-        return self._data[..., 0]
-
-    @property
-    def cn_sum(self) -> np.ndarray:
-        return self._data[..., 1]
-
-    @property
-    def sidechain_sum(self) -> np.ndarray:
-        return self._data[..., 2]
-
-    @property
-    def aromatic_sum(self) -> np.ndarray:
-        return self._data[..., 3]
-
-    @property
-    def nearest_CO_dist(self) -> np.ndarray:
-        return self._data[..., 4]
-
-    @property
-    def nearest_CN_dist(self) -> np.ndarray:
-        return self._data[..., 5]
-
-    def __repr__(self) -> str:
-        return f"McConnellScalars(shape={self._data.shape})"
-
-
 class CoulombScalars:
     """(*, 4) Coulomb E-field summary. Units: V/A.
 
     ``E_bond_proj`` is defined only for hydrogens with a valid typed
     parent atom. It is NaN for non-hydrogen atoms and for parentless
-    hydrogens.
+    hydrogens. Column 2 is the signed projection of the backbone field onto
+    the total-field direction in V/A; despite its historical ``*_frac`` name,
+    it is not a ratio and is set to zero when the total field is near zero.
     """
 
     __slots__ = ("_data",)
@@ -735,6 +634,12 @@ class CoulombScalars:
 
     @property
     def E_backbone_frac(self) -> np.ndarray:
+        """Historical alias for :attr:`E_backbone_projection`; not a fraction."""
+        return self._data[..., 2]
+
+    @property
+    def E_backbone_projection(self) -> np.ndarray:
+        """Signed ``E_backbone · unit(E_total)`` in V/A."""
         return self._data[..., 2]
 
     @property
@@ -746,8 +651,15 @@ class CoulombScalars:
 
 
 class HBondScalars:
-    """(*, 4) H-bond summary: nearest_dist, 1/r^3, count_within_3.5A,
-    mcconnell_scalar (Σ (3cos²θ−1)/r³ over contributing H-bonds)."""
+    """(*, 4) H-bond summary with mixed units.
+
+    Columns are nearest accepted distance (Å), its inverse cube (Å⁻³), count
+    of accepted source evaluations within ``hbond_counting_radius`` (default
+    3.5 Å), and ``Σ(3cos²θ−1)/r³`` (Å⁻³) over every accepted evaluation. The
+    count therefore need not equal the number summed. A legacy zero
+    distance/inverse cube means no accepted source when the companion
+    ``hbond_flags`` availability is zero.
+    """
 
     __slots__ = ("_data",)
 
@@ -863,8 +775,10 @@ class MopacGlobal:
     """``(4,)`` legacy printed MOPAC graph projection.
 
     The heat of formation is represented at five decimal places and the three
-    dipole components at three. Full-precision struct values are available in
-    the direct MOPAC group.
+    dipole components at three. Unquantized binary64 API values are available
+    in the direct MOPAC group ("full precision" means no compatibility decimal
+    projection, not physical exactness). The molecular dipole is a polar vector;
+    for a charged system it depends on the MOPAC input origin/translation.
     """
 
     __slots__ = ("_data",)
@@ -962,7 +876,10 @@ class MopacAtomicOrbitalPopulations:
     Values are reconstructed from the libmopac atom-AO-density diagonal and
     quantized to five decimal places. Only each atom's live AO width is
     populated; non-existent per-atom AO columns are NaN rather than defensive
-    zeros. The direct MOPAC group retains the untouched padded density blocks.
+    zeros. The direct MOPAC group retains the unquantized padded API density
+    blocks.
+    These diagonal-only s/px/py/pz/d values are not a closed O(3)
+    representation because the AO-density coherences are omitted.
     """
 
     __slots__ = ("_data",)
@@ -999,8 +916,8 @@ class MopacAtomicOrbitalPopulationTotals:
     Each AO diagonal is first projected through its F10.5 printed value and
     those projected entries are then summed, exactly matching the old parser;
     this is distinct from independently projecting the finished shell sum.
-    p/d are NaN where the corresponding shell is not live; untouched
-    all-finite sums are available in the direct MOPAC group.
+    p/d are NaN where the corresponding shell is not live; unquantized
+    binary64 API-derived sums are available in the direct MOPAC group.
     """
 
     __slots__ = ("_data",)
@@ -1105,13 +1022,17 @@ class MopacTopologyBondOrdersFull:
 
 
 class BondOrders:
-    """(B, 3) sparse: [atom_i, atom_j, wiberg_order]."""
+    """(K, 3) sparse pair rows: [atom_i, atom_j, order].
+
+    ``K`` is the caller-defined serialized pair axis (for example compact or
+    retained libmopac-unique), not necessarily the topology bond count.
+    """
 
     __slots__ = ("_data",)
 
     def __init__(self, data: np.ndarray):
         if data.ndim != 2 or data.shape[1] != 3:
-            raise ValueError(f"BondOrders: expected (B, 3), got {data.shape}")
+            raise ValueError(f"BondOrders: expected (K, 3), got {data.shape}")
         self._data = data
 
     @property
@@ -1135,6 +1056,13 @@ class BondOrders:
         return self._data.shape[0]
 
     def to_dense(self, n_atoms: int) -> np.ndarray:
+        """Materialize a symmetric matrix with representational zero fill.
+
+        For sparse MOPAC surfaces, an unlisted pair may have been censored by
+        the API threshold and/or compact first-six projection. The dense zero
+        is therefore not evidence that the physical Wiberg order was measured
+        as zero.
+        """
         mat = np.zeros((n_atoms, n_atoms), dtype=np.float64)
         i, j = self.atom_i, self.atom_j
         mat[i, j] = self._data[:, 2]
@@ -1146,7 +1074,12 @@ class BondOrders:
 
 
 class DeltaScalars:
-    """(*, 6) mutation delta metadata."""
+    """(*, 6) WT-minus-mutant metadata on dense WT atom rows.
+
+    Columns are match mask, shielding T0 delta, nearest removed-ring distance,
+    configured-force-field charge delta, compatibility MOPAC charge delta, and
+    typed match distance. A matched row with no removed ring uses 99 Å.
+    """
 
     __slots__ = ("_data",)
 
@@ -1173,17 +1106,21 @@ class DeltaScalars:
 
     @property
     def delta_partial_charge(self) -> np.ndarray:
-        """ff14SB partial charge delta (WT - ALA)."""
+        """Configured ChargeSource partial-charge delta (WT - mutant)."""
         return self._data[..., 3]
 
     @property
     def delta_mopac_charge(self) -> np.ndarray:
-        """MOPAC Coulson charge delta (0 if no MOPAC)."""
+        """Legacy F15.6 MOPAC Coulson charge delta.
+
+        Zero is unmasked and ambiguous between unavailable MOPAC and a true
+        zero compatibility-charge delta.
+        """
         return self._data[..., 4]
 
     @property
     def match_distance(self) -> np.ndarray:
-        """Spatial distance between matched WT/ALA atoms (A)."""
+        """Spatial distance between matched WT/mutant atoms (Å)."""
         return self._data[..., 5]
 
     def __repr__(self) -> str:
@@ -1201,6 +1138,8 @@ class DeltaAPBS:
     accessor returns a SphericalTensor (not EFGTensor) because the new
     EFGTensor class is T2-only 5-component. Downstream that wants just
     T2 should use ``apbs.delta_efg.T2`` to get the 5-component view.
+    The entire NPY is absent when ``MutationDeltaResult`` has no paired APBS
+    delta; absence is not represented by a zero-filled file.
     """
 
     __slots__ = ("_data",)
@@ -1243,7 +1182,12 @@ class DeltaAPBS:
 
 
 class DeltaRingProximity:
-    """(*, R*6) removed ring geometry.  Per ring: [dist, z, rho, theta, mcconnell, exp_decay]."""
+    """(*, R*6) removed-ring geometry on dense WT atom rows.
+
+    Per ring: ``[dist, z, rho, theta, mcconnell, exp_decay]``. The entire NPY
+    is absent unless a mutation site removes at least one WT ring; unmatched
+    rows in a present file are compatibility zeros gated by ``delta_scalars``.
+    """
 
     __slots__ = ("_data", "_n_rings")
     COLS_PER_RING = 6
@@ -1278,7 +1222,11 @@ class DeltaRingProximity:
 
 
 class AIMNet2Charges:
-    """(N,) per-atom Hirshfeld charges from AIMNet2 wB97M model."""
+    """``(N,)`` per-atom Hirshfeld charges from the AIMNet2 wB97M model.
+
+    The float64 NPY widens the Torch result; it does not mean the model
+    ran in binary64.
+    """
 
     __slots__ = ("_data",)
 
@@ -1298,17 +1246,21 @@ class AIMNet2Charges:
 
 
 class AIMNet2AimEmbedding:
-    """(N, 256) learned electronic structure embedding per atom.
+    """``(N, 256)`` raw float32 ``aim`` output from the loaded model.
 
-    Geometry-dependent: changes per frame.  Encodes hybridisation,
-    charge response, conjugation, charge transfer.
+    These are opaque learned channels. The producer does not attach a
+    channel-level physical interpretation or guarantee a Cartesian, O(3),
+    parity, or e3nn transformation law. Keep the 256-channel axis fixed; do
+    not rotate it as spatial components. The values are geometry-dependent
+    and finite-validated as part of the all-or-nothing main AIMNet2 result.
     """
 
     __slots__ = ("_data",)
 
     def __init__(self, data: np.ndarray):
         if data.ndim == 2 and data.shape[-1] != 256:
-            raise ValueError(f"AIMNet2AimEmbedding: expected 256 dims, got {data.shape[-1]}")
+            raise ValueError(
+                f"AIMNet2AimEmbedding: expected 256 dims, got {data.shape[-1]}")
         self._data = data
 
     @property
@@ -1323,9 +1275,9 @@ class AIMNet2ChargeResponseGradient:
     """(N, 3) AIMNet2 charge-response proxy/diagnostic via autograd.
 
     The vector field is dL/d(r_i) where L = sum_j q_j^2 over
-    non-sentinel atoms (the L2-of-charges objective; sum(q) is
-    constant under AIMNet2's charge-conservation projection so its
-    gradient is ~0). It is a sum-of-squared-charges sensitivity to
+    non-sentinel atoms (the L2-of-charges objective; for a conforming AIMNet2
+    model, its charge-conservation projection makes sum(q) constant and that
+    alternative gradient ~0). It is a sum-of-squared-charges sensitivity to
     atomic coordinates, NOT a Buckingham polarizability α = ∂μ/∂E
     and NOT an atom-resolved charge Jacobian.
 

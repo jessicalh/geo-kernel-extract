@@ -170,16 +170,25 @@ def test_static_loader_wires_piece05_groups(tmp_path):
 def _write_trajectory_root(f: h5py.File) -> None:
     f.attrs["protein_id"] = "piece05"
     f.attrs["n_atoms"] = N_ATOMS
+    f.attrs["finalized"] = True
     traj = f.create_group("trajectory")
     frames = traj.create_group("frames")
     frames.attrs["n_frames"] = N_FRAMES
     frames.create_dataset(
         "time_ps", data=np.arange(N_FRAMES, dtype=np.float64) * 0.5)
+    frames.create_dataset(
+        "original_index", data=np.arange(N_FRAMES, dtype=np.uint64))
     pos = traj.create_group("positions")
     pos.attrs["n_atoms"] = N_ATOMS
     pos.attrs["n_frames"] = N_FRAMES
+    pos.attrs["result_name"] = "PositionsTimeSeriesTrajectoryResult"
+    pos.attrs["finalized"] = True
     pos.create_dataset(
-        "xyz", data=np.zeros((N_ATOMS * N_FRAMES, 3), dtype=np.float64))
+        "xyz", data=np.zeros((N_ATOMS, N_FRAMES, 3), dtype=np.float64))
+    pos.create_dataset(
+        "frame_indices", data=np.arange(N_FRAMES, dtype=np.uint64))
+    pos.create_dataset(
+        "frame_times", data=np.arange(N_FRAMES, dtype=np.float64) * 0.5)
 
 
 def _write_apbs_common_attrs(g) -> None:

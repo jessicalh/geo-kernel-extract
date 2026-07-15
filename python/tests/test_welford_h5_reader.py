@@ -31,6 +31,7 @@ from nmr_extract import (
     EeqWelfordGroup,
     SasaWelfordGroup,
     HBondCountWelfordGroup,
+    TrajectoryData,
     WelfordAccess,
     WelfordMoments,
 )
@@ -92,13 +93,9 @@ def _write_required_traj_root(f: h5py.File, n_atoms: int, n_frames: int) -> None
     Mirrors what the current C++ writer produces:
       - Root attrs: protein_id, n_atoms, finalized only
       - /trajectory/frames/{time_ps, original_index} + n_frames group attr
-      - /trajectory/positions/xyz atom-major (N*T, 3) +
+      - /trajectory/positions/{xyz, frame_indices, frame_times} with xyz
+        shaped (N, T, 3) +
         n_atoms / n_frames / result_name / finalized group attrs
-
-    No `/rollup` group — that's a legacy GromacsProtein artifact, absent
-    in the analysis-mode H5 the SDK is the consumer for. Tests that
-    specifically need to exercise the legacy-rollup load path can use
-    `_write_legacy_rollup_root` instead.
     """
     f.attrs["protein_id"] = "synthetic_test"
     f.attrs["n_atoms"]    = n_atoms
@@ -116,28 +113,14 @@ def _write_required_traj_root(f: h5py.File, n_atoms: int, n_frames: int) -> None
     pos_grp.attrs["n_atoms"]     = np.uint64(n_atoms)
     pos_grp.attrs["n_frames"]    = np.uint64(n_frames)
     pos_grp.attrs["finalized"]   = True
-    # Atom-major (N*T, 3) — matches PositionsTimeSeriesTrajectoryResult.cpp
-    # layout: for atom i, the T frames are contiguous, then the next atom.
+    # Atom-major (N, T, 3) — matches PositionsTimeSeriesTrajectoryResult.cpp.
     pos_grp.create_dataset(
-        "xyz", data=np.zeros((n_atoms * n_frames, 3), dtype=np.float64))
-
-
-def _write_legacy_rollup_root(f: h5py.File, n_atoms: int, n_frames: int) -> None:
-    """Emit the legacy GromacsProtein ensemble schema (pre-2026-05-17
-    trajectory pipeline). Kept so the SDK's backward-compat path can be
-    exercised end-to-end — current production output uses the
-    `_write_required_traj_root` schema above."""
-    f.attrs["n_atoms"]               = n_atoms
-    f.attrs["n_frames"]              = n_frames
-    f.attrs["positions_shape_T"]     = n_frames
-    f.attrs["positions_shape_N"]     = n_atoms
-    f.create_dataset("positions",
-                     data=np.zeros((n_frames * n_atoms, 3), dtype=np.float64))
-    f.create_dataset("frame_times",
-                     data=np.linspace(0.0, 1.0, n_frames, dtype=np.float64))
-    f.create_dataset("rollup/mean", data=np.zeros((n_atoms, 1), dtype=np.float64))
-    f.create_dataset("rollup/std",  data=np.zeros((n_atoms, 1), dtype=np.float64))
-    f.create_dataset("rollup/names", data=np.array([b"dummy"], dtype="S16"))
+        "xyz", data=np.zeros((n_atoms, n_frames, 3), dtype=np.float64))
+    pos_grp.create_dataset(
+        "frame_indices", data=np.arange(n_frames, dtype=np.uint64))
+    pos_grp.create_dataset(
+        "frame_times", data=np.linspace(0.0, 1.0, n_frames,
+                                        dtype=np.float64))
 
 
 def _write_bs_welford(f: h5py.File, n_atoms: int) -> dict:
@@ -739,21 +722,15 @@ class TestProductionSchema:
         assert np.all(np.diff(traj.frame_times) >= 0.0)
 
     def test_positions_shape_T_N_3(self, h5_with_bs_welford):
-        """Production schema: atom-major (N*T, 3) on disk → (T, N, 3)
+        """Production schema: atom-major (N, T, 3) on disk → (T, N, 3)
         in-memory after the reader's transpose."""
         path, _ = h5_with_bs_welford
         traj = load_trajectory(path)
         assert traj.positions.shape == (4, N_ATOMS, 3)
 
-    def test_no_rollup_in_production_schema(self, h5_with_bs_welford):
-        """Production trajectory.h5 has no /rollup — analysis mode
-        replaces it with the Welford H5 groups."""
-        path, _ = h5_with_bs_welford
-        traj = load_trajectory(path)
-        assert traj.rollup is None
-
-
-# ─── Legacy GromacsProtein schema backward-compat ──────────────────
+    def test_dead_gromacs_fields_not_in_contract(self):
+        assert "rollup" not in TrajectoryData.__dataclass_fields__
+        assert "bonds" not in TrajectoryData.__dataclass_fields__
 
 
 class TestDxdtNPerAtom:
@@ -801,33 +778,3 @@ class TestDxdtNPerAtom:
         bs = traj.welford.bs
         # Fallback: dxdt_n_per_atom is None of delta_n_per_atom (same array).
         np.testing.assert_array_equal(bs.dxdt_n_per_atom, bs.delta_n_per_atom)
-
-
-class TestLegacyRollupSchema:
-    """Verify the legacy GromacsProtein ensemble schema still loads.
-    `/positions` + `/frame_times` + `/rollup/{mean,std,names}` at root,
-    root attrs include n_frames + positions_shape_T/N."""
-
-    def test_legacy_rollup_populated(self, tmp_path):
-        path = tmp_path / "legacy.h5"
-        with h5py.File(path, "w") as f:
-            _write_legacy_rollup_root(f, N_ATOMS, n_frames=4)
-        traj = load_trajectory(path)
-        assert traj.rollup is not None
-        assert traj.rollup.n_columns == 1
-        assert traj.n_atoms == N_ATOMS
-        assert traj.n_frames == 4
-        assert traj.frame_times.shape == (4,)
-        assert traj.positions.shape == (4, N_ATOMS, 3)
-
-    def test_legacy_schema_no_welford_groups(self, tmp_path):
-        path = tmp_path / "legacy.h5"
-        with h5py.File(path, "w") as f:
-            _write_legacy_rollup_root(f, N_ATOMS, n_frames=4)
-        traj = load_trajectory(path)
-        assert traj.welford.bs is None
-        assert traj.welford.hm is None
-        assert traj.welford.mc is None
-        assert traj.welford.eeq is None
-        assert traj.welford.sasa is None
-        assert traj.welford.hbond_count is None

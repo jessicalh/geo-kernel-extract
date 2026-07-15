@@ -25,10 +25,8 @@ from ._tensors import (
     PerRingTypeT0,
     PerRingTypeT1,
     PerRingTypeT2,
-    PerBondCategoryT2,
     RingCounts,
     McConnellNearFieldCounts,
-    McConnellScalars,
     CoulombScalars,
     HBondScalars,
     DsspScalars,
@@ -84,7 +82,6 @@ ALLOWED_NATIVE_AXES = frozenset({
     "larsen_sidechain_donor_pair",
     "protein_water_hbond_pair",
     "sidechain_co_source",
-    "mopac_atomic_orbital_row",
 })
 
 
@@ -113,8 +110,9 @@ class ArraySpec:
     * ``units`` carries the SI / NMR-standard unit string for
       consumers needing to compare values across calculators
       (``"ppm"``, ``"V/A"``, ``"V/A^2"``, ``"e"``, ``"kJ/mol"``,
-      ``"Å"``, ``"radians"``, ``"degrees"``). Empty for
-      dimensionless / categorical / structured-dtype arrays.
+      ``"Å"``, ``"radians"``, ``"degrees"``). Dimensionless,
+      categorical, index, mask and structured/mixed layouts are named
+      explicitly rather than encoded as an ambiguous empty string.
 
     * ``sign_convention`` documents the explicit physical sign
       convention where one applies (notably ring-current shielding
@@ -124,14 +122,16 @@ class ArraySpec:
       0 (scalar / vector-of-scalars), 1 (Vec3), 2 (Mat3 / SphericalTensor).
 
     * ``parity`` is ``"even"`` / ``"odd"`` under spatial inversion, or
-      ``"mixed"`` when a serialized payload has no single homogeneous
-      improper-transform law (including mixed columns and categorical
-      outcomes conditioned on chirality);
+      the legacy sentinel ``"mixed"`` when the producer boundary cannot
+      certify one unconditional homogeneous improper-transform law.  That
+      includes genuinely mixed-column payloads, chiral lookup outcomes, and
+      outputs of a caller-selected learned model whose parity is unchecked;
+      ``"mixed"`` does not by itself assert that both even and odd columns
+      are present.
       shieldings (rank 2 even), axial B fields, and most scalars are
-      even. Polar vector fields like E are odd. ``mixed`` is reserved for a
-      single serialized payload whose columns/local components have genuinely
-      different improper-transform laws and therefore cannot truthfully carry
-      one homogeneous parity.
+      even. Polar vector fields like E are odd. Consumers must read
+      ``transformation`` for the reason a ``mixed`` row lacks an
+      unconditional parity contract.
 
     * ``coordinate_frame`` names the frame in which serialized components
       are expressed. ``transformation`` is the authoritative physical law,
@@ -172,7 +172,8 @@ class ArraySpec:
     structural_zero_components: str = ""
     e3nn_export: str = ""
     # Producer-side physical scaling contract for geometry-only kernels.
-    # Empty when an array is already in its final physical units.
+    # Empty when the array is already the final declared quantity or no
+    # additional physical scale is part of the producer contract.
     scaling_contract: str = ""
     # Directional-output freeze contract. Empty only for arrays whose scalar
     # or categorical behaviour needs no directional qualification.
@@ -200,13 +201,64 @@ _BS_INTENSITY_SCALING = (
     "resolved_intensity_nA_per_T in the declared ring_type_order and sum "
     "over ring type to obtain physical ppm shielding"
 )
+_BS_FIELD_SCALING = (
+    "diagnostic magnetic field evaluated at exactly 1 nA source current; the "
+    "producer does not apply the ring-type physical current. Sparse rows can "
+    "be combined with ring identity and the manifest-resolved intensities; "
+    "the dense all-types sum has lost that separation, so use the per-type "
+    "BS channels for physical ppm shielding"
+)
 _MOPAC_DIRECT_SOURCE = (
-    "Source: PM7/MOZYME/1SCF through the pinned generic-Release "
+    "Source: diskless PM7/MOZYME/1SCF through the pinned generic-Release "
     "libmopac.so.2 (MOPAC 23.2.5, commit "
     "052691223d19935a89f0fe18cd12301bd83e4201); single point "
     "(natom_move=0) at the prepared eight-decimal geometry, exact topology "
     "charge, vacuum epsilon=1, tolerance=1.0 and max_time=7200 s; "
-    "convergence is not loosened."
+    "convergence is not loosened. The mozyme_scf API runs in a crash-"
+    "contained worker and no MOPAC text output is parsed."
+)
+_MOPAC_RESULT_ABSENCE = (
+    "MopacResult is optional as a whole: worker/API/dimension/non-finite "
+    "failure means every MOPAC core/direct NPY is absent, never zero-filled."
+)
+_MOPAC_COULOMB_SOURCE = (
+    " Source: all-pairs Coulomb kernel over the legacy F15.6 projection of "
+    "diskless-libmopac PM7 Coulson charges (not the full-precision charge "
+    "NPY), with aromatic-ring membership taking precedence over cached "
+    "backbone N/CA/C/O/H/HA/CB and all other sources classed sidechain."
+)
+_PIQUAD_SCALING = (
+    "geometry-only kernel; the producer applies no physical quadrupole "
+    "prefactor. extraction_manifest.json declares the multiplier as "
+    "deferred_learnable"
+)
+_HM_SCALING = (
+    "unscaled Angstrom^-1 Haigh-Mallion surface-integral geometry kernel; "
+    "the producer applies no ring-current intensity or conversion to ppm. "
+    "Any physical shielding scale is downstream/model-defined"
+)
+_MCCONNELL_SCALING = (
+    "unscaled Angstrom^-3 McConnell geometry response with unit susceptibility "
+    "shape; no physical susceptibility magnitude or conversion to ppm is "
+    "applied. extraction_manifest.json::feature_metadata.mcconnell declares "
+    "the axial scale learned; the peptide-C=O principal-shape ratios are "
+    "pinned, not the emitted response magnitude"
+)
+_RINGCHI_SCALING = (
+    "geometry-only unit-susceptibility (3*cos(theta)^2-1)/r^3 kernel; "
+    "the producer applies no ring-susceptibility coefficient or conversion "
+    "to ppm"
+)
+_DISPERSION_SCALING = (
+    "geometry-only unit-C6 switched S(r)/r^6 kernel; the producer applies "
+    "no C6 coefficient or conversion to a dispersion energy"
+)
+_RING_UNION_SCALING = (
+    "mixed calculator row: BS cols9:18 are unit-current kernels governed by "
+    "the ring-current manifest; HM cols18:36 are unscaled Angstrom^-1 "
+    "surface-integral kernels; col7 is a unit-susceptibility Angstrom^-3 "
+    "geometry scalar; col36 is a unit-C6 Angstrom^-6 geometry scalar. The "
+    "producer applies none of the HM/susceptibility/C6 physical magnitudes"
 )
 _T2_TENSOR_METADATA = dict(
     tensor_basis=_T2_BASIS,
@@ -226,13 +278,14 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="atom", mechanism="topology"),
     ArraySpec("residue_type",     "identity",   np.ndarray,        None, True,  "Residue type enum (int32)",
               native_axis="atom", mechanism="topology"),
-    ArraySpec("ring_contributions","identity",  RingContributions, 40,   True,  "Per-(atom,ring) pair contributions",
+    ArraySpec("ring_contributions","identity",  RingContributions, 40,   True,  "Per-(atom,ring) pair geometry and unscaled calculator-kernel contributions",
               native_axis="ring_contribution_pair", irreps=_SHIELD_IRREPS, units="",
-              sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+              sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current",
+              scaling_contract=_RING_UNION_SCALING),
     ArraySpec("ring_direction_to_center", "identity", VectorField, 3, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: RingNeighbourhood.direction_to_center vector",
               native_axis="ring_contribution_pair", irreps="1o", tensor_rank=1, parity="odd", mechanism="geometry"),
-    ArraySpec("ring_geometry",    "identity",   RingGeometry,      10,   True,  "Per-ring geometry reference",
-              native_axis="aromatic_ring", units="Å", mechanism="topology"),
+    ArraySpec("ring_geometry",    "identity",   RingGeometry,      10,   True,  "Per-aromatic-ring geometry [ring/type/residue ids, center_A, unit normal, radius_A]",
+              native_axis="aromatic_ring", units="mixed_index_A_dimensionless", mechanism="topology"),
     ArraySpec("ring_pair_geometry", "identity", RingPairGeometry, 13, True, "All i<j aromatic-ring pair geometry [ring/residue/type ids, center distance, normal relations, signed normal offsets, in-plane slip, fused flag]",
               native_axis="ring_pair", units="mixed_index_A_dimensionless", mechanism="geometry"),
 
@@ -278,9 +331,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               mechanism="topology"),
     ArraySpec("enrichment_hybridisation", "enrichment", np.ndarray, None, False, "Hybridisation enum per atom (int32)",
               mechanism="topology"),
-    ArraySpec("enrichment_flags",         "enrichment", np.ndarray, 8,    False, "Enrichment boolean flags as int8 columns: is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H, is_hbond_donor, is_hbond_acceptor, is_on_aromatic_residue",
+    ArraySpec("enrichment_flags",         "enrichment", np.ndarray, 8,    False, "Enrichment boolean flags as int8 columns: is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H, donor candidate (H with N/O parent), coarse acceptor candidate (any N/O heavy atom, not chemical acceptor typing), is_on_aromatic_residue",
               mechanism="topology"),
-    ArraySpec("enrichment_parent_is_sp2", "enrichment", np.ndarray, None, False, "Per-atom uint8 flag: hydrogen parent is typed sp2/aromatic",
+    ArraySpec("enrichment_parent_is_sp2", "enrichment", np.ndarray, None, False, "Per-atom uint8 compatibility flag: for H only, parent is an aromatic-ring member or the residue's cached backbone C/N; this is not a general typed-hybridisation lookup",
               mechanism="topology"),
     ArraySpec("semantic_polar_h_kind",     "enrichment", np.ndarray, None, False, "Raw typed PolarHKind enum per atom (uint8)",
               mechanism="topology"),
@@ -294,7 +347,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               mechanism="topology"),
     ArraySpec("enrichment_donor_class",    "enrichment", np.ndarray, None, False, "Typed donor class per atom: exact PolarHKind projection (uint8)",
               mechanism="topology"),
-    ArraySpec("enrichment_acceptor_class", "enrichment", np.ndarray, None, False, "Typed acceptor projection: 0 none, 1 backbone carbonyl, 2 sidechain amide carbonyl, 3 carboxylate, 4 hydroxyl/oxide, 5 unprotonated ring N, 6 neutral other N/O/S",
+    ArraySpec("enrichment_acceptor_class", "enrichment", np.ndarray, None, False, "Typed nonpositive-formal-charge acceptor projection: 0 none, 1 backbone carbonyl O, 2 sidechain amide O, 3 carboxylate O, 4 O in aromatic hydroxyl/oxide/PlanarGroup::None, 5 unprotonated ring N, 6 N with PlanarGroup::None or S",
               mechanism="topology"),
     ArraySpec("enrichment_hybridisation_class", "enrichment", np.ndarray, None, False, "Semantic hybridisation projection using Hybridisation numeric codes: 0 sp, 1 sp2, 2 sp3, 3 unassigned",
               mechanism="topology"),
@@ -312,9 +365,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               mechanism="topology"),
 
     # ── Force-field charge assignment (ChargeAssignmentResult.cpp) ──
-    ArraySpec("ff_partial_charge", "charge_assignment", np.ndarray, None, False, "Force-field partial charge per atom (e)",
+    ArraySpec("ff_partial_charge", "charge_assignment", np.ndarray, None, False, "Prepared per-atom partial charge from the configured typed ChargeSource (parameter file, AMBER/runtime-tleap prmtop, or caller-preloaded table); not hard-wired to one force field",
               units="e", mechanism="charges"),
-    ArraySpec("ff_pb_radius",      "charge_assignment", np.ndarray, None, False, "Force-field Poisson-Boltzmann radius per atom (Å)",
+    ArraySpec("ff_pb_radius",      "charge_assignment", np.ndarray, None, False, "Prepared per-atom Poisson-Boltzmann radius from the same configured typed ChargeSource table",
               units="Å", mechanism="charges"),
 
     # ── Biot-Savart (BiotSavartResult.cpp) ───────────────────────
@@ -327,59 +380,62 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1e", units="ppm_T_per_nA", tensor_rank=1, parity="even", mechanism="ring_current", scaling_contract=_BS_INTENSITY_SCALING),
     ArraySpec("bs_per_type_T2",   "biot_savart", PerRingTypeT2,    40,   True,  "BS T2 per ring type",
               irreps="2e", units="ppm_T_per_nA", tensor_rank=2, mechanism="ring_current", scaling_contract=_BS_INTENSITY_SCALING),
-    ArraySpec("bs_total_B",       "biot_savart", MagneticVectorField, 3, True,  "BS total B-field vector",
-              irreps="1e", units="T", tensor_rank=1, parity="even", mechanism="ring_current"),
-    ArraySpec("bs_ring_B_field",  "biot_savart", MagneticVectorField, 3, True,  "BS per-(atom,ring) B-field vector",
-              native_axis="ring_contribution_pair", irreps="1e", units="T", tensor_rank=1, parity="even", mechanism="ring_current"),
-    ArraySpec("bs_ring_B_cylindrical", "biot_savart", MagneticVectorField, 3, True, "BS per-(atom,ring) B-field in ring cylindrical frame",
-              native_axis="ring_contribution_pair", irreps="1e", units="T", tensor_rank=1, parity="even", mechanism="ring_current"),
+    ArraySpec("bs_total_B",       "biot_savart", MagneticVectorField, 3, True,  "Dense unit-current (1 nA) BS geometry field summed over modeled ring types; diagnostic TrpPerimeter rings are excluded",
+              irreps="1e", units="T", tensor_rank=1, parity="even", mechanism="ring_current", scaling_contract=_BS_FIELD_SCALING),
+    ArraySpec("bs_ring_B_field",  "biot_savart", MagneticVectorField, 3, True,  "Unit-current (1 nA) BS field on union (atom,ring) rows; diagnostic rows may exist and a zero is calculator-absence-or-physical-zero without a BS-specific mask",
+              native_axis="ring_contribution_pair", irreps="1e", units="T", tensor_rank=1, parity="even", mechanism="ring_current", scaling_contract=_BS_FIELD_SCALING),
+    ArraySpec("bs_ring_B_cylindrical", "biot_savart", MagneticVectorField, 3, True, "Unit-current (1 nA) BS per-(atom,ring) B-field in the ring cylindrical frame, on the union ring_contributions row axis",
+              native_axis="ring_contribution_pair", irreps="1e", units="T", tensor_rank=1, parity="even", mechanism="ring_current", scaling_contract=_BS_FIELD_SCALING),
     ArraySpec("bs_ring_counts",   "biot_savart", RingCounts,       4,    True,  "Ring proximity counts (3/5/8/12 A)",
               mechanism="ring_current"),
 
     # ── Haigh-Mallion (HaighMallionResult.cpp) ───────────────────
-    ArraySpec("hm_shielding",     "haigh_mallion", ShieldingTensor, 9,   True,  "HM ring current shielding",
-              irreps=_SHIELD_IRREPS, units="Angstrom^-1", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
-    ArraySpec("hm_per_type_T0",   "haigh_mallion", PerRingTypeT0,   8,   True,  "HM isotropic per ring type",
-              irreps="0e", units="Angstrom^-1", mechanism="ring_current"),
-    ArraySpec("hm_per_type_T1",   "haigh_mallion", PerRingTypeT1,   24,  True,  "HM T1 per ring type",
-              irreps="1e", units="Angstrom^-1", tensor_rank=1, parity="even", mechanism="ring_current"),
-    ArraySpec("hm_per_type_T2",   "haigh_mallion", PerRingTypeT2,   40,  True,  "HM T2 per ring type",
-              irreps="2e", units="Angstrom^-1", tensor_rank=2, mechanism="ring_current"),
-    ArraySpec("hm_ring_B_field",  "haigh_mallion", MagneticVectorField, 3, True, "HM per-(atom,ring) effective B-field vector",
-              native_axis="ring_contribution_pair", irreps="1e", units="Angstrom^-1", tensor_rank=1, parity="even", mechanism="ring_current"),
+    ArraySpec("hm_shielding",     "haigh_mallion", ShieldingTensor, 9,   True,  "Unscaled HM ring-current surface-integral geometry kernel G",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-1", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current", scaling_contract=_HM_SCALING),
+    ArraySpec("hm_per_type_T0",   "haigh_mallion", PerRingTypeT0,   8,   True,  "Unscaled HM geometry-kernel T0 per ring type",
+              irreps="0e", units="Angstrom^-1", mechanism="ring_current", scaling_contract=_HM_SCALING),
+    ArraySpec("hm_per_type_T1",   "haigh_mallion", PerRingTypeT1,   24,  True,  "Unscaled HM geometry-kernel T1 per ring type",
+              irreps="1e", units="Angstrom^-1", tensor_rank=1, parity="even", mechanism="ring_current", scaling_contract=_HM_SCALING),
+    ArraySpec("hm_per_type_T2",   "haigh_mallion", PerRingTypeT2,   40,  True,  "Unscaled HM geometry-kernel T2 per ring type",
+              irreps="2e", units="Angstrom^-1", tensor_rank=2, mechanism="ring_current", scaling_contract=_HM_SCALING),
+    ArraySpec("hm_ring_B_field",  "haigh_mallion", MagneticVectorField, 3, True, "Unscaled HM per-(atom,ring) effective surface-integral field vector",
+              native_axis="ring_contribution_pair", irreps="1e", units="Angstrom^-1", tensor_rank=1, parity="even", mechanism="ring_current", scaling_contract=_HM_SCALING),
 
     # ── Pi-Quadrupole (PiQuadrupoleResult.cpp) ───────────────────
-    ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "PQ Buckingham A-term scalar per ring type",
-              irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
-    ArraySpec("piquad_axial_scalar_per_type_T0", "pi_quadrupole", PerRingTypeT0, 8, False, "Preferred additive alias of pq_per_type_T0; optional so pre-alias extractions load through the legacy required name",
-              irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
-    ArraySpec("piquad_quad_scalar", "pi_quadrupole", np.ndarray, None, False, "Sparse per-(atom,ring) rows aligned to ring_contributions: real computed RingNeighbourhood.quad_scalar, not the derived geometry scalar in ring_contributions column 7",
-              native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
-    ArraySpec("piquad_local_tensor", "pi_quadrupole", ShieldingTensor, 9, True, "Raw symmetric-traceless pi-quadrupole geometry tensor in the deterministic ring-local frame",
+    ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "Geometry-only Buckingham A-term kernel sum (3 cos^2(theta)-1)/r^4 per aromatic ring type; not a physically scaled quadrupole response",
+              irreps="0e", units="Angstrom^-4", mechanism="ring_efg", scaling_contract=_PIQUAD_SCALING),
+    ArraySpec("piquad_axial_scalar_per_type_T0", "pi_quadrupole", PerRingTypeT0, 8, False, "Additive alias of pq_per_type_T0: the same geometry-only per-type kernel, optional for pre-alias extractions",
+              irreps="0e", units="Angstrom^-4", mechanism="ring_efg", scaling_contract=_PIQUAD_SCALING),
+    ArraySpec("piquad_quad_scalar", "pi_quadrupole", np.ndarray, None, False, "Sparse geometry-only (3 cos^2(theta)-1)/r^4 values aligned to ring_contributions; a default zero can mean PiQuadrupoleResult did not accept that union row",
+              native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-4", mechanism="ring_efg", scaling_contract=_PIQUAD_SCALING),
+    ArraySpec("piquad_local_tensor", "pi_quadrupole", ShieldingTensor, 9, True, "Raw geometry-only symmetric-traceless A^-5 tensor in the deterministic ring-local frame; no physical quadrupole prefactor is applied",
               native_axis="ring_contribution_pair", irreps="2e", units="Angstrom^-5", tensor_rank=2, mechanism="ring_efg",
-              tensor_basis=_FULL9_BASIS, tensor_component_order=_FULL9_ORDER, tensor_frame="ring_local_vertex0_gauge", structural_zero_components="T0,T1_x,T1_y,T1_z", e3nn_export=_E3NN_EXPORT),
-    ArraySpec("piquad_local_T2", "pi_quadrupole", np.ndarray, 5, True, "T2 convenience view of piquad_local_tensor in project-native real tesseral order",
+              tensor_basis=_FULL9_BASIS, tensor_component_order=_FULL9_ORDER, tensor_frame="ring_local_vertex0_gauge", structural_zero_components="T0,T1_x,T1_y,T1_z", e3nn_export=_E3NN_EXPORT, scaling_contract=_PIQUAD_SCALING),
+    ArraySpec("piquad_local_T2", "pi_quadrupole", np.ndarray, 5, True, "Project-native T2 view of the same geometry-only local A^-5 tensor; not e3nn-ready and not physically prefactored",
               native_axis="ring_contribution_pair", irreps="2e", units="Angstrom^-5", tensor_rank=2, mechanism="ring_efg",
               tensor_basis=_T2_BASIS, tensor_component_order=_T2_ORDER,
               tensor_frame="ring_local_vertex0_gauge",
               structural_zero_components=_EFG_STRUCTURAL_ZEROS,
-              e3nn_export=_E3NN_EXPORT),
+              e3nn_export=_E3NN_EXPORT, scaling_contract=_PIQUAD_SCALING),
     ArraySpec("piquad_local_frame", "pi_quadrupole", np.ndarray, 9, True, "Deterministic ring-local frame columns [x_axis,y_axis,z_axis], vertex-0 gauge; NaN when invalid",
               native_axis="ring_contribution_pair", mechanism="geometry"),
-    ArraySpec("piquad_local_geometry", "pi_quadrupole", np.ndarray, 8, True, "Row-aligned local tensor provenance [atom, ring, type, distance_A, cos_theta, existing_axial_scalar, tensor_valid, aromatic_only]",
-              native_axis="ring_contribution_pair", units="mixed_index_A_dimensionless", mechanism="ring_efg"),
+    ArraySpec("piquad_local_geometry", "pi_quadrupole", np.ndarray, 8, True, "Row-aligned local-tensor provenance [atom, ring, type, distance_A, cos_theta, union-row axial scalar, local_tensor_valid, aromatic_only]; col5 zero is not an availability flag",
+              native_axis="ring_contribution_pair",
+              units="mixed:index[0:3],Å[3],dimensionless[4],Å^-4[5],mask[6:8]",
+              mechanism="ring_efg",
+              scaling_contract=_PIQUAD_SCALING + "; applies to col5 only; identity, distance, cosine and mask columns are not scaled"),
 
     # ── Ring susceptibility (RingSusceptibilityResult.cpp) ────────
-    ArraySpec("ringchi_scalar", "ring_susceptibility", np.ndarray, None, True, "Sparse computed ring-susceptibility geometry scalar aligned to ring_contributions",
-              native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-3", mechanism="ring_current"),
-    ArraySpec("ringchi_per_type_T0", "ring_susceptibility", PerRingTypeT0, 8, True, "Dense per-atom ring-susceptibility scalar grouped by aromatic RingTypeIndex",
-              irreps="0e", units="Angstrom^-3", mechanism="ring_current"),
+    ArraySpec("ringchi_scalar", "ring_susceptibility", np.ndarray, None, True, "Sparse ring-susceptibility geometry scalar aligned to the union ring_contributions rows; zero is ambiguous between a physical zero and a row not accepted by RingSusceptibilityResult",
+              native_axis="ring_contribution_pair", irreps="0e", units="Angstrom^-3", mechanism="ring_current", scaling_contract=_RINGCHI_SCALING),
+    ArraySpec("ringchi_per_type_T0", "ring_susceptibility", PerRingTypeT0, 8, True, "Dense per-atom sums of accepted ring-susceptibility geometry scalars by aromatic RingTypeIndex; zero means an empty/zero accepted sum",
+              irreps="0e", units="Angstrom^-3", mechanism="ring_current", scaling_contract=_RINGCHI_SCALING),
 
     # ── Dispersion (DispersionResult.cpp) ────────────────────────
-    ArraySpec("disp_per_type_T0", "dispersion", PerRingTypeT0,     8,    True,  "Deprecated name for unit-coefficient aromatic R^-6 proximity per ring type; not D3/D4 energy",
-              irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion"),
-    ArraySpec("aromatic_r6_proximity_per_type_T0", "dispersion", PerRingTypeT0, 8, False, "Canonical name for unit-coefficient aromatic R^-6 proximity per ring type; not D3/D4 energy",
-              irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion"),
+    ArraySpec("disp_per_type_T0", "dispersion", PerRingTypeT0,     8,    True,  "Deprecated name for the per-type sum over accepted aromatic-ring vertices of the configured switched S(r)/r^6 kernel; ring vertices and atoms bonded to any vertex are excluded; not D3/D4 energy",
+              irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion", scaling_contract=_DISPERSION_SCALING),
+    ArraySpec("aromatic_r6_proximity_per_type_T0", "dispersion", PerRingTypeT0, 8, False, "Canonical alias: per-type sum over accepted aromatic-ring vertices of configured switched S(r)/r^6, with vertex/bonded exclusions; not D3/D4 energy",
+              irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion", scaling_contract=_DISPERSION_SCALING),
 
     # ── McConnell (McConnellResult.cpp) ──────────────────────────
     # Forward schema: project-native packed SphericalTensor
@@ -433,9 +489,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1o", units="", tensor_rank=1, parity="odd", mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_co_midpoint",   "mcconnell", PositionField, 3, False, "Nearest accepted peptide C=O source midpoint per atom from ConformationAtom::nearest_CO_midpoint",
               units="Å", parity="odd", mechanism="bond_anisotropy"),
-    ArraySpec("mc_nearest_co_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C=O response per atom from ConformationAtom::T2_CO_nearest, packed [T0, T1x, T1y, T1z, T2_m-2..+2]",
+    ArraySpec("mc_nearest_co_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C=O axial ComputePairKernel response per atom (not the additive channel's PeptideCO rhombic source-shape response), packed in project Full9 order",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_nearest_cn_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C-N response per atom from ConformationAtom::T2_CN_nearest, packed [T0, T1x, T1y, T1z, T2_m-2..+2]",
+    ArraySpec("mc_nearest_cn_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C-N axial ComputePairKernel response per atom, packed in project Full9 order",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
 
     # Typed side-chain carbonyl inventory + the canonical McConnell
@@ -448,44 +504,37 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="sidechain_co_source", units="mixed_A_dimensionless", mechanism="bond_anisotropy"),
     ArraySpec("sidechain_co_frame_quality", "sidechain_carbonyl_anisotropy", np.ndarray, 4, True, "Side-chain C=O frame audit [bond_length_A, orthogonality_error, raw_normal_norm_A2, frame_valid]",
               native_axis="sidechain_co_source", units="mixed", mechanism="bond_anisotropy"),
-    ArraySpec("sidechain_co_fixed_T2", "sidechain_carbonyl_anisotropy", ShieldingTensor, 9, True, "Canonical fixed-strength McConnell SidechainCO response, full project-native SphericalTensor pack",
+    ArraySpec("sidechain_co_fixed_T2", "sidechain_carbonyl_anisotropy", ShieldingTensor, 9, True, "Canonical fixed-unit-weight McConnell SidechainCO geometry response, full project-native SphericalTensor pack",
               native_axis="atom", irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("sidechain_co_bo_T2", "sidechain_carbonyl_anisotropy", ShieldingTensor, 9, True, "MOPAC bond-order-weighted McConnell SidechainCO response, full project-native SphericalTensor pack; NaN rows when MOPAC is absent",
+    ArraySpec("sidechain_co_bo_T2", "sidechain_carbonyl_anisotropy", ShieldingTensor, 9, True, "MOPAC bond-order-weighted McConnell SidechainCO geometry response, full project-native SphericalTensor pack; NaN rows when MOPAC is absent",
               native_axis="atom", irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("sidechain_co_scalar_audit", "sidechain_carbonyl_anisotropy", np.ndarray, 4, True, "Per-atom audit [fixed_T2_norm, bo_T2_norm, accepted_sidechain_CO_source_count, nearest_sidechain_CO_midpoint_distance_A]",
               native_axis="atom", units="mixed", mechanism="bond_anisotropy"),
 
-    # Legacy McConnell arrays retained as optional/deprecated wrappers for
-    # reading old extraction directories; new C++ emits 20 category/channel
-    # tensors plus the PeptideCO rhombic audit tensor above.
-    ArraySpec("mc_shielding",     "mcconnell_legacy", ShieldingTensor,    9,    False,  "Legacy McConnell aggregate shielding", irreps=_SHIELD_IRREPS, units="Angstrom^-3",
-              sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_category_T2",   "mcconnell_legacy", PerBondCategoryT2,  25,   False,  "Legacy McConnell T2 per old bond category", irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_scalars",       "mcconnell_legacy", McConnellScalars,   6,    False,  "Legacy McConnell scalar sums + distances", mechanism="bond_anisotropy"),
-
     # ── Coulomb (CoulombResult.cpp) — emitted alongside canonical APBS
     # in production. It supplies the vacuum field plus direct aliases of the
-    # APBS reaction field, and also feeds the MOPAC-vs-FF14SB probe. ──
-    ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG (full 9-pack; T0/T1 structural zeros)",
+    # APBS reaction field, and also feeds the MOPAC-vs-configured-ChargeSource
+    # reconciliation probe (whose filename retains a historical ff14sb label). ──
+    ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG full 9-pack; T0/T1 are structural zeros (bitwise-symmetric source, explicit traceless projection)",
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_t2",         "coulomb", EFGTensor,       5,   False, "Coulomb bare total EFG T2-only companion copied from coulomb_efg columns 4:9",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("coulomb_E",              "coulomb", VectorField,     3,   False, "Coulomb total E-field",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_E_backbone",     "coulomb", VectorField,     3,   False, "Coulomb E-field backbone",
+    ArraySpec("coulomb_E_backbone",     "coulomb", VectorField,     3,   False, "Force-field-charge Coulomb field from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources (CB is included)",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_E_sidechain",    "coulomb", VectorField,     3,   False, "Coulomb E-field sidechain",
+    ArraySpec("coulomb_E_sidechain",    "coulomb", VectorField,     3,   False, "Force-field-charge Coulomb field from sources that are neither aromatic-ring members nor cached backbone N/CA/C/O/H/HA/CB",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_E_aromatic",     "coulomb", VectorField,     3,   False, "Coulomb E-field aromatic",
+    ArraySpec("coulomb_E_aromatic",     "coulomb", VectorField,     3,   False, "Force-field-charge Coulomb field from aromatic-ring-member sources; aromatic membership takes precedence over backbone classification",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       5,   False, "Coulomb EFG backbone (T2 only, symmetric-traceless)",
+    ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       5,   False, "Force-field-charge EFG T2 from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources (CB included)",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("coulomb_efg_sidechain",  "coulomb", EFGTensor,       5,   False, "Coulomb EFG sidechain (T2 only, symmetric-traceless)",
+    ArraySpec("coulomb_efg_sidechain",  "coulomb", EFGTensor,       5,   False, "Force-field-charge EFG T2 from sources neither aromatic nor cached backbone",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("coulomb_efg_aromatic",   "coulomb", EFGTensor,       5,   False, "Coulomb EFG aromatic (T2 only, symmetric-traceless)",
+    ArraySpec("coulomb_efg_aromatic",   "coulomb", EFGTensor,       5,   False, "Force-field-charge EFG T2 from aromatic-ring members, with aromatic precedence over backbone classification",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("coulomb_scalars",        "coulomb", CoulombScalars,  4,   False, "Coulomb E-field scalars",
-              mechanism="electrostatic_efg"),
+    ArraySpec("coulomb_scalars",        "coulomb", CoulombScalars,  4,   False, "Force-field Coulomb scalars [|E_total|, parent-to-H E_total projection (NaN when unavailable), signed E_backbone projection onto E_total direction (historical *_frac name; zero at near-zero |E_total|), |E_aromatic|]",
+              units="V/A", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_aromatic_E_proj", "coulomb", np.ndarray,     None, False, "Coulomb aromatic E-field parent-to-H projection; NaN for non-H or parentless atoms",
               irreps="0e", units="V/A", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_aromatic_n_src",  "coulomb", np.ndarray,     None, False, "Count of sidechain aromatic source atoms contributing to the Coulomb aromatic field (int32)", units="count", mechanism="electrostatic_efg"),
@@ -493,11 +542,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_solvent",     "coulomb", EFGTensor,       5,   False, "APBS reaction-field alias: canonical APBS EFG T2 = total PB minus homogeneous-vacuum reference",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("coulomb_shielding",      "coulomb_legacy", ShieldingTensor, 9, False, "Legacy name for Coulomb bare total EFG", irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
-    ArraySpec("hbond_scalars",    "hbond", HBondScalars,           4,    True,  "H-bond scalars (nearest_dist, 1/r^3, count, McConnell angular scalar Σ)",
-              mechanism="hbond_kernel"),
+    ArraySpec("hbond_scalars",    "hbond", HBondScalars,           4,    True,  "H-bond summary [nearest accepted H-to-target distance_A, its inverse-cube_A^-3, count of accepted source evaluations within configured hbond_counting_radius (default 3.5 A), sum over every accepted evaluation of (3cos^2(theta)-1)/r^3_A^-3]; legacy zero distance/inverse-cube means no accepted source when hbond_flags col0 is zero",
+              units="mixed_A_A^-3_count_A^-3", mechanism="hbond_kernel"),
     ArraySpec("hbond_nearest_dir", "hbond", VectorField,            3,    False, "Nearest accepted H-bond direction per atom from the explicit donor H source point to the target atom",
               irreps="1o", tensor_rank=1, parity="odd", mechanism="hbond_kernel"),
     ArraySpec("hbond_flags", "hbond", np.ndarray,                   3,    False, "H-bond boolean flags as int8 columns: hbond_is_backbone, hbond_is_donor, hbond_is_acceptor",
@@ -568,8 +616,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="dimensionless", mechanism="solvation"),
 
     # ── Hydration shell (HydrationShellResult.cpp) ──────────────
-    ArraySpec("hydration_shell",    "hydration",   np.ndarray,     4,    False, "Hydration geometry [asymmetry, dipole_cos, ion_dist, ion_charge]",
-              mechanism="solvation"),
+    ArraySpec("hydration_shell",    "hydration",   np.ndarray,     4,    False, "Explicit-solvent per-atom [centroid-proxy exposed first-shell-water fraction, mean water-dipole/atom-to-water cosine, nearest-ion distance within configured cutoff, nearest-ion charge]; no shell gives 0,0 and no ion gives +inf,0",
+              units="mixed_dimensionless_A_e", mechanism="solvation"),
 
     # ── Hydration geometry — SASA-normal (HydrationGeometryResult.cpp) ─
     ArraySpec("water_polarization", "water_polarization", np.ndarray, 10, False, "Water polarisation [dipole(3), normal(3), asym, align, mean_net_dipole_eA legacy coherence, count]",
@@ -592,20 +640,20 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("eeq_coulomb_E",             "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb total E-field",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("eeq_coulomb_E_backbone",    "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb E-field backbone",
+    ArraySpec("eeq_coulomb_E_backbone",    "eeq_coulomb", VectorField, 3, False, "EEQ-charge field from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources (CB is included)",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("eeq_coulomb_E_sidechain",   "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb E-field sidechain",
+    ArraySpec("eeq_coulomb_E_sidechain",   "eeq_coulomb", VectorField, 3, False, "EEQ-charge field from sources that are neither aromatic-ring members nor cached backbone N/CA/C/O/H/HA/CB",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("eeq_coulomb_E_aromatic",    "eeq_coulomb", VectorField, 3, False, "EEQ-charge Coulomb E-field aromatic",
+    ArraySpec("eeq_coulomb_E_aromatic",    "eeq_coulomb", VectorField, 3, False, "EEQ-charge field from aromatic-ring-member sources; aromatic membership takes precedence over backbone classification",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("eeq_coulomb_efg_backbone",  "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge Coulomb EFG backbone (T2 only)",
+    ArraySpec("eeq_coulomb_efg_backbone",  "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge EFG T2 from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources (CB included)",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("eeq_coulomb_efg_sidechain", "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge Coulomb EFG sidechain (T2 only)",
+    ArraySpec("eeq_coulomb_efg_sidechain", "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge EFG T2 from sources neither aromatic nor cached backbone",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("eeq_coulomb_efg_aromatic",  "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge Coulomb EFG aromatic (T2 only)",
+    ArraySpec("eeq_coulomb_efg_aromatic",  "eeq_coulomb", EFGTensor, 5, False, "EEQ-charge EFG T2 from aromatic-ring members, with aromatic precedence over backbone classification",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("eeq_coulomb_scalars",       "eeq_coulomb", CoulombScalars, 4, False, "EEQ-charge Coulomb scalars [E_magnitude, H-only E_bond_proj, E_backbone_frac, aromatic_E_magnitude]",
-              mechanism="electrostatic_efg"),
+    ArraySpec("eeq_coulomb_scalars",       "eeq_coulomb", CoulombScalars, 4, False, "EEQ-charge Coulomb scalars [|E_total|, parent-to-H E_total projection (NaN when unavailable), signed E_backbone projection onto E_total direction (historical *_frac name; zero at near-zero |E_total|), |E_aromatic|]",
+              units="V/A", mechanism="electrostatic_efg"),
     ArraySpec("eeq_coulomb_aromatic_E_proj", "eeq_coulomb", np.ndarray, None, False, "EEQ-charge Coulomb aromatic E-field parent-to-H projection; NaN for non-H or parentless atoms",
               irreps="0e", units="V/A", mechanism="electrostatic_efg"),
     ArraySpec("eeq_coulomb_aromatic_n_src", "eeq_coulomb", np.ndarray, None, False, "Count of sidechain aromatic source atoms contributing to the EEQ-charge Coulomb aromatic field (int32)",
@@ -616,8 +664,33 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="protein", units="kJ/mol", mechanism="gromacs_runtime"),
 
     # ── Bonded energy (BondedEnergyResult.cpp) ─────────────────
-    ArraySpec("bonded_energy",      "bonded",      np.ndarray,      7,   False, "Per-atom bonded energy (bond,angle,UB,proper,improper,CMAP,total) kJ/mol",
-              units="kJ/mol", mechanism="gromacs_runtime"),
+    ArraySpec("bonded_energy",      "bonded",      np.ndarray,      7,   False, "Per-atom equal-share attribution of locally evaluated supplied BondedParameters using CHARMM36m-style forms [bond, angle, Urey-Bradley, proper, improper, CMAP, total]; not a GROMACS EDR per-atom decomposition",
+              units="kJ/mol", parity="mixed", mechanism="bonded_parameters",
+              coordinate_frame="intrinsic_signed_valence_geometry",
+              transformation="translation/proper-rotation invariant local bonded energies; no unconditional improper-transform law because signed dihedrals feed supplied phase offsets and an arbitrary supplied CMAP grid",
+              validity="physical equal-share zero when no supplied bonded term touches an atom; total is the sum of columns0:6"),
+
+    # ── Legacy trajectory Welford NPY projections ───────────────
+    # The production trajectory CLI writes the richer H5 groups. These three
+    # NPYs remain live through TrajectoryProtein::WriteFeatures and therefore
+    # still belong in the producer format contract.
+    ArraySpec("hm_welford", "trajectory_rollup", np.ndarray, 11, False,
+              "(N,11) unscaled Haigh-Mallion geometry-kernel trajectory rollup [T0 mean/std/min/max, |T2| mean/std/min/max, consecutive-frame T0-delta mean/std, n_frames]; source is hm_shielding_contribution and no directional component is serialized",
+              native_axis="atom", irreps="0e", units="mixed_A^-1_count", mechanism="ring_current",
+              coordinate_frame="intrinsic_statistics", transformation="exact O(3)-invariant scalar statistics of T0 and the project-native T2 norm; frame count invariant",
+              validity="optional output of TrajectoryProtein::WriteFeatures when HmWelfordTrajectoryResult is attached; with zero primary samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std columns8:10 are NaN with fewer than two frames, while zero is physical only after at least one actual delta sample",
+              scaling_contract=_HM_SCALING + "; scale signed and norm statistics according to their semantics; frame count is unscaled"),
+    ArraySpec("mc_welford", "trajectory_rollup", np.ndarray, 11, False,
+              "(N,11) unscaled McConnell unit-susceptibility geometry-response trajectory rollup [T0 mean/std/min/max, |T2| mean/std/min/max, consecutive-frame T0-delta mean/std, n_frames]; source is mc_shielding_contribution and no directional component is serialized",
+              native_axis="atom", irreps="0e", units="mixed_A^-3_count", mechanism="bond_anisotropy",
+              coordinate_frame="intrinsic_statistics", transformation="exact O(3)-invariant scalar statistics of T0 and the project-native T2 norm; frame count invariant",
+              validity="optional output of TrajectoryProtein::WriteFeatures when McConnellWelfordTrajectoryResult is attached; with zero primary samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std columns8:10 are NaN with fewer than two frames, while zero is physical only after at least one actual delta sample",
+              scaling_contract=_MCCONNELL_SCALING + "; scale signed and norm statistics according to their semantics; frame count is unscaled"),
+    ArraySpec("sasa_welford", "trajectory_rollup", np.ndarray, 7, False,
+              "(N,7) SASA trajectory rollup [SASA mean/std/min/max, consecutive-frame SASA-delta mean/std, n_frames] from the finite lab-fixed Fibonacci surface estimator",
+              native_axis="atom", units="mixed_A^2_count", parity="mixed", mechanism="solvation",
+              coordinate_frame="lab_fixed_fibonacci_surface_grid", transformation="cols0-5 inherit the finite sampled SASA estimator and have no exact O(3) law; col6 frame count is exact invariant",
+              validity="optional output of TrajectoryProtein::WriteFeatures when SasaWelfordTrajectoryResult is attached; with zero primary samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std columns4:6 are NaN with fewer than two frames, while zero is physical only after at least one actual delta sample"),
 
     # ── MOPAC direct API (MopacResult.cpp) ───────────────────────
     # Structural N/A for this SCF configuration: mopac_properties
@@ -627,60 +700,60 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # because nlattice=nlattice_move=0. nerror/error_msg are control-plane:
     # any nonzero nerror hard-aborts before emission, so they are not data NPYs.
     ArraySpec("mopac_charges", "mopac_core", np.ndarray, None, False,
-              "(N,) legacy printed-format charge projection reconstructed from mopac_properties.charge at F15.6 (six decimal places). The untouched struct values are in mopac_charges_full_precision. " + _MOPAC_DIRECT_SOURCE,
+              "(N,) legacy printed-format charge projection reconstructed from mopac_properties.charge at F15.6 (six decimal places). The unquantized binary64 API values are in mopac_charges_full_precision; that name does not claim physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="e", mechanism="charges"),
     ArraySpec("mopac_scalars", "mopac_core", MopacScalars, 4, False,
               "(N,4) legacy printed-format projection [charge,s population,p population,compact-bond valency]: charge is F15.6, s/p are F12.5, and valency is the per-atom sum of F6.3 orders greater than 0.01 among MOPAC's sorted first six compact bond-row entries, all reconstructed from the charge, atom_ao_density, and bond CSC structs. Atoms without p AOs carry the mathematical p-population zero here, matching the old scalar surface. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="mixed_e_dimensionless", mechanism="charges"),
     ArraySpec("mopac_bond_orders", "mopac_core", BondOrders, 3, False,
-              "(C,3) legacy compact-table rows [atom_i,atom_j,order], reconstructed from mopac_properties' CSC bond fields by reproducing MOPAC's sorted first-six entries per atom, F6.3 (three-decimal) formatting, strict >0.01 retention, and unordered-pair maximum. C can be smaller than the complete API-unique pair count U; that full-precision set is in mopac_bond_orders_full_precision. " + _MOPAC_DIRECT_SOURCE,
+              "(C,3) legacy compact-table rows [atom_i,atom_j,order], reconstructed from mopac_properties' CSC bond fields by reproducing MOPAC's sorted first-six entries per atom, F6.3 (three-decimal) formatting, strict >0.01 retention, and unordered-pair maximum. C can be smaller than the retained API-unique pair count U; the unquantized set is in mopac_bond_orders_full_precision. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_compact_pair", units="mixed_index_dimensionless", mechanism="charges"),
     ArraySpec("mopac_bond_neighbors", "mopac_core", np.ndarray, 4, False,
               "(2C,4) directed read-back of the legacy compact-pair projection [atom_i,atom_j,F6.3 order,topology_bond_index], sorted by decreasing order within atom_i; the pair set comes from MOPAC's reconstructed first-six/>0.01 compact rows, and topology index -1 means no covalent-topology bond. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_bond_neighbor_pair", units="mixed_index_dimensionless", mechanism="charges"),
     ArraySpec("mopac_global", "mopac_core", MopacGlobal, 4, False,
-              "(4,) legacy printed-format graph vector [heat_kcal_mol,dipole_x,dipole_y,dipole_z], reconstructed from mopac_properties.heat/dipole with heat at five decimal places and each dipole component at three. Untouched struct values are emitted separately. " + _MOPAC_DIRECT_SOURCE,
+              "(4,) legacy printed-format graph vector [heat_kcal_mol,dipole_x,dipole_y,dipole_z], reconstructed from mopac_properties.heat/dipole with heat at five decimal places and each dipole component at three. Unquantized binary64 API values are emitted separately; that split does not claim physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="protein", units="mixed_kcal_per_mol_Debye", mechanism="quantum_reference"),
     ArraySpec("mopac_atom_populations", "mopac_core", MopacAtomPopulations, 12, False,
               "(N,12) legacy printed-format columns [charge,electron trace,s,p,d,N/A f,N/A per-atom dipole x/y/z/total,CSC-diagonal valency,compact-bond valency], reconstructed from structs. Precisions are 6,4,5,5,5 decimal places respectively for charge/trace/s/p/d, three for the CSC diagonal, and compact-bond valency is the sum of retained first-six F6.3 orders. p/d are NaN without a live p/d shell; the f and per-atom-dipole text-only columns are NaN, never zero-filled. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="mixed_e_dimensionless", mechanism="quantum_reference"),
     ArraySpec("mopac_atomic_orbital_populations", "mopac_core", MopacAtomicOrbitalPopulations, 9, False,
-              "(N,9) legacy F10.5 (five-decimal) AO-population projection, reconstructed from the diagonal of mopac_properties.atom_ao_density in MOPAC s/px/py/pz/d order only through each atom's live ao_orbitals width; non-existent per-atom AOs are NaN/N/A. The untouched globally padded blocks remain in mopac_atom_ao_density. " + _MOPAC_DIRECT_SOURCE,
+              "(N,9) legacy F10.5 (five-decimal) AO-population projection, reconstructed from the diagonal of mopac_properties.atom_ao_density in MOPAC s/px/py/pz/d order only through each atom's live ao_orbitals width; non-existent per-atom AOs are NaN/N/A. The unquantized globally padded API blocks remain in mopac_atom_ao_density. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="electron", mechanism="quantum_reference"),
     ArraySpec("mopac_atomic_orbital_population_totals", "mopac_core", MopacAtomicOrbitalPopulationTotals, 3, False,
-              "(N,3) legacy shell totals [s,p,d], formed exactly as before by summing the individually F10.5-projected AO entries; the resulting sums are not a second quantization of the separately printed 3F12.5 shell table. p/d are NaN where that atom has no live p/d shell. The untouched all-finite sums are emitted separately as mopac_atom_{s,p,d}_population. " + _MOPAC_DIRECT_SOURCE,
+              "(N,3) legacy shell totals [s,p,d], formed exactly as before by summing the individually F10.5-projected AO entries; the resulting sums are not a second quantization of the separately printed 3F12.5 shell table. p/d are NaN where that atom has no live p/d shell. Unquantized binary64 API-derived sums are emitted separately as mopac_atom_{s,p,d}_population. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="electron", mechanism="quantum_reference"),
     ArraySpec("mopac_bond_valencies", "mopac_core", np.ndarray, None, False,
-              "(N,) legacy three-decimal printed-format projection of the diagonal valencies in mopac_properties' CSC Wiberg matrix, not recomputed from off-diagonal orders. Untouched diagonal values are in mopac_bond_valencies_full_precision. " + _MOPAC_DIRECT_SOURCE,
+              "(N,) legacy three-decimal printed-format projection of the diagonal valencies in mopac_properties' CSC Wiberg matrix, not recomputed from off-diagonal orders. Unquantized binary64 API diagonal values are in mopac_bond_valencies_full_precision; that name does not claim physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="dimensionless", mechanism="charges"),
     ArraySpec("mopac_bond_orders_unique", "mopac_core", MopacUniqueBondOrders, 8, False,
-              "(U,8) legacy-compatible API-unique a<b projection [a,b,max_order,mean_order,NaN,NaN,NaN,topology_bond_index]. Each of the two symmetric CSC entries is first projected to its F6.3 parsed value, then max/mean are formed exactly as the text parser did; U is the complete API sparse pair set, independent of compact first-six visibility. Columns 4, 5, and 6 were ALLBONDS text-only count/entry indices and are explicitly NaN; topology indices use this API-unique row basis. " + _MOPAC_DIRECT_SOURCE,
+              "(U,8) legacy-compatible API-unique a<b projection [a,b,max_order,mean_order,NaN,NaN,NaN,topology_bond_index]. Each of the two symmetric CSC entries is first put through the F6.3 compatibility projection, then max/mean are formed as the retired text parser did; U is the complete retained API sparse pair set, independent of compact first-six visibility. Columns 4, 5, and 6 were ALLBONDS text-only count/entry indices and are explicitly NaN rather than fabricated; col7 is NaN when the retained pair has no covalent-topology bond. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_unique_pair", units="mixed_index_dimensionless", mechanism="charges"),
     ArraySpec("mopac_topology_bond_orders_full", "mopac_core", MopacTopologyBondOrdersFull, 8, False,
               "(B,8) legacy-compatible topology bridge [bond_index,a,b,three-decimal API-pair order,present,API_unique_pair_index,API_sparse_absence_flag,NaN]. Order and unique-pair index are NaN when the topology pair is absent from mopac_properties' sparse CSC set; the final ALLBONDS printed-entry-count column is text-only and explicitly NaN. This API-pair subset is independent of compact first-six visibility. " + _MOPAC_DIRECT_SOURCE,
               native_axis="bond", units="mixed_index_dimensionless", mechanism="charges"),
 
     ArraySpec("mopac_charges_full_precision", "mopac_direct", np.ndarray, None, False,
-              "(N,) untouched full-precision net atomic Coulson charges copied from mopac_properties.charge, without legacy print quantization. " + _MOPAC_DIRECT_SOURCE,
+              "(N,) unquantized binary64 net atomic Coulson charges copied from mopac_properties.charge without legacy decimal projection; full_precision denotes that compatibility split, not physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="e", mechanism="charges"),
     ArraySpec("mopac_bond_orders_full_precision", "mopac_direct", BondOrders, 3, False,
-              "(U,3) complete API-unique a<b rows [atom_i,atom_j,Wiberg order]; the order column is the untouched full-precision a<b off-diagonal value from mopac_properties.bond_order, indexed through bond_index/bond_atom, with no compact-row filtering or legacy print quantization. " + _MOPAC_DIRECT_SOURCE,
+              "(U,3) all retained libmopac sparse-API unique a<b rows [atom_i,atom_j,Wiberg order]; values are unquantized binary64 API values (the meaning of full_precision here), with no compact first-six/F6.3 projection. Pairs omitted by libmopac's strict >0.01 sparse finalizer have no row and are not measured zeros. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_unique_pair", units="mixed_index_dimensionless", mechanism="charges"),
     ArraySpec("mopac_bond_valencies_full_precision", "mopac_direct", np.ndarray, None, False,
-              "(N,) untouched full-precision diagonal valencies copied from mopac_properties.bond_order's CSC diagonal entries, without legacy print quantization. " + _MOPAC_DIRECT_SOURCE,
+              "(N,) unquantized binary64 diagonal valencies copied from mopac_properties.bond_order's CSC diagonal entries without legacy decimal projection; full_precision is not a claim of physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="dimensionless", mechanism="charges"),
 
     ArraySpec("mopac_heat_kcal_mol", "mopac_direct", np.ndarray, None, False,
-              "(1,) untouched full-precision PM7 heat of formation copied from mopac_properties.heat. " + _MOPAC_DIRECT_SOURCE,
+              "(1,) unquantized binary64 PM7 heat of formation copied from mopac_properties.heat; no claim of physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="protein", units="kcal/mol", mechanism="quantum_reference"),
     ArraySpec("mopac_dipole_debye", "mopac_direct", np.ndarray, 3, False,
-              "(3,) untouched full-precision molecular electric dipole xyz copied from mopac_properties.dipole. " + _MOPAC_DIRECT_SOURCE,
+              "(3,) unquantized binary64 molecular electric dipole xyz copied from mopac_properties.dipole; no claim of physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="protein", units="Debye", mechanism="quantum_reference"),
     ArraySpec("mopac_dipole_point_charge_debye", "mopac_direct", np.ndarray, 3, False,
-              "(3,) untouched full-precision point-charge contribution xyz copied from mopac_properties.dipole_point_charge. " + _MOPAC_DIRECT_SOURCE,
+              "(3,) unquantized binary64 point-charge contribution xyz copied from mopac_properties.dipole_point_charge; no claim of physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="protein", units="Debye", mechanism="quantum_reference"),
     ArraySpec("mopac_dipole_hybridization_debye", "mopac_direct", np.ndarray, 3, False,
-              "(3,) untouched full-precision one-centre hybridization contribution xyz copied from mopac_properties.dipole_hybridization. " + _MOPAC_DIRECT_SOURCE,
+              "(3,) unquantized binary64 one-centre hybridization contribution xyz copied from mopac_properties.dipole_hybridization; no claim of physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="protein", units="Debye", mechanism="quantum_reference"),
     ArraySpec("mopac_bond_index", "mopac_direct", np.ndarray, None, False,
               "(N+1,) int32 zero-based CSC offsets from mopac_properties.bond_index; final value E sizes the directed bond arrays. " + _MOPAC_DIRECT_SOURCE,
@@ -689,7 +762,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               "(E,) int32 zero-based CSC row/neighbor atom indices from mopac_properties.bond_atom, parallel to mopac_bond_order and directed density. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_csc_entry", units="index", mechanism="quantum_reference"),
     ArraySpec("mopac_bond_order", "mopac_direct", np.ndarray, None, False,
-              "(E,) complete directed CSC values from mopac_properties.bond_order: diagonal valencies and off-diagonal Wiberg indices. " + _MOPAC_DIRECT_SOURCE,
+              "(E,) retained directed sparse-CSC values from mopac_properties.bond_order: diagonal valencies and strict >0.01 off-diagonal Wiberg indices; an omitted pair is not a measured zero. Values are unquantized API binary64, not a claim of physical exactness. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_csc_entry", units="dimensionless", mechanism="quantum_reference"),
     ArraySpec("mopac_ao_max_orbitals", "mopac_direct", np.ndarray, None, False,
               "(1,) int32 AO block width W from mopac_properties.ao_max_orbitals. " + _MOPAC_DIRECT_SOURCE,
@@ -698,19 +771,19 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               "(N,) int32 live AO width per atom from mozyme_state.iorbs, cross-checked exactly equal to mopac_properties.ao_orbitals so both populated API views are represented. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="count", mechanism="quantum_reference"),
     ArraySpec("mopac_atom_ao_density", "mopac_direct", np.ndarray, None, False,
-              "(N,W,W) atom-diagonal Coulson population/density blocks from mopac_properties.atom_ao_density, converted from Fortran [W,W,N] to C order; MOPAC-provided zero padding is retained. " + _MOPAC_DIRECT_SOURCE,
+              "(N,W,W) atom-centred s/p/d AO-basis Coulson population matrices from mopac_properties.atom_ao_density, converted from Fortran [W,W,N] to C order. These are reducible AO-basis matrices, not Cartesian rank-2/e3nn tensors; global-W cells beyond each atom's live width are structural N/A zero padding. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="electron", mechanism="quantum_reference"),
     ArraySpec("mopac_atomic_orbital_populations_full_precision", "mopac_direct", np.ndarray, None, False,
-              "(N,W) untouched double-precision atomic-orbital electron populations: the diagonal of each mopac_properties.atom_ao_density block in MOPAC s/px/py/pz/d order. Global-W zero padding is retained and mopac_ao_orbitals_per_atom gives each atom's live width. This is the direct quantity named mopac_atomic_orbital_populations in the mopac2 feature table; the unsuffixed NPY remains the required legacy F10.5 (N,9) projection. " + _MOPAC_DIRECT_SOURCE,
+              "(N,W) unquantized binary64 diagonal of each mopac_properties.atom_ao_density block in MOPAC s/px/py/pz/d AO order. Diagonal-only components are not closed under rotation because coherences are omitted. Global-W cells beyond live width are structural N/A zero padding; the unsuffixed NPY is the F10.5 (N,9) compatibility projection. " + _MOPAC_DIRECT_SOURCE,
               native_axis="atom", units="electron", mechanism="quantum_reference"),
     ArraySpec("mopac_bond_ao_density_directed", "mopac_direct", np.ndarray, None, False,
-              "(E,W,W) complete directed Coulson interatomic blocks from mopac_properties.bond_ao_density, parallel to the raw CSC arrays and including diagonal and reverse entries. " + _MOPAC_DIRECT_SOURCE,
+              "(E,W,W) Coulson AO-basis blocks parallel to the retained sparse CSC bond_atom/bond_order arrays, including atom-diagonal entries and retained off-diagonal forward/reverse entries. They are left/right AO-basis matrices, not Cartesian rank-2/e3nn tensors; cells beyond live endpoint widths are structural padding. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_csc_entry", units="electron", mechanism="quantum_reference"),
     ArraySpec("mopac_bond_density_pairs", "mopac_direct", np.ndarray, 2, False,
               "(U,2) int32 zero-based a<b atom pairs indexing the probe-compatible mopac_bond_ao_density view. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_unique_pair", units="index", mechanism="quantum_reference"),
     ArraySpec("mopac_bond_ao_density", "mopac_direct", np.ndarray, None, False,
-              "(U,W,W) a<b Coulson interatomic blocks selected from the complete directed field; squared block norms reconstruct the paired Wiberg indices. " + _MOPAC_DIRECT_SOURCE,
+              "(U,W,W) a<b Coulson AO-basis blocks selected from the retained sparse directed field; squared live-block norms reconstruct retained paired Wiberg indices. Missing sparse pairs have no row, and padded cells outside live endpoint widths are structural N/A zeros. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_unique_pair", units="electron", mechanism="quantum_reference"),
     ArraySpec("mopac_atom_electron_population", "mopac_direct", np.ndarray, None, False,
               "(N,) trace of each atom AO-density block. " + _MOPAC_DIRECT_SOURCE,
@@ -740,7 +813,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               "(sum ncf,) int32 packed zero-based occupied-LMO atom lists selected from mozyme_state.icocc using native libmopac offsets. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_occupied_lmo_atom_entry", units="index", mechanism="quantum_reference"),
     ArraySpec("mopac_lmo_occupied_coefficients", "mopac_direct", np.ndarray, None, False,
-              "(sum live AO widths,) packed occupied-LMO AO coefficients selected from mozyme_state.cocc using native offsets and listed-atom AO widths. " + _MOPAC_DIRECT_SOURCE,
+              "(sum live AO widths,) packed occupied-LMO AO coefficients selected from mozyme_state.cocc using native offsets and listed-atom AO widths. Orbital sign, ordering and localization gauge are not fixed across rotated/re-run SCF calculations, so rows have no closed e3nn/O(3) law. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_occupied_lmo_coefficient", units="dimensionless", mechanism="quantum_reference"),
     ArraySpec("mopac_lmo_virtual_atom_counts", "mopac_direct", np.ndarray, None, False,
               "(V,) int32 virtual-LMO atom counts from mozyme_state.nce; MOPAC notes that the virtual set is not re-localized. " + _MOPAC_DIRECT_SOURCE,
@@ -749,7 +822,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               "(sum nce,) int32 packed zero-based virtual-LMO atom lists selected from mozyme_state.icvir using native libmopac offsets. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_virtual_lmo_atom_entry", units="index", mechanism="quantum_reference"),
     ArraySpec("mopac_lmo_virtual_coefficients", "mopac_direct", np.ndarray, None, False,
-              "(sum live AO widths,) packed virtual-LMO AO coefficients selected from mozyme_state.cvir using native offsets and listed-atom AO widths. " + _MOPAC_DIRECT_SOURCE,
+              "(sum live AO widths,) packed virtual-LMO AO coefficients selected from mozyme_state.cvir using native offsets and listed-atom AO widths. Orbital sign, ordering and localization gauge are not fixed across rotated/re-run SCF calculations, so rows have no closed e3nn/O(3) law. " + _MOPAC_DIRECT_SOURCE,
               native_axis="mopac_virtual_lmo_coefficient", units="dimensionless", mechanism="quantum_reference"),
     ArraySpec("mopac_lmo_occupied_atom_offsets_native", "mopac_direct", np.ndarray, None, False,
               "(O,) int32 exact mopac_properties.lmo_occupied_atom_offset values into native icocc storage; not offsets into the compact view. " + _MOPAC_DIRECT_SOURCE,
@@ -780,31 +853,24 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="protein", units="count", mechanism="quantum_reference"),
 
     # ── MOPAC Coulomb (MopacCoulombResult.cpp) ───────────────────
-    ArraySpec("mopac_coulomb_efg",           "mopac_coulomb", ShieldingTensor, 9,  False, "MOPAC Coulomb bare total EFG (full 9-pack; T0/T1 structural zeros)",
+    ArraySpec("mopac_coulomb_efg",           "mopac_coulomb", ShieldingTensor, 9,  False, "MOPAC-charge bare total EFG in project Full9; finite analytic rows have structural-zero T0/T1, but the unmasked post-projection elementwise nonfinite sanitizer can break T0." + _MOPAC_COULOMB_SOURCE,
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_E",             "mopac_coulomb", VectorField,     3,  False, "MOPAC Coulomb E-field",
+    ArraySpec("mopac_coulomb_E",             "mopac_coulomb", VectorField,     3,  False, "MOPAC-charge all-pairs total E-field." + _MOPAC_COULOMB_SOURCE,
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_E_backbone",    "mopac_coulomb", VectorField,     3,  False, "MOPAC Coulomb E-field backbone",
+    ArraySpec("mopac_coulomb_E_backbone",    "mopac_coulomb", VectorField,     3,  False, "MOPAC-charge field from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources." + _MOPAC_COULOMB_SOURCE,
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_E_sidechain",   "mopac_coulomb", VectorField,     3,  False, "MOPAC Coulomb E-field sidechain",
+    ArraySpec("mopac_coulomb_E_sidechain",   "mopac_coulomb", VectorField,     3,  False, "MOPAC-charge field from sources neither aromatic nor cached backbone." + _MOPAC_COULOMB_SOURCE,
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_E_aromatic",    "mopac_coulomb", VectorField,     3,  False, "MOPAC Coulomb E-field aromatic",
+    ArraySpec("mopac_coulomb_E_aromatic",    "mopac_coulomb", VectorField,     3,  False, "MOPAC-charge field from aromatic-ring-member sources." + _MOPAC_COULOMB_SOURCE,
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_efg_backbone",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG backbone (T2 only)",
+    ArraySpec("mopac_coulomb_efg_backbone",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC-charge EFG native T2 from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources." + _MOPAC_COULOMB_SOURCE,
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("mopac_coulomb_efg_sidechain", "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG sidechain (T2 only)",
+    ArraySpec("mopac_coulomb_efg_sidechain", "mopac_coulomb", EFGTensor,       5,  False, "MOPAC-charge EFG native T2 from sources neither aromatic nor cached backbone." + _MOPAC_COULOMB_SOURCE,
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("mopac_coulomb_efg_aromatic",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG aromatic (T2 only)",
+    ArraySpec("mopac_coulomb_efg_aromatic",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC-charge EFG native T2 from aromatic-ring-member sources." + _MOPAC_COULOMB_SOURCE,
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("mopac_coulomb_scalars",       "mopac_coulomb", CoulombScalars,  4,  False, "MOPAC Coulomb scalars",
-              mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_shielding",     "mopac_coulomb_legacy", ShieldingTensor, 9, False, "Legacy name for MOPAC Coulomb bare total EFG", irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-
-    # ── Legacy MOPAC McConnell (replaced by McConnell BO channel) ─
-    ArraySpec("mopac_mc_shielding",    "mopac_mcconnell_legacy", ShieldingTensor,   9,  False, "Legacy MOPAC McConnell aggregate shielding", irreps=_SHIELD_IRREPS, units="Angstrom^-3",
-              sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mopac_mc_category_T2",  "mopac_mcconnell_legacy", PerBondCategoryT2, 25, False, "Legacy MOPAC McConnell T2 per category", irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mopac_mc_scalars",      "mopac_mcconnell_legacy", McConnellScalars,  6,  False, "Legacy MOPAC McConnell scalars", mechanism="bond_anisotropy"),
+    ArraySpec("mopac_coulomb_scalars",       "mopac_coulomb", CoulombScalars,  4,  False, "MOPAC-charge scalars [|E_total|, parent-to-H E_total projection (NaN when unavailable), signed E_backbone projection onto E_total direction (historical *_frac name; zero at near-zero |E_total|), |E_aromatic|]." + _MOPAC_COULOMB_SOURCE,
+              units="V/A", mechanism="electrostatic_efg"),
 
     # ── APBS (ApbsFieldResult.cpp) ───────────────────────────────
     ArraySpec("apbs_E",           "apbs", VectorField,             3,    False, "APBS canonical reaction E-field: total PB minus homogeneous-vacuum reference",
@@ -833,44 +899,44 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="quantum_reference"),
 
     # ── Mutation delta (MutationDeltaResult.cpp) ─────────────────
-    ArraySpec("delta_shielding",       "delta", ShieldingTensor,       9,    False, "WT-ALA shielding delta (total)",
-              native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
+    ArraySpec("delta_shielding",       "delta", ShieldingTensor,       9,    False, "WT-minus-mutant total ORCA shielding delta on the dense WT atom axis",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
-    ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Delta metadata + match info",
-              native_axis="mutation_match_pair", mechanism="mutation_delta"),
+    ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Dense WT-atom rows [matched, WT-mutant shielding T0, nearest removed-ring distance, configured-ChargeSource charge delta, legacy F15.6 MOPAC charge delta, typed WT-to-mutant match distance]; matched rows with no removed ring use 99 Å; MOPAC-delta zero is ambiguous between unavailable MOPAC and a true zero",
+              native_axis="atom", units="mixed_mask_ppm_A_e_e_A", mechanism="mutation_delta"),
     ArraySpec("delta_graph",           "delta", np.ndarray,             5,    False, "Graph deltas [matched, has_graph_delta, delta_graph_dist_ring, delta_bfs_decay, delta_is_conjugated]",
-              native_axis="mutation_match_pair", mechanism="mutation_delta"),
-    ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "APBS delta_E(3) + legacy full-9 EFG envelope; only columns 7:12 are physical EFG T2",
-              native_axis="mutation_match_pair", mechanism="mutation_delta",
+              native_axis="atom", mechanism="mutation_delta"),
+    ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "Optional APBS delta_E(3) + legacy full-9 EFG envelope; only columns 7:12 are physical EFG T2, and the whole file is absent when the mutation calculation has no paired APBS delta",
+              native_axis="atom", mechanism="mutation_delta",
               tensor_basis=_T2_BASIS,
               tensor_component_order="delta_E_x,delta_E_y,delta_E_z,T0_compat_zero,T1_x_compat_zero,T1_y_compat_zero,T1_z_compat_zero,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2",
               tensor_frame="conformation_cartesian_xyz",
               structural_zero_components=_EFG_STRUCTURAL_ZEROS,
               e3nn_export="raw project tensor; call DeltaAPBS.delta_efg_t2.to_e3nn() before using e3nn Irreps"),
-    ArraySpec("delta_ring_proximity",  "delta", DeltaRingProximity,    None, False, "Removed ring geometry (variable cols)",
-              native_axis="mutation_match_pair", units="Å", mechanism="mutation_delta"),
+    ArraySpec("delta_ring_proximity",  "delta", DeltaRingProximity,    None, False, "Optional dense WT-atom rows with one six-column block per removed WT ring [distance_A, signed z_A, rho_A, theta_rad, (3cos^2(theta)-1)/r^3_A^-3, exp(-distance/L)]; the whole file is absent without a mutation site that removes at least one WT ring",
+              native_axis="atom", units="mixed_A_radians_A^-3_dimensionless", mechanism="mutation_delta"),
     # DFT shielding component decomposition: WT side, mut side, deltas;
     # diamagnetic and paramagnetic. sigma_total = sigma_dia + sigma_para;
     # the existing delta_shielding satisfies that identity at ORCA's
     # output precision (~1e-3 ppm). Stratifies mutation shifts by
     # physical mechanism.
     ArraySpec("wt_shielding_diamagnetic",     "delta", ShieldingTensor, 9, False, "WT diamagnetic shielding (matched, by WT atom row)",
-              native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("wt_shielding_paramagnetic",    "delta", ShieldingTensor, 9, False, "WT paramagnetic shielding (matched, by WT atom row)",
-              native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("mut_shielding_diamagnetic",    "delta", ShieldingTensor, 9, False, "mut diamagnetic shielding (matched, by WT atom row)",
-              native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("mut_shielding_paramagnetic",   "delta", ShieldingTensor, 9, False, "mut paramagnetic shielding (matched, by WT atom row)",
-              native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("delta_shielding_diamagnetic",  "delta", ShieldingTensor, 9, False, "WT - mut diamagnetic shielding delta",
-              native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("delta_shielding_paramagnetic", "delta", ShieldingTensor, 9, False, "WT - mut paramagnetic shielding delta",
-              native_axis="mutation_match_pair", irreps=_SHIELD_IRREPS, units="ppm",
+              native_axis="atom", irreps=_SHIELD_IRREPS, units="ppm",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
 
     # ── Per-atom invariant categorical record (CategoryInfoProjection.cpp) ──
@@ -887,39 +953,39 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # The 2026-04-26 contract was articulated in the memory entry but
     # the required=True flag was not landed in the catalog at the time;
     # landed 2026-05-04 alongside AIMNet2 wire-in to smoke tests.
-    ArraySpec("aimnet2_charges",             "aimnet2", AIMNet2Charges,            None, True,  "AIMNet2 Hirshfeld charges",
+    ArraySpec("aimnet2_charges",             "aimnet2", AIMNet2Charges,            None, True,  "Per-atom `charges` output of the loaded AIMNet2 TorchScript model (intended Hirshfeld charges for a conforming model); float64 NPY widens the model result and does not imply binary64 model evaluation",
               units="e", mechanism="charges"),
-    ArraySpec("aimnet2_aim",                 "aimnet2", AIMNet2AimEmbedding,       256,  True,  "AIMNet2 256-dim electronic embedding",
+    ArraySpec("aimnet2_aim",                 "aimnet2", AIMNet2AimEmbedding,       256,  True,  "Raw float32 (N,256) `aim` output of the loaded AIMNet2 TorchScript model; 256 opaque learned channels, not Cartesian components or producer-certified e3nn irreps",
               mechanism="charges"),
     ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG total (T2 only)",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG aromatic (T2 only)",
+    ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2-charge EFG T2 from aromatic-ring members, with aromatic precedence over backbone classification",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG backbone (T2 only)",
+    ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2-charge EFG T2 from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources (CB included)",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-    ArraySpec("aimnet2_efg_sidechain",       "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG sidechain (T2 only)",
+    ArraySpec("aimnet2_efg_sidechain",       "aimnet2", EFGTensor,                 5,    True,  "AIMNet2-charge EFG T2 from sources neither aromatic nor cached backbone",
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("aimnet2_E",                   "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived total E-field",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("aimnet2_E_backbone",          "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived E-field backbone",
+    ArraySpec("aimnet2_E_backbone",          "aimnet2", VectorField,               3,    True,  "AIMNet2-charge field from non-aromatic cached backbone N/CA/C/O/H/HA/CB sources (CB included)",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("aimnet2_E_sidechain",         "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived E-field sidechain",
+    ArraySpec("aimnet2_E_sidechain",         "aimnet2", VectorField,               3,    True,  "AIMNet2-charge field from sources neither aromatic nor cached backbone",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("aimnet2_E_aromatic",          "aimnet2", VectorField,               3,    True,  "AIMNet2 charge-derived E-field aromatic",
+    ArraySpec("aimnet2_E_aromatic",          "aimnet2", VectorField,               3,    True,  "AIMNet2-charge field from aromatic-ring members, with aromatic precedence over backbone classification",
               irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("aimnet2_energy_mlp",          "aimnet2", np.ndarray,                None, True, "AIMNet2 per-atom energy after the energy_mlp head",
+    ArraySpec("aimnet2_energy_mlp",          "aimnet2", np.ndarray,                None, True, "Per-atom energy after replaying the loaded model's energy_mlp head; float64 NPY widens the Torch result",
               units="eV", mechanism="charges"),
-    ArraySpec("aimnet2_energy_shifted_local", "aimnet2", np.ndarray,               None, True, "AIMNet2 per-atom shifted local energy after the atomic_shift head",
+    ArraySpec("aimnet2_energy_shifted_local", "aimnet2", np.ndarray,               None, True, "Per-atom local energy after replaying energy_mlp then atomic_shift; float64 NPY widens the Torch result",
               units="eV", mechanism="charges"),
-    ArraySpec("aimnet2_energy_terms",        "aimnet2", np.ndarray,                6,    True, "AIMNet2 protein-level energy terms [local_sum, e_lrcoulomb, e_dftd3, total, conditioned_net_charge, neutral_conditioning_flag]",
+    ArraySpec("aimnet2_energy_terms",        "aimnet2", np.ndarray,                6,    True, "One protein row [sum after atomic_sum, lrcoulomb increment, dftd3 increment, final energy, configured model-conditioning net charge, neutral-conditioning 0/1 flag]",
               native_axis="protein", units="mixed:eV[0:4],e[4],dimensionless[5]", mechanism="charges"),
-    ArraySpec("aimnet2_d3_e_disp_atom",      "aimnet2", np.ndarray,                None, True, "AIMNet2 D3 per-atom dispersion-energy increment",
+    ArraySpec("aimnet2_d3_e_disp_atom",      "aimnet2", np.ndarray,                None, True, "Per-atom D3 dispersion-energy increment recomputed from the loaded model's private dftd3 state and long-range neighbour table",
               units="eV", mechanism="charges"),
-    ArraySpec("aimnet2_d3_cn",               "aimnet2", np.ndarray,                None, True, "AIMNet2 D3 coordination number",
+    ArraySpec("aimnet2_d3_cn",               "aimnet2", np.ndarray,                None, True, "Per-atom D3 coordination number recomputed from the loaded model's private dftd3 state and long-range neighbour table",
               units="dimensionless", mechanism="charges"),
-    ArraySpec("aimnet2_d3_c6_stats",         "aimnet2", np.ndarray,                3,    True, "AIMNet2 D3 C6 statistics [sum, mean, max] over valid long-range neighbours",
+    ArraySpec("aimnet2_d3_c6_stats",         "aimnet2", np.ndarray,                3,    True, "Per-atom D3 C6 [sum,mean,max] over valid long-range neighbour slots; exactly [0,0,0] when no slot is valid",
               units="Hartree*bohr^6", mechanism="charges"),
-    ArraySpec("aimnet2_aim_projection",      "aimnet2", np.ndarray,                32,   True, "AIMNet2 fixed 32-d projection of raw aim; basis splitmix64_0xA17E20260708_achlioptas_32x256_element_HCNOS",
+    ArraySpec("aimnet2_aim_projection",      "aimnet2", np.ndarray,                32,   True, "Float32 fixed element-conditioned 32-d linear projection of raw aim, computed once in Compute; basis splitmix64_0xA17E20260708_achlioptas_32x256_element_HCNOS; channels remain opaque learned features",
               units="dimensionless", mechanism="charges"),
 
     # ── AIMNet2 charge-response gradient (AIMNet2ChargeResponseGradientResult.cpp)
@@ -927,9 +993,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # 2026-05-09 promotion of Amendment 2026-05-08(b) from a test flag
     # to standard non-trajectory pipeline; trajectory mode unchanged).
     # Vector is dL/d(r_i) where L = sum_j q_j^2 over non-sentinel atoms
-    # (charge-conservation makes sum(q) gradient near-zero, so the L2
-    # of charges is the cheapest single-pass objective with non-trivial
-    # gradient). Scalar is the L2 norm of the vector. required=False
+    # (for a conforming model, charge conservation makes the sum(q) gradient
+    # near-zero, so the L2 of charges is the cheapest single-pass objective
+    # with non-trivial gradient). Scalar is the L2 norm. required=False
     # because old extraction outputs (pre-2026-05-09) do not include
     # them; new outputs always do when AIMNet2 is loaded. Renamed from
     # "polarisability" 2026-05-20 (commit 58594f5) — the emission is
@@ -1043,11 +1109,11 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ────────────────────────────────────────────────────────────────
     # Topology sidecar (TopologySidecar.cpp) — additive 2026-05-13.
-    # Three structured-NPY projections of LegacyAmberTopology +
-    # RingTopology. Emitted alongside atoms_category_info.npy whenever
-    # the protein has a populated typed substrate.
+    # Four structured-NPY projections of the Protein topology. The writer
+    # attempts them for every protein; empty semantic/ring content is carried
+    # by the structured rows/sentinels rather than suppressing the sidecar.
     # ────────────────────────────────────────────────────────────────
-    ArraySpec("residues",         "topology", np.ndarray, None, True,  "Per-residue record: residue_index, chain_id, residue_number, insertion_code, residue_type, amber/iupac/one-letter names, protonation_variant_index, terminal_state, prev/next links, atom_count, is_proline/aromatic/titratable, has_amide_h",
+    ArraySpec("residues",         "topology", np.ndarray, None, True,  "Per-residue record: residue_index, chain_id, residue_number, insertion_code, residue_type, amber/iupac/one-letter names, protonation_variant_index, terminal_state, prev/next links, atom_count, is_proline/aromatic/titratable, has_amide_h, is_xpro_context",
               native_axis="residue", mechanism="topology"),
     ArraySpec("bonds",            "topology", np.ndarray, None, True,  "Per-bond record: bond_index, atom_index_a/b, bond_order, bond_category, is_rotatable, is_aromatic, is_peptide, is_backbone",
               native_axis="bond", mechanism="topology"),
@@ -1066,7 +1132,6 @@ def _with_project_tensor_metadata(spec: ArraySpec) -> ArraySpec:
             "coulomb_efg",
             "eeq_coulomb_efg",
             "mopac_coulomb_efg",
-            "mopac_coulomb_shielding",
         }:
             structural_zeros = _EFG_STRUCTURAL_ZEROS
         return replace(
@@ -1077,7 +1142,7 @@ def _with_project_tensor_metadata(spec: ArraySpec) -> ArraySpec:
             structural_zero_components=structural_zeros,
             e3nn_export=spec.e3nn_export or _E3NN_EXPORT,
         )
-    if spec.wrapper in (PerRingTypeT2, PerBondCategoryT2):
+    if spec.wrapper is PerRingTypeT2:
         return replace(
             spec,
             tensor_basis=spec.tensor_basis or _T2_BASIS,
@@ -1125,23 +1190,12 @@ def _set_contract(stems, *, coordinate_frame, transformation, validity,
         )
 
 
-# Writers serialize every MutationDeltaResult table on the WT atom axis, not
-# on a compact matched-pair axis.  MOPAC AO rows are likewise their own parsed
-# row axis: the writer does not guarantee K == atom_count.
-for _stem in (
-    "delta_shielding", "delta_scalars", "delta_graph", "delta_apbs",
-    "delta_ring_proximity", "wt_shielding_diamagnetic",
-    "wt_shielding_paramagnetic", "mut_shielding_diamagnetic",
-    "mut_shielding_paramagnetic", "delta_shielding_diamagnetic",
-    "delta_shielding_paramagnetic",
-):
-    CATALOG[_stem] = replace(CATALOG[_stem], native_axis="atom")
-for _stem in (
-    "mopac_atomic_orbital_populations",
-    "mopac_atomic_orbital_population_totals",
-):
-    CATALOG[_stem] = replace(
-        CATALOG[_stem], native_axis="mopac_atomic_orbital_row")
+def _set_units(stems, units):
+    """Set an explicit unit/layout label on existing catalog entries."""
+    for stem in stems:
+        if stem not in CATALOG:
+            raise RuntimeError(f"unit contract references unknown NPY stem {stem!r}")
+        CATALOG[stem] = replace(CATALOG[stem], units=units)
 
 
 # Cartesian positions and homogeneous vectors.
@@ -1163,6 +1217,29 @@ _set_contract(
         "1 iff the bond displacement is finite and nonzero; 0 gates the "
         "legacy zero in bond_direction.npy"
     ),
+    irreps="0e", parity="even", tensor_rank=0)
+_LOCAL_BACKBONE_ANGLES = (
+    "tau_N_CA_C", "angle_N_CA_CB", "angle_CB_CA_C",
+    "angle_Cprev_N_CA", "angle_CA_C_Nnext",
+)
+_set_contract(
+    _LOCAL_BACKBONE_ANGLES, coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant valence angle in radians; translation invariant"
+    ),
+    validity=(
+        "the same-stem _valid.npy uint8 array gates independently computed "
+        "values; invalid/non-applicable rows are NaN"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    tuple(f"{stem}_valid" for stem in _LOCAL_BACKBONE_ANGLES),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant uint8 availability for the corresponding "
+        "residue-local valence angle"
+    ),
+    validity="1 iff the corresponding angle is finite; 0 gates its NaN",
     irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("ring_direction_to_center",), coordinate_frame=_CARTESIAN_FRAME,
@@ -1189,6 +1266,17 @@ _set_contract(
     ("hbond_nearest_dir",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=_POLAR_VECTOR,
     validity="hbond_flags.npy column 0 identifies an accepted nearest source; otherwise zero")
+_set_contract(
+    ("hbond_scalars",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "four exact O(3)-invariant scalars for a fixed typed accepted-pair set; "
+        "translation invariant"
+    ),
+    validity=(
+        "hbond_flags.npy column 0 gates nearest-distance and inverse-cube "
+        "legacy zeros; count/angular-sum zero is a physical empty/zero sum"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("hbond_flags",), coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
@@ -1223,6 +1311,18 @@ _set_contract(
     ),
     irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
+    ("hydration_shell",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant scalar row for a jointly transformed protein, "
+        "waters and ions; translation invariant"
+    ),
+    validity=(
+        "whole NPY is absent when explicit solvent is unavailable; no "
+        "first-shell waters gives cols0:2=0; no finite-dipole sample gives "
+        "col1=0; no ion inside hydration_ion_cutoff gives cols2:4=[+inf,0]"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
     ("cb_deviation_valid", "cb_residual_vector_valid"),
     coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
@@ -1238,13 +1338,15 @@ _set_contract(
 _set_contract(
     ("coulomb_E", "coulomb_E_backbone", "coulomb_E_sidechain",
      "coulomb_E_aromatic"),
-    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    coordinate_frame=_CARTESIAN_FRAME, transformation=(
+        "polar_vector: v'=R v"
+    ),
     validity=(
         "force-field Coulomb producer replaces non-finite values with zero; "
         "no sanitizer mask (legacy unavailable/zero ambiguity); all four "
         "vectors are jointly scaled when total-E exceeds the configured clamp, "
         "with provenance only in GeometryChoice"
-    ))
+    ), irreps="1o", parity="odd", tensor_rank=1)
 _set_contract(
     ("coulomb_E_solvent",),
     coordinate_frame=_CARTESIAN_FRAME,
@@ -1262,13 +1364,16 @@ _set_contract(
 _set_contract(
     ("mopac_coulomb_E", "mopac_coulomb_E_backbone",
      "mopac_coulomb_E_sidechain", "mopac_coulomb_E_aromatic"),
-    coordinate_frame=_CARTESIAN_FRAME, transformation=_POLAR_VECTOR,
+    coordinate_frame=_CARTESIAN_FRAME, transformation=(
+        "polar_vector: v'=R v"
+    ),
     validity=(
         "MOPAC-charge Coulomb producer replaces non-finite values with zero; "
-        "no sanitizer mask (legacy unavailable/zero ambiguity); all four "
+        "no sanitizer mask (physical-zero/sanitized-zero ambiguity); all four "
         "vectors are jointly scaled when total-E exceeds the configured clamp, "
-        "with provenance only in GeometryChoice"
-    ))
+        "with provenance only in GeometryChoice; all arrays are absent when "
+        "the prerequisite MopacResult is absent"
+    ), irreps="1o", parity="odd", tensor_rank=1)
 _set_contract(
     ("eeq_coulomb_E", "eeq_coulomb_E_backbone",
      "eeq_coulomb_E_sidechain", "eeq_coulomb_E_aromatic"),
@@ -1278,6 +1383,50 @@ _set_contract(
         "all four vectors are jointly scaled when total-E exceeds the "
         "configured clamp, with provenance only in GeometryChoice"
     ))
+_set_contract(
+    ("coulomb_scalars",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "O(3)-invariant magnitudes and signed vector projections"
+    ),
+    validity=(
+        "col1 is NaN without a valid parent-to-H direction; col2 is a signed "
+        "V/A projection (not a fraction) and is zero at near-zero total E; "
+        "field sanitizer/clamp has no NPY mask"
+    ),
+    irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_coulomb_scalars",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "O(3)-invariant magnitudes and signed projections"
+    ),
+    validity=(
+        "col1 is NaN without a valid parent-to-H direction; col2 is a signed "
+        "V/A projection (not a fraction) and is zero at near-zero total E; "
+        "absent with MopacResult and field sanitizer/clamp has no NPY mask"
+    ),
+    irreps="", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("coulomb_aromatic_E_proj",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "O(3)-invariant scalar parent-bond projection"
+    ),
+    validity=(
+        "NaN for non-H or parentless atoms; otherwise physical signed V/A "
+        "projection"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("eeq_coulomb_scalars",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant magnitudes and signed vector projections for "
+        "the serialized EEQ-charge fields"
+    ),
+    validity=(
+        "col1 is NaN without a valid parent-to-H direction; col2 is a signed "
+        "V/A projection (not a fraction) and is zero at near-zero total E; "
+        "the whole result is absent on non-finite fields"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("apbs_E", "apbs_E_total_diagnostic"),
     coordinate_frame=_CARTESIAN_FRAME,
@@ -1428,8 +1577,10 @@ _set_contract(
     ("bs_total_B", "bs_ring_B_field", "hm_ring_B_field"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=_AXIAL_VECTOR,
     validity=(
-        "dense totals use physical zero when no accepted source; sparse ring "
-        "fields are row-aligned with ring_contributions.npy"
+        "dense total uses physical zero when no accepted modeled source and "
+        "excludes diagnostic TrpPerimeter rings; sparse fields use the union "
+        "ring_contributions.npy axis, where calculator-default zero is "
+        "ambiguous with a physical zero and no per-calculator mask is emitted"
     ))
 
 
@@ -1476,6 +1627,27 @@ _set_contract(
         "nearest CO/CN tensors use NaN when the corresponding nearest distance "
         "is NO_DATA_SENTINEL"
     ))
+for _stem in _MCCONNELL_FULL9:
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        description=(
+            CATALOG[_stem].description +
+            "; unscaled unit-susceptibility geometry response, not ppm"
+        ),
+        scaling_contract=_MCCONNELL_SCALING,
+    )
+CATALOG["sidechain_co_scalar_audit"] = replace(
+    CATALOG["sidechain_co_scalar_audit"],
+    description=(
+        CATALOG["sidechain_co_scalar_audit"].description +
+        "; cols0:2 are norms of unscaled unit-susceptibility responses"
+    ),
+    scaling_contract=(
+        _MCCONNELL_SCALING +
+        "; cols0:2 scale by the magnitude of the downstream response scale; "
+        "count and distance columns are unscaled"
+    ),
+)
 for _stem in ("mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo"):
     CATALOG[_stem] = replace(
         CATALOG[_stem],
@@ -1484,20 +1656,35 @@ for _stem in ("mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo"):
         ),
     )
 
+for _stem in (
+    "mc_peptide_co_bo", "mc_peptide_cn_bo", "mc_backbone_other_bo",
+    "mc_sidechain_co_bo", "mc_sidechain_other_bo", "mc_disulfide_bo",
+    "mc_backbone_xh_bo", "mc_sidechain_xh_bo", "mc_s_h_bo",
+    "sidechain_co_bo_T2",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        transformation=_EVEN_RANK2,
+        irreps=_SHIELD_IRREPS,
+    )
+
 _set_contract(
     ("coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
-    transformation=_EVEN_RANK2,
+    transformation=(
+        "even_rank2: T'=R T R^T"
+    ),
     validity=(
-        "T0/T1 structural zeros; non-finite producer values become zero "
-        "without a sanitizer mask"
-    ))
+        "symmetric-traceless source: T0/T1 are structural zeros"
+    ), irreps=_SHIELD_IRREPS)
 _set_contract(
     ("mopac_coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
-    transformation=_EVEN_RANK2,
+    transformation=(
+        "even_rank2: T'=R T R^T"
+    ),
     validity=(
-        "T0/T1 structural zeros; non-finite producer values become zero "
-        "without a sanitizer mask"
-    ))
+        "symmetric-traceless source: T0/T1 are structural zeros; absent when "
+        "the prerequisite MopacResult is absent"
+    ), irreps=_SHIELD_IRREPS)
 _set_contract(
     ("eeq_coulomb_efg",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=_EVEN_RANK2,
@@ -1526,11 +1713,28 @@ for _stem in (
 ):
     CATALOG[_stem] = replace(
         CATALOG[_stem],
+        transformation=(
+            "even_rank2_native_T2: reconstruct Cartesian T, apply "
+            "T'=R T R^T, then decompose in project-native T2 basis"
+        ),
         validity=(
-            "symmetric-traceless source (T0/T1 structural zeros); non-finite "
-            "force-field producer values become zero without a sanitizer mask"
+            "finite symmetric-traceless analytic source; only native T2 is "
+            "serialized"
+        ),
+        structural_zero_components=(
+            "T0,T1_x,T1_y,T1_z"
+        ),
+        e3nn_export=(
+            "finite analytic rows only: raw project-native T2; convert "
+            "explicitly before e3nn use. Exceptional sanitized rows are not "
+            "a closed O(3) representation and have no validity mask"
         ),
     )
+CATALOG["coulomb_efg"] = replace(
+    CATALOG["coulomb_efg"],
+    structural_zero_components="T0,T1_x,T1_y,T1_z",
+    irreps=_SHIELD_IRREPS,
+)
 CATALOG["coulomb_efg_solvent"] = replace(
     CATALOG["coulomb_efg_solvent"],
     transformation=(
@@ -1552,11 +1756,29 @@ for _stem in (
 ):
     CATALOG[_stem] = replace(
         CATALOG[_stem],
+        transformation=(
+            "even_rank2_native_T2: reconstruct Cartesian T, apply "
+            "T'=R T R^T, then decompose in project-native T2 basis"
+        ),
         validity=(
-            "symmetric-traceless source (T0/T1 structural zeros); non-finite "
-            "MOPAC-charge producer values become zero without a sanitizer mask"
+            "finite symmetric-traceless analytic source; only native T2 is "
+            "serialized; absent when the prerequisite MopacResult is absent"
+        ),
+        structural_zero_components=(
+            "T0,T1_x,T1_y,T1_z"
+        ),
+        e3nn_export=(
+            "finite analytic rows only: raw project-native T2; convert "
+            "explicitly before e3nn use. Exceptional sanitized rows are not "
+            "a closed O(3) representation and have no validity mask"
         ),
     )
+CATALOG["mopac_coulomb_efg"] = replace(
+    CATALOG["mopac_coulomb_efg"],
+    structural_zero_components=(
+        "T0,T1_x,T1_y,T1_z"
+    ),
+)
 for _stem in (
     "eeq_coulomb_efg_backbone", "eeq_coulomb_efg_sidechain",
     "eeq_coulomb_efg_aromatic",
@@ -1622,6 +1844,134 @@ for _stem in (
             "model/result is required as a whole with no per-row fallback"
         ),
     )
+
+# AIMNet2 loads the caller-selected TorchScript file.  The producer checks its
+# runtime interface, dimensions and finiteness, but does not prove that an
+# arbitrary compatible model is O(3)-equivariant.  Preserve the conditional
+# physical laws below without upgrading them to unconditional rerun promises.
+_AIMNET_MODEL_SCALAR = (
+    "O(3)- and translation-invariant scalar"
+)
+_AIMNET_MAIN_VALIDITY = (
+    "finite-validated output of the single AIMNet2Result Compute; current CLI "
+    "extraction requires that result and aborts on model/interface/non-finite "
+    "failure rather than fabricating a row"
+)
+_set_contract(
+    ("aimnet2_charges", "aimnet2_energy_mlp",
+     "aimnet2_energy_shifted_local", "aimnet2_d3_e_disp_atom",
+     "aimnet2_d3_cn"),
+    coordinate_frame="loaded_aimnet2_model_scalar_channel",
+    transformation=_AIMNET_MODEL_SCALAR,
+    validity=(
+        _AIMNET_MAIN_VALIDITY + "; zero is a finite model/calculator value, "
+        "not an absence sentinel; float64 NPY storage widens a Torch result "
+        "and does not add numerical precision"
+    ),
+    irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("aimnet2_energy_terms",),
+    coordinate_frame="loaded_aimnet2_model_and_configuration_scalars",
+    transformation=(
+        "mixed scalar row: cols0:4 have the loaded-model conditional scalar "
+        "law; col4 is the configured integer net-charge conditioning value "
+        "and col5 its 0/1 neutral-conditioning flag"
+    ),
+    validity=(
+        _AIMNET_MAIN_VALIDITY + "; cols0:4 are finite-validated, col4 may "
+        "legitimately be zero, and col5 is exactly 0 or 1"
+    ),
+    irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("aimnet2_d3_c6_stats",),
+    coordinate_frame="loaded_aimnet2_d3_scalar_channels",
+    transformation=_AIMNET_MODEL_SCALAR,
+    validity=(
+        _AIMNET_MAIN_VALIDITY + "; columns are [sum,mean,max] over valid "
+        "long-range neighbour slots and [0,0,0] is the explicit structural "
+        "empty-neighbour result; float64 NPY storage widens Torch values"
+    ),
+    irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("aimnet2_aim", "aimnet2_aim_projection"),
+    coordinate_frame="loaded_aimnet2_learned_channel_basis",
+    transformation=(
+        "opaque learned-channel vector with no producer-guaranteed Cartesian, "
+        "O(3), parity or e3nn transformation law; do not rotate or reinterpret "
+        "the channel axis. The 32-channel array is only a fixed element-"
+        "conditioned linear projection of the same opaque 256 channels"
+    ),
+    validity=(
+        _AIMNET_MAIN_VALIDITY + "; every emitted channel is finite float32; "
+        "there is no per-channel availability mask and numeric zero is not "
+        "an absence marker"
+    ),
+    irreps="", parity="even", tensor_rank=0, e3nn_export="")
+
+_AIMNET_CONDITIONAL_VECTOR = (
+    "conditional on the same emitted scalar AIMNet2 charge vector and source "
+    "membership, the analytic Coulomb field is polar (v'=R v); a full "
+    "producer rerun reevaluates an arbitrary caller-selected float32 .jpt, "
+    "whose scalar invariance is not certified, so there is no unconditional "
+    "rotated-rerun O(3) law"
+)
+_set_contract(
+    ("aimnet2_E", "aimnet2_E_backbone", "aimnet2_E_sidechain",
+     "aimnet2_E_aromatic"),
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation="polar_vector: v'=R v",
+    validity=(
+        "finite analytic V/A vectors; exact zero can mean an empty accepted "
+        "source partition or cancellation and has no separate mask; any "
+        "non-finite E/EFG rejects the whole AIMNet2Result"
+    ),
+    irreps="1o", parity="odd", tensor_rank=1)
+for _stem in (
+    "aimnet2_efg", "aimnet2_efg_aromatic",
+    "aimnet2_efg_backbone", "aimnet2_efg_sidechain",
+):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        coordinate_frame=_CARTESIAN_FRAME,
+        transformation=(
+            "even_rank2_native_T2: reconstruct Cartesian T, apply "
+            "T'=R T R^T, then decompose in project-native T2 basis"
+        ),
+        validity=(
+            "finite symmetric-traceless analytic source with omitted T0 and "
+            "Cartesian-Levi-Civita T1 structural zeros; exact zero T2 can mean "
+            "an empty source partition or cancellation and has no separate "
+            "mask; any non-finite E/EFG rejects the whole AIMNet2Result"
+        ),
+        parity="even",
+    )
+
+_set_contract(
+    ("aimnet2_charge_response_gradient",),
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation=(
+        "polar_vector: v'=R v"
+    ),
+    validity=(
+        "separate AIMNet2ChargeResponseGradientResult: any missing autograd "
+        "path or non-finite component rejects that result/current extraction; "
+        "no manufactured zero. Catalog required=False retains pre-promotion "
+        "file compatibility, although current successful CLI runs emit it"
+    ),
+    irreps="1o", parity="odd", tensor_rank=1, e3nn_export="")
+_set_contract(
+    ("aimnet2_charge_response_gradient_scalar",),
+    coordinate_frame="intrinsic_norm_of_aimnet2_gradient",
+    transformation=(
+        "exact Euclidean norm of the emitted three Cartesian components; "
+        "O(3)-invariant"
+    ),
+    validity=(
+        "separate gradient result; finite nonnegative norm, including a real "
+        "zero; absent rather than zero-filled on gradient failure. Catalog "
+        "required=False retains pre-promotion file compatibility"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
 
 _set_contract(
     ("orca_total", "orca_diamagnetic", "orca_paramagnetic"),
@@ -1711,8 +2061,11 @@ _set_contract(
         "B_phi remains structural zero, and B_z is invariant"
     ),
     validity=(
-        "row-aligned with ring_contributions.npy; B_phi is structural zero; "
-        "rho-axis degeneracy serializes B_rho=0 without a separate mask"
+        "unit-current 1 nA row aligned with the union ring_contributions.npy "
+        "axis; a whole default-zero row is ambiguous between no accepted BS "
+        "source and physical zero because there is no BS-specific mask; B_phi "
+        "is structural zero, and rho-axis degeneracy serializes B_rho=0 "
+        "without a separate mask"
     ), structural_zero_components="B_phi", irreps="", parity="mixed",
     tensor_rank=0, wrapper=np.ndarray)
 _set_contract(
@@ -1816,8 +2169,26 @@ _set_contract(
     validity=(
         "column 6 is combined tensor-evaluation validity; distance is computed "
         "before frame construction and cos_theta before vertex-0 frame "
-        "construction, so either may remain finite when column 6 is zero"
+        "construction, so either may remain finite when column 6 is zero; "
+        "column 6 does not validate col5, whose default zero is ambiguous"
     ), parity="mixed")
+_set_contract(
+    ("ringchi_scalar",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant (3*cos(theta)^2-1)/r^3 geometry scalar; "
+        "translation invariant"
+    ),
+    validity=(
+        "row-aligned with the union ring_contributions.npy axis; no dedicated "
+        "RingSusceptibilityResult mask, so zero is physical-zero-or-unaccepted-row"
+    ))
+_set_contract(
+    ("ringchi_per_type_T0",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "eight exact O(3)-invariant accepted-scalar sums in aromatic "
+        "RingTypeIndex order"
+    ),
+    validity="zero is a physical empty/zero sum; no per-source availability mask")
 _set_contract(
     ("sidechain_co_frame",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=(
@@ -1900,7 +2271,11 @@ _set_contract(
         "mixed WT-atom row: cols0:3 polar delta-E; cols3:7 compatibility "
         "structural zeros (T0/T1); cols7:12 native T2 even-rank2"
     ),
-    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask",
+    validity=(
+        "whole NPY absent when MutationDeltaResult has no paired APBS delta; "
+        "when present, unmatched WT atoms serialize zero and "
+        "delta_scalars.npy column0 is the match mask"
+    ),
     parity="mixed")
 _set_contract(
     ("delta_scalars",), coordinate_frame="shared_wt_mut_intrinsic",
@@ -1911,7 +2286,9 @@ _set_contract(
     ),
     validity=(
         "column0 is the match mask for every delta payload; unmatched rows "
-        "are legacy all-zero compatibility rows"
+        "are legacy all-zero compatibility rows; on a matched row column4 "
+        "MOPAC charge delta is unmasked zero both when MOPAC is unavailable "
+        "and when the true compatibility-charge delta is zero"
     ),
     irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
@@ -1931,7 +2308,11 @@ _set_contract(
         "repeated 6-column removed-ring blocks: distance/rho/factor/decay "
         "invariant; z pseudoscalar; theta maps to pi-theta under an improper transform"
     ),
-    validity="unmatched WT atoms serialize zero; delta_scalars.npy column 0 is the match mask",
+    validity=(
+        "whole NPY absent unless at least one mutation site removes a WT "
+        "ring; when present, unmatched WT atoms serialize zero and "
+        "delta_scalars.npy column0 is the match mask"
+    ),
     parity="mixed")
 
 
@@ -1941,20 +2322,28 @@ _set_contract(
     transformation=(
         "mixed graph row: col0 heat of formation invariant; cols1:4 molecular "
         "dipole polar vector. For a charged system the dipole is origin- and "
-        "translation-dependent according to the MOPAC source convention"
-    ),
-    validity="missing parsed MOPAC dipole block currently serializes zero without an availability mask",
-    parity="mixed")
-_set_contract(
-    ("mopac_atom_populations",), coordinate_frame="mopac_output_cartesian_xyz",
-    transformation=(
-        "mixed atom row: intended cols6:9 per-atom polar dipole components; "
-        "other columns are scalar populations/valencies"
+        "translation-dependent according to the MOPAC input-origin convention; "
+        "componentwise F3 compatibility projection and independent MOZYME/SCF "
+        "reruns prevent exact arbitrary-rotation covariance"
     ),
     validity=(
-        "live parser never populates dipole cols6:10, so they serialize NaN; "
-        "no per-column availability mask"
-    ), parity="mixed")
+        "heat/dipole are finite-validated direct API values before F5/F3 "
+        "compatibility quantization; failure omits the whole MopacResult"
+    ),
+    parity="mixed")
+_set_contract(
+    ("mopac_atom_populations",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "scalar population/valency row; compatibility cols5 and6:10 are NaN "
+        "placeholders with no physical vector or transform meaning. Physical "
+        "populations are scalars for a fixed electronic solution, but decimal "
+        "projection and an independent MOZYME rerun are not promised exactly "
+        "O(3)-invariant numerically"
+    ),
+    validity=(
+        "one atom-aligned row; p/d are NaN without a live shell, and f plus "
+        "per-atom-dipole text-only compatibility columns are always NaN"
+    ), parity="even")
 _set_contract(
     ("mopac_atomic_orbital_populations",),
     coordinate_frame="mopac_output_atomic_orbital_axes",
@@ -1962,13 +2351,256 @@ _set_contract(
         "frame-dependent diagonal s/px/py/pz/d populations are not a closed "
         "O(3) representation; omitted AO density coherences prevent rotation"
     ),
-    validity="parsed K-row diagnostic; missing printed cells are NaN and atom identity is not serialized",
-    parity="mixed")
+    validity=(
+        "exactly one reconstructed row per atom; entries beyond the atom's "
+        "live AO width are NaN, never a different unlabelled K-row axis"
+    ),
+    parity="even")
 _set_contract(
     ("mopac_atomic_orbital_population_totals",),
     coordinate_frame=_INTRINSIC_FRAME,
-    transformation="rotation_invariant shell totals [s_total,p_total,d_total]",
-    validity="parsed K-row diagnostic; NaN propagates from missing printed AO populations")
+    transformation=(
+        "physical shell-trace scalars [s_total,p_total,d_total] for a fixed "
+        "electronic solution; the producer first applies F10.5 to each AO "
+        "diagonal before summing, and independent MOZYME reruns are not "
+        "promised exact numerical O(3) invariance"
+    ),
+    validity=(
+        "exactly one reconstructed row per atom; p/d are NaN when that shell "
+        "does not exist, rather than a structural zero"
+    ))
+_set_contract(
+    ("mopac_dipole_debye", "mopac_dipole_point_charge_debye"),
+    coordinate_frame="mopac_output_cartesian_xyz",
+    transformation=(
+        "Cartesian polar vector v'=R v; for net-charged systems the total and "
+        "point-charge dipoles are origin/translation dependent, and independent "
+        "MOZYME/SCF reruns are not promised exact numerical covariance"
+    ),
+    validity="finite-validated direct API vector; whole MopacResult absent on failure",
+    irreps="1o", parity="odd", tensor_rank=1)
+_set_contract(
+    ("mopac_dipole_hybridization_debye",),
+    coordinate_frame="mopac_output_cartesian_xyz",
+    transformation=(
+        "one-centre Cartesian polar vector v'=R v and translation invariant; "
+        "independent MOZYME/SCF reruns are not promised exact numerical covariance"
+    ),
+    validity="finite-validated direct API vector; whole MopacResult absent on failure",
+    irreps="1o", parity="odd", tensor_rank=1)
+_set_contract(
+    ("mopac_atom_ao_density",),
+    coordinate_frame="mopac_atom_centered_ao_basis",
+    transformation=(
+        "reducible AO-basis matrix: under an ideal fixed-shell rotation "
+        "P'=D_AO(R) P D_AO(R)^T; not a Cartesian rank-2/e3nn tensor and not "
+        "an exact independent-MOZYME-rerun covariance promise"
+    ),
+    validity=(
+        "mopac_ao_orbitals_per_atom gives live widths; global-W cells beyond "
+        "each live block are structural N/A zeros"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("mopac_bond_ao_density_directed", "mopac_bond_ao_density"),
+    coordinate_frame="mopac_endpoint_ao_bases",
+    transformation=(
+        "reducible interatomic AO block: ideally P_ab'=D_a(R) P_ab D_b(R)^T; "
+        "not a Cartesian rank-2/e3nn tensor and not an exact independent-"
+        "MOZYME-rerun covariance promise"
+    ),
+    validity=(
+        "only retained sparse API pairs have rows; endpoint cells beyond live "
+        "AO widths are structural N/A zeros, and an omitted pair is not zero"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("mopac_atomic_orbital_populations_full_precision",),
+    coordinate_frame="mopac_output_atomic_orbital_axes",
+    transformation=(
+        "diagonal s/px/py/pz/d AO populations are not a closed O(3) "
+        "representation because off-diagonal coherences are omitted"
+    ),
+    validity=(
+        "unquantized API binary64 values; global-W cells beyond live width are "
+        "structural N/A zeros, not absent-shell measurements"
+    ),
+    parity="even")
+_set_contract(
+    ("mopac_atom_electron_population", "mopac_atom_s_population",
+     "mopac_atom_p_population", "mopac_atom_d_population"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "physical AO-block or complete-shell trace scalar for a fixed "
+        "electronic solution; unquantized binary64 serialization removes the "
+        "compatibility decimal projection but independent MOZYME reruns are "
+        "not promised exact numerical O(3) invariance"
+    ),
+    validity=(
+        "direct unquantized API-derived scalar; p/d use mathematical zero when "
+        "the shell is absent, as explicitly distinct from compatibility NaN"
+    ),
+    irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_lmo_occupied_coefficients", "mopac_lmo_virtual_coefficients"),
+    coordinate_frame="mopac_localized_orbital_ao_gauge",
+    transformation=(
+        "no fixed rowwise O(3)/e3nn law: AO components rotate within shells, "
+        "while localized orbitals also have sign, ordering and localization-gauge freedom"
+    ),
+    validity=(
+        "packed live slices selected by the companion atom/support counts and "
+        "native offsets; whole MopacResult absent on API/state validation failure"
+    ),
+    irreps="", parity="mixed", tensor_rank=0)
+
+# Remaining diskless-MOPAC scalar, sparse-support, and native-state surfaces.
+# Their ideal physical quantity may be invariant, but the producer reruns a
+# localized SCF after eight-decimal coordinate preparation.  Do not turn that
+# conditional physical law into an exact rowwise covariance promise.
+_set_contract(
+    ("mopac_charges", "mopac_scalars", "mopac_bond_valencies",
+     "mopac_charges_full_precision", "mopac_bond_valencies_full_precision",
+     "mopac_heat_kcal_mol"),
+    coordinate_frame="intrinsic_mopac_electronic_solution",
+    transformation=(
+        "physical scalar(s) for a fixed PM7/MOZYME electronic solution under "
+        "rigid O(3)/translation; independent SCF/localization reruns on the "
+        "eight-decimal prepared coordinates are not promised exact numerical "
+        "invariance, and compatibility decimal projection can amplify drift"
+    ),
+    validity=(
+        "finite-validated calculator values; compatibility zero is a real "
+        "serialized value, except sparse compact-valency zero only establishes "
+        "that no retained first-six projected order contributed"
+    ), irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_bond_orders", "mopac_bond_neighbors",
+     "mopac_bond_orders_unique", "mopac_bond_orders_full_precision",
+     "mopac_bond_index", "mopac_bond_atom", "mopac_bond_order",
+     "mopac_bond_density_pairs"),
+    coordinate_frame="mopac_atom_identity_and_sparse_support",
+    transformation=(
+        "indices/pointers are discrete identities and Wiberg values are "
+        "scalars conditional on identical retained support; an independent "
+        "rerun can cross strict >0.01, F6.3, first-six or near-tie boundaries, "
+        "changing row membership/order, so there is no unconditional rowwise "
+        "O(3) correspondence"
+    ),
+    validity=(
+        "omitted sparse pair means no row, never a measured zero; raw CSC "
+        "pointer/atom/order companions must be interpreted together. Compact "
+        "C rows add first-six/F6.3 censoring and mopac_bond_orders row order is "
+        "unordered-map iteration order, not a sorted semantic axis"
+    ), irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_topology_bond_orders_full",),
+    coordinate_frame="topology_bond_identity",
+    transformation=(
+        "fixed topology-bond indices and masks are identities; a present "
+        "Wiberg order is scalar, but the present flag can change if an "
+        "independent SCF rerun crosses the retained API >0.01 boundary"
+    ),
+    validity=(
+        "columns3 and5 are NaN and col6 is one when the topology pair is "
+        "absent from retained API support; col7 is always retired-artifact NaN"
+    ), irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_ao_max_orbitals", "mopac_ao_orbitals_per_atom"),
+    coordinate_frame="mopac_atom_centered_ao_schema",
+    transformation=(
+        "discrete AO-basis extents, not Cartesian components; invariant for "
+        "the same typed atoms and pinned libmopac parameterization"
+    ),
+    validity=(
+        "global W is validated in [1,64]; every live atom width is in [1,W] "
+        "and mozyme_state.iorbs must equal mopac_properties.ao_orbitals"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_lewis_bond_count", "mopac_lewis_bond_atoms"),
+    coordinate_frame="mopac_mozyme_lewis_state",
+    transformation=(
+        "discrete localized-Lewis assignment, not geometric components; atom "
+        "indices are identities conditional on the same chosen MOZYME state, "
+        "but independent localization reruns have no unconditional rowwise "
+        "O(3) correspondence"
+    ),
+    validity=(
+        "counts are hard-validated in [0,9]; the first count slots are valid "
+        "zero-based atoms and unused slots are structural -1 sentinels"
+    ), irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_lmo_energy_levels",),
+    coordinate_frame="mopac_localized_orbital_gauge",
+    transformation=(
+        "energy is scalar only conditional on a matched localized orbital; "
+        "LMO sign/order/localization/support are not fixed under rerun, so the "
+        "array has no stable rowwise O(3) correspondence and is not a "
+        "canonical HOMO/LUMO spectrum"
+    ),
+    validity=(
+        "occupied rows precede virtual rows according to the companion state "
+        "dimensions; every emitted energy is finite-validated"
+    ), irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_lmo_occupied_atom_counts", "mopac_lmo_occupied_atoms",
+     "mopac_lmo_virtual_atom_counts", "mopac_lmo_virtual_atoms",
+     "mopac_lmo_occupied_atom_offsets_native",
+     "mopac_lmo_virtual_atom_offsets_native",
+     "mopac_lmo_occupied_coefficient_offsets_native",
+     "mopac_lmo_virtual_coefficient_offsets_native",
+     "mopac_lmo_occupied_atom_storage_native",
+     "mopac_lmo_virtual_atom_storage_native"),
+    coordinate_frame="mopac_localized_orbital_gauge",
+    transformation=(
+        "discrete support/index state, not geometric components; meaningful "
+        "only conditional on the same LMO ordering and localization, which an "
+        "independent rerun is not promised to preserve rowwise"
+    ),
+    validity=(
+        "counts and native offsets identify live support slices; compact atom "
+        "lists are zero-based, native atom storage remains one-based, and "
+        "allocated tail capacity is restart state rather than live support"
+    ), irreps="", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_lmo_occupied_coefficient_storage_native",
+     "mopac_lmo_virtual_coefficient_storage_native"),
+    coordinate_frame="mopac_localized_orbital_ao_gauge",
+    transformation=(
+        "no fixed rowwise O(3)/e3nn law: AO coefficients rotate within shells "
+        "while localized orbitals have sign, ordering and localization-gauge "
+        "freedom"
+    ),
+    validity=(
+        "only companion native-offset-defined slices are live coefficients; "
+        "remaining allocated capacity is native restart state"
+    ), irreps="", parity="mixed", tensor_rank=0)
+_set_contract(
+    ("mopac_mozyme_state_dimensions",),
+    coordinate_frame="mopac_native_state_schema",
+    transformation=(
+        "nonnegative electronic-state and allocation extents, not geometric "
+        "components; values are conditional on the same returned MOZYME state "
+        "and pinned build"
+    ),
+    validity=(
+        "numat equals N; occupied/virtual counts and four storage extents are "
+        "the authority for interpreting every LMO companion array"
+    ), irreps="", parity="even", tensor_rank=0)
+
+# The diskless worker/API result is atomic at the NPY boundary. Preserve each
+# array's field-level rule above, then append the shared whole-result absence
+# rule to every core/direct MOPAC payload.
+for _stem, _spec in tuple(CATALOG.items()):
+    if _spec.group in {"mopac_core", "mopac_direct"}:
+        _validity = _spec.validity.rstrip("; ")
+        CATALOG[_stem] = replace(
+            _spec,
+            validity=(
+                f"{_validity}; {_MOPAC_RESULT_ABSENCE}"
+                if _validity else _MOPAC_RESULT_ABSENCE
+            ),
+        )
 _set_contract(
     ("gromacs_energy",), coordinate_frame="gromacs_simulation_cartesian_xyz",
     transformation=(
@@ -2220,6 +2852,340 @@ _set_contract(
         "and count fields use the producer's non-donor sentinels"
     ),
     irreps="0e", parity="even", tensor_rank=0)
+
+
+# Scalar, categorical, and structured records still need an explicit rigid-
+# transform and absence contract: blank metadata is not a useful learning
+# boundary even when no directional component is serialized.
+_set_contract(
+    ("element", "residue_index", "residue_type"),
+    coordinate_frame="intrinsic_topology",
+    transformation=(
+        "exact O(3)- and translation-invariant per-atom integer identity; no "
+        "coordinate component is serialized"
+    ),
+    validity="required dense atom axis with exactly one identity value per atom",
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("bond_length",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="exact O(3)-invariant bond length; translation invariant",
+    validity=(
+        "bond_geometry_valid.npy gates zero/non-finite/degenerate bond rows; "
+        "a valid zero length is not produced"
+    ), irreps="0e", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("enrichment_role", "enrichment_hybridisation", "enrichment_flags",
+     "enrichment_parent_is_sp2"),
+    coordinate_frame="intrinsic_topology",
+    transformation=(
+        "exact O(3)- and translation-invariant categorical/flag projection "
+        "from atom, residue, ring and cached-backbone identity"
+    ),
+    validity=(
+        "always computed by EnrichmentResult; Unknown/Unassigned/false are "
+        "real compatibility categories, not missing-value sentinels"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("semantic_polar_h_kind", "semantic_planar_group_kind",
+     "semantic_formal_charge", "semantic_ring_position", "semantic_locant",
+     "enrichment_donor_class", "enrichment_acceptor_class",
+     "enrichment_hybridisation_class"),
+    coordinate_frame="intrinsic_topology",
+    transformation=(
+        "exact O(3)- and translation-invariant typed-semantic enum/charge "
+        "projection; no directional component is serialized"
+    ),
+    validity=(
+        "when AtomSemantic is unavailable the producer leaves zero defaults "
+        "(hybridisation class 3), without a per-NPY mask; consult manifest "
+        "has_atom_semantic, so zero can be absence or a real enum/charge value"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("molecular_graph_int", "molecular_graph_float", "molecular_graph"),
+    coordinate_frame="intrinsic_topology",
+    transformation=(
+        "exact O(3)- and translation-invariant bond-graph distances, counts, "
+        "element-weighted sums and decay features"
+    ),
+    validity=(
+        "unreachable graph distances and nearest-ring atom use -1; unreachable "
+        "ring decay uses 0, while neighbour sums/counts can be physical zero"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("ff_partial_charge", "ff_pb_radius"),
+    coordinate_frame="intrinsic_charge_table",
+    transformation=(
+        "exact O(3)- and translation-invariant scalar table values from the "
+        "configured typed ChargeSource"
+    ),
+    validity=(
+        "whole ChargeAssignmentResult is absent if table preparation/row count "
+        "fails; per-row status is not serialized, so a missing-charge numeric "
+        "zero and placeholder PB radius 1.5 A are unmasked"
+    ), irreps="0e", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("bs_per_type_T0", "hm_per_type_T0"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "eight contiguous exact O(3)-invariant T0 scalar sums in "
+        "RingTypeIndex order; translation invariant"
+    ),
+    validity=(
+        "zero block is an empty/cancelled accepted sum; RingTypeIndex 4 "
+        "TrpPerimeter is structural zero because canonical BS/HM totals "
+        "exclude the diagnostic perimeter ring"
+    ), irreps="0e", parity="even", tensor_rank=0)
+for _stem in ("bs_per_type_T1", "bs_per_type_T2", "hm_per_type_T1",
+              "hm_per_type_T2"):
+    CATALOG[_stem] = replace(
+        CATALOG[_stem],
+        validity=(
+            CATALOG[_stem].validity + "; RingTypeIndex 4 TrpPerimeter block "
+            "is structural zero because canonical BS/HM totals exclude it"
+        ),
+    )
+_set_contract(
+    ("pq_per_type_T0", "piquad_axial_scalar_per_type_T0"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant per-type sum of (3cos^2(theta)-1)/r^4; "
+        "translation invariant"
+    ),
+    validity=(
+        "the two NPYs are additive aliases when both exist; zero is an empty/"
+        "cancelled accepted geometry sum, and no physical prefactor is applied"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("disp_per_type_T0", "aromatic_r6_proximity_per_type_T0"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant per-type switched-distance-kernel sum; "
+        "translation invariant"
+    ),
+    validity=(
+        "deprecated/canonical aliases of the same values; zero means no "
+        "accepted vertex contribution after vertex/bonded exclusions"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("bs_ring_counts",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)- and translation-invariant counts in the 3/5/8/12 A shells"
+    ),
+    validity=(
+        "zero means no BiotSavart-accepted ring row in that shell; counts are "
+        "not over every topology ring"
+    ), irreps="0e", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("mc_nearfield_counts",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)- and translation-invariant accepted/rejected pair counts "
+        "for source-midpoint distance below 3 A"
+    ),
+    validity=(
+        "columns are accepted then filter-rejected queried pairs after the "
+        "configured XH skip; zero is a real no-pair count"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("sidechain_co_scalar_audit",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "cols0:2 are project-T2 norms and col2 count/col3 distance are scalar "
+        "invariants conditional on fixed Wiberg weights; an independent MOPAC "
+        "rerun is not promised exact numerical covariance"
+    ),
+    validity=(
+        "col0 zero can be empty/cancelled; col1 is NaN without MOPAC; col2 "
+        "zero and col3 NaN mean no accepted SidechainCO source"
+    ), irreps="", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("coulomb_aromatic_n_src",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="exact O(3)- and translation-invariant source count",
+    validity=(
+        "zero means no non-backbone aromatic source within cutoff passed the "
+        "filters and charge floor"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("eeq_charges", "eeq_cn", "eeq_chi_eff", "eeq_hardness"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)- and translation-invariant element/distance-derived EEQ "
+        "scalar channel(s)"
+    ),
+    validity=(
+        "whole EeqResult is absent for empty input or a failed/non-finite "
+        "solve; successful rows are finite and have no per-row mask"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("eeq_coulomb_aromatic_E_proj",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)- and translation-invariant signed projection of aromatic "
+        "E onto the parent-to-H direction"
+    ),
+    validity=(
+        "NaN without a valid H-parent direction; whole EEQ Coulomb result is "
+        "absent on a non-finite field"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("eeq_coulomb_aromatic_n_src",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="exact O(3)- and translation-invariant source count",
+    validity=(
+        "zero means no qualifying non-backbone aromatic source within cutoff "
+        "passed the filters and charge floor"
+    ), irreps="0e", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("pyramidalization",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant nonnegative magnitude of the signed out-of-plane "
+        "distance; translation invariant"
+    ),
+    validity=(
+        "NaN for non-applicable or invalid/degenerate rows; "
+        "pyramidalization_valid.npy is the authoritative mask; whole trio "
+        "absent when typed semantics are unavailable"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("pyramidalization_valid",), coordinate_frame=_INTRINSIC_FRAME,
+    transformation="exact O(3)- and translation-invariant availability mask",
+    validity=(
+        "1 iff pyramidalization is finite; 0 combines non-applicability and "
+        "invalid/degenerate geometry"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("pyramidalization_center_type",), coordinate_frame="intrinsic_topology",
+    transformation="exact O(3)- and translation-invariant PlanarGroupKind enum",
+    validity=(
+        "nonzero marks typed applicability even if per-frame geometry is "
+        "invalid; whole trio absent when typed semantics are unavailable"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("omega_is_xpro",), coordinate_frame="intrinsic_topology",
+    transformation="exact O(3)- and translation-invariant categorical mask",
+    validity=(
+        "1 only when a covalent Pro successor and both CA atoms are cached; 0 "
+        "conflates non-XPro with missing successor/CA, so consult omega_valid "
+        "and residues.is_xpro_context; whole result absent without semantics"
+    ), irreps="0e", parity="even", tensor_rank=0)
+
+_set_contract(
+    ("atoms_category_info",), coordinate_frame="intrinsic_topology",
+    transformation=(
+        "exact O(3)- and translation-invariant structured categorical/index/"
+        "string record"
+    ),
+    validity=(
+        "semantic bytes are zero-filled when AtomSemantic is absent, so enum/"
+        "equivalence zero can be absence or real zero; force-field type may be "
+        "empty and IUPAC/BMRB names may fall back to AMBER with provenance"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("residues", "bonds", "rings", "ring_membership"),
+    coordinate_frame="intrinsic_topology",
+    transformation=(
+        "exact O(3)- and translation-invariant structured identity/enum/flag "
+        "record; no Cartesian component is serialized"
+    ),
+    validity=(
+        "required sidecar written even for empty semantic/ring content; -1 "
+        "marks absent residue links/fused partners. Ring membership contains "
+        "cyclic vertices only, so is_vertex=1 and is_substituent=0 are structural"
+    ), irreps="0e", parity="even", tensor_rank=0)
+
+
+# Unit/layout labels are explicit even for identity, enum, mask, count and
+# mixed structured records.  This keeps an empty string from being mistaken
+# for "dimensionless" at the learning boundary.
+_set_units(("element",), "atomic_number")
+_set_units(("residue_index",), "index")
+_set_units(("residue_type",), "enum:AminoAcid")
+_set_units(("ring_contributions",), (
+    "mixed:index_or_enum[0:3],Å[3:6],radians[6],Å^-3[7],"
+    "dimensionless[8],ppm_T_per_nA[9:18],Å^-1[18:36],Å^-6[36],"
+    "count[37],dimensionless[38:40]"
+))
+_set_units(("ring_direction_to_center", "bond_direction",
+            "mc_nearest_co_dir", "hbond_nearest_dir", "sasa_normal"),
+           "dimensionless_unit_vector")
+_set_units(("bond_geometry_valid", "tau_N_CA_C_valid",
+            "angle_N_CA_CB_valid", "angle_CB_CA_C_valid",
+            "angle_Cprev_N_CA_valid", "angle_CA_C_Nnext_valid",
+            "cb_deviation_valid", "cb_residual_vector_valid",
+            "enrichment_parent_is_sp2", "pyramidalization_valid",
+            "omega_is_xpro", "omega_valid", "dssp_observed",
+            "dssp_torsion_valid", "hbond_pairs_angle_valid"), "mask")
+_set_units(("enrichment_role",), "enum:AtomRole")
+_set_units(("enrichment_hybridisation",), "enum:Hybridisation")
+_set_units(("enrichment_flags",), "mask_columns")
+_set_units(("semantic_polar_h_kind", "enrichment_donor_class"),
+           "enum:PolarHKind")
+_set_units(("semantic_planar_group_kind",), "enum:PlanarGroupKind")
+_set_units(("semantic_formal_charge",), "e")
+_set_units(("semantic_ring_position",), "enum:RingPositionLabel")
+_set_units(("semantic_locant",), "enum:Locant")
+_set_units(("enrichment_acceptor_class",), "enum:acceptor_class")
+_set_units(("enrichment_hybridisation_class",),
+           "enum:hybridisation_class")
+_set_units(("molecular_graph_int",),
+           "mixed:graph_hops,count,mask,index")
+_set_units(("molecular_graph_float",), "dimensionless")
+_set_units(("molecular_graph",),
+           "mixed:graph_hops,count,mask,index,Pauling_scale,dimensionless")
+_set_units(("bs_ring_counts", "water_shell_counts", "larsen_hbond_count",
+            "larsen_corner_imputed", "larsen_imputed_pair_count",
+            "larsen_sidechain_carbonyl_pair_count"), "count")
+_set_units(("piquad_local_frame",), "dimensionless_orthonormal_frame")
+_set_units(("sidechain_co_source_bonds",),
+           "mixed:index[0:4],enum[4:7],mask[7]")
+_set_units(("sidechain_co_frame_quality",),
+           "mixed:Å[0],dimensionless[1],Å^2[2],mask[3]")
+_set_units(("sidechain_co_scalar_audit",),
+           "mixed:Å^-3[0:2],count[2],Å[3]")
+_set_units(("hbond_flags",), "mask_columns")
+_set_units(("hbond_pairs_index",),
+           "mixed:index[0:5],residue_separation_count[5]")
+_set_units(("dssp_ss8",), "one_hot_class_mask")
+_set_units(("dssp_ppii",), "enum:ternary_observation_class")
+_set_units(("dssp_chi",),
+           "dimensionless:cos_sin_exists_blocks")
+_set_units(("dssp_torsion_sin", "dssp_torsion_cos", "omega_sin",
+            "omega_cos", "atom_sasa_fraction", "eeq_cn"), "dimensionless")
+_set_units(("dssp_hbond_partner_residue_index",), "index")
+_set_units(("water_hbond_counts",),
+           "mixed:count[0:4],index[4],enum[5]")
+_set_units(("water_efield_clamp_mask", "water_efield_first_clamp_mask"),
+           "mask")
+_set_units(("water_polarization",),
+           "mixed:e*Å[0:3],dimensionless[3:8],e*Å[8],count[9]")
+_set_units(("delta_graph",),
+           "mixed:mask[0:2],graph_hops[2],dimensionless[3:5]")
+_set_units(("delta_apbs",),
+           "mixed:V/Å[0:3],V/Å^2[3:12]")
+_set_units(("atoms_category_info",),
+           "structured:index,atomic_number,string,enum,mask,e")
+_set_units(("aimnet2_aim", "aimnet2_aim_projection"),
+           "model_native_learned_units_unspecified")
+_set_units(("pyramidalization_center_type",), "enum:PlanarGroupKind")
+_set_units(("larsen_hbond_pairs_index",),
+           "mixed:index[0:6,7:11],enum[6],mask[11:16]")
+_set_units(("larsen_hbond_pairs",),
+           "mixed:index[0:6,7:11],enum[6],mask[11:16,19,21],"
+           "Å[16],degrees[17:19],count[20],ppm[22:28]")
+_set_units(("larsen_sidechain_donor_atoms",),
+           "mixed:mask[0],enum[1],index[2:4],count[4:6]")
+_set_units(("residues",), "structured:index,string,enum,count,mask")
+_set_units(("bonds",), "structured:index,enum,mask")
+_set_units(("rings",), "structured:index,enum,count")
+_set_units(("ring_membership",), "structured:index,order,mask")
+_set_units(("larsen_corner_imputed",), "mask")
+
+# Positions are affine rank-1 coordinate fields even though their parity is
+# not a homogeneous translation law.  Keep tensor_rank consistent with the
+# ArraySpec definition used by downstream schema generation.
+for _stem in ("pos", "mc_nearest_co_midpoint"):
+    CATALOG[_stem] = replace(CATALOG[_stem], tensor_rank=1)
 
 
 del _stem
