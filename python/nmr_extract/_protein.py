@@ -442,6 +442,33 @@ class MopacCoulombGroup:
     efg_sidechain: EFGTensor
     efg_aromatic: EFGTensor
     scalars: CoulombScalars
+    aromatic_E_proj: Optional[np.ndarray] = None
+    aromatic_n_src: Optional[np.ndarray] = None
+    E_clamp_mask: Optional[np.ndarray] = None
+    E_clamp_scale: Optional[np.ndarray] = None
+
+
+@dataclass(frozen=True)
+class MopacMcConnellGroup:
+    """Direct read-back of the MOPAC Wiberg-weighted McConnell projection.
+
+    Tensor fields are unscaled Å⁻³ project-native Full9 values, not ppm.
+    The two nearest tensors have a source only where their corresponding
+    distance is below the producer's ``NO_DATA_SENTINEL``.
+    """
+    co_sum: np.ndarray
+    cn_sum: np.ndarray
+    sidechain_sum: np.ndarray
+    aromatic_sum: np.ndarray
+    co_nearest: np.ndarray
+    nearest_co_dist: np.ndarray
+    nearest_cn_dist: np.ndarray
+    nearest_co_T2: ShieldingTensor
+    nearest_cn_T2: ShieldingTensor
+    backbone_total: ShieldingTensor
+    sidechain_total: ShieldingTensor
+    aromatic_total: ShieldingTensor
+    shielding: ShieldingTensor
 
 
 @dataclass(frozen=True)
@@ -449,6 +476,7 @@ class MopacGroup:
     core: MopacCoreGroup
     coulomb: MopacCoulombGroup
     full: Optional[MopacFullGroup] = None
+    mcconnell: Optional[MopacMcConnellGroup] = None
 
 
 @dataclass(frozen=True)
@@ -1989,8 +2017,27 @@ def load(path: str | Path) -> Protein:
                 efg_sidechain=get("mopac_coulomb_efg_sidechain"),
                 efg_aromatic=get("mopac_coulomb_efg_aromatic"),
                 scalars=get("mopac_coulomb_scalars"),
+                aromatic_E_proj=get("mopac_coulomb_aromatic_E_proj"),
+                aromatic_n_src=get("mopac_coulomb_aromatic_n_src"),
+                E_clamp_mask=get("mopac_coulomb_E_clamp_mask"),
+                E_clamp_scale=get("mopac_coulomb_E_clamp_scale"),
             ),
             full=mopac_full,
+            mcconnell=MopacMcConnellGroup(
+                co_sum=get("mopac_mc_co_sum"),
+                cn_sum=get("mopac_mc_cn_sum"),
+                sidechain_sum=get("mopac_mc_sidechain_sum"),
+                aromatic_sum=get("mopac_mc_aromatic_sum"),
+                co_nearest=get("mopac_mc_co_nearest"),
+                nearest_co_dist=get("mopac_mc_nearest_co_dist"),
+                nearest_cn_dist=get("mopac_mc_nearest_cn_dist"),
+                nearest_co_T2=get("mopac_mc_nearest_co_T2"),
+                nearest_cn_T2=get("mopac_mc_nearest_cn_T2"),
+                backbone_total=get("mopac_mc_backbone_total"),
+                sidechain_total=get("mopac_mc_sidechain_total"),
+                aromatic_total=get("mopac_mc_aromatic_total"),
+                shielding=get("mopac_mc_shielding"),
+            ) if "mopac_mc_shielding" in available else None,
         )
 
     # APBS (optional)

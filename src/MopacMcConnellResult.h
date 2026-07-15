@@ -6,10 +6,10 @@
 //   fixed channel: sum D(r) Qhat
 //   BO channel:    sum Wiberg_bond_order * D(r) Qhat
 //
-// This result is retained so trajectory consumers that check for
-// MopacMcConnellResult keep their sparse/conditional source semantics. It
-// does not emit separate NPY arrays; the forward NPY surface is the 14-array
-// mc_<category>_{fixed,bo} family from McConnellResult.
+// This result is retained so static and trajectory consumers keep the
+// MOPAC-specific BO projection and its sparse/conditional source semantics.
+// McConnellResult owns the computation; this calculator reads back the
+// ConformationAtom::mopac_mc_* values under their own MOPAC names.
 //
 
 #include "ConformationResult.h"

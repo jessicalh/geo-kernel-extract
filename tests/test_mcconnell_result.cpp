@@ -105,6 +105,53 @@ std::unique_ptr<Protein> BuildSyntheticPeptideCOProtein(
     return protein;
 }
 
+std::unique_ptr<Protein> BuildSyntheticTwoPeptideCOProtein() {
+    auto protein = std::make_unique<Protein>();
+    std::vector<Vec3> positions;
+    for (int residue_index = 0; residue_index < 2; ++residue_index) {
+        const double x = 6.0 * residue_index;
+        Residue residue;
+        residue.type = AminoAcid::ALA;
+        residue.sequence_number = residue_index + 1;
+        residue.chain_id = residue_index == 0 ? "A" : "B";
+        const size_t ri = protein->AddResidue(residue);
+
+        auto add_atom = [&](Element element, const char* name,
+                            const Vec3& position) {
+            auto atom = Atom::Create(element);
+            atom->pdb_atom_name = name;
+            atom->residue_index = ri;
+            const size_t index = protein->AddAtom(std::move(atom));
+            protein->MutableResidueAt(ri).atom_indices.push_back(index);
+            positions.push_back(position);
+            return index;
+        };
+        protein->MutableResidueAt(ri).N =
+            add_atom(Element::N, "N", Vec3(x, 1.45, 0.0));
+        protein->MutableResidueAt(ri).C =
+            add_atom(Element::C, "C", Vec3(x, 0.0, 0.0));
+        protein->MutableResidueAt(ri).O =
+            add_atom(Element::O, "O", Vec3(x + 1.2, 0.0, 0.0));
+    }
+
+    Residue probe_residue;
+    probe_residue.type = AminoAcid::ALA;
+    probe_residue.sequence_number = 1;
+    probe_residue.chain_id = "P";
+    const size_t probe_ri = protein->AddResidue(probe_residue);
+    auto probe = Atom::Create(Element::H);
+    probe->pdb_atom_name = "H";
+    probe->residue_index = probe_ri;
+    const size_t probe_index = protein->AddAtom(std::move(probe));
+    protein->MutableResidueAt(probe_ri).atom_indices.push_back(probe_index);
+    positions.push_back(Vec3(1.0, 4.0, 0.0));
+
+    protein->FinalizeConstruction(positions);
+    protein->AddCrystalConformation(
+        positions, 0.0, 0.0, 0.0, "two peptide CO BO-nearest fixture");
+    return protein;
+}
+
 std::unique_ptr<Protein> BuildSyntheticXHCategoryProtein() {
     auto protein = std::make_unique<Protein>();
     for (int ri = 0; ri < 3; ++ri) {
@@ -431,6 +478,19 @@ void RemoveMcConnellOutputs(const fs::path& dir) {
             "mc_nearest_co_midpoint.npy",
             "mc_nearest_co_T2.npy",
             "mc_nearest_cn_T2.npy",
+            "mopac_mc_co_sum.npy",
+            "mopac_mc_cn_sum.npy",
+            "mopac_mc_sidechain_sum.npy",
+            "mopac_mc_aromatic_sum.npy",
+            "mopac_mc_co_nearest.npy",
+            "mopac_mc_nearest_co_dist.npy",
+            "mopac_mc_nearest_cn_dist.npy",
+            "mopac_mc_nearest_co_T2.npy",
+            "mopac_mc_nearest_cn_T2.npy",
+            "mopac_mc_backbone_total.npy",
+            "mopac_mc_sidechain_total.npy",
+            "mopac_mc_aromatic_total.npy",
+            "mopac_mc_shielding.npy",
             "extraction_manifest.json"}) {
         std::remove((dir / filename).string().c_str());
     }
@@ -939,6 +999,9 @@ TEST(McConnellImplementationChecks,
     ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
                   conf, out_dir.string()),
               26);
+    ASSERT_EQ(conf.Result<MopacMcConnellResult>().WriteFeatures(
+                  conf, out_dir.string()),
+              13);
     const auto emitted = ReadNpy<double>(
         out_dir / "mc_peptide_co_bo.npy", "<f8");
     ASSERT_EQ(emitted.shape,
@@ -949,6 +1012,194 @@ TEST(McConnellImplementationChecks,
     for (size_t component = 0; component < expected.size(); ++component) {
         EXPECT_NEAR(emitted.values[target * 9 + component],
                     expected[component], 1e-11);
+    }
+
+    auto expect_scalar_readback = [&](const char* stem, auto field) {
+        const auto array = ReadNpy<double>(
+            out_dir / (std::string(stem) + ".npy"), "<f8");
+        ASSERT_EQ(array.shape,
+                  (std::vector<size_t>{conf.AtomCount()}));
+        for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+            const double expected_value = field(conf.AtomAt(atom));
+            if (std::isnan(expected_value)) {
+                EXPECT_TRUE(std::isnan(array.values[atom])) << stem;
+            } else {
+                EXPECT_DOUBLE_EQ(array.values[atom], expected_value) << stem;
+            }
+        }
+    };
+    expect_scalar_readback("mopac_mc_co_sum",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_co_sum; });
+    expect_scalar_readback("mopac_mc_cn_sum",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_cn_sum; });
+    expect_scalar_readback("mopac_mc_sidechain_sum",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_sidechain_sum;
+        });
+    expect_scalar_readback("mopac_mc_aromatic_sum",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_aromatic_sum; });
+    expect_scalar_readback("mopac_mc_co_nearest",
+        [](const ConformationAtom& atom) { return atom.mopac_mc_co_nearest; });
+    expect_scalar_readback("mopac_mc_nearest_co_dist",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CO_dist;
+        });
+    expect_scalar_readback("mopac_mc_nearest_cn_dist",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CN_dist;
+        });
+
+    auto expect_tensor_readback = [&](const char* stem, auto field,
+                                      auto available) {
+        const auto array = ReadNpy<double>(
+            out_dir / (std::string(stem) + ".npy"), "<f8");
+        ASSERT_EQ(array.shape,
+                  (std::vector<size_t>{conf.AtomCount(), 9u}));
+        for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+            if (!available(conf.AtomAt(atom))) {
+                for (size_t component = 0; component < 9; ++component) {
+                    EXPECT_TRUE(std::isnan(
+                        array.values[atom * 9 + component])) << stem;
+                }
+                continue;
+            }
+            std::array<double, 9> packed{};
+            field(conf.AtomAt(atom)).PackFull9(packed.data());
+            for (size_t component = 0; component < packed.size(); ++component) {
+                EXPECT_DOUBLE_EQ(array.values[atom * 9 + component],
+                                 packed[component]) << stem;
+            }
+        }
+    };
+    const auto always = [](const ConformationAtom&) { return true; };
+    expect_tensor_readback("mopac_mc_nearest_co_T2",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_CO_nearest;
+        },
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CO_dist < NO_DATA_SENTINEL;
+        });
+    expect_tensor_readback("mopac_mc_nearest_cn_T2",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_CN_nearest;
+        },
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_nearest_CN_dist < NO_DATA_SENTINEL;
+        });
+    expect_tensor_readback("mopac_mc_backbone_total",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_backbone_total;
+        }, always);
+    expect_tensor_readback("mopac_mc_sidechain_total",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_sidechain_total;
+        }, always);
+    expect_tensor_readback("mopac_mc_aromatic_total",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_T2_aromatic_total;
+        }, always);
+    expect_tensor_readback("mopac_mc_shielding",
+        [](const ConformationAtom& atom) {
+            return atom.mopac_mc_shielding_contribution;
+        }, always);
+
+    // Independent BO-nearest authority: this fixture has one BO-active C=O.
+    // Pin the selected distance, scalar and Full9 tensor to the production
+    // kernel and the real MOPAC order, not to the fields the writer reads.
+    const auto nearest_kernel = McConnellResult::ComputePairKernel(
+        conf.PositionAt(target), conf.bond_midpoints[co_bond],
+        conf.bond_directions[co_bond]);
+    EXPECT_NEAR(conf.AtomAt(target).mopac_mc_nearest_CO_dist,
+                nearest_kernel.distance, 1e-14);
+    EXPECT_NEAR(conf.AtomAt(target).mopac_mc_co_nearest,
+                bond_order * nearest_kernel.pcs_scalar, 1e-14);
+    const auto emitted_nearest_co = ReadNpy<double>(
+        out_dir / "mopac_mc_nearest_co_T2.npy", "<f8");
+    std::array<double, 9> expected_nearest{};
+    SphericalTensor::Decompose(bond_order * nearest_kernel.response)
+        .PackFull9(expected_nearest.data());
+    for (size_t component = 0; component < expected_nearest.size();
+         ++component) {
+        EXPECT_NEAR(emitted_nearest_co.values[target * 9 + component],
+                    expected_nearest[component], 1e-11);
+    }
+    RemoveMcConnellOutputs(out_dir);
+}
+
+
+TEST(MopacMcConnellEmitSurface,
+     BondOrderNearestUsesItsOwnGatedSourceSetAndReachesNpy) {
+    auto protein = BuildSyntheticTwoPeptideCOProtein();
+    auto& conf = protein->Conformation();
+    ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+
+    std::vector<size_t> co_bonds;
+    for (size_t bond = 0; bond < protein->BondCount(); ++bond) {
+        if (protein->BondAt(bond).category == BondCategory::PeptideCO)
+            co_bonds.push_back(bond);
+    }
+    ASSERT_EQ(co_bonds.size(), 2u);
+    const size_t target = conf.AtomCount() - 1;
+    std::sort(co_bonds.begin(), co_bonds.end(), [&](size_t lhs, size_t rhs) {
+        return (conf.PositionAt(target) - conf.bond_midpoints[lhs]).norm() <
+               (conf.PositionAt(target) - conf.bond_midpoints[rhs]).norm();
+    });
+    const size_t spatial_nearest = co_bonds[0];
+    const size_t bo_nearest = co_bonds[1];
+
+    auto mopac = std::make_unique<MopacResult>();
+    // The producer exposes its topology-parallel orders as a const view. This
+    // synthetic test fixture owns a non-const result and fills that typed view
+    // directly so the production selector sees one below-floor and one live
+    // PeptideCO source without invoking the external MOPAC worker.
+    auto& orders = const_cast<std::vector<double>&>(
+        mopac->TopologyBondOrders());
+    orders.assign(protein->BondCount(), 1.0);
+    orders[spatial_nearest] = 0.0;
+    orders[bo_nearest] = 1.25;
+    ASSERT_TRUE(conf.AttachResult(std::move(mopac)));
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(MopacMcConnellResult::Compute(conf)));
+
+    const auto fixed_kernel = McConnellResult::ComputePairKernel(
+        conf.PositionAt(target), conf.bond_midpoints[spatial_nearest],
+        conf.bond_directions[spatial_nearest]);
+    const auto bo_kernel = McConnellResult::ComputePairKernel(
+        conf.PositionAt(target), conf.bond_midpoints[bo_nearest],
+        conf.bond_directions[bo_nearest]);
+    ASSERT_LT(fixed_kernel.distance, bo_kernel.distance);
+    EXPECT_NEAR(conf.AtomAt(target).nearest_CO_dist,
+                fixed_kernel.distance, 1e-14);
+    EXPECT_NEAR(conf.AtomAt(target).mopac_mc_nearest_CO_dist,
+                bo_kernel.distance, 1e-14);
+    EXPECT_NE(conf.AtomAt(target).nearest_CO_dist,
+              conf.AtomAt(target).mopac_mc_nearest_CO_dist);
+    EXPECT_NEAR(conf.AtomAt(target).mopac_mc_co_nearest,
+                1.25 * bo_kernel.pcs_scalar, 1e-14);
+
+    const fs::path out_dir = fs::temp_directory_path() /
+        ("mopac_mc_independent_nearest_" + std::to_string(::getpid()));
+    fs::create_directories(out_dir);
+    ASSERT_EQ(conf.Result<MopacMcConnellResult>().WriteFeatures(
+                  conf, out_dir.string()),
+              13);
+    const auto distance = ReadNpy<double>(
+        out_dir / "mopac_mc_nearest_co_dist.npy", "<f8");
+    const auto tensor = ReadNpy<double>(
+        out_dir / "mopac_mc_nearest_co_T2.npy", "<f8");
+    ASSERT_EQ(distance.shape,
+              (std::vector<size_t>{conf.AtomCount()}));
+    ASSERT_EQ(tensor.shape,
+              (std::vector<size_t>{conf.AtomCount(), 9u}));
+    EXPECT_NEAR(distance.values[target], bo_kernel.distance, 1e-14);
+    std::array<double, 9> expected_tensor{};
+    SphericalTensor::Decompose(1.25 * bo_kernel.response)
+        .PackFull9(expected_tensor.data());
+    for (size_t component = 0; component < expected_tensor.size();
+         ++component) {
+        EXPECT_NEAR(tensor.values[target * 9 + component],
+                    expected_tensor[component], 1e-13);
     }
     RemoveMcConnellOutputs(out_dir);
 }

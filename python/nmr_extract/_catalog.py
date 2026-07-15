@@ -871,6 +871,42 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
     ArraySpec("mopac_coulomb_scalars",       "mopac_coulomb", CoulombScalars,  4,  False, "MOPAC-charge scalars [|E_total|, parent-to-H E_total projection (NaN when unavailable), signed E_backbone projection onto E_total direction (historical *_frac name; zero at near-zero |E_total|), |E_aromatic|]." + _MOPAC_COULOMB_SOURCE,
               units="V/A", mechanism="electrostatic_efg"),
+    ArraySpec("mopac_coulomb_aromatic_E_proj", "mopac_coulomb", np.ndarray, None, False, "Signed parent-to-H bond-axis projection of the MOPAC-charge aromatic E-field." + _MOPAC_COULOMB_SOURCE,
+              irreps="0e", units="V/A", mechanism="electrostatic_efg"),
+    ArraySpec("mopac_coulomb_aromatic_n_src", "mopac_coulomb", np.ndarray, None, False, "Count of contributing aromatic sources outside the cached backbone set in the MOPAC-charge all-pairs sum." + _MOPAC_COULOMB_SOURCE,
+              irreps="0e", units="count", mechanism="electrostatic_efg"),
+    ArraySpec("mopac_coulomb_E_clamp_mask", "mopac_coulomb", np.ndarray, None, False, "Per-atom uint8 mask identifying joint MOPAC Coulomb E-vector rescaling by the configured magnitude clamp.",
+              irreps="0e", units="dimensionless", mechanism="electrostatic_efg"),
+    ArraySpec("mopac_coulomb_E_clamp_scale", "mopac_coulomb", np.ndarray, None, False, "Per-atom scale applied jointly to the four MOPAC Coulomb E vectors; 1.0 when unclamped.",
+              irreps="0e", units="dimensionless", mechanism="electrostatic_efg"),
+
+    # ── MOPAC McConnell BO projection (MopacMcConnellResult.cpp) ───
+    ArraySpec("mopac_mc_co_sum", "mopac_mcconnell", np.ndarray, None, False, "T0 scalar of the summed MOPAC Wiberg-weighted PeptideCO response produced by McConnellResult.",
+              irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_cn_sum", "mopac_mcconnell", np.ndarray, None, False, "T0 scalar of the summed MOPAC Wiberg-weighted PeptideCN response produced by McConnellResult.",
+              irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_sidechain_sum", "mopac_mcconnell", np.ndarray, None, False, "T0 scalar summed across the MOPAC Wiberg-weighted sidechain response categories produced by McConnellResult.",
+              irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_aromatic_sum", "mopac_mcconnell", np.ndarray, None, False, "MOPAC Wiberg-weighted aromatic scalar channel, structurally zeroed by McConnellResult to avoid ring-current double counting.",
+              irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_co_nearest", "mopac_mcconnell", np.ndarray, None, False, "MOPAC Wiberg-weighted scalar response of the nearest accepted BO-active PeptideCO source.",
+              irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_nearest_co_dist", "mopac_mcconnell", np.ndarray, None, False, "Distance to the nearest accepted PeptideCO source whose MOPAC Wiberg order survives the configured noise floor.",
+              irreps="0e", units="Å", mechanism="bond_anisotropy"),
+    ArraySpec("mopac_mc_nearest_cn_dist", "mopac_mcconnell", np.ndarray, None, False, "Distance to the nearest accepted PeptideCN source whose MOPAC Wiberg order survives the configured noise floor.",
+              irreps="0e", units="Å", mechanism="bond_anisotropy"),
+    ArraySpec("mopac_mc_nearest_co_T2", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of ConformationAtom::mopac_mc_T2_CO_nearest for the independently selected BO-active PeptideCO source.",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_nearest_cn_T2", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of ConformationAtom::mopac_mc_T2_CN_nearest for the independently selected BO-active PeptideCN source.",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_backbone_total", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the summed MOPAC Wiberg-weighted backbone response.",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_sidechain_total", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the summed MOPAC Wiberg-weighted sidechain response.",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_aromatic_total", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the MOPAC Wiberg-weighted aromatic response, structurally zeroed by McConnellResult.",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
+    ArraySpec("mopac_mc_shielding", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor sum of all MOPAC Wiberg-weighted McConnell categories; unscaled geometry response, not ppm.",
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention="producer response sign; physical shielding sign depends on the downstream susceptibility scale", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
 
     # ── APBS (ApbsFieldResult.cpp) ───────────────────────────────
     ArraySpec("apbs_E",           "apbs", VectorField,             3,    False, "APBS canonical reaction E-field: total PB minus homogeneous-vacuum reference",
@@ -1371,8 +1407,9 @@ _set_contract(
         "MOPAC-charge Coulomb producer replaces non-finite values with zero; "
         "no sanitizer mask (physical-zero/sanitized-zero ambiguity); all four "
         "vectors are jointly scaled when total-E exceeds the configured clamp, "
-        "with provenance only in GeometryChoice; all arrays are absent when "
-        "the prerequisite MopacResult is absent"
+        "with provenance in mopac_coulomb_E_clamp_mask.npy and "
+        "mopac_coulomb_E_clamp_scale.npy; all arrays are absent when the "
+        "prerequisite MopacResult is absent"
     ), irreps="1o", parity="odd", tensor_rank=1)
 _set_contract(
     ("eeq_coulomb_E", "eeq_coulomb_E_backbone",
@@ -1402,7 +1439,9 @@ _set_contract(
     validity=(
         "col1 is NaN without a valid parent-to-H direction; col2 is a signed "
         "V/A projection (not a fraction) and is zero at near-zero total E; "
-        "absent with MopacResult and field sanitizer/clamp has no NPY mask"
+        "absent with MopacResult; consult mopac_coulomb_E_clamp_mask.npy and "
+        "mopac_coulomb_E_clamp_scale.npy for field rescaling; the legacy "
+        "nonfinite sanitizer remains unmasked"
     ),
     irreps="", parity="even", tensor_rank=0)
 
@@ -1414,6 +1453,38 @@ _set_contract(
     validity=(
         "NaN for non-H or parentless atoms; otherwise physical signed V/A "
         "projection"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_coulomb_aromatic_E_proj",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation="exact O(3)-invariant scalar parent-bond projection",
+    validity=(
+        "NaN for non-H or parentless atoms; otherwise the signed projection "
+        "of the post-clamp aromatic MOPAC Coulomb field; absent with MopacResult"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_coulomb_aromatic_n_src",),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant contributing-source count for fixed topology, "
+        "charges, filters and charge floor"
+    ),
+    validity=(
+        "zero is a physical empty count; includes only aromatic sources outside "
+        "the cached backbone set that survive the source filters and charge floor; "
+        "absent with MopacResult"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_coulomb_E_clamp_mask", "mopac_coulomb_E_clamp_scale"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant clamp diagnostic for the analytic all-pairs "
+        "MOPAC Coulomb field; translation invariant"
+    ),
+    validity=(
+        "mask is uint8 1 iff all four E vectors were jointly rescaled; scale "
+        "is clamp/original_total_magnitude when masked and exactly 1 otherwise; "
+        "absent with MopacResult"
     ), irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("eeq_coulomb_scalars",), coordinate_frame=_INTRINSIC_FRAME,
@@ -1655,6 +1726,54 @@ for _stem in ("mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo"):
             "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
         ),
     )
+
+_MOPAC_MCCONNELL_FULL9 = (
+    "mopac_mc_nearest_co_T2", "mopac_mc_nearest_cn_T2",
+    "mopac_mc_backbone_total", "mopac_mc_sidechain_total",
+    "mopac_mc_aromatic_total", "mopac_mc_shielding",
+)
+_set_contract(
+    _MOPAC_MCCONNELL_FULL9,
+    coordinate_frame=_CARTESIAN_FRAME,
+    transformation=_EVEN_RANK2,
+    validity=(
+        "whole family is absent unless MopacMcConnellResult attaches; nearest "
+        "CO/CN tensors are NaN when the corresponding mopac_mc_nearest_*_dist "
+        "is NO_DATA_SENTINEL; aggregate zero means an empty/zero BO sum"
+    ))
+for _stem in _MOPAC_MCCONNELL_FULL9:
+    CATALOG[_stem] = replace(
+        CATALOG[_stem], scaling_contract=_MCCONNELL_SCALING)
+CATALOG["mopac_mc_aromatic_total"] = replace(
+    CATALOG["mopac_mc_aromatic_total"],
+    structural_zero_components=(
+        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+    ))
+
+_set_contract(
+    ("mopac_mc_co_sum", "mopac_mc_cn_sum", "mopac_mc_sidechain_sum",
+     "mopac_mc_aromatic_sum", "mopac_mc_co_nearest"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant scalar from the MOPAC Wiberg-weighted "
+        "McConnell response; translation invariant"
+    ),
+    validity=(
+        "whole family is absent unless MopacMcConnellResult attaches; sums use "
+        "physical zero for empty/zero BO channels; co_nearest is gated by "
+        "mopac_mc_nearest_co_dist.npy; aromatic_sum is structurally zero"
+    ), irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("mopac_mc_nearest_co_dist", "mopac_mc_nearest_cn_dist"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)-invariant source-midpoint distance; translation invariant"
+    ),
+    validity=(
+        "NO_DATA_SENTINEL means no accepted source of that category survived "
+        "the MOPAC bond-order noise floor; whole family is absent unless "
+        "MopacMcConnellResult attaches"
+    ), irreps="0e", parity="even", tensor_rank=0)
 
 for _stem in (
     "mc_peptide_co_bo", "mc_peptide_cn_bo", "mc_backbone_other_bo",

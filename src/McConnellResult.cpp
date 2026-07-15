@@ -499,8 +499,13 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         Vec3 best_co_direction = Vec3::Zero();
         McConnellPairKernel best_co_kernel;
         McConnellPairKernel best_cn_kernel;
-        double best_co_bo = 0.0;
-        double best_cn_bo = 0.0;
+        double best_bo_co_dist = NO_DATA_SENTINEL;
+        double best_bo_cn_dist = NO_DATA_SENTINEL;
+        double best_bo_co_scalar = 0.0;
+        McConnellPairKernel best_bo_co_kernel;
+        McConnellPairKernel best_bo_cn_kernel;
+        double best_bo_co = 0.0;
+        double best_bo_cn = 0.0;
         std::size_t atom_near_accepted_lt3 = 0;
         std::size_t atom_near_rejected_lt3 = 0;
 
@@ -592,12 +597,27 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                 best_co_midpoint = midpoint;
                 best_co_direction = kernel.direction;
                 best_co_kernel = kernel;
-                best_co_bo = bo;
             } else if (cat == McConnellSourceCategory::PeptideCN &&
                        kernel.distance < best_cn_dist) {
                 best_cn_dist = kernel.distance;
                 best_cn_kernel = kernel;
-                best_cn_bo = bo;
+            }
+
+            // The BO-nearest answer is selected from the BO channel's own
+            // source set. A spatially nearer bond that was removed by the
+            // MOPAC noise floor must not replace its nearest live source.
+            if (bo > 0.0 && cat == McConnellSourceCategory::PeptideCO &&
+                kernel.distance < best_bo_co_dist) {
+                best_bo_co_dist = kernel.distance;
+                best_bo_co_scalar = kernel.pcs_scalar;
+                best_bo_co_kernel = kernel;
+                best_bo_co = bo;
+            } else if (bo > 0.0 &&
+                       cat == McConnellSourceCategory::PeptideCN &&
+                       kernel.distance < best_bo_cn_dist) {
+                best_bo_cn_dist = kernel.distance;
+                best_bo_cn_kernel = kernel;
+                best_bo_cn = bo;
             }
 
             ++total_pairs;
@@ -658,14 +678,19 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                 ? Vec3(best_co_direction / dir_norm) : Vec3::Zero();
             ca.T2_CO_nearest =
                 SphericalTensor::Decompose(best_co_kernel.response);
-            ca.mopac_mc_T2_CO_nearest =
-                SphericalTensor::Decompose(best_co_bo * best_co_kernel.response);
         }
         if (best_cn_dist < NO_DATA_SENTINEL) {
             ca.T2_CN_nearest =
                 SphericalTensor::Decompose(best_cn_kernel.response);
+        }
+        if (best_bo_co_dist < NO_DATA_SENTINEL) {
+            ca.mopac_mc_T2_CO_nearest = SphericalTensor::Decompose(
+                best_bo_co * best_bo_co_kernel.response);
+        }
+        if (best_bo_cn_dist < NO_DATA_SENTINEL) {
             ca.mopac_mc_T2_CN_nearest =
-                SphericalTensor::Decompose(best_cn_bo * best_cn_kernel.response);
+                SphericalTensor::Decompose(
+                    best_bo_cn * best_bo_cn_kernel.response);
         }
 
         ca.T2_backbone_total = SphericalTensor::Decompose(SumFixedCategories(
@@ -711,9 +736,9 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             bo_sidechain_co.T0 + bo_sidechain_other.T0 + bo_disulfide.T0 +
             bo_sidechain_xh.T0 + bo_sh.T0;
         ca.mopac_mc_aromatic_sum = 0.0;
-        ca.mopac_mc_co_nearest = best_co_bo * best_co_scalar;
-        ca.mopac_mc_nearest_CO_dist = best_co_dist;
-        ca.mopac_mc_nearest_CN_dist = best_cn_dist;
+        ca.mopac_mc_co_nearest = best_bo_co * best_bo_co_scalar;
+        ca.mopac_mc_nearest_CO_dist = best_bo_co_dist;
+        ca.mopac_mc_nearest_CN_dist = best_bo_cn_dist;
         ca.mopac_mc_T2_backbone_total = SphericalTensor::Decompose(
             accum[CatIndex(McConnellSourceCategory::PeptideCO)]
                  [ChannelIndex(McConnellChannel::BondOrder)] +
