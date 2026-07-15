@@ -513,8 +513,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── Coulomb (CoulombResult.cpp) — emitted alongside canonical APBS
     # in production. It supplies the vacuum field plus direct aliases of the
-    # APBS reaction field, and also feeds the MOPAC-vs-configured-ChargeSource
-    # reconciliation probe (whose filename retains a historical ff14sb label). ──
+    # APBS reaction field. ──
     ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG full 9-pack; T0/T1 are structural zeros (bitwise-symmetric source, explicit traceless projection)",
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_t2",         "coulomb", EFGTensor,       5,   False, "Coulomb bare total EFG T2-only companion copied from coulomb_efg columns 4:9",

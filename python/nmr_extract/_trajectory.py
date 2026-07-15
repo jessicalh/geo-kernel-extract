@@ -3546,100 +3546,6 @@ def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingT
     )
 
 
-@dataclass(frozen=True)
-class MopacVsFf14SbReconciliationGroup:
-    """Per-atom per-frame signed cos(MOPAC Coulomb T2, configured-charge T2)
-    from /trajectory/mopac_vs_ff14sb_reconciliation/. TR9 of the
-    13-TR plan. The path/class retain the historical ``ff14sb`` label, but
-    the second source is whatever typed ``ChargeSource`` populated
-    ``CoulombResult``; it is not guaranteed to be FF14SB.
-
-    cos_t2 ∈ [-1, 1] measures the SIGNED orientational agreement
-    between MOPAC PM7+MOZYME-derived and configured-charge
-    charge-driven Coulomb T2 EFG kernels, in the T2 5-vector
-    subspace, per atom per frame. cos = +1: aligned. cos = -1:
-    opposite-polarisation (chemistry-distinctive disagreement between the
-    sources). cos = 0: orthogonal.
-    The ridge MUST see the SIGNED cos to expose sign disagreement
-    (decision 2026-05-21 per science adversarial review M1; prior
-    |cos| in [0, 1] silently squashed this signal).
-
-      cos_t2 (N, T) float64 — dimensionless, [-1, 1]
-
-    NaN cells: either source absent that frame, OR per-atom either-
-    side |T2| < `magnitude_floor` group attr (cosine undefined at
-    EFG noise floor). magnitude_floor is from CalculatorConfig's
-    `coulomb_efg_t2_magnitude_floor` — calibrated to the V/Å² EFG
-    signal scale (NOT the project-wide direction-vector floor
-    1e-10 which would let FP-noise-dominated atoms through;
-    decision per math adversarial review H1).
-
-    SDK readers MUST use isfinite() to gate.
-
-    Cross-source gate: REQUIRES both MopacCoulombResult AND CoulombResult
-    attached per frame. WriteH5Group skips the entire group when no
-    frame had both attached.
-
-    Convenience: use .per_atom_mean_cos() for an (N,) NaN-tolerant
-    mean across the frame axis (typical first-pass calibration
-    feature).
-    """
-    cos_t2: np.ndarray
-    frame_indices: np.ndarray
-    frame_times: np.ndarray
-    source_attached_per_frame: np.ndarray
-    n_atoms: int
-    n_frames: int
-    source_attached_count: int
-    parity: str                          # "0e"
-    units: str                           # "dimensionless"
-    sources: str
-    source_attached_policy: str
-    magnitude_floor: float
-    magnitude_floor_units: str
-    magnitude_floor_source: str
-
-    def per_atom_mean_cos(self) -> np.ndarray:
-        """NaN-tolerant per-atom mean of cos_t2 across the frame
-        axis. Returns shape (N,). Atoms whose cosine is NaN in every
-        frame (always-below-floor) yield NaN here too.
-        """
-        return np.nanmean(self.cos_t2, axis=1)
-
-    def per_atom_finite_count(self) -> np.ndarray:
-        """Per-atom count of finite cos_t2 frames. Returns shape (N,)
-        uint64. Atoms with low count are diagnostic-quality flags —
-        e.g., remote-from-charge atoms with |T2| persistently below
-        the magnitude_floor.
-        """
-        return np.isfinite(self.cos_t2).sum(axis=1).astype(np.uint64)
-
-
-def _load_mopac_vs_ff14sb_reconciliation(f) -> Optional[MopacVsFf14SbReconciliationGroup]:
-    path = "/trajectory/mopac_vs_ff14sb_reconciliation"
-    if path not in f:
-        return None
-    g = f[path]
-    def _attr(name: str) -> str:
-        return str(_decode_attr(g.attrs.get(name, "")))
-    return MopacVsFf14SbReconciliationGroup(
-        cos_t2=g["cos_t2"][:],
-        frame_indices=g["frame_indices"][:],
-        frame_times=g["frame_times"][:],
-        source_attached_per_frame=g["source_attached_per_frame"][:],
-        n_atoms=int(g.attrs["n_atoms"]),
-        n_frames=int(g.attrs["n_frames"]),
-        source_attached_count=int(g.attrs["source_attached_count"]),
-        parity=_attr("parity"),
-        units=_attr("units"),
-        sources=_attr("sources"),
-        source_attached_policy=_attr("source_attached_policy"),
-        magnitude_floor=float(g.attrs["magnitude_floor"]),
-        magnitude_floor_units=_attr("magnitude_floor_units"),
-        magnitude_floor_source=_attr("magnitude_floor_source"),
-    )
-
-
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -4467,15 +4373,6 @@ class TrajectoryData:
     mopac_mc_shielding_time_series: Optional[
         "MopacMcConnellShieldingTimeSeriesGroup"] = None
 
-    # MOPAC vs configured ChargeSource reconciliation (TR #9; historical
-    # path name retains ff14sb). Per-atom-per-frame signed cosine in [-1, 1];
-    # it is not guaranteed that the configured CoulombResult uses FF14SB.
-    # Cross-source gate: requires BOTH MopacCoulombResult AND
-    # CoulombResult attached per frame; group skipped if no frame
-    # had both.
-    mopac_vs_ff14sb_reconciliation: Optional[
-        "MopacVsFf14SbReconciliationGroup"] = None
-
     # Ring neighbourhood geometric residual TR (TR #10; 2026-05-21).
     # Per-(atom, aromatic-ring) static membership + 4-channel geometric
     # residual per frame. Group skipped when no aromatic-ring/atom
@@ -4648,7 +4545,6 @@ def load_trajectory(path: str | Path,
         mopac_coulomb_efg_time_series = _load_mopac_coulomb_efg_time_series(f)
         mopac_coulomb_shielding_time_series = mopac_coulomb_efg_time_series
         mopac_mc_shielding_time_series = _load_mopac_mc_shielding_time_series(f)
-        mopac_vs_ff14sb_reconciliation = _load_mopac_vs_ff14sb_reconciliation(f)
         ring_neighbourhood_trajectory_stats = (
             _load_ring_neighbourhood_trajectory_stats(f))
         rmsd_tracking = _load_rmsd_tracking(f)
@@ -4707,7 +4603,6 @@ def load_trajectory(path: str | Path,
         mopac_coulomb_efg_time_series=mopac_coulomb_efg_time_series,
         mopac_coulomb_shielding_time_series=mopac_coulomb_shielding_time_series,
         mopac_mc_shielding_time_series=mopac_mc_shielding_time_series,
-        mopac_vs_ff14sb_reconciliation=mopac_vs_ff14sb_reconciliation,
         ring_neighbourhood_trajectory_stats=ring_neighbourhood_trajectory_stats,
         rmsd_tracking=rmsd_tracking,
         kernel_dynamics=kernel_dynamics,
