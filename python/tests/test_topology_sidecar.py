@@ -72,6 +72,7 @@ _DIRECTIONAL_STEMS = {
     "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo",
     "mc_s_h_fixed", "mc_s_h_bo", "mc_nearest_co_dir",
     "mc_nearest_co_midpoint", "mc_nearest_co_T2", "mc_nearest_cn_T2",
+    "mc_nearest_co_bond_index", "mc_nearest_cn_bond_index",
     "mopac_mc_co_sum", "mopac_mc_cn_sum", "mopac_mc_sidechain_sum",
     "mopac_mc_aromatic_sum", "mopac_mc_co_nearest",
     "mopac_mc_nearest_co_dist", "mopac_mc_nearest_cn_dist",
@@ -312,6 +313,22 @@ class TestCatalogMetadata:
         assert spec.parity == "even"
         assert spec.tensor_rank == 0
         assert "O(3)-invariant" in spec.transformation
+
+    @pytest.mark.parametrize("stem", [
+        "mc_nearest_co_bond_index", "mc_nearest_cn_bond_index",
+    ])
+    def test_mcconnell_nearest_bond_indices_are_geometry_owned(self, stem):
+        spec = CATALOG[stem]
+        assert spec.group == "mcconnell"
+        assert spec.coordinate_frame == "intrinsic_geometry"
+        assert spec.units == "index"
+        assert spec.irreps == "0e"
+        assert spec.parity == "even"
+        assert spec.tensor_rank == 0
+        assert "solely by accepted source-midpoint geometry" in (
+            spec.transformation)
+        assert "-1 means no accepted source" in spec.validity
+        assert "mopac_topology_bond_orders_full.npy" in spec.validity
 
 
     @pytest.mark.parametrize("stem", [

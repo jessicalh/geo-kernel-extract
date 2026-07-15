@@ -158,6 +158,13 @@ def test_mopac_emit_surface_reaches_loaded_protein(tmp_path):
         tensor_payloads[stem] = payload
         np.save(tmp_path / f"{stem}.npy", payload)
 
+    nearest_co_bond_index = np.asarray([0, -1, 1], dtype=np.int32)
+    nearest_cn_bond_index = np.asarray([-1, 0, 1], dtype=np.int32)
+    np.save(tmp_path / "mc_nearest_co_bond_index.npy",
+            nearest_co_bond_index)
+    np.save(tmp_path / "mc_nearest_cn_bond_index.npy",
+            nearest_cn_bond_index)
+
     protein = load(tmp_path)
     assert protein.mopac is not None
     np.testing.assert_array_equal(
@@ -168,6 +175,10 @@ def test_mopac_emit_surface_reaches_loaded_protein(tmp_path):
         protein.mopac.coulomb.E_clamp_mask, clamp_mask)
     np.testing.assert_array_equal(
         protein.mopac.coulomb.E_clamp_scale, clamp_scale)
+    np.testing.assert_array_equal(
+        protein.mcconnell.nearest_co_bond_index, nearest_co_bond_index)
+    np.testing.assert_array_equal(
+        protein.mcconnell.nearest_cn_bond_index, nearest_cn_bond_index)
 
     mc = protein.mopac.mcconnell
     assert isinstance(mc, MopacMcConnellGroup)

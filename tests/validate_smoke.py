@@ -91,6 +91,7 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         "mopac_mc_nearest_cn_T2.npy", "mopac_mc_backbone_total.npy",
         "mopac_mc_sidechain_total.npy", "mopac_mc_aromatic_total.npy",
         "mopac_mc_shielding.npy",
+        "mc_nearest_co_bond_index.npy", "mc_nearest_cn_bond_index.npy",
         # Trajectory-path arrays (optional — present only with --trajectory)
         "water_efield.npy", "water_efg.npy",
         "water_efield_first.npy", "water_efg_first.npy",

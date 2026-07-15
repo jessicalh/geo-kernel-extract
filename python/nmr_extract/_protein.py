@@ -248,6 +248,8 @@ class McConnellGroup:
     nearest_co_midpoint: Optional[PositionField] = None
     nearest_co_T2: Optional[ShieldingTensor] = None
     nearest_cn_T2: Optional[ShieldingTensor] = None
+    nearest_co_bond_index: Optional[np.ndarray] = None
+    nearest_cn_bond_index: Optional[np.ndarray] = None
     bond_neighbors: Optional[np.ndarray] = None
 
     @property
@@ -453,8 +455,10 @@ class MopacMcConnellGroup:
     """Direct read-back of the MOPAC Wiberg-weighted McConnell projection.
 
     Tensor fields are unscaled Å⁻³ project-native Full9 values, not ppm.
-    The two nearest tensors have a source only where their corresponding
-    distance is below the producer's ``NO_DATA_SENTINEL``.
+    Geometry selects each nearest source; MOPAC weights that same bond. The
+    two nearest tensors have a source only where their corresponding distance
+    is below the producer's ``NO_DATA_SENTINEL`` and may be physically zero
+    when the selected bond's post-floor order is zero.
     """
     co_sum: np.ndarray
     cn_sum: np.ndarray
@@ -1813,6 +1817,8 @@ def load(path: str | Path) -> Protein:
         nearest_co_midpoint=get("mc_nearest_co_midpoint"),
         nearest_co_T2=get("mc_nearest_co_T2"),
         nearest_cn_T2=get("mc_nearest_cn_T2"),
+        nearest_co_bond_index=get("mc_nearest_co_bond_index"),
+        nearest_cn_bond_index=get("mc_nearest_cn_bond_index"),
         bond_neighbors=get("mc_bond_neighbors")
             if "mc_bond_neighbors" in available else None,
     )

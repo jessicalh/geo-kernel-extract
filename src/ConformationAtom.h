@@ -174,6 +174,8 @@ public:
     Vec3 nearest_CO_midpoint = Vec3::Zero();
     double nearest_CO_dist = 0.0;
     double nearest_CN_dist = 0.0;
+    size_t nearest_CO_bond_index = SIZE_MAX;
+    size_t nearest_CN_bond_index = SIZE_MAX;
     SphericalTensor T2_CO_nearest;
     SphericalTensor T2_CN_nearest;
     SphericalTensor T2_backbone_total;

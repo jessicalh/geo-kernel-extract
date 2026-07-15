@@ -493,6 +493,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_nearest_cn_T2",         "mcconnell", ShieldingTensor, 9, False, "Nearest accepted peptide C-N axial ComputePairKernel response per atom, packed in project Full9 order",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
+    ArraySpec("mc_nearest_co_bond_index", "mcconnell", np.ndarray, None, False, "Topology bond index of the geometrically nearest accepted peptide C=O source per atom; -1 means no accepted source",
+              irreps="0e", units="index", mechanism="bond_anisotropy"),
+    ArraySpec("mc_nearest_cn_bond_index", "mcconnell", np.ndarray, None, False, "Topology bond index of the geometrically nearest accepted peptide C-N source per atom; -1 means no accepted source",
+              irreps="0e", units="index", mechanism="bond_anisotropy"),
 
     # Typed side-chain carbonyl inventory + the canonical McConnell
     # SidechainCO response projected onto atom rows.  The source tables use a
@@ -889,15 +893,15 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
     ArraySpec("mopac_mc_aromatic_sum", "mopac_mcconnell", np.ndarray, None, False, "MOPAC Wiberg-weighted aromatic scalar channel, structurally zeroed by McConnellResult to avoid ring-current double counting.",
               irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
-    ArraySpec("mopac_mc_co_nearest", "mopac_mcconnell", np.ndarray, None, False, "MOPAC Wiberg-weighted scalar response of the nearest accepted BO-active PeptideCO source.",
+    ArraySpec("mopac_mc_co_nearest", "mopac_mcconnell", np.ndarray, None, False, "MOPAC Wiberg-weighted scalar response of the geometrically nearest accepted PeptideCO source; zero when that source's post-floor bond order is zero.",
               irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
-    ArraySpec("mopac_mc_nearest_co_dist", "mopac_mcconnell", np.ndarray, None, False, "Distance to the nearest accepted PeptideCO source whose MOPAC Wiberg order survives the configured noise floor.",
+    ArraySpec("mopac_mc_nearest_co_dist", "mopac_mcconnell", np.ndarray, None, False, "Distance to the geometrically nearest accepted PeptideCO source, independent of its MOPAC Wiberg bond order.",
               irreps="0e", units="Å", mechanism="bond_anisotropy"),
-    ArraySpec("mopac_mc_nearest_cn_dist", "mopac_mcconnell", np.ndarray, None, False, "Distance to the nearest accepted PeptideCN source whose MOPAC Wiberg order survives the configured noise floor.",
+    ArraySpec("mopac_mc_nearest_cn_dist", "mopac_mcconnell", np.ndarray, None, False, "Distance to the geometrically nearest accepted PeptideCN source, independent of its MOPAC Wiberg bond order.",
               irreps="0e", units="Å", mechanism="bond_anisotropy"),
-    ArraySpec("mopac_mc_nearest_co_T2", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of ConformationAtom::mopac_mc_T2_CO_nearest for the independently selected BO-active PeptideCO source.",
+    ArraySpec("mopac_mc_nearest_co_T2", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the MOPAC Wiberg-weighted response for the geometrically nearest accepted PeptideCO source.",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
-    ArraySpec("mopac_mc_nearest_cn_T2", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of ConformationAtom::mopac_mc_T2_CN_nearest for the independently selected BO-active PeptideCN source.",
+    ArraySpec("mopac_mc_nearest_cn_T2", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the MOPAC Wiberg-weighted response for the geometrically nearest accepted PeptideCN source.",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
     ArraySpec("mopac_mc_backbone_total", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the summed MOPAC Wiberg-weighted backbone response.",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
@@ -1298,6 +1302,17 @@ _set_contract(
         "NaN triplet when nearest_CO_dist is NO_DATA_SENTINEL; finite only for "
         "an accepted peptide C=O source"
     ))
+_set_contract(
+    ("mc_nearest_co_bond_index", "mc_nearest_cn_bond_index"),
+    coordinate_frame=_INTRINSIC_FRAME,
+    transformation=(
+        "exact O(3)- and translation-invariant topology bond identity selected "
+        "solely by accepted source-midpoint geometry"
+    ),
+    validity=(
+        "-1 means no accepted source of that category; every nonnegative value "
+        "indexes bonds.npy and the same row of mopac_topology_bond_orders_full.npy"
+    ), irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("hbond_nearest_dir",), coordinate_frame=_CARTESIAN_FRAME,
     transformation=_POLAR_VECTOR,
@@ -1739,7 +1754,9 @@ _set_contract(
     validity=(
         "whole family is absent unless MopacMcConnellResult attaches; nearest "
         "CO/CN tensors are NaN when the corresponding mopac_mc_nearest_*_dist "
-        "is NO_DATA_SENTINEL; aggregate zero means an empty/zero BO sum"
+        "is NO_DATA_SENTINEL; a valid nearest tensor is physical zero when the "
+        "geometry-selected bond's post-floor BO is zero; aggregate zero means "
+        "an empty/zero BO sum"
     ))
 for _stem in _MOPAC_MCCONNELL_FULL9:
     CATALOG[_stem] = replace(
@@ -1761,7 +1778,8 @@ _set_contract(
     validity=(
         "whole family is absent unless MopacMcConnellResult attaches; sums use "
         "physical zero for empty/zero BO channels; co_nearest is gated by "
-        "mopac_mc_nearest_co_dist.npy; aromatic_sum is structurally zero"
+        "mopac_mc_nearest_co_dist.npy and is physical zero when the geometry-"
+        "selected bond's post-floor BO is zero; aromatic_sum is structurally zero"
     ), irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("mopac_mc_nearest_co_dist", "mopac_mc_nearest_cn_dist"),
@@ -1770,8 +1788,9 @@ _set_contract(
         "exact O(3)-invariant source-midpoint distance; translation invariant"
     ),
     validity=(
-        "NO_DATA_SENTINEL means no accepted source of that category survived "
-        "the MOPAC bond-order noise floor; whole family is absent unless "
+        "NO_DATA_SENTINEL means no geometrically accepted source of that category; "
+        "selection is independent of MOPAC bond order and matches the corresponding "
+        "mc_nearest_*_bond_index.npy; whole family is absent unless "
         "MopacMcConnellResult attaches"
     ), irreps="0e", parity="even", tensor_rank=0)
 
