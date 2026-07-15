@@ -9,6 +9,7 @@
 #include "AminoAcidType.h"
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
+#include "DihedralBinTransitionTrajectoryResult.h"
 #include "DihedralTimeSeriesTrajectoryResult.h"
 #include "DirectionalTestHelpers.h"
 #include "DsspResult.h"
@@ -34,9 +35,15 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <cif++.hpp>
+#include <cif++/pdb/pdb2cif.hpp>
+#include <dssp.hpp>
+
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -142,6 +149,14 @@ nmr::RunConfiguration BuildConfigWithCrossResults(unsigned stride) {
 // LocalBackboneGeometryTrajectoryResult.cpp. The non-skipping analytic tests
 // below call these exact kernels rather than reimplementing production math.
 namespace nmr {
+namespace dihedral_time_series_detail {
+std::uint8_t RamachandranBin(double phi_project_rad,
+                             double psi_project_rad);
+}  // namespace dihedral_time_series_detail
+namespace dihedral_bin_transition_detail {
+std::uint8_t RamachandranBin(double phi_project_rad,
+                             double psi_project_rad);
+}  // namespace dihedral_bin_transition_detail
 namespace local_backbone_geometry {
 double BondAngleRadians(const Vec3&, const Vec3&, const Vec3&);
 Vec3 IdealCbPosition(const Vec3&, const Vec3&, const Vec3&);
@@ -149,6 +164,155 @@ Vec3 CbDeviationVector(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
 double CbDeviation(const Vec3&, const Vec3&, const Vec3&, const Vec3&);
 }  // namespace local_backbone_geometry
 }  // namespace nmr
+
+namespace {
+
+struct ExternalDsspAngle {
+    std::string chain_id;
+    int residue_number;
+    double phi_degrees;
+    double psi_degrees;
+};
+
+std::vector<ExternalDsspAngle> ReadLibdsspAngles(
+        const std::string& pdb_path) {
+    cif::file cif_file;
+    std::ifstream pdb_input(pdb_path);
+    cif::pdb::ReadPDBFile(pdb_input, cif_file);
+    auto& datablock = cif_file.front();
+    cif::mm::structure structure(datablock, 1, {});
+    ::dssp dssp_result(structure, 3, false);
+
+    std::vector<ExternalDsspAngle> angles;
+    for (auto& residue : dssp_result) {
+        angles.push_back({residue.pdb_strand_id(), residue.pdb_seq_num(),
+                          residue.phi(), residue.psi()});
+    }
+    return angles;
+}
+
+// Independent reference: libdssp supplies plain-IUPAC phi/psi from each real
+// structure; this test applies the published boxes in that same convention.
+// The project angle formula is not called or reproduced here.
+std::uint8_t PublishedRamachandranBin(double phi, double psi) {
+    using R = nmr::DihedralBinTransitionTrajectoryResult;
+    if (!std::isfinite(phi) || !std::isfinite(psi) ||
+        std::abs(phi) > 180.0 || std::abs(psi) > 180.0) {
+        return R::kBinUnassigned;
+    }
+    if (phi >= -180.0 && phi <= -30.0 &&
+        psi >=  -90.0 && psi <=  30.0) {
+        return R::kBinAlphaR;
+    }
+    if (phi >= 30.0 && phi <= 100.0 &&
+        psi >= -10.0 && psi <= 80.0) {
+        return R::kBinAlphaL;
+    }
+    if (phi >= -75.0 && phi <= -50.0 &&
+        psi >= 140.0 && psi <= 165.0) {
+        return R::kBinPPII;
+    }
+    if (phi >= -180.0 && phi <= -45.0 &&
+        ((psi >= 60.0 && psi <= 180.0) ||
+         (psi >= -180.0 && psi <= -150.0))) {
+        return R::kBinBeta;
+    }
+    return R::kBinOther;
+}
+
+std::string RamaCountsText(const std::array<std::size_t, 6>& counts) {
+    return "unassigned=" + std::to_string(counts[0]) +
+           " alphaR=" + std::to_string(counts[1]) +
+           " beta=" + std::to_string(counts[2]) +
+           " alphaL=" + std::to_string(counts[3]) +
+           " PPII=" + std::to_string(counts[4]) +
+           " other=" + std::to_string(counts[5]);
+}
+
+}  // namespace
+
+
+TEST(RamachandranBin, ProductionClassifiersMatchDirectLibdsspOnRealStructures) {
+    using R = nmr::DihedralBinTransitionTrajectoryResult;
+    struct Fixture {
+        const char* relative_path;
+        std::array<std::size_t, 6> expected_counts;
+    };
+    const std::array<Fixture, 2> fixtures{{
+        {"external/1UBQ.pdb", {2u, 25u, 39u, 6u, 3u, 1u}},
+        {"external/1OKH_4587_protonated.pdb",
+         {2u, 25u, 11u, 2u, 4u, 2u}},
+    }};
+
+    for (const Fixture& fixture : fixtures) {
+        const std::string pdb_path =
+            std::string(NMR_TEST_DATA_DIR) + "/" + fixture.relative_path;
+        ASSERT_TRUE(fs::exists(pdb_path)) << pdb_path;
+        const auto angles = ReadLibdsspAngles(pdb_path);
+        ASSERT_FALSE(angles.empty()) << pdb_path;
+
+        std::array<std::size_t, 6> external_counts{};
+        std::array<std::size_t, 6> time_series_counts{};
+        std::array<std::size_t, 6> transition_counts{};
+        std::size_t time_series_mismatches = 0;
+        std::size_t transition_mismatches = 0;
+
+        for (const ExternalDsspAngle& angle : angles) {
+            const std::uint8_t external = PublishedRamachandranBin(
+                angle.phi_degrees, angle.psi_degrees);
+            ++external_counts[external];
+
+            const double phi_project = external == R::kBinUnassigned
+                ? std::numeric_limits<double>::quiet_NaN()
+                : -angle.phi_degrees * M_PI / 180.0;
+            const double psi_project = external == R::kBinUnassigned
+                ? std::numeric_limits<double>::quiet_NaN()
+                : -angle.psi_degrees * M_PI / 180.0;
+            const std::uint8_t time_series =
+                nmr::dihedral_time_series_detail::RamachandranBin(
+                    phi_project, psi_project);
+            const std::uint8_t transition =
+                nmr::dihedral_bin_transition_detail::RamachandranBin(
+                    phi_project, psi_project);
+            ++time_series_counts[time_series];
+            ++transition_counts[transition];
+            time_series_mismatches += time_series != external ? 1u : 0u;
+            transition_mismatches += transition != external ? 1u : 0u;
+
+            if (std::string(fixture.relative_path) == "external/1UBQ.pdb" &&
+                angle.chain_id == "A") {
+                if (angle.residue_number == 2) {
+                    EXPECT_EQ(external, R::kBinBeta);
+                    EXPECT_EQ(time_series, R::kBinBeta);
+                    EXPECT_EQ(transition, R::kBinBeta);
+                } else if (angle.residue_number == 8) {
+                    EXPECT_EQ(external, R::kBinAlphaR);
+                    EXPECT_EQ(time_series, R::kBinAlphaR);
+                    EXPECT_EQ(transition, R::kBinAlphaR);
+                } else if (angle.residue_number == 10) {
+                    EXPECT_EQ(external, R::kBinAlphaL);
+                    EXPECT_EQ(time_series, R::kBinAlphaL);
+                    EXPECT_EQ(transition, R::kBinAlphaL);
+                }
+            }
+        }
+
+        std::cout << "Ramachandran external authority "
+                  << fixture.relative_path << "\n"
+                  << "  libdssp IUPAC: "
+                  << RamaCountsText(external_counts) << "\n"
+                  << "  time-series production: "
+                  << RamaCountsText(time_series_counts) << "\n"
+                  << "  transition production: "
+                  << RamaCountsText(transition_counts) << "\n";
+
+        EXPECT_EQ(external_counts, fixture.expected_counts);
+        EXPECT_EQ(time_series_counts, external_counts);
+        EXPECT_EQ(transition_counts, external_counts);
+        EXPECT_EQ(time_series_mismatches, 0u);
+        EXPECT_EQ(transition_mismatches, 0u);
+    }
+}
 
 
 TEST(DihedralTimeSeries,
@@ -568,7 +732,8 @@ TEST(DihedralTimeSeries, H5RoundTrip) {
     grp.getAttribute("angle_convention").read(convention);
     EXPECT_EQ(units, "radians");
     EXPECT_EQ(periodicity, "2pi");
-    EXPECT_NE(convention.find("IUPAC"), std::string::npos);
+    EXPECT_NE(convention.find("angle_project = -angle_IUPAC"),
+              std::string::npos);
 
     // Per-frame datasets.
     for (const std::string& name : {"phi", "psi", "omega", "omega_deviation"}) {
@@ -816,16 +981,13 @@ TEST(DihedralTimeSeries, Integration1P9J) {
 // DsspResult and PlanarGeometryResult on internal residues.
 //
 // Two distinct convention layers checked:
-//   1. PlanarGeometryResult uses IUPAC signed dihedral via the same
-//      atan2(y, x) formula — bit-identical agreement expected for
-//      omega (and for phi/psi if PG had them).
-//   2. DsspResult forwards values from libdssp/libcifpp, which uses
-//      the NEGATED IUPAC sign convention for backbone dihedrals
-//      (well-known DSSP quirk; phi_DSSP = -phi_IUPAC, psi_DSSP =
-//      -psi_IUPAC). We compare to -DSSP.Phi(ri) / -DSSP.Psi(ri) and
-//      document the convention divergence in code + test comment so
-//      downstream consumers (and reviewers) see the trap. Drift OTHER
-//      than the sign flip would mean an algorithmic bug.
+//   1. PlanarGeometryResult uses the same project-signed atan2(y, x)
+//      formula — bit-identical agreement expected for omega (and for
+//      phi/psi if PG had them).
+//   2. DsspResult forwards plain-IUPAC libdssp/libcifpp phi/psi. The
+//      project convention is their negative, so we compare to
+//      -DSSP.Phi(ri) / -DSSP.Psi(ri). Drift other than that explicit
+//      conversion would mean an algorithmic bug.
 
 TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
     nmr::test::TestEnvironment::LoadCalculatorConfig();
@@ -864,8 +1026,8 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
     // PG uses the same atan2 formula as DTS — bit-identical agreement
     // expected (1e-12 tolerance).
     //
-    // DSSP has TWO convention layers vs IUPAC:
-    //   (a) negated sign: phi_DSSP = -phi_IUPAC (compare to -DSSP value)
+    // DSSP has two boundary differences from the project representation:
+    //   (a) libdssp is plain IUPAC, so project = -DSSP
     //   (b) "undefined" sentinel is ±2π (degrees=360) — NOT NaN. Filter
     //       residues where |DSSP value| > 2π - 0.1 as undefined.
     // Tolerance ~0.01 rad (~0.6°) absorbs libdssp's algorithmic drift
@@ -891,9 +1053,9 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
         const double dts_omega = omega[ri][0];
 
         if (std::isfinite(dts_phi)) {
-            // DSSP convention: negated IUPAC (well-known libdssp/libcifpp
-            // quirk). Compare to -DSSP.Phi. Skip rows where DSSP returns
-            // its "undefined" sentinel (±2π, from 360-degree internal).
+            // libdssp is plain IUPAC; negate it into project convention.
+            // Skip rows where DSSP returns its "undefined" sentinel
+            // (±2π, from 360-degree internal).
             const double d = dssp.Phi(ri);
             if (dssp_finite(d) && std::abs(d) > 1e-12) {
                 const double d_neg = -d;
@@ -901,7 +1063,7 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
                 else { ++phi_mismatch;
                     EXPECT_NEAR(dts_phi, d_neg, kTolDssp)
                         << "phi diverged at ri=" << ri
-                        << " (vs -DSSP — convention is negated IUPAC; "
+                        << " (vs -DSSP — project is negative IUPAC; "
                         << "tolerance absorbs libdssp algorithmic drift)"; }
             } else { ++phi_skip; }
         }
@@ -913,7 +1075,7 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
                 else { ++psi_mismatch;
                     EXPECT_NEAR(dts_psi, d_neg, kTolDssp)
                         << "psi diverged at ri=" << ri
-                        << " (vs -DSSP — convention is negated IUPAC; "
+                        << " (vs -DSSP — project is negative IUPAC; "
                         << "tolerance absorbs libdssp algorithmic drift)"; }
             } else { ++psi_skip; }
         }

@@ -49,11 +49,16 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
     return std::atan2(m1.dot(n2), n1.dot(n2));
 }
 
+}  // anonymous namespace
+
+namespace dihedral_bin_transition_detail {
+
 // Ramachandran-region binning. Lovell-Richardson 2003-aligned grid,
 // kept bit-identical to DihedralTimeSeriesTrajectoryResult.cpp's copy
 // (science-review HIGH 1-4, 2026-05-19). Downstream consumers reading
 // both groups see identical bin labels and boundaries. Returns
-// kBinUnassigned for NaN inputs.
+// kBinUnassigned for NaN inputs. Inputs are project-convention radians; the
+// published IUPAC boundaries below are applied after the sign conversion.
 //
 // Boundaries (degrees, inclusive):
 //   αR  : phi ∈ [-180, -30], psi ∈ [-90,  30]
@@ -63,14 +68,16 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
 // Resolution: αR → αL → PPII → β → other (first match wins).
 // References: Lovell 2003 Proteins 50:437; Berkholz 2010 Structure
 // 18:1257; Adzhubei 2013 J. Mol. Biol. 425:2100.
-std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
+std::uint8_t RamachandranBin(double phi_project_rad,
+                             double psi_project_rad) {
     using R = DihedralBinTransitionTrajectoryResult;
-    if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad))
+    if (!std::isfinite(phi_project_rad) ||
+        !std::isfinite(psi_project_rad))
         return R::kBinUnassigned;
 
     const double deg_per_rad = 180.0 / M_PI;
-    const double phi = phi_rad * deg_per_rad;
-    const double psi = psi_rad * deg_per_rad;
+    const double phi = -phi_project_rad * deg_per_rad;
+    const double psi = -psi_project_rad * deg_per_rad;
 
     if (phi >= -180.0 && phi <= -30.0 &&
         psi >=  -90.0 && psi <=  30.0)
@@ -91,6 +98,10 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
 
     return R::kBinOther;
 }
+
+}  // namespace dihedral_bin_transition_detail
+
+namespace {
 
 // Chi rotamer 120° three-bin classification, Lovell-Richardson 2003
 // convention (math-review MED-4, 2026-05-19): the boundaries between
@@ -205,7 +216,8 @@ void DihedralBinTransitionTrajectoryResult::Compute(
                                 conf.PositionAt(res_next.N));
         }
 
-        const std::uint8_t cur_bin = RamachandranBin(phi_val, psi_val);
+        const std::uint8_t cur_bin =
+            dihedral_bin_transition_detail::RamachandranBin(phi_val, psi_val);
         // Bin 0 (kBinUnassigned) IS populated here (codex review 2026-05-19):
         // backbone_bin_occupancy[:, 0] previously stayed zero forever, but
         // the H5 legend names bin 0 as "unassigned" — so consumers reading
@@ -326,7 +338,8 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
         "beta: phi[-180,-45], psi[60,180]U[-180,-150]; "
         "alphaL: phi[30,100], psi[-10,80]; "
         "PPII: phi[-75,-50], psi[140,165] (tight Berkholz/Adzhubei cone); "
-        "boundaries in degrees, inclusive both ends. "
+        "boundaries in published IUPAC degrees, inclusive both ends; "
+        "production negates project phi/psi before applying them. "
         "Resolution order: alphaR -> alphaL -> PPII -> beta -> other "
         "(first match wins). Matches DihedralTimeSeries verbatim. "
         "References: Lovell 2003 Proteins 50:437; Berkholz 2010 "
@@ -353,8 +366,9 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
         "(NaN bin), the transition chain breaks and re-starts on the "
         "next observation."));
     grp.createAttribute("angle_convention", std::string(
-        "IUPAC signed dihedral atan2(y,x). phi = C(i-1)-N(i)-CA(i)-C(i); "
-        "psi = N(i)-CA(i)-C(i)-N(i+1); chi from AminoAcidType.chi_angles. "
+        "Project signed dihedral atan2(y,x): angle_project = -angle_IUPAC. "
+        "phi = C(i-1)-N(i)-CA(i)-C(i); psi = N(i)-CA(i)-C(i)-N(i+1); "
+        "chi from AminoAcidType.chi_angles in IUPAC atom order. "
         "Connectivity via Protein::BackbonePredecessor / "
         "BackboneSuccessor (bond-graph walk, PeptideCN filter); see "
         "DihedralTimeSeries chain_break_policy for the canonical "
