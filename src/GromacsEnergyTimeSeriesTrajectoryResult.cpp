@@ -152,6 +152,8 @@ void GromacsEnergyTimeSeriesTrajectoryResult::WriteH5Group(
     emit_scalar("urey_bradley",  "kJ/mol", &GromacsEnergy::urey_bradley);
     emit_scalar("proper_dih",    "kJ/mol", &GromacsEnergy::proper_dih);
     emit_scalar("improper_dih",  "kJ/mol", &GromacsEnergy::improper_dih);
+    emit_scalar("periodic_improper_dih", "kJ/mol",
+                &GromacsEnergy::periodic_improper_dih);
     emit_scalar("cmap_dih",      "kJ/mol", &GromacsEnergy::cmap_dih);
 
     // ── Van der Waals (kJ/mol) ────────────────────────────────────

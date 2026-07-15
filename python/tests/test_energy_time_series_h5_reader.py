@@ -8,7 +8,7 @@ Verifies that:
   - each (T,) scalar channel surfaces with correct dtype + length,
   - the virial / pressure_tensor (T, 9) tensor channels carry the
     XX,XY,XZ,... layout convention,
-  - bonded breakdown's 7 per-atom channels surface at (N, T) shape,
+  - bonded breakdown's 8 per-atom channels surface at (N, T) shape,
   - units + split_convention attributes propagate,
   - missing groups return None on EnergyAccess.
 
@@ -87,7 +87,8 @@ def _write_gromacs_energy_ts(f: h5py.File, n_frames: int) -> dict:
         "angle":         rng.normal(200, 8, n_frames),
         "urey_bradley":  np.zeros(n_frames),
         "proper_dih":    rng.normal(150, 10, n_frames),
-        "improper_dih":  np.zeros(n_frames),
+        "improper_dih":  np.linspace(11.0, 16.0, n_frames),
+        "periodic_improper_dih": np.linspace(101.0, 106.0, n_frames),
         "cmap_dih":      np.zeros(n_frames),
         "lj_sr":         rng.normal(-2000, 50, n_frames),
         "lj_14":         rng.normal(50, 5, n_frames),
@@ -162,7 +163,8 @@ def _write_bonded_energy_ts(f: h5py.File, n_atoms: int, n_frames: int) -> dict:
 
     rng = np.random.default_rng(7)
     channels = ("bond", "angle", "urey_bradley", "proper_dih",
-                "improper_dih", "cmap_dih", "total")
+                "improper_dih", "periodic_improper_dih", "cmap_dih",
+                "total")
     fields = {}
     for ch in channels:
         arr = rng.normal(0, 5, (n_atoms, n_frames)).astype(np.float64)
@@ -233,6 +235,16 @@ class TestGromacsEnergyTimeSeriesGroup:
         np.testing.assert_array_equal(ge.temperature, gromacs_truth["temperature"])
         np.testing.assert_array_equal(ge.box_x,       gromacs_truth["box_x"])
         np.testing.assert_array_equal(ge.T_protein,   gromacs_truth["T_protein"])
+
+    def test_improper_channels_remain_distinct(self, h5_with_both_energy):
+        h5, gromacs_truth, _ = h5_with_both_energy
+        ge = load_trajectory(h5).energy.gromacs
+        np.testing.assert_array_equal(
+            ge.improper_dih, gromacs_truth["improper_dih"])
+        np.testing.assert_array_equal(
+            ge.periodic_improper_dih,
+            gromacs_truth["periodic_improper_dih"])
+        assert not np.array_equal(ge.improper_dih, ge.periodic_improper_dih)
 
     def test_tensor_channels_carry_layout(self, h5_with_both_energy):
         h5, gromacs_truth, _ = h5_with_both_energy
@@ -337,10 +349,14 @@ class TestBondedEnergyTimeSeriesGroup:
         be = load_trajectory(h5).energy.bonded
         assert isinstance(be, BondedEnergyTimeSeriesGroup)
         for ch in ("bond", "angle", "urey_bradley", "proper_dih",
-                   "improper_dih", "cmap_dih", "total"):
+                   "improper_dih", "periodic_improper_dih", "cmap_dih",
+                   "total"):
             assert getattr(be, ch).shape == (N_ATOMS, N_FRAMES)
         np.testing.assert_array_equal(be.bond,  bonded_truth["bond"])
         np.testing.assert_array_equal(be.total, bonded_truth["total"])
+        np.testing.assert_array_equal(
+            be.periodic_improper_dih,
+            bonded_truth["periodic_improper_dih"])
 
     def test_units_and_split_convention(self, h5_with_both_energy):
         h5, _, _ = h5_with_both_energy
@@ -359,10 +375,9 @@ class TestBondedEnergyTimeSeriesGroup:
             be.source_attached_per_frame,
             np.ones(N_FRAMES, dtype=np.uint8))
 
-    def test_zero_channels_legal_on_charmm36m(self, h5_with_both_energy):
-        """UB / improper / CMAP are zero on the 1P9J CHARMM36m fixture
-        (verified 2026-05-18). The SDK should not flinch — the datasets
-        are still emitted with zero values, not omitted."""
+    def test_zero_channels_legal(self, h5_with_both_energy):
+        """The synthetic UB / harmonic-improper / CMAP channels are zero.
+        The SDK should still expose their datasets rather than omit them."""
         h5, _, _ = h5_with_both_energy
         be = load_trajectory(h5).energy.bonded
         for ch in ("urey_bradley", "improper_dih", "cmap_dih"):

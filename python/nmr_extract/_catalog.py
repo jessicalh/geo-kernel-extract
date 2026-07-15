@@ -663,15 +663,15 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="count", mechanism="electrostatic_efg"),
 
     # ── GROMACS energy (GromacsEnergyResult.cpp) ────────────────
-    ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,     43,   False, "Per-frame energy (43 cols: electrostatic 3, bonded 6, VdW 3, thermo 8, box 3, virial 9, pressure tensor 9, T_group 2)",
+    ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,     44,   False, "Per-frame energy (44 cols: electrostatic 3, bonded 7 [bond, angle, Urey-Bradley, proper, harmonic improper, periodic improper, CMAP], VdW 3, thermo 8, box 3, virial 9, pressure tensor 9, T_group 2)",
               native_axis="protein", units="kJ/mol", mechanism="gromacs_runtime"),
 
     # ── Bonded energy (BondedEnergyResult.cpp) ─────────────────
-    ArraySpec("bonded_energy",      "bonded",      np.ndarray,      7,   False, "Per-atom equal-share attribution of locally evaluated supplied BondedParameters using CHARMM36m-style forms [bond, angle, Urey-Bradley, proper, improper, CMAP, total]; not a GROMACS EDR per-atom decomposition",
+    ArraySpec("bonded_energy",      "bonded",      np.ndarray,      8,   False, "Per-atom equal-share attribution of locally evaluated supplied BondedParameters [bond, angle, Urey-Bradley, proper, harmonic improper, periodic improper, CMAP, total]; not a GROMACS EDR per-atom decomposition",
               units="kJ/mol", parity="mixed", mechanism="bonded_parameters",
               coordinate_frame="intrinsic_signed_valence_geometry",
               transformation="translation/proper-rotation invariant local bonded energies; no unconditional improper-transform law because signed dihedrals feed supplied phase offsets and an arbitrary supplied CMAP grid",
-              validity="physical equal-share zero when no supplied bonded term touches an atom; total is the sum of columns0:6"),
+              validity="physical equal-share zero when no supplied bonded term touches an atom; total is the sum of columns0:7"),
 
     # ── Legacy trajectory Welford NPY projections ───────────────
     # The production trajectory CLI writes the richer H5 groups. These three
@@ -2741,15 +2741,15 @@ for _stem, _spec in tuple(CATALOG.items()):
 _set_contract(
     ("gromacs_energy",), coordinate_frame="gromacs_simulation_cartesian_xyz",
     transformation=(
-        "mixed graph row: cols0:23 and41:43 scalar diagnostics; cols23:32 "
-        "virial and cols32:41 pressure are full even-rank2 row-major tensors "
-        "T'=R T R^T; box lengths cols20:23 are axis-tied cell diagnostics"
+        "mixed graph row: cols0:24 and42:44 scalar diagnostics; cols24:33 "
+        "virial and cols33:42 pressure are full even-rank2 row-major tensors "
+        "T'=R T R^T; box lengths cols21:24 are axis-tied cell diagnostics"
     ),
     validity="external EDR data are not recomputed from conformation coordinates; unavailable EDR terms are NaN",
     units=(
-        "mixed: cols0:16 kJ/mol; col16 K; col17 bar; col18 nm^3; "
-        "col19 kg/m^3; cols20:23 nm; cols23:32 kJ/mol virial; "
-        "cols32:41 bar; cols41:43 K"
+        "mixed: cols0:17 kJ/mol; col17 K; col18 bar; col19 nm^3; "
+        "col20 kg/m^3; cols21:24 nm; cols24:33 kJ/mol virial; "
+        "cols33:42 bar; cols42:44 K"
     ), parity="mixed")
 
 

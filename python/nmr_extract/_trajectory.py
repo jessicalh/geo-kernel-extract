@@ -928,7 +928,8 @@ class GromacsEnergyTimeSeriesGroup:
     angle: np.ndarray
     urey_bradley: np.ndarray
     proper_dih: np.ndarray
-    improper_dih: np.ndarray
+    improper_dih: np.ndarray              # harmonic improper
+    periodic_improper_dih: np.ndarray
     cmap_dih: np.ndarray
     # Van der Waals (kJ/mol)
     lj_sr: np.ndarray
@@ -978,6 +979,7 @@ def _load_gromacs_energy_time_series(f) -> Optional[GromacsEnergyTimeSeriesGroup
         urey_bradley=g["urey_bradley"][:],
         proper_dih=g["proper_dih"][:],
         improper_dih=g["improper_dih"][:],
+        periodic_improper_dih=g["periodic_improper_dih"][:],
         cmap_dih=g["cmap_dih"][:],
         lj_sr=g["lj_sr"][:],
         lj_14=g["lj_14"][:],
@@ -1013,20 +1015,21 @@ def _load_gromacs_energy_time_series(f) -> Optional[GromacsEnergyTimeSeriesGroup
 
 @dataclass(frozen=True)
 class BondedEnergyTimeSeriesGroup:
-    """Per-atom 7-channel bonded-energy breakdown from /trajectory/bonded_energy_time_series/.
+    """Per-atom 8-channel bonded-energy breakdown from /trajectory/bonded_energy_time_series/.
 
     Shape: each channel is (N, T) float64 in kJ/mol. The `total` channel
-    is the running sum of the six interaction-type channels per atom per
+    is the running sum of the seven interaction-type channels per atom per
     frame; emitted alongside per Export-Everything-Upstream.
 
-    Split convention: GROMACS CHARMM36m interaction energies are split
-    evenly among the 2..5 atoms participating in each interaction.
+    Split convention: supplied BondedParameters interaction energies are
+    split evenly among the 2..5 atoms participating in each interaction.
     """
     bond: np.ndarray             # (N, T) kJ/mol
     angle: np.ndarray
     urey_bradley: np.ndarray
     proper_dih: np.ndarray
-    improper_dih: np.ndarray
+    improper_dih: np.ndarray              # harmonic improper
+    periodic_improper_dih: np.ndarray
     cmap_dih: np.ndarray         # name matches GromacsEnergy.cmap_dih
     total: np.ndarray
     frame_indices: np.ndarray    # (T,) uint64
@@ -1051,6 +1054,7 @@ def _load_bonded_energy_time_series(f) -> Optional[BondedEnergyTimeSeriesGroup]:
         urey_bradley=g["urey_bradley"][:],
         proper_dih=g["proper_dih"][:],
         improper_dih=g["improper_dih"][:],
+        periodic_improper_dih=g["periodic_improper_dih"][:],
         cmap_dih=g["cmap_dih"][:],
         total=g["total"][:],
         frame_indices=g["frame_indices"][:],

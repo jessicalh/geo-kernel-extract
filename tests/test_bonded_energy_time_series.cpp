@@ -1,8 +1,8 @@
 //
 // test_bonded_energy_time_series: discipline + integration for
-// BondedEnergyTimeSeriesTrajectoryResult. Per-atom 7-channel TR over the
-// CHARMM36m bonded breakdown. Internal per-atom buffers (no DenseBuffer
-// adoption) emit 7 (N, T) H5 datasets.
+// BondedEnergyTimeSeriesTrajectoryResult. Per-atom 8-channel TR over the
+// locally evaluated bonded breakdown. Internal per-atom buffers (no DenseBuffer
+// adoption) emit 8 (N, T) H5 datasets.
 //
 
 #include "BondedEnergyResult.h"
@@ -159,7 +159,7 @@ TEST(BondedEnergyTimeSeries, FinalizeIdempotency) {
 
 
 // ============================================================================
-// DISCIPLINE: H5 round-trip — all 7 channels + frame indices land.
+// DISCIPLINE: H5 round-trip — all 8 channels + frame indices land.
 // ============================================================================
 
 TEST(BondedEnergyTimeSeries, H5RoundTrip) {
@@ -201,7 +201,7 @@ TEST(BondedEnergyTimeSeries, H5RoundTrip) {
 
     for (const std::string& ch :
          {"bond", "angle", "urey_bradley", "proper_dih",
-          "improper_dih", "cmap_dih", "total"}) {
+          "improper_dih", "periodic_improper_dih", "cmap_dih", "total"}) {
         ASSERT_TRUE(grp.exist(ch)) << "missing channel: " << ch;
         const auto dims = grp.getDataSet(ch).getSpace().getDimensions();
         ASSERT_EQ(dims.size(), 2u);
@@ -250,21 +250,36 @@ TEST(BondedEnergyTimeSeries, Integration1P9J) {
     auto grp = reopen.getGroup("/trajectory/bonded_energy_time_series");
 
     std::vector<std::vector<double>> total;
+    std::vector<std::vector<double>> periodic_improper;
     grp.getDataSet("total").read(total);
+    grp.getDataSet("periodic_improper_dih").read(periodic_improper);
     ASSERT_EQ(total.size(), tp.AtomCount());
     ASSERT_EQ(total[0].size(), tr.NumFrames());
+    ASSERT_EQ(periodic_improper.size(), tp.AtomCount());
+    ASSERT_EQ(periodic_improper[0].size(), tr.NumFrames());
 
     // Loose population floor — bond + angle should be nonzero for most
-    // atoms on a real protein. CHARMM36m through GROMACS reports
-    // UB/improper/CMAP=0 on the 1P9J fixture (verified 2026-05-18); the
-    // populated check focuses on bond + angle + proper_dih.
+    // atoms on a real protein. The periodic-improper channel is checked
+    // separately against GROMACS's EDR scalar for each dispatched frame.
     std::size_t populated = 0;
     double max_abs_total = 0.0;
-    for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
-        for (std::size_t t = 0; t < tr.NumFrames(); ++t) {
+    for (std::size_t t = 0; t < tr.NumFrames(); ++t) {
+        double periodic_improper_sum = 0.0;
+        for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
             EXPECT_TRUE(std::isfinite(total[i][t]));
+            EXPECT_TRUE(std::isfinite(periodic_improper[i][t]));
             max_abs_total = std::max(max_abs_total, std::abs(total[i][t]));
+            periodic_improper_sum += periodic_improper[i][t];
         }
+
+        const auto* gromacs = traj.EnergyAtTime(traj.FrameTimes()[t]);
+        ASSERT_NE(gromacs, nullptr);
+        EXPECT_NEAR(periodic_improper_sum,
+                    gromacs->periodic_improper_dih,
+                    0.002)
+            << "frame " << t;
+    }
+    for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
         if (std::abs(total[i][0]) > 1e-12) ++populated;
     }
     EXPECT_GT(populated, tp.AtomCount() / 2)

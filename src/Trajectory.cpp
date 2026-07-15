@@ -547,6 +547,7 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
     int i_coul_14 = idx("Coulomb-14");
     int i_bond = idx("Bond"), i_angle = idx("Angle"), i_ub = idx("U-B");
     int i_proper = idx("Proper Dih."), i_improper = idx("Improper Dih.");
+    int i_periodic_improper = idx("Per. Imp. Dih.");
     int i_cmap = idx("CMAP Dih.");
     int i_lj_sr = idx("LJ (SR)"), i_lj_14 = idx("LJ-14");
     int i_dispcorr = idx("Disper. corr.");
@@ -580,6 +581,7 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         {"Coulomb-14",    i_coul_14},  {"Bond",          i_bond},
         {"Angle",         i_angle},    {"U-B",           i_ub},
         {"Proper Dih.",   i_proper},   {"Improper Dih.", i_improper},
+        {"Per. Imp. Dih.", i_periodic_improper},
         {"CMAP Dih.",     i_cmap},     {"LJ (SR)",       i_lj_sr},
         {"LJ-14",         i_lj_14},    {"Disper. corr.", i_dispcorr},
         {"Potential",     i_potential},{"Kinetic En.",   i_kinetic},
@@ -630,6 +632,7 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         ge.urey_bradley  = e(fr, i_ub);
         ge.proper_dih    = e(fr, i_proper);
         ge.improper_dih  = e(fr, i_improper);
+        ge.periodic_improper_dih = e(fr, i_periodic_improper);
         ge.cmap_dih      = e(fr, i_cmap);
         ge.lj_sr         = e(fr, i_lj_sr);
         ge.lj_14         = e(fr, i_lj_14);

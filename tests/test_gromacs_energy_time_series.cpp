@@ -6,6 +6,9 @@
 //
 
 #include "CalculatorConfig.h"
+#include "BondedEnergyResult.h"
+#include "BondedEnergyTimeSeriesTrajectoryResult.h"
+#include "FullSystemReader.h"
 #include "GeometryResult.h"
 #include "GromacsEnergyResult.h"
 #include "GromacsEnergyTimeSeriesTrajectoryResult.h"
@@ -34,6 +37,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <unistd.h>
@@ -82,6 +86,30 @@ std::unique_ptr<nmr::Protein> MakeDirectionalProtein(
     protein->FinalizeConstruction(positions);
     protein->AddConformation(positions, "GROMACS external tensor source");
     return protein;
+}
+
+std::unique_ptr<nmr::Protein> MakeMixedImproperProtein(
+        const std::vector<nmr::Vec3>& positions) {
+    auto protein = std::make_unique<nmr::Protein>();
+    nmr::Residue residue;
+    residue.type = nmr::AminoAcid::ALA;
+    residue.sequence_number = 1;
+    residue.chain_id = "A";
+    const size_t residue_index = protein->AddResidue(std::move(residue));
+    for (std::size_t i = 0; i < positions.size(); ++i) {
+        auto atom = nmr::Atom::Create(nmr::Element::C);
+        atom->residue_index = residue_index;
+        const size_t atom_index = protein->AddAtom(std::move(atom));
+        protein->MutableResidueAt(residue_index).atom_indices.push_back(
+            atom_index);
+    }
+    protein->FinalizeConstruction(positions);
+    protein->AddConformation(positions, "mixed GROMACS improper fixture");
+    return protein;
+}
+
+double Sum(const std::vector<double>& values) {
+    return std::accumulate(values.begin(), values.end(), 0.0);
 }
 
 // GromacsEnergy::vir/pres and both serialized forms are explicitly row-major:
@@ -207,7 +235,8 @@ std::vector<double> ExpectedNpyRow(const nmr::GromacsEnergy& energy) {
     return {
         energy.coulomb_sr, energy.coulomb_recip, energy.coulomb_14,
         energy.bond, energy.angle, energy.urey_bradley,
-        energy.proper_dih, energy.improper_dih, energy.cmap_dih,
+        energy.proper_dih, energy.improper_dih,
+        energy.periodic_improper_dih, energy.cmap_dih,
         energy.lj_sr, energy.lj_14, energy.disper_corr,
         energy.potential, energy.kinetic, energy.total_energy,
         energy.enthalpy, energy.temperature, energy.pressure,
@@ -223,6 +252,202 @@ std::vector<double> ExpectedNpyRow(const nmr::GromacsEnergy& energy) {
     };
 }
 }  // namespace
+
+
+TEST(GromacsImproperSources,
+     MixedFixtureKeepsExternalAndPerAtomIdentitiesDistinct) {
+    const fs::path fixture_dir = fs::path(NMR_TEST_DATA_DIR)
+        .parent_path().parent_path() /
+        "data/test_fixtures/gromacs_mixed_improper";
+    const fs::path tpr_path = fixture_dir / "mixed.tpr";
+    const fs::path edr_path = fixture_dir / "mixed.edr";
+    ASSERT_TRUE(fs::exists(tpr_path)) << tpr_path;
+    ASSERT_TRUE(fs::exists(edr_path)) << edr_path;
+
+    // Raw `gmx energy` values from this checked-in EDR. These constants
+    // are the external-tool oracle; the production evaluator is not used
+    // to derive them.
+    constexpr double kGromacsHarmonicImproper = 85.660431;
+    constexpr double kGromacsPeriodicImproper = 13.136967;
+    constexpr double kComparisonTolerance = 1.0e-3;
+
+    nmr::Trajectory trajectory("", tpr_path, edr_path);
+    ASSERT_TRUE(trajectory.HasEdr());
+    const nmr::GromacsEnergy* external = trajectory.EnergyAtTime(0.0);
+    ASSERT_NE(external, nullptr);
+    ASSERT_TRUE(std::isfinite(external->improper_dih));
+    ASSERT_TRUE(std::isfinite(external->periodic_improper_dih));
+    EXPECT_NEAR(external->improper_dih,
+                kGromacsHarmonicImproper, 5.0e-6);
+    EXPECT_NEAR(external->periodic_improper_dih,
+                kGromacsPeriodicImproper, 5.0e-6);
+    EXPECT_NE(external->improper_dih, external->periodic_improper_dih);
+
+    nmr::FullSystemReader reader;
+    ASSERT_TRUE(reader.ReadTopology(tpr_path.string())) << reader.error();
+    const nmr::BondedParameters& imported = reader.BondedParams();
+    nmr::BondedParameters harmonic_only;
+    nmr::BondedParameters periodic_only;
+    nmr::BondedParameters both;
+    for (const auto& interaction : imported.interactions) {
+        if (interaction.type == nmr::BondedInteraction::ImproperDih) {
+            harmonic_only.interactions.push_back(interaction);
+            both.interactions.push_back(interaction);
+        } else if (interaction.type ==
+                   nmr::BondedInteraction::PeriodicImproperDih) {
+            periodic_only.interactions.push_back(interaction);
+            both.interactions.push_back(interaction);
+        }
+    }
+    ASSERT_EQ(imported.interactions.size(), 2u);
+    ASSERT_EQ(harmonic_only.interactions.size(), 1u);
+    ASSERT_EQ(periodic_only.interactions.size(), 1u);
+    ASSERT_EQ(both.interactions.size(), 2u);
+
+    const std::vector<nmr::Vec3> positions = {
+        nmr::Vec3(1.0, 2.0, 3.0),
+        nmr::Vec3(2.2, 1.5, 2.6),
+        nmr::Vec3(3.1, 2.7, 1.9),
+        nmr::Vec3(4.3, 2.1, 3.6),
+    };
+    auto protein = MakeMixedImproperProtein(positions);
+    nmr::ProteinConformation& conf = protein->Conformation();
+
+    auto harmonic_result =
+        nmr::BondedEnergyResult::Compute(conf, harmonic_only);
+    auto periodic_result =
+        nmr::BondedEnergyResult::Compute(conf, periodic_only);
+    ASSERT_NE(harmonic_result, nullptr);
+    ASSERT_NE(periodic_result, nullptr);
+
+    EXPECT_NEAR(Sum(harmonic_result->ImproperDihEnergy()),
+                kGromacsHarmonicImproper, kComparisonTolerance);
+    EXPECT_DOUBLE_EQ(Sum(harmonic_result->PeriodicImproperDihEnergy()), 0.0);
+    EXPECT_DOUBLE_EQ(Sum(periodic_result->ImproperDihEnergy()), 0.0);
+    EXPECT_NEAR(Sum(periodic_result->PeriodicImproperDihEnergy()),
+                kGromacsPeriodicImproper, kComparisonTolerance);
+
+    auto bonded_result = nmr::BondedEnergyResult::Compute(conf, both);
+    ASSERT_NE(bonded_result, nullptr);
+    EXPECT_NEAR(Sum(bonded_result->ImproperDihEnergy()),
+                kGromacsHarmonicImproper, kComparisonTolerance);
+    EXPECT_NEAR(Sum(bonded_result->PeriodicImproperDihEnergy()),
+                kGromacsPeriodicImproper, kComparisonTolerance);
+    EXPECT_NEAR(Sum(bonded_result->TotalBonded()),
+                kGromacsHarmonicImproper + kGromacsPeriodicImproper,
+                2.0 * kComparisonTolerance);
+
+    const fs::path output_dir =
+        FreshDirectionalDirectory("mixed_improper_sources");
+    auto gromacs_result =
+        nmr::GromacsEnergyResult::Compute(conf, *external);
+    ASSERT_NE(gromacs_result, nullptr);
+    ASSERT_EQ(gromacs_result->WriteFeatures(conf, output_dir.string()), 1);
+    ASSERT_EQ(bonded_result->WriteFeatures(conf, output_dir.string()), 1);
+
+    const DoubleNpy gromacs_npy =
+        ReadFloat64Npy(output_dir / "gromacs_energy.npy");
+    ASSERT_EQ(gromacs_npy.shape,
+              (std::vector<std::size_t>{1u, 44u}));
+    EXPECT_NEAR(gromacs_npy.values[7],
+                kGromacsHarmonicImproper, 5.0e-6);
+    EXPECT_NEAR(gromacs_npy.values[8],
+                kGromacsPeriodicImproper, 5.0e-6);
+
+    const DoubleNpy bonded_npy =
+        ReadFloat64Npy(output_dir / "bonded_energy.npy");
+    ASSERT_EQ(bonded_npy.shape,
+              (std::vector<std::size_t>{positions.size(), 8u}));
+    double npy_harmonic = 0.0;
+    double npy_periodic = 0.0;
+    double npy_total = 0.0;
+    for (std::size_t atom = 0; atom < positions.size(); ++atom) {
+        npy_harmonic += bonded_npy.values[atom * 8 + 4];
+        npy_periodic += bonded_npy.values[atom * 8 + 5];
+        npy_total += bonded_npy.values[atom * 8 + 7];
+    }
+    EXPECT_NEAR(npy_harmonic,
+                kGromacsHarmonicImproper, kComparisonTolerance);
+    EXPECT_NEAR(npy_periodic,
+                kGromacsPeriodicImproper, kComparisonTolerance);
+    EXPECT_NEAR(npy_total,
+                kGromacsHarmonicImproper + kGromacsPeriodicImproper,
+                2.0 * kComparisonTolerance);
+
+    ASSERT_TRUE(conf.AttachResult(std::move(gromacs_result)));
+    ASSERT_TRUE(conf.AttachResult(std::move(bonded_result)));
+    auto tp = nmr::TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(tp, nullptr);
+    auto gromacs_time_series =
+        nmr::GromacsEnergyTimeSeriesTrajectoryResult::Create(*tp);
+    auto bonded_time_series =
+        nmr::BondedEnergyTimeSeriesTrajectoryResult::Create(*tp);
+    ASSERT_NE(gromacs_time_series, nullptr);
+    ASSERT_NE(bonded_time_series, nullptr);
+    gromacs_time_series->Compute(conf, *tp, trajectory, 0, 0.0);
+    bonded_time_series->Compute(conf, *tp, trajectory, 0, 0.0);
+    gromacs_time_series->Finalize(*tp, trajectory);
+    bonded_time_series->Finalize(*tp, trajectory);
+
+    const fs::path h5_path = output_dir / "gromacs_energy.h5";
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+        gromacs_time_series->WriteH5Group(*tp, file);
+        bonded_time_series->WriteH5Group(*tp, file);
+    }
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::ReadOnly);
+        auto gromacs_group = file.getGroup(
+            "/trajectory/gromacs_energy_time_series");
+        std::vector<double> external_harmonic;
+        std::vector<double> external_periodic;
+        gromacs_group.getDataSet("improper_dih").read(external_harmonic);
+        gromacs_group.getDataSet("periodic_improper_dih")
+            .read(external_periodic);
+        ASSERT_EQ(external_harmonic.size(), 1u);
+        ASSERT_EQ(external_periodic.size(), 1u);
+        EXPECT_NEAR(external_harmonic[0],
+                    kGromacsHarmonicImproper, 5.0e-6);
+        EXPECT_NEAR(external_periodic[0],
+                    kGromacsPeriodicImproper, 5.0e-6);
+
+        auto bonded_group = file.getGroup(
+            "/trajectory/bonded_energy_time_series");
+        std::vector<std::vector<double>> per_atom_harmonic;
+        std::vector<std::vector<double>> per_atom_periodic;
+        std::vector<std::vector<double>> per_atom_total;
+        bonded_group.getDataSet("improper_dih").read(per_atom_harmonic);
+        bonded_group.getDataSet("periodic_improper_dih")
+            .read(per_atom_periodic);
+        bonded_group.getDataSet("total").read(per_atom_total);
+        ASSERT_EQ(per_atom_harmonic.size(), positions.size());
+        ASSERT_EQ(per_atom_periodic.size(), positions.size());
+        ASSERT_EQ(per_atom_total.size(), positions.size());
+        double h5_harmonic = 0.0;
+        double h5_periodic = 0.0;
+        double h5_total = 0.0;
+        for (std::size_t atom = 0; atom < positions.size(); ++atom) {
+            ASSERT_EQ(per_atom_harmonic[atom].size(), 1u);
+            ASSERT_EQ(per_atom_periodic[atom].size(), 1u);
+            ASSERT_EQ(per_atom_total[atom].size(), 1u);
+            h5_harmonic += per_atom_harmonic[atom][0];
+            h5_periodic += per_atom_periodic[atom][0];
+            h5_total += per_atom_total[atom][0];
+        }
+        EXPECT_NEAR(h5_harmonic,
+                    kGromacsHarmonicImproper, kComparisonTolerance);
+        EXPECT_NEAR(h5_periodic,
+                    kGromacsPeriodicImproper, kComparisonTolerance);
+        EXPECT_NEAR(h5_total,
+                    kGromacsHarmonicImproper + kGromacsPeriodicImproper,
+                    2.0 * kComparisonTolerance);
+    }
+
+    std::error_code ec;
+    EXPECT_TRUE(fs::remove(output_dir / "bonded_energy.npy", ec))
+        << ec.message();
+    RemoveDirectionalDirectory(output_dir);
+}
 
 
 TEST(GromacsEnergyDirectionalCovariance,
@@ -241,6 +466,7 @@ TEST(GromacsEnergyDirectionalCovariance,
     source.urey_bradley = 7.0;
     source.proper_dih = 8.0;
     source.improper_dih = 9.0;
+    source.periodic_improper_dih = 9.5;
     source.cmap_dih = 10.0;
     source.lj_sr = -41.0;
     source.lj_14 = -3.0;
@@ -360,7 +586,7 @@ TEST(GromacsEnergyDirectionalCovariance,
         EXPECT_DOUBLE_EQ(emitted.T_non_protein, source.T_non_protein);
 
         // Static serialization boundary: production writer, exact filename,
-        // exact (1,43) shape and explicit row-major tensor reconstruction.
+        // exact (1,44) shape and explicit row-major tensor reconstruction.
         const fs::path output_dir = FreshDirectionalDirectory(
             improper ? "improper" : "proper");
         ASSERT_EQ(moved_result->WriteFeatures(*moved, output_dir.string()), 1);
@@ -372,7 +598,7 @@ TEST(GromacsEnergyDirectionalCovariance,
         const DoubleNpy npy =
             ReadFloat64Npy(output_dir / "gromacs_energy.npy");
         ASSERT_EQ(npy.shape,
-                  (std::vector<std::size_t>{1u, 43u}));
+                  (std::vector<std::size_t>{1u, 44u}));
         const auto expected_row = ExpectedNpyRow(moved_source);
         ASSERT_EQ(npy.values.size(), expected_row.size());
         for (std::size_t column = 0; column < expected_row.size(); ++column) {
@@ -381,20 +607,20 @@ TEST(GromacsEnergyDirectionalCovariance,
             EXPECT_DOUBLE_EQ(npy.values[column], expected_row[column]);
         }
         EXPECT_TRUE(nmr::test::directional::NearMatrix(
-            LoadRowMajor(npy.values.data() + 23), expected_virial,
+            LoadRowMajor(npy.values.data() + 24), expected_virial,
             kTensorAbsTolerance, kTensorRelTolerance));
         EXPECT_TRUE(nmr::test::directional::NearMatrix(
-            LoadRowMajor(npy.values.data() + 32), expected_pressure,
+            LoadRowMajor(npy.values.data() + 33), expected_pressure,
             kTensorAbsTolerance, kTensorRelTolerance));
         // All non-tensor columns, including isotropic Box-X/Y/Z, remain
         // exact invariants under both proper and improper transforms.
         const auto source_row = ExpectedNpyRow(source);
-        for (std::size_t column = 0; column < 23; ++column) {
+        for (std::size_t column = 0; column < 24; ++column) {
             EXPECT_DOUBLE_EQ(npy.values[column], source_row[column])
                 << "gromacs_energy.npy invariant column=" << column;
         }
-        EXPECT_DOUBLE_EQ(npy.values[41], source_row[41]);
         EXPECT_DOUBLE_EQ(npy.values[42], source_row[42]);
+        EXPECT_DOUBLE_EQ(npy.values[43], source_row[43]);
 
         // Attach the freshly rerun production result and exercise the real
         // trajectory rollup/H5 writer on the transformed input.
@@ -500,6 +726,8 @@ TEST(GromacsEnergyDirectionalCovariance,
                     {"urey_bradley", source.urey_bradley},
                     {"proper_dih", source.proper_dih},
                     {"improper_dih", source.improper_dih},
+                    {"periodic_improper_dih",
+                     source.periodic_improper_dih},
                     {"cmap_dih", source.cmap_dih},
                     {"lj_sr", source.lj_sr},
                     {"lj_14", source.lj_14},

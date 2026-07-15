@@ -103,9 +103,9 @@ public:
                       SolventEnvironment& solvent) const;
 
     // Bonded interaction parameters extracted during ReadTopology().
-    // Bond, angle, UB, proper dihedral, improper dihedral, and CMAP
-    // interactions for the protein atoms. Atom indices are protein-local
-    // (0-based, same as our Protein).
+    // Bond, angle, UB, proper dihedral, harmonic and periodic improper
+    // dihedral, and CMAP interactions for the protein atoms. Atom indices
+    // are protein-local (0-based, same as our Protein).
     const BondedParameters& BondedParams() const { return bonded_params_; }
     bool HasBondedParams() const { return !bonded_params_.interactions.empty(); }
 

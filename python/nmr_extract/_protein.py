@@ -1552,7 +1552,7 @@ class Protein:
     hydration: Optional[HydrationGroup] = None
     water_polarization: Optional[WaterPolarizationGroup] = None
     gromacs_energy: Optional[np.ndarray] = None
-    # (N,7) equal-share local BondedParameters evaluation; not an EDR
+    # (N,8) equal-share local BondedParameters evaluation; not an EDR
     # per-atom decomposition.
     bonded_energy: Optional[np.ndarray] = None
 

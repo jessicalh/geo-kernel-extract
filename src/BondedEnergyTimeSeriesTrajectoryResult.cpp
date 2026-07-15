@@ -32,6 +32,7 @@ BondedEnergyTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     r->urey_bradley_.assign(N, {});
     r->proper_dih_.assign(N, {});
     r->improper_dih_.assign(N, {});
+    r->periodic_improper_dih_.assign(N, {});
     r->cmap_.assign(N, {});
     r->total_.assign(N, {});
     return r;
@@ -41,7 +42,7 @@ BondedEnergyTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
 // ── Compute ──────────────────────────────────────────────────────
 //
 // Append this frame's per-atom bonded breakdown to the growing buffers.
-// Source is BondedEnergyResult on the conformation. The seven channels
+// Source is BondedEnergyResult on the conformation. The eight channels
 // come directly from its public accessors; no derivation here.
 
 void BondedEnergyTimeSeriesTrajectoryResult::Compute(
@@ -70,6 +71,8 @@ void BondedEnergyTimeSeriesTrajectoryResult::Compute(
             urey_bradley_[i].push_back(be.UBEnergy()[i]);
             proper_dih_[i].push_back(be.ProperDihEnergy()[i]);
             improper_dih_[i].push_back(be.ImproperDihEnergy()[i]);
+            periodic_improper_dih_[i].push_back(
+                be.PeriodicImproperDihEnergy()[i]);
             cmap_[i].push_back(be.CmapEnergy()[i]);
             total_[i].push_back(be.TotalBonded()[i]);
         }
@@ -82,6 +85,7 @@ void BondedEnergyTimeSeriesTrajectoryResult::Compute(
             urey_bradley_[i].push_back(0.0);
             proper_dih_[i].push_back(0.0);
             improper_dih_[i].push_back(0.0);
+            periodic_improper_dih_[i].push_back(0.0);
             cmap_[i].push_back(0.0);
             total_[i].push_back(0.0);
         }
@@ -107,14 +111,10 @@ void BondedEnergyTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
-// Seven (N, T) datasets, one per channel. Layout matches the source
+// Eight (N, T) datasets, one per channel. Layout matches the source
 // BondedEnergyResult's public accessor order:
-//   bond / angle / urey_bradley / proper_dih / improper_dih / cmap / total
-// CHARMM36m through GROMACS reports UB=0 / improper=0 / CMAP=0 on the
-// 1P9J fleet fixture (verified 2026-05-18); the datasets are still
-// emitted so downstream cannot trip on a "missing column" error and
-// alternative force fields that DO populate those interactions hit
-// the same schema.
+//   bond / angle / urey_bradley / proper_dih / improper_dih /
+//   periodic_improper_dih / cmap / total
 
 void BondedEnergyTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -181,6 +181,7 @@ void BondedEnergyTimeSeriesTrajectoryResult::WriteH5Group(
     emit_channel("urey_bradley",  urey_bradley_);
     emit_channel("proper_dih",    proper_dih_);
     emit_channel("improper_dih",  improper_dih_);
+    emit_channel("periodic_improper_dih", periodic_improper_dih_);
     emit_channel("cmap_dih",      cmap_);
     emit_channel("total",         total_);
 

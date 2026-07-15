@@ -1,11 +1,12 @@
 #pragma once
 //
 // BondedEnergyTimeSeriesTrajectoryResult: per-atom per-frame timeline of
-// the GROMACS CHARMM36m bonded-energy decomposition computed by
-// BondedEnergyResult. Seven channels per atom per frame: bond, angle,
-// Urey-Bradley, proper dihedral, improper dihedral, CMAP, total.
+// the locally evaluated bonded-energy decomposition computed by
+// BondedEnergyResult. Eight channels per atom per frame: bond, angle,
+// Urey-Bradley, proper dihedral, harmonic improper dihedral, periodic
+// improper dihedral, CMAP, total.
 //
-// Shape: per-atom, multi-channel. Internal storage is seven parallel
+// Shape: per-atom, multi-channel. Internal storage is eight parallel
 // std::vector<std::vector<double>> indexed [atom][frame]; H5 emits one
 // (N, T) dataset per channel. No DenseBuffer adoption — bonded-energy
 // channels are a leaf consumer (no cross-TR read of per-frame breakdown).
@@ -16,8 +17,8 @@
 // Both together unlock low-energy-state filtering AND per-atom strain
 // features for downstream ridge / e3nn.
 //
-// Export-everything-upstream (PATTERNS Lesson 25): all 7 channels emitted
-// even though `total` is the running sum of the other 6. Calibration may
+// Export-everything-upstream (PATTERNS Lesson 25): all 8 channels emitted
+// even though `total` is the running sum of the other 7. Calibration may
 // weight the decomposition separately from the total.
 //
 // Emission:
@@ -28,6 +29,7 @@
 //     urey_bradley   (N, T)  float64  kJ/mol
 //     proper_dih     (N, T)  float64  kJ/mol
 //     improper_dih   (N, T)  float64  kJ/mol
+//     periodic_improper_dih (N, T) float64 kJ/mol
 //     cmap_dih       (N, T)  float64  kJ/mol     (matches GromacsEnergy.cmap_dih)
 //     total          (N, T)  float64  kJ/mol
 //     frame_indices  (T,)    uint64
@@ -101,6 +103,7 @@ private:
     std::vector<std::vector<double>> urey_bradley_;
     std::vector<std::vector<double>> proper_dih_;
     std::vector<std::vector<double>> improper_dih_;
+    std::vector<std::vector<double>> periodic_improper_dih_;
     std::vector<std::vector<double>> cmap_;
     std::vector<std::vector<double>> total_;
     std::vector<std::size_t>         frame_indices_;

@@ -267,7 +267,7 @@ larsen_sidechain_donor_atoms.npy | LarsenSidechainDonorAuditResult | atom(N,6) i
 
 External runtime mixed payloads
 -------------------------------
-gromacs_energy.npy | GromacsEnergyResult | protein(1,43): cols23:32 virial T, cols32:41 pressure T, cols20:23 axis-tied box diagonals NC, rest invariant | unavailable EDR terms NaN | DC-GM PASS exact owner-NPY with nonsymmetric row-major tensors, seed 0x47524f4d41435345, 3e-13 abs + 3e-14 rel; general box remains non-closed
+gromacs_energy.npy | GromacsEnergyResult | protein(1,44): col7 harmonic improper and col8 periodic improper are distinct invariant scalars; cols24:33 virial T, cols33:42 pressure T, cols21:24 axis-tied box diagonals NC, rest invariant | unavailable EDR terms independently NaN | DC-GM PASS exact owner-NPY with nonsymmetric row-major tensors, seed 0x47524f4d41435345, 3e-13 abs + 3e-14 rel; general box remains non-closed
 
 
 TRAJECTORY H5 DIRECTIONAL LEDGER
