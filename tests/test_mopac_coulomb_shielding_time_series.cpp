@@ -5,6 +5,7 @@
 //
 
 #include "MopacCoulombShieldingTimeSeriesTrajectoryResult.h"
+#include "PositionsTimeSeriesTrajectoryResult.h"
 #include "MopacCoulombResult.h"
 #include "MopacResult.h"
 #include "GeometryResult.h"
@@ -179,21 +180,25 @@ TEST(MopacCoulombShieldingTimeSeries,
     conf.ForceAttachResultForTesting(
         std::make_unique<nmr::MopacCoulombResult>());
     nmr::Trajectory dummy("", "", "");
-    tr->Compute(conf, tp, dummy, 7u, 1.25);
-    tr->Finalize(tp, dummy);
+
+    // load_trajectory reads a whole production file — root attrs, /atoms,
+    // /trajectory/frames, /trajectory/positions — so build one the way
+    // nmr_extract.cpp does (traj.WriteH5 then tp.WriteH5) instead of
+    // hand-rolling a partial root. Positions rides along because the SDK
+    // reads that group unconditionally.
+    ASSERT_TRUE(tp.AttachResult(
+        nmr::PositionsTimeSeriesTrajectoryResult::Create(tp)));
+    ASSERT_TRUE(tp.AttachResult(std::move(tr)));
+    tp.DispatchCompute(conf, dummy, 7u, 1.25);
+    tp.FinalizeAllResults(dummy);
 
     const std::string h5_path = (fs::temp_directory_path() /
         ("mopac_coulomb_m7_writer_" + std::to_string(::getpid()) +
          ".h5")).string();
     {
         HighFive::File file(h5_path, HighFive::File::Truncate);
-        // load_trajectory needs the production root atom-count attribute;
-        // all other root/trajectory groups are optional to this focused SDK
-        // readback.
-        file.createAttribute("n_atoms", tp.AtomCount());
-        file.createAttribute(
-            "protein_id", std::string("m7-real-writer-sdk-probe"));
-        tr->WriteH5Group(tp, file);
+        dummy.WriteH5(file);
+        tp.WriteH5(file);
     }
     {
         HighFive::File reopen(h5_path, HighFive::File::ReadWrite);
