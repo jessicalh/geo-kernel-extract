@@ -340,6 +340,30 @@ void ExpectEvenSphericalTensor(const SphericalTensor& transformed,
                                double abs_tolerance,
                                double rel_tolerance,
                                const char* quantity) {
+    std::array<double, 9> transformed_values{};
+    std::array<double, 9> original_values{};
+    transformed.PackFull9(transformed_values.data());
+    original.PackFull9(original_values.data());
+    bool unavailable = false;
+    for (std::size_t component = 0; component < 9; ++component) {
+        EXPECT_EQ(std::isnan(transformed_values[component]),
+                  std::isnan(original_values[component]))
+            << quantity << " NaN mask component=" << component;
+        unavailable = unavailable ||
+            std::isnan(original_values[component]);
+    }
+    if (unavailable) {
+        for (std::size_t component = 0; component < 9; ++component) {
+            EXPECT_TRUE(std::isnan(original_values[component]))
+                << quantity << " partial source NaN at component="
+                << component;
+            EXPECT_TRUE(std::isnan(transformed_values[component]))
+                << quantity << " partial transformed NaN at component="
+                << component;
+        }
+        return;
+    }
+
     const Mat3 expected = EvenRank2(x, original.Reconstruct());
     ExpectMatrix(transformed.Reconstruct(), expected,
                  abs_tolerance, rel_tolerance, quantity);

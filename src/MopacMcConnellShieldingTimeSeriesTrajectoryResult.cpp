@@ -167,6 +167,10 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "xyz tensor payload: T2 uses isometric real-tesseral "
         "normalization; T1 uses the tensor_t1_semantics convention"));
     grp.createAttribute("units",         std::string("Angstrom^-3"));
+    grp.createAttribute("validity", std::string(
+        "complete NaN tensor when an accepted PeptideCO source has an "
+        "unevaluable C/O/N plane; physical zero means a present MOPAC "
+        "result produced an evaluable empty, cancelled, or post-floor sum"));
     grp.createAttribute("source", std::string(
         "MopacMcConnellResult.mopac_mc_shielding_contribution "
         "(SphericalTensor; MOPAC Wiberg-weighted BO channel from the "
@@ -178,8 +182,10 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "and Qhat. T2 is the symmetric-traceless branch in the same "
         "SphericalTensor convention. Aromatic McConnell is zeroed "
         "unconditionally because BS/HM always compute aromatic "
-        "ring-current contributions; missing or below-floor bond order "
-        "zeros only this BO channel, not the fixed channel."));
+        "ring-current contributions; an absent or below-floor per-bond "
+        "order in a present MOPAC result contributes a physical zero only "
+        "to this BO channel, while an unevaluable PeptideCO frame makes the "
+        "affected aggregate tensor NaN."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- MopacMcConnellResult attaches sparsely per the "
         "Mopac cadence (OperationRunner.cpp:185, TimedAttach not "

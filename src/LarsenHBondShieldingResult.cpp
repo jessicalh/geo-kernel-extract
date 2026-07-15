@@ -235,10 +235,11 @@ std::vector<std::type_index> LarsenHBondShieldingResult::Dependencies() const {
 // (BackboneCarbonyl / SidechainCarbonyl / HydroxylOxygen /
 // CarboxylateOxygen) via ClassifyAcceptor. Geometry computed; grid
 // queried with (donor_class, acceptor_class); tensors rotated to lab
-// frame and distributed per Larsen 2015 Table 2 dispatch. Water term
-// Δσ_w applies to amide H atoms with zero geometric H-bond candidates
-// in the range. Larsen's framework is geometric, not DSSP-energy-based;
-// the spatial sweep IS the H-bond finder.
+// frame and distributed per the ProCS15 H-bond shielding Table 2 dispatch.
+// Water term Δσ_w applies to amide H atoms whose frames were evaluable but
+// had zero geometric H-bond candidates in range; an unevaluable frame is NaN.
+// The framework is geometric, not DSSP-energy-based; the spatial sweep IS the
+// H-bond finder.
 
 std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         ProteinConformation& conf,
@@ -270,7 +271,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
 
     // amide_h_geometric_paired: true if ANY candidate acceptor passed
     // the geometric H-bond criterion (θ ∈ [90°, 180°]) for this amide H.
-    // Larsen's framework defines an H-bond geometrically; the spatial
+    // The ProCS15 H-bond shielding framework defines a pair geometrically; the spatial
     // enumeration we run IS the H-bond finder, with θ as the lone gate.
     // Water term Δσ_w applies to amide Hs with NO such candidate.
     //
@@ -281,6 +282,11 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     // suppress the water term for every amide H regardless of solvent
     // exposure (codex finding F2, 2026-05-12).
     std::vector<bool> amide_h_geometric_paired(n_atoms, false);
+    // A selected candidate whose donor/acceptor frame cannot be evaluated
+    // prevents the calculator from claiming that an otherwise-unpaired
+    // amide H is exposed to water. A confirmed geometric pair still owns
+    // the physical zero water term.
+    std::vector<bool> amide_h_has_unevaluable_candidate(n_atoms, false);
 
     // n_pairs_grid_skipped counts every processed candidate that the
     // grid path could not turn into contributions. Every non-success
@@ -786,9 +792,15 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     ++n_pairs_grid_skipped;
                     break;
                 case PairResult::ThetaOutOfRange:
+                case PairResult::CarboxylateSymmetryFiltered:
+                    ++n_pairs_grid_skipped;
+                    break;
                 case PairResult::MissingFrameAtoms:
                 case PairResult::InvalidFrame:
-                case PairResult::CarboxylateSymmetryFiltered:
+                    if (donor_class == HBondDonorClass::AmideHydrogen &&
+                        selected_carboxylate_representative) {
+                        amide_h_has_unevaluable_candidate[ai] = true;
+                    }
                     ++n_pairs_grid_skipped;
                     break;
             }
@@ -802,15 +814,20 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
 
     // ------------------------------------------------------------------
     // Water term sweep: Δσ_w = 2.07 ppm applies to amide H atoms with
-    // ZERO geometric H-bond candidates found in the spatial sweep.
-    // Replaces the DSSP-based gate from the earlier draft — Larsen's
-    // framework is geometric, and the spatial enumeration we run IS
+    // ZERO geometric H-bond candidates found in an evaluable spatial sweep.
+    // Replaces the DSSP-based gate from the earlier draft — the ProCS15
+    // H-bond shielding framework is geometric, and the spatial enumeration IS
     // the H-bond finder for this calculator.
     // ------------------------------------------------------------------
     for (std::size_t ri = 0; ri < n_residues; ++ri) {
         const Residue& res = protein.ResidueAt(ri);
         if (res.H == Residue::NONE) continue;  // PRO etc.
         if (amide_h_geometric_paired[res.H]) continue;
+        if (amide_h_has_unevaluable_candidate[res.H]) {
+            conf.MutableAtomAt(res.H).larsen_hbond_water_term =
+                std::numeric_limits<double>::quiet_NaN();
+            continue;
+        }
         conf.MutableAtomAt(res.H).larsen_hbond_water_term = kWaterTerm_ppm;
         ++result_ptr->amide_hs_unbound_;
     }

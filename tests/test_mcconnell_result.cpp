@@ -52,6 +52,20 @@ bool SphericalAllZero(const SphericalTensor& st) {
     return true;
 }
 
+bool SphericalAllNaN(const SphericalTensor& st) {
+    if (!std::isnan(st.T0)) return false;
+    for (double v : st.T1) if (!std::isnan(v)) return false;
+    for (double v : st.T2) if (!std::isnan(v)) return false;
+    return true;
+}
+
+bool MatrixAllNaN(const Mat3& matrix) {
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 3; ++col)
+            if (!std::isnan(matrix(row, col))) return false;
+    return true;
+}
+
 std::string ReadText(const fs::path& path) {
     std::ifstream in(path);
     return std::string(std::istreambuf_iterator<char>(in),
@@ -899,7 +913,67 @@ TEST(McConnellImplementationChecks, PeptideCORhombicContributionNonZeroAndTracel
 
 
 TEST(McConnellImplementationChecks,
-     PeptideCORhombicBondOrderChannelCallsRealMopacAndProductionCompute) {
+     AbsentMopacIsNanWhileRealMopacEmptySumIsZero) {
+    {
+        auto absent_protein = BuildSyntheticPeptideCOProtein();
+        auto& absent_conf = absent_protein->Conformation();
+        ASSERT_TRUE(absent_conf.AttachResult(
+            GeometryResult::Compute(absent_conf)));
+        ASSERT_TRUE(absent_conf.AttachResult(
+            SpatialIndexResult::Compute(absent_conf)));
+        ASSERT_FALSE(absent_conf.HasResult<MopacResult>());
+        ASSERT_TRUE(absent_conf.AttachResult(
+            McConnellResult::Compute(absent_conf)));
+
+        const size_t bo_channel =
+            static_cast<size_t>(McConnellChannel::BondOrder);
+        const size_t aromatic_category = static_cast<size_t>(
+            McConnellSourceCategory::AromaticZeroed);
+        for (size_t atom = 0; atom < absent_conf.AtomCount(); ++atom) {
+            for (size_t category = 0;
+                 category < kMcConnellSourceCategoryCount; ++category) {
+                const auto& tensor = absent_conf.AtomAt(atom)
+                    .mcconnell_source_tensors[category][bo_channel];
+                if (category == aromatic_category) {
+                    EXPECT_TRUE(SphericalAllZero(tensor));
+                } else {
+                    EXPECT_TRUE(SphericalAllNaN(tensor))
+                        << "atom=" << atom << " category=" << category;
+                }
+            }
+        }
+
+        const fs::path absent_dir = fs::temp_directory_path() /
+            ("mcconnell_absent_mopac_bo_" +
+             std::to_string(::getpid()));
+        fs::create_directories(absent_dir);
+        ASSERT_EQ(absent_conf.Result<McConnellResult>().WriteFeatures(
+                      absent_conf, absent_dir.string()),
+                  28);
+        for (size_t category = 0;
+             category < kMcConnellSourceCategoryCount; ++category) {
+            const auto source_category =
+                static_cast<McConnellSourceCategory>(category);
+            const auto emitted = ReadNpy<double>(
+                absent_dir /
+                    (std::string("mc_") +
+                     McConnellSourceCategoryStem(source_category) +
+                     "_bo.npy"),
+                "<f8");
+            ASSERT_EQ(emitted.shape,
+                      (std::vector<size_t>{absent_conf.AtomCount(), 9}));
+            for (double value : emitted.values) {
+                if (category == aromatic_category) {
+                    EXPECT_DOUBLE_EQ(value, 0.0);
+                } else {
+                    EXPECT_TRUE(std::isnan(value))
+                        << McConnellSourceCategoryStem(source_category);
+                }
+            }
+        }
+        RemoveMcConnellOutputs(absent_dir);
+    }
+
     auto protein = BuildSyntheticPeptideCOProtein();
     auto& conf = protein->Conformation();
     ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
@@ -918,6 +992,19 @@ TEST(McConnellImplementationChecks,
               CalculatorConfig::Get("mopac_bond_order_noise_floor"));
     ASSERT_TRUE(conf.AttachResult(std::move(mopac)));
     ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+
+    // The real MOPAC worker ran, while this synthetic topology has no S-H
+    // source. Its empty accepted-source sum is therefore a genuine zero,
+    // explicitly distinct from the NaN no-MOPAC case above.
+    const size_t sh_category =
+        static_cast<size_t>(McConnellSourceCategory::SH);
+    const size_t bo_channel =
+        static_cast<size_t>(McConnellChannel::BondOrder);
+    for (size_t atom = 0; atom < conf.AtomCount(); ++atom) {
+        EXPECT_TRUE(SphericalAllZero(
+            conf.AtomAt(atom)
+                .mcconnell_source_tensors[sh_category][bo_channel]));
+    }
 
     constexpr size_t target = 3;
     const Mat3 rhombic =
@@ -969,6 +1056,14 @@ TEST(McConnellImplementationChecks,
     for (size_t component = 0; component < expected.size(); ++component) {
         EXPECT_NEAR(emitted.values[target * 9 + component],
                     expected[component], 1e-11);
+    }
+    const auto emitted_empty = ReadNpy<double>(
+        out_dir / "mc_s_h_bo.npy", "<f8");
+    ASSERT_EQ(emitted_empty.shape,
+              (std::vector<size_t>{conf.AtomCount(), 9}));
+    for (double value : emitted_empty.values) {
+        EXPECT_DOUBLE_EQ(value, 0.0)
+            << "a present-MOPAC empty accepted-source sum is physical zero";
     }
 
     const auto emitted_co_bond_index = ReadNpy<int32_t>(
@@ -1861,6 +1956,29 @@ TEST(MopacExternalDirectionalFreeze,
                       (std::vector<std::size_t>{protein->AtomCount(), 9u}));
             ASSERT_EQ(moved.shape, source.shape);
             for (std::size_t atom = 0; atom < protein->AtomCount(); ++atom) {
+                bool unavailable = false;
+                for (std::size_t component = 0; component < 9;
+                     ++component) {
+                    const double source_value =
+                        source.values[atom * 9u + component];
+                    const double moved_value =
+                        moved.values[atom * 9u + component];
+                    EXPECT_EQ(std::isnan(moved_value),
+                              std::isnan(source_value))
+                        << bo_filenames[category] << " atom=" << atom
+                        << " component=" << component;
+                    unavailable = unavailable || std::isnan(source_value);
+                }
+                if (unavailable) {
+                    for (std::size_t component = 0; component < 9;
+                         ++component) {
+                        EXPECT_TRUE(std::isnan(
+                            source.values[atom * 9u + component]));
+                        EXPECT_TRUE(std::isnan(
+                            moved.values[atom * 9u + component]));
+                    }
+                    continue;
+                }
                 const SphericalTensor source_tensor =
                     UnpackFull9(&source.values[atom * 9u]);
                 const SphericalTensor moved_tensor =
@@ -2093,13 +2211,27 @@ TEST(MopacExternalDirectionalFreeze,
                 .AtomAt(atom).mopac_mc_shielding_contribution
                 .PackFull9(expected_pack.data());
             const std::size_t base = (atom * 3u + frame) * 9u;
+            bool unavailable = false;
             for (std::size_t component = 0; component < 9; ++component) {
+                EXPECT_EQ(std::isnan(h5_xyz[base + component]),
+                          std::isnan(expected_pack[component]));
+                unavailable = unavailable ||
+                    std::isnan(expected_pack[component]);
+                if (std::isnan(expected_pack[component])) continue;
                 max_h5_exact_error = std::max(
                     max_h5_exact_error,
                     std::abs(h5_xyz[base + component] -
                              expected_pack[component]));
                 EXPECT_DOUBLE_EQ(h5_xyz[base + component],
                                  expected_pack[component]);
+            }
+            if (unavailable) {
+                for (std::size_t component = 0; component < 9;
+                     ++component) {
+                    EXPECT_TRUE(std::isnan(expected_pack[component]));
+                    EXPECT_TRUE(std::isnan(h5_xyz[base + component]));
+                }
+                continue;
             }
             if (frame > 0) {
                 const Mat3 expected = EvenRank2(
@@ -2157,30 +2289,70 @@ TEST(MopacExternalDirectionalFreeze,
 }
 
 
-TEST(McConnellImplementationChecks, PeptideCORhombicFallsBackToAxial) {
+TEST(McConnellImplementationChecks,
+     UnevaluablePeptideCOFrameIsNanWhileEvaluableEmptySumIsZero) {
     {
         auto protein = BuildSyntheticPeptideCOProtein();
         auto& conf = protein->Conformation();
-        conf.AttachResult(GeometryResult::Compute(conf));
-        const size_t nc_bond = FirstBondBetween(*protein, 0, 1);
-        ASSERT_NE(nc_bond, SIZE_MAX);
-        ASSERT_NE(protein->BondAt(nc_bond).category, BondCategory::PeptideCO);
+        ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
+        const size_t co_bond =
+            FirstBondWithCategory(*protein, BondCategory::PeptideCO);
+        ASSERT_NE(co_bond, SIZE_MAX);
+        const auto valid =
+            McConnellResult::ComputePeptideCORhombicPairKernel(
+                conf, co_bond, conf.PositionAt(3));
+        EXPECT_TRUE(valid.source_shape.allFinite());
+        EXPECT_TRUE(valid.response.allFinite());
 
-        const auto axial = McConnellResult::ComputePairKernel(
-            conf.PositionAt(3),
-            conf.bond_midpoints[nc_bond],
-            conf.bond_directions[nc_bond]);
-        const auto rhombic = McConnellResult::ComputePeptideCORhombicPairKernel(
-            conf, nc_bond, conf.PositionAt(3));
+        // An attached zero-BO result isolates frame validity from model
+        // availability. The only PeptideCO source is self-excluded at its
+        // carbon endpoint, so both canonical channels and the audit have a
+        // real empty accepted-source sum of zero.
+        conf.ForceAttachResultForTesting(std::make_unique<MopacResult>());
+        ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+        ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+        const size_t category = static_cast<size_t>(
+            McConnellSourceCategory::PeptideCO);
+        const size_t fixed =
+            static_cast<size_t>(McConnellChannel::Fixed);
+        const size_t bo =
+            static_cast<size_t>(McConnellChannel::BondOrder);
+        constexpr size_t carbon_endpoint = 1;
+        EXPECT_TRUE(SphericalAllZero(conf.AtomAt(carbon_endpoint)
+            .mcconnell_source_tensors[category][fixed]));
+        EXPECT_TRUE(SphericalAllZero(conf.AtomAt(carbon_endpoint)
+            .mcconnell_source_tensors[category][bo]));
+        EXPECT_TRUE(SphericalAllZero(
+            conf.AtomAt(carbon_endpoint).mcconnell_peptide_co_rhombic));
 
-        EXPECT_LT(MaxAbs(rhombic.source_shape - axial.source_shape), 1e-12);
-        EXPECT_LT(MaxAbs(rhombic.response - axial.response), 1e-12);
+        const fs::path output_dir = fs::temp_directory_path() /
+            ("mcconnell_valid_empty_rhombic_" +
+             std::to_string(::getpid()));
+        fs::create_directories(output_dir);
+        ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
+                      conf, output_dir.string()),
+                  28);
+        const auto fixed_rows = ReadNpy<double>(
+            output_dir / "mc_peptide_co_fixed.npy", "<f8");
+        const auto bo_rows = ReadNpy<double>(
+            output_dir / "mc_peptide_co_bo.npy", "<f8");
+        const auto audit_rows = ReadNpy<double>(
+            output_dir / "mc_peptide_co_rhombic.npy", "<f8");
+        for (size_t component = 0; component < 9; ++component) {
+            EXPECT_DOUBLE_EQ(
+                fixed_rows.values[carbon_endpoint * 9 + component], 0.0);
+            EXPECT_DOUBLE_EQ(
+                bo_rows.values[carbon_endpoint * 9 + component], 0.0);
+            EXPECT_DOUBLE_EQ(
+                audit_rows.values[carbon_endpoint * 9 + component], 0.0);
+        }
+        RemoveMcConnellOutputs(output_dir);
     }
 
     {
         auto protein = BuildSyntheticPeptideCOProtein(true);
         auto& conf = protein->Conformation();
-        conf.AttachResult(GeometryResult::Compute(conf));
+        ASSERT_TRUE(conf.AttachResult(GeometryResult::Compute(conf)));
         const size_t co_bond = FirstBondWithCategory(*protein, BondCategory::PeptideCO);
         ASSERT_NE(co_bond, SIZE_MAX);
 
@@ -2191,14 +2363,50 @@ TEST(McConnellImplementationChecks, PeptideCORhombicFallsBackToAxial) {
         const auto rhombic = McConnellResult::ComputePeptideCORhombicPairKernel(
             conf, co_bond, conf.PositionAt(3));
 
-        EXPECT_LT(MaxAbs(rhombic.source_shape - axial.source_shape), 1e-12);
-        EXPECT_LT(MaxAbs(rhombic.response - axial.response), 1e-12);
+        EXPECT_TRUE(axial.source_shape.allFinite());
+        EXPECT_TRUE(axial.response.allFinite());
+        EXPECT_TRUE(MatrixAllNaN(rhombic.source_shape));
+        EXPECT_TRUE(MatrixAllNaN(rhombic.response));
 
-        conf.AttachResult(SpatialIndexResult::Compute(conf));
-        conf.AttachResult(McConnellResult::Compute(conf));
-        EXPECT_LT(MaxAbs(conf.AtomAt(3)
-                             .mcconnell_peptide_co_rhombic.Reconstruct()),
-                  1e-12);
+        conf.ForceAttachResultForTesting(std::make_unique<MopacResult>());
+        ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
+        ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+        const size_t category = static_cast<size_t>(
+            McConnellSourceCategory::PeptideCO);
+        const size_t fixed =
+            static_cast<size_t>(McConnellChannel::Fixed);
+        const size_t bo =
+            static_cast<size_t>(McConnellChannel::BondOrder);
+        constexpr size_t target = 3;
+        EXPECT_TRUE(SphericalAllNaN(conf.AtomAt(target)
+            .mcconnell_source_tensors[category][fixed]));
+        EXPECT_TRUE(SphericalAllNaN(conf.AtomAt(target)
+            .mcconnell_source_tensors[category][bo]));
+        EXPECT_TRUE(SphericalAllNaN(
+            conf.AtomAt(target).mcconnell_peptide_co_rhombic));
+        EXPECT_TRUE(SphericalAllNaN(
+            conf.AtomAt(target).mc_shielding_contribution));
+        EXPECT_TRUE(conf.AtomAt(target).T2_CO_nearest.Reconstruct().allFinite())
+            << "the separately named nearest axial response stays evaluable";
+
+        const fs::path output_dir = fs::temp_directory_path() /
+            ("mcconnell_unevaluable_rhombic_" +
+             std::to_string(::getpid()));
+        fs::create_directories(output_dir);
+        ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
+                      conf, output_dir.string()),
+                  28);
+        for (const char* stem : {
+                 "mc_peptide_co_fixed.npy",
+                 "mc_peptide_co_bo.npy",
+                 "mc_peptide_co_rhombic.npy"}) {
+            const auto rows = ReadNpy<double>(output_dir / stem, "<f8");
+            for (size_t component = 0; component < 9; ++component) {
+                EXPECT_TRUE(std::isnan(
+                    rows.values[target * 9 + component])) << stem;
+            }
+        }
+        RemoveMcConnellOutputs(output_dir);
     }
 }
 
@@ -2224,13 +2432,12 @@ TEST_F(McConnellProteinTest, AromaticCategoryIsExactlyZero) {
 }
 
 
-TEST_F(McConnellProteinTest, MissingMopacZerosOnlyBoChannel) {
+TEST_F(McConnellProteinTest, MissingMopacMarksNonAromaticBoUnavailable) {
     auto& conf = protein->Conformation();
     ASSERT_FALSE(conf.HasResult<MopacResult>());
     conf.AttachResult(McConnellResult::Compute(conf));
 
     double max_fixed_t2 = 0.0;
-    double max_bo_abs = 0.0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& ca = conf.AtomAt(ai);
         for (size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
@@ -2238,13 +2445,16 @@ TEST_F(McConnellProteinTest, MissingMopacZerosOnlyBoChannel) {
                 max_fixed_t2,
                 ca.mcconnell_source_tensors[c][0].T2Magnitude());
             const auto& bo = ca.mcconnell_source_tensors[c][1];
-            max_bo_abs = std::max(max_bo_abs, std::abs(bo.T0));
-            for (double v : bo.T1) max_bo_abs = std::max(max_bo_abs, std::abs(v));
-            for (double v : bo.T2) max_bo_abs = std::max(max_bo_abs, std::abs(v));
+            const auto category =
+                static_cast<McConnellSourceCategory>(c);
+            if (category == McConnellSourceCategory::AromaticZeroed) {
+                EXPECT_TRUE(SphericalAllZero(bo));
+            } else {
+                EXPECT_TRUE(SphericalAllNaN(bo));
+            }
         }
     }
     EXPECT_GT(max_fixed_t2, 0.0);
-    EXPECT_EQ(max_bo_abs, 0.0);
 }
 
 
@@ -2300,6 +2510,9 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyEightArraysAndManifest) {
               std::string::npos);
     EXPECT_NE(text.find("\"bo_source\": \"MOPAC Wiberg bond order\""),
               std::string::npos);
+    EXPECT_NE(text.find(
+        "\"bo_unavailable\": \"NaN in every non-aromatic BO channel when MopacResult is absent; aromatic remains a structural zero\""),
+        std::string::npos);
     EXPECT_NE(text.find("\"aromatic_zeroed_when_ring_active\": true"),
               std::string::npos);
     EXPECT_NE(text.find(
@@ -2323,6 +2536,9 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyEightArraysAndManifest) {
               std::string::npos);
     EXPECT_NE(text.find("\"rhombic_array\": \"mc_peptide_co_rhombic.npy\""),
               std::string::npos);
+    EXPECT_NE(text.find(
+        "\"rhombic_unavailable\": \"NaN when the PeptideCO C/O/N plane is missing, ambiguous, or collinear\""),
+        std::string::npos);
     EXPECT_NE(text.find("\"source\": \"Hooper & Kaiser 1965 Table III, EF-corrected acetamide A, Abraham-anchored sign\""),
               std::string::npos);
     EXPECT_TRUE(fs::exists(out_dir / "mc_nearfield_counts.npy"));

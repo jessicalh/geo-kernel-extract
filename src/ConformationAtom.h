@@ -347,9 +347,11 @@ public:
     // it (reality check per feedback_methods_accumulate).
     Mat3            larsen_hbond_diagnostic_CB       = Mat3::Zero();
     SphericalTensor larsen_hbond_diagnostic_CB_spherical;
-    // Water term: 2.07 ppm isotropic on amide H atoms that received
-    // ZERO H-bond pair contributions (Larsen Δσ_w, NMA-water complex
-    // value). Zero for non-HN atoms and for HN atoms with any pair.
+    // Water term: 2.07 ppm isotropic on amide H atoms whose evaluable
+    // donor sweep found no geometric H-bond (ProCS15 H-bond Δσ_w, NMA-water
+    // complex value). Zero for non-HN atoms and geometrically paired HN;
+    // NaN when a selected candidate frame was unevaluable and no pair was
+    // confirmed.
     double larsen_hbond_water_term = 0.0;
     // Pair count contributing to this atom (across all 4 classes).
     int  larsen_hbond_n_pairs = 0;

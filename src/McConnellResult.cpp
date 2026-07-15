@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -146,16 +147,15 @@ Mat3 PeptideCORhombicSourceShape(const ProteinConformation& conf,
                                  size_t bond_index) {
     const Protein& protein = conf.ProteinRef();
     if (bond_index >= protein.BondCount())
-        return Mat3::Zero();
-
-    const Vec3 axial_axis = conf.bond_directions[bond_index];
-    const Mat3 axial = AxialSourceShape(axial_axis);
+        return Mat3::Constant(
+            std::numeric_limits<double>::quiet_NaN());
 
     Vec3 u_hat = Vec3::Zero();
     Vec3 e_in = Vec3::Zero();
     Vec3 e_out = Vec3::Zero();
     if (!FindPeptideCOAxes(conf, bond_index, u_hat, e_in, e_out))
-        return axial;
+        return Mat3::Constant(
+            std::numeric_limits<double>::quiet_NaN());
 
     const double mean =
         (kPeptideCOChiOut + kPeptideCOChiPara + kPeptideCOChiIn) / 3.0;
@@ -361,6 +361,7 @@ nlohmann::ordered_json McConnellResult::FeatureMetadata(
     return nlohmann::ordered_json{
         {"source_model", "unit susceptibility shape; axial scale learned; peptide C=O fixed/BO responses use the full pinned rhombic shape"},
         {"bo_source", "MOPAC Wiberg bond order"},
+        {"bo_unavailable", "NaN in every non-aromatic BO channel when MopacResult is absent; aromatic remains a structural zero"},
         {"aromatic_zeroed_when_ring_active", true},
         {"aromatic_zeroed_reason",
          "BS/HM always compute the aromatic ring-current; McConnell zeros aromatic to avoid the double-count."},
@@ -374,7 +375,7 @@ nlohmann::ordered_json McConnellResult::FeatureMetadata(
         {"rhombic_scope", "PeptideCO canonical fixed and BO channels use the full rhombic response; sidechain C=O and all other categories remain axial"},
         {"rhombic_array", std::string(kPeptideCORhombicArrayStem) + ".npy"},
         {"rhombic_emission", "mc_peptide_co_rhombic is the unweighted fixed-channel audit delta D(r)*(Qhat_rhombic-Qhat_axial); canonical PeptideCO fixed/BO arrays already include it"},
-        {"rhombic_degenerate_fallback", "axis-only axial shape when the PeptideCO C/O/N plane is missing, ambiguous, or collinear"},
+        {"rhombic_unavailable", "NaN when the PeptideCO C/O/N plane is missing, ambiguous, or collinear"},
         {"rhombic_pinned_value", nlohmann::ordered_json{
             {"status", "lead_signed_off_external"},
             {"source", "Hooper & Kaiser 1965 Table III, EF-corrected acetamide A, Abraham-anchored sign"},
@@ -609,8 +610,22 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
         for (std::size_t c = 0; c < kMcConnellSourceCategoryCount; ++c) {
             for (std::size_t h = 0; h < kMcConnellChannelCount; ++h) {
-                ca.mcconnell_source_tensors[c][h] =
-                    SphericalTensor::Decompose(accum[c][h]);
+                const auto category =
+                    static_cast<McConnellSourceCategory>(c);
+                const auto channel = static_cast<McConnellChannel>(h);
+                if (!mopac && channel == McConnellChannel::BondOrder &&
+                    category != McConnellSourceCategory::AromaticZeroed) {
+                    SphericalTensor& missing =
+                        ca.mcconnell_source_tensors[c][h];
+                    const double nan =
+                        std::numeric_limits<double>::quiet_NaN();
+                    missing.T0 = nan;
+                    missing.T1.fill(nan);
+                    missing.T2.fill(nan);
+                } else {
+                    ca.mcconnell_source_tensors[c][h] =
+                        SphericalTensor::Decompose(accum[c][h]);
+                }
             }
         }
 

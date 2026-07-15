@@ -684,10 +684,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               validity="optional output of TrajectoryProtein::WriteFeatures when HmWelfordTrajectoryResult is attached; with zero primary samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std columns8:10 are NaN with fewer than two frames, while zero is physical only after at least one actual delta sample",
               scaling_contract=_HM_SCALING + "; scale signed and norm statistics according to their semantics; frame count is unscaled"),
     ArraySpec("mc_welford", "trajectory_rollup", np.ndarray, 11, False,
-              "(N,11) unscaled McConnell unit-susceptibility geometry-response trajectory rollup [T0 mean/std/min/max, |T2| mean/std/min/max, consecutive-frame T0-delta mean/std, n_frames]; source is mc_shielding_contribution and no directional component is serialized",
+              "(N,11) unscaled McConnell unit-susceptibility geometry-response trajectory rollup [T0 mean/std/min/max, |T2| mean/std/min/max, adjacent-captured-frame T0-delta mean/std when both are evaluable, n_evaluable_frames]; source is mc_shielding_contribution and no directional component is serialized",
               native_axis="atom", irreps="0e", units="mixed_A^-3_count", mechanism="bond_anisotropy",
               coordinate_frame="intrinsic_statistics", transformation="exact O(3)-invariant scalar statistics of T0 and the project-native T2 norm; frame count invariant",
-              validity="optional output of TrajectoryProtein::WriteFeatures when McConnellWelfordTrajectoryResult is attached; with zero primary samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std columns8:10 are NaN with fewer than two frames, while zero is physical only after at least one actual delta sample",
+              validity="optional output of TrajectoryProtein::WriteFeatures when McConnellWelfordTrajectoryResult is attached; complete-NaN PeptideCO-frame samples are omitted and col10 is the per-atom evaluable-sample count; with zero evaluable samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std cols8:9 are NaN without an adjacent captured-frame pair for which both frames are evaluable, and an unevaluable gap is never bridged; zero is physical only after at least one actual delta sample",
               scaling_contract=_MCCONNELL_SCALING + "; scale signed and norm statistics according to their semantics; frame count is unscaled"),
     ArraySpec("sasa_welford", "trajectory_rollup", np.ndarray, 7, False,
               "(N,7) SASA trajectory rollup [SASA mean/std/min/max, consecutive-frame SASA-delta mean/std, n_frames] from the finite lab-fixed Fibonacci surface estimator",
@@ -1088,7 +1088,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # backbone amide H (HN) and any α-hydrogen (HA, plus GLY HA2/HA3)
     # within 4.2 Å of any acceptor O classified as one of
     # BackboneCarbonyl / SidechainCarbonyl / Hydroxyl / Carboxylate.
-    # No DSSP — Larsen's framework is geometric (θ ≥ 90° is the gate),
+    # No DSSP — the ProCS15 H-bond shielding framework is geometric
+    # (θ ≥ 90° is the gate),
     # and the spatial sweep IS the H-bond finder.
     #
     # Per-class Mat3 contributions are decomposed per Pattern 11 into
@@ -1115,7 +1116,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     #   atom received contributions from), correlated with shielding
     #   magnitude.
     #
-    #   `larsen_hbond_water_term` is the Larsen Δσ_w = 2.07 ppm isotropic
+    #   `larsen_hbond_water_term` is the ProCS15 H-bond Δσ_w = 2.07 ppm isotropic
     #   offset on solvent-exposed amide Hs.
     # ────────────────────────────────────────────────────────────────
     ArraySpec("larsen_hbond_shielding",                  "larsen_hbond", ShieldingTensor, 9, False, "Σ Larsen H-bond contributions across all four Table 2 classes (1°HB + 2°HB + 1°HαB + 2°HαB) — ppm, lab frame. Structurally = sum of the four per-class arrays; NOT a feature.", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_grid"),
@@ -1128,7 +1129,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("larsen_hbond_2pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HαB per Larsen 2015 Table 2 — secondary Hα donor contribution. N/Cα/Hα/HN apply to acceptor residue j+1; C' applies to acceptor's OWN residue j",
               irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_diagnostic_CB_shielding",    "larsen_hbond", ShieldingTensor, 9, False, "Cβ diagnostic — Larsen Table 2 says Cβ gets NO contribution; emitted as parser→loader→frame-rotation reality check. NOT a feature.", irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_grid"),
-    ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms with NO valid, symmetry-selected geometric H-bond candidate (θ ≥ 90° in 4.2 Å); finite valid grid misses still confirm an H-bond, while invalid frames and filtered carboxylate siblings do not", units="ppm", mechanism="hbond_grid"),
+    ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms whose evaluable, symmetry-selected sweep finds no geometric H-bond (θ ≥ 90° in 4.2 Å); finite valid grid misses confirm an H-bond, while a selected missing/invalid frame is NaN", units="ppm", mechanism="hbond_grid"),
     ArraySpec("larsen_hbond_count",                      "larsen_hbond", np.ndarray,      None, False, "Per-atom count of H-bond pairs that contributed under any of the four Table 2 classes; metadata, NOT a feature.", mechanism="hbond_grid"),
     ArraySpec("larsen_corner_imputed",                   "larsen_hbond", np.ndarray,      None, False, "Per-atom int8 flag: 1 iff any Larsen H-bond grid lookup corner serving this atom was imputed", mechanism="hbond_grid"),
     ArraySpec("larsen_imputed_pair_count",               "larsen_hbond", np.ndarray,      None, False, "Per-atom count of Table2 shielding pairs with at least one imputed interpolation corner; imputed_policy=emitted_unmasked", mechanism="hbond_grid"),
@@ -1706,9 +1707,14 @@ _set_contract(
     _MCCONNELL_FULL9, coordinate_frame=_CARTESIAN_FRAME,
     transformation=_EVEN_RANK2,
     validity=(
-        "fixed channels use physical zero for no accepted source; legacy BO "
-        "channels in McConnellResult use zero when MOPAC is unavailable; "
-        "sidechain_co_bo_T2 instead uses NaN when MOPAC is unavailable; "
+        "fixed channels use physical zero for no accepted source; PeptideCO "
+        "fixed, BO, and rhombic-audit channels are NaN for targets receiving "
+        "a source whose C/O/N plane is unevaluable; all nine non-aromatic BO "
+        "channels use NaN when MOPAC is unavailable and physical zero only "
+        "for a present MOPAC result's empty, cancelled, or post-floor zero "
+        "sum; "
+        "the aromatic fixed/BO channels remain intentional structural zeros; "
+        "sidechain_co_bo_T2 also uses NaN when MOPAC is unavailable; "
         "nearest CO/CN tensors use NaN when the corresponding nearest distance "
         "is NO_DATA_SENTINEL"
     ))
@@ -2134,7 +2140,7 @@ _set_contract(
     ),
     validity=(
         "physical zero for no contributing pair; whole optional group absent "
-        "without Larsen grids; imputed corners are emitted unmasked"
+        "without ProCS15 H-bond grids; imputed corners are emitted unmasked"
     ))
 
 # Signed-rho grid lookup is chiral and therefore has only an SO(3) contract.
@@ -2927,13 +2933,16 @@ _set_contract(
     ("larsen_hbond_water_term",),
     coordinate_frame=_INTRINSIC_FRAME,
     transformation=(
-        "exact rotation/translation/reflection-invariant scalar: the water "
-        "gate uses only topology, distance, and theta; both successful and "
-        "out-of-r-grid geometric pairs suppress the term"
+        "exact rotation/translation/reflection-invariant ternary status; for "
+        "finite nondegenerate frames the water gate uses topology, distance, "
+        "and theta, and both successful and out-of-r-grid geometric pairs "
+        "suppress the term"
     ),
     validity=(
-        "2.07 ppm on geometrically unpaired amide H atoms and physical zero "
-        "elsewhere; whole optional group absent without Larsen grids"
+        "2.07 ppm on evaluated amide H atoms with no geometric pair; physical "
+        "zero on confirmed pairs and other atoms; NaN when a selected candidate "
+        "frame is unevaluable and no geometric pair is confirmed; whole "
+        "optional group absent without ProCS15 H-bond grids"
     ),
     irreps="0e", parity="even", tensor_rank=0)
 _set_contract(

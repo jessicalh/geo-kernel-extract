@@ -32,6 +32,7 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -152,6 +153,7 @@ TEST(McConnellShieldingTimeSeries,
     std::string t1_semantics;
     std::string structural_zero_components;
     std::string normalization_scope;
+    std::string validity;
     bool t1_structural_zero = true;
     grp.getAttribute("tensor_basis").read(basis);
     grp.getAttribute("tensor_component_order").read(order);
@@ -166,6 +168,7 @@ TEST(McConnellShieldingTimeSeries,
     grp.getAttribute("tensor_structural_zero_components").read(
         structural_zero_components);
     grp.getAttribute("normalization_scope").read(normalization_scope);
+    grp.getAttribute("validity").read(validity);
 
     EXPECT_EQ(basis, nmr::kMcConnellPackFull9TensorBasis);
     EXPECT_EQ(order, nmr::kMcConnellPackFull9ComponentOrder);
@@ -183,6 +186,10 @@ TEST(McConnellShieldingTimeSeries,
     EXPECT_EQ(normalization_scope,
         "xyz tensor payload: T2 uses isometric real-tesseral "
         "normalization; T1 uses the tensor_t1_semantics convention");
+    EXPECT_EQ(validity,
+        "complete NaN tensor when an accepted PeptideCO source has an "
+        "unevaluable C/O/N plane; physical zero means an evaluable empty "
+        "or cancelled fixed-channel sum");
 
     std::vector<double> flat(tp.AtomCount() * 9u);
     ds.read(flat.data());
@@ -457,20 +464,31 @@ TEST(McConnellShieldingTimeSeries, Integration1P9J) {
     EXPECT_LT(std::abs(cell.T0), kT0SanityBoundA3);
 
     size_t populated = 0;
+    size_t unavailable = 0;
     for (size_t i = 0; i < buf->AtomCount(); ++i) {
         for (size_t t = 0; t < buf->StridePerAtom(); ++t) {
             const nmr::SphericalTensor& st = buf->At(i, t);
-            EXPECT_TRUE(std::isfinite(st.T0)
-                     && std::isfinite(st.T1[0]) && std::isfinite(st.T1[1]) && std::isfinite(st.T1[2])
-                     && std::isfinite(st.T2[0]) && std::isfinite(st.T2[1])
-                     && std::isfinite(st.T2[2]) && std::isfinite(st.T2[3]) && std::isfinite(st.T2[4]));
+            std::array<double, 9> packed{};
+            st.PackFull9(packed.data());
+            const bool is_unavailable = std::isnan(packed[0]);
+            for (double value : packed) {
+                EXPECT_EQ(std::isnan(value), is_unavailable)
+                    << "partial McConnell tensor at atom=" << i
+                    << " frame=" << t;
+                if (!is_unavailable) EXPECT_TRUE(std::isfinite(value));
+            }
+            if (is_unavailable) ++unavailable;
         }
-        if (std::abs(buf->At(i, 0).T0) > 1e-12) ++populated;
+        if (std::isfinite(buf->At(i, 0).T0) &&
+            std::abs(buf->At(i, 0).T0) > 1e-12) {
+            ++populated;
+        }
     }
     EXPECT_GT(populated, 0u);
 
     std::cout << "McConnellShieldingTimeSeries CA-anchor: chain=" << kFingerprintChainId
               << " residue=" << kFingerprintResidueNumber << " atom_idx=" << fingerprint_atom
               << " frame 0 T0=" << cell.T0 << " A^-3, populated=" << populated
-              << "/" << buf->AtomCount() << "\n";
+              << "/" << buf->AtomCount()
+              << ", unavailable=" << unavailable << "\n";
 }

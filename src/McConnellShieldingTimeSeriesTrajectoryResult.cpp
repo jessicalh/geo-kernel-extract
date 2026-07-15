@@ -125,6 +125,10 @@ void McConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "xyz tensor payload: T2 uses isometric real-tesseral "
         "normalization; T1 uses the tensor_t1_semantics convention"));
     grp.createAttribute("units",         std::string("Angstrom^-3"));
+    grp.createAttribute("validity", std::string(
+        "complete NaN tensor when an accepted PeptideCO source has an "
+        "unevaluable C/O/N plane; physical zero means an evaluable empty "
+        "or cancelled fixed-channel sum"));
 
     std::vector<double> flat(N * T * 9);
     for (std::size_t i = 0; i < N; ++i) {

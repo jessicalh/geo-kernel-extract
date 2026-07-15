@@ -36,6 +36,9 @@
 //       normalization           = "isometric_real_sph"
 //       normalization_scope     = "xyz tensor payload: T2 uses ..."
 //       units                   = "Angstrom^-3"
+//       validity                = complete NaN on an unevaluable PeptideCO
+//                                 frame; evaluable empty/cancelled fixed sum
+//                                 is physical zero
 //
 // McConnellResult forms D(r) Qhat.  Under every orthogonal transform R,
 // D' = R D R^T and Qhat' = R Qhat R^T, hence the (generally nonsymmetric)

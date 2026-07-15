@@ -34,6 +34,7 @@
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5File.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -650,6 +651,10 @@ void ExpectTensorWelfordMeans(
         moved_path, group_path + "/t1_mean");
     const auto t2_b = ReadH5Flat<double>(
         moved_path, group_path + "/t2_mean");
+    const auto n_a = ReadH5Flat<std::size_t>(
+        source_path, group_path + "/n_frames_per_atom");
+    const auto n_b = ReadH5Flat<std::size_t>(
+        moved_path, group_path + "/n_frames_per_atom");
     ASSERT_EQ(t0_dims.size(), 1u);
     ASSERT_EQ(t1_dims,
               (std::vector<std::size_t>{t0_dims[0], 3}));
@@ -658,9 +663,15 @@ void ExpectTensorWelfordMeans(
     ASSERT_EQ(t0_b.size(), t0_a.size());
     ASSERT_EQ(t1_b.size(), t1_a.size());
     ASSERT_EQ(t2_b.size(), t2_a.size());
+    ASSERT_EQ(n_a.size(), t0_a.size());
+    EXPECT_EQ(n_b, n_a);
+    const std::size_t max_samples =
+        *std::max_element(n_a.begin(), n_a.end());
+    ASSERT_GT(max_samples, 0u);
 
     double t1_signal = 0.0;
     double t2_signal = 0.0;
+    std::size_t conditionally_omitted_rows = 0;
     for (std::size_t atom = 0; atom < t0_a.size(); ++atom) {
         SCOPED_TRACE(group_path + " atom=" + std::to_string(atom));
         SphericalTensor source;
@@ -675,6 +686,40 @@ void ExpectTensorWelfordMeans(
             source.T2[component] = t2_a[atom * 5 + component];
             actual.T2[component] = t2_b[atom * 5 + component];
         }
+
+        const bool source_has_nan =
+            std::isnan(source.T0) ||
+            std::any_of(source.T1.begin(), source.T1.end(),
+                        [](double value) { return std::isnan(value); }) ||
+            std::any_of(source.T2.begin(), source.T2.end(),
+                        [](double value) { return std::isnan(value); });
+        const bool actual_has_nan =
+            std::isnan(actual.T0) ||
+            std::any_of(actual.T1.begin(), actual.T1.end(),
+                        [](double value) { return std::isnan(value); }) ||
+            std::any_of(actual.T2.begin(), actual.T2.end(),
+                        [](double value) { return std::isnan(value); });
+        if (source_has_nan || actual_has_nan) {
+            EXPECT_EQ(n_a[atom], 0u);
+            EXPECT_TRUE(source_has_nan);
+            EXPECT_TRUE(actual_has_nan);
+            EXPECT_TRUE(std::isnan(source.T0));
+            EXPECT_TRUE(std::isnan(actual.T0));
+            for (int component = 0; component < 3; ++component) {
+                EXPECT_TRUE(std::isnan(source.T1[component]));
+                EXPECT_TRUE(std::isnan(actual.T1[component]));
+            }
+            for (int component = 0; component < 5; ++component) {
+                EXPECT_TRUE(std::isnan(source.T2[component]));
+                EXPECT_TRUE(std::isnan(actual.T2[component]));
+            }
+            ++conditionally_omitted_rows;
+            continue;
+        }
+
+        EXPECT_GT(n_a[atom], 0u);
+        if (n_a[atom] < max_samples) ++conditionally_omitted_rows;
+
         t1_signal += T1Vector(source).norm();
         t2_signal += nmr::test::directional::T2Matrix(source).norm();
 
@@ -698,6 +743,12 @@ void ExpectTensorWelfordMeans(
         << group_path << " T1 mean covariance must be non-vacuous";
     EXPECT_GT(t2_signal, 1.0e-18)
         << group_path << " T2 mean covariance must be non-vacuous";
+    if (group_path == "/trajectory/mc_welford") {
+        EXPECT_GT(conditionally_omitted_rows, 0u)
+            << "the terminal PeptideCO fixture must exercise conditional moments";
+    } else {
+        EXPECT_EQ(conditionally_omitted_rows, 0u) << group_path;
+    }
 }
 
 std::unique_ptr<Protein> BuildOneAtomProtein(const Vec3& position) {
@@ -1463,7 +1514,18 @@ TEST(DirectionalTrajectoryCovariance,
         const auto counts = ReadH5Flat<std::size_t>(
             source_path, group + "/n_frames_per_atom");
         ASSERT_EQ(counts.size(), source_tp->AtomCount());
-        for (std::size_t count : counts) EXPECT_EQ(count, kFrames);
+        std::size_t conditionally_omitted = 0;
+        for (std::size_t count : counts) {
+            if (group == "/trajectory/mc_welford") {
+                EXPECT_LE(count, kFrames);
+                if (count < kFrames) ++conditionally_omitted;
+            } else {
+                EXPECT_EQ(count, kFrames);
+            }
+        }
+        if (group == "/trajectory/mc_welford") {
+            EXPECT_GT(conditionally_omitted, 0u);
+        }
     }
 
     for (const bool improper : {false, true}) {

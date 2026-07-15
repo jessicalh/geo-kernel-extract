@@ -1436,8 +1436,10 @@ class LarsenHBondGroup:
     - ``diagnostic_CB`` should be near-zero in production (Larsen Table
       2 says Cβ gets no HB term; non-zero would signal a pipeline bug
       in the parser/loader/rotation path).
-    - ``water_term`` is 2.07 ppm isotropic on amide Hs with zero geometric
-      H-bond candidates under the Larsen 4.2 Å / theta >= 90 degree gate.
+    - ``water_term`` is 2.07 ppm isotropic on amide Hs whose evaluable
+      ProCS15 H-bond sweep finds no geometric candidate under the 4.2 Å /
+      theta >= 90 degree gate; a selected missing/invalid frame is NaN when
+      no geometric pair is confirmed.
     - ``count`` counts H-bond pairs that contributed to this atom under
       any of the four Table 2 classes — the diagnostic CB does NOT
       increment it.
