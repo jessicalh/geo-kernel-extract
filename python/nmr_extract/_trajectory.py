@@ -3607,16 +3607,33 @@ def _load_dihedral_bin_transition(f) -> Optional[DihedralBinTransitionGroup]:
 
 @dataclass(frozen=True)
 class LarsenHBondTensorTimeSeries:
-    """One Larsen shielding-term timeline from an ``(N,T,9)`` group."""
+    """One ProCS15 H-bond shielding timeline from an ``(N,T,9)`` group."""
     xyz: np.ndarray
     frame_indices: np.ndarray
     frame_times: np.ndarray
     source_attached_per_frame: np.ndarray
+    result_name: str
+    n_atoms: int
+    n_frames: int
+    finalized: bool
     source_attached_count: int
     source_attached_policy: str
     atom_axis: str
     frame_axis: str
     irrep_layout: str
+    normalization: str
+    parity: str
+    coordinate_frame: str
+    tensor_basis: str
+    tensor_component_order: str
+    tensor_frame: str
+    tensor_t1_semantics: str
+    tensor_t1_structural_zero: bool
+    tensor_structural_zero_components: str
+    e3nn_export: str
+    normalization_scope: str
+    transformation: str
+    units: str
 
 
 @dataclass(frozen=True)
@@ -3650,18 +3667,35 @@ def _load_larsen_tensor_time_series(
     g = f[path]
     mask = g["source_attached_per_frame"][:]
     def _attr(name: str) -> str:
-        return str(_decode_attr(g.attrs.get(name, "")))
+        return str(_decode_attr(g.attrs[name]))
     return LarsenHBondTensorTimeSeries(
         xyz=g["xyz"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
         source_attached_per_frame=mask,
-        source_attached_count=int(
-            g.attrs.get("source_attached_count", np.asarray(mask).sum())),
+        result_name=_attr("result_name"),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        finalized=bool(g.attrs["finalized"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
         source_attached_policy=_attr("source_attached_policy"),
         atom_axis=_attr("atom_axis"),
         frame_axis=_attr("frame_axis"),
         irrep_layout=_attr("irrep_layout"),
+        normalization=_attr("normalization"),
+        parity=_attr("parity"),
+        coordinate_frame=_attr("coordinate_frame"),
+        tensor_basis=_attr("tensor_basis"),
+        tensor_component_order=_attr("tensor_component_order"),
+        tensor_frame=_attr("tensor_frame"),
+        tensor_t1_semantics=_attr("tensor_t1_semantics"),
+        tensor_t1_structural_zero=bool(g.attrs["tensor_t1_structural_zero"]),
+        tensor_structural_zero_components=_attr(
+            "tensor_structural_zero_components"),
+        e3nn_export=_attr("e3nn_export"),
+        normalization_scope=_attr("normalization_scope"),
+        transformation=_attr("transformation"),
+        units=_attr("units"),
     )
 
 

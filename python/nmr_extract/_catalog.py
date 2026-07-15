@@ -2137,14 +2137,6 @@ _set_contract(
         "without Larsen grids; imputed corners are emitted unmasked"
     ))
 
-# Signed-rho grid lookup is chiral and therefore has only an SO(3) contract.
-# Keep the packed tensor representation explicit, but expose it as raw data so
-# neither the SDK nor e3nn metadata invents an unsupported improper law.
-for _stem in _LARSEN_TENSORS:
-    CATALOG[_stem] = replace(
-        CATALOG[_stem], wrapper=np.ndarray, irreps="", parity="mixed",
-        e3nn_export="")
-
 _MUTATION_TENSORS = (
     "delta_shielding", "wt_shielding_diamagnetic",
     "wt_shielding_paramagnetic", "mut_shielding_diamagnetic",
