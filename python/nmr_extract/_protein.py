@@ -1765,16 +1765,46 @@ def _validate_topology_invariants(tg: TopologyGroup, n_atoms: int,
 def load(path: str | Path) -> Protein:
     """Load an extraction directory into a fully typed Protein.
 
+    FrameNpyEmitter frame directories are combined with the invariant Protein
+    records and full topology manifest in their parent directory.
     Validates every file against the catalog. Warns on unregistered files
     (forward-compatible). Errors on missing required files.
     """
     path = Path(path)
     protein_id = path.name
+    frame_suffix = path.name[6:] if path.name.startswith("frame_") else ""
+    is_frame_path = len(frame_suffix) >= 6 and frame_suffix.isdigit()
+    invariant_path = path.parent if is_frame_path else path
+    invariant_stems = (
+        "atoms_category_info",
+        "residues",
+        "bonds",
+        "rings",
+        "ring_membership",
+    )
+
+    if is_frame_path:
+        for stem in invariant_stems:
+            required_path = invariant_path / f"{stem}.npy"
+            if not required_path.is_file():
+                raise FileNotFoundError(
+                    "Required trajectory-frame topology file missing: "
+                    f"{required_path.resolve()}"
+                )
+        required_manifest = invariant_path / "extraction_manifest.json"
+        if not required_manifest.is_file():
+            raise FileNotFoundError(
+                "Required trajectory-frame topology file missing: "
+                f"{required_manifest.resolve()}"
+            )
 
     # Load all NPY files
     available: dict[str, np.ndarray] = {}
     for npy in path.glob("*.npy"):
         available[npy.stem] = np.load(npy)
+    if is_frame_path:
+        for stem in invariant_stems:
+            available[stem] = np.load(invariant_path / f"{stem}.npy")
 
     # Warn on unregistered (don't error — forward-compatible)
     unregistered = set(available.keys()) - set(CATALOG.keys())
@@ -2190,7 +2220,7 @@ def load(path: str | Path) -> Protein:
     # ring_membership.npy are required NPYs (declared in CATALOG);
     # the missing-required check above already failed if any were
     # absent. extraction_manifest.json is required separately.
-    manifest_path = path / "extraction_manifest.json"
+    manifest_path = invariant_path / "extraction_manifest.json"
     if not manifest_path.exists():
         raise FileNotFoundError(
             f"Required topology sidecar extraction_manifest.json missing for {protein_id}")
