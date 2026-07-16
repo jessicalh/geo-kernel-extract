@@ -149,17 +149,20 @@ void LarsenHBondWaterTermTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("coordinate_frame",
         std::string("intrinsic_geometric_hbond_gate"));
     grp.createAttribute("transformation", std::string(
-        "exact rotation/translation/reflection-invariant scalar: topology, "
-        "distance, and theta gate geometric pairing; periodic rho does not "
-        "change whether the water term is applied"));
+        "exact rotation/translation/reflection-invariant ternary status; for "
+        "finite nondegenerate frames, topology, distance, and theta gate "
+        "geometric pairing and periodic rho does not change paired versus "
+        "unpaired"));
     grp.createAttribute("validity", std::string(
-        "2.07 ppm on geometrically unpaired amide H atoms and physical zero "
-        "elsewhere; source_attached_per_frame records calculator availability"));
+        "2.07 ppm on evaluated amide H atoms with no geometric pair; physical "
+        "zero on confirmed pairs and other atoms; NaN marks an unevaluable "
+        "selected candidate frame with no confirmed pair or an unattached "
+        "source, distinguished by source_attached_per_frame"));
     grp.createAttribute("units",        std::string("ppm"));
     grp.createAttribute("description",
-        std::string("Larsen Δσ_w water term — 2.07 ppm isotropic on amide H "
-                    "atoms with zero H-bond pair contributions this frame; "
-                    "zero on all other atoms (and on HN with ≥1 pair)."));
+        std::string("ProCS15 H-bond Δσ_w water term — 2.07 ppm isotropic on amide H "
+                    "atoms with an evaluated unpaired donor state this frame; "
+                    "zero on other or paired atoms and NaN when unevaluable."));
 
     // Flat (N, T) double. Same component-access discipline as the
     // Vec3/SphericalTensor TRs even though the cell type is already

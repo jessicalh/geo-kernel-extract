@@ -113,27 +113,27 @@ hm_ring_B_field.npy | HaighMallionResult | pair(P,3) A^-1 | A | sparse row align
 
 McConnell and side-chain carbonyl anisotropy
 -------------------------------------------
-mc_peptide_co_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_peptide_co_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
-mc_peptide_co_rhombic.npy | McConnellResult | atom(N,9) A^-3 | T, generic irreps | no valid peptide-CO source physical zero | DC-GR PASS; NPY-E2E PASS
+mc_peptide_co_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | each unevaluable C/O/N-plane source is omitted (zero addition); other valid sources sum normally; empty/cancelled sum physical zero | DC-GR PASS; NPY-E2E PASS
+mc_peptide_co_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; with MOPAC present each unevaluable C/O/N-plane source is omitted (zero addition), other valid sources sum normally, and empty/cancelled/post-floor sum is physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_peptide_co_rhombic.npy | McConnellResult | atom(N,9) A^-3 | T, generic irreps | each unevaluable C/O/N-plane source is omitted (zero audit addition); other valid sources sum normally; no-source/cancelled delta physical zero | DC-GR PASS; NPY-E2E PASS
 mc_peptide_cn_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_peptide_cn_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_peptide_cn_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_backbone_other_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_backbone_other_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_backbone_other_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_sidechain_co_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_sidechain_co_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_sidechain_co_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_sidechain_other_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_sidechain_other_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_sidechain_other_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_disulfide_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_disulfide_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX exact NPY zero-on-fixture only (no disulfide source), not a finite external-BO claim
-mc_aromatic_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; DC-MX independent aromatic-bond oracle PASS
-mc_aromatic_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; DC-MX independent aromatic-bond oracle and finite-nonzero external-MOPAC bounded O3 PASS
+mc_disulfide_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX exact NPY zero-on-fixture only (no disulfide source), not a finite external-BO claim
+mc_aromatic_zeroed_fixed.npy | McConnellResult | atom(N,9) | policy structural zero in all nine components | intentional BS/HM double-count suppression | DC-GR PASS; NPY-E2E PASS
+mc_aromatic_zeroed_bo.npy | McConnellResult | atom(N,9) | policy structural zero in all nine components | intentional BS/HM double-count suppression | DC-GR PASS; NPY-E2E PASS; DC-MX external-MOPAC policy-zero PASS
 mc_backbone_xh_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_backbone_xh_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_backbone_xh_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_sidechain_xh_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_sidechain_xh_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_sidechain_xh_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_s_h_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
-mc_s_h_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX exact NPY zero-on-fixture only (no S-H source), not a finite external-BO claim
+mc_s_h_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX exact NPY zero-on-fixture only (no S-H source), not a finite external-BO claim
 mc_nearest_co_dir.npy | McConnellResult | atom(N,3) | P | unmatched triplet NaN, keyed by nearest-CO sentinel | DC-GR PASS; NPY-E2E PASS; producer fix e228ecc
 mc_nearest_co_midpoint.npy | McConnellResult | atom(N,3) A | X | unmatched triplet NaN, keyed by nearest-CO sentinel | DC-GR PASS; NPY-E2E PASS; producer fix e228ecc and PositionField metadata
 mc_nearest_co_T2.npy | McConnellResult | atom(N,9) A^-3 despite legacy stem | T, generic T0/T1/T2 | unmatched all-NaN | DC-GR PASS; NPY-E2E PASS; producer fix e228ecc
@@ -234,7 +234,7 @@ larsen_hbond_pairs_geometry.npy | LarsenHBondShieldingResult | pair(P,6): r/thet
 larsen_hbond_pairs_isotropic.npy | LarsenHBondShieldingResult | pair(P,6), proper invariant lookup values; no improper parity | unsuccessful pair NaN; imputed success unmasked | DC-LA PASS owner-NPY
 larsen_hbond_pairs_index.npy | LarsenHBondShieldingResult | pair(P,16), exact O(3)-invariant identity/class/disposition/anchor/target-mask provenance; signed rho changes values/imputation, not success | col6 disposition authoritative | DC-LA proper + DC-LI improper owner-NPY PASS; exact even contract cffeebd
 larsen_hbond_count.npy | LarsenHBondShieldingResult | atom(N) | exact S/0e successful-pair count gated by topology/distance/theta, independent of signed-rho value selection | zero real no-contribution | DC-LA proper + DC-LI improper owner-NPY PASS; exact contract cffeebd
-larsen_hbond_water_term.npy | LarsenHBondShieldingResult | atom(N) ppm | exact S/0e 2.07-ppm water term gated by topology/distance/theta geometric non-pairing | physical zero elsewhere; optional Larsen source absent as a whole | DC-LA proper + DC-LI improper owner-NPY PASS; exact contract cffeebd
+larsen_hbond_water_term.npy | LarsenHBondShieldingResult | atom(N) ppm | exact S/0e 2.07-ppm water term only for an evaluated amide H with no geometric pair | confirmed pair/other atom physical zero; selected missing/invalid donor frame with no confirmed pair NaN; optional ProCS15 H-bond source absent as a whole | DC-LA proper + DC-LI improper owner-NPY PASS; exact contract cffeebd
 larsen_corner_imputed.npy | LarsenHBondShieldingResult | atom(N) | proper invariant lookup provenance; no improper outcome law | zero real no-imputation | DC-LA PASS owner-NPY
 larsen_imputed_pair_count.npy | LarsenHBondShieldingResult | atom(N) | proper invariant lookup provenance; no improper outcome law | zero real count | DC-LA PASS owner-NPY
 larsen_sidechain_carbonyl_pair_count.npy | LarsenHBondShieldingResult | atom(N) | exact S/0e successful sidechain-carbonyl pair count under the same topology/distance/theta gate | zero real count | DC-LA proper + DC-LI improper owner-NPY PASS; exact contract cffeebd
@@ -278,8 +278,8 @@ Raw time-series and mixed trajectory datasets
 /trajectory/positions/xyz | PositionsTimeSeriesTrajectoryResult | (N,T,3) X | always present | DCT-POS H5-PASS, <=2e-12 A
 /trajectory/bs_shielding_time_series/xyz | BsShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, seed 0x0E1F04D, 3e-12 abs + 3e-10 rel
 /trajectory/hm_shielding_time_series/xyz | HmShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, same seed, 3e-11 abs + 1e-8 rel
-/trajectory/mc_shielding_time_series/xyz | McConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, same seed, 3e-12 abs + 3e-10 rel
-/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames NaN/source mask | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234375 within explicit MOZYME envelope
+/trajectory/mc_shielding_time_series/xyz | McConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | each unevaluable PeptideCO source is omitted; valid fixed contributions sum normally and empty/cancelled sum is physical zero | DCT-KW H5-PASS, same seed, 3e-12 abs + 3e-10 rel
+/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames complete NaN/source mask; attached frames omit each unevaluable PeptideCO source, retain other valid contributions, and use physical zero for empty/cancelled/post-floor sums | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234282 within explicit MOZYME envelope
 /trajectory/mopac_coulomb_efg_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | (N,T,5) T2, SZ(T0/T1) | absent frames NaN/source mask | DC-MC H5-PASS with fixed scalar charge source, seed 0x4d4f504143434f55, 3e-9 abs + 3e-11 rel
 /trajectory/mopac_coulomb_shielding_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | legacy alias of preceding T2 dataset | same validity | DC-MC byte-identical H5-PASS
 /trajectory/apbs_efield_time_series/xyz | ApbsEfieldTimeSeriesTrajectoryResult | (N,T,3) continuum P; live finite grid is NC | absent frames NaN/source mask | DC-AP H5-PASS within 1.8e-2 abs + 5e-2 rel finite-grid bound
@@ -313,7 +313,7 @@ Raw time-series and mixed trajectory datasets
 /trajectory/larsen_hbond_1pHaB_shielding_time_series/xyz | LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult | (N,T,9) T proper-only | same validity | DC-LA H5-PASS, same seed/tolerance
 /trajectory/larsen_hbond_2pHaB_shielding_time_series/xyz | LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult | (N,T,9) T proper-only | same validity | DC-LA H5-PASS, same seed/tolerance
 /trajectory/larsen_hbond_count_time_series/count | LarsenHBondCountTimeSeriesTrajectoryResult | (N,T) exact S/0e pair count gated by topology/distance/theta; signed rho only selects values/imputation | zero real no-pair; group absent when source never attached | DC-LA proper + DC-LI improper H5-PASS; exact machine contract 40b140e
-/trajectory/larsen_hbond_water_term_time_series/water_term | LarsenHBondWaterTermTimeSeriesTrajectoryResult | (N,T) exact S/0e 2.07-ppm geometric unpaired-H term | physical zero elsewhere; absent frames NaN/source mask; group absent when source never attached | DC-LI improper transformed H5-PASS; exact machine contract edc0979
+/trajectory/larsen_hbond_water_term_time_series/water_term | LarsenHBondWaterTermTimeSeriesTrajectoryResult | (N,T) exact S/0e 2.07-ppm evaluated-unpaired-H term | confirmed pair/other atom physical zero; selected missing/invalid donor frame with no confirmed pair NaN; absent frame NaN/source mask; group absent when source never attached | DC-LI improper transformed H5-PASS; exact machine contract edc0979
 /trajectory/gromacs_energy_time_series/box_x | GromacsEnergyTimeSeriesTrajectoryResult | (T) axis-tied box diagnostic, NC for a general cell | unavailable frame NaN/source mask | DC-GM H5-PASS for isotropic closed case, seed 0x47524f4d41435345; general-cell NC remains explicit
 /trajectory/gromacs_energy_time_series/box_y | GromacsEnergyTimeSeriesTrajectoryResult | (T) axis-tied box diagnostic, NC for a general cell | unavailable frame NaN/source mask | DC-GM H5-PASS for isotropic closed case, same seed; general-cell NC remains explicit
 /trajectory/gromacs_energy_time_series/box_z | GromacsEnergyTimeSeriesTrajectoryResult | (T) axis-tied box diagnostic, NC for a general cell | unavailable frame NaN/source mask | DC-GM H5-PASS for isotropic closed case, same seed; general-cell NC remains explicit
@@ -877,17 +877,16 @@ These are not aggregate caveats; each names the affected serialized output.
    0.00161322), not a missing owner/serialization test.
 4. McConnellResult: mc_peptide_co_bo.npy, mc_peptide_cn_bo.npy,
    mc_backbone_other_bo.npy, mc_sidechain_co_bo.npy,
-   mc_sidechain_other_bo.npy, mc_disulfide_bo.npy, mc_aromatic_bo.npy,
-   mc_backbone_xh_bo.npy, mc_sidechain_xh_bo.npy and mc_s_h_bo.npy — DC-MX
-   reruns the real executable and re-reads every exact BO-channel NPY name.
-   Finite-nonzero categories are exactly eight: peptide_co, peptide_cn,
-   backbone_other, sidechain_co, sidechain_other, aromatic, backbone_xh and
-   sidechain_xh.  disulfide and s_h are exactly two source-absent zero
-   categories.  The fixed and BO aromatic category tensors and aggregate
-   residuals match the independent midpoint/axis bond-kernel oracle to
-   5.52e-16.  Production MOZYME's bounded scalar BO axis sensitivity remains
-   explicit, and source-unavailable broad channels still use legacy zero
-   without an availability mask.
+   mc_sidechain_other_bo.npy, mc_disulfide_bo.npy, mc_backbone_xh_bo.npy,
+   mc_sidechain_xh_bo.npy and mc_s_h_bo.npy — DC-MX reruns the real executable
+   and re-reads every exact BO-channel NPY name.  Finite-nonzero categories
+   are exactly seven: peptide_co, peptide_cn, backbone_other, sidechain_co,
+   sidechain_other, backbone_xh and sidechain_xh.  disulfide and s_h are
+   exactly two category-empty zeros in that present-MOPAC fixture;
+   aromatic_zeroed is the tenth
+   category and its intentional policy zero.  Production MOZYME's bounded scalar BO axis
+   sensitivity remains explicit.  MOPAC-unavailable broad channels are now
+   all-NaN; a present result's empty, cancelled or post-floor sum remains zero.
 5. MopacResult: mopac_global.npy — charged-system dipole is origin dependent
    and missing parser block is zero without a mask.  DC-MX now performs the
    transformed executable rerun; the neutral dipole has a recorded 0.258904 D
@@ -925,7 +924,7 @@ These are not aggregate caveats; each names the affected serialized output.
    /trajectory/mopac_mc_shielding_time_series/xyz — DC-MX now combines three
    real external-MOPAC reruns with the production sparse per-frame owner and
    exact H5 read-back (serialization max error zero).  The remaining named
-   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234375
+   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234282
    within the recorded 0.003+1.5e-2 envelope; this is no longer an H5 GAP.
 9. In the BS/HM/Mc/Water/Hydration-vector/AIMNet vector/tensor Welford groups,
     every `*_m2`, `*_std`, `*_min`, `*_max`, `*_min_frame` and

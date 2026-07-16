@@ -54,8 +54,9 @@ namespace {
 
 constexpr const char* kFixtureProtein = "1P9J_5801";
 
-// Larsen Δσ_w canonical value (2.07 ppm); per-cell value is either
+// ProCS15 H-bond Δσ_w canonical value (2.07 ppm); an evaluated cell is either
 // 0.0 (non-HN or HN with pairs) or exactly 2.07 (HN with no pairs).
+// NaN marks an amide donor whose selected candidate frame was unevaluable.
 constexpr double kLarsenWaterTermPpm = 2.07;
 
 
@@ -417,11 +418,10 @@ TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
 // INTEGRATION + DISTRIBUTION DIAGNOSTIC.
 //
 // Runs Trajectory::Run on 1P9J_5801 with Larsen H-bond grids loaded.
-// The water_term should be EXACTLY 0.0 or EXACTLY 2.07 ppm on every
-// cell (Larsen Δσ_w is a fixed NMA-water complex constant; the
-// calculator applies it as 0 or 2.07, no interpolation). We:
-//   - assert no NaN, no Inf
-//   - assert every cell is in {0.0, 2.07} (no off-quantum values)
+// Every evaluable water_term should be EXACTLY 0.0 or EXACTLY 2.07 ppm
+// (ProCS15 H-bond Δσ_w is a fixed NMA-water complex constant; the calculator
+// applies it without interpolation). Unevaluable selected frames are NaN. We:
+//   - assert every cell is in {0.0, 2.07, NaN} (no off-quantum values)
 //   - tally count(0.0) and count(2.07); the 2.07 fraction should be
 //     small but nonzero (amide H atoms with no H-bond pair this frame)
 //   - log the distribution
@@ -475,18 +475,22 @@ TEST(LarsenHBondWaterTermTimeSeries, IntegrationDistribution1P9J) {
     const std::size_t T = buf->StridePerAtom();
     std::size_t zero_count = 0;
     std::size_t larsen_count = 0;
+    std::size_t unevaluable_count = 0;
     std::size_t other_count = 0;
     double max_other = 0.0;
     for (std::size_t i = 0; i < N; ++i) {
         for (std::size_t t = 0; t < T; ++t) {
             const double v = buf->At(i, t);
-            ASSERT_TRUE(std::isfinite(v))
-                << "non-finite water_term at atom " << i << " frame " << t;
-            if (v == 0.0) {
+            if (std::isnan(v)) {
+                ++unevaluable_count;
+            } else if (v == 0.0) {
                 ++zero_count;
             } else if (std::abs(v - kLarsenWaterTermPpm) < 1e-9) {
                 ++larsen_count;
             } else {
+                EXPECT_TRUE(std::isfinite(v))
+                    << "infinite water_term at atom " << i
+                    << " frame " << t;
                 ++other_count;
                 if (std::abs(v) > std::abs(max_other)) max_other = v;
             }
@@ -495,19 +499,21 @@ TEST(LarsenHBondWaterTermTimeSeries, IntegrationDistribution1P9J) {
 
     EXPECT_EQ(other_count, 0u)
         << "found " << other_count << " water_term cells outside "
-        << "{0, " << kLarsenWaterTermPpm << "} (max=" << max_other << ")";
+        << "{0, " << kLarsenWaterTermPpm << ", NaN} (max="
+        << max_other << ")";
 
     // Real-data coverage floor: the grid is loaded, source calc must
     // have evaluated something. zero_count + larsen_count covers all
-    // {0.0, 2.07} cells (other_count is asserted == 0 just above). With
+    // {0.0, 2.07, NaN} cells (other_count is asserted == 0 just above). With
     // N atoms × T frames cells, the calc should have written into at
     // least N×T/10 of them — anything less suggests the source calc
     // returned all-zero (grid loaded but never queried), which is the
     // exact regression the source-attached gate was added to catch.
-    const std::size_t covered = zero_count + larsen_count;
+    const std::size_t covered =
+        zero_count + larsen_count + unevaluable_count;
     const std::size_t coverage_floor = (N * T) / 10;
     EXPECT_GT(covered, coverage_floor)
-        << "Larsen water term covered only " << covered << " of " << (N * T)
+        << "ProCS15 H-bond water term covered only " << covered << " of " << (N * T)
         << " cells (floor=" << coverage_floor << ") — calc likely never ran "
         << "despite grid being loaded; possible source-attached regression";
 
@@ -517,13 +523,14 @@ TEST(LarsenHBondWaterTermTimeSeries, IntegrationDistribution1P9J) {
     // "grid loaded but every cell stayed at default 0.0" regression
     // (vs. "calc ran and legitimately produced 0.0 for paired HN").
     EXPECT_GT(larsen_count, 0u)
-        << "no Larsen Δσ_w (2.07 ppm) cells across " << T
+        << "no ProCS15 H-bond Δσ_w (2.07 ppm) cells across " << T
         << " frames — calc likely returned all zeros";
 
-    std::cout << "LarsenHBondWaterTerm distribution: "
+    std::cout << "ProCS15 H-bond water-term distribution: "
               << "frames=" << T
               << " atoms=" << N
               << " zero=" << zero_count
               << " larsen(2.07)=" << larsen_count
+              << " unevaluable(NaN)=" << unevaluable_count
               << " other=" << other_count << "\n";
 }

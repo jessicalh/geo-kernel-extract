@@ -2,10 +2,10 @@
 //
 // LarsenHBondWaterTermTimeSeriesTrajectoryResult: per-atom per-frame
 // time series of ConformationAtom::larsen_hbond_water_term (double,
-// ppm). This is Larsen's isotropic Δσ_w contribution (2.07 ppm,
+// ppm). This is the ProCS15 H-bond isotropic Δσ_w contribution (2.07 ppm,
 // NMA-water complex value) applied on amide H atoms with no geometric
-// H-bond candidate found by Larsen's spatial sweep in this frame; zero
-// elsewhere.
+// H-bond candidate found by the ProCS15 spatial sweep in this frame; zero
+// elsewhere and NaN when a selected candidate frame was unevaluable.
 //
 // Finalize-only dense-buffer pattern. Emits this double-valued scalar
 // as a (N, T) 2D H5 dataset. Same (N, T) flat layout as
@@ -30,11 +30,11 @@
 //       coordinate_frame = "intrinsic_geometric_hbond_gate"
 //       transformation = exact rotation/translation/reflection-invariant scalar
 //       units          = "ppm"
-//       description    = (Larsen water-term semantics)
+//       description    = (ProCS15 H-bond water-term semantics)
 //       n_atoms, n_frames, finalized
 //
 // Why parity "0e": this is an isotropic L0 shielding contribution
-// (Larsen NMA-water complex value). A scalar in ppm, l=0 even
+// (ProCS15 NMA-water complex value). A scalar in ppm, l=0 even
 // parity — directly consumable as an e3nn L0 input.  Its production gate
 // depends only on topology, distance, and theta; signed rho changes neither
 // the geometric paired/unpaired decision nor this water term.
@@ -65,7 +65,8 @@ public:
     // Larsen H-bond grids are configured (project precondition).
     // Capture-as-is: default 0.0 means either non-HN atom or HN with
     // a geometric H-bond candidate this frame; positive 2.07 ppm means
-    // amide H with no such candidate.
+    // an evaluated amide H with no such candidate; NaN means its donor
+    // status could not be evaluated.
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
     static std::unique_ptr<LarsenHBondWaterTermTimeSeriesTrajectoryResult>

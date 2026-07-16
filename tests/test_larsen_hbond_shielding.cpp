@@ -1634,14 +1634,84 @@ TEST(LarsenHBondPairAudit, FiniteGridMissStillSuppressesWaterTerm) {
 }
 
 
+TEST(LarsenHBondPairAudit,
+     MissingFrameAtomsIsNanWhileConfirmedPairIsZero) {
+    const fs::path pdb = nmr::test::TestEnvironment::GmxProtonated();
+    ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
+    auto build = BuildFromProtonatedPdb(pdb.string());
+    ASSERT_TRUE(build.Ok()) << build.error;
+    std::unique_ptr<Protein> protein = std::move(build.protein);
+    ProteinConformation& baseline_conf = protein->Conformation();
+
+    const Residue& n_terminal = protein->ResidueAt(0);
+    ASSERT_NE(n_terminal.H, Residue::NONE);
+    ASSERT_FALSE(protein->BackbonePredecessor(0).has_value());
+    ASSERT_TRUE(protein->LegacyAmber()
+                    .SemanticAt(n_terminal.H)
+                    .IsBackboneAmideHydrogen());
+
+    const Residue& internal_acceptor_residue = protein->ResidueAt(1);
+    ASSERT_NE(internal_acceptor_residue.O, Residue::NONE);
+    ASSERT_NE(internal_acceptor_residue.C, Residue::NONE);
+    std::vector<Vec3> positions = baseline_conf.Positions();
+    positions[internal_acceptor_residue.O] =
+        positions[n_terminal.H] + Vec3(2.0, 0.0, 0.0);
+    DerivedConformation& missing_conf = protein->AddDerived(
+        baseline_conf, "forced missing ProCS15 donor anchor",
+        std::move(positions));
+    ASSERT_TRUE(missing_conf.AttachResult(
+        GeometryResult::Compute(missing_conf)));
+    ASSERT_TRUE(missing_conf.AttachResult(
+        SpatialIndexResult::Compute(missing_conf)));
+
+    const fs::path grid_dir =
+        WriteSyntheticLarsenGridDirectory("missing_frame_atoms");
+    LarsenHBondGrid grid(grid_dir.string());
+    auto result = LarsenHBondShieldingResult::Compute(missing_conf, grid);
+    ASSERT_NE(result, nullptr);
+
+    const auto missing_pair = std::find_if(
+        result->Pairs().begin(), result->Pairs().end(),
+        [&](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.donor_atom_idx == n_terminal.H &&
+                   pair.acceptor_atom_idx == internal_acceptor_residue.O;
+        });
+    ASSERT_NE(missing_pair, result->Pairs().end());
+    EXPECT_EQ(missing_pair->disposition,
+              LarsenHBondShieldingResult::PairDisposition::MissingFrameAtoms);
+    EXPECT_TRUE(std::isnan(
+        missing_conf.AtomAt(n_terminal.H).larsen_hbond_water_term));
+
+    const auto confirmed_pair = std::find_if(
+        result->Pairs().begin(), result->Pairs().end(),
+        [](const LarsenHBondShieldingResult::PairRecord& pair) {
+            return pair.donor_class == HBondDonorClass::AmideHydrogen &&
+                   (pair.disposition ==
+                        LarsenHBondShieldingResult::PairDisposition::Success ||
+                    pair.disposition ==
+                        LarsenHBondShieldingResult::PairDisposition::GridMiss);
+        });
+    ASSERT_NE(confirmed_pair, result->Pairs().end());
+    EXPECT_DOUBLE_EQ(
+        missing_conf.AtomAt(confirmed_pair->donor_atom_idx)
+            .larsen_hbond_water_term,
+        0.0);
+
+    RemoveFlatTempDirectory(grid_dir, {
+        "NMANMA_dense.h5", "NMACOH_dense.h5", "NMACOO_dense.h5",
+        "ALANMA_dense.h5", "ALACOH_dense.h5", "ALACOO_dense.h5",
+    });
+}
+
+
 // Production-calling forcing gate for the malformed-frame/water interaction.
 // Start from a real successful amide-H pair, collapse only that donor's N-H
 // frame, and rerun the full calculator. The H...O candidate geometry remains
 // spatially present, so an identity fallback would still hit the grid and
 // suppress water; the correct path records InvalidFrame, applies no pair, and
-// preserves Larsen's 2.07 ppm unbound-amide term.
+// marks the water term unevaluable instead of claiming an unbound amide.
 TEST(LarsenHBondPairAudit,
-     DegenerateDonorFrameIsRejectedAndDoesNotSuppressWater) {
+     DegenerateDonorFrameIsNanWhileEvaluatedPairIsZero) {
     const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
     ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
     auto build = BuildFromProtonatedPdb(pdb.string());
@@ -1675,6 +1745,7 @@ TEST(LarsenHBondPairAudit,
     ASSERT_NE(donor_n, Residue::NONE);
     EXPECT_DOUBLE_EQ(
         baseline_conf.AtomAt(donor_h).larsen_hbond_water_term, 0.0);
+    ASSERT_TRUE(baseline_conf.AttachResult(std::move(baseline)));
 
     std::vector<Vec3> positions = baseline_conf.Positions();
     positions[donor_n] = positions[donor_h];
@@ -1718,8 +1789,17 @@ TEST(LarsenHBondPairAudit,
     EXPECT_GT(donor_rows, 0);
     EXPECT_GT(invalid_rows, 0);
     ASSERT_NE(first_invalid_row, SIZE_MAX);
+    EXPECT_TRUE(std::isnan(
+        invalid_conf.AtomAt(donor_h).larsen_hbond_water_term));
+    const ConformationAtom& invalid_donor = invalid_conf.AtomAt(donor_h);
+    EXPECT_TRUE(invalid_donor.larsen_hbond_shielding_tensor.allFinite());
     EXPECT_DOUBLE_EQ(
-        invalid_conf.AtomAt(donor_h).larsen_hbond_water_term, 2.07);
+        (invalid_donor.larsen_hbond_shielding_tensor -
+         (invalid_donor.larsen_hbond_1pHB_tensor +
+          invalid_donor.larsen_hbond_2pHB_tensor +
+          invalid_donor.larsen_hbond_1pHaB_tensor +
+          invalid_donor.larsen_hbond_2pHaB_tensor)).squaredNorm(),
+        0.0) << "the scalar water term must not enter ProCS15 tensors";
     EXPECT_NE(warning.find("invalid donor frame"), std::string::npos)
         << warning;
     EXPECT_NE(warning.find("invalid Larsen pair frame"),
@@ -1745,7 +1825,7 @@ TEST(LarsenHBondPairAudit,
                      0.0);
     EXPECT_TRUE(std::isnan(PayloadValue<double>(
         isotropic, first_invalid_row * 6 + 5)));
-    EXPECT_DOUBLE_EQ(PayloadValue<double>(water, donor_h), 2.07);
+    EXPECT_TRUE(std::isnan(PayloadValue<double>(water, donor_h)));
 
     RemoveFlatTempDirectory(out, {
         "larsen_hbond_shielding.npy",
@@ -1765,6 +1845,45 @@ TEST(LarsenHBondPairAudit,
         "larsen_hbond_pairs.npy",
     });
 
+    ASSERT_TRUE(invalid_conf.AttachResult(std::move(invalid)));
+    auto trajectory_protein =
+        TrajectoryProtein::CreateForTesting(std::move(protein));
+    ASSERT_NE(trajectory_protein, nullptr);
+    auto water_series =
+        LarsenHBondWaterTermTimeSeriesTrajectoryResult::Create(
+            *trajectory_protein);
+    Trajectory trajectory(fs::path{}, fs::path{}, fs::path{});
+    water_series->Compute(
+        baseline_conf, *trajectory_protein, trajectory, 0, 0.0);
+    water_series->Compute(
+        invalid_conf, *trajectory_protein, trajectory, 1, 1.0);
+    water_series->Finalize(*trajectory_protein, trajectory);
+
+    const fs::path h5_path = fs::temp_directory_path() /
+        ("nmr_larsen_invalid_frame_water_series_" +
+         std::to_string(::getpid()) + ".h5");
+    {
+        HighFive::File file(h5_path.string(), HighFive::File::Truncate);
+        water_series->WriteH5Group(*trajectory_protein, file);
+    }
+    std::vector<std::size_t> water_dims;
+    const auto water_values = ReadH5Flat<double>(
+        h5_path,
+        "/trajectory/larsen_hbond_water_term_time_series/water_term",
+        &water_dims);
+    ASSERT_EQ(water_dims,
+              (std::vector<std::size_t>{
+                  trajectory_protein->AtomCount(), 2u}));
+    EXPECT_DOUBLE_EQ(water_values[donor_h * 2], 0.0);
+    EXPECT_TRUE(std::isnan(water_values[donor_h * 2 + 1]));
+    const auto source_present = ReadH5Flat<std::uint8_t>(
+        h5_path,
+        "/trajectory/larsen_hbond_water_term_time_series/"
+        "source_attached_per_frame");
+    EXPECT_EQ(source_present,
+              (std::vector<std::uint8_t>{1u, 1u}));
+    EXPECT_EQ(std::remove(h5_path.string().c_str()), 0) << h5_path;
+
     RemoveFlatTempDirectory(grid_dir, {
         "NMANMA_dense.h5", "NMACOH_dense.h5", "NMACOO_dense.h5",
         "ALANMA_dense.h5", "ALACOH_dense.h5", "ALACOO_dense.h5",
@@ -1773,7 +1892,7 @@ TEST(LarsenHBondPairAudit,
 
 
 TEST(LarsenHBondPairAudit,
-     NonFiniteDerivedGeometryIsRejectedAndDoesNotSuppressWater) {
+     NonFiniteDerivedGeometryMakesWaterTermUnevaluable) {
     const fs::path pdb = nmr::test::TestEnvironment::UbqProtonated();
     ASSERT_TRUE(fs::is_regular_file(pdb)) << pdb;
     auto build = BuildFromProtonatedPdb(pdb.string());
@@ -1852,8 +1971,11 @@ TEST(LarsenHBondPairAudit,
     EXPECT_TRUE(std::isnan(invalid_pair->theta_deg));
     EXPECT_TRUE(std::isnan(invalid_pair->rho_deg));
     EXPECT_TRUE(std::isnan(invalid_pair->iso_table2_total));
-    EXPECT_DOUBLE_EQ(
-        invalid_conf.AtomAt(donor_h).larsen_hbond_water_term, 2.07);
+    EXPECT_TRUE(std::isnan(
+        invalid_conf.AtomAt(donor_h).larsen_hbond_water_term));
+    EXPECT_TRUE(
+        invalid_conf.AtomAt(donor_h)
+            .larsen_hbond_shielding_tensor.allFinite());
     EXPECT_NE(warning.find("geometry_finite=0"), std::string::npos)
         << warning;
 

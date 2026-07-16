@@ -519,6 +519,26 @@ void CheckGeometrySpatialAndRingStack(const ProteinConformation& original,
              category < nmr::kMcConnellSourceCategoryCount; ++category) {
             for (std::size_t channel = 0;
                  channel < nmr::kMcConnellChannelCount; ++channel) {
+                // Absent MOPAC: every BO channel (aromatic included) is
+                // unavailable -> NaN, not a real zero.
+                const bool unavailable_bo =
+                    channel == static_cast<std::size_t>(
+                        nmr::McConnellChannel::BondOrder);
+                if (unavailable_bo) {
+                    std::array<double, 9> source{};
+                    std::array<double, 9> moved{};
+                    original_atom.mcconnell_source_tensors[category][channel]
+                        .PackFull9(source.data());
+                    transformed_atom
+                        .mcconnell_source_tensors[category][channel]
+                        .PackFull9(moved.data());
+                    for (std::size_t component = 0; component < 9;
+                         ++component) {
+                        EXPECT_TRUE(std::isnan(source[component]));
+                        EXPECT_TRUE(std::isnan(moved[component]));
+                    }
+                    continue;
+                }
                 ExpectEvenSphericalTensor(
                     transformed_atom.mcconnell_source_tensors[category][channel],
                     original_atom.mcconnell_source_tensors[category][channel],

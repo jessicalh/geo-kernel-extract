@@ -9,9 +9,10 @@
 //   Δσ_HB^i  = Δσ_1°HB(rHO, θ, ρ)   + Δσ_2°HB(rOH, θO, ρO)     (amide H donor)
 //   Δσ_HαB^i = Δσ_1°HαB(rHαO, θ, ρ) + Δσ_2°HαB(rOHα, θO, ρO)   (Hα donor)
 //
-// Plus the water term Δσ_w = 2.07 ppm isotropic on amide H atoms that
-// have no geometric H-bond candidate at all (solvent-exposed amides
-// per Larsen's NMA-water complex DFT).
+// Plus the water term Δσ_w = 2.07 ppm isotropic on amide H atoms whose
+// evaluable candidate sweep finds no geometric H-bond (solvent-exposed
+// amides per the ProCS15 NMA-water complex DFT). Unevaluable donor/acceptor
+// frames are NaN, not an unbound-water claim.
 //
 // Methods accumulate (feedback_methods_accumulate): this calculator
 // runs side-by-side with the scalar-geometry HBondResult. Both emit their
@@ -24,7 +25,7 @@
 // find candidate acceptor O atoms within kSpatialCutoff_A. Each
 // candidate O is classified (Backbone / SidechainCarbonyl / Hydroxyl /
 // Carboxylate) via ClassifyAcceptor; the (donor_class, acceptor_class)
-// pair routes to one of 6 Larsen grids. Larsen's framework is
+// pair routes to one of 6 ProCS15 H-bond grids. The framework is
 // geometric (not DSSP-energy-based), and the spatial sweep IS the
 // H-bond finder.
 //
@@ -209,7 +210,8 @@ public:
     // AmideHsUnboundWithWater counts amide Hs that received the
     // Δσ_w = 2.07 ppm term — gated on "ZERO valid geometric H-bond
     // candidates found." A finite valid GridMiss still suppresses water;
-    // missing/invalid frames and symmetry-filtered siblings do not.
+    // missing/invalid selected frames make an otherwise-unpaired water term
+    // unavailable; symmetry-filtered siblings do not participate in the gate.
     int    PairsFound()             const { return successful_pairs_; }
     int    PairsGridSkipped()       const { return pairs_grid_skipped_; }
     int    AtomsWithContribution()  const { return atoms_with_contribution_; }
