@@ -75,10 +75,16 @@ double WrapPi(double a) {
     return std::remainder(a, 2.0 * M_PI);
 }
 
+}  // anonymous namespace
+
+namespace dihedral_time_series_detail {
+
 // Ramachandran-region binning, Lovell-Richardson 2003-aligned grid
 // (science-review HIGH 1-4, 2026-05-19). Returns the bin code from
 // {kRamaUnassigned, kRamaAlphaR, kRamaBeta, kRamaAlphaL, kRamaPPII,
-// kRamaOther}. Inputs in radians; NaN yields kRamaUnassigned.
+// kRamaOther}. Inputs are project-convention radians; the published IUPAC
+// boundaries below are applied after the sign conversion. NaN yields
+// kRamaUnassigned.
 //
 // Boundaries (degrees, inclusive both ends):
 //   αR  : phi ∈ [-180,  -30], psi ∈ [-90,  30]   widened from earlier
@@ -118,13 +124,15 @@ double WrapPi(double a) {
 // Gly + Pro + pre-Pro have their own static masks (`is_glycine`,
 // `is_proline`, `is_pre_proline`); downstream re-bins with type-aware
 // Rama maps (or Lovell penultimate-rotamer-library variants) as needed.
-std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
-    if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad))
+std::uint8_t RamachandranBin(double phi_project_rad,
+                             double psi_project_rad) {
+    if (!std::isfinite(phi_project_rad) ||
+        !std::isfinite(psi_project_rad))
         return kRamaUnassigned;
 
     const double deg_per_rad = 180.0 / M_PI;
-    const double phi = phi_rad * deg_per_rad;
-    const double psi = psi_rad * deg_per_rad;
+    const double phi = -phi_project_rad * deg_per_rad;
+    const double psi = -psi_project_rad * deg_per_rad;
 
     if (phi >= -180.0 && phi <= -30.0 &&
         psi >=  -90.0 && psi <=  30.0)
@@ -145,11 +153,11 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     return kRamaOther;
 }
 
+}  // namespace dihedral_time_series_detail
+
 // Backbone connectivity is delegated to Protein::BackboneConnected and its
 // predecessor/successor helpers; this file's residue-adjacency walks route
 // through that bond-graph discipline.
-
-}  // anonymous namespace
 
 
 std::unique_ptr<DihedralTimeSeriesTrajectoryResult>
@@ -311,7 +319,8 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
         }
         chi_[ri].push_back(chi_row);
 
-        rama_region_[ri].push_back(RamachandranBin(phi_val, psi_val));
+        rama_region_[ri].push_back(
+            dihedral_time_series_detail::RamachandranBin(phi_val, psi_val));
     }
 
     frame_indices_.push_back(frame_idx);
@@ -367,17 +376,15 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "Consumers comparing across frames must handle the +-pi "
         "discontinuity (use circular differences)."));
     grp.createAttribute("angle_convention", std::string(
-        "IUPAC signed dihedral atan2(y,x). "
+        "Project signed dihedral atan2(y,x): angle_project = -angle_IUPAC. "
         "phi   = C(i-1)-N(i)-CA(i)-C(i); "
         "psi   = N(i)-CA(i)-C(i)-N(i+1); "
         "omega = CA(i)-C(i)-N(i+1)-CA(i+1); "
         "chi_k from AminoAcidType.chi_angles (Residue.chi[k] pre-cached "
         "atom indices, IUPAC sidechain order). "
-        "NOTE: DsspResult.Phi/Psi forward libdssp/libcifpp values which "
-        "use the NEGATED IUPAC sign convention "
-        "(phi_DSSP = -phi_IUPAC). This TR and PlanarGeometryResult use "
-        "IUPAC directly; downstream code comparing DsspResult to this "
-        "TR must negate one side. Verified by "
+        "DsspResult.Phi/Psi forward plain-IUPAC libdssp/libcifpp values; "
+        "downstream code comparing DsspResult to this project-convention "
+        "TR must negate the DSSP side. Verified by "
         "test_dihedral_time_series.cpp CrossResultConsistency*."));
     grp.createAttribute("chain_break_policy", std::string(
         "NaN at any dihedral spanning a non-bonded residue boundary. "
@@ -407,7 +414,8 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "beta: phi[-180,-45], psi[60,180]U[-180,-150]; "
         "alphaL: phi[30,100], psi[-10,80]; "
         "PPII: phi[-75,-50], psi[140,165] (tight Berkholz/Adzhubei cone); "
-        "boundaries in degrees, inclusive both ends. "
+        "boundaries in published IUPAC degrees, inclusive both ends; "
+        "production negates project phi/psi before applying them. "
         "Resolution order: alphaR -> alphaL -> PPII -> beta -> other "
         "(first match wins). PPII narrowed (2026-05-19) so antiparallel "
         "beta residues near (-60,+145) are no longer mislabeled PPII. "
@@ -417,7 +425,8 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "emitted) for Lovell penultimate-rotamer-library variants."));
     grp.createAttribute("chi_symmetry_caveats", std::string(
         "chi mod-pi (or near-mod-pi) symmetries that consumers must apply "
-        "themselves -- raw chi here is the IUPAC signed value: "
+        "themselves -- raw chi here is project-signed (negative of IUPAC, "
+        "with IUPAC atom ordering): "
         "PHE chi2 (CD1<->CD2 ring flip), TYR chi2 (CD1<->CD2 ring flip), "
         "ASP chi2 (OD1<->OD2 carboxylate flip), GLU chi3 (OE1<->OE2 "
         "carboxylate flip). Near-mod-pi at equilibrium: ARG chi-terminal "
@@ -616,7 +625,8 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
     put_u8("is_glycine", is_glycine_,
         "1 if residue is GLY; Rama allowed region is much wider for Gly.");
     put_u8("is_proline", is_proline_,
-        "1 if residue is PRO; phi constrained to ~[-90, -30] by the ring.");
+        "1 if residue is PRO; published-IUPAC phi is constrained to "
+        "~[-90, -30] by the ring (project phi ~[30, 90]).");
     put_u8("is_pre_proline", is_pre_proline_,
         "1 if residue i+1 is PRO; flag is set on residue i (whose psi is "
         "constrained by the next-residue Pro side chain). i has its own "

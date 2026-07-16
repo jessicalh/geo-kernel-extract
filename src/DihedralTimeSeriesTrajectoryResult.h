@@ -73,7 +73,8 @@
 //
 // Convention pins (recorded as group attrs):
 //   - angles in radians
-//   - dihedral sign: IUPAC, atan2(y,x) with the standard 4-atom signed
+//   - dihedral sign: project convention, the negative of IUPAC
+//     (angle_project = -angle_IUPAC), from the atan2(y,x) 4-atom signed
 //     formulation used by PlanarGeometryResult and
 //     ChiRotamerSelectionTrajectoryResult.
 //   - phi   = C(i−1)-N(i)-Cα(i)-C(i)
@@ -104,8 +105,9 @@
 //   - LYS χ-terminal (NH3+ 3-fold) — mod-(2π/3)
 //   - **NOT symmetric**: TRP χ₂ (CD1/CD2 chemically distinct, 5-ring vs
 //     5/6-junction), HIS χ₂ (ND1/CD2 chemically distinct).
-//   Raw χ here is the IUPAC-signed value; rotamer counters that need
-//   mod-π / mod-(2π/3) must apply the modular reduction themselves.
+//   Raw χ here is project-signed (negative of IUPAC, with IUPAC atom
+//   ordering); rotamer counters that need mod-π / mod-(2π/3) must apply
+//   the modular reduction themselves.
 //
 // Movie/playback note: this TR is the dihedral-state source for the
 // viewer's color-by / glyph rendering. Per-frame resolution; no

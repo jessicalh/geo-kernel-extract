@@ -255,9 +255,9 @@ inline ProjectLocalEeqParams ProjectLocalEeqParamsFor(Element e) {
 //     dihedrals computed directly from coordinates when coordinates
 //     are available.
 //
-// The project DihedralTimeSeries uses the opposite sign from DSSP and
-// from the Wang-Bax/Vogeli plotting convention (see
-// DihedralTimeSeriesTrajectoryResult.cpp: phi_DSSP = -phi_IUPAC).
+// The project DihedralTimeSeries uses the opposite sign from DSSP/IUPAC
+// and from the Wang-Bax/Vogeli plotting convention: libdssp reports
+// phi_DSSP = phi_IUPAC, while phi_project = -phi_IUPAC.
 // Therefore the constants below store theta in the PROJECT convention:
 //
 //   phi_project = -phi_pub

@@ -28,8 +28,8 @@ constexpr std::size_t kCanonicalTorsionCount = 6;
 constexpr double kTorsionBondNearZero = 1e-12;
 constexpr double kTorsionNormalNearZero = 1e-10;
 
-double GuardedIupacDihedral(const Vec3& p0, const Vec3& p1,
-                            const Vec3& p2, const Vec3& p3) {
+double GuardedProjectDihedral(const Vec3& p0, const Vec3& p1,
+                              const Vec3& p2, const Vec3& p3) {
     if (!p0.allFinite() || !p1.allFinite() ||
         !p2.allFinite() || !p3.allFinite()) {
         return std::numeric_limits<double>::quiet_NaN();
@@ -237,8 +237,9 @@ void DsspResult::PopulateCanonicalTorsions(
     for (std::size_t ri = 0; ri < R; ++ri) {
         const DsspResidue& dr = residues_[ri];
         if (dr.observed) {
-            // libdssp reports the negated-IUPAC convention and uses 360
-            // degrees (2*pi after conversion) for an undefined terminus.
+            // libdssp reports plain IUPAC angles. Negate them into the
+            // project convention; 360 degrees (2*pi after conversion) is
+            // its undefined-terminus sentinel.
             if (std::isfinite(dr.phi) && std::abs(dr.phi) <= PI + 1e-6)
                 store(ri, 0, -dr.phi);
             if (std::isfinite(dr.psi) && std::abs(dr.psi) <= PI + 1e-6)
@@ -250,7 +251,7 @@ void DsspResult::PopulateCanonicalTorsions(
         for (std::size_t chi = 0; chi < 4; ++chi) {
             if (!residue.chi[chi].Valid()) continue;
             const auto& a = residue.chi[chi].a;
-            const double angle = GuardedIupacDihedral(
+            const double angle = GuardedProjectDihedral(
                 conf->PositionAt(a[0]), conf->PositionAt(a[1]),
                 conf->PositionAt(a[2]), conf->PositionAt(a[3]));
             store(ri, 2 + chi, angle);
@@ -286,7 +287,8 @@ double DsspResult::SASA(size_t residue_index) const {
 // All per-atom, broadcast from per-residue via Protein atom→residue mapping.
 //
 // 1. dssp_observed.npy (N,) — residue was observed by DSSP
-// 2. dssp_backbone.npy (N, 5) — -phi, -psi, sasa, ss_helix, ss_sheet
+// 2. dssp_backbone.npy (N, 5) — project phi/psi (-libdssp IUPAC), sasa,
+//    ss_helix, ss_sheet
 // 3. dssp_ss8.npy (N, 8) — full 8-class SS one-hot (H/G/I/E/B/T/S/C)
 // 4. dssp_ppii.npy (N,) — explicit PPII flag (1/0/-1 sentinel)
 // 5. dssp_hbond_energy.npy (N, 4) — H-bond energies (acc0/acc1/don0/don1)

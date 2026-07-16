@@ -3,8 +3,8 @@
 // DsspResult: secondary structure, phi/psi, SASA from DSSP.
 //
 // Uses libdssp (Joosten et al. 2011, from Kabsch & Sander 1983).
-// Per-residue: secondary structure char, phi (rad), psi (rad), SASA (A^2),
-// H-bond acceptor and donor partners.
+// Per-residue: secondary structure char, raw libdssp/IUPAC phi (rad),
+// raw libdssp/IUPAC psi (rad), SASA (A^2), H-bond acceptor and donor partners.
 //
 // Dependencies: none (DSSP needs only positions).
 //
@@ -20,10 +20,9 @@
 //   Phi() / Psi() are read by MutationDeltaResult when both WT and
 //   mutant conformations have DsspResult attached. They are also read
 //   by DihedralTimeSeriesTrajectoryResult's cross-result numerical-
-//   consistency test; DSSP returns the negated-IUPAC convention per
-//   libdssp (well-known quirk), and the test compares the new TR's
-//   IUPAC phi/psi against -DsspResult.Phi/Psi at 1e-2 rad tolerance to
-//   verify the negation invariant.
+//   consistency test; libdssp returns plain IUPAC phi/psi, while the TR
+//   uses the project convention (negative of IUPAC). The test therefore
+//   compares the TR against -DsspResult.Phi/Psi at 1e-2 rad tolerance.
 //
 
 #include "ConformationResult.h"
@@ -47,8 +46,8 @@ struct DsspResidue {
     // structures the fleet will see.
     bool   observed = false;
     char secondary_structure = 'C';  // H/G/I/E/B/T/S/C (valid only when observed)
-    double phi = 0.0;                // radians (valid only when observed)
-    double psi = 0.0;                // radians (valid only when observed)
+    double phi = 0.0;                // libdssp/IUPAC radians; observed only
+    double psi = 0.0;                // libdssp/IUPAC radians; observed only
     double sasa = 0.0;               // Angstroms^2 (valid only when observed)
 
     // H-bond partner indices (into protein residue list, SIZE_MAX if none)

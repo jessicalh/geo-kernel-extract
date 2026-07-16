@@ -752,27 +752,21 @@ TEST_F(DsspResultTest, dssp_ppii_npy_preserves_ss8_coil_compatibility) {
 }
 
 
-// Independent forcing function for the C2/B6 sign convention.
+// Project-formula consistency check for the C2/B6 sign conversion.
 //
-// dssp_backbone.npy columns 0,1 store IUPAC phi/psi, produced by the
-// writer as -libdssp (the value-move under test: the old writer stored
-// raw libdssp = negated IUPAC). The ledger's cited pin,
-// DihedralTimeSeries CrossResultConsistencyDsspPlanarGeometry, only runs
-// with the external gitignored MD trajectory fixture and SKIPS wherever
-// that fixture is absent. This test recomputes IUPAC phi/psi from the
-// 1UBQ backbone coordinates with an independent atan2 dihedral — the
-// standard math definition, evaluated straight from coordinates, NOT
-// through the libdssp/libcifpp code path — and asserts the written NPY
-// matches. The tolerance absorbs libdssp's algorithmic drift on the same
-// coordinates (~1e-3 rad) while a sign flip (O(pi)) fails loudly. Always
-// runs: the fixture is the in-tree 1UBQ PDB.
-TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiPinnedToIndependentIupacGeometry) {
+// dssp_backbone.npy columns 0,1 store project-convention phi/psi, produced
+// by negating libdssp's plain-IUPAC values. This test recomputes the same
+// project-signed atan2 dihedral directly from the 1UBQ coordinates and
+// checks the NPY writer's conversion. It is a consistency test, not the
+// independent convention authority; the direct-libdssp Ramachandran test
+// supplies that external pin.
+TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiMatchesProjectConventionGeometry) {
     auto& conf = protein->Conformation();
     auto dssp = DsspResult::Compute(conf);
     ASSERT_NE(dssp, nullptr);
 
     const fs::path output_dir = fs::temp_directory_path() /
-        ("dssp_backbone_iupac_" + std::to_string(::getpid()));
+        ("dssp_backbone_project_" + std::to_string(::getpid()));
     fs::create_directories(output_dir);
     ASSERT_EQ(dssp->WriteFeatures(conf, output_dir.string()), 11);
 
@@ -784,9 +778,7 @@ TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiPinnedToIndependentIupacGeometry) {
     const double* bb = DataAs<double>(backbone);
     const int8_t* obs = DataAs<int8_t>(observed);
 
-    // Independent IUPAC dihedral: D(p1,p2,p3,p4) = atan2((n1 x b2hat).n2,
-    // n1.n2). Standard definition; deliberately re-derived here so the
-    // pin does not borrow the production result path.
+    // Project dihedral: D(p1,p2,p3,p4) = atan2((n1 x b2hat).n2, n1.n2).
     auto dihedral = [](const Vec3& p1, const Vec3& p2,
                        const Vec3& p3, const Vec3& p4) -> double {
         const Vec3 b1 = p2 - p1;
@@ -831,14 +823,14 @@ TEST_F(DsspResultTest, DsspBackboneNpyPhiPsiPinnedToIndependentIupacGeometry) {
 
         if (std::isfinite(phi_geo) && std::abs(phi_geo) > kMinAngle) {
             EXPECT_NEAR(phi_npy, phi_geo, kTol)
-                << "dssp_backbone phi (col 0) is not independent IUPAC "
+                << "dssp_backbone phi (col 0) is not project-convention "
                    "geometry at residue " << ri
                 << " (a sign flip would land near " << -phi_geo << ")";
             ++phi_checked;
         }
         if (std::isfinite(psi_geo) && std::abs(psi_geo) > kMinAngle) {
             EXPECT_NEAR(psi_npy, psi_geo, kTol)
-                << "dssp_backbone psi (col 1) is not independent IUPAC "
+                << "dssp_backbone psi (col 1) is not project-convention "
                    "geometry at residue " << ri
                 << " (a sign flip would land near " << -psi_geo << ")";
             ++psi_checked;

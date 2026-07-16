@@ -428,14 +428,15 @@ TEST(DihedralBinTransition,
 
     nmr::test::TestEnvironment::LoadCalculatorConfig();
 
-    // Source: beta -> other.  Reflection negates both signed dihedrals,
-    // mapping (+120,+170) and (+120,+120) to "other" and therefore
-    // merging the source transition.  All angles are well inside their
-    // bins, so this exercises the categorical physics rather than a
-    // floating-point boundary.
+    // Source project angles: (+120,+170) -> (+120,+120), corresponding to
+    // published-IUPAC beta -> other after the project-to-IUPAC conversion.
+    // Reflection negates both project dihedrals, making both published
+    // angles positive-phi "other" and therefore merging the source
+    // transition. All angles are well inside their bins, so this exercises
+    // the categorical physics rather than a floating-point boundary.
     const std::array<std::vector<nmr::Vec3>, 2> source_frames = {
-        BackboneForcingFrame(-120.0, -170.0),
-        BackboneForcingFrame(-120.0, -120.0),
+        BackboneForcingFrame(120.0, 170.0),
+        BackboneForcingFrame(120.0, 120.0),
     };
     auto tp = nmr::TrajectoryProtein::CreateForTesting(
         BuildBackboneForcingProtein(source_frames[0]));
