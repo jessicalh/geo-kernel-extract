@@ -279,7 +279,7 @@ Raw time-series and mixed trajectory datasets
 /trajectory/bs_shielding_time_series/xyz | BsShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, seed 0x0E1F04D, 3e-12 abs + 3e-10 rel
 /trajectory/hm_shielding_time_series/xyz | HmShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, same seed, 3e-11 abs + 1e-8 rel
 /trajectory/mc_shielding_time_series/xyz | McConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, same seed, 3e-12 abs + 3e-10 rel
-/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames NaN/source mask | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234259 within explicit MOZYME envelope
+/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames NaN/source mask | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234375 within explicit MOZYME envelope
 /trajectory/mopac_coulomb_efg_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | (N,T,5) T2, SZ(T0/T1) | absent frames NaN/source mask | DC-MC H5-PASS with fixed scalar charge source, seed 0x4d4f504143434f55, 3e-9 abs + 3e-11 rel
 /trajectory/mopac_coulomb_shielding_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | legacy alias of preceding T2 dataset | same validity | DC-MC byte-identical H5-PASS
 /trajectory/apbs_efield_time_series/xyz | ApbsEfieldTimeSeriesTrajectoryResult | (N,T,3) continuum P; live finite grid is NC | absent frames NaN/source mask | DC-AP H5-PASS within 1.8e-2 abs + 5e-2 rel finite-grid bound
@@ -926,7 +926,7 @@ These are not aggregate caveats; each names the affected serialized output.
    /trajectory/mopac_mc_shielding_time_series/xyz — DC-MX now combines three
    real external-MOPAC reruns with the production sparse per-frame owner and
    exact H5 read-back (serialization max error zero).  The remaining named
-   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234259
+   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234375
    within the recorded 0.003+1.5e-2 envelope; this is no longer an H5 GAP.
 9. In the BS/HM/Mc/Water/Hydration-vector/AIMNet vector/tensor Welford groups,
     every `*_m2`, `*_std`, `*_min`, `*_max`, `*_min_frame` and

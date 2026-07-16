@@ -617,7 +617,7 @@ Raw time-series datasets (their owning per-frame calculator must be rerun)
 /trajectory/bs_shielding_time_series/xyz | (N,T,9) | T | BS | DCT-KW exact transformed H5 PASS; abs 3e-12, rel 3e-10
 /trajectory/hm_shielding_time_series/xyz | (N,T,9) | T | HM | DCT-KW exact transformed H5 PASS; abs 3e-11, rel 1e-8
 /trajectory/mc_shielding_time_series/xyz | (N,T,9) | T | McConnell fixed aggregate | DCT-KW exact transformed H5 PASS; abs 3e-12, rel 3e-10
-/trajectory/mopac_mc_shielding_time_series/xyz | (N,T,9) | T | MOPAC BO McConnell | DC-MX real external MOPAC three-frame H5 PASS; exact serialization error zero, O(3) max Frobenius 0.00234259 within recorded MOZYME envelope
+/trajectory/mopac_mc_shielding_time_series/xyz | (N,T,9) | T | MOPAC BO McConnell | DC-MX real external MOPAC three-frame H5 PASS; exact serialization error zero, O(3) max Frobenius 0.00234375 within recorded MOZYME envelope
 /trajectory/mopac_coulomb_efg_time_series/t2 | (N,T,5) | 2e, T0/T1 zero | DC-MC exact transformed H5 PASS; fixed scalar charge source, abs 3e-9, rel 3e-11
 /trajectory/mopac_coulomb_shielding_time_series/t2 | legacy alias of preceding dataset | DC-MC exact byte-identical transformed H5 PASS
 /trajectory/apbs_efield_time_series/xyz | (N,T,3) | continuum P; live finite grid NC | DC-AP transformed H5 PASS within recorded finite-grid bounds and caveats
