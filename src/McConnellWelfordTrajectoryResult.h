@@ -7,10 +7,7 @@
 // Source: `ConformationAtom::mc_shielding_contribution` (units = Å⁻³,
 // unscaled D(r)Qhat source-shape response; T0 is the PCS scalar branch).
 // McConnellResult is unconditionally attached in `PerFrameExtractionSet`,
-// so the dep is enforced via `Dependencies()`. Complete-NaN tensors from an
-// unevaluable PeptideCO frame are omitted from the moments; n_frames per atom
-// is the evaluable-sample divisor, and deltas require consecutive evaluable
-// frames.
+// so the dep is enforced via `Dependencies()`.
 //
 // Phase 2b expansion (2026-05-17): identical channel shape to BS.
 // McConnell-form T1 can be nonzero because D and Qhat need not commute.

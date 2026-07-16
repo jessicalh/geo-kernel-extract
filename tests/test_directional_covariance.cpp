@@ -340,30 +340,6 @@ void ExpectEvenSphericalTensor(const SphericalTensor& transformed,
                                double abs_tolerance,
                                double rel_tolerance,
                                const char* quantity) {
-    std::array<double, 9> transformed_values{};
-    std::array<double, 9> original_values{};
-    transformed.PackFull9(transformed_values.data());
-    original.PackFull9(original_values.data());
-    bool unavailable = false;
-    for (std::size_t component = 0; component < 9; ++component) {
-        EXPECT_EQ(std::isnan(transformed_values[component]),
-                  std::isnan(original_values[component]))
-            << quantity << " NaN mask component=" << component;
-        unavailable = unavailable ||
-            std::isnan(original_values[component]);
-    }
-    if (unavailable) {
-        for (std::size_t component = 0; component < 9; ++component) {
-            EXPECT_TRUE(std::isnan(original_values[component]))
-                << quantity << " partial source NaN at component="
-                << component;
-            EXPECT_TRUE(std::isnan(transformed_values[component]))
-                << quantity << " partial transformed NaN at component="
-                << component;
-        }
-        return;
-    }
-
     const Mat3 expected = EvenRank2(x, original.Reconstruct());
     ExpectMatrix(transformed.Reconstruct(), expected,
                  abs_tolerance, rel_tolerance, quantity);
@@ -543,6 +519,26 @@ void CheckGeometrySpatialAndRingStack(const ProteinConformation& original,
              category < nmr::kMcConnellSourceCategoryCount; ++category) {
             for (std::size_t channel = 0;
                  channel < nmr::kMcConnellChannelCount; ++channel) {
+                const bool unavailable_bo =
+                    channel == static_cast<std::size_t>(
+                        nmr::McConnellChannel::BondOrder) &&
+                    category != static_cast<std::size_t>(
+                        nmr::McConnellSourceCategory::AromaticZeroed);
+                if (unavailable_bo) {
+                    std::array<double, 9> source{};
+                    std::array<double, 9> moved{};
+                    original_atom.mcconnell_source_tensors[category][channel]
+                        .PackFull9(source.data());
+                    transformed_atom
+                        .mcconnell_source_tensors[category][channel]
+                        .PackFull9(moved.data());
+                    for (std::size_t component = 0; component < 9;
+                         ++component) {
+                        EXPECT_TRUE(std::isnan(source[component]));
+                        EXPECT_TRUE(std::isnan(moved[component]));
+                    }
+                    continue;
+                }
                 ExpectEvenSphericalTensor(
                     transformed_atom.mcconnell_source_tensors[category][channel],
                     original_atom.mcconnell_source_tensors[category][channel],

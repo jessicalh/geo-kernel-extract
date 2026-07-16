@@ -56,17 +56,6 @@ void McConnellWelfordTrajectoryResult::Compute(
 
     for (size_t i = 0; i < N; ++i) {
         const SphericalTensor& st = conf.AtomAt(i).mc_shielding_contribution;
-        bool evaluable = std::isfinite(st.T0);
-        for (double value : st.T1) evaluable &= std::isfinite(value);
-        for (double value : st.T2) evaluable &= std::isfinite(value);
-        if (!evaluable) {
-            // Preserve the finite observations on either side of an
-            // unevaluable frame, but do not form a delta across the gap.
-            // The raw time-series owner retains the complete-NaN sample.
-            prev_valid_[i] = false;
-            continue;
-        }
-
         const double t0    = st.T0;
         const double t2mag = st.T2Magnitude();
 
@@ -251,10 +240,6 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
     grp.createAttribute("parity",         std::string("0e+1e+2e"));
-    grp.createAttribute("validity", std::string(
-        "moments condition on complete finite McConnell tensors; "
-        "n_frames_per_atom is the evaluable-sample count, and physical zero "
-        "means an evaluable empty or cancelled fixed-channel sum"));
     // Source-sample tensor convention.  These attributes describe the
     // per-frame SphericalTensor components accumulated by this writer; the
     // directional law closes only for the assembled component means below.

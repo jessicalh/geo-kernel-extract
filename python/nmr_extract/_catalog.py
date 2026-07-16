@@ -684,10 +684,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               validity="optional output of TrajectoryProtein::WriteFeatures when HmWelfordTrajectoryResult is attached; with zero primary samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std columns8:10 are NaN with fewer than two frames, while zero is physical only after at least one actual delta sample",
               scaling_contract=_HM_SCALING + "; scale signed and norm statistics according to their semantics; frame count is unscaled"),
     ArraySpec("mc_welford", "trajectory_rollup", np.ndarray, 11, False,
-              "(N,11) unscaled McConnell unit-susceptibility geometry-response trajectory rollup [T0 mean/std/min/max, |T2| mean/std/min/max, adjacent-captured-frame T0-delta mean/std when both are evaluable, n_evaluable_frames]; source is mc_shielding_contribution and no directional component is serialized",
+              "(N,11) unscaled McConnell unit-susceptibility geometry-response trajectory rollup [T0 mean/std/min/max, |T2| mean/std/min/max, consecutive-frame T0-delta mean/std, n_frames]; source is mc_shielding_contribution and no directional component is serialized",
               native_axis="atom", irreps="0e", units="mixed_A^-3_count", mechanism="bond_anisotropy",
               coordinate_frame="intrinsic_statistics", transformation="exact O(3)-invariant scalar statistics of T0 and the project-native T2 norm; frame count invariant",
-              validity="optional output of TrajectoryProtein::WriteFeatures when McConnellWelfordTrajectoryResult is attached; complete-NaN PeptideCO-frame samples are omitted and col10 is the per-atom evaluable-sample count; with zero evaluable samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std cols8:9 are NaN without an adjacent captured-frame pair for which both frames are evaluable, and an unevaluable gap is never bridged; zero is physical only after at least one actual delta sample",
+              validity="optional output of TrajectoryProtein::WriteFeatures when McConnellWelfordTrajectoryResult is attached; with zero primary samples mean/std are NaN and min/max retain +/-infinity sentinels; delta mean/std columns8:10 are NaN with fewer than two frames, while zero is physical only after at least one actual delta sample",
               scaling_contract=_MCCONNELL_SCALING + "; scale signed and norm statistics according to their semantics; frame count is unscaled"),
     ArraySpec("sasa_welford", "trajectory_rollup", np.ndarray, 7, False,
               "(N,7) SASA trajectory rollup [SASA mean/std/min/max, consecutive-frame SASA-delta mean/std, n_frames] from the finite lab-fixed Fibonacci surface estimator",
@@ -1708,8 +1708,9 @@ _set_contract(
     transformation=_EVEN_RANK2,
     validity=(
         "fixed channels use physical zero for no accepted source; PeptideCO "
-        "fixed, BO, and rhombic-audit channels are NaN for targets receiving "
-        "a source whose C/O/N plane is unevaluable; all nine non-aromatic BO "
+        "fixed, BO, and rhombic-audit sums omit each source whose C/O/N plane "
+        "is unevaluable (zero addition for that source; other valid sources "
+        "still sum normally); all nine non-aromatic BO "
         "channels use NaN when MOPAC is unavailable and physical zero only "
         "for a present MOPAC result's empty, cancelled, or post-floor zero "
         "sum; "
@@ -1761,7 +1762,9 @@ _set_contract(
         "CO/CN tensors are NaN when the corresponding mopac_mc_nearest_*_dist "
         "is NO_DATA_SENTINEL; a valid nearest tensor is physical zero when the "
         "geometry-selected bond's post-floor BO is zero; aggregate zero means "
-        "an empty/zero BO sum"
+        "an empty/zero BO sum; an unevaluable PeptideCO source contributes "
+        "zero to mopac_mc_backbone_total and mopac_mc_shielding while other "
+        "valid sources still sum normally"
     ))
 for _stem in _MOPAC_MCCONNELL_FULL9:
     CATALOG[_stem] = replace(
@@ -1782,7 +1785,9 @@ _set_contract(
     ),
     validity=(
         "whole family is absent unless MopacMcConnellResult attaches; sums use "
-        "physical zero for empty/zero BO channels; co_nearest is gated by "
+        "physical zero for empty/zero BO channels; an unevaluable PeptideCO "
+        "source contributes zero to mopac_mc_co_sum while other valid sources "
+        "still sum normally; co_nearest is gated by "
         "mopac_mc_nearest_co_dist.npy and is physical zero when the geometry-"
         "selected bond's post-floor BO is zero; aromatic_sum is structurally zero"
     ), irreps="0e", parity="even", tensor_rank=0)

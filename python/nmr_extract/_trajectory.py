@@ -361,12 +361,7 @@ def _load_hm_shielding_time_series(
 
 @dataclass(frozen=True)
 class McConnellShieldingTimeSeriesGroup:
-    """McConnellResult full-nine-component trajectory output.
-
-    An accepted PeptideCO source with an unevaluable C/O/N plane makes the
-    affected aggregate a complete-NaN tensor. A physical zero therefore means
-    an evaluable empty or cancelled fixed-channel sum.
-    """
+    """McConnellResult full-nine-component trajectory output."""
     xyz: np.ndarray
     frame_indices: np.ndarray
     frame_times: np.ndarray
@@ -679,9 +674,7 @@ class McConnellWelfordGroup(_TensorWelfordGroup):
     The H5 group is the full tensor-statistics surface. The separate legacy
     ``mc_welford.npy`` projection contains per-atom summaries of scalar T0,
     the scalar norm ``|T2|``, and the scalar T0 frame delta, plus the T0
-    evaluable-sample count; it contains no directional T1/T2 components.
-    Complete-NaN samples are omitted from every moment, and frame deltas are
-    formed only between adjacent captured frames that are both evaluable.
+    sample count; it contains no directional T1/T2 components.
     """
 
 
@@ -3464,13 +3457,11 @@ class MopacMcConnellShieldingTimeSeriesGroup:
     ``MopacMcConnellResult`` performs no tensor calculation; it is a
     compatibility/dependency gate for this trajectory surface. A missing or
     below-floor compatibility bond order is a structural zero for that BO
-    source contribution. A missing result frame is complete NaN with mask=0;
-    an attached frame whose accepted PeptideCO source has an unevaluable
-    C/O/N plane is also complete NaN, with mask=1. The whole group is absent
-    when no source frame attached. Conditional on fixed scalar Wiberg weights,
-    the packed response has the stated rank-2 law; an independently rotated
-    production run reruns MOZYME and is not promised identical weights/support
-    or exact covariance.
+    source contribution, whereas a missing result frame is NaN with mask=0;
+    the whole group is absent when no source frame attached. Conditional on
+    fixed scalar Wiberg weights, the packed response has the stated rank-2
+    law; an independently rotated production run reruns MOZYME and is not
+    promised identical weights/support or exact covariance.
     """
     xyz: np.ndarray
     frame_indices: np.ndarray

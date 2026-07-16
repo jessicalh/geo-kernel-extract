@@ -136,7 +136,6 @@ TEST(MopacMcConnellShieldingTimeSeries,
     std::string t1_semantics;
     std::string structural_zero_components;
     std::string normalization_scope;
-    std::string validity;
     bool t1_structural_zero = true;
     grp.getAttribute("tensor_basis").read(basis);
     grp.getAttribute("tensor_component_order").read(order);
@@ -151,7 +150,6 @@ TEST(MopacMcConnellShieldingTimeSeries,
     grp.getAttribute("tensor_structural_zero_components").read(
         structural_zero_components);
     grp.getAttribute("normalization_scope").read(normalization_scope);
-    grp.getAttribute("validity").read(validity);
 
     EXPECT_EQ(basis, nmr::kMcConnellPackFull9TensorBasis);
     EXPECT_EQ(order, nmr::kMcConnellPackFull9ComponentOrder);
@@ -164,10 +162,6 @@ TEST(MopacMcConnellShieldingTimeSeries,
     EXPECT_FALSE(t1_structural_zero);
     EXPECT_EQ(structural_zero_components, "none");
     EXPECT_EQ(normalization_scope, kNormalizationScope);
-    EXPECT_EQ(validity,
-        "complete NaN tensor when an accepted PeptideCO source has an "
-        "unevaluable C/O/N plane; physical zero means a present MOPAC "
-        "result produced an evaluable empty, cancelled, or post-floor sum");
 
     std::vector<double> flat(tp.AtomCount() * 9u);
     ds.read(flat.data());
@@ -320,20 +314,11 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     std::vector<double> flat(N * T * 9);
     ds.read(flat.data());
     double max_t0 = 0.0, max_t1 = 0.0, max_t2 = 0.0;
-    std::size_t unavailable = 0;
     for (std::size_t i = 0; i < N; ++i) {
         for (std::size_t t = 0; t < T; ++t) {
             const std::size_t base = (i * T + t) * 9;
-            const bool is_unavailable = std::isnan(flat[base]);
             for (std::size_t k = 0; k < 9; ++k) {
-                EXPECT_EQ(std::isnan(flat[base + k]), is_unavailable)
-                    << "partial tensor at atom=" << i << " frame=" << t;
-                if (!is_unavailable)
-                    EXPECT_TRUE(std::isfinite(flat[base + k]));
-            }
-            if (is_unavailable) {
-                ++unavailable;
-                continue;
+                EXPECT_TRUE(std::isfinite(flat[base + k]));
             }
             max_t0 = std::max(max_t0, std::abs(flat[base + 0]));
             for (std::size_t k = 1; k <= 3; ++k)
@@ -345,7 +330,6 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     std::cout << "  max|T0| = " << max_t0
               << "  max|T1| = " << max_t1
               << "  max|T2| = " << max_t2
-              << "  unavailable=" << unavailable
               << "  (T0/T1 not necessarily ~0 — D(r)Qhat is not pure T2)"
               << std::endl;
     // Sanity: at least T2 should be nonzero on every protein

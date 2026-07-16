@@ -95,13 +95,8 @@ TEST(McConnellWelford, Frame0Semantics) {
 
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        if (ta.mc_welford.n_frames == 0u) {
-            EXPECT_TRUE(std::isnan(ta.mc_welford.t0.mean));
-            EXPECT_TRUE(std::isnan(ta.mc_welford.t0.std));
-        } else {
-            EXPECT_EQ(ta.mc_welford.n_frames, 1u);
-            EXPECT_DOUBLE_EQ(ta.mc_welford.t0.std, 0.0);
-        }
+        EXPECT_EQ(ta.mc_welford.n_frames, 1u);
+        EXPECT_DOUBLE_EQ(ta.mc_welford.t0.std, 0.0);
         EXPECT_EQ(ta.mc_welford.delta_n, 0u);
     }
 }
@@ -137,73 +132,8 @@ TEST(McConnellWelford, FinalizeIdempotency) {
 
     tr.Finalize(tp, traj);
 
-    if (std::isnan(mean_first)) {
-        EXPECT_TRUE(std::isnan(tp.AtomAt(probe).mc_welford.t0.mean));
-        EXPECT_TRUE(std::isnan(tp.AtomAt(probe).mc_welford.t0.std));
-    } else {
-        EXPECT_DOUBLE_EQ(tp.AtomAt(probe).mc_welford.t0.mean, mean_first);
-        EXPECT_DOUBLE_EQ(tp.AtomAt(probe).mc_welford.t0.std,  std_first);
-    }
-}
-
-
-TEST(McConnellWelford,
-     UnevaluableFrameIsOmittedAndDoesNotBridgeDeltas) {
-    nmr::test::TestEnvironment::LoadCalculatorConfig();
-    auto build = nmr::BuildFromProtonatedPdb(
-        nmr::test::TestEnvironment::UbqProtonated());
-    ASSERT_TRUE(build.Ok()) << build.error;
-    auto tp_owner = nmr::TrajectoryProtein::CreateForTesting(
-        std::move(build.protein));
-    ASSERT_NE(tp_owner, nullptr);
-    auto& tp = *tp_owner;
-    ASSERT_GT(tp.AtomCount(), 1u);
-
-    auto tr = nmr::McConnellWelfordTrajectoryResult::Create(tp);
-    nmr::Trajectory traj({}, {}, {});
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
-    auto conf = std::make_unique<nmr::ProteinConformation>(
-        &tp.ProteinRef(), positions, "conditional McConnell Welford");
-
-    nmr::SphericalTensor first;
-    first.T0 = 1.0;
-    first.T1 = {0.1, 0.2, 0.3};
-    first.T2 = {0.4, 0.5, 0.6, 0.7, 0.8};
-    conf->MutableAtomAt(0).mc_shielding_contribution = first;
-    tr->Compute(*conf, tp, traj, 10, 0.0);
-
-    nmr::SphericalTensor unavailable;
-    unavailable.T0 = std::nan("");
-    unavailable.T1.fill(std::nan(""));
-    unavailable.T2.fill(std::nan(""));
-    conf->MutableAtomAt(0).mc_shielding_contribution = unavailable;
-    tr->Compute(*conf, tp, traj, 11, 1.0);
-
-    nmr::SphericalTensor third = first;
-    third.T0 = 3.0;
-    third.T1 = {0.3, 0.4, 0.5};
-    third.T2 = {0.6, 0.7, 0.8, 0.9, 1.0};
-    conf->MutableAtomAt(0).mc_shielding_contribution = third;
-    tr->Compute(*conf, tp, traj, 12, 2.0);
-    tr->Finalize(tp, traj);
-
-    const auto& w = tp.AtomAt(0).mc_welford;
-    EXPECT_EQ(tr->NumFrames(), 3u);
-    EXPECT_EQ(w.n_frames, 2u);
-    EXPECT_DOUBLE_EQ(w.t0.mean, 2.0);
-    EXPECT_NEAR(w.t0.std, std::sqrt(2.0), 1e-15);
-    EXPECT_DOUBLE_EQ(w.t0.min, 1.0);
-    EXPECT_DOUBLE_EQ(w.t0.max, 3.0);
-    EXPECT_EQ(w.t0.min_frame, 10u);
-    EXPECT_EQ(w.t0.max_frame, 12u);
-    EXPECT_EQ(w.delta_n, 0u);
-    EXPECT_EQ(w.dxdt_n, 0u);
-    EXPECT_TRUE(std::isnan(w.t0_delta.mean));
-
-    for (std::size_t i = 1; i < tp.AtomCount(); ++i) {
-        EXPECT_EQ(tp.AtomAt(i).mc_welford.n_frames, 3u);
-        EXPECT_DOUBLE_EQ(tp.AtomAt(i).mc_welford.t0.mean, 0.0);
-    }
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).mc_welford.t0.mean, mean_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).mc_welford.t0.std,  std_first);
 }
 
 
@@ -235,12 +165,10 @@ TEST(McConnellWelford, H5DirectionalMetadataZeroCountSynthetic) {
     HighFive::File file(h5_path, HighFive::File::ReadOnly);
     auto grp = file.getGroup("/trajectory/mc_welford");
 
-    std::string irrep_scope, mean_law, component_law, validity,
-                zero_count_validity;
+    std::string irrep_scope, mean_law, component_law, zero_count_validity;
     grp.getAttribute("irrep_metadata_scope").read(irrep_scope);
     grp.getAttribute("directional_mean_transformation").read(mean_law);
     grp.getAttribute("componentwise_statistic_transformation").read(component_law);
-    grp.getAttribute("validity").read(validity);
     grp.getAttribute("zero_count_sentinel_validity").read(zero_count_validity);
     EXPECT_EQ(irrep_scope,
               "only assembled component means carry directional irrep metadata");
@@ -250,10 +178,6 @@ TEST(McConnellWelford, H5DirectionalMetadataZeroCountSynthetic) {
     EXPECT_EQ(component_law,
               "componentwise m2,std,min,max,min_frame,max_frame have no closed "
               "irrep transformation law");
-    EXPECT_EQ(validity,
-              "moments condition on complete finite McConnell tensors; "
-              "n_frames_per_atom is the evaluable-sample count, and physical "
-              "zero means an evaluable empty or cancelled fixed-channel sum");
     EXPECT_EQ(zero_count_validity,
               "when n_frames_per_atom=0, mean,m2,std are NaN and min=+inf,"
               "max=-inf,min_frame=0,max_frame=0 are invalid sentinels; "
@@ -405,25 +329,13 @@ TEST(McConnellWelford, Integration1P9J) {
     // would not trip the t0 assertion alone.
     size_t populated  = 0;
     size_t t1_populated = 0, t2_populated = 0;
-    size_t unavailable = 0;
     double max_abs_t0 = 0.0, max_abs_t1 = 0.0, max_abs_t2 = 0.0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_LE(ta.mc_welford.n_frames, traj.FrameCount());
-        if (ta.mc_welford.n_frames == 0u) {
-            ++unavailable;
-            EXPECT_TRUE(std::isnan(ta.mc_welford.t0.mean));
-            EXPECT_TRUE(std::isnan(ta.mc_welford.t0.std));
-            EXPECT_TRUE(std::isnan(ta.mc_welford.t2magnitude.mean));
-            for (size_t k = 0; k < 3; ++k)
-                EXPECT_TRUE(std::isnan(ta.mc_welford.t1[k].mean));
-            for (size_t k = 0; k < 5; ++k)
-                EXPECT_TRUE(std::isnan(ta.mc_welford.t2[k].mean));
-            continue;
-        }
         EXPECT_TRUE(std::isfinite(ta.mc_welford.t0.mean));
         EXPECT_TRUE(std::isfinite(ta.mc_welford.t0.std));
         EXPECT_TRUE(std::isfinite(ta.mc_welford.t2magnitude.mean));
+        EXPECT_EQ(ta.mc_welford.n_frames, traj.FrameCount());
         if (std::abs(ta.mc_welford.t0.mean) > 1e-12) ++populated;
         max_abs_t0 = std::max(max_abs_t0, std::abs(ta.mc_welford.t0.mean));
 
@@ -453,8 +365,6 @@ TEST(McConnellWelford, Integration1P9J) {
            "nonzero antisymmetric part)";
     EXPECT_GT(t2_populated, 0u)
         << "McConnell Welford T2 per-component all-zero — T2 Completeness regression";
-    std::cout << "McConnell Welford zero-evaluable-sample atoms=" << unavailable
-              << " / " << tp.AtomCount() << "\n";
 
     // Codex 2026-05-18: dxdt_n must equal delta_n on a well-formed
     // trajectory (no duplicated-timestamp frames). Regression guard

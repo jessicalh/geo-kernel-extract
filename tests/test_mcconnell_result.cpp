@@ -2290,7 +2290,7 @@ TEST(MopacExternalDirectionalFreeze,
 
 
 TEST(McConnellImplementationChecks,
-     UnevaluablePeptideCOFrameIsNanWhileEvaluableEmptySumIsZero) {
+     UnevaluablePeptideCOSourceAddsZeroToEveryChannel) {
     {
         auto protein = BuildSyntheticPeptideCOProtein();
         auto& conf = protein->Conformation();
@@ -2368,6 +2368,17 @@ TEST(McConnellImplementationChecks,
         EXPECT_TRUE(MatrixAllNaN(rhombic.source_shape));
         EXPECT_TRUE(MatrixAllNaN(rhombic.response));
 
+        // Exercise a nonzero BO directly through the production channel
+        // selector.  The internal NaN is a validity marker only: this source
+        // adds exact zero to all three accumulators.
+        const auto skipped =
+            mcconnell_result_detail::SelectChannelResponses(
+                McConnellSourceCategory::PeptideCO,
+                axial.response, rhombic.response, 1.75);
+        EXPECT_DOUBLE_EQ(MaxAbs(skipped.fixed), 0.0);
+        EXPECT_DOUBLE_EQ(MaxAbs(skipped.bond_order), 0.0);
+        EXPECT_DOUBLE_EQ(MaxAbs(skipped.rhombic_audit), 0.0);
+
         conf.ForceAttachResultForTesting(std::make_unique<MopacResult>());
         ASSERT_TRUE(conf.AttachResult(SpatialIndexResult::Compute(conf)));
         ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
@@ -2378,16 +2389,22 @@ TEST(McConnellImplementationChecks,
         const size_t bo =
             static_cast<size_t>(McConnellChannel::BondOrder);
         constexpr size_t target = 3;
-        EXPECT_TRUE(SphericalAllNaN(conf.AtomAt(target)
+        EXPECT_TRUE(SphericalAllZero(conf.AtomAt(target)
             .mcconnell_source_tensors[category][fixed]));
-        EXPECT_TRUE(SphericalAllNaN(conf.AtomAt(target)
+        EXPECT_TRUE(SphericalAllZero(conf.AtomAt(target)
             .mcconnell_source_tensors[category][bo]));
-        EXPECT_TRUE(SphericalAllNaN(
+        EXPECT_TRUE(SphericalAllZero(
             conf.AtomAt(target).mcconnell_peptide_co_rhombic));
-        EXPECT_TRUE(SphericalAllNaN(
-            conf.AtomAt(target).mc_shielding_contribution));
+        EXPECT_TRUE(conf.AtomAt(target).mc_shielding_contribution
+                        .Reconstruct().allFinite());
         EXPECT_TRUE(conf.AtomAt(target).T2_CO_nearest.Reconstruct().allFinite())
             << "the separately named nearest axial response stays evaluable";
+        EXPECT_DOUBLE_EQ(conf.AtomAt(target).mopac_mc_co_sum, 0.0);
+        EXPECT_TRUE(SphericalAllZero(
+            conf.AtomAt(target).mopac_mc_T2_backbone_total));
+        EXPECT_TRUE(SphericalAllZero(
+            conf.AtomAt(target).mopac_mc_shielding_contribution));
+        ASSERT_TRUE(conf.AttachResult(MopacMcConnellResult::Compute(conf)));
 
         const fs::path output_dir = fs::temp_directory_path() /
             ("mcconnell_unevaluable_rhombic_" +
@@ -2396,18 +2413,161 @@ TEST(McConnellImplementationChecks,
         ASSERT_EQ(conf.Result<McConnellResult>().WriteFeatures(
                       conf, output_dir.string()),
                   28);
+        ASSERT_EQ(conf.Result<MopacMcConnellResult>().WriteFeatures(
+                      conf, output_dir.string()),
+                  13);
         for (const char* stem : {
                  "mc_peptide_co_fixed.npy",
                  "mc_peptide_co_bo.npy",
-                 "mc_peptide_co_rhombic.npy"}) {
+                 "mc_peptide_co_rhombic.npy",
+                 "mopac_mc_backbone_total.npy",
+                 "mopac_mc_shielding.npy"}) {
             const auto rows = ReadNpy<double>(output_dir / stem, "<f8");
             for (size_t component = 0; component < 9; ++component) {
-                EXPECT_TRUE(std::isnan(
-                    rows.values[target * 9 + component])) << stem;
+                EXPECT_DOUBLE_EQ(
+                    rows.values[target * 9 + component], 0.0) << stem;
             }
         }
+        const auto co_sum = ReadNpy<double>(
+            output_dir / "mopac_mc_co_sum.npy", "<f8");
+        EXPECT_DOUBLE_EQ(co_sum.values[target], 0.0);
         RemoveMcConnellOutputs(output_dir);
     }
+}
+
+
+TEST_F(McConnellProteinTest,
+       UnevaluableTerminalCOSourceDoesNotPoisonInternalCarbonylTarget) {
+    auto& conf = protein->Conformation();
+    const Protein& p = conf.ProteinRef();
+    const double cutoff =
+        CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff");
+    const double singularity =
+        CalculatorConfig::Get("singularity_guard_distance");
+    const double near_ratio =
+        CalculatorConfig::Get("near_field_exclusion_ratio");
+
+    struct Reconstruction {
+        size_t target = SIZE_MAX;
+        size_t target_source = SIZE_MAX;
+        size_t unevaluable_source = SIZE_MAX;
+        size_t valid_sources = 0;
+        size_t unevaluable_sources = 0;
+        Mat3 fixed = Mat3::Zero();
+        Mat3 audit = Mat3::Zero();
+    } best;
+
+    // Independently enumerate and filter all PeptideCO bonds.  Candidate
+    // targets are C/O endpoints of an evaluable PeptideCO source themselves,
+    // i.e. internal carbonyl atoms rather than a generic nearby probe.
+    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        size_t target_source = SIZE_MAX;
+        for (size_t bi : p.AtomAt(ai).bond_indices) {
+            if (bi >= p.BondCount() ||
+                p.BondAt(bi).category != BondCategory::PeptideCO)
+                continue;
+            const auto own =
+                McConnellResult::ComputePeptideCORhombicPairKernel(
+                    conf, bi, conf.PositionAt(ai));
+            if (own.source_shape.allFinite()) {
+                target_source = bi;
+                break;
+            }
+        }
+        if (target_source == SIZE_MAX) continue;
+
+        Reconstruction candidate;
+        candidate.target = ai;
+        candidate.target_source = target_source;
+        for (size_t bi = 0; bi < p.BondCount(); ++bi) {
+            const Bond& bond = p.BondAt(bi);
+            if (bond.category != BondCategory::PeptideCO) continue;
+
+            const auto axial = McConnellResult::ComputePairKernel(
+                conf.PositionAt(ai), conf.bond_midpoints[bi],
+                conf.bond_directions[bi]);
+            if (axial.distance < singularity || axial.distance > cutoff)
+                continue;
+            if (ai == bond.atom_index_a || ai == bond.atom_index_b)
+                continue;
+            if (axial.distance <= conf.bond_lengths[bi] * near_ratio)
+                continue;
+
+            const auto rhombic =
+                McConnellResult::ComputePeptideCORhombicPairKernel(
+                    conf, bi, conf.PositionAt(ai));
+            if (!rhombic.response.allFinite()) {
+                ++candidate.unevaluable_sources;
+                candidate.unevaluable_source = bi;
+                continue;
+            }
+            ++candidate.valid_sources;
+            candidate.fixed += rhombic.response;
+            candidate.audit += rhombic.response - axial.response;
+        }
+        if (candidate.unevaluable_sources > 0 &&
+            candidate.valid_sources > best.valid_sources)
+            best = candidate;
+    }
+
+    ASSERT_NE(best.target, SIZE_MAX);
+    ASSERT_NE(best.target_source, SIZE_MAX);
+    ASSERT_NE(best.unevaluable_source, SIZE_MAX);
+    ASSERT_GT(best.valid_sources, 0u);
+    ASSERT_GT(best.unevaluable_sources, 0u);
+    EXPECT_GT(best.fixed.norm(), 1e-10)
+        << "the independent valid-neighbour sum must carry signal";
+
+    const Bond& terminal_bond = p.BondAt(best.unevaluable_source);
+    const size_t terminal_c =
+        p.AtomAt(terminal_bond.atom_index_a).element == Element::C
+        ? terminal_bond.atom_index_a : terminal_bond.atom_index_b;
+    ASSERT_LT(terminal_c, p.AtomCount());
+    EXPECT_EQ(p.AtomAt(terminal_c).residue_index + 1, p.ResidueCount())
+        << "the accepted unevaluable source must be the C-terminal C=O";
+
+    conf.ForceAttachResultForTesting(std::make_unique<MopacResult>());
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+    const size_t category = static_cast<size_t>(
+        McConnellSourceCategory::PeptideCO);
+    const Mat3 actual_fixed = conf.AtomAt(best.target)
+        .mcconnell_source_tensors
+            [category][static_cast<size_t>(McConnellChannel::Fixed)]
+        .Reconstruct();
+    const Mat3 actual_bo = conf.AtomAt(best.target)
+        .mcconnell_source_tensors
+            [category][static_cast<size_t>(McConnellChannel::BondOrder)]
+        .Reconstruct();
+    const Mat3 actual_audit = conf.AtomAt(best.target)
+        .mcconnell_peptide_co_rhombic.Reconstruct();
+
+    const double fixed_error = MaxAbs(actual_fixed - best.fixed);
+    const double audit_error = MaxAbs(actual_audit - best.audit);
+    EXPECT_TRUE(actual_fixed.allFinite());
+    EXPECT_TRUE(actual_audit.allFinite());
+    EXPECT_TRUE(conf.AtomAt(best.target).mc_shielding_contribution
+                    .Reconstruct().allFinite());
+    EXPECT_LT(fixed_error, 1e-12);
+    EXPECT_LT(audit_error, 1e-12);
+    EXPECT_DOUBLE_EQ(MaxAbs(actual_bo), 0.0)
+        << "the attached zero-BO source proves a physical zero BO sum";
+
+    const Atom& target_atom = p.AtomAt(best.target);
+    const Residue& target_residue = p.ResidueAt(target_atom.residue_index);
+    EXPECT_LT(target_atom.residue_index + 1, p.ResidueCount())
+        << "the reconstructed target must be an internal carbonyl atom";
+    std::cout
+        << "D1 valid-source reconstruction target_atom=" << best.target
+        << " target_name=" << target_atom.pdb_atom_name
+        << " target_residue=" << target_residue.sequence_number
+        << " valid_sources=" << best.valid_sources
+        << " unevaluable_sources=" << best.unevaluable_sources
+        << " terminal_source_bond=" << best.unevaluable_source
+        << " expected_fixed_F=" << best.fixed.norm()
+        << " actual_fixed_F=" << actual_fixed.norm()
+        << " max_fixed_abs_error=" << fixed_error
+        << " max_audit_abs_error=" << audit_error
+        << std::endl;
 }
 
 
@@ -2537,7 +2697,7 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyEightArraysAndManifest) {
     EXPECT_NE(text.find("\"rhombic_array\": \"mc_peptide_co_rhombic.npy\""),
               std::string::npos);
     EXPECT_NE(text.find(
-        "\"rhombic_unavailable\": \"NaN when the PeptideCO C/O/N plane is missing, ambiguous, or collinear\""),
+        "\"rhombic_unavailable\": \"a PeptideCO source with a missing, ambiguous, or collinear C/O/N plane contributes zero to the fixed, BO, and rhombic-audit sums; other valid sources still sum normally\""),
         std::string::npos);
     EXPECT_NE(text.find("\"source\": \"Hooper & Kaiser 1965 Table III, EF-corrected acetamide A, Abraham-anchored sign\""),
               std::string::npos);

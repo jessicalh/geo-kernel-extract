@@ -138,8 +138,6 @@ struct McConnellWelfordState {
     WelfordMoments t0_delta_squared;
     WelfordMoments t0_dxdt;                    // cadence-normalized rate
     double         t0_rms_delta = 0.0;
-    // Complete-finite McConnell tensor samples accumulated. This can be less
-    // than the trajectory frame count when a PeptideCO frame is unevaluable.
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
     // dxdt-only counter — see BsWelfordState comment. Skips zero-dt

@@ -113,9 +113,9 @@ hm_ring_B_field.npy | HaighMallionResult | pair(P,3) A^-1 | A | sparse row align
 
 McConnell and side-chain carbonyl anisotropy
 -------------------------------------------
-mc_peptide_co_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | evaluable empty/cancelled sum physical zero; target receiving an unevaluable C/O/N-plane source all-NaN | DC-GR PASS; NPY-E2E PASS
-mc_peptide_co_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable or target receiving an unevaluable C/O/N-plane source all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
-mc_peptide_co_rhombic.npy | McConnellResult | atom(N,9) A^-3 | T, generic irreps | evaluable no-source/cancelled delta physical zero; target receiving an unevaluable C/O/N-plane source all-NaN | DC-GR PASS; NPY-E2E PASS
+mc_peptide_co_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | each unevaluable C/O/N-plane source is omitted (zero addition); other valid sources sum normally; empty/cancelled sum physical zero | DC-GR PASS; NPY-E2E PASS
+mc_peptide_co_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; with MOPAC present each unevaluable C/O/N-plane source is omitted (zero addition), other valid sources sum normally, and empty/cancelled/post-floor sum is physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
+mc_peptide_co_rhombic.npy | McConnellResult | atom(N,9) A^-3 | T, generic irreps | each unevaluable C/O/N-plane source is omitted (zero audit addition); other valid sources sum normally; no-source/cancelled delta physical zero | DC-GR PASS; NPY-E2E PASS
 mc_peptide_cn_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
 mc_peptide_cn_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | MOPAC unavailable all-NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_backbone_other_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
@@ -278,8 +278,8 @@ Raw time-series and mixed trajectory datasets
 /trajectory/positions/xyz | PositionsTimeSeriesTrajectoryResult | (N,T,3) X | always present | DCT-POS H5-PASS, <=2e-12 A
 /trajectory/bs_shielding_time_series/xyz | BsShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, seed 0x0E1F04D, 3e-12 abs + 3e-10 rel
 /trajectory/hm_shielding_time_series/xyz | HmShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, same seed, 3e-11 abs + 1e-8 rel
-/trajectory/mc_shielding_time_series/xyz | McConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | evaluable empty/cancelled fixed sum physical zero; unevaluable PeptideCO frame complete NaN | DCT-KW H5-PASS, same seed, 3e-12 abs + 3e-10 rel
-/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames or unevaluable PeptideCO frame complete NaN; present-MOPAC empty/cancelled/post-floor sum physical zero | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234259 within explicit MOZYME envelope
+/trajectory/mc_shielding_time_series/xyz | McConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | each unevaluable PeptideCO source is omitted; valid fixed contributions sum normally and empty/cancelled sum is physical zero | DCT-KW H5-PASS, same seed, 3e-12 abs + 3e-10 rel
+/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames complete NaN/source mask; attached frames omit each unevaluable PeptideCO source, retain other valid contributions, and use physical zero for empty/cancelled/post-floor sums | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234144 within explicit MOZYME envelope
 /trajectory/mopac_coulomb_efg_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | (N,T,5) T2, SZ(T0/T1) | absent frames NaN/source mask | DC-MC H5-PASS with fixed scalar charge source, seed 0x4d4f504143434f55, 3e-9 abs + 3e-11 rel
 /trajectory/mopac_coulomb_shielding_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | legacy alias of preceding T2 dataset | same validity | DC-MC byte-identical H5-PASS
 /trajectory/apbs_efield_time_series/xyz | ApbsEfieldTimeSeriesTrajectoryResult | (N,T,3) continuum P; live finite grid is NC | absent frames NaN/source mask | DC-AP H5-PASS within 1.8e-2 abs + 5e-2 rel finite-grid bound
@@ -456,9 +456,6 @@ HM Welford (owner HmWelfordTrajectoryResult; DCT-KW H5-PASS; metadata test PASS)
 
 McConnell Welford (owner McConnellWelfordTrajectoryResult; DCT-KW H5-PASS; metadata test PASS)
 ------------------------------------------------------------------------------------------------
-Moments condition on complete finite tensors; n_frames_per_atom is the
-evaluable-sample count, gaps do not form deltas, and evaluable empty/cancelled
-fixed sums remain physical zero.
 /trajectory/mc_welford/t1_mean | assembled A mean | <=3e-12 abs + 3e-10 rel
 /trajectory/mc_welford/t1_m2 | NC component statistic | explicit metadata PASS
 /trajectory/mc_welford/t1_std | NC component statistic | explicit metadata PASS
@@ -928,7 +925,7 @@ These are not aggregate caveats; each names the affected serialized output.
    /trajectory/mopac_mc_shielding_time_series/xyz — DC-MX now combines three
    real external-MOPAC reruns with the production sparse per-frame owner and
    exact H5 read-back (serialization max error zero).  The remaining named
-   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234259
+   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234144
    within the recorded 0.003+1.5e-2 envelope; this is no longer an H5 GAP.
 9. In the BS/HM/Mc/Water/Hydration-vector/AIMNet vector/tensor Welford groups,
     every `*_m2`, `*_std`, `*_min`, `*_max`, `*_min_frame` and

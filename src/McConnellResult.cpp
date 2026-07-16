@@ -259,6 +259,11 @@ ChannelResponses SelectChannelResponses(
         double bond_order) {
     ChannelResponses out;
     if (category == McConnellSourceCategory::PeptideCO) {
+        // A missing/ambiguous/collinear C/O/N plane makes this source
+        // unevaluable.  Omit that source from every additive channel: using
+        // the axial response would fabricate a rhombic term, while adding the
+        // nonfinite validity marker would poison otherwise valid neighbours.
+        if (!rhombic_response.allFinite()) return out;
         out.fixed = rhombic_response;
         out.bond_order = bond_order * rhombic_response;
         out.rhombic_audit = rhombic_response - axial_response;
@@ -375,7 +380,7 @@ nlohmann::ordered_json McConnellResult::FeatureMetadata(
         {"rhombic_scope", "PeptideCO canonical fixed and BO channels use the full rhombic response; sidechain C=O and all other categories remain axial"},
         {"rhombic_array", std::string(kPeptideCORhombicArrayStem) + ".npy"},
         {"rhombic_emission", "mc_peptide_co_rhombic is the unweighted fixed-channel audit delta D(r)*(Qhat_rhombic-Qhat_axial); canonical PeptideCO fixed/BO arrays already include it"},
-        {"rhombic_unavailable", "NaN when the PeptideCO C/O/N plane is missing, ambiguous, or collinear"},
+        {"rhombic_unavailable", "a PeptideCO source with a missing, ambiguous, or collinear C/O/N plane contributes zero to the fixed, BO, and rhombic-audit sums; other valid sources still sum normally"},
         {"rhombic_pinned_value", nlohmann::ordered_json{
             {"status", "lead_signed_off_external"},
             {"source", "Hooper & Kaiser 1965 Table III, EF-corrected acetamide A, Abraham-anchored sign"},
@@ -842,6 +847,10 @@ SphericalTensor McConnellResult::SampleKernelAt(Vec3 point) const {
             CalculatorConfig::Get("near_field_exclusion_ratio") *
             conf_->bond_lengths[bi];
         if (kernel.distance < threshold)
+            continue;
+
+        if (cat == McConnellSourceCategory::PeptideCO &&
+            !kernel.response.allFinite())
             continue;
 
         total += kernel.response;

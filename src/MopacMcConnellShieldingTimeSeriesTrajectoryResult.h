@@ -17,8 +17,7 @@
 // SOURCE STRUCTURE: McConnellResult sets
 //   ca.mopac_mc_shielding_contribution =
 //       SphericalTensor::Decompose(sum bo_s * D(r_is) * Qhat_s);
-// where an absent/below-floor per-bond order in a present MopacResult zeros
-// only the BO channel; an unevaluable PeptideCO frame makes the aggregate NaN.
+// where missing/below-floor bond order zeros only the BO channel.
 //
 // CONDITIONAL SOURCE: MopacMcConnellResult attaches via TimedAttach, not
 // RequireConformationResult. Same gate as TR5/TR6/TR7; attached samples
@@ -54,9 +53,6 @@
 //       normalization           = "isometric_real_sph"
 //       normalization_scope     = "xyz tensor payload: T2 uses ..."
 //       units                   = "Angstrom^-3"  (bare kernel, pre-Δχ)
-//       validity                = complete NaN on an unevaluable PeptideCO
-//                                 frame; present-result empty/cancelled/
-//                                 post-floor sum is physical zero
 //       source                  = "MopacMcConnellResult.mopac_mc_shielding_contribution
 //                                  (unscaled BO channel from D(r)Qhat)"
 //       source_attached_policy  = "conditional -- TimedAttach ..."
