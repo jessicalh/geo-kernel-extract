@@ -95,6 +95,28 @@ RETIRED_NPY_STEMS = {
 }
 
 
+def test_mutation_atom_map_reaches_delta_group(tmp_path):
+    """The emitted WT-to-mutant key is exposed without recomputing matching."""
+    n_atoms = 4
+    write_required_sdk_npys(tmp_path, n_atoms=n_atoms, n_residues=1)
+    write_minimal_topology_sidecar(
+        tmp_path, n_atoms=n_atoms, n_residues=1)
+
+    expected = np.array([2, -1, 0, 3], dtype=np.int32)
+    np.save(tmp_path / "delta_shielding.npy",
+            np.zeros((n_atoms, 9), dtype=np.float64))
+    np.save(tmp_path / "delta_scalars.npy",
+            np.zeros((n_atoms, 6), dtype=np.float64))
+    np.save(tmp_path / "mutation_atom_map.npy", expected)
+
+    protein = load(tmp_path)
+    assert protein.delta is not None
+    assert protein.delta.mutant_atom_index.dtype == np.int32
+    assert np.array_equal(protein.delta.mutant_atom_index, expected)
+    assert CATALOG["mutation_atom_map"].native_axis == "atom"
+    assert CATALOG["mutation_atom_map"].units == "index"
+
+
 def test_mopac_emit_surface_reaches_loaded_protein(tmp_path):
     """Every new static MOPAC datum survives catalog wrapping and assembly."""
     n_atoms = 3

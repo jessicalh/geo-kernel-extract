@@ -339,8 +339,6 @@ class CoulombGroup:
     efg_t2: Optional[EFGTensor] = None
     aromatic_E_proj: Optional[np.ndarray] = None
     aromatic_n_src: Optional[np.ndarray] = None
-    E_solvent: Optional[VectorField] = None
-    efg_solvent: Optional[EFGTensor] = None
 
 
 @dataclass(frozen=True)
@@ -562,9 +560,13 @@ class DeltaGroup:
 
     All component tensors are optional; they are present when an ORCA
     NMR output file accompanied both the WT and mutant runs.
+
+    `mutant_atom_index` is the dense WT-row join key into the separately
+    emitted `ala/` atom axis; unmatched WT rows contain -1.
     """
     shielding: ShieldingTensor
     scalars: DeltaScalars
+    mutant_atom_index: np.ndarray
     apbs: Optional[DeltaAPBS]
     ring_proximity: DeltaRingProximity
     graph: Optional[np.ndarray] = None
@@ -1892,10 +1894,6 @@ def load(path: str | Path) -> Protein:
         efg_t2=get("coulomb_efg_t2"),
         aromatic_E_proj=get("coulomb_aromatic_E_proj"),
         aromatic_n_src=get("coulomb_aromatic_n_src"),
-        E_solvent=get("coulomb_E_solvent")
-            if "coulomb_E_solvent" in available else None,
-        efg_solvent=get("coulomb_efg_solvent")
-            if "coulomb_efg_solvent" in available else None,
     )
     hbond = HBondGroup(
         scalars=get("hbond_scalars"),
@@ -2166,6 +2164,7 @@ def load(path: str | Path) -> Protein:
         delta = DeltaGroup(
             shielding=get("delta_shielding"),
             scalars=get("delta_scalars"),
+            mutant_atom_index=get("mutation_atom_map"),
             apbs=get("delta_apbs"),
             ring_proximity=get("delta_ring_proximity"),
             graph=get("delta_graph"),

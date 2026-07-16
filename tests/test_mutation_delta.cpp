@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -11,6 +12,7 @@
 #include <unistd.h>
 
 #include "MutationDeltaResult.h"
+#include "ConformationResult.h"
 #include "OrcaRunLoader.h"
 #include "OrcaShieldingResult.h"
 #include "ChargeAssignmentResult.h"
@@ -59,6 +61,32 @@ std::vector<double> ReadFloat64Npy(const fs::path& path,
     EXPECT_EQ(bytes.size(), expected_values * sizeof(double));
     if (bytes.size() != expected_values * sizeof(double)) return {};
     std::vector<double> values(expected_values);
+    std::memcpy(values.data(), bytes.data(), bytes.size());
+    return values;
+}
+
+std::vector<std::int32_t> ReadInt32Npy(const fs::path& path,
+                                       size_t expected_values) {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << path;
+    if (!in) return {};
+    char magic[6] = {};
+    char version[2] = {};
+    std::uint16_t header_len = 0;
+    in.read(magic, 6);
+    in.read(version, 2);
+    in.read(reinterpret_cast<char*>(&header_len), sizeof(header_len));
+    EXPECT_EQ(std::string(magic, 6), std::string("\x93NUMPY", 6));
+    EXPECT_EQ(version[0], 1);
+    EXPECT_EQ(version[1], 0);
+    std::string header(header_len, '\0');
+    in.read(header.data(), static_cast<std::streamsize>(header_len));
+    EXPECT_NE(header.find("'descr': '<i4'"), std::string::npos);
+    std::vector<char> bytes{std::istreambuf_iterator<char>(in),
+                            std::istreambuf_iterator<char>()};
+    EXPECT_EQ(bytes.size(), expected_values * sizeof(std::int32_t));
+    if (bytes.size() != expected_values * sizeof(std::int32_t)) return {};
+    std::vector<std::int32_t> values(expected_values);
     std::memcpy(values.data(), bytes.data(), bytes.size());
     return values;
 }
@@ -668,6 +696,137 @@ TEST_F(MutationDeltaTest, DeltaShieldingFinite) {
 }
 
 TEST_F(MutationDeltaTest,
+       EmittedAtomMapJoinsSeparateAlaCalcsetAndReconstructsDeltas) {
+    auto& wt_conf = wt_.protein->Conformation();
+    auto& ala_conf = ala_.protein->Conformation();
+
+    auto delta = MutationDeltaResult::Compute(wt_conf, ala_conf);
+    ASSERT_NE(delta, nullptr);
+    ASSERT_TRUE(wt_conf.AttachResult(std::move(delta)));
+
+    const fs::path output_root = fs::temp_directory_path() /
+        ("mutation_delta_join_" + std::to_string(::getpid()));
+    const fs::path ala_dir = output_root / "ala";
+    ASSERT_FALSE(fs::exists(output_root));
+    ASSERT_TRUE(fs::create_directories(ala_dir));
+
+    // These are the production emission calls used by RunMutant: the WT
+    // calcset at the root and the complete mutant calcset under ala/.
+    ASSERT_GT(ConformationResult::WriteAllFeatures(
+                  wt_conf, output_root.string()),
+              0);
+    ASSERT_GT(ConformationResult::WriteAllFeatures(
+                  ala_conf, ala_dir.string()),
+              0);
+
+    const size_t wt_count = wt_conf.AtomCount();
+    const size_t ala_count = ala_conf.AtomCount();
+    const auto atom_map = ReadInt32Npy(
+        output_root / "mutation_atom_map.npy", wt_count);
+    const auto scalars = ReadFloat64Npy(
+        output_root / "delta_scalars.npy", wt_count * 6);
+
+    const auto wt_total = ReadFloat64Npy(
+        output_root / "orca_total.npy", wt_count * 9);
+    const auto wt_dia = ReadFloat64Npy(
+        output_root / "orca_diamagnetic.npy", wt_count * 9);
+    const auto wt_para = ReadFloat64Npy(
+        output_root / "orca_paramagnetic.npy", wt_count * 9);
+    const auto ala_total = ReadFloat64Npy(
+        ala_dir / "orca_total.npy", ala_count * 9);
+    const auto ala_dia = ReadFloat64Npy(
+        ala_dir / "orca_diamagnetic.npy", ala_count * 9);
+    const auto ala_para = ReadFloat64Npy(
+        ala_dir / "orca_paramagnetic.npy", ala_count * 9);
+
+    const auto delta_total = ReadFloat64Npy(
+        output_root / "delta_shielding.npy", wt_count * 9);
+    const auto delta_dia = ReadFloat64Npy(
+        output_root / "delta_shielding_diamagnetic.npy", wt_count * 9);
+    const auto delta_para = ReadFloat64Npy(
+        output_root / "delta_shielding_paramagnetic.npy", wt_count * 9);
+    const auto mut_dia = ReadFloat64Npy(
+        output_root / "mut_shielding_diamagnetic.npy", wt_count * 9);
+    const auto mut_para = ReadFloat64Npy(
+        output_root / "mut_shielding_paramagnetic.npy", wt_count * 9);
+
+    ASSERT_EQ(atom_map.size(), wt_count);
+    ASSERT_EQ(scalars.size(), wt_count * 6);
+    ASSERT_EQ(wt_total.size(), wt_count * 9);
+    ASSERT_EQ(wt_dia.size(), wt_count * 9);
+    ASSERT_EQ(wt_para.size(), wt_count * 9);
+    ASSERT_EQ(ala_total.size(), ala_count * 9);
+    ASSERT_EQ(ala_dia.size(), ala_count * 9);
+    ASSERT_EQ(ala_para.size(), ala_count * 9);
+    ASSERT_EQ(delta_total.size(), wt_count * 9);
+    ASSERT_EQ(delta_dia.size(), wt_count * 9);
+    ASSERT_EQ(delta_para.size(), wt_count * 9);
+    ASSERT_EQ(mut_dia.size(), wt_count * 9);
+    ASSERT_EQ(mut_para.size(), wt_count * 9);
+
+    size_t matched = 0;
+    size_t unmatched = 0;
+    bool numbering_changed = false;
+    std::set<std::int32_t> used_mutant_rows;
+    for (size_t wi = 0; wi < wt_count; ++wi) {
+        const std::int32_t mi = atom_map[wi];
+        const bool emitted_match = scalars[wi * 6] == 1.0;
+        EXPECT_EQ(mi >= 0, emitted_match) << "WT row " << wi;
+        if (mi < 0) {
+            EXPECT_EQ(mi, -1) << "WT row " << wi;
+            ++unmatched;
+            continue;
+        }
+
+        ++matched;
+        ASSERT_LT(static_cast<size_t>(mi), ala_count) << "WT row " << wi;
+        EXPECT_TRUE(used_mutant_rows.insert(mi).second)
+            << "mutant row " << mi << " joined more than once";
+        numbering_changed = numbering_changed ||
+            static_cast<size_t>(mi) != wi;
+
+        for (size_t component = 0; component < 9; ++component) {
+            const size_t wt_offset = wi * 9 + component;
+            const size_t ala_offset = static_cast<size_t>(mi) * 9 + component;
+
+            // Direct side copies must select the separately emitted mutant
+            // row named by the serialized key.
+            EXPECT_DOUBLE_EQ(mut_dia[wt_offset], ala_dia[ala_offset]);
+            EXPECT_DOUBLE_EQ(mut_para[wt_offset], ala_para[ala_offset]);
+
+            // Reconstruct every delta from the two separately emitted
+            // calcsets. This does not consult the C++ matcher or reimplement
+            // its typed identity rule.
+            EXPECT_NEAR(delta_total[wt_offset],
+                        wt_total[wt_offset] - ala_total[ala_offset], 1e-10);
+            EXPECT_NEAR(delta_dia[wt_offset],
+                        wt_dia[wt_offset] - ala_dia[ala_offset], 1e-10);
+            EXPECT_NEAR(delta_para[wt_offset],
+                        wt_para[wt_offset] - ala_para[ala_offset], 1e-10);
+
+            // ORCA prints total and component matrices independently, so
+            // their analytic sum is pinned at the established render
+            // precision rather than machine epsilon.
+            EXPECT_NEAR(ala_total[ala_offset],
+                        ala_dia[ala_offset] + ala_para[ala_offset], 1e-2);
+            EXPECT_NEAR(delta_total[wt_offset],
+                        delta_dia[wt_offset] + delta_para[wt_offset], 1e-2);
+        }
+    }
+    EXPECT_GT(matched, 400u);
+    EXPECT_GT(unmatched, 0u);
+    EXPECT_TRUE(numbering_changed)
+        << "fixture must exercise a matched atom whose mutant row shifted";
+
+    for (const auto& entry : fs::directory_iterator(ala_dir))
+        EXPECT_TRUE(fs::remove(entry.path()));
+    EXPECT_TRUE(fs::remove(ala_dir));
+    for (const auto& entry : fs::directory_iterator(output_root))
+        EXPECT_TRUE(fs::remove(entry.path()));
+    EXPECT_TRUE(fs::remove(output_root));
+}
+
+TEST_F(MutationDeltaTest,
        ApbsDeltaPayloadUsesCanonicalReactionFieldsAndStructuralZeros) {
     auto& wt_conf = wt_.protein->Conformation();
     auto& ala_conf = ala_.protein->Conformation();
@@ -748,7 +907,8 @@ TEST_F(MutationDeltaTest,
             "mut_shielding_paramagnetic.npy",
             "delta_shielding_diamagnetic.npy",
             "delta_shielding_paramagnetic.npy",
-            "delta_scalars.npy", "delta_graph.npy", "delta_apbs.npy",
+            "mutation_atom_map.npy", "delta_scalars.npy", "delta_graph.npy",
+            "delta_apbs.npy",
             "delta_ring_proximity.npy"}) {
         std::error_code ec;
         fs::remove(out_dir / name, ec);
@@ -941,7 +1101,8 @@ TEST_F(MutationDeltaTest, GraphDeltaAvailable) {
                 "mut_shielding_paramagnetic.npy",
                 "delta_shielding_diamagnetic.npy",
                 "delta_shielding_paramagnetic.npy",
-                "delta_scalars.npy", "delta_graph.npy", "delta_apbs.npy",
+                "mutation_atom_map.npy", "delta_scalars.npy",
+                "delta_graph.npy", "delta_apbs.npy",
                 "delta_ring_proximity.npy"}) {
             std::remove((out_dir / name).string().c_str());
         }

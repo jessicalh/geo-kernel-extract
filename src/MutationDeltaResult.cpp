@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <set>
@@ -737,6 +738,22 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
     WriteShieldingComponent("delta_shielding_paramagnetic.npy",
         &MatchedAtomData::delta_shielding_paramagnetic_spherical);
     written += 6;
+
+    // mutation_atom_map: (N,) -- mutant atom index for each WT atom row;
+    // -1 means unmatched. This is the serialized projection of the typed
+    // correspondence already stored on MatchedAtomData.
+    {
+        std::vector<std::int32_t> data(N, -1);
+        for (size_t i = 0; i < N; ++i) {
+            if (HasMatch(i)) {
+                data[i] = static_cast<std::int32_t>(
+                    matched_atoms_[wt_to_matched_[i]].mut_index);
+            }
+        }
+        NpyWriter::WriteInt32(output_dir + "/mutation_atom_map.npy",
+                              data.data(), N);
+        written++;
+    }
 
     // delta_scalars: (N, 6) — [matched, delta_T0, nearest_ring_dist, delta_charge, delta_mopac_charge, match_dist]
     {

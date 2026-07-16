@@ -242,8 +242,6 @@ void RemoveCoulombFeatureDir(const fs::path& out_dir) {
             "coulomb_scalars.npy",
             "coulomb_aromatic_E_proj.npy",
             "coulomb_aromatic_n_src.npy",
-            "coulomb_E_solvent.npy",
-            "coulomb_efg_solvent.npy",
         }) {
         std::error_code ec;
         fs::remove(out_dir / name, ec);
@@ -1333,11 +1331,12 @@ TEST(CoulombOrcaTest, RunOnProtonatedProtein) {
 
 
 // ============================================================================
-// APBS comparison: the Coulomb solvent surface is an exact read-back alias
-// of the independently computed canonical APBS reaction field.
+// Publication boundary: canonical APBS and vacuum Coulomb remain independently
+// gettable, without republishing APBS in the Coulomb namespace.
 // ============================================================================
 
-TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
+TEST(CoulombApbsPublication,
+     CanonicalApbsAndVacuumCoulombAreEachPublishedOnce) {
     if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated()) || !fs::exists(nmr::test::TestEnvironment::Ff14sbParams()))
         GTEST_SKIP() << "Test data not found";
 
@@ -1354,85 +1353,49 @@ TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
     if (!apbs) GTEST_SKIP() << "APBS failed";
     conf.AttachResult(std::move(apbs));
 
-    // Then Coulomb (will copy the already-defined APBS reaction field)
+    // Then the independent vacuum Coulomb calculation.
     conf.AttachResult(CoulombResult::Compute(conf));
 
-    // A11 frozen-surface forcing: cross the two independent writers and pin
-    // the actual NPY descriptors, shapes, and payload bytes.  An in-memory
-    // equality alone would not catch one alias being emitted from a stale
-    // total-PB field.
+    // Cross both production writers. Canonical APBS and genuine vacuum
+    // Coulomb arrays remain present, while the duplicate Coulomb-named APBS
+    // publications must be absent.
     const fs::path out_dir = fs::temp_directory_path() /
-        ("coulomb_apbs_alias_" + std::to_string(::getpid()));
+        ("coulomb_apbs_publication_" + std::to_string(::getpid()));
     fs::create_directories(out_dir);
     EXPECT_EQ(conf.Result<ApbsFieldResult>().WriteFeatures(
                   conf, out_dir.string()), 8);
     EXPECT_EQ(conf.Result<CoulombResult>().WriteFeatures(
-                  conf, out_dir.string()), 14);
+                  conf, out_dir.string()), 12);
 
     const auto apbs_E = ReadNpy(out_dir / "apbs_E.npy");
-    const auto coulomb_E = ReadNpy(out_dir / "coulomb_E_solvent.npy");
+    const auto coulomb_E = ReadNpy(out_dir / "coulomb_E.npy");
     EXPECT_EQ(apbs_E.descr, "<f8");
     EXPECT_EQ(coulomb_E.descr, apbs_E.descr);
     EXPECT_EQ(apbs_E.shape,
               (std::vector<size_t>{conf.AtomCount(), 3u}));
     EXPECT_EQ(coulomb_E.shape, apbs_E.shape);
-    EXPECT_EQ(coulomb_E.bytes, apbs_E.bytes);
+    EXPECT_NE(coulomb_E.bytes, apbs_E.bytes)
+        << "canonical APBS reaction E and vacuum Coulomb E are distinct results";
 
     const auto apbs_efg = ReadNpy(out_dir / "apbs_efg.npy");
-    const auto coulomb_efg =
-        ReadNpy(out_dir / "coulomb_efg_solvent.npy");
+    const auto coulomb_efg = ReadNpy(out_dir / "coulomb_efg_t2.npy");
     EXPECT_EQ(apbs_efg.descr, "<f8");
     EXPECT_EQ(coulomb_efg.descr, apbs_efg.descr);
     EXPECT_EQ(apbs_efg.shape,
               (std::vector<size_t>{conf.AtomCount(), 5u}));
     EXPECT_EQ(coulomb_efg.shape, apbs_efg.shape);
-    EXPECT_EQ(coulomb_efg.bytes, apbs_efg.bytes);
+    EXPECT_NE(coulomb_efg.bytes, apbs_efg.bytes)
+        << "canonical APBS reaction EFG and vacuum Coulomb EFG are distinct results";
 
-    int has_solvent = 0;
-    double mean_ratio = 0;
-    int count = 0;
-    for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        const auto& ca = conf.AtomAt(ai);
-        for (int d = 0; d < 3; ++d) {
-            EXPECT_DOUBLE_EQ(ca.coulomb_E_solvent(d), ca.apbs_efield(d));
-        }
-        for (int r_i = 0; r_i < 3; ++r_i) {
-            for (int c_i = 0; c_i < 3; ++c_i) {
-                EXPECT_DOUBLE_EQ(ca.coulomb_EFG_solvent(r_i, c_i),
-                                 ca.apbs_efg(r_i, c_i));
-            }
-        }
-        EXPECT_DOUBLE_EQ(ca.coulomb_EFG_solvent_spherical.T0,
-                         ca.apbs_efg_spherical.T0);
-        for (int component = 0; component < 3; ++component) {
-            EXPECT_DOUBLE_EQ(
-                ca.coulomb_EFG_solvent_spherical.T1[component],
-                ca.apbs_efg_spherical.T1[component]);
-        }
-        for (int component = 0; component < 5; ++component) {
-            EXPECT_DOUBLE_EQ(
-                ca.coulomb_EFG_solvent_spherical.T2[component],
-                ca.apbs_efg_spherical.T2[component]);
-        }
-        double solv_mag = ca.coulomb_E_solvent.norm();
-        double vac_mag = ca.coulomb_E_magnitude;
-        if (solv_mag > 1e-10) has_solvent++;
-        if (vac_mag > 1e-6) {
-            mean_ratio += solv_mag / vac_mag;
-            count++;
-        }
-    }
-    if (count > 0) mean_ratio /= count;
-
-    std::cout << "  APBS vs vacuum Coulomb:\n"
-              << "    Atoms with non-zero solvent E: " << has_solvent
-              << " / " << conf.AtomCount() << "\n"
-              << "    Mean |E_solvent|/|E_vacuum| = " << mean_ratio << "\n";
-
-    // Solvation should modify the E-field (screening), so solvent
-    // contribution should be non-zero for most atoms
-    EXPECT_GT(has_solvent, static_cast<int>(conf.AtomCount() / 2))
-        << "Most atoms should have non-zero solvent contribution";
+    EXPECT_FALSE(fs::exists(out_dir / "coulomb_E_solvent.npy"));
+    EXPECT_FALSE(fs::exists(out_dir / "coulomb_efg_solvent.npy"));
+    ASSERT_EQ(nmr::test::directional::RunNumpyAllowPickleFalse(
+                  NMR_TEST_PYTHON_EXECUTABLE,
+                  NMR_NPY_ALLOW_PICKLE_FALSE_SCRIPT,
+                  {out_dir / "apbs_E.npy", out_dir / "apbs_efg.npy",
+                   out_dir / "coulomb_E.npy",
+                   out_dir / "coulomb_efg_t2.npy"}),
+              0);
     for (const char* name : {
             "apbs_E.npy", "apbs_efg.npy", "apbs_phi.npy",
             "apbs_E_clamp_mask.npy", "apbs_E_clamp_scale.npy",

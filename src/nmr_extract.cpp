@@ -57,7 +57,7 @@ RunOptions MakeBaseOpts(const Session& session, bool mopac) {
     RunOptions opts;
     opts.skip_mopac           = !mopac;
     opts.skip_apbs            = false;  // APBS is the canonical electrostatics — always on.
-    opts.skip_coulomb         = true;   // Single-pose base omits optional Coulomb aliases.
+    opts.skip_coulomb         = true;   // Single-pose base omits optional vacuum Coulomb.
     opts.aimnet2_model        = session.Aimnet2Model();
     opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
     return opts;

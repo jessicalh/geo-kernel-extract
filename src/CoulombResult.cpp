@@ -2,7 +2,6 @@
 #include "Protein.h"
 #include "ChargeAssignmentResult.h"
 #include "SpatialIndexResult.h"
-#include "ApbsFieldResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
@@ -307,14 +306,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             : std::numeric_limits<double>::quiet_NaN();
         ca.aromatic_n_sidechain_atoms = n_sidechain_aromatic_sources;
 
-        // APBS already stores total-PB minus homogeneous-vacuum reaction
-        // fields.  These are aliases, not another subtraction.
-        if (conf.HasResult<ApbsFieldResult>()) {
-            ca.coulomb_E_solvent = ca.apbs_efield;
-            ca.coulomb_EFG_solvent = ca.apbs_efg;
-            ca.coulomb_EFG_solvent_spherical = ca.apbs_efg_spherical;
-        }
-
         // T2 only; Buckingham T0 not included here (see CoulombResult.h).
         ca.coulomb_shielding_contribution = SphericalTensor::Decompose(EFG_total);
     }
@@ -399,10 +390,6 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
     std::vector<double> scalars(N * 4);
     std::vector<double> aromatic_E_proj(N);
     std::vector<int32_t> aromatic_n_src(N);
-    const bool has_apbs = conf.HasResult<ApbsFieldResult>();
-    std::vector<double> solvent_E(has_apbs ? N * 3 : 0);
-    std::vector<double> solvent_efg(has_apbs ? N * 5 : 0);
-
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
         ca.coulomb_shielding_contribution.PackFull9(&efg_total[i*9]);
@@ -435,13 +422,6 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
         aromatic_E_proj[i] = ca.aromatic_E_bond_proj;
         aromatic_n_src[i] = static_cast<int32_t>(ca.aromatic_n_sidechain_atoms);
 
-        if (has_apbs) {
-            solvent_E[i*3+0] = ca.coulomb_E_solvent.x();
-            solvent_E[i*3+1] = ca.coulomb_E_solvent.y();
-            solvent_E[i*3+2] = ca.coulomb_E_solvent.z();
-            ca.coulomb_EFG_solvent_spherical.PackT2(
-                &solvent_efg[i*5]);
-        }
     }
 
     record_write(
@@ -493,19 +473,8 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
         NpyWriter::WriteInt32(output_dir + "/coulomb_aromatic_n_src.npy",
                               aromatic_n_src.data(), N),
         "coulomb_aromatic_n_src.npy");
-    if (has_apbs) {
-        record_write(
-            NpyWriter::WriteFloat64(output_dir + "/coulomb_E_solvent.npy",
-                                    solvent_E.data(), N, 3),
-            "coulomb_E_solvent.npy");
-        record_write(
-            NpyWriter::WriteFloat64(output_dir + "/coulomb_efg_solvent.npy",
-                                    solvent_efg.data(), N, 5),
-            "coulomb_efg_solvent.npy");
-    }
-    // The current codebase has 12 pre-existing Coulomb files (including
-    // coulomb_efg_t2.npy) and two optional APBS aliases. Return only writes
-    // that actually reached disk; every failure is logged above.
+    // Return only writes that actually reached disk; every failure is logged
+    // above.
     return files_written;
 }
 

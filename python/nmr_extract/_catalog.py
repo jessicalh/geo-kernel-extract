@@ -515,9 +515,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("sidechain_co_scalar_audit", "sidechain_carbonyl_anisotropy", np.ndarray, 4, True, "Per-atom audit [fixed_T2_norm, bo_T2_norm, accepted_sidechain_CO_source_count, nearest_sidechain_CO_midpoint_distance_A]",
               native_axis="atom", units="mixed", mechanism="bond_anisotropy"),
 
-    # ── Coulomb (CoulombResult.cpp) — emitted alongside canonical APBS
-    # in production. It supplies the vacuum field plus direct aliases of the
-    # APBS reaction field. ──
+    # ── Coulomb (CoulombResult.cpp) — vacuum force-field-charge field. ──
     ArraySpec("coulomb_efg",            "coulomb", ShieldingTensor, 9,   False, "Coulomb bare total EFG full 9-pack; T0/T1 are structural zeros (bitwise-symmetric source, explicit traceless projection)",
               irreps=_SHIELD_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_t2",         "coulomb", EFGTensor,       5,   False, "Coulomb bare total EFG T2-only companion copied from coulomb_efg columns 4:9",
@@ -541,11 +539,6 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("coulomb_aromatic_E_proj", "coulomb", np.ndarray,     None, False, "Coulomb aromatic E-field parent-to-H projection; NaN for non-H or parentless atoms",
               irreps="0e", units="V/A", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_aromatic_n_src",  "coulomb", np.ndarray,     None, False, "Count of sidechain aromatic source atoms contributing to the Coulomb aromatic field (int32)", units="count", mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_E_solvent",       "coulomb", VectorField,     3,   False, "APBS reaction-field alias: canonical APBS E = total PB minus homogeneous-vacuum reference",
-              irreps="1o", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_efg_solvent",     "coulomb", EFGTensor,       5,   False, "APBS reaction-field alias: canonical APBS EFG T2 = total PB minus homogeneous-vacuum reference",
-              units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg", **_T2_TENSOR_METADATA),
-
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
     ArraySpec("hbond_scalars",    "hbond", HBondScalars,           4,    True,  "H-bond summary [nearest accepted H-to-target distance_A, its inverse-cube_A^-3, count of accepted source evaluations within configured hbond_counting_radius (default 3.5 A), sum over every accepted evaluation of (3cos^2(theta)-1)/r^3_A^-3]; legacy zero distance/inverse-cube means no accepted source when hbond_flags col0 is zero",
               units="mixed_A_A^-3_count_A^-3", mechanism="hbond_kernel"),
@@ -949,6 +942,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="mutation_delta"),
     ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Dense WT-atom rows [matched, WT-mutant shielding T0, nearest removed-ring distance, configured-ChargeSource charge delta, legacy F15.6 MOPAC charge delta, typed WT-to-mutant match distance]; matched rows with no removed ring use 99 Å; MOPAC-delta zero is ambiguous between unavailable MOPAC and a true zero",
               native_axis="atom", units="mixed_mask_ppm_A_e_e_A", mechanism="mutation_delta"),
+    ArraySpec("mutation_atom_map",     "delta", np.ndarray,             None, False, "Dense WT-atom rows containing the corresponding mutant atom index in the separately emitted ala/ calcset; -1 means unmatched",
+              native_axis="atom", irreps="0e", units="index", mechanism="mutation_delta"),
     ArraySpec("delta_graph",           "delta", np.ndarray,             5,    False, "Graph deltas [matched, has_graph_delta, delta_graph_dist_ring, delta_bfs_decay, delta_is_conjugated]",
               native_axis="atom", mechanism="mutation_delta"),
     ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "Optional APBS delta_E(3) + legacy full-9 EFG envelope; only columns 7:12 are physical EFG T2, and the whole file is absent when the mutation calculation has no paired APBS delta",
@@ -1404,20 +1399,6 @@ _set_contract(
         "with provenance only in GeometryChoice"
     ), irreps="1o", parity="odd", tensor_rank=1)
 _set_contract(
-    ("coulomb_E_solvent",),
-    coordinate_frame=_CARTESIAN_FRAME,
-    transformation=(
-        "continuum polar_vector APBS alias: v'=R v; translation invariant. "
-        "The live axis-aligned finite-difference APBS source has no exact "
-        "O(3) law; transformed production reruns use the recorded 1.8e-2 "
-        "V/A absolute + 5e-2 relative finite-grid envelope"
-    ),
-    validity=(
-        "optional clamped APBS reaction-field alias; absent without APBS; "
-        "consult apbs_nonfinite_sanitizer_mask.npy plus "
-        "apbs_E_clamp_mask.npy/apbs_E_clamp_scale.npy when present"
-    ))
-_set_contract(
     ("mopac_coulomb_E", "mopac_coulomb_E_backbone",
      "mopac_coulomb_E_sidechain", "mopac_coulomb_E_aromatic"),
     coordinate_frame=_CARTESIAN_FRAME, transformation=(
@@ -1835,7 +1816,7 @@ _set_contract(
 
 _EFG_T2 = (
     "coulomb_efg_t2", "coulomb_efg_backbone", "coulomb_efg_sidechain",
-    "coulomb_efg_aromatic", "coulomb_efg_solvent",
+    "coulomb_efg_aromatic",
     "mopac_coulomb_efg_backbone", "mopac_coulomb_efg_sidechain",
     "mopac_coulomb_efg_aromatic", "eeq_coulomb_efg_backbone",
     "eeq_coulomb_efg_sidechain", "eeq_coulomb_efg_aromatic",
@@ -1877,21 +1858,6 @@ CATALOG["coulomb_efg"] = replace(
     CATALOG["coulomb_efg"],
     structural_zero_components="T0,T1_x,T1_y,T1_z",
     irreps=_SHIELD_IRREPS,
-)
-CATALOG["coulomb_efg_solvent"] = replace(
-    CATALOG["coulomb_efg_solvent"],
-    transformation=(
-        "continuum even_rank2_native_T2 APBS alias: reconstruct Cartesian T, "
-        "apply T'=R T R^T, then decompose in project-native T2 basis. The "
-        "live finite-difference APBS source has no exact O(3) law; transformed "
-        "production reruns use the recorded 4e-2 V/A^2 absolute + 5e-2 "
-        "relative finite-grid envelope"
-    ),
-    validity=(
-        "symmetric-traceless APBS reaction-field alias (T0/T1 structural "
-        "zeros); absent without APBS; sanitizer provenance is "
-        "apbs_nonfinite_sanitizer_mask.npy bit1"
-    ),
 )
 for _stem in (
     "mopac_coulomb_efg_backbone", "mopac_coulomb_efg_sidechain",
@@ -2432,6 +2398,17 @@ _set_contract(
         "are legacy all-zero compatibility rows; on a matched row column4 "
         "MOPAC charge delta is unmasked zero both when MOPAC is unavailable "
         "and when the true compatibility-charge delta is zero"
+    ),
+    irreps="0e", parity="even", tensor_rank=0)
+_set_contract(
+    ("mutation_atom_map",), coordinate_frame="shared_wt_mut_intrinsic",
+    transformation=(
+        "exact O(3)- and translation-invariant typed WT-to-mutant atom "
+        "identity"
+    ),
+    validity=(
+        "-1 means unmatched; every nonnegative value indexes the atom axis "
+        "of the separately emitted ala/ calcset"
     ),
     irreps="0e", parity="even", tensor_rank=0)
 _set_contract(

@@ -4,10 +4,7 @@
 //
 // For each atom, computes the electric field E and electric field gradient
 // tensor V from partial charges within the configured cutoff. Decomposes by source:
-// backbone, sidechain, aromatic. When ApbsFieldResult is present, the
-// solvent fields are direct aliases of its canonical APBS reaction field
-// (total PB minus the homogeneous-vacuum reference). They are not subjected
-// to a second subtraction here.
+// backbone, sidechain, aromatic.
 //
 // The EFG tensor V_ab = sum_j q_j * K_ab(r_ij) uses the same dipolar
 // kernel as McConnell:

@@ -590,13 +590,10 @@ TEST(WriteFeatures, Piece05WritersReturnHonestCountsAndLogNpyFailures) {
     AIMNet2Result aimnet2;
     ApbsFieldResult apbs;
     CoulombResult coulomb;
-    conf.ForceAttachResultForTesting(std::make_unique<ApbsFieldResult>());
 
     ::testing::internal::CaptureStderr();
     EXPECT_EQ(aimnet2.WriteFeatures(conf, output_dir.string()), 0);
     EXPECT_EQ(apbs.WriteFeatures(conf, output_dir.string()), 0);
-    // The forced APBS marker takes the 14-output path and therefore also
-    // forces both new Coulomb solvent-alias failures.
     EXPECT_EQ(coulomb.WriteFeatures(conf, output_dir.string()), 0);
     const std::string errors = ::testing::internal::GetCapturedStderr();
 
@@ -606,8 +603,6 @@ TEST(WriteFeatures, Piece05WritersReturnHonestCountsAndLogNpyFailures) {
               std::string::npos);
     EXPECT_NE(errors.find("CoulombResult::WriteFeatures"),
               std::string::npos);
-    EXPECT_NE(errors.find("coulomb_E_solvent.npy"), std::string::npos);
-    EXPECT_NE(errors.find("coulomb_efg_solvent.npy"), std::string::npos);
     EXPECT_FALSE(fs::exists(missing_parent));
 }
 
