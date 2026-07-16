@@ -1768,32 +1768,38 @@ def load(path: str | Path) -> Protein:
     path = Path(path)
     protein_id = path.name
     frame_suffix = path.name[6:] if path.name.startswith("frame_") else ""
-    invariant_path = (
-        path.parent
-        if (
-            len(frame_suffix) >= 6
-            and frame_suffix.isdigit()
-            and not (path / "residues.npy").is_file()
-            and (path.parent / "residues.npy").is_file()
-        )
-        else path
+    is_frame_path = len(frame_suffix) >= 6 and frame_suffix.isdigit()
+    invariant_path = path.parent if is_frame_path else path
+    invariant_stems = (
+        "atoms_category_info",
+        "residues",
+        "bonds",
+        "rings",
+        "ring_membership",
     )
+
+    if is_frame_path:
+        for stem in invariant_stems:
+            required_path = invariant_path / f"{stem}.npy"
+            if not required_path.is_file():
+                raise FileNotFoundError(
+                    "Required trajectory-frame topology file missing: "
+                    f"{required_path.resolve()}"
+                )
+        required_manifest = invariant_path / "extraction_manifest.json"
+        if not required_manifest.is_file():
+            raise FileNotFoundError(
+                "Required trajectory-frame topology file missing: "
+                f"{required_manifest.resolve()}"
+            )
 
     # Load all NPY files
     available: dict[str, np.ndarray] = {}
     for npy in path.glob("*.npy"):
         available[npy.stem] = np.load(npy)
-    if invariant_path != path:
-        for stem in (
-            "atoms_category_info",
-            "residues",
-            "bonds",
-            "rings",
-            "ring_membership",
-        ):
-            npy = invariant_path / f"{stem}.npy"
-            if npy.is_file():
-                available[stem] = np.load(npy)
+    if is_frame_path:
+        for stem in invariant_stems:
+            available[stem] = np.load(invariant_path / f"{stem}.npy")
 
     # Warn on unregistered (don't error — forward-compatible)
     unregistered = set(available.keys()) - set(CATALOG.keys())

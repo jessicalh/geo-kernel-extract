@@ -756,27 +756,61 @@ def test_trajectory_frame_loads_parent_invariants_and_full_manifest(tmp_path):
     assert protein.topology.manifest.protein_id == "parent_full_manifest"
 
 
-def test_self_contained_numeric_frame_directory_remains_flat(tmp_path):
-    flat_dir = tmp_path / "frame_000123"
+@pytest.mark.parametrize(
+    "missing_stem",
+    (
+        "atoms_category_info",
+        "residues",
+        "bonds",
+        "rings",
+        "ring_membership",
+    ),
+)
+def test_trajectory_frame_missing_parent_topology_names_exact_path(
+    tmp_path, missing_stem
+):
+    npys_dir = tmp_path / "npys"
+    frame_dir = npys_dir / "frame_000123"
+    write_required_sdk_npys(frame_dir, n_atoms=4, n_residues=1)
+    write_minimal_topology_sidecar(npys_dir, n_atoms=4, n_residues=1)
+    np.save(
+        npys_dir / "atoms_category_info.npy",
+        np.zeros(4, dtype=[("atom_index", "<i4")]),
+    )
+    missing_path = npys_dir / f"{missing_stem}.npy"
+    missing_path.unlink()
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        load(frame_dir)
+
+    assert str(missing_path.resolve()) in str(exc_info.value)
+
+
+def test_numeric_frame_directory_uses_parent_layout_by_convention(tmp_path):
+    frame_dir = tmp_path / "frame_000123"
     write_minimal_topology_sidecar(
         tmp_path,
         n_atoms=4,
         n_residues=1,
-        protein_id="parent_manifest_must_not_replace_child",
+        protein_id="parent_manifest",
     )
-    write_required_sdk_npys(flat_dir, n_atoms=4, n_residues=1)
+    np.save(
+        tmp_path / "atoms_category_info.npy",
+        np.zeros(4, dtype=[("atom_index", "<i4")]),
+    )
+    write_required_sdk_npys(frame_dir, n_atoms=4, n_residues=1)
     write_minimal_topology_sidecar(
-        flat_dir,
+        frame_dir,
         n_atoms=4,
         n_residues=1,
-        protein_id="self_contained_manifest",
+        protein_id="child_manifest_must_not_replace_parent",
     )
 
-    protein = load(flat_dir)
+    protein = load(frame_dir)
 
     assert protein.n_atoms == 4
     assert protein.topology.residues.n_residues == 1
-    assert protein.topology.manifest.protein_id == "self_contained_manifest"
+    assert protein.topology.manifest.protein_id == "parent_manifest"
 
 
 class TestTopologyLoad:
