@@ -92,6 +92,16 @@ RETIRED_NPY_STEMS = {
     "pq_per_type_T2",
     "pq_shielding",
     "ringchi_shielding",
+    # McConnell/Coulomb aggregate + scalar arrays retired in the same
+    # forward-build restructuring (7bccecf "Three-kernel forward-build
+    # surgery"): the WriteFloat64 emit calls for these were deleted and the
+    # data superseded by the per-mechanism fixed/BO channels (mc_<cat>_<chan>)
+    # and coulomb_efg. A live extraction emits none of them. Legacy geo-only
+    # fixtures still carry the files; siblings of disp/hbond/pq/ringchi above.
+    "coulomb_shielding",
+    "mc_category_T2",
+    "mc_scalars",
+    "mc_shielding",
 }
 
 
