@@ -19,6 +19,7 @@ import pytest
 from nmr_extract import (
     CATALOG,
     PositionField,
+    ShieldingTensor,
     Residues,
     Bonds,
     Rings,
@@ -203,9 +204,8 @@ class TestCatalogMetadata:
             "cb_residual_vector", "delta_apbs", "delta_ring_proximity",
             "dssp_backbone", "dssp_chi", "dssp_ppii",
             "gromacs_energy", "hbond_pairs_geometry", "larsen_corner_imputed",
-            "larsen_hbond_1pHB_shielding", "larsen_hbond_1pHaB_shielding", "larsen_hbond_2pHB_shielding",
-            "larsen_hbond_2pHaB_shielding", "larsen_hbond_diagnostic_CB_shielding", "larsen_hbond_pairs",
-            "larsen_hbond_pairs_geometry", "larsen_hbond_pairs_isotropic", "larsen_hbond_shielding",
+            "larsen_hbond_pairs", "larsen_hbond_pairs_geometry",
+            "larsen_hbond_pairs_isotropic",
             "larsen_imputed_pair_count", "larsen_sidechain_donor_candidates", "mopac_atom_ao_density",
             "mopac_bond_ao_density", "mopac_bond_ao_density_directed", "mopac_global",
             "mopac_lmo_occupied_coefficients", "mopac_lmo_occupied_coefficient_storage_native", "mopac_lmo_virtual_coefficients",
@@ -546,14 +546,15 @@ class TestCatalogMetadata:
         "larsen_hbond_2pHaB_shielding",
         "larsen_hbond_diagnostic_CB_shielding",
     ])
-    def test_chiral_source_proper_only_tensors_do_not_claim_o3_irreps(
+    def test_procs15_hbond_tensors_keep_type_and_proper_rotation_caveat(
             self, stem):
         spec = CATALOG[stem]
         assert "under proper rotations" in spec.transformation
         assert "no improper-transform contract" in spec.transformation
-        assert spec.parity == "mixed"
-        assert not spec.irreps
-        assert not spec.e3nn_export
+        assert spec.wrapper is ShieldingTensor
+        assert spec.parity == "even"
+        assert spec.irreps == CATALOG["bs_shielding"].irreps
+        assert spec.e3nn_export == CATALOG["bs_shielding"].e3nn_export
 
     def test_ideal_l_cb_outputs_have_only_a_proper_rotation_contract(self):
         deviation = CATALOG["cb_deviation"]

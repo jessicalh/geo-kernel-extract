@@ -16,6 +16,7 @@ import pytest
 from nmr_extract import (
     CATALOG,
     LarsenHBondGroup,
+    ShieldingTensor,
     load,
 )
 
@@ -150,7 +151,7 @@ class TestLarsenHBondCatalog:
                     "must be optional"
                 )
 
-    def test_chiral_outputs_do_not_claim_o3_wrappers(self):
+    def test_shielding_outputs_keep_their_tensor_contract(self):
         for stem in (
             "larsen_hbond_shielding",
             "larsen_hbond_1pHB_shielding",
@@ -160,10 +161,12 @@ class TestLarsenHBondCatalog:
             "larsen_hbond_diagnostic_CB_shielding",
         ):
             spec = CATALOG[stem]
-            assert spec.wrapper is np.ndarray
-            assert spec.parity == "mixed"
-            assert not spec.irreps
-            assert not spec.e3nn_export
+            assert spec.wrapper is ShieldingTensor
+            assert spec.parity == "even"
+            assert spec.irreps == CATALOG["bs_shielding"].irreps
+            assert spec.e3nn_export == CATALOG["bs_shielding"].e3nn_export
+            assert "under proper rotations" in spec.transformation
+            assert "no improper-transform contract" in spec.transformation
 
 
 class TestLarsenHBondLoad:
@@ -186,11 +189,40 @@ class TestLarsenHBondLoad:
         lh = p.larsen_hbond
         assert lh.shielding is not None
         data = lh.shielding
-        assert isinstance(data, np.ndarray)
-        assert data.shape == (N_ATOMS, 9)
+        assert isinstance(data, ShieldingTensor)
+        assert data.data.shape == (N_ATOMS, 9)
         # First 8 atoms = 1.0 (received contributions), rest NaN.
-        assert np.all(data[:8] == 1.0)
-        assert np.all(np.isnan(data[8:]))
+        assert np.all(data.data[:8] == 1.0)
+        assert np.all(np.isnan(data.data[8:]))
+
+    def test_irrep_filtered_consumer_receives_all_six_tensors(
+            self, fake_extraction):
+        expected_fields = {
+            "larsen_hbond_shielding": "shielding",
+            "larsen_hbond_1pHB_shielding": "pHB_1",
+            "larsen_hbond_2pHB_shielding": "pHB_2",
+            "larsen_hbond_1pHaB_shielding": "pHaB_1",
+            "larsen_hbond_2pHaB_shielding": "pHaB_2",
+            "larsen_hbond_diagnostic_CB_shielding": "diagnostic_CB",
+        }
+        shielding_irreps = CATALOG["bs_shielding"].irreps
+        selected = {
+            stem for stem, spec in CATALOG.items()
+            if spec.group == "larsen_hbond"
+            and spec.irreps == shielding_irreps
+        }
+        assert selected == set(expected_fields)
+
+        group = load(fake_extraction).larsen_hbond
+        received = {
+            stem: getattr(group, field_name)
+            for stem, field_name in expected_fields.items()
+            if stem in selected
+        }
+        assert set(received) == selected
+        for datum in received.values():
+            assert isinstance(datum, ShieldingTensor)
+            assert datum.data.shape == (N_ATOMS, 9)
 
     def test_per_class_breakdown(self, fake_extraction):
         p = load(fake_extraction)
@@ -198,9 +230,9 @@ class TestLarsenHBondLoad:
         assert lh.pHB_1 is not None
         assert lh.pHB_2 is not None
         # 1pHB + 2pHB should sum to total in the contributing region.
-        a = lh.pHB_1[:8]
-        b = lh.pHB_2[:8]
-        total = lh.shielding[:8]
+        a = lh.pHB_1.data[:8]
+        b = lh.pHB_2.data[:8]
+        total = lh.shielding.data[:8]
         np.testing.assert_allclose(a + b, total, rtol=1e-12)
 
     def test_water_term_isolated_to_solvent_exposed(self, fake_extraction):

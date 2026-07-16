@@ -1404,16 +1404,16 @@ class LarsenHBondPairs:
 
 @dataclass(frozen=True)
 class LarsenHBondGroup:
-    """Larsen 2015 ProCS15 H-bond term shielding contributions.
+    """ProCS15 H-bond shielding contributions (Larsen et al. 2015).
 
-    Per Larsen 2015 Eq 5, each H-bond pair contributes four terms (1° +
-    2° on each of HB / HαB) plus a water-term offset Δσ_w on amide H
+    Per Eq. 5 of the ProCS15 paper, each H-bond pair contributes four terms
+    (1° + 2° on each of HB / HαB) plus a water-term offset Δσ_w on amide H
     atoms with no H-bond partner. Tensors are ppm in the protein lab
     frame (rotated from the canonical donor frame at calculator time)
-    and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols).  The signed-rho
-    grid lookup is chiral and has a proper-rotation contract only, so these
-    packed tensors are deliberately exposed as raw ndarrays rather than O(3)
-    tensor wrappers.
+    and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols). They are
+    exposed as ``ShieldingTensor`` values with explicit project-basis-to-e3nn
+    conversion. The catalog's transformation field separately records that
+    the signed-rho grid lookup has a proper-rotation contract only.
 
     Methods accumulate side-by-side with the scalar-geometry ``HBondGroup``
     — both calculators cover overlapping physics (amide-H / backbone-O
@@ -1429,13 +1429,13 @@ class LarsenHBondGroup:
     Per-atom convention:
 
     - ``shielding`` is the sum over all four contribution classes that
-      apply at this atom per Larsen 2015 Table 2 dispatch (encoded as
+      apply at this atom per ProCS15 Table 2 dispatch (encoded as
       ``LarsenContribDispatch::Applies`` in the C++ side). Cβ does NOT
       contribute (Table 2 says so) — its zero column here is the
       physics statement, not an absence.
     - The per-class columns hold each contribution separately for
       downstream ML stratification.
-    - ``diagnostic_CB`` should be near-zero in production (Larsen Table
+    - ``diagnostic_CB`` should be near-zero in production (ProCS15 Table
       2 says Cβ gets no HB term; non-zero would signal a pipeline bug
       in the parser/loader/rotation path).
     - ``water_term`` is 2.07 ppm isotropic on amide Hs whose evaluable
@@ -1446,12 +1446,12 @@ class LarsenHBondGroup:
       any of the four Table 2 classes — the diagnostic CB does NOT
       increment it.
     """
-    shielding: Optional[np.ndarray] = None
-    pHB_1: Optional[np.ndarray] = None
-    pHB_2: Optional[np.ndarray] = None
-    pHaB_1: Optional[np.ndarray] = None
-    pHaB_2: Optional[np.ndarray] = None
-    diagnostic_CB: Optional[np.ndarray] = None
+    shielding: Optional[ShieldingTensor] = None
+    pHB_1: Optional[ShieldingTensor] = None
+    pHB_2: Optional[ShieldingTensor] = None
+    pHaB_1: Optional[ShieldingTensor] = None
+    pHaB_2: Optional[ShieldingTensor] = None
+    diagnostic_CB: Optional[ShieldingTensor] = None
     water_term: Optional[np.ndarray] = None
     count: Optional[np.ndarray] = None
     corner_imputed: Optional[np.ndarray] = None
