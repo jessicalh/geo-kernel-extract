@@ -176,10 +176,10 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "scalar n^T Qhat n/r^3 for each traceless unit source shape. "
         "T1 is the even antisymmetric pseudovector from non-commuting D "
         "and Qhat. T2 is the symmetric-traceless branch in the same "
-        "SphericalTensor convention. Aromatic McConnell is zeroed "
-        "unconditionally because BS/HM always compute aromatic "
-        "ring-current contributions; missing or below-floor bond order "
-        "zeros only this BO channel, not the fixed channel."));
+        "SphericalTensor convention. Aromatic bond responses accumulate "
+        "independently of BS/HM ring-current contributions; missing or "
+        "below-floor bond order zeros only this BO channel, not the fixed "
+        "channel."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- MopacMcConnellResult attaches sparsely per the "
         "Mopac cadence (OperationRunner.cpp:185, TimedAttach not "

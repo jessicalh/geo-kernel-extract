@@ -395,7 +395,7 @@ def check_directional_covariance(original_dir: Path, transformed_dir: Path) -> N
         "mc_sidechain_co_fixed", "mc_sidechain_co_bo",
         "mc_sidechain_other_fixed", "mc_sidechain_other_bo",
         "mc_disulfide_fixed", "mc_disulfide_bo",
-        "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
+        "mc_aromatic_fixed", "mc_aromatic_bo",
         "mc_backbone_xh_fixed", "mc_backbone_xh_bo",
         "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo",
         "mc_s_h_fixed", "mc_s_h_bo",

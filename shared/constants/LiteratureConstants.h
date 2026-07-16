@@ -209,12 +209,17 @@ inline constexpr LiteratureConstant kLarsenShieldingTensors{
     "Larsen 2015 ProCS15 table/grid producer emits ppm tensors"};
 
 inline constexpr std::array<LiteratureConstant, 9> kRingIntensityByType{{
-    {"ring.intensity.PheBenzene_correction", -12.0, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TyrPhenol_correction", -11.28, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TrpBenzene_correction", -12.48, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TrpPyrrole_correction", -6.72, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TrpPerimeter_correction", -19.2, "nA/T", LiteratureStatus::GoodEnough, "indole perimeter compound current"},
-    {"ring.intensity.HisImidazole_correction", -5.16, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
+    // Classical intensity factors are Giessner-Prettre & Pullman (1969, 1987), as tabulated in
+    // Case 1995 (J. Biomol. NMR 6:341) Table 3, "Previous" column, footnote b (which we hold). Factor x 12 nA/T.
+    {"ring.intensity.PheBenzene_correction", -12.0, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre & Pullman 1969,1987 factor 1.00 (Case 1995 Table 3 Previous) x 12 nA/T"},
+    {"ring.intensity.TyrPhenol_correction", -11.28, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre & Pullman 1969,1987 factor 0.94 (Case 1995 Table 3 Previous) x 12 nA/T"},
+    {"ring.intensity.TrpBenzene_correction", -12.48, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre & Pullman 1969,1987 Trp-6 factor 1.04 (Case 1995 Table 3 Previous) x 12 nA/T"},
+    {"ring.intensity.TrpPyrrole_correction", -6.72, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre & Pullman 1969,1987 Trp-5 factor 0.56 (Case 1995 Table 3 Previous) x 12 nA/T"},
+    {"ring.intensity.TrpPerimeter_correction", -19.2, "nA/T", LiteratureStatus::GoodEnough, "indole perimeter = sum of Trp-5 + Trp-6 factors (0.56+1.04) x 12 nA/T; ours, not from any source"},
+    // ⚠ DISCREPANCY: our His factor is 5.16/12 = 0.43, but Case 1995 Table 3 "Previous"
+    // (Giessner-Prettre & Pullman) reports His = 0.53 (=6.36 nA/T). Provenance of the 0.43 is
+    // unresolved; NOT from Case. Pre-existing.
+    {"ring.intensity.HisImidazole_correction", -5.16, "nA/T", LiteratureStatus::GoodEnough, "His imidazole factor 0.43 x 12 nA/T; UNRESOLVED - differs from Case 1995 / Giessner-Prettre His=0.53"},
     {"ring.intensity.HidImidazole_correction", -5.16, "nA/T", LiteratureStatus::GoodEnough, "histidine tautomer reuse of imidazole current"},
     {"ring.intensity.HieImidazole_correction", -5.16, "nA/T", LiteratureStatus::GoodEnough, "histidine tautomer reuse of imidazole current"},
     {"ring.intensity.ProPyrrolidine_correction", 0.0, "nA/T", LiteratureStatus::Cited, "saturated ring, no aromatic pi current"},

@@ -124,22 +124,28 @@ DC-MX : MopacExternalDirectionalFreeze.RealExecutableRerunO3NpyH5AndNonClosedAoD
         Seed 0x4D4F5041434F3355, proper+improper+translation; the configured
         PM7+MOZYME executable is rerun on the checked-in protonated 1UBQ
         TYR59-ASN60-ILE61 window (54 atoms, typed ASN SidechainCO).  All ten
-        mc_*_bo.npy names, sidechain_co_bo_T2.npy, mopac_global.npy, both AO
-        population arrays and /trajectory/mopac_mc_shielding_time_series/xyz
-        are serialized and re-read.  Production MOZYME has deterministic
+        mc_*_bo.npy names, mc_aromatic_fixed.npy, mopac_mc_aromatic_sum.npy,
+        mopac_mc_aromatic_total.npy, mopac_mc_shielding.npy,
+        sidechain_co_bo_T2.npy, mopac_global.npy, both AO population arrays
+        and /trajectory/mopac_mc_shielding_time_series/xyz are serialized and
+        re-read.  Production MOZYME has deterministic
         localized-orbital SCF axis/origin sensitivity: enforced envelopes are
         BO abs 6e-3, tensor abs 3e-3+rel 1.5e-2, neutral dipole abs 0.3 D+rel
         1e-2, heat abs 1e-2 kcal/mol and shell total abs 7e-3 electron.
         Recorded maxima are BO 0.004, tensor Frobenius 0.00161322 (aggregate
-        H5 0.00234259), dipole L2 0.258904 D, heat 0.0072 kcal/mol and shell
+        H5 0.00234375), dipole L2 0.258904 D, heat 0.0072 kcal/mol and shell
         total 0.00543 electron.  Exact H5 serialization error is zero.  Raw
         AO diagonals change by 0.35461 electron and reject a false polar
         px/py/pz law by at least 1.8938 electron: NC is proven, not hidden.
-        Exactly seven finite-nonzero BO categories on this fixture are peptide_co,
-        peptide_cn, backbone_other, sidechain_co, sidechain_other,
-        backbone_xh and sidechain_xh.  Exactly two categories, disulfide and
-        s_h, are zero because the fixture has no such source; aromatic_zeroed
-        is the tenth category and its required policy zero.
+        Exactly eight finite-nonzero BO categories on this fixture are
+        peptide_co, peptide_cn, backbone_other, sidechain_co,
+        sidechain_other, aromatic, backbone_xh and sidechain_xh.  Exactly two
+        categories, disulfide and s_h, are zero because the fixture has no
+        such source.  The six aromatic source bonds (all six with retained
+        BO) match an independent midpoint/axis bond-kernel sum: max fixed/BO
+        category errors 3.85109e-16/5.48173e-16; max fixed/BO aggregate
+        residual errors 3.85109e-16/5.51642e-16; H5 aromatic residual
+        5.51642e-16.
 DC-OR : MutationDeltaTest.OrcaAndMutationDirectionalSourcesRerunUnderProperAndImproperO3
         Seed 0x4f5243414d555441, proper+improper+translation; imported ORCA
         source coordinates and tensors are transformed before production
@@ -375,7 +381,7 @@ hm_per_type_T2.npy | atom (N,8x5) | Angstrom^-1 | per-type T2 of G | 2e | not st
 
 McConnellResult
 ---------------
-Each non-policy-zero row below is an atom (N,9), Angstrom^-3 PackFull9 tensor
+Each row below is an atom (N,9), Angstrom^-3 PackFull9 tensor
 in conformation Cartesian xyz.  Its D(r) Qhat construction is an ordinary
 even-rank-2 law T; the product is generally nonsymmetric/nontraceless, so
 T0,T1,T2 can all signal and T1 is axial.
@@ -391,8 +397,8 @@ mc_sidechain_other_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, gene
 mc_sidechain_other_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
 mc_disulfide_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
 mc_disulfide_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX exact zero-on-fixture only, no finite disulfide source
-mc_aromatic_zeroed_fixed.npy | McConnellResult | atom(N,9) | all nine components structural policy zero | intentional BS/HM double-count suppression | DC-GR,SER
-mc_aromatic_zeroed_bo.npy | McConnellResult | atom(N,9) | all nine components structural policy zero | intentional BS/HM double-count suppression | DC-GR,SER; DC-MX external-MOPAC policy-zero
+mc_aromatic_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER; DC-MX independent aromatic-bond oracle
+mc_aromatic_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3), independent aromatic-bond oracle
 mc_backbone_xh_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
 mc_backbone_xh_bo.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO legacy zero without source mask | DC-GR,SER; DC-MX finite-nonzero external-MOPAC bounded O(3)
 mc_sidechain_xh_fixed.npy | McConnellResult | atom(N,9) Angstrom^-3 | T, generic T0/T1/T2 | fixed-channel absence physical zero | DC-GR,SER
@@ -609,7 +615,7 @@ Raw time-series datasets (their owning per-frame calculator must be rerun)
 /trajectory/bs_shielding_time_series/xyz | (N,T,9) | T | BS | DCT-KW exact transformed H5 PASS; abs 3e-12, rel 3e-10
 /trajectory/hm_shielding_time_series/xyz | (N,T,9) | T | HM | DCT-KW exact transformed H5 PASS; abs 3e-11, rel 1e-8
 /trajectory/mc_shielding_time_series/xyz | (N,T,9) | T | McConnell fixed aggregate | DCT-KW exact transformed H5 PASS; abs 3e-12, rel 3e-10
-/trajectory/mopac_mc_shielding_time_series/xyz | (N,T,9) | T | MOPAC BO McConnell | DC-MX real external MOPAC three-frame H5 PASS; exact serialization error zero, O(3) max Frobenius 0.00234259 within recorded MOZYME envelope
+/trajectory/mopac_mc_shielding_time_series/xyz | (N,T,9) | T | MOPAC BO McConnell | DC-MX real external MOPAC three-frame H5 PASS; exact serialization error zero, O(3) max Frobenius 0.00234375 within recorded MOZYME envelope
 /trajectory/mopac_coulomb_efg_time_series/t2 | (N,T,5) | 2e, T0/T1 zero | DC-MC exact transformed H5 PASS; fixed scalar charge source, abs 3e-9, rel 3e-11
 /trajectory/mopac_coulomb_shielding_time_series/t2 | legacy alias of preceding dataset | DC-MC exact byte-identical transformed H5 PASS
 /trajectory/apbs_efield_time_series/xyz | (N,T,3) | continuum P; live finite grid NC | DC-AP transformed H5 PASS within recorded finite-grid bounds and caveats

@@ -67,7 +67,7 @@ _DIRECTIONAL_STEMS = {
     "mc_sidechain_co_fixed", "mc_sidechain_co_bo",
     "mc_sidechain_other_fixed", "mc_sidechain_other_bo",
     "mc_disulfide_fixed", "mc_disulfide_bo",
-    "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
+    "mc_aromatic_fixed", "mc_aromatic_bo",
     "mc_backbone_xh_fixed", "mc_backbone_xh_bo",
     "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo",
     "mc_s_h_fixed", "mc_s_h_bo", "mc_nearest_co_dir",
@@ -426,7 +426,7 @@ class TestCatalogMetadata:
         "mc_peptide_co_rhombic", "mc_peptide_cn_fixed",
         "mc_backbone_other_fixed", "mc_sidechain_co_fixed",
         "mc_sidechain_other_fixed", "mc_disulfide_fixed",
-        "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
+        "mc_aromatic_fixed", "mc_aromatic_bo",
         "mc_backbone_xh_fixed", "mc_sidechain_xh_fixed", "mc_s_h_fixed",
         "mc_nearest_co_T2", "mc_nearest_cn_T2",
         "mopac_mc_nearest_co_T2", "mopac_mc_nearest_cn_T2",
@@ -442,6 +442,7 @@ class TestCatalogMetadata:
     @pytest.mark.parametrize("stem", [
         "mc_peptide_co_bo", "mc_peptide_cn_bo", "mc_backbone_other_bo",
         "mc_sidechain_co_bo", "mc_sidechain_other_bo", "mc_disulfide_bo",
+        "mc_aromatic_bo",
         "mc_backbone_xh_bo", "mc_sidechain_xh_bo", "mc_s_h_bo",
         "sidechain_co_bo_T2",
     ])

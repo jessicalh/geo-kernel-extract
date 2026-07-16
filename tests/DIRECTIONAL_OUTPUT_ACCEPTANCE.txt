@@ -126,8 +126,8 @@ mc_sidechain_other_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/
 mc_sidechain_other_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_disulfide_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
 mc_disulfide_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX exact NPY zero-on-fixture only (no disulfide source), not a finite external-BO claim
-mc_aromatic_zeroed_fixed.npy | McConnellResult | atom(N,9) | policy structural zero in all nine components | intentional BS/HM double-count suppression | DC-GR PASS; NPY-E2E PASS
-mc_aromatic_zeroed_bo.npy | McConnellResult | atom(N,9) | policy structural zero in all nine components | intentional BS/HM double-count suppression | DC-GR PASS; NPY-E2E PASS; DC-MX external-MOPAC policy-zero PASS
+mc_aromatic_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; DC-MX independent aromatic-bond oracle PASS
+mc_aromatic_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; DC-MX independent aromatic-bond oracle and finite-nonzero external-MOPAC bounded O3 PASS
 mc_backbone_xh_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
 mc_backbone_xh_bo.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | unavailable MOPAC BO is legacy zero | DC-GR PASS; NPY-E2E PASS; DC-MX finite-nonzero external-MOPAC bounded O3 PASS
 mc_sidechain_xh_fixed.npy | McConnellResult | atom(N,9) A^-3 | T, generic T0/T1/T2 | no source physical zero | DC-GR PASS; NPY-E2E PASS
@@ -279,7 +279,7 @@ Raw time-series and mixed trajectory datasets
 /trajectory/bs_shielding_time_series/xyz | BsShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, seed 0x0E1F04D, 3e-12 abs + 3e-10 rel
 /trajectory/hm_shielding_time_series/xyz | HmShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, same seed, 3e-11 abs + 1e-8 rel
 /trajectory/mc_shielding_time_series/xyz | McConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T, generic T0/T1/T2 | DCT-KW H5-PASS, same seed, 3e-12 abs + 3e-10 rel
-/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames NaN/source mask | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234259 within explicit MOZYME envelope
+/trajectory/mopac_mc_shielding_time_series/xyz | MopacMcConnellShieldingTimeSeriesTrajectoryResult | (N,T,9) T | absent frames NaN/source mask | DC-MX real external-MOPAC three-frame H5 PASS; exact serialization error zero, O3 residual max Frobenius 0.00234375 within explicit MOZYME envelope
 /trajectory/mopac_coulomb_efg_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | (N,T,5) T2, SZ(T0/T1) | absent frames NaN/source mask | DC-MC H5-PASS with fixed scalar charge source, seed 0x4d4f504143434f55, 3e-9 abs + 3e-11 rel
 /trajectory/mopac_coulomb_shielding_time_series/t2 | MopacCoulombShieldingTimeSeriesTrajectoryResult | legacy alias of preceding T2 dataset | same validity | DC-MC byte-identical H5-PASS
 /trajectory/apbs_efield_time_series/xyz | ApbsEfieldTimeSeriesTrajectoryResult | (N,T,3) continuum P; live finite grid is NC | absent frames NaN/source mask | DC-AP H5-PASS within 1.8e-2 abs + 5e-2 rel finite-grid bound
@@ -877,15 +877,17 @@ These are not aggregate caveats; each names the affected serialized output.
    0.00161322), not a missing owner/serialization test.
 4. McConnellResult: mc_peptide_co_bo.npy, mc_peptide_cn_bo.npy,
    mc_backbone_other_bo.npy, mc_sidechain_co_bo.npy,
-   mc_sidechain_other_bo.npy, mc_disulfide_bo.npy, mc_backbone_xh_bo.npy,
-   mc_sidechain_xh_bo.npy and mc_s_h_bo.npy — DC-MX reruns the real executable
-   and re-reads every exact BO-channel NPY name.  Finite-nonzero categories
-   are exactly seven: peptide_co, peptide_cn, backbone_other, sidechain_co,
-   sidechain_other, backbone_xh and sidechain_xh.  disulfide and s_h are
-   exactly two source-absent zero categories; aromatic_zeroed is the tenth
-   category and its intentional policy zero.  Production MOZYME's bounded scalar BO axis
-   sensitivity remains explicit, and source-unavailable broad channels still
-   use legacy zero without an availability mask.
+   mc_sidechain_other_bo.npy, mc_disulfide_bo.npy, mc_aromatic_bo.npy,
+   mc_backbone_xh_bo.npy, mc_sidechain_xh_bo.npy and mc_s_h_bo.npy — DC-MX
+   reruns the real executable and re-reads every exact BO-channel NPY name.
+   Finite-nonzero categories are exactly eight: peptide_co, peptide_cn,
+   backbone_other, sidechain_co, sidechain_other, aromatic, backbone_xh and
+   sidechain_xh.  disulfide and s_h are exactly two source-absent zero
+   categories.  The fixed and BO aromatic category tensors and aggregate
+   residuals match the independent midpoint/axis bond-kernel oracle to
+   5.52e-16.  Production MOZYME's bounded scalar BO axis sensitivity remains
+   explicit, and source-unavailable broad channels still use legacy zero
+   without an availability mask.
 5. MopacResult: mopac_global.npy — charged-system dipole is origin dependent
    and missing parser block is zero without a mask.  DC-MX now performs the
    transformed executable rerun; the neutral dipole has a recorded 0.258904 D
@@ -923,7 +925,7 @@ These are not aggregate caveats; each names the affected serialized output.
    /trajectory/mopac_mc_shielding_time_series/xyz — DC-MX now combines three
    real external-MOPAC reruns with the production sparse per-frame owner and
    exact H5 read-back (serialization max error zero).  The remaining named
-   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234259
+   limitation is the upstream MOZYME O(3) residual, max Frobenius 0.00234375
    within the recorded 0.003+1.5e-2 envelope; this is no longer an H5 GAP.
 9. In the BS/HM/Mc/Water/Hydration-vector/AIMNet vector/tensor Welford groups,
     every `*_m2`, `*_std`, `*_min`, `*_max`, `*_min_frame` and
@@ -1265,17 +1267,20 @@ build/conformation_scope_tests --gtest_filter='AIMNet2ChargeResponseGradientTest
   one-frame Welford vector_mean H5 read-back with seed 0xA1E7C0A2.
 
 build/conformation_scope_tests --gtest_filter='MopacExternalDirectionalFreeze.RealExecutableRerunO3NpyH5AndNonClosedAoDiagnostics'
-  RESULT: PASS — 1/1 in 548 ms; configured PM7+MOZYME rerun on original,
+  RESULT: PASS — configured PM7+MOZYME rerun on original,
   proper+translated and improper+translated input, seed 0x4D4F5041434F3355.
   Every mc_*_bo.npy name, finite nonzero sidechain_co_bo_T2.npy,
   mopac_global.npy, both AO arrays and exact
-  /trajectory/mopac_mc_shielding_time_series/xyz H5 were re-read.  Measured
-  external numerical residuals and enforced envelopes are recorded under
-  DC-MX; H5 serialization itself was bit-exact (max error zero), while the AO
-  diagonal table was explicitly proven NC rather than assigned a false law.
+  /trajectory/mopac_mc_shielding_time_series/xyz H5 were re-read.  Six
+  aromatic bonds, all with retained BO, produced max fixed/BO signals
+  0.345437/0.48842 and matched the independent category and aggregate oracles
+  to 5.52e-16; the H5 aromatic residual was 5.51642e-16.  Measured external
+  numerical residuals and enforced envelopes are recorded under DC-MX; H5
+  serialization itself was bit-exact (max error zero), while the AO diagonal
+  table was explicitly proven NC rather than assigned a false law.
   Finite-nonzero categories: peptide_co, peptide_cn, backbone_other,
-  sidechain_co, sidechain_other, backbone_xh, sidechain_xh.  disulfide and
-  s_h were source-absent zeros; aromatic_zeroed was the required policy zero.
+  sidechain_co, sidechain_other, aromatic, backbone_xh, sidechain_xh.
+  disulfide and s_h were source-absent zeros.
 
 build/trajectory_scope_tests --gtest_filter='DirectionalTrajectoryCovariance.*:GromacsEnergyDirectionalCovariance.*'
   RESULT: PASS for the current expanded wildcard, including the exact-boundary

@@ -233,7 +233,7 @@ McConnellSourceCategory SourceCategory(
     }
 
     if (bond.category == BondCategory::Aromatic)
-        return McConnellSourceCategory::AromaticZeroed;
+        return McConnellSourceCategory::Aromatic;
     if (bond.category == BondCategory::Disulfide)
         return McConnellSourceCategory::Disulfide;
     if (bond.category == BondCategory::PeptideCO)
@@ -361,9 +361,9 @@ nlohmann::ordered_json McConnellResult::FeatureMetadata(
     return nlohmann::ordered_json{
         {"source_model", "unit susceptibility shape; axial scale learned; peptide C=O fixed/BO responses use the full pinned rhombic shape"},
         {"bo_source", "MOPAC Wiberg bond order"},
-        {"aromatic_zeroed_when_ring_active", true},
-        {"aromatic_zeroed_reason",
-         "BS/HM always compute the aromatic ring-current; McConnell zeros aromatic to avoid the double-count."},
+        {"aromatic_sources_included", true},
+        {"aromatic_source_model",
+         "aromatic bond D(r)Qhat responses accumulate independently of BS/HM ring-current results"},
         {"tensor_basis", kMcConnellPackFull9TensorBasis},
         {"tensor_component_order", kMcConnellPackFull9ComponentOrder},
         {"tensor_frame", kMcConnellPackFull9TensorFrame},
@@ -469,7 +469,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
     OperationLog::Info(LogCalcMcConnell, "McConnellResult::Compute",
         "source model: A=D(r)Qhat; categories=10 channels={fixed,bo}; "
-        "aromatic_zeroed=unconditional; xh_included=" +
+        "aromatic_included=true; xh_included=" +
         std::string(include_xh_sources ? "true" : "false") +
         "; optional_mopac=" + std::string(mopac ? "present" : "absent") +
         "; filter set: " + filters.Describe());
@@ -479,7 +479,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
     std::size_t total_pairs = 0;
     std::size_t filtered_out = 0;
     std::size_t xh_skipped = 0;
-    std::size_t aromatic_zeroed_pairs = 0;
+    std::size_t aromatic_pairs = 0;
     std::size_t bo_zeroed_pairs = 0;
     std::size_t near_accepted_lt3 = 0;
     std::size_t near_rejected_lt3 = 0;
@@ -570,22 +570,20 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             const double bo = (raw_bo >= bo_floor) ? raw_bo : 0.0;
             if (bo == 0.0) ++bo_zeroed_pairs;
 
-            if (cat == McConnellSourceCategory::AromaticZeroed) {
-                ++aromatic_zeroed_pairs;
-            } else {
-                const Mat3 rhombic_response =
-                    (cat == McConnellSourceCategory::PeptideCO)
-                    ? ComputePeptideCORhombicPairKernel(conf, bi, atom_pos).response
-                    : kernel.response;
-                const auto channels =
-                    mcconnell_result_detail::SelectChannelResponses(
-                        cat, kernel.response, rhombic_response, bo);
-                accum[CatIndex(cat)][ChannelIndex(McConnellChannel::Fixed)]
-                    += channels.fixed;
-                accum[CatIndex(cat)][ChannelIndex(McConnellChannel::BondOrder)]
-                    += channels.bond_order;
-                peptide_co_rhombic += channels.rhombic_audit;
-            }
+            if (cat == McConnellSourceCategory::Aromatic) ++aromatic_pairs;
+
+            const Mat3 rhombic_response =
+                (cat == McConnellSourceCategory::PeptideCO)
+                ? ComputePeptideCORhombicPairKernel(conf, bi, atom_pos).response
+                : kernel.response;
+            const auto channels =
+                mcconnell_result_detail::SelectChannelResponses(
+                    cat, kernel.response, rhombic_response, bo);
+            accum[CatIndex(cat)][ChannelIndex(McConnellChannel::Fixed)]
+                += channels.fixed;
+            accum[CatIndex(cat)][ChannelIndex(McConnellChannel::BondOrder)]
+                += channels.bond_order;
+            peptide_co_rhombic += channels.rhombic_audit;
 
             if (cat == McConnellSourceCategory::PeptideCO &&
                 kernel.distance < best_co_dist) {
@@ -636,6 +634,9 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         const SphericalTensor fixed_disulfide = DecomposeAccum(
             accum, McConnellSourceCategory::Disulfide,
             McConnellChannel::Fixed);
+        const SphericalTensor fixed_aromatic = DecomposeAccum(
+            accum, McConnellSourceCategory::Aromatic,
+            McConnellChannel::Fixed);
         const SphericalTensor fixed_sidechain_xh = DecomposeAccum(
             accum, McConnellSourceCategory::SidechainXH,
             McConnellChannel::Fixed);
@@ -648,7 +649,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         ca.mcconnell_sidechain_sum =
             fixed_sidechain_co.T0 + fixed_sidechain_other.T0 +
             fixed_disulfide.T0 + fixed_sidechain_xh.T0 + fixed_sh.T0;
-        ca.mcconnell_aromatic_sum = 0.0;
+        ca.mcconnell_aromatic_sum = fixed_aromatic.T0;
 
         ca.mcconnell_co_nearest = best_co_scalar;
         ca.nearest_CO_midpoint = best_co_midpoint;
@@ -685,7 +686,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                     McConnellSourceCategory::Disulfide,
                     McConnellSourceCategory::SidechainXH,
                     McConnellSourceCategory::SH}));
-        ca.T2_aromatic_total = SphericalTensor{};
+        ca.T2_aromatic_total = fixed_aromatic;
         ca.mc_shielding_contribution =
             SphericalTensor::Decompose(SumChannel(accum, McConnellChannel::Fixed));
 
@@ -704,6 +705,9 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         const SphericalTensor bo_disulfide = DecomposeAccum(
             accum, McConnellSourceCategory::Disulfide,
             McConnellChannel::BondOrder);
+        const SphericalTensor bo_aromatic = DecomposeAccum(
+            accum, McConnellSourceCategory::Aromatic,
+            McConnellChannel::BondOrder);
         const SphericalTensor bo_sidechain_xh = DecomposeAccum(
             accum, McConnellSourceCategory::SidechainXH,
             McConnellChannel::BondOrder);
@@ -716,7 +720,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         ca.mopac_mc_sidechain_sum =
             bo_sidechain_co.T0 + bo_sidechain_other.T0 + bo_disulfide.T0 +
             bo_sidechain_xh.T0 + bo_sh.T0;
-        ca.mopac_mc_aromatic_sum = 0.0;
+        ca.mopac_mc_aromatic_sum = bo_aromatic.T0;
         ca.mopac_mc_co_nearest = best_co_bo * best_co_scalar;
         ca.mopac_mc_nearest_CO_dist = best_co_dist;
         ca.mopac_mc_nearest_CN_dist = best_cn_dist;
@@ -740,7 +744,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                  [ChannelIndex(McConnellChannel::BondOrder)] +
             accum[CatIndex(McConnellSourceCategory::SH)]
                  [ChannelIndex(McConnellChannel::BondOrder)]);
-        ca.mopac_mc_T2_aromatic_total = SphericalTensor{};
+        ca.mopac_mc_T2_aromatic_total = bo_aromatic;
         ca.mopac_mc_shielding_contribution =
             SphericalTensor::Decompose(SumChannel(
                 accum, McConnellChannel::BondOrder));
@@ -762,7 +766,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
     OperationLog::Info(LogCalcMcConnell, "McConnellResult::Compute",
         "atom_bond_pairs=" + std::to_string(total_pairs) +
         " xh_skipped=" + std::to_string(xh_skipped) +
-        " aromatic_zeroed_pairs=" + std::to_string(aromatic_zeroed_pairs) +
+        " aromatic_pairs=" + std::to_string(aromatic_pairs) +
         " bo_zeroed_pairs=" + std::to_string(bo_zeroed_pairs) +
         " near_lt3A={accepted=" + std::to_string(near_accepted_lt3) +
         ", rejected=" + std::to_string(near_rejected_lt3) + "}" +
@@ -812,8 +816,6 @@ SphericalTensor McConnellResult::SampleKernelAt(Vec3 point) const {
             mcconnell_result_detail::IsXHBond(protein, bond)) continue;
         const McConnellSourceCategory cat =
             mcconnell_result_detail::SourceCategory(protein, bond);
-        if (cat == McConnellSourceCategory::AromaticZeroed) continue;
-
         const auto kernel = (cat == McConnellSourceCategory::PeptideCO)
             ? ComputePeptideCORhombicPairKernel(*conf_, bi, point)
             : ComputePairKernel(

@@ -262,8 +262,8 @@ class McConnellGroup:
     sidechain_other_bo: ShieldingTensor
     disulfide_fixed: ShieldingTensor
     disulfide_bo: ShieldingTensor
-    aromatic_zeroed_fixed: ShieldingTensor
-    aromatic_zeroed_bo: ShieldingTensor
+    aromatic_fixed: ShieldingTensor
+    aromatic_bo: ShieldingTensor
     backbone_xh_fixed: ShieldingTensor
     backbone_xh_bo: ShieldingTensor
     sidechain_xh_fixed: ShieldingTensor
@@ -288,7 +288,7 @@ class McConnellGroup:
             "sidechain_co": self.sidechain_co_fixed,
             "sidechain_other": self.sidechain_other_fixed,
             "disulfide": self.disulfide_fixed,
-            "aromatic_zeroed": self.aromatic_zeroed_fixed,
+            "aromatic": self.aromatic_fixed,
             "backbone_xh": self.backbone_xh_fixed,
             "sidechain_xh": self.sidechain_xh_fixed,
             "s_h": self.s_h_fixed,
@@ -303,7 +303,7 @@ class McConnellGroup:
             "sidechain_co": self.sidechain_co_bo,
             "sidechain_other": self.sidechain_other_bo,
             "disulfide": self.disulfide_bo,
-            "aromatic_zeroed": self.aromatic_zeroed_bo,
+            "aromatic": self.aromatic_bo,
             "backbone_xh": self.backbone_xh_bo,
             "sidechain_xh": self.sidechain_xh_bo,
             "s_h": self.s_h_bo,
@@ -1853,8 +1853,8 @@ def load(path: str | Path) -> Protein:
         sidechain_other_bo=get("mc_sidechain_other_bo"),
         disulfide_fixed=get("mc_disulfide_fixed"),
         disulfide_bo=get("mc_disulfide_bo"),
-        aromatic_zeroed_fixed=get("mc_aromatic_zeroed_fixed"),
-        aromatic_zeroed_bo=get("mc_aromatic_zeroed_bo"),
+        aromatic_fixed=get("mc_aromatic_fixed"),
+        aromatic_bo=get("mc_aromatic_bo"),
         backbone_xh_fixed=get("mc_backbone_xh_fixed"),
         backbone_xh_bo=get("mc_backbone_xh_bo"),
         sidechain_xh_fixed=get("mc_sidechain_xh_fixed"),

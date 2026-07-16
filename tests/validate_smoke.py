@@ -28,7 +28,7 @@ MC_ARRAYS = [
     for cat in [
         "peptide_co", "peptide_cn", "backbone_other",
         "sidechain_co", "sidechain_other", "disulfide",
-        "aromatic_zeroed",
+        "aromatic",
     ]
     for channel in ["fixed", "bo"]
 ]

@@ -70,7 +70,7 @@ MCCONNELL_CATEGORIES = (
     "sidechain_co",
     "sidechain_other",
     "disulfide",
-    "aromatic_zeroed",
+    "aromatic",
     "backbone_xh",
     "sidechain_xh",
     "s_h",

@@ -470,6 +470,87 @@ size_t FirstBondBetween(const Protein& protein, size_t a, size_t b) {
     return SIZE_MAX;
 }
 
+struct IndependentAromaticOracle {
+    size_t aromatic_bond_count = 0;
+    size_t retained_bo_bond_count = 0;
+    std::vector<Mat3> fixed;
+    std::vector<Mat3> bond_order;
+};
+
+IndependentAromaticOracle ComputeIndependentAromaticOracle(
+        const ProteinConformation& conf,
+        const std::vector<double>* topology_bond_orders = nullptr) {
+    const Protein& protein = conf.ProteinRef();
+    IndependentAromaticOracle oracle;
+    oracle.fixed.assign(conf.AtomCount(), Mat3::Zero());
+    oracle.bond_order.assign(conf.AtomCount(), Mat3::Zero());
+
+    const double cutoff =
+        CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff");
+    const double singularity_guard =
+        CalculatorConfig::Get("singularity_guard_distance");
+    const double near_field_ratio =
+        CalculatorConfig::Get("near_field_exclusion_ratio");
+    const double bo_floor =
+        CalculatorConfig::Get("mopac_bond_order_noise_floor");
+
+    for (size_t bi = 0; bi < protein.BondCount(); ++bi) {
+        const Bond& bond = protein.BondAt(bi);
+        if (bond.category != BondCategory::Aromatic) continue;
+        ++oracle.aromatic_bond_count;
+
+        const Vec3 endpoint_a = conf.PositionAt(bond.atom_index_a);
+        const Vec3 endpoint_b = conf.PositionAt(bond.atom_index_b);
+        const Vec3 bond_vector = endpoint_b - endpoint_a;
+        const double bond_length = bond_vector.norm();
+        if (bond_length < 1e-15) continue;
+
+        const Vec3 midpoint = 0.5 * (endpoint_a + endpoint_b);
+        const Vec3 u = bond_vector / bond_length;
+        const Mat3 source_shape =
+            u * u.transpose() - Mat3::Identity() / 3.0;
+        const double bo = topology_bond_orders &&
+                          (*topology_bond_orders)[bi] >= bo_floor
+            ? (*topology_bond_orders)[bi]
+            : 0.0;
+        if (bo > 0.0) ++oracle.retained_bo_bond_count;
+
+        for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+            if (ai == bond.atom_index_a || ai == bond.atom_index_b) continue;
+
+            const Vec3 displacement = conf.PositionAt(ai) - midpoint;
+            const double distance = displacement.norm();
+            if (distance > cutoff || distance < singularity_guard ||
+                distance <= near_field_ratio * bond_length) {
+                continue;
+            }
+
+            const Vec3 n = displacement / distance;
+            const double r3 = distance * distance * distance;
+            const Mat3 dipolar =
+                (3.0 * n * n.transpose() - Mat3::Identity()) / r3;
+            const Mat3 response = dipolar * source_shape;
+            oracle.fixed[ai] += response;
+            oracle.bond_order[ai] += bo * response;
+        }
+    }
+    return oracle;
+}
+
+Mat3 SumMcConnellCategoriesExcept(const ConformationAtom& atom,
+                                  size_t excluded_category,
+                                  McConnellChannel channel) {
+    Mat3 sum = Mat3::Zero();
+    const size_t channel_index = static_cast<size_t>(channel);
+    for (size_t category = 0;
+         category < kMcConnellSourceCategoryCount; ++category) {
+        if (category == excluded_category) continue;
+        sum += atom.mcconnell_source_tensors[category][channel_index]
+                   .Reconstruct();
+    }
+    return sum;
+}
+
 }  // namespace
 
 
@@ -1674,6 +1755,8 @@ TEST(MopacExternalDirectionalFreeze,
     ASSERT_GT(protein->AtomCount(), 9u);
     ASSERT_NE(FirstBondWithCategory(*protein, BondCategory::SidechainCO),
               SIZE_MAX);
+    ASSERT_NE(FirstBondWithCategory(*protein, BondCategory::Aromatic),
+              SIZE_MAX);
     const std::vector<Vec3> source_positions =
         protein->Conformation().Positions();
     protein->AddConformation(
@@ -1699,6 +1782,11 @@ TEST(MopacExternalDirectionalFreeze,
     std::array<NpyArray<double>, 3> sidechain_bo_npys;
     std::array<NpyArray<double>, 3> sidechain_frame_npys;
     std::array<NpyArray<double>, 3> sidechain_quality_npys;
+    std::array<NpyArray<double>, 3> aromatic_fixed_npys;
+    std::array<NpyArray<double>, 3> mopac_aromatic_sum_npys;
+    std::array<NpyArray<double>, 3> mopac_aromatic_total_npys;
+    std::array<NpyArray<double>, 3> mopac_shielding_npys;
+    std::array<IndependentAromaticOracle, 3> aromatic_oracles;
 
     std::array<std::string, kMcConnellSourceCategoryCount>
         bo_filenames{};
@@ -1712,6 +1800,13 @@ TEST(MopacExternalDirectionalFreeze,
     std::array<std::array<NpyArray<double>,
                           kMcConnellSourceCategoryCount>, 3>
         category_bo_npys;
+
+    double max_aromatic_expected_fixed = 0.0;
+    double max_aromatic_expected_bo = 0.0;
+    double max_aromatic_fixed_oracle_error = 0.0;
+    double max_aromatic_bo_oracle_error = 0.0;
+    double max_aromatic_fixed_aggregate_error = 0.0;
+    double max_aromatic_bo_aggregate_error = 0.0;
 
     for (std::size_t frame = 0; frame < 3; ++frame) {
         ProteinConformation& conf = protein->ConformationAt(frame);
@@ -1733,6 +1828,73 @@ TEST(MopacExternalDirectionalFreeze,
         ASSERT_TRUE(conf.AttachResult(
             SidechainCarbonylAnisotropyResult::Compute(conf)));
 
+        ASSERT_EQ(topology_bond_orders[frame].size(), protein->BondCount());
+        aromatic_oracles[frame] = ComputeIndependentAromaticOracle(
+            conf, &topology_bond_orders[frame]);
+        ASSERT_GT(aromatic_oracles[frame].aromatic_bond_count, 0u);
+        ASSERT_GT(aromatic_oracles[frame].retained_bo_bond_count, 0u)
+            << "real MOPAC must retain at least one aromatic bond order";
+
+        const size_t aromatic_category = static_cast<size_t>(
+            McConnellSourceCategory::Aromatic);
+        for (size_t atom_index = 0;
+             atom_index < conf.AtomCount(); ++atom_index) {
+            const ConformationAtom& atom = conf.AtomAt(atom_index);
+            const Mat3& expected_fixed =
+                aromatic_oracles[frame].fixed[atom_index];
+            const Mat3& expected_bo =
+                aromatic_oracles[frame].bond_order[atom_index];
+            max_aromatic_expected_fixed = std::max(
+                max_aromatic_expected_fixed, MaxAbs(expected_fixed));
+            max_aromatic_expected_bo = std::max(
+                max_aromatic_expected_bo, MaxAbs(expected_bo));
+
+            const Mat3 fixed = atom.mcconnell_source_tensors
+                [aromatic_category]
+                [static_cast<size_t>(McConnellChannel::Fixed)]
+                .Reconstruct();
+            const Mat3 bo = atom.mcconnell_source_tensors
+                [aromatic_category]
+                [static_cast<size_t>(McConnellChannel::BondOrder)]
+                .Reconstruct();
+            max_aromatic_fixed_oracle_error = std::max(
+                max_aromatic_fixed_oracle_error,
+                MaxAbs(fixed - expected_fixed));
+            max_aromatic_bo_oracle_error = std::max(
+                max_aromatic_bo_oracle_error,
+                MaxAbs(bo - expected_bo));
+
+            const SphericalTensor expected_fixed_spherical =
+                SphericalTensor::Decompose(expected_fixed);
+            const SphericalTensor expected_bo_spherical =
+                SphericalTensor::Decompose(expected_bo);
+            EXPECT_NEAR(atom.mcconnell_aromatic_sum,
+                        expected_fixed_spherical.T0, 1e-12);
+            EXPECT_LT(MaxAbs(atom.T2_aromatic_total.Reconstruct() -
+                             expected_fixed),
+                      1e-12);
+            EXPECT_NEAR(atom.mopac_mc_aromatic_sum,
+                        expected_bo_spherical.T0, 1e-11);
+            EXPECT_LT(MaxAbs(
+                atom.mopac_mc_T2_aromatic_total.Reconstruct() - expected_bo),
+                1e-11);
+
+            const Mat3 fixed_residual =
+                atom.mc_shielding_contribution.Reconstruct() -
+                SumMcConnellCategoriesExcept(
+                    atom, aromatic_category, McConnellChannel::Fixed);
+            const Mat3 bo_residual =
+                atom.mopac_mc_shielding_contribution.Reconstruct() -
+                SumMcConnellCategoriesExcept(
+                    atom, aromatic_category, McConnellChannel::BondOrder);
+            max_aromatic_fixed_aggregate_error = std::max(
+                max_aromatic_fixed_aggregate_error,
+                MaxAbs(fixed_residual - expected_fixed));
+            max_aromatic_bo_aggregate_error = std::max(
+                max_aromatic_bo_aggregate_error,
+                MaxAbs(bo_residual - expected_bo));
+        }
+
         const fs::path output_dir = output_root /
             (frame == 0 ? "original" :
              frame == 1 ? "proper" : "improper");
@@ -1743,6 +1905,9 @@ TEST(MopacExternalDirectionalFreeze,
         EXPECT_EQ(conf.Result<McConnellResult>().WriteFeatures(
                       conf, output_dir.string()),
                   28);
+        EXPECT_EQ(conf.Result<MopacMcConnellResult>().WriteFeatures(
+                      conf, output_dir.string()),
+                  13);
         EXPECT_EQ(conf.Result<SidechainCarbonylAnisotropyResult>()
                       .WriteFeatures(conf, output_dir.string()),
                   6);
@@ -1762,6 +1927,14 @@ TEST(MopacExternalDirectionalFreeze,
             output_dir / "sidechain_co_frame.npy", "<f8");
         sidechain_quality_npys[frame] = ReadNpy<double>(
             output_dir / "sidechain_co_frame_quality.npy", "<f8");
+        aromatic_fixed_npys[frame] = ReadNpy<double>(
+            output_dir / "mc_aromatic_fixed.npy", "<f8");
+        mopac_aromatic_sum_npys[frame] = ReadNpy<double>(
+            output_dir / "mopac_mc_aromatic_sum.npy", "<f8");
+        mopac_aromatic_total_npys[frame] = ReadNpy<double>(
+            output_dir / "mopac_mc_aromatic_total.npy", "<f8");
+        mopac_shielding_npys[frame] = ReadNpy<double>(
+            output_dir / "mopac_mc_shielding.npy", "<f8");
         for (std::size_t category = 0;
              category < kMcConnellSourceCategoryCount; ++category) {
             category_bo_npys[frame][category] = ReadNpy<double>(
@@ -1830,7 +2003,63 @@ TEST(MopacExternalDirectionalFreeze,
                   sidechain_bo_npys[frame].values)
             << "typed sidechain owner must serialize the same production "
                "BO tensor as mc_sidechain_co_bo.npy";
+
+        ASSERT_EQ(aromatic_fixed_npys[frame].shape,
+                  (std::vector<std::size_t>{conf.AtomCount(), 9u}));
+        ASSERT_EQ(category_bo_npys[frame][aromatic_category].shape,
+                  aromatic_fixed_npys[frame].shape);
+        ASSERT_EQ(mopac_aromatic_sum_npys[frame].shape,
+                  (std::vector<std::size_t>{conf.AtomCount()}));
+        ASSERT_EQ(mopac_aromatic_total_npys[frame].shape,
+                  aromatic_fixed_npys[frame].shape);
+        ASSERT_EQ(mopac_shielding_npys[frame].shape,
+                  aromatic_fixed_npys[frame].shape);
+        for (size_t atom_index = 0;
+             atom_index < conf.AtomCount(); ++atom_index) {
+            std::array<double, 9> expected_fixed{};
+            std::array<double, 9> expected_bo{};
+            SphericalTensor::Decompose(
+                aromatic_oracles[frame].fixed[atom_index])
+                .PackFull9(expected_fixed.data());
+            SphericalTensor::Decompose(
+                aromatic_oracles[frame].bond_order[atom_index])
+                .PackFull9(expected_bo.data());
+            for (size_t component = 0; component < 9; ++component) {
+                EXPECT_NEAR(
+                    aromatic_fixed_npys[frame]
+                        .values[atom_index * 9 + component],
+                    expected_fixed[component], 1e-12);
+                EXPECT_NEAR(
+                    category_bo_npys[frame][aromatic_category]
+                        .values[atom_index * 9 + component],
+                    expected_bo[component], 1e-11);
+                EXPECT_NEAR(
+                    mopac_aromatic_total_npys[frame]
+                        .values[atom_index * 9 + component],
+                    expected_bo[component], 1e-11);
+            }
+            EXPECT_NEAR(
+                mopac_aromatic_sum_npys[frame].values[atom_index],
+                expected_bo[0], 1e-11);
+
+            std::array<double, 9> expected_shielding{};
+            conf.AtomAt(atom_index).mopac_mc_shielding_contribution
+                .PackFull9(expected_shielding.data());
+            for (size_t component = 0; component < 9; ++component) {
+                EXPECT_DOUBLE_EQ(
+                    mopac_shielding_npys[frame]
+                        .values[atom_index * 9 + component],
+                    expected_shielding[component]);
+            }
+        }
     }
+
+    EXPECT_GT(max_aromatic_expected_fixed, 1e-8);
+    EXPECT_GT(max_aromatic_expected_bo, 1e-8);
+    EXPECT_LT(max_aromatic_fixed_oracle_error, 1e-12);
+    EXPECT_LT(max_aromatic_bo_oracle_error, 1e-11);
+    EXPECT_LT(max_aromatic_fixed_aggregate_error, 1e-12);
+    EXPECT_LT(max_aromatic_bo_aggregate_error, 1e-11);
 
     double max_bond_order_error = 0.0;
     double max_tensor_error = 0.0;
@@ -1967,6 +2196,9 @@ TEST(MopacExternalDirectionalFreeze,
     }
     EXPECT_TRUE(any_nonzero_sidechain_bo)
         << "sidechain_co_bo_T2.npy must force a finite nonzero external BO";
+    EXPECT_TRUE(category_has_nonzero_signal[static_cast<size_t>(
+        McConnellSourceCategory::Aromatic)])
+        << "real MOPAC fixture must force a finite nonzero aromatic BO channel";
     EXPECT_GT(max_t1_signal, 1.0e-10)
         << "fixture must exercise the axial T1 branch of nonsymmetric DQ";
 
@@ -2079,6 +2311,9 @@ TEST(MopacExternalDirectionalFreeze,
 
     double max_h5_exact_error = 0.0;
     double max_h5_covariance_error = 0.0;
+    double max_h5_aromatic_residual_error = 0.0;
+    const size_t aromatic_category = static_cast<size_t>(
+        McConnellSourceCategory::Aromatic);
     for (std::size_t atom = 0;
          atom < trajectory_protein->AtomCount(); ++atom) {
         std::array<double, 9> source_pack{};
@@ -2101,12 +2336,22 @@ TEST(MopacExternalDirectionalFreeze,
                 EXPECT_DOUBLE_EQ(h5_xyz[base + component],
                                  expected_pack[component]);
             }
+            const SphericalTensor emitted = UnpackFull9(&h5_xyz[base]);
+            const ConformationAtom& frame_atom =
+                trajectory_protein->ProteinRef().ConformationAt(frame)
+                    .AtomAt(atom);
+            const Mat3 aromatic_residual = emitted.Reconstruct() -
+                SumMcConnellCategoriesExcept(
+                    frame_atom, aromatic_category,
+                    McConnellChannel::BondOrder);
+            max_h5_aromatic_residual_error = std::max(
+                max_h5_aromatic_residual_error,
+                MaxAbs(aromatic_residual -
+                       aromatic_oracles[frame].bond_order[atom]));
             if (frame > 0) {
                 const Mat3 expected = EvenRank2(
                     transforms[frame - 1u],
                     source_tensor.Reconstruct());
-                const SphericalTensor emitted =
-                    UnpackFull9(&h5_xyz[base]);
                 max_h5_covariance_error = std::max(
                     max_h5_covariance_error,
                     (emitted.Reconstruct() - expected).norm());
@@ -2116,6 +2361,7 @@ TEST(MopacExternalDirectionalFreeze,
             }
         }
     }
+    EXPECT_LT(max_h5_aromatic_residual_error, 1e-11);
 
     std::string nonzero_categories;
     std::string zero_categories;
@@ -2138,6 +2384,19 @@ TEST(MopacExternalDirectionalFreeze,
         << " max_T0_abs=" << max_t0_error
         << " max_T1_L2=" << max_t1_error
         << " max_native_T2_abs=" << max_t2_error
+        << " aromatic_bonds=" << aromatic_oracles[0].aromatic_bond_count
+        << " retained_aromatic_BO_bonds="
+        << aromatic_oracles[0].retained_bo_bond_count
+        << " max_aromatic_fixed=" << max_aromatic_expected_fixed
+        << " max_aromatic_BO=" << max_aromatic_expected_bo
+        << " max_aromatic_fixed_oracle_error="
+        << max_aromatic_fixed_oracle_error
+        << " max_aromatic_BO_oracle_error="
+        << max_aromatic_bo_oracle_error
+        << " max_aromatic_fixed_aggregate_error="
+        << max_aromatic_fixed_aggregate_error
+        << " max_aromatic_BO_aggregate_error="
+        << max_aromatic_bo_aggregate_error
         << " max_dipole_L2_D=" << max_dipole_error
         << " dipole_abs_D=" << kDipoleAbsToleranceDebye
         << " dipole_rel=" << kDipoleRelTolerance
@@ -2149,6 +2408,8 @@ TEST(MopacExternalDirectionalFreeze,
         << " min_false_polar_L2_e=" << min_false_polar_error
         << " max_H5_exact_abs=" << max_h5_exact_error
         << " max_H5_cov_Frobenius=" << max_h5_covariance_error
+        << " max_H5_aromatic_residual="
+        << max_h5_aromatic_residual_error
         << " nonzero_BO_categories=" << nonzero_categories
         << " zero_BO_categories=" << zero_categories
         << std::endl;
@@ -2203,24 +2464,147 @@ TEST(McConnellImplementationChecks, PeptideCORhombicFallsBackToAxial) {
 }
 
 
-TEST_F(McConnellProteinTest, AromaticCategoryIsExactlyZero) {
-    const Protein& p = protein->Conformation().ProteinRef();
-    int aromatic_bonds = 0;
-    for (size_t bi = 0; bi < p.BondCount(); ++bi)
-        if (p.BondAt(bi).category == BondCategory::Aromatic)
-            ++aromatic_bonds;
-    ASSERT_GT(aromatic_bonds, 0);
-
+TEST_F(McConnellProteinTest,
+       AromaticCategoryMatchesIndependentBondKernelSum) {
     auto& conf = protein->Conformation();
-    conf.AttachResult(McConnellResult::Compute(conf));
+    const IndependentAromaticOracle oracle =
+        ComputeIndependentAromaticOracle(conf);
+    ASSERT_GT(oracle.aromatic_bond_count, 0u);
+    ASSERT_TRUE(conf.AttachResult(McConnellResult::Compute(conf)));
+
     const size_t cat = static_cast<size_t>(
-        McConnellSourceCategory::AromaticZeroed);
+        McConnellSourceCategory::Aromatic);
+    EXPECT_STREQ(McConnellSourceCategoryStem(
+                     McConnellSourceCategory::Aromatic),
+                 "aromatic");
+
+    double max_expected = 0.0;
+    double max_category_error = 0.0;
+    double max_scalar_error = 0.0;
+    double max_total_error = 0.0;
+    double max_aggregate_residual_error = 0.0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        EXPECT_TRUE(SphericalAllZero(
-            conf.AtomAt(ai).mcconnell_source_tensors[cat][0]));
-        EXPECT_TRUE(SphericalAllZero(
-            conf.AtomAt(ai).mcconnell_source_tensors[cat][1]));
+        const ConformationAtom& atom = conf.AtomAt(ai);
+        const Mat3& expected = oracle.fixed[ai];
+        max_expected = std::max(max_expected, MaxAbs(expected));
+
+        const Mat3 category = atom.mcconnell_source_tensors[cat]
+            [static_cast<size_t>(McConnellChannel::Fixed)].Reconstruct();
+        max_category_error = std::max(
+            max_category_error, MaxAbs(category - expected));
+
+        const SphericalTensor expected_spherical =
+            SphericalTensor::Decompose(expected);
+        max_scalar_error = std::max(
+            max_scalar_error,
+            std::abs(atom.mcconnell_aromatic_sum - expected_spherical.T0));
+        max_scalar_error = std::max(
+            max_scalar_error,
+            std::abs(conf.Result<McConnellResult>().CategoryScalarSum(
+                         ai, BondCategory::Aromatic) -
+                     expected_spherical.T0));
+        max_total_error = std::max(
+            max_total_error,
+            MaxAbs(atom.T2_aromatic_total.Reconstruct() - expected));
+
+        const Mat3 aromatic_residual =
+            atom.mc_shielding_contribution.Reconstruct() -
+            SumMcConnellCategoriesExcept(
+                atom, cat, McConnellChannel::Fixed);
+        max_aggregate_residual_error = std::max(
+            max_aggregate_residual_error,
+            MaxAbs(aromatic_residual - expected));
     }
+
+    const Protein& topology = conf.ProteinRef();
+    const size_t first_aromatic =
+        FirstBondWithCategory(topology, BondCategory::Aromatic);
+    ASSERT_NE(first_aromatic, SIZE_MAX);
+    const Bond& forcing_bond = topology.BondAt(first_aromatic);
+    const Vec3 forcing_a = conf.PositionAt(forcing_bond.atom_index_a);
+    const Vec3 forcing_b = conf.PositionAt(forcing_bond.atom_index_b);
+    const Vec3 forcing_u = (forcing_b - forcing_a).normalized();
+    const Vec3 perpendicular = forcing_u.cross(
+        std::abs(forcing_u.x()) < 0.9 ? Vec3::UnitX() : Vec3::UnitY())
+        .normalized();
+    const Vec3 sample_point =
+        0.5 * (forcing_a + forcing_b) + 3.0 * perpendicular;
+
+    const bool include_xh_sources =
+        CalculatorConfig::Get("mcconnell_include_xh_sources") != 0.0;
+    const double cutoff =
+        CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff");
+    const double singularity_guard =
+        CalculatorConfig::Get("singularity_guard_distance");
+    const double near_field_ratio =
+        CalculatorConfig::Get("near_field_exclusion_ratio");
+    Mat3 expected_aromatic_sample = Mat3::Zero();
+    Mat3 unchanged_sample = Mat3::Zero();
+    for (size_t bi = 0; bi < topology.BondCount(); ++bi) {
+        const Bond& bond = topology.BondAt(bi);
+        if (!include_xh_sources &&
+            mcconnell_result_detail::IsXHBond(topology, bond)) {
+            continue;
+        }
+
+        const Vec3 endpoint_a = conf.PositionAt(bond.atom_index_a);
+        const Vec3 endpoint_b = conf.PositionAt(bond.atom_index_b);
+        const Vec3 bond_vector = endpoint_b - endpoint_a;
+        const double bond_length = bond_vector.norm();
+        if (bond_length < 1e-15) continue;
+        const Vec3 midpoint = 0.5 * (endpoint_a + endpoint_b);
+        const Vec3 displacement = sample_point - midpoint;
+        const double distance = displacement.norm();
+        if (distance < singularity_guard || distance > cutoff ||
+            distance < near_field_ratio * bond_length) {
+            continue;
+        }
+
+        if (bond.category == BondCategory::Aromatic) {
+            const Vec3 u = bond_vector / bond_length;
+            const Vec3 n = displacement / distance;
+            const Mat3 source_shape =
+                u * u.transpose() - Mat3::Identity() / 3.0;
+            const Mat3 dipolar =
+                (3.0 * n * n.transpose() - Mat3::Identity()) /
+                (distance * distance * distance);
+            expected_aromatic_sample += dipolar * source_shape;
+        } else {
+            const McConnellPairKernel kernel =
+                bond.category == BondCategory::PeptideCO
+                ? McConnellResult::ComputePeptideCORhombicPairKernel(
+                      conf, bi, sample_point)
+                : McConnellResult::ComputePairKernel(
+                      sample_point, midpoint, bond_vector / bond_length);
+            unchanged_sample += kernel.response;
+        }
+    }
+    const Mat3 sampled_aromatic_residual =
+        conf.Result<McConnellResult>().SampleKernelAt(sample_point)
+            .Reconstruct() -
+        unchanged_sample;
+    const double sample_error = MaxAbs(
+        sampled_aromatic_residual - expected_aromatic_sample);
+
+    EXPECT_GT(max_expected, 1e-8)
+        << "fixture must force a real aromatic bond response";
+    EXPECT_GT(MaxAbs(expected_aromatic_sample), 1e-8)
+        << "sample point must force a real aromatic bond response";
+    EXPECT_LT(max_category_error, 1e-12);
+    EXPECT_LT(max_scalar_error, 1e-12);
+    EXPECT_LT(max_total_error, 1e-12);
+    EXPECT_LT(max_aggregate_residual_error, 1e-12);
+    EXPECT_LT(sample_error, 1e-12);
+
+    std::cout << "McConnell aromatic fixed oracle: bonds="
+              << oracle.aromatic_bond_count
+              << " max|expected|=" << max_expected
+              << " max_category_error=" << max_category_error
+              << " max_scalar_error=" << max_scalar_error
+              << " max_total_error=" << max_total_error
+              << " max_aggregate_residual_error="
+              << max_aggregate_residual_error
+              << " sample_error=" << sample_error << "\n";
 }
 
 
@@ -2300,8 +2684,12 @@ TEST_F(McConnellProteinTest, WriteFeaturesEmitsTwentyEightArraysAndManifest) {
               std::string::npos);
     EXPECT_NE(text.find("\"bo_source\": \"MOPAC Wiberg bond order\""),
               std::string::npos);
-    EXPECT_NE(text.find("\"aromatic_zeroed_when_ring_active\": true"),
+    EXPECT_NE(text.find("\"aromatic_sources_included\": true"),
               std::string::npos);
+    EXPECT_NE(text.find(
+        "\"aromatic_source_model\": \"aromatic bond D(r)Qhat responses accumulate independently of BS/HM ring-current results\""),
+        std::string::npos);
+    EXPECT_EQ(text.find("aromatic_zeroed"), std::string::npos);
     EXPECT_NE(text.find(
         "\"tensor_basis\": \"project_native_full9_spherical_tensor_v1\""),
         std::string::npos);
