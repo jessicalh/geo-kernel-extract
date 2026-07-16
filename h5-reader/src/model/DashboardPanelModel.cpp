@@ -169,6 +169,8 @@ bool DashboardPanelModel::setData(const QModelIndex& index, const QVariant& valu
 bool DashboardPanelModel::removeRows(int row, int count, const QModelIndex& parent) {
     if (parent.isValid() || row < 0 || count <= 0 || row + count > panels_.size())
         return false;
+    if (count > panels_.size() - 1)
+        return false;
 
     bool ok = true;
     for (int i = 0; i < count; ++i)

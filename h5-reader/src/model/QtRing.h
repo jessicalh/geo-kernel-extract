@@ -52,6 +52,13 @@ struct RingOrthoBasis {
 
 inline RingOrthoBasis OrthoBasisFromNormal(const Vec3& normalLike) {
     RingOrthoBasis b;
+    const double norm2 = normalLike.squaredNorm();
+    if (!(norm2 > 1e-24)) {
+        b.n = Vec3(0, 0, 1);
+        b.u = Vec3(1, 0, 0);
+        b.v = Vec3(0, 1, 0);
+        return b;
+    }
     b.n = normalLike.normalized();
     const Vec3 arbitrary = std::abs(b.n.x()) < 0.9 ? Vec3(1, 0, 0) : Vec3(0, 1, 0);
     b.u = b.n.cross(arbitrary).normalized();

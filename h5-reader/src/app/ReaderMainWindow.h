@@ -51,6 +51,10 @@ namespace h5reader::io {
 struct QtLoadResult;
 }
 
+namespace h5reader::diagnostics {
+enum class Severity;
+}
+
 namespace h5reader::model {
 class AtomSelection;
 class DashboardPanelModel;
@@ -247,6 +251,10 @@ private:
     void onFilterResidueToggled(std::size_t residue, bool on);
     void updateFilterButton();      // text/state of the Filter toolbar button
     void resetDashboardStateForRunLoad();
+    void handleErrorBusReport(h5reader::diagnostics::Severity severity,
+                              const QString& source,
+                              const QString& message,
+                              const QString& values);
     // QSettings persistence — see kSettingsVersion in the .cpp for the
     // versioned QMainWindow state blob policy. Tolerant on restore (any
     // missing / mismatched key is silently skipped) so a fresh install
@@ -368,12 +376,17 @@ private:
     QPointer<QLabel> proteinLabel_;
     QPointer<QLabel> frameLabel_;
     QPointer<QLabel> timeLabel_;
+    QPointer<QLabel> diagnosticLabel_;
 
     bool shutdownDone_ = false;
     bool glInfoLogged_ = false;
     unsigned long glCapsObserverTag_ = 0;  // one-shot GL-caps EndEvent observer
     int lastDashboardSelectedCount_ = 0;
     QString lastLoadError_;
+    QString lastDiagnosticSeverity_;
+    QString lastDiagnosticSource_;
+    QString lastDiagnosticMessage_;
+    QString lastDiagnosticValues_;
 
     // Wraps loaded_->conformation so consumers (scene, picker, overlays)
     // read positions through a runtime-switchable rigid-body transform.

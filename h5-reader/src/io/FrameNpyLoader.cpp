@@ -91,8 +91,9 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
                                  .arg(spec.cols),
                              dir);
         }
-        // Atom-axis arrays should span the topology; a mismatch means dir and
-        // spine disagree. Load anyway, but flag it loud.
+        // Atom-axis arrays must span the topology. A present-but-short column
+        // would make every group view's row(atomIdx) unsafe, so reject it at
+        // the load boundary and keep the field absent.
         if (spec.axis == NativeAxis::Atom && atomCount != 0 && static_cast<std::size_t>(rows) != atomCount) {
             ErrorBus::Report(Severity::Warning, QStringLiteral("FrameNpyLoader"),
                              QStringLiteral("%1: rows=%2 != atom count %3")
@@ -100,6 +101,8 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
                                  .arg(rows)
                                  .arg(atomCount),
                              dir);
+            ++skipped;
+            continue;
         }
 
         model::NpyColumn& col = snap->mutableColumn(*kind);

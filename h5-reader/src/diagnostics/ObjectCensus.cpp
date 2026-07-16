@@ -7,6 +7,8 @@
 
 #ifndef _WIN32
 #  include <unistd.h>
+#else
+#  include <io.h>
 #endif
 
 namespace h5reader::diagnostics {
@@ -22,8 +24,8 @@ void SafeWrite(int fd, const char* s) {
     const ssize_t rc = ::write(fd, s, std::strlen(s));
     (void)rc;
 #else
-    (void)fd;
-    std::fputs(s, stderr);  // TODO: Win32 WriteFile when CrashHandler lands
+    const int rc = ::_write(fd, s, static_cast<unsigned int>(std::strlen(s)));
+    (void)rc;
 #endif
 }
 }  // namespace
@@ -73,7 +75,8 @@ void ObjectCensus::Dump(int fd) {
             const ssize_t rc = ::write(fd, buf, static_cast<size_t>(n));
             (void)rc;
 #else
-            std::fputs(buf, stderr);
+            const int rc = ::_write(fd, buf, static_cast<unsigned int>(n));
+            (void)rc;
 #endif
         }
         ++count;
@@ -87,7 +90,8 @@ void ObjectCensus::Dump(int fd) {
         const ssize_t rc = ::write(fd, tail, static_cast<size_t>(n));
         (void)rc;
 #else
-        std::fputs(tail, stderr);
+        const int rc = ::_write(fd, tail, static_cast<unsigned int>(n));
+        (void)rc;
 #endif
     }
 }

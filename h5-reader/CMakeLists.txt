@@ -736,6 +736,19 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     h5reader_apply_platform_target_settings(h5reader_trajectory_frame_map_tests)
     add_test(NAME h5reader_trajectory_frame_map_tests COMMAND h5reader_trajectory_frame_map_tests)
+
+    qt_add_executable(h5reader_ring_current_case_tests
+        tests/ring_current_case_tests.cpp
+    )
+    target_link_libraries(h5reader_ring_current_case_tests PRIVATE
+        h5reader_core
+        Qt6::Test
+    )
+    vtk_module_autoinit(TARGETS h5reader_ring_current_case_tests MODULES ${VTK_LIBRARIES})
+    h5reader_apply_platform_target_settings(h5reader_ring_current_case_tests)
+    add_test(NAME h5reader_ring_current_case_tests
+             COMMAND h5reader_ring_current_case_tests)
+    set_tests_properties(h5reader_ring_current_case_tests PROPERTIES TIMEOUT 900)
 endif()
 
 # REST end-to-end smoke: pytest drives the built h5reader binary via its
@@ -744,9 +757,15 @@ endif()
 # Requires Python3 + pytest + httpx + Pillow on PATH; H5READER_REST_FIXTURE
 # env var (or the default below) must point at a valid trajectory directory.
 if(BUILD_TESTING AND Python3_Interpreter_FOUND)
-    set(H5READER_REST_FIXTURE_DEFAULT
-        "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
-        CACHE PATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+    if(WIN32)
+        set(H5READER_REST_FIXTURE_DEFAULT
+            "C:/projects/reader-data/1p9j-calibration-with-dft/1p9j-calibration-dense-mopac-live-orca.LGS"
+            CACHE FILEPATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+    else()
+        set(H5READER_REST_FIXTURE_DEFAULT
+            "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
+            CACHE PATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+    endif()
     add_test(NAME h5reader_rest_smoke
              COMMAND ${Python3_EXECUTABLE} -m pytest
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest -v --tb=short)
@@ -762,6 +781,32 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
             "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}"
         LABELS "rest;e2e"
         TIMEOUT 300
+    )
+
+    if(WIN32)
+        add_test(NAME h5reader_rest_installed_ml_stale_dev_env
+                 COMMAND ${Python3_EXECUTABLE} -m pytest
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_experimental_shielding_ml_runtime.py
+                         -v --tb=short)
+        set_tests_properties(h5reader_rest_installed_ml_stale_dev_env PROPERTIES
+            ENVIRONMENT
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_EXPECT_STALE_DEV_ML_FALLBACK=1;H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=C:/h5reader-missing-experimental-ml/model.ts;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=C:/h5reader-missing-experimental-ml/manifest.json;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=C:/h5reader-missing-experimental-ml/infer.exe"
+            LABELS "rest;e2e;ml"
+            TIMEOUT 120
+        )
+    endif()
+
+    set(H5READER_CHIGNOLIN_FIXTURE_DEFAULT
+        "C:/projects/reader-data/chignolin-oneoff/chignolin_CLN025_5AWL_0.LGS"
+        CACHE FILEPATH "Optional chignolin/CLN025 dense-DFT .LGS for REST fixture smoke")
+    add_test(NAME h5reader_rest_chignolin_fixture
+             COMMAND ${Python3_EXECUTABLE} -m pytest
+                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_chignolin_fixture.py -v --tb=short)
+    set_tests_properties(h5reader_rest_chignolin_fixture PROPERTIES
+        ENVIRONMENT
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_CHIGNOLIN_FIXTURE_DEFAULT}"
+        LABELS "rest;e2e;chignolin"
+        TIMEOUT 180
     )
 endif()
 
@@ -792,35 +837,36 @@ if(WIN32)
         "Directory containing the Experimental Shielding ML bundle")
 
     if(H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT)
-        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL)
-            set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
-                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/local_tensor_mopac_neighbors005.ts")
-        endif()
-        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST)
-            set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
-                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/poc_manifest.json")
-        endif()
-        if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER)
-            set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
-                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch_e3nn_poc.exe")
-        endif()
-        if(NOT H5READER_LIBTORCH_CPU_BIN_DIR)
-            foreach(_torch_candidate IN ITEMS
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/torch/lib"
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch/lib"
-                    "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/Lib/site-packages/torch/lib")
-                if(EXISTS "${_torch_candidate}/c10.dll")
-                    set(H5READER_LIBTORCH_CPU_BIN_DIR "${_torch_candidate}")
-                    break()
-                endif()
-            endforeach()
-        endif()
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/model.ts"
+            CACHE FILEPATH "TorchScript model for Experimental Shielding ML" FORCE)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/model_no_mopac_no_tripeptide.ts"
+            CACHE FILEPATH "No-MOPAC fallback TorchScript model for Experimental Shielding ML" FORCE)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/manifest.json"
+            CACHE FILEPATH "Provenance manifest for Experimental Shielding ML" FORCE)
+        set(H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/infer.exe"
+            CACHE FILEPATH "CPU inference helper for Experimental Shielding ML" FORCE)
+        foreach(_torch_candidate IN ITEMS
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/torch/lib"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/libtorch/lib")
+            if(EXISTS "${_torch_candidate}/c10.dll")
+                set(H5READER_LIBTORCH_CPU_BIN_DIR "${_torch_candidate}"
+                    CACHE PATH "LibTorch CPU DLL directory for Experimental Shielding ML" FORCE)
+                break()
+            endif()
+        endforeach()
     endif()
 
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
         "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
         CACHE FILEPATH "TorchScript model for Experimental Shielding ML")
+    set(H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL
+        "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
+        CACHE FILEPATH "No-MOPAC fallback TorchScript model for Experimental Shielding ML")
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
         "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
         CACHE FILEPATH "Provenance manifest for Experimental Shielding ML")
@@ -834,6 +880,7 @@ if(WIN32)
     if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
         foreach(_ml_asset IN ITEMS
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+                "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}")
             if(NOT EXISTS "${_ml_asset}")
@@ -841,6 +888,7 @@ if(WIN32)
                     "Experimental Shielding ML packaging is required, but this asset is missing: ${_ml_asset}\n"
                     "Set H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT to a portable bundle directory, "
                     "or set H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL, "
+                    "H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL, "
                     "H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST, "
                     "H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER, and "
                     "H5READER_LIBTORCH_CPU_BIN_DIR explicitly.")
@@ -861,7 +909,7 @@ if(WIN32)
                 torch_cpu.dll
                 torch_global_deps.dll
                 libiomp5md.dll
-                shm.dll
+                libiompstubs5md.dll
                 uv.dll)
             set(_torch_dll "${H5READER_LIBTORCH_CPU_BIN_DIR}/${_torch_dll_name}")
             if(NOT EXISTS "${_torch_dll}")
@@ -871,8 +919,29 @@ if(WIN32)
             list(APPEND _h5reader_libtorch_cpu_dlls "${_torch_dll}")
         endforeach()
 
+        set(_h5reader_experimental_shielding_ml_runtime_files
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}"
+            ${_h5reader_libtorch_cpu_dlls}
+        )
+
+        add_custom_target(h5reader_deploy_experimental_shielding_ml
+            COMMAND "${CMAKE_COMMAND}" -E make_directory
+                    "$<TARGET_FILE_DIR:h5reader>/${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    ${_h5reader_experimental_shielding_ml_runtime_files}
+                    "$<TARGET_FILE_DIR:h5reader>/${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
+            DEPENDS ${_h5reader_experimental_shielding_ml_runtime_files}
+            COMMENT "Deploying Experimental Shielding ML runtime next to h5reader"
+            VERBATIM
+        )
+        add_dependencies(h5reader h5reader_deploy_experimental_shielding_ml)
+
         install(FILES
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
+            "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
             ${_h5reader_libtorch_cpu_dlls}
             DESTINATION "${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
@@ -900,10 +969,10 @@ if(WIN32)
 
     if(NOT H5READER_MSVC_RUNTIME_DIR)
         set(_h5reader_msvc_redist_dirs)
-        foreach(_h5reader_msvc_redist_root IN ITEMS
-                "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Redist/MSVC"
-                "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Redist/MSVC"
-                "C:/Program Files/Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC")
+        file(GLOB _h5reader_msvc_redist_roots
+            LIST_DIRECTORIES true
+            "C:/Program Files/Microsoft Visual Studio/*/*/VC/Redist/MSVC")
+        foreach(_h5reader_msvc_redist_root IN LISTS _h5reader_msvc_redist_roots)
             if(EXISTS "${_h5reader_msvc_redist_root}")
                 file(GLOB _h5reader_msvc_redist_candidates
                     LIST_DIRECTORIES true
@@ -919,6 +988,25 @@ if(WIN32)
                 "${_h5reader_msvc_redist_dir}"
                 CACHE PATH "MSVC runtime DLL directory")
         endif()
+    endif()
+
+    if(NOT H5READER_QT_DIR OR NOT EXISTS "${H5READER_QT_DIR}/bin/windeployqt.exe")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_QT_DIR with bin/windeployqt.exe; "
+            "set -DH5READER_QT_DIR=C:/Qt/6.10.2/msvc2022_64")
+    endif()
+    if(NOT H5READER_VTK_DIR OR NOT EXISTS "${H5READER_VTK_DIR}/bin")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_VTK_DIR with a bin directory; "
+            "set -DH5READER_VTK_DIR=C:/Projects/VTK")
+    endif()
+    if(NOT H5READER_VCPKG_BIN_DIR OR NOT EXISTS "${H5READER_VCPKG_BIN_DIR}")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_VCPKG_BIN_DIR; set it to the vcpkg x64-windows bin directory")
+    endif()
+    if(NOT H5READER_MSVC_RUNTIME_DIR OR NOT EXISTS "${H5READER_MSVC_RUNTIME_DIR}")
+        message(FATAL_ERROR
+            "Windows packaging requires H5READER_MSVC_RUNTIME_DIR; set it to the MSVC x64 Microsoft.VC*.CRT directory")
     endif()
 
     configure_file(

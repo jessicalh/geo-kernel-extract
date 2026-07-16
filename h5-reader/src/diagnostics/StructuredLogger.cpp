@@ -1,10 +1,12 @@
 #include "StructuredLogger.h"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QMetaObject>
 #include <QMutexLocker>
 #include <QString>
 #include <QStringList>
@@ -15,6 +17,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+#include <utility>
+
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <Windows.h>
+#  ifndef EXCEPTION_FATAL_APP_EXIT
+#    define EXCEPTION_FATAL_APP_EXIT 0x40000015
+#  endif
+#endif
 
 namespace h5reader::diagnostics {
 
@@ -101,7 +112,8 @@ void StructuredLogger::Install() {
     QHostAddress host(QStringLiteral("127.0.0.1"));
     quint16      port = 9997;
 
-    if (const char* env = std::getenv("H5READER_LOG_UDP")) {
+    const QByteArray env = qgetenv("H5READER_LOG_UDP");
+    if (!env.isEmpty()) {
         QString s = QString::fromUtf8(env);
         const int colon = s.lastIndexOf(':');
         if (colon > 0 && colon + 1 < s.size()) {
@@ -219,7 +231,7 @@ void StructuredLogger::Emit(QtMsgType type,
     if (function)   obj["function"] = QString::fromUtf8(function);
 
     const QByteArray json = QJsonDocument(obj).toJson(QJsonDocument::Compact);
-    {
+    auto writeUdp = [this, json]() {
         QMutexLocker lk(&lock_);
         const qint64 sent = udp_.writeDatagram(json, host_, port_);
         if (sent != json.size()) {
@@ -230,9 +242,19 @@ void StructuredLogger::Emit(QtMsgType type,
                          static_cast<long long>(json.size()),
                          qUtf8Printable(udp_.errorString()));
         }
+    };
+    if (QThread::currentThread() == thread()) {
+        writeUdp();
+    } else {
+        QMetaObject::invokeMethod(this, std::move(writeUdp), Qt::QueuedConnection);
     }
 
-    if (type == QtFatalMsg) std::abort();
+    if (type == QtFatalMsg) {
+#ifdef _WIN32
+        RaiseException(EXCEPTION_FATAL_APP_EXIT, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+#endif
+        std::abort();
+    }
 }
 
 }  // namespace h5reader::diagnostics

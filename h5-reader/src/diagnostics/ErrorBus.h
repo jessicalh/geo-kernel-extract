@@ -2,8 +2,8 @@
 //
 // Non-UI components (H5 loader, kernel evaluators, REST server, worker
 // threads) call ErrorBus::Report(...) from any thread. The UI connects
-// slots to errorReported() to populate the status bar, a modal dialog,
-// or a persistent error panel.
+// slots to errorReported() to populate non-invasive status and diagnostic
+// surfaces; call sites that need modal interaction own that policy locally.
 //
 // Every Report() also emits the same information through the
 // StructuredLogger, so log consumers see errors in the UDP stream without
@@ -19,8 +19,8 @@ namespace h5reader::diagnostics {
 enum class Severity {
     Info,       // informational — status bar only
     Warning,    // degraded state — note in a panel, not a dialog
-    Error,      // user action failed — dialog + panel
-    Fatal,      // unrecoverable — dialog, then exit
+    Error,      // user action failed or data degraded
+    Fatal,      // unrecoverable report; process policy stays with the caller
 };
 
 class ErrorBus final : public QObject {

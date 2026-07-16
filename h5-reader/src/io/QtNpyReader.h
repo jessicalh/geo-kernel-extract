@@ -133,6 +133,7 @@ private:
 #include <QByteArray>
 #include <QFile>
 #include <cstring>
+#include <limits>
 
 #include "../diagnostics/ErrorBus.h"
 
@@ -188,6 +189,17 @@ QtNpyReader::ReadStructured(const QString& path, const std::string& expected_dty
 
     // Row size check against the typed struct.
     const std::size_t raw_data_len = static_cast<std::size_t>(bytes.size()) - hdr.data_offset;
+    if (expected_rows > std::numeric_limits<std::size_t>::max() / sizeof(RecordT)) {
+        r.error = QStringLiteral("QtNpyReader: byte count overflow in %1: rows=%2 sizeof(RecordT)=%3")
+                      .arg(path)
+                      .arg(expected_rows)
+                      .arg(sizeof(RecordT));
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"),
+                                                r.error,
+                                                path);
+        return r;
+    }
     const std::size_t expected_bytes = expected_rows * sizeof(RecordT);
     if (raw_data_len != expected_bytes) {
         r.error = QStringLiteral("QtNpyReader: byte count mismatch in %1: "

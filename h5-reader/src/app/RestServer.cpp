@@ -1377,6 +1377,16 @@ void RestServer::setContext(MoleculeScene* scene,
                             ReaderMainWindow* readerWindow,
                             model::TransformedConformation* transformed) {
     ASSERT_THREAD(this);
+    if (scene_ != scene) {
+        heroshotAtomTrack_.reset();
+        heroshotButterfly_.reset();
+        heroshotTrail_.reset();
+        heroshotAngleCollar_.reset();
+        heroshotMeasurementVisibleBefore_.reset();
+        heroshotMoleculeStyleBefore_.reset();
+        heroshotFieldRingBefore_.reset();
+        heroshotFieldRingWasSet_ = false;
+    }
     scene_ = scene;
     selection_ = selection;
     signalModel_ = signalModel;
@@ -4102,8 +4112,12 @@ void RestServer::registerRoutes() {
             bySource[source] = bySource.value(source).toInt() + 1;
             byAvail[avail] = byAvail.value(avail).toInt() + 1;
             byShape[shape] = byShape.value(shape).toInt() + 1;
-            const bool isShowable = (avail == QStringLiteral("Available")
-                                     || avail == QStringLiteral("AllZeroObserved"));
+            const bool sourceVisible = (avail == QStringLiteral("Available")
+                                        || avail == QStringLiteral("AllZeroObserved"));
+            const bool isShowable = sourceVisible
+                                    && model::IsDashboardDisplayable(d)
+                                    && d.samplingStatus == model::SampleStatus::Valid
+                                    && !model::AllDisplayModes(d).isEmpty();
             if (isShowable) ++showable;
             QJsonArray modeArr;
             const QStringList displayModes = model::AllDisplayModes(d);
@@ -4592,6 +4606,12 @@ void RestServer::registerRoutes() {
             }
             if (!catalog_->canBind(binding)) {
                 return errorResponse(QStringLiteral("descriptor %1 mode %2 cannot bind to anchor")
+                                         .arg(descriptor->id, mode),
+                                     SC::UnprocessableEntity);
+            }
+            if (mode.startsWith(QStringLiteral("strip."))
+                && !catalog_->canSample(binding)) {
+                return errorResponse(QStringLiteral("descriptor %1 mode %2 has no implemented sampler")
                                          .arg(descriptor->id, mode),
                                      SC::UnprocessableEntity);
             }

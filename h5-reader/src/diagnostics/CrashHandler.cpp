@@ -11,6 +11,19 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <Windows.h>
+#  include <DbgHelp.h>
+#  include <fcntl.h>
+#  include <io.h>
+#  include <share.h>
+#  include <sys/stat.h>
+#  ifndef EXCEPTION_FATAL_APP_EXIT
+#    define EXCEPTION_FATAL_APP_EXIT 0x40000015
+#  endif
+#endif
+
 #ifdef __linux__
 #  include <execinfo.h>
 #  include <fcntl.h>
@@ -43,6 +56,198 @@ char g_dumpDir[4096] = {0};
 #endif
 
 std::atomic<bool> g_installed{false};
+
+#ifdef _WIN32
+std::atomic<bool> g_windowsCrashWritten{false};
+
+bool Utf8ToWide(const char* src, wchar_t* dst, size_t dstCount) {
+    if (!src || !dst || dstCount == 0)
+        return false;
+    const int rc = MultiByteToWideChar(CP_UTF8, 0, src, -1,
+                                       dst, static_cast<int>(dstCount));
+    if (rc <= 0) {
+        dst[0] = L'\0';
+        return false;
+    }
+    return true;
+}
+
+void WinWrite(int fd, const char* s) {
+    if (!s)
+        return;
+    const int rc = ::_write(fd, s, static_cast<unsigned int>(std::strlen(s)));
+    (void)rc;
+}
+
+void WinWriteInt(int fd, unsigned long v) {
+    char buf[32];
+    const int n = std::snprintf(buf, sizeof(buf), "%lu", v);
+    if (n > 0) {
+        const int rc = ::_write(fd, buf, static_cast<unsigned int>(n));
+        (void)rc;
+    }
+}
+
+const char* WindowsExceptionName(DWORD code) {
+    switch (code) {
+        case EXCEPTION_ACCESS_VIOLATION: return "EXCEPTION_ACCESS_VIOLATION";
+        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: return "EXCEPTION_ARRAY_BOUNDS_EXCEEDED";
+        case EXCEPTION_DATATYPE_MISALIGNMENT: return "EXCEPTION_DATATYPE_MISALIGNMENT";
+        case EXCEPTION_FLT_DENORMAL_OPERAND: return "EXCEPTION_FLT_DENORMAL_OPERAND";
+        case EXCEPTION_FLT_DIVIDE_BY_ZERO: return "EXCEPTION_FLT_DIVIDE_BY_ZERO";
+        case EXCEPTION_FLT_INEXACT_RESULT: return "EXCEPTION_FLT_INEXACT_RESULT";
+        case EXCEPTION_FLT_INVALID_OPERATION: return "EXCEPTION_FLT_INVALID_OPERATION";
+        case EXCEPTION_FLT_OVERFLOW: return "EXCEPTION_FLT_OVERFLOW";
+        case EXCEPTION_FLT_STACK_CHECK: return "EXCEPTION_FLT_STACK_CHECK";
+        case EXCEPTION_FLT_UNDERFLOW: return "EXCEPTION_FLT_UNDERFLOW";
+        case EXCEPTION_ILLEGAL_INSTRUCTION: return "EXCEPTION_ILLEGAL_INSTRUCTION";
+        case EXCEPTION_IN_PAGE_ERROR: return "EXCEPTION_IN_PAGE_ERROR";
+        case EXCEPTION_INT_DIVIDE_BY_ZERO: return "EXCEPTION_INT_DIVIDE_BY_ZERO";
+        case EXCEPTION_INT_OVERFLOW: return "EXCEPTION_INT_OVERFLOW";
+        case EXCEPTION_INVALID_DISPOSITION: return "EXCEPTION_INVALID_DISPOSITION";
+        case EXCEPTION_NONCONTINUABLE_EXCEPTION: return "EXCEPTION_NONCONTINUABLE_EXCEPTION";
+        case EXCEPTION_PRIV_INSTRUCTION: return "EXCEPTION_PRIV_INSTRUCTION";
+        case EXCEPTION_STACK_OVERFLOW: return "EXCEPTION_STACK_OVERFLOW";
+        case EXCEPTION_FATAL_APP_EXIT: return "EXCEPTION_FATAL_APP_EXIT";
+        default: return "UNKNOWN";
+    }
+}
+
+void BuildWindowsCrashPaths(char* txtPath, size_t txtCap,
+                            char* dmpPath, size_t dmpCap) {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    const DWORD pid = GetCurrentProcessId();
+    const char* dir = g_dumpDir[0] ? g_dumpDir : ".";
+    std::snprintf(txtPath, txtCap,
+                  "%s/crash_%lu_%04u%02u%02u_%02u%02u%02u.txt",
+                  dir, static_cast<unsigned long>(pid),
+                  static_cast<unsigned>(st.wYear),
+                  static_cast<unsigned>(st.wMonth),
+                  static_cast<unsigned>(st.wDay),
+                  static_cast<unsigned>(st.wHour),
+                  static_cast<unsigned>(st.wMinute),
+                  static_cast<unsigned>(st.wSecond));
+    std::snprintf(dmpPath, dmpCap,
+                  "%s/crash_%lu_%04u%02u%02u_%02u%02u%02u.dmp",
+                  dir, static_cast<unsigned long>(pid),
+                  static_cast<unsigned>(st.wYear),
+                  static_cast<unsigned>(st.wMonth),
+                  static_cast<unsigned>(st.wDay),
+                  static_cast<unsigned>(st.wHour),
+                  static_cast<unsigned>(st.wMinute),
+                  static_cast<unsigned>(st.wSecond));
+}
+
+bool WriteWindowsMiniDump(const wchar_t* dumpPath, EXCEPTION_POINTERS* ep) {
+    HANDLE file = CreateFileW(dumpPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return false;
+
+    MINIDUMP_EXCEPTION_INFORMATION exceptionInfo;
+    exceptionInfo.ThreadId = GetCurrentThreadId();
+    exceptionInfo.ExceptionPointers = ep;
+    exceptionInfo.ClientPointers = FALSE;
+
+    const MINIDUMP_TYPE dumpType = static_cast<MINIDUMP_TYPE>(
+        MiniDumpWithDataSegs
+        | MiniDumpWithHandleData
+        | MiniDumpWithThreadInfo
+        | MiniDumpWithProcessThreadData
+        | MiniDumpWithIndirectlyReferencedMemory
+        | MiniDumpWithTokenInformation);
+
+    const BOOL ok = MiniDumpWriteDump(GetCurrentProcess(),
+                                      GetCurrentProcessId(),
+                                      file,
+                                      dumpType,
+                                      ep ? &exceptionInfo : nullptr,
+                                      nullptr,
+                                      nullptr);
+    CloseHandle(file);
+    return ok == TRUE;
+}
+
+void WriteWindowsCrashReport(EXCEPTION_POINTERS* ep, const char* origin) {
+    if (g_windowsCrashWritten.exchange(true))
+        return;
+
+    char txtPath[4096];
+    char dmpPath[4096];
+    BuildWindowsCrashPaths(txtPath, sizeof(txtPath), dmpPath, sizeof(dmpPath));
+
+    wchar_t txtWide[4096];
+    wchar_t dmpWide[4096];
+    const bool txtOk = Utf8ToWide(txtPath, txtWide, sizeof(txtWide) / sizeof(txtWide[0]));
+    const bool dmpOk = Utf8ToWide(dmpPath, dmpWide, sizeof(dmpWide) / sizeof(dmpWide[0]));
+
+    int fd = -1;
+    if (txtOk) {
+        const errno_t openErr = ::_wsopen_s(&fd, txtWide,
+                                            _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY,
+                                            _SH_DENYWR,
+                                            _S_IREAD | _S_IWRITE);
+        if (openErr != 0)
+            fd = -1;
+    }
+    if (fd < 0)
+        fd = 2;
+
+    const DWORD code = (ep && ep->ExceptionRecord)
+        ? ep->ExceptionRecord->ExceptionCode
+        : 0;
+    const void* address = (ep && ep->ExceptionRecord)
+        ? ep->ExceptionRecord->ExceptionAddress
+        : nullptr;
+
+    WinWrite(fd, "h5reader crash: Windows exception\n");
+    WinWrite(fd, "origin=");
+    WinWrite(fd, origin ? origin : "unknown");
+    WinWrite(fd, "\npid=");
+    WinWriteInt(fd, static_cast<unsigned long>(GetCurrentProcessId()));
+    WinWrite(fd, "\ntid=");
+    WinWriteInt(fd, static_cast<unsigned long>(GetCurrentThreadId()));
+    WinWrite(fd, "\nexception_code=0x");
+    char codeBuf[32];
+    const int cn = std::snprintf(codeBuf, sizeof(codeBuf), "%08lx",
+                                 static_cast<unsigned long>(code));
+    if (cn > 0)
+        ::_write(fd, codeBuf, static_cast<unsigned int>(cn));
+    WinWrite(fd, " (");
+    WinWrite(fd, WindowsExceptionName(code));
+    WinWrite(fd, ")\nexception_address=");
+    char addrBuf[32];
+    const int an = std::snprintf(addrBuf, sizeof(addrBuf), "%p", address);
+    if (an > 0)
+        ::_write(fd, addrBuf, static_cast<unsigned int>(an));
+
+    bool dumpWritten = false;
+    if (dmpOk)
+        dumpWritten = WriteWindowsMiniDump(dmpWide, ep);
+    WinWrite(fd, "\nminidump=");
+    WinWrite(fd, dumpWritten ? dmpPath : "(failed)");
+    WinWrite(fd, "\ntext_report=");
+    WinWrite(fd, txtPath);
+    WinWrite(fd, "\n\nObjectCensus snapshot (best effort):\n");
+    ObjectCensus::Dump(fd);
+    WinWrite(fd, "\nEnd of crash report.\n");
+
+    if (fd != 2)
+        ::_close(fd);
+
+    std::fprintf(stderr,
+                 "h5reader: crash report written to %s; minidump %s\n",
+                 txtPath,
+                 dumpWritten ? dmpPath : "failed");
+    std::fflush(stderr);
+}
+
+LONG WINAPI UnhandledCrashHandler(EXCEPTION_POINTERS* ep) {
+    WriteWindowsCrashReport(ep, "unhandled exception");
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif  // _WIN32
 
 #if defined(__linux__) || defined(__APPLE__)
 // Async-signal-safe write of a C string. Return value is intentionally
@@ -166,11 +371,10 @@ void CrashHandler::Install() {
     sigaction(SIGFPE,  &sa, nullptr);
     sigaction(SIGABRT, &sa, nullptr);
 #elif defined(_WIN32)
-    // Windows: SetUnhandledExceptionFilter + MiniDumpWriteDump is the
-    // correct path. Not yet implemented for commit 1 — Linux is the
-    // active build target. Tracked in notes/.
-    std::fprintf(stderr,
-                 "CrashHandler: Windows crash capture not yet implemented\n");
+    // Write a report only for genuinely unhandled exceptions. A vectored
+    // first-chance hook can consume the one-shot crash latch on handled driver
+    // or delay-load exceptions before the real terminating crash arrives.
+    SetUnhandledExceptionFilter(&UnhandledCrashHandler);
 #endif
 }
 

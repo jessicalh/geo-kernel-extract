@@ -35,7 +35,7 @@ confirmed against the running app, not assumed):
   - static.tensor is a no-op in the dashboard for ALL descriptors that offer it
     (the scene-glyph trigger is deferred); only the SOLE-mode case
     (reorient_orientation_tensor) yields no display at all.
-  - Absent-in-this-dataset descriptors are refused with 409 (correct).
+  - Unavailable-in-this-run descriptors are refused with 409 (correct).
   - embedding + the 5 topology tables are non-displayable by policy.
 
 KNOWN_DEBT (calibrated to the default 1P9J fixture) is the small set of genuine
@@ -55,7 +55,7 @@ import pytest
 
 # --- verdict vocabulary -------------------------------------------------
 
-CLEAN = {"PASS", "PASS_FLAG_MULTIVALUE", "ABSENT_REFUSED", "NON_DISPLAYABLE"}
+CLEAN = {"PASS", "PASS_FLAG_MULTIVALUE", "ABSENT_REFUSED", "UNAVAILABLE_REFUSED", "NON_DISPLAYABLE"}
 
 # Genuine display debt on the default 1P9J fixture. id -> expected verdict.
 #   DEFERRED_GLYPH: the only metric with no dashboard path at all -- its sole
@@ -218,11 +218,13 @@ def _classify(client, d: dict, displayable: bool, frame: int) -> dict:
 
     if not modes:
         rec.update(path="none", verdict="NON_DISPLAYABLE", detail=f"displayable={displayable}")
-    elif d.get("availability") == "Absent":
+    elif d.get("availability") not in ("Available", "AllZeroObserved"):
         r = _probe_add(client, d, modes[0], 0, frame)
-        rec["path"] = "absent"
+        availability = d.get("availability")
+        rec["path"] = "absent" if availability == "Absent" else "unavailable"
         if r.get("code") == 409:
-            rec.update(verdict="ABSENT_REFUSED", detail="409 not available (expected for this dataset)")
+            verdict = "ABSENT_REFUSED" if availability == "Absent" else "UNAVAILABLE_REFUSED"
+            rec.update(verdict=verdict, detail=f"409 not available: {availability}")
         else:
             rec.update(verdict="ABSENT_UNEXPECTED", detail=f"add code={r.get('code')} {r.get('msg','')}")
     elif only_tensor:

@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -154,13 +155,36 @@ bool TryReadFileAttributeQ(const HighFive::File& file, const std::string& name, 
     return true;
 }
 
+std::size_t DatasetElementCount(const HighFive::DataSet& ds) {
+    const auto dims = ds.getDimensions();
+    std::size_t n = 1;
+    for (const auto dim : dims) {
+        if (dim == 0)
+            return 0;
+        if (n > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(dim))
+            throw std::runtime_error("dataset element count overflow");
+        n *= static_cast<std::size_t>(dim);
+    }
+    return n;
+}
+
 // Read a (T,) sized raw-byte dataset into a vector with size assumed.
 // For HighFive's T* read overload to be safe, the buffer must be
 // presized to the dataset's element count.
 template <typename T>
 bool ReadFlat(const HighFive::DataSet& ds, std::vector<T>& out, std::size_t expected_count) {
+    const std::size_t actual_count = DatasetElementCount(ds);
+    if (actual_count != expected_count) {
+        throw std::runtime_error(
+            QStringLiteral("dataset element count %1 != expected %2")
+                .arg(actual_count)
+                .arg(expected_count)
+                .toStdString());
+    }
     if (out.size() != expected_count)
         out.resize(expected_count);
+    if (expected_count == 0)
+        return true;
     ds.read(out.data());
     return true;
 }

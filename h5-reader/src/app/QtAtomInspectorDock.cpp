@@ -6,6 +6,7 @@
 
 #include "../model/QtConformationSnapshot.h"
 #include "../model/QtResidueNames.h"
+#include "../model/CsaShape.h"
 #include "../model/TrajectoryConformation.h"
 
 // Typed per-frame group views over the snapshot — the inspector's single
@@ -35,6 +36,7 @@
 #include "../physics/ClassicalSourceMath.h"
 #include "../physics/LiteratureAccessors.h"
 #include "../physics/RingCurrentScalars.h"
+#include "../physics/SphericalBasis.h"
 #include "constants/LiteratureConstants.h"
 
 #include <QBrush>
@@ -49,6 +51,7 @@
 #include <QPixmap>
 #include <QSizePolicy>
 #include <QString>
+#include <QStringList>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 
@@ -76,6 +79,11 @@ QString FmtDouble(double v, int precision = 4) {
     return QStringLiteral("%1").arg(v, 0, 'g', precision);
 }
 
+QString FmtQuantity(double v, const QString& unit = QString(), int precision = 5) {
+    const QString text = FmtDouble(v, precision);
+    return unit.isEmpty() ? text : text + QStringLiteral(" ") + unit;
+}
+
 QString FmtVec3(const Vec3& v, const QString& unit = QString(), int precision = 4) {
     return QStringLiteral("(%1, %2, %3)%4")
         .arg(FmtDouble(v.x(), precision),
@@ -84,12 +92,53 @@ QString FmtVec3(const Vec3& v, const QString& unit = QString(), int precision = 
              unit.isEmpty() ? QString() : QStringLiteral(" ") + unit);
 }
 
-[[maybe_unused]] QString FmtSphericalSummary(const SphericalTensor& st) {
-    double t2Mag = 0.0;
-    for (double c : st.T2)
-        t2Mag += c * c;
-    t2Mag = std::sqrt(t2Mag);
-    return QStringLiteral("T0=%1  |T2|=%2").arg(FmtDouble(st.T0, 5), FmtDouble(t2Mag, 5));
+double T1Magnitude(const SphericalTensor& st) {
+    double s = 0.0;
+    for (double c : st.T1)
+        s += c * c;
+    return std::sqrt(s);
+}
+
+model::CsaShape ShapeFromSphericalTensor(const SphericalTensor& st) {
+    const model::Mat3 sym = h5reader::physics::ReconstructLibraryT2Matrix(st.T0, st.T2);
+    return model::ComputeCsaShape(sym);
+}
+
+model::CsaShape ShapeFromEfg(const QtEfg& efg) {
+    const model::Mat3 sym = h5reader::physics::ReconstructLibraryT2Matrix(efg.t2);
+    return model::ComputeCsaShape(sym);
+}
+
+model::QtResidue ResidueOrEmpty(const model::QtProtein* protein, int residueIndex) {
+    if (!protein || residueIndex < 0)
+        return {};
+    const auto idx = static_cast<std::size_t>(residueIndex);
+    if (idx >= protein->residueCount())
+        return {};
+    return protein->residue(idx);
+}
+
+QString FmtSphericalSummary(const SphericalTensor& st, const QString& unit = QString()) {
+    const model::CsaShape shape = ShapeFromSphericalTensor(st);
+    QStringList parts;
+    parts << QStringLiteral("T0=%1").arg(FmtQuantity(st.T0, unit));
+    if (shape.valid) {
+        parts << QStringLiteral("span=%1").arg(FmtQuantity(shape.span, unit));
+        parts << QStringLiteral("eta=%1").arg(FmtDouble(shape.eta, 4));
+    }
+    parts << QStringLiteral("|T2|=%1").arg(FmtQuantity(st.T2Magnitude(), unit));
+    return parts.join(QStringLiteral("  "));
+}
+
+QString FmtEfgSummary(const QtEfg& efg, const QString& unit = QString()) {
+    const model::CsaShape shape = ShapeFromEfg(efg);
+    QStringList parts;
+    if (shape.valid) {
+        parts << QStringLiteral("Vzz=%1").arg(FmtQuantity(shape.haeberlen_values[2], unit));
+        parts << QStringLiteral("eta=%1").arg(FmtDouble(shape.eta, 4));
+    }
+    parts << QStringLiteral("|T2|=%1").arg(FmtQuantity(efg.t2Magnitude(), unit));
+    return parts.join(QStringLiteral("  "));
 }
 
 QTreeWidgetItem* AddKV(QTreeWidgetItem* parent, const QString& field, const QString& value) {
@@ -142,15 +191,86 @@ bool AddVec3(QTreeWidgetItem* parent, const QString& name, const Vec3& v, const 
     return true;
 }
 
-[[maybe_unused]] bool AddSpherical(QTreeWidgetItem* parent, const QString& name, const SphericalTensor& st, const QString& unit = QString()) {
-    auto* it = AddKV(parent, name, FmtSphericalSummary(st) + (unit.isEmpty() ? QString() : QStringLiteral(" ") + unit));
-    // T2 component breakdown as a child row each — useful for
-    // verifying the angular decomposition frame-to-frame.
-    auto* t2 = AddKV(it, QStringLiteral("T2 components"), QString());
-    for (int i = 0; i < 5; ++i) {
-        AddScalar(t2, QStringLiteral("m=%1").arg(i - 2), st.T2[i]);
+void AddTensorPrincipalRows(QTreeWidgetItem* parent,
+                            const model::CsaShape& shape,
+                            const QString& valuePrefix,
+                            const QString& unit) {
+    if (!shape.valid)
+        return;
+
+    static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
+        {"11", 0.96, 0.66, 0.16},  // amber
+        {"22", 0.18, 0.74, 0.74},  // teal
+        {"33", 0.74, 0.36, 0.86},  // violet
+    };
+    const double vals[3] = {shape.principal_values[0], shape.principal_values[1], shape.principal_values[2]};
+    for (int i = 0; i < 3; ++i) {
+        const QColor color = QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b);
+        AddSwatchKV(parent,
+                    QStringLiteral("%1_%2").arg(valuePrefix, QString::fromLatin1(kAxes[i].name)),
+                    FmtQuantity(vals[i], unit),
+                    color);
     }
-    AddVec3(it, QStringLiteral("T1 (antisym)"), Vec3(st.T1[0], st.T1[1], st.T1[2]));
+}
+
+void AddSphericalTensorTree(QTreeWidgetItem* it, const SphericalTensor& st, const QString& unit) {
+    const model::CsaShape shape = ShapeFromSphericalTensor(st);
+
+    AddScalar(it, QStringLiteral("T0 signed iso"), st.T0, unit);
+    AddScalar(it, QStringLiteral("|T2| anisotropy"), st.T2Magnitude(), unit);
+    const double t1Mag = T1Magnitude(st);
+    if (std::abs(t1Mag) > 1e-12)
+        AddScalar(it, QStringLiteral("|T1| antisymmetric"), t1Mag, unit);
+
+    auto* pas = AddKV(it, QStringLiteral("PAS / shape"),
+                      shape.valid
+                          ? QStringLiteral("span=%1  eta=%2")
+                                .arg(FmtQuantity(shape.span, unit), FmtDouble(shape.eta, 4))
+                          : QStringLiteral("near-isotropic or unavailable"));
+    if (shape.valid) {
+        AddScalar(pas, QStringLiteral("span"), shape.span, unit);
+        AddScalar(pas, QStringLiteral("eta"), shape.eta);
+        AddScalar(pas, QStringLiteral("skew"), shape.skew);
+        AddTensorPrincipalRows(pas, shape, QStringLiteral("sigma"), unit);
+    }
+
+    auto* raw = AddKV(it, QStringLiteral("raw irreps"), QStringLiteral("[T0, T1, T2]"));
+    AddScalar(raw, QStringLiteral("T0"), st.T0, unit);
+    AddVec3(raw, QStringLiteral("T1 antisym vector"), Vec3(st.T1[0], st.T1[1], st.T1[2]), unit);
+    auto* t2 = AddKV(raw, QStringLiteral("T2 components (library basis)"), QString());
+    for (int i = 0; i < 5; ++i)
+        AddScalar(t2, QStringLiteral("m=%1").arg(i - 2), st.T2[i], unit);
+}
+
+void AddEfgTensorTree(QTreeWidgetItem* it, const QtEfg& efg, const QString& unit) {
+    const model::CsaShape shape = ShapeFromEfg(efg);
+
+    AddScalar(it, QStringLiteral("|T2| invariant"), efg.t2Magnitude(), unit);
+    auto* pas = AddKV(it, QStringLiteral("PAS / EFG convention"),
+                      shape.valid
+                          ? QStringLiteral("Vzz=%1  eta=%2")
+                                .arg(FmtQuantity(shape.haeberlen_values[2], unit),
+                                     FmtDouble(shape.eta, 4))
+                          : QStringLiteral("near-isotropic or unavailable"));
+    if (shape.valid) {
+        AddScalar(pas, QStringLiteral("Vxx"), shape.haeberlen_values[0], unit);
+        AddScalar(pas, QStringLiteral("Vyy"), shape.haeberlen_values[1], unit);
+        AddScalar(pas, QStringLiteral("Vzz"), shape.haeberlen_values[2], unit);
+        AddScalar(pas, QStringLiteral("eta"), shape.eta);
+        AddScalar(pas, QStringLiteral("span"), shape.span, unit);
+        AddTensorPrincipalRows(pas, shape, QStringLiteral("V"), unit);
+    }
+
+    auto* raw = AddKV(it, QStringLiteral("raw T2 components (library basis)"), QString());
+    for (int i = 0; i < 5; ++i)
+        AddScalar(raw, QStringLiteral("m=%1").arg(i - 2), efg.t2[i], unit);
+}
+
+[[maybe_unused]] bool AddSpherical(QTreeWidgetItem* parent, const QString& name, const SphericalTensor& st, const QString& unit = QString()) {
+    auto* it = AddKV(parent, name, FmtSphericalSummary(st, unit));
+    it->setToolTip(0, QStringLiteral("Tensor tree: signed T0, invariant magnitudes, PAS shape, and raw irreps."));
+    it->setToolTip(1, it->toolTip(0));
+    AddSphericalTensorTree(it, st, unit);
     return true;
 }
 
@@ -175,12 +295,10 @@ bool AddOptSpherical(QTreeWidgetItem* p, const QString& name, const std::optiona
 }
 bool AddOptEfg(QTreeWidgetItem* p, const QString& name, const std::optional<QtEfg>& v, const QString& unit = QString()) {
     if (!v) return false;
-    auto* it = AddKV(p, name,
-                     QStringLiteral("|T2|=%1%2").arg(FmtDouble(v->t2Magnitude(), 5),
-                                                     unit.isEmpty() ? QString() : QStringLiteral(" ") + unit));
-    auto* t2 = AddKV(it, QStringLiteral("T2 components"), QString());
-    for (int i = 0; i < 5; ++i)
-        AddScalar(t2, QStringLiteral("m=%1").arg(i - 2), v->t2[i]);
+    auto* it = AddKV(p, name, FmtEfgSummary(*v, unit));
+    it->setToolTip(0, QStringLiteral("EFG tensor tree: T2 invariant, PAS Vzz/eta, and raw T2 components."));
+    it->setToolTip(1, it->toolTip(0));
+    AddEfgTensorTree(it, *v, unit);
     return true;
 }
 bool AddOptInt(QTreeWidgetItem* p, const QString& name, const std::optional<int>& v) {
@@ -285,6 +403,10 @@ void QtAtomInspectorDock::onSnapshotReady(std::size_t frame) {
 void QtAtomInspectorDock::clearSelection() {
     ASSERT_THREAD(this);
     hasSelection_ = false;
+    hasCsa_ = false;
+    hasOrient_ = false;
+    csaAtom_ = 0;
+    orientAtom_ = 0;
     tree_->clear();
     auto* hint = new QTreeWidgetItem(tree_);
     hint->setText(0, QStringLiteral("Double-click an atom in the viewport"));
@@ -378,7 +500,7 @@ void QtAtomInspectorDock::rebuild() {
 
     auto* title = new QTreeWidgetItem(tree_);
     const auto& atom = protein_->atom(atomIdx_);
-    const auto& res = atom.residueIndex >= 0 ? protein_->residue(atom.residueIndex) : model::QtResidue{};
+    const auto res = ResidueOrEmpty(protein_, atom.residueIndex);
     title->setText(
         0,
         QStringLiteral("Atom %1 — %2 %3 #%4")
@@ -413,7 +535,7 @@ void QtAtomInspectorDock::rebuild() {
 
 void QtAtomInspectorDock::populateIdentity(QTreeWidgetItem* parent) {
     const auto& atom = protein_->atom(atomIdx_);
-    const auto& res = atom.residueIndex >= 0 ? protein_->residue(atom.residueIndex) : model::QtResidue{};
+    const auto res = ResidueOrEmpty(protein_, atom.residueIndex);
 
     auto* g = AddKV(parent, QStringLiteral("Identity"), QString());
     g->setExpanded(true);
@@ -507,8 +629,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
 
         // Per-atom identity for the literature-constant lookups (Buckingham, sigma0).
         const auto& fa = protein_->atom(atomIdx_);
-        const auto& fres = fa.residueIndex >= 0 ? protein_->residue(fa.residueIndex)
-                                                : model::QtResidue{};
+        const auto fres = ResidueOrEmpty(protein_, fa.residueIndex);
         const std::string residueStd = model::IupacResidue3LetterFor(fres.aminoAcid);
         const std::string atomNameStd = protein_->atomNames(atomIdx_).amber.toStdString();
         const std::string frameKindStd =
@@ -591,9 +712,12 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 if (std::isfinite(bB.value)) in.buckingham_B = {bB.value, true};
             }
         }
-        // sigma0 baseline -- element-level literature constant, PLACEHOLDER status.
+        // sigma0 is currently only a placeholder in the constants table. Do not
+        // feed it into advisor-facing absolute estimates; keep the local
+        // contribution terms visible on their own.
         const auto sigma0c = h5reader::physics::Sigma0(fa.element, residueStd, atomNameStd);
-        if (std::isfinite(sigma0c.value))
+        if (sigma0c.status != nmr::constants::LiteratureStatus::Placeholder
+            && std::isfinite(sigma0c.value))
             in.sigma0 = {sigma0c.value, true};
 
         // Fold all terms through the shared engine math (single source of truth);
@@ -612,25 +736,20 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         const bool fwdComplete = in.ring.present && in.mcconnell.present
                                  && in.larsen.present && in.e_parallel_mopac.present;
         if (fwdComplete && folded.sigma_cl.present && std::isfinite(folded.sigma_cl.value)) {
-            // sigma0 is a placeholder baseline -> caveat the absolute number.
-            if (in.sigma0.present)
-                AddScalarP(ensureFwd(), QStringLiteral("sigma0 (placeholder baseline)"),
-                           in.sigma0.value, QStringLiteral("ppm"),
-                           QStringLiteral("Element-specific literature placeholder baseline, not a "
-                                          "measured reference. [PLACEHOLDER]"));
-            AddScalarP(ensureFwd(), QStringLiteral("estimated sigma_cl (tentative)"),
-                       folded.sigma_cl.value, QStringLiteral("ppm"),
-                       QStringLiteral("Local estimated fold: sigma0 + Buckingham + ring + McConnell + Larsen. "
-                                      "Use as a tentative local explanatory/regression-style model; absolute "
-                                      "value rests on the sigma0 placeholder. [ESTIMATE; sigma0 placeholder]"));
-            // residual = sigma_qm - sigma_cl; sigma_qm = ORCA total T0 (single-pose
-            // DFT only, so absent on a trajectory snapshot).
-            if (auto qm = model::QtOrcaGroup(s).total(a)) {
-                if (std::isfinite(qm->T0))
-                    AddScalarP(ensureFwd(), QStringLiteral("tentative residual (sigma_qm - estimate)"),
-                               qm->T0 - folded.sigma_cl.value, QStringLiteral("ppm"),
-                               QStringLiteral("sigma_qm (ORCA total signed T0) minus the local tentative "
-                                              "classical estimate (ppm). [ESTIMATE]"));
+            if (folded.sigma0.present) {
+                AddScalarP(ensureFwd(), QStringLiteral("estimated sigma_cl (tentative)"),
+                           folded.sigma_cl.value, QStringLiteral("ppm"),
+                           QStringLiteral("Local estimated fold: sigma0 + Buckingham + ring + McConnell + Larsen. "
+                                          "Use as a tentative local explanatory/regression-style model. [ESTIMATE]"));
+                // residual = sigma_qm - sigma_cl; sigma_qm = ORCA total T0
+                // (single-pose DFT only, so absent on a trajectory snapshot).
+                if (auto qm = model::QtOrcaGroup(s).total(a)) {
+                    if (std::isfinite(qm->T0))
+                        AddScalarP(ensureFwd(), QStringLiteral("tentative residual (sigma_qm - estimate)"),
+                                   qm->T0 - folded.sigma_cl.value, QStringLiteral("ppm"),
+                                   QStringLiteral("sigma_qm (ORCA total signed T0) minus the local tentative "
+                                                  "classical estimate (ppm). [ESTIMATE]"));
+                }
             }
         }
     }
@@ -720,8 +839,8 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         bool any = false;
         any |= AddOptSpherical(g, QStringLiteral("coulomb_shielding"), coul.shielding(a), QStringLiteral("V/Å²"));
         any |= AddOptVec3(g, QStringLiteral("coulomb_E"), coul.E(a), QStringLiteral("V/Å"));
-        any |= AddOptVec3(g, QStringLiteral("apbs_E (APBS placeholder)"), apbs.E(a), QStringLiteral("V/Å"));
-        any |= AddOptEfg(g, QStringLiteral("apbs_efg (APBS placeholder)"), apbs.efg(a), QStringLiteral("V/Å²"));
+        any |= AddOptVec3(g, QStringLiteral("apbs_E (APBS diagnostic)"), apbs.E(a), QStringLiteral("V/Å"));
+        any |= AddOptEfg(g, QStringLiteral("apbs_efg (APBS diagnostic)"), apbs.efg(a), QStringLiteral("V/Å²"));
         any |= AddOptEfg(g, QStringLiteral("aimnet2_efg"), model::QtAimnet2Group(s).efg(a), QStringLiteral("V/Å²"));
         if (!any) DeleteIfEmpty(g);
     }
