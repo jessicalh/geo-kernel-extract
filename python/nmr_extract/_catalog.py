@@ -665,6 +665,12 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── GROMACS energy (GromacsEnergyResult.cpp) ────────────────
     ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,     43,   False, "Per-frame energy (43 cols: electrostatic 3, bonded 6, VdW 3, thermo 8, box 3, virial 9, pressure tensor 9, T_group 2)",
               native_axis="protein", units="kJ/mol", mechanism="gromacs_runtime"),
+    ArraySpec("gromacs_box",        "gromacs",     np.ndarray,      9,   False, "Exact per-frame TRR 3x3 cell matrix in Angstrom, lattice vectors as columns, flattened row-major",
+              native_axis="protein", units="Å", tensor_rank=1,
+              parity="odd", mechanism="gromacs_runtime",
+              coordinate_frame="gromacs_simulation_cartesian_xyz",
+              transformation="three polar lattice vectors stored as matrix columns: B'=R B",
+              validity="absent when the load path supplies no periodic cell"),
 
     # ── Bonded energy (BondedEnergyResult.cpp) ─────────────────
     ArraySpec("bonded_energy",      "bonded",      np.ndarray,      7,   False, "Per-atom equal-share attribution of locally evaluated supplied BondedParameters using CHARMM36m-style forms [bond, angle, Urey-Bradley, proper, improper, CMAP, total]; not a GROMACS EDR per-atom decomposition",

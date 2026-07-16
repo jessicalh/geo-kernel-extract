@@ -89,7 +89,8 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
         int n_singularity_guard = 0;
 
         for (size_t wi = 0; wi < W; ++wi) {
-            const auto& water = solvent.waters[wi];
+            const auto water = solvent.WaterAtNearestImage(
+                solvent.waters[wi], pos_i);
 
             // Quick distance check on oxygen
             Vec3 r_O = pos_i - water.O_pos;

@@ -3,21 +3,30 @@
 #include "DsspResult.h"
 #include "FrameNpyEmitter.h"
 #include "GeometryResult.h"
+#include "GromacsFrameHandler.h"
+#include "GromacsFramePullResult.h"
 #include "HBondResult.h"
+#include "HydrationGeometryResult.h"
+#include "HydrationShellResult.h"
 #include "LocalBackboneGeometryResult.h"
 #include "LocalBackboneGeometryTrajectoryResult.h"
 #include "OperationRunner.h"
+#include "PhysicalConstants.h"
 #include "PdbFileReader.h"
 #include "PlanarGeometryResult.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
 #include "RunConfiguration.h"
+#include "SasaResult.h"
 #include "Session.h"
+#include "SpatialIndexResult.h"
 #include "TestEnvironment.h"
 #include "TopologySidecar.h"
 #include "Trajectory.h"
 #include "TrajectoryProtein.h"
+#include "WaterFieldResult.h"
+#include "WaterHBondGeometryResult.h"
 
 #include <gtest/gtest.h>
 
@@ -35,11 +44,17 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
 #include <unistd.h>
+
+// Keep GROMACS last: its legacy headers define DIM as a macro.
+#include "gromacs/fileio/trrio.h"
+#include "gromacs/utility/vectypes.h"
 
 #ifndef NMR_TEST_DATA_DIR
 #error "NMR_TEST_DATA_DIR must be defined"
@@ -259,6 +274,137 @@ void RemoveTempTree(const fs::path& root) {
         RemoveTempTree(entry.path());
     }
     fs::remove(root, ec);
+}
+
+void ShiftTriclinicImage(std::vector<float>& xyz,
+                         std::size_t atom_index,
+                         const rvec box[3],
+                         int na, int nb, int nc) {
+    for (int d = 0; d < 3; ++d) {
+        xyz[atom_index * 3 + static_cast<std::size_t>(d)] +=
+            static_cast<float>(na) * box[0][d] +
+            static_cast<float>(nb) * box[1][d] +
+            static_cast<float>(nc) * box[2][d];
+    }
+}
+
+void AttachExplicitSolventOwners(
+        nmr::ProteinConformation& conf,
+        const nmr::SolventEnvironment& solvent) {
+    ASSERT_TRUE(conf.AttachResult(nmr::GeometryResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(nmr::SpatialIndexResult::Compute(conf)));
+    ASSERT_TRUE(conf.AttachResult(nmr::SasaResult::Compute(conf)));
+
+    auto field = nmr::WaterFieldResult::Compute(conf, solvent);
+    ASSERT_NE(field, nullptr);
+    ASSERT_TRUE(conf.AttachResult(std::move(field)));
+
+    auto hbond = nmr::WaterHBondGeometryResult::Compute(conf, solvent);
+    ASSERT_NE(hbond, nullptr);
+    ASSERT_TRUE(conf.AttachResult(std::move(hbond)));
+
+    auto shell = nmr::HydrationShellResult::Compute(conf, solvent);
+    ASSERT_NE(shell, nullptr);
+    ASSERT_TRUE(conf.AttachResult(std::move(shell)));
+
+    auto hydration = nmr::HydrationGeometryResult::Compute(conf, solvent);
+    ASSERT_NE(hydration, nullptr);
+    ASSERT_TRUE(conf.AttachResult(std::move(hydration)));
+}
+
+void WriteExplicitSolventOwners(const nmr::ProteinConformation& conf,
+                                const fs::path& output_dir) {
+    fs::create_directories(output_dir);
+    ASSERT_EQ(conf.Result<nmr::WaterFieldResult>().WriteFeatures(
+                  conf, output_dir.string()), 9);
+    ASSERT_EQ(conf.Result<nmr::WaterHBondGeometryResult>().WriteFeatures(
+                  conf, output_dir.string()), 3);
+    ASSERT_EQ(conf.Result<nmr::HydrationShellResult>().WriteFeatures(
+                  conf, output_dir.string()), 1);
+    ASSERT_EQ(conf.Result<nmr::HydrationGeometryResult>().WriteFeatures(
+                  conf, output_dir.string()), 1);
+}
+
+void ExpectPeriodicNpyEqual(const fs::path& baseline_dir,
+                            const fs::path& shifted_dir,
+                            const char* filename,
+                            double absolute_tolerance,
+                            double relative_tolerance) {
+    const NpyArray baseline = ReadNpy(baseline_dir / filename);
+    const NpyArray shifted = ReadNpy(shifted_dir / filename);
+    ASSERT_EQ(shifted.descr, baseline.descr) << filename;
+    ASSERT_EQ(shifted.shape, baseline.shape) << filename;
+    ASSERT_EQ(shifted.bytes.size(), baseline.bytes.size()) << filename;
+
+    if (baseline.descr != "<f8") {
+        EXPECT_EQ(shifted.bytes, baseline.bytes) << filename;
+        std::cout << "PBC_INVARIANCE " << filename << " exact_bytes\n";
+        return;
+    }
+
+    const auto a = Values<double>(baseline);
+    const auto b = Values<double>(shifted);
+    ASSERT_EQ(b.size(), a.size()) << filename;
+    double max_absolute_delta = 0.0;
+    double max_scaled_delta = 0.0;
+    std::size_t max_absolute_index = 0;
+    std::size_t mismatch_count = 0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (std::isnan(a[i]) || std::isnan(b[i])) {
+            if (!(std::isnan(a[i]) && std::isnan(b[i]))) ++mismatch_count;
+            continue;
+        }
+        if (std::isinf(a[i]) || std::isinf(b[i])) {
+            if (a[i] != b[i]) ++mismatch_count;
+            continue;
+        }
+        const double delta = std::abs(a[i] - b[i]);
+        const double scale = std::max(std::abs(a[i]), std::abs(b[i]));
+        if (delta > max_absolute_delta) {
+            max_absolute_delta = delta;
+            max_absolute_index = i;
+        }
+        max_scaled_delta = std::max(
+            max_scaled_delta,
+            delta / std::max(1.0, scale));
+        if (delta > absolute_tolerance + relative_tolerance * scale)
+            ++mismatch_count;
+    }
+    EXPECT_EQ(mismatch_count, 0u)
+        << filename << " max_abs=" << max_absolute_delta
+        << " max_scaled=" << max_scaled_delta
+        << " max_index=" << max_absolute_index
+        << " baseline=" << a[max_absolute_index]
+        << " shifted=" << b[max_absolute_index];
+    std::cout << "PBC_INVARIANCE " << filename
+              << " max_abs=" << max_absolute_delta
+              << " mismatches=" << mismatch_count << '\n';
+}
+
+void ExpectExactFloatColumns(const fs::path& baseline_dir,
+                             const fs::path& shifted_dir,
+                             const char* filename,
+                             std::initializer_list<std::size_t> columns) {
+    const NpyArray baseline = ReadNpy(baseline_dir / filename);
+    const NpyArray shifted = ReadNpy(shifted_dir / filename);
+    ASSERT_EQ(baseline.descr, "<f8") << filename;
+    ASSERT_EQ(shifted.descr, baseline.descr) << filename;
+    ASSERT_EQ(shifted.shape, baseline.shape) << filename;
+    ASSERT_EQ(baseline.shape.size(), 2u) << filename;
+    const auto a = Values<double>(baseline);
+    const auto b = Values<double>(shifted);
+    const std::size_t width = baseline.shape[1];
+    std::size_t mismatches = 0;
+    for (std::size_t row = 0; row < baseline.shape[0]; ++row) {
+        for (const std::size_t column : columns) {
+            ASSERT_LT(column, width) << filename;
+            mismatches += (a[row * width + column] !=
+                           b[row * width + column]);
+        }
+    }
+    EXPECT_EQ(mismatches, 0u) << filename;
+    std::cout << "PBC_INVARIANCE " << filename
+              << " identity_columns_exact mismatches=" << mismatches << '\n';
 }
 
 void CheckCoordinateTorsionOracles(
@@ -625,5 +771,238 @@ TEST(NpyLocalGeometryAcceptance, StaticAndTrajectoryProductionPaths) {
     EXPECT_EQ(std::system(command.c_str()), 0) << command;
 
     nmr::FrameNpyEmitter::Reset();
+    RemoveTempTree(root);
+}
+
+
+TEST(SolventPbcInvariance, AllAffectedArraysAndProteinPath) {
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
+    const fs::path root = FreshRoot();
+    const fs::path fixture_root = NMR_LOCAL_GEOMETRY_TRAJECTORY_FIXTURE;
+    const fs::path production_dir = fixture_root / "production";
+    const fs::path tpr_path = production_dir / "production.tpr";
+    const fs::path source_trr_path = production_dir / "production.trr";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(production_dir.string())) << tp.Error();
+    const auto& topology = tp.SysReader().Topology();
+    ASSERT_GT(topology.protein_count, 0u);
+    ASSERT_GT(topology.water_count, 0u);
+    ASSERT_GT(topology.ion_count, 0u);
+
+    int64_t step = 0;
+    real time = 0;
+    real lambda = 0;
+    rvec box[3];
+    int natoms = static_cast<int>(topology.total_atoms);
+    std::vector<float> baseline_xyz(topology.total_atoms * 3);
+    gmx_trr_read_single_frame(
+        source_trr_path, &step, &time, &lambda, box, &natoms,
+        reinterpret_cast<rvec*>(baseline_xyz.data()), nullptr, nullptr);
+    ASSERT_EQ(natoms, static_cast<int>(topology.total_atoms));
+    ASSERT_NE(box[2][0], 0.0f)
+        << "fixture must exercise a triclinic, not diagonal-only, cell";
+
+    // Pin the separately retained full topology to the validated wholer:
+    // one water H is moved across a cell face and must return beside its O.
+    std::vector<float> wholer_probe = baseline_xyz;
+    const std::size_t probe_oxygen = topology.water_O_start;
+    ShiftTriclinicImage(
+        wholer_probe, probe_oxygen + 1, box, 1, 0, 0);
+    float wholer_box[3][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) wholer_box[i][j] = box[i][j];
+    }
+    ASSERT_TRUE(tp.SysReader().MakeSystemWhole(wholer_probe, wholer_box));
+    const nmr::Vec3 probe_oh(
+        static_cast<double>(wholer_probe[(probe_oxygen + 1) * 3]) -
+            static_cast<double>(wholer_probe[probe_oxygen * 3]),
+        static_cast<double>(wholer_probe[(probe_oxygen + 1) * 3 + 1]) -
+            static_cast<double>(wholer_probe[probe_oxygen * 3 + 1]),
+        static_cast<double>(wholer_probe[(probe_oxygen + 1) * 3 + 2]) -
+            static_cast<double>(wholer_probe[probe_oxygen * 3 + 2]));
+    EXPECT_LT(probe_oh.norm() * nmr::ANGSTROM_PER_NANOMETRE, 2.0);
+    std::cout << "PBC_INVARIANCE full_topology_wholer repaired_probe_water\n";
+
+    std::vector<float> shifted_xyz = baseline_xyz;
+    const std::array<std::array<int, 3>, 6> molecule_shifts{{
+        {{ 1,  0, -1}}, {{-1,  1,  0}}, {{ 0, -1,  1}},
+        {{ 1, -1,  1}}, {{-1,  0, -1}}, {{ 0,  1, -1}},
+    }};
+    for (std::size_t wi = 0; wi < topology.water_count; ++wi) {
+        const std::size_t oxygen = topology.water_O_start + wi * 3;
+        const auto& shift = molecule_shifts[wi % molecule_shifts.size()];
+        for (std::size_t site = 0; site < 3; ++site) {
+            ShiftTriclinicImage(shifted_xyz, oxygen + site, box,
+                                shift[0], shift[1], shift[2]);
+        }
+        // The whole water was moved to an equivalent image; now put each H
+        // in another equivalent image too. This is the torn-water case that
+        // corrupts WaterMolecule::Dipole when solvent bypasses do_pbc_mtop.
+        ShiftTriclinicImage(shifted_xyz, oxygen + 1, box, 1, -1, 0);
+        ShiftTriclinicImage(shifted_xyz, oxygen + 2, box, -1, 0, 1);
+    }
+    for (std::size_t ii = 0; ii < topology.ion_count; ++ii) {
+        const auto& shift = molecule_shifts[ii % molecule_shifts.size()];
+        ShiftTriclinicImage(shifted_xyz, topology.ion_start + ii, box,
+                            shift[0], shift[1], shift[2]);
+    }
+
+    const fs::path baseline_trr = root / "baseline.trr";
+    const fs::path shifted_trr = root / "shifted.trr";
+    gmx_trr_write_single_frame(
+        baseline_trr, step, time, lambda, box, natoms,
+        reinterpret_cast<const rvec*>(baseline_xyz.data()), nullptr, nullptr);
+    gmx_trr_write_single_frame(
+        shifted_trr, step, time, lambda, box, natoms,
+        reinterpret_cast<const rvec*>(shifted_xyz.data()), nullptr, nullptr);
+
+    nmr::GromacsFrameHandler baseline_handler(tp);
+    nmr::GromacsFrameHandler shifted_handler(tp);
+    ASSERT_TRUE(baseline_handler.Open(baseline_trr.string(), tpr_path.string()))
+        << baseline_handler.error();
+    ASSERT_TRUE(shifted_handler.Open(shifted_trr.string(), tpr_path.string()))
+        << shifted_handler.error();
+    ASSERT_TRUE(baseline_handler.ReadNextFrame()) << baseline_handler.error();
+    ASSERT_TRUE(shifted_handler.ReadNextFrame()) << shifted_handler.error();
+
+    const auto& baseline_solvent = baseline_handler.Solvent();
+    const auto& shifted_solvent = shifted_handler.Solvent();
+    ASSERT_EQ(shifted_solvent.waters.size(), baseline_solvent.waters.size());
+    double max_dipole_delta = 0.0;
+    for (std::size_t wi = 0; wi < baseline_solvent.waters.size(); ++wi) {
+        const auto& baseline_water = baseline_solvent.waters[wi];
+        const auto& shifted_water = shifted_solvent.waters[wi];
+        EXPECT_LT((baseline_water.H1_pos - baseline_water.O_pos).norm(), 2.0);
+        EXPECT_LT((baseline_water.H2_pos - baseline_water.O_pos).norm(), 2.0);
+        EXPECT_LT((shifted_water.H1_pos - shifted_water.O_pos).norm(), 2.0);
+        EXPECT_LT((shifted_water.H2_pos - shifted_water.O_pos).norm(), 2.0);
+        max_dipole_delta = std::max(
+            max_dipole_delta,
+            (baseline_water.Dipole() - shifted_water.Dipole()).norm());
+    }
+    EXPECT_LE(max_dipole_delta, 5.0e-5);
+    std::cout << "PBC_INVARIANCE stored_water_dipoles max_abs="
+              << max_dipole_delta << '\n';
+
+    const auto& baseline_protein = baseline_handler.ProteinPositions();
+    const auto& shifted_protein = shifted_handler.ProteinPositions();
+    ASSERT_EQ(shifted_protein.size(), baseline_protein.size());
+    for (std::size_t ai = 0; ai < baseline_protein.size(); ++ai) {
+        EXPECT_EQ(shifted_protein[ai].x(), baseline_protein[ai].x()) << ai;
+        EXPECT_EQ(shifted_protein[ai].y(), baseline_protein[ai].y()) << ai;
+        EXPECT_EQ(shifted_protein[ai].z(), baseline_protein[ai].z()) << ai;
+    }
+
+    // The new full-system pass must not become an alternative protein path.
+    // Re-run the previously validated protein-only wholer directly and require
+    // the handler's emitted protein coordinates to be exactly its output.
+    std::vector<float> validated_protein(
+        baseline_xyz.begin() + topology.protein_start * 3,
+        baseline_xyz.begin() +
+            (topology.protein_start + topology.protein_count) * 3);
+    float protein_box[3][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) protein_box[i][j] = box[i][j];
+    }
+    ASSERT_TRUE(tp.SysReader().MakeProteinWhole(
+        validated_protein, protein_box));
+    for (std::size_t ai = 0; ai < baseline_protein.size(); ++ai) {
+        for (std::size_t d = 0; d < 3; ++d) {
+            EXPECT_EQ(baseline_protein[ai][static_cast<Eigen::Index>(d)],
+                      static_cast<double>(validated_protein[ai * 3 + d]) *
+                          nmr::ANGSTROM_PER_NANOMETRE)
+                << ai << "," << d;
+        }
+    }
+    std::cout << "PBC_INVARIANCE protein_positions exact_validated_path\n";
+
+    tp.Seed(baseline_protein, baseline_handler.Time());
+    auto baseline_conf = tp.TickConformation(baseline_protein);
+    auto shifted_conf = tp.TickConformation(shifted_protein);
+    AttachExplicitSolventOwners(*baseline_conf, baseline_handler.Solvent());
+    AttachExplicitSolventOwners(*shifted_conf, shifted_handler.Solvent());
+
+    ASSERT_TRUE(baseline_handler.Solvent().HasPeriodicCell());
+    ASSERT_TRUE(shifted_handler.Solvent().HasPeriodicCell());
+    EXPECT_TRUE((baseline_handler.Solvent().BoxMatrix().array() ==
+                 baseline_handler.BoxMatrix().array()).all());
+    EXPECT_TRUE((shifted_handler.Solvent().BoxMatrix().array() ==
+                 shifted_handler.BoxMatrix().array()).all());
+
+    const fs::path baseline_dir = root / "baseline_arrays";
+    const fs::path shifted_dir = root / "shifted_arrays";
+    WriteExplicitSolventOwners(*baseline_conf, baseline_dir);
+    WriteExplicitSolventOwners(*shifted_conf, shifted_dir);
+    auto baseline_frame = nmr::GromacsFramePullResult::Compute(
+        *baseline_conf, nullptr, &baseline_handler.BoxMatrix());
+    auto shifted_frame = nmr::GromacsFramePullResult::Compute(
+        *shifted_conf, nullptr, &shifted_handler.BoxMatrix());
+    ASSERT_NE(baseline_frame, nullptr);
+    ASSERT_NE(shifted_frame, nullptr);
+    ASSERT_EQ(baseline_frame->WriteFeatures(
+                  *baseline_conf, baseline_dir.string()), 1);
+    ASSERT_EQ(shifted_frame->WriteFeatures(
+                  *shifted_conf, shifted_dir.string()), 1);
+
+    const NpyArray emitted_box = ReadNpy(baseline_dir / "gromacs_box.npy");
+    ASSERT_EQ(emitted_box.shape, (std::vector<std::size_t>{1, 9}));
+    const auto emitted_box_values = Values<double>(emitted_box);
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            const std::size_t column = static_cast<std::size_t>(i * 3 + j);
+            EXPECT_EQ(emitted_box_values[column],
+                      baseline_handler.BoxMatrix()(i, j));
+            EXPECT_EQ(emitted_box_values[column],
+                      static_cast<double>(box[j][i]) *
+                          nmr::ANGSTROM_PER_NANOMETRE);
+        }
+    }
+    std::cout << "PBC_INVARIANCE gromacs_box serialized_layout_units_exact\n";
+
+    const NpyArray baseline_shell = ReadNpy(
+        baseline_dir / "water_shell_counts.npy");
+    const auto shell_values = Values<double>(baseline_shell);
+    ASSERT_TRUE(std::any_of(shell_values.begin(), shell_values.end(),
+                            [](double value) { return value > 0.0; }));
+    const NpyArray baseline_candidates = ReadNpy(
+        baseline_dir / "water_hbond_candidates.npy");
+    ASSERT_EQ(baseline_candidates.shape.size(), 2u);
+    ASSERT_GT(baseline_candidates.shape[0], 0u);
+
+    constexpr double kAbs = 2.0e-4;
+    constexpr double kRel = 2.0e-6;
+    for (const char* filename : {
+             "water_efield.npy",
+             "water_efg.npy",
+             "water_efg_first.npy",
+             "water_efield_first.npy",
+             "water_shell_counts.npy",
+             "water_efield_clamp_mask.npy",
+             "water_efield_clamp_scale.npy",
+             "water_efield_first_clamp_mask.npy",
+             "water_efield_first_clamp_scale.npy",
+             "hydration_shell.npy",
+             "water_polarization.npy",
+             "water_hbond_counts.npy",
+             "gromacs_box.npy",
+         }) {
+        ExpectPeriodicNpyEqual(
+            baseline_dir, shifted_dir, filename, kAbs, kRel);
+    }
+    // Candidate identities, modes, roles, pass decisions, and summary indices
+    // are exact. Continuous H-bond geometry includes angles in degrees; its
+    // 0.002 tolerance reflects arithmetic on the single-precision TRR inputs.
+    ExpectExactFloatColumns(
+        baseline_dir, shifted_dir, "water_hbond_candidates.npy",
+        {0, 1, 2, 3, 4, 15});
+    ExpectPeriodicNpyEqual(
+        baseline_dir, shifted_dir, "water_hbond_candidates.npy", 2.0e-3, kRel);
+    ExpectExactFloatColumns(
+        baseline_dir, shifted_dir, "water_hbond_nearest.npy",
+        {3, 4, 5, 6, 7});
+    ExpectPeriodicNpyEqual(
+        baseline_dir, shifted_dir, "water_hbond_nearest.npy", 2.0e-3, kRel);
+
     RemoveTempTree(root);
 }

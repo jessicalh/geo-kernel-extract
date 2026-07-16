@@ -34,9 +34,9 @@ GromacsFrameHandler::~GromacsFrameHandler() {
 //
 // Mount the TRR stream via libgromacs gmx_trr_open. The TPR was
 // already parsed by TrajectoryProtein::BuildFromTrajectory (which
-// called FullSystemReader::ReadTopology), so the protein slice and
-// the trimmed protein-only mtop used for PBC fixing are already on
-// hand. Atom-count sanity check: TRR header reports total system
+// called FullSystemReader::ReadTopology), so the protein slice plus
+// the protein-only and full-system topology owners used for PBC fixing
+// are already on hand. Atom-count sanity check: TRR header reports total system
 // atoms, which must match topology.total_atoms.
 
 bool GromacsFrameHandler::Open(const std::string& trr_path,
@@ -80,7 +80,7 @@ bool GromacsFrameHandler::Open(const std::string& trr_path,
 
 // ── ReadNextFrame ────────────────────────────────────────────────
 //
-// Read one TRR frame: positions + velocities + box. PBC-fix protein,
+// Read one TRR frame: positions + velocities + box. PBC-fix protein/solvent,
 // split full-system into protein positions, protein velocities, and
 // SolventEnvironment. Populates internal state.
 //
@@ -169,15 +169,27 @@ bool GromacsFrameHandler::ReadNextFrame() {
         return false;
     }
 
-    // Write fixed coords back over the protein slice for ExtractFrame.
+    // Make every molecule whole on a separate full-system copy. The existing
+    // protein-only pass above remains the authority for protein coordinates;
+    // this full topology pass repairs solvent molecules (notably torn water
+    // O/H sites) before ExtractFrame builds SolventEnvironment.
     std::vector<float> fixed_xyz(raw_x_.begin(), raw_x_.end());
+    if (!tp_.SysReader().MakeSystemWhole(fixed_xyz, box_for_pbc)) {
+        error_ = std::string("MakeSystemWhole failed at index ") +
+                 std::to_string(has_read_ ? current_index_ + 1 : 0);
+        return false;
+    }
+
+    // Preserve the validated protein-only result exactly; do not let the
+    // full-system pass become a second authority for emitted protein coords.
     std::copy(protein_coords.begin(), protein_coords.end(),
               fixed_xyz.begin() + pstart * 3);
 
     // Split into protein positions (Å) + solvent.
     protein_positions_.clear();
     solvent_ = {};
-    if (!tp_.SysReader().ExtractFrame(fixed_xyz, protein_positions_, solvent_)) {
+    if (!tp_.SysReader().ExtractFrame(
+            fixed_xyz, protein_positions_, solvent_, &box_matrix_)) {
         error_ = std::string("frame extract failed at index ") +
                  std::to_string(has_read_ ? current_index_ + 1 : 0);
         return false;

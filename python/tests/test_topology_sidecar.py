@@ -120,6 +120,7 @@ _DIRECTIONAL_STEMS = {
     "mopac_global", "mopac_atom_populations",
     "mopac_atomic_orbital_populations",
     "mopac_atomic_orbital_population_totals", "gromacs_energy",
+    "gromacs_box",
     "mopac_dipole_debye", "mopac_dipole_point_charge_debye",
     "mopac_dipole_hybridization_debye", "mopac_atom_ao_density",
     "mopac_atomic_orbital_populations_full_precision",

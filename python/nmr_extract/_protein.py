@@ -1552,6 +1552,7 @@ class Protein:
     hydration: Optional[HydrationGroup] = None
     water_polarization: Optional[WaterPolarizationGroup] = None
     gromacs_energy: Optional[np.ndarray] = None
+    gromacs_box: Optional[np.ndarray] = None
     # (N,7) equal-share local BondedParameters evaluation; not an EDR
     # per-atom decomposition.
     bonded_energy: Optional[np.ndarray] = None
@@ -2462,6 +2463,7 @@ def load(path: str | Path) -> Protein:
         hydration=hydration,
         water_polarization=water_polarization,
         gromacs_energy=get("gromacs_energy"),
+        gromacs_box=get("gromacs_box"),
         bonded_energy=get("bonded_energy"),
         hm_welford=get("hm_welford"),
         mc_welford=get("mc_welford"),

@@ -13,9 +13,16 @@
 //
 
 #include <Eigen/Dense>
+#include <memory>
 #include <vector>
 
+enum class PbcType : int;
+
 namespace nmr {
+
+namespace detail {
+struct SolventPbcState;
+}
 
 using Vec3 = Eigen::Vector3d;
 
@@ -54,6 +61,26 @@ struct SolventEnvironment {
     bool Empty() const { return waters.empty() && ions.empty(); }
     size_t WaterCount() const { return waters.size(); }
     size_t IonCount() const { return ions.size(); }
+
+    // Attach the authoritative TPR PBC type and this frame's full TRR cell.
+    // The matrix uses the producer convention: lattice vectors are columns,
+    // coordinates and cell are both in Angstroms.
+    void SetPeriodicCell(const Eigen::Matrix3d& box_matrix,
+                         PbcType pbc_type);
+    bool HasPeriodicCell() const { return static_cast<bool>(pbc_state_); }
+    const Eigen::Matrix3d& BoxMatrix() const;
+
+    // GROMACS minimum-image x1-x2 displacement. Without a periodic cell
+    // (the legal static/synthetic path), this is the ordinary difference.
+    Vec3 MinimumImageDisplacement(const Vec3& x1, const Vec3& x2) const;
+
+    // Put an extraction-whole water in the image whose oxygen is nearest
+    // target while preserving its already-canonical H-O vectors.
+    WaterMolecule WaterAtNearestImage(const WaterMolecule& water,
+                                      const Vec3& target) const;
+
+private:
+    std::shared_ptr<const detail::SolventPbcState> pbc_state_;
 };
 
 }  // namespace nmr

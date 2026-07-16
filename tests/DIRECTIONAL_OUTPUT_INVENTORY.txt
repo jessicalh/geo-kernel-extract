@@ -569,6 +569,7 @@ delta_ring_proximity.npy | WT atom (N,removed_rings*6) | mixed | each ring block
 GromacsEnergyResult
 -------------------
 gromacs_energy.npy | protein/frame (1,43) | mixed | cols20:23 Box-X/Y/Z; cols23:32 virial; cols32:41 pressure tensor | virial/pressure are ordinary, not necessarily symmetric, rank-2 tensors T'=Q T Q^T when the external EDR payload is transformed consistently; box diagonal lengths are orientation dependent but not closed under arbitrary Q | virial/pressure T1 is structural zero only if the input payload is symmetric; producer copies unsymmetrized payload | result absent without EDR row | DC-GM uses deliberately nonsymmetric tensors plus an isotropic box; general box contract unresolved
+gromacs_box.npy | protein/frame (1,9) | Angstrom | exact per-frame TRR 3x3 cell matrix, lattice vectors as columns, row-major flat | three polar lattice vectors stored as matrix columns, orientation-sensitive rank-1 per vector: B'=R B | absent when the load path supplies no periodic cell | GromacsFramePullResult; SolventPbcInvariance asserts exact serialized layout + exact invariance under arbitrary lattice-image shift (NpyLocalGeometryAcceptanceTest)
 
 
 Directional validity, sparse-identity, and provenance companions

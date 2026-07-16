@@ -73,7 +73,9 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
         int n_singularity_guard = 0;
 
         for (size_t wi = 0; wi < W; ++wi) {
-            Vec3 r = solvent.waters[wi].O_pos - pos_i;
+            const WaterMolecule water = solvent.WaterAtNearestImage(
+                solvent.waters[wi], pos_i);
+            Vec3 r = water.O_pos - pos_i;
             double d_sq = r.squaredNorm();
             if (d_sq > first_sq) continue;
             if (d_sq < guard_sq) {
@@ -93,7 +95,7 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
                 ++n_exposed;
 
             // Water dipole orientation relative to atom→water vector
-            Vec3 dipole = solvent.waters[wi].Dipole();
+            Vec3 dipole = water.Dipole();
             double dip_mag = dipole.norm();
             if (dip_mag > near_zero) {
                 dipole_cos_sum += dipole.dot(r_hat) / dip_mag;
@@ -129,7 +131,8 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
         double best_ion_dist = std::numeric_limits<double>::max();
         double best_ion_charge = 0.0;
         for (size_t ii = 0; ii < solvent.IonCount(); ++ii) {
-            double d = (solvent.ions[ii].pos - pos_i).norm();
+            double d = solvent.MinimumImageDisplacement(
+                solvent.ions[ii].pos, pos_i).norm();
             if (d < best_ion_dist) {
                 best_ion_dist = d;
                 best_ion_charge = solvent.ions[ii].charge;

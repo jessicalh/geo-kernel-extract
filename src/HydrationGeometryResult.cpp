@@ -68,7 +68,9 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         Vec3 pos_i = atom.Position();
 
         for (size_t wi = 0; wi < W; ++wi) {
-            Vec3 r = solvent.waters[wi].O_pos - pos_i;
+            const WaterMolecule water = solvent.WaterAtNearestImage(
+                solvent.waters[wi], pos_i);
+            Vec3 r = water.O_pos - pos_i;
             double d_sq = r.squaredNorm();
             if (d_sq > first_sq) continue;
             if (d_sq < guard_sq) {
@@ -80,7 +82,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
             ++n_shell;
 
             // Accumulate water dipole
-            const Vec3 water_dipole = solvent.waters[wi].Dipole();
+            const Vec3 water_dipole = water.Dipole();
             dipole_sum += water_dipole;
             dipole_norm_sum += water_dipole.norm();
 

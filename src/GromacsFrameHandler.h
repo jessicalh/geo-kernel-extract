@@ -4,9 +4,10 @@
 //
 // Pure reader. Open mounts the TRR stream and builds the PBC fixer
 // from the TPR. ReadNextFrame advances one frame — reads raw TRR
-// (positions + velocities + box), applies PBC fix to the protein
-// slice, and splits the full-system coordinates into protein positions,
-// protein velocities, and SolventEnvironment. Accessors expose the
+// (positions + velocities + box), applies the validated protein PBC fix and
+// the same molecule wholer to solvent, then splits the full-system coordinates
+// into protein positions, protein velocities, and a cell-aware
+// SolventEnvironment. Accessors expose the
 // read state for Trajectory::Run to orchestrate the per-frame pipeline.
 //
 // TRR (vs the prior XTC reader) carries velocities and box matrix
@@ -54,9 +55,9 @@ public:
     GromacsFrameHandler(const GromacsFrameHandler&) = delete;
     GromacsFrameHandler& operator=(const GromacsFrameHandler&) = delete;
 
-    // Mount TRR stream + use the protein-only mtop owned by the
-    // FullSystemReader (already parsed at TrajectoryProtein build
-    // time) for PBC fixing. Sanity-checks that the TRR atom count
+    // Mount TRR stream + use the stored mtop owners in FullSystemReader
+    // (already parsed at TrajectoryProtein build time) for PBC fixing.
+    // Sanity-checks that the TRR atom count
     // matches the wrapped Protein + solvent + ions.  trr_path here
     // is the production.trr path; tpr_path is unused (kept for
     // backward call-site compatibility) since the TPR was already
@@ -64,7 +65,7 @@ public:
     bool Open(const std::string& trr_path, const std::string& tpr_path);
 
     // Advance one frame. Reads positions + velocities + box from TRR,
-    // converts to Å / Å/ps, PBC-fixes protein, splits into protein
+    // converts to Å / Å/ps, PBC-fixes protein and solvent, splits into protein
     // positions + protein velocities + SolventEnvironment. Populates
     // internal state readable via accessors. Returns false at EOF.
     bool ReadNextFrame();

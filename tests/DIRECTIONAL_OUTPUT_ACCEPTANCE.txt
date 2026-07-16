@@ -268,6 +268,7 @@ larsen_sidechain_donor_atoms.npy | LarsenSidechainDonorAuditResult | atom(N,6) i
 External runtime mixed payloads
 -------------------------------
 gromacs_energy.npy | GromacsEnergyResult | protein(1,43): cols23:32 virial T, cols32:41 pressure T, cols20:23 axis-tied box diagonals NC, rest invariant | unavailable EDR terms NaN | DC-GM PASS exact owner-NPY with nonsymmetric row-major tensors, seed 0x47524f4d41435345, 3e-13 abs + 3e-14 rel; general box remains non-closed
+gromacs_box.npy | GromacsFramePullResult | protein(1,9): 3x3 cell, lattice vectors as columns, orientation-sensitive rank-1 per vector B'=R B | absent without periodic cell | SolventPbcInvariance PASS — serialized layout/units exact and array exactly invariant under arbitrary lattice-image shift of the same physical frame
 
 
 TRAJECTORY H5 DIRECTIONAL LEDGER
