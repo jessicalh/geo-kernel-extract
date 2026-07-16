@@ -1,15 +1,16 @@
 #pragma once
 //
-// BondedEnergyResult: per-atom bonded energy decomposition from
-// GROMACS CHARMM36m force field parameters.
+// BondedEnergyResult: per-atom bonded energy decomposition from supplied
+// BondedParameters.
 //
 // Reads bonded interaction lists and parameters (extracted from TPR
 // at build time). For each frame, evaluates the force field energy
 // functions from conformation positions and accumulates per-atom.
 //
 // Energy types: bond stretch, angle bend, Urey-Bradley, proper
-// dihedral, improper dihedral, CMAP correction. Each stored as a
-// per-atom double (kJ/mol, split evenly among participating atoms).
+// dihedral, harmonic improper dihedral, periodic improper dihedral,
+// CMAP correction. Each stored as a per-atom double (kJ/mol, split
+// evenly among participating atoms).
 //
 // Dependencies: none. Compute needs conformation positions plus bonded
 // parameters supplied through RunOptions, not another ConformationResult.
@@ -34,6 +35,7 @@ struct BondedInteraction {
         UreyBradley,    // Urey-Bradley 1-3 distance term
         ProperDih,      // periodic proper dihedral
         ImproperDih,    // harmonic improper dihedral
+        PeriodicImproperDih,  // periodic improper dihedral
         CMAP            // dihedral energy correction map
     };
 
@@ -48,6 +50,8 @@ struct BondedInteraction {
     // UreyBradley: p[0]=r13_0 (nm), p[1]=k_ub (kJ/mol/nm^2)
     // ProperDih:  p[0]=phi0 (rad), p[1]=k (kJ/mol), p[2]=multiplicity
     // ImproperDih: p[0]=phi0 (rad), p[1]=k (kJ/mol/rad^2)
+    // PeriodicImproperDih: p[0]=phi0 (rad, evaluator signed-dihedral
+    //                      convention), p[1]=k (kJ/mol), p[2]=multiplicity
     // CMAP:       p[0]=cmap_type_index (into cmap grid array)
     double p[3] = {};
 };
@@ -89,6 +93,9 @@ public:
     const std::vector<double>& UBEnergy()       const { return ub_energy_; }
     const std::vector<double>& ProperDihEnergy() const { return proper_energy_; }
     const std::vector<double>& ImproperDihEnergy() const { return improper_energy_; }
+    const std::vector<double>& PeriodicImproperDihEnergy() const {
+        return periodic_improper_energy_;
+    }
     const std::vector<double>& CmapEnergy()     const { return cmap_energy_; }
     const std::vector<double>& TotalBonded()    const { return total_bonded_; }
 
@@ -98,6 +105,7 @@ private:
     std::vector<double> ub_energy_;        // (N,)
     std::vector<double> proper_energy_;    // (N,)
     std::vector<double> improper_energy_;  // (N,)
+    std::vector<double> periodic_improper_energy_;  // (N,)
     std::vector<double> cmap_energy_;      // (N,)
     std::vector<double> total_bonded_;     // (N,) sum of all above
 };

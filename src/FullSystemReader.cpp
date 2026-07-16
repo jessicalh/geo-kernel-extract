@@ -541,6 +541,24 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
             bonded_params_.interactions.push_back(bi);
         });
 
+    // Improper dihedrals (periodic)
+    walk_il(InteractionFunction::PeriodicImproperDihedrals,
+        [&](int type, const int* a) {
+            const auto& p = idef.iparams[type].pdihs;
+            BondedInteraction bi;
+            bi.type = BondedInteraction::PeriodicImproperDih;
+            bi.n_atoms = 4;
+            bi.atoms[0] = to_protein_idx(a[0]);
+            bi.atoms[1] = to_protein_idx(a[1]);
+            bi.atoms[2] = to_protein_idx(a[2]);
+            bi.atoms[3] = to_protein_idx(a[3]);
+            // DihedralAngle uses the opposite signed orientation to GROMACS.
+            bi.p[0] = -p.phiA * DEG_TO_RAD;
+            bi.p[1] = p.cpA;
+            bi.p[2] = static_cast<double>(p.mult);
+            bonded_params_.interactions.push_back(bi);
+        });
+
     // CMAP (dihedral energy correction)
     walk_il(InteractionFunction::DihedralEnergyCorrectionMap,
         [&](int type, const int* a) {

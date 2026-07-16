@@ -29,9 +29,10 @@ int GromacsEnergyResult::WriteFeatures(
     std::vector<double> row = {
         // Electrostatic (3)
         energy_.coulomb_sr, energy_.coulomb_recip, energy_.coulomb_14,
-        // Bonded (6)
+        // Bonded (7)
         energy_.bond, energy_.angle, energy_.urey_bradley,
-        energy_.proper_dih, energy_.improper_dih, energy_.cmap_dih,
+        energy_.proper_dih, energy_.improper_dih,
+        energy_.periodic_improper_dih, energy_.cmap_dih,
         // VdW (3)
         energy_.lj_sr, energy_.lj_14, energy_.disper_corr,
         // Thermodynamic state (8)

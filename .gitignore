@@ -192,15 +192,15 @@ molprobity_runs/
 
 # Reference-corpus derived files. These are local/private-docs material,
 # not release inputs; regenerate from PDFs when needed.
-references-text/
-references-images/
+/references-text/
+/references-images/
 
 # Literature corpus + metadata. Docs-private, kept on disk only pending the
 # private-docs-repo split; not release inputs for nmr-extract or h5-reader.
 # Untracked from git 2026-05-29 (the small runtime/test dependency that used
 # to live here is now data/bmrb_atom_nom.tbl).
-references/
-references-meta/
+/references/
+/references-meta/
 
 # Doc-truthfulness audit scaffolding — transient working trackers for the
 # comment/doc campaign (memory project_docs_single_source_of_truth). Helps

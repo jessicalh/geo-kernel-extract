@@ -41,7 +41,8 @@ struct GromacsEnergy {
     double angle         = 0.0;   // harmonic angle bending (kJ/mol)
     double urey_bradley  = 0.0;   // Urey-Bradley 1-3 distance (kJ/mol)
     double proper_dih    = 0.0;   // proper dihedral (kJ/mol)
-    double improper_dih  = 0.0;   // improper dihedral — planarity (kJ/mol)
+    double improper_dih  = 0.0;   // harmonic improper dihedral (kJ/mol)
+    double periodic_improper_dih = 0.0;  // periodic improper dihedral (kJ/mol)
     double cmap_dih      = 0.0;   // CMAP backbone correction (kJ/mol)
 
     // ── Van der Waals ──────────────────────────────────────────

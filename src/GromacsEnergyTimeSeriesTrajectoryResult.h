@@ -29,7 +29,8 @@
 //   /trajectory/gromacs_energy_time_series/
 //     coulomb_sr, coulomb_recip, coulomb_14            (T,)  float64  kJ/mol
 //     bond, angle, urey_bradley                        (T,)  float64  kJ/mol
-//     proper_dih, improper_dih, cmap_dih               (T,)  float64  kJ/mol
+//     proper_dih, improper_dih, periodic_improper_dih   (T,)  float64  kJ/mol
+//     cmap_dih                                          (T,)  float64  kJ/mol
 //     lj_sr, lj_14, disper_corr                        (T,)  float64  kJ/mol
 //     potential, kinetic, total_energy, enthalpy       (T,)  float64  kJ/mol
 //     temperature, T_protein, T_non_protein            (T,)  float64  K

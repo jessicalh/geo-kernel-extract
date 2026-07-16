@@ -185,8 +185,9 @@ DC-LSI: LarsenSidechainDonorDirectionalCovariance.SignedRhoFlipsUnderImproperPro
 DC-GM : GromacsEnergyDirectionalCovariance.ProductionRerunAndExactNpyH5UnderO3
         Seed 0x47524f4d41435345, proper+improper+translation; transformed
         external tensor payload is passed back through production Compute.
-        Tensor abs 3e-13, rel 3e-14.  Exact (1,43) NPY and virial, pressure,
-        isotropic-box, scalar and mask H5 datasets are re-read.  Only an
+        Tensor abs 3e-13, rel 3e-14.  Exact (1,44) NPY and virial, pressure,
+        isotropic-box, separate improper_dih and periodic_improper_dih scalar,
+        and mask H5 datasets are re-read.  Only an
         isotropic box is O(3)-closed; the three stored general box diagonals
         are not.
 DC-T2 : DirectionalCovariance.NativeT2BasisRoundTripUsesCartesianQtQt
@@ -570,7 +571,7 @@ delta_ring_proximity.npy | WT atom (N,removed_rings*6) | mixed | each ring block
 
 GromacsEnergyResult
 -------------------
-gromacs_energy.npy | protein/frame (1,43) | mixed | cols20:23 Box-X/Y/Z; cols23:32 virial; cols32:41 pressure tensor | virial/pressure are ordinary, not necessarily symmetric, rank-2 tensors T'=Q T Q^T when the external EDR payload is transformed consistently; box diagonal lengths are orientation dependent but not closed under arbitrary Q | virial/pressure T1 is structural zero only if the input payload is symmetric; producer copies unsymmetrized payload | result absent without EDR row | DC-GM uses deliberately nonsymmetric tensors plus an isotropic box; general box contract unresolved
+gromacs_energy.npy | protein/frame (1,44) | mixed | col7 harmonic improper and col8 periodic improper are distinct scalar identities; cols21:24 Box-X/Y/Z; cols24:33 virial; cols33:42 pressure tensor | improper energies remain separate S/0e scalars; virial/pressure are ordinary, not necessarily symmetric, rank-2 tensors T'=Q T Q^T when the external EDR payload is transformed consistently; box diagonal lengths are orientation dependent but not closed under arbitrary Q | virial/pressure T1 is structural zero only if the input payload is symmetric; producer copies unsymmetrized payload | result absent without EDR row; either improper source term may independently be unavailable/NaN | DC-GM uses deliberately nonsymmetric tensors plus an isotropic box; general box contract unresolved
 gromacs_box.npy | protein/frame (1,9) | Angstrom | exact per-frame TRR 3x3 cell matrix, lattice vectors as columns, row-major flat | three polar lattice vectors stored as matrix columns, orientation-sensitive rank-1 per vector: B'=R B | absent when the load path supplies no periodic cell | GromacsFramePullResult; SolventPbcInvariance asserts exact serialized layout + exact invariance under arbitrary lattice-image shift (NpyLocalGeometryAcceptanceTest)
 
 

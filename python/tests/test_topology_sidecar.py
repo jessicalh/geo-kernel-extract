@@ -604,7 +604,7 @@ class TestCatalogMetadata:
             "mopac_bond_ao_density": "reducible interatomic AO block",
             "mopac_lmo_occupied_coefficients": "no fixed rowwise O(3)/e3nn law",
             "bonded_energy": "no unconditional improper-transform law",
-            "gromacs_energy": "cols23:32 virial and cols32:41 pressure",
+            "gromacs_energy": "cols24:33 virial and cols33:42 pressure",
             "dssp_backbone": "phi/psi cols0:2 are signed dihedral",
             "dssp_ss8": "physical O(3)-invariant libdssp eight-class one-hot",
             "dssp_chi": "cos/exists invariant; sin is pseudoscalar",

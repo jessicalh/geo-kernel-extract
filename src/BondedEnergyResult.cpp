@@ -10,7 +10,7 @@
 
 namespace nmr {
 
-// ── Energy functions (CHARMM36m functional forms) ───────────────
+// ── Energy functions for imported bonded interaction types ────────
 // All positions in Angstroms, parameters in GROMACS native units
 // (nm, kJ/mol). We convert distances A→nm before evaluating.
 
@@ -65,10 +65,10 @@ static double DihedralAngle(const Vec3& p0, const Vec3& p1,
     return std::atan2(sin_phi, cos_phi);
 }
 
-// Periodic proper dihedral: E = k(1 + cos(n*φ - φ0))
-static double EvalProperDih(const Vec3& p0, const Vec3& p1,
-                            const Vec3& p2, const Vec3& p3,
-                            double phi0, double k, int mult) {
+// Periodic dihedral: E = k(1 + cos(n*φ - φ0))
+static double EvalPeriodicDih(const Vec3& p0, const Vec3& p1,
+                              const Vec3& p2, const Vec3& p3,
+                              double phi0, double k, int mult) {
     double phi = DihedralAngle(p0, p1, p2, p3);
     return k * (1.0 + std::cos(mult * phi - phi0));
 }
@@ -131,11 +131,13 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
     result->ub_energy_.resize(N, 0.0);
     result->proper_energy_.resize(N, 0.0);
     result->improper_energy_.resize(N, 0.0);
+    result->periodic_improper_energy_.resize(N, 0.0);
     result->cmap_energy_.resize(N, 0.0);
     result->total_bonded_.resize(N, 0.0);
 
     size_t count_bond = 0, count_angle = 0, count_urey_bradley = 0;
-    size_t count_proper = 0, count_improper = 0, count_cmap = 0;
+    size_t count_proper = 0, count_improper = 0;
+    size_t count_periodic_improper = 0, count_cmap = 0;
 
     for (const auto& ix : params.interactions) {
         // index guard
@@ -179,9 +181,9 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 Vec3 p1 = conf.PositionAt(ix.atoms[1]);
                 Vec3 p2 = conf.PositionAt(ix.atoms[2]);
                 Vec3 p3 = conf.PositionAt(ix.atoms[3]);
-                energy = EvalProperDih(p0, p1, p2, p3,
-                                       ix.p[0], ix.p[1],
-                                       static_cast<int>(ix.p[2]));
+                energy = EvalPeriodicDih(p0, p1, p2, p3,
+                                         ix.p[0], ix.p[1],
+                                         static_cast<int>(ix.p[2]));
                 channel = &result->proper_energy_;
                 ++count_proper;
                 break;
@@ -194,6 +196,18 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 energy = EvalImproperDih(p0, p1, p2, p3, ix.p[0], ix.p[1]);
                 channel = &result->improper_energy_;
                 ++count_improper;
+                break;
+            }
+            case BondedInteraction::PeriodicImproperDih: {
+                Vec3 p0 = conf.PositionAt(ix.atoms[0]);
+                Vec3 p1 = conf.PositionAt(ix.atoms[1]);
+                Vec3 p2 = conf.PositionAt(ix.atoms[2]);
+                Vec3 p3 = conf.PositionAt(ix.atoms[3]);
+                energy = EvalPeriodicDih(p0, p1, p2, p3,
+                                         ix.p[0], ix.p[1],
+                                         static_cast<int>(ix.p[2]));
+                channel = &result->periodic_improper_energy_;
+                ++count_periodic_improper;
                 break;
             }
             case BondedInteraction::CMAP: {
@@ -228,7 +242,8 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
         result->total_bonded_[i] =
             result->bond_energy_[i] + result->angle_energy_[i] +
             result->ub_energy_[i] + result->proper_energy_[i] +
-            result->improper_energy_[i] + result->cmap_energy_[i];
+            result->improper_energy_[i] +
+            result->periodic_improper_energy_[i] + result->cmap_energy_[i];
     }
 
     OperationLog::Info(LogCalcOther, "BondedEnergyResult",
@@ -237,6 +252,7 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
         " UB=" + std::to_string(count_urey_bradley) +
         " proper=" + std::to_string(count_proper) +
         " improper=" + std::to_string(count_improper) +
+        " periodic_improper=" + std::to_string(count_periodic_improper) +
         " CMAP=" + std::to_string(count_cmap));
 
     return result;
@@ -252,19 +268,21 @@ int BondedEnergyResult::WriteFeatures(
     const size_t N = conf.AtomCount();
     assert(bond_energy_.size() == N);
 
-    // Write (N, 7): bond, angle, UB, proper, improper, CMAP, total
-    std::vector<double> data(N * 7);
+    // Write (N, 8): bond, angle, UB, proper, harmonic improper,
+    // periodic improper, CMAP, total.
+    std::vector<double> data(N * 8);
     for (size_t i = 0; i < N; ++i) {
-        data[i * 7 + 0] = bond_energy_[i];
-        data[i * 7 + 1] = angle_energy_[i];
-        data[i * 7 + 2] = ub_energy_[i];
-        data[i * 7 + 3] = proper_energy_[i];
-        data[i * 7 + 4] = improper_energy_[i];
-        data[i * 7 + 5] = cmap_energy_[i];
-        data[i * 7 + 6] = total_bonded_[i];
+        data[i * 8 + 0] = bond_energy_[i];
+        data[i * 8 + 1] = angle_energy_[i];
+        data[i * 8 + 2] = ub_energy_[i];
+        data[i * 8 + 3] = proper_energy_[i];
+        data[i * 8 + 4] = improper_energy_[i];
+        data[i * 8 + 5] = periodic_improper_energy_[i];
+        data[i * 8 + 6] = cmap_energy_[i];
+        data[i * 8 + 7] = total_bonded_[i];
     }
     NpyWriter::WriteFloat64(output_dir + "/bonded_energy.npy",
-                            data.data(), N, 7);
+                            data.data(), N, 8);
     return 1;
 }
 
