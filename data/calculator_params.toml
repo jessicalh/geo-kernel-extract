@@ -3,8 +3,8 @@
 # Flat key = value. Absent key uses compiled default.
 
 # Ring current intensities (nA/T) = classical factor x 12.
-# Factors are Giessner-Prettre & Pullman (1969), as tabulated in Case 1995
-# (J. Biomol. NMR 6:341) Table 3 "Previous" column, which we hold:
+# Factors are Giessner-Prettre & Pullman (1969, 1987), as tabulated in Case 1995
+# (J. Biomol. NMR 6:341) Table 3 "Previous" column, footnote b, which we hold:
 #   Phe 1.00, Tyr 0.94, Trp-6 1.04, Trp-5 0.56.
 # TRP indole perimeter (-19.2) is ours: sum of the Trp-5 + Trp-6 factors.
 # ⚠ His: we ship 0.43; Case/Giessner-Prettre report 0.53. Discrepancy unresolved, pre-existing.
