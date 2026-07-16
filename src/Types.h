@@ -161,7 +161,7 @@ enum class McConnellSourceCategory {
     SidechainCO = 3,
     SidechainOther = 4,
     Disulfide = 5,
-    AromaticZeroed = 6,
+    Aromatic = 6,
     BackboneXH = 7,
     SidechainXH = 8,
     SH = 9
@@ -183,7 +183,7 @@ inline const char* McConnellSourceCategoryStem(McConnellSourceCategory cat) {
         case McConnellSourceCategory::SidechainCO:     return "sidechain_co";
         case McConnellSourceCategory::SidechainOther:  return "sidechain_other";
         case McConnellSourceCategory::Disulfide:       return "disulfide";
-        case McConnellSourceCategory::AromaticZeroed:  return "aromatic_zeroed";
+        case McConnellSourceCategory::Aromatic:        return "aromatic";
         case McConnellSourceCategory::BackboneXH:      return "backbone_xh";
         case McConnellSourceCategory::SidechainXH:     return "sidechain_xh";
         case McConnellSourceCategory::SH:              return "s_h";

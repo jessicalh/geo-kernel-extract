@@ -468,9 +468,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_disulfide_bo",          "mcconnell", ShieldingTensor, 9, True, "McConnell disulfide Wiberg BO response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_aromatic_zeroed_fixed", "mcconnell", ShieldingTensor, 9, True, "McConnell aromatic fixed source response zeroed to avoid BS/HM double-count",
+    ArraySpec("mc_aromatic_fixed",        "mcconnell", ShieldingTensor, 9, True, "McConnell aromatic fixed source response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
-    ArraySpec("mc_aromatic_zeroed_bo",    "mcconnell", ShieldingTensor, 9, True, "McConnell aromatic Wiberg BO response zeroed to avoid BS/HM double-count",
+    ArraySpec("mc_aromatic_bo",           "mcconnell", ShieldingTensor, 9, True, "McConnell aromatic Wiberg BO response",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_backbone_xh_fixed",      "mcconnell", ShieldingTensor, 9, True, "McConnell backbone C/N/O-H fixed source response, classified from typed heavy-atom semantics",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
@@ -890,7 +890,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
     ArraySpec("mopac_mc_sidechain_sum", "mopac_mcconnell", np.ndarray, None, False, "T0 scalar summed across the MOPAC Wiberg-weighted sidechain response categories produced by McConnellResult.",
               irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
-    ArraySpec("mopac_mc_aromatic_sum", "mopac_mcconnell", np.ndarray, None, False, "MOPAC Wiberg-weighted aromatic scalar channel, structurally zeroed by McConnellResult to avoid ring-current double counting.",
+    ArraySpec("mopac_mc_aromatic_sum", "mopac_mcconnell", np.ndarray, None, False, "T0 scalar of the summed MOPAC Wiberg-weighted aromatic response produced by McConnellResult.",
               irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
     ArraySpec("mopac_mc_co_nearest", "mopac_mcconnell", np.ndarray, None, False, "MOPAC Wiberg-weighted scalar response of the geometrically nearest accepted PeptideCO source; zero when that source's post-floor bond order is zero.",
               irreps="0e", units="Angstrom^-3", mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
@@ -906,7 +906,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
     ArraySpec("mopac_mc_sidechain_total", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the summed MOPAC Wiberg-weighted sidechain response.",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
-    ArraySpec("mopac_mc_aromatic_total", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the MOPAC Wiberg-weighted aromatic response, structurally zeroed by McConnellResult.",
+    ArraySpec("mopac_mc_aromatic_total", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor read-back of the summed MOPAC Wiberg-weighted aromatic response.",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
     ArraySpec("mopac_mc_shielding", "mopac_mcconnell", ShieldingTensor, 9, False, "Full project-native SphericalTensor sum of all MOPAC Wiberg-weighted McConnell categories; unscaled geometry response, not ppm.",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention="producer response sign; physical shielding sign depends on the downstream susceptibility scale", tensor_rank=2, mechanism="bond_anisotropy", scaling_contract=_MCCONNELL_SCALING),
@@ -1696,7 +1696,7 @@ _MCCONNELL_FULL9 = (
     "mc_sidechain_co_fixed", "mc_sidechain_co_bo",
     "mc_sidechain_other_fixed", "mc_sidechain_other_bo",
     "mc_disulfide_fixed", "mc_disulfide_bo",
-    "mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo",
+    "mc_aromatic_fixed", "mc_aromatic_bo",
     "mc_backbone_xh_fixed", "mc_backbone_xh_bo",
     "mc_sidechain_xh_fixed", "mc_sidechain_xh_bo",
     "mc_s_h_fixed", "mc_s_h_bo", "mc_nearest_co_T2",
@@ -1733,14 +1733,6 @@ CATALOG["sidechain_co_scalar_audit"] = replace(
         "count and distance columns are unscaled"
     ),
 )
-for _stem in ("mc_aromatic_zeroed_fixed", "mc_aromatic_zeroed_bo"):
-    CATALOG[_stem] = replace(
-        CATALOG[_stem],
-        structural_zero_components=(
-            "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-        ),
-    )
-
 _MOPAC_MCCONNELL_FULL9 = (
     "mopac_mc_nearest_co_T2", "mopac_mc_nearest_cn_T2",
     "mopac_mc_backbone_total", "mopac_mc_sidechain_total",
@@ -1760,12 +1752,6 @@ _set_contract(
 for _stem in _MOPAC_MCCONNELL_FULL9:
     CATALOG[_stem] = replace(
         CATALOG[_stem], scaling_contract=_MCCONNELL_SCALING)
-CATALOG["mopac_mc_aromatic_total"] = replace(
-    CATALOG["mopac_mc_aromatic_total"],
-    structural_zero_components=(
-        "T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
-    ))
-
 _set_contract(
     ("mopac_mc_co_sum", "mopac_mc_cn_sum", "mopac_mc_sidechain_sum",
      "mopac_mc_aromatic_sum", "mopac_mc_co_nearest"),
@@ -1778,7 +1764,7 @@ _set_contract(
         "whole family is absent unless MopacMcConnellResult attaches; sums use "
         "physical zero for empty/zero BO channels; co_nearest is gated by "
         "mopac_mc_nearest_co_dist.npy and is physical zero when the geometry-"
-        "selected bond's post-floor BO is zero; aromatic_sum is structurally zero"
+        "selected bond's post-floor BO is zero"
     ), irreps="0e", parity="even", tensor_rank=0)
 _set_contract(
     ("mopac_mc_nearest_co_dist", "mopac_mc_nearest_cn_dist"),

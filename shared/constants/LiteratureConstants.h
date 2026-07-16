@@ -209,12 +209,12 @@ inline constexpr LiteratureConstant kLarsenShieldingTensors{
     "Larsen 2015 ProCS15 table/grid producer emits ppm tensors"};
 
 inline constexpr std::array<LiteratureConstant, 9> kRingIntensityByType{{
-    {"ring.intensity.PheBenzene_correction", -12.0, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TyrPhenol_correction", -11.28, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TrpBenzene_correction", -12.48, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TrpPyrrole_correction", -6.72, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
-    {"ring.intensity.TrpPerimeter_correction", -19.2, "nA/T", LiteratureStatus::GoodEnough, "indole perimeter compound current"},
-    {"ring.intensity.HisImidazole_correction", -5.16, "nA/T", LiteratureStatus::Cited, "Giessner-Prettre aromatic ring current"},
+    {"ring.intensity.PheBenzene_correction", -12.0, "nA/T", LiteratureStatus::Cited, "Case 1995 Table 3 classical factor 1.00 x 12 nA/T"},
+    {"ring.intensity.TyrPhenol_correction", -11.28, "nA/T", LiteratureStatus::Cited, "Case 1995 Table 3 classical factor 0.94 x 12 nA/T"},
+    {"ring.intensity.TrpBenzene_correction", -12.48, "nA/T", LiteratureStatus::Cited, "Case 1995 Table 3 Trp-6 classical factor 1.04 x 12 nA/T"},
+    {"ring.intensity.TrpPyrrole_correction", -6.72, "nA/T", LiteratureStatus::Cited, "Case 1995 Table 3 Trp-5 classical factor 0.56 x 12 nA/T"},
+    {"ring.intensity.TrpPerimeter_correction", -19.2, "nA/T", LiteratureStatus::GoodEnough, "indole perimeter = sum of Case 1995 Trp-5 + Trp-6 factors (0.56+1.04) x 12 nA/T; ours, not Case"},
+    {"ring.intensity.HisImidazole_correction", -5.16, "nA/T", LiteratureStatus::Cited, "Case 1995 histidine imidazole (discussed in text) x 12 nA/T"},
     {"ring.intensity.HidImidazole_correction", -5.16, "nA/T", LiteratureStatus::GoodEnough, "histidine tautomer reuse of imidazole current"},
     {"ring.intensity.HieImidazole_correction", -5.16, "nA/T", LiteratureStatus::GoodEnough, "histidine tautomer reuse of imidazole current"},
     {"ring.intensity.ProPyrrolidine_correction", 0.0, "nA/T", LiteratureStatus::Cited, "saturated ring, no aromatic pi current"},

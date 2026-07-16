@@ -3,7 +3,9 @@
 # Flat key = value. Absent key uses compiled default.
 
 # Ring current intensities (nA/T)
-# Giessner-Prettre & Pullman 1969; TRP indole perimeter estimated from component rings
+# Case 1995 (J. Biomol. NMR 6:341) Table 3 classical intensity factors x 12 nA/T
+# (Phe 1.00, Tyr 0.94, Trp-6 1.04, Trp-5 0.56, His imidazole ~0.43).
+# TRP indole perimeter (-19.2) is ours: sum of the Case Trp-5 + Trp-6 factors.
 phe_benzene_ring_current_intensity = -12.0
 tyr_phenol_ring_current_intensity = -11.28
 trp_benzene_ring_current_intensity = -12.48
