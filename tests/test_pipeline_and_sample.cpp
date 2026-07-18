@@ -20,9 +20,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <set>
+#include <utility>
+#include <algorithm>
 
 #include "OperationRunner.h"
-#include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
 #include "Of3Loader.h"
 #include "OrcaShieldingResult.h"
@@ -164,6 +166,52 @@ TEST(Of3LoaderRoundTrip, EmptyPredictionMethodRejected) {
     EXPECT_FALSE(build.Ok());
     EXPECT_NE(build.error.find("prediction_method"), std::string::npos)
         << build.error;
+}
+
+// Prmtop disulfide authority: on --of3 the prmtop's SG-SG bond set overrides
+// OpenBabel's unconstrained geometric perception. bmr1129 is a clustered-Cys
+// fixture — six SG atoms, several 2.3–2.4 Å apart — where OpenBabel's
+// ConnectTheDots draws THREE spurious SG-SG bonds on top of the one real
+// disulfide. tleap bonded exactly one pair: CYX residues 21<->38 (SG atoms 300
+// and 531 in prmtop order). Without the authority override the free Cys pulled
+// into a spurious disulfide would resolve to CYX and its HG would trip
+// ComposeAtomSemantic's "no rule applies" FATAL. With it, BuildFromOf3 succeeds
+// and the graph carries EXACTLY the prmtop disulfide, nothing spurious.
+//
+// The expected pair (300,531) was computed directly from bmr1129.prmtop's
+// BONDS_WITHOUT_HYDROGEN / ATOMIC_NUMBER / RESIDUE_LABEL sections; BuildFromOf3
+// preserves prmtop atom order, so protein-local indices equal prmtop indices.
+TEST(Of3LoaderRoundTrip, PrmtopDisulfideAuthorityDemotesSpuriousSgSg) {
+    const std::string dir = std::string(nmr::test::TestEnvironment::OrcaDir());
+    nmr::Of3Input input;
+    input.prmtop_path       = dir + "bmr1129.prmtop";
+    input.inpcrd_path       = dir + "bmr1129.inpcrd";
+    input.prediction_method = "OpenFold+tleap";
+    if (!fs::exists(input.prmtop_path) || !fs::exists(input.inpcrd_path))
+        GTEST_SKIP() << "bmr1129 disulfide fixture not found at " << dir;
+
+    // No FATAL: the free-Cys-pulled-into-CYX pathology is averted only because
+    // the prmtop authority demotes the spurious SG-SG bonds before the second
+    // protonation pass resolves CYS/CYX from the (now corrected) bond graph.
+    auto build = nmr::BuildFromOf3(input);
+    ASSERT_TRUE(build.Ok()) << build.error;
+
+    // Every disulfide bond in the covalent graph, as unordered atom-index pairs.
+    std::set<std::pair<size_t, size_t>> disulfides;
+    for (const nmr::Bond& bond : build.protein->Bonds()) {
+        if (bond.category != nmr::BondCategory::Disulfide) continue;
+        disulfides.insert({std::min(bond.atom_index_a, bond.atom_index_b),
+                           std::max(bond.atom_index_a, bond.atom_index_b)});
+    }
+
+    // Exactly the prmtop SG-SG set: one bond, CYX-21 SG (atom 300) <-> CYX-38
+    // SG (atom 531). The three spurious geometric SG-SG bonds are demoted.
+    const std::set<std::pair<size_t, size_t>> expected = {{300u, 531u}};
+    EXPECT_EQ(disulfides.size(), 1u)
+        << "expected exactly the one prmtop disulfide, got "
+        << disulfides.size();
+    EXPECT_EQ(disulfides, expected)
+        << "disulfide bond set must equal the prmtop SG-SG set exactly";
 }
 
 

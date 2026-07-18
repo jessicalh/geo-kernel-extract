@@ -42,6 +42,14 @@ struct PreparedAmberLoad {
     std::string tleap_script_path;
     NamingSource naming_source;
     std::string prediction_method;
+
+    // Let the prmtop's SG-SG bonds override OpenBabel's geometric disulfide
+    // perception. OpenBabel has no 1:1 disulfide-valence constraint and draws
+    // an SG-SG bond between every pair of clustered sulfurs; tleap only bonds
+    // CYX-CYX, so its list is chemically authoritative. Only --of3 sets this
+    // (BuildFromOf3); --orca/--mutant leave it false so their bond graph — and
+    // byte-for-byte output — is unchanged.
+    bool use_disulfide_authority = false;
 };
 
 // ============================================================================
@@ -486,9 +494,59 @@ static OrcaLoadInternal LoadWithPrmtop(const PreparedAmberLoad& load,
     ctx->tleap_script_path = load.tleap_script_path;
     protein->SetBuildContext(std::move(ctx));
 
+    // ── Authoritative disulfide pairs from the prmtop (--of3 only) ─────────
+    //
+    // Mirrors the trajectory-path precedent (FullSystemReader::BuildProtein):
+    // only the bond *source* differs. Here it is the prmtop
+    // BONDS_WITHOUT_HYDROGEN section (SG-SG carries no hydrogen, so it never
+    // appears in BONDS_INC_HYDROGEN). tleap bonds only CYX-CYX under a 1:1
+    // valence constraint, so this list is chemically authoritative over
+    // OpenBabel's unconstrained geometric SG-SG perception, which invents
+    // spurious disulfides between clustered cysteines.
+    //
+    // Gated on load.use_disulfide_authority: --orca/--mutant pass a default
+    // LegacyAmberInvariants (has_disulfide_authority == false), so
+    // FinalizeConstruction skips OverrideDisulfides for them exactly as before.
+    LegacyAmberInvariants invariants;
+    if (load.use_disulfide_authority) {
+        // BONDS_WITHOUT_HYDROGEN is triples (3*ai, 3*aj, type_index); the AMBER
+        // coordinate-array convention makes the atom index value / 3.
+        const auto bonds_no_h =
+            ReadPrmtopInts(load.prmtop_path, "BONDS_WITHOUT_HYDROGEN");
+        for (size_t k = 0; k + 3 <= bonds_no_h.size(); k += 3) {
+            const size_t a = static_cast<size_t>(bonds_no_h[k]) / 3;
+            const size_t b = static_cast<size_t>(bonds_no_h[k + 1]) / 3;
+            if (a >= n_atoms || b >= n_atoms) continue;
+            if (a >= atomic_numbers.size() || b >= atomic_numbers.size()) continue;
+            if (atomic_numbers[a] != 16 || atomic_numbers[b] != 16) continue;  // both S
+            const size_t ra = protein->AtomAt(a).residue_index;
+            const size_t rb = protein->AtomAt(b).residue_index;
+            if (ra == rb) continue;  // intra-residue is not a disulfide
+            // Belt-and-suspenders CYX-CYX check on the raw RESIDUE_LABEL. Every
+            // SG-SG bond tleap wrote is CYX-CYX by construction; the label (not
+            // the protonation variant, which is only resolved inside
+            // FinalizeConstruction) keeps us honest against a malformed prmtop.
+            if (res_labels[ra] != "CYX" || res_labels[rb] != "CYX") continue;
+            DisulfidePair dp;
+            dp.residue_a       = ra;
+            dp.residue_b       = rb;
+            dp.atom_index_sg_a = a;
+            dp.atom_index_sg_b = b;
+            invariants.disulfide_pairs.push_back(dp);
+        }
+        // Unconditionally true when the flag is set — even zero pairs is
+        // authority ("no disulfides"). With authority present-but-empty,
+        // OverrideDisulfides still runs and demotes any spurious geometric
+        // SG-SG OpenBabel drew between two free thiols. This is the
+        // load-bearing subtlety (see Protein::FinalizeConstruction).
+        invariants.has_disulfide_authority = true;
+    }
+
     // Finalize: backbone indices, bonds, rings — same as PdbFileReader.
-    // Must run BEFORE creating the conformation.
-    protein->FinalizeConstruction(positions);
+    // Must run BEFORE creating the conformation. --orca/--mutant pass default
+    // (no-authority) invariants; --of3 carries the prmtop's SG-SG authority,
+    // applied via CovalentTopology::OverrideDisulfides.
+    protein->FinalizeConstruction(positions, std::move(invariants));
 
     // Create the single conformation from XYZ positions. The prediction
     // label records the honest per-mode provenance supplied at the mode
@@ -652,6 +710,9 @@ BuildResult BuildFromOf3(const Of3Input& input) {
     load.tleap_script_path = input.tleap_script_path;
     load.naming_source     = NamingSource::Of3PrmtopInput;
     load.prediction_method = input.prediction_method;
+    // --of3 lets the prmtop's 1:1-valence disulfides win over OpenBabel's
+    // unconstrained geometric SG-SG perception (see PreparedAmberLoad).
+    load.use_disulfide_authority = true;
 
     auto internal = LoadWithPrmtop(load, coords);
     if (!internal.ok) {
