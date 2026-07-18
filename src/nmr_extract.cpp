@@ -18,6 +18,7 @@
 #include "OperationLog.h"
 #include "OperationRunner.h"
 #include "OrcaRunLoader.h"
+#include "Of3Loader.h"
 #include "PdbFileReader.h"
 #include "RunConfiguration.h"
 #include "RuntimeEnvironment.h"
@@ -41,6 +42,14 @@ namespace fs = std::filesystem;
 using namespace nmr;
 
 namespace {
+
+/// Dependent-false helper: makes the production std::visit dispatch below
+/// exhaustive over ModeSpec. Any ModeSpec alternative that lacks an explicit
+/// RunX arm falls into the final `else` and fails THIS static_assert at
+/// compile time, rather than silently returning a runtime error. This is a
+/// dispatch-completeness guard, not OF3 policy below the mode boundary.
+template <class>
+inline constexpr bool kUnhandledMode = false;
 
 fs::path ResolveConfigRelativePath(const std::string& path,
                                    const fs::path& config_path) {
@@ -241,6 +250,44 @@ static int RunProtonatedPdb(const cli::ProtonatedPdbMode& mode,
     const int rc = WriteFeaturesAndReport(conf, output_dir);
     if (rc != 0) return rc;
     return EmitSinglePoseManifest(common.output_dir, protein_id, "protonated_pdb");
+}
+
+
+static int RunOf3(const cli::Of3Mode& mode, const cli::CommonOptions& common,
+                  const Session& session) {
+    OperationLog::Info(LogFileIO, "nmr_extract",
+        "of3 mode: inpcrd=" + mode.input.inpcrd_path);
+
+    auto build = BuildFromOf3(mode.input);
+    if (!build) {
+        std::fprintf(stderr, "ERROR: %s\n", build.error.c_str());
+        OperationLog::Error("nmr_extract", build.error);
+        return 1;
+    }
+
+    auto& conf = build.protein->Conformation();
+    RunOptions opts    = MakeBaseOpts(session, mode.mopac);
+    opts.charge_source = build.charges.get();
+    opts.net_charge    = build.net_charge;
+    // Deliberately NO opts.orca_nmr_path: OF3 has no DFT input, so
+    // OperationRunner never enters the ORCA Tier-2 attachment. DFT is
+    // presence-driven; its absence here is the whole point of the mode.
+
+    auto result = OperationRunner::Run(conf, opts);
+    if (!result.Ok()) {
+        std::fprintf(stderr, "ERROR: %s\n", result.error.c_str());
+        OperationLog::Error("nmr_extract", result.error);
+        return 1;
+    }
+
+    const std::string output_dir = common.output_dir.string();
+    fs::create_directories(output_dir);
+    const std::string protein_id = PathStemProteinId(
+        mode.input.inpcrd_path, common.output_dir);
+    if (!WriteSidecars(*build.protein, output_dir, protein_id)) return 1;
+    const int rc = WriteFeaturesAndReport(conf, output_dir);
+    if (rc != 0) return rc;
+    return EmitSinglePoseManifest(common.output_dir, protein_id, "of3");
 }
 
 
@@ -516,13 +563,11 @@ static int RunExtract(int argc, char* argv[]) {
             using T = std::decay_t<decltype(m)>;
             if constexpr (std::is_same_v<T, cli::PdbMode>)            return RunPdb(m, common, session);
             else if constexpr (std::is_same_v<T, cli::ProtonatedPdbMode>) return RunProtonatedPdb(m, common, session);
+            else if constexpr (std::is_same_v<T, cli::Of3Mode>)           return RunOf3(m, common, session);
             else if constexpr (std::is_same_v<T, cli::OrcaMode>)          return RunOrca(m, common, session);
             else if constexpr (std::is_same_v<T, cli::MutantMode>)        return RunMutant(m, common, session);
             else if constexpr (std::is_same_v<T, cli::TrajectoryMode>)    return RunTrajectory(m, common, session);
-            else {
-                std::fprintf(stderr, "internal: unhandled mode variant\n");
-                return 1;
-            }
+            else static_assert(kUnhandledMode<T>, "unhandled nmr_extract ModeSpec alternative");
         },
         spec);
 }

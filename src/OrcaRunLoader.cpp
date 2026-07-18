@@ -1,4 +1,5 @@
 #include "OrcaRunLoader.h"
+#include "Of3Loader.h"
 #include "AminoAcidType.h"
 #include "NamingRegistry.h"
 #include "ChargeSource.h"
@@ -6,6 +7,8 @@
 #include "ForceFieldChargeTable.h"
 #include "OperationLog.h"
 
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -21,6 +24,24 @@ struct OrcaLoadInternal {
     std::unique_ptr<Protein> protein;
     bool ok = false;
     std::string error;
+};
+
+// File-local neutral carrier: the paths + provenance the heavy structural
+// parse (LoadWithPrmtop) actually consumes. It has NO nmr/DFT field —
+// structural loading never needs one. Both public entries populate this and
+// share LoadWithPrmtop verbatim:
+//   - BuildFromOrca  -> NamingSource::OrcaEcho,        "AlphaFold+tleap"
+//   - BuildFromOf3   -> NamingSource::Of3PrmtopInput,  "OpenFold+tleap"
+// This is the provenance seam that lets the two modes reuse one heavy parse
+// without either claiming the other's origin. Introducing it does not change
+// BuildFromOrca's observable behavior or public signature.
+struct PreparedAmberLoad {
+    std::string pdb_path;
+    std::string xyz_path;
+    std::string prmtop_path;
+    std::string tleap_script_path;
+    NamingSource naming_source;
+    std::string prediction_method;
 };
 
 // ============================================================================
@@ -117,6 +138,140 @@ static std::vector<XyzAtom> ReadXyz(const std::string& path) {
     return atoms;
 }
 
+
+// ============================================================================
+// AMBER rst7 / inpcrd reader (PDB LOADING BOUNDARY)
+//
+// --of3 only. tleap emits coordinates as an AMBER restart (rst7/inpcrd) beside
+// the prmtop, so OF3 reads geometry straight from it (no xyz conversion). This
+// mirrors ReadXyz as a file-local static and returns the same XyzAtom vector so
+// the shared LoadWithPrmtop consumes it unchanged. The ORCA/mutant xyz path
+// (ReadXyz above) is untouched.
+//
+// Format: line 1 = title; line 2 = atom count (+ optional time); then the
+// coordinate block as 6F12.7 — six fixed-width 12-char floats per line (2
+// atoms) — over exactly ceil(N/2) lines, optionally followed by a velocity
+// block and/or a box line (both ignored). rst7 carries NO element symbols
+// (they come from the prmtop ATOMIC_NUMBER), so XyzAtom::element is left empty;
+// the caller resolves elements from the prmtop exactly as on the xyz path.
+//
+// FAIL-LOUD hardening (silent-wrong-geometry is unacceptable). On success the
+// returned vector has N atoms and `error` is empty; on any violation the vector
+// is empty and `error` explains why:
+//   - Record shape: read EXACTLY ceil(N/2) coordinate lines, each holding
+//     EXACTLY its expected count of 12-char fields (6, or 3 on the final line
+//     when N is odd). A coordinate is NEVER pulled from a following velocity/box
+//     block to complete a short record.
+//   - Over-width columns: a coordinate wider than 12 chars (|coord| overflowing
+//     F12.7, e.g. a negative value <= -1000) shifts fixed-column slicing, so the
+//     line width no longer matches 12*fields — rejected (never re-sliced).
+//   - Full-field numeric consumption: std::stod must consume the entire field
+//     (only surrounding whitespace may remain), so a numeric prefix like
+//     "1.0garbage" or a Fortran "D"-exponent is rejected, not silently truncated.
+//   - Finiteness: every coordinate must be std::isfinite (rejects nan/inf).
+// Fields are parsed by fixed 12-char column, NOT whitespace: adjacent
+// large-magnitude coordinates (e.g. two values <= -100) touch with no separator.
+// ============================================================================
+static std::vector<XyzAtom> ReadInpcrd(const std::string& path,
+                                       std::string& error) {
+    std::vector<XyzAtom> atoms;
+    std::ifstream in(path);
+    if (!in.is_open()) { error = "cannot open inpcrd: " + path; return atoms; }
+
+    std::string line;
+    if (!std::getline(in, line)) { error = "empty inpcrd (no title line)"; return atoms; }
+    if (!std::getline(in, line)) { error = "inpcrd truncated (no atom-count line)"; return atoms; }
+    int n = 0;
+    if (std::sscanf(line.c_str(), "%d", &n) != 1 || n <= 0) {
+        error = "inpcrd: unreadable atom count on line 2: '" + line + "'";
+        return atoms;
+    }
+
+    // rst7 coordinates: 6F12.7 (2 atoms per line) over exactly ceil(N/2) lines.
+    // Read that many lines, validating each RECORD's shape — never accumulate
+    // "3*N values from anywhere", which is what let a short record borrow from a
+    // trailing velocity/box block.
+    const long total_values = 3L * n;
+    const long coord_lines  = (static_cast<long>(n) + 1) / 2;  // ceil(N/2)
+    constexpr size_t kFieldW = 12;
+
+    std::vector<double> coords;
+    coords.reserve(total_values);
+
+    for (long li = 0; li < coord_lines; ++li) {
+        if (!std::getline(in, line)) {
+            error = "inpcrd: coordinate block truncated at line " +
+                    std::to_string(li) + " of " + std::to_string(coord_lines) +
+                    " (need " + std::to_string(total_values) + " coords for " +
+                    std::to_string(n) + " atoms)";
+            return {};
+        }
+        const long remaining = total_values - static_cast<long>(coords.size());
+        const long fields_here = std::min<long>(6, remaining);
+
+        // The record must be EXACTLY fields_here fixed-width 12-char columns.
+        // Trim only trailing whitespace/CR (leading spaces belong to field 1).
+        // A wider record (over-width coordinate) or a shorter/blank record is
+        // rejected, never blindly re-sliced or completed from the next block.
+        const size_t last = line.find_last_not_of(" \t\r\n");
+        const size_t width = (last == std::string::npos) ? 0 : last + 1;
+        const size_t expect_w = static_cast<size_t>(fields_here) * kFieldW;
+        if (width != expect_w) {
+            error = "inpcrd coordinate line " + std::to_string(li) +
+                    " has width " + std::to_string(width) + ", expected " +
+                    std::to_string(expect_w) + " (" + std::to_string(fields_here) +
+                    " x F12.7). An over-width coordinate (|coord| overflowing "
+                    "F12.7) or a short/blank record shifts the fixed-column parse.";
+            return {};
+        }
+
+        for (long f = 0; f < fields_here; ++f) {
+            const std::string field = line.substr(static_cast<size_t>(f) * kFieldW, kFieldW);
+            size_t consumed = 0;
+            double v = 0.0;
+            try {
+                v = std::stod(field, &consumed);
+            } catch (...) {
+                error = "inpcrd: non-numeric coordinate field '" + field +
+                        "' on line " + std::to_string(li);
+                return {};
+            }
+            // Require FULL-field numeric consumption: only whitespace may follow
+            // the number. Catches "1.0garbage", Fortran "D"-exponents, and any
+            // partial parse that std::stod would otherwise accept.
+            while (consumed < field.size() &&
+                   std::isspace(static_cast<unsigned char>(field[consumed]))) ++consumed;
+            if (consumed != field.size()) {
+                error = "inpcrd: coordinate field '" + field + "' is not fully "
+                        "numeric (partial parse) on line " + std::to_string(li);
+                return {};
+            }
+            if (!std::isfinite(v)) {
+                error = "inpcrd: non-finite coordinate '" + field + "' on line " +
+                        std::to_string(li);
+                return {};
+            }
+            coords.push_back(v);
+        }
+    }
+
+    if (static_cast<long>(coords.size()) != total_values) {
+        error = "inpcrd: read " + std::to_string(coords.size()) +
+                " coordinates, expected " + std::to_string(total_values);
+        return {};
+    }
+
+    atoms.resize(n);
+    for (int i = 0; i < n; ++i) {
+        atoms[i].x = coords[3 * i + 0];
+        atoms[i].y = coords[3 * i + 1];
+        atoms[i].z = coords[3 * i + 2];
+        // element left empty on purpose: resolved from prmtop ATOMIC_NUMBER.
+    }
+    error.clear();
+    return atoms;
+}
+
 static Element ElementFromAtomicNumber(int an) {
     switch (an) {
         case 1:  return Element::H;
@@ -133,17 +288,17 @@ static Element ElementFromAtomicNumber(int an) {
 // LoadOrcaRun: WITH prmtop path
 // ============================================================================
 
-static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
+static OrcaLoadInternal LoadWithPrmtop(const PreparedAmberLoad& load,
                                       const std::vector<XyzAtom>& xyz) {
     OrcaLoadInternal result;
 
-    auto atom_names = ReadPrmtopStrings(files.prmtop_path, "ATOM_NAME", 4);
-    auto res_labels = ReadPrmtopStrings(files.prmtop_path, "RESIDUE_LABEL", 4);
-    auto res_pointers = ReadPrmtopInts(files.prmtop_path, "RESIDUE_POINTER");
-    auto atomic_numbers = ReadPrmtopInts(files.prmtop_path, "ATOMIC_NUMBER");
+    auto atom_names = ReadPrmtopStrings(load.prmtop_path, "ATOM_NAME", 4);
+    auto res_labels = ReadPrmtopStrings(load.prmtop_path, "RESIDUE_LABEL", 4);
+    auto res_pointers = ReadPrmtopInts(load.prmtop_path, "RESIDUE_POINTER");
+    auto atomic_numbers = ReadPrmtopInts(load.prmtop_path, "ATOMIC_NUMBER");
 
     if (atom_names.empty() || res_labels.empty() || res_pointers.empty()) {
-        result.error = "incomplete prmtop: " + files.prmtop_path;
+        result.error = "incomplete prmtop: " + load.prmtop_path;
         return result;
     }
 
@@ -214,9 +369,12 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
     // canonicality oracle whitelists H1/H2/H3 as cap-only canonical
     // names; no rule shifts them.
     //
-    // source = NamingSource::OrcaEcho. Rules tagged AmberFf14SBCanonical
-    // (LYN HZ shifts, GLY HA collapse) fire independent of source when
-    // the sibling pattern matches.
+    // source = load.naming_source (OrcaEcho for --orca/--mutant,
+    // Of3PrmtopInput for --of3 — both the prmtop ATOM_NAME surface, differing
+    // only in provenance). No canonicalisation RULE gates on either of those
+    // two source values, so the two modes produce identical canonical output;
+    // rules tagged AmberFf14SBCanonical (LYN HZ shifts, GLY HA collapse) fire
+    // independent of source when the sibling pattern matches.
     const auto& applicator = GlobalNamingApplicator();
 
     // Per-residue sibling snapshot: collect raw atom names by residue.
@@ -243,7 +401,7 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
             res_now.type,
             res_now.protonation_variant_index,
             TerminalState::Internal,
-            NamingSource::OrcaEcho,
+            load.naming_source,
             res_now.sequence_number,
             res_now.chain_id);
     }
@@ -321,20 +479,22 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
 
     // Set build context
     auto ctx = std::make_unique<ProteinBuildContext>();
-    ctx->pdb_source = files.pdb_path;
+    ctx->pdb_source = load.pdb_path;
     ctx->force_field = "ff14SB";
     ctx->protonation_tool = "tleap";
-    ctx->prmtop_path = files.prmtop_path;
-    ctx->tleap_script_path = files.tleap_script_path;
+    ctx->prmtop_path = load.prmtop_path;
+    ctx->tleap_script_path = load.tleap_script_path;
     protein->SetBuildContext(std::move(ctx));
 
     // Finalize: backbone indices, bonds, rings — same as PdbFileReader.
     // Must run BEFORE creating the conformation.
     protein->FinalizeConstruction(positions);
 
-    // Create the single conformation from XYZ positions.
-    // The prediction label records the current ORCA-path convention.
-    protein->AddPrediction(std::move(positions), "AlphaFold+tleap");
+    // Create the single conformation from XYZ positions. The prediction
+    // label records the honest per-mode provenance supplied at the mode
+    // boundary ("AlphaFold+tleap" for --orca/--mutant, "OpenFold+tleap" for
+    // --of3), never a hardcoded convention.
+    protein->AddPrediction(std::move(positions), load.prediction_method);
 
     result.protein = std::move(protein);
     result.ok = true;
@@ -373,7 +533,20 @@ BuildResult BuildFromOrca(const OrcaRunFiles& files) {
         return result;
     }
 
-    auto internal = LoadWithPrmtop(files, xyz);
+    // Map the ORCA input onto the shared structural carrier. The ORCA
+    // provenance is preserved exactly: OrcaEcho atom-name surface and the
+    // "AlphaFold+tleap" prediction label. LoadWithPrmtop is the heavy parse
+    // shared verbatim with BuildFromOf3; this mapping does not change
+    // BuildFromOrca's observable behavior or public signature.
+    PreparedAmberLoad load;
+    load.pdb_path          = files.pdb_path;
+    load.xyz_path          = files.xyz_path;
+    load.prmtop_path       = files.prmtop_path;
+    load.tleap_script_path = files.tleap_script_path;
+    load.naming_source     = NamingSource::OrcaEcho;
+    load.prediction_method = "AlphaFold+tleap";
+
+    auto internal = LoadWithPrmtop(load, xyz);
     if (!internal.ok) {
         result.error = internal.error;
         return result;
@@ -405,6 +578,114 @@ BuildResult BuildFromOrca(const OrcaRunFiles& files) {
     result.ok = true;
 
     OperationLog::Info(LogCharges, "BuildFromOrca",
+        "loaded " + std::to_string(result.protein->AtomCount()) + " atoms, " +
+        std::to_string(result.protein->ResidueCount()) + " residues, " +
+        "net_charge=" + std::to_string(result.net_charge));
+
+    return result;
+}
+
+
+// ============================================================================
+// BuildFromOf3: OpenFold-prepared pose (peer of BuildFromOrca)
+// ============================================================================
+//
+// Shares the file-local heavy parse (ReadXyz + LoadWithPrmtop + the prmtop
+// section readers) and the Branch-1 charge resolution with BuildFromOrca. The
+// only differences are honest OpenFold provenance (Of3PrmtopInput atom-name
+// surface, input.prediction_method conformation label) and the deliberate
+// ABSENCE of any DFT/NMR input. Defined here so OF3 reuses the same
+// file-local heavy parse verbatim; only the thin per-mode wrapper below is
+// duplicated so the ORCA entry point above stays observably identical.
+BuildResult BuildFromOf3(const Of3Input& input) {
+    BuildResult result;
+
+    OperationLog::Scope scope("BuildFromOf3",
+        "pdb=" + input.pdb_path + " inpcrd=" + input.inpcrd_path);
+
+    // Honest provenance guard: the conformation records input.prediction_method
+    // verbatim. An empty method would silently record false/blank provenance.
+    if (input.prediction_method.empty()) {
+        result.error = "BuildFromOf3: empty prediction_method; the OF3 mode "
+                       "boundary must supply conformation provenance "
+                       "(\"OpenFold+tleap\").";
+        return result;
+    }
+
+    if (!fs::exists(input.inpcrd_path)) {
+        result.error = "inpcrd not found: " + input.inpcrd_path;
+        return result;
+    }
+
+    // Geometry comes straight from the tleap-emitted AMBER restart (rst7),
+    // in prmtop atom order. ReadInpcrd fails loud (never silent-wrong geometry)
+    // on over-width columns, partial/non-numeric fields, non-finite values, or a
+    // short record borrowing from a velocity/box block. The prmtop-vs-coords
+    // atom-count equality check is enforced by the shared LoadWithPrmtop below,
+    // exactly as on the xyz path.
+    std::string inpcrd_err;
+    auto coords = ReadInpcrd(input.inpcrd_path, inpcrd_err);
+    if (coords.empty()) {
+        result.error = "failed to read inpcrd: " + input.inpcrd_path +
+                       (inpcrd_err.empty() ? "" : " (" + inpcrd_err + ")");
+        return result;
+    }
+
+    // OF3 requires an upstream PRMTOP. Missing or unreadable PRMTOP is a hard
+    // load error — there is no fall-through to the ff14SB flat table and no
+    // runtime tleap preparation. The supplied prmtop is the only charge/radii
+    // authority.
+    if (input.prmtop_path.empty() || !fs::exists(input.prmtop_path)) {
+        result.error = "no prmtop available for OF3 input " + input.inpcrd_path +
+                       ". --of3 requires an upstream PRMTOP "
+                       "(input.prmtop_path).";
+        return result;
+    }
+
+    // Map onto the shared structural carrier with honest OpenFold provenance,
+    // then run the exact same heavy parse ORCA uses. The carrier's coords-path
+    // slot (xyz_path) is not consumed by LoadWithPrmtop — positions flow via
+    // the coords vector — so it is left unset for the inpcrd path.
+    PreparedAmberLoad load;
+    load.pdb_path          = input.pdb_path;
+    load.prmtop_path       = input.prmtop_path;
+    load.tleap_script_path = input.tleap_script_path;
+    load.naming_source     = NamingSource::Of3PrmtopInput;
+    load.prediction_method = input.prediction_method;
+
+    auto internal = LoadWithPrmtop(load, coords);
+    if (!internal.ok) {
+        result.error = internal.error;
+        return result;
+    }
+    result.protein = std::move(internal.protein);
+
+    // Charges from prmtop via the resolver's Branch-1 short-circuit — the same
+    // authoritative path ORCA uses. No new charge code, no flat-table fallback.
+    AmberSourceConfig source_config;
+    source_config.preparation_policy =
+        AmberPreparationPolicy::FailOnUnsupportedTerminalVariants;
+    std::string charge_err;
+    result.charges = ResolveAmberChargeSource(
+        *result.protein, result.protein->BuildContext(),
+        source_config, charge_err);
+    if (!result.charges) {
+        result.error = charge_err;
+        return result;
+    }
+
+    auto& conf = result.protein->Conformation();
+    if (!result.protein->PrepareForceFieldCharges(*result.charges, conf, charge_err)) {
+        result.error = "charge preparation failed: " + charge_err;
+        return result;
+    }
+    double charge_sum = result.protein->ForceFieldCharges().TotalCharge();
+    result.net_charge = static_cast<int>(
+        charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
+
+    result.ok = true;
+
+    OperationLog::Info(LogCharges, "BuildFromOf3",
         "loaded " + std::to_string(result.protein->AtomCount()) + " atoms, " +
         std::to_string(result.protein->ResidueCount()) + " residues, " +
         "net_charge=" + std::to_string(result.net_charge));

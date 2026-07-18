@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
+#include "Of3Loader.h"
 #include "Protein.h"
 #include "ProteinBuildContext.h"
 #include "ChargeSource.h"
@@ -251,6 +252,29 @@ TEST_F(AmberChargeResolverTest, ResolverPicksPrmtopWhenBuildContextHasIt) {
     }
 
     auto r = BuildFromOrca(files);
+    ASSERT_TRUE(r.Ok()) << r.error;
+    ASSERT_NE(r.charges, nullptr);
+    EXPECT_EQ(r.charges->Kind(), ChargeModelKind::AmberPrmtop);
+    EXPECT_EQ(r.charges->SourceForceField(), ForceField::Amber_ff14SB);
+}
+
+TEST_F(AmberChargeResolverTest, ResolverPicksPrmtopForOf3) {
+    // --of3 reaches the SAME Branch-1 short-circuit as --orca: BuildFromOf3
+    // sets build_context.prmtop_path, so the resolver returns a
+    // PrmtopChargeSource regardless of flat-table coverage. No new charge code.
+    const std::string orca_dir = nmr::test::TestEnvironment::OrcaDir();
+    if (orca_dir.empty()) {
+        GTEST_SKIP() << "OF3 test data not available";
+    }
+    Of3Input input;
+    input.prmtop_path       = orca_dir + "bmr10013.prmtop";
+    input.inpcrd_path       = orca_dir + "bmr10013.inpcrd";
+    input.prediction_method = "OpenFold+tleap";
+    if (!std::filesystem::exists(input.prmtop_path)) {
+        GTEST_SKIP() << "OF3 test prmtop not found at " << input.prmtop_path;
+    }
+
+    auto r = BuildFromOf3(input);
     ASSERT_TRUE(r.Ok()) << r.error;
     ASSERT_NE(r.charges, nullptr);
     EXPECT_EQ(r.charges->Kind(), ChargeModelKind::AmberPrmtop);

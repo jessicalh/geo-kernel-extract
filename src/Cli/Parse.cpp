@@ -12,6 +12,7 @@ namespace {
 
 constexpr const char* kFlagPdb           = "--pdb";
 constexpr const char* kFlagProtonatedPdb = "--protonated-pdb";
+constexpr const char* kFlagOf3           = "--of3";
 constexpr const char* kFlagOrca          = "--orca";
 constexpr const char* kFlagMutant        = "--mutant";
 constexpr const char* kFlagTrajectory    = "--trajectory";
@@ -73,13 +74,28 @@ OrcaRunFiles ExpandOrcaRoot(const std::string& root) {
     return f;
 }
 
+// --of3 root expands to EXACTLY {root}.prmtop + {root}.inpcrd. Geometry comes
+// from the tleap-emitted AMBER restart (rst7/inpcrd) that already sits beside
+// the prmtop, so no separate .xyz is required. It never derives, probes,
+// validates, or remembers {root}_nmr.out: DFT is not part of OF3's object
+// shape. Conformation provenance is honest OpenFold+tleap, supplied here at
+// the mode boundary (never hardcoded in the shared loader).
+Of3Input ExpandOf3Root(const std::string& root) {
+    Of3Input in;
+    in.prmtop_path       = root + ".prmtop";
+    in.inpcrd_path       = root + ".inpcrd";
+    in.prediction_method = "OpenFold+tleap";
+    return in;
+}
+
 /// Identify the mode flag in argv. Returns the matched flag string or
 /// empty if none. Sets @c error if more than one is present (the old
 /// parser silently picked the first; this is a deliberate behaviour
 /// change).
 const char* IdentifyModeFlag(int argc, char* argv[], std::string& error) {
     static constexpr const char* kModes[] = {
-        kFlagPdb, kFlagProtonatedPdb, kFlagOrca, kFlagMutant, kFlagTrajectory,
+        kFlagPdb, kFlagProtonatedPdb, kFlagOf3, kFlagOrca, kFlagMutant,
+        kFlagTrajectory,
     };
     const char* matched = nullptr;
     for (const char* m : kModes) {
@@ -118,6 +134,24 @@ ParseResult ParseProtonatedPdb(int argc, char* argv[]) {
         r.error = "--protonated-pdb requires a file path: --protonated-pdb FILE";
         return r;
     }
+    ApplySingleConfFlags(argc, argv, m);
+    r.spec   = ModeSpec{std::move(m)};
+    r.common = ParseCommon(argc, argv);
+    return r;
+}
+
+ParseResult ParseOf3(int argc, char* argv[]) {
+    ParseResult r;
+    Of3Mode m;
+    const std::string root = GetArg(argc, argv, "--root");
+    if (root.empty()) {
+        r.error =
+            "--of3 requires --root NAME\n"
+            "  root expands to only: {root}.prmtop, {root}.inpcrd "
+            "(no {root}_nmr.out; --of3 carries no DFT input)";
+        return r;
+    }
+    m.input = ExpandOf3Root(root);
     ApplySingleConfFlags(argc, argv, m);
     r.spec   = ModeSpec{std::move(m)};
     r.common = ParseCommon(argc, argv);
@@ -243,12 +277,14 @@ ParseResult Parse(int argc, char* argv[]) {
     if (mode == nullptr) {
         r.error =
             "no mode flag found\n"
-            "  valid modes: --pdb, --protonated-pdb, --orca, --mutant, --trajectory";
+            "  valid modes: --pdb, --protonated-pdb, --of3, --orca, --mutant, "
+            "--trajectory";
         return r;
     }
 
     if (std::strcmp(mode, kFlagPdb)           == 0) return ParsePdb(argc, argv);
     if (std::strcmp(mode, kFlagProtonatedPdb) == 0) return ParseProtonatedPdb(argc, argv);
+    if (std::strcmp(mode, kFlagOf3)           == 0) return ParseOf3(argc, argv);
     if (std::strcmp(mode, kFlagOrca)          == 0) return ParseOrca(argc, argv);
     if (std::strcmp(mode, kFlagMutant)        == 0) return ParseMutant(argc, argv);
     if (std::strcmp(mode, kFlagTrajectory)    == 0) return ParseTrajectory(argc, argv);

@@ -8,6 +8,7 @@
 /// rather than a JobMode-enum switch.
 
 #include "OrcaRunLoader.h"
+#include "Of3Loader.h"
 
 #include <filesystem>
 #include <variant>
@@ -32,6 +33,18 @@ struct PdbMode {
 struct ProtonatedPdbMode {
     std::filesystem::path pdb;
     bool                  mopac = true;
+};
+
+/// @brief Load an OpenFold pose prepared orthogonally with tleap/ff14SB.
+///
+/// A sixth, source-neutral peer of @ref OrcaMode. The pose is described by a
+/// root name that expands to exactly @c {root}.xyz (coordinates) and
+/// @c {root}.prmtop (topology + authoritative charges). It carries NO DFT
+/// input (@ref Of3Input has no @c nmr_out_path) and never runs a mutant
+/// comparison; it runs the standard single-pose extraction.
+struct Of3Mode {
+    Of3Input input;
+    bool     mopac = true;
 };
 
 /// @brief Load a single tleap/AMBER-prepared pose, run the standard pipeline.
@@ -116,7 +129,7 @@ struct TrajectoryInputFiles {
     }
 };
 
-/// @brief Discriminated union over the five supported modes.
+/// @brief Discriminated union over the six supported modes.
 ///
 /// Use @c std::visit at the dispatch site:
 /// @code
@@ -124,6 +137,7 @@ struct TrajectoryInputFiles {
 /// @endcode
 using ModeSpec = std::variant<PdbMode,
                               ProtonatedPdbMode,
+                              Of3Mode,
                               OrcaMode,
                               MutantMode,
                               TrajectoryMode>;

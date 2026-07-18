@@ -42,6 +42,14 @@ std::string CheckOrcaFiles(const OrcaRunFiles& f, const char* side) {
     return "";
 }
 
+std::string CheckOf3Input(const Of3Input& in, const char* side) {
+    std::string e;
+    e = CheckFile(in.prmtop_path, (std::string(side) + " .prmtop").c_str());  if (!e.empty()) return e;
+    e = CheckFile(in.inpcrd_path, (std::string(side) + " .inpcrd").c_str());  if (!e.empty()) return e;
+    // No NMR sibling is derived or inspected: OF3 carries no DFT input.
+    return "";
+}
+
 std::string CheckCommon(const CommonOptions& c) {
     // output_dir may be created at runtime; only check if non-empty
     // that it is not a path to a non-directory.
@@ -82,6 +90,8 @@ std::string Validate(const ModeSpec& spec, const CommonOptions& common) {
                 return CheckFile(m.pdb, "--pdb");
             } else if constexpr (std::is_same_v<T, ProtonatedPdbMode>) {
                 return CheckFile(m.pdb, "--protonated-pdb");
+            } else if constexpr (std::is_same_v<T, Of3Mode>) {
+                return CheckOf3Input(m.input, "--of3");
             } else if constexpr (std::is_same_v<T, OrcaMode>) {
                 return CheckOrcaFiles(m.files, "--orca");
             } else if constexpr (std::is_same_v<T, MutantMode>) {

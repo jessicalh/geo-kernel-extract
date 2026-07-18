@@ -399,6 +399,7 @@ TEST(NamingApplicatorIdempotency, CanonicalChainAtomsPassThrough) {
         NamingSource::Pdb2gmxAmberRtpDeviation,
         NamingSource::CifppPdbInput,
         NamingSource::OrcaEcho,
+        NamingSource::Of3PrmtopInput,
     };
 
     for (const AminoAcidType& aatype : AllAminoAcidTypes()) {

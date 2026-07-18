@@ -132,6 +132,15 @@ enum class NamingSource : uint8_t {
     /// any residual cases.
     OrcaEcho                 = 4,
 
+    /// The --of3 (OpenFold+tleap) mode's prmtop ATOM_NAME input surface
+    /// (BuildFromOf3 in OrcaRunLoader.cpp). Structurally identical to the
+    /// OrcaEcho surface — an ff14SB/tleap prmtop atom-name section — but a
+    /// distinct value so OF3 atom names are NOT recorded as ORCA-derived
+    /// (honest provenance). No canonicalisation rule gates on this value,
+    /// so OF3 and ORCA produce identical canonical output; the
+    /// source-agnostic AmberFf14SBCanonical rules fire for both.
+    Of3PrmtopInput           = 10,
+
     /// Markley et al. 1998 J. Biomol. NMR 12:1-23 nomenclature
     /// recommendations (the IUPAC-IUB 1969 update for proteins). The
     /// Greek-letter-locant + diastereotopic-numbering canon lives
@@ -172,6 +181,7 @@ inline const char* NamingSourceName(NamingSource src) {
         case NamingSource::Pdb2gmxAmberRtpDeviation: return "Pdb2gmxAmberRtpDeviation";
         case NamingSource::CifppPdbInput:            return "CifppPdbInput";
         case NamingSource::OrcaEcho:                 return "OrcaEcho";
+        case NamingSource::Of3PrmtopInput:           return "Of3PrmtopInput";
         case NamingSource::Markley1998:              return "Markley1998";
         case NamingSource::BmrbAtomNomTbl:           return "BmrbAtomNomTbl";
         case NamingSource::IupacIub1969:             return "IupacIub1969";

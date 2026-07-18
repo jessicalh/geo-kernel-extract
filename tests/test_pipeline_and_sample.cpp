@@ -15,10 +15,19 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <cmath>
+#include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "OperationRunner.h"
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
+#include "Of3Loader.h"
+#include "OrcaShieldingResult.h"
+#include "ForceFieldChargeTable.h"
+#include "ProteinBuildContext.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "ConformationAtom.h"
@@ -73,6 +82,241 @@ TEST(OrcaLoaderProvenanceTest, BuildContextRecordsTleapFf14SB) {
     EXPECT_EQ(ctx.force_field, "ff14SB");
     EXPECT_EQ(ctx.protonation_tool, "tleap");
     EXPECT_FALSE(ctx.prmtop_path.empty());
+
+    // Regression: parameterizing the shared heavy parse (LoadWithPrmtop) for
+    // --of3 must NOT change ORCA's provenance. The ORCA conformation still
+    // records the "AlphaFold+tleap" convention, unchanged.
+    EXPECT_EQ(result.protein->PredictionAt(0).PredictionMethod(),
+              "AlphaFold+tleap");
+}
+
+
+// BuildFromOf3 is the --of3 structural loader: it shares the ORCA heavy parse
+// (prmtop topology + Branch-1 prmtop charges) but reads geometry from the
+// tleap-emitted AMBER restart (rst7/inpcrd), records honest OpenFold
+// provenance, and attaches NO DFT result. This round trip uses a committed
+// REAL tleap prep (bmr10013.{prmtop,inpcrd}, tracked in git under tests/data/
+// orca/) — genuine instrument output, not a hand-generated fixture.
+TEST(Of3LoaderRoundTrip, StructureChargesProvenanceNoDft) {
+    const std::string dir = std::string(nmr::test::TestEnvironment::OrcaDir());
+    nmr::Of3Input input;
+    input.prmtop_path       = dir + "bmr10013.prmtop";
+    input.inpcrd_path       = dir + "bmr10013.inpcrd";
+    input.prediction_method = "OpenFold+tleap";
+    if (!fs::exists(input.prmtop_path) || !fs::exists(input.inpcrd_path))
+        GTEST_SKIP() << "OF3 inpcrd fixture not found at " << dir;
+
+    auto build = nmr::BuildFromOf3(input);
+    ASSERT_TRUE(build.Ok()) << build.error;
+
+    // Structure: prmtop topology + rst7 geometry reached the conformation in
+    // prmtop atom order (proves ReadInpcrd parsed the 6F12.7 coordinates).
+    EXPECT_EQ(build.protein->AtomCount(), 1284u);
+    EXPECT_EQ(build.protein->ResidueCount(), 89u);
+    EXPECT_EQ(build.protein->ConformationCount(), 1u);
+
+    const auto& conf = build.protein->Conformation();
+    EXPECT_NEAR(conf.AtomAt(0).Position().x(),  -0.675000, 1e-4);
+    EXPECT_NEAR(conf.AtomAt(0).Position().y(),  -1.661000, 1e-4);
+    EXPECT_NEAR(conf.AtomAt(0).Position().z(), -20.494000, 1e-4);
+    const size_t last = build.protein->AtomCount() - 1;
+    EXPECT_NEAR(conf.AtomAt(last).Position().x(),  -0.041798, 1e-4);
+    EXPECT_NEAR(conf.AtomAt(last).Position().y(), -18.703585, 1e-4);
+    EXPECT_NEAR(conf.AtomAt(last).Position().z(),  27.816413, 1e-4);
+
+    // Provenance: ff14SB/tleap build context, exact prmtop path, honest
+    // OpenFold prediction method (NOT AlphaFold).
+    const auto& ctx = build.protein->BuildContext();
+    EXPECT_EQ(ctx.prmtop_path, input.prmtop_path);
+    EXPECT_EQ(ctx.force_field, "ff14SB");
+    EXPECT_EQ(ctx.protonation_tool, "tleap");
+    EXPECT_EQ(build.protein->PredictionAt(0).PredictionMethod(),
+              "OpenFold+tleap");
+
+    // Charges: Branch-1 prmtop authority, ff14SB, materialized onto the
+    // protein's owned table.
+    ASSERT_NE(build.charges, nullptr);
+    EXPECT_EQ(build.charges->Kind(), nmr::ChargeModelKind::AmberPrmtop);
+    EXPECT_EQ(build.charges->SourceForceField(), nmr::ForceField::Amber_ff14SB);
+    ASSERT_TRUE(build.protein->HasForceFieldCharges());
+    EXPECT_EQ(build.protein->ForceFieldCharges().Kind(),
+              nmr::ChargeModelKind::AmberPrmtop);
+    EXPECT_EQ(build.protein->ForceFieldCharges().AtomCount(), 1284u);
+    EXPECT_EQ(build.net_charge, -9);
+
+    // No DFT attached: OF3 cannot carry an nmr path (see the HasNmrOutPath
+    // static_asserts in test_cli_parse.cpp) and the loader builds no
+    // OrcaShieldingResult.
+    EXPECT_FALSE(conf.HasResult<nmr::OrcaShieldingResult>());
+}
+
+// Honest-provenance guard: BuildFromOf3 refuses an empty prediction_method
+// rather than silently recording blank provenance.
+TEST(Of3LoaderRoundTrip, EmptyPredictionMethodRejected) {
+    const std::string dir = std::string(nmr::test::TestEnvironment::OrcaDir());
+    nmr::Of3Input input;
+    input.prmtop_path       = dir + "bmr10013.prmtop";
+    input.inpcrd_path       = dir + "bmr10013.inpcrd";
+    input.prediction_method = "";  // empty on purpose
+    if (!fs::exists(input.prmtop_path)) GTEST_SKIP() << "OF3 fixture not found";
+
+    auto build = nmr::BuildFromOf3(input);
+    EXPECT_FALSE(build.Ok());
+    EXPECT_NE(build.error.find("prediction_method"), std::string::npos)
+        << build.error;
+}
+
+
+// ============================================================================
+// ReadInpcrd fail-loud hardening (adversarial Finding #2): the rst7 reader must
+// REJECT wrong geometry rather than report success on it. These craft malformed
+// rst7 files and drive them through BuildFromOf3 (ReadInpcrd is a file-local
+// static; the public entry is the loader). Failure cases are rejected inside
+// ReadInpcrd, before the prmtop is even consulted, so the diagnostic names the
+// inpcrd reason. bmr10013.prmtop is supplied only so a REGRESSED reader (that
+// wrongly succeeded) would still fail loudly on the count mismatch.
+// ============================================================================
+namespace {
+
+namespace of3fs = std::filesystem;
+
+std::string Of3OrcaDir() { return std::string(nmr::test::TestEnvironment::OrcaDir()); }
+
+// One F12.7 coordinate field (right-justified, exactly 12 chars for |v|<1000).
+std::string F12(double v) {
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%12.7f", v);
+    return std::string(buf);
+}
+
+// Right-justify a raw token into a 12-char field (for injecting non-numeric /
+// non-finite fields). Returns tok unchanged if already >= 12 (over-width).
+std::string Field12(const std::string& tok) {
+    if (tok.size() >= 12) return tok;
+    return std::string(12 - tok.size(), ' ') + tok;
+}
+
+// Write a crafted rst7: title, atom count, then the given lines verbatim.
+of3fs::path WriteRst7(const std::string& tag, int natom,
+                      const std::vector<std::string>& lines) {
+    const of3fs::path dir = of3fs::path(testing::TempDir()) /
+        ("of3_rst7_" + tag + "_" + std::to_string(::getpid()));
+    of3fs::create_directories(dir);
+    const of3fs::path p = dir / "model.inpcrd";
+    std::ofstream out(p);
+    out << "title\n" << natom << "\n";
+    for (const auto& l : lines) out << l << "\n";
+    return p;
+}
+
+nmr::Of3Input CraftedOf3(const of3fs::path& inpcrd) {
+    nmr::Of3Input in;
+    in.inpcrd_path       = inpcrd.string();
+    in.prmtop_path       = Of3OrcaDir() + "bmr10013.prmtop";  // only a backstop
+    in.prediction_method = "OpenFold+tleap";
+    return in;
+}
+
+}  // namespace
+
+TEST(Of3InpcrdHardening, OverWidthColumnRejected) {
+    // 2 atoms = 6 coords on one line; field 0 is 13 chars (F12.7 overflow, e.g.
+    // a negative value <= -1000), which shifts every fixed 12-char column.
+    const std::string over = "-1234.5678901";  // 13 chars
+    const std::string line = over + F12(0.1) + F12(0.2) + F12(0.3) + F12(0.4) + F12(0.5);
+    const auto b = nmr::BuildFromOf3(CraftedOf3(WriteRst7("overwidth", 2, {line})));
+    EXPECT_FALSE(b.Ok());
+    EXPECT_NE(b.error.find("inpcrd"), std::string::npos) << b.error;
+    EXPECT_NE(b.error.find("width"),  std::string::npos) << b.error;
+}
+
+TEST(Of3InpcrdHardening, NonFiniteRejected) {
+    // "nan" parses numerically but is not finite.
+    const std::string line = Field12("nan") + F12(0.1) + F12(0.2) +
+                             F12(0.3) + F12(0.4) + F12(0.5);
+    const auto b = nmr::BuildFromOf3(CraftedOf3(WriteRst7("nan", 2, {line})));
+    EXPECT_FALSE(b.Ok());
+    EXPECT_NE(b.error.find("inpcrd"), std::string::npos) << b.error;
+    EXPECT_NE(b.error.find("finite"), std::string::npos) << b.error;
+}
+
+TEST(Of3InpcrdHardening, PartialNumericParseRejected) {
+    // Fortran "D"-exponent: std::stod reads "1.234" and stops at 'D', leaving a
+    // partial parse the naive reader would silently accept.
+    const std::string line = Field12("1.234D+02") + F12(0.1) + F12(0.2) +
+                             F12(0.3) + F12(0.4) + F12(0.5);
+    const auto b = nmr::BuildFromOf3(CraftedOf3(WriteRst7("dexp", 2, {line})));
+    EXPECT_FALSE(b.Ok());
+    EXPECT_NE(b.error.find("inpcrd"),  std::string::npos) << b.error;
+    EXPECT_NE(b.error.find("numeric"), std::string::npos) << b.error;
+}
+
+TEST(Of3InpcrdHardening, TrailingGarbageParseRejected) {
+    // A numeric prefix with trailing non-numeric junk ("1.0000000gx").
+    const std::string line = Field12("1.0000000gx") + F12(0.1) + F12(0.2) +
+                             F12(0.3) + F12(0.4) + F12(0.5);
+    const auto b = nmr::BuildFromOf3(CraftedOf3(WriteRst7("garbage", 2, {line})));
+    EXPECT_FALSE(b.Ok());
+    EXPECT_NE(b.error.find("inpcrd"),  std::string::npos) << b.error;
+    EXPECT_NE(b.error.find("numeric"), std::string::npos) << b.error;
+}
+
+TEST(Of3InpcrdHardening, ShortRecordRejected) {
+    // 2 atoms need 6 fields; provide only 5 (60 chars) -> width mismatch.
+    const std::string line = F12(0.1) + F12(0.2) + F12(0.3) + F12(0.4) + F12(0.5);
+    const auto b = nmr::BuildFromOf3(CraftedOf3(WriteRst7("short", 2, {line})));
+    EXPECT_FALSE(b.Ok());
+    EXPECT_NE(b.error.find("inpcrd"), std::string::npos) << b.error;
+    EXPECT_NE(b.error.find("width"),  std::string::npos) << b.error;
+}
+
+TEST(Of3InpcrdHardening, CrossBlockFillRejected) {
+    // 4 atoms = 12 coords over ceil(4/2)=2 lines. Line 2 is SHORT (atom 3 only,
+    // 3 fields = 36 chars); a following velocity/box line would, in a reader
+    // that just accumulates until 3*N, silently supply atom 4's coords from the
+    // wrong block. The hardened reader rejects the short record and never reads
+    // the later line.
+    const std::string full  = F12(1)+F12(2)+F12(3)+F12(4)+F12(5)+F12(6);
+    const std::string shrt  = F12(7)+F12(8)+F12(9);                  // atom 3 only
+    const std::string velo  = F12(70)+F12(80)+F12(90)+F12(100)+F12(110)+F12(120);
+    const auto b = nmr::BuildFromOf3(
+        CraftedOf3(WriteRst7("crossblock", 4, {full, shrt, velo})));
+    EXPECT_FALSE(b.Ok());
+    EXPECT_NE(b.error.find("inpcrd"), std::string::npos) << b.error;
+    EXPECT_NE(b.error.find("width"),  std::string::npos) << b.error;
+    // The velocity-block magnitudes (70..120) must never have been read as coords.
+    EXPECT_EQ(b.error.find("70.0000000"), std::string::npos) << b.error;
+}
+
+TEST(Of3InpcrdHardening, TrailingBoxBlockIgnoredValidSucceeds) {
+    // A COMPLETE, valid coordinate block followed by a box line must load
+    // correctly — the trailing block is ignored, not read as coordinates.
+    const std::string dir = Of3OrcaDir();
+    const std::string src = dir + "bmr10013.inpcrd";
+    if (!of3fs::exists(src)) GTEST_SKIP() << "bmr10013 fixture not found";
+
+    std::ifstream in(src);
+    std::stringstream ss; ss << in.rdbuf();
+    std::string content = ss.str();
+    if (!content.empty() && content.back() != '\n') content.push_back('\n');
+    content += "  10.0000000  10.0000000  10.0000000"
+               "  90.0000000  90.0000000  90.0000000\n";  // box line
+    const of3fs::path p = of3fs::path(testing::TempDir()) /
+        ("of3_box_" + std::to_string(::getpid()) + ".inpcrd");
+    { std::ofstream out(p); out << content; }
+
+    nmr::Of3Input input;
+    input.inpcrd_path       = p.string();
+    input.prmtop_path       = dir + "bmr10013.prmtop";
+    input.prediction_method = "OpenFold+tleap";
+    auto b = nmr::BuildFromOf3(input);
+    ASSERT_TRUE(b.Ok()) << b.error;
+    EXPECT_EQ(b.protein->AtomCount(), 1284u);
+    const auto& conf = b.protein->Conformation();
+    EXPECT_NEAR(conf.AtomAt(0).Position().x(), -0.675000, 1e-4);
+    const size_t last = b.protein->AtomCount() - 1;
+    EXPECT_NEAR(conf.AtomAt(last).Position().z(), 27.816413, 1e-4);
+    EXPECT_EQ(b.net_charge, -9);
 }
 
 
