@@ -77,12 +77,19 @@ public:
     std::size_t frameCount() const override;
     double      timePicoseconds(std::size_t frame) const override;
     std::size_t originalFrameIndex(std::size_t frame) const override;
+    std::optional<std::size_t>
+    frameRowForOriginalIndex(std::size_t originalFrame) const override;
     const TrajectoryConformation* asTrajectory() const override;
 
     // The ONE virtual this decorator actually decorates: applies the
     // per-frame rigid-body transform to the inner conformation's raw
     // position. R * raw + T, from the precomputed transform sequence.
     Vec3 atomPosition(std::size_t frame, std::size_t atomIdx) const override;
+
+    // Rotation used by atomPosition() for this frame. Tensor and vector
+    // overlays use the same R so their orientation remains locked to the
+    // displayed molecule: T_display = R * T_raw * R^T.
+    Mat3 displayRotation(std::size_t frame) const;
 
     // ----- Transform control -----
     Mode mode() const { return mode_; }

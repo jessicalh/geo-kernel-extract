@@ -1,5 +1,5 @@
 // ChordCouplingPanel — chord/arc diagram of a per-atom NxN correlation
-// matrix (KernelCoherence's 13×13 Pearson). Channel labels arranged
+// matrix (KernelCoherence's 7x7 Pearson). Channel labels arranged
 // around a circle; arcs between coupled pairs with thickness=|r| and
 // hue encoding sign. Heatmap was explicitly rejected (per execution
 // rules) — the chord idiom reads at a glance.

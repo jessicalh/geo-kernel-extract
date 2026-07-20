@@ -51,6 +51,7 @@
 #include "../model/MolecularFrame.h"
 #include "../model/MolecularFrameSelect.h"
 #include "../model/ConformationGeometry.h"
+#include "../physics/SphericalBasis.h"
 #include "CsaTensorOverlay.h"
 
 #include <QDockWidget>
@@ -112,6 +113,7 @@
 #include <vtkCommand.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -178,7 +180,6 @@ QDir installedExperimentalShieldingMlDir() {
 QStringList experimentalShieldingMlRequiredFiles() {
     return {
         QStringLiteral("model.ts"),
-        QStringLiteral("model_no_mopac_no_tripeptide.ts"),
         QStringLiteral("manifest.json"),
         QStringLiteral("infer.exe"),
         QStringLiteral("c10.dll"),
@@ -270,10 +271,6 @@ QStringList experimentalShieldingMlDevMissingFiles(const QString& modelPath,
     if (!QFileInfo(helperPath).isFile())
         missing.append(QStringLiteral("infer.exe"));
 
-    const QDir modelDir = QFileInfo(modelPath).dir();
-    if (!fileExistsInDir(modelDir, QStringLiteral("model_no_mopac_no_tripeptide.ts")))
-        missing.append(QStringLiteral("model_no_mopac_no_tripeptide.ts"));
-
     const QDir helperDir = QFileInfo(helperPath).dir();
     for (const QString& fileName :
          {QStringLiteral("c10.dll"),
@@ -287,23 +284,6 @@ QStringList experimentalShieldingMlDevMissingFiles(const QString& modelPath,
             missing.append(fileName);
     }
     return missing;
-}
-
-bool devExperimentalShieldingMlRuntimeAvailable() {
-    const QString modelPath =
-        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
-    const QString manifestPath =
-        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST");
-    const QString helperPath =
-        qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
-    if (modelPath.isEmpty() && manifestPath.isEmpty() && helperPath.isEmpty())
-        return false;
-    return experimentalShieldingMlDevMissingFiles(modelPath, manifestPath, helperPath).isEmpty();
-}
-
-bool experimentalShieldingMlRuntimeAvailable() {
-    return devExperimentalShieldingMlRuntimeAvailable()
-           || installedExperimentalShieldingMlRuntimeAvailable();
 }
 
 QJsonObject summarizeExperimentalShieldingMlTraining(const QJsonObject& training) {
@@ -323,6 +303,12 @@ QJsonObject summarizeExperimentalShieldingMlTraining(const QJsonObject& training
     const QJsonValue vocabPolicy = training.value(QStringLiteral("label_vocab_policy"));
     if (vocabPolicy.isString())
         out.insert(QStringLiteral("labelVocabPolicy"), vocabPolicy.toString());
+    const QJsonValue run = training.value(QStringLiteral("run"));
+    if (run.isString())
+        out.insert(QStringLiteral("run"), run.toString());
+    const QJsonValue producerCommit = training.value(QStringLiteral("producer_commit"));
+    if (producerCommit.isString())
+        out.insert(QStringLiteral("producerCommit"), producerCommit.toString());
     const QJsonObject args = training.value(QStringLiteral("args")).toObject();
     const QJsonValue inputPreset = args.value(QStringLiteral("input_preset"));
     if (inputPreset.isString())
@@ -390,63 +376,13 @@ QJsonObject readExperimentalShieldingMlManifestSummary(const QString& path) {
     return out;
 }
 
-bool anyExperimentalShieldingMlPathVisible(
-    const model::TrajectoryFieldAvailability* availability,
-    const QStringList& storagePaths) {
-    if (!availability)
-        return false;
-    for (const QString& storagePath : storagePaths) {
-        const auto* record = availability->recordForStoragePath(storagePath);
-        if (record && model::TrajectoryFieldAvailability::isVisibleState(record->state))
-            return true;
-    }
-    return false;
-}
-
 QJsonObject experimentalShieldingMlInputProfileJson(
-    const model::TrajectoryFieldAvailability* availability,
+    const model::TrajectoryFieldAvailability*,
     bool loaded) {
-    const QStringList mopacPaths{
-        QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series"),
-        QStringLiteral("/trajectory/mopac_mc_shielding_time_series"),
-        QStringLiteral("/trajectory/mopac_vs_ff14sb_reconciliation"),
-        QStringLiteral("/trajectory/mopac_charge_welford"),
-        QStringLiteral("/trajectory/mopac_bond_order_welford"),
-        QStringLiteral("mopac_coulomb_shielding"),
-        QStringLiteral("mopac_mc_shielding"),
-        QStringLiteral("mopac_mc_category_T2"),
-        QStringLiteral("mopac_charges"),
-        QStringLiteral("mopac_scalars"),
-        QStringLiteral("mopac_bond_orders"),
-        QStringLiteral("mopac_global"),
-        QStringLiteral("mopac_coulomb_E"),
-        QStringLiteral("mopac_coulomb_efg_backbone"),
-        QStringLiteral("mopac_coulomb_efg_aromatic"),
-        QStringLiteral("mopac_coulomb_scalars"),
-        QStringLiteral("mopac_mc_scalars"),
-    };
-    const QStringList tripeptidePaths{
-        QStringLiteral("/trajectory/tripeptide_bb_shielding_time_series"),
-        QStringLiteral("/trajectory/tripeptide_neighbor_shielding_time_series"),
-        QStringLiteral("/trajectory/tripeptide_bb_residual_vec_time_series"),
-        QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_prev_time_series"),
-        QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_next_time_series"),
-        QStringLiteral("/trajectory/tripeptide_bb_method_tag_time_series"),
-        QStringLiteral("tripeptide_bb_shielding"),
-        QStringLiteral("tripeptide_neighbor_shielding"),
-        QStringLiteral("tripeptide_bb_residual_vec"),
-        QStringLiteral("tripeptide_neighbor_residual_vec_prev"),
-        QStringLiteral("tripeptide_neighbor_residual_vec_next"),
-        QStringLiteral("tripeptide_bb_match_distance"),
-        QStringLiteral("tripeptide_bb_method_tag"),
-    };
-
     QJsonObject profile;
     profile.insert(QStringLiteral("loaded"), loaded);
-    profile.insert(QStringLiteral("mopacPresent"),
-                   loaded && anyExperimentalShieldingMlPathVisible(availability, mopacPaths));
-    profile.insert(QStringLiteral("tripeptidePresent"),
-                   loaded && anyExperimentalShieldingMlPathVisible(availability, tripeptidePaths));
+    profile.insert(QStringLiteral("contract"),
+                   QStringLiteral("july_full720_f003_no_mopac_common_sense_v1"));
     return profile;
 }
 
@@ -463,17 +399,11 @@ QJsonObject selectedExperimentalShieldingMlModelJson(const QJsonObject& inputPro
         selected.insert(QStringLiteral("reason"), QStringLiteral("no_loaded_run"));
         return selected;
     }
-    if (inputProfile.value(QStringLiteral("mopacPresent")).toBool()) {
-        selected.insert(QStringLiteral("id"), QStringLiteral("full"));
-        selected.insert(QStringLiteral("modelFile"), QStringLiteral("model.ts"));
-        selected.insert(QStringLiteral("inputPreset"), QStringLiteral("full"));
-        selected.insert(QStringLiteral("reason"), QStringLiteral("mopac_features_available"));
-        return selected;
-    }
-    selected.insert(QStringLiteral("id"), QStringLiteral("no_mopac_no_tripeptide"));
-    selected.insert(QStringLiteral("modelFile"), QStringLiteral("model_no_mopac_no_tripeptide.ts"));
-    selected.insert(QStringLiteral("inputPreset"), QStringLiteral("no_mopac_no_tripeptide"));
-    selected.insert(QStringLiteral("reason"), QStringLiteral("mopac_features_absent"));
+    selected.insert(QStringLiteral("id"), QStringLiteral("f003_r004"));
+    selected.insert(QStringLiteral("modelFile"), QStringLiteral("model.ts"));
+    selected.insert(QStringLiteral("inputPreset"),
+                    QStringLiteral("f003_no_mopac_common_sense"));
+    selected.insert(QStringLiteral("reason"), QStringLiteral("july_contract_loaded"));
     return selected;
 }
 
@@ -483,11 +413,10 @@ struct ExperimentalShieldingMlRuntimePaths {
     QString helper;
     QString device;
     QString fallbackHelper;
-    QString modelId;
 };
 
 std::optional<ExperimentalShieldingMlRuntimePaths>
-resolveExperimentalShieldingMlRuntime(const QJsonObject& inputProfile) {
+resolveExperimentalShieldingMlRuntime() {
     QString model = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
     QString manifest = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST");
     QString cpuHelper = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
@@ -517,14 +446,7 @@ resolveExperimentalShieldingMlRuntime(const QJsonObject& inputProfile) {
         paths.helper = cpuHelper;
         paths.device = QStringLiteral("cpu");
     }
-    if (inputProfile.value(QStringLiteral("mopacPresent")).toBool()) {
-        paths.model = model;
-        paths.modelId = QStringLiteral("full");
-    } else {
-        paths.model = QFileInfo(model).dir().filePath(
-            QStringLiteral("model_no_mopac_no_tripeptide.ts"));
-        paths.modelId = QStringLiteral("no_mopac_no_tripeptide");
-    }
+    paths.model = model;
     return paths;
 }
 
@@ -800,11 +722,25 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     filterResidues_.clear();
 
     signalCatalog_ = new model::TrajectorySignalCatalog(this);
+    if (const auto runtime = resolveExperimentalShieldingMlRuntime()) {
+        experimentalMlStore_ = new model::ExperimentalShieldingMlStore(
+            loaded_->protein.get(),
+            loaded_->conformation.get(),
+            runtime->model,
+            runtime->manifest,
+            loaded_->extractionManifestPath,
+            runtime->helper,
+            runtime->device,
+            runtime->fallbackHelper,
+            this);
+    }
+
     // The availability gate needs the startup-loaded topology spine sizes and
     // the DFT job count to classify Topology + live ORCA descriptors honestly
     // (neither travels through the per-frame NPY path the gate probes). The DFT
-    // count comes from the manifest (== DftShieldingStore::jobCount(); the store
-    // itself is built further below, after this).
+    // count comes from the manifest (== DftShieldingStore::jobCount()). The ML
+    // source is live only when both its runtime and this run's required inputs
+    // passed the store's contract check.
     const model::TrajectoryFieldAvailability::TopologyExtent topologyExtent{
         static_cast<qsizetype>(loaded_->protein->atomCount()),
         static_cast<qsizetype>(loaded_->protein->bondCount()),
@@ -816,14 +752,17 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     fieldAvailability_ = std::make_shared<model::TrajectoryFieldAvailability>(
         model::TrajectoryFieldAvailability::Build(loaded_->conformation.get(),
                                                   topologyExtent, dftJobCount,
-                                                  experimentalShieldingMlRuntimeAvailable(),
+                                                  experimentalMlStore_
+                                                      && experimentalMlStore_->isReady(),
                                                   signalCatalog_->allDescriptorList()));
     signalCatalog_->setFieldAvailability(fieldAvailability_);
     visualizationContext_ = {};
     visualizationContext_.availability = fieldAvailability_.get();
     visualizationContext_.hasTrajectory = loaded_->conformation
         && loaded_->conformation->asTrajectory() != nullptr;
-    visualizationContext_.tensorGlyphGestureEnabled = false;
+    visualizationContext_.tensorGlyphGestureEnabled =
+        scene_ && scene_->csaOverlay()
+        && experimentalMlStore_ && experimentalMlStore_->isReady();
     const QStringList unresolvedModes =
         model::VisualizationRegistry::instance().unresolvedStaticModes(*signalCatalog_);
     for (const QString& mode : unresolvedModes) {
@@ -912,8 +851,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) { updateCsaGlyph(true); updateOrientationTensorGlyph(); });
     ACONNECT(selection_, &model::AtomSelection::cleared, this, [this]() {
-        if (scene_ && scene_->csaOverlay())
-            scene_->csaOverlay()->clear();
+        updateCsaGlyph(true);
         if (scene_ && scene_->orientationGlyph())
             scene_->orientationGlyph()->clear();
         if (scene_)
@@ -994,8 +932,27 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
     dashboardController_ = dashboardStripDock_->displayController();
-    if (dashboardController_)
+    if (dashboardController_) {
         dashboardController_->setVisualizationContext(visualizationContext_);
+        ACONNECT(dashboardController_.data(),
+                 &DashboardDisplayController::sceneTensorBindingChanged,
+                 this,
+                 [this](const QString& descriptorId, qint64 atom) {
+                     activeExperimentalMlTensorDescriptor_.clear();
+                     activeExperimentalMlTensorAtom_.reset();
+                     if (descriptorId
+                             == QStringLiteral("ml:experimental_shielding_t2")
+                         && atom >= 0
+                         && loaded_ && loaded_->protein
+                         && static_cast<std::size_t>(atom)
+                                < loaded_->protein->atomCount()) {
+                         activeExperimentalMlTensorDescriptor_ = descriptorId;
+                         activeExperimentalMlTensorAtom_ =
+                             static_cast<std::size_t>(atom);
+                     }
+                     updateCsaGlyph(true);
+                 });
+    }
 
     ACONNECT(dashboardSelectionController_.data(),
              &DashboardSelectionController::selectedCountChanged,
@@ -1013,8 +970,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ACONNECT(playback_,           &QtPlaybackController::frameChanged,
              dashboardStripDock_, &DashboardStripDock::setFrame);
 
-    // L-3a (2026-05-29): expose the scene's reveal overlay to the dashboard
-    // controller so static.tensor mode can fire an ellipsoid glyph in the 3-D view.
+    // Expose the shared scene overlay to dashboard visualizations that explicitly
+    // support 3-D geometry, including the common tensor glyph.
     if (scene_->revealOverlay()) {
         dashboardStripDock_->setSceneOverlay(scene_->revealOverlay());
         visualizationContext_.hasSceneOverlay = true;
@@ -1024,26 +981,22 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
             signalDisplayDialog_->setVisualizationContext(visualizationContext_);
     }
 
-    const QJsonObject experimentalMlInputProfile =
-        experimentalShieldingMlInputProfileJson(fieldAvailability_.get(), true);
-    if (const auto runtime = resolveExperimentalShieldingMlRuntime(experimentalMlInputProfile)) {
-        experimentalMlStore_ = new model::ExperimentalShieldingMlStore(
-            loaded_->protein.get(),
-            loaded_->conformation.get(),
-            runtime->model,
-            runtime->manifest,
-            runtime->helper,
-            runtime->device,
-            runtime->fallbackHelper,
-            runtime->modelId,
-            this);
-        if (experimentalMlStore_->isReady()) {
-            dashboardStripDock_->setExperimentalShieldingMlStore(experimentalMlStore_);
-            qCInfo(cWindow).noquote()
-                << QStringLiteral("Experimental Shielding ML store wired | model=%1 device=%2")
-                       .arg(runtime->modelId)
-                       .arg(runtime->device);
-        }
+    if (experimentalMlStore_ && experimentalMlStore_->isReady()) {
+        dashboardStripDock_->setExperimentalShieldingMlStore(experimentalMlStore_);
+        ACONNECT(experimentalMlStore_,
+                 &model::ExperimentalShieldingMlStore::frameReady,
+                 this,
+                 [this](std::size_t frame) {
+                     const int current = playback_ ? playback_->currentFrame() : 0;
+                     if (frame
+                         == static_cast<std::size_t>(std::max(0, current))) {
+                         updateCsaGlyph(false);
+                     }
+                 });
+        qCInfo(cWindow).noquote()
+            << QStringLiteral("Experimental Shielding ML store wired | model=%1 device=%2")
+                   .arg(experimentalMlStore_->modelId())
+                   .arg(experimentalMlStore_->device());
     }
 
     // DFT shielding campaign (optional): make the frame-local source
@@ -1115,6 +1068,8 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
     auto hide = [&] {
         overlay->clear();
         if (inspectorDock_) inspectorDock_->clearCsaTensor();
+        experimentalMlTensorDisplayed_ = false;
+        experimentalMlTensorDisplayedFrame_.reset();
         redraw();
     };
     if (trajectoryOverlayActive()) {
@@ -1122,7 +1077,81 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         return;
     }
 
-    if (!loaded_ || !dftStore_ || !transformed_ || !selection_ || !selection_->hasFocus()) {
+    if (!loaded_ || !transformed_) {
+        hide();
+        return;
+    }
+
+    const int frameI = playback_ ? playback_->currentFrame() : 0;
+    const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
+
+    // A dashboard-selected F003 tensor owns the shared shielding glyph while
+    // active. The network emits its equivariant tensor in the raw coordinate
+    // frame; apply the exact display Kabsch rotation used by atomPosition().
+    if (activeExperimentalMlTensorDescriptor_
+            == QStringLiteral("ml:experimental_shielding_t2")
+        && activeExperimentalMlTensorAtom_.has_value()) {
+        const std::size_t atom = *activeExperimentalMlTensorAtom_;
+        if (!experimentalMlStore_ || !experimentalMlStore_->isReady()
+            || !loaded_->protein || atom >= loaded_->protein->atomCount()
+            || frame >= transformed_->frameCount()) {
+            hide();
+            return;
+        }
+        const auto values = experimentalMlStore_->tensor(frame, atom);
+        if (!values) {
+            if (requestMissingDft && (!playback_ || !playback_->isPlaying()))
+                experimentalMlStore_->requestFrame(frame);
+            hide();
+            return;
+        }
+
+        const std::array<double, 5> t2{
+            (*values)[1], (*values)[2], (*values)[3], (*values)[4], (*values)[5]};
+        const model::Mat3 rawTensor =
+            physics::ReconstructLibraryT2Matrix((*values)[0], t2);
+        const model::Mat3 rotation = transformed_->displayRotation(frame);
+        const model::Mat3 displayTensor =
+            rotation * rawTensor * rotation.transpose();
+        const model::CsaShape shape = model::ComputeCsaShape(displayTensor);
+        if (!shape.valid) {
+            hide();
+            return;
+        }
+
+        const model::Vec3 atomPos = transformed_->atomPosition(frame, atom);
+        overlay->show(atomPos, shape, std::nullopt);
+        experimentalMlTensorDisplayed_ = true;
+        experimentalMlTensorDisplayedFrame_ = frame;
+        if (inspectorDock_) {
+            CsaTensorInfo info;
+            info.sourceLabel = QStringLiteral("Experimental Shielding ML");
+            info.sourceDetail = experimentalMlStore_->modelId();
+            info.frameKind =
+                QStringLiteral("equivariant output, display-aligned");
+            info.sigmaIso = shape.sigma_iso;
+            info.span = shape.span;
+            info.skew = shape.skew;
+            info.eta = shape.eta;
+            info.sigma11 = shape.principal_values[0];
+            info.sigma22 = shape.principal_values[1];
+            info.sigma33 = shape.principal_values[2];
+            inspectorDock_->setCsaTensor(atom, info);
+        }
+        qCDebug(cWindow).noquote()
+            << "Experimental shielding ML glyph | atom=" << atom
+            << "| frame=" << frame
+            << "| model=" << experimentalMlStore_->modelId()
+            << "| iso=" << shape.sigma_iso
+            << "| eta=" << shape.eta
+            << "| span=" << shape.span;
+        redraw();
+        return;
+    }
+
+    experimentalMlTensorDisplayed_ = false;
+    experimentalMlTensorDisplayedFrame_.reset();
+    if (!dftStore_ || !selection_ || !selection_->hasFocus()) {
         hide();
         return;
     }
@@ -1133,8 +1162,6 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         hide();
         return;
     }
-    const int frameI = playback_ ? playback_->currentFrame() : 0;
-    const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
     const std::size_t original = rawConf->originalFrameIndex(frame);
     if (!dftStore_->hasJob(original)) {
         hide();
@@ -1163,6 +1190,11 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
     if (inspectorDock_) {
         CsaTensorInfo info;
         info.framed = r.framed;
+        info.sourceLabel = QStringLiteral("ORCA DFT");
+        info.sourceDetail =
+            loaded_->manifest.dft.has_value()
+                ? loaded_->manifest.dft->method
+                : QStringLiteral("ORCA");
         info.frameKind = r.framed
                              ? QString::fromLatin1(model::MolecularFrameKindName(r.frameKind))
                              : QStringLiteral("unframed (raw PAS)");
@@ -1365,6 +1397,10 @@ void ReaderMainWindow::clearLoadedRun() {
     dftStore_ = nullptr;
     delete experimentalMlStore_;
     experimentalMlStore_ = nullptr;
+    activeExperimentalMlTensorDescriptor_.clear();
+    activeExperimentalMlTensorAtom_.reset();
+    experimentalMlTensorDisplayed_ = false;
+    experimentalMlTensorDisplayedFrame_.reset();
     delete dashboardSelectionController_;
     dashboardSelectionController_ = nullptr;
     delete dashboardPanels_;
@@ -1537,10 +1573,8 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     out[QStringLiteral("diagnostic")]    = diagnostic;
     QJsonObject experimentalMl =
         experimentalShieldingMlRuntimeJson(fieldAvailability_.get(), loaded);
-    const QJsonObject experimentalMlInputProfile =
-        experimentalShieldingMlInputProfileJson(fieldAvailability_.get(), loaded);
     const auto configuredExperimentalMl =
-        resolveExperimentalShieldingMlRuntime(experimentalMlInputProfile);
+        resolveExperimentalShieldingMlRuntime();
     experimentalMl.insert(QStringLiteral("devicePreference"),
                           experimentalShieldingMlDevicePreference());
     experimentalMl.insert(
@@ -1561,6 +1595,54 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
         if (!experimentalMlStore_->errorReason().isEmpty())
             experimentalMl.insert(QStringLiteral("inferenceError"), experimentalMlStore_->errorReason());
     }
+    QJsonObject tensorDisplay;
+    const bool tensorActive =
+        activeExperimentalMlTensorDescriptor_
+            == QStringLiteral("ml:experimental_shielding_t2")
+        && activeExperimentalMlTensorAtom_.has_value();
+    const int tensorFrameI = playback_ ? playback_->currentFrame() : 0;
+    const std::size_t tensorFrame =
+        static_cast<std::size_t>(std::max(0, tensorFrameI));
+    tensorDisplay.insert(QStringLiteral("active"), tensorActive);
+    tensorDisplay.insert(QStringLiteral("descriptorId"),
+                         tensorActive
+                             ? QJsonValue(activeExperimentalMlTensorDescriptor_)
+                             : jsonNull());
+    tensorDisplay.insert(
+        QStringLiteral("atom"),
+        tensorActive
+            ? QJsonValue(static_cast<qint64>(*activeExperimentalMlTensorAtom_))
+            : jsonNull());
+    tensorDisplay.insert(QStringLiteral("frame"),
+                         tensorActive ? QJsonValue(static_cast<qint64>(tensorFrame))
+                                      : jsonNull());
+    tensorDisplay.insert(QStringLiteral("source"),
+                         tensorActive
+                             ? QJsonValue(QStringLiteral("Experimental Shielding ML"))
+                             : jsonNull());
+    tensorDisplay.insert(QStringLiteral("modelId"),
+                         tensorActive && experimentalMlStore_
+                             ? QJsonValue(experimentalMlStore_->modelId())
+                             : jsonNull());
+    const auto tensorValues =
+        tensorActive && experimentalMlStore_
+            ? experimentalMlStore_->tensor(
+                  tensorFrame, *activeExperimentalMlTensorAtom_)
+            : std::optional<std::array<double, 6>>{};
+    tensorDisplay.insert(QStringLiteral("resident"), tensorValues.has_value());
+    tensorDisplay.insert(
+        QStringLiteral("displayed"),
+        experimentalMlTensorDisplayed_
+            && experimentalMlTensorDisplayedFrame_.has_value()
+            && *experimentalMlTensorDisplayedFrame_ == tensorFrame);
+    if (tensorValues) {
+        tensorDisplay.insert(QStringLiteral("sigmaIsoPpm"), (*tensorValues)[0]);
+        QJsonArray t2;
+        for (std::size_t i = 1; i < tensorValues->size(); ++i)
+            t2.append((*tensorValues)[i]);
+        tensorDisplay.insert(QStringLiteral("t2"), t2);
+    }
+    experimentalMl.insert(QStringLiteral("tensorDisplay"), tensorDisplay);
     out[QStringLiteral("experimentalShieldingMl")] = experimentalMl;
     return out;
 }

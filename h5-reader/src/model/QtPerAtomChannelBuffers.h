@@ -61,7 +61,7 @@ struct QtPerAtomChannelScalar {
     }
 };
 
-// Per-atom NxN matrix (KernelCoherence's 13×13 Pearson per atom).
+// Per-atom NxN matrix (KernelCoherence's 7x7 Pearson per atom).
 // Symmetric, diagonal=1; channel-constant rows/cols are NaN.
 struct QtPerAtomMatrix {
     std::size_t n_atoms = 0;

@@ -26,7 +26,7 @@
 // analysis handles that dependence at modeling time. The Cβ diagnostic and the
 // count are provenance, not physical fields.
 //
-// SENTINELS: unlike QtTripeptideGroup (which writes NaN), Larsen writes 0.0
+// SENTINELS: Larsen writes 0.0
 // for "no contribution" — the per-class tensors are packed UNCONDITIONALLY,
 // so an atom outside Larsen's Table-2 dispatch carries a structural ZERO
 // tensor, not NaN (fixture: 657 all-zero `shielding` rows == 657 count==0

@@ -216,6 +216,7 @@ namespace {
 QString modeSummary(const QStringList& displayModes) {
     QStringList labels;
     for (model::VisualizationType type : {model::VisualizationType::TemporalStrip,
+                                          model::VisualizationType::TensorGlyph,
                                           model::VisualizationType::SequenceBar,
                                           model::VisualizationType::LagCurve,
                                           model::VisualizationType::ChordCoupling,
@@ -337,8 +338,9 @@ bool anchorAxisCanSatisfy(model::SignalAxis selectedAxis, model::SignalAxis requ
     return model::AxisCanSatisfy(selectedAxis, requiredAxis);
 }
 
-std::array<model::VisualizationType, 6> allVisualizationTypes() {
+std::array<model::VisualizationType, 7> allVisualizationTypes() {
     return {model::VisualizationType::TemporalStrip,
+            model::VisualizationType::TensorGlyph,
             model::VisualizationType::SequenceBar,
             model::VisualizationType::LagCurve,
             model::VisualizationType::ChordCoupling,

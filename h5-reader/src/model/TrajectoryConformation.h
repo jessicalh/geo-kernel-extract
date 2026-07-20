@@ -48,6 +48,10 @@ public:
     std::size_t originalFrameIndex(std::size_t frameIndex) const override {
         return h5reader::io::TrajectoryFrameMap::OriginalIndex(frameIndex, *h5_);
     }
+    std::optional<std::size_t>
+    frameRowForOriginalIndex(std::size_t originalFrame) const override {
+        return h5reader::io::TrajectoryFrameMap::RowForOriginalIndex(originalFrame, *h5_);
+    }
     Vec3 atomPosition(std::size_t frameIndex, std::size_t atomIdx) const override;
     const TrajectoryConformation* asTrajectory() const override { return this; }
 

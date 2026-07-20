@@ -30,7 +30,6 @@
 #include "../model/QtOrcaGroup.h"
 #include "../model/QtPlanarGeometryGroup.h"
 #include "../model/QtSasaGroup.h"
-#include "../model/QtTripeptideGroup.h"
 #include "../model/QtWaterFieldGroup.h"
 #include "../model/QtWaterPolarizationGroup.h"
 #include "../physics/ClassicalSourceMath.h"
@@ -445,9 +444,19 @@ void QtAtomInspectorDock::clearOrientationTensor() {
 }
 
 void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
-    auto* group = AddKV(root, QStringLiteral("CSA shielding tensor (DFT)"),
-                        csa_.framed ? csa_.frameKind : QStringLiteral("unframed"));
+    const QString source = csa_.sourceLabel.isEmpty()
+                               ? QStringLiteral("unknown source")
+                               : csa_.sourceLabel;
+    const QString frame = csa_.frameKind.isEmpty()
+                              ? (csa_.framed ? QStringLiteral("molecular frame")
+                                             : QStringLiteral("unframed"))
+                              : csa_.frameKind;
+    auto* group = AddKV(root,
+                        QStringLiteral("Shielding tensor (%1)").arg(source),
+                        frame);
     group->setExpanded(true);
+    if (!csa_.sourceDetail.isEmpty())
+        AddKV(group, QStringLiteral("Source"), csa_.sourceDetail);
     AddScalar(group, QStringLiteral("sigma_iso"), csa_.sigmaIso, QStringLiteral("ppm"));
     AddScalar(group, QStringLiteral("span"), csa_.span, QStringLiteral("ppm"));
     AddScalar(group, QStringLiteral("skew"), csa_.skew);
@@ -677,7 +686,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 {io::FieldKind::McBackboneOtherBo, model::BondCategory::BackboneOther},
                 {io::FieldKind::McSidechainCoBo, model::BondCategory::SidechainCO},
                 {io::FieldKind::McSidechainOtherBo, model::BondCategory::SidechainOther},
-                {io::FieldKind::McAromaticZeroedBo, model::BondCategory::Aromatic},
+                {io::FieldKind::McAromaticBo, model::BondCategory::Aromatic},
             };
             model::QtMcConnellGroup mcFwd(s);
             double mc = 0.0;
@@ -700,7 +709,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         }
         // Buckingham inputs: signed E|| = mopac_coulomb_scalars E_bond_proj (the
         // "Buckingham sigma_iso input" = component 1, MOPAC Coulomb field on the
-        // primary bond axis) + element/frame-specific A,B literature constants. The
+        // parent-to-H bond axis) + element/frame-specific A,B literature constants. The
         // -A*E|| - B*E||^2 fold (and the row) come from ComputeClassicalSigma below.
         if (auto sc = model::QtMopacCoulombGroup(s).scalars(a)) {
             const double ePar = sc->E_bond_proj;
@@ -771,7 +780,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
             if (std::isfinite(sc->E_bond_proj))
                 AddScalarP(ensureEf(), QStringLiteral("signed E_parallel"), sc->E_bond_proj,
                            QStringLiteral("V/Å"),
-                           QStringLiteral("MOPAC Coulomb field on the local bond / molecular-z axis, "
+                           QStringLiteral("MOPAC Coulomb field on the parent-to-H bond axis, "
                                           "signed (V/A); the Buckingham linear-term input. [USE]"));
         }
         if (auto efg = model::QtAimnet2Group(s).efg(a)) {
@@ -805,26 +814,40 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
 
 
     // ── Bond anisotropy (McConnell) ──
-    if (AllowsAny(availability_, {"npy:mc_shielding", "npy:mc_category_T2",
-                                  "npy:mc_scalars"})) {
+    if (AllowsAny(availability_, {"npy:mc_peptide_co_fixed",
+                                  "npy:mc_peptide_cn_fixed",
+                                  "npy:mc_backbone_other_fixed",
+                                  "npy:mc_sidechain_co_fixed",
+                                  "npy:mc_sidechain_other_fixed",
+                                  "npy:mc_disulfide_fixed",
+                                  "npy:mc_aromatic_fixed",
+                                  "npy:mc_backbone_xh_fixed",
+                                  "npy:mc_sidechain_xh_fixed",
+                                  "npy:mc_s_h_fixed"})) {
         model::QtMcConnellGroup mc(s);
-        // raw geometry kernel + angular sums -> drawer (the validated ppm form is
-        // the viewer-derived McConnell contribution, _bo signed T0 x DeltaChi)
         auto* mk = AddKV(drawer, QStringLiteral("Bond anisotropy (McConnell)"), QString());
         bool anyMk = false;
-        anyMk |= AddOptSpherical(mk, QStringLiteral("mc_shielding"), mc.shielding(a), QStringLiteral("Å⁻³"));
-        if (auto sc = mc.scalars(a)) {
-            AddScalar(mk, QStringLiteral("Σ C=O angular"), sc->co_sum);
-            AddScalar(mk, QStringLiteral("Σ C–N angular"), sc->cn_sum);
-            AddScalar(mk, QStringLiteral("Σ sidechain"), sc->sidechain_sum);
-            AddScalar(mk, QStringLiteral("Σ aromatic"), sc->aromatic_sum);
-            anyMk = true;
-            // nearest carbonyl / amide are geometry -> top
-            auto* g = AddKV(root, QStringLiteral("Nearest backbone partners"), QString());
-            AddKV(g, QStringLiteral("nearest C=O"),
-                  sc->hasNearestCO() ? FmtDouble(sc->nearest_CO_dist) + QStringLiteral(" Å") : QStringLiteral("none"));
-            AddKV(g, QStringLiteral("nearest C–N"),
-                  sc->hasNearestCN() ? FmtDouble(sc->nearest_CN_dist) + QStringLiteral(" Å") : QStringLiteral("none"));
+        static constexpr struct {
+            io::FieldKind kind;
+            const char* label;
+        } kFixedSources[] = {
+            {io::FieldKind::McPeptideCoFixed, "peptide C=O"},
+            {io::FieldKind::McPeptideCNFixed, "peptide C-N"},
+            {io::FieldKind::McBackboneOtherFixed, "backbone other"},
+            {io::FieldKind::McSidechainCoFixed, "sidechain C=O"},
+            {io::FieldKind::McSidechainOtherFixed, "sidechain other"},
+            {io::FieldKind::McDisulfideFixed, "disulfide"},
+            {io::FieldKind::McAromaticFixed, "aromatic"},
+            {io::FieldKind::McBackboneXhFixed, "backbone X-H"},
+            {io::FieldKind::McSidechainXhFixed, "sidechain X-H"},
+            {io::FieldKind::McSHFixed, "S-H"},
+        };
+        for (const auto& source : kFixedSources) {
+            anyMk |= AddOptSpherical(
+                mk,
+                QString::fromLatin1(source.label),
+                mc.tensor(source.kind, a),
+                QStringLiteral("Angstrom^-3"));
         }
         if (!anyMk) DeleteIfEmpty(mk);
     }
@@ -991,7 +1014,7 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         }
     }
 
-    // ── DFT / ProCS15 reference shielding (single-pose --orca + tripeptide / Larsen) ──
+    // ── ORCA reference shielding and Larsen H-bond contribution ──
     {
         model::QtOrcaGroup orca(s);
         if (AllowsAny(availability_, {"orca_dft:total", "orca_dft:diamagnetic",
@@ -1005,16 +1028,6 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
                 anyDk |= AddOptSpherical(dk, QStringLiteral("σ paramagnetic"), orca.paramagnetic(a), QStringLiteral("ppm"));
                 if (!anyDk) DeleteIfEmpty(dk);
             }
-        }
-        model::QtTripeptideGroup trip(s);
-        if (AllowsAny(availability_, {"npy:tripeptide_bb_shielding",
-                                      "npy:tripeptide_bb_match_distance",
-                                      "npy:tripeptide_neighbor_shielding"})
-            && trip.hasBackboneMatch(a)) {
-            auto* g = AddKV(root, QStringLiteral("Tripeptide reference (ProCS15)"), QString());
-            AddOptSpherical(g, QStringLiteral("backbone σ"), trip.backboneShielding(a), QStringLiteral("ppm"));
-            AddOptScalar(g, QStringLiteral("match distance"), trip.backboneMatchDistance(a), QStringLiteral("Å"));
-            AddOptSpherical(g, QStringLiteral("neighbor σ (i±1)"), trip.neighborShielding(a), QStringLiteral("ppm"));
         }
         model::QtLarsenHBondGroup larsen(s);
         if (AllowsAny(availability_, {"npy:larsen_hbond_shielding",

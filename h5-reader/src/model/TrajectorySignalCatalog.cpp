@@ -1,8 +1,13 @@
 #include "TrajectorySignalCatalog.h"
 
+#include "../io/FrameFieldPolicy.h"
+
 #include <QSet>
 #include <QStringList>
 
+#include <array>
+#include <optional>
+#include <string_view>
 #include <utility>
 
 namespace h5reader::model {
@@ -25,11 +30,86 @@ UnitSpec unit(UnitDimension dimension,
     return spec;
 }
 
+QString fromUtf8(std::string_view text) {
+    return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
+}
+
+std::optional<SignalAxis> signalAxisFor(io::NativeAxis axis) {
+    switch (axis) {
+    case io::NativeAxis::Atom:
+        return SignalAxis::Atom;
+    case io::NativeAxis::Residue:
+        return SignalAxis::Residue;
+    case io::NativeAxis::Bond:
+        return SignalAxis::Bond;
+    case io::NativeAxis::AromaticRing:
+        return SignalAxis::AromaticRing;
+    case io::NativeAxis::SaturatedRing:
+        return SignalAxis::SaturatedRing;
+    case io::NativeAxis::RingContributionPair:
+        return SignalAxis::RingContributionPair;
+    case io::NativeAxis::Ring:
+        return SignalAxis::Ring;
+    case io::NativeAxis::RingMembership:
+        return SignalAxis::RingMembership;
+    case io::NativeAxis::Protein:
+        return SignalAxis::Protein;
+    default:
+        return std::nullopt;
+    }
+}
+
+UnitSpec producerUnits(io::FieldKind kind) {
+    const QString source = fromUtf8(io::FieldSpecFor(kind).units);
+    UnitSpec result;
+    result.sourceSymbol = source;
+    result.displaySymbol = source;
+
+    if (source == QStringLiteral("radians")) {
+        result.dimension = UnitDimension::Angle;
+        result.displaySymbol = QStringLiteral("deg");
+        result.scaleToDisplay = 57.29577951308232;
+    } else if (source == QStringLiteral("degrees")) {
+        result.dimension = UnitDimension::Angle;
+        result.displaySymbol = QStringLiteral("deg");
+    } else if (source == QStringLiteral("ppm")
+               || source == QStringLiteral("ppm_T_per_nA")) {
+        result.dimension = UnitDimension::MagneticShielding;
+    } else if (source == QStringLiteral("V/A")) {
+        result.dimension = UnitDimension::ElectricField;
+    } else if (source == QStringLiteral("V/A^2")) {
+        result.dimension = UnitDimension::ElectricFieldGradient;
+    } else if (source == QStringLiteral("e")) {
+        result.dimension = UnitDimension::Charge;
+    } else if (source == QStringLiteral("eV")
+               || source == QStringLiteral("Hartree")
+               || source == QStringLiteral("kcal/mol")
+               || source == QStringLiteral("kJ/mol")) {
+        result.dimension = UnitDimension::Energy;
+    } else if (source == QStringLiteral("count")) {
+        result.dimension = UnitDimension::Count;
+    } else if (source == QStringLiteral("A") || source == QString::fromUtf8("\xC3\x85")) {
+        result.dimension = UnitDimension::Length;
+        result.displaySymbol = QStringLiteral("A");
+    } else if (source == QStringLiteral("mask")
+               || source.startsWith(QStringLiteral("enum:"))
+               || source == QStringLiteral("index")) {
+        result.dimension = UnitDimension::Tag;
+        result.convertible = false;
+    } else {
+        result.dimension = UnitDimension::Dimensionless;
+        result.convertible = false;
+    }
+    return result;
+}
+
 ChannelDescriptor channel(const char* id,
                           const char* label,
                           SignalValueShape shape,
                           const UnitSpec& sourceUnits,
-                          const UnitSpec& displayUnits = UnitSpec{}) {
+                          const UnitSpec& displayUnits = UnitSpec{},
+                          int firstSourceColumn = 0,
+                          int sourceColumnCount = 0) {
     ChannelDescriptor descriptor;
     descriptor.id = QString::fromLatin1(id);
     descriptor.label = QString::fromLatin1(label);
@@ -38,47 +118,106 @@ ChannelDescriptor channel(const char* id,
     descriptor.defaultDisplayUnits = displayUnits.sourceSymbol.isEmpty() && displayUnits.displaySymbol.isEmpty()
                                          ? sourceUnits
                                          : displayUnits;
+    descriptor.firstSourceColumn = firstSourceColumn;
+    descriptor.sourceColumnCount = sourceColumnCount;
     return descriptor;
 }
 
-QVector<ChannelDescriptor> scalarChannels(const UnitSpec& units) {
-    return {channel("value", "Value", SignalValueShape::Scalar, units)};
+QVector<ChannelDescriptor> scalarChannels(const UnitSpec& units, int sourceColumn = 0) {
+    return {channel("value", "Value", SignalValueShape::Scalar, units, {}, sourceColumn, 1)};
 }
 
-QVector<ChannelDescriptor> countChannels() {
+QVector<ChannelDescriptor> countChannels(int sourceColumn = 0) {
     const UnitSpec count = unit(UnitDimension::Count, "count", "count");
-    return {channel("count", "Count", SignalValueShape::Count, count)};
+    return {channel("count", "Count", SignalValueShape::Count, count, {}, sourceColumn, 1)};
 }
 
-QVector<ChannelDescriptor> vectorChannels(const UnitSpec& units) {
+QVector<ChannelDescriptor> vectorChannels(const UnitSpec& units, int firstSourceColumn = 0) {
     return {
-        channel("x", "X", SignalValueShape::Scalar, units),
-        channel("y", "Y", SignalValueShape::Scalar, units),
-        channel("z", "Z", SignalValueShape::Scalar, units),
-        channel("magnitude", "Magnitude", SignalValueShape::Scalar, units),
+        channel("x", "X", SignalValueShape::Scalar, units, {}, firstSourceColumn, 3),
+        channel("y", "Y", SignalValueShape::Scalar, units, {}, firstSourceColumn, 3),
+        channel("z", "Z", SignalValueShape::Scalar, units, {}, firstSourceColumn, 3),
+        channel("magnitude", "Magnitude", SignalValueShape::Scalar, units, {}, firstSourceColumn, 3),
     };
 }
 
-QVector<ChannelDescriptor> sphericalTensorChannels(const UnitSpec& units) {
+QVector<ChannelDescriptor> sphericalTensorChannels(const UnitSpec& units,
+                                                    int firstSourceColumn = 0) {
     return {
-        channel("T0", "T0", SignalValueShape::Scalar, units),
-        channel("T1", "T1", SignalValueShape::TensorComponents, units),
-        channel("T2", "T2", SignalValueShape::EfgT2, units),
-        channel("component", "Component", SignalValueShape::Scalar, units),
+        channel("T0", "T0", SignalValueShape::Scalar, units, {}, firstSourceColumn, 9),
+        channel("T1", "T1", SignalValueShape::TensorComponents, units, {}, firstSourceColumn, 9),
+        channel("T2", "T2", SignalValueShape::EfgT2, units, {}, firstSourceColumn, 9),
+        channel("component", "Component", SignalValueShape::Scalar, units, {}, firstSourceColumn, 9),
     };
 }
 
-QVector<ChannelDescriptor> efgChannels(const UnitSpec& units) {
+QVector<ChannelDescriptor> efgChannels(const UnitSpec& units, int firstSourceColumn = 0) {
     return {
-        channel("T2", "T2", SignalValueShape::EfgT2, units),
-        channel("magnitude", "Magnitude", SignalValueShape::Scalar, units),
-        channel("component", "Component", SignalValueShape::Scalar, units),
+        channel("T2", "T2", SignalValueShape::EfgT2, units, {}, firstSourceColumn, 5),
+        channel("magnitude", "Magnitude", SignalValueShape::Scalar, units, {}, firstSourceColumn, 5),
+        channel("component", "Component", SignalValueShape::Scalar, units, {}, firstSourceColumn, 5),
     };
 }
 
-QVector<ChannelDescriptor> angleChannels() {
+QVector<ChannelDescriptor> angleChannels(int sourceColumn = 0) {
     const UnitSpec degrees = unit(UnitDimension::Angle, "degrees", "deg");
-    return {channel("angle", "Angle", SignalValueShape::Scalar, degrees)};
+    return {channel("angle", "Angle", SignalValueShape::Scalar, degrees, {}, sourceColumn, 1)};
+}
+
+struct NamedChannel {
+    const char* id;
+    const char* label;
+};
+
+template <std::size_t N>
+QVector<ChannelDescriptor> scalarBlockChannels(const std::array<NamedChannel, N>& names,
+                                               const UnitSpec& units) {
+    QVector<ChannelDescriptor> channels;
+    channels.reserve(static_cast<qsizetype>(N));
+    for (std::size_t i = 0; i < N; ++i) {
+        channels.push_back(channel(names[i].id,
+                                   names[i].label,
+                                   SignalValueShape::Scalar,
+                                   units,
+                                   {},
+                                   static_cast<int>(i),
+                                   1));
+    }
+    return channels;
+}
+
+template <std::size_t N>
+QVector<ChannelDescriptor> vectorBlockChannels(const std::array<NamedChannel, N>& names,
+                                               const UnitSpec& units) {
+    QVector<ChannelDescriptor> channels;
+    channels.reserve(static_cast<qsizetype>(N));
+    for (std::size_t i = 0; i < N; ++i) {
+        channels.push_back(channel(names[i].id,
+                                   names[i].label,
+                                   SignalValueShape::Vector3,
+                                   units,
+                                   {},
+                                   static_cast<int>(i * 3),
+                                   3));
+    }
+    return channels;
+}
+
+template <std::size_t N>
+QVector<ChannelDescriptor> t2BlockChannels(const std::array<NamedChannel, N>& names,
+                                           const UnitSpec& units) {
+    QVector<ChannelDescriptor> channels;
+    channels.reserve(static_cast<qsizetype>(N));
+    for (std::size_t i = 0; i < N; ++i) {
+        channels.push_back(channel(names[i].id,
+                                   names[i].label,
+                                   SignalValueShape::EfgT2,
+                                   units,
+                                   {},
+                                   static_cast<int>(i * 5),
+                                   5));
+    }
+    return channels;
 }
 
 QStringList tensorStripModes() {
@@ -196,10 +335,8 @@ bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& s
             QStringLiteral("/trajectory/bs_shielding_time_series"),
             QStringLiteral("/trajectory/hm_shielding_time_series"),
             QStringLiteral("/trajectory/mc_shielding_time_series"),
-            QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series"),
+            QStringLiteral("/trajectory/mopac_coulomb_efg_time_series"),
             QStringLiteral("/trajectory/mopac_mc_shielding_time_series"),
-            QStringLiteral("/trajectory/tripeptide_bb_shielding_time_series"),
-            QStringLiteral("/trajectory/tripeptide_neighbor_shielding_time_series"),
             QStringLiteral("/trajectory/larsen_hbond_1pHB_shielding_time_series"),
             QStringLiteral("/trajectory/larsen_hbond_1pHaB_shielding_time_series"),
             QStringLiteral("/trajectory/larsen_hbond_2pHB_shielding_time_series"),
@@ -209,7 +346,6 @@ bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& s
             QStringLiteral("/trajectory/larsen_hbond_count_time_series"),
             QStringLiteral("/trajectory/larsen_hbond_water_term_time_series"),
             QStringLiteral("/trajectory/bonded_energy_time_series"),
-            QStringLiteral("/trajectory/mopac_vs_ff14sb_reconciliation"),
             QStringLiteral("/trajectory/water_field_time_series"),
             QStringLiteral("/trajectory/hydration_shell_time_series"),
             QStringLiteral("/trajectory/hydration_geometry_time_series"),
@@ -217,10 +353,6 @@ bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& s
             QStringLiteral("/trajectory/apbs_efg_time_series"),
             QStringLiteral("/trajectory/aimnet2_embedding_time_series"),
             QStringLiteral("/trajectory/aimnet2_charge_response_gradient_time_series"),
-            QStringLiteral("/trajectory/tripeptide_bb_residual_vec_time_series"),
-            QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_prev_time_series"),
-            QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_next_time_series"),
-            QStringLiteral("/trajectory/tripeptide_bb_method_tag_time_series"),
             QStringLiteral("/trajectory/dihedral_time_series"),
             QStringLiteral("/trajectory/dssp8_time_series"),
             QStringLiteral("/trajectory/j_coupling_time_series"),
@@ -382,10 +514,8 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
         {"h5:bs_shielding_time_series", "bs_shielding", "biot_savart", "Biot-Savart unit-current kernel time series", "/trajectory/bs_shielding_time_series", SignalValueShape::SphericalTensor},
         {"h5:hm_shielding_time_series", "hm_shielding", "haigh_mallion", "Haigh-Mallion unit-current kernel time series", "/trajectory/hm_shielding_time_series", SignalValueShape::SphericalTensor},
         {"h5:mc_shielding_time_series", "mc_shielding", "mcconnell", "McConnell shielding time series", "/trajectory/mc_shielding_time_series", SignalValueShape::SphericalTensor},
-        {"h5:mopac_coulomb_shielding_time_series", "mopac_coulomb_shielding", "mopac_coulomb", "MOPAC Coulomb T2 shielding time series", "/trajectory/mopac_coulomb_shielding_time_series", SignalValueShape::EfgT2},
+        {"h5:mopac_coulomb_efg_time_series", "mopac_coulomb_efg", "mopac_coulomb", "MOPAC-charge electric-field gradient time series", "/trajectory/mopac_coulomb_efg_time_series", SignalValueShape::EfgT2},
         {"h5:mopac_mc_shielding_time_series", "mopac_mc_shielding", "mopac_mcconnell", "MOPAC McConnell shielding time series", "/trajectory/mopac_mc_shielding_time_series", SignalValueShape::SphericalTensor},
-        {"h5:tripeptide_bb_shielding_time_series", "tripeptide_bb_shielding", "tripeptide", "Tripeptide backbone shielding time series", "/trajectory/tripeptide_bb_shielding_time_series", SignalValueShape::SphericalTensor},
-        {"h5:tripeptide_neighbor_shielding_time_series", "tripeptide_neighbor_shielding", "tripeptide", "Tripeptide neighbor shielding time series", "/trajectory/tripeptide_neighbor_shielding_time_series", SignalValueShape::SphericalTensor},
         {"h5:larsen_hbond_1pHB_shielding_time_series", "larsen_hbond_1pHB_shielding", "larsen_hbond", "Larsen 1pHB shielding time series", "/trajectory/larsen_hbond_1pHB_shielding_time_series", SignalValueShape::SphericalTensor},
         {"h5:larsen_hbond_1pHaB_shielding_time_series", "larsen_hbond_1pHaB_shielding", "larsen_hbond", "Larsen 1pHaB shielding time series", "/trajectory/larsen_hbond_1pHaB_shielding_time_series", SignalValueShape::SphericalTensor},
         {"h5:larsen_hbond_2pHB_shielding_time_series", "larsen_hbond_2pHB_shielding", "larsen_hbond", "Larsen 2pHB shielding time series", "/trajectory/larsen_hbond_2pHB_shielding_time_series", SignalValueShape::SphericalTensor},
@@ -397,7 +527,10 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
         const QString conceptKey = QString::fromLatin1(group.conceptKey);
         const bool rawRingKernel = conceptKey == QStringLiteral("bs_shielding")
                                    || conceptKey == QStringLiteral("hm_shielding");
-        const UnitSpec groupUnits = rawRingKernel ? ringKernel : shielding;
+        const UnitSpec groupUnits =
+            group.shape == SignalValueShape::EfgT2 ? efg
+            : rawRingKernel                       ? ringKernel
+                                                  : shielding;
         add(descriptors,
             makeDescriptor(group.id,
                            group.conceptKey,
@@ -412,7 +545,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                            groupUnits,
                            efgOnly ? efgStripModes() : tensorStripModes(),
                            efgOnly ? efgStaticModes() : tensorStaticModes(),
-                           efgOnly ? efgChannels(shielding) : sphericalTensorChannels(groupUnits),
+                           efgOnly ? efgChannels(groupUnits) : sphericalTensorChannels(groupUnits),
                            group.path,
                            true));
     }
@@ -422,7 +555,6 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     add(descriptors, makeDescriptor("h5:larsen_hbond_count_time_series", "larsen_hbond_count", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "larsen_hbond", "Larsen H-bond count time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, {}, countChannels(), "/trajectory/larsen_hbond_count_time_series", true));
     add(descriptors, makeDescriptor("h5:larsen_hbond_water_term_time_series", "larsen_hbond_water_term", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "larsen_hbond", "Larsen H-bond water term time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, shielding, scalarStripModes(), scalarStaticModes(), scalarChannels(shielding), "/trajectory/larsen_hbond_water_term_time_series", true));
     add(descriptors, makeDescriptor("h5:bonded_energy_time_series", "bonded_energy", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "bonded", "Bonded energy time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, energy, scalarStripModes(), scalarStaticModes(), scalarChannels(energy), "/trajectory/bonded_energy_time_series", true));
-    add(descriptors, makeDescriptor("h5:mopac_vs_ff14sb_reconciliation", "mopac_vs_ff14sb_reconciliation", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "mopac_core", "MOPAC vs FF14SB reconciliation", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Scalar, energy, scalarStripModes(), {}, scalarChannels(energy), "/trajectory/mopac_vs_ff14sb_reconciliation", true));
 
     add(descriptors, makeDescriptor("h5:water_field_efield_time_series", "water_efield", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "water_field", "Water electric field time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield), "/trajectory/water_field_time_series", true));
     add(descriptors, makeDescriptor("h5:water_field_efg_time_series", "water_efg", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "water_field", "Water EFG time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg), "/trajectory/water_field_time_series", true));
@@ -433,10 +565,6 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     add(descriptors, makeDescriptor("h5:apbs_efg_time_series", "apbs_efg", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "apbs", "APBS EFG time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg), "/trajectory/apbs_efg_time_series", true));
     add(descriptors, makeDescriptor("h5:aimnet2_embedding_time_series", "aimnet2_embedding", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "aimnet2", "AIMNet2 embedding time series", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Embedding, none, {}, {}, {}, "/trajectory/aimnet2_embedding_time_series", true));  // 256-d ML feature -> non-displayable (DisplayPolicy); offered no plottable mode
     add(descriptors, makeDescriptor("h5:aimnet2_charge_response_gradient_time_series", "aimnet2_charge_response_gradient", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "aimnet2", "AIMNet2 charge-response gradient", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, charge, vectorStripModes(), vectorStaticModes(), vectorChannels(charge), "/trajectory/aimnet2_charge_response_gradient_time_series", true));
-    add(descriptors, makeDescriptor("h5:tripeptide_bb_residual_vec_time_series", "tripeptide_bb_residual_vec", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide backbone residual vector", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding), "/trajectory/tripeptide_bb_residual_vec_time_series", true));
-    add(descriptors, makeDescriptor("h5:tripeptide_neighbor_residual_vec_prev_time_series", "tripeptide_neighbor_residual_vec_prev", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide previous-neighbor residual vector", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding), "/trajectory/tripeptide_neighbor_residual_vec_prev_time_series", true));
-    add(descriptors, makeDescriptor("h5:tripeptide_neighbor_residual_vec_next_time_series", "tripeptide_neighbor_residual_vec_next", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide next-neighbor residual vector", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding), "/trajectory/tripeptide_neighbor_residual_vec_next_time_series", true));
-    add(descriptors, makeDescriptor("h5:tripeptide_bb_method_tag_time_series", "tripeptide_bb_method_tag", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "tripeptide", "Tripeptide method tag", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), categoryStaticModes(), {channel("method", "Method", SignalValueShape::Category, tag)}, "/trajectory/tripeptide_bb_method_tag_time_series", true));
 
     add(descriptors, makeDescriptor("h5:dihedral_time_series", "residue_dihedral", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Residue dihedral time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {QStringLiteral("static.newman")}, {channel("phi", "Phi", SignalValueShape::Scalar, angle), channel("psi", "Psi", SignalValueShape::Scalar, angle), channel("omega", "Omega", SignalValueShape::Scalar, angle), channel("chi", "Chi", SignalValueShape::Scalar, angle)}, "/trajectory/dihedral_time_series", true));
     add(descriptors, makeDescriptor("h5:dssp8_time_series", "dssp_ss8", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "dssp", "DSSP8 residue state time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("ss8", "SS8", SignalValueShape::Category, tag)}, "/trajectory/dssp8_time_series", true));
@@ -492,18 +620,13 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     }
 
     // ── Per-atom × per-channel (KernelDynamics) ─────────────────────
-    // The 13 kernel channels are stable across the codebase (producer
-    // emits them in canonical thesis-narrative order). Catalog declares
+    // The seven July kernel channels are stored by name in HDF5. Catalog declares
     // them as ChannelDescriptors so the strip-mode dispatch + the
     // panel renderers can index by channel id.
     static const struct { const char* id; const char* label; } kKernelChannels[] = {
         {"bs_T0", "BS T0"},     {"bs_absT2", "BS |T2|"},
         {"hm_T0", "HM T0"},     {"hm_absT2", "HM |T2|"},
         {"mc_T0", "MC T0"},     {"mc_absT2", "MC |T2|"},
-        {"ringchi_T0", "RingChi T0"}, {"ringchi_absT2", "RingChi |T2|"},
-        {"hbond_T0", "H-bond T0"},    {"hbond_absT2", "H-bond |T2|"},
-        {"piquad_absT2", "PiQuad |T2|"},
-        {"disp_absT2", "Disp |T2|"},
         {"apbs_absT2", "APBS |T2|"},
     };
     QVector<ChannelDescriptor> kernelChannels;
@@ -594,7 +717,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        SignalSourceKind::DenseH5Trajectory,
                        "TrajectoryH5",
                        "kernel_coherence",
-                       "Kernel coherence matrix (per atom, 13×13 Pearson)",
+                       "Kernel coherence matrix (per atom, 7x7 Pearson)",
                        SourceResidency::StartupLoaded,
                        SignalAxis::Atom,
                        SignalAxis::Atom,
@@ -868,188 +991,493 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
 }
 
 void addFrameNpy(QVector<SignalDescriptor>& descriptors) {
-    const UnitSpec none = unit(UnitDimension::Dimensionless, "", "");
-    const UnitSpec length = unit(UnitDimension::Length, "A", "A");
-    const UnitSpec angle = unit(UnitDimension::Angle, "degrees", "deg");
-    const UnitSpec shielding = unit(UnitDimension::MagneticShielding, "ppm", "ppm");
-    const UnitSpec ringShielding = unit(UnitDimension::MagneticShielding, "ppm_T_per_nA", "ppm_T_per_nA");
-    const UnitSpec bfield = unit(UnitDimension::MagneticShielding, "T", "T");
-    const UnitSpec efield = unit(UnitDimension::ElectricField, "V/A", "V/A");
-    const UnitSpec efg = unit(UnitDimension::ElectricFieldGradient, "V/A^2", "V/A^2");
-    const UnitSpec charge = unit(UnitDimension::Charge, "e", "e");
-    const UnitSpec energy = unit(UnitDimension::Energy, "kJ/mol", "kJ/mol");
-    const UnitSpec tag = unit(UnitDimension::Tag, "tag", "tag", 1.0, 0.0, false);
-
-    auto npy = [&](const char* field,
-                   const char* conceptKey,
+    auto npy = [&](io::FieldKind field,
                    const char* family,
                    const char* label,
-                   SignalAxis axis,
                    SignalValueShape shape,
-                   const UnitSpec& units,
                    const QStringList& temporalModes,
                    const QStringList& staticModes,
                    const QVector<ChannelDescriptor>& channels) {
+        const io::FieldSpec& spec = io::FieldSpecFor(field);
+        const std::optional<SignalAxis> axis = signalAxisFor(spec.axis);
+        Q_ASSERT(axis);
+        Q_ASSERT(io::ShouldLoadFrameField(field));
+
+        const UnitSpec units = producerUnits(field);
         SignalDescriptor descriptor = makeDescriptor("npy:field",
-                                                     conceptKey,
+                                                     "field",
                                                      SignalSourceKind::FrameNpySnapshot,
                                                      "SDK_NPY",
                                                      family,
                                                      label,
                                                      SourceResidency::FrameLoaded,
-                                                     axis,
-                                                     axis,
+                                                     axis.value_or(SignalAxis::None),
+                                                     axis.value_or(SignalAxis::None),
                                                      shape,
                                                      units,
                                                      temporalModes,
                                                      staticModes,
                                                      channels,
-                                                     field,
+                                                     "",
                                                      false,
                                                      true);
-        descriptor.id = QStringLiteral("npy:%1").arg(QString::fromLatin1(field));
+        const QString stem = fromUtf8(spec.stem);
+        descriptor.id = QStringLiteral("npy:%1").arg(stem);
+        descriptor.conceptKey = stem;
+        descriptor.storagePath = stem;
+        descriptor.description = fromUtf8(spec.description);
+        descriptor.samplingStatus = SampleStatus::Valid;
+        descriptor.samplingGapReason = GapReason::None;
         add(descriptors, descriptor);
     };
 
-    npy("pos", "positions", "identity", "Snapshot positions", SignalAxis::Atom, SignalValueShape::Vector3, length, vectorStripModes(), {}, vectorChannels(length));
-    npy("element", "element", "identity", "Element identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("element", "Element", SignalValueShape::Category, tag)});
-    npy("residue_index", "residue_index", "identity", "Residue index identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("residue_index", "Residue index", SignalValueShape::Category, tag)});
-    npy("residue_type", "residue_type", "identity", "Residue type identity", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("residue_type", "Residue type", SignalValueShape::Category, tag)});
-    npy("atoms_category_info", "atoms_category_info", "identity", "Atom category info", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), {}, {});
-    npy("ring_contributions", "ring_contributions", "identity", "Ring contributions", SignalAxis::RingContributionPair, SignalValueShape::TensorComponents, ringShielding, tensorStripModes(), {QStringLiteral("static.tensor")}, {});
-    npy("ring_geometry", "ring_geometry", "identity", "Ring geometry", SignalAxis::AromaticRing, SignalValueShape::TensorComponents, length, scalarStripModes(), {}, {});
-
     const struct TensorField {
-        const char* field;
-        const char* conceptKey;
+        io::FieldKind field;
         const char* family;
         const char* label;
-        UnitSpec units;
     } tensorFields[] = {
-        {"bs_shielding", "bs_shielding", "biot_savart", "Biot-Savart unit-current kernel", ringShielding},
-        {"hm_shielding", "hm_shielding", "haigh_mallion", "Haigh-Mallion unit-current kernel", ringShielding},
-        {"mc_shielding", "mc_shielding", "mcconnell", "McConnell shielding", shielding},
-        // coulomb_shielding + mopac_coulomb_shielding are 2e-only (traceless) --
-        // added after this loop with T2-only modes (see tracelessTensorStripModes).
-        {"mopac_mc_shielding", "mopac_mc_shielding", "mopac_mcconnell", "MOPAC McConnell shielding", shielding},
-        // ORCA shielding is NOT a per-frame NPY -- it is .out-backed and served
-        // live via DftShieldingStore as the orca_dft:* descriptors (addOrcaDft).
-        // The npy:orca_* triplet here was a dead duplicate (always Absent);
-        // dropped so the catalog shows 3 ORCA quantities, not 6. orca_dft:* is
-        // canonical (conceptKey orca_total/diamagnetic/paramagnetic preserved).
-        {"tripeptide_bb_shielding", "tripeptide_bb_shielding", "tripeptide", "Tripeptide backbone shielding", shielding},
-        {"tripeptide_neighbor_shielding", "tripeptide_neighbor_shielding", "tripeptide", "Tripeptide neighbor shielding", shielding},
-        {"larsen_hbond_shielding", "larsen_hbond_shielding", "larsen_hbond", "Larsen H-bond shielding", shielding},
-        {"larsen_hbond_1pHB_shielding", "larsen_hbond_1pHB_shielding", "larsen_hbond", "Larsen 1pHB shielding", shielding},
-        {"larsen_hbond_2pHB_shielding", "larsen_hbond_2pHB_shielding", "larsen_hbond", "Larsen 2pHB shielding", shielding},
-        {"larsen_hbond_1pHaB_shielding", "larsen_hbond_1pHaB_shielding", "larsen_hbond", "Larsen 1pHaB shielding", shielding},
-        {"larsen_hbond_2pHaB_shielding", "larsen_hbond_2pHaB_shielding", "larsen_hbond", "Larsen 2pHaB shielding", shielding},
-        {"larsen_hbond_diagnostic_CB_shielding", "larsen_hbond_diagnostic_CB_shielding", "larsen_hbond", "Larsen diagnostic CB shielding", shielding},
+        {io::FieldKind::BSShielding, "biot_savart", "Biot-Savart unit-current response"},
+        {io::FieldKind::HMShielding, "haigh_mallion", "Haigh-Mallion geometry response"},
+        {io::FieldKind::MOPACMcShielding, "mopac_mcconnell", "MOPAC-weighted McConnell response"},
+        {io::FieldKind::LarsenHBondShielding, "larsen_hbond", "Larsen H-bond total"},
+        {io::FieldKind::LarsenHBond1pHBShielding, "larsen_hbond", "Larsen primary amide-H contribution"},
+        {io::FieldKind::LarsenHBond2pHBShielding, "larsen_hbond", "Larsen secondary amide-H contribution"},
+        {io::FieldKind::LarsenHBond1pHaBShielding, "larsen_hbond", "Larsen primary alpha-H contribution"},
+        {io::FieldKind::LarsenHBond2pHaBShielding, "larsen_hbond", "Larsen secondary alpha-H contribution"},
     };
 
-    for (const TensorField& field : tensorFields)
-        npy(field.field, field.conceptKey, field.family, field.label, SignalAxis::Atom, SignalValueShape::SphericalTensor, field.units, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(field.units));
+    for (const TensorField& field : tensorFields) {
+        const UnitSpec units = producerUnits(field.field);
+        npy(field.field,
+            field.family,
+            field.label,
+            SignalValueShape::SphericalTensor,
+            tensorStripModes(),
+            tensorStaticModes(),
+            sphericalTensorChannels(units));
+    }
 
-    // The Coulomb / MOPAC-Coulomb electric-field shielding contribution is the
-    // rank-2 (T2) response only: T0 (isotropic) and T1 (antisymmetric) are
-    // identically zero (measured flat, span ~1e-16), so offering strip.tensor.T0
-    // /.T1 drew flat-zero lines. Offer T2 + component, matching the EfgT2 H5
-    // sibling mopac_coulomb_shielding_time_series. Shape stays SphericalTensor --
-    // the on-disk NPY snapshot is a full 9-component tensor.
-    npy("coulomb_shielding", "coulomb_shielding", "coulomb", "Coulomb shielding", SignalAxis::Atom, SignalValueShape::SphericalTensor, shielding, tracelessTensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("mopac_coulomb_shielding", "mopac_coulomb_shielding", "mopac_coulomb", "MOPAC Coulomb shielding", SignalAxis::Atom, SignalValueShape::SphericalTensor, shielding, tracelessTensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
+    static constexpr std::array<NamedChannel, 8> kRingTypes{{
+        {"phe_benzene", "PHE benzene"},
+        {"tyr_phenol", "TYR phenol"},
+        {"trp_benzene", "TRP benzene"},
+        {"trp_pyrrole", "TRP pyrrole"},
+        {"trp_perimeter", "TRP perimeter"},
+        {"his_imidazole", "HIS imidazole"},
+        {"hid_imidazole", "HID imidazole"},
+        {"hie_imidazole", "HIE imidazole"},
+    }};
 
-    const struct PerClassField {
-        const char* field;
-        const char* conceptKey;
+    const struct RingTypeField {
+        io::FieldKind field;
         const char* family;
         const char* label;
-        UnitSpec units;
-    } perClassFields[] = {
-        {"bs_per_type_T0", "bs_per_type_T0", "biot_savart", "Biot-Savart per-type unit-current T0", ringShielding},
-        {"bs_per_type_T2", "bs_per_type_T2", "biot_savart", "Biot-Savart per-type unit-current T2", ringShielding},
-        {"hm_per_type_T0", "hm_per_type_T0", "haigh_mallion", "Haigh-Mallion per-type unit-current T0", ringShielding},
-        {"hm_per_type_T2", "hm_per_type_T2", "haigh_mallion", "Haigh-Mallion per-type unit-current T2", ringShielding},
-        {"pq_per_type_T0", "pq_per_type_T0", "pi_quadrupole", "Pi quadrupole per-type T0", ringShielding},
-        {"disp_per_type_T0", "disp_per_type_T0", "dispersion", "Dispersion per-type T0", ringShielding},
-        {"disp_per_type_T2", "disp_per_type_T2", "dispersion", "Dispersion per-type T2", ringShielding},
-        {"mc_category_T2", "mc_category_T2", "mcconnell", "McConnell category T2", shielding},
-        {"mopac_mc_category_T2", "mopac_mc_category_T2", "mopac_mcconnell", "MOPAC McConnell category T2", shielding},
+        SignalValueShape shape;
+    } ringTypeFields[] = {
+        {io::FieldKind::BSPerTypeT0, "biot_savart", "Biot-Savart response by ring type (T0)", SignalValueShape::PerClassBlock},
+        {io::FieldKind::BSPerTypeT1, "biot_savart", "Biot-Savart response by ring type (T1)", SignalValueShape::Vector3},
+        {io::FieldKind::BSPerTypeT2, "biot_savart", "Biot-Savart response by ring type (T2)", SignalValueShape::EfgT2},
+        {io::FieldKind::HMPerTypeT0, "haigh_mallion", "Haigh-Mallion response by ring type (T0)", SignalValueShape::PerClassBlock},
+        {io::FieldKind::HMPerTypeT1, "haigh_mallion", "Haigh-Mallion response by ring type (T1)", SignalValueShape::Vector3},
+        {io::FieldKind::HMPerTypeT2, "haigh_mallion", "Haigh-Mallion response by ring type (T2)", SignalValueShape::EfgT2},
+        {io::FieldKind::PQPerTypeT0, "pi_quadrupole", "Pi-quadrupole response by ring type", SignalValueShape::PerClassBlock},
+        {io::FieldKind::RingChiPerTypeT0, "ring_susceptibility", "Ring-susceptibility geometry by ring type", SignalValueShape::PerClassBlock},
+        {io::FieldKind::DispPerTypeT0, "dispersion", "Dispersion proximity by ring type", SignalValueShape::PerClassBlock},
     };
-    for (const PerClassField& field : perClassFields)
-        npy(field.field, field.conceptKey, field.family, field.label, SignalAxis::Atom, SignalValueShape::PerClassBlock, field.units, perClassStripModes(), perClassStaticModes(), {});
 
-    npy("bs_total_B", "bs_total_B", "biot_savart", "Biot-Savart total B field", SignalAxis::Atom, SignalValueShape::Vector3, bfield, vectorStripModes(), vectorStaticModes(), vectorChannels(bfield));
-    npy("bs_ring_counts", "bs_ring_counts", "biot_savart", "Biot-Savart ring counts", SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.per-class")}, perClassStaticModes(), countChannels());
-    npy("coulomb_E", "coulomb_E", "coulomb", "Coulomb electric field", SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield));
-    npy("coulomb_efg_backbone", "coulomb_efg_backbone", "coulomb", "Coulomb backbone EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("coulomb_efg_aromatic", "coulomb_efg_aromatic", "coulomb", "Coulomb aromatic EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("coulomb_scalars", "coulomb_scalars", "coulomb", "Coulomb scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("hbond_scalars", "hbond_scalars", "hbond", "H-bond scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("dssp_backbone", "dssp_backbone", "dssp", "DSSP backbone geometry", SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {}, {});
-    npy("dssp_ss8", "dssp_ss8", "dssp", "DSSP SS8", SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), categoryStaticModes(), {channel("ss8", "SS8", SignalValueShape::Category, tag)});
-    npy("dssp_hbond_energy", "dssp_hbond_energy", "dssp", "DSSP H-bond energy", SignalAxis::Residue, SignalValueShape::PerClassBlock, energy, perClassStripModes(), perClassStaticModes(), {});
-    npy("dssp_chi", "dssp_chi", "dssp", "DSSP chi angles", SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {}, {});
-    npy("atom_sasa", "atom_sasa", "sasa", "Atom SASA", SignalAxis::Atom, SignalValueShape::Scalar, unit(UnitDimension::Length, "A^2", "A^2"), scalarStripModes(), scalarStaticModes(), scalarChannels(unit(UnitDimension::Length, "A^2", "A^2")));
-    npy("sasa_normal", "sasa_normal", "sasa", "SASA normal", SignalAxis::Atom, SignalValueShape::Vector3, none, vectorStripModes(), vectorStaticModes(), vectorChannels(none));
-    npy("water_efield", "water_efield", "water_field", "Water electric field", SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield));
-    npy("water_efield_first", "water_efield_first", "water_field", "First-shell water electric field", SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield));
-    npy("water_efg", "water_efg", "water_field", "Water EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("water_efg_first", "water_efg_first", "water_field", "First-shell water EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("water_shell_counts", "water_shell_counts", "water_field", "Water shell counts", SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.per-class")}, perClassStaticModes(), countChannels());
-    npy("hydration_shell", "hydration_shell", "hydration", "Hydration shell", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("water_polarization", "water_polarization", "water_polarization", "Water polarization", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("eeq_charges", "eeq_charges", "eeq", "EEQ charges", SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge));
-    npy("eeq_cn", "eeq_cn", "eeq", "EEQ coordination number", SignalAxis::Atom, SignalValueShape::Scalar, none, scalarStripModes(), scalarStaticModes(), scalarChannels(none));
-    npy("gromacs_energy", "gromacs_energy", "gromacs", "Gromacs energy/runtime", SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class")}, {}, {});
-    npy("bonded_energy", "bonded_energy", "bonded", "Bonded energy", SignalAxis::Atom, SignalValueShape::PerClassBlock, energy, perClassStripModes(), perClassStaticModes(), {});
-    npy("mopac_charges", "mopac_charges", "mopac_core", "MOPAC charges", SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge));
-    npy("mopac_scalars", "mopac_scalars", "mopac_core", "MOPAC scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("mopac_bond_orders", "mopac_bond_orders", "mopac_core", "MOPAC bond orders", SignalAxis::Bond, SignalValueShape::Scalar, none, scalarStripModes(), {}, scalarChannels(none));
-    npy("mopac_global", "mopac_global", "mopac_core", "MOPAC global values", SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class")}, {}, {});
-    npy("mopac_coulomb_E", "mopac_coulomb_E", "mopac_coulomb", "MOPAC Coulomb electric field", SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield));
-    npy("mopac_coulomb_efg_backbone", "mopac_coulomb_efg_backbone", "mopac_coulomb", "MOPAC Coulomb backbone EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("mopac_coulomb_efg_aromatic", "mopac_coulomb_efg_aromatic", "mopac_coulomb", "MOPAC Coulomb aromatic EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("mopac_coulomb_scalars", "mopac_coulomb_scalars", "mopac_coulomb", "MOPAC Coulomb scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("mopac_mc_scalars", "mopac_mc_scalars", "mopac_mcconnell", "MOPAC McConnell scalar diagnostics", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("apbs_E", "apbs_E", "apbs", "APBS electric field", SignalAxis::Atom, SignalValueShape::Vector3, efield, vectorStripModes(), vectorStaticModes(), vectorChannels(efield));
-    npy("apbs_efg", "apbs_efg", "apbs", "APBS EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("delta_shielding", "delta_shielding", "mutation_delta", "Mutation delta shielding", SignalAxis::MutationMatchPair, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("delta_scalars", "delta_scalars", "mutation_delta", "Mutation delta scalars", SignalAxis::MutationMatchPair, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("delta_apbs", "delta_apbs", "mutation_delta", "Mutation delta APBS", SignalAxis::MutationMatchPair, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("delta_ring_proximity", "delta_ring_proximity", "mutation_delta", "Mutation delta ring proximity", SignalAxis::MutationMatchPair, SignalValueShape::PerClassBlock, length, perClassStripModes(), perClassStaticModes(), {});
-    npy("wt_shielding_diamagnetic", "wt_shielding_diamagnetic", "mutation_delta", "WT diamagnetic shielding", SignalAxis::MutationMatchPair, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("wt_shielding_paramagnetic", "wt_shielding_paramagnetic", "mutation_delta", "WT paramagnetic shielding", SignalAxis::MutationMatchPair, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("mut_shielding_diamagnetic", "mut_shielding_diamagnetic", "mutation_delta", "Mutant diamagnetic shielding", SignalAxis::MutationMatchPair, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("mut_shielding_paramagnetic", "mut_shielding_paramagnetic", "mutation_delta", "Mutant paramagnetic shielding", SignalAxis::MutationMatchPair, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("delta_shielding_diamagnetic", "delta_shielding_diamagnetic", "mutation_delta", "Delta diamagnetic shielding", SignalAxis::MutationMatchPair, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("delta_shielding_paramagnetic", "delta_shielding_paramagnetic", "mutation_delta", "Delta paramagnetic shielding", SignalAxis::MutationMatchPair, SignalValueShape::SphericalTensor, shielding, tensorStripModes(), tensorStaticModes(), sphericalTensorChannels(shielding));
-    npy("aimnet2_charges", "aimnet2_charges", "aimnet2", "AIMNet2 charges", SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge));
-    npy("aimnet2_aim", "aimnet2_aim", "aimnet2", "AIMNet2 AIM descriptors", SignalAxis::Atom, SignalValueShape::PerClassBlock, none, perClassStripModes(), perClassStaticModes(), {});
-    npy("aimnet2_efg", "aimnet2_efg", "aimnet2", "AIMNet2 EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("aimnet2_efg_aromatic", "aimnet2_efg_aromatic", "aimnet2", "AIMNet2 aromatic EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("aimnet2_efg_backbone", "aimnet2_efg_backbone", "aimnet2", "AIMNet2 backbone EFG", SignalAxis::Atom, SignalValueShape::EfgT2, efg, efgStripModes(), efgStaticModes(), efgChannels(efg));
-    npy("aimnet2_charge_response_gradient", "aimnet2_charge_response_gradient", "aimnet2", "AIMNet2 charge-response gradient", SignalAxis::Atom, SignalValueShape::Vector3, charge, vectorStripModes(), vectorStaticModes(), vectorChannels(charge));
-    npy("aimnet2_charge_response_gradient_scalar", "aimnet2_charge_response_gradient_scalar", "aimnet2", "AIMNet2 CRG scalar", SignalAxis::Atom, SignalValueShape::Scalar, charge, scalarStripModes(), scalarStaticModes(), scalarChannels(charge));
-    npy("pyramidalization", "pyramidalization", "planar_geometry", "Pyramidalization", SignalAxis::Atom, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
-    npy("omega_actual", "omega_actual", "planar_geometry", "Omega actual", SignalAxis::Residue, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
-    npy("omega_deviation", "omega_deviation", "planar_geometry", "Omega deviation", SignalAxis::Residue, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
-    npy("aromatic_chi2", "aromatic_chi2", "planar_geometry", "Aromatic chi2", SignalAxis::AromaticRing, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
-    npy("pucker_Q", "pucker_Q", "planar_geometry", "Ring pucker Q", SignalAxis::SaturatedRing, SignalValueShape::Scalar, length, scalarStripModes(), {}, scalarChannels(length));
-    npy("pucker_theta", "pucker_theta", "planar_geometry", "Ring pucker theta", SignalAxis::SaturatedRing, SignalValueShape::Scalar, angle, scalarStripModes(), {}, angleChannels());
-    npy("omega_is_xpro", "omega_is_xpro", "planar_geometry", "Omega X-Proline flag", SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), categoryStaticModes(), {channel("is_xpro", "Is X-Proline", SignalValueShape::Category, tag)});
-    npy("tripeptide_bb_residual_vec", "tripeptide_bb_residual_vec", "tripeptide", "Tripeptide backbone residual vector", SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding));
-    npy("tripeptide_bb_match_distance", "tripeptide_bb_match_distance", "tripeptide", "Tripeptide backbone match distance", SignalAxis::Atom, SignalValueShape::Scalar, length, scalarStripModes(), scalarStaticModes(), scalarChannels(length));
-    npy("tripeptide_bb_method_tag", "tripeptide_bb_method_tag", "tripeptide", "Tripeptide backbone method tag", SignalAxis::Atom, SignalValueShape::Category, tag, categoryStripModes(), categoryStaticModes(), {channel("method", "Method", SignalValueShape::Category, tag)});
-    npy("tripeptide_neighbor_residual_vec_prev", "tripeptide_neighbor_residual_vec_prev", "tripeptide", "Tripeptide previous-neighbor residual vector", SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding));
-    npy("tripeptide_neighbor_residual_vec_next", "tripeptide_neighbor_residual_vec_next", "tripeptide", "Tripeptide next-neighbor residual vector", SignalAxis::Atom, SignalValueShape::Vector3, shielding, vectorStripModes(), vectorStaticModes(), vectorChannels(shielding));
-    npy("larsen_hbond_water_term", "larsen_hbond_water_term", "larsen_hbond", "Larsen H-bond water term", SignalAxis::Atom, SignalValueShape::Scalar, shielding, scalarStripModes(), scalarStaticModes(), scalarChannels(shielding));
-    npy("larsen_hbond_count", "larsen_hbond_count", "larsen_hbond", "Larsen H-bond count", SignalAxis::Atom, SignalValueShape::Count, unit(UnitDimension::Count, "count", "count"), {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")}, scalarStaticModes(), countChannels());
-    // The topology sidecars (residues/bonds/rings/ring_membership) are loaded ONCE
-    // into the QtProtein spine at startup, NOT as per-frame NPY columns, so these
-    // npy:* views were dead duplicates (always Absent) of the canonical topology:*
-    // descriptors (addTopology). Dropped; topology:* is canonical (the shared
-    // conceptKey topology.<x> is preserved there).
+    for (const RingTypeField& field : ringTypeFields) {
+        const UnitSpec units = producerUnits(field.field);
+        if (field.shape == SignalValueShape::Vector3) {
+            npy(field.field,
+                field.family,
+                field.label,
+                field.shape,
+                vectorStripModes(),
+                vectorStaticModes(),
+                vectorBlockChannels(kRingTypes, units));
+        } else if (field.shape == SignalValueShape::EfgT2) {
+            npy(field.field,
+                field.family,
+                field.label,
+                field.shape,
+                efgStripModes(),
+                efgStaticModes(),
+                t2BlockChannels(kRingTypes, units));
+        } else {
+            npy(field.field,
+                field.family,
+                field.label,
+                field.shape,
+                perClassStripModes(),
+                perClassStaticModes(),
+                scalarBlockChannels(kRingTypes, units));
+        }
+    }
+
+    auto addScalar = [&](io::FieldKind field, const char* family, const char* label) {
+        const UnitSpec units = producerUnits(field);
+        npy(field,
+            family,
+            label,
+            SignalValueShape::Scalar,
+            scalarStripModes(),
+            scalarStaticModes(),
+            scalarChannels(units));
+    };
+    auto addCount = [&](io::FieldKind field, const char* family, const char* label) {
+        npy(field,
+            family,
+            label,
+            SignalValueShape::Count,
+            {QStringLiteral("strip.count"), QStringLiteral("strip.scalar")},
+            scalarStaticModes(),
+            countChannels());
+    };
+    auto addVector = [&](io::FieldKind field, const char* family, const char* label) {
+        const UnitSpec units = producerUnits(field);
+        npy(field,
+            family,
+            label,
+            SignalValueShape::Vector3,
+            vectorStripModes(),
+            vectorStaticModes(),
+            vectorChannels(units));
+    };
+    auto addT2 = [&](io::FieldKind field, const char* family, const char* label) {
+        const UnitSpec units = producerUnits(field);
+        npy(field,
+            family,
+            label,
+            SignalValueShape::EfgT2,
+            efgStripModes(),
+            efgStaticModes(),
+            efgChannels(units));
+    };
+    auto addTensor = [&](io::FieldKind field, const char* family, const char* label) {
+        const UnitSpec units = producerUnits(field);
+        npy(field,
+            family,
+            label,
+            SignalValueShape::SphericalTensor,
+            tensorStripModes(),
+            tensorStaticModes(),
+            sphericalTensorChannels(units));
+    };
+    auto addTracelessTensor = [&](io::FieldKind field,
+                                  const char* family,
+                                  const char* label) {
+        const UnitSpec units = producerUnits(field);
+        npy(field,
+            family,
+            label,
+            SignalValueShape::SphericalTensor,
+            tracelessTensorStripModes(),
+            tensorStaticModes(),
+            sphericalTensorChannels(units));
+    };
+    auto addScalarBlock = [&](io::FieldKind field,
+                              const char* family,
+                              const char* label,
+                              const QVector<ChannelDescriptor>& channels) {
+        npy(field,
+            family,
+            label,
+            SignalValueShape::PerClassBlock,
+            perClassStripModes(),
+            perClassStaticModes(),
+            channels);
+    };
+
+    addVector(io::FieldKind::BSTotalB, "biot_savart", "Biot-Savart total magnetic field");
+    static constexpr std::array<NamedChannel, 4> kRingCountShells{{
+        {"within_3A", "Within 3 A"},
+        {"within_5A", "Within 5 A"},
+        {"within_8A", "Within 8 A"},
+        {"within_12A", "Within 12 A"},
+    }};
+    addScalarBlock(io::FieldKind::BSRingCounts,
+                   "biot_savart",
+                   "Accepted ring counts",
+                   scalarBlockChannels(kRingCountShells,
+                                       producerUnits(io::FieldKind::BSRingCounts)));
+
+    const struct ScalarField {
+        io::FieldKind field;
+        const char* family;
+        const char* label;
+    } scalarFields[] = {
+        {io::FieldKind::TauNCAC, "local_geometry", "N-CA-C valence angle"},
+        {io::FieldKind::AngleNCACB, "local_geometry", "N-CA-CB valence angle"},
+        {io::FieldKind::AngleCBCAC, "local_geometry", "CB-CA-C valence angle"},
+        {io::FieldKind::AngleCprevNCA, "local_geometry", "Previous C-N-CA valence angle"},
+        {io::FieldKind::AngleCACNnext, "local_geometry", "CA-C-next N valence angle"},
+        {io::FieldKind::CbDeviation, "local_geometry", "C-beta ideal-position deviation"},
+        {io::FieldKind::AtomSASA, "sasa", "Atomic solvent-accessible area"},
+        {io::FieldKind::AtomSASAFraction, "sasa", "Atomic solvent exposure fraction"},
+        {io::FieldKind::FfPartialCharge, "force_field", "Prepared force-field charge"},
+        {io::FieldKind::FfPbRadius, "force_field", "Poisson-Boltzmann radius"},
+        {io::FieldKind::EEQCharges, "eeq", "EEQ charge"},
+        {io::FieldKind::EEQCN, "eeq", "EEQ coordination number"},
+        {io::FieldKind::EEQChiEff, "eeq", "EEQ effective electronegativity"},
+        {io::FieldKind::APBSPhi, "apbs", "APBS reaction potential"},
+        {io::FieldKind::AIMNet2Charges, "aimnet2", "AIMNet2 charge"},
+        {io::FieldKind::AIMNet2ChargeResponseGradientScalar, "aimnet2", "AIMNet2 charge-response-gradient magnitude"},
+        {io::FieldKind::AIMNet2EnergyMlp, "aimnet2", "AIMNet2 local learned energy"},
+        {io::FieldKind::AIMNet2EnergyShiftedLocal, "aimnet2", "AIMNet2 shifted local energy"},
+        {io::FieldKind::AIMNet2D3EDispAtom, "aimnet2", "AIMNet2 D3 atomic dispersion energy"},
+        {io::FieldKind::AIMNet2D3CN, "aimnet2", "AIMNet2 D3 coordination number"},
+        {io::FieldKind::Pyramidalization, "planar_geometry", "Out-of-plane displacement"},
+        {io::FieldKind::OmegaActual, "planar_geometry", "Peptide omega"},
+        {io::FieldKind::OmegaDeviation, "planar_geometry", "Peptide omega deviation from trans"},
+        {io::FieldKind::AromaticChi2, "planar_geometry", "Aromatic chi2"},
+        {io::FieldKind::PuckerQ, "planar_geometry", "Ring puckering amplitude"},
+        {io::FieldKind::PuckerTheta, "planar_geometry", "Ring puckering phase"},
+        {io::FieldKind::MOPACChargesFullPrecision, "mopac", "MOPAC Coulson charge"},
+        {io::FieldKind::MOPACBondValenciesFullPrecision, "mopac", "MOPAC bond valency"},
+        {io::FieldKind::MOPACAtomSPopulation, "mopac", "MOPAC atomic s population"},
+        {io::FieldKind::MOPACAtomPPopulation, "mopac", "MOPAC atomic p population"},
+        {io::FieldKind::MOPACAtomDPopulation, "mopac", "MOPAC atomic d population"},
+        {io::FieldKind::MOPACLewisBondCount, "mopac", "MOPAC Lewis-bond count"},
+        {io::FieldKind::MOPACMcCoSum, "mopac_mcconnell", "MOPAC McConnell C=O scalar sum"},
+        {io::FieldKind::MOPACMcCNSum, "mopac_mcconnell", "MOPAC McConnell C-N scalar sum"},
+        {io::FieldKind::MOPACMcSidechainSum, "mopac_mcconnell", "MOPAC McConnell side-chain scalar sum"},
+        {io::FieldKind::MOPACMcAromaticSum, "mopac_mcconnell", "MOPAC McConnell aromatic scalar sum"},
+        {io::FieldKind::MOPACMcNearestCoDist, "mopac_mcconnell", "Nearest MOPAC-weighted C=O distance"},
+        {io::FieldKind::MOPACMcNearestCNDist, "mopac_mcconnell", "Nearest MOPAC-weighted C-N distance"},
+        {io::FieldKind::LarsenHBondWaterTerm, "larsen_hbond", "Larsen water term"},
+    };
+    for (const ScalarField& field : scalarFields)
+        addScalar(field.field, field.family, field.label);
+    addCount(io::FieldKind::LarsenHBondCount, "larsen_hbond", "Larsen contributing-pair count");
+
+    const struct VectorField {
+        io::FieldKind field;
+        const char* family;
+        const char* label;
+    } vectorFields[] = {
+        {io::FieldKind::CbResidualVector, "local_geometry", "C-beta residual vector"},
+        {io::FieldKind::SASANormal, "sasa", "Solvent-accessibility normal"},
+        {io::FieldKind::HBondNearestDir, "hbond", "Nearest accepted H-bond direction"},
+        {io::FieldKind::McNearestCoDir, "mcconnell", "Nearest C=O direction"},
+        {io::FieldKind::CoulombE, "coulomb", "Force-field electric field"},
+        {io::FieldKind::CoulombEBackbone, "coulomb", "Force-field backbone electric field"},
+        {io::FieldKind::CoulombESidechain, "coulomb", "Force-field side-chain electric field"},
+        {io::FieldKind::CoulombEAromatic, "coulomb", "Force-field aromatic electric field"},
+        {io::FieldKind::EEQCoulombE, "eeq_coulomb", "EEQ electric field"},
+        {io::FieldKind::MOPACCoulombE, "mopac_coulomb", "MOPAC-charge electric field"},
+        {io::FieldKind::MOPACCoulombEBackbone, "mopac_coulomb", "MOPAC-charge backbone electric field"},
+        {io::FieldKind::MOPACCoulombESidechain, "mopac_coulomb", "MOPAC-charge side-chain electric field"},
+        {io::FieldKind::MOPACCoulombEAromatic, "mopac_coulomb", "MOPAC-charge aromatic electric field"},
+        {io::FieldKind::APBSE, "apbs", "APBS reaction electric field"},
+        {io::FieldKind::AIMNet2E, "aimnet2", "AIMNet2-charge electric field"},
+        {io::FieldKind::AIMNet2EBackbone, "aimnet2", "AIMNet2-charge backbone electric field"},
+        {io::FieldKind::AIMNet2ESidechain, "aimnet2", "AIMNet2-charge side-chain electric field"},
+        {io::FieldKind::AIMNet2EAromatic, "aimnet2", "AIMNet2-charge aromatic electric field"},
+        {io::FieldKind::AIMNet2ChargeResponseGradient, "aimnet2", "AIMNet2 charge-response gradient"},
+        {io::FieldKind::WaterEfield, "water_field", "Water electric field"},
+        {io::FieldKind::WaterEfieldFirst, "water_field", "First-shell water electric field"},
+    };
+    for (const VectorField& field : vectorFields)
+        addVector(field.field, field.family, field.label);
+
+    addTracelessTensor(io::FieldKind::CoulombEFG,
+                       "coulomb",
+                       "Force-field electric-field gradient (full tensor)");
+    addTracelessTensor(io::FieldKind::EEQCoulombEFG,
+                       "eeq_coulomb",
+                       "EEQ electric-field gradient (full tensor)");
+    addTracelessTensor(io::FieldKind::MOPACCoulombEFG,
+                       "mopac_coulomb",
+                       "MOPAC-charge electric-field gradient (full tensor)");
+
+    const struct T2Field {
+        io::FieldKind field;
+        const char* family;
+        const char* label;
+    } t2Fields[] = {
+        {io::FieldKind::CoulombEFGT2, "coulomb", "Force-field electric-field gradient"},
+        {io::FieldKind::CoulombEFGBackbone, "coulomb", "Force-field backbone EFG"},
+        {io::FieldKind::CoulombEFGSidechain, "coulomb", "Force-field side-chain EFG"},
+        {io::FieldKind::CoulombEFGAromatic, "coulomb", "Force-field aromatic EFG"},
+        {io::FieldKind::EEQCoulombEFGBackbone, "eeq_coulomb", "EEQ backbone EFG"},
+        {io::FieldKind::EEQCoulombEFGSidechain, "eeq_coulomb", "EEQ side-chain EFG"},
+        {io::FieldKind::EEQCoulombEFGAromatic, "eeq_coulomb", "EEQ aromatic EFG"},
+        {io::FieldKind::MOPACCoulombEFGBackbone, "mopac_coulomb", "MOPAC-charge backbone EFG"},
+        {io::FieldKind::MOPACCoulombEFGSidechain, "mopac_coulomb", "MOPAC-charge side-chain EFG"},
+        {io::FieldKind::MOPACCoulombEFGAromatic, "mopac_coulomb", "MOPAC-charge aromatic EFG"},
+        {io::FieldKind::APBSEFG, "apbs", "APBS reaction electric-field gradient"},
+        {io::FieldKind::AIMNet2EFG, "aimnet2", "AIMNet2-charge electric-field gradient"},
+        {io::FieldKind::AIMNet2EFGBackbone, "aimnet2", "AIMNet2-charge backbone EFG"},
+        {io::FieldKind::AIMNet2EFGSidechain, "aimnet2", "AIMNet2-charge side-chain EFG"},
+        {io::FieldKind::AIMNet2EFGAromatic, "aimnet2", "AIMNet2-charge aromatic EFG"},
+        {io::FieldKind::WaterEFG, "water_field", "Water electric-field gradient"},
+        {io::FieldKind::WaterEFGFirst, "water_field", "First-shell water electric-field gradient"},
+    };
+    for (const T2Field& field : t2Fields)
+        addT2(field.field, field.family, field.label);
+
+    const struct McTensorField {
+        io::FieldKind field;
+        const char* label;
+    } mcTensorFields[] = {
+        {io::FieldKind::McPeptideCoFixed, "Peptide C=O fixed anisotropy"},
+        {io::FieldKind::McPeptideCNFixed, "Peptide C-N fixed anisotropy"},
+        {io::FieldKind::McBackboneOtherFixed, "Other backbone fixed anisotropy"},
+        {io::FieldKind::McSidechainCoFixed, "Side-chain C=O fixed anisotropy"},
+        {io::FieldKind::McSidechainOtherFixed, "Other side-chain fixed anisotropy"},
+        {io::FieldKind::McDisulfideFixed, "Disulfide fixed anisotropy"},
+        {io::FieldKind::McAromaticFixed, "Aromatic fixed anisotropy"},
+        {io::FieldKind::McBackboneXhFixed, "Backbone X-H fixed anisotropy"},
+        {io::FieldKind::McSidechainXhFixed, "Side-chain X-H fixed anisotropy"},
+        {io::FieldKind::McSHFixed, "S-H fixed anisotropy"},
+        {io::FieldKind::McPeptideCoRhombic, "Peptide C=O rhombic contribution"},
+        {io::FieldKind::McNearestCoT2, "Nearest C=O fixed anisotropy"},
+        {io::FieldKind::McNearestCNT2, "Nearest C-N fixed anisotropy"},
+    };
+    for (const McTensorField& field : mcTensorFields)
+        addTensor(field.field, "mcconnell", field.label);
+
+    const struct MopacMcTensorField {
+        io::FieldKind field;
+        const char* label;
+    } mopacMcTensorFields[] = {
+        {io::FieldKind::MOPACMcNearestCoT2, "Nearest MOPAC-weighted C=O anisotropy"},
+        {io::FieldKind::MOPACMcNearestCNT2, "Nearest MOPAC-weighted C-N anisotropy"},
+        {io::FieldKind::MOPACMcBackboneTotal, "MOPAC-weighted backbone anisotropy"},
+        {io::FieldKind::MOPACMcSidechainTotal, "MOPAC-weighted side-chain anisotropy"},
+        {io::FieldKind::MOPACMcAromaticTotal, "MOPAC-weighted aromatic anisotropy"},
+    };
+    for (const MopacMcTensorField& field : mopacMcTensorFields)
+        addTensor(field.field, "mopac_mcconnell", field.label);
+
+    static constexpr std::array<NamedChannel, 2> kNearfieldCounts{{
+        {"accepted", "Accepted"},
+        {"rejected", "Rejected"},
+    }};
+    addScalarBlock(io::FieldKind::McNearfieldCounts,
+                   "mcconnell",
+                   "McConnell near-field source counts",
+                   scalarBlockChannels(kNearfieldCounts,
+                                       producerUnits(io::FieldKind::McNearfieldCounts)));
+
+    static constexpr std::array<NamedChannel, 4> kFieldScalars{{
+        {"magnitude", "Total magnitude"},
+        {"parent_projection", "Parent-to-H projection"},
+        {"backbone_projection", "Backbone projection"},
+        {"aromatic_magnitude", "Aromatic magnitude"},
+    }};
+    for (const auto field : {io::FieldKind::CoulombScalars,
+                             io::FieldKind::EEQCoulombScalars,
+                             io::FieldKind::MOPACCoulombScalars}) {
+        const char* family = field == io::FieldKind::CoulombScalars
+                                 ? "coulomb"
+                                 : (field == io::FieldKind::EEQCoulombScalars
+                                        ? "eeq_coulomb"
+                                        : "mopac_coulomb");
+        const char* label = field == io::FieldKind::CoulombScalars
+                                ? "Force-field electric-field summary"
+                                : (field == io::FieldKind::EEQCoulombScalars
+                                       ? "EEQ electric-field summary"
+                                       : "MOPAC-charge electric-field summary");
+        addScalarBlock(field,
+                       family,
+                       label,
+                       scalarBlockChannels(kFieldScalars, producerUnits(field)));
+    }
+
+    static constexpr std::array<NamedChannel, 4> kHBondScalars{{
+        {"nearest_distance", "Nearest H-to-target distance"},
+        {"nearest_inverse_cube", "Nearest inverse-cube distance"},
+        {"accepted_count", "Accepted source count"},
+        {"angular_sum", "Angular inverse-cube sum"},
+    }};
+    const UnitSpec angstrom = unit(UnitDimension::Length, "A", "A");
+    const UnitSpec inverseCube = unit(UnitDimension::Dimensionless, "A^-3", "A^-3", 1.0, 0.0, false);
+    const UnitSpec count = unit(UnitDimension::Count, "count", "count");
+    const QVector<ChannelDescriptor> hbondChannels{
+        channel(kHBondScalars[0].id, kHBondScalars[0].label, SignalValueShape::Scalar, angstrom, {}, 0, 1),
+        channel(kHBondScalars[1].id, kHBondScalars[1].label, SignalValueShape::Scalar, inverseCube, {}, 1, 1),
+        channel(kHBondScalars[2].id, kHBondScalars[2].label, SignalValueShape::Count, count, {}, 2, 1),
+        channel(kHBondScalars[3].id, kHBondScalars[3].label, SignalValueShape::Scalar, inverseCube, {}, 3, 1),
+    };
+    addScalarBlock(io::FieldKind::HBondScalars,
+                   "hbond",
+                   "Hydrogen-bond geometry summary",
+                   hbondChannels);
+
+    static constexpr std::array<NamedChannel, 8> kDsspClasses{{
+        {"H", "Alpha helix"},
+        {"G", "3-10 helix"},
+        {"I", "Pi helix"},
+        {"E", "Extended strand"},
+        {"B", "Beta bridge"},
+        {"T", "Turn"},
+        {"S", "Bend"},
+        {"C", "Coil"},
+    }};
+    addScalarBlock(io::FieldKind::DSSPSs8,
+                   "dssp",
+                   "DSSP secondary-structure class",
+                   scalarBlockChannels(kDsspClasses, producerUnits(io::FieldKind::DSSPSs8)));
+    addScalar(io::FieldKind::DSSPObserved, "dssp", "DSSP observed-state mask");
+    addScalar(io::FieldKind::DSSPPpii, "dssp", "DSSP polyproline-II state");
+
+    static constexpr std::array<NamedChannel, 4> kDsspHBondEnergies{{
+        {"acceptor_0", "Acceptor 1"},
+        {"acceptor_1", "Acceptor 2"},
+        {"donor_0", "Donor 1"},
+        {"donor_1", "Donor 2"},
+    }};
+    addScalarBlock(io::FieldKind::DSSPHBondEnergy,
+                   "dssp",
+                   "DSSP Coulombic H-bond assignment scores",
+                   scalarBlockChannels(kDsspHBondEnergies,
+                                       producerUnits(io::FieldKind::DSSPHBondEnergy)));
+
+    static constexpr std::array<NamedChannel, 6> kTorsions{{
+        {"phi", "Phi"},
+        {"psi", "Psi"},
+        {"chi1", "Chi1"},
+        {"chi2", "Chi2"},
+        {"chi3", "Chi3"},
+        {"chi4", "Chi4"},
+    }};
+    addScalarBlock(io::FieldKind::DSSPTorsionAngle,
+                   "dssp",
+                   "Signed IUPAC torsion angles",
+                   scalarBlockChannels(kTorsions,
+                                       producerUnits(io::FieldKind::DSSPTorsionAngle)));
+
+    static constexpr std::array<NamedChannel, 2> kWaterShellCounts{{
+        {"first_shell", "First shell"},
+        {"second_shell", "Second shell"},
+    }};
+    addScalarBlock(io::FieldKind::WaterShellCounts,
+                   "water_field",
+                   "Water-shell counts",
+                   scalarBlockChannels(kWaterShellCounts,
+                                       producerUnits(io::FieldKind::WaterShellCounts)));
+
+    static constexpr std::array<NamedChannel, 2> kEeqHardness{{
+        {"eta", "Eta"},
+        {"self_hardness", "Self-hardness diagonal"},
+    }};
+    addScalarBlock(io::FieldKind::EEQHardness,
+                   "eeq",
+                   "EEQ hardness",
+                   scalarBlockChannels(kEeqHardness,
+                                       producerUnits(io::FieldKind::EEQHardness)));
+
+    static constexpr std::array<NamedChannel, 3> kD3C6Stats{{
+        {"sum", "C6 sum"},
+        {"mean", "C6 mean"},
+        {"maximum", "C6 maximum"},
+    }};
+    addScalarBlock(io::FieldKind::AIMNet2D3C6Stats,
+                   "aimnet2",
+                   "AIMNet2 D3 C6 summary",
+                   scalarBlockChannels(kD3C6Stats,
+                                       producerUnits(io::FieldKind::AIMNet2D3C6Stats)));
 }
 
 void addOrcaDft(QVector<SignalDescriptor>& descriptors) {

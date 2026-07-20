@@ -147,7 +147,6 @@ qt_add_library(h5reader_core STATIC
     src/model/AtomSelection.cpp
     src/model/QtFrame.h
     src/model/QtFrame.cpp
-    src/model/QtFrameAtomView.h
 
     # H5 + sidecar boundary
     src/io/QtNpyRecords.h
@@ -165,6 +164,7 @@ qt_add_library(h5reader_core STATIC
     src/io/QtTrajectoryH5.cpp
     src/io/QtProteinLoader.h
     src/io/QtProteinLoader.cpp
+    src/io/FrameFieldPolicy.h
     src/io/FrameNpyLoader.h
     src/io/FrameNpyLoader.cpp
     src/io/OrcaShieldingParser.h
@@ -526,6 +526,19 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     add_test(NAME h5reader_display_policy_tests
              COMMAND h5reader_display_policy_tests)
 
+    qt_add_executable(h5reader_frame_field_policy_tests
+        tests/frame_field_policy_tests.cpp
+        src/io/FrameFieldPolicy.h
+        src/io/QtFieldCatalog.gen.h
+    )
+    target_include_directories(h5reader_frame_field_policy_tests PRIVATE src)
+    target_link_libraries(h5reader_frame_field_policy_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    add_test(NAME h5reader_frame_field_policy_tests
+             COMMAND h5reader_frame_field_policy_tests)
+
     # Pure-function density / HDR math used by the selected-atom trajectory
     # envelope. Header-only math over model::Vec3/Mat3; links Qt6::Test +
     # Eigen3 only. The viewer contours the resulting field downstream, where
@@ -776,10 +789,22 @@ endif()
 # Requires Python3 + pytest + httpx + Pillow on PATH; H5READER_REST_FIXTURE
 # env var (or the default below) must point at a valid trajectory directory.
 if(BUILD_TESTING AND Python3_Interpreter_FOUND)
+    add_test(NAME h5reader_field_catalog_generated_check
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_field_catalog.py
+                     --check)
+    set_tests_properties(h5reader_field_catalog_generated_check PROPERTIES
+        LABELS "catalog;contract"
+        TIMEOUT 60
+    )
+
     if(WIN32)
         set(H5READER_REST_FIXTURE_DEFAULT
-            "C:/projects/reader-data/1p9j-calibration-with-dft/1p9j-calibration-dense-mopac-live-orca.LGS"
+            "C:/projects/reader-data/1p9j-calibration-with-dft/1p9j-july20260717.LGS"
             CACHE FILEPATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+        set(H5READER_F003_STATIC_FIXTURE_DEFAULT
+            "C:/projects/reader-data/july-20260717-staging/full720-f003-A0A822IKI2.LGS"
+            CACHE FILEPATH "Complete July full720 single-pose fixture for F003 inference tests")
     else()
         set(H5READER_REST_FIXTURE_DEFAULT
             "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
@@ -797,7 +822,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
     # binary runs against the real display.
     set_tests_properties(h5reader_rest_smoke PROPERTIES
         ENVIRONMENT
-            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}"
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_EXPECT_ML_INPUT_FAILURE=1"
         LABELS "rest;e2e"
         TIMEOUT 300
     )
@@ -809,7 +834,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
                          -v --tb=short)
         set_tests_properties(h5reader_rest_installed_ml_stale_dev_env PROPERTIES
             ENVIRONMENT
-                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_EXPECT_STALE_DEV_ML_FALLBACK=1;H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=C:/h5reader-missing-experimental-ml/model.ts;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=C:/h5reader-missing-experimental-ml/manifest.json;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=C:/h5reader-missing-experimental-ml/infer.exe"
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F003_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;H5READER_EXPECT_STALE_DEV_ML_FALLBACK=1;H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=C:/h5reader-missing-experimental-ml/model.ts;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=C:/h5reader-missing-experimental-ml/manifest.json;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=C:/h5reader-missing-experimental-ml/infer.exe"
             LABELS "rest;e2e;ml"
             TIMEOUT 120
         )
@@ -820,14 +845,27 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
                          -v --tb=short)
         set_tests_properties(h5reader_rest_ml_cpu_fallback PROPERTIES
             ENVIRONMENT
-                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};HIP_VISIBLE_DEVICES=-1;H5READER_EXPECT_ML_CPU_FALLBACK=1"
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F003_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;HIP_VISIBLE_DEVICES=-1;H5READER_EXPECT_ML_CPU_FALLBACK=1"
             LABELS "rest;e2e;ml"
             TIMEOUT 120
         )
+
+        if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM)
+            add_test(NAME h5reader_rest_ml_rocm
+                     COMMAND ${Python3_EXECUTABLE} -m pytest
+                             ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_experimental_shielding_ml_runtime.py
+                             -v --tb=short)
+            set_tests_properties(h5reader_rest_ml_rocm PROPERTIES
+                ENVIRONMENT
+                    "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F003_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE=rocm;H5READER_EXPECT_ML_ACTIVE_DEVICE=rocm"
+                LABELS "rest;e2e;ml;rocm"
+                TIMEOUT 120
+            )
+        endif()
     endif()
 
     set(H5READER_CHIGNOLIN_FIXTURE_DEFAULT
-        "C:/projects/reader-data/chignolin-oneoff/chignolin_CLN025_5AWL_0.LGS"
+        "C:/projects/reader-data/chignolin-oneoff/chignolin-july20260717.LGS"
         CACHE FILEPATH "Optional chignolin/CLN025 dense-DFT .LGS for REST fixture smoke")
     add_test(NAME h5reader_rest_chignolin_fixture
              COMMAND ${Python3_EXECUTABLE} -m pytest
@@ -835,7 +873,20 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
     set_tests_properties(h5reader_rest_chignolin_fixture PROPERTIES
         ENVIRONMENT
             "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_CHIGNOLIN_FIXTURE_DEFAULT}"
-        LABELS "rest;e2e;chignolin"
+            LABELS "rest;e2e;chignolin"
+            TIMEOUT 180
+    )
+
+    set(H5READER_TRPCAGE_FIXTURE_DEFAULT
+        "C:/projects/reader-data/trpcage-tc5b-1l2y/trpcage-july20260717.LGS"
+        CACHE FILEPATH "Trp-cage dense-DFT .LGS for REST fixture smoke")
+    add_test(NAME h5reader_rest_trpcage_fixture
+             COMMAND ${Python3_EXECUTABLE} -m pytest
+                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_trpcage_fixture.py -v --tb=short)
+    set_tests_properties(h5reader_rest_trpcage_fixture PROPERTIES
+        ENVIRONMENT
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_TRPCAGE_FIXTURE_DEFAULT}"
+        LABELS "rest;e2e;trpcage"
         TIMEOUT 180
     )
 endif()
@@ -880,9 +931,6 @@ if(WIN32)
         set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/model.ts"
             CACHE FILEPATH "TorchScript model for Experimental Shielding ML" FORCE)
-        set(H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL
-            "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/model_no_mopac_no_tripeptide.ts"
-            CACHE FILEPATH "No-MOPAC fallback TorchScript model for Experimental Shielding ML" FORCE)
         set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT}/manifest.json"
             CACHE FILEPATH "Provenance manifest for Experimental Shielding ML" FORCE)
@@ -904,9 +952,6 @@ if(WIN32)
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL
         "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
         CACHE FILEPATH "TorchScript model for Experimental Shielding ML")
-    set(H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL
-        "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
-        CACHE FILEPATH "No-MOPAC fallback TorchScript model for Experimental Shielding ML")
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST
         "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
         CACHE FILEPATH "Provenance manifest for Experimental Shielding ML")
@@ -920,7 +965,6 @@ if(WIN32)
     if(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
         foreach(_ml_asset IN ITEMS
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
-                "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
                 "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}")
             if(NOT EXISTS "${_ml_asset}")
@@ -928,7 +972,6 @@ if(WIN32)
                     "Experimental Shielding ML packaging is required, but this asset is missing: ${_ml_asset}\n"
                     "Set H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT to a portable bundle directory, "
                     "or set H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL, "
-                    "H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL, "
                     "H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST, "
                     "H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER, and "
                     "H5READER_LIBTORCH_CPU_BIN_DIR explicitly.")
@@ -987,7 +1030,6 @@ if(WIN32)
 
         set(_h5reader_experimental_shielding_ml_runtime_files
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
-            "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER}"
             ${_h5reader_libtorch_cpu_dlls}
@@ -1031,7 +1073,6 @@ if(WIN32)
 
         install(FILES
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL}"
-            "${H5READER_EXPERIMENTAL_SHIELDING_ML_FALLBACK_MODEL}"
             "${H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST}"
             ${_h5reader_libtorch_cpu_dlls}
             DESTINATION "${H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR}"
@@ -1137,8 +1178,11 @@ else()
 endif()
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "h5reader")
 set(CPACK_MONOLITHIC_INSTALL ON)
+set(CPACK_PACKAGE_EXECUTABLES "h5reader" "h5reader")
 
 if(WIN32)
+    set(CPACK_CREATE_DESKTOP_LINKS "h5reader")
+    set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
     find_program(H5READER_MAKENSIS_EXECUTABLE makensis)
     if(H5READER_MAKENSIS_EXECUTABLE)
         set(CPACK_GENERATOR "NSIS;ZIP")

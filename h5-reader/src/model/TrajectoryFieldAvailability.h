@@ -366,16 +366,10 @@ private:
             scanTimeSeries(acc, h5->hmShielding(), h5->hmShielding() ? h5->hmShielding()->xyz : emptyDouble(), h5->hmShielding() ? h5->hmShielding()->meta : emptyMeta());
         } else if (path == QStringLiteral("/trajectory/mc_shielding_time_series")) {
             scanTimeSeries(acc, h5->mcShielding(), h5->mcShielding() ? h5->mcShielding()->xyz : emptyDouble(), h5->mcShielding() ? h5->mcShielding()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series")) {
-            scanTimeSeries(acc, h5->mopacCoulombShielding(), h5->mopacCoulombShielding() ? h5->mopacCoulombShielding()->t2 : emptyDouble(), h5->mopacCoulombShielding() ? h5->mopacCoulombShielding()->meta : emptyMeta());
+        } else if (path == QStringLiteral("/trajectory/mopac_coulomb_efg_time_series")) {
+            scanTimeSeries(acc, h5->mopacCoulombEfg(), h5->mopacCoulombEfg() ? h5->mopacCoulombEfg()->t2 : emptyDouble(), h5->mopacCoulombEfg() ? h5->mopacCoulombEfg()->meta : emptyMeta());
         } else if (path == QStringLiteral("/trajectory/mopac_mc_shielding_time_series")) {
             scanTimeSeries(acc, h5->mopacMcShielding(), h5->mopacMcShielding() ? h5->mopacMcShielding()->xyz : emptyDouble(), h5->mopacMcShielding() ? h5->mopacMcShielding()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/mopac_vs_ff14sb_reconciliation")) {
-            scanTimeSeries(acc, h5->mopacVsFf14sbReconciliation(), h5->mopacVsFf14sbReconciliation() ? h5->mopacVsFf14sbReconciliation()->data : emptyDouble(), h5->mopacVsFf14sbReconciliation() ? h5->mopacVsFf14sbReconciliation()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/tripeptide_bb_shielding_time_series")) {
-            scanTimeSeries(acc, h5->tripeptideBbShielding(), h5->tripeptideBbShielding() ? h5->tripeptideBbShielding()->xyz : emptyDouble(), h5->tripeptideBbShielding() ? h5->tripeptideBbShielding()->meta : emptyMeta());
-        } else if (path == QStringLiteral("/trajectory/tripeptide_neighbor_shielding_time_series")) {
-            scanTimeSeries(acc, h5->tripeptideNeighborShielding(), h5->tripeptideNeighborShielding() ? h5->tripeptideNeighborShielding()->xyz : emptyDouble(), h5->tripeptideNeighborShielding() ? h5->tripeptideNeighborShielding()->meta : emptyMeta());
         } else if (path == QStringLiteral("/trajectory/larsen_hbond_1pHB_shielding_time_series")) {
             scanTimeSeries(acc, h5->larsenHBond1pHBShielding(), h5->larsenHBond1pHBShielding() ? h5->larsenHBond1pHBShielding()->xyz : emptyDouble(), h5->larsenHBond1pHBShielding() ? h5->larsenHBond1pHBShielding()->meta : emptyMeta());
         } else if (path == QStringLiteral("/trajectory/larsen_hbond_1pHaB_shielding_time_series")) {

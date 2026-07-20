@@ -87,6 +87,11 @@ std::size_t TransformedConformation::originalFrameIndex(std::size_t frame) const
     return inner_ ? inner_->originalFrameIndex(frame) : frame;
 }
 
+std::optional<std::size_t>
+TransformedConformation::frameRowForOriginalIndex(std::size_t originalFrame) const {
+    return inner_ ? inner_->frameRowForOriginalIndex(originalFrame) : std::nullopt;
+}
+
 const TrajectoryConformation* TransformedConformation::asTrajectory() const {
     return inner_ ? inner_->asTrajectory() : nullptr;
 }
@@ -106,6 +111,15 @@ Vec3 TransformedConformation::atomPosition(std::size_t frame, std::size_t atomId
     }
     const Vec3 raw = inner_->atomPosition(frame, atomIdx);
     return t->R * raw + t->T;
+}
+
+Mat3 TransformedConformation::displayRotation(std::size_t frame) const {
+    ASSERT_THREAD(this);
+    if (!inner_)
+        return Mat3::Identity();
+    if (frame < transformCache_.size())
+        return transformCache_[frame].R;
+    return computeRawTransform(frame).R;
 }
 
 std::shared_ptr<const QtConformationSnapshot>

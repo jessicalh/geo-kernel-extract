@@ -42,4 +42,15 @@ std::size_t TrajectoryFrameMap::OriginalIndex(std::size_t row, const QtTrajector
     return row < idx.size() ? static_cast<std::size_t>(idx[row]) : row;
 }
 
+std::optional<std::size_t>
+TrajectoryFrameMap::RowForOriginalIndex(std::size_t originalIndex,
+                                        const QtTrajectoryH5& h5) {
+    const auto& indices = h5.frameIndices();
+    const auto found =
+        std::find(indices.begin(), indices.end(), static_cast<std::uint64_t>(originalIndex));
+    if (found == indices.end())
+        return std::nullopt;
+    return static_cast<std::size_t>(std::distance(indices.begin(), found));
+}
+
 }  // namespace h5reader::io

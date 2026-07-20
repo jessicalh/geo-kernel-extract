@@ -439,30 +439,6 @@ struct AIMNet2Embedding {
     const double* end() const { return data + kDim; }
 };
 
-// ── Tripeptide / Larsen reference-shielding family ─────────────────────
-// These two families deliver DFT-derived reference shieldings as 9-col
-// SphericalTensors (UnpackSphericalTensor) plus a few Vec3 residuals and
-// scalars — no bespoke block beyond this method-provenance tag. The two
-// families use OPPOSITE per-atom "no value here" sentinels (verified in the
-// fixture): Tripeptide writes NaN (check std::isnan / Vec3::hasNaN());
-// Larsen writes 0.0 (the per-class tensors are packed unconditionally, so an
-// atom outside Larsen's Table-2 dispatch carries a structural ZERO). Both
-// distinct from a group view's nullopt = "calculator absent this frame".
-//
-// tripeptide_bb_method_tag is int8 on disk (widened to double by the loader);
-// it records which DFT frame_type produced the matched ProCS15 tripeptide pose
-// (TripeptideBackboneShieldingResult.cpp:51 MethodTagFromFrameType;
-// ConformationAtom.h:283-291). NoMatch(0) is the in-band integer twin of a NaN
-// tripeptide_bb_shielding row (fixture: the 38 tag==0 atoms are exactly the 38
-// NaN shielding rows). The OPBE/ORCA-PBE split is load-bearing for the
-// methods-mixing caveat (a neighbour term drawing on a SER ASA row mixes
-// OPBE + PBE — project_serine_pbe_discontinuity).
-enum class TripeptideMethodTag : std::int8_t {
-    NoMatch = 0,   // tripeptide_bb_has_match == false; shielding row is NaN
-    Opbe    = 1,   // gaussian_standard_orientation (OPBE)
-    OrcaPbe = 2,   // orca_input_orientation (PBE)
-};
-
 // ── MOPAC (PM7+MOZYME) family blocks ───────────────────────────────────
 // The MOPAC family splits into three SDK FieldGroups: MOPACCore (the three
 // blocks below), MOPACCoulomb (reuses the Coulomb blocks — SphericalTensor /

@@ -11,11 +11,10 @@ QString TensorGlyphVisualization::label() const {
 }
 
 bool TensorGlyphVisualization::supports(const SignalDescriptor& descriptor) const {
-    return VisualizationDescriptorOffersMode(descriptor, QString::fromLatin1(kMode))
-        && (descriptor.valueShape == SignalValueShape::Mat3PerRow
-            || descriptor.valueShape == SignalValueShape::EfgT2
-            || descriptor.valueShape == SignalValueShape::SphericalTensor
-            || descriptor.valueShape == SignalValueShape::TensorComponents);
+    return descriptor.id == QStringLiteral("ml:experimental_shielding_t2")
+        && descriptor.sourceKind == SignalSourceKind::ExperimentalShieldingMl
+        && descriptor.valueShape == SignalValueShape::EfgT2
+        && VisualizationDescriptorOffersMode(descriptor, QString::fromLatin1(kMode));
 }
 
 bool TensorGlyphVisualization::isAvailable(const VisualizationContext& ctx,
@@ -26,7 +25,7 @@ bool TensorGlyphVisualization::isAvailable(const VisualizationContext& ctx,
 }
 
 DisplayModeCapability TensorGlyphVisualization::capability() const {
-    return DisplayModeCapability{false, false, true};
+    return DisplayModeCapability{true, false, true};
 }
 
 QStringList TensorGlyphVisualization::legacyModeIds() const {

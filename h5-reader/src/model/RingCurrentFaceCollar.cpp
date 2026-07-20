@@ -23,6 +23,11 @@ struct LoadedDftFrame {
     std::shared_ptr<const DftShieldingFrame> shielding;
 };
 
+struct DftCandidate {
+    const h5reader::io::DftFrame* declared = nullptr;
+    std::size_t frameRow = 0;
+};
+
 std::vector<std::size_t> atomScanList(const QtProtein& protein,
                                       const RingCurrentFaceCollarOptions& options) {
     std::vector<std::size_t> out;
@@ -312,39 +317,55 @@ bool RingCurrentFaceCollar::collect(
         return false;
     }
 
-    const int frameCount = static_cast<int>(conformation.frameCount());
-    const int start = options_.startFrame.value_or(0);
-    const int end = options_.endFrame.value_or(frameCount - 1);
-    if (start < 0 || end < 0 || start >= frameCount || end >= frameCount || end < start) {
+    int firstOriginalFrame =
+        static_cast<int>(conformation.originalFrameIndex(0));
+    int lastOriginalFrame = firstOriginalFrame;
+    for (std::size_t row = 1; row < conformation.frameCount(); ++row) {
+        const int original =
+            static_cast<int>(conformation.originalFrameIndex(row));
+        firstOriginalFrame = std::min(firstOriginalFrame, original);
+        lastOriginalFrame = std::max(lastOriginalFrame, original);
+    }
+    const int start = options_.startFrame.value_or(firstOriginalFrame);
+    const int end = options_.endFrame.value_or(lastOriginalFrame);
+    if (start < firstOriginalFrame || end > lastOriginalFrame || end < start) {
         if (error)
             *error = QStringLiteral("frame range out of range");
         return false;
     }
 
-    std::vector<const h5reader::io::DftFrame*> candidates;
+    std::vector<DftCandidate> candidates;
     candidates.reserve(dftFrames.size());
     for (const h5reader::io::DftFrame& declared : dftFrames) {
         if (declared.frame_index < start || declared.frame_index > end)
             continue;
-        if (declared.frame_index < 0 || declared.frame_index >= frameCount) {
+        if (declared.frame_index < 0) {
             ++summary_.dftFramesSkipped;
             continue;
         }
-        candidates.push_back(&declared);
+        const std::optional<std::size_t> frameRow =
+            conformation.frameRowForOriginalIndex(
+                static_cast<std::size_t>(declared.frame_index));
+        if (!frameRow) {
+            ++summary_.dftFramesSkipped;
+            continue;
+        }
+        candidates.push_back({&declared, *frameRow});
     }
     std::sort(candidates.begin(), candidates.end(),
-              [](const h5reader::io::DftFrame* a, const h5reader::io::DftFrame* b) {
-        return a->frame_index < b->frame_index;
+              [](const DftCandidate& a, const DftCandidate& b) {
+        return a.declared->frame_index < b.declared->frame_index;
     });
 
-    std::vector<const h5reader::io::DftFrame*> uniqueCandidates;
+    std::vector<DftCandidate> uniqueCandidates;
     uniqueCandidates.reserve(candidates.size());
     std::optional<int> lastCandidateFrame;
-    for (const h5reader::io::DftFrame* declared : candidates) {
-        if (lastCandidateFrame && *lastCandidateFrame == declared->frame_index)
+    for (const DftCandidate& candidate : candidates) {
+        if (lastCandidateFrame &&
+            *lastCandidateFrame == candidate.declared->frame_index)
             continue;
-        lastCandidateFrame = declared->frame_index;
-        uniqueCandidates.push_back(declared);
+        lastCandidateFrame = candidate.declared->frame_index;
+        uniqueCandidates.push_back(candidate);
     }
     candidates = std::move(uniqueCandidates);
 
@@ -367,7 +388,7 @@ bool RingCurrentFaceCollar::collect(
         if (!dftAttempted[frameOrdinal]) {
             dftAttempted[frameOrdinal] = true;
             std::optional<LoadedDftFrame> loaded =
-                loadDftFrame(*candidates[frameOrdinal], protein);
+                loadDftFrame(*candidates[frameOrdinal].declared, protein);
             if (!loaded) {
                 ++summary_.dftFramesSkipped;
             } else {
@@ -386,9 +407,9 @@ bool RingCurrentFaceCollar::collect(
         ringGeometries.reserve(candidates.size());
         std::vector<std::vector<Vec3>> ringVertices;
         ringVertices.reserve(candidates.size());
-        for (const h5reader::io::DftFrame* frame : candidates) {
-            const std::size_t frameIndex = static_cast<std::size_t>(frame->frame_index);
-            ringVertices.push_back(RingVertices(conformation, ring, frameIndex));
+        for (const DftCandidate& candidate : candidates) {
+            ringVertices.push_back(
+                RingVertices(conformation, ring, candidate.frameRow));
             ringGeometries.push_back(FitRingGeometry(ringVertices.back()));
         }
 
@@ -404,15 +425,14 @@ bool RingCurrentFaceCollar::collect(
 
             int previousSign = 0;
             for (std::size_t frameOrdinal = 0; frameOrdinal < candidates.size(); ++frameOrdinal) {
-                const h5reader::io::DftFrame* frame = candidates[frameOrdinal];
-                const std::size_t frameIndex = static_cast<std::size_t>(frame->frame_index);
+                const DftCandidate& candidate = candidates[frameOrdinal];
 
                 RingCurrentFaceSample sample;
-                sample.frameIndex = frame->frame_index;
-                sample.timePs = frame->framePs();
+                sample.frameIndex = candidate.declared->frame_index;
+                sample.timePs = candidate.declared->framePs();
                 sample.geometry =
                     MeasureRingNull(ringGeometries[frameOrdinal],
-                                    conformation.atomPosition(frameIndex, atom),
+                                    conformation.atomPosition(candidate.frameRow, atom),
                                     options_.surfaceToleranceA);
                 if (!sample.geometry.valid)
                     continue;

@@ -2,17 +2,19 @@
 
 #include "../io/QtFieldCatalog.gen.h"
 
-#include <QObject>
 #include <QHash>
+#include <QObject>
 #include <QPointer>
 #include <QProcess>
 #include <QString>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QVector>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <vector>
 
@@ -35,11 +37,11 @@ public:
     ExperimentalShieldingMlStore(const QtProtein* protein,
                                  Conformation* conformation,
                                  QString modelPath,
-                                 QString manifestPath,
+                                 QString runtimeManifestPath,
+                                 QString extractionManifestPath,
                                  QString helperPath,
                                  QString device,
                                  QString fallbackHelperPath,
-                                 QString modelId,
                                  QObject* parent = nullptr);
     ~ExperimentalShieldingMlStore() override;
 
@@ -48,7 +50,7 @@ public:
 
     bool isReady() const { return ready_; }
     QString errorReason() const { return errorReason_; }
-    QString modelId() const { return modelId_; }
+    QString modelId() const { return contract_.modelId; }
     QString device() const { return device_; }
     bool usingFallback() const { return fallbackAttempted_; }
     bool isRunning() const;
@@ -65,27 +67,87 @@ signals:
     void runtimeChanged();
 
 private:
-    struct FeatureSpec {
+    enum class FeatureAxis : std::uint8_t {
+        Atom,
+        Residue,
+    };
+
+    enum class FeatureKind : std::uint8_t {
+        Scalar,
+        L1,
+        L2,
+    };
+
+    enum class FeatureLayout : std::uint8_t {
+        Scalar,
+        ScalarColumns,
+        Vector,
+        T2,
+        Full9T0,
+        Full9T2,
+        RingT0,
+        RingT1,
+        RingT2,
+    };
+
+    enum class FeatureValidity : std::uint8_t {
+        Required,
+        ExternalMask,
+    };
+
+    enum class FeatureScale : std::uint8_t {
+        None,
+        ManifestBsIntensity,
+    };
+
+    struct FeatureSource {
+        QString fileName;
         QString stem;
         io::FieldKind field = io::FieldKind::Count;
-        int channels = 0;
+    };
+
+    struct FeatureSpec {
+        QString key;
+        FeatureAxis axis = FeatureAxis::Atom;
+        FeatureKind kind = FeatureKind::Scalar;
+        FeatureLayout layout = FeatureLayout::Scalar;
+        FeatureValidity validity = FeatureValidity::Required;
+        FeatureScale scale = FeatureScale::None;
+        bool center = false;
+        bool emitMask = false;
+        QVector<int> columns;
+        QVector<int> maskColumns;
+        QVector<int> emitMaskColumns;
+        QVector<FeatureSource> sources;
+        QString maskFileName;
+        QString maskStem;
+        std::optional<io::FieldKind> maskField;
     };
 
     struct Contract {
+        QString modelId;
         double radius = 0.0;
         int maxNeighbors = 0;
         int radialDim = 0;
         int expectedL1Channels = 0;
         int expectedL2Channels = 0;
         int expectedScalarChannels = 0;
-        QVector<QString> labelKeys;
+        int expectedApplicabilityChannels = 0;
+        QStringList expectedL1Names;
+        QStringList expectedL2Names;
+        QStringList expectedScalarNames;
+        QStringList expectedApplicabilityNames;
+        QStringList labelKeys;
         QHash<QString, QHash<QString, std::int64_t>> labelVocabs;
-        QVector<FeatureSpec> l1;
-        QVector<FeatureSpec> l2;
-        QVector<FeatureSpec> scalars;
+        QVector<FeatureSpec> features;
+        QStringList ringTypeOrder;
+        QVector<int> ringActive;
+        QVector<double> ringIntensity;
     };
 
-    bool loadContract(const QString& manifestPath, const QString& modelId);
+    bool loadContract(const QString& manifestPath);
+    bool validateExtractionManifest(const QString& extractionManifestPath);
+    bool validateInitialFrameInputs();
     bool buildInput(std::size_t frame,
                     const QtConformationSnapshot& snapshot,
                     const QString& inputDir,
@@ -100,11 +162,11 @@ private:
     const QtProtein* protein_ = nullptr;
     QPointer<Conformation> conformation_;
     QString modelPath_;
-    QString manifestPath_;
+    QString runtimeManifestPath_;
+    QString extractionManifestPath_;
     QString helperPath_;
     QString device_;
     QString fallbackHelperPath_;
-    QString modelId_;
     Contract contract_;
     bool ready_ = false;
     QString errorReason_;
@@ -112,7 +174,7 @@ private:
     QProcess* process_ = nullptr;
     QTemporaryDir workRoot_;
     std::optional<std::size_t> activeFrame_;
-    std::optional<std::size_t> pendingFrame_;
+    std::deque<std::size_t> pendingFrames_;
     QString activeDir_;
     QString activeOutput_;
 

@@ -6,9 +6,9 @@
 // animation/time-series; THIS sparse, full-fidelity snapshot is loaded
 // on demand when the user parks on a sampled frame, joined to the H5 by
 // frame index. Identity and topology stay on QtProtein (shared, loaded
-// once) — the snapshot holds only the per-frame *calculator* groups,
-// exactly the ~60-80 NPYs in per_frame_npys/frame_NNNNNN/ (the same
-// ConformationResult::WriteAllFeatures payload as extraction modes 1-4).
+// once) — the snapshot holds the current frame's Reader-facing calculator
+// groups and bundled-model inputs. Producer indices, topology sidecars, and
+// raw restart/coefficient storage stay with their proper owners.
 //
 // Storage is the no-strings load boundary's downstream side: a dense
 // per-FieldKind array of raw columns, filled by FrameNpyLoader (task #4)
@@ -43,15 +43,15 @@ struct NpyColumn {
     int cols = 0;
     std::vector<double> data;  // size == rows * cols, row-major
 
-    const double* row(std::size_t r) const {
-        return data.data() + r * static_cast<std::size_t>(cols);
-    }
+    const double* row(std::size_t r) const { return data.data() + r * static_cast<std::size_t>(cols); }
 };
 
 class QtConformationSnapshot {
 public:
     QtConformationSnapshot(const QtProtein* protein, std::size_t frameIndex, double timePs)
-        : protein_(protein), frameIndex_(frameIndex), timePs_(timePs) {}
+        : protein_(protein)
+        , frameIndex_(frameIndex)
+        , timePs_(timePs) {}
 
     const QtProtein* protein() const { return protein_; }
     std::size_t frameIndex() const { return frameIndex_; }  // original XTC index (frame_NNNNNN)
@@ -60,12 +60,8 @@ public:
     // Boundary store — indexed by FieldKind ordinal. Filled by the loader;
     // read by the typed group views.
     bool has(io::FieldKind k) const { return column(k).present; }
-    const NpyColumn& column(io::FieldKind k) const {
-        return columns_[static_cast<std::size_t>(k)];
-    }
-    NpyColumn& mutableColumn(io::FieldKind k) {
-        return columns_[static_cast<std::size_t>(k)];
-    }
+    const NpyColumn& column(io::FieldKind k) const { return columns_[static_cast<std::size_t>(k)]; }
+    NpyColumn& mutableColumn(io::FieldKind k) { return columns_[static_cast<std::size_t>(k)]; }
 
     // Typed group views are constructed directly on a snapshot, e.g.
     //   QtBiotSavartGroup bs(snapshot);  bs.shielding(atomIdx);

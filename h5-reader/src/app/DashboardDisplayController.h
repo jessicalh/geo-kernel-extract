@@ -153,6 +153,9 @@ public slots:
 
 signals:
     void stripTracksChanged();
+    // The active dashboard panel can select one scene tensor. ReaderMainWindow
+    // owns the shared tensor actor and consumes this binding.
+    void sceneTensorBindingChanged(const QString& descriptorId, qint64 atom);
     // Emitted ONLY from rebuild() (NOT from setFrame() ticks). Owned
     // panels are static-display artifacts that don't change on time
     // advance; emitting from every tick would drain ownedPanels_ via
@@ -269,6 +272,8 @@ private:
     // honestly report iRED / Reorient / etc. as "M panel signal(s)"
     // when no temporal strips are active.
     int activeOwnedPanelCount_ = 0;
+    QString sceneTensorDescriptorId_;
+    qint64 sceneTensorAtom_ = -1;
 };
 
 }  // namespace h5reader::app

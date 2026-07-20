@@ -72,8 +72,6 @@ void MetricTaxonomyTests::crossFamilyOverrides() {
     QVERIFY(cls("npy:w_sc", "water_shell_counts", "water_field", SignalSourceKind::FrameNpySnapshot).group == MetricGroup::Solvation);
     // ring geometry sits in the identity family but is ring-current.
     QVERIFY(cls("npy:rc", "ring_contributions", "identity", SignalSourceKind::FrameNpySnapshot).group == MetricGroup::RingCurrent);
-    // the MOPAC/FF reconciliation is a QC scalar, not a charge.
-    QVERIFY(cls("h5:rec", "mopac_vs_ff14sb_reconciliation", "mopac_core", SignalSourceKind::DenseH5Trajectory).group == MetricGroup::Scaffold);
     QVERIFY(cls("npy:mq", "mopac_charges", "mopac_core", SignalSourceKind::FrameNpySnapshot).group == MetricGroup::Charges);
     QVERIFY(cls("npy:d", "delta_shielding", "mutation_delta", SignalSourceKind::FrameNpySnapshot).group == MetricGroup::Mutation);
 }
@@ -82,7 +80,6 @@ void MetricTaxonomyTests::referenceAndForms() {
     const auto o = cls("orca_dft:total", "orca_total", "orca", SignalSourceKind::OrcaDftFrame);
     QVERIFY(o.group == MetricGroup::DftReference);
     QVERIFY(o.form == MetricForm::Reference);
-    QVERIFY(cls("npy:tp", "tripeptide_bb_shielding", "tripeptide", SignalSourceKind::FrameNpySnapshot).group == MetricGroup::DftReference);
     QVERIFY(cls("topology:res", "topology.residues", "topology", SignalSourceKind::Topology).form == MetricForm::Spine);
     QVERIFY(cls("geo:d", "geometry.distance", "geometry", SignalSourceKind::DerivedGeometry).form == MetricForm::Derived);
 }

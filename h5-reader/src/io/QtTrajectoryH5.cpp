@@ -396,49 +396,6 @@ void ReadT2TimeSeries(HighFive::File& file,
     }
 }
 
-void ReadTagTimeSeries(HighFive::File& file,
-                       const char* group_path,
-                       const char* dataset_name,
-                       std::size_t n_atoms,
-                       std::unique_ptr<QtTagTimeSeries>& out) {
-    try {
-    if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
-        return;
-    }
-    auto grp = file.getGroup(group_path);
-    if (!grp.exist(dataset_name)) {
-        WarnShapeMismatch(group_path, QStringLiteral("missing dataset %1").arg(QString::fromUtf8(dataset_name)));
-        return;
-    }
-    auto ds = grp.getDataSet(dataset_name);
-    const auto dims = ds.getDimensions();
-    if (dims.size() != 2 || dims[0] != n_atoms) {
-        WarnShapeMismatch(group_path,
-                          QStringLiteral("%1 shape != [n_atoms=%2, T]").arg(QString::fromUtf8(dataset_name)).arg(n_atoms));
-        return;
-    }
-    auto buf = std::make_unique<QtTagTimeSeries>();
-    buf->n_atoms = n_atoms;
-    buf->n_frames = dims[1];
-    buf->dataset_name = QString::fromUtf8(dataset_name);
-    ReadFlat<uint8_t>(ds, buf->tag, n_atoms * buf->n_frames);
-    TryReadFrameMeta(grp, buf->meta, buf->n_frames, group_path);
-    TryReadAttributeQ(grp, "units", buf->units);
-    TryReadAttributeQ(grp, "result_name", buf->result_name);
-    out = std::move(buf);
-    } catch (const HighFive::Exception& e) {
-        LogReadException(group_path, "HighFive", e);
-        out.reset();
-    } catch (const std::exception& e) {
-        LogReadException(group_path, "std::exception", e);
-        out.reset();
-    } catch (...) {
-        LogReadException(group_path, "unknown");
-        out.reset();
-    }
-}
-
 void ReadEmbeddingTimeSeries(HighFive::File& file,
                              const char* group_path,
                              const char* dataset_name,
@@ -2341,31 +2298,17 @@ QtTrajectoryH5::QtTrajectoryH5(const QString& h5_path) {
     ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/bs_shielding_time_series", n_atoms_, bs_shielding_);
     ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/hm_shielding_time_series", n_atoms_, hm_shielding_);
     ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/mc_shielding_time_series", n_atoms_, mc_shielding_);
-    // mopac_coulomb_shielding is T2-only (no T0 / T1); read as QtT2TimeSeries.
+    // The canonical MOPAC Coulomb output is an electric-field gradient T2,
+    // not a shielding tensor.
     ReadT2TimeSeries(const_cast<File&>(file),
-                     "/trajectory/mopac_coulomb_shielding_time_series",
+                     "/trajectory/mopac_coulomb_efg_time_series",
                      "t2",
                      n_atoms_,
-                     mopac_coulomb_shielding_);
+                     mopac_coulomb_efg_);
     ReadShieldingTimeSeries(const_cast<File&>(file),
                             "/trajectory/mopac_mc_shielding_time_series",
                             n_atoms_,
                             mopac_mc_shielding_);
-    // mopac_vs_ff14sb is a single scalar per atom per frame (cos similarity
-    // of MOPAC vs FF14SB EFG T2 vectors).
-    ReadScalarTimeSeries(const_cast<File&>(file),
-                         "/trajectory/mopac_vs_ff14sb_reconciliation",
-                         "cos_t2",
-                         n_atoms_,
-                         mopac_vs_ff14sb_reconciliation_);
-    ReadShieldingTimeSeries(const_cast<File&>(file),
-                            "/trajectory/tripeptide_bb_shielding_time_series",
-                            n_atoms_,
-                            tripeptide_bb_shielding_);
-    ReadShieldingTimeSeries(const_cast<File&>(file),
-                            "/trajectory/tripeptide_neighbor_shielding_time_series",
-                            n_atoms_,
-                            tripeptide_neighbor_shielding_);
     ReadShieldingTimeSeries(const_cast<File&>(file),
                             "/trajectory/larsen_hbond_1pHB_shielding_time_series",
                             n_atoms_,
@@ -2422,29 +2365,9 @@ QtTrajectoryH5::QtTrajectoryH5(const QString& h5_path) {
 
     // ── Vec3 TS family ───────────────────────────────────────────
     ReadVec3TimeSeries(const_cast<File&>(file), "/trajectory/apbs_efield_time_series", "xyz", n_atoms_, apbs_efield_);
-    ReadVec3TimeSeries(const_cast<File&>(file),
-                       "/trajectory/tripeptide_bb_residual_vec_time_series",
-                       "xyz",
-                       n_atoms_,
-                       tripeptide_bb_residual_vec_);
-    ReadVec3TimeSeries(const_cast<File&>(file),
-                       "/trajectory/tripeptide_neighbor_residual_vec_prev_time_series",
-                       "xyz",
-                       n_atoms_,
-                       tripeptide_neighbor_residual_vec_prev_);
-    ReadVec3TimeSeries(const_cast<File&>(file),
-                       "/trajectory/tripeptide_neighbor_residual_vec_next_time_series",
-                       "xyz",
-                       n_atoms_,
-                       tripeptide_neighbor_residual_vec_next_);
 
     // ── Special TS shapes ────────────────────────────────────────
     ReadT2TimeSeries(const_cast<File&>(file), "/trajectory/apbs_efg_time_series", "t2", n_atoms_, apbs_efg_);
-    ReadTagTimeSeries(const_cast<File&>(file),
-                      "/trajectory/tripeptide_bb_method_tag_time_series",
-                      "method_tag",
-                      n_atoms_,
-                      tripeptide_bb_method_tag_);
     ReadEmbeddingTimeSeries(const_cast<File&>(file),
                             "/trajectory/aimnet2_embedding_time_series",
                             "embedding",

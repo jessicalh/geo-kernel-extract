@@ -82,15 +82,8 @@ public:
     const h5reader::model::QtShieldingTimeSeries* bsShielding() const { return bs_shielding_.get(); }
     const h5reader::model::QtShieldingTimeSeries* hmShielding() const { return hm_shielding_.get(); }
     const h5reader::model::QtShieldingTimeSeries* mcShielding() const { return mc_shielding_.get(); }
-    const h5reader::model::QtT2TimeSeries* mopacCoulombShielding() const { return mopac_coulomb_shielding_.get(); }
+    const h5reader::model::QtT2TimeSeries* mopacCoulombEfg() const { return mopac_coulomb_efg_.get(); }
     const h5reader::model::QtShieldingTimeSeries* mopacMcShielding() const { return mopac_mc_shielding_.get(); }
-    const h5reader::model::QtScalarTimeSeries* mopacVsFf14sbReconciliation() const {
-        return mopac_vs_ff14sb_reconciliation_.get();
-    }
-    const h5reader::model::QtShieldingTimeSeries* tripeptideBbShielding() const { return tripeptide_bb_shielding_.get(); }
-    const h5reader::model::QtShieldingTimeSeries* tripeptideNeighborShielding() const {
-        return tripeptide_neighbor_shielding_.get();
-    }
     const h5reader::model::QtShieldingTimeSeries* larsenHBond1pHBShielding() const { return larsen_1pHB_.get(); }
     const h5reader::model::QtShieldingTimeSeries* larsenHBond1pHaBShielding() const { return larsen_1pHaB_.get(); }
     const h5reader::model::QtShieldingTimeSeries* larsenHBond2pHBShielding() const { return larsen_2pHB_.get(); }
@@ -105,17 +98,9 @@ public:
 
     // ── Vec3 time-series (N, T, 3) ────────────────────────────────
     const h5reader::model::QtVec3TimeSeries* apbsEfield() const { return apbs_efield_.get(); }
-    const h5reader::model::QtVec3TimeSeries* tripeptideBbResidualVec() const { return tripeptide_bb_residual_vec_.get(); }
-    const h5reader::model::QtVec3TimeSeries* tripeptideNeighborResidualVecPrev() const {
-        return tripeptide_neighbor_residual_vec_prev_.get();
-    }
-    const h5reader::model::QtVec3TimeSeries* tripeptideNeighborResidualVecNext() const {
-        return tripeptide_neighbor_residual_vec_next_.get();
-    }
 
     // ── Special shapes ────────────────────────────────────────────
     const h5reader::model::QtT2TimeSeries* apbsEfg() const { return apbs_efg_.get(); }
-    const h5reader::model::QtTagTimeSeries* tripeptideBbMethodTag() const { return tripeptide_bb_method_tag_.get(); }
     const h5reader::model::QtEmbeddingTimeSeries* aimnet2Embedding() const { return aimnet2_embedding_.get(); }
     const h5reader::model::QtAimnet2ChargeResponseGradientTimeSeries* aimnet2ChargeResponseGradient() const {
         return aimnet2_crg_.get();
@@ -212,11 +197,8 @@ private:
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> bs_shielding_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> hm_shielding_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> mc_shielding_;
-    std::unique_ptr<h5reader::model::QtT2TimeSeries> mopac_coulomb_shielding_;
+    std::unique_ptr<h5reader::model::QtT2TimeSeries> mopac_coulomb_efg_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> mopac_mc_shielding_;
-    std::unique_ptr<h5reader::model::QtScalarTimeSeries> mopac_vs_ff14sb_reconciliation_;
-    std::unique_ptr<h5reader::model::QtShieldingTimeSeries> tripeptide_bb_shielding_;
-    std::unique_ptr<h5reader::model::QtShieldingTimeSeries> tripeptide_neighbor_shielding_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> larsen_1pHB_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> larsen_1pHaB_;
     std::unique_ptr<h5reader::model::QtShieldingTimeSeries> larsen_2pHB_;
@@ -235,13 +217,9 @@ private:
 
     // Vec3 TS family
     std::unique_ptr<h5reader::model::QtVec3TimeSeries> apbs_efield_;
-    std::unique_ptr<h5reader::model::QtVec3TimeSeries> tripeptide_bb_residual_vec_;
-    std::unique_ptr<h5reader::model::QtVec3TimeSeries> tripeptide_neighbor_residual_vec_prev_;
-    std::unique_ptr<h5reader::model::QtVec3TimeSeries> tripeptide_neighbor_residual_vec_next_;
 
     // Special TS shapes
     std::unique_ptr<h5reader::model::QtT2TimeSeries> apbs_efg_;
-    std::unique_ptr<h5reader::model::QtTagTimeSeries> tripeptide_bb_method_tag_;
     std::unique_ptr<h5reader::model::QtEmbeddingTimeSeries> aimnet2_embedding_;
     std::unique_ptr<h5reader::model::QtAimnet2ChargeResponseGradientTimeSeries> aimnet2_crg_;
 

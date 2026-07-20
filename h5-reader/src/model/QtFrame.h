@@ -9,8 +9,7 @@
 //
 // The implementation reads from QtTrajectoryH5 typed buffers. Consumers wanting
 // explicit "absent vs zero" semantics should consult
-// TrajectoryConformation::h5()->xxx() pointer-or-null directly, or use
-// QtFrameAtomView's typed-optional accessors.
+// TrajectoryConformation::h5()->xxx() pointer-or-null directly.
 
 #pragma once
 

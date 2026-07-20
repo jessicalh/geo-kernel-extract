@@ -31,10 +31,10 @@ Behaviours this test deliberately treats as EXPECTED, not failures (each was
 confirmed against the running app, not assumed):
   - Multi-value-as-one-track: vector3/EFG/spherical/tensor-component metrics
     collapse to ONE scalar per track (a magnitude/invariant trend); the full
-    tensor lives only in the focus-driven CSA glyph. Flagged, not failed.
-  - static.tensor is a no-op in the dashboard for ALL descriptors that offer it
-    (the scene-glyph trigger is deferred); only the SOLE-mode case
-    (reorient_orientation_tensor) yields no display at all.
+    tensor lives in the shared tensor glyph. Flagged, not failed.
+  - static.tensor remains a no-op for older descriptors whose scene binding is
+    deferred. Experimental Shielding ML is the explicit exception: its F003 T2
+    output drives the shared tensor glyph and is classified as a scene display.
   - Unavailable-in-this-run descriptors are refused with 409 (correct).
   - embedding + the 5 topology tables are non-displayable by policy.
 
@@ -59,10 +59,9 @@ CLEAN = {"PASS", "PASS_FLAG_MULTIVALUE", "ABSENT_REFUSED", "UNAVAILABLE_REFUSED"
 
 # Genuine display debt on the default 1P9J fixture. id -> expected verdict.
 #   DEFERRED_GLYPH: the only metric with no dashboard path at all -- its sole
-#     mode is static.tensor, whose scene-glyph trigger is deferred
-#     (DashboardDisplayController ~1769-1787). Tensors are shown via the
-#     focus-driven CSA glyph; wiring a dashboard-driven scene glyph is the
-#     deferred A1/A3 renderer work.
+#     mode is static.tensor, whose scene-glyph trigger remains deferred. F003
+#     is deliberately not included: ml:experimental_shielding_t2 has a tested
+#     dashboard-selected binding to the shared tensor glyph.
 #
 # (The two empty welfords -- water_field / aimnet2_charge_response_gradient --
 # that used to be EMPTY_AVAILABLE are gone from here: the whole rollup-moment
@@ -180,11 +179,19 @@ def _probe_add(client, d: dict, mode: str, idx: int, frame: int) -> dict:
     res = {"ok": True, "code": 200, "refs": refs, "tracks": len(tracks),
            "vlen": vlen, "nonNull": max_non, "span": metric_span, "varies": any_varies,
            "panels": len(panels), "panelKind": "", "panelPts": 0,
-           "panelFin": 0, "panelNan": 0, "msg": ""}
+           "panelFin": 0, "panelNan": 0, "sceneTensorActive": False,
+           "sceneTensorDescriptor": "", "msg": ""}
     if panels:
         p = panels[0]
         res.update(panelKind=p.get("kind", ""), panelPts=p.get("point_count", 0),
                    panelFin=p.get("finite_count", 0), panelNan=p.get("nan_count", 0))
+    if mode == "static.tensor":
+        state = client.get("/ui/state").json()
+        tensor = state.get("experimentalShieldingMl", {}).get("tensorDisplay", {})
+        res.update(
+            sceneTensorActive=bool(tensor.get("active")),
+            sceneTensorDescriptor=tensor.get("descriptorId") or "",
+        )
     if rid:
         client.post("/dashboard/metric/remove", json={"id": rid})
     return res
@@ -229,11 +236,29 @@ def _classify(client, d: dict, displayable: bool, frame: int) -> dict:
             rec.update(verdict="ABSENT_UNEXPECTED", detail=f"add code={r.get('code')} {r.get('msg','')}")
     elif only_tensor:
         r = _probe_add(client, d, "static.tensor", 0, frame)
-        rec["path"] = "deferred_glyph"
-        if r["ok"] and r["panels"] == 0 and r["tracks"] == 0:
+        if d["id"] == "ml:experimental_shielding_t2":
+            rec["path"] = "scene_tensor"
+            if (r["ok"] and r["sceneTensorActive"]
+                    and r["sceneTensorDescriptor"] == d["id"]):
+                rec.update(
+                    verdict="PASS",
+                    shape="scene",
+                    detail="static.tensor bound to the shared scene glyph",
+                )
+            else:
+                rec.update(
+                    verdict="UNEXPECTED_TENSOR",
+                    detail=(
+                        f"active={r.get('sceneTensorActive')} "
+                        f"descriptor={r.get('sceneTensorDescriptor')}"
+                    ),
+                )
+        elif r["ok"] and r["panels"] == 0 and r["tracks"] == 0:
+            rec["path"] = "deferred_glyph"
             rec.update(verdict="DEFERRED_GLYPH",
                        detail=f"static.tensor refs={r['refs']} -> no dashboard element (scene-glyph trigger deferred)")
         else:
+            rec["path"] = "deferred_glyph"
             rec.update(verdict="UNEXPECTED_TENSOR", detail=f"tracks={r['tracks']} panels={r['panels']}")
     elif d.get("axis") == "atom tuple":
         r = _probe_add(client, d, strip_mode, 0, frame)

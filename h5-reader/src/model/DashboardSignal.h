@@ -133,6 +133,8 @@ struct ChannelDescriptor {
     SignalValueShape valueShape = SignalValueShape::Scalar;
     UnitSpec sourceUnits;
     UnitSpec defaultDisplayUnits;
+    int firstSourceColumn = 0;
+    int sourceColumnCount = 0;  // 0 means the complete row from firstSourceColumn.
 };
 
 struct SignalDescriptor {

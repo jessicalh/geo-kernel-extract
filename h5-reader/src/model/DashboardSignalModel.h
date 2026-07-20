@@ -88,6 +88,8 @@ public:
     bool isVisibleAvailable(int row) const;
 
     static ModeRenderability ModeRenderabilityFor(const QString& mode);
+    static ModeRenderability ModeRenderabilityFor(const DashboardSignal& signal,
+                                                   const QString& mode);
     QVector<ModeRenderability> modeRenderability(int row) const;
     int renderableModeCount(int row) const;
 

@@ -76,7 +76,10 @@ def test_forward_sum_primaries_carry_provenance(rest):
 
 
 def test_efield_efg_promoted_to_primary(rest):
-    rows = _tree_for_atom(rest, 16)
+    # The July contract defines E_parallel only for a parent-to-H bond axis.
+    # Atom 19 is the backbone amide H of VAL 2; atom 16 is a carbon and must
+    # correctly carry NaN for this field.
+    rows = _tree_for_atom(rest, 19)
     assert "Electric field & EFG" in rows, "promoted E-field/EFG section missing"
     epar = rows.get("signed E_parallel")
     assert epar is not None, "signed E_parallel primary missing"
