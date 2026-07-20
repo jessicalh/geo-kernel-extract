@@ -134,11 +134,13 @@ private:
     // Negative cache only: no parsed data is retained for these frames.
     std::unordered_set<std::size_t> resolvedAbsent_;
 
-    // Background live-glyph requests. Threads are joined in the destructor
-    // before the protein/topology they read can be released by ReaderMainWindow.
+    // Background live-glyph request. There is deliberately one worker: a
+    // later request is coalesced in asyncPendingOriginal_, and the completed
+    // worker is joined before its handle is reused. This keeps long review
+    // sessions from retaining one native thread handle per visited DFT frame.
     std::unordered_set<std::size_t> asyncInFlight_;
     std::optional<std::size_t> asyncPendingOriginal_;
-    std::vector<std::thread> asyncThreads_;
+    std::thread asyncThread_;
 };
 
 }  // namespace h5reader::model

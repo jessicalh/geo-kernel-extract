@@ -51,9 +51,7 @@ struct QtTimeSeriesFrameMeta {
 
 // ──────────────────────────────────────────────────────────────────
 // QtShieldingTimeSeries — (N, T, 9) tensor TS (T0+T1+T2 spherical).
-// Used by ~13 shielding TRs (bs/hm/mc/piquad/ringchi/disp/hbond +
-// mopac_coulomb/mopac_mc/mopac_vs_ff14sb + tripeptide_bb/neighbor +
-// 4× larsen_hbond + water_field).
+// Used by BS, HM, McConnell, MOPAC McConnell, and four Larsen H-bond terms.
 // ──────────────────────────────────────────────────────────────────
 
 struct QtShieldingTimeSeries {
@@ -120,8 +118,7 @@ struct QtScalarTimeSeries {
 
 // ──────────────────────────────────────────────────────────────────
 // QtVec3TimeSeries — (N, T, 3) per-atom Cartesian Vec3 TS.
-// Used by apbs_efield, tripeptide_*_residual_vec_*,
-// aimnet2_charge_response_gradient (vec component).
+// Used by APBS E-field and the AIMNet2 charge-response gradient vector.
 // ──────────────────────────────────────────────────────────────────
 
 struct QtVec3TimeSeries {
@@ -174,30 +171,6 @@ struct QtT2TimeSeries {
     }
 
     bool sourceAttachedAt(std::size_t t) const { return meta.sourceAttachedAt(t); }
-};
-
-
-// ──────────────────────────────────────────────────────────────────
-// QtTagTimeSeries — (N, T) per-atom uint8 tag.
-// Used by tripeptide_bb_method_tag (encoding method-source per frame).
-// ──────────────────────────────────────────────────────────────────
-
-struct QtTagTimeSeries {
-    std::size_t n_atoms = 0;
-    std::size_t n_frames = 0;
-
-    std::vector<uint8_t> tag;  // (N*T,) row-major
-    QtTimeSeriesFrameMeta meta;
-
-    QString units;  // typically "tag"
-    QString result_name;
-    QString dataset_name;
-
-    uint8_t at(std::size_t atomIdx, std::size_t t) const {
-        if (atomIdx >= n_atoms || t >= n_frames)
-            return 0;
-        return tag[atomIdx * n_frames + t];
-    }
 };
 
 

@@ -8,11 +8,11 @@
 //
 // Per NPY it resolves the filename stem -> typed FieldKind exactly once
 // (FindFieldByStem, the no-strings boundary), reads BOTH shape and dtype from
-// the NPY header, and widens every dtype to double into the snapshot's
-// per-FieldKind NpyColumn store. The NPY header is the truth: column count
-// comes from the array shape (the catalog's `cols` is a cross-check that drifts
-// — e.g. gromacs_energy is 43 not the catalog's 42), and a 1-D array is shaped
-// by its NativeAxis (Atom/Residue/Ring -> N x 1; Protein -> 1 x K).
+// the NPY header, and widens fields selected by FrameFieldPolicy into the
+// snapshot's per-FieldKind NpyColumn store. The NPY header is the truth:
+// column count comes from the array shape (the catalog's `cols` is a
+// cross-check), and a 1-D array is shaped by its NativeAxis
+// (Atom/Residue/Ring -> N x 1; Protein -> 1 x K).
 //
 // "Absent, not faked": a calculator NPY that is missing simply leaves its
 // FieldKind column absent (a group view returns nullopt). A malformed NPY logs
@@ -40,10 +40,7 @@ public:
     // (original XTC index + time; 0 for a single pose). Returns null on a
     // directory-level failure; a partial snapshot otherwise.
     static std::shared_ptr<h5reader::model::QtConformationSnapshot>
-    LoadSnapshotDir(const QString& dir,
-                    const h5reader::model::QtProtein* protein,
-                    std::size_t frameIndex,
-                    double timePs);
+    LoadSnapshotDir(const QString& dir, const h5reader::model::QtProtein* protein, std::size_t frameIndex, double timePs);
 };
 
 }  // namespace h5reader::io

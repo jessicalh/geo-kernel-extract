@@ -68,8 +68,8 @@ void FieldAvailabilityTests::experimentalShieldingMlAvailabilityIsExplicit() {
     QVERIFY(!TrajectoryFieldAvailability::isVisibleState(off.state));
 
     const auto on = TrajectoryFieldAvailability::classifyExperimentalShieldingMl(true);
-    QVERIFY(on.state == State::NoFramePayload);
-    QVERIFY(!TrajectoryFieldAvailability::isVisibleState(on.state));
+    QVERIFY(on.state == State::Available);
+    QVERIFY(TrajectoryFieldAvailability::isVisibleState(on.state));
 }
 
 void FieldAvailabilityTests::topologyLiveWhenTableNonEmpty() {

@@ -13,6 +13,7 @@
 #include "../model/DashboardSignalModel.h"
 #include "../model/DisplayModeCapability.h"
 #include "../model/DftShieldingStore.h"
+#include "../model/ExperimentalShieldingMlStore.h"
 #include "../model/QtProtein.h"
 #include "../model/QtBondVectorBuffers.h"
 #include "../model/QtPerAtomChannelBuffers.h"
@@ -298,33 +299,53 @@ std::optional<double> sampleNpyValue(const model::NpyColumn& column,
         return std::nullopt;
 
     const double* row = column.row(rowIndex);
+    const int firstColumn = channel.firstSourceColumn;
+    if (firstColumn < 0 || firstColumn >= column.cols)
+        return std::nullopt;
+
+    const int availableColumns = column.cols - firstColumn;
+    const int sourceColumnCount =
+        channel.sourceColumnCount > 0 ? channel.sourceColumnCount : availableColumns;
+    if (sourceColumnCount <= 0 || sourceColumnCount > availableColumns)
+        return std::nullopt;
+
+    auto sourceValue = [&](int relativeColumn) -> std::optional<double> {
+        if (relativeColumn < 0 || relativeColumn >= sourceColumnCount)
+            return std::nullopt;
+        return row[firstColumn + relativeColumn];
+    };
 
     if (component == model::StripComponent::Auto)
         component = componentForVectorSample(channel, QString());
 
     if (component == model::StripComponent::VectorX)
-        return column.cols > 0 ? std::optional<double>(row[0]) : std::nullopt;
+        return sourceValue(0);
     if (component == model::StripComponent::VectorY)
-        return column.cols > 1 ? std::optional<double>(row[1]) : std::nullopt;
+        return sourceValue(1);
     if (component == model::StripComponent::VectorZ)
-        return column.cols > 2 ? std::optional<double>(row[2]) : std::nullopt;
+        return sourceValue(2);
     if (component == model::StripComponent::VectorMagnitude)
-        return magnitude(row, 0, std::min(3, column.cols), column.cols);
+        return magnitude(row, firstColumn, std::min(3, sourceColumnCount), column.cols);
     if (component == model::StripComponent::TensorT0)
-        return column.cols > 0 ? std::optional<double>(row[0]) : std::nullopt;
-    if (component == model::StripComponent::TensorT1)
-        return column.cols >= 4 ? std::optional<double>(magnitude(row, 1, 3, column.cols)) : std::nullopt;
+        return sourceValue(0);
+    if (component == model::StripComponent::TensorT1) {
+        if (sourceColumnCount >= 4)
+            return magnitude(row, firstColumn + 1, 3, column.cols);
+        if (sourceColumnCount == 3)
+            return magnitude(row, firstColumn, 3, column.cols);
+        return std::nullopt;
+    }
     if (component == model::StripComponent::TensorT2) {
-        if (column.cols >= 9)
-            return magnitude(row, 4, 5, column.cols);
-        if (column.cols >= 5)
-            return magnitude(row, 0, 5, column.cols);
+        if (sourceColumnCount >= 9)
+            return magnitude(row, firstColumn + 4, 5, column.cols);
+        if (sourceColumnCount >= 5)
+            return magnitude(row, firstColumn, 5, column.cols);
         return std::nullopt;
     }
     if (component == model::StripComponent::TensorComponent)
-        return std::optional<double>(row[0]);
+        return sourceValue(0);
 
-    return std::optional<double>(row[0]);
+    return sourceValue(0);
 }
 
 std::optional<double> sampleNpyValue(const model::NpyColumn& column,
@@ -451,6 +472,7 @@ struct SamplePlan {
     std::function<model::FrameSignalSample(std::size_t frame)> sample;
     bool needsFrameSnapshot = false;
     bool needsDftFrame = false;
+    bool needsExperimentalMlFrame = false;
 };
 
 SamplePlan pendingPlan() {
@@ -616,14 +638,10 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
             return sampleTensorSeries(h5->hmShielding());
         if (path == QStringLiteral("/trajectory/mc_shielding_time_series"))
             return sampleTensorSeries(h5->mcShielding());
-        if (path == QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series"))
-            return sampleT2Series(h5->mopacCoulombShielding());
+        if (path == QStringLiteral("/trajectory/mopac_coulomb_efg_time_series"))
+            return sampleT2Series(h5->mopacCoulombEfg());
         if (path == QStringLiteral("/trajectory/mopac_mc_shielding_time_series"))
             return sampleTensorSeries(h5->mopacMcShielding());
-        if (path == QStringLiteral("/trajectory/tripeptide_bb_shielding_time_series"))
-            return sampleTensorSeries(h5->tripeptideBbShielding());
-        if (path == QStringLiteral("/trajectory/tripeptide_neighbor_shielding_time_series"))
-            return sampleTensorSeries(h5->tripeptideNeighborShielding());
         if (path == QStringLiteral("/trajectory/larsen_hbond_1pHB_shielding_time_series"))
             return sampleTensorSeries(h5->larsenHBond1pHBShielding());
         if (path == QStringLiteral("/trajectory/larsen_hbond_1pHaB_shielding_time_series"))
@@ -643,19 +661,11 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
             return sampleScalarSeries(h5->larsenHBondWaterTerm());
         if (path == QStringLiteral("/trajectory/bonded_energy_time_series"))
             return sampleScalarSeries(h5->bondedEnergyTotal());
-        if (path == QStringLiteral("/trajectory/mopac_vs_ff14sb_reconciliation"))
-            return sampleScalarSeries(h5->mopacVsFf14sbReconciliation());
 
         if (path == QStringLiteral("/trajectory/apbs_efield_time_series"))
             return sampleVecSeries(h5->apbsEfield());
         if (path == QStringLiteral("/trajectory/apbs_efg_time_series"))
             return sampleT2Series(h5->apbsEfg());
-        if (path == QStringLiteral("/trajectory/tripeptide_bb_residual_vec_time_series"))
-            return sampleVecSeries(h5->tripeptideBbResidualVec());
-        if (path == QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_prev_time_series"))
-            return sampleVecSeries(h5->tripeptideNeighborResidualVecPrev());
-        if (path == QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_next_time_series"))
-            return sampleVecSeries(h5->tripeptideNeighborResidualVecNext());
 
         if (path == QStringLiteral("/trajectory/water_field_time_series")) {
             const model::QtWaterFieldTimeSeries* ts = h5->waterFieldTimeSeries();
@@ -732,20 +742,6 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
             if (!row)
                 return gap(model::GapReason::AnchorUnavailable);
             return finish(sampleVecValue(ts->vecAt(*row, frame), channel, displayModeId));
-        }
-
-        if (path == QStringLiteral("/trajectory/tripeptide_bb_method_tag_time_series")) {
-            const model::QtTagTimeSeries* ts = h5->tripeptideBbMethodTag();
-            if (!ts)
-                return gap(model::GapReason::SourceAbsent);
-            if (frame >= ts->n_frames)
-                return gap(model::GapReason::FrameSourceAbsent);
-            if (sourceMaskOff(ts->meta.source_attached, frame))
-                return gap(model::GapReason::SourceMaskOff);
-            const std::optional<std::size_t> row = rowForDescriptor(ts->n_atoms);
-            if (!row)
-                return gap(model::GapReason::AnchorUnavailable);
-            return finish(static_cast<double>(ts->at(*row, frame)));
         }
 
         if (path == QStringLiteral("/trajectory/dihedral_time_series")) {
@@ -1129,6 +1125,38 @@ SamplePlan dftPlan(const model::SignalDescriptor& descriptor,
     return plan;
 }
 
+SamplePlan experimentalMlPlan(
+    const model::SignalDescriptor& descriptor,
+    const model::ChannelDescriptor& channel,
+    const QString& displayModeId,
+    const model::SignalAnchor& anchor,
+    const model::QtProtein* protein,
+    const QPointer<model::ExperimentalShieldingMlStore>& store) {
+    const std::optional<std::size_t> atom = atomFromAnchor(anchor, protein);
+    if (!atom)
+        return pendingPlan();
+
+    model::ExperimentalShieldingMlScalar scalar =
+        model::ExperimentalShieldingMlScalar::T2Magnitude;
+    if (descriptor.conceptKey.endsWith(QStringLiteral(".iso"))) {
+        scalar = model::ExperimentalShieldingMlScalar::Isotropic;
+    } else if (componentForT2Sample(channel, displayModeId)
+               == model::StripComponent::TensorComponent) {
+        scalar = model::ExperimentalShieldingMlScalar::T2Component;
+    }
+
+    SamplePlan plan;
+    plan.needsExperimentalMlFrame = true;
+    plan.sample = [store, atom = *atom, scalar](std::size_t frame) {
+        if (!store || !store->isReady())
+            return model::FrameSignalSample::Gap(model::GapReason::SourceAbsent);
+        const std::optional<double> value = store->sample(frame, atom, scalar);
+        return value ? finiteSample(*value)
+                     : model::FrameSignalSample::Gap(model::GapReason::Pending);
+    };
+    return plan;
+}
+
 SamplePlan geometryPlan(const model::SignalDescriptor& descriptor,
                         const model::SignalAnchor& anchor,
                         const model::QtProtein* protein,
@@ -1243,10 +1271,11 @@ SamplePlan samplePlanFor(const model::DashboardSignal& signal,
                          const model::ChannelDescriptor& channel,
                          const QString& displayModeId,
                          const model::SignalAnchor& anchor,
-                         const model::QtProtein* protein,
-                         const QPointer<model::Conformation>& conformation,
-                         const QPointer<model::DftShieldingStore>& dftStore,
-                         const QPointer<model::AtomSelection>& selection) {
+                          const model::QtProtein* protein,
+                          const QPointer<model::Conformation>& conformation,
+                          const QPointer<model::DftShieldingStore>& dftStore,
+                          const QPointer<model::ExperimentalShieldingMlStore>& experimentalMlStore,
+                          const QPointer<model::AtomSelection>& selection) {
     (void)signal;
     switch (descriptor.sourceKind) {
     case model::SignalSourceKind::DenseH5Trajectory:
@@ -1262,7 +1291,12 @@ SamplePlan samplePlanFor(const model::DashboardSignal& signal,
     case model::SignalSourceKind::SelectionEvents:
         return selectionEventsPlan(descriptor, conformation, selection);
     case model::SignalSourceKind::ExperimentalShieldingMl:
-        return pendingPlan();
+        return experimentalMlPlan(descriptor,
+                                  channel,
+                                  displayModeId,
+                                  anchor,
+                                  protein,
+                                  experimentalMlStore);
     }
     return pendingPlan();
 }
@@ -1310,7 +1344,7 @@ void DashboardDisplayController::setPanelModel(model::DashboardPanelModel* panel
     panelModel_ = panelModel;
     if (panelModel_) {
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
-                 this, [this](const QUuid&) { refreshPanelVisibility(); });
+                 this, [this](const QUuid&) { rebuild(); });
         // Codex NOW-1 (2026-05-29): displayRefsChanged must trigger a
         // full rebuild() rather than the lightweight
         // refreshPanelVisibility(). DashboardSelectionController adds a
@@ -1353,6 +1387,21 @@ void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
 void DashboardDisplayController::setDftStore(model::DftShieldingStore* store) {
     ASSERT_THREAD(this);
     dftStore_ = store;
+    rebuild();
+}
+
+void DashboardDisplayController::setExperimentalShieldingMlStore(
+    model::ExperimentalShieldingMlStore* store) {
+    ASSERT_THREAD(this);
+    if (experimentalMlStore_)
+        disconnect(experimentalMlStore_, nullptr, this, nullptr);
+    experimentalMlStore_ = store;
+    if (experimentalMlStore_) {
+        ACONNECT(experimentalMlStore_.data(),
+                 &model::ExperimentalShieldingMlStore::frameReady,
+                 this,
+                 &DashboardDisplayController::resampleExperimentalMlFrame);
+    }
     rebuild();
 }
 
@@ -1605,6 +1654,8 @@ void DashboardDisplayController::rebuild() {
 
     QVector<ActiveSeries> next;
     std::vector<std::unique_ptr<AbstractStripPanel>> nextPanels;
+    QString nextSceneTensorDescriptorId;
+    qint64 nextSceneTensorAtom = -1;
     activeStripSignalCount_ = 0;
 
     // L-4 (2026-05-29): auto-compose. Pre-scan for Reorient scalar
@@ -1676,6 +1727,33 @@ void DashboardDisplayController::rebuild() {
                                 activeModel_->availabilityName(row),
                                 activeModel_->availabilityReason(row));
                 continue;
+            }
+
+            // F003 is the first dashboard-selected tensor with a complete
+            // scene renderer. A panel may carry several metrics, but the scene
+            // has one shared tensor actor, so the first enabled tensor binding
+            // in model order wins deterministically.
+            if (nextSceneTensorDescriptorId.isEmpty()
+                && descriptor->id == QStringLiteral("ml:experimental_shielding_t2")
+                && signal.displayModeIds.contains(QStringLiteral("static.tensor"))) {
+                bool visibleInActivePanel = true;
+                if (panelModel_) {
+                    const model::DashboardPanel* activePanel = panelModel_->activePanel();
+                    const model::DashboardDisplayRef ref{
+                        signal.id,
+                        QStringLiteral("static.tensor"),
+                        QStringLiteral("panel")};
+                    visibleInActivePanel =
+                        activePanel && activePanel->displays.contains(ref);
+                }
+                if (visibleInActivePanel) {
+                    const model::SignalAnchor anchor =
+                        resolvedAnchorForSignal(signal, *descriptor);
+                    if (const auto atom = atomFromAnchor(anchor, protein_)) {
+                        nextSceneTensorDescriptorId = descriptor->id;
+                        nextSceneTensorAtom = static_cast<qint64>(*atom);
+                    }
+                }
             }
 
             // Static-display path: build an AbstractStripPanel directly.
@@ -1830,8 +1908,12 @@ void DashboardDisplayController::rebuild() {
     ownedPanels_ = std::move(nextPanels);
     extendToFrame(frame_);
 
-    // (The bond-orientation tensor renders as a focus-driven scene glyph in
-    // ReaderMainWindow, not from here -- see the per-signal loop note above.)
+    if (sceneTensorDescriptorId_ != nextSceneTensorDescriptorId
+        || sceneTensorAtom_ != nextSceneTensorAtom) {
+        sceneTensorDescriptorId_ = nextSceneTensorDescriptorId;
+        sceneTensorAtom_ = nextSceneTensorAtom;
+        emit sceneTensorBindingChanged(sceneTensorDescriptorId_, sceneTensorAtom_);
+    }
 
     updateStatusText();
     const QUuid activePanelId = panelModel_ ? panelModel_->activePanelId() : QUuid{};
@@ -2503,7 +2585,7 @@ void DashboardDisplayController::collectExpectedButEmpty() {
                 record.canonicalState = descriptorStateText;
                 record.storagePathState = storageStateText;
                 expectedButEmpty_.push_back(record);
-                qCWarning(diagnostics::cDash).noquote()
+                qCDebug(diagnostics::cDash).noquote()
                     << QStringLiteral(
                            "event=viz_expected_but_empty descriptor_id=%1 storage_path=%2 visualization_type=%3 canonical_state=%4 storage_path_state=%5")
                            .arg(record.descriptorId,
@@ -2594,10 +2676,12 @@ void DashboardDisplayController::buildGenericTracks(const model::DashboardSignal
                                             protein_,
                                             conformation_,
                                             dftStore_,
+                                            experimentalMlStore_,
                                             selection_);
             active.sample = std::move(plan.sample);
             active.needsFrameSnapshot = plan.needsFrameSnapshot;
             active.needsDftFrame = plan.needsDftFrame;
+            active.needsExperimentalMlFrame = plan.needsExperimentalMlFrame;
             active.hasBinding = bindingHasRevealTarget(reveal);
             active.binding = reveal;
             series.push_back(std::move(active));
@@ -2739,6 +2823,10 @@ void DashboardDisplayController::extendToFrame(int frame) {
     const bool needsDft = std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
         return series.needsDftFrame;
     });
+    const bool needsExperimentalMl =
+        std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
+            return series.needsExperimentalMlFrame;
+        });
 
     const long long startFrame = [&]() {
         long long start = frame;
@@ -2764,6 +2852,8 @@ void DashboardDisplayController::extendToFrame(int frame) {
             conformation_->requestSnapshot(sampleFrame);
         if (needsDft && conformation_ && dftStore_)
             dftStore_->requestFrame(conformation_->originalFrameIndex(sampleFrame));
+        if (needsExperimentalMl && experimentalMlStore_)
+            experimentalMlStore_->requestFrame(sampleFrame);
 
         for (ActiveSeries& series : series_) {
             if (series.buffer.lastFrame() >= f)
@@ -2773,6 +2863,23 @@ void DashboardDisplayController::extendToFrame(int frame) {
             else
                 series.buffer.append(model::FrameSignalSample::Gap(model::GapReason::Pending));
         }
+    }
+}
+
+void DashboardDisplayController::resampleExperimentalMlFrame(std::size_t frame) {
+    ASSERT_THREAD(this);
+    bool changed = false;
+    for (ActiveSeries& series : series_) {
+        if (!series.needsExperimentalMlFrame || frame >= series.buffer.channel.size()
+            || !series.sample) {
+            continue;
+        }
+        series.buffer.replace(frame, series.sample(frame));
+        changed = true;
+    }
+    if (changed) {
+        updateStatusText();
+        emit stripTracksChanged();
     }
 }
 

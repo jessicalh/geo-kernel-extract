@@ -212,6 +212,12 @@ void DashboardStripDock::setDftStore(model::DftShieldingStore* store) {
     controller_->setDftStore(store);
 }
 
+void DashboardStripDock::setExperimentalShieldingMlStore(
+    model::ExperimentalShieldingMlStore* store) {
+    ASSERT_THREAD(this);
+    controller_->setExperimentalShieldingMlStore(store);
+}
+
 void DashboardStripDock::setSceneOverlay(SceneRevealOverlay* overlay) {
     ASSERT_THREAD(this);
     controller_->setSceneOverlay(overlay);

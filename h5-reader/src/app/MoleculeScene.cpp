@@ -95,21 +95,17 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
     // paint into the overlay layer so they remain visible regardless of
     // depth occlusion (the harness needs this for blob analysis).
     //
-    // The mainline viewer uses FXAA + NO depth peeling (proven on the AMD /
-    // llvmpipe demo box). THIS worktree flips depth peeling ON because tensor,
-    // field, and trajectory-envelope overlays need order-independent
-    // transparency. The prereqs are already set below (AlphaBitPlanes=1,
-    // MSAA=0). Isolated to this worktree so the proven demo config is untouched
-    // until measured on the Mesa/Xvfb software-GL path (qt6-cpp 3d-vtk.md §8;
-    // llvmpipe multipass cost).
+    // Tensor, field, and trajectory-envelope surfaces need order-independent
+    // transparency. VTK's single-pass OIT preserves that composition without
+    // the dual-depth-peeling occlusion queries that can stall AMD OpenGL
+    // drivers. The prerequisites are set below (AlphaBitPlanes=1, MSAA=0).
 
     renderer_ = vtkSmartPointer<vtkRenderer>::New();
     renderer_->SetLayer(0);
     renderer_->SetBackground(1.0, 1.0, 1.0);
     renderer_->SetUseFXAA(true);
-    renderer_->SetUseDepthPeeling(1);
-    renderer_->SetMaximumNumberOfPeels(8);
-    renderer_->SetOcclusionRatio(0.0);
+    renderer_->SetUseDepthPeeling(0);
+    renderer_->SetUseOIT(true);
 
     overlayRenderer_ = vtkSmartPointer<vtkRenderer>::New();
     overlayRenderer_->SetLayer(1);
@@ -163,7 +159,7 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
     endEventObserverTag_ = renderWindow_->AddObserver(vtkCommand::EndEvent, endEventCb);
 
     qCInfo(cScene).noquote()
-        << "Renderer initialised: 2 layers (main FXAA + overlay), depth peeling ON (shells worktree),"
+        << "Renderer initialised: 2 layers (main FXAA + single-pass OIT, overlay), depth peeling OFF,"
         << "AlphaBitPlanes=1, MSAA=0, style=QuietTrackballStyle";
 }
 

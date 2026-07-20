@@ -67,6 +67,17 @@ public:
     // timePicoseconds — not dense per-frame data that would belong in the subclass.
     virtual std::size_t originalFrameIndex(std::size_t frame) const { return frame; }
 
+    // Resolve an original trajectory frame identity to the exact row accepted
+    // by atomPosition(), timePicoseconds(), and requestSnapshot(). The base
+    // identity implementation covers a single pose; sampled trajectories
+    // override this with their H5 frame map.
+    virtual std::optional<std::size_t>
+    frameRowForOriginalIndex(std::size_t originalFrame) const {
+        if (originalFrame >= frameCount() || originalFrameIndex(originalFrame) != originalFrame)
+            return std::nullopt;
+        return originalFrame;
+    }
+
     // Per-atom position for `frame`. The ONE position seam both run shapes
     // share — rendering (MoleculeScene) and geometry overlays read this:
     // trajectory → the resident H5; single pose → the snapshot's Pos column.

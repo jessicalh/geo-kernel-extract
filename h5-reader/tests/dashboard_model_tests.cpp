@@ -20,8 +20,11 @@
 #include "model/QtRing.h"
 #include "model/QtTopology.h"
 #include "model/SignalDictionary.h"
+#include "model/TensorGlyphVisualization.h"
 #include "model/TrajectorySignalCatalog.h"
 #include "model/VisualizationRegistry.h"
+#include "io/FrameFieldPolicy.h"
+#include "io/QtFieldCatalog.gen.h"
 
 #include <QObject>
 #include <QSignalSpy>
@@ -32,6 +35,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -89,6 +93,32 @@ DashboardDisplayRef makeRef(const QUuid& signalId,
                                QString::fromLatin1(channel)};
 }
 
+std::optional<SignalAxis> displayAxisFor(h5reader::io::NativeAxis axis) {
+    using h5reader::io::NativeAxis;
+    switch (axis) {
+    case NativeAxis::Atom:
+        return SignalAxis::Atom;
+    case NativeAxis::Residue:
+        return SignalAxis::Residue;
+    case NativeAxis::Bond:
+        return SignalAxis::Bond;
+    case NativeAxis::AromaticRing:
+        return SignalAxis::AromaticRing;
+    case NativeAxis::SaturatedRing:
+        return SignalAxis::SaturatedRing;
+    case NativeAxis::RingContributionPair:
+        return SignalAxis::RingContributionPair;
+    case NativeAxis::Ring:
+        return SignalAxis::Ring;
+    case NativeAxis::RingMembership:
+        return SignalAxis::RingMembership;
+    case NativeAxis::Protein:
+        return SignalAxis::Protein;
+    default:
+        return std::nullopt;
+    }
+}
+
 }  // namespace
 
 class DashboardModelTests : public QObject {
@@ -119,6 +149,7 @@ private slots:
     void testSignalModel_removeEmitsSignalRemoved();
     void testSignalModel_clearEmitsAllRemovedIds();
     void testSignalModel_findSignalById();
+    void testSignalModel_f003TensorHasVisibleSceneSurface();
 
     // ---- DashboardPanelModel emission contracts -------------------------
 
@@ -133,6 +164,11 @@ private slots:
     void testCatalog_descriptorAutoPromotionForKnownPaths();
     void testCatalog_canSampleRequiresStripMode();
     void testCatalog_canSampleFalseForStaticMode();
+    void testCatalog_frameNpyDescriptorsMatchJulyContract();
+    void testCatalog_staleFrameNpyDescriptorsAreAbsent();
+    void testCatalog_denseH5DescriptorsMatchJulyContract();
+    void testCatalog_fullTensorDisplaysRemainAvailable();
+    void testCatalog_ringTypeBlocksUseExplicitColumns();
 
     // ---- Per-TR catalog presence (one row per new TR landing) ----------
 
@@ -152,6 +188,7 @@ private slots:
     // ---- Stage-1 visualization registry -----------------------------------
 
     void testVisualizationRegistry_capabilityTableMirrorsLegacyRows();
+    void testVisualizationRegistry_tensorGlyphIsF003Only();
 };
 
 // ---- anchor variant + axis-matching -------------------------------------
@@ -304,6 +341,36 @@ void DashboardModelTests::testVisualizationRegistry_capabilityTableMirrorsLegacy
     }
 }
 
+void DashboardModelTests::testVisualizationRegistry_tensorGlyphIsF003Only() {
+    const TrajectorySignalCatalog catalog;
+    const SignalDescriptor* f003 =
+        catalog.findDescriptor(QStringLiteral("ml:experimental_shielding_t2"));
+    const SignalDescriptor* reorient =
+        catalog.findDescriptor(QStringLiteral("h5:reorient_orientation_tensor"));
+    const SignalDescriptor* npyTensor =
+        catalog.findDescriptor(QStringLiteral("npy:coulomb_efg_t2"));
+    QVERIFY(f003 != nullptr);
+    QVERIFY(reorient != nullptr);
+    QVERIFY(npyTensor != nullptr);
+
+    TensorGlyphVisualization glyph;
+    QVERIFY(glyph.supports(*f003));
+    QVERIFY(!glyph.supports(*reorient));
+    QVERIFY(!glyph.supports(*npyTensor));
+
+    VisualizationContext context;
+    context.hasSceneOverlay = true;
+    context.tensorGlyphGestureEnabled = true;
+    QVERIFY(glyph.isAvailable(context, *f003));
+    context.tensorGlyphGestureEnabled = false;
+    QVERIFY(!glyph.isAvailable(context, *f003));
+
+    const DisplayModeCapability capability = glyph.capability();
+    QVERIFY(capability.hasVisibleSurface);
+    QVERIFY(!capability.buildsPanelWidget);
+    QVERIFY(capability.emitsPanelRef);
+}
+
 // ---- ring axis normalisation --------------------------------------------
 
 void DashboardModelTests::testRingAxisNormalization_data() {
@@ -401,6 +468,41 @@ void DashboardModelTests::testSignalModel_findSignalById() {
     QCOMPARE(found->label, QStringLiteral("findable"));
 
     QVERIFY(model.signalById(QUuid::createUuid()) == nullptr);
+}
+
+void DashboardModelTests::testSignalModel_f003TensorHasVisibleSceneSurface() {
+    const TrajectorySignalCatalog catalog;
+    const SignalDescriptor* descriptor =
+        catalog.findDescriptor(QStringLiteral("ml:experimental_shielding_t2"));
+    QVERIFY(descriptor != nullptr);
+
+    DashboardSignalModel model;
+    const QUuid id =
+        model.addSignal(*descriptor,
+                        AtomAnchor{16},
+                        QString(),
+                        {QStringLiteral("static.tensor")});
+    QVERIFY(!id.isNull());
+    QCOMPARE(model.rowCount(), 1);
+
+    const QVector<DashboardSignalModel::ModeRenderability> modes =
+        model.modeRenderability(0);
+    QCOMPARE(modes.size(), 1);
+    QCOMPARE(modes.front().mode, QStringLiteral("static.tensor"));
+    QVERIFY(modes.front().hasVisibleSurface);
+    QVERIFY(!modes.front().buildsPanelWidget);
+    QVERIFY(modes.front().emitsPanelRef);
+    QCOMPARE(model.renderableModeCount(0), 1);
+
+    const SignalDescriptor* legacy =
+        catalog.findDescriptor(QStringLiteral("h5:reorient_orientation_tensor"));
+    QVERIFY(legacy != nullptr);
+    model.clear();
+    model.addSignal(*legacy,
+                    BondVectorAnchor{0, 1},
+                    QString(),
+                    {QStringLiteral("static.tensor")});
+    QCOMPARE(model.renderableModeCount(0), 0);
 }
 
 // ---- DashboardPanelModel emission contracts -----------------------------
@@ -536,6 +638,172 @@ void DashboardModelTests::testCatalog_canSampleRequiresStripMode() {
     QVERIFY(catalog.canSample(stripBinding));
 }
 
+void DashboardModelTests::testCatalog_frameNpyDescriptorsMatchJulyContract() {
+    using namespace h5reader::io;
+
+    const TrajectorySignalCatalog catalog;
+    int checked = 0;
+    for (const SignalDescriptor& descriptor : catalog.allDescriptorList()) {
+        if (descriptor.sourceKind != SignalSourceKind::FrameNpySnapshot)
+            continue;
+
+        const QByteArray stem = descriptor.storagePath.toUtf8();
+        const std::optional<FieldKind> field =
+            FindFieldByStem(std::string_view(stem.constData(), static_cast<std::size_t>(stem.size())));
+        QVERIFY2(field.has_value(), qPrintable(descriptor.id));
+        QVERIFY2(ShouldLoadFrameField(*field), qPrintable(descriptor.id));
+        QCOMPARE(descriptor.samplingStatus, SampleStatus::Valid);
+        QCOMPARE(descriptor.samplingGapReason, GapReason::None);
+
+        const FieldSpec& spec = FieldSpecFor(*field);
+        const std::optional<SignalAxis> expectedAxis = displayAxisFor(spec.axis);
+        QVERIFY2(expectedAxis.has_value(), qPrintable(descriptor.id));
+        QCOMPARE(descriptor.nativeAxis, *expectedAxis);
+        QCOMPARE(descriptor.requiredAnchor, *expectedAxis);
+        QVERIFY2(!descriptor.channels.isEmpty(), qPrintable(descriptor.id));
+
+        for (const ChannelDescriptor& channel : descriptor.channels) {
+            QVERIFY2(channel.firstSourceColumn >= 0, qPrintable(descriptor.id));
+            QVERIFY2(channel.sourceColumnCount > 0, qPrintable(descriptor.id));
+            if (spec.cols > 0) {
+                QVERIFY2(channel.firstSourceColumn + channel.sourceColumnCount <= spec.cols,
+                         qPrintable(QStringLiteral("%1:%2 exceeds %3 columns")
+                                        .arg(descriptor.id, channel.id)
+                                        .arg(spec.cols)));
+            }
+        }
+        ++checked;
+    }
+    QVERIFY(checked > 50);
+}
+
+void DashboardModelTests::testCatalog_staleFrameNpyDescriptorsAreAbsent() {
+    const TrajectorySignalCatalog catalog;
+    static constexpr const char* kRemoved[] = {
+        "coulomb_shielding",
+        "mc_shielding",
+        "mopac_coulomb_shielding",
+        "mopac_mc_category_T2",
+        "mopac_mc_scalars",
+        "tripeptide_bb_match_distance",
+        "tripeptide_bb_method_tag",
+        "tripeptide_bb_residual_vec",
+        "tripeptide_bb_shielding",
+        "tripeptide_neighbor_residual_vec_next",
+        "tripeptide_neighbor_residual_vec_prev",
+        "tripeptide_neighbor_shielding",
+        "disp_per_type_T2",
+        "mc_category_T2",
+        "pos",
+        "element",
+        "residue_index",
+        "residue_type",
+        "atoms_category_info",
+        "aimnet2_aim",
+    };
+    for (const char* stem : kRemoved) {
+        const QString id = QStringLiteral("npy:%1").arg(QString::fromLatin1(stem));
+        QVERIFY2(catalog.findDescriptor(id) == nullptr, qPrintable(id));
+    }
+}
+
+void DashboardModelTests::testCatalog_denseH5DescriptorsMatchJulyContract() {
+    const TrajectorySignalCatalog catalog;
+
+    const SignalDescriptor* mopacEfg =
+        catalog.findDescriptor(QStringLiteral("h5:mopac_coulomb_efg_time_series"));
+    QVERIFY(mopacEfg != nullptr);
+    QCOMPARE(mopacEfg->conceptKey, QStringLiteral("mopac_coulomb_efg"));
+    QCOMPARE(mopacEfg->storagePath,
+             QStringLiteral("/trajectory/mopac_coulomb_efg_time_series"));
+    QCOMPARE(mopacEfg->valueShape, SignalValueShape::EfgT2);
+    QCOMPARE(mopacEfg->sourceUnits.dimension, UnitDimension::ElectricFieldGradient);
+
+    static constexpr const char* kRemovedIds[] = {
+        "h5:mopac_coulomb_shielding_time_series",
+        "h5:mopac_vs_ff14sb_reconciliation",
+        "h5:tripeptide_bb_shielding_time_series",
+        "h5:tripeptide_neighbor_shielding_time_series",
+        "h5:tripeptide_bb_residual_vec_time_series",
+        "h5:tripeptide_neighbor_residual_vec_prev_time_series",
+        "h5:tripeptide_neighbor_residual_vec_next_time_series",
+        "h5:tripeptide_bb_method_tag_time_series",
+    };
+    for (const char* id : kRemovedIds)
+        QVERIFY2(catalog.findDescriptor(QString::fromLatin1(id)) == nullptr, id);
+
+    const SignalDescriptor* coherence =
+        catalog.findDescriptor(QStringLiteral("h5:kernel_coherence"));
+    QVERIFY(coherence != nullptr);
+    const QStringList expectedChannels{
+        QStringLiteral("bs_T0"),
+        QStringLiteral("bs_absT2"),
+        QStringLiteral("hm_T0"),
+        QStringLiteral("hm_absT2"),
+        QStringLiteral("mc_T0"),
+        QStringLiteral("mc_absT2"),
+        QStringLiteral("apbs_absT2"),
+    };
+    QCOMPARE(coherence->channels.size(), expectedChannels.size());
+    for (qsizetype index = 0; index < expectedChannels.size(); ++index)
+        QCOMPARE(coherence->channels[index].id, expectedChannels[index]);
+}
+
+void DashboardModelTests::testCatalog_fullTensorDisplaysRemainAvailable() {
+    const TrajectorySignalCatalog catalog;
+    static constexpr const char* kFullTensorIds[] = {
+        "npy:bs_shielding",
+        "npy:hm_shielding",
+        "npy:mopac_mc_shielding",
+        "npy:coulomb_efg",
+        "npy:eeq_coulomb_efg",
+        "npy:mopac_coulomb_efg",
+    };
+    for (const char* id : kFullTensorIds) {
+        const SignalDescriptor* descriptor =
+            catalog.findDescriptor(QString::fromLatin1(id));
+        QVERIFY2(descriptor != nullptr, id);
+        QCOMPARE(descriptor->valueShape, SignalValueShape::SphericalTensor);
+        QVERIFY(descriptor->staticModes.contains(QStringLiteral("static.tensor")));
+        QCOMPARE(descriptor->channels.size(), 4);
+        for (const ChannelDescriptor& channel : descriptor->channels) {
+            QCOMPARE(channel.firstSourceColumn, 0);
+            QCOMPARE(channel.sourceColumnCount, 9);
+        }
+    }
+
+    const SignalDescriptor* t2 =
+        catalog.findDescriptor(QStringLiteral("npy:coulomb_efg_t2"));
+    QVERIFY(t2 != nullptr);
+    QCOMPARE(t2->valueShape, SignalValueShape::EfgT2);
+    QVERIFY(t2->staticModes.contains(QStringLiteral("static.tensor")));
+}
+
+void DashboardModelTests::testCatalog_ringTypeBlocksUseExplicitColumns() {
+    const TrajectorySignalCatalog catalog;
+    const struct ExpectedBlock {
+        const char* id;
+        int width;
+    } blocks[] = {
+        {"npy:bs_per_type_T0", 1},
+        {"npy:bs_per_type_T1", 3},
+        {"npy:bs_per_type_T2", 5},
+        {"npy:hm_per_type_T0", 1},
+        {"npy:hm_per_type_T1", 3},
+        {"npy:hm_per_type_T2", 5},
+    };
+    for (const ExpectedBlock& block : blocks) {
+        const SignalDescriptor* descriptor =
+            catalog.findDescriptor(QString::fromLatin1(block.id));
+        QVERIFY2(descriptor != nullptr, block.id);
+        QCOMPARE(descriptor->channels.size(), 8);
+        for (int index = 0; index < descriptor->channels.size(); ++index) {
+            QCOMPARE(descriptor->channels[index].firstSourceColumn, index * block.width);
+            QCOMPARE(descriptor->channels[index].sourceColumnCount, block.width);
+        }
+    }
+}
+
 void DashboardModelTests::testCatalog_iredS2DescriptorPresent() {
     const TrajectorySignalCatalog catalog;
 
@@ -560,7 +828,7 @@ void DashboardModelTests::testCatalog_kernelDynamicsDescriptorsPresent() {
     QCOMPARE(acf->valueShape, SignalValueShape::CurveOverLag);
     QCOMPARE(acf->storagePath, QStringLiteral("/trajectory/kernel_dynamics"));
     QVERIFY(acf->staticModes.contains(QStringLiteral("static.curve.lag.animated")));
-    QCOMPARE(acf->channels.size(), 13);
+    QCOMPARE(acf->channels.size(), 7);
     QCOMPARE(acf->channels.first().id, QStringLiteral("bs_T0"));
 
     // PSD curve descriptor
@@ -576,7 +844,7 @@ void DashboardModelTests::testCatalog_kernelDynamicsDescriptorsPresent() {
         const SignalDescriptor* scalar = catalog.findDescriptor(QString::fromLatin1(id));
         QVERIFY2(scalar != nullptr, id);
         QCOMPARE(scalar->valueShape, SignalValueShape::PerClassBlock);
-        QCOMPARE(scalar->channels.size(), 13);
+        QCOMPARE(scalar->channels.size(), 7);
     }
 }
 
@@ -653,7 +921,7 @@ void DashboardModelTests::testCatalog_kernelCoherenceDescriptorPresent() {
     QCOMPARE(d->valueShape, SignalValueShape::Matrix);
     QCOMPARE(d->storagePath, QStringLiteral("/trajectory/kernel_coherence"));
     QVERIFY(d->staticModes.contains(QStringLiteral("static.chord.coupling")));
-    QCOMPARE(d->channels.size(), 13);
+    QCOMPARE(d->channels.size(), 7);
 }
 
 void DashboardModelTests::testCatalog_allValidTemporalDenseH5DescriptorsAreSampleable() {

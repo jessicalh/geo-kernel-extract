@@ -40,6 +40,7 @@ struct SignalBuffer {
     void clear();
     bool isValidAt(std::size_t i) const;
     void append(FrameSignalSample sample);
+    void replace(std::size_t frame, FrameSignalSample sample);
 };
 
 }  // namespace h5reader::model

@@ -39,6 +39,11 @@ struct QtLoadResult {
     // for status bar / recent-files / window title display.
     QString runPath;
 
+    // The producer manifest for the extraction actually loaded. Keep this
+    // separate from manifest because a mutant-pair result preserves its
+    // parent .LGS while loading the nested WT extraction.
+    QString extractionManifestPath;
+
     // The .LGS that drove this load. ok-set sub-blocks expose the typed
     // pointers downstream consumers need (dft frames for the strip chart,
     // alternate-LGS for mutant pair switch). When ok=false on the result,

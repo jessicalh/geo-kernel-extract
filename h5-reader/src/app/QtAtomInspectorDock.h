@@ -43,7 +43,9 @@ namespace h5reader::app {
 // in-scene colour-coded arrows stay decodable without in-scene labels.
 struct CsaTensorInfo {
     bool    framed = false;
-    QString frameKind;        // human label; "unframed (raw PAS)" when not framed
+    QString sourceLabel;      // "ORCA DFT" or "Experimental Shielding ML"
+    QString sourceDetail;     // method/model id
+    QString frameKind;        // human-readable tensor-coordinate provenance
     double  sigmaIso = 0.0;   // absolute shielding (ppm), NOT chemical shift
     double  span = 0.0;       // sigma33 - sigma11 (ppm)
     double  skew = 0.0;       // 3 (sigma22 - iso) / span

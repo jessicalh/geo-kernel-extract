@@ -4,6 +4,7 @@
 
 #include "FrameNpyLoader.h"
 
+#include "FrameFieldPolicy.h"
 #include "QtFieldCatalog.gen.h"
 #include "QtNpyReader.h"
 
@@ -35,13 +36,16 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
                                 double timePs) {
     QDir d(dir);
     if (!d.exists()) {
-        ErrorBus::Report(Severity::Error, QStringLiteral("FrameNpyLoader"),
-                         QStringLiteral("per-frame NPY directory does not exist"), dir);
+        ErrorBus::Report(Severity::Error,
+                         QStringLiteral("FrameNpyLoader"),
+                         QStringLiteral("per-frame NPY directory does not exist"),
+                         dir);
         return nullptr;
     }
 
     auto snap = std::make_shared<h5reader::model::QtConformationSnapshot>(protein, frameIndex, timePs);
     const std::size_t atomCount = protein ? protein->atomCount() : 0;
+    const std::size_t residueCount = protein ? protein->residueCount() : 0;
 
     const QStringList npys = d.entryList(QStringList{QStringLiteral("*.npy")}, QDir::Files, QDir::Name);
     int loaded = 0;
@@ -56,11 +60,9 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
         }
         const FieldSpec& spec = FieldSpecFor(*kind);
 
-        // Skip the structured sidecar / topology files — those are decoded by
-        // QtTopologySidecar into the QtProtein spine, not stored as numeric
-        // calculator columns. (Absent in a trajectory frame_NNNNNN/ dir; present
-        // alongside the calc NPYs in a single-pose run root.)
-        if (spec.group == FieldGroup::Topology || *kind == FieldKind::AtomsCategoryInfo) {
+        // The snapshot policy keeps Reader-facing calculator output and both
+        // model contracts, while leaving sidecars and producer storage out.
+        if (!ShouldLoadFrameField(*kind)) {
             ++skipped;
             continue;
         }
@@ -84,7 +86,8 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
         // catalog's (non -1) value, trust the NPY and flag the drift -- e.g.
         // ring_contributions surfaces 58-vs-catalog-40 on the older 1P9J set.
         if (spec.cols != -1 && cols != spec.cols) {
-            ErrorBus::Report(Severity::Warning, QStringLiteral("FrameNpyLoader"),
+            ErrorBus::Report(Severity::Warning,
+                             QStringLiteral("FrameNpyLoader"),
                              QStringLiteral("%1: NPY cols=%2 disagrees with catalog cols=%3 -- trusting the NPY")
                                  .arg(QString::fromStdString(stem))
                                  .arg(cols)
@@ -95,12 +98,24 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
         // would make every group view's row(atomIdx) unsafe, so reject it at
         // the load boundary and keep the field absent.
         if (spec.axis == NativeAxis::Atom && atomCount != 0 && static_cast<std::size_t>(rows) != atomCount) {
-            ErrorBus::Report(Severity::Warning, QStringLiteral("FrameNpyLoader"),
-                             QStringLiteral("%1: rows=%2 != atom count %3")
-                                 .arg(QString::fromStdString(stem))
-                                 .arg(rows)
-                                 .arg(atomCount),
-                             dir);
+            ErrorBus::Report(
+                Severity::Warning,
+                QStringLiteral("FrameNpyLoader"),
+                QStringLiteral("%1: rows=%2 != atom count %3").arg(QString::fromStdString(stem)).arg(rows).arg(atomCount),
+                dir);
+            ++skipped;
+            continue;
+        }
+        if (spec.axis == NativeAxis::Residue && residueCount != 0
+            && static_cast<std::size_t>(rows) != residueCount) {
+            ErrorBus::Report(
+                Severity::Warning,
+                QStringLiteral("FrameNpyLoader"),
+                QStringLiteral("%1: rows=%2 != residue count %3")
+                    .arg(QString::fromStdString(stem))
+                    .arg(rows)
+                    .arg(residueCount),
+                dir);
             ++skipped;
             continue;
         }
@@ -114,13 +129,15 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
     }
 
     if (loaded == 0) {
-        ErrorBus::Report(Severity::Warning, QStringLiteral("FrameNpyLoader"),
-                         QStringLiteral("no recognised calculator NPYs found (skipped %1)").arg(skipped), dir);
+        ErrorBus::Report(Severity::Warning,
+                         QStringLiteral("FrameNpyLoader"),
+                         QStringLiteral("no recognised calculator NPYs found (skipped %1)").arg(skipped),
+                         dir);
         return nullptr;
     }
 
-    qCInfo(cFrameLoader).noquote() << "snapshot frame" << frameIndex << "loaded" << loaded << "arrays ("
-                                   << skipped << "skipped) from" << dir;
+    qCInfo(cFrameLoader).noquote() << "snapshot frame" << frameIndex << "loaded" << loaded << "arrays (" << skipped
+                                   << "skipped) from" << dir;
     return snap;
 }
 

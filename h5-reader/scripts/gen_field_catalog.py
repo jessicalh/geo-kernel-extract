@@ -9,22 +9,23 @@ CATALOG into a typed C++ table so the reader resolves a producer filename
 stem to a typed FieldSpec exactly once (FindFieldByStem) and then
 dispatches on the FieldKind / FieldGroup / NativeAxis enums.
 
-Faithful-by-construction: it parses _catalog.py's CATALOG with the
-stdlib `ast` module rather than re-typing ~70 entries by hand, so a
-silent cols/irreps/axis transcription error cannot creep in. stdlib-only
-on purpose (no numpy / torch / e3nn import), so it runs on any box that
-has the source tree. The generated header is committed, so the portable
-adviser build never needs Python at compile time.
+Faithful-by-construction: it imports the finalized CATALOG object rather
+than re-typing entries or parsing only its initial declaration. This is
+important because _catalog.py deliberately completes many physical
+contracts with dataclasses.replace() after the declaration. The generated
+header is committed, so portable builds and installed readers never need
+Python.
 
     python3 h5-reader/scripts/gen_field_catalog.py
+    python3 h5-reader/scripts/gen_field_catalog.py --check
 
 Re-run whenever _catalog.py changes; the FrameNpyLoader's load-time
 guard cross-checks a real frame dir's files against the table so any
 drift surfaces loudly.
 """
 
-import ast
-import datetime
+import argparse
+import hashlib
 import pathlib
 import sys
 
@@ -55,84 +56,70 @@ def pascal(name: str) -> str:
 
 def cpp_str(s) -> str:
     s = "" if s is None else str(s)
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    escaped = (
+        s.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+    )
+    return '"' + escaped + '"'
+
+
+def wrapper_name(wrapper: type) -> str:
+    module = getattr(wrapper, "__module__", "")
+    name = getattr(wrapper, "__name__", str(wrapper))
+    return f"np.{name}" if module == "numpy" else name
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate or verify the Reader's typed nmr_extract field catalog."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail if the committed generated header differs from current CATALOG",
+    )
+    return parser.parse_args()
 
 
 def main() -> int:
-    src = CATALOG_PY.read_text(encoding="utf-8")
-    tree = ast.parse(src)
-
-    # Module-level string constants referenced in kwargs (_SHIELD_IRREPS,
-    # _EFG_IRREPS, _SHIELD_SIGN) so we can resolve Name nodes to literals.
-    consts: dict[str, object] = {}
-    for node in tree.body:
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)):
-            try:
-                consts[node.targets[0].id] = ast.literal_eval(node.value)
-            except Exception:
-                pass
-
-    def resolve(node):
-        if node is None:
-            return None
-        if isinstance(node, ast.Constant):
-            return node.value
-        if isinstance(node, ast.Name):
-            return consts.get(node.id, node.id)  # const value, else the bare id
-        if isinstance(node, ast.Attribute):     # e.g. np.ndarray
-            parts = []
-            n = node
-            while isinstance(n, ast.Attribute):
-                parts.append(n.attr)
-                n = n.value
-            if isinstance(n, ast.Name):
-                parts.append(n.id)
-            return ".".join(reversed(parts))
-        return ast.literal_eval(node)
-
-    # Find  CATALOG: dict[...] = {s.stem: s for s in [ ArraySpec(...), ... ]}
-    # It is an *annotated* assignment (ast.AnnAssign), so handle both forms.
-    calls = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-            value = node.value
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names = [node.target.id]
-            value = node.value
-        else:
-            continue
-        if "CATALOG" in names and isinstance(value, ast.DictComp):
-            iterable = value.generators[0].iter
-            calls = [e for e in iterable.elts if isinstance(e, ast.Call)]
-            break
-    if calls is None:
-        print("ERROR: CATALOG dict-comprehension not found in _catalog.py", file=sys.stderr)
+    args = parse_args()
+    sys.path.insert(0, str(ROOT / "python"))
+    try:
+        from nmr_extract._catalog import CATALOG
+    except Exception as exc:
+        print(f"ERROR: could not import finalized producer CATALOG: {exc}", file=sys.stderr)
         return 1
 
-    POS = ["stem", "group", "wrapper", "cols", "required", "description"]
-    entries = []
-    for call in calls:
-        d = {}
-        for i, arg in enumerate(call.args):
-            d[POS[i]] = resolve(arg)
-        for kw in call.keywords:
-            d[kw.arg] = resolve(kw.value)
-        entries.append(d)
+    entries = list(CATALOG.values())
+    if list(CATALOG) != [entry.stem for entry in entries]:
+        print("ERROR: CATALOG keys do not exactly match ArraySpec stems", file=sys.stderr)
+        return 1
+
+    enum_names = [pascal(entry.stem) for entry in entries]
+    duplicates = sorted({name for name in enum_names if enum_names.count(name) > 1})
+    if duplicates:
+        print(f"ERROR: FieldKind enumerator collisions: {duplicates}", file=sys.stderr)
+        return 1
 
     groups, axes = [], []
     for e in entries:
-        if e["group"] not in groups:
-            groups.append(e["group"])
-        ax = e.get("native_axis", "atom")
+        if e.group not in groups:
+            groups.append(e.group)
+        ax = e.native_axis
         if ax not in axes:
             axes.append(ax)
 
+    # Catalog identity must not depend on the checkout's CRLF/LF policy.
+    catalog_text = CATALOG_PY.read_text(encoding="utf-8")
+    catalog_text = catalog_text.replace("\r\n", "\n").replace("\r", "\n")
+    digest = hashlib.sha256(catalog_text.encode("utf-8")).hexdigest()
     out = []
     w = out.append
     w("// QtFieldCatalog.gen.h - GENERATED by h5-reader/scripts/gen_field_catalog.py")
-    w(f"// from {CATALOG_PY.relative_to(ROOT)} on {datetime.date.today().isoformat()}")
+    w(f"// from {CATALOG_PY.relative_to(ROOT).as_posix()} (sha256 {digest})")
     w(f"// {len(entries)} fields / {len(groups)} groups / {len(axes)} axes. DO NOT EDIT BY HAND.")
     w("// Regenerate: python3 h5-reader/scripts/gen_field_catalog.py")
     w("//")
@@ -150,7 +137,7 @@ def main() -> int:
     w("")
     w("enum class FieldKind : std::int16_t {")
     for e in entries:
-        w(f"    {pascal(e['stem'])},")
+        w(f"    {pascal(e.stem)},")
     w("    Count")
     w("};")
     w("")
@@ -172,25 +159,38 @@ def main() -> int:
     w("    int cols;                     // -1 = variable / 1-D (None in _catalog.py)")
     w("    bool required;")
     w("    std::int8_t tensor_rank;")
-    w("    bool parity_odd;")
+    w("    std::string_view parity;      // even, odd, or mixed")
+    w("    std::string_view description;")
     w("    std::string_view wrapper;     // Python wrapper class name (shape hint)")
-    w("    std::string_view irreps;      // e3nn irrep string (GNN / interop)")
+    w("    std::string_view irreps;      // legacy hint; explicit export contract wins")
     w("    std::string_view units;")
+    w("    std::string_view sign_convention;")
     w("    std::string_view mechanism;")
+    w("    std::string_view tensor_basis;")
+    w("    std::string_view tensor_component_order;")
+    w("    std::string_view tensor_frame;")
+    w("    std::string_view structural_zero_components;")
+    w("    std::string_view e3nn_export;")
+    w("    std::string_view scaling_contract;")
+    w("    std::string_view coordinate_frame;")
+    w("    std::string_view transformation;")
+    w("    std::string_view validity;")
     w("};")
     w("")
     w(f"inline constexpr std::array<FieldSpec, {len(entries)}> kFieldCatalog = {{{{")
     for e in entries:
-        cols = e.get("cols")
-        cols = -1 if cols is None else int(cols)
-        rank = int(e.get("tensor_rank", 0) or 0)
-        req = "true" if e.get("required") else "false"
-        parity = "true" if e.get("parity") == "odd" else "false"
-        w(f"    {{ FieldKind::{pascal(e['stem'])}, {cpp_str(e['stem'])}, "
-          f"FieldGroup::{pascal(e['group'])}, NativeAxis::{pascal(e.get('native_axis', 'atom'))}, "
-          f"{cols}, {req}, {rank}, {parity}, "
-          f"{cpp_str(e.get('wrapper', ''))}, {cpp_str(e.get('irreps', ''))}, "
-          f"{cpp_str(e.get('units', ''))}, {cpp_str(e.get('mechanism', ''))} }},")
+        cols = -1 if e.cols is None else int(e.cols)
+        req = "true" if e.required else "false"
+        w(f"    {{ FieldKind::{pascal(e.stem)}, {cpp_str(e.stem)}, "
+          f"FieldGroup::{pascal(e.group)}, NativeAxis::{pascal(e.native_axis)}, "
+          f"{cols}, {req}, {int(e.tensor_rank)}, {cpp_str(e.parity)}, "
+          f"{cpp_str(e.description)}, {cpp_str(wrapper_name(e.wrapper))}, "
+          f"{cpp_str(e.irreps)}, {cpp_str(e.units)}, {cpp_str(e.sign_convention)}, "
+          f"{cpp_str(e.mechanism)}, {cpp_str(e.tensor_basis)}, "
+          f"{cpp_str(e.tensor_component_order)}, {cpp_str(e.tensor_frame)}, "
+          f"{cpp_str(e.structural_zero_components)}, {cpp_str(e.e3nn_export)}, "
+          f"{cpp_str(e.scaling_contract)}, {cpp_str(e.coordinate_frame)}, "
+          f"{cpp_str(e.transformation)}, {cpp_str(e.validity)} }},")
     w("}};")
     w("")
     w(f"// Boundary lookup: stem -> FieldKind. Linear scan over {len(entries)} entries, called")
@@ -209,8 +209,27 @@ def main() -> int:
     w("}  // namespace h5reader::io")
     w("")
 
+    generated = "\n".join(out)
+    if args.check:
+        if not OUT_H.is_file():
+            print(f"ERROR: generated header is missing: {OUT_H}", file=sys.stderr)
+            return 1
+        committed = OUT_H.read_text(encoding="utf-8")
+        if committed != generated:
+            print(
+                "ERROR: QtFieldCatalog.gen.h is stale; run "
+                "python h5-reader/scripts/gen_field_catalog.py",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            f"verified {OUT_H.relative_to(ROOT)}: "
+            f"{len(entries)} fields, {len(groups)} groups, {len(axes)} axes"
+        )
+        return 0
+
     OUT_H.parent.mkdir(parents=True, exist_ok=True)
-    OUT_H.write_text("\n".join(out), encoding="utf-8")
+    OUT_H.write_text(generated, encoding="utf-8")
     print(f"wrote {OUT_H.relative_to(ROOT)}: "
           f"{len(entries)} fields, {len(groups)} groups, {len(axes)} axes")
     return 0

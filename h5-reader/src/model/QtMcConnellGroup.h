@@ -25,41 +25,16 @@ class QtMcConnellGroup {
 public:
     explicit QtMcConnellGroup(const QtConformationSnapshot& snapshot) : snap_(&snapshot) {}
 
-    std::optional<SphericalTensor> shielding(std::size_t atomIdx) const {
-        if (!snap_->has(io::FieldKind::McShielding))
+    std::optional<SphericalTensor> tensor(io::FieldKind field,
+                                          std::size_t atomIdx) const {
+        if (!snap_->has(field))
             return std::nullopt;
-        return UnpackSphericalTensor(snap_->column(io::FieldKind::McShielding).row(atomIdx));
+        return UnpackSphericalTensor(snap_->column(field).row(atomIdx));
     }
 
-    // T2 contribution decomposed by McConnell category (backbone / sidechain /
-    // aromatic totals + nearest-CO / nearest-CN).
-    std::optional<PerBondCategoryT2> categoryT2(std::size_t atomIdx) const {
-        if (!snap_->has(io::FieldKind::McCategoryT2))
-            return std::nullopt;
-        const double* r = snap_->column(io::FieldKind::McCategoryT2).row(atomIdx);
-        PerBondCategoryT2 out;
-        for (std::size_t c = 0; c < kMcConnellCategoryCount; ++c)
-            for (std::size_t i = 0; i < 5; ++i)
-                out.byCategory[c][i] = r[c * 5 + i];
-        return out;
-    }
-
-    std::optional<McConnellScalars> scalars(std::size_t atomIdx) const {
-        if (!snap_->has(io::FieldKind::McScalars))
-            return std::nullopt;
-        const double* r = snap_->column(io::FieldKind::McScalars).row(atomIdx);
-        return McConnellScalars{r[0], r[1], r[2], r[3], r[4], r[5]};
-    }
-
-    // Per-category bond-order ("_bo") producer tensor for the forward McConnell
-    // contribution. The validated ppm term is the viewer-side sum
-    // Sum_category McConnellProducerT0ToPpm(category, producer.T0); the reader
-    // never runs the emit. Caller supplies the producer FieldKind
-    // (McPeptideCoBo ... McAromaticZeroedBo) paired with its BondCategory.
-    std::optional<SphericalTensor> producerBo(io::FieldKind producer, std::size_t atomIdx) const {
-        if (!snap_->has(producer))
-            return std::nullopt;
-        return UnpackSphericalTensor(snap_->column(producer).row(atomIdx));
+    std::optional<SphericalTensor> producerBo(io::FieldKind producer,
+                                              std::size_t atomIdx) const {
+        return tensor(producer, atomIdx);
     }
 
 private:

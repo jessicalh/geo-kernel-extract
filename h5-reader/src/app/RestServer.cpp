@@ -1222,7 +1222,7 @@ QJsonArray modeStateArray(const model::DashboardSignal& signal,
     QJsonArray out;
     for (const QString& mode : modes) {
         const model::DashboardSignalModel::ModeRenderability renderability =
-            model::DashboardSignalModel::ModeRenderabilityFor(mode);
+            model::DashboardSignalModel::ModeRenderabilityFor(signal, mode);
         out.append(QJsonObject{
             {"mode", mode},
             {"enabled", signal.displayModeIds.contains(mode)},

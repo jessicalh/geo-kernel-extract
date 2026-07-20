@@ -19,6 +19,7 @@ class Conformation;
 class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
+class ExperimentalShieldingMlStore;
 class QtProtein;
 // 'struct' to match the definition in model/SignalDictionary.h. MSVC encodes
 // the class-key into decorated symbol names (class=V, struct=U), so declaring
@@ -51,6 +52,7 @@ public:
     void setSelectionController(DashboardSelectionController* controller);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
+    void setExperimentalShieldingMlStore(model::ExperimentalShieldingMlStore* store);
     // Forwards the scene reveal overlay to the controller (dashboard strip
     // bindings highlight their atoms in the scene).
     void setSceneOverlay(SceneRevealOverlay* overlay);

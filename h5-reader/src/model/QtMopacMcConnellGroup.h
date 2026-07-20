@@ -37,21 +37,40 @@ public:
     // T2 contribution decomposed by McConnell category (backbone / sidechain /
     // aromatic totals + nearest-CO / nearest-CN), 5 × 5 row-major.
     std::optional<PerBondCategoryT2> categoryT2(std::size_t atomIdx) const {
-        if (!snap_->has(io::FieldKind::MOPACMcCategoryT2))
-            return std::nullopt;
-        const double* r = snap_->column(io::FieldKind::MOPACMcCategoryT2).row(atomIdx);
+        static constexpr io::FieldKind kFields[kMcConnellCategoryCount] = {
+            io::FieldKind::MOPACMcBackboneTotal,
+            io::FieldKind::MOPACMcSidechainTotal,
+            io::FieldKind::MOPACMcAromaticTotal,
+            io::FieldKind::MOPACMcNearestCoT2,
+            io::FieldKind::MOPACMcNearestCNT2,
+        };
         PerBondCategoryT2 out;
-        for (std::size_t c = 0; c < kMcConnellCategoryCount; ++c)
-            for (std::size_t i = 0; i < 5; ++i)
-                out.byCategory[c][i] = r[c * 5 + i];
+        for (std::size_t c = 0; c < kMcConnellCategoryCount; ++c) {
+            if (!snap_->has(kFields[c]))
+                return std::nullopt;
+            out.byCategory[c] =
+                UnpackSphericalTensor(snap_->column(kFields[c]).row(atomIdx)).T2;
+        }
         return out;
     }
 
     std::optional<McConnellScalars> scalars(std::size_t atomIdx) const {
-        if (!snap_->has(io::FieldKind::MOPACMcScalars))
-            return std::nullopt;
-        const double* r = snap_->column(io::FieldKind::MOPACMcScalars).row(atomIdx);
-        return McConnellScalars{r[0], r[1], r[2], r[3], r[4], r[5]};
+        static constexpr io::FieldKind kFields[6] = {
+            io::FieldKind::MOPACMcCoSum,
+            io::FieldKind::MOPACMcCNSum,
+            io::FieldKind::MOPACMcSidechainSum,
+            io::FieldKind::MOPACMcAromaticSum,
+            io::FieldKind::MOPACMcNearestCoDist,
+            io::FieldKind::MOPACMcNearestCNDist,
+        };
+        double values[6] = {};
+        for (std::size_t i = 0; i < 6; ++i) {
+            if (!snap_->has(kFields[i]))
+                return std::nullopt;
+            values[i] = snap_->column(kFields[i]).row(atomIdx)[0];
+        }
+        return McConnellScalars{
+            values[0], values[1], values[2], values[3], values[4], values[5]};
     }
 
 private:

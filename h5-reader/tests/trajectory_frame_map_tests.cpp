@@ -58,6 +58,7 @@ private slots:
     void emptyPerFrameNpysDirReturnsEmptyRows();
     void scanSampledRowsReturnsSortedH5Rows();
     void originalIndexUsesFrameMapAndIdentityFallback();
+    void rowForOriginalIndexRequiresAnExactMatch();
 };
 
 void TrajectoryFrameMapTests::emptyPerFrameNpysDirReturnsEmptyRows() {
@@ -101,6 +102,21 @@ void TrajectoryFrameMapTests::originalIndexUsesFrameMapAndIdentityFallback() {
     QCOMPARE(TrajectoryFrameMap::OriginalIndex(0, h5), std::size_t{20});
     QCOMPARE(TrajectoryFrameMap::OriginalIndex(1, h5), std::size_t{10});
     QCOMPARE(TrajectoryFrameMap::OriginalIndex(99, h5), std::size_t{99});
+}
+
+void TrajectoryFrameMapTests::rowForOriginalIndexRequiresAnExactMatch() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString h5Path = dir.filePath(QStringLiteral("trajectory.h5"));
+    writeMinimalTrajectory(h5Path, {0, 2, 4, 6});
+    const QtTrajectoryH5 h5(h5Path);
+
+    QCOMPARE(TrajectoryFrameMap::RowForOriginalIndex(0, h5),
+             std::optional<std::size_t>{0});
+    QCOMPARE(TrajectoryFrameMap::RowForOriginalIndex(4, h5),
+             std::optional<std::size_t>{2});
+    QVERIFY(!TrajectoryFrameMap::RowForOriginalIndex(3, h5).has_value());
+    QVERIFY(!TrajectoryFrameMap::RowForOriginalIndex(8, h5).has_value());
 }
 
 QTEST_GUILESS_MAIN(TrajectoryFrameMapTests)

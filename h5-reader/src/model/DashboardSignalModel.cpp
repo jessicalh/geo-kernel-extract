@@ -417,14 +417,28 @@ DashboardSignalModel::ModeRenderability DashboardSignalModel::ModeRenderabilityF
     };
 }
 
+DashboardSignalModel::ModeRenderability
+DashboardSignalModel::ModeRenderabilityFor(const DashboardSignal& signal,
+                                           const QString& mode) {
+    ModeRenderability renderability = ModeRenderabilityFor(mode);
+    if (signal.binding.sourceKind == SignalSourceKind::ExperimentalShieldingMl
+        && signal.binding.descriptorId
+               == QStringLiteral("ml:experimental_shielding_t2")
+        && mode == QStringLiteral("static.tensor")) {
+        renderability.hasVisibleSurface = true;
+    }
+    return renderability;
+}
+
 QVector<DashboardSignalModel::ModeRenderability> DashboardSignalModel::modeRenderability(int row) const {
     QVector<ModeRenderability> out;
     if (row < 0 || row >= signals_.size())
         return out;
-    const QStringList modes = signals_.at(row).displayModeIds;
+    const DashboardSignal& signal = signals_.at(row);
+    const QStringList modes = signal.displayModeIds;
     out.reserve(modes.size());
     for (const QString& mode : modes)
-        out.push_back(ModeRenderabilityFor(mode));
+        out.push_back(ModeRenderabilityFor(signal, mode));
     return out;
 }
 

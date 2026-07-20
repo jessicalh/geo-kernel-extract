@@ -24,6 +24,11 @@ struct LoadedDftFrame {
     std::shared_ptr<const DftShieldingFrame> shielding;
 };
 
+struct DftCandidate {
+    const h5reader::io::DftFrame* declared = nullptr;
+    std::size_t frameRow = 0;
+};
+
 std::vector<std::size_t> atomScanList(const QtProtein& protein,
                                       const RingNullCollarOptions& options) {
     std::vector<std::size_t> out;
@@ -235,6 +240,7 @@ RingNullMopacSignals makeMopacSignals(const QtConformationSnapshot& snapshot,
 RingNullSignalStamp makeSignalStamp(const QtProtein& protein,
                                     Conformation& conformation,
                                     const LoadedDftFrame& dft,
+                                    std::size_t frameRow,
                                     std::size_t dftOrdinal,
                                     double zeroDftOrdinal,
                                     double zeroTimePs,
@@ -247,9 +253,8 @@ RingNullSignalStamp makeSignalStamp(const QtProtein& protein,
     out.timeOffsetFromZeroPs = dft.timePs - zeroTimePs;
     out.dftOrdinalOffsetFromZero = static_cast<double>(dftOrdinal) - zeroDftOrdinal;
 
-    const std::size_t frame = static_cast<std::size_t>(dft.frameIndex);
-    out.null = MeasureRingNull(RingGeometryAt(conformation, ring, frame),
-                               conformation.atomPosition(frame, atom),
+    out.null = MeasureRingNull(RingGeometryAt(conformation, ring, frameRow),
+                               conformation.atomPosition(frameRow, atom),
                                toleranceA);
 
     if (dft.shielding && atom < dft.shielding->atoms.size()) {
@@ -260,8 +265,9 @@ RingNullSignalStamp makeSignalStamp(const QtProtein& protein,
         out.orcaParaShape = ComputeCsaShape(out.orca.para_raw);
     }
 
-    conformation.requestSnapshot(frame);
-    const std::shared_ptr<const QtConformationSnapshot> snapshot = conformation.snapshot(frame);
+    conformation.requestSnapshot(frameRow);
+    const std::shared_ptr<const QtConformationSnapshot> snapshot =
+        conformation.snapshot(frameRow);
     if (snapshot && snapshot->protein() == &protein) {
         out.snapshotPresent = true;
         out.mopac = makeMopacSignals(*snapshot, atom);
@@ -272,7 +278,7 @@ RingNullSignalStamp makeSignalStamp(const QtProtein& protein,
 std::vector<RingNullSignalStamp> makeSignalStamps(
     const QtProtein& protein,
     Conformation& conformation,
-    const std::vector<const h5reader::io::DftFrame*>& candidates,
+    const std::vector<DftCandidate>& candidates,
     std::size_t fromOrdinal,
     const LoadedDftFrame& fromDft,
     std::size_t toOrdinal,
@@ -302,13 +308,14 @@ std::vector<RingNullSignalStamp> makeSignalStamps(
         } else if (ordinal == toOrdinal) {
             loaded = toDft;
         } else {
-            loaded = loadDftFrame(*candidates[ordinal], protein);
+            loaded = loadDftFrame(*candidates[ordinal].declared, protein);
         }
         if (!loaded)
             continue;
-        out.push_back(makeSignalStamp(protein, conformation, *loaded, ordinal,
-                                      zeroDftOrdinal, eventFrame.zeroTimePs,
-                                      atom, ring, toleranceA));
+        out.push_back(makeSignalStamp(protein, conformation, *loaded,
+                                      candidates[ordinal].frameRow, ordinal,
+                                      zeroDftOrdinal, eventFrame.zeroTimePs, atom,
+                                      ring, toleranceA));
     }
     return out;
 }
@@ -372,10 +379,18 @@ bool RingNullCollar::collect(const QtProtein& protein,
         return false;
     }
 
-    const int frameCount = static_cast<int>(conformation.frameCount());
-    const int start = options_.startFrame.value_or(0);
-    const int end = options_.endFrame.value_or(frameCount - 1);
-    if (start < 0 || end < 0 || start >= frameCount || end >= frameCount || end < start) {
+    int firstOriginalFrame =
+        static_cast<int>(conformation.originalFrameIndex(0));
+    int lastOriginalFrame = firstOriginalFrame;
+    for (std::size_t row = 1; row < conformation.frameCount(); ++row) {
+        const int original =
+            static_cast<int>(conformation.originalFrameIndex(row));
+        firstOriginalFrame = std::min(firstOriginalFrame, original);
+        lastOriginalFrame = std::max(lastOriginalFrame, original);
+    }
+    const int start = options_.startFrame.value_or(firstOriginalFrame);
+    const int end = options_.endFrame.value_or(lastOriginalFrame);
+    if (start < firstOriginalFrame || end > lastOriginalFrame || end < start) {
         if (error)
             *error = QStringLiteral("frame range out of range");
         return false;
@@ -390,27 +405,34 @@ bool RingNullCollar::collect(const QtProtein& protein,
         return true;
     }
 
-    std::vector<const h5reader::io::DftFrame*> candidates;
+    std::vector<DftCandidate> candidates;
     candidates.reserve(dftFrames.size());
     for (const h5reader::io::DftFrame& declared : dftFrames) {
         if (declared.frame_index < start || declared.frame_index > end)
             continue;
-        if (declared.frame_index < 0 || declared.frame_index >= frameCount) {
+        if (declared.frame_index < 0) {
             ++summary_.dftFramesSkipped;
             continue;
         }
-        candidates.push_back(&declared);
+        const std::optional<std::size_t> frameRow =
+            conformation.frameRowForOriginalIndex(
+                static_cast<std::size_t>(declared.frame_index));
+        if (!frameRow) {
+            ++summary_.dftFramesSkipped;
+            continue;
+        }
+        candidates.push_back({&declared, *frameRow});
     }
     std::sort(candidates.begin(), candidates.end(),
-              [](const h5reader::io::DftFrame* a, const h5reader::io::DftFrame* b) {
-        return a->frame_index < b->frame_index;
+              [](const DftCandidate& a, const DftCandidate& b) {
+        return a.declared->frame_index < b.declared->frame_index;
     });
 
     std::optional<int> lastCandidateFrame;
     std::optional<LoadedDftFrame> prevDft;
     std::optional<std::size_t> prevOrdinal;
     for (std::size_t ordinal = 0; ordinal < candidates.size(); ++ordinal) {
-        const h5reader::io::DftFrame* declared = candidates[ordinal];
+        const h5reader::io::DftFrame* declared = candidates[ordinal].declared;
         if (lastCandidateFrame && *lastCandidateFrame == declared->frame_index)
             continue;
         lastCandidateFrame = declared->frame_index;
@@ -432,8 +454,8 @@ bool RingNullCollar::collect(const QtProtein& protein,
         const std::size_t fromOrdinal = prevOrdinal.value_or(ordinal - 1);
         ++summary_.dftPairsScanned;
 
-        const std::size_t fromFrame = static_cast<std::size_t>(fromDft.frameIndex);
-        const std::size_t toFrame = static_cast<std::size_t>(toDft.frameIndex);
+        const std::size_t fromFrame = candidates[fromOrdinal].frameRow;
+        const std::size_t toFrame = candidates[ordinal].frameRow;
 
         for (std::size_t ring : rings) {
             const RingGeometry fromRing = RingGeometryAt(conformation, ring, fromFrame);

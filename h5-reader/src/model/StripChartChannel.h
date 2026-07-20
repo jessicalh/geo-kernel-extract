@@ -97,6 +97,31 @@ struct ChannelBuffer {
         }
     }
 
+    void replace(std::size_t index, std::optional<double> value) {
+        if (index >= values.size() || index >= valid.size())
+            return;
+        if (value && std::isfinite(*value)) {
+            values[index] = *value;
+            valid[index] = 1;
+        } else {
+            values[index] = std::numeric_limits<double>::quiet_NaN();
+            valid[index] = 0;
+        }
+        hasRange = false;
+        yMin = yMax = 0.0;
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            if (i >= valid.size() || valid[i] == 0 || !std::isfinite(values[i]))
+                continue;
+            if (!hasRange) {
+                yMin = yMax = values[i];
+                hasRange = true;
+            } else {
+                yMin = std::min(yMin, values[i]);
+                yMax = std::max(yMax, values[i]);
+            }
+        }
+    }
+
 };
 
 // How a ChannelBuffer fills, one frame at a time. nullopt == no value at this

@@ -38,7 +38,7 @@ enum class MetricGroup : std::uint8_t {
     BondAnisotropy,  // A2  McConnell point-dipole
     Electrostatic,   // A3  E-field / EFG, sub-grouped by charge model
     HBond,           // A4  Larsen / ProCS15 H-bond
-    DftReference,    // B   ORCA + tripeptide/ProCS15 -- the targets
+    DftReference,    // B   ORCA DFT -- the target
     Experimental,    // B'  local experimental model estimates
     Charges,         // C   MOPAC / EEQ / AIMNet2 charges + electronic structure
     Solvation,       // C   SASA / hydration / water environment
@@ -174,7 +174,7 @@ inline QString ChargeModelFor(const QString& family) {
 // Mechanism group for a descriptor, from its family + base concept. Concept-level
 // overrides come FIRST (the cross-family cases: AIMNet2 and explicit-water each
 // straddle electrostatic-EFG and a non-electrostatic role; ring geometry sits in
-// the identity family; the MOPAC/FF reconciliation is a QC scalar, not a charge).
+// the identity family).
 inline MetricGroup GroupForDescriptor(const QString& family, const QString& baseConcept) {
     if (baseConcept.startsWith(QLatin1String("aimnet2_efg")))    return MetricGroup::Electrostatic;
     if (baseConcept.startsWith(QLatin1String("water_efg"))
@@ -182,7 +182,6 @@ inline MetricGroup GroupForDescriptor(const QString& family, const QString& base
     if (baseConcept == QLatin1String("water_shell_counts"))      return MetricGroup::Solvation;
     if (baseConcept.startsWith(QLatin1String("ring_contributions"))
         || baseConcept.startsWith(QLatin1String("ring_geometry"))) return MetricGroup::RingCurrent;
-    if (baseConcept == QLatin1String("mopac_vs_ff14sb_reconciliation")) return MetricGroup::Scaffold;
     if (baseConcept == QLatin1String("positions") || baseConcept == QLatin1String("element")
         || baseConcept.startsWith(QLatin1String("residue_"))
         || baseConcept == QLatin1String("atoms_category_info")) return MetricGroup::Scaffold;
@@ -196,7 +195,7 @@ inline MetricGroup GroupForDescriptor(const QString& family, const QString& base
         || family == QLatin1String("apbs")) return MetricGroup::Electrostatic;
     if (family == QLatin1String("larsen_hbond") || family == QLatin1String("hbond"))
         return MetricGroup::HBond;
-    if (family == QLatin1String("orca") || family == QLatin1String("tripeptide"))
+    if (family == QLatin1String("orca"))
         return MetricGroup::DftReference;
     if (family == QLatin1String("experimental_shielding_ml"))
         return MetricGroup::Experimental;

@@ -54,6 +54,7 @@ QtLoadResult QtProteinLoader::LoadTrajectory(const QString& h5_path,
                                               const QString& extraction_manifest_path) {
     QtLoadResult result;
     result.runPath = h5_path;
+    result.extractionManifestPath = extraction_manifest_path;
 
     QFileInfo fi(h5_path);
     if (!fi.exists()) {
@@ -149,6 +150,7 @@ QtLoadResult QtProteinLoader::LoadPose(const QString& pose_dir,
                                         const QString& extraction_manifest_path) {
     QtLoadResult result;
     result.runPath = pose_dir;
+    result.extractionManifestPath = extraction_manifest_path;
     QFileInfo fi(pose_dir);
     if (!fi.exists() || !fi.isDir()) {
         result.error = QStringLiteral("QtProteinLoader::LoadPose: pose dir does not exist: %1").arg(pose_dir);

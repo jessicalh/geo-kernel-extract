@@ -31,11 +31,10 @@ public:
     explicit QtMopacCoulombGroup(const QtConformationSnapshot& snapshot) : snap_(&snapshot) {}
 
     std::optional<SphericalTensor> shielding(std::size_t atomIdx) const {
-        if (snap_->has(io::FieldKind::MOPACCoulombEFG))
-            return UnpackSphericalTensor(snap_->column(io::FieldKind::MOPACCoulombEFG).row(atomIdx));
-        if (snap_->has(io::FieldKind::MOPACCoulombShielding))
-            return UnpackSphericalTensor(snap_->column(io::FieldKind::MOPACCoulombShielding).row(atomIdx));
-        return std::nullopt;
+        if (!snap_->has(io::FieldKind::MOPACCoulombEFG))
+            return std::nullopt;
+        return UnpackSphericalTensor(
+            snap_->column(io::FieldKind::MOPACCoulombEFG).row(atomIdx));
     }
 
     std::optional<Vec3> E(std::size_t atomIdx) const {

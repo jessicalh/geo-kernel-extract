@@ -60,6 +60,7 @@ class AtomSelection;
 class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
+class ExperimentalShieldingMlStore;
 class TrajectorySignalCatalog;
 class TrajectoryFieldAvailability;
 class TransformedConformation;
@@ -215,10 +216,10 @@ private:
     void buildDocks();
     void installLoadedRun(h5reader::io::QtLoadResult&& loaded);
     void clearLoadedRun();
-    // Recompute + redraw the focused atom's DFT shielding-tensor glyph (PAS
-    // ellipsoid + molecular-frame axes) for the current frame; clears when
-    // there is no focus or no DFT for the frame. Frame ticks are resident-only;
-    // focus/pause/scrub release may request the missing DFT frame asynchronously.
+    // Recompute the active shielding tensor through the shared glyph. A
+    // dashboard-selected Experimental Shielding ML tensor takes precedence;
+    // otherwise this shows the focused atom's ORCA DFT tensor. Frame ticks are
+    // resident-only; focus/pause/scrub release may request missing data.
     void updateCsaGlyph(bool requestMissingDft = false);
     // Recompute + redraw the focused atom's bond-orientation order tensor
     // (<u(x)u>) as the SAME ovaloid + principal-axis arrows the CSA glyph uses
@@ -322,6 +323,11 @@ private:
     // only when the run has a dft/ campaign (located by convention from the run
     // path). Window-owned (Qt parent); the dock holds a QPointer to it.
     model::DftShieldingStore* dftStore_ = nullptr;
+    model::ExperimentalShieldingMlStore* experimentalMlStore_ = nullptr;
+    QString activeExperimentalMlTensorDescriptor_;
+    std::optional<std::size_t> activeExperimentalMlTensorAtom_;
+    bool experimentalMlTensorDisplayed_ = false;
+    std::optional<std::size_t> experimentalMlTensorDisplayedFrame_;
 
     // Optional REST test surface — constructed by startRestServer(), only
     // when h5reader is launched with --rest <port>. Window-owned.

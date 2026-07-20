@@ -175,15 +175,16 @@ inline QtEfg UnpackEfg(const double* r) {
 // dssp_backbone (N×5) — per-atom, BROADCAST from the atom's residue (every
 // atom of a residue shares its residue's DSSP row). Writer DsspResult.cpp:
 // 214-224 (libdssp; Joosten 2011 / Kabsch & Sander 1983).
-//   phi, psi : backbone dihedrals, RADIANS, written as -libdssp so this
-//              NPY is IUPAC-facing.
+//   phi, psi : backbone dihedrals, RADIANS, in libdssp's NEGATED-IUPAC sign
+//              convention (DsspResult.h:22-25) — negate for IUPAC φ/ψ.
 //   sasa     : DSSP per-RESIDUE SASA (Å²). DISTINCT from atom_sasa (the
 //              Shrake-Rupley per-ATOM SASA in QtSasaGroup) — never conflate.
 //   ssHelix  : 1.0 if SS ∈ {H,G,I} (any helix) else 0.0  } binary collapse of
 //   ssSheet  : 1.0 if SS ∈ {E,B} (strand/bridge) else 0.0 } the 8-class (full
 //              8-class is dssp_ss8 / DsspSs8).
-// Residues DSSP did not map are marked in dssp_observed (0); their
-// phi/psi/sasa columns are NaN and helix/sheet flags are 0.
+// Residues DSSP did not map are written all-zero (looks like coil, φ=ψ=0); the
+// NPY does not carry DsspResidue.observed, so default-coil is indistinguishable
+// from real coil at this layer.
 struct DsspScalars {
     double phi = 0.0;
     double psi = 0.0;
@@ -198,8 +199,7 @@ struct DsspScalars {
 // dssp_ss8 (N×8) — per-atom one-hot of the DSSP 8-class SS, broadcast from
 // residue. Column index == DsspCode ordinal (DsspResult.cpp:234-255):
 // H=0,G=1,I=2,E=3,B=4,T=5,S=6,C=7 — identical to Types.h DsspCode, so the hot
-// column decodes straight to a DsspCode. Unmapped residues have all columns
-// zero; consult dssp_observed before interpreting absence as coil.
+// column decodes straight to a DsspCode. Unmapped residue → coil (col 7).
 struct DsspSs8 {
     std::array<double, 8> oneHot = {};
     static DsspSs8 FromRow(const double* r) {
@@ -437,30 +437,6 @@ struct AIMNet2Embedding {
     double operator[](std::size_t i) const { return data[i]; }
     const double* begin() const { return data; }
     const double* end() const { return data + kDim; }
-};
-
-// ── Tripeptide / Larsen reference-shielding family ─────────────────────
-// These two families deliver DFT-derived reference shieldings as 9-col
-// SphericalTensors (UnpackSphericalTensor) plus a few Vec3 residuals and
-// scalars — no bespoke block beyond this method-provenance tag. The two
-// families use OPPOSITE per-atom "no value here" sentinels (verified in the
-// fixture): Tripeptide writes NaN (check std::isnan / Vec3::hasNaN());
-// Larsen writes 0.0 (the per-class tensors are packed unconditionally, so an
-// atom outside Larsen's Table-2 dispatch carries a structural ZERO). Both
-// distinct from a group view's nullopt = "calculator absent this frame".
-//
-// tripeptide_bb_method_tag is int8 on disk (widened to double by the loader);
-// it records which DFT frame_type produced the matched ProCS15 tripeptide pose
-// (TripeptideBackboneShieldingResult.cpp:51 MethodTagFromFrameType;
-// ConformationAtom.h:283-291). NoMatch(0) is the in-band integer twin of a NaN
-// tripeptide_bb_shielding row (fixture: the 38 tag==0 atoms are exactly the 38
-// NaN shielding rows). The OPBE/ORCA-PBE split is load-bearing for the
-// methods-mixing caveat (a neighbour term drawing on a SER ASA row mixes
-// OPBE + PBE — project_serine_pbe_discontinuity).
-enum class TripeptideMethodTag : std::int8_t {
-    NoMatch = 0,   // tripeptide_bb_has_match == false; shielding row is NaN
-    Opbe    = 1,   // gaussian_standard_orientation (OPBE)
-    OrcaPbe = 2,   // orca_input_orientation (PBE)
 };
 
 // ── MOPAC (PM7+MOZYME) family blocks ───────────────────────────────────

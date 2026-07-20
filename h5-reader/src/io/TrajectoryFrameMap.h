@@ -5,6 +5,7 @@
 #include <QString>
 
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 namespace h5reader::io {
@@ -21,6 +22,12 @@ public:
     // fallback if the row is out of range.
     static std::size_t
     OriginalIndex(std::size_t row, const QtTrajectoryH5& h5);
+
+    // Original XTC frame index -> exact H5 row. No nearest-frame fallback:
+    // scientific data keyed by an original frame must only be paired with the
+    // matching conformation row.
+    static std::optional<std::size_t>
+    RowForOriginalIndex(std::size_t originalIndex, const QtTrajectoryH5& h5);
 };
 
 }  // namespace h5reader::io
