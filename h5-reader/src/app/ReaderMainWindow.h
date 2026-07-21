@@ -124,7 +124,7 @@ public:
     // Toggle a named overlay by driving its toolbar action, so REST /
     // automation changes run the SAME path as a human click (per-frame
     // refresh for the kernel overlays) and keep the toolbar checkbox in
-    // sync. name in {ribbon, rings, butterfly, nullcone, bfield, shadow}
+    // sync. name in {ribbon, rings, butterfly, nullcone, bfield}
     // (+ aliases fieldgrid/field/isosurface, null_cone/ring_null,
     // streamlines/stream, trajectory/path).
     // Returns false on an unknown name. Used by POST /overlay so the

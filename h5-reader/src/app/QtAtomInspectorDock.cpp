@@ -281,7 +281,8 @@ void DeleteIfEmpty(QTreeWidgetItem* item) {
 // Optional-aware adders — add only real rows. Missing values mean "this
 // calculator did not run / this field is absent"; dash-only groups are cut.
 bool AddOptScalar(QTreeWidgetItem* p, const QString& name, const std::optional<double>& v, const QString& unit = QString()) {
-    if (!v) return false;
+    if (!v || !std::isfinite(*v))
+        return false;
     return AddScalar(p, name, *v, unit);
 }
 bool AddOptVec3(QTreeWidgetItem* p, const QString& name, const std::optional<Vec3>& v, const QString& unit = QString()) {

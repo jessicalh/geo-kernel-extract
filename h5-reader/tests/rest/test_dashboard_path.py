@@ -46,8 +46,9 @@ def test_frame_set_round_trip(rest):
     retired per spec/viewport_pipeline_2026-05-30.md §1.4: per-frame
     camera writes are owned by the typed CameraComposer, and Free mode
     is a strict no-op so the user's view-state persists)."""
+    frames = rest.sampled_frames(4)
     initial_focal = rest.client.get("/scene/camera").json()["focal"]
-    for frame in (0, 100, 250, 500, 700):
+    for frame in frames:
         r = rest.client.post("/frame/set", json={"frame": frame})
         assert r.status_code == 204, r.text
         confirmed = rest.client.get("/frame/current").json()

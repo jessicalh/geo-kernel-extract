@@ -1726,8 +1726,8 @@ void RestServer::registerRoutes() {
 
     // ---- overlay visibility (automation / snapshot harness) -------------
     //
-    // POST /overlay {"name": "ribbon"|"rings"|"butterfly"|"nullcone"|"bfield"
-    //                         |"shadow", "visible": bool}
+    // POST /overlay {"name": "ribbon"|"rings"|"butterfly"|"nullcone"|"bfield",
+    //                "visible": bool}
     // Drives the same toolbar toggle path a human click would, so the kernel
     // overlays (butterfly isosurfaces, B-field streamlines) get their per-frame
     // refresh and the toolbar checkbox stays in sync. Lets the headless
@@ -1750,7 +1750,7 @@ void RestServer::registerRoutes() {
         if (!readerWindow_->setOverlayVisible(name, visible))
             return errorResponse(
                 QStringLiteral("unknown overlay \"%1\" "
-                               "(ribbon|rings|butterfly|nullcone|bfield|shadow)").arg(name),
+                               "(ribbon|rings|butterfly|nullcone|bfield)").arg(name),
                 SC::BadRequest);
         return QHttpServerResponse(SC::NoContent);
     });
@@ -2308,7 +2308,15 @@ void RestServer::registerRoutes() {
         QString kind;
         switch (transformed_->mode()) {
             case model::TransformedConformation::Mode::FitReference: kind = QStringLiteral("all_atom_fit"); break;
-            case model::TransformedConformation::Mode::FitSubset:    kind = QStringLiteral("backbone_fit"); break;
+            case model::TransformedConformation::Mode::FitSubset: {
+                kind = QStringLiteral("fit_subset");
+                const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+                if (protein && transformed_->subsetAtoms()
+                                   == model::TransformedConformation::BackboneSubset(*protein)) {
+                    kind = QStringLiteral("backbone_fit");
+                }
+                break;
+            }
         }
         QJsonArray subsetArr;
         for (std::size_t a : transformed_->subsetAtoms())

@@ -33,7 +33,7 @@ def test_added_signal_survives_frame_walk(rest):
         initial_ids = {s["id"] for s in rest.client.get("/dashboard/signals").json()}
         assert sid in initial_ids, "added signal not listed"
 
-        for frame in (0, 100, 250, 500, 700):
+        for frame in rest.sampled_frames(4):
             rest.client.post("/frame/set", json={"frame": frame})
 
         after_ids = {s["id"] for s in rest.client.get("/dashboard/signals").json()}
