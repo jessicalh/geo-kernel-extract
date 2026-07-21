@@ -65,6 +65,21 @@ class RestSession:
     base_url: str
     client: httpx.Client
 
+    def sampled_frames(self, intervals: int) -> list[int]:
+        """Return evenly spaced valid frames, including both trajectory ends."""
+        if intervals < 1:
+            raise ValueError("intervals must be positive")
+        response = self.client.post(
+            "/frame/set", json={"frame": 1_000_000_000}
+        )
+        if response.status_code != 204:
+            raise RuntimeError(response.text)
+        last_frame = self.client.get("/frame/current").json()["frame"]
+        self.client.post("/frame/set", json={"frame": 0})
+        return sorted(
+            {round(last_frame * step / intervals) for step in range(intervals + 1)}
+        )
+
     def reset(self) -> None:
         """Per-test reset: clear plane lock, clear selection, return to frame 0."""
         try:

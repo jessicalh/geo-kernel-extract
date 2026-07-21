@@ -35,10 +35,9 @@ public:
     explicit QtPlanarGeometryGroup(const QtConformationSnapshot& snapshot) : snap_(&snapshot) {}
 
     // ── Per-atom ──────────────────────────────────────────────────────
-    // Signed sp2 out-of-plane displacement (Å) of a planar-group atom from the
-    // plane of its three bonded neighbours; CHARMM/AMBER improper-dihedral sign
-    // (right-hand rule on the two lowest-atom-index neighbour vectors,
-    // build-stable). 0.0 for non-planar atoms (PlanarGeometryResult.h:32-39).
+    // Non-negative sp2 out-of-plane displacement magnitude (A). NaN marks a
+    // non-applicable or invalid/degenerate row; PyramidalizationValid is the
+    // authoritative mask and is equivalent to a finite-value check.
     std::optional<double> pyramidalization(std::size_t atomIdx) const {
         if (!snap_->has(io::FieldKind::Pyramidalization))
             return std::nullopt;

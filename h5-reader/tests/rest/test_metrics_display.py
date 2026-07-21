@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -95,11 +96,14 @@ def build_anchor(axis: str, idx: int) -> dict:
     }.get(axis, {"kind": "none"})
 
 
-# Candidate anchors to try (data presence varies per anchor). Kept short: each
-# attempt backfills a frame window, so retries multiply cost.
+# Candidate anchors to try (data presence varies per anchor). The first three
+# preserve the fast common path. For atom fields, the first 32 indices cover a
+# complete hydrogen-rich terminal residue plus the start of its neighbour;
+# this matters for sparse applicability masks such as pyramidalization.
 def candidate_indices(axis: str) -> list[int]:
+    atom_indices = list(dict.fromkeys([16, 0, 100, *range(32)]))
     return {
-        "atom": [16, 0, 100],
+        "atom": atom_indices,
         "residue": [0, 5, 10],
         "bond": [0, 16, 50],
         "bond vector": [0, 5, 10],
@@ -166,6 +170,26 @@ def _probe_add(client, d: dict, mode: str, idx: int, frame: int) -> dict:
     payload = r.json()
     rid, refs = payload.get("id"), payload.get("added_refs", -1)
     disp = client.get("/dashboard/display").json()
+    if d["id"].startswith("ml:experimental_shielding_"):
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            signal_tracks = [
+                track for track in (disp.get("strip_tracks", []) or [])
+                if track.get("signal_id") == rid
+            ]
+            if any(
+                value is not None
+                for track in signal_tracks
+                for value in (track.get("values") or [])
+            ):
+                break
+            ml_state = client.get("/ui/state").json().get(
+                "experimentalShieldingMl", {}
+            )
+            if ml_state.get("inferenceError"):
+                break
+            time.sleep(0.05)
+            disp = client.get("/dashboard/display").json()
     tracks = disp.get("strip_tracks", []) or []
     panels = disp.get("panels", []) or []
     max_non, vlen, metric_span, any_varies = 0, 0, 0.0, False

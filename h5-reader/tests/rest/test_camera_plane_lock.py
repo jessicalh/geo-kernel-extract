@@ -21,7 +21,6 @@ import math
 
 
 ATOMS = [1, 100, 200]
-FRAMES = [0, 50, 100, 150, 200, 250]
 
 
 def _vec_sub(a: list[float], b: list[float]) -> list[float]:
@@ -80,10 +79,11 @@ def test_plane_lock_enables_with_three_atoms(rest):
 
 
 def test_plane_lock_camera_tracks_centroid_and_normal(rest):
+    frames = rest.sampled_frames(5)
     rest.client.post("/plane-lock/enable", json={"atoms": ATOMS})
 
     previous_direction: list[float] | None = None
-    for frame in FRAMES:
+    for frame in frames:
         rest.client.post("/frame/set", json={"frame": frame})
         positions = _fetch_positions(rest, ATOMS, frame)
         centroid = _centroid(positions)
