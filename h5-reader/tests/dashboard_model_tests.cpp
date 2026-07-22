@@ -188,7 +188,7 @@ private slots:
     // ---- Stage-1 visualization registry -----------------------------------
 
     void testVisualizationRegistry_capabilityTableMirrorsLegacyRows();
-    void testVisualizationRegistry_tensorGlyphIsF003Only();
+    void testVisualizationRegistry_tensorGlyphIsExperimentalShieldingOnly();
 };
 
 // ---- anchor variant + axis-matching -------------------------------------
@@ -341,7 +341,7 @@ void DashboardModelTests::testVisualizationRegistry_capabilityTableMirrorsLegacy
     }
 }
 
-void DashboardModelTests::testVisualizationRegistry_tensorGlyphIsF003Only() {
+void DashboardModelTests::testVisualizationRegistry_tensorGlyphIsExperimentalShieldingOnly() {
     const TrajectorySignalCatalog catalog;
     const SignalDescriptor* f003 =
         catalog.findDescriptor(QStringLiteral("ml:experimental_shielding_t2"));

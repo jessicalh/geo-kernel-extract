@@ -143,15 +143,18 @@ bool validateRuntimeManifest(const QJsonObject& manifest, QString& error) {
         manifest.value(QStringLiteral("inference_schema")).toObject();
     const QJsonObject runtime =
         manifest.value(QStringLiteral("runtime_contract")).toObject();
-    if (schema.value(QStringLiteral("version")).toInt() != 2
-        || schema.value(QStringLiteral("model_id")).toString().isEmpty()
+    if (schema.value(QStringLiteral("version")).toInt() != 3
+        || schema.value(QStringLiteral("model_id")).toString()
+               != QStringLiteral("f006_r007")
         || !schema.value(QStringLiteral("numeric_features")).isArray()
         || !schema.value(QStringLiteral("label_keys")).isArray()
         || !schema.value(QStringLiteral("label_vocabs")).isObject()
+        || !schema.value(QStringLiteral("categorical_unknown_policy")).isObject()
+        || !schema.value(QStringLiteral("target_normalization")).isObject()
         || !schema.value(QStringLiteral("expected_channels")).isObject()
         || !schema.value(QStringLiteral("expected_channel_names")).isObject()
         || runtime.value(QStringLiteral("helper_protocol")).toInt() != 2) {
-        error = QStringLiteral("manifest inference_schema/runtime protocol 2 is missing");
+        error = QStringLiteral("manifest F006 inference schema 3/runtime protocol 2 is missing");
         return false;
     }
 
@@ -164,7 +167,7 @@ bool validateRuntimeManifest(const QJsonObject& manifest, QString& error) {
     }
     if (manifest.value(QStringLiteral("target")).toString()
         != QStringLiteral("ORCA total shielding: isotropic 0e plus traceless 2e")) {
-        error = QStringLiteral("manifest target is not the F003 total shielding tensor");
+        error = QStringLiteral("manifest target is not the total shielding tensor");
         return false;
     }
 
@@ -176,7 +179,7 @@ bool validateRuntimeManifest(const QJsonObject& manifest, QString& error) {
                != QStringLiteral("project 0e plus traceless 2e")
         || output.value(QStringLiteral("t1")).toString()
                != QStringLiteral("not predicted and not synthesized")) {
-        error = QStringLiteral("manifest output_contract is not the F003 0e plus 2e contract");
+        error = QStringLiteral("manifest output_contract is not the 0e plus 2e contract");
         return false;
     }
 
@@ -462,7 +465,7 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
     }
     if (contract_.labelKeys.size() != 15) {
         errorReason_ =
-            QStringLiteral("F003 runtime requires 15 categorical labels; manifest has %1")
+            QStringLiteral("F006 runtime requires 15 categorical labels; manifest has %1")
                 .arg(contract_.labelKeys.size());
         return false;
     }
@@ -482,11 +485,72 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
             }
             vocabulary.insert(it.key(), static_cast<std::int64_t>(it.value().toDouble()));
         }
-        if (!vocabulary.contains(QStringLiteral("<UNK>"))) {
-            errorReason_ = QStringLiteral("label vocabulary %1 has no <UNK>").arg(key);
+        if (vocabulary.value(QStringLiteral("<UNK>"), -1) != 0) {
+            errorReason_ = QStringLiteral("label vocabulary %1 must assign <UNK> id 0")
+                               .arg(key);
             return false;
         }
         contract_.labelVocabs.insert(key, vocabulary);
+    }
+
+    const QJsonObject unknownPolicy =
+        schema.value(QStringLiteral("categorical_unknown_policy")).toObject();
+    QStringList trainedUnknown;
+    QStringList requiredKnown;
+    if (unknownPolicy.value(QStringLiteral("unknown_id")).toInt(-1) != 0
+        || !readStringList(unknownPolicy.value(QStringLiteral("trained_unknown_keys")),
+                           QStringLiteral("trained_unknown_keys"),
+                           trainedUnknown,
+                           errorReason_)
+        || !readStringList(unknownPolicy.value(QStringLiteral("required_known_keys")),
+                           QStringLiteral("required_known_keys"),
+                           requiredKnown,
+                           errorReason_)) {
+        if (errorReason_.isEmpty())
+            errorReason_ = QStringLiteral("F006 categorical unknown id must be zero");
+        return false;
+    }
+    contract_.trainedUnknownKeys = QSet<QString>(trainedUnknown.cbegin(),
+                                                 trainedUnknown.cend());
+    contract_.requiredKnownKeys = QSet<QString>(requiredKnown.cbegin(),
+                                                requiredKnown.cend());
+    for (const QString& key : contract_.labelKeys) {
+        const bool trained = contract_.trainedUnknownKeys.contains(key);
+        const bool required = contract_.requiredKnownKeys.contains(key);
+        if (trained == required) {
+            errorReason_ = QStringLiteral(
+                               "categorical key %1 must be exactly one of trained-unknown or required-known")
+                               .arg(key);
+            return false;
+        }
+    }
+    if (contract_.trainedUnknownKeys.size() + contract_.requiredKnownKeys.size()
+        != contract_.labelKeys.size()) {
+        errorReason_ = QStringLiteral("categorical unknown policy names an unsupported key");
+        return false;
+    }
+    for (const QJsonValue value :
+         unknownPolicy.value(QStringLiteral("couplings")).toArray()) {
+        const QJsonObject coupling = value.toObject();
+        const QString source = coupling.value(QStringLiteral("if_unknown")).toString();
+        const QString target = coupling.value(QStringLiteral("force_unknown")).toString();
+        if (source.isEmpty() || target.isEmpty()
+            || !contract_.trainedUnknownKeys.contains(source)
+            || !contract_.trainedUnknownKeys.contains(target)
+            || contract_.unknownCouplings.contains(source)) {
+            errorReason_ = QStringLiteral("invalid categorical unknown coupling %1 -> %2")
+                               .arg(source, target);
+            return false;
+        }
+        contract_.unknownCouplings.insert(source, target);
+    }
+
+    const QJsonObject targetNormalization =
+        schema.value(QStringLiteral("target_normalization")).toObject();
+    if (targetNormalization.value(QStringLiteral("implementation")).toString()
+        != QStringLiteral("frozen in model.ts")) {
+        errorReason_ = QStringLiteral("F006 target normalization is not frozen in model.ts");
+        return false;
     }
 
     if (!readStringList(schema.value(QStringLiteral("ring_type_order")),
@@ -1486,6 +1550,7 @@ bool ExperimentalShieldingMlStore::buildInput(
     std::vector<std::int64_t> labelIds(
         atomCount * static_cast<std::size_t>(contract_.labelKeys.size()));
     QHash<QString, int> unknownCounts;
+    QHash<QString, int> forcedUnknownCounts;
     for (std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex) {
         const QtAtom& atom = protein_->atom(atomIndex);
         const std::size_t residueIndex = atomResidues[atomIndex];
@@ -1537,19 +1602,47 @@ bool ExperimentalShieldingMlStore::buildInput(
             }
             const QHash<QString, std::int64_t>& vocabulary = vocabularyIt.value();
             const auto idIt = vocabulary.constFind(value);
-            const std::int64_t id =
-                idIt == vocabulary.constEnd()
-                    ? vocabulary.value(QStringLiteral("<UNK>"))
-                    : idIt.value();
-            if (idIt == vocabulary.constEnd())
+            const bool unknown = idIt == vocabulary.constEnd();
+            if (unknown && !contract_.trainedUnknownKeys.contains(key)) {
+                error = QStringLiteral(
+                            "%1 atom %2 required categorical %3 value %4 is outside the model vocabulary")
+                            .arg(frameLabel)
+                            .arg(atomIndex)
+                            .arg(key, value.isEmpty() ? QStringLiteral("<empty>") : value);
+                return false;
+            }
+            const std::int64_t id = unknown ? 0 : idIt.value();
+            if (unknown)
                 unknownCounts[key] += 1;
             labelIds[atomIndex * static_cast<std::size_t>(contract_.labelKeys.size())
                      + static_cast<std::size_t>(labelIndex)] = id;
+        }
+        for (auto it = contract_.unknownCouplings.constBegin();
+             it != contract_.unknownCouplings.constEnd();
+             ++it) {
+            const int sourceColumn = contract_.labelKeys.indexOf(it.key());
+            const int targetColumn = contract_.labelKeys.indexOf(it.value());
+            const std::size_t rowOffset =
+                atomIndex * static_cast<std::size_t>(contract_.labelKeys.size());
+            if (labelIds[rowOffset + static_cast<std::size_t>(sourceColumn)] == 0
+                && labelIds[rowOffset + static_cast<std::size_t>(targetColumn)] != 0) {
+                labelIds[rowOffset + static_cast<std::size_t>(targetColumn)] = 0;
+                forcedUnknownCounts[it.value()] += 1;
+            }
         }
     }
     for (auto it = unknownCounts.constBegin(); it != unknownCounts.constEnd(); ++it) {
         qCWarning(cExperimentalMl).noquote()
             << QStringLiteral("event=label_oov frame=%1 key=%2 rows=%3")
+                   .arg(frame)
+                   .arg(it.key())
+                   .arg(it.value());
+    }
+    for (auto it = forcedUnknownCounts.constBegin();
+         it != forcedUnknownCounts.constEnd();
+         ++it) {
+        qCWarning(cExperimentalMl).noquote()
+            << QStringLiteral("event=label_oov_coupling frame=%1 key=%2 rows=%3")
                    .arg(frame)
                    .arg(it.key())
                    .arg(it.value());

@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -139,6 +140,9 @@ private:
         QStringList expectedApplicabilityNames;
         QStringList labelKeys;
         QHash<QString, QHash<QString, std::int64_t>> labelVocabs;
+        QSet<QString> trainedUnknownKeys;
+        QSet<QString> requiredKnownKeys;
+        QHash<QString, QString> unknownCouplings;
         QVector<FeatureSpec> features;
         QStringList ringTypeOrder;
         QVector<int> ringActive;

@@ -33,7 +33,7 @@ confirmed against the running app, not assumed):
     collapse to ONE scalar per track (a magnitude/invariant trend); the full
     tensor lives in the shared tensor glyph. Flagged, not failed.
   - static.tensor remains a no-op for older descriptors whose scene binding is
-    deferred. Experimental Shielding ML is the explicit exception: its F003 T2
+    deferred. Experimental Shielding ML is the explicit exception: its T2
     output drives the shared tensor glyph and is classified as a scene display.
   - Unavailable-in-this-run descriptors are refused with 409 (correct).
   - embedding + the 5 topology tables are non-displayable by policy.
@@ -60,7 +60,7 @@ CLEAN = {"PASS", "PASS_FLAG_MULTIVALUE", "ABSENT_REFUSED", "UNAVAILABLE_REFUSED"
 
 # Genuine display debt on the default 1P9J fixture. id -> expected verdict.
 #   DEFERRED_GLYPH: the only metric with no dashboard path at all -- its sole
-#     mode is static.tensor, whose scene-glyph trigger remains deferred. F003
+#     mode is static.tensor, whose scene-glyph trigger remains deferred. The ML tensor
 #     is deliberately not included: ml:experimental_shielding_t2 has a tested
 #     dashboard-selected binding to the shared tensor glyph.
 #
