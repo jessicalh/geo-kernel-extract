@@ -24,6 +24,13 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(H5READER_SHARED_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
 
+if(WIN32)
+    option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML
+        "Require and package the Experimental Shielding ML model/runtime" ON)
+    option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM
+        "Require and package the native ROCm Experimental Shielding ML runtime" ON)
+endif()
+
 # ============================================================================
 # Platform module + dependency discovery + per-build-type flags
 # ============================================================================
@@ -904,10 +911,6 @@ if(WIN32)
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR
         "ml/experimental_shielding_ml"
         CACHE STRING "Install subdirectory for the Experimental Shielding ML runtime")
-    option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML
-        "Require and package the Experimental Shielding ML model/runtime" ON)
-    option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM
-        "Require and package the native ROCm Experimental Shielding ML runtime" ON)
 
     if(NOT H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT
             AND DEFINED ENV{H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT})
