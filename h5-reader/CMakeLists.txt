@@ -1186,7 +1186,12 @@ set(CPACK_PACKAGE_EXECUTABLES "h5reader" "h5reader")
 if(WIN32)
     set(CPACK_CREATE_DESKTOP_LINKS "h5reader")
     set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
-    find_program(H5READER_MAKENSIS_EXECUTABLE makensis)
+    find_program(H5READER_MAKENSIS_EXECUTABLE
+        NAMES makensis
+        HINTS
+            "$ENV{ProgramFiles}/NSIS"
+            "$ENV{ProgramFiles\(x86\)}/NSIS"
+    )
     if(H5READER_MAKENSIS_EXECUTABLE)
         set(CPACK_GENERATOR "NSIS;ZIP")
         set(CPACK_NSIS_DISPLAY_NAME "h5reader")
