@@ -802,9 +802,9 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         set(H5READER_REST_FIXTURE_DEFAULT
             "C:/projects/reader-data/1p9j-calibration-with-dft/1p9j-july20260717.LGS"
             CACHE FILEPATH "Default H5READER_REST_FIXTURE for the REST smoke test")
-        set(H5READER_F003_STATIC_FIXTURE_DEFAULT
-            "C:/projects/reader-data/july-20260717-staging/full720-f003-A0A822IKI2.LGS"
-            CACHE FILEPATH "Complete July full720 single-pose fixture for F003 inference tests")
+        set(H5READER_F006_STATIC_FIXTURE_DEFAULT
+            "C:/projects/reader-data/july-20260717-staging/full720-f006-A0A822IKI2.LGS"
+            CACHE FILEPATH "Complete July full720 single-pose fixture for F006 inference tests")
     else()
         set(H5READER_REST_FIXTURE_DEFAULT
             "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
@@ -822,7 +822,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
     # binary runs against the real display.
     set_tests_properties(h5reader_rest_smoke PROPERTIES
         ENVIRONMENT
-            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_EXPECT_ML_INPUT_FAILURE=1"
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}"
         LABELS "rest;e2e"
         TIMEOUT 300
     )
@@ -834,7 +834,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
                          -v --tb=short)
         set_tests_properties(h5reader_rest_installed_ml_stale_dev_env PROPERTIES
             ENVIRONMENT
-                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F003_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;H5READER_EXPECT_STALE_DEV_ML_FALLBACK=1;H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=C:/h5reader-missing-experimental-ml/model.ts;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=C:/h5reader-missing-experimental-ml/manifest.json;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=C:/h5reader-missing-experimental-ml/infer.exe"
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F006_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;H5READER_EXPECT_STALE_DEV_ML_FALLBACK=1;H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=C:/h5reader-missing-experimental-ml/model.ts;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=C:/h5reader-missing-experimental-ml/manifest.json;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=C:/h5reader-missing-experimental-ml/infer.exe"
             LABELS "rest;e2e;ml"
             TIMEOUT 120
         )
@@ -845,7 +845,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
                          -v --tb=short)
         set_tests_properties(h5reader_rest_ml_cpu_fallback PROPERTIES
             ENVIRONMENT
-                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F003_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;HIP_VISIBLE_DEVICES=-1;H5READER_EXPECT_ML_CPU_FALLBACK=1"
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F006_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;HIP_VISIBLE_DEVICES=-1;H5READER_EXPECT_ML_CPU_FALLBACK=1"
             LABELS "rest;e2e;ml"
             TIMEOUT 120
         )
@@ -857,7 +857,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
                              -v --tb=short)
             set_tests_properties(h5reader_rest_ml_rocm PROPERTIES
                 ENVIRONMENT
-                    "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F003_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE=rocm;H5READER_EXPECT_ML_ACTIVE_DEVICE=rocm"
+                    "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F006_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE=rocm;H5READER_EXPECT_ML_ACTIVE_DEVICE=rocm"
                 LABELS "rest;e2e;ml;rocm"
                 TIMEOUT 120
             )

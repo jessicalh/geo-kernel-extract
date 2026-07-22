@@ -1729,7 +1729,7 @@ void DashboardDisplayController::rebuild() {
                 continue;
             }
 
-            // F003 is the first dashboard-selected tensor with a complete
+            // Experimental Shielding ML is the first dashboard-selected tensor with a complete
             // scene renderer. A panel may carry several metrics, but the scene
             // has one shared tensor actor, so the first enabled tensor binding
             // in model order wins deterministically.

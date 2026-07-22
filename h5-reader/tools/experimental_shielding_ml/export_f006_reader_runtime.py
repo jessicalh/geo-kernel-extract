@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the sealed F003/R004 model for the Reader's native LibTorch helper."""
+"""Export the sealed F006/R007 model for the Reader's native LibTorch helper."""
 
 from __future__ import annotations
 
@@ -50,16 +50,16 @@ def sha256_file(path: Path) -> str:
 def import_package(package: Path):
     sys.path.insert(0, str(package))
     try:
-        infer = importlib.import_module("infer_f003")
-        loader = importlib.import_module("f003_loader")
-        model_module = importlib.import_module("f003_model")
+        infer = importlib.import_module("infer_f006")
+        loader = importlib.import_module("f006_loader")
+        model_module = importlib.import_module("f006_model")
     finally:
         sys.path.pop(0)
     return infer, loader, model_module
 
 
 class ReaderModelWrapper(torch.nn.Module):
-    """F003 with frozen normalization and a precomputed graph boundary."""
+    """F006 with frozen normalization and a precomputed graph boundary."""
 
     def __init__(
         self,
@@ -98,9 +98,26 @@ class ReaderModelWrapper(torch.nn.Module):
             torch.as_tensor(normalizer["pair_l2_scale"], dtype=torch.float32),
         )
         self.register_buffer(
+            "pair_target_count",
+            torch.as_tensor(normalizer["pair_target_count"], dtype=torch.long),
+        )
+        self.register_buffer(
+            "atom_iso_mean",
+            torch.as_tensor(normalizer["atom_iso_mean"], dtype=torch.float32),
+        )
+        self.register_buffer(
+            "atom_iso_scale",
+            torch.as_tensor(normalizer["atom_iso_scale"], dtype=torch.float32),
+        )
+        self.register_buffer(
+            "atom_l2_scale",
+            torch.as_tensor(normalizer["atom_l2_scale"], dtype=torch.float32),
+        )
+        self.register_buffer(
             "project_to_e3nn",
             torch.as_tensor(project_to_e3nn, dtype=torch.float32),
         )
+        self.iupac_atom_column = LABEL_KEYS.index("iupac_atom")
         self.iupac_pair_column = LABEL_KEYS.index("iupac_pair")
 
     def forward(
@@ -177,15 +194,32 @@ class ReaderModelWrapper(torch.nn.Module):
             )
 
         pair_ids = label_ids[:, self.iupac_pair_column]
+        atom_ids = label_ids[:, self.iupac_atom_column]
         prediction = self.core.shared_readout(node)
         prediction = prediction + self.core.pair_delta_readout(node, pair_ids)
+        use_pair = (pair_ids != 0) & (self.pair_target_count[pair_ids] > 0)
+        iso_mean = torch.where(
+            use_pair,
+            self.pair_iso_mean[pair_ids],
+            self.atom_iso_mean[atom_ids],
+        )
+        iso_scale = torch.where(
+            use_pair,
+            self.pair_iso_scale[pair_ids],
+            self.atom_iso_scale[atom_ids],
+        )
+        l2_scale = torch.where(
+            use_pair,
+            self.pair_l2_scale[pair_ids],
+            self.atom_l2_scale[atom_ids],
+        )
         iso = (
-            prediction[:, 0:1] * self.pair_iso_scale[pair_ids, None]
-            + self.pair_iso_mean[pair_ids, None]
+            prediction[:, 0:1] * iso_scale[:, None]
+            + iso_mean[:, None]
         )
         l2_project = (
             prediction[:, 1:6]
-            * self.pair_l2_scale[pair_ids, None]
+            * l2_scale[:, None]
         ) @ self.project_to_e3nn
         return torch.cat((iso, l2_project), dim=1)
 
@@ -345,7 +379,7 @@ def export(package: Path, output: Path) -> Dict[str, object]:
     small_tensors = graph_tensors(graph, model, trace_indices(graph))
 
     with torch.inference_mode():
-        original_prediction, _ = infer.infer_graph(
+        original_prediction, *_ = infer.infer_graph(
             model,
             graph,
             normalizer,
@@ -395,8 +429,8 @@ def export(package: Path, output: Path) -> Dict[str, object]:
     contract = bundle.contract
     manifest = {
         "name": "Experimental Shielding ML",
-        "bundle_version": "F003-R004-v1-reader-runtime",
-        "bundle_date": "2026-07-19",
+        "bundle_version": "F006-R007-v1-reader-runtime",
+        "bundle_date": "2026-07-22",
         "source_bundle_id": bundle.bundle_id,
         "source_model_sha256": metadata["model_state"]["sha256"],
         "model_file": MODEL_FILE,
@@ -411,11 +445,11 @@ def export(package: Path, output: Path) -> Dict[str, object]:
         },
         "models": [
             {
-                "id": "f003_r004",
+                "id": "f006_r007",
                 "label": "Experimental Shielding ML",
-                "role": "July 2026 no-MOPAC trajectory-compatible model",
+                "role": "July 2026 static-safe no-MOPAC model with trained fallbacks",
                 "model_file": MODEL_FILE,
-                "input_preset": "f003_no_mopac_common_sense",
+                "input_preset": "f006_static_safe_generic_hbond",
                 "selection": "all loaded July-contract runs",
                 "training": {
                     "run": metadata["training_run"],
@@ -425,8 +459,8 @@ def export(package: Path, output: Path) -> Dict[str, object]:
             }
         ],
         "inference_schema": {
-            "version": 2,
-            "model_id": "f003_r004",
+            "version": 3,
+            "model_id": "f006_r007",
             "graph": {
                 "radius_angstrom": metadata["architecture"]["radius_A"],
                 "max_neighbors": metadata["architecture"]["max_neighbors"],
@@ -435,6 +469,35 @@ def export(package: Path, output: Path) -> Dict[str, object]:
             },
             "label_keys": list(LABEL_KEYS),
             "label_vocabs": bundle.vocabs,
+            "categorical_unknown_policy": {
+                "trained_unknown_keys": metadata["robustness_policy"][
+                    "fallback_trained_categories"
+                ],
+                "required_known_keys": [
+                    key
+                    for key in LABEL_KEYS
+                    if key
+                    not in metadata["robustness_policy"][
+                        "fallback_trained_categories"
+                    ]
+                ],
+                "couplings": [
+                    {
+                        "if_unknown": "amber_residue",
+                        "force_unknown": "residue_variant",
+                    }
+                ],
+                "unknown_id": 0,
+            },
+            "target_normalization": {
+                "policy": metadata["robustness_policy"][
+                    "normalization_fallback"
+                ],
+                "minimum_atom_fallback_rows": metadata["robustness_policy"][
+                    "minimum_atom_fallback_rows"
+                ],
+                "implementation": "frozen in model.ts",
+            },
             "numeric_features": contract["numeric_features"],
             "expected_channels": {
                 "scalars": len(metadata["channels"]["scalar"]),

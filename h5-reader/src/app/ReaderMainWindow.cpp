@@ -382,12 +382,13 @@ QJsonObject experimentalShieldingMlInputProfileJson(
     QJsonObject profile;
     profile.insert(QStringLiteral("loaded"), loaded);
     profile.insert(QStringLiteral("contract"),
-                   QStringLiteral("july_full720_f003_no_mopac_common_sense_v1"));
+                   QStringLiteral("july_f006_static_safe_generic_hbond_v1"));
     return profile;
 }
 
 QJsonObject selectedExperimentalShieldingMlModelJson(const QJsonObject& inputProfile,
-                                                     bool runtimeAvailable) {
+                                                     bool runtimeAvailable,
+                                                     const QJsonObject& manifestSummary) {
     QJsonObject selected;
     if (!runtimeAvailable) {
         selected.insert(QStringLiteral("id"), jsonNull());
@@ -399,10 +400,13 @@ QJsonObject selectedExperimentalShieldingMlModelJson(const QJsonObject& inputPro
         selected.insert(QStringLiteral("reason"), QStringLiteral("no_loaded_run"));
         return selected;
     }
-    selected.insert(QStringLiteral("id"), QStringLiteral("f003_r004"));
-    selected.insert(QStringLiteral("modelFile"), QStringLiteral("model.ts"));
-    selected.insert(QStringLiteral("inputPreset"),
-                    QStringLiteral("f003_no_mopac_common_sense"));
+    const QJsonArray models = manifestSummary.value(QStringLiteral("models")).toArray();
+    if (models.size() != 1 || !models.first().isObject()) {
+        selected.insert(QStringLiteral("id"), jsonNull());
+        selected.insert(QStringLiteral("reason"), QStringLiteral("manifest_model_missing"));
+        return selected;
+    }
+    selected = models.first().toObject();
     selected.insert(QStringLiteral("reason"), QStringLiteral("july_contract_loaded"));
     return selected;
 }
@@ -474,12 +478,15 @@ QJsonObject experimentalShieldingMlRuntimeJson(
         if (devMissing.isEmpty()) {
             out.insert(QStringLiteral("available"), true);
             out.insert(QStringLiteral("runtime"), QStringLiteral("development"));
+            QJsonObject manifestSummary;
             if (QFileInfo(manifestPath).isFile()) {
-                out.insert(QStringLiteral("manifest"),
-                           readExperimentalShieldingMlManifestSummary(manifestPath));
+                manifestSummary = readExperimentalShieldingMlManifestSummary(manifestPath);
+                out.insert(QStringLiteral("manifest"), manifestSummary);
             }
             out.insert(QStringLiteral("selectedModel"),
-                       selectedExperimentalShieldingMlModelJson(inputProfile, true));
+                       selectedExperimentalShieldingMlModelJson(inputProfile,
+                                                                true,
+                                                                manifestSummary));
             return out;
         }
     }
@@ -501,7 +508,7 @@ QJsonObject experimentalShieldingMlRuntimeJson(
         out.insert(QStringLiteral("missing"), stringListJson(devMissing));
         out.insert(QStringLiteral("installedMissing"), stringListJson(missing));
         out.insert(QStringLiteral("selectedModel"),
-                   selectedExperimentalShieldingMlModelJson(inputProfile, false));
+                   selectedExperimentalShieldingMlModelJson(inputProfile, false, {}));
         return out;
     }
 
@@ -511,10 +518,15 @@ QJsonObject experimentalShieldingMlRuntimeJson(
         out.insert(QStringLiteral("missing"), stringListJson(missing));
     if (devRuntimeRequested)
         out.insert(QStringLiteral("developmentMissing"), stringListJson(devMissing));
-    if (QFileInfo(installedManifest).isFile())
-        out.insert(QStringLiteral("manifest"), readExperimentalShieldingMlManifestSummary(installedManifest));
+    QJsonObject manifestSummary;
+    if (QFileInfo(installedManifest).isFile()) {
+        manifestSummary = readExperimentalShieldingMlManifestSummary(installedManifest);
+        out.insert(QStringLiteral("manifest"), manifestSummary);
+    }
     out.insert(QStringLiteral("selectedModel"),
-               selectedExperimentalShieldingMlModelJson(inputProfile, missing.isEmpty()));
+               selectedExperimentalShieldingMlModelJson(inputProfile,
+                                                        missing.isEmpty(),
+                                                        manifestSummary));
     return out;
 }
 
@@ -1085,7 +1097,7 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
     const int frameI = playback_ ? playback_->currentFrame() : 0;
     const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
 
-    // A dashboard-selected F003 tensor owns the shared shielding glyph while
+    // A dashboard-selected ML tensor owns the shared shielding glyph while
     // active. The network emits its equivariant tensor in the raw coordinate
     // frame; apply the exact display Kabsch rotation used by atomPosition().
     if (activeExperimentalMlTensorDescriptor_

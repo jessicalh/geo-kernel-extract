@@ -121,10 +121,8 @@ def test_experimental_shielding_ml_runtime_manifest_is_reported(rest):
     expected_input_failure = _enabled(EXPECT_INPUT_FAILURE_ENV)
     assert ml["inferenceReady"] is not expected_input_failure
     if expected_input_failure:
-        assert (
-            ml["inferenceError"]
-            == "frame 0 required model input larsen_hbond_water_term.npy is absent"
-        )
+        assert ml["inferenceError"].startswith("frame 0 required model input ")
+        assert ml["inferenceError"].endswith(" is absent")
     preference = _device_preference()
     assert ml["devicePreference"] == preference
     assert ml["configuredDevice"] == ("cpu" if preference == "cpu" else "rocm")
@@ -136,30 +134,30 @@ def test_experimental_shielding_ml_runtime_manifest_is_reported(rest):
 
     manifest = ml["manifest"]
     assert manifest["name"] == "Experimental Shielding ML"
-    assert manifest["bundleVersion"] == "F003-R004-v1-reader-runtime"
-    assert manifest["bundleDate"] == "2026-07-19"
-    assert manifest["inferenceSchemaVersion"] == 2
+    assert manifest["bundleVersion"] == "F006-R007-v1-reader-runtime"
+    assert manifest["bundleDate"] == "2026-07-22"
+    assert manifest["inferenceSchemaVersion"] == 3
     assert manifest["target"] == "ORCA total shielding: isotropic 0e plus traceless 2e"
 
     models = {model["id"]: model for model in manifest["models"]}
-    assert set(models) == {"f003_r004"}
-    model = models["f003_r004"]
+    assert set(models) == {"f006_r007"}
+    model = models["f006_r007"]
     assert model["modelFile"] == "model.ts"
-    assert model["inputPreset"] == "f003_no_mopac_common_sense"
-    assert model["training"]["bestEpoch"] == 95
-    assert model["training"]["run"] == "R004-F003-no-mopac-common-sense-seed0-full96"
+    assert model["inputPreset"] == "f006_static_safe_generic_hbond"
+    assert model["training"]["bestEpoch"] == 92
+    assert model["training"]["run"] == "R007-F006-static-safe-generic-hbond-seed0-full96"
     assert model["training"]["producerCommit"] == "2bb3a5fa52b8a1e158d14405936f008e646ce712"
 
     assert ml["inputProfile"]["loaded"] is True
-    assert ml["inputProfile"]["contract"] == "july_full720_f003_no_mopac_common_sense_v1"
-    assert ml["selectedModel"]["id"] == "f003_r004"
+    assert ml["inputProfile"]["contract"] == "july_f006_static_safe_generic_hbond_v1"
+    assert ml["selectedModel"]["id"] == "f006_r007"
     assert ml["selectedModel"]["modelFile"] == "model.ts"
     assert ml["selectedModel"]["reason"] == "july_contract_loaded"
 
 
 @pytest.mark.skipif(
     not _enabled(EXPECT_SUCCESS_ENV),
-    reason="fixture is not the complete F003 static acceptance member",
+    reason="fixture is not the complete F006 static acceptance member",
 )
 def test_experimental_shielding_ml_produces_a_dashboard_sample(rest):
     response = rest.client.post(
@@ -201,7 +199,7 @@ def test_experimental_shielding_ml_produces_a_dashboard_sample(rest):
         # full720 member. This pins coordinates, all feature blocks and masks,
         # categorical IDs, edges, and radial basis across the C++ bridge while
         # allowing CPU/ROCm floating-point noise.
-        assert abs(value - 29.752159118652344) < 0.001
+        assert abs(value - 29.76103401184082) < 0.001
 
         ml = state["experimentalShieldingMl"]
         assert ml["inferenceRunning"] is False
@@ -229,7 +227,7 @@ def test_experimental_shielding_ml_produces_a_dashboard_sample(rest):
 
 @pytest.mark.skipif(
     not _enabled(EXPECT_SUCCESS_ENV),
-    reason="fixture is not the complete F003 static acceptance member",
+    reason="fixture is not the complete F006 static acceptance member",
 )
 def test_experimental_shielding_ml_tensor_reaches_scene_and_inspector(rest):
     response = rest.client.post(
@@ -257,20 +255,20 @@ def test_experimental_shielding_ml_tensor_reaches_scene_and_inspector(rest):
                 break
             time.sleep(0.05)
 
-        assert tensor is not None, "F003 tensor never reached the shared scene glyph"
+        assert tensor is not None, "F006 tensor never reached the shared scene glyph"
         assert tensor["descriptorId"] == "ml:experimental_shielding_t2"
         assert tensor["source"] == "Experimental Shielding ML"
-        assert tensor["modelId"] == "f003_r004"
+        assert tensor["modelId"] == "f006_r007"
         assert tensor["atom"] == 16
         assert tensor["frame"] == 0
-        assert abs(tensor["sigmaIsoPpm"] - 29.752159118652344) < 0.001
+        assert abs(tensor["sigmaIsoPpm"] - 29.76103401184082) < 0.001
 
         expected_t2 = (
-            -4.285722732543945,
-            -5.985587120056152,
-            0.8754682540893555,
-            8.84444522857666,
-            2.2115061283111572,
+            -4.537426948547363,
+            -6.4437384605407715,
+            0.8410349488258362,
+            8.936220169067383,
+            2.1022396087646484,
         )
         assert len(tensor["t2"]) == len(expected_t2)
         for actual, expected in zip(tensor["t2"], expected_t2, strict=True):
@@ -281,7 +279,7 @@ def test_experimental_shielding_ml_tensor_reaches_scene_and_inspector(rest):
         assert group is not None, "inspector did not identify the displayed tensor source"
         source = _find_tree_node(group.get("children", []), "Source")
         assert source is not None
-        assert source["value"] == "f003_r004"
+        assert source["value"] == "f006_r007"
     finally:
         rest.client.post("/dashboard/metric/remove", json={"id": signal_id})
 
@@ -292,7 +290,7 @@ def test_experimental_shielding_ml_tensor_reaches_scene_and_inspector(rest):
 
 @pytest.mark.skipif(
     not _enabled(EXPECT_INPUT_FAILURE_ENV),
-    reason="fixture is not expected to omit a required F003 input",
+    reason="fixture is not expected to omit a required F006 input",
 )
 def test_experimental_shielding_ml_reports_missing_required_input(rest):
     response = rest.client.post(
@@ -309,7 +307,6 @@ def test_experimental_shielding_ml_reports_missing_required_input(rest):
     diagnostic = rest.client.get("/ui/state").json()["diagnostic"]
     assert diagnostic["present"] is True
     assert diagnostic["source"] == "ExperimentalShieldingMlStore"
-    assert (
-        diagnostic["message"]
-        == "frame 0 required model input larsen_hbond_water_term.npy is absent"
-    )
+    assert diagnostic["message"] == rest.client.get("/ui/state").json()[
+        "experimentalShieldingMl"
+    ]["inferenceError"]
