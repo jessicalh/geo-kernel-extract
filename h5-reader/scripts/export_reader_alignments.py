@@ -297,8 +297,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-root", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--mode", required=True, choices=("pilot", "full"))
-    parser.add_argument("--startup-timeout", type=float, default=1800.0)
-    parser.add_argument("--export-timeout", type=float, default=3600.0)
+    parser.add_argument(
+        "--startup-timeout",
+        type=float,
+        default=6 * 60 * 60,
+        help="catastrophe backstop in seconds while Reader loads a member",
+    )
+    parser.add_argument(
+        "--export-timeout",
+        type=float,
+        default=6 * 60 * 60,
+        help="catastrophe backstop in seconds while Reader exports a member",
+    )
     return parser.parse_args()
 
 
