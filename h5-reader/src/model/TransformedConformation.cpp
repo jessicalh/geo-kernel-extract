@@ -4,6 +4,7 @@
 
 #include "QtAtom.h"
 #include "QtProtein.h"
+#include "ScientificAlignment.h"
 
 #include "../app/FitTargetMath.h"
 #include "../diagnostics/ObjectCensus.h"
@@ -145,6 +146,12 @@ void TransformedConformation::setMode(Mode mode,
                                        std::vector<std::size_t> subsetAtoms) {
     ASSERT_THREAD(this);
 
+    if (mode == Mode::ScientificAlignment) {
+        qCWarning(cXform).noquote()
+            << "scientific alignment must be installed with setScientificAlignment";
+        return;
+    }
+
     mode_ = mode;
     referenceFrame_ = referenceFrame;
     subsetAtoms_.clear();
@@ -191,10 +198,11 @@ void TransformedConformation::setMode(Mode mode,
 
     rebuildTransformCache();
 
-    const char* modeName = "fit_reference";
+    const char* modeName = nullptr;
     switch (mode_) {
         case Mode::FitReference: modeName = "fit_reference"; break;
         case Mode::FitSubset:    modeName = "fit_subset"; break;
+        case Mode::ScientificAlignment: modeName = "scientific_alignment"; break;
     }
     qCInfo(cXform).noquote()
         << "mode set to" << modeName
@@ -207,8 +215,93 @@ void TransformedConformation::setMode(Mode mode,
     emit transformChanged();
 }
 
+bool TransformedConformation::setScientificAlignment(
+    const ScientificAlignmentResult& alignment,
+    QString* error) {
+    ASSERT_THREAD(this);
+
+    auto fail = [error](const QString& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    if (!inner_ || !protein_)
+        return fail(QStringLiteral("no conformation is available"));
+    if (!alignment.ok || !alignment.mean.converged)
+        return fail(QStringLiteral("scientific alignment is not complete and converged"));
+    if (alignment.policy.seedFrame >= inner_->frameCount()
+        || !std::isfinite(alignment.policy.rotationTolerance)
+        || !(alignment.policy.rotationTolerance > 0.0)) {
+        return fail(QStringLiteral("scientific alignment policy is invalid"));
+    }
+    if (alignment.frameFits.size() != inner_->frameCount()) {
+        return fail(QStringLiteral(
+            "scientific transform count does not match the loaded frame count"));
+    }
+    if (alignment.fitAtomIndices.size() < 3
+        || alignment.referencePositions.size() != alignment.fitAtomIndices.size()) {
+        return fail(QStringLiteral("scientific fit selection or reference is incomplete"));
+    }
+
+    std::vector<bool> seen(protein_->atomCount(), false);
+    for (std::size_t atom : alignment.fitAtomIndices) {
+        if (atom >= protein_->atomCount() || seen[atom])
+            return fail(QStringLiteral("scientific fit selection is invalid"));
+        seen[atom] = true;
+    }
+    for (const Vec3& reference : alignment.referencePositions) {
+        if (!reference.allFinite())
+            return fail(QStringLiteral(
+                "scientific reference contains nonfinite coordinates"));
+    }
+
+    std::vector<Transform3D> transforms;
+    transforms.reserve(alignment.frameFits.size());
+    for (const ScientificFrameFit& fit : alignment.frameFits) {
+        const double orthogonalityError =
+            (fit.rotation * fit.rotation.transpose() - Mat3::Identity()).norm();
+        if (!fit.valid() || !fit.rotation.allFinite()
+            || !fit.translation.allFinite()
+            || std::abs(fit.rotation.determinant() - 1.0)
+                > alignment.policy.rotationTolerance
+            || orthogonalityError > alignment.policy.rotationTolerance) {
+            return fail(QStringLiteral(
+                "scientific transform sequence contains an invalid frame"));
+        }
+        transforms.push_back({fit.rotation, fit.translation});
+    }
+
+    mode_ = Mode::ScientificAlignment;
+    referenceFrame_ = alignment.policy.seedFrame;
+    subsetAtoms_ = alignment.fitAtomIndices;
+    fitAtomIndices_ = alignment.fitAtomIndices;
+    stabilisationWindow_ = 0;
+    referencePositions_ = alignment.referencePositions;
+    referenceCentroid_ = alignment.mean.centroidAnchor;
+    transformCache_ = std::move(transforms);
+    ++generation_;
+
+    qCInfo(cXform).noquote()
+        << "exact scientific alignment installed"
+        << "| frames=" << static_cast<qulonglong>(transformCache_.size())
+        << "| fit_atoms=" << static_cast<qulonglong>(fitAtomIndices_.size())
+        << "| seed_frame=" << static_cast<qulonglong>(referenceFrame_)
+        << "| smoothing_window=0"
+        << "| generation=" << static_cast<qulonglong>(generation_);
+    emit transformChanged();
+    return true;
+}
+
 void TransformedConformation::setStabilisationWindow(int halfWidth) {
     ASSERT_THREAD(this);
+
+    if (mode_ == Mode::ScientificAlignment) {
+        if (halfWidth != 0) {
+            qCWarning(cXform).noquote()
+                << "smoothing is unavailable for exact scientific alignment";
+        }
+        return;
+    }
 
     const int clamped = std::max(0, halfWidth);
     if (clamped == stabilisationWindow_)

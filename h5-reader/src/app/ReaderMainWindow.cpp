@@ -2748,9 +2748,17 @@ void ReaderMainWindow::updateFitModeLabel() {
     }
 
     using TMode = h5reader::model::TransformedConformation::Mode;
-    transformFitAction_->setText(transformed_->mode() == TMode::FitSubset
-        ? QStringLiteral("Mode: Locked backbone  ⇄")
-        : QStringLiteral("Mode: Kabsch with give  ⇄"));
+    switch (transformed_->mode()) {
+        case TMode::FitSubset:
+            transformFitAction_->setText(QStringLiteral("Mode: Locked backbone  ⇄"));
+            break;
+        case TMode::FitReference:
+            transformFitAction_->setText(QStringLiteral("Mode: Kabsch with give  ⇄"));
+            break;
+        case TMode::ScientificAlignment:
+            transformFitAction_->setText(QStringLiteral("Mode: Scientific alignment"));
+            break;
+    }
     transformFitAction_->setToolTip(fitModeToolTip());
 }
 

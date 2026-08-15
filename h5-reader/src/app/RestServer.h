@@ -48,6 +48,9 @@
 //   GET    /api/interface                -> namespace + route contract map
 //   POST   /api/screenshot               -> image/png (body: {"target":"scene"|"window",
 //                                                            "scale": int})
+//   POST   /api/alignment/export         -> validated scientific trajectory sidecar
+//                                            (body: {"output_root": string,
+//                                                    "apply_display": bool})
 //   POST   /diagnostics/screenshot       -> image/png (adds target:"widget" and force_render)
 
 #pragma once

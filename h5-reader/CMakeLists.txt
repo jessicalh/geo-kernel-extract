@@ -102,6 +102,8 @@ qt_add_library(h5reader_core STATIC
     src/model/SingleConformation.cpp
     src/model/TransformedConformation.h
     src/model/TransformedConformation.cpp
+    src/model/ScientificAlignment.h
+    src/model/ScientificAlignment.cpp
     src/model/ConformationGeometry.h
     src/model/ConformationGeometry.cpp
     src/model/RingNullCollar.h
@@ -159,6 +161,8 @@ qt_add_library(h5reader_core STATIC
     src/io/QtNpyRecords.h
     src/io/QtNpyReader.h
     src/io/QtNpyReader.cpp
+    src/io/QtNpyWriter.h
+    src/io/QtNpyWriter.cpp
     src/io/QtManifest.h
     src/io/QtManifest.cpp
     src/io/CalcsetManifest.h
@@ -171,6 +175,8 @@ qt_add_library(h5reader_core STATIC
     src/io/QtTrajectoryH5.cpp
     src/io/QtProteinLoader.h
     src/io/QtProteinLoader.cpp
+    src/io/ReaderAlignmentExporter.h
+    src/io/ReaderAlignmentExporter.cpp
     src/io/FrameFieldPolicy.h
     src/io/FrameNpyLoader.h
     src/io/FrameNpyLoader.cpp
@@ -327,11 +333,43 @@ if(COMMAND h5reader_apply_build_type_settings)
     h5reader_apply_build_type_settings(h5reader_core)
 endif()
 
-# Version macro is consumed by RestServer.cpp and main_reader.cpp; needs
-# to be visible to every TU in the core lib. PUBLIC so executables that
-# link the lib (and tests, eventually) also see it.
+# Record the source state represented by the binary. The alignment sidecar
+# stores these values as scientific provenance; "unknown" remains explicit
+# when the source was built outside a Git checkout.
+set(H5READER_GIT_COMMIT_VALUE "unknown")
+set(H5READER_GIT_DIRTY_VALUE 1)
+find_package(Git QUIET)
+if(Git_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        RESULT_VARIABLE H5READER_GIT_REV_RESULT
+        OUTPUT_VARIABLE H5READER_GIT_COMMIT_VALUE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT H5READER_GIT_REV_RESULT EQUAL 0)
+        set(H5READER_GIT_COMMIT_VALUE "unknown")
+    endif()
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" status --porcelain
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        RESULT_VARIABLE H5READER_GIT_STATUS_RESULT
+        OUTPUT_VARIABLE H5READER_GIT_STATUS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(H5READER_GIT_STATUS_RESULT EQUAL 0 AND H5READER_GIT_STATUS STREQUAL "")
+        set(H5READER_GIT_DIRTY_VALUE 0)
+    endif()
+endif()
+
+# Version and source-state macros are visible to every TU in the core lib.
+# PUBLIC keeps test and executable provenance identical to the core.
 target_compile_definitions(h5reader_core PUBLIC
     H5READER_VERSION="0.5.0-rewrite"
+    H5READER_GIT_COMMIT="${H5READER_GIT_COMMIT_VALUE}"
+    H5READER_GIT_DIRTY=${H5READER_GIT_DIRTY_VALUE}
 )
 
 # ============================================================================
@@ -461,6 +499,21 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         Eigen3::Eigen
     )
     add_test(NAME h5reader_scene_math_tests COMMAND h5reader_scene_math_tests)
+
+    qt_add_executable(h5reader_scientific_alignment_tests
+        tests/scientific_alignment_tests.cpp
+        src/model/ScientificAlignment.h
+        src/model/ScientificAlignment.cpp
+    )
+    target_include_directories(h5reader_scientific_alignment_tests PRIVATE src)
+    target_link_libraries(h5reader_scientific_alignment_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    h5reader_apply_platform_target_settings(h5reader_scientific_alignment_tests)
+    add_test(NAME h5reader_scientific_alignment_tests
+             COMMAND h5reader_scientific_alignment_tests)
 
     # Pure-function CSA / molecular-frame math (CsaShape.h + MolecularFrame.h) --
     # the viewer-side tensor decomposition/projection grabbed from AnalysisAtom,
@@ -619,6 +672,23 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     h5reader_apply_platform_target_settings(h5reader_npy_reader_tests)
     add_test(NAME h5reader_npy_reader_tests COMMAND h5reader_npy_reader_tests)
+
+    qt_add_executable(h5reader_npy_writer_tests
+        tests/npy_writer_tests.cpp
+        src/io/QtNpyReader.h
+        src/io/QtNpyReader.cpp
+        src/io/QtNpyWriter.h
+        src/io/QtNpyWriter.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_npy_writer_tests PRIVATE src)
+    target_link_libraries(h5reader_npy_writer_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    h5reader_apply_platform_target_settings(h5reader_npy_writer_tests)
+    add_test(NAME h5reader_npy_writer_tests COMMAND h5reader_npy_writer_tests)
 
     qt_add_executable(h5reader_app_tests
         tests/dashboard_controller_tests.cpp
@@ -833,6 +903,25 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         LABELS "rest;e2e"
         TIMEOUT 300
     )
+
+    option(H5READER_ENABLE_ALIGNMENT_CONTRACT_TEST
+        "Enable the authoritative SMB-backed alignment export contract test"
+        OFF)
+    if(WIN32 AND H5READER_ENABLE_ALIGNMENT_CONTRACT_TEST)
+        set(H5READER_ALIGNMENT_REST_FIXTURE_DEFAULT
+            "//batcave.lan/expansion/traj_extract_s15_mopac/bmr4095/run_20260612T070927Z_1372178_20260727T180005Z.lgs"
+            CACHE FILEPATH "Target-free fixture for scientific alignment export integration")
+        add_test(NAME h5reader_alignment_export_integration
+                 COMMAND ${Python3_EXECUTABLE} -m pytest
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_alignment_export.py
+                         -v --tb=short)
+        set_tests_properties(h5reader_alignment_export_integration PROPERTIES
+            ENVIRONMENT
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_ALIGNMENT_REST_FIXTURE_DEFAULT};H5READER_ALIGNMENT_EXPORT_ENABLED=1;H5READER_REST_STARTUP_TIMEOUT=300"
+            LABELS "rest;e2e;alignment;contract"
+            TIMEOUT 1200
+        )
+    endif()
 
     if(WIN32)
         add_test(NAME h5reader_rest_installed_ml_stale_dev_env

@@ -54,6 +54,7 @@ namespace h5reader::model {
 
 class QtConformationSnapshot;
 class TrajectoryConformation;
+struct ScientificAlignmentResult;
 
 class TransformedConformation final : public Conformation {
     Q_OBJECT
@@ -64,6 +65,7 @@ public:
     enum class Mode {
         FitReference,     // Kabsch fit to iterative mean using all atoms
         FitSubset,        // Kabsch fit to iterative mean using provided subset atom indices
+        ScientificAlignment,  // Exact validated transforms supplied by the export path
     };
 
     // `inner` is the underlying Conformation (TrajectoryConformation or
@@ -105,6 +107,12 @@ public:
     void setMode(Mode mode,
                  std::size_t referenceFrame = 0,
                  std::vector<std::size_t> subsetAtoms = {});
+
+    // Install an already-validated all-frame scientific transform sequence.
+    // This path does not smooth or recompute rotations. It is separate from
+    // setMode() so the conservative display Kabsch policy remains unchanged.
+    bool setScientificAlignment(const ScientificAlignmentResult& alignment,
+                                QString* error = nullptr);
 
     // Set the symmetric smoothing half-width in frames. 0 means no temporal
     // smoothing: atomPosition() uses the raw per-frame Kabsch rotation with

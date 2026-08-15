@@ -21,6 +21,7 @@
 #include "../diagnostics/StructuredLogger.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../io/QtProteinLoader.h"
+#include "../io/ReaderAlignmentExporter.h"
 #include "../model/AtomSelection.h"
 #include "../model/ConformationGeometry.h"
 #include "../model/Conformation.h"
@@ -217,6 +218,9 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/screenshot"),
                       QStringLiteral("general"),
                       QStringLiteral("Scene/window screenshot capture for review, export, and automation.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/alignment/export"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Validated target-free scientific trajectory alignment export.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/null_crossings"),
                       QStringLiteral("general"),
                       QStringLiteral("Operational ring-null crossing collection.")),
@@ -1466,6 +1470,104 @@ void RestServer::registerRoutes() {
         return jsonResponse(restInterfaceDescription());
     });
 
+    server_->route(QStringLiteral("/api/alignment/export"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        using SC = QHttpServerResponse::StatusCode;
+        if (!loaded_ || !loaded_->ok || !loaded_->protein
+            || !loaded_->conformation || !transformed_) {
+            return jsonResponse(QJsonObject{
+                {"ok", false},
+                {"operation", QStringLiteral("scientific_alignment_export")},
+                {"error", QStringLiteral("no complete trajectory load is available")},
+            }, SC::ServiceUnavailable);
+        }
+
+        bool bodyOk = false;
+        const QJsonObject body = parseJsonBody(req, &bodyOk);
+        const QJsonValue outputRootValue =
+            body.value(QStringLiteral("output_root"));
+        if (!bodyOk || !outputRootValue.isString()
+            || outputRootValue.toString().trimmed().isEmpty()) {
+            return jsonResponse(QJsonObject{
+                {"ok", false},
+                {"operation", QStringLiteral("scientific_alignment_export")},
+                {"error", QStringLiteral(
+                    "body must include a nonempty string field output_root")},
+            }, SC::BadRequest);
+        }
+        const QJsonValue applyDisplayValue =
+            body.value(QStringLiteral("apply_display"));
+        if (!applyDisplayValue.isUndefined() && !applyDisplayValue.isBool()) {
+            return jsonResponse(QJsonObject{
+                {"ok", false},
+                {"operation", QStringLiteral("scientific_alignment_export")},
+                {"error", QStringLiteral("apply_display must be a boolean")},
+            }, SC::BadRequest);
+        }
+        const bool applyDisplay = applyDisplayValue.isUndefined()
+            ? true : applyDisplayValue.toBool();
+
+        io::ReaderAlignmentExportResult exported =
+            io::ReaderAlignmentExporter::Export(
+                *loaded_, outputRootValue.toString());
+        if (!exported.ok) {
+            qCWarning(cRest).noquote()
+                << "scientific alignment export rejected"
+                << "| member=" << exported.memberId
+                << "| error=" << exported.error;
+            return jsonResponse(QJsonObject{
+                {"ok", false},
+                {"operation", QStringLiteral("scientific_alignment_export")},
+                {"member_id", exported.memberId},
+                {"output_directory", exported.finalDirectory},
+                {"error", exported.error},
+            }, SC::Conflict);
+        }
+
+        bool displayApplied = false;
+        if (applyDisplay) {
+            model::ScientificAlignmentResult alignment =
+                exported.alreadyComplete
+                    ? io::ReaderAlignmentExporter::LoadCompletedPrimaryAlignment(
+                          exported.finalDirectory)
+                    : std::move(exported.primaryAlignment);
+            QString displayError;
+            if (!alignment.ok
+                || !transformed_->setScientificAlignment(alignment,
+                                                         &displayError)) {
+                if (displayError.isEmpty())
+                    displayError = alignment.error;
+                qCCritical(cRest).noquote()
+                    << "alignment exported but exact display application failed"
+                    << "| member=" << exported.memberId
+                    << "| error=" << displayError;
+                return jsonResponse(QJsonObject{
+                    {"ok", false},
+                    {"operation", QStringLiteral("scientific_alignment_export")},
+                    {"export_completed", true},
+                    {"already_complete", exported.alreadyComplete},
+                    {"member_id", exported.memberId},
+                    {"output_directory", exported.finalDirectory},
+                    {"display_applied", false},
+                    {"error", displayError},
+                    {"manifest", exported.manifest},
+                }, SC::InternalServerError);
+            }
+            displayApplied = true;
+        }
+
+        return jsonResponse(QJsonObject{
+            {"ok", true},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"already_complete", exported.alreadyComplete},
+            {"member_id", exported.memberId},
+            {"output_directory", exported.finalDirectory},
+            {"display_applied", displayApplied},
+            {"manifest", exported.manifest},
+        });
+    });
+
     // ---- protein / atoms inventory --------------------------------------
 
     server_->route(QStringLiteral("/protein/atoms"), [this]() {
@@ -2317,6 +2419,9 @@ void RestServer::registerRoutes() {
                 }
                 break;
             }
+            case model::TransformedConformation::Mode::ScientificAlignment:
+                kind = QStringLiteral("scientific_alignment");
+                break;
         }
         QJsonArray subsetArr;
         for (std::size_t a : transformed_->subsetAtoms())
@@ -2435,6 +2540,14 @@ void RestServer::registerRoutes() {
             || asDouble > static_cast<double>(std::numeric_limits<int>::max())) {
             return errorResponse(QStringLiteral("window must be a non-negative integer"),
                                  SC::BadRequest);
+        }
+
+        if (transformed_->mode()
+                == model::TransformedConformation::Mode::ScientificAlignment
+            && asDouble != 0.0) {
+            return errorResponse(QStringLiteral(
+                "exact scientific alignment does not permit temporal smoothing"),
+                SC::Conflict);
         }
 
         transformed_->setStabilisationWindow(static_cast<int>(asDouble));

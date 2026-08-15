@@ -132,9 +132,14 @@ def h5reader_session() -> Generator[RestSession, None, None]:
         env=env,
     )
 
-    # Scrape H5READER_REST_PORT from the log file. Hard deadline 30s.
+    # Scrape H5READER_REST_PORT from the log file. Large authoritative H5
+    # fixtures loaded over SMB can opt into a longer safety deadline; readiness
+    # still comes only from the Reader's real port-handshake event.
     port: int | None = None
-    deadline = time.monotonic() + 30.0
+    startup_timeout = float(os.environ.get("H5READER_REST_STARTUP_TIMEOUT", "30"))
+    if not 1.0 <= startup_timeout <= 1800.0:
+        raise RuntimeError("H5READER_REST_STARTUP_TIMEOUT must be between 1 and 1800 seconds")
+    deadline = time.monotonic() + startup_timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             log_handle.close()
@@ -158,7 +163,8 @@ def h5reader_session() -> Generator[RestSession, None, None]:
         log_handle.close()
         tail = log_path.read_bytes()[-2000:].decode(errors="replace")
         raise RuntimeError(
-            f"timed out waiting for H5READER_REST_PORT handshake; "
+            f"timed out after {startup_timeout:g}s waiting for "
+            f"H5READER_REST_PORT handshake; "
             f"log tail (also at {log_path}):\n{tail}"
         )
 

@@ -23,6 +23,7 @@ def test_rest_interface_declares_namespaces(rest):
     routes = {(item["method"], item["path"]): item for item in payload["routes"]}
     assert ("GET", "/api/interface") in routes
     assert ("POST", "/api/screenshot") in routes
+    assert ("POST", "/api/alignment/export") in routes
     assert ("POST", "/api/ring/null_crossings") in routes
     assert ("POST", "/api/ring/current_face_collar") in routes
     assert ("POST", "/field/null_cone") in routes
