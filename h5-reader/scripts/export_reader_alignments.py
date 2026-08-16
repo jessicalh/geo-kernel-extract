@@ -268,15 +268,47 @@ def write_complete_record(
     os.replace(temporary, destination)
 
 
-def validate_complete_member_table(
-    members_table: Path, accepted_members: list[str]
-) -> None:
+def read_member_table(members_table: Path) -> list[str]:
+    if not members_table.is_file():
+        raise RuntimeError(f"members.tsv is missing: {members_table}")
     lines = members_table.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0] != MEMBERS_TABLE_HEADER:
         raise RuntimeError(f"members.tsv has an unexpected header: {members_table}")
     table_members = [line.split("\t", 1)[0] for line in lines[1:] if line]
     if len(table_members) != len(set(table_members)):
         raise RuntimeError("members.tsv contains duplicate member IDs")
+    return table_members
+
+
+def validate_resume_prefix(
+    output_root: Path, members_table: Path, completed_prefix: list[str]
+) -> None:
+    table_members = set(read_member_table(members_table))
+    for member in completed_prefix:
+        if member not in table_members:
+            raise RuntimeError(f"resume prefix is absent from members.tsv: {member}")
+        manifest_path = output_root / member / "export.json"
+        if not manifest_path.is_file():
+            raise RuntimeError(f"resume prefix has no export.json: {manifest_path}")
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"could not read completed manifest: {manifest_path}") from error
+        identity = manifest.get("identity")
+        if (
+            manifest.get("complete") is not True
+            or not isinstance(identity, dict)
+            or identity.get("member_id") != member
+            or manifest.get("contains_targets") is not False
+            or manifest.get("protected_targets_opened") != 0
+        ):
+            raise RuntimeError(f"resume prefix manifest is not complete: {manifest_path}")
+
+
+def validate_complete_member_table(
+    members_table: Path, accepted_members: list[str]
+) -> None:
+    table_members = read_member_table(members_table)
     if set(table_members) != set(accepted_members):
         missing = sorted(set(accepted_members) - set(table_members))
         extra = sorted(set(table_members) - set(accepted_members))
@@ -297,6 +329,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-root", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--mode", required=True, choices=("pilot", "full"))
+    parser.add_argument(
+        "--start-at",
+        help=(
+            "full-mode member at which to resume; every earlier roster member must "
+            "already have a completed manifest and members.tsv row"
+        ),
+    )
     parser.add_argument(
         "--startup-timeout",
         type=float,
@@ -336,18 +375,38 @@ def main() -> int:
     output_root.mkdir(parents=True, exist_ok=True)
     roster_copy = copy_roster_once(roster, output_root)
 
+    start_position = 0
+    if args.start_at is not None:
+        if args.mode != "full":
+            raise RuntimeError("--start-at is only valid with --mode full")
+        try:
+            start_position = accepted_members.index(args.start_at)
+        except ValueError as error:
+            raise RuntimeError(
+                f"--start-at member is absent from accepted179: {args.start_at}"
+            ) from error
+        completed_prefix = accepted_members[:start_position]
+        validate_resume_prefix(
+            output_root, output_root / "members.tsv", completed_prefix
+        )
+        members = accepted_members[start_position:]
+
     print(
-        f"Reader alignment {args.mode}: {len(members)} member(s)\n"
+        f"Reader alignment {args.mode}: {len(members)} member(s) this invocation\n"
         f"  reader: {reader}\n"
         f"  source: {source_root}\n"
-        f"  output: {output_root}",
+        f"  output: {output_root}\n"
+        f"  roster position: {start_position + 1}/{len(accepted_members)}",
         flush=True,
     )
-    completed_members: list[str] = []
-    for position, member in enumerate(members, start=1):
+    completed_members = (
+        accepted_members[:start_position] if args.mode == "full" else []
+    )
+    total_members = len(accepted_members) if args.mode == "full" else len(members)
+    for position, member in enumerate(members, start=start_position + 1):
         lgs_path = unique_lgs(source_root, member)
         started = time.monotonic()
-        print(f"[{position}/{len(members)}] {member}: {lgs_path.name}", flush=True)
+        print(f"[{position}/{total_members}] {member}: {lgs_path.name}", flush=True)
         response = run_member(
             reader,
             lgs_path,
