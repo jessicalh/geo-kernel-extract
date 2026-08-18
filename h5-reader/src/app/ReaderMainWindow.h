@@ -6,16 +6,10 @@
 // widgets (atom inspector, time-series tab) in later commits without
 // restructuring the central layout.
 //
-// Shutdown protocol — see feedback_qt_discipline,
-// spec/viewport_pipeline_2026-05-30.md §4.4, and the library viewer's
-// MainWindow::shutdown(). When QApplication is about to quit, stop the
-// REST server synchronously, stop all timers, then detach the render
-// window from the widget. The explicit renderWindow_->Finalize() call
-// is gone — setRenderWindow(nullptr) makes the GL context current and
-// invokes Finalize through the QVTKRenderWindowAdapter's destructor in
-// the right order (QVTKRenderWindowAdapter.cxx:150-166). Calling
-// Finalize ourselves AFTER detach left the adapter holding a destroyed
-// render window for the brief moment between the two calls.
+// Active exports finish through closeEvent(). During aboutToQuit, shutdown()
+// stops timers and detaches the render window while its GL context is valid.
+// The window-owned REST server remains alive until the event loop exits so an
+// active socket signal is never torn down beneath Qt's signal dispatcher.
 
 #pragma once
 
@@ -179,11 +173,8 @@ public:
     QJsonObject uiStateJson() const;
 
 public slots:
-    // Called from aboutToQuit. Stops the REST server, stops timers, and
-    // detaches the render window from the widget so the
-    // QVTKRenderWindowAdapter's destructor calls Finalize in the right
-    // GL context (per QVTKRenderWindowAdapter.cxx:150-166). The class
-    // docstring above has the full reasoning.
+    // Called from aboutToQuit. Stops timers and detaches the render window so
+    // QVTKRenderWindowAdapter finalizes it in the current GL context.
     void shutdown();
 
 protected:
@@ -194,9 +185,9 @@ protected:
     // ANGLE / software OpenGL, this is where it shows up.
     void showEvent(QShowEvent* event) override;
 
-    // QSettings save runs here before the existing aboutToQuit → shutdown
-    // chain. Tolerant: if save fails for any reason the user still gets
-    // their window closed. event->accept() is unconditional.
+    // Active exports receive a graceful stop and hold the close until their
+    // completion signal arrives. QSettings save then runs before the existing
+    // aboutToQuit -> shutdown chain.
     void closeEvent(QCloseEvent* event) override;
 
 private slots:
@@ -332,6 +323,7 @@ private:
     // Optional REST test surface — constructed by startRestServer(), only
     // when h5reader is launched with --rest <port>. Window-owned.
     class RestServer* restServer_ = nullptr;
+    bool closeWaitingForOperations_ = false;
 
     // Toolbar controls.
     QPointer<QSlider> frameSlider_;

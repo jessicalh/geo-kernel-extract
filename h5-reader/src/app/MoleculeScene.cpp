@@ -155,6 +155,7 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
                 << "| frame=" << self->currentFrame_
                 << "| ms=" << QString::number(ms, 'f', 1)
                 << "| mode=" << modeName;
+            emit self->renderCompleted(self->currentFrame_);
         });
     endEventObserverTag_ = renderWindow_->AddObserver(vtkCommand::EndEvent, endEventCb);
 

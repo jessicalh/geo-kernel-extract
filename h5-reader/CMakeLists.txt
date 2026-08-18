@@ -205,6 +205,8 @@ qt_add_library(h5reader_core STATIC
     src/app/CameraInputFilter.cpp
     src/app/MoleculeScene.h
     src/app/MoleculeScene.cpp
+    src/app/SceneVideoExporter.h
+    src/app/SceneVideoExporter.cpp
     src/app/NewmanProjection.h
     src/app/NewmanProjection.cpp
     src/app/NewmanPaint.h
@@ -314,6 +316,8 @@ target_link_libraries(h5reader_core PUBLIC
     Qt6::Widgets
     Qt6::OpenGLWidgets
     Qt6::Network
+    Qt6::Concurrent
+    Qt6::Multimedia
     Qt6::Charts
     Qt6::HttpServer
     Eigen3::Eigen
@@ -920,6 +924,18 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
                 "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_ALIGNMENT_REST_FIXTURE_DEFAULT};H5READER_ALIGNMENT_EXPORT_ENABLED=1;H5READER_REST_STARTUP_TIMEOUT=300"
             LABELS "rest;e2e;alignment;contract"
             TIMEOUT 1200
+            RESOURCE_LOCK h5reader_alignment_fixture
+        )
+        add_test(NAME h5reader_alignment_shutdown_integration
+                 COMMAND ${Python3_EXECUTABLE} -m pytest
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_alignment_shutdown.py
+                         -v --tb=short)
+        set_tests_properties(h5reader_alignment_shutdown_integration PROPERTIES
+            ENVIRONMENT
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_ALIGNMENT_REST_FIXTURE_DEFAULT};H5READER_ALIGNMENT_EXPORT_ENABLED=1;H5READER_REST_STARTUP_TIMEOUT=300"
+            LABELS "rest;e2e;alignment;shutdown"
+            TIMEOUT 600
+            RESOURCE_LOCK h5reader_alignment_fixture
         )
     endif()
 

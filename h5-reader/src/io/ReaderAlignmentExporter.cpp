@@ -106,6 +106,15 @@ private:
     bool active_ = true;
 };
 
+bool CancellationRequested(const ReaderAlignmentExportControl* control,
+                           QString* error = nullptr) {
+    if (!control || !control->cancelRequested())
+        return false;
+    if (error)
+        *error = QStringLiteral("scientific alignment export cancelled");
+    return true;
+}
+
 QString CleanAbsolutePath(const QString& path) {
     if (path.isEmpty())
         return {};
@@ -248,7 +257,9 @@ bool WriteJsonObject(const QString& path,
     return true;
 }
 
-QString Sha256File(const QString& path, QString* error) {
+QString Sha256File(const QString& path,
+                   QString* error,
+                   const ReaderAlignmentExportControl* control = nullptr) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
         *error = QStringLiteral("could not hash %1: %2")
@@ -256,9 +267,17 @@ QString Sha256File(const QString& path, QString* error) {
         return {};
     }
     QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!hash.addData(&file)) {
-        *error = QStringLiteral("could not read %1 while hashing").arg(path);
-        return {};
+    constexpr qint64 blockSize = qint64{1024} * 1024;
+    while (!file.atEnd()) {
+        if (CancellationRequested(control, error))
+            return {};
+        const QByteArray block = file.read(blockSize);
+        if (block.isEmpty() && file.error() != QFileDevice::NoError) {
+            *error = QStringLiteral("could not read %1 while hashing: %2")
+                .arg(path, file.errorString());
+            return {};
+        }
+        hash.addData(block);
     }
     return QString::fromLatin1(hash.result().toHex());
 }
@@ -348,8 +367,9 @@ bool AddInputHash(const QString& role,
                   QJsonArray* inputs,
                   QString* error,
                   std::optional<std::size_t> frameRow = std::nullopt,
-                  std::optional<std::uint64_t> originalFrame = std::nullopt) {
-    const QString hash = Sha256File(path, error);
+                  std::optional<std::uint64_t> originalFrame = std::nullopt,
+                  const ReaderAlignmentExportControl* control = nullptr) {
+    const QString hash = Sha256File(path, error, control);
     if (hash.isEmpty())
         return false;
     QJsonObject item{
@@ -455,7 +475,8 @@ std::vector<std::uint64_t> WidenIndices(
 PositionSourceValidation ValidatePositionSources(
     const QString& extractionDirectory,
     const model::ScientificPositionTable& positions,
-    const std::vector<std::uint64_t>& originalFrames) {
+    const std::vector<std::uint64_t>& originalFrames,
+    const ReaderAlignmentExportControl* control = nullptr) {
     PositionSourceValidation result;
     if (originalFrames.size() != positions.frameCount) {
         result.error = QStringLiteral("H5 original frame axis is incomplete");
@@ -464,6 +485,8 @@ PositionSourceValidation ValidatePositionSources(
 
     result.paths.reserve(static_cast<qsizetype>(positions.frameCount));
     for (std::size_t frame = 0; frame < positions.frameCount; ++frame) {
+        if (CancellationRequested(control, &result.error))
+            return result;
         const QString path = QDir(extractionDirectory).filePath(
             QStringLiteral("npys/frame_%1/pos.npy")
                 .arg(static_cast<qulonglong>(originalFrames[frame]),
@@ -645,11 +668,12 @@ bool WriteStatusFile(const QString& directory,
 
 QJsonObject BuildFileManifest(const QString& directory,
                               const std::vector<ExportedFile>& files,
-                              QString* error) {
+                              QString* error,
+                              const ReaderAlignmentExportControl* control = nullptr) {
     QJsonObject manifest;
     for (const ExportedFile& file : files) {
         const QString path = QDir(directory).filePath(file.name);
-        const QString hash = Sha256File(path, error);
+        const QString hash = Sha256File(path, error, control);
         if (hash.isEmpty())
             return {};
         QJsonObject item{
@@ -745,8 +769,11 @@ bool WidenedIndices(const QtNpyReader::NumericArray& array,
 }  // namespace
 
 CompletedAlignmentValidation ReaderAlignmentExporter::ValidateCompletedMember(
-    const QString& memberDirectory) {
+    const QString& memberDirectory,
+    const ReaderAlignmentExportControl* control) {
     CompletedAlignmentValidation result;
+    if (CancellationRequested(control, &result.error))
+        return result;
     const QString exportPath = QDir(memberDirectory).filePath(
         QStringLiteral("export.json"));
     if (!QFileInfo(exportPath).isFile()) {
@@ -911,6 +938,8 @@ CompletedAlignmentValidation ReaderAlignmentExporter::ValidateCompletedMember(
     }
 
     for (auto it = files.begin(); it != files.end(); ++it) {
+        if (CancellationRequested(control, &result.error))
+            return result;
         const QString path = QDir(memberDirectory).filePath(it.key());
         const QJsonObject declared = it.value().toObject();
         const QFileInfo info(path);
@@ -920,7 +949,7 @@ CompletedAlignmentValidation ReaderAlignmentExporter::ValidateCompletedMember(
             return result;
         }
         QString hashError;
-        const QString hash = Sha256File(path, &hashError);
+        const QString hash = Sha256File(path, &hashError, control);
         if (hash.isEmpty() || hash != declared.value(QStringLiteral("sha256")).toString()) {
             result.error = hashError.isEmpty()
                 ? QStringLiteral("declared file hash mismatch: %1").arg(path)
@@ -1297,10 +1326,11 @@ CompletedAlignmentValidation ReaderAlignmentExporter::ValidateCompletedMember(
 
 model::ScientificAlignmentResult
 ReaderAlignmentExporter::LoadCompletedPrimaryAlignment(
-    const QString& memberDirectory) {
+    const QString& memberDirectory,
+    const ReaderAlignmentExportControl* control) {
     model::ScientificAlignmentResult result;
     const CompletedAlignmentValidation completed =
-        ValidateCompletedMember(memberDirectory);
+        ValidateCompletedMember(memberDirectory, control);
     if (!completed.ok) {
         result.error = completed.error;
         return result;
@@ -1444,7 +1474,8 @@ ReaderAlignmentExporter::LoadCompletedPrimaryAlignment(
 }
 
 bool ReaderAlignmentExporter::RebuildMembersTable(const QString& outputRoot,
-                                                  QString* error) {
+                                                  QString* error,
+                                                  const ReaderAlignmentExportControl* control) {
     QString localError;
     QString* destinationError = error ? error : &localError;
     QDir root(outputRoot);
@@ -1460,10 +1491,12 @@ bool ReaderAlignmentExporter::RebuildMembersTable(const QString& outputRoot,
     const QFileInfoList directories = root.entryInfoList(
         QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
     for (const QFileInfo& directory : directories) {
+        if (CancellationRequested(control, destinationError))
+            return false;
         if (directory.fileName().startsWith(QLatin1Char('.')))
             continue;
         const CompletedAlignmentValidation validation =
-            ValidateCompletedMember(directory.absoluteFilePath());
+            ValidateCompletedMember(directory.absoluteFilePath(), control);
         if (!validation.ok) {
             *destinationError = QStringLiteral("invalid final member %1: %2")
                 .arg(directory.absoluteFilePath(), validation.error);
@@ -1502,34 +1535,158 @@ bool ReaderAlignmentExporter::RebuildMembersTable(const QString& outputRoot,
     return true;
 }
 
-ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
+ReaderAlignmentExportPreparation ReaderAlignmentExporter::Prepare(
     const QtLoadResult& loaded,
     const QString& outputRoot) {
-    ReaderAlignmentExportResult result;
+    ReaderAlignmentExportPreparation prepared;
     if (!loaded.ok || !loaded.protein || !loaded.conformation) {
-        result.error = QStringLiteral("no complete Reader load is available");
-        return result;
+        prepared.error = QStringLiteral("no complete Reader load is available");
+        return prepared;
     }
     if (loaded.manifest.kind != CalcsetManifest::Kind::Trajectory
         || !loaded.manifest.trajectory) {
-        result.error = QStringLiteral("scientific alignment export requires a trajectory LGS");
-        return result;
+        prepared.error = QStringLiteral(
+            "scientific alignment export requires a trajectory LGS");
+        return prepared;
     }
     const model::TrajectoryConformation* trajectory =
         loaded.conformation->asTrajectory();
     if (!trajectory || !trajectory->h5() || !trajectory->h5()->positions()) {
-        result.error = QStringLiteral("loaded trajectory does not expose H5 positions");
-        return result;
+        prepared.error = QStringLiteral(
+            "loaded trajectory does not expose H5 positions");
+        return prepared;
     }
     if (outputRoot.trimmed().isEmpty()) {
-        result.error = QStringLiteral("alignment output root is empty");
-        return result;
+        prepared.error = QStringLiteral("alignment output root is empty");
+        return prepared;
     }
 
     const CalcsetManifest::Trajectory& source = *loaded.manifest.trajectory;
-    const QString sourceMember = CleanAbsolutePath(
-        loaded.manifest.calcset_root_abspath);
-    const QString cleanOutputRoot = CleanAbsolutePath(outputRoot);
+    const model::QtProtein& protein = *loaded.protein;
+    const QtTrajectoryH5& h5 = *trajectory->h5();
+    const std::size_t frameCount = h5.frameCount();
+    const std::size_t atomCount = h5.atomCount();
+    if (frameCount == 0 || atomCount == 0
+        || protein.atomCount() != atomCount
+        || loaded.conformation->frameCount() != frameCount) {
+        prepared.error = QStringLiteral(
+            "topology, conformation, and H5 axes do not agree");
+        return prepared;
+    }
+
+    if (!ValidateRetainedFrameAxis(h5.frameIndices(), h5.frameTimes(),
+                                   &prepared.error)) {
+        return prepared;
+    }
+    ReaderAlignmentExportRequest& request = prepared.request;
+    request.outputRoot = outputRoot;
+    request.datasetId = loaded.manifest.dataset_id;
+    request.runId = loaded.manifest.protein_id;
+    request.humanName = loaded.manifest.human_name;
+    request.lgsPath = loaded.manifest.lgs_path_abspath;
+    request.calcsetRoot = loaded.manifest.calcset_root_abspath;
+    request.extractionDirectory = source.extraction_dir_abspath;
+    request.trajectoryH5 = source.trajectory_h5_abspath;
+    request.extractionManifest = source.extraction_manifest_abspath;
+    request.readerVersion = QCoreApplication::applicationVersion();
+    request.processId = QCoreApplication::applicationPid();
+    request.residueCount = protein.residueCount();
+    request.bondCount = protein.bondCount();
+    request.aromaticRingCount = protein.topology().aromaticRingCount();
+    request.saturatedRingCount = protein.topology().saturatedRingCount();
+    request.ringCount = protein.ringCount();
+    request.ringMembershipCount = protein.ringMembershipCount();
+    request.originalFrameIndices = h5.frameIndices();
+    request.frameTimesPicoseconds = h5.frameTimes();
+    request.positions.frameCount = frameCount;
+    request.positions.atomCount = atomCount;
+    request.positions.values.reserve(frameCount * atomCount);
+    for (std::size_t frame = 0; frame < frameCount; ++frame) {
+        for (std::size_t atom = 0; atom < atomCount; ++atom) {
+            const model::Vec3 position = h5.positions()->at(atom, frame);
+            if (!position.allFinite()) {
+                prepared.error = QStringLiteral(
+                    "H5 positions contain a nonfinite value at frame %1 atom %2")
+                    .arg(static_cast<qulonglong>(frame))
+                    .arg(static_cast<qulonglong>(atom));
+                return prepared;
+            }
+            request.positions.values.push_back(position);
+        }
+    }
+
+    const model::QtRmsdTracking* rmsdTracking = h5.rmsdTracking();
+    if (!rmsdTracking || rmsdTracking->n_frames != frameCount
+        || rmsdTracking->atom_indices.empty()) {
+        prepared.error = QStringLiteral(
+            "H5 rmsd_tracking selection is missing or has the wrong frame axis");
+        return prepared;
+    }
+
+    request.primaryFitAtoms.reserve(rmsdTracking->atom_indices.size());
+    std::vector<bool> seenAtom(atomCount, false);
+    for (std::int32_t rawIndex : rmsdTracking->atom_indices) {
+        if (rawIndex < 0 || static_cast<std::size_t>(rawIndex) >= atomCount) {
+            prepared.error = QStringLiteral(
+                "rmsd_tracking contains an out-of-range atom index");
+            return prepared;
+        }
+        const std::size_t atom = static_cast<std::size_t>(rawIndex);
+        if (seenAtom[atom]) {
+            prepared.error = QStringLiteral(
+                "rmsd_tracking contains a duplicate atom index");
+            return prepared;
+        }
+        seenAtom[atom] = true;
+        request.primaryFitAtoms.push_back(atom);
+    }
+
+    std::vector<std::size_t> expectedNcaco;
+    expectedNcaco.reserve(request.primaryFitAtoms.size());
+    for (std::size_t atom = 0; atom < atomCount; ++atom) {
+        const model::QtAtom& identity = protein.atom(atom);
+        if (identity.IsBackboneNitrogen()
+            || identity.IsBackboneAlphaCarbon()
+            || identity.IsBackboneCarbonylCarbon()
+            || identity.IsBackboneCarbonylOxygen()) {
+            expectedNcaco.push_back(atom);
+        }
+    }
+    if (request.primaryFitAtoms != expectedNcaco) {
+        prepared.error = QStringLiteral(
+            "rmsd_tracking atom selection does not exactly match typed NCACO atoms");
+        return prepared;
+    }
+
+    for (std::size_t atom : request.primaryFitAtoms) {
+        if (protein.atom(atom).IsBackboneAlphaCarbon())
+            request.caFitAtoms.push_back(atom);
+    }
+    if (request.caFitAtoms.size() < 3) {
+        prepared.error = QStringLiteral(
+            "CA control selection has fewer than three atoms");
+        return prepared;
+    }
+
+    prepared.ok = true;
+    return prepared;
+}
+
+ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
+    const ReaderAlignmentExportRequest& request,
+    const ReaderAlignmentExportControl* control) {
+    ReaderAlignmentExportResult result;
+    const auto cancelled = [&]() {
+        if (!CancellationRequested(control, &result.error))
+            return false;
+        result.cancelled = true;
+        return true;
+    };
+    if (cancelled())
+        return result;
+
+    const QString sourceMember = CleanAbsolutePath(request.calcsetRoot);
+    const QString cleanOutputRoot = CleanAbsolutePath(request.outputRoot);
     if (sourceMember.isEmpty() || cleanOutputRoot.isEmpty()) {
         result.error = QStringLiteral(
             "could not resolve source member or alignment output root");
@@ -1549,26 +1706,29 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
         return result;
     }
 
-    const model::QtProtein& protein = *loaded.protein;
-    const QtTrajectoryH5& h5 = *trajectory->h5();
-    const std::size_t frameCount = h5.frameCount();
-    const std::size_t atomCount = h5.atomCount();
+    const std::size_t frameCount = request.positions.frameCount;
+    const std::size_t atomCount = request.positions.atomCount;
     if (frameCount == 0 || atomCount == 0
-        || protein.atomCount() != atomCount
-        || loaded.conformation->frameCount() != frameCount) {
-        result.error = QStringLiteral("topology, conformation, and H5 axes do not agree");
+        || request.positions.values.size() != frameCount * atomCount
+        || request.originalFrameIndices.size() != frameCount
+        || request.frameTimesPicoseconds.size() != frameCount) {
+        result.error = QStringLiteral("prepared alignment axes do not agree");
+        return result;
+    }
+    if (!ValidateRetainedFrameAxis(request.originalFrameIndices,
+                                   request.frameTimesPicoseconds,
+                                   &result.error)) {
         return result;
     }
 
     const QtManifest topologyManifest = QtManifest::Load(
-        source.extraction_manifest_abspath);
+        request.extractionManifest);
     if (!topologyManifest.ok) {
         result.error = QStringLiteral("could not validate topology axes: %1")
             .arg(topologyManifest.error);
         return result;
     }
     const QtManifestAxisSizes& axes = topologyManifest.axisSizes;
-    const model::QtTopology& topology = protein.topology();
     QStringList axisMismatches;
     const auto compareAxis = [&axisMismatches](const char* name,
                                                std::size_t declared,
@@ -1580,32 +1740,36 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
                 .arg(static_cast<qulonglong>(loadedCount)));
         }
     };
-    compareAxis("atom", axes.atom, protein.atomCount());
-    compareAxis("residue", axes.residue, protein.residueCount());
-    compareAxis("bond", axes.bond, protein.bondCount());
+    compareAxis("atom", axes.atom, atomCount);
+    compareAxis("residue", axes.residue, request.residueCount);
+    compareAxis("bond", axes.bond, request.bondCount);
     compareAxis("aromatic_ring", axes.aromaticRing,
-                topology.aromaticRingCount());
+                request.aromaticRingCount);
     compareAxis("saturated_ring", axes.saturatedRing,
-                topology.saturatedRingCount());
-    compareAxis("ring", axes.ring, protein.ringCount());
+                request.saturatedRingCount);
+    compareAxis("ring", axes.ring, request.ringCount);
     compareAxis("ring_membership", axes.ringMembership,
-                protein.ringMembershipCount());
+                request.ringMembershipCount);
     if (!axisMismatches.isEmpty()) {
-        result.error = QStringLiteral("topology axis mismatch (manifest != loaded): %1")
+        result.error = QStringLiteral(
+            "topology axis mismatch (manifest != loaded): %1")
             .arg(axisMismatches.join(QStringLiteral(", ")));
         return result;
     }
 
     if (!QDir().mkpath(cleanOutputRoot)) {
-        result.error = QStringLiteral("could not create alignment output root: %1")
+        result.error = QStringLiteral(
+            "could not create alignment output root: %1")
             .arg(cleanOutputRoot);
         return result;
     }
 
     if (QFileInfo::exists(result.finalDirectory)) {
         const CompletedAlignmentValidation existing =
-            ValidateCompletedMember(result.finalDirectory);
+            ValidateCompletedMember(result.finalDirectory, control);
         if (!existing.ok) {
+            if (cancelled())
+                return result;
             result.error = QStringLiteral("final member exists but is invalid: %1")
                 .arg(existing.error);
             return result;
@@ -1617,26 +1781,28 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
         if (existingIdentity.value(QStringLiteral("member_id")).toString()
                 != result.memberId
             || existingIdentity.value(QStringLiteral("dataset_id")).toString()
-                != loaded.manifest.dataset_id
+                != request.datasetId
             || existingIdentity.value(QStringLiteral("run_id")).toString()
-                != loaded.manifest.protein_id
+                != request.runId
             || CleanAbsolutePath(existingIdentity.value(
                     QStringLiteral("lgs_path")).toString())
-                .compare(CleanAbsolutePath(loaded.manifest.lgs_path_abspath),
+                .compare(CleanAbsolutePath(request.lgsPath),
                          PathCaseSensitivity()) != 0
             || CleanAbsolutePath(existingSource.value(
                     QStringLiteral("calcset_root")).toString())
                 .compare(sourceMember, PathCaseSensitivity()) != 0
             || CleanAbsolutePath(existingSource.value(
                     QStringLiteral("trajectory_h5")).toString())
-                .compare(CleanAbsolutePath(source.trajectory_h5_abspath),
+                .compare(CleanAbsolutePath(request.trajectoryH5),
                          PathCaseSensitivity()) != 0) {
             result.error = QStringLiteral(
                 "completed member belongs to a different loaded source");
             return result;
         }
         QString tableError;
-        if (!RebuildMembersTable(cleanOutputRoot, &tableError)) {
+        if (!RebuildMembersTable(cleanOutputRoot, &tableError, control)) {
+            if (cancelled())
+                return result;
             result.error = tableError;
             return result;
         }
@@ -1646,82 +1812,20 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
         return result;
     }
 
-    if (!ValidateRetainedFrameAxis(h5.frameIndices(), h5.frameTimes(),
-                                   &result.error))
-        return result;
-
-    model::ScientificPositionTable raw;
-    raw.frameCount = frameCount;
-    raw.atomCount = atomCount;
-    raw.values.reserve(frameCount * atomCount);
-    for (std::size_t frame = 0; frame < frameCount; ++frame) {
-        for (std::size_t atom = 0; atom < atomCount; ++atom) {
-            const model::Vec3 position = h5.positions()->at(atom, frame);
-            if (!position.allFinite()) {
-                result.error = QStringLiteral("H5 positions contain a nonfinite value at frame %1 atom %2")
-                    .arg(static_cast<qulonglong>(frame))
-                    .arg(static_cast<qulonglong>(atom));
-                return result;
-            }
-            raw.values.push_back(position);
-        }
-    }
-
-    const model::QtRmsdTracking* rmsdTracking = h5.rmsdTracking();
-    if (!rmsdTracking || rmsdTracking->n_frames != frameCount
-        || rmsdTracking->atom_indices.empty()) {
-        result.error = QStringLiteral("H5 rmsd_tracking selection is missing or has the wrong frame axis");
-        return result;
-    }
-
-    std::vector<std::size_t> primaryAtoms;
-    primaryAtoms.reserve(rmsdTracking->atom_indices.size());
-    std::vector<bool> seenAtom(atomCount, false);
-    for (std::int32_t rawIndex : rmsdTracking->atom_indices) {
-        if (rawIndex < 0 || static_cast<std::size_t>(rawIndex) >= atomCount) {
-            result.error = QStringLiteral("rmsd_tracking contains an out-of-range atom index");
-            return result;
-        }
-        const std::size_t atom = static_cast<std::size_t>(rawIndex);
-        if (seenAtom[atom]) {
-            result.error = QStringLiteral("rmsd_tracking contains a duplicate atom index");
-            return result;
-        }
-        seenAtom[atom] = true;
-        primaryAtoms.push_back(atom);
-    }
-
-    std::vector<std::size_t> expectedNcaco;
-    expectedNcaco.reserve(primaryAtoms.size());
-    for (std::size_t atom = 0; atom < atomCount; ++atom) {
-        const model::QtAtom& identity = protein.atom(atom);
-        if (identity.IsBackboneNitrogen()
-            || identity.IsBackboneAlphaCarbon()
-            || identity.IsBackboneCarbonylCarbon()
-            || identity.IsBackboneCarbonylOxygen()) {
-            expectedNcaco.push_back(atom);
-        }
-    }
-    if (primaryAtoms != expectedNcaco) {
-        result.error = QStringLiteral(
-            "rmsd_tracking atom selection does not exactly match typed NCACO atoms");
-        return result;
-    }
-
-    std::vector<std::size_t> caAtoms;
-    for (std::size_t atom : primaryAtoms) {
-        if (protein.atom(atom).IsBackboneAlphaCarbon())
-            caAtoms.push_back(atom);
-    }
-    if (caAtoms.size() < 3) {
-        result.error = QStringLiteral("CA control selection has fewer than three atoms");
+    const model::ScientificPositionTable& raw = request.positions;
+    const std::vector<std::size_t>& primaryAtoms = request.primaryFitAtoms;
+    const std::vector<std::size_t>& caAtoms = request.caFitAtoms;
+    if (primaryAtoms.size() < 3 || caAtoms.size() < 3) {
+        result.error = QStringLiteral("prepared fit selections are incomplete");
         return result;
     }
 
     const PositionSourceValidation sourcePositions =
-        ValidatePositionSources(source.extraction_dir_abspath, raw,
-                                h5.frameIndices());
+        ValidatePositionSources(request.extractionDirectory, raw,
+                                request.originalFrameIndices, control);
     if (!sourcePositions.ok) {
+        if (cancelled())
+            return result;
         result.error = sourcePositions.error;
         return result;
     }
@@ -1743,10 +1847,12 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
             .arg(result.caAlignment.error);
         return result;
     }
+    if (cancelled())
+        return result;
 
     const QString stageName = QStringLiteral(".%1.staging.%2.%3")
         .arg(result.memberId)
-        .arg(QCoreApplication::applicationPid())
+        .arg(request.processId)
         .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
     const QString stagingDirectory = QDir(cleanOutputRoot).filePath(stageName);
     if (!SameOrChildPath(stagingDirectory, cleanOutputRoot)
@@ -1772,6 +1878,8 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
     fitStatus.reserve(frameCount);
 
     for (std::size_t frame = 0; frame < frameCount; ++frame) {
+        if (cancelled())
+            return result;
         const model::ScientificFrameFit& fit =
             result.primaryAlignment.frameFits[frame];
         for (int row = 0; row < 3; ++row) {
@@ -1807,6 +1915,8 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
     std::vector<std::uint8_t> caStatus;
     caStatus.reserve(frameCount);
     for (const model::ScientificFrameFit& fit : result.caAlignment.frameFits) {
+        if (cancelled())
+            return result;
         for (int row = 0; row < 3; ++row) {
             for (int column = 0; column < 3; ++column)
                 caRotations.push_back(fit.rotation(row, column));
@@ -1836,8 +1946,9 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
 
     std::vector<ExportedFile> files;
     QString writeError;
-    const std::vector<std::uint64_t> originalFrames = h5.frameIndices();
-    const std::vector<double> times = h5.frameTimes();
+    const std::vector<std::uint64_t>& originalFrames =
+        request.originalFrameIndices;
+    const std::vector<double>& times = request.frameTimesPicoseconds;
     const std::vector<std::uint64_t> primaryIndices = WidenIndices(primaryAtoms);
     const std::vector<std::uint64_t> caIndices = WidenIndices(caAtoms);
     const std::vector<double> primaryReference = FlattenReference(result.primaryAlignment);
@@ -1883,20 +1994,22 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
 
     const std::vector<std::pair<QString, QString>> byteCopies{
         {QStringLiteral("atoms_category_info.npy"),
-         QDir(source.extraction_dir_abspath).filePath(QStringLiteral("atoms_category_info.npy"))},
+         QDir(request.extractionDirectory).filePath(QStringLiteral("atoms_category_info.npy"))},
         {QStringLiteral("residues.npy"),
-         QDir(source.extraction_dir_abspath).filePath(QStringLiteral("residues.npy"))},
+         QDir(request.extractionDirectory).filePath(QStringLiteral("residues.npy"))},
         {QStringLiteral("bonds.npy"),
-         QDir(source.extraction_dir_abspath).filePath(QStringLiteral("bonds.npy"))},
+         QDir(request.extractionDirectory).filePath(QStringLiteral("bonds.npy"))},
         {QStringLiteral("rings.npy"),
-         QDir(source.extraction_dir_abspath).filePath(QStringLiteral("rings.npy"))},
+         QDir(request.extractionDirectory).filePath(QStringLiteral("rings.npy"))},
         {QStringLiteral("ring_membership.npy"),
-         QDir(source.extraction_dir_abspath).filePath(QStringLiteral("ring_membership.npy"))},
-        {QStringLiteral("extraction_manifest.json"), source.extraction_manifest_abspath},
+         QDir(request.extractionDirectory).filePath(QStringLiteral("ring_membership.npy"))},
+        {QStringLiteral("extraction_manifest.json"), request.extractionManifest},
         {QStringLiteral("native_mopac_complete.json"),
-         QDir(source.extraction_dir_abspath).filePath(QStringLiteral("native_mopac_complete.json"))},
+         QDir(request.extractionDirectory).filePath(QStringLiteral("native_mopac_complete.json"))},
     };
     for (const auto& copy : byteCopies) {
+        if (cancelled())
+            return result;
         if (!CopyFileExact(copy.second,
                            QDir(stagingDirectory).filePath(copy.first),
                            &writeError)) {
@@ -1912,16 +2025,23 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
     }
 
     QJsonArray inputFiles;
-    if (!AddInputHash(QStringLiteral("lgs"), loaded.manifest.lgs_path_abspath,
-                      &inputFiles, &writeError)
-        || !AddInputHash(QStringLiteral("trajectory_h5"), source.trajectory_h5_abspath,
-                         &inputFiles, &writeError)) {
+    if (!AddInputHash(QStringLiteral("lgs"), request.lgsPath,
+                      &inputFiles, &writeError, std::nullopt, std::nullopt,
+                      control)
+        || !AddInputHash(QStringLiteral("trajectory_h5"), request.trajectoryH5,
+                         &inputFiles, &writeError, std::nullopt, std::nullopt,
+                         control)) {
+        if (cancelled())
+            return result;
         result.error = writeError;
         return result;
     }
     for (const auto& copy : byteCopies) {
         if (!AddInputHash(QStringLiteral("copied_source"), copy.second,
-                          &inputFiles, &writeError)) {
+                          &inputFiles, &writeError, std::nullopt, std::nullopt,
+                          control)) {
+            if (cancelled())
+                return result;
             result.error = writeError;
             return result;
         }
@@ -1929,15 +2049,20 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
     for (std::size_t frame = 0; frame < frameCount; ++frame) {
         if (!AddInputHash(QStringLiteral("frame_position"),
                           sourcePositions.paths[static_cast<qsizetype>(frame)],
-                          &inputFiles, &writeError, frame, originalFrames[frame])) {
+                          &inputFiles, &writeError, frame, originalFrames[frame],
+                          control)) {
+            if (cancelled())
+                return result;
             result.error = writeError;
             return result;
         }
     }
 
     const QJsonObject fileManifest =
-        BuildFileManifest(stagingDirectory, files, &writeError);
+        BuildFileManifest(stagingDirectory, files, &writeError, control);
     if (fileManifest.isEmpty()) {
+        if (cancelled())
+            return result;
         result.error = writeError;
         return result;
     }
@@ -1954,15 +2079,15 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
          QStringLiteral("aligned[t,a] = rotations[t] @ raw[t,a] + translations[t]")},
         {"identity", QJsonObject{
             {"member_id", result.memberId},
-            {"dataset_id", loaded.manifest.dataset_id},
-            {"run_id", loaded.manifest.protein_id},
-            {"human_name", loaded.manifest.human_name},
-            {"lgs_path", CleanAbsolutePath(loaded.manifest.lgs_path_abspath)},
+            {"dataset_id", request.datasetId},
+            {"run_id", request.runId},
+            {"human_name", request.humanName},
+            {"lgs_path", CleanAbsolutePath(request.lgsPath)},
         }},
         {"source", QJsonObject{
             {"calcset_root", sourceMember},
-            {"extraction_directory", CleanAbsolutePath(source.extraction_dir_abspath)},
-            {"trajectory_h5", CleanAbsolutePath(source.trajectory_h5_abspath)},
+            {"extraction_directory", CleanAbsolutePath(request.extractionDirectory)},
+            {"trajectory_h5", CleanAbsolutePath(request.trajectoryH5)},
             {"provenance_authority", QString::fromLatin1(kSourceProvenanceAuthority)},
             {"producer_catalog_sha256", QString::fromLatin1(kProducerCatalogSha256)},
             {"extractor_commit", QString::fromLatin1(kExtractorCommit)},
@@ -1970,7 +2095,7 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
             {"input_files", inputFiles},
         }},
         {"reader", QJsonObject{
-            {"version", QCoreApplication::applicationVersion()},
+            {"version", request.readerVersion},
             {"base_commit", QString::fromLatin1(kReaderBaseCommit)},
             {"final_commit", QStringLiteral(H5READER_GIT_COMMIT)},
             {"dirty", static_cast<bool>(H5READER_GIT_DIRTY)},
@@ -1978,12 +2103,12 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
         {"dimensions", QJsonObject{
             {"frames", static_cast<qint64>(frameCount)},
             {"atoms", static_cast<qint64>(atomCount)},
-            {"residues", static_cast<qint64>(protein.residueCount())},
-            {"bonds", static_cast<qint64>(protein.bondCount())},
-            {"aromatic_rings", static_cast<qint64>(topology.aromaticRingCount())},
-            {"saturated_rings", static_cast<qint64>(topology.saturatedRingCount())},
-            {"rings", static_cast<qint64>(protein.ringCount())},
-            {"ring_memberships", static_cast<qint64>(protein.ringMembershipCount())},
+            {"residues", static_cast<qint64>(request.residueCount)},
+            {"bonds", static_cast<qint64>(request.bondCount)},
+            {"aromatic_rings", static_cast<qint64>(request.aromaticRingCount)},
+            {"saturated_rings", static_cast<qint64>(request.saturatedRingCount)},
+            {"rings", static_cast<qint64>(request.ringCount)},
+            {"ring_memberships", static_cast<qint64>(request.ringMembershipCount)},
             {"primary_fit_atoms", static_cast<qint64>(primaryAtoms.size())},
             {"ca_fit_atoms", static_cast<qint64>(caAtoms.size())},
         }},
@@ -2029,8 +2154,10 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
         return result;
     }
     const CompletedAlignmentValidation staged =
-        ValidateCompletedMember(stagingDirectory);
+        ValidateCompletedMember(stagingDirectory, control);
     if (!staged.ok) {
+        if (cancelled())
+            return result;
         result.error = QStringLiteral("staged member validation failed: %1")
             .arg(staged.error);
         return result;
@@ -2044,14 +2171,17 @@ ReaderAlignmentExportResult ReaderAlignmentExporter::Export(
     }
     stagingGuard.release();
 
+    // Publication is the cancellation boundary. Once the complete staging
+    // directory has its final name, finish validation and the members table so
+    // the published collection cannot be left internally inconsistent.
     const CompletedAlignmentValidation published =
-        ValidateCompletedMember(result.finalDirectory);
+        ValidateCompletedMember(result.finalDirectory, nullptr);
     if (!published.ok) {
         result.error = QStringLiteral("published member validation failed: %1")
             .arg(published.error);
         return result;
     }
-    if (!RebuildMembersTable(cleanOutputRoot, &writeError)) {
+    if (!RebuildMembersTable(cleanOutputRoot, &writeError, nullptr)) {
         result.error = writeError;
         return result;
     }

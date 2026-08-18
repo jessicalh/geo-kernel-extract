@@ -2235,19 +2235,11 @@ void ReaderMainWindow::shutdown() {
 
     // Per spec/viewport_pipeline_2026-05-30.md §4.4:
     //
-    // 1. Stop the REST server SYNCHRONOUSLY. The /shutdown endpoint
-    //    fires from a request handler; the server needs to drain
-    //    before timers stop so a follow-up request can't trigger a
-    //    race with timer teardown.
-    if (restServer_) {
-        // RestServer doesn't expose stopListening(); the QHttpServer
-        // owned by it tears down when the RestServer is deleted, but
-        // deleteLater on shutdown is enough for this path because
-        // aboutToQuit drains the event loop afterwards. We do hold a
-        // direct pointer; do a synchronous delete here.
-        delete restServer_;
-        restServer_ = nullptr;
-    }
+    // 1. Keep the REST server alive until app.exec() has returned. This slot
+    //    can run from aboutToQuit while a QTcpSocket signal is still unwinding;
+    //    deleting that socket here would invalidate Qt's active signal walk.
+    //    ReaderMainWindow owns the server and main_reader.cpp deletes the
+    //    window immediately after the event loop exits.
 
     // 2. Stop every timer owned by us or our children. The generic
     //    findChildren sweep catches QtPlaybackController's timer too.
@@ -2823,10 +2815,27 @@ void ReaderMainWindow::onTransformFitClicked() {
 
 void ReaderMainWindow::closeEvent(QCloseEvent* event) {
     ASSERT_THREAD(this);
+    if (restServer_ && restServer_->hasActiveOperations()) {
+        if (!closeWaitingForOperations_) {
+            closeWaitingForOperations_ = true;
+            QObject::connect(
+                restServer_, &RestServer::activeOperationsStopped,
+                this, [this]() {
+                    closeWaitingForOperations_ = false;
+                    close();
+                },
+                Qt::ConnectionType(Qt::QueuedConnection | Qt::SingleShotConnection));
+            restServer_->requestGracefulStop();
+            statusBar()->showMessage(
+                QStringLiteral("Finishing active export before closing..."));
+        }
+        event->ignore();
+        return;
+    }
+
     saveAllSettings();
-    // Accept unconditionally — a failed save is logged but not allowed
-    // to trap the user inside the application. aboutToQuit fires the
-    // existing shutdown() chain after this returns.
+    // A failed save is logged but is not allowed to trap the user inside the
+    // application. Active exports have completed before this point.
     event->accept();
 }
 

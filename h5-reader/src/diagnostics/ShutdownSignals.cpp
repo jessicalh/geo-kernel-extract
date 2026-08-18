@@ -1,5 +1,6 @@
 #include "ShutdownSignals.h"
 
+#include <QApplication>
 #include <QCoreApplication>
 #include <QLoggingCategory>
 
@@ -23,6 +24,10 @@ namespace {
 Q_LOGGING_CATEGORY(cSignals, "h5reader.signals")
 
 std::atomic<bool> g_installed{false};
+
+void CloseApplicationWindows() {
+    QApplication::closeAllWindows();
+}
 
 #ifndef _WIN32
 // ---------------------------------------------------------------------------
@@ -54,8 +59,9 @@ void InstallPosix() {
         const ssize_t rc = ::read(g_sigPipe[0], &byte, 1);
         (void)rc;
         qCInfo(cSignals).noquote()
-            << "received signal" << static_cast<int>(byte) << "— quitting";
-        if (auto* app = QCoreApplication::instance()) app->quit();
+            << "received signal" << static_cast<int>(byte)
+            << "- requesting graceful close";
+        CloseApplicationWindows();
     });
 
     struct sigaction sa;
@@ -68,47 +74,34 @@ void InstallPosix() {
     sigaction(SIGTERM, &sa, nullptr);
 
     qCInfo(cSignals).noquote()
-        << "POSIX: SIGINT/SIGTERM → QCoreApplication::quit bridge installed";
+        << "POSIX: SIGINT/SIGTERM graceful-close bridge installed";
 }
 
 #else
 // ---------------------------------------------------------------------------
 // Windows — SetConsoleCtrlHandler.
 //
-// The handler runs on a separate thread the OS creates when the
-// console event fires. QMetaObject::invokeMethod with
-// Qt::QueuedConnection is documented thread-safe and will post the
-// quit() call onto the GUI thread's event loop. Returning TRUE from
-// the handler tells Windows we've taken responsibility; the OS gives
-// our process a few seconds to complete before hard-terminating.
+// Ctrl-C and Ctrl-Break arrive on a thread created by Windows.
+// QMetaObject::invokeMethod with Qt::QueuedConnection posts the close
+// request onto the GUI thread. Console-window close, logoff, and system
+// shutdown do not provide a reliable lifetime for queued GUI work, so this
+// bridge does not claim to handle them.
 // ---------------------------------------------------------------------------
 BOOL WINAPI Win32Handler(DWORD dwCtrlType) {
-    const char* name = "?";
-    switch (dwCtrlType) {
-        case CTRL_C_EVENT:        name = "CTRL_C";        break;
-        case CTRL_BREAK_EVENT:    name = "CTRL_BREAK";    break;
-        case CTRL_CLOSE_EVENT:    name = "CTRL_CLOSE";    break;
-        case CTRL_LOGOFF_EVENT:   name = "CTRL_LOGOFF";   break;
-        case CTRL_SHUTDOWN_EVENT: name = "CTRL_SHUTDOWN"; break;
-        default: return FALSE;   // not ours; let the default handler run
-    }
-
-    // qCInfo is not guaranteed async-safe from a non-Qt thread the OS
-    // spawned, but it uses Qt's logging machinery which is mutex-
-    // protected internally. Safe in practice; if a future stress test
-    // shows otherwise, we drop the log line and rely on the GUI-side
-    // lifecycle logs after quit posts.
-    qCInfo(cSignals).noquote()
-        << "Windows console event" << name << "— posting quit";
+    if (dwCtrlType != CTRL_C_EVENT && dwCtrlType != CTRL_BREAK_EVENT)
+        return FALSE;
 
     if (auto* app = QCoreApplication::instance()) {
-        QMetaObject::invokeMethod(app, "quit", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(app, [dwCtrlType]() {
+            qCInfo(cSignals).noquote()
+                << "Windows console event"
+                << (dwCtrlType == CTRL_C_EVENT ? "CTRL_C" : "CTRL_BREAK")
+                << "- requesting graceful close";
+            CloseApplicationWindows();
+        }, Qt::QueuedConnection);
+        return TRUE;
     }
-
-    // TRUE = handled. Windows waits a short time for the process to
-    // exit before hard-terminating it, which is enough for our
-    // aboutToQuit → shutdown() path.
-    return TRUE;
+    return FALSE;
 }
 
 void InstallWin32() {
@@ -120,7 +113,7 @@ void InstallWin32() {
         return;
     }
     qCInfo(cSignals).noquote()
-        << "Windows: SetConsoleCtrlHandler → QCoreApplication::quit bridge installed";
+        << "Windows: SetConsoleCtrlHandler graceful-close bridge installed";
 }
 #endif  // _WIN32
 

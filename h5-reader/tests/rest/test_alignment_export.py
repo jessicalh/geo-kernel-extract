@@ -6,9 +6,13 @@ import hashlib
 import json
 import os
 import shutil
+import threading
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 import h5py
+import httpx
 import numpy as np
 import pytest
 
@@ -79,6 +83,36 @@ def _assert_reader_positions_match_export(
     np.testing.assert_allclose(displayed, aligned[frame, atoms], atol=1e-12, rtol=0.0)
 
 
+def _post_alignment_export(
+    base_url: str,
+    output_root: Path,
+    apply_display: bool,
+    started: threading.Event,
+) -> httpx.Response:
+    with httpx.Client(base_url=base_url, timeout=600.0) as client:
+        started.set()
+        return client.post(
+            "/api/alignment/export",
+            json={
+                "output_root": str(output_root),
+                "apply_display": apply_display,
+            },
+        )
+
+
+def _wait_until_export_is_running(rest, future: Future[httpx.Response]) -> None:
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        status = rest.client.get("/api/alignment/export/status")
+        assert status.status_code == 200, status.text
+        if status.json()["running"]:
+            return
+        if future.done():
+            pytest.fail("alignment export completed before its running state was observable")
+        time.sleep(0.01)
+    pytest.fail("alignment export did not enter its running state")
+
+
 def test_alignment_export_contract_and_resume(rest, tmp_path: Path) -> None:
     output_root = tmp_path / "alignment"
     output_root.mkdir()
@@ -86,11 +120,28 @@ def test_alignment_export_contract_and_resume(rest, tmp_path: Path) -> None:
     interrupted.mkdir()
     (interrupted / "partial.npy").write_bytes(b"interrupted")
 
-    response = rest.client.post(
-        "/api/alignment/export",
-        json={"output_root": str(output_root), "apply_display": True},
-        timeout=600.0,
-    )
+    started = threading.Event()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        export_future = executor.submit(
+            _post_alignment_export,
+            rest.base_url,
+            output_root,
+            True,
+            started,
+        )
+        assert started.wait(timeout=2.0)
+        _wait_until_export_is_running(rest, export_future)
+
+        probe_started = time.monotonic()
+        health = rest.client.get("/health", timeout=2.0)
+        frame_state = rest.client.get("/frame/current", timeout=2.0)
+        probe_elapsed = time.monotonic() - probe_started
+        assert health.status_code == 200, health.text
+        assert health.json()["ok"] is True
+        assert frame_state.status_code == 200, frame_state.text
+        assert probe_elapsed < 2.0
+
+        response = export_future.result(timeout=600.0)
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["ok"] is True
@@ -240,17 +291,18 @@ def test_alignment_export_contract_and_resume(rest, tmp_path: Path) -> None:
     assert ordinary_display.status_code == 204, ordinary_display.text
     assert rest.client.get("/transform").json()["kind"] == "all_atom_fit"
 
-    repeated = rest.client.post(
-        "/api/alignment/export",
-        json={"output_root": str(output_root), "apply_display": True},
-        timeout=600.0,
-    )
-    assert repeated.status_code == 200, repeated.text
-    repeated_payload = repeated.json()
-    assert repeated_payload["ok"] is True
-    assert repeated_payload["already_complete"] is True
-    assert repeated_payload["display_applied"] is True
-    assert Path(repeated_payload["output_directory"]) == member_directory
+    for _ in range(3):
+        repeated = rest.client.post(
+            "/api/alignment/export",
+            json={"output_root": str(output_root), "apply_display": True},
+            timeout=600.0,
+        )
+        assert repeated.status_code == 200, repeated.text
+        repeated_payload = repeated.json()
+        assert repeated_payload["ok"] is True
+        assert repeated_payload["already_complete"] is True
+        assert repeated_payload["display_applied"] is True
+        assert Path(repeated_payload["output_directory"]) == member_directory
     assert rest.client.get("/transform").json()["kind"] == "scientific_alignment"
     _assert_reader_positions_match_export(
         rest, arrays["aligned_positions.npy"], frame_count - 1, display_atoms
@@ -281,3 +333,36 @@ def test_alignment_export_contract_and_resume(rest, tmp_path: Path) -> None:
     ) == "do not replace"
 
     shutil.rmtree(interrupted)
+
+
+def test_alignment_export_cancellation_cleans_staging(rest, tmp_path: Path) -> None:
+    output_root = tmp_path / "cancelled-alignment"
+    output_root.mkdir()
+    started = threading.Event()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        export_future = executor.submit(
+            _post_alignment_export,
+            rest.base_url,
+            output_root,
+            False,
+            started,
+        )
+        assert started.wait(timeout=2.0)
+        _wait_until_export_is_running(rest, export_future)
+
+        cancelled = rest.client.post("/api/alignment/export/cancel")
+        assert cancelled.status_code == 202, cancelled.text
+        assert cancelled.json()["cancel_requested"] is True
+
+        response = export_future.result(timeout=30.0)
+
+    assert response.status_code == 409, response.text
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["cancelled"] is True
+    assert not any(path.name.startswith(".") for path in output_root.iterdir())
+    assert not any(path.is_dir() for path in output_root.iterdir())
+    status = rest.client.get("/api/alignment/export/status")
+    assert status.status_code == 200
+    assert status.json()["running"] is False

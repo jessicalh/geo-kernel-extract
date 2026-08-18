@@ -13,6 +13,7 @@
 #include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
+#include "SceneVideoExporter.h"
 #include "SignalDisplayDialog.h"
 #include "TensorGhostTrail.h"
 
@@ -41,6 +42,7 @@
 #include <QBuffer>
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QFuture>
 #include <QHttpServer>
 #include <QHttpServerRequest>
 #include <QHttpServerResponse>
@@ -58,6 +60,7 @@
 #include <QVariant>
 #include <QApplication>
 #include <QWidget>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <vtkCamera.h>
 #include <vtkMoleculeMapper.h>
@@ -73,6 +76,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <cmath>
 #include <cstdio>
@@ -86,9 +90,12 @@ namespace h5reader::app {
 namespace {
 Q_LOGGING_CATEGORY(cRest, "h5reader.rest")
 
-// A QTcpServer that reports each accepted socket as QAbstractHttpServer pulls it,
-// so /shutdown can hook the live socket's flush event and exit on the real
-// "response has left the wire" moment instead of a timer.
+QFuture<QHttpServerResponse> readyResponse(QHttpServerResponse response) {
+    return QtFuture::makeReadyValueFuture(std::move(response));
+}
+
+// Reports each accepted socket as QAbstractHttpServer pulls it, allowing a
+// request to wait for its own response flush instead of guessing with a timer.
 class TrackingTcpServer : public QTcpServer {
 public:
     explicit TrackingTcpServer(QObject* parent = nullptr) : QTcpServer(parent) {}
@@ -126,6 +133,30 @@ QJsonObject parseJsonBody(const QHttpServerRequest& request, bool* ok) {
         return {};
     *ok = true;
     return doc.object();
+}
+
+QJsonObject sceneVideoStatusJson(const SceneVideoExportStatus& status,
+                                 bool running) {
+    return QJsonObject{
+        {"ok", status.state != SceneVideoExportState::Failed
+            && status.error.isEmpty()},
+        {"operation", QStringLiteral("scene_video_export")},
+        {"running", running},
+        {"state", SceneVideoExportStateName(status.state)},
+        {"output_path", status.outputPath},
+        {"codec", status.codec},
+        {"error", status.error},
+        {"width", status.resolution.width()},
+        {"height", status.resolution.height()},
+        {"start_frame", status.startFrame},
+        {"end_frame", status.endFrame},
+        {"frame_step", status.frameStep},
+        {"frames_per_second", status.framesPerSecond},
+        {"frames_total", status.framesTotal},
+        {"frames_written", status.framesWritten},
+        {"last_frame", status.lastFrame},
+        {"file_size_bytes", status.fileSizeBytes},
+    };
 }
 
 struct JsonDoubleBounds {
@@ -221,6 +252,21 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/alignment/export"),
                       QStringLiteral("general"),
                       QStringLiteral("Validated target-free scientific trajectory alignment export.")),
+            restRoute(QStringLiteral("GET"), QStringLiteral("/api/alignment/export/status"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Scientific alignment export activity and cancellation state.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/alignment/export/cancel"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Request cooperative cancellation of the active alignment export.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/video/export"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Record the current scene over a trajectory frame range.")),
+            restRoute(QStringLiteral("GET"), QStringLiteral("/api/video/export/status"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Current-scene video export progress and last result.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/video/export/stop"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Stop recording and finish a valid partial video.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/null_crossings"),
                       QStringLiteral("general"),
                       QStringLiteral("Operational ring-null crossing collection.")),
@@ -1364,9 +1410,130 @@ RestServer::RestServer(QObject* parent)
     : QObject(parent) {
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("RestServer"));
+    videoExporter_ = new SceneVideoExporter(this);
+    ACONNECT(videoExporter_, &SceneVideoExporter::finished,
+             this, &RestServer::activeOperationFinished);
 }
 
-RestServer::~RestServer() = default;
+RestServer::~RestServer() {
+    if (alignmentExportControl_)
+        alignmentExportControl_->requestCancel();
+    if (!alignmentExportFuture_.isFinished()) {
+        qCInfo(cRest).noquote()
+            << "waiting for scientific alignment export to stop";
+        alignmentExportFuture_.waitForFinished();
+    }
+    if (videoExporter_ && videoExporter_->isActive()) {
+        qCWarning(cRest).noquote()
+            << "REST server teardown reached an active video recorder";
+        videoExporter_->stopForShutdown();
+    }
+}
+
+QTcpSocket* RestServer::socketForRequest(
+    const QHttpServerRequest& request) const {
+    ASSERT_THREAD(this);
+    for (const QPointer<QTcpSocket>& guardedSocket : restSockets_) {
+        QTcpSocket* socket = guardedSocket.data();
+        if (socket
+            && socket->peerAddress() == request.remoteAddress()
+            && socket->peerPort() == request.remotePort()
+            && socket->localAddress() == request.localAddress()
+            && socket->localPort() == request.localPort()) {
+            return socket;
+        }
+    }
+    return nullptr;
+}
+
+void RestServer::awaitAlignmentResponseFlush(QTcpSocket* socket) {
+    ASSERT_THREAD(this);
+    QObject::disconnect(alignmentResponseBytesWritten_);
+    QObject::disconnect(alignmentResponseDisconnected_);
+    QObject::disconnect(alignmentResponseDestroyed_);
+    alignmentResponseSocket_ = socket;
+
+    if (!socket || socket->state() == QAbstractSocket::UnconnectedState) {
+        qCWarning(cRest).noquote()
+            << "scientific alignment response socket is unavailable";
+        finishAlignmentRequest();
+        return;
+    }
+
+    alignmentResponseBytesWritten_ =
+        QObject::connect(socket, &QTcpSocket::bytesWritten, this, [this]() {
+            QTcpSocket* responseSocket = alignmentResponseSocket_.data();
+            if (!responseSocket || responseSocket->bytesToWrite() == 0)
+                finishAlignmentRequest();
+        });
+    alignmentResponseDisconnected_ =
+        QObject::connect(socket, &QTcpSocket::disconnected, this,
+                         &RestServer::finishAlignmentRequest);
+    alignmentResponseDestroyed_ =
+        QObject::connect(socket, &QObject::destroyed, this,
+                         &RestServer::finishAlignmentRequest);
+}
+
+void RestServer::finishAlignmentRequest() {
+    ASSERT_THREAD(this);
+    if (!alignmentRequestActive_)
+        return;
+
+    QObject::disconnect(alignmentResponseBytesWritten_);
+    QObject::disconnect(alignmentResponseDisconnected_);
+    QObject::disconnect(alignmentResponseDestroyed_);
+    alignmentResponseSocket_.clear();
+    alignmentRequestActive_ = false;
+    alignmentExportControl_.reset();
+    activeOperationFinished();
+}
+
+bool RestServer::hasActiveOperations() const {
+    return alignmentRequestActive_
+        || (videoExporter_ && videoExporter_->isActive());
+}
+
+void RestServer::requestGracefulStop() {
+    ASSERT_THREAD(this);
+    gracefulStopRequested_ = true;
+    if (alignmentRequestActive_ && alignmentExportControl_) {
+        alignmentExportControl_->requestCancel();
+        qCInfo(cRest).noquote()
+            << "graceful stop requested for scientific alignment export";
+    }
+    if (videoExporter_ && videoExporter_->isActive())
+        videoExporter_->stopForShutdown();
+    if (!hasActiveOperations())
+        activeOperationFinished();
+}
+
+void RestServer::activeOperationFinished() {
+    ASSERT_THREAD(this);
+    if (gracefulStopRequested_ && !hasActiveOperations()) {
+        gracefulStopRequested_ = false;
+        emit activeOperationsStopped();
+    }
+    maybeQuitAfterShutdown();
+}
+
+void RestServer::maybeQuitAfterShutdown() {
+    ASSERT_THREAD(this);
+    if (shutdownRequested_ && shutdownResponseFlushed_
+        && !shutdownQuitRequested_ && !hasActiveOperations()) {
+        shutdownQuitRequested_ = true;
+        qCInfo(cRest).noquote()
+            << "REST /shutdown - response flushed and operations stopped";
+        QCoreApplication::quit();
+    }
+}
+
+void RestServer::completeShutdownResponseFlush() {
+    ASSERT_THREAD(this);
+    QObject::disconnect(shutdownResponseBytesWritten_);
+    QObject::disconnect(shutdownResponseDisconnected_);
+    shutdownResponseFlushed_ = true;
+    maybeQuitAfterShutdown();
+}
 
 void RestServer::setContext(MoleculeScene* scene,
                             model::AtomSelection* selection,
@@ -1403,6 +1570,7 @@ void RestServer::setContext(MoleculeScene* scene,
     mainWindow_ = mainWindow;
     readerWindow_ = readerWindow;
     transformed_ = transformed;
+    videoExporter_->setContext(scene, playback);
     contextSet_ = true;
 }
 
@@ -1419,13 +1587,18 @@ quint16 RestServer::listen(quint16 port) {
     server_->setConfiguration(config);
     registerRoutes();
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
-    // Qt 6.10 removed the QHttpServer::listen() convenience overload. The
-    // supported path is now QAbstractHttpServer::bind() with a QTcpServer that
-    // is already listening. The Linux dev boxes still run Qt 6.4, so the old
-    // listen() path is kept under the version guard below.
+    // Bind through our QTcpServer on every supported Qt version so graceful
+    // shutdown can wait for the actual response socket to flush.
     auto* tcp = new TrackingTcpServer(this);
-    tcp->onConnection = [this](QTcpSocket* socket) { activeSocket_ = socket; };
+    tcp->onConnection = [this](QTcpSocket* socket) {
+        for (auto it = restSockets_.begin(); it != restSockets_.end();) {
+            if (it->isNull())
+                it = restSockets_.erase(it);
+            else
+                ++it;
+        }
+        restSockets_.append(socket);
+    };
     if (!tcp->listen(QHostAddress::LocalHost, port) || !server_->bind(tcp)) {
         qCCritical(cRest).noquote()
             << "REST server failed to bind 127.0.0.1 port" << port;
@@ -1434,21 +1607,195 @@ quint16 RestServer::listen(quint16 port) {
         return 0;
     }
     const quint16 bound = tcp->serverPort();
-#else
-    const quint16 bound = server_->listen(QHostAddress::LocalHost, port);
-    if (bound == 0) {
-        qCCritical(cRest).noquote()
-            << "REST server failed to bind 127.0.0.1 port" << port;
-        server_.reset();
-        return 0;
-    }
-#endif
-
     qCInfo(cRest).noquote() << "REST server listening on 127.0.0.1:" << bound;
     // Handshake line for the pytest fixture to scrape.
     std::fprintf(stderr, "H5READER_REST_PORT=%u\n", static_cast<unsigned>(bound));
     std::fflush(stderr);
     return bound;
+}
+
+QFuture<QHttpServerResponse> RestServer::beginAlignmentExport(
+    const QHttpServerRequest& request) {
+    ASSERT_THREAD(this);
+    using SC = QHttpServerResponse::StatusCode;
+
+    if (alignmentRequestActive_) {
+        return readyResponse(jsonResponse(QJsonObject{
+            {"ok", false},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"error", QStringLiteral("a scientific alignment export is already running")},
+        }, SC::Conflict));
+    }
+    if (!loaded_ || !loaded_->ok || !loaded_->protein
+        || !loaded_->conformation || !transformed_) {
+        return readyResponse(jsonResponse(QJsonObject{
+            {"ok", false},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"error", QStringLiteral("no complete trajectory load is available")},
+        }, SC::ServiceUnavailable));
+    }
+
+    bool bodyOk = false;
+    const QJsonObject body = parseJsonBody(request, &bodyOk);
+    const QJsonValue outputRootValue = body.value(QStringLiteral("output_root"));
+    if (!bodyOk || !outputRootValue.isString()
+        || outputRootValue.toString().trimmed().isEmpty()) {
+        return readyResponse(jsonResponse(QJsonObject{
+            {"ok", false},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"error", QStringLiteral(
+                "body must include a nonempty string field output_root")},
+        }, SC::BadRequest));
+    }
+
+    const QJsonValue applyDisplayValue =
+        body.value(QStringLiteral("apply_display"));
+    if (!applyDisplayValue.isUndefined() && !applyDisplayValue.isBool()) {
+        return readyResponse(jsonResponse(QJsonObject{
+            {"ok", false},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"error", QStringLiteral("apply_display must be a boolean")},
+        }, SC::BadRequest));
+    }
+    const bool applyDisplay = applyDisplayValue.isUndefined()
+        ? true : applyDisplayValue.toBool();
+
+    io::ReaderAlignmentExportPreparation prepared =
+        io::ReaderAlignmentExporter::Prepare(*loaded_, outputRootValue.toString());
+    if (!prepared.ok) {
+        return readyResponse(jsonResponse(QJsonObject{
+            {"ok", false},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"error", prepared.error},
+        }, SC::Conflict));
+    }
+
+    const QString sourceLgsPath = prepared.request.lgsPath;
+    const QPointer<QTcpSocket> responseSocket = socketForRequest(request);
+    const auto control = std::make_shared<io::ReaderAlignmentExportControl>();
+    alignmentExportControl_ = control;
+    alignmentRequestActive_ = true;
+    qCInfo(cRest).noquote()
+        << "scientific alignment export started"
+        << "| source=" << sourceLgsPath
+        << "| output_root=" << prepared.request.outputRoot;
+
+    alignmentExportFuture_ = QtConcurrent::run(
+        [exportRequest = std::move(prepared.request), control, applyDisplay]() {
+            io::ReaderAlignmentExportResult exported;
+            try {
+                exported = io::ReaderAlignmentExporter::Export(
+                    exportRequest, control.get());
+                if (applyDisplay && exported.ok && exported.alreadyComplete) {
+                    exported.primaryAlignment =
+                        io::ReaderAlignmentExporter::LoadCompletedPrimaryAlignment(
+                            exported.finalDirectory, control.get());
+                    if (control->cancelRequested()) {
+                        exported.ok = false;
+                        exported.cancelled = true;
+                        exported.error = QStringLiteral(
+                            "scientific alignment export cancelled");
+                    }
+                }
+            } catch (const std::exception& error) {
+                exported.error = QStringLiteral(
+                    "scientific alignment export raised an exception: %1")
+                    .arg(QString::fromLocal8Bit(error.what()));
+            } catch (...) {
+                exported.error = QStringLiteral(
+                    "scientific alignment export raised an unknown exception");
+            }
+            return exported;
+        });
+
+    return alignmentExportFuture_.then(
+        this,
+        [this, applyDisplay, sourceLgsPath, responseSocket](
+            const io::ReaderAlignmentExportResult& exported) {
+            ASSERT_THREAD(this);
+            QHttpServerResponse response = makeAlignmentExportResponse(
+                exported, applyDisplay, sourceLgsPath);
+            awaitAlignmentResponseFlush(responseSocket.data());
+            return response;
+        });
+}
+
+QHttpServerResponse RestServer::makeAlignmentExportResponse(
+    const io::ReaderAlignmentExportResult& exported,
+    bool applyDisplay,
+    const QString& sourceLgsPath) {
+    ASSERT_THREAD(this);
+    using SC = QHttpServerResponse::StatusCode;
+
+    if (!exported.ok) {
+        qCWarning(cRest).noquote()
+            << (exported.cancelled
+                    ? "scientific alignment export cancelled"
+                    : "scientific alignment export rejected")
+            << "| member=" << exported.memberId
+            << "| error=" << exported.error;
+        return jsonResponse(QJsonObject{
+            {"ok", false},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"cancelled", exported.cancelled},
+            {"member_id", exported.memberId},
+            {"output_directory", exported.finalDirectory},
+            {"error", exported.error},
+        }, SC::Conflict);
+    }
+
+    bool displayApplied = false;
+    if (applyDisplay) {
+        if (!loaded_ || !loaded_->ok || !transformed_
+            || loaded_->manifest.lgs_path_abspath != sourceLgsPath) {
+            return jsonResponse(QJsonObject{
+                {"ok", false},
+                {"operation", QStringLiteral("scientific_alignment_export")},
+                {"export_completed", true},
+                {"already_complete", exported.alreadyComplete},
+                {"member_id", exported.memberId},
+                {"output_directory", exported.finalDirectory},
+                {"display_applied", false},
+                {"error", QStringLiteral(
+                    "alignment exported, but the loaded run changed before display application")},
+                {"manifest", exported.manifest},
+            }, SC::Conflict);
+        }
+
+        QString displayError;
+        if (!exported.primaryAlignment.ok
+            || !transformed_->setScientificAlignment(
+                exported.primaryAlignment, &displayError)) {
+            if (displayError.isEmpty())
+                displayError = exported.primaryAlignment.error;
+            qCCritical(cRest).noquote()
+                << "alignment exported but exact display application failed"
+                << "| member=" << exported.memberId
+                << "| error=" << displayError;
+            return jsonResponse(QJsonObject{
+                {"ok", false},
+                {"operation", QStringLiteral("scientific_alignment_export")},
+                {"export_completed", true},
+                {"already_complete", exported.alreadyComplete},
+                {"member_id", exported.memberId},
+                {"output_directory", exported.finalDirectory},
+                {"display_applied", false},
+                {"error", displayError},
+                {"manifest", exported.manifest},
+            }, SC::InternalServerError);
+        }
+        displayApplied = true;
+    }
+
+    return jsonResponse(QJsonObject{
+        {"ok", true},
+        {"operation", QStringLiteral("scientific_alignment_export")},
+        {"already_complete", exported.alreadyComplete},
+        {"member_id", exported.memberId},
+        {"output_directory", exported.finalDirectory},
+        {"display_applied", displayApplied},
+        {"manifest", exported.manifest},
+    });
 }
 
 void RestServer::registerRoutes() {
@@ -1471,101 +1818,123 @@ void RestServer::registerRoutes() {
     });
 
     server_->route(QStringLiteral("/api/alignment/export"), Method::Post,
+                   [this](const QHttpServerRequest& request) {
+        return beginAlignmentExport(request);
+    });
+
+    server_->route(QStringLiteral("/api/alignment/export/status"), [this]() {
+        ASSERT_THREAD(this);
+        return jsonResponse(QJsonObject{
+            {"ok", true},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"running", alignmentRequestActive_},
+            {"cancel_requested", alignmentExportControl_
+                && alignmentExportControl_->cancelRequested()},
+        });
+    });
+
+    server_->route(QStringLiteral("/api/alignment/export/cancel"), Method::Post,
+                   [this]() {
+        ASSERT_THREAD(this);
+        if (!alignmentRequestActive_ || !alignmentExportControl_) {
+            return errorResponse(
+                QStringLiteral("no scientific alignment export is running"),
+                SC::Conflict);
+        }
+        alignmentExportControl_->requestCancel();
+        qCInfo(cRest).noquote()
+            << "scientific alignment export cancellation requested";
+        return jsonResponse(QJsonObject{
+            {"ok", true},
+            {"operation", QStringLiteral("scientific_alignment_export")},
+            {"cancel_requested", true},
+        }, SC::Accepted);
+    });
+
+    server_->route(QStringLiteral("/api/video/export"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
-        using SC = QHttpServerResponse::StatusCode;
-        if (!loaded_ || !loaded_->ok || !loaded_->protein
-            || !loaded_->conformation || !transformed_) {
-            return jsonResponse(QJsonObject{
-                {"ok", false},
-                {"operation", QStringLiteral("scientific_alignment_export")},
-                {"error", QStringLiteral("no complete trajectory load is available")},
-            }, SC::ServiceUnavailable);
+        if (!videoExporter_ || !scene_ || !playback_) {
+            return errorResponse(QStringLiteral("no loaded trajectory scene is available"),
+                                 SC::ServiceUnavailable);
+        }
+        if (videoExporter_->isActive()) {
+            return errorResponse(QStringLiteral("a scene video export is already running"),
+                                 SC::Conflict);
         }
 
         bool bodyOk = false;
         const QJsonObject body = parseJsonBody(req, &bodyOk);
-        const QJsonValue outputRootValue =
-            body.value(QStringLiteral("output_root"));
-        if (!bodyOk || !outputRootValue.isString()
-            || outputRootValue.toString().trimmed().isEmpty()) {
-            return jsonResponse(QJsonObject{
-                {"ok", false},
-                {"operation", QStringLiteral("scientific_alignment_export")},
-                {"error", QStringLiteral(
-                    "body must include a nonempty string field output_root")},
-            }, SC::BadRequest);
-        }
-        const QJsonValue applyDisplayValue =
-            body.value(QStringLiteral("apply_display"));
-        if (!applyDisplayValue.isUndefined() && !applyDisplayValue.isBool()) {
-            return jsonResponse(QJsonObject{
-                {"ok", false},
-                {"operation", QStringLiteral("scientific_alignment_export")},
-                {"error", QStringLiteral("apply_display must be a boolean")},
-            }, SC::BadRequest);
-        }
-        const bool applyDisplay = applyDisplayValue.isUndefined()
-            ? true : applyDisplayValue.toBool();
-
-        io::ReaderAlignmentExportResult exported =
-            io::ReaderAlignmentExporter::Export(
-                *loaded_, outputRootValue.toString());
-        if (!exported.ok) {
-            qCWarning(cRest).noquote()
-                << "scientific alignment export rejected"
-                << "| member=" << exported.memberId
-                << "| error=" << exported.error;
-            return jsonResponse(QJsonObject{
-                {"ok", false},
-                {"operation", QStringLiteral("scientific_alignment_export")},
-                {"member_id", exported.memberId},
-                {"output_directory", exported.finalDirectory},
-                {"error", exported.error},
-            }, SC::Conflict);
+        const QJsonValue outputPath = body.value(QStringLiteral("output_path"));
+        if (!bodyOk || !outputPath.isString()
+            || outputPath.toString().trimmed().isEmpty()) {
+            return errorResponse(
+                QStringLiteral("body must include a nonempty string field output_path"),
+                SC::BadRequest);
         }
 
-        bool displayApplied = false;
-        if (applyDisplay) {
-            model::ScientificAlignmentResult alignment =
-                exported.alreadyComplete
-                    ? io::ReaderAlignmentExporter::LoadCompletedPrimaryAlignment(
-                          exported.finalDirectory)
-                    : std::move(exported.primaryAlignment);
-            QString displayError;
-            if (!alignment.ok
-                || !transformed_->setScientificAlignment(alignment,
-                                                         &displayError)) {
-                if (displayError.isEmpty())
-                    displayError = alignment.error;
-                qCCritical(cRest).noquote()
-                    << "alignment exported but exact display application failed"
-                    << "| member=" << exported.memberId
-                    << "| error=" << displayError;
-                return jsonResponse(QJsonObject{
-                    {"ok", false},
-                    {"operation", QStringLiteral("scientific_alignment_export")},
-                    {"export_completed", true},
-                    {"already_complete", exported.alreadyComplete},
-                    {"member_id", exported.memberId},
-                    {"output_directory", exported.finalDirectory},
-                    {"display_applied", false},
-                    {"error", displayError},
-                    {"manifest", exported.manifest},
-                }, SC::InternalServerError);
-            }
-            displayApplied = true;
+        qint64 startFrame = 0;
+        qint64 endFrame = playback_->frameCount() - 1;
+        qint64 frameStep = 1;
+        qint64 framesPerSecond = 10;
+        QString parseError;
+        const auto optionalInteger = [&](const QString& key, qint64* value) {
+            if (!body.contains(key))
+                return true;
+            return readNonNegativeInteger(body, key, value, &parseError);
+        };
+        if (!optionalInteger(QStringLiteral("start_frame"), &startFrame)
+            || !optionalInteger(QStringLiteral("end_frame"), &endFrame)
+            || !optionalInteger(QStringLiteral("frame_step"), &frameStep)
+            || !optionalInteger(QStringLiteral("frames_per_second"),
+                                &framesPerSecond)) {
+            return errorResponse(parseError, SC::BadRequest);
+        }
+        if (startFrame > std::numeric_limits<int>::max()
+            || endFrame > std::numeric_limits<int>::max()
+            || frameStep < 1 || frameStep > std::numeric_limits<int>::max()
+            || framesPerSecond < 1 || framesPerSecond > 60) {
+            return errorResponse(
+                QStringLiteral("video frame values are outside their supported range"),
+                SC::BadRequest);
         }
 
-        return jsonResponse(QJsonObject{
-            {"ok", true},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"already_complete", exported.alreadyComplete},
-            {"member_id", exported.memberId},
-            {"output_directory", exported.finalDirectory},
-            {"display_applied", displayApplied},
-            {"manifest", exported.manifest},
-        });
+        SceneVideoExportRequest request;
+        request.outputPath = outputPath.toString();
+        request.startFrame = static_cast<int>(startFrame);
+        request.endFrame = static_cast<int>(endFrame);
+        request.frameStep = static_cast<int>(frameStep);
+        request.framesPerSecond = static_cast<int>(framesPerSecond);
+
+        QString startError;
+        if (!videoExporter_->start(request, &startError)) {
+            return errorResponse(startError, SC::Conflict);
+        }
+        return jsonResponse(
+            sceneVideoStatusJson(videoExporter_->status(), true),
+            SC::Accepted);
+    });
+
+    server_->route(QStringLiteral("/api/video/export/status"), [this]() {
+        ASSERT_THREAD(this);
+        if (!videoExporter_)
+            return errorResponse(QStringLiteral("video exporter is unavailable"),
+                                 SC::ServiceUnavailable);
+        return jsonResponse(sceneVideoStatusJson(
+            videoExporter_->status(), videoExporter_->isActive()));
+    });
+
+    server_->route(QStringLiteral("/api/video/export/stop"), Method::Post,
+                   [this]() {
+        ASSERT_THREAD(this);
+        if (!videoExporter_ || !videoExporter_->requestStop(true)) {
+            return errorResponse(QStringLiteral("no scene video export is running"),
+                                 SC::Conflict);
+        }
+        return jsonResponse(
+            sceneVideoStatusJson(videoExporter_->status(),
+                                 videoExporter_->isActive()),
+            SC::Accepted);
     });
 
     // ---- protein / atoms inventory --------------------------------------
@@ -4857,21 +5226,30 @@ void RestServer::registerRoutes() {
     // itself async, so any clock races it and truncates the reply. Quitting
     // synchronously in the handler would tear down before the bytes ship.
     server_->route(QStringLiteral("/shutdown"), Method::Post,
-                   [this](const QHttpServerRequest&) {
+                   [this](const QHttpServerRequest& request) {
         ASSERT_THREAD(this);
-        QTcpSocket* sock = activeSocket_.data();
+        shutdownRequested_ = true;
+        shutdownResponseFlushed_ = false;
+        requestGracefulStop();
+        QTcpSocket* sock = socketForRequest(request);
         if (sock) {
-            qCInfo(cRest).noquote() << "REST /shutdown — exiting once the 204 has flushed";
-            QObject::connect(sock, &QTcpSocket::bytesWritten, qApp, [sock]() {
-                if (sock->bytesToWrite() == 0)
-                    QCoreApplication::quit();
+            qCInfo(cRest).noquote()
+                << "REST /shutdown - waiting for the 204 flush and active operations";
+            shutdownResponseBytesWritten_ =
+                QObject::connect(sock, &QTcpSocket::bytesWritten, this,
+                                 [this, sock]() {
+                if (sock->bytesToWrite() == 0) {
+                    completeShutdownResponseFlush();
+                }
             });
-            QObject::connect(sock, &QTcpSocket::disconnected,
-                             qApp, &QCoreApplication::quit);
+            shutdownResponseDisconnected_ =
+                QObject::connect(sock, &QTcpSocket::disconnected,
+                                 this, &RestServer::completeShutdownResponseFlush);
         } else {
-            // Qt 6.4 listen() path: no socket handle captured — exit directly.
-            qCInfo(cRest).noquote() << "REST /shutdown — quitting (no socket handle)";
-            QCoreApplication::quit();
+            // No response socket was observed, so there are no socket bytes to await.
+            qCInfo(cRest).noquote()
+                << "REST /shutdown - no response socket to flush";
+            completeShutdownResponseFlush();
         }
         return QHttpServerResponse(SC::NoContent);
     });

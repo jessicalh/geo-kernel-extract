@@ -28,18 +28,24 @@ if(H5READER_EIGEN_DIR)
     set(Eigen3_DIR "${H5READER_EIGEN_DIR}")
 endif()
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS
+find_package(Qt6 6.8 REQUIRED COMPONENTS
     Widgets
     OpenGLWidgets
     Network
+    Concurrent
+    Multimedia
     Charts
     HttpServer
 )
+if(NOT TARGET Qt6::QFFmpegMediaPlugin)
+    message(FATAL_ERROR
+        "Scene video export requires Qt's FFmpeg multimedia plugin")
+endif()
 
 # Qt6::Test is required for the model unit-test binary. Mark it OPTIONAL so
 # a developer Qt without qt6-base-tests configures (warns + skips tests
 # instead of failing the whole build).
-find_package(Qt6 6.4 QUIET OPTIONAL_COMPONENTS Test)
+find_package(Qt6 6.8 QUIET OPTIONAL_COMPONENTS Test)
 if(Qt6Test_FOUND)
     message(STATUS "h5reader: Qt6::Test available — model unit tests will build")
 else()

@@ -238,6 +238,10 @@ public:
 
 signals:
     void cameraPlaneLockChanged(bool active);
+    // Emitted from the render window's VTK EndEvent on the GUI thread. Video
+    // export and other exact-frame consumers use the actual completion event
+    // instead of guessing when the queued render might have finished.
+    void renderCompleted(int frame);
 
 private:
     void focusCameraOnReveal(const model::SignalBinding& binding,

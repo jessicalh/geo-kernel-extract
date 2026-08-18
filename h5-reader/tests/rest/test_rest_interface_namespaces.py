@@ -24,6 +24,11 @@ def test_rest_interface_declares_namespaces(rest):
     assert ("GET", "/api/interface") in routes
     assert ("POST", "/api/screenshot") in routes
     assert ("POST", "/api/alignment/export") in routes
+    assert ("GET", "/api/alignment/export/status") in routes
+    assert ("POST", "/api/alignment/export/cancel") in routes
+    assert ("POST", "/api/video/export") in routes
+    assert ("GET", "/api/video/export/status") in routes
+    assert ("POST", "/api/video/export/stop") in routes
     assert ("POST", "/api/ring/null_crossings") in routes
     assert ("POST", "/api/ring/current_face_collar") in routes
     assert ("POST", "/field/null_cone") in routes

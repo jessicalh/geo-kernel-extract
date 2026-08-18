@@ -51,6 +51,11 @@
 //   POST   /api/alignment/export         -> validated scientific trajectory sidecar
 //                                            (body: {"output_root": string,
 //                                                    "apply_display": bool})
+//   GET    /api/alignment/export/status  -> running/cancellation state
+//   POST   /api/alignment/export/cancel  -> cooperative export cancellation
+//   POST   /api/video/export             -> current-scene trajectory video
+//   GET    /api/video/export/status      -> video recorder progress/result
+//   POST   /api/video/export/stop        -> finish a valid partial video
 //   POST   /diagnostics/screenshot       -> image/png (adds target:"widget" and force_render)
 
 #pragma once
@@ -58,8 +63,11 @@
 #include "MoleculeScene.h"
 
 #include "../diagnostics/ObjectCensus.h"
+#include "../io/ReaderAlignmentExporter.h"
 
+#include <QFuture>
 #include <QHostAddress>
+#include <QList>
 #include <QObject>
 #include <QPointer>
 
@@ -68,6 +76,8 @@
 #include <optional>
 
 class QHttpServer;
+class QHttpServerRequest;
+class QHttpServerResponse;
 class QWidget;
 class QTcpSocket;
 
@@ -88,6 +98,7 @@ class DashboardSelectionController;
 class DashboardDisplayController;
 class QtPlaybackController;
 class ReaderMainWindow;
+class SceneVideoExporter;
 class AngleCollarActor;
 class AtomTrackOverlay;
 class HeroshotButterflyOverlay;
@@ -131,13 +142,31 @@ public:
     // success so the pytest fixture can scrape it.
     quint16 listen(quint16 port);
 
+    bool hasActiveOperations() const;
+    void requestGracefulStop();
+
+signals:
+    void activeOperationsStopped();
+
 private:
     void registerRoutes();
+    QTcpSocket* socketForRequest(const QHttpServerRequest& request) const;
+    QFuture<QHttpServerResponse> beginAlignmentExport(
+        const QHttpServerRequest& request);
+    QHttpServerResponse makeAlignmentExportResponse(
+        const io::ReaderAlignmentExportResult& exported,
+        bool applyDisplay,
+        const QString& sourceLgsPath);
+    void awaitAlignmentResponseFlush(QTcpSocket* socket);
+    void finishAlignmentRequest();
+    void completeShutdownResponseFlush();
+    void activeOperationFinished();
+    void maybeQuitAfterShutdown();
 
     std::unique_ptr<QHttpServer>                server_;
-    // Most recently accepted REST socket (captured at connection time). POST
-    // /shutdown waits on its flush event to exit cleanly — see RestServer.cpp.
-    QPointer<QTcpSocket>                        activeSocket_;
+    // Retain accepted sockets as guarded pointers so each request can wait on
+    // its own response flush rather than whichever client connected last.
+    QList<QPointer<QTcpSocket>>                 restSockets_;
     QPointer<MoleculeScene>                     scene_;
     QPointer<model::AtomSelection>              selection_;
     QPointer<model::DashboardSignalModel>       signalModel_;
@@ -150,6 +179,20 @@ private:
     QPointer<QWidget>                           mainWindow_;
     QPointer<ReaderMainWindow>                  readerWindow_;
     QPointer<model::TransformedConformation>    transformed_;
+    QFuture<io::ReaderAlignmentExportResult>    alignmentExportFuture_;
+    std::shared_ptr<io::ReaderAlignmentExportControl> alignmentExportControl_;
+    QPointer<QTcpSocket>                        alignmentResponseSocket_;
+    QMetaObject::Connection                     alignmentResponseBytesWritten_;
+    QMetaObject::Connection                     alignmentResponseDisconnected_;
+    QMetaObject::Connection                     alignmentResponseDestroyed_;
+    bool                                        alignmentRequestActive_ = false;
+    SceneVideoExporter*                         videoExporter_ = nullptr;
+    bool                                        gracefulStopRequested_ = false;
+    bool                                        shutdownRequested_ = false;
+    bool                                        shutdownResponseFlushed_ = false;
+    bool                                        shutdownQuitRequested_ = false;
+    QMetaObject::Connection                     shutdownResponseBytesWritten_;
+    QMetaObject::Connection                     shutdownResponseDisconnected_;
     // Resthero layer (transient figure FX, never part of the reader UI): the
     // tensor ghost trail built on demand by POST /resthero/ghost_trail.
     // Rebuilt against the live scene renderer each call; cleared by

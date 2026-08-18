@@ -34,7 +34,6 @@
 #include <QLoggingCategory>
 #include <QSurfaceFormat>
 #include <QThread>
-#include <QTimer>
 
 
 #include <QVTKOpenGLNativeWidget.h>
@@ -128,14 +127,9 @@ int main(int argc, char* argv[]) {
                       << "(max threads"
                       << vtkSMPTools::GetEstimatedNumberOfThreads() << ")";
 
-    // 5. Warm singletons. Install the Unix-signal bridge so Ctrl-C
-    //    routes through QCoreApplication::quit(), which fires
-    //    aboutToQuit → window->shutdown() (VTK finalise before GL
-    //    context teardown). Without this, SIGINT hard-kills the
-    //    process and VTK destructors touch dead GL state.
+    // 5. Warm singletons.
     (void)h5reader::diagnostics::ErrorBus::Instance();
     (void)h5reader::diagnostics::ObjectCensus::Instance();
-    h5reader::diagnostics::InstallShutdownSignalHandlers();
 
     qCInfo(cLifecycle).noquote() << "h5reader" << H5READER_VERSION << "starting" << "| Qt" << QT_VERSION_STR
                                  << "| thread=" << QThread::currentThread()->objectName();
@@ -187,6 +181,7 @@ int main(int argc, char* argv[]) {
     //    VTK-finalise-before-GL-context-destruction sequence.
     auto* window = new h5reader::app::ReaderMainWindow();
     QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
+    h5reader::diagnostics::InstallShutdownSignalHandlers();
 
     // 8. Optional startup load into that same window.
     if (!runPath.isEmpty() && !window->loadRunPath(runPath)) {
