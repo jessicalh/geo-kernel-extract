@@ -26,10 +26,10 @@
 //   POST   /docks/visible                → 204 (body: {"visible": bool})  hide/restore docks
 //   GET    /transform                    → {"kind": "...", "reference_frame": int, "subset_atoms": [...],
 //                                            "subset_size": int, "window": int}
-    //   POST   /transform                    → 204 (body: {"kind": "all_atom_fit"|"backbone_fit",
-    //                                                       "reference_frame": int seed/anchor, "subset_atoms": [int, ...],
-    //                                                       "backbone_only": bool})
-    //   POST   /transform/smoothing          → 204 (body: {"window": int})  rotation-only
+//   POST   /transform                    → 204 (body: {"kind": "all_atom_fit"|"backbone_fit",
+//                                                       "reference_frame": int seed/anchor, "subset_atoms": [int, ...],
+//                                                       "backbone_only": bool})
+//   POST   /transform/smoothing          → 204 (body: {"window": int})  rotation-only
 //   GET    /plane-lock                   → {"active": bool, "atoms": [...]|null}
 //   POST   /plane-lock/enable            → 204 or 409 (body: {"atoms": [a,b,c]})
 //   POST   /plane-lock/disable           → 204
@@ -57,10 +57,12 @@
 #include "../diagnostics/ObjectCensus.h"
 
 #include <QHostAddress>
+#include <QList>
 #include <QObject>
 #include <QPointer>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -88,6 +90,7 @@ class ReaderMainWindow;
 class AngleCollarActor;
 class AtomTrackOverlay;
 class HeroshotButterflyOverlay;
+class HeroshotTensorPairOverlay;
 class TensorGhostTrail;
 
 class RestServer final : public QObject {
@@ -130,11 +133,11 @@ public:
 
 private:
     void registerRoutes();
+    void hideLiveTensorGlyphsForResthero();
+    void restoreLiveTensorGlyphsAfterResthero();
 
     std::unique_ptr<QHttpServer>                server_;
-    // Most recently accepted REST socket (captured at connection time). POST
-    // /shutdown waits on its flush event to exit cleanly — see RestServer.cpp.
-    QPointer<QTcpSocket>                        activeSocket_;
+    QList<QPointer<QTcpSocket>>                 acceptedSockets_;
     QPointer<MoleculeScene>                     scene_;
     QPointer<model::AtomSelection>              selection_;
     QPointer<model::DashboardSignalModel>       signalModel_;
@@ -147,18 +150,21 @@ private:
     QPointer<QWidget>                           mainWindow_;
     QPointer<ReaderMainWindow>                  readerWindow_;
     QPointer<model::TransformedConformation>    transformed_;
-    // Resthero layer (transient figure FX, never part of the reader UI): the
-    // tensor ghost trail built on demand by POST /resthero/ghost_trail.
-    // Rebuilt against the live scene renderer each call; cleared by
-    // /resthero/clear.
-    std::unique_ptr<AtomTrackOverlay>            heroshotAtomTrack_;
-    std::unique_ptr<HeroshotButterflyOverlay>    heroshotButterfly_;
+    // Resthero figure geometry is rebuilt against the live scene renderer on
+    // demand and cleared together by /resthero/clear. It is never reader UI.
+    std::unique_ptr<AtomTrackOverlay>           heroshotAtomTrack_;
+    std::unique_ptr<HeroshotButterflyOverlay>   heroshotButterfly_;
+    std::unique_ptr<HeroshotTensorPairOverlay>  heroshotTensorPair_;
     std::unique_ptr<TensorGhostTrail>           heroshotTrail_;
     std::unique_ptr<AngleCollarActor>           heroshotAngleCollar_;
     std::optional<bool>                         heroshotMeasurementVisibleBefore_;
+    std::optional<bool>                         heroshotCsaActiveBefore_;
+    std::optional<bool>                         heroshotOrientationActiveBefore_;
     std::optional<MoleculeScene::MoleculeStyle> heroshotMoleculeStyleBefore_;
     std::optional<std::size_t>                  heroshotFieldRingBefore_;
+    QPointer<QObject>                           ringTensorOperation_;
     bool                                        heroshotFieldRingWasSet_ = false;
+    std::uint64_t                               contextRevision_ = 0;
     bool                                        contextSet_ = false;
 };
 

@@ -2235,17 +2235,12 @@ void ReaderMainWindow::shutdown() {
 
     // Per spec/viewport_pipeline_2026-05-30.md §4.4:
     //
-    // 1. Stop the REST server SYNCHRONOUSLY. The /shutdown endpoint
-    //    fires from a request handler; the server needs to drain
-    //    before timers stop so a follow-up request can't trigger a
-    //    race with timer teardown.
+    // 1. Stop accepting REST work. aboutToQuit can run while Qt is still
+    //    dispatching the socket signal that carried /shutdown, so destroying
+    //    the server synchronously here would invalidate that signal walk.
+    //    DeferredDelete events are still processed during application exit.
     if (restServer_) {
-        // RestServer doesn't expose stopListening(); the QHttpServer
-        // owned by it tears down when the RestServer is deleted, but
-        // deleteLater on shutdown is enough for this path because
-        // aboutToQuit drains the event loop afterwards. We do hold a
-        // direct pointer; do a synchronous delete here.
-        delete restServer_;
+        restServer_->deleteLater();
         restServer_ = nullptr;
     }
 

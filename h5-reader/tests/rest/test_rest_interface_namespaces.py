@@ -23,10 +23,14 @@ def test_rest_interface_declares_namespaces(rest):
     routes = {(item["method"], item["path"]): item for item in payload["routes"]}
     assert ("GET", "/api/interface") in routes
     assert ("POST", "/api/screenshot") in routes
+    assert ("GET", "/scene/camera") in routes
+    assert ("POST", "/scene/camera") in routes
     assert ("POST", "/api/ring/null_crossings") in routes
     assert ("POST", "/api/ring/current_face_collar") in routes
     assert ("POST", "/field/null_cone") in routes
     assert ("POST", "/resthero/atom_track") in routes
+    assert ("POST", "/resthero/ring_system_cloud") in routes
+    assert ("POST", "/resthero/ring_tensor_compare") in routes
     assert ("POST", "/diagnostics/screenshot") in routes
     assert ("GET", "/catalog") in routes
 
@@ -73,5 +77,9 @@ def test_old_route_spellings_are_not_kept_as_aliases(rest):
         "/ring_current_face_collar",
         "/heroshot/clear",
     ):
-        response = rest.client.post(path) if path != "/rest/interface" else rest.client.get(path)
+        response = (
+            rest.client.post(path)
+            if path != "/rest/interface"
+            else rest.client.get(path)
+        )
         assert response.status_code == 404

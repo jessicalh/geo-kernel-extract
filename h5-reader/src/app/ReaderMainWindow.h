@@ -9,9 +9,10 @@
 // Shutdown protocol — see feedback_qt_discipline,
 // spec/viewport_pipeline_2026-05-30.md §4.4, and the library viewer's
 // MainWindow::shutdown(). When QApplication is about to quit, stop the
-// REST server synchronously, stop all timers, then detach the render
-// window from the widget. The explicit renderWindow_->Finalize() call
-// is gone — setRenderWindow(nullptr) makes the GL context current and
+// REST server with deferred QObject destruction, stop all timers, then
+// detach the render window from the widget. The explicit
+// renderWindow_->Finalize() call is gone — setRenderWindow(nullptr) makes
+// the GL context current and
 // invokes Finalize through the QVTKRenderWindowAdapter's destructor in
 // the right order (QVTKRenderWindowAdapter.cxx:150-166). Calling
 // Finalize ourselves AFTER detach left the adapter holding a destroyed

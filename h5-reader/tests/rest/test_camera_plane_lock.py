@@ -11,13 +11,15 @@ atoms, enables the lock, walks frames, asserts:
   - Frame-to-frame, dot(direction_n, direction_{n-1}) > 0 — i.e. no
     sign flip. This catches the open bug the bespoke smoke missed
     because it used |dot(direction, normal)|.
-  - A scene screenshot at frame 0 matches the committed baseline
-    (pixel-exact). `--update-baselines` rewrites the file in place.
+  - A scene screenshot at frame 0 is non-blank and has sufficient visual
+    structure. Camera correctness is asserted numerically, not pixel-exactly.
 """
 
 from __future__ import annotations
 
 import math
+
+import pytest
 
 
 ATOMS = [1, 100, 200]
@@ -62,6 +64,33 @@ def _fetch_positions(rest, atoms: list[int], frame: int) -> list[list[float]]:
     r = rest.client.post("/positions", json={"atoms": atoms, "frame": frame})
     assert r.status_code == 200, r.text
     return [entry["position"] for entry in r.json()["positions"]]
+
+
+def test_scene_camera_can_be_read_and_replayed(rest):
+    original = rest.client.get("/scene/camera").json()
+    offset = [1.25, -0.75, 0.5]
+    shifted = {
+        "focal": [original["focal"][i] + offset[i] for i in range(3)],
+        "position": [original["position"][i] + offset[i] for i in range(3)],
+        "view_up": original["view_up"],
+    }
+
+    try:
+        response = rest.client.post("/scene/camera", json=shifted)
+        assert response.status_code == 200, response.text
+        replayed = response.json()
+        for key in ("focal", "position", "view_up"):
+            assert replayed[key] == pytest.approx(shifted[key], abs=1e-12)
+        assert rest.client.get("/camera/mode").json()["mode"] == "free"
+    finally:
+        restored = rest.client.post("/scene/camera", json=original)
+        assert restored.status_code == 200, restored.text
+
+    invalid = rest.client.post(
+        "/scene/camera",
+        json={"focal": [0, 0, 0], "position": [0, 0, 0], "view_up": [0, 1, 0]},
+    )
+    assert invalid.status_code == 400
 
 
 def test_plane_lock_enables_with_three_atoms(rest):

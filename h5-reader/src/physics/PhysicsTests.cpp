@@ -1,5 +1,6 @@
 #include "physics/BuckinghamEfield.h"
 #include "physics/ClassicalSourceMath.h"
+#include "physics/CircularRingCurrent.h"
 #include "physics/EfgFeature.h"
 #include "physics/LiteratureAccessors.h"
 #include "physics/LocalFrameBasis.h"
@@ -189,6 +190,68 @@ void testFrameAndTensorSmoke() {
         fail("library T2 reconstruction should invert symmetric decomposition");
 }
 
+void testCircularRingCurrent() {
+    struct ParameterCase {
+        RingTypeIndex type;
+        int protonationVariant;
+        double radiusA;
+        double currentNanoamperePerTesla;
+    };
+    const std::array<ParameterCase, 7> parameterCases{{
+        {RingTypeIndex::PheBenzene, -1, 1.39, -15.203781575116498},
+        {RingTypeIndex::TyrPhenol, -1, 1.39, -12.24375330385488},
+        {RingTypeIndex::TrpBenzene, -1, 1.39, -15.876515273130503},
+        {RingTypeIndex::TrpPyrrole, -1, 1.182, -14.261954397896893},
+        {RingTypeIndex::HisImidazole, 2, 1.182, -17.087435929555713},
+        {RingTypeIndex::HidImidazole, -1, 1.182, -16.81834245035011},
+        {RingTypeIndex::HieImidazole, -1, 1.182, -16.81834245035011},
+    }};
+    for (const ParameterCase& expected : parameterCases) {
+        const auto actual = h5reader::physics::CandidateACircularParameters(expected.type, expected.protonationVariant);
+        if (!actual) {
+            fail("Candidate-A parameter row unexpectedly absent");
+            continue;
+        }
+        if (!near(actual->radiusA, expected.radiusA) || !near(actual->lobeOffsetA, 0.64)
+            || !near(actual->currentNanoamperePerTesla, expected.currentNanoamperePerTesla)) {
+            fail("Candidate-A parameter row mismatch");
+        }
+    }
+
+    const auto trp6 = h5reader::physics::CandidateACircularParameters(RingTypeIndex::TrpBenzene);
+    const auto trp5 = h5reader::physics::CandidateACircularParameters(RingTypeIndex::TrpPyrrole);
+    if (!trp6 || !trp5) {
+        fail("Candidate-A TRP parameters should be available");
+        return;
+    }
+    if (h5reader::physics::CandidateACircularParameters(RingTypeIndex::TrpPerimeter)) {
+        fail("Candidate-A must omit the diagnostic TRP perimeter");
+    }
+    if (h5reader::physics::CandidateACircularParameters(RingTypeIndex::ProPyrrolidine))
+        fail("Candidate-A must omit saturated proline rings");
+    if (h5reader::physics::CandidateACircularParameters(RingTypeIndex::HisImidazole, -1))
+        fail("Candidate-A must require an explicit protonated-His variant");
+
+    const Vec3 center = Vec3::Zero();
+    const Vec3 normal(0.0, 0.0, 1.0);
+    const h5reader::physics::CircularRingPlane plane{center, normal, 0.0};
+    const auto axis = h5reader::physics::EvaluateCircularShielding(Vec3(0.0, 0.0, 3.0), plane, *trp6);
+    const auto offAxis = h5reader::physics::EvaluateCircularShielding(Vec3(1.2, 0.0, 2.7), plane, *trp6);
+    if (!axis || !offAxis) {
+        fail("Candidate-A canonical points should be finite");
+        return;
+    }
+    if (!near(axis->T0, 2.1064547488716219, 1e-10))
+        fail("Candidate-A axial golden mismatch");
+    if (!near(offAxis->T0, 1.8395779259231924, 1e-10))
+        fail("Candidate-A off-axis golden mismatch");
+
+    const h5reader::physics::CircularRingPlane rotatedPlane{center, Vec3(1.0, 0.0, 0.0), 0.0};
+    const auto rotated = h5reader::physics::EvaluateCircularShielding(Vec3(2.7, 1.2, 0.0), rotatedPlane, *trp6);
+    if (!rotated || !near(rotated->T0, offAxis->T0, 1e-10))
+        fail("Candidate-A field should rotate with the ring frame");
+}
+
 }  // namespace
 
 int main() {
@@ -196,9 +259,7 @@ int main() {
     testL1ClosedFormGoldens();
     testL3LiteratureMagnitudeBounds();
     testFrameAndTensorSmoke();
-
-    // L2 TODO: cross-check h5reader::physics against the independent Python
-    // oracle on real full720 atoms once the fixture is checked in.
+    testCircularRingCurrent();
 
     if (failures != 0) {
         std::cerr << failures << " physics test failure(s)\n";
