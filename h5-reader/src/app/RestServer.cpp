@@ -4,9 +4,11 @@
 #include "AtomTrackOverlay.h"
 #include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
+#include "CsaTensorOverlay.h"
 #include "DashboardDisplayController.h"
 #include "DashboardSelectionController.h"
 #include "HeroshotButterflyOverlay.h"
+#include "HeroshotTensorPairOverlay.h"
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
 #include "NewmanProjection.h"
@@ -16,6 +18,7 @@
 #include "SceneVideoExporter.h"
 #include "SignalDisplayDialog.h"
 #include "TensorGhostTrail.h"
+#include "TensorGlyphActor.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
@@ -24,8 +27,8 @@
 #include "../io/QtProteinLoader.h"
 #include "../io/ReaderAlignmentExporter.h"
 #include "../model/AtomSelection.h"
-#include "../model/ConformationGeometry.h"
 #include "../model/Conformation.h"
+#include "../model/ConformationGeometry.h"
 #include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignal.h"
 #include "../model/DashboardSignalModel.h"
@@ -35,32 +38,39 @@
 #include "../model/RingCurrentFaceCollar.h"
 #include "../model/RingNullCollar.h"
 #include "../model/TrajectoryConformation.h"
-#include "../model/VisualizationRegistry.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "../model/TransformedConformation.h"
+#include "../model/VisualizationRegistry.h"
+#include "../physics/CircularRingCurrent.h"
+#include "../physics/SphericalBasis.h"
 
+#include <QApplication>
 #include <QBuffer>
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QFuture>
 #include <QHttpServer>
 #include <QHttpServerRequest>
+#include <QHttpServerResponder>
 #include <QHttpServerResponse>
 #include <QJsonArray>
-#include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QLoggingCategory>
+#include <QMetaObject>
 #include <QPixmap>
+#include <QScopeGuard>
 #include <QString>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QUrlQuery>
 #include <QUuid>
 #include <QVariant>
-#include <QApplication>
 #include <QWidget>
 #include <QtConcurrent/QtConcurrentRun>
+
+#include <Eigen/Eigenvalues>
 
 #include <vtkCamera.h>
 #include <vtkMoleculeMapper.h>
@@ -74,11 +84,11 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <functional>
-#include <cmath>
 #include <cstdio>
 #include <limits>
 #include <optional>
@@ -108,10 +118,71 @@ public:
     }
 };
 
+struct DeferredJsonResponse {
+    QJsonObject body;
+    QHttpServerResponder::StatusCode status = QHttpServerResponder::StatusCode::Ok;
+};
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+using HttpResponderRouteArgument = QHttpServerResponder&;
+#else
+using HttpResponderRouteArgument = QHttpServerResponder&&;
+#endif
+
+DeferredJsonResponse deferredError(const QString& message, QHttpServerResponder::StatusCode status) {
+    return {QJsonObject{{"error", message}}, status};
+}
+
+void writeJson(QHttpServerResponder& responder,
+               const QJsonObject& body,
+               QHttpServerResponder::StatusCode status = QHttpServerResponder::StatusCode::Ok) {
+    responder.write(QJsonDocument(body), status);
+}
+
+// Runs one bounded unit of GUI-owned work per event-loop turn while retaining
+// the HTTP response. This keeps long provenance scans responsive without
+// moving Reader, HDF5, or VTK objects off their owning thread.
+class QueuedJsonOperation final : public QObject {
+public:
+    using Step = std::function<std::optional<DeferredJsonResponse>()>;
+    using Finished = std::function<void()>;
+
+    QueuedJsonOperation(QHttpServerResponder&& responder, Step step, Finished finished, QObject* parent)
+        : QObject(parent)
+        , responder_(std::move(responder))
+        , step_(std::move(step))
+        , finished_(std::move(finished)) {}
+
+    void start() {
+        QMetaObject::invokeMethod(this, [this]() { advance(); }, Qt::QueuedConnection);
+    }
+
+private:
+    void advance() {
+        const std::optional<DeferredJsonResponse> response = step_();
+        if (!response) {
+            QMetaObject::invokeMethod(this, [this]() { advance(); }, Qt::QueuedConnection);
+            return;
+        }
+
+        if (finished_)
+            finished_();
+        writeJson(responder_, response->body, response->status);
+        deleteLater();
+    }
+
+    QHttpServerResponder responder_;
+    Step step_;
+    Finished finished_;
+};
+
+// Amortize posted-event overhead while keeping each GUI turn bounded.
+constexpr std::size_t kRingTensorFramesPerTurn = 16;
+
 constexpr const char* kMimePng = "image/png";
 
-QHttpServerResponse jsonResponse(const QJsonObject& obj,
-                                 QHttpServerResponse::StatusCode code = QHttpServerResponse::StatusCode::Ok) {
+QHttpServerResponse
+jsonResponse(const QJsonObject& obj, QHttpServerResponse::StatusCode code = QHttpServerResponse::StatusCode::Ok) {
     return QHttpServerResponse(obj, code);
 }
 
@@ -180,6 +251,38 @@ QJsonArray vec3FromRaw(const double raw[3]) {
 
 QJsonArray vec3FromEigen(const model::Vec3& v) {
     return QJsonArray{v.x(), v.y(), v.z()};
+}
+
+std::optional<std::array<double, 3>> vec3FromJson(const QJsonValue& value) {
+    if (!value.isArray())
+        return std::nullopt;
+    const QJsonArray array = value.toArray();
+    if (array.size() != 3)
+        return std::nullopt;
+
+    std::array<double, 3> result{};
+    for (int i = 0; i < 3; ++i) {
+        if (!array.at(i).isDouble())
+            return std::nullopt;
+        result[static_cast<std::size_t>(i)] = array.at(i).toDouble();
+        if (!std::isfinite(result[static_cast<std::size_t>(i)]))
+            return std::nullopt;
+    }
+    return result;
+}
+
+QJsonObject cameraStateToJson(vtkCamera* camera) {
+    double focal[3]{}, position[3]{}, viewUp[3]{}, direction[3]{};
+    camera->GetFocalPoint(focal);
+    camera->GetPosition(position);
+    camera->GetViewUp(viewUp);
+    camera->GetDirectionOfProjection(direction);
+    return QJsonObject{
+        {"focal", vec3FromRaw(focal)},
+        {"position", vec3FromRaw(position)},
+        {"view_up", vec3FromRaw(viewUp)},
+        {"direction", vec3FromRaw(direction)},
+    };
 }
 
 QJsonValue finiteJson(double value) {
@@ -267,7 +370,15 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/video/export/stop"),
                       QStringLiteral("general"),
                       QStringLiteral("Stop recording and finish a valid partial video.")),
-            restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/null_crossings"),
+            restRoute(QStringLiteral("GET"),
+                      QStringLiteral("/scene/camera"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Read the active 3-D camera.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/scene/camera"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Replay an explicit 3-D camera for reproducible views.")),
+            restRoute(QStringLiteral("POST"),
+                      QStringLiteral("/api/ring/null_crossings"),
                       QStringLiteral("general"),
                       QStringLiteral("Operational ring-null crossing collection.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/current_face_collar"),
@@ -282,6 +393,14 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/resthero/atom_track"),
                       QStringLiteral("figure_composition"),
                       QStringLiteral("Transient point-cloud track for sampled atom positions.")),
+             restRoute(QStringLiteral("POST"),
+                       QStringLiteral("/resthero/ring_system_cloud"),
+                       QStringLiteral("figure_composition"),
+                       QStringLiteral("Ring-fixed multi-atom cloud colored by a declared circular ring system.")),
+             restRoute(QStringLiteral("POST"),
+                       QStringLiteral("/resthero/ring_tensor_compare"),
+                       QStringLiteral("figure_composition"),
+                       QStringLiteral("Fixed-scale Candidate-A and ORCA residual or two-state tensor comparison.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/resthero/ghost_trail"),
                       QStringLiteral("figure_composition"),
                       QStringLiteral("Transient tensor ghost trail.")),
@@ -335,12 +454,10 @@ struct RingLocalFrame {
     model::Vec3 n = model::Vec3::Zero();
 };
 
-RingLocalFrame ringLocalFrameAt(const model::Conformation& conf,
-                                std::size_t ringIdx,
-                                std::size_t frame) {
+RingLocalFrame ringLocalFrameFromGeometry(const std::vector<model::Vec3>& verts, const model::RingGeometry& geometry) {
     RingLocalFrame out;
-    const std::vector<model::Vec3> verts = model::RingVertices(conf, ringIdx, frame);
-    out.geometry = model::FitRingGeometry(verts);
+
+    out.geometry = geometry;
 
     const double nNorm = out.geometry.normal.norm();
     if (verts.empty() || out.geometry.radius < 1e-9 || nNorm < 1e-12)
@@ -368,6 +485,25 @@ RingLocalFrame ringLocalFrameAt(const model::Conformation& conf,
     out.u = out.v.cross(out.n).normalized();
     out.valid = true;
     return out;
+}
+
+RingLocalFrame ringLocalFrameAt(const model::Conformation& conf, std::size_t ringIdx, std::size_t frame) {
+    const std::vector<model::Vec3> verts = model::RingVertices(conf, ringIdx, frame);
+    return ringLocalFrameFromGeometry(verts, model::FitRingGeometry(verts));
+}
+
+RingLocalFrame circularRingLocalFrameAt(const model::Conformation& conf, std::size_t ringIdx, std::size_t frame) {
+    const std::vector<model::Vec3> verts = model::RingVertices(conf, ringIdx, frame);
+    const model::RingGeometry windingGeometry = model::FitRingGeometry(verts);
+    model::RingGeometry geometry = windingGeometry;
+    const auto plane = physics::FitCircularRingPlane(verts);
+    if (!plane)
+        return RingLocalFrame{};
+    geometry.center = plane->center;
+    geometry.normal = plane->normal;
+    if (geometry.normal.dot(windingGeometry.normal) < 0.0)
+        geometry.normal *= -1.0;
+    return ringLocalFrameFromGeometry(verts, geometry);
 }
 
 model::Vec3 toRingLocal(const RingLocalFrame& frame, const model::Vec3& world) {
@@ -856,6 +992,83 @@ std::optional<std::size_t> findResidueAtomByName(const model::QtProtein& protein
             return a;
     }
     return std::nullopt;
+}
+
+std::optional<model::Mat3> residueNcaCFrame(const model::QtProtein& protein,
+                                            const model::Conformation& conformation,
+                                            std::size_t atom,
+                                            std::size_t frame) {
+    if (atom >= protein.atomCount())
+        return std::nullopt;
+    const int residueIndex = protein.atom(atom).residueIndex;
+    if (residueIndex < 0 || static_cast<std::size_t>(residueIndex) >= protein.residueCount())
+        return std::nullopt;
+    const std::size_t residue = static_cast<std::size_t>(residueIndex);
+    const auto nAtom = findResidueAtomByName(protein, residue, QStringLiteral("N"));
+    const auto caAtom = findResidueAtomByName(protein, residue, QStringLiteral("CA"));
+    const auto cAtom = findResidueAtomByName(protein, residue, QStringLiteral("C"));
+    if (!nAtom || !caAtom || !cAtom)
+        return std::nullopt;
+
+    const model::Vec3 ca = conformation.atomPosition(frame, *caAtom);
+    model::Vec3 x = conformation.atomPosition(frame, *cAtom) - ca;
+    model::Vec3 y = conformation.atomPosition(frame, *nAtom) - ca;
+    const double xNorm = x.norm();
+    if (!(xNorm > 1.0e-12))
+        return std::nullopt;
+    x /= xNorm;
+    y -= y.dot(x) * x;
+    const double yNorm = y.norm();
+    if (!(yNorm > 1.0e-12))
+        return std::nullopt;
+    y /= yNorm;
+    model::Vec3 z = x.cross(y);
+    const double zNorm = z.norm();
+    if (!(zNorm > 1.0e-12))
+        return std::nullopt;
+    z /= zNorm;
+
+    model::Mat3 axes;
+    axes.col(0) = x;
+    axes.col(1) = y;
+    axes.col(2) = z;
+    return axes;
+}
+
+model::Mat3 tracelessSymmetric(const model::Mat3& matrix) {
+    model::Mat3 out = 0.5 * (matrix + matrix.transpose());
+    out -= (out.trace() / 3.0) * model::Mat3::Identity();
+    return out;
+}
+
+model::Mat3 csaShapeMatrix(const model::CsaShape& shape) {
+    return shape.pas_axes * shape.principal_values.asDiagonal() * shape.pas_axes.transpose();
+}
+
+double frobeniusInner(const model::Mat3& left, const model::Mat3& right) {
+    return (left.array() * right.array()).sum();
+}
+
+std::optional<model::Vec3> dominantTensorAxis(const model::Mat3& input) {
+    const model::Mat3 tensor = tracelessSymmetric(input);
+    Eigen::SelfAdjointEigenSolver<model::Mat3> solver(tensor);
+    if (solver.info() != Eigen::Success)
+        return std::nullopt;
+    Eigen::Index dominant = 0;
+    solver.eigenvalues().cwiseAbs().maxCoeff(&dominant);
+    model::Vec3 axis = solver.eigenvectors().col(dominant);
+    const double norm = axis.norm();
+    if (!(norm > 1.0e-12) || !std::isfinite(norm))
+        return std::nullopt;
+    return axis / norm;
+}
+
+double acuteDirectorAngleDegrees(const model::Vec3& left, const model::Vec3& right) {
+    const double denominator = left.norm() * right.norm();
+    if (!(denominator > 1.0e-12))
+        return std::numeric_limits<double>::quiet_NaN();
+    const double cosine = std::clamp(std::abs(left.dot(right) / denominator), 0.0, 1.0);
+    return std::acos(cosine) * 180.0 / 3.141592653589793238462643383279502884;
 }
 
 QString rotamerState(double radians) {
@@ -1428,6 +1641,9 @@ RestServer::~RestServer() {
             << "REST server teardown reached an active video recorder";
         videoExporter_->stopForShutdown();
     }
+    // QHttpServerResponder depends on the server-owned stream. Destroy the
+    // delayed response while server_ is still alive, before member teardown.
+    delete ringTensorOperation_.data();
 }
 
 QTcpSocket* RestServer::socketForRequest(
@@ -1535,6 +1751,30 @@ void RestServer::completeShutdownResponseFlush() {
     maybeQuitAfterShutdown();
 }
 
+void RestServer::hideLiveTensorGlyphsForResthero() {
+    if (!scene_)
+        return;
+    if (CsaTensorOverlay* csa = scene_->csaOverlay()) {
+        if (!heroshotCsaActiveBefore_.has_value())
+            heroshotCsaActiveBefore_ = csa->isActive();
+        csa->setVisible(false);
+    }
+    if (TensorGlyphActor* orientation = scene_->orientationGlyph()) {
+        if (!heroshotOrientationActiveBefore_.has_value())
+            heroshotOrientationActiveBefore_ = orientation->isActive();
+        orientation->setVisible(false);
+    }
+}
+
+void RestServer::restoreLiveTensorGlyphsAfterResthero() {
+    if (scene_ && scene_->csaOverlay() && heroshotCsaActiveBefore_.has_value())
+        scene_->csaOverlay()->setVisible(*heroshotCsaActiveBefore_);
+    if (scene_ && scene_->orientationGlyph() && heroshotOrientationActiveBefore_.has_value())
+        scene_->orientationGlyph()->setVisible(*heroshotOrientationActiveBefore_);
+    heroshotCsaActiveBefore_.reset();
+    heroshotOrientationActiveBefore_.reset();
+}
+
 void RestServer::setContext(MoleculeScene* scene,
                             model::AtomSelection* selection,
                             model::DashboardSignalModel* signalModel,
@@ -1548,12 +1788,16 @@ void RestServer::setContext(MoleculeScene* scene,
                             ReaderMainWindow* readerWindow,
                             model::TransformedConformation* transformed) {
     ASSERT_THREAD(this);
+    ++contextRevision_;
     if (scene_ != scene) {
         heroshotAtomTrack_.reset();
         heroshotButterfly_.reset();
+        heroshotTensorPair_.reset();
         heroshotTrail_.reset();
         heroshotAngleCollar_.reset();
         heroshotMeasurementVisibleBefore_.reset();
+        heroshotCsaActiveBefore_.reset();
+        heroshotOrientationActiveBefore_.reset();
         heroshotMoleculeStyleBefore_.reset();
         heroshotFieldRingBefore_.reset();
         heroshotFieldRingWasSet_ = false;
@@ -1587,8 +1831,6 @@ quint16 RestServer::listen(quint16 port) {
     server_->setConfiguration(config);
     registerRoutes();
 
-    // Bind through our QTcpServer on every supported Qt version so graceful
-    // shutdown can wait for the actual response socket to flush.
     auto* tcp = new TrackingTcpServer(this);
     tcp->onConnection = [this](QTcpSocket* socket) {
         for (auto it = restSockets_.begin(); it != restSockets_.end();) {
@@ -1599,7 +1841,17 @@ quint16 RestServer::listen(quint16 port) {
         }
         restSockets_.append(socket);
     };
-    if (!tcp->listen(QHostAddress::LocalHost, port) || !server_->bind(tcp)) {
+    if (!tcp->listen(QHostAddress::LocalHost, port)) {
+        qCCritical(cRest).noquote()
+            << "REST server failed to bind 127.0.0.1 port" << port;
+        delete tcp;
+        server_.reset();
+        return 0;
+    }
+    // bind() is void in Qt 6.4 and bool in current Qt; servers() is the common
+    // postcondition across the supported versions.
+    server_->bind(tcp);
+    if (!server_->servers().contains(tcp)) {
         qCCritical(cRest).noquote()
             << "REST server failed to bind 127.0.0.1 port" << port;
         delete tcp;
@@ -2635,11 +2887,13 @@ void RestServer::registerRoutes() {
                 {"biot_savart_fit_model",
                  QStringLiteral("ORCA_total_T0 = intercept + scale * recomputed_BS_T0 + residual")},
                 {"biot_savart_relationship",
-                 QStringLiteral("recomputed_BS_T0 is the finite Johnson-Bovey/Biot-Savart version of the same ring-current geometry; in the far field it tracks expected_relationship_value")},
+                 QStringLiteral("recomputed_BS_T0 is the finite Johnson-Bovey/Biot-Savart version of the same ring-current "
+                                 "geometry; in the far field it tracks expected_relationship_value")},
                 {"predictor_diagnostic_model",
                  QStringLiteral("recomputed_BS_T0 = intercept + scale * expected_relationship_value + residual")},
                 {"biot_savart_source",
-                 QStringLiteral("recomputed from current ring geometry via QtBiotSavartCalc and ring literature intensity; does not read ring_contributions.npy")},
+                 QStringLiteral("recomputed from current ring geometry via QtBiotSavartCalc and ring literature intensity; "
+                                 "does not read ring_contributions.npy")},
                 {"hard_crossing_requirement",
                  QStringLiteral("positive and negative expected_relationship_value samples with at least one sign change")},
                 {"null_model",
@@ -3552,9 +3806,10 @@ void RestServer::registerRoutes() {
 
     // ---- resthero: high-resolution ring-current butterfly --------------
     //
-    // POST /resthero/butterfly {"ring": N, "frame"?, "dim"?,
+    // POST /resthero/butterfly {"ring": N | "rings":[...], "frame"?, "dim"?,
     //                           "threshold_ppm"?, "opacity"?,
-    //                           "extent"?, "peak"?, "mode"?}
+    //                           "extent"?, "peak"?, "mode"?,
+    //                           "show_source_loops"?}
     // A transient figure/export layer, separate from the normal
     // QtFieldGridOverlay used by the UI and playback. It samples the same
     // closed-form BS/HM scalar field more densely for one selected ring and
@@ -3574,13 +3829,28 @@ void RestServer::registerRoutes() {
 
         bool ok = false;
         const QJsonObject body = parseJsonBody(req, &ok);
-        if (!ok || !body.contains(QStringLiteral("ring")))
-            return errorResponse(QStringLiteral("body must be {\"ring\": int, ...}"),
+        if (!ok || (!body.contains(QStringLiteral("ring")) && !body.value(QStringLiteral("rings")).isArray()))
+            return errorResponse(QStringLiteral("body must contain ring or rings"),
                                  SC::BadRequest);
-        const int ringRaw = body.value(QStringLiteral("ring")).toInt(-1);
-        if (ringRaw < 0 || static_cast<std::size_t>(ringRaw) >= protein->ringCount())
-            return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
-        const std::size_t ring = static_cast<std::size_t>(ringRaw);
+        std::vector<std::size_t> rings;
+        if (body.value(QStringLiteral("rings")).isArray()) {
+            const QJsonArray requested = body.value(QStringLiteral("rings")).toArray();
+            if (requested.isEmpty() || requested.size() > 8)
+                return errorResponse(QStringLiteral("rings must contain 1 to 8 indices"), SC::BadRequest);
+            for (const QJsonValue& value : requested) {
+                const qint64 raw = value.toInteger(-1);
+                if (raw < 0 || static_cast<std::size_t>(raw) >= protein->ringCount())
+                    return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+                rings.push_back(static_cast<std::size_t>(raw));
+            }
+        } else {
+            const qint64 raw = body.value(QStringLiteral("ring")).toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->ringCount())
+                return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+            rings.push_back(static_cast<std::size_t>(raw));
+        }
+        std::sort(rings.begin(), rings.end());
+        rings.erase(std::unique(rings.begin(), rings.end()), rings.end());
 
         const int frameCount = static_cast<int>(conf->frameCount());
         const int currentFrame = playback_ ? playback_->currentFrame() : 0;
@@ -3591,29 +3861,6 @@ void RestServer::registerRoutes() {
             0, std::max(0, frameCount - 1));
 
         HeroshotButterflyOverlay::Style style;
-        style.gridDim = std::clamp(body.value(QStringLiteral("dim")).toInt(style.gridDim),
-                                   16, 72);
-        const double thresholdFallback =
-            clampedJsonDouble(body, QStringLiteral("ppm"),
-                              {style.thresholdPpm, 0.0, 1000.0});
-        style.thresholdPpm =
-            clampedJsonDouble(body, QStringLiteral("threshold_ppm"),
-                              {thresholdFallback, 0.0, 1000.0});
-        style.opacity =
-            clampedJsonDouble(body, QStringLiteral("opacity"),
-                              {style.opacity, 0.0, 1.0});
-        style.gaussianExtentA =
-            clampedJsonDouble(body, QStringLiteral("extent"),
-                              {style.gaussianExtentA, 0.1, 30.0});
-        style.gaussianPeak =
-            clampedJsonDouble(body, QStringLiteral("peak"),
-                              {style.gaussianPeak, 0.0, 1000.0});
-        style.showShielded = body.value(QStringLiteral("show_shielded")).isBool()
-            ? body.value(QStringLiteral("show_shielded")).toBool()
-            : style.showShielded;
-        style.showDeshielded = body.value(QStringLiteral("show_deshielded")).isBool()
-            ? body.value(QStringLiteral("show_deshielded")).toBool()
-            : style.showDeshielded;
 
         const QString mode = body.value(QStringLiteral("mode"))
                                  .toString(QStringLiteral("biot_savart")).toLower();
@@ -3624,14 +3871,46 @@ void RestServer::registerRoutes() {
             style.mode = HeroshotButterflyOverlay::Mode::HaighMallion;
         } else if (mode == QStringLiteral("sum")) {
             style.mode = HeroshotButterflyOverlay::Mode::Sum;
+        } else if (mode == QStringLiteral("candidate_a") || mode == QStringLiteral("circular_candidate_a")
+                   || mode == QStringLiteral("circular")) {
+            style.mode = HeroshotButterflyOverlay::Mode::CircularCandidateA;
         } else {
-            return errorResponse(QStringLiteral("mode must be biot_savart, haigh_mallion, or sum"),
+            return errorResponse(QStringLiteral("mode must be biot_savart, haigh_mallion, sum, or candidate_a"),
                                  SC::BadRequest);
         }
 
+        const bool isCircularCandidate = style.mode == HeroshotButterflyOverlay::Mode::CircularCandidateA;
+        style.gridDim = std::clamp(body.value(QStringLiteral("dim")).toInt(style.gridDim), 16, 72);
+        const double thresholdFallback = clampedJsonDouble(body, QStringLiteral("ppm"), {style.thresholdPpm, 0.0, 1000.0});
+        style.thresholdPpm = clampedJsonDouble(body, QStringLiteral("threshold_ppm"), {thresholdFallback, 0.0, 1000.0});
+        style.opacity = clampedJsonDouble(body, QStringLiteral("opacity"), {style.opacity, 0.0, 1.0});
+        style.gaussianExtentA =
+            clampedJsonDouble(body, QStringLiteral("extent"), {style.gaussianExtentA, isCircularCandidate ? 0.0 : 0.1, 30.0});
+        if (isCircularCandidate && !body.contains(QStringLiteral("extent")))
+            style.gaussianExtentA = 0.0;
+        style.gaussianPeak = clampedJsonDouble(body, QStringLiteral("peak"), {style.gaussianPeak, 0.0, 1000.0});
+        style.showShielded = body.value(QStringLiteral("show_shielded")).isBool()
+                                 ? body.value(QStringLiteral("show_shielded")).toBool()
+                                 : style.showShielded;
+        style.showDeshielded = body.value(QStringLiteral("show_deshielded")).isBool()
+                                   ? body.value(QStringLiteral("show_deshielded")).toBool()
+                                   : style.showDeshielded;
+        style.showSourceLoops = body.value(QStringLiteral("show_source_loops")).isBool()
+                                    ? body.value(QStringLiteral("show_source_loops")).toBool()
+                                    : style.showSourceLoops;
+        if (style.showSourceLoops && !isCircularCandidate) {
+            return errorResponse(QStringLiteral("source loops are defined only for candidate_a mode"), SC::BadRequest);
+        }
+        style.sourceLoopTubeRadiusA =
+            clampedJsonDouble(body, QStringLiteral("source_loop_tube_radius_A"), {style.sourceLoopTubeRadiusA, 0.002, 0.12});
+        style.sourceLoopOpacity =
+            clampedJsonDouble(body, QStringLiteral("source_loop_opacity"), {style.sourceLoopOpacity, 0.0, 1.0});
+        style.sourceLoopResolution =
+            std::clamp(body.value(QStringLiteral("source_loop_resolution")).toInt(style.sourceLoopResolution), 32, 360);
+
         heroshotButterfly_ = std::make_unique<HeroshotButterflyOverlay>(
             vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
-        if (!heroshotButterfly_->show(*protein, *conf, ring,
+        if (!heroshotButterfly_->show(*protein, *conf, rings,
                                       static_cast<std::size_t>(frame), style)) {
             heroshotButterfly_.reset();
             return errorResponse(QStringLiteral("could not build resthero butterfly"),
@@ -3639,8 +3918,30 @@ void RestServer::registerRoutes() {
         }
         const HeroshotButterflyOverlay::Stats stats = heroshotButterfly_->stats();
         scene_->requestRender(MoleculeScene::RenderSource::Rest);
-        return jsonResponse(QJsonObject{
-            {"ring", static_cast<qint64>(ring)},
+        QJsonArray ringJson;
+        for (const std::size_t ring : rings)
+            ringJson.append(static_cast<qint64>(ring));
+        QJsonArray circularSources;
+        for (const HeroshotButterflyOverlay::CircularSource& source : heroshotButterfly_->circularSources()) {
+            const model::Vec3 normal = source.normal.normalized();
+            const model::Vec3 lowerCenter = source.center - source.lobeOffsetA * normal;
+            const model::Vec3 upperCenter = source.center + source.lobeOffsetA * normal;
+            circularSources.append(QJsonObject{
+                {"ring", static_cast<qint64>(source.ring)},
+                {"identity", proteinRingIdentityToJson(*protein, source.ring)},
+                {"fitted_center_A", vec3FromEigen(source.center)},
+                {"fitted_normal", vec3FromEigen(normal)},
+                {"plane_rms_A", finiteJson(source.planeRmsA)},
+                {"loop_radius_A", finiteJson(source.radiusA)},
+                {"loop_offset_A", finiteJson(source.lobeOffsetA)},
+                {"loop_centers_A", QJsonArray{vec3FromEigen(lowerCenter), vec3FromEigen(upperCenter)}},
+                {"total_current_nA_per_T", finiteJson(source.currentNanoamperePerTesla)},
+                {"current_per_loop_nA_per_T", finiteJson(0.5 * source.currentNanoamperePerTesla)},
+            });
+        }
+        QJsonObject response{
+            {"ring", static_cast<qint64>(rings.front())},
+            {"rings", ringJson},
             {"frame", frame},
             {"mode", mode},
             {"grid_dim", style.gridDim},
@@ -3655,8 +3956,20 @@ void RestServer::registerRoutes() {
             {"shielded_cells", static_cast<qint64>(stats.shieldedCells)},
             {"deshielded_points", static_cast<qint64>(stats.deshieldedPoints)},
             {"deshielded_cells", static_cast<qint64>(stats.deshieldedCells)},
+            {"source_loops_visible", style.showSourceLoops},
+            {"source_loop_count", static_cast<qint64>(2 * heroshotButterfly_->circularSources().size())},
+            {"source_loop_actor_count", static_cast<qint64>(heroshotButterfly_->sourceLoopActorCount())},
+            {"circular_sources", circularSources},
             {"will_clear_on_resthero_clear", true},
-        });
+        };
+        if (isCircularCandidate) {
+            response.insert(QStringLiteral("surface_quantity"), QStringLiteral("candidate_shielding_T0_ppm"));
+            response.insert(QStringLiteral("blue_surface_T0_ppm"), finiteJson(style.thresholdPpm));
+            response.insert(QStringLiteral("blue_surface_predicted_shift_delta_ppm"), finiteJson(-style.thresholdPpm));
+            response.insert(QStringLiteral("red_surface_T0_ppm"), finiteJson(-style.thresholdPpm));
+            response.insert(QStringLiteral("red_surface_predicted_shift_delta_ppm"), finiteJson(style.thresholdPpm));
+        }
+        return jsonResponse(response);
     };
     server_->route(QStringLiteral("/resthero/butterfly"), Method::Post,
                    restheroButterflyHandler);
@@ -4172,6 +4485,885 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/resthero/atom_track"), Method::Post,
                    restheroAtomTrackHandler);
 
+    // POST /resthero/ring_system_cloud
+    //   {"atoms":[...], "rings":[...], "reference_ring":N, ...}
+    // Places every requested atom/frame in one stationary ring frame and
+    // colours it by the fixed circular-loop shift contribution from the
+    // declared ring set. No target values or DFT tensors are read here.
+    auto restheroRingSystemCloudHandler = [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        const model::Conformation* conf = transformed_ ? static_cast<const model::Conformation*>(transformed_.data())
+                                                       : (loaded_ ? loaded_->conformation.get() : nullptr);
+        if (!scene_ || !protein || !conf)
+            return errorResponse(QStringLiteral("scene / protein not wired"), SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+        const QJsonArray atomValues = body.value(QStringLiteral("atoms")).toArray();
+        const QJsonArray ringValues = body.value(QStringLiteral("rings")).toArray();
+        if (atomValues.isEmpty() || atomValues.size() > 32)
+            return errorResponse(QStringLiteral("atoms must contain 1 to 32 indices"), SC::BadRequest);
+        if (ringValues.isEmpty() || ringValues.size() > 8)
+            return errorResponse(QStringLiteral("rings must contain 1 to 8 indices"), SC::BadRequest);
+
+        std::vector<std::size_t> atoms;
+        atoms.reserve(static_cast<std::size_t>(atomValues.size()));
+        for (const QJsonValue& value : atomValues) {
+            const qint64 raw = value.toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
+                return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+            atoms.push_back(static_cast<std::size_t>(raw));
+        }
+        std::sort(atoms.begin(), atoms.end());
+        atoms.erase(std::unique(atoms.begin(), atoms.end()), atoms.end());
+
+        std::vector<std::size_t> rings;
+        rings.reserve(static_cast<std::size_t>(ringValues.size()));
+        std::vector<physics::CircularRingParameters> parameters;
+        parameters.reserve(static_cast<std::size_t>(ringValues.size()));
+        for (const QJsonValue& value : ringValues) {
+            const qint64 raw = value.toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->ringCount())
+                return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+            const std::size_t ringIndex = static_cast<std::size_t>(raw);
+            if (std::find(rings.begin(), rings.end(), ringIndex) != rings.end())
+                continue;
+            const model::QtRing& ring = protein->ring(ringIndex);
+            int protonationVariant = -1;
+            if (ring.parentResidueIndex >= 0 && static_cast<std::size_t>(ring.parentResidueIndex) < protein->residueCount()) {
+                protonationVariant = static_cast<int>(
+                    protein->residue(static_cast<std::size_t>(ring.parentResidueIndex)).protonationVariantIndex);
+            }
+            const auto parameter = physics::CandidateACircularParameters(ring.TypeIndex(), protonationVariant);
+            if (!parameter) {
+                return errorResponse(QStringLiteral("ring is not supported by the circular model"), SC::BadRequest);
+            }
+            rings.push_back(ringIndex);
+            parameters.push_back(*parameter);
+        }
+
+        const qint64 referenceRingRaw = body.contains(QStringLiteral("reference_ring"))
+                                            ? body.value(QStringLiteral("reference_ring")).toInteger(-1)
+                                            : static_cast<qint64>(rings.front());
+        if (referenceRingRaw < 0 || static_cast<std::size_t>(referenceRingRaw) >= protein->ringCount()) {
+            return errorResponse(QStringLiteral("reference_ring out of range"), SC::BadRequest);
+        }
+        const std::size_t referenceRing = static_cast<std::size_t>(referenceRingRaw);
+        if (std::find(rings.begin(), rings.end(), referenceRing) == rings.end())
+            return errorResponse(QStringLiteral("reference_ring must be in rings"), SC::BadRequest);
+
+        const int frameCount = static_cast<int>(conf->frameCount());
+        if (frameCount <= 0)
+            return errorResponse(QStringLiteral("no frames available"), SC::ServiceUnavailable);
+        const int liveFrame = playback_ ? playback_->currentFrame() : 0;
+        const int referenceFrame = std::clamp(body.contains(QStringLiteral("reference_frame"))
+                                                  ? body.value(QStringLiteral("reference_frame")).toInt(liveFrame)
+                                                  : liveFrame,
+                                              0,
+                                              frameCount - 1);
+        const RingLocalFrame reference =
+            circularRingLocalFrameAt(*conf, referenceRing, static_cast<std::size_t>(referenceFrame));
+        if (!reference.valid)
+            return errorResponse(QStringLiteral("reference ring geometry invalid"), SC::Conflict);
+
+        const int startFrame = std::clamp(body.value(QStringLiteral("start_frame")).toInt(0), 0, frameCount - 1);
+        const int endFrame = std::clamp(body.value(QStringLiteral("end_frame")).toInt(frameCount - 1), 0, frameCount - 1);
+        const int lo = std::min(startFrame, endFrame);
+        const int hi = std::max(startFrame, endFrame);
+        const int step = std::clamp(body.value(QStringLiteral("step")).toInt(1), 1, frameCount);
+        const int maxFrames = std::clamp(body.value(QStringLiteral("max_frames")).toInt(10000), 1, 10000);
+        std::vector<int> frames;
+        frames.reserve(static_cast<std::size_t>(std::min(maxFrames, hi - lo + 1)));
+        for (int frame = lo; frame <= hi && static_cast<int>(frames.size()) < maxFrames; frame += step) {
+            frames.push_back(frame);
+        }
+        if (frames.empty())
+            return errorResponse(QStringLiteral("no frames selected"), SC::BadRequest);
+
+        AtomTrackOverlay::Style style;
+        style.showLines = false;
+        style.showHalos = false;
+        style.pointShape = AtomTrackOverlay::PointShape::Sphere;
+        style.pointSizePixels = clampedJsonDouble(body, QStringLiteral("point_size"), {style.pointSizePixels, 1.0, 72.0});
+        style.sphereRadiusA = clampedJsonDouble(body, QStringLiteral("dot_radius_A"), {0.035, 0.002, 0.20});
+        style.pointOpacity = clampedJsonDouble(body, QStringLiteral("point_opacity"), {0.90, 0.0, 1.0});
+        style.haloScale = clampedJsonDouble(body, QStringLiteral("halo_scale"), {style.haloScale, 1.0, 10.0});
+        style.haloOpacity = clampedJsonDouble(body, QStringLiteral("halo_opacity"), {style.haloOpacity, 0.0, 1.0});
+        style.colorScale = clampedJsonDouble(body, QStringLiteral("color_scale"), {style.colorScale, 0.0, 1000.0});
+        style.colorGamma = clampedJsonDouble(body, QStringLiteral("color_gamma"), {style.colorGamma, 0.1, 4.0});
+        style.minColorFraction =
+            clampedJsonDouble(body, QStringLiteral("min_color_fraction"), {style.minColorFraction, 0.0, 0.6});
+        auto boolValue = [&](const QString& key, bool fallback) {
+            const QJsonValue value = body.value(key);
+            return value.isBool() ? value.toBool() : fallback;
+        };
+        style.showPoints = boolValue(QStringLiteral("show_points"), style.showPoints);
+        style.showHalos = boolValue(QStringLiteral("show_halos"), style.showHalos);
+        style.highlightCurrent = boolValue(QStringLiteral("highlight_current"), false);
+        const QString pointShape = body.value(QStringLiteral("point_shape")).toString(QStringLiteral("sphere")).toLower();
+        if (pointShape == QStringLiteral("sphere") || pointShape == QStringLiteral("dot")) {
+            style.pointShape = AtomTrackOverlay::PointShape::Sphere;
+        } else if (pointShape == QStringLiteral("screen_point") || pointShape == QStringLiteral("point")) {
+            style.pointShape = AtomTrackOverlay::PointShape::ScreenPoint;
+        } else {
+            return errorResponse(QStringLiteral("point_shape must be sphere or screen_point"), SC::BadRequest);
+        }
+
+        struct AtomStats {
+            double minShielding = std::numeric_limits<double>::infinity();
+            double maxShielding = -std::numeric_limits<double>::infinity();
+            double sumShielding = 0.0;
+            int upfieldFrames = 0;
+        };
+        std::vector<AtomStats> stats(atoms.size());
+        std::vector<AtomTrackOverlay::Sample> samples;
+        samples.reserve(atoms.size() * frames.size());
+        const bool echoSamples = body.value(QStringLiteral("echo_samples")).toBool(false);
+        QJsonArray sampleJson;
+        double maxRoundtripDeltaA = 0.0;
+
+        for (const int frame : frames) {
+            const RingLocalFrame sourceReference =
+                circularRingLocalFrameAt(*conf, referenceRing, static_cast<std::size_t>(frame));
+            if (!sourceReference.valid)
+                return errorResponse(QStringLiteral("source ring geometry invalid"), SC::Conflict);
+
+            std::vector<physics::CircularRingPlane> geometries;
+            geometries.reserve(rings.size());
+            for (const std::size_t ring : rings) {
+                const std::vector<model::Vec3> vertices = model::RingVertices(*conf, ring, static_cast<std::size_t>(frame));
+                const auto geometry = physics::FitCircularRingPlane(vertices);
+                if (!geometry) {
+                    return errorResponse(QStringLiteral("ring-system geometry invalid"), SC::Conflict);
+                }
+                physics::CircularRingPlane signedGeometry = *geometry;
+                const model::RingGeometry winding = model::FitRingGeometry(vertices);
+                if (signedGeometry.normal.dot(winding.normal) < 0.0)
+                    signedGeometry.normal *= -1.0;
+                geometries.push_back(signedGeometry);
+            }
+
+            for (std::size_t atomSlot = 0; atomSlot < atoms.size(); ++atomSlot) {
+                const std::size_t atom = atoms[atomSlot];
+                const model::Vec3 sourcePosition = conf->atomPosition(static_cast<std::size_t>(frame), atom);
+                const model::Vec3 localPosition = toRingLocal(sourceReference, sourcePosition);
+                const model::Vec3 drawnPosition = fromRingLocal(reference, localPosition);
+                const double roundtripDelta = (toRingLocal(reference, drawnPosition) - localPosition).norm();
+                maxRoundtripDeltaA = std::max(maxRoundtripDeltaA, roundtripDelta);
+
+                double shieldingT0 = 0.0;
+                for (std::size_t ringSlot = 0; ringSlot < rings.size(); ++ringSlot) {
+                    const auto contribution = physics::EvaluateCircularShielding(sourcePosition,
+                                                                                 geometries[ringSlot],
+                                                                                 parameters[ringSlot]);
+                    if (!contribution)
+                        return errorResponse(QStringLiteral("circular field was singular"), SC::Conflict);
+                    shieldingT0 += contribution->T0;
+                }
+
+                AtomTrackOverlay::Sample sample;
+                sample.position = drawnPosition;
+                sample.intensity = -shieldingT0;  // predicted shift change; upfield is cool/negative
+                sample.current = frame == liveFrame;
+                samples.push_back(sample);
+
+                AtomStats& atomStats = stats[atomSlot];
+                atomStats.minShielding = std::min(atomStats.minShielding, shieldingT0);
+                atomStats.maxShielding = std::max(atomStats.maxShielding, shieldingT0);
+                atomStats.sumShielding += shieldingT0;
+                if (shieldingT0 > 0.0)
+                    ++atomStats.upfieldFrames;
+
+                if (echoSamples) {
+                    sampleJson.append(QJsonObject{
+                        {"atom", static_cast<qint64>(atom)},
+                        {"frame", frame},
+                        {"ring_local_position", vec3FromEigen(localPosition)},
+                        {"drawn_position", vec3FromEigen(drawnPosition)},
+                        {"candidate_shielding_T0_ppm", finiteJson(shieldingT0)},
+                        {"predicted_shift_delta_ppm", finiteJson(-shieldingT0)},
+                    });
+                }
+            }
+        }
+
+        const bool automaticColorScale = !std::isfinite(style.colorScale) || style.colorScale <= 1.0e-12;
+        double effectiveColorScale = style.colorScale;
+        if (automaticColorScale) {
+            effectiveColorScale = 0.0;
+            for (const AtomTrackOverlay::Sample& sample : samples) {
+                if (std::isfinite(sample.intensity))
+                    effectiveColorScale = std::max(effectiveColorScale, std::abs(sample.intensity));
+            }
+            if (effectiveColorScale <= 1.0e-12)
+                effectiveColorScale = 1.0;
+        }
+
+        heroshotAtomTrack_ = std::make_unique<AtomTrackOverlay>(vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
+        heroshotAtomTrack_->show(samples, style);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+
+        QJsonArray atomJson;
+        for (std::size_t i = 0; i < atoms.size(); ++i) {
+            atomJson.append(QJsonObject{
+                {"atom", static_cast<qint64>(atoms[i])},
+                {"identity", proteinAtomIdentityToJson(*protein, atoms[i])},
+                {"frames", static_cast<qint64>(frames.size())},
+                {"mean_candidate_shielding_T0_ppm", finiteJson(stats[i].sumShielding / static_cast<double>(frames.size()))},
+                {"min_candidate_shielding_T0_ppm", finiteJson(stats[i].minShielding)},
+                {"max_candidate_shielding_T0_ppm", finiteJson(stats[i].maxShielding)},
+                {"upfield_frames", stats[i].upfieldFrames},
+            });
+        }
+        QJsonArray ringJson;
+        QJsonArray ringIdentities;
+        for (const std::size_t ring : rings)
+            ringJson.append(static_cast<qint64>(ring));
+        for (const std::size_t ring : rings) {
+            ringIdentities.append(QJsonObject{
+                {"ring", static_cast<qint64>(ring)},
+                {"identity", proteinRingIdentityToJson(*protein, ring)},
+            });
+        }
+
+        QJsonObject out{
+            {"model", QStringLiteral("candidate_a_circular_two_loop")},
+            {"coordinate_space", QStringLiteral("source_ring_local")},
+            {"ring_plane_fit", QStringLiteral("least_squares_svd")},
+            {"ring_plane_sign", QStringLiteral("aligned_to_winding_normal")},
+            {"color_quantity", QStringLiteral("predicted_shift_delta_ppm")},
+            {"reference_ring", static_cast<qint64>(referenceRing)},
+            {"reference_frame", referenceFrame},
+            {"rings", ringJson},
+            {"ring_identities", ringIdentities},
+            {"atoms", atomJson},
+            {"first_frame", frames.front()},
+            {"last_frame", frames.back()},
+            {"frame_count", static_cast<qint64>(frames.size())},
+            {"sample_count", static_cast<qint64>(samples.size())},
+            {"step", step},
+            {"max_local_roundtrip_delta_A", finiteJson(maxRoundtripDeltaA)},
+            {"point_shape", pointShape},
+            {"dot_radius_A", finiteJson(style.sphereRadiusA)},
+            {"actor_count", static_cast<qint64>(heroshotAtomTrack_->size())},
+            {"color_scale_mode", automaticColorScale ? QStringLiteral("auto") : QStringLiteral("fixed")},
+            {"requested_color_scale", finiteJson(style.colorScale)},
+            {"color_scale", finiteJson(effectiveColorScale)},
+        };
+        if (echoSamples)
+            out.insert(QStringLiteral("samples"), sampleJson);
+        return jsonResponse(out);
+    };
+    server_->route(QStringLiteral("/resthero/ring_system_cloud"), Method::Post, restheroRingSystemCloudHandler);
+
+    // ---- resthero: ring-current / ORCA tensor comparison ---------------
+    // Both tensors are expressed in each target residue's N-CA-C frame. By
+    // default, the live-frame residuals from the complete-trajectory means are
+    // returned to that frame's displayed axes. If state_a_frames and
+    // state_b_frames are both supplied, the displayed tensors are instead
+    // mean(state B)-mean(state A). The solid and wire surfaces share one
+    // physical Angstrom-per-ppm scale.
+    auto restheroRingTensorCompareHandler = [this](const QHttpServerRequest& req, HttpResponderRouteArgument responder) {
+        ASSERT_THREAD(this);
+        const auto fail = [&](const QString& message, SC status) {
+            writeJson(responder, QJsonObject{{"error", message}}, status);
+        };
+        if (ringTensorOperation_) {
+            fail(QStringLiteral("ring tensor comparison already in progress"), SC::Conflict);
+            return;
+        }
+        if (!scene_ || !loaded_ || !loaded_->protein || !loaded_->conformation || !transformed_ || !readerWindow_) {
+            fail(QStringLiteral("scene / loaded run not wired"), SC::ServiceUnavailable);
+            return;
+        }
+        const model::QtProtein& protein = *loaded_->protein;
+        model::Conformation& raw = *loaded_->conformation;
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok) {
+            fail(QStringLiteral("invalid JSON body"), SC::BadRequest);
+            return;
+        }
+        const QJsonArray atomValues = body.value(QStringLiteral("atoms")).toArray();
+        const QJsonArray ringValues = body.value(QStringLiteral("rings")).toArray();
+        if (atomValues.isEmpty() || atomValues.size() > 8) {
+            fail(QStringLiteral("atoms must contain 1 to 8 indices"), SC::BadRequest);
+            return;
+        }
+        if (ringValues.isEmpty() || ringValues.size() > 8) {
+            fail(QStringLiteral("rings must contain 1 to 8 indices"), SC::BadRequest);
+            return;
+        }
+
+        std::vector<std::size_t> atoms;
+        atoms.reserve(static_cast<std::size_t>(atomValues.size()));
+        for (const QJsonValue& value : atomValues) {
+            const qint64 rawAtom = value.toInteger(-1);
+            if (rawAtom < 0 || static_cast<std::size_t>(rawAtom) >= protein.atomCount()) {
+                fail(QStringLiteral("atom out of range"), SC::BadRequest);
+                return;
+            }
+            const std::size_t atom = static_cast<std::size_t>(rawAtom);
+            if (std::find(atoms.begin(), atoms.end(), atom) == atoms.end())
+                atoms.push_back(atom);
+        }
+
+        std::vector<std::size_t> rings;
+        std::vector<physics::CircularRingParameters> parameters;
+        rings.reserve(static_cast<std::size_t>(ringValues.size()));
+        parameters.reserve(static_cast<std::size_t>(ringValues.size()));
+        for (const QJsonValue& value : ringValues) {
+            const qint64 rawRing = value.toInteger(-1);
+            if (rawRing < 0 || static_cast<std::size_t>(rawRing) >= protein.ringCount()) {
+                fail(QStringLiteral("ring out of range"), SC::BadRequest);
+                return;
+            }
+            const std::size_t ringIndex = static_cast<std::size_t>(rawRing);
+            if (std::find(rings.begin(), rings.end(), ringIndex) != rings.end())
+                continue;
+            const model::QtRing& ring = protein.ring(ringIndex);
+            int protonationVariant = -1;
+            if (ring.parentResidueIndex >= 0 && static_cast<std::size_t>(ring.parentResidueIndex) < protein.residueCount()) {
+                protonationVariant = static_cast<int>(
+                    protein.residue(static_cast<std::size_t>(ring.parentResidueIndex)).protonationVariantIndex);
+            }
+            const auto parameter = physics::CandidateACircularParameters(ring.TypeIndex(), protonationVariant);
+            if (!parameter) {
+                fail(QStringLiteral("ring is not supported by Candidate A"), SC::BadRequest);
+                return;
+            }
+            rings.push_back(ringIndex);
+            parameters.push_back(*parameter);
+        }
+
+        const qint64 normalReferenceRingRaw = body.contains(QStringLiteral("normal_reference_ring"))
+                                                  ? body.value(QStringLiteral("normal_reference_ring")).toInteger(-1)
+                                                  : static_cast<qint64>(rings.front());
+        if (normalReferenceRingRaw < 0 || static_cast<std::size_t>(normalReferenceRingRaw) >= protein.ringCount()) {
+            fail(QStringLiteral("normal_reference_ring out of range"), SC::BadRequest);
+            return;
+        }
+        const std::size_t normalReferenceRing = static_cast<std::size_t>(normalReferenceRingRaw);
+
+        const std::size_t frameCount = raw.frameCount();
+        if (frameCount == 0) {
+            fail(QStringLiteral("no frames available"), SC::ServiceUnavailable);
+            return;
+        }
+        const int liveFrame = std::clamp(playback_ ? playback_->currentFrame() : 0, 0, static_cast<int>(frameCount) - 1);
+
+        const bool hasStateA = body.contains(QStringLiteral("state_a_frames"));
+        const bool hasStateB = body.contains(QStringLiteral("state_b_frames"));
+        if (hasStateA != hasStateB) {
+            fail(QStringLiteral("state_a_frames and state_b_frames must be supplied together"), SC::BadRequest);
+            return;
+        }
+        const bool compareStates = hasStateA && hasStateB;
+        std::vector<std::size_t> stateAFrames;
+        std::vector<std::size_t> stateBFrames;
+        std::vector<bool> stateAMask(frameCount, false);
+        if (compareStates) {
+            auto parseStateFrames =
+                [&](const QString& key, std::vector<std::size_t>& destination, std::vector<bool>& occupied) -> QString {
+                const QJsonValue value = body.value(key);
+                if (!value.isArray() || value.toArray().isEmpty())
+                    return key + QStringLiteral(" must be a non-empty array");
+                const QJsonArray requested = value.toArray();
+                destination.reserve(static_cast<std::size_t>(requested.size()));
+                for (const QJsonValue& frameValue : requested) {
+                    const qint64 frame = frameValue.toInteger(-1);
+                    if (frame < 0 || static_cast<std::size_t>(frame) >= frameCount)
+                        return key + QStringLiteral(" contains an out-of-range frame");
+                    const std::size_t index = static_cast<std::size_t>(frame);
+                    if (occupied[index])
+                        return key + QStringLiteral(" contains a duplicate or overlapping frame");
+                    occupied[index] = true;
+                    destination.push_back(index);
+                }
+                return {};
+            };
+            std::vector<bool> occupied(frameCount, false);
+            QString frameError = parseStateFrames(QStringLiteral("state_a_frames"), stateAFrames, occupied);
+            if (frameError.isEmpty()) {
+                frameError = parseStateFrames(QStringLiteral("state_b_frames"), stateBFrames, occupied);
+            }
+            if (!frameError.isEmpty()) {
+                fail(frameError, SC::BadRequest);
+                return;
+            }
+            for (const std::size_t frame : stateAFrames)
+                stateAMask[frame] = true;
+        }
+        const QString stateALabel = body.value(QStringLiteral("state_a_label")).toString(QStringLiteral("state_a"));
+        const QString stateBLabel = body.value(QStringLiteral("state_b_label")).toString(QStringLiteral("state_b"));
+
+        HeroshotTensorPairOverlay::Style style;
+        style.scaleAperPpm = clampedJsonDouble(body, QStringLiteral("scale_A_per_ppm"), {0.42, 0.01, 3.0});
+        style.minimumRadiusA = clampedJsonDouble(body, QStringLiteral("minimum_radius_A"), {0.015, 0.0, 0.25});
+        style.candidateOpacity = clampedJsonDouble(body, QStringLiteral("candidate_opacity"), {0.44, 0.0, 1.0});
+        style.referenceOpacity = clampedJsonDouble(body, QStringLiteral("orca_opacity"), {0.95, 0.0, 1.0});
+        style.referenceLineWidth = clampedJsonDouble(body, QStringLiteral("orca_line_width"), {2.2, 0.5, 10.0});
+        style.thetaResolution = std::clamp(body.value(QStringLiteral("theta_resolution")).toInt(96), 24, 180);
+        style.phiResolution = std::clamp(body.value(QStringLiteral("phi_resolution")).toInt(96), 24, 180);
+        const auto boolValue = [&](const QString& key, bool fallback) {
+            const QJsonValue value = body.value(key);
+            return value.isBool() ? value.toBool() : fallback;
+        };
+        style.showCandidate = boolValue(QStringLiteral("show_candidate"), true);
+        style.showReference = boolValue(QStringLiteral("show_orca"), true);
+        if (!style.showCandidate && !style.showReference) {
+            fail(QStringLiteral("at least one candidate or ORCA representation must be visible"), SC::BadRequest);
+            return;
+        }
+
+        const QString representation =
+            body.value(QStringLiteral("representation")).toString(QStringLiteral("surface")).trimmed().toLower();
+        if (representation == QStringLiteral("surface")) {
+            style.showSurfaces = true;
+            style.showDirectors = false;
+        } else if (representation == QStringLiteral("director")) {
+            style.showSurfaces = false;
+            style.showDirectors = true;
+        } else if (representation == QStringLiteral("surface_and_director")) {
+            style.showSurfaces = true;
+            style.showDirectors = true;
+        } else {
+            fail(QStringLiteral("representation must be surface, director, or surface_and_director"), SC::BadRequest);
+            return;
+        }
+        style.showReferenceNormal = boolValue(QStringLiteral("show_reference_ring_normal"), false);
+        const double directorHalfLengthA = clampedJsonDouble(body, QStringLiteral("director_half_length_A"), {1.2, 0.25, 5.0});
+        style.candidateDirectorHalfLengthA = directorHalfLengthA;
+        style.referenceDirectorHalfLengthA = 1.12 * directorHalfLengthA;
+        style.referenceNormalHalfLengthA = 1.24 * directorHalfLengthA;
+        style.directorRadiusA = clampedJsonDouble(body, QStringLiteral("director_radius_A"), {0.025, 0.005, 0.15});
+        const bool hideSelectionMarker = boolValue(QStringLiteral("hide_selection_marker"), false);
+
+        struct Series {
+            std::size_t atom = 0;
+            std::vector<model::Mat3> candidate;
+            std::vector<model::Mat3> orca;
+            std::vector<double> candidateShift;
+            std::vector<double> orcaShiftLike;
+            model::Mat3 candidateMean = model::Mat3::Zero();
+            model::Mat3 orcaMean = model::Mat3::Zero();
+            model::Vec3 referenceRingNormalLocalSum = model::Vec3::Zero();
+            std::optional<model::Vec3> referenceRingNormalLocalAnchor;
+            std::size_t referenceRingNormalCount = 0;
+        };
+        std::vector<Series> series;
+        series.reserve(atoms.size());
+        for (const std::size_t atom : atoms) {
+            Series item;
+            item.atom = atom;
+            item.candidate.reserve(frameCount);
+            item.orca.reserve(frameCount);
+            item.candidateShift.reserve(frameCount);
+            item.orcaShiftLike.reserve(frameCount);
+            series.push_back(std::move(item));
+        }
+
+        const std::uint64_t contextRevision = contextRevision_;
+        const std::size_t firstAtom = atoms.front();
+        auto scanStep = [this,
+                         contextRevision,
+                         atoms = std::move(atoms),
+                         rings = std::move(rings),
+                         parameters = std::move(parameters),
+                         normalReferenceRing,
+                         frameCount,
+                         liveFrame,
+                         compareStates,
+                         stateAFrames = std::move(stateAFrames),
+                         stateBFrames = std::move(stateBFrames),
+                         stateAMask = std::move(stateAMask),
+                         stateALabel,
+                         stateBLabel,
+                         series = std::move(series),
+                         style,
+                         representation,
+                         directorHalfLengthA,
+                         hideSelectionMarker,
+                         nextFrame = std::size_t{0}]() mutable -> std::optional<DeferredJsonResponse> {
+            if (contextRevision_ != contextRevision || !scene_ || !loaded_ || !loaded_->protein || !loaded_->conformation
+                || !transformed_ || !readerWindow_) {
+                return deferredError(QStringLiteral("loaded run changed during ring tensor comparison"), SC::Conflict);
+            }
+            const int currentFrame = std::clamp(playback_ ? playback_->currentFrame() : 0, 0, static_cast<int>(frameCount) - 1);
+            if (currentFrame != liveFrame) {
+                return deferredError(QStringLiteral("live frame changed during ring tensor comparison"), SC::Conflict);
+            }
+
+            const model::QtProtein& protein = *loaded_->protein;
+            model::Conformation& raw = *loaded_->conformation;
+            if (nextFrame < frameCount) {
+                const std::size_t batchEnd = std::min(frameCount, nextFrame + kRingTensorFramesPerTurn);
+                while (nextFrame < batchEnd) {
+                    std::vector<physics::CircularRingPlane> ringPlanes;
+                    ringPlanes.reserve(rings.size());
+                    for (const std::size_t ring : rings) {
+                        const std::vector<model::Vec3> vertices = model::RingVertices(raw, ring, nextFrame);
+                        const auto plane = physics::FitCircularRingPlane(vertices);
+                        if (!plane)
+                            return deferredError(QStringLiteral("ring plane fit failed"), SC::Conflict);
+                        physics::CircularRingPlane signedPlane = *plane;
+                        const model::RingGeometry winding = model::FitRingGeometry(vertices);
+                        if (signedPlane.normal.dot(winding.normal) < 0.0)
+                            signedPlane.normal *= -1.0;
+                        ringPlanes.push_back(signedPlane);
+                    }
+
+                    const std::vector<model::Vec3> normalReferenceVertices =
+                        model::RingVertices(raw, normalReferenceRing, nextFrame);
+                    const auto normalReferencePlaneFit = physics::FitCircularRingPlane(normalReferenceVertices);
+                    if (!normalReferencePlaneFit) {
+                        return deferredError(QStringLiteral("normal-reference ring plane fit failed"), SC::Conflict);
+                    }
+                    physics::CircularRingPlane normalReferencePlane = *normalReferencePlaneFit;
+                    const model::RingGeometry normalReferenceWinding = model::FitRingGeometry(normalReferenceVertices);
+                    if (normalReferencePlane.normal.dot(normalReferenceWinding.normal) < 0.0)
+                        normalReferencePlane.normal *= -1.0;
+
+                    for (Series& item : series) {
+                        const auto rawAxes = residueNcaCFrame(protein, raw, item.atom, nextFrame);
+                        const auto displayAxes = residueNcaCFrame(protein, *transformed_, item.atom, nextFrame);
+                        if (!rawAxes || !displayAxes) {
+                            return deferredError(QStringLiteral("target residue N-CA-C frame failed"), SC::Conflict);
+                        }
+
+                        model::Mat3 candidateGlobal = model::Mat3::Zero();
+                        double candidateShift = 0.0;
+                        const model::Vec3 target = raw.atomPosition(nextFrame, item.atom);
+                        for (std::size_t ringSlot = 0; ringSlot < rings.size(); ++ringSlot) {
+                            const auto contribution =
+                                physics::EvaluateCircularShielding(target, ringPlanes[ringSlot], parameters[ringSlot]);
+                            if (!contribution) {
+                                return deferredError(QStringLiteral("circular field was singular"), SC::Conflict);
+                            }
+                            candidateGlobal += physics::ReconstructLibraryT2Matrix(contribution->T2);
+                            candidateShift -= contribution->T0;
+                        }
+                        const model::Mat3 candidateLocal =
+                            tracelessSymmetric(rawAxes->transpose() * candidateGlobal * (*rawAxes));
+
+                        const model::AtomCsaResult probe = readerWindow_->probeAtomCsa(item.atom, static_cast<int>(nextFrame));
+                        if (!probe.valid) {
+                            return deferredError(QStringLiteral("ORCA tensor missing at frame %1 atom %2")
+                                                     .arg(static_cast<qulonglong>(nextFrame))
+                                                     .arg(static_cast<qulonglong>(item.atom)),
+                                                 SC::ServiceUnavailable);
+                        }
+                        const model::Mat3& orcaAxes = probe.framed ? *displayAxes : *rawAxes;
+                        const model::Mat3 orcaLocal =
+                            tracelessSymmetric(orcaAxes.transpose() * csaShapeMatrix(probe.shape) * orcaAxes);
+
+                        item.candidate.push_back(candidateLocal);
+                        item.orca.push_back(orcaLocal);
+                        item.candidateShift.push_back(candidateShift);
+                        item.orcaShiftLike.push_back(-probe.shape.sigma_iso);
+                        item.candidateMean += candidateLocal;
+                        item.orcaMean += orcaLocal;
+
+                        if (!compareStates || stateAMask[nextFrame]) {
+                            model::Vec3 referenceNormalLocal = rawAxes->transpose() * normalReferencePlane.normal;
+                            if (!item.referenceRingNormalLocalAnchor)
+                                item.referenceRingNormalLocalAnchor = referenceNormalLocal;
+                            if (referenceNormalLocal.dot(*item.referenceRingNormalLocalAnchor) < 0.0)
+                                referenceNormalLocal *= -1.0;
+                            item.referenceRingNormalLocalSum += referenceNormalLocal;
+                            ++item.referenceRingNormalCount;
+                        }
+                    }
+
+                    ++nextFrame;
+                    if (nextFrame == 1 || nextFrame == frameCount || nextFrame % 250 == 0) {
+                        qCInfo(cRest).noquote()
+                            << "resthero ring tensor comparison | frames=" << nextFrame << "/" << frameCount;
+                    }
+                }
+                if (nextFrame < frameCount)
+                    return std::nullopt;
+            }
+
+            for (Series& item : series) {
+                item.candidateMean /= static_cast<double>(frameCount);
+                item.orcaMean /= static_cast<double>(frameCount);
+            }
+
+            std::vector<HeroshotTensorPairOverlay::Sample> samples;
+            samples.reserve(series.size());
+            QJsonArray atomJson;
+            for (const Series& item : series) {
+                const auto displayAxes =
+                    residueNcaCFrame(protein, *transformed_, item.atom, static_cast<std::size_t>(liveFrame));
+                if (!displayAxes) {
+                    return deferredError(QStringLiteral("live display N-CA-C frame failed"), SC::Conflict);
+                }
+
+                double candidateSs = 0.0;
+                double orcaSs = 0.0;
+                double cross = 0.0;
+                double fixedErrorSs = 0.0;
+                for (std::size_t frame = 0; frame < frameCount; ++frame) {
+                    const model::Mat3 candidate = item.candidate[frame] - item.candidateMean;
+                    const model::Mat3 orca = item.orca[frame] - item.orcaMean;
+                    candidateSs += frobeniusInner(candidate, candidate);
+                    orcaSs += frobeniusInner(orca, orca);
+                    cross += frobeniusInner(candidate, orca);
+                    fixedErrorSs += frobeniusInner(orca - candidate, orca - candidate);
+                }
+                const double pooledDenominator = std::sqrt(candidateSs * orcaSs);
+                if (!(pooledDenominator > 1.0e-12)) {
+                    return deferredError(QStringLiteral("tensor comparison is degenerate"), SC::Conflict);
+                }
+
+                double candidateShiftMean = 0.0;
+                double orcaShiftMean = 0.0;
+                for (std::size_t frame = 0; frame < frameCount; ++frame) {
+                    candidateShiftMean += item.candidateShift[frame];
+                    orcaShiftMean += item.orcaShiftLike[frame];
+                }
+                candidateShiftMean /= static_cast<double>(frameCount);
+                orcaShiftMean /= static_cast<double>(frameCount);
+                double candidateShiftSs = 0.0;
+                double orcaShiftSs = 0.0;
+                double shiftCross = 0.0;
+                for (std::size_t frame = 0; frame < frameCount; ++frame) {
+                    const double candidate = item.candidateShift[frame] - candidateShiftMean;
+                    const double orca = item.orcaShiftLike[frame] - orcaShiftMean;
+                    candidateShiftSs += candidate * candidate;
+                    orcaShiftSs += orca * orca;
+                    shiftCross += candidate * orca;
+                }
+                const double shiftDenominator = std::sqrt(candidateShiftSs * orcaShiftSs);
+
+                model::Mat3 candidateDisplayed = model::Mat3::Zero();
+                model::Mat3 orcaDisplayed = model::Mat3::Zero();
+                if (compareStates) {
+                    for (const std::size_t frame : stateAFrames) {
+                        candidateDisplayed -= item.candidate[frame] / static_cast<double>(stateAFrames.size());
+                        orcaDisplayed -= item.orca[frame] / static_cast<double>(stateAFrames.size());
+                    }
+                    for (const std::size_t frame : stateBFrames) {
+                        candidateDisplayed += item.candidate[frame] / static_cast<double>(stateBFrames.size());
+                        orcaDisplayed += item.orca[frame] / static_cast<double>(stateBFrames.size());
+                    }
+                } else {
+                    candidateDisplayed = item.candidate[static_cast<std::size_t>(liveFrame)] - item.candidateMean;
+                    orcaDisplayed = item.orca[static_cast<std::size_t>(liveFrame)] - item.orcaMean;
+                }
+                const double displayedDenominator = std::sqrt(frobeniusInner(candidateDisplayed, candidateDisplayed)
+                                                              * frobeniusInner(orcaDisplayed, orcaDisplayed));
+                if (!(displayedDenominator > 1.0e-12)) {
+                    return deferredError(QStringLiteral("displayed tensor comparison is degenerate"), SC::Conflict);
+                }
+
+                HeroshotTensorPairOverlay::Sample sample;
+                sample.center = transformed_->atomPosition(static_cast<std::size_t>(liveFrame), item.atom);
+                sample.candidate = (*displayAxes) * candidateDisplayed * displayAxes->transpose();
+                sample.reference = (*displayAxes) * orcaDisplayed * displayAxes->transpose();
+
+                const double zeroRmse = std::sqrt(orcaSs / static_cast<double>(frameCount));
+                const double fixedRmse = std::sqrt(fixedErrorSs / static_cast<double>(frameCount));
+                QJsonObject atomRow{
+                    {"atom", static_cast<qint64>(item.atom)},
+                    {"identity", proteinAtomIdentityToJson(protein, item.atom)},
+                    {"center", vec3FromEigen(sample.center)},
+                    {"pooled_local_demeaned_T2_cosine", finiteJson(cross / pooledDenominator)},
+                    {"demeaned_orca_zero_rmse_ppm", finiteJson(zeroRmse)},
+                    {"demeaned_fixed_candidate_rmse_ppm", finiteJson(fixedRmse)},
+                    {"demeaned_fixed_candidate_rmse_reduction_ppm", finiteJson(zeroRmse - fixedRmse)},
+                    {"candidate_mean_predicted_shift_delta_ppm", finiteJson(candidateShiftMean)},
+                    {"orca_mean_shift_like_ppm", finiteJson(orcaShiftMean)},
+                    {"framewise_candidate_orca_shift_correlation",
+                     finiteJson(shiftDenominator > 1.0e-12 ? shiftCross / shiftDenominator
+                                                           : std::numeric_limits<double>::quiet_NaN())},
+                    {"origin_constrained_orca_on_candidate_shift_slope",
+                     finiteJson(candidateShiftSs > 1.0e-12 ? shiftCross / candidateShiftSs
+                                                           : std::numeric_limits<double>::quiet_NaN())},
+                };
+
+                if (compareStates) {
+                    auto meanScalar = [](const std::vector<double>& values, const std::vector<std::size_t>& frames) {
+                        double sum = 0.0;
+                        for (const std::size_t frame : frames)
+                            sum += values[frame];
+                        return sum / static_cast<double>(frames.size());
+                    };
+                    const double candidateStateA = meanScalar(item.candidateShift, stateAFrames);
+                    const double candidateStateB = meanScalar(item.candidateShift, stateBFrames);
+                    const double orcaStateA = meanScalar(item.orcaShiftLike, stateAFrames);
+                    const double orcaStateB = meanScalar(item.orcaShiftLike, stateBFrames);
+                    const auto candidateAxis = dominantTensorAxis(candidateDisplayed);
+                    const auto orcaAxis = dominantTensorAxis(orcaDisplayed);
+                    const auto candidateDisplayAxis = dominantTensorAxis(sample.candidate);
+                    const auto orcaDisplayAxis = dominantTensorAxis(sample.reference);
+                    model::Vec3 referenceNormal = item.referenceRingNormalLocalSum;
+                    if (item.referenceRingNormalCount > 0 && referenceNormal.norm() > 1.0e-12)
+                        referenceNormal.normalize();
+                    sample.referenceNormal = (*displayAxes) * referenceNormal;
+
+                    atomRow.insert(QStringLiteral("state_b_minus_state_a_local_T2_cosine"),
+                                   finiteJson(frobeniusInner(candidateDisplayed, orcaDisplayed) / displayedDenominator));
+                    atomRow.insert(QStringLiteral("candidate_state_b_minus_state_a_local_T2"), mat3ToJson(candidateDisplayed));
+                    atomRow.insert(QStringLiteral("orca_state_b_minus_state_a_local_T2"), mat3ToJson(orcaDisplayed));
+                    atomRow.insert(QStringLiteral("candidate_state_b_minus_state_a_frobenius_ppm"),
+                                   finiteJson(candidateDisplayed.norm()));
+                    atomRow.insert(QStringLiteral("orca_state_b_minus_state_a_frobenius_ppm"),
+                                   finiteJson(orcaDisplayed.norm()));
+                    atomRow.insert(QStringLiteral("orca_to_candidate_state_difference_norm_ratio"),
+                                   finiteJson(orcaDisplayed.norm() / candidateDisplayed.norm()));
+                    atomRow.insert(QStringLiteral("dominant_axis_separation_degrees"),
+                                   finiteJson(candidateAxis && orcaAxis ? acuteDirectorAngleDegrees(*candidateAxis, *orcaAxis)
+                                                                        : std::numeric_limits<double>::quiet_NaN()));
+                    atomRow.insert(QStringLiteral("candidate_dominant_axis_from_reference_ring_normal_degrees"),
+                                   finiteJson(candidateAxis ? acuteDirectorAngleDegrees(*candidateAxis, referenceNormal)
+                                                            : std::numeric_limits<double>::quiet_NaN()));
+                    atomRow.insert(QStringLiteral("orca_dominant_axis_from_reference_ring_normal_degrees"),
+                                   finiteJson(orcaAxis ? acuteDirectorAngleDegrees(*orcaAxis, referenceNormal)
+                                                       : std::numeric_limits<double>::quiet_NaN()));
+                    atomRow.insert(QStringLiteral("reference_ring_mean_normal_local"), vec3FromEigen(referenceNormal));
+                    atomRow.insert(QStringLiteral("candidate_dominant_director_display"),
+                                   candidateDisplayAxis ? QJsonValue(vec3FromEigen(*candidateDisplayAxis)) : QJsonValue());
+                    atomRow.insert(QStringLiteral("orca_dominant_director_display"),
+                                   orcaDisplayAxis ? QJsonValue(vec3FromEigen(*orcaDisplayAxis)) : QJsonValue());
+                    atomRow.insert(QStringLiteral("reference_ring_mean_normal_display"), vec3FromEigen(sample.referenceNormal));
+                    atomRow.insert(QStringLiteral("candidate_state_a_mean_predicted_shift_delta_ppm"),
+                                   finiteJson(candidateStateA));
+                    atomRow.insert(QStringLiteral("candidate_state_b_mean_predicted_shift_delta_ppm"),
+                                   finiteJson(candidateStateB));
+                    atomRow.insert(QStringLiteral("candidate_state_b_minus_state_a_predicted_shift_delta_ppm"),
+                                   finiteJson(candidateStateB - candidateStateA));
+                    atomRow.insert(QStringLiteral("orca_state_a_mean_shift_like_ppm"), finiteJson(orcaStateA));
+                    atomRow.insert(QStringLiteral("orca_state_b_mean_shift_like_ppm"), finiteJson(orcaStateB));
+                    atomRow.insert(QStringLiteral("orca_state_b_minus_state_a_shift_like_ppm"),
+                                   finiteJson(orcaStateB - orcaStateA));
+                } else {
+                    model::Vec3 referenceNormal = item.referenceRingNormalLocalSum;
+                    if (item.referenceRingNormalCount > 0 && referenceNormal.norm() > 1.0e-12)
+                        referenceNormal.normalize();
+                    sample.referenceNormal = (*displayAxes) * referenceNormal;
+                    atomRow.insert(QStringLiteral("live_frame_local_T2_cosine"),
+                                   finiteJson(frobeniusInner(candidateDisplayed, orcaDisplayed) / displayedDenominator));
+                    atomRow.insert(QStringLiteral("candidate_local_residual_T2"), mat3ToJson(candidateDisplayed));
+                    atomRow.insert(QStringLiteral("orca_local_residual_T2"), mat3ToJson(orcaDisplayed));
+                    atomRow.insert(QStringLiteral("candidate_local_residual_frobenius_ppm"),
+                                   finiteJson(candidateDisplayed.norm()));
+                    atomRow.insert(QStringLiteral("orca_local_residual_frobenius_ppm"), finiteJson(orcaDisplayed.norm()));
+                }
+                samples.push_back(sample);
+                atomJson.append(atomRow);
+            }
+
+            heroshotTensorPair_ = std::make_unique<HeroshotTensorPairOverlay>(vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
+            if (!heroshotTensorPair_->show(samples, style)) {
+                heroshotTensorPair_.reset();
+                return deferredError(QStringLiteral("tensor pair surface construction failed"), SC::Conflict);
+            }
+            if (hideSelectionMarker && scene_->measurementOverlay()) {
+                if (!heroshotMeasurementVisibleBefore_.has_value())
+                    heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
+                scene_->measurementOverlay()->setVisible(false);
+            }
+            hideLiveTensorGlyphsForResthero();
+            scene_->requestRender(MoleculeScene::RenderSource::Rest);
+
+            QJsonArray ringJson;
+            QJsonArray ringIdentities;
+            for (const std::size_t ring : rings) {
+                ringJson.append(static_cast<qint64>(ring));
+                ringIdentities.append(QJsonObject{
+                    {"ring", static_cast<qint64>(ring)},
+                    {"identity", proteinRingIdentityToJson(protein, ring)},
+                });
+            }
+            QJsonObject response{
+                {"model", QStringLiteral("candidate_a_circular_two_loop")},
+                {"reference", QStringLiteral("whole_protein_orca_total_shielding")},
+                {"comparison",
+                 compareStates ? QStringLiteral("residue_N_CA_C_local_symmetric_traceless_state_b_minus_state_a")
+                               : QStringLiteral("residue_N_CA_C_local_symmetric_traceless_time_demeaned")},
+                {"frame", liveFrame},
+                {"mean_frame_count", static_cast<qint64>(frameCount)},
+                {"reference_ring", static_cast<qint64>(rings.front())},
+                {"normal_reference_ring", static_cast<qint64>(normalReferenceRing)},
+                {"normal_reference_ring_identity", proteinRingIdentityToJson(protein, normalReferenceRing)},
+                {"reference_ring_normal_averaging", compareStates ? QStringLiteral("state_a") : QStringLiteral("all_frames")},
+                {"reference_ring_normal_frame_count", static_cast<qint64>(compareStates ? stateAFrames.size() : frameCount)},
+                {"rings", ringJson},
+                {"ring_identities", ringIdentities},
+                {"atoms", atomJson},
+                {"sample_count", static_cast<qint64>(samples.size())},
+                {"scale_A_per_ppm", finiteJson(style.scaleAperPpm)},
+                {"minimum_radius_A", finiteJson(style.minimumRadiusA)},
+                {"representation", representation},
+                {"candidate_representation",
+                 style.showSurfaces && style.showDirectors
+                     ? QStringLiteral("solid_signed_quadratic_surface_and_dominant_unoriented_director")
+                     : (style.showSurfaces ? QStringLiteral("solid_signed_quadratic_surface")
+                                           : QStringLiteral("dominant_unoriented_director"))},
+                {"orca_representation",
+                 style.showSurfaces && style.showDirectors
+                     ? QStringLiteral("wire_signed_quadratic_surface_and_dominant_unoriented_director")
+                     : (style.showSurfaces ? QStringLiteral("wire_signed_quadratic_surface")
+                                           : QStringLiteral("dominant_unoriented_director"))},
+                {"radial_equation", QStringLiteral("r(n)=max(minimum_radius,scale*abs(n^T T n))")},
+                {"director_definition", QStringLiteral("eigenvector_of_largest_absolute_eigenvalue")},
+                {"director_length_encodes", QStringLiteral("nothing_stylistic_only")},
+                {"director_half_length_A", finiteJson(directorHalfLengthA)},
+                {"candidate_director_half_length_A", finiteJson(style.candidateDirectorHalfLengthA)},
+                {"orca_director_half_length_A", finiteJson(style.referenceDirectorHalfLengthA)},
+                {"reference_ring_normal_half_length_A", finiteJson(style.referenceNormalHalfLengthA)},
+                {"director_radius_A", finiteJson(style.directorRadiusA)},
+                {"reference_ring_normal_visible", style.showReferenceNormal},
+                {"selection_marker_hidden", hideSelectionMarker},
+            };
+            if (compareStates) {
+                response.insert(QStringLiteral("state_a_label"), stateALabel);
+                response.insert(QStringLiteral("state_b_label"), stateBLabel);
+                response.insert(QStringLiteral("state_a_frame_count"), static_cast<qint64>(stateAFrames.size()));
+                response.insert(QStringLiteral("state_b_frame_count"), static_cast<qint64>(stateBFrames.size()));
+                response.insert(QStringLiteral("unassigned_frame_count"),
+                                static_cast<qint64>(frameCount - stateAFrames.size() - stateBFrames.size()));
+            }
+            qCInfo(cRest).noquote() << "resthero ring tensor comparison complete | frames=" << frameCount
+                                    << "| atoms=" << series.size();
+            return DeferredJsonResponse{std::move(response), SC::Ok};
+        };
+
+        auto restoreLiveDftFrame = [this, contextRevision, firstAtom, frameCount]() {
+            if (contextRevision_ != contextRevision || !readerWindow_)
+                return;
+            const int currentFrame = std::clamp(playback_ ? playback_->currentFrame() : 0, 0, static_cast<int>(frameCount) - 1);
+            readerWindow_->probeAtomCsa(firstAtom, currentFrame);
+        };
+
+        qCInfo(cRest).noquote() << "resthero ring tensor comparison started | frames=" << frameCount
+                                << "| atoms=" << atomValues.size();
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        // Qt 6.4 responders retain a raw socket pointer after the route returns.
+        // Complete the request in-handler on that version so client disconnects
+        // cannot leave a delayed write targeting a deleted socket.
+        std::optional<DeferredJsonResponse> response;
+        do {
+            response = scanStep();
+        } while (!response);
+        restoreLiveDftFrame();
+        writeJson(responder, response->body, response->status);
+#else
+        auto* operation =
+            new QueuedJsonOperation(std::move(responder), std::move(scanStep), std::move(restoreLiveDftFrame), this);
+        operation->setObjectName(QStringLiteral("restheroRingTensorCompareOperation"));
+        ringTensorOperation_ = operation;
+        operation->start();
+#endif
+    };
+    server_->route(QStringLiteral("/resthero/ring_tensor_compare"), Method::Post, restheroRingTensorCompareHandler);
+
     // ---- resthero: tensor ghost trail -----------------------------------
     //
     // POST /resthero/ghost_trail  {atom?, n?, end_frame?, step?, frames?}
@@ -4295,12 +5487,6 @@ void RestServer::registerRoutes() {
                                                    : liveFrame;
         if (endFrame < 0) endFrame = 0;
 
-        if (hideSelectionMarker && scene_->measurementOverlay()) {
-            if (!heroshotMeasurementVisibleBefore_.has_value())
-                heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
-            scene_->measurementOverlay()->setVisible(false);
-        }
-
         std::vector<TensorGhostTrail::Sample> samples;
         std::vector<int> framesKept;
         const auto addFrameSample = [&](int f) {
@@ -4322,24 +5508,31 @@ void RestServer::registerRoutes() {
             body.value(QStringLiteral("frames")).isArray()
                 ? body.value(QStringLiteral("frames")).toArray()
                 : QJsonArray{};
-        if (!explicitFrames.isEmpty()) {
-            for (const auto& v : std::as_const(explicitFrames)) {
-                if (static_cast<int>(samples.size()) >= 12) break;
-                if (!v.isDouble()) continue;
-                const int f = v.toInt(-1);
-                if (f < 0) continue;
-                addFrameSample(f);
-            }
-        } else {
-            // Walk backward from endFrame keeping valid (DFT-present) frames
-            // only. Bound the scan so a sparse DFT cadence cannot loop the whole
-            // way back.
-            const int scanLimit = n * step + 64;
-            const int firstFrame = includeCurrent ? endFrame : endFrame - step;
-            for (int f = firstFrame, scanned = 0;
-                 f >= 0 && static_cast<int>(samples.size()) < n && scanned < scanLimit;
-                 f -= step, ++scanned) {
-                addFrameSample(f);
+        {
+            const auto restoreLiveDftFrame =
+                qScopeGuard([this, atom, liveFrame]() { readerWindow_->probeAtomCsa(atom, liveFrame); });
+            if (!explicitFrames.isEmpty()) {
+                for (const auto& v : std::as_const(explicitFrames)) {
+                    if (static_cast<int>(samples.size()) >= 12)
+                        break;
+                    if (!v.isDouble())
+                        continue;
+                    const int f = v.toInt(-1);
+                    if (f < 0)
+                        continue;
+                    addFrameSample(f);
+                }
+            } else {
+                // Walk backward from endFrame keeping valid (DFT-present) frames
+                // only. Bound the scan so a sparse DFT cadence cannot loop the whole
+                // way back.
+                const int scanLimit = n * step + 64;
+                const int firstFrame = includeCurrent ? endFrame : endFrame - step;
+                for (int f = firstFrame, scanned = 0;
+                     f >= 0 && static_cast<int>(samples.size()) < n && scanned < scanLimit;
+                     f -= step, ++scanned) {
+                    addFrameSample(f);
+                }
             }
         }
         if (samples.empty())
@@ -4376,6 +5569,11 @@ void RestServer::registerRoutes() {
         heroshotTrail_ = std::make_unique<TensorGhostTrail>(
             vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
         heroshotTrail_->show(samples);
+        if (hideSelectionMarker && scene_->measurementOverlay()) {
+            if (!heroshotMeasurementVisibleBefore_.has_value())
+                heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
+            scene_->measurementOverlay()->setVisible(false);
+        }
         scene_->requestRender(MoleculeScene::RenderSource::Rest);
 
         return jsonResponse(QJsonObject{
@@ -4467,12 +5665,6 @@ void RestServer::registerRoutes() {
                 ? body.value(QStringLiteral("hide_selection_marker")).toBool()
                 : false;
 
-        if (hideSelectionMarker && scene_->measurementOverlay()) {
-            if (!heroshotMeasurementVisibleBefore_.has_value())
-                heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
-            scene_->measurementOverlay()->setVisible(false);
-        }
-
         const double angle = dihedrals->chiAt(residue, static_cast<std::size_t>(frame), chiIndex);
         const double previousAngle =
             dihedrals->chiAt(residue, static_cast<std::size_t>(previousFrame), chiIndex);
@@ -4525,7 +5717,15 @@ void RestServer::registerRoutes() {
             vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
         // Axis start/end are CG->CB, not CB->CG: this matches the signed
         // residue.chi2 values used by nmrfigs/events_table.
-        heroshotAngleCollar_->show(c, b, c, a - b, arcs, style);
+        if (!heroshotAngleCollar_->show(c, b, c, a - b, arcs, style)) {
+            heroshotAngleCollar_.reset();
+            return errorResponse(QStringLiteral("angle collar geometry is degenerate"), SC::Conflict);
+        }
+        if (hideSelectionMarker && scene_->measurementOverlay()) {
+            if (!heroshotMeasurementVisibleBefore_.has_value())
+                heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
+            scene_->measurementOverlay()->setVisible(false);
+        }
         scene_->requestRender(MoleculeScene::RenderSource::Rest);
 
         const model::QtResidue& rr = protein.residue(residue);
@@ -4557,6 +5757,9 @@ void RestServer::registerRoutes() {
         ASSERT_THREAD(this);
         if (heroshotAtomTrack_) heroshotAtomTrack_->clear();
         if (heroshotButterfly_) heroshotButterfly_->clear();
+        if (heroshotTensorPair_)
+            heroshotTensorPair_->clear();
+        restoreLiveTensorGlyphsAfterResthero();
         if (heroshotTrail_) heroshotTrail_->clear();
         if (heroshotAngleCollar_) heroshotAngleCollar_->clear();
         if (scene_ && scene_->measurementOverlay()
@@ -4872,24 +6075,60 @@ void RestServer::registerRoutes() {
 
     // ---- scene camera readback ------------------------------------------
 
-    server_->route(QStringLiteral("/scene/camera"), [this]() {
+    server_->route(QStringLiteral("/scene/camera"), Method::Get, [this]() {
         ASSERT_THREAD(this);
         if (!scene_ || !scene_->Renderer())
             return errorResponse(QStringLiteral("scene not wired"), SC::ServiceUnavailable);
         auto* camera = scene_->Renderer()->GetActiveCamera();
         if (!camera)
             return errorResponse(QStringLiteral("no active camera"), SC::ServiceUnavailable);
-        double focal[3]{}, position[3]{}, viewUp[3]{}, direction[3]{};
-        camera->GetFocalPoint(focal);
-        camera->GetPosition(position);
-        camera->GetViewUp(viewUp);
-        camera->GetDirectionOfProjection(direction);
-        return jsonResponse(QJsonObject{
-            {"focal", vec3FromRaw(focal)},
-            {"position", vec3FromRaw(position)},
-            {"view_up", vec3FromRaw(viewUp)},
-            {"direction", vec3FromRaw(direction)},
-        });
+        return jsonResponse(cameraStateToJson(camera));
+    });
+
+    server_->route(QStringLiteral("/scene/camera"), Method::Post, [this](const QHttpServerRequest& request) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->Renderer() || !scene_->cameraComposer())
+            return errorResponse(QStringLiteral("scene not wired"), SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(request, &ok);
+        const auto focal = ok ? vec3FromJson(body.value(QStringLiteral("focal"))) : std::nullopt;
+        const auto position = ok ? vec3FromJson(body.value(QStringLiteral("position"))) : std::nullopt;
+        const auto viewUp = ok ? vec3FromJson(body.value(QStringLiteral("view_up"))) : std::nullopt;
+        if (!focal || !position || !viewUp) {
+            return errorResponse(QStringLiteral("body must contain finite focal, position, and view_up vectors"),
+                                 SC::BadRequest);
+        }
+
+        const std::array<double, 3> direction{
+            (*focal)[0] - (*position)[0],
+            (*focal)[1] - (*position)[1],
+            (*focal)[2] - (*position)[2],
+        };
+        const std::array<double, 3> cross{
+            direction[1] * (*viewUp)[2] - direction[2] * (*viewUp)[1],
+            direction[2] * (*viewUp)[0] - direction[0] * (*viewUp)[2],
+            direction[0] * (*viewUp)[1] - direction[1] * (*viewUp)[0],
+        };
+        const auto squaredNorm = [](const std::array<double, 3>& vector) {
+            return vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2];
+        };
+        if (squaredNorm(direction) <= 1.0e-12 || squaredNorm(*viewUp) <= 1.0e-12 || squaredNorm(cross) <= 1.0e-12) {
+            return errorResponse(QStringLiteral("camera position, focal point, and view_up are degenerate"), SC::BadRequest);
+        }
+
+        const std::size_t frame = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
+        scene_->cameraComposer()->setMode(FreeMode(), DefaultPolicy(), frame);
+        auto* camera = scene_->Renderer()->GetActiveCamera();
+        if (!camera)
+            return errorResponse(QStringLiteral("no active camera"), SC::ServiceUnavailable);
+        camera->SetFocalPoint(focal->data());
+        camera->SetPosition(position->data());
+        camera->SetViewUp(viewUp->data());
+        camera->OrthogonalizeViewUp();
+        scene_->Renderer()->ResetCameraClippingRange();
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return jsonResponse(cameraStateToJson(camera));
     });
 
     // ---- dashboard signals (read-only listing) --------------------------

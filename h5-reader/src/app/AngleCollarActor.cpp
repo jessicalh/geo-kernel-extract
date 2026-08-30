@@ -193,30 +193,32 @@ void AngleCollarActor::clear() {
     actors_.clear();
 }
 
-void AngleCollarActor::show(const model::Vec3& axisStart,
+bool AngleCollarActor::show(const model::Vec3& axisStart,
                             const model::Vec3& axisEnd,
                             const model::Vec3& center,
                             const model::Vec3& referenceDirection,
                             const std::vector<Arc>& arcs) {
-    show(axisStart, axisEnd, center, referenceDirection, arcs, Style{});
+    return show(axisStart, axisEnd, center, referenceDirection, arcs, Style{});
 }
 
-void AngleCollarActor::show(const model::Vec3& axisStart,
+bool AngleCollarActor::show(const model::Vec3& axisStart,
                             const model::Vec3& axisEnd,
                             const model::Vec3& center,
                             const model::Vec3& referenceDirection,
                             const std::vector<Arc>& arcs,
                             const Style& style) {
     clear();
-    if (!renderer_ || arcs.empty())
-        return;
+    if (!renderer_ || arcs.empty() || !axisStart.allFinite() || !axisEnd.allFinite() || !center.allFinite()
+        || !referenceDirection.allFinite()) {
+        return false;
+    }
 
     const model::Vec3 axisUnit = normalizedOrZero(axisEnd - axisStart);
     if (axisUnit.squaredNorm() < kMinNorm)
-        return;
+        return false;
     const model::Vec3 refUnit = normalizedOrZero(projectPerpendicular(referenceDirection, axisUnit));
     if (refUnit.squaredNorm() < kMinNorm)
-        return;
+        return false;
 
     const double radius = std::max(0.05, style.radius);
     const double tube = std::max(0.001, style.tubeRadius);
@@ -267,6 +269,7 @@ void AngleCollarActor::show(const model::Vec3& axisStart,
         add(tubeActor({rimCenter + targetUnit * r, rimCenter + targetUnit * (r + tube * 7.5)},
                       tube * 0.90, arc.color, std::min(1.0, arc.opacity + 0.08)));
     }
+    return true;
 }
 
 }  // namespace h5reader::app

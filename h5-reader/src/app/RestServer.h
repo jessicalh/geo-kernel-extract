@@ -26,10 +26,10 @@
 //   POST   /docks/visible                → 204 (body: {"visible": bool})  hide/restore docks
 //   GET    /transform                    → {"kind": "...", "reference_frame": int, "subset_atoms": [...],
 //                                            "subset_size": int, "window": int}
-    //   POST   /transform                    → 204 (body: {"kind": "all_atom_fit"|"backbone_fit",
-    //                                                       "reference_frame": int seed/anchor, "subset_atoms": [int, ...],
-    //                                                       "backbone_only": bool})
-    //   POST   /transform/smoothing          → 204 (body: {"window": int})  rotation-only
+//   POST   /transform                    → 204 (body: {"kind": "all_atom_fit"|"backbone_fit",
+//                                                       "reference_frame": int seed/anchor, "subset_atoms": [int, ...],
+//                                                       "backbone_only": bool})
+//   POST   /transform/smoothing          → 204 (body: {"window": int})  rotation-only
 //   GET    /plane-lock                   → {"active": bool, "atoms": [...]|null}
 //   POST   /plane-lock/enable            → 204 or 409 (body: {"atoms": [a,b,c]})
 //   POST   /plane-lock/disable           → 204
@@ -72,6 +72,7 @@
 #include <QPointer>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -102,6 +103,7 @@ class SceneVideoExporter;
 class AngleCollarActor;
 class AtomTrackOverlay;
 class HeroshotButterflyOverlay;
+class HeroshotTensorPairOverlay;
 class TensorGhostTrail;
 
 class RestServer final : public QObject {
@@ -162,6 +164,8 @@ private:
     void completeShutdownResponseFlush();
     void activeOperationFinished();
     void maybeQuitAfterShutdown();
+    void hideLiveTensorGlyphsForResthero();
+    void restoreLiveTensorGlyphsAfterResthero();
 
     std::unique_ptr<QHttpServer>                server_;
     // Retain accepted sockets as guarded pointers so each request can wait on
@@ -193,18 +197,21 @@ private:
     bool                                        shutdownQuitRequested_ = false;
     QMetaObject::Connection                     shutdownResponseBytesWritten_;
     QMetaObject::Connection                     shutdownResponseDisconnected_;
-    // Resthero layer (transient figure FX, never part of the reader UI): the
-    // tensor ghost trail built on demand by POST /resthero/ghost_trail.
-    // Rebuilt against the live scene renderer each call; cleared by
-    // /resthero/clear.
+    // Resthero figure geometry is rebuilt against the live scene renderer on
+    // demand and cleared together by /resthero/clear. It is never reader UI.
     std::unique_ptr<AtomTrackOverlay>            heroshotAtomTrack_;
     std::unique_ptr<HeroshotButterflyOverlay>    heroshotButterfly_;
+    std::unique_ptr<HeroshotTensorPairOverlay>   heroshotTensorPair_;
     std::unique_ptr<TensorGhostTrail>           heroshotTrail_;
     std::unique_ptr<AngleCollarActor>           heroshotAngleCollar_;
     std::optional<bool>                         heroshotMeasurementVisibleBefore_;
+    std::optional<bool>                         heroshotCsaActiveBefore_;
+    std::optional<bool>                         heroshotOrientationActiveBefore_;
     std::optional<MoleculeScene::MoleculeStyle> heroshotMoleculeStyleBefore_;
     std::optional<std::size_t>                  heroshotFieldRingBefore_;
+    QPointer<QObject>                           ringTensorOperation_;
     bool                                        heroshotFieldRingWasSet_ = false;
+    std::uint64_t                               contextRevision_ = 0;
     bool                                        contextSet_ = false;
 };
 

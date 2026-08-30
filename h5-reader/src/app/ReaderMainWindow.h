@@ -10,6 +10,8 @@
 // stops timers and detaches the render window while its GL context is valid.
 // The window-owned REST server remains alive until the event loop exits so an
 // active socket signal is never torn down beneath Qt's signal dispatcher.
+// Detaching the render window lets QVTKRenderWindowAdapter finalize it while
+// the GL context is still valid; shutdown() must not call Finalize separately.
 
 #pragma once
 

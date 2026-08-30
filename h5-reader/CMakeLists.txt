@@ -230,6 +230,8 @@ qt_add_library(h5reader_core STATIC
     src/app/AtomTrackOverlay.cpp
     src/app/HeroshotButterflyOverlay.h
     src/app/HeroshotButterflyOverlay.cpp
+    src/app/HeroshotTensorPairOverlay.h
+    src/app/HeroshotTensorPairOverlay.cpp
     src/app/Colormap.h
 
     src/app/QtAtomPicker.h
@@ -294,6 +296,8 @@ qt_add_library(h5reader_core STATIC
     src/physics/LocalFrameBasis.cpp
     src/physics/ClassicalSourceMath.h
     src/physics/ClassicalSourceMath.cpp
+    src/physics/CircularRingCurrent.h
+    src/physics/CircularRingCurrent.cpp
     src/physics/RingCurrentScalars.h
     src/physics/RingCurrentScalars.cpp
     src/physics/McConnellLiteratureKernel.h
@@ -411,6 +415,7 @@ if(BUILD_TESTING)
         src/physics/SphericalBasis.cpp
         src/physics/LocalFrameBasis.cpp
         src/physics/ClassicalSourceMath.cpp
+        src/physics/CircularRingCurrent.cpp
         src/physics/RingCurrentScalars.cpp
         src/physics/McConnellLiteratureKernel.cpp
         src/physics/BuckinghamEfield.cpp
