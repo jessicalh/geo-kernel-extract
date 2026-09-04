@@ -9,9 +9,10 @@ to amortize the ~3-5s startup cost (Qt + VTK + topology load).
 Env contract:
 - `H5READER_BINARY`   — absolute path to the built h5reader executable.
                         CTest sets this via set_tests_properties.
-- `H5READER_REST_FIXTURE` — absolute path to a trajectory directory loadable
-                            by h5reader (extract/trajectory.h5 + sidecar).
-                            CTest defaults it to the 1P9J calibration dataset.
+- `H5READER_REST_FIXTURE` — absolute .LGS or single-.LGS directory loadable by
+                            h5reader. CTest defaults it to the 1P9J dataset.
+- `H5READER_REST_RELOAD_FIXTURE` — optional second load path used to exercise a
+                                   real run change through `POST /api/run/load`.
 - `H5READER_REST_ADDRESS` — optional literal bind address passed through to
                             `--rest-address`; omitted means Reader's loopback default.
 

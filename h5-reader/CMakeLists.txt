@@ -865,10 +865,14 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         set(H5READER_F006_STATIC_FIXTURE_DEFAULT
             "C:/projects/reader-data/july-20260717-staging/full720-f006-A0A822IKI2.LGS"
             CACHE FILEPATH "Complete July full720 single-pose fixture for F006 inference tests")
+        set(H5READER_REST_RELOAD_FIXTURE_DEFAULT
+            "${H5READER_F006_STATIC_FIXTURE_DEFAULT}")
     else()
         set(H5READER_REST_FIXTURE_DEFAULT
             "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
             CACHE PATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+        set(H5READER_REST_RELOAD_FIXTURE_DEFAULT
+            "${H5READER_REST_FIXTURE_DEFAULT}")
     endif()
     add_test(NAME h5reader_rest_smoke
              COMMAND ${Python3_EXECUTABLE} -m pytest
@@ -882,7 +886,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
     # binary runs against the real display.
     set_tests_properties(h5reader_rest_smoke PROPERTIES
         ENVIRONMENT
-            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_REST_ADDRESS=0.0.0.0"
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_REST_RELOAD_FIXTURE=${H5READER_REST_RELOAD_FIXTURE_DEFAULT};H5READER_REST_ADDRESS=0.0.0.0"
         LABELS "rest;e2e"
         TIMEOUT 300
     )

@@ -48,6 +48,8 @@
 //   GET    /api/interface                -> namespace + route contract map
 //   POST   /api/screenshot               -> image/png (body: {"target":"scene"|"window",
 //                                                            "scale": int})
+//   POST   /api/run/load                 -> {"ok": true} (body: {"path": string})
+//                                            (`path` is an .LGS or single-.LGS directory)
 //   POST   /api/model-input/export       -> structural arrays for the loaded conformation
 //                                            (body: {"output_directory": string})
 //   POST   /api/video/export             -> current-scene trajectory video

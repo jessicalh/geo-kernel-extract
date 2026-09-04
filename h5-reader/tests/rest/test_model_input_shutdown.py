@@ -30,6 +30,10 @@ def _export(base_url: str, output: Path, started: threading.Event) -> httpx.Resp
 def test_shutdown_cancels_export_and_removes_partial_output(
     rest, tmp_path: Path
 ) -> None:
+    before_state = rest.client.get("/ui/state").json()
+    before_position = rest.client.post(
+        "/positions", json={"atoms": [0], "frame": 0}
+    ).json()["positions"][0]["position"]
     output = tmp_path / "export"
     output.mkdir()
     started = threading.Event()
@@ -47,6 +51,17 @@ def test_shutdown_cancels_export_and_removes_partial_output(
             assert not export_result.done()
             assert time.monotonic() < deadline
             time.sleep(0.01)
+
+        blocked_load = rest.client.post(
+            "/api/run/load", json={"path": os.environ["H5READER_REST_FIXTURE"]}
+        )
+        assert blocked_load.status_code == 409, blocked_load.text
+        assert blocked_load.json()["error"] == "another Reader operation is running"
+        assert rest.client.get("/ui/state").json() == before_state
+        after_position = rest.client.post(
+            "/positions", json={"atoms": [0], "frame": 0}
+        ).json()["positions"][0]["position"]
+        assert after_position == before_position
 
         health = rest.client.get("/health")
         assert health.status_code == 200, health.text

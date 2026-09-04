@@ -944,27 +944,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
     dashboardController_ = dashboardStripDock_->displayController();
-    if (dashboardController_) {
+    if (dashboardController_)
         dashboardController_->setVisualizationContext(visualizationContext_);
-        ACONNECT(dashboardController_.data(),
-                 &DashboardDisplayController::sceneTensorBindingChanged,
-                 this,
-                 [this](const QString& descriptorId, qint64 atom) {
-                     activeExperimentalMlTensorDescriptor_.clear();
-                     activeExperimentalMlTensorAtom_.reset();
-                     if (descriptorId
-                             == QStringLiteral("ml:experimental_shielding_t2")
-                         && atom >= 0
-                         && loaded_ && loaded_->protein
-                         && static_cast<std::size_t>(atom)
-                                < loaded_->protein->atomCount()) {
-                         activeExperimentalMlTensorDescriptor_ = descriptorId;
-                         activeExperimentalMlTensorAtom_ =
-                             static_cast<std::size_t>(atom);
-                     }
-                     updateCsaGlyph(true);
-                 });
-    }
 
     ACONNECT(dashboardSelectionController_.data(),
              &DashboardSelectionController::selectedCountChanged,
@@ -2629,8 +2610,27 @@ void ReaderMainWindow::buildDocks() {
     dashboardStripDock_->setSelection(nullptr);
     dashboardStripDock_->setTimeViewport(nullptr);
     dashboardController_ = dashboardStripDock_->displayController();
-    if (dashboardController_)
+    if (dashboardController_) {
         dashboardController_->setVisualizationContext({});
+        ACONNECT(dashboardController_.data(),
+                 &DashboardDisplayController::sceneTensorBindingChanged,
+                 this,
+                 [this](const QString& descriptorId, qint64 atom) {
+                     activeExperimentalMlTensorDescriptor_.clear();
+                     activeExperimentalMlTensorAtom_.reset();
+                     if (descriptorId
+                             == QStringLiteral("ml:experimental_shielding_t2")
+                         && atom >= 0
+                         && loaded_ && loaded_->protein
+                         && static_cast<std::size_t>(atom)
+                                < loaded_->protein->atomCount()) {
+                         activeExperimentalMlTensorDescriptor_ = descriptorId;
+                         activeExperimentalMlTensorAtom_ =
+                             static_cast<std::size_t>(atom);
+                     }
+                     updateCsaGlyph(true);
+                 });
+    }
     addDockWidget(Qt::LeftDockWidgetArea, dashboardStripDock_);
     tabifyDockWidget(inspectorDock_, dashboardStripDock_);
 

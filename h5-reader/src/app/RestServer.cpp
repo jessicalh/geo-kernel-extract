@@ -386,6 +386,9 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/screenshot"),
                       QStringLiteral("general"),
                       QStringLiteral("Scene/window screenshot capture for review, export, and automation.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/run/load"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Load a calcset through Reader's ordinary run-loading path.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/model-input/export"),
                       QStringLiteral("general"),
                       QStringLiteral("Export structural arrays for the loaded conformation.")),
@@ -1975,6 +1978,43 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/api/interface"), [this]() {
         ASSERT_THREAD(this);
         return jsonResponse(restInterfaceDescription());
+    });
+
+    server_->route(QStringLiteral("/api/run/load"), Method::Post,
+                   [this](const QHttpServerRequest& request) {
+        ASSERT_THREAD(this);
+        if (!readerWindow_) {
+            return errorResponse(QStringLiteral("reader window is unavailable"),
+                                 SC::ServiceUnavailable);
+        }
+        if (hasActiveOperations() || ringTensorOperation_) {
+            return errorResponse(QStringLiteral("another Reader operation is running"),
+                                 SC::Conflict);
+        }
+
+        bool bodyOk = false;
+        const QJsonObject body = parseJsonBody(request, &bodyOk);
+        const QJsonValue pathValue = body.value(QStringLiteral("path"));
+        if (!bodyOk || body.size() != 1 || !pathValue.isString()
+            || pathValue.toString().trimmed().isEmpty()) {
+            return errorResponse(
+                QStringLiteral("body must contain only a nonempty string field path"),
+                SC::BadRequest);
+        }
+
+        const QString path = pathValue.toString();
+        qCInfo(cRest).noquote() << "REST run load started" << "| path=" << path;
+        if (!readerWindow_->loadRunPath(path)) {
+            const QString error = readerWindow_->lastLoadError().isEmpty()
+                ? QStringLiteral("Reader could not load the requested run")
+                : readerWindow_->lastLoadError();
+            qCWarning(cRest).noquote() << "REST run load failed"
+                                       << "| path=" << path
+                                       << "| error=" << error;
+            return errorResponse(error, SC::Conflict);
+        }
+        qCInfo(cRest).noquote() << "REST run load complete" << "| path=" << path;
+        return jsonResponse(QJsonObject{{"ok", true}});
     });
 
     server_->route(
