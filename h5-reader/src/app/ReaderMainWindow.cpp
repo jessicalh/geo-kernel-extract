@@ -1780,7 +1780,7 @@ QJsonArray ReaderMainWindow::inspectorTreeJson() const {
 }
 
 
-quint16 ReaderMainWindow::startRestServer(quint16 port) {
+quint16 ReaderMainWindow::startRestServer(const QHostAddress& address, quint16 port) {
     ASSERT_THREAD(this);
     if (!loaded_ || !loaded_->protein || !loaded_->conformation) {
         qCCritical(cWindow).noquote() << "REST start refused: loader result not wired";
@@ -1803,9 +1803,11 @@ quint16 ReaderMainWindow::startRestServer(quint16 port) {
                             this,
                             this,
                             transformed_);
-    const quint16 bound = restServer_->listen(port);
+    const quint16 bound = restServer_->listen(address, port);
     if (bound == 0) {
-        qCCritical(cWindow).noquote() << "REST server failed to bind port" << port;
+        qCCritical(cWindow).noquote() << "REST server failed to bind"
+                                      << "| address=" << address.toString()
+                                      << "| port=" << port;
         restServer_->deleteLater();
         restServer_ = nullptr;
     }

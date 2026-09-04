@@ -30,6 +30,7 @@
 
 class QActionGroup;
 class QDockWidget;
+class QHostAddress;
 class QJsonObject;
 class QJsonArray;
 class QMenu;
@@ -93,11 +94,11 @@ public:
     bool loadRunPath(const QString& path);
     QString lastLoadError() const { return lastLoadError_; }
 
-    // Start the embedded REST test surface bound to 127.0.0.1:<port>.
+    // Start the embedded REST surface on the requested address and port.
     // Port 0 asks the kernel to pick a free port. Returns the actually-bound
     // port, or 0 on failure. The bound port is also written to stderr as
     // `H5READER_REST_PORT=NNNNN\n` for the pytest fixture to scrape.
-    quint16 startRestServer(quint16 port);
+    quint16 startRestServer(const QHostAddress& address, quint16 port);
 
     // The focused atom's Atom Info panel serialized to JSON (field / value /
     // provenance tooltip), for the REST harness. Empty if no inspector. Read-only.

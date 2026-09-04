@@ -1802,7 +1802,7 @@ void RestServer::setContext(MoleculeScene* scene,
     contextSet_ = true;
 }
 
-quint16 RestServer::listen(quint16 port) {
+quint16 RestServer::listen(const QHostAddress& address, quint16 port) {
     ASSERT_THREAD(this);
     if (!contextSet_) {
         qCCritical(cRest).noquote() << "listen() called before setContext()";
@@ -1825,9 +1825,11 @@ quint16 RestServer::listen(quint16 port) {
         }
         restSockets_.append(socket);
     };
-    if (!tcp->listen(QHostAddress::LocalHost, port)) {
-        qCCritical(cRest).noquote()
-            << "REST server failed to bind 127.0.0.1 port" << port;
+    if (!tcp->listen(address, port)) {
+        qCCritical(cRest).noquote() << "REST server failed to listen"
+                                    << "| address=" << address.toString()
+                                    << "| port=" << port
+                                    << "| error=" << tcp->errorString();
         delete tcp;
         server_.reset();
         return 0;
@@ -1836,14 +1838,17 @@ quint16 RestServer::listen(quint16 port) {
     // postcondition across the supported versions.
     server_->bind(tcp);
     if (!server_->servers().contains(tcp)) {
-        qCCritical(cRest).noquote()
-            << "REST server failed to bind 127.0.0.1 port" << port;
+        qCCritical(cRest).noquote() << "REST server failed to adopt listening socket"
+                                    << "| address=" << address.toString()
+                                    << "| port=" << port;
         delete tcp;
         server_.reset();
         return 0;
     }
     const quint16 bound = tcp->serverPort();
-    qCInfo(cRest).noquote() << "REST server listening on 127.0.0.1:" << bound;
+    qCInfo(cRest).noquote() << "REST server listening"
+                            << "| address=" << address.toString()
+                            << "| port=" << bound;
     // Handshake line for the pytest fixture to scrape.
     std::fprintf(stderr, "H5READER_REST_PORT=%u\n", static_cast<unsigned>(bound));
     std::fflush(stderr);

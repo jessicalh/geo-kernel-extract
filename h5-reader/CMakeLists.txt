@@ -882,7 +882,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
     # binary runs against the real display.
     set_tests_properties(h5reader_rest_smoke PROPERTIES
         ENVIRONMENT
-            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}"
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_REST_ADDRESS=0.0.0.0"
         LABELS "rest;e2e"
         TIMEOUT 300
     )

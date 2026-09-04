@@ -12,6 +12,8 @@ Env contract:
 - `H5READER_REST_FIXTURE` — absolute path to a trajectory directory loadable
                             by h5reader (extract/trajectory.h5 + sidecar).
                             CTest defaults it to the 1P9J calibration dataset.
+- `H5READER_REST_ADDRESS` — optional literal bind address passed through to
+                            `--rest-address`; omitted means Reader's loopback default.
 
 Headless: VTK needs a real GL FBO, which `QT_QPA_PLATFORM=offscreen` does
 not provide. On non-Windows hosts with no DISPLAY, the fixture wraps the
@@ -113,7 +115,11 @@ def h5reader_session() -> Generator[RestSession, None, None]:
         # Force Mesa software OpenGL so CI hosts without a GPU still render.
         env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
         env.setdefault("GALLIUM_DRIVER", "llvmpipe")
-    cmd.extend([str(binary), "--rest", "0", str(fixture_dir)])
+    cmd.extend([str(binary), "--rest", "0"])
+    rest_address = env.get("H5READER_REST_ADDRESS")
+    if rest_address:
+        cmd.extend(["--rest-address", rest_address])
+    cmd.append(str(fixture_dir))
 
     # Redirect both streams to an on-disk log so the kernel pipe buffer
     # never fills (h5reader logs heavily via the Qt structured logger; a

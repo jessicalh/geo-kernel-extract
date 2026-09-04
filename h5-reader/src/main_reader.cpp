@@ -31,6 +31,7 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFileInfo>
+#include <QHostAddress>
 #include <QLoggingCategory>
 #include <QSurfaceFormat>
 #include <QThread>
@@ -39,6 +40,8 @@
 #include <QVTKOpenGLNativeWidget.h>
 
 #include <vtkSMPTools.h>
+
+#include <limits>
 
 #ifdef _WIN32
 #  include <QPalette>
@@ -144,24 +147,41 @@ int main(int argc, char* argv[]) {
                               QStringLiteral("<run_path>"));
     const QCommandLineOption restOption(
         QStringLiteral("rest"),
-        QStringLiteral("Start embedded HTTP test surface on 127.0.0.1:<port>; "
+        QStringLiteral("Start the embedded HTTP surface on <port>; "
                        "port 0 = kernel-pick (printed as H5READER_REST_PORT=NNNNN on stderr). "
                        "Window stays open until the process is signalled. "
                        "Replaces the retired --dashboard-path-smoke and --camera-plane-lock-smoke runners; "
                        "see h5-reader/tests/rest/ for the pytest suite that drives this surface."),
         QStringLiteral("port"));
+    const QCommandLineOption restAddressOption(
+        QStringLiteral("rest-address"),
+        QStringLiteral("Address for the embedded HTTP surface. The default is 127.0.0.1; "
+                       "use 0.0.0.0 for all IPv4 interfaces on a trusted network."),
+        QStringLiteral("address"),
+        QStringLiteral("127.0.0.1"));
     cli.addOption(restOption);
+    cli.addOption(restAddressOption);
     cli.process(app);
 
     const bool runRest = cli.isSet(restOption);
     bool restPortOk = false;
-    const quint16 restPort = static_cast<quint16>(
-        runRest ? cli.value(restOption).toUInt(&restPortOk) : 0u);
-    if (runRest && !restPortOk) {
+    const uint restPortValue = runRest ? cli.value(restOption).toUInt(&restPortOk) : 0u;
+    if (runRest && (!restPortOk || restPortValue > std::numeric_limits<quint16>::max())) {
         qCCritical(cLifecycle).noquote()
-            << "--rest <port> must be a non-negative integer (0 = kernel-pick)";
+            << "--rest <port> must be an integer from 0 through 65535 (0 = kernel-pick)";
         return 1;
     }
+    if (!runRest && cli.isSet(restAddressOption)) {
+        qCCritical(cLifecycle).noquote() << "--rest-address requires --rest <port>";
+        return 1;
+    }
+    QHostAddress restAddress;
+    if (runRest && !restAddress.setAddress(cli.value(restAddressOption))) {
+        qCCritical(cLifecycle).noquote()
+            << "--rest-address must be a literal IPv4 or IPv6 address";
+        return 1;
+    }
+    const quint16 restPort = static_cast<quint16>(restPortValue);
 
     const QStringList args = cli.positionalArguments();
     QString runPath;
@@ -194,10 +214,12 @@ int main(int argc, char* argv[]) {
     //    app.exec() is spinning (event loop live before first render). An explicit
     //    queued event onto `window`, not a timer guessing at "next tick".
     if (runRest) {
-        QMetaObject::invokeMethod(window, [window, restPort]() {
+        QMetaObject::invokeMethod(window, [window, restAddress, restPort]() {
             window->show();
-            qCInfo(cLifecycle).noquote() << "window shown for REST surface on port" << restPort;
-            const quint16 bound = window->startRestServer(restPort);
+            qCInfo(cLifecycle).noquote() << "window shown for REST surface"
+                                         << "| address=" << restAddress.toString()
+                                         << "| port=" << restPort;
+            const quint16 bound = window->startRestServer(restAddress, restPort);
             if (bound == 0) {
                 qCCritical(cLifecycle).noquote()
                     << "REST server failed to bind; exiting";

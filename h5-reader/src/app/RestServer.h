@@ -7,8 +7,8 @@
 // default handler thread is the thread the server was constructed on);
 // handlers may directly read/mutate model + scene state without marshalling.
 //
-// Binding: loopback only (QHostAddress::LocalHost). No authentication; this is
-// a local operator/API harness, not a remote public service.
+// Binding: the CLI chooses the address and defaults to loopback. There is no
+// authentication; non-loopback binding is for a trusted network.
 //
 // JSON: QJsonDocument / QJsonObject / QJsonArray only. No third-party JSON.
 //
@@ -136,11 +136,11 @@ public:
                     ReaderMainWindow* readerWindow = nullptr,
                     model::TransformedConformation* transformed = nullptr);
 
-    // Bind to QHostAddress::LocalHost on the requested port. Port 0 asks
-    // the kernel to pick. Returns the actually-bound port, or 0 on failure.
+    // Bind to the requested address and port. Port 0 asks the kernel to pick.
+    // Returns the actually-bound port, or 0 on failure.
     // Emits an info log line `H5READER_REST_PORT=<port>` to stderr on
     // success so the pytest fixture can scrape it.
-    quint16 listen(quint16 port);
+    quint16 listen(const QHostAddress& address, quint16 port);
 
     bool hasActiveOperations() const;
     void requestGracefulStop();
