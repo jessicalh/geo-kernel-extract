@@ -1,6 +1,6 @@
 #include "OrcaShieldingParser.h"
 
-#include "../model/SphericalDecomposition.h"
+#include "../physics/SphericalBasis.h"
 
 #include <cctype>
 #include <sstream>
@@ -98,13 +98,12 @@ model::DftShieldingFrame ParseOrcaNmrShielding(std::istream& in) {
 
         model::DftAtomShielding a;
         a.element = elementFromSymbol(el);
-        a.total   = model::DecomposeShielding(total);
-        a.dia     = model::DecomposeShielding(dia);
-        a.para    = model::DecomposeShielding(para);
+        a.total   = physics::DecomposeLibrary(total);
+        a.dia     = physics::DecomposeLibrary(dia);
+        a.para    = physics::DecomposeLibrary(para);
 
-        // Additive (DESIGN.md): keep the raw 3x3 the parser already built,
-        // which DecomposeShielding above would otherwise discard. The
-        // rediscover substrate re-decomposes these in the library T2 order.
+        // Keep the Cartesian matrices for principal-axis display and exact
+        // reconstruction; the spherical values use the shared Reader basis.
         a.total_raw = total;
         a.dia_raw   = dia;
         a.para_raw  = para;

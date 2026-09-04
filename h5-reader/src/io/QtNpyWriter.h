@@ -14,15 +14,14 @@ public:
     struct Result {
         bool ok = false;
         QString error;
-        qint64 fileSize = 0;
     };
 
+    static Result WriteFloat32(const QString& path,
+                               const std::vector<std::size_t>& shape,
+                               const std::vector<float>& values);
     static Result WriteFloat64(const QString& path,
                                const std::vector<std::size_t>& shape,
                                const std::vector<double>& values);
-    static Result WriteUInt64(const QString& path,
-                              const std::vector<std::size_t>& shape,
-                              const std::vector<std::uint64_t>& values);
     static Result WriteUInt8(const QString& path,
                              const std::vector<std::size_t>& shape,
                              const std::vector<std::uint8_t>& values);

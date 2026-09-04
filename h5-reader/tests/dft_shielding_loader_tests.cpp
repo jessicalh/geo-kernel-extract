@@ -4,6 +4,7 @@
 // not a jobs-dir + frame index pair.
 
 #include "io/DftShieldingLoader.h"
+#include "io/OrcaShieldingParser.h"
 
 #include "model/QtAtom.h"
 #include "model/QtAtomNames.h"
@@ -13,6 +14,7 @@
 #include "model/QtRing.h"
 #include "model/QtRingMembership.h"
 #include "model/QtTopology.h"
+#include "physics/SphericalBasis.h"
 #define private public
 #include "model/QtProtein.h"
 #undef private
@@ -27,6 +29,7 @@
 #include <cstddef>
 #include <initializer_list>
 #include <memory>
+#include <sstream>
 
 using h5reader::io::DftShieldingLoader;
 using h5reader::model::Element;
@@ -103,6 +106,7 @@ class DftShieldingLoaderTests : public QObject {
 
 private slots:
     void loadAndValidateHappyPath();
+    void nonsymmetricTensorUsesCanonicalBasis();
     void missingMetaReturnsNull();
     void parserHoleReturnsNull();
 };
@@ -124,6 +128,49 @@ void DftShieldingLoaderTests::loadAndValidateHappyPath() {
     QVERIFY(frame->atoms[0].element == h5reader::model::Element::H);
     QVERIFY(frame->atoms[1].element == h5reader::model::Element::C);
     QVERIFY(std::abs(frame->atoms[0].total.T0 - (frame->atoms[0].dia.T0 + frame->atoms[0].para.T0)) < 1e-9);
+}
+
+void DftShieldingLoaderTests::nonsymmetricTensorUsesCanonicalBasis() {
+    std::istringstream input(
+        "CHEMICAL SHIELDINGS\n"
+        "Nucleus 0N\n"
+        "Diamagnetic contribution to the shielding tensor\n"
+        "10 2 -3\n"
+        "5 20 7\n"
+        "11 -13 30\n"
+        "Paramagnetic contribution to the shielding tensor\n"
+        "0 0 0\n"
+        "0 0 0\n"
+        "0 0 0\n"
+        "Total shielding tensor\n"
+        "10 2 -3\n"
+        "5 20 7\n"
+        "11 -13 30\n");
+
+    const h5reader::model::DftShieldingFrame frame =
+        h5reader::io::ParseOrcaNmrShielding(input);
+    QVERIFY(frame.valid);
+    QCOMPARE(frame.atoms.size(), std::size_t{1});
+    const h5reader::model::SphericalTensor& tensor = frame.atoms[0].total;
+    const double sqrt2 = std::sqrt(2.0);
+
+    QVERIFY(std::abs(tensor.T0 - 20.0) < 1e-12);
+    QCOMPARE(tensor.T1, (std::array<double, 3>{10.0, 7.0, -1.5}));
+    QVERIFY(std::abs(tensor.T2[0] - 3.5 * sqrt2) < 1e-12);
+    QVERIFY(std::abs(tensor.T2[1] + 3.0 * sqrt2) < 1e-12);
+    QVERIFY(std::abs(tensor.T2[2] - 10.0 * std::sqrt(1.5)) < 1e-12);
+    QVERIFY(std::abs(tensor.T2[3] - 4.0 * sqrt2) < 1e-12);
+    QVERIFY(std::abs(tensor.T2[4] + 10.0 / sqrt2) < 1e-12);
+
+    h5reader::model::Mat3 reconstructed =
+        h5reader::physics::ReconstructLibraryT2Matrix(tensor.T0, tensor.T2);
+    reconstructed(1, 2) += tensor.T1[0];
+    reconstructed(2, 1) -= tensor.T1[0];
+    reconstructed(2, 0) += tensor.T1[1];
+    reconstructed(0, 2) -= tensor.T1[1];
+    reconstructed(0, 1) += tensor.T1[2];
+    reconstructed(1, 0) -= tensor.T1[2];
+    QVERIFY((reconstructed - frame.atoms[0].total_raw).norm() < 1e-12);
 }
 
 void DftShieldingLoaderTests::missingMetaReturnsNull() {

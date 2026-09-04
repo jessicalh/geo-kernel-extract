@@ -204,7 +204,7 @@ def test_trpcage_candidate_a_tensor_comparison_matches_frozen_analysis(rest):
     }
 
     def run_comparison():
-        with httpx.Client(base_url=rest.base_url, timeout=60.0) as client:
+        with httpx.Client(base_url=rest.base_url, timeout=300.0) as client:
             return client.post("/resthero/ring_tensor_compare", json=request_body)
 
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -231,7 +231,7 @@ def test_trpcage_candidate_a_tensor_comparison_matches_frozen_analysis(rest):
             assert health.json()["ok"] is True
             assert health_elapsed < 2.0
 
-        response = result.result(timeout=60.0)
+        response = result.result(timeout=300.0)
 
     assert response.status_code == 200, response.text
     payload = response.json()

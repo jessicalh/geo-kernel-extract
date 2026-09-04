@@ -48,11 +48,8 @@
 //   GET    /api/interface                -> namespace + route contract map
 //   POST   /api/screenshot               -> image/png (body: {"target":"scene"|"window",
 //                                                            "scale": int})
-//   POST   /api/alignment/export         -> validated scientific trajectory sidecar
-//                                            (body: {"output_root": string,
-//                                                    "apply_display": bool})
-//   GET    /api/alignment/export/status  -> running/cancellation state
-//   POST   /api/alignment/export/cancel  -> cooperative export cancellation
+//   POST   /api/model-input/export       -> structural arrays for the loaded conformation
+//                                            (body: {"output_directory": string})
 //   POST   /api/video/export             -> current-scene trajectory video
 //   GET    /api/video/export/status      -> video recorder progress/result
 //   POST   /api/video/export/stop        -> finish a valid partial video
@@ -63,9 +60,6 @@
 #include "MoleculeScene.h"
 
 #include "../diagnostics/ObjectCensus.h"
-#include "../io/ReaderAlignmentExporter.h"
-
-#include <QFuture>
 #include <QHostAddress>
 #include <QList>
 #include <QObject>
@@ -78,12 +72,16 @@
 
 class QHttpServer;
 class QHttpServerRequest;
+class QHttpServerResponder;
 class QHttpServerResponse;
 class QWidget;
 class QTcpSocket;
 
 namespace h5reader {
-namespace io { struct QtLoadResult; }
+namespace io {
+class ModelInputExporter;
+struct QtLoadResult;
+}
 namespace model {
 class AtomSelection;
 class DashboardPanelModel;
@@ -153,14 +151,8 @@ signals:
 private:
     void registerRoutes();
     QTcpSocket* socketForRequest(const QHttpServerRequest& request) const;
-    QFuture<QHttpServerResponse> beginAlignmentExport(
-        const QHttpServerRequest& request);
-    QHttpServerResponse makeAlignmentExportResponse(
-        const io::ReaderAlignmentExportResult& exported,
-        bool applyDisplay,
-        const QString& sourceLgsPath);
-    void awaitAlignmentResponseFlush(QTcpSocket* socket);
-    void finishAlignmentRequest();
+    void beginModelInputExport(const QHttpServerRequest& request,
+                               QHttpServerResponder&& responder);
     void completeShutdownResponseFlush();
     void activeOperationFinished();
     void maybeQuitAfterShutdown();
@@ -183,13 +175,8 @@ private:
     QPointer<QWidget>                           mainWindow_;
     QPointer<ReaderMainWindow>                  readerWindow_;
     QPointer<model::TransformedConformation>    transformed_;
-    QFuture<io::ReaderAlignmentExportResult>    alignmentExportFuture_;
-    std::shared_ptr<io::ReaderAlignmentExportControl> alignmentExportControl_;
-    QPointer<QTcpSocket>                        alignmentResponseSocket_;
-    QMetaObject::Connection                     alignmentResponseBytesWritten_;
-    QMetaObject::Connection                     alignmentResponseDisconnected_;
-    QMetaObject::Connection                     alignmentResponseDestroyed_;
-    bool                                        alignmentRequestActive_ = false;
+    std::shared_ptr<io::ModelInputExporter>     modelInputExporter_;
+    QPointer<QObject>                           modelInputOperation_;
     SceneVideoExporter*                         videoExporter_ = nullptr;
     bool                                        gracefulStopRequested_ = false;
     bool                                        shutdownRequested_ = false;

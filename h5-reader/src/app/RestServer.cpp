@@ -24,8 +24,8 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/StructuredLogger.h"
 #include "../diagnostics/ThreadGuard.h"
+#include "../io/ModelInputExporter.h"
 #include "../io/QtProteinLoader.h"
-#include "../io/ReaderAlignmentExporter.h"
 #include "../model/AtomSelection.h"
 #include "../model/Conformation.h"
 #include "../model/ConformationGeometry.h"
@@ -48,7 +48,6 @@
 #include <QBuffer>
 #include <QByteArray>
 #include <QCoreApplication>
-#include <QFuture>
 #include <QHttpServer>
 #include <QHttpServerRequest>
 #include <QHttpServerResponder>
@@ -68,7 +67,6 @@
 #include <QUuid>
 #include <QVariant>
 #include <QWidget>
-#include <QtConcurrent/QtConcurrentRun>
 
 #include <Eigen/Eigenvalues>
 
@@ -99,10 +97,6 @@ namespace h5reader::app {
 
 namespace {
 Q_LOGGING_CATEGORY(cRest, "h5reader.rest")
-
-QFuture<QHttpServerResponse> readyResponse(QHttpServerResponse response) {
-    return QtFuture::makeReadyValueFuture(std::move(response));
-}
 
 // Reports each accepted socket as QAbstractHttpServer pulls it, allowing a
 // request to wait for its own response flush instead of guessing with a timer.
@@ -140,16 +134,21 @@ void writeJson(QHttpServerResponder& responder,
 }
 
 // Runs one bounded unit of GUI-owned work per event-loop turn while retaining
-// the HTTP response. This keeps long provenance scans responsive without
-// moving Reader, HDF5, or VTK objects off their owning thread.
+// the HTTP response. This keeps long scans responsive without moving Reader,
+// HDF5, or VTK objects off their owning thread.
 class QueuedJsonOperation final : public QObject {
 public:
     using Step = std::function<std::optional<DeferredJsonResponse>()>;
     using Finished = std::function<void()>;
 
-    QueuedJsonOperation(QHttpServerResponder&& responder, Step step, Finished finished, QObject* parent)
+    QueuedJsonOperation(QHttpServerResponder&& responder,
+                        QTcpSocket* responseSocket,
+                        Step step,
+                        Finished finished,
+                        QObject* parent)
         : QObject(parent)
         , responder_(std::move(responder))
+        , responseSocket_(responseSocket)
         , step_(std::move(step))
         , finished_(std::move(finished)) {}
 
@@ -165,15 +164,42 @@ private:
             return;
         }
 
+        writeJson(responder_, response->body, response->status);
+        waitForResponseFlush();
+    }
+
+    void waitForResponseFlush() {
+        QTcpSocket* socket = responseSocket_.data();
+        if (!socket || socket->state() == QAbstractSocket::UnconnectedState
+            || socket->bytesToWrite() == 0) {
+            finish();
+            return;
+        }
+        QObject::connect(socket, &QTcpSocket::bytesWritten, this, [this]() {
+            QTcpSocket* pending = responseSocket_.data();
+            if (!pending || pending->bytesToWrite() == 0)
+                finish();
+        });
+        QObject::connect(socket, &QTcpSocket::disconnected,
+                         this, [this]() { finish(); });
+        QObject::connect(socket, &QObject::destroyed,
+                         this, [this]() { finish(); });
+    }
+
+    void finish() {
+        if (finishedResponse_)
+            return;
+        finishedResponse_ = true;
         if (finished_)
             finished_();
-        writeJson(responder_, response->body, response->status);
         deleteLater();
     }
 
     QHttpServerResponder responder_;
+    QPointer<QTcpSocket> responseSocket_;
     Step step_;
     Finished finished_;
+    bool finishedResponse_ = false;
 };
 
 // Amortize posted-event overhead while keeping each GUI turn bounded.
@@ -352,15 +378,9 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/screenshot"),
                       QStringLiteral("general"),
                       QStringLiteral("Scene/window screenshot capture for review, export, and automation.")),
-            restRoute(QStringLiteral("POST"), QStringLiteral("/api/alignment/export"),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/model-input/export"),
                       QStringLiteral("general"),
-                      QStringLiteral("Validated target-free scientific trajectory alignment export.")),
-            restRoute(QStringLiteral("GET"), QStringLiteral("/api/alignment/export/status"),
-                      QStringLiteral("general"),
-                      QStringLiteral("Scientific alignment export activity and cancellation state.")),
-            restRoute(QStringLiteral("POST"), QStringLiteral("/api/alignment/export/cancel"),
-                      QStringLiteral("general"),
-                      QStringLiteral("Request cooperative cancellation of the active alignment export.")),
+                      QStringLiteral("Export structural arrays for the loaded conformation.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/video/export"),
                       QStringLiteral("general"),
                       QStringLiteral("Record the current scene over a trajectory frame range.")),
@@ -1629,13 +1649,8 @@ RestServer::RestServer(QObject* parent)
 }
 
 RestServer::~RestServer() {
-    if (alignmentExportControl_)
-        alignmentExportControl_->requestCancel();
-    if (!alignmentExportFuture_.isFinished()) {
-        qCInfo(cRest).noquote()
-            << "waiting for scientific alignment export to stop";
-        alignmentExportFuture_.waitForFinished();
-    }
+    if (modelInputExporter_)
+        modelInputExporter_->requestCancel();
     if (videoExporter_ && videoExporter_->isActive()) {
         qCWarning(cRest).noquote()
             << "REST server teardown reached an active video recorder";
@@ -1643,6 +1658,7 @@ RestServer::~RestServer() {
     }
     // QHttpServerResponder depends on the server-owned stream. Destroy the
     // delayed response while server_ is still alive, before member teardown.
+    delete modelInputOperation_.data();
     delete ringTensorOperation_.data();
 }
 
@@ -1662,60 +1678,18 @@ QTcpSocket* RestServer::socketForRequest(
     return nullptr;
 }
 
-void RestServer::awaitAlignmentResponseFlush(QTcpSocket* socket) {
-    ASSERT_THREAD(this);
-    QObject::disconnect(alignmentResponseBytesWritten_);
-    QObject::disconnect(alignmentResponseDisconnected_);
-    QObject::disconnect(alignmentResponseDestroyed_);
-    alignmentResponseSocket_ = socket;
-
-    if (!socket || socket->state() == QAbstractSocket::UnconnectedState) {
-        qCWarning(cRest).noquote()
-            << "scientific alignment response socket is unavailable";
-        finishAlignmentRequest();
-        return;
-    }
-
-    alignmentResponseBytesWritten_ =
-        QObject::connect(socket, &QTcpSocket::bytesWritten, this, [this]() {
-            QTcpSocket* responseSocket = alignmentResponseSocket_.data();
-            if (!responseSocket || responseSocket->bytesToWrite() == 0)
-                finishAlignmentRequest();
-        });
-    alignmentResponseDisconnected_ =
-        QObject::connect(socket, &QTcpSocket::disconnected, this,
-                         &RestServer::finishAlignmentRequest);
-    alignmentResponseDestroyed_ =
-        QObject::connect(socket, &QObject::destroyed, this,
-                         &RestServer::finishAlignmentRequest);
-}
-
-void RestServer::finishAlignmentRequest() {
-    ASSERT_THREAD(this);
-    if (!alignmentRequestActive_)
-        return;
-
-    QObject::disconnect(alignmentResponseBytesWritten_);
-    QObject::disconnect(alignmentResponseDisconnected_);
-    QObject::disconnect(alignmentResponseDestroyed_);
-    alignmentResponseSocket_.clear();
-    alignmentRequestActive_ = false;
-    alignmentExportControl_.reset();
-    activeOperationFinished();
-}
-
 bool RestServer::hasActiveOperations() const {
-    return alignmentRequestActive_
+    return !modelInputOperation_.isNull()
         || (videoExporter_ && videoExporter_->isActive());
 }
 
 void RestServer::requestGracefulStop() {
     ASSERT_THREAD(this);
     gracefulStopRequested_ = true;
-    if (alignmentRequestActive_ && alignmentExportControl_) {
-        alignmentExportControl_->requestCancel();
+    if (modelInputExporter_) {
+        modelInputExporter_->requestCancel();
         qCInfo(cRest).noquote()
-            << "graceful stop requested for scientific alignment export";
+            << "graceful stop requested for model-input export";
     }
     if (videoExporter_ && videoExporter_->isActive())
         videoExporter_->stopForShutdown();
@@ -1788,6 +1762,8 @@ void RestServer::setContext(MoleculeScene* scene,
                             ReaderMainWindow* readerWindow,
                             model::TransformedConformation* transformed) {
     ASSERT_THREAD(this);
+    if (modelInputExporter_)
+        modelInputExporter_->requestCancel();
     ++contextRevision_;
     if (scene_ != scene) {
         heroshotAtomTrack_.reset();
@@ -1866,188 +1842,107 @@ quint16 RestServer::listen(quint16 port) {
     return bound;
 }
 
-QFuture<QHttpServerResponse> RestServer::beginAlignmentExport(
-    const QHttpServerRequest& request) {
+void RestServer::beginModelInputExport(const QHttpServerRequest& request, QHttpServerResponder&& responder) {
     ASSERT_THREAD(this);
-    using SC = QHttpServerResponse::StatusCode;
+    using SC = QHttpServerResponder::StatusCode;
 
-    if (alignmentRequestActive_) {
-        return readyResponse(jsonResponse(QJsonObject{
-            {"ok", false},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"error", QStringLiteral("a scientific alignment export is already running")},
-        }, SC::Conflict));
+    const auto fail = [&](const QString& message, SC status) {
+        qCWarning(cRest).noquote() << "model-input export request rejected"
+                                   << "| error=" << message;
+        writeJson(responder, QJsonObject{{"error", message}}, status);
+    };
+    if (modelInputOperation_) {
+        fail(QStringLiteral("a model-input export is already running"), SC::Conflict);
+        return;
     }
-    if (!loaded_ || !loaded_->ok || !loaded_->protein
-        || !loaded_->conformation || !transformed_) {
-        return readyResponse(jsonResponse(QJsonObject{
-            {"ok", false},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"error", QStringLiteral("no complete trajectory load is available")},
-        }, SC::ServiceUnavailable));
+    if (!loaded_ || !loaded_->ok || !loaded_->protein || !loaded_->conformation || !transformed_) {
+        fail(QStringLiteral("no complete Reader load is available"), SC::ServiceUnavailable);
+        return;
     }
 
     bool bodyOk = false;
     const QJsonObject body = parseJsonBody(request, &bodyOk);
-    const QJsonValue outputRootValue = body.value(QStringLiteral("output_root"));
-    if (!bodyOk || !outputRootValue.isString()
-        || outputRootValue.toString().trimmed().isEmpty()) {
-        return readyResponse(jsonResponse(QJsonObject{
-            {"ok", false},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"error", QStringLiteral(
-                "body must include a nonempty string field output_root")},
-        }, SC::BadRequest));
+    const QJsonValue outputDirectory = body.value(QStringLiteral("output_directory"));
+    if (!bodyOk || body.size() != 1 || !outputDirectory.isString() || outputDirectory.toString().trimmed().isEmpty()) {
+        fail(QStringLiteral("body must contain only a nonempty string field output_directory"), SC::BadRequest);
+        return;
     }
 
-    const QJsonValue applyDisplayValue =
-        body.value(QStringLiteral("apply_display"));
-    if (!applyDisplayValue.isUndefined() && !applyDisplayValue.isBool()) {
-        return readyResponse(jsonResponse(QJsonObject{
-            {"ok", false},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"error", QStringLiteral("apply_display must be a boolean")},
-        }, SC::BadRequest));
-    }
-    const bool applyDisplay = applyDisplayValue.isUndefined()
-        ? true : applyDisplayValue.toBool();
-
-    io::ReaderAlignmentExportPreparation prepared =
-        io::ReaderAlignmentExporter::Prepare(*loaded_, outputRootValue.toString());
-    if (!prepared.ok) {
-        return readyResponse(jsonResponse(QJsonObject{
-            {"ok", false},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"error", prepared.error},
-        }, SC::Conflict));
+    std::shared_ptr<io::ModelInputExporter> exporter;
+    QString prepareError;
+    try {
+        exporter = std::make_shared<io::ModelInputExporter>(loaded_->protein.get(),
+                                                            loaded_->conformation.get(),
+                                                            outputDirectory.toString());
+        if (!exporter->prepare(&prepareError)) {
+            fail(prepareError, SC::Conflict);
+            return;
+        }
+    } catch (const std::exception& error) {
+        fail(QStringLiteral("could not prepare model-input export: %1").arg(QString::fromLocal8Bit(error.what())),
+             SC::InternalServerError);
+        return;
+    } catch (...) {
+        fail(QStringLiteral("could not prepare model-input export"), SC::InternalServerError);
+        return;
     }
 
-    const QString sourceLgsPath = prepared.request.lgsPath;
-    const QPointer<QTcpSocket> responseSocket = socketForRequest(request);
-    const auto control = std::make_shared<io::ReaderAlignmentExportControl>();
-    alignmentExportControl_ = control;
-    alignmentRequestActive_ = true;
-    qCInfo(cRest).noquote()
-        << "scientific alignment export started"
-        << "| source=" << sourceLgsPath
-        << "| output_root=" << prepared.request.outputRoot;
+    const std::uint64_t contextRevision = contextRevision_;
+    auto step = [this, exporter, contextRevision]() -> std::optional<DeferredJsonResponse> {
+        if (contextRevision_ != contextRevision || !loaded_ || !loaded_->ok || !loaded_->protein || !loaded_->conformation
+            || !transformed_) {
+            exporter->requestCancel();
+            exporter->advance();
+            const QString error = QStringLiteral("loaded run changed during model-input export");
+            qCWarning(cRest).noquote() << "model-input export cancelled"
+                                       << "| error=" << error;
+            return deferredError(error, SC::Conflict);
+        }
 
-    alignmentExportFuture_ = QtConcurrent::run(
-        [exportRequest = std::move(prepared.request), control, applyDisplay]() {
-            io::ReaderAlignmentExportResult exported;
-            try {
-                exported = io::ReaderAlignmentExporter::Export(
-                    exportRequest, control.get());
-                if (applyDisplay && exported.ok && exported.alreadyComplete) {
-                    exported.primaryAlignment =
-                        io::ReaderAlignmentExporter::LoadCompletedPrimaryAlignment(
-                            exported.finalDirectory, control.get());
-                    if (control->cancelRequested()) {
-                        exported.ok = false;
-                        exported.cancelled = true;
-                        exported.error = QStringLiteral(
-                            "scientific alignment export cancelled");
-                    }
-                }
-            } catch (const std::exception& error) {
-                exported.error = QStringLiteral(
-                    "scientific alignment export raised an exception: %1")
-                    .arg(QString::fromLocal8Bit(error.what()));
-            } catch (...) {
-                exported.error = QStringLiteral(
-                    "scientific alignment export raised an unknown exception");
+        const std::optional<io::ModelInputExporter::Result> result = exporter->advance();
+        if (!result)
+            return std::nullopt;
+        if (!result->ok) {
+            qCWarning(cRest).noquote() << (result->cancelled ? "model-input export cancelled" : "model-input export failed")
+                                       << "| error=" << result->error;
+            return deferredError(result->error, SC::Conflict);
+        }
+
+        if (result->trajectory) {
+            QString displayError;
+            if (!transformed_->setScientificAlignment(result->alignment, &displayError)) {
+                qCCritical(cRest).noquote() << "model-input export completed but display alignment failed"
+                                            << "| error=" << displayError;
+                return deferredError(displayError, SC::InternalServerError);
             }
-            return exported;
-        });
-
-    return alignmentExportFuture_.then(
-        this,
-        [this, applyDisplay, sourceLgsPath, responseSocket](
-            const io::ReaderAlignmentExportResult& exported) {
-            ASSERT_THREAD(this);
-            QHttpServerResponse response = makeAlignmentExportResponse(
-                exported, applyDisplay, sourceLgsPath);
-            awaitAlignmentResponseFlush(responseSocket.data());
-            return response;
-        });
-}
-
-QHttpServerResponse RestServer::makeAlignmentExportResponse(
-    const io::ReaderAlignmentExportResult& exported,
-    bool applyDisplay,
-    const QString& sourceLgsPath) {
-    ASSERT_THREAD(this);
-    using SC = QHttpServerResponse::StatusCode;
-
-    if (!exported.ok) {
-        qCWarning(cRest).noquote()
-            << (exported.cancelled
-                    ? "scientific alignment export cancelled"
-                    : "scientific alignment export rejected")
-            << "| member=" << exported.memberId
-            << "| error=" << exported.error;
-        return jsonResponse(QJsonObject{
-            {"ok", false},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"cancelled", exported.cancelled},
-            {"member_id", exported.memberId},
-            {"output_directory", exported.finalDirectory},
-            {"error", exported.error},
-        }, SC::Conflict);
-    }
-
-    bool displayApplied = false;
-    if (applyDisplay) {
-        if (!loaded_ || !loaded_->ok || !transformed_
-            || loaded_->manifest.lgs_path_abspath != sourceLgsPath) {
-            return jsonResponse(QJsonObject{
-                {"ok", false},
-                {"operation", QStringLiteral("scientific_alignment_export")},
-                {"export_completed", true},
-                {"already_complete", exported.alreadyComplete},
-                {"member_id", exported.memberId},
-                {"output_directory", exported.finalDirectory},
-                {"display_applied", false},
-                {"error", QStringLiteral(
-                    "alignment exported, but the loaded run changed before display application")},
-                {"manifest", exported.manifest},
-            }, SC::Conflict);
         }
 
-        QString displayError;
-        if (!exported.primaryAlignment.ok
-            || !transformed_->setScientificAlignment(
-                exported.primaryAlignment, &displayError)) {
-            if (displayError.isEmpty())
-                displayError = exported.primaryAlignment.error;
-            qCCritical(cRest).noquote()
-                << "alignment exported but exact display application failed"
-                << "| member=" << exported.memberId
-                << "| error=" << displayError;
-            return jsonResponse(QJsonObject{
-                {"ok", false},
-                {"operation", QStringLiteral("scientific_alignment_export")},
-                {"export_completed", true},
-                {"already_complete", exported.alreadyComplete},
-                {"member_id", exported.memberId},
-                {"output_directory", exported.finalDirectory},
-                {"display_applied", false},
-                {"error", displayError},
-                {"manifest", exported.manifest},
-            }, SC::InternalServerError);
-        }
-        displayApplied = true;
-    }
+        return DeferredJsonResponse{
+            QJsonObject{
+                {"frames", static_cast<qint64>(result->frameCount)},
+                {"atoms", static_cast<qint64>(result->atomCount)},
+                {"bonds", static_cast<qint64>(result->bondCount)},
+            },
+            SC::Ok,
+        };
+    };
 
-    return jsonResponse(QJsonObject{
-        {"ok", true},
-        {"operation", QStringLiteral("scientific_alignment_export")},
-        {"already_complete", exported.alreadyComplete},
-        {"member_id", exported.memberId},
-        {"output_directory", exported.finalDirectory},
-        {"display_applied", displayApplied},
-        {"manifest", exported.manifest},
+    auto* operation = new QueuedJsonOperation(std::move(responder),
+                                              socketForRequest(request),
+                                              std::move(step),
+                                              QueuedJsonOperation::Finished{},
+                                              this);
+    operation->setObjectName(QStringLiteral("modelInputExportOperation"));
+    modelInputExporter_ = exporter;
+    modelInputOperation_ = operation;
+    QObject::connect(operation, &QObject::destroyed, this, [this, exporter]() {
+        if (modelInputExporter_ == exporter)
+            modelInputExporter_.reset();
+        modelInputOperation_.clear();
+        activeOperationFinished();
     });
+    qCInfo(cRest).noquote() << "model-input export started";
+    operation->start();
 }
 
 void RestServer::registerRoutes() {
@@ -2069,39 +1964,12 @@ void RestServer::registerRoutes() {
         return jsonResponse(restInterfaceDescription());
     });
 
-    server_->route(QStringLiteral("/api/alignment/export"), Method::Post,
-                   [this](const QHttpServerRequest& request) {
-        return beginAlignmentExport(request);
-    });
-
-    server_->route(QStringLiteral("/api/alignment/export/status"), [this]() {
-        ASSERT_THREAD(this);
-        return jsonResponse(QJsonObject{
-            {"ok", true},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"running", alignmentRequestActive_},
-            {"cancel_requested", alignmentExportControl_
-                && alignmentExportControl_->cancelRequested()},
+    server_->route(
+        QStringLiteral("/api/model-input/export"), Method::Post,
+        [this](const QHttpServerRequest& request,
+               HttpResponderRouteArgument responder) {
+            beginModelInputExport(request, std::move(responder));
         });
-    });
-
-    server_->route(QStringLiteral("/api/alignment/export/cancel"), Method::Post,
-                   [this]() {
-        ASSERT_THREAD(this);
-        if (!alignmentRequestActive_ || !alignmentExportControl_) {
-            return errorResponse(
-                QStringLiteral("no scientific alignment export is running"),
-                SC::Conflict);
-        }
-        alignmentExportControl_->requestCancel();
-        qCInfo(cRest).noquote()
-            << "scientific alignment export cancellation requested";
-        return jsonResponse(QJsonObject{
-            {"ok", true},
-            {"operation", QStringLiteral("scientific_alignment_export")},
-            {"cancel_requested", true},
-        }, SC::Accepted);
-    });
 
     server_->route(QStringLiteral("/api/video/export"), Method::Post,
                    [this](const QHttpServerRequest& req) {
@@ -5355,8 +5223,9 @@ void RestServer::registerRoutes() {
         restoreLiveDftFrame();
         writeJson(responder, response->body, response->status);
 #else
-        auto* operation =
-            new QueuedJsonOperation(std::move(responder), std::move(scanStep), std::move(restoreLiveDftFrame), this);
+        auto* operation = new QueuedJsonOperation(
+            std::move(responder), socketForRequest(req), std::move(scanStep),
+            std::move(restoreLiveDftFrame), this);
         operation->setObjectName(QStringLiteral("restheroRingTensorCompareOperation"));
         ringTensorOperation_ = operation;
         operation->start();

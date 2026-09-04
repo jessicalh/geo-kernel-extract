@@ -32,7 +32,6 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS
     Widgets
     OpenGLWidgets
     Network
-    Concurrent
     Multimedia
     Charts
     HttpServer

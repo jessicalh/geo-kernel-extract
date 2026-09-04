@@ -1,7 +1,6 @@
 #include "QtNpyWriter.h"
 
 #include <QByteArray>
-#include <QFileInfo>
 #include <QSaveFile>
 #include <QSysInfo>
 
@@ -65,20 +64,20 @@ QByteArray Header(const QByteArray& dtype,
 
 }  // namespace
 
+QtNpyWriter::Result QtNpyWriter::WriteFloat32(
+    const QString& path,
+    const std::vector<std::size_t>& shape,
+    const std::vector<float>& values) {
+    return WriteRaw(path, QByteArrayLiteral("<f4"), shape, values.data(),
+                    values.size(), sizeof(float));
+}
+
 QtNpyWriter::Result QtNpyWriter::WriteFloat64(
     const QString& path,
     const std::vector<std::size_t>& shape,
     const std::vector<double>& values) {
     return WriteRaw(path, QByteArrayLiteral("<f8"), shape, values.data(),
                     values.size(), sizeof(double));
-}
-
-QtNpyWriter::Result QtNpyWriter::WriteUInt64(
-    const QString& path,
-    const std::vector<std::size_t>& shape,
-    const std::vector<std::uint64_t>& values) {
-    return WriteRaw(path, QByteArrayLiteral("<u8"), shape, values.data(),
-                    values.size(), sizeof(std::uint64_t));
 }
 
 QtNpyWriter::Result QtNpyWriter::WriteUInt8(
@@ -167,7 +166,6 @@ QtNpyWriter::Result QtNpyWriter::WriteRaw(
         return result;
     }
 
-    result.fileSize = QFileInfo(path).size();
     result.ok = true;
     return result;
 }

@@ -146,8 +146,6 @@ qt_add_library(h5reader_core STATIC
     src/model/SignalTimeSeries.cpp
     src/model/StripChartChannel.h
     src/model/DftShielding.h
-    src/model/SphericalDecomposition.h
-    src/model/SphericalDecomposition.cpp
     src/model/DftShieldingStore.h
     src/model/DftShieldingStore.cpp
     src/model/ExperimentalShieldingMlStore.h
@@ -175,8 +173,8 @@ qt_add_library(h5reader_core STATIC
     src/io/QtTrajectoryH5.cpp
     src/io/QtProteinLoader.h
     src/io/QtProteinLoader.cpp
-    src/io/ReaderAlignmentExporter.h
-    src/io/ReaderAlignmentExporter.cpp
+    src/io/ModelInputExporter.h
+    src/io/ModelInputExporter.cpp
     src/io/FrameFieldPolicy.h
     src/io/FrameNpyLoader.h
     src/io/FrameNpyLoader.cpp
@@ -320,7 +318,6 @@ target_link_libraries(h5reader_core PUBLIC
     Qt6::Widgets
     Qt6::OpenGLWidgets
     Qt6::Network
-    Qt6::Concurrent
     Qt6::Multimedia
     Qt6::Charts
     Qt6::HttpServer
@@ -341,43 +338,8 @@ if(COMMAND h5reader_apply_build_type_settings)
     h5reader_apply_build_type_settings(h5reader_core)
 endif()
 
-# Record the source state represented by the binary. The alignment sidecar
-# stores these values as scientific provenance; "unknown" remains explicit
-# when the source was built outside a Git checkout.
-set(H5READER_GIT_COMMIT_VALUE "unknown")
-set(H5READER_GIT_DIRTY_VALUE 1)
-find_package(Git QUIET)
-if(Git_FOUND)
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
-        RESULT_VARIABLE H5READER_GIT_REV_RESULT
-        OUTPUT_VARIABLE H5READER_GIT_COMMIT_VALUE
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    if(NOT H5READER_GIT_REV_RESULT EQUAL 0)
-        set(H5READER_GIT_COMMIT_VALUE "unknown")
-    endif()
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" status --porcelain
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
-        RESULT_VARIABLE H5READER_GIT_STATUS_RESULT
-        OUTPUT_VARIABLE H5READER_GIT_STATUS
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    if(H5READER_GIT_STATUS_RESULT EQUAL 0 AND H5READER_GIT_STATUS STREQUAL "")
-        set(H5READER_GIT_DIRTY_VALUE 0)
-    endif()
-endif()
-
-# Version and source-state macros are visible to every TU in the core lib.
-# PUBLIC keeps test and executable provenance identical to the core.
 target_compile_definitions(h5reader_core PUBLIC
     H5READER_VERSION="0.5.0-rewrite"
-    H5READER_GIT_COMMIT="${H5READER_GIT_COMMIT_VALUE}"
-    H5READER_GIT_DIRTY=${H5READER_GIT_DIRTY_VALUE}
 )
 
 # ============================================================================
@@ -765,8 +727,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/DftShieldingStore.cpp
         src/model/ExperimentalShieldingMlStore.h
         src/model/ExperimentalShieldingMlStore.cpp
-        src/model/SphericalDecomposition.h
-        src/model/SphericalDecomposition.cpp
+        src/physics/SphericalBasis.h
+        src/physics/SphericalBasis.cpp
         src/io/DftShieldingLoader.h
         src/io/DftShieldingLoader.cpp
         src/io/CalcsetManifest.h
@@ -813,8 +775,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/io/OrcaShieldingParser.h
         src/io/OrcaShieldingParser.cpp
         src/model/DftShielding.h
-        src/model/SphericalDecomposition.h
-        src/model/SphericalDecomposition.cpp
+        src/physics/SphericalBasis.h
+        src/physics/SphericalBasis.cpp
         src/diagnostics/ErrorBus.h
         src/diagnostics/ErrorBus.cpp
     )
@@ -854,6 +816,18 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     h5reader_apply_platform_target_settings(h5reader_trajectory_frame_map_tests)
     add_test(NAME h5reader_trajectory_frame_map_tests COMMAND h5reader_trajectory_frame_map_tests)
+
+    qt_add_executable(h5reader_model_input_exporter_tests
+        tests/model_input_exporter_tests.cpp
+    )
+    target_link_libraries(h5reader_model_input_exporter_tests PRIVATE
+        h5reader_core
+        Qt6::Test
+    )
+    vtk_module_autoinit(TARGETS h5reader_model_input_exporter_tests MODULES ${VTK_LIBRARIES})
+    h5reader_apply_platform_target_settings(h5reader_model_input_exporter_tests)
+    add_test(NAME h5reader_model_input_exporter_tests
+             COMMAND h5reader_model_input_exporter_tests)
 
     qt_add_executable(h5reader_ring_current_case_tests
         tests/ring_current_case_tests.cpp
@@ -913,34 +887,38 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         TIMEOUT 300
     )
 
-    option(H5READER_ENABLE_ALIGNMENT_CONTRACT_TEST
-        "Enable the authoritative SMB-backed alignment export contract test"
+    option(H5READER_ENABLE_MODEL_INPUT_CONTRACT_TEST
+        "Enable the Reader model-input export contract test"
         OFF)
-    if(WIN32 AND H5READER_ENABLE_ALIGNMENT_CONTRACT_TEST)
-        set(H5READER_ALIGNMENT_REST_FIXTURE_DEFAULT
-            "//batcave.lan/expansion/traj_extract_s15_mopac/bmr4095/run_20260612T070927Z_1372178_20260727T180005Z.lgs"
-            CACHE FILEPATH "Target-free fixture for scientific alignment export integration")
-        add_test(NAME h5reader_alignment_export_integration
+    set(H5READER_MODEL_INPUT_REST_FIXTURE "" CACHE FILEPATH
+        "LGS fixture for the Reader model-input export contract test")
+    if(H5READER_ENABLE_MODEL_INPUT_CONTRACT_TEST)
+        if(NOT H5READER_MODEL_INPUT_REST_FIXTURE
+           OR NOT EXISTS "${H5READER_MODEL_INPUT_REST_FIXTURE}")
+            message(FATAL_ERROR
+                "H5READER_ENABLE_MODEL_INPUT_CONTRACT_TEST requires an existing H5READER_MODEL_INPUT_REST_FIXTURE")
+        endif()
+        add_test(NAME h5reader_model_input_export_contract
                  COMMAND ${Python3_EXECUTABLE} -m pytest
-                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_alignment_export.py
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_model_input_export.py
                          -v --tb=short)
-        set_tests_properties(h5reader_alignment_export_integration PROPERTIES
+        set_tests_properties(h5reader_model_input_export_contract PROPERTIES
             ENVIRONMENT
-                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_ALIGNMENT_REST_FIXTURE_DEFAULT};H5READER_ALIGNMENT_EXPORT_ENABLED=1;H5READER_REST_STARTUP_TIMEOUT=300"
-            LABELS "rest;e2e;alignment;contract"
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_MODEL_INPUT_REST_FIXTURE};H5READER_MODEL_INPUT_EXPORT_ENABLED=1;H5READER_REST_STARTUP_TIMEOUT=300"
+            LABELS "rest;e2e;model-input;contract"
             TIMEOUT 1200
-            RESOURCE_LOCK h5reader_alignment_fixture
+            RESOURCE_LOCK h5reader_model_input_fixture
         )
-        add_test(NAME h5reader_alignment_shutdown_integration
+        add_test(NAME h5reader_model_input_shutdown
                  COMMAND ${Python3_EXECUTABLE} -m pytest
-                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_alignment_shutdown.py
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_model_input_shutdown.py
                          -v --tb=short)
-        set_tests_properties(h5reader_alignment_shutdown_integration PROPERTIES
+        set_tests_properties(h5reader_model_input_shutdown PROPERTIES
             ENVIRONMENT
-                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_ALIGNMENT_REST_FIXTURE_DEFAULT};H5READER_ALIGNMENT_EXPORT_ENABLED=1;H5READER_REST_STARTUP_TIMEOUT=300"
-            LABELS "rest;e2e;alignment;shutdown"
+                "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_MODEL_INPUT_REST_FIXTURE};H5READER_MODEL_INPUT_EXPORT_ENABLED=1;H5READER_REST_STARTUP_TIMEOUT=300"
+            LABELS "rest;e2e;model-input;shutdown"
             TIMEOUT 600
-            RESOURCE_LOCK h5reader_alignment_fixture
+            RESOURCE_LOCK h5reader_model_input_fixture
         )
     endif()
 
@@ -1283,7 +1261,12 @@ set(CPACK_PACKAGE_NAME "h5reader")
 set(CPACK_PACKAGE_VENDOR "h5reader")
 set(CPACK_PACKAGE_VERSION "0.5.0")
 if(WIN32)
-    # Keep NSIS staging paths below legacy MAX_PATH: ROCm kernel filenames are long.
+    # NSIS still opens staged files through legacy MAX_PATH APIs. Some shipped
+    # ROCm kernel names leave too little room for an arbitrary build path.
+    file(TO_CMAKE_PATH "$ENV{TEMP}" _h5reader_package_directory)
+    if(_h5reader_package_directory)
+        set(CPACK_PACKAGE_DIRECTORY "${_h5reader_package_directory}/h5reader-cpack")
+    endif()
     set(CPACK_PACKAGE_FILE_NAME "h5reader-${CPACK_PACKAGE_VERSION}-win64")
 else()
     set(CPACK_PACKAGE_FILE_NAME

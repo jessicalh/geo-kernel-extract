@@ -23,24 +23,14 @@ struct DftAtomShielding {
     SphericalTensor para;   // paramagnetic part  (total == dia + para, checked)
     Element         element = Element::Unknown;  // cross-check vs topology order
 
-    // Raw 3x3 Cartesian shielding tensors as ORCA printed them (ppm),
-    // BEFORE any spherical decomposition. The viewer never reads these
-    // (it consumes the SphericalTensor fields above); they are retained
-    // additively for the rediscover substrate, which re-decomposes the
-    // raw matrix in the LIBRARY's T2 component order
-    // (rediscover::SphericalBasis::DecomposeLibrary) so DFT-T2 and the
-    // H5 kernel-T2 share a basis. Zero-initialised; populated by
-    // OrcaShieldingParser. Additive, append-only — see DESIGN.md "Reuse
-    // + the only edits to existing reader code".
+    // Raw Cartesian shielding tensors as ORCA printed them (ppm). Reader uses
+    // these for principal-axis display and comparisons in Cartesian space.
     Mat3 total_raw = Mat3::Zero();
     Mat3 dia_raw   = Mat3::Zero();
     Mat3 para_raw  = Mat3::Zero();
 
-    // The ORCA-input Cartesian position (Å) for this atom — the orientation the
-    // shielding tensors above are expressed in. Retained additively so the
-    // extractor can Kabsch-check the DFT frame against the H5 frame and decide
-    // whether the raw-tensor T2 components are comparable (rotation-invariant T0
-    // is safe regardless). Zero until OrcaShieldingParser fills it.
+    // ORCA-input position for this atom, in angstrom, in the same frame as the
+    // Cartesian tensors. Zero until OrcaShieldingParser fills it.
     Vec3 orca_coord = Vec3::Zero();
 };
 

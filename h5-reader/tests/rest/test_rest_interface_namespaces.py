@@ -23,9 +23,7 @@ def test_rest_interface_declares_namespaces(rest):
     routes = {(item["method"], item["path"]): item for item in payload["routes"]}
     assert ("GET", "/api/interface") in routes
     assert ("POST", "/api/screenshot") in routes
-    assert ("POST", "/api/alignment/export") in routes
-    assert ("GET", "/api/alignment/export/status") in routes
-    assert ("POST", "/api/alignment/export/cancel") in routes
+    assert ("POST", "/api/model-input/export") in routes
     assert ("POST", "/api/video/export") in routes
     assert ("GET", "/api/video/export/status") in routes
     assert ("POST", "/api/video/export/stop") in routes
@@ -74,18 +72,17 @@ def test_resthero_and_diagnostics_canonical_routes(rest):
 
 
 def test_old_route_spellings_are_not_kept_as_aliases(rest):
-    for path in (
-        "/rest/interface",
-        "/screenshot",
-        "/ring/null_crossings",
-        "/ring/current_face_collar",
-        "/ring_null_crossings",
-        "/ring_current_face_collar",
-        "/heroshot/clear",
+    for method, path in (
+        ("GET", "/rest/interface"),
+        ("POST", "/screenshot"),
+        ("POST", "/ring/null_crossings"),
+        ("POST", "/ring/current_face_collar"),
+        ("POST", "/ring_null_crossings"),
+        ("POST", "/ring_current_face_collar"),
+        ("POST", "/heroshot/clear"),
+        ("POST", "/api/alignment/export"),
+        ("GET", "/api/alignment/export/status"),
+        ("POST", "/api/alignment/export/cancel"),
     ):
-        response = (
-            rest.client.post(path)
-            if path != "/rest/interface"
-            else rest.client.get(path)
-        )
+        response = rest.client.request(method, path)
         assert response.status_code == 404
