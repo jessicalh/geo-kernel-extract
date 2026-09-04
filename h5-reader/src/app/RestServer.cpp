@@ -117,12 +117,6 @@ struct DeferredJsonResponse {
     QHttpServerResponder::StatusCode status = QHttpServerResponder::StatusCode::Ok;
 };
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-using HttpResponderRouteArgument = QHttpServerResponder&;
-#else
-using HttpResponderRouteArgument = QHttpServerResponder&&;
-#endif
-
 DeferredJsonResponse deferredError(const QString& message, QHttpServerResponder::StatusCode status) {
     return {QJsonObject{{"error", message}}, status};
 }
@@ -164,32 +158,44 @@ private:
             return;
         }
 
+        responseStatus_ = response->status;
         writeJson(responder_, response->body, response->status);
         waitForResponseFlush();
     }
 
     void waitForResponseFlush() {
         QTcpSocket* socket = responseSocket_.data();
-        if (!socket || socket->state() == QAbstractSocket::UnconnectedState
-            || socket->bytesToWrite() == 0) {
-            finish();
+        if (!socket) {
+            finish("socket-untracked");
+            return;
+        }
+        if (socket->state() == QAbstractSocket::UnconnectedState) {
+            finish("client-disconnected");
+            return;
+        }
+        if (socket->bytesToWrite() == 0) {
+            finish("flushed");
             return;
         }
         QObject::connect(socket, &QTcpSocket::bytesWritten, this, [this]() {
             QTcpSocket* pending = responseSocket_.data();
             if (!pending || pending->bytesToWrite() == 0)
-                finish();
+                finish("flushed");
         });
         QObject::connect(socket, &QTcpSocket::disconnected,
-                         this, [this]() { finish(); });
+                         this, [this]() { finish("client-disconnected"); });
         QObject::connect(socket, &QObject::destroyed,
-                         this, [this]() { finish(); });
+                         this, [this]() { finish("socket-destroyed"); });
     }
 
-    void finish() {
+    void finish(const char* responseState) {
         if (finishedResponse_)
             return;
         finishedResponse_ = true;
+        qCInfo(cRest).noquote() << "queued REST operation finished"
+                                << "| operation=" << objectName()
+                                << "| status=" << static_cast<int>(responseStatus_)
+                                << "| response=" << responseState;
         if (finished_)
             finished_();
         deleteLater();
@@ -199,6 +205,8 @@ private:
     QPointer<QTcpSocket> responseSocket_;
     Step step_;
     Finished finished_;
+    QHttpServerResponder::StatusCode responseStatus_
+        = QHttpServerResponder::StatusCode::InternalServerError;
     bool finishedResponse_ = false;
 };
 
@@ -1911,7 +1919,7 @@ void RestServer::beginModelInputExport(const QHttpServerRequest& request, QHttpS
         if (result->trajectory) {
             QString displayError;
             if (!transformed_->setScientificAlignment(result->alignment, &displayError)) {
-                qCCritical(cRest).noquote() << "model-input export completed but display alignment failed"
+                qCCritical(cRest).noquote() << "model-input files were written but display alignment failed"
                                             << "| error=" << displayError;
                 return deferredError(displayError, SC::InternalServerError);
             }
@@ -1967,7 +1975,7 @@ void RestServer::registerRoutes() {
     server_->route(
         QStringLiteral("/api/model-input/export"), Method::Post,
         [this](const QHttpServerRequest& request,
-               HttpResponderRouteArgument responder) {
+               QHttpServerResponder& responder) {
             beginModelInputExport(request, std::move(responder));
         });
 
@@ -4634,7 +4642,7 @@ void RestServer::registerRoutes() {
     // state_b_frames are both supplied, the displayed tensors are instead
     // mean(state B)-mean(state A). The solid and wire surfaces share one
     // physical Angstrom-per-ppm scale.
-    auto restheroRingTensorCompareHandler = [this](const QHttpServerRequest& req, HttpResponderRouteArgument responder) {
+    auto restheroRingTensorCompareHandler = [this](const QHttpServerRequest& req, QHttpServerResponder& responder) {
         ASSERT_THREAD(this);
         const auto fail = [&](const QString& message, SC status) {
             writeJson(responder, QJsonObject{{"error", message}}, status);
@@ -5212,24 +5220,12 @@ void RestServer::registerRoutes() {
 
         qCInfo(cRest).noquote() << "resthero ring tensor comparison started | frames=" << frameCount
                                 << "| atoms=" << atomValues.size();
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-        // Qt 6.4 responders retain a raw socket pointer after the route returns.
-        // Complete the request in-handler on that version so client disconnects
-        // cannot leave a delayed write targeting a deleted socket.
-        std::optional<DeferredJsonResponse> response;
-        do {
-            response = scanStep();
-        } while (!response);
-        restoreLiveDftFrame();
-        writeJson(responder, response->body, response->status);
-#else
         auto* operation = new QueuedJsonOperation(
             std::move(responder), socketForRequest(req), std::move(scanStep),
             std::move(restoreLiveDftFrame), this);
         operation->setObjectName(QStringLiteral("restheroRingTensorCompareOperation"));
         ringTensorOperation_ = operation;
         operation->start();
-#endif
     };
     server_->route(QStringLiteral("/resthero/ring_tensor_compare"), Method::Post, restheroRingTensorCompareHandler);
 

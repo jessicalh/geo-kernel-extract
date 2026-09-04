@@ -497,8 +497,13 @@ std::optional<ModelInputExporter::Result> ModelInputExporter::advance() {
             return std::nullopt;
 
         case Phase::Features:
-            if (!projectFeatureFrame(nextFrame_, &error))
-                return finishFailure(error);
+            if (!projectFeatureFrame(nextFrame_, &error)) {
+                return finishFailure(
+                    QStringLiteral("feature projection failed at frame_row=%1, original_frame_index=%2: %3")
+                        .arg(static_cast<qulonglong>(nextFrame_))
+                        .arg(static_cast<qulonglong>(originalFrameIndices_[nextFrame_]))
+                        .arg(error));
+            }
             ++nextFrame_;
             if (nextFrame_ == frameCount_)
                 phase_ = Phase::Files;
@@ -964,7 +969,7 @@ bool ModelInputExporter::writeNextFile(QString* error) {
 
     if (!ok) {
         if (error->isEmpty())
-            *error = written.error;
+            *error = QStringLiteral("%1: %2").arg(path, written.error);
         return false;
     }
     writtenFiles_.push_back(path);
@@ -981,7 +986,7 @@ ModelInputExporter::Result ModelInputExporter::finishSuccess() {
     result.bondCount = bondCount_;
     result.trajectory = trajectory_;
     result.alignment = alignment_;
-    qCInfo(cModelInput).noquote() << "model-input export complete"
+    qCInfo(cModelInput).noquote() << "model-input files written"
                                   << "| frames=" << static_cast<qulonglong>(frameCount_)
                                   << "| atoms=" << static_cast<qulonglong>(atomCount_) << "| output=" << outputDirectory_;
     return result;
@@ -1002,9 +1007,10 @@ ModelInputExporter::Result ModelInputExporter::finishFailure(const QString& erro
 
 void ModelInputExporter::removeWrittenFiles() {
     for (const QString& path : std::as_const(writtenFiles_)) {
-        if (!QFile::remove(path)) {
+        QFile file(path);
+        if (!file.remove()) {
             qCWarning(cModelInput).noquote() << "could not remove incomplete model-input output"
-                                             << "| path=" << path;
+                                             << "| path=" << path << "| error=" << file.errorString();
         }
     }
     writtenFiles_.clear();
