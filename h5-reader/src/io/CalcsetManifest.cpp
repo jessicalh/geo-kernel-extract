@@ -163,15 +163,6 @@ CalcsetManifest::Kind ParseKind(const QString& s, bool& ok) {
     return CalcsetManifest::Kind::Trajectory;
 }
 
-CalcsetManifest::PoseKind ParsePoseKind(const QString& s, bool& ok) {
-    ok = true;
-    if (s == QLatin1String("pdb"))            return CalcsetManifest::PoseKind::Pdb;
-    if (s == QLatin1String("protonated_pdb")) return CalcsetManifest::PoseKind::ProtonatedPdb;
-    if (s == QLatin1String("orca"))           return CalcsetManifest::PoseKind::Orca;
-    ok = false;
-    return CalcsetManifest::PoseKind::Pdb;
-}
-
 // Resolve the calcset_root/<dataset_id>.LGS file from a directory
 // argument by listing `*.LGS`. Zero or more than one match is a hard
 // error per the spec (no glob-and-pick).
@@ -425,15 +416,7 @@ CalcsetManifest::Load(const QString& root_or_lgs_path, QString* err_out) {
                 reportErr(err, m.lgs_path_abspath);
                 return std::nullopt;
             }
-            bool poseOk = false;
-            s.pose_kind = ParsePoseKind(*poseKindStr, poseOk);
-            if (!poseOk) {
-                err = QStringLiteral("single_pose.pose_kind=%1 unknown (expected: pdb | protonated_pdb | orca)")
-                          .arg(*poseKindStr);
-                if (err_out) *err_out = err;
-                reportErr(err, m.lgs_path_abspath);
-                return std::nullopt;
-            }
+            s.pose_kind = *poseKindStr;
             if (auto e = RequireResolvedPath(sobj, QStringLiteral("pose_dir"),
                                               QStringLiteral("single_pose.pose_dir"),
                                               m.calcset_root_abspath, /*mustBeDir=*/true,

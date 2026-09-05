@@ -63,6 +63,21 @@ QString trajectoryLgs(const QString& extraField = QString()) {
     })").arg(extraField);
 }
 
+QString singlePoseLgs(const QString& poseKind) {
+    return QStringLiteral(R"({
+        "schema_version": 1,
+        "kind": "single_pose",
+        "dataset_id": "ds",
+        "protein_id": "X",
+        "human_name": "n",
+        "single_pose": {
+            "pose_kind": "%1",
+            "pose_dir": "pose",
+            "extraction_manifest": "pose/extraction_manifest.json"
+        }
+    })").arg(poseKind);
+}
+
 // Sets up the file/dir scaffolding a minimum trajectory .LGS expects
 // to exist on disk.
 bool scaffoldTrajectoryLayout(const QString& root) {
@@ -96,8 +111,9 @@ private slots:
     void testTrajectoryOptionalReferencePdbAbsent();
     void testTrajectoryOptionalReferencePdbDeclaredButMissing();
 
-    void testSinglePoseHappyPath();
-    void testSinglePoseWrongPoseKind();
+    void testSinglePosePoseKind_data();
+    void testSinglePosePoseKind();
+    void testSinglePoseRejectsEmptyPoseKind();
 
     void testMutantPairNestedLgs();
 
@@ -269,54 +285,38 @@ void CalcsetManifestTests::testTrajectoryOptionalReferencePdbDeclaredButMissing(
 
 // --- single pose ----------------------------------------------------
 
-void CalcsetManifestTests::testSinglePoseHappyPath() {
+void CalcsetManifestTests::testSinglePosePoseKind_data() {
+    QTest::addColumn<QString>("poseKind");
+    QTest::newRow("orca") << QStringLiteral("orca");
+    QTest::newRow("of3") << QStringLiteral("of3");
+    QTest::newRow("future producer") << QStringLiteral("future_source");
+}
+
+void CalcsetManifestTests::testSinglePosePoseKind() {
+    QFETCH(QString, poseKind);
     QTemporaryDir tmp; QVERIFY(tmp.isValid());
     QVERIFY(makeDir(tmp.path() + "/pose"));
     QVERIFY(writeFile(tmp.path() + "/pose/extraction_manifest.json",
                       QStringLiteral("{\"protein_id\":\"X\"}")));
-    QVERIFY(writeFile(tmp.path() + "/test.LGS",
-        QStringLiteral(R"({
-            "schema_version": 1,
-            "kind": "single_pose",
-            "dataset_id": "ds",
-            "protein_id": "X",
-            "human_name": "n",
-            "single_pose": {
-                "pose_kind": "orca",
-                "pose_dir": "pose",
-                "extraction_manifest": "pose/extraction_manifest.json"
-            }
-        })")));
+    QVERIFY(writeFile(tmp.path() + "/test.LGS", singlePoseLgs(poseKind)));
     QString err;
     auto m = CalcsetManifest::Load(tmp.path(), &err);
     QVERIFY2(m.has_value(), qPrintable(err));
     QCOMPARE(m->kind, CalcsetManifest::Kind::SinglePose);
     QVERIFY(m->single_pose.has_value());
-    QCOMPARE(m->single_pose->pose_kind, CalcsetManifest::PoseKind::Orca);
+    QCOMPARE(m->single_pose->pose_kind, poseKind);
     QVERIFY(m->single_pose->pose_dir_abspath.endsWith(QStringLiteral("/pose")));
 }
 
-void CalcsetManifestTests::testSinglePoseWrongPoseKind() {
+void CalcsetManifestTests::testSinglePoseRejectsEmptyPoseKind() {
     QTemporaryDir tmp; QVERIFY(tmp.isValid());
     QVERIFY(makeDir(tmp.path() + "/pose"));
     QVERIFY(writeFile(tmp.path() + "/pose/extraction_manifest.json", QStringLiteral("{}")));
-    QVERIFY(writeFile(tmp.path() + "/test.LGS",
-        QStringLiteral(R"({
-            "schema_version": 1,
-            "kind": "single_pose",
-            "dataset_id": "ds",
-            "protein_id": "X",
-            "human_name": "n",
-            "single_pose": {
-                "pose_kind": "xyz",
-                "pose_dir": "pose",
-                "extraction_manifest": "pose/extraction_manifest.json"
-            }
-        })")));
+    QVERIFY(writeFile(tmp.path() + "/test.LGS", singlePoseLgs(QString())));
     QString err;
     auto m = CalcsetManifest::Load(tmp.path(), &err);
     QVERIFY(!m.has_value());
-    QVERIFY(err.contains(QStringLiteral("pose_kind=xyz unknown")));
+    QVERIFY(err.contains(QStringLiteral("key 'pose_kind' is empty")));
 }
 
 // --- mutant pair ----------------------------------------------------

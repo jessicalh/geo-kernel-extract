@@ -79,8 +79,7 @@ private:
  * the relative path written in the .LGS).
  */
 struct CalcsetManifest {
-    enum class Kind     { Trajectory, SinglePose, MutantPair };
-    enum class PoseKind { Pdb, ProtonatedPdb, Orca };
+    enum class Kind { Trajectory, SinglePose, MutantPair };
 
     int     schema_version = 0;
     Kind    kind = Kind::Trajectory;
@@ -99,9 +98,9 @@ struct CalcsetManifest {
         QString reference_pdb_abspath;  // optional; empty if absent
     };
     struct SinglePose {
-        PoseKind pose_kind = PoseKind::Pdb;
-        QString  pose_dir_abspath;
-        QString  extraction_manifest_abspath;
+        QString pose_kind;
+        QString pose_dir_abspath;
+        QString extraction_manifest_abspath;
     };
     struct MutantPair {
         QString wt_lgs_abspath;
