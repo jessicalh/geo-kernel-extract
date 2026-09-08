@@ -37,6 +37,23 @@ RingGeometry FitRingGeometry(const std::vector<Vec3>& verts);
 // Convenience: RingVertices + FitRingGeometry at (ringIdx, frame).
 RingGeometry RingGeometryAt(const Conformation& conf, std::size_t ringIdx, std::size_t frame);
 
+// Right-handed coordinates fixed to an ordered ring. The first usable ring
+// vertex defines the in-plane u axis; the winding normal defines n.
+struct RingLocalFrame {
+    bool         valid = false;
+    RingGeometry geometry;
+    Vec3         u = Vec3::Zero();
+    Vec3         v = Vec3::Zero();
+    Vec3         n = Vec3::Zero();
+};
+
+RingLocalFrame RingLocalFrameFromGeometry(const std::vector<Vec3>& vertices,
+                                          const RingGeometry& geometry);
+RingLocalFrame RingLocalFrameAt(const Conformation& conf, std::size_t ringIdx,
+                                std::size_t frame);
+Vec3 ToRingLocal(const RingLocalFrame& frame, const Vec3& worldPosition);
+Vec3 FromRingLocal(const RingLocalFrame& frame, const Vec3& localPosition);
+
 // Ring null surface geometry -- the operational ring-null-crossing statistic.
 // null_margin_A = radial_A - sqrt(2) * abs(axial_A). A ring null crossing is
 // a sign change of that value between adjacent sampled frames.

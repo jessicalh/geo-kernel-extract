@@ -68,6 +68,56 @@ RingGeometry RingGeometryAt(const Conformation& conf, std::size_t ringIdx, std::
     return FitRingGeometry(RingVertices(conf, ringIdx, frame));
 }
 
+RingLocalFrame RingLocalFrameFromGeometry(const std::vector<Vec3>& vertices,
+                                          const RingGeometry& geometry) {
+    RingLocalFrame out;
+    out.geometry = geometry;
+
+    const double normalNorm = out.geometry.normal.norm();
+    if (vertices.empty() || out.geometry.radius < 1e-9 || normalNorm < 1e-12)
+        return out;
+
+    out.n = out.geometry.normal / normalNorm;
+    for (const Vec3& vertex : vertices) {
+        Vec3 radial = vertex - out.geometry.center;
+        radial -= out.n * radial.dot(out.n);
+        const double radialNorm = radial.norm();
+        if (radialNorm > 1e-9) {
+            out.u = radial / radialNorm;
+            break;
+        }
+    }
+    if (out.u.norm() < 1e-9)
+        out.u = OrthoBasisFromNormal(out.n).u;
+
+    out.v = out.n.cross(out.u);
+    const double vNorm = out.v.norm();
+    if (vNorm < 1e-12)
+        return out;
+    out.v /= vNorm;
+    out.u = out.v.cross(out.n).normalized();
+    out.valid = true;
+    return out;
+}
+
+RingLocalFrame RingLocalFrameAt(const Conformation& conf, std::size_t ringIdx,
+                                std::size_t frame) {
+    const std::vector<Vec3> vertices = RingVertices(conf, ringIdx, frame);
+    return RingLocalFrameFromGeometry(vertices, FitRingGeometry(vertices));
+}
+
+Vec3 ToRingLocal(const RingLocalFrame& frame, const Vec3& worldPosition) {
+    const Vec3 delta = worldPosition - frame.geometry.center;
+    return Vec3(delta.dot(frame.u), delta.dot(frame.v), delta.dot(frame.n));
+}
+
+Vec3 FromRingLocal(const RingLocalFrame& frame, const Vec3& localPosition) {
+    return frame.geometry.center
+        + frame.u * localPosition.x()
+        + frame.v * localPosition.y()
+        + frame.n * localPosition.z();
+}
+
 // --- Geometry of an ordered atom selection -------------------------------
 
 namespace {

@@ -35,7 +35,7 @@
 #include "../model/DisplayPolicy.h"
 #include "../model/MetricTaxonomy.h"
 #include "../model/QtProtein.h"
-#include "../model/RingCurrentFaceCollar.h"
+#include "../model/RingCurrentPathAnalysis.h"
 #include "../model/RingNullCollar.h"
 #include "../model/TrajectoryConformation.h"
 #include "../model/TrajectorySignalCatalog.h"
@@ -477,82 +477,20 @@ QJsonArray doubleVectorToJson(const std::vector<double>& values) {
     return out;
 }
 
-struct RingLocalFrame {
-    bool valid = false;
-    model::RingGeometry geometry;
-    model::Vec3 u = model::Vec3::Zero();
-    model::Vec3 v = model::Vec3::Zero();
-    model::Vec3 n = model::Vec3::Zero();
-};
-
-RingLocalFrame ringLocalFrameFromGeometry(const std::vector<model::Vec3>& verts, const model::RingGeometry& geometry) {
-    RingLocalFrame out;
-
-    out.geometry = geometry;
-
-    const double nNorm = out.geometry.normal.norm();
-    if (verts.empty() || out.geometry.radius < 1e-9 || nNorm < 1e-12)
-        return out;
-
-    out.n = out.geometry.normal / nNorm;
-    for (const model::Vec3& vert : verts) {
-        model::Vec3 radial = vert - out.geometry.center;
-        radial -= out.n * radial.dot(out.n);
-        const double rNorm = radial.norm();
-        if (rNorm > 1e-9) {
-            out.u = radial / rNorm;
-            break;
-        }
-    }
-    if (out.u.norm() < 1e-9) {
-        const model::RingOrthoBasis fallback = model::OrthoBasisFromNormal(out.n);
-        out.u = fallback.u;
-    }
-    out.v = out.n.cross(out.u);
-    const double vNorm = out.v.norm();
-    if (vNorm < 1e-12)
-        return out;
-    out.v /= vNorm;
-    out.u = out.v.cross(out.n).normalized();
-    out.valid = true;
-    return out;
-}
-
-RingLocalFrame ringLocalFrameAt(const model::Conformation& conf, std::size_t ringIdx, std::size_t frame) {
-    const std::vector<model::Vec3> verts = model::RingVertices(conf, ringIdx, frame);
-    return ringLocalFrameFromGeometry(verts, model::FitRingGeometry(verts));
-}
-
-RingLocalFrame circularRingLocalFrameAt(const model::Conformation& conf, std::size_t ringIdx, std::size_t frame) {
+model::RingLocalFrame circularRingLocalFrameAt(const model::Conformation& conf,
+                                               std::size_t ringIdx,
+                                               std::size_t frame) {
     const std::vector<model::Vec3> verts = model::RingVertices(conf, ringIdx, frame);
     const model::RingGeometry windingGeometry = model::FitRingGeometry(verts);
     model::RingGeometry geometry = windingGeometry;
     const auto plane = physics::FitCircularRingPlane(verts);
     if (!plane)
-        return RingLocalFrame{};
+        return model::RingLocalFrame{};
     geometry.center = plane->center;
     geometry.normal = plane->normal;
     if (geometry.normal.dot(windingGeometry.normal) < 0.0)
         geometry.normal *= -1.0;
-    return ringLocalFrameFromGeometry(verts, geometry);
-}
-
-model::Vec3 toRingLocal(const RingLocalFrame& frame, const model::Vec3& world) {
-    const model::Vec3 delta = world - frame.geometry.center;
-    return model::Vec3(delta.dot(frame.u), delta.dot(frame.v), delta.dot(frame.n));
-}
-
-model::Vec3 fromRingLocal(const RingLocalFrame& frame, const model::Vec3& local) {
-    return frame.geometry.center
-        + frame.u * local.x()
-        + frame.v * local.y()
-        + frame.n * local.z();
-}
-
-double ringCurrentExpectedValue(const model::RingNullMeasurement& m) {
-    if (!m.valid || m.distanceA <= 1e-12)
-        return std::numeric_limits<double>::quiet_NaN();
-    return m.angularFactor / (m.distanceA * m.distanceA * m.distanceA);
+    return model::RingLocalFrameFromGeometry(verts, geometry);
 }
 
 QJsonObject sphericalTensorToJson(const model::SphericalTensor& tensor) {
@@ -918,29 +856,29 @@ QJsonObject ringCurrentFitToJson(const model::RingCurrentLinearFit& fit) {
     };
 }
 
-QJsonObject ringCurrentSampleToJson(const model::RingCurrentFaceSample& sample) {
+QJsonObject ringCurrentSampleToJson(const model::RingCurrentPathSample& sample) {
     return QJsonObject{
         {"frame", sample.frameIndex},
         {"time_ps", finiteJson(sample.timePs)},
-        {"expected_relationship_value", finiteJson(sample.expectedRelationshipValue)},
-        {"distance_only_value", finiteJson(sample.distanceOnlyValue)},
-        {"angular_only_value", finiteJson(sample.angularOnlyValue)},
+        {"expected_relationship_value", finiteJson(sample.pointDipoleGeometryA3)},
+        {"distance_only_value", finiteJson(sample.inverseDistanceCubedA3)},
+        {"angular_only_value", finiteJson(sample.angularFactor)},
         {"biot_savart", sphericalTensorToJson(sample.biotSavart)},
         {"geometry", ringNullMeasurementToJson(sample.geometry)},
         {"orca", dftShieldingToJson(sample.orca)},
     };
 }
 
-QJsonArray ringCurrentSamplesToJson(const std::vector<model::RingCurrentFaceSample>& samples) {
+QJsonArray ringCurrentSamplesToJson(const std::vector<model::RingCurrentPathSample>& samples) {
     QJsonArray out;
-    for (const model::RingCurrentFaceSample& sample : samples)
+    for (const model::RingCurrentPathSample& sample : samples)
         out.append(ringCurrentSampleToJson(sample));
     return out;
 }
 
-QJsonObject ringCurrentEntryToJson(const model::QtProtein& protein,
-                                   const model::RingCurrentFaceEntry& entry,
-                                   bool includeSamples) {
+QJsonObject ringCurrentPathToJson(const model::QtProtein& protein,
+                                  const model::RingCurrentPathResult& entry,
+                                  bool includeSamples) {
     QJsonObject out{
         {"atom", static_cast<qint64>(entry.atom)},
         {"ring", static_cast<qint64>(entry.ring)},
@@ -948,29 +886,29 @@ QJsonObject ringCurrentEntryToJson(const model::QtProtein& protein,
         {"ring_identity", proteinRingIdentityToJson(protein, entry.ring)},
         {"sample_count", static_cast<int>(entry.samples.size())},
         {"hard_lobe_crossing", entry.hardLobeCrossing},
-        {"positive_template_samples", entry.positiveTemplateSamples},
-        {"negative_template_samples", entry.negativeTemplateSamples},
-        {"template_sign_changes", entry.templateSignChanges},
-        {"min_expected_relationship_value", finiteJson(entry.minTemplate)},
-        {"max_expected_relationship_value", finiteJson(entry.maxTemplate)},
-        {"expected_relationship_span", finiteJson(entry.templateSpan)},
+        {"positive_template_samples", entry.positivePredictorSamples},
+        {"negative_template_samples", entry.negativePredictorSamples},
+        {"template_sign_changes", entry.predictorSignChanges},
+        {"min_expected_relationship_value", finiteJson(entry.minPointDipoleGeometryA3)},
+        {"max_expected_relationship_value", finiteJson(entry.maxPointDipoleGeometryA3)},
+        {"expected_relationship_span", finiteJson(entry.pointDipoleGeometrySpanA3)},
         {"fits", QJsonObject{
-            {"orca_total_T0", ringCurrentFitToJson(entry.orcaTotalT0)},
-            {"orca_diamagnetic_T0", ringCurrentFitToJson(entry.orcaDiamagneticT0)},
-            {"orca_paramagnetic_T0", ringCurrentFitToJson(entry.orcaParamagneticT0)},
-            {"orca_total_T2_magnitude", ringCurrentFitToJson(entry.orcaTotalT2Magnitude)},
+            {"orca_total_T0", ringCurrentFitToJson(entry.orcaTotalT0VsPointDipole)},
+            {"orca_diamagnetic_T0", ringCurrentFitToJson(entry.orcaDiamagneticT0VsPointDipole)},
+            {"orca_paramagnetic_T0", ringCurrentFitToJson(entry.orcaParamagneticT0VsPointDipole)},
+            {"orca_total_T2_magnitude", ringCurrentFitToJson(entry.orcaTotalT2MagnitudeVsPointDipole)},
             {"biot_savart_T0_vs_orca_total_T0",
-             ringCurrentFitToJson(entry.biotSavartOrcaTotalT0)},
+             ringCurrentFitToJson(entry.orcaTotalT0VsBiotSavartT0)},
         }},
         {"predictor_diagnostics", QJsonObject{
             {"expected_relationship_value_vs_biot_savart_T0",
-             ringCurrentFitToJson(entry.expectedRelationshipBiotSavartT0)},
+             ringCurrentFitToJson(entry.biotSavartT0VsPointDipole)},
         }},
         {"confound_fits", QJsonObject{
             {"distance_only_orca_total_T0",
-             ringCurrentFitToJson(entry.distanceOnlyOrcaTotalT0)},
+             ringCurrentFitToJson(entry.orcaTotalT0VsDistanceOnly)},
             {"angular_only_orca_total_T0",
-             ringCurrentFitToJson(entry.angularOnlyOrcaTotalT0)},
+             ringCurrentFitToJson(entry.orcaTotalT0VsAngleOnly)},
         }},
     };
     if (includeSamples)
@@ -2680,14 +2618,14 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/api/ring/null_crossings"), Method::Post,
                    ringNullCrossingsHandler);
 
-    // ---- ring-current receiver: stash paths, fit ORCA -------------------
+    // ---- ring-current path analysis ------------------------------------
     //
     // POST /api/ring/current_face_collar {"atom"?, "ring"?, "start_frame"?,
     //                                     "end_frame"?, "min_samples"?}
-    // Collects atom/ring paths whose expected ring-current relationship value
-    // samples both lobes, then evaluates the stash as:
+    // Compares paths that sample both signs of the point-dipole geometry with
+    // the attached ORCA shielding values:
     // ORCA_component = intercept + scale * expected_relationship_value.
-    auto ringCurrentFaceCollarHandler = [this](const QHttpServerRequest& req) {
+    auto ringCurrentPathAnalysisHandler = [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
         const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
         model::Conformation* conf = loaded_ ? loaded_->conformation.get() : nullptr;
@@ -2703,7 +2641,7 @@ void RestServer::registerRoutes() {
         if (!ok)
             return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
 
-        model::RingCurrentFaceCollarOptions options;
+        model::RingCurrentPathAnalysisOptions options;
         if (body.contains(QStringLiteral("atom"))) {
             const qint64 raw = body.value(QStringLiteral("atom")).toInteger(-1);
             if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
@@ -2737,10 +2675,10 @@ void RestServer::registerRoutes() {
                                  SC::BadRequest);
 
         if (body.contains(QStringLiteral("template_zero_tolerance")))
-            options.templateZeroTolerance =
+            options.predictorZeroToleranceA3 =
                 body.value(QStringLiteral("template_zero_tolerance")).toDouble(-1.0);
-        if (!std::isfinite(options.templateZeroTolerance) ||
-            options.templateZeroTolerance < 0.0) {
+        if (!std::isfinite(options.predictorZeroToleranceA3) ||
+            options.predictorZeroToleranceA3 < 0.0) {
             return errorResponse(QStringLiteral("template_zero_tolerance must be finite and >= 0"),
                                  SC::BadRequest);
         }
@@ -2750,11 +2688,11 @@ void RestServer::registerRoutes() {
         options.minSamples = body.value(QStringLiteral("min_samples")).toInt(6);
         options.minSamplesPerLobe =
             body.value(QStringLiteral("min_samples_per_lobe")).toInt(3);
-        options.minExpectedRelationshipSpan =
+        options.minPredictorSpanA3 =
             body.value(QStringLiteral("min_expected_relationship_span")).toDouble(0.02);
-        options.minAbsLobeExpectedValue =
+        options.minAbsLobePredictorA3 =
             body.value(QStringLiteral("min_abs_lobe_expected_value")).toDouble(0.005);
-        options.maxEntries = body.value(QStringLiteral("max_entries")).toInt(25);
+        options.maxPaths = body.value(QStringLiteral("max_entries")).toInt(25);
         options.nullShiftCount = body.value(QStringLiteral("null_shift_count")).toInt(64);
         if (options.minSamples < 3 || options.minSamples > 1000)
             return errorResponse(QStringLiteral("min_samples must be between 3 and 1000"),
@@ -2762,17 +2700,17 @@ void RestServer::registerRoutes() {
         if (options.minSamplesPerLobe < 1 || options.minSamplesPerLobe > options.minSamples)
             return errorResponse(QStringLiteral("min_samples_per_lobe must be between 1 and min_samples"),
                                  SC::BadRequest);
-        if (!std::isfinite(options.minExpectedRelationshipSpan) ||
-            options.minExpectedRelationshipSpan < 0.0) {
+        if (!std::isfinite(options.minPredictorSpanA3) ||
+            options.minPredictorSpanA3 < 0.0) {
             return errorResponse(QStringLiteral("min_expected_relationship_span must be finite and >= 0"),
                                  SC::BadRequest);
         }
-        if (!std::isfinite(options.minAbsLobeExpectedValue) ||
-            options.minAbsLobeExpectedValue < 0.0) {
+        if (!std::isfinite(options.minAbsLobePredictorA3) ||
+            options.minAbsLobePredictorA3 < 0.0) {
             return errorResponse(QStringLiteral("min_abs_lobe_expected_value must be finite and >= 0"),
                                  SC::BadRequest);
         }
-        if (options.maxEntries < 0 || options.maxEntries > 500)
+        if (options.maxPaths < 0 || options.maxPaths > 500)
             return errorResponse(QStringLiteral("max_entries must be between 0 and 500"),
                                  SC::BadRequest);
         if (options.nullShiftCount < 0 || options.nullShiftCount > 500)
@@ -2787,16 +2725,16 @@ void RestServer::registerRoutes() {
         }
         const bool includeSamples = body.value(QStringLiteral("include_samples")).toBool(true);
 
-        model::RingCurrentFaceCollar collar(options);
+        model::RingCurrentPathAnalysis analysis(options);
         QString collectError;
-        if (!collar.collect(*protein, *conf, loaded_->manifest.dft->frames, &collectError))
+        if (!analysis.run(*protein, *conf, loaded_->manifest.dft->frames, &collectError))
             return errorResponse(collectError, SC::BadRequest);
 
         QJsonArray entries;
-        for (const model::RingCurrentFaceEntry& entry : collar.entries())
-            entries.append(ringCurrentEntryToJson(*protein, entry, includeSamples));
+        for (const model::RingCurrentPathResult& entry : analysis.paths())
+            entries.append(ringCurrentPathToJson(*protein, entry, includeSamples));
 
-        const model::RingCurrentFaceCollarSummary& summary = collar.summary();
+        const model::RingCurrentPathAnalysisSummary& summary = analysis.summary();
         QJsonObject out{
             {"kind", QStringLiteral("ring_current_face_collar")},
             {"receiver", QJsonObject{
@@ -2830,14 +2768,14 @@ void RestServer::registerRoutes() {
                 {"end_frame", options.endFrame ? QJsonValue(*options.endFrame)
                                                : QJsonValue(QJsonValue::Null)},
                 {"surface_tolerance_A", options.surfaceToleranceA},
-                {"template_zero_tolerance", options.templateZeroTolerance},
+                {"template_zero_tolerance", options.predictorZeroToleranceA3},
                 {"include_saturated", options.includeSaturatedRings},
                 {"full_scan", explicitFullScan},
                 {"min_samples", options.minSamples},
                 {"min_samples_per_lobe", options.minSamplesPerLobe},
-                {"min_expected_relationship_span", options.minExpectedRelationshipSpan},
-                {"min_abs_lobe_expected_value", options.minAbsLobeExpectedValue},
-                {"max_entries", options.maxEntries},
+                {"min_expected_relationship_span", options.minPredictorSpanA3},
+                {"min_abs_lobe_expected_value", options.minAbsLobePredictorA3},
+                {"max_entries", options.maxPaths},
                 {"null_shift_count", options.nullShiftCount},
                 {"include_samples", includeSamples},
             }},
@@ -2852,15 +2790,15 @@ void RestServer::registerRoutes() {
                 {"paths_rejected_for_samples", summary.pathsRejectedForSamples},
                 {"paths_rejected_for_hard_crossing", summary.pathsRejectedForHardCrossing},
                 {"paths_rejected_for_weak_lobes", summary.pathsRejectedForWeakLobes},
-                {"entry_count", summary.entryCount},
-                {"truncated_by_max_entries", summary.truncatedByMaxEntries},
+                {"entry_count", summary.pathCount},
+                {"truncated_by_max_entries", summary.truncatedByMaxPaths},
             }},
             {"entries", entries},
         };
         return jsonResponse(out);
     };
     server_->route(QStringLiteral("/api/ring/current_face_collar"), Method::Post,
-                   ringCurrentFaceCollarHandler);
+                   ringCurrentPathAnalysisHandler);
 
     // ---- UI state introspection -----------------------------------------
     //
@@ -4125,10 +4063,11 @@ void RestServer::registerRoutes() {
                 QStringLiteral("coordinate_space=source_ring_local requires {\"ring\": N}"),
                 SC::BadRequest);
         }
-        RingLocalFrame referenceRingFrame;
+        model::RingLocalFrame referenceRingFrame;
         if (coordinateSpace == QStringLiteral("source_ring_local")) {
             referenceRingFrame =
-                ringLocalFrameAt(*conf, *ring, static_cast<std::size_t>(referenceFrame));
+                model::RingLocalFrameAt(*conf, *ring,
+                                        static_cast<std::size_t>(referenceFrame));
             if (!referenceRingFrame.valid)
                 return errorResponse(QStringLiteral("reference ring geometry invalid"),
                                      SC::BadRequest);
@@ -4241,11 +4180,11 @@ void RestServer::registerRoutes() {
             };
             if (ring) {
                 if (coordinateSpace == QStringLiteral("source_ring_local")) {
-                    const RingLocalFrame sourceRingFrame =
-                        ringLocalFrameAt(*conf, *ring, static_cast<std::size_t>(f));
+                    const model::RingLocalFrame sourceRingFrame =
+                        model::RingLocalFrameAt(*conf, *ring, static_cast<std::size_t>(f));
                     if (sourceRingFrame.valid) {
-                        sourceRingLocal = toRingLocal(sourceRingFrame, sourcePosition);
-                        drawnPosition = fromRingLocal(referenceRingFrame, sourceRingLocal);
+                        sourceRingLocal = model::ToRingLocal(sourceRingFrame, sourcePosition);
+                        drawnPosition = model::FromRingLocal(referenceRingFrame, sourceRingLocal);
                         sourceMeasure =
                             model::MeasureRingNull(sourceRingFrame.geometry, sourcePosition);
                         projectedMeasure =
@@ -4269,8 +4208,10 @@ void RestServer::registerRoutes() {
                     }
                 } else {
                     ++ringValidCount;
-                    sourceKernel = ringCurrentExpectedValue(sourceMeasure);
-                    projectedKernel = ringCurrentExpectedValue(projectedMeasure);
+                    sourceKernel =
+                        model::RingCurrentPathAnalysis::pointDipoleGeometryA3(sourceMeasure);
+                    projectedKernel =
+                        model::RingCurrentPathAnalysis::pointDipoleGeometryA3(projectedMeasure);
                     if (colorBy == QStringLiteral("ring_current")) {
                         sample.intensity = sourceKernel;
                     } else if (colorBy == QStringLiteral("null_margin")) {
@@ -4301,7 +4242,7 @@ void RestServer::registerRoutes() {
                                    vec3FromEigen(sourceRingLocal));
 
                         const model::Vec3 roundtripLocal =
-                            toRingLocal(referenceRingFrame, drawnPosition);
+                            model::ToRingLocal(referenceRingFrame, drawnPosition);
                         const double localRoundtripDelta =
                             (roundtripLocal - sourceRingLocal).norm();
                         const double kernelDelta =
@@ -4485,7 +4426,7 @@ void RestServer::registerRoutes() {
                                                   : liveFrame,
                                               0,
                                               frameCount - 1);
-        const RingLocalFrame reference =
+        const model::RingLocalFrame reference =
             circularRingLocalFrameAt(*conf, referenceRing, static_cast<std::size_t>(referenceFrame));
         if (!reference.valid)
             return errorResponse(QStringLiteral("reference ring geometry invalid"), SC::Conflict);
@@ -4547,7 +4488,7 @@ void RestServer::registerRoutes() {
         double maxRoundtripDeltaA = 0.0;
 
         for (const int frame : frames) {
-            const RingLocalFrame sourceReference =
+            const model::RingLocalFrame sourceReference =
                 circularRingLocalFrameAt(*conf, referenceRing, static_cast<std::size_t>(frame));
             if (!sourceReference.valid)
                 return errorResponse(QStringLiteral("source ring geometry invalid"), SC::Conflict);
@@ -4570,9 +4511,12 @@ void RestServer::registerRoutes() {
             for (std::size_t atomSlot = 0; atomSlot < atoms.size(); ++atomSlot) {
                 const std::size_t atom = atoms[atomSlot];
                 const model::Vec3 sourcePosition = conf->atomPosition(static_cast<std::size_t>(frame), atom);
-                const model::Vec3 localPosition = toRingLocal(sourceReference, sourcePosition);
-                const model::Vec3 drawnPosition = fromRingLocal(reference, localPosition);
-                const double roundtripDelta = (toRingLocal(reference, drawnPosition) - localPosition).norm();
+                const model::Vec3 localPosition =
+                    model::ToRingLocal(sourceReference, sourcePosition);
+                const model::Vec3 drawnPosition =
+                    model::FromRingLocal(reference, localPosition);
+                const double roundtripDelta =
+                    (model::ToRingLocal(reference, drawnPosition) - localPosition).norm();
                 maxRoundtripDeltaA = std::max(maxRoundtripDeltaA, roundtripDelta);
 
                 double shieldingT0 = 0.0;

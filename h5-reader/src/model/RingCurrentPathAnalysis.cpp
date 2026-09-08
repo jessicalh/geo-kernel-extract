@@ -1,4 +1,4 @@
-#include "RingCurrentFaceCollar.h"
+#include "RingCurrentPathAnalysis.h"
 
 #include "Conformation.h"
 #include "QtProtein.h"
@@ -8,9 +8,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <numeric>
-#include <limits>
 #include <optional>
 #include <utility>
 
@@ -18,8 +18,6 @@ namespace h5reader::model {
 namespace {
 
 struct LoadedDftFrame {
-    int frameIndex = -1;
-    double timePs = 0.0;
     std::shared_ptr<const DftShieldingFrame> shielding;
 };
 
@@ -29,7 +27,7 @@ struct DftCandidate {
 };
 
 std::vector<std::size_t> atomScanList(const QtProtein& protein,
-                                      const RingCurrentFaceCollarOptions& options) {
+                                      const RingCurrentPathAnalysisOptions& options) {
     std::vector<std::size_t> out;
     if (options.atom) {
         out.push_back(*options.atom);
@@ -42,7 +40,7 @@ std::vector<std::size_t> atomScanList(const QtProtein& protein,
 }
 
 std::vector<std::size_t> ringScanList(const QtProtein& protein,
-                                      const RingCurrentFaceCollarOptions& options) {
+                                      const RingCurrentPathAnalysisOptions& options) {
     std::vector<std::size_t> out;
     if (options.ring) {
         out.push_back(*options.ring);
@@ -69,23 +67,7 @@ std::optional<LoadedDftFrame> loadDftFrame(const h5reader::io::DftFrame& declare
     if (!frame || !frame->valid || frame->atoms.size() < protein.atomCount())
         return std::nullopt;
 
-    return LoadedDftFrame{
-        declared.frame_index,
-        declared.framePs(),
-        std::move(frame),
-    };
-}
-
-double expectedRelationshipValue(const RingNullMeasurement& geometry) {
-    if (!geometry.valid || geometry.distanceA <= 1e-9)
-        return 0.0;
-    return geometry.angularFactor / (geometry.distanceA * geometry.distanceA * geometry.distanceA);
-}
-
-double distanceOnlyValue(const RingNullMeasurement& geometry) {
-    if (!geometry.valid || geometry.distanceA <= 1e-9)
-        return 0.0;
-    return 1.0 / (geometry.distanceA * geometry.distanceA * geometry.distanceA);
+    return LoadedDftFrame{std::move(frame)};
 }
 
 int signOf(double value, double tolerance) {
@@ -98,7 +80,7 @@ double t2Magnitude(const SphericalTensor& tensor) {
     return tensor.T2Magnitude();
 }
 
-using SampleSignal = double (*)(const RingCurrentFaceSample&);
+using SampleSignal = double (*)(const RingCurrentPathSample&);
 
 struct FitSignals {
     SampleSignal expected = nullptr;
@@ -114,7 +96,7 @@ struct RegressionResult {
     double sst = 0.0;
 };
 
-RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples,
+RingCurrentLinearFit fitLinear(const std::vector<RingCurrentPathSample>& samples,
                                FitSignals channels,
                                int requestedNullShifts) {
     RingCurrentLinearFit out;
@@ -127,7 +109,7 @@ RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples
     std::vector<double> y;
     x.reserve(n);
     y.reserve(n);
-    for (const RingCurrentFaceSample& sample : samples) {
+    for (const RingCurrentPathSample& sample : samples) {
         const double xi = channels.expected(sample);
         const double yi = channels.observed(sample);
         if (!std::isfinite(xi) || !std::isfinite(yi))
@@ -217,50 +199,66 @@ RingCurrentLinearFit fitLinear(const std::vector<RingCurrentFaceSample>& samples
     return out;
 }
 
-double orcaTotalT0(const RingCurrentFaceSample& sample) {
+double orcaTotalT0(const RingCurrentPathSample& sample) {
     return sample.orca.total.T0;
 }
 
-double expectedValue(const RingCurrentFaceSample& sample) {
-    return sample.expectedRelationshipValue;
+double pointDipoleValue(const RingCurrentPathSample& sample) {
+    return sample.pointDipoleGeometryA3;
 }
 
-double distanceValue(const RingCurrentFaceSample& sample) {
-    return sample.distanceOnlyValue;
+double distanceValue(const RingCurrentPathSample& sample) {
+    return sample.inverseDistanceCubedA3;
 }
 
-double angularValue(const RingCurrentFaceSample& sample) {
-    return sample.angularOnlyValue;
+double angularValue(const RingCurrentPathSample& sample) {
+    return sample.angularFactor;
 }
 
-double biotSavartT0(const RingCurrentFaceSample& sample) {
+double biotSavartT0(const RingCurrentPathSample& sample) {
     return sample.biotSavart.T0;
 }
 
-double orcaDiaT0(const RingCurrentFaceSample& sample) {
+double orcaDiaT0(const RingCurrentPathSample& sample) {
     return sample.orca.dia.T0;
 }
 
-double orcaParaT0(const RingCurrentFaceSample& sample) {
+double orcaParaT0(const RingCurrentPathSample& sample) {
     return sample.orca.para.T0;
 }
 
-double orcaTotalT2Magnitude(const RingCurrentFaceSample& sample) {
+double orcaTotalT2Magnitude(const RingCurrentPathSample& sample) {
     return t2Magnitude(sample.orca.total);
 }
 
 }  // namespace
 
-RingCurrentFaceCollar::RingCurrentFaceCollar(const RingCurrentFaceCollarOptions& options)
+RingCurrentPathAnalysis::RingCurrentPathAnalysis(const RingCurrentPathAnalysisOptions& options)
     : options_(options) {}
 
-bool RingCurrentFaceCollar::collect(
+double RingCurrentPathAnalysis::pointDipoleGeometryA3(
+    const RingNullMeasurement& geometry) {
+    if (!geometry.valid || geometry.distanceA <= 1e-9)
+        return 0.0;
+    return geometry.angularFactor /
+           (geometry.distanceA * geometry.distanceA * geometry.distanceA);
+}
+
+double RingCurrentPathAnalysis::inverseDistanceCubedA3(
+    const RingNullMeasurement& geometry) {
+    if (!geometry.valid || geometry.distanceA <= 1e-9)
+        return 0.0;
+    return 1.0 /
+           (geometry.distanceA * geometry.distanceA * geometry.distanceA);
+}
+
+bool RingCurrentPathAnalysis::run(
     const QtProtein& protein,
     const Conformation& conformation,
     const std::vector<h5reader::io::DftFrame>& dftFrames,
     QString* error) {
     summary_ = {};
-    entries_.clear();
+    paths_.clear();
     summary_.dftFramesDeclared = static_cast<int>(dftFrames.size());
 
     if (protein.atomCount() == 0 || protein.ringCount() == 0) {
@@ -288,9 +286,10 @@ bool RingCurrentFaceCollar::collect(
             *error = QStringLiteral("surfaceToleranceA must be finite and >= 0");
         return false;
     }
-    if (!std::isfinite(options_.templateZeroTolerance) || options_.templateZeroTolerance < 0.0) {
+    if (!std::isfinite(options_.predictorZeroToleranceA3) ||
+        options_.predictorZeroToleranceA3 < 0.0) {
         if (error)
-            *error = QStringLiteral("templateZeroTolerance must be finite and >= 0");
+            *error = QStringLiteral("predictorZeroToleranceA3 must be finite and >= 0");
         return false;
     }
     if (options_.minSamples < 3) {
@@ -303,17 +302,17 @@ bool RingCurrentFaceCollar::collect(
             *error = QStringLiteral("minSamplesPerLobe must be >= 1");
         return false;
     }
-    if (!std::isfinite(options_.minExpectedRelationshipSpan) ||
-        options_.minExpectedRelationshipSpan < 0.0 ||
-        !std::isfinite(options_.minAbsLobeExpectedValue) ||
-        options_.minAbsLobeExpectedValue < 0.0) {
+    if (!std::isfinite(options_.minPredictorSpanA3) ||
+        options_.minPredictorSpanA3 < 0.0 ||
+        !std::isfinite(options_.minAbsLobePredictorA3) ||
+        options_.minAbsLobePredictorA3 < 0.0) {
         if (error)
             *error = QStringLiteral("minimum lobe thresholds must be finite and >= 0");
         return false;
     }
-    if (options_.maxEntries < 0 || options_.nullShiftCount < 0) {
+    if (options_.maxPaths < 0 || options_.nullShiftCount < 0) {
         if (error)
-            *error = QStringLiteral("maxEntries and nullShiftCount must be >= 0");
+            *error = QStringLiteral("maxPaths and nullShiftCount must be >= 0");
         return false;
     }
 
@@ -416,18 +415,18 @@ bool RingCurrentFaceCollar::collect(
         for (std::size_t atom : atoms) {
             ++summary_.pathsConsidered;
 
-            RingCurrentFaceEntry entry;
-            entry.atom = atom;
-            entry.ring = ring;
-            entry.minTemplate = std::numeric_limits<double>::infinity();
-            entry.maxTemplate = -std::numeric_limits<double>::infinity();
+            RingCurrentPathResult path;
+            path.atom = atom;
+            path.ring = ring;
+            path.minPointDipoleGeometryA3 = std::numeric_limits<double>::infinity();
+            path.maxPointDipoleGeometryA3 = -std::numeric_limits<double>::infinity();
             std::vector<std::size_t> sampleFrameOrdinals;
 
             int previousSign = 0;
             for (std::size_t frameOrdinal = 0; frameOrdinal < candidates.size(); ++frameOrdinal) {
                 const DftCandidate& candidate = candidates[frameOrdinal];
 
-                RingCurrentFaceSample sample;
+                RingCurrentPathSample sample;
                 sample.frameIndex = candidate.declared->frame_index;
                 sample.timePs = candidate.declared->framePs();
                 sample.geometry =
@@ -436,61 +435,66 @@ bool RingCurrentFaceCollar::collect(
                                     options_.surfaceToleranceA);
                 if (!sample.geometry.valid)
                     continue;
-                sample.expectedRelationshipValue = expectedRelationshipValue(sample.geometry);
-                sample.distanceOnlyValue = distanceOnlyValue(sample.geometry);
-                sample.angularOnlyValue = sample.geometry.angularFactor;
-                if (!std::isfinite(sample.expectedRelationshipValue) ||
-                    !std::isfinite(sample.distanceOnlyValue) ||
-                    !std::isfinite(sample.angularOnlyValue))
+                sample.pointDipoleGeometryA3 =
+                    RingCurrentPathAnalysis::pointDipoleGeometryA3(sample.geometry);
+                sample.inverseDistanceCubedA3 =
+                    RingCurrentPathAnalysis::inverseDistanceCubedA3(sample.geometry);
+                sample.angularFactor = sample.geometry.angularFactor;
+                if (!std::isfinite(sample.pointDipoleGeometryA3) ||
+                    !std::isfinite(sample.inverseDistanceCubedA3) ||
+                    !std::isfinite(sample.angularFactor))
                     continue;
 
-                entry.minTemplate = std::min(entry.minTemplate, sample.expectedRelationshipValue);
-                entry.maxTemplate = std::max(entry.maxTemplate, sample.expectedRelationshipValue);
+                path.minPointDipoleGeometryA3 =
+                    std::min(path.minPointDipoleGeometryA3, sample.pointDipoleGeometryA3);
+                path.maxPointDipoleGeometryA3 =
+                    std::max(path.maxPointDipoleGeometryA3, sample.pointDipoleGeometryA3);
                 const int currentSign =
-                    signOf(sample.expectedRelationshipValue, options_.templateZeroTolerance);
+                    signOf(sample.pointDipoleGeometryA3, options_.predictorZeroToleranceA3);
                 if (currentSign > 0)
-                    ++entry.positiveTemplateSamples;
+                    ++path.positivePredictorSamples;
                 else if (currentSign < 0)
-                    ++entry.negativeTemplateSamples;
+                    ++path.negativePredictorSamples;
                 if (previousSign != 0 && currentSign != 0 && previousSign != currentSign)
-                    ++entry.templateSignChanges;
+                    ++path.predictorSignChanges;
                 if (currentSign != 0)
                     previousSign = currentSign;
 
                 sampleFrameOrdinals.push_back(frameOrdinal);
-                entry.samples.push_back(std::move(sample));
+                path.samples.push_back(std::move(sample));
             }
 
-            if (static_cast<int>(entry.samples.size()) < options_.minSamples) {
+            if (static_cast<int>(path.samples.size()) < options_.minSamples) {
                 ++summary_.pathsRejectedForSamples;
                 continue;
             }
 
-            entry.templateSpan = entry.maxTemplate - entry.minTemplate;
-            entry.hardLobeCrossing =
-                entry.positiveTemplateSamples >= options_.minSamplesPerLobe &&
-                entry.negativeTemplateSamples >= options_.minSamplesPerLobe &&
-                entry.templateSignChanges > 0;
-            if (!entry.hardLobeCrossing) {
+            path.pointDipoleGeometrySpanA3 =
+                path.maxPointDipoleGeometryA3 - path.minPointDipoleGeometryA3;
+            path.hardLobeCrossing =
+                path.positivePredictorSamples >= options_.minSamplesPerLobe &&
+                path.negativePredictorSamples >= options_.minSamplesPerLobe &&
+                path.predictorSignChanges > 0;
+            if (!path.hardLobeCrossing) {
                 ++summary_.pathsRejectedForHardCrossing;
                 continue;
             }
-            if (entry.templateSpan < options_.minExpectedRelationshipSpan ||
-                entry.maxTemplate < options_.minAbsLobeExpectedValue ||
-                -entry.minTemplate < options_.minAbsLobeExpectedValue) {
+            if (path.pointDipoleGeometrySpanA3 < options_.minPredictorSpanA3 ||
+                path.maxPointDipoleGeometryA3 < options_.minAbsLobePredictorA3 ||
+                -path.minPointDipoleGeometryA3 < options_.minAbsLobePredictorA3) {
                 ++summary_.pathsRejectedForWeakLobes;
                 continue;
             }
 
             bool hasDftForAllSamples = true;
-            for (std::size_t i = 0; i < entry.samples.size(); ++i) {
+            for (std::size_t i = 0; i < path.samples.size(); ++i) {
                 const std::size_t frameOrdinal = sampleFrameOrdinals[i];
                 const LoadedDftFrame* frame = loadedDftAt(frameOrdinal);
                 if (!frame || !frame->shielding || atom >= frame->shielding->atoms.size()) {
                     hasDftForAllSamples = false;
                     break;
                 }
-                RingCurrentFaceSample& sample = entry.samples[i];
+                RingCurrentPathSample& sample = path.samples[i];
                 sample.orca = frame->shielding->atoms[atom];
                 sample.biotSavart = h5reader::calculators::EvaluateShielding(
                     sample.geometry.atomPosition,
@@ -508,38 +512,38 @@ bool RingCurrentFaceCollar::collect(
                 continue;
             }
 
-            entry.orcaTotalT0 =
-                fitLinear(entry.samples, {expectedValue, orcaTotalT0}, options_.nullShiftCount);
-            entry.orcaDiamagneticT0 =
-                fitLinear(entry.samples, {expectedValue, orcaDiaT0}, options_.nullShiftCount);
-            entry.orcaParamagneticT0 =
-                fitLinear(entry.samples, {expectedValue, orcaParaT0}, options_.nullShiftCount);
-            entry.orcaTotalT2Magnitude =
-                fitLinear(entry.samples, {expectedValue, orcaTotalT2Magnitude},
+            path.orcaTotalT0VsPointDipole =
+                fitLinear(path.samples, {pointDipoleValue, orcaTotalT0}, options_.nullShiftCount);
+            path.orcaDiamagneticT0VsPointDipole =
+                fitLinear(path.samples, {pointDipoleValue, orcaDiaT0}, options_.nullShiftCount);
+            path.orcaParamagneticT0VsPointDipole =
+                fitLinear(path.samples, {pointDipoleValue, orcaParaT0}, options_.nullShiftCount);
+            path.orcaTotalT2MagnitudeVsPointDipole =
+                fitLinear(path.samples, {pointDipoleValue, orcaTotalT2Magnitude},
                           options_.nullShiftCount);
-            entry.biotSavartOrcaTotalT0 =
-                fitLinear(entry.samples, {biotSavartT0, orcaTotalT0},
+            path.orcaTotalT0VsBiotSavartT0 =
+                fitLinear(path.samples, {biotSavartT0, orcaTotalT0},
                           options_.nullShiftCount);
-            entry.expectedRelationshipBiotSavartT0 =
-                fitLinear(entry.samples, {expectedValue, biotSavartT0},
+            path.biotSavartT0VsPointDipole =
+                fitLinear(path.samples, {pointDipoleValue, biotSavartT0},
                           options_.nullShiftCount);
-            entry.distanceOnlyOrcaTotalT0 =
-                fitLinear(entry.samples, {distanceValue, orcaTotalT0}, options_.nullShiftCount);
-            entry.angularOnlyOrcaTotalT0 =
-                fitLinear(entry.samples, {angularValue, orcaTotalT0}, options_.nullShiftCount);
+            path.orcaTotalT0VsDistanceOnly =
+                fitLinear(path.samples, {distanceValue, orcaTotalT0}, options_.nullShiftCount);
+            path.orcaTotalT0VsAngleOnly =
+                fitLinear(path.samples, {angularValue, orcaTotalT0}, options_.nullShiftCount);
 
-            entries_.push_back(std::move(entry));
-            if (options_.maxEntries > 0 &&
-                static_cast<int>(entries_.size()) >= options_.maxEntries) {
-                summary_.entryCount = static_cast<int>(entries_.size());
-                summary_.truncatedByMaxEntries = summary_.pathsConsidered < totalPaths;
-                summary_.complete = !summary_.truncatedByMaxEntries;
+            paths_.push_back(std::move(path));
+            if (options_.maxPaths > 0 &&
+                static_cast<int>(paths_.size()) >= options_.maxPaths) {
+                summary_.pathCount = static_cast<int>(paths_.size());
+                summary_.truncatedByMaxPaths = summary_.pathsConsidered < totalPaths;
+                summary_.complete = !summary_.truncatedByMaxPaths;
                 return true;
             }
         }
     }
 
-    summary_.entryCount = static_cast<int>(entries_.size());
+    summary_.pathCount = static_cast<int>(paths_.size());
     summary_.complete = true;
     return true;
 }

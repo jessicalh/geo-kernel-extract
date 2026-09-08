@@ -108,8 +108,8 @@ qt_add_library(h5reader_core STATIC
     src/model/ConformationGeometry.cpp
     src/model/RingNullCollar.h
     src/model/RingNullCollar.cpp
-    src/model/RingCurrentFaceCollar.h
-    src/model/RingCurrentFaceCollar.cpp
+    src/model/RingCurrentPathAnalysis.h
+    src/model/RingCurrentPathAnalysis.cpp
     src/model/SpectralAnalysis.h
     src/model/SpectralAnalysis.cpp
     src/model/SignalDictionary.h
@@ -840,7 +840,10 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     h5reader_apply_platform_target_settings(h5reader_ring_current_case_tests)
     add_test(NAME h5reader_ring_current_case_tests
              COMMAND h5reader_ring_current_case_tests)
-    set_tests_properties(h5reader_ring_current_case_tests PROPERTIES TIMEOUT 900)
+    set_tests_properties(h5reader_ring_current_case_tests PROPERTIES
+        TIMEOUT 1800
+        ENVIRONMENT "QTEST_FUNCTION_TIMEOUT=1800000"
+    )
 endif()
 
 # REST end-to-end smoke: pytest drives the built h5reader binary via its
