@@ -1,6 +1,6 @@
 #include "HeroshotButterflyOverlay.h"
 
-#include "../calculators/QtBiotSavartCalc.h"
+#include "../calculators/BiotSavartRingCurrent.h"
 #include "../calculators/QtHaighMallionCalc.h"
 #include "../calculators/QtPhysicalConstants.h"
 #include "../model/Conformation.h"
@@ -43,7 +43,8 @@ struct RingSampleSource {
     std::vector<model::Vec3> vertices;
     double planeRmsA = 0.0;
     double lobeOffsetA = 0.0;
-    double intensityNA = 0.0;
+    double intensityNAperT = 0.0;
+    std::optional<calculators::BiotSavartRingCurrent> biotSavart;
     std::optional<physics::CircularRingParameters> circular;
 };
 
@@ -130,18 +131,21 @@ makeCircularSourceLoopActor(const RingSampleSource& source, const HeroshotButter
 double sampleT0(const model::Vec3& p, const RingSampleSource& source, HeroshotButterflyOverlay::Mode mode) {
     switch (mode) {
     case HeroshotButterflyOverlay::Mode::BiotSavart: {
-        const auto st =
-            calculators::EvaluateShielding(p, source.geometry, source.vertices, source.lobeOffsetA, source.intensityNA);
-        return st.T0;
+        return source.biotSavart
+            ? source.biotSavart->evaluate(p, source.intensityNAperT).spherical.T0
+            : 0.0;
     }
     case HeroshotButterflyOverlay::Mode::HaighMallion: {
-        const auto st = calculators::EvaluateShielding(p, source.geometry, source.vertices, source.intensityNA);
+        const auto st = calculators::EvaluateShielding(
+            p, source.geometry, source.vertices, source.intensityNAperT);
         return st.T0;
     }
     case HeroshotButterflyOverlay::Mode::Sum: {
-        const auto stBS =
-            calculators::EvaluateShielding(p, source.geometry, source.vertices, source.lobeOffsetA, source.intensityNA);
-        const auto stHM = calculators::EvaluateShielding(p, source.geometry, source.vertices, source.intensityNA);
+        const auto stBS = source.biotSavart
+            ? source.biotSavart->evaluate(p, source.intensityNAperT).spherical
+            : model::SphericalTensor{};
+        const auto stHM = calculators::EvaluateShielding(
+            p, source.geometry, source.vertices, source.intensityNAperT);
         return stBS.T0 + stHM.T0;
     }
     case HeroshotButterflyOverlay::Mode::CircularCandidateA: {
@@ -228,7 +232,13 @@ bool HeroshotButterflyOverlay::show(const model::QtProtein& protein,
             return false;
         }
         source.lobeOffsetA = ring.JohnsonBoveyLobeOffset();
-        source.intensityNA = ring.LiteratureIntensity();
+        source.intensityNAperT = ring.LiteratureIntensity();
+        source.biotSavart = calculators::BiotSavartRingCurrent::Build(
+            source.vertices, source.lobeOffsetA);
+        if ((style.mode == Mode::BiotSavart || style.mode == Mode::Sum) &&
+            !source.biotSavart) {
+            return false;
+        }
         if (style.mode == Mode::CircularCandidateA) {
             const model::Vec3 windingNormal = source.geometry.normal;
             const auto plane = physics::FitCircularRingPlane(source.vertices);

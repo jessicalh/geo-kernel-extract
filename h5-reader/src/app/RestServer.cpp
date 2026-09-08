@@ -20,6 +20,7 @@
 #include "TensorGhostTrail.h"
 #include "TensorGlyphActor.h"
 
+#include "../calculators/BiotSavartRingCurrent.h"
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/StructuredLogger.h"
@@ -415,6 +416,9 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/current_face_collar"),
                       QStringLiteral("general"),
                       QStringLiteral("Ring-current weak-signal receiver and fit summary.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/ring/biot_savart"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Worked finite-loop Biot-Savart calculation for one ring and point.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/field/null_cone"),
                       QStringLiteral("general"),
                       QStringLiteral("Regular-use ring null surface display.")),
@@ -500,6 +504,49 @@ QJsonObject sphericalTensorToJson(const model::SphericalTensor& tensor) {
         {"T2", array5ToJson(tensor.T2)},
         {"T2_magnitude", finiteJson(tensor.T2Magnitude())},
     };
+}
+
+QJsonArray vec3VectorToJson(const std::vector<model::Vec3>& values) {
+    QJsonArray out;
+    for (const model::Vec3& value : values)
+        out.append(vec3FromEigen(value));
+    return out;
+}
+
+QJsonObject biotSavartSampleToJson(
+    const calculators::BiotSavartRingSample& sample,
+    bool includeSegments) {
+    QJsonObject out{
+        {"status", QString::fromLatin1(
+            calculators::BiotSavartSampleStatusName(sample.status))},
+        {"evaluated", sample.evaluated()},
+        {"point_A", vec3FromEigen(sample.pointA)},
+        {"intensity_nA_per_T",
+         finiteJson(sample.ringCurrentIntensityNanoamperesPerTesla)},
+        {"distance_to_ring_center_A", finiteJson(sample.distanceToCenterA)},
+        {"minimum_distance_to_wire_A", finiteJson(sample.minimumWireDistanceA)},
+        {"induced_B_T_per_T", vec3FromEigen(sample.inducedFieldTeslaPerTesla)},
+        {"shielding_cartesian_ppm", mat3ToJson(sample.shieldingTensorPpm)},
+        {"shielding_spherical", sphericalTensorToJson(sample.spherical)},
+    };
+    if (includeSegments) {
+        QJsonArray segments;
+        for (const calculators::BiotSavartSegmentContribution& segment :
+             sample.segments) {
+            segments.append(QJsonObject{
+                {"ring_edge", static_cast<qint64>(segment.edge)},
+                {"loop_side", segment.loopSide > 0
+                    ? QStringLiteral("positive_normal")
+                    : QStringLiteral("negative_normal")},
+                {"start_A", vec3FromEigen(segment.startA)},
+                {"end_A", vec3FromEigen(segment.endA)},
+                {"induced_B_T_per_T",
+                 vec3FromEigen(segment.inducedFieldTeslaPerTesla)},
+            });
+        }
+        out.insert(QStringLiteral("segments"), segments);
+    }
+    return out;
 }
 
 QJsonObject efgToJson(const model::QtEfg& efg) {
@@ -2618,6 +2665,144 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/api/ring/null_crossings"), Method::Post,
                    ringNullCrossingsHandler);
 
+    // ---- one-ring Biot-Savart calculation ------------------------------
+    //
+    // POST /api/ring/biot_savart
+    //      {"ring": int, "frame"?: int, "atom": int | "point_A": [x,y,z],
+    //       "intensity_nA_per_T"?: number, "include_segments"?: bool}
+    // Exposes one complete finite-loop calculation without involving VTK.
+    // This is the same geometric point sampler as nmr_extract; its separate
+    // ring-atom/topology eligibility filter is intentionally not applied.
+    server_->route(QStringLiteral("/api/ring/biot_savart"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        const auto* conf = loaded_ ? loaded_->conformation.get() : nullptr;
+        if (!protein || !conf)
+            return errorResponse(QStringLiteral("protein/conformation not wired"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(QStringLiteral("invalid JSON body"), SC::BadRequest);
+
+        const qint64 ringValue = body.value(QStringLiteral("ring")).toInteger(-1);
+        if (ringValue < 0 || static_cast<std::size_t>(ringValue) >= protein->ringCount())
+            return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
+        const std::size_t ringIndex = static_cast<std::size_t>(ringValue);
+
+        const int currentFrame = playback_ ? playback_->currentFrame() : 0;
+        const int frame = body.contains(QStringLiteral("frame"))
+            ? body.value(QStringLiteral("frame")).toInt(-1)
+            : currentFrame;
+        if (frame < 0 || static_cast<std::size_t>(frame) >= conf->frameCount())
+            return errorResponse(QStringLiteral("frame out of range"), SC::BadRequest);
+
+        const bool hasAtom = body.contains(QStringLiteral("atom"));
+        const bool hasPoint = body.contains(QStringLiteral("point_A"));
+        if (hasAtom == hasPoint) {
+            return errorResponse(
+                QStringLiteral("body must contain exactly one of atom or point_A"),
+                SC::BadRequest);
+        }
+
+        std::optional<std::size_t> atomIndex;
+        model::Vec3 pointA;
+        if (hasAtom) {
+            const qint64 atomValue = body.value(QStringLiteral("atom")).toInteger(-1);
+            if (atomValue < 0 ||
+                static_cast<std::size_t>(atomValue) >= protein->atomCount()) {
+                return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+            }
+            atomIndex = static_cast<std::size_t>(atomValue);
+            pointA = conf->atomPosition(static_cast<std::size_t>(frame), *atomIndex);
+        } else {
+            const auto point = vec3FromJson(body.value(QStringLiteral("point_A")));
+            if (!point) {
+                return errorResponse(
+                    QStringLiteral("point_A must be an array of three finite numbers"),
+                    SC::BadRequest);
+            }
+            pointA = model::Vec3((*point)[0], (*point)[1], (*point)[2]);
+        }
+
+        const QJsonValue intensityValue =
+            body.value(QStringLiteral("intensity_nA_per_T"));
+        if (!intensityValue.isUndefined() && !intensityValue.isDouble()) {
+            return errorResponse(
+                QStringLiteral("intensity_nA_per_T must be a number"),
+                SC::BadRequest);
+        }
+        const double intensityNanoamperesPerTesla =
+            intensityValue.isUndefined() ? 1.0 : intensityValue.toDouble();
+        if (!std::isfinite(intensityNanoamperesPerTesla)) {
+            return errorResponse(QStringLiteral("intensity_nA_per_T must be finite"),
+                                 SC::BadRequest);
+        }
+        const bool includeSegments =
+            body.value(QStringLiteral("include_segments")).toBool(true);
+
+        const model::QtRing& ring = protein->ring(ringIndex);
+        const auto source = calculators::BiotSavartRingCurrent::Build(
+            model::RingVertices(*conf, ringIndex, static_cast<std::size_t>(frame)),
+            ring.JohnsonBoveyLobeOffset());
+        if (!source) {
+            return errorResponse(QStringLiteral("ring geometry is not evaluable"),
+                                 SC::Conflict);
+        }
+
+        const calculators::BiotSavartRingSample sample =
+            source->evaluate(pointA, intensityNanoamperesPerTesla,
+                             includeSegments);
+        QJsonObject target{
+            {"kind", atomIndex ? QStringLiteral("atom") : QStringLiteral("point")},
+            {"position_A", vec3FromEigen(pointA)},
+        };
+        if (atomIndex) {
+            target.insert(QStringLiteral("atom"), static_cast<qint64>(*atomIndex));
+            target.insert(QStringLiteral("identity"),
+                          proteinAtomIdentityToJson(*protein, *atomIndex));
+        }
+
+        return jsonResponse(QJsonObject{
+            {"kind", QStringLiteral("biot_savart_ring_current")},
+            {"frame", frame},
+            {"original_frame", static_cast<qint64>(
+                 conf->originalFrameIndex(static_cast<std::size_t>(frame)))},
+            {"time_ps", finiteJson(
+                 conf->timePicoseconds(static_cast<std::size_t>(frame)))},
+            {"ring", static_cast<qint64>(ringIndex)},
+            {"ring_identity", proteinRingIdentityToJson(*protein, ringIndex)},
+            {"target", target},
+            {"ring_geometry", QJsonObject{
+                {"ordered_vertices_A", vec3VectorToJson(source->verticesA())},
+                {"center_A", vec3FromEigen(source->geometry().center)},
+                {"normal", vec3FromEigen(source->geometry().normal)},
+                {"mean_radius_A", finiteJson(source->geometry().radius)},
+                {"lobe_offset_A", finiteJson(source->lobeOffsetA())},
+                {"positive_loop_vertices_A",
+                 vec3VectorToJson(source->upperLoopVerticesA())},
+                {"negative_loop_vertices_A",
+                 vec3VectorToJson(source->lowerLoopVerticesA())},
+            }},
+            {"calculation", QJsonObject{
+                {"current_split",
+                 QStringLiteral("for B0 = 1 T, two loops each carry "
+                                "intensity_nA_per_T / 2")},
+                {"unit_kernel",
+                 QStringLiteral("at intensity 1 nA/T, the ppm values numerically "
+                                "equal nmr_extract's ppm T/nA unit-current kernel")},
+                {"shielding_tensor",
+                 QStringLiteral("sigma_ab = -(B_induced,a / B0) n_b * 10^6")},
+                {"sampling",
+                 QStringLiteral("single-ring geometric point sampler; atom topology "
+                                "filter not applied")},
+            }},
+            {"sample", biotSavartSampleToJson(sample, includeSegments)},
+        });
+    });
+
     // ---- ring-current path analysis ------------------------------------
     //
     // POST /api/ring/current_face_collar {"atom"?, "ring"?, "start_frame"?,
@@ -2751,7 +2936,7 @@ void RestServer::registerRoutes() {
                 {"predictor_diagnostic_model",
                  QStringLiteral("recomputed_BS_T0 = intercept + scale * expected_relationship_value + residual")},
                 {"biot_savart_source",
-                 QStringLiteral("recomputed from current ring geometry via QtBiotSavartCalc and ring literature intensity; "
+                 QStringLiteral("recomputed from current ring geometry via BiotSavartRingCurrent and ring literature intensity; "
                                  "does not read ring_contributions.npy")},
                 {"hard_crossing_requirement",
                  QStringLiteral("positive and negative expected_relationship_value samples with at least one sign change")},

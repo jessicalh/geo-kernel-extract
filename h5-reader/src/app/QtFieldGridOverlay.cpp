@@ -1,6 +1,6 @@
 #include "QtFieldGridOverlay.h"
 
-#include "../calculators/QtBiotSavartCalc.h"
+#include "../calculators/BiotSavartRingCurrent.h"
 #include "../calculators/QtHaighMallionCalc.h"
 #include "../calculators/QtPhysicalConstants.h"
 
@@ -281,11 +281,19 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
     rg.imageData->SetOrigin(origin[0], origin[1], origin[2]);
     rg.imageData->SetSpacing(spacing, spacing, spacing);
 
-    const double intensityNA = ring.LiteratureIntensity();
+    const double intensityNAperT = ring.LiteratureIntensity();
     const double lobeOffsetA = ring.JohnsonBoveyLobeOffset();
+    const auto biotSavart = calculators::BiotSavartRingCurrent::Build(
+        vertices, lobeOffsetA);
+    if ((mode_ == FieldGridMode::BiotSavart || mode_ == FieldGridMode::Sum) &&
+        !biotSavart) {
+        rg.actorShielded->SetVisibility(0);
+        rg.actorDeshielded->SetVisibility(0);
+        return;
+    }
 
-    // Evaluate kernel at every grid point. PointInValidRange inside
-    // each calculator handles "too close" / "inside ring" / "too far".
+    // Evaluate each kernel at every grid point. Biot-Savart rejects only the
+    // actual offset-wire singularity and the 15 A spatial cutoff.
     for (int iz = 0; iz < dim; ++iz) {
         for (int iy = 0; iy < dim; ++iy) {
             for (int ix = 0; ix < dim; ++ix) {
@@ -297,22 +305,23 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
                 double t0 = 0.0;
                 switch (mode_) {
                     case FieldGridMode::BiotSavart: {
-                        const auto st = calculators::EvaluateShielding(
-                            p, geo, vertices, lobeOffsetA, intensityNA);
-                        t0 = st.T0;
+                        t0 = biotSavart
+                            ? biotSavart->evaluate(p, intensityNAperT).spherical.T0
+                            : 0.0;
                         break;
                     }
                     case FieldGridMode::HaighMallion: {
                         const auto st = calculators::EvaluateShielding(
-                            p, geo, vertices, intensityNA);
+                            p, geo, vertices, intensityNAperT);
                         t0 = st.T0;
                         break;
                     }
                     case FieldGridMode::Sum: {
-                        const auto stBS = calculators::EvaluateShielding(
-                            p, geo, vertices, lobeOffsetA, intensityNA);
+                        const auto stBS = biotSavart
+                            ? biotSavart->evaluate(p, intensityNAperT).spherical
+                            : model::SphericalTensor{};
                         const auto stHM = calculators::EvaluateShielding(
-                            p, geo, vertices, intensityNA);
+                            p, geo, vertices, intensityNAperT);
                         t0 = stBS.T0 + stHM.T0;
                         break;
                     }

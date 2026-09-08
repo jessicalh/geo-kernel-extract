@@ -280,8 +280,8 @@ qt_add_library(h5reader_core STATIC
 
     # Closed-form kernel evaluators
     src/calculators/QtPhysicalConstants.h
-    src/calculators/QtBiotSavartCalc.h
-    src/calculators/QtBiotSavartCalc.cpp
+    src/calculators/BiotSavartRingCurrent.h
+    src/calculators/BiotSavartRingCurrent.cpp
     src/calculators/QtHaighMallionCalc.h
     src/calculators/QtHaighMallionCalc.cpp
 

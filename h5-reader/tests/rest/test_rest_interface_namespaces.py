@@ -32,6 +32,7 @@ def test_rest_interface_declares_namespaces(rest):
     assert ("POST", "/scene/camera") in routes
     assert ("POST", "/api/ring/null_crossings") in routes
     assert ("POST", "/api/ring/current_face_collar") in routes
+    assert ("POST", "/api/ring/biot_savart") in routes
     assert ("POST", "/field/null_cone") in routes
     assert ("POST", "/resthero/atom_track") in routes
     assert ("POST", "/resthero/ring_system_cloud") in routes

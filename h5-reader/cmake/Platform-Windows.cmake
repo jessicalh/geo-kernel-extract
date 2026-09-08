@@ -119,7 +119,7 @@ function(h5reader_apply_platform_target_settings target)
         target_compile_definitions(${target} PRIVATE NOMINMAX)
 
         # AVX2 baseline for MSVC. Eigen's vectorised paths and the
-        # Biot-Savart inner loops (QtBiotSavartCalc, QtHaighMallionCalc,
+        # Ring-current inner loops (BiotSavartRingCurrent, QtHaighMallionCalc,
         # QtBFieldStreamOverlay grid eval) all benefit. Strix Halo /
         # Zen 4 / Zen 5 / any Haswell+ Intel supports AVX2 natively;
         # the adviser-class Win11 machines this binary targets all

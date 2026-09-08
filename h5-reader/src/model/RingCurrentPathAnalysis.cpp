@@ -3,7 +3,7 @@
 #include "Conformation.h"
 #include "QtProtein.h"
 
-#include "../calculators/QtBiotSavartCalc.h"
+#include "../calculators/BiotSavartRingCurrent.h"
 #include "../io/DftShieldingLoader.h"
 
 #include <algorithm>
@@ -402,14 +402,20 @@ bool RingCurrentPathAnalysis::run(
 
     for (std::size_t ring : rings) {
         const QtRing& qtRing = protein.ring(ring);
+        // The published point-dipole analysis uses the sign-stable winding
+        // normal; its Biot-Savart comparator independently mirrors the producer.
         std::vector<RingGeometry> ringGeometries;
         ringGeometries.reserve(candidates.size());
-        std::vector<std::vector<Vec3>> ringVertices;
-        ringVertices.reserve(candidates.size());
+        std::vector<std::optional<h5reader::calculators::BiotSavartRingCurrent>>
+            biotSavartSources;
+        biotSavartSources.reserve(candidates.size());
         for (const DftCandidate& candidate : candidates) {
-            ringVertices.push_back(
-                RingVertices(conformation, ring, candidate.frameRow));
-            ringGeometries.push_back(FitRingGeometry(ringVertices.back()));
+            const std::vector<Vec3> vertices =
+                RingVertices(conformation, ring, candidate.frameRow);
+            ringGeometries.push_back(FitRingGeometry(vertices));
+            biotSavartSources.push_back(
+                h5reader::calculators::BiotSavartRingCurrent::Build(
+                    vertices, qtRing.JohnsonBoveyLobeOffset()));
         }
 
         for (std::size_t atom : atoms) {
@@ -496,12 +502,14 @@ bool RingCurrentPathAnalysis::run(
                 }
                 RingCurrentPathSample& sample = path.samples[i];
                 sample.orca = frame->shielding->atoms[atom];
-                sample.biotSavart = h5reader::calculators::EvaluateShielding(
-                    sample.geometry.atomPosition,
-                    ringGeometries[frameOrdinal],
-                    ringVertices[frameOrdinal],
-                    qtRing.JohnsonBoveyLobeOffset(),
-                    qtRing.LiteratureIntensity());
+                if (!biotSavartSources[frameOrdinal]) {
+                    hasDftForAllSamples = false;
+                    break;
+                }
+                sample.biotSavart = biotSavartSources[frameOrdinal]
+                    ->evaluate(sample.geometry.atomPosition,
+                               qtRing.LiteratureIntensity())
+                    .spherical;
                 if (!std::isfinite(sample.biotSavart.T0)) {
                     hasDftForAllSamples = false;
                     break;

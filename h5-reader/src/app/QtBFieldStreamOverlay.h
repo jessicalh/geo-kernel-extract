@@ -9,7 +9,7 @@
 //
 // Per-frame update: on setFrame(t) we recompute the grid points
 // (ring-local frame centred on the current frame's ring centre) and
-// the B-field vectors via calculators::EvaluateBField, Modified() the
+// the B-field vectors via BiotSavartRingCurrent, Modified() the
 // structured grid, and vtkStreamTracer reruns on next Render.
 //
 // Ported from ui/src/ButterflyOverlay.cpp. Same stream tracer

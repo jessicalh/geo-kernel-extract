@@ -1,10 +1,9 @@
 // QtPhysicalConstants.h — constants the reader's kernel evaluators need.
 //
 // These are the subset of nmr-shielding's PhysicalConstants.h + TOML
-// numerical guards that the volumetric BS/HM isosurface pipeline
-// depends on. Values are copied verbatim so the reader reproduces the
-// library's sign conventions and numerical behaviour bit-for-bit at
-// open-space grid points.
+// numerical guards that the BS/HM evaluators depend on. Values are copied
+// verbatim so the reader reproduces the producer's sign conventions and
+// numerical behaviour at the same sample point.
 //
 // If any of these drift from the library, butterflies rendered here
 // won't match what BiotSavartResult::SampleKernelAt produces on

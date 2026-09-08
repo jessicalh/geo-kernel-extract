@@ -2,7 +2,7 @@
 
 #include "Colormap.h"
 
-#include "../calculators/QtBiotSavartCalc.h"
+#include "../calculators/BiotSavartRingCurrent.h"
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -169,19 +169,22 @@ void QtBFieldStreamOverlay::UpdateRing(size_t ri, int t) {
     if (!rs.grid) return;
 
     const auto& ring  = protein_->ring(ri);
-    const auto geo    = model::RingGeometryAt(*conformation_, ri, static_cast<size_t>(t));
-    if (geo.radius < 1e-6) {
-        rs.actor->SetVisibility(0);
-        return;
-    }
-    if (visible_) rs.actor->SetVisibility(1);
-
     const auto vertices = model::RingVertices(*conformation_, ri, static_cast<size_t>(t));
     if (vertices.size() < 3) {
         rs.actor->SetVisibility(0);
         return;
     }
 
+    const double lobeOffsetA = ring.JohnsonBoveyLobeOffset();
+    const auto biotSavart = calculators::BiotSavartRingCurrent::Build(
+        vertices, lobeOffsetA);
+    if (!biotSavart || biotSavart->geometry().radius < 1e-6) {
+        rs.actor->SetVisibility(0);
+        return;
+    }
+    if (visible_) rs.actor->SetVisibility(1);
+
+    const model::RingGeometry& geo = biotSavart->geometry();
     // Ring-local orthonormal basis {u, v, n} via the shared helper.
     const auto basis = model::OrthoBasisFromNormal(geo.normal);
     const model::Vec3& n = basis.n;
@@ -189,8 +192,7 @@ void QtBFieldStreamOverlay::UpdateRing(size_t ri, int t) {
     const model::Vec3& v = basis.v;
 
     const double spacing = 2.0 * kGridExtentA / (kGridDim - 1);
-    const double intensityNA = ring.LiteratureIntensity();
-    const double lobeOffsetA = ring.JohnsonBoveyLobeOffset();
+    const double intensityNAperT = ring.LiteratureIntensity();
 
     // Update grid points (ring-local → world) + B-field vectors.
     double magMin =  std::numeric_limits<double>::infinity();
@@ -210,8 +212,9 @@ void QtBFieldStreamOverlay::UpdateRing(size_t ri, int t) {
                 const int idx = ix + iy * kGridDim + iz * kGridDim * kGridDim;
                 rs.gridPoints->SetPoint(idx, p.x(), p.y(), p.z());
 
-                const model::Vec3 B = calculators::EvaluateBField(
-                    p, geo, vertices, lobeOffsetA, intensityNA);
+                const model::Vec3 B = biotSavart
+                    ->evaluate(p, intensityNAperT)
+                    .inducedFieldTeslaPerTesla;
                 rs.vectors->SetTuple3(idx, B.x(), B.y(), B.z());
 
                 const double mag = B.norm();

@@ -6,7 +6,7 @@
 // SampleKernelAt. Same sign convention: V = H * normal,
 // G_ab = -n_b * V_a, scaled by ring-type intensity.
 //
-// Free functions — thread-safe by construction. See QtBiotSavartCalc.h
+// Free functions - thread-safe by construction.
 // for the parallel design notes.
 
 #pragma once
