@@ -41,7 +41,7 @@ public:
     const std::vector<std::size_t>& activeAtoms() const { return activeAtoms_; }
     bool isActive() const { return active_; }
 
-public slots:
+public:
     void reveal(const model::SignalBinding& binding, int frame);
     void clear();
     void setFrame(int t);

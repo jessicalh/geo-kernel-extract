@@ -305,57 +305,6 @@ QtNpyReader::ParsedHeader QtNpyReader::ParseHeader(const QByteArray& bytes, cons
 }
 
 
-// ── Raw-bytes overload (unused by sidecar; reserved for raw scalar NPYs).
-QtNpyReader::StructuredResult
-QtNpyReader::ReadRawBytes(const QString& path, std::vector<unsigned char>& out_bytes, std::size_t& out_record_size) {
-    StructuredResult r;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) {
-        r.error = QStringLiteral("QtNpyReader: could not open %1").arg(path);
-        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
-                                                QStringLiteral("QtNpyReader"),
-                                                r.error,
-                                                path);
-        return r;
-    }
-    const QByteArray bytes = f.readAll();
-    f.close();
-
-    const ParsedHeader hdr = ParseHeader(bytes, path);
-    if (!hdr.ok) {
-        r.error = hdr.error;
-        return r;
-    }
-    r.dtype_descr = hdr.descr_substring;
-    if (hdr.shape.size() != 1) {
-        r.error = QStringLiteral("QtNpyReader::ReadRawBytes: expected 1-D shape in %1").arg(path);
-        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
-                                                QStringLiteral("QtNpyReader"),
-                                                r.error,
-                                                path);
-        return r;
-    }
-    const std::size_t raw = static_cast<std::size_t>(bytes.size()) - hdr.data_offset;
-    if (hdr.shape[0] == 0 || raw % hdr.shape[0] != 0) {
-        r.error = QStringLiteral("QtNpyReader::ReadRawBytes: raw bytes %1 not divisible by row count %2 in %3")
-                      .arg(raw)
-                      .arg(hdr.shape[0])
-                      .arg(path);
-        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
-                                                QStringLiteral("QtNpyReader"),
-                                                r.error,
-                                                path);
-        return r;
-    }
-    out_record_size = raw / hdr.shape[0];
-    out_bytes.assign(reinterpret_cast<const unsigned char*>(bytes.constData() + hdr.data_offset),
-                     reinterpret_cast<const unsigned char*>(bytes.constData()) + bytes.size());
-    r.ok = true;
-    r.row_count = hdr.shape[0];
-    return r;
-}
-
-
 // ── Numeric read with dtype widening ────────────────────────────────
 QtNpyReader::NumericArray QtNpyReader::ReadNumericArrayWidened(const QString& path) {
     NumericArray r;

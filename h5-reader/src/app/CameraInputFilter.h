@@ -3,8 +3,7 @@
 // CameraComposer::applyGesture instead of letting VTK's trackball
 // process them.
 //
-// Pattern from QtAtomPicker (QtAtomPicker.cpp:48 installs an event
-// filter the same way). Per spec/viewport_pipeline_2026-05-30.md §4.1:
+// QtAtomPicker installs its event filter in the same way:
 //   * MouseButtonPress (Left/Middle/Right) starts a gesture
 //   * MouseMove drives the active gesture, calls
 //     CameraComposer::applyGesture, asks MoleculeScene to render
@@ -22,9 +21,7 @@
 //   Shift+Left drag — pan
 //   Wheel           — dolly
 //
-// No touch / 3D-mouse arms per the implementation prompt §1 (decision:
-// no touch, no SpaceMouse). Future input devices add their arms here
-// without changing the rest of the pipeline.
+// Touch and 3D-mouse input are not handled here.
 
 #pragma once
 

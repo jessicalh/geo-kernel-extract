@@ -7,8 +7,8 @@
 // or sits near them) appears at the plane's centroid each frame, so the
 // 1.5 px-floor of plane lock applies to the user's actual focus.
 //
-// Per spec/viewport_pipeline_2026-05-30.md §3.1: PlaneMode lifts to the
-// composer's CameraMode::Plane variant. The math is unchanged; this
+// PlaneMode lifts to the composer's CameraMode::Plane variant. The math is
+// unchanged; this
 // helper is a typed-identity-driven shortcut that reaches into
 // QtProtein/QtResidue for the backbone atom indices instead of asking
 // the user to type three numeric atom IDs.

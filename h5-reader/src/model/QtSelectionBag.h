@@ -4,24 +4,21 @@
 // mangled C++ std::type_index name (e.g.
 // "N3nmr34DftPoseCoordinatorTrajectoryResultE"). The reader translates
 // mangled names → typed QtSelectionKind enum at load via a static
-// lookup table (design §11.F — static table, not runtime demangling,
-// for cross-platform).
+// lookup table rather than platform-specific runtime demangling.
 //
 // Per-record fields per subgroup: frame_idx (uint64), time_ps
 // (float64), reason (object/string), metadata_json (object/string).
 //
-// The reason string is genuine free-form diagnostic text (per Agent 3:
-// "chi_transition_phi_side_chain_4_TRP" etc.) — display only, never
-// dispatched on. We store it as QString.
+// The reason string is free-form diagnostic text used only for display and is
+// never dispatched on.
 //
 // metadata_json is a per-kind structured blob; we PARSE it at load
 // into typed std::variant<QtDftPoseMeta, QtRmsdSpikeMeta,
-// QtChiRotamerMeta, std::monostate>. v1: minimal typed parsing (best-
-// effort); failures keep std::monostate but log Warn. Refinement in a
-// later session as the metadata shape stabilises.
+// QtChiRotamerMeta, std::monostate>. Failed optional metadata parsing leaves
+// std::monostate and logs a warning.
 //
-// Filtering queries (indicesByKind, indicesInTimeRange) are O(N)
-// linear scans — adequate for the 8-6031 event range in 1P9J fixture.
+// Filtering queries (indicesByKind, indicesInTimeRange) are linear scans over
+// the loaded event list.
 
 #pragma once
 
@@ -58,9 +55,7 @@ QtSelectionKind ParseSelectionGroupName(const QString& mangled_name);
 // ──────────────────────────────────────────────────────────────────
 
 struct QtDftPoseMeta {
-    // Fields populated from metadata_json best-effort; left as defaults
-    // when JSON parse misses a key. The "score" / "method" pattern from
-    // Agent 3's example is the current expectation.
+    // Optional metadata_json fields; missing keys retain these defaults.
     double score = 0.0;
     QString method;
 };

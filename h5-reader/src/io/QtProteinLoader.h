@@ -1,19 +1,16 @@
 // QtProteinLoader — top-level orchestrator: a calcset directory into a typed
 // QtProtein + a Conformation (the base; concrete subclass depends on run shape).
 //
-// Reads the calcset's `.LGS` (CalcsetManifest, spec/CALCSET_MANIFEST.md),
-// then dispatches by `kind`:
+// Reads the calcset's LGS manifest, then dispatches by `kind`:
 //   * Trajectory  -> sidecar + trajectory.h5 -> QtProtein + TrajectoryConformation
 //   * SinglePose  -> sidecar -> QtProtein + SingleConformation
 //   * MutantPair  -> opens the WT side (the ALA `.LGS` is exposed for a
 //                    separate-process "Open mutant alternate" action).
 //
-// There is exactly ONE entry point — LoadRunPath. The pre-`.LGS` legacy
-// convention-based fallback (Load(h5_path), bounded-convention sniffing)
-// was deleted along with ReaderInputManifest in the 2026-05-31 SIMPLIFY
-// pass. Missing/malformed `.LGS` is a hard error.
+// LoadRunPath is the only entry point. Missing or malformed LGS manifests are
+// hard errors; paths and filenames are never inferred from conventions.
 //
-// Failure modes log via ErrorBus and return ok=false with error populated.
+// Failures log through ErrorBus and return ok=false with error populated.
 
 #pragma once
 

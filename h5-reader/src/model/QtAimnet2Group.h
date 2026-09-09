@@ -12,10 +12,8 @@
 //   aimnet2_charge_response_gradient         (N,3)   dL/dr (e²/Å), parity-odd
 //   aimnet2_charge_response_gradient_scalar  (N,)    |dL/dr| (e²/Å)
 //
-// AIMNet2 is required in production and fails loud (CUDA-mandatory, no silent
-// degradation — AIMNet2Result.h), so a nullopt here means the load path
-// genuinely lacked it (e.g. a pre-2026-05-09 extraction for the gradient pair),
-// still surfaced honestly per the "absent, not faked" contract.
+// A nullopt accessor means that the corresponding array is absent from this
+// extraction.
 
 #pragma once
 

@@ -8,11 +8,8 @@
 // parallel QtAtomNames is the projection layer for display. Past this
 // file no code in the reader compares strings for chemistry.
 //
-// `.LGS` discipline (2026-05-31 SIMPLIFY): the loader has ONE entry
-// path. The argument lands in CalcsetManifest::Load which either yields
-// a typed manifest or a hard error. There is no fallback chain, no
-// convention sniffing, no "if missing try these other names". Per
-// feedback_no_file_discovery.
+// CalcsetManifest::Load either yields a typed manifest or a hard error.
+// There is no convention-sniffing fallback chain.
 
 #include "QtProteinLoader.h"
 
@@ -113,11 +110,8 @@ QtLoadResult QtProteinLoader::LoadTrajectory(const QString& h5_path,
         ++result.decodeWarnings;
     }
 
-    // No producer-side protein_id consistency check here: the .LGS
-    // protein_id is authoritative (spec/CALCSET_MANIFEST.md) and is
-    // stamped onto the result in LoadFromManifest. Comparing the two
-    // producer-written values (extraction_manifest.json vs H5 root)
-    // against each other says nothing about which (if either) is right.
+    // The LGS protein_id is the result identity. Comparing duplicated
+    // producer-written values cannot establish which one is authoritative.
 
     auto protein = std::make_unique<h5reader::model::QtProtein>();
     protein->proteinId_ = result.proteinId;

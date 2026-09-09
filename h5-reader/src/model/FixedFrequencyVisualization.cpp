@@ -24,7 +24,7 @@ DisplayModeCapability FixedFrequencyVisualization::capability() const {
     return DisplayModeCapability{true, true, true};
 }
 
-QStringList FixedFrequencyVisualization::legacyModeIds() const {
+QStringList FixedFrequencyVisualization::modeIds() const {
     return {QString::fromLatin1(kMode)};
 }
 

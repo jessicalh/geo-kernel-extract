@@ -3,7 +3,7 @@
 // (app/OccupancyShellsMath.h). Pure functions over model::Vec3/Mat3; no VTK, no
 // Qt widgets, no I/O — links Qt6::Test + Eigen3 only.
 //
-// Covers the checklist the two pre-build reviews asked for:
+// Covers:
 //   - autocorrelation window + statistical inefficiency g + n_eff clamp
 //   - anisotropic bandwidth: isotropic scaling + thin-axis eigenvalue floor
 //   - grid coarsen for a very mobile atom, and the floor-AFTER-coarsen ordering

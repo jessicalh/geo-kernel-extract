@@ -134,10 +134,10 @@ inline std::optional<AtomAnchor> ComputePlaneAnchor(
 // this to stabilise the camera against a subset of atoms (e.g. the
 // backbone), matching what TransformedConformation::Mode::FitSubset
 // does for positions but applied to the camera state instead.
-// TransformedConformation::KabschFit delegates here (Codex finding #6)
+// TransformedConformation::KabschFit delegates here
 // so both code paths share one degeneracy policy.
 //
-// Rank degeneracy (Codex finding #4):
+// Rank degeneracy:
 //
 // Kabsch is underdetermined when the input subset lies on a line
 // (sigma[1] ~ 0 and sigma[2] ~ 0) or in a plane (sigma[2] ~ 0). In
@@ -168,8 +168,8 @@ inline std::optional<Transform3D> ComputeSubsetTransform(
     // of the largest"; well-conditioned subsets (backbone of a normal
     // protein) sit at sigma[2]/sigma[0] ~ O(0.1-1.0). Anywhere near the
     // threshold is geometrically pathological (planar or near-linear
-    // subset). 1e-3 chosen by default per the implementation prompt:
-    // permissive enough to never reject the backbone, strict enough to
+    // subset). The 1e-3 threshold is permissive enough to accept a normal
+    // backbone and strict enough to
     // catch the documented failure modes (4-atom linear subset, 3-atom
     // collinear subset, planar 5-residue ring). Adjust upward if rank-
     // deficient false negatives are observed in the harness; downward
@@ -225,7 +225,7 @@ inline std::optional<Transform3D> ComputeSubsetTransform(
     out.R = V * D * U.transpose();
     out.T = cr - out.R * cc;
 
-    // Belt-and-suspenders: the det-sign correction above should always
+    // The determinant correction above should always
     // give det(R) = +1, but accumulated floating-point error during SVD
     // can leave it slightly off. Above kDetTol indicates SVD trouble
     // we'd rather not pipe to the camera.
@@ -267,7 +267,7 @@ inline std::optional<model::Vec3> OrthogonalizeViewUp(
 //   4. else use world Y = (0, 1, 0) (always succeeds — sight can be
 //      parallel to at most one of Z/X/Y, never all three)
 //
-// Fixes Codex finding #3 (dihedral sight-parallel ViewUp). Used by every
+// Handles a dihedral sight axis parallel to ViewUp. Used by every
 // write*() path that sets view-up; replaces ad-hoc fallback-to-(0,1,0)
 // branches that left the camera with a degenerate up at sight directions
 // aligned with world Y.

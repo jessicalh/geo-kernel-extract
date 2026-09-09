@@ -28,7 +28,7 @@ DisplayModeCapability NewmanVisualization::capability() const {
     return DisplayModeCapability{true, true, true};
 }
 
-QStringList NewmanVisualization::legacyModeIds() const {
+QStringList NewmanVisualization::modeIds() const {
     return {QString::fromLatin1(kMode)};
 }
 

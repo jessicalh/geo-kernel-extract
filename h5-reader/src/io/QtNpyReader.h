@@ -59,15 +59,6 @@ public:
     static StructuredResult
     ReadStructured(const QString& path, const std::string& expected_dtype_substr, std::vector<RecordT>& out);
 
-    // Read a 1-D NPY of fixed-width scalars (e.g. <f8 doubles, <i8
-    // uint64) into a raw byte buffer. The caller validates dtype via
-    // ParsedHeader inspection.
-    //
-    // Not used by the sidecar (the structured-record overload covers
-    // it); reserved for future per-trajectory-NPY reads.
-    static StructuredResult
-    ReadRawBytes(const QString& path, std::vector<unsigned char>& out_bytes, std::size_t& out_record_size);
-
     // ── Numeric reads with dtype widening ───────────────────────────
     // General numeric result preserving the full NPY shape, for reader-owned
     // payloads such as rank-3 tensor sidecars.
@@ -96,8 +87,8 @@ public:
     static NumericArray ReadNumericArrayWidened(const QString& path);
 
     // Rank-1/rank-2 compatibility adapter for the per-frame producer arrays.
-    // The header shape is authoritative for (rows, cols) — the field catalog's
-    // `cols` is only a cross-check (and drifts, e.g. gromacs_energy).
+    // The header supplies (rows, cols); FrameNpyLoader rejects a fixed-width
+    // field when that width does not match the catalog.
     static WidenedArray ReadArrayWidened(const QString& path);
 
 private:

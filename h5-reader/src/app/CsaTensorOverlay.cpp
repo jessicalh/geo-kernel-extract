@@ -8,7 +8,6 @@
 namespace h5reader::app {
 
 CsaTensorOverlay::CsaTensorOverlay(vtkSmartPointer<vtkRenderer> sceneRenderer,
-                                   vtkSmartPointer<vtkRenderer> /*hudRenderer*/,
                                    QObject* parent)
     : QObject(parent),
       glyph_(std::make_unique<TensorGlyphActor>(std::move(sceneRenderer))) {}
@@ -16,8 +15,7 @@ CsaTensorOverlay::CsaTensorOverlay(vtkSmartPointer<vtkRenderer> sceneRenderer,
 CsaTensorOverlay::~CsaTensorOverlay() = default;
 
 void CsaTensorOverlay::show(const model::Vec3& atomPos,
-                            const model::CsaShape& shape,
-                            const std::optional<model::Mat3>& /*molecularAxes*/) {
+                            const model::CsaShape& shape) {
     if (!shape.valid) {
         glyph_->clear();
         return;

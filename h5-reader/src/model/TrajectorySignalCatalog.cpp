@@ -484,6 +484,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     const UnitSpec charge = unit(UnitDimension::Charge, "e", "e");
     const UnitSpec energy = unit(UnitDimension::Energy, "kJ/mol", "kJ/mol");
     const UnitSpec angle = unit(UnitDimension::Angle, "radians", "deg", 57.29577951308232);
+    const UnitSpec degrees = unit(UnitDimension::Angle, "degrees", "deg");
     const UnitSpec tag = unit(UnitDimension::Tag, "tag", "tag", 1.0, 0.0, false);
 
     add(descriptors,
@@ -569,7 +570,9 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     add(descriptors, makeDescriptor("h5:dihedral_time_series", "residue_dihedral", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Residue dihedral time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {QStringLiteral("static.newman")}, {channel("phi", "Phi", SignalValueShape::Scalar, angle), channel("psi", "Psi", SignalValueShape::Scalar, angle), channel("omega", "Omega", SignalValueShape::Scalar, angle), channel("chi", "Chi", SignalValueShape::Scalar, angle)}, "/trajectory/dihedral_time_series", true));
     add(descriptors, makeDescriptor("h5:dssp8_time_series", "dssp_ss8", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "dssp", "DSSP8 residue state time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::Category, tag, categoryStripModes(), {}, {channel("ss8", "SS8", SignalValueShape::Category, tag)}, "/trajectory/dssp8_time_series", true));
     add(descriptors, makeDescriptor("h5:j_coupling_time_series", "j_coupling", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "j_coupling", "J-coupling time series", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::PerClassBlock, unit(UnitDimension::Frequency, "Hz", "Hz"), perClassStripModes(), {}, {}, "/trajectory/j_coupling_time_series", true));
-    add(descriptors, makeDescriptor("h5:ring_pucker_time_series", "ring_pucker", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Ring pucker time series", SourceResidency::StartupLoaded, SignalAxis::Ring, SignalAxis::Ring, SignalValueShape::PerClassBlock, angle, perClassStripModes(), {}, {}, "/trajectory/ring_pucker_time_series", true));
+    add(descriptors, makeDescriptor("h5:aromatic_ring_chi2_time_series", "aromatic_ring_chi2", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Aromatic ring chi2", SourceResidency::StartupLoaded, SignalAxis::AromaticRing, SignalAxis::AromaticRing, SignalValueShape::Scalar, angle, scalarStripModes(), scalarStaticModes(), scalarChannels(angle), "/trajectory/ring_pucker_time_series", true));
+    add(descriptors, makeDescriptor("h5:saturated_ring_pucker_amplitude_time_series", "saturated_ring_pucker_amplitude", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Saturated ring puckering amplitude", SourceResidency::StartupLoaded, SignalAxis::SaturatedRing, SignalAxis::SaturatedRing, SignalValueShape::Scalar, length, scalarStripModes(), scalarStaticModes(), scalarChannels(length), "/trajectory/ring_pucker_time_series", true));
+    add(descriptors, makeDescriptor("h5:saturated_ring_pucker_phase_time_series", "saturated_ring_pucker_phase", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Saturated ring puckering phase", SourceResidency::StartupLoaded, SignalAxis::SaturatedRing, SignalAxis::SaturatedRing, SignalValueShape::Scalar, degrees, scalarStripModes(), scalarStaticModes(), scalarChannels(degrees), "/trajectory/ring_pucker_time_series", true));
     add(descriptors, makeDescriptor("h5:ring_neighbourhood_trajectory_stats", "ring_neighbourhood", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "ring_current", "Ring neighbourhood trajectory stats", SourceResidency::StartupLoaded, SignalAxis::Atom, SignalAxis::Atom, SignalValueShape::PerClassBlock, length, perClassStripModes(), {}, {channel("distance", "Distance", SignalValueShape::Scalar, length), channel("rho", "Rho", SignalValueShape::Scalar, length), channel("z", "Z", SignalValueShape::Scalar, length), channel("in_plane_angle", "In-plane angle", SignalValueShape::Scalar, angle)}, "/trajectory/ring_neighbourhood_trajectory_stats", true));
     add(descriptors, makeDescriptor("h5:gromacs_energy_time_series", "gromacs_energy", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "gromacs", "Gromacs energy/runtime time series", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::PerClassBlock, none, {QStringLiteral("strip.system"), QStringLiteral("strip.per-class"), QStringLiteral("strip.tensor.component")}, {}, {channel("energy", "Energy", SignalValueShape::Scalar, energy), channel("temperature", "Temperature", SignalValueShape::Scalar, unit(UnitDimension::Temperature, "K", "K")), channel("pressure", "Pressure", SignalValueShape::Scalar, unit(UnitDimension::Pressure, "bar", "bar")), channel("volume", "Volume", SignalValueShape::Scalar, unit(UnitDimension::Volume, "nm^3", "nm^3"))}, "/trajectory/gromacs_energy_time_series", true));
     add(descriptors, makeDescriptor("h5:rmsd_tracking", "rmsd_tracking", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "rmsd", "RMSD tracking", SourceResidency::StartupLoaded, SignalAxis::System, SignalAxis::System, SignalValueShape::Scalar, length, {QStringLiteral("strip.system"), QStringLiteral("strip.scalar"), QStringLiteral("strip.event")}, {}, scalarChannels(length), "/trajectory/rmsd_tracking", true));
@@ -785,8 +788,8 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     addDihedralCurve("h5:dihedral_phi_acf", "dihedral.phi_acf", "phi torsional ACF");
     addDihedralCurve("h5:dihedral_psi_acf", "dihedral.psi_acf", "psi torsional ACF");
 
-    // Chi[0..3] composite descriptors (L-2a, 2026-05-29). Option B per
-    // user choice — one PerClassBlock scalar + one CurveOverLag curve,
+    // Chi[0..3] composite descriptors: one PerClassBlock scalar and one
+    // CurveOverLag curve,
     // each fanned across 4 chi channels. Matches the existing
     // kernel_dynamics composite shape; per-channel dispatch lives in
     // the controller's denseH5Plan branch + panel builders.
@@ -843,15 +846,14 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     // Nine descriptors all keyed to /trajectory/reorientational_dynamics:
     // - Five scalars (s2, tau_e, r1, r2, noe) via static.bar.sequence
     //   (SequenceBarPanel). Auto-compose into one panel when 2+ are
-    //   active in the same dashboard panel (L-4 builder).
+    //   active in the same dashboard panel.
     // - Two TCF curves (body / lab frame) via static.curve.lag.animated
     //   (LagDecayPanel).
-    // - Orientation tensor (Mat3 per vector) via static.tensor -- shown as a
-    //   focus-driven SCENE glyph (the shared TensorGlyphActor, the same ovaloid
-    //   + arrows as the CSA glyph), not a dashboard panel; static.tensor stays
-    //   tracked-but-hidden in the dashboard.
+    // - Orientation tensor (Mat3 per vector), shown automatically for the
+    //   focused bond by the shared scene tensor glyph rather than selected as
+    //   a dashboard signal.
     // - Spectral density J(ω) at 5 KTB Larmor frequencies via
-    //   static.fixed_freq (FixedFreqPanel, L-3b).
+    //   static.fixed_freq (FixedFreqPanel).
     auto addReorientScalar = [&](const char* id, const char* conceptKey,
                                   const char* label, const UnitSpec& units) {
         add(descriptors,
@@ -909,10 +911,8 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     addReorientCurve("h5:reorient_acf_lab",      "reorient.acf_lab",
                      "Reorientational TCF (lab frame)");
 
-    // L-3a (2026-05-29): per-vector Mat3 orientation tensor. The Mat3
-    // payload feeds the tracked-hidden static.tensor mode; the 3-D glyph
-    // is focus-driven by ReaderMainWindow rather than emitted as a dashboard
-    // panel.
+    // Per-vector Mat3 orientation tensor. The 3-D glyph is focus-driven by
+    // ReaderMainWindow rather than emitted as a dashboard panel.
     add(descriptors,
         makeDescriptor("h5:reorient_orientation_tensor",
                        "reorient.orientation_tensor",
@@ -926,7 +926,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
 	                       SignalValueShape::Mat3PerRow,
 	                       none,
 	                       {},
-	                       {QStringLiteral("static.tensor")},
+	                       {},
 	                       scalarChannels(none),
                        "/trajectory/reorientational_dynamics",
                        true,
@@ -934,7 +934,7 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                        SampleStatus::Valid,
                        GapReason::None));
 
-    // L-3b (2026-05-29): per-vector J(ω) sampled at the 5 KTB Larmor
+    // Per-vector J(ω) sampled at the five KTB Larmor
     // frequencies (FixedFreqBlock shape). Rendered via FixedFreqPanel
     // (static.fixed_freq mode). NH-only — Cα-Hα and C=O rows carry
     // NaN per the producer; the panel filters those out at paint time.

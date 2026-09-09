@@ -5,7 +5,6 @@
 #include "StripStackWidget.h"
 #include "TimeViewportController.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../model/AtomSelection.h"
@@ -111,35 +110,35 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
 
     setWidget(container);
 
-    ACONNECT(controller_, &DashboardDisplayController::stripTracksChanged,
+    QObject::connect(controller_, &DashboardDisplayController::stripTracksChanged,
              this, &DashboardStripDock::refreshTracks);
     // Owned panels (SequenceBarPanel etc.) survive playhead ticks; only
     // a controller rebuild produces a new set. The dock pulls them out
     // (move-out) only on this signal, NOT on every frame change —
     // otherwise the first setFrame() drains them and the panel
     // disappears.
-    ACONNECT(controller_, &DashboardDisplayController::ownedPanelsChanged,
+    QObject::connect(controller_, &DashboardDisplayController::ownedPanelsChanged,
              this, [this]() {
         if (stackWidget_)
             stackWidget_->setOwnedPanels(controller_->takeOwnedPanels());
     });
-    ACONNECT(stackWidget_.data(), &StripStackWidget::revealRequested,
+    QObject::connect(stackWidget_.data(), &StripStackWidget::revealRequested,
              this, &DashboardStripDock::revealRequested);
-    ACONNECT(metricButton_.data(), &QPushButton::clicked,
+    QObject::connect(metricButton_.data(), &QPushButton::clicked,
              this, &DashboardStripDock::metricPickerRequested);
-    ACONNECT(panelTabs_.data(), &QTabBar::currentChanged,
+    QObject::connect(panelTabs_.data(), &QTabBar::currentChanged,
              this, &DashboardStripDock::onPanelTabChanged);
-    ACONNECT(panelTabs_.data(), &QTabBar::tabCloseRequested,
+    QObject::connect(panelTabs_.data(), &QTabBar::tabCloseRequested,
              this, &DashboardStripDock::onPanelTabCloseRequested);
-    ACONNECT(addPanelButton_.data(), &QToolButton::clicked,
+    QObject::connect(addPanelButton_.data(), &QToolButton::clicked,
              this, &DashboardStripDock::onAddPanelRequested);
-    ACONNECT(followBox_.data(), &QCheckBox::toggled, this, [this](bool on) {
+    QObject::connect(followBox_.data(), &QCheckBox::toggled, this, [this](bool on) {
         if (windowFramesSpin_)
             windowFramesSpin_->setEnabled(on);
         if (timeViewport_)
             timeViewport_->setFollowPlayhead(on);
     });
-    ACONNECT(windowFramesSpin_.data(), qOverload<int>(&QSpinBox::valueChanged), this, [this](int frames) {
+    QObject::connect(windowFramesSpin_.data(), qOverload<int>(&QSpinBox::valueChanged), this, [this](int frames) {
         if (timeViewport_)
             timeViewport_->setWindowFrames(frames);
     });
@@ -167,17 +166,17 @@ void DashboardStripDock::setPanelModel(model::DashboardPanelModel* panelModel) {
     panelModel_ = panelModel;
     controller_->setPanelModel(panelModel);
     if (panelModel_) {
-        ACONNECT(panelModel_.data(), &QAbstractItemModel::rowsInserted,
+        QObject::connect(panelModel_.data(), &QAbstractItemModel::rowsInserted,
                  this, &DashboardStripDock::syncPanelTabs);
-        ACONNECT(panelModel_.data(), &QAbstractItemModel::rowsRemoved,
+        QObject::connect(panelModel_.data(), &QAbstractItemModel::rowsRemoved,
                  this, &DashboardStripDock::syncPanelTabs);
-        ACONNECT(panelModel_.data(), &QAbstractItemModel::modelReset,
+        QObject::connect(panelModel_.data(), &QAbstractItemModel::modelReset,
                  this, &DashboardStripDock::syncPanelTabs);
-        ACONNECT(panelModel_.data(), &QAbstractItemModel::dataChanged,
+        QObject::connect(panelModel_.data(), &QAbstractItemModel::dataChanged,
                  this, [this](const QModelIndex&, const QModelIndex&, const QList<int>&) {
                      syncPanelTabs();
                  });
-        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
+        QObject::connect(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
                  this, [this](const QUuid&) { syncPanelTabs(); });
     }
     syncPanelTabs();
@@ -199,10 +198,10 @@ void DashboardStripDock::setSelection(model::AtomSelection* selection) {
             metricButton_->setEnabled(selection_ && selection_->hasFocus());
     };
     if (selection_) {
-        ACONNECT(selection_.data(), &model::AtomSelection::focusChanged, this, [updateButton](std::size_t) {
+        QObject::connect(selection_.data(), &model::AtomSelection::focusChanged, this, [updateButton](std::size_t) {
             updateButton();
         });
-        ACONNECT(selection_.data(), &model::AtomSelection::cleared, this, updateButton);
+        QObject::connect(selection_.data(), &model::AtomSelection::cleared, this, updateButton);
     }
     updateButton();
 }
@@ -229,16 +228,16 @@ void DashboardStripDock::setTimeViewport(TimeViewportController* viewport) {
         disconnect(timeViewport_, nullptr, this, nullptr);
     timeViewport_ = viewport;
     if (timeViewport_) {
-        ACONNECT(timeViewport_.data(), &TimeViewportController::visibleRangeChanged,
+        QObject::connect(timeViewport_.data(), &TimeViewportController::visibleRangeChanged,
                  this, &DashboardStripDock::updateViewportReadout);
-        ACONNECT(timeViewport_.data(), &TimeViewportController::windowFramesChanged,
+        QObject::connect(timeViewport_.data(), &TimeViewportController::windowFramesChanged,
                  this, [this](int frames) {
                      if (!windowFramesSpin_)
                          return;
                      const QSignalBlocker block(windowFramesSpin_);
                      windowFramesSpin_->setValue(frames);
                  });
-        ACONNECT(timeViewport_.data(), &TimeViewportController::followPlayheadChanged,
+        QObject::connect(timeViewport_.data(), &TimeViewportController::followPlayheadChanged,
                  this, [this](bool follow) {
                      if (!followBox_)
                          return;

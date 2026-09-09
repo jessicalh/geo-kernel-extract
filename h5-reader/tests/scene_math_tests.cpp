@@ -72,12 +72,12 @@ private slots:
     // (dot ≈ 0) is treated as same-side and returned unchanged.
     void testChooseContinuousNormal_nearOrthogonalLeavesAlone();
 
-    // L-3a tensor-glyph eigendecomposition. Validates against a
+    // Tensor-glyph eigendecomposition. Validates against a
     // diagonal tensor (axes = identity, radii = sqrt(diag)) and an
     // off-diagonal case with known eigenvalues.
     void testTensorGlyph_diagonalAxisAligned();
     void testTensorGlyph_offDiagonalKnownEigenvalues();
-    // NOW-4 (2026-05-29): composeEllipsoidTransform body→lab rotation.
+    // composeEllipsoidTransform body-to-lab rotation.
     // Body primary eigenvector along +z; current bond along +x →
     // primary axis ends up along +x in the world transform.
     void testTensorGlyph_composeAlignsPrimaryWithBondDir();
@@ -106,14 +106,14 @@ private slots:
     void testFitTarget_subsetCameraFollowsRotation();
     void testFitTarget_subsetCameraIdentityIsIdentity();
 
-    // Codex finding #4 — rank-degenerate Kabsch must freeze
+    // Rank-degenerate Kabsch must freeze
     // (return nullopt) rather than ship a numerically-arbitrary rotation
     // from SVD's null-space.
     void testFitTarget_subsetKabschCollinearReturnsNullopt();
     void testFitTarget_subsetKabschCoplanarReturnsNullopt();
     void testFitTarget_subsetKabschWellConditionedAccepted();
 
-    // Codex finding #3 — safeViewUp guarantees non-degenerate output.
+    // safeViewUp guarantees non-degenerate output.
     // Trivial cases pass through; pathological (parallel) inputs fall
     // back deterministically.
     void testFitTarget_safeViewUpPassThroughNonDegenerate();
@@ -121,7 +121,7 @@ private slots:
     void testFitTarget_safeViewUpSightAlongZFallsBackToWorldX();
     void testFitTarget_safeViewUpDeterministic();
 
-    // Codex finding #1 — dihedral sight-axis sign continuity uses an
+    // Dihedral sight-axis sign continuity uses an
     // EXPLICIT stored reference, not implicit feedback through the live
     // camera. Verify that an input axis crossing through perpendicular
     // to the stored reference produces a continuous post-flip output
@@ -533,7 +533,7 @@ void SceneMathTests::testFitTarget_subsetKabschKnownRotation() {
     // reference.
     //
     // Reference is a non-coplanar tetrahedron-ish shape so the
-    // Codex-finding-#4 rank check (sigma[2] > tol) accepts it; a flat
+    // The rank check (sigma[2] > tol) accepts it; a flat
     // square in the XY plane would correctly be rejected as
     // rank-deficient. The rotation math here is identical to the planar
     // case — the +z atom just keeps sigma[2] well-defined.
@@ -605,7 +605,7 @@ void SceneMathTests::testFitTarget_subsetCameraIdentityIsIdentity() {
     // up = (0, 1, 0). Rotated by R^T = I, the camera-relative vector
     // is unchanged.
     //
-    // Non-coplanar tetrahedron-style ref so Codex finding #4's rank
+    // Non-coplanar tetrahedron-style reference so the rank
     // check accepts it; the rotation math is identical to a planar set
     // but the +z atom keeps sigma[2] well-conditioned.
     std::vector<model::Vec3> ref = {
@@ -651,7 +651,7 @@ void SceneMathTests::testFitTarget_subsetCameraFollowsRotation() {
     // (0, 5, 0) — which is exactly where the camera "should" be to
     // see the rotated subset from the same relative angle.
     // Non-coplanar ref (octahedron — square plus apices at +z and -z)
-    // so Codex finding #4's rank check accepts it. The +90°-about-z
+    // so the rank check accepts it. The +90°-about-z
     // rotation preserves the centroid AT THE ORIGIN (symmetric apices
     // cancel) and the math is identical to a planar square; the apices
     // just keep sigma[2] non-zero.
@@ -710,7 +710,7 @@ void SceneMathTests::testFitTarget_subsetCameraFollowsRotation() {
     QVERIFY(nearly(newSight.z(), 0.0, 1e-9));
 }
 
-// ---- Codex finding #4: rank-degenerate Kabsch -------------------------
+// ---- Rank-degenerate Kabsch -------------------------------------------
 
 void SceneMathTests::testFitTarget_subsetKabschCollinearReturnsNullopt() {
     // 4 atoms strictly on the x-axis — rank 1 (only one non-zero
@@ -774,7 +774,7 @@ void SceneMathTests::testFitTarget_subsetKabschWellConditionedAccepted() {
             QVERIFY(nearly(RtR(i, j), (i == j) ? 1.0 : 0.0, 1e-9));
 }
 
-// ---- Codex finding #3: safeViewUp deterministic perpendicular fallback
+// ---- safeViewUp deterministic perpendicular fallback -----------------
 
 void SceneMathTests::testFitTarget_safeViewUpPassThroughNonDegenerate() {
     // sight along +z; preferred along +y. Already perpendicular; the
@@ -832,7 +832,7 @@ void SceneMathTests::testFitTarget_safeViewUpDeterministic() {
     QVERIFY(nearly(up1.z(), up2.z(), 0.0));
 }
 
-// ---- Codex finding #1: dihedral sight-axis sign continuity ------------
+// ---- Dihedral sight-axis sign continuity ------------------------------
 
 void SceneMathTests::testFitTarget_dihedralContinuityNoFlipAtBoundary() {
     // Simulate the dihedralLastDirection_ guard math (lifted from

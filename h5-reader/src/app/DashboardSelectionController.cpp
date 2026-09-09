@@ -1,6 +1,5 @@
 #include "DashboardSelectionController.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/DashboardLogging.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -40,15 +39,15 @@ DashboardSelectionController::DashboardSelectionController(model::TrajectorySign
 
     lastSelectedCount_ = selectedCount();
     if (signals_) {
-        ACONNECT(signals_.data(), &model::DashboardSignalModel::signalAdded,
+        QObject::connect(signals_.data(), &model::DashboardSignalModel::signalAdded,
                  this, &DashboardSelectionController::onSignalAdded);
-        ACONNECT(signals_.data(), &model::DashboardSignalModel::signalRemoved,
+        QObject::connect(signals_.data(), &model::DashboardSignalModel::signalRemoved,
                  this, &DashboardSelectionController::onSignalRemoved);
-        ACONNECT(signals_.data(), &QAbstractItemModel::modelReset,
+        QObject::connect(signals_.data(), &QAbstractItemModel::modelReset,
                  this, &DashboardSelectionController::emitSelectedCountIfChanged);
     }
     if (panels_) {
-        ACONNECT(panels_.data(), &model::DashboardPanelModel::displayRefRemoved,
+        QObject::connect(panels_.data(), &model::DashboardPanelModel::displayRefRemoved,
                  this, [this](const QUuid&, const model::DashboardDisplayRef& ref) {
                      onDisplayRefRemoved(ref);
                  });

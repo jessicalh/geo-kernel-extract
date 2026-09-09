@@ -4,9 +4,7 @@
 // The mangled C++ type_index names in /trajectory/selections/ subgroups
 // are itanium-ABI mangled (g++ / clang on Linux/macOS). The reader
 // hardcodes the known mappings here — adding a new selection kind
-// means appending one entry to kSelectionMangledNames + one enum value.
-// Cross-platform without platform-specific demangling code (design
-// §11.F).
+// means appending one entry to kSelectionMangledNames and one enum value.
 
 #include "QtSelectionBag.h"
 
@@ -19,8 +17,7 @@ struct MangledMapping {
     QtSelectionKind kind;
 };
 
-// The three known selection kinds from the 1P9J fixture. Agent 3's
-// inspection reported them as:
+// The three selection kinds written by the supported producer are:
 //   N3nmr34DftPoseCoordinatorTrajectoryResultE
 //   N3nmr34RmsdSpikeSelectionTrajectoryResultE
 //   N3nmr35ChiRotamerSelectionTrajectoryResultE

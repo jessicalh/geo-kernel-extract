@@ -67,8 +67,7 @@ public:
 
     void setTimeViewport(TimeViewportController* viewport);
     void setCurrentFrame(int frame);
-    // Backwards-compatible per-section counts after L-2b unified the
-    // storage into a single panels_ vector. trackCount() returns the
+    // Per-section counts over the unified panels_ vector. trackCount() returns the
     // number of temporal panels (front of panels_), spectrumTrackCount()
     // the middle, ownedPanelCount() the trailing.
     int trackCount() const { return static_cast<int>(n_temporal_); }
@@ -83,7 +82,7 @@ public:
     QVector<PanelDisplayData> ownedPanelDisplayData() const;
 
 signals:
-    void revealRequested(const model::SignalBinding& binding);
+    void revealRequested(const h5reader::model::SignalBinding& binding);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -105,8 +104,7 @@ private:
     int frameAt(const QPoint& pos) const;
     QString tooltipText(int frame) const;
 
-    // L-2b (2026-05-29): one ordered panels_ vector replaces the prior
-    // tracks_ / spectrumTracks_ / ownedPanels_ three-bucket storage.
+    // One ordered panels_ vector stores every panel type.
     // Layout: indices [0..n_temporal_) hold TemporalStripPanel instances,
     // [n_temporal_..n_temporal_+n_spectrum_) hold SpectrumStripPanel,
     // the trailing section holds caller-provided owned panels. Each

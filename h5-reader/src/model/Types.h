@@ -7,10 +7,8 @@
 //
 // String policy: ZERO string-dispatch on chemistry identity. The
 // NameForXxx() helpers in this file produce `const char*` literals for
-// display surfaces (inspector dock, tooltips) — they MUST NEVER appear
-// in a comparison or branch that decides physics. The design rule
-// driving this discipline is in `notes/H5_READER_REWRITE_DESIGN_2026-05-23.md`
-// §2 ("The No-Strings Discipline").
+// display surfaces (inspector dock, tooltips); they must not appear in a
+// comparison or branch that decides physics.
 //
 // Compile-time ordinal compatibility with the library is the runtime
 // contract: the H5 + sidecar NPY format stores int8/int32 enum
@@ -40,13 +38,10 @@ using Mat3 = Eigen::Matrix3d;
 // ============================================================================
 // Element — atomic species for protein NMR.
 // Library mirror: nmr::Element (src/Types.h:30).
-// Storage: atoms_category_info.element AND H5 /atoms/element both store
-// the int8 ATOMIC NUMBER (1, 6, 7, 8, 16) — NOT the enum ordinal —
-// decoded via ElementFromAtomicNumber() at the loader boundary
-// (CategoryInfoProjection.cpp:417 emits AtomicNumberForElement;
-// QtTopologySidecar.cpp:188 decodes). A naive static_cast<Element>(row)
-// would mis-decode every atom (e.g. C atomic-number 6 -> Element ord 6 =
-// Unknown), so keep the ElementFromAtomicNumber() decode.
+// atoms_category_info.element stores the atomic number (1, 6, 7, 8, 16),
+// decoded by QtTopologySidecar with ElementFromAtomicNumber(). The legacy H5
+// /atoms/element dataset stores this enum's ordinal and is not the topology
+// authority. Do not static_cast the NPY value to Element.
 // ============================================================================
 
 enum class Element : int8_t { H = 0, C = 1, N = 2, O = 3, S = 4, Unknown = 5 };
@@ -150,9 +145,8 @@ enum class Hybridisation : int8_t {
 // ============================================================================
 // AtomRole — NMR-relevant atom classification.
 // Library mirror: nmr::AtomRole (src/Types.h:98).
-// Not in atoms_category_info projection (the typed substrate
-// BackboneRole + Locant + Element supersedes it). Kept for legacy
-// consumers; new code should prefer the substrate fields on QtAtom.
+// These integer codes are written by enrichment_role.npy. Numerical model
+// export carries the values directly; this enum documents their meaning.
 // ============================================================================
 
 enum class AtomRole : int8_t {
@@ -341,8 +335,8 @@ constexpr int kStandardAminoAcidCount = 20;
 // ============================================================================
 // DsspCode — DSSP 8-class secondary structure.
 // Source: per-residue ss8 stored as uint8 in
-// /trajectory/dssp8_time_series/ss8_code. The group's `ss8_legend` attr
-// in the 1P9J fixture spells out the ordinals: "H=0 (alpha helix),
+// /trajectory/dssp8_time_series/ss8_code. The group's `ss8_legend` attribute
+// defines the ordinals: "H=0 (alpha helix),
 // G=1 (3_10 helix), I=2 (pi helix), E=3 (extended strand),
 // B=4 (beta bridge), T=5 (turn), S=6 (bend), C=7 (coil)".
 // ss8_unassigned_sentinel = 255 → Unknown.
@@ -430,9 +424,7 @@ enum class NamingSource : int8_t { Verbatim = 0, Derived = 1 };
 // Loader maps the S4 string to this enum; mismatches fall to Unknown
 // with an ErrorBus warning.
 //
-// Discipline note: rationale for typed enum over QString is in
-// notes/H5_READER_REWRITE_DESIGN_2026-05-23.md §11.B — closes the
-// last string-dispatch vulnerability.
+// A typed enum prevents string dispatch in numerical code.
 // ============================================================================
 
 enum class QtFfAtomType : int16_t {

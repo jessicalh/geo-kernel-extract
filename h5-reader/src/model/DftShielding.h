@@ -1,13 +1,7 @@
-// DftShielding — QM ground-truth shielding for one atom, ingested from a DFT
-// NMR run (ORCA .out now; a LeanSCF tensors file — /shared/dft-ex1 — later).
-//
-// Kept WHOLE, not fluffed (user, 2026-05-27): the TOTAL tensor AND its
-// DIAMAGNETIC and PARAMAGNETIC parts, each decomposed to a SphericalTensor
-// (T0/T1/T2). This is downstream of the library (nmr-extract emits the PDB ->
-// ORCA runs on it -> .out), so ingesting it is reading a QM artifact, not
-// re-deriving kernels — and the reader keeps more than ORCA's summary or the
-// dft-ex1 JSON bother to (which drop the dia/para split and the antisymmetric
-// T1). It is its own result category, source-agnostic behind this type.
+// QM shielding for one atom, ingested from an ORCA NMR calculation. The total,
+// diamagnetic, and paramagnetic tensors are retained in Cartesian form and as
+// spherical T0/T1/T2 components. This type represents the parsed result and is
+// independent of the calculation's storage layout.
 
 #pragma once
 

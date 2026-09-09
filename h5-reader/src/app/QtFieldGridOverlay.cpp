@@ -331,8 +331,8 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
                 // kernel value near the ring, smoothly kill the 1/r³ tail so
                 // the lobe has a bounded, tunable REACH (extent σ). gaussianPeak_
                 // is an amplitude gain (1.0 = real ppm). This is what bounds the
-                // field so the isosurface closes; the boundary clamp below is a
-                // belt-and-suspenders guard for very large σ.
+                // field so the isosurface closes; the boundary clamp below also
+                // bounds very large sigma values.
                 const double rDist  = (p - geo.center).norm();
                 const double window = std::exp(
                     -(rDist * rDist) /

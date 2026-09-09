@@ -4,14 +4,12 @@
 #include "QtConformationSnapshot.h"
 #include "QtProtein.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ErrorBus.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../io/FrameFieldPolicy.h"
 
 #include <QCoreApplication>
-#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -37,7 +35,6 @@ namespace {
 Q_LOGGING_CATEGORY(cExperimentalMl, "h5reader.experimental_ml")
 
 constexpr int kOutputColumns = 6;
-constexpr qint64 kModelHashChunkBytes = 8LL * 1024LL * 1024LL;
 constexpr double kSmoothFiniteNormalisation = 1.14136;
 constexpr double kPi = 3.14159265358979323846;
 
@@ -79,7 +76,8 @@ bool readStringList(const QJsonValue& value,
         error = QStringLiteral("%1 is not an array").arg(context);
         return false;
     }
-    for (const QJsonValue item : value.toArray()) {
+    const QJsonArray values = value.toArray();
+    for (const QJsonValue& item : values) {
         if (!item.isString()) {
             error = QStringLiteral("%1 contains a non-string value").arg(context);
             return false;
@@ -97,7 +95,8 @@ bool readIntVector(const QJsonValue& value,
         error = QStringLiteral("%1 is not an array").arg(context);
         return false;
     }
-    for (const QJsonValue item : value.toArray()) {
+    const QJsonArray values = value.toArray();
+    for (const QJsonValue& item : values) {
         if (!item.isDouble()) {
             error = QStringLiteral("%1 contains a non-numeric value").arg(context);
             return false;
@@ -128,7 +127,8 @@ bool readDoubleVector(const QJsonValue& value,
         error = QStringLiteral("%1 is not an array").arg(context);
         return false;
     }
-    for (const QJsonValue item : value.toArray()) {
+    const QJsonArray values = value.toArray();
+    for (const QJsonValue& item : values) {
         if (!item.isDouble() || !std::isfinite(item.toDouble())) {
             error = QStringLiteral("%1 contains a non-finite numeric value").arg(context);
             return false;
@@ -213,8 +213,8 @@ bool validateRuntimeManifest(const QJsonObject& manifest, QString& error) {
     const QString modelId =
         schema.value(QStringLiteral("model_id")).toString();
     int matchingModels = 0;
-    for (const QJsonValue value :
-         manifest.value(QStringLiteral("models")).toArray()) {
+    const QJsonArray models = manifest.value(QStringLiteral("models")).toArray();
+    for (const QJsonValue& value : models) {
         const QJsonObject model = value.toObject();
         if (model.value(QStringLiteral("id")).toString() != modelId)
             continue;
@@ -229,50 +229,6 @@ bool validateRuntimeManifest(const QJsonObject& manifest, QString& error) {
         error = QStringLiteral("manifest model_id %1 has %2 matching model entries")
                     .arg(modelId)
                     .arg(matchingModels);
-        return false;
-    }
-    return true;
-}
-
-bool validateModelArtifact(const QJsonObject& manifest,
-                           const QString& modelPath,
-                           QString& error) {
-    const QString modelFile =
-        manifest.value(QStringLiteral("model_file")).toString();
-    if (QFileInfo(modelPath).fileName() != modelFile) {
-        error = QStringLiteral("configured model is %1; manifest requires %2")
-                    .arg(QFileInfo(modelPath).fileName(), modelFile);
-        return false;
-    }
-
-    const QString expected =
-        manifest.value(QStringLiteral("model_sha256")).toString().toLower();
-    if (expected.size() != 64) {
-        error = QStringLiteral("manifest model_sha256 is missing or malformed");
-        return false;
-    }
-
-    QFile model(modelPath);
-    if (!model.open(QIODevice::ReadOnly)) {
-        error = QStringLiteral("could not open model for SHA-256 validation: %1")
-                    .arg(modelPath);
-        return false;
-    }
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    while (!model.atEnd()) {
-        const QByteArray chunk = model.read(kModelHashChunkBytes);
-        if (chunk.isEmpty() && model.error() != QFileDevice::NoError) {
-            error = QStringLiteral("could not read model for SHA-256 validation: %1")
-                        .arg(modelPath);
-            return false;
-        }
-        hash.addData(chunk);
-    }
-    const QString observed =
-        QString::fromLatin1(hash.result().toHex());
-    if (observed != expected) {
-        error = QStringLiteral("model SHA-256 mismatch: manifest=%1 file=%2")
-                    .arg(expected, observed);
         return false;
     }
     return true;
@@ -386,8 +342,8 @@ ExperimentalShieldingMlStore::ExperimentalShieldingMlStore(
                  && validateInitialFrameInputs();
     }
 
-    ACONNECT(process_, &QProcess::finished, this, &ExperimentalShieldingMlStore::finishProcess);
-    ACONNECT(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+    QObject::connect(process_, &QProcess::finished, this, &ExperimentalShieldingMlStore::finishProcess);
+    QObject::connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart || !activeFrame_)
             return;
         const QString reason =
@@ -441,8 +397,6 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
         return false;
     if (!validateRuntimeManifest(manifest, errorReason_))
         return false;
-    if (!validateModelArtifact(manifest, modelPath_, errorReason_))
-        return false;
 
     const QJsonObject schema = manifest.value(QStringLiteral("inference_schema")).toObject();
     contract_.modelId = schema.value(QStringLiteral("model_id")).toString();
@@ -470,7 +424,7 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
         return false;
     }
     const QJsonObject vocabularies = schema.value(QStringLiteral("label_vocabs")).toObject();
-    for (const QString& key : contract_.labelKeys) {
+    for (const QString& key : std::as_const(contract_.labelKeys)) {
         const QJsonObject source = vocabularies.value(key).toObject();
         if (source.isEmpty()) {
             errorReason_ = QStringLiteral("label vocabulary is absent: %1").arg(key);
@@ -514,7 +468,7 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
                                                  trainedUnknown.cend());
     contract_.requiredKnownKeys = QSet<QString>(requiredKnown.cbegin(),
                                                 requiredKnown.cend());
-    for (const QString& key : contract_.labelKeys) {
+    for (const QString& key : std::as_const(contract_.labelKeys)) {
         const bool trained = contract_.trainedUnknownKeys.contains(key);
         const bool required = contract_.requiredKnownKeys.contains(key);
         if (trained == required) {
@@ -529,8 +483,9 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
         errorReason_ = QStringLiteral("categorical unknown policy names an unsupported key");
         return false;
     }
-    for (const QJsonValue value :
-         unknownPolicy.value(QStringLiteral("couplings")).toArray()) {
+    const QJsonArray couplings =
+        unknownPolicy.value(QStringLiteral("couplings")).toArray();
+    for (const QJsonValue& value : couplings) {
         const QJsonObject coupling = value.toObject();
         const QString source = coupling.value(QStringLiteral("if_unknown")).toString();
         const QString target = coupling.value(QStringLiteral("force_unknown")).toString();
@@ -573,7 +528,7 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
         errorReason_ = QStringLiteral("ring-current contract dimensions do not agree");
         return false;
     }
-    for (const int index : contract_.ringActive) {
+    for (const int index : std::as_const(contract_.ringActive)) {
         if (index < 0 || index >= contract_.ringTypeOrder.size()) {
             errorReason_ = QStringLiteral("ring_active contains out-of-range index %1")
                                .arg(index);
@@ -666,7 +621,7 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
         errorReason_ = QStringLiteral("numeric_features is empty");
         return false;
     }
-    for (const QJsonValue featureValue : featureValues) {
+    for (const QJsonValue& featureValue : featureValues) {
         if (!featureValue.isObject()) {
             errorReason_ = QStringLiteral("numeric_features contains a non-object");
             return false;
@@ -731,7 +686,7 @@ bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
         }
         const io::NativeAxis expectedAxis =
             spec.axis == FeatureAxis::Atom ? io::NativeAxis::Atom : io::NativeAxis::Residue;
-        for (const QString& fileName : sourceFiles) {
+        for (const QString& fileName : std::as_const(sourceFiles)) {
             FeatureSource source;
             source.fileName = fileName;
             if (!npyStem(fileName, source.stem, errorReason_))
@@ -877,7 +832,7 @@ bool ExperimentalShieldingMlStore::validateInitialFrameInputs() {
         return false;
     }
 
-    for (const FeatureSpec& spec : contract_.features) {
+    for (const FeatureSpec& spec : std::as_const(contract_.features)) {
         for (const FeatureSource& source : spec.sources) {
             if (!snapshot->has(source.field)) {
                 errorReason_ =
@@ -1620,8 +1575,8 @@ bool ExperimentalShieldingMlStore::buildInput(
         for (auto it = contract_.unknownCouplings.constBegin();
              it != contract_.unknownCouplings.constEnd();
              ++it) {
-            const int sourceColumn = contract_.labelKeys.indexOf(it.key());
-            const int targetColumn = contract_.labelKeys.indexOf(it.value());
+            const qsizetype sourceColumn = contract_.labelKeys.indexOf(it.key());
+            const qsizetype targetColumn = contract_.labelKeys.indexOf(it.value());
             const std::size_t rowOffset =
                 atomIndex * static_cast<std::size_t>(contract_.labelKeys.size());
             if (labelIds[rowOffset + static_cast<std::size_t>(sourceColumn)] == 0

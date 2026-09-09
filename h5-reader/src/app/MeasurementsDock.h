@@ -3,9 +3,8 @@
 // redrawn live as frames play. The value comes from model::Measure (pure compute
 // over Conformation positions); this is just the view.
 //
-// Realises the "text info lives in a window, not on the molecule" rule (see the
-// scene-text-belongs-in-windows memory): the MeasurementOverlay draws only the
-// spheres + connecting lines in the 3-D scene; the measured VALUE shows here.
+// MeasurementOverlay draws only geometry in the 3-D scene; the measured value
+// is shown here.
 //
 // Source stays ASCII; the degree + Angstrom glyphs come via QChar code points.
 
@@ -34,7 +33,7 @@ public:
     // function of positions). Pass (nullptr, nullptr) to unbind on unload.
     void setContext(const model::QtProtein* protein, const model::Conformation* conf);
 
-public slots:
+public:
     // The ordered selection tuple (slot order): 2 atoms -> distance, 3 -> angle
     // (vertex = middle), 4 -> dihedral; any other count -> the empty hint.
     void setAtoms(const std::vector<std::size_t>& atoms);

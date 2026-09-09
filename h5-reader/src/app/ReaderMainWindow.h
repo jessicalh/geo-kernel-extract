@@ -1,10 +1,8 @@
 // ReaderMainWindow — top-level QMainWindow for h5-reader.
 //
 // Holds the QVTKOpenGLNativeWidget as the central widget, owns the
-// MoleculeScene and QtPlaybackController, wires frame-scrub controls
-// in a toolbar and status bar. Designed to accept additional dock
-// widgets (atom inspector, time-series tab) in later commits without
-// restructuring the central layout.
+// MoleculeScene and QtPlaybackController, and wires the toolbar, status bar,
+// inspector, and time-series docks.
 //
 // Active exports finish through closeEvent(). During aboutToQuit, shutdown()
 // stops timers and detaches the render window while its GL context is valid.
@@ -259,7 +257,7 @@ private:
 
     // File ▸ Recent — prepend a path, dedupe, cap at 10, rebuild menu,
     // write to QSettings immediately. Called after a successful load so
-    // the next session sees that calcset at the top.
+    // the next launch sees that calcset at the top.
     void addToRecentFiles(const QString& path);
     void rebuildRecentFilesMenu(const QStringList& paths);
     void openRecentPath(const QString& path);
@@ -286,7 +284,7 @@ private:
 
     // Camera input filter — Qt eventFilter on the VTK widget, intercepts
     // mouse + wheel before VTK's trackball. Routes gestures to the
-    // CameraComposer (per spec/viewport_pipeline_2026-05-30.md §4).
+    // CameraComposer.
     // Installed after the picker so Qt's filter chain runs THIS first;
     // double-clicks fall through to the picker.
     class CameraInputFilter* cameraInputFilter_ = nullptr;

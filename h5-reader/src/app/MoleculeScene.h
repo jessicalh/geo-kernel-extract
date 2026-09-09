@@ -7,16 +7,15 @@
 // for trajectory animation. Bond connectivity is static; lengths follow
 // atom positions automatically because the mapper re-queries them.
 //
-// Two-layer renderer (per spec/viewport_pipeline_2026-05-30.md §5):
-// the main renderer at layer 0 holds the molecule + ribbon/rings/field
+// The main renderer at layer 0 holds the molecule, ribbon, rings, and field
 // overlays; an overlay renderer at layer 1 holds the markers
 // (MeasurementOverlay, SceneRevealOverlay). Markers paint after the
 // main layer with depth reset between layers, so they remain visible
 // regardless of depth occlusion — essential for the viewport harness's
 // marker-blob analysis.
 //
-// Camera pipeline (per spec §2.3, §2.4, §2.5): per-frame absolute
-// camera writes are owned by CameraComposer, dispatched on a typed
+// Per-frame absolute camera writes are owned by CameraComposer and dispatched
+// through a typed
 // CameraMode (Free / Atom / Bond / Dihedral / Plane / Subset). The
 // public plane-lock API is now a thin shim over the composer; the REST
 // surface and toolbar action continue to work without consumer
@@ -29,7 +28,7 @@
 //
 // --- Overlay contract (applies to QtBackboneRibbonOverlay,
 //     QtRingPolygonOverlay, QtFieldGridOverlay, QtBFieldStreamOverlay,
-//     and any future overlay owned by MoleculeScene) ---------------
+//     and other overlays owned by MoleculeScene) --------------------
 //
 // 1. Build(protein, conformation) is called ONCE per Scene lifetime,
 //    before any setFrame. Idempotent on the same (protein, conformation)
@@ -114,11 +113,11 @@ public:
         std::array<unsigned char, 3> bondColor{{50, 50, 50}};
     };
 
-    // Source-of-render hint set by requestRender, read by the EndEvent
-    // observer (Stage 8 in spec/viewport_pipeline_2026-05-30.md) so each
+    // Source-of-render hint set by requestRender and read by the EndEvent
+    // observer so each
     // logged render line carries the trigger that caused it.
     enum class RenderSource {
-        Timer,       // QtPlaybackController::frameChanged -> setFrame
+        FrameChange, // frameChanged -> setFrame
         CameraInput, // CameraInputFilter gesture
         Picker,      // double-click pick triggered an overlay update
         Rest,        // REST handler mutated state and needs a redraw
@@ -145,7 +144,7 @@ public:
     void Build(const model::QtProtein& protein,
                model::Conformation&    conformation);
 
-    // Current renderer — for future overlay classes to attach actors.
+    // Current renderer used by scene overlay classes.
     vtkRenderer* Renderer() const { return renderer_.Get(); }
 
     // Overlay-layer renderer — at SetLayer(1), shares the active camera
@@ -203,13 +202,12 @@ public:
     // tag is recorded for the EndEvent observer to log.
     void requestRender(h5reader::app::MoleculeScene::RenderSource src);
 
-    // Back-compat shim — overlay toggle paths still call requestRender()
-    // without a source. Forwards to requestRender(External).
+    // Convenience overload for callers without a more specific source tag.
     void requestRender();
 
     // Re-run setFrame() on the current frame, ignoring the early-return
     // guard. Use this when an overlay that skips expensive work while
-    // hidden (QtFieldGridOverlay, future B-field overlay) is turned
+    // hidden (such as QtFieldGridOverlay) is turned
     // back on — its kernel re-eval needs to run for the current frame.
     void refreshCurrentFrame();
 
@@ -251,8 +249,8 @@ private:
     // Per-frame helper: push atom positions into vtkMolecule and
     // accumulate the bounds in one pass. Bounds are passed out to the
     // caller (setFrame) which uses them to set the renderer's clipping
-    // range. See feedback_vtk_bounds_cache for why we compute bounds
-    // ourselves rather than calling vtkActor::GetBounds().
+    // range. We compute them directly because VTK can retain stale actor
+    // bounds after atom positions change.
     void PushAtomPositions(int t, double bounds[6]);
     void cachePaddedBounds(const double bounds[6]);
     // (Re)build molecule_ from a subset of protein atom indices (all atoms =

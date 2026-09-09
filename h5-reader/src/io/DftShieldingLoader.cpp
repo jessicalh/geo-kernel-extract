@@ -1,11 +1,8 @@
 // DftShieldingLoader — implementation. One DFT job's meta.json +
 // the .out file it names => one parsed+validated DftShieldingFrame.
 //
-// Post-2026-05-31 SIMPLIFY: the meta.json path is supplied directly
-// by the caller (from `.LGS` `dft.frames[].meta_json`), so this file
-// no longer parses `_fNNNNNN_t<ps>` from job-dir names. The .out path
-// inside the meta.json (`files.out_primary`) is honoured strictly —
-// no globbing for *_nmr.out files.
+// The caller supplies the meta.json path from `dft.frames[].meta_json`.
+// The loader uses `files.out_primary` exactly and does not infer filenames.
 
 #include "DftShieldingLoader.h"
 

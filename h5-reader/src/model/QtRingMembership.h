@@ -4,9 +4,9 @@
 // Each row binds an atom to a ring (the ring_id is the absolute row in
 // rings.npy, atom_index references the atom axis), records the atom's
 // position in the canonical ring walk (ring_atom_order), and tags
-// whether the atom is a structural vertex or a substituent (currently
-// always vertex; substituent is reserved for future extension per
-// src/TopologySidecar.cpp:421).
+// whether the atom is a structural vertex or a substituent. Current producer
+// output contains ring vertices; both flags are retained because they are part
+// of the serialized record.
 //
 // Ring-walk-order matters for the polygon overlay (vertices must be
 // drawn in cyclic order, not arbitrary order) and for the BS/HM

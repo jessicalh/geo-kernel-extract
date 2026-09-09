@@ -1,24 +1,5 @@
-// h5-reader — entry point.
-//
-// Construct the main window with the VTK viewport in a clean pre-load
-// state. If the user supplies a calcset path, load it into that same
-// window before showing; otherwise the user can load one later via File
-// -> Open.
-//
-// Startup order (matches the existing viewer; see
-// feedback_qt_discipline):
-//   1. CrashHandler before QApplication (dump works even if QApp ctor
-//      crashes).
-//   2. QSurfaceFormat::setDefaultFormat before QApplication.
-//   3. QApplication.
-//   4. StructuredLogger (installs qInstallMessageHandler).
-//   5. Warm ErrorBus and ObjectCensus singletons.
-//   6. Parse CLI.
-//   7. Construct ReaderMainWindow in its empty pre-load state.
-//   8. If a path was supplied, load it into the same window.
-//   9. Deferred show() via a queued invoke on the main window so the event
-//      loop is running before any first render.
-//  10. app.exec().
+// h5-reader entry point. Startup order matters for crash capture and the VTK
+// OpenGL context; the window itself may start empty or with one calcset.
 
 #include "app/ReaderMainWindow.h"
 #include "diagnostics/CrashHandler.h"
@@ -53,48 +34,27 @@
 Q_LOGGING_CATEGORY(cLifecycle, "h5reader.lifecycle")
 
 int main(int argc, char* argv[]) {
-    // 1. Crash handler before anything else.
+    // Install crash capture before QApplication construction.
     h5reader::diagnostics::CrashHandler::Install();
 
-    // 2a. Force the desktop OpenGL driver before QApplication. Qt 6's
-    //     auto-detect can fall back to ANGLE (software D3D-on-OpenGL)
-    //     on Windows with some AMD driver combinations — and the
-    //     symptom is exactly what we saw: VTK rendering CPU-bound,
-    //     no GPU acceleration, "not notably faster" no matter what
-    //     compile flags we add. Strix Halo's Radeon 8060S driver is
-    //     modern; force the native path. Linux/macOS ignore this.
-    //     See references/windows-gotchas.md §8.
+    // VTK requires desktop OpenGL; select it before QApplication.
     QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
 
-    // 2b. Surface format before QApplication. Must come AFTER
-    //     setAttribute so the format request uses the chosen backend.
+    // Request VTK's format after selecting the OpenGL backend.
     QSurfaceFormat::setDefaultFormat(QVTKOpenGLNativeWidget::defaultFormat());
 
-    // 3. QApplication.
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("h5 reader"));
     app.setApplicationVersion(QStringLiteral(H5READER_VERSION));
     app.setOrganizationName(QStringLiteral("Beardsley Lab"));
     QThread::currentThread()->setObjectName(QStringLiteral("gui"));
 
-    // 4. Structured logger. Install BEFORE any qInfo() we want routed
-    //    through the stderr+UDP handler — earlier calls go through Qt's
-    //    default handler which on Windows GUI builds may drop them.
+    // Install structured logging before emitting application diagnostics.
     h5reader::diagnostics::StructuredLogger::Install();
 
 #ifdef _WIN32
-    // Traditional LIGHT Fusion, regardless of the OS dark-mode preference.
-    // Rationale (2026-06-20): a light palette makes the three button states
-    // unambiguous — disabled greys to clear light-grey, enabled is full
-    // contrast, checked is the sunken+highlight look — which the previous
-    // forced-dark palette obscured (grey-on-dark disabled was nearly invisible).
-    // The transport icons are drawn in palette(ButtonText), so a light palette
-    // also makes them dark-on-light and grey cleanly when disabled.
+    // Keep enabled, checked, and disabled controls distinct on Windows.
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
-    // Force the LIGHT scheme regardless of the OS setting — Qt 6.10's Fusion is
-    // color-scheme-aware and otherwise follows the OS into dark mode (which
-    // hides the disabled state). setColorScheme handles the scheme-aware bits;
-    // the explicit palette below makes the widget colours deterministic.
     QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Light);
 
     QPalette pal;
@@ -110,7 +70,6 @@ int main(int argc, char* argv[]) {
     pal.setColor(QPalette::HighlightedText, Qt::white);
     pal.setColor(QPalette::ToolTipBase,     QColor(255, 255, 225));
     pal.setColor(QPalette::ToolTipText,     Qt::black);
-    // Clear, obvious disabled greys — the whole point of going light/traditional.
     pal.setColor(QPalette::Disabled, QPalette::WindowText, QColor(160, 160, 160));
     pal.setColor(QPalette::Disabled, QPalette::Text,       QColor(160, 160, 160));
     pal.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(160, 160, 160));
@@ -118,26 +77,18 @@ int main(int argc, char* argv[]) {
     qInfo().noquote() << "UI: Fusion + forced light palette (traditional) installed";
 #endif
 
-    // VTK SMP backend: STDThread parallelises vtkStreamTracer + the
-    // tube filter the butterfly overlay relies on, plus other VTK
-    // filters used by the field-grid overlay. Default is "Sequential";
-    // VTK ships with STDThread compiled in (see vtkSMP.h). Setting it
-    // here before any filter executes lets every per-frame update use
-    // all cores. SetBackend is silent on failure (unrecognised string
-    // is a no-op), so read GetBackend() back and log it.
+    // Enable VTK's threaded filters and report the backend actually selected.
     vtkSMPTools::SetBackend("STDThread");
     qInfo().noquote() << "VTK SMP backend:" << vtkSMPTools::GetBackend()
                       << "(max threads"
                       << vtkSMPTools::GetEstimatedNumberOfThreads() << ")";
 
-    // 5. Warm singletons.
     (void)h5reader::diagnostics::ErrorBus::Instance();
     (void)h5reader::diagnostics::ObjectCensus::Instance();
 
     qCInfo(cLifecycle).noquote() << "h5reader" << H5READER_VERSION << "starting" << "| Qt" << QT_VERSION_STR
                                  << "| thread=" << QThread::currentThread()->objectName();
 
-    // 6. Parse CLI.
     QCommandLineParser cli;
     cli.setApplicationDescription(QStringLiteral("Qt/VTK trajectory reader for nmr-extract analysis H5 files."));
     cli.addHelpOption();
@@ -149,9 +100,7 @@ int main(int argc, char* argv[]) {
         QStringLiteral("rest"),
         QStringLiteral("Start the embedded HTTP surface on <port>; "
                        "port 0 = kernel-pick (printed as H5READER_REST_PORT=NNNNN on stderr). "
-                       "Window stays open until the process is signalled. "
-                       "Replaces the retired --dashboard-path-smoke and --camera-plane-lock-smoke runners; "
-                       "see h5-reader/tests/rest/ for the pytest suite that drives this surface."),
+                       "The window remains available until normal application shutdown."),
         QStringLiteral("port"));
     const QCommandLineOption restAddressOption(
         QStringLiteral("rest-address"),
@@ -197,22 +146,18 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    // 7. Construct window. aboutToQuit → window->shutdown() runs the
-    //    VTK-finalise-before-GL-context-destruction sequence.
+    // Finalize VTK while its OpenGL context is still valid.
     auto* window = new h5reader::app::ReaderMainWindow();
     QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
     h5reader::diagnostics::InstallShutdownSignalHandlers();
 
-    // 8. Optional startup load into that same window.
     if (!runPath.isEmpty() && !window->loadRunPath(runPath)) {
         qCCritical(cLifecycle).noquote() << "Load failed:" << window->lastLoadError();
         delete window;
         return 3;
     }
 
-    // 9. Deferred show — posted onto the window's event queue so it runs once
-    //    app.exec() is spinning (event loop live before first render). An explicit
-    //    queued event onto `window`, not a timer guessing at "next tick".
+    // Show through the event queue so the event loop is live before first render.
     if (runRest) {
         QMetaObject::invokeMethod(window, [window, restAddress, restPort]() {
             window->show();
@@ -233,14 +178,10 @@ int main(int argc, char* argv[]) {
         }, Qt::QueuedConnection);
     }
 
-    // 10. Event loop.
     qCInfo(cLifecycle).noquote() << "entering event loop";
     const int rc = app.exec();
     qCInfo(cLifecycle).noquote() << "event loop exited with rc=" << rc;
 
-    // The window is Qt-managed; aboutToQuit fired its shutdown(). We
-    // still delete it explicitly for cleanliness — ObjectCensus will
-    // empty out on next dump.
     delete window;
     return rc;
 }

@@ -6,9 +6,6 @@
 // frequency grid (kernel PSD); FixedFreqPanel exposes a sparse,
 // externally-fixed grid. Bonded to a single bond-vector row via the
 // reveal binding; the panel owns its data view.
-//
-// L-3b (2026-05-29).
-
 #pragma once
 
 #include "AbstractStripPanel.h"

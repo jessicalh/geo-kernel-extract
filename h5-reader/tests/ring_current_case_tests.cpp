@@ -37,7 +37,7 @@ namespace {
 
 constexpr std::size_t kAtomTyr24Hd2 = 348;
 constexpr std::size_t kRingPhe5 = 1;
-constexpr std::size_t kReferenceFrame = 856;
+constexpr std::size_t kReferenceOriginalFrame = 856;
 constexpr double kColorScaleForPoster = 0.055;
 
 QString fixturePath() {
@@ -46,11 +46,7 @@ QString fixturePath() {
         return env;
     return QStringLiteral(
         "C:/projects/reader-data/1p9j-calibration-with-dft/"
-        "1p9j-calibration-dense-mopac-live-orca.LGS");
-}
-
-bool explicitFixtureWasRequested() {
-    return qEnvironmentVariableIsSet("H5READER_RINGCURRENT_VET_FIXTURE");
+        "1p9j-july20260717.LGS");
 }
 
 void requireNear(double actual, double expected, double tolerance, const char* label) {
@@ -102,11 +98,8 @@ private slots:
 void RingCurrentCaseTests::tyr24Hd2Phe5FullDftCase() {
     const QString fixture = fixturePath();
     if (!QFileInfo::exists(fixture)) {
-        if (explicitFixtureWasRequested()) {
-            QFAIL(qPrintable(QStringLiteral(
-                "H5READER_RINGCURRENT_VET_FIXTURE does not exist: %1").arg(fixture)));
-        }
-        QSKIP(qPrintable(QStringLiteral("1P9J local DFT fixture not present: %1").arg(fixture)));
+        QFAIL(qPrintable(QStringLiteral(
+            "required 1P9J DFT fixture does not exist: %1").arg(fixture)));
     }
 
     auto loaded = QtProteinLoader::LoadRunPath(fixture);
@@ -118,7 +111,9 @@ void RingCurrentCaseTests::tyr24Hd2Phe5FullDftCase() {
     const QtProtein& protein = *loaded.protein;
     const Conformation& conf = *loaded.conformation;
     QCOMPARE(protein.atomCount(), std::size_t{846});
-    QCOMPARE(conf.frameCount(), std::size_t{1501});
+    QCOMPARE(conf.frameCount(), std::size_t{751});
+    QCOMPARE(conf.originalFrameIndex(0), std::size_t{0});
+    QCOMPARE(conf.originalFrameIndex(conf.frameCount() - 1), std::size_t{1500});
     QCOMPARE(loaded.manifest.dft->frames.size(), std::size_t{751});
 
     const auto& atom = protein.atom(kAtomTyr24Hd2);
@@ -239,19 +234,24 @@ void RingCurrentCaseTests::tyr24Hd2Phe5FullDftCase() {
     QVERIFY(static_cast<double>(signAgreement) / static_cast<double>(entry.samples.size()) > 0.84);
     QVERIFY(pearson(absFactor, absCenteredSigma) > 0.92);
 
+    const auto referenceRow =
+        conf.frameRowForOriginalIndex(kReferenceOriginalFrame);
+    QVERIFY(referenceRow.has_value());
     const RingLocalFrame reference =
-        h5reader::model::RingLocalFrameAt(conf, kRingPhe5, kReferenceFrame);
+        h5reader::model::RingLocalFrameAt(conf, kRingPhe5, *referenceRow);
     QVERIFY(reference.valid);
     double maxKernelDelta = 0.0;
     double maxDistanceDelta = 0.0;
     double maxNullMarginDelta = 0.0;
     double maxRoundtripDelta = 0.0;
     for (const RingCurrentPathSample& sample : entry.samples) {
-        const std::size_t frame = static_cast<std::size_t>(sample.frameIndex);
+        const auto frame = conf.frameRowForOriginalIndex(
+            static_cast<std::size_t>(sample.frameIndex));
+        QVERIFY(frame.has_value());
         const RingLocalFrame source =
-            h5reader::model::RingLocalFrameAt(conf, kRingPhe5, frame);
+            h5reader::model::RingLocalFrameAt(conf, kRingPhe5, *frame);
         QVERIFY(source.valid);
-        const Vec3 sourcePosition = conf.atomPosition(frame, kAtomTyr24Hd2);
+        const Vec3 sourcePosition = conf.atomPosition(*frame, kAtomTyr24Hd2);
         const Vec3 local = h5reader::model::ToRingLocal(source, sourcePosition);
         const Vec3 drawn = h5reader::model::FromRingLocal(reference, local);
         const RingNullMeasurement sourceMeasure =

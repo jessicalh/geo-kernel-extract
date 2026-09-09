@@ -111,10 +111,8 @@ struct QtEfg {
 // no C=O / C–N bond lies within the McConnell cutoff (writers McConnellResult.cpp
 // :150-151,255-256 + MopacMcConnellResult.cpp:141-142,244-245 — initialised to
 // the sentinel, written through unchanged on a miss; the writer's own "is this
-// real" test is `dist < NO_DATA_SENTINEL`). It is NOT a real distance — guard
-// with hasNearestCO() / hasNearestCN() before display / ML use. (No atom hits it
-// in the 1P9J frame-0 fixture — every atom finds both partners, max 8.93/8.05 Å
-// — but isolated / chain-terminal atoms in other frames will.)
+// real" test is `dist < NO_DATA_SENTINEL`). It is not a real distance; guard
+// with hasNearestCO() / hasNearestCN() before use.
 struct McConnellScalars {
     static constexpr double kNoDataSentinel = 99.0;  // PhysicalConstants NO_DATA_SENTINEL
     double co_sum = 0.0;
@@ -333,10 +331,11 @@ struct WaterPolarization {
     }
 };
 
-// bonded_energy (N×7) — per-atom GROMACS bonded-energy decomposition, kJ/mol;
+// bonded_energy (N×8) — per-atom GROMACS bonded-energy decomposition, kJ/mol;
 // each interaction's energy is split evenly among its participating atoms
 // (BondedEnergyResult.cpp:257-264). Columns:
-//   bond, angle, ureyBradley, proper, improper, cmap, total(=Σ of the six).
+//   bond, angle, ureyBradley, proper, harmonic improper, periodic improper,
+//   cmap, total.
 // The columns are force-field-AGNOSTIC: their values come from whatever bonded
 // terms the run's TPR defines. ureyBradley + cmap are zero for force fields
 // lacking those terms (AMBER ff14SB carries neither). (BondedEnergyResult.h's
@@ -346,30 +345,27 @@ struct BondedEnergy {
     double angle = 0.0;
     double ureyBradley = 0.0;
     double proper = 0.0;
-    double improper = 0.0;
+    double harmonicImproper = 0.0;
+    double periodicImproper = 0.0;
     double cmap = 0.0;
     double total = 0.0;
     static BondedEnergy FromRow(const double* r) {
-        return BondedEnergy{r[0], r[1], r[2], r[3], r[4], r[5], r[6]};
+        return BondedEnergy{r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]};
     }
 };
 
-// gromacs_energy (1×43, PROTEIN-axis — one row for the whole frame, NOT
+// gromacs_energy (1×44, PROTEIN-axis — one row for the whole frame, NOT
 // per-atom) — the GROMACS .edr energy terms for this frame, GROMACS-native
 // units. Column order per the writer GromacsEnergyResult.cpp:29-53 (= the
 // GromacsEnergy struct in GromacsEnergyResult.h, EXCLUDING its time_ps field).
 //
-// SCHEMA NOTE (writer-definitive): this block decodes 43 columns, which now
-// MATCHES the catalog -- _catalog.py and the generated QtFieldCatalog.gen.h both
-// declare cols=43; the old 42-vs-43 off-by-one was fixed and re-verified against
-// the on-disk fixture shape (1,43). The writer-definitive rule still holds in
-// general (loader trusts the NPY shape over catalog cols and logs any mismatch);
-// the live drift example is now ring_contributions (40 declared vs 58 on 1P9J).
+// The writer and generated catalog define 44 columns. The loader rejects any
+// NPY/catalog shape drift before this typed view is used.
 struct GromacsEnergy {
-    std::array<double, 43> raw = {};
+    std::array<double, 44> raw = {};
     static GromacsEnergy FromRow(const double* r) {
         GromacsEnergy g;
-        for (std::size_t i = 0; i < 43; ++i)
+        for (std::size_t i = 0; i < g.raw.size(); ++i)
             g.raw[i] = r[i];
         return g;
     }
@@ -382,30 +378,31 @@ struct GromacsEnergy {
     double angle() const { return raw[4]; }
     double ureyBradley() const { return raw[5]; }
     double properDih() const { return raw[6]; }
-    double improperDih() const { return raw[7]; }
-    double cmapDih() const { return raw[8]; }
+    double harmonicImproperDih() const { return raw[7]; }
+    double periodicImproperDih() const { return raw[8]; }
+    double cmapDih() const { return raw[9]; }
     // Van der Waals (kJ/mol)
-    double ljShortRange() const { return raw[9]; }
-    double lj14() const { return raw[10]; }
-    double dispersionCorrection() const { return raw[11]; }
+    double ljShortRange() const { return raw[10]; }
+    double lj14() const { return raw[11]; }
+    double dispersionCorrection() const { return raw[12]; }
     // Thermodynamic state
-    double potential() const { return raw[12]; }    // kJ/mol
-    double kinetic() const { return raw[13]; }       // kJ/mol
-    double totalEnergy() const { return raw[14]; }   // kJ/mol
-    double enthalpy() const { return raw[15]; }      // kJ/mol
-    double temperature() const { return raw[16]; }   // K
-    double pressure() const { return raw[17]; }      // bar (scalar)
-    double volume() const { return raw[18]; }        // nm³
-    double density() const { return raw[19]; }       // kg/m³
+    double potential() const { return raw[13]; }    // kJ/mol
+    double kinetic() const { return raw[14]; }       // kJ/mol
+    double totalEnergy() const { return raw[15]; }   // kJ/mol
+    double enthalpy() const { return raw[16]; }      // kJ/mol
+    double temperature() const { return raw[17]; }   // K
+    double pressure() const { return raw[18]; }      // bar (scalar)
+    double volume() const { return raw[19]; }        // nm³
+    double density() const { return raw[20]; }       // kg/m³
     // Box (nm)
-    Vec3 box() const { return Vec3(raw[20], raw[21], raw[22]); }
+    Vec3 box() const { return Vec3(raw[21], raw[22], raw[23]); }
     // Virial tensor (kJ/mol), row-major XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ
-    Mat3 virial() const { return Mat3RowMajor(&raw[23]); }
+    Mat3 virial() const { return Mat3RowMajor(&raw[24]); }
     // Pressure tensor (bar), same ordering
-    Mat3 pressureTensor() const { return Mat3RowMajor(&raw[32]); }
+    Mat3 pressureTensor() const { return Mat3RowMajor(&raw[33]); }
     // Per-group temperature (K)
-    double tProtein() const { return raw[41]; }
-    double tNonProtein() const { return raw[42]; }
+    double tProtein() const { return raw[42]; }
+    double tNonProtein() const { return raw[43]; }
 
 private:
     static Mat3 Mat3RowMajor(const double* p) {
@@ -485,16 +482,14 @@ struct MopacBondOrder {
 };
 
 // mopac_global (4, PROTEIN axis) — one row for the whole frame
-// (MopacResult.cpp:529-532). On-disk shape is 1-D (4,), NOT (1,4); the loader
-// (#4) interprets it as 1 protein-row × 4 cols (catalog cols=4 authoritative),
+// (MopacResult.cpp:529-532). On-disk shape is 1-D (4,), not (1,4); the loader
+// interprets it as one protein row with four columns,
 // the same protein-axis handling as gromacs_energy.
 //   heatOfFormation : PM7 FINAL HEAT OF FORMATION (kcal/mol; MopacResult.cpp:435)
 //   dipole (Vec3)   : molecular dipole moment (Debye; MopacResult.cpp:212, the
-//                     MOPAC DIPOLE-table SUM line). NOTE: for a net-charged
-//                     system the dipole is ORIGIN-DEPENDENT, not a translation-
-//                     invariant observable (the 1P9J fixture is net −1 e, |d|≈159
-//                     D about MOPAC's internal origin) — compare across frames
-//                     only with that caveat in mind.
+//                     MOPAC DIPOLE-table SUM line). For a net-charged system the
+//                     dipole is origin-dependent rather than translation
+//                     invariant; compare frames only with that caveat in mind.
 struct MopacGlobal {
     double heatOfFormation = 0.0;
     Vec3 dipole = Vec3::Zero();

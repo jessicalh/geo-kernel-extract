@@ -1,40 +1,11 @@
-// DftShieldingStore — per-frame DFT shielding provider for the strip chart.
+// Lazy per-frame ORCA shielding provider. Original trajectory frame indices
+// map to the exact meta.json paths declared by the LGS manifest; no directory
+// discovery is performed. One validated frame is resident at a time, while
+// dashboard channels retain any longer display history they need.
 //
-// Maps an ORIGINAL trajectory frame index (the key shared by the H5
-// frame_indices, the per-frame npys/frame_NNNNNN dirs, and the ORCA job
-// dirs) to that frame's ORCA shielding, parsed lazily from the
-// successful .out (meta.json -> files.out_primary, NOT a glob — a frame
-// may have retry .out files). The DFT campaign is partial (≈500 of 751
-// frames computed at present), so a missing job is an honest GAP, never
-// a faked value.
-//
-// Post-2026-05-31 SIMPLIFY: the `originalIndex -> meta.json` map is
-// taken directly from the `.LGS`'s `dft.frames[]` array; this store no
-// longer parses `_fNNNNNN_t<ps>` from job-dir names. The store accepts
-// a typed `DftFrame` list at construction; the rest of the lazy/single-
-// resident behaviour is unchanged.
-//
-// A full Qt citizen (QObject), deliberately — it owns lazy, eventually-
-// async file I/O and emits a readiness signal. Architecturally this is
-// just one per-frame source provider, orthogonal to FrameNpyLoader and
-// any other reader: load one frame's source data, let observers sample
-// it, then release it. It mirrors the frame-source contract:
-//   * sample()/frame() are CHEAP — current-frame-or-null, they never parse or block;
-//   * requestFrame() parses/validates one frame, makes it resident for observers,
-//     then emits frameReady().
-// The dashboard strips own persistent display history. This store does
-// not accumulate parsed DFT frames; once another frame is requested,
-// the prior parsed frame is released and the source data is effectively
-// back on disk.
-//
-// Validation before a frame is exposed (the loader is strict even
-// though the parser is permissive — "be smart, not fluff it", user
-// 2026-05-27):
-//   * atom count == topology atom count;
-//   * no parser holes (every atom has a real element, not the default Unknown);
-//   * the ORCA identity total == dia + para holds (T0 suffices:
-//     decomposition is linear). A frame that fails is logged at the
-//     seam and treated as absent.
+// A frame is exposed only when its atom count matches the topology, every atom
+// was parsed, and total = diamagnetic + paramagnetic isotropic shielding. A
+// missing or invalid frame remains an honest gap and is logged at the loader.
 
 #pragma once
 
@@ -68,12 +39,7 @@ enum class DftScalar { IsotropicT0, AnisotropyT2 };
 class DftShieldingStore final : public QObject {
     Q_OBJECT
 public:
-    // frames: the `.LGS`'s typed `dft.frames[]` list (frame_index +
-    //         resolved meta.json abspath per entry). protein: topology
-    //         spine (atom-count validation; outlives the store — both
-    //         window-lived). The ctor copies the frames vector into a
-    //         hash for O(1) lookup; .out files are parsed lazily on
-    //         requestFrame().
+    // The protein outlives this store and is used to validate parsed frames.
     DftShieldingStore(const QtProtein* protein,
                       const std::vector<h5reader::io::DftFrame>& frames,
                       QObject* parent = nullptr);
@@ -89,8 +55,8 @@ public:
     // call requestFrame() and react to frameReady().
     const DftShieldingFrame* frame(std::size_t originalIndex) const;
 
-    // Parse + validate `originalIndex`, make that single parsed frame resident,
-    // then emit frameReady(). v1: SYNCHRONOUS (parses on the calling thread).
+    // Parse and validate `originalIndex`, make that frame resident, then emit
+    // frameReady(). This method blocks on the calling thread.
     // Idempotent for the resident frame or a known-absent frame. A job that does
     // not exist, or fails validation, is remembered as absent so it is not
     // re-attempted every frame.
@@ -134,10 +100,8 @@ private:
     // Negative cache only: no parsed data is retained for these frames.
     std::unordered_set<std::size_t> resolvedAbsent_;
 
-    // Background live-glyph request. There is deliberately one worker: a
-    // later request is coalesced in asyncPendingOriginal_, and the completed
-    // worker is joined before its handle is reused. This keeps long review
-    // sessions from retaining one native thread handle per visited DFT frame.
+    // One worker serves live-glyph requests. A later request replaces the
+    // pending frame, and the completed worker is joined before reuse.
     std::unordered_set<std::size_t> asyncInFlight_;
     std::optional<std::size_t> asyncPendingOriginal_;
     std::thread asyncThread_;

@@ -1,9 +1,8 @@
 // CameraMode — typed sum for the active camera-lock target.
 //
-// Per spec/viewport_pipeline_2026-05-30.md §2.3.1: each variant carries
-// the atom indices that define the lock and a built-in orientation
-// policy default. The composer reads positions for those atoms each
-// frame and writes the absolute camera state.
+// Each variant carries the atom indices that define the lock and a built-in
+// orientation policy. The composer reads those positions each frame and writes
+// the absolute camera state.
 //
 // Kind taxonomy:
 //   Free      — no lock; the camera state is owned by accumulated user
@@ -19,7 +18,7 @@
 //               local frame. The bridge to the position-side
 //               TransformedConformation's FitSubset mode.
 //
-// Lock release semantics — agent decision per the implementation prompt:
+// Lock release semantics:
 //   * Plane locks release on selection change (matches existing behaviour;
 //     the plane lock toolbar action already wires this).
 //   * Atom / Bond / Dihedral / Subset locks STAY on selection change. The
@@ -83,9 +82,7 @@ inline const char* NameFor(CameraMode::Kind k) {
     return "?";
 }
 
-// Typed constructors. Each rejects mismatched cardinality by returning
-// a Free mode (defensive default — the REST handler bounds-checks atoms
-// before constructing, so this only fires on programmer error).
+// Typed constructors keep each fixed-arity kind paired with its atom count.
 inline CameraMode FreeMode() { return {}; }
 
 inline CameraMode AtomMode(std::size_t a) {

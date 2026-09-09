@@ -54,27 +54,17 @@ void WarnShapeMismatch(const char* group_path, const QString& detail) {
         QString());
 }
 
-void WarnGroupAbsent(const char* /*group_path*/) {
-    // Sparse-set normal — do not log per absent group (would spam at
-    // every load for the 30+ TRs not present in any given run).
-}
-
-// Qt + HighFive exception boundary. Per Qt rules, exceptions must
-// never escape back into the event-loop-managed caller — the
-// QtTrajectoryH5 constructor runs from QtProteinLoader, which runs
-// from the loader worker thread. Each Read* function calls this
-// helper from its catch handlers so a single malformed TR group
-// degrades to a logged warning + nullptr buffer (the existing
-// "absent, not faked" semantics) instead of unwinding the whole
-// load. `noexcept` because the handler itself must not throw — if
-// WarnShapeMismatch ever did, the whole std::terminate would fire.
+// Keep malformed optional groups from aborting the whole load. Each Read*
+// function calls this helper from its catch handlers and leaves that group's
+// buffer null. `noexcept` also keeps diagnostic failure from escaping the load
+// boundary.
 void LogReadException(const char* group_path, const char* kind, const std::exception& e) noexcept {
     try {
         WarnShapeMismatch(group_path,
             QStringLiteral("%1: %2").arg(QString::fromLatin1(kind),
                                          QString::fromUtf8(e.what())));
     } catch (...) {
-        // Truly defensive; never reachable in practice.
+        // No useful recovery remains if diagnostics itself cannot allocate.
     }
 }
 
@@ -227,7 +217,6 @@ void ReadShieldingTimeSeries(HighFive::File& file,
                              std::unique_ptr<QtShieldingTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -274,7 +263,6 @@ void ReadScalarTimeSeries(HighFive::File& file,
                           std::unique_ptr<QtScalarTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -317,7 +305,6 @@ void ReadVec3TimeSeries(HighFive::File& file,
                         std::unique_ptr<QtVec3TimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -360,7 +347,6 @@ void ReadT2TimeSeries(HighFive::File& file,
                       std::unique_ptr<QtT2TimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -403,7 +389,6 @@ void ReadEmbeddingTimeSeries(HighFive::File& file,
                              std::unique_ptr<QtEmbeddingTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -445,7 +430,6 @@ void ReadPositionsTimeSeries(HighFive::File& file,
                              std::unique_ptr<QtPositionsTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -483,7 +467,6 @@ void ReadChargeResponseGradientTimeSeries(HighFive::File& file,
                                           std::unique_ptr<QtAimnet2ChargeResponseGradientTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -647,7 +630,6 @@ void ReadShieldingWelford(HighFive::File& file,
                           std::unique_ptr<QtShieldingWelford>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -704,7 +686,6 @@ void ReadScalarWelford(HighFive::File& file,
                        std::unique_ptr<QtScalarWelford>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -757,7 +738,6 @@ void ReadScalarWelford(HighFive::File& file,
 void ReadVec3Welford(HighFive::File& file, const char* group_path, std::size_t n_atoms, std::unique_ptr<QtVec3Welford>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -792,7 +772,6 @@ void ReadVec3Welford(HighFive::File& file, const char* group_path, std::size_t n
 void ReadBondOrderWelford(HighFive::File& file, const char* group_path, std::unique_ptr<QtBondOrderWelford>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -838,7 +817,6 @@ void ReadHydrationWelford(HighFive::File& file,
                           std::unique_ptr<QtHydrationWelford>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -881,7 +859,6 @@ void ReadIRedOrderParameters(HighFive::File& file,
                              std::unique_ptr<QtIRedOrderParameters>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -902,7 +879,7 @@ void ReadIRedOrderParameters(HighFive::File& file,
     // Every identity dataset must match s2_ired's M; mismatched lengths
     // mean malformed/partial-write H5 and downstream lookups (rowFor,
     // SceneRevealOverlay) would index OOB. Bail loudly rather than
-    // silently truncate. This guard is the template Phases D-G clone.
+    // silently truncate.
     auto same_M = [&](const char* name) -> bool {
         if (!grp.exist(name))
             return false;
@@ -965,7 +942,6 @@ void ReadKernelCoherence(HighFive::File& file,
                          std::unique_ptr<QtKernelCoherence>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1020,7 +996,6 @@ void ReadDihedralAutocorrelation(HighFive::File& file,
                                  std::unique_ptr<QtDihedralAutocorrelation>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1086,7 +1061,7 @@ void ReadDihedralAutocorrelation(HighFive::File& file,
     fill_scalar("phi_corr_time_ps", "phi_defined", buf->phi_corr_time);
     fill_scalar("psi_corr_time_ps", "psi_defined", buf->psi_corr_time);
 
-    // Chi[0..3] composite payload — L-2a (2026-05-29). Producer emits
+    // Chi[0..3] composite payload. The producer emits
     // chi_acf (R, 4, L) + chi_corr_time_ps (R, 4) + chi_defined (R, 4).
     // Gracefully absent on older runs that predate the chi expansion;
     // we just leave the chi_* vectors empty in that case.
@@ -1135,7 +1110,6 @@ void ReadReorientationalDynamics(HighFive::File& file,
                                  std::unique_ptr<QtReorientationalDynamics>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1284,7 +1258,6 @@ void ReadKernelDynamics(HighFive::File& file,
                         std::unique_ptr<QtKernelDynamics>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1408,7 +1381,6 @@ void ReadAutocorrelation(HighFive::File& file,
                          std::unique_ptr<QtAutocorrelation>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1451,7 +1423,6 @@ void ReadWaterFieldTimeSeries(HighFive::File& file,
                               std::unique_ptr<QtWaterFieldTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1504,7 +1475,6 @@ void ReadHydrationShellTimeSeries(HighFive::File& file,
                                   std::unique_ptr<QtHydrationShellTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1554,7 +1524,6 @@ void ReadHydrationGeometryTimeSeries(HighFive::File& file,
                                      std::unique_ptr<QtHydrationGeometryTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1605,24 +1574,39 @@ void ReadHydrationGeometryTimeSeries(HighFive::File& file,
 void ReadRingPuckerTimeSeries(HighFive::File& file, const char* group_path, std::unique_ptr<QtRingPuckerTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
-    if (!grp.exist("aromatic_chi2")) {
-        WarnShapeMismatch(group_path, QStringLiteral("missing aromatic_chi2"));
-        return;
-    }
-    auto ds_a = grp.getDataSet("aromatic_chi2");
-    const auto dims_a = ds_a.getDimensions();
-    if (dims_a.size() != 2) {
-        WarnShapeMismatch(group_path, QStringLiteral("aromatic_chi2 rank != 2"));
+    if (!grp.exist("frame_indices")) {
+        WarnShapeMismatch(group_path, QStringLiteral("missing frame_indices"));
         return;
     }
     auto buf = std::make_unique<QtRingPuckerTimeSeries>();
-    buf->n_aromatic_rings = dims_a[0];
-    buf->n_frames = dims_a[1];
-    ReadFlat<double>(ds_a, buf->aromatic_chi2, buf->n_aromatic_rings * buf->n_frames);
+    grp.getDataSet("frame_indices").read(buf->frame_indices);
+    buf->n_frames = buf->frame_indices.size();
+    if (buf->n_frames == 0) {
+        WarnShapeMismatch(group_path, QStringLiteral("frame_indices is empty"));
+        return;
+    }
+
+    if (grp.exist("aromatic_chi2")) {
+        auto ds_a = grp.getDataSet("aromatic_chi2");
+        const auto dims_a = ds_a.getDimensions();
+        if (dims_a.size() != 2 || dims_a[1] != buf->n_frames) {
+            WarnShapeMismatch(group_path, QStringLiteral("aromatic_chi2 shape mismatch"));
+            return;
+        }
+        buf->n_aromatic_rings = dims_a[0];
+        ReadFlat<double>(ds_a, buf->aromatic_chi2,
+                         buf->n_aromatic_rings * buf->n_frames);
+    } else {
+        std::uint64_t declared_aromatic_rings = 0;
+        if (TryReadAttribute(grp, "n_aromatic_rings", declared_aromatic_rings)
+            && declared_aromatic_rings != 0) {
+            WarnShapeMismatch(group_path, QStringLiteral("missing aromatic_chi2"));
+            return;
+        }
+    }
     if (grp.exist("aromatic_parent_residue_index"))
         grp.getDataSet("aromatic_parent_residue_index").read(buf->aromatic_parent_residue_index);
     if (grp.exist("pucker_Q")) {
@@ -1631,14 +1615,19 @@ void ReadRingPuckerTimeSeries(HighFive::File& file, const char* group_path, std:
         if (dims_q.size() == 2 && dims_q[1] == buf->n_frames) {
             buf->n_saturated_rings = dims_q[0];
             ReadFlat<double>(ds_q, buf->pucker_Q, buf->n_saturated_rings * buf->n_frames);
+            if (buf->n_saturated_rings != 0 && !grp.exist("pucker_theta")) {
+                WarnShapeMismatch(group_path, QStringLiteral("missing pucker_theta"));
+                return;
+            }
             if (grp.exist("pucker_theta"))
                 ReadFlat<double>(grp.getDataSet("pucker_theta"), buf->pucker_theta, buf->n_saturated_rings * buf->n_frames);
             if (grp.exist("saturated_parent_residue_index"))
                 grp.getDataSet("saturated_parent_residue_index").read(buf->saturated_parent_residue_index);
+        } else {
+            WarnShapeMismatch(group_path, QStringLiteral("pucker_Q shape mismatch"));
+            return;
         }
     }
-    if (grp.exist("frame_indices"))
-        grp.getDataSet("frame_indices").read(buf->frame_indices);
     if (grp.exist("frame_times"))
         grp.getDataSet("frame_times").read(buf->frame_times);
     if (grp.exist("source_attached_per_frame"))
@@ -1664,7 +1653,6 @@ void ReadJCouplingTimeSeries(HighFive::File& file,
                              std::unique_ptr<QtJCouplingTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1729,7 +1717,6 @@ void ReadDihedralTimeSeries(HighFive::File& file,
                             std::unique_ptr<QtDihedralTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1792,7 +1779,6 @@ void ReadDssp8TimeSeries(HighFive::File& file,
                          std::unique_ptr<QtDssp8TimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1846,7 +1832,6 @@ void ReadRingNeighbourhoodTimeSeries(HighFive::File& file,
                                      std::unique_ptr<QtRingNeighbourhoodTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1895,7 +1880,6 @@ void ReadRingNeighbourhoodTimeSeries(HighFive::File& file,
 void ReadBondLengthStats(HighFive::File& file, const char* group_path, std::unique_ptr<QtBondLengthStats>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -1946,7 +1930,6 @@ void ReadBondLengthStats(HighFive::File& file, const char* group_path, std::uniq
 void ReadGromacsEnergyTimeSeries(HighFive::File& file, const char* group_path, std::unique_ptr<QtSystemEnergyTimeSeries>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -2019,7 +2002,6 @@ void ReadGromacsEnergyTimeSeries(HighFive::File& file, const char* group_path, s
 void ReadRmsdTracking(HighFive::File& file, const char* group_path, std::unique_ptr<QtRmsdTracking>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -2062,7 +2044,6 @@ void ReadDssp8Transitions(HighFive::File& file,
                           std::unique_ptr<QtDssp8Transitions>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);
@@ -2094,7 +2075,6 @@ void ReadDihedralBinTransitions(HighFive::File& file,
                                 std::unique_ptr<QtDihedralBinTransitions>& out) {
     try {
     if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
         return;
     }
     auto grp = file.getGroup(group_path);

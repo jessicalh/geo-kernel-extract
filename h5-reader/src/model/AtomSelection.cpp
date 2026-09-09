@@ -220,10 +220,8 @@ void AtomSelection::clear() {
 void AtomSelection::bulkSet(const std::vector<std::size_t>& atomIndices) {
     ASSERT_THREAD(this);
 
-    // Validate against the protein's atomCount and the geometric cap; drop
-    // out-of-range entries loudly rather than silently corrupting the set.
-    // The REST handler validates first; this is the belt+suspenders pass for
-    // any future caller.
+    // This typed boundary owns the atom-count and four-atom invariants even
+    // when its current caller has already validated a REST request.
     std::vector<std::size_t> kept;
     kept.reserve(std::min(atomIndices.size(), kMaxAtoms));
     for (std::size_t atomIdx : atomIndices) {

@@ -25,7 +25,6 @@ enum class TrajectoryFieldAvailabilityState : std::uint8_t {
     Absent = 0,
     NoFramePayload,
     AllMissing,
-    AllZeroStructural,
     AllZeroObserved,
     Available,
 };
@@ -35,7 +34,6 @@ inline const char* ToString(TrajectoryFieldAvailabilityState state) {
         case TrajectoryFieldAvailabilityState::Absent:            return "Absent";
         case TrajectoryFieldAvailabilityState::NoFramePayload:    return "NoFramePayload";
         case TrajectoryFieldAvailabilityState::AllMissing:        return "AllMissing";
-        case TrajectoryFieldAvailabilityState::AllZeroStructural: return "AllZeroStructural";
         case TrajectoryFieldAvailabilityState::AllZeroObserved:   return "AllZeroObserved";
         case TrajectoryFieldAvailabilityState::Available:         return "Available";
     }
@@ -244,7 +242,6 @@ public:
             case TrajectoryFieldAvailabilityState::Absent:
             case TrajectoryFieldAvailabilityState::NoFramePayload:
             case TrajectoryFieldAvailabilityState::AllMissing:
-            case TrajectoryFieldAvailabilityState::AllZeroStructural:
                 return false;
         }
         return false;
@@ -269,27 +266,14 @@ private:
         return storagePath;
     }
 
-    static bool structuralZeroDescriptor(const SignalDescriptor& /*descriptor*/) {
-        // Placeholder for fields whose producer contract states that an
-        // all-zero payload is structural rather than observed. Current loaded
-        // buffers either have masks/absence, or all-zero is still a value the
-        // user may need to see, so the conservative default is observed zero.
-        return false;
-    }
-
-    static TrajectoryFieldAvailabilityRecord finish(const ScanAccum& acc,
-                                                    bool structuralZero) {
+    static TrajectoryFieldAvailabilityRecord finish(const ScanAccum& acc) {
         if (!acc.sourcePresent)
             return {TrajectoryFieldAvailabilityState::Absent, 0, 0};
         if (!acc.payloadPresent || acc.finiteSamples == 0)
             return {TrajectoryFieldAvailabilityState::AllMissing, 0, 0};
-        if (acc.nonZeroSamples == 0) {
-            return {structuralZero
-                        ? TrajectoryFieldAvailabilityState::AllZeroStructural
-                        : TrajectoryFieldAvailabilityState::AllZeroObserved,
-                    acc.finiteSamples,
-                    0};
-        }
+        if (acc.nonZeroSamples == 0)
+            return {TrajectoryFieldAvailabilityState::AllZeroObserved,
+                    acc.finiteSamples, 0};
         return {TrajectoryFieldAvailabilityState::Available,
                 acc.finiteSamples,
                 acc.nonZeroSamples};
@@ -353,7 +337,7 @@ private:
         ScanAccum acc;
         acc.sourcePresent = (group == QStringLiteral("positions")) || h5->hasGroup(group);
         if (!acc.sourcePresent)
-            return finish(acc, structuralZeroDescriptor(descriptor));
+            return finish(acc);
 
         if (path == QStringLiteral("/trajectory/positions")) {
             if (const auto* b = h5->positions()) {
@@ -401,7 +385,7 @@ private:
             acc.finiteSamples = 1;
             acc.nonZeroSamples = 1;
         }
-        return finish(acc, structuralZeroDescriptor(descriptor));
+        return finish(acc);
     }
 
     static QHash<QString, TrajectoryFieldAvailabilityRecord> classifyFramePayloads(
@@ -419,8 +403,8 @@ private:
         // per-frame NPY presence is uniform across frames (the producer emits
         // the same field set every frame), so a few representative sampled
         // snapshots answer it. Scanning every sampled row would do
-        // K x (~50-100 NPY parses) synchronously on the GUI thread at open —
-        // a trajectory-size-scaling open stall (adversarial review H1). Cap at
+        // K x (~50-100 NPY parses) synchronously on the GUI thread at open and
+        // make open time scale with trajectory length. Cap at
         // a small probe; the dense-H5 half stays exhaustive (it is cheap).
         constexpr qsizetype kMaxAvailabilityProbeRows = 4;
         QVector<std::size_t> rows;
@@ -467,7 +451,7 @@ private:
                 out.insert(it.key(), {TrajectoryFieldAvailabilityState::NoFramePayload, 0, 0});
                 continue;
             }
-            out.insert(it.key(), finish(accByStorage.value(it.key()), false));
+            out.insert(it.key(), finish(accByStorage.value(it.key())));
         }
         return out;
     }

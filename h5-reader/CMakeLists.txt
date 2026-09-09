@@ -1,14 +1,12 @@
-# h5-reader — standalone Qt6/VTK reader for the per-TR-emits-its-own-group
-# trajectory.h5 + 5-NPY sidecar format produced by `nmr_extract --trajectory`
-# post-2026-05-13.
-#
-# Builds independently of the nmr_shielding library on Linux, macOS, and
-# Windows. Per-platform dependency paths and target flags live in
-# cmake/Platform-${CMAKE_SYSTEM_NAME}.cmake; find_package() calls in
-# cmake/DiscoverDeps.cmake. See notes/BUILD_LAYOUT_PLAN_2026-05-23.md.
+# Standalone Qt 6/VTK reader for nmr_extract calcsets. It builds independently
+# of nmr_shielding on Linux, macOS, and Windows. Platform settings live in
+# cmake/Platform-${CMAKE_SYSTEM_NAME}.cmake and dependency discovery lives in
+# cmake/DiscoverDeps.cmake.
 
 cmake_minimum_required(VERSION 3.21)
-project(h5reader LANGUAGES CXX)
+project(h5reader VERSION 0.5.0 LANGUAGES CXX)
+
+include(CTest)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -58,7 +56,6 @@ qt_add_library(h5reader_core STATIC
     src/diagnostics/ObjectCensus.cpp
     src/diagnostics/CrashHandler.h
     src/diagnostics/CrashHandler.cpp
-    src/diagnostics/ConnectionAuditor.h
     src/diagnostics/ThreadGuard.h
     src/diagnostics/Categories.cpp
     src/diagnostics/ShutdownSignals.h
@@ -339,14 +336,11 @@ if(COMMAND h5reader_apply_build_type_settings)
 endif()
 
 target_compile_definitions(h5reader_core PUBLIC
-    H5READER_VERSION="0.5.0-rewrite"
+    H5READER_VERSION="${PROJECT_VERSION}"
 )
 
 # ============================================================================
 # GUI reader executable — links h5reader_core; entry is main_reader.cpp.
-# A second executable (or a dispatcher main.cpp picking between
-# main_reader / main_batch) lands when the chewer's batch entry point
-# arrives; both will link the same static core.
 # ============================================================================
 
 qt_add_executable(h5reader
@@ -355,10 +349,8 @@ qt_add_executable(h5reader
 
 target_link_libraries(h5reader PRIVATE h5reader_core)
 
-# vtk_module_autoinit applies to the EXECUTABLE that links the static
-# lib, not to the lib itself — the autoinit translation unit would be
-# stripped from the static archive otherwise. qt6-cpp skill: "#1 cause
-# of VTK compiles but renders nothing." DO NOT REMOVE.
+# vtk_module_autoinit belongs on the executable that links the static library;
+# putting it on the library allows the autoinit translation unit to be stripped.
 vtk_module_autoinit(TARGETS h5reader MODULES ${VTK_LIBRARIES})
 
 h5reader_apply_platform_target_settings(h5reader)
@@ -370,7 +362,6 @@ if(COMMAND h5reader_apply_build_type_settings)
     h5reader_apply_build_type_settings(h5reader)
 endif()
 
-include(CTest)
 if(BUILD_TESTING)
     add_executable(h5reader_physics_tests
         src/physics/PhysicsTests.cpp
@@ -503,11 +494,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_csa_math_tests COMMAND h5reader_csa_math_tests)
 
-    # Availability-gate classification policy (TrajectoryFieldAvailability) --
-    # the pure classifyDft / classifyTopology / visible-state / conservative-
-    # default logic of leg #1 (make the catalog tell the truth about what is
-    # live). Build() itself is coupled to H5/NPY I/O and is REST-integration-
-    # tested; this pins the header-only policy. Links Qt6::Test only.
+    # Pure availability classification. Build() itself is coupled to H5/NPY I/O
+    # and is covered by the REST integration tests.
     qt_add_executable(h5reader_field_availability_tests
         tests/field_availability_tests.cpp
         src/model/TrajectoryFieldAvailability.h
@@ -525,9 +513,7 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     add_test(NAME h5reader_field_availability_tests
              COMMAND h5reader_field_availability_tests)
 
-    # Metric taxonomy (mechanism -> concept -> form) -- the pure classification
-    # that organizes the flat catalog into a navigable, hypothesis-first tree
-    # (the metrics-clarity de-sprawl). Header-only; links Qt6::Test only.
+    # Pure mechanism -> concept -> form classification for the catalog tree.
     qt_add_executable(h5reader_metric_taxonomy_tests
         tests/metric_taxonomy_tests.cpp
         src/model/MetricTaxonomy.h
@@ -541,9 +527,7 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     add_test(NAME h5reader_metric_taxonomy_tests
              COMMAND h5reader_metric_taxonomy_tests)
 
-    # Display policy (per-field presentation limits) -- A2: the data-driven
-    # displayability rule (topology tables + the 256-d embedding non-displayable,
-    # so the audit splits intentional non-display from real dead options). Pure.
+    # Pure per-field displayability policy.
     qt_add_executable(h5reader_display_policy_tests
         tests/display_policy_tests.cpp
         src/model/DisplayPolicy.h
@@ -1002,6 +986,14 @@ install(TARGETS h5reader
     COMPONENT Runtime
 )
 
+if(MSVC)
+    install(FILES "$<TARGET_PDB_FILE:h5reader>"
+        DESTINATION symbols
+        COMPONENT Runtime
+        OPTIONAL
+    )
+endif()
+
 if(WIN32)
     set(H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR
         "ml/experimental_shielding_ml"
@@ -1266,7 +1258,7 @@ endif()
 
 set(CPACK_PACKAGE_NAME "h5reader")
 set(CPACK_PACKAGE_VENDOR "h5reader")
-set(CPACK_PACKAGE_VERSION "0.5.0")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 if(WIN32)
     # NSIS still opens staged files through legacy MAX_PATH APIs. Some shipped
     # ROCm kernel names leave too little room for an arbitrary build path.

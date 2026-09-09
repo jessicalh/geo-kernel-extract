@@ -24,7 +24,7 @@ DisplayModeCapability PowerSpectrumVisualization::capability() const {
     return DisplayModeCapability{false, true, true};
 }
 
-QStringList PowerSpectrumVisualization::legacyModeIds() const {
+QStringList PowerSpectrumVisualization::modeIds() const {
     return {QString::fromLatin1(kMode)};
 }
 

@@ -1,12 +1,9 @@
-// MetricTaxonomy -- the mechanism -> concept -> form classification that turns
-// the flat ~188-descriptor catalog into a navigable, hypothesis-first tree.
+// Mechanism -> concept -> form classification for the metric catalog tree.
 //
-// Pure functions over SignalDescriptor (DashboardSignal.h); no Qt widgets / I/O,
-// so the SAME classification is shared by the picker UI, REST (/catalog/tree),
-// and the headless test -- the catalog can never disagree with itself about how
-// it groups.
+// Pure functions over SignalDescriptor are shared by the picker UI, REST, and
+// tests.
 //
-// Three axes (see notes/metrics-tree-2026-06-22):
+// Three axes:
 //   * GROUP   -- the mechanism / hypothesis a quantity belongs to. The four
 //                shielding-contribution kernels (ring-current, bond-anisotropy,
 //                electrostatic, H-bond) are the competing HYPOTHESES; DFT/ProCS15
@@ -17,8 +14,8 @@
 //   * FORM    -- which representation a descriptor is (snapshot = per-frame npy,
 //                series = h5 time-series, rollup = .stats welford, dynamics =
 //                .autocorrelation, transition = .transition, ...).
-// Electrostatic carries a chargeModel sub-tag (Coulomb / MOPAC / APBS / explicit
-// water / AIMNet2) -- the user navigates electrostatic shielding BY charge model.
+// Electrostatic quantities also carry a charge-model tag (Coulomb, MOPAC, APBS,
+// explicit water, or AIMNet2).
 
 #pragma once
 
@@ -50,12 +47,12 @@ enum class MetricGroup : std::uint8_t {
 };
 
 enum class MetricRole : std::uint8_t {
-    Hypothesis,  // the competing shielding-contribution kernels (A1-A4)
-    Reference,   // the DFT / empirical truth they are compared against (B)
+    Hypothesis,  // shielding-contribution kernels
+    Reference,   // DFT or empirical reference values
     Experimental,  // local experimental estimates, not QM references
-    Input,       // conditioning features (C)
-    Dynamics,    // time-evolution summaries (D)
-    Scaffold,    // identity / bookkeeping / perturbation (E)
+    Input,       // conditioning features
+    Dynamics,    // time-evolution summaries
+    Scaffold,    // identity, bookkeeping, or perturbation
 };
 
 enum class MetricForm : std::uint8_t {

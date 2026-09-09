@@ -16,8 +16,8 @@ namespace h5reader::diagnostics {
 namespace {
 ObjectCensus* g_instance = nullptr;
 
-// Signal-handler-safe write of a C string. The result is deliberately
-// discarded — we have no useful recovery path during crash dumping.
+// Minimal crash-path write. Its result is discarded because recovery is not
+// possible while producing the final report.
 void SafeWrite(int fd, const char* s) {
     if (!s) return;
 #ifndef _WIN32
@@ -54,8 +54,7 @@ void ObjectCensus::Register(QObject* obj) {
 }
 
 void ObjectCensus::Dump(int fd) {
-    // ASYNC-SIGNAL-SAFE: no mutex, no QString, no heap allocation.
-    // We iterate the set without locking — on a crash the state may be
+    // Do not take the mutex on the crash path. The state may be
     // inconsistent, but reading addresses is cheap and addresses can be
     // matched later against memory maps or the live symbol table.
     const auto* inst = g_instance;
@@ -94,12 +93,6 @@ void ObjectCensus::Dump(int fd) {
         (void)rc;
 #endif
     }
-}
-
-int ObjectCensus::LiveCount() {
-    auto* inst = Instance();
-    QMutexLocker lk(&inst->lock_);
-    return inst->live_.size();
 }
 
 }  // namespace h5reader::diagnostics

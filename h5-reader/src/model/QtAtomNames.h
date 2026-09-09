@@ -8,9 +8,8 @@
 // the experimental-shift-database name for ML matching against
 // measured chemical shifts.
 //
-// They are NOT chemistry inputs. Per the no-strings discipline
-// (notes/H5_READER_REWRITE_DESIGN_2026-05-23.md §2), they live HERE,
-// not on QtAtom. Consumers that want a label call
+// They are not chemistry inputs and therefore live here rather than on QtAtom.
+// Consumers that want a label call
 // `QtProtein::atomNames(i)` — an explicit projection access. Code
 // that asks chemistry questions on QtAtom stays on typed enums.
 //

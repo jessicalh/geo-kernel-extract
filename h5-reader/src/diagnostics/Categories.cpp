@@ -1,5 +1,5 @@
 // Categories.cpp — out-of-line definitions for the Q_LOGGING_CATEGORY
-// symbols declared in ThreadGuard.h and ConnectionAuditor.h.
+// symbols declared by the shared diagnostic headers.
 //
 // Qt's logging-category machinery splits declaration and definition:
 // Q_DECLARE_LOGGING_CATEGORY in a header gives every translation unit
@@ -8,14 +8,12 @@
 // that points at qloggingcategory.h rather than our code, so we keep
 // the definitions together here for visibility.
 
-#include "ConnectionAuditor.h"
 #include "DashboardLogging.h"
 #include "ThreadGuard.h"
 
 namespace h5reader::diagnostics {
 
 Q_LOGGING_CATEGORY(cThreadGuard, "h5reader.threadguard")
-Q_LOGGING_CATEGORY(cConnections, "h5reader.connections")
 Q_LOGGING_CATEGORY(cDash, "h5reader.dashboard")
 
 }  // namespace h5reader::diagnostics

@@ -133,9 +133,8 @@ public:
 
     QVector<StripTrack> stripTracks() const;
 
-    // Move-out the panels built during rebuild() for static-display
-    // signals (SequenceBarPanel, future ChordCouplingPanel /
-    // PowerSpectrumPanel / LagDecayPanel). The dock forwards them to
+    // Move out the panels built during rebuild() for static-display signals.
+    // The dock forwards them to
     // StripStackWidget::setOwnedPanels(). Returns an empty vector after
     // the move; the controller rebuilds on the next rebuild().
     std::vector<std::unique_ptr<AbstractStripPanel>> takeOwnedPanels();
@@ -183,7 +182,7 @@ private:
                             QVector<ActiveSeries>& series) const;
 
     // Per-TR panel builders. One per static-display TR landing in
-    // Phases C-G; each returns a fully-constructed AbstractStripPanel
+    // Each returns a fully constructed AbstractStripPanel
     // (or nullptr if the underlying H5 buffer is absent / malformed).
     std::unique_ptr<AbstractStripPanel>
         buildIRedSequenceBarPanel(const model::DashboardSignal& signal,
@@ -215,7 +214,7 @@ private:
     std::unique_ptr<AbstractStripPanel>
         buildReorientFixedFreqPanel(const model::DashboardSignal& signal,
                                      const model::SignalDescriptor& descriptor) const;
-    // L-4 (2026-05-29): auto-compose. When 2+ Reorient scalar signals
+    // When two or more Reorient scalar signals
     // (s2/tau_e/r1/r2/noe) are active with static.bar.sequence mode
     // in the same panel, the per-signal loop is skipped for them and
     // this builder folds the group into ONE SequenceBarPanel with

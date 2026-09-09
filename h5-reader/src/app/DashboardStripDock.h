@@ -66,7 +66,7 @@ public:
     int stripTrackCount() const;
 
 signals:
-    void revealRequested(const model::SignalBinding& binding);
+    void revealRequested(const h5reader::model::SignalBinding& binding);
     void metricPickerRequested();
 
 public slots:

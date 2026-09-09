@@ -472,11 +472,7 @@ def test_trpcage_shutdown_during_active_tensor_comparison_is_clean(rest):
                 shutdown = shutdown_client.post("/shutdown")
                 assert shutdown.status_code == 204, shutdown.text
 
+        comparison = result.result(timeout=60.0)
+        assert comparison.status_code == 200, comparison.text
         rest.process.wait(timeout=10.0)
         assert rest.process.returncode == 0
-        try:
-            comparison = result.result(timeout=5.0)
-        except httpx.HTTPError:
-            pass
-        else:
-            assert comparison.status_code == 200, comparison.text

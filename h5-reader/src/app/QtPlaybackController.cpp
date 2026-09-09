@@ -1,6 +1,5 @@
 #include "QtPlaybackController.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
@@ -24,7 +23,7 @@ QtPlaybackController::QtPlaybackController(int frameCount, QObject* parent)
     timer_.setInterval(1000 / fps_);
     timer_.setTimerType(Qt::PreciseTimer);
 
-    ACONNECT(&timer_, &QTimer::timeout, this, &QtPlaybackController::advance);
+    QObject::connect(&timer_, &QTimer::timeout, this, &QtPlaybackController::advance);
 
     qCInfo(cPlayback).noquote()
         << "created | frames=" << frameCount_ << "| fps=" << fps_;

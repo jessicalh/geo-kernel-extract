@@ -3,7 +3,6 @@
 #include "DashboardSelectionController.h"
 #include "NearbySignalModel.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/DashboardLogging.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -333,7 +332,7 @@ QString candidateModeDisabledReason(const QString& modeId,
 // versions of this dialog kept a local copy that missed the
 // Residue → BondVector widening, so iRED / Reorient descriptors were
 // silently filtered out of the candidate table when a residue was the
-// active anchor (Codex NOW-3, 2026-05-29).
+// active anchor.
 bool anchorAxisCanSatisfy(model::SignalAxis selectedAxis, model::SignalAxis requiredAxis) {
     return model::AxisCanSatisfy(selectedAxis, requiredAxis);
 }
@@ -397,6 +396,7 @@ QString groupTitle(model::MetricGroup group) {
     case model::MetricGroup::Electrostatic:  return QStringLiteral("Electrostatic (E-field / EFG)");
     case model::MetricGroup::HBond:          return QStringLiteral("H-bond");
     case model::MetricGroup::DftReference:   return QStringLiteral("DFT reference");
+    case model::MetricGroup::Experimental:   return QStringLiteral("Experimental estimate");
     case model::MetricGroup::Charges:        return QStringLiteral("Charges & electronic structure");
     case model::MetricGroup::Solvation:      return QStringLiteral("Solvation & water");
     case model::MetricGroup::Structure:      return QStringLiteral("Structure & geometry");
@@ -412,6 +412,7 @@ QString roleTitle(model::MetricRole role) {
     switch (role) {
     case model::MetricRole::Hypothesis: return QStringLiteral("contribution");
     case model::MetricRole::Reference:  return QStringLiteral("reference");
+    case model::MetricRole::Experimental: return QStringLiteral("experimental estimate");
     case model::MetricRole::Input:      return QStringLiteral("input");
     case model::MetricRole::Dynamics:   return QStringLiteral("dynamics");
     case model::MetricRole::Scaffold:   return QStringLiteral("scaffold");
@@ -651,7 +652,7 @@ public:
                   [](const model::MetricGroupNode& a, const model::MetricGroupNode& b) {
                       return static_cast<int>(a.group) < static_cast<int>(b.group);
                   });
-        for (const model::MetricGroupNode& group : groups) {
+        for (const model::MetricGroupNode& group : std::as_const(groups)) {
             DescriptorTreeNode* groupNode =
                 appendChild(root_, DescriptorTreeNode::Kind::Group, groupTitle(group.group));
             groupNode->detail = roleTitle(group.role);
@@ -1116,20 +1117,20 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     for (model::VisualizationType type : allVisualizationTypes())
         d_->modeFilter->addItem(visualizationTypeLabel(type), visualizationTypeKey(type));
 
-    ACONNECT(d_->liveBox, &QCheckBox::toggled, this, &SignalDisplayDialog::onLiveToggled);
-    ACONNECT(d_->radiusSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+    QObject::connect(d_->liveBox, &QCheckBox::toggled, this, &SignalDisplayDialog::onLiveToggled);
+    QObject::connect(d_->radiusSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
              this, &SignalDisplayDialog::onRadiusChanged);
-    ACONNECT(d_->anchorView->selectionModel(),
+    QObject::connect(d_->anchorView->selectionModel(),
              &QItemSelectionModel::currentRowChanged,
              this,
              [this](const QModelIndex&, const QModelIndex&) { onAnchorSelectionChanged(); });
-    ACONNECT(d_->anchorModel, &QAbstractItemModel::modelReset, this, [this]() {
+    QObject::connect(d_->anchorModel, &QAbstractItemModel::modelReset, this, [this]() {
         if (d_->anchorView && d_->anchorModel->rowCount() > 0 && !d_->anchorView->currentIndex().isValid())
             d_->anchorView->selectRow(0);
         onAnchorSelectionChanged();
     });
 
-    ACONNECT(d_->descriptorModel, &QAbstractItemModel::modelReset, this, [this]() {
+    QObject::connect(d_->descriptorModel, &QAbstractItemModel::modelReset, this, [this]() {
         refillCombo(d_->sourceFilter, QStringLiteral("All sources"),
                     d_->descriptorModel->uniqueValues(DescriptorTreeModel::SourceRole));
         refillCombo(d_->axisFilter, QStringLiteral("All axes"),
@@ -1137,46 +1138,46 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
         refillCombo(d_->shapeFilter, QStringLiteral("All shapes"),
                     d_->descriptorModel->uniqueValues(DescriptorTreeModel::ShapeRole));
     });
-    ACONNECT(d_->candidateSearch, &QLineEdit::textChanged, this, [this](const QString& text) {
+    QObject::connect(d_->candidateSearch, &QLineEdit::textChanged, this, [this](const QString& text) {
         d_->descriptorProxy->setSearchText(text);
         refreshCandidateTree();
     });
-    ACONNECT(d_->sourceFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
+    QObject::connect(d_->sourceFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setSourceFilter(d_->sourceFilter->currentData().toString());
         refreshCandidateTree();
     });
-    ACONNECT(d_->axisFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
+    QObject::connect(d_->axisFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setAxisFilter(d_->axisFilter->currentData().toString());
         refreshCandidateTree();
     });
-    ACONNECT(d_->shapeFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
+    QObject::connect(d_->shapeFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setShapeFilter(d_->shapeFilter->currentData().toString());
         refreshCandidateTree();
     });
-    ACONNECT(d_->modeFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
+    QObject::connect(d_->modeFilter, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
         d_->descriptorProxy->setModeKindFilter(d_->modeFilter->currentData().toString());
         refreshCandidateTree();
     });
-    ACONNECT(d_->candidateView->selectionModel(),
+    QObject::connect(d_->candidateView->selectionModel(),
              &QItemSelectionModel::currentRowChanged,
              this,
              [this](const QModelIndex&, const QModelIndex&) { onCandidateSelectionChanged(); });
-    ACONNECT(d_->activeView->selectionModel(),
+    QObject::connect(d_->activeView->selectionModel(),
              &QItemSelectionModel::currentRowChanged,
              this,
              [this](const QModelIndex&, const QModelIndex&) { onActiveSelectionChanged(); });
-    for (const ModeControl& control : d_->candidateModes)
-        ACONNECT(control.box, &QCheckBox::toggled, this, &SignalDisplayDialog::onCandidateModeChanged);
-    for (const ModeControl& control : d_->activeModes)
-        ACONNECT(control.box, &QCheckBox::toggled, this, &SignalDisplayDialog::onActiveModeToggled);
+    for (const ModeControl& control : std::as_const(d_->candidateModes))
+        QObject::connect(control.box, &QCheckBox::toggled, this, &SignalDisplayDialog::onCandidateModeChanged);
+    for (const ModeControl& control : std::as_const(d_->activeModes))
+        QObject::connect(control.box, &QCheckBox::toggled, this, &SignalDisplayDialog::onActiveModeToggled);
 
-    ACONNECT(d_->activeSearch, &QLineEdit::textChanged, this, [this](const QString& text) {
+    QObject::connect(d_->activeSearch, &QLineEdit::textChanged, this, [this](const QString& text) {
         d_->activeProxy->setFilterFixedString(text);
         onActiveSelectionChanged();
     });
-    ACONNECT(d_->addButton, &QPushButton::clicked, this, &SignalDisplayDialog::onAddSelected);
-    ACONNECT(d_->removeButton, &QPushButton::clicked, this, &SignalDisplayDialog::onRemoveActive);
-    ACONNECT(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    QObject::connect(d_->addButton, &QPushButton::clicked, this, &SignalDisplayDialog::onAddSelected);
+    QObject::connect(d_->removeButton, &QPushButton::clicked, this, &SignalDisplayDialog::onRemoveActive);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     refreshPanelTargets();
 }
 
@@ -1202,17 +1203,17 @@ void SignalDisplayDialog::setDashboardPanelModel(model::DashboardPanelModel* pan
         disconnect(d_->panelModel, nullptr, this, nullptr);
     d_->panelModel = panelModel;
     if (d_->panelModel) {
-        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::rowsInserted,
+        QObject::connect(d_->panelModel.data(), &QAbstractItemModel::rowsInserted,
                  this, &SignalDisplayDialog::refreshPanelTargets);
-        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::rowsRemoved,
+        QObject::connect(d_->panelModel.data(), &QAbstractItemModel::rowsRemoved,
                  this, &SignalDisplayDialog::refreshPanelTargets);
-        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::modelReset,
+        QObject::connect(d_->panelModel.data(), &QAbstractItemModel::modelReset,
                  this, &SignalDisplayDialog::refreshPanelTargets);
-        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::dataChanged,
+        QObject::connect(d_->panelModel.data(), &QAbstractItemModel::dataChanged,
                  this, [this](const QModelIndex&, const QModelIndex&, const QList<int>&) {
                      refreshPanelTargets();
                  });
-        ACONNECT(d_->panelModel.data(), &model::DashboardPanelModel::activePanelChanged,
+        QObject::connect(d_->panelModel.data(), &model::DashboardPanelModel::activePanelChanged,
                  this, &SignalDisplayDialog::refreshPanelTargets);
     }
     refreshPanelTargets();
@@ -1246,9 +1247,9 @@ void SignalDisplayDialog::setSelection(model::AtomSelection* selection) {
     d_->selection = selection;
     d_->focusAtom.reset();
     if (d_->selection) {
-        ACONNECT(d_->selection.data(), &model::AtomSelection::focusChanged,
+        QObject::connect(d_->selection.data(), &model::AtomSelection::focusChanged,
                  this, &SignalDisplayDialog::onFocusChanged);
-        ACONNECT(d_->selection.data(), &model::AtomSelection::cleared,
+        QObject::connect(d_->selection.data(), &model::AtomSelection::cleared,
                  this, &SignalDisplayDialog::onSelectionCleared);
         if (d_->selection->hasFocus())
             onFocusChanged(d_->selection->focus());
@@ -1293,7 +1294,7 @@ QJsonObject SignalDisplayDialog::pickerState() const {
     out["anchor"] = anchor;
 
     QJsonArray modes;
-    for (const ModeControl& control : d_->candidateModes) {
+    for (const ModeControl& control : std::as_const(d_->candidateModes)) {
         if (!control.box)
             continue;
         modes.append(QJsonObject{
@@ -1458,7 +1459,7 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
 
     bool checkedOne = false;
     const model::VisualizationRegistry& registry = model::VisualizationRegistry::instance();
-    for (const ModeControl& control : d_->candidateModes) {
+    for (const ModeControl& control : std::as_const(d_->candidateModes)) {
         QSignalBlocker blocker(control.box);
         const QString modeId = record ? modeForType(record->displayModes, control.type) : QString();
         const QVector<const model::VisualizationDefinition*> structural =
@@ -1486,7 +1487,7 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
         checkedOne = checkedOne || (supported && control.box->isChecked());
     }
     if (!checkedOne && record) {
-        for (const ModeControl& control : d_->candidateModes) {
+        for (const ModeControl& control : std::as_const(d_->candidateModes)) {
             if (control.box->isEnabled()) {
                 QSignalBlocker blocker(control.box);
                 control.box->setChecked(true);
@@ -1498,7 +1499,7 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
 
     QStringList enabledKinds;
     QStringList disabledKinds;
-    for (const ModeControl& control : d_->candidateModes) {
+    for (const ModeControl& control : std::as_const(d_->candidateModes)) {
         const QString kind = visualizationTypeKey(control.type);
         if (control.box->isEnabled()) {
             enabledKinds.push_back(kind);
@@ -1518,7 +1519,7 @@ void SignalDisplayDialog::onCandidateModeChanged() {
     const QModelIndex anchorIndex = d_->anchorView ? d_->anchorView->currentIndex() : QModelIndex();
     const bool hasAnchor = d_->anchorModel->candidateAt(anchorIndex) != nullptr;
     bool hasMode = false;
-    for (const ModeControl& control : d_->candidateModes) {
+    for (const ModeControl& control : std::as_const(d_->candidateModes)) {
         if (control.box->isEnabled() && control.box->isChecked()
             && !control.box->property("modeId").toString().isEmpty()) {
             hasMode = true;
@@ -1544,7 +1545,7 @@ void SignalDisplayDialog::onAddSelected() {
     const model::SignalAnchor anchor = anchorForCandidate(*candidate);
 
     QStringList displayModes;
-    for (const ModeControl& control : d_->candidateModes) {
+    for (const ModeControl& control : std::as_const(d_->candidateModes)) {
         const QString modeId = control.box->property("modeId").toString();
         if (control.box->isEnabled() && control.box->isChecked() && !modeId.isEmpty()) {
             model::DisplaySignalBinding binding;
@@ -1678,7 +1679,7 @@ void SignalDisplayDialog::onActiveSelectionChanged() {
         descriptor ? registry.visibleOfferable(d_->visualizationContext, *descriptor)
                    : QVector<const model::VisualizationDefinition*>{};
 
-    for (const ModeControl& control : d_->activeModes) {
+    for (const ModeControl& control : std::as_const(d_->activeModes)) {
         QSignalBlocker blocker(control.box);
         QString modeId = modeForType(supportedModes, control.type);
         if (modeId.isEmpty())

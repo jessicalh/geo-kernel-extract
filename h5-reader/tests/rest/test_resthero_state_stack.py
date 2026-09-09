@@ -53,6 +53,7 @@ def _listed_signal(rest, signal_id):
 
 
 def test_selection_filter_dashboard_and_resthero_survive_frame_walk(rest):
+    original_camera = rest.client.get("/scene/camera").json()
     rest.client.post("/resthero/clear")
     rest.client.post("/filter", json={"residues": []})
     rest.client.post("/field/null_cone", json={"visible": False})
@@ -88,6 +89,24 @@ def test_selection_filter_dashboard_and_resthero_survive_frame_walk(rest):
             "/selection/pick",
             json={"atom": HERO_ATOM, "modifiers": "none"},
         )
+        position_response = rest.client.post(
+            "/positions", json={"atoms": [HERO_ATOM], "frame": CROSSING_FROM}
+        )
+        assert position_response.status_code == 200, position_response.text
+        hero_position = position_response.json()["positions"][0]["position"]
+        camera = rest.client.post(
+            "/scene/camera",
+            json={
+                "focal": hero_position,
+                "position": [
+                    hero_position[0],
+                    hero_position[1],
+                    hero_position[2] + 20.0,
+                ],
+                "view_up": [0.0, 1.0, 0.0],
+            },
+        )
+        assert camera.status_code == 200, camera.text
         selection = rest.client.get("/selection").json()
         assert selection["focus"] == HERO_ATOM
         assert selection["atoms"] == [HERO_ATOM]
@@ -215,6 +234,7 @@ def test_selection_filter_dashboard_and_resthero_survive_frame_walk(rest):
         _assert_nonblank_png(_scene_png(rest))
     finally:
         rest.client.post("/resthero/clear")
+        rest.client.post("/scene/camera", json=original_camera)
         rest.client.post("/filter", json={"residues": []})
         rest.client.post("/field/null_cone", json={"visible": False})
         if added_signal_id:

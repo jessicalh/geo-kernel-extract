@@ -1,6 +1,6 @@
 # Platform-Darwin.cmake — macOS-specific build settings for h5reader.
 #
-# Target stack (per notes/BUILD_LAYOUT_PLAN_2026-05-23.md):
+# Target stack:
 #   Qt Pro 6.10.x (installer at $ENV{HOME}/Qt/<ver>/macos)
 #   VTK 9.5+ built from source (typically $ENV{HOME}/VTK/)
 #   HDF5 1.14 (brew: hdf5)

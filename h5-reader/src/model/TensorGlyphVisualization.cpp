@@ -28,7 +28,7 @@ DisplayModeCapability TensorGlyphVisualization::capability() const {
     return DisplayModeCapability{true, false, true};
 }
 
-QStringList TensorGlyphVisualization::legacyModeIds() const {
+QStringList TensorGlyphVisualization::modeIds() const {
     return {QString::fromLatin1(kMode)};
 }
 

@@ -1,5 +1,5 @@
 // display_policy_tests -- headless QtTest for the PURE per-field presentation
-// policy (model/DisplayPolicy.h). A2-step-1: the displayability rule that makes
+// policy (model/DisplayPolicy.h). The displayability rule makes
 // the structural topology tables + the 256-d embedding honestly non-displayable
 // (they were offered dead/nonsense modes by the mechanical-by-shape assignment),
 // while keeping the real per-bond bond_length scalar displayable. Links Qt6::Test

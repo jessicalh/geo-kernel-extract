@@ -76,8 +76,6 @@ QString availabilityReasonText(const DashboardSignalModel::SignalAvailability& a
         return QStringLiteral("Frame-local payload is not loaded for this run.");
     case TrajectoryFieldAvailabilityState::AllMissing:
         return QStringLiteral("Source field has no finite samples in the loaded run.");
-    case TrajectoryFieldAvailabilityState::AllZeroStructural:
-        return QStringLiteral("Source field is structurally all zero in the loaded run.");
     case TrajectoryFieldAvailabilityState::AllZeroObserved:
         return QStringLiteral("Source field contains only observed zero samples.");
     case TrajectoryFieldAvailabilityState::Available:

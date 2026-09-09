@@ -71,7 +71,7 @@ DisplayModeCapability StripVisualization::capability() const {
     return DisplayModeCapability{true, false, false};
 }
 
-QStringList StripVisualization::legacyModeIds() const {
+QStringList StripVisualization::modeIds() const {
     return {};
 }
 
@@ -92,7 +92,7 @@ QVector<StripComponent> StripVisualization::componentsFor(const SignalDescriptor
     return components;
 }
 
-std::optional<StripComponent> StripComponentForLegacyMode(const QString& modeId) {
+std::optional<StripComponent> StripComponentForMode(const QString& modeId) {
     if (modeId == QStringLiteral("strip.vector.magnitude"))
         return StripComponent::VectorMagnitude;
     if (modeId == QStringLiteral("strip.tensor.T0"))
@@ -108,7 +108,7 @@ std::optional<StripComponent> StripComponentForLegacyMode(const QString& modeId)
     return std::nullopt;
 }
 
-QString LegacyModeIdForStripComponent(StripComponent component) {
+QString ModeIdForStripComponent(StripComponent component) {
     switch (component) {
     case StripComponent::Auto:
         return QStringLiteral("strip.scalar");
@@ -144,7 +144,7 @@ bool StripModeWantsChannel(const SignalDescriptor& descriptor,
             || (!component && channel.id != QStringLiteral("magnitude"));
     }
 
-    const std::optional<StripComponent> requested = StripComponentForLegacyMode(modeId);
+    const std::optional<StripComponent> requested = StripComponentForMode(modeId);
     if (!requested || *requested == StripComponent::Auto)
         return true;
 

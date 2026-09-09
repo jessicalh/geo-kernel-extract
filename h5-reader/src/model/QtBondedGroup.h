@@ -3,8 +3,8 @@
 // energy, evaluated from positions each frame, each interaction's energy split
 // evenly among its participating atoms (kJ/mol).
 //
-//   bonded_energy (N,7) → BondedEnergy { bond, angle, ureyBradley, proper,
-//                         improper, cmap, total(=Σ of the six) }
+//   bonded_energy (N,8) → BondedEnergy { bond, angle, ureyBradley, proper,
+//                         harmonicImproper, periodicImproper, cmap, total }
 //
 // Columns are force-field-agnostic; ureyBradley + cmap are zero for force
 // fields lacking those terms (AMBER ff14SB). Thin const view; nullopt =

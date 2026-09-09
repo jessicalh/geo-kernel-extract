@@ -24,7 +24,7 @@ DisplayModeCapability ChordCouplingVisualization::capability() const {
     return DisplayModeCapability{true, true, true};
 }
 
-QStringList ChordCouplingVisualization::legacyModeIds() const {
+QStringList ChordCouplingVisualization::modeIds() const {
     return {QString::fromLatin1(kMode)};
 }
 

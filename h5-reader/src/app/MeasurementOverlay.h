@@ -1,22 +1,11 @@
-// MeasurementOverlay — the ≤4 colour-coded spheres marking the current
-// AtomSelection, repositioned every frame from Conformation::atomPosition so
-// they HOLD on their atoms as the molecule rotates and the trajectory plays.
+// MeasurementOverlay marks an ordered AtomSelection with up to four coloured
+// spheres and a connecting polyline. Positions are read again on every frame,
+// so the geometry remains attached to the atoms during playback. Numeric values
+// are shown in the measurement dock rather than over the molecule.
 //
-// Increment 1 of the killer app (memory
-// project_h5reader_killer_app_multiatom_compare_20260526): the ≤4 spheres.
-// Increment 2 (this): a connecting POLYLINE through the ordered atoms — one
-// segment for a distance, two for an angle, three for a dihedral — re-read
-// every frame so it holds on the atoms through rotation. LINES ONLY: the
-// measured value is shown in the strip chart's digital readout, deliberately
-// NOT as floating text over the moving molecule (user decision 2026-05-26).
-// The prettier angle-arc / dihedral-wedge glyph is deferred.
-// It is the deliberate successor to QtSelectionOverlay (the single-atom yellow
-// highlight, now dormant): one highlight system, an ordered colour-coded set.
-//
-// MoleculeScene-owned; obeys the overlay contract (MoleculeScene.h §1-5):
-// Build() once, setFrame(t) per frame, NO self-Render (the scene issues one
-// Render per frame after fanning setFrame to every overlay). All VTK state
-// mutation on the GUI thread.
+// MoleculeScene owns the overlay. Build() runs once, setFrame() updates it, and
+// the scene performs rendering after all overlays have advanced. VTK state is
+// changed only on the GUI thread.
 
 #pragma once
 
@@ -70,7 +59,7 @@ public:
     // Reposition the visible spheres to frame t's atom positions.
     void setFrame(int t);
 
-    // Show / hide the whole overlay (a future "Measure" toolbar toggle).
+    // Show or hide the whole overlay.
     void setVisible(bool on);
 
     // Instrument mode — a marker preset for the harness work. When on,
@@ -86,10 +75,8 @@ public:
     //
     // `focusOnly` (default false): when true AND `on` is true, all four
     // sphere actors get the slot-0 magenta colour and ONLY the focus-slot
-    // sphere is rendered (the others are SetVisibility(0)). Eliminates the
-    // slot-1-eclipses-slot-0 problem documented in
-    // VIEWPORT_OBSERVATIONS_2026-05-30.md (occluding spheres make the
-    // blob detector miss the magenta marker). Disabling instrument mode
+    // sphere is rendered (the others are SetVisibility(0)), preventing another
+    // marker from occluding the focus marker. Disabling instrument mode
     // (on=false) restores the multi-slot view regardless of focusOnly.
     void setInstrumentMode(bool on, bool focusOnly = false);
 

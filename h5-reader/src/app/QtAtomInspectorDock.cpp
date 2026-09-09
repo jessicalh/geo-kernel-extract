@@ -1,6 +1,5 @@
 #include "QtAtomInspectorDock.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
@@ -9,8 +8,8 @@
 #include "../model/CsaShape.h"
 #include "../model/TrajectoryConformation.h"
 
-// Typed per-frame group views over the snapshot — the inspector's single
-// source for per-frame calculator detail (build 2; tier-mirror memory).
+// Typed per-frame group views over the snapshot, the inspector's source for
+// calculator detail.
 #include "../model/QtAimnet2Group.h"
 #include "../model/QtApbsGroup.h"
 #include "../model/QtBiotSavartGroup.h"
@@ -69,8 +68,7 @@ namespace {
 Q_LOGGING_CATEGORY(cDock, "h5reader.inspector")
 
 // Formatting helpers — two-column tree with Field / Value. Keep the
-// value text short enough to read at a glance; expand on a child
-// node if the user wants details (future).
+// value text short enough to read at a glance; child nodes carry detail.
 
 QString FmtDouble(double v, int precision = 4) {
     if (!std::isfinite(v))
@@ -359,7 +357,7 @@ void QtAtomInspectorDock::setContext(const model::QtProtein* protein, model::Con
     protein_ = protein;
     conformation_ = conformation;
     if (conformation_) {
-        ACONNECT(conformation_.data(), &model::Conformation::snapshotReady,
+        QObject::connect(conformation_.data(), &model::Conformation::snapshotReady,
                  this, &QtAtomInspectorDock::onSnapshotReady);
     } else {
         clearSelection();
@@ -596,10 +594,9 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
     auto* posG = AddKV(root, QStringLiteral("Position"), QString());
     AddVec3(posG, QStringLiteral("xyz"), conformation_->atomPosition(st, a), QStringLiteral("Å"));
 
-    // The full per-frame calculator pile comes from the snapshot via the typed
-    // group views. ONE SOURCE PER ROLE: this panel reads the snapshot only
-    // (tier-mirror memory), never the H5 time series. A group view's nullopt is
-    // "this calculator did not run this frame" (absent, not faked) → em-dash.
+    // Per-frame calculator detail comes from typed views over the snapshot, not
+    // from the H5 time series. nullopt means the calculator did not run for this
+    // frame, and the panel displays an em dash.
     auto snap = conformation_->snapshot(st);
     if (!snap) {
         auto* g = AddKV(root, QStringLiteral("Per-frame detail"), QStringLiteral("not sampled at this frame"));
@@ -974,23 +971,22 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
 
     // ── Energy (per-atom bonded share + whole-frame GROMACS) ──
     {
-        if (AllowsAny(availability_, {"npy:bonded_energy"})) {
-            if (auto be = model::QtBondedGroup(s).energy(a)) {
-                auto* g = AddKV(root, QStringLiteral("Bonded energy (per-atom share)"), QString());
-                AddScalar(g, QStringLiteral("total"), be->total, QStringLiteral("kJ/mol"));
-                AddScalar(g, QStringLiteral("bond"), be->bond, QStringLiteral("kJ/mol"));
-                AddScalar(g, QStringLiteral("angle"), be->angle, QStringLiteral("kJ/mol"));
-                AddScalar(g, QStringLiteral("proper dih"), be->proper, QStringLiteral("kJ/mol"));
-                AddScalar(g, QStringLiteral("improper dih"), be->improper, QStringLiteral("kJ/mol"));
-            }
+        if (auto be = model::QtBondedGroup(s).energy(a)) {
+            auto* g = AddKV(root, QStringLiteral("Bonded energy (per-atom share)"), QString());
+            AddScalar(g, QStringLiteral("total"), be->total, QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("bond"), be->bond, QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("angle"), be->angle, QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("Urey-Bradley"), be->ureyBradley, QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("proper dih"), be->proper, QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("harmonic improper dih"), be->harmonicImproper, QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("periodic improper dih"), be->periodicImproper, QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("CMAP"), be->cmap, QStringLiteral("kJ/mol"));
         }
-        if (AllowsAny(availability_, {"npy:gromacs_energy"})) {
-            if (auto ge = model::QtGromacsGroup(s).energy()) {
-                auto* g = AddKV(root, QStringLiteral("Frame energy (GROMACS)"), QString());
-                AddScalar(g, QStringLiteral("potential"), ge->potential(), QStringLiteral("kJ/mol"));
-                AddScalar(g, QStringLiteral("temperature"), ge->temperature(), QStringLiteral("K"));
-                AddScalar(g, QStringLiteral("pressure"), ge->pressure(), QStringLiteral("bar"));
-            }
+        if (auto ge = model::QtGromacsGroup(s).energy()) {
+            auto* g = AddKV(root, QStringLiteral("Frame energy (GROMACS)"), QString());
+            AddScalar(g, QStringLiteral("potential"), ge->potential(), QStringLiteral("kJ/mol"));
+            AddScalar(g, QStringLiteral("temperature"), ge->temperature(), QStringLiteral("K"));
+            AddScalar(g, QStringLiteral("pressure"), ge->pressure(), QStringLiteral("bar"));
         }
     }
 

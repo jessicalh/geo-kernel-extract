@@ -111,9 +111,9 @@ public slots:
 
 private slots:
     // The conformation finished loading `frame`'s snapshot; if it is the
-    // parked frame, rebuild to show the full per-frame detail. Async-shaped:
-    // v1 loads synchronously so this fires inside requestSnapshot, but the
-    // committed prefetch increment will fire it from a worker handoff.
+    // parked frame, rebuild to show the full per-frame detail. Loading is
+    // currently synchronous, but the signal keeps the update at the snapshot
+    // completion boundary.
     void onSnapshotReady(std::size_t frame);
 
 private:

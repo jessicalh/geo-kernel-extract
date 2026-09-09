@@ -1,4 +1,4 @@
-// SignalDictionary -- legacy reveal vocabulary for dashboard strip requests.
+// SignalDictionary -- shared reveal vocabulary for dashboard requests.
 //
 // Active signal identity lives in DashboardSignal/DisplaySignalBinding. This
 // header remains only as a small adapter for the current strip renderer and VTK

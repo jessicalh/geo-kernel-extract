@@ -1,17 +1,16 @@
 // TransformedConformation — decorator over a Conformation that applies a
 // per-frame rigid-body transform (R, T) at the atomPosition() seam.
 //
-// Implements the upstream "data transform" layer described in
-// feedback_viewer_two_layers_transform_and_camera. The raw GROMACS-output
-// trajectory has 6 rigid-body degrees of freedom relative to the
+// The raw GROMACS-output trajectory has six rigid-body degrees of freedom
+// relative to the
 // simulation box (3 translation + 3 rotation) which both drift over MD
 // time. None of this is removed before display. The decorator lets a
 // downstream consumer (renderer, picker, overlays) see a stabilised
 // frame: RMSD-fit to a reference using either all atoms or a typed subset
 // (the default UI subset is the backbone).
 //
-// Architectural shape (per the memory entry's prescription): the wrapper
-// is a Conformation itself, holding a Conformation* inner (non-owning).
+// The wrapper is itself a Conformation and holds a non-owning pointer to the
+// source Conformation.
 // All Conformation virtuals delegate to inner EXCEPT atomPosition(frame,
 // atom) which applies the per-frame transform. Consumers that hold a
 // Conformation* (MoleculeScene, MeasurementOverlay, picker, REST
@@ -26,14 +25,10 @@
 // or smoothing window changes. Cache access is not thread-safe but the reader
 // is single-threaded on the GUI thread; ASSERT_THREAD guards entry points.
 //
-// PBC unwrap: deliberately NOT implemented in this decorator. The
-// canonical PBC unwrap (fes-sampler's pbc_whole.h via do_pbc_mtop)
-// requires libgromacs which h5-reader does not link by policy
-// (CLAUDE.md: standalone, never links the library). Per
-// feedback_pbc_verbatim the rule is "port verbatim or skip cleanly".
-// We skip cleanly here. The RMSD fit modes still deliver most of the
-// stabilisation value on a trajectory whose PBC unwrap was already
-// done at extraction time (the typical case for 1P9J and friends).
+// PBC unwrap is deliberately not implemented in this decorator. The canonical
+// algorithm requires libgromacs, which the standalone Reader does not link.
+// Reader inputs are expected to have been made whole during extraction; these
+// display transforms remove only residual rigid-body translation and rotation.
 //
 // ReaderMainWindow sets the startup mode before the scene builds:
 // FitSubset over the typed backbone subset, seeded/anchored at frame 0. That

@@ -1,23 +1,19 @@
 // CsaShape -- principal-axis-system (PAS) / Haeberlen decomposition of a
-// chemical-shielding-anisotropy (CSA) tensor, for the viewer's standalone
-// "look at a DFT that hasn't had a rediscover pass yet" path.
+// chemical-shielding-anisotropy (CSA) tensor for standalone DFT data.
 //
 // Pure Eigen + the shared model Vec3/Mat3 types; no Qt, no VTK -- by design,
 // so it is headless-testable from tests/scene_math_tests exactly like
 // TensorGlyphMath.h and FitTargetMath.h.
 //
-// The ALGORITHM is grabbed faithfully from AnalysisAtom.cpp::foldCsa (the
-// rediscover engine on the nmr-shielding-analysisatom worktree) so the numbers
-// match the extractor -- no functionality lost. But the SHAPE is ours: the
+// The algorithm matches AnalysisAtom.cpp::foldCsa so the numbers match the
+// extractor. The storage shape differs: the
 // engine folds this per step over a whole trajectory into an ephemeral atom
 // object; the viewer wants one atom, one frame, on demand and interactively,
 // so this is a clean pure function, NOT a port of the engine's per-step-series
 // / fold machinery. The extractor's way is not the viewer's way. Computed live
 // on a loaded DFT tensor, a bare extractor run -- one of the thousands an
 // advisor or curious person might browse -- shows an honest, correctly-
-// oriented shielding tensor with real shape numbers, no rediscover pass
-// required. Staked into src/model so the extractor's AnalysisAtom could later
-// call this same code in place of its inline copy when both sides stabilise.
+// oriented shielding tensor with real shape numbers directly from that data.
 //
 // Conventions -- match the engine EXACTLY (a silent reorder corrupts every
 // downstream component relationship):

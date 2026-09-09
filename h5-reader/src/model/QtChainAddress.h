@@ -1,20 +1,15 @@
 // QtChainAddress — typed wrapper for the (chain_id, residue_number,
 // insertion_code) addressing triple.
 //
-// Per the no-strings discipline (notes/H5_READER_REWRITE_DESIGN_2026-05-23.md
-// §2): addressing strings are genuine projection data (free-form PDB
-// convention, multimeric chain identifiers like "AA"/"AB", insertion
-// codes per PDB column 27), but they must NOT be compared directly
-// like chemistry properties.
+// Addressing strings are genuine projection data: PDB chain identifiers can
+// be multi-character and insertion codes are free-form identifiers. They must
+// not be compared as chemistry properties.
 //
 // The wrapper deliberately DISABLES operator==. Equality requires the
-// explicit IsSameAddress() predicate so a future agent writing
+// explicit IsSameAddress() predicate so a caller writing
 // `if (residue_a.address == residue_b.address)` gets a compile error
 // telling them to think about what comparison they want — by chain?
-// by number? by full triple? The discipline is enforced by the
-// language, not by code review.
-//
-// User decision §11.A (2026-05-23): "DELETED" — strongest enforcement.
+// by number? by full triple? The type system enforces the distinction.
 
 #pragma once
 

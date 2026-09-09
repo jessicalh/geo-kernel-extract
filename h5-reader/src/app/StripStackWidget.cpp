@@ -3,7 +3,6 @@
 #include "AbstractStripPanel.h"
 #include "TimeViewportController.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../model/StripChartChannel.h"
@@ -279,7 +278,7 @@ private:
         p.restore();
     }
 
-    // L-2b (2026-05-29): owned by value; was const-ref. The panel
+    // Owned by value because the panel
     // outlives the QVector<Track> the controller built it from, so a
     // setTracks() reallocation can't dangle the reference.
     StripStackWidget::Track track_;
@@ -382,7 +381,7 @@ private:
         }
     }
 
-    // L-2b: same lifetime fix as TemporalStripPanel — owned by value.
+    // Owned by value for the same lifetime reason as TemporalStripPanel.
     StripStackWidget::SpectrumTrack track_;
 };
 
@@ -462,14 +461,14 @@ void StripStackWidget::setTimeViewport(TimeViewportController* viewport)
         disconnect(viewport_, nullptr, this, nullptr);
     viewport_ = viewport;
     if (viewport_) {
-        ACONNECT(viewport_.data(), &TimeViewportController::currentFrameChanged, this, [this](int frame) {
+        QObject::connect(viewport_.data(), &TimeViewportController::currentFrameChanged, this, [this](int frame) {
             currentFrame_ = frame;
             update();
         });
-        ACONNECT(viewport_.data(), &TimeViewportController::visibleRangeChanged, this, [this](int, int) {
+        QObject::connect(viewport_.data(), &TimeViewportController::visibleRangeChanged, this, [this](int, int) {
             update();
         });
-        ACONNECT(viewport_.data(), &TimeViewportController::selectedRangeChanged, this, [this](int, int, bool) {
+        QObject::connect(viewport_.data(), &TimeViewportController::selectedRangeChanged, this, [this](int, int, bool) {
             update();
         });
     }

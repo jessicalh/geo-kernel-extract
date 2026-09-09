@@ -1,6 +1,6 @@
 // QtTrajectoryH5 — typed read boundary for trajectory.h5 (the
 // per-TR-emits-its-own-group H5 format produced by
-// `nmr_extract --trajectory` post-2026-05-13).
+// `nmr_extract --trajectory`).
 //
 // Mirrors `ui/src/TrajectoryH5` in eager-load discipline + sparse-set
 // tolerance + WarnShapeMismatch shape, but extended for the trajectory
@@ -8,20 +8,16 @@
 // across all frames, not just frame-0. HighFive::File handle dies in
 // the constructor; the buffers outlive the file.
 //
-// 56 TR groups in the 1P9J fixture (Agent 3's deep-dive). Each gets
-// its own typed buffer accessor below. Sparse-tolerant via raw pointer
-// (nullable) returns; absent groups return nullptr.
+// Each supported trajectory group has a typed buffer accessor below.
+// Nullable returns preserve sparse inputs; absent groups return nullptr.
 //
 // Construction throws `std::runtime_error` on structural failure
 // (missing /atoms, missing /trajectory/frames). Per-TR group failures
 // (present but malformed) log Warn via OperationLog and leave the
 // accessor nullptr. The "absent, not faked" discipline carries forward.
 //
-// Memory footprint on 1P9J fixture (846 atoms × 751 frames): ~1.6 GB
-// once all TRs are loaded — close to the H5 file size, since the
-// format overhead is the only compression. Fits 128 GB workstation
-// comfortably; advisor laptops with <16 GB RAM should opt out of the
-// embedding TR (256-dim × N × T × float32 = 800 MB by itself).
+// Buffers are loaded eagerly. Peak memory is therefore governed by the groups
+// present in the H5 file, particularly the 256-component embedding.
 
 #pragma once
 

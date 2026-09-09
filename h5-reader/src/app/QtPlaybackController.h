@@ -1,9 +1,7 @@
 // QtPlaybackController — frame-scrub + play/pause for trajectory playback.
 //
-// The ONE class whose QTimer is legitimate (see feedback_qt_discipline).
-// Timing is its responsibility — everyone else connects to frameChanged
-// and reacts. No interactive control anywhere else in the reader owns a
-// timer.
+// This is the only interactive controller that owns a QTimer. Other controls
+// connect to frameChanged and react to its playback clock.
 //
 // Signals:
 //   frameChanged(int t)     — emitted on every frame advance, scrub, or
@@ -27,7 +25,7 @@ class QtPlaybackController final : public QObject {
 
 public:
     // frameCount is the trajectory's Conformation::frameCount(). fps
-    // defaults to 10 frames/sec — user can override via setFps.
+    // defaults to 5 frames/sec — user can override via setFps.
     explicit QtPlaybackController(int frameCount, QObject* parent = nullptr);
     ~QtPlaybackController() override = default;
 

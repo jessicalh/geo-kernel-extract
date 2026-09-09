@@ -4,12 +4,11 @@
 // tensors, per-group temperatures. Aggregate whole-system quantities the MD
 // engine computed with explicit solvent — NOT per-atom.
 //
-//   gromacs_energy (1,43) → GromacsEnergy (PROTEIN-axis: one row per frame)
+//   gromacs_energy (1,44) → GromacsEnergy (PROTEIN-axis: one row per frame)
 //
 // PROTEIN-axis: energy() takes NO atom index (reads row 0). nullopt = no EDR
-// energy for this frame ("absent, not faked"). The 43-vs-42-column catalog
-// off-by-one is documented on the GromacsEnergy block; the loader takes the
-// actual NPY shape as truth.
+// energy for this frame ("absent, not faked"). The loader enforces the
+// catalog's fixed row width before this typed view is available.
 
 #pragma once
 

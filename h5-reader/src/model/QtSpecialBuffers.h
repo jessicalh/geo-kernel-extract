@@ -419,7 +419,7 @@ struct QtRingPuckerTimeSeries {
     std::vector<double> aromatic_chi2;                    // (n_aromatic*T,) rad
     std::vector<int32_t> aromatic_parent_residue_index;   // (n_aromatic,)
     std::vector<double> pucker_Q;                         // (n_saturated*T,) Å
-    std::vector<double> pucker_theta;                     // (n_saturated*T,) rad
+    std::vector<double> pucker_theta;                     // (n_saturated*T,) degrees
     std::vector<int32_t> saturated_parent_residue_index;  // (n_saturated,)
 
     std::vector<uint64_t> frame_indices;
@@ -437,6 +437,11 @@ struct QtRingPuckerTimeSeries {
         if (saturatedIdx >= n_saturated_rings || t >= n_frames)
             return 0.0;
         return pucker_Q[saturatedIdx * n_frames + t];
+    }
+    double puckerThetaAt(std::size_t saturatedIdx, std::size_t t) const {
+        if (saturatedIdx >= n_saturated_rings || t >= n_frames)
+            return 0.0;
+        return pucker_theta[saturatedIdx * n_frames + t];
     }
 };
 

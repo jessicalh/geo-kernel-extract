@@ -113,7 +113,7 @@ const VisualizationDefinition* VisualizationRegistry::definitionForMode(const QS
         return nullptr;
 
     for (const auto& def : defs_) {
-        if (def->legacyModeIds().contains(modeId))
+        if (def->modeIds().contains(modeId))
             return def.get();
     }
     return nullptr;

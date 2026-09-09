@@ -79,13 +79,6 @@ RequireString(const QJsonObject& obj, QStringView key, QString* err) {
     return s;
 }
 
-std::optional<QString>
-OptionalString(const QJsonObject& obj, QStringView key) {
-    const QJsonValue v = obj.value(key);
-    if (v.isUndefined() || v.isNull() || !v.isString()) return std::nullopt;
-    return v.toString();
-}
-
 // Required path: read string, resolve, existence-check.
 std::optional<QString>
 RequireResolvedPath(const QJsonObject& obj, QStringView jsonKey,
@@ -272,9 +265,8 @@ CalcsetManifest::Load(const QString& root_or_lgs_path, QString* err_out) {
     QJsonParseError parseErr;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &parseErr);
     if (parseErr.error != QJsonParseError::NoError || !doc.isObject()) {
-        err = QStringLiteral(".LGS parse error (%1) at %2:%3 in %4")
+        err = QStringLiteral(".LGS parse error (%1) at byte %2 in %3")
                   .arg(parseErr.errorString())
-                  .arg(parseErr.offset)
                   .arg(parseErr.offset)
                   .arg(m.lgs_path_abspath);
         if (err_out) *err_out = err;

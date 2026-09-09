@@ -1,7 +1,4 @@
-// AbstractStripPanel.cpp — paint + geometry helper implementations.
-// Direct lift of the helpers from StripStackWidget.cpp's previous
-// anonymous namespace (PATTERNS.md 17: code moved verbatim, no
-// behaviour change), now visible to every panel subclass.
+// Shared paint and geometry helpers for strip-panel subclasses.
 
 #include "AbstractStripPanel.h"
 

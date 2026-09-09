@@ -1,23 +1,18 @@
 // AtomSelection — the live UI atom selection, modelled as a proper Qt list
 // model: an ordered set of up to four atoms plus a "focus" member.
 //
-// Design (decided 2026-05-26, memory
-// project_h5reader_killer_app_multiatom_compare_20260526 — ONE unified
-// selection, focus-tracked; user chose "full Qt model now" over a value type):
-// the group IS the QAbstractListModel — one source of truth, not a manager
-// plus a wrapper model to keep in sync. The picker stays dumb and reports a
-// pick + the keyboard modifiers at click time; THIS object interprets the
-// gesture, mutates the model with the proper begin/end row signals, and fans
-// typed changes out to the consumers:
+// The selection is itself the QAbstractListModel, keeping one source of truth.
+// The picker reports an atom and keyboard modifiers; this object interprets
+// the gesture, mutates the model with proper begin/end row signals, and sends
+// typed changes to consumers:
 //   * focus  → the single-atom consumers (inspector dock, time-series dock)
 //              that show one atom's full state. focus follows the most
 //              recently touched member.
 //   * the ordered set -> the measurement overlay (up to 4 colour-coded
 //              spheres + connecting polyline) and the Measurements dock
 //              (distance / angle / dihedral readouts) -- both shipped.
-// (The role-based model rows once fed a view, the SelectionDock; that dock was
-//  retired, so no QAbstractItemView consumes them today -- only the typed C++
-//  API below.)
+// No QAbstractItemView currently consumes the model rows; the typed API below
+// remains the common selection surface for the UI and scene.
 //
 // Gesture policy:
 //   * plain pick  → replace the whole set with {idx} (focus = idx).
@@ -62,14 +57,13 @@ class AtomSelection final : public QAbstractListModel {
     Q_OBJECT
 
 public:
-    // The killer app measures up to a dihedral (four atoms). The cap is a
-    // physics statement, not a UI nicety: distance(2) / angle(3) /
-    // dihedral(4) are the geometric observables a selection can define.
+    // Four ordered atoms are sufficient for distance, angle, and dihedral
+    // measurements.
     static constexpr std::size_t kMaxAtoms = 4;
 
     // Custom roles for views. DisplayRole = "TRP42:CA"; DecorationRole =
-    // the slot colour swatch (matches the 3-D sphere). The typed roles feed
-    // future model views or delegates that want the raw values.
+    // the slot colour swatch (matches the 3-D sphere). Typed roles expose the
+    // raw values to model views and delegates.
     enum Roles {
         AtomIndexRole = Qt::UserRole + 1,  // int    — global atom index
         SlotRole,                          // int    — 0-based slot
@@ -115,14 +109,13 @@ public:
 
     // Bulk replace the entire selection with atomIndices, in order, focus =
     // atomIndices.back() if non-empty. Validates each index against the protein's
-    // atomCount (out-of-range are dropped with a warning; the REST handler
-    // does primary validation, this is belt+suspenders). One `changed()` and
+    // atomCount (out-of-range entries are dropped with a warning). One `changed()` and
     // one `focusChanged()` (or `cleared()`) emit at the end, NOT per atom —
     // consumers that rebuild from the full set (MeasurementOverlay,
     // MeasurementsDock, tensor overlays) only need one update.
     void bulkSet(const std::vector<size_t>& atomIndices);
 
-    // Empty the selection (a future Clear action / Esc).
+    // Empty the selection.
     void clear();
 
 signals:

@@ -93,7 +93,7 @@ bool RingNullCrosses(const RingNullMeasurement& a, const RingNullMeasurement& b,
                      double toleranceA = 1e-9);
 
 // ---------------------------------------------------------------------------
-// Geometry of an ordered atom selection — the killer app's measurements.
+// Geometry of an ordered atom selection.
 //
 // Distance/Angle/Dihedral are pure functions of positions; Measure() reads
 // them through Conformation::atomPosition, so a single pose and a trajectory

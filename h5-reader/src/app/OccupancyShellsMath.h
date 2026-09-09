@@ -1,9 +1,7 @@
 // OccupancyShellsMath — the correctness core of the per-atom occupation-
 // probability envelope shells, factored out as pure functions so it can be
-// unit-tested directly (Opus/codex review: the math, not the rendering, is
-// where a quiet error does the damage). It happens to need no VTK — but that is
-// INCIDENTAL, not the goal. The goal is best practice, which here means "use VTK
-// where VTK is the right tool, compute directly where it is not":
+// unit-tested directly because a quiet numerical error matters more than a
+// rendering error. It needs no VTK; VTK consumes the resulting field.
 //   - Where VTK is right, the overlay uses it: it contours this field with
 //     vtkContourFilter into translucent actors (the proven QtFieldGridOverlay
 //     pattern). That is NOT reimplemented here.
@@ -17,8 +15,8 @@
 // the overlay hands the field off with a single std::copy, no re-indexing.
 // Modelled on FitTargetMath.h / PlaneFrameMath.h (tested with Qt6::Test + Eigen).
 //
-// The feature (spec notes/OCCUPANCY_SHELLS_SPEC_2026-06-13.md): given a focused
-// atom's positions across all frames of an MD trajectory (already backbone-
+// Given a focused atom's positions across all frames of an MD trajectory
+// (already backbone-
 // aligned by the caller via the Conformation seam), estimate where it sits as a
 // kernel-density field, then extract nested isosurface levels enclosing 50% and
 // 90% of the occupation mass (highest-density regions). The VTK overlay layers
@@ -32,8 +30,7 @@
 //   hdrLevels            : density,frac    -> iso-levels + honest bracketed mass
 //   computeOccupancy     : the orchestrator wiring all of the above + skips
 //
-// Design choices that came out of two adversarial reviews (Opus + codex), with
-// the rationale kept here so it is not re-litigated:
+// Numerical choices and their rationale:
 //   - ANISOTROPIC kernel (H proportional to the sample covariance), NOT an
 //     isotropic scalar bandwidth: a near-planar / near-linear motion would make
 //     a geometric-mean scale collapse to the voxel floor and the shell would be
@@ -46,7 +43,7 @@
 //     On a discrete grid the guarantee is a BRACKET, not exact: lattice ties on
 //     a symmetric Gaussian mean the crossing can include a whole tie-shell, so
 //     we report the actual included mass rather than claiming "X% within a
-//     voxel" (codex). The contoured isosurface (downstream, in VTK) interpolates
+//     voxel". The contoured isosurface (downstream, in VTK) interpolates
 //     the boundary, so its geometric enclosure runs slightly under the
 //     point-set mass and tightens as voxel -> 0 (acceptance test territory).
 
@@ -185,7 +182,7 @@ inline MotionStats computeMotionStats(const std::vector<model::Vec3>& pos) {
 // then each eigenvalue is floored to (floorFactor*voxel)^2 so a thin/degenerate
 // principal axis is rendered at grid resolution rather than aliasing. The floor
 // depends on the voxel size, so the orchestrator recomputes H after any grid
-// coarsening (codex: floor-after-coarsen ordering).
+// coarsening, so the floor is always based on the final voxel size.
 inline model::Mat3 bandwidthMatrix(const model::Mat3& covariance,
                                    double nEff, double voxel,
                                    double floorVoxelFactor) {
@@ -361,7 +358,7 @@ inline std::vector<ShellLevel> hdrLevels(const DensityField& field,
             cum += v * dV;
             if (cum >= target) { cX = v; break; }
         }
-        // Re-sum including the full tie-shell at cX (codex: the crossing can be
+        // Re-sum including the full tie-shell at cX; the crossing can be
         // a whole shell of equal-density points, not one voxel).
         double inc = 0.0, above = 0.0;
         for (double v : field.values) {

@@ -1,16 +1,14 @@
 // ObjectCensus — global registry of live QObjects, for crash-time dumps.
 //
-// Every QObject constructor should register itself with CENSUS_REGISTER(this).
-// On crash, the CrashHandler dumps the set to the companion .txt file so a
-// reviewer sees which classes were alive at the crash point.
+// Registered QObject addresses are appended to the companion crash report.
 //
 // Objects are automatically removed from the registry when they emit
 // QObject::destroyed, so the set reflects live objects up to Qt's normal
 // lifetime guarantees.
 //
-// The signal-handler Dump path does NOT take the mutex (signals can fire
-// on any thread at any point) — it reads addresses best-effort. Classnames
-// via vtable access would risk a nested crash and are omitted.
+// Dump deliberately avoids the mutex because a crash may interrupt a registry
+// update. The resulting address list is best effort; class-name lookup is
+// omitted because virtual dispatch is unsafe after memory corruption.
 
 #pragma once
 
@@ -27,12 +25,8 @@ public:
     // Register a live object. Safe to call from any thread.
     static void Register(QObject* obj);
 
-    // Dump live object addresses to a file descriptor. Async-signal-safe
-    // best-effort — does NOT take the mutex. Called from CrashHandler.
+    // Dump live object addresses to a file descriptor without locking.
     static void Dump(int fd);
-
-    // Count live objects. Takes the mutex; GUI-safe.
-    static int LiveCount();
 
 private:
     ObjectCensus() = default;

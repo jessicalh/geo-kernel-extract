@@ -18,6 +18,7 @@
 #include "model/DashboardSignal.h"
 #include "model/DashboardSignalModel.h"
 #include "model/QtRing.h"
+#include "model/QtResultBlocks.h"
 #include "model/QtTopology.h"
 #include "model/SignalDictionary.h"
 #include "model/TensorGlyphVisualization.h"
@@ -33,6 +34,7 @@
 #include <QVector>
 #include <QtTest>
 
+#include <array>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -142,6 +144,7 @@ private slots:
 
     void testRingAxisNormalization_data();
     void testRingAxisNormalization();
+    void testEnergyResultBlocksUseCurrentProducerColumns();
 
     // ---- DashboardSignalModel emission contracts ------------------------
 
@@ -178,7 +181,7 @@ private slots:
     void testCatalog_dihedralAutocorrDescriptorsPresent();
     void testCatalog_kernelCoherenceDescriptorPresent();
 
-    // ---- Phase H: lockstep regression ---------------------------------
+    // ---- Catalog and sampler lockstep ---------------------------------
     // Iterate every Valid temporal DenseH5Trajectory descriptor; assert
     // canSample(synthetic binding) returns true. Catches the "added a
     // descriptor but forgot to register its storagePath in kDensePaths
@@ -187,7 +190,7 @@ private slots:
 
     // ---- Stage-1 visualization registry -----------------------------------
 
-    void testVisualizationRegistry_capabilityTableMirrorsLegacyRows();
+    void testVisualizationRegistry_capabilityTableMatchesModeRows();
     void testVisualizationRegistry_tensorGlyphIsExperimentalShieldingOnly();
 };
 
@@ -284,7 +287,7 @@ void DashboardModelTests::testAxisCanSatisfy_data() {
     QTest::newRow("aromatic-satisfies-ring") << int(SignalAxis::AromaticRing) << int(SignalAxis::Ring) << true;
     QTest::newRow("saturated-satisfies-ring") << int(SignalAxis::SaturatedRing) << int(SignalAxis::Ring) << true;
 
-    // BondVector widening (the dialog-side gap that Codex NOW-3 caught).
+    // A residue anchor can satisfy a bond-vector descriptor.
     QTest::newRow("residue-satisfies-bondvec") << int(SignalAxis::Residue) << int(SignalAxis::BondVector) << true;
 
     // Negative cases — neither widening flips the other direction.
@@ -302,7 +305,7 @@ void DashboardModelTests::testAxisCanSatisfy() {
              expected);
 }
 
-void DashboardModelTests::testVisualizationRegistry_capabilityTableMirrorsLegacyRows() {
+void DashboardModelTests::testVisualizationRegistry_capabilityTableMatchesModeRows() {
     auto expectedCapability = [](const QString& mode) {
         if (mode.startsWith(QStringLiteral("strip.")))
             return DisplayModeCapability{true, false, false};
@@ -403,6 +406,34 @@ void DashboardModelTests::testRingAxisNormalization() {
     }
 }
 
+void DashboardModelTests::testEnergyResultBlocksUseCurrentProducerColumns() {
+    const std::array<double, 8> bondedRow{0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+    const BondedEnergy bonded = BondedEnergy::FromRow(bondedRow.data());
+    QCOMPARE(bonded.bond, 0.0);
+    QCOMPARE(bonded.harmonicImproper, 4.0);
+    QCOMPARE(bonded.periodicImproper, 5.0);
+    QCOMPARE(bonded.cmap, 6.0);
+    QCOMPARE(bonded.total, 7.0);
+
+    std::array<double, 44> gromacsRow{};
+    for (std::size_t i = 0; i < gromacsRow.size(); ++i)
+        gromacsRow[i] = static_cast<double>(i);
+    const GromacsEnergy energy = GromacsEnergy::FromRow(gromacsRow.data());
+    QCOMPARE(energy.harmonicImproperDih(), 7.0);
+    QCOMPARE(energy.periodicImproperDih(), 8.0);
+    QCOMPARE(energy.cmapDih(), 9.0);
+    QCOMPARE(energy.ljShortRange(), 10.0);
+    QCOMPARE(energy.dispersionCorrection(), 12.0);
+    QCOMPARE(energy.potential(), 13.0);
+    QCOMPARE(energy.temperature(), 17.0);
+    QCOMPARE(energy.pressure(), 18.0);
+    QCOMPARE(energy.box().x(), 21.0);
+    QCOMPARE(energy.virial()(0, 0), 24.0);
+    QCOMPARE(energy.pressureTensor()(0, 0), 33.0);
+    QCOMPARE(energy.tProtein(), 42.0);
+    QCOMPARE(energy.tNonProtein(), 43.0);
+}
+
 // ---- DashboardSignalModel emission contracts ----------------------------
 
 void DashboardModelTests::testSignalModel_addEmitsSignalAdded() {
@@ -494,15 +525,6 @@ void DashboardModelTests::testSignalModel_f003TensorHasVisibleSceneSurface() {
     QVERIFY(modes.front().emitsPanelRef);
     QCOMPARE(model.renderableModeCount(0), 1);
 
-    const SignalDescriptor* legacy =
-        catalog.findDescriptor(QStringLiteral("h5:reorient_orientation_tensor"));
-    QVERIFY(legacy != nullptr);
-    model.clear();
-    model.addSignal(*legacy,
-                    BondVectorAnchor{0, 1},
-                    QString(),
-                    {QStringLiteral("static.tensor")});
-    QCOMPARE(model.renderableModeCount(0), 0);
 }
 
 // ---- DashboardPanelModel emission contracts -----------------------------
@@ -719,6 +741,26 @@ void DashboardModelTests::testCatalog_denseH5DescriptorsMatchJulyContract() {
     QCOMPARE(mopacEfg->valueShape, SignalValueShape::EfgT2);
     QCOMPARE(mopacEfg->sourceUnits.dimension, UnitDimension::ElectricFieldGradient);
 
+    QVERIFY(catalog.findDescriptor(QStringLiteral("h5:ring_pucker_time_series")) == nullptr);
+    const SignalDescriptor* aromaticChi2 =
+        catalog.findDescriptor(QStringLiteral("h5:aromatic_ring_chi2_time_series"));
+    const SignalDescriptor* puckerAmplitude =
+        catalog.findDescriptor(QStringLiteral("h5:saturated_ring_pucker_amplitude_time_series"));
+    const SignalDescriptor* puckerPhase =
+        catalog.findDescriptor(QStringLiteral("h5:saturated_ring_pucker_phase_time_series"));
+    QVERIFY(aromaticChi2 != nullptr);
+    QVERIFY(puckerAmplitude != nullptr);
+    QVERIFY(puckerPhase != nullptr);
+    QCOMPARE(aromaticChi2->requiredAnchor, SignalAxis::AromaticRing);
+    QCOMPARE(aromaticChi2->sourceUnits.dimension, UnitDimension::Angle);
+    QCOMPARE(aromaticChi2->defaultDisplayUnits.scaleToDisplay, 57.29577951308232);
+    QCOMPARE(puckerAmplitude->requiredAnchor, SignalAxis::SaturatedRing);
+    QCOMPARE(puckerAmplitude->sourceUnits.dimension, UnitDimension::Length);
+    QCOMPARE(puckerAmplitude->defaultDisplayUnits.scaleToDisplay, 1.0);
+    QCOMPARE(puckerPhase->requiredAnchor, SignalAxis::SaturatedRing);
+    QCOMPARE(puckerPhase->sourceUnits.dimension, UnitDimension::Angle);
+    QCOMPARE(puckerPhase->defaultDisplayUnits.scaleToDisplay, 1.0);
+
     static constexpr const char* kRemovedIds[] = {
         "h5:mopac_coulomb_shielding_time_series",
         "h5:mopac_vs_ff14sb_reconciliation",
@@ -867,13 +909,13 @@ void DashboardModelTests::testCatalog_reorientDescriptorsPresent() {
         QCOMPARE(d->valueShape, SignalValueShape::CurveOverLag);
         QVERIFY(d->staticModes.contains(QStringLiteral("static.curve.lag.animated")));
     }
-    // L-3a: Mat3 orientation-tensor descriptor (ellipsoid glyph in
-    // the 3-D scene). Carries static.tensor as its primary mode.
+    // The orientation tensor is shown automatically for the focused bond in
+    // the 3-D scene, so it does not advertise a dashboard display mode.
     const SignalDescriptor* tensor = catalog.findDescriptor(QStringLiteral("h5:reorient_orientation_tensor"));
     QVERIFY(tensor != nullptr);
     QCOMPARE(tensor->valueShape, SignalValueShape::Mat3PerRow);
-    QVERIFY(tensor->staticModes.contains(QStringLiteral("static.tensor")));
-    // L-3b: FixedFreqBlock J(ω) descriptor (5 KTB Larmor combinations,
+    QVERIFY(AllDisplayModes(*tensor).isEmpty());
+    // FixedFreqBlock J(ω) descriptor (five KTB Larmor combinations,
     // NH only). Carries static.fixed_freq for the dedicated panel.
     const SignalDescriptor* j = catalog.findDescriptor(QStringLiteral("h5:reorient_spectral_density"));
     QVERIFY(j != nullptr);
@@ -895,7 +937,7 @@ void DashboardModelTests::testCatalog_dihedralAutocorrDescriptorsPresent() {
         QVERIFY2(d != nullptr, id);
         QCOMPARE(d->valueShape, SignalValueShape::CurveOverLag);
     }
-    // L-2a chi composite descriptors — PerClassBlock scalar + CurveOverLag
+    // Chi composite descriptors — PerClassBlock scalar + CurveOverLag
     // with 4 chi channels (chi0..chi3). Per-channel dispatch lives in the
     // controller's panel builders.
     const SignalDescriptor* chiScalar = catalog.findDescriptor(QStringLiteral("h5:dihedral_chi_corr_time"));

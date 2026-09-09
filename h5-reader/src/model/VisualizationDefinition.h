@@ -68,7 +68,7 @@ public:
     virtual bool isAvailable(const VisualizationContext& ctx,
                              const SignalDescriptor& descriptor) const = 0;
     virtual DisplayModeCapability capability() const = 0;
-    virtual QStringList legacyModeIds() const = 0;
+    virtual QStringList modeIds() const = 0;
 };
 
 QString ToString(VisualizationType type);

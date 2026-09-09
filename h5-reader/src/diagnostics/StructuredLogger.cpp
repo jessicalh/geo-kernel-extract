@@ -7,7 +7,6 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMetaObject>
-#include <QMutexLocker>
 #include <QString>
 #include <QStringList>
 #include <QThread>
@@ -60,7 +59,6 @@ const std::unordered_map<std::string, std::uint32_t>& CategoryBitTable() {
         {"h5reader.window",          kCatHealth},
         // Diagnostics infrastructure
         {"h5reader.threadguard",     kCatHealth},
-        {"h5reader.connections",     kCatHealth},
         // Overlay categories
         {"h5reader.overlay.measurement", kCatOverlay | kCatPicker},
     };
@@ -232,7 +230,6 @@ void StructuredLogger::Emit(QtMsgType type,
 
     const QByteArray json = QJsonDocument(obj).toJson(QJsonDocument::Compact);
     auto writeUdp = [this, json]() {
-        QMutexLocker lk(&lock_);
         const qint64 sent = udp_.writeDatagram(json, host_, port_);
         if (sent != json.size()) {
             std::fprintf(stderr,

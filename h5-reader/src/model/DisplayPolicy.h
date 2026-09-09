@@ -1,17 +1,4 @@
-// DisplayPolicy -- per-field PRESENTATION limits as data, not mechanical-by-shape.
-//
-// The display catalog historically assigned modes by coarse value_shape in hand
-// helpers (TrajectorySignalCatalog.cpp tensorStripModes()/categoryStripModes()/…),
-// divorced from each field's physics -- so static topology TABLES got time-strip
-// modes nothing renders, and a 256-d embedding got a meaningless strip
-// (GET /catalog/display-audit, 2026-06-22). This is the seam where presentation
-// limits become per-field DATA. Pure functions over SignalDescriptor; shared by
-// the catalog, REST, and the headless test.
-//
-// A2-step-1 (here): displayability -- is a field a dashboard signal at all.
-// A2-step-2 (next): derive the OFFERED MODES from the dictionary (FieldSpec irreps
-// 0e/1e/2e -> tensor components; shape+axis -> surfaces), replacing the mechanical
-// helpers. See notes/DISPLAY_COHERENCE_RELAY_2026-06-22.md.
+// Per-field presentation limits shared by the catalog, REST, and tests.
 
 #pragma once
 
@@ -21,27 +8,17 @@
 
 namespace h5reader::model {
 
-// Is this descriptor a dashboard DISPLAYABLE signal at all? Two field kinds are
-// intentionally NOT plottable dashboard signals (the mechanical-by-shape pass
-// offered them dead/nonsense modes):
-//   * the structural topology TABLES (atoms / residues / bonds / rings /
-//     ring_membership) -- they ARE the molecule, shown in the 3-D scene, not a
-//     per-frame series. (topology:bond_length is a real per-bond Scalar and STAYS
-//     displayable -- hence the Category gate, not a blanket family check.)
-//   * the 256-d AIMNet2 Embedding -- an ML feature vector, not a plottable curve.
+// Structural topology tables describe the molecule rather than a per-frame
+// signal. Bond lengths remain displayable because they are scalar measurements.
+// The AIMNet2 embedding is a model feature vector rather than a readable plot.
 inline bool IsDashboardDisplayable(const SignalDescriptor& descriptor) {
     if (descriptor.valueShape == SignalValueShape::Embedding)
         return false;
     if (descriptor.family == QLatin1String("topology")
         && descriptor.valueShape == SignalValueShape::Category)
         return false;
-    // Rollup-moment summaries (welford mean/var/count, *.stats, autocorrelation)
-    // are whole-TRAJECTORY statistics, not per-frame series -- shown as a temporal
-    // strip they draw a flat line (one constant value repeated every frame; the
-    // read-to-display sweep flagged the whole family flat/empty). De-stripped
-    // pending a static "mean +/- std (n)" readout; until that lands they are not a
-    // dashboard signal. RollupMoments is exclusively this family, so the shape gate
-    // is exact. (When the readout mode ships, drop this clause + offer that mode.)
+    // Whole-trajectory rollups would be constant across a temporal strip and are
+    // therefore not dashboard signals.
     if (descriptor.valueShape == SignalValueShape::RollupMoments)
         return false;
     return true;

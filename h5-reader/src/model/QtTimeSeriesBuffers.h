@@ -6,9 +6,8 @@
 // once at QtTrajectoryH5 construction; held for the session.
 //
 // Storage strategy: flat std::vector<double> indexed (atom, frame,
-// component) row-major. Per-atom slabs are contiguous in memory, which
-// matches how the writer emitted them — see Agent 3's fixture deep-
-// dive: shapes are (N, T, K) with N leading.
+// component) row-major. Per-atom slabs are contiguous and match the writer's
+// (N, T, K) arrays with the atom axis first.
 //
 // Per-frame metadata (frame_indices, frame_times) duplicated from
 // /trajectory/frames; carried per-TR because some TRs are

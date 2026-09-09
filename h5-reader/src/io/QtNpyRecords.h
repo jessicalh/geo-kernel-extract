@@ -111,8 +111,7 @@ struct QtNpyRingMembershipRow {
 // field layout it composes per atom. (No single descriptor literal there;
 // the field order is the literal sequence of memcpys.)
 //
-// Field order verified against the manifest dump on the 1P9J fixture
-// 2026-05-23 — see the conversation transcript for the h5py dtype dump.
+// Field order matches the producer's packed atom-category record.
 // ============================================================================
 
 struct QtNpyAtomCategoryRow {
@@ -158,8 +157,7 @@ struct QtNpyAtomCategoryRow {
 #pragma pack(pop)
 
 // ── Build-time guards: byte layouts must match the writer constants ──
-// Sizes verified 2026-05-23 against the 1P9J baseline fixture via
-// numpy.dtype.itemsize. Writer-side kXRecordSize constants match.
+// These sizes are the producer's packed-record contract.
 static_assert(sizeof(QtNpyResidueRow) == 42, "QtNpyResidueRow size diverged from src/TopologySidecar.cpp kResidueRecordSize");
 static_assert(sizeof(QtNpyBondRow) == 18, "QtNpyBondRow size diverged from src/TopologySidecar.cpp kBondRecordSize");
 static_assert(sizeof(QtNpyRingRow) == 24, "QtNpyRingRow size diverged from src/TopologySidecar.cpp kRingRecordSize");

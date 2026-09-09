@@ -3,7 +3,6 @@
 #include "MoleculeScene.h"
 #include "QtPlaybackController.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
@@ -188,21 +187,21 @@ bool SceneVideoExporter::start(const SceneVideoExportRequest& request,
     recorder_->setAutoStop(true);
     recorder_->setOutputLocation(QUrl::fromLocalFile(status_.outputPath));
 
-    ACONNECT(videoInput_, &QVideoFrameInput::readyToSendVideoFrame,
+    QObject::connect(videoInput_, &QVideoFrameInput::readyToSendVideoFrame,
              this, &SceneVideoExporter::onInputReady);
-    ACONNECT(recorder_, &QMediaRecorder::recorderStateChanged,
+    QObject::connect(recorder_, &QMediaRecorder::recorderStateChanged,
              this, &SceneVideoExporter::onRecorderStateChanged);
-    ACONNECT(recorder_, &QMediaRecorder::errorOccurred,
+    QObject::connect(recorder_, &QMediaRecorder::errorOccurred,
              this, &SceneVideoExporter::onRecorderError);
     renderCompletedConnection_ =
-        ACONNECT(exportScene_, &MoleculeScene::renderCompleted,
+        QObject::connect(exportScene_, &MoleculeScene::renderCompleted,
                  this, &SceneVideoExporter::onRenderCompleted);
     sceneDestroyedConnection_ =
-        ACONNECT(exportScene_, &QObject::destroyed, this, [this]() {
+        QObject::connect(exportScene_, &QObject::destroyed, this, [this]() {
             fail(QStringLiteral("the scene was closed during video export"));
         });
     playbackDestroyedConnection_ =
-        ACONNECT(exportPlayback_, &QObject::destroyed, this, [this]() {
+        QObject::connect(exportPlayback_, &QObject::destroyed, this, [this]() {
             fail(QStringLiteral("the trajectory was closed during video export"));
         });
 

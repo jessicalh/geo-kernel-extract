@@ -1,18 +1,15 @@
 // MolecularFrame -- per-frame molecular (chemical-group) reference frame and
-// the lab->molecular tensor projection, for the viewer's standalone "look at a
-// DFT that hasn't had a rediscover pass yet" path.
+// the lab->molecular tensor projection for standalone DFT data.
 //
 // This is the GEOMETRY CORE: pure Eigen + the shared model Vec3/Mat3 types, no
-// Qt, no VTK, no QtProtein/Conformation coupling -- so it is headless-testable
-// from tests/scene_math_tests and could later be shared with the extractor's
-// AnalysisAtom in place of its inline copy. It takes a resolved MolFrameSpec
+// Qt, no VTK, no QtProtein/Conformation coupling -- so it is headless-testable.
+// It takes a resolved MolFrameSpec
 // (anchor atom indices already chosen) plus position / ring-geometry callbacks,
 // and returns the per-frame orthonormal axes.
 //
-// The frame-BUILDING math (frameFromXAndPlane / XAndZ / XAndPlaneLocked) is
-// grabbed faithfully from AnalysisAtom.cpp (the rediscover engine on the
-// nmr-shielding-analysisatom worktree, ~lines 751-816 / 5166-5223) so the axes
-// match the extractor. What is DELIBERATELY NOT ported is its way of CHOOSING
+// The frame-building math (frameFromXAndPlane / XAndZ / XAndPlaneLocked)
+// matches AnalysisAtom.cpp so the axes match the extractor. Deliberately not
+// ported is its way of choosing
 // the anchors: AnalysisAtom dispatches on IUPAC name strings ("C","OD1",...);
 // the viewer's QtAtom is already typed (BackboneRole, PlanarGroupKind,
 // parentAtomIndex), so the selector that fills a MolFrameSpec lives in a thin

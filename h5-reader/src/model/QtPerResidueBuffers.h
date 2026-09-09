@@ -1,8 +1,8 @@
 // QtPerResidueBuffers.h — residue-axis per-frame typed buffers.
 //
-// These TRs use (R, T, K) shape instead of (N, T, K). The reader's
-// access pattern: walk residues (54 for 1P9J), not atoms. Mainly used
-// by the dihedral / DSSP / ring-pucker docks.
+// These results use (R, T, K) shape instead of (N, T, K). Access walks the
+// residue axis rather than the atom axis. They are mainly used by the
+// dihedral, DSSP, and ring-pucker displays.
 //
 // DSSP carries a complex shape: ss8 [R, T] uint8 + four hbond
 // datasets [R, T, 2] (top-2 acceptor/donor partners + energies).
@@ -36,7 +36,7 @@ struct QtPerResidueFrameMeta {
 
 // ──────────────────────────────────────────────────────────────────
 // QtPerResidueScalarTimeSeries — (R, T) per-residue scalar TS.
-// Generic shape used by ring_pucker_time_series and potential future
+// Generic shape used by ring_pucker_time_series and other
 // per-residue scalars.
 // ──────────────────────────────────────────────────────────────────
 
@@ -242,8 +242,8 @@ struct QtJCouplingTimeSeries {
 // QtDihedralAutocorrelation — /trajectory/dihedral_autocorrelation/
 //
 // Per-residue circular ACF of phi/psi/chi torsions + 1/e decorrelation
-// times. v1 surfaces phi + psi only; chi[0..3] are present in the H5
-// for future expansion. Static (no time axis on the curves).
+// times. Phi, psi, and chi[0..3] are all available to the dashboard. These are
+// trajectory summaries rather than frame-indexed curves.
 // ──────────────────────────────────────────────────────────────────
 
 struct QtPerResidueCurve {
@@ -285,7 +285,7 @@ struct QtDihedralAutocorrelation {
     QtPerResidueCurve  psi_acf;        // (R, L)
     QtPerResidueScalar phi_corr_time;  // (R,) ps
     QtPerResidueScalar psi_corr_time;  // (R,) ps
-    // Chi[0..3] composite payload (Option B per 2026-05-29 planning).
+    // Chi[0..3] composite payload.
     // chi_acf flat layout: (residue, channel ∈ [0..3], sample). One
     // PerClassBlock + 4-channel descriptor covers all four chi torsions
     // rather than landing eight separate descriptors. The lag axis is

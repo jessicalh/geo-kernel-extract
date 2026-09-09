@@ -2,7 +2,7 @@
 //
 // Used by KernelDynamicsTrajectoryResult's 5 outputs (acf, power_spectrum,
 // decay_time, peak_freq, spectral_centroid) and KernelCoherence
-// (Phase G — Matrix shape uses a sibling QtPerAtomMatrix struct).
+// Matrix-valued channels use a sibling QtPerAtomMatrix struct.
 //
 // Two row shapes:
 //   - PerAtomChannelCurve   = (N atoms, C channels, S samples)  rho/lag or PSD/freq

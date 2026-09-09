@@ -10,10 +10,8 @@ namespace h5reader::app {
 
 namespace {
 
-// Map a residue's typed backbone-atom-index cache (built at load from
-// typed BackboneRole + Locant; no string scan — feedback_identity_from_
-// chemistry_not_position) into the typed std::size_t shape the
-// CameraMode constructors expect. NONE entries return nullopt.
+// Map a residue's typed backbone-atom-index cache into the std::size_t shape
+// expected by CameraMode. NONE entries return nullopt.
 std::optional<std::size_t> ToOptIndex(int32_t v) {
     if (v == model::QtResidue::NONE) return std::nullopt;
     if (v < 0) return std::nullopt;

@@ -1,6 +1,6 @@
 # Platform-Linux.cmake — Linux-specific build settings for h5reader.
 #
-# Pinned dependency stack (per notes/BUILD_LAYOUT_PLAN_2026-05-23.md):
+# Dependency stack:
 #   Qt 6.4 (apt: qt6-base-dev qt6-charts-dev)
 #   VTK 9.5 (built from source, typically at $ENV{HOME}/VTK/)
 #   HDF5 1.10 (apt: libhdf5-dev)

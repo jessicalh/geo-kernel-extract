@@ -1,16 +1,8 @@
 // SpectralAnalysis — power spectrum of a uniformly-sampled scalar series.
 //
-// The killer app charts a geometric observable (distance / angle / dihedral) of
-// a selected atom tuple over a trajectory. Its FORWARD FOURIER TRANSFORM turns
-// that time record into a frequency spectrum: a periodic motion (an aromatic
-// ring flip, a backbone libration, a sidechain rotamer hop) shows up as a peak
-// at its characteristic frequency. This is how the reader SEES periodicity in a
-// dihedral — directly observable and assumption-free, which is the point.
-//
-// (An orientational-ACF / Lipari-Szabo S²/τc path was prototyped and pulled:
-// in the lab frame, without removing global tumbling, those relaxation numbers
-// may not validly apply to our data — dihedral periodicity is the honest, more
-// compelling demonstration. See notes/PLANNED_ANALYSIS_METHODS.md.)
+// A forward Fourier transform converts a distance, angle, or dihedral time
+// series into a frequency spectrum. Periodic motion appears as a peak at its
+// characteristic frequency.
 //
 // Pure math over a plain series — no Qt, no VTK, no rendering. Eigen's FFT
 // (unsupported/Eigen/FFT, kissfft backend) does the transform; the model layer

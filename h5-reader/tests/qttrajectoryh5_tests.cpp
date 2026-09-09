@@ -64,6 +64,25 @@ void addOptionalShieldingGroupWithMalformedFrameMeta(const QString& path) {
     grp.createDataSet("frame_times", std::vector<std::string>{"bad", "bad"});
 }
 
+void addSaturatedRingPuckerGroupWithoutAromaticRings(const QString& path) {
+    HighFive::File file(path.toStdString(), HighFive::File::ReadWrite);
+    auto grp = file.createGroup("/trajectory/ring_pucker_time_series");
+    grp.createAttribute("n_aromatic_rings", std::uint64_t{0});
+    grp.createAttribute("n_saturated_rings", std::uint64_t{1});
+    grp.createDataSet("frame_indices", std::vector<std::uint64_t>{0, 1});
+    grp.createDataSet("frame_times", std::vector<double>{0.0, 1.0});
+    grp.createDataSet("source_attached_per_frame", std::vector<std::uint8_t>{1, 1});
+    grp.createDataSet("aromatic_parent_residue_index", std::vector<std::int32_t>{});
+    grp.createDataSet("saturated_parent_residue_index", std::vector<std::int32_t>{0});
+
+    const std::vector<double> amplitude{0.21, 0.34};
+    auto q = grp.createDataSet<double>("pucker_Q", HighFive::DataSpace({1, 2}));
+    q.write_raw(amplitude.data());
+    const std::vector<double> phase{12.0, 24.0};
+    auto theta = grp.createDataSet<double>("pucker_theta", HighFive::DataSpace({1, 2}));
+    theta.write_raw(phase.data());
+}
+
 }  // namespace
 
 class QtTrajectoryH5Tests : public QObject {
@@ -74,6 +93,7 @@ private slots:
     void missingPositionsIsHardLoadError();
     void positionsFrameCountMismatchIsHardLoadError();
     void positionsAtomCountMismatchIsHardLoadError();
+    void saturatedRingPuckerDoesNotRequireAromaticRings();
 };
 
 void QtTrajectoryH5Tests::optionalMalformedReaderDoesNotAbortLoad() {
@@ -154,6 +174,25 @@ void QtTrajectoryH5Tests::positionsAtomCountMismatchIsHardLoadError() {
         QVERIFY2(message.contains(QStringLiteral("/atoms count=1")),
                  qPrintable(message));
     }
+}
+
+void QtTrajectoryH5Tests::saturatedRingPuckerDoesNotRequireAromaticRings() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("trajectory.h5"));
+    writeMinimalTrajectory(path);
+    addSaturatedRingPuckerGroupWithoutAromaticRings(path);
+
+    const QtTrajectoryH5 h5(path);
+    const auto* pucker = h5.ringPucker();
+    QVERIFY(pucker != nullptr);
+    QCOMPARE(pucker->n_frames, std::size_t{2});
+    QCOMPARE(pucker->n_aromatic_rings, std::size_t{0});
+    QCOMPARE(pucker->n_saturated_rings, std::size_t{1});
+    QCOMPARE(pucker->puckerQAt(0, 0), 0.21);
+    QCOMPARE(pucker->puckerQAt(0, 1), 0.34);
+    QCOMPARE(pucker->puckerThetaAt(0, 0), 12.0);
+    QCOMPARE(pucker->puckerThetaAt(0, 1), 24.0);
 }
 
 QTEST_GUILESS_MAIN(QtTrajectoryH5Tests)

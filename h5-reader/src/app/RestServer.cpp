@@ -21,7 +21,6 @@
 #include "TensorGlyphActor.h"
 
 #include "../calculators/BiotSavartRingCurrent.h"
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/StructuredLogger.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -1558,8 +1557,7 @@ QJsonArray expectedEmptyArray(const DashboardSmokeSummary& summary) {
 //           the live scene state.
 //   false → call ShouldRerenderOff() before Update() — read whatever pixels
 //           are currently in the framebuffer. The right mode for the
-//           paint-cycle-inversion experiment (VIEWPORT_OBSERVATIONS §5b);
-//           lets the harness distinguish "the synchronous Render reached
+//           framebuffer-state check; lets the harness distinguish "the synchronous Render reached
 //           the back buffer" from "we read the post-render FBO".
 //
 // Thread: VTK render/read must happen on the GUI thread. ASSERT_THREAD against
@@ -1640,7 +1638,7 @@ RestServer::RestServer(QObject* parent)
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("RestServer"));
     videoExporter_ = new SceneVideoExporter(this);
-    ACONNECT(videoExporter_, &SceneVideoExporter::finished,
+    QObject::connect(videoExporter_, &SceneVideoExporter::finished,
              this, &RestServer::activeOperationFinished);
 }
 
@@ -1676,6 +1674,7 @@ QTcpSocket* RestServer::socketForRequest(
 
 bool RestServer::hasActiveOperations() const {
     return !modelInputOperation_.isNull()
+        || !ringTensorOperation_.isNull()
         || (videoExporter_ && videoExporter_->isActive());
 }
 
@@ -1852,8 +1851,8 @@ void RestServer::beginModelInputExport(const QHttpServerRequest& request, QHttpS
                                    << "| error=" << message;
         writeJson(responder, QJsonObject{{"error", message}}, status);
     };
-    if (modelInputOperation_) {
-        fail(QStringLiteral("a model-input export is already running"), SC::Conflict);
+    if (hasActiveOperations()) {
+        fail(QStringLiteral("another Reader operation is running"), SC::Conflict);
         return;
     }
     if (!loaded_ || !loaded_->ok || !loaded_->protein || !loaded_->conformation || !transformed_) {
@@ -1972,7 +1971,7 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("reader window is unavailable"),
                                  SC::ServiceUnavailable);
         }
-        if (hasActiveOperations() || ringTensorOperation_) {
+        if (hasActiveOperations()) {
             return errorResponse(QStringLiteral("another Reader operation is running"),
                                  SC::Conflict);
         }
@@ -2016,8 +2015,8 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("no loaded trajectory scene is available"),
                                  SC::ServiceUnavailable);
         }
-        if (videoExporter_->isActive()) {
-            return errorResponse(QStringLiteral("a scene video export is already running"),
+        if (hasActiveOperations()) {
+            return errorResponse(QStringLiteral("another Reader operation is running"),
                                  SC::Conflict);
         }
 
@@ -2301,8 +2300,7 @@ void RestServer::registerRoutes() {
     //
     // `focus_only` (default false, back-compat): when true AND enabled is
     // true, all four sphere actors get the magenta colour and only the
-    // focus-slot sphere renders — eliminates the slot-1-eclipses-slot-0
-    // problem the no-lock baseline run hit (VIEWPORT_OBSERVATIONS §5b).
+    // focus-slot sphere renders, preventing another slot from occluding it.
     server_->route(QStringLiteral("/selection/instrument"), Method::Post,
                    [this](const QHttpServerRequest& req) {
         ASSERT_THREAD(this);
@@ -3277,8 +3275,7 @@ void RestServer::registerRoutes() {
     //                     "axis_atoms": [a,b]}}
     // POST /camera/clear  — equivalent to setMode(Free, Default).
     //
-    // Per spec/viewport_pipeline_2026-05-30.md §I (REST surface). The
-    // typed CameraMode replaces ad-hoc camera-lock endpoints; the
+    // CameraMode provides the typed camera-lock surface; the
     // existing /plane-lock/* endpoints continue to work as shims.
     server_->route(QStringLiteral("/camera/mode"), Method::Get,
                    [this](const QHttpServerRequest&) {
@@ -3881,7 +3878,7 @@ void RestServer::registerRoutes() {
             const QJsonArray requested = body.value(QStringLiteral("rings")).toArray();
             if (requested.isEmpty() || requested.size() > 8)
                 return errorResponse(QStringLiteral("rings must contain 1 to 8 indices"), SC::BadRequest);
-            for (const QJsonValue& value : requested) {
+            for (const QJsonValue value : requested) {
                 const qint64 raw = value.toInteger(-1);
                 if (raw < 0 || static_cast<std::size_t>(raw) >= protein->ringCount())
                     return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
@@ -4558,7 +4555,7 @@ void RestServer::registerRoutes() {
 
         std::vector<std::size_t> atoms;
         atoms.reserve(static_cast<std::size_t>(atomValues.size()));
-        for (const QJsonValue& value : atomValues) {
+        for (const QJsonValue value : atomValues) {
             const qint64 raw = value.toInteger(-1);
             if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
                 return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
@@ -4571,7 +4568,7 @@ void RestServer::registerRoutes() {
         rings.reserve(static_cast<std::size_t>(ringValues.size()));
         std::vector<physics::CircularRingParameters> parameters;
         parameters.reserve(static_cast<std::size_t>(ringValues.size()));
-        for (const QJsonValue& value : ringValues) {
+        for (const QJsonValue value : ringValues) {
             const qint64 raw = value.toInteger(-1);
             if (raw < 0 || static_cast<std::size_t>(raw) >= protein->ringCount())
                 return errorResponse(QStringLiteral("ring out of range"), SC::BadRequest);
@@ -4821,8 +4818,8 @@ void RestServer::registerRoutes() {
         const auto fail = [&](const QString& message, SC status) {
             writeJson(responder, QJsonObject{{"error", message}}, status);
         };
-        if (ringTensorOperation_) {
-            fail(QStringLiteral("ring tensor comparison already in progress"), SC::Conflict);
+        if (hasActiveOperations()) {
+            fail(QStringLiteral("another Reader operation is running"), SC::Conflict);
             return;
         }
         if (!scene_ || !loaded_ || !loaded_->protein || !loaded_->conformation || !transformed_ || !readerWindow_) {
@@ -4851,7 +4848,7 @@ void RestServer::registerRoutes() {
 
         std::vector<std::size_t> atoms;
         atoms.reserve(static_cast<std::size_t>(atomValues.size()));
-        for (const QJsonValue& value : atomValues) {
+        for (const QJsonValue value : atomValues) {
             const qint64 rawAtom = value.toInteger(-1);
             if (rawAtom < 0 || static_cast<std::size_t>(rawAtom) >= protein.atomCount()) {
                 fail(QStringLiteral("atom out of range"), SC::BadRequest);
@@ -4866,7 +4863,7 @@ void RestServer::registerRoutes() {
         std::vector<physics::CircularRingParameters> parameters;
         rings.reserve(static_cast<std::size_t>(ringValues.size()));
         parameters.reserve(static_cast<std::size_t>(ringValues.size()));
-        for (const QJsonValue& value : ringValues) {
+        for (const QJsonValue value : ringValues) {
             const qint64 rawRing = value.toInteger(-1);
             if (rawRing < 0 || static_cast<std::size_t>(rawRing) >= protein.ringCount()) {
                 fail(QStringLiteral("ring out of range"), SC::BadRequest);
@@ -4924,7 +4921,7 @@ void RestServer::registerRoutes() {
                     return key + QStringLiteral(" must be a non-empty array");
                 const QJsonArray requested = value.toArray();
                 destination.reserve(static_cast<std::size_t>(requested.size()));
-                for (const QJsonValue& frameValue : requested) {
+                for (const QJsonValue frameValue : requested) {
                     const qint64 frame = frameValue.toInteger(-1);
                     if (frame < 0 || static_cast<std::size_t>(frame) >= frameCount)
                         return key + QStringLiteral(" contains an out-of-range frame");
@@ -5399,6 +5396,10 @@ void RestServer::registerRoutes() {
             std::move(restoreLiveDftFrame), this);
         operation->setObjectName(QStringLiteral("restheroRingTensorCompareOperation"));
         ringTensorOperation_ = operation;
+        QObject::connect(operation, &QObject::destroyed, this, [this]() {
+            ringTensorOperation_.clear();
+            activeOperationFinished();
+        });
         operation->start();
     };
     server_->route(QStringLiteral("/resthero/ring_tensor_compare"), Method::Post, restheroRingTensorCompareHandler);
@@ -6017,8 +6018,7 @@ void RestServer::registerRoutes() {
     // GET /log/mask → {"mask": int, "categories": ["FRAME", "CAMERA", ...]}
     // POST /log/mask {"mask": int} OR {"categories": [...]}
     //
-    // Per spec/viewport_pipeline_2026-05-30.md §H + implementation prompt
-    // §3 (bitmask logging instead of UDP throttling). RENDER (0x01) is
+    // Logging uses a category bitmask rather than UDP throttling. RENDER (0x01) is
     // off by default; flip it on when debugging the render scheduler.
     server_->route(QStringLiteral("/log/mask"), Method::Get,
                    [](const QHttpServerRequest&) {

@@ -67,8 +67,8 @@ public:
     // extraction_manifest.json (the `.LGS` carries it as
     // trajectory.extraction_manifest; the legacy
     // sidecar_dir/extraction_manifest.json convention is implied when
-    // omitted). Files are looked up by their canonical names (no
-    // globbing, no discovery — per feedback_no_file_discovery).
+    // omitted). Files are looked up by their canonical names without
+    // globbing or discovery.
     static LoadResult Load(const QString& sidecar_dir,
                            const QString& manifest_path = QString());
 };

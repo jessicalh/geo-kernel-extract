@@ -22,37 +22,24 @@ std::size_t Conformation::ringCount() const {
 }
 
 std::shared_ptr<const QtConformationSnapshot> Conformation::snapshot(std::size_t frame) const {
-    std::lock_guard<std::mutex> lk(snapshotMutex_);
+    ASSERT_THREAD(this);
     if (!residentSnapshotFrame_ || *residentSnapshotFrame_ != frame)
         return nullptr;
     return residentSnapshot_;
 }
 
 void Conformation::requestSnapshot(std::size_t frame) {
-    ASSERT_THREAD(this);  // v1: the synchronous load runs on the GUI thread
+    ASSERT_THREAD(this);
 
-    bool resident = false;
-    {
-        std::lock_guard<std::mutex> lk(snapshotMutex_);
-        if (residentSnapshotFrame_ && *residentSnapshotFrame_ == frame && residentSnapshot_) {
-            resident = true;
-        }
-    }
-
-    if (!resident) {
-        // loadSnapshot() does file IO — call it OUTSIDE the lock. v1 is
-        // synchronous; the prefetch increment will run this on a worker and
-        // hand back a shared_ptr<const> (the pile has no thread affinity).
+    if (!residentSnapshotFrame_ || *residentSnapshotFrame_ != frame || !residentSnapshot_) {
         std::shared_ptr<const QtConformationSnapshot> snap = loadSnapshot(frame);
         if (!snap)
-            return;  // failure already reported at the loader seam; no signal
+            return;
 
-        std::lock_guard<std::mutex> lk(snapshotMutex_);
         residentSnapshotFrame_ = frame;
         residentSnapshot_ = std::move(snap);
     }
 
-    // Emit OUTSIDE the lock — a connected slot may call back into snapshot().
     emit snapshotReady(frame);
 }
 

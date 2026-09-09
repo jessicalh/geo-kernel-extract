@@ -23,7 +23,6 @@
 #include <vtkSmartPointer.h>
 
 #include <memory>
-#include <optional>
 
 namespace h5reader::app {
 
@@ -33,16 +32,12 @@ class CsaTensorOverlay final : public QObject {
     Q_OBJECT
 public:
     explicit CsaTensorOverlay(vtkSmartPointer<vtkRenderer> sceneRenderer,
-                              vtkSmartPointer<vtkRenderer> hudRenderer,
                               QObject* parent = nullptr);
     ~CsaTensorOverlay() override;
 
     // Draw the shielding tensor's sigma_11/22/33 principal-axis arrows at
-    // atomPos via the shared TensorGlyphActor. molecularAxes is accepted for
-    // signature stability but unused (the PAS axes carry the orientation).
-    void show(const model::Vec3& atomPos,
-              const model::CsaShape& shape,
-              const std::optional<model::Mat3>& molecularAxes);
+    // atomPos via the shared TensorGlyphActor.
+    void show(const model::Vec3& atomPos, const model::CsaShape& shape);
     void clear();
     void setVisible(bool on);
     bool isActive() const;

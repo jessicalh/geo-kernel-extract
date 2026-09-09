@@ -69,11 +69,10 @@ public:
 
     QString tooltipLine(int frame) const override;
 
-    // L-4 (2026-05-29): multi-channel overlay (auto-compose). One
-    // SequenceBarPanel can carry a primary series plus N overlays.
-    // The auto-compose path in DashboardDisplayController bundles
-    // multiple Reorient scalar signals (s2/tau_e/r1/r2/noe) with the
-    // same `static.bar.sequence` mode into ONE panel — the primary
+    // A SequenceBarPanel can carry a primary series plus overlays.
+    // DashboardDisplayController bundles Reorient scalar signals
+    // (s2/tau_e/r1/r2/noe) with the same `static.bar.sequence` mode into one
+    // panel. The primary
     // owns the left y-axis; each overlay paints with its own colour,
     // sub-slotted across the residue tick, and (if units differ from
     // primary) renders y-axis labels on the right margin scaled to

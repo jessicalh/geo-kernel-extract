@@ -1,17 +1,13 @@
 // QtConformationSnapshot — one sampled frame's full per-atom calculator
 // state: the per-frame analog of the SDK's `Protein`.
 //
-// Two linked layers (see notes/H5_READER_REWRITE_DESIGN + the
-// project_h5reader_formal_model_design memory): the dense H5 drives
-// animation/time-series; THIS sparse, full-fidelity snapshot is loaded
-// on demand when the user parks on a sampled frame, joined to the H5 by
-// frame index. Identity and topology stay on QtProtein (shared, loaded
-// once) — the snapshot holds the current frame's Reader-facing calculator
-// groups and bundled-model inputs. Producer indices, topology sidecars, and
-// raw restart/coefficient storage stay with their proper owners.
+// Dense H5 data drives animation and time series. This sparse, full-fidelity
+// snapshot is loaded on demand for a sampled frame and joined by frame index.
+// Identity and topology remain on the shared QtProtein; the snapshot contains
+// current-frame calculator groups and bundled-model inputs.
 //
 // Storage is the no-strings load boundary's downstream side: a dense
-// per-FieldKind array of raw columns, filled by FrameNpyLoader (task #4)
+// per-FieldKind array of raw columns, filled by FrameNpyLoader
 // after FindFieldByStem() resolves each filename to its typed FieldKind.
 // The typed group VIEWS (QtBiotSavartGroup, ...) interpret those columns
 // into SphericalTensor / Vec3 / the typed blocks. The views are where

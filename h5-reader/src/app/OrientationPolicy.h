@@ -7,8 +7,7 @@
 // uses the natural pairing defined by the mode itself; the explicit
 // kinds force one specific orientation.
 //
-// Natural pairings (per spec/viewport_pipeline_2026-05-30.md §2.3.3,
-// agent decision §4-d in the implementation prompt):
+// Natural pairings:
 //   CameraMode::Free     -> Free
 //   CameraMode::Atom     -> Free
 //   CameraMode::Bond     -> PerpendicularToBond

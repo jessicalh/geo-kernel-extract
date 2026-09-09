@@ -13,7 +13,7 @@ public:
     bool isAvailable(const VisualizationContext& ctx,
                      const SignalDescriptor& descriptor) const override;
     DisplayModeCapability capability() const override;
-    QStringList legacyModeIds() const override;
+    QStringList modeIds() const override;
 };
 
 }  // namespace h5reader::model

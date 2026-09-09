@@ -57,7 +57,7 @@ class DashboardControllerTests : public QObject {
 
 private slots:
     void scrubDefersFrameSnapshotRequestsUntilRelease();
-    void stripHistorySurvivesRebuildByLegacyModeId();
+    void stripHistorySurvivesRebuildByModeId();
     void replacingPendingSampleRecomputesValidityAndRange();
     void f003TensorBindingTracksActivePanelReference();
 };
@@ -93,7 +93,7 @@ void DashboardControllerTests::scrubDefersFrameSnapshotRequestsUntilRelease() {
     QCOMPARE(conformation.requestedFrames.front(), std::size_t{750});
 }
 
-void DashboardControllerTests::stripHistorySurvivesRebuildByLegacyModeId() {
+void DashboardControllerTests::stripHistorySurvivesRebuildByModeId() {
     CountingConformation conformation(1000);
     model::TrajectorySignalCatalog catalog;
     model::DashboardSignalModel signalModel;

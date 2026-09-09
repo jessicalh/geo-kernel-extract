@@ -16,15 +16,9 @@
 // then PackFull9 (writer OrcaShieldingResult.cpp:235-254); read here with the
 // shared UnpackSphericalTensor ([T0, T1[3], T2[5]]).
 //
-// FILE-LOADED, single-conformation only: orca_* is emitted only by the
-// `--orca` (mode 3) / `--mutant` (mode 4) single-pose runs, and only when such
-// a run is given an ORCA `_nmr.out` (an OPTIONAL mode-3/4 input — a mode-3 run
-// without one runs the geometry + classical calculators but has no orca_*).
-// NEVER by `--trajectory` — a trajectory frame's per-atom NPYs never carry orca_*
-// (DFT-on-trajectory is a separate per-pose campaign whose raw `_nmr.out`
-// becomes a future 3rd linked layer; see SINGLE_POSE_AND_ORCA_DESIGN_2026-05-26).
-// So on a trajectory snapshot every accessor returns nullopt; this group lights
-// up only on a single-conformation open ("absent, not faked").
+// These fields may be present in a single-pose extraction. Trajectory DFT
+// tensors are loaded separately by DftShieldingStore, so a trajectory snapshot
+// normally leaves these accessors empty.
 
 #pragma once
 

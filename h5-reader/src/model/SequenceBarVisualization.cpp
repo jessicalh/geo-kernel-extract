@@ -27,7 +27,7 @@ DisplayModeCapability SequenceBarVisualization::capability() const {
     return DisplayModeCapability{true, true, true};
 }
 
-QStringList SequenceBarVisualization::legacyModeIds() const {
+QStringList SequenceBarVisualization::modeIds() const {
     return {QString::fromLatin1(kMode)};
 }
 

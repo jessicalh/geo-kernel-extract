@@ -33,6 +33,12 @@ constexpr std::size_t kTorsionComponentCount = 6;
 constexpr std::size_t kDsspStateCount = 8;
 constexpr std::size_t kDsspHbondCount = 4;
 
+// Ideal C-beta reconstruction in the N-CA-C frame. These coefficients are the
+// standard tetrahedral construction used by ProteinMPNN-style geometry code.
+constexpr double kCbetaCrossCoefficient = 0.58273431;
+constexpr double kCbetaNitrogenCoefficient = 0.56802827;
+constexpr double kCbetaCarbonylCoefficient = 0.54067466;
+
 enum class ScalarChannel : std::size_t {
     BackboneAngleFirst = 0,
     TorsionCosFirst = 5,
@@ -701,7 +707,10 @@ bool ModelInputExporter::projectFeatureFrame(std::size_t frame, QString* error) 
         const model::Vec3& observedCb = sourcePositions_.at(frame, static_cast<std::size_t>(residue.CB));
         const model::Vec3 n = nPosition - caPosition;
         const model::Vec3 c = cPosition - caPosition;
-        const model::Vec3 idealCb = caPosition - 0.58273431 * c.cross(n) - 0.56802827 * n - 0.54067466 * c;
+        const model::Vec3 idealCb = caPosition
+            - kCbetaCrossCoefficient * c.cross(n)
+            - kCbetaNitrogenCoefficient * n
+            - kCbetaCarbonylCoefficient * c;
         cbResidual[residueIndex] = fit.rotation * (observedCb - idealCb);
         if (!cbResidual[residueIndex].allFinite()) {
             *error = QStringLiteral("C-beta residual is nonfinite at residue %1").arg(static_cast<qulonglong>(residueIndex));

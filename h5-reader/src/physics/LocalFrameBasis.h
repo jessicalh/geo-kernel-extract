@@ -3,8 +3,7 @@
 // (what an equivariant fitter needs; a flat r/cosθ table throws the vector
 // information away).
 //
-// Conventions are pinned by spec/substrate_conventions_2026-05-30.md
-// ("Local frames per atom class"). All frames are right-handed: y = z × x.
+// All frames are right-handed: y = z × x.
 // `is_valid == false` means the frame could not be constructed for this atom
 // at this frame (an edge case below); callers must check before using the
 // frame to express a vector.
@@ -19,17 +18,13 @@
 //     z = unit ring normal (fixed traversal order, "same direction every
 //         frame" — fit from the ring vertex positions)
 //     x = unit(anchor − centroid), anchor = chemistry-typed atom (CG / CD2
-//         per the conventions doc), projected ⟂ z and normalised
+//         as defined by the ring type), projected ⟂ z and normalised
 //     y = z × x
 //
-//   Backbone frames (N / Cα / C(=O) / HA — broad-backbone, ADDED 2026-06-01):
-//   the conventions doc (substrate_conventions_2026-05-30.md, "Local frames
-//   per atom class") specifies HA / Cα / C=O; N is DEFINED here analogously
-//   from N's typed backbone neighbours (see BuildBackboneNFrame below). All
-//   four are pure Vec3 math, anchored on TYPED backbone atoms the caller looks
-//   up collision-safe (selectUnique / the QtResidue backbone cache) — never a
-//   positional index (the IUPAC-revert trap). The existing HN / aromatic-H
-//   builders are UNTOUCHED so the ring/mc oracle byte-parity holds.
+//   Backbone frames (N / Cα / C(=O) / HA):
+//   Frames use typed backbone neighbours selected by identity rather than a
+//   positional index. BuildBackboneNFrame follows the same construction as HN,
+//   using the N-CA bond as its primary axis.
 //
 // These are plain math over Vec3 (no QObject, no model coupling); the
 // extraction code supplies the atom positions it already has from the
@@ -46,14 +41,13 @@ using model::Vec3;
 
 // Which atom-class construction produced a frame (recorded per record so the
 // downstream fitter knows which convention is in force). Mirrors the
-// FrameVariant idea in the conventions doc, trimmed to what the two
-// extractions actually emit.
+// FrameVariant records the construction used for each emitted frame.
 enum class FrameVariant : int {
     Invalid = 0,
     HN_Standard,     // interior residue, C_prev available
     HN_NTerminus,    // no C_prev: in-plane reference is (Cα − N)
     AromaticHRing,   // ring-normal frame, anchored on the typed ring atom
-    // ── Backbone frames (broad-backbone, ADDED 2026-06-01) ──
+    // Backbone frames.
     BackboneN,           // amide N frame (z along N→CA; in-plane ref N→C_prev)
     BackboneN_NTerminus, // N-terminus: no C_prev, in-plane ref is N→C(own)
     BackboneCA,          // Cα frame (z = bisector of Cα→N and Cα→C; x along Cα→N)
@@ -99,16 +93,10 @@ LocalFrame BuildHNFrame(const Vec3& nPos, const Vec3& hPos, const Vec3& caPos,
 LocalFrame BuildAromaticHFrame(const Vec3& ringCenter, const Vec3& ringNormal,
                                const Vec3& anchorPos);
 
-// ── Backbone frames (broad-backbone, ADDED 2026-06-01) ─────────────────────
-// All four take TYPED backbone-atom positions (looked up collision-safe by the
-// caller: QtResidue's N/CA/C/O/HA cache or selectUnique on a typed locant —
-// never a positional index). All right-handed (y = z × x), all return
-// is_valid==false on degenerate geometry (coincident/collinear anchors) with
-// NO NaN poisoning. Conventions per substrate_conventions_2026-05-30.md
-// ("Local frames per atom class") for Cα / C=O / HA; N is DEFINED here.
+// Backbone frames take typed atom positions supplied by the caller. They are
+// right-handed and return is_valid == false for coincident or collinear anchors.
 
-// Backbone amide-N frame (DEFINED here — the conventions doc gives HA/Cα/CO,
-// not N). Convention: the N atom's bonded backbone neighbours fix the frame.
+// Backbone amide-N frame. The N atom's bonded backbone neighbours fix the frame.
 //   z = unit(CA − N)                   — the N→Cα bond, the dominant local axis
 //   x = in-plane component of the peptide reference ⟂ z, normalised:
 //         interior residue: ref = (C_prev − N) (the preceding carbonyl C —
@@ -124,14 +112,13 @@ LocalFrame BuildAromaticHFrame(const Vec3& ringCenter, const Vec3& ringNormal,
 LocalFrame BuildBackboneNFrame(const Vec3& nPos, const Vec3& caPos,
                                const Vec3& cRefPos, bool c_prev_valid);
 
-// Cα frame (conventions doc "Cα frame"):
+// Cα frame:
 //   z = unit bisector of (Cα→N) and (Cα→C), pointing away from the backbone
 //   x = in-plane component of (Cα→N) ⟂ z, normalised
 //   y = z × x
 LocalFrame BuildBackboneCaFrame(const Vec3& caPos, const Vec3& nPos, const Vec3& cPos);
 
-// Backbone carbonyl-C frame (conventions doc "C=O carbonyl frame", referenced
-// from the carbonyl carbon):
+// Backbone carbonyl-C frame, referenced from the carbonyl carbon:
 //   z = unit(O − C)                    — the carbonyl bond direction
 //   x = in-plane component of (CA − C) ⟂ z, normalised (the in-peptide-plane
 //       reference; CA is the residue's own α-carbon, always present)
@@ -147,7 +134,7 @@ LocalFrame BuildBackboneCarbonylCFrame(const Vec3& cPos, const Vec3& oPos, const
 //   y = z × x
 LocalFrame BuildBackboneCarbonylOFrame(const Vec3& oPos, const Vec3& cPos, const Vec3& caPos);
 
-// Hα frame (conventions doc "HA / Cα chirality frame"):
+// Hα frame:
 //   z = unit(HA − Cα)                  — the Cα→HA chirality direction
 //   x = in-plane component of (N − Cα) ⟂ z, normalised (Cα→N)
 //   y = z × x

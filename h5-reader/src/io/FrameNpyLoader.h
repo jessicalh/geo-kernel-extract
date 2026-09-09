@@ -1,17 +1,15 @@
 // FrameNpyLoader — directory-agnostic producer of one QtConformationSnapshot
 // from a directory of per-atom calculator NPYs.
 //
-// ONE mechanism serves both run shapes (decided 2026-05-26):
-//   - a trajectory's per_frame_npys/frame_NNNNNN/ directory, and
-//   - a single-pose run root (--orca / --mutant / --pdb), where the same
-//     ConformationResult::WriteAllFeatures payload sits flat.
+// One mechanism serves both a trajectory frame directory and a single-pose
+// extraction root.
 //
 // Per NPY it resolves the filename stem -> typed FieldKind exactly once
 // (FindFieldByStem, the no-strings boundary), reads BOTH shape and dtype from
 // the NPY header, and widens fields selected by FrameFieldPolicy into the
-// snapshot's per-FieldKind NpyColumn store. The NPY header is the truth:
-// column count comes from the array shape (the catalog's `cols` is a
-// cross-check), and a 1-D array is shaped by its NativeAxis
+// snapshot's per-FieldKind NpyColumn store. Fixed catalog widths and Atom or
+// Residue topology-axis lengths are enforced before exposing a column. A 1-D array is shaped by
+// its NativeAxis
 // (Atom/Residue/Ring -> N x 1; Protein -> 1 x K).
 //
 // "Absent, not faked": a calculator NPY that is missing simply leaves its

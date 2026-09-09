@@ -46,12 +46,8 @@ constexpr double kLineRgb[3]  = {0.92, 0.92, 0.92};
 constexpr double kLineWidth   = 2.5;
 constexpr double kLineOpacity = 0.90;
 
-// Instrument mode — CPK-distinct marker palette. Chosen 2026-05-30 (memory
-// VIEWPORT_OBSERVATIONS_2026-05-30.md §5b): hues that fall outside every CPK
-// element colour so a hue threshold isolates the marker against any rendered
-// scene. Bright + opaque + 1.5 Å so the harness blob detector finds it
-// reliably; kept distinct from kPastelSlotRgb so users can tell at a glance
-// when debug/harness mode is active. RGB in 0..1.
+// Instrument-mode colours sit outside the CPK palette so screenshot tests can
+// isolate each marker. They remain distinct from the normal pastel palette.
 constexpr double kInstrumentRgb[4][3] = {
     {1.000, 0.000, 1.000},  // slot 0 — pure magenta       (#FF00FF)
     {0.000, 1.000, 0.498},  // slot 1 — spring green       (#00FF7F)
@@ -191,9 +187,7 @@ void MeasurementOverlay::setInstrumentMode(bool on, bool focusOnly) {
 void MeasurementOverlay::applyInstrumentModeToActors() {
     // Walks the four pre-built sphere actors and switches their colour,
     // opacity, and radius wholesale. Reversible: when off, restore the
-    // build-time Okabe-Ito palette + kSphereRadiusA + kOpacity (hard-coded
-    // here rather than refactoring the anonymous-namespace constants — the
-    // refactor is later viewport-overlay-layer work).
+    // build-time Okabe-Ito palette, radius, and opacity.
     //
     // focus-only variant: when both instrument and focusOnly are on, every
     // sphere gets the slot-0 magenta colour so the focus marker reads as a

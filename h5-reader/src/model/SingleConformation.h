@@ -1,13 +1,5 @@
-// SingleConformation — one pose, no H5. The single-conformation sibling of
-// TrajectoryConformation under the shared Conformation base (NOT a faked
-// one-frame trajectory — "subclass, don't hack").
-//
-// Backs a --orca / --mutant / --pdb single-pose run: sidecar + manifest →
-// QtProtein (loaded today, unchanged) + the run-root per-atom NPYs → one
-// QtConformationSnapshot. There is nothing to animate (frameCount() == 1) and
-// no trajectory.h5; positions come from the snapshot's Pos column rather than a
-// dense per-TR buffer. The reader never writes H5 — the single conformation is
-// constructed in memory.
+// A one-pose conformation backed by a frame NPY snapshot rather than
+// trajectory H5 data.
 
 #pragma once
 
@@ -25,9 +17,6 @@ class SingleConformation final : public Conformation {
     Q_OBJECT
 
 public:
-    // `pose` is the run-root snapshot (loaded by FrameNpyLoader on the run
-    // directory). Held for the conformation's lifetime because a single-pose
-    // run has exactly one source frame.
     SingleConformation(const QtProtein* protein, std::shared_ptr<const QtConformationSnapshot> pose);
     ~SingleConformation() override;
 

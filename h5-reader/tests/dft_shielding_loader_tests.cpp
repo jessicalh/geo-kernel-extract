@@ -1,7 +1,5 @@
-// h5reader_dft_shielding_loader_tests — direct tests for the static
-// DFT job loader. Post-2026-05-31 SIMPLIFY: the loader takes an
-// explicit meta.json path (from `.LGS`'s `dft.frames[].meta_json`),
-// not a jobs-dir + frame index pair.
+// Direct tests for loading one static DFT job from the meta.json path
+// declared by an LGS manifest.
 
 #include "io/DftShieldingLoader.h"
 #include "io/OrcaShieldingParser.h"

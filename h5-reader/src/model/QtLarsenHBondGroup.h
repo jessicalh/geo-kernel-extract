@@ -2,8 +2,7 @@
 // (LarsenHBondShieldingResult): per-atom hydrogen-bond shielding by Larsen
 // 2015 ProCS15 Eq 5, computed via direct DFT grid lookup (LarsenHBondGrid;
 // DOI 10.7717/peerj.1344). Runs side-by-side with the kernel-form HBond
-// group — the grid-vs-kernel residual is itself a methodological coordinate
-// (feedback_methods_accumulate).
+// group, retaining the grid-vs-kernel residual as a methodological coordinate.
 //
 // Larsen Eq 5 four-term decomposition (all per-ATOM, 9-col SphericalTensor, ppm):
 //     Δσ_HB  = Δσ_1°HB  + Δσ_2°HB     (amide-H, i.e. HN, is the donor)

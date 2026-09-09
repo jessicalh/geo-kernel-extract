@@ -26,7 +26,6 @@
 #include "DashboardSelectionController.h"
 #include "SignalDisplayDialog.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/DashboardLogging.h"
 #include "../diagnostics/ErrorBus.h"
 #include "../diagnostics/ObjectCensus.h"
@@ -98,7 +97,6 @@
 #include <QPolygonF>
 #include <QPushButton>
 #include <QStyle>
-#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QUuid>
@@ -127,8 +125,7 @@ Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
 
 // QSettings — versioned state blob policy. Bump on dock-object
 // additions or any layout-invalidating change so old blobs are
-// silently discarded by QMainWindow::restoreState. Schema-evolution
-// safe per ROBUSTNESS_BACKLOG_2026-05-30.md item 7.
+// silently discarded by QMainWindow::restoreState.
 constexpr int kSettingsVersion = 2;   // bumped: property docks now start hidden
 constexpr int kMaxRecentFiles  = 10;
 
@@ -212,7 +209,8 @@ QStringList experimentalShieldingMlRocmRequiredFiles() {
 
 QStringList experimentalShieldingMlRocmMissing(const QDir& runtimeDir) {
     QStringList missing;
-    for (const QString& fileName : experimentalShieldingMlRocmRequiredFiles()) {
+    const QStringList requiredFiles = experimentalShieldingMlRocmRequiredFiles();
+    for (const QString& fileName : requiredFiles) {
         if (!fileExistsInDir(runtimeDir, fileName))
             missing.append(fileName);
     }
@@ -230,7 +228,7 @@ bool experimentalShieldingMlRocmRuntimeAvailable(const QString& helperPath) {
 }
 
 QString experimentalShieldingMlDevicePreference() {
-    const QString value =
+    QString value =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE")
             .trimmed()
             .toLower();
@@ -240,7 +238,7 @@ QString experimentalShieldingMlDevicePreference() {
 }
 
 QString developmentExperimentalShieldingMlRocmHelper(const QString& modelPath) {
-    const QString explicitPath =
+    QString explicitPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_HELPER");
     if (!explicitPath.isEmpty())
         return explicitPath;
@@ -362,7 +360,7 @@ QJsonObject readExperimentalShieldingMlManifestSummary(const QString& path) {
     const QJsonArray models = manifest.value(QStringLiteral("models")).toArray();
     if (!models.isEmpty()) {
         QJsonArray outModels;
-        for (const QJsonValue& value : models) {
+        for (const QJsonValue value : models) {
             if (value.isObject())
                 outModels.append(summarizeExperimentalShieldingMlModel(value.toObject()));
         }
@@ -493,7 +491,8 @@ QJsonObject experimentalShieldingMlRuntimeJson(
 
     const QDir mlDir = installedExperimentalShieldingMlDir();
     QStringList missing;
-    for (const QString& fileName : experimentalShieldingMlRequiredFiles()) {
+    const QStringList requiredFiles = experimentalShieldingMlRequiredFiles();
+    for (const QString& fileName : requiredFiles) {
         if (!fileExistsInDir(mlDir, fileName))
             missing.append(fileName);
     }
@@ -537,9 +536,7 @@ QString fitModeToolTip() {
         "Kabsch with give: all-atom fit — removes tumbling but lets real internal motion show.");
 }
 
-// Note: locateDftJobsDir was deleted as part of the 2026-05-31 SIMPLIFY
-// pass; the DFT campaign now comes from the `.LGS` `dft.frames[]` array
-// (see CalcsetManifest + DftShieldingStore).
+// DFT frames come directly from the LGS `dft.frames[]` array.
 
 }  // namespace
 
@@ -554,7 +551,7 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
     buildUi();
     buildToolbar();
     buildStatusBar();
-    ACONNECT(h5reader::diagnostics::ErrorBus::Instance(),
+    QObject::connect(h5reader::diagnostics::ErrorBus::Instance(),
              &h5reader::diagnostics::ErrorBus::errorReported,
              this,
              &ReaderMainWindow::handleErrorBusReport);
@@ -618,7 +615,6 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     clearLoadedRun();
     loaded_ = std::make_unique<h5reader::io::QtLoadResult>(std::move(loaded));
 
-    // Upstream data-transform layer (feedback_viewer_two_layers_transform_and_camera).
     // Wraps the loader's Conformation so consumers (scene, picker, overlays,
     // REST /positions) read positions through a runtime-switchable rigid-body
     // display transform. Startup mode is backbone fit with the iterative mean
@@ -634,7 +630,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
             << "backbone fit unavailable at startup; falling back to all-atom fit";
         transformed_->setMode(TMode::FitReference, 0);
     }
-    ACONNECT(transformed_, &h5reader::model::TransformedConformation::transformChanged,
+    QObject::connect(transformed_, &h5reader::model::TransformedConformation::transformChanged,
              this, [this]() {
                  updateFitModeLabel();
                  if (scene_) scene_->refreshCurrentFrame();
@@ -649,10 +645,10 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     applyOverlayActionState();
     scene_->refreshCurrentFrame();
     scene_->ResetCamera();
-    ACONNECT(scene_, &MoleculeScene::cameraPlaneLockChanged,
+    QObject::connect(scene_, &MoleculeScene::cameraPlaneLockChanged,
              this, [this](bool) { updateCameraModeActions(); });
     if (scene_->cameraComposer()) {
-        ACONNECT(scene_->cameraComposer(), &CameraComposer::modeChanged,
+        QObject::connect(scene_->cameraComposer(), &CameraComposer::modeChanged,
                  this, [this]() { updateCameraModeActions(); });
     }
 
@@ -662,15 +658,15 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     playback_ = new QtPlaybackController(T, this);
     timeViewport_ = new TimeViewportController(T, this);
 
-    ACONNECT(playback_, &QtPlaybackController::frameChanged,
+    QObject::connect(playback_, &QtPlaybackController::frameChanged,
              scene_,    &MoleculeScene::setFrame);
-    ACONNECT(playback_, &QtPlaybackController::frameChanged,
+    QObject::connect(playback_, &QtPlaybackController::frameChanged,
              this,      &ReaderMainWindow::onFrameChanged);
-    ACONNECT(playback_,     &QtPlaybackController::frameChanged,
+    QObject::connect(playback_,     &QtPlaybackController::frameChanged,
              timeViewport_, &TimeViewportController::setCurrentFrame);
-    ACONNECT(timeViewport_, &TimeViewportController::playbackFrameRequested,
+    QObject::connect(timeViewport_, &TimeViewportController::playbackFrameRequested,
              playback_,     &QtPlaybackController::setFrame);
-    ACONNECT(playback_, &QtPlaybackController::playingChanged,
+    QObject::connect(playback_, &QtPlaybackController::playingChanged,
              this,      [this](bool) { refreshControlStates(); });
 
     if (frameSlider_) {
@@ -699,7 +695,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                                                  scene_->cameraComposer(), this);
 
     // Click on empty space (no atom hit, no drag) stops/restarts the animation.
-    ACONNECT(cameraInputFilter_, &CameraInputFilter::viewportClicked,
+    QObject::connect(cameraInputFilter_, &CameraInputFilter::viewportClicked,
              this, [this](QPointF pos) {
                  if (!picker_ || !playback_) return;
                  const auto hit = picker_->atomAt(
@@ -708,12 +704,12 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              });
 
     inspectorDock_->setContext(loaded_->protein.get(), transformed_);
-    ACONNECT(playback_,  &QtPlaybackController::frameChanged,
+    QObject::connect(playback_,  &QtPlaybackController::frameChanged,
              inspectorDock_, &QtAtomInspectorDock::setFrame);
 
     if (measurementsDock_) {
         measurementsDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
-        ACONNECT(playback_, &QtPlaybackController::frameChanged,
+        QObject::connect(playback_, &QtPlaybackController::frameChanged,
                  measurementsDock_, &MeasurementsDock::setFrame);
     }
 
@@ -798,18 +794,18 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     signalDisplayDialog_->setContext(loaded_->protein.get(), transformed_);
     signalDisplayDialog_->setVisualizationContext(visualizationContext_);
     signalDisplayDialog_->setSelection(selection_);
-    ACONNECT(playback_, &QtPlaybackController::frameChanged,
+    QObject::connect(playback_, &QtPlaybackController::frameChanged,
              signalDisplayDialog_, &SignalDisplayDialog::setFrame);
 
-    ACONNECT(picker_,    &QtAtomPicker::atomPicked,
+    QObject::connect(picker_,    &QtAtomPicker::atomPicked,
              selection_, &model::AtomSelection::applyPick);
-    ACONNECT(picker_, &QtAtomPicker::atomPicked,
+    QObject::connect(picker_, &QtAtomPicker::atomPicked,
              scene_,  &MoleculeScene::clearReveal);
     // Tag the render scheduler so the EndEvent observer logs source=picker
     // for the render that follows. selection_->applyPick triggers
-    // refreshCurrentFrame which itself calls requestRender(Timer);
+    // refreshCurrentFrame which itself requests a frame-change render;
     // tagging Picker afterward overrides the source.
-    ACONNECT(picker_, &QtAtomPicker::atomPicked,
+    QObject::connect(picker_, &QtAtomPicker::atomPicked,
              this,   [this](std::size_t, Qt::KeyboardModifiers) {
                  if (scene_) scene_->requestRender(
                      MoleculeScene::RenderSource::Picker);
@@ -817,29 +813,29 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
 
     // Reveal-on-pick: picking an atom brings up its Inspector (it starts hidden;
     // this is the dock's reveal path now that the Panels menu is gone).
-    ACONNECT(picker_, &QtAtomPicker::atomPicked,
+    QObject::connect(picker_, &QtAtomPicker::atomPicked,
              this,   [this](std::size_t, Qt::KeyboardModifiers) {
                  if (inspectorDock_ && !inspectorDock_->isVisible())
                      revealDockQueued(inspectorDock_);
              });
 
-    ACONNECT(selection_, &model::AtomSelection::focusChanged,
+    QObject::connect(selection_, &model::AtomSelection::focusChanged,
              inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
-    ACONNECT(selection_, &model::AtomSelection::cleared,
+    QObject::connect(selection_, &model::AtomSelection::cleared,
              inspectorDock_, &QtAtomInspectorDock::clearSelection);
 
     if (measurementsDock_) {
         // The whole ORDERED tuple drives a measurement (not just focus), so this
         // tracks AtomSelection::changed; it reveals only once a 2+ atom geometry
         // exists (a single pick is the Inspector's job, not a measurement).
-        ACONNECT(selection_, &model::AtomSelection::changed, this, [this]() {
+        QObject::connect(selection_, &model::AtomSelection::changed, this, [this]() {
             if (!measurementsDock_)
                 return;
             measurementsDock_->setAtoms(selection_->atoms());
             if (selection_->atoms().size() >= 2 && !measurementsDock_->isVisible())
                 revealDockQueued(measurementsDock_);
         });
-        ACONNECT(selection_, &model::AtomSelection::cleared,
+        QObject::connect(selection_, &model::AtomSelection::cleared,
                  measurementsDock_, &MeasurementsDock::clear);
     }
 
@@ -848,38 +844,38 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // picks too (the picker-signal reveal above is GUI-only). Deferred via
     // revealDockQueued so this raise wins; gated on a single atom so a 2-4 atom
     // geometry instead raises the Measurements tab (handled above).
-    ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+    QObject::connect(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) {
                  if (inspectorDock_ && selection_ && selection_->atoms().size() < 2)
                      revealDockQueued(inspectorDock_);
              });
-    ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+    QObject::connect(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) { refreshControlStates(); });
-    ACONNECT(selection_, &model::AtomSelection::cleared, this,
+    QObject::connect(selection_, &model::AtomSelection::cleared, this,
              [this]() { refreshControlStates(); });
 
     // CSA tensor glyph (mode-2): focus + frame driven; honest gap on a missing
     // DFT frame; raw->display alignment via the molecular frame.
-    ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+    QObject::connect(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) { updateCsaGlyph(true); updateOrientationTensorGlyph(); });
-    ACONNECT(selection_, &model::AtomSelection::cleared, this, [this]() {
+    QObject::connect(selection_, &model::AtomSelection::cleared, this, [this]() {
         updateCsaGlyph(true);
         if (scene_ && scene_->orientationGlyph())
             scene_->orientationGlyph()->clear();
         if (scene_)
             scene_->requestRender(MoleculeScene::RenderSource::Overlay);
     });
-    ACONNECT(playback_, &QtPlaybackController::frameChanged, this,
+    QObject::connect(playback_, &QtPlaybackController::frameChanged, this,
              [this](int) { updateCsaGlyph(false); updateOrientationTensorGlyph(); });
-    ACONNECT(playback_, &QtPlaybackController::playingChanged, this,
+    QObject::connect(playback_, &QtPlaybackController::playingChanged, this,
              [this](bool playing) {
-        if (!playing)
+        if (!playing && !shutdownDone_)
             updateCsaGlyph(true);
     });
 
     if (auto* meas = scene_->measurementOverlay()) {
         meas->setSelection(selection_);
-        ACONNECT(selection_, &model::AtomSelection::changed,
+        QObject::connect(selection_, &model::AtomSelection::changed,
                  meas,       &MeasurementOverlay::onSelectionChanged);
     }
 
@@ -891,35 +887,35 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // by refreshCurrentFrame above.
     if (auto* traj = scene_->atomTrajectoryOverlay()) {
         traj->setSelection(selection_);
-        ACONNECT(selection_, &model::AtomSelection::focusChanged,
+        QObject::connect(selection_, &model::AtomSelection::focusChanged,
                  traj,       &QtAtomTrajectoryOverlay::onFocusChanged);
-        ACONNECT(selection_, &model::AtomSelection::cleared,
+        QObject::connect(selection_, &model::AtomSelection::cleared,
                  traj,       &QtAtomTrajectoryOverlay::onSelectionCleared);
-        ACONNECT(transformed_, &model::TransformedConformation::transformChanged,
+        QObject::connect(transformed_, &model::TransformedConformation::transformChanged,
                  traj,         &QtAtomTrajectoryOverlay::onTransformChanged);
-        ACONNECT(traj, &QtAtomTrajectoryOverlay::rebuildStarted,
+        QObject::connect(traj, &QtAtomTrajectoryOverlay::rebuildStarted,
                  this, [this](int frames) {
                      QApplication::setOverrideCursor(Qt::WaitCursor);
                      statusBar()->showMessage(
                          QStringLiteral("Loading trajectory envelope (%1 frames)...").arg(frames));
                  });
-        ACONNECT(traj, &QtAtomTrajectoryOverlay::rebuildFinished,
+        QObject::connect(traj, &QtAtomTrajectoryOverlay::rebuildFinished,
                  this, [this](int frames, int /*dftSamples*/, int loadMs) {
                      QApplication::restoreOverrideCursor();
                      statusBar()->showMessage(
                          QStringLiteral("Trajectory envelope: %1 frames (%2 ms)")
                              .arg(frames).arg(loadMs));
                  });
-        ACONNECT(selection_, &model::AtomSelection::focusChanged, this,
+        QObject::connect(selection_, &model::AtomSelection::focusChanged, this,
                  [this](std::size_t) {
                      if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
                  });
-        ACONNECT(selection_, &model::AtomSelection::cleared, this,
+        QObject::connect(selection_, &model::AtomSelection::cleared, this,
                  [this]() {
                      if (scene_) scene_->requestRender(MoleculeScene::RenderSource::Overlay);
                  });
     }
-    ACONNECT(selection_, &model::AtomSelection::changed,
+    QObject::connect(selection_, &model::AtomSelection::changed,
              this, [this]() {
                  if (scene_ && scene_->cameraComposer()
                      && scene_->cameraComposer()->mode().kind
@@ -933,8 +929,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              });
 
     // Selection summary in the status bar (count + measurement kind).
-    ACONNECT(selection_, &model::AtomSelection::changed, this, [this]() { updateSelectionStatus(); });
-    ACONNECT(selection_, &model::AtomSelection::cleared, this, [this]() { updateSelectionStatus(); });
+    QObject::connect(selection_, &model::AtomSelection::changed, this, [this]() { updateSelectionStatus(); });
+    QObject::connect(selection_, &model::AtomSelection::cleared, this, [this]() { updateSelectionStatus(); });
     updateSelectionStatus();
 
     dashboardStripDock_->setContext(loaded_->protein.get(), transformed_);
@@ -947,7 +943,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     if (dashboardController_)
         dashboardController_->setVisualizationContext(visualizationContext_);
 
-    ACONNECT(dashboardSelectionController_.data(),
+    QObject::connect(dashboardSelectionController_.data(),
              &DashboardSelectionController::selectedCountChanged,
              this,
              [this](int count) {
@@ -960,7 +956,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                      << QStringLiteral("event=dock_reveal_on_add count=%1").arg(count);
                  revealDockQueued(dashboardStripDock_);
              });
-    ACONNECT(playback_,           &QtPlaybackController::frameChanged,
+    QObject::connect(playback_,           &QtPlaybackController::frameChanged,
              dashboardStripDock_, &DashboardStripDock::setFrame);
 
     // Expose the shared scene overlay to dashboard visualizations that explicitly
@@ -976,7 +972,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
 
     if (experimentalMlStore_ && experimentalMlStore_->isReady()) {
         dashboardStripDock_->setExperimentalShieldingMlStore(experimentalMlStore_);
-        ACONNECT(experimentalMlStore_,
+        QObject::connect(experimentalMlStore_,
                  &model::ExperimentalShieldingMlStore::frameReady,
                  this,
                  [this](std::size_t frame) {
@@ -988,8 +984,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                  });
         qCInfo(cWindow).noquote()
             << QStringLiteral("Experimental Shielding ML store wired | model=%1 device=%2")
-                   .arg(experimentalMlStore_->modelId())
-                   .arg(experimentalMlStore_->device());
+                   .arg(experimentalMlStore_->modelId(), experimentalMlStore_->device());
     }
 
     // DFT shielding campaign (optional): make the frame-local source
@@ -1001,7 +996,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dft.frames, this);
         if (scene_ && scene_->atomTrajectoryOverlay())
             scene_->atomTrajectoryOverlay()->setDftStore(dftStore_);
-        ACONNECT(dftStore_, &model::DftShieldingStore::frameReady,
+        QObject::connect(dftStore_, &model::DftShieldingStore::frameReady,
                  this, [this](std::size_t originalIndex) {
             if (!loaded_ || !loaded_->conformation || !playback_)
                 return;
@@ -1113,7 +1108,7 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         }
 
         const model::Vec3 atomPos = transformed_->atomPosition(frame, atom);
-        overlay->show(atomPos, shape, std::nullopt);
+        overlay->show(atomPos, shape);
         experimentalMlTensorDisplayed_ = true;
         experimentalMlTensorDisplayedFrame_ = frame;
         if (inspectorDock_) {
@@ -1179,7 +1174,7 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         << "| kind=" << model::MolecularFrameKindName(r.frameKind)
         << "| iso=" << r.shape.sigma_iso << "| eta=" << r.shape.eta
         << "| span=" << r.shape.span;
-    overlay->show(r.atomPos, r.shape, r.molecularAxes);
+    overlay->show(r.atomPos, r.shape);
     if (inspectorDock_) {
         CsaTensorInfo info;
         info.framed = r.framed;
@@ -1373,6 +1368,8 @@ void ReaderMainWindow::clearLoadedRun() {
     }
     if (measurementsDock_)
         measurementsDock_->setContext(nullptr, nullptr);
+    if (filterNearby_)
+        filterNearby_->setContext(nullptr, nullptr);
 
     delete cameraInputFilter_;
     cameraInputFilter_ = nullptr;
@@ -1674,7 +1671,7 @@ void ReaderMainWindow::updateMutantAlternateAction(const QString& alternatePath)
     mutantAlternateAction_->setToolTip(QStringLiteral(
         "This run is a mutant pair; WT is opened in this window. "
         "Click to load the ALA pose in this window: %1").arg(alternatePath));
-    ACONNECT(mutantAlternateAction_.data(), &QAction::triggered, this, [this, alternatePath]() {
+    QObject::connect(mutantAlternateAction_.data(), &QAction::triggered, this, [this, alternatePath]() {
         if (!loadRunPath(alternatePath)) {
             QMessageBox::critical(this,
                                   QStringLiteral("Open calcset failed"),
@@ -1733,7 +1730,8 @@ void ReaderMainWindow::showEvent(QShowEvent* event) {
                 QStringLiteral("OpenGL version"),
                 QStringLiteral("OpenGL vendor-specific"),
             };
-            for (const QString& line : caps.split(QChar('\n'))) {
+            const QStringList capabilityLines = caps.split(QChar('\n'));
+            for (const QString& line : capabilityLines) {
                 for (const QString& key : wanted) {
                     if (line.contains(key, Qt::CaseInsensitive)) {
                         qCInfo(cWindow).noquote() << "GL:" << line.trimmed();
@@ -1746,14 +1744,15 @@ void ReaderMainWindow::showEvent(QShowEvent* event) {
 }
 
 ReaderMainWindow::~ReaderMainWindow() {
-    // Most cleanup runs in shutdown(). The destructor only handles the
-    // pathological case where shutdown() was never called (e.g. window
-    // deleted outside the normal quit flow).
     if (!shutdownDone_) {
         qCWarning(cWindow).noquote()
             << "destructor called without prior shutdown(); running now";
         shutdown();
     }
+
+    // QObject deletes child stores after this class's members. Tear down the
+    // loaded run now so a DFT worker is joined before its QtProtein is released.
+    clearLoadedRun();
 }
 
 QJsonArray ReaderMainWindow::inspectorTreeJson() const {
@@ -1979,7 +1978,8 @@ QJsonArray ReaderMainWindow::dashboardPanelManifest() const {
     ASSERT_THREAD(this);
     QJsonArray out;
     if (!dashboardStripDock_) return out;
-    for (const PanelDisplayData& d : dashboardStripDock_->ownedPanelDisplayData()) {
+    const auto displayData = dashboardStripDock_->ownedPanelDisplayData();
+    for (const PanelDisplayData& d : displayData) {
         QJsonObject o{
             {QStringLiteral("kind"), d.kind},
             {QStringLiteral("title"), d.title},
@@ -2089,7 +2089,7 @@ void ReaderMainWindow::buildFilterMenu() {
     // Leaving filter mode is always offered, enabled only while a filter is on.
     QAction* showAll = filterMenu_->addAction(QStringLiteral("Show whole structure"));
     showAll->setEnabled(scene_ && scene_->atomFilterActive());
-    ACONNECT(showAll, &QAction::triggered, this, [this]() {
+    QObject::connect(showAll, &QAction::triggered, this, [this]() {
         setResidueFilter({});      // empty restores the full structure + overlays
     });
     filterMenu_->addSeparator();
@@ -2137,7 +2137,7 @@ void ReaderMainWindow::buildFilterMenu() {
         a->setChecked(std::find(filterResidues_.begin(), filterResidues_.end(),
                                 row.residue) != filterResidues_.end());
         const std::size_t residue = row.residue;
-        ACONNECT(a, &QAction::toggled, this, [this, residue](bool on) {
+        QObject::connect(a, &QAction::toggled, this, [this, residue](bool on) {
             onFilterResidueToggled(residue, on);
         });
     }
@@ -2216,22 +2216,16 @@ void ReaderMainWindow::shutdown() {
 
     qCInfo(cWindow).noquote() << "shutdown entered";
 
-    // Per spec/viewport_pipeline_2026-05-30.md §4.4:
-    //
-    // 1. Keep the REST server alive until app.exec() has returned. This slot
+    // Keep the REST server alive until app.exec() has returned. This slot
     //    can run from aboutToQuit while a QTcpSocket signal is still unwinding;
     //    deleting that socket here would invalidate Qt's active signal walk.
     //    ReaderMainWindow owns the server and main_reader.cpp deletes the
     //    window immediately after the event loop exits.
 
-    // 2. Stop every timer owned by us or our children. The generic
-    //    findChildren sweep catches QtPlaybackController's timer too.
-    const auto timers = findChildren<QTimer*>();
-    for (auto* timer : timers) {
-        if (timer->isActive()) timer->stop();
-    }
+    if (playback_)
+        playback_->pause();
 
-    // 3. Detach the render window from the widget BEFORE dropping our
+    // Detach the render window from the widget before dropping our
     //    smart pointer. setRenderWindow(nullptr) makes the context
     //    current and calls Finalize on the old render window via the
     //    adapter's destructor (QVTKRenderWindowAdapter.cxx:150-166).
@@ -2271,10 +2265,10 @@ void ReaderMainWindow::buildUi() {
     fileMenu_ = menuBar()->addMenu(QStringLiteral("&File"));
     auto* openFileAct = fileMenu_->addAction(QStringLiteral("Open…"));
     openFileAct->setShortcut(QKeySequence::Open);  // Ctrl+O — pick a .LGS file with the mouse
-    ACONNECT(openFileAct, &QAction::triggered, this, &ReaderMainWindow::onOpenFile);
+    QObject::connect(openFileAct, &QAction::triggered, this, &ReaderMainWindow::onOpenFile);
 
     auto* openDirAct = fileMenu_->addAction(QStringLiteral("Open Directory…"));
-    ACONNECT(openDirAct, &QAction::triggered, this, &ReaderMainWindow::onOpenDirectory);
+    QObject::connect(openDirAct, &QAction::triggered, this, &ReaderMainWindow::onOpenDirectory);
 
     // File ▸ Recent — populated from QSettings during restoreAllSettings.
     // Empty until then; each entry loads into this window on click.
@@ -2368,35 +2362,35 @@ void ReaderMainWindow::buildToolbar() {
         makeTransportIcon(TransportGlyph::PlayBackward, glyph),
         QStringLiteral("Play backward"));
     playBackAction_->setToolTip(QStringLiteral("Play continuously, backward in time."));
-    ACONNECT(playBackAction_.data(), &QAction::triggered,
+    QObject::connect(playBackAction_.data(), &QAction::triggered,
              this, [this]() { if (playback_) playback_->playBackward(); });
 
     stepBackAction_ = tb->addAction(
         makeTransportIcon(TransportGlyph::StepBackward, glyph),
         QStringLiteral("Step back"));
     stepBackAction_->setToolTip(QStringLiteral("Step one frame back."));
-    ACONNECT(stepBackAction_.data(), &QAction::triggered,
+    QObject::connect(stepBackAction_.data(), &QAction::triggered,
              this, [this]() { if (playback_) playback_->stepBackward(); });
 
     stopAction_ = tb->addAction(
         makeTransportIcon(TransportGlyph::Stop, glyph),
         QStringLiteral("Stop"));
     stopAction_->setToolTip(QStringLiteral("Stop the animation."));
-    ACONNECT(stopAction_.data(), &QAction::triggered,
+    QObject::connect(stopAction_.data(), &QAction::triggered,
              this, [this]() { if (playback_) playback_->pause(); });
 
     stepForwardAction_ = tb->addAction(
         makeTransportIcon(TransportGlyph::StepForward, glyph),
         QStringLiteral("Step forward"));
     stepForwardAction_->setToolTip(QStringLiteral("Step one frame forward."));
-    ACONNECT(stepForwardAction_.data(), &QAction::triggered,
+    QObject::connect(stepForwardAction_.data(), &QAction::triggered,
              this, [this]() { if (playback_) playback_->stepForward(); });
 
     playForwardAction_ = tb->addAction(
         makeTransportIcon(TransportGlyph::PlayForward, glyph),
         QStringLiteral("Play forward"));
     playForwardAction_->setToolTip(QStringLiteral("Play continuously, forward in time."));
-    ACONNECT(playForwardAction_.data(), &QAction::triggered,
+    QObject::connect(playForwardAction_.data(), &QAction::triggered,
              this, [this]() { if (playback_) playback_->playForward(); });
 
     tb->addSeparator();
@@ -2404,7 +2398,7 @@ void ReaderMainWindow::buildToolbar() {
     frameSlider_ = new QSlider(Qt::Horizontal, tb);
     frameSlider_->setMinimumWidth(400);
     tb->addWidget(frameSlider_);
-    ACONNECT(frameSlider_.data(), &QSlider::valueChanged,
+    QObject::connect(frameSlider_.data(), &QSlider::valueChanged,
              this, [this](int frame) {
                  if (playback_) playback_->setFrame(frame);
              });
@@ -2414,7 +2408,7 @@ void ReaderMainWindow::buildToolbar() {
     fpsSpinner_ = new QSpinBox(tb);
     fpsSpinner_->setSuffix(QStringLiteral(" /s"));
     tb->addWidget(fpsSpinner_);
-    ACONNECT(fpsSpinner_.data(), qOverload<int>(&QSpinBox::valueChanged),
+    QObject::connect(fpsSpinner_.data(), qOverload<int>(&QSpinBox::valueChanged),
              this, [this](int fps) {
                  if (playback_) playback_->setFps(fps);
              });
@@ -2432,7 +2426,7 @@ void ReaderMainWindow::buildToolbar() {
     // paths, which are their real consumers.
     transformFitAction_ = tb->addAction(QStringLiteral("Mode: Locked backbone  ⇄"));
     transformFitAction_->setToolTip(fitModeToolTip());
-    ACONNECT(transformFitAction_.data(), &QAction::triggered,
+    QObject::connect(transformFitAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onTransformFitClicked);
 
     tb->addSeparator();
@@ -2441,13 +2435,13 @@ void ReaderMainWindow::buildToolbar() {
     goToAtomAction_->setEnabled(false);
     goToAtomAction_->setToolTip(QStringLiteral(
         "Jump to a residue number, atom, and frame."));
-    ACONNECT(goToAtomAction_.data(), &QAction::triggered,
+    QObject::connect(goToAtomAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onGoToAtomTriggered);
 
     signalDisplaysAction_ = tb->addAction(QStringLiteral("Metrics..."));
     signalDisplaysAction_->setEnabled(false);
     signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
-    ACONNECT(signalDisplaysAction_.data(), &QAction::triggered,
+    QObject::connect(signalDisplaysAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onOpenSignalDisplays);
 
     // Display isolation ("Filter"): a dropdown checklist of residues near the
@@ -2466,7 +2460,7 @@ void ReaderMainWindow::buildToolbar() {
         "Show only chosen residues near the selected atom and step through "
         "frames isolated. Select an atom first."));
     tb->addWidget(filterButton_);
-    ACONNECT(filterMenu_.data(), &QMenu::aboutToShow,
+    QObject::connect(filterMenu_.data(), &QMenu::aboutToShow,
              this, &ReaderMainWindow::buildFilterMenu);
 
     tb->addSeparator();
@@ -2512,40 +2506,40 @@ void ReaderMainWindow::buildToolbar() {
         "Focused-atom trajectory envelope across the loaded trajectory. Frame "
         "changes move the atom through the same shell."));
 
-    ACONNECT(showRibbonAction_.data(), &QAction::toggled,
+    QObject::connect(showRibbonAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->ribbonOverlay()) return;
                  scene_->ribbonOverlay()->setVisible(on);
                  scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
-    ACONNECT(showRingsAction_.data(), &QAction::toggled,
+    QObject::connect(showRingsAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->ringPolygonOverlay()) return;
                  scene_->ringPolygonOverlay()->setVisible(on);
                  scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
-    ACONNECT(showButterflyAction_.data(), &QAction::toggled,
+    QObject::connect(showButterflyAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->fieldGridOverlay()) return;
                  scene_->fieldGridOverlay()->setVisible(on);
                  if (on) scene_->refreshCurrentFrame();
                  else    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
-    ACONNECT(showNullConeAction_.data(), &QAction::toggled,
+    QObject::connect(showNullConeAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->fieldGridOverlay()) return;
                  scene_->fieldGridOverlay()->setNullConeVisible(on);
                  if (on) scene_->refreshCurrentFrame();
                  else    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
-    ACONNECT(showBFieldAction_.data(), &QAction::toggled,
+    QObject::connect(showBFieldAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                  if (!scene_ || !scene_->bfieldStreamOverlay()) return;
                  scene_->bfieldStreamOverlay()->setVisible(on);
                  if (on) scene_->refreshCurrentFrame();
                  else    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
              });
-    ACONNECT(showTrajectoryAction_.data(), &QAction::toggled,
+    QObject::connect(showTrajectoryAction_.data(), &QAction::toggled,
              this, [this](bool on) {
                   if (!scene_ || !scene_->atomTrajectoryOverlay()) return;
                   scene_->atomTrajectoryOverlay()->setVisible(on);
@@ -2572,7 +2566,7 @@ void ReaderMainWindow::buildToolbar() {
     focusAction_->setToolTip(QStringLiteral(
         "Track the focused atom — keep it centred as frames play. "
         "Toggle off for free mouse control. Requires a focused atom."));
-    ACONNECT(focusAction_.data(), &QAction::triggered,
+    QObject::connect(focusAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onFocusCameraTriggered);
 }
 
@@ -2612,7 +2606,7 @@ void ReaderMainWindow::buildDocks() {
     dashboardController_ = dashboardStripDock_->displayController();
     if (dashboardController_) {
         dashboardController_->setVisualizationContext({});
-        ACONNECT(dashboardController_.data(),
+        QObject::connect(dashboardController_.data(),
                  &DashboardDisplayController::sceneTensorBindingChanged,
                  this,
                  [this](const QString& descriptorId, qint64 atom) {
@@ -2651,19 +2645,19 @@ void ReaderMainWindow::buildDocks() {
     inspectorDock_->setVisible(false);
     dashboardStripDock_->setVisible(false);
 
-    ACONNECT(dashboardStripDock_, &QDockWidget::visibilityChanged,
+    QObject::connect(dashboardStripDock_, &QDockWidget::visibilityChanged,
              this, [this](bool visible) {
                  qCInfo(diagnostics::cDash).noquote()
                      << QStringLiteral("event=dock_visibility_changed visible=%1 width=%2")
                             .arg(visible ? 1 : 0)
                             .arg(dashboardDockWidth());
              });
-    ACONNECT(dashboardStripDock_, &DashboardStripDock::revealRequested,
+    QObject::connect(dashboardStripDock_, &DashboardStripDock::revealRequested,
              this, [this](const model::SignalBinding& binding) {
                  if (scene_)
                      scene_->revealBinding(binding);
              });
-    ACONNECT(dashboardStripDock_, &DashboardStripDock::metricPickerRequested,
+    QObject::connect(dashboardStripDock_, &DashboardStripDock::metricPickerRequested,
              this, &ReaderMainWindow::onOpenSignalDisplays);
 
     // The "Panels" menu/toolbar button was removed: it exposed dock toggles that
@@ -2672,12 +2666,12 @@ void ReaderMainWindow::buildDocks() {
     // the Selection dock was retired (redundant with the in-scene measurements).
 
     if (frameSlider_) {
-        ACONNECT(frameSlider_.data(), &QSlider::sliderPressed,
+        QObject::connect(frameSlider_.data(), &QSlider::sliderPressed,
                  this, [this]() {
                      if (dashboardController_)
                          dashboardController_->setScrubActive(true);
                  });
-        ACONNECT(frameSlider_.data(), &QSlider::sliderReleased,
+        QObject::connect(frameSlider_.data(), &QSlider::sliderReleased,
                  this, [this]() {
                      if (dashboardController_)
                          dashboardController_->setScrubActive(false);
@@ -2899,7 +2893,7 @@ void ReaderMainWindow::rebuildRecentFilesMenu(const QStringList& paths) {
     }
     for (const QString& path : paths) {
         QAction* a = recentMenu_->addAction(path);
-        ACONNECT(a, &QAction::triggered, this, [this, path]() {
+        QObject::connect(a, &QAction::triggered, this, [this, path]() {
             openRecentPath(path);
         });
     }
@@ -3051,8 +3045,7 @@ void ReaderMainWindow::onGoToAtomTriggered() {
                     continue;
                 const QString atomName = protein.atomNames(atom).amber;
                 atomCombo->addItem(QStringLiteral("%1:%2  #%3")
-                                       .arg(residueText)
-                                       .arg(atomName)
+                                       .arg(residueText, atomName)
                                        .arg(atom),
                                    QVariant::fromValue<qulonglong>(
                                        static_cast<qulonglong>(atom)));
@@ -3066,10 +3059,10 @@ void ReaderMainWindow::onGoToAtomTriggered() {
             ok->setEnabled(atomCombo->count() > 0);
     };
 
-    ACONNECT(residueSpin, qOverload<int>(&QSpinBox::valueChanged),
+    QObject::connect(residueSpin, qOverload<int>(&QSpinBox::valueChanged),
              &dialog,    [rebuildAtomChoices](int) mutable { rebuildAtomChoices(); });
-    ACONNECT(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    ACONNECT(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     rebuildAtomChoices();
     if (dialog.exec() != QDialog::Accepted)

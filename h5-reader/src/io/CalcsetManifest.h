@@ -1,30 +1,10 @@
-// CalcsetManifest — the typed wrapper over a calcset's `.LGS` (Lowly
-// Graduate Student) file. One per calcset directory; the consumer's
-// entry point into the artifact tree.
+// Typed representation of an LGS calcset manifest. It records identity, run
+// kind, resolved artifact paths, and optional DFT frame metadata without
+// parsing the artifacts themselves.
 //
-// Authoritative spec: spec/CALCSET_MANIFEST.md (schema v1).
-//
-// The `.LGS` carries the top-level identity, the `kind` dispatch
-// (trajectory / single_pose / mutant_pair), the artifact-pointer
-// table, and — when DFT exists for this calcset — the typed
-// `frame_index → meta_json` map. It is the index, not a parser of the
-// artifacts it points at.
-//
-// Loader semantics — see CALCSET_MANIFEST.md §"Loader behaviour":
-//   1. The argument may be a directory (look for the single `*.LGS`
-//      inside; zero or > 1 matches → hard error) or a `.LGS` file path.
-//   2. `schema_version` must equal `kSupportedSchemaVersion` (== 1);
-//      mismatches reject with a clear error.
-//   3. Required keys for the active `kind` must be present; every
-//      declared file/dir path must exist on disk with the right kind.
-//   4. Optional sub-blocks absent → silently absent; optional paths
-//      declared but missing on disk → hard error (manifest lies).
-//
-// No exceptions cross the loader boundary: failures return
-// `std::nullopt` and write a human-readable message to `err_out`.
-// CalcsetManifest is a plain struct, NOT a QObject — no CENSUS, no
-// signals/slots; per-frame meta lookups are pure functions on
-// resolved paths.
+// The loader accepts an LGS path or a directory containing exactly one LGS,
+// validates the schema and declared paths, and never infers missing names.
+// Failures return std::nullopt with a human-readable error.
 
 #pragma once
 

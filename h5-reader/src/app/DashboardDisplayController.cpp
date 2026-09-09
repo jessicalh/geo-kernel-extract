@@ -1,6 +1,5 @@
 #include "DashboardDisplayController.h"
 
-#include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/DashboardLogging.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -120,16 +119,11 @@ bool isExpectedEmptyState(model::TrajectoryFieldAvailabilityState state) {
     case model::TrajectoryFieldAvailabilityState::NoFramePayload:
     case model::TrajectoryFieldAvailabilityState::AllMissing:
         return true;
-    case model::TrajectoryFieldAvailabilityState::AllZeroStructural:
     case model::TrajectoryFieldAvailabilityState::AllZeroObserved:
     case model::TrajectoryFieldAvailabilityState::Available:
         return false;
     }
     return false;
-}
-
-bool isStructuralZeroState(model::TrajectoryFieldAvailabilityState state) {
-    return state == model::TrajectoryFieldAvailabilityState::AllZeroStructural;
 }
 
 bool unitSpecPresent(const model::UnitSpec& units) {
@@ -248,7 +242,7 @@ double magnitude(const double* row, int first, int count, int cols) {
 model::StripComponent componentForVectorSample(const model::ChannelDescriptor& channel,
                                                const QString& displayModeId) {
     const std::optional<model::StripComponent> modeComponent =
-        model::StripComponentForLegacyMode(displayModeId);
+        model::StripComponentForMode(displayModeId);
     if (modeComponent && *modeComponent != model::StripComponent::Auto)
         return *modeComponent;
 
@@ -265,7 +259,7 @@ model::StripComponent componentForVectorSample(const model::ChannelDescriptor& c
 model::StripComponent componentForTensorSample(const model::ChannelDescriptor& channel,
                                                const QString& displayModeId) {
     const std::optional<model::StripComponent> modeComponent =
-        model::StripComponentForLegacyMode(displayModeId);
+        model::StripComponentForMode(displayModeId);
     if (modeComponent && *modeComponent != model::StripComponent::Auto)
         return *modeComponent;
 
@@ -282,7 +276,7 @@ model::StripComponent componentForTensorSample(const model::ChannelDescriptor& c
 model::StripComponent componentForT2Sample(const model::ChannelDescriptor& channel,
                                            const QString& displayModeId) {
     const std::optional<model::StripComponent> modeComponent =
-        model::StripComponentForLegacyMode(displayModeId);
+        model::StripComponentForMode(displayModeId);
     if (modeComponent && *modeComponent != model::StripComponent::Auto)
         return *modeComponent;
 
@@ -353,7 +347,7 @@ std::optional<double> sampleNpyValue(const model::NpyColumn& column,
                                      const model::ChannelDescriptor& channel,
                                      const QString& displayModeId) {
     const std::optional<model::StripComponent> modeComponent =
-        model::StripComponentForLegacyMode(displayModeId);
+        model::StripComponentForMode(displayModeId);
     const model::StripComponent component =
         modeComponent && *modeComponent != model::StripComponent::Auto
             ? *modeComponent
@@ -803,15 +797,19 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
                 return gap(model::GapReason::FrameSourceAbsent);
             if (sourceMaskOff(ts->source_attached, frame))
                 return gap(model::GapReason::SourceMaskOff);
-            const std::optional<std::size_t> row = rowForDescriptor(ts->n_aromatic_rings + ts->n_saturated_rings);
+            if (descriptor.id == QStringLiteral("h5:aromatic_ring_chi2_time_series")) {
+                const std::optional<std::size_t> row = rowForDescriptor(ts->n_aromatic_rings);
+                return row ? finish(ts->aromaticChi2At(*row, frame))
+                           : gap(model::GapReason::AnchorUnavailable);
+            }
+            const std::optional<std::size_t> row = rowForDescriptor(ts->n_saturated_rings);
             if (!row)
                 return gap(model::GapReason::AnchorUnavailable);
-            if (*row < ts->n_aromatic_rings)
-                return finish(ts->aromaticChi2At(*row, frame));
-            const std::size_t saturated = *row - ts->n_aromatic_rings;
-            if (saturated < ts->n_saturated_rings)
-                return finish(ts->puckerQAt(saturated, frame));
-            return gap(model::GapReason::AnchorUnavailable);
+            if (descriptor.id == QStringLiteral("h5:saturated_ring_pucker_amplitude_time_series"))
+                return finish(ts->puckerQAt(*row, frame));
+            if (descriptor.id == QStringLiteral("h5:saturated_ring_pucker_phase_time_series"))
+                return finish(ts->puckerThetaAt(*row, frame));
+            return gap(model::GapReason::SourceAbsent);
         }
 
         if (path == QStringLiteral("/trajectory/ring_neighbourhood_trajectory_stats")) {
@@ -973,7 +971,7 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
             if (!row)
                 return gap(model::GapReason::AnchorUnavailable);
             const QString chan = channel.id;
-            const int colIdx = kd->channel_names.indexOf(chan);
+            const qsizetype colIdx = kd->channel_names.indexOf(chan);
             if (colIdx < 0)
                 return gap(model::GapReason::AnchorUnavailable);
             const std::size_t col = static_cast<std::size_t>(colIdx);
@@ -1019,7 +1017,7 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
                 // Wildcard kind = first matching row (NH preferred by
                 // identity-table order, since producer adds NH before
                 // CaHa before CO per residue).
-                row = rd->identity.rowFor(res->residue, /*kind=*/0);
+                row = rd->identity.rowFor(res->residue, /*wantKind=*/0);
             }
             if (!row)
                 return gap(model::GapReason::AnchorUnavailable);
@@ -1324,13 +1322,13 @@ void DashboardDisplayController::setSignalModels(model::TrajectorySignalCatalog*
     catalog_ = catalog;
     activeModel_ = activeModel;
     if (activeModel_) {
-        ACONNECT(activeModel_.data(), &model::DashboardSignalModel::signalAdded,
+        QObject::connect(activeModel_.data(), &model::DashboardSignalModel::signalAdded,
                  this, [this](const QUuid&) { rebuild(); });
-        ACONNECT(activeModel_.data(), &model::DashboardSignalModel::signalRemoved,
+        QObject::connect(activeModel_.data(), &model::DashboardSignalModel::signalRemoved,
                  this, [this](const QUuid&) { rebuild(); });
-        ACONNECT(activeModel_.data(), &model::DashboardSignalModel::signalChanged,
+        QObject::connect(activeModel_.data(), &model::DashboardSignalModel::signalChanged,
                  this, [this](const QUuid&) { rebuild(); });
-        ACONNECT(activeModel_.data(), &QAbstractItemModel::modelReset,
+        QObject::connect(activeModel_.data(), &QAbstractItemModel::modelReset,
                  this, &DashboardDisplayController::rebuild);
     }
     collectExpectedButEmpty();
@@ -1343,9 +1341,9 @@ void DashboardDisplayController::setPanelModel(model::DashboardPanelModel* panel
         disconnect(panelModel_, nullptr, this, nullptr);
     panelModel_ = panelModel;
     if (panelModel_) {
-        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
+        QObject::connect(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
                  this, [this](const QUuid&) { rebuild(); });
-        // Codex NOW-1 (2026-05-29): displayRefsChanged must trigger a
+        // displayRefsChanged must trigger a
         // full rebuild() rather than the lightweight
         // refreshPanelVisibility(). DashboardSelectionController adds a
         // static panel signal in two steps — addSignal() (sync, fires the
@@ -1354,15 +1352,15 @@ void DashboardDisplayController::setPanelModel(model::DashboardPanelModel* panel
         // earlier rebuild on signalAdded sees no refs and filters the
         // panel out; without a rebuild here the panel never appears
         // until some unrelated event triggers another rebuild.
-        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::displayRefsChanged,
+        QObject::connect(panelModel_.data(), &model::DashboardPanelModel::displayRefsChanged,
                  this, [this](const QUuid&) { rebuild(); });
-        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelAdded,
+        QObject::connect(panelModel_.data(), &model::DashboardPanelModel::panelAdded,
                  this, [this](const QUuid&) { refreshPanelVisibility(); });
-        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelRemoved,
+        QObject::connect(panelModel_.data(), &model::DashboardPanelModel::panelRemoved,
                  this, [this](const QUuid&, const QVector<model::DashboardDisplayRef>&) {
                      refreshPanelVisibility();
                  });
-        ACONNECT(panelModel_.data(), &QAbstractItemModel::modelReset,
+        QObject::connect(panelModel_.data(), &QAbstractItemModel::modelReset,
                  this, &DashboardDisplayController::refreshPanelVisibility);
     }
     refreshPanelVisibility();
@@ -1374,11 +1372,11 @@ void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
         disconnect(selection_, nullptr, this, nullptr);
     selection_ = selection;
     if (selection_) {
-        ACONNECT(selection_.data(), &model::AtomSelection::changed,
+        QObject::connect(selection_.data(), &model::AtomSelection::changed,
                  this, &DashboardDisplayController::rebuild);
-        ACONNECT(selection_.data(), &model::AtomSelection::focusChanged,
+        QObject::connect(selection_.data(), &model::AtomSelection::focusChanged,
                  this, [this](std::size_t) { rebuild(); });
-        ACONNECT(selection_.data(), &model::AtomSelection::cleared,
+        QObject::connect(selection_.data(), &model::AtomSelection::cleared,
                  this, &DashboardDisplayController::rebuild);
     }
     rebuild();
@@ -1397,7 +1395,7 @@ void DashboardDisplayController::setExperimentalShieldingMlStore(
         disconnect(experimentalMlStore_, nullptr, this, nullptr);
     experimentalMlStore_ = store;
     if (experimentalMlStore_) {
-        ACONNECT(experimentalMlStore_.data(),
+        QObject::connect(experimentalMlStore_.data(),
                  &model::ExperimentalShieldingMlStore::frameReady,
                  this,
                  &DashboardDisplayController::resampleExperimentalMlFrame);
@@ -1426,9 +1424,8 @@ void DashboardDisplayController::setFrame(int frame) {
 
 // Slider drags defer per-frame snapshot fetches so one valueChanged
 // cascade does not stack hundreds of synchronous NPY directory reads
-// on the GUI thread. extendToFrame() bails while scrubActive_ is true;
-// release runs one catch-up extendToFrame(frame_). See
-// h5-reader/notes/ROBUSTNESS_BACKLOG_2026-05-30.md item #3.
+// on the GUI thread. extendToFrame() stops while scrubActive_ is true;
+// release runs one catch-up extendToFrame(frame_).
 void DashboardDisplayController::setScrubActive(bool active) {
     ASSERT_THREAD(this);
     if (scrubActive_ == active)
@@ -1658,7 +1655,7 @@ void DashboardDisplayController::rebuild() {
     qint64 nextSceneTensorAtom = -1;
     activeStripSignalCount_ = 0;
 
-    // L-4 (2026-05-29): auto-compose. Pre-scan for Reorient scalar
+    // Pre-scan for Reorient scalar
     // signals with static.bar.sequence mode in the active panel.
     // If 2+ are present, they collapse into ONE composite panel
     // (built post-loop) instead of one panel per signal. Absorbed
@@ -1703,7 +1700,7 @@ void DashboardDisplayController::rebuild() {
         }
         if (candidates.size() >= 2) {
             reorientCompositeGroup = candidates;
-            for (const auto& s : candidates)
+            for (const auto& s : std::as_const(candidates))
                 absorbedSignals.insert(s.id);
         }
     }
@@ -1757,7 +1754,7 @@ void DashboardDisplayController::rebuild() {
             }
 
             // Static-display path: build an AbstractStripPanel directly.
-            // The registry decides which legacy mode ids are panel
+            // The registry decides which mode ids are panel
             // definitions. The composite reorient coordinator remains
             // outside this per-signal dispatch.
             for (const QString& mode : signal.displayModeIds) {
@@ -1786,7 +1783,7 @@ void DashboardDisplayController::rebuild() {
                         if (auto panel = buildIRedSequenceBarPanel(signal, *descriptor))
                             nextPanels.push_back(std::move(panel));
                     } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")) {
-                        // L-4: skip if this signal is part of an
+                        // Skip if this signal is part of an
                         // auto-composed Reorient group (the composite
                         // panel is built post-loop below). Other modes
                         // on the same signal still emit normally.
@@ -1796,7 +1793,7 @@ void DashboardDisplayController::rebuild() {
                         }
                     } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")) {
                         // Covers dihedral.phi/psi_corr_time AND
-                        // dihedral.chi_corr_time (L-2a) via conceptKey
+                        // dihedral.chi_corr_time via conceptKey
                         // dispatch inside the builder.
                         if (auto panel = buildDihedralSequenceBarPanel(signal, *descriptor))
                             nextPanels.push_back(std::move(panel));
@@ -1817,7 +1814,7 @@ void DashboardDisplayController::rebuild() {
                             nextPanels.push_back(std::move(panel));
                     } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")) {
                         // Covers dihedral.phi/psi_acf AND dihedral.chi_acf
-                        // (L-2a) — the 4-channel chi variant fans into a
+                        // across the four-channel chi variant, which fans into a
                         // single multi-curve LagDecayPanel.
                         if (auto panel = buildDihedralLagDecayPanel(signal, *descriptor))
                             nextPanels.push_back(std::move(panel));
@@ -1831,7 +1828,7 @@ void DashboardDisplayController::rebuild() {
                     break;
                 case model::VisualizationType::FixedFrequency:
                     if (path == QStringLiteral("/trajectory/reorientational_dynamics")) {
-                        // L-3b (2026-05-29): J(w) at 5 KTB Larmor combinations.
+                        // J(w) at five KTB Larmor combinations.
                         if (auto panel = buildReorientFixedFreqPanel(signal, *descriptor))
                             nextPanels.push_back(std::move(panel));
                     }
@@ -1848,13 +1845,6 @@ void DashboardDisplayController::rebuild() {
                 }
             }
 
-            // The bond-orientation tensor (h5:reorient_orientation_tensor) is
-            // NOT a dashboard panel: it renders as a focus-driven SCENE glyph
-            // (ReaderMainWindow::updateOrientationTensorGlyph -> the shared
-            // TensorGlyphActor, the SAME ovaloid + principal-axis arrows as the
-            // CSA glyph, consistent not ad hoc), so nothing is emitted here. Its
-            // static.tensor mode stays tracked-but-hidden in the dashboard.
-
             // Temporal-strip path: existing ChannelBuffer pipeline.
             if (hasStripMode(signal.displayModeIds)) {
                 ++activeStripSignalCount_;
@@ -1866,7 +1856,7 @@ void DashboardDisplayController::rebuild() {
     for (int i = 0; i < next.size(); ++i)
         next[i].color = colorForIndex(i);
 
-    // L-4 (2026-05-29): build the auto-compose Reorient composite
+    // Build the auto-composed Reorient panel
     // AFTER the per-signal loop has built all the other panels.
     // The composite folds the 2+ absorbed scalar signals into one
     // SequenceBarPanel with overlays.
@@ -2049,7 +2039,7 @@ static std::optional<std::size_t> reorientRowFor(
     if (const auto* vec = std::get_if<model::BondVectorAnchor>(&signal.binding.anchor))
         return rd.identity.rowFor(vec->residue, vec->kind);
     if (const auto* res = std::get_if<model::ResidueAnchor>(&signal.binding.anchor))
-        return rd.identity.rowFor(res->residue, /*kind=*/0);
+        return rd.identity.rowFor(res->residue, /*wantKind=*/0);
     return std::nullopt;
 }
 
@@ -2344,7 +2334,7 @@ DashboardDisplayController::buildDihedralSequenceBarPanel(
             rows.push_back(row);
         }
     } else if (conceptKey == QStringLiteral("dihedral.chi_corr_time")) {
-        // L-2a (2026-05-29): chi composite fanned across 4 sub-slots
+        // The chi composite fans across four sub-slots
         // (kinds 4..7) per residue. Residues with fewer than 4 chi
         // torsions just emit fewer rows (chi_defined gates emission).
         rows.reserve(da->n_residues * 4);
@@ -2400,7 +2390,7 @@ DashboardDisplayController::buildReorientFixedFreqPanel(
     if (const auto* vec = std::get_if<model::BondVectorAnchor>(&signal.binding.anchor))
         row = rd->identity.rowFor(vec->residue, vec->kind);
     else if (const auto* res = std::get_if<model::ResidueAnchor>(&signal.binding.anchor))
-        row = rd->identity.rowFor(res->residue, /*wildcard=*/0);
+        row = rd->identity.rowFor(res->residue, /*wantKind=*/0);
     if (!row || *row >= src.n_vectors) return nullptr;
 
     // Slice the producer-owned (V, n_freqs) buffer down to a one-row
@@ -2461,7 +2451,7 @@ DashboardDisplayController::buildDihedralLagDecayPanel(
         view->channel_names = QStringList{descriptor.conceptKey};
     } else if (descriptor.conceptKey == QStringLiteral("dihedral.chi_acf")
                && da->n_lags >= 2 && !da->chi_acf.empty()) {
-        // L-2a (2026-05-29): pack 4 chi curves as 4 channels — LagDecayPanel
+        // Pack four chi curves as four channels; LagDecayPanel
         // already iterates n_channels and draws one polyline per channel.
         view->n_channels = 4;
         view->n_samples = da->n_lags;
@@ -2567,7 +2557,8 @@ void DashboardDisplayController::collectExpectedButEmpty() {
         const model::TrajectoryFieldAvailabilityState storageState =
             storageRecord ? storageRecord->state : model::TrajectoryFieldAvailabilityState::Available;
 
-        for (const model::VisualizationDefinition* definition : registry.supporting(descriptor)) {
+        const auto supportingDefinitions = registry.supporting(descriptor);
+        for (const model::VisualizationDefinition* definition : supportingDefinitions) {
             if (!definition || definition->isAvailable(visualizationContext_, descriptor))
                 continue;
 
@@ -2593,15 +2584,6 @@ void DashboardDisplayController::collectExpectedButEmpty() {
                                 record.visualizationType,
                                 record.canonicalState,
                                 record.storagePathState);
-            } else if (isStructuralZeroState(descriptorState) || isStructuralZeroState(storageState)) {
-                qCWarning(diagnostics::cDash).noquote()
-                    << QStringLiteral(
-                           "event=viz_structural_zero descriptor_id=%1 storage_path=%2 visualization_type=%3 canonical_state=%4 storage_path_state=%5")
-                           .arg(descriptor.id,
-                                descriptor.storagePath,
-                                type,
-                                descriptorStateText,
-                                storageStateText);
             }
         }
     }
@@ -2830,7 +2812,7 @@ void DashboardDisplayController::extendToFrame(int frame) {
 
     const long long startFrame = [&]() {
         long long start = frame;
-        for (const ActiveSeries& series : series_)
+        for (const ActiveSeries& series : std::as_const(series_))
             start = std::min(start, series.buffer.lastFrame() + 1);
         return std::max<long long>(0, start);
     }();

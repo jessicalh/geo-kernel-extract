@@ -8,12 +8,12 @@
 //
 // The UDP stream is the primary debugging channel. udp_listen.py on port
 // 9997 tails it during development. When the reader misbehaves, the log
-// stream is consulted BEFORE code changes. See feedback_qt_discipline.
+// stream is consulted before code changes.
 //
 // Target host/port default to 127.0.0.1:9997. Override via environment
 // variable H5READER_LOG_UDP="host:port".
 //
-// Category bitmask (per spec/viewport_pipeline_2026-05-30.md §8 decision 3):
+// Category bitmask:
 // each Q_LOGGING_CATEGORY name maps to a single bit; the logger consults
 // the mask at emit time and drops messages whose category bit is clear.
 // ERROR / WARNING / CRITICAL severities bypass the gate (always emit).
@@ -31,15 +31,14 @@
 //   TRANSFORM  0x40  TransformedConformation mode change + Kabsch recompute
 //   HEALTH     0x80  startup / shutdown / REST lifecycle / snapshot success
 //
-// Q_LOGGING_CATEGORY names are mapped to bits in Categories.cpp (the
-// LogCategoryMaskFor() helper). Categories without a mapping are
+// Q_LOGGING_CATEGORY names are mapped to bits by LogCategoryMaskFor().
+// Categories without a mapping are
 // emitted unconditionally (the conservative default — silent drops are
 // worse than verbose logs).
 
 #pragma once
 
 #include <QHostAddress>
-#include <QMutex>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -87,9 +86,9 @@ public:
     static QStringList SymbolicNamesFromMask(std::uint32_t mask);
 
     // Emit one message. Called from the Qt global message handler and
-    // directly from the diagnostics macros. Thread-safe — a mutex guards
-    // the UDP socket. Filters by category bitmask except for warning/
-    // critical/fatal severities (those always emit).
+    // directly from the diagnostics macros. UDP writes are marshalled to this
+    // object's thread. Filters by category bitmask except for warning,
+    // critical, and fatal severities (those always emit).
     void Emit(QtMsgType type,
               const char* category,
               const QString& message,
@@ -104,7 +103,6 @@ private:
     QUdpSocket   udp_;
     QHostAddress host_;
     quint16      port_;
-    QMutex       lock_;
 };
 
 // Resolve a category name (the Q_LOGGING_CATEGORY's name argument, e.g.

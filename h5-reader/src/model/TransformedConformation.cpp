@@ -397,7 +397,6 @@ void TransformedConformation::rebuildReferenceMean() {
 
                 const Vec3 cc = Centroid(current);
                 const std::vector<Vec3> currentDemeaned = DemeanedCopy(current, cc);
-                // v2: pass robust/weighted atom weights into KabschFit here.
                 const Transform3D fit = KabschFit(currentDemeaned, referencePositions_);
                 for (std::size_t i = 0; i < n; ++i)
                     accum[i] += fit.R * currentDemeaned[i];
@@ -428,10 +427,10 @@ void TransformedConformation::rebuildReferenceMean() {
     if (n >= 3 && iterations >= kMeanReferenceMaxIterations
             && delta >= kMeanReferenceEpsAngstrom) {
         qCWarning(cXform).noquote()
-            << "iterative mean reference did NOT converge | delta_A=" << delta
-            << "| eps_A=" << kMeanReferenceEpsAngstrom
+            << "display mean reference reached iteration limit | delta_A=" << delta
+            << "| tolerance_A=" << kMeanReferenceEpsAngstrom
             << "| iterations=" << iterations
-            << "— shipping last average (rigid + centroid-pinned, still valid)";
+            << "| using final finite iterate";
     }
 
     qCInfo(cXform).noquote()
@@ -553,8 +552,7 @@ TransformedConformation::smoothTransformSequence(const std::vector<FrameFit>& ra
 
 // Kabsch fit — delegates to h5reader::math::ComputeSubsetTransform in
 // FitTargetMath.h. The free function is the canonical implementation
-// (Codex finding #6) and owns the degeneracy policy (rank-degenerate
-// → std::nullopt per Codex finding #4). Both the camera path
+// and owns the degeneracy policy (rank-degenerate inputs return null). Both the camera path
 // (CameraComposer::writeSubset) and the data path (this) now share one
 // failure semantics: if the fit is degenerate, freeze on identity
 // rotation with translation-only centroid alignment. This kills the

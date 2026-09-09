@@ -15,13 +15,13 @@ public:
     bool isAvailable(const VisualizationContext& ctx,
                      const SignalDescriptor& descriptor) const override;
     DisplayModeCapability capability() const override;
-    QStringList legacyModeIds() const override;
+    QStringList modeIds() const override;
 
     QVector<StripComponent> componentsFor(const SignalDescriptor& descriptor) const;
 };
 
-std::optional<StripComponent> StripComponentForLegacyMode(const QString& modeId);
-QString LegacyModeIdForStripComponent(StripComponent component);
+std::optional<StripComponent> StripComponentForMode(const QString& modeId);
+QString ModeIdForStripComponent(StripComponent component);
 bool StripModeWantsChannel(const SignalDescriptor& descriptor,
                            const QString& modeId,
                            const ChannelDescriptor& channel);

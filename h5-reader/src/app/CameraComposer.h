@@ -6,18 +6,12 @@
 // OrthogonalizeViewUp. NEVER delta-translates the camera. NEVER calls
 // Render — the scheduler (MoleculeScene::requestRender) owns that.
 //
-// Stage 3 of spec/viewport_pipeline_2026-05-30.md. Replaces:
-//   * MoleculeScene::CameraPlaneLock (struct + applyCameraPlaneLock)
-//   * MoleculeScene::focusCameraOnReveal one-shot dihedral math
-//   * The centroid-delta camera translation block in setFrame
-//
 // All math lives in FitTargetMath.h (pure functions); this class is
 // the orchestrator that dispatches on CameraMode::Kind and assembles
 // the absolute write each frame.
 //
 // User-gesture delta storage: kept per-composer (not per-mode-variant).
-// Each setMode call resets the delta to zero — agent decision per the
-// implementation prompt, §4-b: each lock acquisition is a fresh start.
+// Each setMode call resets the delta because a lock acquisition is a fresh start.
 // applyGesture is the slot the eventFilter calls; it mutates the delta
 // and asks for a render via the scene's requestRender.
 //
@@ -171,8 +165,8 @@ private:
     double      planeNormalSign_  = 1.0;
     std::optional<model::Vec3> planeLastDirection_;
 
-    // Dihedral mode: sign-continuity guard for the sight axis (Codex
-    // finding #1). Mirrors planeLastDirection_ exactly. Stored direction
+    // Dihedral mode: sign-continuity guard for the sight axis. It mirrors
+    // planeLastDirection_ exactly. Stored direction
     // is the POST-flip axis used to write the camera last frame; the
     // next frame's axis is sign-flipped if it dots negative against this
     // reference, then this reference is updated. Reset to nullopt on
@@ -180,8 +174,8 @@ private:
     // the natural axis direction.
     std::optional<model::Vec3> dihedralLastDirection_;
 
-    // Atom mode: captured sight + up + cam-relative offset at lock
-    // acquisition (Codex finding #2). The prior implementation derived
+    // Atom mode: captured sight, up, and camera-relative offset at lock
+    // acquisition. Deriving
     // each frame's sight from the LIVE camera, which already contained
     // the composed user gesture — leading to drift on subsequent
     // setFrames because the gesture re-applied on top of itself. Now
@@ -196,8 +190,8 @@ private:
     model::Vec3 atomReferenceUp_     = model::Vec3::Zero();
     model::Vec3 atomReferenceCamRel_ = model::Vec3::Zero();
 
-    // Bond mode: matched-shape capture for the bond lock (Codex finding
-    // #2). bondReferenceMidpoint_ caches midpoint(a, b) at lock
+    // Bond mode: matched-shape capture for the bond lock.
+    // bondReferenceMidpoint_ caches midpoint(a, b) at lock
     // acquisition so each frame's camera position composes against the
     // captured pose (camera = midpoint_t + bondReferenceCamRel_) rather
     // than the live camera that already contains accumulated gestures.

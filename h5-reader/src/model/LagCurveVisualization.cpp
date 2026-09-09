@@ -27,7 +27,7 @@ DisplayModeCapability LagCurveVisualization::capability() const {
     return DisplayModeCapability{true, true, true};
 }
 
-QStringList LagCurveVisualization::legacyModeIds() const {
+QStringList LagCurveVisualization::modeIds() const {
     return {QString::fromLatin1(kMode)};
 }
 

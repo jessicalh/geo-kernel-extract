@@ -16,9 +16,6 @@
 //
 // Eigen3 is the only dependency; no VTK, no Qt — by design so this
 // can be unit-tested headlessly in scene_math_tests.
-//
-// L-3a (2026-05-29).
-
 #pragma once
 
 #include "../model/QtAtom.h"
@@ -57,7 +54,7 @@ struct TensorEllipsoid {
 // render correctly in the current scene — passing the body-frame
 // eigenvectors directly into a VTK world transform produces a glyph
 // whose orientation is wrong once the molecule rotates relative to
-// frame 0 (Codex NOW-4, 2026-05-29).
+// frame 0.
 inline TensorEllipsoid decomposeSymmetric3x3(const std::array<double, 9>& flat,
                                              double eps_radius = 1e-6) {
     Eigen::Matrix3d M;
@@ -101,7 +98,7 @@ inline TensorEllipsoid decomposeSymmetric3x3(const std::array<double, 9>& flat,
 // secondary axes rotated consistently, eigenvalue-derived radii
 // (sqrt eigenvalue) scaled by `scale`, translated to `midpoint`.
 //
-// This handles the body→lab coord-frame issue (Codex NOW-4): the body
+// This handles the body-to-lab coordinate-frame conversion: the body
 // frame's z is approximately the reference bond direction; aligning
 // the largest eigenvector with the CURRENT bond direction
 // approximates the body→lab rotation without needing the full Kabsch
@@ -112,10 +109,8 @@ inline TensorEllipsoid decomposeSymmetric3x3(const std::array<double, 9>& flat,
 // Edge cases:
 // - bondDir near-parallel to eigenvectors[0]: identity rotation.
 // - bondDir near-antiparallel: 180° rotation around any perpendicular.
-// - bondDir of zero length: caller must skip (returns identity here
-//   for defensiveness but the ellipsoid would render at midpoint with
-//   body-frame orientation — caller should test bondDir.norm() > 0
-//   before invoking).
+// - bondDir of zero length: returns identity; callers skip such bonds rather
+//   than render a body-frame ellipsoid at the midpoint.
 inline std::array<double, 16>
 composeEllipsoidTransform(const TensorEllipsoid& eig,
                           const model::Vec3& currentBondDir,

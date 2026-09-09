@@ -2,7 +2,7 @@
 // policy of TrajectoryFieldAvailability (the dashboard "is this field live?"
 // gate). Build() itself is coupled to the dense-H5 / per-frame-NPY I/O it
 // probes, so it is integration-tested via the REST /catalog harness; this unit
-// test pins the pure pieces the leg-#1 fix turns on:
+// test pins the pure classification pieces:
 //   * classifyDft       -- live ORCA from the DFT job count (the old code routed
 //                          ORCA through the NPY probe and always read Absent);
 //   * classifyTopology  -- the startup-loaded spine, honest about EMPTY tables
@@ -119,7 +119,6 @@ void FieldAvailabilityTests::visibleStateContract() {
     QVERIFY(!TrajectoryFieldAvailability::isVisibleState(State::Absent));
     QVERIFY(!TrajectoryFieldAvailability::isVisibleState(State::AllMissing));
     QVERIFY(!TrajectoryFieldAvailability::isVisibleState(State::NoFramePayload));
-    QVERIFY(!TrajectoryFieldAvailability::isVisibleState(State::AllZeroStructural));
 }
 
 void FieldAvailabilityTests::missingRecordDefaultsAbsent() {

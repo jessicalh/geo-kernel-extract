@@ -43,7 +43,7 @@ Q_LOGGING_CATEGORY(cScene, "h5reader.scene")
 const char* RenderSourceName(MoleculeScene::RenderSource s) {
     using RS = MoleculeScene::RenderSource;
     switch (s) {
-        case RS::Timer:       return "timer";
+        case RS::FrameChange: return "frame";
         case RS::CameraInput: return "camera-input";
         case RS::Picker:      return "picker";
         case RS::Rest:        return "rest";
@@ -90,10 +90,8 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
 
     // ----- Renderer setup ------------------------------------------------
     //
-    // Two-layer composition per spec §5: main scene at layer 0 + an
-    // overlay layer at layer 1 sharing the same active camera. Markers
-    // paint into the overlay layer so they remain visible regardless of
-    // depth occlusion (the harness needs this for blob analysis).
+    // The main scene and overlay renderer share one active camera. Markers
+    // use the overlay renderer so molecular geometry cannot occlude them.
     //
     // Tensor, field, and trajectory-envelope surfaces need order-independent
     // transparency. VTK's single-pass OIT preserves that composition without
@@ -136,10 +134,8 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
         iren->SetInteractorStyle(style);
     }
 
-    // EndEvent observer — per spec §2.8. Logs one structured line per
-    // render with source + frame + ms + mode for the harness to
-    // correlate render triggers against their cause. Renamed from the
-    // earlier "render <ms>" form to include the source tag.
+    // Log each completed render with its trigger, frame, duration, and camera
+    // mode so an observed frame can be traced to the event that rendered it.
     auto endEventCb = vtkSmartPointer<vtkCallbackCommand>::New();
     endEventCb->SetClientData(this);
     endEventCb->SetCallback(
@@ -247,11 +243,8 @@ void MoleculeScene::Build(const model::QtProtein& protein,
 
     currentFrame_ = 0;
 
-    // Camera composer — owns absolute per-frame camera writes per spec
-    // §2.3. Constructed after the renderer is wired so it can hold the
-    // smart pointer; protein + conformation pointers are non-owning.
-    // Starts in CameraMode::Free (agent default per the implementation
-    // prompt §4-c).
+    // The camera composer owns absolute per-frame camera writes. It is created
+    // after the renderer; its protein and conformation pointers are non-owning.
     if (!composer_) {
         composer_ = new CameraComposer(renderer_, &protein, &conformation, this);
     }
@@ -308,7 +301,7 @@ void MoleculeScene::Build(const model::QtProtein& protein,
     if (!csaOverlay_) {
         // Glyph on the depth-peeled MAIN renderer (translucent, seamless with the
         // molecule like the isosurfaces); labels + readout on the overlay layer.
-        csaOverlay_ = new CsaTensorOverlay(renderer_, overlayRenderer_, this);
+        csaOverlay_ = new CsaTensorOverlay(renderer_, this);
     }
 
     // Bond-orientation order tensor glyph -- the SAME TensorGlyphActor the CSA
@@ -549,8 +542,8 @@ void MoleculeScene::setFrame(int t) {
     timer.start();
 
     // 1. Position push — one pass through atoms updates molecule
-    //    positions and accumulates per-frame bounds. Per
-    //    feedback_vtk_bounds_cache, we compute bounds ourselves because
+    //    positions and accumulates per-frame bounds. We compute bounds
+    //    ourselves because
     //    vtkMolecule::GetBounds() / vtkActor::GetBounds() cache from the
     //    mapper's input on first query and don't invalidate on
     //    SetAtomPosition + Modified().
@@ -569,7 +562,7 @@ void MoleculeScene::setFrame(int t) {
         points->Modified();
 
     // 3. Move currentFrame_ BEFORE the camera write and render schedule
-    //    so the EndEvent observer (Stage 8) reads the correct frame.
+    //    so the EndEvent observer reads the correct frame.
     currentFrame_ = t;
 
     // 4. Camera composer writes absolute camera state for frame t.
@@ -604,14 +597,10 @@ void MoleculeScene::setFrame(int t) {
     syncCameraClippingRange();
 
     // 7. Schedule one render via the Qt paint chain.
-    requestRender(RenderSource::Timer);
+    requestRender(RenderSource::FrameChange);
 
-    // 8. Per-frame timing at DEBUG. Every 50 frames a diagnostic
-    //    snapshot (RSS, actor count, mol bounds, visibility) ALSO at
-    //    DEBUG — kept around because it caught the VTK bounds-cache
-    //    bug; raise to qCInfo temporarily if a similar progressive-
-    //    rendering issue recurs. See feedback_vtk_bounds_cache memory
-    //    for the story.
+    // 8. Per-frame timing at DEBUG. Every 50 frames, also record RSS,
+    //    actor count, molecule bounds, and visibility.
     qCDebug(cScene).noquote()
         << "scene | frame=" << t
         << "| atoms=" << protein_->atomCount()
@@ -719,11 +708,8 @@ void MoleculeScene::focusCameraOnReveal(const model::SignalBinding& binding,
     if (frame < 0 || static_cast<std::size_t>(frame) >= conformation_->frameCount())
         return;
 
-    // Per spec §3.2: dihedral reveal lifts to sustained
-    // CameraMode::Dihedral + DownAxis policy so the sight-down view
-    // persists frame-to-frame rather than being a one-shot. Other
-    // anchors get CameraMode::Subset with the active atoms (focal at
-    // centroid; sight inherited from current camera).
+    // A dihedral reveal uses a persistent sight-down camera. Other anchors use
+    // their atom subset as the focal target and retain the current sight line.
     const auto* tuple = std::get_if<model::AtomTupleAnchor>(&binding.anchor);
     const bool canSightDown = tuple && tuple->atoms.size() >= 4
         && tuple->atoms[0] < protein_->atomCount()

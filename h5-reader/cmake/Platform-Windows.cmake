@@ -1,14 +1,14 @@
 # Platform-Windows.cmake — Windows-specific build settings for h5reader.
 #
-# Target stack (per notes/BUILD_LAYOUT_PLAN_2026-05-23.md):
+# Target stack:
 #   Qt Pro 6.10.x   (installer → C:\Qt\<ver>\msvc2022_64)
 #   VTK 9.5+        (built from source, CMake INSTALL prefix → C:\Projects\VTK)
 #   HDF5 1.14       (vcpkg: hdf5)
 #   Eigen 3.4       (vcpkg: eigen3)
 #   CMake + Ninja   (Qt installer bundles both at C:\Qt\Tools\)
 #
-# Defaults below match the standard developer environment described
-# in the qt6-cpp skill notes. Override per-machine via:
+# Defaults below match the standard Windows development environment. Override
+# them per machine via:
 #   cmake --preset win-rwdi `
 #         -DH5READER_QT_DIR="C:\Qt\6.10.2\msvc2022_64" `
 #         -DH5READER_VTK_DIR="C:\Projects\VTK"
@@ -71,11 +71,11 @@ if(NOT CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{VCPKG_ROOT})
 endif()
 
 function(h5reader_apply_platform_target_settings target)
-    # qt_add_executable() correctly makes release-style Windows builds GUI
-    # applications. Keep Debug as a console subsystem so structured logging is
-    # visible when the Windows machine is doing first-pass bring-up.
-    set_target_properties(${target} PROPERTIES
-        WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
+    if(target STREQUAL "h5reader")
+        # Keep Debug as a console application so its structured log is visible.
+        set_target_properties(${target} PROPERTIES
+            WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
+    endif()
 
     if(MSVC)
         # MSVC RWDI defaults to /O2 /Ob1 /Zi with no /GL — so cl never
@@ -118,22 +118,12 @@ function(h5reader_apply_platform_target_settings target)
         # std::min / std::max and Qt's containers. NOMINMAX disables them.
         target_compile_definitions(${target} PRIVATE NOMINMAX)
 
-        # AVX2 baseline for MSVC. Eigen's vectorised paths and the
-        # Ring-current inner loops (BiotSavartRingCurrent, QtHaighMallionCalc,
-        # QtBFieldStreamOverlay grid eval) all benefit. Strix Halo /
-        # Zen 4 / Zen 5 / any Haswell+ Intel supports AVX2 natively;
-        # the adviser-class Win11 machines this binary targets all
-        # post-date Haswell (2013). On pre-Haswell hosts the binary
-        # will refuse to start with an "illegal instruction" — same
-        # behaviour as Linux when /march=haswell+ is set.
-        #
-        # Skipping /arch:AVX512 deliberately: Zen 5 supports it but
-        # not all reviewer machines will, and the marginal win over
-        # AVX2 for our workload is small. Revisit if profiling shows
-        # the BS grid eval is still the bottleneck.
+        # AVX2 accelerates Eigen and the ring-current inner loops. It is the
+        # Windows binary's minimum CPU instruction set; AVX512 is not required.
         target_compile_options(${target} PRIVATE /arch:AVX2)
     endif()
 
-    # Crash-handler minidump support.
-    target_link_libraries(${target} PRIVATE Dbghelp)
+    if(target STREQUAL "h5reader_core")
+        target_link_libraries(${target} PRIVATE Dbghelp)
+    endif()
 endfunction()

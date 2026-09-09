@@ -84,7 +84,7 @@ void SequenceBarPanel::addOverlay(std::vector<SequenceBarRow> rows,
 // fan out across the slot; kind=0 (no discriminator, used by iRED
 // and Dihedral phi/psi) centres on the residue tick.
 //
-// L-2a (2026-05-29) added chi[0..3] sub-slots at kinds 4..7. Chi
+// Chi[0..3] uses sub-slots at kinds 4..7. Chi
 // never coexists with NH/CaHa/CO on the same panel (chi is its own
 // dihedral_chi_corr_time descriptor), so the namespace split avoids
 // any visual collision with Reorient.
@@ -197,7 +197,7 @@ void SequenceBarPanel::paint(QPainter& p,
         for (const SequenceBarRow& r : rows_) {
             if (r.kind != 0) { hasMultiKind = true; break; }
         }
-        // L-4 (2026-05-29): when overlays are present, narrow the
+        // When overlays are present, narrow the
         // primary bars further so the overlay sub-slots have visual
         // breathing room without the primary dominating.
         const bool hasOverlays = !overlays_.empty();
@@ -230,7 +230,7 @@ void SequenceBarPanel::paint(QPainter& p,
             p.fillRect(bar, fill);
         }
 
-        // L-4 (2026-05-29): overlay series. Each overlay paints with
+        // Each overlay series paints with
         // its own colour at a kind-offset position relative to its
         // index, and uses its own value range if units differ from the
         // primary (twin-y). Right-margin y-axis labels are drawn for
@@ -284,7 +284,7 @@ void SequenceBarPanel::paint(QPainter& p,
             }
         }
 
-        // L-4 (2026-05-29): right-margin y-axis labels for the FIRST
+        // Right-margin y-axis labels for the first
         // overlay with differing units (twin-y). Mirrors
         // paintYAxisLabels but anchors to the right edge of the plot.
         for (const OverlaySeries& overlay : overlays_) {

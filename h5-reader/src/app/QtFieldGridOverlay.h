@@ -12,9 +12,8 @@
 // filters rerun on Modified(). Expensive but bounded — at 3 rings ×
 // 20³ grid it's ~10-30 ms per frame on our target hardware.
 //
-// Kernel evaluators are free functions in h5reader::calculators —
-// thread-safe today even though we call them on the GUI thread. See
-// the threading discussion in memory project_viewer_hardwon_lessons.
+// Kernel evaluators are thread-safe free functions in h5reader::calculators;
+// this overlay calls them on the GUI thread.
 
 #pragma once
 

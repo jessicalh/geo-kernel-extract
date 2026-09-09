@@ -6,7 +6,7 @@ many, and "it's in the catalog" says nothing about whether data survives the
 descriptor -> sampler -> SignalSample -> panel -> pixels pipeline. This test
 drives that pipeline over REST for every descriptor and classifies the result,
 so a regression (a metric that used to display stops displaying) fails loudly
-and the known gaps stay documented.
+and unsupported catalog entries remain explicitly non-displayable.
 
 What it does, per descriptor (from GET /catalog):
   1. Choose the display path from the descriptor's `axis` (anchor kind) and
@@ -32,16 +32,15 @@ confirmed against the running app, not assumed):
   - Multi-value-as-one-track: vector3/EFG/spherical/tensor-component metrics
     collapse to ONE scalar per track (a magnitude/invariant trend); the full
     tensor lives in the shared tensor glyph. Flagged, not failed.
-  - static.tensor remains a no-op for older descriptors whose scene binding is
-    deferred. Experimental Shielding ML is the explicit exception: its T2
-    output drives the shared tensor glyph and is classified as a scene display.
+  - Experimental Shielding ML T2 drives the shared tensor glyph and is
+    classified as a scene display. Other tensor fields use their scalar strip
+    views or are explicitly non-displayable.
   - Unavailable-in-this-run descriptors are refused with 409 (correct).
   - embedding + the 5 topology tables are non-displayable by policy.
 
-KNOWN_DEBT (calibrated to the default 1P9J fixture) is the small set of genuine
-gaps the sweep surfaces; the inventory test asserts it EXACTLY. Flatness is
-REPORTED (not asserted): a flat track is still displayed, and many metrics are
-legitimately constant -- the report lets a human spot the suspicious ones.
+Flatness is reported rather than asserted: a flat track is still displayed,
+and many metrics are legitimately constant. The report lets a human inspect
+the suspicious ones.
 """
 
 from __future__ import annotations
@@ -57,24 +56,6 @@ import pytest
 # --- verdict vocabulary -------------------------------------------------
 
 CLEAN = {"PASS", "PASS_FLAG_MULTIVALUE", "ABSENT_REFUSED", "UNAVAILABLE_REFUSED", "NON_DISPLAYABLE"}
-
-# Genuine display debt on the default 1P9J fixture. id -> expected verdict.
-#   DEFERRED_GLYPH: the only metric with no dashboard path at all -- its sole
-#     mode is static.tensor, whose scene-glyph trigger remains deferred. The ML tensor
-#     is deliberately not included: ml:experimental_shielding_t2 has a tested
-#     dashboard-selected binding to the shared tensor glyph.
-#
-# (The two empty welfords -- water_field / aimnet2_charge_response_gradient --
-# that used to be EMPTY_AVAILABLE are gone from here: the whole rollup-moment
-# family was de-stripped (DisplayPolicy) because those summaries only ever drew a
-# flat line; they now classify NON_DISPLAYABLE. When a static mean+/-std readout
-# ships for rollups, expect them to return as PASS and update accordingly.)
-KNOWN_DEBT = {
-    "h5:reorient_orientation_tensor": "DEFERRED_GLYPH",
-}
-
-SOFT_VERDICTS = {"EMPTY_AVAILABLE", "DEFERRED_GLYPH"}
-
 
 # --- anchor + mode helpers (ground truth from parseDashboardAnchor) -----
 
@@ -277,12 +258,8 @@ def _classify(client, d: dict, displayable: bool, frame: int) -> dict:
                         f"descriptor={r.get('sceneTensorDescriptor')}"
                     ),
                 )
-        elif r["ok"] and r["panels"] == 0 and r["tracks"] == 0:
-            rec["path"] = "deferred_glyph"
-            rec.update(verdict="DEFERRED_GLYPH",
-                       detail=f"static.tensor refs={r['refs']} -> no dashboard element (scene-glyph trigger deferred)")
         else:
-            rec["path"] = "deferred_glyph"
+            rec["path"] = "scene_tensor"
             rec.update(verdict="UNEXPECTED_TENSOR", detail=f"tracks={r['tracks']} panels={r['panels']}")
     elif d.get("axis") == "atom tuple":
         r = _probe_add(client, d, strip_mode, 0, frame)
@@ -393,32 +370,20 @@ def test_coverage_is_total(metrics_sweep, h5reader_session):
 def test_no_pipeline_breaks(metrics_sweep):
     """No descriptor lands in a hard-fail bucket. These verdicts mean the
     read-to-display pipeline (or the anchor map) is genuinely broken, as
-    opposed to the documented soft gaps in KNOWN_DEBT."""
+    opposed to a deliberately non-displayable field."""
     hard = {"BIND_FAIL", "NO_DATA", "NO_PATH", "ABSENT_UNEXPECTED",
             "UNEXPECTED_TENSOR", "NEEDS_SELECTION"}
     broken = [(r["id"], r["verdict"], r["detail"]) for r in metrics_sweep if r["verdict"] in hard]
     assert not broken, "pipeline breaks:\n" + "\n".join(f"  {i}  [{v}]  {d}" for i, v, d in broken)
 
 
-def test_clean_or_known_debt(metrics_sweep):
-    """Every descriptor is either cleanly displayed/excluded, or a documented
-    debt item with the expected verdict."""
-    unexpected = []
-    for r in metrics_sweep:
-        if r["verdict"] in CLEAN:
-            continue
-        if KNOWN_DEBT.get(r["id"]) == r["verdict"]:
-            continue
-        unexpected.append((r["id"], r["verdict"], r["detail"]))
-    assert not unexpected, ("descriptors neither clean nor known-debt:\n"
+def test_every_descriptor_is_cleanly_handled(metrics_sweep):
+    """Every descriptor is displayed, refused as unavailable, or explicitly
+    non-displayable."""
+    unexpected = [
+        (r["id"], r["verdict"], r["detail"])
+        for r in metrics_sweep
+        if r["verdict"] not in CLEAN
+    ]
+    assert not unexpected, ("descriptors without a clean display policy:\n"
                             + "\n".join(f"  {i}  [{v}]  {d}" for i, v, d in unexpected))
-
-
-def test_known_debt_inventory(metrics_sweep):
-    """The set of soft-gap descriptors EXACTLY matches KNOWN_DEBT. Forces the
-    allowlist to track reality: fixing a gap (or a new one appearing) fails
-    until KNOWN_DEBT is updated. Calibrated to the default 1P9J fixture."""
-    observed = {r["id"]: r["verdict"] for r in metrics_sweep if r["verdict"] in SOFT_VERDICTS}
-    assert observed == KNOWN_DEBT, (
-        f"known-debt drift:\n  observed={observed}\n  expected={KNOWN_DEBT}\n"
-        "  (a gap was fixed, or a new one appeared -- update KNOWN_DEBT)")

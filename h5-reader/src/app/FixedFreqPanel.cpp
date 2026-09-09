@@ -113,8 +113,7 @@ void FixedFreqPanel::paint(QPainter& p,
         logMax = std::max(logMax, l);
     }
     if (!std::isfinite(logMin) || !std::isfinite(logMax)) {
-        // All ω=0 (shouldn't happen for KTB J(ω) but defensive). Just
-        // pin everything to the left margin.
+        // With no positive frequencies, pin every sample to the left margin.
         logMin = logMax = 0.0;
     }
     // Pad the log range so the leftmost/rightmost markers aren't on
@@ -168,12 +167,11 @@ void FixedFreqPanel::paint(QPainter& p,
         p.drawEllipse(c, kMarkerRadiusPx, kMarkerRadiusPx);
     }
 
-    // Codex LATER-3 (2026-05-29): label each marker with its KTB
+    // Label each marker with its KTB
     // Larmor combination so the user knows which discrete ω the dot
     // represents. The 5 KTB frequencies (per producer convention) are
     // [0, ω_N, ω_H−ω_N, ω_H, ω_H+ω_N] in order. Label the FIRST 5
-    // markers with that order; any additional markers (defensive
-    // case) get a generic ω_n label.
+    // markers with that order; any additional markers get a generic ω_n label.
     static const char* kKtbLabels[] = {"0", "ωN", "ωH-ωN", "ωH", "ωH+ωN"};
     p.setFont(monoFont(9));
     p.setPen(kStripTextMuted);
