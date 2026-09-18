@@ -2,6 +2,7 @@
 // OpenGL context; the window itself may start empty or with one calcset.
 
 #include "app/ReaderMainWindow.h"
+#include "app/TrajectoryLibraryDialog.h"
 #include "diagnostics/CrashHandler.h"
 #include "diagnostics/ErrorBus.h"
 #include "diagnostics/ObjectCensus.h"
@@ -172,8 +173,10 @@ int main(int argc, char* argv[]) {
             }
         }, Qt::QueuedConnection);
     } else {
-        QMetaObject::invokeMethod(window, [window]() {
+        QMetaObject::invokeMethod(window, [window, showCatalog = runPath.isEmpty()]() {
             window->show();
+            if (showCatalog)
+                window->trajectoryLibrary()->show();
             qCInfo(cLifecycle).noquote() << "window shown";
         }, Qt::QueuedConnection);
     }

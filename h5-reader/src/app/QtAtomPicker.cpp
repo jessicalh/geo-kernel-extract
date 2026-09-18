@@ -1,12 +1,12 @@
 #include "QtAtomPicker.h"
 
+#include "MoleculeScene.h"
 #include "QtPlaybackController.h"
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
 #include "../model/Conformation.h"
-#include "../model/QtProtein.h"
 
 #include <QEvent>
 #include <QLoggingCategory>
@@ -32,15 +32,13 @@ constexpr double kMaxPickDistanceA = 2.0;
 }
 
 QtAtomPicker::QtAtomPicker(QVTKOpenGLNativeWidget*                vtkWidget,
-                            vtkSmartPointer<vtkRenderer>           renderer,
-                            const model::QtProtein*                 protein,
+                            MoleculeScene*                         scene,
                             model::Conformation*                    conformation,
                             const QtPlaybackController*             playback,
                             QObject*                                parent)
     : QObject(parent),
       vtkWidget_(vtkWidget),
-      renderer_(std::move(renderer)),
-      protein_(protein),
+      scene_(scene),
       conformation_(conformation),
       playback_(playback)
 {
@@ -64,8 +62,9 @@ bool QtAtomPicker::eventFilter(QObject* obj, QEvent* event) {
 }
 
 std::optional<std::size_t> QtAtomPicker::atomAt(int displayX, int displayY) const {
-    if (!protein_ || !conformation_ || !renderer_ || !vtkWidget_)
+    if (!scene_ || !conformation_ || !vtkWidget_)
         return std::nullopt;
+    auto* renderer = scene_->Renderer();
 
     // Convert Qt widget coords → VTK widget coords. Qt origin is top-
     // left; VTK is bottom-left. Device pixel ratio for Hi-DPI displays.
@@ -73,19 +72,19 @@ std::optional<std::size_t> QtAtomPicker::atomAt(int displayX, int displayY) cons
     const int    vtkX = static_cast<int>(displayX * dpr);
     const int    vtkY = static_cast<int>((vtkWidget_->height() - displayY) * dpr);
 
-    auto* camera = renderer_->GetActiveCamera();
+    auto* camera = renderer->GetActiveCamera();
     double camPos[3]; camera->GetPosition(camPos);
     const model::Vec3 rayOrigin(camPos[0], camPos[1], camPos[2]);
 
-    renderer_->SetDisplayPoint(vtkX, vtkY, 0.0);
-    renderer_->DisplayToWorld();
-    double worldPt[4]; renderer_->GetWorldPoint(worldPt);
+    renderer->SetDisplayPoint(vtkX, vtkY, 0.0);
+    renderer->DisplayToWorld();
+    double worldPt[4]; renderer->GetWorldPoint(worldPt);
     const double w = worldPt[3];
     if (std::abs(w) < 1e-12) return std::nullopt;
     const model::Vec3 clickWorld(worldPt[0] / w, worldPt[1] / w, worldPt[2] / w);
     const model::Vec3 rayDir = (clickWorld - rayOrigin).normalized();
 
-    // Walk all atoms at the current frame; take the one whose closest
+    // Walk the displayed atoms at the current frame; take the one whose closest
     // approach to the ray is smallest, provided it's in front of the
     // camera (projLen >= 0) and within the pick tolerance.
     const int t = playback_ ? playback_->currentFrame() : 0;
@@ -95,8 +94,7 @@ std::optional<std::size_t> QtAtomPicker::atomAt(int displayX, int displayY) cons
     size_t bestAtom = 0;
     bool   found    = false;
 
-    const size_t N = protein_->atomCount();
-    for (size_t i = 0; i < N; ++i) {
+    for (size_t i : scene_->visibleAtomIndices()) {
         const model::Vec3 pos = conformation_->atomPosition(st, i);
         const model::Vec3 toAtom = pos - rayOrigin;
         const double projLen = toAtom.dot(rayDir);

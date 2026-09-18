@@ -317,6 +317,12 @@ QtNpyReader::NumericArray QtNpyReader::ReadNumericArrayWidened(const QString& pa
         return r;
     }
     const QByteArray bytes = f.readAll();
+    if (f.error() != QFileDevice::NoError) {
+        r.error = QStringLiteral("QtNpyReader: cannot read %1: %2").arg(path, f.errorString());
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
     f.close();
 
     const ParsedHeader hdr = ParseHeader(bytes, path);  // logs its own structural errors
@@ -459,7 +465,7 @@ QtNpyReader::NumericArray QtNpyReader::ReadNumericArrayWidened(const QString& pa
 // ── 2-D / 1-D numeric compatibility adapter ────────────────────────
 QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
     WidenedArray r;
-    const NumericArray numeric = ReadNumericArrayWidened(path);
+    NumericArray numeric = ReadNumericArrayWidened(path);
     if (!numeric.ok) {
         r.error = numeric.error;
         return r;
@@ -501,7 +507,7 @@ QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
         return r;
     }
 
-    r.data = numeric.data;
+    r.data = std::move(numeric.data);
     r.ok = true;
     return r;
 }

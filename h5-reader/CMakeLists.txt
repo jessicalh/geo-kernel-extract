@@ -3,7 +3,7 @@
 # cmake/Platform-${CMAKE_SYSTEM_NAME}.cmake and dependency discovery lives in
 # cmake/DiscoverDeps.cmake.
 
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.24)
 project(h5reader VERSION 0.5.0 LANGUAGES CXX)
 
 include(CTest)
@@ -36,6 +36,9 @@ endif()
 include(Platform-${CMAKE_SYSTEM_NAME})
 include(DiscoverDeps)
 qt_standard_project_setup()
+add_subdirectory(extern/science-files-qt)
+add_executable(h5reader_publication_fields tools/publication/reader_fields.cpp)
+target_include_directories(h5reader_publication_fields PRIVATE src)
 
 # BuildType-Debug / BuildType-Release exist; RelWithDebInfo + MinSizeRel
 # use CMake's defaults (no module). OPTIONAL so missing modules don't
@@ -210,6 +213,8 @@ qt_add_library(h5reader_core STATIC
     src/app/MeasurementsDock.cpp
     src/app/ReaderMainWindow.h
     src/app/ReaderMainWindow.cpp
+    src/app/TrajectoryLibraryDialog.h
+    src/app/TrajectoryLibraryDialog.cpp
     src/app/QtRingPolygonOverlay.h
     src/app/QtRingPolygonOverlay.cpp
     src/app/QtBackboneRibbonOverlay.h
@@ -237,6 +242,8 @@ qt_add_library(h5reader_core STATIC
     src/app/SceneRevealOverlay.cpp
     src/app/TensorGlyphActor.h
     src/app/TensorGlyphActor.cpp
+    src/app/LearnedActivityDock.h
+    src/app/LearnedActivityDock.cpp
     src/app/CsaTensorOverlay.h
     src/app/CsaTensorOverlay.cpp
     src/app/TensorGhostTrail.h
@@ -312,6 +319,7 @@ target_include_directories(h5reader_core PUBLIC
 )
 
 target_link_libraries(h5reader_core PUBLIC
+    ScienceFiles::Qt
     Qt6::Widgets
     Qt6::OpenGLWidgets
     Qt6::Network
@@ -349,6 +357,17 @@ qt_add_executable(h5reader
 
 target_link_libraries(h5reader PRIVATE h5reader_core)
 
+# Track catalog-only edits so regeneration updates every configuration without a relink.
+configure_file(resources/trajectories.json catalog/trajectories.json COPYONLY)
+file(GENERATE
+    OUTPUT "$<TARGET_FILE_DIR:h5reader>/trajectories.json"
+    INPUT "${CMAKE_CURRENT_BINARY_DIR}/catalog/trajectories.json")
+install(FILES resources/trajectories.json DESTINATION . COMPONENT Runtime)
+set(H5READER_BUNDLED_DATA_DIR "" CACHE PATH "Prepared installed trajectory examples")
+if(H5READER_BUNDLED_DATA_DIR)
+    install(DIRECTORY "${H5READER_BUNDLED_DATA_DIR}/" DESTINATION datasets COMPONENT Runtime)
+endif()
+
 # vtk_module_autoinit belongs on the executable that links the static library;
 # putting it on the library allows the autoinit translation unit to be stripped.
 vtk_module_autoinit(TARGETS h5reader MODULES ${VTK_LIBRARIES})
@@ -363,6 +382,19 @@ if(COMMAND h5reader_apply_build_type_settings)
 endif()
 
 if(BUILD_TESTING)
+    add_test(NAME h5reader_package_trajectory_tests
+        COMMAND "${Python3_EXECUTABLE}" -B
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/publication/test_package_trajectory.py" -v)
+    set_tests_properties(h5reader_package_trajectory_tests PROPERTIES
+        ENVIRONMENT "H5READER_PUBLICATION_FIELDS=$<TARGET_FILE:h5reader_publication_fields>")
+
+    qt_add_executable(h5reader_trajectory_library_tests
+        tests/trajectory_library_tests.cpp
+    )
+    target_link_libraries(h5reader_trajectory_library_tests PRIVATE h5reader_core Qt6::Test)
+    vtk_module_autoinit(TARGETS h5reader_trajectory_library_tests MODULES ${VTK_LIBRARIES})
+    h5reader_apply_platform_target_settings(h5reader_trajectory_library_tests)
+    add_test(NAME h5reader_trajectory_library_tests COMMAND h5reader_trajectory_library_tests)
     add_executable(h5reader_physics_tests
         src/physics/PhysicsTests.cpp
         src/physics/SphericalBasis.cpp
@@ -628,6 +660,14 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     h5reader_apply_platform_target_settings(h5reader_npy_reader_tests)
     add_test(NAME h5reader_npy_reader_tests COMMAND h5reader_npy_reader_tests)
 
+    qt_add_executable(h5reader_publication_tests tests/publication_tests.cpp)
+    target_link_libraries(h5reader_publication_tests PRIVATE h5reader_core Qt6::Test)
+    add_test(NAME h5reader_publication_tests COMMAND h5reader_publication_tests -o -,txt)
+    set_tests_properties(h5reader_publication_tests PROPERTIES
+        ENVIRONMENT "QTEST_FUNCTION_TIMEOUT=7200000"
+        TIMEOUT 10800
+    )
+
     qt_add_executable(h5reader_npy_writer_tests
         tests/npy_writer_tests.cpp
         src/io/QtNpyReader.h
@@ -812,6 +852,14 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     h5reader_apply_platform_target_settings(h5reader_model_input_exporter_tests)
     add_test(NAME h5reader_model_input_exporter_tests
              COMMAND h5reader_model_input_exporter_tests)
+
+    qt_add_executable(h5reader_atom_picker_tests
+        tests/atom_picker_tests.cpp
+    )
+    target_link_libraries(h5reader_atom_picker_tests PRIVATE h5reader_core Qt6::Test)
+    vtk_module_autoinit(TARGETS h5reader_atom_picker_tests MODULES ${VTK_LIBRARIES})
+    h5reader_apply_platform_target_settings(h5reader_atom_picker_tests)
+    add_test(NAME h5reader_atom_picker_tests COMMAND h5reader_atom_picker_tests)
 
     qt_add_executable(h5reader_ring_current_case_tests
         tests/ring_current_case_tests.cpp
@@ -1260,8 +1308,7 @@ set(CPACK_PACKAGE_NAME "h5reader")
 set(CPACK_PACKAGE_VENDOR "h5reader")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 if(WIN32)
-    # NSIS still opens staged files through legacy MAX_PATH APIs. Some shipped
-    # ROCm kernel names leave too little room for an arbitrary build path.
+    # Keep package staging short; shipped ROCm kernel names are long.
     file(TO_CMAKE_PATH "$ENV{TEMP}" _h5reader_package_directory)
     if(_h5reader_package_directory)
         set(CPACK_PACKAGE_DIRECTORY "${_h5reader_package_directory}/h5reader-cpack")
@@ -1277,21 +1324,14 @@ set(CPACK_PACKAGE_EXECUTABLES "h5reader" "h5reader")
 
 if(WIN32)
     set(CPACK_CREATE_DESKTOP_LINKS "h5reader")
-    set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
-    find_program(H5READER_MAKENSIS_EXECUTABLE
-        NAMES makensis
-        HINTS
-            "$ENV{ProgramFiles}/NSIS"
-            "$ENV{ProgramFiles\(x86\)}/NSIS"
-    )
-    if(H5READER_MAKENSIS_EXECUTABLE)
-        set(CPACK_GENERATOR "NSIS;ZIP")
-        set(CPACK_NSIS_DISPLAY_NAME "h5reader")
-        set(CPACK_NSIS_PACKAGE_NAME "h5reader")
-        set(CPACK_NSIS_MODIFY_PATH OFF)
-    else()
-        set(CPACK_GENERATOR "ZIP")
-    endif()
+    set(CPACK_GENERATOR "INNOSETUP")
+    set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY "h5reader")
+    set(CPACK_INNOSETUP_ARCHITECTURE "x64")
+    set(CPACK_INNOSETUP_USE_MODERN_WIZARD ON)
+    set(CPACK_INNOSETUP_IGNORE_LICENSE_PAGE ON)
+    set(CPACK_INNOSETUP_SETUP_PrivilegesRequired "lowest")
+    set(CPACK_INNOSETUP_SETUP_Compression "lzma2/ultra64")
+    set(CPACK_INNOSETUP_SETUP_SolidCompression ON)
 else()
     set(CPACK_GENERATOR "TGZ")
 endif()

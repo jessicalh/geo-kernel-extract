@@ -154,6 +154,8 @@ void TensorGlyphActor::show(const model::Vec3& center,
     double maxAbs = 0.0;
     for (double d : dev) maxAbs = std::max(maxAbs, std::abs(d));
     if (maxAbs < 1e-9) maxAbs = 1.0;
+    const bool fixedScale = style.surfaceReferenceMagnitude > 0.0;
+    const double surfaceReference = fixedScale ? style.surfaceReferenceMagnitude : maxAbs;
 
     // Ovaloid surface: a unit sphere deformed radially by r ~ |dev(n)| (the
     // deviation-from-isotropic surface), pinching toward the dev(n)=0 cone so the
@@ -177,9 +179,10 @@ void TensorGlyphActor::show(const model::Vec3& center,
             if (len > 1e-9) { nx = p[0] / len; ny = p[1] / len; nz = p[2] / len; }
             const double devN = nx * nx * dev[0] + ny * ny * dev[1] + nz * nz * dev[2];
             const double r = kOvaloidRadius * ovaloidScale
-                             * std::max(kOvaloidFloor, std::abs(devN) / maxAbs);
+                             * std::max(fixedScale ? 0.0 : kOvaloidFloor,
+                                        std::abs(devN) / surfaceReference);
             glyphLocal_->GetPoints()->SetPoint(i, nx * r, ny * r, nz * r);
-            signScalar->SetValue(i, std::clamp(devN / maxAbs, -1.0, 1.0));
+            signScalar->SetValue(i, std::clamp(devN / surfaceReference, -1.0, 1.0));
         }
         glyphLocal_->GetPoints()->Modified();
         glyphLocal_->GetPointData()->SetScalars(signScalar);
@@ -197,7 +200,7 @@ void TensorGlyphActor::show(const model::Vec3& center,
         for (int i = 0; i < 3; ++i)
             surfaceExtent[static_cast<std::size_t>(i)] =
                 kOvaloidRadius * ovaloidScale
-                * std::abs(dev[static_cast<std::size_t>(i)]) / maxAbs;
+                * std::abs(dev[static_cast<std::size_t>(i)]) / surfaceReference;
     }
     glyphFilter_->Modified();
     // Per-show opacity: the ovaloid keeps its 0.50 translucency scaled by the

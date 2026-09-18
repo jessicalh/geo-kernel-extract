@@ -64,6 +64,8 @@ class TransformedConformation;
 namespace h5reader::app {
 
 class MoleculeScene;
+class LearnedActivityDock;
+class TrajectoryLibraryDialog;
 class QtPlaybackController;
 class DashboardDisplayController;
 class DashboardSelectionController;
@@ -90,7 +92,9 @@ public:
     // through QtProteinLoader::LoadRunPath. Returns false without changing the
     // current run when loading fails; lastLoadError() carries the loader error.
     bool loadRunPath(const QString& path);
+    TrajectoryLibraryDialog* trajectoryLibrary();
     QString lastLoadError() const { return lastLoadError_; }
+    LearnedActivityDock* learnedActivityDock() const { return learnedActivityDock_; }
 
     // Start the embedded REST surface on the requested address and port.
     // Port 0 asks the kernel to pick a free port. Returns the actually-bound
@@ -202,6 +206,9 @@ private slots:
     void onTransformFitClicked();
 
 private:
+    TrajectoryLibraryDialog* trajectoryLibrary_ = nullptr;
+    bool closeWaitingForDownloads_ = false;
+    LearnedActivityDock* learnedActivityDock_ = nullptr;
     void buildUi();
     void buildToolbar();
     void buildStatusBar();

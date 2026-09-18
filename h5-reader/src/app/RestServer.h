@@ -148,6 +148,7 @@ public:
     void requestGracefulStop();
 
 signals:
+    void activeOperationsChanged(bool active);
     void activeOperationsStopped();
 
 private:

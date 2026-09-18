@@ -134,6 +134,10 @@ def test_scene_video_stop_finalizes_partial_file(rest, tmp_path: Path) -> None:
     )
     assert response.status_code == 202, response.text
 
+    assert not rest.client.get("/api/learned-activity").json()["editable"]
+    blocked = rest.client.post("/api/learned-activity", json={"radius": 2.0})
+    assert blocked.status_code == 409, blocked.text
+
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
         status = rest.client.get("/api/video/export/status").json()
@@ -150,6 +154,7 @@ def test_scene_video_stop_finalizes_partial_file(rest, tmp_path: Path) -> None:
     completed = _wait_for_video(rest)
     assert completed["ok"] is True
     assert completed["state"] == "stopped"
+    assert rest.client.get("/api/learned-activity").json()["editable"]
     assert 0 < completed["frames_written"] < completed["frames_total"]
     assert completed["last_frame"] == completed["frames_written"] - 1
     assert completed["file_size_bytes"] == output_path.stat().st_size

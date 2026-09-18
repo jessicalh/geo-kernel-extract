@@ -39,7 +39,6 @@
 
 #include <QBrush>
 #include <QColor>
-#include <QFont>
 #include <QHeaderView>
 #include <QIcon>
 #include <QJsonArray>
@@ -330,12 +329,6 @@ QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringL
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     setMinimumWidth(260);
     setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
-    QFont compactFont = font();
-    if (compactFont.pointSize() > 8)
-        compactFont.setPointSize(compactFont.pointSize() - 1);
-    else if (compactFont.pixelSize() > 10)
-        compactFont.setPixelSize(compactFont.pixelSize() - 1);
-    setFont(compactFont);
 
     tree_ = new QTreeWidget(this);
     tree_->setMinimumWidth(0);

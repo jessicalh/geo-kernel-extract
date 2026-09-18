@@ -223,6 +223,7 @@ public:
     // a picked atom + chosen nearby residues while stepping the trajectory.
     void setAtomFilter(const std::vector<size_t>& atomIndices);
     void clearAtomFilter();
+    const std::vector<std::size_t>& visibleAtomIndices() const { return moleculeAtomMap_; }
 
     // ---- Plane lock compatibility shim ---------------------------------
     //

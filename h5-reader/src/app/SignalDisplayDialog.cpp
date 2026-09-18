@@ -26,6 +26,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFont>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHash>
 #include <QHeaderView>
@@ -967,8 +968,8 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     d_->activeProxy->setFilterKeyColumn(-1);
 
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(6, 6, 6, 6);
-    root->setSpacing(6);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(8);
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
     root->addWidget(splitter, 1);
@@ -976,15 +977,16 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     auto* candidatesPanel = new QWidget(splitter);
     auto* candidatesLayout = new QVBoxLayout(candidatesPanel);
     candidatesLayout->setContentsMargins(0, 0, 0, 0);
-    candidatesLayout->setSpacing(4);
+    candidatesLayout->setSpacing(8);
 
     auto* contextGroup = new QGroupBox(QStringLiteral("Selection context"), candidatesPanel);
     auto* contextLayout = new QVBoxLayout(contextGroup);
-    contextLayout->setContentsMargins(6, 4, 6, 6);
-    contextLayout->setSpacing(4);
+    contextLayout->setContentsMargins(8, 8, 8, 8);
+    contextLayout->setSpacing(6);
 
     auto* contextRow = new QHBoxLayout;
     d_->focusLabel = new QLabel(QStringLiteral("Focus: none"), contextGroup);
+    d_->focusLabel->setWordWrap(true);
     d_->focusLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     contextRow->addWidget(d_->focusLabel, 1);
     d_->liveBox = new QCheckBox(QStringLiteral("Live"), contextGroup);
@@ -1041,35 +1043,41 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     candidatesLayout->addWidget(d_->candidateView, 1);
 
     auto* addGroup = new QGroupBox(QStringLiteral("Add selected descriptor as"), candidatesPanel);
-    auto* addLayout = new QHBoxLayout(addGroup);
-    addLayout->setContentsMargins(6, 4, 6, 4);
+    auto* addLayout = new QVBoxLayout(addGroup);
+    addLayout->setContentsMargins(8, 8, 8, 8);
     addLayout->setSpacing(6);
+    auto* candidateModesLayout = new QGridLayout;
+    candidateModesLayout->setColumnStretch(2, 1);
+    int candidateModeIndex = 0;
     for (model::VisualizationType type : allVisualizationTypes()) {
         auto* box = new QCheckBox(visualizationTypeLabel(type), addGroup);
         box->setEnabled(false);
         d_->candidateModes.push_back(ModeControl{type, box});
-        addLayout->addWidget(box);
+        candidateModesLayout->addWidget(box, candidateModeIndex / 2, candidateModeIndex % 2);
+        ++candidateModeIndex;
     }
-    addLayout->addStretch(1);
-    addLayout->addWidget(new QLabel(QStringLiteral("Panel"), addGroup));
+    addLayout->addLayout(candidateModesLayout);
+    auto* destinationRow = new QHBoxLayout;
+    destinationRow->addWidget(new QLabel(QStringLiteral("Panel"), addGroup));
     d_->panelCombo = new QComboBox(addGroup);
     d_->panelCombo->setMinimumContentsLength(12);
     d_->panelCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    addLayout->addWidget(d_->panelCombo);
+    destinationRow->addWidget(d_->panelCombo, 1);
     d_->newPanelEdit = new QLineEdit(addGroup);
     d_->newPanelEdit->setClearButtonEnabled(true);
     d_->newPanelEdit->setPlaceholderText(QStringLiteral("New panel name"));
     d_->newPanelEdit->setMaximumWidth(180);
-    addLayout->addWidget(d_->newPanelEdit);
+    destinationRow->addWidget(d_->newPanelEdit, 1);
     d_->addButton = new QPushButton(QStringLiteral("Add Signal"), addGroup);
     d_->addButton->setEnabled(false);
-    addLayout->addWidget(d_->addButton);
+    destinationRow->addWidget(d_->addButton);
+    addLayout->addLayout(destinationRow);
     candidatesLayout->addWidget(addGroup);
 
     auto* activePanel = new QWidget(splitter);
     auto* activeLayout = new QVBoxLayout(activePanel);
     activeLayout->setContentsMargins(0, 0, 0, 0);
-    activeLayout->setSpacing(4);
+    activeLayout->setSpacing(8);
 
     d_->activeSearch = new QLineEdit(activePanel);
     d_->activeSearch->setClearButtonEnabled(true);
@@ -1083,27 +1091,33 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     activeLayout->addWidget(d_->activeView, 1);
 
     auto* displayGroup = new QGroupBox(QStringLiteral("Display modes for active signal"), activePanel);
-    auto* displayLayout = new QHBoxLayout(displayGroup);
-    displayLayout->setContentsMargins(6, 4, 6, 4);
+    auto* displayLayout = new QVBoxLayout(displayGroup);
+    displayLayout->setContentsMargins(8, 8, 8, 8);
     displayLayout->setSpacing(6);
+    auto* activeModesLayout = new QGridLayout;
+    activeModesLayout->setColumnStretch(2, 1);
+    int activeModeIndex = 0;
     for (model::VisualizationType type : allVisualizationTypes()) {
         auto* box = new QCheckBox(visualizationTypeLabel(type), displayGroup);
         box->setEnabled(false);
         d_->activeModes.push_back(ModeControl{type, box});
-        displayLayout->addWidget(box);
+        activeModesLayout->addWidget(box, activeModeIndex / 2, activeModeIndex % 2);
+        ++activeModeIndex;
     }
-    displayLayout->addStretch(1);
+    displayLayout->addLayout(activeModesLayout);
     d_->removeButton = new QPushButton(QStringLiteral("Remove"), displayGroup);
     d_->removeButton->setEnabled(false);
-    displayLayout->addWidget(d_->removeButton);
+    displayLayout->addWidget(d_->removeButton, 0, Qt::AlignRight);
     activeLayout->addWidget(displayGroup);
 
     splitter->addWidget(candidatesPanel);
     splitter->addWidget(activePanel);
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 2);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes({720, 480});
 
     d_->statusLabel = new QLabel(this);
+    d_->statusLabel->setWordWrap(true);
     d_->statusLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     root->addWidget(d_->statusLabel);
 

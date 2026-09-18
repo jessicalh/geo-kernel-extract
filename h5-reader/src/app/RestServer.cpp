@@ -15,6 +15,8 @@
 #include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
+#include "TrajectoryLibraryDialog.h"
+#include "LearnedActivityDock.h"
 #include "SceneVideoExporter.h"
 #include "SignalDisplayDialog.h"
 #include "TensorGhostTrail.h"
@@ -389,6 +391,18 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/run/load"),
                       QStringLiteral("general"),
                       QStringLiteral("Load a calcset through Reader's ordinary run-loading path.")),
+            restRoute(QStringLiteral("GET"), QStringLiteral("/api/learned-activity"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Captured hidden tensor channels and current display values.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/learned-activity/load"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Load an activation capture for the current molecule.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/learned-activity"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Set the channel, common radius scale, opacity, or visibility.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/learned-activity/clear"),
+                      QStringLiteral("general"),
+                      QStringLiteral("Remove the activation capture and its scene geometry.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/model-input/export"),
                       QStringLiteral("general"),
                       QStringLiteral("Export structural arrays for the loaded conformation.")),
@@ -447,6 +461,16 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("GET"), QStringLiteral("/catalog"),
                       QStringLiteral("diagnostic"),
                       QStringLiteral("Full display catalog audit surface.")),
+            restRoute(QStringLiteral("GET"), QStringLiteral("/api/trajectories"),
+                      QStringLiteral("general"), QStringLiteral("Published trajectories and local availability.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/show"),
+                      QStringLiteral("general"), QStringLiteral("Show the published trajectory dialog.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/open"),
+                      QStringLiteral("general"), QStringLiteral("Download if needed, then open a catalog entry.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/clear"),
+                      QStringLiteral("general"), QStringLiteral("Explicitly clear one downloaded entry.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/cancel"),
+                      QStringLiteral("general"), QStringLiteral("Cancel the current catalog download.")),
         }},
     };
 }
@@ -1694,6 +1718,7 @@ void RestServer::requestGracefulStop() {
 
 void RestServer::activeOperationFinished() {
     ASSERT_THREAD(this);
+    emit activeOperationsChanged(hasActiveOperations());
     if (gracefulStopRequested_ && !hasActiveOperations()) {
         gracefulStopRequested_ = false;
         emit activeOperationsStopped();
@@ -1708,7 +1733,10 @@ void RestServer::maybeQuitAfterShutdown() {
         shutdownQuitRequested_ = true;
         qCInfo(cRest).noquote()
             << "REST /shutdown - response flushed and operations stopped";
-        QCoreApplication::quit();
+        if (readerWindow_)
+            QMetaObject::invokeMethod(readerWindow_, &QWidget::close, Qt::QueuedConnection);
+        else
+            QCoreApplication::quit();
     }
 }
 
@@ -1935,6 +1963,7 @@ void RestServer::beginModelInputExport(const QHttpServerRequest& request, QHttpS
     operation->setObjectName(QStringLiteral("modelInputExportOperation"));
     modelInputExporter_ = exporter;
     modelInputOperation_ = operation;
+    emit activeOperationsChanged(true);
     QObject::connect(operation, &QObject::destroyed, this, [this, exporter]() {
         if (modelInputExporter_ == exporter)
             modelInputExporter_.reset();
@@ -1962,6 +1991,46 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/api/interface"), [this]() {
         ASSERT_THREAD(this);
         return jsonResponse(restInterfaceDescription());
+    });
+
+    server_->route(QStringLiteral("/api/learned-activity"), Method::Get, [this]() {
+        ASSERT_THREAD(this);
+        return jsonResponse(readerWindow_->learnedActivityDock()->state());
+    });
+    server_->route(QStringLiteral("/api/learned-activity/load"), Method::Post,
+                   [this](const QHttpServerRequest& request) {
+        ASSERT_THREAD(this);
+        if (hasActiveOperations())
+            return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
+        bool ok = false;
+        const auto body = parseJsonBody(request, &ok);
+        if (!ok || body.size() != 1 || !body.value("path").isString())
+            return errorResponse(QStringLiteral("body must contain a capture path"), SC::BadRequest);
+        QString error;
+        auto* dock = readerWindow_->learnedActivityDock();
+        if (!dock->load(body.value("path").toString(), &error))
+            return errorResponse(error, SC::BadRequest);
+        return jsonResponse(dock->state());
+    });
+    server_->route(QStringLiteral("/api/learned-activity"), Method::Post,
+                   [this](const QHttpServerRequest& request) {
+        ASSERT_THREAD(this);
+        if (hasActiveOperations())
+            return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
+        bool ok = false;
+        const auto body = parseJsonBody(request, &ok);
+        if (!ok) return errorResponse(QStringLiteral("expected JSON object"), SC::BadRequest);
+        QString error;
+        auto* dock = readerWindow_->learnedActivityDock();
+        if (!dock->configure(body, &error)) return errorResponse(error, SC::BadRequest);
+        return jsonResponse(dock->state());
+    });
+    server_->route(QStringLiteral("/api/learned-activity/clear"), Method::Post, [this]() {
+        ASSERT_THREAD(this);
+        if (hasActiveOperations())
+            return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
+        readerWindow_->learnedActivityDock()->clear();
+        return jsonResponse(readerWindow_->learnedActivityDock()->state());
     });
 
     server_->route(QStringLiteral("/api/run/load"), Method::Post,
@@ -1999,6 +2068,43 @@ void RestServer::registerRoutes() {
         }
         qCInfo(cRest).noquote() << "REST run load complete" << "| path=" << path;
         return jsonResponse(QJsonObject{{"ok", true}});
+    });
+
+    server_->route(QStringLiteral("/api/trajectories"), [this]() {
+        ASSERT_THREAD(this);
+        return jsonResponse(readerWindow_->trajectoryLibrary()->state());
+    });
+    server_->route(QStringLiteral("/api/trajectories/show"), Method::Post, [this]() {
+        ASSERT_THREAD(this);
+        auto* dialog = readerWindow_->trajectoryLibrary();
+        dialog->show();
+        dialog->raise();
+        return jsonResponse(dialog->state());
+    });
+    for (const QString action : {QStringLiteral("open"), QStringLiteral("clear")}) {
+        server_->route(QStringLiteral("/api/trajectories/") + action, Method::Post,
+                       [this, action](const QHttpServerRequest& request) {
+            ASSERT_THREAD(this);
+            if (hasActiveOperations())
+                return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
+            bool ok = false;
+            const auto body = parseJsonBody(request, &ok);
+            if (!ok || body.size() != 1 || !body["key"].isString())
+                return errorResponse(QStringLiteral("body must contain a trajectory key"), SC::BadRequest);
+            auto* dialog = readerWindow_->trajectoryLibrary();
+            QString error;
+            const bool accepted = action == QStringLiteral("open")
+                ? dialog->openTrajectory(body["key"].toString(), &error)
+                : dialog->clearTrajectory(body["key"].toString(), &error);
+            if (!accepted)
+                return errorResponse(error, SC::Conflict);
+            return jsonResponse(dialog->state());
+        });
+    }
+    server_->route(QStringLiteral("/api/trajectories/cancel"), Method::Post, [this]() {
+        ASSERT_THREAD(this);
+        readerWindow_->trajectoryLibrary()->cancel();
+        return jsonResponse(readerWindow_->trajectoryLibrary()->state());
     });
 
     server_->route(
@@ -2067,6 +2173,7 @@ void RestServer::registerRoutes() {
         if (!videoExporter_->start(request, &startError)) {
             return errorResponse(startError, SC::Conflict);
         }
+        emit activeOperationsChanged(videoExporter_->isActive());
         return jsonResponse(
             sceneVideoStatusJson(videoExporter_->status(), true),
             SC::Accepted);
@@ -5396,6 +5503,7 @@ void RestServer::registerRoutes() {
             std::move(restoreLiveDftFrame), this);
         operation->setObjectName(QStringLiteral("restheroRingTensorCompareOperation"));
         ringTensorOperation_ = operation;
+        emit activeOperationsChanged(true);
         QObject::connect(operation, &QObject::destroyed, this, [this]() {
             ringTensorOperation_.clear();
             activeOperationFinished();

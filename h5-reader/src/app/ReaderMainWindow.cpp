@@ -19,6 +19,8 @@
 #include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
 #include "TimeViewportController.h"
+#include "LearnedActivityDock.h"
+#include "TrajectoryLibraryDialog.h"
 #include "MeasurementOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "DashboardStripDock.h"
@@ -577,6 +579,11 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
 bool ReaderMainWindow::loadRunPath(const QString& path) {
     ASSERT_THREAD(this);
     lastLoadError_.clear();
+    if (trajectoryLibrary_ && trajectoryLibrary_->isClearing()) {
+        lastLoadError_ = QStringLiteral("Wait for the download cache to finish clearing before opening a trajectory.");
+        qCWarning(cWindow).noquote() << "Load refused:" << lastLoadError_;
+        return false;
+    }
     lastDiagnosticSeverity_.clear();
     lastDiagnosticSource_.clear();
     lastDiagnosticMessage_.clear();
@@ -614,6 +621,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ASSERT_THREAD(this);
     clearLoadedRun();
     loaded_ = std::make_unique<h5reader::io::QtLoadResult>(std::move(loaded));
+    if (trajectoryLibrary_)
+        trajectoryLibrary_->setCurrentRun(loaded_->runPath);
 
     // Wraps the loader's Conformation so consumers (scene, picker, overlays,
     // REST /positions) read positions through a runtime-switchable rigid-body
@@ -658,6 +667,9 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     playback_ = new QtPlaybackController(T, this);
     timeViewport_ = new TimeViewportController(T, this);
 
+    learnedActivityDock_->setContext(scene_, loaded_->protein.get(),
+                                    loaded_->conformation.get(), transformed_, playback_);
+
     QObject::connect(playback_, &QtPlaybackController::frameChanged,
              scene_,    &MoleculeScene::setFrame);
     QObject::connect(playback_, &QtPlaybackController::frameChanged,
@@ -683,9 +695,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // Atom picker — event filter on the VTK widget. Emits atomPicked(idx,
     // modifiers) on double-click. It stays dumb; AtomSelection interprets
     // the gesture and fans typed changes out.
-    auto* firstRenderer = renderWindow_->GetRenderers()->GetFirstRenderer();
-    picker_ = new QtAtomPicker(vtkWidget_, firstRenderer,
-                                loaded_->protein.get(),
+    picker_ = new QtAtomPicker(vtkWidget_, scene_,
                                 transformed_,
                                 playback_, this);
 
@@ -1337,6 +1347,9 @@ model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom, int reques
 void ReaderMainWindow::clearLoadedRun() {
     ASSERT_THREAD(this);
 
+    if (learnedActivityDock_)
+        learnedActivityDock_->setContext(nullptr, nullptr, nullptr, nullptr, nullptr);
+
     if (playback_)
         playback_->pause();
 
@@ -1771,6 +1784,8 @@ quint16 ReaderMainWindow::startRestServer(const QHostAddress& address, quint16 p
         return 0;
     }
     restServer_ = new RestServer(this);
+    connect(restServer_, &RestServer::activeOperationsChanged, learnedActivityDock_,
+            [this](bool active) { learnedActivityDock_->setEnabled(!active); });
     restServer_->setContext(scene_,
                             selection_,
                             dashboardSignals_,
@@ -1913,7 +1928,7 @@ void ReaderMainWindow::setDocksVisible(bool visible) {
             return;
         stashedDockVisibility_.clear();
         const std::vector<QDockWidget*> docks = {
-            inspectorDock_, dashboardStripDock_
+            inspectorDock_, dashboardStripDock_, learnedActivityDock_
         };
         for (QDockWidget* d : docks) {
             if (!d) continue;
@@ -2270,6 +2285,15 @@ void ReaderMainWindow::buildUi() {
     auto* openDirAct = fileMenu_->addAction(QStringLiteral("Open Directory…"));
     QObject::connect(openDirAct, &QAction::triggered, this, &ReaderMainWindow::onOpenDirectory);
 
+    auto* publishedAct = fileMenu_->addAction(QStringLiteral("Published trajectories..."));
+    publishedAct->setObjectName(QStringLiteral("PublishedTrajectoriesAction"));
+    QObject::connect(publishedAct, &QAction::triggered, this, [this] {
+        auto* dialog = trajectoryLibrary();
+        dialog->show();
+        dialog->raise();
+        dialog->activateWindow();
+    });
+
     // File ▸ Recent — populated from QSettings during restoreAllSettings.
     // Empty until then; each entry loads into this window on click.
     recentMenu_ = fileMenu_->addMenu(QStringLiteral("&Recent"));
@@ -2589,6 +2613,15 @@ void ReaderMainWindow::buildStatusBar() {
 }
 
 void ReaderMainWindow::buildDocks() {
+    learnedActivityDock_ = new LearnedActivityDock(this);
+    addDockWidget(Qt::RightDockWidgetArea, learnedActivityDock_);
+    learnedActivityDock_->hide();
+    auto* activityAction = fileMenu_->addAction(QStringLiteral("Learned activity..."));
+    connect(activityAction, &QAction::triggered, this, [this]() {
+        learnedActivityDock_->show();
+        learnedActivityDock_->raise();
+    });
+
     // Atom Info dock — tabified on the LEFT alongside Selection + Strip.
     // It is constructed before load and starts with its own placeholder.
     inspectorDock_ = new QtAtomInspectorDock(this);
@@ -2811,6 +2844,13 @@ void ReaderMainWindow::onTransformFitClicked() {
 
 void ReaderMainWindow::closeEvent(QCloseEvent* event) {
     ASSERT_THREAD(this);
+    if (trajectoryLibrary_ && !trajectoryLibrary_->isShutdown()) {
+        closeWaitingForDownloads_ = true;
+        trajectoryLibrary_->shutdown();
+        statusBar()->showMessage(QStringLiteral("Finishing download cleanup before closing..."));
+        event->ignore();
+        return;
+    }
     if (restServer_ && restServer_->hasActiveOperations()) {
         if (!closeWaitingForOperations_) {
             closeWaitingForOperations_ = true;
@@ -2929,6 +2969,33 @@ void ReaderMainWindow::onOpenFile() {
                               QStringLiteral("Open calcset failed"),
                               lastLoadError());
     }
+}
+
+TrajectoryLibraryDialog* ReaderMainWindow::trajectoryLibrary() {
+    ASSERT_THREAD(this);
+    if (!trajectoryLibrary_) {
+        trajectoryLibrary_ = new TrajectoryLibraryDialog(this);
+        if (loaded_)
+            trajectoryLibrary_->setCurrentRun(loaded_->runPath);
+        QObject::connect(trajectoryLibrary_, &TrajectoryLibraryDialog::openRequested, this,
+                         [this](const QString& path) {
+            if (closeWaitingForDownloads_ || closeWaitingForOperations_)
+                return;
+            if (restServer_ && restServer_->hasActiveOperations()) {
+                trajectoryLibrary_->showLoadError(QStringLiteral("Finish the active export before opening this trajectory."));
+                return;
+            }
+            if (!loadRunPath(path))
+                trajectoryLibrary_->showLoadError(lastLoadError());
+            else
+                trajectoryLibrary_->hide();
+        });
+        QObject::connect(trajectoryLibrary_, &TrajectoryLibraryDialog::shutdownFinished, this, [this] {
+            if (closeWaitingForDownloads_)
+                close();
+        }, Qt::QueuedConnection);
+    }
+    return trajectoryLibrary_;
 }
 
 void ReaderMainWindow::onOpenDirectory() {

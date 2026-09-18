@@ -12,7 +12,6 @@
 
 #include <QAbstractItemModel>
 #include <QCheckBox>
-#include <QFont>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -39,12 +38,6 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     setMinimumWidth(260);
     setMinimumHeight(64);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
-    QFont compactFont = font();
-    if (compactFont.pointSize() > 8)
-        compactFont.setPointSize(compactFont.pointSize() - 1);
-    else if (compactFont.pixelSize() > 10)
-        compactFont.setPixelSize(compactFont.pixelSize() - 1);
-    setFont(compactFont);
 
     controller_ = new DashboardDisplayController(this);
 
@@ -52,8 +45,8 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     container->setMinimumHeight(0);
     container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     auto* layout = new QVBoxLayout(container);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(4);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(6);
 
     auto* tabRow = new QHBoxLayout;
     tabRow->setSpacing(4);
@@ -105,6 +98,7 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     layout->addWidget(scroll, 1);
 
     statusLabel_ = new QLabel(QStringLiteral("No active strip signals."), container);
+    statusLabel_->setWordWrap(true);
     statusLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(statusLabel_);
 

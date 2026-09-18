@@ -1,0 +1,22 @@
+[
+  {
+    "key": "bmr4976-20260918-files",
+    "title": "BMRB 4976",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr4976-20260918-files.tar.xz",
+    "expanded_bytes": 994017646,
+    "archive_bytes": 604775712
+  },
+  {
+    "key": "trpcage-20260918-files",
+    "title": "Trp-cage",
+    "description": "1501-frame trajectory with ORCA shielding tensors",
+    "frames": 1501,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/trpcage-20260918-files.tar.xz",
+    "expanded_bytes": 7141764592,
+    "archive_bytes": 4016860436
+  }
+]

@@ -38,6 +38,9 @@ public:
         double arrowLengthScale = 1.0;
         double arrowWidthScale = 1.0;
         double surfaceOpacity = 0.50;
+        // Positive: one magnitude reference shared across glyphs and frames.
+        // Zero retains the existing per-glyph normalization.
+        double surfaceReferenceMagnitude = 0.0;
         double arrowOpacity = 1.0;
         bool showSurface = false;
         bool showArrows = true;

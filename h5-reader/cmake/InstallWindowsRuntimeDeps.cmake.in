@@ -40,3 +40,8 @@ foreach(_runtime_dir IN ITEMS
         file(COPY "${_dll}" DESTINATION "${_prefix}")
     endforeach()
 endforeach()
+
+foreach(_dependency IN ITEMS libarchive liblzma zlib)
+    file(INSTALL "@H5READER_VCPKG_BIN_DIR@/../share/${_dependency}/copyright"
+         DESTINATION "${_prefix}/licenses/${_dependency}")
+endforeach()
