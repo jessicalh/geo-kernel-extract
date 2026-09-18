@@ -4,6 +4,7 @@ import argparse
 import io
 import json
 import logging
+import lzma
 import os
 from pathlib import Path
 import tarfile
@@ -11,6 +12,7 @@ from tempfile import TemporaryDirectory
 from time import perf_counter
 
 LOG = logging.getLogger("reader-package")
+XZ_DICTIONARY_BYTES = 1024 * 1024 * 1024
 
 
 def resolve(root, value):
@@ -59,13 +61,28 @@ def read_arrays(extraction, fields, expected_frames):
 
 def write_archive(path, members):
     """Compress the collected bytes without reopening or querying source files."""
-    with tarfile.open(path, "w:xz", preset=6) as bundled:
-        for index, (name, data) in enumerate(members, 1):
-            if index == 1 or index % 1000 == 0 or index == len(members):
-                LOG.info("tar.xz %d / %d files: %s", index, len(members), name)
-            info = tarfile.TarInfo(name)
-            info.size = len(data)
-            bundled.addfile(info, io.BytesIO(data))
+    filters = [
+        {
+            "id": lzma.FILTER_LZMA2,
+            "preset": 9 | lzma.PRESET_EXTREME,
+            "dict_size": XZ_DICTIONARY_BYTES,
+            "lc": 1,
+            "lp": 3,
+            "pb": 3,
+        }
+    ]
+    LOG.info(
+        "Solid XZ: preset 9 extreme, dictionary %d bytes, lc=1 lp=3 pb=3",
+        XZ_DICTIONARY_BYTES,
+    )
+    with lzma.open(path, "wb", filters=filters) as compressed:
+        with tarfile.open(fileobj=compressed, mode="w|") as bundled:
+            for index, (name, data) in enumerate(members, 1):
+                if index == 1 or index % 1000 == 0 or index == len(members):
+                    LOG.info("tar.xz %d / %d files: %s", index, len(members), name)
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                bundled.addfile(info, io.BytesIO(data))
 
 
 def package(args):

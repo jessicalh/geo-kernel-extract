@@ -7,7 +7,7 @@
     "entry_point": "run.LGS",
     "url": "https://semantic.construction/files/bmr4976-20260918-files.tar.xz",
     "expanded_bytes": 994017646,
-    "archive_bytes": 604775712
+    "archive_bytes": 431733340
   },
   {
     "key": "trpcage-20260918-files",
@@ -17,6 +17,6 @@
     "entry_point": "run.LGS",
     "url": "https://semantic.construction/files/trpcage-20260918-files.tar.xz",
     "expanded_bytes": 7141764592,
-    "archive_bytes": 4016860436
+    "archive_bytes": 3590519880
   }
 ]
