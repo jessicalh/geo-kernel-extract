@@ -18,5 +18,205 @@
     "url": "https://semantic.construction/files/trpcage-20260918-files.tar.xz",
     "expanded_bytes": 7141764592,
     "archive_bytes": 3590519880
+  },
+  {
+    "key": "bmr15784-20260919-files",
+    "title": "BMRB 15784",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr15784-20260919-files.tar.xz",
+    "expanded_bytes": 1044680611,
+    "archive_bytes": 393512676
+  },
+  {
+    "key": "bmr10028-20260919-files",
+    "title": "BMRB 10028",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr10028-20260919-files.tar.xz",
+    "expanded_bytes": 1148400519,
+    "archive_bytes": 496340564
+  },
+  {
+    "key": "bmr6865-20260919-files",
+    "title": "BMRB 6865",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr6865-20260919-files.tar.xz",
+    "expanded_bytes": 1057752116,
+    "archive_bytes": 442436096
+  },
+  {
+    "key": "bmr5847-20260919-files",
+    "title": "BMRB 5847",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr5847-20260919-files.tar.xz",
+    "expanded_bytes": 1072147825,
+    "archive_bytes": 436157112
+  },
+  {
+    "key": "bmr7057-20260919-files",
+    "title": "BMRB 7057",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr7057-20260919-files.tar.xz",
+    "expanded_bytes": 1040325393,
+    "archive_bytes": 382396716
+  },
+  {
+    "key": "bmr5276-20260919-files",
+    "title": "BMRB 5276",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr5276-20260919-files.tar.xz",
+    "expanded_bytes": 1135688906,
+    "archive_bytes": 479721696
+  },
+  {
+    "key": "bmr15591-20260919-files",
+    "title": "BMRB 15591",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr15591-20260919-files.tar.xz",
+    "expanded_bytes": 1165872988,
+    "archive_bytes": 479202684
+  },
+  {
+    "key": "bmr5238-20260919-files",
+    "title": "BMRB 5238",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr5238-20260919-files.tar.xz",
+    "expanded_bytes": 1117720714,
+    "archive_bytes": 429254788
+  },
+  {
+    "key": "bmr6478-20260919-files",
+    "title": "BMRB 6478",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr6478-20260919-files.tar.xz",
+    "expanded_bytes": 1141190383,
+    "archive_bytes": 433602388
+  },
+  {
+    "key": "bmr10005-20260919-files",
+    "title": "BMRB 10005",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr10005-20260919-files.tar.xz",
+    "expanded_bytes": 1458712130,
+    "archive_bytes": 678665404
+  },
+  {
+    "key": "bmr6175-20260919-files",
+    "title": "BMRB 6175",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr6175-20260919-files.tar.xz",
+    "expanded_bytes": 1316587347,
+    "archive_bytes": 558227368
+  },
+  {
+    "key": "bmr4237-20260919-files",
+    "title": "BMRB 4237",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr4237-20260919-files.tar.xz",
+    "expanded_bytes": 1193132572,
+    "archive_bytes": 452355876
+  },
+  {
+    "key": "bmr5801-20260919-files",
+    "title": "BMRB 5801",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr5801-20260919-files.tar.xz",
+    "expanded_bytes": 1419478227,
+    "archive_bytes": 642036172
+  },
+  {
+    "key": "bmr6805-20260919-files",
+    "title": "BMRB 6805",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr6805-20260919-files.tar.xz",
+    "expanded_bytes": 1166722253,
+    "archive_bytes": 442862924
+  },
+  {
+    "key": "bmr6804-20260919-files",
+    "title": "BMRB 6804",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr6804-20260919-files.tar.xz",
+    "expanded_bytes": 1375203261,
+    "archive_bytes": 584866248
+  },
+  {
+    "key": "bmr5375-20260919-files",
+    "title": "BMRB 5375",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr5375-20260919-files.tar.xz",
+    "expanded_bytes": 1328076226,
+    "archive_bytes": 589885288
+  },
+  {
+    "key": "bmr5875-20260919-files",
+    "title": "BMRB 5875",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr5875-20260919-files.tar.xz",
+    "expanded_bytes": 1376510012,
+    "archive_bytes": 607776340
+  },
+  {
+    "key": "bmr7350-20260919-files",
+    "title": "BMRB 7350",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr7350-20260919-files.tar.xz",
+    "expanded_bytes": 1269103033,
+    "archive_bytes": 513672528
+  },
+  {
+    "key": "bmr6291-20260919-files",
+    "title": "BMRB 6291",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr6291-20260919-files.tar.xz",
+    "expanded_bytes": 1312740054,
+    "archive_bytes": 554781852
+  },
+  {
+    "key": "bmr15324-20260919-files",
+    "title": "BMRB 15324",
+    "description": "100-frame production trajectory",
+    "frames": 100,
+    "entry_point": "run.LGS",
+    "url": "https://semantic.construction/files/bmr15324-20260919-files.tar.xz",
+    "expanded_bytes": 1322299946,
+    "archive_bytes": 507733084
   }
 ]
