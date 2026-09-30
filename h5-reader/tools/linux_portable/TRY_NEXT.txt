@@ -13,13 +13,17 @@ inside the container. There is no large application setup on the computer.
 
 2. Start Reader - Apptainer.desktop
 -----------------------------------
-Use this where Apptainer is installed (version 1.0 or newer). It explicitly
-selects the apptainer command and runs the same image with the same read-only
-drive access. It also avoids a large application setup.
+This prefers the computer's Apptainer installation (version 1.0 or newer).
+If none is installed and this package includes the carried engine, a first-time
+window offers to prepare about 163 MB of container-engine software locally.
+The Reader image and trajectories remain on the drive. Later launches reuse
+the engine. You can cancel and try compatibility mode instead.
 
-These named shortcuts use software already provided by the computer; they do
-not install either container engine. On some systems both command names refer
-to the same installed engine. If one name is unavailable, try the other.
+Neither shortcut installs system packages or requires administrator access.
+The carried engine needs an EL8-compatible computer, permitted user namespaces
+and a local workspace without whitespace that permits execution. If the site
+restricts it, use its Singularity installation or compatibility mode. On some
+systems both installed command names refer to the same engine.
 
 If the university supplies either engine through environment modules, load
 its normal site module in a terminal, then use the corresponding command:
@@ -50,10 +54,10 @@ The equivalent terminal command is:
 
 Automatic choice
 ----------------
-The plain Start Reader.desktop shortcut chooses Apptainer if installed,
-otherwise Singularity, otherwise the explained PRoot setup. If an installed
-container engine fails, it reports the failure; use another named shortcut
-to try a different engine.
+The plain Start Reader.desktop shortcut tries installed Apptainer, then
+installed Singularity. If neither exists it offers the carried Apptainer
+setup when included, otherwise the explained PRoot setup. A failed container
+launch reports its error; use another named shortcut to try a different engine.
 
 If a launcher will not open
 --------------------------

@@ -5,20 +5,32 @@ Open "Start Reader.desktop" in 01_Reader/Linux/. Some desktops require one
 "Allow launching" action. Reader lists all 176 trajectories and opens their
 existing files directly from the drive. It does not copy trajectory datasets.
 "Start Reader - Singularity.desktop" selects the installed singularity command.
-"Start Reader - Apptainer.desktop" selects the installed apptainer command.
+"Start Reader - Apptainer.desktop" selects installed Apptainer, or offers setup
+of the carried Apptainer engine when included.
 "Start Reader - compatibility mode.desktop" selects the bundled PRoot runtime.
 TRY_NEXT.txt explains these choices. The plain Start Reader.desktop shortcut
-automatically chooses Apptainer, then Singularity, then the explained fallback.
+automatically chooses installed Apptainer, then installed Singularity, then the
+carried engine when included, then the explained PRoot fallback.
 
 Apptainer / Singularity (preferred)
 ----------------------------------
-When Apptainer or Singularity is available, the launcher runs the compressed
+When installed Apptainer or Singularity is available, the launcher runs the compressed
 reader.sif image directly from the external drive. It does not unpack a large
 application onto the computer. The image contains its own Ubuntu userspace,
 Qt, VTK, software OpenGL and CPU inference libraries; the advisor does not
 need to determine the host glibc version or install Qt. The data drive is
 mounted read-only inside the container. Only settings, cache, temporary work,
 logs and requested output are written to the local workspace.
+
+The carried Apptainer engine is an additional option when neither site engine
+is available. Its first-use dialog explains a one-time copy of about 163 MB of
+container-engine software to the local workspace. The SIF image and trajectories
+stay on the drive. This avoids executing engine binaries from a noexec or
+space-containing drive path. The local workspace must contain no whitespace
+and allow execution; the carried engine needs glibc 2.28+ and permitted user
+namespaces. It was accepted on EL8; an EL7 computer should use site Singularity
+or the PRoot alternative. A blocked engine reports its error without silently
+installing another runtime. No administrator access or system installation is used.
 
 The default workspace is ~/.local/share/h5reader-portable. To use another SSD:
 
@@ -29,9 +41,9 @@ The image uses CPU rendering and CPU inference. GPU devices are not requested.
 Requirements: x86_64 Linux, X11 or XWayland, a functioning Apptainer 1.0+ or
 Singularity 3.7+ installation, and site policy permitting the required binds.
 The launcher explicitly disables NVIDIA/ROCm integration, including site defaults.
-The host kernel
-and container setup still require acceptance on the advisor's actual machine;
-no particular RHEL or CentOS installation is claimed tested in advance.
+CentOS 7 with Singularity 3.8.4 and AlmaLinux 8 with Singularity 3.8.4 and the
+carried Apptainer have passed acceptance; see ACCEPTANCE.txt. The advisor's
+actual kernel, site policy and desktop still need the compatibility check.
 
 Checking the advisor's computer
 -------------------------------
@@ -42,6 +54,9 @@ Open "Check compatibility.desktop", or run:
 Add --backend singularity or --backend apptainer to check that exact command.
 
 This quick check runs the actual image and Reader's version-only Qt/X11 startup.
+It can also use a previously prepared carried engine; it never copies that
+engine during the check. If local engine setup is needed it explains which
+launcher to use first.
 It uses tiny synthetic files to verify a read-only source bind and a writable
 local workspace. It does not open trajectories, unpack the fallback application,
 install anything or send the report anywhere. Its report is saved under the local
@@ -100,6 +115,10 @@ host GPU computation or global install is needed.
     --base /staging/ubuntu-base-24.04.4-base-amd64.tar.gz \
     --proot /staging/proot --output /staging/mock-drive/01_Reader/Linux \
     --build-root /staging/temporary-rootfs
+
+To include an independently tested relocatable Apptainer tree, add
+--bundled-apptainer /staging/tested-apptainer-tree. It is carried separately from
+the image; its file hashes, symlinks and modes are recorded in runtime/.
 
 Apptainer converts the prepared userspace to a SIF offline. The deliverable
 contains the launcher, image, optional fallback archive and manifest. Build

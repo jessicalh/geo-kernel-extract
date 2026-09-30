@@ -1,0 +1,101 @@
+Bundled Apptainer: provenance and rebuild
+========================================
+
+This is optional Linux application software. Windows Qt Pro builds do not use
+it. No engine binaries are committed to Git. The package builder accepts a
+prepared directory with bin/apptainer and its complete x86_64 subtree.
+
+Upstream and exact installer
+---------------------------
+
+Official project: https://github.com/apptainer/apptainer
+Installer used:
+https://raw.githubusercontent.com/apptainer/apptainer/v1.5.3/tools/install-unprivileged.sh
+
+Installer SHA-256:
+a097956eafa6ab3dd843ee429d0b774ed029753bfadf013b8046556228fac6f2
+
+Engine package selected by that installer:
+https://kojipkgs.fedoraproject.org/packages/apptainer/1.5.3/3.el8/x86_64/apptainer-1.5.3-3.el8.x86_64.rpm
+
+Reported version: apptainer version 1.5.3-3.el8.
+The installer also fetches the EL8 runtime utilities/libraries from the official
+Rocky Linux BaseOS/AppStream and Fedora EPEL repositories. It extracts RPMs into
+the selected directory; it does not install them into the host operating system.
+Build prerequisites are bash, curl, rpm2cpio and cpio.
+
+Rebuild in an EL8-compatible development environment, as an ordinary user:
+
+  curl -fL https://raw.githubusercontent.com/apptainer/apptainer/v1.5.3/tools/install-unprivileged.sh -o install-unprivileged.sh
+  printf '%s  %s\n' a097956eafa6ab3dd843ee429d0b774ed029753bfadf013b8046556228fac6f2 install-unprivileged.sh | sha256sum -c -
+  bash install-unprivileged.sh -e -d el8 -v 1.5.3 /absolute/path/without-spaces/apptainer-engine
+  python3 patch_bundled_apptainer.py /absolute/path/without-spaces/apptainer-engine
+  /absolute/path/without-spaces/apptainer-engine/bin/apptainer --version
+
+The initial build was performed inside the isolated AlmaLinux 8.10 compatibility
+VM. A redirected Fedora mirror listing omitted fakeroot during that run. Its
+matching package was retrieved from the direct official URL below, then the
+unchanged remaining installer steps were resumed:
+https://dl.fedoraproject.org/pub/epel/8/Everything/x86_64/Packages/f/fakeroot-1.33-1.el8.x86_64.rpm
+
+Wrapper changes
+---------------
+
+patch_bundled_apptainer.py records the only local wrapper changes:
+
+* bin/apptainer: quote the argument to /usr/bin/realpath and the final Apptainer
+  executable path.
+* x86_64/utils/bin/.wrapper: quote the final REALME executable argument.
+* x86_64/libexec/apptainer/bin/.wrapper: quote the final REALME executable
+  argument.
+
+The upstream engine still fails to mount its SIF through squashfuse_ll when the
+engine's own installation/session path contains whitespace. Reader therefore
+copies only this engine into a local cache whose path has no whitespace. The
+application package/SIF and trajectory drive may have spaces in their paths.
+Copy the complete tree, preserving modes and symbolic links. Copying just the
+main executable is insufficient.
+
+Size and identity of the tested build
+------------------------------------
+
+Extracted tree: 162,968,144 bytes (about 163 MB).
+Archive SHA-256 used for transfer between the VM and SSD staging:
+463d568f341e78d372be9fea59e84ae0457e38850daa62b8f37c2fd2b18711ac
+
+The final package also records its own per-file engine manifest and identity;
+that content identity, rather than an archive timestamp, selects the local
+engine cache. Rebuilds must regenerate that manifest and re-run acceptance.
+
+Requirements and tested limits
+------------------------------
+
+* x86_64 host with glibc 2.28 or newer, unprivileged user namespaces permitted,
+  usable FUSE support, and executable local cache storage.
+* This carried engine is unprivileged. It does not install a setuid helper or
+  change the host's namespace, AppArmor, SELinux or other security policy.
+* An installed site Apptainer/Singularity takes precedence. An Ubuntu host with
+  AppArmor restrictions rejected arbitrary unprivileged namespaces during our
+  probe, even though its approved site Apptainer worked. The carried engine is
+  not a way to bypass that policy. PRoot remains a separate fallback.
+* The EL8 bundle is not an EL7/glibc 2.17 engine. Site SingularityCE 3.8.4 was
+  tested separately on an actual EL7 kernel.
+
+Acceptance evidence from SSD-only staging
+----------------------------------------
+
+AlmaLinux 8.10 VM: actual kernel 4.18.0-553.16.1.el8_10, host glibc 2.28, Haswell
+CPU feature mask, no GPU. The bundled engine ran the final Ubuntu 24.04 Reader
+SIF as an ordinary user. REST health, window/scene/library/trajectory snapshots,
+CPU ML prediction (29.76103401184082 for the acceptance atom), the full 176-entry
+catalog, direct opening of a 100-frame trajectory through frame 99, read-only
+source mounting and unchanged source hashes all passed. No dataset copy or
+application-image extraction was created by this route.
+
+The Reader also started through a physically spaced package/SIF path under
+Xvfb with the engine in its space-free local cache. Detailed logs, fetched RPM
+URLs, installer/engine hashes and the original build artifacts are recorded in
+SSD staging under compatibility/bundled-apptainer-provenance.json,
+compatibility/acceptance-el8-bundled-apptainer/, and compatibility/vm/.
+
+These tests did not read, write or mount the actual Provenance drive.

@@ -66,6 +66,17 @@ elif [ "$backend" = auto ]; then
     elif command -v singularity >/dev/null 2>&1; then container_runtime=$(command -v singularity)
     fi
 fi
+if [ -z "$container_runtime" ] && [ "$backend" != singularity ] && [ "$backend" != proot ] && \
+        [ -f "$bundle_dir/runtime/apptainer.identity" ]; then
+    if container_runtime=$(/bin/sh "$bundle_dir/prepare-bundled-apptainer.sh" \
+            "$bundle_dir" "$workspace" "$noninteractive_setup" 2> "$workspace/state/bundled-apptainer.log"); then
+        :
+    else
+        status=$?
+        [ "$status" != 130 ] || exit 130
+        fail "$(cat "$workspace/state/bundled-apptainer.log")"
+    fi
+fi
 if [ -n "$container_runtime" ]; then
     container_name=${container_runtime##*/}
     [ -f "$payload/reader.sif" ] || fail 'The Reader container image is missing from this package.'

@@ -1,4 +1,4 @@
-Portable Reader staging acceptance — 30 September 2026
+Portable Reader staging acceptance — 30 September / 1 October 2026
 ======================================================
 
 Agreed behavior
@@ -63,10 +63,34 @@ Full Reader acceptance passed: Qt/VTK rendering, CPU inference with the same
 no trajectory copies and no local application extraction. This used an actual
 KVM guest kernel, not an older userspace container on a newer host kernel.
 
+CentOS 7.9: actual kernel 3.10.0-1160.80.1, host glibc 2.17,
+SingularityCE 3.8.4, SELinux Enforcing, user namespaces disabled, Haswell CPU.
+The same full acceptance passed, including CPU prediction, all 176 entries,
+100-frame BMRB navigation to frame 99 and unchanged source hashes. The test VM
+needed its normal Mesa DRI packages for the Xvfb software OpenGL display.
+No Reader or image change was needed. The engine used its installed setuid
+helper, as on sites that provide Singularity without unprivileged namespaces.
+
 The same final package also passed fresh explicit Apptainer and PRoot runs on
 the development host. Both verified CPU inference, rendering, all 176 entries,
 direct trajectory navigation and 26,878 scientific fixture files unchanged.
 PRoot extracted application software only into its fresh local workspace.
+
+Carried Apptainer 1.5.3 (EL8 package) also passed the complete Reader acceptance
+on the AlmaLinux 8 VM: CPU inference, rendering, all 176 entries, frame 99,
+source read-only, source hashes unchanged, and no trajectory copies or Reader
+image extraction. A separate real Qt startup passed with the drive, package
+and SIF under a path containing spaces and the engine in local application
+storage. The carried engine needs glibc 2.28+, permitted user namespaces and
+executable local storage. The one-time 163 MB engine setup explanation was
+exercised with both approval and cancellation; cancellation copied zero engine
+files, approval produced a working engine, later checks reused it, and no
+partial setup directories remained. Workspace paths containing whitespace are
+rejected for this engine before copying. Concurrent setup calls returned one
+completed cache, and symlink cache entries were rejected without writes outside
+the workspace. The integrated packaged launcher then prepared and used that
+cache on AlmaLinux 8 through a spaced drive path; both actual Reader Qt startup
+and the packaged compatibility checker passed. PRoot remains a separate option.
 
 Memory observation: the initial 4 GiB VM rendered successfully but the optional
 CPU model could not allocate a roughly 4 GB tensor. Full inference passed with
@@ -95,6 +119,13 @@ Root: /mnt/trajectories/h5-reader-portable-staging-20260930
   runtime-work/acceptance-latest-proot/report.json
   compatibility/results/el8-singularity-3.8.4-12gb/report.json
   compatibility/results/el8-singularity-3.8.4-12gb/selector.png
+  compatibility/results/el7-singularity-3.8.4/report.json
+  compatibility/results/el7-singularity-3.8.4/selector.png
+  compatibility/acceptance-el8-bundled-apptainer/report.json
+  compatibility/vm/bundled-apptainer-spaced-drive-proof.txt
+  compatibility/vm/bundled-apptainer-integrated-proof.txt
+  runtime-work/bundled-engine-setup-proof.json
+  compatibility/bundled-cache-final-review-xagswzko/report.json
 
 The generated runtime-manifest.json records Reader/catalog/image hashes.
 Staged numerical fixtures came from pre-existing home/shared acceptance data.

@@ -116,6 +116,13 @@ elif command -v apptainer >/dev/null 2>&1; then
 elif command -v singularity >/dev/null 2>&1; then
     runtime=$(command -v singularity)
 fi
+if [ -z "$runtime" ] && [ "$backend" != singularity ] && [ -f "$package_dir/runtime/apptainer.identity" ]; then
+    if runtime=$(/bin/sh "$package_dir/prepare-bundled-apptainer.sh" "$package_dir" "$workspace" check); then
+        :
+    else
+        finish 1 'NEEDS APPLICATION SETUP: prepare the carried engine with the Apptainer launcher, or use the site Singularity/compatibility launcher. No engine files were copied by this check.'
+    fi
+fi
 if [ -z "$runtime" ]; then
     printf 'Requested container backend: %s\n' "$backend"
     printf '%s\n' 'Apptainer/Singularity was not found on PATH.' \
