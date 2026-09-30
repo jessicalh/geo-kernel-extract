@@ -1,0 +1,77 @@
+Portable Reader staging acceptance — 30 September 2026
+======================================================
+
+Agreed behavior
+--------------
+All 176 drive trajectories appear in the existing Reader selection interface.
+Selecting Open reads the existing LGS, HDF, NPY and DFT files directly. The
+portable viewer has no dataset-copy controls, copy API or cache fallback.
+The optional compatibility setup copies application software only, after an
+explanation and confirmation. Apptainer is the preferred route and reads the
+SIF image directly from the drive without that setup.
+
+Scope and platform boundary
+---------------------------
+New Reader behavior is under Q_OS_LINUX, activated by
+H5READER_LOCAL_LIBRARY_ROOT. Without that setting the existing HTTPS catalog
+continues to operate. CMake includes the new source, catalog and tests only
+on Linux. Windows Qt Pro logic and the HTTPS catalog are unchanged. A new
+Windows binary was not built on this Linux host.
+
+Catalog evidence
+----------------
+176 datasets: 173 MD trajectories and three small proteins.
+24,553 frames and 7,253 DFT frame pairs.
+The generator checked the supplied SSD inventories and staged LGS manifests,
+including exact DFT rosters. It did not read the actual Provenance drive.
+The catalog uses paths relative to the drive root and readable BMRB/protein
+names; original identifiers and titles are retained.
+
+Native validation
+-----------------
+33/33 CTest groups passed on the final direct-opening build, using CPU/software
+rendering. This includes the legacy HTTPS selector, local selector, catalog,
+REST, model input export/shutdown, CPU inference and small-protein DFT gates.
+The main REST group reported 59 passed and 11 conditional skips; fixture-
+specific ML, export and small-protein cases run in separate configured gates.
+The catalog generator's 14 tests passed. An independent code review confirmed
+that local opening cannot substitute a previous cache or start a download.
+
+Portable validation
+-------------------
+Apptainer 1.5.3, Ubuntu 24.04 host; image carries Ubuntu 24.04.4 userspace.
+Final SIF launched the actual Reader with its source mount read-only.
+REST and snapshots verified all 176 entries, direct BMRB 7057 opening,
+100 frames with navigation to frame 99, and zero dataset copies.
+No local application runtime was extracted on the Apptainer route.
+Desktop activation through Gio.DesktopAppInfo launched the actual Reader and
+selector from a drive path containing spaces, with automatic drive discovery.
+26,878 staged scientific files were unchanged by SHA-256 before/after.
+CPU model atom-16 result: 29.76103401184082.
+Rendering: llvmpipe (LLVM 20.1.2). No GPU computation was requested.
+The optional fallback setup GUI was tested for cancellation before setup and
+during extraction. Both exited with no extracted runtime or worker leftovers.
+
+Evidence on the staging SSD
+---------------------------
+Root: /mnt/trajectories/h5-reader-portable-staging-20260930
+  ctest-open-in-place.log
+  build-open-in-place.log
+  install-open-in-place.log
+  runtime-work/acceptance-final-apptainer/report.json
+  runtime-work/acceptance-final-apptainer/local-library.png
+  runtime-work/acceptance-final-apptainer/direct-trajectory.png
+  runtime-work/desktop-final-proof.json
+  runtime-work/setup-cancellation-proof.json
+
+The generated runtime-manifest.json records Reader/catalog/image hashes.
+Staged numerical fixtures came from pre-existing home/shared acceptance data.
+No Provenance drive access, installation, remount or data changes occurred.
+
+Remaining deployment checks
+---------------------------
+Installation onto the real drive requires the user's explicit go. Afterwards,
+check source paths and representative real-drive datasets in the final layout.
+The advisor's actual CentOS/RHEL variant, Apptainer/site policies and desktop
+launch trust settings still need a machine-level acceptance run. Unknown host
+glibc does not need to be copied into or used by the image.

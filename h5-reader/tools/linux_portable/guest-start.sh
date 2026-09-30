@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+unset LD_LIBRARY_PATH LD_PRELOAD QT_PLUGIN_PATH QT_QPA_PLATFORM_PLUGIN_PATH
+unset QML_IMPORT_PATH QML2_IMPORT_PATH QT_CONF_PATH QT_QPA_PLATFORMTHEME
+unset QT_STYLE_OVERRIDE QT_QPA_GENERIC_PLUGINS
+export HOME=/workspace/home
+export XDG_CONFIG_HOME=/workspace/config XDG_CACHE_HOME=/workspace/cache
+export XDG_DATA_HOME=/workspace/data XDG_STATE_HOME=/workspace/state
+export XDG_RUNTIME_DIR=/workspace/run TMPDIR=/workspace/tmp
+export H5READER_LOCAL_LIBRARY_ROOT=/provenance
+export H5READER_LOCAL_LIBRARY_CATALOG=/opt/h5reader/linux-local-library.json
+export H5READER_WORKSPACE=/workspace
+export CUDA_VISIBLE_DEVICES=-1 HIP_VISIBLE_DEVICES=-1 ROCR_VISIBLE_DEVICES=-1
+export H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE=cpu
+export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+export LIBGL_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri
+export __GLX_VENDOR_LIBRARY_NAME=mesa QT_QPA_PLATFORM=xcb
+export QT_X11_NO_MITSHM=1
+export QT_OPENGL=software QT_QUICK_BACKEND=software
+export QT_FFMPEG_ENCODING_HW_DEVICE_TYPES=, QT_FFMPEG_DECODING_HW_DEVICE_TYPES=,
+export QT_DISABLE_HW_TEXTURES_CONVERSION=1
+export FONTCONFIG_PATH=/etc/fonts XKB_CONFIG_ROOT=/usr/share/X11/xkb
+cd /workspace/output
+exec /opt/h5reader/launch-h5reader "$@"

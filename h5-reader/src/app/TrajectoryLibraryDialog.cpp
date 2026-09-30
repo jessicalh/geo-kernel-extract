@@ -40,6 +40,11 @@ TrajectoryLibraryDialog::TrajectoryLibraryDialog(QWidget* parent,
                                                  const QString& installedRoot)
     : QDialog(parent)
     , installedRoot_(installedRoot.isEmpty() ? defaultInstalledRoot() : installedRoot) {
+#ifdef Q_OS_LINUX
+    sourceRoot_ = qEnvironmentVariable("H5READER_LOCAL_LIBRARY_ROOT");
+    localLibrary_ = !sourceRoot_.isEmpty();
+    if (localLibrary_) sourceRoot_ = QDir(sourceRoot_).absolutePath();
+#endif
     setObjectName(QStringLiteral("TrajectoryLibraryDialog"));
     setWindowTitle(tr("Published trajectories"));
     resize(800, 540);
@@ -95,9 +100,26 @@ TrajectoryLibraryDialog::TrajectoryLibraryDialog(QWidget* parent,
     cacheLine->addWidget(locationButton_);
     layout->addLayout(cacheLine);
 
-    const QString catalog = catalogPath.isEmpty()
+    QString catalog = catalogPath.isEmpty()
                                 ? QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("trajectories.json"))
                                 : catalogPath;
+#ifdef Q_OS_LINUX
+    if (localLibrary_) {
+        setWindowTitle(tr("Trajectories on this drive"));
+        table_->setHorizontalHeaderLabels({tr("Trajectory"), tr("Frames"), tr("DFT frames"), tr("Location")});
+        // The drive already contains complete datasets. Opening never downloads,
+        // imports, or copies them, and no cache/removal controls apply here.
+        cancel_->hide();
+        clear_->hide();
+        locationButton_->hide();
+        if (catalogPath.isEmpty()) {
+            catalog = qEnvironmentVariable("H5READER_LOCAL_LIBRARY_CATALOG");
+            if (catalog.isEmpty())
+                catalog = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("linux-local-library.json"));
+        }
+        readLocalCatalog(catalog);
+    } else
+#endif
     readCatalog(catalog);
     QString root = cacheRoot;
     if (root.isEmpty())
@@ -182,6 +204,10 @@ bool TrajectoryLibraryDialog::readCatalog(const QString& path) {
 void TrajectoryLibraryDialog::createCache(const QString& root) {
     cacheRoot_ = QDir(root).absolutePath();
     cache_ = std::make_unique<Cache>(cacheRoot_, this);
+#ifdef Q_OS_LINUX
+    if (localLibrary_) location_->setText(tr("Opened directly from the data drive. Trajectory files are not copied."));
+    else
+#endif
     location_->setText(tr("Download cache: %1").arg(QDir::toNativeSeparators(cacheRoot_)));
     connect(cache_.get(), &Cache::stateChanged, this, [this](Cache::State phase) {
         progress_->setRange(0, 0);
@@ -244,6 +270,9 @@ const TrajectoryLibraryDialog::Entry* TrajectoryLibraryDialog::selectedEntry() c
 }
 
 QString TrajectoryLibraryDialog::installedPath(const Entry& entry) const {
+#ifdef Q_OS_LINUX
+    if (localLibrary_) return {};
+#endif
     const QString directory = QDir(installedRoot_).filePath(entry.bundle.key);
     return QFileInfo::exists(QDir(directory).filePath(entry.bundle.entryPoint)) ? directory : QString();
 }
@@ -267,6 +296,14 @@ bool TrajectoryLibraryDialog::openTrajectory(const QString& key, QString* error)
         return false;
     }
     lastError_.clear();
+#ifdef Q_OS_LINUX
+    if (localLibrary_) {
+        const QString path = localSourcePath(*entry, error);
+        if (path.isEmpty()) return false;
+        emit openRequested(path);
+        return true;
+    }
+#endif
     const QString installed = installedPath(*entry);
     if (!installed.isEmpty()) {
         emit openRequested(QDir(installed).filePath(entry->bundle.entryPoint));
@@ -286,6 +323,12 @@ bool TrajectoryLibraryDialog::isClearing() const {
 }
 
 bool TrajectoryLibraryDialog::clearTrajectory(const QString& key, QString* error) {
+#ifdef Q_OS_LINUX
+    if (localLibrary_) {
+        *error = tr("Drive trajectories are opened in place and cannot be removed here.");
+        return false;
+    }
+#endif
     const auto* entry = findEntry(key);
     if (!entry || closing_ || !pendingRoot_.isEmpty() || cache_->busy()) {
         *error = tr("Unknown trajectory, or the library is busy.");
@@ -310,6 +353,9 @@ bool TrajectoryLibraryDialog::clearTrajectory(const QString& key, QString* error
 void TrajectoryLibraryDialog::refresh() {
     if (!cache_)
         return;
+#ifdef Q_OS_LINUX
+    if (localLibrary_) { refreshLocal(); return; }
+#endif
     const bool idle = !cache_->busy() && !closing_ && pendingRoot_.isEmpty();
     for (int row = 0; row < entries_.size(); ++row) {
         const auto& entry = entries_[row];
@@ -403,6 +449,18 @@ bool TrajectoryLibraryDialog::isShutdown() const {
 
 QJsonObject TrajectoryLibraryDialog::state() const {
     QJsonArray rows;
+#ifdef Q_OS_LINUX
+    if (localLibrary_) {
+        for (const auto& entry : entries_) {
+            rows.append(QJsonObject{{"key", entry.bundle.key}, {"title", entry.title},
+                {"description", entry.description}, {"frames", entry.frames}, {"dft_frames", entry.dftFrames},
+                {"source_lgs", entry.sourceLgs}, {"included", true}, {"downloaded", false},
+                {"entry_point", entry.sourceLgs}, {"directory", sourceRoot_}});
+        }
+        return {{"entries", rows}, {"local_library", true}, {"open_in_place", true}, {"source_root", sourceRoot_},
+            {"busy", false}, {"shutdown", isShutdown()}, {"error", lastError_}, {"visible", isVisible()}};
+    }
+#endif
     for (const auto& entry : entries_) {
         const QString installed = installedPath(entry);
         const QString downloaded = cache_->cachedPath(entry.bundle);

@@ -46,6 +46,10 @@ private:
         QString description;
         int frames = 0;
         qint64 archiveBytes = 0;
+#ifdef Q_OS_LINUX
+        QString sourceLgs;
+        int dftFrames = 0;
+#endif
     };
     bool readCatalog(const QString& path);
     void createCache(const QString& root);
@@ -57,6 +61,13 @@ private:
     QString installedPath(const Entry& entry) const;
     bool isCurrent(const QString& directory) const;
 
+#ifdef Q_OS_LINUX
+    bool readLocalCatalog(const QString& path);
+    void refreshLocal();
+    QString localSourcePath(const Entry& entry, QString* error) const;
+    bool localLibrary_ = false;
+    QString sourceRoot_;
+#endif
     QList<Entry> entries_;
     std::unique_ptr<sciencefiles::BundleCache> cache_;
     QString cacheRoot_;

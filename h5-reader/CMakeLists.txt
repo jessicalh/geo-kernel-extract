@@ -313,6 +313,10 @@ qt_add_library(h5reader_core STATIC
 
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_sources(h5reader_core PRIVATE src/app/TrajectoryLibraryDialogLinux.cpp)
+endif()
+
 target_include_directories(h5reader_core PUBLIC
     src
     src/physics
@@ -365,6 +369,12 @@ file(GENERATE
     OUTPUT "$<TARGET_FILE_DIR:h5reader>/trajectories.json"
     INPUT "${CMAKE_CURRENT_BINARY_DIR}/catalog/trajectories.json")
 install(FILES resources/trajectories.json DESTINATION . COMPONENT Runtime)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    configure_file(resources/linux-local-library.json catalog/linux-local-library.json COPYONLY)
+    file(GENERATE OUTPUT "$<TARGET_FILE_DIR:h5reader>/linux-local-library.json"
+        INPUT "${CMAKE_CURRENT_BINARY_DIR}/catalog/linux-local-library.json")
+    install(FILES resources/linux-local-library.json DESTINATION . COMPONENT Runtime)
+endif()
 set(H5READER_BUNDLED_DATA_DIR "" CACHE PATH "Prepared installed trajectory examples")
 if(H5READER_BUNDLED_DATA_DIR)
     install(DIRECTORY "${H5READER_BUNDLED_DATA_DIR}/" DESTINATION datasets COMPONENT Runtime)
@@ -397,6 +407,17 @@ if(BUILD_TESTING)
     vtk_module_autoinit(TARGETS h5reader_trajectory_library_tests MODULES ${VTK_LIBRARIES})
     h5reader_apply_platform_target_settings(h5reader_trajectory_library_tests)
     add_test(NAME h5reader_trajectory_library_tests COMMAND h5reader_trajectory_library_tests)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        qt_add_executable(h5reader_linux_local_library_tests tests/linux_local_library_tests.cpp)
+        target_link_libraries(h5reader_linux_local_library_tests PRIVATE h5reader_core Qt6::Test)
+        target_compile_definitions(h5reader_linux_local_library_tests PRIVATE H5READER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+        vtk_module_autoinit(TARGETS h5reader_linux_local_library_tests MODULES ${VTK_LIBRARIES})
+        h5reader_apply_platform_target_settings(h5reader_linux_local_library_tests)
+        add_test(NAME h5reader_linux_local_library_tests COMMAND h5reader_linux_local_library_tests)
+        add_test(NAME h5reader_linux_local_catalog_tests
+            COMMAND "${Python3_EXECUTABLE}" -B -m unittest discover
+                -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_linux_local_catalog.py)
+    endif()
     add_executable(h5reader_physics_tests
         src/physics/PhysicsTests.cpp
         src/physics/SphericalBasis.cpp
