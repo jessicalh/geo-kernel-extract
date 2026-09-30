@@ -50,6 +50,17 @@ add_executable(infer infer.cpp)
 target_compile_features(infer PRIVATE cxx_std_17)
 target_link_libraries(infer PRIVATE "${TORCH_LIBRARIES}")
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Honor LibTorch's C++ ABI flags and keep copied helpers independent of the
+    # machine's development LibTorch prefix. The bundle carries its own lib/.
+    separate_arguments(_torch_cxx_flags NATIVE_COMMAND "${TORCH_CXX_FLAGS}")
+    target_compile_options(infer PRIVATE ${_torch_cxx_flags})
+    set_target_properties(infer PROPERTIES
+        BUILD_WITH_INSTALL_RPATH TRUE
+        INSTALL_RPATH "$ORIGIN/lib")
+    install(TARGETS infer RUNTIME DESTINATION .)
+endif()
+
 if(_torch_compat_include)
     target_include_directories(infer BEFORE PRIVATE "${_torch_compat_include}")
 endif()

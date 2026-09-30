@@ -1,0 +1,125 @@
+# Evaluated by Qt's generated deployment script at install/package time.
+# Do not let an unrelated scientific application supply our C++ runtime.
+unset(ENV{LD_LIBRARY_PATH})
+unset(ENV{LD_PRELOAD})
+set(QT_DEPLOY_BIN_DIR ".")
+set(QT_DEPLOY_LIB_DIR "lib")
+set(QT_DEPLOY_PLUGINS_DIR "plugins")
+
+# glibc and graphics drivers belong to the target OS. Keep graphics dispatch
+# libraries (GLVND/Vulkan) and ordinary dependencies in the application bundle.
+set(_host_libraries
+    "^ld-linux.*"
+    "^lib(c|m|mvec|dl|pthread|rt|resolv|util|anl|nss_.*|BrokenLocale|thread_db|memusage|pcprofile|SegFault)[.]so([.].*)?$"
+    "^lib(cuda|nvcuvid|nvidia[^/]*|EGL_(mesa|nvidia)|GLX_(mesa|nvidia)|vulkan_(intel|radeon|lvp))([.]so.*)?$")
+set(_host_paths "[/](dri|vdpau)[/]")
+
+qt_deploy_runtime_dependencies(
+    EXECUTABLE "$<TARGET_FILE:h5reader>"
+    GENERATE_QT_CONF
+    ADDITIONAL_LIBRARIES "$<TARGET_FILE:OpenSSL::SSL>" "$<TARGET_FILE:OpenSSL::Crypto>"
+    ADDITIONAL_MODULES "$<TARGET_FILE:Qt6::QFFmpegMediaPlugin>"
+    INCLUDE_PLUGINS qxcb qoffscreen qminimal qwayland-generic qwayland-egl ffmpegmediaplugin
+    PRE_EXCLUDE_REGEXES ${_host_libraries}
+    POST_EXCLUDE_REGEXES ${_host_paths})
+
+set(_bundle_executables "${QT_DEPLOY_PREFIX}/$<TARGET_FILE_NAME:h5reader>")
+set(_bundle_library_dirs "${QT_DEPLOY_PREFIX}/lib")
+set(_bundle_extra_libraries "")
+if(@_h5reader_linux_ml_enabled@)
+    set(_ml_destination "@H5READER_EXPERIMENTAL_SHIELDING_ML_INSTALL_DIR@")
+    qt_deploy_runtime_dependencies(
+        EXECUTABLE "@H5READER_EXPERIMENTAL_SHIELDING_ML_ROOT@/infer"
+        ADDITIONAL_LIBRARIES "@_h5reader_linux_ml_libraries@"
+        LIB_DIR "${_ml_destination}/lib"
+        NO_PLUGINS NO_TRANSLATIONS
+        PRE_EXCLUDE_REGEXES ${_host_libraries}
+        POST_EXCLUDE_REGEXES ${_host_paths})
+    list(APPEND _bundle_executables "${QT_DEPLOY_PREFIX}/${_ml_destination}/infer")
+    list(APPEND _bundle_library_dirs "${QT_DEPLOY_PREFIX}/${_ml_destination}/lib")
+    file(GLOB _bundle_extra_libraries "${QT_DEPLOY_PREFIX}/${_ml_destination}/lib/*.so*")
+endif()
+
+# Libraries built outside Qt may carry absolute development paths or no RUNPATH
+# at all. Normalize every copied ELF, so transitive dependencies also resolve
+# inside the relocated bundle without relying on the development workstation.
+function(_h5reader_set_runtime_path _file _rpath)
+    if(IS_SYMLINK "${_file}")
+        return()
+    endif()
+    file(READ "${_file}" _magic LIMIT 4 HEX)
+    if(NOT _magic STREQUAL "7f454c46")
+        return()
+    endif()
+    execute_process(COMMAND "@H5READER_PATCHELF_EXECUTABLE@"
+        --set-rpath "${_rpath}" "${_file}"
+        RESULT_VARIABLE _patch_result ERROR_VARIABLE _patch_error)
+    if(NOT _patch_result EQUAL 0)
+        message(FATAL_ERROR "Could not set Linux runtime path for ${_file}: ${_patch_error}")
+    endif()
+endfunction()
+foreach(_library_dir IN LISTS _bundle_library_dirs)
+    file(GLOB _libraries "${_library_dir}/*.so*")
+    foreach(_library IN LISTS _libraries)
+        _h5reader_set_runtime_path("${_library}" "$ORIGIN")
+    endforeach()
+endforeach()
+file(GLOB_RECURSE _bundle_plugins "${QT_DEPLOY_PREFIX}/plugins/*.so")
+foreach(_plugin IN LISTS _bundle_plugins)
+    get_filename_component(_plugin_dir "${_plugin}" DIRECTORY)
+    file(RELATIVE_PATH _relative_lib "${_plugin_dir}" "${QT_DEPLOY_PREFIX}/lib")
+    _h5reader_set_runtime_path("${_plugin}" "$ORIGIN/${_relative_lib}")
+endforeach()
+foreach(_executable IN LISTS _bundle_executables)
+    _h5reader_set_runtime_path("${_executable}" "$ORIGIN/lib")
+endforeach()
+
+foreach(_required IN ITEMS qt.conf plugins/platforms/libqxcb.so
+        plugins/multimedia/libffmpegmediaplugin.so lib/libssl.so.3 lib/libcrypto.so.3)
+    if(NOT EXISTS "${QT_DEPLOY_PREFIX}/${_required}")
+        message(FATAL_ERROR "The Linux runtime bundle is missing ${_required}")
+    endif()
+endforeach()
+
+# Qt's generic deployer reports unresolved dependencies only in verbose output.
+# Make incomplete packages fail the install instead. Resolve from the installed
+# files, then ensure every non-host dependency's SONAME is present in the bundle.
+# Every library's relative RUNPATH was set above, including system dependencies.
+file(GET_RUNTIME_DEPENDENCIES
+    EXECUTABLES ${_bundle_executables}
+    LIBRARIES ${_bundle_extra_libraries}
+    MODULES ${_bundle_plugins}
+    DIRECTORIES ${_bundle_library_dirs}
+    PRE_EXCLUDE_REGEXES ${_host_libraries}
+    POST_EXCLUDE_REGEXES ${_host_paths}
+    RESOLVED_DEPENDENCIES_VAR _resolved
+    UNRESOLVED_DEPENDENCIES_VAR _unresolved
+    CONFLICTING_DEPENDENCIES_PREFIX _conflicting)
+if(_unresolved)
+    message(FATAL_ERROR "Unresolved Linux runtime dependencies: ${_unresolved}")
+endif()
+foreach(_soname IN LISTS _conflicting_FILENAMES)
+    set(_previous_hash "")
+    foreach(_candidate IN LISTS _conflicting_${_soname})
+        file(SHA256 "${_candidate}" _candidate_hash)
+        if(_previous_hash AND NOT _previous_hash STREQUAL _candidate_hash)
+            message(FATAL_ERROR "Conflicting Linux libraries for ${_soname}: ${_conflicting_${_soname}}")
+        endif()
+        set(_previous_hash "${_candidate_hash}")
+    endforeach()
+endforeach()
+foreach(_dependency IN LISTS _resolved)
+    get_filename_component(_soname "${_dependency}" NAME)
+    set(_found FALSE)
+    foreach(_directory IN LISTS _bundle_library_dirs)
+        if(EXISTS "${_directory}/${_soname}")
+            set(_found TRUE)
+            break()
+        endif()
+    endforeach()
+    string(FIND "${_dependency}" "${QT_DEPLOY_PREFIX}/" _bundle_prefix_position)
+    if(NOT _found OR NOT _bundle_prefix_position EQUAL 0)
+        message(FATAL_ERROR "Linux dependency was resolved outside the bundle but not packaged: ${_dependency}")
+    endif()
+endforeach()
+message(STATUS "Linux runtime bundle validated at ${QT_DEPLOY_PREFIX}")

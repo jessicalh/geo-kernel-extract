@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import math
+import os
+import sys
 import time
 from pathlib import Path
 
@@ -21,7 +22,7 @@ EXPECT_SUCCESS_ENV = "H5READER_EXPECT_ML_SUCCESS"
 EXPECT_INPUT_FAILURE_ENV = "H5READER_EXPECT_ML_INPUT_FAILURE"
 
 
-REQUIRED_RUNTIME_FILES = (
+WINDOWS_REQUIRED_RUNTIME_FILES = (
     "model.ts",
     "manifest.json",
     "infer.exe",
@@ -32,6 +33,22 @@ REQUIRED_RUNTIME_FILES = (
     "libiomp5md.dll",
     "libiompstubs5md.dll",
     "uv.dll",
+)
+
+LINUX_REQUIRED_RUNTIME_FILES = (
+    "model.ts",
+    "manifest.json",
+    "infer",
+    "lib/libc10.so",
+    "lib/libtorch.so",
+    "lib/libtorch_cpu.so",
+    "lib/libtorch_global_deps.so",
+)
+
+REQUIRED_RUNTIME_FILES = (
+    LINUX_REQUIRED_RUNTIME_FILES
+    if sys.platform == "linux"
+    else WINDOWS_REQUIRED_RUNTIME_FILES
 )
 
 REQUIRED_ROCM_FILES = (
@@ -57,10 +74,12 @@ def _dev_runtime_present() -> bool:
     helper = Path(os.environ.get(HELPER_ENV, ""))
     if not all(path.is_file() for path in (model, manifest, helper)):
         return False
+    if sys.platform == "linux" and not os.access(helper, os.X_OK):
+        return False
     return all(
         (helper.parent / name).is_file()
         for name in REQUIRED_RUNTIME_FILES
-        if name not in {"model.ts", "manifest.json", "infer.exe"}
+        if name not in {"model.ts", "manifest.json", "infer", "infer.exe"}
     )
 
 
@@ -69,10 +88,13 @@ def _installed_runtime_present() -> bool:
     if not binary.is_file():
         return False
     runtime = binary.parent / "ml" / "experimental_shielding_ml"
+    if not all((runtime / name).is_file() for name in REQUIRED_RUNTIME_FILES):
+        return False
+    if sys.platform == "linux":
+        return os.access(runtime / "infer", os.X_OK)
     rocm = runtime / "rocm"
     return (
-        all((runtime / name).is_file() for name in REQUIRED_RUNTIME_FILES)
-        and all((rocm / name).is_file() for name in REQUIRED_ROCM_FILES)
+        all((rocm / name).is_file() for name in REQUIRED_ROCM_FILES)
         and (rocm / "rocblas" / "library" / "TensileLibrary_lazy_gfx1151.dat").is_file()
         and (rocm / "hipblaslt" / "library").is_dir()
     )
@@ -91,6 +113,22 @@ def _enabled(name: str) -> bool:
     return os.environ.get(name, "").lower() not in {"", "0", "false", "no"}
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _require_acceptance_inputs():
+    """Required acceptance must not pass because the REST fixture skips setup."""
+    if not _enabled(EXPECT_SUCCESS_ENV):
+        return
+    for name in ("H5READER_BINARY", "H5READER_REST_FIXTURE"):
+        value = os.environ.get(name, "")
+        if not value or not Path(value).exists():
+            pytest.fail(f"required ML acceptance needs an existing {name}; got {value!r}")
+    if _expect_stale_dev_fallback():
+        if not _installed_runtime_present():
+            pytest.fail("required ML acceptance needs the installed experimental shielding ML runtime")
+    elif not _runtime_present():
+        pytest.fail("required ML acceptance needs the experimental shielding ML runtime")
+
+
 def _device_preference() -> str:
     preference = os.environ.get(DEVICE_ENV, "").strip().lower()
     return preference if preference in {"cpu", "rocm"} else "auto"
@@ -107,7 +145,9 @@ def _find_tree_node(nodes, field: str):
 
 
 @pytest.mark.skipif(
-    not _expect_stale_dev_fallback() and not _runtime_present(),
+    not _enabled(EXPECT_SUCCESS_ENV)
+    and not _expect_stale_dev_fallback()
+    and not _runtime_present(),
     reason="experimental shielding ML runtime is not present",
 )
 def test_experimental_shielding_ml_runtime_manifest_is_reported(rest):
@@ -125,8 +165,9 @@ def test_experimental_shielding_ml_runtime_manifest_is_reported(rest):
         assert ml["inferenceError"].endswith(" is absent")
     preference = _device_preference()
     assert ml["devicePreference"] == preference
-    assert ml["configuredDevice"] == ("cpu" if preference == "cpu" else "rocm")
-    assert ml["cpuFallbackConfigured"] is (preference == "auto")
+    linux_cpu = sys.platform == "linux"
+    assert ml["configuredDevice"] == ("cpu" if linux_cpu or preference == "cpu" else "rocm")
+    assert ml["cpuFallbackConfigured"] is (not linux_cpu and preference == "auto")
     assert ml["runtime"] in {"development", "installed"}
     if _expect_stale_dev_fallback():
         assert ml["runtime"] == "installed"
@@ -207,6 +248,11 @@ def test_experimental_shielding_ml_produces_a_dashboard_sample(rest):
         expected_active_device = os.environ.get(EXPECT_ACTIVE_DEVICE_ENV, "").lower()
         if expected_active_device:
             assert ml["activeDevice"] == expected_active_device
+        if sys.platform == "linux":
+            assert ml["configuredDevice"] == "cpu"
+            assert ml["activeDevice"] == "cpu"
+            assert ml["cpuFallbackConfigured"] is False
+            assert ml["usingCpuFallback"] is False
         expect_cpu_fallback = os.environ.get(EXPECT_CPU_FALLBACK_ENV, "").lower() not in {
             "",
             "0",

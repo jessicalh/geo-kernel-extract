@@ -37,7 +37,8 @@ function(h5reader_apply_build_type_settings target)
             -fno-omit-frame-pointer
             -fsanitize=address
             -fsanitize=undefined)
-        target_link_options(${target} PRIVATE
+        # Consumers of the instrumented static core must link the runtimes too.
+        target_link_options(${target} PUBLIC
             -fsanitize=address
             -fsanitize=undefined)
         target_compile_definitions(${target} PRIVATE

@@ -22,9 +22,11 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(H5READER_SHARED_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
 
-if(WIN32)
+if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML
         "Require and package the Experimental Shielding ML model/runtime" ON)
+endif()
+if(WIN32)
     option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML_ROCM
         "Require and package the native ROCm Experimental Shielding ML runtime" ON)
 endif()
@@ -904,14 +906,20 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
             "${H5READER_F006_STATIC_FIXTURE_DEFAULT}")
     else()
         set(H5READER_REST_FIXTURE_DEFAULT
-            "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
-            CACHE PATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+            "" CACHE FILEPATH "Trajectory .LGS for the REST smoke test")
+        set(H5READER_F006_STATIC_FIXTURE_DEFAULT
+            "" CACHE FILEPATH "Complete July full720 single-pose fixture for F006 inference tests")
         set(H5READER_REST_RELOAD_FIXTURE_DEFAULT
-            "${H5READER_REST_FIXTURE_DEFAULT}")
+            "${H5READER_REST_FIXTURE_DEFAULT}"
+            CACHE FILEPATH "Second .LGS used to verify changing runs")
     endif()
     if(TARGET h5reader_trajectory_library_tests)
         set_tests_properties(h5reader_trajectory_library_tests PROPERTIES
             ENVIRONMENT "H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}")
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET h5reader_ring_current_case_tests)
+        set_property(TEST h5reader_ring_current_case_tests APPEND PROPERTY
+            ENVIRONMENT "H5READER_RINGCURRENT_VET_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}")
     endif()
     add_test(NAME h5reader_rest_smoke
              COMMAND ${Python3_EXECUTABLE} -m pytest
@@ -1002,6 +1010,36 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         endif()
     endif()
 
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
+        foreach(_ml_test IN ITEMS cpu installed_ml_stale_dev_env)
+            if(_ml_test STREQUAL "cpu")
+                set(_ml_test_name h5reader_rest_ml_cpu)
+                set(_ml_dev_env
+                    "H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=")
+            else()
+                set(_ml_test_name h5reader_rest_installed_ml_stale_dev_env)
+                set(_ml_dev_env
+                    "H5READER_EXPECT_STALE_DEV_ML_FALLBACK=1;H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL=${CMAKE_CURRENT_BINARY_DIR}/missing-ml/model.ts;H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST=${CMAKE_CURRENT_BINARY_DIR}/missing-ml/manifest.json;H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER=${CMAKE_CURRENT_BINARY_DIR}/missing-ml/infer")
+            endif()
+            add_test(NAME ${_ml_test_name}
+                COMMAND ${Python3_EXECUTABLE} -m pytest
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest/test_experimental_shielding_ml_runtime.py
+                    -v --tb=short)
+            set_tests_properties(${_ml_test_name} PROPERTIES
+                ENVIRONMENT
+                    "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_F006_STATIC_FIXTURE_DEFAULT};H5READER_EXPECT_ML_SUCCESS=1;H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE=cpu;H5READER_EXPECT_ML_ACTIVE_DEVICE=cpu;H5READER_REST_STARTUP_TIMEOUT=300;CUDA_VISIBLE_DEVICES=-1;HIP_VISIBLE_DEVICES=-1;ROCR_VISIBLE_DEVICES=-1;${_ml_dev_env}"
+                LABELS "rest;e2e;ml;cpu"
+                TIMEOUT 300
+                RESOURCE_LOCK h5reader_model_input_fixture)
+        endforeach()
+    endif()
+
+    if(NOT WIN32)
+        set(H5READER_CHIGNOLIN_FIXTURE_DEFAULT "" CACHE FILEPATH
+            "Chignolin/CLN025 dense-DFT .LGS for REST fixture smoke")
+        set(H5READER_TRPCAGE_FIXTURE_DEFAULT "" CACHE FILEPATH
+            "Trp-cage dense-DFT .LGS for REST fixture smoke")
+    endif()
     set(H5READER_CHIGNOLIN_FIXTURE_DEFAULT
         "C:/projects/reader-data/chignolin-oneoff/chignolin-july20260717.LGS"
         CACHE FILEPATH "Optional chignolin/CLN025 dense-DFT .LGS for REST fixture smoke")
@@ -1037,6 +1075,13 @@ install(TARGETS h5reader
     RUNTIME DESTINATION .
     COMPONENT Runtime
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(DeployLinux)
+    configure_file(cmake/LaunchLinuxCpu.sh.in launch-h5reader-cpu @ONLY)
+    install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/launch-h5reader-cpu"
+        DESTINATION . COMPONENT Runtime)
+endif()
 
 if(MSVC)
     install(FILES "$<TARGET_PDB_FILE:h5reader>"

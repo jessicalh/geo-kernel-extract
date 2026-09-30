@@ -1,6 +1,6 @@
 {
     "version": 3,
-    "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+    "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
 
     "configurePresets": [
         {
@@ -14,7 +14,7 @@
             "name": "linux-base",
             "hidden": true,
             "inherits": "base",
-            "displayName": "Linux base (Qt 6.4 apt, VTK 9.5 ~/VTK, HDF5 1.10 apt)",
+            "displayName": "Linux base (Qt 6.10 OSS, VTK built against the same Qt, HDF5)",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",

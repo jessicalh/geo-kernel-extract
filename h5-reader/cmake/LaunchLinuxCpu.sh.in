@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+bundle_dir=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd -P)
+# Explicit software mode for hosts whose accelerator is busy with other work.
+exec env CUDA_VISIBLE_DEVICES=-1 HIP_VISIBLE_DEVICES=-1 ROCR_VISIBLE_DEVICES=-1 \
+    H5READER_EXPERIMENTAL_SHIELDING_ML_DEVICE=cpu \
+    LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+    __GLX_VENDOR_LIBRARY_NAME=mesa QT_QPA_PLATFORM=xcb \
+    QT_OPENGL=software QT_QUICK_BACKEND=software \
+    QT_FFMPEG_ENCODING_HW_DEVICE_TYPES=, QT_FFMPEG_DECODING_HW_DEVICE_TYPES=, \
+    QT_DISABLE_HW_TEXTURES_CONVERSION=1 \
+    "$bundle_dir/launch-h5reader" "$@"

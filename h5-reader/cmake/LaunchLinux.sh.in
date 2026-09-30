@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+# Preserve display/rendering/device choices, but discard foreign runtime paths.
+unset LD_LIBRARY_PATH LD_PRELOAD QT_PLUGIN_PATH QT_QPA_PLATFORM_PLUGIN_PATH
+unset QML_IMPORT_PATH QML2_IMPORT_PATH QT_CONF_PATH QT_QPA_PLATFORMTHEME
+unset QT_STYLE_OVERRIDE QT_QPA_GENERIC_PLUGINS
+bundle_dir=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd -P)
+LD_LIBRARY_PATH="$bundle_dir/lib"
+QT_PLUGIN_PATH="$bundle_dir/plugins"
+QT_QPA_PLATFORM_PLUGIN_PATH="$bundle_dir/plugins/platforms"
+export LD_LIBRARY_PATH QT_PLUGIN_PATH QT_QPA_PLATFORM_PLUGIN_PATH
+
+exec "$bundle_dir/h5reader" "$@"
