@@ -32,11 +32,13 @@ if [ -z "$source_root" ]; then
 fi
 [ -d "$source_root" ] || fail 'The source drive is not available.'
 source_root=$(CDPATH= cd -- "$source_root" && pwd -P)
+[ "$source_root" != / ] || fail 'Choose the data drive directory, not the whole host filesystem.'
 case "$workspace" in /*) ;; *) fail 'The workspace must be an absolute path.' ;; esac
 case "$source_root$workspace" in *:*|*,*) fail 'Source and workspace paths cannot contain a colon or comma.' ;; esac
 # Resolve existing ancestors before creating anything: a workspace link into the
 # source drive must not turn a read-only browsing session into archive writes.
 workspace=$(realpath -m -- "$workspace")
+[ "$workspace" != / ] || fail 'Choose a dedicated local workspace directory.'
 case "$workspace/" in "$source_root/"*) fail 'Choose a writable workspace outside the source drive.' ;; esac
 case "$source_root/" in "$workspace/"*) fail 'Choose a workspace that does not contain the source drive.' ;; esac
 mkdir -p -- "$workspace" || fail 'Cannot create the local workspace.'

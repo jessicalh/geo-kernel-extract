@@ -32,8 +32,10 @@ done
 case "$backend" in auto|apptainer|singularity) ;; *) fail_early 'Unknown container backend.' ;; esac
 package_dir=$(CDPATH= cd -- "$package_dir" && pwd -P) || fail_early 'Package directory is unavailable.'
 source_root=$(realpath -m -- "$package_dir/../..")
+[ "$source_root" != / ] || fail_early 'Place the Reader package within its data-drive directory.'
 case "$workspace" in /*) ;; *) fail_early 'Workspace must be an absolute local path.' ;; esac
 workspace=$(realpath -m -- "$workspace")
+[ "$workspace" != / ] || fail_early 'Choose a dedicated local workspace directory.'
 case "$workspace/" in "$source_root/"*) fail_early 'Workspace must be outside the source drive.' ;; esac
 case "$source_root/" in "$workspace/"*) fail_early 'Workspace must not contain the source drive.' ;; esac
 case "$workspace$package_dir" in *:*|*,*) fail_early 'Paths cannot contain a colon or comma.' ;; esac
