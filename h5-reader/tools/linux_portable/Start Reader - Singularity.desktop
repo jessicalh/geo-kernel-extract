@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=H5 Reader - Singularity (CPU)
+Comment=Run Reader with this computer's Singularity command
+Exec=/bin/sh -c "desktop=\\${1:-\\${GIO_LAUNCHED_DESKTOP_FILE:-}}; [ -n \\"\\$desktop\\" ] || { echo \\"This older gio CLI omits the desktop path. Open this launcher from the file manager, or run start-reader.sh.\\" >&2; exit 1; }; exec /bin/sh \\"\\$(dirname \\"\\$desktop\\")/start-reader.sh\\" --backend singularity" sh %k
+Icon=applications-science
+Terminal=false
+Categories=Science;
+StartupNotify=true

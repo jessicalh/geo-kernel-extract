@@ -168,7 +168,7 @@ def main() -> None:
             report["renderer"] = next(line for line in log_text.splitlines() if "OpenGL renderer string:" in line)
             report["backend"] = re.search(r"H5READER_PORTABLE_BACKEND=(\w+)", log_text).group(1)
             report["local_runtime_extracted"] = any((args.workspace / "runtime").iterdir())
-            if report["backend"] == "apptainer":
+            if report["backend"] in ("apptainer", "singularity"):
                 assert report["local_runtime_extracted"] is False
                 assert report["source_mount_options"] and "ro" in report["source_mount_options"].split(",")
                 report["source_bind_read_only"] = True

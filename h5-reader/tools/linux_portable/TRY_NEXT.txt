@@ -1,0 +1,76 @@
+Reader launch choices
+=====================
+
+All choices open trajectory files directly from this drive. None copies
+datasets. All use the CPU, including rendering and model inference.
+
+1. Start Reader - Singularity.desktop
+-------------------------------------
+Use this on the advisor's Singularity computer. It selects the installed
+singularity command (version 3.7 or newer) and reads Reader's compressed
+application image directly from the drive. The drive is mounted read-only
+inside the container. There is no large application setup on the computer.
+
+2. Start Reader - Apptainer.desktop
+-----------------------------------
+Use this where Apptainer is installed (version 1.0 or newer). It explicitly
+selects the apptainer command and runs the same image with the same read-only
+drive access. It also avoids a large application setup.
+
+These named shortcuts use software already provided by the computer; they do
+not install either container engine. On some systems both command names refer
+to the same installed engine. If one name is unavailable, try the other.
+
+If the university supplies either engine through environment modules, load
+its normal site module in a terminal, then use the corresponding command:
+
+  /bin/sh /path/to/01_Reader/Linux/start-reader.sh --backend singularity
+  /bin/sh /path/to/01_Reader/Linux/start-reader.sh --backend apptainer
+
+3. Start Reader - compatibility mode.desktop
+--------------------------------------------
+Try this if the site's container engines are unavailable or will not start
+Reader. It selects the bundled PRoot runtime independently of Singularity
+and Apptainer.
+
+Reader is still on your drive. This alternative needs a compatible application
+runtime on the computer: about 1.3 GB of application software, unpacked once
+under ~/.local/share/h5reader-portable. The first window explains this and
+offers Set up Reader / Cancel. You can also cancel during setup. Later launches
+reuse the application. Trajectories remain on the drive and open directly.
+
+This alternative needs permission to use ptrace and local storage that permits
+program execution. It can work when the container route is unavailable, but a
+managed computer may restrict it too. PRoot cannot enforce a read-only drive
+mount; Reader's normal viewing workflow opens the trajectory data for reading.
+
+The equivalent terminal command is:
+
+  /bin/sh /path/to/01_Reader/Linux/start-reader.sh --backend proot
+
+Automatic choice
+----------------
+The plain Start Reader.desktop shortcut chooses Apptainer if installed,
+otherwise Singularity, otherwise the explained PRoot setup. If an installed
+container engine fails, it reports the failure; use another named shortcut
+to try a different engine.
+
+If a launcher will not open
+--------------------------
+Some desktops require one "Allow launching" action on a .desktop file. The
+/bin/sh commands above also work when the drive does not permit direct script
+execution. Launch from an X11 or XWayland desktop session.
+
+Open Check compatibility.desktop to create a small report of the computer's
+container and Qt/X11 startup checks. It uses synthetic files only and sends
+nothing anywhere. To check one engine specifically, run:
+
+  /bin/sh /path/to/01_Reader/Linux/check-compatibility.sh --backend singularity
+  /bin/sh /path/to/01_Reader/Linux/check-compatibility.sh --backend apptainer
+
+Reports and Reader's log are in ~/.local/share/h5reader-portable/state/.
+The report identifies missing engines, an old version, site policy or display
+startup errors. It tests the container route; it does not install PRoot.
+Keep the report and reader.log for diagnosis. To use another local SSD for
+application state/setup, set H5READER_WORKSPACE to an absolute directory outside
+this drive before starting the launcher.

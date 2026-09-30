@@ -7,8 +7,9 @@ All 176 drive trajectories appear in the existing Reader selection interface.
 Selecting Open reads the existing LGS, HDF, NPY and DFT files directly. The
 portable viewer has no dataset-copy controls, copy API or cache fallback.
 The optional compatibility setup copies application software only, after an
-explanation and confirmation. Apptainer is the preferred route and reads the
-SIF image directly from the drive without that setup.
+explanation and confirmation. Singularity and Apptainer each have an explicit launcher and read the
+shared SIF image directly from the drive without that setup. A third launcher
+selects the independent PRoot compatibility mode.
 
 Scope and platform boundary
 ---------------------------
@@ -52,6 +53,33 @@ Rendering: llvmpipe (LLVM 20.1.2). No GPU computation was requested.
 The optional fallback setup GUI was tested for cancellation before setup and
 during extraction. Both exited with no extracted runtime or worker leftovers.
 
+Older Linux compatibility validation
+------------------------------------
+AlmaLinux 8.10: actual kernel 4.18.0-553.16.1, host glibc 2.28,
+SingularityCE 3.8.4 (released October 2021), Haswell CPU feature mask.
+Full Reader acceptance passed: Qt/VTK rendering, CPU inference with the same
+29.76103401184082 reference result, all 176 selector entries, opening BMRB 7057,
+100 frames and navigation to frame 99, source read-only, hashes unchanged,
+no trajectory copies and no local application extraction. This used an actual
+KVM guest kernel, not an older userspace container on a newer host kernel.
+
+The same final package also passed fresh explicit Apptainer and PRoot runs on
+the development host. Both verified CPU inference, rendering, all 176 entries,
+direct trajectory navigation and 26,878 scientific fixture files unchanged.
+PRoot extracted application software only into its fresh local workspace.
+
+Memory observation: the initial 4 GiB VM rendered successfully but the optional
+CPU model could not allocate a roughly 4 GB tensor. Full inference passed with
+a 12 GiB VM. This is an observed fixture requirement, not a universal minimum;
+model memory depends on the selected protein. Basic viewing is separate.
+
+Explicit engine shortcuts, the automatic launcher, fallback setup explanation,
+and a local compatibility-report shortcut accompany the package. The checker
+uses synthetic data only, tests source read-only binding and Qt/X11 startup,
+and reports runtime/version, display and policy failures without unpacking the
+fallback or accessing trajectory files. Scripts support the older Singularity
+CLI; they do not assume recent Apptainer-only options.
+
 Evidence on the staging SSD
 ---------------------------
 Root: /mnt/trajectories/h5-reader-portable-staging-20260930
@@ -63,6 +91,10 @@ Root: /mnt/trajectories/h5-reader-portable-staging-20260930
   runtime-work/acceptance-final-apptainer/direct-trajectory.png
   runtime-work/desktop-final-proof.json
   runtime-work/setup-cancellation-proof.json
+  runtime-work/acceptance-latest-apptainer/report.json
+  runtime-work/acceptance-latest-proot/report.json
+  compatibility/results/el8-singularity-3.8.4-12gb/report.json
+  compatibility/results/el8-singularity-3.8.4-12gb/selector.png
 
 The generated runtime-manifest.json records Reader/catalog/image hashes.
 Staged numerical fixtures came from pre-existing home/shared acceptance data.
@@ -72,6 +104,6 @@ Remaining deployment checks
 ---------------------------
 Installation onto the real drive requires the user's explicit go. Afterwards,
 check source paths and representative real-drive datasets in the final layout.
-The advisor's actual CentOS/RHEL variant, Apptainer/site policies and desktop
+The advisor's actual CentOS/RHEL variant, container site policies and desktop
 launch trust settings still need a machine-level acceptance run. Unknown host
 glibc does not need to be copied into or used by the image.

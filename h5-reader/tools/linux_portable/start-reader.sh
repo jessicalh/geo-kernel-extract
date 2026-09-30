@@ -65,7 +65,8 @@ elif [ "$backend" = auto ]; then
     fi
 fi
 if [ -n "$container_runtime" ]; then
-    [ -f "$payload/reader.sif" ] || fail 'The Apptainer image is missing from this package.'
+    container_name=${container_runtime##*/}
+    [ -f "$payload/reader.sif" ] || fail 'The Reader container image is missing from this package.'
     xauthority_file=${XAUTHORITY:-$HOME/.Xauthority}
     if [ -r "$xauthority_file" ]; then
         cp -- "$xauthority_file" "$workspace/run/Xauthority"
@@ -84,9 +85,9 @@ if [ -n "$container_runtime" ]; then
     # --containall replaces /tmp with this work directory. Create the socket
     # bind target there before Apptainer applies the nested X11 bind.
     mkdir -p "$workspace/tmp/apptainer/tmp/.X11-unix"
-    printf '%s\n' 'H5READER_PORTABLE_BACKEND=apptainer' >&2
-    if "$container_runtime" exec --cleanenv --containall --no-home \
-        --no-mount hostfs,bind-paths,cwd,home,sys --pwd /workspace/output \
+    printf 'H5READER_PORTABLE_BACKEND=%s\n' "$container_name" >&2
+    if "$container_runtime" exec --cleanenv --containall --no-home --no-nv --no-rocm \
+        --no-mount hostfs,cwd,home,sys --pwd /workspace/output \
         --workdir "$workspace/tmp/apptainer" \
         --bind "$source_root:/provenance:ro" --bind "$workspace:/workspace:rw" \
         --bind "$workspace/state/machine-id:/etc/machine-id:ro" \
@@ -95,9 +96,9 @@ if [ -n "$container_runtime" ]; then
         "$payload/reader.sif" /opt/h5reader/guest-start.sh "$@"; then
         exit 0
     fi
-    fail "Apptainer could not run Reader. Details are in $workspace/state/reader.log. The optional PRoot fallback is available with --backend proot."
+    fail "$container_name could not run Reader. Details are in $workspace/state/reader.log. The optional PRoot fallback is available with --backend proot."
 elif [ "$backend" = apptainer ] || [ "$backend" = singularity ]; then
-    fail 'Apptainer/Singularity is not available on this computer.'
+    fail "$backend is not available in this session. Use another Reader launcher, or load the site's $backend module in a terminal."
 fi
 [ -r "$payload/SHA256SUMS" ] || fail 'The portable runtime is incomplete.'
 runtime_id=$(sed -n 's/  reader-userspace.tar.gz$//p' "$payload/SHA256SUMS")

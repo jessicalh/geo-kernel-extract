@@ -132,9 +132,12 @@ def main() -> None:
         f"{manifest['runtime_sha256']}  reader-userspace.tar.gz\n"
         f"{manifest['proot_sha256']}  proot-x86_64\n")
     (payload / "reader.sif.sha256").write_text(f"{manifest['sif_sha256']}  reader.sif\n")
-    for filename in ("start-reader.sh", "Start Reader.desktop", "README.txt"):
+    for filename in ("start-reader.sh", "Start Reader.desktop", "check-compatibility.sh",
+                     "Check compatibility.desktop", "Start Reader - compatibility mode.desktop",
+                     "Start Reader - Singularity.desktop", "Start Reader - Apptainer.desktop",
+                     "README.txt", "TRY_NEXT.txt"):
         shutil.copy2(templates / filename, output / filename)
-        (output / filename).chmod(0o644 if filename == "README.txt" else 0o755)
+        (output / filename).chmod(0o644 if filename.endswith(".txt") else 0o755)
     print(json.dumps({"output": str(output), "archive_bytes": archive.stat().st_size,
                       "runtime_sha256": manifest["runtime_sha256"]}, indent=2))
 

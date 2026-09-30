@@ -4,6 +4,11 @@ H5 Reader for the external trajectory drive
 Open "Start Reader.desktop" in 01_Reader/Linux/. Some desktops require one
 "Allow launching" action. Reader lists all 176 trajectories and opens their
 existing files directly from the drive. It does not copy trajectory datasets.
+"Start Reader - Singularity.desktop" selects the installed singularity command.
+"Start Reader - Apptainer.desktop" selects the installed apptainer command.
+"Start Reader - compatibility mode.desktop" selects the bundled PRoot runtime.
+TRY_NEXT.txt explains these choices. The plain Start Reader.desktop shortcut
+automatically chooses Apptainer, then Singularity, then the explained fallback.
 
 Apptainer / Singularity (preferred)
 ----------------------------------
@@ -21,10 +26,38 @@ The default workspace is ~/.local/share/h5reader-portable. To use another SSD:
 
 Workspace and source drive must be separate, non-overlapping directories.
 The image uses CPU rendering and CPU inference. GPU devices are not requested.
-Requirements: x86_64 Linux, X11 or XWayland, a functioning Apptainer/Singularity
-installation, and site policy permitting the required binds. The host kernel
+Requirements: x86_64 Linux, X11 or XWayland, a functioning Apptainer 1.0+ or
+Singularity 3.7+ installation, and site policy permitting the required binds.
+The launcher explicitly disables NVIDIA/ROCm integration, including site defaults.
+The host kernel
 and container setup still require acceptance on the advisor's actual machine;
 no particular RHEL or CentOS installation is claimed tested in advance.
+
+Checking the advisor's computer
+-------------------------------
+Open "Check compatibility.desktop", or run:
+
+  /bin/sh /path/to/01_Reader/Linux/check-compatibility.sh
+
+Add --backend singularity or --backend apptainer to check that exact command.
+
+This quick check runs the actual image and Reader's version-only Qt/X11 startup.
+It uses tiny synthetic files to verify a read-only source bind and a writable
+local workspace. It does not open trajectories, unpack the fallback application,
+install anything or send the report anywhere. Its report is saved under the local
+workspace's state/ directory. --workspace /absolute/local/path selects another
+local workspace; --report /absolute/local/file.txt chooses the report filename.
+The report records host/kernel, distribution, host glibc, container version,
+display availability, each result and the exact runtime/Qt error if one occurs.
+
+Host glibc does not need to match the application's glibc: the image contains
+its own. The host kernel, container installation and site policy still matter.
+The check exercises these together instead of guessing from a distribution name.
+It does not replace a full trajectory/rendering/inference acceptance session.
+If a site provides Singularity through environment modules, load its module in
+a terminal and run the check from that terminal. Profiles and modules are never
+loaded automatically. A terminal-only session without DISPLAY can check the
+container and mounts; Qt/X11 must then be checked from the desktop session.
 
 Optional PRoot fallback
 -----------------------
@@ -37,8 +70,9 @@ stay on the drive and open directly. This fallback needs ptrace permission
 and local storage that permits program execution. PRoot is a compatibility
 runtime, not a security sandbox, and cannot enforce a read-only source mount.
 
-Use --backend proot to request the fallback, or --backend apptainer to require
-Apptainer. Container launch failures are reported; they do not silently trigger
+Open "Start Reader - compatibility mode.desktop" or use --backend proot to
+request the fallback. Use --backend apptainer to require Apptainer.
+Container launch failures are reported; they do not silently trigger
 a large fallback installation. Fallback setup needs zenity, kdialog, xmessage,
 or an interactive terminal to obtain confirmation. --non-interactive-setup is
 an explicit developer acceptance option only.
@@ -88,5 +122,7 @@ Reader arguments may be passed after the shell launcher's -- separator.
 References:
   https://apptainer.org/docs/user/latest/build_a_container.html
   https://apptainer.org/docs/user/latest/bind_paths_and_mounts.html
+  https://apptainer.org/docs/admin/latest/installation.html
+  https://doc.qt.io/qt-6.10/supported-platforms.html
   https://proot-me.github.io/
   https://specifications.freedesktop.org/desktop-entry/latest-single/
