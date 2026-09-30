@@ -3,6 +3,7 @@ Reader launch choices
 
 All choices open trajectory files directly from this drive. None copies
 datasets. All use the CPU, including rendering and model inference.
+ON_THE_DESK.txt gives the launch order and fixes to try during the visit.
 
 1. Start Reader - Singularity.desktop
 -------------------------------------
@@ -18,6 +19,11 @@ If none is installed and this package includes the carried engine, a first-time
 window offers to prepare about 163 MB of container-engine software locally.
 The Reader image and trajectories remain on the drive. Later launches reuse
 the engine. You can cancel and try compatibility mode instead.
+
+If installed Apptainer is present but fails, use
+Start Reader - bundled Apptainer.desktop to explicitly select our carried
+engine. Its terminal option is --backend bundled-apptainer. This also works
+with check-compatibility.sh after the engine has been prepared locally.
 
 Neither shortcut installs system packages or requires administrator access.
 The carried engine needs an EL8-compatible computer, permitted user namespaces

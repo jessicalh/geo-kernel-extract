@@ -104,6 +104,22 @@ and reports runtime/version, display and policy failures without unpacking the
 fallback or accessing trajectory files. Scripts support the older Singularity
 CLI; they do not assume recent Apptainer-only options.
 
+Single-visit rehearsal
+----------------------
+The installed Apptainer and fresh PRoot setup/viewing routes were rehearsed in
+isolated network namespaces containing loopback only and no external route.
+The development harness created that isolation; Reader ran as the ordinary
+user. Both passed rendered snapshots, all 176 entries, direct trajectory opening,
+frame 99 and unchanged hashes for 26,878 source files. PRoot prepared its complete
+application from the carried archive offline. CPU inference was already checked
+in the full runtime gates above and was not repeated for this network-only check.
+
+An explicit carried-Apptainer shortcut now bypasses even an installed, failing
+site engine. Native desktop activation proved the exact choice with both engines
+present. Missing carried payloads fail explicitly instead of selecting another
+engine. Error reporting was checked through KDialog and Xmessage without Zenity.
+ON_THE_DESK.txt gives the order to try, setup sizes and terminal alternatives.
+
 Evidence on the staging SSD
 ---------------------------
 Root: /mnt/trajectories/h5-reader-portable-staging-20260930
@@ -125,6 +141,10 @@ Root: /mnt/trajectories/h5-reader-portable-staging-20260930
   compatibility/vm/bundled-apptainer-spaced-drive-proof.txt
   compatibility/vm/bundled-apptainer-integrated-proof.txt
   runtime-work/bundled-engine-setup-proof.json
+  runtime-work/offline-apptainer/report.json
+  runtime-work/offline-proot/report.json
+  runtime-work/rehearse-offline.sh
+  runtime-work/desk-launch-1s_gh0w6/report.json
   compatibility/bundled-cache-final-review-xagswzko/report.json
 
 The generated runtime-manifest.json records Reader/catalog/image hashes.

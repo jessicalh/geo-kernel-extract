@@ -161,8 +161,9 @@ def main() -> None:
     for filename in ("start-reader.sh", "Start Reader.desktop", "check-compatibility.sh",
                      "Check compatibility.desktop", "Start Reader - compatibility mode.desktop",
                      "Start Reader - Singularity.desktop", "Start Reader - Apptainer.desktop",
+                     "Start Reader - bundled Apptainer.desktop",
                      "prepare-bundled-apptainer.sh",
-                     "README.txt", "TRY_NEXT.txt", "APPTAINER_ENGINE.txt"):
+                     "README.txt", "TRY_NEXT.txt", "ON_THE_DESK.txt", "APPTAINER_ENGINE.txt"):
         shutil.copy2(templates / filename, output / filename)
         (output / filename).chmod(0o644 if filename.endswith(".txt") else 0o755)
     print(json.dumps({"output": str(output), "archive_bytes": archive.stat().st_size,

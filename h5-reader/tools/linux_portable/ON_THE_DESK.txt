@@ -1,0 +1,71 @@
+Opening Reader on the advisor's Linux computer
+==============================================
+
+Everything needed by the carried runtimes is already in this folder. No
+download, network connection or administrator installation is part of setup.
+Trajectories always stay on the external drive and are opened in place.
+
+Try in this order
+-----------------
+1. Open Start Reader - Singularity.desktop. The advisor already uses Singularity.
+2. If that fails, try Start Reader - Apptainer.desktop.
+3. If installed Apptainer also fails, try Start Reader - bundled Apptainer.desktop.
+   This explicitly uses our carried engine, even when a site engine is installed.
+4. If container startup is blocked, try Start Reader - compatibility mode.desktop.
+   This uses the separate PRoot runtime.
+
+Allow up to three minutes for a first startup on an older machine. Wait for a
+window or error before trying the next shortcut. Once Reader opens, choose a
+trajectory, move its frame slider, and check the molecule is visible. Try the
+optional CPU prediction after basic viewing works; the model needs more memory
+than viewing alone (our full inference test passed with 12 GiB available to a VM).
+
+Application setup is explained before it happens:
+  Installed Singularity/Apptainer: no large application setup.
+  Carried Apptainer: about 163 MB of engine software copied locally once.
+  PRoot compatibility mode: about 1.3 GB of application software unpacked once.
+None of these copies trajectory data. No administrator password is needed.
+
+If clicking does nothing
+------------------------
+The desktop may require "Allow launching". Alternatively, open a terminal in
+this 01_Reader/Linux folder and run the same choices directly:
+
+  /bin/sh ./start-reader.sh --backend singularity
+  /bin/sh ./start-reader.sh --backend apptainer
+  /bin/sh ./start-reader.sh --backend bundled-apptainer
+  /bin/sh ./start-reader.sh --backend proot
+
+These commands also work when the external drive blocks direct script execution.
+If the university normally uses a module to provide Singularity, load that
+normal site module in the terminal first, then use its command above.
+
+Match the failure to the next action
+-----------------------------------
+  Missing/old container command: try the next named launcher.
+  Namespace, FUSE or container policy error: try compatibility mode.
+  Local storage cannot execute programs: select an executable local SSD workspace.
+  No space in the home directory: select another local SSD workspace.
+  Display/X11 authorization error: run from the logged-in graphical desktop,
+    as its normal user. Do not launch Reader through sudo.
+  CPU model memory error: ordinary trajectory viewing remains a separate task;
+    close memory-heavy work before retrying that optional calculation.
+
+To choose another local SSD, use an existing path without spaces, outside the
+trajectory drive (replace the example path with the real local path):
+
+  /bin/sh ./start-reader.sh --backend proot --workspace /path/on/local/ssd/reader-work
+
+Open Check compatibility.desktop for a local report, or from the terminal:
+
+  /bin/sh ./check-compatibility.sh --backend singularity --show-report
+  /bin/sh ./check-compatibility.sh --backend bundled-apptainer --show-report
+
+The carried-engine check reuses its prepared engine; prepare it with its launcher
+first if requested. The report uses synthetic files and never opens trajectories.
+Reports and reader.log live under ~/.local/share/h5reader-portable/state unless
+another workspace was chosen. Nothing is uploaded.
+
+The tested old systems are CentOS 7 and AlmaLinux 8; see ACCEPTANCE.txt. A site
+can restrict both containers and PRoot. These alternatives cannot override that
+policy. TRY_NEXT.txt describes each route; the logs show which restriction hit.

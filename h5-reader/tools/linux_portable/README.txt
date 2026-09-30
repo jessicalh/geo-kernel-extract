@@ -7,10 +7,13 @@ existing files directly from the drive. It does not copy trajectory datasets.
 "Start Reader - Singularity.desktop" selects the installed singularity command.
 "Start Reader - Apptainer.desktop" selects installed Apptainer, or offers setup
 of the carried Apptainer engine when included.
+"Start Reader - bundled Apptainer.desktop" explicitly selects the carried engine,
+even when an installed Apptainer is present but does not work.
 "Start Reader - compatibility mode.desktop" selects the bundled PRoot runtime.
 TRY_NEXT.txt explains these choices. The plain Start Reader.desktop shortcut
 automatically chooses installed Apptainer, then installed Singularity, then the
 carried engine when included, then the explained PRoot fallback.
+ON_THE_DESK.txt gives a short offline guide for the single visit.
 
 Apptainer / Singularity (preferred)
 ----------------------------------

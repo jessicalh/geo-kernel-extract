@@ -4,9 +4,14 @@ set -eu
 unset LD_LIBRARY_PATH LD_PRELOAD
 fail() {
     printf '%s\n' "H5 Reader: $*" >&2
-    if [ "${H5READER_PORTABLE_NO_DIALOG:-0}" != 1 ] && \
-            command -v zenity >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
-        env GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1 zenity --error --title='H5 Reader' --text="$*" 2>/dev/null || true
+    if [ "${H5READER_PORTABLE_NO_DIALOG:-0}" != 1 ] && [ -n "${DISPLAY:-}" ]; then
+        if command -v zenity >/dev/null 2>&1; then
+            env GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1 zenity --error --no-markup --title='H5 Reader' --text="$*" 2>/dev/null || true
+        elif command -v kdialog >/dev/null 2>&1; then
+            env LIBGL_ALWAYS_SOFTWARE=1 kdialog --title='H5 Reader' --error "$*" 2>/dev/null || true
+        elif command -v xmessage >/dev/null 2>&1; then
+            xmessage -center -title 'H5 Reader' -buttons Close:0 "H5 Reader: $*" 2>/dev/null || true
+        fi
     fi
     exit 1
 }
@@ -56,7 +61,7 @@ if [ ! -s "$workspace/state/machine-id" ]; then
 fi
 payload="$bundle_dir/payload"
 container_runtime=
-case "$backend" in auto|apptainer|singularity|proot) ;; *) fail 'Unknown runtime backend.' ;; esac
+case "$backend" in auto|apptainer|bundled-apptainer|singularity|proot) ;; *) fail 'Unknown runtime backend.' ;; esac
 if [ "$backend" = singularity ]; then
     container_runtime=$(command -v singularity || true)
 elif [ "$backend" = apptainer ]; then
@@ -65,6 +70,9 @@ elif [ "$backend" = auto ]; then
     if command -v apptainer >/dev/null 2>&1; then container_runtime=$(command -v apptainer)
     elif command -v singularity >/dev/null 2>&1; then container_runtime=$(command -v singularity)
     fi
+fi
+if [ "$backend" = bundled-apptainer ] && [ ! -f "$bundle_dir/runtime/apptainer.identity" ]; then
+    fail 'The carried Apptainer engine is missing. Try Start Reader - compatibility mode.desktop.'
 fi
 if [ -z "$container_runtime" ] && [ "$backend" != singularity ] && [ "$backend" != proot ] && \
         [ -f "$bundle_dir/runtime/apptainer.identity" ]; then

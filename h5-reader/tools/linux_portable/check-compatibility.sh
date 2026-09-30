@@ -10,7 +10,7 @@ report=
 backend=auto
 show_report=0
 usage() {
-    printf '%s\n' 'Usage: /bin/sh check-compatibility.sh [--package-dir DIR] [--workspace DIR] [--backend auto|singularity|apptainer] [--report FILE] [--show-report]'
+    printf '%s\n' 'Usage: /bin/sh check-compatibility.sh [--package-dir DIR] [--workspace DIR] [--backend auto|singularity|apptainer|bundled-apptainer] [--report FILE] [--show-report]'
 }
 fail_early() { printf 'Reader compatibility check: %s\n' "$*" >&2; exit 1; }
 while [ "$#" -gt 0 ]; do
@@ -29,7 +29,7 @@ while [ "$#" -gt 0 ]; do
         *) usage >&2; fail_early "Unknown option: $1" ;;
     esac
 done
-case "$backend" in auto|apptainer|singularity) ;; *) fail_early 'Unknown container backend.' ;; esac
+case "$backend" in auto|apptainer|bundled-apptainer|singularity) ;; *) fail_early 'Unknown container backend.' ;; esac
 package_dir=$(CDPATH= cd -- "$package_dir" && pwd -P) || fail_early 'Package directory is unavailable.'
 source_root=$(realpath -m -- "$package_dir/../..")
 [ "$source_root" != / ] || fail_early 'Place the Reader package within its data-drive directory.'
@@ -111,6 +111,8 @@ if [ "$backend" = singularity ]; then
     runtime=$(command -v singularity || true)
 elif [ "$backend" = apptainer ]; then
     runtime=$(command -v apptainer || true)
+elif [ "$backend" = bundled-apptainer ]; then
+    [ -f "$package_dir/runtime/apptainer.identity" ] || finish 1 'FAIL: the carried Apptainer engine is missing from this package.'
 elif command -v apptainer >/dev/null 2>&1; then
     runtime=$(command -v apptainer)
 elif command -v singularity >/dev/null 2>&1; then
