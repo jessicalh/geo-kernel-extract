@@ -130,7 +130,7 @@ NewmanProjection ComputeNewmanProjection(const model::QtProtein& protein,
         u = (t - t.dot(sight) * sight).normalized();
     }
     // Orient v so the back-reference spoke reads the signed torsion angle
-    // directly (matches the Blondel-Karplus convention DihedralDegrees uses),
+    // directly (matches the project sign convention in DihedralDegrees),
     // giving the panel a clean invariant: back-ref spoke angle == torsionDeg.
     const Vec3 v = u.cross(sight);
 

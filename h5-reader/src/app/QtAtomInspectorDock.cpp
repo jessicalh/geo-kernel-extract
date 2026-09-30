@@ -349,6 +349,7 @@ void QtAtomInspectorDock::setContext(const model::QtProtein* protein, model::Con
         disconnect(conformation_.data(), nullptr, this, nullptr);
     protein_ = protein;
     conformation_ = conformation;
+    frame_ = 0;
     if (conformation_) {
         QObject::connect(conformation_.data(), &model::Conformation::snapshotReady,
                  this, &QtAtomInspectorDock::onSnapshotReady);
@@ -367,6 +368,13 @@ void QtAtomInspectorDock::setPickedAtom(std::size_t atomIdx) {
     ASSERT_THREAD(this);
     hasSelection_ = true;
     atomIdx_ = atomIdx;
+    requestCurrentSnapshot();
+}
+
+void QtAtomInspectorDock::requestCurrentSnapshot() {
+    ASSERT_THREAD(this);
+    if (!hasSelection_)
+        return;
     const std::size_t frame = static_cast<std::size_t>(std::max(0, frame_));
     if (conformation_) {
         conformation_->requestSnapshot(frame);

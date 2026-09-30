@@ -95,8 +95,10 @@ inline AtomCsaResult ComputeAtomCsa(const QtProtein& protein,
             }
         }
     }
-    if (!out.shape.valid)
-        out.shape = ComputeCsaShape(sigmaRaw);  // unframed fallback (raw-frame PAS)
+    if (!out.shape.valid) {
+        const Mat3 rotation = transformed.displayRotation(frame);
+        out.shape = ComputeCsaShape(rotation * sigmaRaw * rotation.transpose());
+    }
     out.valid = out.shape.valid;
     return out;
 }

@@ -40,9 +40,8 @@ constexpr double kPastelSlotRgb[4][3] = {
     {0.900, 0.738, 0.828},  // slot 3 — pale rose    (reddish purple + 50% white)
 };
 
-// Connecting polyline: a neutral, near-white line that reads against any slot
-// colour without competing with the spheres. Width is in screen pixels.
-constexpr double kLineRgb[3]  = {0.92, 0.92, 0.92};
+// A dark neutral connector stays visible on the white scene. Width is in pixels.
+constexpr double kLineRgb[3]  = {0.25, 0.25, 0.25};
 constexpr double kLineWidth   = 2.5;
 constexpr double kLineOpacity = 0.90;
 

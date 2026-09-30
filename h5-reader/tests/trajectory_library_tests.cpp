@@ -1,7 +1,11 @@
 #include "app/TrajectoryLibraryDialog.h"
 #include "app/ReaderMainWindow.h"
+#include "app/QtPlaybackController.h"
+#include "model/AtomSelection.h"
+#include "model/TransformedConformation.h"
 
 #include <QDir>
+#include <QDialog>
 #include <QFile>
 #include <QFileDialog>
 #include <QJsonArray>
@@ -10,6 +14,7 @@
 #include <QPushButton>
 #include <QProgressBar>
 #include <QSignalSpy>
+#include <QSlider>
 #include <QSettings>
 #include <QSurfaceFormat>
 #include <QTableWidget>
@@ -88,6 +93,21 @@ private slots:
         QVERIFY(dialog.state()["error"].toString().isEmpty());
     }
 
+    void incompleteCacheCanBeClearedFromTheDialog() {
+        QVERIFY(QFile::remove(QDir(cache_).filePath("downloaded/run.LGS")));
+        TrajectoryLibraryDialog dialog(nullptr, catalog_, cache_, installed_);
+        auto* table = dialog.findChild<QTableWidget*>("trajectoryCatalog");
+        auto* clear = dialog.findChild<QPushButton*>("clearDownload");
+        QVERIFY(table);
+        QVERIFY(clear);
+        table->selectRow(1);
+        QVERIFY(clear->isEnabled());
+        QString error;
+        QVERIFY(dialog.clearTrajectory("downloaded", &error));
+        QTRY_VERIFY(!dialog.state()["busy"].toBool());
+        QVERIFY(!QFileInfo::exists(QDir(cache_).filePath("downloaded")));
+    }
+
     void loadedDataCannotBeCleared() {
         TrajectoryLibraryDialog dialog(nullptr, catalog_, cache_, installed_);
         auto* table = dialog.findChild<QTableWidget*>("trajectoryCatalog");
@@ -159,6 +179,83 @@ private slots:
         QVERIFY(!window.lastLoadError().contains("finish clearing"));
         library->shutdown();
         QTRY_VERIFY(library->isShutdown());
+    }
+
+    void runReloadClosesGoToAtom() {
+        const QString fixture = qEnvironmentVariable("H5READER_REST_FIXTURE");
+        if (fixture.isEmpty())
+            QSKIP("Set H5READER_REST_FIXTURE to exercise a real run reload.");
+        h5reader::app::ReaderMainWindow window;
+        QVERIFY2(window.loadRunPath(fixture), qPrintable(window.lastLoadError()));
+        bool dialogFound = false;
+        bool reloaded = false;
+        bool rejected = false;
+        QMetaObject::invokeMethod(&window, [&] {
+            for (auto* dialog : window.findChildren<QDialog*>()) {
+                if (dialog->windowTitle() != QStringLiteral("Go to atom"))
+                    continue;
+                dialogFound = true;
+                QSignalSpy finished(dialog, &QDialog::finished);
+                reloaded = window.loadRunPath(fixture);
+                rejected = finished.count() == 1
+                    && finished.first().first().toInt() == QDialog::Rejected;
+                if (!rejected)
+                    dialog->reject();
+                break;
+            }
+        }, Qt::QueuedConnection);
+        QVERIFY(QMetaObject::invokeMethod(&window, "onGoToAtomTriggered",
+                                          Qt::DirectConnection));
+        QVERIFY(dialogFound);
+        QVERIFY2(reloaded, qPrintable(window.lastLoadError()));
+        QVERIFY(rejected);
+    }
+
+    void inspectorLoadsDetailOnlyAfterNavigationSettles() {
+        const QString fixture = qEnvironmentVariable("H5READER_REST_FIXTURE");
+        if (fixture.isEmpty())
+            QSKIP("Set H5READER_REST_FIXTURE to exercise real frame navigation.");
+        h5reader::app::ReaderMainWindow window;
+        QVERIFY2(window.loadRunPath(fixture), qPrintable(window.lastLoadError()));
+        auto* selection = window.findChild<h5reader::model::AtomSelection*>();
+        auto* playback = window.findChild<h5reader::app::QtPlaybackController*>();
+        auto* slider = window.findChild<QSlider*>();
+        auto* conformation = window.transformedConformation();
+        QVERIFY(selection);
+        QVERIFY(playback);
+        QVERIFY(slider);
+        QVERIFY(conformation);
+        QVERIFY(playback->frameCount() > 4);
+        selection->applyPick(0, Qt::NoModifier);
+        QVERIFY(conformation->snapshot(0));
+        QSignalSpy snapshots(conformation, &h5reader::model::Conformation::snapshotReady);
+        QVERIFY(snapshots.isValid());
+
+        playback->setFrame(2);
+        QCOMPARE(snapshots.count(), 1);
+        QVERIFY(conformation->snapshot(2));
+        const auto tree = window.inspectorTreeJson();
+        QVERIFY(tree[0].toObject()["value"].toString().startsWith("frame 3 /"));
+        for (const auto& child : tree[0].toObject()["children"].toArray())
+            QVERIFY(child.toObject()["field"].toString() != "Per-frame detail");
+
+        snapshots.clear();
+        playback->playForward();
+        playback->setFrame(3);
+        QCOMPARE(snapshots.count(), 0);
+        QVERIFY(!conformation->snapshot(3));
+        playback->pause();
+        QCOMPARE(snapshots.count(), 1);
+        QVERIFY(conformation->snapshot(3));
+
+        snapshots.clear();
+        slider->setSliderDown(true);
+        playback->setFrame(4);
+        QCOMPARE(snapshots.count(), 0);
+        QVERIFY(!conformation->snapshot(4));
+        slider->setSliderDown(false);
+        QCOMPARE(snapshots.count(), 1);
+        QVERIFY(conformation->snapshot(4));
     }
 
     void shutdownDoesNotOpenAQueuedCacheHit() {

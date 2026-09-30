@@ -1309,6 +1309,10 @@ DashboardDisplayController::DashboardDisplayController(QObject* parent)
 
 void DashboardDisplayController::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
     ASSERT_THREAD(this);
+    if (conformation_ != conformation) {
+        frame_ = 0;
+        series_.clear();
+    }
     protein_ = protein;
     conformation_ = conformation;
     rebuild();
@@ -1882,6 +1886,8 @@ void DashboardDisplayController::rebuild() {
                                             nextSeries.displayModeId);
         const auto oldIt = oldSeriesByKey.constFind(key);
         if (oldIt == oldSeriesByKey.constEnd())
+            continue;
+        if (!(nextSeries.binding.anchor == series_[oldIt.value()].binding.anchor))
             continue;
 
         const model::SignalChannelKey currentKey = nextSeries.buffer.key;
@@ -2838,8 +2844,13 @@ void DashboardDisplayController::extendToFrame(int frame) {
             experimentalMlStore_->requestFrame(sampleFrame);
 
         for (ActiveSeries& series : series_) {
-            if (series.buffer.lastFrame() >= f)
+            if (series.buffer.lastFrame() >= f) {
+                if (series.buffer.gapReasons[sampleFrame] == model::GapReason::Pending
+                    && series.sample) {
+                    series.buffer.replace(sampleFrame, series.sample(sampleFrame));
+                }
                 continue;
+            }
             if (series.sample)
                 series.buffer.append(series.sample(sampleFrame));
             else

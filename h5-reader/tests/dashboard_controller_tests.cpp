@@ -2,6 +2,7 @@
 
 #include "app/DashboardDisplayController.h"
 #include "model/Conformation.h"
+#include "model/QtConformationSnapshot.h"
 #include "model/DashboardPanelModel.h"
 #include "model/DashboardSignalModel.h"
 #include "model/SignalTimeSeries.h"
@@ -10,6 +11,7 @@
 #include <QtTest>
 
 #include <cstddef>
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -50,6 +52,32 @@ private:
     std::size_t frames_ = 0;
 };
 
+class FieldConformation final : public model::Conformation {
+public:
+    explicit FieldConformation(double firstValue = 1.0)
+        : model::Conformation(nullptr), firstValue_(firstValue) {}
+    std::size_t frameCount() const override { return 4; }
+    double timePicoseconds(std::size_t frame) const override { return double(frame); }
+    model::Vec3 atomPosition(std::size_t, std::size_t) const override {
+        return model::Vec3::Zero();
+    }
+
+protected:
+    std::shared_ptr<const model::QtConformationSnapshot> loadSnapshot(std::size_t frame) override {
+        auto snapshot = std::make_shared<model::QtConformationSnapshot>(nullptr, frame, double(frame));
+        auto& column = snapshot->mutableColumn(io::FieldKind::BSTotalB);
+        column.present = true;
+        column.rows = 2;
+        column.cols = 3;
+        column.data = {firstValue_ + double(frame), 0.0, 0.0,
+                       firstValue_ + 99.0 + double(frame), 0.0, 0.0};
+        return snapshot;
+    }
+
+private:
+    double firstValue_;
+};
+
 }  // namespace
 
 class DashboardControllerTests : public QObject {
@@ -60,7 +88,81 @@ private slots:
     void stripHistorySurvivesRebuildByModeId();
     void replacingPendingSampleRecomputesValidityAndRange();
     void f003TensorBindingTracksActivePanelReference();
+    void retargetingStripRecomputesHistory();
+    void newConformationStartsAtFrameZero();
+    void revisitingScrubbedFramesFillsPendingSamples();
 };
+
+void DashboardControllerTests::revisitingScrubbedFramesFillsPendingSamples() {
+    FieldConformation conformation;
+    model::TrajectorySignalCatalog catalog;
+    model::DashboardSignalModel signalModel;
+    app::DashboardDisplayController controller;
+    const auto* descriptor = catalog.findDescriptor(QStringLiteral("npy:bs_total_B"));
+    QVERIFY(descriptor);
+    signalModel.addSignal(*descriptor, model::AtomAnchor{0}, QString(),
+                          {QStringLiteral("strip.vector.component")});
+    controller.setContext(nullptr, &conformation);
+    controller.setSignalModels(&catalog, &signalModel);
+
+    controller.setScrubActive(true);
+    controller.setFrame(3);
+    controller.setScrubActive(false);
+    const auto& values = controller.stripTracks()[0].buffer->values;
+    QCOMPARE(values.size(), std::size_t{4});
+    QCOMPARE(values[0], 1.0);
+    QVERIFY(std::isnan(values[1]));
+    QVERIFY(std::isnan(values[2]));
+    QCOMPARE(values[3], 4.0);
+
+    controller.setFrame(1);
+    QCOMPARE(values[1], 2.0);
+    QVERIFY(std::isnan(values[2]));
+    controller.setFrame(2);
+    QCOMPARE(values, (std::vector<double>{1.0, 2.0, 3.0, 4.0}));
+}
+
+void DashboardControllerTests::newConformationStartsAtFrameZero() {
+    FieldConformation first, second(20.0);
+    model::TrajectorySignalCatalog catalog;
+    model::DashboardSignalModel signalModel;
+    app::DashboardDisplayController controller;
+    const auto* descriptor = catalog.findDescriptor(QStringLiteral("npy:bs_total_B"));
+    QVERIFY(descriptor);
+    signalModel.addSignal(*descriptor, model::AtomAnchor{0}, QString(),
+                          {QStringLiteral("strip.vector.component")});
+    controller.setContext(nullptr, &first);
+    controller.setSignalModels(&catalog, &signalModel);
+    controller.setFrame(2);
+    QCOMPARE(controller.stripTracks()[0].buffer->values, (std::vector<double>{1.0, 2.0, 3.0}));
+
+    controller.setContext(nullptr, &second);
+    QCOMPARE(controller.stripTracks()[0].buffer->values, (std::vector<double>{20.0}));
+}
+
+void DashboardControllerTests::retargetingStripRecomputesHistory() {
+    FieldConformation conformation;
+    model::TrajectorySignalCatalog catalog;
+    model::DashboardSignalModel signalModel;
+    app::DashboardDisplayController controller;
+    const auto* descriptor = catalog.findDescriptor(QStringLiteral("npy:bs_total_B"));
+    QVERIFY(descriptor);
+    const QUuid id = signalModel.addSignal(*descriptor, model::AtomAnchor{0}, QString(),
+                                      {QStringLiteral("strip.vector.component")});
+    controller.setContext(nullptr, &conformation);
+    controller.setSignalModels(&catalog, &signalModel);
+    controller.setFrame(2);
+    auto tracks = controller.stripTracks();
+    QCOMPARE(tracks.size(), 3);
+    QCOMPARE(tracks[0].buffer->values, (std::vector<double>{1.0, 2.0, 3.0}));
+
+    auto binding = signalModel.signalById(id)->binding;
+    binding.anchor = model::AtomAnchor{1};
+    QVERIFY(signalModel.updateBinding(id, binding));
+    tracks = controller.stripTracks();
+    QCOMPARE(tracks.size(), 3);
+    QCOMPARE(tracks[0].buffer->values, (std::vector<double>{100.0, 101.0, 102.0}));
+}
 
 void DashboardControllerTests::scrubDefersFrameSnapshotRequestsUntilRelease() {
     CountingConformation conformation(1000);

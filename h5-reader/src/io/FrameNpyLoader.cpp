@@ -13,6 +13,7 @@
 #include "../model/QtProtein.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QLoggingCategory>
 
@@ -34,6 +35,8 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
                                 const h5reader::model::QtProtein* protein,
                                 std::size_t frameIndex,
                                 double timePs) {
+    QElapsedTimer elapsed;
+    elapsed.start();
     QDir d(dir);
     if (!d.exists()) {
         ErrorBus::Report(Severity::Error,
@@ -138,7 +141,7 @@ FrameNpyLoader::LoadSnapshotDir(const QString& dir,
     }
 
     qCInfo(cFrameLoader).noquote() << "snapshot frame" << frameIndex << "loaded" << loaded << "arrays (" << skipped
-                                   << "skipped) from" << dir;
+                                   << "skipped) in" << elapsed.elapsed() << "ms from" << dir;
     return snap;
 }
 

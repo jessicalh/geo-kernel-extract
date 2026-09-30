@@ -11,6 +11,7 @@
 #pragma once
 
 #include <QDockWidget>
+#include <QJsonObject>
 
 #include <cstddef>
 #include <vector>
@@ -39,6 +40,7 @@ public:
     void setAtoms(const std::vector<std::size_t>& atoms);
     void setFrame(int frame);
     void clear();
+    QJsonObject stateJson() const;
 
 private:
     void recompute();

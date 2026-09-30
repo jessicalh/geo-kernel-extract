@@ -233,7 +233,7 @@ double AngleDegrees(const Vec3& a, const Vec3& b, const Vec3& c) {
 }
 
 double DihedralDegrees(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d) {
-    // Signed dihedral about the b-c axis (Blondel-Karplus atan2 convention).
+    // Project sign convention: negative IUPAC, matching the extracted dihedrals.
     const Vec3   b1  = b - a;
     const Vec3   b2  = c - b;
     const Vec3   b3  = d - c;
@@ -242,13 +242,12 @@ double DihedralDegrees(const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& 
     const double b2n = b2.norm();
     if (n1.norm() < kMinVecNorm || n2.norm() < kMinVecNorm || b2n < kMinVecNorm)
         return std::numeric_limits<double>::quiet_NaN();
-    // m completes a right-handed frame {n1, m, b2_hat}; (x = n1.n2, y = m.n2)
-    // makes atan2 return the signed angle in (-180, 180].
+    // n1 cross b2hat sets the project sign in atan2(y, x).
     const Vec3   b2hat = b2 / b2n;
     const Vec3   m     = n1.cross(b2hat);
     const double x     = n1.dot(n2);
     const double y     = m.dot(n2);
-    return std::atan2(y, x) * kRadToDeg;  // (-180, 180]
+    return std::atan2(y, x) * kRadToDeg;  // [-180, 180]
 }
 
 GeometryMeasurement Measure(const Conformation& conf, std::size_t frame,

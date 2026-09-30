@@ -5211,9 +5211,8 @@ void RestServer::registerRoutes() {
                                                      .arg(static_cast<qulonglong>(item.atom)),
                                                  SC::ServiceUnavailable);
                         }
-                        const model::Mat3& orcaAxes = probe.framed ? *displayAxes : *rawAxes;
                         const model::Mat3 orcaLocal =
-                            tracelessSymmetric(orcaAxes.transpose() * csaShapeMatrix(probe.shape) * orcaAxes);
+                            tracelessSymmetric(displayAxes->transpose() * csaShapeMatrix(probe.shape) * (*displayAxes));
 
                         item.candidate.push_back(candidateLocal);
                         item.orca.push_back(orcaLocal);

@@ -19,12 +19,15 @@
 #include "app/MoleculeScene.h"
 #include "app/QtAtomPicker.h"
 #include "model/AtomSelection.h"
+#include "model/ConformationGeometry.h"
 #include "model/QtConformationSnapshot.h"
 #include "model/SingleConformation.h"
 
 #include <vtkActorCollection.h>
 #include <vtkCamera.h>
 #include <vtkMapper.h>
+#include <vtkPolyData.h>
+#include <vtkProperty.h>
 
 using namespace h5reader;
 
@@ -56,6 +59,18 @@ class AtomPickerTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void measurementGeometry() {
+        using model::Vec3;
+        QCOMPARE(model::Distance(Vec3(0, 0, 0), Vec3(3, 4, 0)), 5.0);
+        QVERIFY(std::abs(model::AngleDegrees(Vec3(1, 0, 0), Vec3(0, 0, 0),
+                                             Vec3(0.5, std::sqrt(3.0) / 2.0, 0)) - 60.0) < 1e-12);
+        const Vec3 a(0, 1, 0), b(0, 0, 0), c(1, 0, 0), d(1, 0, 1);
+        QCOMPARE(model::DihedralDegrees(a, b, c, d), -90.0);
+        QCOMPARE(model::DihedralDegrees(a, b, c, Vec3(1, 0, -1)), 90.0);
+        QVERIFY(std::isnan(model::AngleDegrees(a, a, c)));
+        QVERIFY(std::isnan(model::DihedralDegrees(a, b, b, d)));
+    }
+
     void filteredPickingAndRotatedMarker() {
         auto protein = twoAtomProtein();
         auto snapshot = std::make_shared<model::QtConformationSnapshot>(protein.get(), 0, 0.0);
@@ -124,6 +139,28 @@ private slots:
         window->Render();
         point = widgetPosition(scene.Renderer(), widget, conformation.atomPosition(0, 0));
         QCOMPARE(picker.atomAt(point.x(), point.y()), std::optional<std::size_t>{0});
+
+        selection.bulkSet({0, 1});
+        window->Render();
+        vtkActor* connector = nullptr;
+        actors->InitTraversal();
+        while (auto* actor = actors->GetNextActor()) {
+            auto* data = vtkPolyData::SafeDownCast(actor->GetMapper()->GetInput());
+            if (data && data->GetNumberOfLines() == 1) {
+                connector = actor;
+                QCOMPARE(data->GetNumberOfPoints(), vtkIdType{2});
+                for (vtkIdType i = 0; i < 2; ++i) {
+                    const model::Vec3 endpoint(data->GetPoint(i));
+                    QVERIFY((endpoint - conformation.atomPosition(0, std::size_t(i))).norm() < 1e-12);
+                }
+                break;
+            }
+        }
+        QVERIFY(connector);
+        QVERIFY(connector->GetVisibility());
+        const double* color = connector->GetProperty()->GetColor();
+        for (int i = 0; i < 3; ++i)
+            QVERIFY(color[i] < 0.5);
     }
 };
 

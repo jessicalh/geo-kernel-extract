@@ -105,6 +105,7 @@ public slots:
     // snapshotReady fills the full calculator pile when a request completes.
     void setPickedAtom(std::size_t atomIdx);
     void setFrame(int t);
+    void requestCurrentSnapshot();  // Called when playback or dragging stops.
 
     // Clear the tree (e.g. load unmounted or picker cleared).
     void clearSelection();

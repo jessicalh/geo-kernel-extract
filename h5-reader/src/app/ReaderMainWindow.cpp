@@ -643,6 +643,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              this, [this]() {
                  updateFitModeLabel();
                  if (scene_) scene_->refreshCurrentFrame();
+                 updateCsaGlyph(false);
+                 updateOrientationTensorGlyph();
              });
     updateFitModeLabel();
 
@@ -842,7 +844,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
             if (!measurementsDock_)
                 return;
             measurementsDock_->setAtoms(selection_->atoms());
-            if (selection_->atoms().size() >= 2 && !measurementsDock_->isVisible())
+            if (selection_->atoms().size() >= 2)
                 revealDockQueued(measurementsDock_);
         });
         QObject::connect(selection_, &model::AtomSelection::cleared,
@@ -876,11 +878,14 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
             scene_->requestRender(MoleculeScene::RenderSource::Overlay);
     });
     QObject::connect(playback_, &QtPlaybackController::frameChanged, this,
-             [this](int) { updateCsaGlyph(false); updateOrientationTensorGlyph(); });
+             [this](int) {
+                 refreshFrameDetails(!playback_->isPlaying()
+                                     && (!frameSlider_ || !frameSlider_->isSliderDown()));
+             });
     QObject::connect(playback_, &QtPlaybackController::playingChanged, this,
              [this](bool playing) {
         if (!playing && !shutdownDone_)
-            updateCsaGlyph(true);
+            refreshFrameDetails(true);
     });
 
     if (auto* meas = scene_->measurementOverlay()) {
@@ -1055,6 +1060,13 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
         << "| path=" << loaded_->runPath;
 }
 
+void ReaderMainWindow::refreshFrameDetails(bool requestMissing) {
+    if (requestMissing && inspectorDock_)
+        inspectorDock_->requestCurrentSnapshot();
+    updateCsaGlyph(requestMissing);
+    updateOrientationTensorGlyph();
+}
+
 void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
     ASSERT_THREAD(this);
     CsaTensorOverlay* overlay = scene_ ? scene_->csaOverlay() : nullptr;
@@ -1195,7 +1207,7 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
                 : QStringLiteral("ORCA");
         info.frameKind = r.framed
                              ? QString::fromLatin1(model::MolecularFrameKindName(r.frameKind))
-                             : QStringLiteral("unframed (raw PAS)");
+                             : QStringLiteral("unframed (display-aligned PAS)");
         info.sigmaIso = r.shape.sigma_iso;
         info.span = r.shape.span;
         info.skew = r.shape.skew;
@@ -1568,6 +1580,8 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     out[QStringLiteral("playing")]       = playing;
     out[QStringLiteral("playDirection")] = playback_ ? playback_->direction() : 1;
     out[QStringLiteral("selection")]     = sel;
+    out[QStringLiteral("measurements")] = measurementsDock_
+        ? measurementsDock_->stateJson() : QJsonObject{};
     out[QStringLiteral("cameraMode")]    =
         (loaded && scene_ && scene_->cameraComposer())
             ? QString::fromLatin1(NameFor(scene_->cameraComposer()->mode().kind))
@@ -1928,7 +1942,7 @@ void ReaderMainWindow::setDocksVisible(bool visible) {
             return;
         stashedDockVisibility_.clear();
         const std::vector<QDockWidget*> docks = {
-            inspectorDock_, dashboardStripDock_, learnedActivityDock_
+            inspectorDock_, measurementsDock_, dashboardStripDock_, learnedActivityDock_
         };
         for (QDockWidget* d : docks) {
             if (!d) continue;
@@ -2066,14 +2080,14 @@ void ReaderMainWindow::revealDockQueued(QDockWidget* dock) {
     ASSERT_THREAD(this);
     if (!dock)
         return;
+    const bool initialShow = !dock->isVisible();
     dock->setVisible(true);
-    // Queue the resize behind the show/relayout events already in this window's
-    // queue (deterministic FIFO), instead of guessing a tick on the timer wheel.
-    // Same queued-invoke pattern as MoleculeScene::requestRender.
-    QMetaObject::invokeMethod(this, [this, dock = QPointer<QDockWidget>(dock)]() {
+    // Size an initial reveal after relayout; raising an existing tab keeps its width.
+    QMetaObject::invokeMethod(this, [this, dock = QPointer<QDockWidget>(dock), initialShow]() {
         if (!dock)
             return;
-        resizeDocks({dock.data()}, {360}, Qt::Horizontal);
+        if (initialShow)
+            resizeDocks({dock.data()}, {360}, Qt::Horizontal);
         dock->raise();
     }, Qt::QueuedConnection);
 }
@@ -2708,7 +2722,7 @@ void ReaderMainWindow::buildDocks() {
                  this, [this]() {
                      if (dashboardController_)
                          dashboardController_->setScrubActive(false);
-                     updateCsaGlyph(true);
+                     refreshFrameDetails(true);
                  });
     }
 }
@@ -3130,6 +3144,8 @@ void ReaderMainWindow::onGoToAtomTriggered() {
              &dialog,    [rebuildAtomChoices](int) mutable { rebuildAtomChoices(); });
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QObject::connect(loaded_->conformation.get(), &QObject::destroyed,
+                     &dialog, &QDialog::reject);
 
     rebuildAtomChoices();
     if (dialog.exec() != QDialog::Accepted)

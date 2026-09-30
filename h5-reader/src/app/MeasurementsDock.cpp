@@ -10,6 +10,7 @@
 
 #include <QChar>
 #include <QFont>
+#include <QJsonArray>
 #include <QLabel>
 #include <QLatin1Char>
 #include <QString>
@@ -105,6 +106,19 @@ void MeasurementsDock::setFrame(int frame) {
 void MeasurementsDock::clear() {
     atoms_.clear();
     recompute();
+}
+
+QJsonObject MeasurementsDock::stateJson() const {
+    QJsonArray atoms;
+    for (std::size_t atom : atoms_)
+        atoms.append(static_cast<qint64>(atom));
+    return {{"frame", frame_},
+            {"atoms", atoms},
+            {"kind", kindLabel_->text()},
+            {"value", valueLabel_->text()},
+            {"labels", atomsLabel_->text()},
+            {"visible", isVisible()},
+            {"foreground", !visibleRegion().isEmpty()}};
 }
 
 void MeasurementsDock::recompute() {

@@ -98,9 +98,8 @@ bool RingNullCrosses(const RingNullMeasurement& a, const RingNullMeasurement& b,
 // Distance/Angle/Dihedral are pure functions of positions; Measure() reads
 // them through Conformation::atomPosition, so a single pose and a trajectory
 // frame are measured identically. AngleDegrees takes the MIDDLE atom as the
-// vertex. DihedralDegrees uses the signed Blondel-Karplus atan2 convention
-// (Blondel & Karplus 1996, J. Comput. Chem. 17(9):1132), range (-180, 180],
-// matching the library's omega_actual / chi / pucker sign so a
+// vertex. DihedralDegrees uses the project sign convention (negative IUPAC),
+// range [-180, 180], matching the extracted dihedral sign so a
 // measured-from-positions dihedral can be cross-checked against the extracted
 // field. Degenerate input (coincident/collinear atoms -> undefined direction)
 // yields NaN; Measure() reports that as valid == false.

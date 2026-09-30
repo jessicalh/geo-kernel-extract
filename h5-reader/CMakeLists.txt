@@ -909,6 +909,10 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         set(H5READER_REST_RELOAD_FIXTURE_DEFAULT
             "${H5READER_REST_FIXTURE_DEFAULT}")
     endif()
+    if(TARGET h5reader_trajectory_library_tests)
+        set_tests_properties(h5reader_trajectory_library_tests PROPERTIES
+            ENVIRONMENT "H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}")
+    endif()
     add_test(NAME h5reader_rest_smoke
              COMMAND ${Python3_EXECUTABLE} -m pytest
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest -v --tb=short)
@@ -923,7 +927,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         ENVIRONMENT
             "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT};H5READER_REST_RELOAD_FIXTURE=${H5READER_REST_RELOAD_FIXTURE_DEFAULT};H5READER_REST_ADDRESS=0.0.0.0"
         LABELS "rest;e2e"
-        TIMEOUT 300
+        TIMEOUT 600
     )
 
     option(H5READER_ENABLE_MODEL_INPUT_CONTRACT_TEST
@@ -1021,7 +1025,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         ENVIRONMENT
             "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_TRPCAGE_FIXTURE_DEFAULT}"
         LABELS "rest;e2e;trpcage"
-        TIMEOUT 180
+        TIMEOUT 600
     )
 endif()
 

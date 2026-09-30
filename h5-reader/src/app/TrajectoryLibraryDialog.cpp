@@ -324,7 +324,8 @@ void TrajectoryLibraryDialog::refresh() {
     open_->setText(installed || downloaded ? tr("Open")
                    : lastError_.isEmpty()  ? tr("Download and open")
                                            : tr("Retry download"));
-    clear_->setEnabled(idle && entry && downloaded && !installed && !isCurrent(QDir(cacheRoot_).filePath(entry->bundle.key)));
+    const QString cachePath = entry ? QDir(cacheRoot_).filePath(entry->bundle.key) : QString();
+    clear_->setEnabled(idle && entry && QFileInfo::exists(cachePath) && !installed && !isCurrent(cachePath));
     cancel_->setEnabled(!closing_
                         && (cache_->state() == Cache::State::Downloading || cache_->state() == Cache::State::Extracting));
     locationButton_->setEnabled(idle);
