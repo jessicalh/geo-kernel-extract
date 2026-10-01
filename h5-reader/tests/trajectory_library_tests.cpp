@@ -93,6 +93,21 @@ private slots:
         QVERIFY(dialog.state()["error"].toString().isEmpty());
     }
 
+    void emptyWindowOpensWebsiteOnlyWhenChosen() {
+        h5reader::app::ReaderMainWindow window;
+        auto* local = window.findChild<QPushButton*>("OpenLocalRunButton");
+        auto* website = window.findChild<QPushButton*>("OpenWebsiteButton");
+        QVERIFY(local);
+        QVERIFY(website);
+        QVERIFY(!window.findChild<TrajectoryLibraryDialog*>());
+
+        window.show();
+        website->click();
+        auto* library = window.findChild<TrajectoryLibraryDialog*>();
+        QVERIFY(library);
+        QVERIFY(library->isVisible());
+    }
+
     void incompleteCacheCanBeClearedFromTheDialog() {
         QVERIFY(QFile::remove(QDir(cache_).filePath("downloaded/run.LGS")));
         TrajectoryLibraryDialog dialog(nullptr, catalog_, cache_, installed_);

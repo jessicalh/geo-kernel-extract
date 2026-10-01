@@ -73,6 +73,7 @@
 #include <QFileDialog>
 #include <QFont>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -104,6 +105,7 @@
 #include <QUuid>
 #include <QVariant>
 #include <QWidget>
+#include <QVBoxLayout>
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -2329,33 +2331,42 @@ void ReaderMainWindow::buildUi() {
     vtkWidget_->setRenderWindow(renderWindow_);
     stack->addWidget(vtkWidget_);
 
-    emptyPlaceholder_ = new QLabel(QStringLiteral("Open a calcset (.LGS) to begin."), centralContainer_);
-    emptyPlaceholder_->setAlignment(Qt::AlignCenter);
-    emptyPlaceholder_->setWordWrap(true);
-    emptyPlaceholder_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    emptyPlaceholder_ = new QWidget(centralContainer_);
+    emptyPlaceholder_->setObjectName(QStringLiteral("ReaderEmptyState"));
     emptyPlaceholder_->setStyleSheet(QStringLiteral(
-        "QLabel { color: #5f6872; background: #fafafa; font-size: 18px; }"));
+        "QWidget#ReaderEmptyState { background: #fafafa; }"));
+    auto* emptyLayout = new QVBoxLayout(emptyPlaceholder_);
+    emptyLayout->addStretch();
+    auto* openChoices = new QHBoxLayout;
+    openChoices->addStretch();
+    auto* openDisk = new QPushButton(style()->standardIcon(QStyle::SP_DialogOpenButton),
+                                     QStringLiteral("Open .LGS..."), emptyPlaceholder_);
+    openDisk->setObjectName(QStringLiteral("OpenLocalRunButton"));
+    QObject::connect(openDisk, &QPushButton::clicked, this, &ReaderMainWindow::onOpenFile);
+    openChoices->addWidget(openDisk);
+    auto* openWebsite = new QPushButton(QStringLiteral("Website..."), emptyPlaceholder_);
+    openWebsite->setObjectName(QStringLiteral("OpenWebsiteButton"));
+    QObject::connect(openWebsite, &QPushButton::clicked, this, &ReaderMainWindow::onOpenWebsite);
+    openChoices->addWidget(openWebsite);
+    openChoices->addStretch();
+    emptyLayout->addLayout(openChoices);
+    emptyLayout->addStretch();
     stack->addWidget(emptyPlaceholder_);
     stack->setCurrentWidget(emptyPlaceholder_);
     setCentralWidget(centralContainer_);
 
-    // File ▸ Open… loads a calcset into this window.
+    // File open loads a calcset into this window.
     fileMenu_ = menuBar()->addMenu(QStringLiteral("&File"));
-    auto* openFileAct = fileMenu_->addAction(QStringLiteral("Open…"));
+    auto* openFileAct = fileMenu_->addAction(QStringLiteral("Open .LGS from disk..."));
     openFileAct->setShortcut(QKeySequence::Open);  // Ctrl+O — pick a .LGS file with the mouse
     QObject::connect(openFileAct, &QAction::triggered, this, &ReaderMainWindow::onOpenFile);
 
+    auto* publishedAct = fileMenu_->addAction(QStringLiteral("Open from website..."));
+    publishedAct->setObjectName(QStringLiteral("PublishedTrajectoriesAction"));
+    QObject::connect(publishedAct, &QAction::triggered, this, &ReaderMainWindow::onOpenWebsite);
+
     auto* openDirAct = fileMenu_->addAction(QStringLiteral("Open Directory…"));
     QObject::connect(openDirAct, &QAction::triggered, this, &ReaderMainWindow::onOpenDirectory);
-
-    auto* publishedAct = fileMenu_->addAction(QStringLiteral("Published trajectories..."));
-    publishedAct->setObjectName(QStringLiteral("PublishedTrajectoriesAction"));
-    QObject::connect(publishedAct, &QAction::triggered, this, [this] {
-        auto* dialog = trajectoryLibrary();
-        dialog->show();
-        dialog->raise();
-        dialog->activateWindow();
-    });
 
     // File ▸ Recent — populated from QSettings during restoreAllSettings.
     // Empty until then; each entry loads into this window on click.
@@ -3032,6 +3043,14 @@ void ReaderMainWindow::onOpenFile() {
                               QStringLiteral("Open calcset failed"),
                               lastLoadError());
     }
+}
+
+void ReaderMainWindow::onOpenWebsite() {
+    ASSERT_THREAD(this);
+    auto* dialog = trajectoryLibrary();
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 TrajectoryLibraryDialog* ReaderMainWindow::trajectoryLibrary() {

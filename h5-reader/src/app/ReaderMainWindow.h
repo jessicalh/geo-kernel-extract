@@ -199,6 +199,7 @@ private slots:
     void onFrameChanged(int t);
     void onPlayPauseClicked();
     void onOpenFile();
+    void onOpenWebsite();
     void onOpenDirectory();
     void onOpenSignalDisplays();
     void onGoToAtomTriggered();
@@ -275,7 +276,7 @@ private:
 
     // VTK viewport widget plus quiet empty-state placeholder.
     QPointer<QWidget> centralContainer_;
-    QPointer<QLabel> emptyPlaceholder_;
+    QPointer<QWidget> emptyPlaceholder_;
     QVTKOpenGLNativeWidget* vtkWidget_ = nullptr;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
 
