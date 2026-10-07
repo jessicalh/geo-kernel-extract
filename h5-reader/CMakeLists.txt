@@ -142,6 +142,8 @@ qt_add_library(h5reader_core STATIC
     src/model/TensorGlyphVisualization.cpp
     src/model/NewmanVisualization.h
     src/model/NewmanVisualization.cpp
+    src/model/MetricGlossary.h
+    src/model/MetricGlossary.cpp
     src/model/TrajectorySignalCatalog.h
     src/model/TrajectorySignalCatalog.cpp
     src/model/SignalTimeSeries.h
@@ -254,6 +256,8 @@ qt_add_library(h5reader_core STATIC
     src/app/AngleCollarActor.cpp
     src/app/NearbySignalModel.h
     src/app/NearbySignalModel.cpp
+    src/app/MetricGlossaryPopup.h
+    src/app/MetricGlossaryPopup.cpp
     src/app/SignalDisplayDialog.h
     src/app/SignalDisplayDialog.cpp
     src/app/DashboardDisplayController.h
@@ -462,6 +466,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/QtTopology.h
         src/model/QtTopology.cpp
         src/model/SignalDictionary.h
+        src/model/MetricGlossary.h
+        src/model/MetricGlossary.cpp
         src/model/TrajectorySignalCatalog.h
         src/model/TrajectorySignalCatalog.cpp
         src/diagnostics/ObjectCensus.h

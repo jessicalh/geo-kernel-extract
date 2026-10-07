@@ -8,6 +8,7 @@
 
 #include <QDialog>
 #include <QJsonObject>
+#include <QPoint>
 #include <QString>
 
 #include <cstddef>
@@ -60,9 +61,11 @@ private slots:
     void onRadiusChanged(double radius);
     void onAnchorSelectionChanged();
     void onCandidateSelectionChanged();
+    void onCandidateGlossaryRequested(const QPoint& position);
     void onCandidateModeChanged();
     void refreshPanelTargets();
     void onActiveSelectionChanged();
+    void onActiveGlossaryRequested(const QPoint& position);
     void onActiveModeToggled(bool checked);
     void onRemoveActive();
 

@@ -1,6 +1,7 @@
 #include "SignalDisplayDialog.h"
 
 #include "DashboardSelectionController.h"
+#include "MetricGlossaryPopup.h"
 #include "NearbySignalModel.h"
 
 #include "../diagnostics/DashboardLogging.h"
@@ -1034,6 +1035,7 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
 
     d_->candidateView = new QTreeView(candidatesPanel);
     configureTree(d_->candidateView);
+    d_->candidateView->setContextMenuPolicy(Qt::CustomContextMenu);
     d_->candidateView->setModel(d_->descriptorProxy);
     d_->candidateView->header()->setSectionResizeMode(DescriptorTreeModel::NameColumn, QHeaderView::Stretch);
     d_->candidateView->header()->setSectionResizeMode(DescriptorTreeModel::FormColumn, QHeaderView::ResizeToContents);
@@ -1086,6 +1088,7 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
 
     d_->activeView = new QTableView(activePanel);
     configureTable(d_->activeView);
+    d_->activeView->setContextMenuPolicy(Qt::CustomContextMenu);
     d_->activeView->setModel(d_->activeProxy);
     d_->activeView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     activeLayout->addWidget(d_->activeView, 1);
@@ -1176,10 +1179,14 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
              &QItemSelectionModel::currentRowChanged,
              this,
              [this](const QModelIndex&, const QModelIndex&) { onCandidateSelectionChanged(); });
+    QObject::connect(d_->candidateView, &QWidget::customContextMenuRequested,
+                     this, &SignalDisplayDialog::onCandidateGlossaryRequested);
     QObject::connect(d_->activeView->selectionModel(),
              &QItemSelectionModel::currentRowChanged,
              this,
              [this](const QModelIndex&, const QModelIndex&) { onActiveSelectionChanged(); });
+    QObject::connect(d_->activeView, &QWidget::customContextMenuRequested,
+                     this, &SignalDisplayDialog::onActiveGlossaryRequested);
     for (const ModeControl& control : std::as_const(d_->candidateModes))
         QObject::connect(control.box, &QCheckBox::toggled, this, &SignalDisplayDialog::onCandidateModeChanged);
     for (const ModeControl& control : std::as_const(d_->activeModes))
@@ -1528,6 +1535,20 @@ void SignalDisplayDialog::onCandidateSelectionChanged() {
                     disabledKinds.join(QStringLiteral(",")));
 }
 
+void SignalDisplayDialog::onCandidateGlossaryRequested(const QPoint& position) {
+    ASSERT_THREAD(this);
+    const QModelIndex proxyIndex = d_->candidateView->indexAt(position);
+    const QModelIndex sourceIndex = proxyIndex.isValid()
+                                        ? d_->descriptorProxy->mapToSource(proxyIndex)
+                                        : QModelIndex();
+    const DescriptorRecord* record = d_->descriptorModel->recordForIndex(sourceIndex);
+    if (!record)
+        return;
+    ShowMetricGlossaryPopup(record->descriptor,
+                            d_->candidateView->viewport()->mapToGlobal(position),
+                            this);
+}
+
 void SignalDisplayDialog::onCandidateModeChanged() {
     ASSERT_THREAD(this);
     const QModelIndex anchorIndex = d_->anchorView ? d_->anchorView->currentIndex() : QModelIndex();
@@ -1709,6 +1730,21 @@ void SignalDisplayDialog::onActiveSelectionChanged() {
                                     : QStringLiteral("This display mode does not have an implemented visible renderer."));
     }
     d_->removeButton->setEnabled(hasActive);
+}
+
+void SignalDisplayDialog::onActiveGlossaryRequested(const QPoint& position) {
+    ASSERT_THREAD(this);
+    const QModelIndex proxyIndex = d_->activeView->indexAt(position);
+    if (!proxyIndex.isValid() || !d_->catalog || !d_->activeModel)
+        return;
+    const QModelIndex sourceIndex = d_->activeProxy->mapToSource(proxyIndex);
+    const model::SignalDescriptor* descriptor =
+        descriptorForActiveSignal(d_->catalog, d_->activeModel, sourceIndex);
+    if (!descriptor)
+        return;
+    ShowMetricGlossaryPopup(*descriptor,
+                            d_->activeView->viewport()->mapToGlobal(position),
+                            this);
 }
 
 void SignalDisplayDialog::onActiveModeToggled(bool checked) {

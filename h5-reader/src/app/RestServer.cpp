@@ -36,6 +36,7 @@
 #include "../model/DashboardSignalModel.h"
 #include "../model/DisplayPolicy.h"
 #include "../model/MetricTaxonomy.h"
+#include "../model/MetricGlossary.h"
 #include "../model/QtProtein.h"
 #include "../model/RingCurrentPathAnalysis.h"
 #include "../model/RingNullCollar.h"
@@ -5964,7 +5965,7 @@ void RestServer::registerRoutes() {
             for (const QString& m : std::as_const(displayModes)) modeArr.append(m);
             QJsonArray tagArr;
             for (const QString& t : d.tags) tagArr.append(t);
-            arr.append(QJsonObject{
+            QJsonObject item{
                 {"id", d.id},
                 {"label", d.label},
                 {"family", d.family},
@@ -5981,7 +5982,13 @@ void RestServer::registerRoutes() {
                 {"sampling", model::ToString(d.samplingStatus)},
                 {"modes", modeArr},
                 {"tags", tagArr},
-            });
+            };
+            if (const auto glossary = model::MetricGlossaryFor(d)) {
+                item["meaning"] = glossary->meaning;
+                item["calculation"] = glossary->calculation;
+                item["origin"] = glossary->origin;
+            }
+            arr.append(item);
         }
         return jsonResponse(QJsonObject{
             {"count", static_cast<qint64>(descriptors.size())},

@@ -17,6 +17,7 @@
 #include "model/DashboardPanelModel.h"
 #include "model/DashboardSignal.h"
 #include "model/DashboardSignalModel.h"
+#include "model/MetricGlossary.h"
 #include "model/QtRing.h"
 #include "model/QtResultBlocks.h"
 #include "model/QtTopology.h"
@@ -172,6 +173,7 @@ private slots:
     void testCatalog_denseH5DescriptorsMatchJulyContract();
     void testCatalog_fullTensorDisplaysRemainAvailable();
     void testCatalog_ringTypeBlocksUseExplicitColumns();
+    void testCatalog_everyDescriptorHasPlainGlossaryText();
 
     // ---- Per-TR catalog presence (one row per new TR landing) ----------
 
@@ -964,6 +966,57 @@ void DashboardModelTests::testCatalog_kernelCoherenceDescriptorPresent() {
     QCOMPARE(d->storagePath, QStringLiteral("/trajectory/kernel_coherence"));
     QVERIFY(d->staticModes.contains(QStringLiteral("static.chord.coupling")));
     QCOMPARE(d->channels.size(), 7);
+}
+
+void DashboardModelTests::testCatalog_everyDescriptorHasPlainGlossaryText() {
+    const TrajectorySignalCatalog catalog;
+    QStringList failures;
+    for (const SignalDescriptor& descriptor : catalog.allDescriptorList()) {
+        const auto glossary = MetricGlossaryFor(descriptor);
+        if (!glossary) {
+            failures << QStringLiteral("%1: no glossary entry (family=%2)")
+                            .arg(descriptor.id, descriptor.family);
+            continue;
+        }
+
+        const QStringList fields{glossary->meaning, glossary->calculation, glossary->origin};
+        for (const QString& field : fields) {
+            if (field.trimmed().isEmpty())
+                failures << QStringLiteral("%1: empty glossary field").arg(descriptor.id);
+            if (field.contains(QLatin1Char('\n')) || field.contains(QLatin1Char('\r')))
+                failures << QStringLiteral("%1: glossary field contains a line break").arg(descriptor.id);
+            if (field.size() > 300)
+                failures << QStringLiteral("%1: glossary field is too long (%2 characters)")
+                                .arg(descriptor.id).arg(field.size());
+            if (!field.trimmed().endsWith(QLatin1Char('.')))
+                failures << QStringLiteral("%1: glossary field is not a sentence").arg(descriptor.id);
+            for (const QString& internal : {QStringLiteral("SDK_NPY"),
+                                            QStringLiteral("TrajectoryH5"),
+                                            QStringLiteral("SourceResidency")}) {
+                if (field.contains(internal))
+                    failures << QStringLiteral("%1: glossary exposes internal term %2")
+                                    .arg(descriptor.id, internal);
+            }
+            for (const QString& broken : {QStringLiteral("aIMNet2"),
+                                          QStringLiteral("aPBS"),
+                                          QStringLiteral("mOPAC"),
+                                          QStringLiteral("dSSP"),
+                                          QStringLiteral("eEQ"),
+                                          QStringLiteral("rMSD"),
+                                          QStringLiteral("vector vector"),
+                                          QStringLiteral("matrix of kernel coherence matrix"),
+                                          QStringLiteral("frequency spectrum of kernel power spectrum"),
+                                          QStringLiteral("Welford rollup across")}) {
+                if (field.contains(broken))
+                    failures << QStringLiteral("%1: glossary contains generated prose artifact '%2'")
+                                    .arg(descriptor.id, broken);
+            }
+        }
+    }
+
+    if (!failures.isEmpty())
+        QFAIL(qPrintable(failures.join(QLatin1Char('\n'))));
+    QVERIFY(!catalog.allDescriptorList().isEmpty());
 }
 
 void DashboardModelTests::testCatalog_allValidTemporalDenseH5DescriptorsAreSampleable() {
