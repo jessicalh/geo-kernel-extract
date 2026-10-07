@@ -2,6 +2,8 @@
 // OpenGL context; the window itself may start empty or with one calcset.
 
 #include "app/ReaderMainWindow.h"
+#include "app/ReaderCollection.h"
+#include "app/ReaderInstance.h"
 #include "diagnostics/CrashHandler.h"
 #include "diagnostics/ErrorBus.h"
 #include "diagnostics/ObjectCensus.h"
@@ -14,6 +16,7 @@
 #include <QFileInfo>
 #include <QHostAddress>
 #include <QLoggingCategory>
+#include <QMessageBox>
 #include <QSurfaceFormat>
 #include <QThread>
 
@@ -94,7 +97,7 @@ int main(int argc, char* argv[]) {
     cli.addHelpOption();
     cli.addVersionOption();
     cli.addPositionalArgument(QStringLiteral("run_path"),
-                              QStringLiteral("A calcset directory or .LGS calcset manifest."),
+                              QStringLiteral("A calcset directory, run .LGS, or collection .LGS."),
                               QStringLiteral("<run_path>"));
     const QCommandLineOption restOption(
         QStringLiteral("rest"),
@@ -146,12 +149,57 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
+    h5reader::app::ReaderInstance instance;
+    const auto instanceResult = instance.start(runPath, !runRest);
+    if (instanceResult == h5reader::app::ReaderInstance::Result::Forwarded) {
+        qCInfo(cLifecycle).noquote() << "Request sent to the running Reader:" << runPath;
+        return 0;
+    }
+    if (instanceResult == h5reader::app::ReaderInstance::Result::Failed) {
+        qCCritical(cLifecycle).noquote() << instance.errorString();
+        if (!runRest)
+            QMessageBox::warning(nullptr, QStringLiteral("Reader"), instance.errorString());
+        return 5;
+    }
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &instance,
+                     &h5reader::app::ReaderInstance::shutdown);
+
+    bool openCollectionAfterShow = false;
+    if (!runPath.isEmpty()) {
+        QString error;
+        const auto document = h5reader::app::ReadReaderDocument(runPath, &error);
+        if (!document) {
+            qCCritical(cLifecycle).noquote() << "Open failed:" << error;
+            return 3;
+        }
+        openCollectionAfterShow = document->collection.has_value();
+    }
+
+    if (runRest && openCollectionAfterShow) {
+        qCCritical(cLifecycle).noquote()
+            << "--rest requires an initial run, not a collection. Load a run first, then use /api/trajectories/catalog.";
+        return 1;
+    }
+
     // Finalize VTK while its OpenGL context is still valid.
     auto* window = new h5reader::app::ReaderMainWindow();
+    QObject::connect(window, &h5reader::app::ReaderMainWindow::closeRequested, &instance,
+                     &h5reader::app::ReaderInstance::shutdown);
+    QObject::connect(&instance, &h5reader::app::ReaderInstance::openRequested, window,
+                     [window](const QString& path) {
+        if (window->isMinimized())
+            window->showNormal();
+        else
+            window->show();
+        window->raise();
+        window->activateWindow();
+        if (!path.isEmpty() && !window->openDocumentPath(path))
+            QMessageBox::warning(window, QStringLiteral("Open failed"), window->lastLoadError());
+    });
     QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
     h5reader::diagnostics::InstallShutdownSignalHandlers();
 
-    if (!runPath.isEmpty() && !window->loadRunPath(runPath)) {
+    if (!runPath.isEmpty() && !openCollectionAfterShow && !window->loadRunPath(runPath)) {
         qCCritical(cLifecycle).noquote() << "Load failed:" << window->lastLoadError();
         delete window;
         return 3;
@@ -169,12 +217,15 @@ int main(int argc, char* argv[]) {
                 qCCritical(cLifecycle).noquote()
                     << "REST server failed to bind; exiting";
                 QCoreApplication::exit(6);
+                return;
             }
         }, Qt::QueuedConnection);
     } else {
-        QMetaObject::invokeMethod(window, [window]() {
+        QMetaObject::invokeMethod(window, [window, runPath, openCollectionAfterShow]() {
             window->show();
             qCInfo(cLifecycle).noquote() << "window shown";
+            if (openCollectionAfterShow && !window->openDocumentPath(runPath))
+                QMessageBox::critical(window, QStringLiteral("Open collection failed"), window->lastLoadError());
         }, Qt::QueuedConnection);
     }
 

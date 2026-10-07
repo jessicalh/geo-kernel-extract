@@ -7,6 +7,7 @@ import logging
 import lzma
 import os
 from pathlib import Path
+import shutil
 import tarfile
 from tempfile import TemporaryDirectory
 from time import perf_counter
@@ -101,7 +102,8 @@ def package(args):
     if manifest["kind"] != "trajectory":
         raise ValueError("This publisher accepts trajectory LGS files only")
     source = manifest["trajectory"]
-    root = source_lgs.parent
+    source_root = getattr(args, "source_root", None)
+    root = source_root.resolve() if source_root else source_lgs.parent
     extraction = resolve(root, source["extraction_dir"])
     fields = {
         line.strip()
@@ -124,7 +126,7 @@ def package(args):
             f"Installed example already exists: {args.install_root / args.key}"
         )
 
-    protected = {root, extraction.resolve()}
+    protected = {source_lgs.parent, root, extraction.resolve()}
     members = []
     LOG.info("Reading publication contents into memory: %s", args.key)
     with os.scandir(extraction) as entries:
@@ -209,6 +211,15 @@ def package(args):
         len(members) - 1,
     )
     args.output.mkdir(parents=True, exist_ok=True)
+    reserve_bytes = int(getattr(args, "minimum_free_gib", 0) * 1024**3)
+    archive_bound = expanded_bytes + 4096 * len(members) + 16 * 1024**2
+    free_bytes = shutil.disk_usage(args.output).free
+    if free_bytes < archive_bound + reserve_bytes:
+        raise OSError(
+            f"Insufficient space at {args.output}: {free_bytes / 1024**3:.1f} GiB free; "
+            f"allow {archive_bound / 1024**3:.1f} GiB for this archive "
+            f"and retain {reserve_bytes / 1024**3:.1f} GiB free"
+        )
     with TemporaryDirectory(
         prefix=f".{args.key}-", suffix=".partial", dir=args.output
     ) as temporary:
@@ -223,10 +234,13 @@ def package(args):
             "description": args.description,
             "frames": args.frames,
             "entry_point": "run.LGS",
-            "url": f"https://semantic.construction/files/{archive.name}",
             "expanded_bytes": expanded_bytes,
             "archive_bytes": archive_bytes,
         }
+        if getattr(args, "local", False):
+            entry["archive"] = archive.name
+        else:
+            entry["url"] = f"https://semantic.construction/files/{archive.name}"
         pending_metadata = staging / metadata.name
         pending_metadata.write_text(
             json.dumps(entry, indent=2) + "\n", encoding="utf-8"
@@ -265,6 +279,8 @@ def package(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("lgs", type=Path)
+    parser.add_argument("--source-root", type=Path,
+                        help="Resolve LGS data paths against a matching source copy")
     parser.add_argument("--fields", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--key", required=True)
@@ -272,6 +288,9 @@ def main():
     parser.add_argument("--description", required=True)
     parser.add_argument("--frames", type=int, required=True)
     parser.add_argument("--install-root", type=Path)
+    parser.add_argument("--local", action="store_true", help="Name a sibling archive instead of a web URL")
+    parser.add_argument("--minimum-free-gib", type=float, default=0,
+                        help="Free disk space to retain on the output volume")
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"

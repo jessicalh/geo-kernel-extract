@@ -156,6 +156,8 @@ CalcsetManifest::Kind ParseKind(const QString& s, bool& ok) {
     return CalcsetManifest::Kind::Trajectory;
 }
 
+}  // namespace
+
 // Resolve the calcset_root/<dataset_id>.LGS file from a directory
 // argument by listing `*.LGS`. Zero or more than one match is a hard
 // error per the spec (no glob-and-pick).
@@ -188,8 +190,6 @@ std::optional<QString> ResolveLgsPath(const QString& root_or_lgs_path,
     }
     return dir.absoluteFilePath(matches.front());
 }
-
-}  // namespace
 
 // ---- DftFrame ----------------------------------------------------
 

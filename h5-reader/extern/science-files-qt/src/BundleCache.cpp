@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QPointer>
@@ -81,8 +82,12 @@ void BundleCache::beginDownload() {
                  tr("An incomplete or unexpected cache entry exists. Clear it explicitly before retrying."));
         return;
     }
-    if (makeStaging())
-        download_->start(bundle_.url, staging_->filePath("download.archive"));
+    if (makeStaging()) {
+        const bool resumable = bundle_.url.scheme() == QStringLiteral("https");
+        const QString destination = resumable ? QDir(root_).filePath(".download.archive")
+                                              : staging_->filePath("download.archive");
+        download_->start(bundle_.url, destination, resumable);
+    }
 }
 
 bool BundleCache::makeStaging() {
@@ -104,6 +109,14 @@ bool BundleCache::makeStaging() {
 
 void BundleCache::downloaded(Download::Result result, const QString &detail) {
     if (result == Download::Result::Saved) {
+        if (bundle_.url.scheme() == QStringLiteral("https")) {
+            QFile archive(QDir(root_).filePath(".download.archive"));
+            if (!archive.rename(staging_->filePath("download.archive"))) {
+                startDiskTask(false, Result::FileError,
+                              tr("Could not prepare the downloaded archive: %1").arg(archive.errorString()));
+                return;
+            }
+        }
         if (cancelled_) {
             startDiskTask(false, Result::Cancelled, tr("Cancelled. No incomplete bundle was kept."));
             return;

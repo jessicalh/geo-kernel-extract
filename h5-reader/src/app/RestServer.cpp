@@ -15,7 +15,7 @@
 #include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
-#include "TrajectoryLibraryDialog.h"
+#include "ReaderCollectionDialog.h"
 #include "LearnedActivityDock.h"
 #include "SceneVideoExporter.h"
 #include "SignalDisplayDialog.h"
@@ -51,6 +51,7 @@
 #include <QBuffer>
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QDir>
 #include <QHttpServer>
 #include <QHttpServerRequest>
 #include <QHttpServerResponder>
@@ -66,6 +67,7 @@
 #include <QString>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QUrl>
 #include <QUrlQuery>
 #include <QUuid>
 #include <QVariant>
@@ -463,9 +465,11 @@ QJsonObject restInterfaceDescription() {
                       QStringLiteral("diagnostic"),
                       QStringLiteral("Full display catalog audit surface.")),
             restRoute(QStringLiteral("GET"), QStringLiteral("/api/trajectories"),
-                      QStringLiteral("general"), QStringLiteral("Published trajectories and local availability.")),
+                      QStringLiteral("general"), QStringLiteral("Active collection and local availability; does not load a catalog.")),
+            restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/catalog"),
+                      QStringLiteral("general"), QStringLiteral("Load a Reader collection from a local path or HTTPS URL.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/show"),
-                      QStringLiteral("general"), QStringLiteral("Show the published trajectory dialog.")),
+                      QStringLiteral("general"), QStringLiteral("Show the active Reader collection dialog.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/open"),
                       QStringLiteral("general"), QStringLiteral("Download if needed, then open a catalog entry.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/trajectories/clear"),
@@ -2074,6 +2078,30 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/api/trajectories"), [this]() {
         ASSERT_THREAD(this);
         return jsonResponse(readerWindow_->trajectoryLibrary()->state());
+    });
+    server_->route(QStringLiteral("/api/trajectories/catalog"), Method::Post,
+                   [this](const QHttpServerRequest& request) {
+        ASSERT_THREAD(this);
+        if (hasActiveOperations())
+            return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
+        bool ok = false;
+        const auto body = parseJsonBody(request, &ok);
+        const QJsonValue sourceValue = body.value(QStringLiteral("source"));
+        if (!ok || body.size() != 1 || !sourceValue.isString()
+            || sourceValue.toString().trimmed().isEmpty()) {
+            return errorResponse(
+                QStringLiteral("body must contain only a nonempty string field source"),
+                SC::BadRequest);
+        }
+        const QString sourceText = sourceValue.toString();
+        QUrl source(sourceText);
+        if (QDir::isAbsolutePath(sourceText) || source.isRelative())
+            source = QUrl::fromLocalFile(QDir::current().absoluteFilePath(sourceText));
+        auto* dialog = readerWindow_->trajectoryLibrary();
+        QString error;
+        if (!dialog->loadCatalog(source, &error))
+            return errorResponse(error, SC::Conflict);
+        return jsonResponse(dialog->state());
     });
     server_->route(QStringLiteral("/api/trajectories/show"), Method::Post, [this]() {
         ASSERT_THREAD(this);

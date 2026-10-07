@@ -8,6 +8,7 @@ add_library(science_files_qt STATIC
     include/sciencefiles/Download.h
     include/sciencefiles/BundleCache.h
     src/Download.cpp
+    src/ResumeFile.cpp src/ResumeFile.h
     src/BundleCache.cpp
     src/ArchiveTask.cpp src/ArchiveTask.h
     src/BundlePaths.cpp src/BundlePaths.h)

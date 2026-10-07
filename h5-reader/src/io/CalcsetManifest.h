@@ -16,6 +16,8 @@
 
 namespace h5reader::io {
 
+std::optional<QString> ResolveLgsPath(const QString& root_or_lgs_path, QString* err_out = nullptr);
+
 /**
  * One DFT job entry from the `.LGS`'s `dft.frames[]` array.
  *

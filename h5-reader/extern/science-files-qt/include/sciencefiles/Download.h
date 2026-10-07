@@ -30,7 +30,9 @@ public:
     ~Download() override;
 
     // False means active or shutting down; accepted starts finish asynchronously.
-    bool start(const QUrl &url, const QString &destination);
+    // Resume is HTTPS-only. The caller exclusively owns destination and its
+    // .part/.json siblings; destination must not exist. Retry is explicit.
+    bool start(const QUrl &url, const QString &destination, bool resume = false);
     bool active() const { return active_; }
     bool isShutdown() const { return shutdownComplete_; }
 

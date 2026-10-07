@@ -15,6 +15,8 @@ import unittest
 from unittest.mock import patch
 
 from package_trajectory import package, write_archive
+from make_reader_collection import make_entries, packaged_entries
+from publish_reader_drive import complete_package, copy_verified, publish_one, require_space
 
 
 def npy_bytes(value):
@@ -303,6 +305,15 @@ class PublicationTests(unittest.TestCase):
                 package(self.args)
         self.assert_no_publication()
 
+    def test_disk_reserve_stops_before_compression_or_publication(self):
+        self.args.install_root = None
+        self.args.minimum_free_gib = 100
+        with patch("package_trajectory.shutil.disk_usage", return_value=SimpleNamespace(free=100 * 1024**3)):
+            with self.assertRaises(OSError):
+                package(self.args)
+        self.assert_no_publication()
+        self.assertEqual(self.snapshot(), self.original)
+
     def test_actual_reader_policy_fields(self):
         if "H5READER_PUBLICATION_FIELDS" not in os.environ:
             self.skipTest("Set H5READER_PUBLICATION_FIELDS to test the Reader field policy")
@@ -340,7 +351,83 @@ class PublicationTests(unittest.TestCase):
         self.assertFalse(
             any(name.startswith("dft/") or name == "reference.pdb" for name in files)
         )
+
+    def test_matching_source_copy_keeps_the_original_lgs(self):
+        self.manifest["trajectory"]["trajectory_h5"] = "extraction/trajectory.h5"
+        self.write_manifest()
+        original_bytes = self.lgs.read_bytes()
+        handoff = self.root / "handoff"
+        handoff.mkdir()
+        copied_lgs = handoff / "original.LGS"
+        copied_lgs.write_bytes(original_bytes)
+        self.args.lgs = copied_lgs
+        self.args.source_root = self.source
+        self.args.install_root = None
+        original = self.snapshot()
+
+        package(self.args)
+
+        files = self.read_bundle()
+        self.assertEqual(files["provenance/source.LGS"], original_bytes)
+        self.assertEqual(copied_lgs.read_bytes(), original_bytes)
+        self.assertEqual(self.snapshot(), original)
+        self.assert_arrays(files)
+        for name, data in self.expected_copies.items():
+            self.assertEqual(files[name], data)
+
+    def test_matching_source_copy_protects_both_roots(self):
+        handoff = self.root / "handoff"
+        handoff.mkdir()
+        copied_lgs = handoff / "original.LGS"
+        copied_lgs.write_bytes(self.lgs.read_bytes())
+        self.args.lgs = copied_lgs
+        self.args.source_root = self.source
+        for parent in (handoff, self.source):
+            with self.subTest(parent=parent):
+                self.args.output = parent / "new-publication"
+                with self.assertRaises(ValueError):
+                    package(self.args)
+                self.assertFalse(self.args.output.exists())
+
+    def test_local_metadata_names_the_sibling_archive(self):
+        self.args.install_root = None
+        self.args.local = True
+        package(self.args)
+        entry = json.loads(self.metadata.read_text(encoding="utf-8"))
+        self.assertEqual(entry["archive"], self.archive.name)
+        self.assertNotIn("url", entry)
+        self.assertEqual(self.snapshot(), self.original)
         self.assertFalse((self.root / "installed").exists())
+
+    def test_drive_index_uses_only_complete_packages(self):
+        drive = self.root / "drive"
+        run = drive / "datasets" / "MD_173" / "bmr68"
+        run.mkdir(parents=True)
+        (run / "bmr68.lgs").write_text('{"kind": "trajectory"}', encoding="utf-8")
+        packages = drive / "packages"
+        packages.mkdir()
+        key = "bmr68-reader-v1"
+        archive = packages / f"{key}.tar.xz"
+        archive.write_bytes(b"package")
+        metadata = {
+            "key": key,
+            "archive": archive.name,
+            "entry_point": "run.LGS",
+            "description": "100-frame production trajectory",
+            "frames": 100,
+            "archive_bytes": archive.stat().st_size,
+            "expanded_bytes": 12,
+        }
+        (packages / f"{key}.json").write_text(json.dumps(metadata), encoding="utf-8")
+        (drive / "datasets" / "Small_proteins").mkdir()
+        self.assertTrue(complete_package(packages, key, 100))
+        entries = make_entries(drive)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["archive"], f"packages/{archive.name}")
+        self.assertNotIn("lgs", entries[0])
+        archive.write_bytes(b"short")
+        with self.assertRaisesRegex(ValueError, "metadata does not match"):
+            make_entries(drive)
 
     def test_existing_publication_is_not_overwritten(self):
         package(self.args)
@@ -486,6 +573,134 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("Archive ready:", result.stderr)
         self.assert_arrays(self.read_bundle())
         self.assertTrue((self.args.install_root / self.args.key / "run.LGS").is_file())
+
+
+class DrivePublicationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.run = self.root / "provenance" / "bmr68"
+        for number in (15, 30):
+            (self.run / "npys" / f"frame_{number:06d}").mkdir(parents=True)
+        self.original_lgs = self.run / "run.LGS"
+        self.original_lgs.write_bytes(b"original manifest")
+        self.packages = self.root / "provenance" / "packages"
+        self.packages.mkdir()
+        self.work_root = self.root / "local-work"
+        self.key = "bmr68-reader-v1"
+        self.working = self.work_root / self.key
+        self.working.mkdir(parents=True)
+        self.archive = self.working / f"{self.key}.tar.xz"
+        self.metadata = self.working / f"{self.key}.json"
+        self.archive.write_bytes(b"completed local archive")
+        self.metadata.write_text(json.dumps({
+            "key": self.key,
+            "archive": self.archive.name,
+            "entry_point": "run.LGS",
+            "frames": 2,
+            "archive_bytes": self.archive.stat().st_size,
+            "expanded_bytes": 100,
+        }), encoding="utf-8")
+
+    def publish(self):
+        with patch("publish_reader_drive.require_space"):
+            publish_one(self.run, "BMRB 68", "MD trajectories", self.packages,
+                        self.work_root, self.root / "fields.txt", 100)
+
+    def test_packaged_catalog_keeps_names_but_uses_disk_metadata(self):
+        self.publish()
+        description = {"key": "bmr68-web-version", "title": "ubiquitin",
+                       "bmrb": "68", "pdb": "2D3G", "organism": "Homo sapiens",
+                       "archive": "old.tar.xz", "archive_bytes": 1,
+                       "expanded_bytes": 2, "frames": 1}
+        entries = packaged_entries(self.packages.parent, {"entries": [description]})
+        self.assertEqual(len(entries), 1)
+        entry = entries[0]
+        for field in ("title", "bmrb", "pdb", "organism"):
+            self.assertEqual(entry[field], description[field])
+        self.assertEqual(entry["key"], self.key)
+        self.assertEqual(entry["archive"], f"packages/{self.key}.tar.xz")
+        self.assertEqual(entry["archive_bytes"], len(b"completed local archive"))
+        self.assertEqual(entry["expanded_bytes"], 100)
+        self.assertEqual(entry["frames"], 2)
+        self.assertEqual(description["archive_bytes"], 1)
+        self.assertEqual(self.original_lgs.read_bytes(), b"original manifest")
+
+    def test_packaged_catalog_requires_every_named_package(self):
+        self.publish()
+        with self.assertRaises(ValueError):
+            packaged_entries(self.packages.parent, {"entries": []})
+        with self.assertRaises(ValueError):
+            packaged_entries(self.packages.parent, {"entries": [{"key": "missing-v1"}]})
+
+    def test_success_copies_verifies_and_removes_only_local_outputs(self):
+        archive_bytes = self.archive.read_bytes()
+        metadata_bytes = self.metadata.read_bytes()
+        with patch("publish_reader_drive.subprocess.run") as process:
+            self.publish()
+            process.assert_not_called()
+        self.assertEqual((self.packages / self.archive.name).read_bytes(), archive_bytes)
+        self.assertEqual((self.packages / self.metadata.name).read_bytes(), metadata_bytes)
+        self.assertFalse(self.working.exists())
+        self.assertEqual(self.original_lgs.read_bytes(), b"original manifest")
+        self.publish()
+        self.assertEqual((self.packages / self.archive.name).read_bytes(), archive_bytes)
+
+    def test_existing_destination_is_never_overwritten(self):
+        destination = self.packages / self.archive.name
+        destination.write_bytes(b"keep this existing output")
+        with self.assertRaises(FileExistsError):
+            copy_verified(self.archive, destination)
+        self.assertEqual(destination.read_bytes(), b"keep this existing output")
+        self.assertTrue(self.archive.is_file())
+
+    def test_restart_removes_matching_retained_local_outputs(self):
+        archive_bytes = self.archive.read_bytes()
+        metadata_bytes = self.metadata.read_bytes()
+        self.publish()
+        self.working.mkdir()
+        self.archive.write_bytes(archive_bytes)
+        self.metadata.write_bytes(metadata_bytes)
+
+        self.publish()
+
+        self.assertFalse(self.working.exists())
+        self.assertEqual((self.packages / self.archive.name).read_bytes(), archive_bytes)
+        self.assertEqual(self.original_lgs.read_bytes(), b"original manifest")
+
+    def test_restart_keeps_a_retained_local_copy_that_differs(self):
+        archive_bytes = self.archive.read_bytes()
+        metadata_bytes = self.metadata.read_bytes()
+        self.publish()
+        self.working.mkdir()
+        self.archive.write_bytes(bytes(value ^ 1 for value in archive_bytes))
+        self.metadata.write_bytes(metadata_bytes)
+
+        with self.assertRaises(OSError):
+            self.publish()
+
+        self.assertTrue(self.archive.is_file())
+        self.assertEqual((self.packages / self.archive.name).read_bytes(), archive_bytes)
+
+    def test_transfer_failure_keeps_local_work_and_never_deletes_provenance(self):
+        def fail_metadata(source, destination):
+            if source == self.metadata:
+                raise OSError("simulated transfer failure")
+            copy_verified(source, destination)
+
+        with patch("publish_reader_drive.copy_verified", side_effect=fail_metadata):
+            with self.assertRaises(OSError):
+                self.publish()
+        self.assertTrue(self.archive.is_file())
+        self.assertTrue(self.metadata.is_file())
+        self.assertEqual((self.packages / self.archive.name).read_bytes(), self.archive.read_bytes())
+        self.assertEqual(self.original_lgs.read_bytes(), b"original manifest")
+
+    def test_insufficient_space_stops_with_named_volume(self):
+        with patch("publish_reader_drive.shutil.disk_usage", return_value=SimpleNamespace(free=9 * 1024**3)):
+            with self.assertRaises(OSError):
+                require_space(self.work_root, 1024**3, 10)
 
 
 if __name__ == "__main__":

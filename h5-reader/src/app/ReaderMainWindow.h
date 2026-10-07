@@ -65,7 +65,7 @@ namespace h5reader::app {
 
 class MoleculeScene;
 class LearnedActivityDock;
-class TrajectoryLibraryDialog;
+class ReaderCollectionDialog;
 class QtPlaybackController;
 class DashboardDisplayController;
 class DashboardSelectionController;
@@ -91,8 +91,11 @@ public:
     // Load or replace the current calcset in this window. The path is resolved
     // through QtProteinLoader::LoadRunPath. Returns false without changing the
     // current run when loading fails; lastLoadError() carries the loader error.
-    bool loadRunPath(const QString& path);
-    TrajectoryLibraryDialog* trajectoryLibrary();
+    bool loadRunPath(const QString& path, bool rememberRecent = true);
+    // A collection .LGS opens a run picker; other .LGS files use loadRunPath().
+    bool openDocumentPath(const QString& path);
+    // Lazily creates an empty collection dialog; does not load a catalog.
+    ReaderCollectionDialog* trajectoryLibrary();
     QString lastLoadError() const { return lastLoadError_; }
     LearnedActivityDock* learnedActivityDock() const { return learnedActivityDock_; }
 
@@ -177,6 +180,9 @@ public:
     // rules. Pure read of the live control states.
     QJsonObject uiStateJson() const;
 
+signals:
+    void closeRequested();
+
 public slots:
     // Called from aboutToQuit. Stops timers and detaches the render window so
     // QVTKRenderWindowAdapter finalizes it in the current GL context.
@@ -190,8 +196,8 @@ protected:
     // ANGLE / software OpenGL, this is where it shows up.
     void showEvent(QShowEvent* event) override;
 
-    // Active exports receive a graceful stop and hold the close until their
-    // completion signal arrives. QSettings save then runs before the existing
+    // Collection work and active exports hold the close until their shutdown
+    // signals arrive. QSettings save then runs before the existing
     // aboutToQuit -> shutdown chain.
     void closeEvent(QCloseEvent* event) override;
 
@@ -207,7 +213,7 @@ private slots:
     void onTransformFitClicked();
 
 private:
-    TrajectoryLibraryDialog* trajectoryLibrary_ = nullptr;
+    QPointer<ReaderCollectionDialog> collectionDialog_;
     bool closeWaitingForDownloads_ = false;
     LearnedActivityDock* learnedActivityDock_ = nullptr;
     void buildUi();

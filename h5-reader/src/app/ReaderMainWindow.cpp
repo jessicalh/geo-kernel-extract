@@ -1,4 +1,6 @@
 #include "ReaderMainWindow.h"
+#include "ReaderCollection.h"
+#include "ReaderCollectionDialog.h"
 
 #include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
@@ -20,7 +22,6 @@
 #include "QtPlaybackController.h"
 #include "TimeViewportController.h"
 #include "LearnedActivityDock.h"
-#include "TrajectoryLibraryDialog.h"
 #include "MeasurementOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "DashboardStripDock.h"
@@ -627,14 +628,16 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
     qCInfo(cWindow).noquote() << "ctor done";
 }
 
-bool ReaderMainWindow::loadRunPath(const QString& path) {
+bool ReaderMainWindow::loadRunPath(const QString& path, bool rememberRecent) {
     ASSERT_THREAD(this);
     lastLoadError_.clear();
-    if (trajectoryLibrary_ && trajectoryLibrary_->isClearing()) {
-        lastLoadError_ = QStringLiteral("Wait for the download cache to finish clearing before opening a trajectory.");
+    if (collectionDialog_ && collectionDialog_->isClearing()) {
+        lastLoadError_ = QStringLiteral("Wait for the collection buffer to finish clearing before opening a trajectory.");
         qCWarning(cWindow).noquote() << "Load refused:" << lastLoadError_;
         return false;
     }
+    if (collectionDialog_)
+        collectionDialog_->cancelPendingOpen();
     lastDiagnosticSeverity_.clear();
     lastDiagnosticSource_.clear();
     lastDiagnosticMessage_.clear();
@@ -664,7 +667,40 @@ bool ReaderMainWindow::loadRunPath(const QString& path) {
     }
 
     installLoadedRun(std::move(loaded));
+    if (rememberRecent && !loaded_->runPath.isEmpty())
+        addToRecentFiles(QDir(loaded_->runPath).absolutePath());
     lastLoadError_.clear();
+    return true;
+}
+
+bool ReaderMainWindow::openDocumentPath(const QString& path) {
+    ASSERT_THREAD(this);
+    if (restServer_ && restServer_->hasActiveOperations()) {
+        lastLoadError_ = QStringLiteral("Finish the active export before opening another document.");
+        qCWarning(cWindow).noquote() << "Open refused:" << lastLoadError_;
+        return false;
+    }
+    QString error;
+    auto document = ReadReaderDocument(path, &error);
+    if (!document) {
+        lastLoadError_ = error;
+        qCWarning(cWindow).noquote() << "Open failed:" << error;
+        return false;
+    }
+    if (!document->collection)
+        return loadRunPath(path);
+
+    auto* dialog = trajectoryLibrary();
+    if (!dialog->setCollection(std::move(*document->collection), &error)) {
+        lastLoadError_ = error;
+        qCWarning(cWindow).noquote() << "Open failed:" << error;
+        return false;
+    }
+    addToRecentFiles(document->lgsPath);
+    lastLoadError_.clear();
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
     return true;
 }
 
@@ -672,8 +708,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     ASSERT_THREAD(this);
     clearLoadedRun();
     loaded_ = std::make_unique<h5reader::io::QtLoadResult>(std::move(loaded));
-    if (trajectoryLibrary_)
-        trajectoryLibrary_->setCurrentRun(loaded_->runPath);
+    if (collectionDialog_)
+        collectionDialog_->setCurrentRun(loaded_->runPath);
 
     // Wraps the loader's Conformation so consumers (scene, picker, overlays,
     // REST /positions) read positions through a runtime-switchable rigid-body
@@ -1102,8 +1138,6 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     setWindowTitle(QStringLiteral("h5-reader — %1").arg(loaded_->proteinId));
     if (proteinLabel_)
         proteinLabel_->setText(loaded_->proteinId);
-    if (!loaded_->runPath.isEmpty())
-        addToRecentFiles(QDir(loaded_->runPath).absolutePath());
     syncRestServerContext();
 
     qCInfo(cWindow).noquote()
@@ -2918,10 +2952,13 @@ void ReaderMainWindow::onTransformFitClicked() {
 
 void ReaderMainWindow::closeEvent(QCloseEvent* event) {
     ASSERT_THREAD(this);
-    if (trajectoryLibrary_ && !trajectoryLibrary_->isShutdown()) {
-        closeWaitingForDownloads_ = true;
-        trajectoryLibrary_->shutdown();
-        statusBar()->showMessage(QStringLiteral("Finishing download cleanup before closing..."));
+    emit closeRequested();
+    if (collectionDialog_ && !collectionDialog_->isShutdown()) {
+        if (!closeWaitingForDownloads_) {
+            closeWaitingForDownloads_ = true;
+            collectionDialog_->shutdown();
+            statusBar()->showMessage(QStringLiteral("Finishing collection cleanup before closing..."));
+        }
         event->ignore();
         return;
     }
@@ -3015,7 +3052,7 @@ void ReaderMainWindow::rebuildRecentFilesMenu(const QStringList& paths) {
 
 void ReaderMainWindow::openRecentPath(const QString& path) {
     ASSERT_THREAD(this);
-    if (!loadRunPath(path)) {
+    if (!openDocumentPath(path)) {
         QMessageBox::critical(this,
                               QStringLiteral("Open calcset failed"),
                               lastLoadError());
@@ -3029,16 +3066,23 @@ void ReaderMainWindow::onPlayPauseClicked() {
 
 void ReaderMainWindow::onOpenFile() {
     ASSERT_THREAD(this);
-    // Pick a .LGS calcset file directly with the mouse. CalcsetManifest::Load
-    // (via ResolveLgsPath) accepts a .LGS file path, so load it into this
-    // window.
+    QSettings settings;
+    QString directory = qEnvironmentVariable("H5READER_OPEN_DIR");
+    if (directory.isEmpty())
+        directory = settings.value(QStringLiteral("viewer/open/directory")).toString();
+    if (directory.isEmpty()) {
+        const QString installed = QDir(QCoreApplication::applicationDirPath())
+                                      .filePath(QStringLiteral("datasets"));
+        directory = QDir(installed).exists() ? installed : QDir::homePath();
+    }
     const QString file = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Open a calcset (.LGS) file"),
-        qEnvironmentVariable("H5READER_OPEN_DIR"),
-        QStringLiteral("Calcset manifest (*.lgs *.LGS);;All files (*)"));
+        this, QStringLiteral("Open a Reader .LGS file"),
+        directory,
+        QStringLiteral("Reader .LGS files (*.lgs *.LGS);;All files (*)"));
     if (file.isEmpty())
         return;
-    if (!loadRunPath(file)) {
+    settings.setValue(QStringLiteral("viewer/open/directory"), QFileInfo(file).absolutePath());
+    if (!openDocumentPath(file)) {
         QMessageBox::critical(this,
                               QStringLiteral("Open calcset failed"),
                               lastLoadError());
@@ -3048,45 +3092,51 @@ void ReaderMainWindow::onOpenFile() {
 void ReaderMainWindow::onOpenWebsite() {
     ASSERT_THREAD(this);
     auto* dialog = trajectoryLibrary();
+    QString error;
+    if (!dialog->loadCatalog(QUrl(QStringLiteral("https://semantic.construction/files/Reader.lgs")), &error))
+        dialog->showLoadError(error);
     dialog->show();
     dialog->raise();
     dialog->activateWindow();
 }
 
-TrajectoryLibraryDialog* ReaderMainWindow::trajectoryLibrary() {
+ReaderCollectionDialog* ReaderMainWindow::trajectoryLibrary() {
     ASSERT_THREAD(this);
-    if (!trajectoryLibrary_) {
-        trajectoryLibrary_ = new TrajectoryLibraryDialog(this);
+    if (!collectionDialog_) {
+        auto* dialog = new ReaderCollectionDialog({}, this);
+        collectionDialog_ = dialog;
         if (loaded_)
-            trajectoryLibrary_->setCurrentRun(loaded_->runPath);
-        QObject::connect(trajectoryLibrary_, &TrajectoryLibraryDialog::openRequested, this,
-                         [this](const QString& path) {
+            dialog->setCurrentRun(loaded_->runPath);
+        QObject::connect(dialog, &ReaderCollectionDialog::openRequested, this,
+                         [this, dialog](const QString& lgsPath, const QString& key) {
             if (closeWaitingForDownloads_ || closeWaitingForOperations_)
                 return;
             if (restServer_ && restServer_->hasActiveOperations()) {
-                trajectoryLibrary_->showLoadError(QStringLiteral("Finish the active export before opening this trajectory."));
+                dialog->showLoadError(QStringLiteral("Finish the active export before opening this trajectory."));
                 return;
             }
-            if (!loadRunPath(path))
-                trajectoryLibrary_->showLoadError(lastLoadError());
-            else
-                trajectoryLibrary_->hide();
+            if (!loadRunPath(lgsPath, false))
+                dialog->runFailed(key, lastLoadError());
+            else {
+                dialog->runOpened(key);
+                dialog->close();
+            }
         });
-        QObject::connect(trajectoryLibrary_, &TrajectoryLibraryDialog::shutdownFinished, this, [this] {
+        QObject::connect(dialog, &ReaderCollectionDialog::shutdownFinished, this, [this] {
             if (closeWaitingForDownloads_)
                 close();
         }, Qt::QueuedConnection);
     }
-    return trajectoryLibrary_;
+    return collectionDialog_;
 }
 
 void ReaderMainWindow::onOpenDirectory() {
     ASSERT_THREAD(this);
     const QString dir = QFileDialog::getExistingDirectory(
-        this, QStringLiteral("Open a run directory (trajectory or single pose)"));
+        this, QStringLiteral("Open a Reader directory"));
     if (dir.isEmpty())
         return;
-    if (!loadRunPath(dir)) {
+    if (!openDocumentPath(dir)) {
         QMessageBox::critical(this,
                               QStringLiteral("Open calcset failed"),
                               lastLoadError());

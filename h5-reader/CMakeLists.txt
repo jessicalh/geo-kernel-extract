@@ -217,8 +217,12 @@ qt_add_library(h5reader_core STATIC
     src/app/MeasurementsDock.cpp
     src/app/ReaderMainWindow.h
     src/app/ReaderMainWindow.cpp
-    src/app/TrajectoryLibraryDialog.h
-    src/app/TrajectoryLibraryDialog.cpp
+    src/app/ReaderCollection.h
+    src/app/ReaderCollection.cpp
+    src/app/ReaderInstance.h
+    src/app/ReaderInstance.cpp
+    src/app/ReaderCollectionDialog.h
+    src/app/ReaderCollectionDialog.cpp
     src/app/QtRingPolygonOverlay.h
     src/app/QtRingPolygonOverlay.cpp
     src/app/QtBackboneRibbonOverlay.h
@@ -363,12 +367,6 @@ qt_add_executable(h5reader
 
 target_link_libraries(h5reader PRIVATE h5reader_core)
 
-# Track catalog-only edits so regeneration updates every configuration without a relink.
-configure_file(resources/trajectories.json catalog/trajectories.json COPYONLY)
-file(GENERATE
-    OUTPUT "$<TARGET_FILE_DIR:h5reader>/trajectories.json"
-    INPUT "${CMAKE_CURRENT_BINARY_DIR}/catalog/trajectories.json")
-install(FILES resources/trajectories.json DESTINATION . COMPONENT Runtime)
 set(H5READER_BUNDLED_DATA_DIR "" CACHE PATH "Prepared installed trajectory examples")
 if(H5READER_BUNDLED_DATA_DIR)
     install(DIRECTORY "${H5READER_BUNDLED_DATA_DIR}/" DESTINATION datasets COMPONENT Runtime)
@@ -432,6 +430,40 @@ if(BUILD_TESTING)
 endif()
 
 if(BUILD_TESTING AND Qt6Test_FOUND)
+    qt_add_executable(h5reader_local_file_download_tests
+        tests/local_file_download_tests.cpp
+    )
+    target_link_libraries(h5reader_local_file_download_tests PRIVATE science_files_qt Qt6::Test)
+    h5reader_apply_platform_target_settings(h5reader_local_file_download_tests)
+    add_test(NAME h5reader_local_file_download_tests COMMAND h5reader_local_file_download_tests)
+
+    qt_add_executable(h5reader_instance_tests
+        tests/reader_instance_tests.cpp
+        src/app/ReaderInstance.h
+        src/app/ReaderInstance.cpp
+    )
+    target_include_directories(h5reader_instance_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(h5reader_instance_tests PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    h5reader_apply_platform_target_settings(h5reader_instance_tests)
+    add_test(NAME h5reader_instance_tests COMMAND h5reader_instance_tests)
+
+    qt_add_executable(h5reader_resumable_download_tests tests/resumable_download_tests.cpp)
+    target_link_libraries(h5reader_resumable_download_tests PRIVATE science_files_qt Qt6::Test)
+    h5reader_apply_platform_target_settings(h5reader_resumable_download_tests)
+    find_program(H5READER_GO_EXECUTABLE NAMES go
+        HINTS "$ENV{GOROOT}/bin" "C:/tools/go1.27.1/bin" "C:/tools/go1.27.1/go/bin")
+    if(H5READER_GO_EXECUTABLE)
+        add_test(NAME h5reader_resumable_download_tests
+            COMMAND "${CMAKE_COMMAND}" -E env
+                "H5READER_DOWNLOAD_TEST=$<TARGET_FILE:h5reader_resumable_download_tests>"
+                "${H5READER_GO_EXECUTABLE}" test -v -count=1 -timeout=240s .)
+        set_tests_properties(h5reader_resumable_download_tests PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests/download"
+            TIMEOUT 300)
+    else()
+        message(WARNING "Resumable HTTPS CTest requires Go; set H5READER_GO_EXECUTABLE to enable it.")
+    endif()
+
     qt_add_executable(h5reader_model_tests
         tests/dashboard_model_tests.cpp
         src/model/DashboardSignal.h
