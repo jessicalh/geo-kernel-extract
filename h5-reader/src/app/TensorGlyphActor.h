@@ -14,6 +14,7 @@
 #pragma once
 
 #include "../model/Types.h"
+#include "TensorGlyphPalette.h"
 
 #include <vtkActor.h>
 #include <vtkArrowSource.h>
@@ -34,6 +35,7 @@ namespace h5reader::app {
 class TensorGlyphActor {
 public:
     struct Style {
+        TensorAxisColours axisColours = kDefaultTensorColours;
         double ovaloidScale = 1.0;
         double arrowLengthScale = 1.0;
         double arrowWidthScale = 1.0;
@@ -76,6 +78,7 @@ public:
     void clear();
     void setVisible(bool on);
     bool isActive() const { return active_; }
+    bool isVisible() const;
 
 private:
     void ensureActors();

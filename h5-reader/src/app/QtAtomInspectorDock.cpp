@@ -1,4 +1,6 @@
 #include "QtAtomInspectorDock.h"
+#include "AtomInspectorGlossary.h"
+#include "MetricGlossaryPopup.h"
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -39,6 +41,7 @@
 
 #include <QBrush>
 #include <QColor>
+#include "TensorGlyphPalette.h"
 #include <QHeaderView>
 #include <QIcon>
 #include <QJsonArray>
@@ -47,10 +50,14 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QSizePolicy>
+#include <QScrollBar>
+#include <QSignalBlocker>
+#include <QSplitter>
 #include <QString>
 #include <QStringList>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <cmath>
@@ -194,16 +201,13 @@ void AddTensorPrincipalRows(QTreeWidgetItem* parent,
     if (!shape.valid)
         return;
 
-    static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
-        {"11", 0.96, 0.66, 0.16},  // amber
-        {"22", 0.18, 0.74, 0.74},  // teal
-        {"33", 0.74, 0.36, 0.86},  // violet
-    };
+    static constexpr const char* kAxes[] = {"11", "22", "33"};
     const double vals[3] = {shape.principal_values[0], shape.principal_values[1], shape.principal_values[2]};
     for (int i = 0; i < 3; ++i) {
-        const QColor color = QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b);
+        const auto& rgb = kDefaultTensorColours[i];
+        const QColor color = QColor::fromRgbF(rgb[0], rgb[1], rgb[2]);
         AddSwatchKV(parent,
-                    QStringLiteral("%1_%2").arg(valuePrefix, QString::fromLatin1(kAxes[i].name)),
+                    QStringLiteral("%1_%2").arg(valuePrefix, QString::fromLatin1(kAxes[i])),
                     FmtQuantity(vals[i], unit),
                     color);
     }
@@ -330,18 +334,59 @@ QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringL
     setMinimumWidth(260);
     setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
 
-    tree_ = new QTreeWidget(this);
-    tree_->setMinimumWidth(0);
-    tree_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
-    tree_->setColumnCount(2);
-    tree_->setHeaderLabels({QStringLiteral("Field"), QStringLiteral("Value")});
-    tree_->setAlternatingRowColors(true);
-    tree_->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    setWidget(tree_);
+    auto* splitter = new QSplitter(Qt::Vertical, this);
+    splitter->setObjectName(QStringLiteral("atomInfoSplitter"));
+    splitter->setChildrenCollapsible(false);
+    tree_ = new QTreeWidget(splitter);
+    tree_->setObjectName(QStringLiteral("atomFields"));
+    auto* lower = new QWidget(splitter);
+    tensorLayout_ = new QVBoxLayout(lower);
+    tensorLayout_->setContentsMargins(0, 0, 0, 0);
+    tensorLayout_->setSpacing(0);
+    tensorTree_ = new QTreeWidget(lower);
+    tensorTree_->setObjectName(QStringLiteral("tensorFields"));
+    tensorLayout_->addWidget(tensorTree_);
+    for (auto* tree : {tree_.data(), tensorTree_.data()}) {
+        tree->setMinimumWidth(0);
+        tree->setMinimumHeight(100);
+        tree->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        tree->setColumnCount(2);
+        tree->setHeaderLabels({QStringLiteral("Field"), QStringLiteral("Value")});
+        tree->setAlternatingRowColors(true);
+        tree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        tree->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(tree, &QWidget::customContextMenuRequested, this, [this, tree](const QPoint& position) {
+            const auto* item = tree->itemAt(position);
+            if (!item) return;
+            QStringList path;
+            for (const auto* ancestor = item; ancestor; ancestor = ancestor->parent())
+                path.prepend(ancestor->text(0));
+            const QString source = csa_.sourceDetail.isEmpty()
+                ? csa_.sourceLabel : csa_.sourceLabel + QStringLiteral(": ") + csa_.sourceDetail;
+            if (const auto help = AtomInspectorGlossary(path, source))
+                ShowMetricGlossaryPopup(item->text(0), *help, tree->viewport()->mapToGlobal(position), this);
+        });
+    }
+    connect(tensorTree_, &QTreeWidget::itemChanged, this,
+            [this](QTreeWidgetItem* item, int column) {
+        if (column != 0) return;
+        if (item == csaGroup_)
+            setTensorDisplayEnabled(item->checkState(0) == Qt::Checked, orientationEnabled_);
+        else if (item == orientationGroup_)
+            setTensorDisplayEnabled(shieldingEnabled_, item->checkState(0) == Qt::Checked);
+    });
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes({300, 400});
+    setWidget(splitter);
 
     // Starting placeholder.
     auto* hint = new QTreeWidgetItem(tree_);
     hint->setText(0, QStringLiteral("Double-click an atom in the viewport"));
+}
+
+void QtAtomInspectorDock::setSelectionContextWidget(QWidget* context) {
+    tensorLayout_->insertWidget(0, context);
 }
 
 void QtAtomInspectorDock::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
@@ -366,6 +411,10 @@ void QtAtomInspectorDock::setFieldAvailability(
 
 void QtAtomInspectorDock::setPickedAtom(std::size_t atomIdx) {
     ASSERT_THREAD(this);
+    if (!hasSelection_ || atomIdx_ != atomIdx) {
+        tree_->verticalScrollBar()->setValue(0);
+        tensorTree_->verticalScrollBar()->setValue(0);
+    }
     hasSelection_ = true;
     atomIdx_ = atomIdx;
     requestCurrentSnapshot();
@@ -406,7 +455,12 @@ void QtAtomInspectorDock::clearSelection() {
     hasOrient_ = false;
     csaAtom_ = 0;
     orientAtom_ = 0;
+    csaGroup_ = nullptr;
+    orientationGroup_ = nullptr;
+    shieldingVisible_ = false;
+    orientationVisible_ = false;
     tree_->clear();
+    tensorTree_->clear();
     auto* hint = new QTreeWidgetItem(tree_);
     hint->setText(0, QStringLiteral("Double-click an atom in the viewport"));
 }
@@ -443,6 +497,45 @@ void QtAtomInspectorDock::clearOrientationTensor() {
         rebuild();
 }
 
+void QtAtomInspectorDock::setTensorVisibility(bool shielding, bool orientation) {
+    ASSERT_THREAD(this);
+    if (shieldingVisible_ == shielding && orientationVisible_ == orientation)
+        return;
+    shieldingVisible_ = shielding;
+    orientationVisible_ = orientation;
+    refreshTensorHeadings();
+}
+
+void QtAtomInspectorDock::refreshTensorHeadings() {
+    const QSignalBlocker blocker(tensorTree_);
+    const auto markShown = [](QTreeWidgetItem* item, bool enabled, bool shown) {
+        if (!item) return;
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(0, enabled ? Qt::Checked : Qt::Unchecked);
+        item->setText(1, shown ? QStringLiteral("Shown") : QString());
+        auto font = item->font(0);
+        font.setBold(shown);
+        item->setFont(0, font);
+        item->setFont(1, font);
+    };
+    markShown(csaGroup_, shieldingEnabled_, shieldingVisible_);
+    if (csaGroup_ && !csa_.status.isEmpty())
+        csaGroup_->setText(1, csa_.status);
+    markShown(orientationGroup_, orientationEnabled_, orientationVisible_);
+}
+
+void QtAtomInspectorDock::setTensorDisplayEnabled(bool shielding, bool orientation) {
+    ASSERT_THREAD(this);
+    if (shieldingEnabled_ == shielding && orientationEnabled_ == orientation)
+        return;
+    shieldingEnabled_ = shielding;
+    orientationEnabled_ = orientation;
+    refreshTensorHeadings();
+    qCInfo(cDock) << "tensor display | shielding=" << shielding
+                 << "| orientation=" << orientation;
+    emit tensorDisplayChanged(shielding, orientation);
+}
+
 void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
     const QString source = csa_.sourceLabel.isEmpty()
                                ? QStringLiteral("unknown source")
@@ -451,49 +544,77 @@ void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
                               ? (csa_.framed ? QStringLiteral("molecular frame")
                                              : QStringLiteral("unframed"))
                               : csa_.frameKind;
-    auto* group = AddKV(root,
-                        QStringLiteral("Shielding tensor (%1)").arg(source),
-                        frame);
+    auto* group = AddKV(root, QStringLiteral("Shielding tensor (%1)").arg(source), QString());
+    csaGroup_ = group;
     group->setExpanded(true);
-    if (!csa_.sourceDetail.isEmpty())
+    group->setToolTip(0, QStringLiteral("Symmetric shielding tensor at this atom in the current frame."));
+    if (!csa_.status.isEmpty()) {
         AddKV(group, QStringLiteral("Source"), csa_.sourceDetail);
+        return;
+    }
     AddScalar(group, QStringLiteral("sigma_iso"), csa_.sigmaIso, QStringLiteral("ppm"));
-    AddScalar(group, QStringLiteral("span"), csa_.span, QStringLiteral("ppm"));
-    AddScalar(group, QStringLiteral("skew"), csa_.skew);
-    AddScalar(group, QStringLiteral("eta"), csa_.eta);
+    auto* axes = AddKV(group, QStringLiteral("Principal values"), QStringLiteral("ppm (from mean)"));
+    axes->setToolTip(0, QStringLiteral("Shielding along each coloured axis. Parentheses give the difference from sigma_iso, in ppm."));
+    axes->setToolTip(1, axes->toolTip(0));
+    axes->setExpanded(true);
 
     // Per-axis principal values. The swatch is the colour key for the scene
     // arrows; no floating labels in the molecule view.
-    static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
-        {"sigma_11", 0.96, 0.66, 0.16},  // amber
-        {"sigma_22", 0.18, 0.74, 0.74},  // teal
-        {"sigma_33", 0.74, 0.36, 0.86},  // violet
-    };
+    static constexpr const char* kAxes[] = {"sigma_11", "sigma_22", "sigma_33"};
     const double vals[3] = {csa_.sigma11, csa_.sigma22, csa_.sigma33};
     for (int i = 0; i < 3; ++i) {
-        const QColor color = QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b);
-        AddSwatchKV(group, QString::fromLatin1(kAxes[i].name),
-                    FmtDouble(vals[i]) + QStringLiteral(" ppm"), color);
+        const auto& rgb = kShieldingTensorColours[i];
+        const QColor color = QColor::fromRgbF(rgb[0], rgb[1], rgb[2]);
+        const double difference = vals[i] - csa_.sigmaIso;
+        const QString signedDifference = (difference > 0.0 ? QStringLiteral("+") : QString())
+                                         + FmtDouble(difference);
+        auto* axis = AddSwatchKV(axes, QString::fromLatin1(kAxes[i]),
+                                QStringLiteral("%1 (%2)").arg(FmtDouble(vals[i]), signedDifference), color);
+        axis->setToolTip(0, axes->toolTip(0));
+        axis->setToolTip(1, axes->toolTip(0));
     }
+    AddScalar(group, QStringLiteral("span"), csa_.span, QStringLiteral("ppm"));
+    auto* scale = AddKV(group, QStringLiteral("Glyph size"), QStringLiteral("Normalised"));
+    scale->setToolTip(0, QStringLiteral("Each tensor is scaled separately. Arrow length follows the size of its deviation from the mean, with a minimum for visibility."));
+    scale->setToolTip(1, scale->toolTip(0));
+    auto* detail = AddKV(group, QStringLiteral("Details"), QStringLiteral("Source and shape"));
+    AddKV(detail, QStringLiteral("Scope"), QStringLiteral("Current frame"));
+    if (!csa_.sourceDetail.isEmpty())
+        AddKV(detail, QStringLiteral("Source"), csa_.sourceDetail);
+    AddKV(detail, QStringLiteral("Frame convention"), frame);
+    AddScalar(detail, QStringLiteral("skew"), csa_.skew);
+    AddScalar(detail, QStringLiteral("eta"), csa_.eta);
 }
 
 void QtAtomInspectorDock::populateOrientation(QTreeWidgetItem* root) {
-    auto* group = AddKV(root, QStringLiteral("Bond orientation tensor"), orient_.bond);
+    auto* group = AddKV(root, QStringLiteral("Bond orientation tensor"), QString());
+    orientationGroup_ = group;
     group->setExpanded(true);
-    AddScalar(group, QStringLiteral("S^2 (order parameter)"), orient_.s2);
+    group->setToolTip(0, QStringLiteral("Average of u u^T across aligned trajectory frames, where u is the unit bond vector."));
+    AddKV(group, QStringLiteral("Bond"), orient_.bond);
+    AddKV(group, QStringLiteral("Average over"), QStringLiteral("Trajectory"));
+    auto* order = AddKV(group, QStringLiteral("S^2 (order parameter)"), FmtDouble(orient_.s2));
+    order->setToolTip(0, QStringLiteral("Calculated from the three eigenvalues: (3 sum(lambda^2) - 1) / 2. A fixed bond direction gives 1; isotropic directions give 0."));
+    order->setToolTip(1, order->toolTip(0));
 
     // Order-tensor eigenvalues (descending; sum to 1). The swatch is the
     // colour key for the scene arrows; no floating labels in the molecule view.
-    static constexpr struct { const char* name; double r, g, b; } kAxes[3] = {
-        {"lambda_1", 0.96, 0.66, 0.16},  // amber
-        {"lambda_2", 0.18, 0.74, 0.74},  // teal
-        {"lambda_3", 0.74, 0.36, 0.86},  // violet
-    };
+    static constexpr const char* kAxes[] = {"lambda_1", "lambda_2", "lambda_3"};
     const double vals[3] = {orient_.lambda1, orient_.lambda2, orient_.lambda3};
     for (int i = 0; i < 3; ++i) {
-        const QColor color = QColor::fromRgbF(kAxes[i].r, kAxes[i].g, kAxes[i].b);
-        AddSwatchKV(group, QString::fromLatin1(kAxes[i].name), FmtDouble(vals[i]), color);
+        const auto& rgb = kOrientationTensorColours[i];
+        const QColor color = QColor::fromRgbF(rgb[0], rgb[1], rgb[2]);
+        auto* axis = AddSwatchKV(group, QString::fromLatin1(kAxes[i]), FmtDouble(vals[i]), color);
+        const QString meaning = QStringLiteral("Mean squared projection of the unit bond vector on this principal axis. The three values sum to 1; they are not fractions of frames.");
+        axis->setToolTip(0, meaning);
+        axis->setToolTip(1, meaning);
     }
+    auto* placement = AddKV(group, QStringLiteral("Main axis follows"), QStringLiteral("Current bond"));
+    placement->setToolTip(0, QStringLiteral("The largest-eigenvalue axis is rotated onto the current bond. Shape and eigenvalues describe the trajectory average. The arrows do not show the directions of the average tensor in the aligned protein."));
+    placement->setToolTip(1, placement->toolTip(0));
+    auto* detail = AddKV(group, QStringLiteral("Details"), QString());
+    AddKV(detail, QStringLiteral("Source"), QStringLiteral("nmr_extract: reorientational dynamics"));
+    AddKV(detail, QStringLiteral("Glyph size"), QStringLiteral("Normalised per tensor"));
 }
 
 void QtAtomInspectorDock::rebuild() {
@@ -504,8 +625,15 @@ void QtAtomInspectorDock::rebuild() {
 
     // Batch the rebuild into a single repaint: this tree is cleared + fully
     // repopulated on every focus / frame change, so per-item updates would flicker.
+    const int scroll = tree_->verticalScrollBar()->value();
+    const int tensorScroll = tensorTree_->verticalScrollBar()->value();
+    const QSignalBlocker blocker(tensorTree_);
     tree_->setUpdatesEnabled(false);
+    tensorTree_->setUpdatesEnabled(false);
+    csaGroup_ = nullptr;
+    orientationGroup_ = nullptr;
     tree_->clear();
+    tensorTree_->clear();
 
     auto* title = new QTreeWidgetItem(tree_);
     const auto& atom = protein_->atom(atomIdx_);
@@ -520,18 +648,22 @@ void QtAtomInspectorDock::rebuild() {
     title->setExpanded(true);
 
     populateIdentity(title);
+    if (hasCsa_ && csaAtom_ == atomIdx_)
+        populateCsa(tensorTree_->invisibleRootItem());
+    if (hasOrient_ && orientAtom_ == atomIdx_)
+        populateOrientation(tensorTree_->invisibleRootItem());
+    if (tensorTree_->topLevelItemCount() == 0)
+        AddKV(tensorTree_->invisibleRootItem(), QStringLiteral("No tensor for this atom"), QString());
     // Raw kernels / diagnostics collapse into ONE drawer at the very bottom: the
     // npy "show your work" stays available but does not compete with the
     // validated metrics. Built as an orphan, filled in populatePerFrame, attached
-    // last (below CSA / orientation) iff it ended up with content.
+    // last iff it ended up with content.
     auto* drawer = new QTreeWidgetItem();
     drawer->setText(0, QStringLiteral("Raw kernels & diagnostics"));
     drawer->setText(1, QStringLiteral("raw npy inputs (not validated)"));
     populatePerFrame(title, drawer);
-    if (hasCsa_ && csaAtom_ == atomIdx_)
-        populateCsa(title);
-    if (hasOrient_ && orientAtom_ == atomIdx_)
-        populateOrientation(title);
+    for (int i = 0; i < title->childCount(); ++i)
+        title->child(i)->setExpanded(true);
     if (drawer->childCount() > 0) {
         title->addChild(drawer);     // tree takes ownership; collapse AFTER attach
         drawer->setExpanded(false);
@@ -539,7 +671,11 @@ void QtAtomInspectorDock::rebuild() {
         delete drawer;               // orphan, never attached -- we own it
     }
 
+    refreshTensorHeadings();
+    tree_->verticalScrollBar()->setValue(scroll);
+    tensorTree_->verticalScrollBar()->setValue(tensorScroll);
     tree_->setUpdatesEnabled(true);
+    tensorTree_->setUpdatesEnabled(true);
 }
 
 void QtAtomInspectorDock::populateIdentity(QTreeWidgetItem* parent) {
@@ -1039,7 +1175,6 @@ void QtAtomInspectorDock::populatePerFrame(QTreeWidgetItem* root, QTreeWidgetIte
         }
     }
 
-    tree_->expandToDepth(1);
     qCDebug(cDock).noquote() << "rebuilt | atom=" << a << "| frame=" << t << "| snapshot= resident";
 }
 
@@ -1051,6 +1186,8 @@ QJsonArray serializeInspectorChildren(const QTreeWidgetItem* item) {
         const QTreeWidgetItem* c = item->child(i);
         QJsonObject o{{QStringLiteral("field"), c->text(0)},
                       {QStringLiteral("value"), c->text(1)}};
+        if (c->data(0, Qt::CheckStateRole).isValid())
+            o.insert(QStringLiteral("checked"), c->checkState(0) == Qt::Checked);
         const QString tip = c->toolTip(0);
         if (!tip.isEmpty())
             o.insert(QStringLiteral("tooltip"), tip);
@@ -1065,20 +1202,9 @@ QJsonArray serializeInspectorChildren(const QTreeWidgetItem* item) {
 // Serialize the focused atom's panel tree for the REST harness so the curated
 // display + provenance tooltips are programmatically assertable. Read-only.
 QJsonArray QtAtomInspectorDock::dumpTree() const {
-    QJsonArray out;
-    if (!tree_)
-        return out;
-    for (int i = 0; i < tree_->topLevelItemCount(); ++i) {
-        const QTreeWidgetItem* top = tree_->topLevelItem(i);
-        QJsonObject o{{QStringLiteral("field"), top->text(0)},
-                      {QStringLiteral("value"), top->text(1)}};
-        const QString tip = top->toolTip(0);
-        if (!tip.isEmpty())
-            o.insert(QStringLiteral("tooltip"), tip);
-        if (top->childCount() > 0)
-            o.insert(QStringLiteral("children"), serializeInspectorChildren(top));
-        out.append(o);
-    }
+    QJsonArray out = serializeInspectorChildren(tree_->invisibleRootItem());
+    for (const auto& tensor : serializeInspectorChildren(tensorTree_->invisibleRootItem()))
+        out.append(tensor);
     return out;
 }
 

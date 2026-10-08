@@ -67,6 +67,7 @@
 #include "PlaneFrameMath.h"
 
 #include <QObject>
+#include <QPointF>
 #include <QPointer>
 
 #include <vtkActor.h>
@@ -100,6 +101,16 @@ class MoleculeScene final : public QObject {
     Q_OBJECT
 
 public:
+    struct PickResult {
+        std::optional<std::size_t> atom;
+        bool bond = false;
+        bool empty() const { return !atom && !bond; }
+    };
+
+    // Widget coordinates. A missing result means picking was unavailable or failed;
+    // an empty result means the click missed the displayed molecule.
+    std::optional<PickResult> pickAt(QPointF position);
+
     struct MoleculeStyle {
         bool renderAtoms = true;
         bool renderBonds = true;
@@ -215,6 +226,7 @@ public:
     // atom tuple represented by a strip binding without changing AtomSelection.
     void revealBinding(const h5reader::model::SignalBinding& binding);
     void clearReveal();
+    const std::optional<model::SignalBinding>& activeRevealBinding() const { return activeRevealBinding_; }
 
     // Display isolation ("filter mode"): rebuild the molecule actor from a
     // subset of atoms (the rest hidden); clearAtomFilter restores the whole
@@ -236,6 +248,7 @@ public:
     void clearCameraPlaneLock();
 
 signals:
+    void revealChanged();
     void cameraPlaneLockChanged(bool active);
     // Emitted from the render window's VTK EndEvent on the GUI thread. Video
     // export and other exact-frame consumers use the actual completion event
@@ -295,6 +308,7 @@ private:
     // members because the scene is GUI-thread-only (ASSERT_THREAD enforced).
     unsigned long endEventObserverTag_ = 0;
     bool         renderPending_    = false;
+    bool         picking_          = false;
     RenderSource lastRenderSource_ = RenderSource::External;
 };
 

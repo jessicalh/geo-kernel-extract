@@ -112,6 +112,7 @@ class RestServer final : public QObject {
 public:
     explicit RestServer(QObject* parent = nullptr);
     ~RestServer() override;
+    bool hasTensorComparison() const;
 
     // Wire the dependencies this server reads / mutates. Must be called
     // before listen(); all pointers are stored as QPointer / raw and the
@@ -159,8 +160,6 @@ private:
     void completeShutdownResponseFlush();
     void activeOperationFinished();
     void maybeQuitAfterShutdown();
-    void hideLiveTensorGlyphsForResthero();
-    void restoreLiveTensorGlyphsAfterResthero();
 
     std::unique_ptr<QHttpServer>                server_;
     // Retain accepted sockets as guarded pointers so each request can wait on
@@ -195,8 +194,6 @@ private:
     std::unique_ptr<TensorGhostTrail>           heroshotTrail_;
     std::unique_ptr<AngleCollarActor>           heroshotAngleCollar_;
     std::optional<bool>                         heroshotMeasurementVisibleBefore_;
-    std::optional<bool>                         heroshotCsaActiveBefore_;
-    std::optional<bool>                         heroshotOrientationActiveBefore_;
     std::optional<MoleculeScene::MoleculeStyle> heroshotMoleculeStyleBefore_;
     std::optional<std::size_t>                  heroshotFieldRingBefore_;
     QPointer<QObject>                           ringTensorOperation_;

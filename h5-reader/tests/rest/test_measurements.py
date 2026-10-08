@@ -78,7 +78,11 @@ def test_repeated_measurement_returns_to_foreground_and_clears(rest):
     assert shown["foreground"], shown
     _post(rest, "/docks/visible", {"visible": False})
     assert not _readout(rest)["visible"]
+    assert _readout(rest)["atoms"] == [2, 3]
+    _post(rest, "/playback", {"action": "step_forward"})
+    assert not _readout(rest)["visible"]
     _post(rest, "/docks/visible", {"visible": True})
+    assert _readout(rest)["visible"]
     _post(rest, "/selection/clear")
     shown = _readout(rest)
     assert shown["atoms"] == []
@@ -112,7 +116,7 @@ def test_paused_step_loads_the_displayed_tensor_without_a_probe(rest):
             tree = rest.client.get("/inspector/tree").json()
             tensors = [
                 node
-                for node in tree[0].get("children", [])
+                for node in tree[1:]
                 if node["field"] == "Shielding tensor (ORCA DFT)"
             ]
             if tensors:

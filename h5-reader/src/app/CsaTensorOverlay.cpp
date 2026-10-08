@@ -23,10 +23,12 @@ void CsaTensorOverlay::show(const model::Vec3& atomPos,
     // CSA convention: principal_values ascending sigma11<=sigma22<=sigma33, with
     // pas_axes columns following the same order; iso = sigma_iso. The shared
     // actor draws the index-coloured principal-axis arrows.
+    TensorGlyphActor::Style style;
+    style.axisColours = kShieldingTensorColours;
     glyph_->show(atomPos,
                  {shape.principal_values[0], shape.principal_values[1], shape.principal_values[2]},
                  shape.pas_axes,
-                 shape.sigma_iso);
+                 shape.sigma_iso, 1.0, style);
 }
 
 void CsaTensorOverlay::clear() {
@@ -39,6 +41,10 @@ void CsaTensorOverlay::setVisible(bool on) {
 
 bool CsaTensorOverlay::isActive() const {
     return glyph_->isActive();
+}
+
+bool CsaTensorOverlay::isVisible() const {
+    return glyph_->isVisible();
 }
 
 }  // namespace h5reader::app

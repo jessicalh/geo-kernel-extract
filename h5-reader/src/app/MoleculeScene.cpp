@@ -20,6 +20,8 @@
 #include <QLoggingCategory>
 #include <QMetaObject>
 #include <QPointer>
+#include <QScopeGuard>
+#include <QScopedValueRollback>
 #include <QVTKOpenGLNativeWidget.h>
 
 #include <vtkActorCollection.h>
@@ -27,10 +29,14 @@
 #include <vtkCallbackCommand.h>
 #include <vtkCamera.h>
 #include <vtkCommand.h>
+#include <vtkHardwareSelector.h>
+#include <vtkIdTypeArray.h>
 #include <vtkNew.h>
 #include <vtkPoints.h>
+#include <vtkPropCollection.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindowInteractor.h>
+#include <vtkSelection.h>
 
 #include <algorithm>
 #include <cmath>
@@ -141,7 +147,7 @@ MoleculeScene::MoleculeScene(QVTKOpenGLNativeWidget* vtkWidget,
     endEventCb->SetCallback(
         [](vtkObject* /*caller*/, unsigned long, void* clientData, void*) {
             auto* self = static_cast<MoleculeScene*>(clientData);
-            if (!self || !self->renderer_) return;
+            if (!self || !self->renderer_ || self->picking_) return;
             const double ms = self->renderer_->GetLastRenderTimeInSeconds() * 1000.0;
             const char* src = RenderSourceName(self->lastRenderSource_);
             const char* modeName = "?";
@@ -171,6 +177,61 @@ MoleculeScene::~MoleculeScene() {
         if (overlayRenderer_)
             renderWindow_->RemoveRenderer(overlayRenderer_);
     }
+}
+
+std::optional<MoleculeScene::PickResult> MoleculeScene::pickAt(QPointF position) {
+    ASSERT_THREAD(this);
+    if (!mapper_ || !vtkWidget_ || !vtkWidget_->isValid())
+        return std::nullopt;
+    if (position.x() < 0 || position.y() < 0 ||
+        position.x() >= vtkWidget_->width() || position.y() >= vtkWidget_->height())
+        return std::nullopt;
+
+    const double scale = vtkWidget_->effectiveDevicePixelRatio();
+    const int x = static_cast<int>(position.x() * scale);
+    const int y = renderWindow_->GetSize()[1] - 1 - static_cast<int>(position.y() * scale);
+
+    // POINT selection first renders depth. Exclude decorations from that pass
+    // too; PickableOff alone does not exclude their depth or other render layers.
+    QScopedValueRollback<bool> picking(picking_, true);
+    std::vector<vtkProp*> decorations;
+    auto* props = renderer_->GetViewProps();
+    vtkCollectionSimpleIterator iterator;
+    for (props->InitTraversal(iterator); auto* prop = props->GetNextProp(iterator);) {
+        if (prop != actor_.Get() && prop->GetVisibility()) {
+            decorations.push_back(prop);
+            prop->VisibilityOff();
+        }
+    }
+    const bool overlayWasDrawn = overlayRenderer_->GetDraw();
+    overlayRenderer_->DrawOff();
+    const auto restore = qScopeGuard([&] {
+        for (auto* prop : decorations) prop->VisibilityOn();
+        overlayRenderer_->SetDraw(overlayWasDrawn);
+        requestRender(RenderSource::Picker);
+    });
+
+    vtkNew<vtkHardwareSelector> selector;
+    selector->SetRenderer(renderer_);
+    selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
+    selector->SetArea(x, y, x, y);
+    vtkSmartPointer<vtkSelection> selection;
+    selection.TakeReference(selector->Select());
+    if (!selection) {
+        qCWarning(cScene) << "Molecule picking failed at" << position;
+        return std::nullopt;
+    }
+    vtkNew<vtkIdTypeArray> atoms;
+    vtkNew<vtkIdTypeArray> bonds;
+    mapper_->GetSelectedAtomsAndBonds(selection, atoms, bonds);
+    PickResult result;
+    if (atoms->GetNumberOfValues() > 0)
+        result.atom = moleculeAtomMap_.at(static_cast<std::size_t>(atoms->GetValue(0)));
+    result.bond = bonds->GetNumberOfValues() > 0;
+    qCDebug(cScene) << "pick | pixel=" << x << y << "| frame=" << currentFrame_
+                   << "| atoms=" << atoms->GetNumberOfValues()
+                   << "| bonds=" << bonds->GetNumberOfValues();
+    return result;
 }
 
 void MoleculeScene::Build(const model::QtProtein& protein,
@@ -689,6 +750,7 @@ void MoleculeScene::revealBinding(const model::SignalBinding& binding) {
     } else {
         activeRevealBinding_.reset();
     }
+    emit revealChanged();
     requestRender(RenderSource::Reveal);
 }
 
@@ -696,8 +758,10 @@ void MoleculeScene::clearReveal() {
     ASSERT_THREAD(this);
     if (!reveal_)
         return;
+    const bool wasActive = activeRevealBinding_.has_value();
     activeRevealBinding_.reset();
     reveal_->clear();
+    if (wasActive) emit revealChanged();
     requestRender(RenderSource::Reveal);
 }
 

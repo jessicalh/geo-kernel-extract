@@ -32,20 +32,17 @@
 class QTreeWidget;
 class QTreeWidgetItem;
 class QJsonArray;
+class QVBoxLayout;
 
 namespace h5reader::app {
 
-// Light, Qt-only carrier for the focused atom's DFT CSA tensor shape so this
-// header stays free of the heavy CsaProbe / DftShieldingStore graph.
-// ReaderMainWindow fills it from the AtomCsaResult it already computes for the
-// glyph; the panel shows it as the "CSA shielding tensor (DFT)" section. The
-// per-axis colours match CsaTensorOverlay's arrows (amber/teal/violet) so the
-// in-scene colour-coded arrows stay decodable without in-scene labels.
+// Values shared by the shielding glyph and the inspector, from DFT or prediction.
 struct CsaTensorInfo {
     bool    framed = false;
-    QString sourceLabel;      // "ORCA DFT" or "Experimental Shielding ML"
+    QString sourceLabel;      // "ORCA DFT" or "Predicted"
     QString sourceDetail;     // method/model id
     QString frameKind;        // human-readable tensor-coordinate provenance
+    QString status;           // nonempty when no numerical result is available
     double  sigmaIso = 0.0;   // absolute shielding (ppm), NOT chemical shift
     double  span = 0.0;       // sigma33 - sigma11 (ppm)
     double  skew = 0.0;       // 3 (sigma22 - iso) / span
@@ -59,7 +56,7 @@ struct CsaTensorInfo {
 // as the "Bond orientation tensor" section -- the text twin of the orientation
 // glyph, exactly as CsaTensorInfo is for the CSA glyph. Fed by
 // ReaderMainWindow::updateOrientationTensorGlyph so picture and numbers agree;
-// per-axis colours match the glyph arrows (amber/teal/violet).
+// per-axis colours match the glyph arrows.
 struct OrientationTensorInfo {
     QString bond;            // e.g. "N-H (residue 5)"
     double  s2 = 0.0;        // Henry-Szabo order parameter S^2
@@ -92,6 +89,11 @@ public:
     // focused atom); clearOrientationTensor hides it.
     void setOrientationTensor(std::size_t atom, const OrientationTensorInfo& info);
     void clearOrientationTensor();
+    void setTensorVisibility(bool shielding, bool orientation);
+    void setTensorDisplayEnabled(bool shielding, bool orientation);
+    bool shieldingTensorEnabled() const { return shieldingEnabled_; }
+    bool orientationTensorEnabled() const { return orientationEnabled_; }
+    void setSelectionContextWidget(QWidget* context);
 
     // Serialize the current panel tree (field / value / provenance tooltip,
     // recursively) for the REST harness, so the curated display and its
@@ -110,6 +112,9 @@ public slots:
     // Clear the tree (e.g. load unmounted or picker cleared).
     void clearSelection();
 
+signals:
+    void tensorDisplayChanged(bool shielding, bool orientation);
+
 private slots:
     // The conformation finished loading `frame`'s snapshot; if it is the
     // parked frame, rebuild to show the full per-frame detail. Loading is
@@ -123,8 +128,11 @@ private:
     void populatePerFrame(QTreeWidgetItem* root, QTreeWidgetItem* drawer);
     void populateCsa(QTreeWidgetItem* root);
     void populateOrientation(QTreeWidgetItem* root);
+    void refreshTensorHeadings();
 
     QPointer<QTreeWidget>         tree_;
+    QPointer<QTreeWidget>         tensorTree_;
+    QVBoxLayout*                 tensorLayout_ = nullptr;
     const model::QtProtein*       protein_      = nullptr;
     QPointer<model::Conformation> conformation_;
     std::shared_ptr<const model::TrajectoryFieldAvailability> availability_;
@@ -135,10 +143,16 @@ private:
     bool                         hasCsa_       = false;
     std::size_t                  csaAtom_      = 0;
     CsaTensorInfo                csa_;
+    QTreeWidgetItem*             csaGroup_ = nullptr;  // owned by tensorTree_
+    bool                        shieldingVisible_ = false;
     // Bond orientation tensor mirror; shown iff orientAtom_ == atomIdx_.
     bool                         hasOrient_    = false;
     std::size_t                  orientAtom_   = 0;
     OrientationTensorInfo        orient_;
+    QTreeWidgetItem*             orientationGroup_ = nullptr;  // owned by tensorTree_
+    bool                        orientationVisible_ = false;
+    bool                        shieldingEnabled_ = true;
+    bool                        orientationEnabled_ = true;
 };
 
 }  // namespace h5reader::app

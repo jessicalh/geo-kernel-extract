@@ -18,6 +18,7 @@
 #include "ReaderCollectionDialog.h"
 #include "LearnedActivityDock.h"
 #include "SceneVideoExporter.h"
+#include "SelectionContextWidget.h"
 #include "SignalDisplayDialog.h"
 #include "TensorGhostTrail.h"
 #include "TensorGlyphActor.h"
@@ -1753,28 +1754,8 @@ void RestServer::completeShutdownResponseFlush() {
     maybeQuitAfterShutdown();
 }
 
-void RestServer::hideLiveTensorGlyphsForResthero() {
-    if (!scene_)
-        return;
-    if (CsaTensorOverlay* csa = scene_->csaOverlay()) {
-        if (!heroshotCsaActiveBefore_.has_value())
-            heroshotCsaActiveBefore_ = csa->isActive();
-        csa->setVisible(false);
-    }
-    if (TensorGlyphActor* orientation = scene_->orientationGlyph()) {
-        if (!heroshotOrientationActiveBefore_.has_value())
-            heroshotOrientationActiveBefore_ = orientation->isActive();
-        orientation->setVisible(false);
-    }
-}
-
-void RestServer::restoreLiveTensorGlyphsAfterResthero() {
-    if (scene_ && scene_->csaOverlay() && heroshotCsaActiveBefore_.has_value())
-        scene_->csaOverlay()->setVisible(*heroshotCsaActiveBefore_);
-    if (scene_ && scene_->orientationGlyph() && heroshotOrientationActiveBefore_.has_value())
-        scene_->orientationGlyph()->setVisible(*heroshotOrientationActiveBefore_);
-    heroshotCsaActiveBefore_.reset();
-    heroshotOrientationActiveBefore_.reset();
+bool RestServer::hasTensorComparison() const {
+    return heroshotTensorPair_ && heroshotTensorPair_->size() > 0;
 }
 
 void RestServer::setContext(MoleculeScene* scene,
@@ -1800,8 +1781,6 @@ void RestServer::setContext(MoleculeScene* scene,
         heroshotTrail_.reset();
         heroshotAngleCollar_.reset();
         heroshotMeasurementVisibleBefore_.reset();
-        heroshotCsaActiveBefore_.reset();
-        heroshotOrientationActiveBefore_.reset();
         heroshotMoleculeStyleBefore_.reset();
         heroshotFieldRingBefore_.reset();
         heroshotFieldRingWasSet_ = false;
@@ -2513,7 +2492,7 @@ void RestServer::registerRoutes() {
         if (!readerWindow_->setOverlayVisible(name, visible))
             return errorResponse(
                 QStringLiteral("unknown overlay \"%1\" "
-                               "(ribbon|rings|butterfly|nullcone|bfield)").arg(name),
+                               "(ribbon|rings|butterfly|nullcone|bfield|trajectory|shielding|orientation)").arg(name),
                 SC::BadRequest);
         return QHttpServerResponse(SC::NoContent);
     });
@@ -3131,6 +3110,22 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("reader main window not wired"),
                                  SC::ServiceUnavailable);
         return jsonResponse(readerWindow_->uiStateJson());
+    });
+
+    server_->route(QStringLiteral("/ui/context"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        auto* context = readerWindow_ ? readerWindow_->selectionContext() : nullptr;
+        if (!context)
+            return errorResponse(QStringLiteral("no loaded selection context"), SC::ServiceUnavailable);
+        bool ok = false;
+        const auto body = parseJsonBody(req, &ok);
+        const auto action = body.value(QStringLiteral("action")).toString();
+        if (hasActiveOperations())
+            return errorResponse(QStringLiteral("an export is active"), SC::Conflict);
+        if (!ok || !context->triggerAction(action))
+            return errorResponse(QStringLiteral("context action is unknown or unavailable"), SC::BadRequest);
+        return jsonResponse(context->stateJson());
     });
 
     // ---- playback control (real transport API; mirrors the toolbar) ------
@@ -5444,6 +5439,7 @@ void RestServer::registerRoutes() {
             heroshotTensorPair_ = std::make_unique<HeroshotTensorPairOverlay>(vtkSmartPointer<vtkRenderer>(scene_->Renderer()));
             if (!heroshotTensorPair_->show(samples, style)) {
                 heroshotTensorPair_.reset();
+                if (readerWindow_) readerWindow_->refreshTensorVisibility();
                 return deferredError(QStringLiteral("tensor pair surface construction failed"), SC::Conflict);
             }
             if (hideSelectionMarker && scene_->measurementOverlay()) {
@@ -5451,7 +5447,7 @@ void RestServer::registerRoutes() {
                     heroshotMeasurementVisibleBefore_ = scene_->measurementOverlay()->isVisible();
                 scene_->measurementOverlay()->setVisible(false);
             }
-            hideLiveTensorGlyphsForResthero();
+            if (readerWindow_) readerWindow_->refreshTensorVisibility();
             scene_->requestRender(MoleculeScene::RenderSource::Rest);
 
             QJsonArray ringJson;
@@ -5935,7 +5931,7 @@ void RestServer::registerRoutes() {
         if (heroshotButterfly_) heroshotButterfly_->clear();
         if (heroshotTensorPair_)
             heroshotTensorPair_->clear();
-        restoreLiveTensorGlyphsAfterResthero();
+        if (readerWindow_) readerWindow_->refreshTensorVisibility();
         if (heroshotTrail_) heroshotTrail_->clear();
         if (heroshotAngleCollar_) heroshotAngleCollar_->clear();
         if (scene_ && scene_->measurementOverlay()

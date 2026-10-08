@@ -3,8 +3,8 @@
 // that lives in the shared TensorGlyphActor, the ONE representation every
 // tensor in the scene uses. This class only feeds the shielding tensor's
 // eigendecomposition (CsaShape: principal values, PAS axes, sigma_iso) to that
-// actor, so CSA and the bond-orientation tensor render identically --
-// consistent, not ad hoc.
+// actor. Shielding and bond orientation use the same geometry, with distinct
+// axis palettes.
 //
 // NO in-scene text: the numbers (iso/span/skew/eta, per-axis principal values)
 // and the colour key live in the Atom Info panel (QtAtomInspectorDock); the
@@ -41,6 +41,7 @@ public:
     void clear();
     void setVisible(bool on);
     bool isActive() const;
+    bool isVisible() const;
 
 private:
     std::unique_ptr<TensorGlyphActor> glyph_;

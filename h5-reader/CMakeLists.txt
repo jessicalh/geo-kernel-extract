@@ -213,8 +213,8 @@ qt_add_library(h5reader_core STATIC
     src/app/NewmanProjection.cpp
     src/app/NewmanPaint.h
     src/app/NewmanPaint.cpp
-    src/app/MeasurementsDock.h
-    src/app/MeasurementsDock.cpp
+    src/app/SelectionContextWidget.h
+    src/app/SelectionContextWidget.cpp
     src/app/ReaderMainWindow.h
     src/app/ReaderMainWindow.cpp
     src/app/ReaderCollection.h
@@ -272,6 +272,8 @@ qt_add_library(h5reader_core STATIC
     src/app/DashboardStripDock.cpp
     src/app/QtAtomInspectorDock.h
     src/app/QtAtomInspectorDock.cpp
+    src/app/AtomInspectorGlossary.h
+    src/app/AtomInspectorGlossary.cpp
     src/app/AbstractStripPanel.h
     src/app/AbstractStripPanel.cpp
     src/app/SequenceBarPanel.h

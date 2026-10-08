@@ -11,7 +11,7 @@
 #include "TensorGlyphActor.h"
 #include "TensorGlyphMath.h"
 #include "NearbySignalModel.h"
-#include "MeasurementsDock.h"
+#include "SelectionContextWidget.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
 #include "RestServer.h"
@@ -623,6 +623,7 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
     // explicit defaults intact. Runs AFTER all docks/toolbars exist so
     // restoreState has named docks to bind to.
     restoreAllSettings();
+    learnedActivityDock_->hide();
     setEmptyState();
 
     qCInfo(cWindow).noquote() << "ctor done";
@@ -784,33 +785,24 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // Atom picker — event filter on the VTK widget. Emits atomPicked(idx,
     // modifiers) on double-click. It stays dumb; AtomSelection interprets
     // the gesture and fans typed changes out.
-    picker_ = new QtAtomPicker(vtkWidget_, scene_,
-                                transformed_,
-                                playback_, this);
+    picker_ = new QtAtomPicker(vtkWidget_, scene_, this);
 
     // Camera input filter — installed AFTER the picker so Qt's filter
     // chain runs THIS first. Double-click events fall through to the picker.
     cameraInputFilter_ = new CameraInputFilter(vtkWidget_, scene_,
                                                  scene_->cameraComposer(), this);
 
-    // Click on empty space (no atom hit, no drag) stops/restarts the animation.
+    // Only empty space toggles playback; a bond is not an empty click.
     QObject::connect(cameraInputFilter_, &CameraInputFilter::viewportClicked,
              this, [this](QPointF pos) {
-                 if (!picker_ || !playback_) return;
-                 const auto hit = picker_->atomAt(
-                     static_cast<int>(pos.x()), static_cast<int>(pos.y()));
-                 if (!hit) playback_->togglePlayPause();
+                 if (!scene_ || !playback_) return;
+                 const auto hit = scene_->pickAt(pos);
+                 if (hit && hit->empty()) playback_->togglePlayPause();
              });
 
     inspectorDock_->setContext(loaded_->protein.get(), transformed_);
     QObject::connect(playback_,  &QtPlaybackController::frameChanged,
              inspectorDock_, &QtAtomInspectorDock::setFrame);
-
-    if (measurementsDock_) {
-        measurementsDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
-        QObject::connect(playback_, &QtPlaybackController::frameChanged,
-                 measurementsDock_, &MeasurementsDock::setFrame);
-    }
 
     // ---- Selection model — the single source of selection truth ----------
     selection_ = new model::AtomSelection(loaded_->protein.get(), this);
@@ -910,44 +902,21 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
                      MoleculeScene::RenderSource::Picker);
              });
 
-    // Reveal-on-pick: picking an atom brings up its Inspector (it starts hidden;
-    // this is the dock's reveal path now that the Panels menu is gone).
-    QObject::connect(picker_, &QtAtomPicker::atomPicked,
-             this,   [this](std::size_t, Qt::KeyboardModifiers) {
-                 if (inspectorDock_ && !inspectorDock_->isVisible())
-                     revealDockQueued(inspectorDock_);
-             });
-
     QObject::connect(selection_, &model::AtomSelection::focusChanged,
              inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
     QObject::connect(selection_, &model::AtomSelection::cleared,
              inspectorDock_, &QtAtomInspectorDock::clearSelection);
 
-    if (measurementsDock_) {
-        // The whole ORDERED tuple drives a measurement (not just focus), so this
-        // tracks AtomSelection::changed; it reveals only once a 2+ atom geometry
-        // exists (a single pick is the Inspector's job, not a measurement).
-        QObject::connect(selection_, &model::AtomSelection::changed, this, [this]() {
-            if (!measurementsDock_)
-                return;
-            measurementsDock_->setAtoms(selection_->atoms());
-            if (selection_->atoms().size() >= 2)
-                revealDockQueued(measurementsDock_);
-        });
-        QObject::connect(selection_, &model::AtomSelection::cleared,
-                 measurementsDock_, &MeasurementsDock::clear);
-    }
-
-    // Atom Info is the DEFAULT front tab on a single-atom focus: the Measurements
-    // / strip docks reveal alongside as tabs but must not steal it. Covers REST
-    // picks too (the picker-signal reveal above is GUI-only). Deferred via
-    // revealDockQueued so this raise wins; gated on a single atom so a 2-4 atom
-    // geometry instead raises the Measurements tab (handled above).
-    QObject::connect(selection_, &model::AtomSelection::focusChanged, this,
-             [this](std::size_t) {
-                 if (inspectorDock_ && selection_ && selection_->atoms().size() < 2)
-                     revealDockQueued(inspectorDock_);
-             });
+    selectionContext_ = new SelectionContextWidget(*loaded_->protein, *selection_,
+        *transformed_, *scene_, *playback_, *signalCatalog_, inspectorDock_);
+    inspectorDock_->setSelectionContextWidget(selectionContext_);
+    connect(selection_, &model::AtomSelection::focusChanged, this, [this](std::size_t) {
+        revealDockQueued(inspectorDock_);
+    });
+    connect(scene_, &MoleculeScene::renderCompleted, inspectorDock_, [this] {
+        inspectorDock_->setTensorVisibility(scene_->csaOverlay()->isVisible(),
+                                           scene_->orientationGlyph()->isVisible());
+    });
     QObject::connect(selection_, &model::AtomSelection::focusChanged, this,
              [this](std::size_t) { refreshControlStates(); });
     QObject::connect(selection_, &model::AtomSelection::cleared, this,
@@ -959,8 +928,7 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
              [this](std::size_t) { updateCsaGlyph(true); updateOrientationTensorGlyph(); });
     QObject::connect(selection_, &model::AtomSelection::cleared, this, [this]() {
         updateCsaGlyph(true);
-        if (scene_ && scene_->orientationGlyph())
-            scene_->orientationGlyph()->clear();
+        updateOrientationTensorGlyph();
         if (scene_)
             scene_->requestRender(MoleculeScene::RenderSource::Overlay);
     });
@@ -1152,7 +1120,16 @@ void ReaderMainWindow::refreshFrameDetails(bool requestMissing) {
     updateOrientationTensorGlyph();
 }
 
-void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
+std::optional<std::size_t> ReaderMainWindow::predictedTensorAtom() const {
+    if (activeExperimentalMlTensorDescriptor_ == QStringLiteral("ml:experimental_shielding_t2"))
+        return activeExperimentalMlTensorAtom_;
+    if (!dftStore_ && experimentalMlStore_ && experimentalMlStore_->isReady()
+        && selection_ && selection_->hasFocus())
+        return selection_->focus();
+    return std::nullopt;
+}
+
+void ReaderMainWindow::updateCsaGlyph(bool requestMissing) {
     ASSERT_THREAD(this);
     CsaTensorOverlay* overlay = scene_ ? scene_->csaOverlay() : nullptr;
     if (!overlay)
@@ -1180,13 +1157,10 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
     const int frameI = playback_ ? playback_->currentFrame() : 0;
     const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
 
-    // A dashboard-selected ML tensor owns the shared shielding glyph while
-    // active. The network emits its equivariant tensor in the raw coordinate
-    // frame; apply the exact display Kabsch rotation used by atomPosition().
-    if (activeExperimentalMlTensorDescriptor_
-            == QStringLiteral("ml:experimental_shielding_t2")
-        && activeExperimentalMlTensorAtom_.has_value()) {
-        const std::size_t atom = *activeExperimentalMlTensorAtom_;
+    // An explicit dashboard choice takes precedence. Without a DFT attachment,
+    // predict for the focused atom, using the same display rotation as its position.
+    if (const auto predictedAtom = predictedTensorAtom()) {
+        const std::size_t atom = *predictedAtom;
         if (!experimentalMlStore_ || !experimentalMlStore_->isReady()
             || !loaded_->protein || atom >= loaded_->protein->atomCount()
             || frame >= transformed_->frameCount()) {
@@ -1195,9 +1169,23 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         }
         const auto values = experimentalMlStore_->tensor(frame, atom);
         if (!values) {
-            if (requestMissingDft && (!playback_ || !playback_->isPlaying()))
+            if (requestMissing && (!playback_ || !playback_->isPlaying()))
                 experimentalMlStore_->requestFrame(frame);
             hide();
+            if (inspectorDock_) {
+                CsaTensorInfo info;
+                info.sourceLabel = QStringLiteral("Predicted");
+                info.sourceDetail = experimentalMlStore_->modelId();
+                if (playback_ && playback_->isPlaying())
+                    info.status = QStringLiteral("Pause to predict");
+                else if (frameSlider_ && frameSlider_->isSliderDown())
+                    info.status = QStringLiteral("Release to predict");
+                else
+                    info.status = experimentalMlStore_->isRunning()
+                                      ? QStringLiteral("Calculating...")
+                                      : QStringLiteral("Unavailable");
+                inspectorDock_->setCsaTensor(atom, info);
+            }
             return;
         }
 
@@ -1216,11 +1204,12 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
 
         const model::Vec3 atomPos = transformed_->atomPosition(frame, atom);
         overlay->show(atomPos, shape);
+        refreshTensorVisibility();
         experimentalMlTensorDisplayed_ = true;
         experimentalMlTensorDisplayedFrame_ = frame;
         if (inspectorDock_) {
             CsaTensorInfo info;
-            info.sourceLabel = QStringLiteral("Experimental Shielding ML");
+            info.sourceLabel = QStringLiteral("Predicted");
             info.sourceDetail = experimentalMlStore_->modelId();
             info.frameKind =
                 QStringLiteral("equivariant output, display-aligned");
@@ -1263,7 +1252,7 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         return;
     }
     if (!dftStore_->frame(original)) {
-        if (requestMissingDft && (!playback_ || !playback_->isPlaying()))
+        if (requestMissing && (!playback_ || !playback_->isPlaying()))
             dftStore_->requestFrameAsync(original);
         hide();
         return;
@@ -1282,6 +1271,7 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissingDft) {
         << "| iso=" << r.shape.sigma_iso << "| eta=" << r.shape.eta
         << "| span=" << r.shape.span;
     overlay->show(r.atomPos, r.shape);
+    refreshTensorVisibility();
     if (inspectorDock_) {
         CsaTensorInfo info;
         info.framed = r.framed;
@@ -1393,22 +1383,24 @@ void ReaderMainWindow::updateOrientationTensorGlyph() {
     }
     const double iso = (pv[0] + pv[1] + pv[2]) / 3.0;
 
-    glyph->show(mid, pv, labAxes, iso);
+    TensorGlyphActor::Style style;
+    style.axisColours = kOrientationTensorColours;
+    glyph->show(mid, pv, labAxes, iso, 1.0, style);
+    refreshTensorVisibility();
 
     // Mirror the numbers into the Atom Info panel (text -> window), exactly as the
     // CSA glyph does, so picture and numbers agree and the scene stays geometry.
     if (inspectorDock_) {
         OrientationTensorInfo info;
-        QString bondName;
-        switch (rd->identity.kind[*row]) {
-        case 1: bondName = QStringLiteral("N-H"); break;
-        case 2: bondName = QStringLiteral("CA-HA"); break;
-        case 3: bondName = QStringLiteral("C-O"); break;
-        default: bondName = QStringLiteral("bond"); break;
-        }
-        info.bond = QStringLiteral("%1 (residue %2)")
-                        .arg(bondName)
-                        .arg(rd->identity.residue_index[*row]);
+        const auto residueIndex = static_cast<std::size_t>(protein->atom(tailAtom).residueIndex);
+        const auto& address = protein->residue(residueIndex).address;
+        const QString chain = address.chainId.isEmpty() ? QString() : address.chainId + QLatin1Char(':');
+        info.bond = QStringLiteral("%1%2%3%4 %5-%6")
+                        .arg(chain, protein->residueLabel(residueIndex, model::NamingConvention::Iupac,
+                                                         model::NamingSource::Derived))
+                        .arg(address.residueNumber).arg(address.insertionCode,
+                             protein->atomLabel(tailAtom, model::NamingConvention::Iupac),
+                             protein->atomLabel(headAtom, model::NamingConvention::Iupac));
         // Lipari-Szabo order parameter straight from the order-tensor
         // eigenvalues: S^2 = (3*sum(lambda^2) - 1)/2. Universal across NH/CaHa/CO,
         // unlike rd->s2 (NH-only -> NaN on a C=O or CA-HA bond).
@@ -1444,6 +1436,9 @@ model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom, int reques
 void ReaderMainWindow::clearLoadedRun() {
     ASSERT_THREAD(this);
 
+    delete selectionContext_;
+    selectionContext_ = nullptr;
+
     if (learnedActivityDock_)
         learnedActivityDock_->setContext(nullptr, nullptr, nullptr, nullptr, nullptr);
 
@@ -1476,8 +1471,6 @@ void ReaderMainWindow::clearLoadedRun() {
         inspectorDock_->setFieldAvailability({});
         inspectorDock_->clearSelection();
     }
-    if (measurementsDock_)
-        measurementsDock_->setContext(nullptr, nullptr);
     if (filterNearby_)
         filterNearby_->setContext(nullptr, nullptr);
 
@@ -1586,6 +1579,7 @@ void ReaderMainWindow::refreshControlStates() {
     en(transformFitAction_,   loaded && transformed_ != nullptr);
     en(goToAtomAction_,       loaded && loaded_ && loaded_->protein);
     en(signalDisplaysAction_, loaded && hasFocus);
+    en(selectionContextAction_, loaded);
 
     // Overlays — gated on the data that makes each one mean something.
     en(showRibbonAction_,    loaded   && !filtered);
@@ -1665,8 +1659,11 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     out[QStringLiteral("playing")]       = playing;
     out[QStringLiteral("playDirection")] = playback_ ? playback_->direction() : 1;
     out[QStringLiteral("selection")]     = sel;
-    out[QStringLiteral("measurements")] = measurementsDock_
-        ? measurementsDock_->stateJson() : QJsonObject{};
+    out[QStringLiteral("measurements")] = selectionContext_
+        ? selectionContext_->measurementState() : QJsonObject{};
+    out[QStringLiteral("context")] = selectionContext_
+        ? selectionContext_->stateJson() : QJsonObject{};
+    out[QStringLiteral("atomInfoVisible")] = inspectorDock_ && inspectorDock_->isVisible();
     out[QStringLiteral("cameraMode")]    =
         (loaded && scene_ && scene_->cameraComposer())
             ? QString::fromLatin1(NameFor(scene_->cameraComposer()->mode().kind))
@@ -1698,22 +1695,20 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
             experimentalMl.insert(QStringLiteral("inferenceError"), experimentalMlStore_->errorReason());
     }
     QJsonObject tensorDisplay;
-    const bool tensorActive =
-        activeExperimentalMlTensorDescriptor_
-            == QStringLiteral("ml:experimental_shielding_t2")
-        && activeExperimentalMlTensorAtom_.has_value();
+    const auto predictedAtom = predictedTensorAtom();
+    const bool tensorActive = predictedAtom.has_value();
     const int tensorFrameI = playback_ ? playback_->currentFrame() : 0;
     const std::size_t tensorFrame =
         static_cast<std::size_t>(std::max(0, tensorFrameI));
     tensorDisplay.insert(QStringLiteral("active"), tensorActive);
     tensorDisplay.insert(QStringLiteral("descriptorId"),
                          tensorActive
-                             ? QJsonValue(activeExperimentalMlTensorDescriptor_)
+                             ? QJsonValue(QStringLiteral("ml:experimental_shielding_t2"))
                              : jsonNull());
     tensorDisplay.insert(
         QStringLiteral("atom"),
         tensorActive
-            ? QJsonValue(static_cast<qint64>(*activeExperimentalMlTensorAtom_))
+            ? QJsonValue(static_cast<qint64>(*predictedAtom))
             : jsonNull());
     tensorDisplay.insert(QStringLiteral("frame"),
                          tensorActive ? QJsonValue(static_cast<qint64>(tensorFrame))
@@ -1729,12 +1724,13 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     const auto tensorValues =
         tensorActive && experimentalMlStore_
             ? experimentalMlStore_->tensor(
-                  tensorFrame, *activeExperimentalMlTensorAtom_)
+                  tensorFrame, *predictedAtom)
             : std::optional<std::array<double, 6>>{};
     tensorDisplay.insert(QStringLiteral("resident"), tensorValues.has_value());
     tensorDisplay.insert(
         QStringLiteral("displayed"),
         experimentalMlTensorDisplayed_
+            && scene_ && scene_->csaOverlay()->isVisible()
             && experimentalMlTensorDisplayedFrame_.has_value()
             && *experimentalMlTensorDisplayedFrame_ == tensorFrame);
     if (tensorValues) {
@@ -1883,8 +1879,11 @@ quint16 ReaderMainWindow::startRestServer(const QHostAddress& address, quint16 p
         return 0;
     }
     restServer_ = new RestServer(this);
-    connect(restServer_, &RestServer::activeOperationsChanged, learnedActivityDock_,
-            [this](bool active) { learnedActivityDock_->setEnabled(!active); });
+    connect(restServer_, &RestServer::activeOperationsChanged, this,
+            [this](bool active) {
+                learnedActivityDock_->setEnabled(!active);
+                if (selectionContext_) selectionContext_->setInteractionEnabled(!active);
+            });
     restServer_->setContext(scene_,
                             selection_,
                             dashboardSignals_,
@@ -1908,13 +1907,30 @@ quint16 ReaderMainWindow::startRestServer(const QHostAddress& address, quint16 p
     return bound;
 }
 
+void ReaderMainWindow::refreshTensorVisibility() {
+    ASSERT_THREAD(this);
+    if (!scene_) return;
+    const bool comparison = restServer_ && restServer_->hasTensorComparison();
+    scene_->csaOverlay()->setVisible(!comparison && inspectorDock_->shieldingTensorEnabled());
+    scene_->orientationGlyph()->setVisible(!comparison && inspectorDock_->orientationTensorEnabled());
+    scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+}
+
 bool ReaderMainWindow::setOverlayVisible(const QString& name, bool on) {
     ASSERT_THREAD(this);
+    const QString key = name.toLower();
+    if (key == QStringLiteral("shielding")) {
+        inspectorDock_->setTensorDisplayEnabled(on, inspectorDock_->orientationTensorEnabled());
+        return true;
+    }
+    if (key == QStringLiteral("orientation")) {
+        inspectorDock_->setTensorDisplayEnabled(inspectorDock_->shieldingTensorEnabled(), on);
+        return true;
+    }
     // Map a stable automation key → the toolbar QAction, then setChecked()
     // so the already-connected QAction::toggled handler runs the real overlay
     // logic (setVisible + refreshCurrentFrame for the per-frame kernel
     // overlays). This keeps REST control and the toolbar UI on one code path.
-    const QString key = name.toLower();
     QPointer<QAction> a;
     if (key == QStringLiteral("ribbon"))
         a = showRibbonAction_;
@@ -2027,7 +2043,7 @@ void ReaderMainWindow::setDocksVisible(bool visible) {
             return;
         stashedDockVisibility_.clear();
         const std::vector<QDockWidget*> docks = {
-            inspectorDock_, measurementsDock_, dashboardStripDock_, learnedActivityDock_
+            inspectorDock_, dashboardStripDock_, learnedActivityDock_
         };
         for (QDockWidget* d : docks) {
             if (!d) continue;
@@ -2570,6 +2586,12 @@ void ReaderMainWindow::buildToolbar() {
     QObject::connect(goToAtomAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onGoToAtomTriggered);
 
+    selectionContextAction_ = tb->addAction(QStringLiteral("Atom info"));
+    selectionContextAction_->setToolTip(QStringLiteral("Show atom fields, measurements and tensor values."));
+    connect(selectionContextAction_, &QAction::triggered, this, [this] {
+        revealDockQueued(inspectorDock_);
+    });
+
     signalDisplaysAction_ = tb->addAction(QStringLiteral("Metrics..."));
     signalDisplaysAction_->setEnabled(false);
     signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
@@ -2730,10 +2752,12 @@ void ReaderMainWindow::buildDocks() {
         learnedActivityDock_->raise();
     });
 
-    // Atom Info dock — tabified on the LEFT alongside Selection + Strip.
+    // Atom Info dock — tabified on the LEFT alongside the dashboard strip.
     // It is constructed before load and starts with its own placeholder.
     inspectorDock_ = new QtAtomInspectorDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, inspectorDock_);
+    connect(inspectorDock_, &QtAtomInspectorDock::tensorDisplayChanged,
+            this, &ReaderMainWindow::refreshTensorVisibility);
 
     // Dashboard strips — the dock and controller are stable chrome; run-backed
     // models are swapped in by installLoadedRun().
@@ -2769,20 +2793,10 @@ void ReaderMainWindow::buildDocks() {
     addDockWidget(Qt::LeftDockWidgetArea, dashboardStripDock_);
     tabifyDockWidget(inspectorDock_, dashboardStripDock_);
 
-    // Measurements dock -- tabified alongside; reveals when a 2-4 atom geometry
-    // is selected, and re-reads the distance/angle/dihedral live as frames play.
-    // The value lives here, not as floating text on the molecule.
-    measurementsDock_ = new MeasurementsDock(this);
-    addDockWidget(Qt::LeftDockWidgetArea, measurementsDock_);
-    tabifyDockWidget(inspectorDock_, measurementsDock_);
-    measurementsDock_->setVisible(false);
-
     inspectorDock_->raise();
     resizeDocks({inspectorDock_}, {360}, Qt::Horizontal);
 
-    // Start clean — docks hidden on launch. The Inspector reveals on atom pick,
-    // the Strip dock when a metric is added. QSettings restore can override this
-    // for users who intentionally left a dock visible.
+    // Reveal these panels when an atom or a metric is selected.
     inspectorDock_->setVisible(false);
     dashboardStripDock_->setVisible(false);
 
@@ -2800,11 +2814,6 @@ void ReaderMainWindow::buildDocks() {
              });
     QObject::connect(dashboardStripDock_, &DashboardStripDock::metricPickerRequested,
              this, &ReaderMainWindow::onOpenSignalDisplays);
-
-    // The "Panels" menu/toolbar button was removed: it exposed dock toggles that
-    // greyed out with no working route. Docks reveal themselves where it makes
-    // sense — the Strip dock when a metric is added, the Inspector on atom pick;
-    // the Selection dock was retired (redundant with the in-scene measurements).
 
     if (frameSlider_) {
         QObject::connect(frameSlider_.data(), &QSlider::sliderPressed,

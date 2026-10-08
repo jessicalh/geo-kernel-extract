@@ -17,6 +17,7 @@ namespace {
 
 QLabel* addHeading(QVBoxLayout* layout, const QString& text, QWidget* parent) {
     auto* label = new QLabel(text, parent);
+    label->setTextFormat(Qt::PlainText);
     QFont font = label->font();
     font.setBold(true);
     label->setFont(font);
@@ -27,6 +28,7 @@ QLabel* addHeading(QVBoxLayout* layout, const QString& text, QWidget* parent) {
 QLabel* addBody(QVBoxLayout* layout, const QString& objectName,
                 const QString& text, QWidget* parent) {
     auto* label = new QLabel(text, parent);
+    label->setTextFormat(Qt::PlainText);
     label->setObjectName(objectName);
     label->setWordWrap(true);
     label->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -36,7 +38,7 @@ QLabel* addBody(QVBoxLayout* layout, const QString& objectName,
 
 class MetricGlossaryPopup final : public QFrame {
 public:
-    MetricGlossaryPopup(const model::SignalDescriptor& descriptor,
+    MetricGlossaryPopup(const QString& titleText,
                         const model::MetricGlossaryEntry& entry,
                         QWidget* parent)
         : QFrame(parent, Qt::Popup) {
@@ -49,7 +51,8 @@ public:
         layout->setContentsMargins(14, 12, 14, 12);
         layout->setSpacing(5);
 
-        auto* title = new QLabel(descriptor.label, this);
+        auto* title = new QLabel(titleText, this);
+        title->setTextFormat(Qt::PlainText);
         title->setObjectName(QStringLiteral("glossaryTitle"));
         QFont titleFont = title->font();
         titleFont.setBold(true);
@@ -99,7 +102,14 @@ void ShowMetricGlossaryPopup(const model::SignalDescriptor& descriptor,
                "Every catalog descriptor must have a glossary entry");
     if (!entry)
         return;
-    auto* popup = new MetricGlossaryPopup(descriptor, *entry, parent);
+    ShowMetricGlossaryPopup(descriptor.label, *entry, globalPosition, parent);
+}
+
+void ShowMetricGlossaryPopup(const QString& title,
+                             const model::MetricGlossaryEntry& entry,
+                             const QPoint& globalPosition,
+                             QWidget* parent) {
+    auto* popup = new MetricGlossaryPopup(title, entry, parent);
     popup->showAt(globalPosition);
 }
 

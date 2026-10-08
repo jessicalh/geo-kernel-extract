@@ -321,7 +321,7 @@ def test_experimental_shielding_ml_tensor_reaches_scene_and_inspector(rest):
             assert abs(actual - expected) < 0.001
 
         tree = rest.client.get("/inspector/tree").json()
-        group = _find_tree_node(tree, "Shielding tensor (Experimental Shielding ML)")
+        group = _find_tree_node(tree, "Shielding tensor (Predicted)")
         assert group is not None, "inspector did not identify the displayed tensor source"
         source = _find_tree_node(group.get("children", []), "Source")
         assert source is not None
@@ -329,9 +329,85 @@ def test_experimental_shielding_ml_tensor_reaches_scene_and_inspector(rest):
     finally:
         rest.client.post("/dashboard/metric/remove", json={"id": signal_id})
 
+    rest.client.post("/selection/clear").raise_for_status()
     tensor = rest.client.get("/ui/state").json()["experimentalShieldingMl"]["tensorDisplay"]
     assert tensor["active"] is False
     assert tensor["displayed"] is False
+
+
+@pytest.mark.skipif(
+    not _enabled("H5READER_EXPECT_AUTO_ML"),
+    reason="requires a packaged trajectory without an ORCA attachment",
+)
+def test_selected_atom_predicts_without_orca(rest, tmp_path):
+    import json
+
+    manifest = json.loads(Path(os.environ["H5READER_REST_FIXTURE"]).read_text(encoding="utf-8-sig"))
+    assert "dft" not in manifest
+    assert rest.client.get("/ui/state").json()["experimentalShieldingMl"]["inferenceReady"]
+
+    def wait_for_tensor(atom, frame, displayed=True):
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            state = rest.client.get("/ui/state").json()
+            tensor = state["experimentalShieldingMl"]["tensorDisplay"]
+            if (tensor["atom"] == atom and tensor["frame"] == frame
+                    and tensor["resident"] and tensor["displayed"] == displayed):
+                assert math.isfinite(tensor["sigmaIsoPpm"])
+                assert all(math.isfinite(value) for value in tensor["t2"])
+                return tensor
+            time.sleep(0.1)
+        pytest.fail(f"selected-atom prediction did not finish: {state}")
+
+    try:
+        rest.client.post("/selection/pick", json={"atom": 16}).raise_for_status()
+        first = wait_for_tensor(16, 0)
+        tree = rest.client.get("/inspector/tree").json()
+        group = _find_tree_node(tree, "Shielding tensor (Predicted)")
+        assert group and group["checked"] and group["value"] == "Shown"
+        assert _find_tree_node(group["children"], "Source")["value"] == first["modelId"]
+        assert _find_tree_node(tree, "Shielding tensor (ORCA DFT)") is None
+        selection = rest.client.get("/selection").json()
+
+        rest.client.post("/overlay", json={"name": "shielding", "visible": False}).raise_for_status()
+        hidden = wait_for_tensor(16, 0, displayed=False)
+        assert hidden["t2"] == first["t2"]
+        assert rest.client.get("/selection").json() == selection
+
+        rest.client.post("/frame/set", json={"frame": 1}).raise_for_status()
+        wait_for_tensor(16, 1, displayed=False)
+        rest.client.post("/overlay", json={"name": "shielding", "visible": True}).raise_for_status()
+        wait_for_tensor(16, 1)
+        rest.client.post("/selection/pick", json={"atom": 17}).raise_for_status()
+        wait_for_tensor(17, 1)
+        assert not rest.client.get("/ui/state").json()["experimentalShieldingMl"]["inferenceRunning"]
+
+        screenshot = rest.client.post("/diagnostics/screenshot", json={"target": "window"})
+        screenshot.raise_for_status()
+        (tmp_path / "predicted-tensor.png").write_bytes(screenshot.content)
+
+        rest.client.post("/frame/set", json={"frame": 2}).raise_for_status()
+        rest.client.post("/playback", json={"action": "play_forward"}).raise_for_status()
+        deadline = time.monotonic() + 10
+        while rest.client.get("/ui/state").json()["currentFrame"] <= 2:
+            assert time.monotonic() < deadline, "playback did not advance"
+            time.sleep(0.05)
+        assert rest.client.get("/ui/state").json()["playing"]
+        tree = rest.client.get("/inspector/tree").json()
+        group = _find_tree_node(tree, "Shielding tensor (Predicted)")
+        assert group and group["value"] == "Pause to predict"
+        rest.client.post("/selection/clear").raise_for_status()
+        rest.client.post("/playback", json={"action": "pause"}).raise_for_status()
+        tensor = rest.client.get("/ui/state").json()["experimentalShieldingMl"]["tensorDisplay"]
+        assert not tensor["active"] and not tensor["displayed"]
+        deadline = time.monotonic() + 180
+        while rest.client.get("/ui/state").json()["experimentalShieldingMl"]["inferenceRunning"]:
+            assert time.monotonic() < deadline, "inference did not finish after selection clear"
+            time.sleep(0.1)
+        assert not rest.client.get("/ui/state").json()["experimentalShieldingMl"]["tensorDisplay"]["displayed"]
+    finally:
+        rest.client.post("/playback", json={"action": "pause"}).raise_for_status()
+        rest.client.post("/overlay", json={"name": "shielding", "visible": True}).raise_for_status()
 
 
 @pytest.mark.skipif(

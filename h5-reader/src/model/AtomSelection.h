@@ -9,7 +9,7 @@
 //              that show one atom's full state. focus follows the most
 //              recently touched member.
 //   * the ordered set -> the measurement overlay (up to 4 colour-coded
-//              spheres + connecting polyline) and the Measurements dock
+//              spheres + connecting polyline) and the selection context
 //              (distance / angle / dihedral readouts) -- both shipped.
 // No QAbstractItemView currently consumes the model rows; the typed API below
 // remains the common selection surface for the UI and scene.
@@ -112,7 +112,7 @@ public:
     // atomCount (out-of-range entries are dropped with a warning). One `changed()` and
     // one `focusChanged()` (or `cleared()`) emit at the end, NOT per atom —
     // consumers that rebuild from the full set (MeasurementOverlay,
-    // MeasurementsDock, tensor overlays) only need one update.
+    // selection context, tensor overlays) only need one update.
     void bulkSet(const std::vector<size_t>& atomIndices);
 
     // Empty the selection.

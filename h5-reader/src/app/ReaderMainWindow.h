@@ -65,6 +65,7 @@ namespace h5reader::app {
 
 class MoleculeScene;
 class LearnedActivityDock;
+class SelectionContextWidget;
 class ReaderCollectionDialog;
 class QtPlaybackController;
 class DashboardDisplayController;
@@ -98,6 +99,7 @@ public:
     ReaderCollectionDialog* trajectoryLibrary();
     QString lastLoadError() const { return lastLoadError_; }
     LearnedActivityDock* learnedActivityDock() const { return learnedActivityDock_; }
+    SelectionContextWidget* selectionContext() const { return selectionContext_; }
 
     // Start the embedded REST surface on the requested address and port.
     // Port 0 asks the kernel to pick a free port. Returns the actually-bound
@@ -109,7 +111,7 @@ public:
     // provenance tooltip), for the REST harness. Empty if no inspector. Read-only.
     QJsonArray inspectorTreeJson() const;
 
-    // Hide or restore the docks (inspector, selection, dashboard strip)
+    // Hide or restore the docks (inspector, dashboard strip, learned activity)
     // wholesale. Hide preserves each dock's prior visibility so restore
     // returns each one to whatever it was — a dock that was already hidden
     // before hide() stays hidden after restore. Used by the viewport
@@ -123,16 +125,17 @@ public:
     // hidden by the user, but we have not stashed and hidden them all).
     bool docksVisible() const { return docksHidden_ == false; }
 
-    // Toggle a named overlay by driving its toolbar action, so REST /
-    // automation changes run the SAME path as a human click (per-frame
+    // Toggle a named overlay through its toolbar action or inspector checkbox, so REST /
+    // automation changes run the same path as a human click (per-frame
     // refresh for the kernel overlays) and keep the toolbar checkbox in
-    // sync. name in {ribbon, rings, butterfly, nullcone, bfield}
+    // sync. name in {ribbon, rings, butterfly, nullcone, bfield, shielding, orientation}
     // (+ aliases fieldgrid/field/isosurface, null_cone/ring_null,
     // streamlines/stream, trajectory/path).
     // Returns false on an unknown name. Used by POST /overlay so the
     // headless snapshot harness can enable the field overlays, which
     // default off and are not persisted in QSettings.
     bool setOverlayVisible(const QString& name, bool on);
+    void refreshTensorVisibility();
 
     // Set the butterfly (field-grid) isosurface |T0| contour threshold in ppm
     // and re-render. Runtime-tunable so the dominant-zone level can be swept
@@ -227,7 +230,8 @@ private:
     // dashboard-selected Experimental Shielding ML tensor takes precedence;
     // otherwise this shows the focused atom's ORCA DFT tensor. Frame ticks are
     // resident-only; focus/pause/scrub release may request missing data.
-    void updateCsaGlyph(bool requestMissingDft = false);
+    std::optional<std::size_t> predictedTensorAtom() const;
+    void updateCsaGlyph(bool requestMissing = false);
     // Recompute + redraw the focused atom's bond-orientation order tensor
     // (<u(x)u>) as the SAME ovaloid + principal-axis arrows the CSA glyph uses
     // (shared TensorGlyphActor) -- consistent, not ad hoc. Drawn at the bond
@@ -291,11 +295,10 @@ private:
     QtPlaybackController* playback_ = nullptr;
     TimeViewportController* timeViewport_ = nullptr;
 
-    // Atom picker + Atom Info dock. Picker is an event filter on the
-    // VTK widget; Atom Info is tabified with the compact selection panel.
+    // Picker feeds AtomSelection; Atom Info reads that model.
     class QtAtomPicker* picker_ = nullptr;
     class QtAtomInspectorDock* inspectorDock_ = nullptr;
-    class MeasurementsDock* measurementsDock_ = nullptr;
+    SelectionContextWidget* selectionContext_ = nullptr;
 
     // Camera input filter — Qt eventFilter on the VTK widget, intercepts
     // mouse + wheel before VTK's trackball. Routes gestures to the
@@ -357,6 +360,7 @@ private:
     QPointer<QAction> showTrajectoryAction_;
     QPointer<QAction> goToAtomAction_;
     QPointer<QAction> signalDisplaysAction_;
+    QPointer<QAction> selectionContextAction_;
 
     // Display-isolation ("Filter"): a toolbar button whose dropdown is a live
     // checklist of residues near the focused atom (NearbySignalModel). The

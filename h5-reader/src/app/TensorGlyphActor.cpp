@@ -20,11 +20,6 @@ constexpr double kArrowReach = 1.30;     // arrow tip beyond the surface extent
 constexpr double kArrowMinLen = 0.70;    // floor so a near-iso axis still shows an arrow
 constexpr double kArrowInnerGap = 0.10;  // tail offset from centre (+/- arrows don't coincide)
 constexpr double kArrowWidth = 1.25;     // radial scale of the principal-axis arrows
-constexpr double kAxisRgb[3][3] = {      // distinct per-axis colours (principal index 0/1/2);
-    {0.96, 0.66, 0.16},  // 0 amber   mirrored in the Atom Info colour key so the arrows
-    {0.18, 0.74, 0.74},  // 1 teal    stay decodable without in-scene labels
-    {0.74, 0.36, 0.86},  // 2 violet
-};
 }  // namespace
 
 TensorGlyphActor::TensorGlyphActor(vtkSmartPointer<vtkRenderer> sceneRenderer)
@@ -211,8 +206,8 @@ void TensorGlyphActor::show(const model::Vec3& center,
     arrowSlotVisible_.fill(false);
 
     // Principal-axis arrows -- the descriptive element. Each PAS axis is drawn
-    // double-headed (+/- director), index-coloured (amber/teal/violet for
-    // index 0/1/2), length tracking the surface extent (with a floor) so the
+    // double-headed (+/- director), coloured by principal-value index,
+    // length tracking the surface extent (with a floor) so the
     // arrowheads clear the translucent surface. The values + colour key are
     // shown in the Atom Info panel, not labelled here.
     for (int axis = 0; axis < 3; ++axis) {
@@ -225,7 +220,7 @@ void TensorGlyphActor::show(const model::Vec3& center,
         const double tipDist =
             std::max(kArrowMinLen * arrowLengthScale,
                      surfaceExtent[ai] * kArrowReach * arrowLengthScale);
-        const double* col = kAxisRgb[ai];
+        const auto& col = style.axisColours[ai];
 
         for (int s = 0; s < 2; ++s) {
             const std::size_t slot = ai * 2 + static_cast<std::size_t>(s);
@@ -261,6 +256,14 @@ void TensorGlyphActor::setVisible(bool on) {
     if (glyphActor_) glyphActor_->SetVisibility(v && surfaceVisible_);
     for (std::size_t i = 0; i < arrowActors_.size(); ++i)
         if (arrowActors_[i]) arrowActors_[i]->SetVisibility(v && arrowSlotVisible_[i]);
+}
+
+bool TensorGlyphActor::isVisible() const {
+    if (glyphActor_ && glyphActor_->GetVisibility())
+        return true;
+    for (const auto& arrow : arrowActors_)
+        if (arrow && arrow->GetVisibility()) return true;
+    return false;
 }
 
 }  // namespace h5reader::app
