@@ -231,6 +231,8 @@ void ReaderCollectionDialog::runOpened(const QString& key) {
 
 void ReaderCollectionDialog::runFailed(const QString& key, const QString& message) {
     showLoadError(message);
+    if (key.compare(currentKey_, Qt::CaseInsensitive) == 0)
+        return;
     pendingLoadError_ = message;
     if (!buffer_->clear(key)) {
         pendingLoadError_.clear();

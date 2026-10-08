@@ -239,7 +239,7 @@ private:
     void collectExpectedButEmpty();
     void updateStatusText();
     void extendToFrame(int frame);
-    void resampleExperimentalMlFrame(std::size_t frame);
+    void resampleFrame(std::size_t frame, model::SignalSourceKind sourceKind);
     QColor colorForIndex(int index) const;
 
     const model::QtProtein* protein_ = nullptr;

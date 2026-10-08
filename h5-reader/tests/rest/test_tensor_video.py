@@ -134,6 +134,29 @@ def test_predicted_video_matches_independently_prepared_frames(rest, tmp_path):
         post(rest, "/filter", {"residues": []})
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required to inspect video pixels")
+def test_video_waits_for_the_new_trajectory_envelope(rest, tmp_path):
+    post(rest, "/selection/pick", {"atom": 16})
+    post(rest, "/filter", {"residues": [0]})
+    post(rest, "/camera/inspect_atom", {"atom": 16, "distance": 13})
+    try:
+        post(rest, "/overlay", {"name": "trajectory", "visible": True})
+        video = tmp_path / "envelope-immediate.mp4"
+        export(rest, video, 0, 0)
+        result = wait_video(rest)
+        assert result["state"] == "completed", result
+        assert result["frames_written"] == 1
+        reference = tmp_path / "envelope-settled.mp4"
+        export(rest, reference, 0, 0)
+        assert wait_video(rest)["state"] == "completed"
+        actual = decode_frame(video, 0, tmp_path / "envelope-immediate.png")
+        expected = decode_frame(reference, 0, tmp_path / "envelope-settled.png")
+        assert np.percentile(np.abs(actual - expected), 99) < 15
+    finally:
+        post(rest, "/overlay", {"name": "trajectory", "visible": False})
+        post(rest, "/filter", {"residues": []})
+
+
 def test_hidden_tensor_export_does_not_queue_predictions(rest, tmp_path):
     post(rest, "/selection/pick", {"atom": 16})
     wait_tensor(rest, 16, 0)

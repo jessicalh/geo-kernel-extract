@@ -901,6 +901,20 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     h5reader_apply_platform_target_settings(h5reader_atom_picker_tests)
     add_test(NAME h5reader_atom_picker_tests COMMAND h5reader_atom_picker_tests)
 
+    qt_add_executable(h5reader_conformation_async_tests tests/conformation_async_tests.cpp)
+    target_link_libraries(h5reader_conformation_async_tests PRIVATE h5reader_core Qt6::Test)
+    h5reader_apply_platform_target_settings(h5reader_conformation_async_tests)
+    add_test(NAME h5reader_conformation_async_tests COMMAND h5reader_conformation_async_tests)
+
+    qt_add_executable(h5reader_dft_store_async_tests
+        tests/dft_shielding_store_async_tests.cpp
+        src/model/DftShieldingStore.cpp
+        src/diagnostics/ObjectCensus.cpp)
+    target_include_directories(h5reader_dft_store_async_tests PRIVATE src ${H5READER_SHARED_INCLUDE_DIR})
+    target_link_libraries(h5reader_dft_store_async_tests PRIVATE Qt6::Core Qt6::Test Eigen3::Eigen)
+    h5reader_apply_platform_target_settings(h5reader_dft_store_async_tests)
+    add_test(NAME h5reader_dft_store_async_tests COMMAND h5reader_dft_store_async_tests)
+
     qt_add_executable(h5reader_ring_current_case_tests
         tests/ring_current_case_tests.cpp
     )

@@ -3,7 +3,8 @@
 // pose. Dense trajectory data stays in those subclasses. This base owns only
 // the current per-frame calculator snapshot and its readiness signal.
 //
-// Snapshot access is synchronous and confined to this QObject's thread.
+// Snapshot publication is confined to this QObject's thread; file reads can
+// run in an owned worker. Decorators share their source's snapshot storage.
 // Long-lived QObject owners should hold Conformation through QPointer.
 
 #pragma once
@@ -13,8 +14,12 @@
 #include <QObject>
 
 #include <cstddef>
+#include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
+
+class QThread;
 
 namespace h5reader::model {
 
@@ -70,21 +75,35 @@ public:
     // Re-requesting the resident frame is idempotent and still emits the signal.
     void requestSnapshot(std::size_t frame);
 
+    void requestSnapshotAsync(std::size_t frame);
+    bool isBusy() const;
+    void cancelPending();
+
 signals:
-    // Emitted when snapshot(frame) has become non-null (resident or just
-    // loaded). A failed load logs at the loader seam and emits nothing.
+    // Completion includes absent or failed input, represented by a null snapshot.
     void snapshotReady(std::size_t frame);
+    void becameIdle();
 
 protected:
-    Conformation(const QtProtein* protein);
+    Conformation(const QtProtein* protein, Conformation* snapshotSource = nullptr);
 
     // Load one frame from the concrete backing store. Failures are logged at
     // the loader boundary and represented by a null pointer.
-    virtual std::shared_ptr<const QtConformationSnapshot> loadSnapshot(std::size_t frame) = 0;
+    using SnapshotReader = std::function<std::shared_ptr<const QtConformationSnapshot>()>;
+    // Build on the owning thread. The returned reader captures immutable data,
+    // not this QObject, and may execute on a worker thread.
+    virtual SnapshotReader snapshotReader(std::size_t frame) const;
 
     const QtProtein* protein_ = nullptr;
 
 private:
+    void startNextSnapshot();
+    Conformation* snapshotSource_ = nullptr;
+    QThread* snapshotWorker_ = nullptr;
+    std::optional<std::size_t> activeSnapshotFrame_;
+    std::deque<std::size_t> pendingSnapshotFrames_;
+    bool cancellingSnapshots_ = false;
+    bool publishingSnapshot_ = false;
     std::optional<std::size_t> residentSnapshotFrame_;
     std::shared_ptr<const QtConformationSnapshot> residentSnapshot_;
 };

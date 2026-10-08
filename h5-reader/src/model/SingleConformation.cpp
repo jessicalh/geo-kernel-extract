@@ -25,8 +25,8 @@ Vec3 SingleConformation::atomPosition(std::size_t /*frame == 0*/, std::size_t at
     return Vec3(r[0], r[1], r[2]);
 }
 
-std::shared_ptr<const QtConformationSnapshot> SingleConformation::loadSnapshot(std::size_t /*frame == 0*/) {
-    return pose_;  // the one pose, already resident; the base caches it once
+Conformation::SnapshotReader SingleConformation::snapshotReader(std::size_t) const {
+    return [pose = pose_] { return pose; };
 }
 
 }  // namespace h5reader::model

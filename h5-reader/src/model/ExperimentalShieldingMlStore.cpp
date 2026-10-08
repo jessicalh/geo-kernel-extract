@@ -20,11 +20,14 @@
 #include <QMetaObject>
 #include <QProcessEnvironment>
 #include <QTextStream>
+#include <QThread>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <utility>
 
@@ -303,6 +306,13 @@ bool channelNamesMatch(const QString& kind,
 
 }  // namespace
 
+struct ExperimentalShieldingMlStore::ProteinInput {
+    std::vector<QtAtom> atoms;
+    std::vector<QtResidue> residues;
+    std::vector<QtAtomNames> atomNames;
+    std::vector<QtResidueNames> residueNames;
+};
+
 ExperimentalShieldingMlStore::ExperimentalShieldingMlStore(
     const QtProtein* protein,
     Conformation* conformation,
@@ -342,10 +352,36 @@ ExperimentalShieldingMlStore::ExperimentalShieldingMlStore(
                  && validateInitialFrameInputs();
     }
 
+    if (ready_) {
+        auto input = std::make_shared<ProteinInput>();
+        input->atoms = protein_->atoms();
+        input->residues = protein_->residues();
+        input->atomNames.reserve(input->atoms.size());
+        input->residueNames.reserve(input->residues.size());
+        for (std::size_t atom = 0; atom < input->atoms.size(); ++atom)
+            input->atomNames.push_back(protein_->atomNames(atom));
+        for (std::size_t residue = 0; residue < input->residues.size(); ++residue)
+            input->residueNames.push_back(protein_->residueNames(residue));
+        proteinInput_ = std::move(input);
+    }
+
+    if (conformation_) {
+        QObject::connect(conformation_, &Conformation::snapshotReady,
+                         this, &ExperimentalShieldingMlStore::snapshotReady);
+    }
+    QObject::connect(process_, &QProcess::started, this, [this]() {
+        if (cancelling_)
+            process_->kill();
+    });
     QObject::connect(process_, &QProcess::finished, this, &ExperimentalShieldingMlStore::finishProcess);
     QObject::connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error != QProcess::FailedToStart || !activeFrame_)
+        if (error != QProcess::FailedToStart || !processActive_)
             return;
+        processActive_ = false;
+        if (cancelling_) {
+            finishCancellation();
+            return;
+        }
         const QString reason =
             QStringLiteral("inference helper failed to start: %1").arg(process_->errorString());
         if (!scheduleCpuFallback(reason))
@@ -361,13 +397,18 @@ ExperimentalShieldingMlStore::ExperimentalShieldingMlStore(
 }
 
 ExperimentalShieldingMlStore::~ExperimentalShieldingMlStore() {
-    pendingFrames_.clear();
-    activeFrame_.reset();
+    // Normal teardown cancels and waits for becameIdle before deleting us.
+    if (preparationThread_) {
+        QObject::disconnect(preparationThread_, nullptr, this, nullptr);
+        preparationThread_->requestInterruption();
+        preparationThread_->wait();
+        delete preparationThread_;
+    }
     QObject::disconnect(process_, nullptr, this, nullptr);
     process_->blockSignals(true);
     if (process_->state() != QProcess::NotRunning) {
         process_->kill();
-        process_->waitForFinished();
+        process_->waitForFinished(-1);
     }
 }
 
@@ -388,7 +429,39 @@ bool ExperimentalShieldingMlStore::ManifestHasInferenceSchema(
 }
 
 bool ExperimentalShieldingMlStore::isRunning() const {
-    return process_->state() != QProcess::NotRunning;
+    return isBusy();
+}
+
+bool ExperimentalShieldingMlStore::isBusy() const {
+    ASSERT_THREAD(this);
+    return activeFrame_.has_value() || !pendingFrames_.empty()
+           || preparationThread_ || processActive_ || startScheduled_
+           || fallbackScheduled_ || cancelling_;
+}
+
+void ExperimentalShieldingMlStore::cancelPending() {
+    ASSERT_THREAD(this);
+    if (!isBusy() || cancelling_)
+        return;
+    cancelling_ = true;
+    pendingFrames_.clear();
+    // Drop only our interest; the shared conformation serves other consumers.
+    waitingForSnapshot_ = false;
+    if (preparationThread_)
+        preparationThread_->requestInterruption();
+    if (processActive_)
+        process_->kill();
+    finishCancellation();
+}
+
+void ExperimentalShieldingMlStore::finishCancellation() {
+    if (!cancelling_ || preparationThread_ || processActive_
+        || startScheduled_ || fallbackScheduled_) {
+        return;
+    }
+    clearActiveFrame();
+    cancelling_ = false;
+    emit becameIdle();
 }
 
 bool ExperimentalShieldingMlStore::loadContract(const QString& manifestPath) {
@@ -820,6 +893,7 @@ bool ExperimentalShieldingMlStore::validateInitialFrameInputs() {
         return false;
     }
 
+    // Construction runs on the loader thread, before installation in the GUI.
     conformation_->requestSnapshot(0);
     const std::shared_ptr<const QtConformationSnapshot> snapshot =
         conformation_->snapshot(0);
@@ -855,8 +929,14 @@ bool ExperimentalShieldingMlStore::validateInitialFrameInputs() {
 bool ExperimentalShieldingMlStore::buildInput(
     std::size_t frame,
     const QtConformationSnapshot& snapshot,
+    const ProteinInput& protein,
+    const Contract& contract,
     const QString& inputDir,
-    QString& error) const {
+    QString& error) {
+    QThread* const thread = QThread::currentThread();
+    if (thread->isInterruptionRequested())
+        return false;
+
     struct ProjectedBlock {
         int channels = 0;
         int width = 0;
@@ -868,8 +948,8 @@ bool ExperimentalShieldingMlStore::buildInput(
         QStringList emittedMaskNames;
     };
 
-    const std::size_t atomCount = protein_->atomCount();
-    const std::size_t residueCount = protein_->residueCount();
+    const std::size_t atomCount = protein.atoms.size();
+    const std::size_t residueCount = protein.residues.size();
     const QString frameLabel = QStringLiteral("frame %1").arg(frame);
     if (atomCount == 0 || residueCount == 0) {
         error = QStringLiteral("protein has no atoms or residues");
@@ -883,7 +963,7 @@ bool ExperimentalShieldingMlStore::buildInput(
 
     std::vector<std::size_t> atomResidues(atomCount);
     for (std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex) {
-        const int residueIndex = protein_->atom(atomIndex).residueIndex;
+        const int residueIndex = protein.atoms[atomIndex].residueIndex;
         if (residueIndex < 0
             || static_cast<std::size_t>(residueIndex) >= residueCount) {
             error = QStringLiteral("%1 atom %2 has out-of-range residue index %3")
@@ -945,7 +1025,9 @@ bool ExperimentalShieldingMlStore::buildInput(
     std::vector<ProjectedBlock> l2Blocks;
     std::vector<ProjectedBlock> applicabilityBlocks;
 
-    for (const FeatureSpec& spec : contract_.features) {
+    for (const FeatureSpec& spec : contract.features) {
+        if (thread->isInterruptionRequested())
+            return false;
         const std::size_t sourceRows =
             spec.axis == FeatureAxis::Atom ? atomCount : residueCount;
         const int width = spec.kind == FeatureKind::Scalar
@@ -1031,14 +1113,14 @@ bool ExperimentalShieldingMlStore::buildInput(
                     channels = 1;
                     break;
                 case FeatureLayout::RingT0:
-                    if (column.cols != contract_.ringTypeOrder.size()) {
+                    if (column.cols != contract.ringTypeOrder.size()) {
                         error = QStringLiteral("%1/%2 requires %3 ring-type columns")
                                     .arg(frameLabel, source.fileName)
-                                    .arg(contract_.ringTypeOrder.size());
+                                    .arg(contract.ringTypeOrder.size());
                         return false;
                     }
                     if (!checkedSizeToInt(
-                            contract_.ringActive.size(),
+                            contract.ringActive.size(),
                             QStringLiteral("%1 active ring types").arg(spec.key),
                             channels,
                             error)) {
@@ -1049,15 +1131,15 @@ bool ExperimentalShieldingMlStore::buildInput(
                 case FeatureLayout::RingT2: {
                     const int ringWidth =
                         spec.layout == FeatureLayout::RingT1 ? 3 : 5;
-                    if (column.cols != contract_.ringTypeOrder.size() * ringWidth) {
+                    if (column.cols != contract.ringTypeOrder.size() * ringWidth) {
                         error = QStringLiteral("%1/%2 has %3 columns; expected %4 ring tensor columns")
                                     .arg(frameLabel, source.fileName)
                                     .arg(column.cols)
-                                    .arg(contract_.ringTypeOrder.size() * ringWidth);
+                                    .arg(contract.ringTypeOrder.size() * ringWidth);
                         return false;
                     }
                     if (!checkedSizeToInt(
-                            contract_.ringActive.size(),
+                            contract.ringActive.size(),
                             QStringLiteral("%1 active ring types").arg(spec.key),
                             channels,
                             error)) {
@@ -1120,13 +1202,15 @@ bool ExperimentalShieldingMlStore::buildInput(
                     case FeatureLayout::RingT2:
                         names.append(QStringLiteral("%1:%2")
                                          .arg(spec.key,
-                                              contract_.ringTypeOrder[
-                                                  contract_.ringActive[channel]]));
+                                              contract.ringTypeOrder[
+                                                  contract.ringActive[channel]]));
                         break;
                 }
             }
 
             for (std::size_t rowIndex = 0; rowIndex < sourceRows; ++rowIndex) {
+                if (thread->isInterruptionRequested())
+                    return false;
                 const double* sourceRow = column.row(rowIndex);
                 for (int channel = 0; channel < sourceShape.channels; ++channel) {
                     bool channelFinite = true;
@@ -1150,18 +1234,18 @@ bool ExperimentalShieldingMlStore::buildInput(
                                 sourceColumn = 4 + component;
                                 break;
                             case FeatureLayout::RingT0:
-                                sourceColumn = contract_.ringActive[channel];
+                                sourceColumn = contract.ringActive[channel];
                                 break;
                             case FeatureLayout::RingT1:
                             case FeatureLayout::RingT2:
                                 sourceColumn =
-                                    contract_.ringActive[channel] * width + component;
+                                    contract.ringActive[channel] * width + component;
                                 break;
                         }
                         double value = sourceRow[sourceColumn];
                         if (spec.scale == FeatureScale::ManifestBsIntensity) {
-                            value *= contract_.ringIntensity[
-                                contract_.ringActive[channel]];
+                            value *= contract.ringIntensity[
+                                contract.ringActive[channel]];
                         }
                         const float projected = static_cast<float>(value);
                         if (!std::isfinite(value) || !std::isfinite(projected))
@@ -1242,6 +1326,8 @@ bool ExperimentalShieldingMlStore::buildInput(
             }
             rawMask.resize(sourceRows * static_cast<std::size_t>(rawMaskChannels));
             for (std::size_t rowIndex = 0; rowIndex < sourceRows; ++rowIndex) {
+                if (thread->isInterruptionRequested())
+                    return false;
                 const double* maskRow = mask.row(rowIndex);
                 for (int channel = 0; channel < rawMaskChannels; ++channel) {
                     const double value = maskRow[maskColumns[channel]];
@@ -1305,6 +1391,8 @@ bool ExperimentalShieldingMlStore::buildInput(
                             * static_cast<std::size_t>(width));
         block.valid.resize(atomCount * static_cast<std::size_t>(totalChannels));
         for (std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex) {
+            if (thread->isInterruptionRequested())
+                return false;
             const std::size_t sourceRow =
                 spec.axis == FeatureAxis::Atom ? atomIndex : atomResidues[atomIndex];
             for (int channel = 0; channel < totalChannels; ++channel) {
@@ -1382,7 +1470,7 @@ bool ExperimentalShieldingMlStore::buildInput(
     }
 
     const auto concatenateBlocks =
-        [atomCount, &error](const QString& kind,
+        [atomCount, &error, thread](const QString& kind,
                             const std::vector<ProjectedBlock>& blocks,
                             int width,
                             int expectedChannels,
@@ -1413,6 +1501,8 @@ bool ExperimentalShieldingMlStore::buildInput(
                           * static_cast<std::size_t>(width));
             valid.resize(atomCount * static_cast<std::size_t>(channels));
             for (std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex) {
+                if (thread->isInterruptionRequested())
+                    return false;
                 int channelOffset = 0;
                 for (const ProjectedBlock& block : blocks) {
                     for (int channel = 0; channel < block.channels; ++channel) {
@@ -1446,22 +1536,22 @@ bool ExperimentalShieldingMlStore::buildInput(
     if (!concatenateBlocks(QStringLiteral("scalar"),
                            scalarBlocks,
                            1,
-                           contract_.expectedScalarChannels,
-                           contract_.expectedScalarNames,
+                           contract.expectedScalarChannels,
+                           contract.expectedScalarNames,
                            scalars,
                            scalarValid)
         || !concatenateBlocks(QStringLiteral("l1"),
                               l1Blocks,
                               3,
-                              contract_.expectedL1Channels,
-                              contract_.expectedL1Names,
+                              contract.expectedL1Channels,
+                              contract.expectedL1Names,
                               l1,
                               l1Valid)
         || !concatenateBlocks(QStringLiteral("l2"),
                               l2Blocks,
                               5,
-                              contract_.expectedL2Channels,
-                              contract_.expectedL2Names,
+                              contract.expectedL2Channels,
+                              contract.expectedL2Names,
                               l2,
                               l2Valid)) {
         return false;
@@ -1473,15 +1563,15 @@ bool ExperimentalShieldingMlStore::buildInput(
         applicabilityChannels += block.emittedMaskChannels;
         applicabilityNames.append(block.emittedMaskNames);
     }
-    if (applicabilityChannels != contract_.expectedApplicabilityChannels
+    if (applicabilityChannels != contract.expectedApplicabilityChannels
         || !channelNamesMatch(QStringLiteral("applicability"),
                               applicabilityNames,
-                              contract_.expectedApplicabilityNames,
+                              contract.expectedApplicabilityNames,
                               error)) {
         if (error.isEmpty()) {
             error = QStringLiteral("applicability channel count is %1; expected %2")
                         .arg(applicabilityChannels)
-                        .arg(contract_.expectedApplicabilityChannels);
+                        .arg(contract.expectedApplicabilityChannels);
         }
         return false;
     }
@@ -1503,17 +1593,19 @@ bool ExperimentalShieldingMlStore::buildInput(
     }
 
     std::vector<std::int64_t> labelIds(
-        atomCount * static_cast<std::size_t>(contract_.labelKeys.size()));
+        atomCount * static_cast<std::size_t>(contract.labelKeys.size()));
     QHash<QString, int> unknownCounts;
     QHash<QString, int> forcedUnknownCounts;
     for (std::size_t atomIndex = 0; atomIndex < atomCount; ++atomIndex) {
-        const QtAtom& atom = protein_->atom(atomIndex);
+        if (thread->isInterruptionRequested())
+            return false;
+        const QtAtom& atom = protein.atoms[atomIndex];
         const std::size_t residueIndex = atomResidues[atomIndex];
-        const QtResidue& residue = protein_->residue(residueIndex);
-        const QtResidueNames& residueNames = protein_->residueNames(residueIndex);
-        const QtAtomNames& atomNames = protein_->atomNames(atomIndex);
-        for (int labelIndex = 0; labelIndex < contract_.labelKeys.size(); ++labelIndex) {
-            const QString& key = contract_.labelKeys[labelIndex];
+        const QtResidue& residue = protein.residues[residueIndex];
+        const QtResidueNames& residueNames = protein.residueNames[residueIndex];
+        const QtAtomNames& atomNames = protein.atomNames[atomIndex];
+        for (int labelIndex = 0; labelIndex < contract.labelKeys.size(); ++labelIndex) {
+            const QString& key = contract.labelKeys[labelIndex];
             QString value;
             if (key == QStringLiteral("element"))
                 value = QString::number(atom.AtomicNumber());
@@ -1550,15 +1642,15 @@ bool ExperimentalShieldingMlStore::buildInput(
                 return false;
             }
 
-            const auto vocabularyIt = contract_.labelVocabs.constFind(key);
-            if (vocabularyIt == contract_.labelVocabs.constEnd()) {
+            const auto vocabularyIt = contract.labelVocabs.constFind(key);
+            if (vocabularyIt == contract.labelVocabs.constEnd()) {
                 error = QStringLiteral("categorical vocabulary disappeared for %1").arg(key);
                 return false;
             }
             const QHash<QString, std::int64_t>& vocabulary = vocabularyIt.value();
             const auto idIt = vocabulary.constFind(value);
             const bool unknown = idIt == vocabulary.constEnd();
-            if (unknown && !contract_.trainedUnknownKeys.contains(key)) {
+            if (unknown && !contract.trainedUnknownKeys.contains(key)) {
                 error = QStringLiteral(
                             "%1 atom %2 required categorical %3 value %4 is outside the model vocabulary")
                             .arg(frameLabel)
@@ -1569,16 +1661,16 @@ bool ExperimentalShieldingMlStore::buildInput(
             const std::int64_t id = unknown ? 0 : idIt.value();
             if (unknown)
                 unknownCounts[key] += 1;
-            labelIds[atomIndex * static_cast<std::size_t>(contract_.labelKeys.size())
+            labelIds[atomIndex * static_cast<std::size_t>(contract.labelKeys.size())
                      + static_cast<std::size_t>(labelIndex)] = id;
         }
-        for (auto it = contract_.unknownCouplings.constBegin();
-             it != contract_.unknownCouplings.constEnd();
+        for (auto it = contract.unknownCouplings.constBegin();
+             it != contract.unknownCouplings.constEnd();
              ++it) {
-            const qsizetype sourceColumn = contract_.labelKeys.indexOf(it.key());
-            const qsizetype targetColumn = contract_.labelKeys.indexOf(it.value());
+            const qsizetype sourceColumn = contract.labelKeys.indexOf(it.key());
+            const qsizetype targetColumn = contract.labelKeys.indexOf(it.value());
             const std::size_t rowOffset =
-                atomIndex * static_cast<std::size_t>(contract_.labelKeys.size());
+                atomIndex * static_cast<std::size_t>(contract.labelKeys.size());
             if (labelIds[rowOffset + static_cast<std::size_t>(sourceColumn)] == 0
                 && labelIds[rowOffset + static_cast<std::size_t>(targetColumn)] != 0) {
                 labelIds[rowOffset + static_cast<std::size_t>(targetColumn)] = 0;
@@ -1611,6 +1703,8 @@ bool ExperimentalShieldingMlStore::buildInput(
         double distance = 0.0;
     };
     for (std::size_t destination = 0; destination < atomCount; ++destination) {
+        if (thread->isInterruptionRequested())
+            return false;
         std::vector<Candidate> candidates;
         const std::size_t destinationOffset = destination * 3;
         for (std::size_t source = 0; source < atomCount; ++source) {
@@ -1624,20 +1718,20 @@ bool ExperimentalShieldingMlStore::buildInput(
             const double dz = static_cast<double>(positions[destinationOffset + 2])
                               - static_cast<double>(positions[sourceOffset + 2]);
             const double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-            if (distance < contract_.radius)
+            if (distance < contract.radius)
                 candidates.push_back({source, distance});
         }
-        if (candidates.size() > static_cast<std::size_t>(contract_.maxNeighbors)) {
+        if (candidates.size() > static_cast<std::size_t>(contract.maxNeighbors)) {
             std::partial_sort(
                 candidates.begin(),
-                candidates.begin() + contract_.maxNeighbors,
+                candidates.begin() + contract.maxNeighbors,
                 candidates.end(),
                 [](const Candidate& a, const Candidate& b) {
                     if (a.distance != b.distance)
                         return a.distance < b.distance;
                     return a.source < b.source;
                 });
-            candidates.resize(static_cast<std::size_t>(contract_.maxNeighbors));
+            candidates.resize(static_cast<std::size_t>(contract.maxNeighbors));
         }
         std::sort(candidates.begin(), candidates.end(), [](const Candidate& a,
                                                            const Candidate& b) {
@@ -1646,11 +1740,11 @@ bool ExperimentalShieldingMlStore::buildInput(
         for (const Candidate& candidate : candidates) {
             edgeSrc.push_back(static_cast<std::int64_t>(candidate.source));
             edgeDst.push_back(static_cast<std::int64_t>(destination));
-            for (int radialIndex = 0; radialIndex < contract_.radialDim; ++radialIndex) {
+            for (int radialIndex = 0; radialIndex < contract.radialDim; ++radialIndex) {
                 radial.push_back(smoothFiniteRadial(candidate.distance,
-                                                    contract_.radius,
+                                                    contract.radius,
                                                     radialIndex,
-                                                    contract_.radialDim));
+                                                    contract.radialDim));
             }
         }
     }
@@ -1685,6 +1779,8 @@ bool ExperimentalShieldingMlStore::buildInput(
         return false;
     }
 
+    if (thread->isInterruptionRequested())
+        return false;
     const QDir output(inputDir);
     if (!writeRaw(output.filePath(QStringLiteral("pos.bin")), positions.data(), posBytes, error)
         || !writeRaw(output.filePath(QStringLiteral("l1.bin")), l1.data(), l1Bytes, error)
@@ -1709,12 +1805,12 @@ bool ExperimentalShieldingMlStore::buildInput(
     QTextStream stream(&shapes);
     stream << "N " << atomCount << '\n'
            << "E " << edgeSrc.size() << '\n'
-           << "C1 " << contract_.expectedL1Channels << '\n'
-           << "C2 " << contract_.expectedL2Channels << '\n'
-           << "C0 " << contract_.expectedScalarChannels << '\n'
-           << "A " << contract_.expectedApplicabilityChannels << '\n'
-           << "label_count " << contract_.labelKeys.size() << '\n'
-           << "radial_dim " << contract_.radialDim << '\n';
+           << "C1 " << contract.expectedL1Channels << '\n'
+           << "C2 " << contract.expectedL2Channels << '\n'
+           << "C0 " << contract.expectedScalarChannels << '\n'
+           << "A " << contract.expectedApplicabilityChannels << '\n'
+           << "label_count " << contract.labelKeys.size() << '\n'
+           << "radial_dim " << contract.radialDim << '\n';
     return true;
 }
 
@@ -1725,7 +1821,7 @@ bool ExperimentalShieldingMlStore::hasFailedFrame(std::size_t frame) const {
 
 void ExperimentalShieldingMlStore::requestFrame(std::size_t frame) {
     ASSERT_THREAD(this);
-    if (!ready_ || !conformation_ || frame >= conformation_->frameCount())
+    if (cancelling_ || !ready_ || !conformation_ || frame >= conformation_->frameCount())
         return;
     if (residentFrame_ && *residentFrame_ == frame) {
         emit frameReady(frame);
@@ -1746,33 +1842,87 @@ void ExperimentalShieldingMlStore::requestFrame(std::size_t frame) {
 }
 
 void ExperimentalShieldingMlStore::startFrame(std::size_t frame) {
-    conformation_->requestSnapshot(frame);
+    activeFrame_ = frame;
+    if (!conformation_) {
+        failActiveFrame(QStringLiteral("model input conformation is unavailable"));
+        return;
+    }
+    waitingForSnapshot_ = true;
+    try {
+        conformation_->requestSnapshotAsync(frame);
+    } catch (const std::exception& exception) {
+        failActiveFrame(QStringLiteral("frame %1 snapshot request threw: %2")
+                            .arg(frame).arg(QString::fromUtf8(exception.what())));
+    } catch (...) {
+        failActiveFrame(QStringLiteral("frame %1 snapshot request threw an unknown exception")
+                            .arg(frame));
+    }
+}
+
+void ExperimentalShieldingMlStore::snapshotReady(std::size_t frame) {
+    ASSERT_THREAD(this);
+    if (!waitingForSnapshot_ || activeFrame_ != frame || cancelling_)
+        return;
+    waitingForSnapshot_ = false;
     const std::shared_ptr<const QtConformationSnapshot> snapshot =
         conformation_->snapshot(frame);
     if (!snapshot) {
-        failedFrames_.push_back(frame);
-        emit frameReady(frame);
-        startPendingFrame();
+        failActiveFrame(QStringLiteral("frame %1 model input snapshot is unavailable")
+                            .arg(frame));
         return;
     }
 
-    activeFrame_ = frame;
     activeDir_ =
         QDir(workRoot_.path()).filePath(QStringLiteral("frame_%1").arg(frame));
     activeOutput_ = QDir(activeDir_).filePath(QStringLiteral("output.bin"));
-    QString error;
-    if (!buildInput(frame,
-                    *snapshot,
-                    QDir(activeDir_).filePath(QStringLiteral("input")),
-                    error)) {
-        failActiveFrame(error);
-        return;
+
+    struct Result {
+        bool ok = false;
+        QString error;
+    };
+    try {
+        const auto result = std::make_shared<Result>();
+        preparationThread_ = QThread::create(
+            [frame, snapshot, protein = proteinInput_, contract = contract_,
+             inputDir = QDir(activeDir_).filePath(QStringLiteral("input")), result]() {
+                try {
+                    result->ok = buildInput(frame, *snapshot, *protein, contract,
+                                            inputDir, result->error);
+                } catch (const std::exception& exception) {
+                    result->error = QStringLiteral("input preparation threw: %1")
+                                        .arg(QString::fromUtf8(exception.what()));
+                } catch (...) {
+                    result->error = QStringLiteral("input preparation threw an unknown exception");
+                }
+            });
+        preparationThread_->setParent(this);
+        QObject::connect(preparationThread_, &QThread::finished, this,
+                         [this, result]() {
+            preparationThread_->deleteLater();
+            preparationThread_ = nullptr;
+            if (cancelling_) {
+                if (!result->error.isEmpty())
+                    qCWarning(cExperimentalMl).noquote() << result->error;
+                finishCancellation();
+            } else if (!result->ok) {
+                failActiveFrame(result->error);
+            } else {
+                launchActiveFrame();
+            }
+        }, Qt::QueuedConnection);
+        preparationThread_->start();
+    } catch (const std::exception& exception) {
+        delete std::exchange(preparationThread_, nullptr);
+        failActiveFrame(QStringLiteral("could not start input preparation: %1")
+                            .arg(QString::fromUtf8(exception.what())));
+    } catch (...) {
+        delete std::exchange(preparationThread_, nullptr);
+        failActiveFrame(QStringLiteral("could not start input preparation: unknown exception"));
     }
-    launchActiveFrame();
 }
 
 void ExperimentalShieldingMlStore::launchActiveFrame() {
-    if (!activeFrame_)
+    if (!activeFrame_ || cancelling_)
         return;
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     const QString runtimeDir = QFileInfo(helperPath_).absolutePath();
@@ -1797,11 +1947,12 @@ void ExperimentalShieldingMlStore::launchActiveFrame() {
         << QStringLiteral("event=inference_start frame=%1 model=%2 device=%3")
                .arg(*activeFrame_)
                .arg(contract_.modelId, device_);
+    processActive_ = true;
     process_->start();
 }
 
 bool ExperimentalShieldingMlStore::scheduleCpuFallback(const QString& reason) {
-    if (!activeFrame_ || fallbackAttempted_ || fallbackHelperPath_.isEmpty()
+    if (cancelling_ || !activeFrame_ || fallbackAttempted_ || fallbackHelperPath_.isEmpty()
         || device_ != QStringLiteral("rocm")
         || !QFileInfo(fallbackHelperPath_).isFile()) {
         return false;
@@ -1814,10 +1965,17 @@ bool ExperimentalShieldingMlStore::scheduleCpuFallback(const QString& reason) {
         << QStringLiteral("event=inference_fallback frame=%1 from=rocm to=cpu reason=%2")
                .arg(*activeFrame_)
                .arg(reason);
-    emit runtimeChanged();
+    fallbackScheduled_ = true;
     QMetaObject::invokeMethod(this,
-                              [this]() { launchActiveFrame(); },
+                              [this]() {
+                                  fallbackScheduled_ = false;
+                                  if (cancelling_)
+                                      finishCancellation();
+                                  else
+                                      launchActiveFrame();
+                              },
                               Qt::QueuedConnection);
+    emit runtimeChanged();
     return true;
 }
 
@@ -1825,8 +1983,13 @@ void ExperimentalShieldingMlStore::finishProcess(
     int exitCode,
     QProcess::ExitStatus exitStatus) {
     ASSERT_THREAD(this);
-    if (!activeFrame_)
+    if (!processActive_)
         return;
+    processActive_ = false;
+    if (cancelling_) {
+        finishCancellation();
+        return;
+    }
     const std::size_t frame = *activeFrame_;
     const QString stderrText =
         QString::fromUtf8(process_->readAllStandardError()).trimmed();
@@ -1865,17 +2028,14 @@ void ExperimentalShieldingMlStore::finishProcess(
         return;
     }
     residentFrame_ = frame;
-    activeFrame_.reset();
-    QDir(activeDir_).removeRecursively();
-    activeDir_.clear();
-    activeOutput_.clear();
+    clearActiveFrame();
     qCInfo(cExperimentalMl).noquote()
         << QStringLiteral("event=inference_ready frame=%1 atoms=%2 model=%3 device=%4")
                .arg(frame)
                .arg(protein_->atomCount())
                .arg(contract_.modelId, device_);
-    emit frameReady(frame);
     startPendingFrame();
+    emit frameReady(frame);
 }
 
 void ExperimentalShieldingMlStore::failActiveFrame(const QString& reason) {
@@ -1883,30 +2043,48 @@ void ExperimentalShieldingMlStore::failActiveFrame(const QString& reason) {
         return;
     const std::size_t frame = *activeFrame_;
     failedFrames_.push_back(frame);
-    activeFrame_.reset();
-    if (!activeDir_.isEmpty())
-        QDir(activeDir_).removeRecursively();
-    activeDir_.clear();
-    activeOutput_.clear();
+    clearActiveFrame();
     diagnostics::ErrorBus::Report(diagnostics::Severity::Error,
                                   QStringLiteral("ExperimentalShieldingMlStore"),
                                   reason,
                                   modelPath_);
-    emit frameReady(frame);
     startPendingFrame();
+    emit frameReady(frame);
 }
 
 void ExperimentalShieldingMlStore::startPendingFrame() {
-    if (activeFrame_ || pendingFrames_.empty())
+    if (activeFrame_ || startScheduled_ || cancelling_)
         return;
-    const std::size_t pending = pendingFrames_.front();
-    pendingFrames_.pop_front();
-    if (residentFrame_ && *residentFrame_ == pending) {
-        emit frameReady(pending);
-        startPendingFrame();
-        return;
-    }
-    startFrame(pending);
+    // Keep completion busy through publication, and avoid recursive queue drains.
+    startScheduled_ = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        startScheduled_ = false;
+        if (cancelling_) {
+            finishCancellation();
+            return;
+        }
+        if (pendingFrames_.empty()) {
+            emit becameIdle();
+            return;
+        }
+        const std::size_t pending = pendingFrames_.front();
+        pendingFrames_.pop_front();
+        if (residentFrame_ == pending || hasFailedFrame(pending)) {
+            startPendingFrame();
+            emit frameReady(pending);
+            return;
+        }
+        startFrame(pending);
+    }, Qt::QueuedConnection);
+}
+
+void ExperimentalShieldingMlStore::clearActiveFrame() {
+    activeFrame_.reset();
+    waitingForSnapshot_ = false;
+    if (!activeDir_.isEmpty())
+        QDir(activeDir_).removeRecursively();
+    activeDir_.clear();
+    activeOutput_.clear();
 }
 
 std::optional<std::array<double, 6>>

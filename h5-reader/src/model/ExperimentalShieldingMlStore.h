@@ -16,8 +16,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <vector>
+
+class QThread;
 
 namespace h5reader::model {
 
@@ -35,6 +38,7 @@ class ExperimentalShieldingMlStore final : public QObject {
     Q_OBJECT
 
 public:
+    // Validate on the loader thread, then move this idle store to the GUI.
     ExperimentalShieldingMlStore(const QtProtein* protein,
                                  Conformation* conformation,
                                  QString modelPath,
@@ -55,9 +59,12 @@ public:
     QString device() const { return device_; }
     bool usingFallback() const { return fallbackAttempted_; }
     bool isRunning() const;
+    bool isBusy() const;
     bool hasFailedFrame(std::size_t frame) const;
 
     void requestFrame(std::size_t frame);
+    // Reject new requests until cancellation settles and becameIdle is emitted.
+    void cancelPending();
     std::optional<double> sample(std::size_t frame,
                                  std::size_t atom,
                                  ExperimentalShieldingMlScalar scalar) const;
@@ -67,6 +74,7 @@ public:
 signals:
     void frameReady(std::size_t frame);
     void runtimeChanged();
+    void becameIdle();
 
 private:
     enum class FeatureAxis : std::uint8_t {
@@ -150,21 +158,30 @@ private:
         QVector<double> ringIntensity;
     };
 
+    struct ProteinInput;
+
     bool loadContract(const QString& manifestPath);
     bool validateExtractionManifest(const QString& extractionManifestPath);
     bool validateInitialFrameInputs();
-    bool buildInput(std::size_t frame,
-                    const QtConformationSnapshot& snapshot,
-                    const QString& inputDir,
-                    QString& error) const;
+    static bool buildInput(std::size_t frame,
+                           const QtConformationSnapshot& snapshot,
+                           const ProteinInput& protein,
+                           const Contract& contract,
+                           const QString& inputDir,
+                           QString& error);
     void startFrame(std::size_t frame);
+    void snapshotReady(std::size_t frame);
     void launchActiveFrame();
     bool scheduleCpuFallback(const QString& reason);
     void finishProcess(int exitCode, QProcess::ExitStatus exitStatus);
     void failActiveFrame(const QString& reason);
     void startPendingFrame();
+    void clearActiveFrame();
+    void finishCancellation();
 
+    // MainWindow retains the protein until this store becomes idle.
     const QtProtein* protein_ = nullptr;
+    std::shared_ptr<const ProteinInput> proteinInput_;
     QPointer<Conformation> conformation_;
     QString modelPath_;
     QString runtimeManifestPath_;
@@ -177,6 +194,12 @@ private:
     QString errorReason_;
 
     QProcess* process_ = nullptr;
+    QThread* preparationThread_ = nullptr;
+    bool processActive_ = false;
+    bool waitingForSnapshot_ = false;
+    bool startScheduled_ = false;
+    bool fallbackScheduled_ = false;
+    bool cancelling_ = false;
     QTemporaryDir workRoot_;
     std::optional<std::size_t> activeFrame_;
     std::deque<std::size_t> pendingFrames_;

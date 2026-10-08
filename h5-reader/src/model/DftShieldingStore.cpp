@@ -1,21 +1,34 @@
 #include "DftShieldingStore.h"
 
-#include "../diagnostics/ErrorBus.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
-#include "../io/CalcsetManifest.h"
 #include "../io/DftShieldingLoader.h"
-#include "QtProtein.h"
 
 #include <QLoggingCategory>
-#include <QMetaObject>
+#include <QPointer>
+#include <QThread>
 
+#include <exception>
 #include <utility>
 
 namespace h5reader::model {
 
 namespace {
 Q_LOGGING_CATEGORY(cDft, "h5reader.dft")
+
+std::shared_ptr<const DftShieldingFrame> loadAndValidate(
+    const QString& metaJson, const QtProtein* protein) {
+    try {
+        return h5reader::io::DftShieldingLoader::LoadAndValidate(metaJson, protein);
+    } catch (const std::exception& error) {
+        qCWarning(cDft).noquote() << "DFT load failed | meta=" << metaJson
+                                << "|" << error.what();
+    } catch (...) {
+        qCWarning(cDft).noquote() << "DFT load failed | meta=" << metaJson
+                                << "| unknown exception";
+    }
+    return nullptr;
+}
 }  // namespace
 
 DftShieldingStore::DftShieldingStore(const QtProtein* protein,
@@ -37,8 +50,11 @@ DftShieldingStore::DftShieldingStore(const QtProtein* protein,
 }
 
 DftShieldingStore::~DftShieldingStore() {
-    if (asyncThread_.joinable())
-        asyncThread_.join();
+    ASSERT_THREAD(this);
+    // Fallback for owners that destroy a busy store. Normal close/replacement
+    // uses cancelPending()/becameIdle() while retaining the protein.
+    if (asyncThread_)
+        asyncThread_->wait();
 }
 
 bool DftShieldingStore::hasJob(std::size_t originalIndex) const {
@@ -57,6 +73,8 @@ const DftShieldingFrame* DftShieldingStore::frame(std::size_t originalIndex) con
 
 void DftShieldingStore::requestFrame(std::size_t originalIndex) {
     ASSERT_THREAD(this);
+    if (cancelling_)
+        return;
     // Idempotent: a resident frame or known-absent frame just re-announces.
     // The parsed frame is a temporary source object. Strips keep the durable
     // sampled display values in their ChannelBuffers.
@@ -65,81 +83,98 @@ void DftShieldingStore::requestFrame(std::size_t originalIndex) {
         return;
     }
 
-    residentOriginal_.reset();
-    residentFrame_.reset();
+    const auto it = metaByOriginal_.find(originalIndex);
+    publishFrame(originalIndex,
+                 it != metaByOriginal_.end() && !resolvedAbsent_.count(originalIndex)
+                     ? loadAndValidate(it->second, protein_) : nullptr);
+}
 
-    if (resolvedAbsent_.find(originalIndex) != resolvedAbsent_.end()) {
-        emit frameReady(originalIndex);
+void DftShieldingStore::requestFrameAsync(std::size_t originalIndex) {
+    ASSERT_THREAD(this);
+    if (cancelling_ || asyncActiveOriginal_ == originalIndex
+        || !asyncPendingSet_.insert(originalIndex).second)
         return;
-    }
+    asyncPending_.push_back(originalIndex);
+    if (!asyncActiveOriginal_)
+        startNextAsyncFrame();
+}
 
-    residentFrame_ = loadAndValidate(originalIndex);
-    if (residentFrame_) {
+bool DftShieldingStore::isBusy() const {
+    ASSERT_THREAD(this);
+    return asyncActiveOriginal_.has_value();
+}
+
+void DftShieldingStore::cancelPending() {
+    ASSERT_THREAD(this);
+    asyncPending_.clear();
+    asyncPendingSet_.clear();
+    cancelling_ = isBusy();
+}
+
+void DftShieldingStore::publishFrame(
+    std::size_t originalIndex,
+    std::shared_ptr<const DftShieldingFrame> frame) {
+    residentFrame_ = std::move(frame);
+    if (residentFrame_)
         residentOriginal_ = originalIndex;
-    } else {
+    else {
+        residentOriginal_.reset();
         resolvedAbsent_.insert(originalIndex);
     }
     emit frameReady(originalIndex);
 }
 
-void DftShieldingStore::requestFrameAsync(std::size_t originalIndex) {
+void DftShieldingStore::startNextAsyncFrame() {
     ASSERT_THREAD(this);
+    while (!asyncPending_.empty()) {
+        const std::size_t originalIndex = asyncPending_.front();
+        asyncPending_.pop_front();
+        asyncPendingSet_.erase(originalIndex);
+        asyncActiveOriginal_ = originalIndex;
 
-    if (residentOriginal_ && *residentOriginal_ == originalIndex) {
-        emit frameReady(originalIndex);
-        return;
+        const QPointer<DftShieldingStore> self(this);
+        const auto it = metaByOriginal_.find(originalIndex);
+        if (residentOriginal_ == originalIndex) {
+            emit frameReady(originalIndex);
+        } else if (resolvedAbsent_.count(originalIndex) || it == metaByOriginal_.end()) {
+            publishFrame(originalIndex, nullptr);
+        } else {
+            const QString metaJson = it->second;
+            const QtProtein* protein = protein_;
+            const auto result = std::make_shared<std::shared_ptr<const DftShieldingFrame>>();
+            asyncThread_ = QThread::create([metaJson, protein, result] {
+                *result = loadAndValidate(metaJson, protein);
+            });
+            asyncThread_->setParent(this);
+            connect(asyncThread_, &QThread::finished, this,
+                    [this, originalIndex, result] {
+                        finishAsyncFrame(originalIndex, std::move(*result));
+                    }, Qt::QueuedConnection);
+            asyncThread_->start();
+            return;
+        }
+        // Direct frameReady handlers may enqueue, cancel, or destroy the store.
+        if (!self)
+            return;
+        asyncActiveOriginal_.reset();
     }
-    if (resolvedAbsent_.find(originalIndex) != resolvedAbsent_.end())
-        return;
-    if (!asyncInFlight_.empty()) {
-        asyncPendingOriginal_ = originalIndex;
-        return;
-    }
-    if (asyncInFlight_.find(originalIndex) != asyncInFlight_.end())
-        return;
-
-    const auto it = metaByOriginal_.find(originalIndex);
-    if (it == metaByOriginal_.end()) {
-        resolvedAbsent_.insert(originalIndex);
-        return;
-    }
-
-    const QString metaJson = it->second;
-    const QtProtein* protein = protein_;
-    if (asyncThread_.joinable())
-        asyncThread_.join();
-    asyncInFlight_.insert(originalIndex);
-    asyncThread_ = std::thread([this, originalIndex, metaJson, protein]() {
-        std::shared_ptr<const DftShieldingFrame> loaded =
-            h5reader::io::DftShieldingLoader::LoadAndValidate(metaJson, protein);
-        QMetaObject::invokeMethod(this,
-                                  [this, originalIndex, loaded]() {
-                                      finishAsyncFrame(originalIndex, loaded);
-                                  },
-                                  Qt::QueuedConnection);
-    });
+    cancelling_ = false;
+    emit becameIdle();
 }
 
 void DftShieldingStore::finishAsyncFrame(
     std::size_t originalIndex,
     std::shared_ptr<const DftShieldingFrame> frame) {
     ASSERT_THREAD(this);
-    asyncInFlight_.erase(originalIndex);
-    if (frame) {
-        residentOriginal_ = originalIndex;
-        residentFrame_ = std::move(frame);
-    } else {
-        if (residentOriginal_ && *residentOriginal_ == originalIndex) {
-            residentOriginal_.reset();
-            residentFrame_.reset();
-        }
-        resolvedAbsent_.insert(originalIndex);
-    }
-    const std::optional<std::size_t> pending = asyncPendingOriginal_;
-    asyncPendingOriginal_.reset();
-    if (pending && *pending != originalIndex)
-        requestFrameAsync(*pending);
-    emit frameReady(originalIndex);
+    asyncThread_->deleteLater();
+    asyncThread_ = nullptr;
+    const QPointer<DftShieldingStore> self(this);
+    if (!cancelling_)
+        publishFrame(originalIndex, std::move(frame));
+    if (!self)
+        return;
+    asyncActiveOriginal_.reset();
+    startNextAsyncFrame();
 }
 
 std::optional<double> DftShieldingStore::sample(std::size_t originalIndex, std::size_t atom,
@@ -155,13 +190,6 @@ std::optional<double> DftShieldingStore::sample(std::size_t originalIndex, std::
                                    : (part == DftPart::Dia) ? a.dia
                                                             : a.para;
     return (scalar == DftScalar::IsotropicT0) ? tens.T0 : tens.T2Magnitude();
-}
-
-std::shared_ptr<const DftShieldingFrame>
-DftShieldingStore::loadAndValidate(std::size_t originalIndex) const {
-    const auto it = metaByOriginal_.find(originalIndex);
-    if (it == metaByOriginal_.end()) return nullptr;
-    return h5reader::io::DftShieldingLoader::LoadAndValidate(it->second, protein_);
 }
 
 }  // namespace h5reader::model

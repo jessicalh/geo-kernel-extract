@@ -66,7 +66,7 @@ public:
     const std::vector<std::size_t>& sampledFrameRows() const { return sampledRows_; }
 
 protected:
-    std::shared_ptr<const QtConformationSnapshot> loadSnapshot(std::size_t frameIndex) override;
+    SnapshotReader snapshotReader(std::size_t frameIndex) const override;
 
 private:
     std::unique_ptr<h5reader::io::QtTrajectoryH5> h5_;

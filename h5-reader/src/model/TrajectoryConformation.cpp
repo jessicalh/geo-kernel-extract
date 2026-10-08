@@ -54,9 +54,9 @@ std::optional<std::size_t> TrajectoryConformation::nearestSampledFrame(std::size
     return (frameIndex - *lo <= *hi - frameIndex) ? *lo : *hi;
 }
 
-std::shared_ptr<const QtConformationSnapshot> TrajectoryConformation::loadSnapshot(std::size_t frameIndex) {
+Conformation::SnapshotReader TrajectoryConformation::snapshotReader(std::size_t frameIndex) const {
     if (perFrameNpysDir_.isEmpty())
-        return nullptr;  // run emitted no per-frame NPY snapshots; detail unavailable
+        return {};
 
     // The frame dir is keyed by the ORIGINAL (XTC) frame index, zero-padded to
     // six digits (frame_NNNNNN), matching FrameNpyEmitter's layout. The H5 row
@@ -71,10 +71,11 @@ std::shared_ptr<const QtConformationSnapshot> TrajectoryConformation::loadSnapsh
     // unsampled frames does not spam the loader's
     // "directory does not exist" report. A present-but-malformed dir still
     // reports through the FrameNpyLoader seam.
-    if (!QFileInfo::exists(dir))
-        return nullptr;
-
-    return h5reader::io::FrameNpyLoader::LoadSnapshotDir(dir, protein_, orig, timePicoseconds(frameIndex));
+    return [dir, protein = protein_, orig, time = timePicoseconds(frameIndex)] {
+        if (!QFileInfo::exists(dir))
+            return std::shared_ptr<QtConformationSnapshot>{};
+        return h5reader::io::FrameNpyLoader::LoadSnapshotDir(dir, protein, orig, time);
+    };
 }
 
 }  // namespace h5reader::model

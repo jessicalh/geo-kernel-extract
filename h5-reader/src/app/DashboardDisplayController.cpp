@@ -1148,6 +1148,8 @@ SamplePlan experimentalMlPlan(
     plan.sample = [store, atom = *atom, scalar](std::size_t frame) {
         if (!store || !store->isReady())
             return model::FrameSignalSample::Gap(model::GapReason::SourceAbsent);
+        if (store->hasFailedFrame(frame))
+            return model::FrameSignalSample::Gap(model::GapReason::FrameSourceAbsent);
         const std::optional<double> value = store->sample(frame, atom, scalar);
         return value ? finiteSample(*value)
                      : model::FrameSignalSample::Gap(model::GapReason::Pending);
@@ -1309,12 +1311,20 @@ DashboardDisplayController::DashboardDisplayController(QObject* parent)
 
 void DashboardDisplayController::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
     ASSERT_THREAD(this);
+    if (conformation_)
+        disconnect(conformation_, nullptr, this, nullptr);
     if (conformation_ != conformation) {
         frame_ = 0;
         series_.clear();
     }
     protein_ = protein;
     conformation_ = conformation;
+    if (conformation_) {
+        connect(conformation_.data(), &model::Conformation::snapshotReady,
+                this, [this](std::size_t frame) {
+                    resampleFrame(frame, model::SignalSourceKind::FrameNpySnapshot);
+                });
+    }
     rebuild();
 }
 
@@ -1388,7 +1398,24 @@ void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
 
 void DashboardDisplayController::setDftStore(model::DftShieldingStore* store) {
     ASSERT_THREAD(this);
+    if (dftStore_)
+        disconnect(dftStore_, nullptr, this, nullptr);
+    if (dftStore_ != store) {
+        for (ActiveSeries& series : series_) {
+            if (series.needsDftFrame)
+                series.buffer.clear();
+        }
+    }
     dftStore_ = store;
+    if (dftStore_) {
+        connect(dftStore_.data(), &model::DftShieldingStore::frameReady,
+                this, [this](std::size_t originalFrame) {
+                    if (conformation_) {
+                        if (const auto frame = conformation_->frameRowForOriginalIndex(originalFrame))
+                            resampleFrame(*frame, model::SignalSourceKind::OrcaDftFrame);
+                    }
+                });
+    }
     rebuild();
 }
 
@@ -1397,12 +1424,19 @@ void DashboardDisplayController::setExperimentalShieldingMlStore(
     ASSERT_THREAD(this);
     if (experimentalMlStore_)
         disconnect(experimentalMlStore_, nullptr, this, nullptr);
+    if (experimentalMlStore_ != store) {
+        for (ActiveSeries& series : series_) {
+            if (series.needsExperimentalMlFrame)
+                series.buffer.clear();
+        }
+    }
     experimentalMlStore_ = store;
     if (experimentalMlStore_) {
         QObject::connect(experimentalMlStore_.data(),
                  &model::ExperimentalShieldingMlStore::frameReady,
-                 this,
-                 &DashboardDisplayController::resampleExperimentalMlFrame);
+                 this, [this](std::size_t frame) {
+                     resampleFrame(frame, model::SignalSourceKind::ExperimentalShieldingMl);
+                 });
     }
     rebuild();
 }
@@ -1426,10 +1460,8 @@ void DashboardDisplayController::setFrame(int frame) {
     extendToFrame(frame_);
 }
 
-// Slider drags defer per-frame snapshot fetches so one valueChanged
-// cascade does not stack hundreds of synchronous NPY directory reads
-// on the GUI thread. extendToFrame() stops while scrubActive_ is true;
-// release runs one catch-up extendToFrame(frame_).
+// Slider drags defer per-frame requests. Release samples only the destination;
+// skipped frames stay Pending until revisited.
 void DashboardDisplayController::setScrubActive(bool active) {
     ASSERT_THREAD(this);
     if (scrubActive_ == active)
@@ -2805,17 +2837,6 @@ void DashboardDisplayController::extendToFrame(int frame) {
         return;
     if (scrubActive_)
         return;
-    const bool needsSnapshot = std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
-        return series.needsFrameSnapshot;
-    });
-    const bool needsDft = std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
-        return series.needsDftFrame;
-    });
-    const bool needsExperimentalMl =
-        std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
-            return series.needsExperimentalMlFrame;
-        });
-
     const long long startFrame = [&]() {
         long long start = frame;
         for (const ActiveSeries& series : std::as_const(series_))
@@ -2836,35 +2857,49 @@ void DashboardDisplayController::extendToFrame(int frame) {
 
     for (long long f = firstFrameToSample; f <= frame; ++f) {
         const std::size_t sampleFrame = static_cast<std::size_t>(f);
-        if (needsSnapshot && conformation_)
-            conformation_->requestSnapshot(sampleFrame);
-        if (needsDft && conformation_ && dftStore_)
-            dftStore_->requestFrame(conformation_->originalFrameIndex(sampleFrame));
-        if (needsExperimentalMl && experimentalMlStore_)
-            experimentalMlStore_->requestFrame(sampleFrame);
-
+        bool needsSnapshot = false;
+        bool needsDft = false;
+        bool needsExperimentalMl = false;
         for (ActiveSeries& series : series_) {
-            if (series.buffer.lastFrame() >= f) {
-                if (series.buffer.gapReasons[sampleFrame] == model::GapReason::Pending
-                    && series.sample) {
-                    series.buffer.replace(sampleFrame, series.sample(sampleFrame));
-                }
+            const bool hasSample = series.buffer.lastFrame() >= f;
+            if (hasSample && series.buffer.gapReasons[sampleFrame] != model::GapReason::Pending)
                 continue;
-            }
-            if (series.sample)
-                series.buffer.append(series.sample(sampleFrame));
-            else
-                series.buffer.append(model::FrameSignalSample::Gap(model::GapReason::Pending));
+
+            const bool snapshotPending = series.needsFrameSnapshot && conformation_;
+            const bool dftPending = series.needsDftFrame && conformation_ && dftStore_;
+            const bool mlPending = series.needsExperimentalMlFrame && experimentalMlStore_
+                                   && experimentalMlStore_->isReady();
+            needsSnapshot |= snapshotPending;
+            needsDft |= dftPending;
+            needsExperimentalMl |= mlPending;
+            const bool pending = snapshotPending || dftPending || mlPending;
+            const auto sample = !pending && series.sample
+                                    ? series.sample(sampleFrame)
+                                    : model::FrameSignalSample::Gap(model::GapReason::Pending);
+            if (!hasSample)
+                series.buffer.append(sample);
+            else if (!pending)
+                series.buffer.replace(sampleFrame, sample);
         }
+
+        // Install Pending slots before requesting: cached/absent results may
+        // complete inline. Each callback consumes only its own resident source.
+        if (needsSnapshot)
+            conformation_->requestSnapshotAsync(sampleFrame);
+        if (needsDft)
+            dftStore_->requestFrameAsync(conformation_->originalFrameIndex(sampleFrame));
+        if (needsExperimentalMl)
+            experimentalMlStore_->requestFrame(sampleFrame);
     }
 }
 
-void DashboardDisplayController::resampleExperimentalMlFrame(std::size_t frame) {
+void DashboardDisplayController::resampleFrame(std::size_t frame,
+                                              model::SignalSourceKind sourceKind) {
     ASSERT_THREAD(this);
     bool changed = false;
     for (ActiveSeries& series : series_) {
-        if (!series.needsExperimentalMlFrame || frame >= series.buffer.channel.size()
-            || !series.sample) {
+        if (series.descriptor.sourceKind != sourceKind || frame >= series.buffer.channel.size()
+            || series.buffer.gapReasons[frame] != model::GapReason::Pending || !series.sample) {
             continue;
         }
         series.buffer.replace(frame, series.sample(frame));

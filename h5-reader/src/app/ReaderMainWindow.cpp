@@ -102,6 +102,7 @@
 #include <QStyle>
 #include <QToolBar>
 #include <QToolButton>
+#include <QThread>
 #include <QUuid>
 #include <QVariant>
 #include <QWidget>
@@ -117,12 +118,20 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
 namespace h5reader::app {
+
+struct PreparedReaderRun {
+    io::QtLoadResult loaded;
+    std::unique_ptr<model::TransformedConformation> transformed;
+    std::unique_ptr<model::ExperimentalShieldingMlStore> mlStore;
+    std::shared_ptr<model::TrajectoryFieldAvailability> availability;
+};
 
 namespace {
 Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
@@ -589,7 +598,52 @@ QString fitModeToolTip() {
         "Kabsch with give: all-atom fit — removes tumbling but lets real internal motion show.");
 }
 
-// DFT frames come directly from the LGS `dft.frames[]` array.
+void prepareReaderRun(PreparedReaderRun& prepared, const QString& path, QThread* destination) {
+    try {
+        prepared.loaded = io::QtProteinLoader::LoadRunPath(path);
+        auto& loaded = prepared.loaded;
+        if (loaded.ok) {
+            prepared.transformed = std::make_unique<model::TransformedConformation>(
+                loaded.conformation.get());
+            const auto backbone = model::TransformedConformation::BackboneSubset(*loaded.protein);
+            using Mode = model::TransformedConformation::Mode;
+            prepared.transformed->setMode(backbone.size() >= 3 ? Mode::FitSubset : Mode::FitReference,
+                                          0, backbone);
+            if (const auto runtime = resolveExperimentalShieldingMlRuntime()) {
+                prepared.mlStore = std::make_unique<model::ExperimentalShieldingMlStore>(
+                    loaded.protein.get(), loaded.conformation.get(), runtime->model,
+                    runtime->manifest, loaded.extractionManifestPath, runtime->helper,
+                    runtime->device, runtime->fallbackHelper);
+            }
+            const model::TrajectoryFieldAvailability::TopologyExtent extent{
+                static_cast<qsizetype>(loaded.protein->atomCount()),
+                static_cast<qsizetype>(loaded.protein->bondCount()),
+                static_cast<qsizetype>(loaded.protein->residueCount()),
+                static_cast<qsizetype>(loaded.protein->ringCount()),
+                static_cast<qsizetype>(loaded.protein->ringMembershipCount())};
+            model::TrajectorySignalCatalog catalog;
+            prepared.availability = std::make_shared<model::TrajectoryFieldAvailability>(
+                model::TrajectoryFieldAvailability::Build(loaded.conformation.get(), extent,
+                    loaded.manifest.dft ? loaded.manifest.dft->frames.size() : 0,
+                    prepared.mlStore && prepared.mlStore->isReady(), catalog.allDescriptorList()));
+            loaded.conformation->requestSnapshot(0);
+        }
+    } catch (const std::exception& error) {
+        prepared.loaded.ok = false;
+        prepared.loaded.error = QString::fromUtf8(error.what());
+    } catch (...) {
+        prepared.loaded.ok = false;
+        prepared.loaded.error = QStringLiteral("Unknown failure while loading the run.");
+    }
+    // These objects have no GUI resources. Transfer ownership only after all
+    // loading, alignment, and availability checks have finished on this thread.
+    if (prepared.loaded.conformation)
+        prepared.loaded.conformation->moveToThread(destination);
+    if (prepared.transformed)
+        prepared.transformed->moveToThread(destination);
+    if (prepared.mlStore)
+        prepared.mlStore->moveToThread(destination);
+}
 
 }  // namespace
 
@@ -627,9 +681,13 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
     qCInfo(cWindow).noquote() << "ctor done";
 }
 
-bool ReaderMainWindow::loadRunPath(const QString& path, bool rememberRecent) {
+bool ReaderMainWindow::beginRunLoad(const QString& path) {
     ASSERT_THREAD(this);
     lastLoadError_.clear();
+    if (runLoading_ || closing_) {
+        lastLoadError_ = QStringLiteral("Reader is already loading or closing.");
+        return false;
+    }
     if (collectionDialog_ && collectionDialog_->isClearing()) {
         lastLoadError_ = QStringLiteral("Wait for the collection buffer to finish clearing before opening a trajectory.");
         qCWarning(cWindow).noquote() << "Load refused:" << lastLoadError_;
@@ -652,24 +710,111 @@ bool ReaderMainWindow::loadRunPath(const QString& path, bool rememberRecent) {
     }
 
     qCInfo(cWindow).noquote() << "loading" << path;
-    auto loaded = h5reader::io::QtProteinLoader::LoadRunPath(path);
-    if (!loaded.ok) {
-        lastLoadError_ = loaded.error.isEmpty()
-            ? QStringLiteral("Load failed for %1").arg(path)
-            : loaded.error;
-        qCCritical(cWindow).noquote() << "Load failed:" << lastLoadError_;
+    return true;
+}
+
+bool ReaderMainWindow::loadRunPath(const QString& path, bool rememberRecent) {
+    if (!beginRunLoad(path))
+        return false;
+    if (runWorkBusy()) {
+        lastLoadError_ = QStringLiteral("Use asynchronous loading while frame work is active.");
         return false;
     }
-    if (loaded.decodeWarnings > 0) {
-        qCWarning(cWindow).noquote()
-            << "Decode completed with" << loaded.decodeWarnings << "warnings";
+    PreparedReaderRun prepared;
+    prepareReaderRun(prepared, path, thread());
+    if (!prepared.loaded.ok) {
+        lastLoadError_ = prepared.loaded.error;
+        qCWarning(cWindow) << "Load failed:" << lastLoadError_;
+        return false;
     }
-
-    installLoadedRun(std::move(loaded));
+    installLoadedRun(std::move(prepared));
     if (rememberRecent && !loaded_->runPath.isEmpty())
         addToRecentFiles(QDir(loaded_->runPath).absolutePath());
-    lastLoadError_.clear();
     return true;
+}
+
+bool ReaderMainWindow::requestRunPath(const QString& path, std::function<void(bool)> completed,
+                                      bool rememberRecent) {
+    if (!beginRunLoad(path))
+        return false;
+    runLoading_ = true;
+    rememberLoadedRun_ = rememberRecent;
+    runLoadCompleted_ = std::move(completed);
+    if (playback_)
+        playback_->pause();
+    refreshControlStates();
+    statusBar()->showMessage(QStringLiteral("Loading trajectory..."));
+    emit runLoadingChanged(true);
+    auto prepared = std::make_shared<PreparedReaderRun>();
+    runLoader_ = QThread::create([prepared, path, destination = thread()] {
+        prepareReaderRun(*prepared, path, destination);
+    });
+    connect(runLoader_, &QThread::finished, this, [this, prepared] {
+        runLoader_->deleteLater();
+        runLoader_ = nullptr;
+        pendingRun_ = std::make_unique<PreparedReaderRun>(std::move(*prepared));
+        if (pendingRun_->loaded.ok)
+            stopRunWork();
+        finishRunLoad();
+    });
+    runLoader_->start();
+    return true;
+}
+
+void ReaderMainWindow::finishRunLoad() {
+    if (runLoader_ || !pendingRun_ || (pendingRun_->loaded.ok && runWorkBusy()))
+        return;
+    const bool ok = pendingRun_->loaded.ok && !closing_;
+    if (ok) {
+        installLoadedRun(std::move(*pendingRun_));
+        lastLoadError_.clear();
+        if (rememberLoadedRun_ && !loaded_->runPath.isEmpty())
+            addToRecentFiles(QDir(loaded_->runPath).absolutePath());
+    } else {
+        lastLoadError_ = closing_ ? QStringLiteral("Run loading cancelled while closing.")
+                                 : pendingRun_->loaded.error;
+        qCWarning(cWindow) << "Load did not complete:" << lastLoadError_;
+    }
+    pendingRun_.reset();
+    runLoading_ = false;
+    refreshControlStates();
+    statusBar()->showMessage(ok ? QStringLiteral("Trajectory loaded") : lastLoadError_);
+    auto completed = std::move(runLoadCompleted_);
+    emit runLoadingChanged(false);
+    if (completed)
+        completed(ok);
+    if (closing_)
+        close();
+    else {
+        refreshFrameDetails(true);
+    }
+}
+
+bool ReaderMainWindow::runWorkBusy() const {
+    return (loaded_ && loaded_->conformation->isBusy())
+        || (dftStore_ && dftStore_->isBusy())
+        || (experimentalMlStore_ && experimentalMlStore_->isBusy())
+        || (scene_ && scene_->atomTrajectoryOverlay() && scene_->atomTrajectoryOverlay()->isBusy());
+}
+
+void ReaderMainWindow::stopRunWork() {
+    if (playback_)
+        playback_->pause();
+    if (experimentalMlStore_)
+        experimentalMlStore_->cancelPending();
+    if (scene_ && scene_->atomTrajectoryOverlay())
+        scene_->atomTrajectoryOverlay()->cancelPending();
+    if (dftStore_)
+        dftStore_->cancelPending();
+    if (loaded_)
+        loaded_->conformation->cancelPending();
+}
+
+void ReaderMainWindow::onRunWorkIdle() {
+    if (runLoading_)
+        finishRunLoad();
+    if (closing_ && !runLoading_ && !runWorkBusy())
+        close();
 }
 
 bool ReaderMainWindow::openDocumentPath(const QString& path) {
@@ -687,7 +832,14 @@ bool ReaderMainWindow::openDocumentPath(const QString& path) {
         return false;
     }
     if (!document->collection)
-        return loadRunPath(path);
+        return requestRunPath(path, [this](bool ok) {
+            if (!ok && !closing_) {
+                auto* message = new QMessageBox(QMessageBox::Critical, QStringLiteral("Open failed"),
+                    lastLoadError(), QMessageBox::Ok, this);
+                message->setAttribute(Qt::WA_DeleteOnClose);
+                message->open();
+            }
+        });
 
     auto* dialog = trajectoryLibrary();
     if (!dialog->setCollection(std::move(*document->collection), &error)) {
@@ -703,10 +855,10 @@ bool ReaderMainWindow::openDocumentPath(const QString& path) {
     return true;
 }
 
-void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
+void ReaderMainWindow::installLoadedRun(PreparedReaderRun&& prepared) {
     ASSERT_THREAD(this);
     clearLoadedRun();
-    loaded_ = std::make_unique<h5reader::io::QtLoadResult>(std::move(loaded));
+    loaded_ = std::make_unique<h5reader::io::QtLoadResult>(std::move(prepared.loaded));
     if (collectionDialog_)
         collectionDialog_->setCurrentRun(loaded_->runPath);
 
@@ -714,17 +866,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // REST /positions) read positions through a runtime-switchable rigid-body
     // display transform. Startup mode is backbone fit with the iterative mean
     // seeded/anchored at frame 0 so the reader opens stationary.
-    transformed_ = new h5reader::model::TransformedConformation(loaded_->conformation.get(), this);
-    const auto backboneSubset =
-        h5reader::model::TransformedConformation::BackboneSubset(*loaded_->protein);
-    using TMode = h5reader::model::TransformedConformation::Mode;
-    if (backboneSubset.size() >= 3) {
-        transformed_->setMode(TMode::FitSubset, 0, backboneSubset);
-    } else {
-        qCWarning(cWindow).noquote()
-            << "backbone fit unavailable at startup; falling back to all-atom fit";
-        transformed_->setMode(TMode::FitReference, 0);
-    }
+    transformed_ = prepared.transformed.release();
+    transformed_->setParent(this);
     QObject::connect(transformed_, &h5reader::model::TransformedConformation::transformChanged,
              this, [this]() {
                  updateFitModeLabel();
@@ -739,6 +882,15 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     // changes are visible immediately.
     scene_ = new MoleculeScene(vtkWidget_, renderWindow_, this);
     scene_->Build(*loaded_->protein, *transformed_);
+    if (auto* overlay = scene_->atomTrajectoryOverlay()) {
+        connect(overlay, &QtAtomTrajectoryOverlay::rebuildFinished, scene_, [this] {
+            scene_->requestRender(MoleculeScene::RenderSource::Overlay);
+        });
+        connect(overlay, &QtAtomTrajectoryOverlay::becameIdle,
+                this, &ReaderMainWindow::onRunWorkIdle, Qt::QueuedConnection);
+    }
+    connect(loaded_->conformation.get(), &model::Conformation::becameIdle,
+            this, &ReaderMainWindow::onRunWorkIdle, Qt::QueuedConnection);
     applyOverlayActionState();
     scene_->refreshCurrentFrame();
     scene_->ResetCamera();
@@ -816,39 +968,13 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     filterResidues_.clear();
 
     signalCatalog_ = new model::TrajectorySignalCatalog(this);
-    if (const auto runtime = resolveExperimentalShieldingMlRuntime()) {
-        experimentalMlStore_ = new model::ExperimentalShieldingMlStore(
-            loaded_->protein.get(),
-            loaded_->conformation.get(),
-            runtime->model,
-            runtime->manifest,
-            loaded_->extractionManifestPath,
-            runtime->helper,
-            runtime->device,
-            runtime->fallbackHelper,
-            this);
-    }
-
-    // The availability gate needs the startup-loaded topology spine sizes and
-    // the DFT job count to classify Topology + live ORCA descriptors honestly
-    // (neither travels through the per-frame NPY path the gate probes). The DFT
-    // count comes from the manifest (== DftShieldingStore::jobCount()). The ML
-    // source is live only when both its runtime and this run's required inputs
-    // passed the store's contract check.
-    const model::TrajectoryFieldAvailability::TopologyExtent topologyExtent{
-        static_cast<qsizetype>(loaded_->protein->atomCount()),
-        static_cast<qsizetype>(loaded_->protein->bondCount()),
-        static_cast<qsizetype>(loaded_->protein->residueCount()),
-        static_cast<qsizetype>(loaded_->protein->ringCount()),
-        static_cast<qsizetype>(loaded_->protein->ringMembershipCount())};
-    const std::size_t dftJobCount =
-        loaded_->manifest.dft.has_value() ? loaded_->manifest.dft->frames.size() : 0;
-    fieldAvailability_ = std::make_shared<model::TrajectoryFieldAvailability>(
-        model::TrajectoryFieldAvailability::Build(loaded_->conformation.get(),
-                                                  topologyExtent, dftJobCount,
-                                                  experimentalMlStore_
-                                                      && experimentalMlStore_->isReady(),
-                                                  signalCatalog_->allDescriptorList()));
+    experimentalMlStore_ = prepared.mlStore.release();
+    if (experimentalMlStore_)
+        experimentalMlStore_->setParent(this);
+    if (experimentalMlStore_)
+        connect(experimentalMlStore_, &model::ExperimentalShieldingMlStore::becameIdle,
+                this, &ReaderMainWindow::onRunWorkIdle, Qt::QueuedConnection);
+    fieldAvailability_ = std::move(prepared.availability);
     signalCatalog_->setFieldAvailability(fieldAvailability_);
     visualizationContext_ = {};
     visualizationContext_.availability = fieldAvailability_.get();
@@ -1059,6 +1185,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     if (loaded_->manifest.dft.has_value()) {
         const auto& dft = *loaded_->manifest.dft;
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dft.frames, this);
+        connect(dftStore_, &model::DftShieldingStore::becameIdle,
+                this, &ReaderMainWindow::onRunWorkIdle, Qt::QueuedConnection);
         if (scene_ && scene_->atomTrajectoryOverlay())
             scene_->atomTrajectoryOverlay()->setDftStore(dftStore_);
         QObject::connect(dftStore_, &model::DftShieldingStore::frameReady,
@@ -1109,6 +1237,8 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
 }
 
 void ReaderMainWindow::refreshFrameDetails(bool requestMissing) {
+    if (closing_ || runLoading_)
+        return;
     if (requestMissing && inspectorDock_)
         inspectorDock_->requestCurrentSnapshot();
     updateCsaGlyph(requestMissing);
@@ -1129,6 +1259,9 @@ void ReaderMainWindow::prepareVideoFrame() {
 }
 
 bool ReaderMainWindow::videoFrameReady(QString* error) const {
+    if (scene_ && scene_->atomTrajectoryOverlay()
+        && !scene_->atomTrajectoryOverlay()->captureReady(error))
+        return false;
     if (!inspectorDock_->shieldingTensorEnabled() || trajectoryOverlayActive()
         || (restServer_ && restServer_->hasTensorComparison()))
         return true;
@@ -1475,6 +1608,8 @@ model::AtomCsaResult ReaderMainWindow::probeAtomCsa(std::size_t atom, int reques
 void ReaderMainWindow::clearLoadedRun() {
     ASSERT_THREAD(this);
 
+    delete goToAtomDialog_.data();
+
     delete selectionContext_;
     selectionContext_ = nullptr;
 
@@ -1488,6 +1623,7 @@ void ReaderMainWindow::clearLoadedRun() {
     }
 
     if (dashboardStripDock_) {
+        dashboardStripDock_->setSignalModels(nullptr, nullptr);
         dashboardStripDock_->setSceneOverlay(nullptr);
         dashboardStripDock_->setSelection(nullptr);
         dashboardStripDock_->setSelectionController(nullptr);
@@ -1495,7 +1631,6 @@ void ReaderMainWindow::clearLoadedRun() {
         dashboardStripDock_->setDftStore(nullptr);
         dashboardStripDock_->setExperimentalShieldingMlStore(nullptr);
         dashboardStripDock_->setPanelModel(nullptr);
-        dashboardStripDock_->setSignalModels(nullptr, nullptr);
         dashboardStripDock_->setContext(nullptr, nullptr);
     }
     if (dashboardController_)
@@ -1586,7 +1721,14 @@ void ReaderMainWindow::setEmptyState() {
 void ReaderMainWindow::refreshControlStates() {
     ASSERT_THREAD(this);
     // Derive the whole operating state once — single source of truth.
-    const bool loaded   = scene_ != nullptr;
+    const bool busy = runLoading_ || closing_;
+    if (centralContainer_) centralContainer_->setEnabled(!busy);
+    if (inspectorDock_) inspectorDock_->setEnabled(!busy);
+    if (dashboardStripDock_) dashboardStripDock_->setEnabled(!busy);
+    if (toolsToolbar_) toolsToolbar_->setEnabled(!busy);
+    if (signalDisplayDialog_) signalDisplayDialog_->setEnabled(!busy);
+    if (collectionDialog_) collectionDialog_->setEnabled(!busy);
+    const bool loaded   = scene_ != nullptr && !busy;
     const int  frames   = (loaded && loaded_ && loaded_->conformation)
                             ? static_cast<int>(loaded_->conformation->frameCount()) : 0;
     const bool playable = loaded && frames > 1;            // single pose: nothing to play
@@ -1689,6 +1831,8 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
 
     QJsonObject out;
     out[QStringLiteral("loaded")]        = loaded;
+    out[QStringLiteral("runLoading")]    = runLoading_;
+    out[QStringLiteral("backgroundWork")] = runWorkBusy();
     out[QStringLiteral("protein")]       = (loaded && loaded_) ? loaded_->proteinId : QString();
     out[QStringLiteral("frames")]        = frames;
     out[QStringLiteral("currentFrame")]  = playback_ ? playback_->currentFrame() : 0;
@@ -1816,7 +1960,7 @@ void ReaderMainWindow::updateMutantAlternateAction(const QString& alternatePath)
         "This run is a mutant pair; WT is opened in this window. "
         "Click to load the ALA pose in this window: %1").arg(alternatePath));
     QObject::connect(mutantAlternateAction_.data(), &QAction::triggered, this, [this, alternatePath]() {
-        if (!loadRunPath(alternatePath)) {
+        if (!openDocumentPath(alternatePath)) {
             QMessageBox::critical(this,
                                   QStringLiteral("Open calcset failed"),
                                   lastLoadError());
@@ -1888,6 +2032,12 @@ void ReaderMainWindow::showEvent(QShowEvent* event) {
 }
 
 ReaderMainWindow::~ReaderMainWindow() {
+    if (runLoader_) {
+        runLoader_->disconnect(this);
+        runLoader_->wait();
+        delete runLoader_;
+        runLoader_ = nullptr;
+    }
     if (!shutdownDone_) {
         qCWarning(cWindow).noquote()
             << "destructor called without prior shutdown(); running now";
@@ -2995,6 +3145,9 @@ void ReaderMainWindow::onTransformFitClicked() {
 
 void ReaderMainWindow::closeEvent(QCloseEvent* event) {
     ASSERT_THREAD(this);
+    closing_ = true;
+    stopRunWork();
+    refreshControlStates();
     emit closeRequested();
     if (collectionDialog_ && !collectionDialog_->isShutdown()) {
         if (!closeWaitingForDownloads_) {
@@ -3019,6 +3172,12 @@ void ReaderMainWindow::closeEvent(QCloseEvent* event) {
             statusBar()->showMessage(
                 QStringLiteral("Finishing active export before closing..."));
         }
+        event->ignore();
+        return;
+    }
+
+    if (runLoading_ || runWorkBusy()) {
+        statusBar()->showMessage(QStringLiteral("Finishing background work before closing..."));
         event->ignore();
         return;
     }
@@ -3158,12 +3317,17 @@ ReaderCollectionDialog* ReaderMainWindow::trajectoryLibrary() {
                 dialog->showLoadError(QStringLiteral("Finish the active export before opening this trajectory."));
                 return;
             }
-            if (!loadRunPath(lgsPath, false))
-                dialog->runFailed(key, lastLoadError());
-            else {
-                dialog->runOpened(key);
-                dialog->close();
-            }
+            if (!requestRunPath(lgsPath, [this, dialog, key](bool ok) {
+                    if (closing_)
+                        return;
+                    if (!ok)
+                        dialog->runFailed(key, lastLoadError());
+                    else {
+                        dialog->runOpened(key);
+                        dialog->close();
+                    }
+                }, false))
+                dialog->showLoadError(lastLoadError());
         });
         QObject::connect(dialog, &ReaderCollectionDialog::shutdownFinished, this, [this] {
             if (closeWaitingForDownloads_)
@@ -3188,6 +3352,11 @@ void ReaderMainWindow::onOpenDirectory() {
 
 void ReaderMainWindow::onGoToAtomTriggered() {
     ASSERT_THREAD(this);
+    if (goToAtomDialog_) {
+        goToAtomDialog_->raise();
+        goToAtomDialog_->activateWindow();
+        return;
+    }
     if (!loaded_ || !loaded_->protein || !loaded_->conformation || !selection_) {
         QMessageBox::information(this,
                                  QStringLiteral("Go to atom"),
@@ -3227,24 +3396,25 @@ void ReaderMainWindow::onGoToAtomTriggered() {
         }
     }
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(QStringLiteral("Go to atom"));
-    dialog.setModal(true);
+    auto* dialog = new QDialog(this);
+    goToAtomDialog_ = dialog;
+    dialog->setWindowTitle(QStringLiteral("Go to atom"));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
 
-    auto* form = new QFormLayout(&dialog);
+    auto* form = new QFormLayout(dialog);
 
-    auto* residueSpin = new QSpinBox(&dialog);
+    auto* residueSpin = new QSpinBox(dialog);
     residueSpin->setRange(minResidueNumber, maxResidueNumber);
     residueSpin->setValue(initialResidueNumber);
     residueSpin->setToolTip(QStringLiteral("Visible residue sequence number."));
     form->addRow(QStringLiteral("Residue"), residueSpin);
 
-    auto* atomCombo = new QComboBox(&dialog);
+    auto* atomCombo = new QComboBox(dialog);
     atomCombo->setMinimumContentsLength(18);
     atomCombo->setToolTip(QStringLiteral("Atoms in matching residues."));
     form->addRow(QStringLiteral("Atom"), atomCombo);
 
-    auto* frameSpin = new QSpinBox(&dialog);
+    auto* frameSpin = new QSpinBox(dialog);
     const int frameCount = static_cast<int>(loaded_->conformation->frameCount());
     frameSpin->setRange(0, std::max(0, frameCount - 1));
     frameSpin->setValue(playback_ ? playback_->currentFrame() : 0);
@@ -3252,7 +3422,7 @@ void ReaderMainWindow::onGoToAtomTriggered() {
     form->addRow(QStringLiteral("Frame"), frameSpin);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
-                                         &dialog);
+                                         dialog);
     form->addRow(buttons);
 
     auto residueLabel = [&protein](std::size_t residueIndex) {
@@ -3269,7 +3439,7 @@ void ReaderMainWindow::onGoToAtomTriggered() {
         return label;
     };
 
-    auto rebuildAtomChoices = [&]() {
+    auto rebuildAtomChoices = [&protein, atomCombo, residueSpin, preferredAtom, buttons, residueLabel]() {
         const QSignalBlocker block(atomCombo);
         atomCombo->clear();
         const int residueNumber = residueSpin->value();
@@ -3302,29 +3472,29 @@ void ReaderMainWindow::onGoToAtomTriggered() {
     };
 
     QObject::connect(residueSpin, qOverload<int>(&QSpinBox::valueChanged),
-             &dialog,    [rebuildAtomChoices](int) mutable { rebuildAtomChoices(); });
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    QObject::connect(loaded_->conformation.get(), &QObject::destroyed,
-                     &dialog, &QDialog::reject);
+             dialog, [rebuildAtomChoices](int) { rebuildAtomChoices(); });
+    QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+    connect(this, &ReaderMainWindow::runLoadingChanged, dialog, [dialog](bool loading) {
+        if (loading) dialog->reject();
+    });
+    connect(this, &ReaderMainWindow::closeRequested, dialog, &QDialog::reject);
 
     rebuildAtomChoices();
-    if (dialog.exec() != QDialog::Accepted)
-        return;
-
-    bool ok = false;
-    const qulonglong atomValue = atomCombo->currentData().toULongLong(&ok);
-    if (!ok || atomValue >= static_cast<qulonglong>(protein.atomCount()))
-        return;
-
-    if (playback_)
+    connect(dialog, &QDialog::accepted, this, [this, atomCombo, frameSpin] {
+        if (closing_ || runLoading_)
+            return;
+        bool ok = false;
+        const auto atom = atomCombo->currentData().toULongLong(&ok);
+        if (!ok || atom >= loaded_->protein->atomCount())
+            return;
         playback_->setFrame(frameSpin->value());
-    selection_->bulkSet({static_cast<std::size_t>(atomValue)});
-    if (scene_)
+        selection_->bulkSet({static_cast<std::size_t>(atom)});
         scene_->clearReveal();
-    statusBar()->showMessage(QStringLiteral("Jumped to %1 at frame %2")
-                                 .arg(atomCombo->currentText())
-                                 .arg(frameSpin->value()));
+        statusBar()->showMessage(QStringLiteral("Jumped to %1 at frame %2")
+                                    .arg(atomCombo->currentText()).arg(frameSpin->value()));
+    });
+    dialog->open();
 }
 
 void ReaderMainWindow::onOpenSignalDisplays() {

@@ -30,6 +30,7 @@
 #include "app/CameraInputFilter.h"
 #include "app/MoleculeScene.h"
 #include "app/QtAtomPicker.h"
+#include "app/QtAtomTrajectoryOverlay.h"
 #include "app/QtAtomInspectorDock.h"
 #include "app/ReaderMainWindow.h"
 #include "app/AtomInspectorGlossary.h"
@@ -88,6 +89,48 @@ class AtomPickerTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void trajectoryEnvelopeWaitsForPublicationBeforeCapture() {
+        auto protein = smallProtein();
+        class MovingConformation final : public model::Conformation {
+        public:
+            explicit MovingConformation(const model::QtProtein* protein) : Conformation(protein) {}
+            std::size_t frameCount() const override { return 100; }
+            double timePicoseconds(std::size_t frame) const override { return double(frame); }
+            model::Vec3 atomPosition(std::size_t frame, std::size_t atom) const override {
+                const double angle = double(frame) * 0.1;
+                return {double(atom) + std::cos(angle), std::sin(angle), 0.4 * std::sin(2 * angle)};
+            }
+        } conformation(protein.get());
+        auto renderer = vtkSmartPointer<vtkRenderer>::New();
+        model::AtomSelection selection(protein.get());
+        selection.applyPick(0, Qt::NoModifier);
+        app::QtAtomTrajectoryOverlay overlay(renderer);
+        overlay.Build(*protein, conformation);
+        overlay.setSelection(&selection);
+        QSignalSpy finished(&overlay, &app::QtAtomTrajectoryOverlay::rebuildFinished);
+        overlay.setVisible(true);
+        QString error;
+        QVERIFY(overlay.isBusy());
+        QVERIFY(!overlay.captureReady(&error));
+        QVERIFY(error.isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!overlay.isBusy(), 15000);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished[0][0].toInt(), 100);
+        QVERIFY2(overlay.captureReady(&error), qPrintable(error));
+        auto* actors = renderer->GetActors();
+        actors->InitTraversal();
+        for (int index = 0; index < 2; ++index) {
+            auto* actor = actors->GetNextActor();
+            QVERIFY(actor && actor->GetVisibility());
+            actor->GetMapper()->Update();
+            QVERIFY(actor->GetMapper()->GetInput()->GetNumberOfPoints() > 0);
+        }
+        overlay.onTransformChanged();
+        QVERIFY(!overlay.captureReady(&error));
+        QTRY_VERIFY_WITH_TIMEOUT(!overlay.isBusy(), 15000);
+        QVERIFY2(overlay.captureReady(&error), qPrintable(error));
+    }
+
     void tensorPalettesMatchInspector() {
         auto protein = smallProtein();
         auto snapshot = std::make_shared<model::QtConformationSnapshot>(protein.get(), 0, 0.0);

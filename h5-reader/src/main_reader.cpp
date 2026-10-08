@@ -199,32 +199,37 @@ int main(int argc, char* argv[]) {
     QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
     h5reader::diagnostics::InstallShutdownSignalHandlers();
 
-    if (!runPath.isEmpty() && !openCollectionAfterShow && !window->loadRunPath(runPath)) {
-        qCCritical(cLifecycle).noquote() << "Load failed:" << window->lastLoadError();
-        delete window;
-        return 3;
-    }
-
+    int startupFailure = 0;
     // Show through the event queue so the event loop is live before first render.
     if (runRest) {
-        QMetaObject::invokeMethod(window, [window, restAddress, restPort]() {
+        QMetaObject::invokeMethod(window, [window, runPath, restAddress, restPort, &startupFailure]() {
             window->show();
-            qCInfo(cLifecycle).noquote() << "window shown for REST surface"
-                                         << "| address=" << restAddress.toString()
-                                         << "| port=" << restPort;
-            const quint16 bound = window->startRestServer(restAddress, restPort);
-            if (bound == 0) {
-                qCCritical(cLifecycle).noquote()
-                    << "REST server failed to bind; exiting";
-                QCoreApplication::exit(6);
-                return;
+            const bool accepted = window->requestRunPath(runPath, [window, restAddress, restPort, &startupFailure](bool ok) {
+                if (!ok) {
+                    qCCritical(cLifecycle) << "Initial load failed:" << window->lastLoadError();
+                    if (!window->isClosing())
+                        startupFailure = 3;
+                    window->close();
+                    return;
+                }
+                const quint16 bound = window->startRestServer(restAddress, restPort);
+                if (bound == 0) {
+                    qCCritical(cLifecycle) << "REST server failed to bind; exiting";
+                    startupFailure = 6;
+                    window->close();
+                }
+            });
+            if (!accepted) {
+                qCCritical(cLifecycle) << "Initial load refused:" << window->lastLoadError();
+                startupFailure = 3;
+                window->close();
             }
         }, Qt::QueuedConnection);
     } else {
-        QMetaObject::invokeMethod(window, [window, runPath, openCollectionAfterShow]() {
+        QMetaObject::invokeMethod(window, [window, runPath]() {
             window->show();
             qCInfo(cLifecycle).noquote() << "window shown";
-            if (openCollectionAfterShow && !window->openDocumentPath(runPath))
+            if (!runPath.isEmpty() && !window->openDocumentPath(runPath))
                 QMessageBox::critical(window, QStringLiteral("Open collection failed"), window->lastLoadError());
         }, Qt::QueuedConnection);
     }
@@ -234,5 +239,5 @@ int main(int argc, char* argv[]) {
     qCInfo(cLifecycle).noquote() << "event loop exited with rc=" << rc;
 
     delete window;
-    return rc;
+    return startupFailure ? startupFailure : rc;
 }

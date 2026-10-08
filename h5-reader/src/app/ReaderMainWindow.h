@@ -24,10 +24,12 @@
 #include "../model/VisualizationDefinition.h"
 
 #include <memory>
+#include <functional>
 #include <vector>
 
 class QActionGroup;
 class QDockWidget;
+class QDialog;
 class QHostAddress;
 class QJsonObject;
 class QJsonArray;
@@ -40,6 +42,7 @@ class QSpinBox;
 class QToolBar;
 class QToolButton;
 class QWidget;
+class QThread;
 class QVTKOpenGLNativeWidget;
 
 namespace h5reader::io {
@@ -70,6 +73,7 @@ class QtPlaybackController;
 class DashboardDisplayController;
 class DashboardSelectionController;
 class TimeViewportController;
+struct PreparedReaderRun;
 
 class ReaderMainWindow final : public QMainWindow {
     Q_OBJECT
@@ -92,6 +96,10 @@ public:
     // through QtProteinLoader::LoadRunPath. Returns false without changing the
     // current run when loading fails; lastLoadError() carries the loader error.
     bool loadRunPath(const QString& path, bool rememberRecent = true);
+    bool requestRunPath(const QString& path, std::function<void(bool)> completed = {},
+                        bool rememberRecent = true);
+    bool isRunLoading() const { return runLoading_; }
+    bool isClosing() const { return closing_; }
     // A collection .LGS opens a run picker; other .LGS files use loadRunPath().
     bool openDocumentPath(const QString& path);
     // Lazily creates an empty collection dialog; does not load a catalog.
@@ -186,6 +194,7 @@ public:
 
 signals:
     void closeRequested();
+    void runLoadingChanged(bool loading);
 
 public slots:
     // Called from aboutToQuit. Stops timers and detaches the render window so
@@ -218,12 +227,18 @@ private slots:
 
 private:
     QPointer<ReaderCollectionDialog> collectionDialog_;
+    QPointer<QDialog> goToAtomDialog_;
     bool closeWaitingForDownloads_ = false;
     void buildUi();
     void buildToolbar();
     void buildStatusBar();
     void buildDocks();
-    void installLoadedRun(h5reader::io::QtLoadResult&& loaded);
+    bool beginRunLoad(const QString& path);
+    void installLoadedRun(PreparedReaderRun&& prepared);
+    void finishRunLoad();
+    void stopRunWork();
+    bool runWorkBusy() const;
+    void onRunWorkIdle();
     void clearLoadedRun();
     void refreshFrameDetails(bool requestMissing);
     // Recompute the active shielding tensor through the shared glyph. A
@@ -283,6 +298,12 @@ private:
 
     // The loaded model. Owned by the window for its lifetime.
     std::unique_ptr<h5reader::io::QtLoadResult> loaded_;
+    QThread* runLoader_ = nullptr;
+    std::unique_ptr<PreparedReaderRun> pendingRun_;
+    std::function<void(bool)> runLoadCompleted_;
+    bool runLoading_ = false;
+    bool rememberLoadedRun_ = true;
+    bool closing_ = false;
 
     // VTK viewport widget plus quiet empty-state placeholder.
     QPointer<QWidget> centralContainer_;

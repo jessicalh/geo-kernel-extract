@@ -426,7 +426,7 @@ void QtAtomInspectorDock::requestCurrentSnapshot() {
         return;
     const std::size_t frame = static_cast<std::size_t>(std::max(0, frame_));
     if (conformation_) {
-        conformation_->requestSnapshot(frame);
+        conformation_->requestSnapshotAsync(frame);
         if (conformation_->snapshot(frame))
             return;  // snapshotReady already rebuilt the tree.
     }

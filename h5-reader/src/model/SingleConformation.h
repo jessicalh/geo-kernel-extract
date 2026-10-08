@@ -25,7 +25,7 @@ public:
     Vec3 atomPosition(std::size_t frame, std::size_t atomIdx) const override;
 
 protected:
-    std::shared_ptr<const QtConformationSnapshot> loadSnapshot(std::size_t frame) override;
+    SnapshotReader snapshotReader(std::size_t frame) const override;
 
 private:
     std::shared_ptr<const QtConformationSnapshot> pose_;

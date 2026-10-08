@@ -126,13 +126,6 @@ signals:
     // for the new transform without waiting for the next playback tick.
     void transformChanged();
 
-protected:
-    // Delegates to inner. The base Conformation API contract requires the
-    // snapshot facade on this object (so REST /selection/instrument etc.
-    // continue to work via the wrapper), but the actual loader lives on
-    // the inner subclass — we forward unchanged.
-    std::shared_ptr<const QtConformationSnapshot> loadSnapshot(std::size_t frame) override;
-
 private:
     // (rotation, translation). atomPosition returns R * raw + T.
     struct Transform3D {

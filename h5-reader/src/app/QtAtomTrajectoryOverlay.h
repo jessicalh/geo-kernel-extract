@@ -23,16 +23,14 @@
 #include <QPointer>
 
 #include <vtkActor.h>
-#include <vtkContourFilter.h>
-#include <vtkDoubleArray.h>
-#include <vtkImageData.h>
-#include <vtkPolyDataMapper.h>
 #include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
 #include <vtkTrivialProducer.h>
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 
@@ -56,6 +54,15 @@ public:
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
 
+    // GUI-thread lifecycle: cancel, then retain this overlay and its model
+    // until !isBusy() / becameIdle(). Only the destructor fallback waits.
+    // Shared DFT-store work is owned by the store, not by this overlay.
+    bool isBusy() const;
+    bool captureReady(QString* error) const;
+    // Drops queued rebuilds and ignores new requests until the active worker
+    // finishes. A subsequent focus/transform/visibility request can rebuild.
+    void cancelPending();
+
 public slots:
     void setFrame(int frame);
     void onFocusChanged(std::size_t atomIdx);
@@ -65,27 +72,36 @@ public slots:
 
 signals:
     void rebuildStarted(int frameCount);
+    // GUI-thread completion, also emitted for discarded/failed calculations.
+    // The scene owner should request a render here for asynchronous geometry.
     void rebuildFinished(int frameCount, int dftSamples, int loadMs);
+    // No worker or pending rebuild remains; the overlay is reusable.
+    void becameIdle();
 
 private:
+    class EnvelopeWorker;
+
     struct Shell {
-        vtkSmartPointer<vtkContourFilter> contour;
+        vtkSmartPointer<vtkTrivialProducer> producer;
         vtkSmartPointer<vtkActor> actor;
         double fraction = 0.0;
         double opacity = 0.3;
     };
 
     void rebuild();
+    void finishRebuild();
+    void invalidateEnvelope();
     void hideEnvelope();
     void applyShellStyling(std::optional<double> trendDelta, double trendScale);
     std::optional<double> sampleOrcaT0(std::size_t frame, std::size_t atom);
     void clearScalarCacheForAtom(std::size_t atom);
+    void onDftFrameReady(std::size_t original);
 
     vtkSmartPointer<vtkRenderer> renderer_;
-    vtkSmartPointer<vtkImageData> imageData_;
-    vtkSmartPointer<vtkDoubleArray> scalars_;
-    vtkSmartPointer<vtkTrivialProducer> producer_;
     std::array<Shell, 2> shells_;
+    std::unique_ptr<EnvelopeWorker> worker_;
+    std::uint64_t generation_ = 0;
+    bool cancelling_ = false;
 
     const model::QtProtein* protein_ = nullptr;
     QPointer<model::Conformation> conformation_;
@@ -96,11 +112,9 @@ private:
 
     math::OccupancyConfig cfg_;
     int currentFrame_ = 0;
-    int windowStart_ = -1;
-    int windowEnd_ = -1;
     bool visible_ = false;
-    bool dirty_ = false;
-    bool hasEnvelope_ = false;
+    bool dirty_ = false;  // One latest rebuild request; snapshot only when idle.
+    QString error_;
 };
 
 }  // namespace h5reader::app

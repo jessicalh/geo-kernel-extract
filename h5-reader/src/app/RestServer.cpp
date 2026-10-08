@@ -56,6 +56,8 @@
 #include <QHttpServerRequest>
 #include <QHttpServerResponder>
 #include <QHttpServerResponse>
+#include <QHttpServerRouter>
+#include <QHttpServerRouterRule>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -132,9 +134,32 @@ void writeJson(QHttpServerResponder& responder,
     responder.write(QJsonDocument(body), status);
 }
 
+// During replacement or close, REST must obey the same lock as the widgets.
+class RunTransitionRule final : public QHttpServerRouterRule {
+public:
+    template<typename... Args>
+    RunTransitionRule(ReaderMainWindow* window, Args&&... args)
+        : QHttpServerRouterRule(std::forward<Args>(args)...), window_(window) {}
+
+protected:
+    bool matches(const QHttpServerRequest& request, QRegularExpressionMatch*) const override {
+        if (!window_->isRunLoading() && !window_->isClosing())
+            return false;
+        const QString path = request.url().path();
+        return path != QStringLiteral("/health") && path != QStringLiteral("/ui/state")
+            && path != QStringLiteral("/shutdown")
+            && path != QStringLiteral("/api/video/export/status")
+            && path != QStringLiteral("/api/video/export/stop");
+    }
+
+private:
+    ReaderMainWindow* window_;
+};
+
 // Runs one bounded unit of GUI-owned work per event-loop turn while retaining
 // the HTTP response. This keeps long scans responsive without moving Reader,
-// HDF5, or VTK objects off their owning thread.
+// HDF5, or VTK objects off their owning thread. Callback-driven work can call
+// complete() directly without starting the queued steps.
 class QueuedJsonOperation final : public QObject {
 public:
     using Step = std::function<std::optional<DeferredJsonResponse>()>;
@@ -155,6 +180,12 @@ public:
         QMetaObject::invokeMethod(this, [this]() { advance(); }, Qt::QueuedConnection);
     }
 
+    void complete(const DeferredJsonResponse& response) {
+        responseStatus_ = response.status;
+        writeJson(responder_, response.body, response.status);
+        waitForResponseFlush();
+    }
+
 private:
     void advance() {
         const std::optional<DeferredJsonResponse> response = step_();
@@ -163,9 +194,7 @@ private:
             return;
         }
 
-        responseStatus_ = response->status;
-        writeJson(responder_, response->body, response->status);
-        waitForResponseFlush();
+        complete(*response);
     }
 
     void waitForResponseFlush() {
@@ -1669,6 +1698,7 @@ RestServer::~RestServer() {
     }
     // QHttpServerResponder depends on the server-owned stream. Destroy the
     // delayed response while server_ is still alive, before member teardown.
+    delete runLoadOperation_.data();
     delete modelInputOperation_.data();
     delete ringTensorOperation_.data();
 }
@@ -1690,7 +1720,9 @@ QTcpSocket* RestServer::socketForRequest(
 }
 
 bool RestServer::hasActiveOperations() const {
-    return !modelInputOperation_.isNull()
+    return (readerWindow_ && readerWindow_->isRunLoading())
+        || !runLoadOperation_.isNull()
+        || !modelInputOperation_.isNull()
         || !ringTensorOperation_.isNull()
         || (videoExporter_ && videoExporter_->isActive());
 }
@@ -1726,10 +1758,12 @@ void RestServer::activeOperationFinished() {
 void RestServer::maybeQuitAfterShutdown() {
     ASSERT_THREAD(this);
     if (shutdownRequested_ && shutdownResponseFlushed_
-        && !shutdownQuitRequested_ && !hasActiveOperations()) {
+        && !shutdownQuitRequested_ && (readerWindow_ || !hasActiveOperations())) {
         shutdownQuitRequested_ = true;
         qCInfo(cRest).noquote()
-            << "REST /shutdown - response flushed and operations stopped";
+            << "REST /shutdown - response flushed; requesting graceful close";
+        // The window must enter closeEvent even during a load so it can
+        // suppress installation and wait for its worker and REST responses.
         if (readerWindow_)
             QMetaObject::invokeMethod(readerWindow_, &QWidget::close, Qt::QueuedConnection);
         else
@@ -1786,6 +1820,19 @@ void RestServer::setContext(MoleculeScene* scene,
     playback_ = playback;
     loaded_ = loaded;
     mainWindow_ = mainWindow;
+    if (readerWindow_ != readerWindow) {
+        QObject::disconnect(runLoadingChanged_);
+        if (readerWindow) {
+            runLoadingChanged_ = QObject::connect(
+                readerWindow, &ReaderMainWindow::runLoadingChanged,
+                this, [this](bool loading) {
+                    if (loading)
+                        emit activeOperationsChanged(true);
+                    else
+                        activeOperationFinished();
+                });
+        }
+    }
     readerWindow_ = readerWindow;
     transformed_ = transformed;
     videoExporter_->setContext(scene, playback,
@@ -1805,6 +1852,18 @@ quint16 RestServer::listen(const QHostAddress& address, quint16 port) {
     QHttpServerConfiguration config = server_->configuration();
     config.setKeepAliveTimeout(std::chrono::seconds(300));
     server_->setConfiguration(config);
+    const auto refuseDuringTransition = [](const QRegularExpressionMatch&,
+            const QHttpServerRequest&, QHttpServerResponder& responder) {
+        writeJson(responder, QJsonObject{{"error", "Reader is loading or closing"}},
+                  QHttpServerResponder::StatusCode::Conflict);
+    };
+    auto transitionRule = std::make_unique<RunTransitionRule>(
+        readerWindow_.data(), QStringLiteral("/"),
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        this,
+#endif
+        refuseDuringTransition);
+    server_->router()->addRule<void (*)()>(std::move(transitionRule));
     registerRoutes();
 
     auto* tcp = new TrackingTcpServer(this);
@@ -1845,6 +1904,69 @@ quint16 RestServer::listen(const QHostAddress& address, quint16 port) {
     std::fprintf(stderr, "H5READER_REST_PORT=%u\n", static_cast<unsigned>(bound));
     std::fflush(stderr);
     return bound;
+}
+
+void RestServer::beginRunLoad(const QHttpServerRequest& request, QHttpServerResponder&& responder) {
+    ASSERT_THREAD(this);
+    using SC = QHttpServerResponder::StatusCode;
+
+    const auto fail = [&](const QString& message, SC status) {
+        writeJson(responder, QJsonObject{{"error", message}}, status);
+    };
+    if (!readerWindow_) {
+        fail(QStringLiteral("reader window is unavailable"), SC::ServiceUnavailable);
+        return;
+    }
+    if (hasActiveOperations()) {
+        fail(QStringLiteral("another Reader operation is running"), SC::Conflict);
+        return;
+    }
+
+    bool bodyOk = false;
+    const QJsonObject body = parseJsonBody(request, &bodyOk);
+    const QJsonValue pathValue = body.value(QStringLiteral("path"));
+    if (!bodyOk || body.size() != 1 || !pathValue.isString()
+        || pathValue.toString().trimmed().isEmpty()) {
+        fail(QStringLiteral("body must contain only a nonempty string field path"),
+             SC::BadRequest);
+        return;
+    }
+
+    const QString path = pathValue.toString();
+    auto* operation = new QueuedJsonOperation(
+        std::move(responder), socketForRequest(request),
+        QueuedJsonOperation::Step{}, QueuedJsonOperation::Finished{}, this);
+    operation->setObjectName(QStringLiteral("runLoadOperation"));
+    const auto completed = [window = readerWindow_,
+                            operation = QPointer(operation), path](bool loaded) {
+        if (!operation)
+            return;
+        if (!loaded) {
+            const QString error = window->lastLoadError().isEmpty()
+                ? QStringLiteral("Reader could not load the requested run")
+                : window->lastLoadError();
+            qCWarning(cRest).noquote() << "REST run load failed"
+                                       << "| path=" << path
+                                       << "| error=" << error;
+            operation->complete(deferredError(error, SC::Conflict));
+            return;
+        }
+        qCInfo(cRest).noquote() << "REST run load complete" << "| path=" << path;
+        operation->complete({QJsonObject{{"ok", true}}, SC::Ok});
+    };
+
+    qCInfo(cRest).noquote() << "REST run load started" << "| path=" << path;
+    const bool accepted = readerWindow_->requestRunPath(path, completed);
+    // Register after admission so the window's operation gate cannot reject
+    // this request because of its own retained response.
+    runLoadOperation_ = operation;
+    QObject::connect(operation, &QObject::destroyed, this, [this]() {
+        runLoadOperation_.clear();
+        activeOperationFinished();
+    });
+    emit activeOperationsChanged(true);
+    if (!accepted)
+        completed(false);
 }
 
 void RestServer::beginModelInputExport(const QHttpServerRequest& request, QHttpServerResponder&& responder) {
@@ -1971,40 +2093,9 @@ void RestServer::registerRoutes() {
     });
 
     server_->route(QStringLiteral("/api/run/load"), Method::Post,
-                   [this](const QHttpServerRequest& request) {
-        ASSERT_THREAD(this);
-        if (!readerWindow_) {
-            return errorResponse(QStringLiteral("reader window is unavailable"),
-                                 SC::ServiceUnavailable);
-        }
-        if (hasActiveOperations()) {
-            return errorResponse(QStringLiteral("another Reader operation is running"),
-                                 SC::Conflict);
-        }
-
-        bool bodyOk = false;
-        const QJsonObject body = parseJsonBody(request, &bodyOk);
-        const QJsonValue pathValue = body.value(QStringLiteral("path"));
-        if (!bodyOk || body.size() != 1 || !pathValue.isString()
-            || pathValue.toString().trimmed().isEmpty()) {
-            return errorResponse(
-                QStringLiteral("body must contain only a nonempty string field path"),
-                SC::BadRequest);
-        }
-
-        const QString path = pathValue.toString();
-        qCInfo(cRest).noquote() << "REST run load started" << "| path=" << path;
-        if (!readerWindow_->loadRunPath(path)) {
-            const QString error = readerWindow_->lastLoadError().isEmpty()
-                ? QStringLiteral("Reader could not load the requested run")
-                : readerWindow_->lastLoadError();
-            qCWarning(cRest).noquote() << "REST run load failed"
-                                       << "| path=" << path
-                                       << "| error=" << error;
-            return errorResponse(error, SC::Conflict);
-        }
-        qCInfo(cRest).noquote() << "REST run load complete" << "| path=" << path;
-        return jsonResponse(QJsonObject{{"ok", true}});
+                   [this](const QHttpServerRequest& request,
+                          QHttpServerResponder& responder) {
+        beginRunLoad(request, std::move(responder));
     });
 
     server_->route(QStringLiteral("/api/trajectories"), [this]() {

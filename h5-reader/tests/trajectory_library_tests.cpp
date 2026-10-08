@@ -340,28 +340,45 @@ private slots:
             QSKIP("Set H5READER_REST_FIXTURE to exercise a real run reload.");
         h5reader::app::ReaderMainWindow window;
         QVERIFY2(window.loadRunPath(fixture), qPrintable(window.lastLoadError()));
-        bool dialogFound = false;
         bool reloaded = false;
-        bool rejected = false;
-        QMetaObject::invokeMethod(&window, [&] {
-            for (auto* dialog : window.findChildren<QDialog*>()) {
-                if (dialog->windowTitle() != QStringLiteral("Go to atom"))
-                    continue;
-                dialogFound = true;
-                QSignalSpy finished(dialog, &QDialog::finished);
-                reloaded = window.loadRunPath(fixture);
-                rejected = finished.count() == 1
-                    && finished.first().first().toInt() == QDialog::Rejected;
-                if (!rejected)
-                    dialog->reject();
-                break;
-            }
-        }, Qt::QueuedConnection);
         QVERIFY(QMetaObject::invokeMethod(&window, "onGoToAtomTriggered",
                                           Qt::DirectConnection));
-        QVERIFY(dialogFound);
+        QPointer<QDialog> goToAtom;
+        for (auto* dialog : window.findChildren<QDialog*>()) {
+            if (dialog->windowTitle() == QStringLiteral("Go to atom"))
+                goToAtom = dialog;
+        }
+        QVERIFY(goToAtom);
+        QVERIFY(window.requestRunPath(fixture, [&](bool ok) { reloaded = ok; }));
+        QTRY_VERIFY_WITH_TIMEOUT(!window.isRunLoading(), 30000);
         QVERIFY2(reloaded, qPrintable(window.lastLoadError()));
-        QVERIFY(rejected);
+        QVERIFY(goToAtom.isNull());
+    }
+
+    void failedReplacementPreservesRequestedFrames() {
+        const QString fixture = qEnvironmentVariable("H5READER_REST_FIXTURE");
+        if (fixture.isEmpty())
+            QSKIP("Set H5READER_REST_FIXTURE to exercise a real run replacement.");
+        h5reader::app::ReaderMainWindow window;
+        QVERIFY2(window.loadRunPath(fixture), qPrintable(window.lastLoadError()));
+        auto* conformation = window.transformedConformation();
+        QSignalSpy ready(conformation, &h5reader::model::Conformation::snapshotReady);
+        for (std::size_t frame = 2; frame <= 6; ++frame)
+            conformation->requestSnapshotAsync(frame);
+        QVERIFY(conformation->isBusy());
+        bool completed = false;
+        bool loaded = true;
+        QVERIFY(window.requestRunPath(directory_.filePath("missing-run.LGS"), [&](bool ok) {
+            completed = true;
+            loaded = ok;
+        }));
+        QTRY_VERIFY_WITH_TIMEOUT(completed, 30000);
+        QVERIFY(!loaded);
+        QCOMPARE(window.transformedConformation(), conformation);
+        QTRY_VERIFY_WITH_TIMEOUT(!conformation->isBusy(), 30000);
+        QCOMPARE(ready.count(), 5);
+        for (int row = 0; row < ready.count(); ++row)
+            QCOMPARE(ready[row][0].value<std::size_t>(), std::size_t(row + 2));
     }
 
     void inspectorLoadsDetailOnlyAfterNavigationSettles() {
@@ -385,7 +402,7 @@ private slots:
         QVERIFY(snapshots.isValid());
 
         playback->setFrame(2);
-        QCOMPARE(snapshots.count(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(snapshots.count(), 1, 15000);
         QVERIFY(conformation->snapshot(2));
         const auto tree = window.inspectorTreeJson();
         QVERIFY(tree[0].toObject()["value"].toString().startsWith("frame 3 /"));
@@ -398,7 +415,7 @@ private slots:
         QCOMPARE(snapshots.count(), 0);
         QVERIFY(!conformation->snapshot(3));
         playback->pause();
-        QCOMPARE(snapshots.count(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(snapshots.count(), 1, 15000);
         QVERIFY(conformation->snapshot(3));
 
         snapshots.clear();
@@ -407,7 +424,7 @@ private slots:
         QCOMPARE(snapshots.count(), 0);
         QVERIFY(!conformation->snapshot(4));
         slider->setSliderDown(false);
-        QCOMPARE(snapshots.count(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(snapshots.count(), 1, 15000);
         QVERIFY(conformation->snapshot(4));
     }
 

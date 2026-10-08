@@ -156,6 +156,8 @@ signals:
 private:
     void registerRoutes();
     QTcpSocket* socketForRequest(const QHttpServerRequest& request) const;
+    void beginRunLoad(const QHttpServerRequest& request,
+                      QHttpServerResponder&& responder);
     void beginModelInputExport(const QHttpServerRequest& request,
                                QHttpServerResponder&& responder);
     void completeShutdownResponseFlush();
@@ -177,6 +179,8 @@ private:
     io::QtLoadResult*                           loaded_ = nullptr;
     QPointer<QWidget>                           mainWindow_;
     QPointer<ReaderMainWindow>                  readerWindow_;
+    QMetaObject::Connection                     runLoadingChanged_;
+    QPointer<QObject>                           runLoadOperation_;
     QPointer<model::TransformedConformation>    transformed_;
     std::shared_ptr<io::ModelInputExporter>     modelInputExporter_;
     QPointer<QObject>                           modelInputOperation_;
