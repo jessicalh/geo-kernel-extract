@@ -77,10 +77,8 @@ public:
                     model::Conformation*    conformation);
     void setFieldAvailability(std::shared_ptr<const model::TrajectoryFieldAvailability> availability);
 
-    // The focused atom's DFT CSA tensor for the current frame, mirrored from the
-    // glyph driver (ReaderMainWindow::updateCsaGlyph) so picture and numbers
-    // agree. setCsaTensor shows the section (iff this stays the focused atom);
-    // clearCsaTensor hides it.
+    // Mirrors the shielding glyph, which may belong to a pinned Metrics atom
+    // rather than the focused atom.
     void setCsaTensor(std::size_t atom, const CsaTensorInfo& info);
     void clearCsaTensor();
 
@@ -114,6 +112,7 @@ public slots:
 
 signals:
     void tensorDisplayChanged(bool shielding, bool orientation);
+    void shieldingTensorRequested();
 
 private slots:
     // The conformation finished loading `frame`'s snapshot; if it is the
@@ -124,6 +123,7 @@ private slots:
 
 private:
     void rebuild();
+    void rebuildTensors();
     void populateIdentity(QTreeWidgetItem* parent);
     void populatePerFrame(QTreeWidgetItem* root, QTreeWidgetItem* drawer);
     void populateCsa(QTreeWidgetItem* root);
@@ -139,7 +139,7 @@ private:
     bool                         hasSelection_ = false;
     std::size_t                  atomIdx_      = 0;
     int                          frame_        = 0;
-    // CSA tensor mirror (fed by ReaderMainWindow); shown iff csaAtom_ == atomIdx_.
+    // CSA tensor mirror, including a dashboard-owned atom without selection.
     bool                         hasCsa_       = false;
     std::size_t                  csaAtom_      = 0;
     CsaTensorInfo                csa_;

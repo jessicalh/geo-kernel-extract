@@ -440,6 +440,8 @@ void QtAtomInspectorDock::setFrame(int t) {
     frame_ = t;
     if (hasSelection_)
         rebuild();
+    else
+        rebuildTensors();
 }
 
 void QtAtomInspectorDock::onSnapshotReady(std::size_t frame) {
@@ -469,32 +471,28 @@ void QtAtomInspectorDock::setCsaTensor(std::size_t atom, const CsaTensorInfo& in
     csa_ = info;
     csaAtom_ = atom;
     hasCsa_ = true;
-    if (hasSelection_)
-        rebuild();
+    rebuildTensors();
 }
 
 void QtAtomInspectorDock::clearCsaTensor() {
     if (!hasCsa_)
         return;
     hasCsa_ = false;
-    if (hasSelection_)
-        rebuild();
+    rebuildTensors();
 }
 
 void QtAtomInspectorDock::setOrientationTensor(std::size_t atom, const OrientationTensorInfo& info) {
     orient_ = info;
     orientAtom_ = atom;
     hasOrient_ = true;
-    if (hasSelection_)
-        rebuild();
+    rebuildTensors();
 }
 
 void QtAtomInspectorDock::clearOrientationTensor() {
     if (!hasOrient_)
         return;
     hasOrient_ = false;
-    if (hasSelection_)
-        rebuild();
+    rebuildTensors();
 }
 
 void QtAtomInspectorDock::setTensorVisibility(bool shielding, bool orientation) {
@@ -528,12 +526,15 @@ void QtAtomInspectorDock::setTensorDisplayEnabled(bool shielding, bool orientati
     ASSERT_THREAD(this);
     if (shieldingEnabled_ == shielding && orientationEnabled_ == orientation)
         return;
+    const bool requestShielding = shielding && !shieldingEnabled_;
     shieldingEnabled_ = shielding;
     orientationEnabled_ = orientation;
     refreshTensorHeadings();
     qCInfo(cDock) << "tensor display | shielding=" << shielding
                  << "| orientation=" << orientation;
     emit tensorDisplayChanged(shielding, orientation);
+    if (requestShielding)
+        emit shieldingTensorRequested();
 }
 
 void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
@@ -547,7 +548,14 @@ void QtAtomInspectorDock::populateCsa(QTreeWidgetItem* root) {
     auto* group = AddKV(root, QStringLiteral("Shielding tensor (%1)").arg(source), QString());
     csaGroup_ = group;
     group->setExpanded(true);
-    group->setToolTip(0, QStringLiteral("Symmetric shielding tensor at this atom in the current frame."));
+    group->setToolTip(0, QStringLiteral("Symmetric shielding tensor for the named atom in the current frame."));
+    const auto& atom = protein_->atom(csaAtom_);
+    const auto residue = ResidueOrEmpty(protein_, atom.residueIndex);
+    AddKV(group, QStringLiteral("Atom"),
+          QStringLiteral("%1:%2%3%4:%5")
+              .arg(residue.address.chainId, QString::fromLatin1(model::IupacResidue3LetterFor(residue.aminoAcid)))
+              .arg(residue.address.residueNumber)
+              .arg(residue.address.insertionCode, protein_->atomNames(csaAtom_).iupac));
     if (!csa_.status.isEmpty()) {
         AddKV(group, QStringLiteral("Source"), csa_.sourceDetail);
         return;
@@ -626,14 +634,8 @@ void QtAtomInspectorDock::rebuild() {
     // Batch the rebuild into a single repaint: this tree is cleared + fully
     // repopulated on every focus / frame change, so per-item updates would flicker.
     const int scroll = tree_->verticalScrollBar()->value();
-    const int tensorScroll = tensorTree_->verticalScrollBar()->value();
-    const QSignalBlocker blocker(tensorTree_);
     tree_->setUpdatesEnabled(false);
-    tensorTree_->setUpdatesEnabled(false);
-    csaGroup_ = nullptr;
-    orientationGroup_ = nullptr;
     tree_->clear();
-    tensorTree_->clear();
 
     auto* title = new QTreeWidgetItem(tree_);
     const auto& atom = protein_->atom(atomIdx_);
@@ -648,12 +650,6 @@ void QtAtomInspectorDock::rebuild() {
     title->setExpanded(true);
 
     populateIdentity(title);
-    if (hasCsa_ && csaAtom_ == atomIdx_)
-        populateCsa(tensorTree_->invisibleRootItem());
-    if (hasOrient_ && orientAtom_ == atomIdx_)
-        populateOrientation(tensorTree_->invisibleRootItem());
-    if (tensorTree_->topLevelItemCount() == 0)
-        AddKV(tensorTree_->invisibleRootItem(), QStringLiteral("No tensor for this atom"), QString());
     // Raw kernels / diagnostics collapse into ONE drawer at the very bottom: the
     // npy "show your work" stays available but does not compete with the
     // validated metrics. Built as an orphan, filled in populatePerFrame, attached
@@ -671,10 +667,26 @@ void QtAtomInspectorDock::rebuild() {
         delete drawer;               // orphan, never attached -- we own it
     }
 
-    refreshTensorHeadings();
     tree_->verticalScrollBar()->setValue(scroll);
-    tensorTree_->verticalScrollBar()->setValue(tensorScroll);
     tree_->setUpdatesEnabled(true);
+    rebuildTensors();
+}
+
+void QtAtomInspectorDock::rebuildTensors() {
+    const int scroll = tensorTree_->verticalScrollBar()->value();
+    const QSignalBlocker blocker(tensorTree_);
+    tensorTree_->setUpdatesEnabled(false);
+    csaGroup_ = nullptr;
+    orientationGroup_ = nullptr;
+    tensorTree_->clear();
+    if (protein_ && hasCsa_)
+        populateCsa(tensorTree_->invisibleRootItem());
+    if (protein_ && hasSelection_ && hasOrient_ && orientAtom_ == atomIdx_)
+        populateOrientation(tensorTree_->invisibleRootItem());
+    if (hasSelection_ && tensorTree_->topLevelItemCount() == 0)
+        AddKV(tensorTree_->invisibleRootItem(), QStringLiteral("No tensor for this atom"), QString());
+    refreshTensorHeadings();
+    tensorTree_->verticalScrollBar()->setValue(scroll);
     tensorTree_->setUpdatesEnabled(true);
 }
 

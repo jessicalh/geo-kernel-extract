@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -134,12 +135,9 @@ def test_scene_video_stop_finalizes_partial_file(rest, tmp_path: Path) -> None:
     )
     assert response.status_code == 202, response.text
 
-    assert not rest.client.get("/api/learned-activity").json()["editable"]
     assert not rest.client.get("/ui/state").json()["context"]["editable"]
     blocked_context = rest.client.post("/ui/context", json={"action": "clear_selection"})
     assert blocked_context.status_code == 409, blocked_context.text
-    blocked = rest.client.post("/api/learned-activity", json={"radius": 2.0})
-    assert blocked.status_code == 409, blocked.text
 
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
@@ -157,7 +155,6 @@ def test_scene_video_stop_finalizes_partial_file(rest, tmp_path: Path) -> None:
     completed = _wait_for_video(rest)
     assert completed["ok"] is True
     assert completed["state"] == "stopped"
-    assert rest.client.get("/api/learned-activity").json()["editable"]
     assert rest.client.get("/ui/state").json()["context"]["editable"]
     assert 0 < completed["frames_written"] < completed["frames_total"]
     assert completed["last_frame"] == completed["frames_written"] - 1
@@ -201,3 +198,37 @@ def test_scene_video_export_recovers_from_frame_interference(
     assert completed["frames_written"] == end_frame + 1
     assert completed["last_frame"] == end_frame
     _assert_finalized_mp4(output_path)
+
+
+@pytest.mark.skipif(os.environ.get("H5READER_EXPECT_DFT_AND_ML") != "1",
+                    reason="requires the DFT fixture and working prediction runtime")
+def test_removing_prediction_pin_during_export_loads_orca(rest, tmp_path):
+    rest.client.post("/selection/pick", json={"atom": 0}).raise_for_status()
+    response = rest.client.post("/dashboard/metric", json={
+        "descriptor_id": "ml:experimental_shielding_t2", "anchor": {"atom": 0},
+        "modes": ["static.tensor"],
+    })
+    response.raise_for_status()
+    signal = response.json()["id"]
+    removed = False
+    try:
+        output = tmp_path / "switch-to-orca.mp4"
+        response = rest.client.post("/api/video/export", json={
+            "output_path": str(output), "start_frame": 40, "end_frame": 43,
+            "frames_per_second": 1,
+        })
+        assert response.status_code == 202, response.text
+        status = rest.client.get("/api/video/export/status").json()
+        assert status["running"] and status["frames_written"] == 0
+        rest.client.post("/dashboard/metric/remove", json={"id": signal}).raise_for_status()
+        removed = True
+        completed = _wait_for_video(rest)
+        assert completed["state"] == "completed", completed
+        assert completed["frames_written"] == 4
+        _assert_finalized_mp4(output)
+    finally:
+        if rest.client.get("/api/video/export/status").json()["running"]:
+            rest.client.post("/api/video/export/stop", json={}).raise_for_status()
+            _wait_for_video(rest)
+        if not removed:
+            rest.client.post("/dashboard/metric/remove", json={"id": signal}).raise_for_status()

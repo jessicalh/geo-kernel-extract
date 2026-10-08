@@ -146,6 +146,7 @@ public:
     quint16 listen(const QHostAddress& address, quint16 port);
 
     bool hasActiveOperations() const;
+    bool isVideoExporting() const;
     void requestGracefulStop();
 
 signals:

@@ -78,12 +78,16 @@ SceneVideoExporter::~SceneVideoExporter() {
 }
 
 void SceneVideoExporter::setContext(MoleculeScene* scene,
-                                    QtPlaybackController* playback) {
+                                    QtPlaybackController* playback,
+                                    std::function<void()> prepareFrame,
+                                    std::function<bool(QString*)> frameReady) {
     ASSERT_THREAD(this);
     if (active_ && (scene != exportScene_ || playback != exportPlayback_))
         fail(QStringLiteral("the loaded scene changed during video export"));
     scene_ = scene;
     playback_ = playback;
+    prepareFrame_ = std::move(prepareFrame);
+    frameReady_ = std::move(frameReady);
 }
 
 bool SceneVideoExporter::start(const SceneVideoExportRequest& request,
@@ -156,7 +160,6 @@ bool SceneVideoExporter::start(const SceneVideoExportRequest& request,
     originalFrame_ = exportPlayback_->currentFrame();
     originalPlaying_ = exportPlayback_->isPlaying();
     originalDirection_ = exportPlayback_->direction();
-    exportPlayback_->pause();
 
     nextFrame_ = request.startFrame;
     requestedFrame_ = -1;
@@ -168,6 +171,7 @@ bool SceneVideoExporter::start(const SceneVideoExportRequest& request,
     endOfStreamSent_ = false;
     stoppedByRequest_ = false;
     restoreDisplayOnFinish_ = true;
+    exportPlayback_->pause();
 
     QVideoFrameFormat frameFormat(
         resolution, QVideoFrameFormat::Format_RGBA8888);
@@ -281,11 +285,19 @@ void SceneVideoExporter::onRenderCompleted(int frame) {
         return;
     }
 
-    waitingForRender_ = false;
     if (ending_) {
+        waitingForRender_ = false;
         pump();
         return;
     }
+
+    // Data completion requests another render; do not advance past this frame.
+    QString error;
+    if (frameReady_ && !frameReady_(&error)) {
+        if (!error.isEmpty()) fail(error);
+        return;
+    }
+    waitingForRender_ = false;
 
     const QImage image = captureCurrentScene();
     if (image.isNull()) {
@@ -386,6 +398,8 @@ void SceneVideoExporter::requestNextRender() {
         exportScene_->refreshCurrentFrame();
     else
         exportPlayback_->setFrame(requestedFrame_);
+    if (prepareFrame_)
+        prepareFrame_();
 }
 
 void SceneVideoExporter::finishInput() {

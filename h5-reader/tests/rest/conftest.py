@@ -100,7 +100,7 @@ class RestSession:
 
 
 @pytest.fixture(scope="session")
-def h5reader_session() -> Generator[RestSession, None, None]:
+def h5reader_session(request: pytest.FixtureRequest) -> Generator[RestSession, None, None]:
     binary = _env_path("H5READER_BINARY")
     fixture_dir = _env_path("H5READER_REST_FIXTURE")
 
@@ -221,7 +221,7 @@ def h5reader_session() -> Generator[RestSession, None, None]:
         pass
     # Leave log_path on disk on failure so the user can inspect it;
     # remove on clean exit to avoid /tmp clutter.
-    if proc.returncode == 0:
+    if proc.returncode == 0 and request.session.testsfailed == 0:
         try:
             log_path.unlink()
         except OSError:

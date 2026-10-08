@@ -64,7 +64,6 @@ class TransformedConformation;
 namespace h5reader::app {
 
 class MoleculeScene;
-class LearnedActivityDock;
 class SelectionContextWidget;
 class ReaderCollectionDialog;
 class QtPlaybackController;
@@ -98,7 +97,6 @@ public:
     // Lazily creates an empty collection dialog; does not load a catalog.
     ReaderCollectionDialog* trajectoryLibrary();
     QString lastLoadError() const { return lastLoadError_; }
-    LearnedActivityDock* learnedActivityDock() const { return learnedActivityDock_; }
     SelectionContextWidget* selectionContext() const { return selectionContext_; }
 
     // Start the embedded REST surface on the requested address and port.
@@ -111,7 +109,7 @@ public:
     // provenance tooltip), for the REST harness. Empty if no inspector. Read-only.
     QJsonArray inspectorTreeJson() const;
 
-    // Hide or restore the docks (inspector, dashboard strip, learned activity)
+    // Hide or restore the inspector and dashboard strip docks
     // wholesale. Hide preserves each dock's prior visibility so restore
     // returns each one to whatever it was — a dock that was already hidden
     // before hide() stays hidden after restore. Used by the viewport
@@ -136,6 +134,9 @@ public:
     // default off and are not persisted in QSettings.
     bool setOverlayVisible(const QString& name, bool on);
     void refreshTensorVisibility();
+    void prepareVideoFrame();
+    // False with an empty error means the current frame is still being prepared.
+    bool videoFrameReady(QString* error) const;
 
     // Set the butterfly (field-grid) isosurface |T0| contour threshold in ppm
     // and re-render. Runtime-tunable so the dominant-zone level can be swept
@@ -218,7 +219,6 @@ private slots:
 private:
     QPointer<ReaderCollectionDialog> collectionDialog_;
     bool closeWaitingForDownloads_ = false;
-    LearnedActivityDock* learnedActivityDock_ = nullptr;
     void buildUi();
     void buildToolbar();
     void buildStatusBar();
@@ -231,7 +231,7 @@ private:
     // otherwise this shows the focused atom's ORCA DFT tensor. Frame ticks are
     // resident-only; focus/pause/scrub release may request missing data.
     std::optional<std::size_t> predictedTensorAtom() const;
-    void updateCsaGlyph(bool requestMissing = false);
+    void updateCsaGlyph(bool requestMissing = false, bool prepareForCapture = false);
     // Recompute + redraw the focused atom's bond-orientation order tensor
     // (<u(x)u>) as the SAME ovaloid + principal-axis arrows the CSA glyph uses
     // (shared TensorGlyphActor) -- consistent, not ad hoc. Drawn at the bond
@@ -336,8 +336,8 @@ private:
     model::ExperimentalShieldingMlStore* experimentalMlStore_ = nullptr;
     QString activeExperimentalMlTensorDescriptor_;
     std::optional<std::size_t> activeExperimentalMlTensorAtom_;
-    bool experimentalMlTensorDisplayed_ = false;
-    std::optional<std::size_t> experimentalMlTensorDisplayedFrame_;
+    std::optional<std::size_t> appliedShieldingFrame_;
+    std::optional<std::size_t> appliedShieldingAtom_;
 
     // Optional REST test surface — constructed by startRestServer(), only
     // when h5reader is launched with --rest <port>. Window-owned.

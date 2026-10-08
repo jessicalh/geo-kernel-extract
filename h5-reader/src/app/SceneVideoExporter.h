@@ -8,6 +8,8 @@
 #include <QString>
 #include <QVideoFrame>
 
+#include <functional>
+
 class QMediaCaptureSession;
 class QVideoFrameInput;
 
@@ -63,7 +65,9 @@ public:
     explicit SceneVideoExporter(QObject* parent = nullptr);
     ~SceneVideoExporter() override;
 
-    void setContext(MoleculeScene* scene, QtPlaybackController* playback);
+    void setContext(MoleculeScene* scene, QtPlaybackController* playback,
+                    std::function<void()> prepareFrame = {},
+                    std::function<bool(QString*)> frameReady = {});
 
     bool start(const SceneVideoExportRequest& request, QString* error = nullptr);
     bool requestStop(bool restoreDisplay = true);
@@ -101,6 +105,8 @@ private:
     QMetaObject::Connection renderCompletedConnection_;
     QMetaObject::Connection sceneDestroyedConnection_;
     QMetaObject::Connection playbackDestroyedConnection_;
+    std::function<void()> prepareFrame_;
+    std::function<bool(QString*)> frameReady_;
 
     SceneVideoExportStatus status_;
     QVideoFrame pendingFrame_;

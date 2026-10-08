@@ -31,6 +31,7 @@
 #include "app/MoleculeScene.h"
 #include "app/QtAtomPicker.h"
 #include "app/QtAtomInspectorDock.h"
+#include "app/ReaderMainWindow.h"
 #include "app/AtomInspectorGlossary.h"
 #include "app/MetricGlossaryPopup.h"
 #include "app/QtPlaybackController.h"
@@ -42,6 +43,7 @@
 #include "model/QtConformationSnapshot.h"
 #include "model/SingleConformation.h"
 #include "model/TrajectorySignalCatalog.h"
+#include "model/TrajectoryConformation.h"
 #include "model/TransformedConformation.h"
 
 #include <vtkActorCollection.h>
@@ -101,7 +103,7 @@ private slots:
             app::CsaTensorInfo shielding;
             shielding.sourceLabel = source;
             inspector.setCsaTensor(1, shielding);
-            auto* principalValues = tree->topLevelItem(0)->child(1);
+            auto* principalValues = tree->topLevelItem(0)->child(2);
             QCOMPARE(principalValues->text(0), QStringLiteral("Principal values"));
             for (int i = 0; i < 3; ++i) {
                 const auto& warm = app::kShieldingTensorColours[i];
@@ -154,7 +156,7 @@ private slots:
         pending.status = QStringLiteral("Calculating...");
         inspector.setCsaTensor(1, pending);
         QCOMPARE(tree->topLevelItem(0)->text(1), pending.status);
-        QCOMPARE(tree->topLevelItem(0)->childCount(), 1); // No placeholder numerical values.
+        QCOMPARE(tree->topLevelItem(0)->childCount(), 2); // Atom and source, no placeholder numerical values.
         QVERIFY(tree->topLevelItem(0)->flags().testFlag(Qt::ItemIsUserCheckable));
     }
 
@@ -197,7 +199,7 @@ private slots:
             QTRY_VERIFY(popup.isNull());
         }
 
-        rightClick(tensors, tensors->topLevelItem(0)->child(0), 0);
+        rightClick(tensors, tensors->topLevelItem(0)->child(1), 0);
         QPointer<QWidget> popup = QApplication::activePopupWidget();
         QVERIFY(popup);
         QCOMPARE(popup->findChild<QLabel*>(QStringLiteral("glossaryTitle"))->text(), QStringLiteral("sigma_iso"));
@@ -367,6 +369,7 @@ private slots:
         inspector.setContext(protein.get(), &conformation);
         inspector.setPickedAtom(0);
         QSignalSpy changes(&inspector, &app::QtAtomInspectorDock::tensorDisplayChanged);
+        QSignalSpy requests(&inspector, &app::QtAtomInspectorDock::shieldingTensorRequested);
         inspector.setCsaTensor(0, {});
         inspector.setOrientationTensor(0, {});
         inspector.setTensorVisibility(true, true);
@@ -423,9 +426,58 @@ private slots:
         QCOMPARE(tree->topLevelItem(0)->checkState(0), Qt::Unchecked);
         QCOMPARE(tree->topLevelItem(1)->checkState(0), Qt::Checked);
         QCOMPARE(changes.count(), 3);
+        QCOMPARE(requests.count(), 0);
         inspector.setTensorDisplayEnabled(true, true);
         QCOMPARE(tree->topLevelItem(0)->checkState(0), Qt::Checked);
         QCOMPARE(changes.count(), 4);
+        QCOMPARE(requests.count(), 1);
+    }
+
+    void tensorCheckboxesInWindowPreserveTreeItems() {
+        const QString fixture = qEnvironmentVariable("H5READER_REST_FIXTURE");
+        if (fixture.isEmpty())
+            QSKIP("Set H5READER_REST_FIXTURE to a trajectory with ORCA and bond tensors.");
+        app::ReaderMainWindow window;
+        QVERIFY2(window.loadRunPath(fixture, false), qPrintable(window.lastLoadError()));
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+        const auto* trajectory = window.transformedConformation()->asTrajectory();
+        QVERIFY(trajectory);
+        const auto* dynamics = trajectory->h5()->reorientationalDynamics();
+        QVERIFY(dynamics && dynamics->identity.n_vectors > 0);
+        auto* selection = window.findChild<model::AtomSelection*>();
+        auto* inspector = window.findChild<app::QtAtomInspectorDock*>();
+        auto* scene = window.findChild<app::MoleculeScene*>();
+        QVERIFY(selection && inspector && scene);
+        selection->applyPick(std::size_t(dynamics->identity.tail_atom[0]), Qt::NoModifier);
+        QTRY_VERIFY_WITH_TIMEOUT(scene->csaOverlay()->isActive(), 30000);
+        auto* tree = inspector->findChild<QTreeWidget*>(QStringLiteral("tensorFields"));
+        QVERIFY(tree);
+        QCOMPARE(tree->topLevelItemCount(), 2);
+        QSignalSpy resets(tree->model(), &QAbstractItemModel::modelReset);
+
+        for (int row = 0; row < tree->topLevelItemCount(); ++row) {
+            auto* group = tree->topLevelItem(row);
+            auto* details = group->child(group->childCount() - 1);
+            QCOMPARE(details->text(0), QStringLiteral("Details"));
+            details->setExpanded(true);
+            tree->setCurrentItem(group);
+            const QPersistentModelIndex heading(tree->currentIndex());
+            for (const auto state : {Qt::Unchecked, Qt::Checked}) {
+                QTest::keyClick(tree, Qt::Key_Space);
+                bool inputHandled = false;
+                QMetaObject::invokeMethod(&window, [&] { inputHandled = true; },
+                                          Qt::QueuedConnection);
+                QTRY_VERIFY(inputHandled);
+                QCOMPARE(resets.count(), 0);
+                QVERIFY(heading.isValid());
+                QCOMPARE(tree->currentIndex(), QModelIndex(heading));
+                QCOMPARE(group->checkState(0), state);
+                QVERIFY(details->isExpanded());
+            }
+        }
+        window.shutdown();
     }
 
     void selectionContextKeepsHighlightAndSelectionSeparate() {

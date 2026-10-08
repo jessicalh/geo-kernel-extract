@@ -45,6 +45,10 @@ bool DftShieldingStore::hasJob(std::size_t originalIndex) const {
     return metaByOriginal_.find(originalIndex) != metaByOriginal_.end();
 }
 
+bool DftShieldingStore::hasFailedFrame(std::size_t originalIndex) const {
+    return hasJob(originalIndex) && resolvedAbsent_.count(originalIndex) != 0;
+}
+
 const DftShieldingFrame* DftShieldingStore::frame(std::size_t originalIndex) const {
     if (!residentOriginal_ || *residentOriginal_ != originalIndex)
         return nullptr;

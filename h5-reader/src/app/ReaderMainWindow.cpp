@@ -21,7 +21,6 @@
 #include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
 #include "TimeViewportController.h"
-#include "LearnedActivityDock.h"
 #include "MeasurementOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "DashboardStripDock.h"
@@ -623,7 +622,6 @@ ReaderMainWindow::ReaderMainWindow(QWidget* parent)
     // explicit defaults intact. Runs AFTER all docks/toolbars exist so
     // restoreState has named docks to bind to.
     restoreAllSettings();
-    learnedActivityDock_->hide();
     setEmptyState();
 
     qCInfo(cWindow).noquote() << "ctor done";
@@ -756,9 +754,6 @@ void ReaderMainWindow::installLoadedRun(h5reader::io::QtLoadResult&& loaded) {
     const int T = static_cast<int>(loaded_->conformation->frameCount());
     playback_ = new QtPlaybackController(T, this);
     timeViewport_ = new TimeViewportController(T, this);
-
-    learnedActivityDock_->setContext(scene_, loaded_->protein.get(),
-                                    loaded_->conformation.get(), transformed_, playback_);
 
     QObject::connect(playback_, &QtPlaybackController::frameChanged,
              scene_,    &MoleculeScene::setFrame);
@@ -1129,7 +1124,43 @@ std::optional<std::size_t> ReaderMainWindow::predictedTensorAtom() const {
     return std::nullopt;
 }
 
-void ReaderMainWindow::updateCsaGlyph(bool requestMissing) {
+void ReaderMainWindow::prepareVideoFrame() {
+    updateCsaGlyph(true, true);
+}
+
+bool ReaderMainWindow::videoFrameReady(QString* error) const {
+    if (!inspectorDock_->shieldingTensorEnabled() || trajectoryOverlayActive()
+        || (restServer_ && restServer_->hasTensorComparison()))
+        return true;
+
+    const auto predictedAtom = predictedTensorAtom();
+    const auto atom = predictedAtom ? predictedAtom
+        : (dftStore_ && selection_ && selection_->hasFocus()
+               ? std::optional<std::size_t>(selection_->focus()) : std::nullopt);
+    if (!atom) return true;
+    const auto frame = static_cast<std::size_t>(playback_->currentFrame());
+    if (appliedShieldingFrame_ == frame && appliedShieldingAtom_ == atom)
+        return true;
+
+    if (predictedAtom) {
+        if (!experimentalMlStore_ || !experimentalMlStore_->isReady()
+            || experimentalMlStore_->hasFailedFrame(frame)
+            || experimentalMlStore_->tensor(frame, *atom)) {
+            *error = QStringLiteral("Shielding prediction could not be displayed for atom %1, frame %2.")
+                         .arg(*atom).arg(frame);
+        }
+    } else {
+        const auto original = loaded_->conformation->originalFrameIndex(frame);
+        if (!dftStore_->hasJob(original)) return true;
+        if (dftStore_->hasFailedFrame(original) || dftStore_->frame(original)) {
+            *error = QStringLiteral("ORCA shielding could not be displayed for atom %1, frame %2.")
+                         .arg(*atom).arg(frame);
+        }
+    }
+    return false;
+}
+
+void ReaderMainWindow::updateCsaGlyph(bool requestMissing, bool prepareForCapture) {
     ASSERT_THREAD(this);
     CsaTensorOverlay* overlay = scene_ ? scene_->csaOverlay() : nullptr;
     if (!overlay)
@@ -1140,8 +1171,8 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissing) {
     auto hide = [&] {
         overlay->clear();
         if (inspectorDock_) inspectorDock_->clearCsaTensor();
-        experimentalMlTensorDisplayed_ = false;
-        experimentalMlTensorDisplayedFrame_.reset();
+        appliedShieldingFrame_.reset();
+        appliedShieldingAtom_.reset();
         redraw();
     };
     if (trajectoryOverlayActive()) {
@@ -1156,6 +1187,14 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissing) {
 
     const int frameI = playback_ ? playback_->currentFrame() : 0;
     const std::size_t frame = static_cast<std::size_t>(frameI < 0 ? 0 : frameI);
+
+    // Export requests one frame at a time. Playback's intermediate refreshes
+    // and hidden glyphs must not queue predictions ahead of the capture.
+    if (restServer_ && restServer_->isVideoExporting()) {
+        requestMissing = requestMissing && prepareForCapture
+            && inspectorDock_->shieldingTensorEnabled()
+            && !restServer_->hasTensorComparison();
+    }
 
     // An explicit dashboard choice takes precedence. Without a DFT attachment,
     // predict for the focused atom, using the same display rotation as its position.
@@ -1205,8 +1244,8 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissing) {
         const model::Vec3 atomPos = transformed_->atomPosition(frame, atom);
         overlay->show(atomPos, shape);
         refreshTensorVisibility();
-        experimentalMlTensorDisplayed_ = true;
-        experimentalMlTensorDisplayedFrame_ = frame;
+        appliedShieldingFrame_ = frame;
+        appliedShieldingAtom_ = atom;
         if (inspectorDock_) {
             CsaTensorInfo info;
             info.sourceLabel = QStringLiteral("Predicted");
@@ -1233,8 +1272,6 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissing) {
         return;
     }
 
-    experimentalMlTensorDisplayed_ = false;
-    experimentalMlTensorDisplayedFrame_.reset();
     if (!dftStore_ || !selection_ || !selection_->hasFocus()) {
         hide();
         return;
@@ -1271,6 +1308,8 @@ void ReaderMainWindow::updateCsaGlyph(bool requestMissing) {
         << "| iso=" << r.shape.sigma_iso << "| eta=" << r.shape.eta
         << "| span=" << r.shape.span;
     overlay->show(r.atomPos, r.shape);
+    appliedShieldingFrame_ = frame;
+    appliedShieldingAtom_ = atom;
     refreshTensorVisibility();
     if (inspectorDock_) {
         CsaTensorInfo info;
@@ -1439,9 +1478,6 @@ void ReaderMainWindow::clearLoadedRun() {
     delete selectionContext_;
     selectionContext_ = nullptr;
 
-    if (learnedActivityDock_)
-        learnedActivityDock_->setContext(nullptr, nullptr, nullptr, nullptr, nullptr);
-
     if (playback_)
         playback_->pause();
 
@@ -1492,8 +1528,8 @@ void ReaderMainWindow::clearLoadedRun() {
     experimentalMlStore_ = nullptr;
     activeExperimentalMlTensorDescriptor_.clear();
     activeExperimentalMlTensorAtom_.reset();
-    experimentalMlTensorDisplayed_ = false;
-    experimentalMlTensorDisplayedFrame_.reset();
+    appliedShieldingFrame_.reset();
+    appliedShieldingAtom_.reset();
     delete dashboardSelectionController_;
     dashboardSelectionController_ = nullptr;
     delete dashboardPanels_;
@@ -1729,10 +1765,10 @@ QJsonObject ReaderMainWindow::uiStateJson() const {
     tensorDisplay.insert(QStringLiteral("resident"), tensorValues.has_value());
     tensorDisplay.insert(
         QStringLiteral("displayed"),
-        experimentalMlTensorDisplayed_
+        tensorActive
             && scene_ && scene_->csaOverlay()->isVisible()
-            && experimentalMlTensorDisplayedFrame_.has_value()
-            && *experimentalMlTensorDisplayedFrame_ == tensorFrame);
+            && appliedShieldingFrame_ == tensorFrame
+            && appliedShieldingAtom_ == predictedAtom);
     if (tensorValues) {
         tensorDisplay.insert(QStringLiteral("sigmaIsoPpm"), (*tensorValues)[0]);
         QJsonArray t2;
@@ -1881,7 +1917,6 @@ quint16 ReaderMainWindow::startRestServer(const QHostAddress& address, quint16 p
     restServer_ = new RestServer(this);
     connect(restServer_, &RestServer::activeOperationsChanged, this,
             [this](bool active) {
-                learnedActivityDock_->setEnabled(!active);
                 if (selectionContext_) selectionContext_->setInteractionEnabled(!active);
             });
     restServer_->setContext(scene_,
@@ -2043,7 +2078,7 @@ void ReaderMainWindow::setDocksVisible(bool visible) {
             return;
         stashedDockVisibility_.clear();
         const std::vector<QDockWidget*> docks = {
-            inspectorDock_, dashboardStripDock_, learnedActivityDock_
+            inspectorDock_, dashboardStripDock_
         };
         for (QDockWidget* d : docks) {
             if (!d) continue;
@@ -2743,21 +2778,20 @@ void ReaderMainWindow::buildStatusBar() {
 }
 
 void ReaderMainWindow::buildDocks() {
-    learnedActivityDock_ = new LearnedActivityDock(this);
-    addDockWidget(Qt::RightDockWidgetArea, learnedActivityDock_);
-    learnedActivityDock_->hide();
-    auto* activityAction = fileMenu_->addAction(QStringLiteral("Learned activity..."));
-    connect(activityAction, &QAction::triggered, this, [this]() {
-        learnedActivityDock_->show();
-        learnedActivityDock_->raise();
-    });
-
     // Atom Info dock — tabified on the LEFT alongside the dashboard strip.
     // It is constructed before load and starts with its own placeholder.
     inspectorDock_ = new QtAtomInspectorDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, inspectorDock_);
     connect(inspectorDock_, &QtAtomInspectorDock::tensorDisplayChanged,
             this, &ReaderMainWindow::refreshTensorVisibility);
+    // Loading a missing tensor can rebuild the tree. Let the checkbox's
+    // itemChanged handler return before any of its items can be deleted.
+    connect(inspectorDock_, &QtAtomInspectorDock::shieldingTensorRequested,
+            this, [this] {
+                if (inspectorDock_->shieldingTensorEnabled() && scene_
+                    && !scene_->csaOverlay()->isActive())
+                    updateCsaGlyph(true, true);
+            }, Qt::QueuedConnection);
 
     // Dashboard strips — the dock and controller are stable chrome; run-backed
     // models are swapped in by installLoadedRun().
@@ -2787,7 +2821,7 @@ void ReaderMainWindow::buildDocks() {
                          activeExperimentalMlTensorAtom_ =
                              static_cast<std::size_t>(atom);
                      }
-                     updateCsaGlyph(true);
+                     updateCsaGlyph(true, true);
                  });
     }
     addDockWidget(Qt::LeftDockWidgetArea, dashboardStripDock_);

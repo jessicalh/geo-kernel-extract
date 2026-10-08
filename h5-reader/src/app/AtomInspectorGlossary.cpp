@@ -51,6 +51,11 @@ std::optional<MetricGlossaryEntry> tensorHelp(const QString& field, bool bond,
     const auto entry = [&origin](const char* meaning, const char* calculation) {
         return MetricGlossaryEntry{QString::fromLatin1(meaning), QString::fromLatin1(calculation), origin};
     };
+    if (field == QLatin1String("Atom"))
+        return MetricGlossaryEntry{
+            QStringLiteral("Atom represented by this shielding tensor."),
+            QStringLiteral("Reader displays its chain, residue and IUPAC atom name."),
+            QStringLiteral("nmr_extract topology and name records.")};
     if (field == QLatin1String("sigma_iso"))
         return entry("Mean shielding over field directions, in ppm. This is shielding, not chemical shift.",
                      "One third of the tensor trace, or the mean of its three principal values.");
@@ -81,7 +86,7 @@ std::optional<MetricGlossaryEntry> tensorHelp(const QString& field, bool bond,
     if (field == QLatin1String("Average over"))
         return entry("These values describe the trajectory, not just the current frame.", "nmr_extract aligns frames and averages u u^T, where u is the unit bond vector.");
     if (field == QLatin1String("Scope"))
-        return entry("Frame represented by the shielding values.", "Reader uses the shielding tensor for the selected atom at the displayed frame.");
+        return entry("Frame represented by the shielding values.", "Reader uses the shielding tensor for the named atom at the displayed frame.");
     if (field == QLatin1String("Source"))
         return entry("Calculation or model supplying the tensor.", "Reader displays the method or model identifier attached to the tensor.");
     if (field == QLatin1String("Frame convention"))

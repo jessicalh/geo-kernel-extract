@@ -16,7 +16,6 @@
 #include "QtPlaybackController.h"
 #include "ReaderMainWindow.h"
 #include "ReaderCollectionDialog.h"
-#include "LearnedActivityDock.h"
 #include "SceneVideoExporter.h"
 #include "SelectionContextWidget.h"
 #include "SignalDisplayDialog.h"
@@ -395,18 +394,6 @@ QJsonObject restInterfaceDescription() {
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/run/load"),
                       QStringLiteral("general"),
                       QStringLiteral("Load a calcset through Reader's ordinary run-loading path.")),
-            restRoute(QStringLiteral("GET"), QStringLiteral("/api/learned-activity"),
-                      QStringLiteral("general"),
-                      QStringLiteral("Captured hidden tensor channels and current display values.")),
-            restRoute(QStringLiteral("POST"), QStringLiteral("/api/learned-activity/load"),
-                      QStringLiteral("general"),
-                      QStringLiteral("Load an activation capture for the current molecule.")),
-            restRoute(QStringLiteral("POST"), QStringLiteral("/api/learned-activity"),
-                      QStringLiteral("general"),
-                      QStringLiteral("Set the channel, common radius scale, opacity, or visibility.")),
-            restRoute(QStringLiteral("POST"), QStringLiteral("/api/learned-activity/clear"),
-                      QStringLiteral("general"),
-                      QStringLiteral("Remove the activation capture and its scene geometry.")),
             restRoute(QStringLiteral("POST"), QStringLiteral("/api/model-input/export"),
                       QStringLiteral("general"),
                       QStringLiteral("Export structural arrays for the loaded conformation.")),
@@ -1708,6 +1695,10 @@ bool RestServer::hasActiveOperations() const {
         || (videoExporter_ && videoExporter_->isActive());
 }
 
+bool RestServer::isVideoExporting() const {
+    return videoExporter_ && videoExporter_->isActive();
+}
+
 void RestServer::requestGracefulStop() {
     ASSERT_THREAD(this);
     gracefulStopRequested_ = true;
@@ -1797,7 +1788,9 @@ void RestServer::setContext(MoleculeScene* scene,
     mainWindow_ = mainWindow;
     readerWindow_ = readerWindow;
     transformed_ = transformed;
-    videoExporter_->setContext(scene, playback);
+    videoExporter_->setContext(scene, playback,
+        [this] { readerWindow_->prepareVideoFrame(); },
+        [this](QString* error) { return readerWindow_->videoFrameReady(error); });
     contextSet_ = true;
 }
 
@@ -1975,46 +1968,6 @@ void RestServer::registerRoutes() {
     server_->route(QStringLiteral("/api/interface"), [this]() {
         ASSERT_THREAD(this);
         return jsonResponse(restInterfaceDescription());
-    });
-
-    server_->route(QStringLiteral("/api/learned-activity"), Method::Get, [this]() {
-        ASSERT_THREAD(this);
-        return jsonResponse(readerWindow_->learnedActivityDock()->state());
-    });
-    server_->route(QStringLiteral("/api/learned-activity/load"), Method::Post,
-                   [this](const QHttpServerRequest& request) {
-        ASSERT_THREAD(this);
-        if (hasActiveOperations())
-            return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
-        bool ok = false;
-        const auto body = parseJsonBody(request, &ok);
-        if (!ok || body.size() != 1 || !body.value("path").isString())
-            return errorResponse(QStringLiteral("body must contain a capture path"), SC::BadRequest);
-        QString error;
-        auto* dock = readerWindow_->learnedActivityDock();
-        if (!dock->load(body.value("path").toString(), &error))
-            return errorResponse(error, SC::BadRequest);
-        return jsonResponse(dock->state());
-    });
-    server_->route(QStringLiteral("/api/learned-activity"), Method::Post,
-                   [this](const QHttpServerRequest& request) {
-        ASSERT_THREAD(this);
-        if (hasActiveOperations())
-            return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
-        bool ok = false;
-        const auto body = parseJsonBody(request, &ok);
-        if (!ok) return errorResponse(QStringLiteral("expected JSON object"), SC::BadRequest);
-        QString error;
-        auto* dock = readerWindow_->learnedActivityDock();
-        if (!dock->configure(body, &error)) return errorResponse(error, SC::BadRequest);
-        return jsonResponse(dock->state());
-    });
-    server_->route(QStringLiteral("/api/learned-activity/clear"), Method::Post, [this]() {
-        ASSERT_THREAD(this);
-        if (hasActiveOperations())
-            return errorResponse(QStringLiteral("another Reader operation is running"), SC::Conflict);
-        readerWindow_->learnedActivityDock()->clear();
-        return jsonResponse(readerWindow_->learnedActivityDock()->state());
     });
 
     server_->route(QStringLiteral("/api/run/load"), Method::Post,

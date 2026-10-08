@@ -250,8 +250,6 @@ qt_add_library(h5reader_core STATIC
     src/app/SceneRevealOverlay.cpp
     src/app/TensorGlyphActor.h
     src/app/TensorGlyphActor.cpp
-    src/app/LearnedActivityDock.h
-    src/app/LearnedActivityDock.cpp
     src/app/CsaTensorOverlay.h
     src/app/CsaTensorOverlay.cpp
     src/app/TensorGhostTrail.h

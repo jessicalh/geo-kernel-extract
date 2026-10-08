@@ -55,6 +55,7 @@ public:
     QString device() const { return device_; }
     bool usingFallback() const { return fallbackAttempted_; }
     bool isRunning() const;
+    bool hasFailedFrame(std::size_t frame) const;
 
     void requestFrame(std::size_t frame);
     std::optional<double> sample(std::size_t frame,

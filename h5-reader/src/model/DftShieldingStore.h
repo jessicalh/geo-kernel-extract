@@ -50,6 +50,7 @@ public:
     // Does a DFT job exist on disk for this original frame index? (cheap map
     // lookup — distinguishes a "not computed" gap from "not yet parsed".)
     bool hasJob(std::size_t originalIndex) const;
+    bool hasFailedFrame(std::size_t originalIndex) const;
 
     // Current-resident-or-null; NEVER parses or blocks. null == not resident:
     // call requestFrame() and react to frameReady().

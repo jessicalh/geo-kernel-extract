@@ -1718,6 +1718,11 @@ bool ExperimentalShieldingMlStore::buildInput(
     return true;
 }
 
+bool ExperimentalShieldingMlStore::hasFailedFrame(std::size_t frame) const {
+    return std::find(failedFrames_.cbegin(), failedFrames_.cend(), frame)
+        != failedFrames_.cend();
+}
+
 void ExperimentalShieldingMlStore::requestFrame(std::size_t frame) {
     ASSERT_THREAD(this);
     if (!ready_ || !conformation_ || frame >= conformation_->frameCount())
@@ -1726,8 +1731,7 @@ void ExperimentalShieldingMlStore::requestFrame(std::size_t frame) {
         emit frameReady(frame);
         return;
     }
-    if (std::find(failedFrames_.cbegin(), failedFrames_.cend(), frame)
-        != failedFrames_.cend()) {
+    if (hasFailedFrame(frame)) {
         emit frameReady(frame);
         return;
     }
