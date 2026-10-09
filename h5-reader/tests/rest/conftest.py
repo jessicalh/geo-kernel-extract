@@ -17,10 +17,10 @@ Env contract:
                             `--rest-address`; omitted means Reader's loopback default.
 
 Headless: VTK needs a real GL FBO, which `QT_QPA_PLATFORM=offscreen` does
-not provide. On non-Windows hosts with no DISPLAY, the fixture wraps the
+not provide. On Linux hosts with no DISPLAY, the fixture wraps the
 binary in `xvfb-run -a` (which provisions a Xvfb-backed display on demand).
-On Windows and on dev machines with an X display already set, the binary
-runs directly.
+On macOS, Windows, and Linux dev machines with an X display already set,
+the binary runs directly against the native display.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -106,7 +107,7 @@ def h5reader_session(request: pytest.FixtureRequest) -> Generator[RestSession, N
 
     env = {**os.environ}
     cmd: list[str] = []
-    if os.name != "nt" and not env.get("DISPLAY"):
+    if sys.platform.startswith("linux") and not env.get("DISPLAY"):
         xvfb = shutil.which("xvfb-run")
         if not xvfb:
             pytest.skip("no DISPLAY and xvfb-run not on PATH; install xvfb or run under an X session")

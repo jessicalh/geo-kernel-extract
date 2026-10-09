@@ -10,6 +10,9 @@
 #include <QHeaderView>
 #include <QStyleOptionViewItem>
 #include <QPointer>
+#include <QNativeGestureEvent>
+#include <QPointingDevice>
+#include <QWheelEvent>
 #include <QVTKOpenGLNativeWidget.h>
 
 #include "model/QtAtom.h"
@@ -89,6 +92,96 @@ class AtomPickerTests final : public QObject {
     Q_OBJECT
 
 private slots:
+    void nativePinchZoom_data() {
+        QTest::addColumn<int>("cameraMode");
+        QTest::newRow("free") << 0;
+        QTest::newRow("atom-follow") << 1;
+        QTest::newRow("plane-lock") << 2;
+    }
+
+    void nativePinchZoom() {
+#ifndef Q_OS_MACOS
+        QSKIP("Exercises the macOS native-to-Qt pinch recognizer.");
+#else
+        QFETCH(int, cameraMode);
+        auto protein = smallProtein(3);
+        auto snapshot = std::make_shared<model::QtConformationSnapshot>(protein.get(), 0, 0.0);
+        auto& positions = snapshot->mutableColumn(io::FieldKind::Pos);
+        positions.present = true;
+        positions.rows = 3;
+        positions.cols = 3;
+        positions.data = {0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 0.0};
+        model::SingleConformation conformation(protein.get(), snapshot);
+        QVTKOpenGLNativeWidget widget;
+        widget.resize(640, 480);
+        auto window = vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();
+        widget.setRenderWindow(window);
+        app::MoleculeScene scene(&widget, window);
+        scene.Build(*protein, conformation);
+        scene.setFrame(0);
+        auto* composer = scene.cameraComposer();
+        app::CameraInputFilter input(&widget, &scene, composer);
+        QSignalSpy clicks(&input, &app::CameraInputFilter::viewportClicked);
+        widget.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&widget));
+        auto* camera = scene.Renderer()->GetActiveCamera();
+        camera->SetPosition(0.0, 0.0, 20.0);
+        camera->SetFocalPoint(0.0, 0.0, 0.0);
+        camera->SetViewUp(0.0, 1.0, 0.0);
+        const auto mode = cameraMode == 1 ? app::AtomMode(0)
+                         : cameraMode == 2 ? app::PlaneMode(0, 1, 2)
+                                           : app::FreeMode();
+        composer->setMode(mode, app::DefaultPolicy(), 0);
+        QVERIFY(composer->mode() == mode);
+        QVERIFY(composer->write(0));
+        const double initialDistance = camera->GetDistance();
+        const model::Vec3 initialFocus(camera->GetFocalPoint());
+        const model::Vec3 initialUp(camera->GetViewUp());
+        const QPointF local(320.0, 240.0);
+        const auto* device = QPointingDevice::primaryPointingDevice();
+        auto send = [&](Qt::NativeGestureType type, double value = 0.0) {
+            QNativeGestureEvent event(type, device, 2, local, local,
+                                      widget.mapToGlobal(local), value, QPointF());
+            QCoreApplication::sendEvent(&widget, &event);
+            QCoreApplication::processEvents();
+        };
+        auto distanceIs = [&](double expected) {
+            return std::abs(camera->GetDistance() - expected) < 1e-8;
+        };
+        send(Qt::BeginNativeGesture);
+        send(Qt::ZoomNativeGesture, 0.25);
+        QVERIFY2(distanceIs(initialDistance / 1.25), "Pinch-out must zoom immediately, even while paused/locked.");
+        send(Qt::ZoomNativeGesture, 0.2);
+        QVERIFY(distanceIs(initialDistance / 1.5));
+        // macOS interleaves rotation events and retains the last scale on end.
+        send(Qt::RotateNativeGesture, 5.0);
+        send(Qt::EndNativeGesture);
+        QVERIFY(distanceIs(initialDistance / 1.5));
+        QVERIFY((model::Vec3(camera->GetViewUp()) - initialUp).norm() < 1e-10);
+        send(Qt::BeginNativeGesture);
+        send(Qt::ZoomNativeGesture, -0.2);
+        send(Qt::EndNativeGesture);
+        QVERIFY(distanceIs(initialDistance / 1.2));
+        QVERIFY((model::Vec3(camera->GetFocalPoint()) - initialFocus).norm() < 1e-10);
+        QVERIFY(composer->mode() == mode);
+        // Recomposition on a later frame must retain, not reapply, the zoom.
+        QVERIFY(composer->write(0));
+        QVERIFY(distanceIs(initialDistance / 1.2));
+        QCOMPARE(clicks.count(), 0);
+        QWheelEvent wheel(local, widget.mapToGlobal(local), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&widget, &wheel);
+        QCoreApplication::processEvents();
+        QVERIFY(distanceIs(initialDistance / (1.2 * std::exp(0.1))));
+        // Also exercise direct native zoom without Qt's pinch recognizer,
+        // as delivered by platforms such as Wayland.
+        widget.ungrabGesture(Qt::PinchGesture);
+        const double beforeNative = camera->GetDistance();
+        send(Qt::ZoomNativeGesture, 0.25);
+        QVERIFY(distanceIs(beforeNative / 1.25));
+#endif
+    }
+
     void trajectoryEnvelopeWaitsForPublicationBeforeCapture() {
         auto protein = smallProtein();
         class MovingConformation final : public model::Conformation {

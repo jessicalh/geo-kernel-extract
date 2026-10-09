@@ -1,14 +1,14 @@
 # Platform-Darwin.cmake — macOS-specific build settings for h5reader.
 #
 # Target stack:
-#   Qt Pro 6.10.x (installer at $ENV{HOME}/Qt/<ver>/macos)
+#   Qt 6.8+ (use an explicit prefix when multiple commercial/OSS SDKs coexist)
 #   VTK 9.5+ built from source (typically $ENV{HOME}/VTK/)
-#   HDF5 1.14 (brew: hdf5)
-#   Eigen 3.4 (brew: eigen)
+#   HDF5 compatible with the vendored HighFive (validated here with 1.14.6)
+#   Eigen 3.4+
 #
 # Exact macOS install prefixes can still be supplied at configure time:
 #   cmake --preset mac-rwdi \
-#         -DH5READER_QT_DIR="$HOME/Qt/6.10.2/macos" \
+#         -DH5READER_QT_DIR="$HOME/QtPro/6.12.0/macos" \
 #         -DH5READER_VTK_DIR="$HOME/VTK"
 #
 # Defines the same function surface as Platform-Linux/Windows so
@@ -20,7 +20,7 @@ if(NOT H5READER_QT_DIR)
     file(GLOB _qt_candidates LIST_DIRECTORIES true "$ENV{HOME}/Qt/6.*/macos")
     list(SORT _qt_candidates COMPARE NATURAL ORDER DESCENDING)
     foreach(_qt_dir IN LISTS _qt_candidates)
-        if(EXISTS "${_qt_dir}")
+        if(EXISTS "${_qt_dir}/lib/cmake/Qt6/Qt6Config.cmake")
             set(H5READER_QT_DIR "${_qt_dir}"
                 CACHE PATH "Qt installation root")
             message(STATUS
@@ -81,6 +81,6 @@ function(h5reader_apply_platform_target_settings target)
     # Crash-handler runtime needs dlsym / dladdr.
     target_link_libraries(${target} PRIVATE ${CMAKE_DL_LIBS})
 
-    # No HDF5 BEFORE-include workaround: brew HDF5 1.14 matches what
-    # HighFive expects (H5Treclaim path).
+    # HDF5 is selected independently of the Qt SDK. Keep include paths on
+    # the consuming target so each build uses its selected dependency prefix.
 endfunction()

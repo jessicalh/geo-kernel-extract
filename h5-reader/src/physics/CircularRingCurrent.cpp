@@ -1,6 +1,7 @@
 #include "CircularRingCurrent.h"
 
 #include "SphericalBasis.h"
+#include "SpecialFunctions.h"
 
 #include <Eigen/SVD>
 
@@ -53,8 +54,8 @@ CylindricalField singleLoop(double radiusA, double currentNanoamperePerTesla, do
 
     const double parameter = std::clamp(4.0 * radius * rho / alphaSq, 0.0, 1.0);
     const double modulus = std::sqrt(parameter);
-    const double K = std::comp_ellint_1(modulus);
-    const double E = std::comp_ellint_2(modulus);
+    const double K = detail::CompleteEllipticFirstKind(modulus);
+    const double E = detail::CompleteEllipticSecondKind(modulus);
     const double rootAlpha = std::sqrt(alphaSq);
     const double common = kMu0TeslaMetrePerAmpere * current / (2.0 * kPi * rootAlpha);
 

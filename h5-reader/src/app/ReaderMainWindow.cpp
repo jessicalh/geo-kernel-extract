@@ -6,6 +6,7 @@
 #include "CameraComposer.h"
 #include "CameraInputFilter.h"
 #include "CameraMode.h"
+#include "MacWidgetStyle.h"
 #include "OrientationPolicy.h"
 #include "MoleculeScene.h"
 #include "TensorGlyphActor.h"
@@ -184,28 +185,38 @@ QJsonArray stringListJson(const QStringList& values) {
 
 QDir installedExperimentalShieldingMlDir() {
     return QDir(QDir(QCoreApplication::applicationDirPath())
+#ifdef Q_OS_MACOS
+                    .filePath(QStringLiteral("../Resources/ml/experimental_shielding_ml")));
+#else
                     .filePath(QStringLiteral("ml/experimental_shielding_ml")));
+#endif
 }
 
 QString experimentalShieldingMlHelperFileName() {
-#ifdef Q_OS_LINUX
-    return QStringLiteral("infer");
-#else
+#ifdef Q_OS_WIN
     return QStringLiteral("infer.exe");
+#else
+    return QStringLiteral("infer");
 #endif
 }
 
 bool experimentalShieldingMlHelperAvailable(const QString& helperPath) {
     const QFileInfo helper(helperPath);
-#ifdef Q_OS_LINUX
-    return helper.isFile() && helper.isExecutable();
-#else
+#ifdef Q_OS_WIN
     return helper.isFile();
+#else
+    return helper.isFile() && helper.isExecutable();
 #endif
 }
 
 QStringList experimentalShieldingMlRequiredLibraries() {
-#ifdef Q_OS_LINUX
+#ifdef Q_OS_MACOS
+    return {
+        QStringLiteral("lib/libc10.dylib"),
+        QStringLiteral("lib/libtorch.dylib"),
+        QStringLiteral("lib/libtorch_cpu.dylib"),
+    };
+#elif defined(Q_OS_LINUX)
     return {
         QStringLiteral("lib/libc10.so"),
         QStringLiteral("lib/libtorch.so"),
@@ -225,6 +236,17 @@ QStringList experimentalShieldingMlRequiredLibraries() {
 #endif
 }
 
+QString installedExperimentalShieldingMlRuntimeFilePath(const QString& fileName) {
+#ifdef Q_OS_MACOS
+    const QDir executableDir(QCoreApplication::applicationDirPath());
+    if (fileName == experimentalShieldingMlHelperFileName())
+        return executableDir.filePath(QStringLiteral("../Helpers/") + fileName);
+    if (fileName.startsWith(QStringLiteral("lib/")))
+        return executableDir.filePath(QStringLiteral("../Frameworks/") + fileName.mid(4));
+#endif
+    return installedExperimentalShieldingMlDir().filePath(fileName);
+}
+
 QStringList experimentalShieldingMlRequiredFiles() {
     return QStringList{
         QStringLiteral("model.ts"),
@@ -233,14 +255,14 @@ QStringList experimentalShieldingMlRequiredFiles() {
     } + experimentalShieldingMlRequiredLibraries();
 }
 
-bool experimentalShieldingMlRuntimeFileAvailable(const QDir& runtimeDir,
-                                                const QString& fileName) {
+bool experimentalShieldingMlRuntimeFileAvailable(const QString& fileName) {
+    const QString path = installedExperimentalShieldingMlRuntimeFilePath(fileName);
     if (fileName == experimentalShieldingMlHelperFileName())
-        return experimentalShieldingMlHelperAvailable(runtimeDir.filePath(fileName));
-    return fileExistsInDir(runtimeDir, fileName);
+        return experimentalShieldingMlHelperAvailable(path);
+    return QFileInfo(path).isFile();
 }
 
-#ifndef Q_OS_LINUX
+#ifdef Q_OS_WIN
 QStringList experimentalShieldingMlRocmRequiredFiles() {
     return {
         QStringLiteral("infer.exe"),
@@ -290,7 +312,7 @@ QString experimentalShieldingMlDevicePreference() {
     return QStringLiteral("auto");
 }
 
-#ifndef Q_OS_LINUX
+#ifdef Q_OS_WIN
 QString developmentExperimentalShieldingMlRocmHelper(const QString& modelPath) {
     QString explicitPath =
         qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_ROCM_HELPER");
@@ -304,7 +326,7 @@ bool installedExperimentalShieldingMlRuntimeAvailable() {
     const QDir mlDir = installedExperimentalShieldingMlDir();
     const QStringList requiredFiles = experimentalShieldingMlRequiredFiles();
     for (const QString& fileName : requiredFiles) {
-        if (!experimentalShieldingMlRuntimeFileAvailable(mlDir, fileName))
+        if (!experimentalShieldingMlRuntimeFileAvailable(fileName))
             return false;
     }
     return model::ExperimentalShieldingMlStore::ManifestHasInferenceSchema(
@@ -471,7 +493,7 @@ resolveExperimentalShieldingMlRuntime() {
     QString model = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MODEL");
     QString manifest = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_MANIFEST");
     QString cpuHelper = qEnvironmentVariable("H5READER_EXPERIMENTAL_SHIELDING_ML_HELPER");
-#ifndef Q_OS_LINUX
+#ifdef Q_OS_WIN
     QString rocmHelper = developmentExperimentalShieldingMlRocmHelper(model);
 #endif
     if (!experimentalShieldingMlDevMissingFiles(model, manifest, cpuHelper).isEmpty()) {
@@ -480,8 +502,9 @@ resolveExperimentalShieldingMlRuntime() {
             return std::nullopt;
         model = installed.filePath(QStringLiteral("model.ts"));
         manifest = installed.filePath(QStringLiteral("manifest.json"));
-        cpuHelper = installed.filePath(experimentalShieldingMlHelperFileName());
-#ifndef Q_OS_LINUX
+        cpuHelper = installedExperimentalShieldingMlRuntimeFilePath(
+            experimentalShieldingMlHelperFileName());
+#ifdef Q_OS_WIN
         rocmHelper = installed.filePath(QStringLiteral("rocm/infer.exe"));
 #endif
     }
@@ -489,8 +512,8 @@ resolveExperimentalShieldingMlRuntime() {
     ExperimentalShieldingMlRuntimePaths paths;
     paths.manifest = manifest;
     const QString preference = experimentalShieldingMlDevicePreference();
-#ifdef Q_OS_LINUX
-    // Linux currently ships the CPU runtime. Auto must not initialize or probe
+#ifndef Q_OS_WIN
+    // Linux and macOS ship the CPU runtime. Auto must not initialize or probe
     // an accelerator that may be in use by another application.
     if (preference == QStringLiteral("rocm"))
         return std::nullopt;
@@ -555,7 +578,7 @@ QJsonObject experimentalShieldingMlRuntimeJson(
     QStringList missing;
     const QStringList requiredFiles = experimentalShieldingMlRequiredFiles();
     for (const QString& fileName : requiredFiles) {
-        if (!experimentalShieldingMlRuntimeFileAvailable(mlDir, fileName))
+        if (!experimentalShieldingMlRuntimeFileAvailable(fileName))
             missing.append(fileName);
     }
     const QString installedManifest = mlDir.filePath(QStringLiteral("manifest.json"));
@@ -2907,6 +2930,10 @@ void ReaderMainWindow::buildToolbar() {
         "Toggle off for free mouse control. Requires a focused atom."));
     QObject::connect(focusAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onFocusCameraTriggered);
+
+#ifdef Q_OS_MACOS
+    configureMacToolbarText(tb);
+#endif
 }
 
 void ReaderMainWindow::buildStatusBar() {
@@ -3274,7 +3301,11 @@ void ReaderMainWindow::onOpenFile() {
         directory = settings.value(QStringLiteral("viewer/open/directory")).toString();
     if (directory.isEmpty()) {
         const QString installed = QDir(QCoreApplication::applicationDirPath())
+#ifdef Q_OS_MACOS
+                                      .filePath(QStringLiteral("../Resources/datasets"));
+#else
                                       .filePath(QStringLiteral("datasets"));
+#endif
         directory = QDir(installed).exists() ? installed : QDir::homePath();
     }
     const QString file = QFileDialog::getOpenFileName(

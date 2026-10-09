@@ -1,4 +1,5 @@
 #include "QtAtomInspectorDock.h"
+#include "MacWidgetStyle.h"
 #include "AtomInspectorGlossary.h"
 #include "MetricGlossaryPopup.h"
 
@@ -345,6 +346,9 @@ QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringL
     tensorLayout_->setSpacing(0);
     tensorTree_ = new QTreeWidget(lower);
     tensorTree_->setObjectName(QStringLiteral("tensorFields"));
+#ifdef Q_OS_MACOS
+    configureMacItemViewChecks(tensorTree_);
+#endif
     tensorLayout_->addWidget(tensorTree_);
     for (auto* tree : {tree_.data(), tensorTree_.data()}) {
         tree->setMinimumWidth(0);

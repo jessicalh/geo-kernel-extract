@@ -396,6 +396,14 @@ void MoleculeScene::ResetCamera() {
     requestRender(RenderSource::External);
 }
 
+void MoleculeScene::refreshCameraForInput() {
+    ASSERT_THREAD(this);
+    if (composer_ && currentFrame_ >= 0)
+        (void)composer_->write(static_cast<std::size_t>(currentFrame_));
+    syncCameraClippingRange();
+    requestRender(RenderSource::CameraInput);
+}
+
 void MoleculeScene::syncCameraClippingRange() {
     ASSERT_THREAD(this);
     if (!renderer_ || !cachedPaddedBoundsValid_)

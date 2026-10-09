@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 
-CANONICAL_OVERLAYS = ("ribbon", "rings", "butterfly", "nullcone", "bfield")
+CANONICAL_OVERLAYS = (
+    "ribbon", "rings", "butterfly", "nullcone", "bfield", "trajectory",
+    "shielding", "orientation",
+)
 
 
 def test_canonical_overlay_names_toggle_and_stale_shadow_is_not_advertised(rest):
@@ -20,11 +23,12 @@ def test_canonical_overlay_names_toggle_and_stale_shadow_is_not_advertised(rest)
         stale = rest.client.post("/overlay", json={"name": "shadow", "visible": True})
         assert stale.status_code == 400
         assert stale.json()["error"] == (
-            'unknown overlay "shadow" (ribbon|rings|butterfly|nullcone|bfield)'
+            'unknown overlay "shadow" '
+            '(ribbon|rings|butterfly|nullcone|bfield|trajectory|shielding|orientation)'
         )
     finally:
         # Restore the reader's ordinary startup presentation for later tests.
-        rest.client.post("/overlay", json={"name": "ribbon", "visible": True})
-        rest.client.post("/overlay", json={"name": "rings", "visible": True})
-        for name in ("butterfly", "nullcone", "bfield"):
+        for name in ("ribbon", "rings", "shielding", "orientation"):
+            rest.client.post("/overlay", json={"name": name, "visible": True})
+        for name in ("butterfly", "nullcone", "bfield", "trajectory"):
             rest.client.post("/overlay", json={"name": name, "visible": False})

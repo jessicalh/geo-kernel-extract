@@ -173,6 +173,10 @@ public:
     // Reset camera to frame the molecule. Call after Build().
     void ResetCamera();
 
+    // Recompose camera gestures at the displayed frame, including while
+    // playback is paused. Does not reload positions or rebuild overlays.
+    void refreshCameraForInput();
+
     // Reset near/far clipping from the current frame's cached padded atom
     // bounds. Call after every camera write and before renders that may
     // follow camera writes. No-op until Build/setFrame has produced bounds.

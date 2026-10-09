@@ -1,4 +1,4 @@
-// CameraInputFilter — Qt eventFilter that intercepts mouse + wheel
+// CameraInputFilter — Qt eventFilter that intercepts mouse, wheel and pinch
 // events on the QVTKOpenGLNativeWidget and routes them through
 // CameraComposer::applyGesture instead of letting VTK's trackball
 // process them.
@@ -9,6 +9,7 @@
 //     CameraComposer::applyGesture, asks MoleculeScene to render
 //   * MouseButtonRelease ends the gesture
 //   * Wheel events dolly
+//   * Qt pinch gestures dolly (including native macOS trackpad gestures)
 //   * MouseButtonDblClick is NOT intercepted (the picker owns it)
 //
 // Install AFTER the picker so Qt's filter chain calls THIS filter
@@ -20,8 +21,9 @@
 //   Right drag      — dolly (vertical = zoom)
 //   Shift+Left drag — pan
 //   Wheel           — dolly
+//   Pinch           — dolly, preserving the current camera lock
 //
-// Touch and 3D-mouse input are not handled here.
+// Other touch gestures and 3D-mouse input are not handled here.
 
 #pragma once
 
@@ -35,6 +37,7 @@
 #include <QPointer>
 
 class QMouseEvent;
+class QGestureEvent;
 class QVTKOpenGLNativeWidget;
 class QWheelEvent;
 
@@ -67,6 +70,8 @@ private:
     void handleMouseMove(QMouseEvent* me);
     void handleMouseUp(QMouseEvent* me);
     void handleWheel(QWheelEvent* we);
+    bool handlePinch(QGestureEvent* event);
+    void dolly(double factor);
 
     QPointer<QVTKOpenGLNativeWidget> widget_;
     QPointer<MoleculeScene>          scene_;
@@ -74,6 +79,7 @@ private:
 
     Gesture activeGesture_ = Gesture::None;
     QPointF lastPos_;
+    double lastPinchTotalScale_ = 1.0;
 
     // Click-vs-drag discrimination for viewportClicked.
     QPointF         pressPos_;

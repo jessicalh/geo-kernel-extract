@@ -4,7 +4,7 @@
 # cmake/DiscoverDeps.cmake.
 
 cmake_minimum_required(VERSION 3.24)
-project(h5reader VERSION 0.5.0 LANGUAGES CXX)
+project(h5reader VERSION 0.5.0 LANGUAGES C CXX)
 
 include(CTest)
 
@@ -13,6 +13,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+include(PortableSpecialFunctions)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
@@ -22,7 +23,7 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(H5READER_SHARED_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../shared")
 
-if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     option(H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML
         "Require and package the Experimental Shielding ML model/runtime" ON)
 endif()
@@ -217,6 +218,7 @@ qt_add_library(h5reader_core STATIC
     src/app/SelectionContextWidget.cpp
     src/app/ReaderMainWindow.h
     src/app/ReaderMainWindow.cpp
+    src/app/MacWidgetStyle.h
     src/app/ReaderCollection.h
     src/app/ReaderCollection.cpp
     src/app/ReaderInstance.h
@@ -328,6 +330,7 @@ target_include_directories(h5reader_core PUBLIC
     ${HIGHFIVE_INCLUDE_DIR}
 )
 
+target_link_libraries(h5reader_core PRIVATE h5reader_special_functions)
 target_link_libraries(h5reader_core PUBLIC
     ScienceFiles::Qt
     Qt6::Widgets
@@ -367,9 +370,23 @@ qt_add_executable(h5reader
 
 target_link_libraries(h5reader PRIVATE h5reader_core)
 
+if(APPLE)
+    set_target_properties(h5reader PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "H5 Reader"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+endif()
+
 set(H5READER_BUNDLED_DATA_DIR "" CACHE PATH "Prepared installed trajectory examples")
 if(H5READER_BUNDLED_DATA_DIR)
-    install(DIRECTORY "${H5READER_BUNDLED_DATA_DIR}/" DESTINATION datasets COMPONENT Runtime)
+    if(APPLE)
+        set(_h5reader_dataset_destination "$<TARGET_BUNDLE_DIR_NAME:h5reader>/Contents/Resources/datasets")
+    else()
+        set(_h5reader_dataset_destination datasets)
+    endif()
+    install(DIRECTORY "${H5READER_BUNDLED_DATA_DIR}/"
+        DESTINATION "${_h5reader_dataset_destination}" COMPONENT Runtime)
 endif()
 
 # vtk_module_autoinit belongs on the executable that links the static library;
@@ -386,6 +403,13 @@ if(COMMAND h5reader_apply_build_type_settings)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(h5reader_special_functions_tests tests/special_functions_tests.cpp)
+    set_target_properties(h5reader_special_functions_tests PROPERTIES
+        AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    target_include_directories(h5reader_special_functions_tests PRIVATE src)
+    target_link_libraries(h5reader_special_functions_tests PRIVATE h5reader_special_functions)
+    add_test(NAME h5reader_special_functions_tests COMMAND h5reader_special_functions_tests)
+
     add_test(NAME h5reader_package_trajectory_tests
         COMMAND "${Python3_EXECUTABLE}" -B
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/publication/test_package_trajectory.py" -v)
@@ -421,6 +445,7 @@ if(BUILD_TESTING)
         ${H5READER_SHARED_INCLUDE_DIR}
     )
     target_link_libraries(h5reader_physics_tests PRIVATE
+        h5reader_special_functions
         Eigen3::Eigen
     )
     target_compile_definitions(h5reader_physics_tests PRIVATE
@@ -969,6 +994,14 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         set_tests_properties(h5reader_trajectory_library_tests PROPERTIES
             ENVIRONMENT "H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}")
     endif()
+    if(APPLE AND TARGET h5reader_ring_current_case_tests)
+        set(H5READER_RINGCURRENT_VET_FIXTURE "" CACHE FILEPATH
+            "Complete 751-frame 1P9J DFT fixture for ring-current scientific acceptance")
+        set_property(TEST h5reader_ring_current_case_tests APPEND PROPERTY
+            ENVIRONMENT "H5READER_RINGCURRENT_VET_FIXTURE=${H5READER_RINGCURRENT_VET_FIXTURE}")
+        set_property(TEST h5reader_ring_current_case_tests PROPERTY
+            SKIP_REGULAR_EXPRESSION "SKIP.*tyr24Hd2Phe5FullDftCase")
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET h5reader_ring_current_case_tests)
         set_property(TEST h5reader_ring_current_case_tests APPEND PROPERTY
             ENVIRONMENT "H5READER_RINGCURRENT_VET_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}")
@@ -1062,7 +1095,7 @@ if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         endif()
     endif()
 
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
+    if((APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND H5READER_REQUIRE_EXPERIMENTAL_SHIELDING_ML)
         foreach(_ml_test IN ITEMS cpu installed_ml_stale_dev_env)
             if(_ml_test STREQUAL "cpu")
                 set(_ml_test_name h5reader_rest_ml_cpu)
@@ -1124,6 +1157,7 @@ endif()
 # ============================================================================
 
 install(TARGETS h5reader
+    BUNDLE DESTINATION . COMPONENT Runtime
     RUNTIME DESTINATION .
     COMPONENT Runtime
 )
@@ -1133,6 +1167,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     configure_file(cmake/LaunchLinuxCpu.sh.in launch-h5reader-cpu @ONLY)
     install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/launch-h5reader-cpu"
         DESTINATION . COMPONENT Runtime)
+elseif(APPLE)
+    include(DeployDarwin)
 endif()
 
 if(MSVC)

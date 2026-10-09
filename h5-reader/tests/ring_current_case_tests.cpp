@@ -44,9 +44,13 @@ QString fixturePath() {
     const QString env = qEnvironmentVariable("H5READER_RINGCURRENT_VET_FIXTURE");
     if (!env.isEmpty())
         return env;
+#ifdef Q_OS_WIN
     return QStringLiteral(
         "C:/projects/reader-data/1p9j-calibration-with-dft/"
         "1p9j-july20260717.LGS");
+#else
+    return {};
+#endif
 }
 
 void requireNear(double actual, double expected, double tolerance, const char* label) {
@@ -97,6 +101,12 @@ private slots:
 
 void RingCurrentCaseTests::tyr24Hd2Phe5FullDftCase() {
     const QString fixture = fixturePath();
+    if (fixture.isEmpty()) {
+        if (qEnvironmentVariableIntValue("H5READER_REQUIRE_RINGCURRENT_VET") == 1) {
+            QFAIL("Required ring-current acceptance needs H5READER_RINGCURRENT_VET_FIXTURE set to the complete 1P9J DFT fixture.");
+        }
+        QSKIP("Set H5READER_RINGCURRENT_VET_FIXTURE to run the complete 1P9J DFT acceptance case.");
+    }
     if (!QFileInfo::exists(fixture)) {
         QFAIL(qPrintable(QStringLiteral(
             "required 1P9J DFT fixture does not exist: %1").arg(fixture)));

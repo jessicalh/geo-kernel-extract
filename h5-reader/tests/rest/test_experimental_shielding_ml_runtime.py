@@ -45,11 +45,21 @@ LINUX_REQUIRED_RUNTIME_FILES = (
     "lib/libtorch_global_deps.so",
 )
 
-REQUIRED_RUNTIME_FILES = (
-    LINUX_REQUIRED_RUNTIME_FILES
-    if sys.platform == "linux"
-    else WINDOWS_REQUIRED_RUNTIME_FILES
+MACOS_REQUIRED_RUNTIME_FILES = (
+    "model.ts",
+    "manifest.json",
+    "infer",
+    "lib/libc10.dylib",
+    "lib/libtorch.dylib",
+    "lib/libtorch_cpu.dylib",
 )
+
+if sys.platform == "darwin":
+    REQUIRED_RUNTIME_FILES = MACOS_REQUIRED_RUNTIME_FILES
+elif sys.platform == "linux":
+    REQUIRED_RUNTIME_FILES = LINUX_REQUIRED_RUNTIME_FILES
+else:
+    REQUIRED_RUNTIME_FILES = WINDOWS_REQUIRED_RUNTIME_FILES
 
 REQUIRED_ROCM_FILES = (
     "infer.exe",
@@ -74,7 +84,7 @@ def _dev_runtime_present() -> bool:
     helper = Path(os.environ.get(HELPER_ENV, ""))
     if not all(path.is_file() for path in (model, manifest, helper)):
         return False
-    if sys.platform == "linux" and not os.access(helper, os.X_OK):
+    if sys.platform in {"linux", "darwin"} and not os.access(helper, os.X_OK):
         return False
     return all(
         (helper.parent / name).is_file()
@@ -87,6 +97,20 @@ def _installed_runtime_present() -> bool:
     binary = Path(os.environ.get("H5READER_BINARY", ""))
     if not binary.is_file():
         return False
+    if sys.platform == "darwin":
+        contents = binary.parent.parent
+        runtime = contents / "Resources" / "ml" / "experimental_shielding_ml"
+        helper = contents / "Helpers" / "infer"
+        return (
+            all((runtime / name).is_file() for name in ("model.ts", "manifest.json"))
+            and helper.is_file()
+            and os.access(helper, os.X_OK)
+            and all(
+                (contents / "Frameworks" / Path(name).name).is_file()
+                for name in MACOS_REQUIRED_RUNTIME_FILES
+                if name.startswith("lib/")
+            )
+        )
     runtime = binary.parent / "ml" / "experimental_shielding_ml"
     if not all((runtime / name).is_file() for name in REQUIRED_RUNTIME_FILES):
         return False
@@ -165,9 +189,9 @@ def test_experimental_shielding_ml_runtime_manifest_is_reported(rest):
         assert ml["inferenceError"].endswith(" is absent")
     preference = _device_preference()
     assert ml["devicePreference"] == preference
-    linux_cpu = sys.platform == "linux"
-    assert ml["configuredDevice"] == ("cpu" if linux_cpu or preference == "cpu" else "rocm")
-    assert ml["cpuFallbackConfigured"] is (not linux_cpu and preference == "auto")
+    native_cpu = sys.platform in {"linux", "darwin"}
+    assert ml["configuredDevice"] == ("cpu" if native_cpu or preference == "cpu" else "rocm")
+    assert ml["cpuFallbackConfigured"] is (not native_cpu and preference == "auto")
     assert ml["runtime"] in {"development", "installed"}
     if _expect_stale_dev_fallback():
         assert ml["runtime"] == "installed"
@@ -248,7 +272,7 @@ def test_experimental_shielding_ml_produces_a_dashboard_sample(rest):
         expected_active_device = os.environ.get(EXPECT_ACTIVE_DEVICE_ENV, "").lower()
         if expected_active_device:
             assert ml["activeDevice"] == expected_active_device
-        if sys.platform == "linux":
+        if sys.platform in {"linux", "darwin"}:
             assert ml["configuredDevice"] == "cpu"
             assert ml["activeDevice"] == "cpu"
             assert ml["cpuFallbackConfigured"] is False

@@ -34,7 +34,8 @@ class PublicationTests(unittest.TestCase):
     def setUp(self):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        # Match the publisher's resolution of aliases such as macOS /var.
+        self.root = Path(temporary.name).resolve()
         self.source = self.root / "source"
         self.extraction = self.source / "extraction"
         self.frames = [

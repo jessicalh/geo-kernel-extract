@@ -5,8 +5,11 @@
 #include "../diagnostics/ObjectCensus.h"
 
 #include <QEvent>
+#include <QGestureEvent>
 #include <QLoggingCategory>
 #include <QMouseEvent>
+#include <QNativeGestureEvent>
+#include <QPinchGesture>
 #include <QVTKOpenGLNativeWidget.h>
 #include <QWheelEvent>
 
@@ -71,6 +74,17 @@ bool CameraInputFilter::eventFilter(QObject* obj, QEvent* event) {
         }
         case QEvent::Wheel: {
             handleWheel(static_cast<QWheelEvent*>(event));
+            return true;
+        }
+        case QEvent::Gesture:
+            return handlePinch(static_cast<QGestureEvent*>(event));
+        case QEvent::NativeGesture: {
+            // Platforms such as Wayland can deliver native zoom directly.
+            // macOS normally consumes it in Qt's QPinchGesture recognizer.
+            auto* native = static_cast<QNativeGestureEvent*>(event);
+            if (native->gestureType() != Qt::ZoomNativeGesture) return false;
+            dolly(1.0 + native->value());
+            native->accept();
             return true;
         }
         default:
@@ -142,10 +156,7 @@ void CameraInputFilter::handleMouseMove(QMouseEvent* me) {
         case Gesture::None:
             break;
     }
-    if (scene_) {
-        scene_->syncCameraClippingRange();
-        scene_->requestRender(MoleculeScene::RenderSource::CameraInput);
-    }
+    if (scene_) scene_->refreshCameraForInput();
 }
 
 void CameraInputFilter::handleMouseUp(QMouseEvent* /*me*/) {
@@ -162,14 +173,41 @@ void CameraInputFilter::handleWheel(QWheelEvent* we) {
     if (!we || !composer_) return;
     const int angle = we->angleDelta().y();
     if (angle == 0) return;
+    dolly(std::exp(angle * kDollyPerWheelTick));
+}
+
+bool CameraInputFilter::handlePinch(QGestureEvent* event) {
+    ASSERT_THREAD(this);
+    auto* pinch = static_cast<QPinchGesture*>(event->gesture(Qt::PinchGesture));
+    if (!pinch) return false;
+    event->accept(pinch);
+    if (pinch->state() == Qt::GestureStarted)
+        lastPinchTotalScale_ = 1.0;
+    if (pinch->state() != Qt::GestureCanceled
+            && pinch->changeFlags().testFlag(QPinchGesture::ScaleFactorChanged)) {
+        // Use the cumulative scale to derive each increment exactly once.
+        // In particular, macOS retains the previous scale/change flags on
+        // GestureFinished and can interleave rotation-only updates.
+        const double total = pinch->totalScaleFactor();
+        if (std::isfinite(total) && total > 0.0) {
+            dolly(total / lastPinchTotalScale_);
+            lastPinchTotalScale_ = total;
+        }
+    }
+    if (pinch->state() == Qt::GestureFinished || pinch->state() == Qt::GestureCanceled)
+        lastPinchTotalScale_ = 1.0;
+    return true;
+}
+
+void CameraInputFilter::dolly(double factor) {
+    if (!composer_ || !std::isfinite(factor) || factor <= 0.0
+            || std::abs(factor - 1.0) < 1e-12)
+        return;
     CameraGesture g;
     g.kind = CameraGesture::Kind::Dolly;
-    g.dollyFactor = std::exp(angle * kDollyPerWheelTick);
+    g.dollyFactor = factor;
     composer_->applyGesture(g);
-    if (scene_) {
-        scene_->syncCameraClippingRange();
-        scene_->requestRender(MoleculeScene::RenderSource::CameraInput);
-    }
+    if (scene_) scene_->refreshCameraForInput();
 }
 
 }  // namespace h5reader::app

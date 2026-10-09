@@ -144,7 +144,11 @@ def test_run_load_rejects_bad_requests_without_replacing_the_run(rest, tmp_path)
     source_manifest = json.loads(source_lgs.read_text(encoding="utf-8"))
     if source_manifest.get("kind") == "trajectory":
         trajectory = source_manifest["trajectory"]
-        for key in ("md_dir", "topology_top", "extraction_dir", "extraction_manifest"):
+        # Published Reader packages may omit the raw-MD provenance paths.
+        path_keys = ("extraction_dir", "extraction_manifest") + tuple(
+            key for key in ("md_dir", "topology_top") if key in trajectory
+        )
+        for key in path_keys:
             value = Path(trajectory[key])
             if not value.is_absolute():
                 value = (source_lgs.parent / value).resolve()

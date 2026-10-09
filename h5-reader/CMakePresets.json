@@ -48,7 +48,7 @@
             "name": "mac-base",
             "hidden": true,
             "inherits": "base",
-            "displayName": "macOS base (Qt Pro installer, VTK from source, HDF5 1.14 brew)",
+            "displayName": "macOS base (selected Qt SDK, matching VTK, independent HDF5)",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",
