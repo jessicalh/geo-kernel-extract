@@ -101,7 +101,13 @@ ReaderCollectionDialog::ReaderCollectionDialog(ReaderCollection collection, QWid
               .filePath(QStringLiteral("reader-buffer"))
         : bufferRoot;
     installedRoot_ = installedRoot.isEmpty()
-        ? QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("datasets")) : installedRoot;
+        ? QDir(QCoreApplication::applicationDirPath())
+#ifdef Q_OS_MACOS
+              .filePath(QStringLiteral("../Resources/datasets"))
+#else
+              .filePath(QStringLiteral("datasets"))
+#endif
+        : installedRoot;
     buffer_ = std::make_unique<sciencefiles::BundleCache>(bufferRoot_, this);
     using Cache = sciencefiles::BundleCache;
     connect(buffer_.get(), &Cache::stateChanged, this, [this](Cache::State state) {
