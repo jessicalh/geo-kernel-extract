@@ -227,3 +227,15 @@ The acceptance script is retained at `work/acceptance/validate_macos_starter.py`
 - [Qt for macOS deployment and bundle layout](https://doc.qt.io/qt-6/macos-deployment.html)
 - [Qt pinch gestures](https://doc.qt.io/qt-6/qpinchgesture.html)
 - [Qt native gesture events and zoom increments](https://doc.qt.io/qt-6/qnativegestureevent.html)
+
+## Shutdown regression found during package acceptance
+
+The automated test identified two real shutdown crashes in preview `3583f54`, not successful closes. Qt plugin-unload logging reached a destroyed StructuredLogger QObject/category map. Local checkpoint `db081f8` restores the previous message handler during logger destruction and process exit, clears the singleton, and gives category lookup constant storage. Both new portable lifecycle/exit CTest cases pass; plugin-debug help/version/error exits return their expected codes.
+
+The replacement DMG is `H5-Reader-0.5.0-preview-db081f8-macOS-arm64.dmg`, 779,997,908 bytes, SHA-256 `abc8e9de40538312e5e043cfbccb4041f12279a1236ae8cd2dd29bbdb6372003`. Executable/dSYM UUID: `D55E123C-A693-3AF9-8F12-385BB16640FC`. Original model and 26,310 starter files are unchanged.
+
+The cross-UID borrowed-desktop test method was retired because Apple's sandboxed helper rejected its mismatched user/session identity. The temporary account and data are removed. In the corrected same-UID isolated run, 17 containment controls passed; CPU/reference inference, archive/cache behavior, all 176 catalogue choices, and 12-frame video export passed. Runtime tracing found only bundle/system libraries. A supervised shutdown returned 0 with no new crash reports, including a delayed recheck. The main user's preferences were unchanged through isolation; its corrected live Reader was reopened with the previous run, frame, selection and camera.
+
+One HTTPS retry timed out after 60 seconds; the subsequent retry appended 548,864 bytes while preserving the existing prefix. Retain this qualification: the complete functional controller recorded failure at that timeout, followed by a separate successful resume check. The exact cause remains unproven. Native preference writes were intentionally blocked in this isolation mode, so fresh-user settings persistence is not claimed.
+
+See `MACOS_DISTRIBUTION_READINESS_2026-10-09.md` for the full evidence and limits. Current manifest: `work/logs/macos-logger-fixed-manifest.json`. Corrected-package evidence and scripts: `work/acceptance/macos-fixed-preview-db081f8`. Original failed-test evidence and symbols are retained separately. No Qt SDK modifications, remote commits or uploads were made.

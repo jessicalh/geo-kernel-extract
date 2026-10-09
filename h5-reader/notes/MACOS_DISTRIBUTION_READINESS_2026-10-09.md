@@ -12,7 +12,7 @@ Keep release packaging in the Darwin deployment layer. Retain the independent Wi
 
 | Item | Observed state |
 | --- | --- |
-| Application | Version `0.5.0`, native arm64 executable; 1,467,232,549 regular-file bytes including the starter (about 1.37 GiB) |
+| Application | Version `0.5.0`, native arm64 executable; 1,467,229,445 regular-file bytes including the starter (about 1.37 GiB) |
 | Native dependencies | 125 Mach-O files inspected; every file supports arm64. The installed deployment audit resolves all non-system runtime dependencies inside the bundle |
 | Load commands | No absolute non-system dependency loads or absolute install IDs remain. Two Torch libraries retain an unused upstream build RPATH; remove it from release copies before final signing |
 | OS floor | Bundle and highest dependency minimum are macOS 14.4. Execution has only been checked on this macOS 27 host |
@@ -20,11 +20,11 @@ Keep release packaging in the Darwin deployment layer. Retain the independent Wi
 | Signature | Deep, strict ad-hoc signature verification passes. Gatekeeper execution assessment returns `rejected` (exit 3); this is not a distribution signature |
 | Signing capability | One valid `Developer ID Application: Jessica Hansberry (5P76G9955J)` identity is present. Xcode's `notarytool` and `stapler` are installed. Notarization authentication has not been verified |
 | Package generator | A local CPack `DragNDrop` configuration packages the installed app. The project's non-Windows default remains `TGZ`; release signing/notarization automation is still separate work |
-| Debug recovery | Matching executable/dSYM UUID `3645CF43-3D86-36C3-B576-D33B8334C9A4`; dSYM retained separately |
+| Debug recovery | Matching executable/dSYM UUID `D55E123C-A693-3AF9-8F12-385BB16640FC`; dSYM retained separately |
 | User data | Reader instance data and download caches use Qt user locations; inference intermediates use a temporary directory; crash reports use the user's data directory. Opening the starter and predicting from the read-only DMG passed |
 | Included data | Original model/manifest and BMRB 4976 heliomicin-LL, 625 atoms and 100 frames. Its 26,310 files match the current Windows starter byte for byte |
 
-The current executable SHA-256 is `98ad321a98de69dd918706089dacd2eb79634b92ab02efa7e01e6b6836afae0c`. The unchanged model SHA-256 is `101eba14f6a6e891fdf558f5126411b71ca042a9cfe09c67b98f86aa3ee79ff6`. The current package manifest is `work/logs/macos-starter-manifest.json`; the earlier general dependency audit remains in `work/logs/macos-distribution-audit.json`. The two unused Torch RPATHs are in `libtorch.dylib` and `libtorch_cpu.dylib`, both referring to `/Users/runner/work/pytorch/pytorch/pytorch/build/lib`; this is upstream build metadata, not a currently resolved external dependency.
+The current executable SHA-256 is `5801eac4d04dd6a27c1ae4e8f8aee94048243dd5a6961169ad92936ba2c55ed3`. The unchanged model SHA-256 is `101eba14f6a6e891fdf558f5126411b71ca042a9cfe09c67b98f86aa3ee79ff6`. The current package manifest is `work/logs/macos-logger-fixed-manifest.json`; the preceding starter comparison is `work/logs/macos-starter-manifest.json`; the earlier general dependency audit remains in `work/logs/macos-distribution-audit.json`. The two unused Torch RPATHs are in `libtorch.dylib` and `libtorch_cpu.dylib`, both referring to `/Users/runner/work/pytorch/pytorch/pytorch/build/lib`; this is upstream build metadata, not a currently resolved external dependency.
 
 Existing validation includes 32/32 bounded CTest cases, 66 passing main REST cases with 22 explicit skips, the original F006 CPU scientific reference, relocated launch/inference, 12 passing pinch/picking cases, and native toolbar/checkbox checks. The broad suites preceded the focused camera and drawing follow-ups; those follow-ups have their own validation. These checks do not substitute for testing the final signed download on a second Mac. Exact coverage and unresolved observations are in `MACOS_BUILD_AND_VALIDATION_2026-10-09.md`.
 
@@ -32,7 +32,7 @@ Existing validation includes 32/32 bounded CTest cases, 66 passing main REST cas
 
 A limited tester handoff can precede the public-release work below. After an initial blocked launch, a tester can normally approve this ad-hoc-signed app through **System Settings > Privacy & Security > Open Anyway**. This is an exception for the individual app, without disabling Gatekeeper generally; managed Macs may restrict it. [Apple's instructions](https://support.apple.com/en-gb/102445).
 
-The current preview is `outputs/H5-Reader-0.5.0-preview-3583f54-macOS-arm64.dmg`, **779,999,675 bytes** (780 MB / about 744 MiB), with a sibling `.sha256` file. SHA-256: `26a7856e8cd7db827d8a863a6d37adab055177612ca13df776d7efa15a229cc1`. It contains the app from source checkpoint `3583f54`, its included starter, an Applications shortcut, and `Read Me.txt` covering installation, starter selection, offline opening, other downloads, and reporting problems. Debug symbols are retained separately. No upload was performed.
+The current preview is `outputs/H5-Reader-0.5.0-preview-db081f8-macOS-arm64.dmg`, **779,997,908 bytes** (780 MB / about 744 MiB), with a sibling `.sha256` file. SHA-256: `abc8e9de40538312e5e043cfbccb4041f12279a1236ae8cd2dd29bbdb6372003`. It contains the app from source checkpoint `db081f8`, its included starter, an Applications shortcut, and `Read Me.txt` covering installation, starter selection, offline opening, other downloads, and reporting problems. Debug symbols are retained separately. No upload was performed.
 
 The first 130,678,128-byte preview at `ef98b7c` omitted the starter and is superseded. Its historical SHA-256 was `a5f5d3fb835d292849f16ba42fe88f87017255a872c215276e0b221edc746a9b`. The omission was not a requirement of drag-to-Applications installation. The catalogue dialog also needed its default Mac lookup changed from the executable's `datasets` sibling to `Contents/Resources/datasets`, matching the existing Mac install rule and File > Open default. Windows and Linux retain their existing paths.
 
@@ -50,6 +50,33 @@ CPack's `DragNDrop` generator packaged the installed app without rebuilding or m
 The existing native trajectory-library suite passed with 70 Qt test cases and one explicit skip for its separate, unspecified local-archive fixture; the actual public download and packaged opening were checked above. This remains same-Mac acceptance, not clean-machine or older-OS acceptance. Windows still includes its AMD GPU inference runtime; Mac uses CPU inference with the byte-identical original model. Equal run choices do not imply equal installer sizes or GPU backends.
 
 Evidence is retained under `work/logs/macos-starter-*`, `windows-starter-file-manifest.json`, `windows-mac-starter-comparison.json`, and `work/acceptance/visual/mac-packaged-catalog.png`. The local packaging configuration is `work/logs/macos-preview-CPackConfig.cmake`; `work/acceptance/validate_macos_starter.py` repeats the mounted-app acceptance. Matching debug symbols remain in `outputs/h5reader.app.dSYM`.
+
+## Corrected shutdown and stronger same-Mac acceptance
+
+The preceding `3583f54` preview is superseded. During automated package testing with `QT_DEBUG_PLUGINS=1`, both test Reader processes crashed after shutdown had been requested. Qt plugin unload messages reached the application's logger after its QObject or dynamically initialized category map had been destroyed. Disappearance of the process and an HTTP shutdown response were insufficient evidence of a clean exit; the original claim of clean shutdown was wrong.
+
+Checkpoint `db081f8` fixes this shared-code lifetime defect without a platform branch or SDK change. The logger restores the previous Qt message handler before its members/base are destroyed, clears its singleton pointer, and also unhooks at process exit for command-line paths which call `exit()` without stack teardown. Category lookup now uses a constant table. Application workers already stop before QApplication teardown. Two portable CTest cases cover normal and direct process exit, prior-handler restoration, late static-destructor logging and category lookup, installation idempotence, and actual worker-thread UDP delivery. Both pass. Help, version, unknown-option, and invalid-port invocations also return their expected codes with plugin diagnostics enabled.
+
+A disposable standard account was initially used within the existing user's graphical session. It could render OpenGL and persist native preferences, but Apple's sandboxed Safari helper rejected the mismatch between process UID503 and session UID501 and crashed before its own main function. This method is rejected as full application acceptance. Seven earlier diagnostic probe aborts came from an overly restrictive initial process policy; their reports are also retained. The temporary account and its complete home were removed through the native account service after macOS's administration-files prompt was approved. No SSH account, Qt installation, security setting, or system framework was changed.
+
+The corrected DMG was then exercised as the real desktop user with a process-only sandbox, a private temporary home/cache, blocked preference writes, and reads denied to the Qt SDK, source/build trees, Homebrew, and compiler installation. The application remained on its read-only mounted disk image. All 17 containment controls passed. This avoids mixing user identities; it deliberately does **not** establish fresh-user native preference persistence. The existing user's Reader preferences remained byte-identical throughout the isolated test.
+
+| Corrected-package check | Evidence |
+| --- | --- |
+| Starter and CPU model | 625 atoms/100 frames; prediction and visibility/frame changes; original model unchanged |
+| Archive and cached data | F006 native extraction, cached reopening with the archive temporarily absent, cache removal; unchanged scientific scalar reference 29.76103401184082 ppm |
+| Run selection | All 176 published catalogue choices match |
+| Video | Packaged media libraries export 12 frames to a path containing spaces and an accented character; independent decoding confirms 12 distinct frames |
+| Download cancellation/retry | First attempt preserved 1,069,056 bytes. One retry stalled for the controller's 60-second deadline. A later retry in the same Reader appended to 1,617,920 bytes in about 1.1 seconds and preserved the prefix SHA. Both observations remain recorded |
+| Runtime independence | Main executable, three inference launches, TLS, multimedia, archive and compression libraries resolve only inside the bundle or to macOS system libraries; no development paths loaded |
+| Shutdown | Supervising parent collected actual exit code 0; delayed crash scan and a later recheck found no new reports |
+| Package integrity | Mounted/staged inventories match all 26,844 entries; disk-image checksum and deep strict ad-hoc signature pass; executable/dSYM UUIDs match |
+
+The download stall's cause is not established. The controller's 60-second deadline coincides with the application's inactivity timeout, so it cancelled before independently observing the application's timeout handling. A separate bounded HTTPS request returned HTTP 206 for the saved offset; this is server support evidence, not a capture of Reader's own HTTP response. Do not erase the failed first retry or label the functional controller's entire run as passing. Four functional groups passed before that timeout, and a separately recorded follow-up verified resumed bytes and unchanged prefix.
+
+Evidence and repeatable scripts are in `work/acceptance/macos-fixed-preview-db081f8`; the retired method and fully symbolicated crashes are in `work/acceptance/macos-standard-user-2026-10-09`, with Apple helper reports under `work/acceptance/account-agent/safari-helper-crashes`. The original crash executable and matching dSYM are retained there; the current symbols are `outputs/h5reader.app.dSYM`. The corrected application was reopened in the normal account with the prior run, frame 8, atom302 and camera restored.
+
+These checks provide stronger evidence that the bundle carries its dependencies, on this Apple M3 and macOS 27.0.1. They do not test another hardware/OS installation, native file-picker interaction, browser quarantine/notarization, or a genuine separate GUI login. Existing release gates below still apply. Changes and notes were committed locally only; no push or upload occurred.
 
 ## Work required before a public release
 
