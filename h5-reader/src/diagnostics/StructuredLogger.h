@@ -69,7 +69,7 @@ public:
     // are no-ops.
     static void Install();
 
-    // Singleton pointer. Null before Install().
+    // Singleton pointer. Null before Install() and after application teardown.
     static StructuredLogger* Instance();
 
     // Runtime category-mask setter / reader. Atomic so REST handlers
@@ -98,7 +98,7 @@ public:
 
 private:
     explicit StructuredLogger(const QHostAddress& host, quint16 port);
-    ~StructuredLogger() override = default;
+    ~StructuredLogger() override;
 
     QUdpSocket   udp_;
     QHostAddress host_;

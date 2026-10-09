@@ -15,7 +15,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <unordered_map>
 #include <utility>
 
 #ifdef _WIN32
@@ -30,7 +29,19 @@ namespace h5reader::diagnostics {
 
 namespace {
 StructuredLogger* g_instance = nullptr;
+QtMessageHandler g_previousMessageHandler = nullptr;
 std::atomic<std::uint32_t> g_categoryMask{kDefaultLogMask};
+
+// Stop routing messages into the QObject before it is destroyed. Qt plugins
+// may still log during QApplication teardown and static destruction. This
+// also runs at process exit for QCommandLineParser's help/version paths,
+// which call exit() without destroying the application on the stack.
+void RestoreMessageHandler() {
+    if (!g_instance) return;
+    g_instance = nullptr;
+    qInstallMessageHandler(g_previousMessageHandler);
+    g_previousMessageHandler = nullptr;
+}
 
 // Category-name to bit table. The keys match the strings passed to
 // Q_LOGGING_CATEGORY in each module. Categories without a row here are
@@ -39,8 +50,10 @@ std::atomic<std::uint32_t> g_categoryMask{kDefaultLogMask};
 // New categories that should be mask-gated: add a row here, declare the
 // bit constant in StructuredLogger.h, and surface the symbolic name in
 // the symbolic-names table below.
-const std::unordered_map<std::string, std::uint32_t>& CategoryBitTable() {
-    static const std::unordered_map<std::string, std::uint32_t> table = {
+// No dynamic initialization or destruction: category lookup must remain valid
+// even for diagnostics emitted by other objects' static destructors.
+struct CategoryEntry { const char* name; std::uint32_t bits; };
+constexpr CategoryEntry kCategoryTable[] = {
         // Render scheduler + EndEvent observer
         {"h5reader.scene",           kCatRender | kCatFrame},
         // Camera composer
@@ -61,9 +74,7 @@ const std::unordered_map<std::string, std::uint32_t>& CategoryBitTable() {
         {"h5reader.threadguard",     kCatHealth},
         // Overlay categories
         {"h5reader.overlay.measurement", kCatOverlay | kCatPicker},
-    };
-    return table;
-}
+};
 
 // Symbolic names for REST surface. Order matches the bit positions.
 struct SymbolEntry { const char* name; std::uint32_t bit; };
@@ -129,7 +140,9 @@ void StructuredLogger::Install() {
         g_instance->setParent(app);   // lifetime follows QApp
     }
 
-    qInstallMessageHandler(&QtMessageHandler);
+    g_previousMessageHandler = qInstallMessageHandler(&QtMessageHandler);
+    if (std::atexit(&RestoreMessageHandler) != 0)
+        qFatal("Cannot register structured logging shutdown");
     qInfo().noquote() << "StructuredLogger installed — UDP target"
                       << host.toString() << ":" << port
                       << "| category mask = 0x" << QString::number(g_categoryMask.load(), 16);
@@ -170,15 +183,23 @@ QStringList StructuredLogger::SymbolicNamesFromMask(std::uint32_t mask) {
 
 std::uint32_t LogCategoryMaskFor(const char* categoryName) {
     if (!categoryName) return 0;
-    const auto& table = CategoryBitTable();
-    auto it = table.find(std::string(categoryName));
-    if (it == table.end()) return 0;
-    return it->second;
+    for (const auto& entry : kCategoryTable) {
+        if (std::strcmp(entry.name, categoryName) == 0)
+            return entry.bits;
+    }
+    return 0;
 }
 
 StructuredLogger::StructuredLogger(const QHostAddress& host, quint16 port)
     : host_(host), port_(port) {
     // No bind — writeDatagram() picks an ephemeral outbound port.
+}
+
+StructuredLogger::~StructuredLogger() {
+    // Reader stops its workers before QApplication deletes its children.
+    // Detach here, before udp_ and QObject's thread data are destroyed.
+    if (g_instance == this)
+        RestoreMessageHandler();
 }
 
 void StructuredLogger::Emit(QtMsgType type,

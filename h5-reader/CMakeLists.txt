@@ -403,6 +403,22 @@ if(COMMAND h5reader_apply_build_type_settings)
 endif()
 
 if(BUILD_TESTING)
+    qt_add_executable(h5reader_structured_logger_lifetime_tests
+        tests/structured_logger_lifetime_tests.cpp
+        src/diagnostics/StructuredLogger.cpp
+        src/diagnostics/StructuredLogger.h
+    )
+    target_include_directories(h5reader_structured_logger_lifetime_tests PRIVATE src)
+    target_link_libraries(h5reader_structured_logger_lifetime_tests PRIVATE Qt6::Core Qt6::Network)
+    h5reader_apply_platform_target_settings(h5reader_structured_logger_lifetime_tests)
+    add_test(NAME h5reader_structured_logger_lifetime_tests
+        COMMAND h5reader_structured_logger_lifetime_tests)
+    add_test(NAME h5reader_structured_logger_exit_tests
+        COMMAND h5reader_structured_logger_lifetime_tests --exit)
+    set_tests_properties(
+        h5reader_structured_logger_lifetime_tests h5reader_structured_logger_exit_tests
+        PROPERTIES TIMEOUT 15)
+
     add_executable(h5reader_special_functions_tests tests/special_functions_tests.cpp)
     set_target_properties(h5reader_special_functions_tests PROPERTIES
         AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
