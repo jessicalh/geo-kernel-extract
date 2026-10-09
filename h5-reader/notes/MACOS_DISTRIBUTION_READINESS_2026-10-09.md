@@ -2,7 +2,7 @@
 
 ## Recommendation and scope
 
-Ship the first Mac release as an **Apple Silicon application in a Developer ID signed, notarized DMG**, with a drag-to-Applications installation. The existing bundle already carries Qt, VTK, HDF5, archive support, the native CPU inference helper, and the original model. End users should not need Qt, Homebrew, Python, or a compiler. A clean-machine test must confirm that conclusion for the final signed package.
+Ship the first public Mac release as an **Apple Silicon application in a Developer ID signed, notarized DMG**, with a drag-to-Applications installation. The existing bundle already carries Qt, VTK, HDF5, archive support, the native CPU inference helper, and the original model. End users should not need Qt, Homebrew, Python, or a compiler. A clean-machine test must confirm that conclusion for the final signed package.
 
 This is an assessment accompanying the local source checkpoint, not a public-release declaration. No release signing, notarization submission, upload, or remote Git push was performed. The current development application remains available at `outputs/h5reader.app`, relative to the workspace containing `h5-reader-project` and `work`.
 
@@ -28,7 +28,17 @@ The inspected executable SHA-256 is `a8d38630ec0627a384d656d9d0896e0fd9babccde97
 
 Existing validation includes 32/32 bounded CTest cases, 66 passing main REST cases with 22 explicit skips, the original F006 CPU scientific reference, relocated launch/inference, 12 passing pinch/picking cases, and native toolbar/checkbox checks. The broad suites preceded the focused camera and drawing follow-ups; those follow-ups have their own validation. These checks do not substitute for testing the final signed download on a second Mac. Exact coverage and unresolved observations are in `MACOS_BUILD_AND_VALIDATION_2026-10-09.md`.
 
-## Work required before external distribution
+## Testing preview packaged at the user's request
+
+A limited tester handoff can precede the public-release work below. After an initial blocked launch, a tester can normally approve this ad-hoc-signed app through **System Settings > Privacy & Security > Open Anyway**. This is an exception for the individual app, without disabling Gatekeeper generally; managed Macs may restrict it. [Apple's instructions](https://support.apple.com/en-gb/102445).
+
+The preview is `outputs/H5-Reader-0.5.0-preview-ef98b7c-macOS-arm64.dmg`, **130,678,128 bytes** (about 125 MiB), with a sibling `.sha256` file. SHA-256: `a5f5d3fb835d292849f16ba42fe88f87017255a872c215276e0b221edc746a9b`. It contains the unchanged app from source checkpoint `ef98b7c`, an Applications shortcut, and a short `Read Me.txt` covering installation, developer approval, opening data, and reporting problems. Datasets and debug symbols are not included. No upload was performed.
+
+CPack's `DragNDrop` generator packaged the already installed application without rebuilding or re-signing it. All 534 file/symlink inventory entries match the original bundle, including regular-file contents and executable permissions. Disk-image integrity, SHA-256, and the packaged app's deep strict signature check passed. The three existing F006 runtime, scientific scalar, and scene/inspector tests passed in 3.21 seconds directly from the read-only mounted image, in a path containing spaces. The native process used a system-only PATH with development runtime overrides cleared; additional assertions confirmed the installed CPU runtime. This remains a same-Mac check, not clean-machine or older-OS acceptance.
+
+Packaging configuration, manifest, and test evidence are in `work/logs/macos-preview-CPackConfig.cmake`, `macos-preview-manifest.json`, `macos-preview-f006.log`, `.xml`, and `macos-preview-installed-runtime.json`. The first test attempt encountered the expected single-instance guard while the existing Reader was open. After saving and closing that instance, the package tests passed and the original app was reopened with its dataset, frame, selection, overlays, and camera restored. Matching debug symbols remain in `outputs/h5reader.app.dSYM`.
+
+## Work required before a public release
 
 ### 1. Establish release identity and metadata
 
