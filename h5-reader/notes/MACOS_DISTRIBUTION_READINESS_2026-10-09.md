@@ -124,3 +124,14 @@ Run fresh Linux and Windows builds/tests before presenting the checkpoint as a v
 - **Updates:** start with replacement of the application while preserving user data. Automatic updating and an Intel build can be separate work if needed.
 
 The remaining work is chiefly a controlled release process and external acceptance, rather than rebuilding the application's portability architecture. The local checkpoint is a recoverable development milestone; the gates above define what would justify calling its Mac package ready to distribute.
+
+
+## 11 October: Qt Cocoa crash correction
+
+The old notarized `db081f8` DMG is superseded for further testing after a native
+accessibility crash in the run picker. A separately built, exact-version Qt
+Cocoa ownership backport now passes the original/fixed regression, native
+accessibility suite, sanitizer checks, and real Reader picker scans. See
+[the crash diagnosis and quality-tool results](MACOS_QT_ACCESSIBILITY_FIX_2026-10-11.md).
+The changed bundle requires its own notarization; the older ticket cannot be
+carried over. The installed Qt SDK and Linux/Windows deployment paths are unchanged.

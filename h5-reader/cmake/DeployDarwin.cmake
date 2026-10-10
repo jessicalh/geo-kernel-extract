@@ -17,6 +17,26 @@ set_target_properties(h5reader PROPERTIES
     INSTALL_RPATH "@executable_path/../Frameworks"
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 
+# Optional, independently built Qt 6.12.0 Cocoa ownership backport. Deploy into
+# a clean staging prefix; NO_OVERWRITE keeps macdeployqt from replacing it with
+# the SDK plugin. Other platforms and ordinary SDK deployment are unchanged.
+set(H5READER_MACOS_COCOA_PLUGIN "" CACHE FILEPATH
+    "Qt 6.12.0 Cocoa plugin built by tools/macos/qt-cocoa with QTBUG-149612 fixed")
+set(_darwin_cocoa_copy "")
+set(_darwin_cocoa_no_overwrite "")
+if(H5READER_MACOS_COCOA_PLUGIN)
+    if(NOT Qt6_VERSION VERSION_EQUAL "6.12.0")
+        message(FATAL_ERROR "The Cocoa ownership backport must match Qt 6.12.0 exactly")
+    endif()
+    if(NOT EXISTS "${H5READER_MACOS_COCOA_PLUGIN}")
+        message(FATAL_ERROR "Build H5READER_MACOS_COCOA_PLUGIN before deploying Reader")
+    endif()
+    get_filename_component(H5READER_MACOS_COCOA_PLUGIN "${H5READER_MACOS_COCOA_PLUGIN}" ABSOLUTE)
+    set(_darwin_cocoa_copy
+        "file(MAKE_DIRECTORY \"\${_bundle}/Contents/PlugIns/platforms\")\nfile(COPY \"${H5READER_MACOS_COCOA_PLUGIN}\" DESTINATION \"\${_bundle}/Contents/PlugIns/platforms\")\n")
+    set(_darwin_cocoa_no_overwrite "    NO_OVERWRITE\n")
+endif()
+
 # CMake removes development RPATHs from the installed executable. Discover the
 # native dylib closure from the build binaries while their original RPATHs are
 # available; macdeployqt's -libpath does not resolve these third-party @rpaths.
@@ -46,9 +66,10 @@ foreach(_dependency IN LISTS _native_resolved)
             FOLLOW_SYMLINK_CHAIN)
     endif()
 endforeach()
+${_darwin_cocoa_copy}
 qt6_deploy_runtime_dependencies(
     EXECUTABLE \"$<TARGET_BUNDLE_DIR_NAME:h5reader>\"
-${_darwin_helper_argument}    DEPLOY_TOOL_OPTIONS -no-strip)
+${_darwin_helper_argument}${_darwin_cocoa_no_overwrite}    DEPLOY_TOOL_OPTIONS -no-strip)
 
 set(_main_executable \"\${_bundle}/Contents/MacOS/$<TARGET_FILE_NAME:h5reader>\")
 set(_executables \"\${_main_executable}\")
@@ -79,6 +100,10 @@ endforeach()
 message(STATUS \"macOS runtime bundle validated at \${_bundle}\")
 ")
 set(_darwin_notices "$<TARGET_BUNDLE_DIR_NAME:h5reader>/Contents/Resources/licenses")
+if(H5READER_MACOS_COCOA_PLUGIN)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/tools/macos/qt-cocoa/QTBUG-149612.patch"
+        DESTINATION "${_darwin_notices}/Qt-Cocoa-backport" COMPONENT Runtime)
+endif()
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../extern/HighFive/LICENSE"
     "${CMAKE_CURRENT_SOURCE_DIR}/../extern/HighFive/AUTHORS.txt"
     DESTINATION "${_darwin_notices}/HighFive" COMPONENT Runtime OPTIONAL)

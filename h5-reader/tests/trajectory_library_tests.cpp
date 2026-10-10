@@ -6,6 +6,7 @@
 #include "model/AtomSelection.h"
 #include "model/TransformedConformation.h"
 
+#include <QAbstractItemModelTester>
 #include <QDateTime>
 #include <QDialog>
 #include <QDir>
@@ -194,6 +195,36 @@ private slots:
         QCOMPARE(window.findChildren<ReaderCollectionDialog*>().size(), 1);
         QVERIFY(!dialog->isBusy());
         QVERIFY(!dialog->isVisible());
+    }
+
+    void tableModelRemainsConsistentAcrossFilteringAndCatalogReplacement() {
+        ReaderCollectionDialog dialog({}, nullptr, buffer_, installed_);
+        auto* table = dialog.findChild<QTableWidget*>("collectionTable");
+        auto* search = dialog.findChild<QLineEdit*>("collectionSearch");
+        QVERIFY(table);
+        QVERIFY(search);
+        QAbstractItemModelTester modelTester(table->model(),
+            QAbstractItemModelTester::FailureReportingMode::QtTest);
+
+        QString error;
+        QVERIFY2(dialog.setCollection(collection_, &error), qPrintable(error));
+        table->selectRow(1);
+        search->setText("Trp-cage");
+        QCOMPARE(table->currentRow(), 0);
+        QCOMPARE(table->selectionModel()->selectedRows().size(), 1);
+        search->setText("no matches");
+        QVERIFY(table->selectionModel()->selectedRows().isEmpty());
+        search->clear();
+
+        const QPersistentModelIndex oldIndex(table->model()->index(0, 0));
+        QVERIFY2(dialog.setCollection({}, &error), qPrintable(error));
+        QVERIFY(!oldIndex.isValid());
+        QCOMPARE(table->rowCount(), 0);
+        QVERIFY(table->selectionModel()->selectedRows().isEmpty());
+        QVERIFY2(dialog.setCollection(collection_, &error), qPrintable(error));
+        QCOMPARE(table->rowCount(), 2);
+        QCOMPARE(table->columnCount(), 6);
+        QCOMPARE(table->item(1, 1)->text(), QStringLiteral("Ubiquitin"));
     }
 
     void emptyWindowOpensWebsiteOnlyWhenChosen() {
