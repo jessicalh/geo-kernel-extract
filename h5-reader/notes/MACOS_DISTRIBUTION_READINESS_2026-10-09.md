@@ -135,3 +135,16 @@ accessibility suite, sanitizer checks, and real Reader picker scans. See
 [the crash diagnosis and quality-tool results](MACOS_QT_ACCESSIBILITY_FIX_2026-10-11.md).
 The changed bundle requires its own notarization; the older ticket cannot be
 carried over. The installed Qt SDK and Linux/Windows deployment paths are unchanged.
+
+## Accepted Mac alpha handoff — 11 October 2026
+
+The corrected `921e27d` Mac alpha is now Developer ID signed, Apple accepted,
+stapled, and verified through an actual quarantined Safari download and normal
+Finder installation. The live picker, included Windows-matching starter,
+Chignolin, normal quit, and desktop alias passed on this Mac. The final image
+and matching symbols are on Batcave with remote SHA-256 verification. See
+[the final crash-fix and handoff record](MACOS_QT_ACCESSIBILITY_FIX_2026-10-11.md)
+for the exact artifact, Apple submission, test counts, analyzer qualifications,
+and same-machine limits. Earlier preview hashes and unsigned/ad-hoc install
+guidance above are historical; use the corrected notarized alpha for testing.
+The user has authorized pushing these local Reader changes to GitHub.

@@ -87,6 +87,84 @@ The earlier notarized `db081f8` DMG contains the original Qt plugin and is
 superseded for new testing by this correction. Its notarization does **not**
 cover the changed bundle. A replacement DMG needs fresh Developer ID signing,
 Apple notarization, ticket stapling, and final package checks before being
-presented as the distributable candidate. No Git push or public release is
-part of this repair. This Mac's results are not evidence of testing on another
-Mac, older supported macOS, Linux, or Windows.
+presented as the distributable candidate. The user subsequently authorized a
+tested Batcave handoff and pushing the local source commits to GitHub. Those
+distribution checks are recorded below. This Mac's results are not evidence of testing on another Mac, older
+supported macOS, Linux, or Windows.
+
+## Signed runtime check before the final handoff
+
+The signed replacement also passed a bounded check with a disposable home,
+development paths denied, and native preference writes blocked. Its bundled
+CPU helper predicted the included starter at frames 0 and 1; its bundled video
+plugin exported 12 frames; the original F006 atom-16 scientific reference was
+exactly **29.76103401184082 ppm** (tolerance 0.001). The corrected Cocoa plugin
+loaded from the app, the process exited with code **0**, and no new Reader
+crash reports appeared during that passing run. This is same-machine runtime
+evidence, not a claim of a second Mac or separate native login.
+
+One preceding test placement was invalid: the app was inside the very
+development directory that the isolation policy denied. Qt could not discover
+its platform plugin and deliberately aborted before GUI initialization
+(PID 16149, `h5reader-2026-10-11-011125.ips`). Moving an identical signed test
+copy outside the denied development roots resolved this harness error. The
+failed attempt, crash report, logs, and successful rerun are all retained under
+`work/acceptance/macos-qt-accessibility-fix/runtime-smoke-attempts` and
+`runtime-smoke`. The installed Reader remained running during that abort.
+
+## Final notarized alpha and Batcave handoff
+
+Build checkpoint: **921e27d86f22531450540283b5f72dc769f59884**. These final
+notes are a documentation-only follow-up to that packaged source.
+
+- DMG: `H5-Reader-0.5.0-alpha-921e27d-macOS-arm64.dmg`
+- Final stapled size: **780,514,122 bytes**
+- SHA-256: `fbff001783fecdc3b246ebb0d03e154e68d3177896b024f674bf72d93bd211af`
+- Developer ID: Jessica Hansberry, team `5P76G9955J`; hardened runtime and
+  timestamp, with no runtime exception entitlements.
+- Apple submission: `3254587d-b196-48dd-b80d-2a69ae70c719`, **Accepted**.
+  Apple's validation log reports **Ready for distribution** and no issues.
+- DMG ticket stapling/validation, image integrity, strict signature checks,
+  and Gatekeeper assessments pass. The installed app is assessed as
+  **Notarized Developer ID**.
+
+A real Safari download of this final image matched its SHA-256 and carried
+`com.apple.quarantine`. Finder copied it from the mounted image into
+`/Applications`, replacing the earlier app, while retaining quarantine. The
+ordinary Internet-download confirmation explicitly said Apple checked it for
+malicious software and none was detected. The normal **Open** button launched
+Reader; no security setting was changed and no quarantine attribute was
+manually removed. A premature automation reopen while that confirmation was
+pending produced an AppleEvent timeout notice above it. The suspended process
+was still at `_dyld_start`, before Reader initialization. Dismissing the timeout
+notice and answering the standard confirmation resolved that automation issue.
+
+The newly installed app (PID 16517) passed a live 176-entry catalogue
+accessibility scan, filtering for 4976, opening the included starter without a
+download, rendering, and advancing from frame 1 to 2 of 100. The native file
+chooser opened the existing Chignolin run with all **5,001 frames**, with no
+atoms selected. Normal Cmd-Q closed it; the existing desktop Finder alias
+started a new process (PID 16622) from `/Applications/H5 Reader.app`. Chignolin
+was reopened there and left ready to use. No new Reader crash reports appeared
+after the successful isolated runtime test or during these native checks.
+
+The final DMG was copied through the existing mesh SSH identity to:
+
+```text
+batcave:/shared/2026Thesis/reader-macos-alpha-20261011/
+  H5-Reader-0.5.0-alpha-921e27d-macOS-arm64.dmg
+```
+
+Its remote SHA-256 matches the final local image. The directory also holds the
+checksum, release manifest, installation notes, Apple validation result, and
+matching Reader/Cocoa symbols under `symbols/`. The symbols archive is
+16,381,680 bytes; SHA-256:
+`ffd988a2dc6dec6eb1fc5025ef875ea7821404c7960a0654b7e8e339317ba012`.
+Its remote hash also matches. Source and validation notes are prepared for the
+authorized GitHub push; the push result is retained with the local acceptance
+evidence. This handoff does not create a website download or GitHub release.
+
+The native quarantine test used this same Mac and GUI login. It is useful
+installation evidence, with no claim of a second Mac, pristine OS state, or
+older-macOS execution. The installed Qt SDK plugin and source hashes remain
+unchanged. Fresh Windows/Linux execution remains separate from this Mac alpha.
